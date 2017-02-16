@@ -267,6 +267,7 @@ class SyncReplicasOptimizerTest(test.TestCase):
     # Starts worker 1.
     thread_1.start()
     thread_1.join()
+    thread_0.join()
 
     # The global step should now be 2 and the gradients should have been
     # applied again.

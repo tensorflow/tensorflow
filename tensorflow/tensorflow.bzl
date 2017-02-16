@@ -38,6 +38,14 @@ def tf_android_core_proto_headers(core_proto_sources_relative):
          ["//tensorflow/core/" + p.replace(".proto", ".proto.h")
           for p in core_proto_sources_relative])
 
+def if_android_x86(a):
+  return select({
+      "//tensorflow:android_x86": a,
+      "//tensorflow:android_x86_64": a,
+      "//conditions:default": [],
+  })
+
+
 def if_android_arm(a):
   return select({
       "//tensorflow:android_arm": a,
@@ -104,7 +112,7 @@ def tf_copts():
           if_cuda(["-DGOOGLE_CUDA=1"]) +
           if_mkl(["-DINTEL_MKL=1"]) +
           if_android_arm(["-mfpu=neon"]) +
-          if_x86(["-msse4.1"]) +
+          if_x86(["-msse3"]) +
           select({
               "//tensorflow:android": [
                   "-std=c++11",
@@ -118,7 +126,6 @@ def tf_copts():
                 "/DPLATFORM_WINDOWS",
                 "/DEIGEN_HAS_C99_MATH",
                 "/DTENSORFLOW_USE_EIGEN_THREADPOOL",
-		"/DEIGEN_VECTORIZE_SSE3",  # To flush denormals without __SSE3__ set.
               ],
               "//tensorflow:ios": ["-std=c++11"],
               "//conditions:default": ["-pthread"]}))
@@ -128,7 +135,7 @@ def tf_opts_nortti_if_android():
       "-fno-rtti",
       "-DGOOGLE_PROTOBUF_NO_RTTI",
       "-DGOOGLE_PROTOBUF_NO_STATIC_INITIALIZER",
-  ])
+  ]) + if_android_x86(["-msse4.1"])
 # LINT.ThenChange(//tensorflow/contrib/android/cmake/CMakeLists.txt)
 
 # Given a list of "op_lib_names" (a list of files in the ops directory
@@ -672,7 +679,7 @@ def cc_header_only_library(name, deps=[], **kwargs):
 
 def tf_custom_op_library_additional_deps():
   return [
-      "@protobuf//:protobuf",
+      "//:protobuf_headers",
       "//third_party/eigen3",
       "//tensorflow/core:framework_headers_lib",
   ]

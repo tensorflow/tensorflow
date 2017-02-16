@@ -85,7 +85,8 @@ Status Conv2DBackpropComputeDimensions(
     return errors::InvalidArgument(label, ": filter must be 4-dimensional");
   }
   if (out_backprop_shape.dims() != 4) {
-    errors::InvalidArgument(label, ": out_backprop must be 4-dimensional");
+    return errors::InvalidArgument(label,
+                                   ": out_backprop must be 4-dimensional");
   }
   dims->batch_size = GetTensorDim(input_shape, data_format, 'N');
   if (dims->batch_size != GetTensorDim(out_backprop_shape, data_format, 'N')) {

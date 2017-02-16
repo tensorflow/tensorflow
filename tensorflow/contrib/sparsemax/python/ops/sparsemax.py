@@ -13,16 +13,19 @@
 # limitations under the License.
 # ==============================================================================
 """Sparsemax op."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.util import loader
-from tensorflow.python.platform import resource_loader
-from tensorflow.python.framework import ops, dtypes
-from tensorflow.python.ops import math_ops
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
+from tensorflow.python.platform import resource_loader
+
+__all__ = ["sparsemax"]
 
 
 def sparsemax(logits, name=None):
@@ -55,8 +58,7 @@ def sparsemax(logits, name=None):
     # calculate k(z)
     z_cumsum = math_ops.cumsum(z_sorted, axis=1)
     k = math_ops.range(
-        1, math_ops.cast(dims, logits.dtype) + 1, dtype=logits.dtype
-    )
+        1, math_ops.cast(dims, logits.dtype) + 1, dtype=logits.dtype)
     z_check = 1 + k * z_sorted > z_cumsum
     # because the z_check vector is always [1,1,...1,0,0,...0] finding the
     # (index + 1) of the last `1` is the same as just summing the number of 1.
@@ -69,6 +71,4 @@ def sparsemax(logits, name=None):
 
     # calculate p
     return math_ops.maximum(
-        math_ops.cast(0, logits.dtype),
-        z - tau_z[:, array_ops.newaxis]
-    )
+        math_ops.cast(0, logits.dtype), z - tau_z[:, array_ops.newaxis])

@@ -19,8 +19,8 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.python.debug import debug_utils
-from tensorflow.python.debug import stepper
+from tensorflow.python.debug.lib import debug_utils
+from tensorflow.python.debug.lib import stepper
 from tensorflow.python.debug.wrappers import dumping_wrapper
 from tensorflow.python.debug.wrappers import framework
 from tensorflow.python.debug.wrappers import local_cli_wrapper
@@ -107,10 +107,13 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook,
       run_context.session.graph._finalized = False
       # pylint: enable=protected-access
 
-      self.invoke_node_stepper(
-          stepper.NodeStepper(run_context.session, run_context.original_args.
-                              fetches, run_context.original_args.feed_dict),
-          restore_variable_values_on_exit=True)
+      with stepper.NodeStepper(
+          run_context.session,
+          run_context.original_args.
+          fetches,
+          run_context.original_args.feed_dict) as node_stepper:
+        self.invoke_node_stepper(
+            node_stepper, restore_variable_values_on_exit=True)
 
     return run_args
 

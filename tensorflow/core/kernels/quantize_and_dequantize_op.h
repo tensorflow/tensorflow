@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_QUANTIZE_AND_DEQUANTIZE_OP_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
 
 namespace tensorflow {
@@ -26,9 +27,8 @@ template <typename Device, typename T>
 struct QuantizeAndDequantizeOneScaleFunctor {
   void operator()(const Device& d, typename TTypes<T>::ConstVec input,
                   bool signed_input, int num_bits, bool range_given,
-                  typename TTypes<T>::Scalar input_min,
-                  typename TTypes<T>::Scalar input_max, const T input_min_init,
-                  const T input_max_init, typename TTypes<T>::Vec out);
+                  Tensor* input_min_tensor, Tensor* input_max_tensor,
+                  typename TTypes<T>::Vec out);
 };
 
 // The implementation below runs on both CPU and GPU.
@@ -36,18 +36,18 @@ template <typename Device, typename T>
 struct QuantizeAndDequantizeOneScaleImpl {
   static void Compute(const Device& d, typename TTypes<T>::ConstVec input,
                       bool signed_input, int num_bits, bool range_given,
-                      typename TTypes<T>::Scalar input_min,
-                      typename TTypes<T>::Scalar input_max,
-                      const T input_min_init, const T input_max_init,
+                      Tensor* input_min_tensor, Tensor* input_max_tensor,
                       typename TTypes<T>::Vec out) {
-    T min_range = input_min_init;
-    T max_range = input_max_init;
+    T min_range;
+    T max_range;
+    auto input_min = input_min_tensor->scalar<T>();
+    auto input_max = input_max_tensor->scalar<T>();
     if (!range_given) {
       input_min.device(d) = input.minimum();
       input_max.device(d) = input.maximum();
-      d.memcpyDeviceToHost(&min_range, input_min.data(), sizeof(T));
-      d.memcpyDeviceToHost(&max_range, input_max.data(), sizeof(T));
     }
+    d.memcpyDeviceToHost(&min_range, input_min.data(), sizeof(T));
+    d.memcpyDeviceToHost(&max_range, input_max.data(), sizeof(T));
 
     // Make sure the range is symmetric for signed quantization, or start from
     // 0 for unsigned quantization.

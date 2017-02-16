@@ -21,17 +21,22 @@ from __future__ import print_function
 import argparse
 import inspect
 import os
+import sys
 
 import six
 import tensorflow as tf
+
+from tensorflow.python import debug as tf_debug
 
 from tensorflow.tools.common import public_api
 from tensorflow.tools.common import traverse
 from tensorflow.tools.docs import doc_generator_visitor
 from tensorflow.tools.docs import parser
+from tensorflow.tools.docs import py_guide_parser
 
 
-def write_docs(output_dir, base_dir, duplicate_of, duplicates, index, tree):
+def write_docs(output_dir, base_dir, duplicate_of, duplicates, index, tree,
+               reverse_index, doc_index, guide_index):
   """Write previously extracted docs to disk.
 
   Write a docs page for each symbol in `index` to a tree of docs at
@@ -56,6 +61,9 @@ def write_docs(output_dir, base_dir, duplicate_of, duplicates, index, tree):
       of "@{symbol}" references.
     tree: A `dict` mapping a fully qualified name to the names of all its
       members. Used to populate the members section of a class or module page.
+    reverse_index: A `dict` mapping object ids to fully qualified names.
+    doc_index: A `dict` mapping a doc key to a DocInfo.
+    guide_index: A `dict` mapping symbol name strings to GuideRef.
   """
   # Make output_dir.
   try:
@@ -65,21 +73,46 @@ def write_docs(output_dir, base_dir, duplicate_of, duplicates, index, tree):
     print('Creating output dir "%s" failed: %s' % (output_dir, e))
     raise
 
+  # These dictionaries are used for table-of-contents generation below
+  # They will contain, after the for-loop below::
+  #  - module name(string):classes and functions the module contains(list)
+  module_children = {}
+  #  - symbol name(string):pathname (string)
+  symbol_to_file = {}
+
   # Parse and write Markdown pages, resolving cross-links (@{symbol}).
   for full_name, py_object in six.iteritems(index):
 
     if full_name in duplicate_of:
-      print('Not writing docs for %s, duplicate of %s.' % (
-          full_name, duplicate_of[full_name]))
       continue
 
     # Methods and some routines are documented only as part of their class.
     if not (inspect.ismodule(py_object) or
             inspect.isclass(py_object) or
             inspect.isfunction(py_object)):
-      print('Not writing docs for %s, not a class, module, or function.' % (
-          full_name))
       continue
+
+    sitepath = os.path.join('api_docs/python',
+                            parser.documentation_path(full_name)[:-3])
+
+    # For TOC, we need to store a mapping from full_name to the file
+    # we're generating
+    symbol_to_file[full_name] = sitepath
+
+    # For a module, remember the module for the table-of-contents
+    if inspect.ismodule(py_object):
+      if full_name in tree:
+        module_children.setdefault(full_name, [])
+
+    # For something else that's documented,
+    # figure out what module it lives in
+    else:
+      subname = str(full_name)
+      while True:
+        subname = subname[:subname.rindex('.')]
+        if inspect.ismodule(index[subname]):
+          module_children.setdefault(subname, []).append(full_name)
+          break
 
     print('Writing docs for %s (%r).' % (full_name, py_object))
 
@@ -89,9 +122,10 @@ def write_docs(output_dir, base_dir, duplicate_of, duplicates, index, tree):
                                         duplicates=duplicates,
                                         index=index,
                                         tree=tree,
+                                        reverse_index=reverse_index,
+                                        doc_index=doc_index,
+                                        guide_index=guide_index,
                                         base_dir=base_dir)
-
-    # TODO(deannarubin): use _tree to generate sidebar information.
 
     path = os.path.join(output_dir, parser.documentation_path(full_name))
     directory = os.path.dirname(path)
@@ -104,17 +138,39 @@ def write_docs(output_dir, base_dir, duplicate_of, duplicates, index, tree):
       print('Cannot write documentation for %s to %s: %s' % (full_name,
                                                              directory, e))
       raise
-    # TODO(deannarubin): write sidebar file?
+
+  # Generate table of contents
+
+  # Put modules in alphabetical order, case-insensitive
+  modules = sorted(module_children.keys(), key=lambda a: a.upper())
+
+  leftnav_path = os.path.join(output_dir, '_toc.yaml')
+  with open(leftnav_path, 'w') as f:
+
+    # Generate header
+    f.write('# Automatically generated file; please do not edit\ntoc:\n')
+    for module in modules:
+      f.write('  - title: ' + module + '\n'
+              '    section:\n' +
+              '    - title: Overview\n' +
+              '      path: /TARGET_DOC_ROOT/' + symbol_to_file[module] + '\n')
+
+      symbols_in_module = module_children.get(module, [])
+      symbols_in_module.sort(key=lambda a: a.upper())
+
+      for full_name in symbols_in_module:
+        f.write('    - title: ' + full_name[len(module)+1:] + '\n'
+                '      path: /TARGET_DOC_ROOT/' +
+                symbol_to_file[full_name] + '\n')
 
   # Write a global index containing all full names with links.
-  with open(os.path.join(output_dir, 'full_index.md'), 'w') as f:
-    f.write(parser.generate_global_index('TensorFlow', 'tensorflow',
-                                         index, duplicate_of))
+  with open(os.path.join(output_dir, 'index.md'), 'w') as f:
+    f.write(parser.generate_global_index('TensorFlow', index, duplicate_of))
 
 
 def extract():
   """Extract docs from tf namespace and write them to disk."""
-  visitor = doc_generator_visitor.DocGeneratorVisitor()
+  visitor = doc_generator_visitor.DocGeneratorVisitor('tf')
   api_visitor = public_api.PublicAPIVisitor(visitor)
 
   # Access something in contrib so tf.contrib is properly loaded (it's hidden
@@ -123,6 +179,7 @@ def extract():
 
   # Exclude some libaries in contrib from the documentation altogether.
   # TODO(wicke): Shrink this list.
+  api_visitor.do_not_descend_map[''] += ['cli', 'lib', 'wrappers']
   api_visitor.do_not_descend_map.update({
       'contrib': [
           'compiler',
@@ -138,8 +195,8 @@ def extract():
           'tensor_forest',
           'tensorboard',
           'testing',
-          'tfprof',
           'training',
+          'tfprof',
       ],
       'contrib.bayesflow': [
           'entropy', 'monte_carlo',
@@ -148,6 +205,7 @@ def extract():
           'stochastic_variables', 'variational_inference'
       ],
       'contrib.distributions': ['bijector'],
+      'contrib.ffmpeg': ['ffmpeg_ops'],
       'contrib.graph_editor': [
           'edit',
           'match',
@@ -177,10 +235,107 @@ def extract():
 
   traverse.traverse(tf, api_visitor)
 
+  # tf_debug is not imported with tf, it's a separate module altogether
+  visitor.set_root_name('tfdbg')
+  traverse.traverse(tf_debug, api_visitor)
+
   return visitor
 
 
-def write(output_dir, base_dir, visitor):
+class GetMarkdownTitle(py_guide_parser.PyGuideParser):
+  """Extract the title from a .md file."""
+
+  def __init__(self):
+    self.title = None
+    py_guide_parser.PyGuideParser.__init__(self)
+
+  def process_title(self, _, title):
+    if self.title is None:  # only use the first title
+      self.title = title
+
+
+class DocInfo(object):
+  """A simple struct for holding a doc's url and title."""
+
+  def __init__(self, url, title):
+    self.url = url
+    self.title = title
+
+
+def build_doc_index(src_dir):
+  """Build an index from a keyword designating a doc to DocInfo objects."""
+  doc_index = {}
+  for dirpath, _, filenames in os.walk(src_dir):
+    suffix = os.path.relpath(path=dirpath, start=src_dir)
+    for base_name in filenames:
+      if not base_name.endswith('.md'): continue
+      title_parser = GetMarkdownTitle()
+      title_parser.process(os.path.join(dirpath, base_name))
+      key_parts = os.path.join(suffix, base_name[:-3]).split('/')
+      if key_parts[-1] == 'index':
+        key_parts = key_parts[:-1]
+      doc_info = DocInfo(os.path.join(suffix, base_name), title_parser.title)
+      doc_index[key_parts[-1]] = doc_info
+      if len(key_parts) > 1:
+        doc_index['/'.join(key_parts[-2:])] = doc_info
+
+  return doc_index
+
+
+class GuideRef(object):
+
+  def __init__(self, base_name, title, section_title, section_tag):
+    self.url = 'api_guides/python/' + (
+        ('%s#%s' % (base_name, section_tag)) if section_tag else base_name)
+    self.link_text = (('%s > %s' % (title, section_title))
+                      if section_title else title)
+
+  def make_md_link(self, url_prefix):
+    return '[%s](%s%s)' % (self.link_text, url_prefix, self.url)
+
+
+class GenerateGuideIndex(py_guide_parser.PyGuideParser):
+  """Turn guide files into an index from symbol name to a list of GuideRefs."""
+
+  def __init__(self):
+    self.index = {}
+    py_guide_parser.PyGuideParser.__init__(self)
+
+  def process(self, full_path, base_name):
+    """Index a file, reading from `full_path`, with `base_name` as the link."""
+    self.full_path = full_path
+    self.base_name = base_name
+    self.title = None
+    self.section_title = None
+    self.section_tag = None
+    py_guide_parser.PyGuideParser.process(self, full_path)
+
+  def process_title(self, _, title):
+    if self.title is None:  # only use the first title
+      self.title = title
+
+  def process_section(self, _, section_title, tag):
+    self.section_title = section_title
+    self.section_tag = tag
+
+  def process_line(self, _, line):
+    """Index @{symbol} references as in the current file & section."""
+    for match in parser.SYMBOL_REFERENCE_RE.finditer(line):
+      val = self.index.get(match.group(1), [])
+      val.append(GuideRef(
+          self.base_name, self.title, self.section_title, self.section_tag))
+      self.index[match.group(1)] = val
+
+
+def build_guide_index(guide_src_dir):
+  """Return dict: symbol name -> GuideRef from the files in `guide_src_dir`."""
+  index_generator = GenerateGuideIndex()
+  for full_path, base_name in py_guide_parser.md_files_in_dir(guide_src_dir):
+    index_generator.process(full_path, base_name)
+  return index_generator.index
+
+
+def write(output_dir, base_dir, doc_index, guide_index, visitor):
   """Write documentation for an index in a `DocGeneratorVisitor` to disk.
 
   This function will create `output_dir` if it doesn't exist, and write
@@ -190,12 +345,77 @@ def write(output_dir, base_dir, visitor):
     output_dir: The directory to write documentation to. Must not exist.
     base_dir: The base dir of the library `visitor` has traversed. This is used
       to compute relative paths for file references.
+    doc_index: A `dict` mapping a doc key to a DocInfo.
+    guide_index: A `dict` mapping symbol name strings to GuideRef.
     visitor: A `DocGeneratorVisitor` that has traversed a library located at
       `base_dir`.
   """
-  duplicate_of, duplicates = visitor.find_duplicates()
   write_docs(output_dir, os.path.abspath(base_dir),
-             duplicate_of, duplicates, visitor.index, visitor.tree)
+             visitor.duplicate_of, visitor.duplicates,
+             visitor.index, visitor.tree, visitor.reverse_index,
+             doc_index, guide_index)
+
+
+class UpdateTags(py_guide_parser.PyGuideParser):
+  """Rewrites a Python guide so that each section has an explicit tag."""
+
+  def process_section(self, line_number, section_title, tag):
+    self.replace_line(line_number, '<h2 id="%s">%s</h2>' % (tag, section_title))
+
+
+def other_docs(src_dir, output_dir, visitor, doc_index):
+  """Convert all the files in `src_dir` and write results to `output_dir`."""
+  header = '<!-- DO NOT EDIT! Automatically generated file. -->\n'
+
+  # Iterate through all the source files and process them.
+  tag_updater = UpdateTags()
+  for dirpath, _, filenames in os.walk(src_dir):
+    # How to get from `dirpath` to api_docs/python/
+    relative_path_to_root = os.path.relpath(
+        path=os.path.join(src_dir, 'api_docs/python'), start=dirpath)
+
+    # Make the directory under output_dir.
+    new_dir = os.path.join(output_dir,
+                           os.path.relpath(path=dirpath, start=src_dir))
+    try:
+      if not os.path.exists(new_dir):
+        os.makedirs(new_dir)
+    except OSError as e:
+      print('Creating output dir "%s" failed: %s' % (new_dir, e))
+      raise
+
+    for base_name in filenames:
+      full_in_path = os.path.join(dirpath, base_name)
+      suffix = os.path.relpath(path=full_in_path, start=src_dir)
+      full_out_path = os.path.join(output_dir, suffix)
+      if not base_name.endswith('.md'):
+        print('Copying non-md file %s...' % suffix)
+        open(full_out_path, 'w').write(open(full_in_path).read())
+        continue
+      if dirpath.endswith('/api_guides/python'):
+        print('Processing Python guide %s...' % base_name)
+        md_string = tag_updater.process(full_in_path)
+      else:
+        print('Processing doc %s...' % suffix)
+        md_string = open(full_in_path).read()
+
+      output = parser.replace_references(
+          md_string, relative_path_to_root, visitor.duplicate_of,
+          doc_index=doc_index, index=visitor.index)
+      with open(full_out_path, 'w') as f:
+        f.write(header + output)
+
+  print('Done.')
+
+
+def _main(src_dir, output_dir, base_dir):
+  doc_index = build_doc_index(src_dir)
+  visitor = extract()
+  write(os.path.join(output_dir, 'api_docs/python'), base_dir,
+        doc_index,
+        build_guide_index(os.path.join(src_dir, 'api_guides/python')),
+        visitor)
+  other_docs(src_dir, output_dir, visitor, doc_index)
 
 
 if __name__ == '__main__':
@@ -205,29 +425,35 @@ if __name__ == '__main__':
       type=str,
       default=None,
       required=True,
-      help='Directory to write docs to. Must not exist.'
+      help='Directory to write docs to.'
+  )
+
+  argument_parser.add_argument(
+      '--src_dir',
+      type=str,
+      default=None,
+      required=True,
+      help='Directory with the source docs.'
   )
 
   # This doc generator works on the TensorFlow codebase. Since this script lives
-  # at tensorflow/tools/docs, we can compute the base directory (three levels
-  # up), which is valid unless we're trying to apply this to a different code
-  # base, or are moving the script around.
+  # at tensorflow/tools/docs, and all code is defined somewhere inside
+  # tensorflow/, we can compute the base directory (two levels up), which is
+  # valid unless we're trying to apply this to a different code base, or are
+  # moving the script around.
   script_dir = os.path.dirname(inspect.getfile(inspect.currentframe()))
-  default_base_dir = os.path.join(script_dir, '..', '..', '..')
+  default_base_dir = os.path.join(script_dir, '..', '..')
 
   argument_parser.add_argument(
       '--base_dir',
       type=str,
       default=default_base_dir,
       help=('Base directory to to strip from file names referenced in docs. '
-            'Defaults to three directories up from the location of this file.')
+            'Defaults to two directories up from the location of this file.')
   )
 
   flags, _ = argument_parser.parse_known_args()
-
-  if os.path.exists(flags.output_dir):
-    raise RuntimeError('output_dir %s exists.\n'
-                       'Cowardly refusing to wipe it, please do that yourself.'
-                       % flags.output_dir)
-
-  write(flags.output_dir, flags.base_dir, extract())
+  _main(flags.src_dir, flags.output_dir, flags.base_dir)
+  if parser.all_errors:
+    print('Errors during processing:' + '\n  '.join(parser.all_errors))
+    sys.exit(1)

@@ -76,7 +76,14 @@ TEST_F(QuantizeTrainingTest, NormalGraph) {
   g->AddControlEdge(m2, g->sink_node());
 
   // The graph after the rewriting should be:
-  // "Q" is the quantize_and_dequantize op.
+  // "Q" is the quantize_and_dequantize op subgraph:
+  /*
+                      out
+                       |
+             QuantizeAndDequantizeV2
+           /           |           \
+       MinConst       in        MaxConst
+  */
   // Note the Q in the middle is shared by both m1 and m2.
   /*
          m1       m2
@@ -87,16 +94,16 @@ TEST_F(QuantizeTrainingTest, NormalGraph) {
       |       |
       a       b
   */
-  int num_bits = 8;
+  const int num_bits = 8;
   TF_ASSERT_OK(DoQuantizeTraining(num_bits, g));
 
-  // There should be 12 nodes in total including the source and sink nodes.
-  EXPECT_EQ(12, g->num_nodes());
+  // There should be 18 nodes in total including the source and sink nodes.
+  EXPECT_EQ(18, g->num_nodes());
   // Nodes m1 and m2's inputs should be the quantize_and_dequantize op.
   std::vector<Node*> target_nodes{m1, m2};
   for (Node* n : target_nodes) {
     for (Node* in : n->in_nodes()) {
-      EXPECT_EQ("QuantizeAndDequantize", in->type_string());
+      EXPECT_EQ("QuantizeAndDequantizeV2", in->type_string());
     }
   }
 
@@ -104,7 +111,7 @@ TEST_F(QuantizeTrainingTest, NormalGraph) {
   std::vector<Node*> target_inputs{relu, identity, c};
   for (Node* n : target_inputs) {
     for (Node* out : n->out_nodes()) {
-      EXPECT_EQ("QuantizeAndDequantize", out->type_string());
+      EXPECT_EQ("QuantizeAndDequantizeV2", out->type_string());
     }
   }
 
@@ -149,7 +156,7 @@ TEST_F(QuantizeTrainingTest, WithBackwardNodes) {
   TF_ASSERT_OK(DoQuantizeTraining(num_bits, g));
 
   // Nodes m1 and m2's inputs should now be the quantize_and_dequantize op.
-  EXPECT_EQ(13, g->num_nodes());
+  EXPECT_EQ(19, g->num_nodes());
   EXPECT_EQ(2, m2->num_inputs());
 }
 
@@ -181,9 +188,9 @@ TEST_F(QuantizeTrainingTest, QuantizeGraphDef) {
   GraphDef result_graph;
   EXPECT_TRUE(ParseProtoUnlimited(&result_graph, result_string));
 
-  // Nodes m1's inputs should now be converted with 2 added ops, which results
-  // in the total of 7 nodes.
-  EXPECT_EQ(7, result_graph.node_size());
+  // Nodes m1's inputs should now be converted with 2 added subgraphs of 3 nodes
+  // each, which results in the total of 11 nodes.
+  EXPECT_EQ(11, result_graph.node_size());
 }
 
 }  // namespace

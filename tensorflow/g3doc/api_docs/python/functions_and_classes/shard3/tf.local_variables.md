@@ -6,8 +6,8 @@ Local variables - per process variables, usually not saved/restored to
 checkpoint and used for temporary or intermediate values.
 For example, they can be used as counters for metrics computation or
 number of epochs this machine has read data.
-The `local_variable()` automatically adds new variable to
-`GraphKeys.LOCAL_VARIABLES`.
+The `tf.contrib.framework.local_variable()` function automatically adds the
+new variable to `GraphKeys.LOCAL_VARIABLES`.
 This convenience function returns the contents of that collection.
 
 An alternative to local variables are global variables. See

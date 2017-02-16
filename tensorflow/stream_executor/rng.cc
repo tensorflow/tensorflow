@@ -41,7 +41,7 @@ bool RngSupport::CheckSeed(const uint8 *seed, uint64 seed_bytes) {
   return true;
 }
 
-#if defined(__APPLE__)
+#if defined(__APPLE__) || defined(__FreeBSD__)
 const int RngSupport::kMinSeedBytes;
 const int RngSupport::kMaxSeedBytes;
 #endif

@@ -26,8 +26,6 @@ from tensorflow.python.training import training_ops
 
 class MomentumOptimizer(optimizer.Optimizer):
   """Optimizer that implements the Momentum algorithm.
-
-  @@__init__
   """
 
   def __init__(self, learning_rate, momentum,
@@ -73,7 +71,7 @@ class MomentumOptimizer(optimizer.Optimizer):
   def _resource_apply_dense(self, grad, var):
     mom = self.get_slot(var, "momentum")
     return training_ops.resource_apply_momentum(
-        var, mom.handle,
+        var.handle, mom.handle,
         math_ops.cast(self._learning_rate_tensor, grad.dtype.base_dtype),
         grad,
         math_ops.cast(self._momentum_tensor, grad.dtype.base_dtype),
@@ -93,7 +91,7 @@ class MomentumOptimizer(optimizer.Optimizer):
   def _resource_apply_sparse(self, grad, var, indices):
     mom = self.get_slot(var, "momentum")
     return training_ops.resource_sparse_apply_momentum(
-        var, mom.handle,
+        var.handle, mom.handle,
         math_ops.cast(self._learning_rate_tensor, grad.dtype),
         grad, indices,
         math_ops.cast(self._momentum_tensor, grad.dtype),

@@ -70,6 +70,11 @@ def _Collect(val, collections, default_collections):
     ops.add_to_collection(key, val)
 
 
+@deprecated(
+    "2016-11-30", "Please switch to tf.summary.histogram. Note that "
+    "tf.summary.histogram uses the node name instead of the tag. "
+    "This means that TensorFlow will automatically de-duplicate summary "
+    "names based on the scope they are created in.")
 def histogram_summary(tag, values, collections=None, name=None):
   # pylint: disable=line-too-long
   """Outputs a `Summary` protocol buffer with a histogram.
@@ -304,6 +309,13 @@ def get_summary_op():
   return summary_op
 
 
+@deprecated(
+    "2016-11-30", "Please switch to tf.summary.scalar. Note that "
+    "tf.summary.scalar uses the node name instead of the tag. "
+    "This means that TensorFlow will automatically de-duplicate summary "
+    "names based on the scope they are created in. Also, passing a "
+    "tensor or list of tags to a scalar summary op is no longer "
+    "supported.")
 def scalar_summary(tags, values, collections=None, name=None):
   # pylint: disable=line-too-long
   """Outputs a `Summary` protocol buffer with scalar values.
@@ -332,7 +344,6 @@ def scalar_summary(tags, values, collections=None, name=None):
   return val
 
 
-ops.NotDifferentiable("HistogramAccumulatorSummary")
 ops.NotDifferentiable("HistogramSummary")
 ops.NotDifferentiable("ImageSummary")
 ops.NotDifferentiable("AudioSummary")

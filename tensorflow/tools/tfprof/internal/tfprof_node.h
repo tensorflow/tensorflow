@@ -53,8 +53,14 @@ class TFNode {
         continue;
       }
       std::vector<int64> shape_vec;
-      for (const auto& d : attr.second.shape().dim()) {
-        shape_vec.push_back(d.size());
+      if (attr.second.shape().dim_size() == 0 &&
+          !attr.second.shape().unknown_rank()) {
+        // Scalar parameter with empty shape but known rank.
+        shape_vec.push_back(1);
+      } else {
+        for (const auto& d : attr.second.shape().dim()) {
+          shape_vec.push_back(d.size());
+        }
       }
       update_shape(shape_vec);
     }
@@ -83,9 +89,10 @@ class TFNode {
   const std::set<string>& op_types() { return op_types_; }
 
   const std::vector<int64>& shape() { return shape_; }
-  void update_shape(const std::vector<int64>& shape) { shape_ = shape; }
 
  private:
+  void update_shape(const std::vector<int64>& shape) { shape_ = shape; }
+
   std::map<string, TFNode*> inputs_;
   const NodeDef* node_;
   const NodeExecStats* step_stat_;

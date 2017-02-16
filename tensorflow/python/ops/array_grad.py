@@ -343,6 +343,12 @@ def _FillGrad(_, grad):
 ops.NotDifferentiable("ZerosLike")
 
 
+@ops.RegisterGradient("PreventGradient")
+def _PreventGradientGrad(op, _):
+  raise LookupError(
+      "Gradient explicitly disabled. Reason: %s" % op.get_attr("message"))
+
+
 @ops.RegisterGradient("Gather")
 def _GatherGrad(op, grad):
   """Gradient for Gather op."""
@@ -563,6 +569,7 @@ def _MirrorPadGradGrad(op, grad):
 
 
 @ops.RegisterGradient("QuantizeAndDequantize")
+@ops.RegisterGradient("QuantizeAndDequantizeV2")
 def _QuantizeAndDequantizeGrad(_, grad):
   return grad
 

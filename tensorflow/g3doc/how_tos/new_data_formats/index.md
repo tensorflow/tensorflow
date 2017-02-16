@@ -96,8 +96,8 @@ are:
 To register the op, you will use a `REGISTER_OP` call defined in
 [`tensorflow/core/framework/op.h`](https://www.tensorflow.org/code/tensorflow/core/framework/op.h).
 Reader ops never take any input and always have a single output with type
-`Ref(string)`.  They should always call `SetIsStateful()`, and have a string
-`container` and `shared_name` attrs.  You may optionally define additional attrs
+`resource`.  They should have string `container` and `shared_name` attrs.
+You may optionally define additional attrs
 for configuration or include documentation in a `Doc`.  For examples, see
 [`tensorflow/core/ops/io_ops.cc`](https://www.tensorflow.org/code/tensorflow/core/ops/io_ops.cc),
 e.g.:
@@ -106,11 +106,12 @@ e.g.:
 #include "tensorflow/core/framework/op.h"
 
 REGISTER_OP("TextLineReader")
-    .Output("reader_handle: Ref(string)")
+    .Output("reader_handle: resource")
     .Attr("skip_header_lines: int = 0")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .SetIsStateful()
+    .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 A Reader that outputs the lines of a file delimited by '\n'.
 )doc");
@@ -165,8 +166,11 @@ REGISTER_KERNEL_BUILDER(Name("TextLineReader").Device(DEVICE_CPU),
                         TextLineReaderOp);
 ```
 
-The last step is to add the Python wrapper.  You will import
-`tensorflow.python.ops.io_ops` in
+The last step is to add the Python wrapper.  You can either do this by
+[compiling a dynamic
+library](../../how_tos/adding_an_op/#building_the_op_library)
+or, if you are building TensorFlow from source, adding to `user_ops.py`.
+For the latter, you will import `tensorflow.python.ops.io_ops` in
 [`tensorflow/python/user_ops/user_ops.py`](https://www.tensorflow.org/code/tensorflow/python/user_ops/user_ops.py)
 and add a descendant of [`io_ops.ReaderBase`](https://www.tensorflow.org/code/tensorflow/python/ops/io_ops.py).
 
@@ -183,7 +187,6 @@ class SomeReader(io_ops.ReaderBase):
 
 
 ops.NotDifferentiable("SomeReader")
-ops.RegisterShape("SomeReader")(common_shapes.scalar_shape)
 ```
 
 You can see some examples in
@@ -192,10 +195,10 @@ You can see some examples in
 ## Writing an Op for a record format
 
 Generally this is an ordinary op that takes a scalar string record as input, and
-so follow [the instructions to add an Op](../../how_tos/adding_an_op/index.md).  You may
-optionally take a scalar string key as input, and include that in error messages
-reporting improperly formatted data.  That way users can more easily track down
-where the bad data came from.
+so follow [the instructions to add an Op](../../how_tos/adding_an_op/index.md).
+You may optionally take a scalar string key as input, and include that in error
+messages reporting improperly formatted data.  That way users can more easily
+track down where the bad data came from.
 
 Examples of Ops useful for decoding records:
 

@@ -3,7 +3,7 @@
 # Losses (contrib)
 [TOC]
 
-Ops for building neural network losses.
+Ops for building neural network losses. See @{$python/contrib.losses}.
 
 ## Other Functions and Classes
 - - -
@@ -202,7 +202,7 @@ Method that returns the loss tensor for hinge loss. (deprecated)
 
 THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-30.
 Instructions for updating:
-Use tf.losses.hinge_loss instead.
+Use tf.losses.hinge_loss instead. Note that the order of the predictions and labels arguments were changed.
 
 ##### Args:
 
@@ -231,7 +231,7 @@ Adds a Log Loss term to the training procedure. (deprecated)
 
 THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-30.
 Instructions for updating:
-Use tf.losses.log_loss instead.
+Use tf.losses.log_loss instead. Note that the order of the predictions and labels arguments was changed.
 
 `weights` acts as a coefficient for the loss. If a scalar is provided, then
 the loss is simply scaled by the given value. If `weights` is a tensor of size
@@ -270,7 +270,7 @@ Adds a pairwise-errors-squared loss to the training procedure. (deprecated)
 
 THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-30.
 Instructions for updating:
-Use tf.losses.mean_pairwise_squared_error instead.
+Use tf.losses.mean_pairwise_squared_error instead. Note that the order of the predictions and labels arguments was changed.
 
 Unlike `mean_squared_error`, which is a measure of the differences between
 corresponding elements of `predictions` and `labels`,
@@ -360,7 +360,7 @@ Creates a cross-entropy loss using tf.nn.sigmoid_cross_entropy_with_logits. (dep
 
 THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-30.
 Instructions for updating:
-Use tf.losses.sigmoid_cross_entropy instead.
+Use tf.losses.sigmoid_cross_entropy instead. Note that the order of the predictions and labels arguments was changed.
 
 `weights` acts as a coefficient for the loss. If a scalar is provided,
 then the loss is simply scaled by the given value. If `weights` is a
@@ -402,7 +402,7 @@ Creates a cross-entropy loss using tf.nn.softmax_cross_entropy_with_logits. (dep
 
 THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-30.
 Instructions for updating:
-Use tf.losses.softmax_cross_entropy instead.
+Use tf.losses.softmax_cross_entropy instead. Note that the order of the logits and labels arguments has been changed.
 
 `weights` acts as a coefficient for the loss. If a scalar is provided,
 then the loss is simply scaled by the given value. If `weights` is a
@@ -442,7 +442,7 @@ Cross-entropy loss using `tf.nn.sparse_softmax_cross_entropy_with_logits`. (depr
 
 THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-30.
 Instructions for updating:
-Use tf.losses.sparse_softmax_cross_entropy instead.
+Use tf.losses.sparse_softmax_cross_entropy instead. Note that the order of the logits and labels arguments has been changed.
 
 `weights` acts as a coefficient for the loss. If a scalar is provided,
 then the loss is simply scaled by the given value. If `weights` is a

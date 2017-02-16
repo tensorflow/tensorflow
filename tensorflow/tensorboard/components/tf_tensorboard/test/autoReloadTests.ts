@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 var assert = chai.assert;
-declare function fixture(id: string): void; window.HTMLImports.whenReady(() => {
-
+declare function fixture(id: string): void;
+window.HTMLImports.whenReady(() => {
   Polymer({
     is: 'autoreload-test-element',
     behaviors: [TF.TensorBoard.AutoReloadBehavior],

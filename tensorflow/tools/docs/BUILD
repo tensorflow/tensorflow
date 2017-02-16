@@ -9,6 +9,8 @@ package(
     default_visibility = ["//tensorflow:__subpackages__"],
 )
 
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 py_binary(
     name = "gen_cc_md",
     srcs = ["gen_cc_md.py"],
@@ -52,6 +54,7 @@ py_test(
         "parser_test.py",
     ],
     srcs_version = "PY2AND3",
+    tags = ["manual"],
     deps = [
         ":parser",
         "//tensorflow/python:platform_test",
@@ -63,11 +66,14 @@ py_binary(
     srcs = ["generate.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":doc_generator_visitor",
+        ":parser",
+        ":py_guide_parser",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/ffmpeg:ffmpeg_ops_py",
+        "//tensorflow/python/debug:debug_py",
         "//tensorflow/tools/common:public_api",
         "//tensorflow/tools/common:traverse",
-        "//tensorflow/tools/docs:doc_generator_visitor",
-        "//tensorflow/tools/docs:parser",
     ],
 )
 
@@ -85,13 +91,24 @@ py_test(
     ],
 )
 
-py_binary(
-    name = "make_py_guides",
-    srcs = ["make_py_guides.py"],
+py_library(
+    name = "py_guide_parser",
+    srcs = [
+        "py_guide_parser.py",
+    ],
+    srcs_version = "PY2AND3",
+)
+
+py_test(
+    name = "py_guide_parser_test",
+    size = "small",
+    srcs = [
+        "py_guide_parser_test.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/tools/docs:generate",
-        "//tensorflow/tools/docs:parser",
+        ":py_guide_parser",
+        "//tensorflow/python:client_testlib",
     ],
 )
 
@@ -120,6 +137,10 @@ sh_test(
         ":gen_docs",
         "//tensorflow/core:all_files",
         "//tensorflow/python:all_files",
+    ],
+    tags = [
+        "manual",
+        "notap",
     ],
 )
 

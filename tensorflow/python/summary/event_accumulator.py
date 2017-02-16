@@ -151,18 +151,6 @@ class EventAccumulator(object):
 
   Histograms, audio, and images are very large, so storing all of them is not
   recommended.
-
-  @@Reload
-  @@Tags
-  @@Scalars
-  @@HealthPills
-  @@Graph
-  @@MetaGraph
-  @@RunMetadata
-  @@Histograms
-  @@CompressedHistograms
-  @@Images
-  @@Audio
   """
 
   def __init__(self,
@@ -693,7 +681,9 @@ class EventAccumulator(object):
       output_slot: The output slot for this health pill.
       elements: An ND array of 12 floats. The elements of the health pill.
     """
-    # Key by the node name for fast retrieval of health pills by node name.
+    # Key by the node name for fast retrieval of health pills by node name. The
+    # array is cast to a list so that it is JSON-able. The debugger data plugin
+    # serves a JSON response.
     self._health_pills.AddItem(
         node_name,
         HealthPillEvent(
@@ -701,7 +691,7 @@ class EventAccumulator(object):
             step=step,
             node_name=node_name,
             output_slot=output_slot,
-            value=elements))
+            value=list(elements)))
 
   def _Purge(self, event, by_tags):
     """Purge all events that have occurred after the given event.step.

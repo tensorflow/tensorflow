@@ -5,11 +5,7 @@
 
 Ops for building neural network layers, regularizers, summaries, etc.
 
-## Higher level ops for building neural network layers.
-
-This package provides several ops that take care of creating variables that are
-used internally in a consistent way and provide the building blocks for many
-common machine learning algorithms.
+See the @{$python/contrib.layers} guide.
 
 - - -
 
@@ -1015,18 +1011,6 @@ Typical use case would be reusing embeddings between an encoder and decoder.
 
 
 
-Aliases for fully_connected which set a default activation function are
-available: `relu`, `relu6` and `linear`.
-
-`stack` operation is also available. It builds a stack of layers by applying
-a layer repeatedly.
-
-## Regularizers
-
-Regularization can help prevent overfitting. These have the signature
-`fn(weights)`. The loss is typically added to
-`tf.GraphKeys.REGULARIZATION_LOSSES`.
-
 - - -
 
 ### `tf.contrib.layers.apply_regularization(regularizer, weights_list=None)` {#apply_regularization}
@@ -1124,11 +1108,6 @@ Returns a function that applies the sum of multiple regularizers.
   sum of all the input regularizers.
 
 
-
-## Initializers
-
-Initializers are used to initialize variables with sensible values given their
-size, data type, and purpose.
 
 - - -
 
@@ -1252,10 +1231,6 @@ by reaching the final layer. This initializer use the following formula:
 
 
 
-## Optimization
-
-Optimize weights given a loss.
-
 - - -
 
 ### `tf.contrib.layers.optimize_loss(loss, global_step, learning_rate, optimizer, gradient_noise_scale=None, gradient_multipliers=None, clip_gradients=None, learning_rate_decay_fn=None, update_ops=None, variables=None, name=None, summaries=None, colocate_gradients_with_ops=False)` {#optimize_loss}
@@ -1343,10 +1318,6 @@ Various ways of passing optimizers, include:
 
 
 
-## Summaries
-
-Helper functions to summarize specific variables or ops.
-
 - - -
 
 ### `tf.contrib.layers.summarize_activation(op)` {#summarize_activation}
@@ -1402,10 +1373,6 @@ Summarize a graph collection of tensors, possibly filtered by name.
 
 
 
-The layers module defines convenience functions `summarize_variables`,
-`summarize_weights` and `summarize_biases`, which set the `collection` argument
-of `summarize_collection` to `VARIABLES`, `WEIGHTS` and `BIASES`, respectively.
-
 - - -
 
 ### `tf.contrib.layers.summarize_activations(name_filter=None, summarizer=summarize_activation)` {#summarize_activations}
@@ -1413,10 +1380,6 @@ of `summarize_collection` to `VARIABLES`, `WEIGHTS` and `BIASES`, respectively.
 Summarize activations, using `summarize_activation` to summarize.
 
 
-
-## Feature columns
-
-Feature columns provide a mechanism to map data to a model.
 
 - - -
 
@@ -1449,11 +1412,12 @@ Checks the validity of the set of FeatureColumns.
 ##### Args:
 
 
-*  <b>`feature_columns`</b>: A set of instances or subclasses of FeatureColumn.
+*  <b>`feature_columns`</b>: An iterable of instances or subclasses of FeatureColumn.
 
 ##### Raises:
 
 
+*  <b>`ValueError`</b>: If `feature_columns` is a dict.
 *  <b>`ValueError`</b>: If there are duplicate feature column keys.
 
 

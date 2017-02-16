@@ -184,6 +184,14 @@ tf_proto_library(
     visibility = ["//visibility:public"],
 )
 
+tf_proto_library(
+    name = "protos_test",
+    srcs = ["util/example_proto_fast_parsing_test.proto"],
+    cc_api_version = 2,
+    protodeps = [":protos_all"],
+    visibility = ["//visibility:public"],
+)
+
 # Minimal lib so that tools used for mobile compilation
 # don't have to depend on lib/platformlib.
 cc_library(
@@ -453,6 +461,7 @@ tf_gen_op_libs(
         "no_op",
         "parsing_ops",
         "random_ops",
+        "remote_fused_graph_ops",
         "resource_variable_ops",
         "sdca_ops",
         "set_ops",
@@ -638,6 +647,8 @@ cc_library(
         "//tensorflow/core/kernels:parameterized_truncated_normal_op",
         "//tensorflow/core/kernels:parsing",
         "//tensorflow/core/kernels:random_ops",
+        "//tensorflow/core/kernels:random_poisson_op",
+        "//tensorflow/core/kernels:remote_fused_graph_ops",
         "//tensorflow/core/kernels:required",
         "//tensorflow/core/kernels:resource_variable_ops",
         "//tensorflow/core/kernels:sdca_ops",
@@ -978,6 +989,12 @@ cc_library(
     name = "android_tensorflow_test_lib",
     testonly = 1,
     srcs = if_android([":android_test_srcs"]),
+    hdrs = [
+        "framework/fake_input.h",
+        "framework/shape_inference_testutil.h",
+        "framework/tensor_testutil.h",
+        "util/reporter.h",
+    ],
     copts = tf_copts() + ["-Os"],
     tags = [
         "manual",
@@ -1173,12 +1190,16 @@ cc_library(
         "platform/host_info.h",
         "platform/platform.h",
         "platform/protobuf_internal.h",
+        "platform/setround.h",
         "platform/tensor_coding.h",
         "platform/tracing.h",
     ],
     copts = tf_copts(),
     defines = tf_additional_lib_defines(),
-    linkopts = ["-ldl"],
+    linkopts = select({
+        "//tensorflow:freebsd": [],
+        "//conditions:default": ["-ldl"],
+    }),
     deps = tf_additional_lib_deps() + [
         ":lib_hash_crc32c_accelerate_internal",
         ":lib_proto_parsing",
@@ -1205,7 +1226,10 @@ cc_library(
     ],
     hdrs = ["lib/gif/gif_io.h"],
     copts = tf_copts(),
-    linkopts = ["-ldl"],
+    linkopts = select({
+        "//tensorflow:freebsd": [],
+        "//conditions:default": ["-ldl"],
+    }),
     deps = [
         ":lib",
         "//tensorflow/core/platform/default/build_config:gif",
@@ -1224,7 +1248,10 @@ cc_library(
         "lib/jpeg/jpeg_mem.h",
     ],
     copts = tf_copts(),
-    linkopts = ["-ldl"],
+    linkopts = select({
+        "//tensorflow:freebsd": [],
+        "//conditions:default": ["-ldl"],
+    }),
     deps = [
         ":lib",
         "//tensorflow/core/platform/default/build_config:jpeg",
@@ -1302,8 +1329,10 @@ tf_cuda_library(
         "util/tensor_slice_util.h",
     ],
     copts = tf_copts(),
-    linkopts = [
-        "-ldl",
+    linkopts = select({
+        "//tensorflow:freebsd": [],
+        "//conditions:default": ["-ldl"],
+    }) + [
         "-lm",
     ],
     deps = [
@@ -1708,6 +1737,24 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "platform_setround_test",
+    size = "small",
+    srcs = ["platform/setround_test.cc"],
+    tags = [
+        "noasan",
+        "nomsan",
+        "notsan",
+    ],
+    deps = [
+        ":lib",
+        ":lib_internal",
+        ":lib_test_internal",
+        ":test",
+        ":test_main",
+    ],
+)
+
+tf_cc_test(
     name = "platform_file_system_test",
     size = "small",
     srcs = ["platform/file_system_test.cc"],
@@ -1846,6 +1893,7 @@ tf_cc_tests(
         ":lib_internal",
         ":ops",
         ":protos_all_cc",
+        ":protos_test_cc",
         ":test",
         ":test_main",
         ":testlib",
@@ -2331,6 +2379,28 @@ tf_cc_test(
         "//tensorflow/core/kernels:function_ops",
         "//tensorflow/core/kernels:math",
         "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "ops_remote_fused_graph_ops_test",
+    size = "small",
+    srcs = ["ops/remote_fused_graph_ops_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":ops",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/core/kernels:remote_fused_graph_ops",
     ],
 )
 

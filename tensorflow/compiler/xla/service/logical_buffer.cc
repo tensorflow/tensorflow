@@ -18,6 +18,7 @@ limitations under the License.
 #include <ostream>
 #include <vector>
 
+#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -26,7 +27,7 @@ limitations under the License.
 namespace xla {
 
 string LogicalBuffer::ToString() const {
-  return tensorflow::strings::StrCat(instruction_->name(), "[",
+  return tensorflow::strings::StrCat(instruction_->FullyQualifiedName(), "[",
                                      tensorflow::str_util::Join(index_, ","),
                                      "](#", id_, ")");
 }

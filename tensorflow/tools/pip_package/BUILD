@@ -77,6 +77,7 @@ py_binary(
 filegroup(
     name = "licenses",
     data = [
+        "//:LICENSE",
         "//third_party/eigen3:LICENSE",
         "//third_party/hadoop:LICENSE.txt",
         "@boringssl//:LICENSE",
@@ -93,6 +94,7 @@ filegroup(
         "@libxsmm_archive//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
         "@nanopb_git//:LICENSE.txt",
+        "@nccl_archive//:LICENSE.txt",
         "@png_archive//:LICENSE",
         "@protobuf//:LICENSE",
         "@six_archive//:LICENSE",

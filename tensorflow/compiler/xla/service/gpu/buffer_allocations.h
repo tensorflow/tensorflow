@@ -22,7 +22,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
-#include "tensorflow/compiler/xla/service/gpu/temp_buffer_offsets.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
@@ -49,8 +48,7 @@ class BufferAllocations {
     // `device_ordinal` is the number of the device this function allocates
     // memory on.
     StatusOr<std::unique_ptr<BufferAllocations>> Build(
-        const BufferAssignment& buffer_assignment,
-        const TempBufferOffsets& temp_buffer_offsets, int device_ordinal,
+        const BufferAssignment& buffer_assignment, int device_ordinal,
         DeviceMemoryAllocator* memory_allocator);
 
    private:
@@ -70,6 +68,11 @@ class BufferAllocations {
   perftools::gputools::DeviceMemoryBase GetDeviceAddress(
       BufferAllocation::Index buffer_index) const;
 
+  // Same as above, but also adjusts the returned address for the offset and
+  // size contained in the given slice.
+  perftools::gputools::DeviceMemoryBase GetDeviceAddress(
+      const BufferAllocation::Slice& buffer_slice) const;
+
   perftools::gputools::DeviceMemoryBase GetTempBufferBase() const {
     return temp_buffer_base_;
   }
@@ -81,12 +84,9 @@ class BufferAllocations {
       const BufferAssignment& buffer_assignment);
 
  private:
-  BufferAllocations(BufferAllocation::Index buffer_count,
-                    perftools::gputools::DeviceMemoryBase temp_buffer_base,
-                    int device_ordinal, DeviceMemoryAllocator* memory_allocator)
+  BufferAllocations(BufferAllocation::Index buffer_count, int device_ordinal,
+                    DeviceMemoryAllocator* memory_allocator)
       : buffers_(buffer_count),
-        temp_buffer_base_(
-            perftools::gputools::DeviceMemory<void*>(temp_buffer_base)),
         device_ordinal_(device_ordinal),
         memory_allocator_(memory_allocator) {}
 
@@ -100,7 +100,7 @@ class BufferAllocations {
   std::vector<perftools::gputools::DeviceMemoryBase> buffers_;
 
   // The base address of the memory block that contains all temporary buffers.
-  perftools::gputools::DeviceMemory<void*> temp_buffer_base_;
+  perftools::gputools::DeviceMemoryBase temp_buffer_base_;
 
   int device_ordinal_;
 

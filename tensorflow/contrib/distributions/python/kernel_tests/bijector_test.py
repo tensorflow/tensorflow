@@ -235,12 +235,50 @@ def assert_bijective_and_finite(bijector, x, y, atol=0, rtol=1e-5, sess=None):
 class BaseBijectorTest(test.TestCase):
   """Tests properties of the Bijector base-class."""
 
-  def testBijector(self):
+  def testIsAbstract(self):
     with self.test_session():
       with self.assertRaisesRegexp(TypeError,
                                    ("Can't instantiate abstract class Bijector "
                                     "with abstract methods __init__")):
         bijectors.Bijector()
+
+  def testDefaults(self):
+    class _BareBonesBijector(bijectors.Bijector):
+      """Minimal specification of a `Bijector`."""
+
+      def __init__(self):
+        super(_BareBonesBijector, self).__init__()
+
+    with self.test_session() as sess:
+      bij = _BareBonesBijector()
+      self.assertEqual(None, bij.event_ndims)
+      self.assertEqual([], bij.graph_parents)
+      self.assertEqual(False, bij.is_constant_jacobian)
+      self.assertEqual(False, bij.validate_args)
+      self.assertEqual(None, bij.dtype)
+      self.assertEqual("bare_bones_bijector", bij.name)
+
+      for shape in [[], [1, 2], [1, 2, 3]]:
+        [
+            forward_event_shape_,
+            inverse_event_shape_,
+        ] = sess.run([
+            bij.inverse_event_shape_tensor(shape),
+            bij.forward_event_shape_tensor(shape),
+        ])
+        self.assertAllEqual(shape, forward_event_shape_)
+        self.assertAllEqual(shape, bij.forward_event_shape(shape))
+        self.assertAllEqual(shape, inverse_event_shape_)
+        self.assertAllEqual(shape, bij.inverse_event_shape(shape))
+
+      for fn in ["forward",
+                 "inverse",
+                 "inverse_log_det_jacobian",
+                 "inverse_and_inverse_log_det_jacobian",
+                 "forward_log_det_jacobian"]:
+        with self.assertRaisesRegexp(
+            NotImplementedError, fn + " not implemented"):
+          getattr(bij, fn)(0)
 
 
 class IntentionallyMissingError(Exception):
@@ -1601,7 +1639,7 @@ class SigmoidCenteredBijectorTest(test.TestCase):
 
 
 class CholeskyOuterProductBijectorTest(test.TestCase):
-  """Tests the correctness of the Y = X * X^T transformation."""
+  """Tests the correctness of the Y = X @ X.T transformation."""
 
   def testBijectorMatrix(self):
     with self.test_session():
@@ -1659,6 +1697,72 @@ class CholeskyOuterProductBijectorTest(test.TestCase):
       bijector = bijectors.CholeskyOuterProduct(
           event_ndims=0, validate_args=True)
       assert_scalar_congruency(bijector, lower_x=1e-3, upper_x=1.5, rtol=0.05)
+
+  def testNoBatchStatic(self):
+    x = np.array([[1., 0], [2, 1]])  # np.linalg.cholesky(y)
+    y = np.array([[1., 2], [2, 5]])  # np.matmul(x, x.T)
+    with self.test_session() as sess:
+      y_actual = bijectors.CholeskyOuterProduct(event_ndims=2).forward(x=x)
+      x_actual = bijectors.CholeskyOuterProduct(event_ndims=2).inverse(y=y)
+    [y_actual_, x_actual_] = sess.run([y_actual, x_actual])
+    self.assertAllEqual([2, 2], y_actual.get_shape())
+    self.assertAllEqual([2, 2], x_actual.get_shape())
+    self.assertAllClose(y, y_actual_)
+    self.assertAllClose(x, x_actual_)
+
+  def testNoBatchDeferred(self):
+    x = np.array([[1., 0], [2, 1]])  # np.linalg.cholesky(y)
+    y = np.array([[1., 2], [2, 5]])  # np.matmul(x, x.T)
+    with self.test_session() as sess:
+      x_pl = array_ops.placeholder(dtypes.float32)
+      y_pl = array_ops.placeholder(dtypes.float32)
+      y_actual = bijectors.CholeskyOuterProduct(event_ndims=2).forward(x=x_pl)
+      x_actual = bijectors.CholeskyOuterProduct(event_ndims=2).inverse(y=y_pl)
+    [y_actual_, x_actual_] = sess.run([y_actual, x_actual],
+                                      feed_dict={x_pl: x, y_pl: y})
+    self.assertEqual(None, y_actual.get_shape())
+    self.assertEqual(None, x_actual.get_shape())
+    self.assertAllClose(y, y_actual_)
+    self.assertAllClose(x, x_actual_)
+
+  def testBatchStatic(self):
+    x = np.array([[[1., 0],
+                   [2, 1]],
+                  [[3., 0],
+                   [1, 2]]])  # np.linalg.cholesky(y)
+    y = np.array([[[1., 2],
+                   [2, 5]],
+                  [[9., 3],
+                   [3, 5]]])  # np.matmul(x, x.T)
+    with self.test_session() as sess:
+      y_actual = bijectors.CholeskyOuterProduct(event_ndims=2).forward(x=x)
+      x_actual = bijectors.CholeskyOuterProduct(event_ndims=2).inverse(y=y)
+    [y_actual_, x_actual_] = sess.run([y_actual, x_actual])
+    self.assertEqual([2, 2, 2], y_actual.get_shape())
+    self.assertEqual([2, 2, 2], x_actual.get_shape())
+    self.assertAllClose(y, y_actual_)
+    self.assertAllClose(x, x_actual_)
+
+  def testBatchDeferred(self):
+    x = np.array([[[1., 0],
+                   [2, 1]],
+                  [[3., 0],
+                   [1, 2]]])  # np.linalg.cholesky(y)
+    y = np.array([[[1., 2],
+                   [2, 5]],
+                  [[9., 3],
+                   [3, 5]]])  # np.matmul(x, x.T)
+    with self.test_session() as sess:
+      x_pl = array_ops.placeholder(dtypes.float32)
+      y_pl = array_ops.placeholder(dtypes.float32)
+      y_actual = bijectors.CholeskyOuterProduct(event_ndims=2).forward(x=x_pl)
+      x_actual = bijectors.CholeskyOuterProduct(event_ndims=2).inverse(y=y_pl)
+    [y_actual_, x_actual_] = sess.run([y_actual, x_actual],
+                                      feed_dict={x_pl: x, y_pl: y})
+    self.assertEqual(None, y_actual.get_shape())
+    self.assertEqual(None, x_actual.get_shape())
+    self.assertAllClose(y, y_actual_)
+    self.assertAllClose(x, x_actual_)
 
 
 class ChainBijectorTest(test.TestCase):
@@ -1760,6 +1864,14 @@ class InvertBijectorTest(test.TestCase):
       self.assertAllEqual(
           x.as_list(),
           bijector.inverse_event_shape_tensor(y.as_list()).eval())
+
+  def testDocstringExample(self):
+    with self.test_session():
+      exp_gamma_distribution = ds.TransformedDistribution(
+          distribution=ds.Gamma(concentration=1., rate=2.),
+          bijector=bijectors.Invert(bijectors.Exp()))
+      self.assertAllEqual(
+          [], array_ops.shape(exp_gamma_distribution.sample()).eval())
 
 
 if __name__ == "__main__":

@@ -1655,110 +1655,6 @@ meta_graphs {
       input: "^c/Assign"
     }
     node {
-      name: "Identity"
-      op: "Identity"
-      input: "y"
-      attr {
-        key: "T"
-        value {
-          type: DT_FLOAT
-        }
-      }
-      attr {
-        key: "_output_shapes"
-        value {
-          list {
-            shape {
-              dim {
-                size: -1
-              }
-              dim {
-                size: 1
-              }
-            }
-          }
-        }
-      }
-    }
-    node {
-      name: "Identity_1"
-      op: "Identity"
-      input: "y2"
-      attr {
-        key: "T"
-        value {
-          type: DT_FLOAT
-        }
-      }
-      attr {
-        key: "_output_shapes"
-        value {
-          list {
-            shape {
-              dim {
-                size: -1
-              }
-              dim {
-                size: 1
-              }
-            }
-          }
-        }
-      }
-    }
-    node {
-      name: "Identity_2"
-      op: "Identity"
-      input: "y3"
-      attr {
-        key: "T"
-        value {
-          type: DT_FLOAT
-        }
-      }
-      attr {
-        key: "_output_shapes"
-        value {
-          list {
-            shape {
-              dim {
-                size: -1
-              }
-              dim {
-                size: 1
-              }
-            }
-          }
-        }
-      }
-    }
-    node {
-      name: "Identity_3"
-      op: "Identity"
-      input: "y"
-      attr {
-        key: "T"
-        value {
-          type: DT_FLOAT
-        }
-      }
-      attr {
-        key: "_output_shapes"
-        value {
-          list {
-            shape {
-              dim {
-                size: -1
-              }
-              dim {
-                size: 1
-              }
-            }
-          }
-        }
-      }
-    }
-    node {
       name: "group_deps"
       op: "NoOp"
       input: "^Assign"
@@ -1818,7 +1714,7 @@ meta_graphs {
             dtype: DT_STRING
             tensor_shape {
             }
-            string_val: "_temp_4b2cbc38e16546cba7f82afaf4c75e7d/part"
+            string_val: "_temp_aeab824a1fc94305a10a2504f5995de2/part"
           }
         }
       }
@@ -2614,12 +2510,25 @@ meta_graphs {
         key: "inputs"
         value {
           name: "tf_example:0"
+          dtype: DT_STRING
+          tensor_shape {
+            unknown_rank: true
+          }
         }
       }
       outputs {
         key: "scores"
         value {
-          name: "Identity_3:0"
+          name: "y:0"
+          dtype: DT_FLOAT
+          tensor_shape {
+            dim {
+              size: -1
+            }
+            dim {
+              size: 1
+            }
+          }
         }
       }
       method_name: "tensorflow/serving/classify"
@@ -2632,12 +2541,30 @@ meta_graphs {
         key: "inputs"
         value {
           name: "x2:0"
+          dtype: DT_FLOAT
+          tensor_shape {
+            dim {
+              size: -1
+            }
+            dim {
+              size: 1
+            }
+          }
         }
       }
       outputs {
         key: "outputs"
         value {
-          name: "Identity_2:0"
+          name: "y3:0"
+          dtype: DT_FLOAT
+          tensor_shape {
+            dim {
+              size: -1
+            }
+            dim {
+              size: 1
+            }
+          }
         }
       }
       method_name: "tensorflow/serving/regress"
@@ -2650,12 +2577,25 @@ meta_graphs {
         key: "inputs"
         value {
           name: "tf_example:0"
+          dtype: DT_STRING
+          tensor_shape {
+            unknown_rank: true
+          }
         }
       }
       outputs {
         key: "outputs"
         value {
-          name: "Identity:0"
+          name: "y:0"
+          dtype: DT_FLOAT
+          tensor_shape {
+            dim {
+              size: -1
+            }
+            dim {
+              size: 1
+            }
+          }
         }
       }
       method_name: "tensorflow/serving/regress"
@@ -2668,12 +2608,25 @@ meta_graphs {
         key: "inputs"
         value {
           name: "tf_example:0"
+          dtype: DT_STRING
+          tensor_shape {
+            unknown_rank: true
+          }
         }
       }
       outputs {
         key: "outputs"
         value {
-          name: "Identity_1:0"
+          name: "y2:0"
+          dtype: DT_FLOAT
+          tensor_shape {
+            dim {
+              size: -1
+            }
+            dim {
+              size: 1
+            }
+          }
         }
       }
       method_name: "tensorflow/serving/regress"
@@ -2686,12 +2639,30 @@ meta_graphs {
         key: "x"
         value {
           name: "x:0"
+          dtype: DT_FLOAT
+          tensor_shape {
+            dim {
+              size: -1
+            }
+            dim {
+              size: 1
+            }
+          }
         }
       }
       outputs {
         key: "y"
         value {
           name: "y:0"
+          dtype: DT_FLOAT
+          tensor_shape {
+            dim {
+              size: -1
+            }
+            dim {
+              size: 1
+            }
+          }
         }
       }
       method_name: "tensorflow/serving/predict"

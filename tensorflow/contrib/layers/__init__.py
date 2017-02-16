@@ -14,11 +14,7 @@
 # ==============================================================================
 """Ops for building neural network layers, regularizers, summaries, etc.
 
-## Higher level ops for building neural network layers.
-
-This package provides several ops that take care of creating variables that are
-used internally in a consistent way and provide the building blocks for many
-common machine learning algorithms.
+See the @{$python/contrib.layers} guide.
 
 @@avg_pool2d
 @@batch_norm
@@ -28,6 +24,7 @@ common machine learning algorithms.
 @@conv2d_transpose
 @@convolution2d_transpose
 @@dropout
+@@embedding_lookup_unique
 @@flatten
 @@fully_connected
 @@layer_norm
@@ -45,56 +42,23 @@ common machine learning algorithms.
 @@unit_norm
 @@embed_sequence
 
-Aliases for fully_connected which set a default activation function are
-available: `relu`, `relu6` and `linear`.
-
-`stack` operation is also available. It builds a stack of layers by applying
-a layer repeatedly.
-
-## Regularizers
-
-Regularization can help prevent overfitting. These have the signature
-`fn(weights)`. The loss is typically added to
-`tf.GraphKeys.REGULARIZATION_LOSSES`.
-
 @@apply_regularization
 @@l1_regularizer
 @@l2_regularizer
 @@sum_regularizer
 
-## Initializers
-
-Initializers are used to initialize variables with sensible values given their
-size, data type, and purpose.
-
 @@xavier_initializer
 @@xavier_initializer_conv2d
 @@variance_scaling_initializer
 
-## Optimization
-
-Optimize weights given a loss.
-
 @@optimize_loss
-
-## Summaries
-
-Helper functions to summarize specific variables or ops.
 
 @@summarize_activation
 @@summarize_tensor
 @@summarize_tensors
 @@summarize_collection
 
-The layers module defines convenience functions `summarize_variables`,
-`summarize_weights` and `summarize_biases`, which set the `collection` argument
-of `summarize_collection` to `VARIABLES`, `WEIGHTS` and `BIASES`, respectively.
-
 @@summarize_activations
-
-## Feature columns
-
-Feature columns provide a mechanism to map data to a model.
 
 @@bucketized_column
 @@check_feature_columns
@@ -118,7 +82,6 @@ Feature columns provide a mechanism to map data to a model.
 @@weighted_sum_from_feature_columns
 @@infer_real_valued_columns
 @@sequence_input_from_feature_columns
-
 """
 
 from __future__ import absolute_import

@@ -10,6 +10,8 @@ package(default_visibility = [
     "//tensorflow:__subpackages__",
 ])
 
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 py_library(
     name = "learn",
     srcs = [
@@ -509,6 +511,27 @@ py_test(
 )
 
 py_test(
+    name = "estimator_input_test",
+    size = "medium",
+    srcs = ["python/learn/estimators/estimator_input_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow/contrib/framework:framework_py",
+        "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/contrib/learn/python/learn/datasets",
+        "//tensorflow/contrib/metrics:metrics_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:data_flow_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:training",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "logistic_regressor_test",
     size = "small",
     srcs = ["python/learn/estimators/logistic_regressor_test.py"],
@@ -725,6 +748,7 @@ py_test(
     srcs = ["python/learn/estimators/linear_test.py"],
     shard_count = 4,
     srcs_version = "PY2AND3",
+    tags = ["no_pip"],
     deps = [
         ":learn",
         "//tensorflow/contrib/layers:layers_py",

@@ -176,7 +176,7 @@ class VectorStudentTTest(test.TestCase):
     x = 2. * self._rng.rand(4, 3, 3).astype(np.float32) - 1.
 
     expected_mst = _FakeVectorStudentT(
-        df=np.tile(df, len(scale_diag)),
+        df=np.tile(df, reps=len(scale_diag)),
         loc=loc,
         scale_tril=scale_tril)
 
@@ -207,7 +207,7 @@ class VectorStudentTTest(test.TestCase):
     x = 2. * self._rng.rand(4, 3, 3).astype(np.float32) - 1.
 
     expected_mst = _FakeVectorStudentT(
-        df=np.tile(df, len(scale_diag)),
+        df=np.tile(df, reps=len(scale_diag)),
         loc=loc,
         scale_tril=scale_tril)
 
@@ -236,8 +236,9 @@ class VectorStudentTTest(test.TestCase):
 
     expected_mst = _FakeVectorStudentT(
         df=df,
-        loc=np.tile(loc[None, :], [len(df), 1]),
-        scale_tril=np.tile(scale_tril[None, :, :], [len(df), 1, 1]))
+        loc=np.tile(loc[array_ops.newaxis, :], reps=[len(df), 1]),
+        scale_tril=np.tile(scale_tril[array_ops.newaxis, :, :],
+                           reps=[len(df), 1, 1]))
 
     with self.test_session():
       actual_mst = _VectorStudentT(df=df, loc=loc, scale_diag=scale_diag,
@@ -261,8 +262,9 @@ class VectorStudentTTest(test.TestCase):
 
     expected_mst = _FakeVectorStudentT(
         df=df,
-        loc=np.tile(loc[None, :], [len(df), 1]),
-        scale_tril=np.tile(scale_tril[None, :, :], [len(df), 1, 1]))
+        loc=np.tile(loc[array_ops.newaxis, :], reps=[len(df), 1]),
+        scale_tril=np.tile(scale_tril[array_ops.newaxis, :, :],
+                           reps=[len(df), 1, 1]))
 
     with self.test_session():
       df_pl = array_ops.placeholder(dtypes.float32, name="df")

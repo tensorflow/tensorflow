@@ -31,7 +31,8 @@ import numpy as np
 
 from tensorflow.contrib.rnn import core_rnn_cell
 from tensorflow.contrib.seq2seq.python.ops import decoder
-from tensorflow.contrib.seq2seq.python.ops import sampling_decoder
+from tensorflow.contrib.seq2seq.python.ops import helper as helper_py
+from tensorflow.contrib.seq2seq.python.ops import basic_decoder
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import rnn
 from tensorflow.python.ops import variables
@@ -59,15 +60,15 @@ class DynamicDecodeRNNTest(test.TestCase):
         inputs = np.random.randn(batch_size, max_time,
                                  input_depth).astype(np.float32)
       cell = core_rnn_cell.LSTMCell(cell_depth)
-      sampler = sampling_decoder.BasicTrainingSampler(
+      helper = helper_py.TrainingHelper(
           inputs, sequence_length, time_major=time_major)
-      my_decoder = sampling_decoder.BasicSamplingDecoder(
+      my_decoder = basic_decoder.BasicDecoder(
           cell=cell,
-          sampler=sampler,
+          helper=helper,
           initial_state=cell.zero_state(
               dtype=dtypes.float32, batch_size=batch_size))
 
-      final_outputs, final_state = decoder.dynamic_decode_rnn(
+      final_outputs, final_state = decoder.dynamic_decode(
           my_decoder, output_time_major=time_major,
           maximum_iterations=maximum_iterations)
 
@@ -77,7 +78,7 @@ class DynamicDecodeRNNTest(test.TestCase):
         return shape
 
       self.assertTrue(
-          isinstance(final_outputs, sampling_decoder.SamplingDecoderOutput))
+          isinstance(final_outputs, basic_decoder.BasicDecoderOutput))
       self.assertTrue(isinstance(final_state, core_rnn_cell.LSTMStateTuple))
 
       self.assertEqual(
@@ -116,7 +117,7 @@ class DynamicDecodeRNNTest(test.TestCase):
   def testDynamicDecodeRNNOneMaxIter(self):
     self._testDynamicDecodeRNN(time_major=True, maximum_iterations=1)
 
-  def _testDynamicDecodeRNNWithBasicTrainingSamplerMatchesDynamicRNN(
+  def _testDynamicDecodeRNNWithTrainingHelperMatchesDynamicRNN(
       self, use_sequence_length):
     sequence_length = [3, 4, 3, 1, 0]
     batch_size = 5
@@ -131,14 +132,14 @@ class DynamicDecodeRNNTest(test.TestCase):
 
       cell = core_rnn_cell.LSTMCell(cell_depth)
       zero_state = cell.zero_state(dtype=dtypes.float32, batch_size=batch_size)
-      sampler = sampling_decoder.BasicTrainingSampler(inputs, sequence_length)
-      my_decoder = sampling_decoder.BasicSamplingDecoder(
-          cell=cell, sampler=sampler, initial_state=zero_state)
+      helper = helper_py.TrainingHelper(inputs, sequence_length)
+      my_decoder = basic_decoder.BasicDecoder(
+          cell=cell, helper=helper, initial_state=zero_state)
 
       # Match the variable scope of dynamic_rnn below so we end up
       # using the same variables
       with vs.variable_scope("root") as scope:
-        final_decoder_outputs, final_decoder_state = decoder.dynamic_decode_rnn(
+        final_decoder_outputs, final_decoder_state = decoder.dynamic_decode(
             my_decoder,
             # impute_finished=True ensures outputs and final state
             # match those of dynamic_rnn called with sequence_length not None
@@ -169,14 +170,12 @@ class DynamicDecodeRNNTest(test.TestCase):
         self.assertAllClose(sess_results["final_decoder_state"],
                             sess_results["final_rnn_state"])
 
-  def testDynamicDecodeRNNWithBasicTrainingSamplerMatchesDynamicRNNWithSeqLen(
-      self):
-    self._testDynamicDecodeRNNWithBasicTrainingSamplerMatchesDynamicRNN(
+  def testDynamicDecodeRNNWithTrainingHelperMatchesDynamicRNNWithSeqLen(self):
+    self._testDynamicDecodeRNNWithTrainingHelperMatchesDynamicRNN(
         use_sequence_length=True)
 
-  def testDynamicDecodeRNNWithBasicTrainingSamplerMatchesDynamicRNNNoSeqLen(
-      self):
-    self._testDynamicDecodeRNNWithBasicTrainingSamplerMatchesDynamicRNN(
+  def testDynamicDecodeRNNWithTrainingHelperMatchesDynamicRNNNoSeqLen(self):
+    self._testDynamicDecodeRNNWithTrainingHelperMatchesDynamicRNN(
         use_sequence_length=False)
 
 if __name__ == "__main__":

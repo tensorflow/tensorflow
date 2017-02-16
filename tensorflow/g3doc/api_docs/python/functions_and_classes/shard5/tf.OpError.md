@@ -2,34 +2,6 @@ A generic error that is raised when TensorFlow execution fails.
 
 Whenever possible, the session will raise a more specific subclass
 of `OpError` from the `tf.errors` module.
-
-- - -
-
-#### `tf.OpError.op` {#OpError.op}
-
-The operation that failed, if known.
-
-*N.B.* If the failed op was synthesized at runtime, e.g. a `Send`
-or `Recv` op, there will be no corresponding
-[`Operation`](../../api_docs/python/framework.md#Operation)
-object.  In that case, this will return `None`, and you should
-instead use the [`OpError.node_def`](#OpError.node_def) to
-discover information about the op.
-
-##### Returns:
-
-  The `Operation` that failed, or None.
-
-
-- - -
-
-#### `tf.OpError.node_def` {#OpError.node_def}
-
-The `NodeDef` proto representing the op that failed.
-
-
-
-#### Other Methods
 - - -
 
 #### `tf.OpError.__init__(node_def, op, message, error_code)` {#OpError.__init__}
@@ -65,5 +37,30 @@ The integer error code that describes the error.
 #### `tf.OpError.message` {#OpError.message}
 
 The error message that describes the error.
+
+
+- - -
+
+#### `tf.OpError.node_def` {#OpError.node_def}
+
+The `NodeDef` proto representing the op that failed.
+
+
+- - -
+
+#### `tf.OpError.op` {#OpError.op}
+
+The operation that failed, if known.
+
+*N.B.* If the failed op was synthesized at runtime, e.g. a `Send`
+or `Recv` op, there will be no corresponding
+[`Operation`](../../api_docs/python/framework.md#Operation)
+object.  In that case, this will return `None`, and you should
+instead use the [`OpError.node_def`](#OpError.node_def) to
+discover information about the op.
+
+##### Returns:
+
+  The `Operation` that failed, or None.
 
 

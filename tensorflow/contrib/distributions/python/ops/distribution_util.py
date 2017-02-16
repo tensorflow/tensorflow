@@ -24,6 +24,7 @@ import math
 import numpy as np
 
 from tensorflow.contrib import framework as contrib_framework
+from tensorflow.contrib import linalg
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -31,7 +32,6 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
@@ -42,8 +42,8 @@ def assert_close(
   """Assert that that x and y are within machine epsilon of each other.
 
   Args:
-    x: Numeric `Tensor`
-    y: Numeric `Tensor`
+    x: Floating-point `Tensor`
+    y: Floating-point `Tensor`
     data: The tensors to print out if the condition is `False`. Defaults to
       error message and first few entries of `x` and `y`.
     summarize: Print this many entries of each tensor.
@@ -80,7 +80,7 @@ def assert_integer_form(
   """Assert that x has integer components (or floats equal to integers).
 
   Args:
-    x: Numeric `Tensor`
+    x: Floating-point `Tensor`
     data: The tensors to print out if the condition is `False`. Defaults to
       error message and first few entries of `x` and `y`.
     summarize: Print this many entries of each tensor.
@@ -105,6 +105,16 @@ def assert_symmetric(matrix):
       [check_ops.assert_equal(matrix, matrix_t)], matrix)
 
 
+def embed_check_nonnegative_discrete(x, check_integer=True):
+  """Assert x is a non-negative tensor, and optionally of integers."""
+  assertions = [check_ops.assert_non_negative(
+      x, message="x must be non-negative.")]
+  if check_integer:
+    assertions += [assert_integer_form(
+        x, message="x cannot contain fractional components.")]
+  return control_flow_ops.with_dependencies(assertions, x)
+
+
 def same_dynamic_shape(a, b):
   """Returns whether a and b have the same dynamic shape.
 
@@ -113,7 +123,7 @@ def same_dynamic_shape(a, b):
     b: `Tensor`
 
   Returns:
-    `Boolean` `Tensor` representing if both tensors have the same shape.
+    `bool` `Tensor` representing if both tensors have the same shape.
   """
   a = ops.convert_to_tensor(a, name="a")
   b = ops.convert_to_tensor(b, name="b")
@@ -142,15 +152,15 @@ def get_logits_and_probs(logits=None,
   """Converts logit to probabilities (or vice-versa), and returns both.
 
   Args:
-    logits: Numeric `Tensor` representing log-odds.
-    probs: Numeric `Tensor` representing probabilities.
-    multidimensional: `Boolean`, default `False`.
+    logits: Floating-point `Tensor` representing log-odds.
+    probs: Floating-point `Tensor` representing probabilities.
+    multidimensional: Python `bool`, default `False`.
       If `True`, represents whether the last dimension of `logits` or `probs`,
-      a `[N1, N2, ... k]` dimensional tensor, representing the
+      a `[N1, N2, ...  k]` dimensional tensor, representing the
       logit or probability of `shape[-1]` classes.
-    validate_args: `Boolean`, default `False`.  When `True`, either assert `0 <=
-      probs <= 1` (if not `multidimensional`) or that the last dimension of
-      `probs` sums to one.
+    validate_args: Python `bool`, default `False`. When `True`, either assert
+      `0 <= probs <= 1` (if not `multidimensional`) or that the last dimension
+      of `probs` sums to one.
     name: A name for this operation (optional).
 
   Returns:
@@ -189,7 +199,7 @@ def get_logits_and_probs(logits=None,
         # Here we don't compute the multidimensional case, in a manner
         # consistent with respect to the unidimensional case. We do so
         # following the TF convention. Typically, you might expect to see
-        # logits = log(probs) - log(gather(probs, pivot)). A side-effect of
+        # logits = log(probs) - log(probs[pivot]). A side-effect of
         # being consistent with the TF approach is that the unidimensional case
         # implicitly handles the second dimension but the multidimensional case
         # explicitly keeps the pivot dimension.
@@ -208,10 +218,10 @@ def log_combinations(n, counts, name="log_combinations"):
   where `i` runs over all `k` classes.
 
   Args:
-    n: Numeric `Tensor` broadcastable with `counts`. This represents `n`
+    n: Floating-point `Tensor` broadcastable with `counts`. This represents `n`
       outcomes.
-    counts: Numeric `Tensor` broadcastable with `n`. This represents counts
-      in `k` classes, where `k` is the last dimension of the tensor.
+    counts: Floating-point `Tensor` broadcastable with `n`. This represents
+      counts in `k` classes, where `k` is the last dimension of the tensor.
     name: A name for this operation (optional).
 
   Returns:
@@ -220,15 +230,14 @@ def log_combinations(n, counts, name="log_combinations"):
   # First a bit about the number of ways counts could have come in:
   # E.g. if counts = [1, 2], then this is 3 choose 2.
   # In general, this is (sum counts)! / sum(counts!)
-  # The sum should be along the last dimension of counts.  This is the
+  # The sum should be along the last dimension of counts. This is the
   # "distribution" dimension. Here n a priori represents the sum of counts.
   with ops.name_scope(name, values=[n, counts]):
     n = ops.convert_to_tensor(n, name="n")
     counts = ops.convert_to_tensor(counts, name="counts")
     total_permutations = math_ops.lgamma(n + 1)
     counts_factorial = math_ops.lgamma(counts + 1)
-    redundant_permutations = math_ops.reduce_sum(counts_factorial,
-                                                 reduction_indices=[-1])
+    redundant_permutations = math_ops.reduce_sum(counts_factorial, axis=[-1])
     return total_permutations - redundant_permutations
 
 
@@ -242,7 +251,7 @@ def matrix_diag_transform(matrix, transform=None, name=None):
   matrix_values = tf.contrib.layers.fully_connected(activations, 4)
   matrix = tf.reshape(matrix_values, (batch_size, 2, 2))
 
-  # Make the diagonal positive.  If the upper triangle was zero, this would be a
+  # Make the diagonal positive. If the upper triangle was zero, this would be a
   # valid Cholesky factor.
   chol = matrix_diag_transform(matrix, transform=tf.nn.softplus)
 
@@ -264,7 +273,7 @@ def matrix_diag_transform(matrix, transform=None, name=None):
   # This is a fully trainable multivariate normal!
   dist = tf.contrib.distributions.MVNCholesky(mu, chol)
 
-  # Standard log loss.  Minimizing this will "train" mu and chol, and then dist
+  # Standard log loss. Minimizing this will "train" mu and chol, and then dist
   # will be a distribution predicting labels as multivariate Gaussians.
   loss = -1 * tf.reduce_mean(dist.log_prob(labels))
   ```
@@ -272,9 +281,9 @@ def matrix_diag_transform(matrix, transform=None, name=None):
   Args:
     matrix:  Rank `R` `Tensor`, `R >= 2`, where the last two dimensions are
       equal.
-    transform:  Element-wise function mapping `Tensors` to `Tensors`.  To
-      be applied to the diagonal of `matrix`.  If `None`, `matrix` is returned
-      unchanged.  Defaults to `None`.
+    transform:  Element-wise function mapping `Tensors` to `Tensors`. To
+      be applied to the diagonal of `matrix`. If `None`, `matrix` is returned
+      unchanged. Defaults to `None`.
     name:  A name to give created ops.
       Defaults to "matrix_diag_transform".
 
@@ -308,7 +317,7 @@ def rotate_transpose(x, shift, name="rotate_transpose"):
   Example:
 
     ```python
-    x = ... # Tensor of shape [1, 2, 3, 4].
+    x = ...  # Tensor of shape [1, 2, 3, 4].
     rotate_transpose(x, -1)  # result shape: [2, 3, 4, 1]
     rotate_transpose(x, -2)  # result shape: [3, 4, 1, 2]
     rotate_transpose(x,  1)  # result shape: [4, 1, 2, 3]
@@ -321,7 +330,7 @@ def rotate_transpose(x, shift, name="rotate_transpose"):
     x: `Tensor`.
     shift: `Tensor`. Number of dimensions to transpose left (shift<0) or
       transpose right (shift>0).
-    name: `String`. The name to give this op.
+    name: Python `str`. The name to give this op.
 
   Returns:
     rotated_x: Input `Tensor` with dimensions circularly rotated by shift.
@@ -363,7 +372,7 @@ def rotate_transpose(x, shift, name="rotate_transpose"):
                               ndims - math_ops.mod(shift, ndims))
       first = math_ops.range(0, shift)
       last = math_ops.range(shift, ndims)
-      perm = array_ops.concat((last, first), 0)
+      perm = array_ops.concat([last, first], 0)
       return array_ops.transpose(x, perm=perm)
 
 
@@ -383,7 +392,7 @@ def pick_vector(cond,
     cond: `Tensor`. Must have `dtype=tf.bool` and be scalar.
     true_vector: `Tensor` of one dimension. Returned when cond is `True`.
     false_vector: `Tensor` of one dimension. Returned when cond is `False`.
-    name: `String`. The name to give this op.
+    name: Python `str`. The name to give this op.
 
   Example:
 
@@ -419,7 +428,7 @@ def pick_vector(cond,
              false_vector.name, false_vector.dtype))
     n = array_ops.shape(true_vector)[0]
     return array_ops.slice(
-        array_ops.concat((true_vector, false_vector), 0),
+        array_ops.concat([true_vector, false_vector], 0),
         [array_ops.where(cond, 0, n)], [array_ops.where(cond, n, -1)])
 
 
@@ -438,13 +447,13 @@ def fill_lower_triangular(x, validate_args=False, name="fill_lower_triangular"):
   b2, ..., bK, n, n]` where `n` is such that `d = n(n+1)/2`, i.e.,
   `n = int(0.5 * (math.sqrt(1. + 8. * d) - 1.))`.
 
-  Although the non-batch complexity is O(n^2), large constants and sub-optimal
+  Although the non-batch complexity is O(n**2), large constants and sub-optimal
   vectorization means the complexity of this function is 5x slower than zeroing
-  out the upper triangular, i.e., `tf.matrix_band_part(X, -1, 0)`.  This
+  out the upper triangular, i.e., `tf.matrix_band_part(X, -1, 0)`. This
   function becomes competitive only when several matmul/cholesky/etc ops can be
-  ellided in constructing the input.  Example: wiring a fully connected layer as
+  ellided in constructing the input. Example: wiring a fully connected layer as
   a covariance matrix; this function reduces the final layer by 2x and possibly
-  reduces the network arch complexity considerably.  In most cases it is better
+  reduces the network arch complexity considerably. In most cases it is better
   to simply build a full matrix and zero out the upper triangular elements,
   e.g., `tril = tf.matrix_band_part(full, -1, 0)`, rather than directly
   construct a lower triangular.
@@ -463,10 +472,10 @@ def fill_lower_triangular(x, validate_args=False, name="fill_lower_triangular"):
 
   Args:
     x: `Tensor` representing lower triangular elements.
-    validate_args: `Boolean`, default `False`.  Whether to ensure the shape of
-      `x` can be mapped to a lower triangular matrix (controls non-static checks
-      only).
-    name: `String`. The name to give this op.
+    validate_args: Python `bool`, default `False`. Whether to ensure the shape
+      of `x` can be mapped to a lower triangular matrix (controls non-static
+      checks only).
+    name: Python `str`. The name to give this op.
 
   Returns:
     tril: `Tensor` with lower triangular elements filled from `x`.
@@ -476,7 +485,7 @@ def fill_lower_triangular(x, validate_args=False, name="fill_lower_triangular"):
       lower triangular matrix.
   """
   # TODO(jvdillon): Replace this code with dedicated op when it exists.
-  with ops.name_scope(name, values=(x,)):
+  with ops.name_scope(name, values=[x]):
     x = ops.convert_to_tensor(x, name="x")
     if (x.get_shape().ndims is not None and
         x.get_shape()[-1].value is not None):
@@ -509,7 +518,7 @@ def fill_lower_triangular(x, validate_args=False, name="fill_lower_triangular"):
         ids = np.arange(n**2, dtype=np.int32)
         rows = (ids / n).astype(np.int32)  # Implicit floor.
         # We need to stop incrementing the index when we encounter
-        # upper-triangular elements.  The idea here is to compute the
+        # upper-triangular elements. The idea here is to compute the
         # lower-right number of zeros then by "symmetry" subtract this from the
         # total number of zeros, n(n-1)/2.
         # Then we note that: n(n-1)/2 - (n-r)*(n-r-1)/2 = r(2n-r-1)/2
@@ -586,7 +595,7 @@ def softplus_inverse(x, name=None):
     #       = Log[1 - exp{-x}] + x                           (3)
     # (2) is the "obvious" inverse, but (3) is more stable than (2) for large x.
     # For small x (e.g. x = 1e-10), (3) will become -inf since 1 - exp{-x} will
-    # be zero.  To fix this, we use 1 - exp{-x} approx x for small x > 0.
+    # be zero. To fix this, we use 1 - exp{-x} approx x for small x > 0.
     #
     # In addition to the numerically stable derivation above, we clamp
     # small/large values to be congruent with the logic in:
@@ -598,7 +607,7 @@ def softplus_inverse(x, name=None):
     # gradient of `where` behaves like `pred*pred_true + (1-pred)*pred_false`
     # thus an `inf` in an unselected path results in `0*inf=nan`. We are careful
     # to overwrite `x` with ones only when we will never actually use this
-    # value.  Note that we use ones and not zeros since `log(expm1(0.)) = -inf`.
+    # value. Note that we use ones and not zeros since `log(expm1(0.)) = -inf`.
     threshold = np.log(np.finfo(x.dtype.as_numpy_dtype).eps) + 2.
     is_too_small = math_ops.less(x, np.exp(threshold))
     is_too_large = math_ops.greater(x, -threshold)
@@ -611,6 +620,82 @@ def softplus_inverse(x, name=None):
     y = x + math_ops.log(-math_ops.expm1(-x))  # == log(expm1(x))
     return array_ops.where(is_too_small, too_small_value,
                            array_ops.where(is_too_large, too_large_value, y))
+
+
+# TODO(b/35290280): Add unit-tests.
+def dimension_size(x, axis):
+  """Returns the size of a specific dimension."""
+  # Since tf.gather isn't "constant-in, constant-out", we must first check the
+  # static shape or fallback to dynamic shape.
+  num_rows = (None if x.get_shape().ndims is None
+              else x.get_shape()[axis].value)
+  if num_rows is not None:
+    return num_rows
+  return array_ops.shape(x)[axis]
+
+
+# TODO(b/35290280): Add unit-tests.
+def make_diag_scale(loc, scale_diag, scale_identity_multiplier,
+                    validate_args, assert_positive, name=None):
+  """Creates a LinOp from `scale_diag`, `scale_identity_multiplier` kwargs."""
+  def _convert_to_tensor(x, name):
+    return None if x is None else ops.convert_to_tensor(x, name=name)
+
+  def _maybe_attach_assertion(x):
+    if not validate_args:
+      return x
+    if assert_positive:
+      return control_flow_ops.with_dependencies([
+          check_ops.assert_positive(
+              x, message="diagonal part must be positive"),
+      ], x)
+    # TODO(b/35157376): Use `assert_none_equal` once it exists.
+    return control_flow_ops.with_dependencies([
+        check_ops.assert_greater(
+            math_ops.abs(x),
+            array_ops.zeros([], x.dtype),
+            message="diagonal part must be non-zero"),
+    ], x)
+
+  with ops.name_scope(name, "make_diag_scale",
+                      values=[loc, scale_diag, scale_identity_multiplier]):
+    loc = _convert_to_tensor(loc, name="loc")
+    scale_diag = _convert_to_tensor(scale_diag, name="scale_diag")
+    scale_identity_multiplier = _convert_to_tensor(
+        scale_identity_multiplier,
+        name="scale_identity_multiplier")
+
+    if scale_diag is not None:
+      if scale_identity_multiplier is not None:
+        scale_diag += scale_identity_multiplier[..., array_ops.newaxis]
+      return linalg.LinearOperatorDiag(
+          diag=_maybe_attach_assertion(scale_diag),
+          is_non_singular=True,
+          is_self_adjoint=True,
+          is_positive_definite=assert_positive)
+
+    # TODO(b/35290280): Consider inferring shape from scale_perturb_factor.
+    if loc is None:
+      raise ValueError(
+          "Cannot infer `event_shape` unless `loc` is specified.")
+
+    num_rows = dimension_size(loc, -1)
+
+    if scale_identity_multiplier is None:
+      return linalg.LinearOperatorIdentity(
+          num_rows=num_rows,
+          dtype=loc.dtype.base_dtype,
+          is_self_adjoint=True,
+          is_positive_definite=True,
+          assert_proper_shapes=validate_args)
+
+    return linalg.LinearOperatorScaledIdentity(
+        num_rows=num_rows,
+        multiplier=_maybe_attach_assertion(scale_identity_multiplier),
+        is_non_singular=True,
+        is_self_adjoint=True,
+        is_positive_definite=assert_positive,
+        assert_proper_shapes=validate_args)
 
 
 class AppendDocstring(object):

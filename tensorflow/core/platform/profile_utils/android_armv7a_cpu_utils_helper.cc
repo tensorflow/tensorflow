@@ -24,6 +24,7 @@ limitations under the License.
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/syscall.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 #include "tensorflow/core/lib/strings/stringprintf.h"

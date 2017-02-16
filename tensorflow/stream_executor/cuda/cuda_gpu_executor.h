@@ -237,12 +237,10 @@ class CUDAExecutor : public internal::StreamExecutorInterface {
   bool GetKernelMetadata(CUDAKernel *cuda_kernel,
                          KernelMetadata *kernel_metadata);
 
-  // Determines if the given kernel's occupancy could be improved by only
-  // slightly reducing its register usage. If so, a message is emitted to the
-  // INFO log. The warning threshold is controlled by the flag
-  // register_occupancy_warning_threshold.
-  void OccupancyCheck(const KernelBase &kernel, const ThreadDim &thread_dims,
-                      const BlockDim &block_dims);
+  // Prints to VLOG(2) information about the kernel's occupancy and how it might
+  // be improved.
+  void VlogOccupancyInfo(const KernelBase &kernel, const ThreadDim &thread_dims,
+                         const BlockDim &block_dims);
 
   // Guards the on-disk-module mapping.
   mutex disk_modules_mu_;

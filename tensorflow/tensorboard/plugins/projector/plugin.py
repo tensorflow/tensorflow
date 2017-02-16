@@ -36,6 +36,9 @@ from tensorflow.python.training.saver import latest_checkpoint
 from tensorflow.tensorboard.lib.python.http_util import Respond
 from tensorflow.tensorboard.plugins.base_plugin import TBPlugin
 
+# The prefix of routes provided by this plugin.
+PLUGIN_PREFIX_ROUTE = 'projector'
+
 # HTTP routes.
 CONFIG_ROUTE = '/info'
 TENSOR_ROUTE = '/tensor'
@@ -75,12 +78,9 @@ def _latest_checkpoints_changed(configs, run_path_pairs):
       config = configs[run_name]
 
     # See if you can find a checkpoint file in the logdir.
-    ckpt_path = latest_checkpoint(logdir)
+    ckpt_path = _find_latest_checkpoint(logdir)
     if not ckpt_path:
-      # See if you can find a checkpoint in the parent of logdir.
-      ckpt_path = latest_checkpoint(os.path.join(logdir, os.pardir))
-      if not ckpt_path:
-        continue
+      continue
     if config.model_checkpoint_path != ckpt_path:
       return True
   return False
@@ -216,12 +216,9 @@ class ProjectorPlugin(TBPlugin):
 
       if not config.model_checkpoint_path:
         # See if you can find a checkpoint file in the logdir.
-        ckpt_path = latest_checkpoint(logdir)
-        if not ckpt_path:
-          # Or in the parent of logdir.
-          ckpt_path = latest_checkpoint(os.path.join(logdir, os.pardir))
-          if not ckpt_path and not has_tensor_files:
-            continue
+        ckpt_path = _find_latest_checkpoint(logdir)
+        if not ckpt_path and not has_tensor_files:
+          continue
         if ckpt_path:
           config.model_checkpoint_path = ckpt_path
 
@@ -453,3 +450,14 @@ class ProjectorPlugin(TBPlugin):
     image_type = imghdr.what(None, encoded_image_string)
     mime_type = _IMGHDR_TO_MIMETYPE.get(image_type, _DEFAULT_IMAGE_MIMETYPE)
     return Respond(request, encoded_image_string, mime_type)
+
+
+def _find_latest_checkpoint(dir_path):
+  try:
+    ckpt_path = latest_checkpoint(dir_path)
+    if not ckpt_path:
+      # Check the parent directory.
+      ckpt_path = latest_checkpoint(os.path.join(dir_path, os.pardir))
+    return ckpt_path
+  except errors.NotFoundError:
+    return None

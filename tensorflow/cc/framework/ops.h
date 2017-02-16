@@ -26,7 +26,12 @@ limitations under the License.
 
 namespace tensorflow {
 
+/// @defgroup core Core Tensorflow API
+
 class Output;
+
+/// @addtogroup core
+/// @{
 
 /// Represents a node in the computation graph.
 class Operation {
@@ -80,6 +85,7 @@ class Output {
   int64 index_ = 0;
 };
 
+/// Hash class that can be used for e.g. storing Outputs in an unordered_map
 struct OutputHash {
   std::size_t operator()(const Output& output) const {
     return Hash64Combine(std::hash<Node*>()(output.node()),
@@ -161,6 +167,7 @@ class Input {
     /// initializer list is indeed a valid multi-dimensional tensor.
     Initializer(const std::initializer_list<Initializer>& v);
 
+    // START_SKIP_DOXYGEN
     template <typename T, bool = std::is_convertible<T, string>::value>
     struct RealType {
       typedef string type;
@@ -170,6 +177,7 @@ class Input {
     struct RealType<T, false> {
       typedef T type;
     };
+    // END_SKIP_DOXYGEN
 
     TensorProto AsTensorProto() {
       TensorProto tensor_proto;
@@ -283,6 +291,8 @@ class InputList {
  private:
   std::vector<Input> inputs_;
 };
+
+/// @}
 
 }  // namespace tensorflow
 

@@ -136,6 +136,8 @@ class KernelMetadata {
 // Thread-compatible.
 class KernelBase {
  public:
+  KernelBase(KernelBase &&) = default;
+
   // Constructs an "empty" (not-yet-loaded) kernel instance.
   //
   // parent is the StreamExecutor that will be responsible for loading the
