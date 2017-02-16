@@ -53,8 +53,11 @@ class Identity(bijector.Bijector):
   def _forward(self, x):
     return x
 
-  def _inverse_and_inverse_log_det_jacobian(self, y):
-    return y, constant_op.constant(0., dtype=y.dtype)
+  def _inverse(self, y):
+    return y
+
+  def _inverse_log_det_jacobian(self, y):
+    return constant_op.constant(0., dtype=y.dtype)
 
   def _forward_log_det_jacobian(self, x):
     return constant_op.constant(0., dtype=x.dtype)

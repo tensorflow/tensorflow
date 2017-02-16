@@ -70,7 +70,6 @@ class BaseBijectorTest(test.TestCase):
       for fn in ["forward",
                  "inverse",
                  "inverse_log_det_jacobian",
-                 "inverse_and_inverse_log_det_jacobian",
                  "forward_log_det_jacobian"]:
         with self.assertRaisesRegexp(
             NotImplementedError, fn + " not implemented"):
@@ -81,46 +80,11 @@ class IntentionallyMissingError(Exception):
   pass
 
 
-class BrokenBijectorWithInverseAndInverseLogDetJacobian(bijector_lib.Bijector):
-  """Bijector with broken directions.
-
-  This BrokenBijector implements _inverse_and_inverse_log_det_jacobian.
-  """
+class BrokenBijector(bijector_lib.Bijector):
+  """Forward and inverse are not inverses of each other."""
 
   def __init__(self, forward_missing=False, inverse_missing=False):
-    super(BrokenBijectorWithInverseAndInverseLogDetJacobian, self).__init__(
-        event_ndims=0,
-        validate_args=False,
-        name="BrokenBijectorDual")
-    self._forward_missing = forward_missing
-    self._inverse_missing = inverse_missing
-
-  def _forward(self, x):
-    if self._forward_missing:
-      raise IntentionallyMissingError
-    return 2. * x
-
-  def _inverse_and_inverse_log_det_jacobian(self, y):
-    if self._inverse_missing:
-      raise IntentionallyMissingError
-    return y / 2., -math_ops.log(2.)
-
-  def _forward_log_det_jacobian(self, x):  # pylint:disable=unused-argument
-    if self._forward_missing:
-      raise IntentionallyMissingError
-    return math_ops.log(2.)
-
-
-class BrokenBijectorSeparateInverseAndInverseLogDetJacobian(
-    bijector_lib.Bijector):
-  """Forward and inverse are not inverses of each other.
-
-  This BrokenBijector implements _inverse and _inverse_log_det_jacobian as
-  separate functions.
-  """
-
-  def __init__(self, forward_missing=False, inverse_missing=False):
-    super(BrokenBijectorSeparateInverseAndInverseLogDetJacobian, self).__init__(
+    super(BrokenBijector, self).__init__(
         event_ndims=0, validate_args=False, name="broken")
     self._forward_missing = forward_missing
     self._inverse_missing = inverse_missing
@@ -147,14 +111,14 @@ class BrokenBijectorSeparateInverseAndInverseLogDetJacobian(
 
 
 @six.add_metaclass(abc.ABCMeta)
-class BijectorCachingTest(object):
+class BijectorCachingTestBase(object):
 
   @abc.abstractproperty
   def broken_bijector_cls(self):
     # return a BrokenBijector type Bijector, since this will test the caching.
     raise IntentionallyMissingError("Not implemented")
 
-  def testCachingOfForwardResultsWhenCalledOneByOne(self):
+  def testCachingOfForwardResults(self):
     broken_bijector = self.broken_bijector_cls(inverse_missing=True)
     with self.test_session():
       x = constant_op.constant(1.1)
@@ -167,11 +131,10 @@ class BijectorCachingTest(object):
       try:
         broken_bijector.inverse(y)
         broken_bijector.inverse_log_det_jacobian(y)
-        broken_bijector.inverse_and_inverse_log_det_jacobian(y)
       except IntentionallyMissingError:
-        raise AssertionError("Tests failed!  Cached values not used.")
+        raise AssertionError("Tests failed! Cached values not used.")
 
-  def testCachingOfInverseResultsWhenCalledOneByOne(self):
+  def testCachingOfInverseResults(self):
     broken_bijector = self.broken_bijector_cls(forward_missing=True)
     with self.test_session():
       y = constant_op.constant(1.1)
@@ -185,45 +148,15 @@ class BijectorCachingTest(object):
         broken_bijector.forward(x)
         broken_bijector.forward_log_det_jacobian(x)
       except IntentionallyMissingError:
-        raise AssertionError("Tests failed!  Cached values not used.")
-
-  def testCachingOfInverseResultsWhenCalledTogether(self):
-    broken_bijector = self.broken_bijector_cls(forward_missing=True)
-    with self.test_session():
-      y = constant_op.constant(1.1)
-
-      # Call inverse and inverse_log_det_jacobian one-by-one (not together).
-      x, _ = broken_bijector.inverse_and_inverse_log_det_jacobian(y)
-
-      # Now, everything should be cached if the argument is x.
-      try:
-        broken_bijector.forward(x)
-        broken_bijector.forward_log_det_jacobian(x)
-      except IntentionallyMissingError:
-        raise AssertionError("Tests failed!  Cached values not used.")
+        raise AssertionError("Tests failed! Cached values not used.")
 
 
-class SeparateCallsBijectorCachingTest(BijectorCachingTest, test.TestCase):
-  """Test caching with BrokenBijectorSeparateInverseAndInverseLogDetJacobian.
-
-  These bijectors implement forward, inverse,... all as separate functions.
-  """
+class BijectorCachingTest(BijectorCachingTestBase, test.TestCase):
+  """Test caching with BrokenBijector."""
 
   @property
   def broken_bijector_cls(self):
-    return BrokenBijectorSeparateInverseAndInverseLogDetJacobian
-
-
-class JointCallsBijectorCachingTest(BijectorCachingTest, test.TestCase):
-  """Test caching with BrokenBijectorWithInverseAndInverseLogDetJacobian.
-
-  These bijectors implement _inverse_and_inverse_log_det_jacobian, which is two
-  functionalities together.
-  """
-
-  @property
-  def broken_bijector_cls(self):
-    return BrokenBijectorWithInverseAndInverseLogDetJacobian
+    return BrokenBijector
 
 
 if __name__ == "__main__":
