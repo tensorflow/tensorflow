@@ -35,7 +35,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import sparse_ops
@@ -517,7 +516,7 @@ def _create_model_fn_ops(features,
       weight_tensor = _weight_tensor(features, weight_column_name)
       loss, weighted_average_loss = _loss(
           loss_fn(logits, labels), weight_tensor)
-      logging_ops.scalar_summary(
+      summary.scalar(
           _summary_key(head_name, mkey.LOSS), weighted_average_loss)
 
       if (mode == model_fn.ModeKeys.TRAIN) and (train_op_fn is not None):
