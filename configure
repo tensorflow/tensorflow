@@ -39,11 +39,6 @@ function is_windows() {
 }
 
 function bazel_clean_and_fetch() {
-  # bazel clean --expunge currently doesn't work on Windows
-  # TODO(pcloudy): Re-enable it after bazel clean --expunge is fixed.
-  if ! is_windows; then
-    bazel clean --expunge
-  fi
   if [ -z "$TF_BAZEL_TARGETS" ]; then
     bazel fetch "//tensorflow/... -//tensorflow/contrib/nccl/... -//tensorflow/examples/android/..."
   else
