@@ -46,8 +46,8 @@ func Const(g *Graph, name string, value interface{}) (Output, error) {
 
 func Neg(g *Graph, name string, port Output) (Output, error) {
 	op, err := g.AddOperation(OpSpec{
-		Type: "Neg",
-		Name: name,
+		Type:  "Neg",
+		Name:  name,
 		Input: []Input{port},
 	})
 	return op.Output(0), err
