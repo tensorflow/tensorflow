@@ -28,6 +28,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import test
@@ -162,6 +163,27 @@ class ImperativeTest(test.TestCase):
       self.assertTrue('The truth value of an array with'
                       ' more than one element is ambiguous.'
                       ' Use a.any() or a.all()' in str(ve.exception))
+
+  def testMeanGrad(self):
+    with imperative_mode.ImperativeMode(self._target):
+      x = constant_op.constant([1.0, 2.0])
+      y = math_ops.reduce_mean(x)
+      dy = gradients_impl.gradients(y, x)[0]
+      self.assertAllEqual(dy.value, [0.5, 0.5])
+
+  def testVarUseInNewStep(self):
+    with imperative_mode.ImperativeMode(self._target) as mode:
+      x = variables.Variable(1.0)
+      with mode.new_step():
+        self.assertEqual(array_ops.identity(x).value, 1.0)
+
+  def testVarChange(self):
+    with imperative_mode.ImperativeMode(self._target) as mode:
+      x = variables.Variable(constant_op.constant(1.0))
+      for i in range(10):
+        with mode.new_step() as step:
+          step.run(state_ops.assign_sub(x, 0.1))
+          self.assertAllClose(array_ops.identity(x).value, 1.0 - (i + 1) * 0.1)
 
 
 if __name__ == '__main__':
