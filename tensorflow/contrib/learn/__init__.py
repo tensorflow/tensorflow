@@ -72,7 +72,7 @@ from tensorflow.contrib.learn.python.learn import *
 
 from tensorflow.python.util.all_util import remove_undocumented
 
-_allowed_symbols = ['datasets', 'head', 'io', 'models',
+_allowed_symbols = ['datasets', 'estimators', 'head', 'io', 'models',
                     'monitors', 'NotFittedError', 'ops', 'preprocessing',
                     'utils', 'graph_actions']
 
