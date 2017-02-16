@@ -162,7 +162,7 @@ Status GrpcServer::Init() {
   builder.SetMaxMessageSize(std::numeric_limits<int32>::max());
   builder.SetOption(
       std::unique_ptr<::grpc::ServerBuilderOption>(new NoReusePortOption));
-  master_impl_.reset(new Master(&master_env_, 0.0));
+  master_impl_ = CreateMaster(&master_env_);
   master_service_ = NewGrpcMasterService(master_impl_.get(), &builder);
   worker_impl_.reset(NewGrpcWorker(&worker_env_));
   worker_service_ = NewGrpcWorkerService(worker_impl_.get(), &builder);
@@ -295,6 +295,10 @@ std::shared_ptr<::grpc::ServerCredentials> GrpcServer::GetServerCredentials(
 ChannelCreationFunction GrpcServer::GetChannelCreationFunction(
     const ServerDef& server_def) const {
   return NewHostPortGrpcChannel;
+}
+
+std::unique_ptr<Master> GrpcServer::CreateMaster(MasterEnv* master_env) {
+  return std::unique_ptr<Master>(new Master(master_env, 0.0));
 }
 
 /* static */
