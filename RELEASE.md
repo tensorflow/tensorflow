@@ -19,8 +19,8 @@ To help you upgrade your existing TensorFlow Python code to match the API change
   semantics. This applies to `tf.div` and `tf.mod` as well. To obtain forced
   integer truncation based behaviors you can use `tf.truncatediv`
   and `tf.truncatemod`.
-* `tf.divide()` is now the recommended division function. `tf.div()` will
-  remain, but its semantics do not respond to Python 3 or `from future`
+* `tf.divide()` is now the recommended division function, `tf.div()` will
+  remain, but its semantics do not respond to Python 3 or `from future` 
   mechanisms.
 * tf.reverse() now takes indices of axes to be reversed. E.g.
   `tf.reverse(a, [True, False, True])` must now be written as
