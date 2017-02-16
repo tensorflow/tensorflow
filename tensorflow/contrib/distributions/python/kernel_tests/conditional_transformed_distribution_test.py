@@ -22,7 +22,7 @@ import numpy as np
 
 from tensorflow.contrib import distributions
 from tensorflow.contrib.distributions.python.kernel_tests import transformed_distribution_test
-from tensorflow.contrib.distributions.python.ops import conditional_bijector
+from tensorflow.contrib.distributions.python.ops.bijectors import conditional_bijector
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops

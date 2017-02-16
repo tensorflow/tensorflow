@@ -151,7 +151,7 @@ Status CreateXlaLaunchOp(FunctionLibraryRuntime* flr, const NodeDef& ndef,
     return errors::InvalidArgument("No ", kXlaCompileAttr, " for ", ndef.op());
   }
   // Make sure that kernels have been registered on the JIT device.
-  XlaOpRegistry::RegisterJitKernels();
+  XlaOpRegistry::RegisterCompilationKernels();
   if (!IsCompilable(flr, ndef)) {
     // ndef is calling a function that XLA can't compile.
     return errors::InvalidArgument("Not compilable: ", ndef.ShortDebugString());
