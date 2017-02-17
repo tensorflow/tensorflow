@@ -53,9 +53,6 @@ class InvertBijectorTest(test.TestCase):
         self.assertAllClose(
             fwd.inverse_log_det_jacobian(x).eval(),
             rev.forward_log_det_jacobian(x).eval())
-        inv, jac = rev.inverse_and_inverse_log_det_jacobian(x)
-        self.assertAllClose(fwd.forward(x).eval(), inv.eval())
-        self.assertAllClose(fwd.forward_log_det_jacobian(x).eval(), jac.eval())
 
   def testScalarCongruency(self):
     with self.test_session():

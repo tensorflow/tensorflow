@@ -412,7 +412,8 @@ class TransformedDistribution(distributions.Distribution):
     return self.bijector.forward(x)
 
   def _log_prob(self, y):
-    x, ildj = self.bijector.inverse_and_inverse_log_det_jacobian(y)
+    x = self.bijector.inverse(y)
+    ildj = self.bijector.inverse_log_det_jacobian(y)
     x = self._maybe_rotate_dims(x, rotate_right=True)
     log_prob = self.distribution.log_prob(x)
     if self._is_maybe_event_override:
@@ -424,7 +425,8 @@ class TransformedDistribution(distributions.Distribution):
     return log_prob
 
   def _prob(self, y):
-    x, ildj = self.bijector.inverse_and_inverse_log_det_jacobian(y)
+    x = self.bijector.inverse(y)
+    ildj = self.bijector.inverse_log_det_jacobian(y)
     x = self._maybe_rotate_dims(x, rotate_right=True)
     prob = self.distribution.prob(x)
     if self._is_maybe_event_override:

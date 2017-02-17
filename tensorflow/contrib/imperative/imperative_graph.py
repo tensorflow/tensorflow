@@ -102,7 +102,7 @@ class ImperativeGraph(ops.Graph):
     # calling the original gradient function.
     def _imperative_op_grad(op, *grad):
       with self.replace_outputs(op):
-        return self._gradient_function_map[op](op, *grad)
+        return self._gradient_function_map[op.name](op, *grad)
 
     ops.RegisterGradient(self._imperative_op_type)(_imperative_op_grad)
 
@@ -166,7 +166,7 @@ class ImperativeGraph(ops.Graph):
     """Replaces the outputs of `op` with values recorded in `_outputs_map`."""
     # pylint: disable=protected-access
     old_outputs = op._outputs
-    op._outputs = self._outputs_map[op]
+    op._outputs = self._outputs_map[op.name]
     yield
     op._outputs = old_outputs
     # pylint: enable=protected-access
@@ -318,9 +318,9 @@ class ImperativeGraph(ops.Graph):
 
       for i, _ in enumerate(shapes):
         values[i].set_shape(shapes[i])
-      self._outputs_map[orig_op] = values
+      self._outputs_map[orig_op.name] = values
       try:
-        self._gradient_function_map[orig_op] = ops.get_gradient_function(
+        self._gradient_function_map[orig_op.name] = ops.get_gradient_function(
             orig_op)
       except (KeyError, LookupError):
         pass

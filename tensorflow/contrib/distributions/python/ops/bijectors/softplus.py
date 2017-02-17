@@ -68,8 +68,10 @@ class Softplus(bijector.Bijector):
   def _forward(self, x):
     return nn_ops.softplus(x)
 
-  def _inverse_and_inverse_log_det_jacobian(self, y):
-    event_dims = self._event_dims_tensor(y)
+  def _inverse(self, y):
+    return distribution_util.softplus_inverse(y)
+
+  def _inverse_log_det_jacobian(self, y):
     # Could also do:
     #   ildj = math_ops.reduce_sum(y - distribution_util.softplus_inverse(y),
     #                              axis=event_dims)
@@ -79,11 +81,9 @@ class Softplus(bijector.Bijector):
     #           = 1 / (1 - exp{-Y}),
     # which is the most stable for large Y > 0. For small Y, we use
     # 1 - exp{-Y} approx Y.
-    ildj = -math_ops.reduce_sum(math_ops.log(-math_ops.expm1(-y)),
-                                axis=event_dims)
-    return distribution_util.softplus_inverse(y), ildj
+    return -math_ops.reduce_sum(math_ops.log(-math_ops.expm1(-y)),
+                                axis=self._event_dims_tensor(y))
 
-  def _forward_log_det_jacobian(self, x):  # pylint: disable=unused-argument
-    event_dims = self._event_dims_tensor(x)
-    return -math_ops.reduce_sum(
-        nn_ops.softplus(-x), axis=event_dims)
+  def _forward_log_det_jacobian(self, x):
+    return -math_ops.reduce_sum(nn_ops.softplus(-x),
+                                axis=self._event_dims_tensor(x))

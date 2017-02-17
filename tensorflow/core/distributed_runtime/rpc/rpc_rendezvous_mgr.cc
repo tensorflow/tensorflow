@@ -229,7 +229,7 @@ class WorkerFreeListCache : public WorkerCacheInterface {
     WorkerState state;
     state.worker = wrapped_->CreateWorker(target);
     if (state.worker != nullptr) {
-      workers_.insert(make_pair(target, state));
+      workers_.insert(std::make_pair(target, state));
     }
     return state.worker;
   }

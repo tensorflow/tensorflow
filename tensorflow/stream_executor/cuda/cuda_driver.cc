@@ -80,7 +80,7 @@ class CreatedContexts {
     mutex_lock lock{mu_};
     auto cuda_context = new CudaContext(context, next_id_++);
     Live()->insert(
-        make_pair(context, std::unique_ptr<CudaContext>(cuda_context)));
+        std::make_pair(context, std::unique_ptr<CudaContext>(cuda_context)));
     return cuda_context;
   }
 
