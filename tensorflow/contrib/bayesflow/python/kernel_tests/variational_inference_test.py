@@ -28,7 +28,7 @@ if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
 from tensorflow.contrib import distributions as distributions_lib
 from tensorflow.contrib import layers
 from tensorflow.contrib.bayesflow.python.ops import stochastic_tensor
-from tensorflow.contrib.bayesflow.python.ops import variational_inference
+from tensorflow.contrib.bayesflow.python.ops import variational_inference_impl
 from tensorflow.contrib.distributions.python.ops import kullback_leibler
 from tensorflow.contrib.distributions.python.ops import normal
 from tensorflow.python.framework import constant_op
@@ -38,7 +38,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 st = stochastic_tensor
-vi = variational_inference
+vi = variational_inference_impl
 distributions = distributions_lib
 
 

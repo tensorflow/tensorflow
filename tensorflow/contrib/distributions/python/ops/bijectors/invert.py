@@ -88,9 +88,11 @@ class Invert(bijector_lib.Bijector):
   def _forward(self, x, **kwargs):
     return self.bijector.inverse(x, **kwargs)
 
-  def _inverse_and_inverse_log_det_jacobian(self, y, **kwargs):
-    return (self.bijector.forward(y, **kwargs),
-            self.bijector.forward_log_det_jacobian(y, **kwargs))
+  def _inverse(self, y, **kwargs):
+    return self.bijector.forward(y, **kwargs)
+
+  def _inverse_log_det_jacobian(self, y, **kwargs):
+    return self.bijector.forward_log_det_jacobian(y, **kwargs)
 
   def _forward_log_det_jacobian(self, x, **kwargs):
     return self.bijector.inverse_log_det_jacobian(x, **kwargs)

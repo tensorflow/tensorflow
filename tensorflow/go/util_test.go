@@ -52,3 +52,12 @@ func Neg(g *Graph, name string, port Output) (Output, error) {
 	})
 	return op.Output(0), err
 }
+
+func Add(g *Graph, name string, x, y Output) (Output, error) {
+	op, err := g.AddOperation(OpSpec{
+		Type:  "Add",
+		Name:  name,
+		Input: []Input{x, y},
+	})
+	return op.Output(0), err
+}

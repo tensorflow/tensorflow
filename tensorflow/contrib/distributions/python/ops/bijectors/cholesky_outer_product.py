@@ -95,10 +95,12 @@ class CholeskyOuterProduct(bijector.Bijector):
     x = array_ops.matrix_band_part(x, -1, 0)
     return math_ops.matmul(x, x, adjoint_b=True)
 
-  def _inverse_and_inverse_log_det_jacobian(self, y):
-    x = (math_ops.sqrt(y) if self._static_event_ndims == 0
-         else linalg_ops.cholesky(y))
-    return x, -self._forward_log_det_jacobian(x)
+  def _inverse(self, y):
+    return (math_ops.sqrt(y) if self._static_event_ndims == 0
+            else linalg_ops.cholesky(y))
+
+  def _inverse_log_det_jacobian(self, y):
+    return -self._forward_log_det_jacobian(x=self._inverse(y))
 
   def _forward_log_det_jacobian(self, x):
     # Let Y be a symmetric, positive definite matrix and write:

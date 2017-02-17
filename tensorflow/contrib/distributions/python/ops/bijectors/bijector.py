@@ -112,7 +112,9 @@ class _Mapping(collections.namedtuple(
 
 @six.add_metaclass(abc.ABCMeta)
 class Bijector(object):
-  """Interface for transforming a `Distribution` sample.
+  """Interface for invertible transformations of a `Distribution` sample.
+
+  #### Mathematical Details
 
   A `Bijector` implements a
   [diffeomorphism](https://en.wikipedia.org/wiki/Diffeomorphism), i.e., a
@@ -143,185 +145,179 @@ class Bijector(object):
   forward transformation. The forward transformation creates samples, the
   inverse is useful for computing probabilities.
 
-  Example Use:
+  #### Example Uses
 
-    - Basic properties:
+  - Basic properties:
 
-    ```python
-    x = ...  # A tensor.
-    # Evaluate forward transformation.
-    fwd_x = my_bijector.forward(x)
-    x == my_bijector.inverse(fwd_x)
-    x != my_bijector.forward(fwd_x)  # Not equal because g(x) != g(g(x)).
+  ```python
+  x = ...  # A tensor.
+  # Evaluate forward transformation.
+  fwd_x = my_bijector.forward(x)
+  x == my_bijector.inverse(fwd_x)
+  x != my_bijector.forward(fwd_x)  # Not equal because g(x) != g(g(x)).
+  ```
+
+  - Computing a log-likelihood:
+
+  ```python
+  def transformed_log_prob(bijector, log_prob, x):
+    return (bijector.inverse_log_det_jacobian(x) +
+            log_prob(bijector.inverse(x)))
+  ```
+
+  - Transforming a random outcome:
+
+  ```python
+  def transformed_sample(bijector, x):
+    return bijector.forward(x)
+  ```
+
+  #### Example Bijectors
+
+  - "Exponential"
+
+    ```none
+    Y = g(X) = exp(X)
+    X ~ Normal(0, 1)  # Univariate.
     ```
 
-    - Computing a log-likelihood:
+    Implies:
 
-    ```python
-    def transformed_log_prob(bijector, log_prob, x):
-      return (bijector.inverse_log_det_jacobian(x) +
-              log_prob(bijector.inverse(x)))
+    ```none
+      g^{-1}(Y) = log(Y)
+      |Jacobian(g^{-1})(y)| = 1 / y
+      Y ~ LogNormal(0, 1), i.e.,
+      prob(Y=y) = |Jacobian(g^{-1})(y)| * prob(X=g^{-1}(y))
+                = (1 / y) Normal(log(y); 0, 1)
     ```
 
-    - Transforming a random outcome:
+    Here is an example of how one might implement the `Exp` bijector:
 
     ```python
-    def transformed_sample(bijector, x):
-      return bijector.forward(x)
+      class Exp(Bijector):
+
+        def __init__(self, event_ndims=0, validate_args=False, name="exp"):
+          super(Exp, self).__init__(
+              event_ndims=event_ndims, validate_args=validate_args, name=name)
+
+        def _forward(self, x):
+          return math_ops.exp(x)
+
+        def _inverse(self, y):
+          return math_ops.log(y)
+
+        def _inverse_log_det_jacobian(self, y):
+          return -self._forward_log_det_jacobian(self._inverse(y))
+
+        def _forward_log_det_jacobian(self, x):
+          if self.event_ndims is None:
+            raise ValueError("Jacobian requires known event_ndims.")
+          event_dims = array_ops.shape(x)[-self.event_ndims:]
+          return math_ops.reduce_sum(x, axis=event_dims)
+      ```
+
+  - "Affine"
+
+    ```none
+    Y = g(X) = sqrtSigma * X + mu
+    X ~ MultivariateNormal(0, I_d)
     ```
 
-  Example transformations:
+    Implies:
 
-    - "Exponential"
-
-      ```
-      Y = g(X) = exp(X)
-      X ~ Normal(0, 1)  # Univariate.
-      ```
-
-      Implies:
-
-      ```
-        g^{-1}(Y) = log(Y)
-        |Jacobian(g^{-1})(y)| = 1 / y
-        Y ~ LogNormal(0, 1), i.e.,
-        prob(Y=y) = |Jacobian(g^{-1})(y)| * prob(X=g^{-1}(y))
-                  = (1 / y) Normal(log(y); 0, 1)
+    ```none
+      g^{-1}(Y) = inv(sqrtSigma) * (Y - mu)
+      |Jacobian(g^{-1})(y)| = det(inv(sqrtSigma))
+      Y ~ MultivariateNormal(mu, sqrtSigma) , i.e.,
+      prob(Y=y) = |Jacobian(g^{-1})(y)| * prob(X=g^{-1}(y))
+                = det(sqrtSigma)^(-d) *
+                  MultivariateNormal(inv(sqrtSigma) * (y - mu); 0, I_d)
       ```
 
-      Here is an example of how one might implement the `Exp` bijector:
+  #### Jacobian
 
-      ```
-        class Exp(Bijector):
-          def __init__(self, event_ndims=0, validate_args=False, name="exp"):
-            super(Exp, self).__init__(event_ndims=event_ndims,
-                                      validate_args=validate_args, name=name)
-          def _forward(self, x):
-            return math_ops.exp(x)
-          def _inverse_and_inverse_log_det_jacobian(self, y):
-            x = math_ops.log(y)
-            return x, -self._forward_log_det_jacobian(x)
-          def _forward_log_det_jacobian(self, x):
-            if self.event_ndims is None:
-              raise ValueError("Jacobian requires known event_ndims.")
-            event_dims = array_ops.shape(x)[-self.event_ndims:]
-            return math_ops.reduce_sum(x, axis=event_dims)
-        ```
+  The Jacobian is a reduction over event dims. To see this, consider the `Exp`
+  `Bijector` applied to a `Tensor` which has sample, batch, and event (S, B, E)
+  shape semantics. Suppose the `Tensor`'s partitioned-shape is `(S=[4], B=[2],
+  E=[3, 3])`. The shape of the `Tensor` returned by `forward` and `inverse` is
+  unchanged, i.e., `[4, 2, 3, 3]`.  However the shape returned by
+  `inverse_log_det_jacobian` is `[4, 2]` because the Jacobian is a reduction
+  over the event dimensions.
 
-    - "Affine"
+  It is sometimes useful to implement the inverse Jacobian as the negative
+  forward Jacobian. For example,
 
-      ```
-      Y = g(X) = sqrtSigma * X + mu
-      X ~ MultivariateNormal(0, I_d)
-      ```
+  ```python
+  def _inverse_log_det_jacobian(self, y):
+     return -self._forward_log_det_jac(self._inverse(y))  # Note negation.
+  ```
 
-      Implies:
+  The correctness of this approach can be seen from the following claim.
 
-      ```
-        g^{-1}(Y) = inv(sqrtSigma) * (Y - mu)
-        |Jacobian(g^{-1})(y)| = det(inv(sqrtSigma))
-        Y ~ MultivariateNormal(mu, sqrtSigma) , i.e.,
-        prob(Y=y) = |Jacobian(g^{-1})(y)| * prob(X=g^{-1}(y))
-                  = det(sqrtSigma)^(-d) *
-                    MultivariateNormal(inv(sqrtSigma) * (y - mu); 0, I_d)
+  - Claim:
+
+      Assume `Y = g(X)` is a bijection whose derivative exists and is nonzero
+      for its domain, i.e., `dY/dX = d/dX g(X) != 0`. Then:
+
+      ```none
+      (log o det o jacobian o g^{-1})(Y) = -(log o det o jacobian o g)(X)
       ```
 
-  Example of why a `Bijector` needs to understand sample, batch, event
-  partitioning:
+  - Proof:
 
-  - Consider the `Exp` `Bijector` applied to a `Tensor` which has sample, batch,
-    and event (S, B, E) shape semantics. Suppose the `Tensor`'s
-    partitioned-shape is `(S=[4], B=[2], E=[3, 3])`.
+      From the bijective, nonzero differentiability of `g`, the
+      [inverse function theorem](
+          https://en.wikipedia.org/wiki/Inverse_function_theorem)
+      implies `g^{-1}` is differentiable in the image of `g`.
+      Applying the chain rule to `y = g(x) = g(g^{-1}(y))` yields
+      `I = g'(g^{-1}(y))*g^{-1}'(y)`.
+      The same theorem also implies `g{-1}'` is non-singular therefore:
+      `inv[ g'(g^{-1}(y)) ] = g^{-1}'(y)`.
+      The claim follows from [properties of determinant](
+  https://en.wikipedia.org/wiki/Determinant#Multiplicativity_and_matrix_groups).
 
-    For `Exp`, the shape of the `Tensor` returned by `forward` and `inverse` is
-    unchanged, i.e., `[4, 2, 3, 3]`. However the shape returned by
-    `inverse_log_det_jacobian` is `[4, 2]` because the Jacobian is a reduction
-    over the event dimensions.
+  Generally its preferable to directly implement the inverse Jacobian. This
+  should have superior numerical stability and will often share subgraphs with
+  the `_inverse` implementation.
 
-  Subclass Requirements:
+  #### Subclass Requirements
 
-  - Typically subclasses implement `_forward` and one or both of:
-      - `_inverse`, `_inverse_log_det_jacobian`,
-      - `_inverse_and_inverse_log_det_jacobian`.
+  - Subclasses typically implement:
+
+      - `_forward`,
+      - `_inverse`,
+      - `_inverse_log_det_jacobian`,
+      - `_forward_log_det_jacobian` (optional).
+
+    The `_forward_log_det_jacobian` is called when the bijector is inverted via
+    the `Invert` bijector. If undefined, a slightly less efficiently
+    calculation, `-1 * _inverse_log_det_jacobian`, is used.
+
+    If the bijector changes the shape of the input, you must also implement:
+
+      - _forward_event_shape_tensor,
+      - _forward_event_shape (optional),
+      - _inverse_event_shape_tensor,
+      - _inverse_event_shape (optional).
+
+    By default the event-shape is assumed unchanged from input.
 
   - If the `Bijector`'s use is limited to `TransformedDistribution` (or friends
     like `QuantizedDistribution`) then depending on your use, you may not need
-    to implement all of `_forward` and `_inverse` functions. Examples:
+    to implement all of `_forward` and `_inverse` functions.
+
+    Examples:
+
       1. Sampling (e.g., `sample`) only requires `_forward`.
       2. Probability functions (e.g., `prob`, `cdf`, `survival`) only require
          `_inverse` (and related).
       3. Only calling probability functions on the output of `sample` means
         `_inverse` can be implemented as a cache lookup.
 
-    See `Example Use` [above] which shows how these functions are used to
+    See "Example Uses" [above] which shows how these functions are used to
     transform a distribution. (Note: `_forward` could theoretically be
     implemented as a cache lookup but this would require controlling the
     underlying sample generation mechanism.)
-
-  - If computation can be shared among `_inverse` and
-    `_inverse_log_det_jacobian` it is preferable to implement
-    `_inverse_and_inverse_log_det_jacobian`. This usually reduces
-    graph-construction overhead because a `Distribution`'s implementation of
-    `log_prob` will need to evaluate both the inverse Jacobian as well as the
-    inverse function.
-
-  - If an additional use case needs just `inverse` or just
-    `inverse_log_det_jacobian` then he or she may also wish to implement these
-    functions to avoid computing the `inverse_log_det_jacobian` or the
-    `inverse`, respectively.
-
-  - Subclasses should implement `_forward_event_shape`,
-    `_forward_event_shape_tensor` (and `inverse` counterparts) if the
-    transformation is shape-changing. By default the event-shape is assumed
-    unchanged from input.
-
-  Tips for implementing `_inverse` and `_inverse_log_det_jacobian`:
-
-  - As case 3 [above] indicates, under some circumstances the inverse function
-    can be implemented as a cache lookup.
-
-  - The inverse `log o det o Jacobian` can be implemented as the negative of the
-    forward `log o det o Jacobian`. This is useful if the `inverse` is
-    implemented as a cache or the inverse Jacobian is computationally more
-    expensive (e.g., `CholeskyOuterProduct` `Bijector`). The following
-    demonstrates the suggested implementation.
-
-    ```python
-    def _inverse_and_log_det_jacobian(self, y):
-       x = ...  # implement inverse, possibly via cache.
-       return x, -self._forward_log_det_jac(x)  # Note negation.
-    ```
-
-    By overriding the `_inverse_and_log_det_jacobian` function we have access to
-    the inverse in one call.
-
-    The correctness of this approach can be seen from the following claim.
-
-    - Claim:
-
-        Assume `Y=g(X)` is a bijection whose derivative exists and is nonzero
-        for its domain, i.e., `d/dX g(X)!=0`. Then:
-
-        ```none
-        (log o det o jacobian o g^{-1})(Y) = -(log o det o jacobian o g)(X)
-        ```
-
-    - Proof:
-
-        From the bijective, nonzero differentiability of `g`, the
-        [inverse function theorem](
-            https://en.wikipedia.org/wiki/Inverse_function_theorem)
-        implies `g^{-1}` is differentiable in the image of `g`.
-        Applying the chain rule to `y = g(x) = g(g^{-1}(y))` yields
-        `I = g'(g^{-1}(y))*g^{-1}'(y)`.
-        The same theorem also implies `g{-1}'` is non-singular therefore:
-        `inv[ g'(g^{-1}(y)) ] = g^{-1}'(y)`.
-        The claim follows from [properties of determinant](
-  https://en.wikipedia.org/wiki/Determinant#Multiplicativity_and_matrix_groups).
-
-  - If possible, prefer a direct implementation of the inverse Jacobian. This
-    should have superior numerical stability and will often share subgraphs with
-    the `_inverse` implementation.
 
   """
 
@@ -550,22 +546,7 @@ class Bijector(object):
       mapping = self._lookup(y=y, kwargs=kwargs)
       if mapping.x is not None:
         return mapping.x
-      ildj = None
-      try:
-        x = self._inverse(y, **kwargs)
-      except NotImplementedError as original_error:
-        # Since _inverse was not implemented, try to see if it's implemented
-        # by the _inverse_and_inverse_log_det_jacobian member.
-        try:
-          x, ildj = self._inverse_and_inverse_log_det_jacobian(y, **kwargs)
-        except NotImplementedError:
-          raise original_error
-        if self._constant_ildj is not None:
-          ildj = self._constant_ildj  # Use the "global" result.
-        elif self.is_constant_jacobian:
-          self._constant_ildj = ildj
-      x = x if mapping.x is None else mapping.x
-      mapping = mapping.merge(x=x, ildj=ildj)
+      mapping = mapping.merge(x=self._inverse(y, **kwargs))
       self._cache(mapping)
       return mapping.x
 
@@ -582,8 +563,7 @@ class Bijector(object):
     Raises:
       TypeError: if `self.dtype` is specified and `y.dtype` is not
         `self.dtype`.
-      NotImplementedError: if neither `_inverse` nor
-        `_inverse_and_inverse_log_det_jacobian` are implemented.
+      NotImplementedError: if `_inverse` is not implemented.
     """
     return self._call_inverse(y, name)
 
@@ -601,22 +581,18 @@ class Bijector(object):
       if mapping.ildj is not None:
         return mapping.ildj
       try:
-        x = mapping.x
+        x = None  # Not needed; leave cache as is.
         ildj = self._inverse_log_det_jacobian(y, **kwargs)
-      except NotImplementedError as original_error:
-        # Since _inverse_log_det_jacobian was not implemented, try to see if
-        # it's implemented by the _inverse_and_inverse_log_det_jacobian member.
+      except NotImplementedError as original_exception:
         try:
-          x, ildj = self._inverse_and_inverse_log_det_jacobian(y, **kwargs)
+          x = mapping.x if mapping.x is not None else self._inverse(y, **kwargs)
+          ildj = self._inverse_log_det_jacobian(y, **kwargs)
         except NotImplementedError:
-          raise original_error
-        if mapping.x is not None:
-          x = mapping.x
-      if self.is_constant_jacobian:
-        self._constant_ildj = ildj
-      x = x if mapping.x is None else mapping.x
+          raise original_exception
       mapping = mapping.merge(x=x, ildj=ildj)
       self._cache(mapping)
+      if self.is_constant_jacobian:
+        self._constant_ildj = mapping.ildj
       return mapping.ildj
 
   def inverse_log_det_jacobian(self, y, name="inverse_log_det_jacobian"):
@@ -636,71 +612,9 @@ class Bijector(object):
     Raises:
       TypeError: if `self.dtype` is specified and `y.dtype` is not
         `self.dtype`.
-      NotImplementedError: if neither `_inverse_log_det_jacobian` nor
-        `_inverse_and_inverse_log_det_jacobian` are implemented.
+      NotImplementedError: if `_inverse_log_det_jacobian` is not implemented.
     """
     return self._call_inverse_log_det_jacobian(y, name)
-
-  def _inverse_and_inverse_log_det_jacobian(self, y):
-    """Subclass implementation of `inverse_and_inverse_log_det_jacobian`."""
-    raise NotImplementedError(
-        "inverse_and_inverse_log_det_jacobian not implemented.")
-
-  def _call_inverse_and_inverse_log_det_jacobian(self, y, name, **kwargs):
-    with self._name_scope(name, [y]):
-      y = ops.convert_to_tensor(y, name="y")
-      self._maybe_assert_dtype(y)
-      mapping = self._lookup(y=y, kwargs=kwargs)
-      if mapping.x is not None and mapping.ildj is not None:
-        return mapping.x, mapping.ildj
-      try:
-        x, ildj = self._inverse_and_inverse_log_det_jacobian(y, **kwargs)
-      except NotImplementedError as original_error:
-        # Since _inverse_and_inverse_log_det_jacobian was not implemented, try
-        # to see if we can separately use _inverse and
-        # _inverse_log_det_jacobian members.
-        try:
-          # We want this same try/except to catch either NotImplementedError.
-          x = self._inverse(y, **kwargs)
-          if self._constant_ildj is None:
-            ildj = self._inverse_log_det_jacobian(y, **kwargs)
-        except NotImplementedError:
-          raise original_error
-      if self._constant_ildj is not None:
-        ildj = self._constant_ildj  # Ignore any ildj we may/not have.
-      elif self.is_constant_jacobian:
-        self._constant_ildj = ildj
-      # We use the mapped version of x, even if we re-computed x above with a
-      # call to self._inverse_and_inverse_log_det_jacobian. This prevents
-      # re-evaluation of the inverse in a common case.
-      x = x if mapping.x is None else mapping.x
-      mapping = mapping.merge(x=x, ildj=ildj)
-      self._cache(mapping)
-      return mapping.x, mapping.ildj
-
-  def inverse_and_inverse_log_det_jacobian(
-      self, y, name="inverse_and_inverse_log_det_jacobian"):
-    """Returns both the inverse evaluation and inverse_log_det_jacobian.
-
-    Enables possibly more efficient calculation when both inverse and
-    corresponding Jacobian are needed.
-
-    See `inverse()`, `inverse_log_det_jacobian()` for more details.
-
-    Args:
-      y: `Tensor`. The input to the "inverse" Jacobian evaluation.
-      name: The name to give this op.
-
-    Returns:
-      `Tensor`.
-
-    Raises:
-      TypeError: if `self.dtype` is specified and `y.dtype` is not
-        `self.dtype`.
-      NotImplementedError: if neither `_inverse_and_inverse_log_det_jacobian`
-        nor {`_inverse`, `_inverse_log_det_jacobian`} are implemented.
-    """
-    return self._call_inverse_and_inverse_log_det_jacobian(y, name)
 
   def _forward_log_det_jacobian(self, x):
     """Subclass implementation of `forward_log_det_jacobian`."""
@@ -717,22 +631,19 @@ class Bijector(object):
       mapping = self._lookup(x=x, kwargs=kwargs)
       if mapping.ildj is not None:
         return -mapping.ildj
-      y = None
       try:
+        y = None  # Not needed; leave cache as is.
         ildj = -self._forward_log_det_jacobian(x, **kwargs)
-      except NotImplementedError as original_error:
+      except NotImplementedError as original_exception:
         try:
-          # We want this same try/except to catch either NotImplementedError.
-          # TODO(langmore) Add test that covers this branch.
-          y = self.forward(x, **kwargs) if y is None else y
-          ildj = self.inverse_log_det_jacobian(y, **kwargs)
+          y = mapping.y if mapping.y is not None else self._forward(x, **kwargs)
+          ildj = self._inverse_log_det_jacobian(y, **kwargs)
         except NotImplementedError:
-          raise original_error
-      if self.is_constant_jacobian:
-        self._constant_ildj = ildj
-      y = y if mapping.y is None else mapping.y
+          raise original_exception
       mapping = mapping.merge(y=y, ildj=ildj)
       self._cache(mapping)
+      if self.is_constant_jacobian:
+        self._constant_ildj = mapping.ildj
       return -mapping.ildj
 
   def forward_log_det_jacobian(self, x, name="forward_log_det_jacobian"):

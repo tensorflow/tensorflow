@@ -41,9 +41,6 @@ class AffineLinearOperatorTest(test.TestCase):
       self.assertAllClose(ildj, affine.inverse_log_det_jacobian(y).eval())
       self.assertAllClose(-affine.inverse_log_det_jacobian(y).eval(),
                           affine.forward_log_det_jacobian(x).eval())
-      rev, actual_ildj = affine.inverse_and_inverse_log_det_jacobian(y)
-      self.assertAllClose(x, rev.eval())
-      self.assertAllClose(ildj, actual_ildj.eval())
 
   def testDiag(self):
     with self.test_session():
@@ -64,9 +61,6 @@ class AffineLinearOperatorTest(test.TestCase):
       self.assertAllClose(ildj, affine.inverse_log_det_jacobian(y).eval())
       self.assertAllClose(-affine.inverse_log_det_jacobian(y).eval(),
                           affine.forward_log_det_jacobian(x).eval())
-      rev, actual_ildj = affine.inverse_and_inverse_log_det_jacobian(y)
-      self.assertAllClose(x, rev.eval())
-      self.assertAllClose(ildj, actual_ildj.eval())
 
   def testTriL(self):
     with self.test_session():
@@ -100,9 +94,6 @@ class AffineLinearOperatorTest(test.TestCase):
       self.assertAllClose(ildj, affine.inverse_log_det_jacobian(y).eval())
       self.assertAllClose(-affine.inverse_log_det_jacobian(y).eval(),
                           affine.forward_log_det_jacobian(x).eval())
-      rev, actual_ildj = affine.inverse_and_inverse_log_det_jacobian(y)
-      self.assertAllClose(x, rev.eval())
-      self.assertAllClose(ildj, actual_ildj.eval())
 
 
 if __name__ == "__main__":

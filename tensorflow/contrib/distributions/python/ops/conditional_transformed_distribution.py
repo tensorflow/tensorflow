@@ -65,8 +65,8 @@ class ConditionalTransformedDistribution(
   def _log_prob(self, y, bijector_kwargs=None, distribution_kwargs=None):
     bijector_kwargs = bijector_kwargs or {}
     distribution_kwargs = distribution_kwargs or {}
-    x, ildj = self.bijector.inverse_and_inverse_log_det_jacobian(
-        y, **bijector_kwargs)
+    x = self.bijector.inverse(y, **bijector_kwargs)
+    ildj = self.bijector.inverse_log_det_jacobian(y, **bijector_kwargs)
     x = self._maybe_rotate_dims(x, rotate_right=True)
     log_prob = self.distribution.log_prob(x, **distribution_kwargs)
     if self._is_maybe_event_override:
@@ -77,8 +77,8 @@ class ConditionalTransformedDistribution(
   def _prob(self, y, bijector_kwargs=None, distribution_kwargs=None):
     bijector_kwargs = bijector_kwargs or {}
     distribution_kwargs = distribution_kwargs or {}
-    x, ildj = self.bijector.inverse_and_inverse_log_det_jacobian(
-        y, **bijector_kwargs)
+    x = self.bijector.inverse(y, **bijector_kwargs)
+    ildj = self.bijector.inverse_log_det_jacobian(y, **bijector_kwargs)
     x = self._maybe_rotate_dims(x, rotate_right=True)
     prob = self.distribution.prob(x, **distribution_kwargs)
     if self._is_maybe_event_override:
