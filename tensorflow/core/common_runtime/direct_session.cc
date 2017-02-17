@@ -1273,7 +1273,8 @@ void DirectSession::WaitForNotification(RunState* run_state,
 ::tensorflow::Status DirectSession::WaitForNotification(
     Notification* notification, int64 timeout_in_ms) {
   if (timeout_in_ms > 0) {
-    bool notified = WaitForNotificationWithTimeout(notification, timeout_in_ms);
+    int64 timeout_in_us = timeout_in_ms * 1000;
+    bool notified = WaitForNotificationWithTimeout(notification, timeout_in_us);
     if (!notified) {
       return Status(error::DEADLINE_EXCEEDED,
                     "Timed out waiting for notification");

@@ -64,11 +64,11 @@ class Chain(bijector.Bijector):
 
   """
 
-  def __init__(self, bijectors=(), validate_args=False, name=None):
+  def __init__(self, bijectors=None, validate_args=False, name=None):
     """Instantiates `Chain` bijector.
 
     Args:
-      bijectors: Python list of bijector instances. An empty list makes this
+      bijectors: Python `list` of bijector instances. An empty list makes this
         bijector equivalent to the `Identity` bijector.
       validate_args: Python `bool` indicating whether arguments should be
         checked for correctness.
@@ -78,6 +78,8 @@ class Chain(bijector.Bijector):
     Raises:
       ValueError: if bijectors have different dtypes.
     """
+    if bijectors is None:
+      bijectors = ()
     self._bijectors = bijectors
     dtype = list(set([b.dtype for b in bijectors]))
     if len(dtype) > 2:
@@ -132,27 +134,28 @@ class Chain(bijector.Bijector):
     return self._shape_helper("inverse_event_shape_tensor", output_shape,
                               reverse=False)
 
-  def _forward(self, x, **kwargs):
-    y = x
-    for b in reversed(self.bijectors):
-      y = b.forward(y, **kwargs.get(b.name, {}))
+  def _inverse(self, y, **kwargs):
+    for b in self.bijectors:
+      y = b.inverse(y, **kwargs.get(b.name, {}))
     return y
 
-  def _inverse_and_inverse_log_det_jacobian(self, y, **kwargs):
-    x = y
-    ildj = constant_op.constant(0., dtype=x.dtype,
+  def _inverse_log_det_jacobian(self, y, **kwargs):
+    ildj = constant_op.constant(0., dtype=y.dtype,
                                 name="inverse_log_det_jacobian")
     for b in self.bijectors:
-      x, j = b.inverse_and_inverse_log_det_jacobian(x, **kwargs.get(b.name, {}))
-      ildj += j
-    return x, ildj
+      ildj += b.inverse_log_det_jacobian(y, **kwargs.get(b.name, {}))
+      y = b.inverse(y, **kwargs.get(b.name, {}))
+    return ildj
+
+  def _forward(self, x, **kwargs):
+    for b in reversed(self.bijectors):
+      x = b.forward(x, **kwargs.get(b.name, {}))
+    return x
 
   def _forward_log_det_jacobian(self, x, **kwargs):
-    y = x
     fldj = constant_op.constant(0., dtype=x.dtype,
                                 name="forward_log_det_jacobian")
     for b in reversed(self.bijectors):
-      bijector_kwargs = kwargs.get(b.name, {})
-      fldj += b.forward_log_det_jacobian(y, **bijector_kwargs)
-      y = b.forward(y, **bijector_kwargs)
+      fldj += b.forward_log_det_jacobian(x, **kwargs.get(b.name, {}))
+      x = b.forward(x, **kwargs.get(b.name, {}))
     return fldj

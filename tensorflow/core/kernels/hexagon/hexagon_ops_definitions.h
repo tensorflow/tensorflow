@@ -29,8 +29,6 @@ class HexagonOpsDefinitions final : public IGraphTransferOpsDefinitions {
   static const IGraphTransferOpsDefinitions& getInstance();
 
   int GetTotalOpsCount() const final;
-  int GetInputNodeOpId() const final;
-  int GetOutputNodeOpId() const final;
   int GetOpIdFor(const string& op_type) const final;
   GraphTransferInfo::Destination GetTransferDestination() const final;
 

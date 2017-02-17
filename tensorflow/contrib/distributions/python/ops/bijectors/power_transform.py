@@ -83,24 +83,23 @@ class PowerTransform(bijector.Bijector):
     x = self._maybe_assert_valid_x(x)
     if self.power == 0.:
       return math_ops.exp(x)
-    # TODO(jvdillon): If large x accuracy is an issue, consider using
+    # If large x accuracy is an issue, consider using:
     # (1. + x * self.power)**(1. / self.power) when x >> 1.
     return math_ops.exp(math_ops.log1p(x * self.power) / self.power)
 
-  def _inverse_and_inverse_log_det_jacobian(self, y):
+  def _inverse(self, y):
+    y = self._maybe_assert_valid_y(y)
+    if self.power == 0.:
+      return math_ops.log(y)
+    # If large y accuracy is an issue, consider using:
+    # (y**self.power - 1.) / self.power when y >> 1.
+    return math_ops.expm1(math_ops.log(y) * self.power) / self.power
+
+  def _inverse_log_det_jacobian(self, y):
     y = self._maybe_assert_valid_y(y)
     event_dims = self._event_dims_tensor(y)
-    if self.power == 0.:
-      x = math_ops.log(y)
-      ildj = -math_ops.reduce_sum(x, axis=event_dims)
-      return x, ildj
-    # TODO(jvdillon): If large y accuracy is an issue, consider using
-    # (y**self.power - 1.) / self.power when y >> 1.
-    x = math_ops.expm1(math_ops.log(y) * self.power) / self.power
-    ildj = (self.power - 1.) * math_ops.reduce_sum(
-        math_ops.log(y),
-        axis=event_dims)
-    return x, ildj
+    return (self.power - 1.) * math_ops.reduce_sum(
+        math_ops.log(y), axis=event_dims)
 
   def _forward_log_det_jacobian(self, x):
     x = self._maybe_assert_valid_x(x)

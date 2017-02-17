@@ -1,4 +1,4 @@
-# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,52 +12,37 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Identity bijector."""
+"""Sigmoid bijector."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.distributions.python.ops.bijectors import bijector
-from tensorflow.python.framework import constant_op
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_ops
 
 
 __all__ = [
-    "Identity",
+    "Sigmoid",
 ]
 
 
-class Identity(bijector.Bijector):
-  """Compute Y = g(X) = X.
+class Sigmoid(bijector.Bijector):
+  """Bijector which computes `Y = g(X) = 1 / (1 + exp(-X))`."""
 
-    Example Use:
-
-    ```python
-    # Create the Y=g(X)=X transform which is intended for Tensors with 1 batch
-    # ndim and 1 event ndim (i.e., vector of vectors).
-    identity = Identity(event_ndims=1)
-    x = [[1., 2],
-         [3, 4]]
-    x == identity.forward(x) == identity.inverse(x)
-    ```
-
-  """
-
-  def __init__(self, validate_args=False, event_ndims=0, name="identity"):
-    super(Identity, self).__init__(
-        is_constant_jacobian=True,
-        event_ndims=event_ndims,
-        validate_args=validate_args,
-        name=name)
+  def __init__(self, validate_args=False, name="sigmoid"):
+    super(Sigmoid, self).__init__(
+        event_ndims=0, validate_args=validate_args, name=name)
 
   def _forward(self, x):
-    return x
+    return math_ops.sigmoid(x)
 
   def _inverse(self, y):
-    return y
+    return math_ops.log(y) - math_ops.log1p(-y)
 
   def _inverse_log_det_jacobian(self, y):
-    return constant_op.constant(0., dtype=y.dtype)
+    return -math_ops.log(y) - math_ops.log1p(-y)
 
   def _forward_log_det_jacobian(self, x):
-    return constant_op.constant(0., dtype=x.dtype)
+    return -nn_ops.softplus(-x) - nn_ops.softplus(x)

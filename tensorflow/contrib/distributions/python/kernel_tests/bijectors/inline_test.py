@@ -54,9 +54,6 @@ class InlineBijectorTest(test.TestCase):
           inline.inverse_log_det_jacobian(y).eval())
       self.assertAllClose(-inline.inverse_log_det_jacobian(y).eval(),
                           inline.forward_log_det_jacobian(x).eval())
-      rev, jac = inline.inverse_and_inverse_log_det_jacobian(y)
-      self.assertAllClose(x, rev.eval())
-      self.assertAllClose(-np.sum(np.log(y), axis=-1), jac.eval())
 
   def testShapeGetters(self):
     with self.test_session():

@@ -199,10 +199,8 @@ def extract():
           'tfprof',
       ],
       'contrib.bayesflow': [
-          'entropy', 'monte_carlo',
-          'special_math', 'stochastic_gradient_estimators',
-          'stochastic_graph', 'stochastic_tensor',
-          'stochastic_variables', 'variational_inference'
+          'special_math', 'stochastic_gradient_estimators', 'stochastic_graph',
+          'stochastic_tensor', 'stochastic_variables'
       ],
       'contrib.distributions': ['bijector'],
       'contrib.ffmpeg': ['ffmpeg_ops'],
@@ -215,10 +213,7 @@ def extract():
           'select',
           'util'
       ],
-      'contrib.layers': [
-          'feature_column',
-          'summaries'
-      ],
+      'contrib.layers': ['feature_column', 'summaries'],
       'contrib.learn': [
           'datasets',
           'head',

@@ -107,6 +107,17 @@ class ImperativeTest(test.TestCase):
               b = a + random_ops.random_uniform([], minval=0.1)
               self.assertGreaterEqual(b.value, a.value)
 
+  def testGradientThroughNewStep(self):
+    with imperative_mode.ImperativeMode(self._target) as mode:
+      x = constant_op.constant(np.random.rand(3))
+      y = math_ops.tanh(x)
+
+      with mode.new_step():
+        z = constant_op.constant(np.random.rand(3))
+        w = math_ops.multiply(y, z)
+        dx = gradients_impl.gradients(w, x)
+        self.assertAllClose(dx[0].value, z.value * (1.0 - y.value ** 2))
+
   def testEscape(self):
     """Makes sure that values don't escape a `new_step` scope."""
     with imperative_mode.ImperativeMode(self._target) as mode:
