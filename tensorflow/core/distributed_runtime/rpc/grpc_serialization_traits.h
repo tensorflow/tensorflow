@@ -17,6 +17,7 @@ limitations under the License.
 #define THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_SERIALIZATION_TRAITS_H_
 
 #include "grpc++/impl/codegen/proto_utils.h"
+#include "grpc++/support/slice.h"
 
 namespace grpc {
 
