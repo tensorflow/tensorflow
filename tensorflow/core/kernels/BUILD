@@ -4241,8 +4241,18 @@ tf_cc_test(
 
 if_mkl(
     tf_kernel_library(
-        name = "mkl_ops",
+        name = "mkl_matmul_op",
         prefix = "mkl_matmul",
+        deps = [
+            ":math",
+            "//third_party/mkl:intel_binary_blob",
+        ],
+    ),
+
+    tf_kernel_library(
+        name = "mkl_transpose_op",
+        prefix = "mkl_transpose",
+        hdrs = ["transpose_op.h",],
         deps = [
             ":math",
             "//third_party/mkl:intel_binary_blob",
