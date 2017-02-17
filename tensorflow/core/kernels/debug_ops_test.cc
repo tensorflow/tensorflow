@@ -254,12 +254,12 @@ TEST_F(DebugNumericSummaryOpTest, Float_full_house) {
       &expected,
       {1.0,              // Is initialized.
        18.0,             // Total element count.
+       4.0,              // nan count.
        2.0,              // -inf count.
        2.0,              // negative number count (excluding -inf).
        3.0,              // zero count.
        2.0,              // positive number count (excluding +inf).
        5.0,              // +inf count.
-       4.0,              // nan count.
        -3.0,             // minimum of non-inf and non-nan elements.
        7.0,              // maximum of non-inf and non-nan elements.
        0.85714285714,    // mean of non-inf and non-nan elements.
@@ -290,12 +290,12 @@ TEST_F(DebugNumericSummaryOpTest, Double_full_house) {
       &expected,
       {1.0,              // Is initialized.
        18.0,             // Total element count.
+       4.0,              // nan count.
        2.0,              // -inf count.
        2.0,              // negative count (excluding -inf).
        3.0,              // zero count.
        2.0,              // positive count (excluding +inf).
        5.0,              // +inf count.
-       4.0,              // nan count.
        -3.0,             // minimum of non-inf and non-nan elements.
        7.0,              // maximum of non-inf and non-nan elements.
        0.85714285714,    // mean of non-inf and non-nan elements.
@@ -315,12 +315,12 @@ TEST_F(DebugNumericSummaryOpTest, Float_only_valid_values) {
       &expected,
       {1.0,              // Is initialized.
        6.0,              // Total element count.
+       0.0,              // nan count.
        0.0,              // -inf count.
        1.0,              // negative count (excluding -inf).
        2.0,              // zero count.
        3.0,              // positive count (excluding +inf).
        0.0,              // +inf count.
-       0.0,              // nan count.
        -1.0,             // minimum of non-inf and non-nan elements.
        7.0,              // maximum of non-inf and non-nan elements.
        2.0,              // mean of non-inf and non-nan elements.
@@ -351,12 +351,12 @@ TEST_F(DebugNumericSummaryOpTest, Float_all_Inf_or_NaN) {
   // NaNs.
   ASSERT_NEAR(1.0, output[0], 1e-8);  // Is initialized.
   ASSERT_NEAR(9.0, output[1], 1e-8);  // Total element count.
-  ASSERT_NEAR(2.0, output[2], 1e-8);  // -inf count.
-  ASSERT_NEAR(0.0, output[3], 1e-8);  // negative count (excluding -inf).
-  ASSERT_NEAR(0.0, output[4], 1e-8);  // zero count.
-  ASSERT_NEAR(0.0, output[5], 1e-8);  // positive count (excluding +inf).
-  ASSERT_NEAR(3.0, output[6], 1e-8);  // +inf count.
-  ASSERT_NEAR(4.0, output[7], 1e-8);  // nan count.
+  ASSERT_NEAR(4.0, output[2], 1e-8);  // nan count.
+  ASSERT_NEAR(2.0, output[3], 1e-8);  // -inf count.
+  ASSERT_NEAR(0.0, output[4], 1e-8);  // negative count (excluding -inf).
+  ASSERT_NEAR(0.0, output[5], 1e-8);  // zero count.
+  ASSERT_NEAR(0.0, output[6], 1e-8);  // positive count (excluding +inf).
+  ASSERT_NEAR(3.0, output[7], 1e-8);  // +inf count.
   // Due to the absence of any non-inf and non-nan values, the output of min,
   // max, mean and var are all degenerate.
   ASSERT_EQ(std::numeric_limits<float>::infinity(), output[8]);

@@ -241,12 +241,12 @@ class DebugNumericSummaryOp : public OpKernel {
     OP_REQUIRES_OK(context, context->allocate_output(0, shape, &output_tensor));
     output_tensor->vec<double>()(0) = static_cast<double>(is_initialized);
     output_tensor->vec<double>()(1) = static_cast<double>(element_count);
-    output_tensor->vec<double>()(2) = static_cast<double>(negative_inf_count);
-    output_tensor->vec<double>()(3) = static_cast<double>(negative_count);
-    output_tensor->vec<double>()(4) = static_cast<double>(zero_count);
-    output_tensor->vec<double>()(5) = static_cast<double>(positive_count);
-    output_tensor->vec<double>()(6) = static_cast<double>(positive_inf_count);
-    output_tensor->vec<double>()(7) = static_cast<double>(nan_count);
+    output_tensor->vec<double>()(2) = static_cast<double>(nan_count);
+    output_tensor->vec<double>()(3) = static_cast<double>(negative_inf_count);
+    output_tensor->vec<double>()(4) = static_cast<double>(negative_count);
+    output_tensor->vec<double>()(5) = static_cast<double>(zero_count);
+    output_tensor->vec<double>()(6) = static_cast<double>(positive_count);
+    output_tensor->vec<double>()(7) = static_cast<double>(positive_inf_count);
     output_tensor->vec<double>()(8) = min;
     output_tensor->vec<double>()(9) = max;
     output_tensor->vec<double>()(10) = mean;
