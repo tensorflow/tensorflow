@@ -308,7 +308,12 @@ class TensorFlowTestCase(googletest.TestCase):
       sess = self._cached_session
       with sess.graph.as_default(), sess.as_default():
         if force_gpu:
-          with sess.graph.device(gpu_device_name()):
+          # Use the name of an actual device if one is detected, or '/gpu:0'
+          # otherwise
+          gpu_name = gpu_device_name()
+          if len(gpu_name) == 0:
+            gpu_name = '/gpu:0'
+          with sess.graph.device(gpu_name):
             yield sess
         elif use_gpu:
           yield sess
@@ -318,7 +323,12 @@ class TensorFlowTestCase(googletest.TestCase):
     else:
       with session.Session(graph=graph, config=prepare_config(config)) as sess:
         if force_gpu:
-          with sess.graph.device(gpu_device_name()):
+          # Use the name of an actual device if one is detected, or '/gpu:0'
+          # otherwise
+          gpu_name = gpu_device_name()
+          if len(gpu_name) == 0:
+            gpu_name = '/gpu:0'
+          with sess.graph.device(gpu_name):
             yield sess
         elif use_gpu:
           yield sess
