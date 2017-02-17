@@ -104,7 +104,9 @@ def scalar(name, tensor, collections=None, prefix=''):
     tensor: A real numeric Tensor containing a single value.
     collections: Optional list of graph collections keys. The new summary op is
       added to these collections. Defaults to `[GraphKeys.SUMMARIES]`.
-    prefix: Optional string tensor
+    prefix: Optional string tensor. If provided, it will be a prefix to the
+      summary's tag in TensorBoard. This can be used when the tag need to be
+      defined dynamically at run time.
 
   Returns:
     A scalar `Tensor` of type `string`. Which contains a `Summary` protobuf.
@@ -160,7 +162,9 @@ def image(name, tensor, max_outputs=3, collections=None, prefix=''):
     max_outputs: Max number of batch elements to generate images for.
     collections: Optional list of ops.GraphKeys.  The collections to add the
       summary to.  Defaults to [_ops.GraphKeys.SUMMARIES]
-    prefix: Optional string tensor
+    prefix: Optional string tensor. If provided, it will be a prefix to the
+      summary's tag in TensorBoard. This can be used when the tag need to be
+      defined dynamically at run time.
 
   Returns:
     A scalar `Tensor` of type `string`. The serialized `Summary` protocol
@@ -196,7 +200,9 @@ def histogram(name, values, collections=None, prefix=''):
       build the histogram.
     collections: Optional list of graph collections keys. The new summary op is
       added to these collections. Defaults to `[GraphKeys.SUMMARIES]`.
-    prefix: Optional string tensor
+    prefix: Optional string tensor. If provided, it will be a prefix to the
+      summary's tag in TensorBoard. This can be used when the tag need to be
+      defined dynamically at run time.
 
   Returns:
     A scalar `Tensor` of type `string`. The serialized `Summary` protocol
@@ -240,7 +246,9 @@ def audio(name, tensor, sample_rate, max_outputs=3, collections=None, prefix='')
     max_outputs: Max number of batch elements to generate audio for.
     collections: Optional list of ops.GraphKeys.  The collections to add the
       summary to.  Defaults to [_ops.GraphKeys.SUMMARIES]
-    prefix: Optional string tensor
+    prefix: Optional string tensor. If provided, it will be a prefix to the
+      summary's tag in TensorBoard. This can be used when the tag need to be
+      defined dynamically at run time.
 
   Returns:
     A scalar `Tensor` of type `string`. The serialized `Summary` protocol
