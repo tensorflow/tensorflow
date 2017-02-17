@@ -105,7 +105,7 @@ def scalar(name, tensor, collections=None, prefix=''):
     collections: Optional list of graph collections keys. The new summary op is
       added to these collections. Defaults to `[GraphKeys.SUMMARIES]`.
     prefix: Optional string tensor. If provided, it will be a prefix to the
-      summary's tag in TensorBoard. This can be used when the tag need to be
+      summary's tag in TensorBoard. This can be used when the tag needs to be
       defined dynamically at run time.
 
   Returns:
@@ -163,7 +163,7 @@ def image(name, tensor, max_outputs=3, collections=None, prefix=''):
     collections: Optional list of ops.GraphKeys.  The collections to add the
       summary to.  Defaults to [_ops.GraphKeys.SUMMARIES]
     prefix: Optional string tensor. If provided, it will be a prefix to the
-      summary's tag in TensorBoard. This can be used when the tag need to be
+      summary's tag in TensorBoard. This can be used when the tag needs to be
       defined dynamically at run time.
 
   Returns:
@@ -201,7 +201,7 @@ def histogram(name, values, collections=None, prefix=''):
     collections: Optional list of graph collections keys. The new summary op is
       added to these collections. Defaults to `[GraphKeys.SUMMARIES]`.
     prefix: Optional string tensor. If provided, it will be a prefix to the
-      summary's tag in TensorBoard. This can be used when the tag need to be
+      summary's tag in TensorBoard. This can be used when the tag needs to be
       defined dynamically at run time.
 
   Returns:
@@ -247,7 +247,7 @@ def audio(name, tensor, sample_rate, max_outputs=3, collections=None, prefix='')
     collections: Optional list of ops.GraphKeys.  The collections to add the
       summary to.  Defaults to [_ops.GraphKeys.SUMMARIES]
     prefix: Optional string tensor. If provided, it will be a prefix to the
-      summary's tag in TensorBoard. This can be used when the tag need to be
+      summary's tag in TensorBoard. This can be used when the tag needs to be
       defined dynamically at run time.
 
   Returns:
