@@ -13,6 +13,7 @@ RUN /install/install_bazel.sh
 RUN /install/install_proto3.sh
 RUN /install/install_buildifier.sh
 RUN /install/install_auditwheel.sh
+RUN /install/install_golang.sh
 
 # Set up bazelrc.
 COPY install/.bazelrc /root/.bazelrc
