@@ -456,11 +456,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   native.new_http_archive(
       name = "grpc",
       urls = [
-          #"http://bazel-mirror.storage.googleapis.com/github.com/grpc/grpc/archive/ee31910271a72c4e454a9d64ceafa530566388a6.tar.gz",
-          "https://github.com/grpc/grpc/archive/ee31910271a72c4e454a9d64ceafa530566388a6.tar.gz",
+          "http://bazel-mirror.storage.googleapis.com/github.com/grpc/grpc/archive/2ad3d73f9557da88b5c8898b991ffb4a4d8d1e3e.tar.gz",
+          "https://github.com/grpc/grpc/archive/2ad3d73f9557da88b5c8898b991ffb4a4d8d1e3e.tar.gz",
       ],
-      sha256 = "24d1ca7d8111e97ac9b19c67c7d6cb98f73c377e47cbd892e3e37600237c6fe7",
-      strip_prefix = "grpc-ee31910271a72c4e454a9d64ceafa530566388a6",
+      sha256 = "9ac0a49ca73aafe628a39838f2dcefd75569109e964d000cd7b396012677027d",
+      strip_prefix = "grpc-2ad3d73f9557da88b5c8898b991ffb4a4d8d1e3e",
       build_file = str(Label("//third_party:grpc.BUILD")),
   )
 

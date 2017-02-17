@@ -107,6 +107,7 @@ filegroup(
         "@jpeg//:LICENSE.md",
         "@libxsmm_archive//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
+        "@grpc//third_party/nanopb:LICENSE.txt",
         "@png_archive//:LICENSE",
         "@protobuf_archive//:LICENSE",
         "@six_archive//:LICENSE",
