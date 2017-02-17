@@ -101,6 +101,12 @@ class ReaderBase : public ReaderInterface {
   Status RestoreBaseState(const ReaderBaseState& state);
 
  private:
+  // For descendants that wish to obtain the next work item in a different way.
+  // For implementing Read().  Dequeues the next work item from
+  // *queue, and if successful returns "work" (a string). May block.
+  virtual string GetNextWorkLocked(QueueInterface* queue,
+                                   OpKernelContext* context) const;
+
   // Implementations of ReaderInterface methods.  These ensure thread-safety
   // and call the methods above to do the work.
   void Read(QueueInterface* queue, string* key, string* value,
@@ -117,12 +123,6 @@ class ReaderBase : public ReaderInterface {
   int64 NumWorkUnitsCompleted() override;
   Status SerializeState(string* state) override;
   Status RestoreState(const string& state) override;
-
-  // For implementing Read().  Dequeues the next work item from
-  // *queue, and if successful updates work_, work_started_
-  // (establishing work_in_progress() == true) and calls
-  // OnWorkStartedLocked().  May block.
-  void GetNextWorkLocked(QueueInterface* queue, OpKernelContext* context);
 
   mutable mutex mu_;
   const string name_;

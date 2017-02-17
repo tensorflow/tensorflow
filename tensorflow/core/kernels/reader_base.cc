@@ -88,7 +88,13 @@ int64 ReaderBase::ReadUpTo(const int64 num_records, QueueInterface* queue,
       return records_produced_this_call;
     }
     if (!work_in_progress()) {
-      GetNextWorkLocked(queue, context);
+      work_ = GetNextWorkLocked(queue, context);
+      Status status = OnWorkStartedLocked();
+      if (status.ok()) {
+        work_started_++;
+      } else {
+        context->SetStatus(status);
+      }
       if (!context->status().ok()) return records_produced_this_call;
     }
     bool at_end = false;
@@ -145,7 +151,13 @@ void ReaderBase::Read(QueueInterface* queue, string* key, string* value,
   mutex_lock lock(mu_);
   while (true) {
     if (!work_in_progress()) {
-      GetNextWorkLocked(queue, context);
+      work_ = GetNextWorkLocked(queue, context);
+      Status status = OnWorkStartedLocked();
+      if (status.ok()) {
+        work_started_++;
+      } else {
+        context->SetStatus(status);
+      }
       if (!context->status().ok()) return;
     }
 
@@ -178,11 +190,12 @@ void ReaderBase::Read(QueueInterface* queue, string* key, string* value,
   }
 }
 
-void ReaderBase::GetNextWorkLocked(QueueInterface* queue,
-                                   OpKernelContext* context) {
+string ReaderBase::GetNextWorkLocked(QueueInterface* queue,
+                                     OpKernelContext* context) const {
+  string work;
   Notification n;
   queue->TryDequeue(
-      context, [this, context, &n](const QueueInterface::Tuple& tuple) {
+      context, [this, context, &n, &work](const QueueInterface::Tuple& tuple) {
         if (context->status().ok()) {
           if (tuple.size() != 1) {
             context->SetStatus(
@@ -194,18 +207,13 @@ void ReaderBase::GetNextWorkLocked(QueueInterface* queue,
             context->SetStatus(errors::InvalidArgument(
                 "Expected to dequeue a one-element string tensor"));
           } else {
-            work_ = tuple[0].flat<string>()(0);
-            ++work_started_;
-            Status status = OnWorkStartedLocked();
-            if (!status.ok()) {
-              context->SetStatus(status);
-              --work_started_;
-            }
+            work = tuple[0].flat<string>()(0);
           }
         }
         n.Notify();
       });
   n.WaitForNotification();
+  return work;
 }
 
 void ReaderBase::SaveBaseState(ReaderBaseState* state) const {
