@@ -17,10 +17,7 @@ limitations under the License.
 
 namespace tensorflow {
 /* static */ constexpr int IGraphTransferOpsDefinitions::INVALID_OP_ID;
-/* static */ constexpr const char* const
-    IGraphTransferOpsDefinitions::INPUT_OP_NAME;
-/* static */ constexpr const char* const
-    IGraphTransferOpsDefinitions::OUTPUT_OP_NAME;
+// TODO(satok): Remove
 /* static */ constexpr const char* const
     IGraphTransferOpsDefinitions::FLATTEN_OP_NAME;
 }

@@ -106,6 +106,9 @@ class GraphTransferer {
   // Return parameters for graph transfer
   const GraphTransferInfo& GetGraphTransferInfo() const;
 
+  // Dump verification string of parameters to verify with offline tools
+  void DumpVerificationStringOfNodeTransferParams() const;
+
  private:
   class TransferParamsComparator {
    public:
@@ -154,11 +157,6 @@ class GraphTransferer {
                          const ShapeRefiner& shape_refiner,
                          const OutputTensorMap& output_tensor_map,
                          const Node& node);
-
-  void RegisterOutputNode(const IGraphTransferOpsDefinitions& ops_definitions,
-                          const ShapeRefiner& shape_refiner,
-                          const OutputTensorMap& output_tensor_map,
-                          const Node& node);
 
   void RegisterFlattenNode(const IGraphTransferOpsDefinitions& ops_definitions,
                            const ShapeRefiner& shape_refiner,
@@ -221,9 +219,6 @@ class GraphTransferer {
 
   // Dump pretty print of parameters
   void DumpNodeTransferParams() const;
-
-  // Dump verification string of parameters to verify with offline tools
-  void DumpVerificationStringOfNodeTransferParams() const;
 
   GraphTransferInfo graph_transfer_info_{};
 

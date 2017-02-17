@@ -41,9 +41,6 @@ class ExpBijectorTest(test.TestCase):
           bijector.inverse_log_det_jacobian(y).eval())
       self.assertAllClose(-bijector.inverse_log_det_jacobian(np.exp(x)).eval(),
                           bijector.forward_log_det_jacobian(x).eval())
-      rev, jac = bijector.inverse_and_inverse_log_det_jacobian(y)
-      self.assertAllClose(x, rev.eval())
-      self.assertAllClose(-np.sum(np.log(y), axis=-1), jac.eval())
 
   def testScalarCongruency(self):
     with self.test_session():

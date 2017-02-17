@@ -35,9 +35,6 @@ class IdentityBijectorTest(test.TestCase):
       self.assertAllEqual(x, bijector.inverse(x).eval())
       self.assertAllEqual(0., bijector.inverse_log_det_jacobian(x).eval())
       self.assertAllEqual(0., bijector.forward_log_det_jacobian(x).eval())
-      rev, jac = bijector.inverse_and_inverse_log_det_jacobian(x)
-      self.assertAllEqual(x, rev.eval())
-      self.assertAllEqual(0., jac.eval())
 
   def testScalarCongruency(self):
     with self.test_session():

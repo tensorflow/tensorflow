@@ -1,4 +1,4 @@
-// Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+// Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,18 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package tensorflow
+// TODO(ashankar): Remove this file when TensorFlow 1.1 is released.
+// See lib.go for details.
 
-// #cgo LDFLAGS: -ltensorflow
-// #cgo CFLAGS: -I${SRCDIR}/../../
-//
-// // TODO(ashankar): Remove this after TensorFlow 1.1 has been released.
-// // Till then, the TensorFlow C API binary releases do not contain
-// // the TF_DeletePRunHandle symbol. We work around that by
-// // implementing the equivalent in session.cpp
-// extern void tfDeletePRunHandle(const char*);
-import "C"
+extern "C" {
+extern void tfDeletePRunHandle(const char* h);
+}
 
-func deletePRunHandle(h *C.char) {
-	C.tfDeletePRunHandle(h)
+void tfDeletePRunHandle(const char* h) {
+  delete[] h;
 }

@@ -433,7 +433,8 @@ def gradients(ys,
     xs = [x.handle if isinstance(x, resource_variable_ops.ResourceVariable)
           else x
           for x in xs]
-    xs = ops.convert_n_to_tensor_or_indexed_slices(xs, name="x")
+    xs = ops.internal_convert_n_to_tensor_or_indexed_slices(xs, name="x",
+                                                            as_ref=True)
     grad_ys = _DefaultGradYs(grad_ys, ys, colocate_gradients_with_ops)
 
     # The approach we take here is as follows: Create a list of all ops in the

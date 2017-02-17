@@ -46,9 +46,6 @@ class PowerTransformBijectorTest(test.TestCase):
           bijector.forward_log_det_jacobian(x).eval(),
           rtol=1e-4,
           atol=0.)
-      rev, jac = bijector.inverse_and_inverse_log_det_jacobian(y)
-      self.assertAllClose(x, rev.eval())
-      self.assertAllClose((c - 1.) * np.sum(np.log(y), axis=-1), jac.eval())
 
   def testScalarCongruency(self):
     with self.test_session():
