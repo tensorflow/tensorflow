@@ -51,6 +51,11 @@ if [[ "${BUILD_ONLY}" != "true" ]]; then
         echo "adb is not in your path ${PATH}."
         exit 1
     fi
+    if ! adb shell ls /system/lib/rfsa/adsp/testsig* >/dev/null 2>&1; then
+        echo "test signature not found. Unlock your phone first"
+        echo "See ${QUALCOMM_SDK}/tools/elfsigner/README.txt"
+        exit 1
+    fi
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null && pwd)"
