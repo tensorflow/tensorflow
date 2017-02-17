@@ -256,8 +256,7 @@ TEST_F(ConvolutionTest, Convolve_1x1x4x4_1x1x3x3_Same) {
                              error_spec_);
 }
 
-// TODO(b/32873825): implement 1D convolution on GPU.
-XLA_TEST_F(ConvolutionTest, DISABLED_ON_GPU(Convolve1D_1x2x5_1x2x2_Valid)) {
+XLA_TEST_F(ConvolutionTest, Convolve1D_1x2x5_1x2x2_Valid) {
   ComputationBuilder builder(client_, TestName());
   {
     Shape input_shape = ShapeUtil::MakeShape(F32, {1, 2, 5});
@@ -284,9 +283,7 @@ XLA_TEST_F(ConvolutionTest, DISABLED_ON_GPU(Convolve1D_1x2x5_1x2x2_Valid)) {
                              error_spec_);
 }
 
-// TODO(b/32873825): implement 3D convolution on GPU.
-XLA_TEST_F(ConvolutionTest,
-           DISABLED_ON_GPU(Convolve3D_1x4x2x3x3_2x2x2x3x3_Valid)) {
+XLA_TEST_F(ConvolutionTest, Convolve3D_1x4x2x3x3_2x2x2x3x3_Valid) {
   ComputationBuilder builder(client_, TestName());
   std::vector<int64> input_dims = {1, 4, 2, 3, 3};
   std::vector<int64> filter_dims = {2, 2, 2, 3, 3};
