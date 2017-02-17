@@ -835,6 +835,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
     ],
+    shard_count = 5,
 )
 
 cuda_py_test(
