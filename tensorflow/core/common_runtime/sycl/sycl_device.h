@@ -34,10 +34,11 @@ class SYCLDevice : public LocalDevice {
              Bytes memory_limit, const DeviceLocality &locality,
              const string &physical_device_desc, SYCLSelector sycl_selector,
              Allocator *cpu_allocator)
-      : LocalDevice(options, Device::BuildDeviceAttributes(
-                                 name, DEVICE_SYCL, memory_limit, locality,
-                                 physical_device_desc),
-                    nullptr),
+      : LocalDevice(
+            options,
+            Device::BuildDeviceAttributes(name, DEVICE_SYCL, memory_limit,
+                                          locality, physical_device_desc),
+            nullptr),
         cpu_allocator_(cpu_allocator),
         sycl_queue_(new Eigen::QueueInterface(sycl_selector)),
         sycl_device_(new Eigen::SyclDevice(sycl_queue_)),

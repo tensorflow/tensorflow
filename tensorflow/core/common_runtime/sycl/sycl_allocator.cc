@@ -25,7 +25,7 @@ string SYCLAllocator::Name() { return "device:SYCL"; }
 
 void *SYCLAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
   assert(device_);
-  if(num_bytes == 0) {
+  if (num_bytes == 0) {
     return device_->allocate(1);
   }
   auto p = device_->allocate(num_bytes);
@@ -45,6 +45,6 @@ void SYCLAllocator::EnterLameDuckMode() {
   }
 }
 
-} // namespace tensorflow
+}  // namespace tensorflow
 
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
