@@ -1,3 +1,6 @@
+# TODO(jhseu): Switch over to gRPC's BUILD file when this issue is resolved:
+# https://github.com/grpc/grpc/issues/9714
+#
 # gRPC Bazel BUILD file.
 #
 # Copyright 2016, Google Inc.
@@ -527,13 +530,13 @@ grpc_cc_library(
         "src/core/lib/surface/server.c",
         "src/core/lib/surface/validate_metadata.c",
         "src/core/lib/surface/version.c",
+        "src/core/lib/transport/bdp_estimator.c",
         "src/core/lib/transport/byte_stream.c",
         "src/core/lib/transport/connectivity_state.c",
         "src/core/lib/transport/error_utils.c",
         "src/core/lib/transport/metadata.c",
         "src/core/lib/transport/metadata_batch.c",
         "src/core/lib/transport/pid_controller.c",
-        "src/core/lib/transport/bdp_estimator.c",
         "src/core/lib/transport/service_config.c",
         "src/core/lib/transport/static_metadata.c",
         "src/core/lib/transport/status_conversion.c",
@@ -634,6 +637,7 @@ grpc_cc_library(
         "src/core/lib/surface/lame_client.h",
         "src/core/lib/surface/server.h",
         "src/core/lib/surface/validate_metadata.h",
+        "src/core/lib/transport/bdp_estimator.h",
         "src/core/lib/transport/byte_stream.h",
         "src/core/lib/transport/connectivity_state.h",
         "src/core/lib/transport/error_utils.h",
@@ -641,7 +645,6 @@ grpc_cc_library(
         "src/core/lib/transport/metadata.h",
         "src/core/lib/transport/metadata_batch.h",
         "src/core/lib/transport/pid_controller.h",
-        "src/core/lib/transport/bdp_estimator.h",
         "src/core/lib/transport/service_config.h",
         "src/core/lib/transport/static_metadata.h",
         "src/core/lib/transport/status_conversion.h",
@@ -870,8 +873,8 @@ grpc_cc_library(
         "src/core/lib/security/credentials/plugin/plugin_credentials.c",
         "src/core/lib/security/credentials/ssl/ssl_credentials.c",
         "src/core/lib/security/transport/client_auth_filter.c",
-        "src/core/lib/security/transport/secure_endpoint.c",
         "src/core/lib/security/transport/lb_targets_info.c",
+        "src/core/lib/security/transport/secure_endpoint.c",
         "src/core/lib/security/transport/security_connector.c",
         "src/core/lib/security/transport/security_handshaker.c",
         "src/core/lib/security/transport/server_auth_filter.c",
@@ -894,8 +897,8 @@ grpc_cc_library(
         "src/core/lib/security/credentials/plugin/plugin_credentials.h",
         "src/core/lib/security/credentials/ssl/ssl_credentials.h",
         "src/core/lib/security/transport/auth_filters.h",
-        "src/core/lib/security/transport/secure_endpoint.h",
         "src/core/lib/security/transport/lb_targets_info.h",
+        "src/core/lib/security/transport/secure_endpoint.h",
         "src/core/lib/security/transport/security_connector.h",
         "src/core/lib/security/transport/security_handshaker.h",
         "src/core/lib/security/transport/tsi_error.h",
@@ -1268,12 +1271,12 @@ grpc_cc_library(
 
 grpc_cc_library(
     name = "grpc++_config_proto",
+    external_deps = [
+        "protobuf",
+    ],
     language = "c++",
     public_hdrs = [
         "include/grpc++/impl/codegen/config_protobuf.h",
-    ],
-    external_deps = [
-        "protobuf",
     ],
 )
 
