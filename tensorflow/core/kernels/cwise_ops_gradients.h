@@ -151,30 +151,39 @@ struct functor_traits<scalar_rsqrt_gradient_op<T>> {
 namespace tensorflow {
 
 namespace functor {
-template <typename Device, typename Functor>
-struct SimpleBinaryFunctor {};
 
 template <typename Device, typename Functor>
-struct SimpleBinaryFunctorBase {
+struct SimpleBinaryFunctor {
   void operator()(const Device& d, typename Functor::tout_type out,
                   typename Functor::tin_type in0,
-                  typename Functor::tin_type in1) {
-    out.device(d) = in0.binaryExpr(in1, typename Functor::func());
-  }
+                  typename Functor::tin_type in1);
 };
 
 // Partial specialization of BinaryFunctor for CPU devices
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
 template <typename Functor>
-struct SimpleBinaryFunctor<CPUDevice, Functor>
-        : SimpleBinaryFunctorBase<CPUDevice, Functor> {};
+struct SimpleBinaryFunctor<CPUDevice, Functor> {
+  void operator()(const CPUDevice& d, typename Functor::tout_type out,
+                  typename Functor::tin_type in0,
+                  typename Functor::tin_type in1) {
+    out.device(d) = in0.binaryExpr(in1, typename Functor::func());
+  }
+};
+
 
 #ifdef TENSORFLOW_USE_SYCL
+// Partial specialization of BinaryFunctor for SYCL devices
 typedef Eigen::SyclDevice SYCLDevice;
 template <typename Functor>
-struct SimpleBinaryFunctor<SYCLDevice, Functor>
-        : SimpleBinaryFunctorBase<SYCLDevice, Functor> {};
+struct SimpleBinaryFunctor<SYCLDevice, Functor> {
+  void operator()(const SYCLDevice& d, typename Functor::tout_type out,
+                  typename Functor::tin_type in0,
+                  typename Functor::tin_type in1) {
+    out.device(d) = in0.binaryExpr(in1, typename Functor::func());
+  }
+};
+
 #endif // TENSORFLOW_USE_SYCL
 
 template <typename T>
