@@ -46,15 +46,13 @@ class GraphTransfererTest : public ::testing::Test {
   GraphTransferer gt_;
 };
 
-static const std::vector<string> OP_TYPES{"INPUT",   "OUTPUT", "Conv2D",
-                                          "MaxPool", "NoOp",   "Add"};
+static const std::vector<string> OP_TYPES{
+    "INPUT", "OUTPUT", "Conv2D", "MaxPool", "NoOp", "Add", "Const", "Softmax"};
 const GraphTransferer::OutputTensorMap EMPTY_OUTPUT_TENSOR_MAP;
 
 class TestGraphTransferOpsDefinitions : public IGraphTransferOpsDefinitions {
  public:
   int GetTotalOpsCount() const final { return OP_TYPES.size(); }
-  int GetInputNodeOpId() const final { return GetOpIdFor("INPUT"); }
-  int GetOutputNodeOpId() const final { return GetOpIdFor("OUTPUT"); }
   int GetOpIdFor(const string& op_type) const final {
     for (int i = 0; i < OP_TYPES.size(); ++i) {
       if (OP_TYPES[i] == op_type) {
@@ -468,14 +466,6 @@ TEST(HexagonOpsDefinitions, CheckOpsDefinitions) {
       HexagonOpsDefinitions::getInstance();
   const int total_ops_count = ops_definitions.GetTotalOpsCount();
   EXPECT_GT(total_ops_count, 0);
-  const int input_op_id =
-      ops_definitions.GetOpIdFor(IGraphTransferOpsDefinitions::INPUT_OP_NAME);
-  EXPECT_GE(input_op_id, 0);
-  EXPECT_EQ(input_op_id, ops_definitions.GetInputNodeOpId());
-  const int output_op_id =
-      ops_definitions.GetOpIdFor(IGraphTransferOpsDefinitions::OUTPUT_OP_NAME);
-  EXPECT_GE(output_op_id, 0);
-  EXPECT_EQ(output_op_id, ops_definitions.GetOutputNodeOpId());
 }
 
 TEST(GraphTransferer, LoadGraphFromProtoFile) {

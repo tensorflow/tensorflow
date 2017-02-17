@@ -47,6 +47,9 @@ class HexagonControlWrapper final : public ISocControlWrapper {
   // CAVEAT: Need offset as HVX library reserves some ids
   static constexpr int NODE_ID_OFFSET = 0x10000;
 
+  static GraphTransferInfo::NodeInfo* FindNodeInfo(
+      const string& node_name, GraphTransferInfo* graph_transfer_info);
+
   // Dummy float array for input node.
   // TODO(satok): Use actual data passed by FillInputNode and remove
   std::vector<float> dummy_input_float_;
