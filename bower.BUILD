@@ -209,6 +209,7 @@ filegroup(
     name = "iron_overlay_behavior",
     srcs = [
         "index.html",
+        "iron-focusables-helper.html",
         "iron-overlay-backdrop.html",
         "iron-overlay-behavior.html",
         "iron-overlay-manager.html",
@@ -229,6 +230,14 @@ filegroup(
         "demo/src/x-app.html",
         "index.html",
         "iron-resizable-behavior.html",
+    ],
+)
+
+filegroup(
+    name = "iron_scroll_target_behavior",
+    srcs = [
+        "index.html",
+        "iron-scroll-target-behavior.html",
     ],
 )
 
@@ -343,7 +352,6 @@ filegroup(
     name = "paper_checkbox",
     srcs = [
         "index.html",
-        "metadata.html",
         "paper-checkbox.html",
     ],
 )
@@ -367,10 +375,21 @@ filegroup(
 )
 
 filegroup(
+    name = "paper_dialog_scrollable",
+    srcs = [
+        "index.html",
+        "paper-dialog-scrollable.html",
+    ],
+)
+
+filegroup(
     name = "paper_dropdown_menu",
     srcs = [
         "index.html",
         "paper-dropdown-menu.html",
+        "paper-dropdown-menu-icons.html",
+        "paper-dropdown-menu-light.html",
+        "paper-dropdown-menu-shared-styles.html",
     ],
 )
 
@@ -416,6 +435,14 @@ filegroup(
         "paper-item-behavior.html",
         "paper-item-body.html",
         "paper-item-shared-styles.html",
+    ],
+)
+
+filegroup(
+    name = "paper_listbox",
+    srcs = [
+        "index.html",
+        "paper-listbox.html",
     ],
 )
 
@@ -488,6 +515,17 @@ filegroup(
 )
 
 filegroup(
+    name = "paper_spinner",
+    srcs = [
+        "index.html",
+        "paper-spinner.html",
+        "paper-spinner-behavior.html",
+        "paper-spinner-lite.html",
+        "paper-spinner-styles.html",
+    ],
+)
+
+filegroup(
     name = "paper_styles",
     srcs = [
         "classes/global.html",
@@ -517,6 +555,14 @@ filegroup(
 )
 
 filegroup(
+    name = "paper_toast",
+    srcs = [
+        "index.html",
+        "paper-toast.html",
+    ],
+)
+
+filegroup(
     name = "paper_toggle_button",
     srcs = [
         "index.html",
@@ -529,6 +575,14 @@ filegroup(
     srcs = [
         "index.html",
         "paper-toolbar.html",
+    ],
+)
+
+filegroup(
+    name = "paper_tooltip",
+    srcs = [
+        "index.html",
+        "paper-tooltip.html",
     ],
 )
 

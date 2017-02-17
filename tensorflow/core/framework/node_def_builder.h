@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -114,7 +114,8 @@ class NodeDefBuilder {
   // not be valid!  Call ValidateNodeDef() from node_def_utils to be sure.
   Status Finalize(NodeDef* node_def) const;
 
-  // Accessor for the OpDef set in the constructor.
+  // Accessors for the values set in the constructor.
+  const string& node_name() const { return node_def_.name(); }
   const OpDef& op_def() const { return *op_def_; }
 
  private:

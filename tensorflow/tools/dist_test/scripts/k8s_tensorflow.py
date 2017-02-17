@@ -1,5 +1,5 @@
 #!/usr/bin/python
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Generates YAML configuration files for distributed Tensorflow workers.
+"""Generates YAML configuration files for distributed TensorFlow workers.
 
 The workers will be run in a Kubernetes (k8s) container cluster.
 """
@@ -34,17 +34,22 @@ DEFAULT_DOCKER_IMAGE = 'tensorflow/tf_grpc_test_server'
 DEFAULT_PORT = 2222
 
 # TODO(cais): Consider adding resource requests/limits to the pods.
+
+# Worker pods will mount host volume /shared, as a convenient way to create
+# shared storage among workers during local tests.
 WORKER_RC = (
     """apiVersion: v1
 kind: ReplicationController
 metadata:
-  name: tf-worker{worker_id}
+  name: {name_prefix}-worker{worker_id}
 spec:
   replicas: 1
   template:
     metadata:
       labels:
         tf-worker: "{worker_id}"
+        name-prefix: "{name_prefix}"
+        job: "worker"
     spec:
       containers:
       - name: tf-worker{worker_id}
@@ -55,12 +60,17 @@ spec:
           - --task_id={worker_id}
         ports:
         - containerPort: {port}
+        env:
+        - name: POD_NAME_PREFIX
+          value: {name_prefix}
+        volumeMounts: [{volume_mounts}]
+      volumes: [{volumes}]
 """)
 WORKER_SVC = (
     """apiVersion: v1
 kind: Service
 metadata:
-  name: tf-worker{worker_id}
+  name: {name_prefix}-worker{worker_id}
   labels:
     tf-worker: "{worker_id}"
 spec:
@@ -74,7 +84,7 @@ WORKER_LB_SVC = (
     """apiVersion: v1
 kind: Service
 metadata:
-  name: tf-worker{worker_id}
+  name: {name_prefix}-worker{worker_id}
   labels:
     tf-worker: "{worker_id}"
 spec:
@@ -88,13 +98,15 @@ PARAM_SERVER_RC = (
     """apiVersion: v1
 kind: ReplicationController
 metadata:
-  name: tf-ps{param_server_id}
+  name: {name_prefix}-ps{param_server_id}
 spec:
   replicas: 1
   template:
     metadata:
       labels:
         tf-ps: "{param_server_id}"
+        name-prefix: "{name_prefix}"
+        job: "ps"
     spec:
       containers:
       - name: tf-ps{param_server_id}
@@ -105,12 +117,17 @@ spec:
           - --task_id={param_server_id}
         ports:
         - containerPort: {port}
+        env:
+        - name: POD_NAME_PREFIX
+          value: {name_prefix}
+        volumeMounts: [{volume_mounts}]
+      volumes: [{volumes}]
 """)
 PARAM_SERVER_SVC = (
     """apiVersion: v1
 kind: Service
 metadata:
-  name: tf-ps{param_server_id}
+  name: {name_prefix}-ps{param_server_id}
   labels:
     tf-ps: "{param_server_id}"
 spec:
@@ -119,11 +136,28 @@ spec:
   selector:
     tf-ps: "{param_server_id}"
 """)
+PARAM_LB_SVC = ("""apiVersion: v1
+kind: Service
+metadata:
+  name: {name_prefix}-ps{param_server_id}
+  labels:
+    tf-ps: "{param_server_id}"
+spec:
+  type: LoadBalancer
+  ports:
+  - port: {port}
+  selector:
+    tf-ps: "{param_server_id}"
+""")
+VOLUME_MOUNTS = '{name: shared, mountPath: /shared}'
+VOLUMES = '{name: shared, hostPath: {path: /shared}}'
 
 
 def main():
   """Do arg parsing."""
   parser = argparse.ArgumentParser()
+  parser.register(
+      'type', 'bool', lambda v: v.lower() in ('true', 't', 'y', 'yes'))
   parser.add_argument('--num_workers',
                       type=int,
                       default=2,
@@ -137,7 +171,7 @@ def main():
                       default=DEFAULT_PORT,
                       help='GRPC server port (Default: %d)' % DEFAULT_PORT)
   parser.add_argument('--request_load_balancer',
-                      type=bool,
+                      type='bool',
                       default=False,
                       help='To request worker0 to be exposed on a public IP '
                       'address via an external load balancer, enabling you to '
@@ -147,6 +181,16 @@ def main():
                       default=DEFAULT_DOCKER_IMAGE,
                       help='Override default docker image for the TensorFlow '
                       'GRPC server')
+  parser.add_argument('--name_prefix',
+                      type=str,
+                      default='tf',
+                      help='Prefix for job names. Jobs will be named as '
+                      '<name_prefix>_worker|ps<task_id>')
+  parser.add_argument('--use_shared_volume',
+                      type='bool',
+                      default=True,
+                      help='Whether to mount /shared directory from host to '
+                      'the pod')
   args = parser.parse_args()
 
   if args.num_workers <= 0:
@@ -164,7 +208,9 @@ def main():
                                args.num_parameter_servers,
                                args.grpc_port,
                                args.request_load_balancer,
-                               args.docker_image)
+                               args.docker_image,
+                               args.name_prefix,
+                               args.use_shared_volume)
   print(yaml_config)  # pylint: disable=superfluous-parens
 
 
@@ -172,7 +218,9 @@ def GenerateConfig(num_workers,
                    num_param_servers,
                    port,
                    request_load_balancer,
-                   docker_image):
+                   docker_image,
+                   name_prefix,
+                   use_shared_volume):
   """Generate configuration strings."""
   config = ''
   for worker in range(num_workers):
@@ -180,16 +228,22 @@ def GenerateConfig(num_workers,
         port=port,
         worker_id=worker,
         docker_image=docker_image,
+        name_prefix=name_prefix,
+        volume_mounts=VOLUME_MOUNTS if use_shared_volume else '',
+        volumes=VOLUMES if use_shared_volume else '',
         cluster_spec=WorkerClusterSpecString(num_workers,
                                              num_param_servers,
-                                             port))
+                                             port,
+                                             name_prefix))
     config += '---\n'
     if request_load_balancer:
       config += WORKER_LB_SVC.format(port=port,
-                                     worker_id=worker)
+                                     worker_id=worker,
+                                     name_prefix=name_prefix)
     else:
       config += WORKER_SVC.format(port=port,
-                                  worker_id=worker)
+                                  worker_id=worker,
+                                  name_prefix=name_prefix)
     config += '---\n'
 
   for param_server in range(num_param_servers):
@@ -197,12 +251,20 @@ def GenerateConfig(num_workers,
         port=port,
         param_server_id=param_server,
         docker_image=docker_image,
+        name_prefix=name_prefix,
+        volume_mounts=VOLUME_MOUNTS if use_shared_volume else '',
+        volumes=VOLUMES if use_shared_volume else '',
         cluster_spec=ParamServerClusterSpecString(num_workers,
                                                   num_param_servers,
-                                                  port))
+                                                  port,
+                                                  name_prefix))
     config += '---\n'
-    config += PARAM_SERVER_SVC.format(port=port,
-                                      param_server_id=param_server)
+    if request_load_balancer:
+      config += PARAM_LB_SVC.format(
+          port=port, param_server_id=param_server, name_prefix=name_prefix)
+    else:
+      config += PARAM_SERVER_SVC.format(
+          port=port, param_server_id=param_server, name_prefix=name_prefix)
     config += '---\n'
 
   return config
@@ -210,31 +272,35 @@ def GenerateConfig(num_workers,
 
 def WorkerClusterSpecString(num_workers,
                             num_param_servers,
-                            port):
+                            port,
+                            name_prefix):
   """Generates worker cluster spec."""
-  return ClusterSpecString(num_workers, num_param_servers, port)
+  return ClusterSpecString(num_workers, num_param_servers, port, name_prefix)
 
 
 def ParamServerClusterSpecString(num_workers,
                                  num_param_servers,
-                                 port):
+                                 port,
+                                 name_prefix):
   """Generates parameter server spec."""
-  return ClusterSpecString(num_workers, num_param_servers, port)
+  return ClusterSpecString(num_workers, num_param_servers, port,
+                           name_prefix)
 
 
 def ClusterSpecString(num_workers,
                       num_param_servers,
-                      port):
+                      port,
+                      name_prefix):
   """Generates general cluster spec."""
   spec = 'worker|'
   for worker in range(num_workers):
-    spec += 'tf-worker%d:%d' % (worker, port)
+    spec += '%s-worker%d:%d' % (name_prefix, worker, port)
     if worker != num_workers-1:
       spec += ';'
 
   spec += ',ps|'
   for param_server in range(num_param_servers):
-    spec += 'tf-ps%d:%d' % (param_server, port)
+    spec += '%s-ps%d:%d' % (name_prefix, param_server, port)
     if param_server != num_param_servers-1:
       spec += ';'
 

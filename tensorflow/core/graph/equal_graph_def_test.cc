@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/version.h"
 
@@ -51,9 +52,9 @@ class EqualGraphDefTest : public ::testing::Test {
 
   bool Match() {
     GraphDef expected;
-    e_.ToGraphDef(&expected);
+    TF_EXPECT_OK(e_.ToGraphDef(&expected));
     GraphDef actual;
-    a_.ToGraphDef(&actual);
+    TF_EXPECT_OK(a_.ToGraphDef(&actual));
     return EqualGraphDef(actual, expected, &diff_);
   }
 

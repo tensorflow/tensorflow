@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -58,6 +58,14 @@ TEST(TensorUtil, DeepCopy0d) {
   EXPECT_EQ(DT_FLOAT, x.dtype());
   EXPECT_EQ(DT_FLOAT, y.dtype());
   EXPECT_EQ(DT_FLOAT, z.dtype());
+}
+
+TEST(TensorUtil, DeepCopyZeroElements) {
+  Tensor x;
+  Tensor y = tensor::DeepCopy(x);
+  EXPECT_EQ(TensorShape({0}), y.shape());
+  EXPECT_EQ(DT_FLOAT, y.dtype());
+  EXPECT_EQ(0, y.NumElements());
 }
 
 TEST(TensorUtil, DeepCopy) {

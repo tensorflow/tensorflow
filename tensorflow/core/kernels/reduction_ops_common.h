@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -40,6 +40,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif // TENSORFLOW_USE_SYCL
 
 template <typename Device>
 struct Constants {
@@ -60,13 +63,16 @@ struct Constants {
 };
 
 #if defined(EIGEN_HAS_INDEX_LIST)
-template <>
-struct Constants<CPUDevice> {
+struct ConstantsBase {
   const Eigen::IndexList<Eigen::type2index<0>> kZero;
   const Eigen::IndexList<Eigen::type2index<1>> kOne;
   const Eigen::IndexList<Eigen::type2index<0>, Eigen::type2index<2>> kZeroTwo;
 };
-#endif
+template<> struct Constants<CPUDevice> : ConstantsBase{};
+#ifdef TENSORFLOW_USE_SYCL
+template<> struct Constants<SYCLDevice> : ConstantsBase{};
+#endif // TENSORFLOW_USE_SYCL
+#endif // EIGEN_HAS_INDEX_LIST
 
 class ReductionHelper {
  public:
@@ -178,8 +184,13 @@ class ReductionOp : public OpKernel {
 
     if (tmp_out.NumElements() == 0) {
       // Nothing to do, fall through to final reshaping.
-    }
-    if ((helper.ndims() == 1) && helper.reduce_first_axis()) {
+    } else if (data.NumElements() == 0) {
+      // Degenerate reduction where the input is empty but the output is
+      // nonempty (thus tmp_out.NumElements() > 0), and we must fill the output
+      // with identity elements.  Example: tf.reduce_sum(tf.zeros((0, 3)), [0]).
+      // Eigen sometimes crashes in this case, so we do it manually.
+      Functor::FillIdentity(d, tmp_out.flat<T>(), reducer);
+    } else if ((helper.ndims() == 1) && helper.reduce_first_axis()) {
       // Reduce to a scalar.
       Functor::Reduce(d, helper.out<T, 0>(&tmp_out), helper.in<T, 1>(data),
                       constants.kZero, reducer);
@@ -234,15 +245,30 @@ class ReductionOp : public OpKernel {
 
 namespace functor {
 
-template <typename Reducer>
-struct ReduceFunctor<CPUDevice, Reducer> {
+template <typename Device, typename Reducer>
+struct ReduceFunctorBase {
   template <typename OUT_T, typename IN_T, typename ReductionAxes>
-  static void Reduce(const CPUDevice& d, OUT_T out, IN_T in,
+  static void Reduce(const Device& d, OUT_T out, IN_T in,
                      const ReductionAxes& reduction_axes,
                      const Reducer& reducer) {
     ReduceEigenImpl(d, out, in, reduction_axes, reducer);
   }
+
+  template <typename OUT_T>
+  static void FillIdentity(const Device& d, OUT_T out,
+                           const Reducer& reducer) {
+    FillIdentityEigenImpl(d, out, reducer);
+  }
 };
+
+template <typename Reducer>
+struct ReduceFunctor<CPUDevice, Reducer>
+        : ReduceFunctorBase<CPUDevice, Reducer>{};
+#if TENSORFLOW_USE_SYCL
+template <typename Reducer>
+struct ReduceFunctor<SYCLDevice, Reducer>
+        : ReduceFunctorBase<SYCLDevice, Reducer>{};
+#endif // TENSORFLOW_USE_SYCL
 
 }  // namespace functor
 }  // namespace tensorflow

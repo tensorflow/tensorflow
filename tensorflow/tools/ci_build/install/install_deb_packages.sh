@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,41 +15,48 @@
 # ==============================================================================
 
 set -e
+ubuntu_version=$(cat /etc/issue | grep -i ubuntu | awk '{print $2}' | \
+  awk -F'.' '{print $1}')
 
 # Install dependencies from ubuntu deb repository.
 apt-get update
 
-# gfortran, atlas, blas and lapack required by scipy pip install
-apt-get install -y \
+if [[ "$ubuntu_version" == "14" ]]; then
+  # specifically for trusty linked from ffmpeg.org
+  add-apt-repository -y ppa:mc3man/trusty-media
+  apt-get update
+  apt-get dist-upgrade -y
+fi
+
+apt-get install -y --no-install-recommends \
     autoconf \
     automake \
-    bc \
     build-essential \
     cmake \
     curl \
     ffmpeg \
     git \
-    gfortran \
-    libatlas-base-dev \
-    libblas-dev \
     libcurl4-openssl-dev \
-    liblapack-dev \
     libtool \
     openjdk-8-jdk \
     openjdk-8-jre-headless \
     pkg-config \
     python-dev \
-    python-numpy \
     python-pip \
-    python-virtualenv \
     python3-dev \
-    python3-numpy \
     python3-pip \
+    rsync \
     sudo \
     swig \
     unzip \
+    virtualenv \
     wget \
     zip \
     zlib1g-dev
+
+# Install ca-certificates, and update the certificate store.
+apt-get install -y ca-certificates-java
+update-ca-certificates -f
+
 apt-get clean
 rm -rf /var/lib/apt/lists/*

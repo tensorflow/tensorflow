@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -51,7 +51,7 @@ class Array {
  public:
   PHILOX_DEVICE_INLINE Array() {
     for (int i = 0; i < ElementCount; ++i) {
-      data_[i] = T();
+      data_[i] = T(0);
     }
   }
 
@@ -204,7 +204,7 @@ class PhiloxRandom {
   PHILOX_DEVICE_INLINE
   static void MultiplyHighLow(uint32 a, uint32 b, uint32* result_low,
                               uint32* result_high) {
-#ifndef __GCUDACC__
+#ifndef __CUDA_ARCH__
     const uint64 product = static_cast<uint64>(a) * b;
     *result_low = static_cast<uint32>(product);
     *result_high = static_cast<uint32>(product >> 32);

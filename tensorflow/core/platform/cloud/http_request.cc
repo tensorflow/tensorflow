@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,185 +14,114 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/platform/cloud/http_request.h"
-#include <dlfcn.h>
-#include <stdio.h>
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
+
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/scanner.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
 
 namespace {
 
-// Windows is not currently supported.
-constexpr char kCurlLibLinux[] = "libcurl.so.3";
-constexpr char kCurlLibMac[] = "/usr/lib/libcurl.3.dylib";
-
-constexpr char kCertsPath[] = "/etc/ssl/certs";
-
 // Set to 1 to enable verbose debug output from curl.
 constexpr uint64 kVerboseOutput = 0;
 
-/// An implementation that dynamically loads libcurl and forwards calls to it.
+// Timeout for the whole request. Set only to prevent hanging indefinitely.
+constexpr uint32 kRequestTimeoutSeconds = 3600;  // 1 hour
+
+// Timeout for the connection phase.
+constexpr uint32 kConnectTimeoutSeconds = 120;  // 2 minutes
+
+// Proxy to the real libcurl implementation.
 class LibCurlProxy : public LibCurl {
  public:
-  ~LibCurlProxy() {
-    if (dll_handle_) {
-      dlclose(dll_handle_);
-    }
+  static LibCurlProxy* Load() {
+    static LibCurlProxy* libcurl = []() -> LibCurlProxy* {
+      curl_global_init(CURL_GLOBAL_ALL);
+      return new LibCurlProxy;
+    }();
+    return libcurl;
   }
 
-  Status MaybeLoadDll() override {
-    if (dll_handle_) {
-      return Status::OK();
-    }
-    // This may have been linked statically; if curl_easy_init is in the
-    // current binary, no need to search for a dynamic version.
-    dll_handle_ = load_dll(nullptr);
-    if (!dll_handle_) {
-      dll_handle_ = load_dll(kCurlLibLinux);
-    }
-    if (!dll_handle_) {
-      dll_handle_ = load_dll(kCurlLibMac);
-    }
-    if (!dll_handle_) {
-      return errors::FailedPrecondition(strings::StrCat(
-          "Could not initialize the libcurl library. Please make sure that "
-          "libcurl is installed in the OS or statically linked to the "
-          "TensorFlow binary."));
-    }
-    curl_global_init_(CURL_GLOBAL_ALL);
-    return Status::OK();
-  }
-
-  CURL* curl_easy_init() override {
-    CHECK(dll_handle_);
-    return curl_easy_init_();
-  }
+  CURL* curl_easy_init() override { return ::curl_easy_init(); }
 
   CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
                             uint64 param) override {
-    CHECK(dll_handle_);
-    return curl_easy_setopt_(curl, option, param);
+    return ::curl_easy_setopt(curl, option, param);
   }
 
   CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
                             const char* param) override {
-    CHECK(dll_handle_);
-    return curl_easy_setopt_(curl, option, param);
+    return ::curl_easy_setopt(curl, option, param);
   }
+
   CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
                             void* param) override {
-    CHECK(dll_handle_);
-    return curl_easy_setopt_(curl, option, param);
+    return ::curl_easy_setopt(curl, option, param);
   }
+
   CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
                             size_t (*param)(void*, size_t, size_t,
                                             FILE*)) override {
-    CHECK(dll_handle_);
-    return curl_easy_setopt_(curl, option, param);
+    return ::curl_easy_setopt(curl, option, param);
   }
+
   CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
                             size_t (*param)(const void*, size_t, size_t,
                                             void*)) override {
-    CHECK(dll_handle_);
-    return curl_easy_setopt_(curl, option, param);
+    return ::curl_easy_setopt(curl, option, param);
   }
 
   CURLcode curl_easy_perform(CURL* curl) override {
-    CHECK(dll_handle_);
-    return curl_easy_perform_(curl);
+    return ::curl_easy_perform(curl);
   }
 
   CURLcode curl_easy_getinfo(CURL* curl, CURLINFO info,
                              uint64* value) override {
-    CHECK(dll_handle_);
-    return curl_easy_getinfo_(curl, info, value);
+    return ::curl_easy_getinfo(curl, info, value);
   }
+
   CURLcode curl_easy_getinfo(CURL* curl, CURLINFO info,
                              double* value) override {
-    CHECK(dll_handle_);
-    return curl_easy_getinfo_(curl, info, value);
+    return ::curl_easy_getinfo(curl, info, value);
   }
+
   void curl_easy_cleanup(CURL* curl) override {
-    CHECK(dll_handle_);
-    return curl_easy_cleanup_(curl);
+    return ::curl_easy_cleanup(curl);
+  }
+
+  char* curl_easy_escape(CURL* curl, const char* str, int length) override {
+    return ::curl_easy_escape(curl, str, length);
   }
 
   curl_slist* curl_slist_append(curl_slist* list, const char* str) override {
-    CHECK(dll_handle_);
-    return curl_slist_append_(list, str);
+    return ::curl_slist_append(list, str);
   }
 
   void curl_slist_free_all(curl_slist* list) override {
-    CHECK(dll_handle_);
-    return curl_slist_free_all_(list);
+    return ::curl_slist_free_all(list);
   }
 
- private:
-  // Loads the dynamic library and binds the required methods.
-  // Returns the library handle in case of success or nullptr otherwise.
-  // 'name' can be nullptr.
-  void* load_dll(const char* name) {
-    void* handle = nullptr;
-    handle = dlopen(name, RTLD_NOW | RTLD_LOCAL | RTLD_NODELETE);
-    if (!handle) {
-      return nullptr;
-    }
-
-#define BIND_CURL_FUNC(function) \
-  *reinterpret_cast<void**>(&(function##_)) = dlsym(handle, #function)
-
-    BIND_CURL_FUNC(curl_global_init);
-    BIND_CURL_FUNC(curl_easy_init);
-    BIND_CURL_FUNC(curl_easy_setopt);
-    BIND_CURL_FUNC(curl_easy_perform);
-    BIND_CURL_FUNC(curl_easy_getinfo);
-    BIND_CURL_FUNC(curl_slist_append);
-    BIND_CURL_FUNC(curl_slist_free_all);
-    BIND_CURL_FUNC(curl_easy_cleanup);
-
-#undef BIND_CURL_FUNC
-
-    if (curl_global_init_ == nullptr) {
-      dlerror();  // Clear dlerror before attempting to open libraries.
-      dlclose(handle);
-      return nullptr;
-    }
-    return handle;
-  }
-
-  void* dll_handle_ = nullptr;
-  CURLcode (*curl_global_init_)(int64) = nullptr;
-  CURL* (*curl_easy_init_)(void) = nullptr;
-  CURLcode (*curl_easy_setopt_)(CURL*, CURLoption, ...) = nullptr;
-  CURLcode (*curl_easy_perform_)(CURL* curl) = nullptr;
-  CURLcode (*curl_easy_getinfo_)(CURL* curl, CURLINFO info, ...) = nullptr;
-  void (*curl_easy_cleanup_)(CURL* curl) = nullptr;
-  curl_slist* (*curl_slist_append_)(curl_slist* list,
-                                    const char* str) = nullptr;
-  void (*curl_slist_free_all_)(curl_slist* list) = nullptr;
+  void curl_free(void* p) override { ::curl_free(p); }
 };
 }  // namespace
 
-HttpRequest::HttpRequest()
-    : HttpRequest(std::unique_ptr<LibCurl>(new LibCurlProxy)) {}
+HttpRequest::HttpRequest() : HttpRequest(LibCurlProxy::Load()) {}
 
-HttpRequest::HttpRequest(std::unique_ptr<LibCurl> libcurl)
-    : libcurl_(std::move(libcurl)),
-      default_response_buffer_(new char[CURL_MAX_WRITE_SIZE]) {}
+HttpRequest::HttpRequest(LibCurl* libcurl) : libcurl_(libcurl) {
+  default_response_buffer_.reserve(CURL_MAX_WRITE_SIZE);
+}
 
 HttpRequest::~HttpRequest() {
   if (curl_headers_) {
     libcurl_->curl_slist_free_all(curl_headers_);
   }
-  if (post_body_) {
-    fclose(post_body_);
+  if (put_body_) {
+    fclose(put_body_);
   }
   if (curl_) {
     libcurl_->curl_easy_cleanup(curl_);
@@ -200,28 +129,46 @@ HttpRequest::~HttpRequest() {
 }
 
 Status HttpRequest::Init() {
-  if (!libcurl_) {
-    return errors::Internal("libcurl proxy cannot be nullptr.");
+  if (is_initialized_) {
+    return errors::FailedPrecondition("Already initialized.");
   }
-  TF_RETURN_IF_ERROR(libcurl_->MaybeLoadDll());
   curl_ = libcurl_->curl_easy_init();
   if (!curl_) {
     return errors::Internal("Couldn't initialize a curl session.");
   }
 
+  // NOTE: CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt is configured by
+  //       default in //third_party:curl.BUILD and can be customized via an
+  //       environment variable.
+
   libcurl_->curl_easy_setopt(curl_, CURLOPT_VERBOSE, kVerboseOutput);
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_CAPATH, kCertsPath);
+  libcurl_->curl_easy_setopt(
+      curl_, CURLOPT_USERAGENT,
+      strings::StrCat("TensorFlow/", TF_VERSION_STRING).c_str());
+  // Do not use signals for timeouts - does not work in multi-threaded programs.
+  libcurl_->curl_easy_setopt(curl_, CURLOPT_NOSIGNAL, 1L);
+  libcurl_->curl_easy_setopt(curl_, CURLOPT_TIMEOUT, kRequestTimeoutSeconds);
+  libcurl_->curl_easy_setopt(curl_, CURLOPT_CONNECTTIMEOUT,
+                             kConnectTimeoutSeconds);
+  libcurl_->curl_easy_setopt(curl_, CURLOPT_HTTP_VERSION,
+                             CURL_HTTP_VERSION_2_0);
 
   // If response buffer is not set, libcurl will print results to stdout,
   // so we always set it.
   is_initialized_ = true;
-  auto s = SetResultBuffer(default_response_buffer_.get(), CURL_MAX_WRITE_SIZE,
-                           &default_response_string_piece_);
+  auto s = SetResultBuffer(&default_response_buffer_);
   if (!s.ok()) {
     is_initialized_ = false;
     return s;
   }
   return Status::OK();
+}
+
+string HttpRequest::EscapeString(const string& str) {
+  char* out_char_str = libcurl_->curl_easy_escape(curl_, str.c_str(), 0);
+  string out_str(out_char_str);
+  libcurl_->curl_free(out_char_str);
+  return out_str;
 }
 
 Status HttpRequest::SetUri(const string& uri) {
@@ -240,13 +187,19 @@ Status HttpRequest::SetRange(uint64 start, uint64 end) {
   return Status::OK();
 }
 
+Status HttpRequest::AddHeader(const string& name, const string& value) {
+  TF_RETURN_IF_ERROR(CheckInitialized());
+  TF_RETURN_IF_ERROR(CheckNotSent());
+  curl_headers_ = libcurl_->curl_slist_append(
+      curl_headers_, strings::StrCat(name, ": ", value).c_str());
+  return Status::OK();
+}
+
 Status HttpRequest::AddAuthBearerHeader(const string& auth_token) {
   TF_RETURN_IF_ERROR(CheckInitialized());
   TF_RETURN_IF_ERROR(CheckNotSent());
   if (!auth_token.empty()) {
-    curl_headers_ = libcurl_->curl_slist_append(
-        curl_headers_,
-        strings::StrCat("Authorization: Bearer ", auth_token).c_str());
+    return AddHeader("Authorization", strings::StrCat("Bearer ", auth_token));
   }
   return Status::OK();
 }
@@ -260,32 +213,61 @@ Status HttpRequest::SetDeleteRequest() {
   return Status::OK();
 }
 
-Status HttpRequest::SetPostRequest(const string& body_filepath) {
+Status HttpRequest::SetPutFromFile(const string& body_filepath, size_t offset) {
   TF_RETURN_IF_ERROR(CheckInitialized());
   TF_RETURN_IF_ERROR(CheckNotSent());
   TF_RETURN_IF_ERROR(CheckMethodNotSet());
   is_method_set_ = true;
-  if (post_body_) {
-    fclose(post_body_);
+  if (put_body_) {
+    fclose(put_body_);
   }
-  post_body_ = fopen(body_filepath.c_str(), "r");
-  if (!post_body_) {
-    return errors::InvalidArgument("Couldnt' open the specified file: " +
+  put_body_ = fopen(body_filepath.c_str(), "r");
+  if (!put_body_) {
+    return errors::InvalidArgument("Couldn't open the specified file: " +
                                    body_filepath);
   }
-  fseek(post_body_, 0, SEEK_END);
-  const auto size = ftell(post_body_);
-  fseek(post_body_, 0, SEEK_SET);
+  fseek(put_body_, 0, SEEK_END);
+  const auto size = ftell(put_body_) - offset;
+  fseek(put_body_, offset, SEEK_SET);
 
+  curl_headers_ = libcurl_->curl_slist_append(
+      curl_headers_, strings::StrCat("Content-Length: ", size).c_str());
+  libcurl_->curl_easy_setopt(curl_, CURLOPT_PUT, 1);
+  libcurl_->curl_easy_setopt(curl_, CURLOPT_READDATA,
+                             reinterpret_cast<void*>(put_body_));
+  return Status::OK();
+}
+
+Status HttpRequest::SetPutEmptyBody() {
+  TF_RETURN_IF_ERROR(CheckInitialized());
+  TF_RETURN_IF_ERROR(CheckNotSent());
+  TF_RETURN_IF_ERROR(CheckMethodNotSet());
+  is_method_set_ = true;
+  libcurl_->curl_easy_setopt(curl_, CURLOPT_PUT, 1);
+  curl_headers_ =
+      libcurl_->curl_slist_append(curl_headers_, "Content-Length: 0");
+  libcurl_->curl_easy_setopt(curl_, CURLOPT_READFUNCTION,
+                             &HttpRequest::ReadCallback);
+  return Status::OK();
+}
+
+Status HttpRequest::SetPostFromBuffer(const char* buffer, size_t size) {
+  TF_RETURN_IF_ERROR(CheckInitialized());
+  TF_RETURN_IF_ERROR(CheckNotSent());
+  TF_RETURN_IF_ERROR(CheckMethodNotSet());
+  is_method_set_ = true;
   curl_headers_ = libcurl_->curl_slist_append(
       curl_headers_, strings::StrCat("Content-Length: ", size).c_str());
   libcurl_->curl_easy_setopt(curl_, CURLOPT_POST, 1);
   libcurl_->curl_easy_setopt(curl_, CURLOPT_READDATA,
-                             reinterpret_cast<void*>(post_body_));
+                             reinterpret_cast<void*>(this));
+  libcurl_->curl_easy_setopt(curl_, CURLOPT_READFUNCTION,
+                             &HttpRequest::ReadCallback);
+  post_body_buffer_ = StringPiece(buffer, size);
   return Status::OK();
 }
 
-Status HttpRequest::SetPostRequest() {
+Status HttpRequest::SetPostEmptyBody() {
   TF_RETURN_IF_ERROR(CheckInitialized());
   TF_RETURN_IF_ERROR(CheckNotSent());
   TF_RETURN_IF_ERROR(CheckMethodNotSet());
@@ -293,27 +275,20 @@ Status HttpRequest::SetPostRequest() {
   libcurl_->curl_easy_setopt(curl_, CURLOPT_POST, 1);
   curl_headers_ =
       libcurl_->curl_slist_append(curl_headers_, "Content-Length: 0");
+  libcurl_->curl_easy_setopt(curl_, CURLOPT_READFUNCTION,
+                             &HttpRequest::ReadCallback);
   return Status::OK();
 }
 
-Status HttpRequest::SetResultBuffer(char* scratch, size_t size,
-                                    StringPiece* result) {
+Status HttpRequest::SetResultBuffer(std::vector<char>* out_buffer) {
   TF_RETURN_IF_ERROR(CheckInitialized());
   TF_RETURN_IF_ERROR(CheckNotSent());
-  if (!scratch) {
-    return errors::InvalidArgument("scratch cannot be null");
-  }
-  if (!result) {
-    return errors::InvalidArgument("result cannot be null");
-  }
-  if (size <= 0) {
-    return errors::InvalidArgument("buffer size should be positive");
+  if (!out_buffer) {
+    return errors::InvalidArgument("out_buffer cannot be null");
   }
 
-  response_buffer_ = scratch;
-  response_buffer_size_ = size;
-  response_string_piece_ = result;
-  response_buffer_written_ = 0;
+  out_buffer->clear();
+  response_buffer_ = out_buffer;
 
   libcurl_->curl_easy_setopt(curl_, CURLOPT_WRITEDATA,
                              reinterpret_cast<void*>(this));
@@ -327,14 +302,44 @@ size_t HttpRequest::WriteCallback(const void* ptr, size_t size, size_t nmemb,
   CHECK(ptr);
   auto that = reinterpret_cast<HttpRequest*>(this_object);
   CHECK(that->response_buffer_);
-  CHECK(that->response_buffer_size_ >= that->response_buffer_written_);
-  const size_t bytes_to_copy =
-      std::min(size * nmemb,
-               that->response_buffer_size_ - that->response_buffer_written_);
-  memcpy(that->response_buffer_ + that->response_buffer_written_, ptr,
-         bytes_to_copy);
-  that->response_buffer_written_ += bytes_to_copy;
+  const size_t bytes_to_copy = size * nmemb;
+  that->response_buffer_->insert(
+      that->response_buffer_->end(), reinterpret_cast<const char*>(ptr),
+      reinterpret_cast<const char*>(ptr) + bytes_to_copy);
+
   return bytes_to_copy;
+}
+
+size_t HttpRequest::ReadCallback(void* ptr, size_t size, size_t nmemb,
+                                 FILE* this_object) {
+  CHECK(ptr);
+  auto that = reinterpret_cast<HttpRequest*>(this_object);
+  CHECK(that->post_body_read_ <= that->post_body_buffer_.size());
+  const size_t bytes_to_copy = std::min(
+      size * nmemb, that->post_body_buffer_.size() - that->post_body_read_);
+  memcpy(ptr, that->post_body_buffer_.data() + that->post_body_read_,
+         bytes_to_copy);
+  that->post_body_read_ += bytes_to_copy;
+  return bytes_to_copy;
+}
+
+size_t HttpRequest::HeaderCallback(const void* ptr, size_t size, size_t nmemb,
+                                   void* this_object) {
+  CHECK(ptr);
+  auto that = reinterpret_cast<HttpRequest*>(this_object);
+  StringPiece header(reinterpret_cast<const char*>(ptr), size * nmemb);
+  StringPiece name, value;
+  // The supplied header has the form "<name>: <value>", parse it.
+  if (strings::Scanner(header)
+          .ScanEscapedUntil(':')
+          .StopCapture()
+          .OneLiteral(": ")
+          .GetResult(&value, &name)) {
+    string str_value = value.ToString();
+    str_util::StripTrailingWhitespace(&str_value);
+    that->response_headers_[name.ToString()] = str_value;
+  }
+  return size * nmemb;
 }
 
 Status HttpRequest::Send() {
@@ -347,8 +352,12 @@ Status HttpRequest::Send() {
   if (curl_headers_) {
     libcurl_->curl_easy_setopt(curl_, CURLOPT_HTTPHEADER, curl_headers_);
   }
+  libcurl_->curl_easy_setopt(curl_, CURLOPT_HEADERDATA,
+                             reinterpret_cast<void*>(this));
+  libcurl_->curl_easy_setopt(curl_, CURLOPT_HEADERFUNCTION,
+                             &HttpRequest::HeaderCallback);
 
-  char error_buffer[CURL_ERROR_SIZE];
+  char error_buffer[CURL_ERROR_SIZE] = {0};
   libcurl_->curl_easy_setopt(curl_, CURLOPT_ERRORBUFFER, error_buffer);
 
   const auto curl_result = libcurl_->curl_easy_perform(curl_);
@@ -356,33 +365,34 @@ Status HttpRequest::Send() {
   double written_size = 0;
   libcurl_->curl_easy_getinfo(curl_, CURLINFO_SIZE_DOWNLOAD, &written_size);
 
-  uint64 response_code;
-  libcurl_->curl_easy_getinfo(curl_, CURLINFO_RESPONSE_CODE, &response_code);
+  libcurl_->curl_easy_getinfo(curl_, CURLINFO_RESPONSE_CODE, &response_code_);
 
-  if (curl_result != CURLE_OK) {
-    return errors::Internal(string("curl error: ") + error_buffer);
-  }
-  switch (response_code) {
+  const auto& error_message = strings::StrCat(
+      "Error executing an HTTP request (HTTP response code ", response_code_,
+      ", error code ", curl_result, ", error message '", error_buffer, "')");
+  switch (response_code_) {
     case 200:  // OK
+    case 201:  // Created
     case 204:  // No Content
     case 206:  // Partial Content
-      if (response_buffer_ && response_string_piece_) {
-        *response_string_piece_ = StringPiece(response_buffer_, written_size);
+      if (curl_result != CURLE_OK) {
+        // UNAVAILABLE can be retried by the caller, e.g by
+        // RetryingFileSystem.
+        return errors::Unavailable(error_message);
       }
       return Status::OK();
     case 401:
-      return errors::PermissionDenied(
-          "Not authorized to access the given HTTP resource.");
+    case 403:
+      return errors::PermissionDenied(error_message);
     case 404:
-      return errors::NotFound("The requested URL was not found.");
+      return errors::NotFound(error_message);
     case 416:  // Requested Range Not Satisfiable
-      if (response_string_piece_) {
-        *response_string_piece_ = StringPiece();
-      }
+      response_buffer_->clear();
       return Status::OK();
     default:
-      return errors::Internal(
-          strings::StrCat("Unexpected HTTP response code ", response_code));
+      // UNAVAILABLE can be retried by the caller, e.g by
+      // RetryingFileSystem.
+      return errors::Unavailable(error_message);
   }
 }
 
@@ -406,5 +416,12 @@ Status HttpRequest::CheckNotSent() const {
   }
   return Status::OK();
 }
+
+string HttpRequest::GetResponseHeader(const string& name) const {
+  const auto& header = response_headers_.find(name);
+  return header != response_headers_.end() ? header->second : "";
+}
+
+uint64 HttpRequest::GetResponseCode() const { return response_code_; }
 
 }  // namespace tensorflow

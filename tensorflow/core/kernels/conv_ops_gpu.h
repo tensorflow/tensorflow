@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,6 +18,10 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 
+#include <tuple>
+#include <unordered_map>
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/stream_executor.h"
 
 namespace tensorflow {
@@ -25,8 +29,8 @@ namespace tensorflow {
 // TODO(zhengxq): move this to gpu_util.h. The use of such wrappers is wide
 // spread.
 template <typename T>
-perftools::gputools::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory,
-                                                    uint64 size) {
+inline perftools::gputools::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory,
+                                                           uint64 size) {
   perftools::gputools::DeviceMemoryBase wrapped(const_cast<T*>(cuda_memory),
                                                 size * sizeof(T));
   perftools::gputools::DeviceMemory<T> typed(wrapped);
@@ -46,7 +50,7 @@ class CudnnScratchAllocator : public perftools::gputools::ScratchAllocator {
  public:
   virtual ~CudnnScratchAllocator() {}
   CudnnScratchAllocator(int64 memory_limit, OpKernelContext* context)
-      : memory_limit_(memory_limit), context_(context) {}
+      : memory_limit_(memory_limit), total_byte_size_(0), context_(context) {}
   virtual int64 GetMemoryLimitInBytes(
       perftools::gputools::Stream* stream) override {
     return memory_limit_;
@@ -55,7 +59,10 @@ class CudnnScratchAllocator : public perftools::gputools::ScratchAllocator {
       perftools::gputools::DeviceMemory<uint8>>
   AllocateBytes(perftools::gputools::Stream* stream, int64 byte_size) override {
     Tensor temporary_memory;
-
+    if (byte_size > memory_limit_) {
+      return perftools::gputools::port::StatusOr<
+          perftools::gputools::DeviceMemory<uint8>>();
+    }
     AllocationAttributes allocation_attr;
     allocation_attr.no_retry_on_failure = true;
     Status allocation_status(context_->allocate_temp(
@@ -63,95 +70,145 @@ class CudnnScratchAllocator : public perftools::gputools::ScratchAllocator {
         AllocatorAttributes(), allocation_attr));
     if (!allocation_status.ok()) {
       return perftools::gputools::port::StatusOr<
-          perftools::gputools::DeviceMemory<uint8>>(
-          AsDeviceMemory<uint8>(nullptr, 0));
+          perftools::gputools::DeviceMemory<uint8>>();
     }
     // Hold the reference of the allocated tensors until the end of the
     // allocator.
     allocated_tensors_.push_back(temporary_memory);
+    total_byte_size_ += byte_size;
     return perftools::gputools::port::StatusOr<
         perftools::gputools::DeviceMemory<uint8>>(
         AsDeviceMemory(temporary_memory.flat<uint8>().data(),
                        temporary_memory.flat<uint8>().size()));
   }
+  int64 TotalByteSize() { return total_byte_size_; }
 
  private:
   int64 memory_limit_;
+  int64 total_byte_size_;
   OpKernelContext* context_;
   std::vector<Tensor> allocated_tensors_;
 };
 
-struct ConvParameters {
-  int64 batch;
-  int64 in_depths;
-  int64 in_rows;
-  int64 in_cols;
-  int64 out_depths;
-  int64 filter_rows;
-  int64 filter_cols;
-  int64 stride_rows;
-  int64 stride_cols;
-  int64 padding_rows;
-  int64 padding_cols;
-  int device_id;
-
+// Encapsulate all the shape information that is used in both forward and
+// backward conv operations.
+class ConvParameters {
+ public:
+  ConvParameters(int64 batch, int64 in_depths, int64 in_rows, int64 in_cols,
+                 int64 out_depths, int64 filter_rows, int64 filter_cols,
+                 int64 stride_rows, int64 stride_cols, int64 padding_rows,
+                 int64 padding_cols, int device_id)
+      : batch_(batch),
+        in_depths_(in_depths),
+        in_rows_(in_rows),
+        in_cols_(in_cols),
+        out_depths_(out_depths),
+        filter_rows_(filter_rows),
+        filter_cols_(filter_cols),
+        stride_rows_(stride_rows),
+        stride_cols_(stride_cols),
+        padding_rows_(padding_rows),
+        padding_cols_(padding_cols),
+        device_id_(device_id) {
+    hash_code_ = batch;
+    hash_code_ = Hash64Combine(hash_code_, in_depths);
+    hash_code_ = Hash64Combine(hash_code_, in_rows);
+    hash_code_ = Hash64Combine(hash_code_, in_cols);
+    hash_code_ = Hash64Combine(hash_code_, out_depths);
+    hash_code_ = Hash64Combine(hash_code_, filter_rows);
+    hash_code_ = Hash64Combine(hash_code_, filter_cols);
+    hash_code_ = Hash64Combine(hash_code_, stride_rows);
+    hash_code_ = Hash64Combine(hash_code_, stride_cols);
+    hash_code_ = Hash64Combine(hash_code_, padding_rows);
+    hash_code_ = Hash64Combine(hash_code_, padding_cols);
+    hash_code_ = Hash64Combine(hash_code_, device_id);
+  }
   bool operator==(const ConvParameters& other) const {
-    return memcmp(this, &other, sizeof(ConvParameters)) == 0;
+    return this->get_data_as_tuple() == other.get_data_as_tuple();
   }
 
   bool operator!=(const ConvParameters& other) const {
     return !(*this == other);
   }
+  uint64 hash() const { return hash_code_; }
 
-  bool operator<(const ConvParameters& other) const {
-    return memcmp(this, &other, sizeof(ConvParameters)) < 0;
+ private:
+  typedef std::tuple<int64, int64, int64, int64, int64, int64, int64, int64,
+                     int64, int64, int64, int>
+      DataType;
+
+  DataType get_data_as_tuple() const {
+    return std::make_tuple(batch_, in_depths_, in_rows_, in_cols_, out_depths_,
+                           filter_rows_, filter_cols_, stride_rows_,
+                           stride_cols_, padding_rows_, padding_cols_,
+                           device_id_);
   }
+
+  int64 batch_;
+  int64 in_depths_;
+  int64 in_rows_;
+  int64 in_cols_;
+  int64 out_depths_;
+  int64 filter_rows_;
+  int64 filter_cols_;
+  int64 stride_rows_;
+  int64 stride_cols_;
+  int64 padding_rows_;
+  int64 padding_cols_;
+  int device_id_;
+  uint64 hash_code_;
 };
 
 typedef Eigen::GpuDevice GPUDevice;
 
-// A helper class that looks up algorithm from conv-parameters. It is heavily
-// biased toward the last-seen parameter.
-template <>
-class ConvAlgorithmMap<GPUDevice> {
+// A helper class that looks up the best autotuned config from parameters.
+template <typename Parameters, typename Config>
+class AutoTuneMap {
  public:
-  typedef perftools::gputools::dnn::AlgorithmType AlgorithmType;
-
-  ConvAlgorithmMap() {}
-
-  bool Find(const ConvParameters& parameters, AlgorithmType* algorithm) const {
+  bool Find(const Parameters& params, Config* config) const {
     mutex_lock lock(mu_);
-    if (algorithm_map_.empty()) {
+    auto iter = params_config_map_.find(params);
+    if (iter == params_config_map_.end()) {
       return false;
     }
-    if (parameters != last_conv_parameters_) {
-      auto iter = algorithm_map_.find(parameters);
-      if (iter == algorithm_map_.end()) {
-        return false;
-      }
-      last_conv_parameters_ = parameters;
-      last_algorithm_ = iter->second;
-    }
-    *algorithm = last_algorithm_;
+    *config = iter->second;
     return true;
   }
-
-  void Insert(const ConvParameters& parameters, AlgorithmType algorithm) {
+  void Insert(const ConvParameters& params, const Config& config) {
     mutex_lock lock(mu_);
-    last_conv_parameters_ = parameters;
-    last_algorithm_ = algorithm;
-    algorithm_map_[parameters] = algorithm;
+    params_config_map_[params] = config;
   }
 
  private:
-  AlgorithmType FindAlgorithm(const ConvParameters& parameters);
+  AutoTuneMap() {}
 
+  template <class Group, class Params, class Cfg>
+  friend class AutoTuneSingleton;
+
+  struct Hasher {
+    std::size_t operator()(const Parameters& parameter) const {
+      return parameter.hash();
+    }
+  };
   mutable mutex mu_;
-  std::map<ConvParameters, AlgorithmType> algorithm_map_ GUARDED_BY(mu_);
-  mutable ConvParameters last_conv_parameters_ GUARDED_BY(mu_);
-  mutable AlgorithmType last_algorithm_ GUARDED_BY(mu_);
+  std::unordered_map<Parameters, Config, Hasher> params_config_map_
+      GUARDED_BY(mu_);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ConvAlgorithmMap);
+  TF_DISALLOW_COPY_AND_ASSIGN(AutoTuneMap);
+};
+
+// A Singleton helper that manages the global autotune results by groups.
+// The caller specified arbitrary Group type that can distinguish between
+// different autotune results, even if their Parameters and Configs are the
+// same.
+template <class Group, typename Parameters, typename Config>
+class AutoTuneSingleton {
+ public:
+  typedef AutoTuneMap<Parameters, Config> AutoTuneType;
+  static AutoTuneType* GetInstance() {
+    static AutoTuneType* instance = new AutoTuneType;
+    return instance;
+  }
 };
 
 }  // namespace tensorflow

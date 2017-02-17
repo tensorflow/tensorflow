@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -34,13 +34,16 @@ class CostModelManager {
   typedef std::unordered_map<const Graph*, CostModel*> CostModelMap;
   typedef CostModelMap::iterator CostModelMapIter;
 
-  gtl::iterator_range<CostModelMapIter> CostModels() {
+  void ExportCostModels(CostModelMap* cost_models) {
     mutex_lock l(mu_);
-    return gtl::make_range(cost_models_.begin(), cost_models_.end());
+    *cost_models = cost_models_;
   }
 
   CostModel* FindOrCreateCostModel(const Graph* graph);
-  Status BuildCostGraphDef(const Graph* graph, CostGraphDef* cost_graph);
+
+  bool RemoveCostModelForGraph(const Graph* graph);
+
+  Status AddToCostGraphDef(const Graph* graph, CostGraphDef* cost_graph);
 
  private:
   mutex mu_;

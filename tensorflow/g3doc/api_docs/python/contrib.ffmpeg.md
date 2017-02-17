@@ -3,23 +3,7 @@
 # FFmpeg (contrib)
 [TOC]
 
-## Encoding and decoding audio using FFmpeg
-
-TensorFlow provides Ops to decode and encode audio files using the
-[FFmpeg](https://www.ffmpeg.org/) library. FFmpeg must be
-locally [installed](https://ffmpeg.org/download.html) for these Ops to succeed.
-
-Example:
-
-```python
-from tensorflow.contrib import ffmpeg
-
-audio_binary = tf.read_file('song.mp3')
-waveform = ffmpeg.decode_audio(
-    audio_binary, file_format='mp3', samples_per_second=44100, channel_count=2)
-uncompressed_binary = ffmpeg.encode_audio(
-    waveform, file_format='wav', samples_per_second=44100)
-```
+Working with audio using FFmpeg. See the @{$python/contrib.ffmpeg} guide.
 
 - - -
 
@@ -27,13 +11,16 @@ uncompressed_binary = ffmpeg.encode_audio(
 
 Create an op that decodes the contents of an audio file.
 
+Note that ffmpeg is free to select the "best" audio track from an mp4.
+https://trac.ffmpeg.org/wiki/Map
+
 ##### Args:
 
 
 *  <b>`contents`</b>: The binary contents of the audio file to decode. This is a
       scalar.
 *  <b>`file_format`</b>: A string specifying which format the contents will conform
-      to. This can be mp3, ogg, or wav.
+      to. This can be mp3, mp4, ogg, or wav.
 *  <b>`samples_per_second`</b>: The number of samples per second that is assumed.
       In some cases, resampling will occur to generate the correct sample
       rate.
@@ -46,7 +33,8 @@ Create an op that decodes the contents of an audio file.
 
   A rank 2 tensor that has time along dimension 0 and channels along
   dimension 1. Dimension 0 will be `samples_per_second * length` wide, and
-  dimension 1 will be `channel_count` wide.
+  dimension 1 will be `channel_count` wide. If ffmpeg fails to decode the
+  audio then an empty tensor will be returned.
 
 
 - - -

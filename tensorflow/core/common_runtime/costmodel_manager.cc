@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,6 +18,12 @@ limitations under the License.
 
 namespace tensorflow {
 
+namespace {
+
+static const string kCostModelLogTag = "COST_MODEL";
+
+}  // namespace
+
 CostModelManager::~CostModelManager() {
   for (auto it : cost_models_) {
     delete it.second;
@@ -36,7 +42,18 @@ CostModel* CostModelManager::FindOrCreateCostModel(const Graph* graph) {
   return cost_model;
 }
 
-Status CostModelManager::BuildCostGraphDef(const Graph* graph,
+bool CostModelManager::RemoveCostModelForGraph(const Graph* graph) {
+  mutex_lock l(mu_);
+  auto itr = cost_models_.find(graph);
+  if (itr == cost_models_.end()) {
+    return false;
+  }
+  delete itr->second;
+  cost_models_.erase(graph);
+  return true;
+}
+
+Status CostModelManager::AddToCostGraphDef(const Graph* graph,
                                            CostGraphDef* cost_graph) {
   mutex_lock l(mu_);
   // Get the cost model for the graph.
@@ -45,37 +62,7 @@ Status CostModelManager::BuildCostGraphDef(const Graph* graph,
     return errors::InvalidArgument("The cost model graph doesn't exist.");
   }
   CostModel* cost_model = it->second;
-
-  // Construct the cost graph.
-  std::vector<const Edge*> inputs;
-  for (const Node* n : graph->nodes()) {
-    CostGraphDef::Node* cnode = cost_graph->add_node();
-    cnode->set_name(n->name());
-    cnode->set_id(cost_model->Id(n));
-
-    inputs.clear();
-    inputs.resize(n->num_inputs(), nullptr);
-    for (const Edge* e : n->in_edges()) {
-      inputs[e->dst_input()] = e;
-    }
-    for (const Edge* e : inputs) {
-      CostGraphDef::Node::InputInfo* input_info = cnode->add_input_info();
-      input_info->set_preceding_node(cost_model->Id(e->src()));
-      input_info->set_preceding_port(e->src_output());
-    }
-
-    for (int i = 0; i < n->num_outputs(); i++) {
-      CostGraphDef::Node::OutputInfo* output_info = cnode->add_output_info();
-      output_info->set_size(cost_model->MaxMemSize(n, i).value());
-      output_info->set_alias_input_port(cost_model->Aliases(n, i));
-    }
-
-    cnode->set_temporary_memory_size(cost_model->TempMemSize(n).value());
-
-    // For now we treat all send nodes as final.
-    // TODO(yuanbyu): Send nodes for fetches shouldn't be treated as final.
-    cnode->set_is_final(n->IsSend());
-  }
+  cost_model->AddToCostGraphDef(graph, cost_graph);
   return Status::OK();
 }
 

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -123,6 +123,7 @@ REGISTER_DIAGOP(float);
 REGISTER_DIAGOP(int32);
 REGISTER_DIAGOP(int64);
 REGISTER_DIAGOP(complex64);
+REGISTER_DIAGOP(complex128);
 
 #undef REGISTER_DIAGOP
 
@@ -190,6 +191,7 @@ REGISTER_DIAGPARTOP(float);
 REGISTER_DIAGPARTOP(int32);
 REGISTER_DIAGPARTOP(int64);
 REGISTER_DIAGPARTOP(complex64);
+REGISTER_DIAGPARTOP(complex128);
 
 #undef REGISTER_DIAGPARTOP
   

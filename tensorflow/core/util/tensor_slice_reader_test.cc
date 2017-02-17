@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -410,7 +410,7 @@ static void VersionTest(const VersionDef& versions, const string& error) {
     TF_ASSERT_OK(CreateTableTensorSliceBuilder(path, &builder));
     builder->Add(kSavedTensorSlicesKey, contents);
     int64 file_size;
-    builder->Finish(&file_size);
+    TF_EXPECT_OK(builder->Finish(&file_size));
     delete builder;
   }
 

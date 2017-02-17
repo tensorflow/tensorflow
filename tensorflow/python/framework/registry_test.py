@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,10 +20,10 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import registry
-from tensorflow.python.platform import googletest
+from tensorflow.python.platform import test
 
 
-class RegistryTest(googletest.TestCase):
+class RegistryTest(test.TestCase):
 
   class Foo(object):
     pass
@@ -54,4 +54,4 @@ def bar():
 
 
 if __name__ == '__main__':
-  googletest.main()
+  test.main()

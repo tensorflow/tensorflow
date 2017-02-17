@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -30,9 +30,9 @@ limitations under the License.
 namespace tensorflow {
 namespace strings {
 
-static string RandomString(random::SimplePhilox* rnd, int len) {
+static string RandomString(random::SimplePhilox* rnd, size_t len) {
   string x;
-  for (int i = 0; i < len; i++) {
+  for (size_t i = 0; i < len; i++) {
     x += rnd->Uniform(256);
   }
   return x;
@@ -197,7 +197,7 @@ static void TestNumberOrdering() {
 }
 
 // Helper routine for testing TEST_SkipToNextSpecialByte
-static int FindSpecial(const string& x) {
+static size_t FindSpecial(const string& x) {
   const char* p = x.data();
   const char* limit = p + x.size();
   const char* result = OrderedCode::TEST_SkipToNextSpecialByte(p, limit);

@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -58,9 +58,9 @@ limitations under the License.
 }
 
 %{
+#include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/util/tf_status_helper.h"
 
 using tensorflow::ServerDef;
 

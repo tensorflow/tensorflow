@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,6 +25,8 @@ limitations under the License.
 
 namespace tensorflow {
 
+/// @ingroup core
+/// Denotes success or failure of a call in Tensorflow.
 class Status {
  public:
   /// Create a success status.
@@ -70,6 +72,11 @@ class Status {
   /// printing. Returns the string `"OK"` for success.
   string ToString() const;
 
+  // Ignores any errors. This method does nothing except potentially suppress
+  // complaints from any tools that are checking that errors are not dropped on
+  // the floor.
+  void IgnoreError() const;
+
  private:
   static const string& empty_string();
   struct State {
@@ -100,12 +107,22 @@ inline bool Status::operator==(const Status& x) const {
 
 inline bool Status::operator!=(const Status& x) const { return !(*this == x); }
 
+/// @ingroup core
 std::ostream& operator<<(std::ostream& os, const Status& x);
 
 typedef std::function<void(const Status&)> StatusCallback;
 
 #define TF_CHECK_OK(val) CHECK_EQ(::tensorflow::Status::OK(), (val))
 #define TF_QCHECK_OK(val) QCHECK_EQ(::tensorflow::Status::OK(), (val))
+
+// DEBUG only version of TF_CHECK_OK.  Compiler still parses 'val' even in opt
+// mode.
+#ifndef NDEBUG
+#define TF_DCHECK_OK(val) TF_CHECK_OK(val)
+#else
+#define TF_DCHECK_OK(val) \
+  while (false && (::tensorflow::Status::OK() == (val))) LOG(FATAL)
+#endif
 
 }  // namespace tensorflow
 

@@ -48,7 +48,6 @@ write the graph to a file.
 * [tensorflow::TensorShapeUtils](ClassTensorShapeUtils.md)
 * [tensorflow::PartialTensorShape](ClassPartialTensorShape.md)
 * [tensorflow::PartialTensorShapeUtils](ClassPartialTensorShapeUtils.md)
-* [TF_Buffer](StructTF_Buffer.md)
 
 ## Thread
 

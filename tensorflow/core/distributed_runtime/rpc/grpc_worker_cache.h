@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,6 +23,10 @@ namespace tensorflow {
 
 // The returned WorkerCacheInterface object takes the ownership of "cc".
 WorkerCacheInterface* NewGrpcWorkerCache(GrpcChannelCache* cc);
+
+WorkerCacheInterface* NewGrpcWorkerCacheWithLocalWorker(
+    GrpcChannelCache* cc, WorkerInterface* local_worker,
+    const string& local_target);
 
 }  // namespace tensorflow
 #endif  // THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_WORKER_CACHE_H_

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -70,6 +70,15 @@ class Node {
   int cost_id() const { return cost_id_; }
   const string& name() const { return props_->node_def_.name(); }
   const string& type_string() const { return props_->node_def_.op(); }
+  // def() provides the NodeDef the user supplied, but the specifics
+  // of this Node may have changed due to placement, optimization, etc.
+  // In particular:
+  // * def().name() will match name();
+  // * def().op() will match type_string() and op_def().name();
+  // * def().input() is not reliable, use "in_edges()" below instead;
+  // * def().device() is the "user's requested device" and may not match
+  //   the actual assigned device, see assigned_device_name() below;
+  // * def().attr() is authoritative.
   const NodeDef& def() const { return props_->node_def_; }
   const OpDef& op_def() const { return *props_->op_def_; }
 
@@ -86,8 +95,8 @@ class Node {
   // you want the device the user requested, use def().device() instead.
   // TODO(josh11b): Validate that the assigned_device, if not empty:
   // fully specifies a device, and satisfies def().device().
-  // TODO(josh11b): Move device_name outside of Node into a NodeId->DeviceName
-  // map.
+  // TODO(josh11b): Move assigned_device_name outside of Node into a
+  // NodeId->DeviceName map.
   string assigned_device_name() const { return assigned_device_name_; }
   void set_assigned_device_name(const string& device_name) {
     assigned_device_name_ = device_name;
@@ -106,28 +115,30 @@ class Node {
   bool IsOp() const { return id() > 1; }
 
   // Node class helpers
-  bool IsSwitch() const { return (class_ == NC_SWITCH); }
-  bool IsMerge() const { return (class_ == NC_MERGE); }
-  bool IsEnter() const { return (class_ == NC_ENTER); }
-  bool IsExit() const { return (class_ == NC_EXIT); }
-  bool IsNextIteration() const { return (class_ == NC_NEXT_ITERATION); }
-  bool IsLoopCond() const { return (class_ == NC_LOOP_COND); }
-  bool IsControlTrigger() const { return (class_ == NC_CONTROL_TRIGGER); }
-  bool IsSend() const { return (class_ == NC_SEND); }
-  bool IsRecv() const { return (class_ == NC_RECV); }
-  bool IsConstant() const { return (class_ == NC_CONSTANT); }
-  bool IsVariable() const { return (class_ == NC_VARIABLE); }
-  bool IsIdentity() const { return (class_ == NC_IDENTITY); }
-  bool IsGetSessionHandle() const { return (class_ == NC_GET_SESSION_HANDLE); }
-  bool IsGetSessionTensor() const { return (class_ == NC_GET_SESSION_TENSOR); }
+  bool IsSwitch() const { return class_ == NC_SWITCH; }
+  bool IsMerge() const { return class_ == NC_MERGE; }
+  bool IsEnter() const { return class_ == NC_ENTER; }
+  bool IsExit() const { return class_ == NC_EXIT; }
+  bool IsNextIteration() const { return class_ == NC_NEXT_ITERATION; }
+  bool IsLoopCond() const { return class_ == NC_LOOP_COND; }
+  bool IsControlTrigger() const { return class_ == NC_CONTROL_TRIGGER; }
+  bool IsSend() const { return class_ == NC_SEND || class_ == NC_HOST_SEND; }
+  bool IsRecv() const { return class_ == NC_RECV || class_ == NC_HOST_RECV; }
+  bool IsConstant() const { return class_ == NC_CONSTANT; }
+  bool IsVariable() const { return class_ == NC_VARIABLE; }
+  bool IsIdentity() const { return class_ == NC_IDENTITY; }
+  bool IsGetSessionHandle() const { return class_ == NC_GET_SESSION_HANDLE; }
+  bool IsGetSessionTensor() const { return class_ == NC_GET_SESSION_TENSOR; }
   bool IsDeleteSessionTensor() const {
-    return (class_ == NC_DELETE_SESSION_TENSOR);
+    return class_ == NC_DELETE_SESSION_TENSOR;
   }
   bool IsControlFlow() const {
     return (class_ != NC_OTHER) &&  // Fast path
            (IsSwitch() || IsMerge() || IsEnter() || IsExit() ||
             IsNextIteration());
   }
+  bool IsHostSend() const { return class_ == NC_HOST_SEND; }
+  bool IsHostRecv() const { return class_ == NC_HOST_RECV; }
 
   template <typename T>
   void AddAttr(const string& name, const T& val) {
@@ -136,6 +147,17 @@ class Node {
   }
 
   void ClearAttr(const string& name);
+
+  // Returns into '*e' the edge connecting to the 'idx' input of this Node.
+  Status input_edge(int idx, const Edge** e) const;
+
+  // Returns into '*edges' the input data edges of this Node, indexed by input
+  // number. Does not return control edges.
+  Status input_edges(std::vector<const Edge*>* edges) const;
+
+  // Returns into '*n' the node that has an output connected to the
+  // 'idx' input of this Node.
+  Status input_node(int idx, const Node** n) const;
 
  private:
   friend class Graph;
@@ -185,7 +207,9 @@ class Node {
     NC_LOOP_COND,
     NC_CONTROL_TRIGGER,
     NC_SEND,
+    NC_HOST_SEND,
     NC_RECV,
+    NC_HOST_RECV,
     NC_CONSTANT,
     NC_VARIABLE,
     NC_IDENTITY,
@@ -252,7 +276,7 @@ class Graph {
   explicit Graph(const OpRegistryInterface* registry);
   ~Graph();
 
-  static const int kControlSlot = -1;
+  static const int kControlSlot;
 
   // The GraphDef version range of this graph (see graph.proto).
   const VersionDef& versions() const { return versions_; }
@@ -302,6 +326,9 @@ class Graph {
   // edges indexed by edge ids, num_edge_ids() should be used as the
   // array's size.
   int num_edges() const { return edges().size(); }
+
+  // Serialize the nodes starting at `from_node_id` to a GraphDef.
+  void ToGraphDefSubRange(GraphDef* graph_def, int from_node_id) const;
 
   // Serialize to a GraphDef.
   void ToGraphDef(GraphDef* graph_def) const;
@@ -392,6 +419,8 @@ class Graph {
 
 // Helper routines
 
+inline bool IsSource(const Node* node) { return node->IsSource(); }
+inline bool IsSink(const Node* node) { return node->IsSink(); }
 inline bool IsSwitch(const Node* node) { return node->IsSwitch(); }
 inline bool IsMerge(const Node* node) { return node->IsMerge(); }
 inline bool IsEnter(const Node* node) { return node->IsEnter(); }
@@ -401,6 +430,8 @@ inline bool IsLoopCond(const Node* node) { return node->IsLoopCond(); }
 inline bool IsControlTrigger(const Node* n) { return n->IsControlTrigger(); }
 inline bool IsSend(const Node* node) { return node->IsSend(); }
 inline bool IsRecv(const Node* node) { return node->IsRecv(); }
+inline bool IsHostSend(const Node* node) { return node->IsHostSend(); }
+inline bool IsHostRecv(const Node* node) { return node->IsHostRecv(); }
 
 // True for Nodes that mediate the transfer of values between processes.
 inline bool IsTransferNode(const Node* n) { return IsSend(n) || IsRecv(n); }

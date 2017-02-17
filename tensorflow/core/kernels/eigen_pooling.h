@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -309,7 +309,7 @@ struct AvgPoolMeanReducer {
 
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE AvgPoolMeanReducer() : scalarCount_(0) {
     typedef typename packet_traits<T>::type Packet;
-    packetCount_ = pset1<Packet>(0.0);
+    packetCount_ = pset1<Packet>(T(0.0));
   }
 
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void reduce(const T t, T* accum) {
@@ -325,11 +325,15 @@ struct AvgPoolMeanReducer {
 
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T finalize(const T accum) const {
     eigen_assert(scalarCount_ > 0);
-    return accum / scalarCount_;
+    return accum / T(scalarCount_);
   }
 
 #if (EIGEN_ARCH_i386 || EIGEN_ARCH_x86_64) && !defined(__CUDACC__)
-#ifdef EIGEN_VECTORIZE_AVX
+#ifdef EIGEN_VECTORIZE_AVX512
+#define pequal(a, b) \
+  _mm512_maskz_set1_epi32(_mm512_cmp_ps_mask(a, b, _CMP_EQ_UQ), -1)
+#define psel(a, b, false_mask) _mm512_ternarylogic_epi64(false_mask, a, b, 0xca)
+#elif defined EIGEN_VECTORIZE_AVX
 #define pequal(a, b) _mm256_cmp_ps(a, b, _CMP_EQ_UQ)
 #define psel(a, b, false_mask) _mm256_blendv_ps(a, b, false_mask)
 #else
@@ -374,6 +378,24 @@ struct AvgPoolMeanReducer {
   typedef typename packet_traits<T>::type Packet;
   int scalarCount_;
   Packet packetCount_;
+};
+
+template <typename Device>
+struct reducer_traits<AvgPoolMeanReducer<float>, Device> {
+  enum {
+    Cost = 1,
+#if (EIGEN_ARCH_i386 || EIGEN_ARCH_x86_64) && !defined(__CUDACC__)
+    // We only support packet access for floats.
+    PacketAccess = true
+#else
+    PacketAccess = false
+#endif
+  };
+};
+
+template <>
+struct reducer_traits<AvgPoolMeanReducer<float>, GpuDevice> {
+  enum { Cost = 1, PacketAccess = false };
 };
 
 }  // namespace internal

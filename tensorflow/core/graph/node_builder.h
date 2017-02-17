@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -114,6 +114,10 @@ class NodeBuilder {
   // for all (non-back) inputs.  If created_node is not nullptr,
   // *created_node will be set to the new node (or nullptr on error).
   Status Finalize(Graph* graph, Node** created_node) const;
+
+  // Accessors for the values set in the constructor.
+  const string& node_name() const { return def_builder_.node_name(); }
+  const OpDef& op_def() const { return def_builder_.op_def(); }
 
  private:
   static DataType SafeGetOutput(Node* node, int i, bool* error) {

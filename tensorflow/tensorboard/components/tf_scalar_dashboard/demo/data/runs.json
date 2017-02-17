@@ -1,0 +1,24 @@
+{
+  "alpha": {
+    "scalars": [
+      "d1",
+      "d2",
+      "d3",
+      "d4"
+    ],
+    "histograms": [],
+    "images": [],
+    "audio": []
+  },
+  "beta": {
+    "scalars": [
+      "d1",
+      "d2",
+      "d3",
+      "d4"
+    ],
+    "histograms": [],
+    "images": [],
+    "audio": []
+  }
+}

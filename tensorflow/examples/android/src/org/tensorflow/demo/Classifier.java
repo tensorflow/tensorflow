@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,7 +17,6 @@ package org.tensorflow.demo;
 
 import android.graphics.Bitmap;
 import android.graphics.RectF;
-
 import java.util.List;
 
 /**
@@ -44,10 +43,8 @@ public interface Classifier {
      */
     private final Float confidence;
 
-    /**
-     * Optional location within the source image for the location of the recognized object.
-     */
-    private final RectF location;
+    /** Optional location within the source image for the location of the recognized object. */
+    private RectF location;
 
     public Recognition(
         final String id, final String title, final Float confidence, final RectF location) {
@@ -71,6 +68,10 @@ public interface Classifier {
 
     public RectF getLocation() {
       return new RectF(location);
+    }
+
+    public void setLocation(RectF location) {
+      this.location = location;
     }
 
     @Override
@@ -97,6 +98,10 @@ public interface Classifier {
   }
 
   List<Recognition> recognizeImage(Bitmap bitmap);
+
+  void enableStatLogging(final boolean debug);
+  
+  String getStatString();
 
   void close();
 }

@@ -1,12 +1,7 @@
 {
   "suites": [
-    "components/tf-*/test",
-    "lib/js/*/test"
+    "components/tf_*/test",
+    "components/vz_*/test"
   ],
-  "plugins": ["local"],
-  "webserver": {
-    "pathMappings": [
-      {"/components/<basename>/lib/js": "components"}
-    ]
-  }
+  "plugins": ["local"]
 }

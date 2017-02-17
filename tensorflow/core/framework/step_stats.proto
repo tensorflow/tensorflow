@@ -1,7 +1,7 @@
 syntax = "proto3";
 
 package tensorflow;
-// option cc_enable_arenas = true;
+option cc_enable_arenas = true;
 option java_outer_classname = "StepStatsProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
@@ -17,6 +17,8 @@ message AllocatorMemoryUsed {
   string allocator_name = 1;
   int64 total_bytes = 2;
   int64 peak_bytes = 3;
+  // The bytes that are not deallocated.
+  int64 live_bytes = 4;
 }
 
 // Output sizes recorded for a single execution of a graph node.

@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,47 +18,98 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
+import collections
 import os.path
 import sys
 
 import tensorflow as tf
 
 from tensorflow.contrib import ffmpeg
+from tensorflow.python import debug as tf_debug
 from tensorflow.python.client import client_lib
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import docs
 from tensorflow.python.framework import framework_lib
 
-
-tf.flags.DEFINE_string("out_dir", None,
-                       "Directory to which docs should be written.")
-tf.flags.DEFINE_boolean("print_hidden_regex", False,
-                        "Dump a regular expression matching any hidden symbol")
-FLAGS = tf.flags.FLAGS
+FLAGS = None
 
 
 PREFIX_TEXT = """
 Note: Functions taking `Tensor` arguments can also take anything accepted by
-[`tf.convert_to_tensor`](framework.md#convert_to_tensor).
+@{tf.convert_to_tensor}.
 """
 
 
-def get_module_to_name():
-  return {
-      tf: "tf",
-      tf.errors: "tf.errors",
-      tf.image: "tf.image",
-      tf.nn: "tf.nn",
-      tf.train: "tf.train",
-      tf.python_io: "tf.python_io",
-      tf.test: "tf.test",
-      tf.contrib.copy_graph: "tf.contrib.copy_graph",
-      tf.contrib.distributions: "tf.contrib.distributions",
-      tf.contrib.ffmpeg: "tf.contrib.ffmpeg",
-      tf.contrib.layers: "tf.contrib.layers",
-      tf.contrib.learn: "tf.contrib.learn",
-      tf.contrib.metrics: "tf.contrib.metrics",
-      tf.contrib.util: "tf.contrib.util",
-  }
+def module_names():
+  return [
+      "tf",
+      "tf.errors",
+      "tf.image",
+      "tf.nn",
+      "tf.train",
+      "tf.python_io",
+      "tf.saved_model",
+      "tf.summary",
+      "tf.test",
+      "tf.contrib.bayesflow.entropy",
+      "tf.contrib.bayesflow.monte_carlo",
+      "tf.contrib.bayesflow.stochastic_graph",
+      "tf.contrib.bayesflow.stochastic_tensor",
+      "tf.contrib.bayesflow.variational_inference",
+      "tf.contrib.copy_graph",
+      "tf.contrib.crf",
+      "tf.contrib.distributions",
+      "tf.contrib.distributions.bijector",
+      "tf.contrib.ffmpeg",
+      "tf.contrib.framework",
+      "tf.contrib.graph_editor",
+      "tf.contrib.integrate",
+      "tf.contrib.layers",
+      "tf.contrib.learn",
+      "tf.contrib.learn.monitors",
+      "tf.contrib.legacy_seq2seq",
+      "tf.contrib.linalg",
+      "tf.contrib.losses",
+      "tf.contrib.metrics",
+      "tf.contrib.opt",
+      "tf.contrib.rnn",
+      "tf.contrib.solvers",
+      "tf.contrib.training",
+      "tf.contrib.util",
+      "tf_debug",
+  ]
+
+
+def find_module(base_module, name):
+  if name == "tf":
+    return base_module
+  # Special case for ffmpeg is needed since it's not linked in by default due
+  # to size concerns.
+  elif name == "tf.contrib.ffmpeg":
+    return ffmpeg
+  elif name == "tf_debug":
+    return tf_debug
+  elif name.startswith("tf."):
+    subname = name[3:]
+    subnames = subname.split(".")
+    parent_module = base_module
+    for s in subnames:
+      if not hasattr(parent_module, s):
+        raise ValueError(
+            "Module not found: {}. Submodule {} not found in parent module {}."
+            " Possible candidates are {}".format(
+                name, s, parent_module.__name__, dir(parent_module)))
+      parent_module = getattr(parent_module, s)
+    return parent_module
+  else:
+    raise ValueError(
+        "Invalid module name: {}. Module names must start with 'tf.'".format(
+            name))
+
+
+def get_module_to_name(names):
+  return collections.OrderedDict([(find_module(tf, x), x) for x in names])
 
 
 def all_libraries(module_to_name, members, documented):
@@ -74,49 +125,58 @@ def all_libraries(module_to_name, members, documented):
   """
   def library(name, title, module=None, **args):
     if module is None:
-      module = sys.modules["tensorflow.python.ops" +
-                           ("" if name == "ops" else "." + name)]
+      module = sys.modules["tensorflow.python.ops." + name]
     return (name + ".md", docs.Library(title=title,
                                        module_to_name=module_to_name,
                                        members=members,
                                        documented=documented,
                                        module=module,
                                        **args))
-  return [
+  return collections.OrderedDict([
       # Splits of module 'tf'.
       library("framework", "Building Graphs", framework_lib),
       library("check_ops", "Asserts and boolean checks."),
       library("constant_op", "Constants, Sequences, and Random Values",
-              prefix=PREFIX_TEXT),
-      library("state_ops", "Variables",
+              constant_op, prefix=PREFIX_TEXT),
+      library("state_ops",
+              "Variables",
               exclude_symbols=["create_partitioned_variables"],
               prefix=PREFIX_TEXT),
-      library("array_ops", "Tensor Transformations",
-              exclude_symbols=["list_diff"], prefix=PREFIX_TEXT),
-      library("math_ops", "Math",
+      library("array_ops",
+              "Tensor Transformations",
+              exclude_symbols=["list_diff"],
+              prefix=PREFIX_TEXT),
+      library("math_ops",
+              "Math",
               exclude_symbols=["sparse_matmul", "arg_min", "arg_max",
                                "lin_space", "sparse_segment_mean_grad"],
               prefix=PREFIX_TEXT),
-      library("string_ops", "Strings", prefix=PREFIX_TEXT),
+      library("string_ops", "Strings",
+              prefix=PREFIX_TEXT),
       library("histogram_ops", "Histograms"),
       library("control_flow_ops", "Control Flow", prefix=PREFIX_TEXT),
       library("functional_ops", "Higher Order Functions", prefix=PREFIX_TEXT),
+      library("tensor_array_ops", "TensorArray Operations", prefix=PREFIX_TEXT),
       library("session_ops", "Tensor Handle Operations", prefix=PREFIX_TEXT),
       library("image", "Images", tf.image, exclude_symbols=["ResizeMethod"],
               prefix=PREFIX_TEXT),
-      library("sparse_ops", "Sparse Tensors",
+      library("sparse_ops",
+              "Sparse Tensors",
               exclude_symbols=["serialize_sparse", "serialize_many_sparse",
                                "deserialize_many_sparse"],
               prefix=PREFIX_TEXT),
-      library("io_ops", "Inputs and Readers",
+      library("io_ops",
+              "Inputs and Readers",
               exclude_symbols=["LookupTableBase", "HashTable",
-                               "PaddingFIFOQueue",
                                "initialize_all_tables",
+                               "tables_initializer",
                                "parse_single_sequence_example",
                                "string_to_hash_bucket"],
               prefix=PREFIX_TEXT),
       library("python_io", "Data IO (Python functions)", tf.python_io),
-      library("nn", "Neural Network", tf.nn,
+      library("nn",
+              "Neural Network",
+              tf.nn,
               exclude_symbols=["conv2d_backprop_input",
                                "conv2d_backprop_filter", "avg_pool_grad",
                                "max_pool_grad", "max_pool_grad_with_argmax",
@@ -125,37 +185,95 @@ def all_libraries(module_to_name, members, documented):
                                "softsign_grad", "xw_plus_b", "relu_layer",
                                "lrn", "batch_norm_with_global_normalization",
                                "batch_norm_with_global_normalization_grad",
-                               "all_candidate_sampler",
-                               "rnn", "state_saving_rnn", "bidirectional_rnn",
-                               "dynamic_rnn", "seq2seq", "rnn_cell"],
+                               "all_candidate_sampler", "seq2seq"],
               prefix=PREFIX_TEXT),
       library("client", "Running Graphs", client_lib),
-      library("train", "Training", tf.train,
+      library("train",
+              "Training",
+              tf.train,
               exclude_symbols=["Feature", "Features", "BytesList", "FloatList",
                                "Int64List", "Example", "InferenceExample",
-                               "FeatureList", "FeatureLists",
-                               "RankingExample", "SequenceExample"]),
-      library("script_ops", "Wraps python functions", prefix=PREFIX_TEXT),
+                               "FeatureList", "FeatureLists", "RankingExample",
+                               "SequenceExample"]),
+      library("script_ops",
+              "Wraps python functions",
+              prefix=PREFIX_TEXT),
+      library("summary", "Summary Operations", tf.summary),
       library("test", "Testing", tf.test),
-      library("contrib.distributions", "Statistical distributions (contrib)",
+      library("contrib.bayesflow.entropy",
+              "BayesFlow Entropy (contrib)",
+              tf.contrib.bayesflow.entropy),
+      library("contrib.bayesflow.monte_carlo",
+              "BayesFlow Monte Carlo (contrib)",
+              tf.contrib.bayesflow.monte_carlo),
+      library("contrib.bayesflow.stochastic_graph",
+              "BayesFlow Stochastic Graph (contrib)",
+              tf.contrib.bayesflow.stochastic_graph),
+      library("contrib.bayesflow.stochastic_tensor",
+              "BayesFlow Stochastic Tensors (contrib)",
+              tf.contrib.bayesflow.stochastic_tensor),
+      library("contrib.bayesflow.variational_inference",
+              "BayesFlow Variational Inference (contrib)",
+              tf.contrib.bayesflow.variational_inference),
+      library("contrib.crf", "CRF (contrib)", tf.contrib.crf),
+      library("contrib.distributions", "Statistical Distributions (contrib)",
               tf.contrib.distributions),
+      library("contrib.distributions.bijector",
+              "Random variable transformations (contrib)",
+              tf.contrib.distributions.bijector),
       library("contrib.ffmpeg", "FFmpeg (contrib)", ffmpeg),
+      library("contrib.framework", "Framework (contrib)", tf.contrib.framework),
+      library("contrib.graph_editor", "Graph Editor (contrib)",
+              tf.contrib.graph_editor),
+      library("contrib.integrate", "Integrate (contrib)", tf.contrib.integrate),
       library("contrib.layers", "Layers (contrib)", tf.contrib.layers),
       library("contrib.learn", "Learn (contrib)", tf.contrib.learn),
+      library("contrib.learn.monitors", "Monitors (contrib)",
+              tf.contrib.learn.monitors),
+      library("contrib.legacy_seq2seq", "Sequence to Sequence (contrib)",
+              tf.contrib.legacy_seq2seq),
+      library("contrib.linalg", "Linear Algebra (contrib)",
+              tf.contrib.linalg),
+      library("contrib.losses", "Losses (contrib)", tf.contrib.losses),
+      library("contrib.opt", "Optimization (contrib)", tf.contrib.opt),
+      library("contrib.rnn", "RNN and Cells (contrib)", tf.contrib.rnn),
       library("contrib.metrics", "Metrics (contrib)", tf.contrib.metrics),
+      library("contrib.training", "Training (contrib)", tf.contrib.training),
       library("contrib.util", "Utilities (contrib)", tf.contrib.util),
       library("contrib.copy_graph", "Copying Graph Elements (contrib)",
               tf.contrib.copy_graph),
-  ]
+      library("tf_debug", "TensorFlow Debugger", tf_debug),
+  ])
 
 _hidden_symbols = ["Event", "LogMessage", "Summary", "SessionLog", "xrange",
                    "HistogramProto", "ConfigProto", "NodeDef", "GraphDef",
                    "GPUOptions", "GraphOptions", "RunOptions", "RunMetadata",
                    "SessionInterface", "BaseSession", "NameAttrList",
-                   "AttrValue", "TensorArray", "OptimizerOptions",
+                   "AttrValue", "OptimizerOptions",
                    "CollectionDef", "MetaGraphDef", "QueueRunnerDef",
                    "SaverDef", "VariableDef", "TestCase", "GrpcServer",
-                   "ClusterDef", "JobDef", "ServerDef"]
+                   "ClusterDef", "JobDef", "ServerDef", "TensorInfo"]
+
+# TODO(skleinfeld, deannarubin) Address shortname
+# conflict between tf.contrib.learn.NanLossDuringTrainingError and
+# tf.contrib.learn.monitors.NanLossDuringTrainingError, arising due
+# to imports in learn/python/learn/__init__.py
+# TODO(wicke): Remove contrib.layers.relu* after shortnames are
+# disabled.  These conflict with tf.nn.relu*
+EXCLUDE = frozenset(["tf.contrib.learn.monitors.NanLossDuringTrainingError",
+                     "tf.contrib.layers.dropout",
+                     "tf.contrib.layers.bias_add",
+                     "tf.contrib.layers.conv2d",
+                     "tf.contrib.layers.conv2d_transpose",
+                     "tf.contrib.layers.separable_conv2d",
+                     "tf.contrib.layers.softmax",
+                     "tf.contrib.layers.relu", "tf.contrib.layers.relu6",
+                     "tf.contrib.framework.assert_global_step",
+                     "tf.contrib.framework.get_global_step",
+                     "tf.contrib.learn.NanLossDuringTrainingError",
+                     "tf.contrib.layers.stack",
+                     "tf.contrib.layers.ProblemType",
+                     "tf.confusion_matrix"])
 
 
 def main(unused_argv):
@@ -165,9 +283,9 @@ def main(unused_argv):
 
   # Document libraries
   documented = set()
-  module_to_name = get_module_to_name()
-  members = docs.collect_members(module_to_name)
-  libraries = all_libraries(module_to_name, members, documented)
+  module_to_name = get_module_to_name(module_names())
+  members = docs.collect_members(module_to_name, exclude=EXCLUDE)
+  libraries = all_libraries(module_to_name, members, documented).items()
 
   # Define catch_all library before calling write_libraries to avoid complaining
   # about generically hidden symbols.
@@ -196,4 +314,19 @@ def main(unused_argv):
 
 
 if __name__ == "__main__":
-  tf.app.run()
+  parser = argparse.ArgumentParser()
+  parser.register("type", "bool", lambda v: v.lower() == "true")
+  parser.add_argument(
+      "--out_dir",
+      type=str,
+      default=None,
+      help="Directory to which docs should be written.")
+  parser.add_argument(
+      "--print_hidden_regex",
+      type="bool",
+      nargs="?",
+      const=True,
+      default=False,
+      help="Dump a regular expression matching any hidden symbol")
+  FLAGS, unparsed = parser.parse_known_args()
+  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

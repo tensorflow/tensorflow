@@ -19,7 +19,7 @@ import numpy as np
 
 #Imports for visualization
 import PIL.Image
-from cStringIO import StringIO
+from io import BytesIO
 from IPython.display import clear_output, Image, display
 ```
 
@@ -30,8 +30,9 @@ def DisplayArray(a, fmt='jpeg', rng=[0,1]):
   """Display an array as a picture."""
   a = (a - rng[0])/float(rng[1] - rng[0])*255
   a = np.uint8(np.clip(a, 0, 255))
-  f = StringIO()
+  f = BytesIO()
   PIL.Image.fromarray(a).save(f, fmt)
+  clear_output(wait = True)
   display(Image(data=f.getvalue()))
 ```
 
@@ -126,16 +127,13 @@ This is where it gets fun -- running time forward with a simple for loop.
 
 ```python
 # Initialize state to initial conditions
-tf.initialize_all_variables().run()
+tf.global_variables_initializer().run()
 
 # Run 1000 steps of PDE
 for i in range(1000):
   # Step simulation
   step.run({eps: 0.03, damping: 0.04})
-  # Visualize every 50 steps
-  if i % 50 == 0:
-    clear_output()
-    DisplayArray(U.eval(), rng=[-0.1, 0.1])
+  DisplayArray(U.eval(), rng=[-0.1, 0.1])
 ```
 
 ![jpeg](../../images/pde_output_2.jpg)

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,7 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/shape_inference.h"
 
 namespace tensorflow {
 
@@ -23,6 +25,7 @@ REGISTER_OP("Assert")
     .SetIsStateful()
     .Attr("T: list(type)")
     .Attr("summarize: int = 3")
+    .SetShapeFn(shape_inference::NoOutputs)
     .Doc(R"doc(
 Asserts that the given condition is true.
 
@@ -44,6 +47,7 @@ REGISTER_OP("Print")
     .Attr("message: string = ''")
     .Attr("first_n: int = -1")
     .Attr("summarize: int = 3")
+    .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Prints a list of tensors.
 
@@ -61,11 +65,29 @@ summarize: Only print this many entries of each tensor.
 // Operators that deal with SummaryProtos (encoded as DT_STRING tensors) as
 // inputs or outputs in various ways.
 
+REGISTER_OP("TensorSummary")
+    .Input("tensor: T")
+    .Output("summary: string")
+    .Attr("T: type")
+    .Attr("description: string = ''")
+    .Attr("labels: list(string) = []")
+    .Attr("display_name: string = ''")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Outputs a `Summary` protocol buffer with a tensor.
+
+tensor: A tensor to serialize.
+description: A json-encoded SummaryDescription proto.
+labels: An unused list of strings.
+display_name: An unused string.
+)doc");
+
 REGISTER_OP("ScalarSummary")
     .Input("tags: string")
     .Input("values: T")
     .Output("summary: string")
     .Attr("T: realnumbertype")
+    .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 Outputs a `Summary` protocol buffer with scalar values.
 
@@ -82,6 +104,7 @@ REGISTER_OP("HistogramSummary")
     .Input("values: T")
     .Output("summary: string")
     .Attr("T: realnumbertype = DT_FLOAT")
+    .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 Outputs a `Summary` protocol buffer with a histogram.
 
@@ -101,11 +124,12 @@ REGISTER_OP("ImageSummary")
     .Input("tensor: T")
     .Output("summary: string")
     .Attr("max_images: int >= 1 = 3")
-    .Attr("T: {uint8, float} = DT_FLOAT")
+    .Attr("T: {uint8, float, half} = DT_FLOAT")
     .Attr(
         "bad_color: tensor = { dtype: DT_UINT8 "
         "tensor_shape: { dim { size: 4 } } "
         "int_val: 255 int_val: 0 int_val: 0 int_val: 255 }")
+    .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 Outputs a `Summary` protocol buffer with images.
 
@@ -151,12 +175,43 @@ bad_color: Color to use for pixels with non-finite values.
 summary: Scalar. Serialized `Summary` protocol buffer.
 )doc");
 
+REGISTER_OP("AudioSummaryV2")
+    .Input("tag: string")
+    .Input("tensor: float")
+    .Input("sample_rate: float")
+    .Output("summary: string")
+    .Attr("max_outputs: int >= 1 = 3")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Outputs a `Summary` protocol buffer with audio.
+
+The summary has up to `max_outputs` summary values containing audio. The
+audio is built from `tensor` which must be 3-D with shape `[batch_size,
+frames, channels]` or 2-D with shape `[batch_size, frames]`. The values are
+assumed to be in the range of `[-1.0, 1.0]` with a sample rate of `sample_rate`.
+
+The `tag` argument is a scalar `Tensor` of type `string`.  It is used to
+build the `tag` of the summary values:
+
+*  If `max_outputs` is 1, the summary value tag is '*tag*/audio'.
+*  If `max_outputs` is greater than 1, the summary value tags are
+   generated sequentially as '*tag*/audio/0', '*tag*/audio/1', etc.
+
+tag: Scalar. Used to build the `tag` attribute of the summary values.
+tensor: 2-D of shape `[batch_size, frames]`.
+sample_rate: The sample rate of the signal in hertz.
+max_outputs: Max number of batch elements to generate audio for.
+summary: Scalar. Serialized `Summary` protocol buffer.
+)doc");
+
 REGISTER_OP("AudioSummary")
     .Input("tag: string")
     .Input("tensor: float")
     .Output("summary: string")
-    .Attr("sample_rate: float > 0.0")
+    .Attr("sample_rate: float")
     .Attr("max_outputs: int >= 1 = 3")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Deprecated(15, "Use AudioSummaryV2.")
     .Doc(R"doc(
 Outputs a `Summary` protocol buffer with audio.
 
@@ -183,6 +238,7 @@ REGISTER_OP("MergeSummary")
     .Input("inputs: N * string")
     .Output("summary: string")
     .Attr("N : int >= 1")
+    .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 Merges summaries.
 

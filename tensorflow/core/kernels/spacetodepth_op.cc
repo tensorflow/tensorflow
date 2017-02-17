@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -59,7 +59,7 @@ class SpaceToDepthOp : public OpKernel {
     static const int kRequiredDims = 4;
     OP_REQUIRES(context, kRequiredDims == dims,
                 errors::InvalidArgument("Input rank should be: ", kRequiredDims,
-                                        "instead of: ", dims));
+                                        " instead of: ", dims));
 
     const int batch_size = input.dim_size(0);
     const int height = input.dim_size(1);
@@ -67,11 +67,11 @@ class SpaceToDepthOp : public OpKernel {
     const int input_depth = input.dim_size(3);
 
     // Both width and height must be divisible by block_size.
-    OP_REQUIRES(
-        context, (width % block_size_) == 0 && (height % block_size_) == 0,
-        errors::InvalidArgument("Image width ", width, " and height ", height,
-                                "should be divisible by block_size: ",
-                                block_size_));
+    OP_REQUIRES(context,
+                (width % block_size_) == 0 && (height % block_size_) == 0,
+                errors::InvalidArgument(
+                    "Image width ", width, " and height ", height,
+                    " should be divisible by block_size: ", block_size_));
 
     const int block_size_sq = block_size_ * block_size_;
 

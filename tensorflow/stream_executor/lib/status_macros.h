@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -49,21 +49,5 @@ limitations under the License.
 #define SE_ASSIGN_OR_RETURN(__lhs, __rhs) \
   SE_ASSIGN_OR_RETURN_IMPL(__lhs, __rhs,  \
                            SE_MACRO_CONCAT(__status_or_value, __COUNTER__))
-
-// Logs the status and returns false if it is in error; otherwise, returns true.
-//
-// The argument expression is guaranteed to be evaluated exactly once.
-//
-// TODO(leary) remove as many of these as possible with port::Status
-// proliferation.
-#define SE_RETURN_STATUS_AS_BOOL(__status) \
-  do {                                     \
-    auto status = __status;                \
-    if (__status.ok()) {                   \
-      return true;                         \
-    }                                      \
-    LOG(ERROR) << status;                  \
-    return false;                          \
-  } while (false)
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_LIB_STATUS_MACROS_H_

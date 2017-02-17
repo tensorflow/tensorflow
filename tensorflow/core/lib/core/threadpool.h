@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -47,12 +47,44 @@ class ThreadPool {
   // Schedule fn() for execution in the pool of threads.
   void Schedule(std::function<void()> fn);
 
-  // ParallelFor shards the "total" unit of work assuming each unit of work
+  // ParallelFor shards the "total" units of work assuming each unit of work
   // having roughly "cost_per_unit" cost, in cycles. Each unit of work is
   // indexed 0, 1, ..., total - 1. Each shard contains 1 or more units of work
   // and the total cost of each shard is roughly the same.
+  //
+  // "cost_per_unit" is an estimate of the number of CPU cycles (or nanoseconds
+  // if not CPU-bound) to complete a unit of work. Overestimating creates too
+  // many shards and CPU time will be dominated by per-shard overhead, such as
+  // Context creation. Underestimating may not fully make use of the specified
+  // parallelism.
   void ParallelFor(int64 total, int64 cost_per_unit,
                    std::function<void(int64, int64)> fn);
+
+  // Shard the "total" units of work. For more details, see "ParallelFor".
+  //
+  // The function is passed a thread_id between 0 and NumThreads() *inclusive*.
+  // This is because some work can happen on the caller thread while the threads
+  // in the pool are also being used.
+  //
+  // The caller can allocate NumThreads() + 1 separate buffers for each thread.
+  // Each thread can safely write to the buffer given by its id without
+  // synchronization. However, the worker fn may be called multiple times
+  // sequentially with the same id.
+  //
+  // At most NumThreads() unique ids will actually be used, and only a few may
+  // be used for small workloads. If each buffer is expensive, the buffers
+  // should be stored in an array initially filled with null, and a buffer
+  // should be allocated by fn the first time that the id is used.
+  void ParallelForWithWorkerId(
+      int64 total, int64 cost_per_unit,
+      const std::function<void(int64, int64, int)>& fn);
+
+  // Returns the number of threads in the pool.
+  int NumThreads() const;
+
+  // Returns current thread id between 0 and NumThreads() - 1, if called from a
+  // thread in the pool. Returns -1 otherwise.
+  int CurrentThreadId() const;
 
   struct Impl;
 

@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,8 +23,10 @@ import threading
 
 import six
 
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import event_accumulator
+from tensorflow.python.summary.impl import directory_watcher
 from tensorflow.python.summary.impl import io_wrapper
 
 
@@ -63,18 +65,6 @@ class EventMultiplexer(object):
   If you would like to watch `/parent/directory/path`, wait for it to be created
     (if necessary) and then periodically pick up new runs, use
     `AutoloadingMultiplexer`
-
-  @@__init__
-  @@AddRun
-  @@AddRunsFromDirectory
-  @@Reload
-  @@Runs
-  @@Scalars
-  @@Graph
-  @@Histograms
-  @@CompressedHistograms
-  @@Images
-  @@Audio
   """
 
   def __init__(self,
@@ -89,10 +79,11 @@ class EventMultiplexer(object):
         None, then the EventMultiplexer initializes without any runs.
       size_guidance: A dictionary mapping from `tagType` to the number of items
         to store for each tag of that type. See
-        `event_ccumulator.EventAccumulator` for details.
+        `event_accumulator.EventAccumulator` for details.
       purge_orphaned_data: Whether to discard any events that were "orphaned" by
         a TensorFlow restart.
     """
+    logging.info('Event Multiplexer initializing.')
     self._accumulators_mutex = threading.Lock()
     self._accumulators = {}
     self._paths = {}
@@ -100,8 +91,11 @@ class EventMultiplexer(object):
     self._size_guidance = size_guidance
     self.purge_orphaned_data = purge_orphaned_data
     if run_path_map is not None:
+      logging.info('Event Multplexer doing initialization load for %s',
+                   run_path_map)
       for (run, path) in six.iteritems(run_path_map):
         self.AddRun(path, run)
+    logging.info('Event Multiplexer done initializing')
 
   def AddRun(self, path, name=None):
     """Add a run to the multiplexer.
@@ -113,8 +107,7 @@ class EventMultiplexer(object):
       accumulator.
 
     If `Reload` has been called, it will `Reload` the newly created
-    accumulators. This maintains the invariant that once the Multiplexer was
-    activated, all of its accumulators are active.
+    accumulators.
 
     Args:
       path: Path to the event files (or event directory) for given run.
@@ -172,22 +165,59 @@ class EventMultiplexer(object):
     Returns:
       The `EventMultiplexer`.
     """
+    logging.info('Starting AddRunsFromDirectory: %s', path)
     for subdir in GetLogdirSubdirectories(path):
       logging.info('Adding events from directory %s', subdir)
       rpath = os.path.relpath(subdir, path)
       subname = os.path.join(name, rpath) if name else rpath
       self.AddRun(subdir, name=subname)
+    logging.info('Done with AddRunsFromDirectory: %s', path)
     return self
 
   def Reload(self):
     """Call `Reload` on every `EventAccumulator`."""
+    logging.info('Beginning EventMultiplexer.Reload()')
     self._reload_called = True
+    # Build a list so we're safe even if the list of accumulators is modified
+    # even while we're reloading.
     with self._accumulators_mutex:
-      loaders = list(self._accumulators.values())
+      items = list(self._accumulators.items())
 
-    for l in loaders:
-      l.Reload()
+    names_to_delete = set()
+    for name, accumulator in items:
+      try:
+        accumulator.Reload()
+      except (OSError, IOError) as e:
+        logging.error("Unable to reload accumulator '%s': %s", name, e)
+      except directory_watcher.DirectoryDeletedError:
+        names_to_delete.add(name)
+
+    with self._accumulators_mutex:
+      for name in names_to_delete:
+        logging.warning("Deleting accumulator '%s'", name)
+        del self._accumulators[name]
+    logging.info('Finished with EventMultiplexer.Reload()')
     return self
+
+  def FirstEventTimestamp(self, run):
+    """Return the timestamp of the first event of the given run.
+
+    This may perform I/O if no events have been loaded yet for the run.
+
+    Args:
+      run: A string name of the run for which the timestamp is retrieved.
+
+    Returns:
+      The wall_time of the first event of the run, which will typically be
+      seconds since the epoch.
+
+    Raises:
+      KeyError: If the run is not found.
+      ValueError: If the run has no events loaded and there are no events on
+        disk to load.
+    """
+    accumulator = self._GetAccumulator(run)
+    return accumulator.FirstEventTimestamp()
 
   def Scalars(self, run, tag):
     """Retrieve the scalar events associated with a run and tag.
@@ -199,13 +229,29 @@ class EventMultiplexer(object):
     Raises:
       KeyError: If the run is not found, or the tag is not available for
         the given run.
-      RuntimeError: If the run's `EventAccumulator` has not been activated.
 
     Returns:
       An array of `event_accumulator.ScalarEvents`.
     """
     accumulator = self._GetAccumulator(run)
     return accumulator.Scalars(tag)
+
+  def HealthPills(self, run, node_name):
+    """Retrieve the health pill events associated with a run and node name.
+
+    Args:
+      run: A string name of the run for which health pills are retrieved.
+      node_name: A string name of the node for which health pills are retrieved.
+
+    Raises:
+      KeyError: If the run is not found, or the node name is not available for
+        the given run.
+
+    Returns:
+      An array of `event_accumulator.HealthPillEvents`.
+    """
+    accumulator = self._GetAccumulator(run)
+    return accumulator.HealthPills(node_name)
 
   def Graph(self, run):
     """Retrieve the graph associated with the provided run.
@@ -216,13 +262,28 @@ class EventMultiplexer(object):
     Raises:
       KeyError: If the run is not found.
       ValueError: If the run does not have an associated graph.
-      RuntimeError: If the run's EventAccumulator has not been activated.
 
     Returns:
-      The `graph_def` protobuf data structure.
+      The `GraphDef` protobuf data structure.
     """
     accumulator = self._GetAccumulator(run)
     return accumulator.Graph()
+
+  def MetaGraph(self, run):
+    """Retrieve the metagraph associated with the provided run.
+
+    Args:
+      run: A string name of a run to load the graph for.
+
+    Raises:
+      KeyError: If the run is not found.
+      ValueError: If the run does not have an associated graph.
+
+    Returns:
+      The `MetaGraphDef` protobuf data structure.
+    """
+    accumulator = self._GetAccumulator(run)
+    return accumulator.MetaGraph()
 
   def RunMetadata(self, run, tag):
     """Get the session.run() metadata associated with a TensorFlow run and tag.
@@ -234,7 +295,6 @@ class EventMultiplexer(object):
     Raises:
       KeyError: If the run is not found, or the tag is not available for the
         given run.
-      RuntimeError: If the run's EventAccumulator has not been activated.
 
     Returns:
       The metadata in the form of `RunMetadata` protobuf data structure.
@@ -252,7 +312,6 @@ class EventMultiplexer(object):
     Raises:
       KeyError: If the run is not found, or the tag is not available for
         the given run.
-      RuntimeError: If the run's `EventAccumulator` has not been activated.
 
     Returns:
       An array of `event_accumulator.HistogramEvents`.
@@ -270,7 +329,6 @@ class EventMultiplexer(object):
     Raises:
       KeyError: If the run is not found, or the tag is not available for
         the given run.
-      RuntimeError: If the run's EventAccumulator has not been activated.
 
     Returns:
       An array of `event_accumulator.CompressedHistogramEvents`.
@@ -288,7 +346,6 @@ class EventMultiplexer(object):
     Raises:
       KeyError: If the run is not found, or the tag is not available for
         the given run.
-      RuntimeError: If the run's `EventAccumulator` has not been activated.
 
     Returns:
       An array of `event_accumulator.ImageEvents`.
@@ -306,7 +363,6 @@ class EventMultiplexer(object):
     Raises:
       KeyError: If the run is not found, or the tag is not available for
         the given run.
-      RuntimeError: If the run's `EventAccumulator` has not been activated.
 
     Returns:
       An array of `event_accumulator.AudioEvents`.
@@ -323,13 +379,17 @@ class EventMultiplexer(object):
                   scalarValues: [tagA, tagB, tagC],
                   histograms: [tagX, tagY, tagZ],
                   compressedHistograms: [tagX, tagY, tagZ],
-                  graph: true}}
+                  graph: true, meta_graph: true}}
     ```
     """
     with self._accumulators_mutex:
       # To avoid nested locks, we construct a copy of the run-accumulator map
       items = list(six.iteritems(self._accumulators))
     return {run_name: accumulator.Tags() for run_name, accumulator in items}
+
+  def RunPaths(self):
+    """Returns a dict mapping run names to event file paths."""
+    return self._paths
 
   def _GetAccumulator(self, run):
     with self._accumulators_mutex:
@@ -338,7 +398,7 @@ class EventMultiplexer(object):
 
 def GetLogdirSubdirectories(path):
   """Returns subdirectories with event files on path."""
-  if io_wrapper.Exists(path) and not io_wrapper.IsDirectory(path):
+  if gfile.Exists(path) and not gfile.IsDirectory(path):
     raise ValueError('GetLogdirSubdirectories: path exists and is not a '
                      'directory, %s' % path)
 

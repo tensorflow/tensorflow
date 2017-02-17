@@ -10,7 +10,7 @@ There are three main methods of getting data into a TensorFlow program:
 
 [TOC]
 
-## Feeding 
+## Feeding
 
 TensorFlow's feed mechanism lets you inject data into any Tensor in a
 computation graph. A python computation can thus feed data directly into the
@@ -99,7 +99,7 @@ key, value = reader.read(filename_queue)
 record_defaults = [[1], [1], [1], [1], [1]]
 col1, col2, col3, col4, col5 = tf.decode_csv(
     value, record_defaults=record_defaults)
-features = tf.pack([col1, col2, col3, col4])
+features = tf.stack([col1, col2, col3, col4])
 
 with tf.Session() as sess:
   # Start populating the filename queue.
@@ -135,7 +135,7 @@ uses a file format where each record is represented using a fixed number of
 bytes: 1 byte for the label followed by 3072 bytes of image data. Once you have
 a uint8 tensor, standard operations can slice out each piece and reformat as
 needed. For CIFAR-10, you can see how to do the reading and decoding in
-[`tensorflow/models/image/cifar10/cifar10_input.py`](https://www.tensorflow.org/code/tensorflow/models/image/cifar10/cifar10_input.py)
+[`tensorflow_models/tutorials/image/cifar10/cifar10_input.py`](https://www.tensorflow.org/code/tensorflow_models/tutorials/image/cifar10/cifar10_input.py)
 and described in
 [this tutorial](../../tutorials/deep_cnn/index.md#prepare-the-data).
 
@@ -172,7 +172,7 @@ You can then do any preprocessing of these examples you want. This would be any
 processing that doesn't depend on trainable parameters. Examples include
 normalization of your data, picking a random slice, adding noise or distortions,
 etc.  See
-[`tensorflow/models/image/cifar10/cifar10.py`](https://www.tensorflow.org/code/tensorflow/models/image/cifar10/cifar10.py)
+[`tensorflow_models/tutorials/image/cifar10/cifar10_input.py`](https://www.tensorflow.org/code/tensorflow_models/tutorials/image/cifar10/cifar10_input.py)
 for an example.
 
 ### Batching
@@ -253,7 +253,7 @@ summary to the graph that indicates how full the example queue is. If you have
 enough reading threads, that summary will stay above zero.  You can
 [view your summaries as training progresses using TensorBoard](../../how_tos/summaries_and_tensorboard/index.md).
 
-### Creating threads to prefetch using `QueueRunner` objects 
+### Creating threads to prefetch using `QueueRunner` objects
 
 The short version: many of the `tf.train` functions listed above add
 [`QueueRunner`](../../api_docs/python/train.md#QueueRunner) objects to your
@@ -269,7 +269,7 @@ recommended code pattern combining these is:
 
 ```python
 # Create the graph, etc.
-init_op = tf.initialize_all_variables()
+init_op = tf.global_variables_initializer()
 
 # Create a session for running operations in the Graph.
 sess = tf.Session()
@@ -377,11 +377,11 @@ Again, the example queue will have some elements queued, so training will
 continue until those are exhausted.  If the example queue is a
 [`RandomShuffleQueue`](../../api_docs/python/io_ops.md#RandomShuffleQueue), say
 because you are using `shuffle_batch` or `shuffle_batch_join`, it normally will
-avoid ever going having fewer than its `min_after_dequeue` attr elements
-buffered.  However, once the queue is closed that restriction will be lifted and
-the queue will eventually empty.  At that point the actual training threads,
-when they try and dequeue from example queue, will start getting `OutOfRange`
-errors and exiting.  Once all the training threads are done,
+avoid ever having fewer than its `min_after_dequeue` attr elements buffered.
+However, once the queue is closed that restriction will be lifted and the queue
+will eventually empty.  At that point the actual training threads, when they
+try and dequeue from example queue, will start getting `OutOfRange` errors and
+exiting.  Once all the training threads are done,
 [`tf.train.Coordinator.join`](../../api_docs/python/train.md#Coordinator.join)
 will return and you can exit cleanly.
 
@@ -443,7 +443,7 @@ with tf.Session() as sess:
 Setting `trainable=False` keeps the variable out of the
 `GraphKeys.TRAINABLE_VARIABLES` collection in the graph, so we won't try and
 update it when training.  Setting `collections=[]` keeps the variable out of the
-`GraphKeys.VARIABLES` collection used for saving and restoring checkpoints.
+`GraphKeys.GLOBAL_VARIABLES` collection used for saving and restoring checkpoints.
 
 Either way,
 [`tf.train.slice_input_producer function`](../../api_docs/python/io_ops.md#slice_input_producer)

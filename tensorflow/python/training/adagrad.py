@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,8 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import optimizer
 from tensorflow.python.training import training_ops
@@ -28,9 +28,9 @@ from tensorflow.python.training import training_ops
 class AdagradOptimizer(optimizer.Optimizer):
   """Optimizer that implements the Adagrad algorithm.
 
-  See this [paper](http://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf).
-
-  @@__init__
+  See this [paper](http://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf)
+  or this
+  [intro](http://cs.stanford.edu/~ppasupat/a9online/uploads/proximal_notes.pdf).
   """
 
   def __init__(self, learning_rate, initial_accumulator_value=0.1,
@@ -78,6 +78,15 @@ class AdagradOptimizer(optimizer.Optimizer):
         grad,
         use_locking=self._use_locking)
 
+  def _resource_apply_dense(self, grad, var):
+    acc = self.get_slot(var, "accumulator")
+    return training_ops.resource_apply_adagrad(
+        var.handle,
+        acc.handle,
+        math_ops.cast(self._learning_rate_tensor, grad.dtype.base_dtype),
+        grad,
+        use_locking=self._use_locking)
+
   def _apply_sparse(self, grad, var):
     acc = self.get_slot(var, "accumulator")
     return training_ops.sparse_apply_adagrad(
@@ -86,4 +95,14 @@ class AdagradOptimizer(optimizer.Optimizer):
         math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),
         grad.values,
         grad.indices,
+        use_locking=self._use_locking)
+
+  def _resource_apply_sparse(self, grad, var, indices):
+    acc = self.get_slot(var, "accumulator")
+    return training_ops.resource_sparse_apply_adagrad(
+        var.handle,
+        acc.handle,
+        math_ops.cast(self._learning_rate_tensor, grad.dtype),
+        grad,
+        indices,
         use_locking=self._use_locking)

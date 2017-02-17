@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,68 +14,120 @@
 # ==============================================================================
 
 # pylint: disable=g-short-docstring-punctuation
-"""## Sparse Tensor Representation
-
-Tensorflow supports a `SparseTensor` representation for data that is sparse
-in multiple dimensions. Contrast this representation with `IndexedSlices`,
-which is efficient for representing tensors that are sparse in their first
-dimension, and dense along all other dimensions.
+"""Sparse Tensor Representation. See the @{python/sparse_ops} guide.
 
 @@SparseTensor
 @@SparseTensorValue
-
-## Conversion
-
 @@sparse_to_dense
 @@sparse_tensor_to_dense
 @@sparse_to_indicator
 @@sparse_merge
-
-## Manipulation
-
 @@sparse_concat
 @@sparse_reorder
+@@sparse_reshape
 @@sparse_split
 @@sparse_retain
+@@sparse_reset_shape
 @@sparse_fill_empty_rows
-
-## Math Operations
+@@sparse_transpose
+@@sparse_reduce_sum
+@@sparse_reduce_sum_sparse
 @@sparse_add
+@@sparse_softmax
 @@sparse_tensor_dense_matmul
+@@sparse_maximum
+@@sparse_minimum
 """
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+import numbers
+
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import math_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_sparse_ops import *
 # pylint: enable=wildcard-import
+from tensorflow.python.util import deprecation
+
+
+def _convert_to_sparse_tensor(sp_input):
+  """Convert `sp_input` to `SparseTensor` and return it.
+
+  Args:
+    sp_input: `SparseTensor` or `SparseTensorValue`.
+
+  Returns:
+    `sp_input` converted to `SparseTensor`.
+
+  Raises:
+    ValueError: if `sp_input` is neither `SparseTensor` nor `SparseTensorValue`.
+  """
+  if isinstance(sp_input, sparse_tensor.SparseTensorValue):
+    return sparse_tensor.SparseTensor.from_value(sp_input)
+  if not isinstance(sp_input, sparse_tensor.SparseTensor):
+    raise TypeError("Input must be a SparseTensor.")
+  return sp_input
+
+
+def _convert_to_sparse_tensors(sp_inputs):
+  """Convert `sp_inputs` to `SparseTensor` objects and return them.
+
+  Args:
+    sp_inputs: `list` or `tuple` of `SparseTensor` or `SparseTensorValue`
+      objects.
+
+  Returns:
+    `sp_inputs` converted to `SparseTensor` objects.
+
+  Raises:
+    ValueError: if any item in `sp_inputs` is neither `SparseTensor` nor
+      `SparseTensorValue`.
+  """
+  if isinstance(sp_inputs, list):
+    return [_convert_to_sparse_tensor(sp_input) for sp_input in sp_inputs]
+  if isinstance(sp_inputs, tuple):
+    return (_convert_to_sparse_tensor(sp_input) for sp_input in sp_inputs)
+  raise TypeError("Inputs must be a list or tuple.")
 
 
 # pylint: disable=protected-access
-def sparse_concat(concat_dim, sp_inputs, name=None):
+def sparse_concat(axis,
+                  sp_inputs,
+                  name=None,
+                  expand_nonconcat_dim=False,
+                  concat_dim=None):
   """Concatenates a list of `SparseTensor` along the specified dimension.
 
   Concatenation is with respect to the dense versions of each sparse input.
   It is assumed that each inputs is a `SparseTensor` whose elements are ordered
   along increasing dimension number.
 
-  All inputs' shapes must match, except for the concat dimension.  The
-  `indices`, `values`, and `shapes` lists must have the same length.
+  If expand_nonconcat_dim is False, all inputs' shapes must match, except for
+  the concat dimension. If expand_nonconcat_dim is True, then inputs' shapes are
+  allowed to vary among all inputs.
 
-  The output shape is identical to the inputs', except along the concat
-  dimension, where it is the sum of the inputs' sizes along that dimension.
+  The `indices`, `values`, and `shapes` lists must have the same length.
+
+  If expand_nonconcat_dim is False, then the output shape is identical to the
+  inputs', except along the concat dimension, where it is the sum of the inputs'
+  sizes along that dimension.
+
+  If expand_nonconcat_dim is True, then the output shape along the non-concat
+  dimensions will be expand to be the largest among all inputs, and it is the
+  sum of the inputs sizes along the concat dimension.
 
   The output elements will be resorted to preserve the sort order along
   increasing dimension number.
@@ -84,7 +136,7 @@ def sparse_concat(concat_dim, sp_inputs, name=None):
   values across all inputs. This is due to the need for an internal sort in
   order to concatenate efficiently across an arbitrary dimension.
 
-  For example, if `concat_dim = 1` and the inputs are
+  For example, if `axis = 1` and the inputs are
 
       sp_inputs[0]: shape = [2, 3]
       [0, 2]: "a"
@@ -109,10 +161,42 @@ def sparse_concat(concat_dim, sp_inputs, name=None):
       [    a] concat [  d e  ] = [    a   d e  ]
       [b c  ]        [       ]   [b c          ]
 
+  Another example, if 'axis = 1' and the inputs are
+
+      sp_inputs[0]: shape = [3, 3]
+      [0, 2]: "a"
+      [1, 0]: "b"
+      [2, 1]: "c"
+
+      sp_inputs[1]: shape = [2, 4]
+      [0, 1]: "d"
+      [0, 2]: "e"
+
+  if expand_nonconcat_dim = False, this will result in an error. But if
+  expand_nonconcat_dim = True, this will result in:
+
+      shape = [3, 7]
+      [0, 2]: "a"
+      [0, 4]: "d"
+      [0, 5]: "e"
+      [1, 0]: "b"
+      [2, 1]: "c"
+
+  Graphically this is equivalent to doing
+
+      [    a] concat [  d e  ] = [    a   d e  ]
+      [b    ]        [       ]   [b            ]
+      [  c  ]                    [  c          ]
+
+
   Args:
-    concat_dim: Dimension to concatenate along.
+    axis: Dimension to concatenate along. Must be in range [-rank, rank),
+      where rank is the number of dimensions in each input `SparseTensor`.
     sp_inputs: List of `SparseTensor` to concatenate.
     name: A name prefix for the returned tensors (optional).
+    expand_nonconcat_dim: Whether to allow the expansion in the non-concat
+      dimensions. Defaulted to False.
+    concat_dim: The old (deprecated) name for axis.
 
   Returns:
     A `SparseTensor` with the concatenated output.
@@ -120,26 +204,32 @@ def sparse_concat(concat_dim, sp_inputs, name=None):
   Raises:
     TypeError: If `sp_inputs` is not a list of `SparseTensor`.
   """
-  if not isinstance(sp_inputs, list):
-    raise TypeError("Inputs must be a list")
-  if not all(isinstance(sp_input, ops.SparseTensor) for sp_input in sp_inputs):
-    raise TypeError("All inputs must be SparseTensors")
+  axis = deprecation.deprecated_argument_lookup("axis", axis, "concat_dim",
+                                                concat_dim)
+  sp_inputs = _convert_to_sparse_tensors(sp_inputs)
 
   if len(sp_inputs) == 1:  # Degenerate case of one tensor.
     return sp_inputs[0]
 
   inds = [sp_input.indices for sp_input in sp_inputs]
   vals = [sp_input.values for sp_input in sp_inputs]
-  shapes = [sp_input.shape for sp_input in sp_inputs]
+  shapes = [sp_input.dense_shape for sp_input in sp_inputs]
 
-  output_ind, output_val, output_shape = (
-      gen_sparse_ops._sparse_concat(inds,
-                                    vals,
-                                    shapes,
-                                    concat_dim,
-                                    name=name))
+  if expand_nonconcat_dim:
+    max_shape = math_ops.reduce_max(
+        array_ops.concat(
+            [array_ops.reshape(shape, [1, -1]) for shape in shapes], 0), 0)
+    shapes = [
+        array_ops.concat([
+            max_shape[:axis], shape[-1:] if axis == -1 else
+            shape[axis:axis + 1], [] if axis == -1 else max_shape[axis + 1:]
+        ], 0) for shape in shapes
+    ]
 
-  return ops.SparseTensor(output_ind, output_val, output_shape)
+  output_ind, output_val, output_shape = (gen_sparse_ops._sparse_concat(
+      inds, vals, shapes, axis, name=name))
+
+  return sparse_tensor.SparseTensor(output_ind, output_val, output_shape)
 
 
 def sparse_add(a, b, thresh=0):
@@ -171,10 +261,10 @@ def sparse_add(a, b, thresh=0):
 
   Then,
 
-      - thresh == 0 (the default): all 5 index/value pairs will be returned.
-      - thresh == 0.11: only .1 and 0  will vanish, and the remaining three
+      * `thresh == 0` (the default): all 5 index/value pairs will be returned.
+      * `thresh == 0.11`: only .1 and 0  will vanish, and the remaining three
           index/value pairs will be returned.
-      - thresh == 0.21: .1, 0, and -.2 will vanish.
+      * `thresh == 0.21`: .1, 0, and -.2 will vanish.
 
   Args:
     a: The first operand; `SparseTensor` or `Tensor`.
@@ -191,82 +281,51 @@ def sparse_add(a, b, thresh=0):
   Raises:
     TypeError: If both `a` and `b` are `Tensor`s.  Use `tf.add()` instead.
   """
-  if not any(isinstance(inp, ops.SparseTensor) for inp in [a, b]):
+  sparse_classes = (sparse_tensor.SparseTensor, sparse_tensor.SparseTensorValue)
+  if not any(isinstance(inp, sparse_classes) for inp in [a, b]):
     raise TypeError("At least one input should be SparseTensor; do you mean to"
                     " use tf.add()?")
 
-  if all(isinstance(inp, ops.SparseTensor) for inp in [a, b]):
-    thresh = ops.convert_to_tensor(thresh, dtype=a.values.dtype.real_dtype,
-                                   name="thresh")
-    output_ind, output_val, output_shape = (
-        gen_sparse_ops._sparse_add(a.indices,
-                                   a.values,
-                                   a.shape,
-                                   b.indices,
-                                   b.values,
-                                   b.shape,
-                                   thresh))
-    return ops.SparseTensor(output_ind, output_val, output_shape)
+  if all(isinstance(inp, sparse_classes) for inp in [a, b]):
+    a = _convert_to_sparse_tensor(a)
+    thresh = ops.convert_to_tensor(
+        thresh, dtype=a.values.dtype.real_dtype, name="thresh")
+    output_ind, output_val, output_shape = (gen_sparse_ops._sparse_add(
+        a.indices, a.values, a.dense_shape,
+        b.indices, b.values, b.dense_shape,
+        thresh))
+    return sparse_tensor.SparseTensor(output_ind, output_val, output_shape)
   else:
-    # swap to make `a` the SparseTensor
-    if isinstance(b, ops.SparseTensor):
+    # swap to make `a` the SparseTensor.
+    if isinstance(b, sparse_classes):
       a, b = b, a
     return gen_sparse_ops._sparse_tensor_dense_add(
-        a.indices, a.values, a.shape, b)
+        a.indices, a.values, a.dense_shape, b)
 
 
-@ops.RegisterShape("SparseAdd")
-def _SparseAddShape(op):  # pylint: disable=invalid-name
-  input_shape_shape = op.inputs[2].get_shape()
-  dim = input_shape_shape.num_elements()
-  return [
-      tensor_shape.TensorShape([None, dim]),
-      tensor_shape.unknown_shape(1),
-      input_shape_shape
-  ]
+def sparse_dense_cwise_add(sp_t, dense_t):
+  """Adds up a SparseTensor and a dense Tensor, using these special rules:
 
+  (1) Broadcasts the dense side to have the same shape as the sparse side, if
+      eligible;
+  (2) Then, only the dense values pointed to by the indices of the SparseTensor
+      participate in the cwise addition.
 
-@ops.RegisterShape("SparseTensorDenseAdd")
-def _SparseTensorDenseAddShape(op):  # pylint: disable=invalid-name
-  return [op.inputs[3].get_shape()]
+  By the rules, the result is a logical SparseTensor with exactly the same
+  indices and shape, but possibly with different non-zero values.  The output of
+  this Op is the resultant non-zero values.
 
+  Args:
+    sp_t: the SparseTensor operand.
+    dense_t: the dense Tensor operand; must have the same dtype and a
+      broadcast-compatible shape as `sp_t`.
 
-@ops.RegisterShape("SparseAddGrad")
-def _SparseAddGradShape(op):  # pylint: disable=invalid-name
-  # shapes for (a_val_grad, b_val_grad)
-  a_nnz = op.inputs[1].get_shape()[0]
-  b_nnz = op.inputs[2].get_shape()[0]
-  return [tensor_shape.TensorShape([a_nnz]), tensor_shape.TensorShape([b_nnz])]
-
-
-@ops.RegisterShape("SparseConcat")
-def _SparseConcatShape(op):
-  """Shape function for SparseConcat op."""
-  num_inputs = int(op.get_attr("N"))
-
-  # TF flattens and concatenates all list inputs, so reconstruct the lists here.
-  ind_shapes = [ind.get_shape().with_rank(2) for ind in op.inputs[0:num_inputs]]
-  val_shapes = [val.get_shape().with_rank(1)
-                for val in op.inputs[num_inputs:2 * num_inputs]]
-  shape_shapes = [shape.get_shape().with_rank(1)
-                  for shape in op.inputs[2 * num_inputs:]]
-
-  output_ind_rows = tensor_shape.Dimension(0)
-  output_ind_cols = tensor_shape.Dimension(None)
-  output_val_elems = tensor_shape.Dimension(0)
-  output_shape_shape = tensor_shape.TensorShape(None)
-
-  for i in xrange(num_inputs):
-    num_elems_i = ind_shapes[i][0].merge_with(val_shapes[i][0])
-    output_ind_rows += num_elems_i
-    output_ind_cols = output_ind_cols.merge_with(ind_shapes[i][1])
-    output_val_elems += num_elems_i
-    output_shape_shape = output_shape_shape.merge_with(shape_shapes[i])
-
-  output_ind_shape = tensor_shape.matrix(output_ind_rows, output_ind_cols)
-  output_val_shape = tensor_shape.vector(output_val_elems)
-
-  return [output_ind_shape, output_val_shape, output_shape_shape]
+  Returns:
+    output: the SparseTensor output.
+  """
+  result = gen_sparse_ops.sparse_dense_cwise_add(sp_t.indices, sp_t.values,
+                                                 sp_t.dense_shape, dense_t)
+  return sparse_tensor.SparseTensor(sp_t.indices, result, sp_t.dense_shape)
 
 
 def sparse_reorder(sp_input, name=None):
@@ -304,35 +363,87 @@ def sparse_reorder(sp_input, name=None):
   Raises:
     TypeError: If `sp_input` is not a `SparseTensor`.
   """
-  if not isinstance(sp_input, ops.SparseTensor):
-    raise TypeError("Input must be a SparseTensor")
+  sp_input = _convert_to_sparse_tensor(sp_input)
 
-  reordered_ind, reordered_val = (
-      gen_sparse_ops._sparse_reorder(sp_input.indices,
-                                     sp_input.values,
-                                     sp_input.shape,
-                                     name=name))
+  reordered_ind, reordered_val = (gen_sparse_ops._sparse_reorder(
+      sp_input.indices, sp_input.values, sp_input.dense_shape, name=name))
 
-  return ops.SparseTensor(reordered_ind, reordered_val,
-                          array_ops.identity(sp_input.shape))
+  return sparse_tensor.SparseTensor(reordered_ind, reordered_val,
+                                    array_ops.identity(sp_input.dense_shape))
 
 
-@ops.RegisterShape("SparseReorder")
-def _SparseReorderShape(op):
-  """Shape function for SparseReorder op."""
-  input_indices_shape = op.inputs[0].get_shape().with_rank(2)
-  input_values_shape = op.inputs[1].get_shape().with_rank(1)
-  unused_shape_shape = op.inputs[2].get_shape().with_rank(1)
+def sparse_reshape(sp_input, shape, name=None):
+  """Reshapes a `SparseTensor` to represent values in a new dense shape.
 
-  return [input_indices_shape, input_values_shape]
+  This operation has the same semantics as `reshape` on the represented dense
+  tensor.  The indices of non-empty values in `sp_input` are recomputed based
+  on the new dense shape, and a new `SparseTensor` is returned containing the
+  new indices and new shape.  The order of non-empty values in `sp_input` is
+  unchanged.
+
+  If one component of `shape` is the special value -1, the size of that
+  dimension is computed so that the total dense size remains constant.  At
+  most one component of `shape` can be -1.  The number of dense elements
+  implied by `shape` must be the same as the number of dense elements
+  originally represented by `sp_input`.
+
+  For example, if `sp_input` has shape `[2, 3, 6]` and `indices` / `values`:
+
+      [0, 0, 0]: a
+      [0, 0, 1]: b
+      [0, 1, 0]: c
+      [1, 0, 0]: d
+      [1, 2, 3]: e
+
+  and `shape` is `[9, -1]`, then the output will be a `SparseTensor` of
+  shape `[9, 4]` and `indices` / `values`:
+
+      [0, 0]: a
+      [0, 1]: b
+      [1, 2]: c
+      [4, 2]: d
+      [8, 1]: e
+
+  Args:
+    sp_input: The input `SparseTensor`.
+    shape: A 1-D (vector) int64 `Tensor` specifying the new dense shape of the
+      represented `SparseTensor`.
+    name: A name prefix for the returned tensors (optional)
+
+  Returns:
+    A `SparseTensor` with the same non-empty values but with indices calculated
+    by the new dense shape.
+
+  Raises:
+    TypeError: If `sp_input` is not a `SparseTensor`.
+  """
+  sp_input = _convert_to_sparse_tensor(sp_input)
+
+  with ops.name_scope(name, "SparseReshape", [sp_input]) as name:
+    reshaped_ind, reshaped_shape = gen_sparse_ops._sparse_reshape(
+        sp_input.indices, sp_input.dense_shape, shape, name=name)
+
+    return sparse_tensor.SparseTensor(
+        reshaped_ind, array_ops.identity(sp_input.values),
+        reshaped_shape)
 
 
-def sparse_split(split_dim, num_split, sp_input, name=None):
-  """Split a `SparseTensor` into `num_split` tensors along `split_dim`.
+# TODO(aselle): Remove keyword required once for 1.0 final
+class KeywordRequired(object):
 
-  If the `sp_input.shape[split_dim]` is not an integer multiple of `num_split`
-  each slice starting from 0:`shape[split_dim] % num_split` gets extra one
-  dimension. For example, if `split_dim = 1` and `num_split = 2` and the
+  def __repr__(self):
+    # This is needed to make documentation without fully qualified module paths
+    return "KeywordRequired()"
+
+
+def sparse_split(keyword_required=KeywordRequired(),
+                 sp_input=None, num_split=None, axis=None,
+                 name=None, split_dim=None):
+  """Split a `SparseTensor` into `num_split` tensors along `axis`.
+
+  If the `sp_input.dense_shape[axis]` is not an integer multiple of `num_split`
+  each slice starting from 0:`shape[axis] % num_split` gets extra one
+  dimension. For example, if `axis = 1` and `num_split = 2` and the
   input is:
 
       input_tensor = shape = [2, 7]
@@ -350,60 +461,45 @@ def sparse_split(split_dim, num_split, sp_input, name=None):
       [      ]
 
   Args:
-    split_dim: A 0-D `int32` `Tensor`. The dimension along which to split.
-    num_split: A Python integer. The number of ways to split.
+    keyword_required: Python 2 standin for * (temporary for argument reorder)
     sp_input: The `SparseTensor` to split.
+    num_split: A Python integer. The number of ways to split.
+    axis: A 0-D `int32` `Tensor`. The dimension along which to split.
     name: A name for the operation (optional).
+    split_dim: Deprecated old name for axis.
 
   Returns:
     `num_split` `SparseTensor` objects resulting from splitting `value`.
 
   Raises:
     TypeError: If `sp_input` is not a `SparseTensor`.
+    ValueError: If the deprecated `split_dim` and `axis` are both non None.
   """
-  if not isinstance(sp_input, ops.SparseTensor):
-    raise TypeError("Input must be a SparseTensor")
+  if not isinstance(keyword_required, KeywordRequired):
+    raise ValueError("Keyword arguments are required for this function.")
+  if sp_input is None:
+    raise ValueError("sp_input is required")
+  if num_split is None:
+    raise ValueError("num_split is required")
+  if axis is None:
+    raise ValueError("axis is required")
+  axis = deprecation.deprecated_argument_lookup("axis", axis, "split_dim",
+                                                split_dim)
+  sp_input = _convert_to_sparse_tensor(sp_input)
 
-  output_inds, output_vals, output_shapes = (
-      gen_sparse_ops._sparse_split(split_dim,
-                                   sp_input.indices,
-                                   sp_input.values,
-                                   sp_input.shape,
-                                   num_split,
-                                   name=name))
+  output_inds, output_vals, output_shapes = (gen_sparse_ops._sparse_split(
+      axis,
+      sp_input.indices,
+      sp_input.values,
+      sp_input.dense_shape,
+      num_split,
+      name=name))
   sparse_tensors = []
   for i in range(0, num_split):
-    sparse_tensors.append(ops.SparseTensor(output_inds[i], output_vals[i],
-                                           output_shapes[i]))
+    sparse_tensors.append(
+        sparse_tensor.SparseTensor(
+            output_inds[i], output_vals[i], output_shapes[i]))
   return sparse_tensors
-
-
-# pylint: disable=invalid-name
-@ops.RegisterShape("SparseSplit")
-def _SparseSplitShape(op):
-  """Shape function for SparseSplit op."""
-  num_split = int(op.get_attr("num_split"))
-  input_shape_shape = op.inputs[3].get_shape()
-  dim = input_shape_shape.num_elements()
-  output_indices_shape = tensor_shape.TensorShape([None, dim])
-  output_values_shape = tensor_shape.unknown_shape(1)
-  output_indices_shape = [output_indices_shape] * num_split
-  output_values_shape = [output_values_shape] * num_split
-  output_shape_shape = [input_shape_shape] * num_split
-  return output_indices_shape + output_values_shape + output_shape_shape
-# pylint: enable=invalid-name
-
-
-@ops.RegisterShape("SparseToDense")
-def _SparseToDenseShape(op):
-  input_shape = tensor_util.constant_value(op.inputs[1])
-  if input_shape is not None:
-    if np.ndim(input_shape) > 1:
-      raise ValueError("Input shape should be a vector")
-    return [tensor_shape.TensorShape(input_shape)]
-  else:
-    input_shape_shape = op.inputs[1].get_shape().with_rank(1)
-    return [tensor_shape.unknown_shape(ndims=input_shape_shape[0].value)]
 
 
 def sparse_to_dense(sparse_indices,
@@ -452,15 +548,17 @@ def sparse_to_dense(sparse_indices,
     Dense `Tensor` of shape `output_shape`.  Has the same type as
     `sparse_values`.
   """
-  return gen_sparse_ops._sparse_to_dense(sparse_indices,
-                                         output_shape,
-                                         sparse_values,
-                                         default_value=default_value,
-                                         validate_indices=validate_indices,
-                                         name=name)
+  return gen_sparse_ops._sparse_to_dense(
+      sparse_indices,
+      output_shape,
+      sparse_values,
+      default_value=default_value,
+      validate_indices=validate_indices,
+      name=name)
 
 
-def sparse_reduce_sum(sp_input, reduction_axes=None, keep_dims=False):
+def sparse_reduce_sum(sp_input, axis=None, keep_dims=False,
+                      reduction_axes=None):
   """Computes the sum of elements across dimensions of a SparseTensor.
 
   This Op takes a SparseTensor and is the sparse counterpart to
@@ -473,41 +571,74 @@ def sparse_reduce_sum(sp_input, reduction_axes=None, keep_dims=False):
   with length 1.
 
   If `reduction_axes` has no entries, all dimensions are reduced, and a tensor
-  with a single element is returned.
+  with a single element is returned.  Additionally, the axes can be negative,
+  similar to the indexing rules in Python.
 
   For example:
 
   ```python
   # 'x' represents [[1, ?, 1]
   #                 [?, 1, ?]]
-  # where ? is implictly-zero.
+  # where ? is implicitly-zero.
   tf.sparse_reduce_sum(x) ==> 3
   tf.sparse_reduce_sum(x, 0) ==> [1, 1, 1]
-  tf.sparse_reduce_sum(x, 1) ==> [2, 1]
+  tf.sparse_reduce_sum(x, 1) ==> [2, 1]  # Can also use -1 as the axis.
   tf.sparse_reduce_sum(x, 1, keep_dims=True) ==> [[2], [1]]
   tf.sparse_reduce_sum(x, [0, 1]) ==> 3
   ```
 
   Args:
     sp_input: The SparseTensor to reduce. Should have numeric type.
-    reduction_axes: The dimensions to reduce; list or scalar. If `None` (the
+    axis: The dimensions to reduce; list or scalar. If `None` (the
       default), reduces all dimensions.
     keep_dims: If true, retain reduced dimensions with length 1.
+    reduction_axes: Deprecated name of axis.
 
   Returns:
     The reduced Tensor.
   """
-  return gen_sparse_ops.sparse_reduce_sum(sp_input.indices,
-                                          sp_input.values,
-                                          sp_input.shape,
-                                          math_ops._ReductionDims(
-                                              sp_input, reduction_axes),
-                                          keep_dims)
+  return gen_sparse_ops.sparse_reduce_sum(
+      sp_input.indices, sp_input.values,
+      sp_input.dense_shape,
+      math_ops._ReductionDims(sp_input, axis, reduction_axes),
+      keep_dims)
 
 
-@ops.RegisterShape("SparseReduceSum")
-def _SparseReduceSumShape(unused_op):  # pylint: disable=invalid-name
-  return [tensor_shape.unknown_shape()]
+def sparse_reduce_sum_sparse(sp_input, axis=None, keep_dims=False,
+                             reduction_axes=None):
+  """Computes the sum of elements across dimensions of a SparseTensor.
+
+  This Op takes a SparseTensor and is the sparse counterpart to
+  `tf.reduce_sum()`.  In contrast to SparseReduceSum, this Op returns a
+  SparseTensor.
+
+  Reduces `sp_input` along the dimensions given in `reduction_axes`.  Unless
+  `keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
+  `reduction_axes`. If `keep_dims` is true, the reduced dimensions are retained
+  with length 1.
+
+  If `reduction_axes` has no entries, all dimensions are reduced, and a tensor
+  with a single element is returned.  Additionally, the axes can be negative,
+  which are interpreted according to the indexing rules in Python.
+
+  Args:
+    sp_input: The SparseTensor to reduce. Should have numeric type.
+    axis: The dimensions to reduce; list or scalar. If `None` (the
+      default), reduces all dimensions.
+    keep_dims: If true, retain reduced dimensions with length 1.
+    reduction_axes: Deprecated name of axis
+
+  Returns:
+    The reduced SparseTensor.
+  """
+  output_ind, output_val, output_shape = (
+      gen_sparse_ops.sparse_reduce_sum_sparse(
+          sp_input.indices, sp_input.values,
+          sp_input.dense_shape, math_ops._ReductionDims(sp_input, axis,
+                                                        reduction_axes),
+          keep_dims))
+
+  return sparse_tensor.SparseTensor(output_ind, output_val, output_shape)
 
 
 def sparse_tensor_to_dense(sp_input,
@@ -543,36 +674,36 @@ def sparse_tensor_to_dense(sp_input,
     name: A name prefix for the returned tensors (optional).
 
   Returns:
-    A dense tensor with shape `sp_input.shape` and values specified by
+    A dense tensor with shape `sp_input.dense_shape` and values specified by
     the non-empty values in `sp_input`. Indices not in `sp_input` are assigned
     `default_value`.
 
   Raises:
     TypeError: If `sp_input` is not a `SparseTensor`.
   """
-  if not isinstance(sp_input, ops.SparseTensor):
-    raise TypeError("Input must be a SparseTensor")
+  sp_input = _convert_to_sparse_tensor(sp_input)
 
-  return sparse_to_dense(sp_input.indices,
-                         sp_input.shape,
-                         sp_input.values,
-                         default_value=default_value,
-                         validate_indices=validate_indices,
-                         name=name)
+  return sparse_to_dense(
+      sp_input.indices,
+      sp_input.dense_shape,
+      sp_input.values,
+      default_value=default_value,
+      validate_indices=validate_indices,
+      name=name)
 
 
 def sparse_to_indicator(sp_input, vocab_size, name=None):
   """Converts a `SparseTensor` of ids into a dense bool indicator tensor.
 
   The last dimension of `sp_input.indices` is discarded and replaced with
-  the values of `sp_input`.  If `sp_input.shape = [D0, D1, ..., Dn, K]`, then
-  `output.shape = [D0, D1, ..., Dn, vocab_size]`, where
+  the values of `sp_input`.  If `sp_input.dense_shape = [D0, D1, ..., Dn, K]`,
+  then `output.shape = [D0, D1, ..., Dn, vocab_size]`, where
 
       output[d_0, d_1, ..., d_n, sp_input[d_0, d_1, ..., d_n, k]] = True
 
   and False elsewhere in `output`.
 
-  For example, if `sp_input.shape = [2, 3, 4]` with non-empty values:
+  For example, if `sp_input.dense_shape = [2, 3, 4]` with non-empty values:
 
       [0, 0, 0]: 0
       [0, 1, 0]: 10
@@ -607,25 +738,24 @@ def sparse_to_indicator(sp_input, vocab_size, name=None):
   Raises:
     TypeError: If `sp_input` is not a `SparseTensor`.
   """
-  if not isinstance(sp_input, ops.SparseTensor):
-    raise TypeError("Input must be a SparseTensor")
+  sp_input = _convert_to_sparse_tensor(sp_input)
 
-  with ops.op_scope([sp_input], name, "SparseToIndicator") as name:
+  with ops.name_scope(name, "SparseToIndicator", [sp_input]) as name:
     num_entries = array_ops.shape(sp_input.indices)[0]
     new_values = array_ops.fill(array_ops.expand_dims(num_entries, 0), True)
-    sp_values = ops.SparseTensor(sp_input.indices, new_values, sp_input.shape)
+    sp_values = sparse_tensor.SparseTensor(
+        sp_input.indices, new_values, sp_input.dense_shape)
 
     sp_new = sparse_merge(sp_input, sp_values, vocab_size, name)
 
     # validate_indices may be False because we allow duplicates in new_indices:
     # repeated indices are allowed when creating an indicator matrix.
-    return sparse_tensor_to_dense(sp_new,
-                                  default_value=False,
-                                  validate_indices=False,
-                                  name=name)
+    return sparse_tensor_to_dense(
+        sp_new, default_value=False, validate_indices=False, name=name)
 
 
-def sparse_merge(sp_ids, sp_values, vocab_size, name=None):
+def sparse_merge(sp_ids, sp_values, vocab_size, name=None,
+                 already_sorted=False):
   """Combines a batch of feature ids and values into a single `SparseTensor`.
 
   The most common use case for this function occurs when feature ids and
@@ -639,19 +769,22 @@ def sparse_merge(sp_ids, sp_values, vocab_size, name=None):
     - `indices` is equivalent to `sp_ids.indices` with the last
       dimension discarded and replaced with `sp_ids.values`.
     - `values` is simply `sp_values.values`.
-    - If `sp_ids.shape = [D0, D1, ..., Dn, K]`, then
+    - If `sp_ids.dense_shape = [D0, D1, ..., Dn, K]`, then
       `output.shape = [D0, D1, ..., Dn, vocab_size]`.
 
   For example, consider the following feature vectors:
 
+  ```python
     vector1 = [-3, 0, 0, 0, 0, 0]
     vector2 = [ 0, 1, 0, 4, 1, 0]
     vector3 = [ 5, 0, 0, 9, 0, 0]
+  ```
 
   These might be stored sparsely in the following Example protos by storing
   only the feature ids (column number if the vectors are treated as a matrix)
   of the non-zero elements and the corresponding values:
 
+  ```python
     examples = [Example(features={
                     "ids": Feature(int64_list=Int64List(value=[0])),
                     "values": Feature(float_list=FloatList(value=[-3]))}),
@@ -661,6 +794,7 @@ def sparse_merge(sp_ids, sp_values, vocab_size, name=None):
                 Example(features={
                     "ids": Feature(int64_list=Int64List(value=[0, 3])),
                     "values": Feature(float_list=FloatList(value=[5, 9]))})]
+  ```
 
   The result of calling parse_example on these examples will produce a
   dictionary with entries for "ids" and "values". Passing those two objects
@@ -673,52 +807,91 @@ def sparse_merge(sp_ids, sp_values, vocab_size, name=None):
   original matrix, i.e., (3, 6). For our example above, the output will be
   equal to:
 
+  ```python
     SparseTensor(indices=[[0, 0], [1, 1], [1, 3], [1, 4], [2, 0], [2, 3]],
                  values=[-3, 1, 4, 1, 5, 9],
-                 shape=[3, 6])
+                 dense_shape=[3, 6])
+  ```
+
+  This method generalizes to higher-dimensions by simply providing a list for
+  both the sp_ids as well as the vocab_size.
+  In this case the resulting `SparseTensor` has the following properties:
+    - `indices` is equivalent to `sp_ids[0].indices` with the last
+      dimension discarded and concatenated with
+      `sp_ids[0].values, sp_ids[1].values, ...`.
+    - `values` is simply `sp_values.values`.
+    - If `sp_ids.dense_shape = [D0, D1, ..., Dn, K]`, then
+      `output.shape = [D0, D1, ..., Dn] + vocab_size`.
 
   Args:
-    sp_ids: A `SparseTensor` with `values` property of type `int32`
-      or `int64`.
+    sp_ids: A single `SparseTensor` with `values` property of type `int32`
+      or `int64` or a Python list of such `SparseTensor`s or a list thereof.
     sp_values: A`SparseTensor` of any type.
     vocab_size: A scalar `int64` Tensor (or Python int) containing the new size
       of the last dimension, `all(0 <= sp_ids.values < vocab_size)`.
+      Or a list thereof with `all(0 <= sp_ids[i].values < vocab_size[i])` for
+      all `i`.
     name: A name prefix for the returned tensors (optional)
+    already_sorted: A boolean to specify whether the per-batch values in
+     `sp_values` are already sorted. If so skip sorting, False by default
+     (optional).
 
   Returns:
     A `SparseTensor` compactly representing a batch of feature ids and values,
     useful for passing to functions that expect such a `SparseTensor`.
 
   Raises:
-    TypeError: If `sp_ids` or `sp_values` are not a `SparseTensor`.
+    TypeError: If `sp_values` is not a `SparseTensor`. Or if `sp_ids` is neither
+      a `SparseTensor` nor a list thereof. Or if `vocab_size` is not a
+      `Tensor` or a Python int and `sp_ids` is a `SparseTensor`. Or if
+      `vocab_size` is not a or list thereof and `sp_ids` is a list.
+    ValueError: If `sp_ids` and `vocab_size` are lists of different lengths.
   """
-  if not isinstance(sp_ids, ops.SparseTensor):
-    raise TypeError("sp_ids must be a SparseTensor")
+  if isinstance(sp_ids, sparse_tensor.SparseTensorValue) or isinstance(
+      sp_ids, sparse_tensor.SparseTensor):
+    sp_ids = [sp_ids]
+    if not (isinstance(vocab_size, ops.Tensor) or
+            isinstance(vocab_size, numbers.Integral)):
+      raise TypeError("vocab_size has to be a Tensor or Python int. Found %s" %
+                      type(vocab_size))
+    vocab_size = [vocab_size]
+  else:
+    if not isinstance(sp_ids, collections.Iterable):
+      raise TypeError("sp_ids has to be a SparseTensor or list thereof. "
+                      "Found %s" % type(sp_ids))
+    if not isinstance(vocab_size, collections.Iterable):
+      raise TypeError("vocab_size has to be a list of Tensors or Python ints. "
+                      "Found %s" % type(vocab_size))
+    for dim in vocab_size:
+      if not (isinstance(dim, ops.Tensor) or
+              isinstance(dim, numbers.Integral)):
+        raise TypeError(
+            "vocab_size has to be a list of Tensors or Python ints. Found %s" %
+            type(dim))
+  if len(sp_ids) != len(vocab_size):
+    raise ValueError("sp_ids and vocab_size have to have equal lengths.")
 
-  if not isinstance(sp_values, ops.SparseTensor):
-    raise TypeError("sp_values must be a SparseTensor")
+  with ops.name_scope(name, "SparseMerge", [sp_ids, sp_values]):
+    sp_ids = [_convert_to_sparse_tensor(sp_ids_dim) for sp_ids_dim in sp_ids]
+    sp_values = _convert_to_sparse_tensor(sp_values)
+    ids = []
+    for sp_ids_dim in sp_ids:
+      ids_dim = sp_ids_dim.values
+      if sp_ids_dim.dtype != dtypes.int64:
+        ids_dim = math_ops.cast(ids_dim, dtypes.int64)
+      ids += [array_ops.expand_dims(ids_dim, axis=1)]
 
-  with ops.op_scope([sp_ids, sp_values], name, "SparseMerge"):
-    indices_shape = array_ops.shape(sp_ids.indices)
-    rank = indices_shape[1]
-
-    ids = sp_ids.values
-    if ids.dtype != dtypes.int64:
-      ids = math_ops.cast(ids, dtypes.int64)
+    vocab_size = [math_ops.cast(x, dtypes.int64) for x in vocab_size]
 
     # Slice off the last dimension of indices, then tack on the ids
-    indices_columns_to_preserve = array_ops.slice(
-        sp_ids.indices, [0, 0], array_ops.pack([-1, rank - 1]))
-    new_indices = array_ops.concat(1, [indices_columns_to_preserve,
-                                       array_ops.reshape(ids, [-1, 1])])
+    indices_columns_to_preserve = sp_ids[0].indices[:, :-1]
+    new_indices = array_ops.concat([indices_columns_to_preserve] + ids, 1)
 
     new_values = sp_values.values
-    new_shape = array_ops.concat(
-        0,
-        [array_ops.slice(sp_ids.shape, [0], array_ops.expand_dims(rank - 1, 0)),
-         math_ops.cast(array_ops.pack([vocab_size]), dtypes.int64)])
+    new_shape = array_ops.concat([sp_ids[0].dense_shape[:-1], vocab_size], 0)
 
-    return sparse_reorder(ops.SparseTensor(new_indices, new_values, new_shape))
+    result = sparse_tensor.SparseTensor(new_indices, new_values, new_shape)
+    return result if already_sorted else sparse_reorder(result)
 
 
 def sparse_retain(sp_input, to_retain):
@@ -748,8 +921,7 @@ def sparse_retain(sp_input, to_retain):
   Raises:
     TypeError: If `sp_input` is not a `SparseTensor`.
   """
-  if not isinstance(sp_input, ops.SparseTensor):
-    raise TypeError("Input must be a SparseTensor")
+  sp_input = _convert_to_sparse_tensor(sp_input)
 
   to_retain = ops.convert_to_tensor(to_retain)
 
@@ -761,8 +933,92 @@ def sparse_retain(sp_input, to_retain):
   where_true = array_ops.reshape(array_ops.where(to_retain), [-1])
   new_indices = array_ops.gather(sp_input.indices, where_true)
   new_values = array_ops.gather(sp_input.values, where_true)
-  return ops.SparseTensor(new_indices, new_values,
-                          array_ops.identity(sp_input.shape))
+  return sparse_tensor.SparseTensor(new_indices, new_values,
+                                    array_ops.identity(sp_input.dense_shape))
+
+
+def sparse_reset_shape(sp_input, new_shape=None):
+  """Resets the shape of a `SparseTensor` with indices and values unchanged.
+
+  If `new_shape` is None, returns a copy of `sp_input` with its shape reset
+  to the tight bounding box of `sp_input`.
+
+  If `new_shape` is provided, then it must be larger or equal in all dimensions
+  compared to the shape of `sp_input`. When this condition is met, the returned
+  SparseTensor will have its shape reset to `new_shape` and its indices and
+  values unchanged from that of `sp_input.`
+
+  For example:
+
+    Consider a `sp_input` with shape [2, 3, 5]:
+
+      [0, 0, 1]: a
+      [0, 1, 0]: b
+      [0, 2, 2]: c
+      [1, 0, 3]: d
+
+    - It is an error to set `new_shape` as [3, 7] since this represents a
+      rank-2 tensor while `sp_input` is rank-3. This is either a ValueError
+      during graph construction (if both shapes are known) or an OpError during
+      run time.
+
+    - Setting `new_shape` as [2, 3, 6] will be fine as this shape is larger or
+      equal in every dimension compared to the original shape [2, 3, 5].
+
+    - On the other hand, setting new_shape as [2, 3, 4] is also an error: The
+      third dimension is smaller than the original shape [2, 3, 5] (and an
+      `InvalidArgumentError` will be raised).
+
+    - If `new_shape` is None, the returned SparseTensor will have a shape
+      [2, 3, 4], which is the tight bounding box of `sp_input`.
+
+  Args:
+    sp_input: The input `SparseTensor`.
+    new_shape: None or a vector representing the new shape for the returned
+      `SparseTensor`.
+
+  Returns:
+    A `SparseTensor` indices and values unchanged from `input_sp`. Its shape is
+      `new_shape` if that is set. Otherwise it is  the tight bounding box of
+       `input_sp`
+
+  Raises:
+    TypeError: If `sp_input` is not a `SparseTensor`.
+    ValueError: If `new_shape` represents a tensor with a different rank from
+      that of `sp_input` (if shapes are known when graph is constructed).
+    OpError:
+      - If `new_shape` has dimension sizes that are too small.
+      - If shapes are not known during graph construction time, and during run
+        time it is found out that the ranks do not match.
+  """
+  sp_input = _convert_to_sparse_tensor(sp_input)
+
+  in_indices = array_ops.identity(sp_input.indices)
+  in_values = array_ops.identity(sp_input.values)
+  in_shape = array_ops.identity(sp_input.dense_shape)
+
+  if new_shape is None:
+    dim_low_bound = math_ops.reduce_max(in_indices, 0)
+    output_shape_tensor = math_ops.add(dim_low_bound,
+                                       array_ops.ones_like(in_shape))
+  else:
+    output_shape_tensor = ops.convert_to_tensor(new_shape)
+    output_shape_tensor.get_shape().assert_has_rank(1)
+    output_shape_tensor = math_ops.cast(output_shape_tensor, dtypes.int64)
+    # For cases when shape is known during graph construction, this catches the
+    # error before the sparse_tensor.SparseTensor catches it.
+    output_shape_tensor.get_shape()[0].merge_with(in_shape.get_shape()[0])
+
+    # For cases where shape is not known during graph construction.
+    output_shape_tensor = control_flow_ops.with_dependencies(
+        [check_ops.assert_equal(
+            array_ops.shape(in_shape), array_ops.shape(output_shape_tensor))],
+        output_shape_tensor)
+    output_shape_tensor = control_flow_ops.with_dependencies(
+        [check_ops.assert_less_equal(in_shape, output_shape_tensor)],
+        output_shape_tensor)
+
+  return sparse_tensor.SparseTensor(in_indices, in_values, output_shape_tensor)
 
 
 def sparse_fill_empty_rows(sp_input, default_value, name=None):
@@ -812,34 +1068,36 @@ def sparse_fill_empty_rows(sp_input, default_value, name=None):
   Raises:
     TypeError: If `sp_input` is not a `SparseTensor`.
   """
-  if not isinstance(sp_input, ops.SparseTensor):
-    raise TypeError("Input must be a SparseTensor")
+  sp_input = _convert_to_sparse_tensor(sp_input)
 
-  with ops.op_scope([sp_input], name, "SparseFillEmptyRows"):
-    default_value = ops.convert_to_tensor(default_value,
-                                          dtype=sp_input.values.dtype)
+  with ops.name_scope(name, "SparseFillEmptyRows", [sp_input]):
+    default_value = ops.convert_to_tensor(
+        default_value, dtype=sp_input.values.dtype)
 
-    num_rows = math_ops.cast(sp_input.shape[0], dtypes.int32)
+    num_rows = math_ops.cast(sp_input.dense_shape[0], dtypes.int32)
     all_row_indices = math_ops.cast(math_ops.range(num_rows), dtypes.int64)
-    empty_row_indices, _ = array_ops.list_diff(all_row_indices,
+    empty_row_indices, _ = array_ops.setdiff1d(all_row_indices,
                                                sp_input.indices[:, 0])
     empty_row_indicator = sparse_to_dense(
-        empty_row_indices, array_ops.expand_dims(sp_input.shape[0], -1), True,
+        empty_row_indices,
+        array_ops.expand_dims(sp_input.dense_shape[0], -1), True,
         False)
 
     empty_row_indices_as_column = array_ops.reshape(empty_row_indices, [-1, 1])
-    additional_indices = array_ops.concat(
-        1, [empty_row_indices_as_column,
-            array_ops.zeros_like(empty_row_indices_as_column)])
+    additional_indices = array_ops.concat([
+        empty_row_indices_as_column,
+        array_ops.zeros_like(empty_row_indices_as_column)
+    ], 1)
     additional_values = array_ops.fill(
         array_ops.shape(empty_row_indices), default_value)
 
-    all_indices_unordered = array_ops.concat(0, [sp_input.indices,
-                                                 additional_indices])
-    all_values_unordered = array_ops.concat(0, [sp_input.values,
-                                                additional_values])
-    sp_unordered_output = ops.SparseTensor(all_indices_unordered,
-                                           all_values_unordered, sp_input.shape)
+    all_indices_unordered = array_ops.concat(
+        [sp_input.indices, additional_indices], 0)
+    all_values_unordered = array_ops.concat(
+        [sp_input.values, additional_values], 0)
+    sp_unordered_output = sparse_tensor.SparseTensor(
+        all_indices_unordered,
+        all_values_unordered, sp_input.dense_shape)
     sp_ordered_output = sparse_reorder(sp_unordered_output)
 
     return sp_ordered_output, empty_row_indicator
@@ -859,24 +1117,10 @@ def serialize_sparse(sp_input, name=None):
   Raises:
     TypeError: If `sp_input` is not a `SparseTensor`.
   """
-  if not isinstance(sp_input, ops.SparseTensor):
-    raise TypeError("Input must be a SparseTensor.")
+  sp_input = _convert_to_sparse_tensor(sp_input)
 
   return gen_sparse_ops._serialize_sparse(
-      sp_input.indices,
-      sp_input.values,
-      sp_input.shape,
-      name=name)
-
-
-@ops.RegisterShape("SerializeSparse")
-def _SerializeSparseShape(op):  # pylint: disable=invalid-name
-  """Shape function for SerializeSparse op."""
-  op.inputs[0].get_shape().with_rank(2)
-  op.inputs[1].get_shape().with_rank(1)
-  op.inputs[2].get_shape().with_rank(1)
-
-  return [tensor_shape.vector(3)]
+      sp_input.indices, sp_input.values, sp_input.dense_shape, name=name)
 
 
 def serialize_many_sparse(sp_input, name=None):
@@ -902,24 +1146,10 @@ def serialize_many_sparse(sp_input, name=None):
   Raises:
     TypeError: If `sp_input` is not a `SparseTensor`.
   """
-  if not isinstance(sp_input, ops.SparseTensor):
-    raise TypeError("Input must be a SparseTensor.")
+  sp_input = _convert_to_sparse_tensor(sp_input)
 
   return gen_sparse_ops._serialize_many_sparse(
-      sp_input.indices,
-      sp_input.values,
-      sp_input.shape,
-      name=name)
-
-
-@ops.RegisterShape("SerializeManySparse")
-def _SerializeManySparseShape(op):  # pylint: disable=invalid-name
-  """Shape function for SerializeSparse op."""
-  op.inputs[0].get_shape().with_rank(2)
-  op.inputs[1].get_shape().with_rank(1)
-  op.inputs[2].get_shape().with_rank(1)
-
-  return [tensor_shape.matrix(None, 3)]
+      sp_input.indices, sp_input.values, sp_input.dense_shape, name=name)
 
 
 def deserialize_many_sparse(serialized_sparse, dtype, rank=None, name=None):
@@ -988,22 +1218,13 @@ def deserialize_many_sparse(serialized_sparse, dtype, rank=None, name=None):
   output_indices.set_shape([None, rank])
   output_shape.set_shape([rank])
 
-  return ops.SparseTensor(output_indices, output_values, output_shape)
+  return sparse_tensor.SparseTensor(output_indices, output_values, output_shape)
 
 
-@ops.RegisterShape("DeserializeManySparse")
-def _DeserializeSparseShape(op):  # pylint: disable=invalid-name
-  """Shape function for DeserializeManySparse op."""
-  serialized_sparse_shape = op.inputs[0].get_shape().with_rank(2)
-  serialized_sparse_shape.merge_with(
-      tensor_shape.TensorShape([None, 3]))
-
-  return [tensor_shape.matrix(None, None),
-          tensor_shape.vector(None),
-          tensor_shape.vector(None)]
-
-
-def sparse_tensor_dense_matmul(sp_a, b, adjoint_a=False, adjoint_b=False,
+def sparse_tensor_dense_matmul(sp_a,
+                               b,
+                               adjoint_a=False,
+                               adjoint_b=False,
                                name=None):
   # pylint: disable=line-too-long
   """Multiply SparseTensor (of rank 2) "A" by dense matrix "B".
@@ -1027,11 +1248,12 @@ def sparse_tensor_dense_matmul(sp_a, b, adjoint_a=False, adjoint_b=False,
   * Is the density of A larger than approximately 15%?
 
   If the answer to several of these questions is yes, consider
-  converting the SparseTensor to a dense one and using tf.matmul with sp_a=True.
+  converting the `SparseTensor` to a dense one and using `tf.matmul` with
+  `sp_a=True`.
 
   This operation tends to perform well when A is more sparse, if the column size
-  of the product is small (e.g. matrix-vector multiplication), if sp_a.shape
-  takes on large values.
+  of the product is small (e.g. matrix-vector multiplication), if
+  `sp_a.dense_shape` takes on large values.
 
   Below is a rough speed comparison between sparse_tensor_dense_matmul,
   labelled 'sparse', and matmul(sp_a=True), labelled 'dense'.  For purposes of
@@ -1044,109 +1266,110 @@ def sparse_tensor_dense_matmul(sp_a, b, adjoint_a=False, adjoint_b=False,
   GPU: NVidia Tesla k40c
 
   Compiled with:
-  -c opt --config=cuda --copt=-mavx
+  `-c opt --config=cuda --copt=-mavx`
 
-  ```tensorflow/python/sparse_tensor_dense_matmul_op_test --benchmarks
+  ```
+  tensorflow/python/sparse_tensor_dense_matmul_op_test --benchmarks
   A sparse [m, k] with % nonzero values between 1% and 80%
   B dense [k, n]
 
-  % nnz    n       gpu     m       k       dt(dense)       dt(sparse)      dt(sparse)/dt(dense)
-  0.01     1       True    100     100     0.000221166     0.00010154      0.459112
-  0.01     1       True    100     1000    0.00033858      0.000109275     0.322745
-  0.01     1       True    1000    100     0.000310557     9.85661e-05     0.317385
-  0.01     1       True    1000    1000    0.0008721       0.000100875     0.115669
-  0.01     1       False   100     100     0.000208085     0.000107603     0.51711
-  0.01     1       False   100     1000    0.000327112     9.51118e-05     0.290762
-  0.01     1       False   1000    100     0.000308222     0.00010345      0.335635
-  0.01     1       False   1000    1000    0.000865721     0.000101397     0.117124
-  0.01     10      True    100     100     0.000218522     0.000105537     0.482958
-  0.01     10      True    100     1000    0.000340882     0.000111641     0.327506
-  0.01     10      True    1000    100     0.000315472     0.000117376     0.372064
-  0.01     10      True    1000    1000    0.000905493     0.000123263     0.136128
-  0.01     10      False   100     100     0.000221529     9.82571e-05     0.44354
-  0.01     10      False   100     1000    0.000330552     0.000112615     0.340687
-  0.01     10      False   1000    100     0.000341277     0.000114097     0.334324
-  0.01     10      False   1000    1000    0.000819944     0.000120982     0.147549
-  0.01     25      True    100     100     0.000207806     0.000105977     0.509981
-  0.01     25      True    100     1000    0.000322879     0.00012921      0.400181
-  0.01     25      True    1000    100     0.00038262      0.000141583     0.370035
-  0.01     25      True    1000    1000    0.000865438     0.000202083     0.233504
-  0.01     25      False   100     100     0.000209401     0.000104696     0.499979
-  0.01     25      False   100     1000    0.000321161     0.000130737     0.407076
-  0.01     25      False   1000    100     0.000377012     0.000136801     0.362856
-  0.01     25      False   1000    1000    0.000861125     0.00020272      0.235413
-  0.2      1       True    100     100     0.000206952     9.69219e-05     0.46833
-  0.2      1       True    100     1000    0.000348674     0.000147475     0.422959
-  0.2      1       True    1000    100     0.000336908     0.00010122      0.300439
-  0.2      1       True    1000    1000    0.001022        0.000203274     0.198898
-  0.2      1       False   100     100     0.000207532     9.5412e-05      0.459746
-  0.2      1       False   100     1000    0.000356127     0.000146824     0.41228
-  0.2      1       False   1000    100     0.000322664     0.000100918     0.312764
-  0.2      1       False   1000    1000    0.000998987     0.000203442     0.203648
-  0.2      10      True    100     100     0.000211692     0.000109903     0.519165
-  0.2      10      True    100     1000    0.000372819     0.000164321     0.440753
-  0.2      10      True    1000    100     0.000338651     0.000144806     0.427596
-  0.2      10      True    1000    1000    0.00108312      0.000758876     0.70064
-  0.2      10      False   100     100     0.000215727     0.000110502     0.512231
-  0.2      10      False   100     1000    0.000375419     0.0001613       0.429653
-  0.2      10      False   1000    100     0.000336999     0.000145628     0.432132
-  0.2      10      False   1000    1000    0.00110502      0.000762043     0.689618
-  0.2      25      True    100     100     0.000218705     0.000129913     0.594009
-  0.2      25      True    100     1000    0.000394794     0.00029428      0.745402
-  0.2      25      True    1000    100     0.000404483     0.0002693       0.665788
-  0.2      25      True    1000    1000    0.0012002       0.00194494      1.62052
-  0.2      25      False   100     100     0.000221494     0.0001306       0.589632
-  0.2      25      False   100     1000    0.000396436     0.000297204     0.74969
-  0.2      25      False   1000    100     0.000409346     0.000270068     0.659754
-  0.2      25      False   1000    1000    0.00121051      0.00193737      1.60046
-  0.5      1       True    100     100     0.000214981     9.82111e-05     0.456836
-  0.5      1       True    100     1000    0.000415328     0.000223073     0.537101
-  0.5      1       True    1000    100     0.000358324     0.00011269      0.314492
-  0.5      1       True    1000    1000    0.00137612      0.000437401     0.317851
-  0.5      1       False   100     100     0.000224196     0.000101423     0.452386
-  0.5      1       False   100     1000    0.000400987     0.000223286     0.556841
-  0.5      1       False   1000    100     0.000368825     0.00011224      0.304318
-  0.5      1       False   1000    1000    0.00136036      0.000429369     0.31563
-  0.5      10      True    100     100     0.000222125     0.000112308     0.505608
-  0.5      10      True    100     1000    0.000461088     0.00032357      0.701753
-  0.5      10      True    1000    100     0.000394624     0.000225497     0.571422
-  0.5      10      True    1000    1000    0.00158027      0.00190898      1.20801
-  0.5      10      False   100     100     0.000232083     0.000114978     0.495418
-  0.5      10      False   100     1000    0.000454574     0.000324632     0.714146
-  0.5      10      False   1000    100     0.000379097     0.000227768     0.600817
-  0.5      10      False   1000    1000    0.00160292      0.00190168      1.18638
-  0.5      25      True    100     100     0.00023429      0.000151703     0.647501
-  0.5      25      True    100     1000    0.000497462     0.000598873     1.20386
-  0.5      25      True    1000    100     0.000460778     0.000557038     1.20891
-  0.5      25      True    1000    1000    0.00170036      0.00467336      2.74845
-  0.5      25      False   100     100     0.000228981     0.000155334     0.678371
-  0.5      25      False   100     1000    0.000496139     0.000620789     1.25124
-  0.5      25      False   1000    100     0.00045473      0.000551528     1.21287
-  0.5      25      False   1000    1000    0.00171793      0.00467152      2.71927
-  0.8      1       True    100     100     0.000222037     0.000105301     0.47425
-  0.8      1       True    100     1000    0.000410804     0.000329327     0.801664
-  0.8      1       True    1000    100     0.000349735     0.000131225     0.375212
-  0.8      1       True    1000    1000    0.00139219      0.000677065     0.48633
-  0.8      1       False   100     100     0.000214079     0.000107486     0.502085
-  0.8      1       False   100     1000    0.000413746     0.000323244     0.781261
-  0.8      1       False   1000    100     0.000348983     0.000131983     0.378193
-  0.8      1       False   1000    1000    0.00136296      0.000685325     0.50282
-  0.8      10      True    100     100     0.000229159     0.00011825      0.516017
-  0.8      10      True    100     1000    0.000498845     0.000532618     1.0677
-  0.8      10      True    1000    100     0.000383126     0.00029935      0.781336
-  0.8      10      True    1000    1000    0.00162866      0.00307312      1.88689
-  0.8      10      False   100     100     0.000230783     0.000124958     0.541452
-  0.8      10      False   100     1000    0.000493393     0.000550654     1.11606
-  0.8      10      False   1000    100     0.000377167     0.000298581     0.791642
-  0.8      10      False   1000    1000    0.00165795      0.00305103      1.84024
-  0.8      25      True    100     100     0.000233496     0.000175241     0.75051
-  0.8      25      True    100     1000    0.00055654      0.00102658      1.84458
-  0.8      25      True    1000    100     0.000463814     0.000783267     1.68875
-  0.8      25      True    1000    1000    0.00186905      0.00755344      4.04132
-  0.8      25      False   100     100     0.000240243     0.000175047     0.728625
-  0.8      25      False   100     1000    0.000578102     0.00104499      1.80763
-  0.8      25      False   1000    100     0.000485113     0.000776849     1.60138
-  0.8      25      False   1000    1000    0.00211448      0.00752736      3.55992
+  % nnz  n   gpu   m     k     dt(dense)     dt(sparse)   dt(sparse)/dt(dense)
+  0.01   1   True  100   100   0.000221166   0.00010154   0.459112
+  0.01   1   True  100   1000  0.00033858    0.000109275  0.322745
+  0.01   1   True  1000  100   0.000310557   9.85661e-05  0.317385
+  0.01   1   True  1000  1000  0.0008721     0.000100875  0.115669
+  0.01   1   False 100   100   0.000208085   0.000107603  0.51711
+  0.01   1   False 100   1000  0.000327112   9.51118e-05  0.290762
+  0.01   1   False 1000  100   0.000308222   0.00010345   0.335635
+  0.01   1   False 1000  1000  0.000865721   0.000101397  0.117124
+  0.01   10  True  100   100   0.000218522   0.000105537  0.482958
+  0.01   10  True  100   1000  0.000340882   0.000111641  0.327506
+  0.01   10  True  1000  100   0.000315472   0.000117376  0.372064
+  0.01   10  True  1000  1000  0.000905493   0.000123263  0.136128
+  0.01   10  False 100   100   0.000221529   9.82571e-05  0.44354
+  0.01   10  False 100   1000  0.000330552   0.000112615  0.340687
+  0.01   10  False 1000  100   0.000341277   0.000114097  0.334324
+  0.01   10  False 1000  1000  0.000819944   0.000120982  0.147549
+  0.01   25  True  100   100   0.000207806   0.000105977  0.509981
+  0.01   25  True  100   1000  0.000322879   0.00012921   0.400181
+  0.01   25  True  1000  100   0.00038262    0.00014158   0.370035
+  0.01   25  True  1000  1000  0.000865438   0.000202083  0.233504
+  0.01   25  False 100   100   0.000209401   0.000104696  0.499979
+  0.01   25  False 100   1000  0.000321161   0.000130737  0.407076
+  0.01   25  False 1000  100   0.000377012   0.000136801  0.362856
+  0.01   25  False 1000  1000  0.000861125   0.00020272   0.235413
+  0.2    1   True  100   100   0.000206952   9.69219e-05  0.46833
+  0.2    1   True  100   1000  0.000348674   0.000147475  0.422959
+  0.2    1   True  1000  100   0.000336908   0.00010122   0.300439
+  0.2    1   True  1000  1000  0.001022      0.000203274  0.198898
+  0.2    1   False 100   100   0.000207532   9.5412e-05   0.459746
+  0.2    1   False 100   1000  0.000356127   0.000146824  0.41228
+  0.2    1   False 1000  100   0.000322664   0.000100918  0.312764
+  0.2    1   False 1000  1000  0.000998987   0.000203442  0.203648
+  0.2    10  True  100   100   0.000211692   0.000109903  0.519165
+  0.2    10  True  100   1000  0.000372819   0.000164321  0.440753
+  0.2    10  True  1000  100   0.000338651   0.000144806  0.427596
+  0.2    10  True  1000  1000  0.00108312    0.000758876  0.70064
+  0.2    10  False 100   100   0.000215727   0.000110502  0.512231
+  0.2    10  False 100   1000  0.000375419   0.0001613    0.429653
+  0.2    10  False 1000  100   0.000336999   0.000145628  0.432132
+  0.2    10  False 1000  1000  0.00110502    0.000762043  0.689618
+  0.2    25  True  100   100   0.000218705   0.000129913  0.594009
+  0.2    25  True  100   1000  0.000394794   0.00029428   0.745402
+  0.2    25  True  1000  100   0.000404483   0.0002693    0.665788
+  0.2    25  True  1000  1000  0.0012002     0.00194494   1.62052
+  0.2    25  False 100   100   0.000221494   0.0001306    0.589632
+  0.2    25  False 100   1000  0.000396436   0.000297204  0.74969
+  0.2    25  False 1000  100   0.000409346   0.000270068  0.659754
+  0.2    25  False 1000  1000  0.00121051    0.00193737   1.60046
+  0.5    1   True  100   100   0.000214981   9.82111e-05  0.456836
+  0.5    1   True  100   1000  0.000415328   0.000223073  0.537101
+  0.5    1   True  1000  100   0.000358324   0.00011269   0.314492
+  0.5    1   True  1000  1000  0.00137612    0.000437401  0.317851
+  0.5    1   False 100   100   0.000224196   0.000101423  0.452386
+  0.5    1   False 100   1000  0.000400987   0.000223286  0.556841
+  0.5    1   False 1000  100   0.000368825   0.00011224   0.304318
+  0.5    1   False 1000  1000  0.00136036    0.000429369  0.31563
+  0.5    10  True  100   100   0.000222125   0.000112308  0.505608
+  0.5    10  True  100   1000  0.000461088   0.00032357   0.701753
+  0.5    10  True  1000  100   0.000394624   0.000225497  0.571422
+  0.5    10  True  1000  1000  0.00158027    0.00190898   1.20801
+  0.5    10  False 100   100   0.000232083   0.000114978  0.495418
+  0.5    10  False 100   1000  0.000454574   0.000324632  0.714146
+  0.5    10  False 1000  100   0.000379097   0.000227768  0.600817
+  0.5    10  False 1000  1000  0.00160292    0.00190168   1.18638
+  0.5    25  True  100   100   0.00023429    0.000151703  0.647501
+  0.5    25  True  100   1000  0.000497462   0.000598873  1.20386
+  0.5    25  True  1000  100   0.000460778   0.000557038  1.20891
+  0.5    25  True  1000  1000  0.00170036    0.00467336   2.74845
+  0.5    25  False 100   100   0.000228981   0.000155334  0.678371
+  0.5    25  False 100   1000  0.000496139   0.000620789  1.25124
+  0.5    25  False 1000  100   0.00045473    0.000551528  1.21287
+  0.5    25  False 1000  1000  0.00171793    0.00467152   2.71927
+  0.8    1   True  100   100   0.000222037   0.000105301  0.47425
+  0.8    1   True  100   1000  0.000410804   0.000329327  0.801664
+  0.8    1   True  1000  100   0.000349735   0.000131225  0.375212
+  0.8    1   True  1000  1000  0.00139219    0.000677065  0.48633
+  0.8    1   False 100   100   0.000214079   0.000107486  0.502085
+  0.8    1   False 100   1000  0.000413746   0.000323244  0.781261
+  0.8    1   False 1000  100   0.000348983   0.000131983  0.378193
+  0.8    1   False 1000  1000  0.00136296    0.000685325  0.50282
+  0.8    10  True  100   100   0.000229159   0.00011825   0.516017
+  0.8    10  True  100   1000  0.000498845   0.000532618  1.0677
+  0.8    10  True  1000  100   0.000383126   0.00029935   0.781336
+  0.8    10  True  1000  1000  0.00162866    0.00307312   1.88689
+  0.8    10  False 100   100   0.000230783   0.000124958  0.541452
+  0.8    10  False 100   1000  0.000493393   0.000550654  1.11606
+  0.8    10  False 1000  100   0.000377167   0.000298581  0.791642
+  0.8    10  False 1000  1000  0.00165795    0.00305103   1.84024
+  0.8    25  True  100   100   0.000233496   0.000175241  0.75051
+  0.8    25  True  100   1000  0.00055654    0.00102658   1.84458
+  0.8    25  True  1000  100   0.000463814   0.000783267  1.68875
+  0.8    25  True  1000  1000  0.00186905    0.00755344   4.04132
+  0.8    25  False 100   100   0.000240243   0.000175047  0.728625
+  0.8    25  False 100   1000  0.000578102   0.00104499   1.80763
+  0.8    25  False 1000  100   0.000485113   0.000776849  1.60138
+  0.8    25  False 1000  1000  0.00211448    0.00752736   3.55992
   ```
 
   Args:
@@ -1165,27 +1388,331 @@ def sparse_tensor_dense_matmul(sp_a, b, adjoint_a=False, adjoint_b=False,
       return A*B
   """
   # pylint: enable=line-too-long
-  if not isinstance(sp_a, ops.SparseTensor):
-    raise TypeError("sp_a must be a SparseTensor")
-  with ops.op_scope(
-      [sp_a.indices, sp_a.values, b], name, "SparseTensorDenseMatMul") as name:
+  sp_a = _convert_to_sparse_tensor(sp_a)
+  with ops.name_scope(name, "SparseTensorDenseMatMul",
+                      [sp_a.indices, sp_a.values, b]) as name:
     b = ops.convert_to_tensor(b, name="b")
     return gen_sparse_ops._sparse_tensor_dense_mat_mul(
         a_indices=sp_a.indices,
         a_values=sp_a.values,
-        a_shape=sp_a.shape,
+        a_shape=sp_a.dense_shape,
         b=b,
         adjoint_a=adjoint_a,
         adjoint_b=adjoint_b)
 
 
-@ops.RegisterShape("SparseTensorDenseMatMul")
-def _SparseTensorDenseMatMulShape(op):  # pylint: disable=invalid-name
-  """Shape function for SparseTensorDenseMatMul op."""
-  adjoint_b = op.get_attr("adjoint_b")
-  op.inputs[0].get_shape().assert_has_rank(2)  # a_indices
-  op.inputs[1].get_shape().assert_has_rank(1)  # a_values
-  op.inputs[2].get_shape().merge_with(tensor_shape.vector(2))  # a_shape
-  b_shape = op.inputs[3].get_shape().with_rank(2)
-  output_shape_right = b_shape[0] if adjoint_b else b_shape[1]
-  return [tensor_shape.matrix(None, output_shape_right)]
+def sparse_softmax(sp_input, name=None):
+  """Applies softmax to a batched N-D `SparseTensor`.
+
+  The inputs represent an N-D SparseTensor  with logical shape `[..., B, C]`
+  (where `N >= 2`), and with indices sorted in the canonical lexicographic
+  order.
+
+  This op is equivalent to applying the normal `tf.nn.softmax()` to each
+  innermost logical submatrix with shape `[B, C]`, but with the catch that *the
+  implicitly zero elements do not participate*.  Specifically, the algorithm is
+  equivalent to:
+
+    (1) Applies `tf.nn.softmax()` to a densified view of each innermost
+        submatrix with shape `[B, C]`, along the size-C dimension;
+    (2) Masks out the original implicitly-zero locations;
+    (3) Renormalizes the remaining elements.
+
+  Hence, the `SparseTensor` result has exactly the same non-zero indices and
+  shape.
+
+  Example:
+
+  ```python
+  # First batch:
+  # [?   e.]
+  # [1.  ? ]
+  # Second batch:
+  # [e   ? ]
+  # [e   e ]
+  shape = [2, 2, 2]  # 3-D SparseTensor
+  values = np.asarray([[[0., np.e], [1., 0.]], [[np.e, 0.], [np.e, np.e]]])
+  indices = np.vstack(np.where(values)).astype(np.int64).T
+
+  result = tf.sparse_softmax(tf.SparseTensor(indices, values, shape))
+  # ...returning a 3-D SparseTensor, equivalent to:
+  # [?   1.]     [1    ?]
+  # [1.  ? ] and [.5  .5]
+  # where ? means implicitly zero.
+  ```
+
+  Args:
+    sp_input: N-D `SparseTensor`, where `N >= 2`.
+    name: optional name of the operation.
+  Returns:
+    output: N-D `SparseTensor` representing the results.
+  """
+  with ops.name_scope(name, "SparseSoftmax",
+                      [sp_input.indices, sp_input.values]) as name:
+    out_vals = gen_sparse_ops.sparse_softmax(sp_input.indices, sp_input.values,
+                                             sp_input.dense_shape)
+    return sparse_tensor.SparseTensor(
+        sp_input.indices, out_vals, sp_input.dense_shape)
+
+
+def sparse_maximum(sp_a, sp_b, name=None):
+  """Returns the element-wise max of two SparseTensors.
+
+  Assumes the two SparseTensors have the same shape, i.e., no broadcasting.
+  Example:
+
+  ```python
+  sp_zero = sparse_tensor.SparseTensor([[0]], [0], [7])
+  sp_one = sparse_tensor.SparseTensor([[1]], [1], [7])
+  res = tf.sparse_maximum(sp_zero, sp_one).eval()
+  # "res" should be equal to SparseTensor([[0], [1]], [0, 1], [7]).
+  ```
+
+  Args:
+    sp_a: a `SparseTensor` operand whose dtype is real, and indices
+      lexicographically ordered.
+    sp_b: the other `SparseTensor` operand with the same requirements (and the
+      same shape).
+    name: optional name of the operation.
+  Returns:
+    output: the output SparseTensor.
+  """
+  with ops.name_scope(name, "SparseSparseMaximum", [sp_a.indices, sp_a.values,
+                                                    sp_b.indices,
+                                                    sp_b.values]) as name:
+    out_indices, out_values = gen_sparse_ops.sparse_sparse_maximum(
+        sp_a.indices,
+        sp_a.values,
+        sp_a.dense_shape,
+        sp_b.indices,
+        sp_b.values,
+        sp_b.dense_shape,
+        name=name)
+  return sparse_tensor.SparseTensor(out_indices, out_values, sp_a.dense_shape)
+
+
+def sparse_minimum(sp_a, sp_b, name=None):
+  """Returns the element-wise min of two SparseTensors.
+
+  Assumes the two SparseTensors have the same shape, i.e., no broadcasting.
+  Example:
+
+  ```python
+  sp_zero = sparse_tensor.SparseTensor([[0]], [0], [7])
+  sp_one = sparse_tensor.SparseTensor([[1]], [1], [7])
+  res = tf.sparse_minimum(sp_zero, sp_one).eval()
+  # "res" should be equal to SparseTensor([[0], [1]], [0, 0], [7]).
+  ```
+
+  Args:
+    sp_a: a `SparseTensor` operand whose dtype is real, and indices
+      lexicographically ordered.
+    sp_b: the other `SparseTensor` operand with the same requirements (and the
+      same shape).
+    name: optional name of the operation.
+  Returns:
+    output: the output SparseTensor.
+  """
+  with ops.name_scope(name, "SparseSparseMinimum", [sp_a.indices, sp_a.values,
+                                                    sp_b.indices,
+                                                    sp_b.values]) as name:
+    out_indices, out_values = gen_sparse_ops.sparse_sparse_minimum(
+        sp_a.indices,
+        sp_a.values,
+        sp_a.dense_shape,
+        sp_b.indices,
+        sp_b.values,
+        sp_b.dense_shape,
+        name=name)
+  return sparse_tensor.SparseTensor(out_indices, out_values, sp_a.dense_shape)
+
+
+def sparse_transpose(sp_input, perm=None, name=None):
+  """Transposes a `SparseTensor`
+
+  The returned tensor's dimension i will correspond to the input dimension
+  `perm[i]`. If `perm` is not given, it is set to (n-1...0), where n is
+  the rank of the input tensor. Hence by default, this operation performs a
+  regular matrix transpose on 2-D input Tensors.
+
+  For example, if `sp_input` has shape `[4, 5]` and `indices` / `values`:
+
+      [0, 3]: b
+      [0, 1]: a
+      [3, 1]: d
+      [2, 0]: c
+
+  then the output will be a `SparseTensor` of shape `[5, 4]` and
+  `indices` / `values`:
+
+      [0, 2]: c
+      [1, 0]: a
+      [1, 3]: d
+      [3, 0]: b
+
+  Args:
+    sp_input: The input `SparseTensor`.
+    perm: A permutation of the dimensions of `sp_input`.
+    name: A name prefix for the returned tensors (optional)
+  Returns:
+    A transposed `SparseTensor`.
+
+  Raises:
+    TypeError: If `sp_input` is not a `SparseTensor`.
+  """
+  with ops.op_scope([sp_input], name, "SparseTranspose") as name:
+    if perm is None:
+      rank = array_ops.rank(sp_input)
+      perm = (rank - 1) - math_ops.range(0, rank, 1)
+    indices = sp_input.indices
+    transposed_indices = array_ops.transpose(
+        array_ops.gather(array_ops.transpose(indices), perm))
+    dense_shape = sp_input.dense_shape
+    transposed_dense_shape = array_ops.gather(dense_shape, perm)
+    transposed_st = sparse_tensor.SparseTensor(
+        transposed_indices, sp_input.values,
+        transposed_dense_shape)
+    transposed_st = sparse_reorder(transposed_st)
+    return transposed_st
+
+
+def _add_sparse_to_tensors_map(sp_input, container=None,
+                               shared_name=None, name=None):
+  """Add a `SparseTensor` to a `SparseTensorsMap` and return its handle.
+
+  Args:
+    sp_input: The input `SparseTensor`.
+    container: The container for the underlying `SparseTensorsMap` (optional).
+    shared_name: The shared name for the underlying `SparseTensorsMap`
+      (optional, defaults to the name of the newly created op).
+    name: A name prefix for the returned tensors (optional).
+
+  Returns:
+    A string 1-vector (1D `Tensor`), with the single element representing the
+    a unique handle to a `SparseTensor` stored by the `SparseTensorMap`
+    underlying this op.
+
+  Raises:
+    TypeError: If `sp_input` is not a `SparseTensor`.
+  """
+  sp_input = _convert_to_sparse_tensor(sp_input)
+
+  return gen_sparse_ops._add_sparse_to_tensors_map(
+      sp_input.indices, sp_input.values, sp_input.dense_shape,
+      container=container, shared_name=shared_name, name=name)
+
+
+def _add_many_sparse_to_tensors_map(sp_input, container=None,
+                                    shared_name=None, name=None):
+  """Add a minibatch `SparseTensor` to a `SparseTensorsMap`, return `N` handles.
+
+  The `SparseTensor` must have rank `R` greater than 1, and the first dimension
+  is treated as the minibatch dimension.  Elements of the `SparseTensor`
+  must be sorted in increasing order of this first dimension.  The serialized
+  `SparseTensor` objects going into each row of the output `Tensor` will have
+  rank `R-1`.
+
+  The minibatch size `N` is extracted from `sparse_shape[0]`.
+
+  Args:
+    sp_input: The input rank `R` `SparseTensor`.
+    container: The container for the underlying `SparseTensorsMap` (optional).
+    shared_name: The shared name for the underlying `SparseTensorsMap`
+      (optional, defaults to the name of the newly created op).
+    name: A name prefix for the returned tensors (optional).
+
+  Returns:
+    A string matrix (2-D `Tensor`) with `N` rows and `1` column.
+    Each row represents a unique handle to a `SparseTensor` stored by
+    the `SparseTensorMap` underlying this op.
+
+  Raises:
+    TypeError: If `sp_input` is not a `SparseTensor`.
+  """
+  sp_input = _convert_to_sparse_tensor(sp_input)
+
+  return gen_sparse_ops._add_many_sparse_to_tensors_map(
+      sp_input.indices, sp_input.values, sp_input.dense_shape,
+      container=container, shared_name=shared_name, name=name)
+
+
+def _take_many_sparse_from_tensors_map(
+    sparse_map_op, sparse_handles, rank=None, name=None):
+  """Read `SparseTensors` from a `SparseTensorsMap` and concatenate them.
+
+  The input `sparse_handles` must be a string matrix of shape `[N, 1]` where
+  `N` is the minibatch size and the rows correspond to packed outputs of
+  `add_sparse_to_tensors_map`.  The ranks of the original `SparseTensor` objects
+  must all match.  When the final `SparseTensor` is created, it has rank one
+  higher than the ranks of the incoming `SparseTensor` objects (they have been
+  concatenated along a new row dimension).
+
+  The output `SparseTensor` object's shape values for all dimensions but the
+  first are the max across the input `SparseTensor` objects' shape values
+  for the corresponding dimensions.  Its first shape value is `N`, the minibatch
+  size.
+
+  The input `SparseTensor` objects' indices are assumed ordered in
+  standard lexicographic order.  If this is not the case, after this
+  step run `sparse_reorder` to restore index ordering.
+
+  For example, if the serialized input is a `[2, 3]` matrix representing two
+  original `SparseTensor` objects:
+
+      index = [ 0]
+              [10]
+              [20]
+      values = [1, 2, 3]
+      shape = [50]
+
+  and
+
+      index = [ 2]
+              [10]
+      values = [4, 5]
+      shape = [30]
+
+  then the final deserialized `SparseTensor` will be:
+
+      index = [0  0]
+              [0 10]
+              [0 20]
+              [1  2]
+              [1 10]
+      values = [1, 2, 3, 4, 5]
+      shape = [2 50]
+
+  Args:
+    sparse_map_op: The `Operation` that created the original handles.
+      Usually this is, e.g., `add_sparse_to_tensors_map(...).op`.
+    sparse_handles: 2-D `Tensor` of type `string` of shape `[N, 1]`.
+      The serialized and packed `SparseTensor` objects.
+    rank: (optional) Python int, the rank of the `SparseTensor` objects.
+    name: A name prefix for the returned tensors (optional)
+
+  Returns:
+    A `SparseTensor` representing the deserialized `SparseTensor`s,
+    concatenated along the `SparseTensor`s' first dimension.
+
+    All of the serialized `SparseTensor`s must have had the same rank and type.
+  """
+  if not isinstance(sparse_map_op, ops.Operation):
+    raise TypeError("sparse_map_op be an Operation")
+  if sparse_map_op.type not in ("AddSparseToTensorsMap",
+                                "AddManySparseToTensorsMap"):
+    raise TypeError("sparse_map_op must be one of AddSparseToTensorsMap or "
+                    "AddSparseToTensorsMap. Instead, found `%s`." %
+                    sparse_map_op.type)
+  with ops.colocate_with(sparse_map_op):
+    shared_name = sparse_map_op.get_attr("shared_name") or sparse_map_op.name
+    output_indices, output_values, output_shape = (
+        gen_sparse_ops._take_many_sparse_from_tensors_map(
+            sparse_handles, dtype=sparse_map_op.get_attr("T"),
+            container=sparse_map_op.get_attr("container"),
+            shared_name=shared_name, name=name))
+
+  # Feed rank data back in, if available
+  output_indices.set_shape([None, rank])
+  output_shape.set_shape([rank])
+
+  return sparse_tensor.SparseTensor(output_indices, output_values, output_shape)

@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,5 +21,5 @@ REGISTER3(UnaryOp, CPU, "Digamma", functor::digamma, float, Eigen::half,
 #if GOOGLE_CUDA
 REGISTER3(UnaryOp, GPU, "Digamma", functor::digamma, float, Eigen::half,
           double);
-#endif
+#endif  // GOOGLE_CUDA
 }  // namespace tensorflow

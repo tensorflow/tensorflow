@@ -40,12 +40,12 @@ The problem arises when you want to reuse this model. Assume you want to
 apply your image filter to 2 different images, `image1` and `image2`.
 You want both images processed by the same filter with the same parameters.
 You can call `my_image_filter()` twice, but this will create two sets
-of variables:
+of variables, 4 variables in each one, for a total of 8 variables.
 
 ```python
-# First call creates one set of variables.
+# First call creates one set of 4 variables.
 result1 = my_image_filter(image1)
-# Another set is created in the second call.
+# Another set of 4 variables is created in the second call.
 result2 = my_image_filter(image2)
 ```
 
@@ -69,7 +69,7 @@ def my_image_filter(input_images, variables_dict):
         strides=[1, 1, 1, 1], padding='SAME')
     return tf.nn.relu(conv2 + variables_dict["conv2_biases"])
 
-# The 2 calls to my_image_filter() now use the same variables
+# Both calls to my_image_filter() now use the same variables
 result1 = my_image_filter(image1, variables_dict)
 result2 = my_image_filter(image2, variables_dict)
 ```
@@ -90,7 +90,7 @@ while constructing a graph.
 
 ## Variable Scope Example
 
-Variable Scope mechanism in TensorFlow consists of 2 main functions:
+Variable Scope mechanism in TensorFlow consists of two main functions:
 
 * `tf.get_variable(<name>, <shape>, <initializer>)`:
   Creates or returns a variable with a given name.
@@ -207,7 +207,7 @@ with tf.variable_scope("foo"):
     v = tf.get_variable("v", [1])
 with tf.variable_scope("foo", reuse=True):
     v1 = tf.get_variable("v", [1])
-assert v1 == v
+assert v1 is v
 ```
 
 ### Basics of `tf.variable_scope()`
@@ -234,7 +234,7 @@ with tf.variable_scope("foo"):
     v = tf.get_variable("v", [1])
     tf.get_variable_scope().reuse_variables()
     v1 = tf.get_variable("v", [1])
-assert v1 == v
+assert v1 is v
 ```
 
 Note that you *cannot* set the `reuse` flag to `False`. The reason behind
@@ -280,13 +280,13 @@ when opening a new variable scope.
 ```python
 with tf.variable_scope("foo") as foo_scope:
     v = tf.get_variable("v", [1])
-with tf.variable_scope(foo_scope)
+with tf.variable_scope(foo_scope):
     w = tf.get_variable("w", [1])
-with tf.variable_scope(foo_scope, reuse=True)
+with tf.variable_scope(foo_scope, reuse=True):
     v1 = tf.get_variable("v", [1])
     w1 = tf.get_variable("w", [1])
-assert v1 == v
-assert w1 == w
+assert v1 is v
+assert w1 is w
 ```
 
 When opening a variable scope using a previously existing scope
@@ -296,7 +296,7 @@ different one. This is fully independent of where we do it.
 ```python
 with tf.variable_scope("foo") as foo_scope:
     assert foo_scope.name == "foo"
-with tf.variable_scope("bar")
+with tf.variable_scope("bar"):
     with tf.variable_scope("baz") as other_scope:
         assert other_scope.name == "bar/baz"
         with tf.variable_scope(foo_scope) as foo_scope2:
@@ -361,12 +361,13 @@ we do not alter the current name scope for ops.
 
 ## Examples of Use
 
-Here are pointers to a few files that make use of variable scope.
-In particular, it is heavily used for recurrent neural networks
-and sequence-to-sequence models.
+Here are pointers to a few files that make use of variable scope. They can all
+be found in the [TensorFlow models repo](https://github.com/tensorflow/models).
+In particular, variable scope is heavily used for recurrent neural networks and
+sequence-to-sequence models.
 
 File | What's in it?
 --- | ---
-`models/image/cifar10.py` | Model for detecting objects in images.
-`models/rnn/rnn_cell.py` | Cell functions for recurrent neural networks.
-`models/rnn/seq2seq.py` | Functions for building sequence-to-sequence models.
+`models/tutorials/image/cifar10/cifar10.py` | Model for detecting objects in images.
+`models/tutorials/rnn/rnn_cell.py` | Cell functions for recurrent neural networks.
+`models/tutorials/rnn/seq2seq.py` | Functions for building sequence-to-sequence models.

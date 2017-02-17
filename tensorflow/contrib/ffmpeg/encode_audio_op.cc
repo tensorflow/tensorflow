@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,7 +15,8 @@
 
 #include <limits>
 
-#include "tensorflow/contrib/ffmpeg/kernels/ffmpeg_lib.h"
+#include "tensorflow/contrib/ffmpeg/ffmpeg_lib.h"
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
@@ -24,8 +25,7 @@ namespace ffmpeg {
 
 class EncodeAudioOp : public OpKernel {
  public:
-  explicit EncodeAudioOp(OpKernelConstruction* context)
-      : OpKernel(context) {
+  explicit EncodeAudioOp(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("file_format", &file_format_));
     file_format_ = str_util::Lowercase(file_format_);
     OP_REQUIRES(context, file_format_ == "wav",
@@ -35,13 +35,15 @@ class EncodeAudioOp : public OpKernel {
         context, context->GetAttr("samples_per_second", &samples_per_second_));
     OP_REQUIRES(context, samples_per_second_ > 0,
                 errors::InvalidArgument("samples_per_second must be > 0."));
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("bits_per_second", &bits_per_second_));
   }
 
   void Compute(OpKernelContext* context) override {
     // Get and verify the input data.
-    OP_REQUIRES(context, context->num_inputs() == 1,
-                errors::InvalidArgument(
-                    "EncodeAudio requires exactly one input."));
+    OP_REQUIRES(
+        context, context->num_inputs() == 1,
+        errors::InvalidArgument("EncodeAudio requires exactly one input."));
     const Tensor& contents = context->input(0);
     OP_REQUIRES(context, TensorShapeUtils::IsMatrix(contents.shape()),
                 errors::InvalidArgument(
@@ -61,9 +63,9 @@ class EncodeAudioOp : public OpKernel {
     }
     const int32 channel_count = contents.dim_size(1);
     string encoded_audio;
-    OP_REQUIRES_OK(context,
-                   CreateAudioFile(file_format_, samples_per_second_,
-                                   channel_count, samples, &encoded_audio));
+    OP_REQUIRES_OK(context, CreateAudioFile(file_format_, bits_per_second_,
+                                            samples_per_second_, channel_count,
+                                            samples, &encoded_audio));
 
     // Copy the encoded audio file to the output tensor.
     Tensor* output = nullptr;
@@ -75,6 +77,7 @@ class EncodeAudioOp : public OpKernel {
  private:
   string file_format_;
   int32 samples_per_second_;
+  int32 bits_per_second_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("EncodeAudio").Device(DEVICE_CPU), EncodeAudioOp);
@@ -84,6 +87,8 @@ REGISTER_OP("EncodeAudio")
     .Output("contents: string")
     .Attr("file_format: string")
     .Attr("samples_per_second: int")
+    .Attr("bits_per_second: int = 192000")
+    .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 Processes a `Tensor` containing sampled audio with the number of channels
 and length of the audio specified by the dimensions of the `Tensor`. The
@@ -100,6 +105,8 @@ sampled_audio: A rank 2 tensor containing all tracks of the audio. Dimension 0
 contents: The binary audio file contents.
 file_format: A string describing the audio file format. This must be "wav".
 samples_per_second: The number of samples per second that the audio should have.
+bits_per_second: The approximate bitrate of the encoded audio file. This is
+    ignored by the "wav" file format.
 )doc");
 
 }  // namespace ffmpeg

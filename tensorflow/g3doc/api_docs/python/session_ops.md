@@ -7,10 +7,7 @@ Note: Functions taking `Tensor` arguments can also take anything accepted by
 
 [TOC]
 
-## Tensor Handle Operations.
-
-TensorFlow provides several operators that allows the user to keep tensors
-"in-place" across run calls.
+Tensor Handle Operations. See the @{python/session_ops} guide.
 
 - - -
 
@@ -25,17 +22,6 @@ used to retrieve `data` in a subsequent run().
 
 Combined with `get_session_tensor`, we can keep a tensor produced in
 one run call in place, and use it as the input in a future run call.
-Below is a simple example:
-
-```python
-c = tf.mul(a, b)
-h = tf.get_session_handle(c)
-h = sess.run(h)
-
-p, a = tf.get_session_tensor(tf.float32)
-b = tf.mul(a, 10)
-c = sess.run(b, feed_dict={p: h.handle})
-```
 
 ##### Args:
 
@@ -53,9 +39,22 @@ c = sess.run(b, feed_dict={p: h.handle})
 *  <b>`TypeError`</b>: if `data` is not a Tensor.
 
 
+*  <b>`Example`</b>: 
+
+```python
+c = tf.multiply(a, b)
+h = tf.get_session_handle(c)
+h = sess.run(h)
+
+p, a = tf.get_session_tensor(h.handle, tf.float32)
+b = tf.multiply(a, 10)
+c = sess.run(b, feed_dict={p: h.handle})
+```
+
+
 - - -
 
-### `tf.get_session_tensor(dtype, name=None)` {#get_session_tensor}
+### `tf.get_session_tensor(handle, dtype, name=None)` {#get_session_tensor}
 
 Get the tensor of type `dtype` by feeding a tensor handle.
 
@@ -68,6 +67,7 @@ session.
 ##### Args:
 
 
+*  <b>`handle`</b>: The string representation of a persistent tensor handle.
 *  <b>`dtype`</b>: The type of the output tensor.
 *  <b>`name`</b>: Optional name prefix for the return tensor.
 
@@ -78,11 +78,24 @@ session.
   keyed by the tensor handle.
 
 
+*  <b>`Example`</b>: 
+
+```python
+c = tf.multiply(a, b)
+h = tf.get_session_handle(c)
+h = sess.run(h)
+
+p, a = tf.get_session_tensor(h.handle, tf.float32)
+b = tf.multiply(a, 10)
+c = sess.run(b, feed_dict={p: h.handle})
+```
+
+
 - - -
 
-### `tf.delete_session_tensor(name=None)` {#delete_session_tensor}
+### `tf.delete_session_tensor(handle, name=None)` {#delete_session_tensor}
 
-Delete the tensor by feeding a tensor handle.
+Delete the tensor for the given tensor handle.
 
 This is EXPERIMENTAL and subject to change.
 
@@ -92,6 +105,7 @@ in a previous run() and stored in the state of the session.
 ##### Args:
 
 
+*  <b>`handle`</b>: The string representation of a persistent tensor handle.
 *  <b>`name`</b>: Optional name prefix for the return tensor.
 
 ##### Returns:

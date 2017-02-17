@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,15 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Functions for copying elements from one graph to another.
+"""Functions to copy elements between graphs.
 
-@@copy_op_to_graph
-@@copy_variable_to_graph
-@@get_copied_op
+See the @{$python/contrib.copy_graph} guide.
 """
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.copy_graph.python.util import copy_elements
+# pylint: disable=wildcard-import
 from tensorflow.contrib.copy_graph.python.util.copy_elements import *
+# pylint: enable=wildcard-import
+
+from tensorflow.python.util.all_util import remove_undocumented
+
+remove_undocumented(__name__, doc_string_modules=[copy_elements])

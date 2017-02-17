@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ namespace {
 TEST(TypesTest, DeviceTypeName) {
   EXPECT_EQ("CPU", DeviceTypeString(DeviceType(DEVICE_CPU)));
   EXPECT_EQ("GPU", DeviceTypeString(DeviceType(DEVICE_GPU)));
+  EXPECT_EQ("SYCL", DeviceTypeString(DeviceType(DEVICE_SYCL)));
 }
 
 TEST(TypesTest, kDataTypeRefOffset) {

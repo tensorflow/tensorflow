@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -61,11 +62,24 @@ class TensorSliceWriter {
              const TensorSlice& slice, const T* data);
   Status Finish();
 
- private:
   // Allocate "num_elements" elements in "ss" and save the data in "data"
   // there.
   template <typename T>
-  static void SaveData(const T* data, int num_elements, SavedSlice* ss);
+  static Status SaveData(const T* data, int64 num_elements, SavedSlice* ss);
+
+  static size_t MaxBytesPerElement(DataType dt);
+
+ private:
+  static const size_t kMaxMessageBytes = 1LL << 31;
+  // Filling in the TensorProto in a SavedSlice will add the following
+  // header bytes, in addition to the data:
+  // - 1 byte: TensorProto tag and wire format
+  // - <= 5 bytes: TensorProto length
+  // - 1 byte: Repeated *_val tag and wire format
+  // - <= 5 bytes: *_val length
+  // However, we add 1KB of slack, to be conservative and guard
+  // against other additions to the TensorProto.
+  static const size_t kTensorProtoHeaderBytes = 1 << 10;
 
   const string filename_;
   const CreateBuilderFunction create_builder_;
@@ -132,7 +146,7 @@ Status TensorSliceWriter::Add(const string& name, const TensorShape& shape,
     TensorShape saved_shape(ssm->shape());
     TensorShape sliced_shape;
     TF_RETURN_IF_ERROR(slice.SliceTensorShape(saved_shape, &sliced_shape));
-    SaveData(data, sliced_shape.num_elements(), ss);
+    TF_RETURN_IF_ERROR(SaveData(data, sliced_shape.num_elements(), ss));
     string key = EncodeTensorNameSlice(name, slice);
     // TODO(yangke): consider doing a two-pass thing where the first pass just
     // list the tensor slices we want to save and then another pass to actually
@@ -148,10 +162,25 @@ Status TensorSliceWriter::Add(const string& name, const TensorShape& shape,
 }
 
 template <typename T>
-void TensorSliceWriter::SaveData(const T* data, int num_elements,
-                                 SavedSlice* ss) {
+Status TensorSliceWriter::SaveData(const T* data, int64 num_elements,
+                                   SavedSlice* ss) {
+  size_t size_bound =
+      ss->ByteSize() + kTensorProtoHeaderBytes +
+      (MaxBytesPerElement(DataTypeToEnum<T>::value) * num_elements);
+  if (size_bound > kMaxMessageBytes) {
+    return errors::InvalidArgument(
+        "Tensor slice is too large to serialize (conservative estimate: ",
+        size_bound, " bytes)");
+  }
   Fill(data, num_elements, ss->mutable_data());
+  DCHECK_GE(ss->ByteSize(), 0);
+  DCHECK_LE(ss->ByteSize(), size_bound);
+  return Status::OK();
 }
+
+template <>
+Status TensorSliceWriter::SaveData(const string* data, int64 num_elements,
+                                   SavedSlice* ss);
 
 // Create a table builder that will write to "filename" in
 // tensorflow::io::Table format.  If successful, return OK

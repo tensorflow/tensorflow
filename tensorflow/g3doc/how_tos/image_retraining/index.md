@@ -42,10 +42,10 @@ bazel build tensorflow/examples/image_retraining:retrain
 
 If you have a machine which supports [the AVX instruction set](https://en.wikipedia.org/wiki/Advanced_Vector_Extensions)
 (common in x86 CPUs produced in the last few years) you can improve the running
-speed of the retraining by building for that architecture, like this:
+speed of the retraining by building for that architecture, like this (after choosing appropriate options in `configure`):
 
 ```sh
-bazel build -c opt --copt=-mavx tensorflow/examples/image_retraining:retrain
+bazel build --config opt tensorflow/examples/image_retraining:retrain
 ```
 
 The retrainer can then be run like this:
@@ -117,6 +117,22 @@ to run since there's randomness in the training process. This number is based on
 the percent of the images in the test set that are given the correct label
 after the model is fully trained.
 
+## Visualizing the Retraining with TensorBoard
+
+The script includes TensorBoard summaries that make it easier to understand, debug, and optimize the retraining. For example, you can visualize the graph and statistics, such as how the weights or accuracy varied during training.
+
+To launch TensorBoard, run this command during or after retraining:
+
+```sh
+tensorboard --logdir /tmp/retrain_logs
+```
+
+Once TensorBoard is running, navigate your web browser to `localhost:6006` to view the TensorBoard.
+
+The script will log TensorBoard summaries to `/tmp/retrain_logs` by default. You can change the directory with the `--summaries_dir` flag.
+
+The [TensorBoard README](https://www.tensorflow.org/code/tensorflow/tensorboard/README.md) has a lot more information on TensorBoard usage, including tips & tricks, and debugging information.
+
 ## Using the Retrained Model
 
 The script will write out a version of the Inception v3 network with a final
@@ -143,7 +159,7 @@ You should see a list of flower labels, in most cases with daisy on top
 `--image` parameter with your own images to try those out, and use the C++ code
 as a template to integrate with your own applications.
 
-If you'd like to use the retrained model in a Python program [this example from @eldor4do shows what you'll need to do](https://github.com/eldor4do/Tensorflow-Examples/blob/master/retraining-example.py).
+If you'd like to use the retrained model in a Python program [this example from @eldor4do shows what you'll need to do](https://github.com/eldor4do/TensorFlow-Examples/blob/master/retraining-example.py).
 
 ## Training on Your Own Categories
 
@@ -183,8 +199,8 @@ will end up basing its prediction on the background color, not the features of
 the object you actually care about. To avoid this, try to take pictures in as
 wide a variety of situations as you can, at different times, and with different
 devices. If you want to know more about this problem, you can read about the
-classic (and possibly apocryphal) [tank recognition problem]
-(http://www.jefftk.com/p/detecting-tanks).
+classic (and possibly apocryphal)
+[tank recognition problem](http://www.jefftk.com/p/detecting-tanks).
 
 You may also want to think about the categories you use. It might be worth
 splitting big categories that cover a lot of different physical forms into
@@ -274,11 +290,32 @@ usual split is to put 80% of the images into the main training set, keep 10%
 aside to run as validation frequently during training, and then have a final 10%
 that are used less often as a testing set to predict the real-world performance
 of the classifier. These ratios can be controlled using the
-`--testing_percentage` and `--validation_percentage` flags. One subtle thing
-that the script does is it uses the filename of the image to determine which set
-it is put into. This is designed to ensure that images don't get moved between
-training and testing sets on different runs, since that could be a problem if
-images that had been used for training a model were subsequently used in a
-validation set. In general you should be able to leave these values at their
-defaults, since you won't usually find any advantage to training to adjusting
-them.
+`--testing_percentage` and `--validation_percentage` flags. In general
+you should be able to leave these values at their defaults, since you won't
+usually find any advantage to training to adjusting them.
+
+Note that the script uses the image filenames (rather than a completely random
+function) to divide the images among the training, validation, and test sets.
+This is done to ensure that images don't get moved between training and testing
+sets on different runs, since that could be a problem if images that had been
+used for training a model were subsequently used in a validation set.
+
+You might notice that the validation accuracy fluctuates among iterations. Much
+of this fluctuation arises from the fact that a random subset of the validation
+set is chosen for each validation accuracy measurement. The fluctuations can be
+greatly reduced, at the cost of some increase in training time, by choosing
+`--validation_batch_size=-1`, which uses the entire validation set for each
+accuracy computation.
+
+Once training is complete, you may find it insightful to examine misclassified
+images in the test set. This can be done by adding the flag
+`--print_misclassified_test_images`. This may help you get a feeling for which
+types of images were most confusing for the model, and which categories were
+most difficult to distinguish. For instance, you might discover that some
+subtype of a particular category, or some unusual photo angle, is particularly
+difficult to identify, which may encourage you to add more training images of
+that subtype. Oftentimes, examining misclassified images can also point to
+errors in the input data set, such as mislabeled, low-quality, or ambiguous
+images. However, one should generally avoid point-fixing individual errors in
+the test set, since they are likely to merely reflect more general problems in
+the (much larger) training set.

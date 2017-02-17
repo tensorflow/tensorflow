@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -54,7 +54,7 @@ struct PartitionOptions {
   // flow code incremental based on 'node_to_loc'. This makes the
   // communication a broadcast tree, which could be more efficient when
   // the number of participating devices is large.
-  bool control_flow_added;
+  bool control_flow_added = false;
 
   // A function that returns the data type into which the tensor
   // should be cast before sent over the wire.

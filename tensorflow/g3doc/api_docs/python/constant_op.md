@@ -23,7 +23,7 @@ all elements set to zero.
 For example:
 
 ```python
-tf.zeros([3, 4], int32) ==> [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
+tf.zeros([3, 4], tf.int32) ==> [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
 ```
 
 ##### Args:
@@ -40,7 +40,7 @@ tf.zeros([3, 4], int32) ==> [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
 
 - - -
 
-### `tf.zeros_like(tensor, dtype=None, name=None)` {#zeros_like}
+### `tf.zeros_like(tensor, dtype=None, name=None, optimize=True)` {#zeros_like}
 
 Creates a tensor with all elements set to zero.
 
@@ -63,6 +63,8 @@ tf.zeros_like(tensor) ==> [[0, 0, 0], [0, 0, 0]]
   `int8`, `int16`, `int32`, `int64`, `uint8`, `complex64`, or `complex128`.
 
 *  <b>`name`</b>: A name for the operation (optional).
+*  <b>`optimize`</b>: if true, attempt to statically determine the shape of 'tensor'
+  and encode it as a constant.
 
 ##### Returns:
 
@@ -82,7 +84,7 @@ elements set to 1.
 For example:
 
 ```python
-tf.ones([2, 3], int32) ==> [[1, 1, 1], [1, 1, 1]]
+tf.ones([2, 3], tf.int32) ==> [[1, 1, 1], [1, 1, 1]]
 ```
 
 ##### Args:
@@ -99,7 +101,7 @@ tf.ones([2, 3], int32) ==> [[1, 1, 1], [1, 1, 1]]
 
 - - -
 
-### `tf.ones_like(tensor, dtype=None, name=None)` {#ones_like}
+### `tf.ones_like(tensor, dtype=None, name=None, optimize=True)` {#ones_like}
 
 Creates a tensor with all elements set to 1.
 
@@ -119,9 +121,11 @@ tf.ones_like(tensor) ==> [[1, 1, 1], [1, 1, 1]]
 
 *  <b>`tensor`</b>: A `Tensor`.
 *  <b>`dtype`</b>: A type for the returned `Tensor`. Must be `float32`, `float64`,
-  `int8`, `int16`, `int32`, `int64`, `uint8`, `complex64` or `complex128`.
-
+    `int8`, `int16`, `int32`, `int64`, `uint8`, `complex64`, `complex128` or
+    `bool`.
 *  <b>`name`</b>: A name for the operation (optional).
+*  <b>`optimize`</b>: if true, attempt to statically determine the shape of 'tensor'
+  and encode it as a constant.
 
 ##### Returns:
 
@@ -151,6 +155,11 @@ fill([2, 3], 9) ==> [[9, 9, 9]
 *  <b>`dims`</b>: A `Tensor` of type `int32`.
     1-D. Represents the shape of the output tensor.
 *  <b>`value`</b>: A `Tensor`. 0-D (scalar). Value to fill the returned tensor.
+
+    @compatibility(numpy)
+    Equivalent to np.full
+    @end_compatibility
+
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -161,7 +170,7 @@ fill([2, 3], 9) ==> [[9, 9, 9]
 
 - - -
 
-### `tf.constant(value, dtype=None, shape=None, name='Const')` {#constant}
+### `tf.constant(value, dtype=None, shape=None, name='Const', verify_shape=False)` {#constant}
 
 Creates a constant tensor.
 
@@ -207,6 +216,9 @@ Creates a constant tensor.
 
 *  <b>`name`</b>: Optional name for the tensor.
 
+
+*  <b>`verify_shape`</b>: Boolean that enables verification of a shape of values.
+
 ##### Returns:
 
   A Constant Tensor.
@@ -238,7 +250,8 @@ tf.linspace(10.0, 12.0, 3, name="linspace") => [ 10.0  11.0  12.0]
     First entry in the range.
 *  <b>`stop`</b>: A `Tensor`. Must have the same type as `start`.
     Last entry in the range.
-*  <b>`num`</b>: A `Tensor` of type `int32`. Number of values to generate.
+*  <b>`num`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+    Number of values to generate.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -249,23 +262,31 @@ tf.linspace(10.0, 12.0, 3, name="linspace") => [ 10.0  11.0  12.0]
 
 - - -
 
-### `tf.range(start, limit=None, delta=1, name='range')` {#range}
+### `tf.range(start, limit=None, delta=1, dtype=None, name='range')` {#range}
 
-Creates a sequence of integers.
+Creates a sequence of numbers.
 
-Creates a sequence of integers that begins at `start` and extends by
+Creates a sequence of numbers that begins at `start` and extends by
 increments of `delta` up to but not including `limit`.
+
+The dtype of the resulting tensor is inferred from the inputs unless
+it is provided explicitly.
 
 Like the Python builtin `range`, `start` defaults to 0, so that
 `range(n) = range(0, n)`.
 
 For example:
 
-```
+```python
 # 'start' is 3
 # 'limit' is 18
 # 'delta' is 3
 tf.range(start, limit, delta) ==> [3, 6, 9, 12, 15]
+
+# 'start' is 3
+# 'limit' is 1
+# 'delta' is -0.5
+tf.range(start, limit, delta) ==> [3, 2.5, 2, 1.5]
 
 # 'limit' is 5
 tf.range(limit) ==> [0, 1, 2, 3, 4]
@@ -274,17 +295,24 @@ tf.range(limit) ==> [0, 1, 2, 3, 4]
 ##### Args:
 
 
-*  <b>`start`</b>: A 0-D (scalar) of type `int32`. First entry in sequence.
-    Defaults to 0.
-*  <b>`limit`</b>: A 0-D (scalar) of type `int32`. Upper limit of sequence,
-    exclusive.
-*  <b>`delta`</b>: A 0-D `Tensor` (scalar) of type `int32`. Optional. Default is 1.
-    Number that increments `start`.
-*  <b>`name`</b>: A name for the operation (optional).
+*  <b>`start`</b>: A 0-D `Tensor` (scalar). Acts as first entry in the range if
+    `limit` is not None; otherwise, acts as range limit and first entry
+    defaults to 0.
+*  <b>`limit`</b>: A 0-D `Tensor` (scalar). Upper limit of sequence,
+    exclusive. If None, defaults to the value of `start` while the first
+    entry of the range defaults to 0.
+*  <b>`delta`</b>: A 0-D `Tensor` (scalar). Number that increments
+    `start`. Defaults to 1.
+*  <b>`dtype`</b>: The type of the elements of the resulting tensor.
+*  <b>`name`</b>: A name for the operation. Defaults to "range".
 
 ##### Returns:
 
-  An 1-D `int32` `Tensor`.
+  An 1-D `Tensor` of type `dtype`.
+
+@compatibility(numpy)
+Equivalent to np.arange
+@end_compatibility
 
 
 
@@ -337,7 +365,7 @@ the [Variables How To](../../how_tos/variables/index.md).
 # Use random uniform values in [0, 1) as the initializer for a variable of shape
 # [2, 3]. The default type is float32.
 var = tf.Variable(tf.random_uniform([2, 3]), name="var")
-init = tf.initialize_all_variables()
+init = tf.global_variables_initializer()
 
 sess = tf.Session()
 sess.run(init)
@@ -512,11 +540,11 @@ Draws samples from a multinomial distribution.
 
 Example:
 
-  samples = tf.multinomial(tf.log([[0.5, 0.5]]), 10)
-  # samples has shape [1, 10], where each value is either 0 or 1.
-
-  samples = tf.multinomial([[1, -1, -1]], 10)
-  # samples is equivalent to tf.zeros([1, 10], dtype=tf.int64).
+```python
+# samples has shape [1, 5], where each value is either 0 or 1 with equal
+# probability.
+samples = tf.multinomial(tf.log([[10., 10.]]), 5)
+```
 
 ##### Args:
 
@@ -533,6 +561,115 @@ Example:
 ##### Returns:
 
   The drawn samples of shape `[batch_size, num_samples]`.
+
+
+- - -
+
+### `tf.random_gamma(shape, alpha, beta=None, dtype=tf.float32, seed=None, name=None)` {#random_gamma}
+
+Draws `shape` samples from each of the given Gamma distribution(s).
+
+`alpha` is the shape parameter describing the distribution(s), and `beta` is
+the inverse scale parameter(s).
+
+Example:
+
+  samples = tf.random_gamma([10], [0.5, 1.5])
+  # samples has shape [10, 2], where each slice [:, 0] and [:, 1] represents
+  # the samples drawn from each distribution
+
+  samples = tf.random_gamma([7, 5], [0.5, 1.5])
+  # samples has shape [7, 5, 2], where each slice [:, :, 0] and [:, :, 1]
+  # represents the 7x5 samples drawn from each of the two distributions
+
+  samples = tf.random_gamma([30], [[1.],[3.],[5.]], beta=[[3., 4.]])
+  # samples has shape [30, 3, 2], with 30 samples each of 3x2 distributions.
+
+  Note that for small alpha values, there is a chance you will draw a value of
+  exactly 0, which gets worse for lower-precision dtypes, even though zero is
+  not in the support of the gamma distribution.
+
+  Relevant cdfs (~chance you will draw a exactly-0 value):
+  ```
+    stats.gamma(.01).cdf(np.finfo(np.float16).tiny)
+        0.91269738769897879
+    stats.gamma(.01).cdf(np.finfo(np.float32).tiny)
+        0.41992668622045726
+    stats.gamma(.01).cdf(np.finfo(np.float64).tiny)
+        0.00084322740680686662
+    stats.gamma(.35).cdf(np.finfo(np.float16).tiny)
+        0.037583276135263931
+    stats.gamma(.35).cdf(np.finfo(np.float32).tiny)
+        5.9514895726818067e-14
+    stats.gamma(.35).cdf(np.finfo(np.float64).tiny)
+        2.3529843400647272e-108
+  ```
+
+##### Args:
+
+
+*  <b>`shape`</b>: A 1-D integer Tensor or Python array. The shape of the output samples
+    to be drawn per alpha/beta-parameterized distribution.
+*  <b>`alpha`</b>: A Tensor or Python value or N-D array of type `dtype`. `alpha`
+    provides the shape parameter(s) describing the gamma distribution(s) to
+    sample. Must be broadcastable with `beta`.
+*  <b>`beta`</b>: A Tensor or Python value or N-D array of type `dtype`. Defaults to 1.
+    `beta` provides the inverse scale parameter(s) of the gamma
+    distribution(s) to sample. Must be broadcastable with `alpha`.
+*  <b>`dtype`</b>: The type of alpha, beta, and the output: `float16`, `float32`, or
+    `float64`.
+*  <b>`seed`</b>: A Python integer. Used to create a random seed for the distributions.
+    See
+    [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+    for behavior.
+*  <b>`name`</b>: Optional name for the operation.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: a `Tensor` of shape `tf.concat(shape, tf.shape(alpha + beta))`
+    with values of type `dtype`.
+
+
+- - -
+
+### `tf.random_poisson(lam, shape, dtype=tf.float32, seed=None, name=None)` {#random_poisson}
+
+Draws `shape` samples from each of the given Poisson distribution(s).
+
+`lam` is the rate parameter describing the distribution(s).
+
+Example:
+
+  samples = tf.random_poisson([0.5, 1.5], [10])
+  # samples has shape [10, 2], where each slice [:, 0] and [:, 1] represents
+  # the samples drawn from each distribution
+
+  samples = tf.random_poisson([12.2, 3.3], [7, 5])
+  # samples has shape [7, 5, 2], where each slice [:, :, 0] and [:, :, 1]
+  # represents the 7x5 samples drawn from each of the two distributions
+
+##### Args:
+
+
+*  <b>`lam`</b>: A Tensor or Python value or N-D array of type `dtype`.
+    `lam` provides the rate parameter(s) describing the poisson
+    distribution(s) to sample.
+*  <b>`shape`</b>: A 1-D integer Tensor or Python array. The shape of the output samples
+    to be drawn per "rate"-parameterized distribution.
+*  <b>`dtype`</b>: The type of `lam` and the output: `float16`, `float32`, or
+    `float64`.
+*  <b>`seed`</b>: A Python integer. Used to create a random seed for the distributions.
+    See
+    [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+    for behavior.
+*  <b>`name`</b>: Optional name for the operation.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: a `Tensor` of shape `tf.concat(shape, tf.shape(lam))` with
+    values of type `dtype`.
 
 
 - - -
@@ -613,7 +750,7 @@ tf.set_random_seed(1234)
 a = tf.random_uniform([1])
 b = tf.random_normal([1])
 
-# Repeatedly running this block with the same graph will generate different
+# Repeatedly running this block with the same graph will generate the same
 # sequences of 'a' and 'b'.
 print("Session 1")
 with tf.Session() as sess1:

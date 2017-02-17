@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,8 +24,11 @@ namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
 
-template class functor::RGBToHSV<GPUDevice>;
-template class functor::HSVToRGB<GPUDevice>;
+#define INSTANTIATE_GPU(T)                        \
+  template class functor::RGBToHSV<GPUDevice, T>; \
+  template class functor::HSVToRGB<GPUDevice, T>;
+TF_CALL_float(INSTANTIATE_GPU);
+TF_CALL_double(INSTANTIATE_GPU);
 }
 
 #endif  // GOOGLE_CUDA

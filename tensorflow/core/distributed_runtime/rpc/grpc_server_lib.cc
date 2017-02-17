@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,11 +21,14 @@ limitations under the License.
 #include "grpc++/grpc++.h"
 #include "grpc++/security/credentials.h"
 #include "grpc++/server_builder.h"
+#include "grpc/support/alloc.h"
 
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/distributed_runtime/graph_mgr.h"
+#include "tensorflow/core/distributed_runtime/local_master.h"
+#include "tensorflow/core/distributed_runtime/master.h"
 #include "tensorflow/core/distributed_runtime/master_env.h"
 #include "tensorflow/core/distributed_runtime/master_session.h"
 #include "tensorflow/core/distributed_runtime/rpc/async_service_interface.h"
@@ -39,16 +42,33 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
+
+namespace {
+
+// Define an option subclass in order to disable SO_REUSEPORT for the
+// server socket.
+class NoReusePortOption : public ::grpc::ServerBuilderOption {
+ public:
+  void UpdateArguments(::grpc::ChannelArguments* args) override {
+    args->SetInt(GRPC_ARG_ALLOW_REUSEPORT, 0);
+  }
+
+  void UpdatePlugins(std::vector<std::unique_ptr<::grpc::ServerBuilderPlugin>>*
+                         plugins) override {}
+};
+
+}  // namespace
 
 GrpcServer::GrpcServer(const ServerDef& server_def, Env* env)
     : server_def_(server_def), env_(env), state_(NEW) {}
 
 GrpcServer::~GrpcServer() {
-  Stop();
-  Join();
+  TF_CHECK_OK(Stop());
+  TF_CHECK_OK(Join());
 
   delete master_service_;
   delete worker_service_;
@@ -86,7 +106,8 @@ Status GrpcServer::Init() {
   string name_prefix =
       strings::StrCat("/job:", server_def_.job_name(), "/replica:0", "/task:",
                       server_def_.task_index());
-  DeviceFactory::AddDevices(sess_opts, name_prefix, &master_env_.local_devices);
+  TF_RETURN_IF_ERROR(DeviceFactory::AddDevices(sess_opts, name_prefix,
+                                               &master_env_.local_devices));
   worker_env_.device_mgr = new DeviceMgr(master_env_.local_devices);
   string unused;
   if (!DeviceNameUtils::SplitDeviceName(master_env_.local_devices[0]->name(),
@@ -139,30 +160,37 @@ Status GrpcServer::Init() {
   builder.AddListeningPort(strings::StrCat("0.0.0.0:", requested_port_),
                            GetServerCredentials(server_def_), &bound_port_);
   builder.SetMaxMessageSize(std::numeric_limits<int32>::max());
-  master_service_ = NewGrpcMasterService(&master_env_, &builder);
-  worker_service_ = NewGrpcWorkerService(&worker_env_, &builder);
+  builder.SetOption(
+      std::unique_ptr<::grpc::ServerBuilderOption>(new NoReusePortOption));
+  master_impl_ = CreateMaster(&master_env_);
+  master_service_ = NewGrpcMasterService(master_impl_.get(), &builder);
+  worker_impl_.reset(NewGrpcWorker(&worker_env_));
+  worker_service_ = NewGrpcWorkerService(worker_impl_.get(), &builder);
   server_ = builder.BuildAndStart();
 
   if (!server_) {
-    return errors::Internal("Could not start gRPC server");
+    return errors::Unknown("Could not start gRPC server");
   }
 
   GrpcChannelSpec channel_spec;
   for (const auto& job : server_def_.cluster().job()) {
-    int max_task_id = -1;
+    std::map<int, string> host_ports;
     for (const auto& task : job.tasks()) {
-      max_task_id = std::max(max_task_id, task.first);
-    }
-    std::vector<string> host_ports(max_task_id + 1);
-    for (const auto& task : job.tasks()) {
+      string& host_port = host_ports[task.first];
+      if (!host_port.empty()) {
+        return errors::InvalidArgument("JobDef for job \"", job.name(),
+                                       "\" specified two addresses for task \"",
+                                       task.first, "\": ", host_port, " and ",
+                                       task.second);
+      }
       if (job.name() == server_def_.job_name() &&
           task.first == server_def_.task_index()) {
-        host_ports[task.first] = strings::StrCat("localhost:", bound_port_);
+        host_port = strings::StrCat("localhost:", bound_port_);
       } else {
-        host_ports[task.first] = task.second;
+        host_port = task.second;
       }
     }
-    channel_spec.AddHostPortsJob(job.name(), host_ports, host_ports.size());
+    TF_RETURN_IF_ERROR(channel_spec.AddHostPortsJob(job.name(), host_ports));
   }
 
   std::unique_ptr<GrpcChannelCache> channel_cache(NewGrpcChannelCache(
@@ -173,17 +201,26 @@ Status GrpcServer::Init() {
     return errors::Internal("Could not parse port for local server from \"",
                             channel_cache->TranslateTask(name_prefix), "\".");
   }
-  worker_env_.worker_cache = NewGrpcWorkerCache(channel_cache.release());
+  worker_env_.worker_cache = NewGrpcWorkerCacheWithLocalWorker(
+      channel_cache.release(), worker_impl_.get(), name_prefix);
 
   // Finish setting up master environment.
   master_env_.ops = OpRegistry::Global();
   master_env_.worker_cache = worker_env_.worker_cache;
-  master_env_.master_session_factory = internal::NewMasterSession;
+  master_env_.master_session_factory = [](const SessionOptions& options,
+                                          const MasterEnv* env,
+                                          std::vector<Device*>* remote_devs) {
+    return new MasterSession(options, env, remote_devs,
+                             CreateNoOpStatsPublisher);
+  };
 
   // Finish setting up worker environment.
   worker_env_.graph_mgr = new GraphMgr(&worker_env_);
-  worker_env_.rendezvous_mgr = new RpcRendezvousMgr(&worker_env_);
   worker_env_.compute_pool = ComputePool(sess_opts);
+  worker_env_.rendezvous_mgr = new RpcRendezvousMgr(&worker_env_);
+
+  // Provide direct access to the master from in-process clients.
+  LocalMaster::Register(target(), master_impl_.get());
 
   return Status::OK();
 }
@@ -219,11 +256,8 @@ Status GrpcServer::Stop() {
       state_ = STOPPED;
       return Status::OK();
     case STARTED:
-      server_->Shutdown();
-      master_service_->Shutdown();
-      worker_service_->Shutdown();
-      state_ = STOPPED;
-      return Status::OK();
+      return errors::Unimplemented(
+          "Clean shutdown is not currently implemented");
     case STOPPED:
       LOG(INFO) << "Server already stopped (target: " << target() << ")";
       return Status::OK();
@@ -263,10 +297,15 @@ ChannelCreationFunction GrpcServer::GetChannelCreationFunction(
   return NewHostPortGrpcChannel;
 }
 
+std::unique_ptr<Master> GrpcServer::CreateMaster(MasterEnv* master_env) {
+  return std::unique_ptr<Master>(new Master(master_env, 0.0));
+}
+
 /* static */
 Status GrpcServer::Create(const ServerDef& server_def, Env* env,
                           std::unique_ptr<ServerInterface>* out_server) {
-  std::unique_ptr<GrpcServer> ret(new GrpcServer(server_def, Env::Default()));
+  std::unique_ptr<GrpcServer> ret(new GrpcServer(server_def,
+	  env == nullptr ? Env::Default() : env));
   TF_RETURN_IF_ERROR(ret->Init());
   *out_server = std::move(ret);
   return Status::OK();
@@ -290,6 +329,11 @@ class GrpcServerFactory : public ServerFactory {
 class GrpcServerRegistrar {
  public:
   GrpcServerRegistrar() {
+    gpr_allocation_functions alloc_fns;
+    alloc_fns.malloc_fn = port::Malloc;
+    alloc_fns.realloc_fn = port::Realloc;
+    alloc_fns.free_fn = port::Free;
+    gpr_set_allocation_functions(alloc_fns);
     ServerFactory::Register("GRPC_SERVER", new GrpcServerFactory());
   }
 };

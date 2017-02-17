@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -55,5 +55,7 @@ using tensorflow::LINKER_INITIALIZED;
 
 #define SE_DISALLOW_COPY_AND_ASSIGN TF_DISALLOW_COPY_AND_ASSIGN
 #define SE_MUST_USE_RESULT TF_MUST_USE_RESULT
+#define SE_PREDICT_TRUE TF_PREDICT_TRUE
+#define SE_PREDICT_FALSE TF_PREDICT_FALSE
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_PLATFORM_PORT_H_

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ limitations under the License.
 // refer to all protobuf APIs.
 
 #if defined(PLATFORM_GOOGLE)
-#include "tensorflow/core/platform/google/build_config/protobuf.h"
+#include "tensorflow/core/platform/google/protobuf.h"
 #else
 #include "tensorflow/core/platform/default/protobuf.h"
 #endif

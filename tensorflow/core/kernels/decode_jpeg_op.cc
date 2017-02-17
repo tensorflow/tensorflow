@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -48,6 +48,23 @@ class DecodeJpegOp : public OpKernel {
                                     &flags_.try_recover_truncated_jpeg));
     OP_REQUIRES_OK(context, context->GetAttr("acceptable_fraction",
                                              &flags_.min_acceptable_fraction));
+
+    string dct_method;
+    OP_REQUIRES_OK(context, context->GetAttr("dct_method", &dct_method));
+    OP_REQUIRES(
+        context, (dct_method.empty() || dct_method == "INTEGER_FAST" ||
+                  dct_method == "INTEGER_ACCURATE"),
+        errors::InvalidArgument("dct_method must be one of "
+                                "{'', 'INTEGER_FAST', 'INTEGER_ACCURATE'}"));
+    if (dct_method == "INTEGER_FAST") {
+      flags_.dct_method = JDCT_IFAST;
+    } else if (dct_method == "INTEGER_ACCURATE") {
+      flags_.dct_method = JDCT_ISLOW;
+    } else {
+      // The TensorFlow-chosen default is IFAST, sacrificing decoding
+      // image quality for speed.
+      flags_.dct_method = JDCT_IFAST;
+    }
   }
 
   void Compute(OpKernelContext* context) override {

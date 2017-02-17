@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,7 +23,11 @@ from __future__ import print_function
 from tensorflow.python.framework import ops
 
 
-_DEFAULT_GRAPH_SEED = 87654321
+DEFAULT_GRAPH_SEED = 87654321
+_MAXINT32 = 2**31 - 1
+
+def _truncate_seed(seed):
+  return seed % _MAXINT32 # truncate to fit into 32-bit integer
 
 
 def get_seed(op_seed):
@@ -35,7 +39,7 @@ def get_seed(op_seed):
   graph, or for only specific operations.
 
   For details on how the graph-level seed interacts with op seeds, see
-  [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed).
+  @{tf.set_random_seed}.
 
   Args:
     op_seed: integer.
@@ -47,12 +51,12 @@ def get_seed(op_seed):
   graph_seed = ops.get_default_graph().seed
   if graph_seed is not None:
     if op_seed is not None:
-      return graph_seed, op_seed
+      return _truncate_seed(graph_seed), _truncate_seed(op_seed)
     else:
-      return graph_seed, ops.get_default_graph()._last_id
+      return _truncate_seed(graph_seed), _truncate_seed(ops.get_default_graph()._last_id)
   else:
     if op_seed is not None:
-      return _DEFAULT_GRAPH_SEED, op_seed
+      return _truncate_seed(DEFAULT_GRAPH_SEED), _truncate_seed(op_seed)
     else:
       return None, None
 
@@ -132,7 +136,7 @@ def set_random_seed(seed):
   a = tf.random_uniform([1])
   b = tf.random_normal([1])
 
-  # Repeatedly running this block with the same graph will generate different
+  # Repeatedly running this block with the same graph will generate the same
   # sequences of 'a' and 'b'.
   print("Session 1")
   with tf.Session() as sess1:

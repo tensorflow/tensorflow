@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -35,8 +35,6 @@ namespace tensorflow {
 // TODO(andydavis) Remove some of the code duplicated between this module
 // and that in 'common_runtime/function.cc'.
 // A few string constant used throughout this module.
-static const char* const kArgOp = "_Arg";
-static const char* const kRetOp = "_Retval";
 static const char* const kGradientOp = "SymbolicGradient";
 static const char* const kNodeLabel = "Func";
 

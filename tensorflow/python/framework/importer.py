@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -60,7 +60,7 @@ def _ArgToTypesNoRef(node_def, arg_def):
 def _SingleArgToTypes(node_def, arg_def):
   types = _ArgToTypesNoRef(node_def, arg_def)
   if arg_def.is_ref:
-    return [dtypes.as_dtype(dt).as_ref.as_datatype_enum for dt in types]
+    return [dtypes.as_dtype(dt)._as_ref.as_datatype_enum for dt in types]  # pylint: disable=protected-access
   return types
 
 
@@ -151,14 +151,15 @@ def _FindAttrInOpDef(attr_name, op_def):
 
 def import_graph_def(graph_def, input_map=None, return_elements=None,
                      name=None, op_dict=None, producer_op_list=None):
-  """Imports the TensorFlow graph in `graph_def` into the Python `Graph`.
+  """Imports the graph from `graph_def` into the current default `Graph`.
 
   This function provides a way to import a serialized TensorFlow
   [`GraphDef`](https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto)
   protocol buffer, and extract individual objects in the `GraphDef` as
-  [`Tensor`](#Tensor) and [`Operation`](#Operation) objects. See
-  [`Graph.as_graph_def()`](#Graph.as_graph_def) for a way to create a
-  `GraphDef` proto.
+  @{tf.Tensor} and @{tf.Operation} objects. Once extracted,
+  these objects are placed into the current default `Graph`. See
+  @{tf.Graph.as_graph_def} for a way to create a `GraphDef`
+  proto.
 
   Args:
     graph_def: A `GraphDef` proto containing operations to be imported into
@@ -231,12 +232,23 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
   else:
     producer_op_dict = {op.name: op for op in producer_op_list.op}
 
-  with ops.op_scope(input_map.values(), name, 'import'):
+  # LINT.IfChange
+  with ops.name_scope(name, 'import', input_map.values()) as scope:
     g = ops.get_default_graph()
+    # TODO(ashankar): Should this just copy over or should it do some
+    # more nuanced merging? For example, the graph may already have some
+    # marked "bad versions" and we don't want to lose those because of
+    # what's in graph_def.versions? The C++ ImporGraphDef does something
+    # more nuanced.
     g.graph_def_versions.CopyFrom(graph_def.versions)
 
-    with ops.name_scope('_inputs'):
-      input_map = {k: ops.convert_to_tensor(v) for k, v in input_map.items()}
+    if input_map:
+      if not scope:
+        # The caller must have passed `name=''`.
+        raise ValueError('tf.import_graph_def() requires a non-empty `name` '
+                         'if `input_map` is used.')
+      with ops.name_scope('_inputs'):
+        input_map = {k: ops.convert_to_tensor(v) for k, v in input_map.items()}
 
     # NOTE(mrry): We do this in two passes, because there may be a cycle in
     # `graph_def`.
@@ -244,6 +256,8 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
     # 1. Add operations without their inputs.
     for node in graph_def.node:
       # Set any default attr values that aren't present.
+      if node.op not in op_dict:
+        raise ValueError('No op named %s in defined operations.' % node.op)
       op_def = op_dict[node.op]
       for attr_def in op_def.attr:
         key = attr_def.name
@@ -374,7 +388,43 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
           output_shape = tensor_shape.TensorShape(
               None if dims.unknown_rank else
               [dim.size if dim.size >= 0 else None for dim in dims.dim])
-          output.set_shape(output_shape)
+
+          try:
+            output.set_shape(output_shape)
+          except ValueError as e:
+            # If the output shape is incompatible with what is inferred
+            # by the graph for a very specific whitelist of ops, then we
+            # ignore this output shape.  This can happen if there is a
+            # bug in the shape function for some operation, and the
+            # serialized graph def has the incorrect shape set when
+            # running on a newer binary with the fixed shape function.
+            # This is an escape hatch that allows us to correct shape
+            # functions that are not critical to correct execution but
+            # would cause graphs to fail if imported after correcting.
+            #
+            # This can be removed after 2017/03/08.
+            if op.type in ['RandomShuffleQueue', 'PaddingFIFOQueue',
+                           'FIFOQueue', 'PriorityQueue', 'QueueSize',
+                           'Stack', 'Barrier', 'BarrierReadySize',
+                           'BarrierIncompleteSize', 'HashTable',
+                           'MutableHashTable',
+                           'MutableHashTableOfTensors', 'Mutex',
+                           'CuckooTable', 'IndexTable',
+                           'WholeFileReader', 'TextLineReader',
+                           'FixedLengthRecordReader',
+                           'TFRecordReader', 'IdentityReader',
+                           'RefSwitch', 'RefEnter', 'RefNextIteration',
+                           'RefMerge', 'RefIdentity']:
+              pass
+            elif op.type in [
+                'ConditionalAccumulator', 'SparseConditionalAccumulator',
+                'Table'
+            ]:
+              # This can be removed after 2017/04/24.
+              pass
+            else:
+              raise e
+
         del op.node_def.attr['_output_shapes']
 
       # Apply device functions for this op.
@@ -411,3 +461,4 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
             raise ValueError(
                 'Requested return_element %r not found in graph_def.' % name)
       return ret
+  # LINT.ThenChange(//tensorflow/core/graph/graph_constructor.cc)

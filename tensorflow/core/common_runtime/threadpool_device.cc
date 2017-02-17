@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,10 +31,10 @@ namespace tensorflow {
 
 ThreadPoolDevice::ThreadPoolDevice(const SessionOptions& options,
                                    const string& name, Bytes memory_limit,
-                                   BusAdjacency bus_adjacency,
+                                   const DeviceLocality& locality,
                                    Allocator* allocator)
     : LocalDevice(options, Device::BuildDeviceAttributes(
-                               name, DEVICE_CPU, memory_limit, bus_adjacency),
+                               name, DEVICE_CPU, memory_limit, locality),
                   allocator),
       allocator_(allocator) {}
 
@@ -59,13 +59,15 @@ Allocator* ThreadPoolDevice::GetAllocator(AllocatorAttributes attr) {
 Status ThreadPoolDevice::MakeTensorFromProto(
     const TensorProto& tensor_proto, const AllocatorAttributes alloc_attrs,
     Tensor* tensor) {
-  Tensor parsed(tensor_proto.dtype());
-  if (!parsed.FromProto(cpu_allocator(), tensor_proto)) {
-    return errors::InvalidArgument("Cannot parse tensor from proto: ",
-                                   ProtoDebugString(tensor_proto));
+  if (tensor_proto.dtype() > 0 && tensor_proto.dtype() <= DataType_MAX) {
+    Tensor parsed(tensor_proto.dtype());
+    if (parsed.FromProto(cpu_allocator(), tensor_proto)) {
+      *tensor = parsed;
+      return Status::OK();
+    }
   }
-  *tensor = parsed;
-  return Status::OK();
+  return errors::InvalidArgument("Cannot parse tensor from proto: ",
+                                 ProtoDebugString(tensor_proto));
 }
 
 }  // namespace tensorflow

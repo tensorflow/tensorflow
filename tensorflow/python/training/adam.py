@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -32,8 +32,6 @@ class AdamOptimizer(optimizer.Optimizer):
 
   See [Kingma et. al., 2014](http://arxiv.org/abs/1412.6980)
   ([pdf](http://arxiv.org/pdf/1412.6980.pdf)).
-
-  @@__init__
   """
 
   def __init__(self, learning_rate=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8,
@@ -63,6 +61,10 @@ class AdamOptimizer(optimizer.Optimizer):
     The default value of 1e-8 for epsilon might not be a good default in
     general. For example, when training an Inception network on ImageNet a
     current good choice is 1.0 or 0.1.
+
+    Note that in dense implement of this algorithm, m_t, v_t and variable will
+    update even if g is zero, but in sparse implement, m_t, v_t and variable
+    will not update in iterations g is zero.
 
     Args:
       learning_rate: A Tensor or a floating point value.  The learning rate.
@@ -101,7 +103,8 @@ class AdamOptimizer(optimizer.Optimizer):
   def _create_slots(self, var_list):
     # Create the beta1 and beta2 accumulators on the same device as the first
     # variable.
-    if self._beta1_power is None:
+    if (self._beta1_power is None or
+        self._beta1_power.graph is not var_list[0].graph):
       with ops.colocate_with(var_list[0]):
         self._beta1_power = variables.Variable(self._beta1,
                                                name="beta1_power",
@@ -133,6 +136,19 @@ class AdamOptimizer(optimizer.Optimizer):
         math_ops.cast(self._epsilon_t, var.dtype.base_dtype),
         grad, use_locking=self._use_locking).op
 
+  def _resource_apply_dense(self, grad, var):
+    m = self.get_slot(var, "m")
+    v = self.get_slot(var, "v")
+    return training_ops.resource_apply_adam(
+        var.handle, m.handle, v.handle,
+        math_ops.cast(self._beta1_power, grad.dtype.base_dtype),
+        math_ops.cast(self._beta2_power, grad.dtype.base_dtype),
+        math_ops.cast(self._lr_t, grad.dtype.base_dtype),
+        math_ops.cast(self._beta1_t, grad.dtype.base_dtype),
+        math_ops.cast(self._beta2_t, grad.dtype.base_dtype),
+        math_ops.cast(self._epsilon_t, grad.dtype.base_dtype),
+        grad, use_locking=self._use_locking)
+
   def _apply_sparse(self, grad, var):
     beta1_power = math_ops.cast(self._beta1_power, var.dtype.base_dtype)
     beta2_power = math_ops.cast(self._beta2_power, var.dtype.base_dtype)
@@ -147,13 +163,13 @@ class AdamOptimizer(optimizer.Optimizer):
     m_t = state_ops.assign(m, m * beta1_t,
                            use_locking=self._use_locking)
     m_t = state_ops.scatter_add(m_t, grad.indices, m_scaled_g_values,
-                               use_locking=self._use_locking)
+                                use_locking=self._use_locking)
     # v_t = beta2 * v + (1 - beta2) * (g_t * g_t)
     v = self.get_slot(var, "v")
     v_scaled_g_values = (grad.values * grad.values) * (1 - beta2_t)
     v_t = state_ops.assign(v, v * beta2_t, use_locking=self._use_locking)
     v_t = state_ops.scatter_add(v_t, grad.indices, v_scaled_g_values,
-                               use_locking=self._use_locking)
+                                use_locking=self._use_locking)
     v_sqrt = math_ops.sqrt(v_t)
     var_update = state_ops.assign_sub(var,
                                       lr * m_t / (v_sqrt + epsilon_t),

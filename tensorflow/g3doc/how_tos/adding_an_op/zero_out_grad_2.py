@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -40,5 +40,5 @@ def _zero_out_grad(op, grad):
   shape = array_ops.shape(to_zero)
   index = array_ops.zeros_like(shape)
   first_grad = array_ops.reshape(grad, [-1])[0]
-  to_zero_grad = sparse_ops.sparse_to_dense(index, shape, first_grad, 0)
+  to_zero_grad = sparse_ops.sparse_to_dense([index], shape, first_grad, 0)
   return [to_zero_grad]  # List of one Tensor, since we have one input

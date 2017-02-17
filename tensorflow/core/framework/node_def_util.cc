@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -32,6 +32,9 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
+
+const char* const kColocationAttrName = "_class";
+const char* const kColocationGroupPrefix = "loc:@";
 
 AttrSlice::AttrSlice(const NodeDef& node_def)
     : ndef_(&node_def), attrs_(&ndef_->attr()) {}
@@ -179,6 +182,17 @@ Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
   TF_RETURN_IF_ERROR(attrs.Find(attr_name, &attr_value));
   TF_RETURN_IF_ERROR(AttrValueHasType(*attr_value, "func"));
   *value = &attr_value->func();
+  return Status::OK();
+}
+
+Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                   std::vector<NameAttrList>* value) {
+  const AttrValue* attr_value;
+  TF_RETURN_IF_ERROR(attrs.Find(attr_name, &attr_value));
+  TF_RETURN_IF_ERROR(AttrValueHasType(*attr_value, "list(func)"));
+  for (const auto& v : attr_value->list().func()) {
+    value->emplace_back(v);
+  }
   return Status::OK();
 }
 
@@ -369,9 +383,14 @@ Status NameRangesHelper(const NodeDef& node_def,
 
 Status NameRangesForNode(const NodeDef& node_def, const OpDef& op_def,
                          NameRangeMap* inputs, NameRangeMap* outputs) {
-  TF_RETURN_IF_ERROR(
-      NameRangesHelper(node_def, op_def.input_arg(), op_def, inputs));
-  return NameRangesHelper(node_def, op_def.output_arg(), op_def, outputs);
+  if (inputs != nullptr) {
+    TF_RETURN_IF_ERROR(
+        NameRangesHelper(node_def, op_def.input_arg(), op_def, inputs));
+  }
+  if (outputs != nullptr) {
+    return NameRangesHelper(node_def, op_def.output_arg(), op_def, outputs);
+  }
+  return Status::OK();
 }
 
 void AddDefaultsToNodeDef(const OpDef& op_def, NodeDef* node_def) {

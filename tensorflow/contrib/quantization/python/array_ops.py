@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,8 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=unused-import,wildcard-import
-from tensorflow.contrib.quantization.ops import gen_array_ops as quantized_gen_array_ops
-from tensorflow.contrib.quantization.ops.gen_array_ops import dequantize
-from tensorflow.contrib.quantization.ops.gen_array_ops import quantize_v2
-from tensorflow.contrib.quantization.ops.gen_array_ops import quantized_concat
+# pylint: disable=unused-import
+from tensorflow.python.ops import gen_array_ops as quantized_gen_array_ops
+from tensorflow.python.ops.gen_array_ops import dequantize
+from tensorflow.python.ops.gen_array_ops import quantize_v2
+from tensorflow.python.ops.gen_array_ops import quantized_concat
+# pylint: enable=unused-import

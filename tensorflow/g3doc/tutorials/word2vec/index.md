@@ -23,7 +23,7 @@ straight in, feel free to look at the minimalistic implementation in
 This basic example contains the code needed to download some data, train on it a
 bit and visualize the result. Once you get comfortable with reading and running
 the basic version, you can graduate to
-[tensorflow/models/embedding/word2vec.py](https://www.tensorflow.org/code/tensorflow/models/embedding/word2vec.py)
+[tensorflow_models/tutorials/embedding/word2vec.py](https://www.tensorflow.org/code/tensorflow_models/tutorials/embedding/word2vec.py)
 which is a more serious implementation that showcases some more advanced
 TensorFlow principles about how to efficiently use threads to move data into a
 text model, how to checkpoint during training, etc.
@@ -78,7 +78,7 @@ model).
 
 Word2vec is a particularly computationally-efficient predictive model for
 learning word embeddings from raw text. It comes in two flavors, the Continuous
-Bag-of-Words model (CBOW) and the Skip-Gram model (Chapter 3.1 and 3.2 in [Mikolov et al.](http://arxiv.org/pdf/1301.3781.pdf)). Algorithmically, these
+Bag-of-Words model (CBOW) and the Skip-Gram model (Section 3.1 and 3.2 in [Mikolov et al.](http://arxiv.org/pdf/1301.3781.pdf)). Algorithmically, these
 models are similar, except that CBOW predicts target words (e.g. 'mat') from
 source context words ('the cat sits on the'), while the skip-gram does the
 inverse and predicts source context-words from the target words. This inversion
@@ -102,11 +102,11 @@ $$
 \begin{align}
 P(w_t | h) &= \text{softmax}(\text{score}(w_t, h)) \\
            &= \frac{\exp \{ \text{score}(w_t, h) \} }
-             {\sum_\text{Word w' in Vocab} \exp \{ \text{score}(w', h) \} }.
+             {\sum_\text{Word w' in Vocab} \exp \{ \text{score}(w', h) \} }
 \end{align}
 $$
 
-where \\(\text{score}(w\_t, h)\\) computes the compatibility of word \\(w\_t\\)
+where \\(\text{score}(w_t, h)\\) computes the compatibility of word \\(w_t\\)
 with the context \\(h\\) (a dot product is commonly used). We train this model
 by maximizing its [log-likelihood](https://en.wikipedia.org/wiki/Likelihood_function) 
 on the training set, i.e. by maximizing
@@ -115,7 +115,7 @@ $$
 \begin{align}
  J_\text{ML} &= \log P(w_t | h) \\
   &= \text{score}(w_t, h) -
-     \log \left( \sum_\text{Word w' in Vocab} \exp \{ \text{score}(w', h) \} \right)
+     \log \left( \sum_\text{Word w' in Vocab} \exp \{ \text{score}(w', h) \} \right).
 \end{align}
 $$
 
@@ -227,7 +227,7 @@ When we inspect these visualizations it becomes apparent that the vectors
 capture some general, and in fact quite useful, semantic information about
 words and their relationships to one another. It was very interesting when we
 first discovered that certain directions in the induced vector space specialize
-towards certain semantic relationships, e.g. *male-female*, *gender* and
+towards certain semantic relationships, e.g. *male-female*, *verb tense* and
 even *country-capital* relationships between words, as illustrated in the figure
 below (see also for example
 [Mikolov et al., 2013](http://www.aclweb.org/anthology/N13-1090)).
@@ -337,7 +337,7 @@ t-SNE.
 Et voila! As expected, words that are similar end up clustering nearby each
 other. For a more heavyweight implementation of word2vec that showcases more of
 the advanced features of TensorFlow, see the implementation in
-[tensorflow/models/embedding/word2vec.py](https://www.tensorflow.org/code/tensorflow/models/embedding/word2vec.py).
+[tensorflow_models/tutorials/embedding/word2vec.py](https://www.tensorflow.org/code/tensorflow_models/tutorials/embedding/word2vec.py).
 
 ## Evaluating Embeddings: Analogical Reasoning
 
@@ -346,13 +346,14 @@ training a full-blown part-of-speech model or named-entity model, one simple way
 to evaluate embeddings is to directly use them to predict syntactic and semantic
 relationships like `king is to queen as father is to ?`. This is called
 *analogical reasoning* and the task was introduced by
-[Mikolov and colleagues](http://msr-waypoint.com/en-us/um/people/gzweig/Pubs/NAACL2013Regularities.pdf),
-and the dataset can be downloaded from here:
-https://word2vec.googlecode.com/svn/trunk/questions-words.txt.
+[Mikolov and colleagues
+](http://msr-waypoint.com/en-us/um/people/gzweig/Pubs/NAACL2013Regularities.pdf).
+Download the dataset for this task from
+[download.tensorflow.org](http://download.tensorflow.org/data/questions-words.txt).
 
 To see how we do this evaluation, have a look at the `build_eval_graph()` and
 `eval()` functions in
-[tensorflow/models/embedding/word2vec.py](https://www.tensorflow.org/code/tensorflow/models/embedding/word2vec.py).
+[tensorflow_models/tutorials/embedding/word2vec.py](https://www.tensorflow.org/code/tensorflow_models/tutorials/embedding/word2vec.py).
 
 The choice of hyperparameters can strongly influence the accuracy on this task.
 To achieve state-of-the-art performance on this task requires training over a
@@ -380,13 +381,13 @@ your model is seriously bottlenecked on input data, you may want to implement a
 custom data reader for your problem, as described in
 [New Data Formats](../../how_tos/new_data_formats/index.md).  For the case of Skip-Gram
 modeling, we've actually already done this for you as an example in
-[tensorflow/models/embedding/word2vec.py](https://www.tensorflow.org/code/tensorflow/models/embedding/word2vec.py).
+[tensorflow_models/tutorials/embedding/word2vec.py](https://www.tensorflow.org/code/tensorflow_models/tutorials/embedding/word2vec.py).
 
 If your model is no longer I/O bound but you want still more performance, you
 can take things further by writing your own TensorFlow Ops, as described in
 [Adding a New Op](../../how_tos/adding_an_op/index.md).  Again we've provided an
 example of this for the Skip-Gram case
-[tensorflow/models/embedding/word2vec_optimized.py](https://www.tensorflow.org/code/tensorflow/models/embedding/word2vec_optimized.py).
+[tensorflow_models/tutorials/embedding/word2vec_optimized.py](https://www.tensorflow.org/code/tensorflow_models/tutorials/embedding/word2vec_optimized.py).
 Feel free to benchmark these against each other to measure performance
 improvements at each stage.
 

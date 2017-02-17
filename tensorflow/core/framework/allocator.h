@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,11 +17,11 @@ limitations under the License.
 #define TENSORFLOW_FRAMEWORK_ALLOCATOR_H_
 
 #include <stdlib.h>
-#include <unistd.h>
 
 #include <limits>
 
 #include "tensorflow/core/framework/numeric_types.h"
+#include "tensorflow/core/framework/resource_handle.pb.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
@@ -66,8 +66,13 @@ struct AllocatorStats {
 // device memory.
 class Allocator {
  public:
+#ifdef EIGEN_VECTORIZE_AVX512
+  // Align to 64 byte boundary.
+  static constexpr size_t kAllocatorAlignment = 64;
+#else
   // Align to 32 byte boundary.
   static constexpr size_t kAllocatorAlignment = 32;
+#endif
 
   virtual ~Allocator();
 
@@ -152,6 +157,7 @@ class Allocator {
   // allocated by this allocator.
   virtual size_t RequestedSize(void* ptr) {
     CHECK(false) << "allocator doesn't track sizes";
+    return size_t(0);
   }
 
   // Returns the allocated size of the buffer at 'ptr' if known,
@@ -188,19 +194,6 @@ class Allocator {
     return 0;
   }
 
-  // is_simple<T>::value if T[] can be safely constructed and destructed
-  // without running T() and ~T().  We do not use std::is_trivial<T>
-  // directly because std::complex<float> and std::complex<double> are
-  // not trival, but their arrays can be constructed and destructed
-  // without running their default ctors and dtors.
-  template <typename T>
-  struct is_simple {
-    static constexpr bool value =
-        std::is_trivial<T>::value || std::is_same<T, Eigen::half>::value ||
-        std::is_same<T, complex64>::value ||
-        std::is_same<T, complex128>::value || is_quantized<T>::value;
-  };
-
   // Fills in 'stats' with statistics collected by this allocator.
   virtual void GetStats(AllocatorStats* stats) { stats->Clear(); }
 
@@ -208,7 +201,7 @@ class Allocator {
   // No constructors or destructors are run for simple types
   template <typename T>
   void RunCtor(T* p, size_t n) {
-    static_assert(is_simple<T>::value, "T is not a simple type.");
+    static_assert(is_simple_type<T>::value, "T is not a simple type.");
   }
 
   template <typename T>
@@ -227,14 +220,18 @@ class Allocator {
     for (size_t i = 0; i < n; ++p, ++i) p->~string();
   }
 
+  virtual void RunResourceCtor(ResourceHandle* p, size_t n) {
+    for (size_t i = 0; i < n; ++p, ++i) new (p) ResourceHandle();
+  }
+
+  // Runs string's default destructor for  p[0], p[1], ..., p[n-1].
+  virtual void RunResourceDtor(ResourceHandle* p, size_t n) {
+    for (size_t i = 0; i < n; ++p, ++i) p->~ResourceHandle();
+  }
+
   // TODO(jeff): Maybe provide some interface to give info about
   // current allocation state (total number of bytes available for
   // allocation, number of bytes free on device, etc.)
-};
-
-template <>
-struct Allocator::is_simple<bfloat16> {
-  static const bool value = true;
 };
 
 // Allocator-specific constructors and destructors are used for
@@ -247,6 +244,16 @@ inline void Allocator::RunCtor(string* p, size_t n) {
 template <>
 inline void Allocator::RunDtor(string* p, size_t n) {
   RunStringDtor(p, n);
+}
+
+template <>
+inline void Allocator::RunCtor(ResourceHandle* p, size_t n) {
+  RunResourceCtor(p, n);
+}
+
+template <>
+inline void Allocator::RunDtor(ResourceHandle* p, size_t n) {
+  RunResourceDtor(p, n);
 }
 
 // A tensorflow Op may need access to different kinds of memory that
@@ -295,10 +302,9 @@ Allocator* cpu_allocator();
 // AllocatorStats. By default, it's disabled.
 void EnableCPUAllocatorStats(bool enable);
 
-// If 'enable' is true, the process-wide cpu allocator collects
-// detailed statistics. This can be slow, so this is disabled by
-// default.
-void EnableCPUAllocatorDetailedStats(bool enable);
+// If 'enable' is true, the process-wide cpu allocator collects full
+// statistics. By default, it's disabled.
+void EnableCPUAllocatorFullStats(bool enable);
 
 // Abstract interface of an object that does the underlying suballoc/free of
 // memory for a higher-level allocator.

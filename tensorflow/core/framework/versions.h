@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,9 +27,9 @@ namespace tensorflow {
 //
 //   #include "tensorflow/core/public/version.h"
 //
-//   TF_RETURN_ERROR(CheckVersions(versions, TF_GRAPH_DEF_VERSION,
-//                                 TF_GRAPH_DEF_VERSION_MIN_PRODUCER,
-//                                 "GraphDef", "graph"));
+//   TF_RETURN_IF_ERROR(CheckVersions(versions, TF_GRAPH_DEF_VERSION,
+//                                    TF_GRAPH_DEF_VERSION_MIN_PRODUCER,
+//                                    "GraphDef", "graph"));
 Status CheckVersions(const VersionDef& versions, int consumer, int min_producer,
                      const char* upper_name, const char* lower_name);
 

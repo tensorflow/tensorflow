@@ -1,7 +1,7 @@
 syntax = "proto3";
 
 package tensorflow;
-// option cc_enable_arenas = true;
+option cc_enable_arenas = true;
 option java_outer_classname = "OpDefProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
@@ -85,11 +85,11 @@ message OpDef {
     int64 minimum = 6;
 
     // The set of allowed values.  Has type that is the "list" version
-    // of the "type" field above (uses the ..._list, fields of AttrValue).
-    // If type == "type" or "list(type)" above, then the type_list field
-    // of allowed_values has the set of allowed DataTypes.
-    // If type == "string" or "list(string)", then the s_list field has
-    // the set of allowed strings.
+    // of the "type" field above (uses the "list" field of AttrValue).
+    // If type == "type" or "list(type)" above, then the "type" field
+    // of "allowed_values.list" has the set of allowed DataTypes.
+    // If type == "string" or "list(string)", then the "s" field of
+    // "allowed_values.list" has the set of allowed strings.
     AttrValue allowed_values = 7;
   }
   repeated AttrDef attr = 4;

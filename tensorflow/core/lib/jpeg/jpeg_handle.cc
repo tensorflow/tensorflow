@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -147,8 +147,16 @@ void MemTermSource(j_decompress_ptr cinfo) {}
 // -----------------------------------------------------------------------------
 void MemSkipInputData(j_decompress_ptr cinfo, long jump) {
   MemSourceMgr *src = reinterpret_cast<MemSourceMgr *>(cinfo->src);
-  src->pub.bytes_in_buffer -= jump;
-  src->pub.next_input_byte += jump;
+  if (jump < 0) {
+    return;
+  }
+  if (jump > src->pub.bytes_in_buffer) {
+    src->pub.bytes_in_buffer = 0;
+    (void)MemFillInputBuffer(cinfo);  // warn with a fake EOI or error
+  } else {
+    src->pub.bytes_in_buffer -= jump;
+    src->pub.next_input_byte += jump;
+  }
 }
 
 // -----------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -145,10 +145,12 @@ class CTCLossOp : public OpKernel {
 
     // Assumption: the blank index is num_classes - 1
     ctc::CTCLossCalculator ctc_loss_calculator(num_classes - 1, 0);
+    DeviceBase::CpuWorkerThreads workers =
+        *ctx->device()->tensorflow_cpu_worker_threads();
     OP_REQUIRES_OK(ctx, ctc_loss_calculator.CalculateLoss(
                             seq_len_t, labels_t, input_list_t,
                             preprocess_collapse_repeated_, ctc_merge_repeated_,
-                            &loss_t, &gradient_list_t));
+                            &loss_t, &gradient_list_t, &workers));
   }
 
  private:

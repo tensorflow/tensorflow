@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -197,15 +197,23 @@ class SparseMatmulOpTest : public ::testing::Test {
       data2[i] = internal::random<float>() / RealFloat(PacketSize);
       data3[i] = internal::random<float>() / RealFloat(PacketSize);
     }
+    for (int i = kMaxPacketSize; i < kMaxPacketSize * 2; ++i) {
+      data3[i] = internal::random<float>() / RealFloat(PacketSize);
+    }
 
     // zero out lower 16-bits of mantissa of data3 values
     // copy bfloat representation to data3_bfloat16
-    for (int i = 0; i < kMaxPacketSize; ++i) {
+    for (int i = 0; i < kMaxPacketSize * 2; ++i) {
       uint16_t* data3_p = reinterpret_cast<uint16_t*>(&data3[i]);
       uint16_t* data3_bfloat16_p =
           reinterpret_cast<uint16_t*>(data3_bfloat16) + i;
-      data3_p[0] = 0;
-      data3_bfloat16_p[0] = data3_p[1];
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+            data3_p[1] = 0;  
+            data3_bfloat16_p[0] = data3_p[0];  
+#else
+            data3_p[0] = 0;  
+            data3_bfloat16_p[0] = data3_p[1];  
+#endif  
     }
   }
 
@@ -222,7 +230,13 @@ class SparseMatmulOpTest : public ::testing::Test {
     return true;
   }
 
+#ifdef EIGEN_VECTORIZE_AVX512
   static const int kMaxPacketSize = 16;
+#elif defined EIGEN_VECTORIZE_AVX || defined EIGEN_VECTORIZE_AVX2
+  static const int kMaxPacketSize = 8;
+#else
+  static const int kMaxPacketSize = 4;
+#endif
   typedef typename Eigen::internal::packet_traits<float>::type Packet;
   const int PacketSize;
   // float values
@@ -230,33 +244,33 @@ class SparseMatmulOpTest : public ::testing::Test {
   // output of intrinsics
   EIGEN_ALIGN_MAX float data2[kMaxPacketSize];
   // float values with only 7 mantissa bits (bfloat representable)
-  EIGEN_ALIGN_MAX float data3[kMaxPacketSize];
+  EIGEN_ALIGN_MAX float data3[kMaxPacketSize * 2];
   // bfloat16 representation of data3
-  EIGEN_ALIGN_MAX float data3_bfloat16[kMaxPacketSize / 2];
+  EIGEN_ALIGN_MAX float data3_bfloat16[kMaxPacketSize];
   EIGEN_ALIGN_MAX float ref[kMaxPacketSize];
 };
 
 TEST_F(SparseMatmulOpTest, BroadcastPacketTest) {
   for (int i = 0; i < PacketSize; ++i) ref[i] = data1[0];
-  internal::pstore(data2, internal::pbroadcast_first<Packet>(
-                              internal::pload<Packet>(data1)));
+  internal::pstoreu(data2, internal::pbroadcast_first<Packet>(
+                               internal::ploadu<Packet>(data1)));
   ASSERT_TRUE(areApprox(ref, data2, PacketSize));
   if (PacketSize > 1) {
     for (int i = 0; i < PacketSize; ++i) ref[i] = data1[1];
-    internal::pstore(data2, internal::pbroadcast_second<Packet>(
-                                internal::pload<Packet>(data1)));
+    internal::pstoreu(data2, internal::pbroadcast_second<Packet>(
+                                 internal::ploadu<Packet>(data1)));
     ASSERT_TRUE(areApprox(ref, data2, PacketSize));
 
     if (PacketSize > 2) {
       for (int i = 0; i < PacketSize; ++i) ref[i] = data1[2];
-      internal::pstore(data2, internal::pbroadcast_third<Packet>(
-                                  internal::pload<Packet>(data1)));
+      internal::pstoreu(data2, internal::pbroadcast_third<Packet>(
+                                   internal::ploadu<Packet>(data1)));
       ASSERT_TRUE(areApprox(ref, data2, PacketSize));
 
       if (PacketSize > 3) {
         for (int i = 0; i < PacketSize; ++i) ref[i] = data1[3];
-        internal::pstore(data2, internal::pbroadcast_fourth<Packet>(
-                                    internal::pload<Packet>(data1)));
+        internal::pstoreu(data2, internal::pbroadcast_fourth<Packet>(
+                                     internal::ploadu<Packet>(data1)));
         ASSERT_TRUE(areApprox(ref, data2, PacketSize));
       }
     }
@@ -276,8 +290,8 @@ TEST_F(SparseMatmulOpTest, InterleavePacketTest) {
     for (int i = 0; i < PacketSize; ++i) ref[i] = data1[i];
   }
 
-  internal::pstore(
-      data2, internal::pinterleave4x64<Packet>(internal::pload<Packet>(data1)));
+  internal::pstoreu(data2, internal::pinterleave4x64<Packet>(
+                               internal::ploadu<Packet>(data1)));
   ASSERT_TRUE(areApprox(ref, data2, PacketSize));
 }
 
@@ -294,8 +308,8 @@ TEST_F(SparseMatmulOpTest, Bfloat16ExpandTest) {
       ref[i] = data3[i];
     }
   }
-  internal::pstore(data2, internal::pexpand_bf16_l<Packet>(
-                              internal::pload<Packet>(data3_bfloat16)));
+  internal::pstoreu(data2, internal::pexpand_bf16_l<Packet>(
+                               internal::ploadu<Packet>(data3_bfloat16)));
   ASSERT_TRUE(areApprox(ref, data2, PacketSize));
 
   if (PacketSize == 8) {  // AVX
@@ -311,18 +325,18 @@ TEST_F(SparseMatmulOpTest, Bfloat16ExpandTest) {
     }
   }
 
-  internal::pstore(data2, internal::pexpand_bf16_u<Packet>(
-                              internal::pload<Packet>(data3_bfloat16)));
+  internal::pstoreu(data2, internal::pexpand_bf16_u<Packet>(
+                               internal::ploadu<Packet>(data3_bfloat16)));
   ASSERT_TRUE(areApprox(ref, data2, PacketSize));
 }
 
 TEST_F(SparseMatmulOpTest, Bfloat16LoadTest) {
   if (PacketSize >= 4) {
     for (int i = 0; i < 4; ++i) ref[i] = data3[i];
-    internal::pstore(data2, internal::pload4bf16<Packet>(data3_bfloat16));
+    internal::pstoreu(data2, internal::pload4bf16<Packet>(data3_bfloat16));
     ASSERT_TRUE(areApprox(ref, data2, 4));
 
-    internal::pstore(data2, internal::pload2bf16<Packet>(data3_bfloat16));
+    internal::pstoreu(data2, internal::pload2bf16<Packet>(data3_bfloat16));
     ASSERT_TRUE(areApprox(ref, data2, 2));
   }
 }

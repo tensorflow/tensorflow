@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -37,6 +37,25 @@ inline uint64 Hash64(const char* data, size_t n) {
 inline uint64 Hash64(const string& str) {
   return Hash64(str.data(), str.size());
 }
+
+inline uint64 Hash64Combine(uint64 a, uint64 b) {
+  return a ^ (b + 0x9e3779b97f4a7800ULL + (a << 10) + (a >> 4));
+}
+
+// Convenience Hash functors
+struct HashStr {
+  size_t operator()(const string& s) const {
+    return static_cast<size_t>(Hash64(s));
+  }
+};
+template <typename PTR>
+struct HashPtr {
+  size_t operator()(const PTR p) const {
+    // Hash pointers as integers, but bring more entropy to the lower bits.
+    size_t k = static_cast<size_t>(reinterpret_cast<uintptr_t>(p));
+    return k + (k >> 6);
+  }
+};
 
 }  // namespace tensorflow
 

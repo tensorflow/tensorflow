@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,9 +18,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os.path
 
-from tensorflow.python.platform import gfile
+from tensorflow.python.framework import graph_io
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import tf_logging as logging
+
+
+# TODO(drpng): remove this after legacy uses are resolved.
+write_graph = graph_io.write_graph
 
 
 def global_step(sess, global_step_tensor):
@@ -32,7 +39,6 @@ def global_step(sess, global_step_tensor):
   # Creates a session.
   sess = tf.Session()
   # Initializes the variable.
-  sess.run(global_step_tensor.initializer)
   print('global_step: %s' % tf.train.global_step(sess, global_step_tensor))
 
   global_step: 10
@@ -49,30 +55,58 @@ def global_step(sess, global_step_tensor):
   return int(sess.run(global_step_tensor))
 
 
-def write_graph(graph_def, logdir, name, as_text=True):
-  """Writes a graph proto on disk.
+def get_global_step(graph=None):
+  """Get the global step tensor.
 
-  The graph is written as a binary proto unless `as_text` is `True`.
-
-  ```python
-  v = tf.Variable(0, name='my_variable')
-  sess = tf.Session()
-  tf.train.write_graph(sess.graph_def, '/tmp/my-model', 'train.pbtxt')
-  ```
+  The global step tensor must be an integer variable. We first try to find it
+  in the collection `GLOBAL_STEP`, or by name `global_step:0`.
 
   Args:
-    graph_def: A `GraphDef` protocol buffer.
-    logdir: Directory where to write the graph.
-    name: Filename for the graph.
-    as_text: If `True`, writes the graph as an ASCII proto.
+    graph: The graph to find the global step in. If missing, use default graph.
+
+  Returns:
+    The global step variable, or `None` if none was found.
+
+  Raises:
+    TypeError: If the global step tensor has a non-integer type, or if it is not
+      a `Variable`.
   """
-  if not gfile.IsDirectory(logdir):
-    gfile.MakeDirs(logdir)
-  path = os.path.join(logdir, name)
-  if as_text:
-    f = gfile.FastGFile(path, "w")
-    f.write(str(graph_def))
+  graph = ops.get_default_graph() if graph is None else graph
+  global_step_tensor = None
+  global_step_tensors = graph.get_collection(ops.GraphKeys.GLOBAL_STEP)
+  if len(global_step_tensors) == 1:
+    global_step_tensor = global_step_tensors[0]
+  elif not global_step_tensors:
+    try:
+      global_step_tensor = graph.get_tensor_by_name('global_step:0')
+    except KeyError:
+      return None
   else:
-    f = gfile.FastGFile(path, "wb")
-    f.write(graph_def.SerializeToString())
-  f.close()
+    logging.error('Multiple tensors in global_step collection.')
+    return None
+
+  assert_global_step(global_step_tensor)
+  return global_step_tensor
+
+
+def assert_global_step(global_step_tensor):
+  """Asserts `global_step_tensor` is a scalar int `Variable` or `Tensor`.
+
+  Args:
+    global_step_tensor: `Tensor` to test.
+  """
+  if not (isinstance(global_step_tensor, variables.Variable) or
+          isinstance(global_step_tensor, ops.Tensor) or
+          isinstance(global_step_tensor,
+                     resource_variable_ops.ResourceVariable)):
+    raise TypeError(
+        'Existing "global_step" must be a Variable or Tensor: %s.' %
+        global_step_tensor)
+
+  if not global_step_tensor.dtype.base_dtype.is_integer:
+    raise TypeError('Existing "global_step" does not have integer type: %s' %
+                    global_step_tensor.dtype)
+
+  if global_step_tensor.get_shape().ndims != 0:
+    raise TypeError('Existing "global_step" is not scalar: %s' %
+                    global_step_tensor.get_shape())

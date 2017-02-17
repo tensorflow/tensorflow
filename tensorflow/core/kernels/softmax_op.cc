@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/softmax_op.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 
@@ -40,32 +41,39 @@ struct SoftmaxFunctor<CPUDevice, T> {
 };
 }  // namespace functor
 
-REGISTER_KERNEL_BUILDER(Name("Softmax")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<float>("T"),
-                        SoftmaxOp<CPUDevice, float>);
-REGISTER_KERNEL_BUILDER(Name("Softmax")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<double>("T"),
-                        SoftmaxOp<CPUDevice, double>);
-REGISTER_KERNEL_BUILDER(Name("LogSoftmax")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<float>("T"),
-                        SoftmaxOp<CPUDevice, float>);
-REGISTER_KERNEL_BUILDER(Name("LogSoftmax")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<double>("T"),
-                        SoftmaxOp<CPUDevice, double>);
+#define REGISTER_CPU(T)                                          \
+  REGISTER_KERNEL_BUILDER(                                       \
+      Name("Softmax").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      SoftmaxOp<CPUDevice, T>);
+TF_CALL_half(REGISTER_CPU);
+TF_CALL_float(REGISTER_CPU);
+TF_CALL_double(REGISTER_CPU);
+
+#undef REGISTER_CPU
+#define REGISTER_CPU(T)                                             \
+  REGISTER_KERNEL_BUILDER(                                          \
+      Name("LogSoftmax").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      SoftmaxOp<CPUDevice, T>);
+TF_CALL_half(REGISTER_CPU);
+TF_CALL_float(REGISTER_CPU);
+TF_CALL_double(REGISTER_CPU);
 
 #if GOOGLE_CUDA
-REGISTER_KERNEL_BUILDER(Name("Softmax")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<float>("T"),
-                        SoftmaxOp<GPUDevice, float>);
-REGISTER_KERNEL_BUILDER(Name("LogSoftmax")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<float>("T"),
-                        SoftmaxOp<GPUDevice, float>);
+REGISTER_KERNEL_BUILDER(
+    Name("Softmax").Device(DEVICE_GPU).TypeConstraint<Eigen::half>("T"),
+    SoftmaxOp<GPUDevice, Eigen::half>);
+REGISTER_KERNEL_BUILDER(
+    Name("Softmax").Device(DEVICE_GPU).TypeConstraint<float>("T"),
+    SoftmaxOp<GPUDevice, float>);
+REGISTER_KERNEL_BUILDER(
+    Name("Softmax").Device(DEVICE_GPU).TypeConstraint<double>("T"),
+    SoftmaxOp<GPUDevice, double>);
+REGISTER_KERNEL_BUILDER(
+    Name("LogSoftmax").Device(DEVICE_GPU).TypeConstraint<Eigen::half>("T"),
+    SoftmaxOp<GPUDevice, Eigen::half>);
+REGISTER_KERNEL_BUILDER(
+    Name("LogSoftmax").Device(DEVICE_GPU).TypeConstraint<float>("T"),
+    SoftmaxOp<GPUDevice, float>);
 #endif  // GOOGLE_CUDA
 
 }  // namespace tensorflow

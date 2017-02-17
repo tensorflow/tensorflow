@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,9 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Utilities for dealing with Tensors.
-
-## Miscellaneous Utility Functions
+"""Utilities for dealing with Tensors. See @{$python/contrib.util} guide.
 
 @@constant_value
 @@make_tensor_proto
@@ -30,12 +28,11 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-import
+from tensorflow.python.framework.meta_graph import ops_used_by_graph_def
+from tensorflow.python.framework.meta_graph import stripped_op_list_for_graph
 from tensorflow.python.framework.tensor_util import constant_value
 from tensorflow.python.framework.tensor_util import make_tensor_proto
 from tensorflow.python.framework.tensor_util import MakeNdarray as make_ndarray
-from tensorflow.python.training.saver import ops_used_by_graph_def
-from tensorflow.python.training.saver import stripped_op_list_for_graph
-from tensorflow.python.util.all_util import make_all
-
-
-__all__ = make_all(__name__)
+# pylint: disable=unused_import
+from tensorflow.python.util.all_util import remove_undocumented
+remove_undocumented(__name__)

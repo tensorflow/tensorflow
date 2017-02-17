@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -190,6 +190,10 @@ string PartialTensorShape::DebugString(const TensorShapeProto& proto) {
   return s;
 }
 
+bool PartialTensorShape::IsIdenticalTo(const PartialTensorShape& shape) const {
+  return is_unknown_ == shape.is_unknown_ && dim_sizes_ == shape.dim_sizes_;
+}
+
 bool PartialTensorShape::IsCompatibleWith(
     const PartialTensorShape& shape) const {
   if (is_unknown_ || shape.is_unknown_) return true;
@@ -254,6 +258,21 @@ bool PartialTensorShapeUtils::AreCompatible(
   if (shapes0.size() == shapes1.size()) {
     for (size_t i = 0; i < shapes0.size(); ++i) {
       if (!shapes0[i].IsCompatibleWith(shapes1[i])) {
+        return false;
+      }
+    }
+    return true;
+  } else {
+    return false;
+  }
+}
+
+bool PartialTensorShapeUtils::AreIdentical(
+    const gtl::ArraySlice<PartialTensorShape>& shapes0,
+    const gtl::ArraySlice<PartialTensorShape>& shapes1) {
+  if (shapes0.size() == shapes1.size()) {
+    for (size_t i = 0; i < shapes0.size(); ++i) {
+      if (!shapes0[i].IsIdenticalTo(shapes1[i])) {
         return false;
       }
     }

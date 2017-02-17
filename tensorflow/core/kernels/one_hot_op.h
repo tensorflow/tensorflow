@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,11 +27,11 @@ namespace tensorflow {
 
 namespace generator {
 
-template <typename T>
+template <typename T, typename TI>
 class OneGenerator {
  public:
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE
-  OneGenerator(const TTypes<int64>::ConstMatrix& indices,
+  OneGenerator(const typename TTypes<TI>::ConstMatrix& indices,
                const typename TTypes<T>::ConstScalar& on_value,
                const typename TTypes<T>::ConstScalar& off_value)
       : indices_(indices), on_value_(on_value), off_value_(off_value) {}
@@ -44,7 +44,7 @@ class OneGenerator {
   }
 
  private:
-  const TTypes<int64>::ConstMatrix indices_;
+  const typename TTypes<TI>::ConstMatrix indices_;
   const typename TTypes<T>::ConstScalar on_value_;
   const typename TTypes<T>::ConstScalar off_value_;
 };
@@ -53,14 +53,14 @@ class OneGenerator {
 
 namespace functor {
 
-template <typename Device, typename T>
+template <typename Device, typename T, typename TI>
 struct OneHot {
   EIGEN_ALWAYS_INLINE static void Compute(
-      const Device& d, const TTypes<int64>::ConstMatrix& indices,
+      const Device& d, const typename TTypes<TI>::ConstMatrix& indices,
       const typename TTypes<T>::ConstScalar& on_value,
       const typename TTypes<T>::ConstScalar& off_value,
       typename TTypes<T, 3>::Tensor* output) {
-    generator::OneGenerator<T> generator(indices, on_value, off_value);
+    generator::OneGenerator<T, TI> generator(indices, on_value, off_value);
     output->device(d) = output->generate(generator);
   }
 };

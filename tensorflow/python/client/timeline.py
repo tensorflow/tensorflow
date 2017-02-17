@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,8 +21,7 @@ from __future__ import print_function
 import collections
 import copy
 import json
-
-import six  # pylint: disable=unused-import
+import re
 
 # The timeline target is usually imported as part of BUILD target
 # "platform_test", which includes also includes the "platform"
@@ -386,12 +385,15 @@ class Timeline(object):
 
   def _parse_op_label(self, label):
     """Parses the fields in a node timeline label."""
-    nn, rest = label.split(' = ')
-    op, rest = rest.split('(')
-    if rest == ')':
+    # Expects labels of the form: name = op(arg, arg, ...).
+    match = re.match(r'(.*) = (.*)\((.*)\)', label)
+    if match is None:
+      return 'unknown', 'unknown', []
+    nn, op, inputs = match.groups()
+    if not inputs:
       inputs = []
     else:
-      inputs = rest[:-1].split(', ')
+      inputs = inputs.split(', ')
     return nn, op, inputs
 
   def _assign_lanes(self):
@@ -411,18 +413,28 @@ class Timeline(object):
           lanes.append(ns.all_start_micros + ns.all_end_rel_micros)
         ns.thread_id = l
 
-  def _emit_op(self, nodestats, pid):
+  def _emit_op(self, nodestats, pid, is_gputrace):
     """Generates a Chrome Trace event to show Op execution.
 
     Args:
       nodestats: The 'NodeExecStats' proto recording op execution.
       pid: The pid assigned for the device where this op ran.
+      is_gputrace: If True then this op came from the GPUTracer.
     """
     node_name = nodestats.node_name
     start = nodestats.all_start_micros
     duration = nodestats.all_end_rel_micros
     tid = nodestats.thread_id
-    _, op, inputs = self._parse_op_label(nodestats.timeline_label)
+    inputs = []
+    if is_gputrace:
+      # Node names should always have the form 'name:op'.
+      fields = node_name.split(':') + ['unknown']
+      node_name, op = fields[:2]
+    elif node_name == 'RecvTensor':
+      # RPC tracing does not use the standard timeline_label format.
+      op = 'RecvTensor'
+    else:
+      _, op, inputs = self._parse_op_label(nodestats.timeline_label)
     args = {'name': node_name, 'op': op}
     for i, iname in enumerate(inputs):
       args['input%d' % i] = iname
@@ -449,6 +461,10 @@ class Timeline(object):
                             num_bytes)
     self._tensors[name] = tensor
     return tensor
+
+  def _is_gputrace_device(self, device_name):
+    """Returns true if this device is part of the GPUTracer logging."""
+    return '/stream:' in device_name or '/memcpy' in device_name
 
   def _allocate_pids(self):
     """Allocate fake process ids for each device in the StepStats."""
@@ -499,16 +515,20 @@ class Timeline(object):
   def _show_compute(self, show_dataflow):
     """Visualize the computation activity."""
     for dev_stats in self._step_stats.dev_stats:
-      device_pid = self._device_pids[dev_stats.device]
+      device_name = dev_stats.device
+      device_pid = self._device_pids[device_name]
+      is_gputrace = self._is_gputrace_device(device_name)
 
       for node_stats in dev_stats.node_stats:
         tid = node_stats.thread_id
         start_time = node_stats.all_start_micros
         end_time = node_stats.all_start_micros + node_stats.all_end_rel_micros
+        self._emit_op(node_stats, device_pid, is_gputrace)
+
+        if is_gputrace or node_stats.node_name == 'RecvTensor':
+          continue
+
         _, _, inputs = self._parse_op_label(node_stats.timeline_label)
-
-        self._emit_op(node_stats, device_pid)
-
         for input_name in inputs:
           if input_name not in self._tensors:
             # This can happen when partitioning has inserted a Send/Recv.
@@ -538,7 +558,8 @@ class Timeline(object):
                 self._chrome_trace.emit_flow_end(input_name, start_time,
                                                  device_pid, tid, flow_id)
           else:
-            logging.warning('Can\'t find tensor %s', input_name)
+            logging.vlog(1, 'Can\'t find tensor %s - removed by CSE?',
+                         input_name)
 
   def _show_memory_counters(self):
     """Produce a counter series for each memory allocator."""
@@ -596,13 +617,13 @@ class Timeline(object):
         chrome_trace=self._chrome_trace,
         allocator_maximums=self._allocator_maximums)
 
-  def generate_chrome_trace_format(self, show_dataflow=True, show_memory=True):
+  def generate_chrome_trace_format(self, show_dataflow=True, show_memory=False):
     """Produces a trace in Chrome Trace Format.
 
     Args:
       show_dataflow: (Optional.) If True, add flow events to the trace
         connecting producers and consumers of tensors.
-      show_memory: (Optional.) If true, add object snapshot events to the trace
+      show_memory: (Optional.) If True, add object snapshot events to the trace
         showing the sizes and lifetimes of tensors.
 
     Returns:
