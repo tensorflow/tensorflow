@@ -620,6 +620,9 @@ def assign_from_checkpoint_fn(model_path, var_list, ignore_missing_vars=False,
                               reshape_variables=False):
   """Returns a function that assigns specific variables from a checkpoint.
 
+  If ignore_missing_vars is True and no variables are found in the checkpoint
+  it returns None.
+
   Args:
     model_path: The full path to the model checkpoint. To get latest checkpoint
         use `model_path = tf.train.latest_checkpoint(checkpoint_dir)`
@@ -634,12 +637,14 @@ def assign_from_checkpoint_fn(model_path, var_list, ignore_missing_vars=False,
 
   Returns:
     A function that takes a single argument, a `tf.Session`, that applies the
-    assignment operation.
+    assignment operation. If no matching variables were found in the checkpoint
+    then `None` is returned.
 
   Raises:
-    ValueError: If the checkpoint specified at `model_path` is missing one of
-      the variables in `var_list`.
+    ValueError: If var_list is empty.
   """
+  if not var_list:
+    raise ValueError('var_list cannot be empty')
   if ignore_missing_vars:
     reader = pywrap_tensorflow.NewCheckpointReader(model_path)
     if isinstance(var_list, dict):
@@ -654,10 +659,14 @@ def assign_from_checkpoint_fn(model_path, var_list, ignore_missing_vars=False,
         logging.warning(
             'Variable %s missing in checkpoint %s', var, model_path)
     var_list = available_vars
-  saver = tf_saver.Saver(var_list, reshape=reshape_variables)
-  def callback(session):
-    saver.restore(session, model_path)
-  return callback
+  if var_list:
+    saver = tf_saver.Saver(var_list, reshape=reshape_variables)
+    def callback(session):
+      saver.restore(session, model_path)
+    return callback
+  else:
+    logging.warning('No Variables to restore')
+    return None
 
 
 class VariableDeviceChooser(object):
