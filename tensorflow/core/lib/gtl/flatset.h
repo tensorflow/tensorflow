@@ -91,10 +91,10 @@ class FlatSet {
 
   class const_iterator {
    public:
-    typedef FlatSet::difference_type difference_type;
-    typedef FlatSet::value_type value_type;
-    typedef FlatSet::const_pointer pointer;
-    typedef FlatSet::const_reference reference;
+    typedef typename FlatSet::difference_type difference_type;
+    typedef typename FlatSet::value_type value_type;
+    typedef typename FlatSet::const_pointer pointer;
+    typedef typename FlatSet::const_reference reference;
     typedef ::std::forward_iterator_tag iterator_category;
 
     const_iterator() : b_(nullptr), end_(nullptr), i_(0) {}

@@ -107,10 +107,10 @@ class FlatMap {
 
   class iterator {
    public:
-    typedef FlatMap::difference_type difference_type;
-    typedef FlatMap::value_type value_type;
-    typedef FlatMap::pointer pointer;
-    typedef FlatMap::reference reference;
+    typedef typename FlatMap::difference_type difference_type;
+    typedef typename FlatMap::value_type value_type;
+    typedef typename FlatMap::pointer pointer;
+    typedef typename FlatMap::reference reference;
     typedef ::std::forward_iterator_tag iterator_category;
 
     iterator() : b_(nullptr), end_(nullptr), i_(0) {}
@@ -169,10 +169,10 @@ class FlatMap {
    private:
     mutable iterator rep_;  // Share state and logic with non-const iterator.
    public:
-    typedef FlatMap::difference_type difference_type;
-    typedef FlatMap::value_type value_type;
-    typedef FlatMap::const_pointer pointer;
-    typedef FlatMap::const_reference reference;
+    typedef typename FlatMap::difference_type difference_type;
+    typedef typename FlatMap::value_type value_type;
+    typedef typename FlatMap::const_pointer pointer;
+    typedef typename FlatMap::const_reference reference;
     typedef ::std::forward_iterator_tag iterator_category;
 
     const_iterator() : rep_() {}
