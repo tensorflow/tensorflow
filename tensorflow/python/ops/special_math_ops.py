@@ -320,7 +320,7 @@ def _einsum_reduction(t0, t0_axis_labels, t1, t1_axis_labels, axes_to_sum):
 
     t0_shape = _get_shape(t0)
     num_broadcast_elements_t0 = _total_size(
-      t0_shape[len(preserved_axes):-len(axes_to_sum)])
+        t0_shape[len(preserved_axes):-len(axes_to_sum)])
     num_summed_elements = _total_size(t0_shape[-len(axes_to_sum):])
     new_shape = (t0_shape[:len(preserved_axes)]
                  + [num_broadcast_elements_t0, num_summed_elements])
@@ -328,7 +328,7 @@ def _einsum_reduction(t0, t0_axis_labels, t1, t1_axis_labels, axes_to_sum):
 
     t1_shape = _get_shape(t1)
     num_broadcast_elements_t1 = _total_size(
-      t1_shape[len(preserved_axes)+len(axes_to_sum):])
+        t1_shape[len(preserved_axes)+len(axes_to_sum):])
     new_shape = (t1_shape[:len(preserved_axes)]
                  + [num_summed_elements, num_broadcast_elements_t1])
     t1 = _reshape_if_necessary(t1, new_shape)
@@ -337,8 +337,8 @@ def _einsum_reduction(t0, t0_axis_labels, t1, t1_axis_labels, axes_to_sum):
 
     # Undo compaction of broadcast axes
     uncompacted_shape = (
-      t0_shape[:len(preserved_axes)+len(broadcast_axes[0])]
-      + t1_shape[len(t1_shape)-len(broadcast_axes[1]):]
+        t0_shape[:len(preserved_axes)+len(broadcast_axes[0])]
+        + t1_shape[len(t1_shape)-len(broadcast_axes[1]):]
     )
     product = _reshape_if_necessary(product, uncompacted_shape)
 
