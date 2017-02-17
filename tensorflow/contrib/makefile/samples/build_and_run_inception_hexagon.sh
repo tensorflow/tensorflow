@@ -46,6 +46,13 @@ if [[ "${USE_PREBUILT_HEXAOGON_BINARIES}" != "true" &&
     exit 1
 fi
 
+if [[ "${BUILD_ONLY}" != "true" ]]; then
+    if ! type adb >/dev/null 2>&1; then
+        echo "adb is not in your path ${PATH}."
+        exit 1
+    fi
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null && pwd)"
 TF_ROOT_DIR="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
 BUILD_ALL_ANDROID_PATH="${SCRIPT_DIR}/../build_all_android.sh"
