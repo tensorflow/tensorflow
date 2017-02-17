@@ -72,3 +72,9 @@ if [ -z "$NDK_ROOT" ]; then
    export NDK_ROOT=${ANDROID_NDK_HOME}
 fi
 tensorflow/contrib/makefile/build_all_android.sh
+
+# Test Makefile build for tensorflow runtime with hexagon.
+# -b ... build only, -p ... use prebuilt binaries
+# This uses prebuilt binaries for hexagon dependencies because Building
+# hexagon binaries from source code requires qualcomm sdk.
+tensorflow/contrib/makefile/samples/build_and_run_inception_hexagon.sh -bp
