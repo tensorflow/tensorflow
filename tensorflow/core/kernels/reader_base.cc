@@ -89,13 +89,16 @@ int64 ReaderBase::ReadUpTo(const int64 num_records, QueueInterface* queue,
     }
     if (!work_in_progress()) {
       work_ = GetNextWorkLocked(queue, context);
+      if (!context->status().ok()) {
+        return records_produced_this_call;
+      }
       Status status = OnWorkStartedLocked();
       if (status.ok()) {
         work_started_++;
       } else {
         context->SetStatus(status);
+        return records_produced_this_call;
       }
-      if (!context->status().ok()) return records_produced_this_call;
     }
     bool at_end = false;
 
@@ -152,13 +155,16 @@ void ReaderBase::Read(QueueInterface* queue, string* key, string* value,
   while (true) {
     if (!work_in_progress()) {
       work_ = GetNextWorkLocked(queue, context);
+      if (!context->status().ok()) {
+        return;
+      }
       Status status = OnWorkStartedLocked();
       if (status.ok()) {
         work_started_++;
       } else {
         context->SetStatus(status);
+        return;
       }
-      if (!context->status().ok()) return;
     }
 
     bool produced = false;
