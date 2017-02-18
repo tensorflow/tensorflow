@@ -17,7 +17,7 @@ include (ExternalProject)
 set(GRPC_INCLUDE_DIRS ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/include)
 set(GRPC_URL https://github.com/grpc/grpc.git)
 set(GRPC_BUILD ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc)
-set(GRPC_TAG 3bc78cd0b5bd784a235c01612d634b1ec5f8fb97)
+set(GRPC_TAG 2ad3d73f9557da88b5c8898b991ffb4a4d8d1e3e)
 
 if(WIN32)
   set(grpc_STATIC_LIBRARIES
@@ -33,7 +33,7 @@ endif()
 
 ExternalProject_Add(grpc
     PREFIX grpc
-    DEPENDS protobuf zlib
+    DEPENDS boringssl protobuf zlib
     GIT_REPOSITORY ${GRPC_URL}
     GIT_TAG ${GRPC_TAG}
     DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
@@ -43,6 +43,7 @@ ExternalProject_Add(grpc
     CMAKE_CACHE_ARGS
         -DCMAKE_BUILD_TYPE:STRING=Release
         -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
+	-Dboringssl_INCLUDE_DIR:STRING=${boringssl_INCLUDE_DIR}
         -DPROTOBUF_INCLUDE_DIRS:STRING=${PROTOBUF_INCLUDE_DIRS}
         -DPROTOBUF_LIBRARIES:STRING=${protobuf_STATIC_LIBRARIES}
         -DZLIB_ROOT:STRING=${ZLIB_INSTALL}

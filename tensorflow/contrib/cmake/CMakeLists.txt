@@ -19,7 +19,6 @@ cmake_policy(SET CMP0022 NEW)
 # Options
 option(tensorflow_VERBOSE "Enable for verbose output" OFF)
 option(tensorflow_ENABLE_GPU "Enable GPU support" OFF)
-option(tensorflow_ENABLE_SSL_SUPPORT "Enable boringssl support" OFF)
 option(tensorflow_ENABLE_GRPC_SUPPORT "Enable gRPC support" ON)
 option(tensorflow_ENABLE_HDFS_SUPPORT "Enable HDFS support" OFF)
 option(tensorflow_ENABLE_JEMALLOC_SUPPORT "Enable jemalloc support" OFF)
@@ -112,6 +111,7 @@ include(farmhash)
 include(fft2d)
 include(highwayhash)
 include(protobuf)
+include(boringssl)
 if (tensorflow_BUILD_CC_TESTS)
   include(googletest)
 endif()
@@ -126,6 +126,7 @@ set(tensorflow_EXTERNAL_LIBRARIES
     ${fft2d_STATIC_LIBRARIES}
     ${highwayhash_STATIC_LIBRARIES}
     ${protobuf_STATIC_LIBRARIES}
+    ${boringssl_STATIC_LIBRARIES}
 )
 set(tensorflow_EXTERNAL_DEPENDENCIES
     zlib_copy_headers_to_destination
@@ -138,6 +139,7 @@ set(tensorflow_EXTERNAL_DEPENDENCIES
     protobuf
     eigen
     gemmlowp
+    boringssl
     fft2d
 )
 
@@ -156,14 +158,9 @@ include_directories(
     ${farmhash_INCLUDE_DIR}
     ${highwayhash_INCLUDE_DIR}
     ${PROTOBUF_INCLUDE_DIRS}
+    ${boringssl_INCLUDE_DIR}
 )
 
-if(tensorflow_ENABLE_SSL_SUPPORT)
-  include(boringssl)
-  list(APPEND tensorflow_EXTERNAL_LIBRARIES ${boringssl_STATIC_LIBRARIES})
-  list(APPEND tensorflow_EXTERNAL_DEPENDENCIES boringssl)
-  include_directories(${boringssl_INCLUDE_DIR})
-endif()
 if(tensorflow_ENABLE_GRPC_SUPPORT)
   include(grpc)
   list(APPEND tensorflow_EXTERNAL_LIBRARIES ${grpc_STATIC_LIBRARIES})
