@@ -28,6 +28,15 @@ limitations under the License.
 #define UNROLL
 #endif
 
+template <typename T>
+__device__ __host__ inline T ldg(const T* address) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 350
+  return __ldg(address);
+#else
+  return *address;
+#endif
+}
+
 #if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 600
 #else
 __device__ double atomicAdd(double* a, double b) { return b; }
@@ -80,7 +89,7 @@ template <typename T>
 __device__ __inline__ T get_value(const T* address, const int bound_check,
                                   const int up_bound) {
   if (bound_check < up_bound)
-    return __ldg(address);
+    return ldg(address);
   else
     return static_cast<T>(0.0f);
 }
@@ -416,28 +425,20 @@ __global__ void LayerNormFusedGPUKernel(const LayerNormFusedArgs args,
     }
 
     UNROLL for (int m = 0; m < n_ILP; m++) {
-      // inp[m] = __ldg(input+thread_id[m]);
       inp[m] = get_value<T>(input + thread_id[m],
                             thread_slice_id + m * blockDim.x, in_depth);
-      // if(blockIdx.x==0&&threadIdx.x==0)
-      // printf("m:%d,bId:%d,tId:%d,inp:%f\n",m,bId,thread_id[m],inp[m]);
     }
 
     UNROLL for (int m = 0; m < n_ILP; m++) { sum += inp[m] * i_n; }
     for (int mask = warpSize / 2; mask > 0; mask /= 2) {
       sum += __shfl_xor(sum, mask);
     }
-    // if(blockIdx.x==0&&lane_id==0)printf("wi:%d,sum:%f,psmu:%f\n",threadIdx.x/warpSize,
-    // sum,mean_cache[slice_id]);
     if (lane_id == 0) {
       atomicAdd(mean_cache, sum);
     }
-    // if(blockIdx.x==0&&lane_id==0)printf("--wi:%d,sum:%f,psmu:%f\n",threadIdx.x/warpSize,
-    // sum,mean_cache[slice_id]);
     __syncthreads();
 
     mu = *mean_cache;
-    // if(threadIdx.x==0&&blockIdx.x==0)printf("mu:%f\n", mu);
     UNROLL for (int m = 0; m < n_ILP; m++) {
       if (thread_slice_id + m * blockDim.x < in_depth)
         sqSum += (inp[m] - mu) * (inp[m] - mu);
@@ -454,16 +455,12 @@ __global__ void LayerNormFusedGPUKernel(const LayerNormFusedArgs args,
     }
     __syncthreads();
     rstd = *std_cache;
-    // if(threadIdx.x==0&&blockIdx.x==0)printf("rstd:%f\n", rstd);
 
     UNROLL for (int m = 0; m < n_ILP; m++) {
       if (thread_slice_id + m * blockDim.x < in_depth &&
           thread_id[m] < n_inputs) {
-        // const T tmp_out = (inp[m]-mu)*rstd;
-        // if(threadIdx.x==0&&blockIdx.x==0)printf("m:%d,o:%f\n",m,tmp_out);
         output[thread_id[m]] =
             (inp[m] - mu) * rstd * tmp_gamma[m] + tmp_beta[m];
-        // output[thread_id[m]] = tmp_out;
       }
     }
     __syncthreads();
@@ -500,7 +497,6 @@ __global__ void LayerNormFusedSmallGPUKernel(
 
     const int thread_id =
         (bId * slice_per_block + slice_id) * in_depth + thread_slice_id;
-    // const T inp = 0;
     const T inp = get_value<T>(input + thread_id, thread_slice_id, in_depth);
 
     mu += inp * i_n;
@@ -510,7 +506,6 @@ __global__ void LayerNormFusedSmallGPUKernel(
     }
 
     if (thread_slice_id < in_depth) rstd += (inp - mu) * (inp - mu);
-    // rstd += (inp-mu)*(inp-mu);
 
     for (int mask = slice_size / 2; mask > 0; mask /= 2) {
       rstd += __shfl_xor(rstd, mask);
@@ -1406,15 +1401,12 @@ struct LayerNormFusedBackpropGPULaunch {
                   T* gamma_back, T* beta_back) {
     const int warp_size = 32;
     initialize_outputs<T>(args, gamma_back, beta_back);
-    // printf("inp:%p,ob:%p,gam:%p,ib:%p,gb:%p,bb:%p\n",
-    // input,out_back,gamma,in_back,gamma_back,beta_back);
     if (args.slice_size <= warp_size) {
       const int block_size = 128;
       const int slice_per_block = block_size / args.slice_size;
       const int num_blocks = get_num_blocks(args.n_slices, slice_per_block);
       const int grid_size = std::min(120, num_blocks);
       const int sbytes = (2 * args.depth) * sizeof(T);
-      // printf("slice_per_block:%d,grid_size:%d\n",slice_per_block,grid_size);
       LayerNormFusedSmallBackpropGPUKernel<
           T><<<grid_size, block_size, sbytes>>>(args, input, out_back, gamma,
                                                 in_back, gamma_back, beta_back,

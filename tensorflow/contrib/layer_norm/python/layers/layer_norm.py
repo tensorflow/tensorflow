@@ -20,7 +20,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-
 from tensorflow.contrib.framework.python.ops import add_arg_scope
 from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.contrib.layers.python.layers import utils
@@ -43,7 +42,7 @@ def layer_norm_fused(inputs,
                      trainable=True,
                      epsilon=1E-12,
                      scope=None):
-    """Adds a Layer Normalization layer from https://arxiv.org/abs/1607.06450.
+  """Adds a Layer Normalization layer from https://arxiv.org/abs/1607.06450.
       "Layer Normalization"
       Jimmy Lei Ba, Jamie Ryan Kiros, Geoffrey E. Hinton
 
@@ -82,45 +81,45 @@ def layer_norm_fused(inputs,
     Raises:
       ValueError: if rank or last dimension of `inputs` is undefined.
     """
-    with variable_scope.variable_scope(scope, 'LayerNorm', [inputs],
-                                       reuse=reuse) as sc:
-        inputs = ops.convert_to_tensor(inputs)
-        inputs_shape = inputs.get_shape()
-        inputs_rank = inputs_shape.ndims
-        if inputs_rank is None:
-            raise ValueError('Inputs %s has undefined rank.' % inputs.name)
-        dtype = inputs.dtype.base_dtype
-        params_shape = inputs_shape[-1:]
-        if not params_shape.is_fully_defined():
-            raise ValueError('Inputs %s has undefined last dimension %s.' % (
-                inputs.name, params_shape))
-        # Allocate parameters for the beta and gamma of the normalization.
-        beta, gamma = None, None
-        if center:
-            beta_collections = utils.get_variable_collections(variables_collections,
-                                                              'beta')
-            beta = variables.model_variable('beta',
-                                            shape=params_shape,
-                                            dtype=dtype,
-                                            initializer=init_ops.zeros_initializer(),
-                                            collections=beta_collections,
-                                            trainable=trainable)
-        if scale:
-            gamma_collections = utils.get_variable_collections(variables_collections,
-                                                               'gamma')
-            gamma = variables.model_variable(
-                'gamma',
-                shape=params_shape,
-                dtype=dtype,
-                initializer=init_ops.ones_initializer(),
-                collections=gamma_collections,
-                trainable=trainable)
+  with variable_scope.variable_scope(
+      scope, 'LayerNorm', [inputs], reuse=reuse) as sc:
+    inputs = ops.convert_to_tensor(inputs)
+    inputs_shape = inputs.get_shape()
+    inputs_rank = inputs_shape.ndims
+    if inputs_rank is None:
+      raise ValueError('Inputs %s has undefined rank.' % inputs.name)
+    dtype = inputs.dtype.base_dtype
+    params_shape = inputs_shape[-1:]
+    if not params_shape.is_fully_defined():
+      raise ValueError('Inputs %s has undefined last dimension %s.' %
+                       (inputs.name, params_shape))
+    # Allocate parameters for the beta and gamma of the normalization.
+    beta, gamma = None, None
+    if center:
+      beta_collections = utils.get_variable_collections(variables_collections,
+                                                        'beta')
+      beta = variables.model_variable(
+          'beta',
+          shape=params_shape,
+          dtype=dtype,
+          initializer=init_ops.zeros_initializer(),
+          collections=beta_collections,
+          trainable=trainable)
+    if scale:
+      gamma_collections = utils.get_variable_collections(variables_collections,
+                                                         'gamma')
+      gamma = variables.model_variable(
+          'gamma',
+          shape=params_shape,
+          dtype=dtype,
+          initializer=init_ops.ones_initializer(),
+          collections=gamma_collections,
+          trainable=trainable)
 
-        outputs = layer_norm_fused_op(inputs, gamma=gamma, beta=beta,
-                                      epsilon=epsilon)
+    outputs = layer_norm_fused_op(
+        inputs, gamma=gamma, beta=beta, epsilon=epsilon)
 
-        if activation_fn is not None:
-            outputs = activation_fn(outputs)
-        return utils.collect_named_outputs(outputs_collections,
-                                           sc.original_name_scope,
-                                           outputs)
+    if activation_fn is not None:
+      outputs = activation_fn(outputs)
+    return utils.collect_named_outputs(outputs_collections,
+                                       sc.original_name_scope, outputs)

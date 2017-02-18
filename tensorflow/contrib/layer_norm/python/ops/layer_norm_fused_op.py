@@ -30,29 +30,32 @@ _layer_norm_fused_op = loader.load_op_library(
 
 @ops.RegisterGradient("LayerNormCustom")
 def _LayerNormCustomGrad(op, grad):
-    return [_layer_norm_fused_op.layer_norm_backprop_custom(
-        op.inputs[0], grad, op.get_attr("epsilon"))]
+  return [
+      _layer_norm_fused_op.layer_norm_backprop_custom(op.inputs[0], grad,
+                                                      op.get_attr("epsilon"))
+  ]
 
 
 @ops.RegisterGradient("LayerNormBiasAddCustom")
 def _LayerNormBiasAddCustomGrad(op, grad):
-    in_back, beta_back = _layer_norm_fused_op.layer_norm_bias_add_backprop_custom(
-        op.inputs[0], grad, op.inputs[1],
-        op.get_attr("epsilon"))
-    return [in_back, beta_back]
+  in_back, beta_back = _layer_norm_fused_op.layer_norm_bias_add_backprop_custom(
+      op.inputs[0], grad, op.inputs[1], op.get_attr("epsilon"))
+  return [in_back, beta_back]
 
 
 @ops.RegisterGradient("LayerNormFusedCustom")
 def _LayerNormFusedCustomGrad(op, grad):
-    in_back, gamma_back, beta_back = _layer_norm_fused_op.layer_norm_fused_backprop_custom(
-        op.inputs[0], grad, op.inputs[1],
-        op.get_attr("epsilon"))
-    return [in_back, gamma_back, beta_back]
+  in_back, gamma_back, beta_back = _layer_norm_fused_op.layer_norm_fused_backprop_custom(
+      op.inputs[0], grad, op.inputs[1], op.get_attr("epsilon"))
+  return [in_back, gamma_back, beta_back]
 
 
-def layer_norm_fused_op(input_tensor, gamma=None, beta=None,
-                        epsilon=1e-12, name=None):
-    """Fast and efficient layer normalization along the last dimension
+def layer_norm_fused_op(input_tensor,
+                        gamma=None,
+                        beta=None,
+                        epsilon=1e-12,
+                        name=None):
+  """Fast and efficient layer normalization along the last dimension
 
     See layer_norm_fused_op.cc for more details.
 
@@ -70,21 +73,20 @@ def layer_norm_fused_op(input_tensor, gamma=None, beta=None,
     Returns:
       A normalized `Tensor` with same dtype and shape as the input_tensor.
     """
-    if epsilon <= 0:
-        logging.warn("epsilon is %f <= ...", epsilon)
-    if gamma is not None and beta is not None:
-        return _layer_norm_fused_op.layer_norm_fused_custom(
-            input_tensor, gamma, beta, epsilon=epsilon, name=name)
-    elif gamma is not None:
-        dtype = input_tensor.dtype.base_dtype
-        beta = tf.zeros(input_tensor.get_shape().as_list()[-1], dtype=dtype,
-                        name="dummy_beta")
-        return _layer_norm_fused_op.layer_norm_fused_custom(
-            input_tensor, gamma, beta, epsilon=epsilon, name=name)
-    elif beta is not None:
-        return _layer_norm_fused_op.layer_norm_bias_add_custom(
-            input_tensor, beta, epsilon=epsilon, name=name)
-    else:
-        return _layer_norm_fused_op.layer_norm_custom(input_tensor,
-                                                      epsilon=epsilon,
-                                                      name=name)
+  if epsilon <= 0:
+    logging.warn("epsilon is %f <= ...", epsilon)
+  if gamma is not None and beta is not None:
+    return _layer_norm_fused_op.layer_norm_fused_custom(
+        input_tensor, gamma, beta, epsilon=epsilon, name=name)
+  elif gamma is not None:
+    dtype = input_tensor.dtype.base_dtype
+    beta = tf.zeros(
+        input_tensor.get_shape().as_list()[-1], dtype=dtype, name="dummy_beta")
+    return _layer_norm_fused_op.layer_norm_fused_custom(
+        input_tensor, gamma, beta, epsilon=epsilon, name=name)
+  elif beta is not None:
+    return _layer_norm_fused_op.layer_norm_bias_add_custom(
+        input_tensor, beta, epsilon=epsilon, name=name)
+  else:
+    return _layer_norm_fused_op.layer_norm_custom(
+        input_tensor, epsilon=epsilon, name=name)
