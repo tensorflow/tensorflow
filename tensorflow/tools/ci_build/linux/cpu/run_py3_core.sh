@@ -33,5 +33,6 @@ yes "" | ./configure
 
 # Run bazel test command. Double test timeouts to avoid flakes.
 bazel test --test_tag_filters=-gpu,-benchmark-test --test_lang_filters=py -k \
-    --jobs=${N_JOBS} --test_timeout 300,450,1200,3600 --build_tests_only -- \
+    --jobs=${N_JOBS} --test_timeout 300,450,1200,3600 --build_tests_only \
+    --test_output=errors -- \
     //tensorflow/... -//tensorflow/compiler/... -//tensorflow/contrib/...
