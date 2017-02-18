@@ -407,7 +407,8 @@ class Experiment(object):
     performing evaluation allows for the second.
 
     Returns:
-      The result of the `evaluate` call to the `Estimator`.
+      The result of the `evaluate` call to the `Estimator` as well as the
+      export results using the specified `ExportStrategy`.
     """
     # The directory to which evaluation summaries are written are determined
     # by adding a suffix to 'eval'; that suffix is the 'name' parameter to

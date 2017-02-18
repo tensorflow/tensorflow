@@ -110,8 +110,9 @@ def tf_copts():
            "-Wno-sign-compare",
            "-fno-exceptions",] +
           if_cuda(["-DGOOGLE_CUDA=1"]) +
+          if_mkl(["-DINTEL_MKL=1"]) +
           if_android_arm(["-mfpu=neon"]) +
-          if_x86(["-msse4.1"]) +
+          if_x86(["-msse3"]) +
           select({
               "//tensorflow:android": [
                   "-std=c++11",
@@ -481,7 +482,7 @@ def tf_cuda_library(deps=None, cuda_deps=None, copts=None, **kwargs):
           "//tensorflow/core:cuda",
           "@local_config_cuda//cuda:cuda_headers"
       ]),
-      copts = copts + if_cuda(["-DGOOGLE_CUDA=1"]),
+      copts = copts + if_cuda(["-DGOOGLE_CUDA=1"]) + if_mkl(["-DINTEL_MKL=1"]),
       **kwargs)
 
 def tf_kernel_library(name, prefix=None, srcs=None, gpu_srcs=None, hdrs=None,

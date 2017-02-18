@@ -254,7 +254,7 @@ struct UnsortedSegmentMaxFunctor<CPUDevice, T, Index>
                   typename TTypes<Index>::ConstFlat segment_ids,
                   const Index data_size, const T* data,
                   typename TTypes<T, 2>::Tensor output) override {
-    output.setConstant(std::numeric_limits<T>::min());
+    output.setConstant(std::numeric_limits<T>::lowest());
     if (data_size == 0) {
       return;
     }

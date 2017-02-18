@@ -26,7 +26,7 @@ py_library(
 
 py_test(
     name = "application_test",
-    size = "small",
+    size = "medium",
     srcs = ["application_test.py"],
     srcs_version = "PY2AND3",
     deps = [

@@ -354,6 +354,7 @@ class FileIoTest(test.TestCase):
     file_path = os.path.join(self._base_dir, "temp_file")
     with file_io.FileIO(file_path, mode="r+") as f:
       f.write("testing1\ntesting2\ntesting3\n\ntesting5")
+    self.assertEqual(0, f.tell())
     self.assertEqual("testing1\n", f.readline())
     self.assertEqual(9, f.tell())
     self.assertEqual("testing2\n", f.readline())

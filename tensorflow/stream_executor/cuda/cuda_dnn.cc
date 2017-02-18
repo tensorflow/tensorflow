@@ -922,7 +922,7 @@ class CudnnRnnParamsDescriptor : public CudnnDescriptorCommon<void> {
                            const CudnnRnnDescriptor& rnn_desc);
   ~CudnnRnnParamsDescriptor() {
     cudnnStatus_t status = wrap::cudnnDestroyFilterDescriptor(parent_, handle_);
-    CUDNN_RETURN_IF_FAIL(status, "Failed to destroy RNN filter desciptor");
+    CUDNN_RETURN_IF_FAIL(status, "Failed to destroy RNN filter descriptor");
   }
   cudnnFilterDescriptor_t handle() const {
     if (!ok()) return nullptr;
@@ -1202,7 +1202,7 @@ class CudnnRnnSequenceTensorDescriptor
     // Only the first one needs to be destroyed. All others are the same.
     cudnnStatus_t status =
         wrap::cudnnDestroyTensorDescriptor(parent_, handles_[0]);
-    CUDNN_RETURN_IF_FAIL(status, "Failed to destroy sequence tensor desciptor");
+    CUDNN_RETURN_IF_FAIL(status, "Failed to destroy sequence tensor descriptor");
   }
 
   const cudnnTensorDescriptor_t* handles() const {
