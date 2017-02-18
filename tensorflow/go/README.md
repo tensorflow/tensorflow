@@ -118,17 +118,16 @@ from source.
     go test github.com/tensorflow/tensorflow/tensorflow/go
     ```
 
-### Generate Ops Wrapper
+### Generate wrapper functions for ops
 
-Go functions corresponding to TensorFlow operations are generated in op/wrappers.go. To regenerate them:
+Go functions corresponding to TensorFlow operations are generated in `op/wrappers.go`. To regenerate them:
 
 Prerequisites:
 - [Protocol buffer compiler (protoc) 3.x](https://github.com/google/protobuf/releases/)
 - The TensorFlow repository under GOPATH
 
-```
-# Gegerate Go source file and wrappers from protobuf files.
-$ go generate github.com/tensorflow/tensorflow/tensorflow/go/op
+```sh
+go generate github.com/tensorflow/tensorflow/tensorflow/go/op
 ```
 
 ## Support
