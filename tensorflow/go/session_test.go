@@ -187,7 +187,7 @@ func ExamplePartialRun() {
 		// Create a graph: a + 2 + 3 + b.
 		//
 		// Skipping error handling for brevity of this example.
-		// The 'op' package can be used to make graph construction code
+		// The package provides utilities used to make graph construction code
 		// with error handling more succinct.
 		g        = NewGraph()
 		a, _     = Placeholder(g, "a", Int32)
