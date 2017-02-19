@@ -23,6 +23,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -489,7 +490,7 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
       x_rank = x.get_shape().ndims
       if x_rank is None:
         x_rank = array_ops.rank(x)
-        indices = array_ops.concat(0,([1,0],math_ops.range(2,x_rank)))
+        indices = array_ops.concat([[1,0],math_ops.range(2,x_rank)],0)
       else:
         indices = [1,0] + range(2,x_rank)
       return indices
@@ -620,23 +621,6 @@ def _dynamic_rnn_loop(cell,
   inputs_got_shape = tuple(input_.get_shape().with_rank_at_least(3)
                            for input_ in flat_input)
 
-  # const_time_steps, const_batch_size = inputs_got_shape[0].as_list()[:2]
-
-  for shape in inputs_got_shape:
-  #   if not shape[2:].is_fully_defined():
-  #     raise ValueError(
-  #         "Input size (depth of inputs) must be accessible via shape inference,"
-  #         " but saw value None.")
-    got_time_steps = shape[0].value
-    got_batch_size = shape[1].value
-  #   if const_time_steps != got_time_steps:
-  #     raise ValueError(
-  #         "Time steps is not the same for all the elements in the input in a "
-  #         "batch.")
-  #   if const_batch_size != got_batch_size:
-  #     raise ValueError(
-  #         "Batch_size is not the same for all the elements in the input.")
-
   # Prepare dynamic conditional copying of state & output
   def _create_zero_arrays(size):
     size = _state_size_with_prefix(size, prefix=[batch_size])
@@ -724,10 +708,11 @@ def _dynamic_rnn_loop(cell,
   final_outputs = tuple(ta.stack() for ta in output_final_ta)
 
   # Restore some shape information
-  # for output, output_size in zip(final_outputs, flat_output_size):
-  #   shape = _state_size_with_prefix(
-  #       output_size, prefix=[const_time_steps, const_batch_size])
-  #   output.set_shape(shape)
+  for output, output_size in zip(final_outputs, flat_output_size):
+    shape = _state_size_with_prefix(
+        output_size, prefix=[time_steps, batch_size])
+    # output.set_shape(shape)
+    output = array_ops.reshape(output,shape)
 
   final_outputs = nest.pack_sequence_as(
       structure=cell.output_size, flat_sequence=final_outputs)
