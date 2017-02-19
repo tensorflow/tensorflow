@@ -19,15 +19,15 @@ load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 tf_custom_op_library(
     name = "python/ops/_layer_norm_fused_op.so",
     srcs = [
+        "kernels/layer_norm_fused_grad_op.cc",
         "kernels/layer_norm_fused_op.cc",
         "kernels/layer_norm_fused_op.h",
-        "kernels/layer_norm_fused_grad_op.cc",
         "ops/layer_norm_fused_op.cc",
-        ],
+    ],
     gpu_srcs = [
         "kernels/layer_norm_fused_op_gpu.cu.cc",
         "kernels/layer_norm_fused_op.h",
-        ]
+    ],
 )
 
 tf_gen_op_libs(
@@ -42,13 +42,13 @@ tf_gen_op_wrapper_py(
 tf_kernel_library(
     name = "layer_norm_fused_op_kernel",
     srcs = [
+        "kernels/layer_norm_fused_grad_op.cc",
         "kernels/layer_norm_fused_op.cc",
         "kernels/layer_norm_fused_op.h",
-        "kernels/layer_norm_fused_grad_op.cc",
-        ],
+    ],
     gpu_srcs = [
         "kernels/layer_norm_fused_op.h",
-        ],
+    ],
     deps = [
         "//tensorflow/core:framework",
     ],
