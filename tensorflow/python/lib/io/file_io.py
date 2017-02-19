@@ -34,7 +34,7 @@ class FileIO(object):
 
   The constructor takes the following arguments:
   name: name of the file
-  mode: one of 'r', 'w', 'a', 'r+', 'w+', 'a+'.
+  mode: one of 'r', 'w', 'a', 'r+', 'w+', 'a+'. Append 'b' for bytes mode.
 
   Can be used as an iterator to iterate over lines in the file.
 
@@ -47,6 +47,8 @@ class FileIO(object):
     self.__mode = mode
     self._read_buf = None
     self._writable_file = None
+    self._binary_mode = "b" in mode
+    mode = mode.replace("b", "")
     if mode not in ("r", "w", "a", "r+", "w+", "a+"):
       raise errors.InvalidArgumentError(
           None, None, "mode is not 'r' or 'w' or 'a' or 'r+' or 'w+' or 'a+'")
@@ -81,6 +83,12 @@ class FileIO(object):
         self._writable_file = pywrap_tensorflow.CreateWritableFile(
             compat.as_bytes(self.__name), compat.as_bytes(self.__mode), status)
 
+  def _prepare_value(self, val):
+    if self._binary_mode:
+      return compat.as_bytes(val)
+    else:
+      return compat.as_str_any(val)
+
   def size(self):
     """Returns the size of the file."""
     return stat(self.__name).length
@@ -101,7 +109,8 @@ class FileIO(object):
       n: Read 'n' bytes if n != -1. If n = -1, reads to end of file.
 
     Returns:
-      'n' bytes of the file (or whole file) requested as a string.
+      'n' bytes of the file (or whole file) in bytes mode or 'n' bytes of the
+      string if in string (regular) mode.
     """
     self._preread_check()
     with errors.raise_exception_on_not_ok_status() as status:
@@ -109,7 +118,8 @@ class FileIO(object):
         length = self.size() - self.tell()
       else:
         length = n
-      return pywrap_tensorflow.ReadFromStream(self._read_buf, length, status)
+      return self._prepare_value(
+          pywrap_tensorflow.ReadFromStream(self._read_buf, length, status))
 
   def seek(self, position):
     """Seeks to the position in the file."""
@@ -121,7 +131,7 @@ class FileIO(object):
   def readline(self):
     r"""Reads the next line from the file. Leaves the '\n' at the end."""
     self._preread_check()
-    return compat.as_str_any(self._read_buf.ReadLineAsString())
+    return self._prepare_value(self._read_buf.ReadLineAsString())
 
   def readlines(self):
     """Returns all lines from the file in a list."""
@@ -136,9 +146,7 @@ class FileIO(object):
 
   def tell(self):
     """Returns the current position in the file."""
-    if not self._read_check_passed:
-      raise errors.PermissionDeniedError(None, None,
-                                         "File isn't open for reading")
+    self._preread_check()
     return self._read_buf.Tell()
 
   def __enter__(self):
@@ -218,20 +226,25 @@ def delete_file(filename):
     pywrap_tensorflow.DeleteFile(compat.as_bytes(filename), status)
 
 
-def read_file_to_string(filename):
+def read_file_to_string(filename, binary_mode=False):
   """Reads the entire contents of a file to a string.
 
   Args:
     filename: string, path to a file
+    binary_mode: whether to open the file in binary mode or not. This changes
+        the type of the object returned.
 
   Returns:
-    contents of the file as a string
+    contents of the file as a string or bytes.
 
   Raises:
     errors.OpError: Raises variety of errors that are subtypes e.g.
     NotFoundError etc.
   """
-  f = FileIO(filename, mode="r")
+  if binary_mode:
+    f = FileIO(filename, mode="rb")
+  else:
+    f = FileIO(filename, mode="r")
   return f.read()
 
 

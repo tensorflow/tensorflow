@@ -49,13 +49,13 @@ For playing around like this, we often use an interactive session, but a regular
 session would work as well.
 
 ```python
-   sess = tf.InteractiveSession()
+sess = tf.InteractiveSession()
 ```
 
 It's handy that we can freely mix NumPy and TensorFlow.
 
 ```python
-# Use NumPy to create a 2D array of complex numbers on [-2,2]x[-2,2]
+# Use NumPy to create a 2D array of complex numbers
 
 Y, X = np.mgrid[-1.3:1.3:0.005, -2:1:0.005]
 Z = X+1j*Y
@@ -84,7 +84,7 @@ Now we specify more of the computation...
 zs_ = zs*zs + xs
 
 # Have we diverged with this new value?
-not_diverged = tf.complex_abs(zs_) < 4
+not_diverged = tf.abs(zs_) < 4
 
 # Operation to update the zs and the iteration count.
 #

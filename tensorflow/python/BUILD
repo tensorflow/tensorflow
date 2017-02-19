@@ -23,7 +23,7 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library_py")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_lib_deps")
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_plugin_deps")
+load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_plugin_deps")
 load("//tensorflow/python:build_defs.bzl", "tf_gen_op_wrapper_private_py")
 
 py_library(
@@ -253,8 +253,8 @@ cc_binary(
     }),
     linkshared = 1,
     deps = [
+        "//:protobuf_headers",
         "//tensorflow/core:framework_headers_lib",
-        "@protobuf//:protobuf",
     ],
 )
 
@@ -315,6 +315,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework",
+        "//tensorflow/core:op_gen_lib",
         "//tensorflow/core:protos_cc",
     ],
     alwayslink = 1,
@@ -656,6 +657,7 @@ py_test(
     srcs = ["framework/ops_test.py"],
     main = "framework/ops_test.py",
     srcs_version = "PY2AND3",
+    tags = ["no_pip"],  # test_ops_2 is not available in pip.
     deps = [
         ":control_flow_ops",
         ":errors",
@@ -1340,6 +1342,7 @@ py_library(
         ":framework_for_generated_wrappers",
         ":resource_variable_ops_gen",
         ":util",
+        ":variables",
     ],
 )
 
@@ -1738,6 +1741,7 @@ py_library(
         ":framework_for_generated_wrappers",
         ":init_ops",
         ":platform",
+        ":resource_variable_ops",
         ":variables",
         "@six_archive//:six",
     ],
@@ -2154,6 +2158,7 @@ py_test(
     srcs = ["util/protobuf/compare_test.py"],
     main = "util/protobuf/compare_test.py",
     srcs_version = "PY2AND3",
+    tags = ["no_pip"],  # compare_test_pb2 proto is not available in pip.
     deps = [
         ":compare_test_proto_py",
         ":platform_test",
@@ -2532,6 +2537,7 @@ py_test(
     size = "small",
     srcs = ["client/session_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_pip_gpu"],  # testInteractivePlacePrunedGraph fails on invalid assumption about GPU ops.
     deps = [
         ":array_ops",
         ":client",
@@ -2594,6 +2600,22 @@ py_test(
     ],
 )
 
+cuda_py_test(
+    name = "adam_test",
+    size = "small",
+    srcs = ["training/adam_test.py"],
+    additional_deps = [
+        ":array_ops",
+        ":framework",
+        ":math_ops",
+        ":platform",
+        ":training",
+        ":platform_test",
+        ":client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
 cuda_py_tests(
     name = "training_tests",
     size = "small",
@@ -2601,7 +2623,6 @@ cuda_py_tests(
         "training/adadelta_test.py",
         "training/adagrad_da_test.py",
         "training/adagrad_test.py",
-        "training/adam_test.py",
         "training/basic_loops_test.py",
         "training/coordinator_test.py",
         "training/device_setter_test.py",
@@ -2615,7 +2636,6 @@ cuda_py_tests(
         "training/proximal_gradient_descent_test.py",
         "training/queue_runner_test.py",
         "training/rmsprop_test.py",
-        "training/saver_test.py",
         "training/slot_creator_test.py",
         "training/tensorboard_logging_test.py",
         "training/training_ops_test.py",
@@ -2646,6 +2666,41 @@ cuda_py_tests(
         ":sparse_ops",
         ":state_ops",
         ":state_ops_gen",
+        ":summary",
+        ":training",
+        ":util",
+        ":variable_scope",
+        ":variables",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+        "//tensorflow/core:protos_all_py",
+    ],
+)
+
+cuda_py_test(
+    name = "saver_test",
+    size = "medium",
+    srcs = [
+        "training/saver_test.py",
+    ],
+    additional_deps = [
+        ":array_ops",
+        ":client_testlib",
+        ":control_flow_ops",
+        ":data_flow_ops",
+        ":data_flow_ops_gen",
+        ":errors",
+        ":gradients",
+        ":math_ops",
+        ":nn_grad",
+        ":nn_ops",
+        ":partitioned_variables",
+        ":platform",
+        ":platform_test",
+        ":pywrap_tensorflow",
+        ":random_ops",
+        ":resource_variable_ops",
+        ":sparse_ops",
         ":summary",
         ":training",
         ":util",
@@ -3080,6 +3135,7 @@ cuda_py_test(
         ":gradients",
         ":math_ops",
         ":nn",
+        ":nn_grad",
         ":nn_ops_gen",
         ":platform",
         ":random_ops",

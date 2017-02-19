@@ -24,7 +24,7 @@ be queried using sgv.inputs.
 
   A tuple `(sgv, info)` where:
     `sgv` is the transformed subgraph view;
-    `info` is an instance of Transformer.ResultInfo containing
+    `info` is an instance of TransformerInfo containing
     information about the transform, including mapping between
     original and transformed tensors and operations.
 

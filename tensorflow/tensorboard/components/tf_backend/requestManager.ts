@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 module TF.Backend {
-  interface ResolveReject {resolve: Function; reject: Function; }
+  interface ResolveReject { resolve: Function; reject: Function; }
   /**
    * Manages many fetch requests. Launches up to nSimultaneousRequests
    * simultaneously, and maintains a LIFO queue of requests to process when
@@ -55,15 +55,21 @@ module TF.Backend {
       this._maxRetries = maxRetries;
     }
 
-    /* Gives a promise that loads assets from given url (respects queuing) */
-    public request(url: string): Promise<any> {
+    /**
+     * Gives a promise that loads assets from given url (respects queuing). If
+     * postData is provided, this request will use POST, not GET. This is an
+     * object mapping POST keys to string values.
+     */
+    public request(
+        url: string, postData?: {[key: string]: string}): Promise<any> {
       var promise = new Promise((resolve, reject) => {
                       var resolver = {resolve: resolve, reject: reject};
                       this._queue.push(resolver);
                       this.launchRequests();
                     })
                         .then(() => {
-                          return this.promiseWithRetries(url, this._maxRetries);
+                          return this.promiseWithRetries(
+                              url, this._maxRetries, postData);
                         })
                         .then(
                             (response) => {
@@ -122,23 +128,39 @@ module TF.Backend {
      * is a feature, if the request failures and retries are causing any
      * pain to users, they can see it and file issues.
      */
-    private promiseWithRetries(url, maxRetries) {
+    private promiseWithRetries(
+        url: string,
+        maxRetries: number,
+        postData?: {[key: string]: string}) {
       var success = (x) =>  x;
       var failure = (x) => {
         if (maxRetries > 0) {
-          return this.promiseWithRetries(url, maxRetries - 1);
+          return this.promiseWithRetries(url, maxRetries - 1, postData);
         } else {
           return Promise.reject(x);
         }
       };
-      return this._promiseFromUrl(url).then(success, failure);
+      return this._promiseFromUrl(url, postData).then(success, failure);
     }
 
     /* Actually get promise from url using XMLHttpRequest */
-    protected _promiseFromUrl(url) {
+    protected _promiseFromUrl(url:string, postData?: {[key: string]: string}) {
       return new Promise((resolve, reject) => {
-        var req = new XMLHttpRequest();
-        req.open('GET', url);
+        let req = new XMLHttpRequest();
+        req.open(postData ? 'POST' : 'GET', url);
+
+        let formData;
+        if (postData) {
+          // We are to make a POST request.
+          formData = new FormData();
+          for (let postKey in postData) {
+            if (postKey) {
+              // The linter requires 'for in' loops to be filtered by an if
+              // condition.
+              formData.append(postKey, postData[postKey]);
+            }
+          }
+        }
         req.onload = function() {
           if (req.status === 200) {
             resolve(JSON.parse(req.responseText));
@@ -149,7 +171,7 @@ module TF.Backend {
         req.onerror = function() {
           reject(new RequestNetworkError(req, url));
         };
-        req.send();
+        req.send(formData);
       });
     }
   }

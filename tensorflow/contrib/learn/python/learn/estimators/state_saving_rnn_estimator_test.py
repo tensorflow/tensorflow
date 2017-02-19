@@ -28,18 +28,22 @@ if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
 
 import numpy as np
 
+from tensorflow.contrib import lookup
 from tensorflow.contrib.layers.python.layers import feature_column
 from tensorflow.contrib.layers.python.layers import target_column as target_column_lib
+from tensorflow.contrib.learn.python.learn.estimators import constants
 from tensorflow.contrib.learn.python.learn.estimators import model_fn as model_fn_lib
+from tensorflow.contrib.learn.python.learn.estimators import prediction_key
 from tensorflow.contrib.learn.python.learn.estimators import run_config
 from tensorflow.contrib.learn.python.learn.estimators import state_saving_rnn_estimator as ssre
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
-from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -47,9 +51,11 @@ from tensorflow.python.platform import test
 class PrepareInputsForRnnTest(test.TestCase):
 
   def _test_prepare_inputs_for_rnn(self, sequence_features, context_features,
-                                   num_unroll, batch_size, expected):
+                                   sequence_feature_columns, num_unroll,
+                                   expected):
     features_by_time = ssre._prepare_inputs_for_rnn(sequence_features,
                                                     context_features,
+                                                    sequence_feature_columns,
                                                     num_unroll)
 
     with self.test_session() as sess:
@@ -60,7 +66,6 @@ class PrepareInputsForRnnTest(test.TestCase):
 
   def testPrepareInputsForRnnBatchSize1(self):
     num_unroll = 3
-    batch_size = 1
 
     expected = [
         np.array([[11., 31., 5., 7.]]), np.array([[12., 32., 5., 7.]]),
@@ -71,17 +76,25 @@ class PrepareInputsForRnnTest(test.TestCase):
         'seq_feature0': constant_op.constant([[11., 12., 13.]]),
         'seq_feature1': constant_op.constant([[31., 32., 33.]])
     }
+
+    sequence_feature_columns = [
+        feature_column.real_valued_column(
+            'seq_feature0', dimension=1),
+        feature_column.real_valued_column(
+            'seq_feature1', dimension=1),
+    ]
+
     context_features = {
         'ctx_feature0': constant_op.constant([[5.]]),
         'ctx_feature1': constant_op.constant([[7.]])
     }
     self._test_prepare_inputs_for_rnn(sequence_features, context_features,
-                                      num_unroll, batch_size, expected)
+                                      sequence_feature_columns, num_unroll,
+                                      expected)
 
   def testPrepareInputsForRnnBatchSize2(self):
 
     num_unroll = 3
-    batch_size = 2
 
     expected = [
         np.array([[11., 31., 5., 7.], [21., 41., 6., 8.]]),
@@ -96,17 +109,24 @@ class PrepareInputsForRnnTest(test.TestCase):
             constant_op.constant([[31., 32., 33.], [41., 42., 43.]])
     }
 
+    sequence_feature_columns = [
+        feature_column.real_valued_column(
+            'seq_feature0', dimension=1),
+        feature_column.real_valued_column(
+            'seq_feature1', dimension=1),
+    ]
+
     context_features = {
         'ctx_feature0': constant_op.constant([[5.], [6.]]),
         'ctx_feature1': constant_op.constant([[7.], [8.]])
     }
 
     self._test_prepare_inputs_for_rnn(sequence_features, context_features,
-                                      num_unroll, batch_size, expected)
+                                      sequence_feature_columns, num_unroll,
+                                      expected)
 
   def testPrepareInputsForRnnNoContext(self):
     num_unroll = 3
-    batch_size = 2
 
     expected = [
         np.array([[11., 31.], [21., 41.]]), np.array([[12., 32.], [22., 42.]]),
@@ -120,10 +140,107 @@ class PrepareInputsForRnnTest(test.TestCase):
             constant_op.constant([[31., 32., 33.], [41., 42., 43.]])
     }
 
+    sequence_feature_columns = [
+        feature_column.real_valued_column(
+            'seq_feature0', dimension=1),
+        feature_column.real_valued_column(
+            'seq_feature1', dimension=1),
+    ]
+
     context_features = None
 
     self._test_prepare_inputs_for_rnn(sequence_features, context_features,
-                                      num_unroll, batch_size, expected)
+                                      sequence_feature_columns, num_unroll,
+                                      expected)
+
+  def testPrepareInputsForRnnSparse(self):
+    num_unroll = 2
+    embedding_dimension = 8
+
+    expected = [
+        np.array([[1., 1., 1., 1., 1., 1., 1., 1.],
+                  [1., 1., 1., 1., 1., 1., 1., 1.],
+                  [1., 1., 1., 1., 1., 1., 1., 1.]]),
+        np.array([[1., 1., 1., 1., 1., 1., 1., 1.],
+                  [2., 2., 2., 2., 2., 2., 2., 2.],
+                  [1., 1., 1., 1., 1., 1., 1., 1.]])
+    ]
+
+    sequence_features = {
+        'wire_cast':
+            sparse_tensor.SparseTensor(
+                indices=[[0, 0, 0], [0, 1, 0], [1, 0, 0], [1, 1, 0], [1, 1, 1],
+                         [2, 0, 0], [2, 1, 1]],
+                values=[
+                    b'marlo', b'stringer', b'omar', b'stringer', b'marlo',
+                    b'marlo', b'omar'
+                ],
+                dense_shape=[3, 2, 2])
+    }
+
+    wire_cast = feature_column.sparse_column_with_keys(
+        'wire_cast', ['marlo', 'omar', 'stringer'])
+    sequence_feature_columns = [
+        feature_column.embedding_column(
+            wire_cast,
+            dimension=embedding_dimension,
+            combiner='sum',
+            initializer=init_ops.ones_initializer())
+    ]
+
+    context_features = None
+
+    self._test_prepare_inputs_for_rnn(sequence_features, context_features,
+                                      sequence_feature_columns, num_unroll,
+                                      expected)
+
+  def testPrepareInputsForRnnSparseAndDense(self):
+    num_unroll = 2
+    embedding_dimension = 8
+    dense_dimension = 2
+
+    expected = [
+        np.array([[1., 1., 1., 1., 1., 1., 1., 1., 111., 112.],
+                  [1., 1., 1., 1., 1., 1., 1., 1., 211., 212.],
+                  [1., 1., 1., 1., 1., 1., 1., 1., 311., 312.]]),
+        np.array([[1., 1., 1., 1., 1., 1., 1., 1., 121., 122.],
+                  [2., 2., 2., 2., 2., 2., 2., 2., 221., 222.],
+                  [1., 1., 1., 1., 1., 1., 1., 1., 321., 322.]])
+    ]
+
+    sequence_features = {
+        'wire_cast':
+            sparse_tensor.SparseTensor(
+                indices=[[0, 0, 0], [0, 1, 0], [1, 0, 0], [1, 1, 0], [1, 1, 1],
+                         [2, 0, 0], [2, 1, 1]],
+                values=[
+                    b'marlo', b'stringer', b'omar', b'stringer', b'marlo',
+                    b'marlo', b'omar'
+                ],
+                dense_shape=[3, 2, 2]),
+        'seq_feature0':
+            constant_op.constant([[[111., 112.], [121., 122.]],
+                                  [[211., 212.], [221., 222.]],
+                                  [[311., 312.], [321., 322.]]])
+    }
+
+    wire_cast = feature_column.sparse_column_with_keys(
+        'wire_cast', ['marlo', 'omar', 'stringer'])
+    wire_cast_embedded = feature_column.embedding_column(
+        wire_cast,
+        dimension=embedding_dimension,
+        combiner='sum',
+        initializer=init_ops.ones_initializer())
+    seq_feature0_column = feature_column.real_valued_column(
+        'seq_feature0', dimension=dense_dimension)
+
+    sequence_feature_columns = [seq_feature0_column, wire_cast_embedded]
+
+    context_features = None
+
+    self._test_prepare_inputs_for_rnn(sequence_features, context_features,
+                                      sequence_feature_columns, num_unroll,
+                                      expected)
 
 
 class StateSavingRnnEstimatorTest(test.TestCase):
@@ -131,25 +248,38 @@ class StateSavingRnnEstimatorTest(test.TestCase):
   def testPrepareFeaturesForSQSS(self):
     mode = model_fn_lib.ModeKeys.TRAIN
     seq_feature_name = 'seq_feature'
+    sparse_seq_feature_name = 'wire_cast'
     ctx_feature_name = 'ctx_feature'
-    input_key_column_name = 'input_key_column'
     sequence_length = 4
-
-    seq_feature = constant_op.constant(1.0, shape=[sequence_length])
-    ctx_feature = constant_op.constant(2.0)
-    input_key0 = constant_op.constant('input0')
+    embedding_dimension = 8
 
     features = {
-        input_key_column_name: input_key0,
-        seq_feature_name: seq_feature,
-        ctx_feature_name: ctx_feature
+        sparse_seq_feature_name:
+            sparse_tensor.SparseTensor(
+                indices=[[0, 0, 0], [0, 1, 0], [1, 0, 0], [1, 1, 0], [1, 1, 1],
+                         [2, 0, 0], [2, 1, 1]],
+                values=[
+                    b'marlo', b'stringer', b'omar', b'stringer', b'marlo',
+                    b'marlo', b'omar'
+                ],
+                dense_shape=[3, 2, 2]),
+        seq_feature_name:
+            constant_op.constant(
+                1.0, shape=[sequence_length]),
+        ctx_feature_name:
+            constant_op.constant(2.0)
     }
 
     labels = constant_op.constant(5.0, shape=[sequence_length])
 
+    wire_cast = feature_column.sparse_column_with_keys(
+        'wire_cast', ['marlo', 'omar', 'stringer'])
     sequence_feature_columns = [
         feature_column.real_valued_column(
-            seq_feature_name, dimension=1)
+            seq_feature_name, dimension=1), feature_column.embedding_column(
+                wire_cast,
+                dimension=embedding_dimension,
+                initializer=init_ops.ones_initializer())
     ]
 
     context_feature_columns = [
@@ -157,30 +287,43 @@ class StateSavingRnnEstimatorTest(test.TestCase):
             ctx_feature_name, dimension=1)
     ]
 
-    expected_input_key = b'input0'
-
     expected_sequence = {
-        ssre.RNNKeys.LABELS_KEY: np.array([5., 5., 5., 5.]),
-        seq_feature_name: np.array([1., 1., 1., 1.]),
+        ssre.RNNKeys.LABELS_KEY:
+            np.array([5., 5., 5., 5.]),
+        seq_feature_name:
+            np.array([1., 1., 1., 1.]),
+        sparse_seq_feature_name:
+            sparse_tensor.SparseTensor(
+                indices=[[0, 0, 0], [0, 1, 0], [1, 0, 0], [1, 1, 0], [1, 1, 1],
+                         [2, 0, 0], [2, 1, 1]],
+                values=[
+                    b'marlo', b'stringer', b'omar', b'stringer', b'marlo',
+                    b'marlo', b'omar'
+                ],
+                dense_shape=[3, 2, 2]),
     }
 
     expected_context = {ctx_feature_name: 2.}
 
-    input_key, sequence, context = ssre._prepare_features_for_sqss(
-        features, labels, mode, input_key_column_name, sequence_feature_columns,
+    sequence, context = ssre._prepare_features_for_sqss(
+        features, labels, mode, sequence_feature_columns,
         context_feature_columns)
 
-    def assert_equal(a, b):
-      self.assertEqual(sorted(a), sorted(b))
-      for k, v in a.items():
-        self.assertAllEqual(v, b[k])
+    def assert_equal(expected, got):
+      self.assertEqual(sorted(expected), sorted(got))
+      for k, v in expected.items():
+        if isinstance(v, sparse_tensor.SparseTensor):
+          self.assertAllEqual(v.values.eval(), got[k].values)
+          self.assertAllEqual(v.indices.eval(), got[k].indices)
+          self.assertAllEqual(v.dense_shape.eval(), got[k].dense_shape)
+        else:
+          self.assertAllEqual(v, got[k])
 
     with self.test_session() as sess:
       sess.run(variables.global_variables_initializer())
       sess.run(data_flow_ops.initialize_all_tables())
-      actual_input_key, actual_sequence, actual_context = sess.run(
-          [input_key, sequence, context])
-      self.assertEqual(expected_input_key, actual_input_key)
+      actual_sequence, actual_context = sess.run(
+          [sequence, context])
       assert_equal(expected_sequence, actual_sequence)
       assert_equal(expected_context, actual_context)
 
@@ -248,7 +391,6 @@ class StateSavingRnnEstimatorTest(test.TestCase):
     ]
     features = {
         'inputs': constant_op.constant([1., 2., 3.]),
-        'input_key_column': constant_op.constant('input0')
     }
     labels = constant_op.constant([1., 0., 1.])
     model_fn = ssre._get_rnn_model_fn(
@@ -260,9 +402,8 @@ class StateSavingRnnEstimatorTest(test.TestCase):
         num_threads=1,
         queue_capacity=10,
         batch_size=1,
-        input_key_column_name='input_key_column',
         # Only CLASSIFICATION yields eval metrics to test for.
-        problem_type=ssre.ProblemType.CLASSIFICATION,
+        problem_type=constants.ProblemType.CLASSIFICATION,
         sequence_feature_columns=seq_columns,
         context_feature_columns=None,
         learning_rate=0.1)
@@ -296,7 +437,6 @@ class StateSavingRnnEstimatorTest(test.TestCase):
     self.assertFalse(model_fn_ops.eval_metric_ops)
 
   def testExport(self):
-    input_key_column_name = 'input0'
     input_feature_key = 'magic_input_feature_key'
     batch_size = 8
     cell_size = 4
@@ -312,22 +452,13 @@ class StateSavingRnnEstimatorTest(test.TestCase):
     def get_input_fn(mode, seed):
 
       def input_fn():
-        input_key = string_ops.string_join([
-            'key_', string_ops.as_string(
-                random_ops.random_uniform(
-                    (),
-                    minval=0,
-                    maxval=10000000,
-                    dtype=dtypes.int32,
-                    seed=seed))
-        ])
         features = {}
         random_sequence = random_ops.random_uniform(
             [sequence_length + 1], 0, 2, dtype=dtypes.int32, seed=seed)
         labels = array_ops.slice(random_sequence, [0], [sequence_length])
         inputs = math_ops.to_float(
             array_ops.slice(random_sequence, [1], [sequence_length]))
-        features = {'inputs': inputs, input_key_column_name: input_key}
+        features = {'inputs': inputs}
 
         if mode == model_fn_lib.ModeKeys.INFER:
           input_examples = array_ops.placeholder(dtypes.string)
@@ -340,16 +471,17 @@ class StateSavingRnnEstimatorTest(test.TestCase):
     model_dir = tempfile.mkdtemp()
 
     def estimator_fn():
-      return ssre.multi_value_rnn_classifier(
-          num_classes=num_classes,
+      return ssre.StateSavingRnnEstimator(
+          constants.ProblemType.CLASSIFICATION,
           num_units=cell_size,
           num_unroll=num_unroll,
           batch_size=batch_size,
-          input_key_column_name=input_key_column_name,
           sequence_feature_columns=seq_columns,
+          num_classes=num_classes,
           predict_probabilities=True,
           model_dir=model_dir,
-          queue_capacity=2 + batch_size)
+          queue_capacity=2 + batch_size,
+          seed=1234)
 
     # Train a bit to create an exportable checkpoint.
     estimator_fn().fit(input_fn=get_input_fn(
@@ -368,6 +500,72 @@ class StateSavingRnnEstimatorTest(test.TestCase):
         input_feature_key=input_feature_key)
 
 
+# Smoke tests to ensure deprecated constructor functions still work.
+class LegacyConstructorTest(test.TestCase):
+
+  def _get_input_fn(self,
+                    sequence_length,
+                    seed=None):
+    def input_fn():
+      random_sequence = random_ops.random_uniform(
+          [sequence_length + 1], 0, 2, dtype=dtypes.int32, seed=seed)
+      labels = array_ops.slice(random_sequence, [0], [sequence_length])
+      inputs = math_ops.to_float(
+          array_ops.slice(random_sequence, [1], [sequence_length]))
+      return {'inputs': inputs}, labels
+    return input_fn
+
+  def testClassifierConstructor(self):
+    batch_size = 16
+    num_classes = 2
+    num_unroll = 32
+    sequence_length = 32
+    num_units = 4
+    learning_rate = 0.5
+    steps = 100
+    input_fn = self._get_input_fn(sequence_length,
+                                  seed=1234)
+    model_dir = tempfile.mkdtemp()
+    seq_columns = [
+        feature_column.real_valued_column(
+            'inputs', dimension=num_units)
+    ]
+    estimator = ssre.multi_value_rnn_classifier(num_classes,
+                                                num_units,
+                                                num_unroll,
+                                                batch_size,
+                                                seq_columns,
+                                                learning_rate=learning_rate,
+                                                model_dir=model_dir,
+                                                queue_capacity=batch_size+2,
+                                                seed=1234)
+    estimator.fit(input_fn=input_fn, steps=steps)
+
+  def testRegressorConstructor(self):
+    batch_size = 16
+    num_unroll = 32
+    sequence_length = 32
+    num_units = 4
+    learning_rate = 0.5
+    steps = 100
+    input_fn = self._get_input_fn(sequence_length,
+                                  seed=4321)
+    model_dir = tempfile.mkdtemp()
+    seq_columns = [
+        feature_column.real_valued_column(
+            'inputs', dimension=num_units)
+    ]
+    estimator = ssre.multi_value_rnn_regressor(num_units,
+                                               num_unroll,
+                                               batch_size,
+                                               seq_columns,
+                                               learning_rate=learning_rate,
+                                               model_dir=model_dir,
+                                               queue_capacity=batch_size+2,
+                                               seed=1234)
+    estimator.fit(input_fn=input_fn, steps=steps)
+
+
 # TODO(jtbates): move all tests below to a benchmark test.
 class StateSavingRNNEstimatorLearningTest(test.TestCase):
   """Learning tests for state saving RNN Estimators."""
@@ -379,10 +577,9 @@ class StateSavingRNNEstimatorLearningTest(test.TestCase):
     sequence_length = 64
     train_steps = 250
     eval_steps = 20
-    cell_size = 4
+    num_units = 4
     learning_rate = 0.3
-    loss_threshold = 0.03
-    input_key_column_name = 'input_key_column'
+    loss_threshold = 0.035
 
     def get_sin_input_fn(sequence_length, increment, seed=None):
 
@@ -394,30 +591,27 @@ class StateSavingRNNEstimatorLearningTest(test.TestCase):
                               sequence_length + 1))
         inputs = array_ops.slice(sin_curves, [0], [sequence_length])
         labels = array_ops.slice(sin_curves, [1], [sequence_length])
-        input_key = string_ops.string_join([
-            'key_',
-            string_ops.as_string(math_ops.cast(10000 * start, dtypes.int32))
-        ])
-        return {'inputs': inputs, input_key_column_name: input_key}, labels
+        return {'inputs': inputs}, labels
 
       return input_fn
 
     seq_columns = [
         feature_column.real_valued_column(
-            'inputs', dimension=cell_size)
+            'inputs', dimension=num_units)
     ]
     config = run_config.RunConfig(tf_random_seed=1234)
-    sequence_estimator = ssre.multi_value_rnn_regressor(
-        num_units=cell_size,
+    sequence_estimator = ssre.StateSavingRnnEstimator(
+        constants.ProblemType.LINEAR_REGRESSION,
+        num_units=num_units,
         num_unroll=num_unroll,
         batch_size=batch_size,
-        input_key_column_name=input_key_column_name,
         sequence_feature_columns=seq_columns,
         learning_rate=learning_rate,
         input_keep_probability=0.9,
         output_keep_probability=0.9,
         config=config,
-        queue_capacity=2 * batch_size)
+        queue_capacity=2 * batch_size,
+        seed=1234)
 
     train_input_fn = get_sin_input_fn(sequence_length, np.pi / 32, seed=1234)
     eval_input_fn = get_sin_input_fn(sequence_length, np.pi / 32, seed=4321)
@@ -441,10 +635,9 @@ class StateSavingRNNEstimatorLearningTest(test.TestCase):
     sequence_length = 32
     train_steps = 200
     eval_steps = 20
-    cell_size = 4
+    num_units = 4
     learning_rate = 0.5
     accuracy_threshold = 0.9
-    input_key_column_name = 'input_key_column'
 
     def get_shift_input_fn(sequence_length, seed=None):
 
@@ -454,35 +647,27 @@ class StateSavingRNNEstimatorLearningTest(test.TestCase):
         labels = array_ops.slice(random_sequence, [0], [sequence_length])
         inputs = math_ops.to_float(
             array_ops.slice(random_sequence, [1], [sequence_length]))
-        input_key = string_ops.string_join([
-            'key_', string_ops.as_string(
-                random_ops.random_uniform(
-                    (),
-                    minval=0,
-                    maxval=10000000,
-                    dtype=dtypes.int32,
-                    seed=seed))
-        ])
-        return {'inputs': inputs, input_key_column_name: input_key}, labels
+        return {'inputs': inputs}, labels
 
       return input_fn
 
     seq_columns = [
         feature_column.real_valued_column(
-            'inputs', dimension=cell_size)
+            'inputs', dimension=num_units)
     ]
     config = run_config.RunConfig(tf_random_seed=21212)
-    sequence_estimator = ssre.multi_value_rnn_classifier(
-        num_classes=num_classes,
-        num_units=cell_size,
+    sequence_estimator = ssre.StateSavingRnnEstimator(
+        constants.ProblemType.CLASSIFICATION,
+        num_units=num_units,
         num_unroll=num_unroll,
         batch_size=batch_size,
-        input_key_column_name=input_key_column_name,
         sequence_feature_columns=seq_columns,
+        num_classes=num_classes,
         learning_rate=learning_rate,
         config=config,
         predict_probabilities=True,
-        queue_capacity=2 + batch_size)
+        queue_capacity=2 + batch_size,
+        seed=1234)
 
     train_input_fn = get_shift_input_fn(sequence_length, seed=12321)
     eval_input_fn = get_shift_input_fn(sequence_length, seed=32123)
@@ -502,14 +687,81 @@ class StateSavingRNNEstimatorLearningTest(test.TestCase):
     self.assertListEqual(
         sorted(list(prediction_dict.keys())),
         sorted([
-            ssre.RNNKeys.PREDICTIONS_KEY, ssre.RNNKeys.PROBABILITIES_KEY,
-            ssre._get_state_name(0)
+            prediction_key.PredictionKey.CLASSES,
+            prediction_key.PredictionKey.PROBABILITIES, ssre._get_state_name(0)
         ]))
-    predictions = prediction_dict[ssre.RNNKeys.PREDICTIONS_KEY]
-    probabilities = prediction_dict[ssre.RNNKeys.PROBABILITIES_KEY]
+    predictions = prediction_dict[prediction_key.PredictionKey.CLASSES]
+    probabilities = prediction_dict[prediction_key.PredictionKey.PROBABILITIES]
     self.assertListEqual(list(predictions.shape), [batch_size, sequence_length])
     self.assertListEqual(
         list(probabilities.shape), [batch_size, sequence_length, 2])
+
+  def testLearnLyrics(self):
+    lyrics = 'if I go there will be trouble and if I stay it will be double'
+    lyrics_list = lyrics.split()
+    sequence_length = len(lyrics_list)
+    vocab = set(lyrics_list)
+    batch_size = 16
+    num_classes = len(vocab)
+    num_unroll = 5  # not a divisor of sequence_length
+    train_steps = 300
+    eval_steps = 30
+    num_units = 4
+    learning_rate = 0.4
+    accuracy_threshold = 0.70
+
+    def get_lyrics_input_fn(seed):
+
+      def input_fn():
+        start = random_ops.random_uniform(
+            (), minval=0, maxval=sequence_length, dtype=dtypes.int32, seed=seed)
+        # Concatenate lyrics_list so inputs and labels wrap when start > 0.
+        lyrics_list_concat = lyrics_list + lyrics_list
+        inputs_dense = array_ops.slice(lyrics_list_concat, [start],
+                                       [sequence_length])
+        indices = array_ops.constant(
+            [[i, 0] for i in range(sequence_length)], dtype=dtypes.int64)
+        dense_shape = [sequence_length, 1]
+        inputs = sparse_tensor.SparseTensor(
+            indices=indices, values=inputs_dense, dense_shape=dense_shape)
+        table = lookup.string_to_index_table_from_tensor(
+            mapping=list(vocab), default_value=-1, name='lookup')
+        labels = table.lookup(
+            array_ops.slice(lyrics_list_concat, [start + 1], [sequence_length]))
+        return {'lyrics': inputs}, labels
+
+      return input_fn
+
+    sequence_feature_columns = [
+        feature_column.embedding_column(
+            feature_column.sparse_column_with_keys('lyrics', vocab),
+            dimension=8)
+    ]
+    config = run_config.RunConfig(tf_random_seed=21212)
+    sequence_estimator = ssre.StateSavingRnnEstimator(
+        constants.ProblemType.CLASSIFICATION,
+        num_units=num_units,
+        num_unroll=num_unroll,
+        batch_size=batch_size,
+        sequence_feature_columns=sequence_feature_columns,
+        num_classes=num_classes,
+        learning_rate=learning_rate,
+        config=config,
+        predict_probabilities=True,
+        queue_capacity=2 + batch_size,
+        seed=1234)
+
+    train_input_fn = get_lyrics_input_fn(seed=12321)
+    eval_input_fn = get_lyrics_input_fn(seed=32123)
+
+    sequence_estimator.fit(input_fn=train_input_fn, steps=train_steps)
+
+    evaluation = sequence_estimator.evaluate(
+        input_fn=eval_input_fn, steps=eval_steps)
+    accuracy = evaluation['accuracy']
+    self.assertGreater(accuracy, accuracy_threshold,
+                       'Accuracy should be higher than {}; got {}'.format(
+                           accuracy_threshold, accuracy))
 
 
 if __name__ == '__main__':

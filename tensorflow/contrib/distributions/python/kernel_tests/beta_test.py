@@ -17,7 +17,8 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-from scipy import stats, special
+from scipy import special
+from scipy import stats
 from tensorflow.contrib.distributions.python.ops import beta as beta_lib
 from tensorflow.contrib.distributions.python.ops import kullback_leibler
 from tensorflow.python.client import session
@@ -36,63 +37,63 @@ class BetaTest(test.TestCase):
       a = np.random.rand(3)
       b = np.random.rand(3)
       dist = beta_lib.Beta(a, b)
-      self.assertAllEqual([], dist.event_shape().eval())
-      self.assertAllEqual([3], dist.batch_shape().eval())
-      self.assertEqual(tensor_shape.TensorShape([]), dist.get_event_shape())
-      self.assertEqual(tensor_shape.TensorShape([3]), dist.get_batch_shape())
+      self.assertAllEqual([], dist.event_shape_tensor().eval())
+      self.assertAllEqual([3], dist.batch_shape_tensor().eval())
+      self.assertEqual(tensor_shape.TensorShape([]), dist.event_shape)
+      self.assertEqual(tensor_shape.TensorShape([3]), dist.batch_shape)
 
   def testComplexShapes(self):
     with self.test_session():
       a = np.random.rand(3, 2, 2)
       b = np.random.rand(3, 2, 2)
       dist = beta_lib.Beta(a, b)
-      self.assertAllEqual([], dist.event_shape().eval())
-      self.assertAllEqual([3, 2, 2], dist.batch_shape().eval())
-      self.assertEqual(tensor_shape.TensorShape([]), dist.get_event_shape())
+      self.assertAllEqual([], dist.event_shape_tensor().eval())
+      self.assertAllEqual([3, 2, 2], dist.batch_shape_tensor().eval())
+      self.assertEqual(tensor_shape.TensorShape([]), dist.event_shape)
       self.assertEqual(
-          tensor_shape.TensorShape([3, 2, 2]), dist.get_batch_shape())
+          tensor_shape.TensorShape([3, 2, 2]), dist.batch_shape)
 
   def testComplexShapesBroadcast(self):
     with self.test_session():
       a = np.random.rand(3, 2, 2)
       b = np.random.rand(2, 2)
       dist = beta_lib.Beta(a, b)
-      self.assertAllEqual([], dist.event_shape().eval())
-      self.assertAllEqual([3, 2, 2], dist.batch_shape().eval())
-      self.assertEqual(tensor_shape.TensorShape([]), dist.get_event_shape())
+      self.assertAllEqual([], dist.event_shape_tensor().eval())
+      self.assertAllEqual([3, 2, 2], dist.batch_shape_tensor().eval())
+      self.assertEqual(tensor_shape.TensorShape([]), dist.event_shape)
       self.assertEqual(
-          tensor_shape.TensorShape([3, 2, 2]), dist.get_batch_shape())
+          tensor_shape.TensorShape([3, 2, 2]), dist.batch_shape)
 
   def testAlphaProperty(self):
     a = [[1., 2, 3]]
     b = [[2., 4, 3]]
     with self.test_session():
       dist = beta_lib.Beta(a, b)
-      self.assertEqual([1, 3], dist.a.get_shape())
-      self.assertAllClose(a, dist.a.eval())
+      self.assertEqual([1, 3], dist.concentration1.get_shape())
+      self.assertAllClose(a, dist.concentration1.eval())
 
   def testBetaProperty(self):
     a = [[1., 2, 3]]
     b = [[2., 4, 3]]
     with self.test_session():
       dist = beta_lib.Beta(a, b)
-      self.assertEqual([1, 3], dist.b.get_shape())
-      self.assertAllClose(b, dist.b.eval())
+      self.assertEqual([1, 3], dist.concentration0.get_shape())
+      self.assertAllClose(b, dist.concentration0.eval())
 
   def testPdfXProper(self):
     a = [[1., 2, 3]]
     b = [[2., 4, 3]]
     with self.test_session():
       dist = beta_lib.Beta(a, b, validate_args=True)
-      dist.pdf([.1, .3, .6]).eval()
-      dist.pdf([.2, .3, .5]).eval()
+      dist.prob([.1, .3, .6]).eval()
+      dist.prob([.2, .3, .5]).eval()
       # Either condition can trigger.
-      with self.assertRaisesOpError("(Condition x > 0.*|Condition x < y.*)"):
-        dist.pdf([-1., 1, 1]).eval()
-      with self.assertRaisesOpError("Condition x.*"):
-        dist.pdf([0., 1, 1]).eval()
-      with self.assertRaisesOpError("Condition x < y.*"):
-        dist.pdf([.1, .2, 1.2]).eval()
+      with self.assertRaisesOpError("sample must be positive"):
+        dist.prob([-1., 0.1, 0.5]).eval()
+      with self.assertRaisesOpError("sample must be positive"):
+        dist.prob([0., 0.1, 0.5]).eval()
+      with self.assertRaisesOpError("sample must be no larger than `1`"):
+        dist.prob([.1, .2, 1.2]).eval()
 
   def testPdfTwoBatches(self):
     with self.test_session():
@@ -100,7 +101,7 @@ class BetaTest(test.TestCase):
       b = [1., 2]
       x = [.5, .5]
       dist = beta_lib.Beta(a, b)
-      pdf = dist.pdf(x)
+      pdf = dist.prob(x)
       self.assertAllClose([1., 3. / 2], pdf.eval())
       self.assertEqual((2,), pdf.get_shape())
 
@@ -110,7 +111,7 @@ class BetaTest(test.TestCase):
       b = [1., 2]
       x = [.3, .7]
       dist = beta_lib.Beta(a, b)
-      pdf = dist.pdf(x)
+      pdf = dist.prob(x)
       self.assertAllClose([1, 63. / 50], pdf.eval())
       self.assertEqual((2,), pdf.get_shape())
 
@@ -121,7 +122,7 @@ class BetaTest(test.TestCase):
       b = 1.
       x = np.array([.1, .2, .3, .5, .8], dtype=np.float32)
       dist = beta_lib.Beta(a, b)
-      pdf = dist.pdf(x)
+      pdf = dist.prob(x)
       self.assertAllClose([1.] * 5, pdf.eval())
       self.assertEqual((5,), pdf.get_shape())
 
@@ -131,7 +132,7 @@ class BetaTest(test.TestCase):
       b = [[1., 2]]
       x = [[.5, .5], [.3, .7]]
       dist = beta_lib.Beta(a, b)
-      pdf = dist.pdf(x)
+      pdf = dist.prob(x)
       self.assertAllClose([[1., 3. / 2], [1., 63. / 50]], pdf.eval())
       self.assertEqual((2, 2), pdf.get_shape())
 
@@ -140,7 +141,7 @@ class BetaTest(test.TestCase):
       a = [1., 2]
       b = [1., 2]
       x = [[.5, .5], [.2, .8]]
-      pdf = beta_lib.Beta(a, b).pdf(x)
+      pdf = beta_lib.Beta(a, b).prob(x)
       self.assertAllClose([[1., 3. / 2], [1., 24. / 25]], pdf.eval())
       self.assertEqual((2, 2), pdf.get_shape())
 
@@ -149,7 +150,7 @@ class BetaTest(test.TestCase):
       a = [[1., 2], [2., 3]]
       b = [[1., 2], [2., 3]]
       x = [[.5, .5]]
-      pdf = beta_lib.Beta(a, b).pdf(x)
+      pdf = beta_lib.Beta(a, b).prob(x)
       self.assertAllClose([[1., 3. / 2], [3. / 2, 15. / 8]], pdf.eval())
       self.assertEqual((2, 2), pdf.get_shape())
 
@@ -158,7 +159,7 @@ class BetaTest(test.TestCase):
       a = [[1., 2], [2., 3]]
       b = [[1., 2], [2., 3]]
       x = [.5, .5]
-      pdf = beta_lib.Beta(a, b).pdf(x)
+      pdf = beta_lib.Beta(a, b).prob(x)
       self.assertAllClose([[1., 3. / 2], [3. / 2, 15. / 8]], pdf.eval())
       self.assertEqual((2, 2), pdf.get_shape())
 
@@ -246,8 +247,7 @@ class BetaTest(test.TestCase):
           stats.kstest(
               # Beta is a univariate distribution.
               sample_values,
-              stats.beta(
-                  a=1., b=2.).cdf)[0],
+              stats.beta(a=1., b=2.).cdf)[0],
           0.01)
       # The standard error of the sample mean is 1 / (sqrt(18 * n))
       self.assertAllClose(
@@ -263,11 +263,15 @@ class BetaTest(test.TestCase):
       n_val = 100
 
       random_seed.set_random_seed(654321)
-      beta1 = beta_lib.Beta(a=a_val, b=b_val, name="beta1")
+      beta1 = beta_lib.Beta(concentration1=a_val,
+                            concentration0=b_val,
+                            name="beta1")
       samples1 = beta1.sample(n_val, seed=123456).eval()
 
       random_seed.set_random_seed(654321)
-      beta2 = beta_lib.Beta(a=a_val, b=b_val, name="beta2")
+      beta2 = beta_lib.Beta(concentration1=a_val,
+                            concentration0=b_val,
+                            name="beta2")
       samples2 = beta2.sample(n_val, seed=123456).eval()
 
       self.assertAllClose(samples1, samples2)
@@ -311,12 +315,12 @@ class BetaTest(test.TestCase):
         self.assertAllEqual(np.ones(shape, dtype=np.bool), 1. >= x)
         self.assertAllClose(stats.beta.cdf(x, a, b), actual, rtol=1e-4, atol=0)
 
-  def testBetaWithSoftplusAB(self):
+  def testBetaWithSoftplusConcentration(self):
     with self.test_session():
       a, b = -4.2, -9.1
-      dist = beta_lib.BetaWithSoftplusAB(a, b)
-      self.assertAllClose(nn_ops.softplus(a).eval(), dist.a.eval())
-      self.assertAllClose(nn_ops.softplus(b).eval(), dist.b.eval())
+      dist = beta_lib.BetaWithSoftplusConcentration(a, b)
+      self.assertAllClose(nn_ops.softplus(a).eval(), dist.concentration1.eval())
+      self.assertAllClose(nn_ops.softplus(b).eval(), dist.concentration0.eval())
 
   def testBetaBetaKL(self):
     with self.test_session() as sess:
@@ -325,16 +329,18 @@ class BetaTest(test.TestCase):
         b1 = 6.0 * np.random.random(size=shape) + 1e-4
         a2 = 6.0 * np.random.random(size=shape) + 1e-4
         b2 = 6.0 * np.random.random(size=shape) + 1e-4
-        # Take inverse softplus of values to test BetaWithSoftplusAB
+        # Take inverse softplus of values to test BetaWithSoftplusConcentration
         a1_sp = np.log(np.exp(a1) - 1.0)
         b1_sp = np.log(np.exp(b1) - 1.0)
         a2_sp = np.log(np.exp(a2) - 1.0)
         b2_sp = np.log(np.exp(b2) - 1.0)
 
-        d1 = beta_lib.Beta(a=a1, b=b1)
-        d2 = beta_lib.Beta(a=a2, b=b2)
-        d1_sp = beta_lib.BetaWithSoftplusAB(a=a1_sp, b=b1_sp)
-        d2_sp = beta_lib.BetaWithSoftplusAB(a=a2_sp, b=b2_sp)
+        d1 = beta_lib.Beta(concentration1=a1, concentration0=b1)
+        d2 = beta_lib.Beta(concentration1=a2, concentration0=b2)
+        d1_sp = beta_lib.BetaWithSoftplusConcentration(concentration1=a1_sp,
+                                                       concentration0=b1_sp)
+        d2_sp = beta_lib.BetaWithSoftplusConcentration(concentration1=a2_sp,
+                                                       concentration0=b2_sp)
 
         kl_expected = (special.betaln(a2, b2) - special.betaln(a1, b1) +
                        (a1 - a2) * special.digamma(a1) +

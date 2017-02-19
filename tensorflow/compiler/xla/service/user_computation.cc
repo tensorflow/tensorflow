@@ -795,6 +795,16 @@ StatusOr<ComputationDataHandle> UserComputation::AddInfeedInstruction(
   return handle;
 }
 
+Status UserComputation::AddOutfeedInstruction(
+    const OutfeedRequest& outfeed_request) {
+  tensorflow::mutex_lock lock(mutex_);
+
+  *session_computation_.add_outfeed_requests() = outfeed_request;
+  // Verify that operand is valid.
+  TF_RETURN_IF_ERROR(LookupRequest(outfeed_request.operand()).status());
+  return Status::OK();
+}
+
 StatusOr<ComputationDataHandle> UserComputation::AddCallInstruction(
     const CallRequest& call_request,
     const UserComputation& to_apply_computation) {
@@ -1135,6 +1145,11 @@ void ConstantVisitor(const SessionComputation& session_computation,
     }
 
     case OpRequest::kInfeedRequest: {
+      *is_constant = false;
+      break;
+    }
+
+    case OpRequest::kOutfeedRequest: {
       *is_constant = false;
       break;
     }
@@ -1671,6 +1686,15 @@ std::unique_ptr<HloComputation> ComputationLowerer::Lower(
         operand, send_request.channel_handle().handle()));
   }
 
+  // Outfeed instructions do not have users. Explicitly visit all Outfeed
+  // requests (and their operand chains).
+  for (const auto& outfeed_request : session_computation_.outfeed_requests()) {
+    Visit(outfeed_request.operand(), &visited);
+    HloInstruction* operand = visited[outfeed_request.operand().handle()];
+    hlo_builder_.AddInstruction(HloInstruction::CreateOutfeed(
+        operand, outfeed_request.outfeed_config()));
+  }
+
   return hlo_builder_.Build(hlo_root);
 }
 
@@ -1806,6 +1830,16 @@ HloInstruction* ComputationLowerer::Visit(
       hlo_instruction =
           hlo_builder_.AddInstruction(HloInstruction::CreateInfeed(
               request.output_shape(), infeed_request.config()));
+      break;
+    }
+
+    case OpRequest::kOutfeedRequest: {
+      const OutfeedRequest& outfeed_request =
+          request.request().outfeed_request();
+      HloInstruction* operand = Visit(outfeed_request.operand(), visited);
+      hlo_instruction =
+          hlo_builder_.AddInstruction(HloInstruction::CreateOutfeed(
+              operand, outfeed_request.outfeed_config()));
       break;
     }
 

@@ -67,7 +67,7 @@ def conv_model(feature, target, mode):
 
   # Compute logits (1 per class) and compute loss.
   logits = layers.fully_connected(h_fc1, 10, activation_fn=None)
-  loss = tf.contrib.losses.softmax_cross_entropy(logits, target)
+  loss = tf.losses.softmax_cross_entropy(target, logits)
 
   # Create a tensor for training op.
   train_op = layers.optimize_loss(

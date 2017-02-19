@@ -13,8 +13,10 @@ tensorflow/core/kernels/tile_ops_cpu_impl_3.cc
 tensorflow/core/kernels/tile_ops_cpu_impl_4.cc
 tensorflow/core/kernels/tile_ops_cpu_impl_5.cc
 tensorflow/core/kernels/tile_ops_cpu_impl_6.cc
+tensorflow/core/kernels/tile_ops_cpu_impl_7.cc
 tensorflow/core/kernels/tensor_array_ops.cc
 tensorflow/core/kernels/tensor_array.cc
+tensorflow/core/kernels/strided_slice_op_inst_7.cc
 tensorflow/core/kernels/strided_slice_op_inst_6.cc
 tensorflow/core/kernels/strided_slice_op_inst_5.cc
 tensorflow/core/kernels/strided_slice_op_inst_4.cc
@@ -38,6 +40,7 @@ tensorflow/core/kernels/slice_op_cpu_impl_3.cc
 tensorflow/core/kernels/slice_op_cpu_impl_4.cc
 tensorflow/core/kernels/slice_op_cpu_impl_5.cc
 tensorflow/core/kernels/slice_op_cpu_impl_6.cc
+tensorflow/core/kernels/slice_op_cpu_impl_7.cc
 tensorflow/core/kernels/slice_op.cc
 tensorflow/core/kernels/shape_ops.cc
 tensorflow/core/kernels/session_ops.cc
@@ -170,6 +173,7 @@ tensorflow/core/kernels/batch_norm_op.cc
 tensorflow/core/kernels/avgpooling_op.cc
 tensorflow/core/kernels/argmax_op.cc
 tensorflow/core/kernels/aggregate_ops.cc
+tensorflow/core/kernels/depthwise_conv_op.cc
 tensorflow/core/kernels/dequantize_op.cc
 tensorflow/core/kernels/meta_support.cc
 tensorflow/core/kernels/quantization_utils.cc

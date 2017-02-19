@@ -45,8 +45,8 @@ TEST(RecordReaderWriterTest, TestBasics) {
       io::RecordWriterOptions options;
       options.zlib_options.output_buffer_size = buf_size;
       io::RecordWriter writer(file.get(), options);
-      writer.WriteRecord("abc");
-      writer.WriteRecord("defg");
+      TF_EXPECT_OK(writer.WriteRecord("abc"));
+      TF_EXPECT_OK(writer.WriteRecord("defg"));
       TF_CHECK_OK(writer.Flush());
     }
 
@@ -82,8 +82,8 @@ TEST(RecordReaderWriterTest, TestZlib) {
       options.compression_type = io::RecordWriterOptions::ZLIB_COMPRESSION;
       options.zlib_options.output_buffer_size = buf_size;
       io::RecordWriter writer(file.get(), options);
-      writer.WriteRecord("abc");
-      writer.WriteRecord("defg");
+      TF_EXPECT_OK(writer.WriteRecord("abc"));
+      TF_EXPECT_OK(writer.WriteRecord("defg"));
       TF_CHECK_OK(writer.Flush());
     }
 

@@ -126,6 +126,42 @@ bool FindType(const Graph* graph, const Node* node, bool* signed_input,
   return true;
 }
 
+// Adds a QuantizeAndDequantizeV2Op (and required input nodes) based on edge.
+// The result is stored in convert_node.
+Status MakeQuantizeAndDequantizeV2(Graph* graph, const string& name_prefix,
+                                   const EdgeToConvert& edge,
+                                   Node** convert_node) {
+  Node* input_min;
+  Node* input_max;
+  // Make constant nodes for the input_min and input_max if the range is
+  // provided.
+  Tensor input_min_tensor(DT_FLOAT, TensorShape());
+  input_min_tensor.flat<float>()(0) = edge.input_min;
+  string min_name = strings::StrCat(name_prefix, "/InputMin");
+  TF_RETURN_IF_ERROR(NodeBuilder(min_name, "Const")
+                         .Attr("dtype", DT_FLOAT)
+                         .Attr("value", input_min_tensor)
+                         .Finalize(graph, &input_min));
+  Tensor input_max_tensor(DT_FLOAT, TensorShape());
+  input_max_tensor.flat<float>()(0) = edge.input_max;
+  string max_name = strings::StrCat(name_prefix, "/InputMax");
+  TF_RETURN_IF_ERROR(NodeBuilder(max_name, "Const")
+                         .Attr("dtype", DT_FLOAT)
+                         .Attr("value", input_max_tensor)
+                         .Finalize(graph, &input_max));
+
+  string quant_name = strings::StrCat(name_prefix, "/QuantizeAndDequantizeV2");
+  TF_RETURN_IF_ERROR(NodeBuilder(quant_name, "QuantizeAndDequantizeV2")
+                         .Input(edge.edge->src())
+                         .Input(input_min)
+                         .Input(input_max)
+                         .Attr("signed_input", edge.signed_input)
+                         .Attr("num_bits", edge.num_bits)
+                         .Attr("range_given", edge.range_given)
+                         .Finalize(graph, convert_node));
+  return Status::OK();
+}
+
 // Insert conversion op, connect it to the graph and remove the old edge.
 Status ProcessTargetEdges(Graph* graph,
                           const std::vector<EdgeToConvert>& target_edges) {
@@ -134,21 +170,13 @@ Status ProcessTargetEdges(Graph* graph,
   std::unordered_map<string, Node*, StringPiece::Hasher> name_index;
   for (const EdgeToConvert edge : target_edges) {
     Node* convert_node;
-    string name =
-        strings::StrCat(edge.edge->src()->name(), "/QuantizeAndDequantize");
+    string name_prefix = edge.edge->src()->name();
 
-    auto iter = name_index.find(name);
+    auto iter = name_index.find(name_prefix);
     if (iter == name_index.end()) {
-      TF_RETURN_IF_ERROR(NodeBuilder(name, "QuantizeAndDequantize")
-                             .Input(edge.edge->src())
-                             .Attr("signed_input", edge.signed_input)
-                             .Attr("num_bits", edge.num_bits)
-                             .Attr("range_given", edge.range_given)
-                             .Attr("input_min", edge.input_min)
-                             .Attr("input_max", edge.input_max)
-                             .Finalize(graph, &convert_node));
-
-      name_index[name] = convert_node;
+      TF_RETURN_IF_ERROR(
+          MakeQuantizeAndDequantizeV2(graph, name_prefix, edge, &convert_node));
+      name_index[name_prefix] = convert_node;
     } else {
       convert_node = iter->second;
     }

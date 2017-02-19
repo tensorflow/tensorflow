@@ -166,6 +166,8 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       # Broken TensorBoard tests due to different paths in windows
       "${tensorflow_source_dir}/tensorflow/tensorboard/backend/application_test.py"
       "${tensorflow_source_dir}/tensorflow/tensorboard/lib/python/http_util_test.py"
+      # Broken tensorboard test due to cmake issues.
+      "${tensorflow_source_dir}/tensorflow/tensorboard/plugins/debugger/plugin_test.py"
       # tensor_forest tests (also note that we exclude the hybrid tests for now)
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/python/kernel_tests/count_extremely_random_stats_op_test.py"  # Results in wrong order.
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/python/kernel_tests/sample_inputs_op_test.py"  # Results in wrong order.
@@ -235,6 +237,8 @@ if (tensorflow_BUILD_CC_TESTS)
     "${tensorflow_source_dir}/tensorflow/cc/framework/gradients_test.cc"
     "${tensorflow_source_dir}/tensorflow/core/distributed_runtime/call_options_test.cc"
     "${tensorflow_source_dir}/tensorflow/core/distributed_runtime/tensor_coding_test.cc"
+    "${tensorflow_source_dir}/tensorflow/core/kernels/hexagon/graph_transferer_test.cc"
+    "${tensorflow_source_dir}/tensorflow/core/kernels/hexagon/quantized_matmul_op_for_hexagon_test.cc"
   )
 
   if (NOT tensorflow_ENABLE_GPU)
@@ -277,7 +281,6 @@ if (tensorflow_BUILD_CC_TESTS)
       "${tensorflow_source_dir}/tensorflow/core/kernels/quantization_utils_test.cc"
       "${tensorflow_source_dir}/tensorflow/core/kernels/quantize_and_dequantize_op_test.cc"
       "${tensorflow_source_dir}/tensorflow/core/kernels/quantize_down_and_shrink_range_op_test.cc"
-      "${tensorflow_source_dir}/tensorflow/core/kernels/hexagon/quantized_matmul_op_for_hexagon_test.cc"
       "${tensorflow_source_dir}/tensorflow/core/kernels/debug_ops_test.cc"
       "${tensorflow_source_dir}/tensorflow/core/kernels/quantized_activation_ops_test.cc"
       "${tensorflow_source_dir}/tensorflow/core/kernels/quantized_bias_add_op_test.cc"

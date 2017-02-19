@@ -39,9 +39,9 @@ static const uint32_t OUTPUT_PARAM_MAX_LINE_SIZE = 1000;
 // extern pre-generated inception dummy data
 extern uint8_t inception_dummy_int_data_224x224[];
 extern uint8_t inception_dummy_int_data_299x299[];
-extern float inception_dummy_float_data_299x299_299x299[];
+extern float inception_dummy_float_data_299x299[];
 
-#define GEMM_WRAPPER_VERSION 1
+#define HEXAGON_CONTROLLER_VERSION 91
 
 // allocate print bufsize in advance @MB
 #define PRINT_BUFSIZE (2 * 1024 * 1024)
@@ -78,7 +78,7 @@ void hexagon_controller_InitInputNodeDataToInceptionDummyData(int version) {
       hexagon_controller_CopyByteNodeData(
           INCEPTION_PARAM_BATCHES, INCEPTION_PARAM_HEIGHT_V3,
           INCEPTION_PARAM_WIDTH_V3, INCEPTION_PARAM_DEPTH,
-          sizeof(float), (uint8_t*)inception_dummy_float_data_299x299_299x299);
+          sizeof(float), (uint8_t*)inception_dummy_float_data_299x299);
     } else {
       hexagon_controller_CopyByteNodeData(
           INCEPTION_PARAM_BATCHES, INCEPTION_PARAM_HEIGHT_V3,
@@ -157,12 +157,12 @@ void hexagon_controller_PrintGraph(uint32_t id) {
 }
 
 int hexagon_controller_GetWrapperVersion() {
-  return GEMM_WRAPPER_VERSION;
+  return HEXAGON_CONTROLLER_VERSION;
 }
 
 int hexagon_controller_GetHexagonBinaryVersion() {
   int retval = 0;
-  hexagon_nn_GetHexagonBinaryVersion(&retval);
+  hexagon_nn_version(&retval);
   return retval;
 }
 
@@ -229,7 +229,8 @@ bool hexagon_controller_CopyByteNodeData(
 
 int hexagon_controller_InitHexagonWithMaxAttributes(
     int enable_dcvs, int bus_usage, int version) {
-  TFMLOGI("Init hexagon with max attributes");
+  TFMLOGI("Init hexagon with max attributes (Controller version = %d)",
+          HEXAGON_CONTROLLER_VERSION);
   const int MCPS = 1000;
   const int MBPS = 12000;
 
@@ -250,7 +251,7 @@ int hexagon_controller_InitHexagonWithMaxAttributes(
   };
   int retval = 0;
   if (!enable_dcvs) {
-    retval = hexagon_nn_disableDcvs();
+    retval = hexagon_nn_disable_dcvs();
     if (retval) {
       TFMLOGE("Failed to disable DSP DCVS: %x\n", retval);
     }

@@ -27,6 +27,13 @@ message DebugTensorWatch {
   //   E.g., "file:///foo/tfdbg_dump", "grpc://localhost:11011"
   // Each debug op listed in debug_ops will publish its output tensor (debug
   // signal) to all URLs in debug_urls.
+  //
+  // N.B. Session::Run() supports concurrent invocations of the same inputs
+  // (feed keys), outputs and target nodes. If such concurrent invocations
+  // are to be debugged, the callers of Session::Run() must use distinct
+  // debug_urls to make sure that the streamed or dumped events do not overlap
+  // among the invocations.
+  // TODO(cais): More visible documentation of this in g3docs.
   repeated string debug_urls = 4;
 }
 
@@ -34,4 +41,9 @@ message DebugTensorWatch {
 message DebugOptions {
   // Debugging options
   repeated DebugTensorWatch debug_tensor_watch_opts = 4;
+
+  // Caller-specified global step count.
+  // Note that this is distinct from the session run count and the executor
+  // step count.
+  int64 global_step = 10;
 }

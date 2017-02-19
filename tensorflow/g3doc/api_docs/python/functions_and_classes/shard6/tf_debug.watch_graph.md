@@ -1,4 +1,4 @@
-### `tf_debug.watch_graph(run_options, graph, debug_ops='DebugIdentity', debug_urls=None, node_name_regex_whitelist=None, op_type_regex_whitelist=None)` {#watch_graph}
+### `tf_debug.watch_graph(run_options, graph, debug_ops='DebugIdentity', debug_urls=None, node_name_regex_whitelist=None, op_type_regex_whitelist=None, global_step=-1)` {#watch_graph}
 
 Add debug watches to `RunOptions` for a TensorFlow graph.
 
@@ -27,4 +27,6 @@ N.B.: Under certain circumstances, not all specified `Tensor`s will be
     are set, the two filtering operations will occur in a logical `AND`
     relation. In other words, a node will be included if and only if it
     hits both whitelists.
+*  <b>`global_step`</b>: (`int`) Optional global_step count for this debug tensor
+    watch.
 

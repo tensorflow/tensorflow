@@ -39,6 +39,14 @@ public final class Output {
     return index;
   }
 
+  /**
+   * Returns the (possibly partially known) shape of the operation that will produce the tensor
+   * referred to by this Output.
+   */
+  public Shape shape() {
+    return new Shape(operation.shape(index));
+  }
+
   private final Operation operation;
   private final int index;
 }

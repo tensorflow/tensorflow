@@ -17,12 +17,14 @@ limitations under the License.
 #include "tensorflow/cc/framework/gradient_checker.h"
 #include "tensorflow/cc/framework/testutil.h"
 #include "tensorflow/cc/gradients/grad_testutil.h"
+#include "tensorflow/cc/ops/array_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 
 namespace tensorflow {
 using namespace ops;  // NOLINT(build/namespaces)
+using ops::internal::MirrorPadGrad;
 
 namespace {
 
@@ -36,7 +38,7 @@ class ArrayGradTest : public ::testing::Test {
     float max_error;
     TF_ASSERT_OK(ComputeGradientError(scope_, {x}, {x_shape}, {y}, {y_shape},
                                       &max_error));
-    EXPECT_LT(max_error, 1e-4);
+    EXPECT_LT(max_error, 1e-3);
   }
 
   void RunTest(const OutputList& xs, const std::vector<TensorShape>& x_shapes,
@@ -45,47 +47,47 @@ class ArrayGradTest : public ::testing::Test {
     float max_error;
     TF_ASSERT_OK(
         ComputeGradientError(scope_, xs, x_shapes, ys, y_shapes, &max_error));
-    EXPECT_LT(max_error, 1e-4);
+    EXPECT_LT(max_error, 1e-3);
   }
 
   Scope scope_;
 };
 
-TEST_F(ArrayGradTest, PackGrad_Axis0) {
+TEST_F(ArrayGradTest, StackGrad_Axis0) {
   TensorShape x_shape({1, 2, 3});
   std::vector<Output> xs;
   xs.push_back(Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape)));
   xs.push_back(Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape)));
-  auto y = Pack(scope_, xs, Pack::Axis(0));
+  auto y = Stack(scope_, xs, Stack::Axis(0));
   TensorShape y_shape({2, 1, 2, 3});
   RunTest(xs, {x_shape, x_shape}, {y}, {y_shape});
 }
 
-TEST_F(ArrayGradTest, PackGrad_Axis1) {
+TEST_F(ArrayGradTest, StackGrad_Axis1) {
   TensorShape x_shape({1, 2, 3});
   std::vector<Output> xs;
   xs.push_back(Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape)));
   xs.push_back(Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape)));
-  auto y = Pack(scope_, xs, Pack::Axis(1));
+  auto y = Stack(scope_, xs, Stack::Axis(1));
   TensorShape y_shape({1, 2, 2, 3});
   RunTest(xs, {x_shape, x_shape}, {y}, {y_shape});
 }
 
-TEST_F(ArrayGradTest, UnpackGrad_Axis0) {
+TEST_F(ArrayGradTest, UnstackGrad_Axis0) {
   TensorShape x_shape({4, 2, 3});
   auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
-  // Unpacking the first dimension results in 4 outputs.
+  // Unstacking the first dimension results in 4 outputs.
   std::vector<TensorShape> y_shapes(4, TensorShape({2, 3}));
-  auto y = Unpack(scope_, x, 4, Unpack::Axis(0));
+  auto y = Unstack(scope_, x, 4, Unstack::Axis(0));
   RunTest({x}, {x_shape}, y.output, y_shapes);
 }
 
-TEST_F(ArrayGradTest, UnpackGrad_Axis1) {
+TEST_F(ArrayGradTest, UnstackGrad_Axis1) {
   TensorShape x_shape({4, 2, 3});
   auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
-  // Unpacking the second dimension results in 2 outputs.
+  // Unstacking the second dimension results in 2 outputs.
   std::vector<TensorShape> y_shapes(2, TensorShape({4, 3}));
-  auto y = Unpack(scope_, x, 2, Unpack::Axis(1));
+  auto y = Unstack(scope_, x, 2, Unstack::Axis(1));
   RunTest({x}, {x_shape}, y.output, y_shapes);
 }
 
@@ -207,9 +209,127 @@ TEST_F(ArrayGradTest, ReverseSequenceGrad) {
 TEST_F(ArrayGradTest, ReverseGrad) {
   TensorShape shape({5, 2, 5});
   auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
-  auto reverse_dims = Const(scope_, {true, false, true});
-  auto y = Reverse(scope_, x, reverse_dims);
+  auto y = Reverse(scope_, x, {0, 2});
   RunTest(x, shape, y, shape);
+}
+
+TEST_F(ArrayGradTest, ScatterNdGrad_SimpleIndexing) {
+  TensorShape updates_shape({4});
+  auto updates =
+      Placeholder(scope_, DT_FLOAT, Placeholder::Shape(updates_shape));
+  auto indices = Const(scope_, {{4}, {3}, {1}, {7}});
+  TensorShape y_shape({8});
+  auto y = ScatterNd(scope_, indices, updates, {8});
+  RunTest(updates, updates_shape, y, y_shape);
+}
+
+TEST_F(ArrayGradTest, ScatterNdGrad_SliceIndexing) {
+  TensorShape updates_shape({2, 4, 4});
+  auto updates =
+      Placeholder(scope_, DT_FLOAT, Placeholder::Shape(updates_shape));
+  auto indices = Const(scope_, {{0}, {2}});
+  TensorShape y_shape({4, 4, 4});
+  auto y = ScatterNd(scope_, indices, updates, {4, 4, 4});
+  RunTest(updates, updates_shape, y, y_shape);
+}
+
+TEST_F(ArrayGradTest, PadGrad) {
+  TensorShape x_shape({2, 3});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto paddings = Const(scope_, {{1, 1}, {2, 2}});
+  TensorShape y_shape({4, 7});
+  auto y = Pad(scope_, x, paddings);
+  RunTest(x, x_shape, y, y_shape);
+}
+
+TEST_F(ArrayGradTest, SpaceToBatchGrad) {
+  TensorShape x_shape({1, 2, 2, 1});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto paddings = Const(scope_, {{1, 1}, {1, 1}});
+  TensorShape y_shape({4, 2, 2, 1});
+  auto y = SpaceToBatch(scope_, x, paddings, /* block_size */ 2);
+  RunTest(x, x_shape, y, y_shape);
+}
+
+TEST_F(ArrayGradTest, SpaceToBatchNdGrad) {
+  TensorShape x_shape({2, 2, 4, 1});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto block_shape = Const(scope_, {2, 2});
+  auto paddings = Const(scope_, {{0, 0}, {2, 0}});
+  TensorShape y_shape({8, 1, 3, 1});
+  auto y = SpaceToBatchND(scope_, x, block_shape, paddings);
+  RunTest(x, x_shape, y, y_shape);
+}
+
+TEST_F(ArrayGradTest, BatchToSpaceGrad) {
+  TensorShape x_shape({4, 2, 2, 1});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto paddings = Const(scope_, {{1, 1}, {1, 1}});
+  TensorShape y_shape({1, 2, 2, 1});
+  auto y = BatchToSpace(scope_, x, paddings, /* block_size */ 2);
+  RunTest(x, x_shape, y, y_shape);
+}
+
+TEST_F(ArrayGradTest, BatchToSpaceNdGrad) {
+  TensorShape x_shape({8, 1, 3, 1});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto block_shape = Const(scope_, {2, 2});
+  auto paddings = Const(scope_, {{0, 0}, {2, 0}});
+  TensorShape y_shape({2, 2, 4, 1});
+  auto y = BatchToSpaceND(scope_, x, block_shape, paddings);
+  RunTest(x, x_shape, y, y_shape);
+}
+
+TEST_F(ArrayGradTest, SpaceToDepthGrad) {
+  TensorShape x_shape({1, 2, 2, 1});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  TensorShape y_shape({1, 1, 1, 4});
+  auto y = SpaceToDepth(scope_, x, /* block_size */ 2);
+  RunTest(x, x_shape, y, y_shape);
+}
+
+TEST_F(ArrayGradTest, DepthToSpaceGrad) {
+  TensorShape x_shape({1, 1, 1, 4});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  TensorShape y_shape({1, 2, 2, 1});
+  auto y = DepthToSpace(scope_, x, /* block_size */ 2);
+  RunTest(x, x_shape, y, y_shape);
+}
+
+TEST_F(ArrayGradTest, MirrorPadGrad_Reflect) {
+  TensorShape x_shape({2, 3});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto paddings = Const(scope_, {{1, 1}, {2, 2}});
+  TensorShape y_shape({4, 7});
+  auto y = MirrorPad(scope_, x, paddings, "REFLECT");
+  RunTest(x, x_shape, y, y_shape);
+}
+
+TEST_F(ArrayGradTest, MirrorPadGrad_Symmetric) {
+  TensorShape x_shape({2, 3});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto paddings = Const(scope_, {{1, 1}, {2, 2}});
+  TensorShape y_shape({4, 7});
+  auto y = MirrorPad(scope_, x, paddings, "SYMMETRIC");
+  RunTest(x, x_shape, y, y_shape);
+}
+
+TEST_F(ArrayGradTest, MirrorPadGradGrad_Reflect) {
+  TensorShape x_shape({4, 7});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto paddings = Const(scope_, {{1, 1}, {2, 2}});
+  TensorShape y_shape({2, 3});
+  auto y = MirrorPadGrad(scope_, x, paddings, "REFLECT");
+  RunTest(x, x_shape, y, y_shape);
+}
+
+TEST_F(ArrayGradTest, MirrorPadGradGrad_Symmetric) {
+  TensorShape x_shape({4, 7});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto paddings = Const(scope_, {{1, 1}, {2, 2}});
+  TensorShape y_shape({2, 3});
+  auto y = MirrorPadGrad(scope_, x, paddings, "SYMMETRIC");
+  RunTest(x, x_shape, y, y_shape);
 }
 
 }  // namespace

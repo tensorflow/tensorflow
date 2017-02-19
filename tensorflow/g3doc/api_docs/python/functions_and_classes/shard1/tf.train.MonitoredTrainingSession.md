@@ -1,4 +1,4 @@
-### `tf.train.MonitoredTrainingSession(master='', is_chief=True, checkpoint_dir=None, scaffold=None, hooks=None, chief_only_hooks=None, save_checkpoint_secs=600, save_summaries_steps=100, save_summaries_secs=None, config=None)` {#MonitoredTrainingSession}
+### `tf.train.MonitoredTrainingSession(master='', is_chief=True, checkpoint_dir=None, scaffold=None, hooks=None, chief_only_hooks=None, save_checkpoint_secs=600, save_summaries_steps=100, save_summaries_secs=None, config=None, stop_grace_period_secs=120)` {#MonitoredTrainingSession}
 
 Creates a `MonitoredSession` for training.
 
@@ -35,6 +35,8 @@ inialize/restore.
     isn't used.
 *  <b>`config`</b>: an instance of `tf.ConfigProto` proto used to configure the session.
     It's the `config` argument of constructor of `tf.Session`.
+*  <b>`stop_grace_period_secs`</b>: Number of seconds given to threads to stop after
+    `close()` has been called.
 
 ##### Returns:
 

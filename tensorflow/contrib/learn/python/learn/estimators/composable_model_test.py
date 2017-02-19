@@ -71,7 +71,11 @@ def _base_model_fn(features, labels, mode, params):
         return state_ops.assign_add(global_step, 1).op
 
   return head.create_model_fn_ops(
-      features, labels, mode, _train_op_fn, logits=logits)
+      features=features,
+      mode=mode,
+      labels=labels,
+      train_op_fn=_train_op_fn,
+      logits=logits)
 
 
 def _linear_estimator(head, feature_columns):

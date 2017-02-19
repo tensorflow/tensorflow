@@ -385,6 +385,14 @@ message InfeedRequest {
   string config = 3;
 }
 
+message OutfeedRequest {
+  // Operand to the Outfeed. Supports tuple.
+  ComputationDataHandle operand = 2;
+
+  // Backend-specific information for how to perform the outfeed.
+  string outfeed_config = 3;
+}
+
 message CallRequest {
   ComputationHandle to_apply = 2;
   repeated ComputationDataHandle operands = 3;
@@ -609,8 +617,8 @@ message BinaryOpRequest {
 enum RandomDistribution {
   RNG_INVALID = 0;
 
-  // Creates a uniform-distribution-generated random number on the interval
-  // [parameter[0], parameter[1]].
+  // Creates a uniform-distribution-generated random number on the semi-open
+  // interval [parameter[0], parameter[1]).
   RNG_UNIFORM = 1;
 
   // Creates a normal-distribution-generated random number with mean
@@ -708,7 +716,8 @@ message OpRequest {
     WhileRequest while_request = 29;
     SendRequest send_request = 30;
     RecvRequest recv_request = 31;
-    // Next: 32
+    OutfeedRequest outfeed_request = 32;
+    // Next: 33
   }
 }
 

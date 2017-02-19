@@ -29,6 +29,10 @@ from tensorflow.python.platform import gfile
 from tensorflow.tools.test import system_info_lib
 
 
+class MissingLogsError(Exception):
+  pass
+
+
 def get_git_commit_sha():
   """Get git commit SHA for this build.
 
@@ -103,6 +107,7 @@ def run_and_gather_logs(name, test_name, test_args):
     ValueError: If the test_name is not a valid target.
     subprocess.CalledProcessError: If the target itself fails.
     IOError: If there are problems gathering test log output from the test.
+    MissingLogsError: If we couldn't find benchmark logs.
   """
   if not (test_name and test_name.startswith("//") and ".." not in test_name and
           not test_name.endswith(":") and not test_name.endswith(":all") and
@@ -135,6 +140,8 @@ def run_and_gather_logs(name, test_name, test_args):
     subprocess.check_call([test_executable] + test_args)
     run_time = time.time() - start_time
     log_files = gfile.Glob("{}*".format(test_file_prefix))
+    if not log_files:
+      raise MissingLogsError("No log files found at %s." % test_file_prefix)
 
     return (process_test_logs(
         name,

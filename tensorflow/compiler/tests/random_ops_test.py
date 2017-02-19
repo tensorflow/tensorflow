@@ -62,6 +62,16 @@ class RandomOpsTest(XLATestCase):
     dtype = dtypes.float32
     self._testRngIsNotConstant(rng, dtype)
 
+  def testRandomUniformIsInRange(self):
+    for dtype in self.numeric_types:
+      with self.test_session() as sess:
+        with self.test_scope():
+          x = random_ops.random_uniform(shape=[1000], dtype=dtype, minval=-2,
+                                        maxval=33)
+        y = sess.run(x)
+        self.assertTrue((y >= -2).sum() == 1000)
+        self.assertTrue((y < 33).sum() == 1000)
+
 
 if __name__ == '__main__':
   googletest.main()

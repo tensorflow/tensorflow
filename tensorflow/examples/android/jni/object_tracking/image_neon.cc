@@ -20,31 +20,29 @@ limitations under the License.
 
 #include <arm_neon.h>
 
-#include "tensorflow/core/platform/types.h"
+#include <stdint.h>
 
 #include "tensorflow/examples/android/jni/object_tracking/image-inl.h"
 #include "tensorflow/examples/android/jni/object_tracking/image.h"
 #include "tensorflow/examples/android/jni/object_tracking/image_utils.h"
 #include "tensorflow/examples/android/jni/object_tracking/utils.h"
 
-using namespace tensorflow;
-
 namespace tf_tracking {
 
 // This function does the bulk of the work.
 template <>
-void Image<uint8>::Downsample2x32ColumnsNeon(const uint8* const original,
-                                             const int stride,
-                                             const int orig_x) {
+void Image<uint8_t>::Downsample2x32ColumnsNeon(const uint8_t* const original,
+                                               const int stride,
+                                               const int orig_x) {
   // Divide input x offset by 2 to find output offset.
   const int new_x = orig_x >> 1;
 
   // Initial offset into top row.
-  const uint8* offset = original + orig_x;
+  const uint8_t* offset = original + orig_x;
 
   // This points to the leftmost pixel of our 8 horizontally arranged
   // pixels in the destination data.
-  uint8* ptr_dst = (*this)[0] + new_x;
+  uint8_t* ptr_dst = (*this)[0] + new_x;
 
   // Sum along vertical columns.
   // Process 32x2 input pixels and 16x1 output pixels per iteration.
@@ -96,18 +94,18 @@ void Image<uint8>::Downsample2x32ColumnsNeon(const uint8* const original,
 
 // This function does the bulk of the work.
 template <>
-void Image<uint8>::Downsample4x32ColumnsNeon(const uint8* const original,
-                                             const int stride,
-                                             const int orig_x) {
+void Image<uint8_t>::Downsample4x32ColumnsNeon(const uint8_t* const original,
+                                               const int stride,
+                                               const int orig_x) {
   // Divide input x offset by 4 to find output offset.
   const int new_x = orig_x >> 2;
 
   // Initial offset into top row.
-  const uint8* offset = original + orig_x;
+  const uint8_t* offset = original + orig_x;
 
   // This points to the leftmost pixel of our 8 horizontally arranged
   // pixels in the destination data.
-  uint8* ptr_dst = (*this)[0] + new_x;
+  uint8_t* ptr_dst = (*this)[0] + new_x;
 
   // Sum along vertical columns.
   // Process 32x4 input pixels and 8x1 output pixels per iteration.
@@ -163,8 +161,9 @@ void Image<uint8>::Downsample4x32ColumnsNeon(const uint8* const original,
 // Requires that image size be a multiple of 16 pixels in each dimension,
 // and that downsampling be by a factor of 2 or 4.
 template <>
-void Image<uint8>::DownsampleAveragedNeon(const uint8* const original,
-                                          const int stride, const int factor) {
+void Image<uint8_t>::DownsampleAveragedNeon(const uint8_t* const original,
+                                            const int stride,
+                                            const int factor) {
   // TODO(andrewharp): stride is a bad approximation for the src image's width.
   // Better to pass that in directly.
   SCHECK(width_ * factor <= stride, "Uh oh!");

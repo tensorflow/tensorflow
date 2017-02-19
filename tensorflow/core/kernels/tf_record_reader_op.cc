@@ -87,7 +87,8 @@ class TFRecordReaderOp : public ReaderOpKernel {
     Env* env = context->env();
 
     string compression_type;
-    context->GetAttr("compression_type", &compression_type);
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("compression_type", &compression_type));
 
     SetReaderFactory([this, compression_type, env]() {
       return new TFRecordReader(name(), compression_type, env);

@@ -3004,6 +3004,14 @@ class StackTests(test.TestCase):
       self.assertEqual(output.op.name, 'Stack/fully_connected_3/Relu')
       self.assertListEqual(output.get_shape().as_list(), [5, 30])
 
+  def testStackFullyConnectedFailOnReuse(self):
+    height, width = 3, 3
+    with self.test_session():
+      with variable_scope.variable_scope('test', reuse=True):
+        images = np.random.uniform(size=(5, height * width * 3))
+        with self.assertRaises(ValueError):
+          _layers.stack(images, _layers.fully_connected, [10, 20, 30])
+
   def testStackRelu(self):
     height, width = 3, 3
     with self.test_session():

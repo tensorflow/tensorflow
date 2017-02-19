@@ -232,13 +232,15 @@ class MeanTest(test.TestCase):
         metrics.mean(values),
         metrics.mean(values, weights=1.0),
         metrics.mean(values, weights=np.ones((1, 1, 1))),
+        metrics.mean(values, weights=np.ones((1, 1, 1, 1))),
         metrics.mean(values, weights=np.ones((1, 1, 4))),
         metrics.mean(values, weights=np.ones((1, 2, 1))),
         metrics.mean(values, weights=np.ones((1, 2, 4))),
         metrics.mean(values, weights=np.ones((3, 1, 1))),
         metrics.mean(values, weights=np.ones((3, 1, 4))),
         metrics.mean(values, weights=np.ones((3, 2, 1))),
-        metrics.mean(values, weights=np.ones((3, 2, 4))),)
+        metrics.mean(values, weights=np.ones((3, 2, 4))),
+        metrics.mean(values, weights=np.ones((3, 2, 4, 1))),)
     expected = np.mean(values)
     with self.test_session():
       variables.local_variables_initializer().run()
@@ -587,7 +589,17 @@ class AccuracyTest(test.TestCase):
       self.assertEqual(1.0, update_op.eval())
       self.assertEqual(1.0, accuracy.eval())
 
-  def testEffectivelyEquivalentSizesWithStaicShapedWeight(self):
+  def testEffectivelyEquivalentSizesWithScalarWeight(self):
+    predictions = array_ops.ones((40, 1))
+    labels = array_ops.ones((40,))
+    with self.test_session() as sess:
+      accuracy, update_op = metrics.accuracy(labels, predictions, weights=2.0)
+
+      sess.run(variables.local_variables_initializer())
+      self.assertEqual(1.0, update_op.eval())
+      self.assertEqual(1.0, accuracy.eval())
+
+  def testEffectivelyEquivalentSizesWithStaticShapedWeight(self):
     predictions = ops.convert_to_tensor([1, 1, 1])  # shape 3,
     labels = array_ops.expand_dims(ops.convert_to_tensor([1, 0, 0]),
                                    1)  # shape 3, 1
@@ -748,6 +760,25 @@ class PrecisionTest(test.TestCase):
       expected_precision = weighted_tp / weighted_positives
       self.assertAlmostEqual(expected_precision, update_op.eval())
       self.assertAlmostEqual(expected_precision, precision.eval())
+
+  def testWeightedScalar_placeholders(self):
+    predictions = array_ops.placeholder(dtype=dtypes_lib.float32)
+    labels = array_ops.placeholder(dtype=dtypes_lib.float32)
+    feed_dict = {
+        predictions: ((1, 0, 1, 0), (1, 0, 1, 0)),
+        labels: ((0, 1, 1, 0), (1, 0, 0, 1))
+    }
+    precision, update_op = metrics.precision(labels, predictions, weights=2)
+
+    with self.test_session():
+      variables.local_variables_initializer().run()
+      weighted_tp = 2.0 + 2.0
+      weighted_positives = (2.0 + 2.0) + (2.0 + 2.0)
+      expected_precision = weighted_tp / weighted_positives
+      self.assertAlmostEqual(
+          expected_precision, update_op.eval(feed_dict=feed_dict))
+      self.assertAlmostEqual(
+          expected_precision, precision.eval(feed_dict=feed_dict))
 
   def testWeighted1d_placeholders(self):
     predictions = array_ops.placeholder(dtype=dtypes_lib.float32)

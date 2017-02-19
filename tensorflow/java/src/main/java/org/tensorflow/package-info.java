@@ -16,8 +16,9 @@ limitations under the License.
 /**
  * Defines classes to build, save, load and execute TensorFlow models.
  *
- * <p><b>WARNING</b>: The API is currently experimental and may change. Follow <a
- * href="https://github.com/tensorflow/tensorflow/issues/5">issue #5</a> for updates. See <a
+ * <p><b>WARNING</b>: The API is currently experimental and is not covered by TensorFlow <a
+ * href="https://www.tensorflow.org/programmers_guide/version_semantics">API stability
+ * quarantees</a>. See <a
  * href="https://www.tensorflow.org/code/tensorflow/java/README.md">README.md</a>
  * for installation instructions.
  *

@@ -27,7 +27,7 @@ if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
 
 import numpy as np
 
-from tensorflow.contrib.factorization.python.ops import factorization_ops
+from tensorflow.contrib.factorization.python.ops import gen_factorization_ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.platform import test
 
@@ -59,7 +59,7 @@ class WalsSolverOpsTest(test.TestCase):
     sparse_block = SparseBlock3x3()
     with self.test_session():
       [lhs_tensor,
-       rhs_matrix] = factorization_ops.wals_compute_partial_lhs_and_rhs(
+       rhs_matrix] = gen_factorization_ops.wals_compute_partial_lhs_and_rhs(
            self._column_factors, self._column_weights, self._unobserved_weights,
            self._row_weights, sparse_block.indices, sparse_block.values,
            sparse_block.dense_shape[0], False)

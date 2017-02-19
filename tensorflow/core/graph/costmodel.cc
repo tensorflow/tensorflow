@@ -147,6 +147,10 @@ void CostModel::SetNumOutputs(const Node* node, int num_outputs) {
     max_mem_usage->output_port_shape.resize(num_outputs, TensorShapeProto());
     max_mem_usage->output_port_type.resize(num_outputs, DT_INVALID);
     max_mem_usage->temp_memory_size = Bytes(-1);
+    max_mem_usage->host_peak_memory_size = Bytes(0);
+    max_mem_usage->device_peak_memory_size = Bytes(0);
+    max_mem_usage->persisted_memory_size = Bytes(0);
+    max_mem_usage->auxiliary_memory_size = Bytes(0);
     output_port_alloc_ids->resize(num_outputs, -1);
   }
 }
@@ -290,6 +294,53 @@ Bytes CostModel::TempMemorySize(const Node* node) const {
   return max_mem_usage_[id].temp_memory_size;
 }
 
+Bytes CostModel::HostPeakMemorySize(const Node* node) const {
+  const int id = Id(node);
+  if (id < 0) {
+    return Bytes(0);
+  }
+  return max_mem_usage_[id].host_peak_memory_size;
+}
+
+Bytes CostModel::DevicePeakMemorySize(const Node* node) const {
+  const int id = Id(node);
+  if (id < 0) {
+    return Bytes(0);
+  }
+  return max_mem_usage_[id].device_peak_memory_size;
+}
+
+Bytes CostModel::PersistedMemorySize(const Node* node) const {
+  const int id = Id(node);
+  if (id < 0) {
+    return Bytes(0);
+  }
+  return max_mem_usage_[id].persisted_memory_size;
+}
+
+Bytes CostModel::AuxiliaryMemorySize(const Node* node) const {
+  const int id = Id(node);
+  if (id < 0) {
+    return Bytes(0);
+  }
+  return max_mem_usage_[id].auxiliary_memory_size;
+}
+
+void CostModel::RecordAllocatorMemory(
+    const Node* node,
+    const protobuf::RepeatedPtrField<AllocatorMemoryUsed>& memory) {
+  const int id = Id(node);
+  for (const auto& allocator_memory : memory) {
+    if (allocator_memory.allocator_name().find("cpu") != string::npos) {
+      max_mem_usage_[id].host_peak_memory_size +=
+          Bytes(allocator_memory.peak_bytes());
+    } else {
+      max_mem_usage_[id].device_peak_memory_size +=
+          Bytes(allocator_memory.peak_bytes());
+    }
+  }
+}
+
 void CostModel::RecordMaxExecutionTime(const Node* node, Microseconds time) {
   const int id = Id(node);
   if (id < 0) return;
@@ -346,6 +397,10 @@ Microseconds CostModel::ComputationTimeEstimate(int64 math_ops) {
   // roughly 1000 madds per microsecond (~1 GHz for one core)).
   return Microseconds(math_ops / 1000);
 }
+
+void CostModel::IncrementUpdateTimes() { update_times_++; }
+
+int32 CostModel::GetUpdateTimes() const { return update_times_; }
 
 // ----------------------------------------------------------------------------
 // InitCostModel
@@ -463,6 +518,10 @@ void CostModel::AddToCostGraphDef(const Graph* graph,
     }
 
     cnode->set_temporary_memory_size(TempMemorySize(n).value());
+    cnode->set_host_peak_memory_size(HostPeakMemorySize(n).value());
+    cnode->set_device_peak_memory_size(DevicePeakMemorySize(n).value());
+    cnode->set_persisted_memory_size(PersistedMemorySize(n).value());
+    cnode->set_auxiliary_memory_size(AuxiliaryMemorySize(n).value());
 
     cnode->set_compute_cost(MaxExecutionTime(n).value());
 

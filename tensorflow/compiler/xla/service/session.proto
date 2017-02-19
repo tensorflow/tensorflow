@@ -63,6 +63,9 @@ message SessionComputation {
 
   // The list of Send requests in this SessionComputation.
   repeated SendRequest send_requests = 5;
+
+  // The list of Outfeed requests in this SessionComputation.
+  repeated OutfeedRequest outfeed_requests = 6;
 }
 
 // Describes a group of SessionComputations with an "entry point" computation

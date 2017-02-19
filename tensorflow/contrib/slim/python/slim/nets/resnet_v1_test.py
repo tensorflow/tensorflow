@@ -182,26 +182,19 @@ class ResnetUtilsTest(test.TestCase):
       _, end_points = self._resnet_plain(inputs, blocks, scope='tiny')
     expected = [
         'tiny/block1/unit_1/bottleneck_v1/shortcut',
-        'tiny/block1/unit_1/bottleneck_v1/shortcut/BatchNorm',
         'tiny/block1/unit_1/bottleneck_v1/conv1',
         'tiny/block1/unit_1/bottleneck_v1/conv2',
         'tiny/block1/unit_1/bottleneck_v1/conv3',
-        'tiny/block1/unit_1/bottleneck_v1/conv3/BatchNorm',
         'tiny/block1/unit_2/bottleneck_v1/conv1',
         'tiny/block1/unit_2/bottleneck_v1/conv2',
         'tiny/block1/unit_2/bottleneck_v1/conv3',
-        'tiny/block1/unit_2/bottleneck_v1/conv3/BatchNorm',
         'tiny/block2/unit_1/bottleneck_v1/shortcut',
-        'tiny/block2/unit_1/bottleneck_v1/shortcut/BatchNorm',
         'tiny/block2/unit_1/bottleneck_v1/conv1',
         'tiny/block2/unit_1/bottleneck_v1/conv2',
         'tiny/block2/unit_1/bottleneck_v1/conv3',
-        'tiny/block2/unit_1/bottleneck_v1/conv3/BatchNorm',
         'tiny/block2/unit_2/bottleneck_v1/conv1',
         'tiny/block2/unit_2/bottleneck_v1/conv2',
-        'tiny/block2/unit_2/bottleneck_v1/conv3',
-        'tiny/block2/unit_2/bottleneck_v1/conv3/BatchNorm'
-    ]
+        'tiny/block2/unit_2/bottleneck_v1/conv3']
     self.assertItemsEqual(expected, end_points)
 
   def _stack_blocks_nondense(self, net, blocks):

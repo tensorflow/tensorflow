@@ -368,6 +368,6 @@ sequence-to-sequence models.
 
 File | What's in it?
 --- | ---
-`models/tutorials/image/cifar10.py` | Model for detecting objects in images.
+`models/tutorials/image/cifar10/cifar10.py` | Model for detecting objects in images.
 `models/tutorials/rnn/rnn_cell.py` | Cell functions for recurrent neural networks.
 `models/tutorials/rnn/seq2seq.py` | Functions for building sequence-to-sequence models.

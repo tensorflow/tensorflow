@@ -1036,7 +1036,7 @@ def index_to_string_table_from_file(vocabulary_file,
 
   ```python
   indices = tf.constant([1, 5], tf.int64)
-  table = tf.contrib.lookup.index_to_string_from_file(
+  table = tf.contrib.lookup.index_to_string_table_from_file(
       vocabulary_file="test.txt", default_value="UNKNOWN")
   values = table.lookup(indices)
   ...

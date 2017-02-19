@@ -42,27 +42,27 @@ class _FakeVectorStudentT(object):
   having the `TransformedDistribution + Affine` API.
   """
 
-  def __init__(self, df, shift, scale_tril):
+  def __init__(self, df, loc, scale_tril):
     self._df = np.asarray(df)
-    self._shift = np.asarray(shift)
+    self._loc = np.asarray(loc)
     self._scale_tril = np.asarray(scale_tril)
 
   def log_prob(self, x):
-    def _compute(df, shift, scale_tril, x):
+    def _compute(df, loc, scale_tril, x):
       k = scale_tril.shape[-1]
       ildj = np.sum(np.log(np.abs(np.diag(scale_tril))), axis=-1)
       logz = ildj + k * (0.5 * np.log(df) +
                          0.5 * np.log(np.pi) +
                          special.gammaln(0.5 * df) -
                          special.gammaln(0.5 * (df + 1.)))
-      y = linalg.solve_triangular(scale_tril, np.matrix(x - shift).T,
+      y = linalg.solve_triangular(scale_tril, np.matrix(x - loc).T,
                                   lower=True, overwrite_b=True)
       logs = -0.5 * (df + 1.) * np.sum(np.log1p(y**2. / df), axis=-2)
       return logs - logz
     if not self._df.shape:
-      return _compute(self._df, self._shift, self._scale_tril, x)
+      return _compute(self._df, self._loc, self._scale_tril, x)
     return np.concatenate([
-        [_compute(self._df[i], self._shift[i], self._scale_tril[i], x[:, i, :])]
+        [_compute(self._df[i], self._loc[i], self._scale_tril[i], x[:, i, :])]
         for i in range(len(self._df))]).T
 
   def prob(self, x):
@@ -79,14 +79,14 @@ class VectorStudentTTest(test.TestCase):
       # Scalar batch_shape.
       df = np.asarray(3., dtype=np.float32)
       # Scalar batch_shape.
-      shift = np.asarray([1], dtype=np.float32)
+      loc = np.asarray([1], dtype=np.float32)
       scale_diag = np.asarray([2.], dtype=np.float32)
       scale_tril = np.diag(scale_diag)
 
       expected_mst = _FakeVectorStudentT(
-          df=df, shift=shift, scale_tril=scale_tril)
+          df=df, loc=loc, scale_tril=scale_tril)
 
-      actual_mst = _VectorStudentT(df=df, shift=shift, scale_diag=scale_diag,
+      actual_mst = _VectorStudentT(df=df, loc=loc, scale_diag=scale_diag,
                                    validate_args=True)
       x = 2. * self._rng.rand(4, 1).astype(np.float32) - 1.
 
@@ -101,10 +101,10 @@ class VectorStudentTTest(test.TestCase):
     # Non-scalar batch_shape.
     df = np.asarray([1., 2, 3], dtype=np.float32)
     # Non-scalar batch_shape.
-    shift = np.asarray([[0., 0, 0],
-                        [1, 2, 3],
-                        [1, 0, 1]],
-                       dtype=np.float32)
+    loc = np.asarray([[0., 0, 0],
+                      [1, 2, 3],
+                      [1, 0, 1]],
+                     dtype=np.float32)
     scale_diag = np.asarray([[1., 2, 3],
                              [2, 3, 4],
                              [4, 5, 6]],
@@ -114,10 +114,10 @@ class VectorStudentTTest(test.TestCase):
     x = 2. * self._rng.rand(4, 3, 3).astype(np.float32) - 1.
 
     expected_mst = _FakeVectorStudentT(
-        df=df, shift=shift, scale_tril=scale_tril)
+        df=df, loc=loc, scale_tril=scale_tril)
 
     with self.test_session():
-      actual_mst = _VectorStudentT(df=df, shift=shift, scale_diag=scale_diag,
+      actual_mst = _VectorStudentT(df=df, loc=loc, scale_diag=scale_diag,
                                    validate_args=True)
       self.assertAllClose(expected_mst.log_prob(x),
                           actual_mst.log_prob(x).eval(),
@@ -130,10 +130,10 @@ class VectorStudentTTest(test.TestCase):
     # Non-scalar batch_shape.
     df = np.asarray([1., 2, 3], dtype=np.float32)
     # Non-scalar batch_shape.
-    shift = np.asarray([[0., 0, 0],
-                        [1, 2, 3],
-                        [1, 0, 1]],
-                       dtype=np.float32)
+    loc = np.asarray([[0., 0, 0],
+                      [1, 2, 3],
+                      [1, 0, 1]],
+                     dtype=np.float32)
     scale_diag = np.asarray([[1., 2, 3],
                              [2, 3, 4],
                              [4, 5, 6]],
@@ -143,14 +143,14 @@ class VectorStudentTTest(test.TestCase):
     x = 2. * self._rng.rand(4, 3, 3).astype(np.float32) - 1.
 
     expected_mst = _FakeVectorStudentT(
-        df=df, shift=shift, scale_tril=scale_tril)
+        df=df, loc=loc, scale_tril=scale_tril)
 
     with self.test_session():
       df_pl = array_ops.placeholder(dtypes.float32, name="df")
-      shift_pl = array_ops.placeholder(dtypes.float32, name="shift")
+      loc_pl = array_ops.placeholder(dtypes.float32, name="loc")
       scale_diag_pl = array_ops.placeholder(dtypes.float32, name="scale_diag")
-      feed_dict = {df_pl: df, shift_pl: shift, scale_diag_pl: scale_diag}
-      actual_mst = _VectorStudentT(df=df, shift=shift, scale_diag=scale_diag,
+      feed_dict = {df_pl: df, loc_pl: loc, scale_diag_pl: scale_diag}
+      actual_mst = _VectorStudentT(df=df, loc=loc, scale_diag=scale_diag,
                                    validate_args=True)
       self.assertAllClose(expected_mst.log_prob(x),
                           actual_mst.log_prob(x).eval(feed_dict=feed_dict),
@@ -163,10 +163,10 @@ class VectorStudentTTest(test.TestCase):
     # Scalar batch_shape.
     df = np.asarray(2., dtype=np.float32)
     # Non-scalar batch_shape.
-    shift = np.asarray([[0., 0, 0],
-                        [1, 2, 3],
-                        [1, 0, 1]],
-                       dtype=np.float32)
+    loc = np.asarray([[0., 0, 0],
+                      [1, 2, 3],
+                      [1, 0, 1]],
+                     dtype=np.float32)
     scale_diag = np.asarray([[1., 2, 3],
                              [2, 3, 4],
                              [4, 5, 6]],
@@ -176,12 +176,12 @@ class VectorStudentTTest(test.TestCase):
     x = 2. * self._rng.rand(4, 3, 3).astype(np.float32) - 1.
 
     expected_mst = _FakeVectorStudentT(
-        df=np.tile(df, len(scale_diag)),
-        shift=shift,
+        df=np.tile(df, reps=len(scale_diag)),
+        loc=loc,
         scale_tril=scale_tril)
 
     with self.test_session():
-      actual_mst = _VectorStudentT(df=df, shift=shift, scale_diag=scale_diag,
+      actual_mst = _VectorStudentT(df=df, loc=loc, scale_diag=scale_diag,
                                    validate_args=True)
       self.assertAllClose(expected_mst.log_prob(x),
                           actual_mst.log_prob(x).eval(),
@@ -194,10 +194,10 @@ class VectorStudentTTest(test.TestCase):
     # Scalar batch_shape.
     df = np.asarray(2., dtype=np.float32)
     # Non-scalar batch_shape.
-    shift = np.asarray([[0., 0, 0],
-                        [1, 2, 3],
-                        [1, 0, 1]],
-                       dtype=np.float32)
+    loc = np.asarray([[0., 0, 0],
+                      [1, 2, 3],
+                      [1, 0, 1]],
+                     dtype=np.float32)
     scale_diag = np.asarray([[1., 2, 3],
                              [2, 3, 4],
                              [4, 5, 6]],
@@ -207,16 +207,16 @@ class VectorStudentTTest(test.TestCase):
     x = 2. * self._rng.rand(4, 3, 3).astype(np.float32) - 1.
 
     expected_mst = _FakeVectorStudentT(
-        df=np.tile(df, len(scale_diag)),
-        shift=shift,
+        df=np.tile(df, reps=len(scale_diag)),
+        loc=loc,
         scale_tril=scale_tril)
 
     with self.test_session():
       df_pl = array_ops.placeholder(dtypes.float32, name="df")
-      shift_pl = array_ops.placeholder(dtypes.float32, name="shift")
+      loc_pl = array_ops.placeholder(dtypes.float32, name="loc")
       scale_diag_pl = array_ops.placeholder(dtypes.float32, name="scale_diag")
-      feed_dict = {df_pl: df, shift_pl: shift, scale_diag_pl: scale_diag}
-      actual_mst = _VectorStudentT(df=df, shift=shift, scale_diag=scale_diag,
+      feed_dict = {df_pl: df, loc_pl: loc, scale_diag_pl: scale_diag}
+      actual_mst = _VectorStudentT(df=df, loc=loc, scale_diag=scale_diag,
                                    validate_args=True)
       self.assertAllClose(expected_mst.log_prob(x),
                           actual_mst.log_prob(x).eval(feed_dict=feed_dict),
@@ -229,18 +229,19 @@ class VectorStudentTTest(test.TestCase):
     # Non-scalar batch_shape.
     df = np.asarray([1., 2., 3.], dtype=np.float32)
     # Scalar batch_shape.
-    shift = np.asarray([1, 2, 3], dtype=np.float32)
+    loc = np.asarray([1, 2, 3], dtype=np.float32)
     scale_diag = np.asarray([2, 3, 4], dtype=np.float32)
     scale_tril = np.diag(scale_diag)
     x = 2. * self._rng.rand(4, 3, 3).astype(np.float32) - 1.
 
     expected_mst = _FakeVectorStudentT(
         df=df,
-        shift=np.tile(shift[None, :], [len(df), 1]),
-        scale_tril=np.tile(scale_tril[None, :, :], [len(df), 1, 1]))
+        loc=np.tile(loc[array_ops.newaxis, :], reps=[len(df), 1]),
+        scale_tril=np.tile(scale_tril[array_ops.newaxis, :, :],
+                           reps=[len(df), 1, 1]))
 
     with self.test_session():
-      actual_mst = _VectorStudentT(df=df, shift=shift, scale_diag=scale_diag,
+      actual_mst = _VectorStudentT(df=df, loc=loc, scale_diag=scale_diag,
                                    validate_args=True)
       self.assertAllClose(expected_mst.log_prob(x),
                           actual_mst.log_prob(x).eval(),
@@ -253,7 +254,7 @@ class VectorStudentTTest(test.TestCase):
     # Non-scalar batch_shape.
     df = np.asarray([1., 2., 3.], dtype=np.float32)
     # Scalar batch_shape.
-    shift = np.asarray([1, 2, 3], dtype=np.float32)
+    loc = np.asarray([1, 2, 3], dtype=np.float32)
     scale_diag = np.asarray([2, 3, 4], dtype=np.float32)
     scale_tril = np.diag(scale_diag)
 
@@ -261,15 +262,16 @@ class VectorStudentTTest(test.TestCase):
 
     expected_mst = _FakeVectorStudentT(
         df=df,
-        shift=np.tile(shift[None, :], [len(df), 1]),
-        scale_tril=np.tile(scale_tril[None, :, :], [len(df), 1, 1]))
+        loc=np.tile(loc[array_ops.newaxis, :], reps=[len(df), 1]),
+        scale_tril=np.tile(scale_tril[array_ops.newaxis, :, :],
+                           reps=[len(df), 1, 1]))
 
     with self.test_session():
       df_pl = array_ops.placeholder(dtypes.float32, name="df")
-      shift_pl = array_ops.placeholder(dtypes.float32, name="shift")
+      loc_pl = array_ops.placeholder(dtypes.float32, name="loc")
       scale_diag_pl = array_ops.placeholder(dtypes.float32, name="scale_diag")
-      feed_dict = {df_pl: df, shift_pl: shift, scale_diag_pl: scale_diag}
-      actual_mst = _VectorStudentT(df=df, shift=shift, scale_diag=scale_diag,
+      feed_dict = {df_pl: df, loc_pl: loc, scale_diag_pl: scale_diag}
+      actual_mst = _VectorStudentT(df=df, loc=loc, scale_diag=scale_diag,
                                    validate_args=True)
       self.assertAllClose(expected_mst.log_prob(x),
                           actual_mst.log_prob(x).eval(feed_dict=feed_dict),

@@ -88,6 +88,10 @@ class LinearOperatorTriLTest(
     self.assertTrue(operator.is_non_singular)
     self.assertFalse(operator.is_self_adjoint)
 
+  def test_tril_must_have_at_least_two_dims_or_raises(self):
+    with self.assertRaisesRegexp(ValueError, "at least 2 dimensions"):
+      linalg.LinearOperatorTriL([1.])
+
 
 if __name__ == "__main__":
   test.main()

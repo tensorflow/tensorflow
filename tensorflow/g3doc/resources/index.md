@@ -7,7 +7,7 @@ implementation can be found in this paper:
 
 * [TensorFlow: A System for Large-Scale Machine Learning](https://www.usenix.org/conference/osdi16/technical-sessions/presentation/abadi)
 
-An earlier white paper version can be found here:
+The original white paper introducing TensorFlow can be found here:
 
 * [TensorFlow: Large-scale machine learning on heterogeneous systems](http://download.tensorflow.org/paper/whitepaper2015.pdf)
 

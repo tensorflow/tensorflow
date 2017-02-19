@@ -1041,9 +1041,10 @@ See also
 [`ComputationBuilder::RngUniform`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
 
 Constructs an output of a given shape with random numbers generated following
-the uniform distribution over the interval $$[a,b]$$. The parameters and output
+the uniform distribution over the interval $$[a,b)$$. The parameters and output
 shape may be either F32, S32 or U32, but the types have to be consistent.
-Furthermore, the parameters need to be scalar valued.
+Furthermore, the parameters need to be scalar valued. If $$b <= a$$ the result
+is implementation-defined.
 
 <b>`RngUniform(a, b, shape)`</b>
 

@@ -249,7 +249,7 @@ _DEFINE_CUDNN_MINOR = "#define CUDNN_MINOR"
 _DEFINE_CUDNN_PATCHLEVEL = "#define CUDNN_PATCHLEVEL"
 
 
-def _find_cuda_define(repository_ctx, cudnn_install_basedir, define):
+def _find_cuda_define(repository_ctx, cudnn_header_dir, define):
   """Returns the value of a #define in cudnn.h
 
   Greps through cudnn.h and returns the value of the specified #define. If the
@@ -257,15 +257,14 @@ def _find_cuda_define(repository_ctx, cudnn_install_basedir, define):
 
   Args:
     repository_ctx: The repository context.
-    cudnn_install_basedir: The install directory for cuDNN on the system.
+    cudnn_header_dir: The directory containing the cuDNN header.
     define: The #define to search for.
 
   Returns:
     The value of the #define found in cudnn.h.
   """
-  # Find cudnn.h and grep for the line defining CUDNN_MAJOR.
-  cudnn_h_path = repository_ctx.path("%s/include/cudnn.h" %
-                                     cudnn_install_basedir)
+  # Confirm location of cudnn.h and grep for the line defining CUDNN_MAJOR.
+  cudnn_h_path = repository_ctx.path("%s/cudnn.h" % cudnn_header_dir)
   if not cudnn_h_path.exists:
     auto_configure_fail("Cannot find cudnn.h at %s" % str(cudnn_h_path))
   result = repository_ctx.execute(["grep", "-E", define, str(cudnn_h_path)])
@@ -292,11 +291,13 @@ def _cudnn_version(repository_ctx, cudnn_install_basedir, cpu_value):
   Returns:
     A string containing the version of cuDNN.
   """
-  major_version = _find_cuda_define(repository_ctx, cudnn_install_basedir,
+  cudnn_header_dir = _find_cudnn_header_dir(repository_ctx,
+                                            cudnn_install_basedir)
+  major_version = _find_cuda_define(repository_ctx, cudnn_header_dir,
                                     _DEFINE_CUDNN_MAJOR)
-  minor_version = _find_cuda_define(repository_ctx, cudnn_install_basedir,
+  minor_version = _find_cuda_define(repository_ctx, cudnn_header_dir,
                                     _DEFINE_CUDNN_MINOR)
-  patch_version = _find_cuda_define(repository_ctx, cudnn_install_basedir,
+  patch_version = _find_cuda_define(repository_ctx, cudnn_header_dir,
                                     _DEFINE_CUDNN_PATCHLEVEL)
   full_version = "%s.%s.%s" % (major_version, minor_version, patch_version)
 
@@ -367,7 +368,7 @@ def _lib_name(lib, cpu_value, version="", static=False):
   Returns:
     The platform-specific name of the library.
   """
-  if cpu_value == "Linux":
+  if cpu_value in ("Linux", "FreeBSD"):
     if static:
       return "lib%s.a" % lib
     else:
@@ -407,6 +408,9 @@ def _find_cuda_lib(lib, repository_ctx, cpu_value, basedir, version="",
   file_name = _lib_name(lib, cpu_value, version, static)
   if cpu_value == "Linux":
     path = repository_ctx.path("%s/lib64/%s" % (basedir, file_name))
+    if path.exists:
+      return struct(file_name=file_name, path=str(path.realpath))
+    path = repository_ctx.path("%s/lib64/stubs/%s" % (basedir, file_name))
     if path.exists:
       return struct(file_name=file_name, path=str(path.realpath))
     path = repository_ctx.path(
@@ -492,6 +496,7 @@ def _find_libs(repository_ctx, cuda_config):
   cudnn_ext = ".%s" % cudnn_version if cudnn_version else ""
   cpu_value = cuda_config.cpu_value
   return {
+      "cuda": _find_cuda_lib("cuda", repository_ctx, cpu_value, cuda_config.cuda_toolkit_path),
       "cudart": _find_cuda_lib(
           "cudart", repository_ctx, cpu_value, cuda_config.cuda_toolkit_path,
           cuda_config.cuda_version),
@@ -648,6 +653,7 @@ def _create_dummy_repository(repository_ctx):
        })
   _tpl(repository_ctx, "cuda:BUILD",
        {
+           "%{cuda_driver_lib}": _lib_name("cuda", cpu_value),
            "%{cudart_static_lib}": _lib_name("cudart_static", cpu_value,
                                              static=True),
            "%{cudart_static_linkopt}": _cudart_static_linkopt(cpu_value),
@@ -660,6 +666,7 @@ def _create_dummy_repository(repository_ctx):
        })
   _tpl(repository_ctx, "cuda:BUILD",
        {
+           "%{cuda_driver_lib}": _lib_name("cuda", cpu_value),
            "%{cudart_static_lib}": _lib_name("cudart_static", cpu_value,
                                              static=True),
            "%{cudart_static_linkopt}": _cudart_static_linkopt(cpu_value),
@@ -683,6 +690,7 @@ def _create_dummy_repository(repository_ctx):
   repository_ctx.file("cuda/include/cublas.h", "")
   repository_ctx.file("cuda/include/cudnn.h", "")
   repository_ctx.file("cuda/extras/CUPTI/include/cupti.h", "")
+  repository_ctx.file("cuda/lib/%s" % _lib_name("cuda", cpu_value))
   repository_ctx.file("cuda/lib/%s" % _lib_name("cudart", cpu_value))
   repository_ctx.file("cuda/lib/%s" % _lib_name("cudart_static", cpu_value))
   repository_ctx.file("cuda/lib/%s" % _lib_name("cublas", cpu_value))
@@ -700,6 +708,7 @@ def _create_dummy_repository(repository_ctx):
            "%{cuda_compute_capabilities}": ",".join([
                "CudaVersion(\"%s\")" % c
                for c in _DEFAULT_CUDA_COMPUTE_CAPABILITIES]),
+           "%{cuda_toolkit_path}": _DEFAULT_CUDA_TOOLKIT_PATH,
        })
 
   # If cuda_configure is not configured to build with GPU support, and the user
@@ -756,6 +765,7 @@ def _create_cuda_repository(repository_ctx):
        })
   _tpl(repository_ctx, "cuda:BUILD",
        {
+           "%{cuda_driver_lib}": cuda_libs["cuda"].file_name,
            "%{cudart_static_lib}": cuda_libs["cudart_static"].file_name,
            "%{cudart_static_linkopt}": _cudart_static_linkopt(
                cuda_config.cpu_value),
@@ -802,6 +812,7 @@ def _create_cuda_repository(repository_ctx):
            "%{cuda_compute_capabilities}": ",".join(
                ["CudaVersion(\"%s\")" % c
                 for c in cuda_config.compute_capabilities]),
+               "%{cuda_toolkit_path}": cuda_config.cuda_toolkit_path,
        })
 
 

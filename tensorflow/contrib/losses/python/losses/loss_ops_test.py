@@ -243,6 +243,34 @@ class SoftmaxCrossEntropyLossTest(test.TestCase):
       expected_value = 400.0 * label_smoothing / 3.0
       self.assertAlmostEqual(loss.eval(), expected_value, 3)
 
+  def testLossWithDynamicallyShapedWeights1D(self):
+    logits = constant_op.constant([[10.0, 0.0, 0.0],
+                                   [0.0, 10.0, 0.0],
+                                   [0.0, 0.0, 10.0]])
+    labels = constant_op.constant([[0, 0, 1],
+                                   [1, 0, 0],
+                                   [0, 1, 0]])
+    weights = [2.3, 2.4, 2.5]
+    weights_placeholder = array_ops.placeholder(dtypes.float32, shape=[None])
+    loss = loss_ops.softmax_cross_entropy(logits, labels, weights_placeholder)
+    with self.test_session() as sess:
+      loss = sess.run(loss, {weights_placeholder: weights})
+      self.assertAlmostEqual(np.average(weights) * 10.0, loss, 3)
+
+  def testLossWithDynamicallyShapedWeights2D(self):
+    logits = constant_op.constant([[10.0, 0.0, 0.0],
+                                   [0.0, 10.0, 0.0],
+                                   [0.0, 0.0, 10.0]])
+    labels = constant_op.constant([[0, 0, 1],
+                                   [1, 0, 0],
+                                   [0, 1, 0]])
+    weights = [[2.3], [2.4], [2.5]]
+    weights_placeholder = array_ops.placeholder(dtypes.float32, shape=[None, None])
+    loss = loss_ops.softmax_cross_entropy(logits, labels, weights_placeholder)
+    with self.test_session() as sess:
+      loss = sess.run(loss, {weights_placeholder: weights})
+      self.assertAlmostEqual(np.average(weights) * 10.0, loss, 3)
+
 
 class SparseSoftmaxCrossEntropyLossTest(test.TestCase):
 
@@ -444,6 +472,30 @@ class SparseSoftmaxCrossEntropyLossTest(test.TestCase):
       with self.assertRaises(errors_impl.InvalidArgumentError):
         loss_ops.sparse_softmax_cross_entropy(
             logits, labels, weights=weights).eval()
+
+  def testLossWithDynamicallyShapedWeights1D(self):
+    logits = constant_op.constant([[10.0, 0.0, 0.0],
+                                   [0.0, 10.0, 0.0],
+                                   [0.0, 0.0, 10.0]])
+    labels = constant_op.constant([2, 0, 1])
+    weights = [2.3, 2.4, 2.5]
+    weights_placeholder = array_ops.placeholder(dtypes.float32, shape=[None])
+    loss = loss_ops.sparse_softmax_cross_entropy(logits, labels, weights_placeholder)
+    with self.test_session() as sess:
+      loss = sess.run(loss, {weights_placeholder: weights})
+      self.assertAlmostEqual(np.average(weights) * 10.0, loss, 3)
+
+  def testLossWithDynamicallyShapedWeights2D(self):
+    logits = constant_op.constant([[10.0, 0.0, 0.0],
+                                   [0.0, 10.0, 0.0],
+                                   [0.0, 0.0, 10.0]])
+    labels = constant_op.constant([2, 0, 1])
+    weights = [[2.3], [2.4], [2.5]]
+    weights_placeholder = array_ops.placeholder(dtypes.float32, shape=[None, None])
+    loss = loss_ops.sparse_softmax_cross_entropy(logits, labels, weights_placeholder)
+    with self.test_session() as sess:
+      loss = sess.run(loss, {weights_placeholder: weights})
+      self.assertAlmostEqual(np.average(weights) * 10.0, loss, 3)
 
 
 class SigmoidCrossEntropyLossTest(test.TestCase):

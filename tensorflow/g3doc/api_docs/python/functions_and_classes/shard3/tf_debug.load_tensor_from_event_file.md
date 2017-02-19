@@ -13,5 +13,7 @@ protobuf contains a `Tensor` value.
 ##### Returns:
 
   The tensor value loaded from the event file, as a `numpy.ndarray`. For
-  uninitialized tensors, returns None.
+  uninitialized Tensors, returns `None`. For Tensors of data types that
+  cannot be converted to `numpy.ndarray` (e.g., `tf.resource`), return
+  `None`.
 

@@ -94,7 +94,7 @@ reverse of SpaceToBatch.  See below for a precise description.
         `crops = [[0, 0], [0, 0]]`:
 
     ```prettyprint
-    x = [[[[1], [3]], [[5], [7]]],
+    x = [[[[1], [3]], [[9], [11]]],
          [[[2], [4]], [[10], [12]]],
          [[[5], [7]], [[13], [15]]],
          [[[6], [8]], [[14], [16]]]]

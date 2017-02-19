@@ -1,7 +1,5 @@
 # A Guide to TF Layers: Building a Convolutional Neural Network
 
-Note: This tutorial requires TF v1.0 alpha; see the [Download and Setup page](https://www.tensorflow.org/versions/r1.0/get_started/os_setup) for installation instructions.
-
 The TensorFlow [`layers`
 module](https://www.tensorflow.org/code/tensorflow/python/layers/layers.py)
 provides a high-level API that makes it easy to construct a neural network. It
@@ -12,6 +10,7 @@ convolutional neural network model to recognize the handwritten digits in the
 MNIST data set.
 
 ![handwritten digits 0–9 from the MNIST data set](../../images/mnist_0-9.png)
+
 **The [MNIST dataset](http://yann.lecun.com/exdb/mnist/) comprises 60,000
 training examples and 10,000 test examples of the handwritten digits 0–9,
 formatted as 28x28-pixel monochrome images.**

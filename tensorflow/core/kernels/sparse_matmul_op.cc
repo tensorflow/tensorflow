@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #ifdef TENSORFLOW_USE_LIBXSMM
 #include "include/libxsmm_intrinsics_x86.h"
+#include "include/libxsmm_malloc.h"
 #include "include/libxsmm_spmdm.h"
 #endif
 
@@ -896,6 +897,8 @@ class LibxsmmSparseMatMul {
       } else {
         std::unique_ptr<TensorInfoCacheEntry> e{
             new TensorInfoCacheEntry{M, K, N, max_threads, {}, nullptr}};
+        // setup scoped allocator, which uses cpu_allocator() for this scope
+        const libxsmm_tf_allocator<libxsmm_scratch_allocator> tf_allocator;
         libxsmm_spmdm_init(M, N, K, max_threads, &e->handle, &e->output_csr);
         return e;
       }

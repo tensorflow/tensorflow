@@ -84,7 +84,7 @@ class SerializationTraits<tensorflow::TensorResponse>
   }
   static Status Deserialize(grpc_byte_buffer* buffer,
                             tensorflow::TensorResponse* msg,
-                            int max_message_size) {
+                            int max_message_size = INT_MAX) {
     if (buffer == nullptr) {
       return Status(StatusCode::INTERNAL, "No payload");
     }

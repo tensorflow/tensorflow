@@ -638,8 +638,7 @@ Status CheckLayouts(
 }  // namespace
 
 LayoutAssignment::LayoutAssignment(ComputationLayout* entry_computation_layout)
-    : HloPass("layout-assignment"),
-      entry_computation_layout_(entry_computation_layout) {
+    : entry_computation_layout_(entry_computation_layout) {
   VLOG(1) << "entry computation layout given to layout assignment: "
           << entry_computation_layout_->ToString();
   // Layouts of all parameter instructions must be set.

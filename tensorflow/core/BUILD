@@ -64,6 +64,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
     "if_ios",
+    "if_x86",
     "if_not_mobile",
     "if_not_windows",
     "tf_copts",
@@ -76,6 +77,7 @@ load(
     "tf_opts_nortti_if_android",
     "cc_header_only_library",
 )
+load("//tensorflow:tensorflow.bzl", "tf_cc_test_mkl")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
 load("//tensorflow:tensorflow.bzl", "tf_cc_tests_gpu")
 load("//tensorflow:tensorflow.bzl", "tf_version_info_genrule")
@@ -110,7 +112,10 @@ load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
-
+load(
+    "//third_party/mkl:build_defs.bzl",
+    "if_mkl",
+)
 # -----------------------------------------------------------------------------
 # Public targets
 
@@ -127,6 +132,7 @@ CORE_PROTO_SRCS = [
     "framework/device_attributes.proto",
     "framework/function.proto",
     "framework/graph.proto",
+    "framework/graph_transfer_info.proto",
     "framework/kernel_def.proto",
     "framework/log_memory.proto",
     "framework/node_def.proto",
@@ -175,6 +181,14 @@ tf_proto_library(
     java_api_version = 2,
     js_api_version = 2,
     js_codegen = "jspb",
+    visibility = ["//visibility:public"],
+)
+
+tf_proto_library(
+    name = "protos_test",
+    srcs = ["util/example_proto_fast_parsing_test.proto"],
+    cc_api_version = 2,
+    protodeps = [":protos_all"],
     visibility = ["//visibility:public"],
 )
 
@@ -327,7 +341,6 @@ tf_cuda_library(
         "framework/op.h",
         "framework/op_def_builder.h",
         "framework/op_def_util.h",
-        "framework/op_gen_lib.h",
         "framework/op_kernel.h",
         "framework/partial_tensor_shape.h",
         "framework/queue_interface.h",
@@ -383,6 +396,25 @@ tf_cuda_library(
     deps = [":framework_internal"],
 )
 
+tf_proto_library_cc(
+    name = "op_gen_overrides_proto",
+    srcs = ["framework/op_gen_overrides.proto"],
+    cc_api_version = 2,
+    protodeps = [":protos_all"],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "op_gen_lib",
+    srcs = ["framework/op_gen_lib.cc"],
+    hdrs = ["framework/op_gen_lib.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":lib",
+        ":op_gen_overrides_proto_cc",
+    ],
+)
+
 cc_library(
     name = "framework_lite",
     srcs = tf_additional_minimal_lib_srcs(),
@@ -429,6 +461,7 @@ tf_gen_op_libs(
         "no_op",
         "parsing_ops",
         "random_ops",
+        "remote_fused_graph_ops",
         "resource_variable_ops",
         "sdca_ops",
         "set_ops",
@@ -602,6 +635,7 @@ cc_library(
         "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:ctc_ops",
         "//tensorflow/core/kernels:data_flow",
+        "//tensorflow/core/kernels:debug_ops",
         "//tensorflow/core/kernels:fake_quant_ops",
         "//tensorflow/core/kernels:function_ops",
         "//tensorflow/core/kernels:image",
@@ -614,6 +648,8 @@ cc_library(
         "//tensorflow/core/kernels:parameterized_truncated_normal_op",
         "//tensorflow/core/kernels:parsing",
         "//tensorflow/core/kernels:random_ops",
+        "//tensorflow/core/kernels:random_poisson_op",
+        "//tensorflow/core/kernels:remote_fused_graph_ops",
         "//tensorflow/core/kernels:required",
         "//tensorflow/core/kernels:resource_variable_ops",
         "//tensorflow/core/kernels:sdca_ops",
@@ -760,12 +796,14 @@ filegroup(
             "**/*testlib*",
             "**/*main.cc",
             "debug/**/*",
+            "framework/op_gen_*",
             "graph/dot.*",
             "lib/jpeg/**/*",
             "lib/png/**/*",
             "lib/gif/**/*",
             "util/events_writer.*",
             "util/reporter.*",
+            "platform/**/cuda_libdevice_path.*",
             "platform/default/stream_executor.*",
             "platform/default/test_benchmark.*",
             "platform/cuda.h",
@@ -952,6 +990,12 @@ cc_library(
     name = "android_tensorflow_test_lib",
     testonly = 1,
     srcs = if_android([":android_test_srcs"]),
+    hdrs = [
+        "framework/fake_input.h",
+        "framework/shape_inference_testutil.h",
+        "framework/tensor_testutil.h",
+        "util/reporter.h",
+    ],
     copts = tf_copts() + ["-Os"],
     tags = [
         "manual",
@@ -1064,6 +1108,7 @@ cc_library(
             ],
             exclude = [
                 "**/*test*",
+                "lib/hash/crc32c_accelerate.cc",
                 "lib/gif/**/*",
                 "lib/jpeg/**/*",
                 "platform/gif.h",
@@ -1086,6 +1131,7 @@ cc_library(
             ],
             exclude = [
                 "**/*test*",
+                "lib/hash/crc32c_accelerate.cc",
                 "lib/gif/**/*",
                 "lib/jpeg/**/*",
                 "platform/gif.h",
@@ -1145,19 +1191,32 @@ cc_library(
         "platform/host_info.h",
         "platform/platform.h",
         "platform/protobuf_internal.h",
+        "platform/setround.h",
         "platform/tensor_coding.h",
         "platform/tracing.h",
     ],
     copts = tf_copts(),
     defines = tf_additional_lib_defines(),
-    linkopts = ["-ldl"],
+    linkopts = select({
+        "//tensorflow:freebsd": [],
+        "//conditions:default": ["-ldl"],
+    }),
     deps = tf_additional_lib_deps() + [
+        ":lib_hash_crc32c_accelerate_internal",
         ":lib_proto_parsing",
         ":protos_all_cc",
         "//third_party/eigen3",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "@zlib_archive//:zlib",
     ],
+)
+
+# File compiled with extra flags to get cpu-specific acceleration.
+cc_library(
+    name = "lib_hash_crc32c_accelerate_internal",
+    srcs = ["lib/hash/crc32c_accelerate.cc"],
+    # -msse4.2 enables the use of crc32c compiler builtins.
+    copts = tf_copts() + if_x86(["-msse4.2"]),
 )
 
 cc_library(
@@ -1168,7 +1227,10 @@ cc_library(
     ],
     hdrs = ["lib/gif/gif_io.h"],
     copts = tf_copts(),
-    linkopts = ["-ldl"],
+    linkopts = select({
+        "//tensorflow:freebsd": [],
+        "//conditions:default": ["-ldl"],
+    }),
     deps = [
         ":lib",
         "//tensorflow/core/platform/default/build_config:gif",
@@ -1187,7 +1249,10 @@ cc_library(
         "lib/jpeg/jpeg_mem.h",
     ],
     copts = tf_copts(),
-    linkopts = ["-ldl"],
+    linkopts = select({
+        "//tensorflow:freebsd": [],
+        "//conditions:default": ["-ldl"],
+    }),
     deps = [
         ":lib",
         "//tensorflow/core/platform/default/build_config:jpeg",
@@ -1238,6 +1303,7 @@ tf_cuda_library(
             "util/reporter.h",
             "util/reporter.cc",
             "framework/fake_input.*",
+            "framework/op_gen_lib.*",
             "util/memmapped_file_system.*",
             "util/memmapped_file_system_writer.*",
             "util/version_info.cc",
@@ -1264,8 +1330,10 @@ tf_cuda_library(
         "util/tensor_slice_util.h",
     ],
     copts = tf_copts(),
-    linkopts = [
-        "-ldl",
+    linkopts = select({
+        "//tensorflow:freebsd": [],
+        "//conditions:default": ["-ldl"],
+    }) + [
         "-lm",
     ],
     deps = [
@@ -1670,6 +1738,24 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "platform_setround_test",
+    size = "small",
+    srcs = ["platform/setround_test.cc"],
+    tags = [
+        "noasan",
+        "nomsan",
+        "notsan",
+    ],
+    deps = [
+        ":lib",
+        ":lib_internal",
+        ":lib_test_internal",
+        ":test",
+        ":test_main",
+    ],
+)
+
+tf_cc_test(
     name = "platform_file_system_test",
     size = "small",
     srcs = ["platform/file_system_test.cc"],
@@ -1785,6 +1871,7 @@ tf_cc_tests(
         "util/saved_tensor_slice_util_test.cc",
         "util/sparse/sparse_tensor_test.cc",
         "util/semver_test.cc",
+        "util/stat_summarizer_test.cc",
         "util/tensor_slice_reader_test.cc",
         "util/tensor_slice_set_test.cc",
         "util/tensor_slice_util_test.cc",
@@ -1807,15 +1894,46 @@ tf_cc_tests(
         ":lib_internal",
         ":ops",
         ":protos_all_cc",
+        ":protos_test_cc",
         ":test",
         ":test_main",
         ":testlib",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/cc:scope",
         "//tensorflow/cc:sendrecv_ops",
         "//tensorflow/core/kernels:ops_util",
         "//third_party/eigen3",
     ],
+)
+
+if_mkl(
+    tf_cc_test_mkl(
+        name = "mkl_related_tests",
+        size = "small",
+        srcs = ["graph/mkl_optimizer_merge_test.cc"],
+        linkstatic = tf_kernel_tests_linkstatic(),
+        deps = [
+            ":core",
+            ":core_cpu",
+            ":core_cpu_internal",
+            ":direct_session_internal",
+            ":framework",
+            ":framework_internal",
+            ":lib",
+            ":lib_internal",
+            ":ops",
+            ":protos_all_cc",
+            ":test",
+            ":test_main",
+            ":testlib",
+            "//tensorflow/cc:cc_ops",
+            "//tensorflow/cc:scope",
+            "//tensorflow/cc:sendrecv_ops",
+            "//tensorflow/core/kernels:ops_util",
+            "//third_party/eigen3",
+        ],
+    ),
 )
 
 tf_cc_tests_gpu(
@@ -2262,6 +2380,28 @@ tf_cc_test(
         "//tensorflow/core/kernels:function_ops",
         "//tensorflow/core/kernels:math",
         "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "ops_remote_fused_graph_ops_test",
+    size = "small",
+    srcs = ["ops/remote_fused_graph_ops_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":ops",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/core/kernels:remote_fused_graph_ops",
     ],
 )
 

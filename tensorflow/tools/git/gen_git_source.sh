@@ -20,7 +20,7 @@ if [[ -z "${OUTPUT_FILENAME}"  ]]; then
   exit 1
 fi
 
-GIT_VERSION=`git describe --long --dirty --tags`
+GIT_VERSION=`git describe --long --tags`
 if [[ $? != 0 ]]; then
    GIT_VERSION=unknown;
 fi

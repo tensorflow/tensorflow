@@ -42,20 +42,20 @@ class MatchTest(test.TestCase):
             self.h = math_ops.add(self.f, self.g, name="h")
 
   def test_simple_match(self):
-    self.assertTrue(ge.matcher("^.*/f$")(self.f.op))
+    self.assertTrue(ge.OpMatcher("^.*/f$")(self.f.op))
     self.assertTrue(
-        ge.matcher("^.*/f$").input_ops("^.*/c$", "^.*/d$")(self.f.op))
-    self.assertTrue(ge.matcher("^.*/f$").input_ops(True, "^.*/d$")(self.f.op))
+        ge.OpMatcher("^.*/f$").input_ops("^.*/c$", "^.*/d$")(self.f.op))
+    self.assertTrue(ge.OpMatcher("^.*/f$").input_ops(True, "^.*/d$")(self.f.op))
     self.assertTrue(
-        ge.matcher("^.*/f$").input_ops(
+        ge.OpMatcher("^.*/f$").input_ops(
             ge.match.op_type("Add"), ge.match.op_type("Const"))(self.f.op))
     self.assertTrue(
-        ge.matcher("^.*/f$").input_ops("^.*/c$", "^.*/d$")
-        .output_ops(ge.matcher("^.*/h$")
+        ge.OpMatcher("^.*/f$").input_ops("^.*/c$", "^.*/d$")
+        .output_ops(ge.OpMatcher("^.*/h$")
                     .control_input_ops("^.*/c$"))(self.f.op))
     self.assertTrue(
-        ge.matcher("^.*/f$").input_ops("^.*/c$", "^.*/d$").output_ops(
-            ge.matcher("^.*/h$").control_input_ops("^.*/c$")
+        ge.OpMatcher("^.*/f$").input_ops("^.*/c$", "^.*/d$").output_ops(
+            ge.OpMatcher("^.*/h$").control_input_ops("^.*/c$")
             .output_ops([]))(self.f.op))
 
 

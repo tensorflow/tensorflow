@@ -14,7 +14,5 @@
 
 //go:generate go generate ../genop
 //go:generate go run ../genop/main.go -outfile wrappers.go
-//go:generate go fmt wrappers.go
 
 package op
-
