@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_KERNELS_DEBUG_OP_H_
 #define TENSORFLOW_KERNELS_DEBUG_OP_H_
 
+#if GOOGLE_CUDA
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
+#endif
 #include "tensorflow/core/debug/debug_io_utils.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"

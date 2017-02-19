@@ -19,12 +19,12 @@ limitations under the License.
 #include <unordered_map>
 #include <unordered_set>
 
-#include "tensorflow/core/debug/debug_service.grpc.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/util/event.pb.h"
 
 namespace tensorflow {
 
@@ -131,6 +131,13 @@ class DebugFileIO {
   static Status RecursiveCreateDir(Env* env, const string& dir);
 };
 
+}  // namespace tensorflow
+
+#if defined(PLATFORM_GOOGLE)
+#include "tensorflow/core/debug/debug_service.grpc.pb.h"
+
+namespace tensorflow {
+
 class DebugGrpcChannel {
  public:
   // Constructor of DebugGrpcChannel.
@@ -198,5 +205,7 @@ class DebugGrpcIO {
 };
 
 }  // namespace tensorflow
+
+#endif  // #if defined(PLATFORM_GOOGLE)
 
 #endif  // TENSORFLOW_DEBUG_IO_UTILS_H_

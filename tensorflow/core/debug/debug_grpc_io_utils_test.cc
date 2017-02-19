@@ -25,6 +25,9 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/util/event.pb.h"
 
+// TODO(cais): Support grpc:// debug URLs in open source once Python grpc
+//   genrule becomes available. See b/23796275.
+#if defined(PLATFORM_GOOGLE)
 namespace tensorflow {
 namespace {
 
@@ -216,3 +219,4 @@ TEST_F(GrpcDebugTest, SendMultipleDebugTensorsSynchronizedViaGrpcTest) {
 
 }  // namespace
 }  // namespace tensorflow
+#endif
