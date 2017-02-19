@@ -596,9 +596,6 @@ class DynamicRNNInputND(test.TestCase):
   when time_major=False.
   Both, when the rank is known at the graph construction
   time as well as when it is not.
-
-  Note: the following tests only work if the shape-checks in rnn.py/dynamic_rnn and
-  rnn.py/_dynamic_rnn_loop are disabled.
   """
   def setUp(self):
     self._seed = 23489

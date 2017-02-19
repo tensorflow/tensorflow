@@ -622,7 +622,7 @@ def _dynamic_rnn_loop(cell,
   inputs_got_shape = tuple(input_.get_shape().with_rank_at_least(3)
                            for input_ in flat_input)
 
-    const_time_steps,const_batch_size = inputs_got_shape[0][:2].as_list()
+  const_time_steps,const_batch_size = inputs_got_shape[0][:2].as_list()
 
   # Prepare dynamic conditional copying of state & output
   def _create_zero_arrays(size):
