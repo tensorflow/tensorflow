@@ -487,6 +487,7 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
   if not time_major:
     # (B,T,D) => (T,B,D)
     def _get_transpose_indices(x):
+      x = ops.convert_to_tensor(x)
       x_rank = x.get_shape().ndims
       if x_rank is None:
         x_rank = array_ops.rank(x)
@@ -621,6 +622,8 @@ def _dynamic_rnn_loop(cell,
   inputs_got_shape = tuple(input_.get_shape().with_rank_at_least(3)
                            for input_ in flat_input)
 
+    const_time_steps,const_batch_size = inputs_got_shape[0][:2].as_list()
+
   # Prepare dynamic conditional copying of state & output
   def _create_zero_arrays(size):
     size = _state_size_with_prefix(size, prefix=[batch_size])
@@ -710,9 +713,8 @@ def _dynamic_rnn_loop(cell,
   # Restore some shape information
   for output, output_size in zip(final_outputs, flat_output_size):
     shape = _state_size_with_prefix(
-        output_size, prefix=[time_steps, batch_size])
-    # output.set_shape(shape)
-    output = array_ops.reshape(output,shape)
+        output_size, prefix=[const_time_steps, const_batch_size])
+    output.set_shape(shape)
 
   final_outputs = nest.pack_sequence_as(
       structure=cell.output_size, flat_sequence=final_outputs)
