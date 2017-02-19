@@ -171,7 +171,7 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
   dnn_feature_columns = params.get("dnn_feature_columns")
   dnn_optimizer = params.get("dnn_optimizer") or "Adagrad"
   dnn_hidden_units = params.get("dnn_hidden_units")
-  dnn_activation_fn = params.get("dnn_activation_fn")
+  dnn_activation_fn = params.get("dnn_activation_fn") or nn.relu
   dnn_dropout = params.get("dnn_dropout")
   gradient_clip_norm = params.get("gradient_clip_norm")
   input_layer_min_slice_size = (
@@ -346,7 +346,7 @@ class _DNNLinearCombinedEstimator(estimator.Estimator):
                dnn_feature_columns=None,
                dnn_optimizer=None,
                dnn_hidden_units=None,
-               dnn_activation_fn=nn.relu,
+               dnn_activation_fn=None,
                dnn_dropout=None,
                gradient_clip_norm=None,
                config=None,

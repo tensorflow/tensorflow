@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/hexagon/hexagon_control_wrapper.h"
 
+#include "tensorflow/core/kernels/hexagon/hexagon_ops_definitions.h"
+
 #ifdef USE_HEXAGON_LIBS
 #include "tensorflow/core/platform/hexagon/soc_interface.h"
 #include "tensorflow/core/platform/profile_utils/cpu_utils.h"
@@ -22,11 +24,26 @@ limitations under the License.
 
 namespace tensorflow {
 
+constexpr const char* const INPUT_OP_NAME = "INPUT";
+constexpr const char* const OUTPUT_OP_NAME = "OUTPUT";
+
+const bool DBG_DUMP_VERIFICATION_STRING = false;
 const bool SHOW_DBG_IN_SOC = false;
 const bool DBG_USE_DUMMY_INPUT = false;
 const bool DBG_USE_SAMPLE_INPUT = false;
 const int64 FLAG_ENABLE_PANDA_BINARY_INPUT = 0x01;
 const bool DBG_DUMP_INPUT_TENSOR_AS_FLOAT_DATA = false;
+
+/* static */ GraphTransferInfo::NodeInfo* HexagonControlWrapper::FindNodeInfo(
+    const string& name, GraphTransferInfo* graph_transfer_info) {
+  for (GraphTransferInfo::NodeInfo& node_info :
+       *graph_transfer_info->mutable_node_info()) {
+    if (node_info.name() == name) {
+      return &node_info;
+    }
+  }
+  return nullptr;
+}
 
 #ifdef USE_HEXAGON_LIBS
 int HexagonControlWrapper::GetVersion() {
@@ -44,14 +61,67 @@ bool HexagonControlWrapper::Init() {
 bool HexagonControlWrapper::Finalize() { return soc_interface_Finalize(); }
 bool HexagonControlWrapper::SetupGraph(
     const GraphTransferer& graph_transferer) {
-  const GraphTransferInfo& graph_transfer_info =
+  // Copy graph transfer info to modify to adapt hexnn library
+  GraphTransferInfo graph_transfer_info =
       graph_transferer.GetGraphTransferInfo();
+
+  // Overwrite op type of input nodes for hexagon
+  for (const GraphTransferInfo::GraphInputNodeInfo& graph_input :
+       graph_transfer_info.graph_input_node_info()) {
+    GraphTransferInfo::NodeInfo* node_info =
+        FindNodeInfo(graph_input.name(), &graph_transfer_info);
+    CHECK_NE(node_info, nullptr);
+    node_info->set_type_name(INPUT_OP_NAME);
+    node_info->set_soc_op_id(
+        HexagonOpsDefinitions::getInstance().GetOpIdFor(INPUT_OP_NAME));
+  }
+
+  // Generate a new output node which is connected to graph output node
+  // TODO(satok): Support multiple output nodes
+  CHECK_EQ(graph_transfer_info.graph_output_node_info_size(), 1);
+  for (const GraphTransferInfo::GraphOutputNodeInfo& graph_output :
+       graph_transfer_info.graph_output_node_info()) {
+    const int new_output_node_id = graph_transfer_info.node_info_size() +
+                                   graph_transfer_info.const_node_info_size() +
+                                   2 /* offset for ids */;
+    // Register a new output node
+    GraphTransferInfo::NodeInfo& new_output_node_info =
+        *graph_transfer_info.add_node_info();
+    new_output_node_info.set_name(OUTPUT_OP_NAME);
+    new_output_node_info.set_node_id(new_output_node_id);
+    new_output_node_info.set_type_name(OUTPUT_OP_NAME);
+    new_output_node_info.set_soc_op_id(
+        HexagonOpsDefinitions::getInstance().GetOpIdFor(OUTPUT_OP_NAME));
+    new_output_node_info.set_padding_id(0 /* PADDING_NA_ID */);
+    new_output_node_info.set_input_count(1);
+    new_output_node_info.set_output_count(0);
+
+    // Register node input for the new output node
+    const GraphTransferInfo::NodeInfo* node_info =
+        FindNodeInfo(graph_output.name(), &graph_transfer_info);
+    CHECK_NE(node_info, nullptr);
+    GraphTransferInfo::NodeInputInfo& node_input_info =
+        *graph_transfer_info.add_node_input_info();
+    node_input_info.set_node_id(new_output_node_id);
+    GraphTransferInfo::NodeInput& node_input =
+        *node_input_info.add_node_input();
+    node_input.set_node_id(node_info->node_id());
+    node_input.set_output_port(0);
+  }
+
+  if (DBG_DUMP_VERIFICATION_STRING) {
+    GraphTransferer gt;
+    gt.SetSerializedGraphTransferInfo(graph_transfer_info.SerializeAsString());
+    gt.DumpVerificationStringOfNodeTransferParams();
+  }
+
   int inputs_count = 0;
   int outputs_count = 0;
   for (const GraphTransferInfo::NodeInputInfo& input_params :
        graph_transfer_info.node_input_info()) {
     inputs_count += input_params.node_input_size();
   }
+
   for (const GraphTransferInfo::NodeOutputInfo& output_params :
        graph_transfer_info.node_output_info()) {
     outputs_count += output_params.max_byte_size_size();
@@ -128,7 +198,7 @@ bool HexagonControlWrapper::SetupGraph(
 
   // 2. Setup op nodes
   for (const GraphTransferInfo::NodeInfo& params :
-       graph_transferer.GetGraphTransferInfo().node_info()) {
+       graph_transfer_info.node_info()) {
     const int node_id = params.node_id();
     const int op_id = params.soc_op_id();
     CHECK(inputs_map.count(node_id) == 1);
@@ -144,7 +214,7 @@ bool HexagonControlWrapper::SetupGraph(
       const auto& output_ptr_and_count = outputs_map.at(node_id);
       output_ptr = std::get<0>(output_ptr_and_count);
       output_count = std::get<1>(output_ptr_and_count);
-      CHECK(output_count > 0);
+      // CHECK(output_count > 0);
     }
     int padding_id = -1;
     if (params.padding_id() == 0) {

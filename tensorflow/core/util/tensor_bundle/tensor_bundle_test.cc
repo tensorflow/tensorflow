@@ -306,6 +306,56 @@ TEST(TensorBundleTest, PartitionedVariables) {
   }
 }
 
+TEST(TensorBundleTest, EquivalentSliceTest) {
+  const TensorShape kFullShape({5, 10});
+  const Tensor kExpected(Constant<float>(1., kFullShape));
+  {
+    BundleWriter writer(Env::Default(), Prefix("foo"));
+    TF_ASSERT_OK(writer.AddSlice("no_extents", kFullShape,
+                                 TensorSlice::ParseOrDie("-:-"), kExpected));
+    TF_ASSERT_OK(writer.AddSlice("both_extents", kFullShape,
+                                 TensorSlice::ParseOrDie("0,5:0,10"),
+                                 kExpected));
+    TF_ASSERT_OK(writer.Finish());
+  }
+  // Slices match exactly and are fully abbreviated.
+  {
+    BundleReader reader(Env::Default(), Prefix("foo"));
+    TF_ASSERT_OK(reader.status());
+    const TensorSlice slice = TensorSlice::ParseOrDie("-:-");
+    Tensor val(DT_FLOAT, TensorShape(kFullShape));
+    TF_ASSERT_OK(reader.LookupSlice("no_extents", slice, &val));
+    test::ExpectTensorEqual<float>(val, kExpected);
+  }
+  // Slice match exactly and are fully specified.
+  {
+    BundleReader reader(Env::Default(), Prefix("foo"));
+    TF_ASSERT_OK(reader.status());
+    const TensorSlice slice = TensorSlice::ParseOrDie("0,5:0,10");
+    Tensor val(DT_FLOAT, TensorShape(kFullShape));
+    TF_ASSERT_OK(reader.LookupSlice("both_extents", slice, &val));
+    test::ExpectTensorEqual<float>(val, kExpected);
+  }
+  // Stored slice has no extents, spec has extents.
+  {
+    BundleReader reader(Env::Default(), Prefix("foo"));
+    TF_ASSERT_OK(reader.status());
+    const TensorSlice slice = TensorSlice::ParseOrDie("0,5:0,10");
+    Tensor val(DT_FLOAT, TensorShape(kFullShape));
+    TF_ASSERT_OK(reader.LookupSlice("no_extents", slice, &val));
+    test::ExpectTensorEqual<float>(val, kExpected);
+  }
+  // Stored slice has both extents, spec has no extents.
+  {
+    BundleReader reader(Env::Default(), Prefix("foo"));
+    TF_ASSERT_OK(reader.status());
+    const TensorSlice slice = TensorSlice::ParseOrDie("-:-");
+    Tensor val(DT_FLOAT, TensorShape(kFullShape));
+    TF_ASSERT_OK(reader.LookupSlice("both_extents", slice, &val));
+    test::ExpectTensorEqual<float>(val, kExpected);
+  }
+}
+
 TEST(TensorBundleTest, NonStandardShapes) {
   TestNonStandardShapes<float>();
   TestNonStandardShapes<double>();

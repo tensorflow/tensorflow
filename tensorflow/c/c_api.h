@@ -1013,7 +1013,9 @@ extern void TF_SessionRun(TF_Session* session,
 // Set up the graph with the intended feeds (inputs) and fetches (outputs) for a
 // sequence of partial run calls.
 //
-// On success, returns a handle that is used for subsequent PRun calls.
+// On success, returns a handle that is used for subsequent PRun calls. The
+// handle should be deleted with TF_DeletePRunHandle when it is no longer
+// needed.
 //
 // On failure, out_status contains a tensorflow::Status with an error
 // message.
@@ -1046,6 +1048,10 @@ extern void TF_SessionPRun(TF_Session*, const char* handle,
                            int ntargets,
                            // Output status
                            TF_Status*);
+
+// Deletes a handle allocated by TF_SessionPRunSetup.
+// Once called, no more calls to TF_SessionPRun should be made.
+extern void TF_DeletePRunHandle(const char* handle);
 
 // --------------------------------------------------------------------------
 // The deprecated session API.  Please switch to the above instead of

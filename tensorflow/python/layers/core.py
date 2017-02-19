@@ -155,6 +155,15 @@ class Dense(base._Layer):  # pylint: disable=protected-access
       return self.activation(outputs)  # pylint: disable=not-callable
     return outputs
 
+  def _compute_output_shape(self, input_shape):
+    input_shape = tensor_shape.TensorShape(input_shape)
+    input_shape = input_shape.with_rank_at_least(2)
+    if input_shape[-1].value is None:
+      raise ValueError(
+          'The innermost dimension of input_shape must be defined, but saw: %s'
+          % input_shape)
+    return input_shape[:-1].concatenate(self.units)
+
 
 def dense(
     inputs, units,

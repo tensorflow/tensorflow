@@ -150,4 +150,5 @@ class ImperativeMode(object):
     Returns:
       A new ImperativeMode object.
     """
+    self._graph.run_pending_inits(self._session)
     return ImperativeMode(self._target, parent_graph=self._graph)

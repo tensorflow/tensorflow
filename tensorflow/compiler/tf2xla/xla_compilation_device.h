@@ -28,9 +28,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Class is declared and defined in tla_jit_device.cc, reference
+// Class is defined in xla_compilation_device.cc, reference
 // included here only so the XlaCompilationDevice allocator_ member can be
-// defined.
+// declared.
 class XlaCompilationAllocator;
 
 // Deliberately don't register the device factory because we *never*

@@ -82,8 +82,6 @@ from __future__ import print_function
 
 # pylint: disable=unused-import,wildcard-import,line-too-long,g-importing-member
 
-from tensorflow.contrib.distributions.python.ops import bijector
-from tensorflow.contrib.distributions.python.ops import conditional_bijector
 from tensorflow.contrib.distributions.python.ops.bernoulli import *
 from tensorflow.contrib.distributions.python.ops.beta import *
 from tensorflow.contrib.distributions.python.ops.binomial import *
@@ -125,8 +123,7 @@ from tensorflow.contrib.distributions.python.ops.wishart import *
 
 from tensorflow.python.util.all_util import remove_undocumented
 
-_allowed_symbols = ['bijector',
-                    'ConditionalDistribution',
+_allowed_symbols = ['ConditionalDistribution',
                     'ConditionalTransformedDistribution',
                     'FULLY_REPARAMETERIZED', 'NOT_REPARAMETERIZED']
 

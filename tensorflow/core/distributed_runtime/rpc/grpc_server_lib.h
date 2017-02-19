@@ -63,6 +63,8 @@ class GrpcServer : public ServerInterface {
   virtual ChannelCreationFunction GetChannelCreationFunction(
       const ServerDef& server_def) const;
 
+  virtual std::unique_ptr<Master> CreateMaster(MasterEnv* master_env);
+
   // Returns the port to which this server is bound.
   // This method may only be called after `this->Init()` returns successfully.
   int bound_port() const { return bound_port_; }

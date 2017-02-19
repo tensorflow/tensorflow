@@ -18,15 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.distributions.python.ops import bijector
 from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.contrib.distributions.python.ops import logistic
 from tensorflow.contrib.distributions.python.ops import transformed_distribution
+from tensorflow.contrib.distributions.python.ops.bijectors import sigmoid as sigmoid_lib
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
-from tensorflow.python.ops import math_ops
 
 
 class RelaxedBernoulli(transformed_distribution.TransformedDistribution):
@@ -169,25 +168,18 @@ class RelaxedBernoulli(transformed_distribution.TransformedDistribution):
       with ops.control_dependencies([check_ops.assert_positive(temperature)]
                                     if validate_args else []):
         self._temperature = array_ops.identity(temperature, name="temperature")
-
       self._logits, self._probs = distribution_util.get_logits_and_probs(
           logits=logits, probs=probs, validate_args=validate_args)
-      dist = logistic.Logistic(self._logits / self._temperature,
-                               1. / self._temperature,
-                               validate_args=validate_args,
-                               allow_nan_stats=allow_nan_stats,
-                               name=ns)
-      self._parameters = parameters
-
-    def inverse_log_det_jacobian_fn(y):
-      return -math_ops.log(y) - math_ops.log1p(-y)
-
-    sigmoid_bijector = bijector.Inline(
-        forward_fn=math_ops.sigmoid,
-        inverse_fn=(lambda y: math_ops.log(y) - math_ops.log1p(-y)),
-        inverse_log_det_jacobian_fn=inverse_log_det_jacobian_fn,
-        name="sigmoid")
-    super(RelaxedBernoulli, self).__init__(dist, sigmoid_bijector, name=name)
+      super(RelaxedBernoulli, self).__init__(
+          distribution=logistic.Logistic(self._logits / self._temperature,
+                                         1. / self._temperature,
+                                         validate_args=validate_args,
+                                         allow_nan_stats=allow_nan_stats,
+                                         name=ns),
+          bijector=sigmoid_lib.Sigmoid(validate_args=validate_args),
+          validate_args=validate_args,
+          name=ns)
+    self._parameters = parameters
 
   @staticmethod
   def _param_shapes(sample_shape):
@@ -207,5 +199,3 @@ class RelaxedBernoulli(transformed_distribution.TransformedDistribution):
   def probs(self):
     """Probability of `1`."""
     return self._probs
-
-

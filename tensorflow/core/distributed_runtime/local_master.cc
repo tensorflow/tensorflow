@@ -27,7 +27,8 @@ namespace {
 Status WaitForNotification(CallOptions* call_options, Notification* n) {
   int64 timeout_in_ms = call_options->GetTimeout();
   if (timeout_in_ms > 0) {
-    bool notified = WaitForNotificationWithTimeout(n, timeout_in_ms);
+    int64 timeout_in_us = timeout_in_ms * 1000;
+    bool notified = WaitForNotificationWithTimeout(n, timeout_in_us);
     if (!notified) {
       call_options->StartCancel();
       // The call has borrowed pointers to the request and response

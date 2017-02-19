@@ -201,6 +201,7 @@ class DebugWrapperSessionTest(test_util.TensorFlowTestCase):
     self.assertTrue(isinstance(wrapper_sess, session.SessionInterface))
     self.assertEqual(self._sess.sess_str, wrapper_sess.sess_str)
     self.assertEqual(self._sess.graph, wrapper_sess.graph)
+    self.assertEqual(self._sess.graph_def, wrapper_sess.graph_def)
 
     # Check that the partial_run_setup and partial_run are not implemented for
     # the debug wrapper session.
@@ -305,6 +306,15 @@ class DebugWrapperSessionTest(test_util.TensorFlowTestCase):
 
     with wrapper as sess:
       sess.run(self._s)
+
+  def testUsingWrappedSessionShouldSupportEvalWithAsDefault(self):
+    wrapper = TestDebugWrapperSession(self._sess, self._dump_root,
+                                      self._observer)
+
+    with wrapper.as_default():
+      foo = constant_op.constant(42, name="foo")
+      self.assertEqual(42, foo.eval())
+      self.assertEqual(foo, self._observer["run_fetches"])
 
   def testWrapperShouldSupportSessionClose(self):
     wrapper = TestDebugWrapperSession(self._sess, self._dump_root,

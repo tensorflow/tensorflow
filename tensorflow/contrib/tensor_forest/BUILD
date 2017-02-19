@@ -271,6 +271,7 @@ py_test(
     size = "small",
     srcs = ["python/kernel_tests/scatter_add_ndim_op_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_pip_gpu"],
     deps = [
         ":tensor_forest_ops_py",
         "//tensorflow/python:framework_test_lib",
