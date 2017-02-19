@@ -164,11 +164,10 @@ Status FindCompilationCandidates(
 
     if (is_compilable_fn && !is_compilable_fn(node, device_type)) continue;
 
-    const string* jit_device_name;
-    CHECK(XlaOpRegistry::GetJitDevice(device_type.type(), &jit_device_name,
-                                      /*requires_jit=*/nullptr,
-                                      /*enable_jit_by_default=*/nullptr));
-    DeviceType jit_device_type(*jit_device_name);
+    const XlaOpRegistry::DeviceRegistration* registration;
+    CHECK(
+        XlaOpRegistry::GetCompilationDevice(device_type.type(), &registration));
+    DeviceType jit_device_type(registration->compilation_device_name);
     if (!HasXLAKernel(*node, jit_device_type) &&
         !IsCompilableCall(node->def(), jit_device_type, 0, lib_runtime.get())) {
       VLOG(2) << "Compilation rejected node: unsupported op " << node->name()
@@ -253,18 +252,17 @@ Cluster* Cluster::FindRoot() {
 
 bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef) {
   Device* device = flr->device();
-  const string* jit_device_name;
-  CHECK(XlaOpRegistry::GetJitDevice(device->device_type(), &jit_device_name,
-                                    /*requires_jit=*/nullptr,
-                                    /*enable_jit_by_default=*/nullptr));
-  DeviceType jit_device_type(*jit_device_name);
+  const XlaOpRegistry::DeviceRegistration* registration;
+  CHECK(XlaOpRegistry::GetCompilationDevice(device->device_type(),
+                                            &registration));
+  DeviceType jit_device_type(registration->compilation_device_name);
   return IsCompilableCall(ndef, jit_device_type, 0, flr);
 }
 
 Status MarkForCompilationPass::Run(
     const GraphOptimizationPassOptions& options) {
-  // TODO(phawkins): precompute the "GetJitDevice" properties each device ahead
-  // of time.
+  // TODO(phawkins): precompute the "GetCompilationDevice" properties of each
+  // device ahead of time.
   OptimizerOptions::GlobalJitLevel global_jit_level =
       options.session_options->config.graph_options()
           .optimizer_options()
@@ -285,14 +283,13 @@ Status MarkForCompilationPass::Run(
   const FunctionLibraryDefinition* fld = options.flib_def;
   auto is_compilable = [global_jit_level, fld](const Node* node,
                                                const DeviceType& device_type) {
-    const string* jit_device;
-    bool requires_jit, enable_jit_by_default;
-    if (!XlaOpRegistry::GetJitDevice(device_type.type(), &jit_device,
-                                     &requires_jit, &enable_jit_by_default)) {
+    const XlaOpRegistry::DeviceRegistration* registration;
+    if (!XlaOpRegistry::GetCompilationDevice(device_type.type(),
+                                             &registration)) {
       return false;
     }
     // If this device requires a JIT, we must say yes.
-    if (requires_jit) return true;
+    if (registration->requires_compilation) return true;
 
     // If there is a _XlaCompile annotation, use its value.
     bool compile = false;
@@ -303,7 +300,7 @@ Status MarkForCompilationPass::Run(
     if (status.ok()) return compile;
 
     // Otherwise use the value of global_jit_level.
-    return enable_jit_by_default && global_jit_level > 0;
+    return registration->enable_jit_by_default && global_jit_level > 0;
   };
   return RunImpl(options, is_compilable);
 }
@@ -325,7 +322,7 @@ Status MarkForCompilationPass::RunImpl(
   VLOG(1) << "MarkForCompilationPass::Run";
 
   // Make sure that kernels have been registered on the JIT device.
-  XlaOpRegistry::RegisterJitKernels();
+  XlaOpRegistry::RegisterCompilationKernels();
 
   Graph* graph = options.graph->get();
 
@@ -433,7 +430,9 @@ Status MarkForCompilationPass::RunImpl(
     if (node_from->IsControlFlow()) {
       // Control flow nodes aren't compilation candidates and should never
       // appear.
-      return errors::Internal("Found control flow node in clustering worklist");
+      return errors::Internal(
+          "Found control flow node in clustering worklist: ",
+          node_from->type_string());
     }
     for (int to : cycles.Successors(from)) {
       if (to >= graph->num_node_ids()) {
@@ -507,18 +506,16 @@ Status MarkForCompilationPass::RunImpl(
 
     // Compile if this operator is placed on a device that requires
     // compilation.
-    bool requires_jit = false;
     DeviceType device_type("");
     TF_RETURN_IF_ERROR(
         DeviceTypeOfDevice(n->assigned_device_name(), &device_type));
-    XlaOpRegistry::GetJitDevice(device_type.type(),
-                                /*jit_device_name=*/nullptr, &requires_jit,
-                                /*enable_jit_by_default=*/nullptr);
+    const XlaOpRegistry::DeviceRegistration* registration;
+    XlaOpRegistry::GetCompilationDevice(device_type.type(), &registration);
 
     // Or compile if this is a cluster of >= min_cluster_size compilable
     // operators.
     if (cluster_sizes[cluster] >= min_cluster_size || marked_for_compilation ||
-        requires_jit) {
+        registration->requires_compilation) {
       string& name = cluster_names[cluster];
       if (name.empty()) {
         name = strings::StrCat("cluster_", cluster_sequence_num++);

@@ -12,13 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for Bijector."""
+"""ConditionalBijector Tests."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.distributions.python.ops import conditional_bijector
+from tensorflow.contrib.distributions.python.ops.bijectors import conditional_bijector
 from tensorflow.python.framework import dtypes
 from tensorflow.python.platform import test
 
@@ -43,9 +43,6 @@ class _TestBijector(conditional_bijector.ConditionalBijector):
   def _inverse_log_det_jacobian(self, _, arg1, arg2):
     raise ValueError("inverse_log_det_jacobian", arg1, arg2)
 
-  def _inverse_and_inverse_log_det_jacobian(self, _, arg1, arg2):
-    raise ValueError("inverse_and_inverse_log_det_jacobian", arg1, arg2)
-
   def _forward_log_det_jacobian(self, _, arg1, arg2):
     raise ValueError("forward_log_det_jacobian", arg1, arg2)
 
@@ -55,8 +52,7 @@ class ConditionalBijectorTest(test.TestCase):
   def testConditionalBijector(self):
     b = _TestBijector()
     for name in ["forward", "inverse", "inverse_log_det_jacobian",
-                 "forward_log_det_jacobian",
-                 "inverse_and_inverse_log_det_jacobian"]:
+                 "forward_log_det_jacobian"]:
       method = getattr(b, name)
       with self.assertRaisesRegexp(ValueError, name + ".*b1.*b2"):
         method(1.0, arg1="b1", arg2="b2")

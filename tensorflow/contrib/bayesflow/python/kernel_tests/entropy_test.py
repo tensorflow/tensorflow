@@ -29,7 +29,7 @@ import numpy as np
 
 from tensorflow.contrib import distributions as distributions_lib
 from tensorflow.contrib import layers as layers_lib
-from tensorflow.contrib.bayesflow.python.ops import entropy as entropy_lib
+from tensorflow.contrib.bayesflow.python.ops import entropy_impl as entropy_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import math_ops

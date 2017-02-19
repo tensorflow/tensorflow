@@ -42,50 +42,44 @@ static bool IsPlatformSupported(perftools::gputools::Platform::Id id) {
 XlaOpRegistry::XlaOpRegistry() = default;
 XlaOpRegistry::~XlaOpRegistry() = default;
 
-/* static */ void XlaOpRegistry::RegisterJitDevice(
-    const string& device_name, const string& jit_device_name, bool requires_jit,
-    bool enable_jit_by_default) {
+/* static */ void XlaOpRegistry::RegisterCompilationDevice(
+    const string& device_name, const DeviceRegistration& registration) {
   XlaOpRegistry& registry = Instance();
   mutex_lock lock(registry.mutex_);
-  auto result = registry.jit_devices_.emplace(
-      device_name,
-      JitDevice{jit_device_name, requires_jit, enable_jit_by_default});
-  CHECK(result.second ||
-        result.first->second.jit_device_name == jit_device_name);
+  auto result =
+      registry.compilation_devices_.emplace(device_name, registration);
+  CHECK(result.second || result.first->second.compilation_device_name ==
+                             registration.compilation_device_name);
 }
 
-/* static */ bool XlaOpRegistry::GetJitDevice(const string& device_name,
-                                              const string** jit_device_name,
-                                              bool* requires_jit,
-                                              bool* enable_jit_by_default) {
+/* static */ bool XlaOpRegistry::GetCompilationDevice(
+    const string& device_name, const DeviceRegistration** registration) {
   XlaOpRegistry& registry = Instance();
 
-  // Lazily register the CPU and GPU JIT devices the first time GetJitDevice is
-  // called.
-  static void* registration = [&registry]() {
+  // Lazily register the CPU and GPU JIT devices the first time
+  // GetCompilationDevice is called.
+  static void* registration_init = [&registry]() {
     mutex_lock lock(registry.mutex_);
     if (IsPlatformSupported(perftools::gputools::host::kHostPlatformId)) {
-      registry.jit_devices_[DEVICE_CPU] = {DEVICE_CPU_XLA_JIT, false, false};
+      registry.compilation_devices_[DEVICE_CPU] =
+          DeviceRegistration{DEVICE_CPU_XLA_JIT, false, false};
     }
     if (IsPlatformSupported(perftools::gputools::cuda::kCudaPlatformId)) {
-      registry.jit_devices_[DEVICE_GPU] = {DEVICE_GPU_XLA_JIT, false, true};
+      registry.compilation_devices_[DEVICE_GPU] =
+          DeviceRegistration{DEVICE_GPU_XLA_JIT, false, true};
     }
     return nullptr;
   }();
-  (void)registration;
+  (void)registration_init;
 
   mutex_lock lock(registry.mutex_);
-  auto it = registry.jit_devices_.find(device_name);
-  if (it == registry.jit_devices_.end()) return false;
-  if (jit_device_name) *jit_device_name = &it->second.jit_device_name;
-  if (requires_jit) *requires_jit = it->second.requires_jit;
-  if (enable_jit_by_default) {
-    *enable_jit_by_default = it->second.enable_jit_by_default;
-  }
+  auto it = registry.compilation_devices_.find(device_name);
+  if (it == registry.compilation_devices_.end()) return false;
+  *registration = &it->second;
   return true;
 }
 
-void XlaOpRegistry::RegisterJitKernels() {
+void XlaOpRegistry::RegisterCompilationKernels() {
   XlaOpRegistry& registry = Instance();
   mutex_lock lock(registry.mutex_);
 

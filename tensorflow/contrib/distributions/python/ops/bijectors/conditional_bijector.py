@@ -12,13 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Conditional bijector."""
+"""ConditionalBijector base."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.distributions.python.ops import bijector
 from tensorflow.contrib.distributions.python.ops import distribution_util
+from tensorflow.contrib.distributions.python.ops.bijectors import bijector
 
 
 __all__ = ["ConditionalBijector"]
@@ -45,14 +46,6 @@ class ConditionalBijector(bijector.Bijector):
   def inverse_log_det_jacobian(
       self, y, name="inverse_log_det_jacobian", **condition_kwargs):
     return self._call_inverse_log_det_jacobian(y, name, **condition_kwargs)
-
-  @distribution_util.AppendDocstring(kwargs_dict={
-      "**condition_kwargs":
-      "Named arguments forwarded to subclass implementation."})
-  def inverse_and_inverse_log_det_jacobian(
-      self, y, name="inverse_and_inverse_log_det_jacobian", **condition_kwargs):
-    return self._call_inverse_and_inverse_log_det_jacobian(
-        y, name, **condition_kwargs)
 
   @distribution_util.AppendDocstring(kwargs_dict={
       "**condition_kwargs":

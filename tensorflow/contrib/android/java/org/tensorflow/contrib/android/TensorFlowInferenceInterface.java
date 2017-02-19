@@ -467,7 +467,7 @@ public class TensorFlowInferenceInterface {
   private Tensor getTensor(String outputName) {
     int i = 0;
     for (String n : fetchNames) {
-      if (n == outputName) {
+      if (n.equals(outputName)) {
         return fetchTensors.get(i);
       }
       i++;

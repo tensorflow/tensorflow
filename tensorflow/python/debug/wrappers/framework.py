@@ -118,6 +118,7 @@ from tensorflow.python.client import session
 from tensorflow.python.debug.lib import debug_utils
 from tensorflow.python.debug.lib import stepper
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
 
 
 # Helper function.
@@ -363,12 +364,19 @@ class BaseDebugWrapperSession(session.SessionInterface):
     return self._sess.graph
 
   @property
+  def graph_def(self):
+    return self._sess.graph_def
+
+  @property
   def sess_str(self):
     return self._sess.sess_str
 
   @property
   def session(self):
     return self._sess
+
+  def as_default(self):
+    return ops.default_session(self)
 
   def run(self, fetches, feed_dict=None, options=None, run_metadata=None):
     """Wrapper around Session.run() that inserts tensor watch options.

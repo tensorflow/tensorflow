@@ -129,6 +129,10 @@ py_test(
     size = "medium",
     srcs = ["python/training/feeder_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "manual",
+        "notap",  # Disabling until b/34151496 is better understood.
+    ],
     deps = [
         ":training_py",
         "//tensorflow/python:client",

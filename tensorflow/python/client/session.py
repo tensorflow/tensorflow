@@ -642,7 +642,7 @@ class BaseSession(SessionInterface):
     session that is automatically closed on exiting the context,
     including when an uncaught exception is raised.
 
-    *N.B.* The default graph is a property of the current thread. If you
+    *N.B.* The default session is a property of the current thread. If you
     create a new thread, and wish to use the default session in that
     thread, you must explicitly add a `with sess.as_default():` in that
     thread's function.

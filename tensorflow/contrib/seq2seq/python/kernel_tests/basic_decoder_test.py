@@ -35,6 +35,7 @@ from tensorflow.contrib.seq2seq.python.ops import basic_decoder
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.layers import core as layers_core
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 # pylint: enable=g-import-not-at-top
@@ -42,12 +43,13 @@ from tensorflow.python.platform import test
 
 class BasicDecoderTest(test.TestCase):
 
-  def testStepWithTrainingHelper(self):
+  def _testStepWithTrainingHelper(self, use_output_layer):
     sequence_length = [3, 4, 3, 1, 0]
     batch_size = 5
     max_time = 8
     input_depth = 7
     cell_depth = 10
+    output_layer_depth = 3
 
     with self.test_session() as sess:
       inputs = np.random.randn(batch_size, max_time,
@@ -55,15 +57,22 @@ class BasicDecoderTest(test.TestCase):
       cell = core_rnn_cell.LSTMCell(cell_depth)
       helper = helper_py.TrainingHelper(
           inputs, sequence_length, time_major=False)
+      if use_output_layer:
+        output_layer = layers_core.Dense(output_layer_depth, use_bias=False)
+        expected_output_depth = output_layer_depth
+      else:
+        output_layer = None
+        expected_output_depth = cell_depth
       my_decoder = basic_decoder.BasicDecoder(
           cell=cell,
           helper=helper,
           initial_state=cell.zero_state(
-              dtype=dtypes.float32, batch_size=batch_size))
+              dtype=dtypes.float32, batch_size=batch_size),
+          output_layer=output_layer)
       output_size = my_decoder.output_size
       output_dtype = my_decoder.output_dtype
       self.assertEqual(
-          basic_decoder.BasicDecoderOutput(cell_depth,
+          basic_decoder.BasicDecoderOutput(expected_output_depth,
                                            tensor_shape.TensorShape([])),
           output_size)
       self.assertEqual(
@@ -80,12 +89,17 @@ class BasicDecoderTest(test.TestCase):
       self.assertTrue(isinstance(step_state, core_rnn_cell.LSTMStateTuple))
       self.assertTrue(
           isinstance(step_outputs, basic_decoder.BasicDecoderOutput))
-      self.assertEqual((batch_size, cell_depth), step_outputs[0].get_shape())
+      self.assertEqual((batch_size, expected_output_depth),
+                       step_outputs[0].get_shape())
       self.assertEqual((batch_size,), step_outputs[1].get_shape())
       self.assertEqual((batch_size, cell_depth), first_state[0].get_shape())
       self.assertEqual((batch_size, cell_depth), first_state[1].get_shape())
       self.assertEqual((batch_size, cell_depth), step_state[0].get_shape())
       self.assertEqual((batch_size, cell_depth), step_state[1].get_shape())
+
+      if use_output_layer:
+        # The output layer was accessed
+        self.assertEqual(len(output_layer.variables), 1)
 
       sess.run(variables.global_variables_initializer())
       sess_results = sess.run({
@@ -106,6 +120,12 @@ class BasicDecoderTest(test.TestCase):
       self.assertAllEqual(
           np.argmax(sess_results["step_outputs"].rnn_output, -1),
           sess_results["step_outputs"].sample_id)
+
+  def testStepWithTrainingHelperNoOutputLayer(self):
+    self._testStepWithTrainingHelper(use_output_layer=False)
+
+  def testStepWithTrainingHelperWithOutputLayer(self):
+    self._testStepWithTrainingHelper(use_output_layer=True)
 
   def testStepWithGreedyEmbeddingHelper(self):
     batch_size = 5

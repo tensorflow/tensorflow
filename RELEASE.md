@@ -89,6 +89,7 @@ To help you upgrade your existing TensorFlow Python code to match the API change
 * Change arg order for `{softmax,sparse_softmax,sigmoid}_cross_entropy_with_logits` to be (labels, predictions), and force use of named args.
 
 ## Bug Fixes and Other Changes
+* Numerous C++ API updates.
 * New op: `parallel_stack`.
 * Introducing common tf io compression options constants for
   RecordReader/RecordWriter.
@@ -127,6 +128,7 @@ To help you upgrade your existing TensorFlow Python code to match the API change
 * `tf.divide` now honors the name field.
 * Make metrics weight broadcasting more strict.
 * Add new queue-like `StagingArea` and new ops: `stage` and `unstage`.
+* Enable inplace update ops for strings on CPU. Speed up string concat.
 
 ## Thanks to our Contributors
 
