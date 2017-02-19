@@ -132,7 +132,7 @@ class OptimizersTest(test.TestCase):
       var = variable_scope.get_variable(
           "test", [], initializer=init_ops.constant_initializer(10))
       loss = math_ops.abs(var * x)
-      with self.assertRaises(TypeError):
+      with self.assertRaises(AttributeError):
         optimizers_lib.optimize_loss(
             loss,
             global_step=constant_op.constant(

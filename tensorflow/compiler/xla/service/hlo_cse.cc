@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/core/errors.h"
 
 namespace xla {
 
@@ -76,8 +77,8 @@ bool CombineConstants(HloComputation* computation, bool is_layout_sensitive) {
         constants.emplace(shape_string, instruction);
       } else {
         // Match found, replace this instruction with the one in the multimap.
-        computation->ReplaceUsesOfInstruction(instruction, match);
-        computation->RemoveInstruction(instruction);
+        TF_CHECK_OK(computation->ReplaceUsesOfInstruction(instruction, match));
+        TF_CHECK_OK(computation->RemoveInstruction(instruction));
         changed = true;
       }
     }
@@ -120,9 +121,10 @@ StatusOr<bool> HloCSE::Run(HloModule* module) {
 
       // Replace all equivalent instructions with this instruction.
       for (HloInstruction* equivalent_instruction : equivalent_instructions) {
-        computation->ReplaceUsesOfInstruction(equivalent_instruction,
-                                              instruction);
-        computation->RemoveInstruction(equivalent_instruction);
+        TF_RETURN_IF_ERROR(computation->ReplaceUsesOfInstruction(
+            equivalent_instruction, instruction));
+        TF_RETURN_IF_ERROR(
+            computation->RemoveInstruction(equivalent_instruction));
         removed_instructions.insert(equivalent_instruction);
         changed = true;
       }

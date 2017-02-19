@@ -245,6 +245,26 @@ class Stream {
                        const dnn::BatchDescriptor &output_descriptor,
                        DeviceMemory<float> *output);
 
+  Stream &ThenConvolveQuantized(
+      const dnn::BatchDescriptor &input_descriptor,
+      const DeviceMemory<float> &input_data,
+      const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<int8> &filter_coefficients,
+      const DeviceMemory<float> &coefficient_scales,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<float> *output_data);
+
+  Stream &ThenConvolveQuantized(
+      const dnn::BatchDescriptor &input_descriptor,
+      const DeviceMemory<float> &input_data,
+      const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<int16> &filter_coefficients,
+      const DeviceMemory<float> &coefficient_scales,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<float> *output_data);
+
   Stream &ThenConvolveWithScratch(
       const dnn::BatchDescriptor &input_descriptor,
       const DeviceMemory<Eigen::half> &input_data,
@@ -493,6 +513,14 @@ class Stream {
                        const dnn::BatchDescriptor &dimensions,
                        const DeviceMemory<float> &input_data,
                        DeviceMemory<float> *output_data);
+
+  // Same as ThenActivate, but also takes an options argument that can be used
+  // for platform-specific option flags.
+  Stream &ThenActivateWithOptions(dnn::ActivationMode activation_mode,
+                                  const dnn::BatchDescriptor &dimensions,
+                                  const DeviceMemory<float> &input_data,
+                                  DeviceMemory<float> *output_data,
+                                  uint64 options);
 
   Stream &ThenDepthConcatenate(
       port::ArraySlice<dnn::BatchDescriptor> input_dimensions,

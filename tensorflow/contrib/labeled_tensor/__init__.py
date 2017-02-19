@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Labels for TensorFlow."""
 
 from __future__ import absolute_import
@@ -107,6 +106,7 @@ reshape = _ops.reshape
 rename_axis = _ops.rename_axis
 random_crop = _ops.random_crop
 map_fn = _ops.map_fn
+foldl = _ops.foldl
 squeeze = _ops.squeeze
 matmul = _ops.matmul
 tile = _ops.tile

@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Various ways of selecting operations and tensors in a graph.
-"""
+"""Various ways of selecting operations and tensors in a graph."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -28,6 +27,8 @@ from tensorflow.contrib.graph_editor import util
 from tensorflow.python.framework import ops as tf_ops
 
 __all__ = [
+    "can_be_regex",
+    "make_regex",
     "filter_ts",
     "filter_ts_from_regex",
     "filter_ops",

@@ -118,6 +118,10 @@ class LinearOperatorDiagTest(
       # Should not raise
       operator.assert_self_adjoint().run()
 
+  def test_scalar_diag_raises(self):
+    with self.assertRaisesRegexp(ValueError, "must have at least 1 dimension"):
+      linalg.LinearOperatorDiag(1.)
+
   def test_broadcast_apply_and_solve(self):
     # These cannot be done in the automated (base test class) tests since they
     # test shapes that tf.matmul cannot handle.

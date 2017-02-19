@@ -218,6 +218,44 @@ Determinant for every batch member.
 
   `Tensor` with shape `self.batch_shape` and same `dtype` as `self`.
 
+##### Raises:
+
+
+*  <b>`NotImplementedError`</b>: If `self.is_square` is `False`.
+
+
+- - -
+
+#### `tf.contrib.linalg.LinearOperatorTriL.diag_part(name='diag_part')` {#LinearOperatorTriL.diag_part}
+
+Efficiently get the [batch] diagonal part of this operator.
+
+If this operator has shape `[B1,...,Bb, M, N]`, this returns a
+`Tensor` `diagonal`, of shape `[B1,...,Bb, min(M, N)]`, where
+`diagonal[b1,...,bb, i] = self.to_dense()[b1,...,bb, i, i]`.
+
+```
+my_operator = LinearOperatorDiag([1., 2.])
+
+# Efficiently get the diagonal
+my_operator.diag_part()
+==> [1., 2.]
+
+# Equivalent, but inefficient method
+tf.matrix_diag_part(my_operator.to_dense())
+==> [1., 2.]
+```
+
+##### Args:
+
+
+*  <b>`name`</b>: A name for this `Op`.
+
+##### Returns:
+
+
+*  <b>`diag_part`</b>: A `Tensor` of same `dtype` as self.
+
 
 - - -
 
@@ -291,6 +329,13 @@ List of graph dependencies of this `LinearOperator`.
 
 - - -
 
+#### `tf.contrib.linalg.LinearOperatorTriL.is_square` {#LinearOperatorTriL.is_square}
+
+Return `True/False` depending on if this operator is square.
+
+
+- - -
+
 #### `tf.contrib.linalg.LinearOperatorTriL.log_abs_determinant(name='log_abs_det')` {#LinearOperatorTriL.log_abs_determinant}
 
 Log absolute value of determinant for every batch member.
@@ -303,6 +348,11 @@ Log absolute value of determinant for every batch member.
 ##### Returns:
 
   `Tensor` with shape `self.batch_shape` and same `dtype` as `self`.
+
+##### Raises:
+
+
+*  <b>`NotImplementedError`</b>: If `self.is_square` is `False`.
 
 
 - - -
@@ -421,7 +471,7 @@ X[3, :, 2]  # Solution to the linear system A[3, :, :] X = RHS[3, :, 2]
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If self.is_non_singular is False.
+*  <b>`NotImplementedError`</b>: If `self.is_non_singular` or `is_square` is False.
 
 
 - - -

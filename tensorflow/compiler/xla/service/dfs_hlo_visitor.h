@@ -165,6 +165,7 @@ class DfsHloVisitor {
   }
 
   virtual Status HandleInfeed(HloInstruction* infeed) = 0;
+  virtual Status HandleOutfeed(HloInstruction* outfeed) = 0;
   virtual Status HandleRng(HloInstruction* random,
                            RandomDistribution distribution) = 0;
   virtual Status HandleReverse(HloInstruction* reverse,

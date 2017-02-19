@@ -56,8 +56,8 @@ TEST_F(LayoutUtilTest, TupleLayoutComparison) {
 
   Shape other_tuple2 = ShapeUtil::MakeTupleShape({shape, other_shape});
   EXPECT_TRUE(LayoutUtil::LayoutsInShapesEqual(tuple2, tuple2));
-  EXPECT_FALSE(LayoutUtil::LayoutsInShapesEqual(tuple2, other_tuple2));
-  EXPECT_FALSE(LayoutUtil::LayoutsInShapesEqual(other_tuple2, tuple2));
+  EXPECT_TRUE(LayoutUtil::LayoutsInShapesEqual(tuple2, other_tuple2));
+  EXPECT_TRUE(LayoutUtil::LayoutsInShapesEqual(other_tuple2, tuple2));
 }
 
 TEST_F(LayoutUtilTest, CopyLayoutArray) {
@@ -102,7 +102,14 @@ TEST_F(LayoutUtilTest, CopyLayoutTuple) {
   EXPECT_TRUE(LayoutUtil::LayoutsInShapesEqual(src, dst));
 }
 
-TEST_F(LayoutUtilTest, CopyLayoutNotCompatible) {
+TEST_F(LayoutUtilTest, CopyLayoutNotCompatibleSameRank) {
+  Shape src = MakeShapeWithLayout(F32, {123, 42, 7}, {2, 0, 1});
+  Shape dst = MakeShapeWithLayout(F32, {2, 3, 5}, {1, 0});
+  ASSERT_IS_OK(LayoutUtil::CopyLayoutBetweenShapes(src, &dst));
+  EXPECT_TRUE(LayoutUtil::LayoutsInShapesEqual(src, dst));
+}
+
+TEST_F(LayoutUtilTest, CopyLayoutNotCompatibleDifferentRank) {
   Shape src = MakeShapeWithLayout(F32, {123, 42, 7}, {2, 0, 1});
   Shape dst = MakeShapeWithLayout(F32, {2, 3}, {1, 0});
   auto status = LayoutUtil::CopyLayoutBetweenShapes(src, &dst);

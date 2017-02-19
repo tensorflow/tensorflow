@@ -60,6 +60,14 @@ class CallOpTest : public ClientLibraryTestBase {
     return build_status.ConsumeValueOrDie();
   }
 
+  Computation CreateR0F32TupleComputation() {
+    ComputationBuilder builder(client_, "Tuple");
+    builder.Tuple({builder.Parameter(0, r0f32_, "x")});
+    auto build_status = builder.Build();
+    EXPECT_IS_OK(build_status.status());
+    return build_status.ConsumeValueOrDie();
+  }
+
   Shape r0f32_ = ShapeUtil::MakeShape(F32, {});
   Shape r1s0f32_ = ShapeUtil::MakeShape(F32, {0});
   Shape r1s2f32_ = ShapeUtil::MakeShape(F32, {2});
@@ -92,6 +100,16 @@ XLA_TEST_F(CallOpTest, DISABLED_ON_GPU(CallR1S2F32AddArray)) {
   builder.Call(callee, {x, y});
 
   ComputeAndCompareR1<float>(&builder, {3.0f, 5.0f}, {}, ErrorSpec(0.01f));
+}
+
+XLA_TEST_F(CallOpTest, DISABLED_ON_GPU(CallR0F32Tuple)) {
+  ComputationBuilder builder(client_, TestName());
+  Computation callee = CreateR0F32TupleComputation();
+  auto elem = LiteralUtil::CreateR0<float>(42.0);
+  auto tuple = LiteralUtil::MakeTuple({elem.get()});
+  builder.Call(callee, {builder.ConstantLiteral(*elem)});
+
+  ComputeAndCompareTuple(&builder, *tuple, {}, ErrorSpec(0.01f));
 }
 
 }  // namespace

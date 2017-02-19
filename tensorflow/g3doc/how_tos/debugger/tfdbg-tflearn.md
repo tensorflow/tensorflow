@@ -49,7 +49,7 @@ For a detailed [example](https://www.tensorflow.org/code/tensorflow/python/debug
 run:
 
 ```none
-python $(python -c "import tensorflow as tf; import os; print(os.path.dirname(tf.__file__));")/python/debug/examples/debug_tflearn_iris.py --debug
+python -m tensorflow.python.debug.examples.debug_tflearn_iris --debug
 ```
 
 ## Debugging tf.contrib.learn Experiments
@@ -83,7 +83,7 @@ accuracy_score = ex.evaluate()["accuracy"]
 To see the `debug_tflearn_iris` example run in the `Experiment` mode, do:
 
 ```none
-python $(python -c "import tensorflow as tf; import os; print(os.path.dirname(tf.__file__));")/python/debug/examples/debug_tflearn_iris.py \
+python -m tensorflow.python.debug.examples.debug_tflearn_iris \
     --use_experiment --debug
 ```
 
@@ -110,7 +110,7 @@ them in a command-line interface in an offline manner using the
 `offline_analyzer` offered by **tfdbg**. For example:
 
 ```bash
-python $(python -c "import tensorflow as tf; import os; print(os.path.dirname(tf.__file__));")/python/debug/cli/offline_analyzer.py \
+python -m tensorflow.python.debug.cli.offline_analyzer \
     --dump_dir="/cns/is-d/home/somebody/tfdbg_dumps_1/run_<epoch_timestamp_microsec>_<uuid>"
 ```
 

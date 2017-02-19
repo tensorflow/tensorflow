@@ -176,7 +176,7 @@ MatchBackwardFilter(HloInstruction* conv) {
     transpose =
         parent_computation->AddInstruction(HloInstruction::CreateTranspose(
             conv->shape(), conv, transpose_dimensions));
-    parent_computation->ReplaceUsesOfInstruction(conv, transpose);
+    TF_CHECK_OK(parent_computation->ReplaceUsesOfInstruction(conv, transpose));
   }
 
   // Restore the dimension numbers of the backward convolution from the forward
@@ -376,7 +376,7 @@ MatchBackwardInput(HloInstruction* conv) {
     reverse_filter = reverse_filter->parent()->AddInstruction(
         HloInstruction::CreateReverse(reverse_filter->shape(), reverse_filter,
                                       AsInt64Slice(kernel_spatial_dims)));
-    conv->ReplaceOperandWith(/*operand_no=*/1, reverse_filter);
+    TF_CHECK_OK(conv->ReplaceOperandWith(/*operand_no=*/1, reverse_filter));
   }
   dnums.set_kernel_input_feature_dimension(
       conv->convolution_dimension_numbers().kernel_output_feature_dimension());

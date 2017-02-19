@@ -1387,26 +1387,43 @@ Status MasterSession::DoRunWithLocalExecution(
     pss.collect_rpcs = ph->should_collect_rpcs();
   }
 
-  TF_RETURN_IF_ERROR(rcg->RunPartitions(env_, step_id, count,
-                                        execution_state_.get(), &pss, opts, req,
-                                        resp, cancellation_manager_, false));
+  Status s =
+      rcg->RunPartitions(env_, step_id, count, execution_state_.get(), &pss,
+                         opts, req, resp, cancellation_manager_, false);
+  if (s.ok()) {
+    pss.end_micros = Env::Default()->NowMicros();
 
-  pss.end_micros = Env::Default()->NowMicros();
-
-  // Schedule post-processing and cleanup to be done asynchronously.
+    // Schedule post-processing and cleanup to be done asynchronously.
+    rcg->ProcessStats(step_id, &pss, execution_state_.get(), ph.get(),
+                      req.options(), resp->mutable_metadata());
+  } else if (errors::IsCancelled(s)) {
+    mutex_lock l(mu_);
+    if (closed_) {
+      if (garbage_collected_) {
+        s = errors::Cancelled(
+            "Step was cancelled because the session was garbage collected due "
+            "to inactivity.");
+      } else {
+        s = errors::Cancelled(
+            "Step was cancelled by an explicit call to `Session::Close()`.");
+      }
+    }
+  }
   rcg->Ref();
-  rcg->ProcessStats(step_id, &pss, execution_state_.get(), ph.get(),
-                    req.options(), resp->mutable_metadata());
   rcg->CleanupPartitionsAsync(step_id, [rcg](const Status& s) {
     if (!s.ok()) {
       LOG(ERROR) << "Cleanup partition error: " << s;
     }
     rcg->Unref();
   });
-  return Status::OK();
+  return s;
 }
 
 Status MasterSession::Close() {
+  {
+    mutex_lock l(mu_);
+    closed_ = true;  // All subsequent calls to Run() or Extend() will fail.
+  }
   cancellation_manager_->StartCancel();
   std::vector<ReffedClientGraph*> to_unref;
   {
@@ -1414,12 +1431,21 @@ Status MasterSession::Close() {
     while (num_running_ != 0) {
       num_running_is_zero_.wait(l);
     }
-    closed_ = true;  // All subsequent calls to Run() or Extend() will fail.
     ClearRunsTable(&to_unref, &run_graphs_);
     ClearRunsTable(&to_unref, &partial_run_graphs_);
   }
   for (ReffedClientGraph* rcg : to_unref) rcg->Unref();
   return Status::OK();
+}
+
+void MasterSession::GarbageCollect() {
+  {
+    mutex_lock l(mu_);
+    closed_ = true;
+    garbage_collected_ = true;
+  }
+  cancellation_manager_->StartCancel();
+  Unref();
 }
 
 MasterSession::RunState::RunState(const std::vector<string>& input_names,

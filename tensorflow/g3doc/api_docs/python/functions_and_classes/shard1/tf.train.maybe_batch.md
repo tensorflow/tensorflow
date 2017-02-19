@@ -8,10 +8,12 @@ See docstring in `batch` for more details.
 
 
 *  <b>`tensors`</b>: The list or dictionary of tensors to enqueue.
-*  <b>`keep_input`</b>: A `bool` scalar Tensor.  This tensor controls whether the input
-    is added to the queue or not.  If it evaluates `True`, then `tensors` are
-    added to the queue; otherwise they are dropped.  This tensor essentially
-    acts as a filtering mechanism.
+*  <b>`keep_input`</b>: A `bool` Tensor.  This tensor controls whether the input is
+    added to the queue or not.  If it is a scalar and evaluates `True`, then
+    `tensors` are all added to the queue. If it is a vector and `enqueue_many`
+    is `True`, then each example is added to the queue only if the
+    corresonding value in `keep_input` is `True`. This tensor essentially acts
+    as a filtering mechanism.
 *  <b>`batch_size`</b>: The new batch size pulled from the queue.
 *  <b>`num_threads`</b>: The number of threads enqueuing `tensors`.
 *  <b>`capacity`</b>: An integer. The maximum number of elements in the queue.

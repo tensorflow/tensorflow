@@ -95,3 +95,10 @@ from tensorflow.python.ops.logging_ops import merge_all_summaries
 from tensorflow.python.ops.logging_ops import merge_summary
 from tensorflow.python.ops.logging_ops import scalar_summary
 # pylint: enable=unused-import,line-too-long
+
+from tensorflow.python.util.all_util import remove_undocumented
+_allowed_symbols = ['audio_summary', 'histogram_summary',
+                    'image_summary', 'merge_all_summaries',
+                    'merge_summary', 'scalar_summary']
+
+remove_undocumented(__name__, _allowed_symbols)

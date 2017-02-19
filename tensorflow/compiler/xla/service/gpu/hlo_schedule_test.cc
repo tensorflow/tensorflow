@@ -123,6 +123,7 @@ TEST_F(HloScheduleTest, SequentialAdd) {
   // transitively ordered by operands.
   auto order = schedule->ConsumeHloOrdering();
   EXPECT_TRUE(order->ExecutesBefore(x, add1));
+  EXPECT_TRUE(order->ExecutesBefore(x, add2));
   EXPECT_TRUE(order->ExecutesBefore(x, add3));
   EXPECT_TRUE(order->ExecutesBefore(y, add1));
   EXPECT_TRUE(order->ExecutesBefore(y, add2));
@@ -149,7 +150,6 @@ TEST_F(HloScheduleTest, SequentialAdd) {
   EXPECT_FALSE(order->ExecutesBefore(z, x));
   EXPECT_FALSE(order->ExecutesBefore(z, y));
   EXPECT_FALSE(order->ExecutesBefore(z, z));
-  EXPECT_FALSE(order->ExecutesBefore(x, add2));
   EXPECT_FALSE(order->ExecutesBefore(z, add1));
   EXPECT_FALSE(order->ExecutesBefore(add1, x));
   EXPECT_FALSE(order->ExecutesBefore(add1, y));

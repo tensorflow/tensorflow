@@ -13,8 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 declare function stub(el: string, obj: any): void;
+declare function fixture(id: string): void;
 
-    describe('audio dashboard tests', function() {
+
+describe(
+    'audio dashboard tests', function() {
       var audioDash;
       var reloadCount = 0;
       beforeEach(function() {

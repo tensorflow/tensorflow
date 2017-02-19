@@ -31,6 +31,9 @@ limitations under the License.
 
 namespace tensorflow {
 
+/// @addtogroup core
+/// @{
+
 /// A `ClientSession` object lets the caller drive the evaluation of the
 /// TensorFlow graph constructed with the C++ API.
 ///
@@ -100,6 +103,8 @@ class ClientSession {
 
   TF_DISALLOW_COPY_AND_ASSIGN(ClientSession);
 };
+
+/// @}
 
 }  // end namespace tensorflow
 

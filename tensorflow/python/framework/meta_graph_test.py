@@ -35,6 +35,7 @@ from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
@@ -381,15 +382,21 @@ class ScopedMetaGraphTest(test.TestCase):
   # Verifies that we can export a subgraph in a nested name scope containing a
   # "hidden1/hidden2" and import it into "new_hidden1/new_hidden2" in a new
   # graph.
-  def testExportNestedNames(self):
+  def doTestExportNestedNames(self, use_resource=False):
     graph1 = ops.Graph()
     with graph1.as_default():
       with ops.name_scope("hidden1/hidden2/hidden3"):
         images = constant_op.constant(
             1.0, dtypes.float32, shape=[3, 2], name="images")
-        weights1 = variables.Variable(
-            [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], name="weights")
-        biases1 = variables.Variable([0.1] * 3, name="biases")
+        if use_resource:
+          weights1 = variables.Variable(
+              [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], name="weights")
+          biases1 = resource_variable_ops.ResourceVariable(
+              [0.1] * 3, name="biases")
+        else:
+          biases1 = variables.Variable([0.1] * 3, name="biases")
+          weights1 = variables.Variable(
+              [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], name="weights")
         nn_ops.relu(math_ops.matmul(images, weights1) + biases1, name="relu")
 
     orig_meta_graph, var_list = meta_graph.export_scoped_meta_graph(
@@ -424,6 +431,12 @@ class ScopedMetaGraphTest(test.TestCase):
     ]
     for n, e in zip(nodes, expected):
       self.assertEqual([e], graph2.get_operation_by_name(n).get_attr("_class"))
+
+  def testExportNestedNames(self):
+    self.doTestExportNestedNames(use_resource=False)
+
+  def testExportNestedNamesResource(self):
+    self.doTestExportNestedNames(use_resource=True)
 
   def testPotentialCycle(self):
     graph1 = ops.Graph()

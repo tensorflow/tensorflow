@@ -79,7 +79,7 @@ def store_trace_info(output_file_path,
     file_info = trace_info.files.add()
 
     with gfile.Open(fpath, 'r') as f:
-      source = f.read().decode('utf-8')
+      source = f.read()
 
     file_info.file_path = fpath
     file_info.source_code = source

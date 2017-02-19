@@ -74,8 +74,7 @@ class Experiment(object):
                continuous_eval_throttle_secs=60,
                min_eval_frequency=1,
                delay_workers_by_global_step=False,
-               export_strategies=None,
-               continuous_eval_predicate_fn=None):
+               export_strategies=None):
     """Constructor for `Experiment`.
 
     Creates an Experiment instance. None of the functions passed to this
@@ -111,12 +110,6 @@ class Experiment(object):
       delay_workers_by_global_step: if `True` delays training workers
         based on global step instead of time.
       export_strategies: A list of `ExportStrategy`s, or a single one, or None.
-      continuous_eval_predicate_fn: A predicate function determining whether to
-        continue eval after each iteration. `predicate_fn` takes the evaluation
-        results as arguments. At the beginning of evaluation, the passed eval
-        results will be None so it's expected that the predicate function
-        handles that gracefully. When `predicate_fn` is not specified,
-        continuous eval will run in an infinite loop.
 
     Raises:
       ValueError: if `estimator` does not implement `Evaluable` and `Trainable`,
@@ -139,23 +132,13 @@ class Experiment(object):
     self._continuous_eval_throttle_secs = continuous_eval_throttle_secs
     self._min_eval_frequency = min_eval_frequency
     self._delay_workers_by_global_step = delay_workers_by_global_step
-    self._train_monitors = train_monitors or []
-    # Mutable fields, using the setters.
-    self.eval_hooks = eval_hooks
-    self.export_strategies = export_strategies
-    self.continuous_eval_predicate_fn = continuous_eval_predicate_fn
+    self._train_monitors = train_monitors[:] if train_monitors else []
+    self._eval_hooks = eval_hooks[:] if eval_hooks else []
+    self._set_export_strategies(export_strategies)
 
   @property
   def estimator(self):
     return self._estimator
-
-  @property
-  def train_input_fn(self):
-    return self._train_input_fn
-
-  @property
-  def eval_input_fn(self):
-    return self._eval_input_fn
 
   @property
   def eval_metrics(self):
@@ -169,60 +152,11 @@ class Experiment(object):
   def eval_steps(self):
     return self._eval_steps
 
-  @property
-  def train_hooks(self):
-    """Returns a shallow copy of train hooks for inspecting."""
-    return [m for m in self._train_monitors]
-
-  @property
-  def eval_hooks(self):
-    return self._eval_hooks
-
-  @eval_hooks.setter
-  def eval_hooks(self, value):
-    self._eval_hooks = value or []
-
-  @property
-  def local_eval_frequency(self):
-    return self._local_eval_frequency
-
-  @property
-  def eval_delay_secs(self):
-    return self._eval_delay_secs
-
-  @property
-  def continuous_eval_throttle_secs(self):
-    return self._continuous_eval_throttle_secs
-
-  @property
-  def min_eval_frequency(self):
-    return self._min_eval_frequency
-
-  @property
-  def delay_workers_by_global_step(self):
-    return self._delay_workers_by_global_step
-
-  @property
-  def continuous_eval_predicate_fn(self):
-    return self._continuous_eval_predicate_fn
-
-  @continuous_eval_predicate_fn.setter
-  def continuous_eval_predicate_fn(self, value):
-    if value is not None and not callable(value):
-      raise ValueError(
-          "`continuous_eval_predicate_fn` must be a callable, or None.")
-    self._continuous_eval_predicate_fn = value
-
-  @property
-  def export_strategies(self):
-    return self._export_strategies
-
-  @export_strategies.setter
-  def export_strategies(self, value):
+  def _set_export_strategies(self, value):
     if value is None:
       self._export_strategies = []
     elif isinstance(value, list):
-      self._export_strategies = value
+      self._export_strategies = value[:]
     elif isinstance(value, export_strategy.ExportStrategy):
       self._export_strategies = [value]
     else:
@@ -232,6 +166,20 @@ class Experiment(object):
   def extend_train_hooks(self, additional_hooks):
     """Extends the hooks for training."""
     self._train_monitors.extend(additional_hooks)
+
+  def reset_export_strategies(self, new_export_strategies=None):
+    """Resets the export strategies with the `new_export_strategies`.
+
+    Args:
+      new_export_strategies: A new list of `ExportStrategy`s, or a single one,
+        or None.
+
+    Returns:
+      The old export strategies.
+    """
+    old_export_strategies = self._export_strategies
+    self._set_export_strategies(new_export_strategies)
+    return old_export_strategies
 
   def train(self, delay_secs=None):
     """Fit the estimator using the training data.
@@ -320,12 +268,15 @@ class Experiment(object):
       self._min_eval_frequency = self._local_eval_frequency
       return self.train_and_evaluate()
 
+  # TODO(xiejw): Allow continuous_eval_predicate_fn to be passed via constructor
+  # once stopping all jobs is implemented.
   def _continuous_eval(self,
                        input_fn,
                        name,
                        delay_secs,
                        throttle_delay_secs,
-                       evaluate_checkpoint_only_once=True):
+                       evaluate_checkpoint_only_once=True,
+                       continuous_eval_predicate_fn=None):
     """Run continuous eval.
 
     Runs infinite eval on the evaluation data set. This function starts
@@ -343,7 +294,22 @@ class Experiment(object):
         self._continuous_eval_throttle_secs.
       evaluate_checkpoint_only_once: Whether to skip evaluation of checkpoints
         that have already been evaluated. Default is `True`.
+      continuous_eval_predicate_fn: A predicate function determining whether to
+        continue eval after each iteration. `predicate_fn` takes the evaluation
+        results as arguments. At the beginning of evaluation, the passed eval
+        results will be None so it's expected that the predicate function
+        handles that gracefully. When `predicate_fn` is not specified,
+        continuous eval will run in an infinite loop.
+
+    Raises:
+      ValueError: if `continuous_eval_predicate_fn` is neither None nor
+        callable.
     """
+    if (continuous_eval_predicate_fn is not None and
+        not callable(continuous_eval_predicate_fn)):
+      raise ValueError(
+          "`continuous_eval_predicate_fn` must be a callable, or None.")
+
     if delay_secs is None:
       delay_secs = self._eval_delay_secs
     if throttle_delay_secs is None:
@@ -356,8 +322,8 @@ class Experiment(object):
     previous_path = None
     eval_result = None
     last_warning_time = 0
-    while (not self.continuous_eval_predicate_fn or
-           self.continuous_eval_predicate_fn(eval_result)):
+    while (not continuous_eval_predicate_fn or
+           continuous_eval_predicate_fn(eval_result)):
       start = time.time()
 
       error_msg = None
@@ -385,8 +351,7 @@ class Experiment(object):
         if not eval_result:
           eval_result = {}
 
-        # TODO(soergel): further throttle how often export happens?
-        self._maybe_export(eval_result)
+        self._maybe_export(eval_result, checkpoint_path=latest_path)
 
         # Clear warning timer and update last evaluated checkpoint
         last_warning_time = 0
@@ -402,22 +367,26 @@ class Experiment(object):
   def continuous_eval(self,
                       delay_secs=None,
                       throttle_delay_secs=None,
-                      evaluate_checkpoint_only_once=True):
+                      evaluate_checkpoint_only_once=True,
+                      continuous_eval_predicate_fn=None):
     self._continuous_eval(
         self._eval_input_fn,
         name="continuous",
         delay_secs=delay_secs,
         throttle_delay_secs=throttle_delay_secs,
-        evaluate_checkpoint_only_once=evaluate_checkpoint_only_once)
+        evaluate_checkpoint_only_once=evaluate_checkpoint_only_once,
+        continuous_eval_predicate_fn=continuous_eval_predicate_fn)
 
   def continuous_eval_on_train_data(self,
                                     delay_secs=None,
-                                    throttle_delay_secs=None):
+                                    throttle_delay_secs=None,
+                                    continuous_eval_predicate_fn=None):
     self._continuous_eval(
         self._train_input_fn,
         name="continuous_on_train_data",
         delay_secs=delay_secs,
-        throttle_delay_secs=throttle_delay_secs)
+        throttle_delay_secs=throttle_delay_secs,
+        continuous_eval_predicate_fn=continuous_eval_predicate_fn)
 
   def train_and_evaluate(self):
     """Interleaves training and evaluation.
@@ -438,7 +407,8 @@ class Experiment(object):
     performing evaluation allows for the second.
 
     Returns:
-      The result of the `evaluate` call to the `Estimator`.
+      The result of the `evaluate` call to the `Estimator` as well as the
+      export results using the specified `ExportStrategy`.
     """
     # The directory to which evaluation summaries are written are determined
     # by adding a suffix to 'eval'; that suffix is the 'name' parameter to
@@ -468,7 +438,7 @@ class Experiment(object):
     export_results = self._maybe_export(eval_result)
     return eval_result, export_results
 
-  def _maybe_export(self, eval_result):  # pylint: disable=unused-argument
+  def _maybe_export(self, eval_result, checkpoint_path=None):
     """Export the Estimator using export_fn, if defined."""
     export_dir_base = os.path.join(
         compat.as_bytes(self._estimator.model_dir),
@@ -476,15 +446,14 @@ class Experiment(object):
 
     export_results = []
     for strategy in self._export_strategies:
-      # TODO(soergel): possibly, allow users to decide whether to export here
-      # based on the eval_result (e.g., to keep the best export).
-
       export_results.append(
           strategy.export(
               self._estimator,
               os.path.join(
                   compat.as_bytes(export_dir_base),
-                  compat.as_bytes(strategy.name))))
+                  compat.as_bytes(strategy.name)),
+              checkpoint_path=checkpoint_path,
+              eval_result=eval_result))
 
     return export_results
 

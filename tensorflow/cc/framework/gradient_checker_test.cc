@@ -81,14 +81,14 @@ TEST(GradientCheckerTest, SplitGrad) {
   EXPECT_LT(max_error, 1e-10);
 }
 
-TEST(GradientCheckerTest, PackGrad) {
-  // Pack is an op with multiple inputs and a single output.
+TEST(GradientCheckerTest, StackGrad) {
+  // Stack is an op with multiple inputs and a single output.
   Scope scope = Scope::NewRootScope();
   TensorShape x_shape({1, 2, 3});
   std::vector<Output> xs;
   xs.push_back(Placeholder(scope, DT_DOUBLE, Placeholder::Shape(x_shape)));
   xs.push_back(Placeholder(scope, DT_DOUBLE, Placeholder::Shape(x_shape)));
-  auto y = Pack(scope, xs, Pack::Axis(0));
+  auto y = Stack(scope, xs, Stack::Axis(0));
   TensorShape y_shape({2, 1, 2, 3});
   double max_error;
   TF_ASSERT_OK(ComputeGradientError<double>(scope, xs, {x_shape, x_shape}, {y},
@@ -96,16 +96,16 @@ TEST(GradientCheckerTest, PackGrad) {
   EXPECT_LT(max_error, 1e-10);
 }
 
-TEST(GradientCheckerTest, PackUnpackGrad) {
-  // Chaining a Pack op to an Unpack op allows us to test the gradient checker
+TEST(GradientCheckerTest, StackUnstackGrad) {
+  // Chaining a Stack op to an Unstack op allows us to test the gradient checker
   // in a multiple input/output scenario.
   Scope scope = Scope::NewRootScope();
   TensorShape shape({1, 2, 3});
   std::vector<Output> xs;
   xs.push_back(Placeholder(scope, DT_DOUBLE, Placeholder::Shape(shape)));
   xs.push_back(Placeholder(scope, DT_DOUBLE, Placeholder::Shape(shape)));
-  auto tmp = Pack(scope, xs, Pack::Axis(0));
-  auto y = Unpack(scope, tmp, 2, Unpack::Axis(0));
+  auto tmp = Stack(scope, xs, Stack::Axis(0));
+  auto y = Unstack(scope, tmp, 2, Unstack::Axis(0));
   double max_error;
   TF_ASSERT_OK(ComputeGradientError<double>(scope, xs, {shape, shape}, y.output,
                                             {shape, shape}, &max_error));

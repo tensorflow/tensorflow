@@ -265,11 +265,13 @@ xla_test(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:computation",
         "//tensorflow/compiler/xla/client:computation_builder",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client/lib:arithmetic",
         "//tensorflow/compiler/xla/legacy_flags:cpu_compiler_flags",
+        "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/core:lib",
@@ -397,7 +399,6 @@ xla_test(
         "//tensorflow/compiler/xla/client:global_data",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/legacy_flags:cpu_compiler_flags",
-        "//tensorflow/compiler/xla/legacy_flags:llvm_backend_flags",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/core:lib",
@@ -445,12 +446,6 @@ xla_test(
 xla_test(
     name = "array_elementwise_ops_test",
     srcs = ["array_elementwise_ops_test.cc"],
-    # This test includes comparisons to NAN, so disable fast-math.
-    backend_args = {
-        "cpu": ["--xla_fast_math=false"],
-        "cpu_parallel": ["--xla_fast_math=false"],
-        "gpu": ["--xla_fast_math=false"],
-    },
     shard_count = 25,
     deps = [
         "//tensorflow/compiler/xla:array2d",
@@ -465,7 +460,6 @@ xla_test(
         "//tensorflow/compiler/xla/client:global_data",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/legacy_flags:cpu_compiler_flags",
-        "//tensorflow/compiler/xla/legacy_flags:llvm_backend_flags",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/core:lib",
@@ -754,6 +748,7 @@ xla_test(
 
 xla_test(
     name = "dynamic_ops_test",
+    timeout = "moderate",
     srcs = ["dynamic_ops_test.cc"],
     deps = [
         "//tensorflow/compiler/xla:array2d",
@@ -1341,6 +1336,7 @@ cc_test(
         "local_client_aot_test.cc",
         ":local_client_aot_test_computation.o",
     ],
+    linkstatic = 1,
     deps = [
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/core:test",

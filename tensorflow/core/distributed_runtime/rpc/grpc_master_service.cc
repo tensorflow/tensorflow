@@ -49,12 +49,11 @@ class GrpcMasterService : public AsyncServiceInterface {
   GrpcMasterService(Master* master, ::grpc::ServerBuilder* builder)
       : master_impl_(master), is_shutdown_(false) {
     builder->RegisterService(&master_service_);
-    cq_ = builder->AddCompletionQueue().release();
+    cq_ = builder->AddCompletionQueue();
   }
 
   ~GrpcMasterService() {
     delete shutdown_alarm_;
-    delete cq_;
   }
 
   void Shutdown() override {
@@ -72,7 +71,7 @@ class GrpcMasterService : public AsyncServiceInterface {
       // that causes the completion queue to be shut down on the
       // polling thread.
       shutdown_alarm_ =
-          new ::grpc::Alarm(cq_, gpr_now(GPR_CLOCK_MONOTONIC), nullptr);
+          new ::grpc::Alarm(cq_.get(), gpr_now(GPR_CLOCK_MONOTONIC), nullptr);
     }
   }
 
@@ -93,7 +92,7 @@ class GrpcMasterService : public AsyncServiceInterface {
     if (!is_shutdown_) {                                                      \
       Call<GrpcMasterService, grpc::MasterService::AsyncService,              \
            method##Request, method##Response>::                               \
-          EnqueueRequest(&master_service_, cq_,                               \
+          EnqueueRequest(&master_service_, cq_.get(),                         \
                          &grpc::MasterService::AsyncService::Request##method, \
                          &GrpcMasterService::method##Handler,                 \
                          (supports_cancel));                                  \
@@ -127,13 +126,13 @@ class GrpcMasterService : public AsyncServiceInterface {
   }
 
  private:
-  Master* master_impl_;                // Not owned.
-  ::grpc::ServerCompletionQueue* cq_;  // Owned.
+  Master* master_impl_ = nullptr;  // Not owned.
+  std::unique_ptr<::grpc::ServerCompletionQueue> cq_;
   grpc::MasterService::AsyncService master_service_;
 
   mutex mu_;
   bool is_shutdown_ GUARDED_BY(mu_);
-  ::grpc::Alarm* shutdown_alarm_;
+  ::grpc::Alarm* shutdown_alarm_ = nullptr;
 
   template <class RequestMessage, class ResponseMessage>
   using MasterCall = Call<GrpcMasterService, grpc::MasterService::AsyncService,

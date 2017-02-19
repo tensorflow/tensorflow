@@ -64,7 +64,12 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
   llvm::Value* EmitThreadId() const override;
 
  private:
-  // Emit IR to call a device function named "callee_name" on the given
+  // Emits IR for op, which must have opcode kPower.
+  StatusOr<llvm::Value*> EmitPowerOp(const HloInstruction* op,
+                                     llvm::Value* lhs_value,
+                                     llvm::Value* rhs_value) const;
+
+  // Emits IR to call a device function named "callee_name" on the given
   // operand. Returns the IR value that represents the return value.
   llvm::Value* EmitDeviceFunctionCall(
       const string& callee_name,
@@ -73,15 +78,33 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
       PrimitiveType output_type,
       tensorflow::gtl::ArraySlice<llvm::Attribute::AttrKind> attributes) const;
 
-  // Emit IR to call a device function of type [T] -> T.  It adjusts the
-  // callee_name to account for float/double types.
-  // Returns the IR value that represents the return value.
+  // Emits IR to call an LLVM intrinsic of type [T] -> T.  Adjusts
+  // callee_name according to T.  Returns the IR value that represents the
+  // return value of the function.
+  StatusOr<llvm::Value*> EmitLlvmIntrinsicMathCall(
+      const string& callee_name,
+      tensorflow::gtl::ArraySlice<llvm::Value*> operands,
+      tensorflow::gtl::ArraySlice<PrimitiveType> input_types,
+      PrimitiveType output_type) const;
+
+  // Emits IR to call a libdevice function of type [T] -> T.  Adjusts
+  // callee_name according to T.  Returns the IR value that represents the
+  // return value of the function.
+  StatusOr<llvm::Value*> EmitLibdeviceMathCall(
+      const string& callee_name,
+      tensorflow::gtl::ArraySlice<llvm::Value*> operands,
+      tensorflow::gtl::ArraySlice<PrimitiveType> input_types,
+      PrimitiveType output_type) const;
+
+  // Emits IR to call a function of type [T] -> T.  Does not munge callee_name.
+  // Returns the IR value that represents the return value of the function.
   StatusOr<llvm::Value*> EmitMathCall(
       const string& callee_name,
       tensorflow::gtl::ArraySlice<llvm::Value*> operands,
       tensorflow::gtl::ArraySlice<PrimitiveType> input_types,
       PrimitiveType output_type) const;
 
+  const HloModuleConfig& hlo_module_config_;
   NestedComputer compute_nested_;
 };
 

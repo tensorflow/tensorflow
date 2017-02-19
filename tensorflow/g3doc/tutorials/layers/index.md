@@ -10,6 +10,7 @@ convolutional neural network model to recognize the handwritten digits in the
 MNIST data set.
 
 ![handwritten digits 0–9 from the MNIST data set](../../images/mnist_0-9.png)
+
 **The [MNIST dataset](http://yann.lecun.com/exdb/mnist/) comprises 60,000
 training examples and 10,000 test examples of the handwritten digits 0–9,
 formatted as 28x28-pixel monochrome images.**
@@ -43,10 +44,6 @@ As you work through the tutorial, you'll add code to construct, train, and
 evaluate the convolutional neural network. The complete, final code can be
 [found
 here](https://www.tensorflow.org/code/tensorflow/examples/tutorials/layers/cnn_mnist.py).
-
-<p class="note"><b>NOTE:</b> Before proceeding, make sure you've
-<a href="../../get_started/os_setup.md">installed the latest
-version of TensorFlow</a> on your machine.</p>
 
 ## Intro to Convolutional Neural Networks
 

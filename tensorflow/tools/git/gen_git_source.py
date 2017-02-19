@@ -149,7 +149,7 @@ def get_git_version(git_base_path):
   try:
     val = bytes(subprocess.check_output([
         "git", str("--git-dir=%s/.git" % git_base_path),
-        str("--work-tree=" + git_base_path), "describe", "--long", "--dirty", "--tags"
+        str("--work-tree=" + git_base_path), "describe", "--long", "--tags"
     ]).strip())
     return val if val else unknown_label
   except subprocess.CalledProcessError:

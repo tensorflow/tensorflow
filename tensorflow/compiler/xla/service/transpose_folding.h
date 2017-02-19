@@ -17,18 +17,19 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_TRANSPOSE_FOLDING_H_
 
 #include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_pass.h"
+#include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 namespace xla {
 
 // HLO pass that folds transpose operators into Dot operators, where the Dot
 // operator is implemented by a GEMM kernel that can transpose its inputs.
-class TransposeFolding : public HloPass {
+class TransposeFolding : public HloPassInterface {
  public:
   // IsTransposableGemmFn should return true iff the instruction argument is
   // implemented as a GEMM kernel that supports transposing its arguments.
   typedef std::function<bool(const HloInstruction&)> IsTransposableGemmFn;
   explicit TransposeFolding(IsTransposableGemmFn is_transposable_gemm);
+  tensorflow::StringPiece name() const override { return "transpose-folding"; }
 
   StatusOr<bool> Run(HloModule* module) override;
 

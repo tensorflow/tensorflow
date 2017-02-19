@@ -16,24 +16,23 @@ limitations under the License.
 #ifndef THIRD_PARTY_TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_IMAGE_UTILS_H_
 #define THIRD_PARTY_TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_IMAGE_UTILS_H_
 
-#include "tensorflow/core/platform/types.h"
+#include <stdint.h>
 
 #include "tensorflow/examples/android/jni/object_tracking/geom.h"
 #include "tensorflow/examples/android/jni/object_tracking/image-inl.h"
 #include "tensorflow/examples/android/jni/object_tracking/image.h"
 #include "tensorflow/examples/android/jni/object_tracking/utils.h"
 
-using namespace tensorflow;
 
 namespace tf_tracking {
 
-inline void GetUV(
-    const uint8* const input, Image<uint8>* const u, Image<uint8>* const v) {
-  const uint8* pUV = input;
+inline void GetUV(const uint8_t* const input, Image<uint8_t>* const u,
+                  Image<uint8_t>* const v) {
+  const uint8_t* pUV = input;
 
   for (int row = 0; row < u->GetHeight(); ++row) {
-    uint8* u_curr = (*u)[row];
-    uint8* v_curr = (*v)[row];
+    uint8_t* u_curr = (*u)[row];
+    uint8_t* v_curr = (*v)[row];
     for (int col = 0; col < u->GetWidth(); ++col) {
 #ifdef __APPLE__
       *u_curr++ = *pUV++;
@@ -117,10 +116,9 @@ inline void CalculateG(const float* const vals_x, const float* const vals_y,
   G[2] = G[1];
 }
 
-
-inline void CalculateGInt16(const int16* const vals_x,
-                            const int16* const vals_y,
-                            const int num_vals, int* const G) {
+inline void CalculateGInt16(const int16_t* const vals_x,
+                            const int16_t* const vals_y, const int num_vals,
+                            int* const G) {
   // Non-accelerated version.
   for (int i = 0; i < num_vals; ++i) {
     G[0] += Square(vals_x[i]);
@@ -135,10 +133,9 @@ inline void CalculateGInt16(const int16* const vals_x,
 
 // Puts the image gradient matrix about a pixel into the 2x2 float array G.
 // Looks up interpolated pixels, then calls above method for implementation.
-inline void CalculateG(const int window_radius,
-                       const float center_x, const float center_y,
-                       const Image<int32>& I_x, const Image<int32>& I_y,
-                       float* const G) {
+inline void CalculateG(const int window_radius, const float center_x,
+                       const float center_y, const Image<int32_t>& I_x,
+                       const Image<int32_t>& I_y, float* const G) {
   SCHECK(I_x.ValidPixel(center_x, center_y), "Problem in calculateG!");
 
   // Hardcoded to allow for a max window radius of 5 (9 pixels x 9 pixels).
@@ -151,14 +148,14 @@ inline void CalculateG(const int window_radius,
       (kMaxWindowRadius * 2 + 1) * (kMaxWindowRadius * 2 + 1);
 
   // Preallocate buffers statically for efficiency.
-  static int16 vals_x[kWindowBufferSize];
-  static int16 vals_y[kWindowBufferSize];
+  static int16_t vals_x[kWindowBufferSize];
+  static int16_t vals_y[kWindowBufferSize];
 
   const int src_left_fixed = RealToFixed1616(center_x - window_radius);
   const int src_top_fixed = RealToFixed1616(center_y - window_radius);
 
-  int16* vals_x_ptr = vals_x;
-  int16* vals_y_ptr = vals_y;
+  int16_t* vals_x_ptr = vals_x;
+  int16_t* vals_y_ptr = vals_y;
 
   const int window_size = 2 * window_radius + 1;
   for (int y = 0; y < window_size; ++y) {
@@ -172,7 +169,7 @@ inline void CalculateG(const int window_radius,
     }
   }
 
-  int32 g_temp[] = {0, 0, 0, 0};
+  int32_t g_temp[] = {0, 0, 0, 0};
   CalculateGInt16(vals_x, vals_y, window_size * window_size, g_temp);
 
   for (int i = 0; i < 4; ++i) {
@@ -197,7 +194,7 @@ inline float ImageCrossCorrelation(const Image<float>& image1,
 
 // Copies an arbitrary region of an image to another (floating point)
 // image, scaling as it goes using bilinear interpolation.
-inline void CopyArea(const Image<uint8>& image,
+inline void CopyArea(const Image<uint8_t>& image,
                      const BoundingBox& area_to_copy,
                      Image<float>* const patch_image) {
   VLOG(2) << "Copying from: " << area_to_copy << std::endl;

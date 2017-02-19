@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/while_transformer.h"
 
+#include "tensorflow/compiler/xla/service/copy_insertion.h"
+#include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
@@ -49,7 +51,7 @@ class WhileTransformerTest : public HloTestBase {
 
   std::unique_ptr<HloComputation> BuildBodyComputation(
       const int64 ind_var_tuple_index, const int64 data_tuple_index,
-      const int64 increment, bool insert_copies = false) {
+      const int64 increment) {
     auto builder = HloComputation::Builder(TestName() + ".Body");
     // Create param instruction to access loop state.
     auto loop_state = builder.AddInstruction(
@@ -71,21 +73,16 @@ class WhileTransformerTest : public HloTestBase {
     auto add1 = builder.AddInstruction(HloInstruction::CreateBinary(
         data_shape_, HloOpcode::kAdd, data, update));
     // Create output Tuple.
-    auto tuple0 =
-        ind_var_tuple_index == 0
-            ? builder.AddInstruction(HloInstruction::CreateTuple({add0, add1}))
-            : builder.AddInstruction(HloInstruction::CreateTuple({add1, add0}));
-    if (insert_copies) {
-      InsertTupleElementCopies(ind_var_tuple_index, tuple0, &builder);
-    }
+    ind_var_tuple_index == 0
+        ? builder.AddInstruction(HloInstruction::CreateTuple({add0, add1}))
+        : builder.AddInstruction(HloInstruction::CreateTuple({add1, add0}));
     return builder.Build();
   }
 
   HloInstruction* BuildWhileInstruction(HloComputation* condition,
                                         HloComputation* body,
                                         const int64 ind_var_tuple_index,
-                                        const int64 ind_var_init,
-                                        bool insert_copies = false) {
+                                        const int64 ind_var_init) {
     auto builder = HloComputation::Builder(TestName() + ".While");
     auto induction_var_init =
         builder.AddInstruction(HloInstruction::CreateConstant(
@@ -99,35 +96,25 @@ class WhileTransformerTest : public HloTestBase {
                   HloInstruction::CreateTuple({induction_var_init, data_init}))
             : builder.AddInstruction(
                   HloInstruction::CreateTuple({data_init, induction_var_init}));
-    if (insert_copies) {
-      loop_state_init = InsertTupleElementCopies(ind_var_tuple_index,
-                                                 loop_state_init, &builder);
-    }
     auto while_hlo = builder.AddInstruction(HloInstruction::CreateWhile(
         loop_state_shape_, condition, body, loop_state_init));
     module_.AddEntryComputation(builder.Build());
     return while_hlo;
   }
 
-  HloInstruction* InsertTupleElementCopies(const int64 ind_var_tuple_index,
-                                           HloInstruction* tuple0,
-                                           HloComputation::Builder* builder) {
-    auto gte0 = builder->AddInstruction(HloInstruction::CreateGetTupleElement(
-        induction_variable_shape_, tuple0, ind_var_tuple_index));
-    const int64 gte1_tuple_index = ind_var_tuple_index == 0 ? 1 : 0;
-    auto gte1 = builder->AddInstruction(HloInstruction::CreateGetTupleElement(
-        data_shape_, tuple0, gte1_tuple_index));
-    // Insert copies.
-    auto copy0 = builder->AddInstruction(
-        HloInstruction::CreateUnary(gte0->shape(), HloOpcode::kCopy, gte0));
-    auto copy1 = builder->AddInstruction(
-        HloInstruction::CreateUnary(gte1->shape(), HloOpcode::kCopy, gte1));
+  void RunFusionPasses() {
+    // Run standard fusion passes.
+    EXPECT_TRUE(gpu::GpuInstructionFusion(/*may_duplicate=*/false)
+                    .Run(&module_)
+                    .ValueOrDie());
+    EXPECT_TRUE(gpu::GpuInstructionFusion(/*may_duplicate=*/true)
+                    .Run(&module_)
+                    .ValueOrDie());
+  }
 
-    return ind_var_tuple_index == 0
-               ? builder->AddInstruction(
-                     HloInstruction::CreateTuple({copy0, copy1}))
-               : builder->AddInstruction(
-                     HloInstruction::CreateTuple({copy1, copy0}));
+  void RunCopyInsertionPass() {
+    CopyInsertion copy_insertion;
+    EXPECT_IS_OK(copy_insertion.Run(&module_).status());
   }
 
   HloModule module_;
@@ -138,39 +125,18 @@ class WhileTransformerTest : public HloTestBase {
 };
 
 TEST_F(WhileTransformerTest, InductionVariableAtTupleElement0) {
+  // Build computation with induction variable at tuple element 0.
   auto condition =
       module_.AddEmbeddedComputation(BuildConditionComputation(0, 10));
   auto body = module_.AddEmbeddedComputation(BuildBodyComputation(0, 1, 1));
-  auto result =
-      gpu::CanTransformWhileToFor(BuildWhileInstruction(condition, body, 0, 0));
+  auto while_hlo = BuildWhileInstruction(condition, body, 0, 0);
+  // Run HLO Optimization passes.
+  RunFusionPasses();
+  RunCopyInsertionPass();
+  // Run WhileTransformer.
+  auto result = gpu::CanTransformWhileToFor(while_hlo);
   EXPECT_TRUE(result.ok());
-  auto tuple = result.ConsumeValueOrDie();
-  EXPECT_EQ(0, std::get<0>(tuple));
-  EXPECT_EQ(10, std::get<1>(tuple));
-  EXPECT_EQ(1, std::get<2>(tuple));
-}
-
-TEST_F(WhileTransformerTest, InductionVariableAtTupleElement0_WithBodyCopies) {
-  auto condition =
-      module_.AddEmbeddedComputation(BuildConditionComputation(0, 10));
-  auto body =
-      module_.AddEmbeddedComputation(BuildBodyComputation(0, 1, 1, true));
-  auto result =
-      gpu::CanTransformWhileToFor(BuildWhileInstruction(condition, body, 0, 0));
-  EXPECT_TRUE(result.ok());
-  auto tuple = result.ConsumeValueOrDie();
-  EXPECT_EQ(0, std::get<0>(tuple));
-  EXPECT_EQ(10, std::get<1>(tuple));
-  EXPECT_EQ(1, std::get<2>(tuple));
-}
-
-TEST_F(WhileTransformerTest, InductionVariableAtTupleElement0_WithInitCopies) {
-  auto condition =
-      module_.AddEmbeddedComputation(BuildConditionComputation(0, 10));
-  auto body = module_.AddEmbeddedComputation(BuildBodyComputation(0, 1, 1));
-  auto result = gpu::CanTransformWhileToFor(
-      BuildWhileInstruction(condition, body, 0, 0, true));
-  EXPECT_TRUE(result.ok());
+  // Check results.
   auto tuple = result.ConsumeValueOrDie();
   EXPECT_EQ(0, std::get<0>(tuple));
   EXPECT_EQ(10, std::get<1>(tuple));
@@ -178,12 +144,18 @@ TEST_F(WhileTransformerTest, InductionVariableAtTupleElement0_WithInitCopies) {
 }
 
 TEST_F(WhileTransformerTest, InductionVariableAtTupleElement1) {
+  // Build computation with induction variable at tuple element 1.
   auto condition =
       module_.AddEmbeddedComputation(BuildConditionComputation(1, 10));
   auto body = module_.AddEmbeddedComputation(BuildBodyComputation(1, 0, 1));
-  auto result =
-      gpu::CanTransformWhileToFor(BuildWhileInstruction(condition, body, 1, 0));
+  auto while_hlo = BuildWhileInstruction(condition, body, 1, 0);
+  // Run HLO Optimization passes.
+  RunFusionPasses();
+  RunCopyInsertionPass();
+  // Run WhileTransformer.
+  auto result = gpu::CanTransformWhileToFor(while_hlo);
   EXPECT_TRUE(result.ok());
+  // Check results.
   auto tuple = result.ConsumeValueOrDie();
   EXPECT_EQ(0, std::get<0>(tuple));
   EXPECT_EQ(10, std::get<1>(tuple));
@@ -191,11 +163,16 @@ TEST_F(WhileTransformerTest, InductionVariableAtTupleElement1) {
 }
 
 TEST_F(WhileTransformerTest, InvalidLoopLimit) {
+  // Build computation with invalid loop limit.
   auto condition =
       module_.AddEmbeddedComputation(BuildConditionComputation(0, 5));
   auto body = module_.AddEmbeddedComputation(BuildBodyComputation(0, 1, 1));
-  auto result = gpu::CanTransformWhileToFor(
-      BuildWhileInstruction(condition, body, 0, 10));
+  auto while_hlo = BuildWhileInstruction(condition, body, 0, 10);
+  // Run HLO Optimization passes.
+  RunFusionPasses();
+  RunCopyInsertionPass();
+  // Run WhileTransformer.
+  auto result = gpu::CanTransformWhileToFor(while_hlo);
   EXPECT_FALSE(result.ok());
   EXPECT_MATCH(
       result.status().error_message(),
@@ -203,11 +180,16 @@ TEST_F(WhileTransformerTest, InvalidLoopLimit) {
 }
 
 TEST_F(WhileTransformerTest, InvalidLoopIncrement) {
+  // Build computation with invalid loop increment.
   auto condition =
       module_.AddEmbeddedComputation(BuildConditionComputation(0, 10));
   auto body = module_.AddEmbeddedComputation(BuildBodyComputation(0, 1, -1));
-  auto result =
-      gpu::CanTransformWhileToFor(BuildWhileInstruction(condition, body, 0, 0));
+  auto while_hlo = BuildWhileInstruction(condition, body, 0, 0);
+  // Run HLO Optimization passes.
+  RunFusionPasses();
+  RunCopyInsertionPass();
+  // Run WhileTransformer.
+  auto result = gpu::CanTransformWhileToFor(while_hlo);
   EXPECT_FALSE(result.ok());
   EXPECT_MATCH(
       result.status().error_message(),

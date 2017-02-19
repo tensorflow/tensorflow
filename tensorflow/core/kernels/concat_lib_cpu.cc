@@ -52,8 +52,13 @@ void ConcatCPU(DeviceBase* d,
                const std::vector<
                    std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>& inputs,
                typename TTypes<T, 2>::Matrix* output) {
-  ConcatCPUImpl<T>(d, inputs, sizeof(T) /* cost_per_unit */, MemCpyCopier<T>(),
-                   output);
+  if (std::is_same<T, string>::value) {
+    // use a large cost here to force strings to be handled by separate threads
+    ConcatCPUImpl<T>(d, inputs, 100000, MemCpyCopier<T>(), output);
+  } else {
+    ConcatCPUImpl<T>(d, inputs, sizeof(T) /* cost_per_unit */,
+                     MemCpyCopier<T>(), output);
+  }
 }
 
 #define REGISTER(T)                                                            \

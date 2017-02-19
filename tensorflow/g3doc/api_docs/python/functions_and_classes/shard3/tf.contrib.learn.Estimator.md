@@ -146,6 +146,9 @@ The signature of the input_fn accepted by export is changing to be consistent wi
     `signature_fn` without filtering.
 *  <b>`default_batch_size`</b>: Default batch size of the `Example` placeholder.
 *  <b>`exports_to_keep`</b>: Number of exports to keep.
+*  <b>`checkpoint_path`</b>: the checkpoint path of the model to be exported. If it is
+      `None` (which is default), will use the latest checkpoint in
+      export_dir.
 
 ##### Returns:
 
@@ -157,7 +160,7 @@ The signature of the input_fn accepted by export is changing to be consistent wi
 
 - - -
 
-#### `tf.contrib.learn.Estimator.export_savedmodel(export_dir_base, serving_input_fn, default_output_alternative_key=None, assets_extra=None, as_text=False)` {#Estimator.export_savedmodel}
+#### `tf.contrib.learn.Estimator.export_savedmodel(export_dir_base, serving_input_fn, default_output_alternative_key=None, assets_extra=None, as_text=False, checkpoint_path=None)` {#Estimator.export_savedmodel}
 
 Exports inference graph as a SavedModel into given dir.
 
@@ -178,6 +181,8 @@ Exports inference graph as a SavedModel into given dir.
     renaming it is specified as
     `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
 *  <b>`as_text`</b>: whether to write the SavedModel proto in text format.
+*  <b>`checkpoint_path`</b>: The checkpoint path to export.  If None (the default),
+    the most recent checkpoint found within the model directory is chosen.
 
 ##### Returns:
 

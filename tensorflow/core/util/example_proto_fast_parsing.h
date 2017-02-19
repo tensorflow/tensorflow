@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -45,8 +46,10 @@ struct FastParseExampleConfig {
     // These 2 fields correspond exactly to dense_shapes and dense_defaults in
     // ParseExample op.
     // Documentation is avaliable in: tensorflow/core/ops/parsing_ops.cc
-    TensorShape shape;
+    PartialTensorShape shape;
     Tensor default_value;
+    bool variable_length;
+    std::size_t elements_per_stride;
   };
 
   struct Sparse {

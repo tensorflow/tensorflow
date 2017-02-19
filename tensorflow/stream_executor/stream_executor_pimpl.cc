@@ -164,9 +164,10 @@ StreamExecutor::StreamExecutor(PlatformKind platform_kind,
 }
 
 StreamExecutor::StreamExecutor(
-    const Platform *platform, internal::StreamExecutorInterface *implementation)
+    const Platform *platform,
+    std::unique_ptr<internal::StreamExecutorInterface> implementation)
     : platform_(platform),
-      implementation_(implementation),
+      implementation_(std::move(implementation)),
       device_ordinal_(-1),
       background_threads_(new port::ThreadPool(
           port::Env::Default(), "stream_executor", kNumBackgroundThreads)),

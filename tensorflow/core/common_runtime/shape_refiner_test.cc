@@ -525,7 +525,7 @@ TEST(ShapeRefinerTest, ConstantValueAsShape_PackInt32) {
       Input(Output(scalar_non_const)),
       Input(ops::Const<int32>(root, 40)),
   };  // clang-format on
-  auto pack = ops::Pack(root, inputs);
+  auto pack = ops::Stack(root, inputs);
   TF_ASSERT_OK(root.status());
 
   Node* result;
@@ -557,7 +557,7 @@ TEST(ShapeRefinerTest, ConstantValueAsShape_PackInt64) {
       Input(Output(scalar_non_const)),
       Input(ops::Const<int64>(root, 1LL << 40)),
   };  // clang-format on
-  auto pack = ops::Pack(root, inputs);
+  auto pack = ops::Stack(root, inputs);
   TF_ASSERT_OK(root.status());
 
   Node* result;
@@ -583,7 +583,7 @@ TEST(ShapeRefinerTest, ConstantValueAsShape_PackUnknownDim) {
       Input(ops::Const<int64>(root, 10LL)),
       Input(ops::Const<int64>(root, -1LL)),
   };
-  auto pack = ops::Pack(root, inputs);
+  auto pack = ops::Stack(root, inputs);
   TF_ASSERT_OK(root.status());
 
   Node* result;
@@ -610,7 +610,7 @@ TEST(ShapeRefinerTest, ConstantValueAsShape_PackInvalidInput) {
       Input(ops::Const<int64>(root, {10LL, 20LL})),
       Input(ops::Const<int64>(root, {10LL, 21LL})),
   };
-  auto pack = ops::Pack(root, inputs);
+  auto pack = ops::Stack(root, inputs);
   TF_ASSERT_OK(root.status());
 
   Node* result;
@@ -642,7 +642,7 @@ TEST(ShapeRefinerTest, ConstantValueAsShape_Concat) {
       const_input,
   };  // clang-format on
   auto concat_dim = ops::Const(root, 0);
-  auto concat = ops::Concat(root, concat_dim, concat_inputs);
+  auto concat = ops::Concat(root, concat_inputs, concat_dim);
   TF_ASSERT_OK(root.status());
 
   Node* result;
@@ -684,7 +684,7 @@ TEST(ShapeRefinerTest, ConstantValueAsShape_ConcatWithUnknown) {
       ops::Shape(root, Output(unknown)),
   };  // clang-format on
   auto concat_dim = ops::Const(root, 0);
-  auto concat = ops::Concat(root, concat_dim, concat_inputs);
+  auto concat = ops::Concat(root, concat_inputs, concat_dim);
   TF_ASSERT_OK(root.status());
 
   Node* result;
@@ -726,7 +726,7 @@ TEST(ShapeRefinerTest, ConstantValueAsShape_ConcatInvalidDimValue) {
       const_input,
   };  // clang-format on
   auto concat_dim = ops::Const(root, 0);
-  auto concat = ops::Concat(root, concat_dim, concat_inputs);
+  auto concat = ops::Concat(root, concat_inputs, concat_dim);
   TF_ASSERT_OK(root.status());
 
   Node* result;

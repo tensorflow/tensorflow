@@ -40,30 +40,30 @@ class RerouteTest(test.TestCase):
       self.c2 = math_ops.add(self.a2, self.b2, name="c2")
 
   def test_swap(self):
-    ge.reroute.swap_ts([self.a0, self.b0], [self.a1, self.b1])
-    self.assertTrue(ge.matcher("c0").input_ops("a1", "b1")(self.c0.op))
-    self.assertTrue(ge.matcher("c1").input_ops("a0", "b0")(self.c1.op))
+    ge.swap_ts([self.a0, self.b0], [self.a1, self.b1])
+    self.assertTrue(ge.OpMatcher("c0").input_ops("a1", "b1")(self.c0.op))
+    self.assertTrue(ge.OpMatcher("c1").input_ops("a0", "b0")(self.c1.op))
 
   def test_multiswap(self):
     with self.graph.as_default():
       a3 = constant_op.constant(3.0, shape=[2], name="a3")
-    ge.reroute.swap(
-        ge.sgv(a3.op).remap_outputs([0, 0]), ge.sgv(self.a0.op, self.a1.op))
-    self.assertTrue(ge.matcher("c0").input_ops("a3", "b0")(self.c0.op))
-    self.assertTrue(ge.matcher("c1").input_ops("a3", "b1")(self.c1.op))
+    ge.swap_ios(ge.sgv(a3.op).remap_outputs([0, 0]),
+                ge.sgv(self.a0.op, self.a1.op))
+    self.assertTrue(ge.OpMatcher("c0").input_ops("a3", "b0")(self.c0.op))
+    self.assertTrue(ge.OpMatcher("c1").input_ops("a3", "b1")(self.c1.op))
 
   def test_reroute(self):
-    ge.reroute.reroute_a2b_ts([self.a0, self.b0], [self.a1, self.b1])
-    self.assertTrue(ge.matcher("c0").input_ops("a0", "b0")(self.c0.op))
-    self.assertTrue(ge.matcher("c1").input_ops("a0", "b0")(self.c1.op))
+    ge.reroute_ts([self.a0, self.b0], [self.a1, self.b1])
+    self.assertTrue(ge.OpMatcher("c0").input_ops("a0", "b0")(self.c0.op))
+    self.assertTrue(ge.OpMatcher("c1").input_ops("a0", "b0")(self.c1.op))
 
-    ge.reroute.reroute_b2a_ts([self.a0, self.b0], [self.a1, self.b1])
-    self.assertTrue(ge.matcher("c0").input_ops("a1", "b1")(self.c0.op))
-    self.assertTrue(ge.matcher("c1").input_ops("a1", "b1")(self.c1.op))
+    ge.reroute_ts([self.a1, self.b1], [self.a0, self.b0])
+    self.assertTrue(ge.OpMatcher("c0").input_ops("a1", "b1")(self.c0.op))
+    self.assertTrue(ge.OpMatcher("c1").input_ops("a1", "b1")(self.c1.op))
 
   def test_compatibility(self):
     with self.assertRaises(ValueError):
-      ge.reroute.reroute_a2b_ts([self.a0, self.b0], [self.a2, self.b2])
+      ge.reroute_ts([self.a0, self.b0], [self.a2, self.b2])
 
   def test_reroute_can_modify(self):
     graph = ops.Graph()
@@ -82,11 +82,11 @@ class RerouteTest(test.TestCase):
     sgv0 = ge.sgv(a.op, b.op, c.op)
     sgv1 = ge.sgv(e.op, f.op)
 
-    ge.reroute.swap_outputs(sgv0, sgv1)
+    ge.swap_outputs(sgv0, sgv1)
     self.assertTrue(
-        ge.matcher("g").input_ops("a", ge.matcher("c")
-                                  .input_ops("a", "b"))(g.op))
-    self.assertTrue(ge.matcher("d").input_ops("e", "f")(d.op))
+        ge.OpMatcher("g").input_ops("a", ge.OpMatcher("c").input_ops("a", "b"))(
+            g.op))
+    self.assertTrue(ge.OpMatcher("d").input_ops("e", "f")(d.op))
 
 
 if __name__ == "__main__":

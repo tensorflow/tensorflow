@@ -119,21 +119,10 @@ class QueueBase(object):
   handle single elements, versions that support enqueuing and
   dequeuing a batch of elements at once.
 
-  See [`tf.FIFOQueue`](#FIFOQueue) and
-  [`tf.RandomShuffleQueue`](#RandomShuffleQueue) for concrete
+  See @{tf.FIFOQueue} and
+  @{tf.RandomShuffleQueue} for concrete
   implementations of this class, and instructions on how to create
   them.
-
-  @@enqueue
-  @@enqueue_many
-
-  @@dequeue
-  @@dequeue_many
-
-  @@size
-
-  @@close
-
   """
 
   def __init__(self, dtypes, shapes, names, queue_ref):
@@ -303,12 +292,12 @@ class QueueBase(object):
     until the element has been enqueued.
 
     At runtime, this operation may raise an error if the queue is
-    [closed](#QueueBase.close) before or during its execution. If the
+    @{tf.QueueBase.close} before or during its execution. If the
     queue is closed before this operation runs,
     `tf.errors.CancelledError` will be raised. If this operation is
     blocked, and either (i) the queue is closed by a close operation
     with `cancel_pending_enqueues=True`, or (ii) the session is
-    [closed](../../api_docs/python/client.md#Session.close),
+    @{tf.Session.close},
     `tf.errors.CancelledError` will be raised.
 
     Args:
@@ -346,12 +335,12 @@ class QueueBase(object):
     until all of the elements have been enqueued.
 
     At runtime, this operation may raise an error if the queue is
-    [closed](#QueueBase.close) before or during its execution. If the
+    @{tf.QueueBase.close} before or during its execution. If the
     queue is closed before this operation runs,
     `tf.errors.CancelledError` will be raised. If this operation is
     blocked, and either (i) the queue is closed by a close operation
     with `cancel_pending_enqueues=True`, or (ii) the session is
-    [closed](../../api_docs/python/client.md#Session.close),
+    @{tf.Session.close},
     `tf.errors.CancelledError` will be raised.
 
     Args:
@@ -407,11 +396,11 @@ class QueueBase(object):
     until there is an element to dequeue.
 
     At runtime, this operation may raise an error if the queue is
-    [closed](#QueueBase.close) before or during its execution. If the
+    @{tf.QueueBase.close} before or during its execution. If the
     queue is closed, the queue is empty, and there are no pending
     enqueue operations that can fulfill this request,
     `tf.errors.OutOfRangeError` will be raised. If the session is
-    [closed](../../api_docs/python/client.md#Session.close),
+    @{tf.Session.close},
     `tf.errors.CancelledError` will be raised.
 
     Args:
@@ -448,11 +437,11 @@ class QueueBase(object):
     `OutOfRange` exception is raised.
 
     At runtime, this operation may raise an error if the queue is
-    [closed](#QueueBase.close) before or during its execution. If the
+    @{tf.QueueBase.close} before or during its execution. If the
     queue is closed, the queue contains fewer than `n` elements, and
     there are no pending enqueue operations that can fulfill this
     request, `tf.errors.OutOfRangeError` will be raised. If the
-    session is [closed](../../api_docs/python/client.md#Session.close),
+    session is @{tf.Session.close},
     `tf.errors.CancelledError` will be raised.
 
     Args:
@@ -490,7 +479,7 @@ class QueueBase(object):
 
     If the queue is closed and there are more than `0` but fewer than
     `n` elements remaining, then instead of raising a
-    `tf.errors.OutOfRangeError` like [`dequeue_many`](#QueueBase.dequeue_many),
+    `tf.errors.OutOfRangeError` like @{tf.QueueBase.dequeue_many},
     less than `n` elements are returned immediately.  If the queue is
     closed and there are `0` elements left in the queue, then a
     `tf.errors.OutOfRangeError` is raised just like in `dequeue_many`.
@@ -569,10 +558,8 @@ class QueueBase(object):
 class RandomShuffleQueue(QueueBase):
   """A queue implementation that dequeues elements in a random order.
 
-  See [`tf.QueueBase`](#QueueBase) for a description of the methods on
+  See @{tf.QueueBase} for a description of the methods on
   this class.
-
-  @@__init__
   """
 
   def __init__(self, capacity, min_after_dequeue, dtypes, shapes=None,
@@ -614,7 +601,7 @@ class RandomShuffleQueue(QueueBase):
         with the same length as `dtypes`, or `None`.  If specified the dequeue
         methods return a dictionary with the names as keys.
       seed: A Python integer. Used to create a random seed. See
-        [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+        @{tf.set_random_seed}
         for behavior.
       shared_name: (Optional.) If non-empty, this queue will be shared under
         the given name across multiple sessions.
@@ -644,10 +631,8 @@ class RandomShuffleQueue(QueueBase):
 class FIFOQueue(QueueBase):
   """A queue implementation that dequeues elements in first-in first-out order.
 
-  See [`tf.QueueBase`](#QueueBase) for a description of the methods on
+  See @{tf.QueueBase} for a description of the methods on
   this class.
-
-  @@__init__
   """
 
   def __init__(self, capacity, dtypes, shapes=None, names=None,
@@ -697,10 +682,8 @@ class PaddingFIFOQueue(QueueBase):
   A `PaddingFIFOQueue` may contain components with dynamic shape, while also
   supporting `dequeue_many`.  See the constructor for more details.
 
-  See [`tf.QueueBase`](#QueueBase) for a description of the methods on
+  See @{tf.QueueBase} for a description of the methods on
   this class.
-
-  @@__init__
   """
 
   def __init__(self, capacity, dtypes, shapes, names=None, shared_name=None,
@@ -761,10 +744,8 @@ class PaddingFIFOQueue(QueueBase):
 class PriorityQueue(QueueBase):
   """A queue implementation that dequeues elements in prioritized order.
 
-  See [`tf.QueueBase`](#QueueBase) for a description of the methods on
+  See @{tf.QueueBase} for a description of the methods on
   this class.
-
-  @@__init__
   """
 
   def __init__(self, capacity, types, shapes=None, names=None, shared_name=None,
@@ -1432,6 +1413,11 @@ class StagingArea(object):
     as `dtypes` if provided.  The values at a given index `i` indicate the
     shape and name to use for the corresponding queue component in `dtypes`.
 
+    The device scope at the time of object creation determines where the
+    storage for the `StagingArea` will reside.  Calls to `put` will incur a copy
+    to this memory space, if necessary.  Tensors returned by `get` will be
+    placed according to the device scope when `get` is called.
+
     Args:
       dtypes:  A list of types.  The length of dtypes must equal the number
         of tensors in each element.
@@ -1468,6 +1454,10 @@ class StagingArea(object):
       self._names = names
     else:
       self._names = None
+
+    # all get and put ops must colocate with this op
+    with ops.name_scope("%s_root" % self._name):
+      self._coloc_op = control_flow_ops.no_op()
 
   @property
   def name(self):
@@ -1552,6 +1542,18 @@ class StagingArea(object):
       return [vals]
 
   def put(self, values, name=None):
+    """Create an op that places a value into the staging area.
+
+    Args:
+      values: Tensor (or a tuple of Tensors) to place into the staging area.
+      name: A name for the operation (optional).
+
+    Returns:
+        The created op.
+
+    Raises:
+      ValueError: If the number or type of inputs don't match the staging area.
+    """
     with ops.name_scope(name, "%s_put" % self._name,
                         self._scope_vals(values)) as scope:
       vals = self._check_put_dtypes(values)
@@ -1566,7 +1568,11 @@ class StagingArea(object):
       for val, shape in zip(vals, self._shapes):
         val.get_shape().assert_is_compatible_with(shape)
 
-      return gen_data_flow_ops.stage(vals, shared_name=self._name, name=scope)
+      with ops.colocate_with(self._coloc_op):
+        op = gen_data_flow_ops.stage(values=vals, shared_name=self._name,
+                                     name=scope)
+
+      return op
 
   def _get_return_value(self, tensors):
     """Return the value to return from a get op.
@@ -1597,6 +1603,9 @@ class StagingArea(object):
     If the staging area is empty when this operation executes, it will block
     until there is an element to dequeue.
 
+    The placement of the returned tensor will be determined by the current
+    device scope when this function is called.
+
     Args:
       name: A name for the operation (optional).
 
@@ -1606,8 +1615,14 @@ class StagingArea(object):
     if name is None:
       name = "%s_get" % self._name
 
-    ret = gen_data_flow_ops.unstage(self._dtypes, shared_name=self._name,
-                                    name=name)
+    with ops.colocate_with(self._coloc_op):
+      ret = gen_data_flow_ops.unstage(dtypes=self._dtypes,
+                                      shared_name=self._name, name=name)
+
+    curr_device_scope = control_flow_ops.no_op().device
+    if curr_device_scope != self._coloc_op.device:
+      for i in range(len(ret)):
+        ret[i] = array_ops.identity(ret[i])
 
     for output, shape in zip(ret, self._shapes):
       output.set_shape(shape)

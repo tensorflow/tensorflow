@@ -378,7 +378,8 @@ names match one of the following regular expressions:
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If `name` is not a valid scope name. The rules are the
+*  <b>`ValueError`</b>: If `name` is not a valid scope name, according to the rules
+    above.
 
 
 
@@ -917,127 +918,6 @@ After the graph has been launched in a session, an `Operation` can
 be executed by passing it to
 [`Session.run()`](../../api_docs/python/client.md#Session.run).
 `op.run()` is a shortcut for calling `tf.get_default_session().run(op)`.
-
-- - -
-
-#### `tf.Operation.name` {#Operation.name}
-
-The full name of this operation.
-
-
-- - -
-
-#### `tf.Operation.type` {#Operation.type}
-
-The type of the op (e.g. `"MatMul"`).
-
-
-- - -
-
-#### `tf.Operation.inputs` {#Operation.inputs}
-
-The list of `Tensor` objects representing the data inputs of this op.
-
-
-- - -
-
-#### `tf.Operation.control_inputs` {#Operation.control_inputs}
-
-The `Operation` objects on which this op has a control dependency.
-
-Before this op is executed, TensorFlow will ensure that the
-operations in `self.control_inputs` have finished executing. This
-mechanism can be used to run ops sequentially for performance
-reasons, or to ensure that the side effects of an op are observed
-in the correct order.
-
-##### Returns:
-
-  A list of `Operation` objects.
-
-
-- - -
-
-#### `tf.Operation.outputs` {#Operation.outputs}
-
-The list of `Tensor` objects representing the outputs of this op.
-
-
-- - -
-
-#### `tf.Operation.device` {#Operation.device}
-
-The name of the device to which this op has been assigned, if any.
-
-##### Returns:
-
-  The string name of the device to which this op has been
-  assigned, or an empty string if it has not been assigned to a
-  device.
-
-
-- - -
-
-#### `tf.Operation.graph` {#Operation.graph}
-
-The `Graph` that contains this operation.
-
-
-
-- - -
-
-#### `tf.Operation.run(feed_dict=None, session=None)` {#Operation.run}
-
-Runs this operation in a `Session`.
-
-Calling this method will execute all preceding operations that
-produce the inputs needed for this operation.
-
-*N.B.* Before invoking `Operation.run()`, its graph must have been
-launched in a session, and either a default session must be
-available, or `session` must be specified explicitly.
-
-##### Args:
-
-
-*  <b>`feed_dict`</b>: A dictionary that maps `Tensor` objects to feed values.
-    See [`Session.run()`](../../api_docs/python/client.md#Session.run)
-    for a description of the valid feed values.
-*  <b>`session`</b>: (Optional.) The `Session` to be used to run to this operation. If
-    none, the default session will be used.
-
-
-
-- - -
-
-#### `tf.Operation.get_attr(name)` {#Operation.get_attr}
-
-Returns the value of the attr of this op with the given `name`.
-
-##### Args:
-
-
-*  <b>`name`</b>: The name of the attr to fetch.
-
-##### Returns:
-
-  The value of the attr, as a Python object.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If this op does not have an attr with the given `name`.
-
-
-- - -
-
-#### `tf.Operation.traceback` {#Operation.traceback}
-
-Returns the call stack from when this operation was constructed.
-
-
-
-#### Other Methods
 - - -
 
 #### `tf.Operation.__init__(node_def, g, inputs=None, output_types=None, control_inputs=None, input_types=None, original_op=None, op_def=None)` {#Operation.__init__}
@@ -1108,6 +988,78 @@ Returns the list of colocation groups of the op.
 
 - - -
 
+#### `tf.Operation.control_inputs` {#Operation.control_inputs}
+
+The `Operation` objects on which this op has a control dependency.
+
+Before this op is executed, TensorFlow will ensure that the
+operations in `self.control_inputs` have finished executing. This
+mechanism can be used to run ops sequentially for performance
+reasons, or to ensure that the side effects of an op are observed
+in the correct order.
+
+##### Returns:
+
+  A list of `Operation` objects.
+
+
+- - -
+
+#### `tf.Operation.device` {#Operation.device}
+
+The name of the device to which this op has been assigned, if any.
+
+##### Returns:
+
+  The string name of the device to which this op has been
+  assigned, or an empty string if it has not been assigned to a
+  device.
+
+
+- - -
+
+#### `tf.Operation.get_attr(name)` {#Operation.get_attr}
+
+Returns the value of the attr of this op with the given `name`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name of the attr to fetch.
+
+##### Returns:
+
+  The value of the attr, as a Python object.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If this op does not have an attr with the given `name`.
+
+
+- - -
+
+#### `tf.Operation.graph` {#Operation.graph}
+
+The `Graph` that contains this operation.
+
+
+- - -
+
+#### `tf.Operation.inputs` {#Operation.inputs}
+
+The list of `Tensor` objects representing the data inputs of this op.
+
+
+- - -
+
+#### `tf.Operation.name` {#Operation.name}
+
+The full name of this operation.
+
+
+- - -
+
 #### `tf.Operation.node_def` {#Operation.node_def}
 
 Returns a serialized `NodeDef` representation of this operation.
@@ -1130,6 +1082,50 @@ Returns the `OpDef` proto that represents the type of this op.
   An
   [`OpDef`](https://www.tensorflow.org/code/tensorflow/core/framework/op_def.proto)
   protocol buffer.
+
+
+- - -
+
+#### `tf.Operation.outputs` {#Operation.outputs}
+
+The list of `Tensor` objects representing the outputs of this op.
+
+
+- - -
+
+#### `tf.Operation.run(feed_dict=None, session=None)` {#Operation.run}
+
+Runs this operation in a `Session`.
+
+Calling this method will execute all preceding operations that
+produce the inputs needed for this operation.
+
+*N.B.* Before invoking `Operation.run()`, its graph must have been
+launched in a session, and either a default session must be
+available, or `session` must be specified explicitly.
+
+##### Args:
+
+
+*  <b>`feed_dict`</b>: A dictionary that maps `Tensor` objects to feed values.
+    See [`Session.run()`](../../api_docs/python/client.md#Session.run)
+    for a description of the valid feed values.
+*  <b>`session`</b>: (Optional.) The `Session` to be used to run to this operation. If
+    none, the default session will be used.
+
+
+- - -
+
+#### `tf.Operation.traceback` {#Operation.traceback}
+
+Returns the call stack from when this operation was constructed.
+
+
+- - -
+
+#### `tf.Operation.type` {#Operation.type}
+
+The type of the op (e.g. `"MatMul"`).
 
 
 - - -
@@ -1180,178 +1176,6 @@ sess = tf.Session()
 # Execute the graph and store the value that `e` represents in `result`.
 result = sess.run(e)
 ```
-
-- - -
-
-#### `tf.Tensor.dtype` {#Tensor.dtype}
-
-The `DType` of elements in this tensor.
-
-
-- - -
-
-#### `tf.Tensor.name` {#Tensor.name}
-
-The string name of this tensor.
-
-
-- - -
-
-#### `tf.Tensor.value_index` {#Tensor.value_index}
-
-The index of this tensor in the outputs of its `Operation`.
-
-
-- - -
-
-#### `tf.Tensor.graph` {#Tensor.graph}
-
-The `Graph` that contains this tensor.
-
-
-- - -
-
-#### `tf.Tensor.op` {#Tensor.op}
-
-The `Operation` that produces this tensor as an output.
-
-
-- - -
-
-#### `tf.Tensor.consumers()` {#Tensor.consumers}
-
-Returns a list of `Operation`s that consume this tensor.
-
-##### Returns:
-
-  A list of `Operation`s.
-
-
-
-- - -
-
-#### `tf.Tensor.eval(feed_dict=None, session=None)` {#Tensor.eval}
-
-Evaluates this tensor in a `Session`.
-
-Calling this method will execute all preceding operations that
-produce the inputs needed for the operation that produces this
-tensor.
-
-*N.B.* Before invoking `Tensor.eval()`, its graph must have been
-launched in a session, and either a default session must be
-available, or `session` must be specified explicitly.
-
-##### Args:
-
-
-*  <b>`feed_dict`</b>: A dictionary that maps `Tensor` objects to feed values.
-    See [`Session.run()`](../../api_docs/python/client.md#Session.run) for a
-    description of the valid feed values.
-*  <b>`session`</b>: (Optional.) The `Session` to be used to evaluate this tensor. If
-    none, the default session will be used.
-
-##### Returns:
-
-  A numpy array corresponding to the value of this tensor.
-
-
-
-- - -
-
-#### `tf.Tensor.get_shape()` {#Tensor.get_shape}
-
-Alias of Tensor.shape.
-
-
-- - -
-
-#### `tf.Tensor.shape` {#Tensor.shape}
-
-Returns the `TensorShape` that represents the shape of this tensor.
-
-The shape is computed using shape inference functions that are
-registered in the Op for each `Operation`.  See
-[`TensorShape`](../../api_docs/python/framework.md#TensorShape)
-for more details of what a shape represents.
-
-The inferred shape of a tensor is used to provide shape
-information without having to launch the graph in a session. This
-can be used for debugging, and providing early error messages. For
-example:
-
-```python
-c = tf.constant([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
-
-print(c.shape)
-==> TensorShape([Dimension(2), Dimension(3)])
-
-d = tf.constant([[1.0, 0.0], [0.0, 1.0], [1.0, 0.0], [0.0, 1.0]])
-
-print(d.shape)
-==> TensorShape([Dimension(4), Dimension(2)])
-
-# Raises a ValueError, because `c` and `d` do not have compatible
-# inner dimensions.
-e = tf.matmul(c, d)
-
-f = tf.matmul(c, d, transpose_a=True, transpose_b=True)
-
-print(f.shape)
-==> TensorShape([Dimension(3), Dimension(4)])
-```
-
-In some cases, the inferred shape may have unknown dimensions. If
-the caller has additional information about the values of these
-dimensions, `Tensor.set_shape()` can be used to augment the
-inferred shape.
-
-##### Returns:
-
-  A `TensorShape` representing the shape of this tensor.
-
-
-- - -
-
-#### `tf.Tensor.set_shape(shape)` {#Tensor.set_shape}
-
-Updates the shape of this tensor.
-
-This method can be called multiple times, and will merge the given
-`shape` with the current shape of this tensor. It can be used to
-provide additional information about the shape of this tensor that
-cannot be inferred from the graph alone. For example, this can be used
-to provide additional information about the shapes of images:
-
-```python
-_, image_data = tf.TFRecordReader(...).read(...)
-image = tf.image.decode_png(image_data, channels=3)
-
-# The height and width dimensions of `image` are data dependent, and
-# cannot be computed without executing the op.
-print(image.shape)
-==> TensorShape([Dimension(None), Dimension(None), Dimension(3)])
-
-# We know that each image in this dataset is 28 x 28 pixels.
-image.set_shape([28, 28, 3])
-print(image.shape)
-==> TensorShape([Dimension(28), Dimension(28), Dimension(3)])
-```
-
-##### Args:
-
-
-*  <b>`shape`</b>: A `TensorShape` representing the shape of this tensor.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If `shape` is not compatible with the current shape of
-    this tensor.
-
-
-
-#### Other Methods
 - - -
 
 #### `tf.Tensor.__abs__(x, name=None)` {#Tensor.__abs__}
@@ -2084,9 +1908,176 @@ x ^ y = (x | y) & ~(x & y).
 
 - - -
 
+#### `tf.Tensor.consumers()` {#Tensor.consumers}
+
+Returns a list of `Operation`s that consume this tensor.
+
+##### Returns:
+
+  A list of `Operation`s.
+
+
+- - -
+
 #### `tf.Tensor.device` {#Tensor.device}
 
 The name of the device on which this tensor will be produced, or None.
+
+
+- - -
+
+#### `tf.Tensor.dtype` {#Tensor.dtype}
+
+The `DType` of elements in this tensor.
+
+
+- - -
+
+#### `tf.Tensor.eval(feed_dict=None, session=None)` {#Tensor.eval}
+
+Evaluates this tensor in a `Session`.
+
+Calling this method will execute all preceding operations that
+produce the inputs needed for the operation that produces this
+tensor.
+
+*N.B.* Before invoking `Tensor.eval()`, its graph must have been
+launched in a session, and either a default session must be
+available, or `session` must be specified explicitly.
+
+##### Args:
+
+
+*  <b>`feed_dict`</b>: A dictionary that maps `Tensor` objects to feed values.
+    See [`Session.run()`](../../api_docs/python/client.md#Session.run) for a
+    description of the valid feed values.
+*  <b>`session`</b>: (Optional.) The `Session` to be used to evaluate this tensor. If
+    none, the default session will be used.
+
+##### Returns:
+
+  A numpy array corresponding to the value of this tensor.
+
+
+- - -
+
+#### `tf.Tensor.get_shape()` {#Tensor.get_shape}
+
+Alias of Tensor.shape.
+
+
+- - -
+
+#### `tf.Tensor.graph` {#Tensor.graph}
+
+The `Graph` that contains this tensor.
+
+
+- - -
+
+#### `tf.Tensor.name` {#Tensor.name}
+
+The string name of this tensor.
+
+
+- - -
+
+#### `tf.Tensor.op` {#Tensor.op}
+
+The `Operation` that produces this tensor as an output.
+
+
+- - -
+
+#### `tf.Tensor.set_shape(shape)` {#Tensor.set_shape}
+
+Updates the shape of this tensor.
+
+This method can be called multiple times, and will merge the given
+`shape` with the current shape of this tensor. It can be used to
+provide additional information about the shape of this tensor that
+cannot be inferred from the graph alone. For example, this can be used
+to provide additional information about the shapes of images:
+
+```python
+_, image_data = tf.TFRecordReader(...).read(...)
+image = tf.image.decode_png(image_data, channels=3)
+
+# The height and width dimensions of `image` are data dependent, and
+# cannot be computed without executing the op.
+print(image.shape)
+==> TensorShape([Dimension(None), Dimension(None), Dimension(3)])
+
+# We know that each image in this dataset is 28 x 28 pixels.
+image.set_shape([28, 28, 3])
+print(image.shape)
+==> TensorShape([Dimension(28), Dimension(28), Dimension(3)])
+```
+
+##### Args:
+
+
+*  <b>`shape`</b>: A `TensorShape` representing the shape of this tensor.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `shape` is not compatible with the current shape of
+    this tensor.
+
+
+- - -
+
+#### `tf.Tensor.shape` {#Tensor.shape}
+
+Returns the `TensorShape` that represents the shape of this tensor.
+
+The shape is computed using shape inference functions that are
+registered in the Op for each `Operation`.  See
+[`TensorShape`](../../api_docs/python/framework.md#TensorShape)
+for more details of what a shape represents.
+
+The inferred shape of a tensor is used to provide shape
+information without having to launch the graph in a session. This
+can be used for debugging, and providing early error messages. For
+example:
+
+```python
+c = tf.constant([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+
+print(c.shape)
+==> TensorShape([Dimension(2), Dimension(3)])
+
+d = tf.constant([[1.0, 0.0], [0.0, 1.0], [1.0, 0.0], [0.0, 1.0]])
+
+print(d.shape)
+==> TensorShape([Dimension(4), Dimension(2)])
+
+# Raises a ValueError, because `c` and `d` do not have compatible
+# inner dimensions.
+e = tf.matmul(c, d)
+
+f = tf.matmul(c, d, transpose_a=True, transpose_b=True)
+
+print(f.shape)
+==> TensorShape([Dimension(3), Dimension(4)])
+```
+
+In some cases, the inferred shape may have unknown dimensions. If
+the caller has additional information about the values of these
+dimensions, `Tensor.set_shape()` can be used to augment the
+inferred shape.
+
+##### Returns:
+
+  A `TensorShape` representing the shape of this tensor.
+
+
+- - -
+
+#### `tf.Tensor.value_index` {#Tensor.value_index}
+
+The index of this tensor in the outputs of its `Operation`.
 
 
 
@@ -2127,137 +2118,6 @@ defined for reference-typed tensors.
 
 The `tf.as_dtype()` function converts numpy types and string type
 names to a `DType` object.
-
-- - -
-
-#### `tf.DType.is_compatible_with(other)` {#DType.is_compatible_with}
-
-Returns True if the `other` DType will be converted to this DType.
-
-The conversion rules are as follows:
-
-```python
-DType(T)       .is_compatible_with(DType(T))        == True
-DType(T)       .is_compatible_with(DType(T).as_ref) == True
-DType(T).as_ref.is_compatible_with(DType(T))        == False
-DType(T).as_ref.is_compatible_with(DType(T).as_ref) == True
-```
-
-##### Args:
-
-
-*  <b>`other`</b>: A `DType` (or object that may be converted to a `DType`).
-
-##### Returns:
-
-  True if a Tensor of the `other` `DType` will be implicitly converted to
-  this `DType`.
-
-
-- - -
-
-#### `tf.DType.name` {#DType.name}
-
-Returns the string name for this `DType`.
-
-
-- - -
-
-#### `tf.DType.base_dtype` {#DType.base_dtype}
-
-Returns a non-reference `DType` based on this `DType`.
-
-
-- - -
-
-#### `tf.DType.real_dtype` {#DType.real_dtype}
-
-Returns the dtype correspond to this dtype's real part.
-
-
-- - -
-
-#### `tf.DType.is_bool` {#DType.is_bool}
-
-Returns whether this is a boolean data type
-
-
-- - -
-
-#### `tf.DType.is_floating` {#DType.is_floating}
-
-Returns whether this is a (non-quantized, real) floating point type.
-
-
-- - -
-
-#### `tf.DType.is_complex` {#DType.is_complex}
-
-Returns whether this is a complex floating point type.
-
-
-- - -
-
-#### `tf.DType.is_integer` {#DType.is_integer}
-
-Returns whether this is a (non-quantized) integer type.
-
-
-- - -
-
-#### `tf.DType.is_quantized` {#DType.is_quantized}
-
-Returns whether this is a quantized data type.
-
-
-- - -
-
-#### `tf.DType.is_unsigned` {#DType.is_unsigned}
-
-Returns whether this type is unsigned.
-
-Non-numeric, unordered, and quantized types are not considered unsigned, and
-this function returns `False`.
-
-##### Returns:
-
-  Whether a `DType` is unsigned.
-
-
-
-- - -
-
-#### `tf.DType.as_numpy_dtype` {#DType.as_numpy_dtype}
-
-Returns a `numpy.dtype` based on this `DType`.
-
-
-- - -
-
-#### `tf.DType.as_datatype_enum` {#DType.as_datatype_enum}
-
-Returns a `types_pb2.DataType` enum value based on this `DType`.
-
-
-
-- - -
-
-#### `tf.DType.limits` {#DType.limits}
-
-Return intensity limits, i.e. (min, max) tuple, of the dtype.
-
-##### Args:
-
-  clip_negative : bool, optional
-      If True, clip the negative range (i.e. return 0 for min intensity)
-      even if the image dtype allows negative values.
-Returns
-  min, max : tuple
-    Lower and upper intensity limits.
-
-
-
-#### Other Methods
 - - -
 
 #### `tf.DType.__eq__(other)` {#DType.__eq__}
@@ -2316,9 +2176,121 @@ Returns True iff self != other.
 
 - - -
 
+#### `tf.DType.as_datatype_enum` {#DType.as_datatype_enum}
+
+Returns a `types_pb2.DataType` enum value based on this `DType`.
+
+
+- - -
+
+#### `tf.DType.as_numpy_dtype` {#DType.as_numpy_dtype}
+
+Returns a `numpy.dtype` based on this `DType`.
+
+
+- - -
+
+#### `tf.DType.base_dtype` {#DType.base_dtype}
+
+Returns a non-reference `DType` based on this `DType`.
+
+
+- - -
+
+#### `tf.DType.is_bool` {#DType.is_bool}
+
+Returns whether this is a boolean data type
+
+
+- - -
+
+#### `tf.DType.is_compatible_with(other)` {#DType.is_compatible_with}
+
+Returns True if the `other` DType will be converted to this DType.
+
+The conversion rules are as follows:
+
+```python
+DType(T)       .is_compatible_with(DType(T))        == True
+DType(T)       .is_compatible_with(DType(T).as_ref) == True
+DType(T).as_ref.is_compatible_with(DType(T))        == False
+DType(T).as_ref.is_compatible_with(DType(T).as_ref) == True
+```
+
+##### Args:
+
+
+*  <b>`other`</b>: A `DType` (or object that may be converted to a `DType`).
+
+##### Returns:
+
+  True if a Tensor of the `other` `DType` will be implicitly converted to
+  this `DType`.
+
+
+- - -
+
+#### `tf.DType.is_complex` {#DType.is_complex}
+
+Returns whether this is a complex floating point type.
+
+
+- - -
+
+#### `tf.DType.is_floating` {#DType.is_floating}
+
+Returns whether this is a (non-quantized, real) floating point type.
+
+
+- - -
+
+#### `tf.DType.is_integer` {#DType.is_integer}
+
+Returns whether this is a (non-quantized) integer type.
+
+
+- - -
+
 #### `tf.DType.is_numpy_compatible` {#DType.is_numpy_compatible}
 
 
+
+
+- - -
+
+#### `tf.DType.is_quantized` {#DType.is_quantized}
+
+Returns whether this is a quantized data type.
+
+
+- - -
+
+#### `tf.DType.is_unsigned` {#DType.is_unsigned}
+
+Returns whether this type is unsigned.
+
+Non-numeric, unordered, and quantized types are not considered unsigned, and
+this function returns `False`.
+
+##### Returns:
+
+  Whether a `DType` is unsigned.
+
+
+- - -
+
+#### `tf.DType.limits` {#DType.limits}
+
+Return intensity limits, i.e. (min, max) tuple, of the dtype.
+
+##### Args:
+
+  clip_negative : bool, optional
+      If True, clip the negative range (i.e. return 0 for min intensity)
+      even if the image dtype allows negative values.
+Returns
+  min, max : tuple
+    Lower and upper intensity limits.
 
 
 - - -
@@ -2343,6 +2315,20 @@ Returns the minimum representable value in this data type.
 
 
 *  <b>`TypeError`</b>: if this is a non-numeric, unordered, or quantized type.
+
+
+- - -
+
+#### `tf.DType.name` {#DType.name}
+
+Returns the string name for this `DType`.
+
+
+- - -
+
+#### `tf.DType.real_dtype` {#DType.real_dtype}
+
+Returns the dtype correspond to this dtype's real part.
 
 
 - - -
@@ -2628,14 +2614,15 @@ after calling this function will result in undefined behavior.
 
 ### `tf.import_graph_def(graph_def, input_map=None, return_elements=None, name=None, op_dict=None, producer_op_list=None)` {#import_graph_def}
 
-Imports the TensorFlow graph in `graph_def` into the Python `Graph`.
+Imports the graph from `graph_def` into the current default `Graph`.
 
 This function provides a way to import a serialized TensorFlow
 [`GraphDef`](https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto)
 protocol buffer, and extract individual objects in the `GraphDef` as
-[`Tensor`](#Tensor) and [`Operation`](#Operation) objects. See
-[`Graph.as_graph_def()`](#Graph.as_graph_def) for a way to create a
-`GraphDef` proto.
+[`Tensor`](#Tensor) and [`Operation`](#Operation) objects. Once extracted,
+these objects are placed into the current default `Graph`. See
+[`Graph.as_graph_def()`](#Graph.as_graph_def) for a way to create a `GraphDef`
+proto.
 
 ##### Args:
 
@@ -2999,284 +2986,6 @@ C++`](../../how_tos/adding_an_op/index.md#shape-functions-in-c) for
 details of shape functions and how to register them. Alternatively,
 the shape may be set explicitly using
 [`Tensor.set_shape()`](../../api_docs/python/framework.md#Tensor.set_shape).
-
-- - -
-
-#### `tf.TensorShape.merge_with(other)` {#TensorShape.merge_with}
-
-Returns a `TensorShape` combining the information in `self` and `other`.
-
-The dimensions in `self` and `other` are merged elementwise,
-according to the rules defined for `Dimension.merge_with()`.
-
-##### Args:
-
-
-*  <b>`other`</b>: Another `TensorShape`.
-
-##### Returns:
-
-  A `TensorShape` containing the combined information of `self` and
-  `other`.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If `self` and `other` are not compatible.
-
-
-- - -
-
-#### `tf.TensorShape.concatenate(other)` {#TensorShape.concatenate}
-
-Returns the concatenation of the dimension in `self` and `other`.
-
-*N.B.* If either `self` or `other` is completely unknown,
-concatenation will discard information about the other shape. In
-future, we might support concatenation that preserves this
-information for use with slicing.
-
-##### Args:
-
-
-*  <b>`other`</b>: Another `TensorShape`.
-
-##### Returns:
-
-  A `TensorShape` whose dimensions are the concatenation of the
-  dimensions in `self` and `other`.
-
-
-
-- - -
-
-#### `tf.TensorShape.ndims` {#TensorShape.ndims}
-
-Returns the rank of this shape, or None if it is unspecified.
-
-
-- - -
-
-#### `tf.TensorShape.dims` {#TensorShape.dims}
-
-Returns a list of Dimensions, or None if the shape is unspecified.
-
-
-- - -
-
-#### `tf.TensorShape.as_list()` {#TensorShape.as_list}
-
-Returns a list of integers or `None` for each dimension.
-
-##### Returns:
-
-  A list of integers or `None` for each dimension.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If `self` is an unknown shape with an unknown rank.
-
-
-- - -
-
-#### `tf.TensorShape.as_proto()` {#TensorShape.as_proto}
-
-Returns this shape as a `TensorShapeProto`.
-
-
-- - -
-
-#### `tf.TensorShape.is_compatible_with(other)` {#TensorShape.is_compatible_with}
-
-Returns True iff `self` is compatible with `other`.
-
-Two possibly-partially-defined shapes are compatible if there
-exists a fully-defined shape that both shapes can represent. Thus,
-compatibility allows the shape inference code to reason about
-partially-defined shapes. For example:
-
-* TensorShape(None) is compatible with all shapes.
-
-* TensorShape([None, None]) is compatible with all two-dimensional
-  shapes, such as TensorShape([32, 784]), and also TensorShape(None). It is
-  not compatible with, for example, TensorShape([None]) or
-  TensorShape([None, None, None]).
-
-* TensorShape([32, None]) is compatible with all two-dimensional shapes
-  with size 32 in the 0th dimension, and also TensorShape([None, None])
-  and TensorShape(None). It is not compatible with, for example,
-  TensorShape([32]), TensorShape([32, None, 1]) or TensorShape([64, None]).
-
-* TensorShape([32, 784]) is compatible with itself, and also
-  TensorShape([32, None]), TensorShape([None, 784]), TensorShape([None,
-  None]) and TensorShape(None). It is not compatible with, for example,
-  TensorShape([32, 1, 784]) or TensorShape([None]).
-
-The compatibility relation is reflexive and symmetric, but not
-transitive. For example, TensorShape([32, 784]) is compatible with
-TensorShape(None), and TensorShape(None) is compatible with
-TensorShape([4, 4]), but TensorShape([32, 784]) is not compatible with
-TensorShape([4, 4]).
-
-##### Args:
-
-
-*  <b>`other`</b>: Another TensorShape.
-
-##### Returns:
-
-  True iff `self` is compatible with `other`.
-
-
-- - -
-
-#### `tf.TensorShape.is_fully_defined()` {#TensorShape.is_fully_defined}
-
-Returns True iff `self` is fully defined in every dimension.
-
-
-
-- - -
-
-#### `tf.TensorShape.with_rank(rank)` {#TensorShape.with_rank}
-
-Returns a shape based on `self` with the given rank.
-
-This method promotes a completely unknown shape to one with a
-known rank.
-
-##### Args:
-
-
-*  <b>`rank`</b>: An integer.
-
-##### Returns:
-
-  A shape that is at least as specific as `self` with the given rank.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If `self` does not represent a shape with the given `rank`.
-
-
-- - -
-
-#### `tf.TensorShape.with_rank_at_least(rank)` {#TensorShape.with_rank_at_least}
-
-Returns a shape based on `self` with at least the given rank.
-
-##### Args:
-
-
-*  <b>`rank`</b>: An integer.
-
-##### Returns:
-
-  A shape that is at least as specific as `self` with at least the given
-  rank.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If `self` does not represent a shape with at least the given
-    `rank`.
-
-
-- - -
-
-#### `tf.TensorShape.with_rank_at_most(rank)` {#TensorShape.with_rank_at_most}
-
-Returns a shape based on `self` with at most the given rank.
-
-##### Args:
-
-
-*  <b>`rank`</b>: An integer.
-
-##### Returns:
-
-  A shape that is at least as specific as `self` with at most the given
-  rank.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If `self` does not represent a shape with at most the given
-    `rank`.
-
-
-
-- - -
-
-#### `tf.TensorShape.assert_has_rank(rank)` {#TensorShape.assert_has_rank}
-
-Raises an exception if `self` is not compatible with the given `rank`.
-
-##### Args:
-
-
-*  <b>`rank`</b>: An integer.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If `self` does not represent a shape with the given `rank`.
-
-
-- - -
-
-#### `tf.TensorShape.assert_same_rank(other)` {#TensorShape.assert_same_rank}
-
-Raises an exception if `self` and `other` do not have compatible ranks.
-
-##### Args:
-
-
-*  <b>`other`</b>: Another `TensorShape`.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If `self` and `other` do not represent shapes with the
-    same rank.
-
-
-- - -
-
-#### `tf.TensorShape.assert_is_compatible_with(other)` {#TensorShape.assert_is_compatible_with}
-
-Raises exception if `self` and `other` do not represent the same shape.
-
-This method can be used to assert that there exists a shape that both
-`self` and `other` represent.
-
-##### Args:
-
-
-*  <b>`other`</b>: Another TensorShape.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If `self` and `other` do not represent the same shape.
-
-
-- - -
-
-#### `tf.TensorShape.assert_is_fully_defined()` {#TensorShape.assert_is_fully_defined}
-
-Raises an exception if `self` is not fully defined in every dimension.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If `self` does not have a known value for every dimension.
-
-
-
-#### Other Methods
 - - -
 
 #### `tf.TensorShape.__bool__()` {#TensorShape.__bool__}
@@ -3378,9 +3087,281 @@ Returns True if this shape contains non-zero information.
 
 - - -
 
+#### `tf.TensorShape.as_list()` {#TensorShape.as_list}
+
+Returns a list of integers or `None` for each dimension.
+
+##### Returns:
+
+  A list of integers or `None` for each dimension.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `self` is an unknown shape with an unknown rank.
+
+
+- - -
+
+#### `tf.TensorShape.as_proto()` {#TensorShape.as_proto}
+
+Returns this shape as a `TensorShapeProto`.
+
+
+- - -
+
+#### `tf.TensorShape.assert_has_rank(rank)` {#TensorShape.assert_has_rank}
+
+Raises an exception if `self` is not compatible with the given `rank`.
+
+##### Args:
+
+
+*  <b>`rank`</b>: An integer.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `self` does not represent a shape with the given `rank`.
+
+
+- - -
+
+#### `tf.TensorShape.assert_is_compatible_with(other)` {#TensorShape.assert_is_compatible_with}
+
+Raises exception if `self` and `other` do not represent the same shape.
+
+This method can be used to assert that there exists a shape that both
+`self` and `other` represent.
+
+##### Args:
+
+
+*  <b>`other`</b>: Another TensorShape.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `self` and `other` do not represent the same shape.
+
+
+- - -
+
+#### `tf.TensorShape.assert_is_fully_defined()` {#TensorShape.assert_is_fully_defined}
+
+Raises an exception if `self` is not fully defined in every dimension.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `self` does not have a known value for every dimension.
+
+
+- - -
+
+#### `tf.TensorShape.assert_same_rank(other)` {#TensorShape.assert_same_rank}
+
+Raises an exception if `self` and `other` do not have compatible ranks.
+
+##### Args:
+
+
+*  <b>`other`</b>: Another `TensorShape`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `self` and `other` do not represent shapes with the
+    same rank.
+
+
+- - -
+
+#### `tf.TensorShape.concatenate(other)` {#TensorShape.concatenate}
+
+Returns the concatenation of the dimension in `self` and `other`.
+
+*N.B.* If either `self` or `other` is completely unknown,
+concatenation will discard information about the other shape. In
+future, we might support concatenation that preserves this
+information for use with slicing.
+
+##### Args:
+
+
+*  <b>`other`</b>: Another `TensorShape`.
+
+##### Returns:
+
+  A `TensorShape` whose dimensions are the concatenation of the
+  dimensions in `self` and `other`.
+
+
+- - -
+
+#### `tf.TensorShape.dims` {#TensorShape.dims}
+
+Returns a list of Dimensions, or None if the shape is unspecified.
+
+
+- - -
+
+#### `tf.TensorShape.is_compatible_with(other)` {#TensorShape.is_compatible_with}
+
+Returns True iff `self` is compatible with `other`.
+
+Two possibly-partially-defined shapes are compatible if there
+exists a fully-defined shape that both shapes can represent. Thus,
+compatibility allows the shape inference code to reason about
+partially-defined shapes. For example:
+
+* TensorShape(None) is compatible with all shapes.
+
+* TensorShape([None, None]) is compatible with all two-dimensional
+  shapes, such as TensorShape([32, 784]), and also TensorShape(None). It is
+  not compatible with, for example, TensorShape([None]) or
+  TensorShape([None, None, None]).
+
+* TensorShape([32, None]) is compatible with all two-dimensional shapes
+  with size 32 in the 0th dimension, and also TensorShape([None, None])
+  and TensorShape(None). It is not compatible with, for example,
+  TensorShape([32]), TensorShape([32, None, 1]) or TensorShape([64, None]).
+
+* TensorShape([32, 784]) is compatible with itself, and also
+  TensorShape([32, None]), TensorShape([None, 784]), TensorShape([None,
+  None]) and TensorShape(None). It is not compatible with, for example,
+  TensorShape([32, 1, 784]) or TensorShape([None]).
+
+The compatibility relation is reflexive and symmetric, but not
+transitive. For example, TensorShape([32, 784]) is compatible with
+TensorShape(None), and TensorShape(None) is compatible with
+TensorShape([4, 4]), but TensorShape([32, 784]) is not compatible with
+TensorShape([4, 4]).
+
+##### Args:
+
+
+*  <b>`other`</b>: Another TensorShape.
+
+##### Returns:
+
+  True iff `self` is compatible with `other`.
+
+
+- - -
+
+#### `tf.TensorShape.is_fully_defined()` {#TensorShape.is_fully_defined}
+
+Returns True iff `self` is fully defined in every dimension.
+
+
+- - -
+
+#### `tf.TensorShape.merge_with(other)` {#TensorShape.merge_with}
+
+Returns a `TensorShape` combining the information in `self` and `other`.
+
+The dimensions in `self` and `other` are merged elementwise,
+according to the rules defined for `Dimension.merge_with()`.
+
+##### Args:
+
+
+*  <b>`other`</b>: Another `TensorShape`.
+
+##### Returns:
+
+  A `TensorShape` containing the combined information of `self` and
+  `other`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `self` and `other` are not compatible.
+
+
+- - -
+
+#### `tf.TensorShape.ndims` {#TensorShape.ndims}
+
+Returns the rank of this shape, or None if it is unspecified.
+
+
+- - -
+
 #### `tf.TensorShape.num_elements()` {#TensorShape.num_elements}
 
 Returns the total number of elements, or none for incomplete shapes.
+
+
+- - -
+
+#### `tf.TensorShape.with_rank(rank)` {#TensorShape.with_rank}
+
+Returns a shape based on `self` with the given rank.
+
+This method promotes a completely unknown shape to one with a
+known rank.
+
+##### Args:
+
+
+*  <b>`rank`</b>: An integer.
+
+##### Returns:
+
+  A shape that is at least as specific as `self` with the given rank.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `self` does not represent a shape with the given `rank`.
+
+
+- - -
+
+#### `tf.TensorShape.with_rank_at_least(rank)` {#TensorShape.with_rank_at_least}
+
+Returns a shape based on `self` with at least the given rank.
+
+##### Args:
+
+
+*  <b>`rank`</b>: An integer.
+
+##### Returns:
+
+  A shape that is at least as specific as `self` with at least the given
+  rank.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `self` does not represent a shape with at least the given
+    `rank`.
+
+
+- - -
+
+#### `tf.TensorShape.with_rank_at_most(rank)` {#TensorShape.with_rank_at_most}
+
+Returns a shape based on `self` with at most the given rank.
+
+##### Args:
+
+
+*  <b>`rank`</b>: An integer.
+
+##### Returns:
+
+  A shape that is at least as specific as `self` with at most the given
+  rank.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `self` does not represent a shape with at most the given
+    `rank`.
 
 
 
@@ -3769,7 +3750,7 @@ internally use the two seeds to allow user to change the seed globally for a
 graph, or for only specific operations.
 
 For details on how the graph-level seed interacts with op seeds, see
-[`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed).
+@{tf.set_random_seed}.
 
 ##### Args:
 

@@ -558,7 +558,8 @@ def weighted_sum_from_feature_columns(columns_to_tensors,
       except ValueError as ee:
         raise ValueError('Error creating weighted sum for column: {}.\n'
                          '{}'.format(column.name, ee))
-      output_tensors.append(predictions)
+      output_tensors.append(array_ops.reshape(
+          predictions, shape=(-1, num_outputs)))
       column_to_variable[column] = variable
       _log_variable(variable)
       _maybe_restore_from_checkpoint(column._checkpoint_path(), variable)
@@ -797,11 +798,14 @@ def check_feature_columns(feature_columns):
   """Checks the validity of the set of FeatureColumns.
 
   Args:
-    feature_columns: A set of instances or subclasses of FeatureColumn.
+    feature_columns: An iterable of instances or subclasses of FeatureColumn.
 
   Raises:
+    ValueError: If `feature_columns` is a dict.
     ValueError: If there are duplicate feature column keys.
   """
+  if isinstance(feature_columns, dict):
+    raise ValueError('Expected feature_columns to be iterable, found dict.')
   seen_keys = set()
   for f in feature_columns:
     key = f.key

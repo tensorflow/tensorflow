@@ -1,141 +1,156 @@
 Dirichlet distribution.
 
-This distribution is parameterized by a vector `alpha` of concentration
-parameters for `k` classes.
+The Dirichlet distribution is defined over the
+[`(k-1)`-simplex](https://en.wikipedia.org/wiki/Simplex) using a positive,
+length-`k` vector `concentration` (`k > 1`). The Dirichlet is identically the
+Beta distribution when `k = 2`.
 
-#### Mathematical details
+#### Mathematical Details
 
-The Dirichlet is a distribution over the standard n-simplex, where the
-standard n-simplex is defined by:
-```{ (x_1, ..., x_n) in R^(n+1) | sum_j x_j = 1 and x_j >= 0 for all j }```.
-The distribution has hyperparameters `alpha = (alpha_1,...,alpha_k)`,
-and probability mass function (prob):
+The Dirichlet is a distribution over the open `(k-1)`-simplex, i.e.,
 
-```prob(x) = 1 / Beta(alpha) * prod_j x_j^(alpha_j - 1)```
+```none
+S^{k-1} = { (x_0, ..., x_{k-1}) in R^k : sum_j x_j = 1 and all_j x_j > 0 }.
+```
 
-where `Beta(x) = prod_j Gamma(x_j) / Gamma(sum_j x_j)` is the multivariate
-beta function.
+The probability density function (pdf) is,
 
+```none
+pdf(x; alpha) = prod_j x_j**(alpha_j - 1) / Z
+Z = prod_j Gamma(alpha_j) / Gamma(sum_j alpha_j)
+```
 
-This class provides methods to create indexed batches of Dirichlet
-distributions.  If the provided `alpha` is rank 2 or higher, for
-every fixed set of leading dimensions, the last dimension represents one
-single Dirichlet distribution.  When calling distribution
-functions (e.g. `dist.prob(x)`), `alpha` and `x` are broadcast to the
-same shape (if possible).  In all cases, the last dimension of alpha/x
-represents single Dirichlet distributions.
+where:
+
+* `x in S^{k-1}`, i.e., the `(k-1)`-simplex,
+* `concentration = alpha = [alpha_0, ..., alpha_{k-1}]`, `alpha_j > 0`,
+* `Z` is the normalization constant aka the [multivariate beta function](
+  https://en.wikipedia.org/wiki/Beta_function#Multivariate_beta_function),
+  and,
+* `Gamma` is the [gamma function](
+  https://en.wikipedia.org/wiki/Gamma_function).
+
+The `concentration` represents mean total counts of class occurrence, i.e.,
+
+```none
+concentration = alpha = mean * total_concentration
+```
+
+where `mean` in `S^{k-1}` and `total_concentration` is a positive real number
+representing a mean total count.
+
+Distribution parameters are automatically broadcast in all functions; see
+examples for details.
 
 #### Examples
 
 ```python
-alpha = [1, 2, 3]
+# Create a single trivariate Dirichlet, with the 3rd class being three times
+# more frequent than the first. I.e., batch_shape=[], event_shape=[3].
+alpha = [1., 2, 3]
 dist = Dirichlet(alpha)
-```
 
-Creates a 3-class distribution, with the 3rd class is most likely to be drawn.
-The distribution functions can be evaluated on x.
+dist.sample([4, 5])  # shape: [4, 5, 3]
 
-```python
-# x same shape as alpha.
-x = [.2, .3, .5]
-dist.prob(x)  # Shape []
+# x has one sample, one batch, three classes:
+x = [.2, .3, .5]   # shape: [3]
+dist.prob(x)       # shape: []
 
-# alpha will be broadcast to [[1, 2, 3], [1, 2, 3]] to match x.
-x = [[.1, .4, .5], [.2, .3, .5]]
-dist.prob(x)  # Shape [2]
+# x has two samples from one batch:
+x = [[.1, .4, .5],
+     [.2, .3, .5]]
+dist.prob(x)         # shape: [2]
 
 # alpha will be broadcast to shape [5, 7, 3] to match x.
-x = [[...]]  # Shape [5, 7, 3]
-dist.prob(x)  # Shape [5, 7]
+x = [[...]]   # shape: [5, 7, 3]
+dist.prob(x)  # shape: [5, 7]
 ```
 
-Creates a 2-batch of 3-class distributions.
-
 ```python
-alpha = [[1, 2, 3], [4, 5, 6]]  # Shape [2, 3]
+# Create batch_shape=[2], event_shape=[3]:
+alpha = [[1., 2, 3],
+         [4, 5, 6]]   # shape: [2, 3]
 dist = Dirichlet(alpha)
 
-# x will be broadcast to [[2, 1, 0], [2, 1, 0]] to match alpha.
+dist.sample([4, 5])  # shape: [4, 5, 2, 3]
+
 x = [.2, .3, .5]
-dist.prob(x)  # Shape [2]
+# x will be broadcast as [[.2, .3, .5],
+#                         [.2, .3, .5]],
+# thus matching batch_shape [2, 3].
+dist.prob(x)         # shape: [2]
 ```
 - - -
 
-#### `tf.contrib.distributions.Dirichlet.__init__(alpha, validate_args=False, allow_nan_stats=True, name='Dirichlet')` {#Dirichlet.__init__}
+#### `tf.contrib.distributions.Dirichlet.__init__(concentration, validate_args=False, allow_nan_stats=True, name='Dirichlet')` {#Dirichlet.__init__}
 
 Initialize a batch of Dirichlet distributions.
 
 ##### Args:
 
 
-*  <b>`alpha`</b>: Positive floating point tensor with shape broadcastable to
-    `[N1,..., Nm, k]` `m >= 0`.  Defines this as a batch of `N1 x ... x Nm`
-     different `k` class Dirichlet distributions.
-*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to assert valid values
-    for parameters `alpha` and `x` in `prob` and `log_prob`.  If `False`,
-    correct behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
-    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
-    batch member.  If `True`, batch members with valid parameters leading to
-    undefined statistics will return NaN for this statistic.
-*  <b>`name`</b>: The name to prefix Ops created by this distribution class.
-
-
-*  <b>`Examples`</b>: 
-
-```python
-# Define 1-batch of 2-class Dirichlet distributions,
-# also known as a Beta distribution.
-dist = Dirichlet([1.1, 2.0])
-
-# Define a 2-batch of 3-class distributions.
-dist = Dirichlet([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
-```
+*  <b>`concentration`</b>: Positive floating-point `Tensor` indicating mean number
+    of class occurrences; aka "alpha". Implies `self.dtype`, and
+    `self.batch_shape`, `self.event_shape`, i.e., if
+    `concentration.shape = [N1, N2, ..., Nm, k]` then
+    `batch_shape = [N1, N2, ..., Nm]` and
+    `event_shape = [k]`.
+*  <b>`validate_args`</b>: Python `bool`, default `False`. When `True` distribution
+    parameters are checked for validity despite possibly degrading runtime
+    performance. When `False` invalid inputs may silently render incorrect
+    outputs.
+*  <b>`allow_nan_stats`</b>: Python `bool`, default `True`. When `True`, statistics
+    (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
+    result is undefined. When `False`, an exception is raised if one or
+    more of the statistic's batch members are undefined.
+*  <b>`name`</b>: Python `str` name prefixed to Ops created by this class.
 
 
 - - -
 
 #### `tf.contrib.distributions.Dirichlet.allow_nan_stats` {#Dirichlet.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
 
-#### `tf.contrib.distributions.Dirichlet.alpha` {#Dirichlet.alpha}
+#### `tf.contrib.distributions.Dirichlet.batch_shape` {#Dirichlet.batch_shape}
 
-Shape parameter.
+Shape of a single sample from a single event index as a `TensorShape`.
+
+May be partially defined or unknown.
+
+The batch dimensions are indexes into independent, non-identical
+parameterizations of this distribution.
+
+##### Returns:
+
+
+*  <b>`batch_shape`</b>: `TensorShape`, possibly unknown.
 
 
 - - -
 
-#### `tf.contrib.distributions.Dirichlet.alpha_sum` {#Dirichlet.alpha_sum}
-
-Sum of shape parameter.
-
-
-- - -
-
-#### `tf.contrib.distributions.Dirichlet.batch_shape(name='batch_shape')` {#Dirichlet.batch_shape}
+#### `tf.contrib.distributions.Dirichlet.batch_shape_tensor(name='batch_shape_tensor')` {#Dirichlet.batch_shape_tensor}
 
 Shape of a single sample from a single event index as a 1-D `Tensor`.
 
-The product of the dimensions of the `batch_shape` is the number of
-independent distributions of this kind the instance represents.
+The batch dimensions are indexes into independent, non-identical
+parameterizations of this distribution.
 
 ##### Args:
 
@@ -150,7 +165,7 @@ independent distributions of this kind the instance represents.
 
 - - -
 
-#### `tf.contrib.distributions.Dirichlet.cdf(value, name='cdf', **condition_kwargs)` {#Dirichlet.cdf}
+#### `tf.contrib.distributions.Dirichlet.cdf(value, name='cdf')` {#Dirichlet.cdf}
 
 Cumulative distribution function.
 
@@ -165,13 +180,19 @@ cdf(x) := P[X <= x]
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
 *  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.concentration` {#Dirichlet.concentration}
+
+Concentration parameter; expected counts for that coordinate.
 
 
 - - -
@@ -199,6 +220,50 @@ intialization arguments.
 
 - - -
 
+#### `tf.contrib.distributions.Dirichlet.covariance(name='covariance')` {#Dirichlet.covariance}
+
+Covariance.
+
+Covariance is (possibly) defined only for non-scalar-event distributions.
+
+For example, for a length-`k`, vector-valued distribution, it is calculated
+as,
+
+```none
+Cov[i, j] = Covariance(X_i, X_j) = E[(X_i - E[X_i]) (X_j - E[X_j])]
+```
+
+where `Cov` is a (batch of) `k x k` matrix, `0 <= (i, j) < k`, and `E`
+denotes expectation.
+
+Alternatively, for non-vector, multivariate distributions (e.g.,
+matrix-valued, Wishart), `Covariance` shall return a (batch of) matrices
+under some vectorization of the events, i.e.,
+
+```none
+Cov[i, j] = Covariance(Vec(X)_i, Vec(X)_j) = [as above]
+````
+
+where `Cov` is a (batch of) `k' x k'` matrices,
+`0 <= (i, j) < k' = reduce_prod(event_shape)`, and `Vec` is some function
+mapping indices of this distribution's event dimensions to indices of a
+length-`k'` vector.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`covariance`</b>: Floating-point `Tensor` with shape `[B1, ..., Bn, k', k']`
+    where the first `n` dimensions are batch coordinates and
+    `k' = reduce_prod(self.event_shape)`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Dirichlet.dtype` {#Dirichlet.dtype}
 
 The `DType` of `Tensor`s handled by this `Distribution`.
@@ -213,7 +278,21 @@ Shannon entropy in nats.
 
 - - -
 
-#### `tf.contrib.distributions.Dirichlet.event_shape(name='event_shape')` {#Dirichlet.event_shape}
+#### `tf.contrib.distributions.Dirichlet.event_shape` {#Dirichlet.event_shape}
+
+Shape of a single sample from a single batch as a `TensorShape`.
+
+May be partially defined or unknown.
+
+##### Returns:
+
+
+*  <b>`event_shape`</b>: `TensorShape`, possibly unknown.
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.event_shape_tensor(name='event_shape_tensor')` {#Dirichlet.event_shape_tensor}
 
 Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
@@ -230,42 +309,7 @@ Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 - - -
 
-#### `tf.contrib.distributions.Dirichlet.get_batch_shape()` {#Dirichlet.get_batch_shape}
-
-Shape of a single sample from a single event index as a `TensorShape`.
-
-Same meaning as `batch_shape`. May be only partially defined.
-
-##### Returns:
-
-
-*  <b>`batch_shape`</b>: `TensorShape`, possibly unknown.
-
-
-- - -
-
-#### `tf.contrib.distributions.Dirichlet.get_event_shape()` {#Dirichlet.get_event_shape}
-
-Shape of a single sample from a single batch as a `TensorShape`.
-
-Same meaning as `event_shape`. May be only partially defined.
-
-##### Returns:
-
-
-*  <b>`event_shape`</b>: `TensorShape`, possibly unknown.
-
-
-- - -
-
 #### `tf.contrib.distributions.Dirichlet.is_continuous` {#Dirichlet.is_continuous}
-
-
-
-
-- - -
-
-#### `tf.contrib.distributions.Dirichlet.is_reparameterized` {#Dirichlet.is_reparameterized}
 
 
 
@@ -284,7 +328,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -301,12 +345,12 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
 
-#### `tf.contrib.distributions.Dirichlet.log_cdf(value, name='log_cdf', **condition_kwargs)` {#Dirichlet.log_cdf}
+#### `tf.contrib.distributions.Dirichlet.log_cdf(value, name='log_cdf')` {#Dirichlet.log_cdf}
 
 Log cumulative distribution function.
 
@@ -325,7 +369,6 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -336,74 +379,23 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 - - -
 
-#### `tf.contrib.distributions.Dirichlet.log_pdf(value, name='log_pdf', **condition_kwargs)` {#Dirichlet.log_pdf}
-
-Log probability density function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if not `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.Dirichlet.log_pmf(value, name='log_pmf', **condition_kwargs)` {#Dirichlet.log_pmf}
-
-Log probability mass function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.Dirichlet.log_prob(value, name='log_prob', **condition_kwargs)` {#Dirichlet.log_prob}
+#### `tf.contrib.distributions.Dirichlet.log_prob(value, name='log_prob')` {#Dirichlet.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
 
 
 Additional documentation from `Dirichlet`:
 
-Note that the input must be a non-negative tensor with dtype `dtype` and whose
-shape can be broadcast with `self.alpha`.  For fixed leading dimensions, the
-last dimension represents counts for the corresponding Dirichlet distribution
-in `self.alpha`. `x` is only legal if it sums up to one.
+Note: `value` must be a non-negative tensor with
+dtype `self.dtype` and be in the `(self.event_shape() - 1)`-simplex, i.e.,
+`tf.reduce_sum(value, -1) = 1`. It must have a shape compatible with
+`self.batch_shape() + self.event_shape()`.
 
 ##### Args:
 
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -414,7 +406,7 @@ in `self.alpha`. `x` is only legal if it sums up to one.
 
 - - -
 
-#### `tf.contrib.distributions.Dirichlet.log_survival_function(value, name='log_survival_function', **condition_kwargs)` {#Dirichlet.log_survival_function}
+#### `tf.contrib.distributions.Dirichlet.log_survival_function(value, name='log_survival_function')` {#Dirichlet.log_survival_function}
 
 Log survival function.
 
@@ -434,7 +426,6 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -457,10 +448,10 @@ Mode.
 
 Additional documentation from `Dirichlet`:
 
-Note that the mode for the Dirichlet distribution is only defined
-when `alpha > 1`. This returns the mode when `alpha > 1`,
-and NaN otherwise. If `self.allow_nan_stats` is `False`, an exception
-will be raised rather than returning `NaN`.
+Note: The mode is undefined when any `concentration <= 1`. If
+`self.allow_nan_stats` is `True`, `NaN` is used for undefined modes. If
+`self.allow_nan_stats` is `False` an exception is raised when one or more
+modes are undefined.
 
 
 - - -
@@ -476,7 +467,11 @@ Name prepended to all ops created by this `Distribution`.
 
 Shapes of parameters given the desired shape of a call to `sample()`.
 
-Subclasses should override static method `_param_shapes`.
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`.
+
+Subclasses should override class method `_param_shapes`.
 
 ##### Args:
 
@@ -494,7 +489,15 @@ Subclasses should override static method `_param_shapes`.
 
 #### `tf.contrib.distributions.Dirichlet.param_static_shapes(cls, sample_shape)` {#Dirichlet.param_static_shapes}
 
-param_shapes with static (i.e. TensorShape) shapes.
+param_shapes with static (i.e. `TensorShape`) shapes.
+
+This is a class method that describes what key/value arguments are required
+to instantiate the given `Distribution` so that a particular shape is
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
+
+Subclasses should override class method `_param_shapes` to return
+constant-valued tensors when constant values are fed.
 
 ##### Args:
 
@@ -521,74 +524,23 @@ Dictionary of parameters used to instantiate this `Distribution`.
 
 - - -
 
-#### `tf.contrib.distributions.Dirichlet.pdf(value, name='pdf', **condition_kwargs)` {#Dirichlet.pdf}
-
-Probability density function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if not `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.Dirichlet.pmf(value, name='pmf', **condition_kwargs)` {#Dirichlet.pmf}
-
-Probability mass function.
-
-##### Args:
-
-
-*  <b>`value`</b>: `float` or `double` `Tensor`.
-*  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
-
-##### Returns:
-
-
-*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-    values of type `self.dtype`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `is_continuous`.
-
-
-- - -
-
-#### `tf.contrib.distributions.Dirichlet.prob(value, name='prob', **condition_kwargs)` {#Dirichlet.prob}
+#### `tf.contrib.distributions.Dirichlet.prob(value, name='prob')` {#Dirichlet.prob}
 
 Probability density/mass function (depending on `is_continuous`).
 
 
 Additional documentation from `Dirichlet`:
 
-Note that the input must be a non-negative tensor with dtype `dtype` and whose
-shape can be broadcast with `self.alpha`.  For fixed leading dimensions, the
-last dimension represents counts for the corresponding Dirichlet distribution
-in `self.alpha`. `x` is only legal if it sums up to one.
+Note: `value` must be a non-negative tensor with
+dtype `self.dtype` and be in the `(self.event_shape() - 1)`-simplex, i.e.,
+`tf.reduce_sum(value, -1) = 1`. It must have a shape compatible with
+`self.batch_shape() + self.event_shape()`.
 
 ##### Args:
 
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -599,7 +551,22 @@ in `self.alpha`. `x` is only legal if it sums up to one.
 
 - - -
 
-#### `tf.contrib.distributions.Dirichlet.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#Dirichlet.sample}
+#### `tf.contrib.distributions.Dirichlet.reparameterization_type` {#Dirichlet.reparameterization_type}
+
+Describes how samples from the distribution are reparameterized.
+
+Currently this is one of the static instances
+`distributions.FULLY_REPARAMETERIZED`
+or `distributions.NOT_REPARAMETERIZED`.
+
+##### Returns:
+
+  An instance of `ReparameterizationType`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.sample(sample_shape=(), seed=None, name='sample')` {#Dirichlet.sample}
 
 Generate samples of the specified shape.
 
@@ -612,7 +579,6 @@ sample.
 *  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -622,14 +588,34 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.Dirichlet.std(name='std')` {#Dirichlet.std}
+#### `tf.contrib.distributions.Dirichlet.stddev(name='stddev')` {#Dirichlet.stddev}
 
 Standard deviation.
+
+Standard deviation is defined as,
+
+```none
+stddev = E[(X - E[X])**2]**0.5
+```
+
+where `X` is the random variable associated with this distribution, `E`
+denotes expectation, and `stddev.shape = batch_shape + event_shape`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`stddev`</b>: Floating-point `Tensor` with shape identical to
+    `batch_shape + event_shape`, i.e., the same shape as `self.mean()`.
 
 
 - - -
 
-#### `tf.contrib.distributions.Dirichlet.survival_function(value, name='survival_function', **condition_kwargs)` {#Dirichlet.survival_function}
+#### `tf.contrib.distributions.Dirichlet.survival_function(value, name='survival_function')` {#Dirichlet.survival_function}
 
 Survival function.
 
@@ -646,19 +632,25 @@ survival_function(x) = P[X > x]
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
-*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
-  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.total_concentration` {#Dirichlet.total_concentration}
+
+Sum of last dim of concentration parameter.
 
 
 - - -
 
 #### `tf.contrib.distributions.Dirichlet.validate_args` {#Dirichlet.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -
@@ -666,5 +658,25 @@ Python boolean indicated possibly expensive checks are enabled.
 #### `tf.contrib.distributions.Dirichlet.variance(name='variance')` {#Dirichlet.variance}
 
 Variance.
+
+Variance is defined as,
+
+```none
+Var = E[(X - E[X])**2]
+```
+
+where `X` is the random variable associated with this distribution, `E`
+denotes expectation, and `Var.shape = batch_shape + event_shape`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`variance`</b>: Floating-point `Tensor` with shape identical to
+    `batch_shape + event_shape`, i.e., the same shape as `self.mean()`.
 
 

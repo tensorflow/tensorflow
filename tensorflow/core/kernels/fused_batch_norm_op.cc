@@ -108,7 +108,7 @@ struct FusedBatchNorm<CPUDevice, T> {
         x_rest_by_depth - mean.reshape(one_by_depth).broadcast(bcast_spec);
 
     if (is_training) {
-      variance = x_centered.square().sum(reduce_dims) * rest_size_inv;
+      variance.device(d) = x_centered.square().sum(reduce_dims) * rest_size_inv;
       batch_var.device(d) = variance * rest_size_adjust;
       saved_var.device(d) = variance;
     } else {

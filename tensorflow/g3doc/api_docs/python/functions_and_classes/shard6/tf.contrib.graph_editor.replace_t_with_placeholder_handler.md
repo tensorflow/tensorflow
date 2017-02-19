@@ -8,7 +8,7 @@ placeholder.
 ##### Args:
 
 
-*  <b>`info`</b>: Transform._Info instance.
+*  <b>`info`</b>: Transform._TmpInfo instance.
 *  <b>`t`</b>: tensor whose input must be transformed into a place holder.
 
 ##### Returns:

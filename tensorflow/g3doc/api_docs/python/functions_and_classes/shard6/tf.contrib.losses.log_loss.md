@@ -4,7 +4,7 @@ Adds a Log Loss term to the training procedure. (deprecated)
 
 THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-30.
 Instructions for updating:
-Use tf.losses.log_loss instead.
+Use tf.losses.log_loss instead. Note that the order of the predictions and labels arguments was changed.
 
 `weights` acts as a coefficient for the loss. If a scalar is provided, then
 the loss is simply scaled by the given value. If `weights` is a tensor of size

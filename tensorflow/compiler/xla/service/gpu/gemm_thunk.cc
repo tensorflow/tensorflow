@@ -27,8 +27,6 @@ namespace se = ::perftools::gputools;
 namespace xla {
 namespace gpu {
 
-using Index = BufferAllocation::Index;
-
 namespace {
 
 // This struct contains the metadata of a matrix, e.g., its base address and
@@ -103,7 +101,9 @@ FindGemmExecutor(PrimitiveType type) {
 
 }  // namespace
 
-GemmThunk::GemmThunk(Index lhs_buffer, Index rhs_buffer, Index output_buffer,
+GemmThunk::GemmThunk(const BufferAllocation::Slice& lhs_buffer,
+                     const BufferAllocation::Slice& rhs_buffer,
+                     const BufferAllocation::Slice& output_buffer,
                      const Shape& lhs_shape, const Shape& rhs_shape,
                      const Shape& output_shape, bool transpose_lhs,
                      bool transpose_rhs, const HloInstruction* hlo_instruction)

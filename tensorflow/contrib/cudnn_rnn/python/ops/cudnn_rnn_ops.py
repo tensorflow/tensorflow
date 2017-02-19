@@ -45,16 +45,45 @@ _cudnn_rnn_ops_so = loader.load_op_library(
 class RNNParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
   """SaveableObject implementation that handles the RNN params variable."""
 
-  def __init__(self, params_to_canonical, canonical_to_params,
+  def __init__(self,
+               params_to_canonical,
+               canonical_to_params,
+               name="params_canonical",
                *param_variables):
     """Creates a RNNParamsSaveable object.
 
+       RNNParamsSaveable is saveable/restorable in a checkpoint file and is used
+       to save/restore the weights and biases parameters in a canonical
+       format, where parameters are saved as tensors layer by layer. For each
+       layer, the bias tensors are saved following the weight tensors. When
+       restoring, a user could name param_variables as desired, and restore
+       weight and bias tensors to these variables.
+
+       For CudnnRNNRelu or CudnnRNNTanh, there are 2 tensors per weight and per
+       bias for each layer: tensor 0 is applied to the input from the previous
+       layer and tensor 1 to the recurrent input.
+
+       For CudnnLSTM, there are 8 tensors per weight and per bias for each
+       layer: tensor 0-3 are applied to the input from the previous layer and
+       tensor 4-7 to the recurrent input. Tensor 0 and 4 are for the input gate;
+       tensor 1 and 5 the forget gate; tensor 2 and 6 the new memory gate;
+       tensor 3 and 7 the output gate.
+
+       For CudnnGRU, there are 6 tensors per weight and per bias for each layer:
+       tensor 0-2 are applied to the input from the previous layer and
+       tensor 3-5 to the recurrent input. Tensor 0 and 3 are for the reset gate;
+       tensor 1 and 4 the update gate; tensor 2 and 5 the new memory gate.
+
     Args:
       params_to_canonical: a function to convert params from a specific format
-          for cuDNN or other RNN ops to the canonical format .
+          for cuDNN or other RNN ops to the canonical format.
+          _CudnnRNN.params_to_canonical() should be provided here.
       canonical_to_params: a function to convert params from the canonical
           format to a specific format for cuDNN or other RNN ops. The function
-          must return a scalar (e.g. in the case of cuDNN) or a tuple.
+          must return a scalar (e.g. in the case of cuDNN) or a tuple. This
+          function could be _CudnnRNN.canonical_to_params() or a
+          user-defined function.
+      name: the name of the RNNParamsSaveable object.
       *param_variables: a list of Variables for parameters in a specific form.
           For cuDNN RNN ops, this is a single merged variable for both weights
           and biases; for other RNN ops, this might be multiple unmerged or
@@ -72,7 +101,7 @@ class RNNParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
         saver.BaseSaverBuilder.SaveSpec(param, slice_spec, param.name)
         for param in itertools.chain(weights, biases)
     ]
-    super(RNNParamsSaveable, self).__init__(None, specs, "params_canonical")
+    super(RNNParamsSaveable, self).__init__(None, specs, name)
 
   def restore(self, restored_tensors, restored_shapes):
     weights = restored_tensors[:len(restored_tensors) // 2]
@@ -90,8 +119,9 @@ class RNNParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
 _cudnn_rnn_common_doc_string = """
   Cudnn RNN has an opaque parameter buffer that can be used for inference and
   training. But it is possible that the layout of the parameter buffers
-  changes between generations. So it is highly recommended to use the canonical
-  weights and biases to for saving and restoring a model.
+  changes between generations. So it is highly recommended to use
+  RNNParamsSaveable to save and restore weights and biases in a canonical
+  format.
 
   This is a typical use case:
     * The user creates a CudnnRNN model.
@@ -102,8 +132,18 @@ _cudnn_rnn_common_doc_string = """
         weights into the parameter buffer.
     * The user calls the model with the parameter buffer for inference, or
         training.
-    * Once a while, the user extracts the canonical weights from the parameter
-        buffer and saves them into model checkpoints.
+    * If training, the user creates a Saver object.
+    * If training, the user creates a RNNParamsSaveable object from the
+        parameter buffer for it to be later saved in the canonical format. When
+        creating a RNNParamsSaveable object, a name could be provided, which is
+        useful in distinguishing the names of multiple RNNParamsSaveable
+        objects (e.g. for an encoder-decoder model).
+    * Once a while, the user saves the parameter buffer into model checkpoints
+        with Saver.save().
+    * When restoring, the user creates a RNNParamsSaveable object and uses
+      Saver.restore() to restore the paramter buffer from the canonical format
+      to a user-defined format, as well as to restore other savable objects
+      in the checkpoint file.
 """
 
 

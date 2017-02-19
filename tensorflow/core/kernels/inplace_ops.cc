@@ -48,6 +48,7 @@ Status DoParallelConcat(const CPUDevice& d, const Tensor& value, int32 loc,
   case DataTypeToEnum<type>::value: \
     return DoParallelConcatUpdate<type>(d, value, loc, output);
     TF_CALL_NUMBER_TYPES(CASE);
+    TF_CALL_string(CASE);
 #undef CASE
     default:
       return errors::InvalidArgument("Unsupported data type: ", value.dtype());
@@ -132,7 +133,7 @@ class FailureKernel : public OpKernel {
                               .Device(DEVICE_CPU)         \
                               .TypeConstraint<type>("T"), \
                           ParallelConcatUpdate<CPUDevice>);
-TF_CALL_NUMBER_TYPES(REGISTER)
+TF_CALL_POD_STRING_TYPES(REGISTER)
 #undef REGISTER
 
 #define REGISTER_EMPTY(type)                                  \

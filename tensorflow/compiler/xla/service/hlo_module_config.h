@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
@@ -59,12 +60,22 @@ class HloModuleConfig {
   }
   int64 replica_count() const { return replica_count_; }
 
+  // Sets/returns whether unsafe math optimizations are disabled for this
+  // module.  Default is fast-math enabled.
+  //
+  // This is named fast_math_disabled rather than the more natural
+  // fast_math_enabled for consistency with the ExecutionOptions proto.
+  bool fast_math_disabled() const { return fast_math_disabled_; }
+  void set_fast_math_disabled(bool disabled) { fast_math_disabled_ = disabled; }
+
   // Return a string which unambiguously represents all the fields of this data
   // structure. Used for generating a cache key for storing the compiled
   // executable.
   string compilation_cache_key() const;
 
  private:
+  // If you add new members, be sure to update compilation_cache_key.
+
   ComputationLayout entry_computation_layout_;
 
   // Whether to enable HLO-level profiling.
@@ -85,6 +96,8 @@ class HloModuleConfig {
 
   // The number of replicas to compile this binary for.
   int64 replica_count_ = 1;
+
+  bool fast_math_disabled_ = false;
 };
 
 }  // namespace xla

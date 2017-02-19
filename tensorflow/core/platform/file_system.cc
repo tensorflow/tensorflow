@@ -229,7 +229,10 @@ Status FileSystem::RecursivelyCreateDir(const string& dirname) {
   string built_path = remaining_dir.ToString();
   for (const StringPiece sub_dir : sub_dirs) {
     built_path = io::JoinPath(built_path, sub_dir);
-    TF_RETURN_IF_ERROR(CreateDir(io::CreateURI(scheme, host, built_path)));
+    Status status = CreateDir(io::CreateURI(scheme, host, built_path));
+    if (!status.ok() && status.code() != tensorflow::error::ALREADY_EXISTS) {
+      return status;
+    }
   }
   return Status::OK();
 }

@@ -301,6 +301,7 @@ string InstructionSequenceGraph(
         color = "turquoise";
         break;
       case HloOpcode::kInfeed:
+      case HloOpcode::kOutfeed:
         color = "blue";
         break;
     }

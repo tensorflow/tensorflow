@@ -299,7 +299,9 @@ def absolute_difference(predictions, labels=None, weights=1.0, scope=None):
     return compute_weighted_loss(losses, weights, scope=scope)
 
 
-@deprecated("2016-12-30", "Use tf.losses.sigmoid_cross_entropy instead.")
+@deprecated("2016-12-30",
+            "Use tf.losses.sigmoid_cross_entropy instead. Note that the order "
+            "of the predictions and labels arguments was changed.")
 def sigmoid_cross_entropy(
     logits, multi_class_labels, weights=1.0, label_smoothing=0, scope=None):
   """Creates a cross-entropy loss using tf.nn.sigmoid_cross_entropy_with_logits.
@@ -346,7 +348,9 @@ def sigmoid_cross_entropy(
     return compute_weighted_loss(losses, weights, scope=scope)
 
 
-@deprecated("2016-12-30", "Use tf.losses.softmax_cross_entropy instead.")
+@deprecated("2016-12-30",
+            "Use tf.losses.softmax_cross_entropy instead. Note that the order "
+            "of the logits and labels arguments has been changed.")
 def softmax_cross_entropy(
     logits, onehot_labels, weights=1.0, label_smoothing=0, scope=None):
   """Creates a cross-entropy loss using tf.nn.softmax_cross_entropy_with_logits.
@@ -394,7 +398,9 @@ def softmax_cross_entropy(
     return compute_weighted_loss(losses, weights, scope=scope)
 
 
-@deprecated("2016-12-30", "Use tf.losses.sparse_softmax_cross_entropy instead.")
+@deprecated("2016-12-30",
+            "Use tf.losses.sparse_softmax_cross_entropy instead. Note that "
+            "the order of the logits and labels arguments has been changed.")
 def sparse_softmax_cross_entropy(logits, labels, weights=1.0, scope=None):
   """Cross-entropy loss using `tf.nn.sparse_softmax_cross_entropy_with_logits`.
 
@@ -421,7 +427,6 @@ def sparse_softmax_cross_entropy(logits, labels, weights=1.0, scope=None):
   with ops.name_scope(scope, "sparse_softmax_cross_entropy_loss",
                       [logits, labels, weights]) as scope:
     labels = array_ops.reshape(labels, shape=[array_ops.shape(labels)[0]])
-    weights = array_ops.squeeze(weights)
 
     losses = nn.sparse_softmax_cross_entropy_with_logits(labels=labels,
                                                          logits=logits,
@@ -429,7 +434,9 @@ def sparse_softmax_cross_entropy(logits, labels, weights=1.0, scope=None):
     return compute_weighted_loss(losses, weights, scope=scope)
 
 
-@deprecated("2016-12-30", "Use tf.losses.log_loss instead.")
+@deprecated("2016-12-30",
+            "Use tf.losses.log_loss instead. Note that the order of the "
+            "predictions and labels arguments was changed.")
 def log_loss(predictions, labels=None, weights=1.0, epsilon=1e-7, scope=None):
   """Adds a Log Loss term to the training procedure.
 
@@ -468,7 +475,9 @@ def log_loss(predictions, labels=None, weights=1.0, epsilon=1e-7, scope=None):
     return compute_weighted_loss(losses, weights, scope=scope)
 
 
-@deprecated("2016-12-30", "Use tf.losses.hinge_loss instead.")
+@deprecated("2016-12-30",
+            "Use tf.losses.hinge_loss instead. Note that the order of the "
+            "predictions and labels arguments were changed.")
 def hinge_loss(logits, labels=None, scope=None):
   """Method that returns the loss tensor for hinge loss.
 
@@ -530,7 +539,9 @@ def mean_squared_error(predictions, labels=None, weights=1.0, scope=None):
     return compute_weighted_loss(losses, weights, scope=scope)
 
 
-@deprecated("2016-12-30", "Use tf.losses.mean_pairwise_squared_error instead.")
+@deprecated("2016-12-30",
+            "Use tf.losses.mean_pairwise_squared_error instead. Note that the "
+            "order of the predictions and labels arguments was changed.")
 def mean_pairwise_squared_error(
     predictions, labels=None, weights=1.0, scope=None):
   """Adds a pairwise-errors-squared loss to the training procedure.

@@ -30,6 +30,7 @@ from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops import variables
 
 
 def log_poisson_loss(targets, log_input, compute_full_loss=False, name=None):
@@ -349,8 +350,7 @@ def depthwise_conv2d(input, filter, strides, padding, rate=None, name=None):
     strides: 1-D of size 4.  The stride of the sliding window for each
       dimension of `input`.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
-      See the [comment
-        here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
+      See the @{tf.nn.convolution$comment here}
     rate: 1-D of size 2. The dilation rate in which we sample input values
       across the `height` and `width` dimensions in atrous convolution. If it is
       greater than 1, then all values of strides must be 1.
@@ -426,8 +426,7 @@ def separable_conv2d(input,
     strides: 1-D of size 4.  The strides for the depthwise convolution for
       each dimension of `input`.
     padding: A string, either `'VALID'` or `'SAME'`.  The padding algorithm.
-      See the [comment
-        here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
+      See the @{tf.nn.convolution$comment here}
     rate: 1-D of size 2. The dilation rate in which we sample input values
       across the `height` and `width` dimensions in atrous convolution. If it is
       greater than 1, then all values of strides must be 1.
@@ -925,6 +924,8 @@ def _compute_sampled_logits(weights,
         `nn.softmax_cross_entropy_with_logits` (sampled softmax).
   """
 
+  if isinstance(weights, variables.PartitionedVariable):
+    weights = list(weights)
   if not isinstance(weights, list):
     weights = [weights]
 
@@ -1058,7 +1059,7 @@ def nce_loss(weights,
   Note: By default this uses a log-uniform (Zipfian) distribution for sampling,
   so your labels must be sorted in order of decreasing frequency to achieve
   good results.  For more details, see
-  [log_uniform_candidate_sampler](#log_uniform_candidate_sampler).
+  @{tf.nn.log_uniform_candidate_sampler}.
 
   Note: In the case where `num_true` > 1, we assign to each target class
   the target probability 1 / `num_true` so that the target probabilities

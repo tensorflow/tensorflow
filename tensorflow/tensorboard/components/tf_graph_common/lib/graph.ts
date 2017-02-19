@@ -120,6 +120,13 @@ export interface Node {
    *  INCLUDE or EXCLUDE manually by the user.
    */
   include: InclusionType;
+  /**
+   * Node attributes specify customizable visual aspects of a node and
+   * application-specific metadata associated with a node. The name
+   * 'nodeAttributes' is meant to avoid naming-conflicts with the 'attr' in
+   * subclasses of Node.
+   */
+  nodeAttributes: {[key: string]: any;};
 }
 
 export type TensorShape = number[];
@@ -299,7 +306,7 @@ export class EllipsisNodeImpl implements EllipsisNode {
   cardinality: number;
   parentNode: Node;
   include: InclusionType;
-
+  nodeAttributes: {[key: string]: any;};
   /**
    * Constructs a new ellipsis annotation node.
    *
@@ -341,6 +348,7 @@ export class OpNodeImpl implements OpNode {
   include: InclusionType;
   owningSeries: string;
   outputShapes: TensorShape[];
+  nodeAttributes: {[key: string]: any;};
 
   /**
    * Constructs a new Op node.
@@ -539,6 +547,7 @@ export class MetanodeImpl implements Metanode {
   parentNode: Node;
   hasNonControlEdges: boolean;
   include: InclusionType;
+  nodeAttributes: {[key: string]: any;};
 
   /** A label object for meta-nodes in the graph hierarchy */
   constructor(name: string, opt = {}) {
@@ -762,6 +771,7 @@ class SeriesNodeImpl implements SeriesNode {
   deviceHistogram: {[op: string]: number};
   hasNonControlEdges: boolean;
   include: InclusionType;
+  nodeAttributes: {[key: string]: any;};
 
   constructor(prefix: string, suffix: string, parent: string,
       clusterId: number, name: string) {

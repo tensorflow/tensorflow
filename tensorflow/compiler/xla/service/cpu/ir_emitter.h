@@ -102,6 +102,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
                            HloInstruction* rhs, const Window& window) override;
   Status HandleCrossReplicaSum(HloInstruction* crs) override;
   Status HandleInfeed(HloInstruction* infeed) override;
+  Status HandleOutfeed(HloInstruction* infeed) override;
   Status HandleSort(HloInstruction* sort, HloInstruction* operand) override;
   Status HandleParameter(HloInstruction* parameter) override;
   Status HandleReduce(HloInstruction* reduce, HloInstruction* arg,
@@ -182,7 +183,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   // Emits code that computes the address of the given temporary buffer to the
   // function. target_shape is the shape of this temporary buffer.
   // The returned Value's type is a pointer to element_type.
-  llvm::Value* EmitTempBufferPointer(BufferAllocation::Index temp_buf_index,
+  llvm::Value* EmitTempBufferPointer(const BufferAllocation::Slice& slice,
                                      const Shape& target_shape);
 
   // Emits a function into the current module. This can be used for
@@ -289,7 +290,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   std::map<HloComputation*, llvm::Function*> emitted_functions_;
 
   // Map containing all previously emitted thread-local temporary buffers.
-  std::map<std::pair<llvm::Function*, BufferAllocation::Index>,
+  std::map<std::pair<llvm::Function*, BufferAllocation::Slice>,
            llvm::AllocaInst*>
       thread_local_buffers_;
 
