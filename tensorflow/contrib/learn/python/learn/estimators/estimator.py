@@ -838,6 +838,10 @@ class BaseEstimator(
     return result
 
   def _set_infer_mode_feature_signature(self, features):
+    for key in list(features.keys()):
+      if features[key] is None:
+        raise ValueError('Invalid feature value None for {key}'.format(key))
+
     for mode in list(self._features_info.keys()):
       if tensor_signature.tensors_compatible(features, self._features_info[mode]):
         self._features_info[model_fn_lib.ModeKeys.INFER] = self._features_info[mode]
