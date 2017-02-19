@@ -714,10 +714,10 @@ class BaseEstimator(
       ValueError: If `_features_info` attribute is not available (usually
       because `fit()` has not been called).
     """
-    if self._features_info is None:
+    if model_fn_lib.ModeKeys.TRAIN not in self._features_info:
       raise ValueError('Features information missing, was fit() ever called?')
     return tensor_signature.create_example_parser_from_signatures(
-        self._features_info, examples_batch)
+        self._features_info[model_fn_lib.ModeKeys.TRAIN], examples_batch)
 
   def _check_inputs(self, features, labels, mode):
     if mode in self._features_info:
