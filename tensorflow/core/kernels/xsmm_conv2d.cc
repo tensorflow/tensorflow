@@ -32,8 +32,8 @@ void dummy_xsmm_conv2d_ensure_file_is_not_empty(void);
 #include "tensorflow/core/lib/core/threadpool.h"
 
 #include "include/libxsmm_cpuid.h"
-#include "libxsmm_dnn_handle.h"
-#include "libxsmm_malloc.h"
+#include "include/libxsmm_malloc.h"
+#include "libxsmm_main.h" // TODO: API to avoid incl. header from src/
 
 namespace tensorflow {
 
