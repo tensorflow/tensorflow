@@ -38,7 +38,7 @@ from tensorflow.contrib.framework import list_variables
 from tensorflow.contrib.framework import load_variable
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.learn.python.learn import evaluable
-from tensorflow.contrib.learn.python.learn import metric_spec
+from tensorflow.contrib.learn.python.learn import MetricSpec
 from tensorflow.contrib.learn.python.learn import monitors as monitor_lib
 from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn as sklearn
@@ -253,7 +253,7 @@ def _make_metrics_ops(metrics, features, labels, predictions):
   result = {}
   # Iterate in lexicographic order, so the graph is identical among runs.
   for name, metric in sorted(six.iteritems(metrics)):
-    if isinstance(metric, metric_spec.MetricSpec):
+    if isinstance(metric, MetricSpec):
       result[name] = metric.create_metric_ops(features, labels, predictions)
       continue
 

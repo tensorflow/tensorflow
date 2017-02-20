@@ -277,7 +277,7 @@ class MetricSpec(object):
       steps=1,
       metrics={
           'prediction accuracy':
-              metric_spec.MetricSpec(
+              MetricSpec(
                   metric_fn=prediction_accuracy_fn,
                   prediction_key="prediction_key",
                   label_key="label_key")

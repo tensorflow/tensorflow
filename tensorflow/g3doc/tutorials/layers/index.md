@@ -676,7 +676,7 @@ that calculates accuracy. Add the following to `main()`:
 # Configure the accuracy metric for evaluation
 metrics = {
     "accuracy":
-        learn.metric_spec.MetricSpec(
+        learn.MetricSpec(
             metric_fn=tf.metrics.accuracy, prediction_key="classes"),
 }
 ```

@@ -26,7 +26,7 @@ from tensorflow.contrib import rnn as rnn_cell
 from tensorflow.contrib.framework.python.framework import deprecated
 from tensorflow.contrib.layers.python.layers import feature_column_ops
 from tensorflow.contrib.layers.python.layers import optimizers
-from tensorflow.contrib.learn.python.learn import metric_spec
+from tensorflow.contrib.learn.python.learn import MetricSpec
 from tensorflow.contrib.learn.python.learn.estimators import constants
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators import model_fn
@@ -176,7 +176,7 @@ def _get_default_metrics(problem_type, sequence_length):
   """
   default_metrics = {}
   if problem_type == constants.ProblemType.CLASSIFICATION:
-    default_metrics['accuracy'] = metric_spec.MetricSpec(
+    default_metrics['accuracy'] = MetricSpec(
         metric_fn=_mask_multivalue(sequence_length, metrics.streaming_accuracy),
         prediction_key=prediction_key.PredictionKey.CLASSES)
   elif problem_type == constants.ProblemType.LINEAR_REGRESSION:
