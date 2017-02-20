@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.contrib import linalg as linalg_lib
 from tensorflow.contrib.linalg.python.ops import linear_operator_test_util
 from tensorflow.python.framework import dtypes
@@ -27,6 +29,7 @@ from tensorflow.python.platform import test
 
 linalg = linalg_lib
 random_seed.set_random_seed(23)
+rng = np.random.RandomState(0)
 
 
 class BaseLinearOperatorUDVHUpdatetest(object):
@@ -280,6 +283,40 @@ class LinearOpearatorUDVHUpdateBroadcastsShape(test.TestCase):
       self.assertAllEqual([2, 3, 3], shape_tensor)
       dense = operator.to_dense().eval(feed_dict=feed_dict)
       self.assertAllEqual([2, 3, 3], dense.shape)
+
+  def test_u_and_v_incompatible_batch_shape_raises(self):
+    base_operator = linalg.LinearOperatorIdentity(num_rows=3, dtype=np.float64)
+    u = rng.rand(5, 3, 2)
+    v = rng.rand(4, 3, 2)
+    with self.assertRaisesRegexp(ValueError, "Incompatible shapes"):
+      linalg.LinearOperatorUDVHUpdate(base_operator, u=u, v=v)
+
+  def test_u_and_base_operator_incompatible_batch_shape_raises(self):
+    base_operator = linalg.LinearOperatorIdentity(
+        num_rows=3, batch_shape=[4], dtype=np.float64)
+    u = rng.rand(5, 3, 2)
+    with self.assertRaisesRegexp(ValueError, "Incompatible shapes"):
+      linalg.LinearOperatorUDVHUpdate(base_operator, u=u)
+
+  def test_u_and_base_operator_incompatible_domain_dimension(self):
+    base_operator = linalg.LinearOperatorIdentity(num_rows=3, dtype=np.float64)
+    u = rng.rand(5, 4, 2)
+    with self.assertRaisesRegexp(ValueError, "not compatible"):
+      linalg.LinearOperatorUDVHUpdate(base_operator, u=u)
+
+  def test_u_and_diag_incompatible_low_rank_raises(self):
+    base_operator = linalg.LinearOperatorIdentity(num_rows=3, dtype=np.float64)
+    u = rng.rand(5, 3, 2)
+    diag = rng.rand(5, 4)  # Last dimension should be 2
+    with self.assertRaisesRegexp(ValueError, "not compatible"):
+      linalg.LinearOperatorUDVHUpdate(base_operator, u=u, diag=diag)
+
+  def test_diag_incompatible_batch_shape_raises(self):
+    base_operator = linalg.LinearOperatorIdentity(num_rows=3, dtype=np.float64)
+    u = rng.rand(5, 3, 2)
+    diag = rng.rand(4, 2)  # First dimension should be 5
+    with self.assertRaisesRegexp(ValueError, "Incompatible shapes"):
+      linalg.LinearOperatorUDVHUpdate(base_operator, u=u, diag=diag)
 
 
 if __name__ == "__main__":

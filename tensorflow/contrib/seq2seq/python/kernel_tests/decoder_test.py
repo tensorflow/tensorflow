@@ -68,7 +68,7 @@ class DynamicDecodeRNNTest(test.TestCase):
           initial_state=cell.zero_state(
               dtype=dtypes.float32, batch_size=batch_size))
 
-      final_outputs, final_state = decoder.dynamic_decode_rnn(
+      final_outputs, final_state = decoder.dynamic_decode(
           my_decoder, output_time_major=time_major,
           maximum_iterations=maximum_iterations)
 
@@ -139,7 +139,7 @@ class DynamicDecodeRNNTest(test.TestCase):
       # Match the variable scope of dynamic_rnn below so we end up
       # using the same variables
       with vs.variable_scope("root") as scope:
-        final_decoder_outputs, final_decoder_state = decoder.dynamic_decode_rnn(
+        final_decoder_outputs, final_decoder_state = decoder.dynamic_decode(
             my_decoder,
             # impute_finished=True ensures outputs and final state
             # match those of dynamic_rnn called with sequence_length not None

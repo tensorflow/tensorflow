@@ -319,7 +319,7 @@ Status BuildTensorNameToDtypeMap(
 // Converts SessionBundle signatures to SavedModel signature-defs.
 Status ConvertSignaturesToSignatureDefs(MetaGraphDef* meta_graph_def) {
   Signatures signatures;
-  GetSignatures(*meta_graph_def, &signatures);
+  GetSignatures(*meta_graph_def, &signatures).IgnoreError();
 
   // Build a map of tensor-names to the corresponding tensor-info with `name`
   // and `dtype` fields.

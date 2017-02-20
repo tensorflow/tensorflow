@@ -353,7 +353,7 @@ class SingleSequenceExampleParserOp : public OpKernel {
       for (const int dim : attrs_.context_dense_shapes[d].dim_sizes())
         out_shape.AddDim(dim);
       Tensor* out = nullptr;
-      context_dense_values.allocate(d, out_shape, &out);
+      OP_REQUIRES_OK(ctx, context_dense_values.allocate(d, out_shape, &out));
     }
 
     for (int d = 0; d < attrs_.num_context_dense; ++d) {
@@ -411,9 +411,11 @@ class SingleSequenceExampleParserOp : public OpKernel {
         TensorShape indices_shape({num_elements, 1});
         Tensor* sp_indices_d = nullptr;
         Tensor* sp_shape_d = nullptr;
-        context_sparse_indices.allocate(d, indices_shape, &sp_indices_d);
+        OP_REQUIRES_OK(ctx, context_sparse_indices.allocate(d, indices_shape,
+                                                            &sp_indices_d));
         context_sparse_values.set(d, feature_values);
-        context_sparse_shapes.allocate(d, TensorShape({1}), &sp_shape_d);
+        OP_REQUIRES_OK(ctx, context_sparse_shapes.allocate(d, TensorShape({1}),
+                                                           &sp_shape_d));
         auto shape_t = sp_shape_d->vec<int64>();
         shape_t(0) = num_elements;
         auto indices_t = sp_indices_d->matrix<int64>();
@@ -424,9 +426,12 @@ class SingleSequenceExampleParserOp : public OpKernel {
         Tensor* sp_indices_d = nullptr;
         Tensor* sp_values_d = nullptr;
         Tensor* sp_shape_d = nullptr;
-        context_sparse_indices.allocate(d, indices_shape, &sp_indices_d);
-        context_sparse_values.allocate(d, values_shape, &sp_values_d);
-        context_sparse_shapes.allocate(d, TensorShape({1}), &sp_shape_d);
+        OP_REQUIRES_OK(ctx, context_sparse_indices.allocate(d, indices_shape,
+                                                            &sp_indices_d));
+        OP_REQUIRES_OK(
+            ctx, context_sparse_values.allocate(d, values_shape, &sp_values_d));
+        OP_REQUIRES_OK(ctx, context_sparse_shapes.allocate(d, TensorShape({1}),
+                                                           &sp_shape_d));
         auto shape_t = sp_shape_d->vec<int64>();
         shape_t(0) = 0;
       }
@@ -468,7 +473,8 @@ class SingleSequenceExampleParserOp : public OpKernel {
         out_shape.AddDim(dim);
       }
       Tensor* out = nullptr;
-      feature_list_dense_values.allocate(d, out_shape, &out);
+      OP_REQUIRES_OK(ctx,
+                     feature_list_dense_values.allocate(d, out_shape, &out));
 
       for (int64 t = 0; t < fl.feature_size(); ++t) {
         const Feature& f = fl.feature(t);
@@ -530,9 +536,12 @@ class SingleSequenceExampleParserOp : public OpKernel {
       Tensor* sp_indices_d = nullptr;
       Tensor* sp_values_d = nullptr;
       Tensor* sp_shape_d = nullptr;
-      feature_list_sparse_indices.allocate(d, indices_shape, &sp_indices_d);
-      feature_list_sparse_values.allocate(d, values_shape, &sp_values_d);
-      feature_list_sparse_shapes.allocate(d, TensorShape({2}), &sp_shape_d);
+      OP_REQUIRES_OK(ctx, feature_list_sparse_indices.allocate(d, indices_shape,
+                                                               &sp_indices_d));
+      OP_REQUIRES_OK(ctx, feature_list_sparse_values.allocate(d, values_shape,
+                                                              &sp_values_d));
+      OP_REQUIRES_OK(ctx, feature_list_sparse_shapes.allocate(
+                              d, TensorShape({2}), &sp_shape_d));
       auto shape_t = sp_shape_d->vec<int64>();
       shape_t(0) = feature_list_size;
       shape_t(1) = max_num_features;

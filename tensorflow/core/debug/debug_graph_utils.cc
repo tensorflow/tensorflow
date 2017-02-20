@@ -37,7 +37,7 @@ DebuggerState::DebuggerState(const DebugOptions& debug_options)
 
 DebuggerState::~DebuggerState() {
   for (const string& debug_url : debug_urls_) {
-    DebugIO::CloseDebugURL(debug_url);
+    DebugIO::CloseDebugURL(debug_url).IgnoreError();
   }
 }
 
@@ -177,8 +177,8 @@ Status DebugNodeInserter::InsertNodes(
 
       const DataType src_dt = src_node->output_type(src_output_slot);
       MemoryType memory_type;
-      MemoryTypeForOutput(device_type, graph, src_node, src_output_slot,
-                          &memory_type);
+      TF_RETURN_IF_ERROR(MemoryTypeForOutput(device_type, graph, src_node,
+                                             src_output_slot, &memory_type));
 
       // Create the copy node for the watched tensor.
       Node* copy_node;
@@ -231,10 +231,12 @@ Status DebugNodeInserter::InsertNodes(
 
         // Add control edges from the debug nodes to the destination node
         // to ensure that the debug nodes are executed before the destination
-        // node.
+        // node. Skip Enter and NextIteration ops to avoid hanging.
         for (Node* debug_node : debug_nodes) {
-          graph->AddEdge(debug_node, Graph::kControlSlot, edge->dst(),
-                         Graph::kControlSlot);
+          if (!src_node->IsEnter() && !src_node->IsNextIteration()) {
+            graph->AddEdge(debug_node, Graph::kControlSlot, edge->dst(),
+                           Graph::kControlSlot);
+          }
         }
       }
     }

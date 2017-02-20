@@ -29,9 +29,9 @@ return -self.inverse_log_det_jacobian(y, **kwargs)
 
 
 *  <b>`bijector`</b>: Bijector instance.
-*  <b>`validate_args`</b>: `Boolean` indicating whether arguments should be checked
-    for correctness.
-*  <b>`name`</b>: `String`, name given to ops managed by this object.
+*  <b>`validate_args`</b>: Python `bool` indicating whether arguments should be
+    checked for correctness.
+*  <b>`name`</b>: Python `str`, name given to ops managed by this object.
 
 
 - - -
@@ -287,7 +287,8 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 
 ##### Returns:
 
-  `Boolean`.
+
+*  <b>`is_constant_jacobian`</b>: Python `bool`.
 
 
 - - -

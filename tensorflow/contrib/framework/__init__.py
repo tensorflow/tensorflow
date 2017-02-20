@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Framework utilities.
+"""Framework utilities. See the @{$python/contrib.framework} guide.
 
 @@assert_same_float_dtype
 @@assert_scalar
@@ -29,18 +29,15 @@
 @@with_shape
 @@with_same_shape
 
-## Deprecation
 @@deprecated
 @@deprecated_args
 @@deprecated_arg_values
 
-## Arg_Scope
 @@arg_scope
 @@add_arg_scope
 @@has_arg_scope
 @@arg_scoped_arguments
 
-## Variables
 @@add_model_variable
 @@assert_global_step
 @@assert_or_get_global_step
@@ -57,6 +54,7 @@
 @@get_unique_variable
 @@get_variables_by_name
 @@get_variables_by_suffix
+@@get_variable_full_name
 @@get_variables_to_restore
 @@get_variables
 @@local_variable
@@ -64,8 +62,6 @@
 @@variable
 @@VariableDeviceChooser
 @@zero_initializer
-
-## Checkpoint utilities
 
 @@load_checkpoint
 @@list_variables

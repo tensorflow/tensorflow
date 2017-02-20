@@ -36,11 +36,8 @@ namespace xla {
 // operations separately from transcendental operations.
 class HloCostAnalysis : public DfsHloVisitor {
  public:
-  HloCostAnalysis() {}
-
-  // Constructor which accepts a function for computing the size in bytes of the
-  // top-level buffer of a shape. This constructor must be used if
-  // bytes_accessed methods are to be called.
+  // shape_size is a function which returns the size in bytes of the top-level
+  // buffer of a shape.
   using ShapeSizeFunction = std::function<int64(const Shape&)>;
   explicit HloCostAnalysis(const ShapeSizeFunction& shape_size)
       : shape_size_(shape_size) {}
@@ -136,15 +133,11 @@ class HloCostAnalysis : public DfsHloVisitor {
   int64 flop_count(const HloInstruction& hlo) const;
   int64 transcendental_count(const HloInstruction& hlo) const;
 
-  // Returns the number of bytes read/written. Returns an Status error if no
-  // ShapeSizeFunction was given at construction time.
-  StatusOr<int64> bytes_accessed(const HloInstruction& hlo) const;
-  StatusOr<int64> bytes_accessed() const;
+  // Returns the number of bytes read/written.
+  int64 bytes_accessed(const HloInstruction& hlo) const;
+  int64 bytes_accessed() const { return bytes_accessed_; }
 
  private:
-  // Returns the size in bytes of the top-level buffer of a shape.
-  int64 ShapeSizeBytes(const Shape& shape) const;
-
   // An FMA counts as two floating point operations in these analyses.
   static constexpr int64 kFmaFlops = 2;
 
@@ -154,7 +147,7 @@ class HloCostAnalysis : public DfsHloVisitor {
   // Function which computes the size of the top-level of a given shape (not
   // including nested elements, if any). If null then bytes_accessed methods
   // return an error.
-  ShapeSizeFunction shape_size_ = nullptr;
+  const ShapeSizeFunction shape_size_;
 
   // The total number of floating point operations, transcendental operations,
   // and bytes accesses (read or written) in the computation.

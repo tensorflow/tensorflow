@@ -3,11 +3,7 @@
 # Learn (contrib)
 [TOC]
 
-High level API for learning with TensorFlow.
-
-## Estimators
-
-Train and evaluate TensorFlow models.
+High level API for learning. See the @{$python/contrib.learn} guide.
 
 - - -
 
@@ -4334,7 +4330,6 @@ Example:
 
 
 
-## Distributed training utilities
 - - -
 
 ### `class tf.contrib.learn.Experiment` {#Experiment}
@@ -4669,10 +4664,6 @@ Alias for field number 0
 
 
 
-
-## Graph actions
-
-Perform various training, evaluation, and inference actions on a graph.
 
 - - -
 
@@ -5065,10 +5056,6 @@ program is terminated with exit code 1.
 
 
 
-## Input processing
-
-Queue and read batched input data.
-
 - - -
 
 ### `tf.contrib.learn.extract_dask_data(data)` {#extract_dask_data}
@@ -5358,8 +5345,6 @@ See more detailed description in `read_examples`.
 *  <b>`ValueError`</b>: for invalid inputs.
 
 
-
-Export utilities
 
 - - -
 

@@ -51,6 +51,8 @@ by default. The user can select a different run from a dropdown menu.
         selected-dataset="{{_selectedDataset}}"
         selected-file="{{_selectedFile}}"
         selected-metadata-tag="{{_selectedMetadataTag}}"
+        health-pills-feature-enabled="[[debuggerDataEnabled]]"
+        health-pills-toggled-on="{{healthPillsToggledOn}}"
   ></tf-graph-controls>
   <tf-graph-loader id="loader"
         datasets="[[_datasets]]"
@@ -107,6 +109,7 @@ Polymer({
     _renderHierarchy: {type: Object, observer: '_renderHierarchyChanged'},
     backend: {type: Object, observer: '_backendChanged'},
     debuggerDataEnabled: Boolean,
+    healthPillsToggledOn: {type: Boolean, value: true, observer: '_healthPillsToggledOnChanged'},
     runs: Array
   },
   listeners: {
@@ -114,10 +117,12 @@ Polymer({
   },
   reload: function() {
     if (!this.debuggerDataEnabled ||
+        !this.healthPillsToggledOn ||
         !this._renderHierarchy ||
         this._datasetsEmpty(this._datasets)) {
-      // Do not load debugger data if the feature is disabled or if the graph itself has not loaded
-      // yet. We need the graph to load so that we know which nodes to request health pills for.
+      // Do not load debugger data if the feature is disabled, if the user toggled off the feature,
+      // or if the graph itself has not loaded yet. We need the graph to load so that we know which
+      // nodes to request health pills for.
       return;
     }
 
@@ -149,6 +154,10 @@ Polymer({
   },
   _requestHealthPills: function() {
     this.backend.healthPills(this._renderHierarchy.getNamesOfRenderedOps()).then(function(result) {
+      if (!this.healthPillsToggledOn) {
+        // The user has opted to hide health pills via the toggle button.
+        return;
+      }
       // For now, show the latest health pill for each node.
       // TODO(chizeng): Let the user select which step to show.
       var mapping = {};
@@ -169,6 +178,15 @@ Polymer({
   _handleNodeToggleExpand: function() {
     // Nodes were toggled. We may need to request health pills for more nodes.
     this._requestHealthPills();
+  },
+  _healthPillsToggledOnChanged: function(healthPillsToggledOn) {
+    if (healthPillsToggledOn) {
+      // Load health pills.
+      this.reload();
+    } else {
+      // Remove all health pills by setting an empty mapping.
+      this.$$('#graphboard').set('nodeNamesToHealthPill', {});
+    }
   },
 });
 })();

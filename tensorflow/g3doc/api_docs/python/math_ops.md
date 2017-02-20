@@ -7,13 +7,7 @@ Note: Functions taking `Tensor` arguments can also take anything accepted by
 
 [TOC]
 
-Note: Elementwise binary operations in TensorFlow follow [numpy-style
-broadcasting](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html).
-
-## Arithmetic Operators
-
-TensorFlow provides several operations that you can use to add basic arithmetic
-operators to your graph.
+Basic arithmetic operators. See the @{$python/math_ops} guide.
 
 - - -
 
@@ -375,12 +369,6 @@ of corresponding 3-element vectors is cross-multiplied independently.
   A `Tensor`. Has the same type as `a`.
   Pairwise cross product of the vectors in `a` and `b`.
 
-
-
-## Basic Math Functions
-
-TensorFlow provides several operations that you can use to add basic
-mathematical functions to your graph.
 
 - - -
 
@@ -1155,12 +1143,6 @@ rint([-1.7, -1.5, -0.2, 0.2, 1.5, 1.7, 2.0]) ==> [-2., -2., -0., 0., 2., 2., 2.]
   A `Tensor`. Has the same type as `x`.
 
 
-
-## Matrix Math Functions
-
-TensorFlow provides several operations that you can use to add linear algebra
-functions on matrices to your graph.
-
 - - -
 
 ### `tf.diag(diagonal, name=None)` {#diag}
@@ -1328,7 +1310,6 @@ tf.transpose(x, perm=[0, 2, 1]) ==> [[[1  4]
 ##### Returns:
 
   A transposed `Tensor`.
-
 
 
 - - -
@@ -1597,7 +1578,6 @@ tf.matrix_transpose(x) ==> [[1 4]
 *  <b>`ValueError`</b>: If `a` is determined statically to have `rank < 2`.
 
 
-
 - - -
 
 ### `tf.matmul(a, b, transpose_a=False, transpose_b=False, adjoint_a=False, adjoint_b=False, a_is_sparse=False, b_is_sparse=False, name=None)` {#matmul}
@@ -1689,7 +1669,6 @@ c = tf.matmul(a, b) => [[[ 94 100]
 
 *  <b>`ValueError`</b>: If transpose_a and adjoint_a, or transpose_b and adjoint_b
     are both set to True.
-
 
 
 - - -
@@ -2148,13 +2127,6 @@ arguments here is `s`, `u`, `v` when `compute_uv` is `True`, as opposed to
 @end_compatibility
 
 
-
-
-## Tensor Math Function
-
-TensorFlow provides operations that you can use to add tensor functions to your
-graph.
-
 - - -
 
 ### `tf.tensordot(a, b, axes, name=None)` {#tensordot}
@@ -2211,13 +2183,6 @@ In general, `order(c) = order(a) + order(b) - 2*len(axes[0])`.
 *  <b>`IndexError`</b>: If the values in axes exceed the rank of the corresponding
     tensor.
 
-
-
-
-## Complex Number Functions
-
-TensorFlow provides several operations that you can use to add complex number
-functions to your graph.
 
 - - -
 
@@ -2351,12 +2316,6 @@ If `input` is already real, it is returned unchanged.
 
   A `Tensor` of type `float32` or `float64`.
 
-
-
-## Fourier Transform Functions
-
-TensorFlow provides several operations that you can use to add discrete
-Fourier transform functions to your graph.
 
 - - -
 
@@ -2499,12 +2458,6 @@ Compute the inverse 3-dimensional discrete Fourier Transform over the inner-most
   Equivalent to np.fft3
   @end_compatibility
 
-
-
-## Reduction
-
-TensorFlow provides several operations that you can use to perform
-common math computations that reduce various dimensions of a tensor.
 
 - - -
 
@@ -2870,7 +2823,6 @@ tf.count_nonzero(x, [0, 1]) ==> 3
   The reduced tensor (number of nonzero values).
 
 
-
 - - -
 
 ### `tf.accumulate_n(inputs, shape=None, tensor_dtype=None, name=None)` {#accumulate_n}
@@ -2912,7 +2864,6 @@ tf.accumulate_n([a, b, a], shape=[2, 2], tensor_dtype=tf.int32)
 
 *  <b>`ValueError`</b>: If `inputs` don't all have same shape and dtype or the shape
   cannot be inferred.
-
 
 
 - - -
@@ -2991,12 +2942,6 @@ This function behaves like `numpy.einsum`, but does not support:
       indices in its subscript, or
     - the input shapes are inconsistent along a particular axis.
 
-
-
-## Scan
-
-TensorFlow provides several operations that you can use to perform scans
-(running totals) across one axis of a tensor.
 
 - - -
 
@@ -3089,28 +3034,6 @@ tf.cumprod([a, b, c], exclusive=True, reverse=True) ==> [b * c, c, 1]
 
   A `Tensor`. Has the same type as `x`.
 
-
-
-## Segmentation
-
-TensorFlow provides several operations that you can use to perform common
-math computations on tensor segments.
-Here a segmentation is a partitioning of a tensor along
-the first dimension, i.e. it  defines a mapping from the first dimension onto
-`segment_ids`. The `segment_ids` tensor should be the size of
-the first dimension, `d0`, with consecutive IDs in the range `0` to `k`,
-where `k<d0`.
-In particular, a segmentation of a matrix tensor is a mapping of rows to
-segments.
-
-For example:
-
-```python
-c = tf.constant([[1,2,3,4], [-1,-2,-3,-4], [5,6,7,8]])
-tf.segment_sum(c, tf.constant([0, 0, 1]))
-  ==>  [[0 0 0 0]
-        [5 6 7 8]]
-```
 
 - - -
 
@@ -3281,7 +3204,6 @@ values summed.
   has size `k`, the number of segments.
 
 
-
 - - -
 
 ### `tf.unsorted_segment_sum(data, segment_ids, num_segments, name=None)` {#unsorted_segment_sum}
@@ -3362,7 +3284,6 @@ If the maximum is empty for a given segment ID `i`, it outputs the smallest poss
   A `Tensor`. Has the same type as `data`.
   Has same shape as data, except for dimension 0 which
   has size `num_segments`.
-
 
 
 - - -
@@ -3477,15 +3398,6 @@ of segments.
   has size `k`, the number of segments.
 
 
-
-
-## Sequence Comparison and Indexing
-
-TensorFlow provides several operations that you can use to add sequence
-comparison and index extraction to your graph. You can use these operations to
-determine sequence differences and determine the indexes of specific values in
-a tensor.
-
 - - -
 
 ### `tf.argmin(input, axis=None, name=None, dimension=None)` {#argmin}
@@ -3524,7 +3436,6 @@ Returns the index with the largest value across axes of a tensor.
 ##### Returns:
 
   A `Tensor` of type `int64`.
-
 
 
 - - -
@@ -3658,7 +3569,6 @@ idx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]
 *  <b>`idx`</b>: A `Tensor` of type `out_idx`. 1-D.
 
 
-
 - - -
 
 ### `tf.edit_distance(hypothesis, truth, normalize=True, name='edit_distance')` {#edit_distance}
@@ -3725,7 +3635,6 @@ output ==> [[inf, 1.0],  # (0,0): no truth, (0,1): no hypothesis
 
 
 *  <b>`TypeError`</b>: If either `hypothesis` or `truth` are not a `SparseTensor`.
-
 
 
 - - -

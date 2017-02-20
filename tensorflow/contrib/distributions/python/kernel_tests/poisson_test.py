@@ -68,7 +68,7 @@ class PoissonTest(test.TestCase):
       poisson = poisson_lib.Poisson(rate=lam, validate_args=True)
 
       # Non-integer
-      with self.assertRaisesOpError("x has non-integer components"):
+      with self.assertRaisesOpError("cannot contain fractional components"):
         log_pmf = poisson.log_prob(x)
         log_pmf.eval()
 

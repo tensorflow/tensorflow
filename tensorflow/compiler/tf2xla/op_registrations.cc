@@ -15,7 +15,7 @@ limitations under the License.
 
 // Kernel registrations for XLA JIT devices.
 
-#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {

@@ -27,7 +27,8 @@ class RemoteFusedGraphExecuteOp : public OpKernel {
   explicit RemoteFusedGraphExecuteOp(OpKernelConstruction* const ctx)
       : OpKernel(ctx), graph_transferer_() {
     string serialized_proto;
-    ctx->GetAttr("serialized_graph_transfer_info", &serialized_proto);
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttr("serialized_graph_transfer_info", &serialized_proto));
     graph_transferer_.SetSerializedGraphTransferInfo(serialized_proto);
     const GraphTransferInfo& gt_info = graph_transferer_.GetGraphTransferInfo();
     switch (gt_info.destination()) {

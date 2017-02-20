@@ -635,6 +635,7 @@ cc_library(
         "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:ctc_ops",
         "//tensorflow/core/kernels:data_flow",
+        "//tensorflow/core/kernels:debug_ops",
         "//tensorflow/core/kernels:fake_quant_ops",
         "//tensorflow/core/kernels:function_ops",
         "//tensorflow/core/kernels:image",
@@ -1190,12 +1191,16 @@ cc_library(
         "platform/host_info.h",
         "platform/platform.h",
         "platform/protobuf_internal.h",
+        "platform/setround.h",
         "platform/tensor_coding.h",
         "platform/tracing.h",
     ],
     copts = tf_copts(),
     defines = tf_additional_lib_defines(),
-    linkopts = ["-ldl"],
+    linkopts = select({
+        "//tensorflow:freebsd": [],
+        "//conditions:default": ["-ldl"],
+    }),
     deps = tf_additional_lib_deps() + [
         ":lib_hash_crc32c_accelerate_internal",
         ":lib_proto_parsing",
@@ -1222,7 +1227,10 @@ cc_library(
     ],
     hdrs = ["lib/gif/gif_io.h"],
     copts = tf_copts(),
-    linkopts = ["-ldl"],
+    linkopts = select({
+        "//tensorflow:freebsd": [],
+        "//conditions:default": ["-ldl"],
+    }),
     deps = [
         ":lib",
         "//tensorflow/core/platform/default/build_config:gif",
@@ -1241,7 +1249,10 @@ cc_library(
         "lib/jpeg/jpeg_mem.h",
     ],
     copts = tf_copts(),
-    linkopts = ["-ldl"],
+    linkopts = select({
+        "//tensorflow:freebsd": [],
+        "//conditions:default": ["-ldl"],
+    }),
     deps = [
         ":lib",
         "//tensorflow/core/platform/default/build_config:jpeg",
@@ -1319,8 +1330,10 @@ tf_cuda_library(
         "util/tensor_slice_util.h",
     ],
     copts = tf_copts(),
-    linkopts = [
-        "-ldl",
+    linkopts = select({
+        "//tensorflow:freebsd": [],
+        "//conditions:default": ["-ldl"],
+    }) + [
         "-lm",
     ],
     deps = [
@@ -1721,6 +1734,24 @@ tf_cc_test(
         ":test",
         ":test_main",
         "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "platform_setround_test",
+    size = "small",
+    srcs = ["platform/setround_test.cc"],
+    tags = [
+        "noasan",
+        "nomsan",
+        "notsan",
+    ],
+    deps = [
+        ":lib",
+        ":lib_internal",
+        ":lib_test_internal",
+        ":test",
+        ":test_main",
     ],
 )
 

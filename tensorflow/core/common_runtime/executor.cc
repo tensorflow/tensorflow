@@ -557,7 +557,7 @@ Status ExecutorImpl::Initialize() {
 
   // Build the information about frames in this subgraph.
   ControlFlowInfo cf_info;
-  BuildControlFlowInfo(graph_, &cf_info);
+  TF_RETURN_IF_ERROR(BuildControlFlowInfo(graph_, &cf_info));
 
   // Cache this value so we make this virtual function call once, rather
   // that O(# steps * # nodes per step) times.
@@ -1747,7 +1747,8 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
   if (item.num_outputs == 0 && impl_->params_.node_outputs_cb != nullptr) {
     // If the node has no output, invoke the callback with output slot set to
     // -1, signifying that this is a no-output node.
-    impl_->params_.node_outputs_cb(item.node->name(), -1, nullptr, false, ctx);
+    s.Update(impl_->params_.node_outputs_cb(item.node->name(), -1, nullptr,
+                                            false, ctx));
   }
 
   for (int i = 0; i < item.num_outputs; ++i) {
@@ -1792,8 +1793,8 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
 
           // Experimental: debugger (tfdb) access to intermediate node outputs.
           if (impl_->params_.node_outputs_cb != nullptr) {
-            impl_->params_.node_outputs_cb(item.node->name(), i, out->ref, true,
-                                           ctx);
+            s.Update(impl_->params_.node_outputs_cb(item.node->name(), i,
+                                                    out->ref, true, ctx));
           }
         } else {
           // NOTE that std::move is used here, so val.tensor goes to
@@ -1809,8 +1810,8 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
 
           // Experimental: debugger access to intermediate node outputs.
           if (impl_->params_.node_outputs_cb != nullptr) {
-            impl_->params_.node_outputs_cb(item.node->name(), i, out->val.get(),
-                                           false, ctx);
+            s.Update(impl_->params_.node_outputs_cb(
+                item.node->name(), i, out->val.get(), false, ctx));
           }
         }
       } else {

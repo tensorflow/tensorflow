@@ -28,10 +28,12 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging as logging
 
 distributions_py = distributions
 
@@ -93,8 +95,8 @@ def make_multivariate_mixture(batch_shape, num_components, event_shape):
       list(batch_shape) + [num_components], -1, 1, dtype=dtypes.float32) - 50.
   components = [
       distributions_py.MultivariateNormalDiag(
-          mu=np.float32(np.random.randn(*list(batch_shape + event_shape))),
-          diag_stddev=np.float32(10 * np.random.rand(
+          loc=np.float32(np.random.randn(*list(batch_shape + event_shape))),
+          scale_diag=np.float32(10 * np.random.rand(
               *list(batch_shape + event_shape)))) for _ in range(num_components)
   ]
   cat = distributions_py.Categorical(logits, dtype=dtypes.int32)
@@ -509,12 +511,13 @@ class MixtureBenchmark(test.Benchmark):
             name=("%s_%s_components_%d_batch_%d_features_%d_sample_%d" %
                   (name, use_gpu, num_components, batch_size, num_features,
                    sample_size)))
-        print("\t".join(["%s", "%d", "%d", "%d", "%d", "%g"]) %
-              (use_gpu, num_components, batch_size, num_features, sample_size,
-               reported["wall_time"]))
+        logging.vlog(2, "\t".join(["%s", "%d", "%d", "%d", "%d", "%g"]) % (
+            use_gpu, num_components, batch_size, num_features, sample_size,
+            reported["wall_time"]))
 
   def benchmarkSamplingMVNDiag(self):
-    print("mvn_diag\tuse_gpu\tcomponents\tbatch\tfeatures\tsample\twall_time")
+    logging.vlog(
+        2, "mvn_diag\tuse_gpu\tcomponents\tbatch\tfeatures\tsample\twall_time")
 
     def create_distribution(batch_size, num_components, num_features):
       cat = distributions_py.Categorical(
@@ -529,7 +532,7 @@ class MixtureBenchmark(test.Benchmark):
       ]
       components = list(
           distributions_py.MultivariateNormalDiag(
-              mu=mu, diag_stddev=sigma) for (mu, sigma) in zip(mus, sigmas))
+              loc=mu, scale_diag=sigma) for (mu, sigma) in zip(mus, sigmas))
       return distributions_py.Mixture(cat, components)
 
     for use_gpu in False, True:
@@ -549,7 +552,8 @@ class MixtureBenchmark(test.Benchmark):
                   sample_size=sample_size)
 
   def benchmarkSamplingMVNFull(self):
-    print("mvn_full\tuse_gpu\tcomponents\tbatch\tfeatures\tsample\twall_time")
+    logging.vlog(
+        2, "mvn_full\tuse_gpu\tcomponents\tbatch\tfeatures\tsample\twall_time")
 
     def psd(x):
       """Construct batch-wise PSD matrices."""
@@ -567,8 +571,10 @@ class MixtureBenchmark(test.Benchmark):
               psd(np.random.rand(batch_size, num_features, num_features)))
           for _ in range(num_components)
       ]
-      components = list(distributions_py.MultivariateNormalFull(
-          mu=mu, sigma=sigma) for (mu, sigma) in zip(mus, sigmas))
+      components = list(
+          distributions_py.MultivariateNormalTriL(
+              loc=mu, scale_tril=linalg_ops.cholesky(sigma))
+          for (mu, sigma) in zip(mus, sigmas))
       return distributions_py.Mixture(cat, components)
 
     for use_gpu in False, True:

@@ -155,6 +155,15 @@ class Dense(base._Layer):  # pylint: disable=protected-access
       return self.activation(outputs)  # pylint: disable=not-callable
     return outputs
 
+  def _compute_output_shape(self, input_shape):
+    input_shape = tensor_shape.TensorShape(input_shape)
+    input_shape = input_shape.with_rank_at_least(2)
+    if input_shape[-1].value is None:
+      raise ValueError(
+          'The innermost dimension of input_shape must be defined, but saw: %s'
+          % input_shape)
+    return input_shape[:-1].concatenate(self.units)
+
 
 def dense(
     inputs, units,
@@ -234,7 +243,7 @@ class Dropout(base._Layer):  # pylint: disable=protected-access
       to be the same for all timesteps, you can use
       `noise_shape=[batch_size, 1, features]`.
     seed: A Python integer. Used to create random seeds. See
-      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      @{tf.set_random_seed}
       for behavior.
     name: The name of the layer (string).
   """
@@ -283,7 +292,7 @@ def dropout(inputs,
       to be the same for all timesteps, you can use
       `noise_shape=[batch_size, 1, features]`.
     seed: A Python integer. Used to create random seeds. See
-      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      @{tf.set_random_seed}
       for behavior.
     training: Either a Python boolean, or a TensorFlow boolean scalar tensor
       (e.g. a placeholder). Whether to return the output in training mode

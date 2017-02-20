@@ -444,7 +444,9 @@ ReturnT Service::ExecuteOnStreamWrapper(
   }
 
   if (profile_ptr != nullptr) {
-    HloCostAnalysis analysis;
+    HloCostAnalysis analysis([this](const Shape& shape) {
+      return execute_backend_->compiler()->ShapeSizeBytes(shape);
+    });
     tensorflow::Status analysis_status =
         executable->module().entry_computation()->root_instruction()->Accept(
             &analysis);

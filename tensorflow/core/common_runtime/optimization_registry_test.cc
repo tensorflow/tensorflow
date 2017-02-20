@@ -46,8 +46,7 @@ TEST(OptimizationRegistry, OptimizationPass) {
 class UpdateFuncLibPass : public GraphOptimizationPass {
  public:
   Status Run(const GraphOptimizationPassOptions& options) {
-    options.flib_def->AddFunctionDef(test::function::WXPlusB());
-    return Status::OK();
+    return options.flib_def->AddFunctionDef(test::function::WXPlusB());
   }
 };
 

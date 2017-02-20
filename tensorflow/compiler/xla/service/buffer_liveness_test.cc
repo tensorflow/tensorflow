@@ -482,6 +482,136 @@ TEST_F(BufferLivenessTest, DependentTupleElements) {
       TupleElementsMayInterfere(*liveness, tuple_param0, tuple_root, {1}));
 }
 
+class FusedDynamicUpdateSliceLivenessTest : public BufferLivenessTest {
+ protected:
+  // Builds and runs a computation (see test case computation graphs below).
+  // Runs BufferLiveness on this computation.
+  // Returns whether buffer interference is detected between tuple-shaped
+  // parameter and root instructions at tuple element 1.
+  bool Run(const bool update_uses_tuple_element1,
+           const bool fuse_gte0 = false) {
+    auto builder = HloComputation::Builder(TestName());
+    // Create param0 Tuple.
+    Shape data_shape = ShapeUtil::MakeShape(F32, {8});
+    Shape update_shape = ShapeUtil::MakeShape(F32, {3});
+    auto tuple_param0 = builder.AddInstruction(HloInstruction::CreateParameter(
+        0, ShapeUtil::MakeTupleShape({data_shape, data_shape}), "param0"));
+
+    auto gte0 = builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(data_shape, tuple_param0, 0));
+
+    auto gte1 = builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(data_shape, tuple_param0, 1));
+
+    auto update = builder.AddInstruction(HloInstruction::CreateConstant(
+        LiteralUtil::CreateR1<float>({2.f, 2.f, 2.f})));
+    HloInstruction* slice = nullptr;
+    if (update_uses_tuple_element1) {
+      // Create a slice instruction as an additional user of 'gte1'.
+      slice = builder.AddInstruction(
+          HloInstruction::CreateSlice(update_shape, gte1, {0}, {3}));
+      update = builder.AddInstruction(HloInstruction::CreateBinary(
+          update_shape, HloOpcode::kAdd, update, slice));
+    }
+    // Create a DynamicUpdateSlice instruction of tuple element 1 with 'update'.
+    auto starts = builder.AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32>({2})));
+    auto dynamic_update_slice =
+        builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
+            data_shape, gte1, update, starts));
+    // Create output tuple.
+    auto tuple_root = builder.AddInstruction(
+        HloInstruction::CreateTuple({gte0, dynamic_update_slice}));
+    // Build module and get reference to entry computation.
+    auto module = MakeUnique<HloModule>(TestName());
+    auto* computation = module->AddEntryComputation(builder.Build());
+    // Create fusion instruction based on number of tuple element 1 users.
+    if (update_uses_tuple_element1) {
+      computation->CreateFusionInstruction(
+          {dynamic_update_slice, starts, update, CHECK_NOTNULL(slice), gte1},
+          HloInstruction::FusionKind::kLoop);
+    } else {
+      computation->CreateFusionInstruction(
+          {dynamic_update_slice, starts, update, gte1},
+          HloInstruction::FusionKind::kLoop);
+    }
+    // Create fusion instruction for tuple element 0 (if requested).
+    if (fuse_gte0) {
+      computation->CreateFusionInstruction({gte0},
+                                           HloInstruction::FusionKind::kLoop);
+    }
+
+    // Run BufferLiveness on 'module'.
+    auto liveness =
+        BufferLiveness::Run(module.get(),
+                            MakeUnique<DependencyHloOrdering>(module.get()))
+            .ConsumeValueOrDie();
+    // Return whether or not buffers interfernce is detected between
+    // 'tuple_param0' and 'tuple_root' at shape index '{1}'.
+    return TupleElementsMayInterfere(*liveness, tuple_param0, tuple_root, {1});
+  }
+};
+
+// Tests that live ranges of buffers Param0[1] and Tuple[1] (which alias fusion)
+// do not overlap with the following computation:
+//
+//         Param0
+//        /     \
+//     GTE(0)  Fusion ----------->  FusionParam
+//        |      |                      |
+//        |      |                    GTE(1) Const Const
+//        |      |                      \      |    /
+//        |      |                    DynamicUpdateSlice  // fused root
+//         \    /
+//          Tuple  // computation root
+//
+TEST_F(FusedDynamicUpdateSliceLivenessTest, NoInterference) {
+  EXPECT_FALSE(Run(/*update_uses_tuple_element1=*/false));
+}
+
+// Tests that live ranges of buffers Param0[1] and Tuple[1] (which aliases
+// 'fusion1') do not overlap in the presence of another fusion instruction
+// (which is a user of 'param0' at a different tuple index).
+// BufferLiveness should detect no uses of Param0 at index {1} in Fusion0
+// (because Fusion0 only uses Param0 at index {0}).
+//
+//                               Param0
+//                               /    \
+//      FusionParam  <----- Fusion0  Fusion1 ------>  FusionParam
+//         |                    |      |                 |
+//        GTE(0)                |      |               GTE(1) Const Const
+//                              |      |                  \      |    /
+//                               \    /                DynamicUpdateSlice
+//                               Tuple
+//
+TEST_F(FusedDynamicUpdateSliceLivenessTest, NoInterferenceWithUnrelatedFusion) {
+  EXPECT_FALSE(Run(/*update_uses_tuple_element1=*/false, /*fuse_gte0=*/true));
+}
+
+// Tests that live ranges of buffers Param0[1] and Tuple[1] (which alias fusion)
+// do overlap because GTE(1) has two users:
+// 1) DynamicUpdateSlice at operand 0.
+// 2) Slice at operand 0.
+//
+//         Param0
+//        /     \   Const
+//       /       \  /
+//     GTE(0)  Fusion ----------->  FusionParam FusionParam
+//        |      |                      |         |
+//        |      |                    GTE(1)      /
+//        |      |                      | \      /
+//        |      |                      | Slice /
+//        |      |                      |   \  /
+//        |      |                      |   Add   Const
+//        |      |                      |    |      |
+//        |      |                    DynamicUpdateSlice  // fused root
+//         \    /
+//          Tuple  // computation root
+//
+TEST_F(FusedDynamicUpdateSliceLivenessTest, WithInterference) {
+  EXPECT_TRUE(Run(/*update_uses_tuple_element1=*/true));
+}
+
 }  // namespace
 
 }  // namespace xla

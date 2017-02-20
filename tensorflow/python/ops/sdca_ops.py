@@ -12,10 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""## Script Language Operators.
-
-A Dual Cordinate Ascent optimizer for TensorFlow for training fast linear
-models.
+"""A Dual Coordinate Ascent optimizer library for training fast linear models.
 
 @@sdca_optimizer
 @@sdca_fprint

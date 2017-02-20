@@ -9,6 +9,8 @@ package(
     default_visibility = ["//tensorflow:__subpackages__"],
 )
 
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 py_binary(
     name = "gen_cc_md",
     srcs = ["gen_cc_md.py"],
@@ -68,6 +70,8 @@ py_binary(
         ":parser",
         ":py_guide_parser",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/ffmpeg:ffmpeg_ops_py",
+        "//tensorflow/python/debug:debug_py",
         "//tensorflow/tools/common:public_api",
         "//tensorflow/tools/common:traverse",
     ],
@@ -108,17 +112,6 @@ py_test(
     ],
 )
 
-py_binary(
-    name = "make_py_guides",
-    srcs = ["make_py_guides.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":generate",
-        ":parser",
-        ":py_guide_parser",
-    ],
-)
-
 filegroup(
     name = "doxy_config",
     srcs = ["tf-doxy_for_md-config"],
@@ -144,6 +137,10 @@ sh_test(
         ":gen_docs",
         "//tensorflow/core:all_files",
         "//tensorflow/python:all_files",
+    ],
+    tags = [
+        "manual",
+        "notap",
     ],
 )
 

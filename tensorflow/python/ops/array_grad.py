@@ -382,6 +382,7 @@ def _CheckNumericsGrad(_, grad):
       grad, "Not a number (NaN) or infinity (Inf) values detected in gradient.")
 
 
+@ops.RegisterGradient("PlaceholderWithDefault")
 @ops.RegisterGradient("Identity")
 def _IdGrad(_, grad):
   return grad
@@ -569,6 +570,7 @@ def _MirrorPadGradGrad(op, grad):
 
 
 @ops.RegisterGradient("QuantizeAndDequantize")
+@ops.RegisterGradient("QuantizeAndDequantizeV2")
 def _QuantizeAndDequantizeGrad(_, grad):
   return grad
 

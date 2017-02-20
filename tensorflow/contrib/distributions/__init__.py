@@ -14,17 +14,10 @@
 # ==============================================================================
 """Classes representing statistical distributions and ops for working with them.
 
-## Classes for statistical distributions.
-
-Classes that represent batches of statistical distributions.  Each class is
-initialized with parameters that define the distributions.
-
-## Base classes
+See the @{$python/contrib.distributions} guide.
 
 @@ReparameterizationType
 @@Distribution
-
-## Univariate (scalar) distributions
 
 @@Binomial
 @@Bernoulli
@@ -38,11 +31,13 @@ initialized with parameters that define the distributions.
 @@ExponentialWithSoftplusRate
 @@Gamma
 @@GammaWithSoftplusConcentrationRate
+@@Geometric
 @@InverseGamma
 @@InverseGammaWithSoftplusConcentrationRate
 @@Laplace
 @@LaplaceWithSoftplusScale
 @@Logistic
+@@NegativeBinomial
 @@Normal
 @@NormalWithSoftplusScale
 @@Poisson
@@ -50,17 +45,10 @@ initialized with parameters that define the distributions.
 @@StudentTWithAbsDfSoftplusScale
 @@Uniform
 
-## Multivariate distributions
-
-### Multivariate normal
-
 @@MultivariateNormalDiag
-@@MultivariateNormalFull
-@@MultivariateNormalCholesky
-@@MultivariateNormalDiagPlusVDVT
-@@MultivariateNormalDiagWithSoftplusStDev
-
-### Other multivariate distributions
+@@MultivariateNormalTriL
+@@MultivariateNormalDiagPlusLowRank
+@@MultivariateNormalDiagWithSoftplusScale
 
 @@Dirichlet
 @@DirichletMultinomial
@@ -68,39 +56,20 @@ initialized with parameters that define the distributions.
 @@WishartCholesky
 @@WishartFull
 
-### Multivariate Utilities
-
 @@matrix_diag_transform
-
-## Transformed distributions
 
 @@TransformedDistribution
 @@QuantizedDistribution
 
-## Mixture Models
-
 @@Mixture
-
-## Posterior inference with conjugate priors.
-
-Functions that transform conjugate prior/likelihood pairs to distributions
-representing the posterior or posterior predictive.
-
-## Normal likelihood with conjugate prior.
 
 @@normal_conjugates_known_scale_posterior
 @@normal_conjugates_known_scale_predictive
 
-## Kullback-Leibler Divergence
-
 @@kl
 @@RegisterKL
 
-## Utilities
-
 @@softplus_inverse
-
-## Relaxed Discrete Distributions
 
 @@ExpRelaxedOneHotCategorical
 @@OneHotCategorical
@@ -113,8 +82,6 @@ from __future__ import print_function
 
 # pylint: disable=unused-import,wildcard-import,line-too-long,g-importing-member
 
-from tensorflow.contrib.distributions.python.ops import bijector
-from tensorflow.contrib.distributions.python.ops import conditional_bijector
 from tensorflow.contrib.distributions.python.ops.bernoulli import *
 from tensorflow.contrib.distributions.python.ops.beta import *
 from tensorflow.contrib.distributions.python.ops.binomial import *
@@ -129,13 +96,17 @@ from tensorflow.contrib.distributions.python.ops.distribution_util import matrix
 from tensorflow.contrib.distributions.python.ops.distribution_util import softplus_inverse
 from tensorflow.contrib.distributions.python.ops.exponential import *
 from tensorflow.contrib.distributions.python.ops.gamma import *
+from tensorflow.contrib.distributions.python.ops.geometric import *
 from tensorflow.contrib.distributions.python.ops.inverse_gamma import *
 from tensorflow.contrib.distributions.python.ops.kullback_leibler import *
 from tensorflow.contrib.distributions.python.ops.laplace import *
 from tensorflow.contrib.distributions.python.ops.logistic import *
 from tensorflow.contrib.distributions.python.ops.mixture import *
 from tensorflow.contrib.distributions.python.ops.multinomial import *
-from tensorflow.contrib.distributions.python.ops.mvn import *
+from tensorflow.contrib.distributions.python.ops.mvn_diag import *
+from tensorflow.contrib.distributions.python.ops.mvn_diag_plus_low_rank import *
+from tensorflow.contrib.distributions.python.ops.mvn_tril import *
+from tensorflow.contrib.distributions.python.ops.negative_binomial import *
 from tensorflow.contrib.distributions.python.ops.normal import *
 from tensorflow.contrib.distributions.python.ops.normal_conjugate_posteriors import *
 from tensorflow.contrib.distributions.python.ops.onehot_categorical import *
@@ -152,8 +123,7 @@ from tensorflow.contrib.distributions.python.ops.wishart import *
 
 from tensorflow.python.util.all_util import remove_undocumented
 
-_allowed_symbols = ['bijector',
-                    'ConditionalDistribution',
+_allowed_symbols = ['ConditionalDistribution',
                     'ConditionalTransformedDistribution',
                     'FULLY_REPARAMETERIZED', 'NOT_REPARAMETERIZED']
 

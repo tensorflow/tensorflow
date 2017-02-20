@@ -22,7 +22,6 @@ import warnings
 
 import numpy as np
 
-from tensorflow.contrib.compiler import jit
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
@@ -45,6 +44,7 @@ from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import state_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.ops.nn_ops import bias_add
 from tensorflow.python.platform import googletest
 
@@ -311,6 +311,27 @@ class GradientsTest(test_util.TensorFlowTestCase):
       target = ta.read(i - 1)
       grad, = gradients.gradients(target, v)
       self.assertIsNone(grad)
+
+  def testVariableReadValueGradient(self):
+    with ops.Graph().as_default():
+      init = constant_op.constant(100.0)
+      var = variables.Variable(init)
+      gradient = gradients.gradients(var.read_value(), var)
+      self.assertIsNotNone(gradient)
+
+  def testVariableAsGraphElementGradient(self):
+    with ops.Graph().as_default() as graph:
+      init = constant_op.constant(100.0)
+      var = variables.Variable(init)
+      gradient = gradients.gradients(graph.as_graph_element(var), var)
+      self.assertIsNotNone(gradient)
+
+  def testVariableRefGradient(self):
+    with ops.Graph().as_default():
+      init = constant_op.constant(100.0)
+      var = variables.Variable(init)
+      gradient = gradients.gradients(var._ref(), var)
+      self.assertIsNotNone(gradient)
 
 
 class FunctionGradientsTest(test_util.TensorFlowTestCase):
@@ -580,32 +601,6 @@ class OnlyRealGradientsTest(test_util.TensorFlowTestCase):
         r"Gradients of complex tensors must set grad_ys "
         r"\(y\.dtype = tf\.complex64\)"):
       gradients.gradients(y, x)
-
-
-class CompilationEnabledInGradientTest(test_util.TensorFlowTestCase):
-
-  def testCompilationInGradient(self):
-    with self.test_session():
-      x = constant_op.constant(3)
-      y_nc = math_ops.add(x, x, name="not_compiled")
-      with jit.experimental_jit_scope():
-        y_c = math_ops.add(y_nc, y_nc, name="compiled")
-      x_grads = gradients.gradients([y_c], [x])[0]
-      operations = x_grads.graph.get_operations()
-      c_grad_ops = [
-          op for op in operations if "gradients/compiled" in op.name]
-      nc_grad_ops = [
-          op for op in operations if "gradients/not_compiled" in op.name]
-      self.assertGreater(len(c_grad_ops), 0)
-      self.assertGreater(len(nc_grad_ops), 0)
-      for cg in c_grad_ops:
-        self.assertEqual(True, cg.get_attr("_XlaCompile"))
-      for ncg in nc_grad_ops:
-        with self.assertRaisesRegexp(ValueError, "No attr named"):
-          ncg.get_attr("_XlaCompile")
-
-      # d/dx (4 * x)
-      self.assertAllClose(4, x_grads.eval())
 
 
 if __name__ == "__main__":

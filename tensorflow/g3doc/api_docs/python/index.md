@@ -31,7 +31,6 @@
   * [`register_tensor_conversion_function`](../../api_docs/python/framework.md#register_tensor_conversion_function)
   * [`RegisterGradient`](../../api_docs/python/framework.md#RegisterGradient)
   * [`reset_default_graph`](../../api_docs/python/framework.md#reset_default_graph)
-  * [`shape`](../../api_docs/python/framework.md#shape)
   * [`Tensor`](../../api_docs/python/framework.md#Tensor)
   * [`TensorShape`](../../api_docs/python/framework.md#TensorShape)
 
@@ -363,13 +362,7 @@
   * [`scan`](../../api_docs/python/functional_ops.md#scan)
 
 * **[TensorArray Operations](../../api_docs/python/tensor_array_ops.md)**:
-  * [`concat`](../../api_docs/python/tensor_array_ops.md#concat)
-  * [`gather`](../../api_docs/python/tensor_array_ops.md#gather)
-  * [`identity`](../../api_docs/python/tensor_array_ops.md#identity)
-  * [`split`](../../api_docs/python/tensor_array_ops.md#split)
-  * [`stack`](../../api_docs/python/tensor_array_ops.md#stack)
   * [`TensorArray`](../../api_docs/python/tensor_array_ops.md#TensorArray)
-  * [`unstack`](../../api_docs/python/tensor_array_ops.md#unstack)
 
 * **[Tensor Handle Operations](../../api_docs/python/session_ops.md)**:
   * [`delete_session_tensor`](../../api_docs/python/session_ops.md#delete_session_tensor)
@@ -478,7 +471,6 @@
   * [`ReaderBase`](../../api_docs/python/io_ops.md#ReaderBase)
   * [`shuffle_batch`](../../api_docs/python/io_ops.md#shuffle_batch)
   * [`shuffle_batch_join`](../../api_docs/python/io_ops.md#shuffle_batch_join)
-  * [`size`](../../api_docs/python/io_ops.md#size)
   * [`slice_input_producer`](../../api_docs/python/io_ops.md#slice_input_producer)
   * [`sparse_placeholder`](../../api_docs/python/io_ops.md#sparse_placeholder)
   * [`SparseConditionalAccumulator`](../../api_docs/python/io_ops.md#SparseConditionalAccumulator)
@@ -766,11 +758,10 @@
   * [`matrix_diag_transform`](../../api_docs/python/contrib.distributions.md#matrix_diag_transform)
   * [`Mixture`](../../api_docs/python/contrib.distributions.md#Mixture)
   * [`Multinomial`](../../api_docs/python/contrib.distributions.md#Multinomial)
-  * [`MultivariateNormalCholesky`](../../api_docs/python/contrib.distributions.md#MultivariateNormalCholesky)
   * [`MultivariateNormalDiag`](../../api_docs/python/contrib.distributions.md#MultivariateNormalDiag)
-  * [`MultivariateNormalDiagPlusVDVT`](../../api_docs/python/contrib.distributions.md#MultivariateNormalDiagPlusVDVT)
-  * [`MultivariateNormalDiagWithSoftplusStDev`](../../api_docs/python/contrib.distributions.md#MultivariateNormalDiagWithSoftplusStDev)
-  * [`MultivariateNormalFull`](../../api_docs/python/contrib.distributions.md#MultivariateNormalFull)
+  * [`MultivariateNormalDiagPlusLowRank`](../../api_docs/python/contrib.distributions.md#MultivariateNormalDiagPlusLowRank)
+  * [`MultivariateNormalDiagWithSoftplusScale`](../../api_docs/python/contrib.distributions.md#MultivariateNormalDiagWithSoftplusScale)
+  * [`MultivariateNormalTriL`](../../api_docs/python/contrib.distributions.md#MultivariateNormalTriL)
   * [`Normal`](../../api_docs/python/contrib.distributions.md#Normal)
   * [`normal_conjugates_known_scale_posterior`](../../api_docs/python/contrib.distributions.md#normal_conjugates_known_scale_posterior)
   * [`normal_conjugates_known_scale_predictive`](../../api_docs/python/contrib.distributions.md#normal_conjugates_known_scale_predictive)
@@ -835,6 +826,7 @@
   * [`get_model_variables`](../../api_docs/python/contrib.framework.md#get_model_variables)
   * [`get_or_create_global_step`](../../api_docs/python/contrib.framework.md#get_or_create_global_step)
   * [`get_unique_variable`](../../api_docs/python/contrib.framework.md#get_unique_variable)
+  * [`get_variable_full_name`](../../api_docs/python/contrib.framework.md#get_variable_full_name)
   * [`get_variables`](../../api_docs/python/contrib.framework.md#get_variables)
   * [`get_variables_by_name`](../../api_docs/python/contrib.framework.md#get_variables_by_name)
   * [`get_variables_by_suffix`](../../api_docs/python/contrib.framework.md#get_variables_by_suffix)

@@ -277,7 +277,7 @@ Here are some of the typical usage models:
 * Retrieve Hyper Parameters
 
   ```Python
-  filename = ".".join([tf.latest_checkpoint(train_dir), "meta"])
+  filename = ".".join([tf.train.latest_checkpoint(train_dir), "meta"])
   tf.train.import_meta_graph(filename)
   hparams = tf.get_collection("hparams")
   ```

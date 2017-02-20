@@ -8,6 +8,7 @@ package(default_visibility = [
     "//visibility:public",
 ])
 
+load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 
 filegroup(
@@ -66,9 +67,9 @@ cc_library(
         "core/ops/utils.h",
     ],
     deps = [
+        "//:protobuf_headers",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
-        "@protobuf//:protobuf",
     ],
 )
 

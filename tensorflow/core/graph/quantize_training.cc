@@ -126,11 +126,11 @@ bool FindType(const Graph* graph, const Node* node, bool* signed_input,
   return true;
 }
 
-// Adds a QuantizeAndDequantizeOp (and required input nodes) based on edge. The
-// result is stored in convert_node.
-Status MakeQuantizeAndDequantize(Graph* graph, const string& name_prefix,
-                                 const EdgeToConvert& edge,
-                                 Node** convert_node) {
+// Adds a QuantizeAndDequantizeV2Op (and required input nodes) based on edge.
+// The result is stored in convert_node.
+Status MakeQuantizeAndDequantizeV2(Graph* graph, const string& name_prefix,
+                                   const EdgeToConvert& edge,
+                                   Node** convert_node) {
   Node* input_min;
   Node* input_max;
   // Make constant nodes for the input_min and input_max if the range is
@@ -150,8 +150,8 @@ Status MakeQuantizeAndDequantize(Graph* graph, const string& name_prefix,
                          .Attr("value", input_max_tensor)
                          .Finalize(graph, &input_max));
 
-  string quant_name = strings::StrCat(name_prefix, "/QuantizeAndDequantize");
-  TF_RETURN_IF_ERROR(NodeBuilder(quant_name, "QuantizeAndDequantize")
+  string quant_name = strings::StrCat(name_prefix, "/QuantizeAndDequantizeV2");
+  TF_RETURN_IF_ERROR(NodeBuilder(quant_name, "QuantizeAndDequantizeV2")
                          .Input(edge.edge->src())
                          .Input(input_min)
                          .Input(input_max)
@@ -175,7 +175,7 @@ Status ProcessTargetEdges(Graph* graph,
     auto iter = name_index.find(name_prefix);
     if (iter == name_index.end()) {
       TF_RETURN_IF_ERROR(
-          MakeQuantizeAndDequantize(graph, name_prefix, edge, &convert_node));
+          MakeQuantizeAndDequantizeV2(graph, name_prefix, edge, &convert_node));
       name_index[name_prefix] = convert_node;
     } else {
       convert_node = iter->second;

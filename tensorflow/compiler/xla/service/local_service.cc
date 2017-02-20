@@ -426,8 +426,8 @@ StatusOr<std::unique_ptr<ShapedBuffer>> LocalService::ExecuteLocallyInternal(
   run_options.set_intra_op_thread_pool(
       execute_backend_->eigen_intra_op_thread_pool_device());
 
-  // "acquired_stream" owns the stream used for execution if no stream is given.
-  std::unique_ptr<se::Stream> acquired_stream;
+  // "stream" owns the stream used for execution if no stream is given.
+  Backend::StreamPtr stream;
   if (options.stream()) {
     run_options.set_stream(options.stream());
   } else {
@@ -439,16 +439,10 @@ StatusOr<std::unique_ptr<ShapedBuffer>> LocalService::ExecuteLocallyInternal(
     } else {
       stream_executor = execute_backend_->default_stream_executor();
     }
-    TF_ASSIGN_OR_RETURN(acquired_stream,
-                        execute_backend_->AcquireStream(stream_executor));
-    run_options.set_stream(acquired_stream.get());
+    TF_ASSIGN_OR_RETURN(stream,
+                        execute_backend_->BorrowStream(stream_executor));
+    run_options.set_stream(stream.get());
   }
-  auto stream_releaser =
-      ::tensorflow::gtl::MakeCleanup([this, &acquired_stream]() {
-        if (acquired_stream != nullptr) {
-          execute_backend_->ReleaseStream(std::move(acquired_stream));
-        }
-      });
 
   ExecutionProfile* profile = options.execution_profile();
   TF_ASSIGN_OR_RETURN(

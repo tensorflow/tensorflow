@@ -1498,6 +1498,15 @@ string HloInstruction::ToCategory() const {
   return HloOpcodeString(opcode());
 }
 
+string HloInstruction::FullyQualifiedName() const {
+  if (IsFused()) {
+    return tensorflow::strings::StrCat(fusion_instruction()->parent()->name(),
+                                       "::", fusion_instruction()->name(),
+                                       "::", name_);
+  }
+  return tensorflow::strings::StrCat(parent_->name(), "::", name_);
+}
+
 HloInstruction* HloInstruction::tracing() const { return trace_instruction_; }
 
 void HloInstruction::set_tracing(HloInstruction* trace_instruction) {
@@ -1554,6 +1563,11 @@ HloInstruction* HloInstruction::fused_parameter(int64 parameter_number) const {
   CHECK_GE(parameter_number, 0);
   CHECK_LT(parameter_number, fused_parameters_.size());
   return fused_parameters_[parameter_number];
+}
+
+const std::vector<HloInstruction*>& HloInstruction::fused_parameters() const {
+  CHECK_EQ(opcode_, HloOpcode::kFusion);
+  return fused_parameters_;
 }
 
 const std::list<std::unique_ptr<HloInstruction>>&

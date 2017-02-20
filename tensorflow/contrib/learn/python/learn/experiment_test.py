@@ -325,7 +325,7 @@ class ExperimentTest(test.TestCase):
             StopIteration,
             ex.continuous_eval,
             evaluate_checkpoint_only_once=False)
-        self.assertAlmostEqual(5 * delay, sheep.total_time, delta=0.1)
+        self.assertAlmostEqual(5 * delay, sheep.total_time, delta=0.15)
 
   def test_continuous_eval_predicate_fn(self):
     est = TestEstimator()

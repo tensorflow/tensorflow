@@ -107,6 +107,7 @@ filegroup(
         "//tensorflow:darwin": [":libtensorflow_jni.dylib"],
         "//conditions:default": [":libtensorflow_jni.so"],
     }),
+    visibility = ["//visibility:public"],
 )
 
 LINKER_VERSION_SCRIPT = ":config/version_script.lds"

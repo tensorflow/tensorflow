@@ -133,6 +133,18 @@ class VariablesTestCase(test.TestCase):
       four.eval()
       self.assertAllClose(4.0, var.eval())
 
+  def testZeroSizeStringAssign(self):
+    with self.test_session() as sess:
+      array = variables.Variable(
+          initial_value=array_ops.zeros((0,), dtype=dtypes.string),
+          name="foo",
+          trainable=False,
+          collections=[ops.GraphKeys.LOCAL_VARIABLES])
+      sess.run(variables.local_variables_initializer())
+      old_value = array.value()
+      copy_op = array.assign(old_value)
+      self.assertEqual([], list(sess.run(copy_op)))
+
   def _countUpToTest(self, dtype):
     with self.test_session():
       zero = constant_op.constant(0, dtype=dtype)

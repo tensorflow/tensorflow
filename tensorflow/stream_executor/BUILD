@@ -24,9 +24,10 @@ cc_library(
         "lib/gtl/*.h",
         "platform/**/*.h",
     ]),
-    linkopts = [
-        "-ldl",
-    ],
+    linkopts = select({
+        "//tensorflow:freebsd": [],
+        "//conditions:default": ["-ldl"],
+    }),
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:lib",
@@ -45,9 +46,10 @@ cc_library(
             exclude = ["cuda/cuda_platform_id.cc"],
         ),
     ),
-    linkopts = [
-        "-ldl",
-    ],
+    linkopts = select({
+        "//tensorflow:freebsd": [],
+        "//conditions:default": ["-ldl"],
+    }),
     visibility = ["//visibility:public"],
     deps = [
         ":stream_executor",

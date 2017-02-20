@@ -38,6 +38,7 @@ namespace tensorflow {
 class TensorBuffer;  // Forward declaration.
 class TensorCApi;
 
+/// @ingroup core
 /// Represents an n-dimensional array of values.
 class Tensor {
  public:

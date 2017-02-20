@@ -212,7 +212,9 @@ void DumpPtxasInfo(const string& ptx) {
 
 }  // namespace
 
-GpuCompiler::GpuCompiler() : libdevice_dir_(GetLibdeviceDir()) {}
+GpuCompiler::GpuCompiler()
+    : libdevice_dir_(GetLibdeviceDir()),
+      pointer_size_(llvm::DataLayout(kDataLayout).getPointerSize()) {}
 
 StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
     std::unique_ptr<HloModule> hlo_module,
@@ -240,8 +242,6 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
   // Set the target triple and the data layout.
   llvm_module.setTargetTriple(kTargetTriple);
   llvm_module.setDataLayout(kDataLayout);
-  const llvm::DataLayout& data_layout = llvm_module.getDataLayout();
-  int64 pointer_size = data_layout.getPointerSize();
 
   // Determine the HLO schedule, which is an ordering of HLO instructions.  This
   // is used by buffer assignment to enable buffer reuse, and the same ordering
@@ -256,7 +256,10 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> buffer_assignment,
       BufferAssigner::Run(hlo_module.get(), hlo_schedule->ConsumeHloOrdering(),
-                          pointer_size, kMemoryAlignment));
+                          [this](const LogicalBuffer& buffer) {
+                            return ShapeSizeBytes(buffer.shape());
+                          },
+                          kMemoryAlignment));
 
   IrEmitterContext ir_emitter_context(hlo_module.get(), buffer_assignment.get(),
                                       &stream_exec->GetDeviceDescription(),
@@ -329,6 +332,10 @@ GpuCompiler::CompileAheadOfTime(
 
 se::Platform::Id GpuCompiler::PlatformId() const {
   return se::cuda::kCudaPlatformId;
+}
+
+int64 GpuCompiler::ShapeSizeBytes(const Shape& shape) const {
+  return ShapeUtil::ByteSizeOf(shape, pointer_size_);
 }
 
 }  // namespace gpu

@@ -50,6 +50,7 @@ tf_cc_test(
         "graph_transferer_test.cc",
         "hexagon_graph_execution_test.cc",
     ],
+    data = ["//tensorflow/core:example_parser_configuration_testdata"],
     deps = [
         ":graph_transferer",
         "//tensorflow/cc:cc_ops",
@@ -87,7 +88,6 @@ tf_kernel_library(
         "i_graph_transfer_ops_definitions.h",
         "i_soc_control_wrapper.h",
     ],
-    data = ["//tensorflow/core:example_parser_configuration_testdata"],
     deps = [
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:remote_fused_graph_ops",
@@ -97,5 +97,42 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//third_party/eigen3",
+    ],
+)
+
+cc_library(
+    name = "hexagon_rewriter_transform",
+    srcs = [
+        "hexagon_rewriter_transform.cc",
+    ],
+    deps = [
+        ":graph_transferer",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:remote_fused_graph_ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/tools/graph_transforms:transform_utils",
+        "//third_party/eigen3",
+    ],
+    alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "hexagon_rewriter_transform_test",
+    size = "small",
+    srcs = ["hexagon_rewriter_transform_test.cc"],
+    deps = [
+        ":hexagon_rewriter_transform",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/tools/graph_transforms:transform_utils",
     ],
 )

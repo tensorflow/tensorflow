@@ -253,8 +253,8 @@ cc_binary(
     }),
     linkshared = 1,
     deps = [
+        "//:protobuf_headers",
         "//tensorflow/core:framework_headers_lib",
-        "@protobuf//:protobuf",
     ],
 )
 
@@ -657,6 +657,7 @@ py_test(
     srcs = ["framework/ops_test.py"],
     main = "framework/ops_test.py",
     srcs_version = "PY2AND3",
+    tags = ["no_pip"],  # test_ops_2 is not available in pip.
     deps = [
         ":control_flow_ops",
         ":errors",
@@ -1848,10 +1849,8 @@ cuda_py_test(
         ":tensor_array_grad",
         ":tensor_array_ops",
         ":test_ops",
-        "//tensorflow/contrib/compiler:compiler_py",
         "//third_party/py/numpy",
     ],
-    xla_enabled = True,
 )
 
 cuda_py_test(
@@ -2159,6 +2158,7 @@ py_test(
     srcs = ["util/protobuf/compare_test.py"],
     main = "util/protobuf/compare_test.py",
     srcs_version = "PY2AND3",
+    tags = ["no_pip"],  # compare_test_pb2 proto is not available in pip.
     deps = [
         ":compare_test_proto_py",
         ":platform_test",
@@ -2537,6 +2537,7 @@ py_test(
     size = "small",
     srcs = ["client/session_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_pip_gpu"],  # testInteractivePlacePrunedGraph fails on invalid assumption about GPU ops.
     deps = [
         ":array_ops",
         ":client",

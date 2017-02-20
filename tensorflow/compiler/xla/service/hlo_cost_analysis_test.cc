@@ -160,8 +160,8 @@ TEST_F(HloCostAnalysisTest, MatrixMultiply) {
   EXPECT_EQ(analysis.transcendental_count(), 0);
 
   // Bytes accessed is sum of inputs and output.
-  TF_ASSIGN_OR_ASSERT_OK(int64 bytes_accessed, analysis.bytes_accessed());
-  EXPECT_EQ(bytes_accessed, sizeof(float) * (10 * 5 + 5 * 30 + 10 * 30));
+  EXPECT_EQ(analysis.bytes_accessed(),
+            sizeof(float) * (10 * 5 + 5 * 30 + 10 * 30));
 }
 
 TEST_F(HloCostAnalysisTest, Map) {
@@ -178,8 +178,7 @@ TEST_F(HloCostAnalysisTest, Map) {
   // add contributes to 10 flops and exp contributes to 10 transcendental ops.
   EXPECT_EQ(analysis.flop_count(), 10);
   EXPECT_EQ(analysis.transcendental_count(), 10);
-  TF_ASSIGN_OR_ASSERT_OK(int64 bytes_accessed, analysis.bytes_accessed());
-  EXPECT_EQ(bytes_accessed, 80);
+  EXPECT_EQ(analysis.bytes_accessed(), 80);
 }
 
 TEST_F(HloCostAnalysisTest, Convolution) {
@@ -205,8 +204,8 @@ TEST_F(HloCostAnalysisTest, Convolution) {
   EXPECT_EQ(analysis.flop_count(), 8 * 18 * 2 * 3 * 3);
 
   // Bytes accessed is sum of inputs and output.
-  TF_ASSIGN_OR_ASSERT_OK(int64 bytes_accessed, analysis.bytes_accessed());
-  EXPECT_EQ(bytes_accessed, sizeof(float) * (10 * 20 + 3 * 3 + 8 * 18));
+  EXPECT_EQ(analysis.bytes_accessed(),
+            sizeof(float) * (10 * 20 + 3 * 3 + 8 * 18));
 }
 
 TEST_F(HloCostAnalysisTest, Reduce) {
@@ -391,8 +390,7 @@ TEST_F(HloCostAnalysisTest, TupleCost) {
 
   EXPECT_EQ(analysis.flop_count(), 0);
   EXPECT_EQ(analysis.transcendental_count(), 0);
-  TF_ASSIGN_OR_ASSERT_OK(int64 bytes_accessed, analysis.bytes_accessed());
-  EXPECT_EQ(bytes_accessed, kPointerSize * 2);
+  EXPECT_EQ(analysis.bytes_accessed(), kPointerSize * 2);
 }
 
 }  // namespace

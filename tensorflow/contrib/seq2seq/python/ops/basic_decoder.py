@@ -27,6 +27,7 @@ from tensorflow.contrib.seq2seq.python.ops import helper as helper_py
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.layers import base as layers_base
 from tensorflow.python.util import nest
 
 
@@ -44,35 +45,62 @@ class BasicDecoderOutput(
 class BasicDecoder(decoder.Decoder):
   """Basic sampling decoder."""
 
-  def __init__(self, cell, helper, initial_state):
+  def __init__(self, cell, helper, initial_state, output_layer=None):
     """Initialize BasicDecoder.
 
     Args:
       cell: An `RNNCell` instance.
       helper: A `Helper` instance.
       initial_state: A (possibly nested tuple of...) tensors and TensorArrays.
+      output_layer: (Optional) An instance of `tf.layers.Layer`, i.e.,
+        `tf.layers.Dense`.  Optional layer to apply to the RNN output prior
+        to storing the result or sampling.
 
     Raises:
-      TypeError: if `cell` is not an instance of `RNNCell` or `helper`
-        is not an instance of `Helper`.
+      TypeError: if `cell` is not an instance of `RNNCell`, `helper`
+        is not an instance of `Helper`, or `output_layer` is not an instance
+        of `tf.layers.Layer`.
     """
     if not isinstance(cell, core_rnn_cell.RNNCell):
       raise TypeError("cell must be an RNNCell, received: %s" % type(cell))
     if not isinstance(helper, helper_py.Helper):
       raise TypeError("helper must be a Helper, received: %s" % type(helper))
+    if (output_layer is not None
+        and not isinstance(output_layer, layers_base._Layer)):  # pylint: disable=protected-access
+      raise TypeError(
+          "output_layer must be a Layer, received: %s" % type(output_layer))
     self._cell = cell
     self._helper = helper
     self._initial_state = initial_state
+    self._output_layer = output_layer
 
   @property
   def batch_size(self):
     return self._helper.batch_size
 
+  def _rnn_output_size(self):
+    size = self._cell.output_size
+    if self._output_layer is None:
+      return size
+    else:
+      # To use layer's compute_output_shape, we need to convert the
+      # RNNCell's output_size entries into shapes with an unknown
+      # batch size.  We then pass this through the layer's
+      # compute_output_shape and read off all but the first (batch)
+      # dimensions to get the output size of the rnn with the layer
+      # applied to the top.
+      output_shape_with_unknown_batch = nest.map_structure(
+          lambda s: tensor_shape.TensorShape([None]).concatenate(s),
+          size)
+      layer_output_shape = self._output_layer._compute_output_shape(  # pylint: disable=protected-access
+          output_shape_with_unknown_batch)
+      return nest.map_structure(lambda s: s[1:], layer_output_shape)
+
   @property
   def output_size(self):
     # Return the cell output and the id
     return BasicDecoderOutput(
-        rnn_output=self._cell.output_size,
+        rnn_output=self._rnn_output_size(),
         sample_id=tensor_shape.TensorShape([]))
 
   @property
@@ -82,7 +110,7 @@ class BasicDecoder(decoder.Decoder):
     # Return that structure and int32 (the id)
     dtype = nest.flatten(self._initial_state)[0].dtype
     return BasicDecoderOutput(
-        nest.map_structure(lambda _: dtype, self._cell.output_size),
+        nest.map_structure(lambda _: dtype, self._rnn_output_size()),
         dtypes.int32)
 
   def initialize(self, name=None):
@@ -110,6 +138,8 @@ class BasicDecoder(decoder.Decoder):
     """
     with ops.name_scope(name, "BasicDecoderStep", (time, inputs, state)):
       cell_outputs, cell_state = self._cell(inputs, state)
+      if self._output_layer is not None:
+        cell_outputs = self._output_layer(cell_outputs)
       sample_ids = self._helper.sample(
           time=time, outputs=cell_outputs, state=cell_state)
       (finished, next_inputs, next_state) = self._helper.next_inputs(

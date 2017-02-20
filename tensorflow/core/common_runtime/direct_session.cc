@@ -271,7 +271,7 @@ DirectSession::DirectSession(const SessionOptions& options,
 }
 
 DirectSession::~DirectSession() {
-  if (!closed_) Close();
+  if (!closed_) Close().IgnoreError();
   for (auto& it : partial_runs_) {
     it.second.reset(nullptr);
   }
@@ -1273,7 +1273,8 @@ void DirectSession::WaitForNotification(RunState* run_state,
 ::tensorflow::Status DirectSession::WaitForNotification(
     Notification* notification, int64 timeout_in_ms) {
   if (timeout_in_ms > 0) {
-    bool notified = WaitForNotificationWithTimeout(notification, timeout_in_ms);
+    int64 timeout_in_us = timeout_in_ms * 1000;
+    bool notified = WaitForNotificationWithTimeout(notification, timeout_in_us);
     if (!notified) {
       return Status(error::DEADLINE_EXCEEDED,
                     "Timed out waiting for notification");

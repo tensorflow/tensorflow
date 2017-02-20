@@ -182,7 +182,7 @@ def _graph_to_function_def(graph, inputs, outputs, out_names=None):
   return func
 
 
-def _parse_kwargs_as_attrs(**kwargs):
+def _parse_kwargs_as_attrs(func_name, **kwargs):
   """Parses **kwargs into a node's attributes."""
   attrs = {}
 
@@ -193,6 +193,8 @@ def _parse_kwargs_as_attrs(**kwargs):
   compiled = kwargs.pop("compiled", None)
   if compiled is not None:
     attrs["_XlaCompile"] = attr_value_pb2.AttrValue(b=bool(compiled))
+    attrs["_XlaScope"] = attr_value_pb2.AttrValue(
+        s=("function_%s" % func_name).encode())
 
   if kwargs:
     raise ValueError("Unknown keyword arguments: %s" % kwargs.keys())
@@ -233,9 +235,9 @@ def _call(sig, *inputs, **kwargs):
     raise ValueError("Expected number of arguments: %d, received: %d" %
                      (len(sig.input_arg), len(inputs)))
   name = kwargs.pop("name", None)
-  attrs = _parse_kwargs_as_attrs(**kwargs)
   g = ops.get_default_graph()
   func_name = sig.name
+  attrs = _parse_kwargs_as_attrs(func_name, **kwargs)
   output_types = [dtypes.DType(x.type) for x in sig.output_arg]
   with ops.name_scope(name, func_name, inputs) as name:
     op = g.create_op(
@@ -521,7 +523,9 @@ class _DefinedFunction(object):
         temp_graph, inputs, outputs, out_names=self._out_names)
 
     # Extra kwargs are treated as attrs on the function def.
-    kwargs_attr = _parse_kwargs_as_attrs(**self._extra_kwargs)
+    sig_pre_func_name = self._func_name or _get_func_name(self._func)
+    kwargs_attr = _parse_kwargs_as_attrs(
+        sig_pre_func_name, **self._extra_kwargs)
     for k in kwargs_attr:
       self._definition.attr[k].CopyFrom(kwargs_attr[k])
 
@@ -783,9 +787,6 @@ class Defun(object):
   b = tf.Constant([2.0])
   c, d = MyFunc(a, b, name='mycall')
   ```
-
-  @@__init__
-
   """
 
   def __init__(self, *input_types, **kwargs):

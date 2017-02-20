@@ -37,6 +37,16 @@ limitations under the License.
 
 namespace xla {
 
+string ShapeIndex::ToString() const {
+  return tensorflow::strings::StrCat(
+      "{", tensorflow::str_util::Join(indices_, ","), "}");
+}
+
+std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index) {
+  out << shape_index.ToString();
+  return out;
+}
+
 namespace {
 
 // Recursive helper for comparing the equality of two shapes. Returns true if
@@ -44,18 +54,11 @@ namespace {
 // match.
 bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
   if (ShapeUtil::IsTuple(lhs)) {
-    if (!ShapeUtil::IsTuple(rhs)) {
-      VLOG(3) << "CompareShapes: lhs is a tuple, rhs not a tuple";
-      return false;
-    }
-
-    if (!ContainersEqual(lhs.tuple_shapes(), rhs.tuple_shapes(),
-                         [=](const Shape& l, const Shape& r) {
-                           return CompareShapes(l, r, compare_layouts);
-                         })) {
-      VLOG(3) << "CompareShapes: tuples on lhs and rhs not equal";
-      return false;
-    }
+    return ShapeUtil::IsTuple(rhs) &&
+           ContainersEqual(lhs.tuple_shapes(), rhs.tuple_shapes(),
+                           [=](const Shape& l, const Shape& r) {
+                             return CompareShapes(l, r, compare_layouts);
+                           });
   }
   // Explicitly compare the fields rather than using MessageDifferencer because
   // we want empty layouts to be treated identically to missing layouts.

@@ -454,9 +454,9 @@ int Main(int argc, char** argv) {
 
     // Report the stats.
     TestReporter reporter(output_prefix, benchmark_name);
-    reporter.Initialize();
-    reporter.Benchmark(num_runs, -1.0, wall_time, throughput);
-    reporter.Close();
+    TF_QCHECK_OK(reporter.Initialize());
+    TF_QCHECK_OK(reporter.Benchmark(num_runs, -1.0, wall_time, throughput));
+    TF_QCHECK_OK(reporter.Close());
   }
 
   return 0;

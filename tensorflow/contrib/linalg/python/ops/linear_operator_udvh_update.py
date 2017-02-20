@@ -240,7 +240,7 @@ class LinearOperatorUDVHUpdate(linear_operator.LinearOperator):
 
       # Create base_operator L.
       self._base_operator = base_operator
-      graph_parents = base_operator.graph_parents + [self.u, self.diag, self.v]
+      graph_parents = base_operator.graph_parents + [self.u, self._diag, self.v]
       graph_parents = [p for p in graph_parents if p is not None]
 
       super(LinearOperatorUDVHUpdate, self).__init__(
@@ -254,6 +254,11 @@ class LinearOperatorUDVHUpdate(linear_operator.LinearOperator):
 
       # Create the diagonal operator D.
       self._set_diag_operators(diag, is_diag_positive)
+      self._is_diag_positive = is_diag_positive
+
+      contrib_tensor_util.assert_same_float_dtype(
+          (base_operator, self.u, self.v, self._diag))
+      self._check_shapes()
 
       # Pre-compute the so-called "capacitance" matrix
       #   C := D^{-1} + V^H L^{-1} U
@@ -261,8 +266,22 @@ class LinearOperatorUDVHUpdate(linear_operator.LinearOperator):
       if self._use_cholesky:
         self._chol_capacitance = linalg_ops.cholesky(self._capacitance)
 
-      contrib_tensor_util.assert_same_float_dtype(
-          (base_operator, self.u, self.v, self.diag))
+  def _check_shapes(self):
+    """Static check that shapes are compatible."""
+    # Broadcast shape also checks that u and v are compatible.
+    uv_shape = array_ops.broadcast_static_shape(
+        self.u.get_shape(), self.v.get_shape())
+
+    batch_shape = array_ops.broadcast_static_shape(
+        self.base_operator.batch_shape, uv_shape[:-2])
+
+    self.base_operator.domain_dimension.assert_is_compatible_with(
+        uv_shape[-2])
+
+    if self._diag is not None:
+      uv_shape[-1].assert_is_compatible_with(self._diag.get_shape()[-1])
+      array_ops.broadcast_static_shape(
+          batch_shape, self._diag.get_shape()[:-1])
 
   def _set_diag_operators(self, diag, is_diag_positive):
     """Set attributes self._diag and self._diag_operator."""
@@ -291,7 +310,12 @@ class LinearOperatorUDVHUpdate(linear_operator.LinearOperator):
     return self._v
 
   @property
-  def diag(self):
+  def is_diag_positive(self):
+    """If this operator is `A = L + U D V^H`, this hints `D > 0` elementwise."""
+    return self._is_diag_positive
+
+  @property
+  def diag_arg(self):
     """If this operator is `A = L + U D V^H`, this is the diagonal of `D`."""
     return self._diag
 

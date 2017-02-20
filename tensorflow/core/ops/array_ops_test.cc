@@ -139,8 +139,8 @@ TEST(ArrayOpsTest, Const_ShapeFn) {
 
 TEST(ArrayOpsTest, UnchangedShapes_ShapeFn) {
   for (const char* op_name : {
-           "CheckNumerics", "Identity", "RefIdentity", "StopGradient",
-           "ZerosLike",
+           "CheckNumerics", "Identity", "RefIdentity", "QuantizeAndDequantize",
+           "StopGradient", "ZerosLike",
        }) {
     ShapeInferenceTestOp op(op_name);
     INFER_OK(op, "?", "in0");
@@ -1175,8 +1175,8 @@ TEST(ArrayOpsTest, ExtractImagePatchesShapeTest) {
       op, "[1,7,7,2]");
 }
 
-TEST(ArrayOpsTest, QuantizeAndDequantize_ShapeFn) {
-  ShapeInferenceTestOp op("QuantizeAndDequantize");
+TEST(ArrayOpsTest, QuantizeAndDequantizeV2_ShapeFn) {
+  ShapeInferenceTestOp op("QuantizeAndDequantizeV2");
   INFER_OK(op, "?;?;?", "in0");
   INFER_OK(op, "[];?;?", "in0");
   INFER_OK(op, "[1,2,?,4,5];?;?", "in0");

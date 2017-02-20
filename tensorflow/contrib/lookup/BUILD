@@ -7,6 +7,8 @@ exports_files(["LICENSE"])
 
 package(default_visibility = ["//tensorflow:internal"])
 
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 py_library(
     name = "lookup_py",
     srcs = [

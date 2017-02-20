@@ -45,9 +45,14 @@ class XlaOpKernel : public OpKernel {
 // XlaOpKernelContext is a variant of the standard OpKernel class, tailored for
 // implementing operators that perform symbolic execution as part of the XLA
 // compiler. The key difference is that XlaOpKernelContext produces and consumes
-// data as XLA computations, rather than as standard Tensors. (Under the hood,
-// symbolic execution communicates using special Tensors, but that is an
-// implementation detail that this class hides.)
+// data as XLA computations, rather than as standard Tensors.
+//
+// Under the hood, symbolic execution communicates using special Tensors that
+// wrap XlaExpression objects, however this is an implementation detail that
+// this class hides. The *only* correct way to allocate a Tensor during
+// compilation is using the XlaOpKernelContext methods, since they ensure there
+// is a valid XlaExpression backing the tensor. No Op should ever call
+// allocate_output or allocate_temp directly on the underlying OpKernelContext.
 class XlaOpKernelContext {
  public:
   explicit XlaOpKernelContext(OpKernelContext* context);

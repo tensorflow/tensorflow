@@ -71,8 +71,8 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
   private static final Logger LOGGER = new Logger();
 
   private static final String MODEL_FILE = "file:///android_asset/stylize_quantized.pb";
-  private static final String INPUT_NODE = "input:0";
-  private static final String STYLE_NODE = "style_num:0";
+  private static final String INPUT_NODE = "input";
+  private static final String STYLE_NODE = "style_num";
   private static final String OUTPUT_NODE = "transformer/expand/conv3/conv/Sigmoid";
   private static final int NUM_STYLES = 26;
 

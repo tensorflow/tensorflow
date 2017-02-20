@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_local_launch_op.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
-#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -151,7 +151,7 @@ Status CreateXlaLaunchOp(FunctionLibraryRuntime* flr, const NodeDef& ndef,
     return errors::InvalidArgument("No ", kXlaCompileAttr, " for ", ndef.op());
   }
   // Make sure that kernels have been registered on the JIT device.
-  XlaOpRegistry::RegisterJitKernels();
+  XlaOpRegistry::RegisterCompilationKernels();
   if (!IsCompilable(flr, ndef)) {
     // ndef is calling a function that XLA can't compile.
     return errors::InvalidArgument("Not compilable: ", ndef.ShortDebugString());

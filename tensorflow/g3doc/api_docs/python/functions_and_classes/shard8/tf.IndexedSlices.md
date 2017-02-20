@@ -23,7 +23,6 @@ gradients for operations that have sparse gradients
 Contrast this representation with
 [`SparseTensor`](../../api_docs/python/sparse_ops.md#SparseTensor),
 which uses multi-dimensional indices and scalar values.
-
 - - -
 
 #### `tf.IndexedSlices.__init__(values, indices, dense_shape=None)` {#IndexedSlices.__init__}
@@ -31,59 +30,6 @@ which uses multi-dimensional indices and scalar values.
 Creates an `IndexedSlices`.
 
 
-
-- - -
-
-#### `tf.IndexedSlices.values` {#IndexedSlices.values}
-
-A `Tensor` containing the values of the slices.
-
-
-- - -
-
-#### `tf.IndexedSlices.indices` {#IndexedSlices.indices}
-
-A 1-D `Tensor` containing the indices of the slices.
-
-
-- - -
-
-#### `tf.IndexedSlices.dense_shape` {#IndexedSlices.dense_shape}
-
-A 1-D `Tensor` containing the shape of the corresponding dense tensor.
-
-
-
-- - -
-
-#### `tf.IndexedSlices.name` {#IndexedSlices.name}
-
-The name of this `IndexedSlices`.
-
-
-- - -
-
-#### `tf.IndexedSlices.dtype` {#IndexedSlices.dtype}
-
-The `DType` of elements in this tensor.
-
-
-- - -
-
-#### `tf.IndexedSlices.device` {#IndexedSlices.device}
-
-The name of the device on which `values` will be produced, or `None`.
-
-
-- - -
-
-#### `tf.IndexedSlices.op` {#IndexedSlices.op}
-
-The `Operation` that produces `values` as an output.
-
-
-
-#### Other Methods
 - - -
 
 #### `tf.IndexedSlices.__neg__()` {#IndexedSlices.__neg__}
@@ -100,8 +46,57 @@ The `Operation` that produces `values` as an output.
 
 - - -
 
+#### `tf.IndexedSlices.dense_shape` {#IndexedSlices.dense_shape}
+
+A 1-D `Tensor` containing the shape of the corresponding dense tensor.
+
+
+- - -
+
+#### `tf.IndexedSlices.device` {#IndexedSlices.device}
+
+The name of the device on which `values` will be produced, or `None`.
+
+
+- - -
+
+#### `tf.IndexedSlices.dtype` {#IndexedSlices.dtype}
+
+The `DType` of elements in this tensor.
+
+
+- - -
+
 #### `tf.IndexedSlices.graph` {#IndexedSlices.graph}
 
 The `Graph` that contains the values, indices, and shape tensors.
+
+
+- - -
+
+#### `tf.IndexedSlices.indices` {#IndexedSlices.indices}
+
+A 1-D `Tensor` containing the indices of the slices.
+
+
+- - -
+
+#### `tf.IndexedSlices.name` {#IndexedSlices.name}
+
+The name of this `IndexedSlices`.
+
+
+- - -
+
+#### `tf.IndexedSlices.op` {#IndexedSlices.op}
+
+The `Operation` that produces `values` as an output.
+
+
+- - -
+
+#### `tf.IndexedSlices.values` {#IndexedSlices.values}
+
+A `Tensor` containing the values of the slices.
 
 

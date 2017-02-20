@@ -3,29 +3,7 @@
 # Testing
 [TOC]
 
-## Unit tests
-
-TensorFlow provides a convenience class inheriting from `unittest.TestCase`
-which adds methods relevant to TensorFlow tests.  Here is an example:
-
-```python
-    import tensorflow as tf
-
-
-    class SquareTest(tf.test.TestCase):
-
-      def testSquare(self):
-        with self.test_session():
-          x = tf.square([2, 3])
-          self.assertAllEqual(x.eval(), [4, 9])
-
-
-    if __name__ == '__main__':
-      tf.test.main()
-```
-
-`tf.test.TestCase` inherits from `unittest.TestCase` but adds a few additional
-methods.  We will document these methods soon.
+Testing. See the @{$python/test} guide.
 
 - - -
 
@@ -931,9 +909,6 @@ Creates an absolute test srcdir path given a relative path.
   An absolute path to the linked in runfiles.
 
 
-
-## Utilities
-
 - - -
 
 ### `tf.test.assert_equal_graph_def(actual, expected, checkpoint_v2=False)` {#assert_equal_graph_def}
@@ -1001,13 +976,6 @@ Returns whether TensorFlow can access a GPU.
 
 Returns the name of a GPU device if available or the empty string.
 
-
-
-## Gradient checking
-
-[`compute_gradient`](#compute_gradient) and
-[`compute_gradient_error`](#compute_gradient_error) perform numerical
-differentiation of graphs for comparison against registered analytic gradients.
 
 - - -
 
