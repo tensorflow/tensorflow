@@ -41,9 +41,9 @@ def clip_by_value(t, clip_value_min, clip_value_max,
 
   Args:
     t: A `Tensor`.
-    clip_value_min: A 0-D (scalar) `Tensor`, or a `Tensor` with the sampe shape
+    clip_value_min: A 0-D (scalar) `Tensor`, or a `Tensor` with the same shape
       as `t`. The minimum value to clip by.
-    clip_value_max: A 0-D (scalar) `Tensor`, or a `Tensor` with the sampe shape
+    clip_value_max: A 0-D (scalar) `Tensor`, or a `Tensor` with the same shape
       as `t`. The maximum value to clip by.
     name: A name for the operation (optional).
 
