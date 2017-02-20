@@ -113,8 +113,10 @@ y_train = y_vocab_processor.transform(y_train)
 X_test = X_vocab_processor.transform(X_test)
 
 # TODO: Expand this to use the whole test set.
-X_test = np.array([X_test.next() for _ in range(1000)])
-y_test = [y_test.next() for _ in range(1000)]
+X_t = X_test.next()
+y_t = y_test.next()
+X_test = np.array([X_t for _ in range(1000)])
+y_test = [y_t for _ in range(1000)]
 
 n_en_words = len(X_vocab_processor.vocabulary_)
 n_fr_words = len(y_vocab_processor.vocabulary_)
