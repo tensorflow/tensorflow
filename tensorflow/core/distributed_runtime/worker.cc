@@ -156,7 +156,7 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
     mutex_lock l(mu_);
     token = cancellation_manager_->get_cancellation_token();
     bool already_cancelled = !cancellation_manager_->RegisterCallback(
-        token, [cm]() { cm->StartCancel(); });
+                                  token, [cm]() { cm->StartCancel(); });
     if (already_cancelled) {
       opts->ClearCancelCallback();
       delete cm;
@@ -169,8 +169,9 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
   CostGraphDef* cost_graph = response->mutable_cost_graph();
   env_->graph_mgr->ExecuteAsync(
       request->graph_handle(), step_id, request->exec_opts(), collector,
-      cost_graph, cm, in, [this, step_id, response, cm, out, token, collector,
-                           opts, done](Status s) {
+      cost_graph, cm, in,
+      [this, step_id, response, cm, out, token, collector, opts, done](
+          Status s) {
         if (s.ok()) {
           s = env_->graph_mgr->RecvOutputs(step_id, out);
         }
@@ -258,42 +259,42 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
           // TODO(suharshs): Propagate the status once we keep state for
           // each partial run call.
         });
-    } else {
-      // Send the partial run's new inputs.
-      s = env_->graph_mgr->SendInputs(step_id, in);
-      if (!s.ok()) {
-        finish(s);
-        return;
-      }
-    }
-
-    // Receive the partial run's outputs.
-    s = env_->graph_mgr->RecvOutputs(step_id, out);
+  } else {
+    // Send the partial run's new inputs.
+    s = env_->graph_mgr->SendInputs(step_id, in);
     if (!s.ok()) {
       finish(s);
       return;
     }
+  }
 
-    // Construct and return the resp.
-    for (const auto& p : *out) {
-      const string& key = p.first;
-      const Tensor& val = p.second;
-      response->AddRecv(key, val);
-    }
-
-    // If this is the last partial run request we must also wait for the entire
-    // graph execution to be completed.
-    if (request->is_last_partial_run()) {
-      partial_run_state->executor_done.WaitForNotification();
-      RemovePartialRun(graph_handle, step_id);
-      // Before deleting the cancellation manager on the final call, ensure
-      // that we clear the RPC cancel callback, which has a reference to the
-      // cancellation manager.
-      opts->ClearCancelCallback();
-      delete cm;
-    }
-
+  // Receive the partial run's outputs.
+  s = env_->graph_mgr->RecvOutputs(step_id, out);
+  if (!s.ok()) {
     finish(s);
+    return;
+  }
+
+  // Construct and return the resp.
+  for (const auto& p : *out) {
+    const string& key = p.first;
+    const Tensor& val = p.second;
+    response->AddRecv(key, val);
+  }
+
+  // If this is the last partial run request we must also wait for the entire
+  // graph execution to be completed.
+  if (request->is_last_partial_run()) {
+    partial_run_state->executor_done.WaitForNotification();
+    RemovePartialRun(graph_handle, step_id);
+    // Before deleting the cancellation manager on the final call, ensure
+    // that we clear the RPC cancel callback, which has a reference to the
+    // cancellation manager.
+    opts->ClearCancelCallback();
+    delete cm;
+  }
+
+  finish(s);
 }
 
 void Worker::CleanupGraphAsync(const CleanupGraphRequest* request,
@@ -343,8 +344,7 @@ Status Worker::PrepareRecvTensor(const Rendezvous::ParsedKey& parsed,
   return Status::OK();
 }
 
-void Worker::RecvTensorAsync(WorkerEnv *env,
-                             CallOptions* opts,
+void Worker::RecvTensorAsync(WorkerEnv* env, CallOptions* opts,
                              const RecvTensorRequest* request,
                              TensorResponse* response, StatusCallback done) {
   // The base Worker class does not implement RecvTensorAsync, because
@@ -354,20 +354,13 @@ void Worker::RecvTensorAsync(WorkerEnv *env,
   done(errors::Unimplemented("Worker::RecvTensorAsync()"));
 }
 
-
 void Worker::SendTensorSync(const WorkerEnv* env,
-                      const Rendezvous::ParsedKey& key,
-                      const Rendezvous::Args &args,
-                      const Tensor& val,
-                      const bool is_dead,
-                      Status &s)  {
-    s =  Status(tensorflow::error::UNIMPLEMENTED, "Worker::SendTensorSync()");
+                            const Rendezvous::ParsedKey& key,
+                            const Rendezvous::Args& args, const Tensor& val,
+                            const bool is_dead, Status& s) {
+  s = Status(tensorflow::error::UNIMPLEMENTED, "Worker::SendTensorSync()");
 
-    //done(errors::Unimplemented("Worker::RecvTensorAsync()"));
-  }
-
-
-
-
+  // done(errors::Unimplemented("Worker::RecvTensorAsync()"));
+}
 
 }  // namespace tensorflow

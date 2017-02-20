@@ -27,9 +27,7 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/distributed_runtime/tensor_coding.h"
-#include "tensorflow/core/framework/rendezvous.h" 
-
-
+#include "tensorflow/core/framework/rendezvous.h"
 
 namespace tensorflow {
 
@@ -67,10 +65,10 @@ class WorkerInterface {
         new NonOwnedProtoRunGraphResponse(response);
     RunGraphAsync(opts, wrapped_request, wrapped_response,
                   [wrapped_request, wrapped_response, done](const Status& s) {
-                    done(s);
-                    delete wrapped_request;
-                    delete wrapped_response;
-                  });
+      done(s);
+      delete wrapped_request;
+      delete wrapped_response;
+    });
   }
 
   // Returns a request object for use in calls to
@@ -99,26 +97,20 @@ class WorkerInterface {
                                CleanupAllResponse* response,
                                StatusCallback done) = 0;
 
-  //virtual void RecvTensorAsync(CallOptions* opts,
+  // virtual void RecvTensorAsync(CallOptions* opts,
   //                             const RecvTensorRequest* request,
   //                             TensorResponse* response,
   //                             StatusCallback done) = 0;
 
-
-
-  virtual void RecvTensorAsync(WorkerEnv* env,
-                               CallOptions* opts,
+  virtual void RecvTensorAsync(WorkerEnv* env, CallOptions* opts,
                                const RecvTensorRequest* request,
                                TensorResponse* response,
                                StatusCallback done) = 0;
- 
+
   virtual void SendTensorSync(const WorkerEnv* env,
                               const Rendezvous::ParsedKey& key,
-                              const Rendezvous::Args &args,
-                              const Tensor& val,
-                              const bool is_dead,
-                              Status &s) = 0;
-
+                              const Rendezvous::Args& args, const Tensor& val,
+                              const bool is_dead, Status& s) = 0;
 
   virtual void LoggingAsync(const LoggingRequest* request,
                             LoggingResponse* response, StatusCallback done) = 0;

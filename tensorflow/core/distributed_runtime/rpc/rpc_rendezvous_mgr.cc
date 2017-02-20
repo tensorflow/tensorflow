@@ -48,11 +48,8 @@ class RpcRemoteRendezvous : public BaseRemoteRendezvous {
                            DoneCallback done) override;
 
   void SendToRemote(const Rendezvous::ParsedKey& parsed,
-                    const Rendezvous::Args& args,
-                    const Tensor& val,
-                    const bool is_dead,
-                    Status &s) override;
- 
+                    const Rendezvous::Args& args, const Tensor& val,
+                    const bool is_dead, Status& s) override;
 
  private:
   ~RpcRemoteRendezvous() override {}
@@ -136,17 +133,16 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
   void StartRTCall(std::function<void()> recv_done) {
     resp_.InitAlloc(dst_device_, alloc_attrs_);
     using namespace std::placeholders;
-    StatusCallback cb = std::bind(
-        [this](std::function<void()> recv_done,
-               // Begin unbound arguments.
-               const Status& s) {
-          if (!s.ok()) {
-            mutex_lock l(mu_);
-            status_.Update(s);
-          }
-          recv_done();
-        },
-        std::move(recv_done), _1);
+    StatusCallback cb = std::bind([this](std::function<void()> recv_done,
+                                         // Begin unbound arguments.
+                                         const Status& s) {
+                                    if (!s.ok()) {
+                                      mutex_lock l(mu_);
+                                      status_.Update(s);
+                                    }
+                                    recv_done();
+                                  },
+                                  std::move(recv_done), _1);
     wi_->RecvTensorAsync(env_, &opts_, &req_, &resp_, std::move(cb));
   }
 
@@ -161,7 +157,6 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
   Rendezvous::Args recv_args_;
   Rendezvous::DoneCallback done_;
   WorkerEnv* env_;
-
 
   mutable mutex mu_;
   Status status_ GUARDED_BY(mu_);
@@ -280,33 +275,28 @@ class WorkerFreeListCache : public WorkerCacheInterface {
   std::unordered_map<string, WorkerState> workers_ GUARDED_BY(mu_);
 };
 
+void RpcRemoteRendezvous::SendToRemote(const Rendezvous::ParsedKey& key,
+                                       const Rendezvous::Args& args,
+                                       const Tensor& val, const bool is_dead,
+                                       Status& s) {
+  //  (JB) I took the call and rwi calls from the original RecvFromRemoteAsync
+  //  code below. Note that I map dst_device to src_worker_ and src_rel_device_
+  //  in order not to have to modify the original class
 
-void RpcRemoteRendezvous::SendToRemote(
-           const Rendezvous::ParsedKey& key, const Rendezvous::Args& args,
-           const Tensor& val,  const bool is_dead, Status &s)
-{
-    //  (JB) I took the call and rwi calls from the original RecvFromRemoteAsync
-    //  code below. Note that I map dst_device to src_worker_ and src_rel_device_
-    //  in order not to have to modify the original class
-   
-    // Prepare a RecvTensor call that can handle being aborted.
-    RpcRecvTensorCall* call = get_call_freelist()->New();
+  // Prepare a RecvTensor call that can handle being aborted.
+  RpcRecvTensorCall* call = get_call_freelist()->New();
 
-    // key.dst_device identifies the remote device.
-    if (!DeviceNameUtils::SplitDeviceName(key.dst_device, &call->src_worker_,
-                                          &call->src_rel_device_)) {
-        s = errors::Internal(key.dst_device, " is invalid remote source device.");
-    }
-    WorkerInterface* rwi = cache_->CreateWorker(call->src_worker_);
-    rwi->SendTensorSync(env_,key, args, val, is_dead, s);
-   
-    //TODO: Should we do this or not? We did not call Ref()    
-    //if (args.device_context) args.device_context->Unref();
+  // key.dst_device identifies the remote device.
+  if (!DeviceNameUtils::SplitDeviceName(key.dst_device, &call->src_worker_,
+                                        &call->src_rel_device_)) {
+    s = errors::Internal(key.dst_device, " is invalid remote source device.");
+  }
+  WorkerInterface* rwi = cache_->CreateWorker(call->src_worker_);
+  rwi->SendTensorSync(env_, key, args, val, is_dead, s);
+
+  // TODO: Should we do this or not? We did not call Ref()
+  // if (args.device_context) args.device_context->Unref();
 }
-
-
-
-
 
 void RpcRemoteRendezvous::RecvFromRemoteAsync(
     const Rendezvous::ParsedKey& parsed, const Rendezvous::Args& recv_args,
@@ -347,8 +337,8 @@ void RpcRemoteRendezvous::RecvFromRemoteAsync(
   }
 
   WorkerEnv* env2 = const_cast<WorkerEnv*>(env_);
-  call->Init(env2, rwi, step_id_, parsed.FullKey(), recv_args.alloc_attrs, dst_device,
-             recv_args, std::move(done));
+  call->Init(env2, rwi, step_id_, parsed.FullKey(), recv_args.alloc_attrs,
+             dst_device, recv_args, std::move(done));
 
   // Record "call" in active_ so that it can be aborted cleanly.
   RegisterCall(call);

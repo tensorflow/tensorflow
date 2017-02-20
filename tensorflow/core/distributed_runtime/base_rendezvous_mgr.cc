@@ -65,15 +65,16 @@ void BaseRendezvousMgr::RecvLocalAsync(int64 step_id,
                                        Rendezvous::DoneCallback done) {
   BaseRemoteRendezvous* rendez = FindOrCreate(step_id);
   using namespace std::placeholders;
-  Rendezvous::DoneCallback done_cb = std::bind(
-      [rendez](Rendezvous::DoneCallback done,
-               // Begin unbound arguments.
-               const Status& s, const Rendezvous::Args& send_args,
-               const Rendezvous::Args& recv_args, const Tensor& v, bool dead) {
-        rendez->Unref();
-        done(s, send_args, recv_args, v, dead);
-      },
-      std::move(done), _1, _2, _3, _4, _5);
+  Rendezvous::DoneCallback done_cb =
+      std::bind([rendez](Rendezvous::DoneCallback done,
+                         // Begin unbound arguments.
+                         const Status& s, const Rendezvous::Args& send_args,
+                         const Rendezvous::Args& recv_args, const Tensor& v,
+                         bool dead) {
+                  rendez->Unref();
+                  done(s, send_args, recv_args, v, dead);
+                },
+                std::move(done), _1, _2, _3, _4, _5);
   rendez->RecvLocalAsync(parsed, std::move(done_cb));
 }
 
@@ -87,11 +88,11 @@ Status BaseRendezvousMgr::RecvLocal(int64 step_id,
                                           const Rendezvous::Args& send_args,
                                           const Rendezvous::Args& recv_args,
                                           const Tensor& v, const bool dead) {
-                   ret = s;
-                   *val = v;
-                   *is_dead = dead;
-                   n.Notify();
-                 });
+    ret = s;
+    *val = v;
+    *is_dead = dead;
+    n.Notify();
+  });
   n.WaitForNotification();
   return ret;
 }
@@ -157,32 +158,26 @@ Status BaseRemoteRendezvous::Send(const Rendezvous::ParsedKey& parsed,
     return errors::InvalidArgument("Invalid rendezvous key (src): ",
                                    parsed.FullKey(), " @ ", env_->worker_name);
   }
-    
 
-
-  //Only test the first time we enter this function on this thread
+  // Only test the first time we enter this function on this thread
   static int mpiDisabled = -1;
-  if(mpiDisabled < 0) {
-       const char* env = getenv("MPI_PATH_DISABLED");
-       if(env && env[0] == '1') mpiDisabled = 1;
+  if (mpiDisabled < 0) {
+    const char* env = getenv("MPI_PATH_DISABLED");
+    if (env && env[0] == '1') mpiDisabled = 1;
   }
 
-
-  //If the src_device and dst_device are different then use the 
-  //SendToRemote function. Otherwise use the original code path
+  // If the src_device and dst_device are different then use the
+  // SendToRemote function. Otherwise use the original code path
   bool isSrc = IsLocalDevice(*env_, parsed.src_device);
   bool isDst = IsLocalDevice(*env_, parsed.dst_device);
-  bool same  = isSrc && isDst;
-  if(!same && mpiDisabled != 1)
-  {
-      Status s;
-      SendToRemote(parsed, args, val, is_dead, s);
-      return s;
-  }
-  else
-  {
-      // Buffers "val" and "device_context" in local_.
-      return local_->Send(parsed, args, val, is_dead);
+  bool same = isSrc && isDst;
+  if (!same && mpiDisabled != 1) {
+    Status s;
+    SendToRemote(parsed, args, val, is_dead, s);
+    return s;
+  } else {
+    // Buffers "val" and "device_context" in local_.
+    return local_->Send(parsed, args, val, is_dead);
   }
 }
 
@@ -273,25 +268,25 @@ void BaseRemoteRendezvous::RecvAsync(const ParsedKey& parsed,
   // Are src and dst in the same worker?
   if (IsSameWorker(parsed.src, parsed.dst)) {
     // Recv the tensor from local_.
-    local_->RecvAsync(
-        parsed, recv_args,
-        [this, parsed, done](
-            const Status& status, const Rendezvous::Args& send_args,
-            const Rendezvous::Args& recv_args, const Tensor& in, bool is_dead) {
-          Tensor* out = new Tensor;
-          StatusCallback final_callback = [done, send_args, recv_args, out,
-                                           is_dead](const Status& s) {
-            done(s, send_args, recv_args, *out, is_dead);
-            delete out;
-          };
+    local_->RecvAsync(parsed, recv_args,
+                      [this, parsed, done](const Status& status,
+                                           const Rendezvous::Args& send_args,
+                                           const Rendezvous::Args& recv_args,
+                                           const Tensor& in, bool is_dead) {
+      Tensor* out = new Tensor;
+      StatusCallback final_callback =
+          [done, send_args, recv_args, out, is_dead](const Status& s) {
+        done(s, send_args, recv_args, *out, is_dead);
+        delete out;
+      };
 
-          if (status.ok()) {
-            SameWorkerRecvDone(parsed, send_args, recv_args, in, out,
-                               std::move(final_callback));
-          } else {
-            final_callback(status);
-          }
-        });
+      if (status.ok()) {
+        SameWorkerRecvDone(parsed, send_args, recv_args, in, out,
+                           std::move(final_callback));
+      } else {
+        final_callback(status);
+      }
+    });
     return;
   } else {
     RecvFromRemoteAsync(parsed, recv_args, std::move(done));
