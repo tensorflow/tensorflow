@@ -7,10 +7,9 @@ Note: Functions taking `Tensor` arguments can also take anything accepted by
 
 [TOC]
 
-## Hashing
+Operations for working with string Tensors.
 
-String hashing ops take a string input tensor and map each element to an
-integer.
+See the @{$python/string_ops} guide.
 
 - - -
 
@@ -97,12 +96,6 @@ This functionality will be deprecated and it's recommended to use
   A Tensor of the same shape as the input `string_tensor`.
 
 
-
-## Joining
-
-String joining ops concatenate elements of input string tensors to produce a new
-string tensor.
-
 - - -
 
 ### `tf.reduce_join(inputs, axis=None, keep_dims=False, separator='', name=None, reduction_indices=None)` {#reduce_join}
@@ -112,10 +105,7 @@ Joins a string Tensor across the given dimensions.
 Computes the string join across dimensions in the given string Tensor of shape
 `[d_0, d_1, ..., d_n-1]`.  Returns a new Tensor created by joining the input
 strings with the given separator (default: empty string).  Negative indices are
-counted backwards from the end, with `-1` being equivalent to `n - 1`.  Passing
-an empty `axis` joins all strings in linear index order and outputs
-a scalar string.
-
+counted backwards from the end, with `-1` being equivalent to `n - 1`.
 
 For example:
 
@@ -178,9 +168,6 @@ with the given separator (default is an empty separator).
 
   A `Tensor` of type `string`.
 
-
-
-## Splitting
 
 - - -
 
@@ -322,9 +309,6 @@ output = [b'hir', b'ee', b'n"]
 
   A `Tensor` of type `string`. Tensor of substrings
 
-
-
-## Conversion
 
 - - -
 

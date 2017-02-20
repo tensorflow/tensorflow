@@ -22,7 +22,6 @@ from __future__ import print_function
 from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
-from tensorflow.contrib.learn.python.learn.estimators import model_fn
 from tensorflow.contrib.session_bundle import exporter
 from tensorflow.contrib.session_bundle import gc
 from tensorflow.python.client import session as tf_session
@@ -66,13 +65,13 @@ def _export_graph(graph, saver, checkpoint_path, export_dir,
   with graph.as_default():
     with tf_session.Session('') as session:
       variables.local_variables_initializer()
-      data_flow_ops.initialize_all_tables()
+      data_flow_ops.tables_initializer()
       saver.restore(session, checkpoint_path)
 
       export = exporter.Exporter(saver)
       export.init(init_op=control_flow_ops.group(
           variables.local_variables_initializer(),
-          data_flow_ops.initialize_all_tables()),
+          data_flow_ops.tables_initializer()),
                   default_graph_signature=default_graph_signature,
                   named_graph_signatures=named_graph_signatures,
                   assets_collection=ops.get_collection(
@@ -277,13 +276,16 @@ def _export_estimator(estimator,
                       exports_to_keep,
                       input_feature_key=None,
                       use_deprecated_input_fn=True,
-                      prediction_key=None):
+                      prediction_key=None,
+                      checkpoint_path=None):
   if use_deprecated_input_fn:
     input_fn = input_fn or _default_input_fn
   elif input_fn is None:
     raise ValueError('input_fn must be defined.')
 
-  checkpoint_path = tf_saver.latest_checkpoint(estimator._model_dir)
+  # If checkpoint_path is specified, use the specified checkpoint path.
+  checkpoint_path = (checkpoint_path or
+                     tf_saver.latest_checkpoint(estimator._model_dir))
   with ops.Graph().as_default() as g:
     contrib_variables.create_global_step(g)
 
@@ -301,18 +303,7 @@ def _export_estimator(estimator,
     if (not features) and (examples is None):
       raise ValueError('Either features or examples must be defined.')
 
-    # The default return type of _get_predict_ops is ModelFnOps. But there are
-    # some subclasses of tf.contrib.learn.Estimator which override this
-    # method and use the legacy signature, namely _get_predict_ops returns a
-    # `predictions` Tensor or dict or Tensors. The following else-statement
-    # code covers these cases, but will soon be deleted after the subclasses
-    # are updated.
-    # TODO(b/32664904): Update subclasses and delete the else-statement.
-    infer_ops = estimator._get_predict_ops(features)
-    if isinstance(infer_ops, model_fn.ModelFnOps):  # Default signature
-      predictions = infer_ops.predictions
-    else:  # Legacy signature
-      predictions = infer_ops
+    predictions = estimator._get_predict_ops(features).predictions
 
     if prediction_key is not None:
       predictions = predictions[prediction_key]

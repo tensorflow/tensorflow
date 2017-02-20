@@ -12,55 +12,66 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Module for constructing RNN Cells and additional RNN operations.
-
-## Base interface for all RNN Cells
+"""RNN Cells and additional RNN operations. See @{$python/contrib.rnn} guide.
 
 @@RNNCell
-
-## RNN Cells for use with TensorFlow's core RNN methods
-
 @@BasicRNNCell
 @@BasicLSTMCell
 @@GRUCell
 @@LSTMCell
-
-## Classes storing split `RNNCell` state
-
+@@LayerNormBasicLSTMCell
 @@LSTMStateTuple
-
-## RNN Cell wrappers (RNNCells that wrap other RNNCells)
-
 @@MultiRNNCell
+@@LSTMBlockWrapper
 @@DropoutWrapper
 @@EmbeddingWrapper
 @@InputProjectionWrapper
 @@OutputProjectionWrapper
-
-### Block RNNCells
+@@DeviceWrapper
+@@ResidualWrapper
 @@LSTMBlockCell
 @@GRUBlockCell
-
-### Fused RNNCells
 @@FusedRNNCell
 @@FusedRNNCellAdaptor
 @@TimeReversedFusedRNN
 @@LSTMBlockFusedCell
-
-### LSTM-like cells
 @@CoupledInputForgetGateLSTMCell
 @@TimeFreqLSTMCell
 @@GridLSTMCell
+@@NASCell
 
 ### RNNCell wrappers
 @@AttentionCellWrapper
+@@CompiledWrapper
+@@static_rnn
+@@static_state_saving_rnn
+@@static_bidirectional_rnn
+@@stack_bidirectional_dynamic_rnn
 """
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=unused-import,wildcard-import, line-too-long
+from tensorflow.contrib.rnn.python.ops.core_rnn import static_bidirectional_rnn
+from tensorflow.contrib.rnn.python.ops.core_rnn import static_rnn
+from tensorflow.contrib.rnn.python.ops.core_rnn import static_state_saving_rnn
+
+from tensorflow.contrib.rnn.python.ops.core_rnn_cell import BasicLSTMCell
+from tensorflow.contrib.rnn.python.ops.core_rnn_cell import BasicRNNCell
+from tensorflow.contrib.rnn.python.ops.core_rnn_cell import DeviceWrapper
+from tensorflow.contrib.rnn.python.ops.core_rnn_cell import DropoutWrapper
+from tensorflow.contrib.rnn.python.ops.core_rnn_cell import EmbeddingWrapper
+from tensorflow.contrib.rnn.python.ops.core_rnn_cell import GRUCell
+from tensorflow.contrib.rnn.python.ops.core_rnn_cell import InputProjectionWrapper
+from tensorflow.contrib.rnn.python.ops.core_rnn_cell import LSTMCell
+from tensorflow.contrib.rnn.python.ops.core_rnn_cell import LSTMStateTuple
+from tensorflow.contrib.rnn.python.ops.core_rnn_cell import MultiRNNCell
+from tensorflow.contrib.rnn.python.ops.core_rnn_cell import OutputProjectionWrapper
+from tensorflow.contrib.rnn.python.ops.core_rnn_cell import ResidualWrapper
+from tensorflow.contrib.rnn.python.ops.core_rnn_cell import RNNCell
+
+# pylint: disable=unused-import,wildcard-import,line-too-long
 from tensorflow.contrib.rnn.python.ops.fused_rnn_cell import *
 from tensorflow.contrib.rnn.python.ops.gru_ops import *
 from tensorflow.contrib.rnn.python.ops.lstm_ops import *
@@ -68,19 +79,6 @@ from tensorflow.contrib.rnn.python.ops.rnn import *
 from tensorflow.contrib.rnn.python.ops.rnn_cell import *
 # pylint: enable=unused-import,wildcard-import,line-too-long
 
-# Provides the links to core rnn and rnn_cell. Implementation will be moved in
-# to this package instead of links as tracked in b/33235120.
-from tensorflow.python.ops.rnn import bidirectional_rnn as static_bidirectional_rnn
-from tensorflow.python.ops.rnn import rnn as static_rnn
-from tensorflow.python.ops.rnn import state_saving_rnn as static_state_saving_rnn
-from tensorflow.python.ops.rnn_cell import BasicLSTMCell
-from tensorflow.python.ops.rnn_cell import BasicRNNCell
-from tensorflow.python.ops.rnn_cell import DropoutWrapper
-from tensorflow.python.ops.rnn_cell import EmbeddingWrapper
-from tensorflow.python.ops.rnn_cell import GRUCell
-from tensorflow.python.ops.rnn_cell import InputProjectionWrapper
-from tensorflow.python.ops.rnn_cell import LSTMCell
-from tensorflow.python.ops.rnn_cell import LSTMStateTuple
-from tensorflow.python.ops.rnn_cell import MultiRNNCell
-from tensorflow.python.ops.rnn_cell import OutputProjectionWrapper
-from tensorflow.python.ops.rnn_cell import RNNCell
+from tensorflow.python.util.all_util import remove_undocumented
+remove_undocumented(__name__, ['core_rnn_cell'])
+

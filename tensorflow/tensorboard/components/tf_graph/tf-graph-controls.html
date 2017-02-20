@@ -220,6 +220,21 @@ span.counter {
   font-size: 13px;
   color: gray;
 }
+
+.runs paper-item {
+  --paper-item: {
+    white-space: nowrap;
+  }
+}
+
+table.control-holder {
+  border: 0;
+  border-collapse: collapse;
+}
+
+table.tf-graph-controls td.input-element-table-data {
+  padding: 0 0 0 20px;
+}
 </style>
 <svg width="0" height="0">
   <defs>
@@ -251,7 +266,7 @@ span.counter {
     <a href="#" id="graphdownload" class="title" download="graph.png">
     </a>
   </div>
-  <div class="control-holder">
+  <div class="control-holder runs">
     <div class="title">Run <span class="counter">([[datasets.length]])</span></div>
     <paper-dropdown-menu no-label-float no-animations noink class="run-dropdown">
       <paper-menu id="select" class="dropdown-content" selected="{{selectedDataset}}">
@@ -284,14 +299,22 @@ span.counter {
       </div>
     </div>
   </template>
-  <div class="control-holder">
-    <div class="title">
-      Trace inputs
-    </div>
-    <paper-toggle-button id="trace-inputs">
-
-    </paper-toggle-button>
-  </div>
+  <table class="control-holder">
+    <tr>
+      <td class="title">Trace inputs</td>
+      <td class="input-element-table-data">
+        <paper-toggle-button id="trace-inputs"></paper-toggle-button>
+      </td>
+    </tr>
+    <template is="dom-if" if="[[healthPillsFeatureEnabled]]">
+      <tr>
+        <td class="title">Show health pills</td>
+        <td class="input-element-table-data">
+          <paper-toggle-button checked="{{healthPillsToggledOn}}"></paper-toggle-button>
+        </td>
+      </tr>
+    </template>
+  </table>
   <div class="control-holder">
     <div class="title">Color</div>
     <paper-radio-group selected="{{colorBy}}">
@@ -579,7 +602,15 @@ Polymer({
     showUploadButton: {
       type: Boolean,
       value: true
-    }
+    },
+    // This stores whether the feature for showing health pills is enabled in the first place.
+    healthPillsFeatureEnabled: Boolean,
+    // This stores whether to show health pills. Only relevant if healthPillsFeatureEnabled. The
+    // user can toggle this value.
+    healthPillsToggledOn: {
+      type: Boolean,
+      notify: true,
+    },
   },
   listeners: {
     'trace-inputs.change': '_traceInputToggleChanged'

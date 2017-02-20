@@ -53,29 +53,29 @@ class VariableOp : public OpKernel {
     dtype_ = RemoveRefType(context->output_type(0));
   }
 
-  ~VariableOp() override {
-    if (var_) var_->Unref();
-  }
-
   void Compute(OpKernelContext* ctx) override {
     mutex_lock l(init_mu_);
-    if (var_ == nullptr) {
-      OP_REQUIRES_OK(ctx, cinfo_.Init(ctx->resource_manager(), def(),
-                                      true /* use name() */));
-      auto creator = [this](Var** var) {
-        *var = new Var(dtype_);
-        (*var)->tensor()->set_shape(shape_);
-        return Status::OK();
-      };
-      OP_REQUIRES_OK(ctx,
-                     cinfo_.resource_manager()->LookupOrCreate<Var>(
-                         cinfo_.container(), cinfo_.name(), &var_, creator));
+    if (!initialized_) {
+      OP_REQUIRES_OK(
+          ctx,
+          cinfo_.Init(ctx->resource_manager(), def(), true /* use name() */));
+      initialized_ = true;
     }
+    auto creator = [this](Var** var) {
+      *var = new Var(dtype_);
+      (*var)->tensor()->set_shape(shape_);
+      return Status::OK();
+    };
+    Var* var;
+    OP_REQUIRES_OK(ctx,
+                   cinfo_.resource_manager()->LookupOrCreate<Var>(
+                       cinfo_.container(), cinfo_.name(), &var, creator));
     // Output a reference to our tensor, so it may be updated.
     //
-    // As long as *this is alive, the ref we return here is valid
-    // because *this owns a ref on var_.
-    ctx->set_output_ref(0, var_->mu(), var_->tensor());
+    // As long as the resource manager hasn't been cleared the ref we return
+    // here is valid because it owns a ref on var.
+    ctx->set_output_ref(0, var->mu(), var->tensor());
+    var->Unref();
   }
 
  private:
@@ -84,7 +84,7 @@ class VariableOp : public OpKernel {
 
   mutex init_mu_;
   ContainerInfo cinfo_ GUARDED_BY(init_mu_);
-  Var* var_ GUARDED_BY(init_mu_) = nullptr;
+  bool initialized_ GUARDED_BY(init_mu_){false};
 
   TF_DISALLOW_COPY_AND_ASSIGN(VariableOp);
 };

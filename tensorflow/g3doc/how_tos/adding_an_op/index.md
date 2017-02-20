@@ -177,7 +177,7 @@ tf_custom_op_library(
 Run the following command to build `zero_out.so`.
 
 ```bash
-$ bazel build -c opt //tensorflow/core/user_ops:zero_out.so
+$ bazel build --config opt //tensorflow/core/user_ops:zero_out.so
 ```
 
 > Note:

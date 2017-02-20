@@ -56,10 +56,11 @@ TEST(BenchmarkModelTest, InitializeAndRun) {
       WriteStringToFile(Env::Default(), filename_pb, graph_def_serialized));
 
   std::unique_ptr<Session> session;
+  std::unique_ptr<GraphDef> loaded_graph_def;
+  TF_ASSERT_OK(benchmark_model::InitializeSession(1, filename_pb, &session,
+                                                  &loaded_graph_def));
   std::unique_ptr<StatSummarizer> stats;
-  TF_ASSERT_OK(
-      benchmark_model::InitializeSession(1, filename_pb, &session, &stats));
-
+  stats.reset(new tensorflow::StatSummarizer(*(loaded_graph_def.get())));
   TF_ASSERT_OK(benchmark_model::TimeMultipleRuns(
       0.0, 10, {input}, {output_name}, session.get(), stats.get()));
 }

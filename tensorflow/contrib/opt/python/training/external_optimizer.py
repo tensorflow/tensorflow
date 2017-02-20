@@ -203,7 +203,7 @@ class ExternalOptimizerInterface(object):
       return array_ops.reshape(tensors[0], [-1])
     else:
       flattened = [array_ops.reshape(tensor, [-1]) for tensor in tensors]
-      return array_ops.concat_v2(flattened, 0)
+      return array_ops.concat(flattened, 0)
 
   def _make_eval_func(self, tensors, session, feed_dict, fetches,
                       callback=None):

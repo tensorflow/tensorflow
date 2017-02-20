@@ -8,6 +8,8 @@ exports_files(["LICENSE"])
 
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 py_library(
     name = "sdca_ops_py",
     srcs = [
@@ -19,6 +21,7 @@ py_library(
     deps = [
         ":sharded_mutable_dense_hashtable_py",
         ":sparse_feature_column_py",
+        "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -27,6 +30,7 @@ py_library(
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:sdca_ops_gen",
         "//tensorflow/python:state_ops",
+        "//tensorflow/python:summary",
         "//tensorflow/python:variables",
     ],
 )
@@ -39,10 +43,17 @@ py_test(
     deps = [
         ":sdca_ops_py",
         ":sparse_feature_column_py",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:parsing_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:sdca_ops_gen",
+        "//tensorflow/python:variables",
     ],
 )
 
@@ -67,7 +78,7 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":sharded_mutable_dense_hashtable_py",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
@@ -87,7 +98,7 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":sparse_feature_column_py",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],

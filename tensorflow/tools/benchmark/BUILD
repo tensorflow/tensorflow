@@ -78,7 +78,6 @@ cc_binary(
             "-lm",
             "-z defs",
             "-s",
-            "-Wl,--icf=all",  # Identical Code Folding
             "-Wl,--exclude-libs,ALL",  # Exclude syms in all libs from auto export
         ],
         "//conditions:default": [],

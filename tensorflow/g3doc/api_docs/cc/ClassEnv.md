@@ -184,6 +184,12 @@ Renames file src to target. If target already exists, it will be replaced.
 
 
 
+#### `string tensorflow::Env::GetExecutablePath()` {#string_tensorflow_Env_GetExecutablePath}
+
+Returns the absolute path of the current executable. It resolves symlinks if there is any.
+
+
+
 #### `virtual uint64 tensorflow::Env::NowMicros()=0` {#virtual_uint64_tensorflow_Env_NowMicros}
 
 Returns the number of micro-seconds since the Unix epoch.

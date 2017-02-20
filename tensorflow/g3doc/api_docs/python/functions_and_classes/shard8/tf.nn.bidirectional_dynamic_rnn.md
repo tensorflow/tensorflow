@@ -73,7 +73,7 @@ given.
       It returns a tuple instead of a single concatenated `Tensor`, unlike
       in the `bidirectional_rnn`. If the concatenated one is preferred,
       the forward and backward outputs can be concatenated as
-      `tf.concat_v2(outputs, 2)`.
+      `tf.concat(outputs, 2)`.
 *  <b>`output_states`</b>: A tuple (output_state_fw, output_state_bw) containing
       the forward and the backward final states of bidirectional rnn.
 

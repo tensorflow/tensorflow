@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.rnn.python.ops import core_rnn as contrib_rnn
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import rnn
 from tensorflow.python.ops import variable_scope as vs
@@ -105,7 +106,7 @@ def stack_bidirectional_rnn(cells_fw,
         initial_state_bw = initial_states_bw[i]
 
       with vs.variable_scope("cell_%d" % i) as cell_scope:
-        prev_layer, state_fw, state_bw = rnn.bidirectional_rnn(
+        prev_layer, state_fw, state_bw = contrib_rnn.static_bidirectional_rnn(
             cell_fw,
             cell_bw,
             prev_layer,
@@ -212,7 +213,7 @@ def stack_bidirectional_dynamic_rnn(cells_fw,
             sequence_length=sequence_length,
             dtype=dtype)
         # Concat the outputs to create the new input.
-        prev_layer = array_ops.concat_v2(outputs, 2)
+        prev_layer = array_ops.concat(outputs, 2)
       states_fw.append(state_fw)
       states_bw.append(state_bw)
 

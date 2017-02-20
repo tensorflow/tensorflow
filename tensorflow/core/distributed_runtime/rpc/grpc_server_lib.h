@@ -32,6 +32,7 @@ limitations under the License.
 
 namespace tensorflow {
 
+class GrpcWorker;
 class Master;
 
 class GrpcServer : public ServerInterface {
@@ -61,6 +62,8 @@ class GrpcServer : public ServerInterface {
 
   virtual ChannelCreationFunction GetChannelCreationFunction(
       const ServerDef& server_def) const;
+
+  virtual std::unique_ptr<Master> CreateMaster(MasterEnv* master_env);
 
   // Returns the port to which this server is bound.
   // This method may only be called after `this->Init()` returns successfully.
@@ -99,6 +102,7 @@ class GrpcServer : public ServerInterface {
 
   // Implementation of a TensorFlow worker, and RPC polling thread.
   WorkerEnv worker_env_;
+  std::unique_ptr<GrpcWorker> worker_impl_;
   AsyncServiceInterface* worker_service_ = nullptr;
   std::unique_ptr<Thread> worker_thread_ GUARDED_BY(mu_);
 

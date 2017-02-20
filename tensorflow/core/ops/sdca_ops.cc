@@ -26,11 +26,12 @@ using shape_inference::InferenceContext;
 static Status ApplySdcaOptimizerShapeFn(InferenceContext* c) {
   std::vector<ShapeHandle> sparse_handles;
   if (c->input("sparse_weights", &sparse_handles).ok()) {
-    c->set_output("out_delta_sparse_weights", sparse_handles);
+    TF_RETURN_IF_ERROR(
+        c->set_output("out_delta_sparse_weights", sparse_handles));
   }
   std::vector<ShapeHandle> dense_handles;
   if (c->input("dense_weights", &dense_handles).ok()) {
-    c->set_output("out_delta_dense_weights", dense_handles);
+    TF_RETURN_IF_ERROR(c->set_output("out_delta_dense_weights", dense_handles));
   }
   return c->set_output(
       "out_example_state_data",

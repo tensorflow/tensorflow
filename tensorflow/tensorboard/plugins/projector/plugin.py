@@ -21,6 +21,7 @@ from __future__ import print_function
 import imghdr
 import os
 import numpy as np
+from werkzeug import wrappers
 
 from google.protobuf import json_format
 from google.protobuf import text_format
@@ -32,7 +33,11 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.pywrap_tensorflow import NewCheckpointReader
 from tensorflow.python.training.saver import checkpoint_exists
 from tensorflow.python.training.saver import latest_checkpoint
+from tensorflow.tensorboard.lib.python.http_util import Respond
 from tensorflow.tensorboard.plugins.base_plugin import TBPlugin
+
+# The prefix of routes provided by this plugin.
+PLUGIN_PREFIX_ROUTE = 'projector'
 
 # HTTP routes.
 CONFIG_ROUTE = '/info'
@@ -56,7 +61,7 @@ def _read_tensor_file(fpath):
     tensor = []
     for line in f:
       if line:
-        tensor.append(map(float, line.rstrip('\n').split('\t')))
+        tensor.append(list(map(float, line.rstrip('\n').split('\t'))))
   return np.array(tensor, dtype='float32')
 
 
@@ -67,35 +72,31 @@ def _latest_checkpoints_changed(configs, run_path_pairs):
       config = ProjectorConfig()
       config_fpath = os.path.join(logdir, PROJECTOR_FILENAME)
       if file_io.file_exists(config_fpath):
-        file_content = file_io.read_file_to_string(config_fpath).decode('utf-8')
+        file_content = file_io.read_file_to_string(config_fpath)
         text_format.Merge(file_content, config)
     else:
       config = configs[run_name]
 
     # See if you can find a checkpoint file in the logdir.
-    ckpt_path = latest_checkpoint(logdir)
+    ckpt_path = _find_latest_checkpoint(logdir)
     if not ckpt_path:
-      # See if you can find a checkpoint in the parent of logdir.
-      ckpt_path = latest_checkpoint(os.path.join(logdir, os.pardir))
-      if not ckpt_path:
-        continue
+      continue
     if config.model_checkpoint_path != ckpt_path:
       return True
   return False
 
 
-def _parse_positive_int_param(request, query_params, param_name):
+def _parse_positive_int_param(request, param_name):
   """Parses and asserts a positive (>0) integer query parameter.
 
   Args:
-    request: The http request object.
-    query_params: Dictionary of query parameters.
+    request: The Werkzeug Request object
     param_name: Name of the parameter.
 
   Returns:
-    None if parameter not present. -1 if parameter is not a positive integer.
+    Param, or None, or -1 if parameter is not a positive integer.
   """
-  param = query_params.get(param_name)
+  param = request.args.get(param_name)
   if not param:
     return None
   try:
@@ -104,8 +105,6 @@ def _parse_positive_int_param(request, query_params, param_name):
       raise ValueError()
     return param
   except ValueError:
-    request.respond('query parameter "%s" must be integer > 0' % param_name,
-                    'text/plain', 400)
     return -1
 
 
@@ -120,7 +119,7 @@ class ProjectorPlugin(TBPlugin):
     self._configs = None
     self.old_num_run_paths = None
 
-  def get_plugin_handlers(self, run_paths, logdir):
+  def get_plugin_apps(self, run_paths, logdir):
     self.run_paths = run_paths
     self.logdir = logdir
     self._handlers = {
@@ -206,7 +205,7 @@ class ProjectorPlugin(TBPlugin):
       config = ProjectorConfig()
       config_fpath = os.path.join(logdir, PROJECTOR_FILENAME)
       if file_io.file_exists(config_fpath):
-        file_content = file_io.read_file_to_string(config_fpath).decode('utf-8')
+        file_content = file_io.read_file_to_string(config_fpath)
         text_format.Merge(file_content, config)
 
       has_tensor_files = False
@@ -217,12 +216,9 @@ class ProjectorPlugin(TBPlugin):
 
       if not config.model_checkpoint_path:
         # See if you can find a checkpoint file in the logdir.
-        ckpt_path = latest_checkpoint(logdir)
-        if not ckpt_path:
-          # Or in the parent of logdir.
-          ckpt_path = latest_checkpoint(os.path.join(logdir, os.pardir))
-          if not ckpt_path and not has_tensor_files:
-            continue
+        ckpt_path = _find_latest_checkpoint(logdir)
+        if not ckpt_path and not has_tensor_files:
+          continue
         if ckpt_path:
           config.model_checkpoint_path = ckpt_path
 
@@ -277,51 +273,53 @@ class ProjectorPlugin(TBPlugin):
         return info
     return None
 
-  def _serve_runs(self, request, query_params):
+  @wrappers.Request.application
+  def _serve_runs(self, request):
     """Returns a list of runs that have embeddings."""
-    request.respond(list(self.configs.keys()), 'application/json')
+    return Respond(request, list(self.configs.keys()), 'application/json')
 
-  def _serve_config(self, request, query_params):
-    run = query_params.get('run')
+  @wrappers.Request.application
+  def _serve_config(self, request):
+    run = request.args.get('run')
     if run is None:
-      request.respond('query parameter "run" is required', 'text/plain', 400)
-      return
+      return Respond(request, 'query parameter "run" is required', 'text/plain',
+                     400)
     if run not in self.configs:
-      request.respond('Unknown run: %s' % run, 'text/plain', 400)
-      return
+      return Respond(request, 'Unknown run: %s' % run, 'text/plain', 400)
 
     config = self.configs[run]
-    request.respond(json_format.MessageToJson(config), 'application/json')
+    return Respond(request,
+                   json_format.MessageToJson(config), 'application/json')
 
-  def _serve_metadata(self, request, query_params):
-    run = query_params.get('run')
+  @wrappers.Request.application
+  def _serve_metadata(self, request):
+    run = request.args.get('run')
     if run is None:
-      request.respond('query parameter "run" is required', 'text/plain', 400)
-      return
+      return Respond(request, 'query parameter "run" is required', 'text/plain',
+                     400)
 
-    name = query_params.get('name')
+    name = request.args.get('name')
     if name is None:
-      request.respond('query parameter "name" is required', 'text/plain', 400)
-      return
+      return Respond(request, 'query parameter "name" is required',
+                     'text/plain', 400)
 
-    num_rows = _parse_positive_int_param(request, query_params, 'num_rows')
+    num_rows = _parse_positive_int_param(request, 'num_rows')
     if num_rows == -1:
-      return
+      return Respond(request, 'query parameter num_rows must be integer > 0',
+                     'text/plain', 400)
 
     if run not in self.configs:
-      request.respond('Unknown run: %s' % run, 'text/plain', 400)
-      return
+      return Respond(request, 'Unknown run: %s' % run, 'text/plain', 400)
 
     config = self.configs[run]
     fpath = self._get_metadata_file_for_tensor(name, config)
     if not fpath:
-      request.respond(
+      return Respond(
+          request,
           'No metadata file found for tensor %s in the config file %s' %
           (name, self.config_fpaths[run]), 'text/plain', 400)
-      return
     if not file_io.file_exists(fpath) or file_io.is_directory(fpath):
-      request.respond('%s is not a file' % fpath, 'text/plain', 400)
-      return
+      return Respond(request, '%s is not a file' % fpath, 'text/plain', 400)
 
     num_header_rows = 0
     with file_io.FileIO(fpath, 'r') as f:
@@ -334,26 +332,27 @@ class ProjectorPlugin(TBPlugin):
           num_header_rows = 1
         if num_rows and len(lines) >= num_rows + num_header_rows:
           break
-    request.respond(''.join(lines), 'text/plain')
+    return Respond(request, ''.join(lines), 'text/plain')
 
-  def _serve_tensor(self, request, query_params):
-    run = query_params.get('run')
+  @wrappers.Request.application
+  def _serve_tensor(self, request):
+    run = request.args.get('run')
     if run is None:
-      request.respond('query parameter "run" is required', 'text/plain', 400)
-      return
+      return Respond(request, 'query parameter "run" is required', 'text/plain',
+                     400)
 
-    name = query_params.get('name')
+    name = request.args.get('name')
     if name is None:
-      request.respond('query parameter "name" is required', 'text/plain', 400)
-      return
+      return Respond(request, 'query parameter "name" is required',
+                     'text/plain', 400)
 
-    num_rows = _parse_positive_int_param(request, query_params, 'num_rows')
+    num_rows = _parse_positive_int_param(request, 'num_rows')
     if num_rows == -1:
-      return
+      return Respond(request, 'query parameter num_rows must be integer > 0',
+                     'text/plain', 400)
 
     if run not in self.configs:
-      request.respond('Unknown run: %s' % run, 'text/plain', 400)
-      return
+      return Respond(request, 'Unknown run: %s' % run, 'text/plain', 400)
 
     reader = self._get_reader_for_run(run)
     config = self.configs[run]
@@ -362,25 +361,22 @@ class ProjectorPlugin(TBPlugin):
       # See if there is a tensor file in the config.
       embedding = self._get_embedding(name, config)
       if not embedding or not embedding.tensor_path:
-        request.respond('Tensor %s has no tensor_path in the config' %
-                        name, 'text/plain', 400)
-        return
+        return Respond(request,
+                       'Tensor %s has no tensor_path in the config' % name,
+                       'text/plain', 400)
       if not file_io.file_exists(embedding.tensor_path):
-        request.respond('Tensor file %s does not exist' %
-                        embedding.tensor_path, 'text/plain', 400)
-        return
+        return Respond(request,
+                       'Tensor file %s does not exist' % embedding.tensor_path,
+                       'text/plain', 400)
       tensor = _read_tensor_file(embedding.tensor_path)
     else:
       if not reader.has_tensor(name):
-        request.respond('Tensor %s not found in checkpoint dir %s' %
-                        (name, config.model_checkpoint_path),
-                        'text/plain', 400)
-        return
+        return Respond(request, 'Tensor %s not found in checkpoint dir %s' %
+                       (name, config.model_checkpoint_path), 'text/plain', 400)
       try:
         tensor = reader.get_tensor(name)
       except errors.InvalidArgumentError as e:
-        request.respond(str(e), 'text/plain', 400)
-        return
+        return Respond(request, str(e), 'text/plain', 400)
 
     if num_rows:
       tensor = tensor[:num_rows]
@@ -388,71 +384,80 @@ class ProjectorPlugin(TBPlugin):
     if tensor.dtype != 'float32':
       tensor = tensor.astype(dtype='float32', copy=False)
     data_bytes = tensor.tobytes()
-    request.respond(data_bytes, 'application/octet-stream')
+    return Respond(request, data_bytes, 'application/octet-stream')
 
-  def _serve_bookmarks(self, request, query_params):
-    run = query_params.get('run')
+  @wrappers.Request.application
+  def _serve_bookmarks(self, request):
+    run = request.args.get('run')
     if not run:
-      request.respond('query parameter "run" is required', 'text/plain', 400)
-      return
+      return Respond(request, 'query parameter "run" is required', 'text/plain',
+                     400)
 
-    name = query_params.get('name')
+    name = request.args.get('name')
     if name is None:
-      request.respond('query parameter "name" is required', 'text/plain', 400)
-      return
+      return Respond(request, 'query parameter "name" is required',
+                     'text/plain', 400)
 
     if run not in self.configs:
-      request.respond('Unknown run: %s' % run, 'text/plain', 400)
-      return
+      return Respond(request, 'Unknown run: %s' % run, 'text/plain', 400)
 
     config = self.configs[run]
     fpath = self._get_bookmarks_file_for_tensor(name, config)
     if not fpath:
-      request.respond(
+      return Respond(
+          request,
           'No bookmarks file found for tensor %s in the config file %s' %
           (name, self.config_fpaths[run]), 'text/plain', 400)
-      return
     if not file_io.file_exists(fpath) or file_io.is_directory(fpath):
-      request.respond('%s is not a file' % fpath, 'text/plain', 400)
-      return
+      return Respond(request, '%s is not a file' % fpath, 'text/plain', 400)
 
     bookmarks_json = None
-    with file_io.FileIO(fpath, 'r') as f:
+    with file_io.FileIO(fpath, 'rb') as f:
       bookmarks_json = f.read()
-    request.respond(bookmarks_json, 'application/json')
+    return Respond(request, bookmarks_json, 'application/json')
 
-  def _serve_sprite_image(self, request, query_params):
-    run = query_params.get('run')
+  @wrappers.Request.application
+  def _serve_sprite_image(self, request):
+    run = request.args.get('run')
     if not run:
-      request.respond('query parameter "run" is required', 'text/plain', 400)
-      return
+      return Respond(request, 'query parameter "run" is required', 'text/plain',
+                     400)
 
-    name = query_params.get('name')
+    name = request.args.get('name')
     if name is None:
-      request.respond('query parameter "name" is required', 'text/plain', 400)
-      return
+      return Respond(request, 'query parameter "name" is required',
+                     'text/plain', 400)
 
     if run not in self.configs:
-      request.respond('Unknown run: %s' % run, 'text/plain', 400)
-      return
+      return Respond(request, 'Unknown run: %s' % run, 'text/plain', 400)
 
     config = self.configs[run]
     embedding_info = self._get_embedding(name, config)
 
     if not embedding_info or not embedding_info.sprite.image_path:
-      request.respond(
+      return Respond(
+          request,
           'No sprite image file found for tensor %s in the config file %s' %
           (name, self.config_fpaths[run]), 'text/plain', 400)
-      return
 
     fpath = embedding_info.sprite.image_path
     if not file_io.file_exists(fpath) or file_io.is_directory(fpath):
-      request.respond(
-          '%s does not exist or is directory' % fpath, 'text/plain', 400)
-      return
-    f = file_io.FileIO(fpath, 'r')
+      return Respond(request, '%s does not exist or is directory' % fpath,
+                     'text/plain', 400)
+    f = file_io.FileIO(fpath, 'rb')
     encoded_image_string = f.read()
     f.close()
     image_type = imghdr.what(None, encoded_image_string)
     mime_type = _IMGHDR_TO_MIMETYPE.get(image_type, _DEFAULT_IMAGE_MIMETYPE)
-    request.respond(encoded_image_string, mime_type)
+    return Respond(request, encoded_image_string, mime_type)
+
+
+def _find_latest_checkpoint(dir_path):
+  try:
+    ckpt_path = latest_checkpoint(dir_path)
+    if not ckpt_path:
+      # Check the parent directory.
+      ckpt_path = latest_checkpoint(os.path.join(dir_path, os.pardir))
+    return ckpt_path
+  except errors.NotFoundError:
+    return None

@@ -13,15 +13,22 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for tensorflow.ops.histogram_ops."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import histogram_ops
+from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import test
 
 
-class HistogramFixedWidthTest(tf.test.TestCase):
+class HistogramFixedWidthTest(test.TestCase):
 
   def setUp(self):
     self.rng = np.random.RandomState(0)
@@ -33,7 +40,7 @@ class HistogramFixedWidthTest(tf.test.TestCase):
     values = []
     expected_bin_counts = [0, 0, 0, 0, 0]
     with self.test_session():
-      hist = tf.histogram_fixed_width(values, value_range, nbins=5)
+      hist = histogram_ops.histogram_fixed_width(values, value_range, nbins=5)
 
       # Hist should start "fresh" with every eval.
       self.assertAllClose(expected_bin_counts, hist.eval())
@@ -46,7 +53,7 @@ class HistogramFixedWidthTest(tf.test.TestCase):
     values = [-1.0, 0.0, 1.5, 2.0, 5.0, 15]
     expected_bin_counts = [2, 1, 1, 0, 2]
     with self.test_session():
-      hist = tf.histogram_fixed_width(values, value_range, nbins=5)
+      hist = histogram_ops.histogram_fixed_width(values, value_range, nbins=5)
 
       # Hist should start "fresh" with every eval.
       self.assertAllClose(expected_bin_counts, hist.eval())
@@ -59,7 +66,7 @@ class HistogramFixedWidthTest(tf.test.TestCase):
     values = [[-1.0, 0.0, 1.5], [2.0, 5.0, 15]]
     expected_bin_counts = [2, 1, 1, 0, 2]
     with self.test_session():
-      hist = tf.histogram_fixed_width(values, value_range, nbins=5)
+      hist = histogram_ops.histogram_fixed_width(values, value_range, nbins=5)
 
       # Hist should start "fresh" with every eval.
       self.assertAllClose(expected_bin_counts, hist.eval())
@@ -74,18 +81,18 @@ class HistogramFixedWidthTest(tf.test.TestCase):
     expected_bin_counts_1 = [2, 1, 1, 0, 2]
     expected_bin_counts_2 = [2, 1, 0, 0, 3]
     with self.test_session():
-      values = tf.placeholder(tf.float32, shape=[6])
-      hist = tf.histogram_fixed_width(values, value_range, nbins=5)
+      values = array_ops.placeholder(dtypes.float32, shape=[6])
+      hist = histogram_ops.histogram_fixed_width(values, value_range, nbins=5)
 
       # The values in hist should depend on the current feed and nothing else.
-      self.assertAllClose(expected_bin_counts_1,
-                          hist.eval(feed_dict={values: values_1}))
-      self.assertAllClose(expected_bin_counts_2,
-                          hist.eval(feed_dict={values: values_2}))
-      self.assertAllClose(expected_bin_counts_1,
-                          hist.eval(feed_dict={values: values_1}))
-      self.assertAllClose(expected_bin_counts_1,
-                          hist.eval(feed_dict={values: values_1}))
+      self.assertAllClose(
+          expected_bin_counts_1, hist.eval(feed_dict={values: values_1}))
+      self.assertAllClose(
+          expected_bin_counts_2, hist.eval(feed_dict={values: values_2}))
+      self.assertAllClose(
+          expected_bin_counts_1, hist.eval(feed_dict={values: values_1}))
+      self.assertAllClose(
+          expected_bin_counts_1, hist.eval(feed_dict={values: values_1}))
 
   def test_two_updates_on_scalar_input(self):
     # Bins will be:
@@ -96,18 +103,18 @@ class HistogramFixedWidthTest(tf.test.TestCase):
     expected_bin_counts_1 = [0, 1, 0, 0, 0]
     expected_bin_counts_2 = [0, 0, 1, 0, 0]
     with self.test_session():
-      values = tf.placeholder(tf.float32, shape=[])
-      hist = tf.histogram_fixed_width(values, value_range, nbins=5)
+      values = array_ops.placeholder(dtypes.float32, shape=[])
+      hist = histogram_ops.histogram_fixed_width(values, value_range, nbins=5)
 
       # The values in hist should depend on the current feed and nothing else.
-      self.assertAllClose(expected_bin_counts_2,
-                          hist.eval(feed_dict={values: values_2}))
-      self.assertAllClose(expected_bin_counts_1,
-                          hist.eval(feed_dict={values: values_1}))
-      self.assertAllClose(expected_bin_counts_1,
-                          hist.eval(feed_dict={values: values_1}))
-      self.assertAllClose(expected_bin_counts_2,
-                          hist.eval(feed_dict={values: values_2}))
+      self.assertAllClose(
+          expected_bin_counts_2, hist.eval(feed_dict={values: values_2}))
+      self.assertAllClose(
+          expected_bin_counts_1, hist.eval(feed_dict={values: values_1}))
+      self.assertAllClose(
+          expected_bin_counts_1, hist.eval(feed_dict={values: values_1}))
+      self.assertAllClose(
+          expected_bin_counts_2, hist.eval(feed_dict={values: values_2}))
 
   def test_multiple_random_accumulating_updates_results_in_right_dist(self):
     # Accumulate the updates in a new variable.  Resultant
@@ -116,16 +123,15 @@ class HistogramFixedWidthTest(tf.test.TestCase):
     # to test that, it would be better to check that the cdf was linear.
     value_range = [1.0, 4.14159]
     with self.test_session() as sess:
-      values = tf.placeholder(tf.float32, shape=[4, 4, 4])
-      hist = tf.histogram_fixed_width(values,
-                                      value_range,
-                                      nbins=3,
-                                      dtype=tf.int64)
+      values = array_ops.placeholder(dtypes.float32, shape=[4, 4, 4])
+      hist = histogram_ops.histogram_fixed_width(
+          values, value_range, nbins=3, dtype=dtypes.int64)
 
-      hist_accum = tf.Variable(tf.zeros_initializer()([3], dtype=tf.int64))
+      hist_accum = variables.Variable(init_ops.zeros_initializer()(
+          [3], dtype=dtypes.int64))
       hist_accum = hist_accum.assign_add(hist)
 
-      tf.global_variables_initializer().run()
+      variables.global_variables_initializer().run()
 
       for _ in range(100):
         # Map the rv: U[0, 1] --> U[value_range[0], value_range[1]].
@@ -140,4 +146,4 @@ class HistogramFixedWidthTest(tf.test.TestCase):
 
 
 if __name__ == '__main__':
-  tf.test.main()
+  test.main()

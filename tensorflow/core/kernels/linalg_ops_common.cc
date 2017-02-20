@@ -121,7 +121,7 @@ void LinearAlgebraOp<Scalar>::AnalyzeInputs(OpKernelContext* context,
       OP_REQUIRES(
           context, input_rank >= 2,
           errors::InvalidArgument("Input tensor ", i,
-                                  " must have rank >= 2, got", input_rank));
+                                  " must have rank >= 2, got ", input_rank));
       // If the tensor rank is greater than 2, we consider the inner-most
       // dimensions as matrices, and loop over all the other outer ("batch")
       // dimensions to compute the results.
@@ -202,7 +202,7 @@ void LinearAlgebraOp<Scalar>::ComputeTensorSlice(
     const TensorShapes& input_matrix_shapes, const TensorOutputs& outputs,
     const TensorShapes& output_matrix_shapes) {
   ConstMatrixMaps matrix_inputs;
-  for (int i = 0; i < inputs.size(); ++i) {
+  for (size_t i = 0; i < inputs.size(); ++i) {
     // TODO(kalakris): Handle alignment if possible. Eigen::Map is
     // unaligned by default.
     matrix_inputs.push_back(
@@ -213,7 +213,7 @@ void LinearAlgebraOp<Scalar>::ComputeTensorSlice(
   }
 
   MatrixMaps matrix_outputs;
-  for (int i = 0; i < output_matrix_shapes.size(); ++i) {
+  for (size_t i = 0; i < output_matrix_shapes.size(); ++i) {
     // The output matrix shape may not be a matrix.
     int num_output_rows = output_matrix_shapes[i].dims() >= 1
                               ? output_matrix_shapes[i].dim_size(0)

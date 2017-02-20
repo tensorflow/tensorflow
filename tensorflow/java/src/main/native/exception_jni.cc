@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <stdarg.h>
+#include <stdio.h>
 
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/java/src/main/native/exception_jni.h"

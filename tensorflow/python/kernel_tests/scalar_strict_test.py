@@ -70,13 +70,13 @@ class ScalarStrictTest(test.TestCase):
               self.assertAllEqual(r, correct)
 
   def testConcat(self):
-    self.check(array_ops.concat, ([0], ([2], [3], [7])),
+    self.check(array_ops.concat, (([2], [3], [7]), [0]),
                'axis tensor should be a scalar integer', [2, 3, 7])
     for data in (2, 3, 7), (2, [3], 7), (2, 3, [7]):
-      self.check(array_ops.concat, (0, data),
+      self.check(array_ops.concat, (data, 0),
                  r'Expected \w+ dimensions in the range \[0, 0\)', [2, 3, 7])
     for data in ([2], 3, 7), ([2], [3], 7):
-      self.check(array_ops.concat, (0, data),
+      self.check(array_ops.concat, (data, 0),
                  r'Ranks of all input tensors should match', [2, 3, 7])
 
   def testFill(self):

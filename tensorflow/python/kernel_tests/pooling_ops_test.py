@@ -598,8 +598,8 @@ class PoolingTest(test.TestCase):
         self.assertAllClose(cpu_val, gpu_val)
 
   def testMaxPoolingWithArgmax(self):
-    # MaxPoolWithArgMax is implemented only on GPU.
-    if not test.is_gpu_available():
+    # MaxPoolWithArgMax is implemented only on CUDA.
+    if not test.is_gpu_available(cuda_only=True):
       return
     tensor_input = [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0]
     with self.test_session(use_gpu=True) as sess:
@@ -617,8 +617,8 @@ class PoolingTest(test.TestCase):
       self.assertAllEqual(argmax.ravel(), [0, 1, 3, 5])
 
   def testMaxPoolingGradWithArgmax(self):
-    # MaxPoolWithArgMax is implemented only on GPU.
-    if not test.is_gpu_available():
+    # MaxPoolWithArgMax is implemented only on CUDA.
+    if not test.is_gpu_available(cuda_only=True):
       return
     orig_input = [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0]
     tensor_input = [11.0, 12.0, 13.0, 14.0]
@@ -1250,8 +1250,8 @@ class PoolingTest(test.TestCase):
 def GetMaxPoolFwdTest(input_size, filter_size, strides, padding):
 
   def Test(self):
-    # MaxPoolWithArgMax is implemented only on GPU.
-    if not test.is_gpu_available():
+    # MaxPoolWithArgMax is implemented only on CUDA.
+    if not test.is_gpu_available(cuda_only=True):
       return
     self._CompareMaxPoolingFwd(input_size, filter_size, strides, padding)
 
@@ -1261,8 +1261,8 @@ def GetMaxPoolFwdTest(input_size, filter_size, strides, padding):
 def GetMaxPoolGradTest(input_size, filter_size, output_size, strides, padding):
 
   def Test(self):
-    # MaxPoolWithArgMax is implemented only on GPU.
-    if not test.is_gpu_available():
+    # MaxPoolWithArgMax is implemented only on CUDA.
+    if not test.is_gpu_available(cuda_only=True):
       return
     self._CompareMaxPoolingBk(input_size, output_size, filter_size, strides,
                               padding)

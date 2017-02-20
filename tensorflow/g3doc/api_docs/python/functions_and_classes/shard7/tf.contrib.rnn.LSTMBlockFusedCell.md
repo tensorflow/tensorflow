@@ -9,7 +9,7 @@ The implementation is based on: http://arxiv.org/abs/1409.2329.
 We add forget_bias (default: 1) to the biases of the forget gate in order to
 reduce the scale of forgetting in the beginning of the training.
 
-The variable naming is consistent with `rnn_cell.LSTMCell`.
+The variable naming is consistent with `core_rnn_cell.LSTMCell`.
 - - -
 
 #### `tf.contrib.rnn.LSTMBlockFusedCell.__call__(inputs, initial_state=None, dtype=None, sequence_length=None, scope=None)` {#LSTMBlockFusedCell.__call__}

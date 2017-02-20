@@ -10,7 +10,7 @@ Computes the SVD of each inner matrix in `tensor` such that
 # a is a tensor.
 # s is a tensor of singular values.
 # u is a tensor of left singular vectors.
-# v is a tensor of right singular vectors.
+#v is a tensor of right singular vectors.
 s, u, v = svd(a)
 s = svd(a, compute_uv=False)
 ```
@@ -18,7 +18,7 @@ s = svd(a, compute_uv=False)
 ##### Args:
 
 
-*  <b>`matrix`</b>: `Tensor` of shape `[..., M, N]`. Let `P` be the minimum of `M` and
+*  <b>`tensor`</b>: `Tensor` of shape `[..., M, N]`. Let `P` be the minimum of `M` and
     `N`.
 *  <b>`full_matrices`</b>: If true, compute full-sized `u` and `v`. If false
     (the default), compute only the leading `P` singular vectors.
@@ -38,4 +38,10 @@ s = svd(a, compute_uv=False)
 *  <b>`v`</b>: Left singular vectors. If `full_matrices` is `False` (default) then
     shape is `[..., N, P]`. If `full_matrices` is `True` then shape is
     `[..., N, N]`. Not returned if `compute_uv` is `False`.
+
+@compatibility(numpy)
+Mostly equivalent to numpy.linalg.svd, except that the order of output
+arguments here is `s`, `u`, `v` when `compute_uv` is `True`, as opposed to
+`u`, `s`, `v` for numpy.linalg.svd.
+@end_compatibility
 

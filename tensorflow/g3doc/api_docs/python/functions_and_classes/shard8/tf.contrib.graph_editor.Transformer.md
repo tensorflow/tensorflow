@@ -27,7 +27,7 @@ Execute the transformation.
 
   A tuple `(sgv, info)` where:
     `sgv` is the transformed subgraph view;
-    `info` is an instance of Transformer.ResultInfo containing
+    `info` is an instance of TransformerInfo containing
     information about the transform, including mapping between
     original and transformed tensors and operations.
 
@@ -60,27 +60,5 @@ transform_external_hidden_input_handler: handle the transform of the
 transform_original_op_handler: handle the transform of original_op. This
   handler defaults to transforming original_op only if they are in the
   subgraph, otherwise they are ignored.
-
-
-- - -
-
-#### `tf.contrib.graph_editor.Transformer.new_name(name)` {#Transformer.new_name}
-
-Compute a destination name from a source name.
-
-##### Args:
-
-
-*  <b>`name`</b>: the name to be "transformed".
-
-##### Returns:
-
-  The transformed name.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: if the source scope is used (that is, not an empty string)
-    and the source name does not belong to the source scope.
 
 

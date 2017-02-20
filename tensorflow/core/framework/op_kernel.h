@@ -568,6 +568,7 @@ class OpKernelContext {
 
   int num_inputs() const { return params_->inputs->size(); }
   DataType input_dtype(int index) const;
+  Status input_dtype(StringPiece name, DataType* dtype) const;
   int num_outputs() const { return outputs_.size(); }
   DataType expected_output_dtype(int index) const;
 

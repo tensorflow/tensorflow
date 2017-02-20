@@ -7,7 +7,7 @@ RNN decoder for the sequence-to-sequence model.
 
 *  <b>`decoder_inputs`</b>: A list of 2D Tensors [batch_size x input_size].
 *  <b>`initial_state`</b>: 2D Tensor with shape [batch_size x cell.state_size].
-*  <b>`cell`</b>: rnn_cell.RNNCell defining the cell function and size.
+*  <b>`cell`</b>: core_rnn_cell.RNNCell defining the cell function and size.
 *  <b>`loop_function`</b>: If not None, this function will be applied to the i-th output
     in order to generate the i+1-st input, and decoder_inputs will be ignored,
     except for the first element ("GO" symbol). This can be used for decoding,

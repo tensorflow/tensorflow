@@ -7,11 +7,14 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 ##### Args:
 
 
-*  <b>`predictions`</b>: The predicted values, a `bool` `Tensor` of arbitrary
-    dimensions.
-*  <b>`labels`</b>: The ground truth values, a `bool` `Tensor` whose dimensions must
-    match `predictions`.
-*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`.
+*  <b>`predictions`</b>: The predicted values, a `Tensor` of arbitrary dimensions. Will
+    be cast to `bool`.
+*  <b>`labels`</b>: The ground truth values, a `Tensor` whose dimensions must match
+    `predictions`. Will be cast to `bool`.
+*  <b>`weights`</b>: Optional `Tensor` whose rank is either 0, or the same rank as
+    `labels`, and must be broadcastable to `labels` (i.e., all dimensions
+    must be either `1`, or the same as the corresponding `labels`
+    dimension).
 *  <b>`metrics_collections`</b>: An optional list of collections that the metric
     value variable should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that the metric update

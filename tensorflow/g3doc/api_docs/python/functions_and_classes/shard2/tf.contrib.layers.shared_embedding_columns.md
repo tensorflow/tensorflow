@@ -1,4 +1,4 @@
-### `tf.contrib.layers.shared_embedding_columns(sparse_id_columns, dimension, combiner=None, shared_embedding_name=None, initializer=None, ckpt_to_load_from=None, tensor_name_in_ckpt=None, max_norm=None)` {#shared_embedding_columns}
+### `tf.contrib.layers.shared_embedding_columns(sparse_id_columns, dimension, combiner='mean', shared_embedding_name=None, initializer=None, ckpt_to_load_from=None, tensor_name_in_ckpt=None, max_norm=None)` {#shared_embedding_columns}
 
 Creates a list of `_EmbeddingColumn` sharing the same embedding.
 
@@ -10,8 +10,10 @@ Creates a list of `_EmbeddingColumn` sharing the same embedding.
     defined in each sparse_id_column is ignored.
 *  <b>`dimension`</b>: An integer specifying dimension of the embedding.
 *  <b>`combiner`</b>: A string specifying how to reduce if there are multiple entries
-    in a single row. Currently "mean", "sqrtn" and "sum" are supported. Each
-    of this can be considered an example level normalization on the column:
+    in a single row. Currently "mean", "sqrtn" and "sum" are supported, with
+    "mean" the default. "sqrtn" often achieves good accuracy, in particular
+    with bag-of-words columns. Each of this can be thought as example level
+    normalizations on the column:
       * "sum": do not normalize
       * "mean": do l1 normalization
       * "sqrtn": do l2 normalization

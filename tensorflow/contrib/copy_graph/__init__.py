@@ -12,12 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Functions for copying elements from one graph to another.
+"""Functions to copy elements between graphs.
 
+See the @{$python/contrib.copy_graph} guide.
 """
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.copy_graph.python.util import copy_elements
+# pylint: disable=wildcard-import
 from tensorflow.contrib.copy_graph.python.util.copy_elements import *
+# pylint: enable=wildcard-import
+
+from tensorflow.python.util.all_util import remove_undocumented
+
+remove_undocumented(__name__, doc_string_modules=[copy_elements])

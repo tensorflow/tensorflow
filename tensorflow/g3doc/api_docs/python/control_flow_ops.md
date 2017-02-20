@@ -7,10 +7,7 @@ Note: Functions taking `Tensor` arguments can also take anything accepted by
 
 [TOC]
 
-## Control Flow Operations
-
-TensorFlow provides several operations and classes that you can use to control
-the execution of operations and add conditional dependencies to your graph.
+Control Flow Operations. See the @{python/control_flow_ops} guide.
 
 - - -
 
@@ -148,13 +145,13 @@ Note that the conditional execution applies only to the operations defined in
 fn1 and fn2. Consider the following simple program:
 
 ```python
-z = tf.mul(a, b)
+z = tf.multiply(a, b)
 result = tf.cond(x < y, lambda: tf.add(x, z), lambda: tf.square(y))
 ```
 
-If x < y, the `tf.add` operation will be executed and tf.square
+If x < y, the `tf.add` operation will be executed and `tf.square`
 operation will not be executed. Since z is needed for at least one
-branch of the cond, the tf.mul operation is always executed, unconditionally.
+branch of the cond, the `tf.multiply` operation is always executed, unconditionally.
 Although this behavior is consistent with the dataflow model of TensorFlow,
 it has occasionally surprised some users who expected a lazier semantics.
 
@@ -184,7 +181,7 @@ it has occasionally surprised some users who expected a lazier semantics.
 ```python
   x = tf.constant(2)
   y = tf.constant(5)
-  def f1(): return tf.mul(x, 17)
+  def f1(): return tf.multiply(x, 17)
   def f2(): return tf.add(y, 23)
   r = tf.cond(tf.less(x, y), f1, f2)
   # r is set to f1().
@@ -383,18 +380,12 @@ Example using shape_invariants:
   i0 = tf.constant(0)
   m0 = tf.ones([2, 2])
   c = lambda i, m: i < 10
-  b = lambda i, m: [i+1, tf.concat_v2(0, [m, m])]
+  b = lambda i, m: [i+1, tf.concat([m, m], axis=0)]
   tf.while_loop(
       c, b, loop_vars=[i0, m0],
-      shape_invariants=[i0.get_shape(), tensor_shape.TensorShape([None, 2])])
+      shape_invariants=[i0.get_shape(), tf.TensorShape([None, 2])])
   ```
 
-
-
-## Logical Operators
-
-TensorFlow provides several operations that you can use to add logical operators
-to your graph.
 
 - - -
 
@@ -461,12 +452,6 @@ Returns the truth value of x OR y element-wise.
 
 x ^ y = (x | y) & ~(x & y).
 
-
-
-## Comparison Operators
-
-TensorFlow provides several operations that you can use to add comparison
-operators to your graph.
 
 - - -
 
@@ -643,12 +628,6 @@ has the same shape as `x` and `y`, then it chooses which element to copy from
 
 *  <b>`ValueError`</b>: When exactly one of `x` or `y` is non-None.
 
-
-
-## Debugging Operations
-
-TensorFlow provides several operations that you can use to validate values and
-debug your graph.
 
 - - -
 

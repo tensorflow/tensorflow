@@ -128,21 +128,14 @@ class LinearOperatorMatrix(linear_operator.LinearOperator):
       TypeError:  If `diag.dtype` is not an allowed type.
     """
 
-    allowed_dtypes = [
-        dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128]
-
     with ops.name_scope(name, values=[matrix]):
       self._matrix = ops.convert_to_tensor(matrix, name="matrix")
-
-      dtype = self._matrix.dtype
-      if dtype not in allowed_dtypes:
-        raise TypeError(
-            "Argument matrix must have dtype in %s.  Found: %s"
-            % (allowed_dtypes, dtype))
+      self._check_matrix(self._matrix)
 
       # Special treatment for (real) Symmetric Positive Definite.
       self._is_spd = (
-          (not dtype.is_complex) and is_self_adjoint and is_positive_definite)
+          (not self._matrix.dtype.is_complex)
+          and is_self_adjoint and is_positive_definite)
       if self._is_spd:
         self._chol = linalg_ops.cholesky(self._matrix)
 
@@ -154,10 +147,28 @@ class LinearOperatorMatrix(linear_operator.LinearOperator):
           is_positive_definite=is_positive_definite,
           name=name)
 
+  def _check_matrix(self, matrix):
+    """Static check of the `matrix` argument."""
+    allowed_dtypes = [
+        dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128]
+
+    matrix = ops.convert_to_tensor(matrix, name="matrix")
+
+    dtype = matrix.dtype
+    if dtype not in allowed_dtypes:
+      raise TypeError(
+          "Argument matrix must have dtype in %s.  Found: %s"
+          % (allowed_dtypes, dtype))
+
+    if matrix.get_shape().ndims is not None and matrix.get_shape().ndims < 2:
+      raise ValueError(
+          "Argument matrix must have at least 2 dimensions.  Found: %s"
+          % matrix)
+
   def _shape(self):
     return self._matrix.get_shape()
 
-  def _shape_dynamic(self):
+  def _shape_tensor(self):
     return array_ops.shape(self._matrix)
 
   def _apply(self, x, adjoint=False):
@@ -172,11 +183,7 @@ class LinearOperatorMatrix(linear_operator.LinearOperator):
     if self._is_spd:
       diag = array_ops.matrix_diag_part(self._chol)
       return 2 * math_ops.reduce_sum(math_ops.log(diag), reduction_indices=[-1])
-
-    if self.dtype.is_complex:
-      abs_det = math_ops.complex_abs(self.determinant())
-    else:
-      abs_det = math_ops.abs(self.determinant())
+    abs_det = math_ops.abs(self.determinant())
     return math_ops.log(abs_det)
 
   def _solve(self, rhs, adjoint=False):

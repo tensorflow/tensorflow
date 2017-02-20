@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.losses.python.losses import loss_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -73,7 +72,7 @@ class AbsoluteDifferenceLossTest(test.TestCase):
       self.assertAlmostEqual(5.5 * weights, loss.eval(), 3)
 
   def testNonZeroLossWithOneDimBatchSpecificWeights(self):
-    weights = constant_op.constant([1.2, 0.0], shape=[2,])
+    weights = constant_op.constant((1.2, 0.0), shape=(2, 1))
     loss = losses.absolute_difference(self._labels, self._predictions, weights)
     with self.test_session():
       self.assertAlmostEqual(5.6, loss.eval(), 3)
@@ -155,7 +154,7 @@ class SoftmaxCrossEntropyLossTest(test.TestCase):
     logits = constant_op.constant([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0],
                                    [0.0, 0.0, 10.0]])
     labels = constant_op.constant([[0, 0, 1], [1, 0, 0], [0, 1, 0]])
-    weights = constant_op.constant([1.2, 3.4, 5.6], shape=[3])
+    weights = constant_op.constant((1.2, 3.4, 5.6))
     with self.test_session():
       loss = losses.softmax_cross_entropy(labels, logits, weights)
       self.assertAlmostEqual((1.2 + 3.4 + 5.6) * 10.0 / 3.0, loss.eval(), 3)
@@ -297,11 +296,49 @@ class SparseSoftmaxCrossEntropyLossTest(test.TestCase):
                                                  constant_op.constant(weights))
       self.assertAlmostEqual(weights * 10.0, loss.eval(), 3)
 
+  def testNonZeroLossWith1DTensorWeight(self):
+    logits = constant_op.constant([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0],
+                                   [0.0, 0.0, 10.0]])
+    labels = constant_op.constant([[2], [0], [1]])
+    weights = 2.3
+    with self.test_session():
+      loss = losses.sparse_softmax_cross_entropy(
+          labels, logits, constant_op.constant((weights,)))
+      self.assertAlmostEqual(weights * 10.0, loss.eval(), 3)
+
+  def testNonZeroLossWithPlaceholderForWeights(self):
+    logits = constant_op.constant([[10.0, 0.0, 0.0],
+                                   [0.0, 10.0, 0.0],
+                                   [0.0, 0.0, 10.0]])
+    labels = constant_op.constant([[2], [0], [1]])
+    weights = array_ops.placeholder(dtypes.float32)
+    with self.test_session() as sess:
+      loss = losses.sparse_softmax_cross_entropy(labels, logits, weights)
+      loss_val = sess.run(loss,
+                          feed_dict={weights: ((1.2,), (3.4,), (5.6,))})
+      self.assertAlmostEqual((1.2 + 3.4 + 5.6) * 10.0 / 3.0, loss_val, 3)
+
+  def testNonZeroLossWithPlaceholderForLogitsLabelsAndWeights(self):
+    logits = array_ops.placeholder(dtypes.float32, shape=(None, 3))
+    labels = array_ops.placeholder(dtypes.int32, shape=(None, 1))
+    weights = array_ops.placeholder(dtypes.float32)
+    with self.test_session() as sess:
+      loss = losses.sparse_softmax_cross_entropy(labels, logits, weights)
+      loss_val = sess.run(loss,
+                          feed_dict={
+                              logits: [[10.0, 0.0, 0.0],
+                                       [0.0, 10.0, 0.0],
+                                       [0.0, 0.0, 10.0]],
+                              labels: [[2], [0], [1]],
+                              weights: ((1.2,), (3.4,), (5.6,)),
+                          })
+      self.assertAlmostEqual((1.2 + 3.4 + 5.6) * 10.0 / 3.0, loss_val, 3)
+
   def testNonZeroLossWithOneDimBatchSpecificWeights(self):
     logits = constant_op.constant([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0],
                                    [0.0, 0.0, 10.0]])
     labels = constant_op.constant([[2], [0], [1]])
-    weights = constant_op.constant([1.2, 3.4, 5.6], shape=[3])
+    weights = constant_op.constant([1.2, 3.4, 5.6], shape=(3, 1))
     with self.test_session():
       loss = losses.sparse_softmax_cross_entropy(labels, logits, weights)
       self.assertAlmostEqual((1.2 + 3.4 + 5.6) * 10.0 / 3.0, loss.eval(), 3)
@@ -319,7 +356,7 @@ class SparseSoftmaxCrossEntropyLossTest(test.TestCase):
     logits = constant_op.constant([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0],
                                    [0.0, 0.0, 10.0]])
     labels = constant_op.constant([[2], [0], [1]])
-    weights = constant_op.constant([0, 0, 0], shape=[3])
+    weights = constant_op.constant([0, 0, 0], shape=(3, 1))
     with self.test_session():
       loss = losses.sparse_softmax_cross_entropy(labels, logits, weights)
       self.assertAlmostEqual(0.0, loss.eval(), 3)
@@ -328,7 +365,7 @@ class SparseSoftmaxCrossEntropyLossTest(test.TestCase):
     logits = constant_op.constant([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0],
                                    [0.0, 0.0, 10.0]])
     labels = constant_op.constant([[2], [0], [1]])
-    weights = constant_op.constant([1.2, 0, 0], shape=[3])
+    weights = constant_op.constant([1.2, 0, 0], shape=(3, 1))
     with self.test_session():
       loss = losses.sparse_softmax_cross_entropy(labels, logits, weights)
       self.assertAlmostEqual(12.0, loss.eval(), 3)
@@ -393,9 +430,9 @@ class SparseSoftmaxCrossEntropyLossTest(test.TestCase):
                                      [-100.0, -100.0, 100.0, -100.0],
                                      [-100.0, -100.0, -100.0, 100.0]])
       labels = constant_op.constant([[0, 1], [2, 3]])
-      weights = constant_op.constant([1.2, 3.4, 5.6, 7.8])
+      weights = constant_op.constant(1.2)
 
-      with self.assertRaises(errors_impl.InvalidArgumentError):
+      with self.assertRaisesRegexp(ValueError, 'dimension'):
         losses.sparse_softmax_cross_entropy(
             labels, logits, weights=weights).eval()
 
@@ -590,7 +627,7 @@ class LogLossTest(test.TestCase):
                              loss, 3)
 
   def testNonZeroLossWithOneDimBatchSpecificWeights(self):
-    weights = constant_op.constant([1.2, 3.4], shape=[2])
+    weights = constant_op.constant((1.2, 3.4), shape=(2, 1))
     expected_losses = np.multiply(
         self._expected_losses,
         np.asarray([1.2, 1.2, 1.2, 3.4, 3.4, 3.4]).reshape((2, 3)))
@@ -599,7 +636,7 @@ class LogLossTest(test.TestCase):
       self.assertAlmostEqual(-np.sum(expected_losses) / 6.0, loss.eval(), 3)
 
   def testNonZeroLossWithOneDimBatchSpecificWeightsSomeZero(self):
-    weights = constant_op.constant([1.2, 0], shape=[2])
+    weights = constant_op.constant((1.2, 0), shape=(2, 1))
     expected_losses = np.multiply(self._expected_losses,
                                   np.asarray([1.2, 1.2, 1.2, 0, 0, 0]).reshape(
                                       (2, 3)))
@@ -727,6 +764,13 @@ class MeanSquaredErrorTest(test.TestCase):
         losses.mean_squared_error(
             self._predictions, self._predictions, weights=None)
 
+  def testScalar(self):
+    with self.test_session():
+      self.assertEqual(
+          0.0,
+          losses.mean_squared_error(predictions=constant_op.constant(0),
+                                    labels=constant_op.constant(0)).eval())
+
   def testAllCorrectNoLossWeight(self):
     loss = losses.mean_squared_error(self._predictions, self._predictions)
     with self.test_session():
@@ -751,7 +795,7 @@ class MeanSquaredErrorTest(test.TestCase):
       self.assertAlmostEqual(49.5 * weights, loss.eval(), 3)
 
   def testNonZeroLossWithOneDimBatchSpecificWeights(self):
-    weights = constant_op.constant([1.2, 3.4], shape=[2,])
+    weights = constant_op.constant([1.2, 3.4], shape=(2, 1))
     loss = losses.mean_squared_error(self._labels, self._predictions, weights)
     with self.test_session():
       self.assertAlmostEqual(767.8 / 6.0, loss.eval(), 3)
@@ -781,7 +825,7 @@ class MeanSquaredErrorTest(test.TestCase):
       self.assertAlmostEqual(0.0, loss.eval(), 3)
 
 
-class MeanPairwiseSquaresErrorTest(test.TestCase):
+class MeanPairwiseSquaredErrorTest(test.TestCase):
 
   def setUp(self):
     self._predictions = np.array([[4, 8, 12], [8, 1, 3]])
@@ -790,14 +834,14 @@ class MeanPairwiseSquaresErrorTest(test.TestCase):
     batch_size, dims = self._labels.shape
 
     # Compute the expected loss 'manually'.
-    total = np.zeros((batch_size, 1))
+    total = np.zeros((batch_size,))
     for b in range(batch_size):
       for i in range(dims):
         for j in range(dims):
           x = self._predictions[b, i].item() - self._predictions[b, j].item()
           y = self._labels[b, i].item() - self._labels[b, j].item()
-          tmp = (x - y) * (x - y)
-          total[b] += tmp
+          diff = (x - y)
+          total[b] += (diff * diff)
 
     self._expected_losses = np.divide(total, 9.0)
 
@@ -809,19 +853,39 @@ class MeanPairwiseSquaresErrorTest(test.TestCase):
             labels=constant_op.constant(self._labels),
             weights=None)
 
-  def testAllCorrectNoLossWeight(self):
-    loss = losses.mean_pairwise_squared_error(
-        predictions=constant_op.constant(self._labels),
-        labels=constant_op.constant(self._labels))
+  def _test_valid_weights(
+      self, labels, predictions, expected_loss, weights=1.0):
     with self.test_session():
-      self.assertAlmostEqual(0.0, loss.eval(), 3)
+      static_inputs_op = losses.mean_pairwise_squared_error(
+          predictions=predictions, labels=labels, weights=weights)
+      self.assertAlmostEqual(expected_loss, static_inputs_op.eval(), places=3)
+
+      predictions_placeholder = array_ops.placeholder(
+          dtypes.float32, shape=np.asarray(predictions.shape))
+      labels_placeholder = array_ops.placeholder(
+          dtypes.int32, shape=np.asarray(labels.shape))
+      weights_placeholder = array_ops.placeholder(
+          dtypes.float32, shape=np.asarray(weights).shape)
+      dynamic_inputs_op = losses.mean_pairwise_squared_error(
+          predictions=predictions_placeholder,
+          labels=labels_placeholder,
+          weights=weights_placeholder)
+      feed_dict = {
+          predictions_placeholder: predictions,
+          labels_placeholder: labels,
+          weights_placeholder: weights,
+      }
+      self.assertAlmostEqual(
+          expected_loss, dynamic_inputs_op.eval(feed_dict=feed_dict), places=3)
+
+  def testAllCorrectNoLossWeight(self):
+    self._test_valid_weights(
+        self._labels, self._labels, expected_loss=0.0)
 
   def testNonZeroLoss(self):
-    loss = losses.mean_pairwise_squared_error(
-        predictions=constant_op.constant(self._predictions),
-        labels=constant_op.constant(self._labels))
-    with self.test_session():
-      self.assertAlmostEqual(np.sum(self._expected_losses), loss.eval(), 3)
+    self._test_valid_weights(
+        self._labels, self._predictions,
+        expected_loss=np.sum(self._expected_losses))
 
   def testGradientWithZeroWeight(self):
     with ops.Graph().as_default():
@@ -849,14 +913,11 @@ class MeanPairwiseSquaresErrorTest(test.TestCase):
           self.assertFalse(np.isnan(np_grad).any())
 
   def testNonZeroLossWithPythonScalarWeight(self):
-    weights = 2.3
-    loss = losses.mean_pairwise_squared_error(
-        predictions=constant_op.constant(self._predictions),
-        labels=constant_op.constant(self._labels),
-        weights=weights)
-    with self.test_session():
-      self.assertAlmostEqual(weights * np.sum(self._expected_losses),
-                             loss.eval(), 3)
+    weight = 2.3
+    self._test_valid_weights(
+        self._labels, self._predictions,
+        expected_loss=weight * np.sum(self._expected_losses),
+        weights=weight)
 
   def testNonZeroLossWithScalarTensorWeight(self):
     weights = 2.3
@@ -869,83 +930,90 @@ class MeanPairwiseSquaresErrorTest(test.TestCase):
                              loss.eval(), 3)
 
   def testNonZeroLossWithScalarZeroWeight(self):
-    weights = 0
-    loss = losses.mean_pairwise_squared_error(
-        predictions=constant_op.constant(self._predictions),
-        labels=constant_op.constant(self._labels),
-        weights=constant_op.constant(weights))
+    self._test_valid_weights(
+        self._labels, self._predictions, expected_loss=0.0, weights=0.0)
+
+  def test3d(self):
+    labels = np.array([
+        [[1, 9, 2], [12, 11, 10], [9, 8, 7]],
+        [[-5, -5, 7], [6, 5, 4], [3, 2, 1]],
+    ])
+    predictions = np.array([
+        [[4, 8, 12], [1, 2, 3], [4, 5, 6]],
+        [[8, 1, 3], [7, 8, 9], [10, 11, 12]],
+    ])
+    self._test_valid_weights(
+        labels, predictions, expected_loss=122.22222)
+
+  def test3dWeightedScalar(self):
+    labels = np.array([
+        [[1, 9, 2], [12, 11, 10], [9, 8, 7]],
+        [[-5, -5, 7], [6, 5, 4], [3, 2, 1]],
+    ])
+    predictions = np.array([
+        [[4, 8, 12], [1, 2, 3], [4, 5, 6]],
+        [[8, 1, 3], [7, 8, 9], [10, 11, 12]],
+    ])
+    weight = 3.0
+    self._test_valid_weights(
+        labels, predictions, expected_loss=weight * 122.22222,
+        weights=weight)
+
+  def _test_invalid_weights(
+      self, labels, predictions, weights=1.0):
+    expected_error_msg = 'weights can not be broadcast to values'
+
+    # Static check.
+    with self.assertRaisesRegexp(ValueError, expected_error_msg):
+      losses.mean_pairwise_squared_error(
+          predictions=predictions, labels=labels, weights=weights)
+
+    # Dynamic check.
+    predictions_placeholder = array_ops.placeholder(dtypes.float32)
+    labels_placeholder = array_ops.placeholder(dtypes.int32)
+    weights_placeholder = array_ops.placeholder(dtypes.float32)
+    dynamic_inputs_op = losses.mean_pairwise_squared_error(
+        predictions=predictions_placeholder,
+        labels=labels_placeholder,
+        weights=weights_placeholder)
     with self.test_session():
-      self.assertAlmostEqual(0, loss.eval(), 3)
+      with self.assertRaisesRegexp(errors_impl.OpError, expected_error_msg):
+        dynamic_inputs_op.eval(feed_dict={
+            predictions_placeholder: predictions,
+            labels_placeholder: labels,
+            weights_placeholder: weights,
+        })
 
-  def testNonZeroLossWithScalarTensorWeightWithPlaceholder(self):
-    weights = 2.3
-    tf_predictions = array_ops.placeholder(
-        dtypes.float32, shape=self._predictions.shape)
-    tf_labels = array_ops.placeholder(dtypes.float32, shape=self._labels.shape)
-    loss = losses.mean_pairwise_squared_error(
-        predictions=tf_predictions,
-        labels=tf_labels,
-        weights=constant_op.constant(weights))
-    with self.test_session() as sess:
-      loss = sess.run(loss,
-                      feed_dict={
-                          tf_predictions: self._predictions,
-                          tf_labels: self._labels,
-                      })
-      self.assertAlmostEqual(weights * np.sum(self._expected_losses), loss, 3)
+  def testInvalid3dWeighted2x0(self):
+    labels = np.array([
+        [[1, 9, 2], [12, 11, 10], [9, 8, 7]],
+        [[-5, -5, 7], [6, 5, 4], [3, 2, 1]],
+    ])
+    predictions = np.array([
+        [[4, 8, 12], [1, 2, 3], [4, 5, 6]],
+        [[8, 1, 3], [7, 8, 9], [10, 11, 12]],
+    ])
+    self._test_invalid_weights(
+        labels, predictions, weights=np.asarray((1.2, 3.4)))
 
-  def testNonZeroLossWithOneDimBatchSpecificWeights(self):
-    weights = np.asarray([2.0, 1.0]).reshape((2, 1))
-    expected_losses = np.multiply(weights, self._expected_losses)
-
-    loss = losses.mean_pairwise_squared_error(
-        predictions=constant_op.constant(self._predictions),
-        labels=constant_op.constant(self._labels),
-        weights=constant_op.constant(
-            weights, shape=[2]))
-    with self.test_session():
-      self.assertAlmostEqual(np.sum(expected_losses), loss.eval(), 3)
-
-  def testZeroLossWithOneDimBatchZeroWeights(self):
-    weights = np.asarray([0.0, 0.0]).reshape((2, 1))
-    loss = losses.mean_pairwise_squared_error(
-        predictions=constant_op.constant(self._predictions),
-        labels=constant_op.constant(self._labels),
-        weights=constant_op.constant(
-            weights, shape=[2]))
-    with self.test_session():
-      self.assertAlmostEqual(0, loss.eval(), 3)
-
-  def testNonZeroLossWithOneDimBatchSpecificWeightsAndPlaceholders(self):
-    weights = np.asarray([1.2, 3.4]).reshape((2, 1))
-    expected_losses = np.multiply(weights, self._expected_losses)
-
-    tf_predictions = array_ops.placeholder(
-        dtypes.float32, shape=self._predictions.shape)
-    tf_labels = array_ops.placeholder(dtypes.int32, shape=self._labels.shape)
-    loss = losses.mean_pairwise_squared_error(
-        predictions=tf_predictions,
-        labels=tf_labels,
-        weights=constant_op.constant(
-            weights, shape=[2]))
-
-    with self.test_session() as sess:
-      loss = sess.run(loss,
-                      feed_dict={
-                          tf_predictions: self._predictions,
-                          tf_labels: self._labels,
-                      })
-      self.assertAlmostEqual(np.sum(expected_losses), loss, 3)
+  def test3dWeighted2x3x3(self):
+    labels = np.array([
+        [[1, 9, 2], [12, 11, 10], [9, 8, 7]],
+        [[-5, -5, 7], [6, 5, 4], [3, 2, 1]],
+    ])
+    predictions = np.array([
+        [[4, 8, 12], [1, 2, 3], [4, 5, 6]],
+        [[8, 1, 3], [7, 8, 9], [10, 11, 12]],
+    ])
+    self._test_valid_weights(
+        # TODO(ptucker): This doesn't look right.
+        labels, predictions, expected_loss=9 * 122.22222,
+        weights=np.ones((2, 3, 3)))
 
   def testLossWithAllZeroBatchSpecificWeights(self):
-    weights = np.zeros((2, 1))
-    loss = losses.mean_pairwise_squared_error(
-        predictions=constant_op.constant(self._predictions),
-        labels=constant_op.constant(self._labels),
-        weights=constant_op.constant(
-            weights, shape=[2]))
-    with self.test_session():
-      self.assertAlmostEqual(0.0, loss.eval(), 3)
+    self._test_valid_weights(
+        self._labels, self._predictions, expected_loss=0.0,
+        weights=np.zeros((2, 1)))
 
 
 class CosineDistanceLossTest(test.TestCase):
@@ -1011,7 +1079,7 @@ class CosineDistanceLossTest(test.TestCase):
         predictions=constant_op.constant(self._predictions),
         labels=constant_op.constant(self._labels),
         dim=2,
-        weights=constant_op.constant([1, 0, 0]))
+        weights=np.asarray((1, 0, 0)).reshape((3, 1, 1)))
     with self.test_session():
       self.assertEqual(1.0, loss.eval())
 
@@ -1021,20 +1089,9 @@ class CosineDistanceLossTest(test.TestCase):
         labels=constant_op.constant(self._labels),
         dim=2,
         weights=constant_op.constant(
-            [1, 0, 0, 1, 1, 1], shape=(3, 2)))
+            [1, 0, 0, 1, 1, 1], shape=(3, 2, 1)))
     with self.test_session():
       self.assertEqual(3.0 / 4.0, loss.eval())
-
-  def testValueErrorThrownWithShapelessPlaceholder(self):
-    tf_predictions = array_ops.placeholder(dtypes.float32)
-    with self.test_session():
-      with self.assertRaises(ValueError):
-        losses.cosine_distance(
-            predictions=tf_predictions,
-            labels=constant_op.constant(self._labels),
-            dim=2,
-            weights=constant_op.constant(
-                [1, 0, 0, 1, 1, 1], shape=(3, 2)))
 
   def testMeasurementSpecificWeightsWithPlaceholderWithShape(self):
     tf_predictions = array_ops.placeholder(
@@ -1044,7 +1101,7 @@ class CosineDistanceLossTest(test.TestCase):
         labels=constant_op.constant(self._labels),
         dim=2,
         weights=constant_op.constant(
-            [1, 0, 0, 1, 1, 1], shape=(3, 2)))
+            [1, 0, 0, 1, 1, 1], shape=(3, 2, 1)))
     with self.test_session() as sess:
       loss = sess.run(loss, feed_dict={tf_predictions: self._predictions})
       self.assertEqual(3.0 / 4.0, loss)
@@ -1054,7 +1111,7 @@ class CosineDistanceLossTest(test.TestCase):
         predictions=constant_op.constant(self._predictions),
         labels=constant_op.constant(self._labels),
         dim=2,
-        weights=array_ops.zeros((3,)))
+        weights=array_ops.zeros((3, 1, 1)))
     with self.test_session():
       self.assertEqual(0, loss.eval())
 
@@ -1063,7 +1120,7 @@ class CosineDistanceLossTest(test.TestCase):
         predictions=constant_op.constant(self._predictions),
         labels=constant_op.constant(self._labels),
         dim=2,
-        weights=array_ops.zeros((3, 2)))
+        weights=array_ops.zeros((3, 2, 1)))
     with self.test_session():
       self.assertEqual(0, loss.eval())
 
@@ -1099,202 +1156,143 @@ class ComputeWeightedLossTest(test.TestCase):
 
   def testUnweighted(self):
     with ops.Graph().as_default():
-      self.assertEqual(0, len(loss_ops.get_losses()))
+      self.assertEqual(0, len(util.get_losses()))
       raw_losses = self._raw_losses
-      shape = self._shape
-      unweighted_losses = (losses.compute_weighted_loss(raw_losses),
-                           losses.compute_weighted_loss(
-                               raw_losses, weights=1.0),
-                           losses.compute_weighted_loss(
-                               raw_losses, weights=np.ones(shape=shape[0:1])),
-                           losses.compute_weighted_loss(
-                               raw_losses, weights=np.ones(shape=shape[0:2])),
-                           losses.compute_weighted_loss(
-                               raw_losses, weights=np.ones(shape=shape)))
-      self.assertEqual(5, len(loss_ops.get_losses()))
+      unweighted_losses = (
+          losses.compute_weighted_loss(raw_losses),
+          losses.compute_weighted_loss(raw_losses, weights=np.ones((1, 1, 1))),
+          losses.compute_weighted_loss(raw_losses, weights=np.ones((1, 1, 4))),
+          losses.compute_weighted_loss(raw_losses, weights=np.ones((1, 2, 1))),
+          losses.compute_weighted_loss(raw_losses, weights=np.ones((1, 2, 4))),
+          losses.compute_weighted_loss(raw_losses, weights=np.ones((3, 1, 1))),
+          losses.compute_weighted_loss(raw_losses, weights=np.ones((3, 1, 4))),
+          losses.compute_weighted_loss(raw_losses, weights=np.ones((3, 2, 1))),
+          losses.compute_weighted_loss(raw_losses, weights=np.ones(self._shape))
+      )
+      self.assertEqual(9, len(util.get_losses()))
       with self.test_session():
         for unweighted_loss in unweighted_losses:
           self.assertAllClose(self._unweighted_loss, unweighted_loss.eval())
 
   def testScalarWeight(self):
     with ops.Graph().as_default():
-      self.assertEqual(0, len(loss_ops.get_losses()))
+      self.assertEqual(0, len(util.get_losses()))
       weight = 17.0
       weighted_loss = losses.compute_weighted_loss(
           self._raw_losses, weights=weight)
-      self.assertEqual(1, len(loss_ops.get_losses()))
+      self.assertEqual(1, len(util.get_losses()))
       with self.test_session():
         self.assertAllClose(
             np.mean(weight * self._raw_losses), weighted_loss.eval())
 
-  # TODO(b/33556118): Bug: `loss1` should be the same as `testUnweighted`, and
-  # `loss17` should be the same as `testScalarWeight`.
-  def testScalar1DWeight(self):
+  def _test_invalid_weights(self, weights):
     with ops.Graph().as_default():
-      self.assertEqual(0, len(loss_ops.get_losses()))
-      loss1 = losses.compute_weighted_loss(self._raw_losses, weights=(1.0,))
-      self.assertEqual(1, len(loss_ops.get_losses()))
-      weight = 17.0
-      loss17 = losses.compute_weighted_loss(self._raw_losses, weights=(weight,))
-      self.assertEqual(2, len(loss_ops.get_losses()))
-      with self.test_session():
-        self.assertAllClose(self._unweighted_loss * self._shape[0],
-                            loss1.eval())
-        self.assertAllClose(
-            np.mean(weight * self._raw_losses) * self._shape[0], loss17.eval())
+      self.assertEqual(0, len(util.get_losses()))
+      expected_error_msg = 'weights can not be broadcast to values'
 
-  def testInvalid1DWeight(self):
-    with ops.Graph().as_default():
-      with self.assertRaisesRegexp(ValueError, 'Dimensions must be equal'):
-        losses.compute_weighted_loss(self._raw_losses, weights=(17.0, 31.0))
+      # Static check.
+      with self.assertRaisesRegexp(ValueError, expected_error_msg):
+        losses.compute_weighted_loss(self._raw_losses, weights=weights)
 
-  def testInvalid4DWeight(self):
-    with ops.Graph().as_default():
-      with self.assertRaisesRegexp(ValueError, 'Invalid weights shape'):
-        losses.compute_weighted_loss(
-            self._raw_losses, weights=np.zeros(shape=(2, 2, 2, 2)))
-
-  def test3Weight(self):
-    with ops.Graph().as_default():
-      self.assertEqual(0, len(loss_ops.get_losses()))
-      weights3 = (17.0, 5.0, 2.0)
+      # Dynamic check.
+      weights_placeholder = array_ops.placeholder(dtypes.float32)
       weighted_loss = losses.compute_weighted_loss(
-          self._raw_losses, weights=weights3)
-      self.assertEqual(1, len(loss_ops.get_losses()))
+          self._raw_losses, weights=weights_placeholder)
+      self.assertEqual(1, len(util.get_losses()))
       with self.test_session():
-        weights3x1x1 = np.reshape(weights3, (3, 1, 1))
-        self.assertAllClose(
-            np.mean(weights3x1x1 * self._raw_losses), weighted_loss.eval())
+        with self.assertRaisesRegexp(errors_impl.OpError, expected_error_msg):
+          weighted_loss.eval(feed_dict={weights_placeholder: weights})
 
-  def test3x1Weight(self):
-    with ops.Graph().as_default():
-      self.assertEqual(0, len(loss_ops.get_losses()))
-      weights3x1 = (
-          (17.0,),
-          (5.0,),
-          (2.0,),)
-      weighted_loss = losses.compute_weighted_loss(
-          self._raw_losses, weights=weights3x1)
-      self.assertEqual(1, len(loss_ops.get_losses()))
-      with self.test_session():
-        weights3x1x1 = np.reshape(weights3x1, (3, 1, 1))
-        self.assertAllClose(
-            np.mean(weights3x1x1 * self._raw_losses), weighted_loss.eval())
+  def testInvalidWeightTooManyDims(self):
+    self._test_invalid_weights(np.zeros(shape=(2, 2, 2, 2)))
 
-  # TODO(ptucker): Bug: this should be the same as `test3x1Weight`.
-  def test3x1x1Weight(self):
+  def testInvalidWeightMismatchedDim(self):
     with ops.Graph().as_default():
-      self.assertEqual(0, len(loss_ops.get_losses()))
-      weights3x1x1 = (
-          ((17.0,),),
-          ((5.0,),),
-          ((2.0,),),)
+      raw_losses = array_ops.reshape(self._raw_losses, shape=(3, 2, 4, 1))
+      weights = np.ones(shape=(3, 2, 4, 2))
+      expected_error_msg = 'weights can not be broadcast to values'
+      self.assertEqual(0, len(util.get_losses()))
+
+      # Static check.
+      with self.assertRaisesRegexp(ValueError, expected_error_msg):
+        losses.compute_weighted_loss(raw_losses, weights=weights)
+
+      # Dynamic check.
+      weights_placeholder = array_ops.placeholder(dtypes.float32)
       weighted_loss = losses.compute_weighted_loss(
-          self._raw_losses, weights=weights3x1x1)
-      self.assertEqual(1, len(loss_ops.get_losses()))
+          raw_losses, weights=weights_placeholder)
+      self.assertEqual(1, len(util.get_losses()))
+      with self.test_session():
+        with self.assertRaisesRegexp(errors_impl.OpError, expected_error_msg):
+          weighted_loss.eval(feed_dict={weights_placeholder: weights})
+
+  def testInvalid3Weight(self):
+    self._test_invalid_weights((17.0, 5.0, 2.0))
+
+  def testInvalid3x1Weight(self):
+    self._test_invalid_weights(((17.0,), (5.0,), (2.0,),))
+
+  def testInvalid3x2Weight(self):
+    self._test_invalid_weights((
+        (17.0, 3.0),
+        (5.0, 31.0),
+        (2.0, 7.0),))
+
+  def testInvalid1x2Weight(self):
+    self._test_invalid_weights((17.0, 3.0,),)
+
+  def testInvalidScalar1DWeight(self):
+    self._test_invalid_weights((17.0,),)
+
+  def _test_valid_weights(self, weights):
+    with ops.Graph().as_default():
+      self.assertEqual(0, len(util.get_losses()))
+      weighted_loss = losses.compute_weighted_loss(
+          self._raw_losses, weights=weights)
+      self.assertEqual(1, len(util.get_losses()))
       with self.test_session():
         self.assertAllClose(
-            np.mean(weights3x1x1 * self._raw_losses) * self._shape[1],
+            np.mean(weights * self._raw_losses),
             weighted_loss.eval())
 
-  def test3x2Weight(self):
-    with ops.Graph().as_default():
-      self.assertEqual(0, len(loss_ops.get_losses()))
-      weights3x2 = (
-          (17.0, 3.0),
-          (5.0, 31.0),
-          (2.0, 7.0),)
-      weighted_loss = losses.compute_weighted_loss(
-          self._raw_losses, weights=weights3x2)
-      self.assertEqual(1, len(loss_ops.get_losses()))
-      with self.test_session():
-        weights3x2x1 = np.reshape(weights3x2, (3, 2, 1))
-        self.assertAllClose(
-            np.mean(weights3x2x1 * self._raw_losses), weighted_loss.eval())
+  def test1x1x1Weight(self):
+    self._test_valid_weights((((17.0,),),))
 
-  # TODO(b/33556118): Bug: this should be averaged across all dimensions, not
-  # summed across dim 0.
-  def test1x2Weight(self):
-    with ops.Graph().as_default():
-      self.assertEqual(0, len(loss_ops.get_losses()))
-      weights1x2 = ((
-          17.0,
-          3.0,),)
-      weighted_loss = losses.compute_weighted_loss(
-          self._raw_losses, weights=weights1x2)
-      self.assertEqual(1, len(loss_ops.get_losses()))
-      with self.test_session():
-        weights1x2x1 = np.reshape(weights1x2, (1, 2, 1))
-        self.assertAllClose(
-            np.mean(weights1x2x1 * self._raw_losses) * self._shape[0],
-            weighted_loss.eval())
-
-  # TODO(b/33556118): Bug: this should be averaged across all dimensions, not
-  # summed across dim 0.
   def test1x2x1Weight(self):
-    with ops.Graph().as_default():
-      self.assertEqual(0, len(loss_ops.get_losses()))
-      weights1x2x1 = ((
-          (17.0,),
-          (3.0,),),)
-      weighted_loss = losses.compute_weighted_loss(
-          self._raw_losses, weights=weights1x2x1)
-      self.assertEqual(1, len(loss_ops.get_losses()))
-      with self.test_session():
-        self.assertAllClose(
-            np.mean(weights1x2x1 * self._raw_losses) * self._shape[0],
-            weighted_loss.eval())
+    self._test_valid_weights((((17.0,), (3.0,),),))
 
-  # TODO(b/33556118): Bug: this should be averaged across all dimensions, not
-  # summed across dims 0 & 1.
   def test1x1x4Weight(self):
-    with ops.Graph().as_default():
-      self.assertEqual(0, len(loss_ops.get_losses()))
-      weights1x1x4 = (((17.0, 13.0, 2.0, 5.0),),)
-      weighted_loss = losses.compute_weighted_loss(
-          self._raw_losses, weights=weights1x1x4)
-      self.assertEqual(1, len(loss_ops.get_losses()))
-      shape = self._shape
-      with self.test_session():
-        self.assertAllClose(
-            np.mean(weights1x1x4 * self._raw_losses) * shape[0] * shape[1],
-            weighted_loss.eval())
+    self._test_valid_weights((((17.0, 13.0, 2.0, 5.0),),))
 
-  # TODO(b/33556118): Bug: this should be averaged across all dimensions, not
-  # summed across dim 0.
+  def test3x1x1Weight(self):
+    self._test_valid_weights((((17.0,),), ((5.0,),), ((2.0,),),))
+
+  def test3x2x1Weight(self):
+    self._test_valid_weights((
+        ((17.0,), (3.0,)),
+        ((5.0,), (31.0,)),
+        ((2.0,), (7.0,)),
+    ))
+
+  def test3x1x4Weight(self):
+    self._test_valid_weights((
+        ((17.0, 13.0, 2.0, 5.0),),
+        ((5.0, 31.0, 17.0, 5.0),),
+        ((7.0, 3.0, 11.0, 5.0),),
+    ))
+
   def test1x2x4Weight(self):
-    with ops.Graph().as_default():
-      self.assertEqual(0, len(loss_ops.get_losses()))
-      weights1x2x4 = ((
-          (17.0, 13.0, 2.0, 5.0),
-          (3.0, 13.0, 11.0, 2.0),),)
-      weighted_loss = losses.compute_weighted_loss(
-          self._raw_losses, weights=weights1x2x4)
-      self.assertEqual(1, len(loss_ops.get_losses()))
-      with self.test_session():
-        self.assertAllClose(
-            np.mean(weights1x2x4 * self._raw_losses) * self._shape[0],
-            weighted_loss.eval())
+    self._test_valid_weights(((
+        (17.0, 13.0, 2.0, 5.0),
+        (3.0, 13.0, 11.0, 2.0),
+    ),))
 
   def test3x2x4Weight(self):
-    with ops.Graph().as_default():
-      self.assertEqual(0, len(loss_ops.get_losses()))
-      weights3x2x4 = (
-          (
-              (17.0, 13.0, 2.0, 5.0),
-              (3.0, 13.0, 11.0, 2.0),),
-          (
-              (5.0, 31.0, 17.0, 5.0),
-              (13.0, 3.0, 1.0, 11.0),),
-          (
-              (7.0, 3.0, 11.0, 5.0),
-              (13.0, 11.0, 1.0, 7.0),),)
-      weighted_loss = losses.compute_weighted_loss(
-          self._raw_losses, weights=weights3x2x4)
-      self.assertEqual(1, len(loss_ops.get_losses()))
-      with self.test_session():
-        self.assertAllClose(
-            np.mean(weights3x2x4 * self._raw_losses), weighted_loss.eval())
+    self._test_valid_weights((
+        ((17.0, 13.0, 2.0, 5.0), (3.0, 13.0, 11.0, 2.0),),
+        ((5.0, 31.0, 17.0, 5.0), (13.0, 3.0, 1.0, 11.0),),
+        ((7.0, 3.0, 11.0, 5.0), (13.0, 11.0, 1.0, 7.0),),
+    ))
 
 
 if __name__ == '__main__':

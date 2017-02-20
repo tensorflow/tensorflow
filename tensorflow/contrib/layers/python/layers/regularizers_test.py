@@ -18,57 +18,71 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import sys
+
+# TODO: #6568 Remove this hack that makes dlopen() not crash.
+if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
+  import ctypes
+  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
+
 import numpy as np
-import tensorflow as tf
+
+from tensorflow.contrib.layers.python.layers import regularizers
+from tensorflow.python.client import session
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import test
 
 
-class RegularizerTest(tf.test.TestCase):
+class RegularizerTest(test.TestCase):
 
   def test_l1(self):
     with self.assertRaises(ValueError):
-      tf.contrib.layers.l1_regularizer(-1.)
+      regularizers.l1_regularizer(-1.)
     with self.assertRaises(ValueError):
-      tf.contrib.layers.l1_regularizer(0)
+      regularizers.l1_regularizer(0)
 
-    self.assertIsNone(tf.contrib.layers.l1_regularizer(0.)(None))
+    self.assertIsNone(regularizers.l1_regularizer(0.)(None))
 
     values = np.array([1., -1., 4., 2.])
-    weights = tf.constant(values)
-    with tf.Session() as sess:
-      result = sess.run(tf.contrib.layers.l1_regularizer(.5)(weights))
+    weights = constant_op.constant(values)
+    with session.Session() as sess:
+      result = sess.run(regularizers.l1_regularizer(.5)(weights))
 
     self.assertAllClose(np.abs(values).sum() * .5, result)
 
   def test_l2(self):
     with self.assertRaises(ValueError):
-      tf.contrib.layers.l2_regularizer(-1.)
+      regularizers.l2_regularizer(-1.)
     with self.assertRaises(ValueError):
-      tf.contrib.layers.l2_regularizer(0)
+      regularizers.l2_regularizer(0)
 
-    self.assertIsNone(tf.contrib.layers.l2_regularizer(0.)(None))
+    self.assertIsNone(regularizers.l2_regularizer(0.)(None))
 
     values = np.array([1., -1., 4., 2.])
-    weights = tf.constant(values)
-    with tf.Session() as sess:
-      result = sess.run(tf.contrib.layers.l2_regularizer(.42)(weights))
+    weights = constant_op.constant(values)
+    with session.Session() as sess:
+      result = sess.run(regularizers.l2_regularizer(.42)(weights))
 
     self.assertAllClose(np.power(values, 2).sum() / 2.0 * .42, result)
 
   def test_l1_l2(self):
     with self.assertRaises(ValueError):
-      tf.contrib.layers.l1_l2_regularizer(-1., 0.5)
+      regularizers.l1_l2_regularizer(-1., 0.5)
     with self.assertRaises(ValueError):
-      tf.contrib.layers.l1_l2_regularizer(0.5, -1.)
+      regularizers.l1_l2_regularizer(0.5, -1.)
     with self.assertRaises(ValueError):
-      tf.contrib.layers.l1_l2_regularizer(0, 0.5)
+      regularizers.l1_l2_regularizer(0, 0.5)
     with self.assertRaises(ValueError):
-      tf.contrib.layers.l1_l2_regularizer(0.5, 0)
+      regularizers.l1_l2_regularizer(0.5, 0)
 
     with self.test_session():
       shape = [5, 5, 5]
       num_elem = 5 * 5 * 5
-      tensor = tf.constant(1.0, shape=shape)
-      loss = tf.contrib.layers.l1_l2_regularizer(1.0, 1.0)(tensor)
+      tensor = constant_op.constant(1.0, shape=shape)
+      loss = regularizers.l1_l2_regularizer(1.0, 1.0)(tensor)
       self.assertEquals(loss.op.name, 'l1_l2_regularizer')
       self.assertAlmostEqual(loss.eval(), num_elem + num_elem / 2, 5)
 
@@ -76,65 +90,65 @@ class RegularizerTest(tf.test.TestCase):
     with self.test_session():
       shape = [5, 5, 5]
       num_elem = 5 * 5 * 5
-      tensor = tf.constant(1.0, shape=shape)
-      with tf.name_scope('foo'):
-        loss = tf.contrib.layers.l1_l2_regularizer(1.0, 1.0,
-                                                   scope='l1_l2')(tensor)
+      tensor = constant_op.constant(1.0, shape=shape)
+      with ops.name_scope('foo'):
+        loss = regularizers.l1_l2_regularizer(1.0, 1.0, scope='l1_l2')(tensor)
       self.assertEquals(loss.op.name, 'foo/l1_l2')
       self.assertAlmostEqual(loss.eval(), num_elem + num_elem / 2, 5)
 
   def test_sum_regularizer(self):
-    l1_function = tf.contrib.layers.l1_regularizer(.1)
-    l2_function = tf.contrib.layers.l2_regularizer(.2)
-    self.assertIsNone(tf.contrib.layers.sum_regularizer([]))
-    self.assertIsNone(tf.contrib.layers.sum_regularizer([None]))
+    l1_function = regularizers.l1_regularizer(.1)
+    l2_function = regularizers.l2_regularizer(.2)
+    self.assertIsNone(regularizers.sum_regularizer([]))
+    self.assertIsNone(regularizers.sum_regularizer([None]))
 
     values = np.array([-3.])
-    weights = tf.constant(values)
-    with tf.Session() as sess:
-      l1_reg1 = tf.contrib.layers.sum_regularizer([l1_function])
+    weights = constant_op.constant(values)
+    with session.Session() as sess:
+      l1_reg1 = regularizers.sum_regularizer([l1_function])
       l1_result1 = sess.run(l1_reg1(weights))
 
-      l1_reg2 = tf.contrib.layers.sum_regularizer([l1_function, None])
+      l1_reg2 = regularizers.sum_regularizer([l1_function, None])
       l1_result2 = sess.run(l1_reg2(weights))
 
-      l1_l2_reg = tf.contrib.layers.sum_regularizer([l1_function, l2_function])
+      l1_l2_reg = regularizers.sum_regularizer([l1_function, l2_function])
       l1_l2_result = sess.run(l1_l2_reg(weights))
 
     self.assertAllClose(.1 * np.abs(values).sum(), l1_result1)
     self.assertAllClose(.1 * np.abs(values).sum(), l1_result2)
-    self.assertAllClose(.1 * np.abs(values).sum() +
-                        .2 * np.power(values, 2).sum() / 2.0,
-                        l1_l2_result)
+    self.assertAllClose(
+        .1 * np.abs(values).sum() + .2 * np.power(values, 2).sum() / 2.0,
+        l1_l2_result)
 
   def test_apply_regularization(self):
-    dummy_regularizer = lambda x: tf.reduce_sum(2 * x)
+    dummy_regularizer = lambda x: math_ops.reduce_sum(2 * x)
     array_weights_list = [[1.5], [2, 3, 4.2], [10, 42, 666.6]]
-    tensor_weights_list = [tf.constant(x) for x in array_weights_list]
+    tensor_weights_list = [constant_op.constant(x) for x in array_weights_list]
     expected = sum([2 * x for l in array_weights_list for x in l])
     with self.test_session():
-      result = tf.contrib.layers.apply_regularization(dummy_regularizer,
-                                                      tensor_weights_list)
+      result = regularizers.apply_regularization(dummy_regularizer,
+                                                 tensor_weights_list)
       self.assertAllClose(expected, result.eval())
 
   def test_apply_zero_regularization(self):
-    regularizer = tf.contrib.layers.l2_regularizer(0.0)
+    regularizer = regularizers.l2_regularizer(0.0)
     array_weights_list = [[1.5], [2, 3, 4.2], [10, 42, 666.6]]
-    tensor_weights_list = [tf.constant(x) for x in array_weights_list]
+    tensor_weights_list = [constant_op.constant(x) for x in array_weights_list]
     with self.test_session():
-      result = tf.contrib.layers.apply_regularization(regularizer,
-                                                      tensor_weights_list)
+      result = regularizers.apply_regularization(regularizer,
+                                                 tensor_weights_list)
       self.assertAllClose(0.0, result.eval())
 
   def test_apply_regularization_invalid_regularizer(self):
-    non_scalar_regularizer = lambda x: tf.tile(x, [2])
-    tensor_weights_list = [tf.constant(x)
-                           for x in [[1.5], [2, 3, 4.2], [10, 42, 666.6]]]
+    non_scalar_regularizer = lambda x: array_ops.tile(x, [2])
+    tensor_weights_list = [
+        constant_op.constant(x) for x in [[1.5], [2, 3, 4.2], [10, 42, 666.6]]
+    ]
     with self.test_session():
       with self.assertRaises(ValueError):
-        tf.contrib.layers.apply_regularization(non_scalar_regularizer,
-                                               tensor_weights_list)
+        regularizers.apply_regularization(non_scalar_regularizer,
+                                          tensor_weights_list)
 
 
 if __name__ == '__main__':
-  tf.test.main()
+  test.main()

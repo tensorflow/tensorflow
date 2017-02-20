@@ -301,8 +301,28 @@ static void BM_ScatterDivInt64(int iters, int embedding_size) {
   BM_ScatterHelper<int64>(iters, embedding_size, "ScatterDiv");
 }
 
-BENCHMARK(BM_ScatterUpdateInt32)->Arg(1)->Arg(10)->Arg(64)->Arg(256)->Arg(1024);
-BENCHMARK(BM_ScatterUpdateInt64)->Arg(1)->Arg(10)->Arg(64)->Arg(256)->Arg(1024);
+BENCHMARK(BM_ScatterUpdateInt32)
+    ->Arg(1)
+    ->Arg(10)
+    ->Arg(32)
+    ->Arg(50)
+    ->Arg(64)
+    ->Arg(80)
+    ->Arg(96)
+    ->Arg(112)
+    ->Arg(192)
+    ->Arg(256)
+    ->Arg(1024)
+    ->Arg(10000)
+    ->Arg(100000)
+    ->Arg(1000000);
+BENCHMARK(BM_ScatterUpdateInt64)
+    ->Arg(1)
+    ->Arg(10)
+    ->Arg(64)
+    ->Arg(256)
+    ->Arg(1024)
+    ->Arg(100000);
 
 BENCHMARK(BM_ScatterAddInt32)->Arg(1)->Arg(10)->Arg(64)->Arg(256)->Arg(1024);
 BENCHMARK(BM_ScatterAddInt64)->Arg(1)->Arg(10)->Arg(64)->Arg(256)->Arg(1024);

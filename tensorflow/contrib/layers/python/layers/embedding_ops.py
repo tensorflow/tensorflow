@@ -159,7 +159,7 @@ def safe_embedding_lookup_sparse(embedding_weights,
     # Reshape back from linear ids back into higher-dimensional dense result.
     final_result = array_ops.reshape(
         result,
-        array_ops.concat_v2([
+        array_ops.concat([
             array_ops.slice(
                 math_ops.cast(original_shape, dtypes.int32), [0],
                 [original_rank - 1]),
@@ -304,10 +304,10 @@ def _sampled_scattered_embedding_lookup(
           math_ops.range(0, dimension), 0), array_ops.shape(values))
     else:
       dimension = array_ops.shape(sampled_candidates)[
-          math_ops.sub(array_ops.rank(sampled_candidates), 1)]
+          math_ops.subtract(array_ops.rank(sampled_candidates), 1)]
       sampled_candidates_shape = array_ops.shape(sampled_candidates)
       dimension_tensor = array_ops.reshape(dimension, shape=[1,])
-      expected_shape = array_ops.concat_v2([values_shape, dimension_tensor], 0)
+      expected_shape = array_ops.concat([values_shape, dimension_tensor], 0)
       with ops.control_dependencies([control_flow_ops.Assert(
           math_ops.reduce_all(math_ops.equal(sampled_candidates_shape,
                                              expected_shape)),
@@ -346,8 +346,8 @@ def _sampled_scattered_embedding_lookup(
     result = embedding_ops.embedding_lookup(
         params, ids, partition_strategy="div", validate_indices=False)
 
-    return array_ops.reshape(
-        result, array_ops.concat_v2([values_shape, [dimension]], 0))
+    return array_ops.reshape(result,
+                             array_ops.concat([values_shape, [dimension]], 0))
 
 
 def scattered_embedding_lookup_sparse(params,
@@ -461,7 +461,7 @@ def embedding_lookup_unique(params, ids, name=None):
     unique_ids, idx = array_ops.unique(ids_flat)
     unique_embeddings = embedding_ops.embedding_lookup(params, unique_ids)
     embeds_flat = array_ops.gather(unique_embeddings, idx)
-    embed_shape = array_ops.concat_v2(
+    embed_shape = array_ops.concat(
         [shape, array_ops.shape(unique_embeddings)[1:]], 0)
     embeds = array_ops.reshape(embeds_flat, embed_shape)
     embeds.set_shape(ids.get_shape().concatenate(
@@ -539,7 +539,7 @@ def _sampled_scattered_embedding_lookup_sparse(params,
           array_ops.constant([-1., 1.]), sp_values.values, dimension=dimension,
           sampled_candidates=sampled_candidates, hash_key=hash_key,
           name="signs_lookup")
-      embeddings = math_ops.mul(signs, embeddings, name="signs_hash")
+      embeddings = math_ops.multiply(signs, embeddings, name="signs_hash")
 
     if segment_ids.dtype != dtypes.int32:
       segment_ids = math_ops.cast(segment_ids, dtypes.int32)

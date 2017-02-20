@@ -7,13 +7,7 @@ Note: Functions taking `Tensor` arguments can also take anything accepted by
 
 [TOC]
 
-Note: Elementwise binary operations in TensorFlow follow [numpy-style
-broadcasting](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html).
-
-## Arithmetic Operators
-
-TensorFlow provides several operations that you can use to add basic arithmetic
-operators to your graph.
+Basic arithmetic operators. See the @{$python/math_ops} guide.
 
 - - -
 
@@ -42,7 +36,7 @@ Returns x + y element-wise.
 
 Returns x - y element-wise.
 
-*NOTE*: `Sub` supports broadcasting. More about broadcasting
+*NOTE*: `tf.subtract` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 
 ##### Args:
@@ -63,7 +57,7 @@ Returns x - y element-wise.
 
 Returns x * y element-wise.
 
-*NOTE*: `Mul` supports broadcasting. More about broadcasting
+*NOTE*: ``tf.multiply`` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 
 ##### Args:
@@ -376,12 +370,6 @@ of corresponding 3-element vectors is cross-multiplied independently.
   Pairwise cross product of the vectors in `a` and `b`.
 
 
-
-## Basic Math Functions
-
-TensorFlow provides several operations that you can use to add basic
-mathematical functions to your graph.
-
 - - -
 
 ### `tf.add_n(inputs, name=None)` {#add_n}
@@ -416,10 +404,6 @@ containing the absolute value of each element in `x`. For example, if x is
 an input element and y is an output element, this operation computes
 \\(y = |x|\\).
 
-See [`tf.complex_abs()`](#tf_complex_abs) to compute the absolute value of a
-complex
-number.
-
 ##### Args:
 
 
@@ -439,17 +423,18 @@ number.
 
 Computes numerical negative value element-wise.
 
-I.e., \\(y = -x\\).
+I.e., \(y = -x\).
 
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`x`</b>: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+    `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
 
 
 - - -
@@ -612,6 +597,25 @@ tf.pow(x, y) ==> [[256, 65536], [9, 27]]
 ### `tf.exp(x, name=None)` {#exp}
 
 Computes exponential of x element-wise.  \\(y = e^x\\).
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `complex64`, `complex128`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `x`.
+
+
+- - -
+
+### `tf.expm1(x, name=None)` {#expm1}
+
+Computes exponential of x - 1 element-wise.
+
+I.e., \\(y = (\exp x) - 1\\).
 
 ##### Args:
 
@@ -1139,12 +1143,6 @@ rint([-1.7, -1.5, -0.2, 0.2, 1.5, 1.7, 2.0]) ==> [-2., -2., -0., 0., 2., 2., 2.]
   A `Tensor`. Has the same type as `x`.
 
 
-
-## Matrix Math Functions
-
-TensorFlow provides several operations that you can use to add linear algebra
-functions on matrices to your graph.
-
 - - -
 
 ### `tf.diag(diagonal, name=None)` {#diag}
@@ -1312,7 +1310,6 @@ tf.transpose(x, perm=[0, 2, 1]) ==> [[[1  4]
 ##### Returns:
 
   A transposed `Tensor`.
-
 
 
 - - -
@@ -1581,7 +1578,6 @@ tf.matrix_transpose(x) ==> [[1 4]
 *  <b>`ValueError`</b>: If `a` is determined statically to have `rank < 2`.
 
 
-
 - - -
 
 ### `tf.matmul(a, b, transpose_a=False, transpose_b=False, adjoint_a=False, adjoint_b=False, a_is_sparse=False, b_is_sparse=False, name=None)` {#matmul}
@@ -1619,13 +1615,15 @@ c = tf.matmul(a, b) => [[58 64]
 
 
 # 3-D tensor `a`
-a = tf.constant(np.arange(1,13), shape=[2, 2, 3]) => [[[ 1.  2.  3.]
+a = tf.constant(np.arange(1, 13, dtype=np.int32),
+                shape=[2, 2, 3])                  => [[[ 1.  2.  3.]
                                                        [ 4.  5.  6.]],
                                                       [[ 7.  8.  9.]
                                                        [10. 11. 12.]]]
 
 # 3-D tensor `b`
-b = tf.constant(np.arange(13,25), shape=[2, 3, 2]) => [[[13. 14.]
+b = tf.constant(np.arange(13, 25, dtype=np.int32),
+                shape=[2, 3, 2])                   => [[[13. 14.]
                                                         [15. 16.]
                                                         [17. 18.]],
                                                        [[19. 20.]
@@ -1656,10 +1654,14 @@ c = tf.matmul(a, b) => [[[ 94 100]
 ##### Returns:
 
   A `Tensor` of the same type as `a` and `b` where each inner-most matrix is
-  the product of the corresponding matrices in `a` and `b, e.g. if all
+  the product of the corresponding matrices in `a` and `b`, e.g. if all
   transpose or adjoint attributes are `False`:
 
-  output[..., :, :] = a[..., :, :] * b[..., :, :] ,
+  `output`[..., i, j] = sum_k (`a`[..., i, k] * `b`[..., k, j]),
+  for all indices i, j.
+
+
+*  <b>`Note`</b>: This is matrix product, not element-wise product.
 
 
 ##### Raises:
@@ -1668,6 +1670,74 @@ c = tf.matmul(a, b) => [[[ 94 100]
 *  <b>`ValueError`</b>: If transpose_a and adjoint_a, or transpose_b and adjoint_b
     are both set to True.
 
+
+- - -
+
+### `tf.norm(tensor, ord='euclidean', axis=None, keep_dims=False, name=None)` {#norm}
+
+Computes the norm of vectors, matrices, and tensors.
+
+This function can compute 3 different matrix norms (Frobenius, 1-norm, and
+inf-norm) and up to 9218868437227405311 different vectors norms.
+
+##### Args:
+
+
+*  <b>`tensor`</b>: `Tensor` of types `float32`, `float64`, `complex64`, `complex128`
+*  <b>`ord`</b>: Order of the norm. Supported values are 'fro', 'euclidean', `0`,
+    `1, `2`, `np.inf` and any positive real number yielding the corresponding
+    p-norm. Default is 'euclidean' which is equivalent to Frobenius norm if
+    `tensor` is a matrix and equivalent to 2-norm for vectors.
+    Some restrictions apply,
+      a) The Frobenius norm `fro` is not defined for vectors,
+      b) If axis is a 2-tuple (matrix-norm), only 'euclidean', 'fro', `1`,
+         `np.inf` are supported.
+    See the description of `axis` on how to compute norms for a batch of
+    vectors or matrices stored in a tensor.
+*  <b>`axis`</b>: If `axis` is `None` (the default), the input is considered a vector
+    and a single vector norm is computed over the entire set of values in the
+    tensor, i.e. `norm(tensor, ord=ord)` is equivalent to
+    `norm(reshape(tensor, [-1]), ord=ord)`.
+    If `axis` is a Python integer, the input is considered a batch of vectors,
+    and `axis`t determines the axis in `tensor` over which to compute vector
+    norms.
+    If `axis` is a 2-tuple of Python integers it is considered a batch of
+    matrices and `axis` determines the axes in `tensor` over which to compute
+    a matrix norm.
+    Negative indices are supported. Example: If you are passing a tensor that
+    can be either a matrix or a batch of matrices at runtime, pass
+    `axis=[-2,-1]` instead of `axis=None` to make sure that matrix norms are
+    computed.
+*  <b>`keep_dims`</b>: If True, the axis indicated in `axis` are kept with size 1.
+    Otherwise, the dimensions in `axis` are removed from the output shape.
+*  <b>`name`</b>: The name of the op.
+
+##### Returns:
+
+
+*  <b>`output`</b>: A `Tensor` of the same type as tensor, containing the vector or
+    matrix norms. If `keep_dims` is True then the rank of output is equal to
+    the rank of `tensor`. Otherwise, if `axis` is none the output is a scalar,
+    if `axis` is an integer, the rank of `output` is one less than the rank
+    of `tensor`, if `axis` is a 2-tuple the rank of `output` is two less
+    than the rank of `tensor`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `ord` or `axis` is invalid.
+
+@compatibility(numpy)
+Mostly equivalent to numpy.linalg.norm.
+Not supported: ord <= 0, 2-norm for matrices, nuclear norm.
+
+##### Other differences:
+
+  a) If axis is `None`, treats the the flattened `tensor` as a vector
+   regardless of rank.
+  b) Explicitly supports 'euclidean' norm as the default, including for
+   higher order tensors.
+@end_compatibility
 
 
 - - -
@@ -2021,7 +2091,7 @@ Computes the SVD of each inner matrix in `tensor` such that
 # a is a tensor.
 # s is a tensor of singular values.
 # u is a tensor of left singular vectors.
-# v is a tensor of right singular vectors.
+#v is a tensor of right singular vectors.
 s, u, v = svd(a)
 s = svd(a, compute_uv=False)
 ```
@@ -2029,7 +2099,7 @@ s = svd(a, compute_uv=False)
 ##### Args:
 
 
-*  <b>`matrix`</b>: `Tensor` of shape `[..., M, N]`. Let `P` be the minimum of `M` and
+*  <b>`tensor`</b>: `Tensor` of shape `[..., M, N]`. Let `P` be the minimum of `M` and
     `N`.
 *  <b>`full_matrices`</b>: If true, compute full-sized `u` and `v`. If false
     (the default), compute only the leading `P` singular vectors.
@@ -2050,12 +2120,69 @@ s = svd(a, compute_uv=False)
     shape is `[..., N, P]`. If `full_matrices` is `True` then shape is
     `[..., N, N]`. Not returned if `compute_uv` is `False`.
 
+@compatibility(numpy)
+Mostly equivalent to numpy.linalg.svd, except that the order of output
+arguments here is `s`, `u`, `v` when `compute_uv` is `True`, as opposed to
+`u`, `s`, `v` for numpy.linalg.svd.
+@end_compatibility
 
 
-## Complex Number Functions
+- - -
 
-TensorFlow provides several operations that you can use to add complex number
-functions to your graph.
+### `tf.tensordot(a, b, axes, name=None)` {#tensordot}
+
+Tensor contraction of a and b along specified axes.
+
+Tensordot (also known as tensor contraction) sums the product of elements
+from `a` and `b` over the indices specified by `a_axes` and `b_axes`.
+The lists `a_axes` and `b_axes` specify those pairs of axes along which to
+contract the tensors. The axis `a_axes[i]` of `a` must have the same dimension
+as axis `b_axes[i]` of `b` for all `i` in `range(0, len(a_axes))`. The lists
+`a_axes` and `b_axes` must have identical length and consist of unique
+integers that specify valid axes for each of the tensors.
+
+This operation corresponds to `numpy.tensordot(a, b, axes)`.
+
+Example 1: When `a` and `b` are matrices (order 2), the case `axes = 1`
+is equivalent to matrix multiplication.
+
+Example 2: When `a` and `b` are matrices (order 2), the case
+`axes = [[1], [0]]` is equivalent to matrix multiplication.
+
+Example 3: Suppose that \\(a_ijk\\) and \\(b_lmn\\) represent two
+tensors of order 3. Then, `contract(a, b, [0], [2])` is the order 4 tensor
+\\(c_{jklm}\\) whose entry
+corresponding to the indices \\((j,k,l,m)\\) is given by:
+
+\\( c_{jklm} = \sum_i a_{ijk} b_{lmi} \\).
+
+In general, `order(c) = order(a) + order(b) - 2*len(axes[0])`.
+
+##### Args:
+
+
+*  <b>`a`</b>: `Tensor` of type `float32` or `float64`.
+*  <b>`b`</b>: `Tensor` with the same type as `a`.
+*  <b>`axes`</b>: Either a scalar `N`, or a list or an `int32` `Tensor` of shape [2, k].
+   If axes is a scalar, sum over the last N axes of a and the first N axes
+   of b in order.
+   If axes is a list or `Tensor` the first and second row contain the set of
+   unique integers specifying axes along which the contraction is computed,
+   for `a` and `b`, respectively. The number of axes for `a` and `b` must
+   be equal.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` with the same type as `a`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If the shapes of `a`, `b`, and `axes` are incompatible.
+*  <b>`IndexError`</b>: If the values in axes exceed the rank of the corresponding
+    tensor.
+
 
 - - -
 
@@ -2065,7 +2192,7 @@ Converts two real numbers to a complex number.
 
 Given a tensor `real` representing the real part of a complex number, and a
 tensor `imag` representing the imaginary part of a complex number, this
-operation returns complex numbers elementwise of the form \(a + bj\), where
+operation returns complex numbers elementwise of the form \\(a + bj\\), where
 *a* represents the `real` part and *b* represents the `imag` part.
 
 The input tensors `real` and `imag` must have the same shape.
@@ -2081,42 +2208,14 @@ tf.complex(real, imag) ==> [[2.25 + 4.75j], [3.25 + 5.75j]]
 ##### Args:
 
 
-*  <b>`real`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+*  <b>`real`</b>: A `Tensor`. Must be one of the following types: `float32`,
+    `float64`.
 *  <b>`imag`</b>: A `Tensor`. Must have the same type as `real`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
   A `Tensor` of type `complex64` or `complex128`.
-
-
-- - -
-
-### `tf.complex_abs(x, name=None)` {#complex_abs}
-
-Computes the complex absolute value of a tensor.
-
-Given a tensor `x` of complex numbers, this operation returns a tensor of type
-`float32` or `float64` that is the absolute value of each element in `x`. All
-elements in `x` must be complex numbers of the form \\(a + bj\\). The
-absolute value is computed as \\( \sqrt{a^2 + b^2}\\).
-
-For example:
-
-```
-# tensor 'x' is [[-2.25 + 4.75j], [-3.25 + 5.75j]]
-tf.complex_abs(x) ==> [5.25594902, 6.60492229]
-```
-
-##### Args:
-
-
-*  <b>`x`</b>: A `Tensor` of type `complex64` or `complex128`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor` of type `float32` or `float64`.
 
 
 - - -
@@ -2194,7 +2293,7 @@ Returns the real part of a complex number.
 
 Given a tensor `input` of complex numbers, this operation returns a tensor of
 type `float32` or `float64` that is the real part of each element in `input`.
-All elements in `input` must be complex numbers of the form \(a + bj\),
+All elements in `input` must be complex numbers of the form \\(a + bj\\),
 where *a* is the real part returned by this operation and *b* is the
 imaginary part.
 
@@ -2217,12 +2316,6 @@ If `input` is already real, it is returned unchanged.
 
   A `Tensor` of type `float32` or `float64`.
 
-
-
-## Fourier Transform Functions
-
-TensorFlow provides several operations that you can use to add discrete
-Fourier transform functions to your graph.
 
 - - -
 
@@ -2365,12 +2458,6 @@ Compute the inverse 3-dimensional discrete Fourier Transform over the inner-most
   Equivalent to np.fft3
   @end_compatibility
 
-
-
-## Reduction
-
-TensorFlow provides several operations that you can use to perform
-common math computations that reduce various dimensions of a tensor.
 
 - - -
 
@@ -2736,7 +2823,6 @@ tf.count_nonzero(x, [0, 1]) ==> 3
   The reduced tensor (number of nonzero values).
 
 
-
 - - -
 
 ### `tf.accumulate_n(inputs, shape=None, tensor_dtype=None, name=None)` {#accumulate_n}
@@ -2778,7 +2864,6 @@ tf.accumulate_n([a, b, a], shape=[2, 2], tensor_dtype=tf.int32)
 
 *  <b>`ValueError`</b>: If `inputs` don't all have same shape and dtype or the shape
   cannot be inferred.
-
 
 
 - - -
@@ -2857,12 +2942,6 @@ This function behaves like `numpy.einsum`, but does not support:
       indices in its subscript, or
     - the input shapes are inconsistent along a particular axis.
 
-
-
-## Scan
-
-TensorFlow provides several operations that you can use to perform scans
-(running totals) across one axis of a tensor.
 
 - - -
 
@@ -2955,28 +3034,6 @@ tf.cumprod([a, b, c], exclusive=True, reverse=True) ==> [b * c, c, 1]
 
   A `Tensor`. Has the same type as `x`.
 
-
-
-## Segmentation
-
-TensorFlow provides several operations that you can use to perform common
-math computations on tensor segments.
-Here a segmentation is a partitioning of a tensor along
-the first dimension, i.e. it  defines a mapping from the first dimension onto
-`segment_ids`. The `segment_ids` tensor should be the size of
-the first dimension, `d0`, with consecutive IDs in the range `0` to `k`,
-where `k<d0`.
-In particular, a segmentation of a matrix tensor is a mapping of rows to
-segments.
-
-For example:
-
-```python
-c = tf.constant([[1,2,3,4], [-1,-2,-3,-4], [5,6,7,8]])
-tf.segment_sum(c, tf.constant([0, 0, 1]))
-  ==>  [[0 0 0 0]
-        [5 6 7 8]]
-```
 
 - - -
 
@@ -3147,7 +3204,6 @@ values summed.
   has size `k`, the number of segments.
 
 
-
 - - -
 
 ### `tf.unsorted_segment_sum(data, segment_ids, num_segments, name=None)` {#unsorted_segment_sum}
@@ -3188,6 +3244,46 @@ If the sum is empty for a given segment ID `i`, `output[i] = 0`.
   dimensions, which are replaced with a single dimension which has size
   `num_segments`.
 
+
+- - -
+
+### `tf.unsorted_segment_max(data, segment_ids, num_segments, name=None)` {#unsorted_segment_max}
+
+Computes the Max along segments of a tensor.
+
+Read [the section on
+Segmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation
+of segments.
+
+This operator is similar to the [unsorted segment sum operator](../../api_docs/python/math_ops.md#UnsortedSegmentSum).
+Instead of computing the sum over segments, it computes the maximum
+such that:
+
+\\(output_i = \max_j data_j\\) where max is over `j` such
+that `segment_ids[j] == i`.
+
+If the maximum is empty for a given segment ID `i`, it outputs the smallest possible value for specific numeric type,
+ `output[i] = numeric_limits<T>::min()`.
+
+<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<img style="width:100%" src="../../images/UnsortedSegmentSum.png" alt>
+</div>
+
+##### Args:
+
+
+*  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
+*  <b>`segment_ids`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+    A 1-D tensor whose rank is equal to the rank of `data`'s
+    first dimension.
+*  <b>`num_segments`</b>: A `Tensor` of type `int32`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `data`.
+  Has same shape as data, except for dimension 0 which
+  has size `num_segments`.
 
 
 - - -
@@ -3302,15 +3398,6 @@ of segments.
   has size `k`, the number of segments.
 
 
-
-
-## Sequence Comparison and Indexing
-
-TensorFlow provides several operations that you can use to add sequence
-comparison and index extraction to your graph. You can use these operations to
-determine sequence differences and determine the indexes of specific values in
-a tensor.
-
 - - -
 
 ### `tf.argmin(input, axis=None, name=None, dimension=None)` {#argmin}
@@ -3349,7 +3436,6 @@ Returns the index with the largest value across axes of a tensor.
 ##### Returns:
 
   A `Tensor` of type `int64`.
-
 
 
 - - -
@@ -3483,7 +3569,6 @@ idx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]
 *  <b>`idx`</b>: A `Tensor` of type `out_idx`. 1-D.
 
 
-
 - - -
 
 ### `tf.edit_distance(hypothesis, truth, normalize=True, name='edit_distance')` {#edit_distance}
@@ -3552,7 +3637,6 @@ output ==> [[inf, 1.0],  # (0,0): no truth, (0,1): no hypothesis
 *  <b>`TypeError`</b>: If either `hypothesis` or `truth` are not a `SparseTensor`.
 
 
-
 - - -
 
 ### `tf.invert_permutation(x, name=None)` {#invert_permutation}
@@ -3584,69 +3668,5 @@ invert_permutation(x) ==> [2, 4, 3, 0, 1]
 ##### Returns:
 
   A `Tensor`. Has the same type as `x`. 1-D.
-
-
-
-## Other Functions and Classes
-- - -
-
-### `tf.mul(x, y, name=None)` {#mul}
-
-Returns x * y element-wise.
-
-*NOTE*: `Mul` supports broadcasting. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-
-##### Args:
-
-
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
-*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor`. Has the same type as `x`.
-
-
-- - -
-
-### `tf.neg(x, name=None)` {#neg}
-
-Computes numerical negative value element-wise.
-
-I.e., \(y = -x\).
-
-##### Args:
-
-
-*  <b>`x`</b>: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
-    `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
-
-
-- - -
-
-### `tf.sub(x, y, name=None)` {#sub}
-
-Returns x - y element-wise.
-
-*NOTE*: `Sub` supports broadcasting. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-
-##### Args:
-
-
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
-*  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor`. Has the same type as `x`.
 
 

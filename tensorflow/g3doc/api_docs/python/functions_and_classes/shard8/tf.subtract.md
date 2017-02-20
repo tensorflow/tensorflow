@@ -2,7 +2,7 @@
 
 Returns x - y element-wise.
 
-*NOTE*: `Sub` supports broadcasting. More about broadcasting
+*NOTE*: `tf.subtract` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 
 ##### Args:

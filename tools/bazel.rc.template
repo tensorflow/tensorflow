@@ -1,6 +1,7 @@
 build:cuda --crosstool_top=@local_config_cuda//crosstool:toolchain
 build:cuda --define=using_cuda=true --define=using_cuda_nvcc=true
 build:win-cuda --define=using_cuda=true --define=using_cuda_nvcc=true
+build:mkl --define=using_mkl=true
 
 build:sycl --crosstool_top=@local_config_sycl//crosstool:toolchain
 build:sycl --define=using_sycl=true
@@ -27,3 +28,7 @@ run --spawn_strategy=standalone
 build --genrule_strategy=standalone
 test --genrule_strategy=standalone
 run --genrule_strategy=standalone
+
+build -c opt
+test -c opt
+run -c opt

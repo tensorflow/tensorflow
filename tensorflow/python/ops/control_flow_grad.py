@@ -55,14 +55,19 @@ def _SwitchGrad(op, *grad):
         control_flow_ops._AddNextAndBackEdge(merge_grad, grad[1])
         # pylint: enable=protected-access
       return None, None
-    else:
-      # This is the first time this Switch is visited. It always comes from
+    elif grad[0] is not None:
+      # This is the first time this Switch is visited. It comes from
       # the Exit branch, which is grad[0]. grad[1] is empty at this point.
       # Use grad[0] for both inputs to merge for now, but update the second
       # input of merge when we see this Switch the second time.
       merge_grad = merge([grad[0], grad[0]], name="b_switch")[0]
       grad_ctxt.grad_state.switch_map[op] = merge_grad
       return merge_grad, None
+    else:
+      # This is the first time this Switch is visited. It comes from the
+      # Identity branch. Such a Switch has `None` gradient for the Exit branch,
+      # meaning the output is not differentiable.
+      return None, None
   elif isinstance(op_ctxt, CondContext):
     good_grad = grad[op_ctxt.branch]
     zero_grad = grad[1 - op_ctxt.branch]
@@ -198,7 +203,7 @@ def _EnterGrad(op, grad):
     # Skip gradient computation, if the attribute `back_prop` is false.
     return grad
   if grad_ctxt.grad_state is None:
-    # Pass the gradient grough if we are not in a gradient while context.
+    # Pass the gradient through if we are not in a gradient while context.
     return grad
   if op.get_attr("is_constant"):
     # Add a gradient accumulator for each loop invariant.
@@ -211,6 +216,7 @@ def _EnterGrad(op, grad):
       raise TypeError("Type %s not supported" % type(grad))
   else:
     result = exit(grad)
+    grad_ctxt.loop_exits.append(result)
     grad_ctxt.ExitResult([result])
   return result
 

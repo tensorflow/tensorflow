@@ -90,7 +90,8 @@ REGISTER_OP_GRADIENT("Identity", IdentityGrad);
 
 Status PackGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
-  *g = FDH::Define(
+  *g = FDH::Create(
+      "_",
       // Arg defs
       {"x: N*T", "dy: T"},
       // Ret val defs
@@ -105,7 +106,8 @@ Status PackGrad(const AttrSlice& attrs, FunctionDef* g) {
           {"dy"},
           {{"T", "$T"}, {"num", "$N"}, {"axis", "$axis"}}
         },
-      });
+      },
+      {{"dx", "dx:output"}});
   // clang-format on
   VLOG(1) << "PackGrad " << DebugString(*g);
   return Status::OK();
@@ -147,9 +149,9 @@ Status ConcatGradHelper(const AttrSlice& attrs, FunctionDef* g,
   std::vector<string> offset_i;
   std::vector<string> dx_i;
   for (int i = 0; i < N; ++i) {
-    shape_i.push_back(strings::StrCat("shape_lst:", i));
-    offset_i.push_back(strings::StrCat("offset_lst:", i));
-    dx_i.push_back(strings::StrCat("dx_", i));
+    shape_i.push_back(strings::StrCat("shapes:output:", i));
+    offset_i.push_back(strings::StrCat("offset:offset:", i));
+    dx_i.push_back(strings::StrCat("dx_", i, ":output:0"));
   }
   DataTypeVector dtype_list(N, T);
 
@@ -160,19 +162,7 @@ Status ConcatGradHelper(const AttrSlice& attrs, FunctionDef* g,
   // which is the same as dx[i]'s offset within dy.
   std::vector<FDH::Node> nodes{
       {{"shapes"}, "ShapeN", {"x"}, {{"T", "$T"}, {"N", "$N"}}},
-      {{"shape_lst"},
-       "_ArrayToList",
-       {"shapes"},
-       {{"T", DT_INT32},
-        {"N", "$N"},
-        {"out_types", DataTypeVector(N, DT_INT32)}}},
-      {{"offset"}, "ConcatOffset", {"dim", "shapes"}, {{"N", "$N"}}},
-      {{"offset_lst"},
-       "_ArrayToList",
-       {"offset"},
-       {{"T", DT_INT32},
-        {"N", "$N"},
-        {"out_types", DataTypeVector(N, DT_INT32)}}},
+      {{"offset"}, "ConcatOffset", {"dim", "shapes:output"}, {{"N", "$N"}}},
       {{"d_dim"}, "ZerosLike", {"dim"}, {{"T", DT_INT32}}},
       {{"dx"},
        "_ListToArray",
@@ -182,34 +172,40 @@ Status ConcatGradHelper(const AttrSlice& attrs, FunctionDef* g,
   // For each dx[i], we take a slice of dy. The offset and size of the
   // slice is given by offset[i] and shape[i].
   for (int i = 0; i < N; ++i) {
-    nodes.push_back({{dx_i[i]},
+    nodes.push_back({{strings::StrCat("dx_", i)},
                      "Slice",
                      {"dy", offset_i[i], shape_i[i]},
                      {{"T", "$T"}, {"Index", DT_INT32}}});
   }
   if (dim_is_last_arg) {
     // clang-format off
-    *g = FDH::Define(
+    *g = FDH::Create(
+        "_",
         // Arg defs
         {"x: N*T", "dim: int32", "dy: T"},
-        // Ret val defs
+        // Return signature
         {"dx: N*T", "d_dim: int32"},
         // Attr defs
         {"T: type", "N: int"},
         // Nodes
-        nodes);
+        nodes,
+        // Return values
+        {{"dx", "dx:output"}, {"d_dim", "d_dim:y:0"}});
     // clang-format on
   } else {
     // clang-format off
-    *g = FDH::Define(
+    *g = FDH::Create(
+        "_",
         // Arg defs
         {"dim: int32", "x: N*T", "dy: T"},
-        // Ret val defs
+        // Return signature
         {"d_dim: int32", "dx: N*T"},
         // Attr defs
         {"T: type", "N: int"},
         // Nodes
-        nodes);
+        nodes,
+        // Return values
+        {{"dx", "dx:output"}, {"d_dim", "d_dim:y:0"}});
     // clang-format on
   }
   VLOG(1) << "ConcatGrad " << DebugString(*g);
@@ -399,15 +395,9 @@ Status SliceGrad(const AttrSlice& attrs, FunctionDef* g) {
        {{"xs_b"}, "Sub", {"xs", "begin"}, {{"T", DT_INT32}}},
        {{"xs_b_s"}, "Sub", {"xs_b", "size"}, {{"T", DT_INT32}}},
        {{"a1"}, "ExpandDims", {"xs_b_s", "one"}, {{"T", DT_INT32}}},
-       {{"b_and_a"},
-        "_ListToArray",
-        {"b1", "a1"},
-        {{"T", DT_INT32},
-         {"N", 2},
-         {"Tin", DataTypeVector{DT_INT32, DT_INT32}}}},
        {{"paddings"},
         "Concat",
-        {"one", "b_and_a"},
+        {"one", "b1", "a1"},
         {{"N", 2}, {"T", DT_INT32}}},
        // dx = Pad(dy, paddings)
        {{"dx"}, "Pad", {"dy", "paddings"}, {{"T", "$T"}}},

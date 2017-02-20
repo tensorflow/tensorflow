@@ -12,35 +12,38 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for Dequantize Operations."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import array_ops
+from tensorflow.python.platform import test
 
 
-class DequantizeOpTest(tf.test.TestCase):
+class DequantizeOpTest(test.TestCase):
 
   def __init__(self, method_name="runTest"):
     super(DequantizeOpTest, self).__init__(method_name)
 
   def _testDequantizeOp(self, inputs, min_range, max_range, dtype):
     with self.test_session():
-      input_op = tf.constant(inputs, shape=[len(inputs)], dtype=dtype)
-      dequantized = tf.dequantize(
-          input_op, min_range, max_range)
+      input_op = constant_op.constant(inputs, shape=[len(inputs)], dtype=dtype)
+      dequantized = array_ops.dequantize(input_op, min_range, max_range)
       tf_ans = dequantized.eval()
 
     # TODO(vrv): Add support for DT_QINT32 quantization if needed.
     type_dict = {
-        tf.quint8: np.uint8,
-        tf.qint8: np.int8,
-        tf.quint16: np.uint16,
-        tf.qint16: np.int16
-        }
+        dtypes.quint8: np.uint8,
+        dtypes.qint8: np.int8,
+        dtypes.quint16: np.uint16,
+        dtypes.qint16: np.int16
+    }
     self.assertTrue(dtype in type_dict.keys())
     v_max = np.iinfo(type_dict[dtype]).max
     v_min = np.iinfo(type_dict[dtype]).min
@@ -57,21 +60,16 @@ class DequantizeOpTest(tf.test.TestCase):
     self.assertAllClose(tf_ans, np_ans, rtol=1e-5, atol=1e-5)
 
   def testBasicQuint8(self):
-    self._testDequantizeOp(np.array([0, 128, 255]),
-                           0.0, 6.0, tf.quint8)
-    self._testDequantizeOp(np.array([0, 128, 255]),
-                           0.0, 123.456, tf.quint8)
-    self._testDequantizeOp(np.array([0, 4, 42, 108, 243]),
-                           5.0, 200.2, tf.quint8)
+    self._testDequantizeOp(np.array([0, 128, 255]), 0.0, 6.0, dtypes.quint8)
+    self._testDequantizeOp(np.array([0, 128, 255]), 0.0, 123.456, dtypes.quint8)
+    self._testDequantizeOp(
+        np.array([0, 4, 42, 108, 243]), 5.0, 200.2, dtypes.quint8)
 
   def testBasicQint8(self):
-    self._testDequantizeOp(np.array([-128, 0, 127]),
-                           -1.0, 2.0, tf.qint8)
-    self._testDequantizeOp(np.array([-2, 4, -17]),
-                           -5.0, -3.0, tf.qint8)
-    self._testDequantizeOp(np.array([0, -4, 42, -108]),
-                           5.0, 40.0, tf.qint8)
+    self._testDequantizeOp(np.array([-128, 0, 127]), -1.0, 2.0, dtypes.qint8)
+    self._testDequantizeOp(np.array([-2, 4, -17]), -5.0, -3.0, dtypes.qint8)
+    self._testDequantizeOp(np.array([0, -4, 42, -108]), 5.0, 40.0, dtypes.qint8)
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

@@ -59,7 +59,7 @@ def random_normal(shape,
     dtype: The type of the output.
     seed: A Python integer. Used to create a random seed for the distribution.
       See
-      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      @{tf.set_random_seed}
       for behavior.
     name: A name for the operation (optional).
 
@@ -71,10 +71,8 @@ def random_normal(shape,
     mean_tensor = ops.convert_to_tensor(mean, dtype=dtype, name="mean")
     stddev_tensor = ops.convert_to_tensor(stddev, dtype=dtype, name="stddev")
     seed1, seed2 = random_seed.get_seed(seed)
-    rnd = gen_random_ops._random_standard_normal(shape_tensor,
-                                                 dtype,
-                                                 seed=seed1,
-                                                 seed2=seed2)
+    rnd = gen_random_ops._random_standard_normal(
+        shape_tensor, dtype, seed=seed1, seed2=seed2)
     mul = rnd * stddev_tensor
     value = math_ops.add(mul, mean_tensor, name=name)
     return value
@@ -110,7 +108,7 @@ def parameterized_truncated_normal(shape,
     dtype: The type of the output.
     seed: A Python integer. Used to create a random seed for the distribution.
       See
-      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      @{tf.set_random_seed}
       for behavior.
     name: A name for the operation (optional).
 
@@ -125,13 +123,14 @@ def parameterized_truncated_normal(shape,
     minvals_tensor = ops.convert_to_tensor(minvals, dtype=dtype, name="minvals")
     maxvals_tensor = ops.convert_to_tensor(maxvals, dtype=dtype, name="maxvals")
     seed1, seed2 = random_seed.get_seed(seed)
-    rnd = gen_random_ops._parameterized_truncated_normal(shape_tensor,
-                                                         means_tensor,
-                                                         stddevs_tensor,
-                                                         minvals_tensor,
-                                                         maxvals_tensor,
-                                                         seed=seed1,
-                                                         seed2=seed2)
+    rnd = gen_random_ops._parameterized_truncated_normal(
+        shape_tensor,
+        means_tensor,
+        stddevs_tensor,
+        minvals_tensor,
+        maxvals_tensor,
+        seed=seed1,
+        seed2=seed2)
     return rnd
 
 
@@ -156,7 +155,7 @@ def truncated_normal(shape,
     dtype: The type of the output.
     seed: A Python integer. Used to create a random seed for the distribution.
       See
-      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      @{tf.set_random_seed}
       for behavior.
     name: A name for the operation (optional).
 
@@ -168,10 +167,8 @@ def truncated_normal(shape,
     mean_tensor = ops.convert_to_tensor(mean, dtype=dtype, name="mean")
     stddev_tensor = ops.convert_to_tensor(stddev, dtype=dtype, name="stddev")
     seed1, seed2 = random_seed.get_seed(seed)
-    rnd = gen_random_ops._truncated_normal(shape_tensor,
-                                           dtype,
-                                           seed=seed1,
-                                           seed2=seed2)
+    rnd = gen_random_ops._truncated_normal(
+        shape_tensor, dtype, seed=seed1, seed2=seed2)
     mul = rnd * stddev_tensor
     value = math_ops.add(mul, mean_tensor, name=name)
     return value
@@ -210,8 +207,7 @@ def random_uniform(shape,
       floating point.
     dtype: The type of the output: `float32`, `float64`, `int32`, or `int64`.
     seed: A Python integer. Used to create a random seed for the distribution.
-      See
-      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      See @{tf.set_random_seed}
       for behavior.
     name: A name for the operation (optional).
 
@@ -232,17 +228,11 @@ def random_uniform(shape,
     maxval = ops.convert_to_tensor(maxval, dtype=dtype, name="max")
     seed1, seed2 = random_seed.get_seed(seed)
     if dtype.is_integer:
-      return gen_random_ops._random_uniform_int(shape,
-                                                minval,
-                                                maxval,
-                                                seed=seed1,
-                                                seed2=seed2,
-                                                name=name)
+      return gen_random_ops._random_uniform_int(
+          shape, minval, maxval, seed=seed1, seed2=seed2, name=name)
     else:
-      rnd = gen_random_ops._random_uniform(shape,
-                                           dtype,
-                                           seed=seed1,
-                                           seed2=seed2)
+      rnd = gen_random_ops._random_uniform(
+          shape, dtype, seed=seed1, seed2=seed2)
       return math_ops.add(rnd * (maxval - minval), minval, name=name)
 
 
@@ -266,7 +256,7 @@ def random_shuffle(value, seed=None, name=None):
     value: A Tensor to be shuffled.
     seed: A Python integer. Used to create a random seed for the distribution.
       See
-      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      @{tf.set_random_seed}
       for behavior.
     name: A name for the operation (optional).
 
@@ -275,10 +265,8 @@ def random_shuffle(value, seed=None, name=None):
     dimension.
   """
   seed1, seed2 = random_seed.get_seed(seed)
-  return gen_random_ops._random_shuffle(value,
-                                        seed=seed1,
-                                        seed2=seed2,
-                                        name=name)
+  return gen_random_ops._random_shuffle(
+      value, seed=seed1, seed2=seed2, name=name)
 
 
 def random_crop(value, size, seed=None, name=None):
@@ -295,7 +283,7 @@ def random_crop(value, size, seed=None, name=None):
     value: Input tensor to crop.
     size: 1-D tensor with size the rank of `value`.
     seed: Python integer. Used to create a random seed. See
-      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      @{tf.set_random_seed}
       for behavior.
     name: A name for this operation (optional).
 
@@ -339,7 +327,7 @@ def multinomial(logits, num_samples, seed=None, name=None):
     num_samples: 0-D.  Number of independent samples to draw for each row slice.
     seed: A Python integer. Used to create a random seed for the distribution.
       See
-      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      @{tf.set_random_seed}
       for behavior.
     name: Optional name for the operation.
 
@@ -349,10 +337,8 @@ def multinomial(logits, num_samples, seed=None, name=None):
   with ops.name_scope(name, "multinomial", [logits]):
     logits = ops.convert_to_tensor(logits, name="logits")
     seed1, seed2 = random_seed.get_seed(seed)
-    return gen_random_ops.multinomial(logits,
-                                      num_samples,
-                                      seed=seed1,
-                                      seed2=seed2)
+    return gen_random_ops.multinomial(
+        logits, num_samples, seed=seed1, seed2=seed2)
 
 
 ops.NotDifferentiable("Multinomial")
@@ -415,26 +401,63 @@ def random_gamma(shape,
       `float64`.
     seed: A Python integer. Used to create a random seed for the distributions.
       See
-      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      @{tf.set_random_seed}
       for behavior.
     name: Optional name for the operation.
 
   Returns:
-    samples: a `Tensor` of shape `tf.concat_v2(shape, tf.shape(alpha + beta))`
+    samples: a `Tensor` of shape `tf.concat(shape, tf.shape(alpha + beta))`
       with values of type `dtype`.
   """
   with ops.name_scope(name, "random_gamma", [shape, alpha, beta]):
     shape = ops.convert_to_tensor(shape, name="shape", dtype=dtypes.int32)
     alpha = ops.convert_to_tensor(alpha, name="alpha", dtype=dtype)
-    beta = ops.convert_to_tensor(beta if beta is not None else 1,
-                                 name="beta",
-                                 dtype=dtype)
+    beta = ops.convert_to_tensor(
+        beta if beta is not None else 1, name="beta", dtype=dtype)
     alpha_broadcast = alpha + array_ops.zeros_like(beta)
     seed1, seed2 = random_seed.get_seed(seed)
-    return gen_random_ops._random_gamma(shape,
-                                        alpha_broadcast,
-                                        seed=seed1,
-                                        seed2=seed2) / beta
+    return gen_random_ops._random_gamma(
+        shape, alpha_broadcast, seed=seed1, seed2=seed2) / beta
 
 
 ops.NotDifferentiable("RandomGamma")
+
+
+def random_poisson(lam, shape, dtype=dtypes.float32, seed=None, name=None):
+  """Draws `shape` samples from each of the given Poisson distribution(s).
+
+  `lam` is the rate parameter describing the distribution(s).
+
+  Example:
+
+    samples = tf.random_poisson([0.5, 1.5], [10])
+    # samples has shape [10, 2], where each slice [:, 0] and [:, 1] represents
+    # the samples drawn from each distribution
+
+    samples = tf.random_poisson([12.2, 3.3], [7, 5])
+    # samples has shape [7, 5, 2], where each slice [:, :, 0] and [:, :, 1]
+    # represents the 7x5 samples drawn from each of the two distributions
+
+  Args:
+    lam: A Tensor or Python value or N-D array of type `dtype`.
+      `lam` provides the rate parameter(s) describing the poisson
+      distribution(s) to sample.
+    shape: A 1-D integer Tensor or Python array. The shape of the output samples
+      to be drawn per "rate"-parameterized distribution.
+    dtype: The type of `lam` and the output: `float16`, `float32`, or
+      `float64`.
+    seed: A Python integer. Used to create a random seed for the distributions.
+      See
+      @{tf.set_random_seed}
+      for behavior.
+    name: Optional name for the operation.
+
+  Returns:
+    samples: a `Tensor` of shape `tf.concat(shape, tf.shape(lam))` with
+      values of type `dtype`.
+  """
+  with ops.name_scope(name, "random_poisson", [lam, shape]):
+    lam = ops.convert_to_tensor(lam, name="lam", dtype=dtype)
+    shape = ops.convert_to_tensor(shape, name="shape", dtype=dtypes.int32)
+    seed1, seed2 = random_seed.get_seed(seed)
+    return gen_random_ops._random_poisson(shape, lam, seed=seed1, seed2=seed2)

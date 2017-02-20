@@ -3,7 +3,7 @@
 Output the rows of `input_tensor` to a queue for an input pipeline.
 
 Note: if `num_epochs` is not `None`, this function creates local counter
-`epochs`. Use `local_variable_initializer()` to initialize local variables.
+`epochs`. Use `local_variables_initializer()` to initialize local variables.
 
 ##### Args:
 

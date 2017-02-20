@@ -16,13 +16,16 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_constructor.h"
 
 #include <vector>
+#include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
@@ -47,6 +50,9 @@ class GraphConstructorTest : public ::testing::Test {
 
   void ExpectError(const string& gdef_ascii,
                    const std::vector<string>& expected_error_strs) {
+    // Used to verify that errors don't change graph
+    const string original_graph_description = GraphDebugString();
+
     Convert(gdef_ascii);
     GraphConstructorOptions opts;
     Status status = ConvertGraphDefToGraph(opts, gdef_, &graph_);
@@ -56,12 +62,43 @@ class GraphConstructorTest : public ::testing::Test {
       EXPECT_TRUE(status.error_message().find(error) != string::npos)
           << "Expected to find '" << error << "' in " << status;
     }
+
+    EXPECT_EQ(original_graph_description, GraphDebugString());
+  }
+
+  void ExpectError(
+      const string& gdef_ascii, const ImportGraphDefOptions& opts,
+      const std::vector<string>& expected_error_strs,
+      ShapeRefiner* refiner = nullptr,
+      std::vector<std::pair<Node*, int>>* return_tensors = nullptr) {
+    // Used to verify that errors don't change graph
+    const string original_graph_description = GraphDebugString();
+
+    Convert(gdef_ascii);
+    Status status =
+        ImportGraphDef(opts, gdef_, &graph_, refiner, return_tensors);
+    EXPECT_FALSE(status.ok());
+
+    for (const string& error : expected_error_strs) {
+      EXPECT_TRUE(status.error_message().find(error) != string::npos)
+          << "Expected to find '" << error << "' in " << status;
+    }
+
+    EXPECT_EQ(original_graph_description, GraphDebugString());
   }
 
   void ExpectOK(const string& gdef_ascii) {
     Convert(gdef_ascii);
     GraphConstructorOptions opts;
     TF_CHECK_OK(ConvertGraphDefToGraph(opts, gdef_, &graph_));
+  }
+
+  void ExpectOK(const string& gdef_ascii, const ImportGraphDefOptions& opts,
+                ShapeRefiner* refiner = nullptr,
+                std::vector<std::pair<Node*, int>>* return_tensors = nullptr) {
+    Convert(gdef_ascii);
+    Status s = ImportGraphDef(opts, gdef_, &graph_, refiner, return_tensors);
+    EXPECT_EQ(Status::OK(), s) << s;
   }
 
   void ExpectVersions(int min_consumer, int producer) {
@@ -85,8 +122,9 @@ class GraphConstructorTest : public ::testing::Test {
   bool HasEdge(const string& src, int src_out, const string& dst, int dst_in) {
     for (const Edge* e : graph_.edges()) {
       if (e->src()->name() == src && e->src_output() == src_out &&
-          e->dst()->name() == dst && e->dst_input() == dst_in)
+          e->dst()->name() == dst && e->dst_input() == dst_in) {
         return true;
+      }
     }
     return false;
   }
@@ -142,7 +180,10 @@ Status Scalars(shape_inference::InferenceContext* c) {
 
 REGISTER_OP("ABC");
 REGISTER_OP("TestParams").Output("o: float").SetShapeFn(Scalars);
-REGISTER_OP("TestInput").Output("a: float").Output("b: float");
+REGISTER_OP("TestInput")
+    .Output("a: float")
+    .Output("b: float")
+    .SetShapeFn(Scalars);
 REGISTER_OP("TestMul")
     .Input("a: float")
     .Input("b: float")
@@ -679,6 +720,370 @@ TEST_F(GraphConstructorTest, ImportGraphDef_ShapeWhitelist) {
   EXPECT_EQ(Status::OK(), s) << s;
 }
 
+TEST_F(GraphConstructorTest, ImportGraphDef_InputMap) {
+  ShapeRefiner refiner(graph_.op_registry());
+
+  // Populate graph with node we'll use in input map
+  ExpectOK("node { name: 'input' op: 'TestInput' }", ImportGraphDefOptions(),
+           &refiner);
+
+  // Create input_map and use it to import more nodes
+  ImportGraphDefOptions opts;
+  opts.input_map[TensorId("new_input", 0)] = TensorId("input", 1);
+  opts.input_map[TensorId("new_input", 1)] = TensorId("input", 0);
+
+  ExpectOK(
+      R"EOF(
+      node { name: 'new_input' op: 'TestInput' }
+      node { name: 't1' op: 'TestMul' input: [ 'new_input:0', 'new_input:1' ] }
+      node { name: 't2' op: 'TestMul' input: [ 't1:0', 't1:0' ] }
+      )EOF",
+      opts, &refiner);
+
+  EXPECT_TRUE(HasNode("input"));
+  EXPECT_TRUE(HasNode("t1"));
+  EXPECT_TRUE(HasNode("t2"));
+  // `new_input` node is imported even though it's outputs aren't used
+  EXPECT_TRUE(HasNode("new_input"));
+
+  EXPECT_TRUE(HasEdge("input", 1, "t1", 0));
+  EXPECT_TRUE(HasEdge("input", 0, "t1", 1));
+  EXPECT_FALSE(HasEdge("new_input", 0, "t1", 0));
+  EXPECT_FALSE(HasEdge("new_input", 0, "t1", 1));
+  // Test that t2 is unaffected
+  EXPECT_TRUE(HasEdge("t1", 0, "t2", 0));
+
+  // Check that t1's NodeDef is consistent with graph
+  Node* t1 = FindNode("t1");
+  ASSERT_EQ(t1->def().input_size(), 2);
+  ASSERT_EQ(t1->def().input(0), "input:1");
+  ASSERT_EQ(t1->def().input(1), "input:0");
+}
+
+TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithPrefix) {
+  ShapeRefiner refiner(graph_.op_registry());
+
+  // Populate graph with node we'll use in input map
+  ExpectOK(
+      "node { name: 'input' op: 'TestInput' } "
+      "node { name: 'unmapped_input' op: 'TestInput'}",
+      ImportGraphDefOptions(), &refiner);
+
+  // Map multiple inputs to the same existing input for more coverage
+  ImportGraphDefOptions opts;
+  opts.input_map[TensorId("input", 0)] = TensorId("input", 0);
+  opts.input_map[TensorId("input", 1)] = TensorId("input", 0);
+
+  opts.prefix = "import";
+
+  // Import nodes with the same names as those already in the graph (the prefix
+  // makes them unique)
+  ExpectOK(
+      R"EOF(
+      node { name: 'input' op: 'TestInput' }
+      node { name: 'unmapped_input' op: 'TestInput' }
+      node { name: 't1' op: 'TestMul' input: [ 'input:0', 'input:1' ] }
+      node { name: 't2' op: 'TestMul' input: [ 't1:0', 't1:0' ] }
+      node { name: 't3' op: 'TestMul' input: [ 'unmapped_input:0',
+                                               'unmapped_input:1' ] }
+      )EOF",
+      opts, &refiner);
+
+  EXPECT_TRUE(HasNode("input"));
+  EXPECT_TRUE(HasNode("unmapped_input"));
+  EXPECT_TRUE(HasNode("import/unmapped_input"));
+  EXPECT_TRUE(HasNode("import/t1"));
+  EXPECT_TRUE(HasNode("import/t2"));
+  // `input` node is imported even though it's outputs aren't used
+  EXPECT_TRUE(HasNode("import/input"));
+
+  EXPECT_TRUE(HasEdge("input", 0, "import/t1", 0));
+  EXPECT_TRUE(HasEdge("input", 0, "import/t1", 1));
+  EXPECT_FALSE(HasEdge("import/input", 0, "import/t1", 0));
+  EXPECT_FALSE(HasEdge("import/input", 0, "import/t1", 1));
+  // Test that t2 and t3 are unaffected
+  EXPECT_TRUE(HasEdge("import/t1", 0, "import/t2", 0));
+  EXPECT_TRUE(HasEdge("import/unmapped_input", 0, "import/t3", 0));
+  EXPECT_TRUE(HasEdge("import/unmapped_input", 1, "import/t3", 1));
+
+  // Check that NodeDefs are consistent with graph
+  Node* t1 = FindNode("import/t1");
+  ASSERT_EQ(t1->def().input_size(), 2);
+  EXPECT_EQ(t1->def().input(0), "input:0");
+  EXPECT_EQ(t1->def().input(1), "input:0");
+
+  Node* t2 = FindNode("import/t2");
+  ASSERT_EQ(t2->def().input_size(), 2);
+  EXPECT_EQ(t2->def().input(0), "import/t1:0");
+  EXPECT_EQ(t2->def().input(1), "import/t1:0");
+
+  Node* t3 = FindNode("import/t3");
+  ASSERT_EQ(t3->def().input_size(), 2);
+  EXPECT_EQ(t3->def().input(0), "import/unmapped_input:0");
+  EXPECT_EQ(t3->def().input(1), "import/unmapped_input:1");
+}
+
+TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithControlEdges) {
+  ShapeRefiner refiner(graph_.op_registry());
+
+  // Populate graph with node we'll use in input map
+  ExpectOK("node { name: 'W1' op: 'TestParams' }", ImportGraphDefOptions(),
+           &refiner);
+
+  // Create input_map containing control edges and use it to import more nodes
+  ImportGraphDefOptions opts;
+  opts.input_map[TensorId("W2", -1)] = TensorId("W1", -1);
+  opts.input_map[TensorId("W3", -1)] = TensorId("W1", -1);
+  ExpectOK(
+      R"EOF(
+      node { name: 'W2' op: 'TestParams' }
+      node { name: 'W3' op: 'TestParams' }
+      node { name: 'input' op: 'TestInput' input: [ '^W2' ] }
+      node { name: 't1' op: 'TestOneInputTwoOutputs' input: [ 'W2' ] }
+      node { name: 't2' op: 'TestOneInputTwoOutputs'
+             input: [ 'input', '^W2', '^W3' ] }
+      )EOF",
+      opts, &refiner);
+
+  EXPECT_TRUE(HasNode("W1"));
+  EXPECT_TRUE(HasNode("W2"));
+  EXPECT_TRUE(HasNode("W3"));
+  EXPECT_TRUE(HasNode("input"));
+  EXPECT_TRUE(HasNode("t1"));
+  EXPECT_TRUE(HasNode("t2"));
+
+  EXPECT_TRUE(HasControlEdge("W1", "input"));
+  EXPECT_FALSE(HasControlEdge("W2", "input"));
+
+  // Test that non-control edge is unaffected
+  EXPECT_TRUE(HasEdge("W2", 0, "t1", 0));
+
+  EXPECT_TRUE(HasControlEdge("W1", "t2"));
+  EXPECT_FALSE(HasControlEdge("W2", "t2"));
+  EXPECT_TRUE(HasEdge("input", 0, "t2", 0));
+  // Test that t2's control inputs have been merged to single W1 edge
+  Node* t2 = FindNode("t2");
+  EXPECT_EQ(t2->in_edges().size(), 2);
+
+  // Test remapping a control edge from a node with the same name as an existing
+  // node
+  opts.prefix = "import";
+  opts.input_map.clear();
+  opts.input_map[TensorId("W1", -1)] = TensorId("W1", -1);
+  ExpectOK(
+      R"EOF(
+      node { name: 'W1' op: 'TestParams' }
+      node { name: 'input' op: 'TestInput' input: [ '^W1' ] }
+      node { name: 't1' op: 'TestOneInputTwoOutputs' input: [ 'W1' ] }
+      )EOF",
+      opts, &refiner);
+
+  EXPECT_TRUE(HasNode("import/W1"));
+  EXPECT_TRUE(HasNode("import/input"));
+  EXPECT_TRUE(HasNode("import/t1"));
+
+  EXPECT_TRUE(HasControlEdge("W1", "import/input"));
+  EXPECT_FALSE(HasControlEdge("import/W1", "import/input"));
+  EXPECT_TRUE(HasEdge("import/W1", 0, "import/t1", 0));
+}
+
+TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithBadControlEdge) {
+  ShapeRefiner refiner(graph_.op_registry());
+
+  // Populate graph with node we'll use in input map
+  ExpectOK("node { name: 'W1' op: 'TestParams' }", ImportGraphDefOptions(),
+           &refiner);
+
+  // Create input_map with bad control edge mapping
+  ImportGraphDefOptions opts;
+  opts.input_map[TensorId("W2", -1)] = TensorId("W1", 0);
+  ExpectError(
+      R"EOF(
+      node { name: 'W2' op: 'TestParams' }
+      node { name: 'input' op: 'TestInput' input: [ '^W2' ] }
+      )EOF",
+      opts,
+      {"input_map entry ^W2->W1:0 between control edge and non-control edge"},
+      &refiner);
+
+  opts.input_map.clear();
+  // "W2:0" isn't used in the imported graph but still causes an error
+  opts.input_map[TensorId("W2", 0)] = TensorId("W1", -1);
+  ExpectError(
+      R"EOF(
+      node { name: 'W2' op: 'TestParams' }
+      node { name: 'input' op: 'TestInput' input: [ '^W2' ] }
+      )EOF",
+      opts,
+      {"input_map entry W2:0->^W1 between control edge and non-control edge"},
+      &refiner);
+}
+
+TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithInvalidNodeIndex) {
+  ShapeRefiner refiner(graph_.op_registry());
+
+  // Populate graph with node we'll use in input map
+  ExpectOK("node { name: 'input1' op: 'TestInput' }", ImportGraphDefOptions(),
+           &refiner);
+
+  // Create input_map with invalid source node index
+  ImportGraphDefOptions opts;
+  opts.input_map[TensorId("input2", 0)] = TensorId("input1", 3);
+  ExpectError(
+      R"EOF(
+      node { name: 'input2' op: 'TestInput' }
+      node { name: 't1' op: 'TestMul' input: [ 'input2:0', 'input2:1' ] }
+      )EOF",
+      opts,
+      {"Node 't1': Connecting to invalid output 3 of source node input1 which "
+       "has 2 outputs"},
+      &refiner);
+}
+
+TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithMissingEntries) {
+  ShapeRefiner refiner(graph_.op_registry());
+
+  // Populate graph with node we'll use in input map
+  ExpectOK("node { name: 'W1' op: 'TestParams' }", ImportGraphDefOptions(),
+           &refiner);
+
+  // Create input_map referencing node that doesn't exist in graph
+  ImportGraphDefOptions opts;
+  opts.input_map[TensorId("W2", -1)] = TensorId("DNE", -1);
+  ExpectError(
+      R"EOF(
+      node { name: 'W2' op: 'TestParams' }
+      node { name: 'input' op: 'TestInput' input: [ '^W2' ] }
+      )EOF",
+      opts,
+      {"node 'DNE' in input_map does not exist in graph (input_map entry: "
+       "^W2->^DNE)"},
+      &refiner);
+}
+
+TEST_F(GraphConstructorTest, ImportGraphDef_InputMapDuplicateNodeNames) {
+  ShapeRefiner refiner(graph_.op_registry());
+
+  // Add two nodes with the same name to graph
+  Node* node;
+  TF_CHECK_OK(NodeBuilder("dup", "Placeholder")
+                  .Attr("dtype", DT_FLOAT)
+                  .Finalize(&graph_, &node));
+  TF_CHECK_OK(NodeBuilder("dup", "Placeholder")
+                  .Attr("dtype", DT_FLOAT)
+                  .Finalize(&graph_, &node));
+
+  // Create input_map referencing duplicate node
+  ImportGraphDefOptions opts;
+  opts.input_map[TensorId("new_input", 0)] = TensorId("dup", 0);
+  ExpectError(
+      R"EOF(
+      node { name: 'new_input' op: 'TestInput' }
+      node { name: 't1' op: 'TestMul' input: [ 'new_input:0', 'new_input:1' ] }
+      )EOF",
+      opts,
+      {"cannot resolve input_map because multiple nodes exist with name 'dup'"},
+      &refiner);
+}
+
+TEST_F(GraphConstructorTest, ImportGraphDef_ReturnTensors) {
+  ShapeRefiner refiner(graph_.op_registry());
+
+  ImportGraphDefOptions opts;
+  opts.return_tensors.push_back({"input", 1});
+  opts.return_tensors.push_back({"t1", 0});
+  opts.return_tensors.push_back({"input", 0});
+  std::vector<std::pair<Node*, int>> return_tensors;
+  ExpectOK(
+      "node { name: 'input' op: 'TestInput' }"
+      "node { name: 't1' op: 'TestMul' input: ['input:0', 'input:1'] }",
+      opts, &refiner, &return_tensors);
+
+  // Sanity checks
+  EXPECT_TRUE(HasNode("input"));
+  EXPECT_TRUE(HasNode("t1"));
+  EXPECT_TRUE(HasEdge("input", 0, "t1", 0));
+  EXPECT_TRUE(HasEdge("input", 1, "t1", 1));
+
+  // Check return tensors
+  ASSERT_EQ(return_tensors.size(), 3);
+  EXPECT_EQ(return_tensors[0].first->name(), "input");
+  EXPECT_EQ(return_tensors[0].second, 1);
+  EXPECT_EQ(return_tensors[1].first->name(), "t1");
+  EXPECT_EQ(return_tensors[1].second, 0);
+  EXPECT_EQ(return_tensors[2].first->name(), "input");
+  EXPECT_EQ(return_tensors[2].second, 0);
+
+  // Test using prefix and returning element from input_map
+  opts.return_tensors.clear();
+  return_tensors.clear();
+  opts.prefix = "import";
+  opts.input_map[{"new_input", 1}] = {"input", 0};
+  opts.return_tensors.push_back({"new_input", 0});
+  opts.return_tensors.push_back({"new_input", 1});
+  ExpectOK("node { name: 'new_input' op: 'TestInput' }", opts, &refiner,
+           &return_tensors);
+
+  EXPECT_TRUE(HasNode("import/new_input"));
+
+  ASSERT_EQ(return_tensors.size(), 2);
+  EXPECT_EQ(return_tensors[0].first->name(), "import/new_input");
+  EXPECT_EQ(return_tensors[0].second, 0);
+  EXPECT_EQ(return_tensors[1].first->name(), "input");
+  EXPECT_EQ(return_tensors[1].second, 0);
+
+  // Test returning node remapped to source node
+  opts.prefix.clear();
+  opts.input_map.clear();
+  opts.return_tensors.clear();
+  return_tensors.clear();
+  opts.input_map[{"new_input", 0}] = {"_SOURCE", 0};
+  opts.return_tensors.push_back({"new_input", 0});
+  ExpectOK("node { name: 'new_input' op: 'TestInput' }", opts, &refiner,
+           &return_tensors);
+
+  EXPECT_TRUE(HasNode("new_input"));
+
+  ASSERT_EQ(return_tensors.size(), 1);
+  EXPECT_EQ(return_tensors[0].first->name(), "_SOURCE");
+  EXPECT_EQ(return_tensors[0].second, 0);
+}
+
+TEST_F(GraphConstructorTest, ImportGraphDef_ReturnTensorsErrors) {
+  // Passing in return_tensors with empty opts.return_tensors is OK
+  ImportGraphDefOptions opts;
+  std::vector<std::pair<Node*, int>> return_tensors;
+  ExpectOK("node { name: 'input' op: 'TestInput' }", opts, nullptr,
+           &return_tensors);
+
+  // Null return_tensors with non-empty opts.return_tensors
+  opts.return_tensors.push_back({"new_input", 0});
+  ExpectError("node { name: 'new_input' op: 'TestInput' }", opts,
+              {"return_tensors argument to ImportNodeDef() must be non-null "
+               "if opts.return_tensors is non-empty"});
+
+  // Non-empty return_tensors
+  return_tensors.push_back({nullptr, 0});
+  ExpectError("node { name: 'new_input' op: 'TestInput' }", opts,
+              {"return_tensors argument to ImportNodeDef() should be empty "
+               "(has size 1)"},
+              nullptr, &return_tensors);
+
+  // Requesting tensor that isn't in graph def
+  return_tensors.clear();
+  ExpectError("node { name: 'W1' op: 'TestParams' }", opts,
+              {"Requested return node 'new_input' not found in graph def"},
+              nullptr, &return_tensors);
+
+  // Requesting invalid node index
+  opts.return_tensors.clear();
+  opts.return_tensors.push_back({"new_input", 2});
+  ExpectError("node { name: 'new_input' op: 'TestInput' }", opts,
+              {"Invalid return output 2 of node 'new_input', which has 2 "
+               "outputs"},
+              nullptr, &return_tensors);
+}
+
 TEST_F(GraphConstructorTest, ImportGraphDef_WithCycle) {
   // Test graph produced in python using:
   /*
@@ -897,9 +1302,137 @@ versions {
   EXPECT_EQ(Status::OK(), s) << s;
 }
 
+TEST_F(GraphConstructorTest, ImportGraphDef_ControlDeps) {
+  ShapeRefiner refiner(graph_.op_registry());
+
+  // Populate graph with nodes we'll use in control deps and input map
+  ExpectOK(
+      "node { name: 'W1' op: 'TestParams' }"
+      "node { name: 'W2' op: 'TestParams' }",
+      ImportGraphDefOptions(), &refiner);
+
+  ImportGraphDefOptions opts;
+  opts.control_dependencies = {"W1", "W2"};
+  opts.prefix = "import";
+  opts.input_map[TensorId("W1", -1)] = TensorId("W1", -1);
+  ExpectOK(
+      R"EOF(
+      node { name: 'W1' op: 'TestParams' }
+      node { name: 'input' op: 'TestInput' }
+      node { name: 'input2' op: 'TestInput' input: [ '^W1' ] }
+      node { name: 't1' op: 'TestMul' input: [ 'input:0', 'input:1' ] }
+      )EOF",
+      opts, &refiner);
+
+  // Sanity checks
+  EXPECT_TRUE(HasNode("import/W1"));
+  EXPECT_TRUE(HasNode("import/input"));
+  EXPECT_TRUE(HasNode("import/input2"));
+  EXPECT_TRUE(HasNode("import/t1"));
+
+  EXPECT_TRUE(HasControlEdge("W1", "import/W1"));
+  EXPECT_TRUE(HasControlEdge("W2", "import/W1"));
+
+  EXPECT_TRUE(HasControlEdge("W1", "import/input"));
+  EXPECT_TRUE(HasControlEdge("W2", "import/input"));
+
+  // Test that t1 doesn't have redundant control edges
+  EXPECT_FALSE(HasControlEdge("W1", "import/t1"));
+  EXPECT_FALSE(HasControlEdge("W2", "import/t1"));
+  EXPECT_TRUE(HasEdge("import/input", 0, "import/t1", 0));
+  EXPECT_TRUE(HasEdge("import/input", 1, "import/t1", 1));
+
+  // Test that input2 has control edges since its only input was remapped
+  EXPECT_TRUE(HasControlEdge("W1", "import/input2"));
+  EXPECT_TRUE(HasControlEdge("W2", "import/input2"));
+  EXPECT_FALSE(HasControlEdge("import/W1", "import/input2"));
+
+  // Test that node defs are consistent with graph
+  Node* w1 = FindNode("import/W1");
+  ASSERT_EQ(w1->def().input_size(), 2);
+  EXPECT_EQ(w1->def().input(0), "^W1");
+  EXPECT_EQ(w1->def().input(1), "^W2");
+
+  Node* input = FindNode("import/input");
+  ASSERT_EQ(input->def().input_size(), 2);
+  EXPECT_EQ(input->def().input(0), "^W1");
+  EXPECT_EQ(input->def().input(1), "^W2");
+
+  Node* input2 = FindNode("import/input2");
+  ASSERT_EQ(input2->def().input_size(), 2);
+  EXPECT_EQ(input2->def().input(0), "^W1");
+  EXPECT_EQ(input2->def().input(1), "^W2");
+
+  Node* t1 = FindNode("import/t1");
+  ASSERT_EQ(t1->def().input_size(), 2);
+  EXPECT_EQ(t1->def().input(0), "import/input:0");
+  EXPECT_EQ(t1->def().input(1), "import/input:1");
+}
+
+TEST_F(GraphConstructorTest, ImportGraphDef_ControlDepsWithCycle) {
+  ShapeRefiner refiner(graph_.op_registry());
+
+  // Populate graph with nodes we'll use in control deps and input map
+  ExpectOK(
+      "node { name: 'W1' op: 'TestParams' }"
+      "node { name: 'input' op: 'TestInput' }",
+      ImportGraphDefOptions(), &refiner);
+
+  ImportGraphDefOptions opts;
+  opts.control_dependencies.push_back("W1");
+  // Use input_map to ensure the cycle doesn't inherit the control deps from
+  // new_input
+  opts.input_map[TensorId("new_input", 0)] = TensorId("input", 0);
+
+  // ImportGraphDef only allows backedges into merge nodes (since backedges are
+  // only expected in while loops)
+  ExpectOK(
+      R"EOF(
+      node { name: 'new_input' op: 'TestInput' }
+      node { name: 'merge' op: 'Merge' input: [ 'new_input:0', 't1:0' ]
+             attr { key: "N" value: { i: 2 } }
+             attr { key: "T" value: { type: DT_FLOAT } } }
+      node { name: 't1' op: 'TestMul' input: [ 'merge:0', 'merge:0' ] }
+      )EOF",
+      opts, &refiner);
+
+  EXPECT_TRUE(HasNode("new_input"));
+  EXPECT_TRUE(HasNode("merge"));
+  EXPECT_TRUE(HasNode("t1"));
+
+  // Sanity check we created cycle
+  EXPECT_TRUE(HasEdge("merge", 0, "t1", 0));
+  EXPECT_TRUE(HasEdge("t1", 0, "merge", 1));
+
+  // Test that control dep was added to exactly one node of cycle
+  EXPECT_TRUE(HasControlEdge("W1", "merge"));
+  EXPECT_FALSE(HasControlEdge("W1", "t1"));
+
+  // Test that node defs are consistent with graph
+  Node* merge = FindNode("merge");
+  ASSERT_EQ(merge->def().input_size(), 3);
+  EXPECT_EQ(merge->def().input(0), "input:0");
+  EXPECT_EQ(merge->def().input(1), "t1:0");
+  EXPECT_EQ(merge->def().input(2), "^W1");
+
+  Node* t1 = FindNode("t1");
+  ASSERT_EQ(t1->def().input_size(), 2);
+  EXPECT_EQ(t1->def().input(0), "merge:0");
+  EXPECT_EQ(t1->def().input(1), "merge:0");
+}
+
+TEST_F(GraphConstructorTest, ImportGraphDef_ControlDepsErrors) {
+  // Control dep that isn't in graph def
+  ImportGraphDefOptions opts;
+  opts.control_dependencies.push_back("W1");
+  ExpectError("node { name: 'W1' op: 'TestParams' }", opts,
+              {"node 'W1' in control_dependencies does not exist in graph"});
+}
+
 TEST_F(GraphConstructorTest, ImportGraphDef_ErrorsDoNoChangeTheGraph) {
   GraphDef def;
-  NodeDefBuilder("scope/A", "TestParams").Finalize(def.add_node());
+  TF_EXPECT_OK(
+      NodeDefBuilder("scope/A", "TestParams").Finalize(def.add_node()));
   ImportGraphDefOptions opts;
   const string& source = graph_.FindNodeId(Graph::kSourceId)->name();
   const string& sink = graph_.FindNodeId(Graph::kSinkId)->name();

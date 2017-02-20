@@ -157,6 +157,7 @@ export class RenderGraphInfo {
   hierarchy: hierarchy.Hierarchy;
   private displayingStats: boolean;
   private index: {[nodeName: string]: RenderNodeInfo};
+  private renderedOpNames: string[];
   private deviceColorMap: d3.scale.Ordinal<string, string>;
   private memoryUsageScale: d3.scale.Linear<string, string>;
   private computeTimeScale: d3.scale.Linear<string, string>;
@@ -175,6 +176,7 @@ export class RenderGraphInfo {
     this.hierarchy = hierarchy;
     this.displayingStats = displayingStats;
     this.index = {};
+    this.renderedOpNames = [];
 
     this.computeScales();
     // Maps node name to whether the rendering hierarchy was already
@@ -182,6 +184,7 @@ export class RenderGraphInfo {
     this.hasSubhierarchy = {};
     this.root = new RenderGroupNodeInfo(hierarchy.root);
     this.index[hierarchy.root.name] = this.root;
+    this.renderedOpNames.push(hierarchy.root.name);
     this.buildSubhierarchy(hierarchy.root.name);
     this.root.expanded = true;
     this.traceInputs = false;
@@ -266,6 +269,7 @@ export class RenderGraphInfo {
         new RenderGroupNodeInfo(<GroupNode>node) :
         new RenderNodeInfo(node);
     this.index[nodeName] = renderInfo;
+    this.renderedOpNames.push(nodeName);
 
     if (node.stats) {
       renderInfo.memoryColor = this.memoryUsageScale(node.stats.totalBytes);
@@ -343,6 +347,15 @@ export class RenderGraphInfo {
       return node.node.name === renderNode.node.name;
     });
     return !!found;
+  }
+
+  /**
+   * Returns a list of ops that have been rendered so far for this graph. More
+   * ops may later be rendered if the user expands nodes for instance. The list
+   * returned here can only stay the same size or grow on successive calls.
+   */
+  getNamesOfRenderedOps(): string[] {
+    return this.renderedOpNames;
   }
 
   buildSubhierarchy(nodeName: string): void {
@@ -619,6 +632,7 @@ export class RenderGraphInfo {
             include: InclusionType.UNSPECIFIED,
             // BridgeNode properties.
             inbound: inbound,
+            nodeAttributes: {},
           };
           bridgeContainerInfo =
             new RenderNodeInfo(bridgeContainerNode);
@@ -638,6 +652,7 @@ export class RenderGraphInfo {
           include: InclusionType.UNSPECIFIED,
           // BridgeNode properties.
           inbound: inbound,
+          nodeAttributes: {},
         };
         bridgeNodeRenderInfo = new RenderNodeInfo(bridgeNode);
         this.index[bridgeNodeName] = bridgeNodeRenderInfo;
@@ -758,6 +773,7 @@ export class RenderGraphInfo {
             include: InclusionType.UNSPECIFIED,
             // BridgeNode properties.
             inbound: inbound,
+            nodeAttributes: {},
           };
           structuralRenderInfo = new RenderNodeInfo(bridgeNode);
           structuralRenderInfo.structural = true;

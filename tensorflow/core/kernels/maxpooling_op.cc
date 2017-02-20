@@ -111,7 +111,7 @@ static void SpatialMaxPoolWithArgMaxHelper(
       out_arg_max_shard.setConstant(kInvalidMaxPoolingIndex);
     }
 
-    for (int32 b = start; b < limit; ++b) {
+    for (int64 b = start; b < limit; ++b) {
       for (int h = 0; h < in_rows; ++h) {
         for (int w = 0; w < in_cols; ++w) {
           // (h_start, h_end) * (w_start, w_end) is the range that the input
@@ -125,11 +125,11 @@ static void SpatialMaxPoolWithArgMaxHelper(
               (wpad < window_cols) ? 0 : (wpad - window_cols) / col_stride + 1;
           const int w_end = std::min(wpad / col_stride + 1, out_width);
           // compute elementwise max
-          const int in_index = (b * in_rows + h) * in_cols + w;
+          const int64 in_index = (b * in_rows + h) * in_cols + w;
           for (int ph = h_start; ph < h_end; ++ph) {
-            const int out_index_base = (b * out_height + ph) * out_width;
+            const int64 out_index_base = (b * out_height + ph) * out_width;
             for (int pw = w_start; pw < w_end; ++pw) {
-              const int out_index = out_index_base + pw;
+              const int64 out_index = out_index_base + pw;
               /// NOTES(zhengxq): not using the eigen matrix operation for
               /// now.
               for (int d = 0; d < depth; ++d) {
@@ -139,7 +139,7 @@ static void SpatialMaxPoolWithArgMaxHelper(
                 if (output_ref < input_ref ||
                     out_arg_max_ref == kInvalidMaxPoolingIndex) {
                   output_ref = input_ref;
-                  int input_offset = in_index * depth + d;
+                  int64 input_offset = in_index * depth + d;
                   out_arg_max_ref = input_offset;
                 }
               }
@@ -155,9 +155,9 @@ static void SpatialMaxPoolWithArgMaxHelper(
       auto out_backprop_flat = out_backprop.flat<T>();
 
       // Initialize output to 0.
-      const int in_size = in_rows * in_cols * depth;
-      const int in_start = start * in_size;
-      const int in_end = limit * in_size;
+      const int64 in_size = in_rows * in_cols * depth;
+      const int64 in_start = start * in_size;
+      const int64 in_end = limit * in_size;
       EigenMatrixMap in_shard(input_backprop_flat.data() + in_start, 1,
                               in_end - in_start);
       in_shard.setConstant(T(0));

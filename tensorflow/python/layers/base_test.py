@@ -88,12 +88,16 @@ class BaseLayerTest(test.TestCase):
               'my_var', [2, 2], initializer=init_ops.zeros_initializer())
 
         def call(self, inputs):
+          variable_scope.get_variable(
+              'my_call_var', [2, 2], initializer=init_ops.zeros_initializer())
           return inputs
 
       layer = MyLayer(name='my_layer')
       inputs = random_ops.random_uniform((5,), seed=1)
-      _ = layer.apply(inputs)
-      self.assertListEqual(layer.variables, [layer.my_var])
+      layer.apply(inputs)
+      layer.apply(inputs)
+      self.assertListEqual([v.name for v in layer.variables],
+                           ['my_layer/my_var:0', 'my_layer/my_call_var:0'])
 
   def testCall(self):
 

@@ -162,16 +162,18 @@ def _EmbeddingParams(num_shards,
 def _EmbeddingParamsAsPartitionedVariable(num_shards,
                                           vocab_size,
                                           dtype=dtypes.float32,
-                                          shape=None):
+                                          shape=None,
+                                          use_resource=False):
   p, params, feed_dict = _EmbeddingParams(
       num_shards, vocab_size, dtype=dtype, shape=shape)
   shape = shape or [10]
   partitioned_variable = variable_scope.get_variable(
       "p",
       shape=[vocab_size] + shape,
-      initializer=array_ops.concat_v2([params[p_i.name] for p_i in p], 0),
+      initializer=array_ops.concat([params[p_i.name] for p_i in p], 0),
       partitioner=partitioned_variables.min_max_variable_partitioner(
-          max_partitions=num_shards, min_slice_size=1))
+          max_partitions=num_shards, min_slice_size=1),
+      use_resource=use_resource)
   return p, partitioned_variable, params, feed_dict
 
 
@@ -295,6 +297,29 @@ class EmbeddingLookupTest(test.TestCase):
       p_var_val = sess.run(list(p_variable))
       # Actual test
       tf_result = embedding.eval(feed_dict=feed_dict)
+    np_result, _, _ = _EmbeddingResult(params, id_vals, num_shards, vocab_size)
+    self.assertAllEqual(params_values, p_var_val)
+    self.assertAllEqual(np_result, tf_result)
+    self.assertShapeEqual(np_result, embedding)
+
+  def testSimpleShardedPartitionedResourceVariable(self):
+    with self.test_session() as sess:
+      num_shards = 2
+      vocab_size = 4
+      p, p_variable, params, _ = _EmbeddingParamsAsPartitionedVariable(
+          num_shards, vocab_size, use_resource=True)
+
+      id_vals = np.array([0, 0])
+      ids = constant_op.constant(list(id_vals), dtype=dtypes.int32)
+      print("Construct ids", ids.get_shape())
+      embedding = embedding_ops.embedding_lookup(p_variable, ids)
+      variables.global_variables_initializer().run()
+      params_values = [params[p_i.name] for p_i in p]
+      # Test that the PartitionedVariable components equal the list in p
+      p_var_val = sess.run(list(p_variable))
+      # Actual test
+      print(ops.get_default_graph().as_graph_def())
+      tf_result = embedding.eval()
     np_result, _, _ = _EmbeddingResult(params, id_vals, num_shards, vocab_size)
     self.assertAllEqual(params_values, p_var_val)
     self.assertAllEqual(np_result, tf_result)

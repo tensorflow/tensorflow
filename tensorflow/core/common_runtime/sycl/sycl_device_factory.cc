@@ -40,7 +40,7 @@ public:
   }
 };
 
-REGISTER_LOCAL_DEVICE_FACTORY("SYCL", SYCLDeviceFactory);
+REGISTER_LOCAL_DEVICE_FACTORY("SYCL", SYCLDeviceFactory, 200);
 }
 
 #endif // TENSORFLOW_USE_SYCL

@@ -90,12 +90,11 @@ Status FileSystem::GetMatchingPaths(const string& pattern,
   std::deque<string> dir_q;
   dir_q.push_back(dir);
   Status ret;  // Status to return.
-  // children_dir_status holds is_dir status for children. The ints are used
-  // as booleans.
-  // Note: children_dir_status can't be declared as a std::vector<bool>.
-  // std::vector has a specialization for the type bool. std::vector<bool> is
-  // implemented as a bitset and accesses to elements are not atomic.
-  std::vector<int> children_dir_status;
+  // children_dir_status holds is_dir status for children. It can have three
+  // possible values: OK for true; FAILED_PRECONDITION for false; CANCELLED
+  // if we don't calculate IsDirectory (we might do that because there isn't
+  // any point in exploring that child path).
+  std::vector<Status> children_dir_status;
   while (!dir_q.empty()) {
     string current_dir = dir_q.front();
     dir_q.pop_front();
@@ -105,18 +104,26 @@ Status FileSystem::GetMatchingPaths(const string& pattern,
     if (children.empty()) continue;
     // This IsDirectory call can be expensive for some FS. Parallelizing it.
     children_dir_status.resize(children.size());
-    ForEach(0, children.size(),
-            [this, &current_dir, &children, &children_dir_status](int i) {
-              const string child_path = io::JoinPath(current_dir, children[i]);
-              children_dir_status[i] = IsDirectory(child_path).ok();
-            });
+    ForEach(0, children.size(), [this, &current_dir, &children, &fixed_prefix,
+                                 &children_dir_status](int i) {
+      const string child_path = io::JoinPath(current_dir, children[i]);
+      // In case the child_path doesn't start with the fixed_prefix then
+      // we don't need to explore this path.
+      if (!StringPiece(child_path).starts_with(fixed_prefix)) {
+        children_dir_status[i] =
+            Status(tensorflow::error::CANCELLED, "Operation not needed");
+      } else {
+        children_dir_status[i] = IsDirectory(child_path);
+      }
+    });
     for (int i = 0; i < children.size(); ++i) {
       const string child_path = io::JoinPath(current_dir, children[i]);
-      // In case the child_path doesn't start with the fixed_prefix then we bail
-      // and don't add it to the queue / candidates.
-      if (!StringPiece(child_path).starts_with(fixed_prefix)) continue;
+      // If the IsDirectory call was cancelled we bail.
+      if (children_dir_status[i].code() == tensorflow::error::CANCELLED) {
+        continue;
+      }
       // If the child is a directory add it to the queue.
-      if (children_dir_status[i]) {
+      if (children_dir_status[i].ok()) {
         dir_q.push_back(child_path);
       }
       all_files.push_back(child_path);
@@ -222,7 +229,10 @@ Status FileSystem::RecursivelyCreateDir(const string& dirname) {
   string built_path = remaining_dir.ToString();
   for (const StringPiece sub_dir : sub_dirs) {
     built_path = io::JoinPath(built_path, sub_dir);
-    TF_RETURN_IF_ERROR(CreateDir(io::CreateURI(scheme, host, built_path)));
+    Status status = CreateDir(io::CreateURI(scheme, host, built_path));
+    if (!status.ok() && status.code() != tensorflow::error::ALREADY_EXISTS) {
+      return status;
+    }
   }
   return Status::OK();
 }

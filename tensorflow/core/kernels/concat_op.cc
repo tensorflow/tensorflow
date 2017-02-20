@@ -67,7 +67,7 @@ class ConcatBaseOp : public OpKernel {
     const int input_dims = values[0].dims();
     const TensorShape& input_shape = values[0].shape();
 
-    int axis = concat_dim < 0 ? concat_dim + input_dims : concat_dim;
+    int32 axis = concat_dim < 0 ? concat_dim + input_dims : concat_dim;
     OP_REQUIRES(c, (0 <= axis && axis < input_dims) ||
                        (allow_legacy_scalars() && concat_dim == 0),
                 errors::InvalidArgument(
@@ -248,7 +248,8 @@ class ConcatOffsetOp : public OpKernel {
     auto inp0_vec = inp0.vec<int32>();
     const int64 cdim = internal::SubtleMustCopy(concat_dim.scalar<int32>()());
     const int64 dims = inp0.NumElements();
-    OP_REQUIRES(ctx, FastBoundsCheck(cdim, dims),
+    int32 axis = cdim < 0 ? cdim + dims : cdim;
+    OP_REQUIRES(ctx, FastBoundsCheck(axis, dims),
                 errors::InvalidArgument("Concat dim is out of range: ", cdim,
                                         " vs. ", dims));
     int32 offset = 0;
@@ -257,19 +258,19 @@ class ConcatOffsetOp : public OpKernel {
       OP_REQUIRES(
           ctx, dims == inp.NumElements(),
           errors::InvalidArgument("input ", i, " should contain ", dims,
-                                  " elements, but got", inp.NumElements()));
+                                  " elements, but got ", inp.NumElements()));
       auto inp_vec = inp.vec<int32>();
       Tensor* out = nullptr;
       OP_REQUIRES_OK(ctx, ctx->allocate_output(i, {dims}, &out));
       auto out_vec = out->vec<int32>();
       for (int64 j = 0; j < dims; ++j) {
-        if (j == cdim) {
+        if (j == axis) {
           out_vec(j) = offset;
           offset += inp_vec(j);
         } else {
           OP_REQUIRES(ctx, (inp0_vec(j) == inp_vec(j)),
                       errors::InvalidArgument(
-                          "All dimensions except ", cdim, " must match. Input ",
+                          "All dimensions except ", axis, " must match. Input ",
                           i, " has shape [", inp.SummarizeValue(10),
                           "] and doesn't match input 0 with shape [",
                           inp0.SummarizeValue(10), "]."));

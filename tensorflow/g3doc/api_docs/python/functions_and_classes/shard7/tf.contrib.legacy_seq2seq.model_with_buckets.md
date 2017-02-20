@@ -3,7 +3,8 @@
 Create a sequence-to-sequence model with support for bucketing.
 
 The seq2seq argument is a function that defines a sequence-to-sequence model,
-e.g., seq2seq = lambda x, y: basic_rnn_seq2seq(x, y, rnn_cell.GRUCell(24))
+e.g., seq2seq = lambda x, y: basic_rnn_seq2seq(
+    x, y, core_rnn_cell.GRUCell(24))
 
 ##### Args:
 

@@ -79,22 +79,7 @@ REGISTER_OP("Variable")
       c->set_output(0, out);
       return Status::OK();
     })
-    .Doc(R"doc(
-Holds state in the form of a tensor that persists across steps.
-
-Outputs a ref to the tensor state so it may be read or modified.
-TODO(zhifengc/mrry): Adds a pointer to a more detail document
-about sharing states in tensorflow.
-
-ref: A reference to the variable tensor.
-shape: The shape of the variable tensor, where scalar shapes are
-  treated as undefined.
-dtype: The type of elements in the variable tensor.
-container: If non-empty, this variable is placed in the given container.
-        Otherwise, a default container is used.
-shared_name: If non-empty, this variable is named in the given bucket
-             with this shared_name. Otherwise, the node name is used instead.
-)doc");
+    .Doc("Use VariableV2 instead.");
 
 REGISTER_OP("IsVariableInitialized")
     .Input("ref: Ref(dtype)")

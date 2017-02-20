@@ -185,10 +185,6 @@ Status UnknownShape(shape_inference::InferenceContext* c);
 // Shape function for reduction operations.
 Status ReductionShape(shape_inference::InferenceContext* c);
 
-// Shape function for reduction operations where an empty reduction indices
-// vector means to reduce all.
-Status ReductionShapeForReduceJoin(shape_inference::InferenceContext* c);
-
 // Shape function for concat operations.
 // <num_inputs_to_concat> is the number of inputs to concatenate and are taken
 // from inputs

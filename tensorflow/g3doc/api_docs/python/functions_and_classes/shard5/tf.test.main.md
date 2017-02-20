@@ -1,4 +1,4 @@
-### `tf.test.main()` {#main}
+### `tf.test.main(argv=None)` {#main}
 
 Runs all unit tests.
 

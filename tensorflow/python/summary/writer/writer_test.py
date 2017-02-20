@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for training_coordinator.py."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -22,14 +23,23 @@ import os.path
 import shutil
 import time
 
-import tensorflow as tf
-
+from tensorflow.core.framework import graph_pb2
+from tensorflow.core.framework import summary_pb2
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
+from tensorflow.core.util import event_pb2
 from tensorflow.core.util.event_pb2 import SessionLog
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import meta_graph
+from tensorflow.python.framework import ops
+from tensorflow.python.platform import test
+from tensorflow.python.summary import summary_iterator
+from tensorflow.python.summary.writer import writer
+from tensorflow.python.summary.writer import writer_cache
 
 
-class SummaryWriterTestCase(tf.test.TestCase):
+class SummaryWriterTestCase(test.TestCase):
 
   def _TestDir(self, test_name):
     test_dir = os.path.join(self.get_temp_dir(), test_name)
@@ -46,7 +56,7 @@ class SummaryWriterTestCase(tf.test.TestCase):
     # If the tests runs multiple times in the same directory we can have
     # more than one matching event file.  We only want to read the last one.
     self.assertTrue(event_paths)
-    return tf.train.summary_iterator(event_paths[-1])
+    return summary_iterator.summary_iterator(event_paths[-1])
 
   def _assertRecent(self, t):
     self.assertTrue(abs(t - time.time()) < 5)
@@ -66,7 +76,7 @@ class SummaryWriterTestCase(tf.test.TestCase):
     ev = next(rr)
     self._assertRecent(ev.wall_time)
     self.assertEquals(0, ev.step)
-    ev_graph = tf.GraphDef()
+    ev_graph = graph_pb2.GraphDef()
     ev_graph.ParseFromString(ev.graph_def)
     self.assertProtoEquals(g.as_graph_def(add_shapes=has_shapes), ev_graph)
 
@@ -83,20 +93,24 @@ class SummaryWriterTestCase(tf.test.TestCase):
 
   def testAddingSummaryGraphAndRunMetadata(self):
     test_dir = self._CleanTestDir("basics")
-    sw = tf.summary.FileWriter(test_dir)
+    sw = writer.FileWriter(test_dir)
 
-    sw.add_session_log(tf.SessionLog(status=SessionLog.START), 1)
+    sw.add_session_log(event_pb2.SessionLog(status=SessionLog.START), 1)
     sw.add_summary(
-        tf.Summary(value=[tf.Summary.Value(
-            tag="mee", simple_value=10.0)]), 10)
+        summary_pb2.Summary(
+            value=[summary_pb2.Summary.Value(
+                tag="mee", simple_value=10.0)]),
+        10)
     sw.add_summary(
-        tf.Summary(value=[tf.Summary.Value(
-            tag="boo", simple_value=20.0)]), 20)
-    with tf.Graph().as_default() as g:
-      tf.constant([0], name="zero")
+        summary_pb2.Summary(
+            value=[summary_pb2.Summary.Value(
+                tag="boo", simple_value=20.0)]),
+        20)
+    with ops.Graph().as_default() as g:
+      constant_op.constant([0], name="zero")
     sw.add_graph(g, global_step=30)
 
-    run_metadata = tf.RunMetadata()
+    run_metadata = config_pb2.RunMetadata()
     device_stats = run_metadata.step_stats.dev_stats.add()
     device_stats.device = "test"
     sw.add_run_metadata(run_metadata, "test run", global_step=40)
@@ -134,7 +148,7 @@ class SummaryWriterTestCase(tf.test.TestCase):
     ev = next(rr)
     self._assertRecent(ev.wall_time)
     self.assertEquals(30, ev.step)
-    ev_graph = tf.GraphDef()
+    ev_graph = graph_pb2.GraphDef()
     ev_graph.ParseFromString(ev.graph_def)
     self.assertProtoEquals(g.as_graph_def(add_shapes=True), ev_graph)
 
@@ -143,7 +157,7 @@ class SummaryWriterTestCase(tf.test.TestCase):
     self._assertRecent(ev.wall_time)
     self.assertEquals(40, ev.step)
     self.assertEquals("test run", ev.tagged_run_metadata.tag)
-    parsed_run_metadata = tf.RunMetadata()
+    parsed_run_metadata = config_pb2.RunMetadata()
     parsed_run_metadata.ParseFromString(ev.tagged_run_metadata.run_metadata)
     self.assertProtoEquals(run_metadata, parsed_run_metadata)
 
@@ -152,62 +166,62 @@ class SummaryWriterTestCase(tf.test.TestCase):
 
   def testGraphAsNamed(self):
     test_dir = self._CleanTestDir("basics_named_graph")
-    with tf.Graph().as_default() as g:
-      tf.constant([12], name="douze")
-    sw = tf.summary.FileWriter(test_dir, graph=g)
+    with ops.Graph().as_default() as g:
+      constant_op.constant([12], name="douze")
+    sw = writer.FileWriter(test_dir, graph=g)
     sw.close()
     self._assertEventsWithGraph(test_dir, g, True)
 
   def testGraphAsPositional(self):
     test_dir = self._CleanTestDir("basics_positional_graph")
-    with tf.Graph().as_default() as g:
-      tf.constant([12], name="douze")
-    sw = tf.summary.FileWriter(test_dir, g)
+    with ops.Graph().as_default() as g:
+      constant_op.constant([12], name="douze")
+    sw = writer.FileWriter(test_dir, g)
     sw.close()
     self._assertEventsWithGraph(test_dir, g, True)
 
   def testGraphDefAsNamed(self):
     test_dir = self._CleanTestDir("basics_named_graph_def")
-    with tf.Graph().as_default() as g:
-      tf.constant([12], name="douze")
+    with ops.Graph().as_default() as g:
+      constant_op.constant([12], name="douze")
     gd = g.as_graph_def()
-    sw = tf.summary.FileWriter(test_dir, graph_def=gd)
+    sw = writer.FileWriter(test_dir, graph_def=gd)
     sw.close()
     self._assertEventsWithGraph(test_dir, g, False)
 
   def testGraphDefAsPositional(self):
     test_dir = self._CleanTestDir("basics_positional_graph_def")
-    with tf.Graph().as_default() as g:
-      tf.constant([12], name="douze")
+    with ops.Graph().as_default() as g:
+      constant_op.constant([12], name="douze")
     gd = g.as_graph_def()
-    sw = tf.summary.FileWriter(test_dir, gd)
+    sw = writer.FileWriter(test_dir, gd)
     sw.close()
     self._assertEventsWithGraph(test_dir, g, False)
 
   def testGraphAndGraphDef(self):
     with self.assertRaises(ValueError):
       test_dir = self._CleanTestDir("basics_graph_and_graph_def")
-      with tf.Graph().as_default() as g:
-        tf.constant([12], name="douze")
+      with ops.Graph().as_default() as g:
+        constant_op.constant([12], name="douze")
       gd = g.as_graph_def()
-      sw = tf.summary.FileWriter(test_dir, graph=g, graph_def=gd)
+      sw = writer.FileWriter(test_dir, graph=g, graph_def=gd)
       sw.close()
 
   def testNeitherGraphNorGraphDef(self):
     with self.assertRaises(TypeError):
       test_dir = self._CleanTestDir("basics_string_instead_of_graph")
-      sw = tf.summary.FileWriter(test_dir, "string instead of graph object")
+      sw = writer.FileWriter(test_dir, "string instead of graph object")
       sw.close()
 
   def testCloseAndReopen(self):
     test_dir = self._CleanTestDir("close_and_reopen")
-    sw = tf.summary.FileWriter(test_dir)
-    sw.add_session_log(tf.SessionLog(status=SessionLog.START), 1)
+    sw = writer.FileWriter(test_dir)
+    sw.add_session_log(event_pb2.SessionLog(status=SessionLog.START), 1)
     sw.close()
     # Sleep at least one second to make sure we get a new event file name.
     time.sleep(1.2)
     sw.reopen()
-    sw.add_session_log(tf.SessionLog(status=SessionLog.START), 2)
+    sw.add_session_log(event_pb2.SessionLog(status=SessionLog.START), 2)
     sw.close()
 
     # We should now have 2 events files.
@@ -215,7 +229,7 @@ class SummaryWriterTestCase(tf.test.TestCase):
     self.assertEquals(2, len(event_paths))
 
     # Check the first file contents.
-    rr = tf.train.summary_iterator(event_paths[0])
+    rr = summary_iterator.summary_iterator(event_paths[0])
     # The first event should list the file_version.
     ev = next(rr)
     self._assertRecent(ev.wall_time)
@@ -229,7 +243,7 @@ class SummaryWriterTestCase(tf.test.TestCase):
     self.assertRaises(StopIteration, lambda: next(rr))
 
     # Check the second file contents.
-    rr = tf.train.summary_iterator(event_paths[1])
+    rr = summary_iterator.summary_iterator(event_paths[1])
     # The first event should list the file_version.
     ev = next(rr)
     self._assertRecent(ev.wall_time)
@@ -247,16 +261,19 @@ class SummaryWriterTestCase(tf.test.TestCase):
   # protocol buffers correctly.
   def testAddingSummariesFromSessionRunCalls(self):
     test_dir = self._CleanTestDir("global_step")
-    sw = tf.summary.FileWriter(test_dir)
+    sw = writer.FileWriter(test_dir)
     with self.test_session():
-      i = tf.constant(1, dtype=tf.int32, shape=[])
-      l = tf.constant(2, dtype=tf.int64, shape=[])
+      i = constant_op.constant(1, dtype=dtypes.int32, shape=[])
+      l = constant_op.constant(2, dtype=dtypes.int64, shape=[])
       # Test the summary can be passed serialized.
-      summ = tf.Summary(value=[tf.Summary.Value(tag="i", simple_value=1.0)])
+      summ = summary_pb2.Summary(
+          value=[summary_pb2.Summary.Value(
+              tag="i", simple_value=1.0)])
       sw.add_summary(summ.SerializeToString(), i.eval())
       sw.add_summary(
-          tf.Summary(value=[tf.Summary.Value(
-              tag="l", simple_value=2.0)]),
+          summary_pb2.Summary(
+              value=[summary_pb2.Summary.Value(
+                  tag="l", simple_value=2.0)]),
           l.eval())
       sw.close()
 
@@ -290,7 +307,7 @@ class SummaryWriterTestCase(tf.test.TestCase):
     self.assertRaises(StopIteration, lambda: next(rr))
 
 
-class SummaryWriterCacheTest(tf.test.TestCase):
+class SummaryWriterCacheTest(test.TestCase):
   """SummaryWriterCache tests."""
 
   def _test_dir(self, test_name):
@@ -311,12 +328,12 @@ class SummaryWriterCacheTest(tf.test.TestCase):
     return test_dir
 
   def test_cache(self):
-    with tf.Graph().as_default():
+    with ops.Graph().as_default():
       dir1 = self._test_dir("test_cache_1")
       dir2 = self._test_dir("test_cache_2")
-      sw1 = tf.summary.FileWriterCache.get(dir1)
-      sw2 = tf.summary.FileWriterCache.get(dir2)
-      sw3 = tf.summary.FileWriterCache.get(dir1)
+      sw1 = writer_cache.FileWriterCache.get(dir1)
+      sw2 = writer_cache.FileWriterCache.get(dir2)
+      sw3 = writer_cache.FileWriterCache.get(dir1)
       self.assertEqual(sw1, sw3)
       self.assertFalse(sw1 == sw2)
       sw1.close()
@@ -329,13 +346,13 @@ class SummaryWriterCacheTest(tf.test.TestCase):
       self.assertFalse(events3)
 
   def test_clear(self):
-    with tf.Graph().as_default():
+    with ops.Graph().as_default():
       dir1 = self._test_dir("test_clear")
-      sw1 = tf.summary.FileWriterCache.get(dir1)
-      tf.summary.FileWriterCache.clear()
-      sw2 = tf.summary.FileWriterCache.get(dir1)
+      sw1 = writer_cache.FileWriterCache.get(dir1)
+      writer_cache.FileWriterCache.clear()
+      sw2 = writer_cache.FileWriterCache.get(dir1)
       self.assertFalse(sw1 == sw2)
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

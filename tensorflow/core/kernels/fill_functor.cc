@@ -63,7 +63,7 @@ void SetZeroFunctor<Eigen::SyclDevice, T>::operator()(
   template struct SetZeroFunctor<Eigen::SyclDevice, T>;
 DEFINE_SETZERO_SYCL(float);
 #undef DEFINE_SETZERO_SYCL
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace functor
 }  // namespace tensorflow

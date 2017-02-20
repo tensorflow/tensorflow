@@ -7,7 +7,7 @@ Note: Functions taking `Tensor` arguments can also take anything accepted by
 
 [TOC]
 
-## Variables
+Variables. See the @{python/state_ops} guide.
 
 - - -
 
@@ -410,10 +410,6 @@ Given a tensor of real numbers `x`, this operation returns a tensor
 containing the absolute value of each element in `x`. For example, if x is
 an input element and y is an output element, this operation computes
 \\(y = |x|\\).
-
-See [`tf.complex_abs()`](#tf_complex_abs) to compute the absolute value of a
-complex
-number.
 
 ##### Args:
 
@@ -1174,12 +1170,6 @@ is on a different device it will get a copy of the variable.
 
 
 
-
-## Variable helper functions
-
-TensorFlow provides a set of functions to help manage the set of variables
-collected in the graph.
-
 - - -
 
 ### `tf.global_variables()` {#global_variables}
@@ -1210,8 +1200,8 @@ Local variables - per process variables, usually not saved/restored to
 checkpoint and used for temporary or intermediate values.
 For example, they can be used as counters for metrics computation or
 number of epochs this machine has read data.
-The `local_variable()` automatically adds new variable to
-`GraphKeys.LOCAL_VARIABLES`.
+The `tf.contrib.framework.local_variable()` function automatically adds the
+new variable to `GraphKeys.LOCAL_VARIABLES`.
 This convenience function returns the contents of that collection.
 
 An alternative to local variables are global variables. See
@@ -1263,7 +1253,6 @@ This convenience function returns the contents of that collection.
 ##### Returns:
 
   A list of Variable objects.
-
 
 
 - - -
@@ -1385,7 +1374,6 @@ logged by the C++ runtime. This is expected.
   An Op, or None if there are no variables.
 
 
-
 - - -
 
 ### `tf.assign(ref, value, validate_shape=None, use_locking=None, name=None)` {#assign}
@@ -1429,7 +1417,9 @@ This makes it easier to chain operations that need to use the reset value.
 ##### Args:
 
 
-*  <b>`ref`</b>: A mutable `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+*  <b>`ref`</b>: A mutable `Tensor`. Must be one of the following types:
+    `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`,
+    `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
     Should be from a `Variable` node.
 *  <b>`value`</b>: A `Tensor`. Must have the same type as `ref`.
     The value to be added to the variable.
@@ -1456,7 +1446,9 @@ This makes it easier to chain operations that need to use the reset value.
 ##### Args:
 
 
-*  <b>`ref`</b>: A mutable `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+*  <b>`ref`</b>: A mutable `Tensor`. Must be one of the following types:
+    `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`,
+    `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
     Should be from a `Variable` node.
 *  <b>`value`</b>: A `Tensor`. Must have the same type as `ref`.
     The value to be subtracted to the variable.
@@ -1470,9 +1462,6 @@ This makes it easier to chain operations that need to use the reset value.
   Same as "ref".  Returned as a convenience for operations that want
   to use the new value after the variable has been updated.
 
-
-
-## Saving and Restoring Variables
 
 - - -
 
@@ -1851,7 +1840,6 @@ Converts this `Saver` to a `SaverDef` protocol buffer.
 
 
 
-
 - - -
 
 ### `tf.train.latest_checkpoint(checkpoint_dir, latest_filename=None)` {#latest_checkpoint}
@@ -1869,7 +1857,6 @@ Finds the filename of latest saved checkpoint file.
 ##### Returns:
 
   The full path to the latest checkpoint or `None` if no checkpoint was found.
-
 
 
 - - -
@@ -1926,15 +1913,9 @@ proto.
 *  <b>`RuntimeError`</b>: If the save paths conflict.
 
 
-
-## Sharing Variables
-
-TensorFlow provides several classes and operations that you can use to
-create variables contingent on certain conditions.
-
 - - -
 
-### `tf.get_variable(name, shape=None, dtype=None, initializer=None, regularizer=None, trainable=True, collections=None, caching_device=None, partitioner=None, validate_shape=True, custom_getter=None)` {#get_variable}
+### `tf.get_variable(name, shape=None, dtype=None, initializer=None, regularizer=None, trainable=True, collections=None, caching_device=None, partitioner=None, validate_shape=True, use_resource=None, custom_getter=None)` {#get_variable}
 
 Gets an existing variable with these parameters or create a new one.
 
@@ -1947,13 +1928,13 @@ for an extensive description of how reusing works. Here is a basic example:
 with tf.variable_scope("foo"):
     v = tf.get_variable("v", [1])  # v.name == "foo/v:0"
     w = tf.get_variable("w", [1])  # w.name == "foo/w:0"
-with tf.variable_scope("foo", reuse=True)
+with tf.variable_scope("foo", reuse=True):
     v1 = tf.get_variable("v")  # The same as v above.
 ```
 
 If initializer is `None` (the default), the default initializer passed in
 the variable scope will be used. If that one is `None` too, a
-`uniform_unit_scaling_initializer` will be used. The initializer can also be
+`glorot_uniform_initializer` will be used. The initializer can also be
 a Tensor, in which case the variable is initialized to this value and shape.
 
 Similarly, if the regularizer is `None` (the default), the default regularizer
@@ -1976,7 +1957,7 @@ Some useful partitioners are available.  See, e.g.,
 *  <b>`initializer`</b>: Initializer for the variable if one is created.
 *  <b>`regularizer`</b>: A (Tensor -> Tensor or None) function; the result of
     applying it on a newly created variable will be added to the collection
-    GraphKeys.REGULARIZATION_LOSSES and can be used for regularization.
+    @{tf.GraphKeys.REGULARIZATION_LOSSES} and can be used for regularization.
 *  <b>`trainable`</b>: If `True` also add the variable to the graph collection
     `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
 *  <b>`collections`</b>: List of graph collections keys to add the Variable to.
@@ -1992,6 +1973,99 @@ Some useful partitioners are available.  See, e.g.,
 *  <b>`validate_shape`</b>: If False, allows the variable to be initialized with a
       value of unknown shape. If True, the default, the shape of initial_value
       must be known.
+*  <b>`use_resource`</b>: If False, creates a regular Variable. If true, creates an
+    experimental ResourceVariable instead with well-defined semantics.
+    Defaults to False (will later change to True).
+*  <b>`custom_getter`</b>: Callable that takes as a first argument the true getter, and
+    allows overwriting the internal get_variable method.
+    The signature of `custom_getter` should match that of this method,
+    but the most future-proof version will allow for changes:
+    `def custom_getter(getter, *args, **kwargs)`.  Direct access to
+    all `get_variable` parameters is also allowed:
+    `def custom_getter(getter, name, *args, **kwargs)`.  A simple identity
+    custom getter that simply creates variables with modified names is:
+    ```python
+    def custom_getter(getter, name, *args, **kwargs):
+      return getter(name + '_suffix', *args, **kwargs)
+    ```
+
+##### Returns:
+
+  The created or existing `Variable` (or `PartitionedVariable`, if a
+  partitioner was used).
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: when creating a new variable and shape is not declared,
+    when violating reuse during variable creation, or when `initializer` dtype
+    and `dtype` don't match. Reuse is set inside `variable_scope`.
+
+
+- - -
+
+### `tf.get_local_variable(*args, **kwargs)` {#get_local_variable}
+
+Gets an existing *local* variable or creates a new one.
+
+Behavior is the same as in `get_variable`, except that variables are
+added to the `LOCAL_VARIABLES` collection and `trainable` is set to
+`False`.
+This function prefixes the name with the current variable scope
+and performs reuse checks. See the
+[Variable Scope How To](../../how_tos/variable_scope/index.md)
+for an extensive description of how reusing works. Here is a basic example:
+
+```python
+with tf.variable_scope("foo"):
+    v = tf.get_variable("v", [1])  # v.name == "foo/v:0"
+    w = tf.get_variable("w", [1])  # w.name == "foo/w:0"
+with tf.variable_scope("foo", reuse=True):
+    v1 = tf.get_variable("v")  # The same as v above.
+```
+
+If initializer is `None` (the default), the default initializer passed in
+the variable scope will be used. If that one is `None` too, a
+`glorot_uniform_initializer` will be used. The initializer can also be
+a Tensor, in which case the variable is initialized to this value and shape.
+
+Similarly, if the regularizer is `None` (the default), the default regularizer
+passed in the variable scope will be used (if that is `None` too,
+then by default no regularization is performed).
+
+If a partitioner is provided, a `PartitionedVariable` is returned.
+Accessing this object as a `Tensor` returns the shards concatenated along
+the partition axis.
+
+Some useful partitioners are available.  See, e.g.,
+`variable_axis_size_partitioner` and `min_max_variable_partitioner`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name of the new or existing variable.
+*  <b>`shape`</b>: Shape of the new or existing variable.
+*  <b>`dtype`</b>: Type of the new or existing variable (defaults to `DT_FLOAT`).
+*  <b>`initializer`</b>: Initializer for the variable if one is created.
+*  <b>`regularizer`</b>: A (Tensor -> Tensor or None) function; the result of
+    applying it on a newly created variable will be added to the collection
+    @{tf.GraphKeys.REGULARIZATION_LOSSES} and can be used for regularization.
+*  <b>`collections`</b>: List of graph collections keys to add the Variable to.
+    Defaults to `[GraphKeys.LOCAL_VARIABLES]` (see `tf.Variable`).
+*  <b>`caching_device`</b>: Optional device string or function describing where the
+    Variable should be cached for reading.  Defaults to the Variable's
+    device.  If not `None`, caches on another device.  Typical use is to
+    cache on the device where the Ops using the Variable reside, to
+    deduplicate copying through `Switch` and other conditional statements.
+*  <b>`partitioner`</b>: Optional callable that accepts a fully defined `TensorShape`
+    and `dtype` of the Variable to be created, and returns a list of
+    partitions for each axis (currently only one axis can be partitioned).
+*  <b>`validate_shape`</b>: If False, allows the variable to be initialized with a
+      value of unknown shape. If True, the default, the shape of initial_value
+      must be known.
+*  <b>`use_resource`</b>: If False, creates a regular Variable. If true, creates an
+    experimental ResourceVariable instead with well-defined semantics.
+    Defaults to False (will later change to True).
 *  <b>`custom_getter`</b>: Callable that takes as a first argument the true getter, and
     allows overwriting the internal get_variable method.
     The signature of `custom_getter` should match that of this method,
@@ -2022,9 +2096,9 @@ Some useful partitioners are available.  See, e.g.,
 
 ### `class tf.VariableScope` {#VariableScope}
 
-Variable scope object to carry defaults to provide to get_variable.
+Variable scope object to carry defaults to provide to `get_variable`.
 
-Many of the arguments we need for get_variable in a variable store are most
+Many of the arguments we need for `get_variable` in a variable store are most
 easily handled with a context. This object is used for the defaults.
 
 Attributes:
@@ -2038,9 +2112,12 @@ Attributes:
   custom_getter: default custom getter passed to get_variable.
   name_scope: The name passed to `tf.name_scope`.
   dtype: default type passed to get_variable (defaults to DT_FLOAT).
+  use_resource: if False, create a normal Variable; if True create an
+    experimental ResourceVariable with well-defined semantics. Defaults
+    to False (will later change to True).
 - - -
 
-#### `tf.VariableScope.__init__(reuse, name='', initializer=None, regularizer=None, caching_device=None, partitioner=None, custom_getter=None, name_scope='', dtype=tf.float32)` {#VariableScope.__init__}
+#### `tf.VariableScope.__init__(reuse, name='', initializer=None, regularizer=None, caching_device=None, partitioner=None, custom_getter=None, name_scope='', dtype=tf.float32, use_resource=None)` {#VariableScope.__init__}
 
 Creates a new VariableScope with the given properties.
 
@@ -2068,7 +2145,7 @@ Creates a new VariableScope with the given properties.
 
 - - -
 
-#### `tf.VariableScope.get_variable(var_store, name, shape=None, dtype=None, initializer=None, regularizer=None, trainable=True, collections=None, caching_device=None, partitioner=None, validate_shape=True, custom_getter=None)` {#VariableScope.get_variable}
+#### `tf.VariableScope.get_variable(var_store, name, shape=None, dtype=None, initializer=None, regularizer=None, trainable=True, collections=None, caching_device=None, partitioner=None, validate_shape=True, use_resource=None, custom_getter=None)` {#VariableScope.get_variable}
 
 Gets an existing variable with this name or create a new one.
 
@@ -2164,10 +2241,24 @@ Set partitioner for this scope.
 Set regularizer for this scope.
 
 
+- - -
+
+#### `tf.VariableScope.set_use_resource(use_resource)` {#VariableScope.set_use_resource}
+
+Sets whether to use ResourceVariables for this scope.
+
 
 - - -
 
-### `tf.variable_scope(name_or_scope, default_name=None, values=None, initializer=None, regularizer=None, caching_device=None, partitioner=None, custom_getter=None, reuse=None, dtype=None)` {#variable_scope}
+#### `tf.VariableScope.use_resource` {#VariableScope.use_resource}
+
+
+
+
+
+- - -
+
+### `tf.variable_scope(name_or_scope, default_name=None, values=None, initializer=None, regularizer=None, caching_device=None, partitioner=None, custom_getter=None, reuse=None, dtype=None, use_resource=None)` {#variable_scope}
 
 Returns a context manager for defining ops that creates variables (layers).
 
@@ -2252,6 +2343,9 @@ then all its sub-scopes become reusing as well.
     well as all sub-scopes; if `None`, we just inherit the parent scope reuse.
 *  <b>`dtype`</b>: type of variables created in this scope (defaults to the type
     in the passed scope, or inherited from parent scope).
+*  <b>`use_resource`</b>: If False, all variables will be regular Variables. If True,
+    experimental ResourceVariables with well-defined semantics will be used
+    instead. Defaults to False (will later change to True).
 
 ##### Returns:
 
@@ -2267,7 +2361,7 @@ then all its sub-scopes become reusing as well.
 
 - - -
 
-### `tf.variable_op_scope(values, name_or_scope, default_name=None, initializer=None, regularizer=None, caching_device=None, partitioner=None, custom_getter=None, reuse=None, dtype=None)` {#variable_op_scope}
+### `tf.variable_op_scope(values, name_or_scope, default_name=None, initializer=None, regularizer=None, caching_device=None, partitioner=None, custom_getter=None, reuse=None, dtype=None, use_resource=None)` {#variable_op_scope}
 
 Deprecated: context manager for defining an op that creates variables.
 
@@ -2393,7 +2487,6 @@ reduce the likelihood of collisions with kwargs.
 *  <b>`ValueError`</b>: if the name is None.
 
 
-
 - - -
 
 ### `tf.no_regularizer(_)` {#no_regularizer}
@@ -2401,12 +2494,11 @@ reduce the likelihood of collisions with kwargs.
 Use this function to prevent regularization of variables.
 
 
-
 - - -
 
-### `tf.constant_initializer(value=0, dtype=tf.float32)` {#constant_initializer}
+### `class tf.constant_initializer` {#constant_initializer}
 
-Returns an initializer that generates tensors with constant values.
+Initializer that generates tensors with constant values.
 
 The resulting tensor is populated with values of type `dtype`, as
 specified by arguments `value` following the desired `shape` of the
@@ -2421,20 +2513,16 @@ in `value` will be used to fill the remaining entries. If the total number of
 elements in `value` is greater than the number of elements required by the
 tensor shape, the initializer will raise a `ValueError`.
 
-##### Args:
-
-
-*  <b>`value`</b>: A Python scalar, list of values, or a N-dimensional numpy array. All
+Args:
+  value: A Python scalar, list of values, or a N-dimensional numpy array. All
     elements of the initialized variable will be set to the corresponding
     value in the `value` argument.
-*  <b>`dtype`</b>: The data type.
+  dtype: The data type.
+  verify_shape: Boolean that enables verification of the shape of `value`. If
+    `True`, the initializer will throw an error if the shape of `value` is not
+    compatible with the shape of the initialized tensor.
 
-##### Returns:
-
-  An initializer that generates tensors with constant values.
-
-##### Examples:
-
+Examples:
   The following example can be rewritten using a numpy.ndarray instead
   of the `value` list, even reshaped, as shown in the two commented lines
   below the `value` list initialization.
@@ -2449,7 +2537,6 @@ tensor shape, the initializer will raise a `ValueError`.
   >>> init = tf.constant_initializer(value)
 
   >>> print('fitting shape:')
-  >>> tf.reset_default_graph()
   >>> with tf.Session():
   >>>   x = tf.get_variable('x', shape=[2, 4], initializer=init)
   >>>   x.initializer.run()
@@ -2460,7 +2547,6 @@ tensor shape, the initializer will raise a `ValueError`.
    [ 4.  5.  6.  7.]]
 
   >>> print('larger shape:')
-  >>> tf.reset_default_graph()
   >>> with tf.Session():
   >>>   x = tf.get_variable('x', shape=[3, 4], initializer=init)
   >>>   x.initializer.run()
@@ -2472,105 +2558,133 @@ tensor shape, the initializer will raise a `ValueError`.
    [ 7.  7.  7.  7.]]
 
   >>> print('smaller shape:')
-  >>> tf.reset_default_graph()
   >>> with tf.Session():
   >>>   x = tf.get_variable('x', shape=[2, 3], initializer=init)
 
+  ValueError: Too many elements provided. Needed at most 6, but received 8
 
-*  <b>`ValueError`</b>: Too many elements provided. Needed at most 6, but received 8
+  >>> print('shape verification:')
+  >>> init_verify = tf.constant_initializer(value, verify_shape=True)
+  >>> with tf.Session():
+  >>>   x = tf.get_variable('x', shape=[3, 4], initializer=init_verify)
+
+  TypeError: Expected Tensor's shape: (3, 4), got (8,).
 ```
+- - -
+
+#### `tf.constant_initializer.__call__(shape, dtype=None, partition_info=None)` {#constant_initializer.__call__}
+
+
 
 
 - - -
 
-### `tf.random_normal_initializer(mean=0.0, stddev=1.0, seed=None, dtype=tf.float32)` {#random_normal_initializer}
-
-Returns an initializer that generates tensors with a normal distribution.
-
-##### Args:
+#### `tf.constant_initializer.__init__(value=0, dtype=tf.float32, verify_shape=False)` {#constant_initializer.__init__}
 
 
-*  <b>`mean`</b>: a python scalar or a scalar tensor. Mean of the random values
+
+
+
+- - -
+
+### `class tf.random_normal_initializer` {#random_normal_initializer}
+
+Initializer that generates tensors with a normal distribution.
+
+Args:
+  mean: a python scalar or a scalar tensor. Mean of the random values
     to generate.
-*  <b>`stddev`</b>: a python scalar or a scalar tensor. Standard deviation of the
+  stddev: a python scalar or a scalar tensor. Standard deviation of the
     random values to generate.
-*  <b>`seed`</b>: A Python integer. Used to create random seeds. See
+  seed: A Python integer. Used to create random seeds. See
     [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
     for behavior.
-*  <b>`dtype`</b>: The data type. Only floating point types are supported.
+  dtype: The data type. Only floating point types are supported.
+- - -
 
-##### Returns:
-
-  An initializer that generates tensors with a normal distribution.
-
-##### Raises:
+#### `tf.random_normal_initializer.__call__(shape, dtype=None, partition_info=None)` {#random_normal_initializer.__call__}
 
 
-*  <b>`ValueError`</b>: if `dtype` is not a floating point type.
 
 
 - - -
 
-### `tf.truncated_normal_initializer(mean=0.0, stddev=1.0, seed=None, dtype=tf.float32)` {#truncated_normal_initializer}
+#### `tf.random_normal_initializer.__init__(mean=0.0, stddev=1.0, seed=None, dtype=tf.float32)` {#random_normal_initializer.__init__}
 
-Returns an initializer that generates a truncated normal distribution.
+
+
+
+
+- - -
+
+### `class tf.truncated_normal_initializer` {#truncated_normal_initializer}
+
+Initializer that generates a truncated normal distribution.
 
 These values are similar to values from a `random_normal_initializer`
 except that values more than two standard deviations from the mean
 are discarded and re-drawn. This is the recommended initializer for
 neural network weights and filters.
 
-##### Args:
-
-
-*  <b>`mean`</b>: a python scalar or a scalar tensor. Mean of the random values
+Args:
+  mean: a python scalar or a scalar tensor. Mean of the random values
     to generate.
-*  <b>`stddev`</b>: a python scalar or a scalar tensor. Standard deviation of the
+  stddev: a python scalar or a scalar tensor. Standard deviation of the
     random values to generate.
-*  <b>`seed`</b>: A Python integer. Used to create random seeds. See
+  seed: A Python integer. Used to create random seeds. See
     [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
     for behavior.
-*  <b>`dtype`</b>: The data type. Only floating point types are supported.
+  dtype: The data type. Only floating point types are supported.
+- - -
 
-##### Returns:
-
-  An initializer that generates tensors with a truncated normal
-  distribution.
-
-##### Raises:
+#### `tf.truncated_normal_initializer.__call__(shape, dtype=None, partition_info=None)` {#truncated_normal_initializer.__call__}
 
 
-*  <b>`ValueError`</b>: if `dtype` is not a floating point type.
 
 
 - - -
 
-### `tf.random_uniform_initializer(minval=0, maxval=None, seed=None, dtype=tf.float32)` {#random_uniform_initializer}
-
-Returns an initializer that generates tensors with a uniform distribution.
-
-##### Args:
+#### `tf.truncated_normal_initializer.__init__(mean=0.0, stddev=1.0, seed=None, dtype=tf.float32)` {#truncated_normal_initializer.__init__}
 
 
-*  <b>`minval`</b>: A python scalar or a scalar tensor. Lower bound of the range
+
+
+
+- - -
+
+### `class tf.random_uniform_initializer` {#random_uniform_initializer}
+
+Initializer that generates tensors with a uniform distribution.
+
+Args:
+  minval: A python scalar or a scalar tensor. Lower bound of the range
     of random values to generate.
-*  <b>`maxval`</b>: A python scalar or a scalar tensor. Upper bound of the range
+  maxval: A python scalar or a scalar tensor. Upper bound of the range
     of random values to generate.  Defaults to 1 for float types.
-*  <b>`seed`</b>: A Python integer. Used to create random seeds. See
+  seed: A Python integer. Used to create random seeds. See
     [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
     for behavior.
-*  <b>`dtype`</b>: The data type.
+  dtype: The data type.
+- - -
 
-##### Returns:
+#### `tf.random_uniform_initializer.__call__(shape, dtype=None, partition_info=None)` {#random_uniform_initializer.__call__}
 
-  An initializer that generates tensors with a uniform distribution.
+
 
 
 - - -
 
-### `tf.uniform_unit_scaling_initializer(factor=1.0, seed=None, dtype=tf.float32)` {#uniform_unit_scaling_initializer}
+#### `tf.random_uniform_initializer.__init__(minval=0, maxval=None, seed=None, dtype=tf.float32)` {#random_uniform_initializer.__init__}
 
-Returns an initializer that generates tensors without scaling variance.
+
+
+
+
+- - -
+
+### `class tf.uniform_unit_scaling_initializer` {#uniform_unit_scaling_initializer}
+
+Initializer that generates tensors without scaling variance.
 
 When initializing a deep network, it is in principle advantageous to keep
 the scale of the input variance constant, so it does not explode or diminish
@@ -2588,76 +2702,102 @@ See [Sussillo et al., 2014](https://arxiv.org/abs/1412.6558)
 and the calculation of constants. In section 2.3 there, the constants were
 numerically computed: for a linear layer it's 1.0, relu: ~1.43, tanh: ~1.15.
 
-##### Args:
-
-
-*  <b>`factor`</b>: Float.  A multiplicative factor by which the values will be scaled.
-*  <b>`seed`</b>: A Python integer. Used to create random seeds. See
+Args:
+  factor: Float.  A multiplicative factor by which the values will be scaled.
+  seed: A Python integer. Used to create random seeds. See
     [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
     for behavior.
-*  <b>`dtype`</b>: The data type. Only floating point types are supported.
+  dtype: The data type. Only floating point types are supported.
+- - -
 
-##### Returns:
-
-  An initializer that generates tensors with unit variance.
-
-##### Raises:
+#### `tf.uniform_unit_scaling_initializer.__call__(shape, dtype=None, partition_info=None)` {#uniform_unit_scaling_initializer.__call__}
 
 
-*  <b>`ValueError`</b>: if `dtype` is not a floating point type.
 
 
 - - -
 
-### `tf.zeros_initializer(dtype=tf.float32)` {#zeros_initializer}
-
-Returns an initializer that generates tensors initialized to 0.
+#### `tf.uniform_unit_scaling_initializer.__init__(factor=1.0, seed=None, dtype=tf.float32)` {#uniform_unit_scaling_initializer.__init__}
 
 
-- - -
 
-### `tf.ones_initializer(dtype=tf.float32)` {#ones_initializer}
-
-An adaptor for ones() to match the Initializer spec.
 
 
 - - -
 
-### `tf.orthogonal_initializer(gain=1.0, dtype=tf.float32, seed=None)` {#orthogonal_initializer}
+### `class tf.zeros_initializer` {#zeros_initializer}
 
-Returns an initializer that generates an orthogonal matrix or a reshaped 
-orthogonal matrix.
+Initializer that generates tensors initialized to 0.
+- - -
+
+#### `tf.zeros_initializer.__call__(shape, dtype=None, partition_info=None)` {#zeros_initializer.__call__}
+
+
+
+
+- - -
+
+#### `tf.zeros_initializer.__init__(dtype=tf.float32)` {#zeros_initializer.__init__}
+
+
+
+
+
+- - -
+
+### `class tf.ones_initializer` {#ones_initializer}
+
+Initializer that generates tensors initialized to 1.
+- - -
+
+#### `tf.ones_initializer.__call__(shape, dtype=None, partition_info=None)` {#ones_initializer.__call__}
+
+
+
+
+- - -
+
+#### `tf.ones_initializer.__init__(dtype=tf.float32)` {#ones_initializer.__init__}
+
+
+
+
+
+- - -
+
+### `class tf.orthogonal_initializer` {#orthogonal_initializer}
+
+Initializer that generates an orthogonal matrix.
 
 If the shape of the tensor to initialize is two-dimensional, i is initialized
 with an orthogonal matrix obtained from the singular value decomposition of a
 matrix of uniform random numbers.
 
-If the shape of the tensor to initialize is more than two-dimensional, a matrix
-of shape `(shape[0] * ... * shape[n - 2], shape[n - 1])` is initialized, where
-`n` is the length of the shape vector. The matrix is subsequently reshaped to
-give a tensor of the desired shape.
+If the shape of the tensor to initialize is more than two-dimensional,
+a matrix of shape `(shape[0] * ... * shape[n - 2], shape[n - 1])`
+is initialized, where `n` is the length of the shape vector.
+The matrix is subsequently reshaped to give a tensor of the desired shape.
 
-##### Args:
-
-
-*  <b>`gain`</b>: multiplicative factor to apply to the orthogonal matrix
-*  <b>`dtype`</b>: The type of the output.
-*  <b>`seed`</b>: A Python integer. Used to create random seeds. See
+Args:
+  gain: multiplicative factor to apply to the orthogonal matrix
+  dtype: The type of the output.
+  seed: A Python integer. Used to create random seeds. See
     [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
     for behavior.
+- - -
 
-##### Returns:
-
-  An initializer that generates orthogonal tensors
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: if `dtype` is not a floating point type or if `shape` has fewer than two entries.
+#### `tf.orthogonal_initializer.__call__(shape, dtype=None, partition_info=None)` {#orthogonal_initializer.__call__}
 
 
 
-## Variable Partitioners for Sharding
+
+- - -
+
+#### `tf.orthogonal_initializer.__init__(gain=1.0, dtype=tf.float32, seed=None)` {#orthogonal_initializer.__init__}
+
+
+
+
 
 - - -
 
@@ -2743,21 +2883,6 @@ variable. The maximum number of such partitions (upper bound) is given by
   A partition function usable as the `partitioner` argument to
   `variable_scope`, `get_variable`, and `get_partitioned_variable_list`.
 
-
-
-## Sparse Variable Updates
-
-The sparse update ops modify a subset of the entries in a dense `Variable`,
-either overwriting the entries or adding / subtracting a delta.  These are
-useful for training embedding models and similar lookup-based networks, since
-only a small subset of embedding vectors change in any given step.
-
-Since a sparse update of a large tensor may be generated automatically during
-gradient computation (as in the gradient of
-[`tf.gather`](../../api_docs/python/array_ops.md#gather)),
-an [`IndexedSlices`](#IndexedSlices) class is provided that encapsulates a set
-of sparse indices and values.  `IndexedSlices` objects are detected and handled
-automatically by the optimizers in most cases.
 
 - - -
 
@@ -3218,9 +3343,10 @@ tf.shape(b.values) => [2, 10]
 
 ##### Args:
 
-  * `a`: An `IndexedSlices` instance.
-  * `mask_indices`: Indices of elements to mask.
-  * `name`: A name for the operation (optional).
+
+*  <b>`a`</b>: An `IndexedSlices` instance.
+*  <b>`mask_indices`</b>: Indices of elements to mask.
+*  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
@@ -3256,7 +3382,6 @@ gradients for operations that have sparse gradients
 Contrast this representation with
 [`SparseTensor`](../../api_docs/python/sparse_ops.md#SparseTensor),
 which uses multi-dimensional indices and scalar values.
-
 - - -
 
 #### `tf.IndexedSlices.__init__(values, indices, dense_shape=None)` {#IndexedSlices.__init__}
@@ -3264,59 +3389,6 @@ which uses multi-dimensional indices and scalar values.
 Creates an `IndexedSlices`.
 
 
-
-- - -
-
-#### `tf.IndexedSlices.values` {#IndexedSlices.values}
-
-A `Tensor` containing the values of the slices.
-
-
-- - -
-
-#### `tf.IndexedSlices.indices` {#IndexedSlices.indices}
-
-A 1-D `Tensor` containing the indices of the slices.
-
-
-- - -
-
-#### `tf.IndexedSlices.dense_shape` {#IndexedSlices.dense_shape}
-
-A 1-D `Tensor` containing the shape of the corresponding dense tensor.
-
-
-
-- - -
-
-#### `tf.IndexedSlices.name` {#IndexedSlices.name}
-
-The name of this `IndexedSlices`.
-
-
-- - -
-
-#### `tf.IndexedSlices.dtype` {#IndexedSlices.dtype}
-
-The `DType` of elements in this tensor.
-
-
-- - -
-
-#### `tf.IndexedSlices.device` {#IndexedSlices.device}
-
-The name of the device on which `values` will be produced, or `None`.
-
-
-- - -
-
-#### `tf.IndexedSlices.op` {#IndexedSlices.op}
-
-The `Operation` that produces `values` as an output.
-
-
-
-#### Other Methods
 - - -
 
 #### `tf.IndexedSlices.__neg__()` {#IndexedSlices.__neg__}
@@ -3333,18 +3405,85 @@ The `Operation` that produces `values` as an output.
 
 - - -
 
+#### `tf.IndexedSlices.dense_shape` {#IndexedSlices.dense_shape}
+
+A 1-D `Tensor` containing the shape of the corresponding dense tensor.
+
+
+- - -
+
+#### `tf.IndexedSlices.device` {#IndexedSlices.device}
+
+The name of the device on which `values` will be produced, or `None`.
+
+
+- - -
+
+#### `tf.IndexedSlices.dtype` {#IndexedSlices.dtype}
+
+The `DType` of elements in this tensor.
+
+
+- - -
+
 #### `tf.IndexedSlices.graph` {#IndexedSlices.graph}
 
 The `Graph` that contains the values, indices, and shape tensors.
 
 
+- - -
 
+#### `tf.IndexedSlices.indices` {#IndexedSlices.indices}
 
-### Read-only Lookup Tables
+A 1-D `Tensor` containing the indices of the slices.
+
 
 - - -
 
-### `tf.initialize_all_tables(name='init_all_tables')` {#initialize_all_tables}
+#### `tf.IndexedSlices.name` {#IndexedSlices.name}
+
+The name of this `IndexedSlices`.
+
+
+- - -
+
+#### `tf.IndexedSlices.op` {#IndexedSlices.op}
+
+The `Operation` that produces `values` as an output.
+
+
+- - -
+
+#### `tf.IndexedSlices.values` {#IndexedSlices.values}
+
+A `Tensor` containing the values of the slices.
+
+
+
+- - -
+
+### `tf.initialize_all_tables(*args, **kwargs)` {#initialize_all_tables}
+
+Returns an Op that initializes all tables of the default graph. (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2017-03-02.
+Instructions for updating:
+Use `tf.tables_initializer` instead.
+
+##### Args:
+
+
+*  <b>`name`</b>: Optional name for the initialization op.
+
+##### Returns:
+
+  An Op that initializes all tables.  Note that if there are
+  not tables the returned Op is a NoOp.
+
+
+- - -
+
+### `tf.tables_initializer(name='init_all_tables')` {#tables_initializer}
 
 Returns an Op that initializes all tables of the default graph.
 
@@ -3358,10 +3497,6 @@ Returns an Op that initializes all tables of the default graph.
   An Op that initializes all tables.  Note that if there are
   not tables the returned Op is a NoOp.
 
-
-
-
-## Exporting and Importing Meta Graphs
 
 - - -
 
@@ -3475,9 +3610,6 @@ device assignments have not changed.
   A None value is returned if no variables exist in the `MetaGraphDef`
   (i.e., there are no variables to restore).
 
-
-
-# Deprecated functions (removed after 2017-03-02). Please don't use them.
 
 - - -
 

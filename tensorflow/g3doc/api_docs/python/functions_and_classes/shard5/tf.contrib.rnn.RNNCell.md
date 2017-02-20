@@ -18,7 +18,7 @@ LSTM (Long Short Term Memory) or GRU (Gated Recurrent Unit), and a number
 of operators that allow add dropouts, projections, or embeddings for inputs.
 Constructing multi-layer cells is supported by the class `MultiRNNCell`,
 or by calling the `rnn` ops several times. Every `RNNCell` must have the
-properties below and and implement `__call__` with the following signature.
+properties below and implement `__call__` with the following signature.
 - - -
 
 #### `tf.contrib.rnn.RNNCell.__call__(inputs, state, scope=None)` {#RNNCell.__call__}

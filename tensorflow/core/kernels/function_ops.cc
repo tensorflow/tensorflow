@@ -242,5 +242,5 @@ REGISTER_KERNEL_BUILDER(Name(kGradientOp).Device(DEVICE_GPU),
 REGISTER_KERNEL_BUILDER(Name(kGradientOp).Device(DEVICE_SYCL),
                         SymbolicGradientOp);
 
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

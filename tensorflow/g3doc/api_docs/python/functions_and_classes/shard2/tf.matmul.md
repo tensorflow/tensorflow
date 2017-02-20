@@ -33,13 +33,15 @@ c = tf.matmul(a, b) => [[58 64]
 
 
 # 3-D tensor `a`
-a = tf.constant(np.arange(1,13), shape=[2, 2, 3]) => [[[ 1.  2.  3.]
+a = tf.constant(np.arange(1, 13, dtype=np.int32),
+                shape=[2, 2, 3])                  => [[[ 1.  2.  3.]
                                                        [ 4.  5.  6.]],
                                                       [[ 7.  8.  9.]
                                                        [10. 11. 12.]]]
 
 # 3-D tensor `b`
-b = tf.constant(np.arange(13,25), shape=[2, 3, 2]) => [[[13. 14.]
+b = tf.constant(np.arange(13, 25, dtype=np.int32),
+                shape=[2, 3, 2])                   => [[[13. 14.]
                                                         [15. 16.]
                                                         [17. 18.]],
                                                        [[19. 20.]
@@ -70,10 +72,14 @@ c = tf.matmul(a, b) => [[[ 94 100]
 ##### Returns:
 
   A `Tensor` of the same type as `a` and `b` where each inner-most matrix is
-  the product of the corresponding matrices in `a` and `b, e.g. if all
+  the product of the corresponding matrices in `a` and `b`, e.g. if all
   transpose or adjoint attributes are `False`:
 
-  output[..., :, :] = a[..., :, :] * b[..., :, :] ,
+  `output`[..., i, j] = sum_k (`a`[..., i, k] * `b`[..., k, j]),
+  for all indices i, j.
+
+
+*  <b>`Note`</b>: This is matrix product, not element-wise product.
 
 
 ##### Raises:

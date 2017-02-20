@@ -21,7 +21,7 @@ echo "false")
 
 # Hexagon integration
 ifdef HEXAGON_LIBS
-	LIBGEMM_WRAPPER := $(HEXAGON_LIBS)/libgemm_wrapper.so
+	LIBGEMM_WRAPPER := $(HEXAGON_LIBS)/libhexagon_controller.so
 	ifeq ($(shell test -f $(LIBGEMM_WRAPPER) 2> /dev/null; echo $$?), 0)
     $(info "Use hexagon libs at " $(LIBGEMM_WRAPPER))
 	else
@@ -138,6 +138,11 @@ $(shell mkdir -p $(DEPDIR) >/dev/null)
 # Settings for the target compiler.
 CXX := $(CC_PREFIX) gcc
 OPTFLAGS := -O2
+
+ifneq ($(TARGET),ANDROID)
+  OPTFLAGS += -march=native
+endif
+
 CXXFLAGS := --std=c++11 -DIS_SLIM_BUILD -fno-exceptions -DNDEBUG $(OPTFLAGS)
 LDFLAGS := \
 -L/usr/local/lib
@@ -271,7 +276,7 @@ ifeq ($(TARGET),ANDROID)
 
 	ifdef HEXAGON_LIBS
 		INCLUDES += -I$(HEXAGON_INCLUDE)
-		LIBS += -lgemm_wrapper
+		LIBS += -lhexagon_controller
 		LDFLAGS += -L$(HEXAGON_LIBS)
 		CXXFLAGS += -DUSE_HEXAGON_LIBS
 	endif
@@ -294,6 +299,7 @@ ifeq ($(TARGET),IOS)
 	ifeq ($(IOS_ARCH),ARMV7)
 		CXXFLAGS += -miphoneos-version-min=$(MIN_SDK_VERSION) \
 		-arch armv7 \
+		-fembed-bitcode \
 		-D__thread= \
 		-DUSE_GEMM_FOR_CONV \
 		-Wno-c++11-narrowing \
@@ -304,6 +310,7 @@ ifeq ($(TARGET),IOS)
 		-isysroot \
 		${IPHONEOS_SYSROOT}
 		LDFLAGS := -arch armv7 \
+		-fembed-bitcode \
 		-miphoneos-version-min=${MIN_SDK_VERSION} \
 		-framework Accelerate \
 		-Xlinker -S \
@@ -316,6 +323,7 @@ ifeq ($(TARGET),IOS)
 	ifeq ($(IOS_ARCH),ARMV7S)
 		CXXFLAGS += -miphoneos-version-min=$(MIN_SDK_VERSION) \
 		-arch armv7s \
+		-fembed-bitcode \
 		-D__thread= \
 		-DUSE_GEMM_FOR_CONV \
 		-Wno-c++11-narrowing \
@@ -326,6 +334,7 @@ ifeq ($(TARGET),IOS)
 		-isysroot \
 		${IPHONEOS_SYSROOT}
 		LDFLAGS := -arch armv7s \
+		-fembed-bitcode \
 		-miphoneos-version-min=${MIN_SDK_VERSION} \
 		-framework Accelerate \
 		-Xlinker -S \
@@ -338,6 +347,7 @@ ifeq ($(TARGET),IOS)
 	ifeq ($(IOS_ARCH),ARM64)
 		CXXFLAGS += -miphoneos-version-min=$(MIN_SDK_VERSION) \
 		-arch arm64 \
+		-fembed-bitcode \
 		-D__thread= \
 		-DUSE_GEMM_FOR_CONV \
 		-Wno-c++11-narrowing \
@@ -347,6 +357,7 @@ ifeq ($(TARGET),IOS)
 		-isysroot \
 		${IPHONEOS_SYSROOT}
 		LDFLAGS := -arch arm64 \
+		-fembed-bitcode \
 		-miphoneos-version-min=${MIN_SDK_VERSION} \
 		-framework Accelerate \
 		-Xlinker -S \
@@ -359,6 +370,7 @@ ifeq ($(TARGET),IOS)
 	ifeq ($(IOS_ARCH),I386)
 		CXXFLAGS += -mios-simulator-version-min=$(MIN_SDK_VERSION) \
 		-arch i386 \
+		-fembed-bitcode \
 		-D__thread= \
 		-DUSE_GEMM_FOR_CONV \
 		-Wno-c++11-narrowing \
@@ -368,6 +380,7 @@ ifeq ($(TARGET),IOS)
 		-isysroot \
 		${IPHONESIMULATOR_SYSROOT}
 		LDFLAGS := -arch i386 \
+		-fembed-bitcode \
 		-mios-simulator-version-min=${MIN_SDK_VERSION} \
 		-framework Accelerate \
 		-Xlinker -S \
@@ -380,6 +393,7 @@ ifeq ($(TARGET),IOS)
 	ifeq ($(IOS_ARCH),X86_64)
 		CXXFLAGS += -mios-simulator-version-min=$(MIN_SDK_VERSION) \
 		-arch x86_64 \
+		-fembed-bitcode \
 		-D__thread= \
 		-DUSE_GEMM_FOR_CONV \
 		-Wno-c++11-narrowing \
@@ -389,6 +403,7 @@ ifeq ($(TARGET),IOS)
 		-isysroot \
 		${IPHONESIMULATOR_SYSROOT}
 		LDFLAGS := -arch x86_64 \
+		-fembed-bitcode \
 		-mios-simulator-version-min=${MIN_SDK_VERSION} \
 		-framework Accelerate \
 		-Xlinker -S \
@@ -439,6 +454,7 @@ $(wildcard tensorflow/core/*/*/*testutil*) \
 $(wildcard tensorflow/core/*/*/*testlib*) \
 $(wildcard tensorflow/core/*/*/*main.cc) \
 $(wildcard tensorflow/core/debug/*.cc) \
+$(wildcard tensorflow/core/framework/op_gen_lib.cc) \
 $(wildcard tensorflow/core/graph/dot.*) \
 $(wildcard tensorflow/core/lib/gif/*) \
 $(wildcard tensorflow/core/lib/io/zlib*) \
@@ -447,9 +463,11 @@ $(wildcard tensorflow/core/lib/jpeg/*) \
 $(wildcard tensorflow/core/lib/png/*) \
 $(wildcard tensorflow/core/util/events_writer.*) \
 $(wildcard tensorflow/core/util/reporter.*) \
+$(wildcard tensorflow/core/platform/default/cuda_libdevice_path.*) \
 $(wildcard tensorflow/core/platform/default/stream_executor.*) \
 $(wildcard tensorflow/core/platform/default/test_benchmark.*) \
 $(wildcard tensorflow/core/platform/cuda.h) \
+$(wildcard tensorflow/core/platform/cuda_libdevice_path.*) \
 $(wildcard tensorflow/core/platform/cloud/*) \
 $(wildcard tensorflow/core/platform/google/*) \
 $(wildcard tensorflow/core/platform/google/*/*) \

@@ -7,10 +7,7 @@ Note: Functions taking `Tensor` arguments can also take anything accepted by
 
 [TOC]
 
-## Tensor Handle Operations.
-
-TensorFlow provides several operators that allows the user to keep tensors
-"in-place" across run calls.
+Tensor Handle Operations. See the @{python/session_ops} guide.
 
 - - -
 
@@ -45,12 +42,12 @@ one run call in place, and use it as the input in a future run call.
 *  <b>`Example`</b>: 
 
 ```python
-c = tf.mul(a, b)
+c = tf.multiply(a, b)
 h = tf.get_session_handle(c)
 h = sess.run(h)
 
 p, a = tf.get_session_tensor(h.handle, tf.float32)
-b = tf.mul(a, 10)
+b = tf.multiply(a, 10)
 c = sess.run(b, feed_dict={p: h.handle})
 ```
 
@@ -84,12 +81,12 @@ session.
 *  <b>`Example`</b>: 
 
 ```python
-c = tf.mul(a, b)
+c = tf.multiply(a, b)
 h = tf.get_session_handle(c)
 h = sess.run(h)
 
 p, a = tf.get_session_tensor(h.handle, tf.float32)
-b = tf.mul(a, 10)
+b = tf.multiply(a, 10)
 c = sess.run(b, feed_dict={p: h.handle})
 ```
 

@@ -18,16 +18,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import copy
 import os
-import re
 import time
 
+from tensorflow.contrib.layers.python.layers import feature_column
 from tensorflow.contrib.learn.python.learn import export_strategy
 from tensorflow.contrib.learn.python.learn.estimators import constants
 from tensorflow.contrib.learn.python.learn.estimators import prediction_key
 from tensorflow.contrib.learn.python.learn.utils import gc
 from tensorflow.contrib.learn.python.learn.utils import input_fn_utils
+from tensorflow.python.framework import dtypes
 from tensorflow.python.platform import gfile
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
@@ -53,7 +53,7 @@ FEATURES_INPUT_ALTERNATIVE_KEY = 'features_input_alternative'
 # In a single-headed model, the single output is automatically the default.
 # In a multi-headed model, the name of the desired default head should be
 # provided to get_output_alternatives.
-DEFAULT_OUTPUT_ALTERNATIVE_KEY = 'default_output_alternative'
+_FALLBACK_DEFAULT_OUTPUT_ALTERNATIVE_KEY = 'default_output_alternative'
 
 
 def build_standardized_signature_def(
@@ -86,9 +86,9 @@ def build_standardized_signature_def(
   # Per-method signature_def functions will standardize the keys if possible
   if _is_classification_problem(problem_type, input_tensors, output_tensors):
     (_, examples), = input_tensors.items()
-    classes = output_tensors.get(prediction_key.PredictionKey.CLASSES)
-    scores = output_tensors.get(prediction_key.PredictionKey.SCORES)
-    if not (classes or scores):
+    classes = _get_classification_classes(output_tensors)
+    scores = _get_classification_scores(output_tensors)
+    if classes is None and scores is None:
       (_, classes), = output_tensors.items()
     return signature_def_utils.classification_signature_def(
         examples, classes, scores)
@@ -101,13 +101,30 @@ def build_standardized_signature_def(
         input_tensors, output_tensors)
 
 
-def _is_classification_problem(problem_type, input_tensors, output_tensors):
-  classes = output_tensors.get(prediction_key.PredictionKey.CLASSES)
+def _get_classification_scores(output_tensors):
   scores = output_tensors.get(prediction_key.PredictionKey.SCORES)
+  if scores is None:
+    scores = output_tensors.get(prediction_key.PredictionKey.PROBABILITIES)
+  return scores
+
+
+def _get_classification_classes(output_tensors):
+  classes = output_tensors.get(prediction_key.PredictionKey.CLASSES)
+  if classes is not None and classes.dtype != dtypes.string:
+    # Servo classification can only serve string classes.
+    return None
+  return classes
+
+
+def _is_classification_problem(problem_type, input_tensors, output_tensors):
+  classes = _get_classification_classes(output_tensors)
+  scores = _get_classification_scores(output_tensors)
   return ((problem_type == constants.ProblemType.CLASSIFICATION or
            problem_type == constants.ProblemType.LOGISTIC_REGRESSION)
           and len(input_tensors) == 1
-          and (classes or scores or len(output_tensors) == 1))
+          and (classes is not None or
+               scores is not None or
+               len(output_tensors) == 1))
 
 
 def _is_regression_problem(problem_type, input_tensors, output_tensors):
@@ -128,45 +145,82 @@ def get_input_alternatives(input_ops):
   if not features:
     raise ValueError('Features must be defined.')
 
+  # TODO(b/34253951): reinstate the "features" input_signature.
+  # The "features" input_signature, as written, does not work with
+  # SparseTensors.  It is simply commented out as a stopgap, pending discussion
+  # on the bug as to the correct solution.
+
   # Add the "features" input_signature in any case.
   # Note defensive copy because model_fns alter the features dict.
-  input_alternatives[FEATURES_INPUT_ALTERNATIVE_KEY] = (
-      copy.copy(features))
+  # input_alternatives[FEATURES_INPUT_ALTERNATIVE_KEY] = (
+  #    copy.copy(features))
 
   return input_alternatives, features
 
 
 def get_output_alternatives(
     model_fn_ops,
-    default_output_alternative_key=DEFAULT_OUTPUT_ALTERNATIVE_KEY):
-  """Obtain all output alternatives using the model_fn output and heuristics."""
+    default_output_alternative_key=None):
+  """Obtain all output alternatives using the model_fn output and heuristics.
+
+  Args:
+    model_fn_ops: a `ModelFnOps` object produced by a `model_fn`.  This may or
+      may not have output_alternatives populated.
+    default_output_alternative_key: the name of the head to serve when an
+      incoming serving request does not explicitly request a specific head.
+      Not needed for single-headed models.
+
+  Returns:
+    A tuple of (output_alternatives, actual_default_output_alternative_key),
+    where the latter names the head that will actually be served by default.
+    This may differ from the requested default_output_alternative_key when
+    a) no output_alternatives are provided at all, so one must be generated, or
+    b) there is exactly one head, which is used regardless of the requested
+    default.
+
+  Raises:
+    ValueError: if the requested default_output_alternative_key is not available
+      in output_alternatives, or if there are multiple output_alternatives and
+      no default is specified.
+  """
   output_alternatives = model_fn_ops.output_alternatives
 
-  # Identify the default outputs, creating them if needed.
-  if (output_alternatives
-      and default_output_alternative_key not in output_alternatives):
-    raise ValueError('default_output_alternative_key not in '
-                     'output_alternatives: %s' % default_output_alternative_key)
+  if not output_alternatives:
+    if default_output_alternative_key:
+      raise ValueError('Requested default_output_alternative: {}, '
+                       'but available output_alternatives are: []'.format(
+                           default_output_alternative_key))
 
-  if (output_alternatives
-      and default_output_alternative_key in output_alternatives):
-    # If a default head is provided, use it.
-    actual_default_output_alternative_key = default_output_alternative_key
+    # Lacking provided output alternatives, the best we can do is to
+    # interpret the model as single-headed of unknown type.
+    default_problem_type = constants.ProblemType.UNSPECIFIED
+    default_outputs = model_fn_ops.predictions
+    if not isinstance(default_outputs, dict):
+      default_outputs = {prediction_key.PredictionKey.GENERIC: default_outputs}
+    actual_default_output_alternative_key = (
+        _FALLBACK_DEFAULT_OUTPUT_ALTERNATIVE_KEY)
+    output_alternatives = {actual_default_output_alternative_key:
+                           (default_problem_type, default_outputs)}
     return output_alternatives, actual_default_output_alternative_key
 
-  if output_alternatives and len(output_alternatives) == 1:
-    # If there is only one head, use it as the default.
+  if default_output_alternative_key:
+    # If a default head is provided, use it.
+    if default_output_alternative_key in output_alternatives:
+      return output_alternatives, default_output_alternative_key
+
+    raise ValueError('Requested default_output_alternative: {}, '
+                     'but available output_alternatives are: {}'.format(
+                         default_output_alternative_key,
+                         sorted(output_alternatives.keys())))
+
+  if len(output_alternatives) == 1:
+    # If there is only one head, use it as the default regardless of its name.
     (actual_default_output_alternative_key, _), = output_alternatives.items()
     return output_alternatives, actual_default_output_alternative_key
 
-  # Lacking provided output alternatives, the best we can do is to
-  # interpret the model as single-headed of unknown type.
-  default_problem_type = constants.ProblemType.UNSPECIFIED
-  default_outputs = model_fn_ops.predictions
-  actual_default_output_alternative_key = DEFAULT_OUTPUT_ALTERNATIVE_KEY
-  output_alternatives = {actual_default_output_alternative_key:
-                         (default_problem_type, default_outputs)}
-  return output_alternatives, actual_default_output_alternative_key
+  raise ValueError('Please specify a default_output_alternative.  '
+                   'Available output_alternatives are: {}'.format(
+                       sorted(output_alternatives.keys())))
 
 
 def build_all_signature_defs(input_alternatives, output_alternatives,
@@ -182,9 +236,10 @@ def build_all_signature_defs(input_alternatives, output_alternatives,
       in output_alternatives.items()}
 
   # Add the default SignatureDef
-  default_inputs = input_alternatives[DEFAULT_INPUT_ALTERNATIVE_KEY]
+  default_inputs = input_alternatives.get(DEFAULT_INPUT_ALTERNATIVE_KEY)
   if not default_inputs:
-    default_inputs = input_alternatives[FEATURES_INPUT_ALTERNATIVE_KEY]
+    raise ValueError('A default input_alternative must be provided.')
+    # default_inputs = input_alternatives[FEATURES_INPUT_ALTERNATIVE_KEY]
   # default outputs are guaranteed to exist above
   (default_problem_type, default_outputs) = (
       output_alternatives[actual_default_output_alternative_key])
@@ -201,7 +256,7 @@ def get_timestamped_export_dir(export_dir_base):
   Each export is written into a new subdirectory named using the
   current time.  This guarantees monotonically increasing version
   numbers even across multiple runs of the pipeline.
-  The timestamp used is the number of milliseconds since epoch UTC.
+  The timestamp used is the number of seconds since epoch UTC.
 
   Args:
     export_dir_base: A string containing a directory to write the exported
@@ -209,12 +264,39 @@ def get_timestamped_export_dir(export_dir_base):
   Returns:
     The full path of the new subdirectory (which is not actually created yet).
   """
-  export_timestamp = int(time.time() * 1e3)
+  export_timestamp = int(time.time())
 
   export_dir = os.path.join(
       compat.as_bytes(export_dir_base),
       compat.as_bytes(str(export_timestamp)))
   return export_dir
+
+
+# create a simple parser that pulls the export_version from the directory.
+def _export_version_parser(path):
+  filename = os.path.basename(path.path)
+  if not (len(filename) == 10 and filename.isdigit()):
+    return None
+  return path._replace(export_version=int(filename))
+
+
+def get_most_recent_export(export_dir_base):
+  """Locate the most recent SavedModel export in a directory of many exports.
+
+  This method assumes that SavedModel subdirectories are named as a timestamp
+  (seconds from epoch), as produced by get_timestamped_export_dir().
+
+  Args:
+    export_dir_base: A base directory containing multiple timestamped
+                     directories.
+
+  Returns:
+    A gc.Path, whith is just a namedtuple of (path, export_version).
+  """
+  select_filter = gc.largest_export_versions(1)
+  results = select_filter(gc.get_paths(export_dir_base,
+                                       parser=_export_version_parser))
+  return next(iter(results or []), None)
 
 
 def garbage_collect_exports(export_dir_base, exports_to_keep):
@@ -233,40 +315,88 @@ def garbage_collect_exports(export_dir_base, exports_to_keep):
 
   keep_filter = gc.largest_export_versions(exports_to_keep)
   delete_filter = gc.negation(keep_filter)
-
-  # Export dir must not end with / or it will break the re match below.
-  if export_dir_base.endswith('/'):
-    export_dir_base = export_dir_base[:-1]
-
-  # create a simple parser that pulls the export_version from the directory.
-  def parser(path):
-    match = re.match('^' + export_dir_base + '/(\\d{13})$', path.path)
-    if not match:
-      return None
-    return path._replace(export_version=int(match.group(1)))
-
-  for p in delete_filter(gc.get_paths(export_dir_base, parser=parser)):
+  for p in delete_filter(gc.get_paths(export_dir_base,
+                                      parser=_export_version_parser)):
     gfile.DeleteRecursively(p.path)
 
 
-def make_export_strategy(export_input_fn,
-                         default_output_alternative_key='default',
+def make_export_strategy(serving_input_fn,
+                         default_output_alternative_key=None,
                          assets_extra=None,
-                         export_as_text=False,
-                         exports_to_keep=None):
-  """Create an ExportStrategy for use with Experiment."""
+                         as_text=False,
+                         exports_to_keep=5):
+  """Create an ExportStrategy for use with Experiment.
 
-  def export_fn(estimator, export_dir_base):
-    """Exports the given Estimator as a SavedModel."""
+  Args:
+    serving_input_fn: A function that takes no arguments and returns an
+      `InputFnOps`.
+    default_output_alternative_key: the name of the head to serve when an
+      incoming serving request does not explicitly request a specific head.
+      Not needed for single-headed models.
+    assets_extra: A dict specifying how to populate the assets.extra directory
+      within the exported SavedModel.  Each key should give the destination
+      path (including the filename) relative to the assets.extra directory.
+      The corresponding value gives the full path of the source file to be
+      copied.  For example, the simple case of copying a single file without
+      renaming it is specified as
+      `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
+    as_text: whether to write the SavedModel proto in text format.
+    exports_to_keep: Number of exports to keep.  Older exports will be
+      garbage-collected.  Defaults to 5.  Set to None to disable garbage
+      collection.
+
+  Returns:
+    An ExportStrategy that can be passed to the Experiment constructor.
+  """
+
+  def export_fn(estimator,
+                export_dir_base,
+                checkpoint_path=None
+               ):
+    """Exports the given Estimator as a SavedModel.
+
+    Args:
+      estimator: the Estimator to export.
+      export_dir_base: A string containing a directory to write the exported
+        graph and checkpoints.
+      checkpoint_path: The checkpoint path to export.  If None (the default),
+        the most recent checkpoint found within the model directory is chosen.
+
+    Returns:
+      The string path to the exported directory.
+    """
     export_result = estimator.export_savedmodel(
         export_dir_base,
-        export_input_fn,
+        serving_input_fn,
         default_output_alternative_key=default_output_alternative_key,
         assets_extra=assets_extra,
-        export_as_text=export_as_text,
-        exports_to_keep=exports_to_keep)
+        as_text=as_text,
+        checkpoint_path=checkpoint_path)
 
     garbage_collect_exports(export_dir_base, exports_to_keep)
     return export_result
 
   return export_strategy.ExportStrategy('Servo', export_fn)
+
+
+def make_parsing_export_strategy(feature_columns, exports_to_keep=5):
+  """Create an ExportStrategy for use with Experiment, using `FeatureColumn`s.
+
+  Creates a SavedModel export that expects to be fed with a single string
+  Tensor containing serialized tf.Examples.  At serving time, incoming
+  tf.Examples will be parsed according to the provided `FeatureColumn`s.
+
+  Args:
+    feature_columns: An iterable of `FeatureColumn`s representing the features
+      that must be provided at serving time (excluding labels!).
+    exports_to_keep: Number of exports to keep.  Older exports will be
+      garbage-collected.  Defaults to 5.  Set to None to disable garbage
+      collection.
+
+  Returns:
+    An ExportStrategy that can be passed to the Experiment constructor.
+  """
+  feature_spec = feature_column.create_feature_spec_for_parsing(feature_columns)
+  serving_input_fn = input_fn_utils.build_parsing_serving_input_fn(feature_spec)
+  return make_export_strategy(serving_input_fn, exports_to_keep=exports_to_keep)
+

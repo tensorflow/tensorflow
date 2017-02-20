@@ -16,16 +16,13 @@ limitations under the License.
 #ifndef THIRD_PARTY_TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_KEYPOINT_DETECTOR_H_
 #define THIRD_PARTY_TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_KEYPOINT_DETECTOR_H_
 
+#include <stdint.h>
 #include <vector>
-
-#include "tensorflow/core/platform/types.h"
 
 #include "tensorflow/examples/android/jni/object_tracking/image-inl.h"
 #include "tensorflow/examples/android/jni/object_tracking/image.h"
 #include "tensorflow/examples/android/jni/object_tracking/image_data.h"
 #include "tensorflow/examples/android/jni/object_tracking/optical_flow.h"
-
-using namespace tensorflow;
 
 namespace tf_tracking {
 
@@ -35,7 +32,7 @@ class KeypointDetector {
  public:
   explicit KeypointDetector(const KeypointDetectorConfig* const config)
       : config_(config),
-        keypoint_scratch_(new Image<uint8>(config_->image_size)),
+        keypoint_scratch_(new Image<uint8_t>(config_->image_size)),
         interest_map_(new Image<bool>(config_->image_size)),
         fast_quadrant_(0) {
     interest_map_->Clear(false);
@@ -54,7 +51,7 @@ class KeypointDetector {
 
  private:
   // Compute the corneriness of a point in the image.
-  float HarrisFilter(const Image<int32>& I_x, const Image<int32>& I_y,
+  float HarrisFilter(const Image<int32_t>& I_x, const Image<int32_t>& I_y,
                      const float x, const float y) const;
 
   // Adds a grid of candidate keypoints to the given box, up to
@@ -67,11 +64,9 @@ class KeypointDetector {
   // Scan the frame for potential keypoints using the FAST keypoint detector.
   // Quadrant is an argument 0-3 which refers to the quadrant of the image in
   // which to detect keypoints.
-  int FindFastKeypoints(const Image<uint8>& frame,
-                        const int quadrant,
+  int FindFastKeypoints(const Image<uint8_t>& frame, const int quadrant,
                         const int downsample_factor,
-                        const int max_num_keypoints,
-                        Keypoint* const keypoints);
+                        const int max_num_keypoints, Keypoint* const keypoints);
 
   int FindFastKeypoints(const ImageData& image_data,
                         const int max_num_keypoints,
@@ -115,7 +110,7 @@ class KeypointDetector {
   const KeypointDetectorConfig* const config_;
 
   // Scratch memory for keypoint candidacy detection and non-max suppression.
-  std::unique_ptr<Image<uint8> > keypoint_scratch_;
+  std::unique_ptr<Image<uint8_t> > keypoint_scratch_;
 
   // Regions of the image to pay special attention to.
   std::unique_ptr<Image<bool> > interest_map_;

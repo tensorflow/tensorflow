@@ -30,7 +30,7 @@
 # script to perform bazel clean prior to main build and test steps.
 #
 # TF_BUILD_INSTALL_EXTRA_PIP_PACKAGES overrides the default extra pip packages
-# to be installed in virtualenv before test_installation.sh is called. Multiple
+# to be installed in virtualenv before run_pip_tests.sh is called. Multiple
 # pakcage names are separated with spaces.
 #
 # If NO_TEST_ON_INSTALL has any non-empty and non-0 value, the test-on-install
@@ -263,19 +263,15 @@ for PACKAGE in ${INSTALL_EXTRA_PIP_PACKAGES}; do
       die "pip install ${PACKAGE} FAILED"
 done
 
-# If NO_TEST_ON_INSTALL is set to any non-empty value, skip all Python
-# tests-on-install and exit right away
 if [[ ! -z "${NO_TEST_ON_INSTALL}" ]] &&
    [[ "${NO_TEST_ON_INSTALL}" != "0" ]]; then
   echo "NO_TEST_ON_INSTALL=${NO_TEST_ON_INSTALL}:"
   echo "  Skipping ALL Python unit tests on install"
-  exit 0
+else
+  # Call run_pip_tests.sh to perform test-on-install
+  "${SCRIPT_DIR}/run_pip_tests.sh" --virtualenv ${GPU_FLAG} ${MAC_FLAG} ||
+      die "PIP tests-on-install FAILED"
 fi
-
-# Call test_installation.sh to perform test-on-install
-
-"${SCRIPT_DIR}/test_installation.sh" --virtualenv ${GPU_FLAG} ${MAC_FLAG} ||
-    die "PIP tests-on-install FAILED"
 
 # Test user ops
 if [[ "${DO_TEST_USER_OPS}" == "1" ]]; then

@@ -8,6 +8,7 @@ package(default_visibility = [
     "//visibility:public",
 ])
 
+load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 
 filegroup(
@@ -66,9 +67,9 @@ cc_library(
         "core/ops/utils.h",
     ],
     deps = [
+        "//:protobuf_headers",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
-        "@protobuf//:protobuf",
     ],
 )
 
@@ -136,6 +137,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/contrib/tensor_forest:tensor_forest_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:math_ops",
@@ -154,6 +156,7 @@ py_library(
     deps = [
         ":hybrid_layer",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
     ],
@@ -164,6 +167,7 @@ py_test(
     size = "small",
     srcs = ["python/kernel_tests/routing_function_op_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["manual"],
     deps = [
         ":ops_lib",
         "//tensorflow:tensorflow_py",
@@ -177,6 +181,7 @@ py_test(
     size = "small",
     srcs = ["python/kernel_tests/k_feature_routing_function_op_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["manual"],
     deps = [
         ":ops_lib",
         "//tensorflow:tensorflow_py",
@@ -250,6 +255,7 @@ py_library(
         ":hybrid_model",
         ":ops_lib",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/contrib/tensor_forest:tensor_forest_py",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:training",

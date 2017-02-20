@@ -172,7 +172,7 @@ are added to the graph and used as input to the op being instantiated.
 
 If the language allows for optional parameters to a function (like keyword
 arguments with defaults in Python), use them for optional attributes, operation
-names, devices, control inputs etc. In some langauges, these optional parameters
+names, devices, control inputs etc. In some languages, these optional parameters
 can be set using dynamic scopes (like "with" blocks in Python). Without these
 features, the library may resort to the "builder pattern", as is done in the C++
 version of the TensorFlow API.

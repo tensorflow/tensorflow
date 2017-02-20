@@ -57,7 +57,9 @@ false and no bounding boxes are supplied, an error is raised.
     A second seed to avoid seed collision.
 *  <b>`min_object_covered`</b>: An optional `float`. Defaults to `0.1`.
     The cropped area of the image must contain at least this
-    fraction of any bounding box supplied.
+    fraction of any bounding box supplied. The value of this parameter should be
+    non-negative. In the case of 0, the cropped area does not need to overlap
+    any of the bounding boxes supplied.
 *  <b>`aspect_ratio_range`</b>: An optional list of `floats`. Defaults to `[0.75, 1.33]`.
     The cropped area of the image must have an aspect ratio =
     width / height within this range.

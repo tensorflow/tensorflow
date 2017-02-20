@@ -32,7 +32,7 @@ set_target_properties(lib_tf PROPERTIES IMPORTED_LOCATION
 # Change to compile flags should be replicated into bazel build file
 # LINT.IfChange
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -fno-rtti -fno-exceptions \
-                     -fpic -O2 -mfpu=neon -DTF_LEAN_BINARY \
+                     -fpic -O2 -mfpu=neon -DTF_LEAN_BINARY -msse4.1 \
                      -DGOOGLE_PROTOBUF_NO_RTTI \
                      -DGOOGLE_PROTOBUF_NO_STATIC_INITIALIZER")
 # LINT.ThenChange(//tensorflow/tensorflow.bzl)

@@ -4,7 +4,7 @@ Creates a cross-entropy loss using tf.nn.softmax_cross_entropy_with_logits. (dep
 
 THIS FUNCTION IS DEPRECATED. It will be removed after 2016-12-30.
 Instructions for updating:
-Use tf.losses.softmax_cross_entropy instead.
+Use tf.losses.softmax_cross_entropy instead. Note that the order of the logits and labels arguments has been changed.
 
 `weights` acts as a coefficient for the loss. If a scalar is provided,
 then the loss is simply scaled by the given value. If `weights` is a
@@ -27,7 +27,7 @@ If `label_smoothing` is nonzero, smooth the labels towards 1/num_classes:
 
 ##### Returns:
 
-  A scalar `Tensor` representing the loss value.
+  A scalar `Tensor` representing the mean loss value.
 
 ##### Raises:
 

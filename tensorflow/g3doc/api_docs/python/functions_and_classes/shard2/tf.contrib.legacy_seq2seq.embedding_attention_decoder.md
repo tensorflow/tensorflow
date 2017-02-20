@@ -8,7 +8,7 @@ RNN decoder with embedding and attention and a pure-decoding option.
 *  <b>`decoder_inputs`</b>: A list of 1D batch-sized int32 Tensors (decoder inputs).
 *  <b>`initial_state`</b>: 2D Tensor [batch_size x cell.state_size].
 *  <b>`attention_states`</b>: 3D Tensor [batch_size x attn_length x attn_size].
-*  <b>`cell`</b>: rnn_cell.RNNCell defining the cell function.
+*  <b>`cell`</b>: core_rnn_cell.RNNCell defining the cell function.
 *  <b>`num_symbols`</b>: Integer, how many symbols come into the embedding.
 *  <b>`embedding_size`</b>: Integer, the length of the embedding vector for each symbol.
 *  <b>`num_heads`</b>: Number of attention heads that read from attention_states.

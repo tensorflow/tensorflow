@@ -3,7 +3,7 @@
 # Framework (contrib)
 [TOC]
 
-Framework utilities.
+Framework utilities. See the @{$python/contrib.framework} guide.
 
 - - -
 
@@ -33,6 +33,13 @@ be `dtypes.float32` or `dtypes.float64`. If neither `tensors` nor
 
 *  <b>`ValueError`</b>: if neither `tensors` nor `dtype` is supplied, or result is not
       float.
+
+
+- - -
+
+### `tf.contrib.framework.assert_scalar(tensor, name=None)` {#assert_scalar}
+
+
 
 
 - - -
@@ -227,6 +234,27 @@ adds them via `tf.add_n`.
 
 - - -
 
+### `tf.contrib.framework.remove_squeezable_dimensions(predictions, labels, name=None)` {#remove_squeezable_dimensions}
+
+Squeeze last dim if ranks of `predictions` and `labels` differ by 1.
+
+This will use static shape if available. Otherwise, it will add graph
+operations, which could result in a performance hit.
+
+##### Args:
+
+
+*  <b>`predictions`</b>: Predicted values, a `Tensor` of arbitrary dimensions.
+*  <b>`labels`</b>: Label values, a `Tensor` whose dimensions match `predictions`.
+*  <b>`name`</b>: Name of the op.
+
+##### Returns:
+
+  Tuple of `predictions` and `labels`, possibly with last dim squeezed.
+
+
+- - -
+
 ### `tf.contrib.framework.with_shape(expected_shape, tensor)` {#with_shape}
 
 Asserts tensor has expected shape.
@@ -270,7 +298,6 @@ Assert tensors are the same shape, from the same graph.
 
 
 
-## Deprecation
 - - -
 
 ### `tf.contrib.framework.deprecated(date, instructions)` {#deprecated}
@@ -391,7 +418,6 @@ prepended to the rest of the docstring.
 
 
 
-## Arg_Scope
 - - -
 
 ### `tf.contrib.framework.arg_scope(list_ops_or_scope, **kwargs)` {#arg_scope}
@@ -470,7 +496,6 @@ Returns the list kwargs that arg_scope can set for a func.
 
 
 
-## Variables
 - - -
 
 ### `tf.contrib.framework.add_model_variable(var)` {#add_model_variable}
@@ -529,9 +554,13 @@ Creates an operation to assign specific variables from a checkpoint.
 
 *  <b>`model_path`</b>: The full path to the model checkpoint. To get latest checkpoint
       use `model_path = tf.train.latest_checkpoint(checkpoint_dir)`
-*  <b>`var_list`</b>: A list of `Variable` objects or a dictionary mapping names in the
-      checkpoint to the corresponding variables to initialize. If empty or
-      None, it would return  no_op(), None.
+*  <b>`var_list`</b>: A list of (possibly partitioned) `Variable` objects
+      or a dictionary mapping names in the checkpoint to the
+      corresponding variables or list of variables to initialize
+      from that checkpoint value. For partitioned Variables, the
+      name in the checkpoint must be the full variable, not the
+      name of the partitioned variable, eg. "my_var" rather than
+      "my_var/part_4". If empty, returns no_op(), {}.
 
 ##### Returns:
 
@@ -648,6 +677,46 @@ Create global step tensor in graph.
 
 
 *  <b>`ValueError`</b>: if global step key is already defined.
+
+
+- - -
+
+### `tf.contrib.framework.filter_variables(var_list, include_patterns=None, exclude_patterns=None, reg_search=True)` {#filter_variables}
+
+Filter a list of variables using regular expressions.
+
+First includes variables according to the list of include_patterns.
+Afterwards, eliminates variables according to the list of exclude_patterns.
+
+For example, one can obtain a list of variables with the weights of all
+convolutional layers (depending on the network definition) by:
+
+```python
+variables = tf.contrib.framework.get_model_variables()
+conv_weight_variables = tf.contrib.framework.filter_variables(
+    variables,
+    include_patterns=['Conv'],
+    exclude_patterns=['biases', 'Logits'])
+```
+
+##### Args:
+
+
+*  <b>`var_list`</b>: list of variables.
+*  <b>`include_patterns`</b>: list of regular expressions to include. Defaults to None,
+      which means all variables are selected according to the include rules.
+      A variable is included if it matches any of the include_patterns.
+*  <b>`exclude_patterns`</b>: list of regular expressions to exclude. Defaults to None,
+      which means all variables are selected according to the exclude rules.
+      A variable is excluded if it matches any of the exclude_patterns.
+*  <b>`reg_search`</b>: boolean. If True (default), performs re.search to find matches
+      (i.e. pattern can match any substring of the variable name). If False,
+      performs re.match (i.e. regexp should match from the beginning of the
+      variable name).
+
+##### Returns:
+
+  filtered list of variables.
 
 
 - - -
@@ -779,6 +848,27 @@ Gets the list of variables that end with the given suffix.
 ##### Returns:
 
   a copied list of variables with the given name and prefix.
+
+
+- - -
+
+### `tf.contrib.framework.get_variable_full_name(var)` {#get_variable_full_name}
+
+Returns the full name of a variable.
+
+For normal Variables, this is the same as the var.op.name.  For
+sliced or PartitionedVariables, this name is the same for all the
+slices/partitions. In both cases, this is normally the name used in
+a checkpoint file.
+
+##### Args:
+
+
+*  <b>`var`</b>: A `Variable` object.
+
+##### Returns:
+
+  A string that is the full name.
 
 
 - - -
@@ -981,5 +1071,135 @@ save memory during initialization.
 
 
 *  <b>`ValueError`</b>: If ref tensor is initialized.
+
+
+
+- - -
+
+### `tf.contrib.framework.load_checkpoint(filepattern)` {#load_checkpoint}
+
+Returns CheckpointReader for latest checkpoint.
+
+##### Args:
+
+
+*  <b>`filepattern`</b>: Directory with checkpoints file or path to checkpoint.
+
+##### Returns:
+
+  `CheckpointReader` object.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if checkpoint_dir doesn't have 'checkpoint' file or checkpoints.
+
+
+- - -
+
+### `tf.contrib.framework.list_variables(checkpoint_dir)` {#list_variables}
+
+Returns list of all variables in the latest checkpoint.
+
+##### Args:
+
+
+*  <b>`checkpoint_dir`</b>: Directory with checkpoints file or path to checkpoint.
+
+##### Returns:
+
+  List of tuples `(name, shape)`.
+
+
+- - -
+
+### `tf.contrib.framework.load_variable(checkpoint_dir, name)` {#load_variable}
+
+Returns a Tensor with the contents of the given variable in the checkpoint.
+
+##### Args:
+
+
+*  <b>`checkpoint_dir`</b>: Directory with checkpoints file or path to checkpoint.
+*  <b>`name`</b>: Name of the tensor to return.
+
+##### Returns:
+
+  `Tensor` object.
+
+
+- - -
+
+### `tf.contrib.framework.init_from_checkpoint(checkpoint_dir, assignment_map)` {#init_from_checkpoint}
+
+Using assingment map initializes current variables with loaded tensors.
+
+Note: This overrides default initialization ops of specified variables and
+redefines dtype.
+
+##### Assignment map supports following syntax:
+
+  `'checkpoint_scope_name/': 'scope_name/'` - will load all variables in
+    current `scope_name` from `checkpoint_scope_name` with matching variable
+    names.
+  `'checkpoint_scope_name/some_other_variable': 'scope_name/variable_name'` -
+    will initalize `scope_name/variable_name` variable
+    from `checkpoint_scope_name/some_other_variable`.
+  `'scope_variable_name': variable` - will initialize given `tf.Variable`
+    object with variable from the checkpoint.
+  `'scope_variable_name': list(variable)` - will initialize list of
+    partitioned variables with variable from the checkpoint.
+  `'/': 'scope_name/'` - will load all variables in current `scope_name` from
+    checkpoint's root (e.g. no scope).
+
+Supports loading into partitioned variables, which are represented as
+'<variable>/part_<part #>'.
+
+
+*  <b>`Example`</b>: 
+```python
+  # Create variables.
+  with tf.variable_scope('test'):
+    m = tf.get_variable('my_var')
+  with tf.variable_scope('test2'):
+    var2 = tf.get_variable('my_var')
+  var3 = tf.get_variable(name="my1", shape=[100, 100],
+                         partitioner=lambda shape, dtype: [5, 1])
+  ...
+  # Specify which variables to intialize from checkpoint.
+  init_from_checkpoint(checkpoint_dir, {
+    'some_var': 'test/my_var',
+    'some_scope/': 'test2/'})
+  ...
+  # Or use `Variable` objects to identify what to initialize.
+  init_from_checkpoint(checkpoint_dir, {
+    'some_scope/var2': var2,
+  })
+  # Initialize partitioned variables
+  init_from_checkpoint(checkpoint_dir, {
+    'some_var_from_ckpt': 'part_var',
+  })
+  # Or specifying the list of `Variable` objects.
+  init_from_checkpoint(checkpoint_dir, {
+    'some_var_from_ckpt': var3._get_variable_list(),
+  })
+  ...
+  # Initialize variables as usual.
+  session.run(tf.get_all_variables())
+```
+
+##### Args:
+
+
+*  <b>`checkpoint_dir`</b>: Directory with checkpoints file or path to checkpoint.
+*  <b>`assignment_map`</b>: Dict, where keys are names of the variables in the
+    checkpoint and values are current variables or names of current variables
+    (in default graph).
+
+##### Raises:
+
+  tf.errors.OpError: If missing checkpoints or tensors in checkpoints.
+
+*  <b>`ValueError`</b>: If missing variables in current graph.
 
 

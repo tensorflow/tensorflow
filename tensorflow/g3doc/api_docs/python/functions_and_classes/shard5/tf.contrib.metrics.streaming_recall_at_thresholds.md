@@ -21,7 +21,9 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
     are in the range `[0, 1]`.
 *  <b>`labels`</b>: A `bool` `Tensor` whose shape matches `predictions`.
 *  <b>`thresholds`</b>: A python list or tuple of float thresholds in `[0, 1]`.
-*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`.
+*  <b>`weights`</b>: `Tensor` whose rank is either 0, or the same rank as `labels`, and
+    must be broadcastable to `labels` (i.e., all dimensions must be either
+    `1`, or the same as the corresponding `labels` dimension).
 *  <b>`metrics_collections`</b>: An optional list of collections that `recall` should be
     added to.
 *  <b>`updates_collections`</b>: An optional list of collections that `update_op` should

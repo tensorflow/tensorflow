@@ -762,7 +762,7 @@ TEST(DirectSessionTest, TimeoutSession) {
   // Verifies that the error code is DEADLINE_EXCEEDED.
   Status s = session->Run({}, {}, {"fifo_queue_Dequeue"}, nullptr);
   ASSERT_EQ(error::DEADLINE_EXCEEDED, s.code());
-  session->Close();
+  TF_ASSERT_OK(session->Close());
 
   // Creates a session with no operation_timeout_in_ms.
   session.reset(CreateSession());
@@ -774,7 +774,7 @@ TEST(DirectSessionTest, TimeoutSession) {
   Status s2 = session->Run(run_options, {}, {}, {"fifo_queue_Dequeue"}, nullptr,
                            nullptr);
   ASSERT_EQ(error::DEADLINE_EXCEEDED, s2.code());
-  session->Close();
+  TF_ASSERT_OK(session->Close());
 }
 
 // Accesses the cancellation manager for the step after the step has been
@@ -827,7 +827,7 @@ TEST(DirectSessionTest, TestTimeoutCleanShutdown) {
   // Verify that the op ran to completion.
   ASSERT_TRUE(CancellationMgrPollingOp::notification.HasBeenNotified());
 
-  session->Close();
+  TF_ASSERT_OK(session->Close());
 }
 
 class BlockingOpState {
@@ -880,7 +880,8 @@ static void TestSessionInterOpThreadsImpl(bool use_function_lib) {
         signature: {
           name: "BlockingOpFn" input_arg: { name: "x" type: DT_FLOAT }
                                output_arg: { name: "y" type: DT_FLOAT }}
-        node: { ret: "y" op: "BlockingOp" arg: "x" })proto";
+        node_def: { name: "y" op: "BlockingOp" input: "x" }
+        ret: { key: "y" value: "y:y:0" } )proto";
     CHECK(protobuf::TextFormat::ParseFromString(
         lib, library_graph_def.add_function()));
   }
@@ -1057,7 +1058,7 @@ TEST(DirectSessionTest, TestDirectSessionRunClose) {
   outputs.clear();
 
   // Close the session.
-  session->Close();
+  TF_ASSERT_OK(session->Close());
 
   // Run the read on the variable to get an error.
   Status s = session->Run({} /* inputs */, {},
@@ -1104,7 +1105,7 @@ TEST(DirectSessionTest, TestDirectSessionPRunClose) {
   value_22.scalar<float>()() = 22.0;
 
   // Close the session.
-  session->Close();
+  TF_ASSERT_OK(session->Close());
 
   // Feed first_const, fetch first_identity
   s = session->PRun(handle, {{first_const->name(), value_11}},
@@ -1141,7 +1142,7 @@ TEST(DirectSessionTest, TestDirectSessionReset) {
   outputs.clear();
 
   // Reset the containers.
-  Reset(options, {});
+  TF_EXPECT_OK(Reset(options, {}));
 
   // Run the read on the variable to get an error.
   // TODO(suharshs): This test only works because we close the Session in Reset.

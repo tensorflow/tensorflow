@@ -78,10 +78,20 @@ string GetCudnnVersion() { return TF_CUDNN_VERSION; }
                   GetCudaDriverLibraryPath()),
       dso_handle);
 #else
-  return GetDsoHandle(
+  port::Status status = GetDsoHandle(
       FindDsoPath(port::Env::Default()->FormatLibraryFileName("cuda", "1"),
                   GetCudaDriverLibraryPath()),
       dso_handle);
+#if defined(__APPLE__)
+  // On Mac OS X, CUDA sometimes installs libcuda.dylib instead of
+  // libcuda.1.dylib.
+  return status.ok() ? status : GetDsoHandle(
+     FindDsoPath(port::Env::Default()->FormatLibraryFileName("cuda", ""),
+                 GetCudaDriverLibraryPath()),
+     dso_handle);
+#else
+  return status;
+#endif
 #endif
 }
 
@@ -92,8 +102,13 @@ string GetCudnnVersion() { return TF_CUDNN_VERSION; }
                       dso_handle);
 }
 
+static mutex& GetRpathMutex() {
+  static mutex* mu = new mutex;
+  return *mu;
+}
+
 /* static */ void DsoLoader::RegisterRpath(port::StringPiece path) {
-  mutex_lock lock{rpath_mutex_};
+  mutex_lock lock{GetRpathMutex()};
   GetRpaths()->push_back(path.ToString());
 }
 
@@ -108,9 +123,13 @@ string GetCudnnVersion() { return TF_CUDNN_VERSION; }
   port::Status s =
       port::Env::Default()->LoadLibrary(path_string.c_str(), dso_handle);
   if (!s.ok()) {
+#if !defined(PLATFORM_WINDOWS)
+    char* ld_library_path = getenv("LD_LIBRARY_PATH");
+#endif
     LOG(INFO) << "Couldn't open CUDA library " << path
 #if !defined(PLATFORM_WINDOWS)
-              << ". LD_LIBRARY_PATH: " << getenv("LD_LIBRARY_PATH")
+              << ". LD_LIBRARY_PATH: "
+              << (ld_library_path != nullptr ? ld_library_path : "")
 #endif
     ;
     return port::Status(port::error::FAILED_PRECONDITION,
@@ -138,7 +157,6 @@ static std::vector<string>* CreatePrimordialRpaths() {
   return rpaths;
 }
 
-/* static */ mutex DsoLoader::rpath_mutex_{LINKER_INITIALIZED};
 /* static */ std::vector<string>* DsoLoader::GetRpaths() {
   static std::vector<string>* rpaths = CreatePrimordialRpaths();
   return rpaths;
@@ -172,7 +190,7 @@ static std::vector<string>* CreatePrimordialRpaths() {
   // Otherwise, try binary-plus-rpath locations.
   string binary_directory =
       GetBinaryDirectory(true /* = strip_executable_name */);
-  mutex_lock lock{rpath_mutex_};
+  mutex_lock lock{GetRpathMutex()};
   for (const string& rpath : *GetRpaths()) {
     candidate =
         port::Join(StringPieces{binary_directory, rpath, library_name}, "/");

@@ -1,6 +1,4 @@
-### `tf.constant_initializer(value=0, dtype=tf.float32)` {#constant_initializer}
-
-Returns an initializer that generates tensors with constant values.
+Initializer that generates tensors with constant values.
 
 The resulting tensor is populated with values of type `dtype`, as
 specified by arguments `value` following the desired `shape` of the
@@ -15,20 +13,16 @@ in `value` will be used to fill the remaining entries. If the total number of
 elements in `value` is greater than the number of elements required by the
 tensor shape, the initializer will raise a `ValueError`.
 
-##### Args:
-
-
-*  <b>`value`</b>: A Python scalar, list of values, or a N-dimensional numpy array. All
+Args:
+  value: A Python scalar, list of values, or a N-dimensional numpy array. All
     elements of the initialized variable will be set to the corresponding
     value in the `value` argument.
-*  <b>`dtype`</b>: The data type.
+  dtype: The data type.
+  verify_shape: Boolean that enables verification of the shape of `value`. If
+    `True`, the initializer will throw an error if the shape of `value` is not
+    compatible with the shape of the initialized tensor.
 
-##### Returns:
-
-  An initializer that generates tensors with constant values.
-
-##### Examples:
-
+Examples:
   The following example can be rewritten using a numpy.ndarray instead
   of the `value` list, even reshaped, as shown in the two commented lines
   below the `value` list initialization.
@@ -43,7 +37,6 @@ tensor shape, the initializer will raise a `ValueError`.
   >>> init = tf.constant_initializer(value)
 
   >>> print('fitting shape:')
-  >>> tf.reset_default_graph()
   >>> with tf.Session():
   >>>   x = tf.get_variable('x', shape=[2, 4], initializer=init)
   >>>   x.initializer.run()
@@ -54,7 +47,6 @@ tensor shape, the initializer will raise a `ValueError`.
    [ 4.  5.  6.  7.]]
 
   >>> print('larger shape:')
-  >>> tf.reset_default_graph()
   >>> with tf.Session():
   >>>   x = tf.get_variable('x', shape=[3, 4], initializer=init)
   >>>   x.initializer.run()
@@ -66,11 +58,29 @@ tensor shape, the initializer will raise a `ValueError`.
    [ 7.  7.  7.  7.]]
 
   >>> print('smaller shape:')
-  >>> tf.reset_default_graph()
   >>> with tf.Session():
   >>>   x = tf.get_variable('x', shape=[2, 3], initializer=init)
 
+  ValueError: Too many elements provided. Needed at most 6, but received 8
 
-*  <b>`ValueError`</b>: Too many elements provided. Needed at most 6, but received 8
+  >>> print('shape verification:')
+  >>> init_verify = tf.constant_initializer(value, verify_shape=True)
+  >>> with tf.Session():
+  >>>   x = tf.get_variable('x', shape=[3, 4], initializer=init_verify)
+
+  TypeError: Expected Tensor's shape: (3, 4), got (8,).
 ```
+- - -
+
+#### `tf.constant_initializer.__call__(shape, dtype=None, partition_info=None)` {#constant_initializer.__call__}
+
+
+
+
+- - -
+
+#### `tf.constant_initializer.__init__(value=0, dtype=tf.float32, verify_shape=False)` {#constant_initializer.__init__}
+
+
+
 

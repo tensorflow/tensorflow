@@ -21,14 +21,28 @@ from __future__ import print_function
 
 import itertools
 import math
+import sys
+
+# TODO: #6568 Remove this hack that makes dlopen() not crash.
+if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
+  import ctypes
+  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 import numpy as np
-import tensorflow as tf
 
 from tensorflow.contrib.layers.python.layers import embedding_ops
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
+from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import partitioned_variables
+from tensorflow.python.platform import test
 
 
-class SafeEmbeddingLookupSparseTest(tf.test.TestCase):
+class SafeEmbeddingLookupSparseTest(test.TestCase):
 
   def _random_weights(self, vocab_size=4, embed_dim=4, num_shards=1):
     assert vocab_size > 0
@@ -36,13 +50,11 @@ class SafeEmbeddingLookupSparseTest(tf.test.TestCase):
     assert num_shards > 0
     assert num_shards <= vocab_size
 
-    embedding_weights = tf.create_partitioned_variables(
+    embedding_weights = partitioned_variables.create_partitioned_variables(
         shape=[vocab_size, embed_dim],
         slicing=[num_shards, 1],
-        initializer=tf.truncated_normal_initializer(mean=0.0,
-                                                    stddev=1.0 /
-                                                    math.sqrt(vocab_size),
-                                                    dtype=tf.float32))
+        initializer=init_ops.truncated_normal_initializer(
+            mean=0.0, stddev=1.0 / math.sqrt(vocab_size), dtype=dtypes.float32))
     for w in embedding_weights:
       w.initializer.run()
     embedding_weights = [w.eval() for w in embedding_weights]
@@ -60,13 +72,15 @@ class SafeEmbeddingLookupSparseTest(tf.test.TestCase):
     weights = [1.0, 2.0, 1.0, 1.0, 3.0, 0.0, -0.5]
     shape = [5, 4]
 
-    sparse_ids = tf.SparseTensor(
-        tf.constant(indices, tf.int64), tf.constant(ids, tf.int64),
-        tf.constant(shape, tf.int64))
+    sparse_ids = sparse_tensor_lib.SparseTensor(
+        constant_op.constant(indices, dtypes.int64),
+        constant_op.constant(ids, dtypes.int64),
+        constant_op.constant(shape, dtypes.int64))
 
-    sparse_weights = tf.SparseTensor(
-        tf.constant(indices, tf.int64), tf.constant(weights, tf.float32),
-        tf.constant(shape, tf.int64))
+    sparse_weights = sparse_tensor_lib.SparseTensor(
+        constant_op.constant(indices, dtypes.int64),
+        constant_op.constant(weights, dtypes.float32),
+        constant_op.constant(shape, dtypes.int64))
 
     return sparse_ids, sparse_weights
 
@@ -78,21 +92,21 @@ class SafeEmbeddingLookupSparseTest(tf.test.TestCase):
     #   Index 1, 0: single id
     #   Index 1, 1: all ids have <=0 weight
     #   Index 1, 2: no ids to begin with
-    indices = [
-        [0, 0, 0], [0, 0, 1], [0, 0, 2], [0, 1, 0], [1, 0, 0], [1, 1, 0],
-        [1, 1, 1]
-    ]
+    indices = [[0, 0, 0], [0, 0, 1], [0, 0, 2], [0, 1, 0], [1, 0, 0], [1, 1, 0],
+               [1, 1, 1]]
     ids = [0, 1, -1, -1, 2, 0, 1]
     weights = [1.0, 2.0, 1.0, 1.0, 3.0, 0.0, -0.5]
     shape = [2, 3, 4]
 
-    sparse_ids = tf.SparseTensor(
-        tf.constant(indices, tf.int64), tf.constant(ids, tf.int64),
-        tf.constant(shape, tf.int64))
+    sparse_ids = sparse_tensor_lib.SparseTensor(
+        constant_op.constant(indices, dtypes.int64),
+        constant_op.constant(ids, dtypes.int64),
+        constant_op.constant(shape, dtypes.int64))
 
-    sparse_weights = tf.SparseTensor(
-        tf.constant(indices, tf.int64), tf.constant(weights, tf.float32),
-        tf.constant(shape, tf.int64))
+    sparse_weights = sparse_tensor_lib.SparseTensor(
+        constant_op.constant(indices, dtypes.int64),
+        constant_op.constant(weights, dtypes.float32),
+        constant_op.constant(shape, dtypes.int64))
 
     return sparse_ids, sparse_weights
 
@@ -101,65 +115,55 @@ class SafeEmbeddingLookupSparseTest(tf.test.TestCase):
       embedding_weights = self._random_weights()
       sparse_ids, sparse_weights = self._ids_and_weights_2d()
 
-      embedding_lookup_result = (
-          tf.contrib.layers.safe_embedding_lookup_sparse(
-              embedding_weights, sparse_ids, sparse_weights).eval())
+      embedding_lookup_result = (embedding_ops.safe_embedding_lookup_sparse(
+          embedding_weights, sparse_ids, sparse_weights).eval())
 
-      self.assertAllClose(embedding_lookup_result, [
-          (1.0 * embedding_weights[0][0] + 2.0 * embedding_weights[0][1]) / 3.0,
-          [0] * 4, [0] * 4, embedding_weights[0][2], [0] * 4
-      ])
+      self.assertAllClose(
+          embedding_lookup_result,
+          [(1.0 * embedding_weights[0][0] + 2.0 * embedding_weights[0][1]) /
+           3.0, [0] * 4, [0] * 4, embedding_weights[0][2], [0] * 4])
 
   def test_safe_embedding_lookup_sparse_return_special_vector(self):
     with self.test_session():
       embedding_weights = self._random_weights()
       sparse_ids, sparse_weights = self._ids_and_weights_2d()
 
-      embedding_lookup_result = (
-          tf.contrib.layers.safe_embedding_lookup_sparse(
-              embedding_weights,
-              sparse_ids,
-              sparse_weights,
-              default_id=3).eval())
+      embedding_lookup_result = (embedding_ops.safe_embedding_lookup_sparse(
+          embedding_weights, sparse_ids, sparse_weights, default_id=3).eval())
 
-      self.assertAllClose(embedding_lookup_result, [
-          (1.0 * embedding_weights[0][0] + 2.0 * embedding_weights[0][1]) / 3.0,
-          embedding_weights[0][3], embedding_weights[0][3],
-          embedding_weights[0][2], embedding_weights[0][3]
-      ])
+      self.assertAllClose(
+          embedding_lookup_result,
+          [(1.0 * embedding_weights[0][0] + 2.0 * embedding_weights[0][1]) /
+           3.0, embedding_weights[0][3], embedding_weights[0][3],
+           embedding_weights[0][2], embedding_weights[0][3]])
 
   def test_safe_embedding_lookup_sparse_no_weights(self):
     with self.test_session():
       embedding_weights = self._random_weights()
       sparse_ids, _ = self._ids_and_weights_2d()
 
-      embedding_lookup_result = (
-          tf.contrib.layers.safe_embedding_lookup_sparse(embedding_weights,
-                                                         sparse_ids,
-                                                         None).eval())
+      embedding_lookup_result = (embedding_ops.safe_embedding_lookup_sparse(
+          embedding_weights, sparse_ids, None).eval())
 
-      self.assertAllClose(embedding_lookup_result, [
-          (embedding_weights[0][0] + embedding_weights[0][1]) / 2.0, [0] * 4,
-          [0] * 4, embedding_weights[0][2],
-          (embedding_weights[0][0] + embedding_weights[0][1]) / 2.0
-      ])
+      self.assertAllClose(
+          embedding_lookup_result,
+          [(embedding_weights[0][0] + embedding_weights[0][1]) / 2.0, [0] * 4,
+           [0] * 4, embedding_weights[0][2],
+           (embedding_weights[0][0] + embedding_weights[0][1]) / 2.0])
 
   def test_safe_embedding_lookup_sparse_partitioned(self):
     with self.test_session():
       embedding_weights = self._random_weights(num_shards=3)
       sparse_ids, _ = self._ids_and_weights_2d()
 
-      embedding_lookup_result = (
-          tf.contrib.layers.safe_embedding_lookup_sparse(embedding_weights,
-                                                         sparse_ids,
-                                                         None).eval())
+      embedding_lookup_result = (embedding_ops.safe_embedding_lookup_sparse(
+          embedding_weights, sparse_ids, None).eval())
 
       embedding_weights = list(itertools.chain(*embedding_weights))
-      self.assertAllClose(embedding_lookup_result, [
-          (embedding_weights[0] + embedding_weights[1]) / 2.0, [0] * 4, [0] * 4,
-          embedding_weights[2],
-          (embedding_weights[0] + embedding_weights[1]) / 2.0
-      ])
+      self.assertAllClose(embedding_lookup_result,
+                          [(embedding_weights[0] + embedding_weights[1]) / 2.0,
+                           [0] * 4, [0] * 4, embedding_weights[2],
+                           (embedding_weights[0] + embedding_weights[1]) / 2.0])
 
   def test_safe_embedding_lookup_sparse_partitioned_inconsistent_weights(self):
     with self.test_session():
@@ -167,14 +171,13 @@ class SafeEmbeddingLookupSparseTest(tf.test.TestCase):
       sparse_ids, sparse_weights = self._ids_and_weights_2d()
 
       embedding_weights[1] = embedding_weights[1].astype(np.float64)
-      self.assertRaises(ValueError,
-                        tf.contrib.layers.safe_embedding_lookup_sparse,
+      self.assertRaises(ValueError, embedding_ops.safe_embedding_lookup_sparse,
                         embedding_weights, sparse_ids)
       embedding_weights = [
-          tf.constant(w, dtype=tf.float64) for w in embedding_weights
+          constant_op.constant(
+              w, dtype=dtypes.float64) for w in embedding_weights
       ]
-      self.assertRaises(ValueError,
-                        tf.contrib.layers.safe_embedding_lookup_sparse,
+      self.assertRaises(ValueError, embedding_ops.safe_embedding_lookup_sparse,
                         embedding_weights, sparse_ids, sparse_weights)
 
   def test_safe_embedding_lookup_sparse_3d_return_zero_vector(self):
@@ -182,68 +185,64 @@ class SafeEmbeddingLookupSparseTest(tf.test.TestCase):
       embedding_weights = self._random_weights()
       sparse_ids, sparse_weights = self._ids_and_weights_3d()
 
-      embedding_lookup_result = (
-          tf.contrib.layers.safe_embedding_lookup_sparse(
-              embedding_weights, sparse_ids, sparse_weights).eval())
+      embedding_lookup_result = (embedding_ops.safe_embedding_lookup_sparse(
+          embedding_weights, sparse_ids, sparse_weights).eval())
 
-      self.assertAllClose(embedding_lookup_result, [
-          [(1.0 * embedding_weights[0][0] + 2.0 * embedding_weights[0][1]) /
-           3.0, [0] * 4, [0] * 4], [embedding_weights[0][2], [0] * 4, [0] * 4]
-      ])
+      self.assertAllClose(
+          embedding_lookup_result,
+          [[(1.0 * embedding_weights[0][0] + 2.0 * embedding_weights[0][1]) /
+            3.0, [0] * 4, [0] * 4],
+           [embedding_weights[0][2], [0] * 4, [0] * 4]])
 
   def test_safe_embedding_lookup_sparse_3d_return_special_vector(self):
     with self.test_session():
       embedding_weights = self._random_weights()
       sparse_ids, sparse_weights = self._ids_and_weights_3d()
 
-      embedding_lookup_result = (
-          tf.contrib.layers.safe_embedding_lookup_sparse(
-              embedding_weights,
-              sparse_ids,
-              sparse_weights,
-              default_id=3).eval())
+      embedding_lookup_result = (embedding_ops.safe_embedding_lookup_sparse(
+          embedding_weights, sparse_ids, sparse_weights, default_id=3).eval())
 
-      self.assertAllClose(embedding_lookup_result, [
-          [(1.0 * embedding_weights[0][0] + 2.0 * embedding_weights[0][1]) /
-           3.0, embedding_weights[0][3], embedding_weights[0][3]],
-          [embedding_weights[0][2], embedding_weights[0][3],
-           embedding_weights[0][3]]
-      ])
+      self.assertAllClose(
+          embedding_lookup_result,
+          [[(1.0 * embedding_weights[0][0] + 2.0 * embedding_weights[0][1]) /
+            3.0, embedding_weights[0][3], embedding_weights[0][3]], [
+                embedding_weights[0][2], embedding_weights[0][3],
+                embedding_weights[0][3]
+            ]])
 
   def test_safe_embedding_lookup_sparse_3d_no_weights(self):
     with self.test_session():
       embedding_weights = self._random_weights()
       sparse_ids, _ = self._ids_and_weights_3d()
 
-      embedding_lookup_result = (
-          tf.contrib.layers.safe_embedding_lookup_sparse(embedding_weights,
-                                                         sparse_ids,
-                                                         None).eval())
+      embedding_lookup_result = (embedding_ops.safe_embedding_lookup_sparse(
+          embedding_weights, sparse_ids, None).eval())
 
-      self.assertAllClose(embedding_lookup_result, [
-          [(embedding_weights[0][0] + embedding_weights[0][1]) / 2.0, [0] * 4,
-           [0] * 4], [embedding_weights[0][2],
-                      (embedding_weights[0][0] + embedding_weights[0][1]) / 2.0,
-                      [0] * 4]
-      ])
+      self.assertAllClose(
+          embedding_lookup_result,
+          [[(embedding_weights[0][0] + embedding_weights[0][1]) / 2.0, [0] * 4,
+            [0] * 4], [
+                embedding_weights[0][2],
+                (embedding_weights[0][0] + embedding_weights[0][1]) / 2.0,
+                [0] * 4
+            ]])
 
   def test_safe_embedding_lookup_sparse_3d_partitioned(self):
     with self.test_session():
       embedding_weights = self._random_weights(num_shards=3)
       sparse_ids, _ = self._ids_and_weights_3d()
 
-      embedding_lookup_result = (
-          tf.contrib.layers.safe_embedding_lookup_sparse(embedding_weights,
-                                                         sparse_ids,
-                                                         None).eval())
+      embedding_lookup_result = (embedding_ops.safe_embedding_lookup_sparse(
+          embedding_weights, sparse_ids, None).eval())
 
       embedding_weights = list(itertools.chain(*embedding_weights))
-      self.assertAllClose(embedding_lookup_result, [
-          [(embedding_weights[0] + embedding_weights[1]) / 2.0, [0] * 4,
-           [0] * 4], [embedding_weights[2],
-                      (embedding_weights[0] + embedding_weights[1]) / 2.0,
-                      [0] * 4]
-      ])
+      self.assertAllClose(embedding_lookup_result,
+                          [[(embedding_weights[0] + embedding_weights[1]) / 2.0,
+                            [0] * 4, [0] * 4], [
+                                embedding_weights[2],
+                                (embedding_weights[0] + embedding_weights[1]) /
+                                2.0, [0] * 4
+                            ]])
 
   def test_safe_embedding_lookup_sparse_3d_partitioned_inconsistent_weights(
       self):
@@ -252,33 +251,31 @@ class SafeEmbeddingLookupSparseTest(tf.test.TestCase):
       sparse_ids, sparse_weights = self._ids_and_weights_3d()
 
       embedding_weights[1] = embedding_weights[1].astype(np.float64)
-      self.assertRaises(ValueError,
-                        tf.contrib.layers.safe_embedding_lookup_sparse,
+      self.assertRaises(ValueError, embedding_ops.safe_embedding_lookup_sparse,
                         embedding_weights, sparse_ids)
       embedding_weights = [
-          tf.constant(w, dtype=tf.float64) for w in embedding_weights
+          constant_op.constant(
+              w, dtype=dtypes.float64) for w in embedding_weights
       ]
-      self.assertRaises(ValueError,
-                        tf.contrib.layers.safe_embedding_lookup_sparse,
+      self.assertRaises(ValueError, embedding_ops.safe_embedding_lookup_sparse,
                         embedding_weights, sparse_ids, sparse_weights)
 
 
-class ScatteredEmbeddingLookupTest(tf.test.TestCase):
+class ScatteredEmbeddingLookupTest(test.TestCase):
 
   def setUp(self):
-    tf.set_random_seed(1)
+    random_seed.set_random_seed(1)
 
   def _random_weights(self, size=50, num_shards=1):
     assert size > 0
     assert num_shards > 0
     assert num_shards <= size
 
-    embedding_weights = tf.create_partitioned_variables(
+    embedding_weights = partitioned_variables.create_partitioned_variables(
         shape=[size],
         slicing=[num_shards],
-        initializer=tf.truncated_normal_initializer(mean=0.0,
-                                                    stddev=1.0,
-                                                    dtype=tf.float32))
+        initializer=init_ops.truncated_normal_initializer(
+            mean=0.0, stddev=1.0, dtype=dtypes.float32))
     for w in embedding_weights:
       w.initializer.run()
     return embedding_weights
@@ -286,9 +283,9 @@ class ScatteredEmbeddingLookupTest(tf.test.TestCase):
   def test_scattered_embedding_consistency(self):
     with self.test_session():
       embedding_weights = self._random_weights()
-      values = tf.constant(["foo", "foo"])
+      values = constant_op.constant(["foo", "foo"])
 
-      embedding_lookup_result = tf.contrib.layers.scattered_embedding_lookup(
+      embedding_lookup_result = embedding_ops.scattered_embedding_lookup(
           embedding_weights, values, dimension=10).eval()
 
       self.assertAllEqual(embedding_lookup_result.shape, [2, 10])
@@ -298,9 +295,9 @@ class ScatteredEmbeddingLookupTest(tf.test.TestCase):
   def test_scattered_embedding_multiple_partition(self):
     with self.test_session():
       embedding_weights = self._random_weights(num_shards=7)
-      values = tf.constant([4, 4, 5])
+      values = constant_op.constant([4, 4, 5])
 
-      embedding_lookup_result = tf.contrib.layers.scattered_embedding_lookup(
+      embedding_lookup_result = embedding_ops.scattered_embedding_lookup(
           embedding_weights, values, dimension=5).eval()
 
       self.assertAllEqual(embedding_lookup_result.shape, [3, 5])
@@ -308,17 +305,17 @@ class ScatteredEmbeddingLookupTest(tf.test.TestCase):
                           embedding_lookup_result[1])
       # Different embedding expected for different value.
       embedding_diff = np.min((embedding_lookup_result[2] -
-                               embedding_lookup_result[0]) ** 2)
+                               embedding_lookup_result[0])**2)
       self.assertGreater(embedding_diff, 0)
 
   def test_scattered_embedding_coverage(self):
     with self.test_session():
       size = 8
       embedding_weights = self._random_weights(size=size, num_shards=3)
-      values = tf.constant(["foo"])
+      values = constant_op.constant(["foo"])
 
       # Large embedding dimension to cover the full range of weights.
-      embedding_lookup_result = tf.contrib.layers.scattered_embedding_lookup(
+      embedding_lookup_result = embedding_ops.scattered_embedding_lookup(
           embedding_weights, values, dimension=100).eval()
 
       self.assertEqual(len(np.unique(embedding_lookup_result[0])), size)
@@ -326,9 +323,10 @@ class ScatteredEmbeddingLookupTest(tf.test.TestCase):
   def test_scattered_embedding_multi_dimension(self):
     with self.test_session():
       embedding_weights = self._random_weights()
-      values = tf.constant([["foo", "bar", "bar"], ["bar", "bar", "foo"]])
+      values = constant_op.constant(
+          [["foo", "bar", "bar"], ["bar", "bar", "foo"]])
 
-      embedding_lookup_result = tf.contrib.layers.scattered_embedding_lookup(
+      embedding_lookup_result = embedding_ops.scattered_embedding_lookup(
           embedding_weights, values, dimension=10).eval()
 
       self.assertAllEqual(embedding_lookup_result.shape, [2, 3, 10])
@@ -338,12 +336,13 @@ class ScatteredEmbeddingLookupTest(tf.test.TestCase):
   def test_scattered_embedding_lookup_sparse(self):
     with self.test_session():
       embedding_weights = self._random_weights(num_shards=3)
-      sparse_tensor = tf.SparseTensor(values=["foo", "bar", "foo", "bar"],
-                                      indices=[[0, 0], [1, 0], [1, 1], [3, 0]],
-                                      dense_shape=[5, 2])
+      sparse_tensor = sparse_tensor_lib.SparseTensor(
+          values=["foo", "bar", "foo", "bar"],
+          indices=[[0, 0], [1, 0], [1, 1], [3, 0]],
+          dense_shape=[5, 2])
 
       embedding_lookup_result = (
-          tf.contrib.layers.scattered_embedding_lookup_sparse(
+          embedding_ops.scattered_embedding_lookup_sparse(
               embedding_weights, sparse_tensor, dimension=5, combiner="mean")
           .eval())
 
@@ -351,12 +350,11 @@ class ScatteredEmbeddingLookupTest(tf.test.TestCase):
       # Same non-zero embedding for the empty rows filled with a default value.
       self.assertAllEqual(embedding_lookup_result[2],
                           embedding_lookup_result[4])
-      embedding_norm = np.sum(embedding_lookup_result[2] ** 2)
+      embedding_norm = np.sum(embedding_lookup_result[2]**2)
       self.assertGreater(embedding_norm, 0)
 
-      self.assertAllEqual(embedding_lookup_result[1],
-                          0.5 * (embedding_lookup_result[0] +
-                                 embedding_lookup_result[3]))
+      self.assertAllEqual(embedding_lookup_result[1], 0.5 * (
+          embedding_lookup_result[0] + embedding_lookup_result[3]))
 
   def test_embedding_lookup_unique(self):
     d_embed = 5
@@ -367,8 +365,7 @@ class ScatteredEmbeddingLookupTest(tf.test.TestCase):
 
     with self.test_session():
       embedded_np = embeds[idx]
-      embedded_tf = tf.contrib.layers.embedding_lookup_unique(
-          embeds, idx).eval()
+      embedded_tf = embedding_ops.embedding_lookup_unique(embeds, idx).eval()
 
     self.assertEqual(embedded_np.shape, embedded_tf.shape)
     np.testing.assert_almost_equal(embedded_np, embedded_tf)
@@ -381,12 +378,11 @@ class ScatteredEmbeddingLookupTest(tf.test.TestCase):
     with self.test_session():
       embedded_np = embeds[idx]
       embedded_np2d = embeds[idx2d]
-      embedded_tf = tf.contrib.layers.embedding_lookup_unique(
-          embeds, idx).eval()
-      embedded_tf_lst = tf.contrib.layers.embedding_lookup_unique(
-          [embeds], idx).eval()
-      embedded_tf2d = tf.contrib.layers.embedding_lookup_unique(
-          embeds, idx2d).eval()
+      embedded_tf = embedding_ops.embedding_lookup_unique(embeds, idx).eval()
+      embedded_tf_lst = embedding_ops.embedding_lookup_unique([embeds],
+                                                              idx).eval()
+      embedded_tf2d = embedding_ops.embedding_lookup_unique(embeds,
+                                                            idx2d).eval()
 
     self.assertEqual(embedded_np.shape, embedded_tf.shape)
     np.testing.assert_almost_equal(embedded_np, embedded_tf)
@@ -396,10 +392,10 @@ class ScatteredEmbeddingLookupTest(tf.test.TestCase):
     np.testing.assert_almost_equal(embedded_np2d, embedded_tf2d)
 
 
-class SampledScatteredEmbeddingLookupTest(tf.test.TestCase):
+class SampledScatteredEmbeddingLookupTest(test.TestCase):
 
   def setUp(self):
-    tf.set_random_seed(1)
+    random_seed.set_random_seed(1)
     self._hash_key = 1
 
   def _random_weights(self, size=50, num_shards=1):
@@ -407,12 +403,11 @@ class SampledScatteredEmbeddingLookupTest(tf.test.TestCase):
     assert num_shards > 0
     assert num_shards <= size
 
-    embedding_weights = tf.create_partitioned_variables(
+    embedding_weights = partitioned_variables.create_partitioned_variables(
         shape=[size],
         slicing=[num_shards],
-        initializer=tf.truncated_normal_initializer(mean=0.0,
-                                                    stddev=1.0,
-                                                    dtype=tf.float32))
+        initializer=init_ops.truncated_normal_initializer(
+            mean=0.0, stddev=1.0, dtype=dtypes.float32))
     for w in embedding_weights:
       w.initializer.run()
     return embedding_weights
@@ -420,14 +415,15 @@ class SampledScatteredEmbeddingLookupTest(tf.test.TestCase):
   def test_hashed_embedding_consistency(self):
     with self.test_session():
       embedding_weights = self._random_weights()
-      values = tf.constant(["foo", "foo"])
+      values = constant_op.constant(["foo", "foo"])
       # The first three sampled_candidates are equal, so the first three
       # embedding weights will be equal.
-      sampled_candidates = tf.constant([[1, 3, 4, 6], [1, 3, 4, 7]])
+      sampled_candidates = constant_op.constant([[1, 3, 4, 6], [1, 3, 4, 7]])
 
       embedding_lookup_result = (  # pylint: disable=protected-access
           embedding_ops._sampled_scattered_embedding_lookup(
-              embedding_weights, values,
+              embedding_weights,
+              values,
               sampled_candidates=sampled_candidates,
               hash_key=self._hash_key).eval())
 
@@ -440,14 +436,16 @@ class SampledScatteredEmbeddingLookupTest(tf.test.TestCase):
   def test_hashed_embedding_multi_dimension(self):
     with self.test_session():
       embedding_weights = self._random_weights()
-      values = tf.constant([["foo", "bar", "bar"], ["bar", "bar", "foo"]])
-      sampled_candidates = tf.constant(
+      values = constant_op.constant(
+          [["foo", "bar", "bar"], ["bar", "bar", "foo"]])
+      sampled_candidates = constant_op.constant(
           [[[1, 3, 4, 6], [1, 7, 8, 9], [1, 7, 8, 9]],
            [[1, 7, 8, 9], [1, 7, 8, 9], [1, 3, 4, 6]]])
 
       embedding_lookup_result = (  # pylint: disable=protected-access
           embedding_ops._sampled_scattered_embedding_lookup(
-              embedding_weights, values,
+              embedding_weights,
+              values,
               sampled_candidates=sampled_candidates,
               hash_key=self._hash_key).eval())
 
@@ -455,32 +453,31 @@ class SampledScatteredEmbeddingLookupTest(tf.test.TestCase):
       self.assertAllEqual(embedding_lookup_result[0][0],
                           embedding_lookup_result[1][2])
 
-      invalid_indices = tf.constant([[[1, 3, 4, 6], [1, 7, 8, 9]],
-                                     [[1, 7, 8, 9], [1, 7, 8, 9]]])
-      with self.assertRaisesRegexp(
-          tf.errors.InvalidArgumentError,
-          (r"\[The shape of sampled_candidates: \] \[2 2 4\] "
-           r"\[ does not match the shape of values: \] \[2 3\]")):
+      invalid_indices = constant_op.constant([[[1, 3, 4, 6], [1, 7, 8, 9]],
+                                              [[1, 7, 8, 9], [1, 7, 8, 9]]])
+      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError, (
+          r"\[The shape of sampled_candidates: \] \[2 2 4\] "
+          r"\[ does not match the shape of values: \] \[2 3\]")):
         # pylint: disable=protected-access
         embedding_ops._sampled_scattered_embedding_lookup(
             embedding_weights, values,
             sampled_candidates=invalid_indices).eval()
 
 
-class SampledScatteredEmbeddingLookupSparseTest(tf.test.TestCase):
+class SampledScatteredEmbeddingLookupSparseTest(test.TestCase):
 
   def setUp(self):
-    tf.set_random_seed(1)
+    random_seed.set_random_seed(1)
     self._hash_key = 1
 
   def test_output_shape(self):
     """Verifies the shape of the output tensor."""
     with self.test_session():
-      sp_values = tf.SparseTensor(
+      sp_values = sparse_tensor_lib.SparseTensor(
           values=["a", "a", "b", "c", "d", "e", "f"],
           indices=[[1, 0], [2, 0], [2, 1], [2, 2], [2, 3], [2, 4], [2, 5]],
           dense_shape=[3, 6])
-      params = tf.constant([.1, .2, .3])
+      params = constant_op.constant([.1, .2, .3])
 
       result = embedding_ops._sampled_scattered_embedding_lookup_sparse(
           params, sp_values, dimension=4, hash_key=self._hash_key)
@@ -490,9 +487,9 @@ class SampledScatteredEmbeddingLookupSparseTest(tf.test.TestCase):
   def test_output_values(self):
     """Verifies the values in a trivial case."""
     with self.test_session():
-      sp_values = tf.SparseTensor(
+      sp_values = sparse_tensor_lib.SparseTensor(
           values=["a"], indices=[[1, 0]], dense_shape=[3, 1])
-      params = tf.constant([.1, .2, .3])
+      params = constant_op.constant([.1, .2, .3])
 
       result = embedding_ops._sampled_scattered_embedding_lookup_sparse(
           params, sp_values, dimension=5, hash_key=self._hash_key)
@@ -504,15 +501,17 @@ class SampledScatteredEmbeddingLookupSparseTest(tf.test.TestCase):
   def test_output_values_with_sampled_candidates(self):
     """Verifies the values for given sampled_candidates."""
     with self.test_session():
-      sp_values = tf.SparseTensor(
+      sp_values = sparse_tensor_lib.SparseTensor(
           values=["a", "a", "b", "c", "d", "e", "f"],
           indices=[[1, 0], [2, 0], [2, 1], [2, 2], [2, 3], [2, 4], [2, 5]],
           dense_shape=[3, 6])
-      params = tf.constant([.1, .2, .3])
+      params = constant_op.constant([.1, .2, .3])
 
       sampled_candidates = [[1, 0], [2, 1], [3, 2]]
       sampled_result = embedding_ops._sampled_scattered_embedding_lookup_sparse(
-          params, sp_values, sampled_candidates=tf.constant(sampled_candidates),
+          params,
+          sp_values,
+          sampled_candidates=constant_op.constant(sampled_candidates),
           hash_key=self._hash_key)
       full_result = embedding_ops._sampled_scattered_embedding_lookup_sparse(
           params, sp_values, dimension=4, hash_key=self._hash_key)
@@ -527,30 +526,31 @@ class SampledScatteredEmbeddingLookupSparseTest(tf.test.TestCase):
   def test_output_values_with_sign_hash(self):
     """Verifies the values in a trivial case with hash_signs=True."""
     with self.test_session():
-      sp_values = tf.SparseTensor(
+      sp_values = sparse_tensor_lib.SparseTensor(
           values=["a"], indices=[[1, 0]], dense_shape=[3, 1])
-      params = tf.constant([.1, .1, .1])
+      params = constant_op.constant([.1, .1, .1])
 
       result = embedding_ops._sampled_scattered_embedding_lookup_sparse(
-          params, sp_values, dimension=4, with_sign_hash=True,
+          params,
+          sp_values,
+          dimension=4,
+          with_sign_hash=True,
           hash_key=self._hash_key)
 
-      self.assertAllClose(result.eval(),
-                          [[0., 0., 0., 0.],
-                           [-.1, -.1, -.1, .1],
-                           [0., 0., 0., 0.]])
+      self.assertAllClose(result.eval(), [[0., 0., 0., 0.], [-.1, -.1, -.1, .1],
+                                          [0., 0., 0., 0.]])
 
   def test_distributive_property(self):
     """Verifies the distributive property of matrix multiplication."""
     with self.test_session():
-      params = tf.constant([.1, .2, .3])
-      sp_values_a = tf.SparseTensor(
+      params = constant_op.constant([.1, .2, .3])
+      sp_values_a = sparse_tensor_lib.SparseTensor(
           values=["a"], indices=[[0, 0]], dense_shape=[3, 1])
-      sp_values_b = tf.SparseTensor(
+      sp_values_b = sparse_tensor_lib.SparseTensor(
           values=["b"], indices=[[2, 0]], dense_shape=[3, 1])
-      sp_values_c = tf.SparseTensor(
+      sp_values_c = sparse_tensor_lib.SparseTensor(
           values=["c"], indices=[[2, 0]], dense_shape=[3, 1])
-      sp_values = tf.SparseTensor(
+      sp_values = sparse_tensor_lib.SparseTensor(
           values=["a", "b", "c"],
           indices=[[0, 0], [2, 0], [2, 1]],
           dense_shape=[3, 2])
@@ -564,9 +564,9 @@ class SampledScatteredEmbeddingLookupSparseTest(tf.test.TestCase):
       result = embedding_ops._sampled_scattered_embedding_lookup_sparse(
           params, sp_values, dimension=4, hash_key=self._hash_key)
 
-      result_abc = tf.add_n([result_a, result_b, result_c])
+      result_abc = math_ops.add_n([result_a, result_b, result_c])
       self.assertAllClose(result.eval(), result_abc.eval())
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

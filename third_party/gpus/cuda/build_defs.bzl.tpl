@@ -1,8 +1,4 @@
 # Macros for building CUDA code.
-def cuda_path_flags():
-    """Stub for compatibility with internal build."""
-    return []
-
 def if_cuda(if_true, if_false = []):
     """Shorthand for select()'ing on whether we're building with CUDA.
 
@@ -14,6 +10,11 @@ def if_cuda(if_true, if_false = []):
         "@local_config_cuda//cuda:using_nvcc": if_true,
         "//conditions:default": if_false
     })
+
+def cuda_default_copts():
+    """Default options for all CUDA compilations."""
+    return if_cuda(["-x", "cuda", "-DGOOGLE_CUDA=1"])
+
 
 def cuda_is_configured():
     """Returns true if CUDA was enabled during the configure process."""

@@ -13,15 +13,33 @@
 # limitations under the License.
 # ==============================================================================
 """print_model_analysis test."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+import sys
+
+# TODO: #6568 Remove this hack that makes dlopen() not crash.
+if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
+  import ctypes
+  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
+
 from google.protobuf import text_format
-from tensorflow.contrib.tfprof.python.tools.tfprof import pywrap_tensorflow_print_model_analysis_lib as print_mdl
+
+from tensorflow.python.client import session
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import variable_scope
+from tensorflow.python.platform import test
 from tensorflow.tools.tfprof import tfprof_options_pb2
 from tensorflow.tools.tfprof import tfprof_output_pb2
+
+# XXX: this depends on pywrap_tensorflow and must come later
+from tensorflow.contrib.tfprof.python.tools.tfprof import pywrap_tensorflow_print_model_analysis_lib as print_mdl
 
 # pylint: disable=bad-whitespace
 # pylint: disable=bad-continuation
@@ -47,15 +65,15 @@ TEST_OPTIONS = {
 # pylint: enable=bad-continuation
 
 
-class PrintModelAnalysisTest(tf.test.TestCase):
+class PrintModelAnalysisTest(test.TestCase):
 
   def _BuildSmallModel(self):
-    image = tf.zeros([2, 6, 6, 3])
-    kernel = tf.get_variable(
+    image = array_ops.zeros([2, 6, 6, 3])
+    kernel = variable_scope.get_variable(
         'DW', [6, 6, 3, 6],
-        tf.float32,
-        initializer=tf.random_normal_initializer(stddev=0.001))
-    x = tf.nn.conv2d(image, kernel, [1, 2, 2, 1], padding='SAME')
+        dtypes.float32,
+        initializer=init_ops.random_normal_initializer(stddev=0.001))
+    x = nn_ops.conv2d(image, kernel, [1, 2, 2, 1], padding='SAME')
     return x
 
   def testPrintModelAnalysis(self):
@@ -83,7 +101,7 @@ class PrintModelAnalysisTest(tf.test.TestCase):
       opts.select.append(p)
     opts.viz = TEST_OPTIONS['viz']
 
-    with tf.Session() as sess, tf.device('/cpu:0'):
+    with session.Session() as sess, ops.device('/cpu:0'):
       _ = self._BuildSmallModel()
       tfprof_pb = tfprof_output_pb2.TFProfNode()
       tfprof_pb.ParseFromString(
@@ -229,4 +247,4 @@ class PrintModelAnalysisTest(tf.test.TestCase):
 
 
 if __name__ == '__main__':
-  tf.test.main()
+  test.main()

@@ -293,7 +293,7 @@ TEST(QueueRunnerTest, StartTimeout) {
   // This will timeout since queue0 is not fed and queue1 is fetching data from
   // queue0.
   EXPECT_EQ(qr->Start(session.get(), 1).code(), Code::DEADLINE_EXCEEDED);
-  session->Close();
+  TF_EXPECT_OK(session->Close());
 }
 
 TEST(QueueRunnerTest, TestCoordinatorStop) {
@@ -317,8 +317,8 @@ TEST(QueueRunnerTest, TestCoordinatorStop) {
   TF_EXPECT_OK(QueueRunner::New(queue_runner1, &coord, &qr1));
   TF_CHECK_OK(qr1->Start(session.get()));
 
-  coord.RegisterRunner(std::move(qr0));
-  coord.RegisterRunner(std::move(qr1));
+  TF_EXPECT_OK(coord.RegisterRunner(std::move(qr0)));
+  TF_EXPECT_OK(coord.RegisterRunner(std::move(qr1)));
 
   std::vector<Tensor> dq;
   TF_EXPECT_OK(session->Run({}, {kDequeueOp1}, {}, &dq));
@@ -340,7 +340,7 @@ TEST(QueueRunnerTest, CallbackCalledOnError) {
   bool error_caught = false;
   qr->AddErrorCallback([&error_caught](const Status&) { error_caught = true; });
   TF_EXPECT_OK(qr->Start(session.get()));
-  qr->Join();
+  EXPECT_FALSE(qr->Join().ok());
   EXPECT_TRUE(error_caught);
 }
 

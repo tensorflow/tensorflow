@@ -30,6 +30,12 @@ Status SwitchShape(InferenceContext* c) {
   ShapeHandle out = c->input(0);
   c->set_output(0, out);
   c->set_output(1, out);
+
+  // Handle resource shape / dtype.
+  c->set_output_handle_shape(0, c->input_handle_shape(0));
+  c->set_output_handle_shape(1, c->input_handle_shape(0));
+  c->set_output_handle_dtype(0, c->input_handle_dtype(0));
+  c->set_output_handle_dtype(1, c->input_handle_dtype(0));
   return Status::OK();
 }
 }  // namespace
@@ -190,7 +196,15 @@ REGISTER_OP("Enter")
     .Attr("frame_name: string")
     .Attr("is_constant: bool = false")
     .Attr("parallel_iterations: int = 10")
-    .SetShapeFn(shape_inference::UnknownShape)
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->UnknownShape());
+
+      // Handle resource shape / dtype, if present.
+      c->set_output_handle_shape(0, c->input_handle_shape(0));
+      c->set_output_handle_dtype(0, c->input_handle_dtype(0));
+
+      return Status::OK();
+    })
     .Doc(R"doc(
 Creates or finds a child frame, and makes `data` available to the child frame.
 

@@ -25,6 +25,7 @@ limitations under the License.
 // to avoid a dependency on floating-point hardware.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#define GEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK
 #include "public/gemmlowp.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/threadpool.h"

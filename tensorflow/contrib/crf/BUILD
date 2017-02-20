@@ -15,11 +15,13 @@ py_library(
     srcs = ["__init__.py"] + glob(["python/ops/*.py"]),
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/contrib/rnn:rnn_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:rnn",
         "//tensorflow/python:variable_scope",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -28,8 +30,12 @@ cuda_py_tests(
     srcs = ["python/kernel_tests/crf_test.py"],
     additional_deps = [
         ":crf_py",
-        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
     ],
 )

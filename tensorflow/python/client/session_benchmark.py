@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests and benchmarks for interacting with the `tf.Session`."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -21,10 +21,18 @@ from __future__ import print_function
 import time
 
 import numpy as np
-import tensorflow as tf
+
+from tensorflow.python.client import session
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import test
+from tensorflow.python.training import server_lib
 
 
-class SessionBenchmark(tf.test.Benchmark):
+class SessionBenchmark(test.Benchmark):
   """Tests and benchmarks for interacting with the `tf.Session`."""
 
   def _benchmarkFeed(self, name, target, size, iters):
@@ -41,12 +49,12 @@ class SessionBenchmark(tf.test.Benchmark):
     """
     feed_val = np.random.rand(size).astype(np.float32)
     times = []
-    with tf.Graph().as_default():
-      p = tf.placeholder(tf.float32, shape=[size])
+    with ops.Graph().as_default():
+      p = array_ops.placeholder(dtypes.float32, shape=[size])
       # Fetch the operation rather than the tensor, to avoid measuring the time
       # to fetch back the value.
-      no_op = tf.identity(p).op
-      with tf.Session(target) as sess:
+      no_op = array_ops.identity(p).op
+      with session.Session(target) as sess:
         sess.run(no_op, feed_dict={p: feed_val})  # Warm-up run.
         for _ in xrange(iters):
           start_time = time.time()
@@ -54,8 +62,7 @@ class SessionBenchmark(tf.test.Benchmark):
           end_time = time.time()
           times.append(end_time - start_time)
     print("%s %d %f" % (name, size, np.median(times)))
-    self.report_benchmark(iters=iters, wall_time=np.median(times),
-                          name=name)
+    self.report_benchmark(iters=1, wall_time=np.median(times), name=name)
 
   def _benchmarkFetch(self, name, target, size, iters):
     """Runs a microbenchmark to measure the cost of fetching a tensor.
@@ -70,11 +77,11 @@ class SessionBenchmark(tf.test.Benchmark):
       iters: The number of iterations to perform.
     """
     times = []
-    with tf.Graph().as_default():
+    with ops.Graph().as_default():
       # Define the tensor to be fetched as a variable, to avoid
       # constant-folding.
-      v = tf.Variable(tf.random_normal([size]))
-      with tf.Session(target) as sess:
+      v = variables.Variable(random_ops.random_normal([size]))
+      with session.Session(target) as sess:
         sess.run(v.initializer)
         sess.run(v)  # Warm-up run.
         for _ in xrange(iters):
@@ -83,34 +90,29 @@ class SessionBenchmark(tf.test.Benchmark):
           end_time = time.time()
           times.append(end_time - start_time)
     print("%s %d %f" % (name, size, np.median(times)))
-    self.report_benchmark(iters=iters, wall_time=np.median(times),
-                          name=name)
+    self.report_benchmark(iters=1, wall_time=np.median(times), name=name)
 
   def benchmarkGrpcSession(self):
-    server = tf.train.Server.create_local_server()
-    self._benchmarkFeed("benchmark_session_feed_grpc_4B",
-                        server.target, 1, 10000)
-    tf.Session.reset(server.target)
-    self._benchmarkFeed("benchmark_session_feed_grpc_4MB",
-                        server.target, 1 << 20, 100)
-    tf.Session.reset(server.target)
-    self._benchmarkFetch("benchmark_session_fetch_grpc_4B",
-                         server.target, 1, 20000)
-    tf.Session.reset(server.target)
-    self._benchmarkFetch("benchmark_session_fetch_grpc_4MB",
-                         server.target, 1 << 20, 100)
-    tf.Session.reset(server.target)
+    server = server_lib.Server.create_local_server()
+    self._benchmarkFeed("benchmark_session_feed_grpc_4B", server.target, 1,
+                        10000)
+    session.Session.reset(server.target)
+    self._benchmarkFeed("benchmark_session_feed_grpc_4MB", server.target, 1
+                        << 20, 100)
+    session.Session.reset(server.target)
+    self._benchmarkFetch("benchmark_session_fetch_grpc_4B", server.target, 1,
+                         20000)
+    session.Session.reset(server.target)
+    self._benchmarkFetch("benchmark_session_fetch_grpc_4MB", server.target, 1
+                         << 20, 100)
+    session.Session.reset(server.target)
 
   def benchmarkDirectSession(self):
-    self._benchmarkFeed("benchmark_session_feed_direct_4B",
-                        "", 1, 5000)
-    self._benchmarkFeed("benchmark_session_feed_direct_4MB",
-                        "", 1 << 20, 200)
-    self._benchmarkFetch("benchmark_session_fetch_direct_4B",
-                         "", 1, 5000)
-    self._benchmarkFetch("benchmark_session_fetch_direct_4MB",
-                         "", 1 << 20, 100)
+    self._benchmarkFeed("benchmark_session_feed_direct_4B", "", 1, 5000)
+    self._benchmarkFeed("benchmark_session_feed_direct_4MB", "", 1 << 20, 200)
+    self._benchmarkFetch("benchmark_session_fetch_direct_4B", "", 1, 5000)
+    self._benchmarkFetch("benchmark_session_fetch_direct_4MB", "", 1 << 20, 100)
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

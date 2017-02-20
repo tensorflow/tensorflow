@@ -594,12 +594,10 @@ public class ObjectTracker {
     return new TrackedObject(position, lastTimestamp, frameData);
   }
 
-  /*********************** NATIVE CODE *************************************/
+  /** ********************* NATIVE CODE ************************************ */
 
-  /**
-   * This will contain an opaque pointer to the native ObjectTracker
-   */
-  private int nativeObjectTracker;
+  /** This will contain an opaque pointer to the native ObjectTracker */
+  private long nativeObjectTracker;
 
   private native void initNative(int imageWidth, int imageHeight, boolean alwaysTrack);
 

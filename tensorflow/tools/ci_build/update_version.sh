@@ -85,13 +85,6 @@ check_existence file "${SETUP_PY}"
 
 sed -i -e "s/^\_VERSION = [\'\"].*[\'\"]/\_VERSION = \'${MAJOR}.${MINOR}.${PATCH}\'/g" "${SETUP_PY}"
 
-# Update cmake setup.py
-CMAKE_SETUP_PY="${TF_SRC_DIR}/contrib/cmake/setup.py"
-check_existence file "${CMAKE_SETUP_PY}"
-
-sed -i -e "s/^\_VERSION = [\'\"].*-cmake-experimental[\'\"]/\_VERSION = \'${MAJOR}.${MINOR}.${PATCH}-cmake-experimental\'/g" "${CMAKE_SETUP_PY}"
-
-
 # Update os_setup.md
 OS_SETUP="${TF_SRC_DIR}/g3doc/get_started/os_setup.md"
 check_existence file "${OS_SETUP}"

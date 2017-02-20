@@ -39,7 +39,7 @@ $adb shell "/data/local/tmp/benchmark_model \
 ### On desktop:
 (1) build the binary
 ```bash
-$bazel build -c opt tensorflow/tools/benchmark:benchmark_model
+$bazel build --config opt tensorflow/tools/benchmark:benchmark_model
 ```
 
 (2) Run on your compute graph, similar to the Android case but without the need of adb shell.

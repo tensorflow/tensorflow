@@ -162,67 +162,75 @@ Status GrpcSession::Extend(const RunOptions& run_options,
   return ExtendImpl(&call_options, graph);
 }
 
-Status GrpcSession::Run(const RunOptions& run_options,
-                        const std::vector<std::pair<string, Tensor>>& inputs,
-                        const std::vector<string>& output_tensor_names,
-                        const std::vector<string>& target_node_names,
-                        std::vector<Tensor>* outputs,
-                        RunMetadata* run_metadata) {
+Status GrpcSession::RunHelper(
+    const RunOptions& run_options,
+    const std::vector<std::pair<string, Tensor>>& inputs,
+    const std::vector<string>& output_tensor_names,
+    const std::vector<string>& target_node_names, std::vector<Tensor>* outputs,
+    RunMetadata* run_metadata, const string& prun_handle) {
   // Convert to proto
-  RunStepRequest req;
-  RunStepResponse resp;
+  std::unique_ptr<MutableRunStepRequestWrapper> req(
+      master_->CreateRunStepRequest());
+  std::unique_ptr<MutableRunStepResponseWrapper> resp(
+      master_->CreateRunStepResponse());
 
-  *req.mutable_options() = run_options;
+  *req->mutable_options() = run_options;
+
+  if (!prun_handle.empty()) {
+    req->set_partial_run_handle(prun_handle);
+  }
 
   for (const auto& it : inputs) {
-    Tensor input_tensor = it.second;
-    auto feed = req.add_feed();
-    feed->set_name(it.first);
-    TensorProto* proto = feed->mutable_tensor();
-    input_tensor.AsProtoTensorContent(proto);
+    req->add_feed(it.first, it.second);
   }
 
   // Build an index from fetch tensor name to offset.
   std::unordered_map<string, int> output_name_to_offset;
   for (const string& output_name : output_tensor_names) {
-    req.add_fetch(output_name);
+    req->add_fetch(output_name);
     output_name_to_offset.insert(
         std::make_pair(output_name, output_name_to_offset.size()));
   }
   for (const string& target : target_node_names) {
-    req.add_target(target);
+    req->add_target(target);
   }
 
   CallOptions call_options;
   call_options.SetTimeout(run_options.timeout_in_ms());
-  TF_RETURN_IF_ERROR(RunProto(&call_options, &req, &resp));
+  TF_RETURN_IF_ERROR(RunProto(&call_options, req.get(), resp.get()));
 
   if (!output_tensor_names.empty()) {
     outputs->resize(output_tensor_names.size());
   }
 
   // Convert response back to Tensors in the correct order.
-  for (const NamedTensorProto& tensor : resp.tensor()) {
-    auto fetch_it = output_name_to_offset.find(tensor.name());
+  for (size_t i = 0; i < resp->num_tensors(); ++i) {
+    auto fetch_it = output_name_to_offset.find(resp->tensor_name(i));
     if (fetch_it == output_name_to_offset.end()) {
       return errors::Internal("Received response for unrequested fetch: ",
-                              tensor.name());
+                              resp->tensor_name(i));
     }
 
     Tensor output;
-    if (!output.FromProto(tensor.tensor())) {
-      return errors::InvalidArgument("Could not parse returned proto for ",
-                                     tensor.name());
-    }
-
+    TF_RETURN_IF_ERROR(resp->TensorValue(i, &output));
     (*outputs)[fetch_it->second] = output;
   }
 
   if (run_metadata) {
-    run_metadata->Swap(resp.mutable_metadata());
+    run_metadata->Swap(resp->mutable_metadata());
   }
 
   return Status::OK();
+}
+
+Status GrpcSession::Run(const RunOptions& run_options,
+                        const std::vector<std::pair<string, Tensor>>& inputs,
+                        const std::vector<string>& output_tensor_names,
+                        const std::vector<string>& target_node_names,
+                        std::vector<Tensor>* outputs,
+                        RunMetadata* run_metadata) {
+  return RunHelper(run_options, inputs, output_tensor_names, target_node_names,
+                   outputs, run_metadata, /* prun_handle */ "");
 }
 
 Status GrpcSession::Run(const std::vector<std::pair<string, Tensor>>& inputs,
@@ -235,8 +243,9 @@ Status GrpcSession::Run(const std::vector<std::pair<string, Tensor>>& inputs,
              outputs, nullptr);
 }
 
-Status GrpcSession::RunProto(CallOptions* call_options, RunStepRequest* req,
-                             RunStepResponse* resp) {
+Status GrpcSession::RunProto(CallOptions* call_options,
+                             MutableRunStepRequestWrapper* req,
+                             MutableRunStepResponseWrapper* resp) {
   {
     mutex_lock l(mu_);
     if (handle_.empty()) {
@@ -252,14 +261,41 @@ Status GrpcSession::PRunSetup(const std::vector<string>& input_names,
                               const std::vector<string>& output_names,
                               const std::vector<string>& target_nodes,
                               string* handle) {
-  return errors::Internal("Partial run is not supported for remote session.");
+  // Convert to proto
+  PartialRunSetupRequest req;
+  PartialRunSetupResponse resp;
+  CallOptions call_options;
+  {
+    mutex_lock l(mu_);
+    if (handle_.empty()) {
+      return errors::InvalidArgument("A session is not created yet....");
+    }
+
+    req.set_session_handle(handle_);
+  }
+  for (const string& feed : input_names) {
+    req.add_feed(feed);
+  }
+  for (const string& fetch : output_names) {
+    req.add_fetch(fetch);
+  }
+  for (const string& target : target_nodes) {
+    req.add_target(target);
+  }
+  call_options.SetTimeout(options_.config.operation_timeout_in_ms());
+  TF_RETURN_IF_ERROR(master_->PartialRunSetup(&call_options, &req, &resp));
+  *handle = resp.partial_run_handle();
+  return Status::OK();
 }
 
 Status GrpcSession::PRun(const string& handle,
                          const std::vector<std::pair<string, Tensor>>& inputs,
                          const std::vector<string>& output_names,
                          std::vector<Tensor>* outputs) {
-  return errors::Internal("Partial run is not supported for remote session.");
+  RunOptions run_options;
+  run_options.set_timeout_in_ms(options_.config.operation_timeout_in_ms());
+  return RunHelper(run_options, inputs, output_names, /* targets */ {}, outputs,
+                   /* run_metadata */ nullptr, handle);
 }
 
 Status GrpcSession::Close() {

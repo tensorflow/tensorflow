@@ -123,7 +123,7 @@ Status TensorSliceWriter::Finish() {
       LOG(ERROR) << "Failed to rename file " << tmpname_ << " to " << filename_;
     }
   } else {
-    Env::Default()->DeleteFile(tmpname_);
+    Env::Default()->DeleteFile(tmpname_).IgnoreError();
   }
   return s;
 }

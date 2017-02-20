@@ -129,23 +129,24 @@ bool HostExecutor::Memset32(Stream *stream, DeviceMemoryBase *location,
   return true;
 }
 
-bool HostExecutor::SynchronousMemcpy(DeviceMemoryBase *gpu_dst,
-                                     const void *host_src, uint64 size) {
+port::Status HostExecutor::SynchronousMemcpy(DeviceMemoryBase *gpu_dst,
+                                             const void *host_src,
+                                             uint64 size) {
   memcpy(gpu_dst->opaque(), host_src, size);
-  return true;
+  return port::Status::OK();
 }
 
-bool HostExecutor::SynchronousMemcpy(void *host_dst,
-                                     const DeviceMemoryBase &gpu_src,
-                                     uint64 size) {
+port::Status HostExecutor::SynchronousMemcpy(void *host_dst,
+                                             const DeviceMemoryBase &gpu_src,
+                                             uint64 size) {
   memcpy(host_dst, gpu_src.opaque(), size);
-  return true;
+  return port::Status::OK();
 }
 
-bool HostExecutor::SynchronousMemcpyDeviceToDevice(
+port::Status HostExecutor::SynchronousMemcpyDeviceToDevice(
     DeviceMemoryBase *gpu_dst, const DeviceMemoryBase &gpu_src, uint64 size) {
   memcpy(gpu_dst->opaque(), gpu_src.opaque(), size);
-  return true;
+  return port::Status::OK();
 }
 
 bool HostExecutor::HostCallback(Stream *stream,

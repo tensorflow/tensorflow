@@ -199,18 +199,20 @@ class StreamExecutorInterface {
   virtual bool SynchronousMemZero(DeviceMemoryBase *location, uint64 size) = 0;
   virtual bool SynchronousMemSet(DeviceMemoryBase *location, int value,
                                  uint64 size) = 0;
-  virtual bool SynchronousMemcpy(DeviceMemoryBase *gpu_dst,
-                                 const void *host_src, uint64 size) = 0;
-  virtual bool SynchronousMemcpy(void *host_dst,
-                                 const DeviceMemoryBase &gpu_src,
-                                 uint64 size) = 0;
-  virtual bool SynchronousMemcpyDeviceToDevice(DeviceMemoryBase *gpu_dst,
-                                               const DeviceMemoryBase &gpu_src,
-                                               uint64 size) = 0;
+  virtual port::Status SynchronousMemcpy(DeviceMemoryBase *gpu_dst,
+                                         const void *host_src, uint64 size) = 0;
+  virtual port::Status SynchronousMemcpy(void *host_dst,
+                                         const DeviceMemoryBase &gpu_src,
+                                         uint64 size) = 0;
+  virtual port::Status SynchronousMemcpyDeviceToDevice(
+      DeviceMemoryBase *gpu_dst, const DeviceMemoryBase &gpu_src,
+      uint64 size) = 0;
   virtual bool MemZero(Stream *stream, DeviceMemoryBase *location,
                        uint64 size) = 0;
-  virtual bool Memset(Stream *stream, DeviceMemoryBase *location,
-                      uint8 pattern, uint64 size) = 0;
+  virtual bool Memset(Stream *stream, DeviceMemoryBase *location, uint8 pattern,
+                      uint64 size) {
+    return false;
+  }
   virtual bool Memset32(Stream *stream, DeviceMemoryBase *location,
                         uint32 pattern, uint64 size) = 0;
   virtual bool Memcpy(Stream *stream, void *host_dst,

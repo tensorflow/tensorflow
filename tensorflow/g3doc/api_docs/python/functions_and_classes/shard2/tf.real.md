@@ -4,7 +4,7 @@ Returns the real part of a complex number.
 
 Given a tensor `input` of complex numbers, this operation returns a tensor of
 type `float32` or `float64` that is the real part of each element in `input`.
-All elements in `input` must be complex numbers of the form \(a + bj\),
+All elements in `input` must be complex numbers of the form \\(a + bj\\),
 where *a* is the real part returned by this operation and *b* is the
 imaginary part.
 

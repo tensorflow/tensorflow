@@ -7,9 +7,20 @@ licenses(["notice"])  # Apache 2.0
 
 java_library(
     name = "tensorflow",
-    srcs = glob(["src/main/java/org/tensorflow/*.java"]),
-    data = [":libtensorflow-jni"],
+    srcs = [":java_sources"],
+    data = [":libtensorflow_jni"],
     visibility = ["//visibility:public"],
+)
+
+# NOTE(ashankar): Rule to include the Java API in the Android Inference Library
+# .aar. At some point, might make sense for a .aar rule here instead.
+filegroup(
+    name = "java_sources",
+    srcs = glob(["src/main/java/org/tensorflow/*.java"]),
+    visibility = [
+        "//tensorflow/contrib/android:__pkg__",
+        "//tensorflow/java:__pkg__",
+    ],
 )
 
 java_library(
@@ -56,6 +67,18 @@ java_test(
 )
 
 java_test(
+    name = "ShapeTest",
+    size = "small",
+    srcs = ["src/test/java/org/tensorflow/ShapeTest.java"],
+    test_class = "org.tensorflow.ShapeTest",
+    deps = [
+        ":tensorflow",
+        ":testutil",
+        "//external:junit",
+    ],
+)
+
+java_test(
     name = "TensorFlowTest",
     size = "small",
     srcs = ["src/test/java/org/tensorflow/TensorFlowTest.java"],
@@ -73,23 +96,64 @@ java_test(
     test_class = "org.tensorflow.TensorTest",
     deps = [
         ":tensorflow",
+        ":testutil",
         "//external:junit",
     ],
 )
 
 filegroup(
-    name = "libtensorflow-jni",
+    name = "libtensorflow_jni",
     srcs = select({
-        "//tensorflow:darwin": [":libtensorflow-jni.dylib"],
-        "//conditions:default": [":libtensorflow-jni.so"],
+        "//tensorflow:darwin": [":libtensorflow_jni.dylib"],
+        "//conditions:default": [":libtensorflow_jni.so"],
     }),
+    visibility = ["//visibility:public"],
+)
+
+LINKER_VERSION_SCRIPT = ":config/version_script.lds"
+
+LINKER_EXPORTED_SYMBOLS = ":config/exported_symbols.lds"
+
+cc_binary(
+    name = "libtensorflow_jni.so",
+    # Set linker options to strip out anything except the JNI
+    # symbols from the library. This reduces the size of the library
+    # considerably (~50% as of January 2017).
+    linkopts = select({
+        "//tensorflow:debug": [],  # Disable all custom linker options in debug mode
+        "//tensorflow:darwin": [
+            "-Wl,-exported_symbols_list",  # This line must be directly followed by LINKER_EXPORTED_SYMBOLS
+            LINKER_EXPORTED_SYMBOLS,
+        ],
+        "//tensorflow:windows": [],
+        "//conditions:default": [
+            "-z defs",
+            "-s",
+            "-Wl,--version-script",  #  This line must be directly followed by LINKER_VERSION_SCRIPT
+            LINKER_VERSION_SCRIPT,
+        ],
+    }),
+    linkshared = 1,
+    linkstatic = 1,
+    deps = [
+        "//tensorflow/java/src/main/native",
+        LINKER_VERSION_SCRIPT,
+        LINKER_EXPORTED_SYMBOLS,
+    ],
+)
+
+genrule(
+    name = "pom",
+    outs = ["pom.xml"],
+    cmd = "$(location generate_pom) >$@",
+    output_to_bindir = 1,
+    tools = [":generate_pom"],
 )
 
 cc_binary(
-    name = "libtensorflow-jni.so",
-    linkshared = 1,
-    linkstatic = 1,
-    deps = ["//tensorflow/java/src/main/native"],
+    name = "generate_pom",
+    srcs = ["generate_pom.cc"],
+    deps = ["//tensorflow/c:c_api"],
 )
 
 # System.loadLibrary() on OS X looks for ".dylib" or ".jnilib"
@@ -97,8 +161,8 @@ cc_binary(
 # is resolved, perhaps this workaround rule can be removed.
 genrule(
     name = "darwin-compat",
-    srcs = [":libtensorflow-jni.so"],
-    outs = ["libtensorflow-jni.dylib"],
+    srcs = [":libtensorflow_jni.so"],
+    outs = ["libtensorflow_jni.dylib"],
     cmd = "cp $< $@",
     output_to_bindir = 1,
 )

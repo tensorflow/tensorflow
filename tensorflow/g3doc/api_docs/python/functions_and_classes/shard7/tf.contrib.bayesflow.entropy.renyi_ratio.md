@@ -89,7 +89,7 @@ User supplies either `Tensor` of samples `z`, or number of samples to draw `n`
      `float64` `dtype` recommended.
      `log_p` and `q` should be supported on the same set.
 *  <b>`alpha`</b>: `Tensor` with shape `q.batch_shape` and values not equal to 1.
-*  <b>`z`</b>: `Tensor` of samples from `q`, produced by `q.sample_n`.
+*  <b>`z`</b>: `Tensor` of samples from `q`, produced by `q.sample` for some `n`.
 *  <b>`n`</b>: Integer `Tensor`.  The number of samples to use if `z` is not provided.
     Note that this can be highly biased for small `n`, see docstring.
 *  <b>`seed`</b>: Python integer to seed the random number generator.

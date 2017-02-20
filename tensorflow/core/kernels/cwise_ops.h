@@ -439,6 +439,7 @@ struct use_bcast_optimization<double> {
 // sqrt(x) = x^(1/2)
 // rsqrt(x) = x^(-1/2)
 // exp(x) = e^x
+// expm1(x) = e^x - 1
 // log(x) = natural logarithm of x
 // log1p(x) = natural logarithm of 1 + x
 // tanh = (exp(x) - exp(-x)) / (exp(x) + exp(-x))
@@ -471,7 +472,10 @@ template <typename T>
 struct exp : base<T, Eigen::internal::scalar_exp_op<T> > {};
 
 template <typename T>
-struct log : base<T, Eigen::internal::scalar_log_op<T> > {};
+struct expm1 : base<T, Eigen::internal::scalar_expm1_op<T>> {};
+
+template <typename T>
+struct log : base<T, Eigen::internal::scalar_log_op<T>> {};
 
 template <typename T>
 struct log1p : base<T, Eigen::internal::scalar_log1p_op<T> > {};

@@ -24,31 +24,53 @@ from __future__ import print_function
 
 from tensorflow.contrib import metrics as metrics_lib
 from tensorflow.contrib.learn.python.learn.estimators import estimator
+from tensorflow.contrib.learn.python.learn.estimators import metric_key
+from tensorflow.contrib.learn.python.learn.estimators import model_fn as model_fn_lib
 from tensorflow.python.ops import math_ops
 
 
-def _labels_streaming_mean(unused_predictions, labels):
-  return metrics_lib.streaming_mean(labels)
+def _get_model_fn_with_logistic_metrics(model_fn):
+  """Returns a model_fn with additional logistic metrics.
+
+  Args:
+    model_fn: Model function with the signature:
+      `(features, labels, mode) -> (predictions, loss, train_op)`.
+      Expects the returned predictions to be probabilities in [0.0, 1.0].
+
+  Returns:
+    model_fn that can be used with Estimator.
+  """
+
+  def _model_fn(features, labels, mode, params):
+    """Model function that appends logistic evaluation metrics."""
+    thresholds = params.get('thresholds') or [.5]
+
+    predictions, loss, train_op = model_fn(features, labels, mode)
+    if mode == model_fn_lib.ModeKeys.EVAL:
+      eval_metric_ops = _make_logistic_eval_metric_ops(
+          labels=labels,
+          predictions=predictions,
+          thresholds=thresholds)
+    else:
+      eval_metric_ops = None
+
+    return model_fn_lib.ModelFnOps(
+        mode=mode,
+        predictions=predictions,
+        loss=loss,
+        train_op=train_op,
+        eval_metric_ops=eval_metric_ops)
+
+  return _model_fn
 
 
-def _predictions_streaming_mean(predictions, unused_labels):
-  return metrics_lib.streaming_mean(predictions)
+# TODO(roumposg): Deprecate and delete after converting users to use head.
+def LogisticRegressor(  # pylint: disable=invalid-name
+    model_fn, thresholds=None, model_dir=None, config=None,
+    feature_engineering_fn=None):
+  """Builds a logistic regression Estimator for binary classification.
 
-
-def _make_streaming_with_threshold(streaming_metrics_fn, threshold):
-
-  def _streaming_metrics(predictions, labels):
-    return streaming_metrics_fn(predictions=math_ops.to_float(
-        math_ops.greater_equal(predictions, threshold)),
-                                labels=labels)
-
-  return _streaming_metrics
-
-
-class LogisticRegressor(estimator.Estimator):
-  """Logistic regression Estimator for binary classification.
-
-  This class provides a basic Estimator with some additional metrics for custom
+  This method provides a basic Estimator with some additional metrics for custom
   binary classification models, including AUC, precision/recall and accuracy.
 
   Example:
@@ -67,117 +89,77 @@ class LogisticRegressor(estimator.Estimator):
     estimator.fit(input_fn=input_fn_train)
     estimator.predict(x=x)
   ```
+
+  Args:
+    model_fn: Model function with the signature:
+      `(features, labels, mode) -> (predictions, loss, train_op)`.
+      Expects the returned predictions to be probabilities in [0.0, 1.0].
+    thresholds: List of floating point thresholds to use for accuracy,
+      precision, and recall metrics. If `None`, defaults to `[0.5]`.
+    model_dir: Directory to save model parameters, graphs, etc. This can also
+      be used to load checkpoints from the directory into a estimator to
+      continue training a previously saved model.
+    config: A RunConfig configuration object.
+    feature_engineering_fn: Feature engineering function. Takes features and
+                      labels which are the output of `input_fn` and
+                      returns features and labels which will be fed
+                      into the model.
+
+  Returns:
+    A `tf.contrib.learn.Estimator` instance.
   """
+  return estimator.Estimator(
+      model_fn=_get_model_fn_with_logistic_metrics(model_fn),
+      model_dir=model_dir,
+      config=config,
+      params={'thresholds': thresholds},
+      feature_engineering_fn=feature_engineering_fn)
 
-  def __init__(self, model_fn, thresholds=None, model_dir=None, config=None,
-               feature_engineering_fn=None):
-    """Initializes a LogisticRegressor.
 
-    Args:
-      model_fn: Model function. See superclass Estimator for more details. This
-        expects the returned predictions to be probabilities in [0.0, 1.0].
-      thresholds: List of floating point thresholds to use for accuracy,
-        precision, and recall metrics. If `None`, defaults to `[0.5]`.
-      model_dir: Directory to save model parameters, graphs, etc. This can also
-        be used to load checkpoints from the directory into a estimator to
-        continue training a previously saved model.
-      config: A RunConfig configuration object.
-      feature_engineering_fn: Feature engineering function. Takes features and
-                        labels which are the output of `input_fn` and
-                        returns features and labels which will be fed
-                        into the model.
-    """
-    if thresholds is None:
-      thresholds = [0.5]
-    self._thresholds = thresholds
-    super(LogisticRegressor, self).__init__(
-        model_fn=model_fn,
-        model_dir=model_dir,
-        config=config,
-        feature_engineering_fn=feature_engineering_fn)
+def _make_logistic_eval_metric_ops(labels, predictions, thresholds):
+  """Returns a dictionary of evaluation metric ops for logistic regression.
 
-  # TODO(zakaria): use target column.
+  Args:
+    labels: The labels `Tensor`, or a dict with only one `Tensor` keyed by name.
+    predictions: The predictions `Tensor`.
+    thresholds: List of floating point thresholds to use for accuracy,
+      precision, and recall metrics.
 
-  # Metrics string keys.
-  AUC = "auc"
-  PREDICTION_MEAN = "labels/prediction_mean"
-  TARGET_MEAN = "labels/actual_label_mean"
-  ACCURACY_BASELINE = "accuracy/baseline_label_mean"
-  ACCURACY_MEAN = "accuracy/threshold_%f_mean"
-  PRECISION_MEAN = "precision/positive_threshold_%f_mean"
-  RECALL_MEAN = "recall/positive_threshold_%f_mean"
+  Returns:
+    A dict of metric results keyed by name.
+  """
+  # If labels is a dict with a single key, unpack into a single tensor.
+  labels_tensor = labels
+  if isinstance(labels, dict) and len(labels) == 1:
+    labels_tensor = labels.values()[0]
 
-  @classmethod
-  def get_default_metrics(cls, thresholds=None):
-    """Returns a dictionary of basic metrics for logistic regression.
+  metrics = {}
+  metrics[metric_key.MetricKey.PREDICTION_MEAN] = metrics_lib.streaming_mean(
+      predictions)
+  metrics[metric_key.MetricKey.LABEL_MEAN] = metrics_lib.streaming_mean(
+      labels_tensor)
+  # Also include the streaming mean of the label as an accuracy baseline, as
+  # a reminder to users.
+  metrics[metric_key.MetricKey.ACCURACY_BASELINE] = metrics_lib.streaming_mean(
+      labels_tensor)
 
-    Args:
-      thresholds: List of floating point thresholds to use for accuracy,
-        precision, and recall metrics. If None, defaults to [0.5].
+  metrics[metric_key.MetricKey.AUC] = metrics_lib.streaming_auc(
+      labels=labels_tensor, predictions=predictions)
 
-    Returns:
-      Dictionary mapping metrics string names to metrics functions.
-    """
-    if thresholds is None:
-      thresholds = [0.5]
+  for threshold in thresholds:
+    predictions_at_threshold = math_ops.to_float(
+        math_ops.greater_equal(predictions, threshold),
+        name='predictions_at_threshold_%f' % threshold)
+    metrics[metric_key.MetricKey.ACCURACY_MEAN % threshold] = (
+        metrics_lib.streaming_accuracy(labels=labels_tensor,
+                                       predictions=predictions_at_threshold))
+    # Precision for positive examples.
+    metrics[metric_key.MetricKey.PRECISION_MEAN % threshold] = (
+        metrics_lib.streaming_precision(labels=labels_tensor,
+                                        predictions=predictions_at_threshold))
+    # Recall for positive examples.
+    metrics[metric_key.MetricKey.RECALL_MEAN % threshold] = (
+        metrics_lib.streaming_recall(labels=labels_tensor,
+                                     predictions=predictions_at_threshold))
 
-    metrics = {}
-    metrics[cls.PREDICTION_MEAN] = _predictions_streaming_mean
-    metrics[cls.TARGET_MEAN] = _labels_streaming_mean
-    # Also include the streaming mean of the label as an accuracy baseline, as
-    # a reminder to users.
-    metrics[cls.ACCURACY_BASELINE] = _labels_streaming_mean
-
-    metrics[cls.AUC] = metrics_lib.streaming_auc
-
-    for threshold in thresholds:
-      metrics[cls.ACCURACY_MEAN % threshold] = _make_streaming_with_threshold(
-          metrics_lib.streaming_accuracy, threshold)
-      # Precision for positive examples.
-      metrics[cls.PRECISION_MEAN % threshold] = _make_streaming_with_threshold(
-          metrics_lib.streaming_precision, threshold)
-      # Recall for positive examples.
-      metrics[cls.RECALL_MEAN % threshold] = _make_streaming_with_threshold(
-          metrics_lib.streaming_recall, threshold)
-
-    return metrics
-
-  def evaluate(self,
-               x=None,
-               y=None,
-               input_fn=None,
-               feed_fn=None,
-               batch_size=None,
-               steps=None,
-               metrics=None,
-               name=None,
-               checkpoint_path=None):
-    """Evaluates given model with provided evaluation data.
-
-    See superclass Estimator for more details.
-
-    Args:
-      x: features.
-      y: labels (must be 0 or 1).
-      input_fn: Input function.
-      feed_fn: Function creating a feed dict every time it is called.
-      batch_size: minibatch size to use on the input.
-      steps: Number of steps for which to evaluate model.
-      metrics: Dict of metric ops to run. If None, the default metrics are used.
-      name: Name of the evaluation.
-      checkpoint_path: A specific checkpoint to use. By default, use the latest
-        checkpoint in the `model_dir`.
-
-    Returns:
-      Returns `dict` with evaluation results.
-    """
-    metrics = metrics or self.get_default_metrics(thresholds=self._thresholds)
-    return super(LogisticRegressor, self).evaluate(
-        x=x,
-        y=y,
-        input_fn=input_fn,
-        batch_size=batch_size,
-        steps=steps,
-        metrics=metrics,
-        name=name,
-        checkpoint_path=checkpoint_path)
+  return metrics

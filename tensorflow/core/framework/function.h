@@ -108,7 +108,6 @@ class FunctionDefHelper {
     std::vector<std::pair<string, AttrValueWrapper>> attr;
     std::vector<string> dep;
 
-    FunctionDef::Node ToProto() const;
     NodeDef ToNodeDef() const;
   };
 

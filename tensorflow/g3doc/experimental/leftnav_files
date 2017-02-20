@@ -1,0 +1,8 @@
+### XLA
+xla/index.md
+xla/jit.md
+xla/tfcompile.md
+xla/developing_new_backend.md
+xla/operation_semantics.md
+xla/shapes.md
+xla/broadcasting.md

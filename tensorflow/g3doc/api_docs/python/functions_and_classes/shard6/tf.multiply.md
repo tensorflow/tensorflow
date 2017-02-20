@@ -2,7 +2,7 @@
 
 Returns x * y element-wise.
 
-*NOTE*: `Mul` supports broadcasting. More about broadcasting
+*NOTE*: ``tf.multiply`` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 
 ##### Args:

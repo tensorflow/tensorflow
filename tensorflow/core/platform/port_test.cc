@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <condition_variable>
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/test.h"
@@ -24,11 +25,11 @@ namespace port {
 
 TEST(Port, AlignedMalloc) {
   for (size_t alignment = 1; alignment <= 1 << 20; alignment <<= 1) {
-    void* p = aligned_malloc(1, alignment);
-    ASSERT_TRUE(p != NULL) << "aligned_malloc(1, " << alignment << ")";
+    void* p = AlignedMalloc(1, alignment);
+    ASSERT_TRUE(p != NULL) << "AlignedMalloc(1, " << alignment << ")";
     uintptr_t pval = reinterpret_cast<uintptr_t>(p);
     EXPECT_EQ(pval % alignment, 0);
-    aligned_free(p);
+    AlignedFree(p);
   }
 }
 
@@ -64,6 +65,15 @@ TEST(ConditionVariable, WaitForMilliseconds_Signalled) {
   EXPECT_EQ(WaitForMilliseconds(&l, &cv, 3000), kCond_MaybeNotified);
   time_t finish = time(NULL);
   EXPECT_LT(finish - start, 3);
+}
+
+TEST(TestCPUFeature, TestFeature) {
+  // We don't know what the result should be on this platform, so just make
+  // sure it's callable.
+  const bool has_avx = TestCPUFeature(CPUFeature::AVX);
+  LOG(INFO) << "has_avx = " << has_avx;
+  const bool has_avx2 = TestCPUFeature(CPUFeature::AVX2);
+  LOG(INFO) << "has_avx2 = " << has_avx2;
 }
 
 }  // namespace port

@@ -92,18 +92,31 @@ class ExampleParserOp : public OpKernel {
 
     for (int d = 0; d < static_cast<int>(attrs_.num_dense); ++d) {
       const Tensor& def_value = dense_defaults[d];
-      if (def_value.NumElements() > 0) {
-        OP_REQUIRES(ctx, def_value.shape() == attrs_.dense_shapes[d],
+      if (attrs_.variable_length[d]) {
+        OP_REQUIRES(ctx, def_value.NumElements() == 1,
                     errors::InvalidArgument(
-                        "def_value[", d, "].shape() == ",
-                        def_value.shape().DebugString(), " != dense_shapes_[",
-                        d, "] == ", attrs_.dense_shapes[d].DebugString()));
-        OP_REQUIRES(ctx, def_value.dtype() == attrs_.dense_types[d],
+                        "dense_shape[", d, "] is a variable length shape: ",
+                        attrs_.dense_shapes[d].DebugString(),
+                        ", therefore "
+                        "def_value[",
+                        d,
+                        "] must contain a single element ("
+                        "the padding element).  But its shape is: ",
+                        def_value.shape().DebugString()));
+      } else if (def_value.NumElements() > 0) {
+        OP_REQUIRES(ctx,
+                    attrs_.dense_shapes[d].IsCompatibleWith(def_value.shape()),
                     errors::InvalidArgument(
-                        "dense_defaults[", d, "].dtype() == ",
-                        DataTypeString(def_value.dtype()), " != dense_types_[",
-                        d, "] == ", DataTypeString(attrs_.dense_types[d])));
+                        "def_value[", d,
+                        "].shape() == ", def_value.shape().DebugString(),
+                        " is not compatible with dense_shapes_[", d,
+                        "] == ", attrs_.dense_shapes[d].DebugString()));
       }
+      OP_REQUIRES(ctx, def_value.dtype() == attrs_.dense_types[d],
+                  errors::InvalidArgument(
+                      "dense_defaults[", d, "].dtype() == ",
+                      DataTypeString(def_value.dtype()), " != dense_types_[", d,
+                      "] == ", DataTypeString(attrs_.dense_types[d])));
     }
 
     example::Result result;
@@ -111,7 +124,9 @@ class ExampleParserOp : public OpKernel {
     example::FastParseExampleConfig config;
     for (int d = 0; d < attrs_.num_dense; ++d) {
       config.dense.push_back({dense_keys_t[d], attrs_.dense_types[d],
-                              attrs_.dense_shapes[d], dense_defaults[d]});
+                              attrs_.dense_shapes[d], dense_defaults[d],
+                              attrs_.variable_length[d],
+                              attrs_.elements_per_stride[d]});
     }
     for (int d = 0; d < attrs_.num_sparse; ++d) {
       config.sparse.push_back({sparse_keys_t[d], attrs_.sparse_types[d]});
@@ -338,7 +353,7 @@ class SingleSequenceExampleParserOp : public OpKernel {
       for (const int dim : attrs_.context_dense_shapes[d].dim_sizes())
         out_shape.AddDim(dim);
       Tensor* out = nullptr;
-      context_dense_values.allocate(d, out_shape, &out);
+      OP_REQUIRES_OK(ctx, context_dense_values.allocate(d, out_shape, &out));
     }
 
     for (int d = 0; d < attrs_.num_context_dense; ++d) {
@@ -396,9 +411,11 @@ class SingleSequenceExampleParserOp : public OpKernel {
         TensorShape indices_shape({num_elements, 1});
         Tensor* sp_indices_d = nullptr;
         Tensor* sp_shape_d = nullptr;
-        context_sparse_indices.allocate(d, indices_shape, &sp_indices_d);
+        OP_REQUIRES_OK(ctx, context_sparse_indices.allocate(d, indices_shape,
+                                                            &sp_indices_d));
         context_sparse_values.set(d, feature_values);
-        context_sparse_shapes.allocate(d, TensorShape({1}), &sp_shape_d);
+        OP_REQUIRES_OK(ctx, context_sparse_shapes.allocate(d, TensorShape({1}),
+                                                           &sp_shape_d));
         auto shape_t = sp_shape_d->vec<int64>();
         shape_t(0) = num_elements;
         auto indices_t = sp_indices_d->matrix<int64>();
@@ -409,9 +426,12 @@ class SingleSequenceExampleParserOp : public OpKernel {
         Tensor* sp_indices_d = nullptr;
         Tensor* sp_values_d = nullptr;
         Tensor* sp_shape_d = nullptr;
-        context_sparse_indices.allocate(d, indices_shape, &sp_indices_d);
-        context_sparse_values.allocate(d, values_shape, &sp_values_d);
-        context_sparse_shapes.allocate(d, TensorShape({1}), &sp_shape_d);
+        OP_REQUIRES_OK(ctx, context_sparse_indices.allocate(d, indices_shape,
+                                                            &sp_indices_d));
+        OP_REQUIRES_OK(
+            ctx, context_sparse_values.allocate(d, values_shape, &sp_values_d));
+        OP_REQUIRES_OK(ctx, context_sparse_shapes.allocate(d, TensorShape({1}),
+                                                           &sp_shape_d));
         auto shape_t = sp_shape_d->vec<int64>();
         shape_t(0) = 0;
       }
@@ -453,7 +473,8 @@ class SingleSequenceExampleParserOp : public OpKernel {
         out_shape.AddDim(dim);
       }
       Tensor* out = nullptr;
-      feature_list_dense_values.allocate(d, out_shape, &out);
+      OP_REQUIRES_OK(ctx,
+                     feature_list_dense_values.allocate(d, out_shape, &out));
 
       for (int64 t = 0; t < fl.feature_size(); ++t) {
         const Feature& f = fl.feature(t);
@@ -488,12 +509,13 @@ class SingleSequenceExampleParserOp : public OpKernel {
           const Feature& f = fl.feature(t);
           bool types_match;
           OP_REQUIRES_OK(ctx, CheckTypesMatch(f, dtype, &types_match));
-          OP_REQUIRES(ctx, types_match,
-                      errors::InvalidArgument(
-                          "Name: ", name, ", Feature List: ", key, ", Index: ",
-                          t, ".  Data types don't match. ", "Expected type: ",
-                          DataTypeString(dtype), "  Feature is: ",
-                          ProtoDebugString(f)));
+          OP_REQUIRES(
+              ctx, f.kind_case() == Feature::KIND_NOT_SET || types_match,
+              errors::InvalidArgument("Name: ", name, ", Feature List: ", key,
+                                      ", Index: ", t,
+                                      ".  Data types don't match. ",
+                                      "Expected type: ", DataTypeString(dtype),
+                                      "  Feature is: ", ProtoDebugString(f)));
           sparse_values_tmp.push_back(FeatureSparseCopy(t, key, dtype, f));
         }
       } else {
@@ -514,9 +536,12 @@ class SingleSequenceExampleParserOp : public OpKernel {
       Tensor* sp_indices_d = nullptr;
       Tensor* sp_values_d = nullptr;
       Tensor* sp_shape_d = nullptr;
-      feature_list_sparse_indices.allocate(d, indices_shape, &sp_indices_d);
-      feature_list_sparse_values.allocate(d, values_shape, &sp_values_d);
-      feature_list_sparse_shapes.allocate(d, TensorShape({2}), &sp_shape_d);
+      OP_REQUIRES_OK(ctx, feature_list_sparse_indices.allocate(d, indices_shape,
+                                                               &sp_indices_d));
+      OP_REQUIRES_OK(ctx, feature_list_sparse_values.allocate(d, values_shape,
+                                                              &sp_values_d));
+      OP_REQUIRES_OK(ctx, feature_list_sparse_shapes.allocate(
+                              d, TensorShape({2}), &sp_shape_d));
       auto shape_t = sp_shape_d->vec<int64>();
       shape_t(0) = feature_list_size;
       shape_t(1) = max_num_features;

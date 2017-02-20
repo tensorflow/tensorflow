@@ -197,6 +197,9 @@ class SparseMatmulOpTest : public ::testing::Test {
       data2[i] = internal::random<float>() / RealFloat(PacketSize);
       data3[i] = internal::random<float>() / RealFloat(PacketSize);
     }
+    for (int i = kMaxPacketSize; i < kMaxPacketSize * 2; ++i) {
+      data3[i] = internal::random<float>() / RealFloat(PacketSize);
+    }
 
     // zero out lower 16-bits of mantissa of data3 values
     // copy bfloat representation to data3_bfloat16
@@ -204,8 +207,13 @@ class SparseMatmulOpTest : public ::testing::Test {
       uint16_t* data3_p = reinterpret_cast<uint16_t*>(&data3[i]);
       uint16_t* data3_bfloat16_p =
           reinterpret_cast<uint16_t*>(data3_bfloat16) + i;
-      data3_p[0] = 0;
-      data3_bfloat16_p[0] = data3_p[1];
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+            data3_p[1] = 0;  
+            data3_bfloat16_p[0] = data3_p[0];  
+#else
+            data3_p[0] = 0;  
+            data3_bfloat16_p[0] = data3_p[1];  
+#endif  
     }
   }
 

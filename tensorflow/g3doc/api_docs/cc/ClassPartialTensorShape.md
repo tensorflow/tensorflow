@@ -60,6 +60,12 @@ Return true iff the rank and all of the dimensions are well defined.
 
 
 
+#### `bool tensorflow::PartialTensorShape::IsIdenticalTo(const PartialTensorShape &shape) const` {#bool_tensorflow_PartialTensorShape_IsIdenticalTo}
+
+
+
+Exact equality test. Returns true iff the ranks match (i.e., both are unknown, or both are known and equal), and all dimensions are equal (i.e., both dimensions are known, or both are known and equal). This is a stronger condition that IsCompatibleWith.
+
 #### `bool tensorflow::PartialTensorShape::IsCompatibleWith(const PartialTensorShape &shape) const` {#bool_tensorflow_PartialTensorShape_IsCompatibleWith}
 
 

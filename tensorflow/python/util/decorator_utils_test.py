@@ -21,7 +21,7 @@ from __future__ import print_function
 
 import functools
 
-import tensorflow as tf
+from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import decorator_utils
 
@@ -30,7 +30,7 @@ def _test_function(unused_arg=0):
   pass
 
 
-class GetQualifiedNameTest(tf.test.TestCase):
+class GetQualifiedNameTest(test.TestCase):
 
   def test_method(self):
     self.assertEqual(
@@ -38,12 +38,11 @@ class GetQualifiedNameTest(tf.test.TestCase):
         decorator_utils.get_qualified_name(GetQualifiedNameTest.test_method))
 
   def test_function(self):
-    self.assertEqual(
-        "_test_function",
-        decorator_utils.get_qualified_name(_test_function))
+    self.assertEqual("_test_function",
+                     decorator_utils.get_qualified_name(_test_function))
 
 
-class AddNoticeToDocstringTest(tf.test.TestCase):
+class AddNoticeToDocstringTest(test.TestCase):
 
   def _check(self, doc, expected):
     self.assertEqual(
@@ -96,7 +95,7 @@ class AddNoticeToDocstringTest(tf.test.TestCase):
     self._check("\n  Brief\n  Docstring", expected)
 
 
-class ValidateCallableTest(tf.test.TestCase):
+class ValidateCallableTest(test.TestCase):
 
   def test_function(self):
     decorator_utils.validate_callable(_test_function, "test")
@@ -105,10 +104,12 @@ class ValidateCallableTest(tf.test.TestCase):
     decorator_utils.validate_callable(self.test_method, "test")
 
   def test_callable(self):
+
     class TestClass(object):
 
       def __call__(self):
         pass
+
     decorator_utils.validate_callable(TestClass(), "test")
 
   def test_partial(self):
@@ -119,5 +120,6 @@ class ValidateCallableTest(tf.test.TestCase):
     x = 0
     self.assertRaises(ValueError, decorator_utils.validate_callable, x, "test")
 
+
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

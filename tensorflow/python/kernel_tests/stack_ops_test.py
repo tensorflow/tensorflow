@@ -82,7 +82,7 @@ class StackOpTest(test.TestCase):
         return math_ops.greater(x, 0)
 
       def b1(x, y):
-        nx = math_ops.sub(x, 1)
+        nx = math_ops.subtract(x, 1)
         ny = y + gen_data_flow_ops._stack_pop(h, dtypes.float32)
         return [nx, ny]
 

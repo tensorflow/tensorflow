@@ -11,10 +11,7 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
-
-"""
-This is an example of using recurrent neural networks over characters
-for DBpedia dataset to predict class from description of an entity.
+"""This is an example of using recurrent neural networks over characters for DBpedia dataset to predict class from description of an entity.
 
 This model is similar to one described in this paper:
    "Character-level Convolutional Networks for Text Classification"
@@ -36,7 +33,7 @@ import pandas
 from sklearn import metrics
 import tensorflow as tf
 
-from tensorflow.contrib import learn
+learn = tf.contrib.learn
 
 FLAGS = None
 
@@ -47,7 +44,7 @@ HIDDEN_SIZE = 20
 def char_rnn_model(features, target):
   """Character level recurrent neural network model to predict classes."""
   target = tf.one_hot(target, 15, 1, 0)
-  byte_list = tf.ont_hot(features, 256, 1, 0)
+  byte_list = tf.one_hot(features, 256, 1, 0)
   byte_list = tf.unstack(byte_list, axis=1)
 
   cell = tf.contrib.rnn.GRUCell(HIDDEN_SIZE)
@@ -57,12 +54,15 @@ def char_rnn_model(features, target):
   loss = tf.contrib.losses.softmax_cross_entropy(logits, target)
 
   train_op = tf.contrib.layers.optimize_loss(
-      loss, tf.contrib.framework.get_global_step(),
-      optimizer='Adam', learning_rate=0.01)
+      loss,
+      tf.contrib.framework.get_global_step(),
+      optimizer='Adam',
+      learning_rate=0.01)
 
-  return (
-      {'class': tf.argmax(logits, 1), 'prob': tf.nn.softmax(logits)},
-      loss, train_op)
+  return ({
+      'class': tf.argmax(logits, 1),
+      'prob': tf.nn.softmax(logits)
+  }, loss, train_op)
 
 
 def main(unused_argv):
@@ -85,7 +85,9 @@ def main(unused_argv):
   # Train and predict
   classifier.fit(x_train, y_train, steps=100)
   y_predicted = [
-      p['class'] for p in classifier.predict(x_test, as_iterable=True)]
+      p['class'] for p in classifier.predict(
+          x_test, as_iterable=True)
+  ]
   score = metrics.accuracy_score(y_test, y_predicted)
   print('Accuracy: {0:f}'.format(score))
 
@@ -96,7 +98,6 @@ if __name__ == '__main__':
       '--test_with_fake_data',
       default=False,
       help='Test the example code with fake data.',
-      action='store_true'
-  )
+      action='store_true')
   FLAGS, unparsed = parser.parse_known_args()
   tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

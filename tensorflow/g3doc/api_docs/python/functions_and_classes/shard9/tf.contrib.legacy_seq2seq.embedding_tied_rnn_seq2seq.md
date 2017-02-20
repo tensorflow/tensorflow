@@ -15,7 +15,7 @@ is over 0 to num_symbols - 1.
 
 *  <b>`encoder_inputs`</b>: A list of 1D int32 Tensors of shape [batch_size].
 *  <b>`decoder_inputs`</b>: A list of 1D int32 Tensors of shape [batch_size].
-*  <b>`cell`</b>: rnn_cell.RNNCell defining the cell function and size.
+*  <b>`cell`</b>: core_rnn_cell.RNNCell defining the cell function and size.
 *  <b>`num_symbols`</b>: Integer; number of symbols for both encoder and decoder.
 *  <b>`embedding_size`</b>: Integer, the length of the embedding vector for each symbol.
 *  <b>`num_decoder_symbols`</b>: Integer; number of output symbols for decoder. If

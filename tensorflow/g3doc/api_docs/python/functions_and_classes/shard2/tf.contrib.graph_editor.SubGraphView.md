@@ -204,6 +204,13 @@ The connected output tensors of this subgraph view.
 
 Return a Python set of all the consumers of this subgraph view.
 
+A consumer of a subgraph view is a tf.Operation which is a consumer
+of one of the output tensors and is not in the subgraph.
+
+##### Returns:
+
+  A list of `tf.Operation` which are the consumers of this subgraph view.
+
 
 - - -
 
@@ -344,12 +351,16 @@ affected.
 ##### Args:
 
 
-*  <b>`new_input_indices`</b>: an iterable of integers representing a mapping between
-    the old inputs and the new ones. This mapping can be under-complete and
-    must be without repetitions.
-*  <b>`new_output_indices`</b>: an iterable of integers representing a mapping between
-    the old outputs and the new ones. This mapping can be under-complete and
-    can have repetitions.
+*  <b>`new_input_indices`</b>: an iterable of integers or tf.Tensors
+    representing a mapping between the old inputs and the new ones.
+    Integers must be positive and smaller than the number of old inputs.
+    tf.Tensors must belong to the old list of inputs.
+    This mapping can be under-complete and must be without repetitions.
+*  <b>`new_output_indices`</b>: an iterable of integers or tf.Tensors
+    representing a mapping between the old outputs and the new ones.
+    Integers must be positive and smaller than the number of old outputs.
+    tf.Tensors must belong to the old list of outputs.
+    This mapping can be under-complete and can have repetitions.
 
 ##### Returns:
 
@@ -390,9 +401,11 @@ affected.
 ##### Args:
 
 
-*  <b>`new_input_indices`</b>: an iterable of integers representing a mapping between
-    the old inputs and the new ones. This mapping can be under-complete and
-    must be without repetitions.
+*  <b>`new_input_indices`</b>: an iterable of integers or tf.Tensors
+    representing a mapping between the old inputs and the new ones.
+    Integers must be positive and smaller than the number of old inputs.
+    tf.Tensors must belong to the old list of inputs.
+    This mapping can be under-complete and must be without repetitions.
 
 ##### Returns:
 
@@ -415,9 +428,11 @@ affected.
 ##### Args:
 
 
-*  <b>`new_output_indices`</b>: an iterable of integers representing a mapping between
-    the old outputs and the new ones. This mapping can be under-complete and
-    can have repetitions.
+*  <b>`new_output_indices`</b>: an iterable of integers or tf.Tensors
+    representing a mapping between the old outputs and the new ones.
+    Integers must be positive and smaller than the number of old outputs.
+    tf.Tensors must belong to the old list of outputs.
+    This mapping can be under-complete and can have repetitions.
 
 ##### Returns:
 

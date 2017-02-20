@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/shape_inference.h"
 
+#include "tensorflow/core/framework/node_def.pb_text.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -80,8 +81,7 @@ InferenceContext::InferenceContext(
   PostInputInit(input_handle_shapes, input_handle_dtypes);
 }
 
-InferenceContext::~InferenceContext() {
-}
+InferenceContext::~InferenceContext() {}
 
 Status InferenceContext::set_output(StringPiece output_name,
                                     const std::vector<ShapeHandle>& shapes) {
@@ -92,7 +92,8 @@ Status InferenceContext::set_output(StringPiece output_name,
     const int start = result->second.first;
     const int size = result->second.second - start;
     if (size != shapes.size()) {
-      errors::InvalidArgument("Must have exactly ", shapes.size(), " shapes.");
+      return errors::InvalidArgument("Must have exactly ", shapes.size(),
+                                     " shapes.");
     }
     for (int i = 0; i < size; ++i) {
       outputs_[i + start] = shapes[i];
@@ -229,6 +230,11 @@ string InferenceContext::DebugString(ShapeHandle s) {
 
 string InferenceContext::DebugString(DimensionHandle d) {
   return ValueKnown(d) ? strings::StrCat(Value(d)) : "?";
+}
+
+string InferenceContext::DebugString() const {
+  return strings::StrCat("InferenceContext for node: ",
+                         ProtoDebugString(node_def_));
 }
 
 Status InferenceContext::WithRank(ShapeHandle shape, int32 rank,

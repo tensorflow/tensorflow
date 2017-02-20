@@ -24,11 +24,48 @@ import abc
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training import slot_creator
+
+
+def _get_variable_for(v):
+  """Returns the ResourceVariable responsible for v, or v if not necessary."""
+  if v.op.type == "VarHandleOp":
+    for var in ops.get_collection(ops.GraphKeys.RESOURCES):
+      if (isinstance(var, resource_variable_ops.ResourceVariable)
+          and var.handle.op is v.op):
+        return var
+    raise ValueError("Got %s but  could not locate source variable." % (str(v)))
+  return v
+
+
+def _deduplicate_indexed_slices(values, indices):
+  """Sums `values` associated with any non-unique `indices`.
+
+  Args:
+    values: A `Tensor` with rank >= 1.
+    indices: A one-dimensional integer `Tensor`, indexing into the first
+      dimension of `values` (as in an IndexedSlices object).
+  Returns:
+    A tuple of (`summed_values`, `unique_indices`) where `unique_indices` is a
+    de-duplicated version of `indices` and `summed_values` contains the sum of
+    `values` slices associated with each unique index.
+  """
+  unique_indices, new_index_positions = array_ops.unique(indices)
+  summed_values = math_ops.unsorted_segment_sum(
+      values, new_index_positions,
+      array_ops.shape(unique_indices)[0])
+  return (summed_values, unique_indices)
+
+
+def _var_key(var):
+  return (var.op.graph, var.op.name)
 
 
 class _OptimizableVariable(object):
@@ -60,7 +97,8 @@ class _RefVariableProcessor(_OptimizableVariable):
     else:
       assert isinstance(g, ops.IndexedSlices), ("Gradient ", g, " is neither a "
                                                 "tensor nor IndexedSlices.")
-      return optimizer._apply_sparse(g, self._v)  # pylint: disable=protected-access
+      # pylint: disable=protected-access
+      return optimizer._apply_sparse_duplicate_indices(g, self._v)
 
 
 class _DenseReadResourceVariableProcessor(_OptimizableVariable):
@@ -88,33 +126,17 @@ class _DenseResourceVariableProcessor(_OptimizableVariable):
 
   def update_op(self, optimizer, g):
     # pylint: disable=protected-access
-    return optimizer._resource_apply_dense(g, self._v.handle)
-
-
-class _SparseResourceVariableProcessor(_OptimizableVariable):
-  """Processor for sparse ResourceVariables."""
-
-  def __init__(self, v):
-    self._v = v
-
-  def target(self):
-    return self._v
-
-  def update_op(self, optimizer, g):
-    # pylint: disable=protected-access
-    return optimizer._resource_apply_sparse(
-        g, self._v.op.inputs[0], self._v.op.inputs[1])
+    if isinstance(g, ops.IndexedSlices):
+      return optimizer._resource_apply_sparse_duplicate_indices(
+          g.values, self._v, g.indices)
+    return optimizer._resource_apply_dense(g, self._v)
 
 
 def _get_processor(v):
   if isinstance(v, variables.Variable):
     return _RefVariableProcessor(v)
-  if v.op.type == "ReadVariableOp":
-    return _DenseReadResourceVariableProcessor(v)
   if v.op.type == "VarHandleOp":
     return _DenseResourceVariableProcessor(v)
-  if v.op.type == "ResourceGather":
-    return _SparseResourceVariableProcessor(v)
   raise NotImplementedError("Trying to optimize unsupported type ", v)
 
 
@@ -170,12 +192,6 @@ class Optimizer(object):
   opt.apply_gradients(capped_grads_and_vars)
   ```
 
-  @@__init__
-
-  @@minimize
-  @@compute_gradients
-  @@apply_gradients
-
   ### Gating Gradients
 
   Both `minimize()` and `compute_gradients()` accept a `gate_gradients`
@@ -209,9 +225,6 @@ class Optimizer(object):
 
   This can be useful if you want to log debug a training algorithm, report stats
   about the slots, etc.
-
-  @@get_slot_names
-  @@get_slot
   """
 
   # Values for gate_gradients.
@@ -352,7 +365,9 @@ class Optimizer(object):
     if gate_gradients == Optimizer.GATE_GRAPH:
       grads = control_flow_ops.tuple(grads)
     grads_and_vars = list(zip(grads, var_list))
-    self._assert_valid_dtypes([v for g, v in grads_and_vars if g is not None])
+    self._assert_valid_dtypes(
+        [v for g, v in grads_and_vars
+         if g is not None and v.dtype != dtypes.resource])
     return grads_and_vars
 
   def apply_gradients(self, grads_and_vars, global_step=None, name=None):
@@ -406,7 +421,7 @@ class Optimizer(object):
       raise ValueError("No gradients provided for any variable: %s." %
                        ([str(v) for _, _, v in converted_grads_and_vars],))
     with ops.control_dependencies(None):
-      self._create_slots(var_list)
+      self._create_slots([_get_variable_for(v) for v in var_list])
     update_ops = []
     with ops.name_scope(name, self._name) as name:
       self._prepare()
@@ -450,7 +465,7 @@ class Optimizer(object):
     named_slots = self._slots.get(name, None)
     if not named_slots:
       return None
-    return named_slots.get(var, None)
+    return named_slots.get(_var_key(var), None)
 
   def get_slot_names(self):
     """Return a list of the names of slots created by the `Optimizer`.
@@ -523,13 +538,111 @@ class Optimizer(object):
     raise NotImplementedError()
 
   def _resource_apply_dense(self, grad, handle):
+    """Add ops to apply dense gradients to the variable `handle`.
+
+    Args:
+      grad: a `Tensor` representing the gradient.
+      handle: a `Tensor` of dtype `resource` which points to the variable
+       to be updated.
+
+    Returns:
+      An `Operation` which updates the value of the variable.
+    """
     raise NotImplementedError()
+
+  def _resource_apply_sparse_duplicate_indices(self, grad, handle, indices):
+    """Add ops to apply sparse gradients to `handle`, with repeated indices.
+
+    Optimizers which override this method must deal with repeated indices. See
+    the docstring of `_apply_sparse_duplicate_indices` for details. By default
+    the correct behavior, to sum non-unique indices and their associated
+    gradients, is enforced by first pre-processing `grad` and `indices` and
+    passing them on to `_resource_apply_sparse`. Optimizers which deal correctly
+    with duplicate indices may instead override this method to avoid the
+    overhead of summing.
+
+    Args:
+      grad: a `Tensor` representing the gradient for the affected indices.
+      handle: a `Tensor` of dtype `resource` which points to the variable
+       to be updated.
+      indices: a `Tensor` of integral type representing the indices for
+       which the gradient is nonzero. Indices may be repeated.
+
+    Returns:
+      An `Operation` which updates the value of the variable.
+    """
+    summed_grad, unique_indices = _deduplicate_indexed_slices(
+        values=grad, indices=indices)
+    return self._resource_apply_sparse(summed_grad, handle, unique_indices)
+
+  def _resource_apply_sparse(self, grad, handle, indices):
+    """Add ops to apply sparse gradients to the variable `handle`.
+
+    Similar to `_apply_sparse`, the `indices` argument to this method has been
+    de-duplicated. Optimizers which deal correctly with non-unique indices may
+    instead override `_resource_apply_sparse_duplicate_indices` to avoid this
+    overhead.
+
+    Args:
+      grad: a `Tensor` representing the gradient for the affected indices.
+      handle: a `Tensor` of dtype `resource` which points to the variable
+       to be updated.
+      indices: a `Tensor` of integral type representing the indices for
+       which the gradient is nonzero. Indices are unique.
+
+    Returns:
+      An `Operation` which updates the value of the variable.
+    """
+    raise NotImplementedError()
+
+  def _apply_sparse_duplicate_indices(self, grad, var):
+    """Add ops to apply sparse gradients to `var`, with repeated sparse indices.
+
+    Optimizers which override this method must deal with IndexedSlices objects
+    such as the following:
+
+      IndexedSlicesValue(values=[1, 1], indices=[0, 0], dense_shape=[1])
+
+    The correct interpretation is:
+
+      IndexedSlicesValue(values=[2], indices=[0], dense_shape=[1])
+
+    Many optimizers deal incorrectly with repeated indices when updating based
+    on sparse gradients (e.g. summing squares rather than squaring the sum, or
+    applying momentum terms multiple times). Adding first is always the correct
+    behavior, so this is enforced here by reconstructing the IndexedSlices to
+    have only unique indices, then calling _apply_sparse.
+
+    Optimizers which deal correctly with repeated indices may instead override
+    this method to avoid the overhead of summing indices.
+
+    Args:
+      grad: `IndexedSlices`.
+      var: A `Variable` object.
+
+    Returns:
+      An `Operation`.
+    """
+    summed_values, unique_indices = _deduplicate_indexed_slices(
+        values=grad.values, indices=grad.indices)
+    gradient_no_duplicate_indices = ops.IndexedSlices(
+        indices=unique_indices,
+        values=summed_values,
+        dense_shape=grad.dense_shape)
+    return self._apply_sparse(gradient_no_duplicate_indices, var)
 
   def _apply_sparse(self, grad, var):
     """Add ops to apply sparse gradients to `var`.
 
+    The IndexedSlices object passed to `grad` in this function is by default
+    pre-processed in `_apply_sparse_duplicate_indices` to remove duplicate
+    indices (see its docstring for details). Optimizers which can tolerate or
+    have correct special cases for duplicate sparse indices may override
+    `_apply_sparse_duplicate_indices` instead of this function, avoiding that
+    overhead.
+
     Args:
-      grad: `IndexedSlices`.
+      grad: `IndexedSlices`, with no repeated indices.
       var: A `Variable` object.
 
     Return:
@@ -588,9 +701,9 @@ class Optimizer(object):
       A `Variable` object.
     """
     named_slots = self._slot_dict(slot_name)
-    if var not in named_slots:
-      named_slots[var] = slot_creator.create_slot(var, val, op_name)
-    return named_slots[var]
+    if _var_key(var) not in named_slots:
+      named_slots[_var_key(var)] = slot_creator.create_slot(var, val, op_name)
+    return named_slots[_var_key(var)]
 
   def _zeros_slot(self, var, slot_name, op_name):
     """Find or create a slot initialized with 0.0.
@@ -605,6 +718,6 @@ class Optimizer(object):
       A `Variable` object.
     """
     named_slots = self._slot_dict(slot_name)
-    if var not in named_slots:
-      named_slots[var] = slot_creator.create_zeros_slot(var, op_name)
-    return named_slots[var]
+    if _var_key(var) not in named_slots:
+      named_slots[_var_key(var)] = slot_creator.create_zeros_slot(var, op_name)
+    return named_slots[_var_key(var)]

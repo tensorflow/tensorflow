@@ -13,10 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""## Control Flow Operations
-
-TensorFlow provides several operations and classes that you can use to control
-the execution of operations and add conditional dependencies to your graph.
+"""Control Flow Operations. See the @{python/control_flow_ops} guide.
 
 @@identity
 @@tuple
@@ -26,22 +23,10 @@ the execution of operations and add conditional dependencies to your graph.
 @@cond
 @@case
 @@while_loop
-
-## Logical Operators
-
-TensorFlow provides several operations that you can use to add logical operators
-to your graph.
-
 @@logical_and
 @@logical_not
 @@logical_or
 @@logical_xor
-
-## Comparison Operators
-
-TensorFlow provides several operations that you can use to add comparison
-operators to your graph.
-
 @@equal
 @@not_equal
 @@less
@@ -49,12 +34,6 @@ operators to your graph.
 @@greater
 @@greater_equal
 @@where
-
-## Debugging Operations
-
-TensorFlow provides several operations that you can use to validate values and
-debug your graph.
-
 @@is_finite
 @@is_inf
 @@is_nan
@@ -703,6 +682,7 @@ class GradLoopState(object):
     self._switch_map = {}
     self._unused_exits = []
     self._deferred_exits = []
+    self._forward_loop_exits = list(forward_ctxt.loop_exits)
     self._pending_exits_count = len(forward_ctxt.loop_exits)
 
     self._outer_grad_state = outer_grad_state
@@ -819,6 +799,11 @@ class GradLoopState(object):
   def deferred_exits(self):
     """The list of "deferred" exits."""
     return self._deferred_exits
+
+  @property
+  def forward_loop_exits(self):
+    """The list of exits of the forward loop."""
+    return self._forward_loop_exits
 
   @property
   def pending_exits_count(self):
@@ -1059,8 +1044,8 @@ class ControlFlowState(object):
       to backprop.
     """
     loop_exits = []
-    for forward_ctxt, grad_state in self._map.items():
-      for y in forward_ctxt.loop_exits:
+    for _, grad_state in self._map.items():
+      for y in grad_state.forward_loop_exits:
         # pylint: disable=protected-access
         if pending_count[y.op._id] == 0:
           grad_state.pending_exits_count -= 1
@@ -1105,7 +1090,7 @@ class ControlFlowState(object):
       self._map[forward_ctxt] = grad_state
 
       # We need to include all exits of a loop for backprop.
-      for loop_exit in forward_ctxt.loop_exits:
+      for loop_exit in grad_state.forward_loop_exits:
         if not between_ops[loop_exit.op._id]:
           between_ops[loop_exit.op._id] = True
           between_op_list.append(loop_exit.op)
@@ -1364,7 +1349,8 @@ class ControlFlowContext(object):
     g = ops.get_default_graph()
     self._external_values = {}
     for k, v in values_def.external_values.items():
-      self._external_values[k] = g.as_graph_element(v)
+      self._external_values[k] = g.as_graph_element(
+          ops.prepend_name_scope(v, import_scope))
     op_names = set([op.split(":")[0]
                     for op in self._values - set(self._external_values)])
     for op in op_names:
@@ -1597,6 +1583,7 @@ class CondContext(ControlFlowContext):
         self._values.add(result.name)
       with ops.control_dependencies(None):
         result = _SwitchRefOrTensor(result, self._pred)[self._branch]
+      result.op.graph.prevent_fetching(result.op)
       # pylint: disable=protected-access
       result.op._set_control_flow_context(self)
       # pylint: enable=protected-access
@@ -1621,19 +1608,11 @@ class CondContext(ControlFlowContext):
     else:
       for index in range(len(op.inputs)):
         x = op.inputs[index]
-        if x.name not in self._values:
-          self._values.add(x.name)
-          # Add this value to the parent contexts up to the context that
-          # creates this value.
-          real_x = x
-          if self._outer_context:
-            real_x = self._outer_context.AddValue(x)
-            self._values.add(real_x.name)
-          real_x = _SwitchRefOrTensor(real_x, self._pred)[self._branch]
-          self._external_values[x.name] = real_x
-        x = self._external_values.get(x.name)
-        if x is not None:
-          op._update_input(index, x)
+        real_x = self.AddValue(x)
+        if real_x != x:
+          # pylint: disable=protected-access
+          op._update_input(index, real_x)
+          # pylint: enable=protected-access
       for x in op.outputs:
         self._values.add(x.name)
     if self._outer_context or not IsLoopExit(op):
@@ -1699,13 +1678,13 @@ def cond(pred, fn1, fn2, name=None):
   fn1 and fn2. Consider the following simple program:
 
   ```python
-  z = tf.mul(a, b)
+  z = tf.multiply(a, b)
   result = tf.cond(x < y, lambda: tf.add(x, z), lambda: tf.square(y))
   ```
 
-  If x < y, the `tf.add` operation will be executed and tf.square
+  If x < y, the `tf.add` operation will be executed and `tf.square`
   operation will not be executed. Since z is needed for at least one
-  branch of the cond, the tf.mul operation is always executed, unconditionally.
+  branch of the cond, the `tf.multiply` operation is always executed, unconditionally.
   Although this behavior is consistent with the dataflow model of TensorFlow,
   it has occasionally surprised some users who expected a lazier semantics.
 
@@ -1729,7 +1708,7 @@ def cond(pred, fn1, fn2, name=None):
   ```python
     x = tf.constant(2)
     y = tf.constant(5)
-    def f1(): return tf.mul(x, 17)
+    def f1(): return tf.multiply(x, 17)
     def f2(): return tf.add(y, 23)
     r = tf.cond(tf.less(x, y), f1, f2)
     # r is set to f1().
@@ -1792,6 +1771,15 @@ def cond(pred, fn1, fn2, name=None):
     ops.add_to_collection(ops.GraphKeys.COND_CONTEXT, context_f)
 
     return merges[0] if len(merges) == 1 else merges
+
+
+def _resource_safe_shape(t):
+  """Returns the shape of t or the variable it points to."""
+  if t.dtype == dtypes.resource:
+    while t.op.inputs:
+      t = t.op.inputs[0]
+    return tensor_shape.TensorShape(t.op.get_attr("shape"))
+  return array_ops.shape_internal(t, optimize=False)
 
 
 # TODO(yuanbyu): Consider having a unified notion of context for
@@ -1993,6 +1981,8 @@ class WhileContext(ControlFlowContext):
           forward_ctxt = _GetWhileContext(val.op)
           if IsLoopExit(val.op):
             forward_ctxt = forward_ctxt.outer_context
+            if forward_ctxt:
+              forward_ctxt = forward_ctxt.GetWhileContext()
           if forward_ctxt == grad_ctxt.grad_state.forward_context:
             real_val = grad_ctxt.grad_state.GetRealValue(val)
             self._external_values[val.name] = real_val
@@ -2058,9 +2048,8 @@ class WhileContext(ControlFlowContext):
     else:
       for index in range(len(op.inputs)):
         x = op.inputs[index]
-        self.AddValue(x)
-        real_x = self._external_values.get(x.name)
-        if real_x is not None:
+        real_x = self.AddValue(x)
+        if real_x != x:
           op._update_input(index, real_x)
       # Remove any external control dependency on this op.
       self._RemoveExternalControlEdges(op)
@@ -2125,6 +2114,7 @@ class WhileContext(ControlFlowContext):
     merge_n.op._update_input(1, next_n)
 
     total_iterations = exit(switch_n[0], name="f_count")
+    self.loop_exits.append(total_iterations)
     self.ExitResult([total_iterations])
     self.Exit()
     return total_iterations, next_n
@@ -2159,16 +2149,17 @@ class WhileContext(ControlFlowContext):
     merge_count = merge([enter_count, enter_count])[0]
     self._pivot_for_pred = merge_count
 
-    cond = math_ops.greater_equal(merge_count, one)
-    self._pivot = loop_cond(cond, name="b_count")
+    pred = math_ops.greater_equal(merge_count, one)
+    self._pivot = loop_cond(pred, name="b_count")
     switch_count = switch(merge_count, self._pivot)
 
-    index = math_ops.sub(switch_count[1], one)
+    index = math_ops.subtract(switch_count[1], one)
     self._pivot_for_body = index
     next_count = _NextIteration(index)
     merge_count.op._update_input(1, next_count)
 
     final_zero = exit(switch_count[0], name="b_count")
+    self.loop_exits.append(final_zero)
     if outer_grad_state is not None:
       # Force the stack pops of i-th execution of an inner loop to be ordered
       # before the pops of (i+1)-th execution of the same inner loop.
@@ -2250,6 +2241,7 @@ class WhileContext(ControlFlowContext):
     merge_acc.op._update_input(1, next_acc)  # pylint: disable=protected-access
 
     acc_result = exit(switch_acc_false, name="b_acc")
+    self.loop_exits.append(acc_result)
     self.ExitResult([acc_result])
     return acc_result
 
@@ -2280,8 +2272,8 @@ class WhileContext(ControlFlowContext):
                                         name="b_acc")
       if self.outer_context: self.outer_context.Exit()
     else:
-      values_shape = array_ops.shape_internal(op.inputs[0], optimize=False)[1:]
-      values_shape = array_ops.concat_v2([[1], values_shape], 0)
+      values_shape = _resource_safe_shape(op.inputs[0])[1:]
+      values_shape = array_ops.concat([[1], values_shape], 0)
       values_acc = array_ops.zeros(values_shape, dtype=values.dtype)
     indices_acc = constant_op.constant([0], indices.dtype)
     shape_acc = None
@@ -2313,7 +2305,7 @@ class WhileContext(ControlFlowContext):
 
     # The actual accumulation.
     acc_indexed_slices = [
-        array_ops.concat_v2([xa[1], xv], 0)
+        array_ops.concat([xa[1], xv], 0)
         for xa, xv in zip(switch_acc[:2], [indices, values])
     ]
     if shape_acc is not None:
@@ -2326,6 +2318,7 @@ class WhileContext(ControlFlowContext):
       xm.op._update_input(1, xn)  # pylint: disable=protected-access
 
     acc_exits = [exit(x[0], name="b_acc") for x in switch_acc]
+    self.loop_exits.extend(acc_exits)
 
     self.ExitResult(acc_exits)
     return ops.IndexedSlices(
@@ -2520,7 +2513,7 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
   `loop_vars` is the same in every iteration. The `shape_invariants` argument
   allows the caller to specify a less specific shape invariant for each loop
   variable, which is needed if the shape varies between iterations. The
-  [`Tensor.set_shape()`](../../api_docs/python/framework.md#Tensor.set_shape)
+  @{tf.Tensor.set_shape}
   function may also be used in the `body` function to indicate that
   the output loop variable has a particular shape. The shape invariant for
   SparseTensor and IndexedSlices are treated specially as follows:
@@ -2573,35 +2566,35 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
 
   Example:
 
-    ```python
-    i = tf.constant(0)
-    c = lambda i: tf.less(i, 10)
-    b = lambda i: tf.add(i, 1)
-    r = tf.while_loop(c, b, [i])
-    ```
+  ```python
+  i = tf.constant(0)
+  c = lambda i: tf.less(i, 10)
+  b = lambda i: tf.add(i, 1)
+  r = tf.while_loop(c, b, [i])
+  ```
 
   Example with nesting and a namedtuple:
 
-    ```python
-    import collections
-    Pair = collections.namedtuple('Pair', 'j, k')
-    ijk_0 = (tf.constant(0), Pair(tf.constant(1), tf.constant(2)))
-    c = lambda i, p: i < 10
-    b = lambda i, p: (i + 1, Pair((p.j + p.k), (p.j - p.k)))
-    ijk_final = tf.while_loop(c, b, ijk_0)
-    ```
+  ```python
+  import collections
+  Pair = collections.namedtuple('Pair', 'j, k')
+  ijk_0 = (tf.constant(0), Pair(tf.constant(1), tf.constant(2)))
+  c = lambda i, p: i < 10
+  b = lambda i, p: (i + 1, Pair((p.j + p.k), (p.j - p.k)))
+  ijk_final = tf.while_loop(c, b, ijk_0)
+  ```
 
   Example using shape_invariants:
 
-    ```python
-    i0 = tf.constant(0)
-    m0 = tf.ones([2, 2])
-    c = lambda i, m: i < 10
-    b = lambda i, m: [i+1, tf.concat_v2(0, [m, m])]
-    tf.while_loop(
-        c, b, loop_vars=[i0, m0],
-        shape_invariants=[i0.get_shape(), tensor_shape.TensorShape([None, 2])])
-    ```
+  ```python
+  i0 = tf.constant(0)
+  m0 = tf.ones([2, 2])
+  c = lambda i, m: i < 10
+  b = lambda i, m: [i+1, tf.concat([m, m], axis=0)]
+  tf.while_loop(
+      c, b, loop_vars=[i0, m0],
+      shape_invariants=[i0.get_shape(), tf.TensorShape([None, 2])])
+  ```
 
   """
   with ops.name_scope(name, "while", loop_vars) as name:
@@ -2675,7 +2668,7 @@ def with_dependencies(dependencies, output_tensor, name=None):
   See also `tuple` and `group`.
 
   Args:
-    dependencies: A list of operations to run before this op finishes.
+    dependencies: Iterable of operations to run before this op finishes.
     output_tensor: A `Tensor` or `IndexedSlices` that will be returned.
     name: (Optional) A name for this operation.
 
@@ -2686,7 +2679,7 @@ def with_dependencies(dependencies, output_tensor, name=None):
     TypeError: if `output_tensor` is not a `Tensor` or `IndexedSlices`.
   """
   with ops.name_scope(name, "control_dependency",
-                      dependencies + [output_tensor]) as name:
+                      list(dependencies) + [output_tensor]) as name:
     with ops.colocate_with(output_tensor):
       with ops.control_dependencies(dependencies):
         output_tensor = ops.convert_to_tensor_or_indexed_slices(output_tensor)

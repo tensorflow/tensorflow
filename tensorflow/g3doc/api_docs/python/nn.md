@@ -7,16 +7,7 @@ Note: Functions taking `Tensor` arguments can also take anything accepted by
 
 [TOC]
 
-## Activation Functions.
-
-The activation ops provide different types of nonlinearities for use in neural
-networks.  These include smooth nonlinearities (`sigmoid`, `tanh`, `elu`,
-`softplus`, and `softsign`), continuous but not everywhere differentiable
-functions (`relu`, `relu6`, `crelu` and `relu_x`), and random regularization
-(`dropout`).
-
-All activation ops apply componentwise, and produce a tensor of the same
-shape as the input tensor.
+## Neural network support. See the @{$python/nn} guide.
 
 - - -
 
@@ -241,75 +232,6 @@ Computes hyperbolic tangent of `x` element-wise.
   A Tensor or SparseTensor respectively with the same type as `x` if
   `x.dtype != qint32` otherwise the return type is `quint8`.
 
-
-
-## Convolution
-
-The convolution ops sweep a 2-D filter over a batch of images, applying the
-filter to each window of each image of the appropriate size.  The different
-ops trade off between generic vs. specific filters:
-
-* `conv2d`: Arbitrary filters that can mix channels together.
-* `depthwise_conv2d`: Filters that operate on each channel independently.
-* `separable_conv2d`: A depthwise spatial filter followed by a pointwise filter.
-
-Note that although these ops are called "convolution", they are strictly
-speaking "cross-correlation" since the filter is combined with an input window
-without reversing the filter.  For details, see [the properties of
-cross-correlation](https://en.wikipedia.org/wiki/Cross-correlation#Properties).
-
-The filter is applied to image patches of the same size as the filter and
-strided according to the `strides` argument.  `strides = [1, 1, 1, 1]` applies
-the filter to a patch at every offset, `strides = [1, 2, 2, 1]` applies the
-filter to every other image patch in each dimension, etc.
-
-Ignoring channels for the moment, and assume that the 4-D `input` has shape
-`[batch, in_height, in_width, ...]` and the 4-D `filter` has shape
-`[filter_height, filter_width, ...]`, then the spatial semantics of the
-convolution ops are as follows: first, according to the padding scheme chosen
-as `'SAME'` or `'VALID'`, the output size and the padding pixels are computed.
-For the `'SAME'` padding, the output height and width are computed as:
-
-    out_height = ceil(float(in_height) / float(strides[1]))
-    out_width  = ceil(float(in_width) / float(strides[2]))
-
-and the padding on the top and left are computed as:
-
-    pad_along_height = ((out_height - 1) * strides[1] +
-                        filter_height - in_height)
-    pad_along_width = ((out_width - 1) * strides[2] +
-                       filter_width - in_width)
-    pad_top = pad_along_height / 2
-    pad_left = pad_along_width / 2
-
-Note that the division by 2 means that there might be cases when the padding on
-both sides (top vs bottom, right vs left) are off by one. In this case, the
-bottom and right sides always get the one additional padded pixel. For example,
-when `pad_along_height` is 5, we pad 2 pixels at the top and 3 pixels at the
-bottom. Note that this is different from existing libraries such as cuDNN and
-Caffe, which explicitly specify the number of padded pixels and always pad the
-same number of pixels on both sides.
-
-For the `'VALID`' padding, the output height and width are computed as:
-
-    out_height = ceil(float(in_height - filter_height + 1) / float(strides[1]))
-    out_width  = ceil(float(in_width - filter_width + 1) / float(strides[2]))
-
-and the padding values are always zero. The output is then computed as
-
-    output[b, i, j, :] =
-        sum_{di, dj} input[b, strides[1] * i + di - pad_top,
-                           strides[2] * j + dj - pad_left, ...] *
-                     filter[di, dj, ...]
-
-where any value outside the original input image region are considered zero (
-i.e. we pad zero values around the border of the image).
-
-Since `input` is 4-D, each `input[b, i, j, :]` is a vector.  For `conv2d`, these
-vectors are multiplied by the `filter[di, dj, :, :]` matrices to produce new
-vectors.  For `depthwise_conv_2d`, each scalar component `input[b, i, j, k]`
-is multiplied by a vector `filter[di, dj, k]`, and all the vectors are
-concatenated.
 
 - - -
 
@@ -1129,22 +1051,6 @@ Computes the gradients of depthwise convolution with respect to the input.
   w.r.t. the input of the convolution.
 
 
-
-## Pooling
-
-The pooling ops sweep a rectangular window over the input tensor, computing a
-reduction operation for each window (average, max, or max with argmax).  Each
-pooling op uses rectangular windows of size `ksize` separated by offset
-`strides`.  For example, if `strides` is all ones every window is used, if
-`strides` is all twos every other window is used in each dimension, etc.
-
-In detail, the output is
-
-    output[i] = reduce(value[strides * i:strides * i + ksize])
-
-where the indices also take into consideration the padding values. Please refer
-to the `Convolution` section for details about the padding calculation.
-
 - - -
 
 ### `tf.nn.avg_pool(value, ksize, strides, padding, data_format='NHWC', name=None)` {#avg_pool}
@@ -1512,44 +1418,6 @@ simply transposed as follows:
 *  <b>`ValueError`</b>: if arguments are invalid.
 
 
-
-## Morphological filtering
-
-Morphological operators are non-linear filters used in image processing.
-
-[Greyscale morphological dilation
-](https://en.wikipedia.org/wiki/Dilation_(morphology))
-is the max-sum counterpart of standard sum-product convolution:
-
-    output[b, y, x, c] =
-        max_{dy, dx} input[b,
-                           strides[1] * y + rates[1] * dy,
-                           strides[2] * x + rates[2] * dx,
-                           c] +
-                     filter[dy, dx, c]
-
-The `filter` is usually called structuring function. Max-pooling is a special
-case of greyscale morphological dilation when the filter assumes all-zero
-values (a.k.a. flat structuring function).
-
-[Greyscale morphological erosion
-](https://en.wikipedia.org/wiki/Erosion_(morphology))
-is the min-sum counterpart of standard sum-product convolution:
-
-    output[b, y, x, c] =
-        min_{dy, dx} input[b,
-                           strides[1] * y - rates[1] * dy,
-                           strides[2] * x - rates[2] * dx,
-                           c] -
-                     filter[dy, dx, c]
-
-Dilation and erosion are dual to each other. The dilation of the input signal
-`f` by the structuring signal `g` is equal to the negation of the erosion of
-`-f` by the reflected `g`, and vice versa.
-
-Striding and padding is carried out in exactly the same way as in standard
-convolution. Please refer to the `Convolution` section for details.
-
 - - -
 
 ### `tf.nn.dilation2d(input, filter, strides, rates, padding, name=None)` {#dilation2d}
@@ -1794,12 +1662,6 @@ can be combined into a single `with_space_to_batch` operation as follows:
 *  <b>`ValueError`</b>: if `spatial_dims` are invalid.
 
 
-
-## Normalization
-
-Normalization is useful to prevent neurons from saturating when inputs may
-have varying scale, and to aid generalization.
-
 - - -
 
 ### `tf.nn.l2_normalize(x, dim, epsilon=1e-12, name=None)` {#l2_normalize}
@@ -1929,6 +1791,9 @@ The mean and variance are calculated by aggregating the contents of `x`
 across `axes`.  If `x` is 1-D and `axes = [0]` this is just the mean
 and variance of a vector.
 
+Note: for numerical stability, when shift=None, the true mean
+would be computed and used as shift.
+
 When using these moments for batch normalization (see
 `tf.nn.batch_normalization`):
 
@@ -1943,8 +1808,9 @@ When using these moments for batch normalization (see
 *  <b>`axes`</b>: Array of ints.  Axes along which to compute mean and
     variance.
 *  <b>`shift`</b>: A `Tensor` containing the value by which to shift the data for
-    numerical stability, or `None` if no shift is to be performed. A shift
-    close to the true mean provides the most numerically stable results.
+    numerical stability, or `None` in which case the true mean of the data is
+    used as shift. A shift close to the true mean provides the most
+    numerically stable results.
 *  <b>`name`</b>: Name used to scope the operations that compute the moments.
 *  <b>`keep_dims`</b>: produce moments with the same dimensionality as the input.
 
@@ -2094,13 +1960,6 @@ This op is deprecated. See `tf.nn.batch_normalization`.
    A batch-normalized `t`.
 
 
-
-## Losses
-
-The loss ops measure error between two tensors, or between a tensor and zero.
-These can be used for measuring accuracy of a network in a regression task
-or for regularization purposes (weight decay).
-
 - - -
 
 ### `tf.nn.l2_loss(t, name=None)` {#l2_loss}
@@ -2170,14 +2029,9 @@ loss is
 *  <b>`ValueError`</b>: If `log_input` and `targets` do not have the same shape.
 
 
-
-## Classification
-
-TensorFlow provides several operations that help you perform classification.
-
 - - -
 
-### `tf.nn.sigmoid_cross_entropy_with_logits(logits, targets, name=None)` {#sigmoid_cross_entropy_with_logits}
+### `tf.nn.sigmoid_cross_entropy_with_logits(_sentinel=None, labels=None, logits=None, name=None)` {#sigmoid_cross_entropy_with_logits}
 
 Computes sigmoid cross entropy given `logits`.
 
@@ -2186,7 +2040,7 @@ class is independent and not mutually exclusive.  For instance, one could
 perform multilabel classification where a picture can contain both an elephant
 and a dog at the same time.
 
-For brevity, let `x = logits`, `z = targets`.  The logistic loss is
+For brevity, let `x = logits`, `z = labels`.  The logistic loss is
 
       z * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
     = z * -log(1 / (1 + exp(-x))) + (1 - z) * -log(exp(-x) / (1 + exp(-x)))
@@ -2206,13 +2060,14 @@ equivalent formulation
 
     max(x, 0) - x * z + log(1 + exp(-abs(x)))
 
-`logits` and `targets` must have the same type and shape.
+`logits` and `labels` must have the same type and shape.
 
 ##### Args:
 
+  _sentinel: Used to prevent positional parameters. Internal, do not use.
 
+*  <b>`labels`</b>: A `Tensor` of the same type and shape as `logits`.
 *  <b>`logits`</b>: A `Tensor` of type `float32` or `float64`.
-*  <b>`targets`</b>: A `Tensor` of the same type and shape as `logits`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -2223,7 +2078,7 @@ equivalent formulation
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If `logits` and `targets` do not have the same shape.
+*  <b>`ValueError`</b>: If `logits` and `labels` do not have the same shape.
 
 
 - - -
@@ -2288,7 +2143,7 @@ For each batch `i` and class `j` we have
 
 - - -
 
-### `tf.nn.softmax_cross_entropy_with_logits(logits, labels, dim=-1, name=None)` {#softmax_cross_entropy_with_logits}
+### `tf.nn.softmax_cross_entropy_with_logits(_sentinel=None, labels=None, logits=None, dim=-1, name=None)` {#softmax_cross_entropy_with_logits}
 
 Computes softmax cross entropy between `logits` and `labels`.
 
@@ -2312,11 +2167,15 @@ output of `softmax`, as it will produce incorrect results.
 `logits` and `labels` must have the same shape `[batch_size, num_classes]`
 and the same dtype (either `float16`, `float32`, or `float64`).
 
+**Note that to avoid confusion, it is required to pass only named arguments to
+this function.**
+
 ##### Args:
 
+  _sentinel: Used to prevent positional parameters. Internal, do not use.
 
-*  <b>`logits`</b>: Unscaled log probabilities.
 *  <b>`labels`</b>: Each row `labels[i]` must be a valid probability distribution.
+*  <b>`logits`</b>: Unscaled log probabilities.
 *  <b>`dim`</b>: The class dimension. Defaulted to -1 which is the last dimension.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -2328,7 +2187,7 @@ and the same dtype (either `float16`, `float32`, or `float64`).
 
 - - -
 
-### `tf.nn.sparse_softmax_cross_entropy_with_logits(logits, labels, name=None)` {#sparse_softmax_cross_entropy_with_logits}
+### `tf.nn.sparse_softmax_cross_entropy_with_logits(_sentinel=None, labels=None, logits=None, name=None)` {#sparse_softmax_cross_entropy_with_logits}
 
 Computes sparse softmax cross entropy between `logits` and `labels`.
 
@@ -2351,16 +2210,20 @@ output of `softmax`, as it will produce incorrect results.
 A common use case is to have logits of shape `[batch_size, num_classes]` and
 labels of shape `[batch_size]`. But higher dimensions are supported.
 
+**Note that to avoid confusion, it is required to pass only named arguments to
+this function.**
+
 ##### Args:
 
+  _sentinel: Used to prevent positional parameters. Internal, do not use.
 
-*  <b>`logits`</b>: Unscaled log probabilities of rank `r` and shape
-    `[d_0, d_1, ..., d_{r-2}, num_classes]` and dtype `float32` or `float64`.
-*  <b>`labels`</b>: `Tensor` of shape `[d_0, d_1, ..., d_{r-2}]` and dtype `int32` or
-    `int64`. Each entry in `labels` must be an index in `[0, num_classes)`.
-    Other values will raise an exception when this op is run on CPU, and
-    return `NaN` for corresponding corresponding loss and gradient rows
-    on GPU.
+*  <b>`labels`</b>: `Tensor` of shape `[d_0, d_1, ..., d_{r-1}]` (where `r` is rank of
+    `labels` and result) and dtype `int32` or `int64`. Each entry in `labels`
+    must be an index in `[0, num_classes)`. Other values will raise an
+    exception when this op is run on CPU, and return `NaN` for corresponding
+    loss and gradient rows on GPU.
+*  <b>`logits`</b>: Unscaled log probabilities of shape
+    `[d_0, d_1, ..., d_{r-1}, num_classes]` and dtype `float32` or `float64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -2429,12 +2292,6 @@ the implementation uses
 
 *  <b>`ValueError`</b>: If `logits` and `targets` do not have the same shape.
 
-
-
-## Embeddings
-
-TensorFlow provides library support for looking up values in embedding
-tensors.
 
 - - -
 
@@ -2574,13 +2431,6 @@ is the sum of the size of params along dimension 0.
 *  <b>`ValueError`</b>: If combiner is not one of {"mean", "sqrtn", "sum"}.
 
 
-
-## Recurrent Neural Networks
-
-TensorFlow provides a number of methods for constructing Recurrent
-Neural Networks.  Most accept an `RNNCell`-subclassed object
-(see the documentation for `tf.contrib.rnn`).
-
 - - -
 
 ### `tf.nn.dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None, dtype=None, parallel_iterations=None, swap_memory=False, time_major=False, scope=None)` {#dynamic_rnn}
@@ -2688,110 +2538,6 @@ for correctness than performance, unlike in rnn().
 
 - - -
 
-### `tf.nn.rnn(cell, inputs, initial_state=None, dtype=None, sequence_length=None, scope=None)` {#rnn}
-
-Creates a recurrent neural network specified by RNNCell `cell`.
-
-The simplest form of RNN network generated is:
-
-```python
-  state = cell.zero_state(...)
-  outputs = []
-  for input_ in inputs:
-    output, state = cell(input_, state)
-    outputs.append(output)
-  return (outputs, state)
-```
-However, a few other options are available:
-
-An initial state can be provided.
-If the sequence_length vector is provided, dynamic calculation is performed.
-This method of calculation does not compute the RNN steps past the maximum
-sequence length of the minibatch (thus saving computational time),
-and properly propagates the state at an example's sequence length
-to the final state output.
-
-The dynamic calculation performed is, at time `t` for batch row `b`,
-
-```python
-  (output, state)(b, t) =
-    (t >= sequence_length(b))
-      ? (zeros(cell.output_size), states(b, sequence_length(b) - 1))
-      : cell(input(b, t), state(b, t - 1))
-```
-
-##### Args:
-
-
-*  <b>`cell`</b>: An instance of RNNCell.
-*  <b>`inputs`</b>: A length T list of inputs, each a `Tensor` of shape
-    `[batch_size, input_size]`, or a nested tuple of such elements.
-*  <b>`initial_state`</b>: (optional) An initial state for the RNN.
-    If `cell.state_size` is an integer, this must be
-    a `Tensor` of appropriate type and shape `[batch_size, cell.state_size]`.
-    If `cell.state_size` is a tuple, this should be a tuple of
-    tensors having shapes `[batch_size, s] for s in cell.state_size`.
-*  <b>`dtype`</b>: (optional) The data type for the initial state and expected output.
-    Required if initial_state is not provided or RNN state has a heterogeneous
-    dtype.
-*  <b>`sequence_length`</b>: Specifies the length of each sequence in inputs.
-    An int32 or int64 vector (tensor) size `[batch_size]`, values in `[0, T)`.
-*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to "rnn".
-
-##### Returns:
-
-  A pair (outputs, state) where:
-
-  - outputs is a length T list of outputs (one for each input), or a nested
-    tuple of such elements.
-  - state is the final state
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: If `cell` is not an instance of RNNCell.
-*  <b>`ValueError`</b>: If `inputs` is `None` or an empty list, or if the input depth
-    (column size) cannot be inferred from inputs via shape inference.
-
-
-- - -
-
-### `tf.nn.state_saving_rnn(cell, inputs, state_saver, state_name, sequence_length=None, scope=None)` {#state_saving_rnn}
-
-RNN that accepts a state saver for time-truncated RNN calculation.
-
-##### Args:
-
-
-*  <b>`cell`</b>: An instance of `RNNCell`.
-*  <b>`inputs`</b>: A length T list of inputs, each a `Tensor` of shape
-    `[batch_size, input_size]`.
-*  <b>`state_saver`</b>: A state saver object with methods `state` and `save_state`.
-*  <b>`state_name`</b>: Python string or tuple of strings.  The name to use with the
-    state_saver. If the cell returns tuples of states (i.e.,
-    `cell.state_size` is a tuple) then `state_name` should be a tuple of
-    strings having the same length as `cell.state_size`.  Otherwise it should
-    be a single string.
-*  <b>`sequence_length`</b>: (optional) An int32/int64 vector size [batch_size].
-    See the documentation for rnn() for more details about sequence_length.
-*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to "rnn".
-
-##### Returns:
-
-  A pair (outputs, state) where:
-    outputs is a length T list of outputs (one for each input)
-    states is the final state
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: If `cell` is not an instance of RNNCell.
-*  <b>`ValueError`</b>: If `inputs` is `None` or an empty list, or if the arity and
-   type of `state_name` does not match that of `cell.state_size`.
-
-
-- - -
-
 ### `tf.nn.bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None, initial_state_fw=None, initial_state_bw=None, dtype=None, parallel_iterations=None, swap_memory=False, time_major=False, scope=None)` {#bidirectional_dynamic_rnn}
 
 Creates a dynamic version of bidirectional recurrent neural network.
@@ -2867,7 +2613,7 @@ given.
       It returns a tuple instead of a single concatenated `Tensor`, unlike
       in the `bidirectional_rnn`. If the concatenated one is preferred,
       the forward and backward outputs can be concatenated as
-      `tf.concat_v2(outputs, 2)`.
+      `tf.concat(outputs, 2)`.
 *  <b>`output_states`</b>: A tuple (output_state_fw, output_state_bw) containing
       the forward and the backward final states of bidirectional rnn.
 
@@ -2875,57 +2621,6 @@ given.
 
 
 *  <b>`TypeError`</b>: If `cell_fw` or `cell_bw` is not an instance of `RNNCell`.
-
-
-- - -
-
-### `tf.nn.bidirectional_rnn(cell_fw, cell_bw, inputs, initial_state_fw=None, initial_state_bw=None, dtype=None, sequence_length=None, scope=None)` {#bidirectional_rnn}
-
-Creates a bidirectional recurrent neural network.
-
-Similar to the unidirectional case above (rnn) but takes input and builds
-independent forward and backward RNNs with the final forward and backward
-outputs depth-concatenated, such that the output will have the format
-[time][batch][cell_fw.output_size + cell_bw.output_size]. The input_size of
-forward and backward cell must match. The initial state for both directions
-is zero by default (but can be set optionally) and no intermediate states are
-ever returned -- the network is fully unrolled for the given (passed in)
-length(s) of the sequence(s) or completely unrolled if length(s) is not given.
-
-##### Args:
-
-
-*  <b>`cell_fw`</b>: An instance of RNNCell, to be used for forward direction.
-*  <b>`cell_bw`</b>: An instance of RNNCell, to be used for backward direction.
-*  <b>`inputs`</b>: A length T list of inputs, each a tensor of shape
-    [batch_size, input_size], or a nested tuple of such elements.
-*  <b>`initial_state_fw`</b>: (optional) An initial state for the forward RNN.
-    This must be a tensor of appropriate type and shape
-    `[batch_size, cell_fw.state_size]`.
-    If `cell_fw.state_size` is a tuple, this should be a tuple of
-    tensors having shapes `[batch_size, s] for s in cell_fw.state_size`.
-*  <b>`initial_state_bw`</b>: (optional) Same as for `initial_state_fw`, but using
-    the corresponding properties of `cell_bw`.
-*  <b>`dtype`</b>: (optional) The data type for the initial state.  Required if
-    either of the initial states are not provided.
-*  <b>`sequence_length`</b>: (optional) An int32/int64 vector, size `[batch_size]`,
-    containing the actual lengths for each of the sequences.
-*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to
-    "bidirectional_rnn"
-
-##### Returns:
-
-  A tuple (outputs, output_state_fw, output_state_bw) where:
-    outputs is a length `T` list of outputs (one for each input), which
-      are depth-concatenated forward and backward outputs.
-    output_state_fw is the final state of the forward rnn.
-    output_state_bw is the final state of the backward rnn.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: If `cell_fw` or `cell_bw` is not an instance of `RNNCell`.
-*  <b>`ValueError`</b>: If inputs is None or an empty list.
 
 
 - - -
@@ -3101,9 +2796,6 @@ outputs = outputs_ta.stack()
     a `callable`.
 
 
-
-## Connectionist Temporal Classification (CTC)
-
 - - -
 
 ### `tf.nn.ctc_loss(labels, inputs, sequence_length, preprocess_collapse_repeated=False, ctc_merge_repeated=True, time_major=True)` {#ctc_loss}
@@ -3225,8 +2917,8 @@ This means that if consecutive logits' maximum indices are the same,
 only the first of these is emitted.  The sequence `A B B * B * B` (where '*'
 is the blank label) becomes
 
-  * `A B` if `merge_repeated=True`.
-  * `A B B B B B` if `merge_repeated=False`.
+  * `A B B B` if `merge_repeated=True`.
+  * `A B B B B` if `merge_repeated=False`.
 
 ##### Args:
 
@@ -3298,12 +2990,6 @@ is `A B B B B`, the return value is:
       sequence log-probabilities.
 
 
-
-## Evaluation
-
-The evaluation ops are useful for measuring the performance of a network.
-They are typically used at evaluation time.
-
 - - -
 
 ### `tf.nn.top_k(input, k=1, sorted=True, name=None)` {#top_k}
@@ -3373,24 +3059,6 @@ $$out_i = predictions_{i, targets_i} \in TopKIncludingTies(predictions_i)$$
 
   A `Tensor` of type `bool`. Computed Precision at `k` as a `bool Tensor`.
 
-
-
-## Candidate Sampling
-
-Do you want to train a multiclass or multilabel model with thousands
-or millions of output classes (for example, a language model with a
-large vocabulary)?  Training with a full Softmax is slow in this case,
-since all of the classes are evaluated for every training example.
-Candidate Sampling training algorithms can speed up your step times by
-only considering a small randomly-chosen subset of contrastive classes
-(called candidates) for each batch of training examples.
-
-See our
-[Candidate Sampling Algorithms Reference](../../extras/candidate_sampling.pdf)
-
-### Sampled Loss Functions
-
-TensorFlow provides the following sampled loss functions for faster training.
 
 - - -
 
@@ -3504,12 +3172,6 @@ Also see Section 3 of [Jean et al., 2014](http://arxiv.org/abs/1412.2007)
 
   A `batch_size` 1-D tensor of per-example sampled softmax losses.
 
-
-
-### Candidate Samplers
-
-TensorFlow provides the following samplers for randomly sampling candidate
-classes when using one of the sampled loss functions above.
 
 - - -
 
@@ -3756,9 +3418,6 @@ compute them approximately.
     of each of `sampled_candidates`.
 
 
-
-### Miscellaneous candidate sampling utilities
-
 - - -
 
 ### `tf.nn.compute_accidental_hits(true_classes, sampled_candidates, num_true, seed=None, name=None)` {#compute_accidental_hits}
@@ -3806,9 +3465,6 @@ target classes as noise classes for the same example.
 *  <b>`weights`</b>: A `Tensor` of type `float` and shape `[num_accidental_hits]`.
     Each value is `-FLOAT_MAX`.
 
-
-
-### Quantization ops
 
 - - -
 

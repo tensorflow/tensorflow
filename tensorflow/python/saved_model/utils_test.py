@@ -18,16 +18,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
-
 from tensorflow.core.framework import types_pb2
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import array_ops
+from tensorflow.python.platform import test
 from tensorflow.python.saved_model import utils
 
 
-class UtilsTest(tf.test.TestCase):
+class UtilsTest(test.TestCase):
 
   def testBuildTensorInfo(self):
-    x = tf.placeholder(tf.float32, 1, name="x")
+    x = array_ops.placeholder(dtypes.float32, 1, name="x")
     x_tensor_info = utils.build_tensor_info(x)
     self.assertEqual("x:0", x_tensor_info.name)
     self.assertEqual(types_pb2.DT_FLOAT, x_tensor_info.dtype)
@@ -36,4 +37,4 @@ class UtilsTest(tf.test.TestCase):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

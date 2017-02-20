@@ -233,12 +233,27 @@ class Im2ColConvFunctor {
       return;
     }
 
-    // If this is a simple 1x1 kernel, we can skip im2col and just use a GEMM.
-    if (filter_height == filter_width && filter_width == 1 &&
-        stride_rows == 1 && stride_cols == 1) {
-      const int m = input_batches * input_width * input_height;
+    // We can just use a GEMM if the im2col is the identity operator, e.g., if
+    // the kernel is 1x1 or the input data and filter have same height/width.
+    if (filter_height == 1 && filter_width == 1 && stride_rows == 1 &&
+        stride_cols == 1) {
+      // The kernel is 1x1.
+      const int m = input_batches * input_height * input_width;
       const int n = filter_count;
       const int k = input_depth;
+      const int lda = k;
+      const int ldb = filter_count;
+      const int ldc = filter_count;
+      TGemmFunctor gemm_functor;
+      gemm_functor(context, m, n, k, input_data, lda, filter_data, ldb,
+                   output_data, ldc);
+      return;
+    } else if (filter_height == input_height && filter_width == input_width &&
+               padding == VALID) {
+      // The input data and filter have the same height/width.
+      const int m = input_batches;
+      const int n = filter_count;
+      const int k = input_height * input_width * input_depth;
       const int lda = k;
       const int ldb = filter_count;
       const int ldc = filter_count;

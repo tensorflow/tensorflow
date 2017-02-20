@@ -17,7 +17,6 @@ limitations under the License.
 #include "tensorflow/core/lib/hash/hash.h"
 
 namespace tensorflow {
-namespace ops {
 
 Operation::Operation(Node* n) : inputs_(GetInputs(n)), node_(n) {}
 
@@ -110,5 +109,4 @@ Input::Initializer::Initializer(
   tensor = t;
 }
 
-}  // namespace ops
 }  // namespace tensorflow

@@ -51,6 +51,8 @@ by default. The user can select a different run from a dropdown menu.
         selected-dataset="{{_selectedDataset}}"
         selected-file="{{_selectedFile}}"
         selected-metadata-tag="{{_selectedMetadataTag}}"
+        health-pills-feature-enabled="[[debuggerDataEnabled]]"
+        health-pills-toggled-on="{{healthPillsToggledOn}}"
   ></tf-graph-controls>
   <tf-graph-loader id="loader"
         datasets="[[_datasets]]"
@@ -98,37 +100,94 @@ out-hierarchy-params="{{_hierarchyParams}}"
 (function() {
 Polymer({
   is: 'tf-graph-dashboard',
+  behaviors: [
+    TF.Dashboard.ReloadBehavior("tf-graph-dashboard"),
+    TF.Backend.Behavior,
+  ],
   properties: {
     _datasets: Object,
-    _renderHierarchy: Object,
-    backend: {type: Object, observer: 'reload'},
+    _renderHierarchy: {type: Object, observer: '_renderHierarchyChanged'},
+    backend: {type: Object, observer: '_backendChanged'},
+    debuggerDataEnabled: Boolean,
+    healthPillsToggledOn: {type: Boolean, value: true, observer: '_healthPillsToggledOnChanged'},
     runs: Array
   },
+  listeners: {
+    'node-toggle-expand': '_handleNodeToggleExpand',
+  },
   reload: function() {
-    Promise.all([this.backend.graphRuns(), this.backend.runMetadataRuns()])
-    .then(function(result) {
-      var runsWithGraph = result[0].sort(VZ.Sorting.compareTagNames);
-      var runToMetadata = result[1];
-      var datasets = _.map(runsWithGraph, function(runName) {
-        return {
-          name: runName,
-          path: this.backend.router.graph(runName, tf.graph.LIMIT_ATTR_SIZE,
-            tf.graph.LARGE_ATTRS_KEY),
-          runMetadata: runToMetadata[runName] ? _.map(
-            runToMetadata[runName].sort(VZ.Sorting.compareTagNames), function(tag) {
-              return {
-                tag: tag,
-                path: this.backend.router.runMetadata(tag, runName)
-              };
-            }, this) : []
-        };
-      }, this);
-      this.set('_datasets', datasets);
+    if (!this.debuggerDataEnabled ||
+        !this.healthPillsToggledOn ||
+        !this._renderHierarchy ||
+        this._datasetsEmpty(this._datasets)) {
+      // Do not load debugger data if the feature is disabled, if the user toggled off the feature,
+      // or if the graph itself has not loaded yet. We need the graph to load so that we know which
+      // nodes to request health pills for.
+      return;
+    }
+
+    // Request debugger data on graph reloads, but do not re-request the graph itself. The graph
+    // would not change across reloads.
+    this._requestHealthPills();
+  },
+  _backendChanged: function(backend) {
+    Promise.all([backend.graphRuns(), backend.runMetadataRuns()])
+      .then(function(result) {
+        var runsWithGraph = result[0].sort(VZ.Sorting.compareTagNames);
+        var runToMetadata = result[1];
+        var datasets = _.map(runsWithGraph, function(runName) {
+          return {
+            name: runName,
+            path: backend.router.graph(
+                runName, tf.graph.LIMIT_ATTR_SIZE, tf.graph.LARGE_ATTRS_KEY),
+            runMetadata: runToMetadata[runName] ? _.map(
+              runToMetadata[runName].sort(VZ.Sorting.compareTagNames), function(tag) {
+                return {
+                  tag: tag,
+                  path: backend.router.runMetadata(tag, runName)
+                };
+              }, this) : []
+          };
+        }, this);
+        this.set('_datasets', datasets);
+      }.bind(this));
+  },
+  _requestHealthPills: function() {
+    this.backend.healthPills(this._renderHierarchy.getNamesOfRenderedOps()).then(function(result) {
+      if (!this.healthPillsToggledOn) {
+        // The user has opted to hide health pills via the toggle button.
+        return;
+      }
+      // For now, show the latest health pill for each node.
+      // TODO(chizeng): Let the user select which step to show.
+      var mapping = {};
+      for (let nodeName in result) {
+        mapping[nodeName] = result[nodeName].pop();
+      }
+      this.$$('#graphboard').set('nodeNamesToHealthPill', mapping);
     }.bind(this));
   },
   _datasetsEmpty: function(datasets) {
     return !datasets || !datasets.length;
-  }
+  },
+  _renderHierarchyChanged: function(renderHierarchy) {
+    // Reload any data on the graph when the render hierarchy (which determines which nodes are
+    // rendered) changes.
+    this.reload();
+  },
+  _handleNodeToggleExpand: function() {
+    // Nodes were toggled. We may need to request health pills for more nodes.
+    this._requestHealthPills();
+  },
+  _healthPillsToggledOnChanged: function(healthPillsToggledOn) {
+    if (healthPillsToggledOn) {
+      // Load health pills.
+      this.reload();
+    } else {
+      // Remove all health pills by setting an empty mapping.
+      this.$$('#graphboard').set('nodeNamesToHealthPill', {});
+    }
+  },
 });
 })();
 </script>

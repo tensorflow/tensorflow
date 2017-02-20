@@ -105,6 +105,17 @@ Status ExpGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Exp", ExpGrad);
 
+Status Expm1Grad(const Scope& scope, const Operation& op,
+                 const std::vector<Output>& grad_inputs,
+                 std::vector<Output>* grad_outputs) {
+  // f(x) = expm1(x)
+  // df/dx = exp(x)
+  // dx = dy * exp(x)
+  grad_outputs->push_back(Mul(scope, grad_inputs[0], Exp(scope, op.input(0))));
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Expm1", Expm1Grad);
+
 Status LogGrad(const Scope& scope, const Operation& op,
                const std::vector<Output>& grad_inputs,
                std::vector<Output>* grad_outputs) {

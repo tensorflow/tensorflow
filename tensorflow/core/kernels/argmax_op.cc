@@ -60,9 +60,9 @@ class ArgOp : public OpKernel {
     int axis = dim < 0 ? dim + input_dims : dim;
 
     OP_REQUIRES(context, axis >= 0 && axis < input_dims,
-                errors::InvalidArgument(
-                    "Expected dimension in the range [", -input_dims, ", ",
-                    input_dims, "), but got ", dim));
+                errors::InvalidArgument("Expected dimension in the range [",
+                                        -input_dims, ", ", input_dims,
+                                        "), but got ", dim));
     OP_REQUIRES(
         context, input.dim_size(axis) > 0,
         errors::InvalidArgument("Reduction axis ", dim, " is empty in shape ",
@@ -79,7 +79,7 @@ class ArgOp : public OpKernel {
 #define HANDLE_DIM(NDIM)                                         \
   case NDIM:                                                     \
     ArgFunctor::Reduce##NDIM(context->eigen_device<Device>(),    \
-                             input.tensor<T, NDIM>(), axis,       \
+                             input.tensor<T, NDIM>(), axis,      \
                              output->tensor<int64, NDIM - 1>()); \
     break;
 

@@ -84,6 +84,15 @@ func TestScopeFinalize(t *testing.T) {
 	}
 }
 
+func TestMultipleGeneratedOps(t *testing.T) {
+	s := NewScope()
+	Placeholder(s.SubScope("x"), tf.Float)
+	Placeholder(s.SubScope("y"), tf.Float)
+	if _, err := s.Finalize(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func Example() {
 	// This example creates a Graph that multiplies a constant matrix with
 	// a matrix to be provided during graph execution (via
@@ -99,9 +108,8 @@ func Example() {
 	}
 	// Shape of the product: The number of rows is fixed by m1, but the
 	// number of columns will depend on m2, which is unknown.
-	shape, _ := output.Shape()
-	fmt.Println(shape)
-	// Output: [2 -1]
+	fmt.Println(output.Shape())
+	// Output: [2, ?]
 }
 
 func ExampleScope_SubScope() {

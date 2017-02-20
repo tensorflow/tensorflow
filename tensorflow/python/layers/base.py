@@ -121,6 +121,14 @@ class _Layer(object):
     return self._non_trainable_variables if self.trainable else self.variables
 
   @property
+  def trainable_weights(self):
+    return self.trainable_variables
+
+  @property
+  def non_trainable_weights(self):
+    return self.non_trainable_variables
+
+  @property
   def variables(self):
     """Returns the list of all layer variables/weights.
 
@@ -171,6 +179,26 @@ class _Layer(object):
     """
     raise NotImplementedError
 
+  def _compute_output_shape(self, input_shape):
+    """Computes the output shape of the layer given the input shape.
+
+    Assumes that the layer will be built to match that input shape.
+
+    Args:
+      input_shape: A (possibly nested tuple of) `TensorShape`.  It need not
+        be fully defined (e.g. the batch size may be unknown).
+
+    Returns:
+      A (possibly nested tuple of) `TensorShape`.
+
+    Raises:
+      TypeError: if `input_shape` is not a (possibly nested tuple of)
+        `TensorShape`.
+      ValueError: if `input_shape` is incomplete or is incompatible with the
+        the layer.
+    """
+    raise NotImplementedError
+
   def _add_variable(self, name, shape, dtype=None,
                     initializer=None, regularizer=None, trainable=True,
                     variable_getter=vs.get_variable):
@@ -199,27 +227,28 @@ class _Layer(object):
                                dtype=dtype,
                                trainable=trainable and self.trainable)
     # TODO(sguada) fix name = variable.op.name
+    if variable in existing_variables:
+      return variable
     if regularizer:
-      if not self._reuse and variable not in existing_variables:
-        # To match the behavior of tf.get_variable(), we only
-        # apply regularization if the variable is newly created.
-        if isinstance(variable, tf_variables.PartitionedVariable):
-          for v in variable:
-            with ops.colocate_with(v.op):
-              with ops.name_scope(name + '/Regularizer'):
-                regularization = regularizer(v)
-            if regularization is not None:
-              self._losses.append(regularization)
-              _add_elements_to_collection(
-                  regularization, ops.GraphKeys.REGULARIZATION_LOSSES)
-        else:
-          with ops.colocate_with(variable.op):
+      # To match the behavior of tf.get_variable(), we only
+      # apply regularization if the variable is newly created.
+      if isinstance(variable, tf_variables.PartitionedVariable):
+        for v in variable:
+          with ops.colocate_with(v.op):
             with ops.name_scope(name + '/Regularizer'):
-              regularization = regularizer(variable)
+              regularization = regularizer(v)
           if regularization is not None:
             self._losses.append(regularization)
             _add_elements_to_collection(
                 regularization, ops.GraphKeys.REGULARIZATION_LOSSES)
+      else:
+        with ops.colocate_with(variable.op):
+          with ops.name_scope(name + '/Regularizer'):
+            regularization = regularizer(variable)
+        if regularization is not None:
+          self._losses.append(regularization)
+          _add_elements_to_collection(
+              regularization, ops.GraphKeys.REGULARIZATION_LOSSES)
     if trainable:
       self._trainable_variables.append(variable)
     else:
@@ -249,7 +278,8 @@ class _Layer(object):
           variable_getter=functools.partial(getter, **kwargs))
 
     # Build (if necessary) and call the layer, inside a variable scope.
-    with vs.variable_scope(self._scope, reuse=self._reuse,
+    with vs.variable_scope(self._scope,
+                           reuse=True if self._built else self._reuse,
                            custom_getter=variable_getter) as scope:
       with ops.name_scope(scope.original_name_scope):
         if not self.built:

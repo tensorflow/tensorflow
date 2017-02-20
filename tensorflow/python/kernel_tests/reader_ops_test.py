@@ -230,9 +230,9 @@ class WholeFileReaderTest(test.TestCase):
         h.write(c)
 
   def tearDown(self):
-    super(WholeFileReaderTest, self).tearDown()
     for fn in self._filenames:
       os.remove(fn)
+    super(WholeFileReaderTest, self).tearDown()
 
   def _ExpectRead(self, sess, key, value, index):
     k, v = sess.run([key, value])

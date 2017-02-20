@@ -643,67 +643,6 @@ Status ReductionShape(InferenceContext* c) {
   return Status::OK();
 }
 
-Status ReductionShapeForReduceJoin(InferenceContext* c) {
-  ShapeHandle input = c->input(0);
-
-  ShapeHandle indices;
-  TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(1), 1, &indices));
-
-  bool keep_dims;
-  TF_RETURN_IF_ERROR(c->GetAttr("keep_dims", &keep_dims));
-
-  const Tensor* reduction_indices_t = c->input_tensor(1);
-  if (reduction_indices_t == nullptr || !c->RankKnown(input)) {
-    // If we do not have the reduction values at runtime, or the
-    // rank of the input, we don't know the output shape.
-    return shape_inference::UnknownShape(c);
-  }
-
-  const int32 input_rank = c->Rank(input);
-  std::set<int32> true_indices;
-  auto reduction_indices = reduction_indices_t->flat<int32>();
-  for (int i = 0; i < reduction_indices_t->NumElements(); ++i) {
-    int32 reduction_index = reduction_indices(i);
-    if (reduction_index < -input_rank || reduction_index >= input_rank) {
-      return errors::InvalidArgument("Invalid reduction dimension ",
-                                     reduction_index, " for input with ",
-                                     input_rank, " dimensions.");
-    }
-
-    int32 wrapped_index = reduction_index;
-    if (wrapped_index < 0) {
-      wrapped_index += input_rank;
-    }
-
-    if (!true_indices.insert(wrapped_index).second) {
-      return errors::InvalidArgument("Duplicate reduction index ",
-                                     wrapped_index);
-    }
-  }
-
-  std::vector<DimensionHandle> dims;
-  bool reduce_all = (reduction_indices_t->NumElements() == 0);
-  for (int i = 0; i < input_rank; ++i) {
-    if (reduce_all || true_indices.count(i) > 0) {
-      if (true_indices.count(i) > 0) {
-        if (c->Value(c->Dim(input, i)) == 0) {
-          return errors::InvalidArgument("Cannot reduce dimension ", i,
-                                         " with size 0");
-        }
-      }
-
-      if (keep_dims) {
-        dims.emplace_back(c->MakeDim(1));
-      }
-    } else {
-      dims.emplace_back(c->Dim(input, i));
-    }
-  }
-
-  c->set_output(0, c->MakeShape(dims));
-  return Status::OK();
-}
-
 Status ConcatShapeHelper(InferenceContext* c, int start_value_index,
                          int end_value_index, int dim_index) {
   ShapeHandle unused;
@@ -727,7 +666,7 @@ Status ConcatShapeHelper(InferenceContext* c, int start_value_index,
     }
     if (rank == 0) {
       return errors::InvalidArgument(
-          "Can't concatenate scalars (use tf.pack instead)");
+          "Can't concatenate scalars (use tf.stack instead)");
     }
     // Build result of <rank> different unknown dims.
     std::vector<DimensionHandle> dims;

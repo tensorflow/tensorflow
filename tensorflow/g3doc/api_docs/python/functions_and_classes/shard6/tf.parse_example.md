@@ -159,7 +159,8 @@ And arguments
 ```
 example_names: ["input0", "input1"],
 features: {
-    "sparse": SparseFeature("ix", "val", tf.float32, 100),
+    "sparse": SparseFeature(
+        index_key="ix", value_key="val", dtype=tf.float32, size=100),
 }
 ```
 

@@ -59,7 +59,7 @@ def embedding_lookup(params, ids, name='embedding_lookup'):
     ids_flat = array_ops_.reshape(
         ids, math_ops.reduce_prod(shape, keep_dims=True))
     embeds_flat = nn.embedding_lookup(params, ids_flat, name)
-    embed_shape = array_ops_.concat(0, [shape, [-1]])
+    embed_shape = array_ops_.concat([shape, [-1]], 0)
     embeds = array_ops_.reshape(embeds_flat, embed_shape)
     embeds.set_shape(ids.get_shape().concatenate(params.get_shape()[1:]))
     return embeds

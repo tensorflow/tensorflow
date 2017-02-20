@@ -228,6 +228,11 @@ TEST(GcsFileSystemTest, NewWritableFile) {
 
   TF_EXPECT_OK(file->Append("content1,"));
   TF_EXPECT_OK(file->Append("content2"));
+  TF_EXPECT_OK(file->Flush());
+  // The calls to flush, sync, and close below should not cause uploads because
+  // the file is not dirty.
+  TF_EXPECT_OK(file->Flush());
+  TF_EXPECT_OK(file->Sync());
   TF_EXPECT_OK(file->Close());
 }
 

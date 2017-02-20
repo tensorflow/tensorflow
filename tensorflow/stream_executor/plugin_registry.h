@@ -138,10 +138,6 @@ class PluginRegistry {
   bool HasFactory(const PluginFactories& factories, PluginKind plugin_kind,
                   PluginId plugin) const;
 
-  // As this object is a singleton, a global mutex can be used for static and
-  // instance protection.
-  static mutex mu_;
-
   // The singleton itself.
   static PluginRegistry* instance_;
 

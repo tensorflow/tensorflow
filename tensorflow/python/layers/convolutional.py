@@ -268,7 +268,7 @@ def conv1d(inputs,
            activity_regularizer=None,
            trainable=True,
            name=None,
-           reuse=False):
+           reuse=None):
   """Functional interface for 1D convolution layer (e.g. temporal convolution).
 
   This layer creates a convolution kernel that is convolved
@@ -435,7 +435,7 @@ def conv2d(inputs,
            activity_regularizer=None,
            trainable=True,
            name=None,
-           reuse=False):
+           reuse=None):
   """Functional interface for the 2D convolution layer.
 
   This layer creates a convolution kernel that is convolved
@@ -608,7 +608,7 @@ def conv3d(inputs,
            activity_regularizer=None,
            trainable=True,
            name=None,
-           reuse=False):
+           reuse=None):
   """Functional interface for the 3D convolution layer.
 
   This layer creates a convolution kernel that is convolved
@@ -867,7 +867,7 @@ def separable_conv2d(inputs,
                      activity_regularizer=None,
                      trainable=True,
                      name=None,
-                     reuse=False):
+                     reuse=None):
   """Functional interface for the depthwise separable 2D convolution layer.
 
   This layer performs a depthwise convolution that acts separately on
@@ -1065,7 +1065,7 @@ class Conv2DTranspose(Conv2D):
 
     def get_deconv_dim(dim_size, stride_size, kernel_size, padding):
       if isinstance(dim_size, ops.Tensor):
-        dim_size = math_ops.mul(dim_size, stride_size)
+        dim_size = math_ops.multiply(dim_size, stride_size)
       elif dim_size is not None:
         dim_size *= stride_size
 
@@ -1128,7 +1128,7 @@ def conv2d_transpose(inputs,
                      activity_regularizer=None,
                      trainable=True,
                      name=None,
-                     reuse=False):
+                     reuse=None):
   """Transposed convolution layer (sometimes called Deconvolution).
 
   The need for transposed convolutions generally arises

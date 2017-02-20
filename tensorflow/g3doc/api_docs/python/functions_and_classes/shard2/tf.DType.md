@@ -28,137 +28,6 @@ defined for reference-typed tensors.
 
 The `tf.as_dtype()` function converts numpy types and string type
 names to a `DType` object.
-
-- - -
-
-#### `tf.DType.is_compatible_with(other)` {#DType.is_compatible_with}
-
-Returns True if the `other` DType will be converted to this DType.
-
-The conversion rules are as follows:
-
-```python
-DType(T)       .is_compatible_with(DType(T))        == True
-DType(T)       .is_compatible_with(DType(T).as_ref) == True
-DType(T).as_ref.is_compatible_with(DType(T))        == False
-DType(T).as_ref.is_compatible_with(DType(T).as_ref) == True
-```
-
-##### Args:
-
-
-*  <b>`other`</b>: A `DType` (or object that may be converted to a `DType`).
-
-##### Returns:
-
-  True if a Tensor of the `other` `DType` will be implicitly converted to
-  this `DType`.
-
-
-- - -
-
-#### `tf.DType.name` {#DType.name}
-
-Returns the string name for this `DType`.
-
-
-- - -
-
-#### `tf.DType.base_dtype` {#DType.base_dtype}
-
-Returns a non-reference `DType` based on this `DType`.
-
-
-- - -
-
-#### `tf.DType.real_dtype` {#DType.real_dtype}
-
-Returns the dtype correspond to this dtype's real part.
-
-
-- - -
-
-#### `tf.DType.is_bool` {#DType.is_bool}
-
-Returns whether this is a boolean data type
-
-
-- - -
-
-#### `tf.DType.is_floating` {#DType.is_floating}
-
-Returns whether this is a (non-quantized, real) floating point type.
-
-
-- - -
-
-#### `tf.DType.is_complex` {#DType.is_complex}
-
-Returns whether this is a complex floating point type.
-
-
-- - -
-
-#### `tf.DType.is_integer` {#DType.is_integer}
-
-Returns whether this is a (non-quantized) integer type.
-
-
-- - -
-
-#### `tf.DType.is_quantized` {#DType.is_quantized}
-
-Returns whether this is a quantized data type.
-
-
-- - -
-
-#### `tf.DType.is_unsigned` {#DType.is_unsigned}
-
-Returns whether this type is unsigned.
-
-Non-numeric, unordered, and quantized types are not considered unsigned, and
-this function returns `False`.
-
-##### Returns:
-
-  Whether a `DType` is unsigned.
-
-
-
-- - -
-
-#### `tf.DType.as_numpy_dtype` {#DType.as_numpy_dtype}
-
-Returns a `numpy.dtype` based on this `DType`.
-
-
-- - -
-
-#### `tf.DType.as_datatype_enum` {#DType.as_datatype_enum}
-
-Returns a `types_pb2.DataType` enum value based on this `DType`.
-
-
-
-- - -
-
-#### `tf.DType.limits` {#DType.limits}
-
-Return intensity limits, i.e. (min, max) tuple, of the dtype.
-
-##### Args:
-
-  clip_negative : bool, optional
-      If True, clip the negative range (i.e. return 0 for min intensity)
-      even if the image dtype allows negative values.
-Returns
-  min, max : tuple
-    Lower and upper intensity limits.
-
-
-
-#### Other Methods
 - - -
 
 #### `tf.DType.__eq__(other)` {#DType.__eq__}
@@ -217,9 +86,121 @@ Returns True iff self != other.
 
 - - -
 
+#### `tf.DType.as_datatype_enum` {#DType.as_datatype_enum}
+
+Returns a `types_pb2.DataType` enum value based on this `DType`.
+
+
+- - -
+
+#### `tf.DType.as_numpy_dtype` {#DType.as_numpy_dtype}
+
+Returns a `numpy.dtype` based on this `DType`.
+
+
+- - -
+
+#### `tf.DType.base_dtype` {#DType.base_dtype}
+
+Returns a non-reference `DType` based on this `DType`.
+
+
+- - -
+
+#### `tf.DType.is_bool` {#DType.is_bool}
+
+Returns whether this is a boolean data type
+
+
+- - -
+
+#### `tf.DType.is_compatible_with(other)` {#DType.is_compatible_with}
+
+Returns True if the `other` DType will be converted to this DType.
+
+The conversion rules are as follows:
+
+```python
+DType(T)       .is_compatible_with(DType(T))        == True
+DType(T)       .is_compatible_with(DType(T).as_ref) == True
+DType(T).as_ref.is_compatible_with(DType(T))        == False
+DType(T).as_ref.is_compatible_with(DType(T).as_ref) == True
+```
+
+##### Args:
+
+
+*  <b>`other`</b>: A `DType` (or object that may be converted to a `DType`).
+
+##### Returns:
+
+  True if a Tensor of the `other` `DType` will be implicitly converted to
+  this `DType`.
+
+
+- - -
+
+#### `tf.DType.is_complex` {#DType.is_complex}
+
+Returns whether this is a complex floating point type.
+
+
+- - -
+
+#### `tf.DType.is_floating` {#DType.is_floating}
+
+Returns whether this is a (non-quantized, real) floating point type.
+
+
+- - -
+
+#### `tf.DType.is_integer` {#DType.is_integer}
+
+Returns whether this is a (non-quantized) integer type.
+
+
+- - -
+
 #### `tf.DType.is_numpy_compatible` {#DType.is_numpy_compatible}
 
 
+
+
+- - -
+
+#### `tf.DType.is_quantized` {#DType.is_quantized}
+
+Returns whether this is a quantized data type.
+
+
+- - -
+
+#### `tf.DType.is_unsigned` {#DType.is_unsigned}
+
+Returns whether this type is unsigned.
+
+Non-numeric, unordered, and quantized types are not considered unsigned, and
+this function returns `False`.
+
+##### Returns:
+
+  Whether a `DType` is unsigned.
+
+
+- - -
+
+#### `tf.DType.limits` {#DType.limits}
+
+Return intensity limits, i.e. (min, max) tuple, of the dtype.
+
+##### Args:
+
+  clip_negative : bool, optional
+      If True, clip the negative range (i.e. return 0 for min intensity)
+      even if the image dtype allows negative values.
+Returns
+  min, max : tuple
+    Lower and upper intensity limits.
 
 
 - - -
@@ -244,6 +225,20 @@ Returns the minimum representable value in this data type.
 
 
 *  <b>`TypeError`</b>: if this is a non-numeric, unordered, or quantized type.
+
+
+- - -
+
+#### `tf.DType.name` {#DType.name}
+
+Returns the string name for this `DType`.
+
+
+- - -
+
+#### `tf.DType.real_dtype` {#DType.real_dtype}
+
+Returns the dtype correspond to this dtype's real part.
 
 
 - - -

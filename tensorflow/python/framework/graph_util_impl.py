@@ -205,7 +205,7 @@ def convert_variables_to_constants(sess, input_graph_def, output_node_names,
   variable_names = []
   variable_dict_names = []
   for node in inference_graph.node:
-    if node.op == "Variable":
+    if node.op in ["Variable", "VariableV2"]:
       variable_name = node.name
       if ((variable_names_whitelist is not None and
            variable_name not in variable_names_whitelist) or

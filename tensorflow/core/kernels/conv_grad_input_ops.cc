@@ -30,6 +30,9 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/kernels/conv_2d.h"
+#ifdef TENSORFLOW_USE_LIBXSMM
+#include "tensorflow/core/kernels/xsmm_conv2d.h"
+#endif
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -95,6 +98,96 @@ typedef Eigen::GpuDevice GPUDevice;
 // TODO(yangke): enable them for GPUs when we have a faster compiler.
 
 template <typename Device, class T>
+struct LaunchBackwardInputConvolution {
+  bool operator()(OpKernelContext* context, const Device&,
+                  typename TTypes<T, 4>::Tensor,
+                  typename TTypes<T, 4>::ConstTensor,
+                  typename TTypes<T, 4>::ConstTensor, int, int, int, int,
+                  TensorFormat) const {
+    return false;
+  }
+};
+
+template <>
+struct LaunchBackwardInputConvolution<CPUDevice, float> {
+  bool operator()(OpKernelContext* context, const CPUDevice& d,
+                  typename TTypes<float, 4>::Tensor input_backward,
+                  typename TTypes<float, 4>::ConstTensor kernel,
+                  typename TTypes<float, 4>::ConstTensor output_backward,
+                  int input_rows, int input_cols, int row_stride,
+                  int col_stride, TensorFormat data_format) const {
+    functor::SpatialConvolutionBackwardInput<CPUDevice, float>()(
+        d, input_backward, kernel, output_backward, input_rows, input_cols,
+        row_stride, col_stride);
+    return true;
+  }
+};
+
+#ifdef TENSORFLOW_USE_LIBXSMM
+template <typename Device, class T>
+struct LaunchXsmmBackwardInputConvolution {
+  bool operator()(OpKernelContext* context, const Device& d,
+                  typename TTypes<T, 4>::Tensor input_backward,
+                  typename TTypes<T, 4>::ConstTensor kernel,
+                  typename TTypes<T, 4>::ConstTensor output_backward,
+                  int input_rows, int input_cols, int row_stride,
+                  int col_stride, TensorFormat data_format) const {
+    return false;
+  }
+};
+
+template <>
+struct LaunchXsmmBackwardInputConvolution<CPUDevice, float> {
+  bool operator()(OpKernelContext* context, const CPUDevice& d,
+                  typename TTypes<float, 4>::Tensor input_backward,
+                  typename TTypes<float, 4>::ConstTensor kernel,
+                  typename TTypes<float, 4>::ConstTensor output_backward,
+                  int input_rows, int input_cols, int row_stride,
+                  int col_stride, TensorFormat data_format) const {
+    auto batch = input_backward.dimension(0);
+    auto in_depth = input_backward.dimension(3);
+    auto out_depth = output_backward.dimension(3);
+    auto filter_rows = kernel.dimension(0);
+    auto filter_cols = kernel.dimension(1);
+    auto num_threads =
+        context->device()->tensorflow_cpu_worker_threads()->num_threads;
+    // See libxsmm_dnn.h for this struct definition.
+    libxsmm_dnn_conv_desc desc;
+    desc.N = batch;
+    desc.C = in_depth;
+    desc.H = input_rows;
+    desc.W = input_cols;
+    desc.K = out_depth;
+    desc.R = filter_rows;
+    desc.S = filter_cols;
+    desc.u = row_stride;
+    desc.v = col_stride;
+    desc.pad_h = 0;
+    desc.pad_w = 0;
+    desc.pad_h_in = 0;  // pad_rows;  // ignored by libxsmm for now.
+    desc.pad_w_in = 0;  // pad_cols;  // ignored by libxsmm for now.
+    desc.pad_h_out = 0;
+    desc.pad_w_out = 0;
+    desc.threads = num_threads;
+    desc.algo = LIBXSMM_DNN_CONV_ALGO_DIRECT;
+    desc.buffer_format = LIBXSMM_DNN_TENSOR_FORMAT_NHWC;
+    desc.filter_format = LIBXSMM_DNN_TENSOR_FORMAT_LIBXSMM;//LIBXSMM_DNN_TENSOR_FORMAT_RSCK;
+    desc.fuse_ops = LIBXSMM_DNN_CONV_FUSE_NONE;
+    desc.options = LIBXSMM_DNN_CONV_OPTION_NONE;
+    desc.datatype = LIBXSMM_DNN_DATATYPE_F32;
+
+    auto input_ptr = input_backward.data();
+    auto filter_ptr = kernel.data();
+    auto output_ptr = output_backward.data();
+
+    bool success = functor::XsmmBkwInputConv2D<CPUDevice, float>()(
+        context, desc, input_ptr, filter_ptr, output_ptr);
+    return success;
+  }
+};
+#endif
+
+template <typename Device, class T>
 class Conv2DFastBackpropInputOp : public OpKernel {
  public:
   explicit Conv2DFastBackpropInputOp(OpKernelConstruction* context)
@@ -139,11 +232,23 @@ class Conv2DFastBackpropInputOp : public OpKernel {
     Tensor* in_backprop = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, input_shape, &in_backprop));
-    functor::SpatialConvolutionBackwardInput<Device, T>()(
-        context->eigen_device<Device>(), in_backprop->tensor<T, 4>(),
+
+#if defined TENSORFLOW_USE_LIBXSMM && defined TENSORFLOW_USE_LIBXSMM_BACKWARD
+    if (LaunchXsmmBackwardInputConvolution<Device, T>()(
+            context, context->eigen_device<Device>(),
+            in_backprop->tensor<T, 4>(), filter.tensor<T, 4>(),
+            out_backprop.tensor<T, 4>(), dims.rows.input_size,
+            dims.cols.input_size, dims.rows.stride, dims.cols.stride,
+            data_format_)) {
+      return;
+    }
+#endif
+
+    LaunchBackwardInputConvolution<Device, T>()(
+        context, context->eigen_device<Device>(), in_backprop->tensor<T, 4>(),
         filter.tensor<T, 4>(), out_backprop.tensor<T, 4>(),
         dims.rows.input_size, dims.cols.input_size, dims.rows.stride,
-        dims.cols.stride);
+        dims.cols.stride, data_format_);
   }
 
  private:
@@ -200,6 +305,17 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
     Tensor* in_backprop = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, input_shape, &in_backprop));
+
+#if defined TENSORFLOW_USE_LIBXSMM && defined TENSORFLOW_USE_LIBXSMM_BACKWARD
+    if (LaunchXsmmBackwardInputConvolution<Device, T>()(
+            context, context->eigen_device<Device>(),
+            in_backprop->tensor<T, 4>(), filter.tensor<T, 4>(),
+            out_backprop.tensor<T, 4>(), dims.rows.input_size,
+            dims.cols.input_size, dims.rows.stride, dims.cols.stride,
+            data_format_)) {
+      return;
+    }
+#endif
 
     // TODO(andydavis) Consider moving code shared with
     // Conv2DCustomBackpropFilterOp into a shared helper function.
@@ -512,7 +628,36 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
         context->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
                                             ", n=", n, ", k=", k));
       }
+      return;
+    } else if (dims.rows.filter_size == dims.rows.input_size &&
+               dims.cols.filter_size == dims.cols.input_size &&
+               padding_ == VALID && data_format_ == FORMAT_NHWC) {
+      // The input data and filter have the same height/width, so call cublas
+      // directly.
+      const uint64 m = dims.batch_size;
+      const uint64 k = dims.out_depth;
+      const uint64 n =
+          dims.rows.input_size * dims.cols.input_size * dims.in_depth;
 
+      auto a_ptr = AsDeviceMemory(out_backprop.template flat<T>().data(),
+                                  out_backprop.template flat<T>().size());
+      auto b_ptr = AsDeviceMemory(filter.template flat<T>().data(),
+                                  filter.template flat<T>().size());
+      auto c_ptr = AsDeviceMemory(in_backprop->template flat<T>().data(),
+                                  in_backprop->template flat<T>().size());
+
+      auto transpose = perftools::gputools::blas::Transpose::kTranspose;
+      auto no_transpose = perftools::gputools::blas::Transpose::kNoTranspose;
+
+      bool blas_launch_status =
+          stream
+              ->ThenBlasGemm(transpose, no_transpose, n, m, k, 1.0f, b_ptr, k,
+                             a_ptr, k, 0.0f, &c_ptr, n)
+              .ok();
+      if (!blas_launch_status) {
+        context->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
+                                            ", n=", n, ", k=", k));
+      }
       return;
     }
 

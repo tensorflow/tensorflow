@@ -122,11 +122,11 @@ import math
 
 import six
 
+from tensorflow.contrib import lookup
 from tensorflow.contrib.layers.python.layers import layers
 from tensorflow.contrib.layers.python.ops import bucketization_op
 from tensorflow.contrib.layers.python.ops import sparse_feature_cross_op
 from tensorflow.contrib.layers.python.ops import sparse_ops as contrib_sparse_ops
-from tensorflow.contrib.lookup import lookup_ops as contrib_lookup_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_py
 from tensorflow.python.ops import array_ops
@@ -242,12 +242,14 @@ class _FeatureColumn(object):
   # pylint: disable=unused-argument
   def _wide_embedding_lookup_arguments(self, input_tensor):
     """Returns arguments to look up embeddings for this column."""
-    raise NotImplementedError("Calling an abstract method.")
+    raise NotImplementedError(
+        "No wide embedding lookup arguments for column {}.".format(self))
 
   # pylint: disable=unused-argument
   def _to_dense_tensor(self, input_tensor):
     """Returns a dense tensor representing this column's values."""
-    raise NotImplementedError("Calling an abstract method.")
+    raise NotImplementedError(
+        "No dense tensor representation for column {}.".format(self))
 
   def _checkpoint_path(self):
     """Returns None, or a (path,tensor_name) to load a checkpoint from."""
@@ -298,8 +300,9 @@ class _SparseColumn(_FeatureColumn,
     lookup_config: A _SparseIdLookupConfig defining feature-to-id lookup
       configuration
     combiner: A string specifying how to reduce if the sparse column is
-      multivalent. Currently "mean", "sqrtn" and "sum" are supported, with
-      "sum" the default:
+      multivalent. Currently "mean", "sqrtn" and "sum" are supported, with "sum"
+      the default. "sqrtn" often achieves good accuracy, in particular with
+      bag-of-words columns.
         * "sum": do not normalize features in the column
         * "mean": do l1 normalization on features in the column
         * "sqrtn": do l2 normalization on features in the column
@@ -316,7 +319,7 @@ class _SparseColumn(_FeatureColumn,
               is_integerized=False,
               bucket_size=None,
               lookup_config=None,
-              combiner="sqrtn",
+              combiner="sum",
               dtype=dtypes.string):
     if is_integerized and bucket_size is None:
       raise ValueError("bucket_size must be set if is_integerized is True. "
@@ -461,12 +464,20 @@ class _SparseColumnIntegerized(_SparseColumn):
 
 def sparse_column_with_integerized_feature(column_name,
                                            bucket_size,
-                                           combiner=None,
+                                           combiner="sum",
                                            dtype=dtypes.int64):
   """Creates an integerized _SparseColumn.
 
-  Use this when your features are already pre-integerized into int64 IDs.
-  output_id = input_feature
+  Use this when your features are already pre-integerized into int64 IDs, that
+  is, when the set of values to output is already coming in as what's desired in
+  the output. Integerized means we can use the feature value itself as id.
+
+  Typically this is used for reading contiguous ranges of integers indexes, but
+  it doesn't have to be. The output value is simply copied from the
+  input_feature, whatever it is. Just be aware, however, that if you have large
+  gaps of unused integers it might affect what you feed those in (for instance,
+  if you make up a one-hot tensor from these, the unused integers will appear as
+  values in the tensor which are always zero.)
 
   Args:
     column_name: A string defining sparse column name.
@@ -474,8 +485,9 @@ def sparse_column_with_integerized_feature(column_name,
       than maximum feature. In other words features in this column should be an
       int64 in range [0, bucket_size)
     combiner: A string specifying how to reduce if the sparse column is
-      multivalent. Currently "mean", "sqrtn" and "sum" are supported, with
-      "sum" the default:
+      multivalent. Currently "mean", "sqrtn" and "sum" are supported, with "sum"
+      the default. "sqrtn" often achieves good accuracy, in particular with
+      bag-of-words columns.
         * "sum": do not normalize features in the column
         * "mean": do l1 normalization on features in the column
         * "sqrtn": do l2 normalization on features in the column
@@ -490,10 +502,6 @@ def sparse_column_with_integerized_feature(column_name,
     ValueError: bucket_size is not greater than 1.
     ValueError: dtype is not integer.
   """
-  if combiner is None:
-    logging.warn("The default value of combiner will change from \"sum\" "
-                 "to \"sqrtn\" after 2016/11/01.")
-    combiner = "sum"
   return _SparseColumnIntegerized(
       column_name, bucket_size, combiner=combiner, dtype=dtype)
 
@@ -535,7 +543,7 @@ class _SparseColumnHashed(_SparseColumn):
 
 def sparse_column_with_hash_bucket(column_name,
                                    hash_bucket_size,
-                                   combiner=None,
+                                   combiner="sum",
                                    dtype=dtypes.string):
   """Creates a _SparseColumn with hashed bucket configuration.
 
@@ -547,8 +555,9 @@ def sparse_column_with_hash_bucket(column_name,
     column_name: A string defining sparse column name.
     hash_bucket_size: An int that is > 1. The number of buckets.
     combiner: A string specifying how to reduce if the sparse column is
-      multivalent. Currently "mean", "sqrtn" and "sum" are supported, with
-      "sum" the default:
+      multivalent. Currently "mean", "sqrtn" and "sum" are supported, with "sum"
+      the default. "sqrtn" often achieves good accuracy, in particular with
+      bag-of-words columns.
         * "sum": do not normalize features in the column
         * "mean": do l1 normalization on features in the column
         * "sqrtn": do l2 normalization on features in the column
@@ -562,10 +571,6 @@ def sparse_column_with_hash_bucket(column_name,
     ValueError: hash_bucket_size is not greater than 2.
     ValueError: dtype is neither string nor integer.
   """
-  if combiner is None:
-    logging.warn("The default value of combiner will change from \"sum\" "
-                 "to \"sqrtn\" after 2016/11/01.")
-    combiner = "sum"
   return _SparseColumnHashed(column_name, hash_bucket_size, combiner, dtype)
 
 
@@ -585,14 +590,15 @@ class _SparseColumnKeys(_SparseColumn):
     """Handles sparse column to id conversion."""
     input_tensor = self._get_input_sparse_tensor(columns_to_tensors)
 
-    table = contrib_lookup_ops.string_to_index_table_from_tensor(
+    table = lookup.string_to_index_table_from_tensor(
         mapping=list(self.lookup_config.keys),
         default_value=self.lookup_config.default_value,
         name="lookup")
     columns_to_tensors[self] = table.lookup(input_tensor)
 
 
-def sparse_column_with_keys(column_name, keys, default_value=-1, combiner=None):
+def sparse_column_with_keys(
+    column_name, keys, default_value=-1, combiner="sum"):
   """Creates a _SparseColumn with keys.
 
   Look up logic is as follows:
@@ -604,8 +610,9 @@ def sparse_column_with_keys(column_name, keys, default_value=-1, combiner=None):
     default_value: The value to use for out-of-vocabulary feature values.
       Default is -1.
     combiner: A string specifying how to reduce if the sparse column is
-      multivalent. Currently "mean", "sqrtn" and "sum" are supported, with
-      "sum" the default:
+      multivalent. Currently "mean", "sqrtn" and "sum" are supported, with "sum"
+      the default. "sqrtn" often achieves good accuracy, in particular with
+      bag-of-words columns.
         * "sum": do not normalize features in the column
         * "mean": do l1 normalization on features in the column
         * "sqrtn": do l2 normalization on features in the column
@@ -614,10 +621,6 @@ def sparse_column_with_keys(column_name, keys, default_value=-1, combiner=None):
   Returns:
     A _SparseColumnKeys with keys configuration.
   """
-  if combiner is None:
-    logging.warn("The default value of combiner will change from \"sum\" "
-                 "to \"sqrtn\" after 2016/11/01.")
-    combiner = "sum"
   return _SparseColumnKeys(
       column_name, tuple(keys), default_value=default_value, combiner=combiner)
 
@@ -660,7 +663,7 @@ class _SparseColumnVocabulary(_SparseColumn):
     else:
       sparse_string_tensor = st
 
-    table = contrib_lookup_ops.string_to_index_table_from_file(
+    table = lookup.string_to_index_table_from_file(
         vocabulary_file=self.lookup_config.vocabulary_file,
         num_oov_buckets=self.lookup_config.num_oov_buckets,
         vocab_size=self.lookup_config.vocab_size,
@@ -691,8 +694,9 @@ def sparse_column_with_vocabulary_file(column_name,
     default_value: The value to use for out-of-vocabulary feature values.
       Defaults to -1.
     combiner: A string specifying how to reduce if the sparse column is
-      multivalent. Currently "mean", "sqrtn" and "sum" are supported, with
-      "sum" the default:
+      multivalent. Currently "mean", "sqrtn" and "sum" are supported, with "sum"
+      the default. "sqrtn" often achieves good accuracy, in particular with
+      bag-of-words columns.
         * "sum": do not normalize features in the column
         * "mean": do l1 normalization on features in the column
         * "sqrtn": do l2 normalization on features in the column
@@ -760,6 +764,8 @@ class _WeightedSparseColumn(_FeatureColumn, collections.namedtuple(
     if not isinstance(weight_tensor, sparse_tensor_py.SparseTensor):
       # The weight tensor can be a regular Tensor. In such case, sparsify it.
       weight_tensor = contrib_sparse_ops.dense_to_sparse_tensor(weight_tensor)
+    if not self.dtype.is_floating:
+      weight_tensor = math_ops.to_float(weight_tensor)
     columns_to_tensors[self] = tuple([
         columns_to_tensors[self.sparse_id_column],
         weight_tensor
@@ -822,7 +828,8 @@ def weighted_sparse_column(sparse_id_column,
       `sparse_column_with_*` functions.
     weight_column_name: A string defining a sparse column name which represents
       weight or value of the corresponding sparse id feature.
-    dtype: Type of weights, such as `tf.float32`
+    dtype: Type of weights, such as `tf.float32`. Only floating and integer
+      weights are supported.
   Returns:
     A _WeightedSparseColumn composed of two sparse features: one represents id,
     the other represents weight (value) of the id feature in that example.
@@ -893,15 +900,18 @@ class _OneHotColumn(_FeatureColumn,
       This is not yet supported.
     """
 
-    if (self.sparse_id_column.weight_tensor(transformed_input_tensor) is
-        not None):
-      raise ValueError("one_hot_column does not yet support "
-                       "weighted_sparse_column. Column: {}".format(self))
-
     # Reshape ID column to `output_rank`.
     sparse_id_column = self.sparse_id_column.id_tensor(transformed_input_tensor)
     # pylint: disable=protected-access
     sparse_id_column = layers._inner_flatten(sparse_id_column, output_rank)
+
+    weight_tensor = self.sparse_id_column.weight_tensor(
+        transformed_input_tensor)
+    if weight_tensor is not None:
+      weighted_column = sparse_ops.sparse_merge(sp_ids=sparse_id_column,
+                                                sp_values=weight_tensor,
+                                                vocab_size=self.length)
+      return sparse_ops.sparse_tensor_to_dense(weighted_column)
 
     dense_id_tensor = sparse_ops.sparse_tensor_to_dense(sparse_id_column,
                                                         default_value=-1)
@@ -928,8 +938,10 @@ class _EmbeddingColumn(_FeatureColumn, collections.namedtuple(
       `sparse_column_with_*` or `weighted_sparse_column` functions.
     dimension: An integer specifying dimension of the embedding.
     combiner: A string specifying how to reduce if there are multiple entries
-      in a single row. Currently "mean", "sqrtn" and "sum" are supported. Each
-      of this can be thought as example level normalizations on the column:
+      in a single row. Currently "mean", "sqrtn" and "sum" are supported, with
+      "mean" the default. "sqrtn" often achieves good accuracy, in particular
+      with bag-of-words columns. Each of this can be thought as example level
+      normalizations on the column:
         * "sum": do not normalize features in the column
         * "mean": do l1 normalization on features in the column
         * "sqrtn": do l2 normalization on features in the column
@@ -958,7 +970,7 @@ class _EmbeddingColumn(_FeatureColumn, collections.namedtuple(
   def __new__(cls,
               sparse_id_column,
               dimension,
-              combiner="sqrtn",
+              combiner="mean",
               initializer=None,
               ckpt_to_load_from=None,
               tensor_name_in_ckpt=None,
@@ -974,8 +986,10 @@ class _EmbeddingColumn(_FeatureColumn, collections.namedtuple(
       raise ValueError("Must specify both `ckpt_to_load_from` and "
                        "`tensor_name_in_ckpt` or none of them.")
     if initializer is None:
+      logging.warn("The default stddev value of initializer will change from "
+                   "\"1/sqrt(vocab_size)\" to \"1/sqrt(dimension)\" after "
+                   "2017/02/25.")
       stddev = 1 / math.sqrt(sparse_id_column.length)
-      # TODO(b/25671353): Better initial value?
       initializer = init_ops.truncated_normal_initializer(
           mean=0.0, stddev=stddev)
     return super(_EmbeddingColumn, cls).__new__(cls, sparse_id_column,
@@ -1055,7 +1069,7 @@ def one_hot_column(sparse_id_column):
 
 def embedding_column(sparse_id_column,
                      dimension,
-                     combiner=None,
+                     combiner="mean",
                      initializer=None,
                      ckpt_to_load_from=None,
                      tensor_name_in_ckpt=None,
@@ -1068,8 +1082,10 @@ def embedding_column(sparse_id_column,
       defined in `sparse_id_column` is ignored.
     dimension: An integer specifying dimension of the embedding.
     combiner: A string specifying how to reduce if there are multiple entries
-      in a single row. Currently "mean", "sqrtn" and "sum" are supported. Each
-      of this can be considered an example level normalization on the column:
+      in a single row. Currently "mean", "sqrtn" and "sum" are supported, with
+      "mean" the default. "sqrtn" often achieves good accuracy, in particular
+      with bag-of-words columns. Each of this can be thought as example level
+      normalizations on the column:
         * "sum": do not normalize
         * "mean": do l1 normalization
         * "sqrtn": do l2 normalization
@@ -1090,10 +1106,6 @@ def embedding_column(sparse_id_column,
   Returns:
     An `_EmbeddingColumn`.
   """
-  if combiner is None:
-    logging.warn("The default value of combiner will change from \"mean\" "
-                 "to \"sqrtn\" after 2016/11/01.")
-    combiner = "mean"
   return _EmbeddingColumn(sparse_id_column, dimension, combiner, initializer,
                           ckpt_to_load_from, tensor_name_in_ckpt,
                           max_norm=max_norm)
@@ -1101,7 +1113,7 @@ def embedding_column(sparse_id_column,
 
 def shared_embedding_columns(sparse_id_columns,
                              dimension,
-                             combiner=None,
+                             combiner="mean",
                              shared_embedding_name=None,
                              initializer=None,
                              ckpt_to_load_from=None,
@@ -1115,8 +1127,10 @@ def shared_embedding_columns(sparse_id_columns,
       defined in each sparse_id_column is ignored.
     dimension: An integer specifying dimension of the embedding.
     combiner: A string specifying how to reduce if there are multiple entries
-      in a single row. Currently "mean", "sqrtn" and "sum" are supported. Each
-      of this can be considered an example level normalization on the column:
+      in a single row. Currently "mean", "sqrtn" and "sum" are supported, with
+      "mean" the default. "sqrtn" often achieves good accuracy, in particular
+      with bag-of-words columns. Each of this can be thought as example level
+      normalizations on the column:
         * "sum": do not normalize
         * "mean": do l1 normalization
         * "sqrtn": do l2 normalization
@@ -1146,10 +1160,6 @@ def shared_embedding_columns(sparse_id_columns,
     TypeError: if `sparse_id_columns` is not a sequence or is a string. If at
       least one element of `sparse_id_columns` is not a `SparseTensor`.
   """
-  if combiner is None:
-    logging.warn("The default value of combiner will change from \"mean\" "
-                 "to \"sqrtn\" after 2016/11/01.")
-    combiner = "mean"
   if (not isinstance(sparse_id_columns, collections.Sequence) or
       isinstance(sparse_id_columns, six.string_types)):
     raise TypeError(
@@ -1220,8 +1230,9 @@ class _ScatteredEmbeddingColumn(
       raise ValueError("initializer must be callable if specified. "
                        "column_name: {}".format(column_name))
     if initializer is None:
+      logging.warn("The default stddev value of initializer will change from "
+                   "\"0.1\" to \"1/sqrt(dimension)\" after 2017/02/25.")
       stddev = 0.1
-      # TODO(b/25671353): Better initial value?
       initializer = init_ops.truncated_normal_initializer(
           mean=0.0, stddev=stddev)
     return super(_ScatteredEmbeddingColumn, cls).__new__(cls, column_name, size,
@@ -1257,7 +1268,7 @@ def scattered_embedding_column(column_name,
                                size,
                                dimension,
                                hash_key,
-                               combiner=None,
+                               combiner="mean",
                                initializer=None):
   """Creates an embedding column of a sparse feature using parameter hashing.
 
@@ -1284,8 +1295,10 @@ def scattered_embedding_column(column_name,
     hash_key: Specify the hash_key that will be used by the `FingerprintCat64`
       function to combine the crosses fingerprints on SparseFeatureCrossOp.
     combiner: A string specifying how to reduce if there are multiple entries
-      in a single row. Currently "mean", "sqrtn" and "sum" are supported. Each
-      of this can be thought as example level normalizations on the column:
+      in a single row. Currently "mean", "sqrtn" and "sum" are supported, with
+      "mean" the default. "sqrtn" often achieves good accuracy, in particular
+      with bag-of-words columns. Each of this can be thought as example level
+      normalizations on the column:
         * "sum": do not normalize features in the column
         * "mean": do l1 normalization on features in the column
         * "sqrtn": do l2 normalization on features in the column
@@ -1302,10 +1315,6 @@ def scattered_embedding_column(column_name,
       is not supported.
 
   """
-  if combiner is None:
-    logging.warn("The default value of combiner will change from \"mean\" "
-                 "to \"sqrtn\" after 2016/11/01.")
-    combiner = "mean"
   if (dimension < 1) or (size < 1):
     raise ValueError("Dimension and size must be greater than 0. "
                      "dimension: {}, size: {}, column_name: {}".format(
@@ -1756,8 +1765,10 @@ class _CrossedColumn(_FeatureColumn,
       _SparseColumn, _CrossedColumn, or _BucketizedColumn.
     hash_bucket_size: An int that is > 1. The number of buckets.
     combiner: A string specifying how to reduce if there are multiple entries
-      in a single row. Currently "mean", "sqrtn" and "sum" are supported. Each
-      of this can be thought as example level normalizations on the column:
+      in a single row. Currently "mean", "sqrtn" and "sum" are supported, with
+      "sum" the default. "sqrtn" often achieves good accuracy, in particular
+      with bag-of-words columns. Each of this can be thought as example level
+      normalizations on the column::
         * "sum": do not normalize
         * "mean": do l1 normalization
         * "sqrtn": do l2 normalization
@@ -1789,7 +1800,7 @@ class _CrossedColumn(_FeatureColumn,
               columns,
               hash_bucket_size,
               hash_key,
-              combiner="sqrtn",
+              combiner="sum",
               ckpt_to_load_from=None,
               tensor_name_in_ckpt=None):
     for column in columns:
@@ -1900,7 +1911,7 @@ class _CrossedColumn(_FeatureColumn,
         combiner=self.combiner)
 
 
-def crossed_column(columns, hash_bucket_size, combiner=None,
+def crossed_column(columns, hash_bucket_size, combiner="sum",
                    ckpt_to_load_from=None,
                    tensor_name_in_ckpt=None,
                    hash_key=None):
@@ -1910,7 +1921,15 @@ def crossed_column(columns, hash_bucket_size, combiner=None,
     columns: An iterable of _FeatureColumn. Items can be an instance of
       _SparseColumn, _CrossedColumn, or _BucketizedColumn.
     hash_bucket_size: An int that is > 1. The number of buckets.
-    combiner: A combiner string, supports sum, mean, sqrtn.
+    combiner: A string specifying how to reduce if there are multiple entries
+      in a single row. Currently "mean", "sqrtn" and "sum" are supported, with
+      "sum" the default. "sqrtn" often achieves good accuracy, in particular
+      with bag-of-words columns. Each of this can be thought as example level
+      normalizations on the column::
+        * "sum": do not normalize
+        * "mean": do l1 normalization
+        * "sqrtn": do l2 normalization
+      For more information: `tf.embedding_lookup_sparse`.
     ckpt_to_load_from: (Optional). String representing checkpoint name/pattern
       to restore the column weights. Required if `tensor_name_in_ckpt` is not
       None.
@@ -1931,10 +1950,6 @@ def crossed_column(columns, hash_bucket_size, combiner=None,
     ValueError: if hash_bucket_size is not > 1 or
       len(columns) is not > 1.
   """
-  if combiner is None:
-    logging.warn("The default value of combiner will change from \"sum\" "
-                 "to \"sqrtn\" after 2016/11/01.")
-    combiner = "sum"
   return _CrossedColumn(
       columns,
       hash_bucket_size,

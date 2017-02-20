@@ -13,13 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 
-"""## Generation of summaries.
+"""Tensor summaries for exporting information about a model.
 
-### Class for writing Summaries
+See the @{$python/summary} guide.
+
 @@FileWriter
 @@FileWriterCache
-
-### Summary Ops
 @@tensor_summary
 @@scalar
 @@histogram
@@ -27,10 +26,7 @@
 @@image
 @@merge
 @@merge_all
-
-## Utilities
 @@get_summary_description
-
 """
 
 from __future__ import absolute_import
@@ -125,7 +121,7 @@ def scalar(name, tensor, collections=None):
 def image(name, tensor, max_outputs=3, collections=None):
   """Outputs a `Summary` protocol buffer with images.
 
-  The summary has up to `max_images` summary values containing images. The
+  The summary has up to `max_outputs` summary values containing images. The
   images are built from `tensor` which must be 4-D with shape `[batch_size,
   height, width, channels]` and where `channels` can be:
 

@@ -12,18 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for tensorflow.python.framework.ops."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
-
 from tensorflow.python.framework import random_seed
+from tensorflow.python.platform import test
 
 
-class RandomSeedTest(tf.test.TestCase):
+class RandomSeedTest(test.TestCase):
 
   def testRandomSeed(self):
     test_cases = [
@@ -48,4 +47,4 @@ class RandomSeedTest(tf.test.TestCase):
 
 
 if __name__ == '__main__':
-  tf.test.main()
+  test.main()

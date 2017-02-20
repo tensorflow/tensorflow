@@ -18,29 +18,31 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
-
 from tensorflow.core.framework import types_pb2
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import array_ops
+from tensorflow.python.platform import test
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import utils
 
 
-class SignatureDefUtilsTest(tf.test.TestCase):
+class SignatureDefUtilsTest(test.TestCase):
 
   def testBuildSignatureDef(self):
-    x = tf.placeholder(tf.float32, 1, name="x")
+    x = array_ops.placeholder(dtypes.float32, 1, name="x")
     x_tensor_info = utils.build_tensor_info(x)
     inputs = dict()
     inputs["foo-input"] = x_tensor_info
 
-    y = tf.placeholder(tf.float32, name="y")
+    y = array_ops.placeholder(dtypes.float32, name="y")
     y_tensor_info = utils.build_tensor_info(y)
     outputs = dict()
     outputs["foo-output"] = y_tensor_info
 
-    signature_def = signature_def_utils.build_signature_def(
-        inputs, outputs, "foo-method-name")
+    signature_def = signature_def_utils.build_signature_def(inputs, outputs,
+                                                            "foo-method-name")
     self.assertEqual("foo-method-name", signature_def.method_name)
 
     # Check inputs in signature def.
@@ -59,10 +61,10 @@ class SignatureDefUtilsTest(tf.test.TestCase):
     self.assertEqual(0, len(y_tensor_info_actual.tensor_shape.dim))
 
   def testRegressionSignatureDef(self):
-    input1 = tf.constant("a", name="input-1")
-    output1 = tf.constant("b", name="output-1")
-    signature_def = signature_def_utils.regression_signature_def(
-        input1, output1)
+    input1 = constant_op.constant("a", name="input-1")
+    output1 = constant_op.constant("b", name="output-1")
+    signature_def = signature_def_utils.regression_signature_def(input1,
+                                                                 output1)
 
     self.assertEqual(signature_constants.REGRESS_METHOD_NAME,
                      signature_def.method_name)
@@ -84,11 +86,12 @@ class SignatureDefUtilsTest(tf.test.TestCase):
     self.assertEqual(0, len(y_tensor_info_actual.tensor_shape.dim))
 
   def testClassificationSignatureDef(self):
-    input1 = tf.constant("a", name="input-1")
-    output1 = tf.constant("b", name="output-1")
-    output2 = tf.constant("c", name="output-2")
-    signature_def = signature_def_utils.classification_signature_def(
-        input1, output1, output2)
+    input1 = constant_op.constant("a", name="input-1")
+    output1 = constant_op.constant("b", name="output-1")
+    output2 = constant_op.constant("c", name="output-2")
+    signature_def = signature_def_utils.classification_signature_def(input1,
+                                                                     output1,
+                                                                     output2)
 
     self.assertEqual(signature_constants.CLASSIFY_METHOD_NAME,
                      signature_def.method_name)
@@ -115,42 +118,41 @@ class SignatureDefUtilsTest(tf.test.TestCase):
     self.assertEqual(0, len(scores_tensor_info_actual.tensor_shape.dim))
 
   def testPredictionSignatureDef(self):
-    input1 = tf.constant("a", name="input-1")
-    input2 = tf.constant("b", name="input-2")
-    output1 = tf.constant("c", name="output-1")
-    output2 = tf.constant("d", name="output-2")
-    signature_def = signature_def_utils.predict_signature_def(
-        {"input-1": input1, "input-2": input2},
-        {"output-1": output1, "output-2": output2})
+    input1 = constant_op.constant("a", name="input-1")
+    input2 = constant_op.constant("b", name="input-2")
+    output1 = constant_op.constant("c", name="output-1")
+    output2 = constant_op.constant("d", name="output-2")
+    signature_def = signature_def_utils.predict_signature_def({
+        "input-1": input1,
+        "input-2": input2
+    }, {"output-1": output1,
+        "output-2": output2})
 
     self.assertEqual(signature_constants.PREDICT_METHOD_NAME,
                      signature_def.method_name)
 
     # Check inputs in signature def.
     self.assertEqual(2, len(signature_def.inputs))
-    input1_tensor_info_actual = (
-        signature_def.inputs["input-1"])
+    input1_tensor_info_actual = (signature_def.inputs["input-1"])
     self.assertEqual("input-1:0", input1_tensor_info_actual.name)
     self.assertEqual(types_pb2.DT_STRING, input1_tensor_info_actual.dtype)
     self.assertEqual(0, len(input1_tensor_info_actual.tensor_shape.dim))
-    input2_tensor_info_actual = (
-        signature_def.inputs["input-2"])
+    input2_tensor_info_actual = (signature_def.inputs["input-2"])
     self.assertEqual("input-2:0", input2_tensor_info_actual.name)
     self.assertEqual(types_pb2.DT_STRING, input2_tensor_info_actual.dtype)
     self.assertEqual(0, len(input2_tensor_info_actual.tensor_shape.dim))
 
     # Check outputs in signature def.
     self.assertEqual(2, len(signature_def.outputs))
-    output1_tensor_info_actual = (
-        signature_def.outputs["output-1"])
+    output1_tensor_info_actual = (signature_def.outputs["output-1"])
     self.assertEqual("output-1:0", output1_tensor_info_actual.name)
     self.assertEqual(types_pb2.DT_STRING, output1_tensor_info_actual.dtype)
     self.assertEqual(0, len(output1_tensor_info_actual.tensor_shape.dim))
-    output2_tensor_info_actual = (
-        signature_def.outputs["output-2"])
+    output2_tensor_info_actual = (signature_def.outputs["output-2"])
     self.assertEqual("output-2:0", output2_tensor_info_actual.name)
     self.assertEqual(types_pb2.DT_STRING, output2_tensor_info_actual.dtype)
     self.assertEqual(0, len(output2_tensor_info_actual.tensor_shape.dim))
 
+
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

@@ -42,8 +42,8 @@ For example, here are the results from [AlexNet] classifying some images:
 To compare models, we examine how often the model fails to predict the
 correct answer as one of their top 5 guesses -- termed "top-5 error rate".
 [AlexNet] achieved by setting a top-5 error rate of 15.3% on the 2012
-validation data set; [BN-Inception-v2] achieved 6.66%;
-[Inception-v3] reaches 3.46%.
+validation data set; [Inception (GoogLeNet)] achieved 6.67%; 
+[BN-Inception-v2] achieved 4.9%; [Inception-v3] reaches 3.46%.
 
 > How well do humans do on ImageNet Challenge? There's a [blog post] by
 Andrej Karpathy who attempted to measure his own performance. He reached
@@ -254,7 +254,7 @@ definition with the `ToGraphDef()` function.
   TF_RETURN_IF_ERROR(session->Run({}, {output_name}, {}, out_tensors));
   return Status::OK();
 ```
-Then we create a [`Session`](http://www.tensorflow.org/versions/master/api_docs/cc/ClassSession.html#class-tensorflow-session)
+Then we create a [`Session`](../../api_docs/cc/class/tensorflow/session)
 object, which is the interface to actually running the graph, and run it,
 specifying which node we want to get the output from, and where to put the
 output data.

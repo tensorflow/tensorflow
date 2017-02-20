@@ -60,10 +60,18 @@ func (s *Scope) Finalize() (*tf.Graph, error) {
 
 // AddOperation adds the operation to the Graph managed by s.
 //
-// See Graph.AddOperation.
+// If there is a name prefix associated with s (such as if s was created
+// by a call to SubScope), then this prefix will be applied to the name
+// of the operation being added. See also Graph.AddOperation.
 func (s *Scope) AddOperation(args tf.OpSpec) *tf.Operation {
 	if s.Err() != nil {
 		return nil
+	}
+	if args.Name == "" {
+		args.Name = args.Type
+	}
+	if s.namespace != "" {
+		args.Name = s.namespace + "/" + args.Name
 	}
 	op, err := s.graph.AddOperation(args)
 	if err != nil {

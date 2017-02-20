@@ -22,7 +22,7 @@ identified in the search is used (favoring a shorter MRO distance to
 *  <b>`dist_b`</b>: The second distribution.
 *  <b>`allow_nan`</b>: If `False` (default), a runtime error is raised
     if the KL returns NaN values for any batch entry of the given
-    distributions.  If `True`, the KL may return a NaN for the given entry.
+    distributions. If `True`, the KL may return a NaN for the given entry.
 *  <b>`name`</b>: (optional) Name scope to use for created operations.
 
 ##### Returns:

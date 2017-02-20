@@ -26,8 +26,13 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 
 namespace tensorflow {
+
+// Declared here so we don't need to include it in a public header.
+void CalculateUsedRange(const Tensor& input, qint32* actual_min_quantized,
+                        qint32* actual_max_quantized);
 
 class RequantizationRangeTest : public OpsTestBase {
  protected:
@@ -62,5 +67,57 @@ TEST_F(RequantizationRangeTest, HandCrafted) {
   test::FillValues<float>(&expected_max, {1.0f});
   test::ExpectTensorEqual<float>(expected_max, *GetOutput(1));
 }
+
+static void BM_RequantizationRange(int iters, int size) {
+  testing::StopTiming();
+  testing::UseRealTime();
+  testing::ItemsProcessed(static_cast<int64>(iters) * size);
+  testing::ItemsProcessed(static_cast<int64>(iters) * size * 4);
+
+  Tensor quantized_tensor(DT_QINT32, TensorShape({1, size}));
+  test::FillFn<qint32>(&quantized_tensor, [](int n) { return qint32(n); });
+
+  qint32 actual_min;
+  qint32 actual_max;
+  testing::StartTiming();
+  for (int iter = 0; iter < iters; ++iter) {
+    CalculateUsedRange(quantized_tensor, &actual_min, &actual_max);
+  }
+}
+
+static void BM_RequantizationRange100(int iters) {
+  BM_RequantizationRange(100, iters);
+}
+BENCHMARK(BM_RequantizationRange100);
+
+static void BM_RequantizationRange1000(int iters) {
+  BM_RequantizationRange(1000, iters);
+}
+BENCHMARK(BM_RequantizationRange1000);
+
+static void BM_RequantizationRange10000(int iters) {
+  BM_RequantizationRange(10000, iters);
+}
+BENCHMARK(BM_RequantizationRange10000);
+
+static void BM_RequantizationRange100000(int iters) {
+  BM_RequantizationRange(100000, iters);
+}
+BENCHMARK(BM_RequantizationRange100000);
+
+static void BM_RequantizationRange1000000(int iters) {
+  BM_RequantizationRange(1000000, iters);
+}
+BENCHMARK(BM_RequantizationRange1000000);
+
+static void BM_RequantizationRange10000000(int iters) {
+  BM_RequantizationRange(10000000, iters);
+}
+BENCHMARK(BM_RequantizationRange10000000);
+
+static void BM_RequantizationRange100000000(int iters) {
+  BM_RequantizationRange(100000000, iters);
+}
+BENCHMARK(BM_RequantizationRange100000000);
 
 }  // end namespace tensorflow

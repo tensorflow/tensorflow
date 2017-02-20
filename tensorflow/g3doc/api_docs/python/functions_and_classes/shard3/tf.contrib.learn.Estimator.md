@@ -10,21 +10,27 @@ Constructs an `Estimator` instance.
 
 *  <b>`model_fn`</b>: Model function. Follows the signature:
     * Args:
-      * `features` are single `Tensor` or `dict` of `Tensor`s
+      * `features`: single `Tensor` or `dict` of `Tensor`s
              (depending on data passed to `fit`),
-      * `labels` are `Tensor` or `dict` of `Tensor`s (for multi-head
+      * `labels`: `Tensor` or `dict` of `Tensor`s (for multi-head
              models). If mode is `ModeKeys.INFER`, `labels=None` will be
              passed. If the `model_fn`'s signature does not accept
              `mode`, the `model_fn` must still be able to handle
              `labels=None`.
-      * `mode` specifies if this training, evaluation or
+      * `mode`: Optional. Specifies if this training, evaluation or
              prediction. See `ModeKeys`.
-      * `params` is a `dict` of hyperparameters.  Will receive what
+      * `params`: Optional `dict` of hyperparameters.  Will receive what
              is passed to Estimator in `params` parameter. This allows
              to configure Estimators from hyper parameter tuning.
-      * `config` is a Configuration object. Will receive what is passed to
-             Estimator in `config` parameter. This allows updating things in
-             your model_fn based on configuration such as num_ps_replicas.
+      * `config`: Optional configuration object. Will receive what is passed
+             to Estimator in `config` parameter, or the default `config`.
+             Allows updating things in your model_fn based on configuration
+             such as `num_ps_replicas`.
+      * `model_dir`: Optional directory where model parameters, graph etc
+             are saved. Will receive what is passed to Estimator in
+             `model_dir` parameter, or the default `model_dir`. Allows
+             updating things in your model_fn that expect model_dir, such as
+             training hooks.
 
     * Returns:
       `ModelFnOps`
@@ -43,6 +49,8 @@ Constructs an `Estimator` instance.
       * `(features, labels, mode) -> (predictions, loss, train_op)`
       * `(features, labels, mode, params) -> (predictions, loss, train_op)`
       * `(features, labels, mode, params, config) ->
+         (predictions, loss, train_op)`
+      * `(features, labels, mode, params, config, model_dir) ->
          (predictions, loss, train_op)`
 
 
@@ -138,6 +146,9 @@ The signature of the input_fn accepted by export is changing to be consistent wi
     `signature_fn` without filtering.
 *  <b>`default_batch_size`</b>: Default batch size of the `Example` placeholder.
 *  <b>`exports_to_keep`</b>: Number of exports to keep.
+*  <b>`checkpoint_path`</b>: the checkpoint path of the model to be exported. If it is
+      `None` (which is default), will use the latest checkpoint in
+      export_dir.
 
 ##### Returns:
 
@@ -149,22 +160,19 @@ The signature of the input_fn accepted by export is changing to be consistent wi
 
 - - -
 
-#### `tf.contrib.learn.Estimator.export_savedmodel(*args, **kwargs)` {#Estimator.export_savedmodel}
+#### `tf.contrib.learn.Estimator.export_savedmodel(export_dir_base, serving_input_fn, default_output_alternative_key=None, assets_extra=None, as_text=False, checkpoint_path=None)` {#Estimator.export_savedmodel}
 
-Exports inference graph as a SavedModel into given dir. (experimental)
-
-THIS FUNCTION IS EXPERIMENTAL. It may change or be removed at any time, and without warning.
-
+Exports inference graph as a SavedModel into given dir.
 
 ##### Args:
 
 
 *  <b>`export_dir_base`</b>: A string containing a directory to write the exported
     graph and checkpoints.
-*  <b>`input_fn`</b>: A function that takes no argument and
+*  <b>`serving_input_fn`</b>: A function that takes no argument and
     returns an `InputFnOps`.
 *  <b>`default_output_alternative_key`</b>: the name of the head to serve when none is
-    specified.
+    specified.  Not needed for single-headed models.
 *  <b>`assets_extra`</b>: A dict specifying how to populate the assets.extra directory
     within the exported SavedModel.  Each key should give the destination
     path (including the filename) relative to the assets.extra directory.
@@ -173,7 +181,8 @@ THIS FUNCTION IS EXPERIMENTAL. It may change or be removed at any time, and with
     renaming it is specified as
     `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
 *  <b>`as_text`</b>: whether to write the SavedModel proto in text format.
-*  <b>`exports_to_keep`</b>: Number of exports to keep.
+*  <b>`checkpoint_path`</b>: The checkpoint path to export.  If None (the default),
+    the most recent checkpoint found within the model directory is chosen.
 
 ##### Returns:
 

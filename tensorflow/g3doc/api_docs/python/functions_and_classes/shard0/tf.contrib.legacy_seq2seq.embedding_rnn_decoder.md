@@ -7,7 +7,7 @@ RNN decoder with embedding and a pure-decoding option.
 
 *  <b>`decoder_inputs`</b>: A list of 1D batch-sized int32 Tensors (decoder inputs).
 *  <b>`initial_state`</b>: 2D Tensor [batch_size x cell.state_size].
-*  <b>`cell`</b>: rnn_cell.RNNCell defining the cell function.
+*  <b>`cell`</b>: core_rnn_cell.RNNCell defining the cell function.
 *  <b>`num_symbols`</b>: Integer, how many symbols come into the embedding.
 *  <b>`embedding_size`</b>: Integer, the length of the embedding vector for each symbol.
 *  <b>`output_projection`</b>: None or a pair (W, B) of output projection weights and

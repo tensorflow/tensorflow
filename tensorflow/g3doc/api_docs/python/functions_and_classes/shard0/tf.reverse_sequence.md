@@ -6,7 +6,7 @@ This op first slices `input` along the dimension `batch_axis`, and for each
 slice `i`, reverses the first `seq_lengths[i]` elements along
 the dimension `seq_axis`.
 
-The elements of `seq_lengths` must obey `seq_lengths[i] < input.dims[seq_dim]`,
+The elements of `seq_lengths` must obey `seq_lengths[i] <= input.dims[seq_dim]`,
 and `seq_lengths` must be a vector of length `input.dims[batch_dim]`.
 
 The output slice `i` along dimension `batch_axis` is then given by input
@@ -63,7 +63,7 @@ output[2:, :, 3, :, ...] = input[2:, :, 3, :, ...]
 *  <b>`input`</b>: A `Tensor`. The input to reverse.
 *  <b>`seq_lengths`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     1-D with length `input.dims(batch_dim)` and
-    `max(seq_lengths) < input.dims(seq_dim)`
+    `max(seq_lengths) <= input.dims(seq_dim)`
 *  <b>`seq_axis`</b>: An `int`. The dimension which is partially reversed.
 *  <b>`batch_axis`</b>: An optional `int`. Defaults to `0`.
     The dimension along which reversal is performed.

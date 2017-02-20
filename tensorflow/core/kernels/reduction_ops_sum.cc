@@ -64,4 +64,31 @@ REGISTER_KERNEL_BUILDER(
 
 #endif
 
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNELS(type)         \
+  REGISTER_KERNEL_BUILDER(                  \
+      Name("Sum")                           \
+          .Device(DEVICE_SYCL)              \
+          .TypeConstraint<type>("T")        \
+          .TypeConstraint<int32>("Tidx")    \
+          .HostMemory("reduction_indices"), \
+      ReductionOp<SYCLDevice, type, Eigen::internal::SumReducer<type>>);
+REGISTER_SYCL_KERNELS(float);
+REGISTER_SYCL_KERNELS(double);
+#undef REGISTER_SYCL_KERNELS
+
+// A special GPU kernel for int32.
+// TODO(b/25387198): Also enable int32 in device memory. This kernel
+// registration requires all int32 inputs and outputs to be in host memory.
+REGISTER_KERNEL_BUILDER(
+    Name("Sum")
+        .Device(DEVICE_SYCL)
+        .TypeConstraint<int32>("T")
+        .TypeConstraint<int32>("Tidx")
+        .HostMemory("input")
+        .HostMemory("output")
+        .HostMemory("reduction_indices"),
+    ReductionOp<CPUDevice, int32, Eigen::internal::SumReducer<int32>>);
+#endif // TENSORFLOW_USE_SYCL
+
 }  // namespace tensorflow

@@ -26,6 +26,9 @@ public enum DataType {
   /** 32-bit signed integer. */
   INT32(3),
 
+  /** 8-bit unsigned integer. */
+  UINT8(4),
+
   /**
    * A sequence of bytes.
    *
