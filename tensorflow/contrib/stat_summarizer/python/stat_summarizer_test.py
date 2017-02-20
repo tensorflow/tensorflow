@@ -52,22 +52,23 @@ class StatSummarizerTest(test.TestCase):
       output_string = ss.GetOutputString()
 
       print(output_string)
-
+      
+      sa = self.assertRegexpMatches
       # Test it recorded running the expected number of times.
-      self.assertRegexpMatches(output_string, r"count=20")
+      sa(output_string, r"count=20")
 
       # Test that a header line got printed.
-      self.assertRegexpMatches(output_string, r"====== .* ======")
+      sa(output_string, r"====== .* ======")
 
       # Test that the nodes we added were analyzed.
       # The line for the op should contain both the op type (MatMul)
       # and the name of the node (product)
-      self.assertRegexpMatches(output_string, r"MatMul.*product")
-      self.assertRegexpMatches(output_string, r"Const.*m1")
-      self.assertRegexpMatches(output_string, r"Const.*m2")
+      sa(output_string, r"MatMul.*product")
+      sa(output_string, r"Const.*m1")
+      sa(output_string, r"Const.*m2")
 
       # Test that a CDF summed to 100%
-      self.assertRegexpMatches(output_string, r"100\.")
+      sa(output_string, r"100\.")
 
       pywrap_tensorflow.DeleteStatSummarizer(ss)
 
