@@ -260,10 +260,11 @@ Status GrpcServer::Init() {
                          &worker_names[0], maxNameLength, MPI_CHAR,
                          MPI_COMM_WORLD));
 
+  if(procId == 0) fprintf(stderr,"MPI process-ID to gRPC server name map: \n");
   for(int i=0; i < nProcs; i++)
   {
-    fprintf(stderr,"JBDBG Iam: %d Proc: %d  name: %s \n", procId, i, &worker_names[i*128]);
     worker_env_.worker_name_MPI_idx[string(&worker_names[i*128])] = i;
+    if(procId == 0) fprintf(stderr,"Process: %d\t\tgRPC-name: %s \n", i, &worker_names[i*128]);
   } 
 
 #endif

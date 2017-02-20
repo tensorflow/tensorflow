@@ -86,22 +86,21 @@ LocalDevice::LocalDevice(const SessionOptions& options,
 
 
 #if 1
-    //Initialize the MPI environment as one of the first things. That 
-    //ensures the environment is setup before the other gRPC threads 
+    //Initialize the MPI environment before code execution is split in threads.
+    //This ensures the environment is setup before the other gRPC threads 
     //are launched.
     int flag = 0;
     MPICheck(MPI_Initialized(&flag));
-    fprintf(stderr, "JBDBG MPI Initialized? %d \n", flag);
     if(!flag){
         MPICheck(MPI_Init_thread(0,0, MPI_THREAD_MULTIPLE,&flag));
         assert(flag == MPI_THREAD_MULTIPLE);
-        fprintf(stderr,"JBDBG Init MPI done");
         int procId, nProcs, len=-1;
         char procName[128];
         MPICheck(MPI_Comm_rank(MPI_COMM_WORLD, &procId));
         MPICheck(MPI_Comm_size(MPI_COMM_WORLD, &nProcs));
         MPICheck(MPI_Get_processor_name(procName, &len));
-        fprintf(stderr,"JBDBG MPI Info: proc: %d nProcs: %d || %s \n", procId, nProcs, procName); 
+        fprintf(stderr,"MPI Environment initialised. Process id: %d Total processes: %d || Hostname: %s \n", 
+                       procId, nProcs, procName); 
     }
 #endif
 
