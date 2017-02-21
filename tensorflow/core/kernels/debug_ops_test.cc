@@ -365,5 +365,125 @@ TEST_F(DebugNumericSummaryOpTest, Float_all_Inf_or_NaN) {
   ASSERT_TRUE(Eigen::numext::isnan(output[11]));
 }
 
+TEST_F(DebugNumericSummaryOpTest, Int16Success) {
+  TF_ASSERT_OK(Init(DT_INT16));
+  AddInputFromArray<int16>(TensorShape({4, 1}), {-1, -3, 3, 7});
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected(allocator(), DT_DOUBLE, TensorShape({12}));
+  test::FillValues<double>(
+      &expected,
+      {1.0,      // Is initialized.
+       4.0,      // Total element count.
+       0.0,      // nan count.
+       0.0,      // -inf count.
+       2.0,      // negative count (excluding -inf).
+       0.0,      // zero count.
+       2.0,      // positive count (excluding +inf).
+       0.0,      // +inf count.
+       -3.0,     // minimum of non-inf and non-nan elements.
+       7.0,      // maximum of non-inf and non-nan elements.
+       1.5,      // mean of non-inf and non-nan elements.
+       14.75});  // variance of non-inf and non-nan elements.
+
+  test::ExpectTensorNear<double>(expected, *GetOutput(0), 1e-8);
+}
+
+TEST_F(DebugNumericSummaryOpTest, Int32Success) {
+  TF_ASSERT_OK(Init(DT_INT32));
+  AddInputFromArray<int32>(TensorShape({2, 3}), {0, 0, -1, 3, 3, 7});
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected(allocator(), DT_DOUBLE, TensorShape({12}));
+  test::FillValues<double>(
+      &expected,
+      {1.0,              // Is initialized.
+       6.0,              // Total element count.
+       0.0,              // nan count.
+       0.0,              // -inf count.
+       1.0,              // negative count (excluding -inf).
+       2.0,              // zero count.
+       3.0,              // positive count (excluding +inf).
+       0.0,              // +inf count.
+       -1.0,             // minimum of non-inf and non-nan elements.
+       7.0,              // maximum of non-inf and non-nan elements.
+       2.0,              // mean of non-inf and non-nan elements.
+       7.33333333333});  // variance of non-inf and non-nan elements.
+
+  test::ExpectTensorNear<double>(expected, *GetOutput(0), 1e-8);
+}
+
+TEST_F(DebugNumericSummaryOpTest, Int64Success) {
+  TF_ASSERT_OK(Init(DT_INT64));
+  AddInputFromArray<int64>(TensorShape({2, 2, 2}), {0, 0, -1, 3, 3, 7, 0, 0});
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected(allocator(), DT_DOUBLE, TensorShape({12}));
+  test::FillValues<double>(
+      &expected,
+      {1.0,     // Is initialized.
+       8.0,     // Total element count.
+       0.0,     // nan count.
+       0.0,     // -inf count.
+       1.0,     // negative count (excluding -inf).
+       4.0,     // zero count.
+       3.0,     // positive count (excluding +inf).
+       0.0,     // +inf count.
+       -1.0,    // minimum of non-inf and non-nan elements.
+       7.0,     // maximum of non-inf and non-nan elements.
+       1.5,     // mean of non-inf and non-nan elements.
+       6.25});  // variance of non-inf and non-nan elements.
+
+  test::ExpectTensorNear<double>(expected, *GetOutput(0), 1e-8);
+}
+
+TEST_F(DebugNumericSummaryOpTest, UInt8Success) {
+  TF_ASSERT_OK(Init(DT_UINT8));
+  AddInputFromArray<uint8>(TensorShape({1, 5}), {0, 10, 30, 30, 70});
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected(allocator(), DT_DOUBLE, TensorShape({12}));
+  test::FillValues<double>(
+      &expected,
+      {1.0,      // Is initialized.
+       5.0,      // Total element count.
+       0.0,      // nan count.
+       0.0,      // -inf count.
+       0.0,      // negative count (excluding -inf).
+       1.0,      // zero count.
+       4.0,      // positive count (excluding +inf).
+       0.0,      // +inf count.
+       0.0,      // minimum of non-inf and non-nan elements.
+       70.0,     // maximum of non-inf and non-nan elements.
+       28.0,     // mean of non-inf and non-nan elements.
+       576.0});  // variance of non-inf and non-nan elements.
+
+  test::ExpectTensorNear<double>(expected, *GetOutput(0), 1e-8);
+}
+
+TEST_F(DebugNumericSummaryOpTest, BoolSuccess) {
+  TF_ASSERT_OK(Init(DT_BOOL));
+  AddInputFromArray<bool>(TensorShape({2, 3}), {0, 0, 1, 1, 1, 0});
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected(allocator(), DT_DOUBLE, TensorShape({12}));
+  test::FillValues<double>(
+      &expected,
+      {1.0,     // Is initialized.
+       6.0,     // Total element count.
+       0.0,     // nan count.
+       0.0,     // -inf count.
+       0.0,     // negative count (excluding -inf).
+       3.0,     // zero count.
+       3.0,     // positive count (excluding +inf).
+       0.0,     // +inf count.
+       0.0,     // minimum of non-inf and non-nan elements.
+       1.0,     // maximum of non-inf and non-nan elements.
+       0.5,     // mean of non-inf and non-nan elements.
+       0.25});  // variance of non-inf and non-nan elements.
+
+  test::ExpectTensorNear<double>(expected, *GetOutput(0), 1e-8);
+}
+
 }  // namespace
 }  // namespace tensorflow

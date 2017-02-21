@@ -191,7 +191,7 @@ class DebugNumericSummaryOp : public OpKernel {
 
       element_count = input_shape.num_elements();
       for (int64 i = 0; i < element_count; ++i) {
-        T x = input_flat[i];
+        const double x = static_cast<double>(input_flat[i]);
         if (Eigen::numext::isnan(x)) {
           nan_count++;
         } else if (Eigen::numext::isinf(x)) {
@@ -226,7 +226,7 @@ class DebugNumericSummaryOp : public OpKernel {
         // Do a second pass to compute variance.
         variance = 0.0;
         for (int64 i = 0; i < element_count; ++i) {
-          T x = input_flat[i];
+          const double x = static_cast<double>(input_flat[i]);
           if (!Eigen::numext::isnan(x) && !Eigen::numext::isinf(x)) {
             variance += (x - mean) * (x - mean);
           }
