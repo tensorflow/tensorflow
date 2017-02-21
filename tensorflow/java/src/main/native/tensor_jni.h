@@ -40,6 +40,14 @@ Java_org_tensorflow_Tensor_allocateScalarBytes(JNIEnv *, jclass, jbyteArray);
 
 /*
  * Class:     org_tensorflow_Tensor
+ * Method:    clone
+ * Signature: (J)J
+ */
+JNIEXPORT jlong JNICALL Java_org_tensorflow_Tensor_clone(JNIEnv *, jclass,
+                                                         jlong);
+
+/*
+ * Class:     org_tensorflow_Tensor
  * Method:    delete
  * Signature: (J)V
  */

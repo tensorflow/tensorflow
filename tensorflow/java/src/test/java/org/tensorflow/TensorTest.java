@@ -457,6 +457,25 @@ public class TensorTest {
   }
 
   @Test
+  public void cloning() {
+    int[] x = {1,2,3};
+    int[] x2 = new int[x.length];
+    Tensor t2;
+    try (Tensor t = Tensor.create(x)) {
+      t2 = t.clone();
+    }
+    try {
+      t2.copyTo(x2);
+      assertEquals(DataType.INT32, t2.dataType());
+      assertArrayEquals(new long[]{x.length}, t2.shape());
+      assertArrayEquals(x, x2);
+    }
+    finally {
+      t2.close();
+    }
+  }
+
+  @Test
   public void useAfterClose() {
     int n = 4;
     Tensor t = Tensor.create(n);
