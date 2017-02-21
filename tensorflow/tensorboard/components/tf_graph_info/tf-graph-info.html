@@ -16,6 +16,7 @@ limitations under the License.
 -->
 
 <link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../tf-graph-common/tf-graph-common.html">
 <link rel="import" href="tf-node-info.html">
 
 <dom-module id="tf-graph-info">
@@ -33,6 +34,40 @@ h2 {
   text-align: center;
   margin: 0;
 }
+
+.health-pill-legend {
+  padding: 15px;
+}
+
+.health-pill-legend h2 {
+  margin: 0 0 20px 0;
+  text-align: left;
+}
+
+.health-pill-entry {
+  margin: 10px 10px 10px 0;
+}
+
+.health-pill-entry .color-preview {
+  width: 26px;
+  height: 26px;
+  border-radius: 3px;
+  display: inline-block;
+  margin: 0 10px 0 0;
+}
+
+.health-pill-entry .color-label, .health-pill-entry .tensor-count {
+  color: #777;
+  display: inline-block;
+  height: 26px;
+  font-size: 22px;
+  line-height: 26px;
+  vertical-align: top;
+}
+
+.health-pill-entry .tensor-count {
+  float: right;
+}
 </style>
 <template is="dom-if" if="{{selectedNode}}">
   <paper-material elevation="1" class="card">
@@ -46,6 +81,20 @@ h2 {
     </tf-node-info>
   </paper-material>
 </template>
+<template is="dom-if" if="[[_healthPillsAvailable(nodeNamesToHealthPill)]]">
+  <paper-material elevation="1" class="card health-pill-legend">
+    <h2>Health Pill Legend</h2>
+    <template is="dom-repeat" items="[[healthPillEntries]]">
+      <div class="health-pill-entry">
+        <div class="color-preview" style="background:[[item.background_color]]"></div>
+        <div class="color-label">[[item.label]]</div>
+        <div class="tensor-count">
+          [[_computeTensorCountString(nodeNamesToHealthPill, selectedNode, index)]]
+        </div>
+      </div>
+    </template>
+  </paper-material>
+</template>
 </template>
 <script>
 (function() {
@@ -57,6 +106,7 @@ h2 {
       graphHierarchy: Object,
       graph: Object,
       renderHierarchy: Object,
+      nodeNamesToHealthPill: Object,
       colorBy: String,
       // Two-ways
       selectedNode: {
@@ -71,6 +121,11 @@ h2 {
       selectedNodeInclude: {
         type: Number,
         notify: true
+      },
+      healthPillEntries: {
+        type: Array,
+        value: tf.graph.scene.healthPillEntries,
+        readOnly: true,
       }
     },
     listeners: {
@@ -86,7 +141,29 @@ h2 {
     },
     _nodeListItemMouseout: function() {
       this.highlightedNode = null;
-    }
+    },
+    _healthPillsAvailable: function(nodeNamesToHealthPill) {
+      let count = 0;
+      for (let nodeName in nodeNamesToHealthPill) {
+        return true;
+      }
+      return false;
+    },
+    _computeTensorCountString: function(nodeNamesToHealthPill, selectedNode, index) {
+      if (!selectedNode) {
+        // No node is selected.
+        return '';
+      }
+
+      const healthPill = nodeNamesToHealthPill[selectedNode];
+      if (!healthPill) {
+        // This node lacks a health pill.
+        return '';
+      }
+
+      // The health pill count values start at 2.
+      return healthPill.value[index + 2].toFixed(0);
+    },
   });
 })();
 </script>
