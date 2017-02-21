@@ -26,9 +26,7 @@ def main():
 
   if(output_file_index == 1):
     # we are linking
-    return subprocess.call([CPU_CXX_COMPILER] + compiler_flags)
-
-  compiler_flags = compiler_flags + ['-D_GLIBCXX_USE_CXX11_ABI=0', '-DEIGEN_USE_SYCL=1']
+    return subprocess.call([CPU_CXX_COMPILER] + compiler_flags + ['-Wl,--no-undefined'])
 
   # find what we compile
   compiling_cpp = 0
@@ -37,6 +35,28 @@ def main():
       compited_file_name = compiler_flags[compiled_file_index]
       if(compited_file_name.endswith(('.cc', '.c++', '.cpp', '.CPP', '.C', '.cxx'))):
           compiling_cpp = 1;
+
+  compiler_flags = compiler_flags + ['-D_GLIBCXX_USE_CXX11_ABI=0', '-DEIGEN_USE_SYCL=1', '-DTENSORFLOW_USE_SYCL', '-DEIGEN_HAS_C99_MATH']
+
+  if(compiling_cpp == 1):
+      # create a blacklist of folders that will be skipped when compiling with ComputeCpp
+      _skip = ["external", "llvm", ".cu.cc"]
+      # if compiling external project skip computecpp
+      if any(_folder in _skip for _folder in output_file_name):
+        return subprocess.call([CPU_CXX_COMPILER] + compiler_flags)
+
+  if(compiling_cpp == 1):
+      # this is an optimisation that will check if compiled file has to be compiled with ComputeCpp
+
+      _tmp_flags = [flag for flag in compiler_flags if not flag.startswith(('-o', output_file_name))]
+      # create preprocessed of the file
+      _cmd = " ".join([CPU_CXX_COMPILER] + _tmp_flags + ["-E"])
+      # check if it has parallel_for< in it
+      _cmd += " | grep \".parallel_for\" > /dev/null"
+      ps = subprocess.call(_cmd, shell=True)
+      # if not call CXX compiler
+      if(ps != 0):
+          return subprocess.call([CPU_CXX_COMPILER] + compiler_flags)
 
   if(compiling_cpp == 1):
       filename, file_extension = os.path.splitext(output_file_name)
@@ -52,9 +72,12 @@ def main():
           # dont want that in case of compiling with computecpp first
           host_compiler_flags = [flag for flag in compiler_flags
                                     if not flag.startswith(('-MF', '-MD',))
-                                    if not '.d' in flag]
+                                    if not '.d' in flag
+                                ]
 
-          host_compiler_flags = ['-D_GLIBCXX_USE_CXX11_ABI=0', '-DTENSORFLOW_USE_SYCL', '-Wno-unused-variable', '-I', COMPUTECPP_INCLUDE, '--include', bc_out] + host_compiler_flags
+          host_compiler_flags[host_compiler_flags.index('-c')] = "--include"
+
+          host_compiler_flags = ['-xc++', '-D_GLIBCXX_USE_CXX11_ABI=0', '-DTENSORFLOW_USE_SYCL', '-Wno-unused-variable', '-I', COMPUTECPP_INCLUDE, '-c', bc_out] + host_compiler_flags
           x = subprocess.call([CPU_CXX_COMPILER] + host_compiler_flags)
       return x
   else:
