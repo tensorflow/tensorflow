@@ -40,6 +40,7 @@ from tensorflow.python.util.all_util import remove_undocumented
 # pylint: disable=unused-import
 from tensorflow.python.framework.test_util import assert_equal_graph_def
 from tensorflow.python.framework.test_util import TensorFlowTestCase as TestCase
+from tensorflow.python.framework.test_util import gpu_device_name
 
 from tensorflow.python.ops.gradient_checker import compute_gradient_error
 from tensorflow.python.ops.gradient_checker import compute_gradient
@@ -104,15 +105,6 @@ def is_gpu_available(cuda_only=False):
   else:
     return any((x.device_type == 'GPU' or x.device_type == 'SYCL')
                for x in _device_lib.list_local_devices())
-
-
-def gpu_device_name():
-  """Returns the name of a GPU device if available or the empty string."""
-  for x in _device_lib.list_local_devices():
-    if x.device_type == 'GPU' or x.device_type == 'SYCL':
-      return x.name
-  return ''
-
 
 _allowed_symbols = [
     # We piggy-back googletest documentation.

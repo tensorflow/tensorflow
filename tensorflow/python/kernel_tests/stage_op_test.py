@@ -31,7 +31,7 @@ class StageTest(test.TestCase):
       with ops.device('/cpu:0'):
         x = array_ops.placeholder(dtypes.float32)
         v = 2. * (array_ops.zeros([1024, 1024]) + x)
-      with ops.device('/gpu:0'):
+      with ops.device(test.gpu_device_name()):
         stager = data_flow_ops.StagingArea([dtypes.float32])
         stage = stager.put([v])
         y = stager.get()
@@ -46,7 +46,7 @@ class StageTest(test.TestCase):
       with ops.device('/cpu:0'):
         x = array_ops.placeholder(dtypes.float32)
         v = 2. * (array_ops.zeros([128, 128]) + x)
-      with ops.device('/gpu:0'):
+      with ops.device(test.gpu_device_name()):
         stager = data_flow_ops.StagingArea([dtypes.float32, dtypes.float32])
         stage = stager.put([x, v])
         z, y = stager.get()
@@ -62,7 +62,7 @@ class StageTest(test.TestCase):
       with ops.device('/cpu:0'):
         x = array_ops.placeholder(dtypes.float32)
         v = 2. * (array_ops.zeros([128, 128]) + x)
-      with ops.device('/gpu:0'):
+      with ops.device(test.gpu_device_name()):
         stager = data_flow_ops.StagingArea(
             [dtypes.float32, dtypes.float32],
             shapes=[[], [128, 128]],
