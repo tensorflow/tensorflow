@@ -35,7 +35,8 @@ std::vector<std::pair<int64, int64>> MakePadding(
       return low_high_padding;
 
     case Padding::kSame:
-      for (int64 i = 0; i < input_dimensions.size(); ++i) {
+      for (tensorflow::gtl::ArraySlice<int64>::size_type i = 0;
+           i < input_dimensions.size(); ++i) {
         int64 input_dimension = input_dimensions[i];
         int64 window_dimension = window_dimensions[i];
         int64 window_stride = window_strides[i];

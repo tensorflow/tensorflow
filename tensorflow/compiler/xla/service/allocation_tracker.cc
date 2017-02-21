@@ -136,7 +136,8 @@ tensorflow::Status AllocationTracker::DeallocateShape(
     TF_RET_CHECK(ShapeUtil::TupleElementCount(shape) == elements.size())
         << "tuple has unexpected number of elements: " << elements.size()
         << " != " << ShapeUtil::TupleElementCount(shape);
-    for (int i = 0; i < elements.size(); ++i) {
+    for (std::vector<se::DeviceMemoryBase>::size_type i = 0;
+         i < elements.size(); ++i) {
       VLOG(2) << "recursing onto the tuple elements";
       TF_RETURN_IF_ERROR(DeallocateShape(backend, device_ordinal, &elements[i],
                                          shape.tuple_shapes(i),
@@ -170,7 +171,8 @@ StatusOr<std::vector<GlobalDataHandle>> AllocationTracker::DeconstructTuple(
           executor, allocation->device_memory(), allocation->shape()));
 
   std::vector<GlobalDataHandle> element_handles;
-  for (int i = 0; i < element_bases.size(); ++i) {
+  for (std::vector<se::DeviceMemoryBase>::size_type i = 0;
+       i < element_bases.size(); ++i) {
     element_handles.push_back(RegisterInternal(
         allocation->backend(), allocation->device_ordinal(), element_bases[i],
         ShapeUtil::GetSubshape(allocation->shape(), {i}),
