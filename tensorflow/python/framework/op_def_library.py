@@ -50,13 +50,14 @@ def _AttrValue(attr_protos, name):
                   (name, attr_protos))
 
 
-def _SatisfiesTypeConstraint(dtype, attr_def):
+def _SatisfiesTypeConstraint(dtype, attr_def, param_name):
   if attr_def.HasField("allowed_values"):
     allowed_list = attr_def.allowed_values.list.type
     if dtype not in allowed_list:
       raise TypeError(
-          "DataType %s for attr '%s' not in list of allowed values: %s" %
-          (dtypes.as_dtype(dtype).name, attr_def.name,
+          "Value passed to parameter '%s' has DataType %s not in list of "
+          "allowed values: %s" %
+          (param_name, dtypes.as_dtype(dtype).name,
            ", ".join(dtypes.as_dtype(x).name for x in allowed_list)))
 
 
@@ -176,7 +177,7 @@ def _MakeType(v, attr_def):
     raise TypeError("Expected DataType for argument '%s' not %s." %
                     (attr_def.name, repr(v)))
   i = v.as_datatype_enum
-  _SatisfiesTypeConstraint(i, attr_def)
+  _SatisfiesTypeConstraint(i, attr_def, param_name=attr_def.name)
   return i
 
 
@@ -349,6 +350,23 @@ class OpDefLibrary(object):
             (op_type_name, producer, deprecation_version,
              op_def.deprecation.explanation))
 
+    # Fill in the list of default types for all "type" attrs.  This
+    # will be used to choose a preferred dtype to convert to in the
+    # absence of input type information.
+    #
+    # TODO(b/31302892): Currently the defaults don't work in the right
+    # way if you have two inputs, one of whose type resolution depends
+    # on the other.  Handling this will require restructuring this code
+    # significantly.
+    default_type_attr_map = {}
+    for attr_def in op_def.attr:
+      if attr_def.type != "type":
+        continue
+      key = attr_def.name
+      if attr_def.HasField("default_value"):
+        default_type_attr_map[key] = dtypes.as_dtype(
+            attr_def.default_value.type)
+
     # Requires that op_def has passed validation (using the C++
     # ValidateOpDef() from ../framework/op_def_util.h).
     attrs = {}
@@ -390,6 +408,7 @@ class OpDefLibrary(object):
           # In cases where we expect all elements of the list to have the
           # same dtype, try to cast non-Tensor elements to that type.
           dtype = None
+          default_dtype = None
           if input_arg.type != types_pb2.DT_INVALID:
             dtype = input_arg.type
           elif input_arg.number_attr:
@@ -401,11 +420,19 @@ class OpDefLibrary(object):
                   dtype = t.dtype
                   break
 
+            # dtype still not found, prefer using the default dtype
+            # from the attr.
+            if dtype is None and input_arg.type_attr in default_type_attr_map:
+              default_dtype = default_type_attr_map[input_arg.type_attr]
+
           try:
             if not input_arg.is_ref and dtype:
               dtype = dtypes.as_dtype(dtype).base_dtype
-            values = ops.convert_n_to_tensor(
-                values, name=input_arg.name, dtype=dtype if dtype else None,
+            values = ops.internal_convert_n_to_tensor(
+                values,
+                name=input_arg.name,
+                dtype=dtype if dtype else None,
+                preferred_dtype=default_dtype,
                 as_ref=input_arg.is_ref)
             if input_arg.number_attr and len(
                 set(v.dtype.base_dtype for v in values)) > 1:
@@ -415,7 +442,7 @@ class OpDefLibrary(object):
             observed_types = []
             for value in values:
               try:
-                converted_value = ops.convert_to_tensor(
+                converted_value = ops.internal_convert_to_tensor(
                     value, as_ref=input_arg.is_ref)
                 observed_types.append(converted_value.dtype.base_dtype.name)
               except (TypeError, ValueError):
@@ -444,24 +471,56 @@ class OpDefLibrary(object):
           # In cases where we have an expected type, try to convert non-Tensor
           # arguments to that type.
           dtype = None
+          default_dtype = None
           if input_arg.type != types_pb2.DT_INVALID:
             dtype = input_arg.type
           elif input_arg.type_attr in attrs:
             dtype = attrs[input_arg.type_attr]
+          elif input_arg.type_attr in default_type_attr_map:
+            # The dtype could not be inferred solely from the inputs,
+            # so we prefer the attr's default, so code that adds a new attr
+            # with a default is backwards compatible.
+            default_dtype = default_type_attr_map[input_arg.type_attr]
+
           try:
-            values = ops.convert_to_tensor(
-                values, name=input_arg.name, dtype=dtype,
-                as_ref=input_arg.is_ref)
+            values = ops.internal_convert_to_tensor(
+                values,
+                name=input_arg.name,
+                dtype=dtype,
+                as_ref=input_arg.is_ref,
+                preferred_dtype=default_dtype)
+          except TypeError as err:
+            if dtype is None:
+              raise err
+            else:
+              raise TypeError(
+                  "Expected %s passed to parameter '%s' of op '%s', got %s of "
+                  "type '%s' instead." %
+                  (dtypes.as_dtype(dtype).name, input_arg.name, op_type_name,
+                   repr(values), type(values).__name__))
           except ValueError:
             # What type does convert_to_tensor think it has?
-            observed = ops.convert_to_tensor(values,
-                                             as_ref=input_arg.is_ref).dtype.name
+            try:
+              observed = ops.internal_convert_to_tensor(
+                  values, as_ref=input_arg.is_ref).dtype.name
+            except ValueError as err:
+              raise ValueError(
+                  "Tried to convert '%s' to a tensor and failed. Error: %s" %
+                  (input_name, err))
             prefix = ("Input '%s' of '%s' Op has type %s that does not match" %
                       (input_name, op_type_name, observed))
             if input_arg.type != types_pb2.DT_INVALID:
               raise TypeError("%s expected type of %s." %
                               (prefix, dtypes.as_dtype(input_arg.type).name))
             else:
+              # Update the maps with the default, if needed.
+              k = input_arg.type_attr
+              if k in default_type_attr_map:
+                if k not in attrs:
+                  attrs[k] = default_type_attr_map[k]
+                  if k not in inferred_from:
+                    inferred_from[k] = "Default in OpDef"
+
               raise TypeError(
                   "%s type %s of argument '%s'." %
                   (prefix, dtypes.as_dtype(attrs[input_arg.type_attr]).name,
@@ -516,7 +575,8 @@ class OpDefLibrary(object):
             attrs[input_arg.type_attr] = base_types[0]
             inferred_from[input_arg.type_attr] = input_name
             type_attr = _Attr(op_def, input_arg.type_attr)
-            _SatisfiesTypeConstraint(base_types[0], type_attr)
+            _SatisfiesTypeConstraint(base_types[0], type_attr,
+                                     param_name=input_name)
         elif input_arg.type_attr:
           # <type-attr>
           attr_value = base_types[0]
@@ -526,7 +586,8 @@ class OpDefLibrary(object):
           else:
             for base_type in base_types:
               _SatisfiesTypeConstraint(base_type,
-                                       _Attr(op_def, input_arg.type_attr))
+                                       _Attr(op_def, input_arg.type_attr),
+                                       param_name=input_name)
             attrs[input_arg.type_attr] = attr_value
             inferred_from[input_arg.type_attr] = input_name
         elif input_arg.type_list_attr:
@@ -545,7 +606,8 @@ class OpDefLibrary(object):
           else:
             for base_type in base_types:
               _SatisfiesTypeConstraint(base_type,
-                                       _Attr(op_def, input_arg.type_list_attr))
+                                       _Attr(op_def, input_arg.type_list_attr),
+                                       param_name=input_name)
             attrs[input_arg.type_list_attr] = attr_value
             inferred_from[input_arg.type_list_attr] = input_name
         else:
@@ -554,10 +616,10 @@ class OpDefLibrary(object):
             assert False, "Unreachable"
 
         if input_arg.is_ref:
-          if not all(x.is_ref_dtype for x in types):
+          if not all(x._is_ref_dtype for x in types):  # pylint: disable=protected-access
             raise TypeError(
-                "Input '%s' of '%s' Op requires l-value input" %
-                (input_name, op_type_name))
+                ("'%s' Op requires that input '%s' be a mutable tensor " +
+                "(e.g.: a tf.Variable)") % (op_type_name, input_name))
           input_types.extend(types)
         else:
           input_types.extend(base_types)
@@ -651,9 +713,13 @@ class OpDefLibrary(object):
           attr_value.list.tensor.extend(
               [_MakeTensor(x, key) for x in value])
         elif attr_def.type == "func":
-          if not isinstance(value, compat.bytes_or_text_types):
-            raise TypeError("Expects a string for the func name")
-          attr_value.func.name = value
+          if isinstance(value, attr_value_pb2.NameAttrList):
+            attr_value.func.CopyFrom(value)
+          elif isinstance(value, compat.bytes_or_text_types):
+            attr_value.func.name = value
+          else:
+            value.add_to_graph(ops.get_default_graph())
+            attr_value.func.name = value.name
         else:
           raise TypeError("Unrecognized Attr type " + attr_def.type)
 
@@ -679,12 +745,12 @@ class OpDefLibrary(object):
         elif arg.type_list_attr:
           t = _AttrValue(attr_protos, arg.type_list_attr)
           types = t.list.type
-          output_structure.append(len(t.list.type))
+          output_structure.append(len(types))
         else:
           types = [arg.type]
           output_structure.append(None)
         if arg.is_ref:
-          types = [dtypes.as_dtype(x).as_ref for x in types]
+          types = [dtypes.as_dtype(x)._as_ref for x in types]  # pylint: disable=protected-access
         output_types.extend(types)
 
       if keywords:
@@ -697,14 +763,15 @@ class OpDefLibrary(object):
                               if arg.is_ref]
       with _MaybeColocateWith(must_colocate_inputs):
         # Add Op to graph
+        op = g.create_op(op_type_name, inputs, output_types, name=scope,
+                         input_types=input_types, attrs=attr_protos,
+                         op_def=op_def)
         if output_structure:
-          op = g.create_op(op_type_name, inputs, output_types, name=scope,
-                           input_types=input_types, attrs=attr_protos,
-                           op_def=op_def)
           outputs = op.outputs
-          return _Restructure(ops.convert_n_to_tensor(outputs),
-                              output_structure)
+          res = _Restructure(ops.convert_n_to_tensor(outputs), output_structure)
+          if isinstance(res, list) and not res and op_def.is_stateful:
+            return op
+          else:
+            return res
         else:
-          return g.create_op(op_type_name, inputs, output_types, name=scope,
-                             input_types=input_types, attrs=attr_protos,
-                             op_def=op_def)
+          return op

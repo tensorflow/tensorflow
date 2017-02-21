@@ -3,24 +3,22 @@ A classifier for TensorFlow DNN models.
 Example:
 
 ```python
-education = sparse_column_with_hash_bucket(column_name="education",
-                                           hash_bucket_size=1000)
-occupation = sparse_column_with_hash_bucket(column_name="occupation",
-                                            hash_bucket_size=1000)
+sparse_feature_a = sparse_column_with_hash_bucket(...)
+sparse_feature_b = sparse_column_with_hash_bucket(...)
 
-education_emb = embedding_column(sparse_id_column=education, dimension=16,
-                                 combiner="sum")
-occupation_emb = embedding_column(sparse_id_column=occupation, dimension=16,
-                                 combiner="sum")
+sparse_feature_a_emb = embedding_column(sparse_id_column=sparse_feature_a,
+                                        ...)
+sparse_feature_b_emb = embedding_column(sparse_id_column=sparse_feature_b,
+                                        ...)
 
 estimator = DNNClassifier(
-    feature_columns=[education_emb, occupation_emb],
+    feature_columns=[sparse_feature_a_emb, sparse_feature_b_emb],
     hidden_units=[1024, 512, 256])
 
 # Or estimator using the ProximalAdagradOptimizer optimizer with
 # regularization.
 estimator = DNNClassifier(
-    feature_columns=[education_emb, occupation_emb],
+    feature_columns=[sparse_feature_a_emb, sparse_feature_b_emb],
     hidden_units=[1024, 512, 256],
     optimizer=tf.train.ProximalAdagradOptimizer(
       learning_rate=0.1,
@@ -28,14 +26,14 @@ estimator = DNNClassifier(
     ))
 
 # Input builders
-def input_fn_train: # returns x, Y
+def input_fn_train: # returns x, y (where y represents label's class index).
   pass
 estimator.fit(input_fn=input_fn_train)
 
-def input_fn_eval: # returns x, Y
+def input_fn_eval: # returns x, y (where y represents label's class index).
   pass
 estimator.evaluate(input_fn=input_fn_eval)
-estimator.predict(x=x)
+estimator.predict(x=x) # returns predicted labels (i.e. label's class index).
 ```
 
 Input of `fit` and `evaluate` should have following features,
@@ -51,11 +49,9 @@ Input of `fit` and `evaluate` should have following features,
     Both features' `value` must be a `SparseTensor`.
   - if `column` is a `RealValuedColumn`, a feature with `key=column.name`
     whose `value` is a `Tensor`.
-  - if `feature_columns` is `None`, then `input` must contain only real
-    valued `Tensor`.
 - - -
 
-#### `tf.contrib.learn.DNNClassifier.__init__(hidden_units, feature_columns=None, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, gradient_clip_norm=None, enable_centered_bias=True, config=None)` {#DNNClassifier.__init__}
+#### `tf.contrib.learn.DNNClassifier.__init__(hidden_units, feature_columns, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, gradient_clip_norm=None, enable_centered_bias=False, config=None, feature_engineering_fn=None, embedding_lr_multipliers=None, input_layer_min_slice_size=None)` {#DNNClassifier.__init__}
 
 Initializes a DNNClassifier instance.
 
@@ -68,9 +64,13 @@ Initializes a DNNClassifier instance.
 *  <b>`feature_columns`</b>: An iterable containing all the feature columns used by
     the model. All items in the set should be instances of classes derived
     from `FeatureColumn`.
-*  <b>`model_dir`</b>: Directory to save model parameters, graph and etc.
-*  <b>`n_classes`</b>: number of target classes. Default is binary classification.
-    It must be greater than 1.
+*  <b>`model_dir`</b>: Directory to save model parameters, graph and etc. This can
+    also be used to load checkpoints from the directory into a estimator to
+    continue training a previously saved model.
+*  <b>`n_classes`</b>: number of label classes. Default is binary classification.
+    It must be greater than 1. Note: Class labels are integers representing
+    the class index (i.e. values from 0 to n_classes-1). For arbitrary
+    label values (e.g. string labels), convert to class indices first.
 *  <b>`weight_column_name`</b>: A string defining feature column name representing
     weights. It is used to down weight or boost examples during training. It
     will be multiplied by the loss of the example.
@@ -82,92 +82,71 @@ Initializes a DNNClassifier instance.
     coordinate.
 *  <b>`gradient_clip_norm`</b>: A float > 0. If provided, gradients are
     clipped to their global norm with this clipping ratio. See
-    tf.clip_by_global_norm for more details.
+    `tf.clip_by_global_norm` for more details.
 *  <b>`enable_centered_bias`</b>: A bool. If True, estimator will learn a centered
     bias variable for each class. Rest of the model structure learns the
     residual after centered bias.
 *  <b>`config`</b>: `RunConfig` object to configure the runtime settings.
+*  <b>`feature_engineering_fn`</b>: Feature engineering function. Takes features and
+                    labels which are the output of `input_fn` and
+                    returns features and labels which will be fed
+                    into the model.
+*  <b>`embedding_lr_multipliers`</b>: Optional. A dictionary from `EmbeddingColumn` to
+      a `float` multiplier. Multiplier will be used to multiply with
+      learning rate for the embedding variables.
+*  <b>`input_layer_min_slice_size`</b>: Optional. The min slice size of input layer
+      partitions. If not provided, will use the default of 64M.
 
 ##### Returns:
 
   A `DNNClassifier` estimator.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `n_classes` < 2.
+
+
+- - -
+
+#### `tf.contrib.learn.DNNClassifier.__repr__()` {#DNNClassifier.__repr__}
+
+
 
 
 - - -
 
 #### `tf.contrib.learn.DNNClassifier.bias_` {#DNNClassifier.bias_}
 
+DEPRECATED FUNCTION
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-10-30.
+Instructions for updating:
+This method will be removed after the deprecation date. To inspect variables, use get_variable_names() and get_variable_value().
+
+
+- - -
+
+#### `tf.contrib.learn.DNNClassifier.config` {#DNNClassifier.config}
+
 
 
 
 - - -
 
-#### `tf.contrib.learn.DNNClassifier.dnn_bias_` {#DNNClassifier.dnn_bias_}
+#### `tf.contrib.learn.DNNClassifier.evaluate(*args, **kwargs)` {#DNNClassifier.evaluate}
 
-Returns bias of deep neural network part.
+See `Evaluable`. (deprecated arguments)
 
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-12-01.
+Instructions for updating:
+Estimator is decoupled from Scikit Learn interface by moving into
+separate class SKCompat. Arguments x, y and batch_size are only
+available in the SKCompat class, Estimator will only accept input_fn.
 
-- - -
+##### Example conversion:
 
-#### `tf.contrib.learn.DNNClassifier.dnn_weights_` {#DNNClassifier.dnn_weights_}
-
-Returns weights of deep neural network part.
-
-
-- - -
-
-#### `tf.contrib.learn.DNNClassifier.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None)` {#DNNClassifier.evaluate}
-
-Evaluates given model with provided evaluation data.
-
-Evaluates on the given input data. If `input_fn` is provided, that
-input function should raise an end-of-input exception (`OutOfRangeError` or
-`StopIteration`) after one epoch of the training data has been provided.
-
-By default, the whole evaluation dataset is used. If `steps` is provided,
-only `steps` batches of size `batch_size` are processed.
-
-The return value is a dict containing the metrics specified in `metrics`, as
-well as an entry `global_step` which contains the value of the global step
-for which this evaluation was performed.
-
-##### Args:
-
-
-*  <b>`x`</b>: Matrix of shape [n_samples, n_features...]. Can be iterator that
-     returns arrays of features. The training input samples for fitting the
-     model. If set, `input_fn` must be `None`.
-*  <b>`y`</b>: Vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-     iterator that returns array of targets. The training target values
-     (class labels in classification, real numbers in regression). If set,
-     `input_fn` must be `None`.
-*  <b>`input_fn`</b>: Input function. If set, `x`, `y`, and `batch_size` must be
-    `None`.
-*  <b>`feed_fn`</b>: Function creating a feed dict every time it is called. Called
-    once per iteration.
-*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to first
-    dimension of `x`, if specified. Must be `None` if `input_fn` is
-    provided.
-*  <b>`steps`</b>: Number of steps for which to evaluate model. If `None`, evaluate
-    until running tensors generated by `metrics` raises an exception.
-*  <b>`metrics`</b>: Dict of metric ops to run. If `None`, the default metric
-    functions are used; if `{}`, no metrics are used. If model has one
-    output (i.e., returning single predction), keys are `str`, e.g.
-    `'accuracy'` - just a name of the metric that will show up in
-    the logs / summaries. Otherwise, keys are tuple of two `str`, e.g.
-    `('accuracy', 'classes')`- name of the metric and name of `Tensor` in
-    the predictions to run this metric on.
-
-    Metric ops should support streaming, e.g., returning
-    update_op and value tensors. See more details in
-    ../../../../metrics/python/metrics/ops/streaming_metrics.py.
-
-*  <b>`name`</b>: Name of the evaluation if user needs to run multiple evaluations on
-    different data sets, such as on training data vs test data.
-
-##### Returns:
-
-  Returns `dict` with evaluation results.
+  est = Estimator(...) -> est = SKCompat(Estimator(...))
 
 ##### Raises:
 
@@ -179,39 +158,62 @@ for which this evaluation was performed.
 
 - - -
 
-#### `tf.contrib.learn.DNNClassifier.fit(x=None, y=None, input_fn=None, steps=None, batch_size=None, monitors=None, max_steps=None)` {#DNNClassifier.fit}
+#### `tf.contrib.learn.DNNClassifier.export(export_dir, input_fn=None, input_feature_key=None, use_deprecated_input_fn=True, signature_fn=None, default_batch_size=1, exports_to_keep=None)` {#DNNClassifier.export}
 
-Trains a model given training data `x` predictions and `y` targets.
+See BaseEstimator.export.
+
+
+- - -
+
+#### `tf.contrib.learn.DNNClassifier.export_savedmodel(export_dir_base, serving_input_fn, default_output_alternative_key=None, assets_extra=None, as_text=False, checkpoint_path=None)` {#DNNClassifier.export_savedmodel}
+
+Exports inference graph as a SavedModel into given dir.
 
 ##### Args:
 
 
-*  <b>`x`</b>: Matrix of shape [n_samples, n_features...]. Can be iterator that
-     returns arrays of features. The training input samples for fitting the
-     model. If set, `input_fn` must be `None`.
-*  <b>`y`</b>: Vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-     iterator that returns array of targets. The training target values
-     (class labels in classification, real numbers in regression). If set,
-     `input_fn` must be `None`.
-*  <b>`input_fn`</b>: Input function. If set, `x`, `y`, and `batch_size` must be
-    `None`.
-*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
-    If set, `max_steps` must be `None`.
-*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to first
-    dimension of `x`. Must be `None` if `input_fn` is provided.
-*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
-    inside the training loop.
-*  <b>`max_steps`</b>: Number of total steps for which to train model. If `None`,
-    train forever. If set, `steps` must be `None`.
-
-    Two calls to `fit(steps=100)` means 200 training
-    iterations. On the other hand, two calls to `fit(max_steps=100)` means
-    that the second call will not do any iteration since first call did
-    all 100 steps.
+*  <b>`export_dir_base`</b>: A string containing a directory to write the exported
+    graph and checkpoints.
+*  <b>`serving_input_fn`</b>: A function that takes no argument and
+    returns an `InputFnOps`.
+*  <b>`default_output_alternative_key`</b>: the name of the head to serve when none is
+    specified.  Not needed for single-headed models.
+*  <b>`assets_extra`</b>: A dict specifying how to populate the assets.extra directory
+    within the exported SavedModel.  Each key should give the destination
+    path (including the filename) relative to the assets.extra directory.
+    The corresponding value gives the full path of the source file to be
+    copied.  For example, the simple case of copying a single file without
+    renaming it is specified as
+    `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
+*  <b>`as_text`</b>: whether to write the SavedModel proto in text format.
+*  <b>`checkpoint_path`</b>: The checkpoint path to export.  If None (the default),
+    the most recent checkpoint found within the model directory is chosen.
 
 ##### Returns:
 
-  `self`, for chaining.
+  The string path to the exported directory.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if an unrecognized export_type is requested.
+
+
+- - -
+
+#### `tf.contrib.learn.DNNClassifier.fit(*args, **kwargs)` {#DNNClassifier.fit}
+
+See `Trainable`. (deprecated arguments)
+
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-12-01.
+Instructions for updating:
+Estimator is decoupled from Scikit Learn interface by moving into
+separate class SKCompat. Arguments x, y and batch_size are only
+available in the SKCompat class, Estimator will only accept input_fn.
+
+##### Example conversion:
+
+  est = Estimator(...) -> est = SKCompat(Estimator(...))
 
 ##### Raises:
 
@@ -269,20 +271,6 @@ Returns value of the variable given by name.
 
 - - -
 
-#### `tf.contrib.learn.DNNClassifier.linear_bias_` {#DNNClassifier.linear_bias_}
-
-Returns bias of the linear part.
-
-
-- - -
-
-#### `tf.contrib.learn.DNNClassifier.linear_weights_` {#DNNClassifier.linear_weights_}
-
-Returns weights per feature of the linear part.
-
-
-- - -
-
 #### `tf.contrib.learn.DNNClassifier.model_dir` {#DNNClassifier.model_dir}
 
 
@@ -290,9 +278,19 @@ Returns weights per feature of the linear part.
 
 - - -
 
-#### `tf.contrib.learn.DNNClassifier.partial_fit(x=None, y=None, input_fn=None, steps=1, batch_size=None, monitors=None)` {#DNNClassifier.partial_fit}
+#### `tf.contrib.learn.DNNClassifier.partial_fit(*args, **kwargs)` {#DNNClassifier.partial_fit}
 
-Incremental fit on a batch of samples.
+Incremental fit on a batch of samples. (deprecated arguments)
+
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-12-01.
+Instructions for updating:
+Estimator is decoupled from Scikit Learn interface by moving into
+separate class SKCompat. Arguments x, y and batch_size are only
+available in the SKCompat class, Estimator will only accept input_fn.
+
+##### Example conversion:
+
+  est = Estimator(...) -> est = SKCompat(Estimator(...))
 
 This method is expected to be called several times consecutively
 on different or the same chunks of the dataset. This either can
@@ -309,7 +307,7 @@ to converge, and you want to split up training into subparts.
      returns arrays of features. The training input samples for fitting the
      model. If set, `input_fn` must be `None`.
 *  <b>`y`</b>: Vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-     iterator that returns array of targets. The training target values
+     iterator that returns array of labels. The training label values
      (class labels in classification, real numbers in regression). If set,
      `input_fn` must be `None`.
 *  <b>`input_fn`</b>: Input function. If set, `x`, `y`, and `batch_size` must be
@@ -333,9 +331,22 @@ to converge, and you want to split up training into subparts.
 
 - - -
 
-#### `tf.contrib.learn.DNNClassifier.predict(x=None, input_fn=None, batch_size=None)` {#DNNClassifier.predict}
+#### `tf.contrib.learn.DNNClassifier.predict(*args, **kwargs)` {#DNNClassifier.predict}
 
-Returns predictions for given features.
+Returns predictions for given features. (deprecated arguments) (deprecated arguments)
+
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-15.
+Instructions for updating:
+The default behavior of predict() is changing. The default value for
+as_iterable will change to True, and then the flag will be removed
+altogether. The behavior of this flag is described below.
+
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2017-03-01.
+Instructions for updating:
+Please switch to predict_classes, or set `outputs` argument.
+
+By default, returns predicted classes. But this default will be dropped
+soon. Users should either pass `outputs`, or call `predict_classes` method.
 
 ##### Args:
 
@@ -343,17 +354,62 @@ Returns predictions for given features.
 *  <b>`x`</b>: features.
 *  <b>`input_fn`</b>: Input function. If set, x must be None.
 *  <b>`batch_size`</b>: Override default batch size.
+*  <b>`outputs`</b>: list of `str`, name of the output to predict.
+    If `None`, returns classes.
+*  <b>`as_iterable`</b>: If True, return an iterable which keeps yielding predictions
+    for each example until inputs are exhausted. Note: The inputs must
+    terminate if you want the iterable to terminate (e.g. be sure to pass
+    num_epochs=1 if you are using something like read_batch_features).
 
 ##### Returns:
 
-  Numpy array of predicted classes or regression values.
+  Numpy array of predicted classes with shape [batch_size] (or an iterable
+  of predicted classes if as_iterable is True). Each predicted class is
+  represented by its class index (i.e. integer from 0 to n_classes-1).
+  If `outputs` is set, returns a dict of predictions.
 
 
 - - -
 
-#### `tf.contrib.learn.DNNClassifier.predict_proba(x=None, input_fn=None, batch_size=None)` {#DNNClassifier.predict_proba}
+#### `tf.contrib.learn.DNNClassifier.predict_classes(*args, **kwargs)` {#DNNClassifier.predict_classes}
 
-Returns prediction probabilities for given features.
+Returns predicted classes for given features. (deprecated arguments)
+
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-15.
+Instructions for updating:
+The default behavior of predict() is changing. The default value for
+as_iterable will change to True, and then the flag will be removed
+altogether. The behavior of this flag is described below.
+
+##### Args:
+
+
+*  <b>`x`</b>: features.
+*  <b>`input_fn`</b>: Input function. If set, x must be None.
+*  <b>`batch_size`</b>: Override default batch size.
+*  <b>`as_iterable`</b>: If True, return an iterable which keeps yielding predictions
+    for each example until inputs are exhausted. Note: The inputs must
+    terminate if you want the iterable to terminate (e.g. be sure to pass
+    num_epochs=1 if you are using something like read_batch_features).
+
+##### Returns:
+
+  Numpy array of predicted classes with shape [batch_size] (or an iterable
+  of predicted classes if as_iterable is True). Each predicted class is
+  represented by its class index (i.e. integer from 0 to n_classes-1).
+
+
+- - -
+
+#### `tf.contrib.learn.DNNClassifier.predict_proba(*args, **kwargs)` {#DNNClassifier.predict_proba}
+
+Returns predicted probabilities for given features. (deprecated arguments)
+
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-15.
+Instructions for updating:
+The default behavior of predict() is changing. The default value for
+as_iterable will change to True, and then the flag will be removed
+altogether. The behavior of this flag is described below.
 
 ##### Args:
 
@@ -361,10 +417,15 @@ Returns prediction probabilities for given features.
 *  <b>`x`</b>: features.
 *  <b>`input_fn`</b>: Input function. If set, x and y must be None.
 *  <b>`batch_size`</b>: Override default batch size.
+*  <b>`as_iterable`</b>: If True, return an iterable which keeps yielding predictions
+    for each example until inputs are exhausted. Note: The inputs must
+    terminate if you want the iterable to terminate (e.g. be sure to pass
+    num_epochs=1 if you are using something like read_batch_features).
 
 ##### Returns:
 
-  Numpy array of predicted probabilities.
+  Numpy array of predicted probabilities with shape [batch_size, n_classes]
+  (or an iterable of predicted probabilities if as_iterable is True).
 
 
 - - -
@@ -397,6 +458,10 @@ component of a nested object.
 
 #### `tf.contrib.learn.DNNClassifier.weights_` {#DNNClassifier.weights_}
 
+DEPRECATED FUNCTION
 
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-10-30.
+Instructions for updating:
+This method will be removed after the deprecation date. To inspect variables, use get_variable_names() and get_variable_value().
 
 

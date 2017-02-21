@@ -58,9 +58,9 @@ limitations under the License.
 }
 
 %{
+#include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/util/tf_status_helper.h"
 
 using tensorflow::ServerDef;
 

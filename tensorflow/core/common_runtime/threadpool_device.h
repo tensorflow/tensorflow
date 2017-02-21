@@ -25,7 +25,7 @@ namespace tensorflow {
 class ThreadPoolDevice : public LocalDevice {
  public:
   ThreadPoolDevice(const SessionOptions& options, const string& name,
-                   Bytes memory_limit, BusAdjacency bus_adjacency,
+                   Bytes memory_limit, const DeviceLocality& locality,
                    Allocator* allocator);
   ~ThreadPoolDevice() override;
 

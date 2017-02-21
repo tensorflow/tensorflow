@@ -42,7 +42,7 @@ namespace internal {
 // This function may only be used on primitive integral types (int32, int64,
 // etc).  It does not guarantee any atomicity or barriers.
 template <typename T>
-const T SubtleMustCopy(const T &x) {
+EIGEN_ALWAYS_INLINE EIGEN_DEVICE_FUNC const T SubtleMustCopy(const T &x) {
   static_assert(std::is_integral<T>::value,
                 "SubtleMustCopy can only be used on integer types.");
   auto *to_x = reinterpret_cast<const volatile T *>(&x);

@@ -23,53 +23,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status GetWindowedOutputSizeVerbose(int64 input_size, int64 filter_size,
-                                    int64 stride, Padding padding_type,
-                                    int64* output_size, int64* padding_before,
-                                    int64* padding_after) {
-  switch (padding_type) {
-    case Padding::VALID:
-      *output_size = (input_size - filter_size + stride) / stride;
-      *padding_before = *padding_after = 0;
-      break;
-    case Padding::SAME:
-      *output_size = (input_size + stride - 1) / stride;
-      const int64 padding_needed =
-          std::max(0LL, (*output_size - 1) * stride + filter_size - input_size);
-      // For odd values of total padding, add more padding at the 'right'
-      // side of the given dimension.
-      *padding_before = padding_needed / 2;
-      *padding_after = padding_needed - *padding_before;
-      break;
-  }
-  if (*output_size < 0) {
-    return errors::InvalidArgument("computed output size would be negative");
-  }
-  return Status::OK();
-}
-
-Status GetWindowedOutputSize(int64 input_size, int64 filter_size, int64 stride,
-                             Padding padding_type, int64* output_size,
-                             int64* padding) {
-  int64 padding_after_unused;
-  return GetWindowedOutputSizeVerbose(input_size, filter_size, stride,
-                                      padding_type, output_size, padding,
-                                      &padding_after_unused);
-}
-
-Status Get3dOutputSize(const std::array<int64, 3>& input,
-                       const std::array<int64, 3>& window,
-                       const std::array<int64, 3>& strides,
-                       Padding padding_type, std::array<int64, 3>* output_ptr,
-                       std::array<int64, 3>* padding_ptr) {
-  for (size_t i = 0; i < input.size(); ++i) {
-    TF_RETURN_IF_ERROR(GetWindowedOutputSize(input[i], window[i], strides[i],
-                                             padding_type, &(*output_ptr)[i],
-                                             &(*padding_ptr)[i]));
-  }
-  return Status::OK();
-}
-
 Eigen::PaddingType BrainPadding2EigenPadding(Padding padding) {
   switch (padding) {
     case Padding::VALID:

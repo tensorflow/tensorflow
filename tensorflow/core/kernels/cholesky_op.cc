@@ -17,9 +17,8 @@ limitations under the License.
 // TODO(konstantinos): Enable complex inputs. This will require additional tests
 //                     and OP_REQUIRES.
 
-#include <cmath>
-
 #include "third_party/eigen3/Eigen/Cholesky"
+#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -30,37 +29,21 @@ limitations under the License.
 
 namespace tensorflow {
 
-template <class Scalar, bool SupportsBatchOperationT>
-class CholeskyOp
-    : public UnaryLinearAlgebraOp<Scalar, SupportsBatchOperationT> {
+template <class Scalar>
+class CholeskyOp : public LinearAlgebraOp<Scalar> {
  public:
-  explicit CholeskyOp(OpKernelConstruction* context)
-      : UnaryLinearAlgebraOp<Scalar, SupportsBatchOperationT>(context) {}
+  typedef LinearAlgebraOp<Scalar> Base;
 
-  TensorShape GetOutputMatrixShape(
-      const TensorShape& input_matrix_shape) override {
-    return input_matrix_shape;
-  }
+  explicit CholeskyOp(OpKernelConstruction* context) : Base(context) {}
 
-  int64 GetCostPerUnit(const TensorShape& input_matrix_shape) override {
-    const int64 rows = input_matrix_shape.dim_size(0);
-    if (rows > (1LL << 20)) {
-      // A big number to cap the cost in case overflow.
-      return kint64max;
-    } else {
-      return rows * rows * rows;
-    }
-  }
+  using Matrix = typename Base::Matrix;
+  using MatrixMaps = typename Base::MatrixMaps;
+  using ConstMatrixMap = typename Base::ConstMatrixMap;
+  using ConstMatrixMaps = typename Base::ConstMatrixMaps;
 
-  using
-      typename UnaryLinearAlgebraOp<Scalar, SupportsBatchOperationT>::MatrixMap;
-  using typename UnaryLinearAlgebraOp<Scalar,
-                                      SupportsBatchOperationT>::ConstMatrixMap;
-
-  void ComputeMatrix(OpKernelContext* context, const ConstMatrixMap& input,
-                     MatrixMap* output) override {
-    OP_REQUIRES(context, input.rows() == input.cols(),
-                errors::InvalidArgument("Input matrix must be square."));
+  void ComputeMatrix(OpKernelContext* context, const ConstMatrixMaps& inputs,
+                     MatrixMaps* outputs) final {
+    const ConstMatrixMap& input = inputs[0];
     if (input.rows() == 0) {
       // If X is an empty matrix (0 rows, 0 col), X * X' == X.
       // Therefore, we return X.
@@ -74,7 +57,7 @@ class CholeskyOp
         llt_decomposition(input);
 
     // Output the lower triangular in a dense form.
-    *output = llt_decomposition.matrixL();
+    outputs->at(0) = llt_decomposition.matrixL();
 
     OP_REQUIRES(context, llt_decomposition.info() == Eigen::Success,
                 errors::InvalidArgument("LLT decomposition was not successful. "
@@ -82,8 +65,9 @@ class CholeskyOp
   }
 };
 
-REGISTER_LINALG_OP("Cholesky", (CholeskyOp<float, false>), float);
-REGISTER_LINALG_OP("Cholesky", (CholeskyOp<double, false>), double);
-REGISTER_LINALG_OP("BatchCholesky", (CholeskyOp<float, true>), float);
-REGISTER_LINALG_OP("BatchCholesky", (CholeskyOp<double, true>), double);
+REGISTER_LINALG_OP("Cholesky", (CholeskyOp<float>), float);
+REGISTER_LINALG_OP("Cholesky", (CholeskyOp<double>), double);
+REGISTER_LINALG_OP("BatchCholesky", (CholeskyOp<float>), float);
+REGISTER_LINALG_OP("BatchCholesky", (CholeskyOp<double>), double);
+
 }  // namespace tensorflow

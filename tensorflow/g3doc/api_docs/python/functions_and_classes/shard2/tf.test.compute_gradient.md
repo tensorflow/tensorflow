@@ -1,4 +1,4 @@
-### `tf.test.compute_gradient(x, x_shape, y, y_shape, x_init_value=None, delta=0.001, init_targets=None)` {#compute_gradient}
+### `tf.test.compute_gradient(x, x_shape, y, y_shape, x_init_value=None, delta=0.001, init_targets=None, extra_feed_dict=None)` {#compute_gradient}
 
 Computes and returns the theoretical and numerical Jacobian.
 
@@ -30,6 +30,8 @@ with shape `[n]`, each Jacobian `J` will have shape `[m * 2, n * 2]` with
 *  <b>`delta`</b>: (optional) the amount of perturbation.
 *  <b>`init_targets`</b>: list of targets to run to initialize model params.
     TODO(mrry): remove this argument.
+*  <b>`extra_feed_dict`</b>: dict that allows fixing specified tensor values
+    during the Jacobian calculation.
 
 ##### Returns:
 

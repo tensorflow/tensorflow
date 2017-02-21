@@ -13,13 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 
 namespace tensorflow {
 
+using shape_inference::InferenceContext;
+
 REGISTER_OP("NoOp")
-    .Doc(R"doc(
-Does nothing. Only useful as a placeholder for control edges.
-)doc");
+    .SetShapeFn(shape_inference::NoOutputs)
+    .Doc("Does nothing. Only useful as a placeholder for control edges.");
 
 }  // namespace tensorflow

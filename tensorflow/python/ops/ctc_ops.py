@@ -20,15 +20,17 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import sparse_tensor
 
 from tensorflow.python.ops import gen_ctc_ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.nn_grad import _BroadcastMul
 
 
 # pylint: disable=protected-access, invalid-name
-def ctc_loss(inputs, labels, sequence_length,
-             preprocess_collapse_repeated=False, ctc_merge_repeated=True):
+def ctc_loss(labels, inputs, sequence_length,
+             preprocess_collapse_repeated=False,
+             ctc_merge_repeated=True, time_major=True):
   """Computes the CTC (Connectionist Temporal Classification) Loss.
 
   This op implements the CTC loss as presented in the article:
@@ -47,6 +49,18 @@ def ctc_loss(inputs, labels, sequence_length,
   max(labels.indices(labels.indices[:, 1] == b, 2))
     <= sequence_length(b) for all b.
   ```
+
+  Notes:
+
+  This class performs the softmax operation for you, so inputs should
+  be e.g. linear projections of outputs by an LSTM.
+
+  The `inputs` Tensor's innermost dimension size, `num_classes`, represents
+  `num_labels + 1` classes, where num_labels is the number of true labels, and
+  the largest value `(num_classes - 1)` is reserved for the blank label.
+
+  For example, for a vocabulary containing 3 labels `[a, b, c]`,
+  `num_classes = 4` and the labels indexing is `{a: 0, b: 1, c: 2, blank: 3}`.
 
   Regarding the arguments `preprocess_collapse_repeated` and
   `ctc_merge_repeated`:
@@ -83,16 +97,29 @@ def ctc_loss(inputs, labels, sequence_length,
     Untested.  Very likely will not learn to output repeated classes.
 
   Args:
-    inputs: 3-D `float` `Tensor` sized
-      `[max_time x batch_size x num_classes]`.  The logits.
     labels: An `int32` `SparseTensor`.
       `labels.indices[i, :] == [b, t]` means `labels.values[i]` stores
-      the id for (batch b, time t).  See `core/ops/ctc_ops.cc` for more details.
+      the id for (batch b, time t).
+      `labels.values[i]` must take on values in `[0, num_labels)`.
+      See `core/ops/ctc_ops.cc` for more details.
+    inputs: 3-D `float` `Tensor`.
+      If time_major == False, this will be a `Tensor` shaped:
+        `[batch_size x max_time x num_classes]`.
+      If time_major == True (default), this will be a `Tensor` shaped:
+        `[max_time x batch_size x num_classes]`.
+      The logits.
     sequence_length: 1-D `int32` vector, size `[batch_size]`.
       The sequence lengths.
     preprocess_collapse_repeated: Boolean.  Default: False.
       If True, repeated labels are collapsed prior to the CTC calculation.
     ctc_merge_repeated: Boolean.  Default: True.
+    time_major: The shape format of the `inputs` Tensors.
+      If True, these `Tensors` must be shaped `[max_time, batch_size, num_classes]`.
+      If False, these `Tensors` must be shaped `[batch_size, max_time, num_classes]`.
+      Using `time_major = True` (default) is a bit more efficient because it avoids
+      transposes at the beginning of the ctc_loss calculation.  However, most
+      TensorFlow data is batch-major, so by this function also accepts inputs
+      in batch-major form.
 
   Returns:
     A 1-D `float` `Tensor`, size `[batch]`, containing the negative log probabilities.
@@ -102,8 +129,12 @@ def ctc_loss(inputs, labels, sequence_length,
   """
   # The second, third, etc output tensors contain the gradients.  We use it in
   # _CTCLossGrad() below.
-  if not isinstance(labels, ops.SparseTensor):
-    raise TypeError("Expected labels to be a SparseTensor")
+  if not isinstance(labels, sparse_tensor.SparseTensor):
+    raise TypeError("Expected labels (first argument) to be a SparseTensor")
+
+  # For internal calculations, we transpose to [time, batch, num_classes]
+  if not time_major:
+    inputs = array_ops.transpose(inputs, [1, 0, 2])  # (B,T,N) => (T,B,N)
 
   loss, _ = gen_ctc_ops._ctc_loss(
       inputs,
@@ -129,27 +160,18 @@ def _CTCLossGrad(op, grad_loss, _):
      The CTC Loss gradient.
   """
   # Outputs are: loss, grad
-  grad = op.outputs[1]
+  #
+  # Currently there is no way to take the second derivative of this op
+  # due to the fused implementation's interaction with tf.gradients(),
+  # so we make sure we prevent silently incorrect results by raising
+  # an error if the second derivative is requested via prevent_gradient.
+  grad_without_gradient = array_ops.prevent_gradient(
+      op.outputs[1], message="Currently there is no way to take the second "
+      " derivative of ctc_loss due to the fused implementation's interaction "
+      " with tf.gradients()")
   # Return gradient for inputs and None for
   # labels_indices, labels_values and sequence_length
-  return [_BroadcastMul(grad_loss, grad), None, None, None]
-
-
-@ops.RegisterShape("CTCLoss")
-def _CTCLossShape(op):
-  """Shape function for the CTCLoss op."""
-  # inputs, label_indices, label_values, sequence_length
-  inputs_shape = op.inputs[0].get_shape().with_rank(3)
-  sequence_length_shape = op.inputs[3].get_shape().with_rank(1)
-  # merge batch_size
-  sequence_length_shape[0].merge_with(inputs_shape[1])
-  inputs_shape[1].merge_with(sequence_length_shape[0])
-  batch_size = inputs_shape[1]
-  labels_index_shape = op.inputs[1].get_shape().with_rank(2)
-  labels_value_shape = op.inputs[2].get_shape().with_rank(1)
-  labels_value_shape[0].merge_with(labels_index_shape[0])
-  # loss, gradient
-  return [tensor_shape.vector(batch_size), inputs_shape]
+  return [_BroadcastMul(grad_loss, grad_without_gradient), None, None, None]
 
 
 def ctc_greedy_decoder(inputs, sequence_length, merge_repeated=True):
@@ -164,8 +186,8 @@ def ctc_greedy_decoder(inputs, sequence_length, merge_repeated=True):
   only the first of these is emitted.  The sequence `A B B * B * B` (where '*'
   is the blank label) becomes
 
-    * `A B` if `merge_repeated=True`.
-    * `A B B B B B` if `merge_repeated=False`.
+    * `A B B B` if `merge_repeated=True`.
+    * `A B B B B` if `merge_repeated=False`.
 
   Args:
     inputs: 3-D `float` `Tensor` sized
@@ -190,24 +212,8 @@ def ctc_greedy_decoder(inputs, sequence_length, merge_repeated=True):
   outputs = gen_ctc_ops._ctc_greedy_decoder(
       inputs, sequence_length, merge_repeated=merge_repeated)
   (decoded_ix, decoded_val, decoded_shape, log_probabilities) = outputs
-  return ([ops.SparseTensor(decoded_ix, decoded_val, decoded_shape)],
+  return ([sparse_tensor.SparseTensor(decoded_ix, decoded_val, decoded_shape)],
           log_probabilities)
-
-
-@ops.RegisterShape("CTCGreedyDecoder")
-def _CTCGreedyDecoderShape(op):
-  """Shape function for the CTCGreedyDecoder op."""
-  inputs_shape = op.inputs[0].get_shape().with_rank(3)
-  sequence_length_shape = op.inputs[1].get_shape().with_rank(1)
-  # merge batch_size
-  sequence_length_shape[0].merge_with(inputs_shape[1])
-  inputs_shape[1].merge_with(sequence_length_shape[0])
-  batch_size = inputs_shape[1]
-  # decoded_indices, decoded_values, decoded_shape, log_probability
-  return [tensor_shape.matrix(None, 2),
-          tensor_shape.vector(None),
-          tensor_shape.vector(2),
-          tensor_shape.matrix(batch_size, 1)]
 
 
 def ctc_beam_search_decoder(inputs, sequence_length, beam_width=100,
@@ -215,8 +221,8 @@ def ctc_beam_search_decoder(inputs, sequence_length, beam_width=100,
   """Performs beam search decoding on the logits given in input.
 
   **Note** The `ctc_greedy_decoder` is a special case of the
-  `ctc_beam_search_decoder` with `top_paths=1` (but that decoder is faster
-  for this special case).
+  `ctc_beam_search_decoder` with `top_paths=1` and `beam_width=1` (but
+  that decoder is faster for this special case).
 
   If `merge_repeated` is `True`, merge repeated classes in the output beams.
   This means that if consecutive entries in a beam are the same,
@@ -255,34 +261,12 @@ def ctc_beam_search_decoder(inputs, sequence_length, beam_width=100,
           merge_repeated=merge_repeated))
 
   return (
-      [ops.SparseTensor(ix, val, shape) for (ix, val, shape)
+      [sparse_tensor.SparseTensor(ix, val, shape) for (ix, val, shape)
        in zip(decoded_ixs, decoded_vals, decoded_shapes)],
       log_probabilities)
 
 
-@ops.RegisterShape("CTCBeamSearchDecoder")
-def _CTCBeamSearchDecoderShape(op):
-  """Shape function for the CTCBeamSearchDecoder op."""
-  inputs_shape = op.inputs[0].get_shape().with_rank(3)
-  sequence_length_shape = op.inputs[1].get_shape().with_rank(1)
-  # merge batch size
-  sequence_length_shape[0].merge_with(inputs_shape[1])
-  inputs_shape[1].merge_with(sequence_length_shape[0])
-  batch_size = inputs_shape[1]
-  top_paths = op.get_attr("top_paths")
-
-  # first the decoded indices
-  output_shapes = [tensor_shape.matrix(None, 2) for _ in range(top_paths)]
-  # next the decoded values
-  output_shapes.extend([tensor_shape.vector(None) for _ in range(top_paths)])
-  # the shapes of the decoded values
-  output_shapes.extend([tensor_shape.vector(2)] * top_paths)
-  # the log_probability matrix
-  output_shapes.append(tensor_shape.matrix(batch_size, top_paths))
-  return output_shapes
+ops.NotDifferentiable("CTCGreedyDecoder")
 
 
-ops.NoGradient("CTCGreedyDecoder")
-
-
-ops.NoGradient("CTCBeamSearchDecoder")
+ops.NotDifferentiable("CTCBeamSearchDecoder")

@@ -25,12 +25,12 @@ session.
 *  <b>`Example`</b>: 
 
 ```python
-c = tf.mul(a, b)
+c = tf.multiply(a, b)
 h = tf.get_session_handle(c)
 h = sess.run(h)
 
 p, a = tf.get_session_tensor(h.handle, tf.float32)
-b = tf.mul(a, 10)
+b = tf.multiply(a, 10)
 c = sess.run(b, feed_dict={p: h.handle})
 ```
 

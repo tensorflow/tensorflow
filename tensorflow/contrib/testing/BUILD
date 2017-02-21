@@ -15,6 +15,11 @@ py_library(
         "python/framework/util_test.py",
     ],
     srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:summary",
+        "//tensorflow/python:training",
+        "//third_party/py/numpy",
+    ],
 )
 
 filegroup(

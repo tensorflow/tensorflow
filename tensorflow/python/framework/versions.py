@@ -22,12 +22,27 @@ from __future__ import print_function
 from tensorflow.python import pywrap_tensorflow
 
 __version__ = pywrap_tensorflow.__version__
+__git_version__ = pywrap_tensorflow.__git_version__
+__compiler_version__ = pywrap_tensorflow.__compiler_version__
+
+VERSION = __version__
+GIT_VERSION = __git_version__
+COMPILER_VERSION = __compiler_version__
+
 GRAPH_DEF_VERSION = pywrap_tensorflow.GRAPH_DEF_VERSION
 GRAPH_DEF_VERSION_MIN_CONSUMER = (
     pywrap_tensorflow.GRAPH_DEF_VERSION_MIN_CONSUMER)
 GRAPH_DEF_VERSION_MIN_PRODUCER = (
     pywrap_tensorflow.GRAPH_DEF_VERSION_MIN_PRODUCER)
 
-# Make sure these symbols are exported even though one starts with _.
-__all__ = ["__version__", "GRAPH_DEF_VERSION", "GRAPH_DEF_VERSION_MIN_CONSUMER",
-           "GRAPH_DEF_VERSION_MIN_PRODUCER"]
+__all__ = [
+    "__version__",
+    "__git_version__",
+    "__compiler_version__",
+    "COMPILER_VERSION",
+    "GIT_VERSION",
+    "GRAPH_DEF_VERSION",
+    "GRAPH_DEF_VERSION_MIN_CONSUMER",
+    "GRAPH_DEF_VERSION_MIN_PRODUCER",
+    "VERSION",
+]

@@ -1,0 +1,185 @@
+<!--
+@license
+Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+<link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../paper-button/paper-button.html">
+<link rel="import" href="../paper-dialog/paper-dialog.html">
+<link rel="import" href="../tf-imports/lodash.html">
+<link rel="import" href="tf-multi-checkbox.html">
+<link rel="import" href="scrollbar-style.html">
+
+<!--
+tf-run-selector creates a set of checkboxes to display which runs are selected.
+It also displays tooltips.
+
+Properties in:
+- runs: Array of strings representing the runs that may be selected
+- colorScale: a TF.ColorScale mapping run names to colors
+
+Properties out:
+- outSelected: The array of run names that are currently checked by the user.
+
+-->
+<dom-module id="tf-run-selector">
+  <template>
+    <paper-dialog with-backdrop
+                  id="logdir-dialog">
+      <h2>logdir</h2>
+      <div inner-h-t-m-l="{{_breakString(logdir)}}"></div>
+    </paper-dialog>
+    <div id="top-text">
+      <h3 id="tooltip-help" class="tooltip-container">
+        Runs
+      </h3>
+    </div>
+    <tf-multi-checkbox
+      id="multiCheckbox"
+      names="[[runs]]"
+      out-selected="{{outSelected}}"
+      color-scale="[[colorScale]]"
+    ></tf-multi-checkbox>
+    <paper-button
+      class="x-button"
+      id="toggle-all"
+      on-tap="_toggleAll"
+    >
+    Toggle All Runs
+    </paper-button>
+    <template
+      is="dom-if"
+      if="[[logdir]]">
+      <div id="logdir">
+        <span id="clipped-logdir" inner-h-t-m-l="[[_clippedLogdir]]"></span><!--
+          We use HTML comments to remove spaces before the ellipsis.
+        --><template
+                     is="dom-if"
+                     if="[[_shouldShowExpandLogdirButton(logdir, _logdirClipLength)]]"><!--
+          --><a href="" on-click="_openLogdirDialog">…</a>
+        </template>
+      </div>
+    </template>
+    <style>
+      :host {
+        display: flex;
+        flex-direction: column;
+        padding-bottom: 10px;
+        box-sizing: border-box;
+      }
+      #top-text {
+        width: 100%;
+        flex-grow: 0;
+        flex-shrink: 0;
+        padding-right: 16px;
+        box-sizing: border-box;
+        color: var(--paper-grey-800);
+      }
+      tf-multi-checkbox {
+        display: flex;
+        flex-grow: 1;
+        flex-shrink: 1;
+      }
+      .x-button {
+        font-size: 13px;
+        background-color: var(--tb-ui-light-accent);
+        color: var(--tb-ui-dark-accent);
+      }
+      #tooltip-help {
+        color: var(--paper-grey-800);
+        margin: 0;
+        font-weight: normal;
+        font-size: 14px;
+        margin-bottom: 5px;
+      }
+      paper-button {
+        margin-left: 0;
+      }
+      #logdir {
+        color: var(--tb-ui-dark-accent);
+        font-size: 13px;
+        margin: 5px 0 0 0;
+        max-width: 288px;
+      }
+    </style>
+  </template>
+  <script>
+  Polymer({
+    is: "tf-run-selector",
+    properties: {
+      backend: Object,
+      outSelected: {type: Array, notify: true},
+      // runs: an array of strings, representing the run names that may be chosen
+      runs: Array,
+      colorScale: Object, // TF.ColorScale
+      logdir: {
+        type: String,
+        notify: true,
+      },
+      // This is the potentially clipped portion of the logdir we show at the bottom of the sidebar.
+      _clippedLogdir: {
+        type: String,
+      },
+      _logdirClipLength: {
+        type: Number,
+        value: 250,
+        readOnly: true,
+      },
+    },
+    observers: [
+      "_logdirSet(logdir)",
+    ],
+    ready: function() {
+      // Populate the logdir.
+      this.backend.logdir().then(logdirObject => {
+        this.set('logdir', logdirObject.logdir);
+      }).catch(e => {
+        // Fetching the logdir failed. Prevent the exception from logging to
+        // console. The console already logs a 404 network event.
+      });
+    },
+    _toggleAll: function() {
+      this.$.multiCheckbox.toggleAll();
+    },
+    // Break the string at natural points, including commas, equals, and slashes
+    _breakString: function(originalString) {
+      return originalString.replace(/([\/=\-_,])/g, "$1<wbr>");
+    },
+    _logdirSet: function(logdir) {
+      if (!logdir) {
+        // The logdir has not been set yet.
+        return;
+      }
+
+      var lineBrokenText;
+      if (logdir.length > this._logdirClipLength) {
+        // Clip the logdir to avoid blocking the runs selector. Let the user view a more full
+        // version of the logdir.
+        lineBrokenText = this._breakString(logdir.substring(0, this._logdirClipLength));
+      } else {
+        lineBrokenText = this._breakString(logdir);
+      }
+      this.set('_clippedLogdir', lineBrokenText);
+    },
+    _openLogdirDialog: function(event) {
+      event.preventDefault();
+      this.$$('#logdir-dialog').open();
+    },
+    _shouldShowExpandLogdirButton(logdir, _logdirClipLength) {
+      return logdir && logdir.length > _logdirClipLength;
+    },
+  });
+  </script>
+</dom-module>

@@ -239,7 +239,7 @@ NSString* RunInferenceOnImage() {
     const float confidence = result.first;
     const int index = result.second;
 
-    ss << index << " " << confidence << " ";
+    ss << index << " " << confidence << "  ";
 
     // Write out the result as a string
     if (index < label_strings.size()) {

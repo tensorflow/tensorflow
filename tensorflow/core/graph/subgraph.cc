@@ -84,6 +84,20 @@ static Status FeedInputs(Graph* g, const DeviceAttributes& device_info,
             .Finalize(g, &recv_node));
     recv_node->set_assigned_device_name(device_info.name());
 
+    // Copy the _output_shapes from the original node to the feed node,
+    // if any.
+    std::vector<PartialTensorShape> output_shapes;
+    if (GetNodeAttr(n->def(), "_output_shapes", &output_shapes).ok()) {
+      if (n->num_outputs() != output_shapes.size()) {
+        return errors::InvalidArgument(
+            "FeedInputs: ", t,
+            ": size of _output_shapes attribute does not "
+            "match the number of node outputs");
+      }
+      std::vector<PartialTensorShape> feed_shapes = {output_shapes[id.second]};
+      recv_node->AddAttr("_output_shapes", feed_shapes);
+    }
+
     // Update name_index
     (*name_index)[recv_node->name()] = recv_node;
     g->AddControlEdge(g->source_node(), recv_node);
@@ -96,7 +110,8 @@ static Status FeedInputs(Graph* g, const DeviceAttributes& device_info,
       if (e->src_output() == id.second) {
         to_remove.emplace_back(e);
       } else if (e->src_output() == Graph::kControlSlot &&
-                 n->def().op() == "Placeholder") {
+                 (n->def().op() == "Placeholder" ||
+                  n->def().op() == "PlaceholderV2")) {
         // When feeding a Placeholder node, any outgoing control edges
         // will be replaced with a control edge from the replacement
         // recv_node.
@@ -235,7 +250,15 @@ Status RewriteGraphForExecution(
         "Must specify at least one target to fetch or execute.");
   }
 
-  std::unordered_set<string> endpoints(fed_outputs.begin(), fed_outputs.end());
+  std::unordered_set<string> endpoints;
+  for (const string& endpoint_name : fed_outputs) {
+    auto result = endpoints.insert(endpoint_name);
+    if (!result.second) {
+      return errors::InvalidArgument("Endpoint \"", endpoint_name,
+                                     "\" fed more than once.");
+    }
+  }
+
   for (const auto& fetch : fetch_outputs) {
     if (endpoints.count(fetch) > 0) {
       return errors::InvalidArgument(fetch, " is both fed and fetched.");
@@ -245,6 +268,7 @@ Status RewriteGraphForExecution(
   // A separate index mapping name to Node*, for use by FeedInputs,
   // FetchOutputs, and PruneForTargets
   NameIndex name_index;
+  name_index.reserve(g->num_nodes());
   for (Node* n : g->nodes()) {
     name_index[n->name()] = n;
   }

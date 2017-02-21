@@ -20,8 +20,9 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.distributions.python.ops import distribution  # pylint: disable=line-too-long
-from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util  # pylint: disable=line-too-long
+from tensorflow.contrib.distributions.python.ops import distribution
+from tensorflow.contrib.distributions.python.ops import distribution_util
+from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -30,362 +31,269 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
 
 
+__all__ = [
+    "InverseGamma",
+    "InverseGammaWithSoftplusConcentrationRate",
+]
+
+
 class InverseGamma(distribution.Distribution):
-  """The `InverseGamma` distribution with parameter alpha and beta.
+  """InverseGamma distribution.
 
-  The parameters are the shape and inverse scale parameters alpha, beta.
+  The `InverseGamma` distribution is defined over positive real numbers using
+  parameters `concentration` (aka "alpha") and `rate` (aka "beta").
 
-  The PDF of this distribution is:
+  #### Mathematical Details
 
-  ```pdf(x) = (beta^alpha)/Gamma(alpha)(x^(-alpha-1))e^(-beta/x), x > 0```
+  The probability density function (pdf) is,
 
-  and the CDF of this distribution is:
+  ```none
+  pdf(x; alpha, beta, x > 0) = x**(-alpha - 1) exp(-beta / x) / Z
+  Z = Gamma(alpha) beta**-alpha
+  ```
 
-  ```cdf(x) =  GammaInc(alpha, beta / x) / Gamma(alpha), x > 0```
+  where:
 
-  where GammaInc is the upper incomplete Gamma function.
+  * `concentration = alpha`,
+  * `rate = beta`,
+  * `Z` is the normalizing constant, and,
+  * `Gamma` is the [gamma function](
+    https://en.wikipedia.org/wiki/Gamma_function).
 
-  Examples:
+  The cumulative density function (cdf) is,
+
+  ```none
+  cdf(x; alpha, beta, x > 0) = GammaInc(alpha, beta / x) / Gamma(alpha)
+  ```
+
+  where `GammaInc` is the [upper incomplete Gamma function](
+  https://en.wikipedia.org/wiki/Incomplete_gamma_function).
+
+  The parameters can be intuited via their relationship to mean and stddev,
+
+  ```none
+  concentration = alpha = (mean / stddev)**2
+  rate = beta = mean / stddev**2
+  ```
+
+  Distribution parameters are automatically broadcast in all functions; see
+  examples for details.
+
+  WARNING: This distribution may draw 0-valued samples for small concentration
+  values. See note in `tf.random_gamma` docstring.
+
+  #### Examples
 
   ```python
-  dist = InverseGamma(alpha=3.0, beta=2.0)
-  dist2 = InverseGamma(alpha=[3.0, 4.0], beta=[2.0, 3.0])
+  dist = InverseGamma(concentration=3.0, rate=2.0)
+  dist2 = InverseGamma(concentration=[3.0, 4.0], rate=[2.0, 3.0])
   ```
 
   """
 
   def __init__(self,
-               alpha,
-               beta,
-               strict=True,
-               strict_statistics=True,
+               concentration,
+               rate,
+               validate_args=False,
+               allow_nan_stats=True,
                name="InverseGamma"):
-    """Construct InverseGamma distributions with parameters `alpha` and `beta`.
+    """Construct InverseGamma with `concentration` and `rate` parameters.
 
-    The parameters `alpha` and `beta` must be shaped in a way that supports
-    broadcasting (e.g. `alpha + beta` is a valid operation).
+    The parameters `concentration` and `rate` must be shaped in a way that
+    supports broadcasting (e.g. `concentration + rate` is a valid operation).
 
     Args:
-      alpha: `float` or `double` tensor, the shape params of the
-        distribution(s).
-        alpha must contain only positive values.
-      beta: `float` or `double` tensor, the scale params of the distribution(s).
-        beta must contain only positive values.
-      strict: Whether to assert that `a > 0, b > 0`, and that `x > 0` in the
-        methods `prob(x)` and `log_prob(x)`.  If `strict` is False
-        and the inputs are invalid, correct behavior is not guaranteed.
-      strict_statistics:  Boolean, default True.  If True, raise an exception if
-        a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-        If False, batch members with valid parameters leading to undefined
-        statistics will return NaN for this statistic.
-      name: The name to prepend to all ops created by this distribution.
+      concentration: Floating point tensor, the concentration params of the
+        distribution(s). Must contain only positive values.
+      rate: Floating point tensor, the inverse scale params of the
+        distribution(s). Must contain only positive values.
+      validate_args: Python `bool`, default `False`. When `True` distribution
+        parameters are checked for validity despite possibly degrading runtime
+        performance. When `False` invalid inputs may silently render incorrect
+        outputs.
+      allow_nan_stats: Python `bool`, default `True`. When `True`, statistics
+        (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
+        result is undefined. When `False`, an exception is raised if one or
+        more of the statistic's batch members are undefined.
+      name: Python `str` name prefixed to Ops created by this class.
+
 
     Raises:
-      TypeError: if `alpha` and `beta` are different dtypes.
+      TypeError: if `concentration` and `rate` are different dtypes.
     """
-    self._strict_statistics = strict_statistics
-    self._strict = strict
-    with ops.op_scope([alpha, beta], name) as scope:
-      self._name = scope
-      with ops.control_dependencies([check_ops.assert_positive(
-          alpha), check_ops.assert_positive(beta)] if strict else []):
-        alpha = array_ops.identity(alpha, name="alpha")
-        beta = array_ops.identity(beta, name="beta")
+    parameters = locals()
+    with ops.name_scope(name, values=[concentration, rate]) as ns:
+      with ops.control_dependencies([
+          check_ops.assert_positive(concentration),
+          check_ops.assert_positive(rate),
+      ] if validate_args else []):
+        self._concentration = array_ops.identity(
+            concentration, name="concentration")
+        self._rate = array_ops.identity(rate, name="rate")
+        contrib_tensor_util.assert_same_float_dtype(
+            [self._concentration, self._rate])
+    super(InverseGamma, self).__init__(
+        dtype=self._concentration.dtype,
+        validate_args=validate_args,
+        allow_nan_stats=allow_nan_stats,
+        is_continuous=True,
+        reparameterization_type=distribution.NOT_REPARAMETERIZED,
+        parameters=parameters,
+        graph_parents=[self._concentration,
+                       self._rate],
+        name=ns)
 
-        contrib_tensor_util.assert_same_float_dtype((alpha, beta))
-        self._broadcast_tensor = alpha + beta
-
-    self._get_batch_shape = self._broadcast_tensor.get_shape()
-    self._get_event_shape = tensor_shape.TensorShape([])
-
-    self._alpha = alpha
-    self._beta = beta
+  @staticmethod
+  def _param_shapes(sample_shape):
+    return dict(
+        zip(("concentration", "rate"), ([ops.convert_to_tensor(
+            sample_shape, dtype=dtypes.int32)] * 2)))
 
   @property
-  def strict_statistics(self):
-    """Boolean describing behavior when a stat is undefined for batch member."""
-    return self._strict_statistics
+  def concentration(self):
+    """Concentration parameter."""
+    return self._concentration
 
   @property
-  def strict(self):
-    """Boolean describing behavior on invalid input."""
-    return self._strict
+  def rate(self):
+    """Rate parameter."""
+    return self._rate
 
-  @property
-  def name(self):
-    """Name to prepend to all ops."""
-    return self._name
+  def _batch_shape_tensor(self):
+    return array_ops.broadcast_dynamic_shape(
+        array_ops.shape(self.concentration),
+        array_ops.shape(self.rate))
 
-  @property
-  def dtype(self):
-    """dtype of samples from this distribution."""
-    return self._alpha.dtype
+  def _batch_shape(self):
+    return array_ops.broadcast_static_shape(
+        self.concentration.get_shape(),
+        self.rate.get_shape())
 
-  @property
-  def alpha(self):
-    """Shape parameter."""
-    return self._alpha
+  def _event_shape_tensor(self):
+    return constant_op.constant([], dtype=dtypes.int32)
 
-  @property
-  def beta(self):
-    """Scale parameter."""
-    return self._beta
+  def _event_shape(self):
+    return tensor_shape.scalar()
 
-  def batch_shape(self, name="batch_shape"):
-    """Batch dimensions of this instance as a 1-D int32 `Tensor`.
+  @distribution_util.AppendDocstring(
+      """Note: See `tf.random_gamma` docstring for sampling details and
+      caveats.""")
+  def _sample_n(self, n, seed=None):
+    return 1. / random_ops.random_gamma(
+        shape=[n],
+        alpha=self.concentration,
+        beta=self.rate,
+        dtype=self.dtype,
+        seed=seed)
 
-    The product of the dimensions of the `batch_shape` is the number of
-    independent distributions of this kind the instance represents.
+  def _log_prob(self, x):
+    return self._log_unnormalized_prob(x) - self._log_normalization()
 
-    Args:
-      name: name to give to the op
+  def _prob(self, x):
+    return math_ops.exp(self._log_prob(x))
 
-    Returns:
-      `Tensor` `batch_shape`
-    """
-    with ops.name_scope(self.name):
-      with ops.op_scope([self._broadcast_tensor], name):
-        return array_ops.shape(self._broadcast_tensor)
+  def _log_cdf(self, x):
+    return math_ops.log(self._cdf(x))
 
-  def get_batch_shape(self):
-    """`TensorShape` available at graph construction time.
+  def _cdf(self, x):
+    x = self._maybe_assert_valid_sample(x)
+    # Note that igammac returns the upper regularized incomplete gamma
+    # function Q(a, x), which is what we want for the CDF.
+    return math_ops.igammac(self.concentration, self.rate / x)
 
-    Same meaning as `batch_shape`. May be only partially defined.
+  def _log_unnormalized_prob(self, x):
+    x = self._maybe_assert_valid_sample(x)
+    return -(1. + self.concentration) * math_ops.log(x) - self.rate / x
 
-    Returns:
-      `TensorShape` object.
-    """
-    return self._get_batch_shape
+  def _log_normalization(self):
+    return (math_ops.lgamma(self.concentration)
+            - self.concentration * math_ops.log(self.rate))
 
-  def event_shape(self, name="event_shape"):
-    """Shape of a sample from a single distribution as a 1-D int32 `Tensor`.
+  def _entropy(self):
+    return (self.concentration
+            + math_ops.log(self.rate)
+            + math_ops.lgamma(self.concentration)
+            - ((1. + self.concentration) *
+               math_ops.digamma(self.concentration)))
 
-    Args:
-      name: name to give to the op
+  @distribution_util.AppendDocstring(
+      """The mean of an inverse gamma distribution is
+      `rate / (concentration - 1)`, when `concentration > 1`, and `NaN`
+      otherwise. If `self.allow_nan_stats` is `False`, an exception will be
+      raised rather than returning `NaN`""")
+  def _mean(self):
+    mean = self.rate / (self.concentration - 1.)
+    if self.allow_nan_stats:
+      nan = array_ops.fill(
+          self.batch_shape_tensor(),
+          np.array(np.nan, dtype=self.dtype.as_numpy_dtype()),
+          name="nan")
+      return array_ops.where(self.concentration > 1., mean, nan)
+    else:
+      return control_flow_ops.with_dependencies([
+          check_ops.assert_less(
+              array_ops.ones([], self.dtype), self.concentration,
+              message="mean undefined when any concentration <= 1"),
+      ], mean)
 
-    Returns:
-      `Tensor` `event_shape`
-    """
-    with ops.name_scope(self.name):
-      with ops.op_scope([], name):
-        return constant_op.constant([], dtype=dtypes.int32)
+  @distribution_util.AppendDocstring(
+      """Variance for inverse gamma is defined only for `concentration > 2`. If
+      `self.allow_nan_stats` is `False`, an exception will be raised rather
+      than returning `NaN`.""")
+  def _variance(self):
+    var = (math_ops.square(self.rate)
+           / math_ops.square(self.concentration - 1.)
+           / (self.concentration - 2.))
+    if self.allow_nan_stats:
+      nan = array_ops.fill(
+          self.batch_shape_tensor(),
+          np.array(np.nan, dtype=self.dtype.as_numpy_dtype()),
+          name="nan")
+      return array_ops.where(self.concentration > 2., var, nan)
+    else:
+      return control_flow_ops.with_dependencies([
+          check_ops.assert_less(
+              constant_op.constant(2., dtype=self.dtype),
+              self.concentration,
+              message="variance undefined when any concentration <= 2"),
+      ], var)
 
-  def get_event_shape(self):
-    """`TensorShape` available at graph construction time.
+  @distribution_util.AppendDocstring(
+      """The mode of an inverse gamma distribution is `rate / (concentration +
+      1)`.""")
+  def _mode(self):
+    return self.rate / (1. + self.concentration)
 
-    Same meaning as `event_shape`. May be only partially defined.
+  def _maybe_assert_valid_sample(self, x):
+    contrib_tensor_util.assert_same_float_dtype(
+        tensors=[x], dtype=self.dtype)
+    if not self.validate_args:
+      return x
+    return control_flow_ops.with_dependencies([
+        check_ops.assert_positive(x),
+    ], x)
 
-    Returns:
-      `TensorShape` object.
-    """
-    return self._get_event_shape
 
-  def mean(self, name="mean"):
-    """Mean of each batch member.
+class InverseGammaWithSoftplusConcentrationRate(InverseGamma):
+  """`InverseGamma` with softplus of `concentration` and `rate`."""
 
-    The mean of an inverse gamma distribution is `beta / (alpha - 1)`,
-    when `alpha > 1`, and `NaN` otherwise.  If `self.strict_statistics` is
-    `True`, an exception will be raised rather than returning `NaN`
-
-    Args:
-      name: A name to give this op.
-
-    Returns:
-      The mean for every batch member, a `Tensor` with same `dtype` as self.
-    """
-    alpha = self._alpha
-    beta = self._beta
-    with ops.name_scope(self.name):
-      with ops.op_scope([alpha, beta], name):
-        mean_if_defined = beta / (alpha - 1.0)
-        if self.strict_statistics:
-          one = ops.convert_to_tensor(1.0, dtype=self.dtype)
-          return control_flow_ops.with_dependencies(
-              [check_ops.assert_less(one, alpha)], mean_if_defined)
-        else:
-          alpha_gt_1 = alpha > 1.0
-          nan = np.nan * self._ones()
-          return math_ops.select(alpha_gt_1, mean_if_defined, nan)
-
-  def mode(self, name="mode"):
-    """Mode of each batch member.
-
-    The mode of an inverse gamma distribution is `beta / (alpha + 1)`.
-
-    Args:
-      name: A name to give this op.
-
-    Returns:
-      The mode for every batch member, a `Tensor` with same `dtype` as self.
-    """
-    with ops.name_scope(self.name):
-      with ops.op_scope([self._alpha, self._beta], name):
-        return self._beta / (self._alpha + 1.0)
-
-  def variance(self, name="variance"):
-    """Variance of each batch member.
-
-    Variance for inverse gamma is defined only for `alpha > 2`. If
-    `self.strict_statistics` is `True`, an exception will be raised rather
-    than returning `NaN`.
-
-    Args:
-      name: A name to give this op.
-
-    Returns:
-      The variance for every batch member, a `Tensor` with same `dtype` as self.
-    """
-    alpha = self._alpha
-    beta = self._beta
-    with ops.name_scope(self.name):
-      with ops.op_scope([alpha, beta], name):
-        var_if_defined = (math_ops.square(self._beta) /
-                          (math_ops.square(self._alpha - 1.0) *
-                           (self._alpha - 2.0)))
-        if self.strict_statistics:
-          two = ops.convert_to_tensor(2.0, dtype=self.dtype)
-          return control_flow_ops.with_dependencies(
-              [check_ops.assert_less(two, alpha)], var_if_defined)
-        else:
-          alpha_gt_2 = alpha > 2.0
-          nan = np.nan * self._ones()
-          return math_ops.select(alpha_gt_2, var_if_defined, nan)
-
-  def log_prob(self, x, name="log_prob"):
-    """Log prob of observations in `x` under these InverseGamma distribution(s).
-
-    Args:
-      x: tensor of dtype `dtype`, must be broadcastable with `alpha` and `beta`.
-      name: The name to give this op.
-
-    Returns:
-      log_prob: tensor of dtype `dtype`, the log-PDFs of `x`.
-
-    Raises:
-      TypeError: if `x` and `alpha` are different dtypes.
-    """
-    with ops.name_scope(self.name):
-      with ops.op_scope([self._alpha, self._beta, x], name):
-        alpha = self._alpha
-        beta = self._beta
-        x = ops.convert_to_tensor(x)
-        x = control_flow_ops.with_dependencies([check_ops.assert_positive(x)] if
-                                               self.strict else [], x)
-        contrib_tensor_util.assert_same_float_dtype(tensors=[x,],
-                                                    dtype=self.dtype)
-
-        return (alpha * math_ops.log(beta) - math_ops.lgamma(self._alpha) -
-                (alpha + 1) * math_ops.log(x) - beta / x)
-
-  def prob(self, x, name="prob"):
-    """Pdf of observations in `x` under these Gamma distribution(s).
-
-    Args:
-      x: tensor of dtype `dtype`, must be broadcastable with `alpha` and `beta`.
-      name: The name to give this op.
-
-    Returns:
-      prob: tensor of dtype `dtype`, the PDFs of `x`
-
-    Raises:
-      TypeError: if `x` and `alpha` are different dtypes.
-    """
-    return super(InverseGamma, self).prob(x, name)
-
-  def log_cdf(self, x, name="log_cdf"):
-    """Log CDF of observations `x` under these InverseGamma distribution(s).
-
-    Args:
-      x: tensor of dtype `dtype`, must be broadcastable with `alpha` and `beta`.
-      name: The name to give this op.
-
-    Returns:
-      log_cdf: tensor of dtype `dtype`, the log-CDFs of `x`.
-    """
-    with ops.name_scope(self.name):
-      with ops.op_scope([self._alpha, self._beta, x], name):
-        x = ops.convert_to_tensor(x)
-        x = control_flow_ops.with_dependencies([check_ops.assert_positive(x)] if
-                                               self.strict else [], x)
-        contrib_tensor_util.assert_same_float_dtype(tensors=[x,],
-                                                    dtype=self.dtype)
-        # Note that igammac returns the upper regularized incomplete gamma
-        # function Q(a, x), which is what we want for the CDF.
-        return math_ops.log(math_ops.igammac(self._alpha, self._beta / x))
-
-  def cdf(self, x, name="cdf"):
-    """CDF of observations `x` under these InverseGamma distribution(s).
-
-    Args:
-      x: tensor of dtype `dtype`, must be broadcastable with `alpha` and `beta`.
-      name: The name to give this op.
-
-    Returns:
-      cdf: tensor of dtype `dtype`, the CDFs of `x`.
-    """
-    with ops.name_scope(self.name):
-      with ops.op_scope([self._alpha, self._beta, x], name):
-        return math_ops.igammac(self._alpha, self._beta / x)
-
-  def entropy(self, name="entropy"):
-    """The entropy of these InverseGamma distribution(s).
-
-    This is defined to be
-
-    ```
-    entropy = alpha - log(beta) + log(Gamma(alpha))
-                 + (1-alpha)digamma(alpha)
-    ```
-
-    where digamma(alpha) is the digamma function.
-
-    Args:
-      name: The name to give this op.
-
-    Returns:
-      entropy: tensor of dtype `dtype`, the entropy.
-    """
-    with ops.name_scope(self.name):
-      with ops.op_scope([self._alpha, self._beta], name):
-        alpha = self._alpha
-        beta = self._beta
-        return (alpha + math_ops.log(beta) + math_ops.lgamma(alpha) -
-                (1 + alpha) * math_ops.digamma(alpha))
-
-  def sample(self, n, seed=None, name="sample"):
-    """Draws `n` samples from these InverseGamma distribution(s).
-
-    See the doc for tf.random_gamma for further details on sampling strategy.
-
-    Args:
-      n: Python integer, the number of observations to sample from each
-        distribution.
-      seed: Python integer, the random seed for this operation.
-      name: Optional name for the operation.
-
-    Returns:
-      samples: a `Tensor` of shape `(n,) + self.batch_shape + self.event_shape`
-          with values of type `self.dtype`.
-    """
-    with ops.name_scope(self.name):
-      with ops.op_scope([n, self._alpha, self._beta], name):
-        one = constant_op.constant(1.0, dtype=self.dtype)
-        return one / random_ops.random_gamma([n],
-                                             self._alpha,
-                                             beta=self._beta,
-                                             dtype=self.dtype,
-                                             seed=seed)
-
-  @property
-  def is_reparameterized(self):
-    return False
-
-  def _ones(self):
-    return array_ops.ones_like(self._alpha + self._beta, dtype=self.dtype)
-
-  @property
-  def is_continuous(self):
-    return True
+  def __init__(self,
+               concentration,
+               rate,
+               validate_args=False,
+               allow_nan_stats=True,
+               name="InverseGammaWithSoftplusConcentrationRate"):
+    parameters = locals()
+    with ops.name_scope(name, values=[concentration, rate]) as ns:
+      super(InverseGammaWithSoftplusConcentrationRate, self).__init__(
+          concentration=nn.softplus(concentration,
+                                    name="softplus_concentration"),
+          rate=nn.softplus(rate, name="softplus_rate"),
+          validate_args=validate_args,
+          allow_nan_stats=allow_nan_stats,
+          name=ns)
+    self._parameters = parameters

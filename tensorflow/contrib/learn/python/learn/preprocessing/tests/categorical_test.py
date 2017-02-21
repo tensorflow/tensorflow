@@ -20,14 +20,21 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import sys
+
+# TODO: #6568 Remove this hack that makes dlopen() not crash.
+if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
+  import ctypes
+  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
+
 import numpy as np
-import tensorflow as tf
 
 from tensorflow.contrib.learn.python.learn.learn_io import HAS_PANDAS
 from tensorflow.contrib.learn.python.learn.preprocessing import categorical
+from tensorflow.python.platform import test
 
 
-class CategoricalTest(tf.test.TestCase):
+class CategoricalTest(test.TestCase):
   """Categorical tests."""
 
   def testSingleCategoricalProcessor(self):
@@ -45,12 +52,12 @@ class CategoricalTest(tf.test.TestCase):
       self.assertAllEqual(list(x), [[1], [2], [1]])
 
   def testMultiCategoricalProcessor(self):
-    cat_processor = categorical.CategoricalProcessor(min_frequency=0,
-                                                     share=False)
-    x = cat_processor.fit_transform([["0", "Male"], [1, "Female"], ["3", "Male"]
-                                    ])
+    cat_processor = categorical.CategoricalProcessor(
+        min_frequency=0, share=False)
+    x = cat_processor.fit_transform([["0", "Male"], [1, "Female"],
+                                     ["3", "Male"]])
     self.assertAllEqual(list(x), [[1, 1], [2, 2], [3, 1]])
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

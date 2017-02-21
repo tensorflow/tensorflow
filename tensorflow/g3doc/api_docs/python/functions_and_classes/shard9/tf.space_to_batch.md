@@ -2,6 +2,8 @@
 
 SpaceToBatch for 4-D tensors of type T.
 
+This is a legacy version of the more general SpaceToBatchND.
+
 Zero-pads and then rearranges (permutes) blocks of spatial data into batch.
 More specifically, this op outputs a copy of the input tensor where values from
 the `height` and `width` dimensions are moved to the `batch` dimension. After
@@ -12,7 +14,7 @@ block size.
 
 
 *  <b>`input`</b>: A `Tensor`. 4-D with shape `[batch, height, width, depth]`.
-*  <b>`paddings`</b>: A `Tensor` of type `int32`.
+*  <b>`paddings`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     2-D tensor of non-negative integers with shape `[2, 2]`. It specifies
       the padding of the input with zeros across the spatial dimensions as follows:
 
@@ -74,7 +76,7 @@ block size.
     The output tensor has shape `[4, 2, 2, 1]` and value:
 
     ```prettyprint
-    x = [[[[1], [3]], [[5], [7]]],
+    x = [[[[1], [3]], [[9], [11]]],
          [[[2], [4]], [[10], [12]]],
          [[[5], [7]], [[13], [15]]],
          [[[6], [8]], [[14], [16]]]]

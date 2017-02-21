@@ -20,28 +20,50 @@ from __future__ import print_function
 
 import math
 
-from tensorflow.contrib.distributions.python.ops import distribution  # pylint: disable=line-too-long
-from tensorflow.contrib.distributions.python.ops import kullback_leibler  # pylint: disable=line-too-long
-from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util  # pylint: disable=line-too-long
+from tensorflow.contrib.distributions.python.ops import distribution
+from tensorflow.contrib.distributions.python.ops import kullback_leibler
+from tensorflow.contrib.distributions.python.ops import special_math
+from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
 
 
+__all__ = [
+    "Normal",
+    "NormalWithSoftplusScale",
+]
+
+
 class Normal(distribution.Distribution):
-  """The scalar Normal distribution with mean and stddev parameters mu, sigma.
+  """The Normal distribution with location `loc` and `scale` parameters.
 
   #### Mathematical details
 
-  The PDF of this distribution is:
+  The probability density function (pdf) is,
 
-  ```f(x) = sqrt(1/(2*pi*sigma^2)) exp(-(x-mu)^2/(2*sigma^2))```
+  ```none
+  pdf(x; mu, sigma) = exp(-0.5 (x - mu)**2 / sigma**2) / Z
+  Z = (2 pi sigma**2)**0.5
+  ```
+
+  where `loc = mu` is the mean, `scale = sigma` is the std. deviation, and, `Z`
+  is the normalization constant.
+
+  The Normal distribution is a member of the [location-scale family](
+  https://en.wikipedia.org/wiki/Location-scale_family), i.e., it can be
+  constructed as,
+
+  ```none
+  X ~ Normal(loc=0, scale=1)
+  Y = loc + scale * X
+  ```
 
   #### Examples
 
@@ -49,21 +71,21 @@ class Normal(distribution.Distribution):
 
   ```python
   # Define a single scalar Normal distribution.
-  dist = tf.contrib.distributions.Normal(mu=0, sigma=3)
+  dist = tf.contrib.distributions.Normal(loc=0., scale=3.)
 
   # Evaluate the cdf at 1, returning a scalar.
-  dist.cdf(1)
+  dist.cdf(1.)
 
   # Define a batch of two scalar valued Normals.
   # The first has mean 1 and standard deviation 11, the second 2 and 22.
-  dist = tf.contrib.distributions.Normal(mu=[1, 2.], sigma=[11, 22.])
+  dist = tf.contrib.distributions.Normal(loc=[1, 2.], scale=[11, 22.])
 
   # Evaluate the pdf of the first distribution on 0, and the second on 1.5,
   # returning a length two tensor.
-  dist.pdf([0, 1.5])
+  dist.prob([0, 1.5])
 
   # Get 3 samples, returning a 3 x 2 tensor.
-  dist.sample(3)
+  dist.sample([3])
   ```
 
   Arguments are broadcast when possible.
@@ -71,277 +93,160 @@ class Normal(distribution.Distribution):
   ```python
   # Define a batch of two scalar valued Normals.
   # Both have mean 1, but different standard deviations.
-  dist = tf.contrib.distributions.Normal(mu=1, sigma=[11, 22.])
+  dist = tf.contrib.distributions.Normal(loc=1., scale=[11, 22.])
 
   # Evaluate the pdf of both distributions on the same point, 3.0,
   # returning a length 2 tensor.
-  dist.pdf(3.0)
+  dist.prob(3.0)
   ```
 
   """
 
-  def __init__(
-      self, mu, sigma, strict=True, strict_statistics=True, name="Normal"):
-    """Construct Normal distributions with mean and stddev `mu` and `sigma`.
+  def __init__(self,
+               loc,
+               scale,
+               validate_args=False,
+               allow_nan_stats=True,
+               name="Normal"):
+    """Construct Normal distributions with mean and stddev `loc` and `scale`.
 
-    The parameters `mu` and `sigma` must be shaped in a way that supports
-    broadcasting (e.g. `mu + sigma` is a valid operation).
+    The parameters `loc` and `scale` must be shaped in a way that supports
+    broadcasting (e.g. `loc + scale` is a valid operation).
 
     Args:
-      mu: `float` or `double` tensor, the means of the distribution(s).
-      sigma: `float` or `double` tensor, the stddevs of the distribution(s).
-        sigma must contain only positive values.
-      strict: Whether to assert that `sigma > 0`. If `strict` is False,
-        correct output is not guaranteed when input is invalid.
-      strict_statistics:  Boolean, default True.  If True, raise an exception if
-        a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-        If False, batch members with valid parameters leading to undefined
-        statistics will return NaN for this statistic.
-      name: The name to give Ops created by the initializer.
+      loc: Floating point tensor; the means of the distribution(s).
+      scale: Floating point tensor; the stddevs of the distribution(s).
+        Must contain only positive values.
+      validate_args: Python `bool`, default `False`. When `True` distribution
+        parameters are checked for validity despite possibly degrading runtime
+        performance. When `False` invalid inputs may silently render incorrect
+        outputs.
+      allow_nan_stats: Python `bool`, default `True`. When `True`,
+        statistics (e.g., mean, mode, variance) use the value "`NaN`" to
+        indicate the result is undefined. When `False`, an exception is raised
+        if one or more of the statistic's batch members are undefined.
+      name: Python `str` name prefixed to Ops created by this class.
 
     Raises:
-      TypeError: if mu and sigma are different dtypes.
+      TypeError: if `loc` and `scale` have different `dtype`.
     """
-    self._strict_statistics = strict_statistics
-    self._strict = strict
-    with ops.op_scope([mu, sigma], name):
-      mu = ops.convert_to_tensor(mu)
-      sigma = ops.convert_to_tensor(sigma)
-      with ops.control_dependencies(
-          [check_ops.assert_positive(sigma)] if strict else []):
-        self._name = name
-        self._mu = array_ops.identity(mu, name="mu")
-        self._sigma = array_ops.identity(sigma, name="sigma")
-        self._batch_shape = self._ones().get_shape()
-        self._event_shape = tensor_shape.TensorShape([])
+    parameters = locals()
+    with ops.name_scope(name, values=[loc, scale]) as ns:
+      with ops.control_dependencies([check_ops.assert_positive(scale)] if
+                                    validate_args else []):
+        self._loc = array_ops.identity(loc, name="loc")
+        self._scale = array_ops.identity(scale, name="scale")
+        contrib_tensor_util.assert_same_float_dtype([self._loc, self._scale])
+    super(Normal, self).__init__(
+        dtype=self._scale.dtype,
+        is_continuous=True,
+        reparameterization_type=distribution.FULLY_REPARAMETERIZED,
+        validate_args=validate_args,
+        allow_nan_stats=allow_nan_stats,
+        parameters=parameters,
+        graph_parents=[self._loc, self._scale],
+        name=ns)
 
-    contrib_tensor_util.assert_same_float_dtype((mu, sigma))
+  @staticmethod
+  def _param_shapes(sample_shape):
+    return dict(
+        zip(("loc", "scale"), ([ops.convert_to_tensor(
+            sample_shape, dtype=dtypes.int32)] * 2)))
 
   @property
-  def strict_statistics(self):
-    """Boolean describing behavior when a stat is undefined for batch member."""
-    return self._strict_statistics
-
-  @property
-  def strict(self):
-    """Boolean describing behavior on invalid input."""
-    return self._strict
-
-  @property
-  def name(self):
-    return self._name
-
-  @property
-  def dtype(self):
-    return self._mu.dtype
-
-  def batch_shape(self, name="batch_shape"):
-    """Batch dimensions of this instance as a 1-D int32 `Tensor`.
-
-    The product of the dimensions of the `batch_shape` is the number of
-    independent distributions of this kind the instance represents.
-
-    Args:
-      name: name to give to the op.
-
-    Returns:
-      `Tensor` `batch_shape`
-    """
-    with ops.name_scope(self.name):
-      with ops.op_scope([], name):
-        return array_ops.shape(self._ones())
-
-  def get_batch_shape(self):
-    """`TensorShape` available at graph construction time.
-
-    Same meaning as `batch_shape`. May be only partially defined.
-
-    Returns:
-      batch shape
-    """
-    return self._batch_shape
-
-  def event_shape(self, name="event_shape"):
-    """Shape of a sample from a single distribution as a 1-D int32 `Tensor`.
-
-    Args:
-      name: name to give to the op.
-
-    Returns:
-      `Tensor` `event_shape`
-    """
-    with ops.name_scope(self.name):
-      with ops.op_scope([], name):
-        return constant_op.constant([], dtype=dtypes.int32)
-
-  def get_event_shape(self):
-    """`TensorShape` available at graph construction time.
-
-    Same meaning as `event_shape`. May be only partially defined.
-
-    Returns:
-      event shape
-    """
-    return self._event_shape
-
-  @property
-  def mu(self):
+  def loc(self):
     """Distribution parameter for the mean."""
-    return self._mu
+    return self._loc
 
   @property
-  def sigma(self):
+  def scale(self):
     """Distribution parameter for standard deviation."""
-    return self._sigma
+    return self._scale
 
-  def mean(self, name="mean"):
-    """Mean of this distribution."""
-    with ops.name_scope(self.name):
-      with ops.op_scope([self._sigma, self._mu], name):
-        return self._mu * array_ops.ones_like(self._sigma)
+  def _batch_shape_tensor(self):
+    return array_ops.broadcast_dynamic_shape(
+        array_ops.shape(self.loc),
+        array_ops.shape(self.scale))
 
-  def mode(self, name="mode"):
-    """Mode of this distribution."""
-    return self.mean(name="mode")
+  def _batch_shape(self):
+    return array_ops.broadcast_static_shape(
+        self.loc.get_shape(),
+        self.scale.get_shape())
 
-  def std(self, name="std"):
-    """Standard deviation of this distribution."""
-    with ops.name_scope(self.name):
-      with ops.op_scope([self._sigma, self._mu], name):
-        return self._sigma * array_ops.ones_like(self._mu)
+  def _event_shape_tensor(self):
+    return constant_op.constant([], dtype=dtypes.int32)
 
-  def variance(self, name="variance"):
-    """Variance of this distribution."""
-    with ops.name_scope(self.name):
-      with ops.op_scope([], name):
-        return math_ops.square(self.std())
+  def _event_shape(self):
+    return tensor_shape.scalar()
 
-  def log_prob(self, x, name="log_prob"):
-    """Log prob of observations in `x` under these Normal distribution(s).
+  def _sample_n(self, n, seed=None):
+    shape = array_ops.concat([[n], self.batch_shape_tensor()], 0)
+    sampled = random_ops.random_normal(
+        shape=shape, mean=0., stddev=1., dtype=self.loc.dtype, seed=seed)
+    return sampled * self.scale + self.loc
 
-    Args:
-      x: tensor of dtype `dtype`, must be broadcastable with `mu` and `sigma`.
-      name: The name to give this op.
+  def _log_prob(self, x):
+    return self._log_unnormalized_prob(x) - self._log_normalization()
 
-    Returns:
-      log_prob: tensor of dtype `dtype`, the log-PDFs of `x`.
-    """
-    with ops.name_scope(self.name):
-      with ops.op_scope([self._mu, self._sigma, x], name):
-        x = ops.convert_to_tensor(x)
-        if x.dtype != self.dtype:
-          raise TypeError("Input x dtype does not match dtype: %s vs. %s"
-                          % (x.dtype, self.dtype))
-        log_2_pi = constant_op.constant(math.log(2 * math.pi), dtype=self.dtype)
-        return (-0.5*log_2_pi - math_ops.log(self._sigma)
-                -0.5*math_ops.square((x - self._mu) / self._sigma))
+  def _prob(self, x):
+    return math_ops.exp(self._log_prob(x))
 
-  def cdf(self, x, name="cdf"):
-    """CDF of observations in `x` under these Normal distribution(s).
+  def _log_cdf(self, x):
+    return special_math.log_ndtr(self._z(x))
 
-    Args:
-      x: tensor of dtype `dtype`, must be broadcastable with `mu` and `sigma`.
-      name: The name to give this op.
+  def _cdf(self, x):
+    return special_math.ndtr(self._z(x))
 
-    Returns:
-      cdf: tensor of dtype `dtype`, the CDFs of `x`.
-    """
-    with ops.name_scope(self.name):
-      with ops.op_scope([self._mu, self._sigma, x], name):
-        x = ops.convert_to_tensor(x)
-        if x.dtype != self.dtype:
-          raise TypeError("Input x dtype does not match dtype: %s vs. %s"
-                          % (x.dtype, self.dtype))
-        # TODO(ebrevdo): wrap this in a Defun with a custom Defun
-        # gradient because the analytic gradient may be faster than
-        # automatic differentiation.
-        return (0.5 + 0.5*math_ops.erf(
-            1.0/(math.sqrt(2.0) * self._sigma)*(x - self._mu)))
+  def _log_survival_function(self, x):
+    return special_math.log_ndtr(-self._z(x))
 
-  def log_cdf(self, x, name="log_cdf"):
-    """Log CDF of observations `x` under these Normal distribution(s).
+  def _survival_function(self, x):
+    return special_math.ndtr(-self._z(x))
 
-    Args:
-      x: tensor of dtype `dtype`, must be broadcastable with `mu` and `sigma`.
-      name: The name to give this op.
+  def _log_unnormalized_prob(self, x):
+    return -0.5 * math_ops.square(self._z(x))
 
-    Returns:
-      log_cdf: tensor of dtype `dtype`, the log-CDFs of `x`.
-    """
-    with ops.name_scope(self.name):
-      with ops.op_scope([self._mu, self._sigma, x], name):
-        return math_ops.log(self.cdf(x))
+  def _log_normalization(self):
+    return 0.5 * math.log(2. * math.pi) + math_ops.log(self.scale)
 
-  def prob(self, x, name="prob"):
-    """The PDF of observations in `x` under these Normal distribution(s).
+  def _entropy(self):
+    # Use broadcasting rules to calculate the full broadcast scale.
+    scale = self.scale * array_ops.ones_like(self.loc)
+    return 0.5 * math.log(2. * math.pi * math.e) + math_ops.log(scale)
 
-    Args:
-      x: tensor of dtype `dtype`, must be broadcastable with `mu` and `sigma`.
-      name: The name to give this op.
+  def _mean(self):
+    return self.loc * array_ops.ones_like(self.scale)
 
-    Returns:
-      prob: tensor of dtype `dtype`, the prob values of `x`.
-    """
-    return super(Normal, self).prob(x, name=name)
+  def _stddev(self):
+    return self.scale * array_ops.ones_like(self.loc)
 
-  def entropy(self, name="entropy"):
-    """The entropy of Normal distribution(s).
+  def _mode(self):
+    return self._mean()
 
-    Args:
-      name: The name to give this op.
+  def _z(self, x):
+    """Standardize input `x` to a unit normal."""
+    with ops.name_scope("standardize", values=[x]):
+      return (x - self.loc) / self.scale
 
-    Returns:
-      entropy: tensor of dtype `dtype`, the entropy.
-    """
-    with ops.name_scope(self.name):
-      with ops.op_scope([self._mu, self._sigma], name):
-        two_pi_e1 = constant_op.constant(
-            2 * math.pi * math.exp(1), dtype=self.dtype)
-        # Use broadcasting rules to calculate the full broadcast sigma.
-        sigma = self._sigma * array_ops.ones_like(self._mu)
-        return 0.5 * math_ops.log(two_pi_e1 * math_ops.square(sigma))
 
-  def sample(self, n, seed=None, name="sample"):
-    """Sample `n` observations from the Normal Distributions.
+class NormalWithSoftplusScale(Normal):
+  """Normal with softplus applied to `scale`."""
 
-    Args:
-      n: `Scalar`, type int32, the number of observations to sample.
-      seed: Python integer, the random seed.
-      name: The name to give this op.
-
-    Returns:
-      samples: `[n, ...]`, a `Tensor` of `n` samples for each
-        of the distributions determined by broadcasting the hyperparameters.
-    """
-    with ops.name_scope(self.name):
-      with ops.op_scope([self._mu, self._sigma, n], name):
-        broadcast_shape = (self._mu + self._sigma).get_shape()
-        n = ops.convert_to_tensor(n)
-        shape = array_ops.concat(
-            0, [array_ops.pack([n]), array_ops.shape(self.mean())])
-        sampled = random_ops.random_normal(
-            shape=shape, mean=0, stddev=1, dtype=self._mu.dtype, seed=seed)
-
-        # Provide some hints to shape inference
-        n_val = tensor_util.constant_value(n)
-        final_shape = tensor_shape.vector(n_val).concatenate(broadcast_shape)
-        sampled.set_shape(final_shape)
-
-        return sampled * self._sigma + self._mu
-
-  @property
-  def is_reparameterized(self):
-    return True
-
-  def _ones(self):
-    return array_ops.ones_like(self._mu + self._sigma)
-
-  def _zeros(self):
-    return array_ops.zeros_like(self._mu + self._sigma)
-
-  @property
-  def is_continuous(self):
-    return True
+  def __init__(self,
+               loc,
+               scale,
+               validate_args=False,
+               allow_nan_stats=True,
+               name="NormalWithSoftplusScale"):
+    parameters = locals()
+    with ops.name_scope(name, values=[scale]) as ns:
+      super(NormalWithSoftplusScale, self).__init__(
+          loc=loc,
+          scale=nn.softplus(scale, name="softplus_scale"),
+          validate_args=validate_args,
+          allow_nan_stats=allow_nan_stats,
+          name=ns)
+    self._parameters = parameters
 
 
 @kullback_leibler.RegisterKL(Normal, Normal)
@@ -357,12 +262,12 @@ def _kl_normal_normal(n_a, n_b, name=None):
   Returns:
     Batchwise KL(n_a || n_b)
   """
-  with ops.op_scope([n_a.mu, n_b.mu], name, "kl_normal_normal"):
+  with ops.name_scope(name, "kl_normal_normal", [n_a.loc, n_b.loc]):
     one = constant_op.constant(1, dtype=n_a.dtype)
     two = constant_op.constant(2, dtype=n_a.dtype)
     half = constant_op.constant(0.5, dtype=n_a.dtype)
-    s_a_squared = math_ops.square(n_a.sigma)
-    s_b_squared = math_ops.square(n_b.sigma)
+    s_a_squared = math_ops.square(n_a.scale)
+    s_b_squared = math_ops.square(n_b.scale)
     ratio = s_a_squared / s_b_squared
-    return (math_ops.square(n_a.mu - n_b.mu) / (two * s_b_squared)
-            + half * (ratio - one - math_ops.log(ratio)))
+    return (math_ops.square(n_a.loc - n_b.loc) / (two * s_b_squared) +
+            half * (ratio - one - math_ops.log(ratio)))

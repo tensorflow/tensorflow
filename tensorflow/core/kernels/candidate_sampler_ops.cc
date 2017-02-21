@@ -47,6 +47,12 @@ class BaseCandidateSamplerOp : public OpKernel {
     OP_REQUIRES(context, true_classes.dim_size(1) == num_true_,
                 errors::InvalidArgument("true_classes must have "
                                         "num_true columns"));
+    CHECK(sampler_) << "CandidateSamplerOp did not set sampler_";
+
+    if (unique_) {
+      OP_REQUIRES(context, num_sampled_ <= sampler_->range(),
+                  errors::InvalidArgument("Sampler's range is too small."));
+    }
 
     // Output candidates and expected_count.
     Tensor* out_sampled_candidates = nullptr;
@@ -72,8 +78,6 @@ class BaseCandidateSamplerOp : public OpKernel {
         batch_size * num_true_);
     gtl::MutableArraySlice<float> sampled_expected_count(
         out_sampled_expected_count->vec<float>().data(), num_sampled_);
-
-    CHECK(sampler_) << "CandidateSamplerOp did not set sampler_";
 
     // Approximately conservatively estimate the number of samples required.
     // In cases where rejection sampling is used we may occasionally use more
@@ -190,7 +194,7 @@ class ComputeAccidentalHitsOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     const Tensor& in_true_candidates = context->input(0);
-    TensorShape in_true_candidates_shape = in_true_candidates.shape();
+    const TensorShape& in_true_candidates_shape = in_true_candidates.shape();
     OP_REQUIRES(context, TensorShapeUtils::IsMatrix(in_true_candidates_shape) &&
                              in_true_candidates_shape.dim_size(1) == num_true_,
                 errors::InvalidArgument(

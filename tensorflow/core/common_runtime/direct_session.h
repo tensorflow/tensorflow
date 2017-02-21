@@ -24,10 +24,12 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/common_runtime/costmodel_manager.h"
+#include "tensorflow/core/common_runtime/debugger_state_interface.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/common_runtime/session_factory.h"
 #include "tensorflow/core/common_runtime/simple_graph_execution_state.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -46,11 +48,18 @@ namespace tensorflow {
 class CostModel;
 class DebugGateway;
 class Device;
+class DirectSessionFactory;
 
 class DirectSession : public Session {
  public:
+  typedef std::function<void(Session*)> CloseCallback;
+
   // Takes ownership of 'device_mgr'.
-  DirectSession(const SessionOptions& options, const DeviceMgr* device_mgr);
+  // 'factory' is used to unregister the DirectSession with 'factory' when its
+  // closed. This ensures that Reset requests from the 'factory' don't get sent
+  // to sessions that are already closed.
+  DirectSession(const SessionOptions& options, const DeviceMgr* device_mgr,
+                DirectSessionFactory* factory);
   ~DirectSession() override;
 
   typedef std::vector<std::pair<string, Tensor>> NamedTensorList;
@@ -82,6 +91,10 @@ class DirectSession : public Session {
                             const std::vector<string>& output_names,
                             std::vector<Tensor>* outputs) override;
 
+  // Reset clears 'containers' from the device_mgr of the DirectSession.
+  // If 'containers' is empty, then Reset clears the default container.
+  ::tensorflow::Status Reset(const std::vector<string>& containers);
+
   ::tensorflow::Status Close() override;
 
   void ExportCostModels(CostModelManager::CostModelMap* cost_models) {
@@ -107,10 +120,17 @@ class DirectSession : public Session {
   // a partition of the graph bundled with its dependent library runtime.
   // 'input_keys' are the rendezvous keys for the feeds and 'output_keys'
   // are rendezvous keys for the fetches.
+  // 'flib_def' is the function library used by graphs in 'items'.
+  // TODO(phawkins): currently partitions always share the same function
+  // library. Consider giving each partition its own function library to enable
+  // per-partition rewrites.
   struct ExecutorsAndKeys {
-    int64 step_count = 0;
+    ExecutorsAndKeys() : step_count(0) {}
+
+    std::atomic_int_fast64_t step_count;
     std::unique_ptr<Graph> graph;
     NameNodeMap name_to_node;
+    std::unique_ptr<FunctionLibraryDefinition> flib_def;
     std::vector<PerPartitionExecutorsAndLib> items;
     std::unordered_map<string, string> input_keys;
     std::unordered_map<string, string> output_keys;
@@ -129,9 +149,13 @@ class DirectSession : public Session {
     std::unordered_set<string> pending_inputs;
     std::unordered_set<string> pending_outputs;
     TensorStore tensor_store;
+    ScopedStepContainer step_container;
 
-    RunState(const std::vector<string>& input_names,
-             const std::vector<string>& output_names);
+    RunState(int64 step_id, const std::vector<Device*>* devices);
+
+    RunState(const std::vector<string>& pending_input_names,
+             const std::vector<string>& pending_output_names, int64 step_id,
+             const std::vector<Device*>* devices);
 
     ~RunState();
   };
@@ -140,11 +164,13 @@ class DirectSession : public Session {
     bool is_partial_run = false;
     string handle;
     std::unique_ptr<Graph> graph;
+    std::unique_ptr<DebuggerStateInterface> debugger_state;
   };
 
   // Initializes the base execution state given the 'graph',
   // if not already initialized.
-  void MaybeInitializeExecutionState(const GraphDef& graph)
+  Status MaybeInitializeExecutionState(const GraphDef& graph,
+                                       bool* out_already_initialized)
       EXCLUSIVE_LOCKS_REQUIRED(graph_def_lock_);
 
   // Retrieves an already existing set of executors to run 'inputs' and
@@ -155,10 +181,12 @@ class DirectSession : public Session {
       ExecutorsAndKeys** executors_and_keys, RunStateArgs* run_state_args);
 
   // Creates several graphs given the existing graph_def_ and the
-  // input feeds and fetches, given 'devices'.
+  // input feeds and fetches, given 'devices'. The graphs share a common
+  // function library 'flib_def'.
   ::tensorflow::Status CreateGraphs(
       const BuildGraphOptions& options,
       std::unordered_map<string, std::unique_ptr<Graph>>* outputs,
+      std::unique_ptr<FunctionLibraryDefinition>* flib_def,
       RunStateArgs* run_state_args);
 
   ::tensorflow::Status ExtendLocked(const GraphDef& graph)
@@ -186,7 +214,18 @@ class DirectSession : public Session {
 
   // Use the appropriate WaitForNotification function based on whether
   // operation_timeout_in_ms is greater than 0.
-  void WaitForNotification(RunState* run_state, int64 timeout_in_ms);
+  //
+  // If the timeout expires, the `cm->StartCancel()` will be called.
+  ::tensorflow::Status WaitForNotification(Notification* n,
+                                           int64 timeout_in_ms);
+  void WaitForNotification(RunState* run_state, CancellationManager* cm,
+                           int64 timeout_in_ms);
+
+  ::tensorflow::Status CheckNotClosed() {
+    mutex_lock l(closed_lock_);
+    if (closed_) return errors::Cancelled("Session has been closed.");
+    return ::tensorflow::Status::OK();
+  }
 
   const SessionOptions options_;
 
@@ -212,7 +251,9 @@ class DirectSession : public Session {
   // Holds mappings from signature to the executors that process
   // it. The reason for a level of indirection around mapped_type is
   // to guarantee address stability.
-  std::unordered_map<string, std::unique_ptr<ExecutorsAndKeys>> executors_
+  // The map value is a shared_ptr since multiple map keys can point to the
+  // same ExecutorsAndKey object.
+  std::unordered_map<string, std::shared_ptr<ExecutorsAndKeys>> executors_
       GUARDED_BY(executor_lock_);
 
   // Holds mappings from handle to partial run state.
@@ -222,23 +263,32 @@ class DirectSession : public Session {
   // This holds all the tensors that are currently alive in the session.
   SessionState session_state_;
 
+  DirectSessionFactory* const factory_;  // not owned
   CancellationManager* cancellation_manager_;
 
-  // Saves and restores device placements for stateful nodes.
-  mutex mu_;
   // Map of placed stateful nodes, i.e. nodes for which is_stateful()
   // is true, such as "params" and "queue" nodes.  Once placed these
   // nodes can not be moved to a different device.  Maps node names to
   // device names.
-  std::unordered_map<string, string> stateful_placements_ GUARDED_BY(mu_);
+  std::unordered_map<string, string> stateful_placements_
+      GUARDED_BY(graph_def_lock_);
 
   // Execution_state; used when placing the entire graph.
   std::unique_ptr<SimpleGraphExecutionState> execution_state_
       GUARDED_BY(graph_def_lock_);
+
+  // The function library, before any rewrites or optimizations have been
+  // performed. In particular, CreateGraphs() may need to modify the function
+  // library; it copies and modifies the function library.
   std::unique_ptr<FunctionLibraryDefinition> flib_def_;
 
-  // For generating unique names.
-  int64 name_counter_ GUARDED_BY(mu_) = 0;
+  // true if the Session has been Closed.
+  mutex closed_lock_;
+  bool closed_ GUARDED_BY(closed_lock_) = false;
+
+  // For generating unique names for this session instance.
+  std::atomic<int64> edge_name_counter_ = {0};
+  std::atomic<int64> handle_name_counter_ = {0};
 
   // For generating step ids that are unique across all sessions.
   static std::atomic_int_fast64_t step_id_counter_;
@@ -253,6 +303,7 @@ class DirectSession : public Session {
 
   TF_DISALLOW_COPY_AND_ASSIGN(DirectSession);
 
+  // EXPERIMENTAL: debugger (tfdbg) related
   friend class DebugGateway;
 };
 

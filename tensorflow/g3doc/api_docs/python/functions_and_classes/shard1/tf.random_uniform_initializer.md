@@ -1,25 +1,25 @@
-### `tf.random_uniform_initializer(minval=0.0, maxval=1.0, seed=None, dtype=tf.float32)` {#random_uniform_initializer}
+Initializer that generates tensors with a uniform distribution.
 
-Returns an initializer that generates tensors with a uniform distribution.
-
-##### Args:
-
-
-*  <b>`minval`</b>: a python scalar or a scalar tensor. lower bound of the range
+Args:
+  minval: A python scalar or a scalar tensor. Lower bound of the range
     of random values to generate.
-*  <b>`maxval`</b>: a python scalar or a scalar tensor. upper bound of the range
-    of random values to generate.
-*  <b>`seed`</b>: A Python integer. Used to create random seeds. See
+  maxval: A python scalar or a scalar tensor. Upper bound of the range
+    of random values to generate.  Defaults to 1 for float types.
+  seed: A Python integer. Used to create random seeds. See
     [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
     for behavior.
-*  <b>`dtype`</b>: The data type. Only floating point types are supported.
+  dtype: The data type.
+- - -
 
-##### Returns:
-
-  An initializer that generates tensors with a uniform distribution.
-
-##### Raises:
+#### `tf.random_uniform_initializer.__call__(shape, dtype=None, partition_info=None)` {#random_uniform_initializer.__call__}
 
 
-*  <b>`ValueError`</b>: if `dtype` is not a floating point type.
+
+
+- - -
+
+#### `tf.random_uniform_initializer.__init__(minval=0, maxval=None, seed=None, dtype=tf.float32)` {#random_uniform_initializer.__init__}
+
+
+
 

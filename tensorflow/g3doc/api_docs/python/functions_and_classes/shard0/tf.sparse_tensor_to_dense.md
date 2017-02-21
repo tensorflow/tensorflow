@@ -32,7 +32,7 @@ tested if validate_indices is True.
 
 ##### Returns:
 
-  A dense tensor with shape `sp_input.shape` and values specified by
+  A dense tensor with shape `sp_input.dense_shape` and values specified by
   the non-empty values in `sp_input`. Indices not in `sp_input` are assigned
   `default_value`.
 

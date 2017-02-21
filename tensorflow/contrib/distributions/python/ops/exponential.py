@@ -18,88 +18,134 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.contrib.distributions.python.ops import gamma
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
 
 
+__all__ = [
+    "Exponential",
+    "ExponentialWithSoftplusRate",
+]
+
+
 class Exponential(gamma.Gamma):
-  """The Exponential distribution with rate parameter lam.
+  """Exponential distribution.
 
-  The PDF of this distribution is:
+  The Exponential distribution is parameterized by an event `rate` parameter.
 
-  ```prob(x) = (lam * e^(-lam * x)), x > 0```
+  #### Mathematical Details
 
-  Note that the Exponential distribution is a special case of the Gamma
-  distribution, with Exponential(lam) = Gamma(1, lam).
+  The probability density function (pdf) is,
+
+  ```none
+  pdf(x; lambda, x > 0) = exp(-lambda x) / Z
+  Z = 1 / lambda
+  ```
+
+  where `rate = lambda` and `Z` is the normalizaing constant.
+
+  The Exponential distribution is a special case of the Gamma distribution,
+  i.e.,
+
+  ```python
+  Exponential(rate) = Gamma(concentration=1., rate)
+  ```
+
+  The Exponential distribution uses a `rate` parameter, or "inverse scale",
+  which can be intuited as,
+
+  ```none
+  X ~ Exponential(rate=1)
+  Y = X / rate
+  ```
+
   """
 
-  def __init__(
-      self, lam, strict=True, strict_statistics=True, name="Exponential"):
-    """Construct Exponential distribution with parameter `lam`.
+  def __init__(self,
+               rate,
+               validate_args=False,
+               allow_nan_stats=True,
+               name="Exponential"):
+    """Construct Exponential distribution with parameter `rate`.
 
     Args:
-      lam: `float` or `double` tensor, the rate of the distribution(s).
-        `lam` must contain only positive values.
-      strict: Whether to assert that `lam > 0`, and that `x > 0` in the
-        methods `prob(x)` and `log_prob(x)`.  If `strict` is False
-        and the inputs are invalid, correct behavior is not guaranteed.
-      strict_statistics:  Boolean, default True.  If True, raise an exception if
-        a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-        If False, batch members with valid parameters leading to undefined
-        statistics will return NaN for this statistic.
-      name: The name to prepend to all ops created by this distribution.
+      rate: Floating point tensor, equivalent to `1 / mean`. Must contain only
+        positive values.
+      validate_args: Python `bool`, default `False`. When `True` distribution
+        parameters are checked for validity despite possibly degrading runtime
+        performance. When `False` invalid inputs may silently render incorrect
+        outputs.
+      allow_nan_stats: Python `bool`, default `True`. When `True`, statistics
+        (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
+        result is undefined. When `False`, an exception is raised if one or
+        more of the statistic's batch members are undefined.
+      name: Python `str` name prefixed to Ops created by this class.
     """
+    parameters = locals()
     # Even though all statistics of are defined for valid inputs, this is not
     # true in the parent class "Gamma."  Therefore, passing
-    # strict_statistics=True
+    # allow_nan_stats=True
     # through to the parent class results in unnecessary asserts.
-    with ops.op_scope([lam], name):
-      lam = ops.convert_to_tensor(lam)
-      self._lam = lam
-      super(Exponential, self).__init__(
-          alpha=math_ops.cast(1.0, dtype=lam.dtype),
-          beta=lam,
-          strict_statistics=strict_statistics,
-          strict=strict)
+    with ops.name_scope(name, values=[rate]) as ns:
+      self._rate = ops.convert_to_tensor(rate, name="rate")
+    super(Exponential, self).__init__(
+        concentration=array_ops.ones([], dtype=self._rate.dtype),
+        rate=self._rate,
+        allow_nan_stats=allow_nan_stats,
+        validate_args=validate_args,
+        name=ns)
+    # While the Gamma distribution is not reparameterizable, the exponential
+    # distribution is.
+    self._reparameterization_type = True
+    self._parameters = parameters
+    self._graph_parents += [self._rate]
+
+  @staticmethod
+  def _param_shapes(sample_shape):
+    return {"rate": ops.convert_to_tensor(sample_shape, dtype=dtypes.int32)}
 
   @property
-  def lam(self):
-    return self._lam
+  def rate(self):
+    return self._rate
 
-  @property
-  def is_reparameterized(self):
-    # While the Gamma distribution is not reparameterizeable, the
-    # exponential distribution is.
-    return True
+  def _sample_n(self, n, seed=None):
+    shape = array_ops.concat([[n], array_ops.shape(self._rate)], 0)
+    # Uniform variates must be sampled from the open-interval `(0, 1)` rather
+    # than `[0, 1)`. To do so, we use `np.finfo(self.dtype.as_numpy_dtype).tiny`
+    # because it is the smallest, positive, "normal" number. A "normal" number
+    # is such that the mantissa has an implicit leading 1. Normal, positive
+    # numbers x, y have the reasonable property that, `x + y >= max(x, y)`. In
+    # this case, a subnormal number (i.e., np.nextafter) can cause us to sample
+    # 0.
+    sampled = random_ops.random_uniform(
+        shape,
+        minval=np.finfo(self.dtype.as_numpy_dtype).tiny,
+        maxval=1.,
+        seed=seed,
+        dtype=self.dtype)
+    return -math_ops.log(sampled) / self._rate
 
-  def sample(self, n, seed=None, name=None):
-    """Sample `n` observations from the Exponential Distributions.
 
-    Args:
-      n: `Scalar`, type int32, the number of observations to sample.
-      seed: Python integer, the random seed.
-      name: The name to give this op.
+class ExponentialWithSoftplusRate(Exponential):
+  """Exponential with softplus transform on `rate`."""
 
-    Returns:
-      samples: `[n, ...]`, a `Tensor` of `n` samples for each
-        of the distributions determined by the hyperparameters.
-    """
-    broadcast_shape = self._lam.get_shape()
-    with ops.op_scope([self.lam, n], name, "ExponentialSample"):
-      n = ops.convert_to_tensor(n, name="n")
-      shape = array_ops.concat(
-          0, [array_ops.pack([n]), array_ops.shape(self._lam)])
-      sampled = random_ops.random_uniform(
-          shape, maxval=math_ops.cast(1.0, dtype=self.dtype),
-          dtype=self.dtype)
-
-      n_val = tensor_util.constant_value(n)
-      final_shape = tensor_shape.vector(n_val).concatenate(broadcast_shape)
-      sampled.set_shape(final_shape)
-
-      return -math_ops.log(sampled) / self._lam
+  def __init__(self,
+               rate,
+               validate_args=False,
+               allow_nan_stats=True,
+               name="ExponentialWithSoftplusRate"):
+    parameters = locals()
+    with ops.name_scope(name, values=[rate]) as ns:
+      super(ExponentialWithSoftplusRate, self).__init__(
+          rate=nn.softplus(rate, name="softplus_rate"),
+          validate_args=validate_args,
+          allow_nan_stats=allow_nan_stats,
+          name=ns)
+    self._parameters = parameters

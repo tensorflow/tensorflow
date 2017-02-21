@@ -1,4 +1,4 @@
-### `tf.zeros_like(tensor, dtype=None, name=None)` {#zeros_like}
+### `tf.zeros_like(tensor, dtype=None, name=None, optimize=True)` {#zeros_like}
 
 Creates a tensor with all elements set to zero.
 
@@ -21,6 +21,8 @@ tf.zeros_like(tensor) ==> [[0, 0, 0], [0, 0, 0]]
   `int8`, `int16`, `int32`, `int64`, `uint8`, `complex64`, or `complex128`.
 
 *  <b>`name`</b>: A name for the operation (optional).
+*  <b>`optimize`</b>: if true, attempt to statically determine the shape of 'tensor'
+  and encode it as a constant.
 
 ##### Returns:
 

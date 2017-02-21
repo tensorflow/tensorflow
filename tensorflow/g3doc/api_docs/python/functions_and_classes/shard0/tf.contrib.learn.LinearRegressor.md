@@ -1,21 +1,18 @@
 Linear regressor model.
 
-Train a linear regression model to predict target variable value given
-observation of feature values.
+Train a linear regression model to predict label value given observation of
+feature values.
 
 Example:
 
 ```python
-education = sparse_column_with_hash_bucket(column_name="education",
-                                           hash_bucket_size=1000)
-occupation = sparse_column_with_hash_bucket(column_name="occupation",
-                                            hash_bucket_size=1000)
+sparse_column_a = sparse_column_with_hash_bucket(...)
+sparse_column_b = sparse_column_with_hash_bucket(...)
 
-education_x_occupation = crossed_column(columns=[education, occupation],
-                                        hash_bucket_size=10000)
+sparse_feature_a_x_sparse_feature_b = crossed_column(...)
 
 estimator = LinearRegressor(
-    feature_columns=[occupation, education_x_occupation])
+    feature_columns=[sparse_column_a, sparse_feature_a_x_sparse_feature_b])
 
 # Input builders
 def input_fn_train: # returns x, y
@@ -40,11 +37,9 @@ Input of `fit` and `evaluate` should have following features,
        key=weight column name, value=a `SparseTensor`}
   - if isinstance(column, `RealValuedColumn`):
       key=column.name, value=a `Tensor`
-  - if `feature_columns` is `None`:
-      input must contains only real valued `Tensor`.
 - - -
 
-#### `tf.contrib.learn.LinearRegressor.__init__(feature_columns=None, model_dir=None, weight_column_name=None, optimizer=None, gradient_clip_norm=None, enable_centered_bias=True, target_dimension=1, config=None)` {#LinearRegressor.__init__}
+#### `tf.contrib.learn.LinearRegressor.__init__(feature_columns, model_dir=None, weight_column_name=None, optimizer=None, gradient_clip_norm=None, enable_centered_bias=False, label_dimension=1, _joint_weights=False, config=None, feature_engineering_fn=None)` {#LinearRegressor.__init__}
 
 Construct a `LinearRegressor` estimator object.
 
@@ -54,7 +49,9 @@ Construct a `LinearRegressor` estimator object.
 *  <b>`feature_columns`</b>: An iterable containing all the feature columns used by
     the model. All items in the set should be instances of classes derived
     from `FeatureColumn`.
-*  <b>`model_dir`</b>: Directory to save model parameters, graph, etc.
+*  <b>`model_dir`</b>: Directory to save model parameters, graph, etc. This can
+    also be used to load checkpoints from the directory into a estimator
+    to continue training a previously saved model.
 *  <b>`weight_column_name`</b>: A string defining feature column name representing
     weights. It is used to down weight or boost examples during training. It
     will be multiplied by the loss of the example.
@@ -66,8 +63,18 @@ Construct a `LinearRegressor` estimator object.
 *  <b>`enable_centered_bias`</b>: A bool. If True, estimator will learn a centered
     bias variable for each class. Rest of the model structure learns the
     residual after centered bias.
-*  <b>`target_dimension`</b>: dimension of the target for multilabels.
+*  <b>`label_dimension`</b>: Number of regression targets per example. This is the
+    size of the last dimension of the labels and logits `Tensor` objects
+    (typically, these have shape `[batch_size, label_dimension]`).
+  _joint_weights: If True use a single (possibly partitioned) variable to
+    store the weights. It's faster, but requires all feature columns are
+    sparse and have the 'sum' combiner. Incompatible with SDCAOptimizer.
+
 *  <b>`config`</b>: `RunConfig` object to configure the runtime settings.
+*  <b>`feature_engineering_fn`</b>: Feature engineering function. Takes features and
+                    labels which are the output of `input_fn` and
+                    returns features and labels which will be fed
+                    into the model.
 
 ##### Returns:
 
@@ -76,79 +83,44 @@ Construct a `LinearRegressor` estimator object.
 
 - - -
 
+#### `tf.contrib.learn.LinearRegressor.__repr__()` {#LinearRegressor.__repr__}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.LinearRegressor.bias_` {#LinearRegressor.bias_}
 
+DEPRECATED FUNCTION
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-10-30.
+Instructions for updating:
+This method will be removed after the deprecation date. To inspect variables, use get_variable_names() and get_variable_value().
+
+
+- - -
+
+#### `tf.contrib.learn.LinearRegressor.config` {#LinearRegressor.config}
+
 
 
 
 - - -
 
-#### `tf.contrib.learn.LinearRegressor.dnn_bias_` {#LinearRegressor.dnn_bias_}
+#### `tf.contrib.learn.LinearRegressor.evaluate(*args, **kwargs)` {#LinearRegressor.evaluate}
 
-Returns bias of deep neural network part.
+See `Evaluable`. (deprecated arguments)
 
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-12-01.
+Instructions for updating:
+Estimator is decoupled from Scikit Learn interface by moving into
+separate class SKCompat. Arguments x, y and batch_size are only
+available in the SKCompat class, Estimator will only accept input_fn.
 
-- - -
+##### Example conversion:
 
-#### `tf.contrib.learn.LinearRegressor.dnn_weights_` {#LinearRegressor.dnn_weights_}
-
-Returns weights of deep neural network part.
-
-
-- - -
-
-#### `tf.contrib.learn.LinearRegressor.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None)` {#LinearRegressor.evaluate}
-
-Evaluates given model with provided evaluation data.
-
-Evaluates on the given input data. If `input_fn` is provided, that
-input function should raise an end-of-input exception (`OutOfRangeError` or
-`StopIteration`) after one epoch of the training data has been provided.
-
-By default, the whole evaluation dataset is used. If `steps` is provided,
-only `steps` batches of size `batch_size` are processed.
-
-The return value is a dict containing the metrics specified in `metrics`, as
-well as an entry `global_step` which contains the value of the global step
-for which this evaluation was performed.
-
-##### Args:
-
-
-*  <b>`x`</b>: Matrix of shape [n_samples, n_features...]. Can be iterator that
-     returns arrays of features. The training input samples for fitting the
-     model. If set, `input_fn` must be `None`.
-*  <b>`y`</b>: Vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-     iterator that returns array of targets. The training target values
-     (class labels in classification, real numbers in regression). If set,
-     `input_fn` must be `None`.
-*  <b>`input_fn`</b>: Input function. If set, `x`, `y`, and `batch_size` must be
-    `None`.
-*  <b>`feed_fn`</b>: Function creating a feed dict every time it is called. Called
-    once per iteration.
-*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to first
-    dimension of `x`, if specified. Must be `None` if `input_fn` is
-    provided.
-*  <b>`steps`</b>: Number of steps for which to evaluate model. If `None`, evaluate
-    until running tensors generated by `metrics` raises an exception.
-*  <b>`metrics`</b>: Dict of metric ops to run. If `None`, the default metric
-    functions are used; if `{}`, no metrics are used. If model has one
-    output (i.e., returning single predction), keys are `str`, e.g.
-    `'accuracy'` - just a name of the metric that will show up in
-    the logs / summaries. Otherwise, keys are tuple of two `str`, e.g.
-    `('accuracy', 'classes')`- name of the metric and name of `Tensor` in
-    the predictions to run this metric on.
-
-    Metric ops should support streaming, e.g., returning
-    update_op and value tensors. See more details in
-    ../../../../metrics/python/metrics/ops/streaming_metrics.py.
-
-*  <b>`name`</b>: Name of the evaluation if user needs to run multiple evaluations on
-    different data sets, such as on training data vs test data.
-
-##### Returns:
-
-  Returns `dict` with evaluation results.
+  est = Estimator(...) -> est = SKCompat(Estimator(...))
 
 ##### Raises:
 
@@ -160,39 +132,62 @@ for which this evaluation was performed.
 
 - - -
 
-#### `tf.contrib.learn.LinearRegressor.fit(x=None, y=None, input_fn=None, steps=None, batch_size=None, monitors=None, max_steps=None)` {#LinearRegressor.fit}
+#### `tf.contrib.learn.LinearRegressor.export(export_dir, input_fn=None, input_feature_key=None, use_deprecated_input_fn=True, signature_fn=None, default_batch_size=1, exports_to_keep=None)` {#LinearRegressor.export}
 
-Trains a model given training data `x` predictions and `y` targets.
+See BaseEstimator.export.
+
+
+- - -
+
+#### `tf.contrib.learn.LinearRegressor.export_savedmodel(export_dir_base, serving_input_fn, default_output_alternative_key=None, assets_extra=None, as_text=False, checkpoint_path=None)` {#LinearRegressor.export_savedmodel}
+
+Exports inference graph as a SavedModel into given dir.
 
 ##### Args:
 
 
-*  <b>`x`</b>: Matrix of shape [n_samples, n_features...]. Can be iterator that
-     returns arrays of features. The training input samples for fitting the
-     model. If set, `input_fn` must be `None`.
-*  <b>`y`</b>: Vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-     iterator that returns array of targets. The training target values
-     (class labels in classification, real numbers in regression). If set,
-     `input_fn` must be `None`.
-*  <b>`input_fn`</b>: Input function. If set, `x`, `y`, and `batch_size` must be
-    `None`.
-*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
-    If set, `max_steps` must be `None`.
-*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to first
-    dimension of `x`. Must be `None` if `input_fn` is provided.
-*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
-    inside the training loop.
-*  <b>`max_steps`</b>: Number of total steps for which to train model. If `None`,
-    train forever. If set, `steps` must be `None`.
-
-    Two calls to `fit(steps=100)` means 200 training
-    iterations. On the other hand, two calls to `fit(max_steps=100)` means
-    that the second call will not do any iteration since first call did
-    all 100 steps.
+*  <b>`export_dir_base`</b>: A string containing a directory to write the exported
+    graph and checkpoints.
+*  <b>`serving_input_fn`</b>: A function that takes no argument and
+    returns an `InputFnOps`.
+*  <b>`default_output_alternative_key`</b>: the name of the head to serve when none is
+    specified.  Not needed for single-headed models.
+*  <b>`assets_extra`</b>: A dict specifying how to populate the assets.extra directory
+    within the exported SavedModel.  Each key should give the destination
+    path (including the filename) relative to the assets.extra directory.
+    The corresponding value gives the full path of the source file to be
+    copied.  For example, the simple case of copying a single file without
+    renaming it is specified as
+    `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
+*  <b>`as_text`</b>: whether to write the SavedModel proto in text format.
+*  <b>`checkpoint_path`</b>: The checkpoint path to export.  If None (the default),
+    the most recent checkpoint found within the model directory is chosen.
 
 ##### Returns:
 
-  `self`, for chaining.
+  The string path to the exported directory.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if an unrecognized export_type is requested.
+
+
+- - -
+
+#### `tf.contrib.learn.LinearRegressor.fit(*args, **kwargs)` {#LinearRegressor.fit}
+
+See `Trainable`. (deprecated arguments)
+
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-12-01.
+Instructions for updating:
+Estimator is decoupled from Scikit Learn interface by moving into
+separate class SKCompat. Arguments x, y and batch_size are only
+available in the SKCompat class, Estimator will only accept input_fn.
+
+##### Example conversion:
+
+  est = Estimator(...) -> est = SKCompat(Estimator(...))
 
 ##### Raises:
 
@@ -250,20 +245,6 @@ Returns value of the variable given by name.
 
 - - -
 
-#### `tf.contrib.learn.LinearRegressor.linear_bias_` {#LinearRegressor.linear_bias_}
-
-Returns bias of the linear part.
-
-
-- - -
-
-#### `tf.contrib.learn.LinearRegressor.linear_weights_` {#LinearRegressor.linear_weights_}
-
-Returns weights per feature of the linear part.
-
-
-- - -
-
 #### `tf.contrib.learn.LinearRegressor.model_dir` {#LinearRegressor.model_dir}
 
 
@@ -271,9 +252,19 @@ Returns weights per feature of the linear part.
 
 - - -
 
-#### `tf.contrib.learn.LinearRegressor.partial_fit(x=None, y=None, input_fn=None, steps=1, batch_size=None, monitors=None)` {#LinearRegressor.partial_fit}
+#### `tf.contrib.learn.LinearRegressor.partial_fit(*args, **kwargs)` {#LinearRegressor.partial_fit}
 
-Incremental fit on a batch of samples.
+Incremental fit on a batch of samples. (deprecated arguments)
+
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-12-01.
+Instructions for updating:
+Estimator is decoupled from Scikit Learn interface by moving into
+separate class SKCompat. Arguments x, y and batch_size are only
+available in the SKCompat class, Estimator will only accept input_fn.
+
+##### Example conversion:
+
+  est = Estimator(...) -> est = SKCompat(Estimator(...))
 
 This method is expected to be called several times consecutively
 on different or the same chunks of the dataset. This either can
@@ -290,7 +281,7 @@ to converge, and you want to split up training into subparts.
      returns arrays of features. The training input samples for fitting the
      model. If set, `input_fn` must be `None`.
 *  <b>`y`</b>: Vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-     iterator that returns array of targets. The training target values
+     iterator that returns array of labels. The training label values
      (class labels in classification, real numbers in regression). If set,
      `input_fn` must be `None`.
 *  <b>`input_fn`</b>: Input function. If set, `x`, `y`, and `batch_size` must be
@@ -314,30 +305,72 @@ to converge, and you want to split up training into subparts.
 
 - - -
 
-#### `tf.contrib.learn.LinearRegressor.predict(x=None, input_fn=None, batch_size=None, outputs=None)` {#LinearRegressor.predict}
+#### `tf.contrib.learn.LinearRegressor.predict(*args, **kwargs)` {#LinearRegressor.predict}
 
-Returns predictions for given features.
+Returns predictions for given features. (deprecated arguments) (deprecated arguments)
+
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-15.
+Instructions for updating:
+The default behavior of predict() is changing. The default value for
+as_iterable will change to True, and then the flag will be removed
+altogether. The behavior of this flag is described below.
+
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2017-03-01.
+Instructions for updating:
+Please switch to predict_scores, or set `outputs` argument.
+
+By default, returns predicted scores. But this default will be dropped
+soon. Users should either pass `outputs`, or call `predict_scores` method.
 
 ##### Args:
 
 
-*  <b>`x`</b>: Matrix of shape [n_samples, n_features...]. Can be iterator that
-     returns arrays of features. The training input samples for fitting the
-     model. If set, `input_fn` must be `None`.
-*  <b>`input_fn`</b>: Input function. If set, `x` and 'batch_size' must be `None`.
-*  <b>`batch_size`</b>: Override default batch size. If set, 'input_fn' must be
-    'None'.
+*  <b>`x`</b>: features.
+*  <b>`input_fn`</b>: Input function. If set, x must be None.
+*  <b>`batch_size`</b>: Override default batch size.
 *  <b>`outputs`</b>: list of `str`, name of the output to predict.
-    If `None`, returns all.
+    If `None`, returns scores.
+*  <b>`as_iterable`</b>: If True, return an iterable which keeps yielding predictions
+    for each example until inputs are exhausted. Note: The inputs must
+    terminate if you want the iterable to terminate (e.g. be sure to pass
+    num_epochs=1 if you are using something like read_batch_features).
 
 ##### Returns:
 
-  Numpy array of predicted classes or regression values.
+  Numpy array of predicted scores (or an iterable of predicted scores if
+  as_iterable is True). If `label_dimension == 1`, the shape of the output
+  is `[batch_size]`, otherwise the shape is `[batch_size, label_dimension]`.
+  If `outputs` is set, returns a dict of predictions.
 
-##### Raises:
+
+- - -
+
+#### `tf.contrib.learn.LinearRegressor.predict_scores(*args, **kwargs)` {#LinearRegressor.predict_scores}
+
+Returns predicted scores for given features. (deprecated arguments)
+
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-15.
+Instructions for updating:
+The default behavior of predict() is changing. The default value for
+as_iterable will change to True, and then the flag will be removed
+altogether. The behavior of this flag is described below.
+
+##### Args:
 
 
-*  <b>`ValueError`</b>: If x and input_fn are both provided or both `None`.
+*  <b>`x`</b>: features.
+*  <b>`input_fn`</b>: Input function. If set, x must be None.
+*  <b>`batch_size`</b>: Override default batch size.
+*  <b>`as_iterable`</b>: If True, return an iterable which keeps yielding predictions
+    for each example until inputs are exhausted. Note: The inputs must
+    terminate if you want the iterable to terminate (e.g. be sure to pass
+    num_epochs=1 if you are using something like read_batch_features).
+
+##### Returns:
+
+  Numpy array of predicted scores (or an iterable of predicted scores if
+  as_iterable is True). If `label_dimension == 1`, the shape of the output
+  is `[batch_size]`, otherwise the shape is `[batch_size, label_dimension]`.
 
 
 - - -
@@ -370,6 +403,10 @@ component of a nested object.
 
 #### `tf.contrib.learn.LinearRegressor.weights_` {#LinearRegressor.weights_}
 
+DEPRECATED FUNCTION
 
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-10-30.
+Instructions for updating:
+This method will be removed after the deprecation date. To inspect variables, use get_variable_names() and get_variable_value().
 
 

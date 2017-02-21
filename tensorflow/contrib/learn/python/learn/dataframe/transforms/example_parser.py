@@ -24,7 +24,7 @@ from tensorflow.contrib.learn.python.learn.dataframe import transform
 from tensorflow.python.ops import parsing_ops
 
 
-class ExampleParser(transform.Transform):
+class ExampleParser(transform.TensorFlowTransform):
   """A Transform that parses serialized `tensorflow.Example` protos."""
 
   def __init__(self, features):
@@ -61,7 +61,7 @@ class ExampleParser(transform.Transform):
   def feature_definitions(self):
     return self._ordered_features
 
-  def _apply_transform(self, input_tensors):
+  def _apply_transform(self, input_tensors, **kwargs):
     parsed_values = parsing_ops.parse_example(input_tensors[0],
                                               features=self._ordered_features)
     # pylint: disable=not-callable

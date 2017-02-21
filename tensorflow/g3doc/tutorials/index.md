@@ -2,46 +2,39 @@
 
 ## Basic Neural Networks
 
+The first few Tensorflow tutorials guide you through training and testing a
+simple neural network to classify handwritten digits from the MNIST database of
+digit images.
+
 ### MNIST For ML Beginners
 
-If you're new to machine learning, we recommend starting here.  You'll learn
+If you're new to machine learning, we recommend starting here. You'll learn
 about a classic problem, handwritten digit classification (MNIST), and get a
 gentle introduction to multiclass classification.
 
 [View Tutorial](../tutorials/mnist/beginners/index.md)
 
-
 ### Deep MNIST for Experts
 
 If you're already familiar with other deep learning software packages, and are
-already familiar with MNIST, this tutorial will give you a very brief primer
-on TensorFlow.
+already familiar with MNIST, this tutorial will give you a very brief primer on
+TensorFlow.
 
 [View Tutorial](../tutorials/mnist/pros/index.md)
 
 ### TensorFlow Mechanics 101
 
 This is a technical tutorial, where we walk you through the details of using
-TensorFlow infrastructure to train models at scale.  We use MNIST as the
-example.
+TensorFlow infrastructure to train models at scale. We use MNIST as the example.
 
 [View Tutorial](../tutorials/mnist/tf/index.md)
-
-### MNIST Data Download
-
-Details about downloading the MNIST handwritten digits data set.  Exciting
-stuff.
-
-[View Tutorial](../tutorials/mnist/download/index.md)
-
 
 ## Easy ML with tf.contrib.learn
 
 ### tf.contrib.learn Quickstart
 
 A quick introduction to tf.contrib.learn, a high-level API for TensorFlow.
-Build, train, and evaluate a neural network with just a few lines of
-code.
+Build, train, and evaluate a neural network with just a few lines of code.
 
 [View Tutorial](../tutorials/tflearn/index.md)
 
@@ -66,6 +59,36 @@ model and a deep neural net to harness the advantages of each type of model.
 
 [View Tutorial](../tutorials/wide_and_deep/index.md)
 
+### Logging and Monitoring Basics with tf.contrib.learn
+
+This tutorial shows you how to use TensorFlow’s logging capabilities and the
+Monitor API to audit the in-progress training of a neural network.
+
+[View Tutorial](../tutorials/monitors/index.md)
+
+### Building Input Functions with tf.contrib.learn
+
+This tutorial introduces you to creating input functions in tf.contrib.learn,
+and walks you through implementing an `input_fn` to train a neural network for
+predicting median house values.
+
+[View Tutorial](../tutorials/input_fn/index.md)
+
+### Creating Estimators in tf.contrib.learn
+
+This tutorial covers how to create your own `Estimator` using the building
+blocks provided in tf.contrib.learn. You'll build a model to predict the ages of
+abalones based on their physical measurements.
+
+[View Tutorial](../tutorials/estimators/index.md)
+
+### A Guide to TF Layers: Building a Convolutional Neural Network
+
+This tutorial introduces you to building neural networks in TensorFlow using the
+`tf.layers` module. You'll build a convolutional neural network `Estimator` to
+recognize the handwritten digits in the MNIST data set.
+
+[View Tutorial](../tutorials/layers/index.md)
 
 ## TensorFlow Serving
 
@@ -75,7 +98,6 @@ An introduction to TensorFlow Serving, a flexible, high-performance system for
 serving machine learning models, designed for production environments.
 
 [View Tutorial](../tutorials/tfserve/index.md)
-
 
 ## Image Processing
 
@@ -90,8 +112,8 @@ representations of visual content.
 
 ### Image Recognition
 
-How to run object recognition using a convolutional neural network
-trained on ImageNet Challenge data and label set.
+How to run object recognition using a convolutional neural network trained on
+ImageNet Challenge data and label set.
 
 [View Tutorial](../tutorials/image_recognition/index.md)
 
@@ -101,8 +123,8 @@ Building on the Inception recognition model, we will release a TensorFlow
 version of the [Deep Dream](https://github.com/google/deepdream) neural network
 visual hallucination software.
 
-[View Tutorial](https://www.tensorflow.org/code/tensorflow/examples/tutorials/deepdream/deepdream.ipynb)
-
+[View
+Tutorial](https://nbviewer.jupyter.org/github/tensorflow/tensorflow/blob/master/tensorflow/examples/tutorials/deepdream/deepdream.ipynb)
 
 ## Language and Sequence Processing
 
@@ -119,14 +141,14 @@ embeddings).
 ### Recurrent Neural Networks
 
 An introduction to RNNs, wherein we train an LSTM network to predict the next
-word in an English sentence.  (A task sometimes called language modeling.)
+word in an English sentence. (A task sometimes called language modeling.)
 
 [View Tutorial](../tutorials/recurrent/index.md)
 
 ### Sequence-to-Sequence Models
 
 A follow on to the RNN tutorial, where we assemble a sequence-to-sequence model
-for machine translation.  You will learn to build your own English-to-French
+for machine translation. You will learn to build your own English-to-French
 translator, entirely machine learned, end-to-end.
 
 [View Tutorial](../tutorials/seq2seq/index.md)
@@ -138,19 +160,18 @@ TensorFlow.
 
 [View Tutorial](../tutorials/syntaxnet/index.md)
 
-
 ## Non-ML Applications
 
 ### Mandelbrot Set
 
 TensorFlow can be used for computation that has nothing to do with machine
-learning.  Here's a naive implementation of Mandelbrot set visualization.
+learning. Here's a naive implementation of Mandelbrot set visualization.
 
 [View Tutorial](../tutorials/mandelbrot/index.md)
 
 ### Partial Differential Equations
 
-As another example of non-machine learning computation, we offer an example of
-a naive PDE simulation of raindrops landing on a pond.
+As another example of non-machine learning computation, we offer an example of a
+naive PDE simulation of raindrops landing on a pond.
 
 [View Tutorial](../tutorials/pdes/index.md)

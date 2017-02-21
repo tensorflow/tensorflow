@@ -3,8 +3,11 @@
 # Copying Graph Elements (contrib)
 [TOC]
 
-Functions for copying elements from one graph to another.
+Functions to copy elements between graphs.
 
+See the @{$python/contrib.copy_graph} guide.
+
+## Other Functions and Classes
 - - -
 
 ### `tf.contrib.copy_graph.copy_op_to_graph(org_instance, to_graph, variables, scope='')` {#copy_op_to_graph}

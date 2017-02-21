@@ -1,6 +1,6 @@
 # `class tensorflow::Status`
 
-
+Denotes success or failure of a call in Tensorflow.
 
 
 

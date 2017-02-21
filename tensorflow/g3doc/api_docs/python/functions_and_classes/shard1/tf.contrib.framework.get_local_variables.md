@@ -1,6 +1,6 @@
 ### `tf.contrib.framework.get_local_variables(scope=None, suffix=None)` {#get_local_variables}
 
-Gets the list of model variables, filtered by scope and/or suffix.
+Gets the list of local variables, filtered by scope and/or suffix.
 
 ##### Args:
 
@@ -10,5 +10,5 @@ Gets the list of model variables, filtered by scope and/or suffix.
 
 ##### Returns:
 
-  a list of variables in colelction with scope and suffix.
+  a list of variables in collection with scope and suffix.
 

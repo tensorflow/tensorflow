@@ -12,54 +12,32 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Graph editor module allows to modify an existing graph in place.
+"""TensorFlow Graph Editor. See the @{$python/contrib.graph_editor} guide.
 """
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.graph_editor import edit
-from tensorflow.contrib.graph_editor import match
-from tensorflow.contrib.graph_editor import reroute
-from tensorflow.contrib.graph_editor import select
-from tensorflow.contrib.graph_editor import subgraph
-from tensorflow.contrib.graph_editor import transform
-from tensorflow.contrib.graph_editor import util
-
-from tensorflow.contrib.graph_editor.edit import bypass
-from tensorflow.contrib.graph_editor.edit import connect
-
-# edit: detach
-from tensorflow.contrib.graph_editor.edit import detach
-from tensorflow.contrib.graph_editor.edit import detach_inputs
-from tensorflow.contrib.graph_editor.edit import detach_outputs
-
-# edit: reroute
-from tensorflow.contrib.graph_editor.reroute import reroute_a2b
-from tensorflow.contrib.graph_editor.reroute import reroute_a2b_inputs
-from tensorflow.contrib.graph_editor.reroute import reroute_a2b_outputs
-from tensorflow.contrib.graph_editor.reroute import reroute_b2a
-from tensorflow.contrib.graph_editor.reroute import reroute_b2a_inputs
-from tensorflow.contrib.graph_editor.reroute import reroute_b2a_outputs
-from tensorflow.contrib.graph_editor.reroute import swap
-from tensorflow.contrib.graph_editor.reroute import swap_inputs
-from tensorflow.contrib.graph_editor.reroute import swap_outputs
-
-from tensorflow.contrib.graph_editor.select import select_ops
-from tensorflow.contrib.graph_editor.select import select_ts
-
-from tensorflow.contrib.graph_editor.subgraph import SubGraphView
-
-from tensorflow.contrib.graph_editor.transform import copy
-from tensorflow.contrib.graph_editor.transform import Transformer
-
+# pylint: disable=wildcard-import
+from tensorflow.contrib.graph_editor.edit import *
+from tensorflow.contrib.graph_editor.match import *
+from tensorflow.contrib.graph_editor.reroute import *
+from tensorflow.contrib.graph_editor.select import *
+from tensorflow.contrib.graph_editor.subgraph import *
+from tensorflow.contrib.graph_editor.transform import *
+from tensorflow.contrib.graph_editor.util import *
+# pylint: enable=wildcard-import
 
 # some useful aliases
-ph = util.make_placeholder_from_dtype_and_shape
-sgv = subgraph.make_view
-sgv_scope = subgraph.make_view_from_scope
-ts = select.select_ts
-ops = select.select_ops
-matcher = match.OpMatcher
+# pylint: disable=g-bad-import-order
+from tensorflow.contrib.graph_editor import subgraph as _subgraph
+from tensorflow.contrib.graph_editor import util as _util
+# pylint: enable=g-bad-import-order
+ph = _util.make_placeholder_from_dtype_and_shape
+sgv = _subgraph.make_view
+sgv_scope = _subgraph.make_view_from_scope
 
+del absolute_import
+del division
+del print_function

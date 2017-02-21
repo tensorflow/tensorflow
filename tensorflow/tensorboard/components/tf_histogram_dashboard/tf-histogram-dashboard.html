@@ -1,0 +1,158 @@
+<!--
+@license
+Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+<link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../tf-backend/tf-backend.html">
+<link rel="import" href="../tf-color-scale/tf-color-scale.html">
+<link rel="import" href="../tf-dashboard-common/tf-categorizer.html">
+<link rel="import" href="../tf-dashboard-common/tf-dashboard.html">
+<link rel="import" href="../tf-dashboard-common/tf-panes-helper.html">
+<link rel="import" href="../tf-dashboard-common/tf-option-selector.html">
+<link rel="import" href="../tf-dashboard-common/tf-sidebar-helper.html">
+<link rel="import" href="../tf-imports/lodash.html">
+<link rel="import" href="../vz-histogram-timeseries/vz-histogram-timeseries.html">
+<link rel="import" href="../iron-collapse/iron-collapse.html">
+<link rel="import" href="../paper-icon-button/paper-icon-button.html">
+
+<!--
+tf-histogram-dashboard is a complete frontend that loads runs from a backend,
+and creates chart panes that display data for those runs.
+
+It provides a mode and time property selector, together with the selectors
+provided by tf-sidebar-helper, by which the user can customize how data is
+organized and displayed.
+
+Each chart has a button that can toggle whether it is "selected"; selectedRuns
+charts are larger.
+
+Organizationally, the #plumbing div contains components that have no concrete
+manifestation and just effect data bindings or data loading. The .sidebar div
+contains shared controls provided by tf-sidebar-helper. The .center div
+contains vz-histogram-timeseries embedded inside tf-panes-helper's.
+-->
+<dom-module id="tf-histogram-dashboard">
+  <template>
+    <div id="plumbing">
+      <tf-color-scale
+        id="colorScale"
+        runs="[[runs]]"
+        out-color-scale="{{_colorScale}}"
+      ></tf-color-scale>
+    </div>
+
+    <tf-dashboard-layout>
+      <div class="sidebar">
+        <tf-sidebar-helper
+          backend="[[backend]]"
+          categories="{{_categories}}"
+          color-scale="[[_colorScale]]"
+          run2tag="[[run2tag]]"
+          runs="[[runs]]"
+          selected-runs="{{_selectedRuns}}"
+          show-download-links="{{_showDownloadLinks}}"
+          >
+          <div class="sidebar-section">
+            <tf-option-selector
+              id="histogramModeSelector"
+              name="Histogram Mode"
+              selected-id="{{_histogramMode}}"
+              >
+              <paper-button id="overlay">overlay</paper-button>
+              <paper-button id="offset">offset</paper-button>
+            </tf-option-selector>
+          </div>
+          <div class="sidebar-section">
+            <tf-option-selector
+              id="timePropertySelector"
+              name="Offset Time Axis"
+              selected-id="{{_timeProperty}}"
+              >
+              <paper-button id="step">step</paper-button>
+              <paper-button id="relative">relative</paper-button>
+              <paper-button id="wall_time">wall</paper-button>
+            </tf-option-selector>
+          </tf-sidebar-helper>
+       </div>
+      </div>
+
+      <div class="center">
+        <tf-panes-helper
+          categories="[[_categories]]"
+          color-scale="[[_colorScale]]"
+          data-type="[[dataType]]"
+          data-provider="[[dataProvider]]"
+          run2tag="[[run2tag]]"
+          selected-runs="[[_selectedRuns]]"
+          repeat-for-runs
+          >
+          <template>
+            <vz-histogram-timeseries
+              time-property="[[_timeProperty]]"
+              mode="[[_histogramMode]]"
+              color-scale="[[_colorScaleFunction]]"
+              ></vz-histogram-timeseries>
+          </template>
+        </tf-panes-helper>
+      </div>
+    </tf-dashboard-layout>
+
+    <style include="dashboard-style"></style>
+    <style>
+      tf-panes-helper {
+        --card-expanded-height: 500px;
+        --card-expanded-width: 700px;
+      }
+    </style>
+  </template>
+
+  <script>
+    Polymer({
+      is: "tf-histogram-dashboard",
+      behaviors: [
+        TF.Dashboard.ReloadBehavior("tf-chart-scaffold"),
+        TF.Backend.Behavior,
+      ],
+      properties: {
+        backend: Object,
+        dataType: {
+          type: String,
+          value: "histogram"
+        },
+        _histogramMode: {
+          type: String,
+          value: "offset"
+        },
+        _timeProperty: {
+          type: String,
+          value: "step"
+        },
+        _colorScaleFunction: {
+          type: Function,
+          computed: "_getColorScaleFunction(_colorScale)"
+        },
+      },
+      attached: function() {
+        this.async(function() {
+          this.fire("rendered");
+        });
+      },
+      _getColorScaleFunction: function() {
+        return this._colorScale.scale.bind(this._colorScale);
+      },
+    });
+  </script>
+</dom-module>

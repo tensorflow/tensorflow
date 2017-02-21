@@ -36,6 +36,13 @@ you understand the dataflow graph and debug it.
 [View Tutorial](graph_viz/index.md)
 
 
+## TensorBoard: Embedding Visualization
+
+This tutorial describes how to use the embedding projector in TensorBoard to
+visualize your embeddings.
+
+[View Tutorial](embedding_viz/index.md)
+
 ## Reading Data
 
 This tutorial describes the three main methods of getting data into your
@@ -128,6 +135,15 @@ retraining a new model.
 
 [View Tutorial](../how_tos/image_retraining/index.md)
 
+## How to use the TensorFlow Debugger
+
+The TensorFlow Debugger (tfdbg) is a specialized debugger for TensorFlow
+models. It provides visibility into the internal structure and state of running
+TensorFlow graphs. Using the command-line interface of tfdbg, you can debug
+model bugs and issues with fewer code changes and more insight.
+
+[View Tutorial](../how_tos/debugger/index.md)
+
 ## How to Export and Import a Model
 
 This tutorial describes how to export everything pertaining to a running
@@ -142,3 +158,17 @@ quantized parameters and calculations. It also describes how the quantization
 process works under the hood.
 
 [View Tutorial](../how_tos/quantization/index.md)
+
+## How to run TensorFlow on Hadoop
+
+This tutorial shows how to read and write HDFS files, and will later describe
+running on cluster managers.
+
+[View Tutorial](../how_tos/hadoop/index.md)
+
+## TensorFlow in other languages
+
+This guide describes how TensorFlow features can be provided in other
+programming languages.
+
+[View Tutorial](language_bindings/index.md)

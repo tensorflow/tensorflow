@@ -24,6 +24,7 @@
 		592FF90D18EDD0DA00C164F8 /* MainStoryboard_iPhone.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 592FF90A18EDD0DA00C164F8 /* MainStoryboard_iPhone.storyboard */; };
 		592FF92518EE240200C164F8 /* CameraExampleAppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 592FF92218EE240200C164F8 /* CameraExampleAppDelegate.m */; };
 		592FF92618EE240200C164F8 /* CameraExampleViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = 592FF92418EE240200C164F8 /* CameraExampleViewController.mm */; };
+		5993C7721D5D4E980048CE6A /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5993C7711D5D4E980048CE6A /* Accelerate.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -52,6 +53,7 @@
 		592FF92218EE240200C164F8 /* CameraExampleAppDelegate.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = CameraExampleAppDelegate.m; sourceTree = SOURCE_ROOT; };
 		592FF92318EE240200C164F8 /* CameraExampleViewController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CameraExampleViewController.h; sourceTree = SOURCE_ROOT; };
 		592FF92418EE240200C164F8 /* CameraExampleViewController.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = CameraExampleViewController.mm; sourceTree = SOURCE_ROOT; };
+		5993C7711D5D4E980048CE6A /* Accelerate.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Accelerate.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS9.3.sdk/System/Library/Frameworks/Accelerate.framework; sourceTree = DEVELOPER_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -59,6 +61,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5993C7721D5D4E980048CE6A /* Accelerate.framework in Frameworks */,
 				591D3EDF1CFFAD230059011C /* libprotobuf-lite.a in Frameworks */,
 				591D3EE01CFFAD230059011C /* libprotobuf.a in Frameworks */,
 				591D3ECF1CFF7FCE0059011C /* ImageIO.framework in Frameworks */,
@@ -103,6 +106,7 @@
 		592FF8B718ECBD7600C164F8 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				5993C7711D5D4E980048CE6A /* Accelerate.framework */,
 				591D3EDD1CFFAD230059011C /* libprotobuf-lite.a */,
 				591D3EDE1CFFAD230059011C /* libprotobuf.a */,
 				591D3ECE1CFF7FCE0059011C /* ImageIO.framework */,
@@ -285,7 +289,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/../../makefile/gen/proto",
-					"$(SRCROOT)/../../makefile/downloads/eigen-latest",
+					"$(SRCROOT)/../../makefile/downloads/eigen",
 					"$(SRCROOT)/../../makefile/downloads",
 					"$(SRCROOT)/../../makefile/downloads/protobuf/src/",
 					"$(SRCROOT)/../../../..",
@@ -300,12 +304,6 @@
 				OTHER_LDFLAGS = (
 					"-force_load",
 					"$(SRCROOT)/../../makefile/gen/lib/libtensorflow-core.a",
-					"-Xlinker",
-					"-S",
-					"-Xlinker",
-					"-x",
-					"-Xlinker",
-					"-dead_strip",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.google.CameraExample;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -350,7 +348,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/../../makefile/gen/proto",
-					"$(SRCROOT)/../../makefile/downloads/eigen-latest",
+					"$(SRCROOT)/../../makefile/downloads/eigen",
 					"$(SRCROOT)/../../makefile/downloads",
 					"$(SRCROOT)/../../makefile/downloads/protobuf/src/",
 					"$(SRCROOT)/../../../..",
@@ -365,12 +363,6 @@
 				OTHER_LDFLAGS = (
 					"-force_load",
 					"$(SRCROOT)/../../makefile/gen/lib/libtensorflow-core.a",
-					"-Xlinker",
-					"-S",
-					"-Xlinker",
-					"-x",
-					"-Xlinker",
-					"-dead_strip",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.google.CameraExample;
 				PRODUCT_NAME = "$(TARGET_NAME)";

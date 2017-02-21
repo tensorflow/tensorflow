@@ -6,6 +6,7 @@ option java_outer_classname = "TypesProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
 
+// LINT.IfChange
 enum DataType {
   // Not a legal value for DataType.  Used to indicate a DataType field
   // has not been set.
@@ -32,6 +33,7 @@ enum DataType {
   DT_UINT16 = 17;
   DT_COMPLEX128 = 18;  // Double-precision complex
   DT_HALF = 19;
+  DT_RESOURCE = 20;
 
   // TODO(josh11b): DT_GENERIC_PROTO = ??;
   // TODO(jeff,josh11b): DT_UINT64?  DT_UINT32?
@@ -57,4 +59,6 @@ enum DataType {
   DT_UINT16_REF = 117;
   DT_COMPLEX128_REF = 118;
   DT_HALF_REF = 119;
+  DT_RESOURCE_REF = 120;
 }
+// LINT.ThenChange(https://www.tensorflow.org/code/tensorflow/c/c_api.h,https://www.tensorflow.org/code/tensorflow/go/tensor.go)

@@ -31,10 +31,10 @@ typedef Eigen::GpuDevice GPUDevice;
   template class generator::OneGenerator<T, TI>;       \
   template struct functor::OneHot<GPUDevice, T, TI>;
 
-#define DEFINE_GPU_SPEC(T)           \
-  DEFINE_GPU_SPEC_INDEX(T, int32);   \
+#define DEFINE_GPU_SPEC(T)         \
+  DEFINE_GPU_SPEC_INDEX(T, uint8); \
+  DEFINE_GPU_SPEC_INDEX(T, int32); \
   DEFINE_GPU_SPEC_INDEX(T, int64)
-
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPEC);
 

@@ -15,7 +15,7 @@ genrule(
     name = "python_check",
     srcs = [
         "python_config.sh",
-        "configure_files"
+        "configure_files",
     ],
     outs = [
         "python_checked",
@@ -27,6 +27,6 @@ genrule(
 filegroup(
     name = "configure_files",
     data = glob([
-      "*",
-    ])
+        "*",
+    ]),
 )

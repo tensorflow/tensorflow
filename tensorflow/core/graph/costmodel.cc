@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/graph/costmodel.h"
 
 #include <vector>
+#include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/platform/logging.h"
@@ -143,7 +144,13 @@ void CostModel::SetNumOutputs(const Node* node, int num_outputs) {
   } else {
     perslot->resize(num_outputs, Bytes(-1));
     max_mem_usage->output_port_mem.resize(num_outputs, Bytes(-1));
+    max_mem_usage->output_port_shape.resize(num_outputs, TensorShapeProto());
+    max_mem_usage->output_port_type.resize(num_outputs, DT_INVALID);
     max_mem_usage->temp_memory_size = Bytes(-1);
+    max_mem_usage->host_peak_memory_size = Bytes(0);
+    max_mem_usage->device_peak_memory_size = Bytes(0);
+    max_mem_usage->persisted_memory_size = Bytes(0);
+    max_mem_usage->auxiliary_memory_size = Bytes(0);
     output_port_alloc_ids->resize(num_outputs, -1);
   }
 }
@@ -233,12 +240,23 @@ void CostModel::CheckInitialized(const Graph& graph) const {
 }
 
 void CostModel::RecordMaxMemorySize(const Node* node, int output_slot,
-                                    Bytes bytes) {
+                                    Bytes bytes,
+                                    const TensorShapeProto& tensor_shape,
+                                    const DataType& dtype) {
   const int id = Id(node);
   if (id < 0) return;
   Ensure(id);
-  max_mem_usage_[id].output_port_mem[output_slot] = std::max(
-      max_mem_usage_[id].output_port_mem[output_slot].value(), bytes.value());
+  auto& current_max = max_mem_usage_[id].output_port_mem[output_slot];
+  // If the memory allocator doesn't track memory usage, let's infer a lower
+  // bound from the tensor shape and its data type.
+  if (bytes.value() < 0) {
+    bytes = MinTensorMemoryUsage(tensor_shape, dtype);
+  }
+  if (bytes.value() > current_max.value()) {
+    current_max = bytes.value();
+    max_mem_usage_[id].output_port_shape[output_slot] = tensor_shape;
+    max_mem_usage_[id].output_port_type[output_slot] = dtype;
+  }
 }
 
 Bytes CostModel::MaxMemorySize(const Node* node, int slot) const {
@@ -250,12 +268,77 @@ Bytes CostModel::MaxMemorySize(const Node* node, int slot) const {
   return max_mem_usage_[id].output_port_mem[slot];
 }
 
+TensorShapeProto CostModel::MaxMemoryShape(const Node* node, int slot) const {
+  const int id = Id(node);
+  if (id < 0 || static_cast<size_t>(id) >= slot_bytes_.size() ||
+      slot_bytes_[id].size() <= static_cast<size_t>(slot)) {
+    return TensorShapeProto();
+  }
+  return max_mem_usage_[id].output_port_shape[slot];
+}
+
+DataType CostModel::MaxMemoryType(const Node* node, int slot) const {
+  const int id = Id(node);
+  if (id < 0 || static_cast<size_t>(id) >= slot_bytes_.size() ||
+      slot_bytes_[id].size() <= static_cast<size_t>(slot)) {
+    return DT_INVALID;
+  }
+  return max_mem_usage_[id].output_port_type[slot];
+}
+
 Bytes CostModel::TempMemorySize(const Node* node) const {
   const int id = Id(node);
   if (id < 0) {
     return Bytes(0);
   }
   return max_mem_usage_[id].temp_memory_size;
+}
+
+Bytes CostModel::HostPeakMemorySize(const Node* node) const {
+  const int id = Id(node);
+  if (id < 0) {
+    return Bytes(0);
+  }
+  return max_mem_usage_[id].host_peak_memory_size;
+}
+
+Bytes CostModel::DevicePeakMemorySize(const Node* node) const {
+  const int id = Id(node);
+  if (id < 0) {
+    return Bytes(0);
+  }
+  return max_mem_usage_[id].device_peak_memory_size;
+}
+
+Bytes CostModel::PersistedMemorySize(const Node* node) const {
+  const int id = Id(node);
+  if (id < 0) {
+    return Bytes(0);
+  }
+  return max_mem_usage_[id].persisted_memory_size;
+}
+
+Bytes CostModel::AuxiliaryMemorySize(const Node* node) const {
+  const int id = Id(node);
+  if (id < 0) {
+    return Bytes(0);
+  }
+  return max_mem_usage_[id].auxiliary_memory_size;
+}
+
+void CostModel::RecordAllocatorMemory(
+    const Node* node,
+    const protobuf::RepeatedPtrField<AllocatorMemoryUsed>& memory) {
+  const int id = Id(node);
+  for (const auto& allocator_memory : memory) {
+    if (allocator_memory.allocator_name().find("cpu") != string::npos) {
+      max_mem_usage_[id].host_peak_memory_size +=
+          Bytes(allocator_memory.peak_bytes());
+    } else {
+      max_mem_usage_[id].device_peak_memory_size +=
+          Bytes(allocator_memory.peak_bytes());
+    }
+  }
 }
 
 void CostModel::RecordMaxExecutionTime(const Node* node, Microseconds time) {
@@ -314,6 +397,10 @@ Microseconds CostModel::ComputationTimeEstimate(int64 math_ops) {
   // roughly 1000 madds per microsecond (~1 GHz for one core)).
   return Microseconds(math_ops / 1000);
 }
+
+void CostModel::IncrementUpdateTimes() { update_times_++; }
+
+int32 CostModel::GetUpdateTimes() const { return update_times_; }
 
 // ----------------------------------------------------------------------------
 // InitCostModel
@@ -422,6 +509,8 @@ void CostModel::AddToCostGraphDef(const Graph* graph,
         }
       }
       output_info->set_alias_input_port(alias_to_input);
+      output_info->set_dtype(MaxMemoryType(n, i));
+      *output_info->mutable_shape() = MaxMemoryShape(n, i);
     }
 
     for (const Edge* e : control_inputs) {
@@ -429,6 +518,12 @@ void CostModel::AddToCostGraphDef(const Graph* graph,
     }
 
     cnode->set_temporary_memory_size(TempMemorySize(n).value());
+    cnode->set_host_peak_memory_size(HostPeakMemorySize(n).value());
+    cnode->set_device_peak_memory_size(DevicePeakMemorySize(n).value());
+    cnode->set_persisted_memory_size(PersistedMemorySize(n).value());
+    cnode->set_auxiliary_memory_size(AuxiliaryMemorySize(n).value());
+
+    cnode->set_compute_cost(MaxExecutionTime(n).value());
 
     // For now we treat all send nodes as final.
     // TODO(yuanbyu): Send nodes for fetches shouldn't be treated as final.
@@ -443,6 +538,20 @@ void CostModel::WriteSummaryToLog() const {
               << time_[i] << " avg time "
               << (time_[i] / (std::max(1, count_[i])));
   }
+}
+
+Bytes CostModel::MinTensorMemoryUsage(const TensorShapeProto& tensor_shape,
+                                      const DataType& dtype) {
+  if (tensor_shape.unknown_rank()) {
+    return Bytes(-1);
+  }
+
+  size_t num_coefficients = 1;
+  for (const TensorShapeProto::Dim& dim : tensor_shape.dim()) {
+    // If the dimension is unknown, it has to be at least 1
+    num_coefficients *= std::max<size_t>(dim.size(), 1);
+  }
+  return Bytes(num_coefficients * DataTypeSize(dtype));
 }
 
 }  // namespace tensorflow

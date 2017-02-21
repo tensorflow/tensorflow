@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numbers
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
@@ -40,7 +41,7 @@ def l1_regularizer(scale, scope=None):
 
   Args:
     scale: A scalar multiplier `Tensor`. 0.0 disables the regularizer.
-    scope: An optional op_scope name.
+    scope: An optional scope name.
 
   Returns:
     A function with signature `l1(weights)` that apply L1 regularization.
@@ -60,11 +61,11 @@ def l1_regularizer(scale, scope=None):
 
   def l1(weights, name=None):
     """Applies L1 regularization to weights."""
-    with ops.op_scope([weights], scope, 'l1_regularizer') as name:
+    with ops.name_scope(scope, 'l1_regularizer', [weights]) as name:
       my_scale = ops.convert_to_tensor(scale,
                                        dtype=weights.dtype.base_dtype,
                                        name='scale')
-      return standard_ops.mul(
+      return standard_ops.multiply(
           my_scale,
           standard_ops.reduce_sum(standard_ops.abs(weights)),
           name=name)
@@ -79,7 +80,7 @@ def l2_regularizer(scale, scope=None):
 
   Args:
     scale: A scalar multiplier `Tensor`. 0.0 disables the regularizer.
-    scope: An optional op_scope name.
+    scope: An optional scope name.
 
   Returns:
     A function with signature `l2(weights)` that applies L2 regularization.
@@ -99,11 +100,11 @@ def l2_regularizer(scale, scope=None):
 
   def l2(weights):
     """Applies l2 regularization to weights."""
-    with ops.op_scope([weights], scope, 'l2_regularizer') as name:
+    with ops.name_scope(scope, 'l2_regularizer', [weights]) as name:
       my_scale = ops.convert_to_tensor(scale,
                                        dtype=weights.dtype.base_dtype,
                                        name='scale')
-      return standard_ops.mul(my_scale, nn.l2_loss(weights), name=name)
+      return standard_ops.multiply(my_scale, nn.l2_loss(weights), name=name)
 
   return l2
 
@@ -114,7 +115,7 @@ def l1_l2_regularizer(scale_l1=1.0, scale_l2=1.0, scope=None):
   Args:
     scale_l1: A scalar multiplier `Tensor` for L1 regularization.
     scale_l2: A scalar multiplier `Tensor` for L2 regularization.
-    scope: An optional op_scope name.
+    scope: An optional scope name.
 
   Returns:
     A function with signature `l1_l2(weights)` that applies a weighted sum of
@@ -134,7 +135,7 @@ def sum_regularizer(regularizer_list, scope=None):
 
   Args:
     regularizer_list: A list of regularizers to apply.
-    scope: An optional op_scope name
+    scope: An optional scope name
 
   Returns:
     A function with signature `sum_reg(weights)` that applies the
@@ -146,7 +147,7 @@ def sum_regularizer(regularizer_list, scope=None):
 
   def sum_reg(weights):
     """Applies the sum of all the input regularizers."""
-    with ops.op_scope([weights], scope, 'sum_regularizer') as name:
+    with ops.name_scope(scope, 'sum_regularizer', [weights]) as name:
       regularizer_tensors = [reg(weights) for reg in regularizer_list]
       return math_ops.add_n(regularizer_tensors, name=name)
 
@@ -179,8 +180,12 @@ def apply_regularization(regularizer, weights_list=None):
     weights_list = ops.get_collection(ops.GraphKeys.WEIGHTS)
   if not weights_list:
     raise ValueError('No weights to regularize.')
-  with ops.op_scope(weights_list, 'get_regularization_penalty') as scope:
+  with ops.name_scope('get_regularization_penalty',
+                      values=weights_list) as scope:
     penalties = [regularizer(w) for w in weights_list]
+    penalties = [
+        p if p is not None else constant_op.constant(0.0) for p in penalties
+    ]
     for p in penalties:
       if p.get_shape().ndims != 0:
         raise ValueError('regularizer must return a scalar Tensor instead of a '

@@ -180,12 +180,6 @@ class Session {
 
 /// \brief Create a new session with the given options.
 ///
-/// If a new `Session` object could not be created, this function will
-/// return nullptr.
-Session* NewSession(const SessionOptions& options);
-
-/// \brief Create a new session with the given options.
-///
 /// If session creation succeeds, the new `Session` will be stored in
 /// `*out_session`, the caller will take ownership of the returned
 /// `*out_session`, and this function will return `OK()`. Otherwise, this
@@ -203,6 +197,15 @@ Status NewSession(const SessionOptions& options, Session** out_session);
 /// function will return an error status.
 Status Reset(const SessionOptions& options,
              const std::vector<string>& containers);
+
+/// \brief Create a new session with the given options.
+///
+/// If a new `Session` object could not be created, this function will
+/// return nullptr.
+///
+/// *Strongly prefer* the version of NewSession that returns Status,
+/// which contains more helpful error information.
+Session* NewSession(const SessionOptions& options);
 
 }  // end namespace tensorflow
 

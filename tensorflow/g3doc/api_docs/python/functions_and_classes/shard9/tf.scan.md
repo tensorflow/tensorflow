@@ -1,4 +1,4 @@
-### `tf.scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True, swap_memory=False, name=None)` {#scan}
+### `tf.scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True, swap_memory=False, infer_shape=True, name=None)` {#scan}
 
 scan on the list of tensors unpacked from `elems` on dimension 0.
 
@@ -36,9 +36,9 @@ For example, if `elems` is `(t1, [t2, t3])` and `initializer` is
 
 
 *  <b>`fn`</b>: The callable to be performed.  It accepts two arguments.  The first
-    will have the same (possibly nested) structure as `elems`.  The second
     will have the same structure as `initializer` if one is provided,
-    otherwise it will have the same structure as `elems`.  Its output
+    otherwise it will have the same structure as `elems`.  The second
+    will have the same (possibly nested) structure as `elems`.  Its output
     must have the same structure as `initializer` if one is provided,
     otherwise it must have the same structure as `elems`.
 *  <b>`elems`</b>: A tensor or (possibly nested) sequence of tensors, each of which
@@ -50,6 +50,7 @@ For example, if `elems` is `(t1, [t2, t3])` and `initializer` is
     in parallel.
 *  <b>`back_prop`</b>: (optional) True enables support for back propagation.
 *  <b>`swap_memory`</b>: (optional) True enables GPU-CPU memory swapping.
+*  <b>`infer_shape`</b>: (optional) False disables tests for consistent output shapes.
 *  <b>`name`</b>: (optional) Name prefix for the returned tensors.
 
 ##### Returns:

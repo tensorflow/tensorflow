@@ -58,12 +58,11 @@ void SendOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES(
       ctx, ctx->rendezvous() != nullptr,
       errors::Internal("Op kernel context needs to provide a rendezvous."));
-  string key;
-  GetRendezvousKey(key_prefix_, ctx->frame_iter(), &key);
-  VLOG(2) << "Send " << key;
-
   Rendezvous::ParsedKey parsed;
-  OP_REQUIRES_OK(ctx, Rendezvous::ParseKey(key, &parsed));
+  GetRendezvousKey(key_prefix_, ctx->frame_iter(), &parsed.buf_);
+  VLOG(2) << "Send " << parsed.buf_;
+
+  OP_REQUIRES_OK(ctx, Rendezvous::ParseKey(parsed.buf_, &parsed));
 
   // The device context may be passed between the Send/Recv
   // boundary, so that the device context used to produce the Tensor
@@ -78,6 +77,12 @@ void SendOp::Compute(OpKernelContext* ctx) {
 
 REGISTER_KERNEL_BUILDER(Name("_Send").Device(DEVICE_CPU), SendOp);
 REGISTER_KERNEL_BUILDER(Name("_Send").Device(DEVICE_GPU), SendOp);
+
+#if TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(Name("_Send").Device(DEVICE_SYCL), SendOp);
+REGISTER_KERNEL_BUILDER(
+    Name("_HostSend").Device(DEVICE_SYCL).HostMemory("tensor"), SendOp);
+#endif
 
 REGISTER_KERNEL_BUILDER(Name("_HostSend").Device(DEVICE_CPU), SendOp);
 REGISTER_KERNEL_BUILDER(
@@ -102,39 +107,52 @@ void RecvOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   OP_REQUIRES(
       ctx, ctx->rendezvous() != nullptr,
       errors::Internal("Op kernel context needs to provide a rendezvous."));
-  string key;
-  GetRendezvousKey(key_prefix_, ctx->frame_iter(), &key);
-  VLOG(2) << "Recv " << key;
-
   Rendezvous::ParsedKey parsed;
-  OP_REQUIRES_OK_ASYNC(ctx, Rendezvous::ParseKey(key, &parsed), done);
+  GetRendezvousKey(key_prefix_, ctx->frame_iter(), &parsed.buf_);
+  VLOG(2) << "Recv " << parsed.buf_;
+
+  OP_REQUIRES_OK_ASYNC(ctx, Rendezvous::ParseKey(parsed.buf_, &parsed), done);
 
   Rendezvous::Args args;
   args.device_context = ctx->op_device_context();
   args.alloc_attrs = ctx->output_alloc_attr(0);
-  ctx->rendezvous()->RecvAsync(
-      parsed, args,
-      [ctx, done](const Status& s, const Rendezvous::Args& send_args,
-                  const Rendezvous::Args& recv_args, const Tensor& val,
-                  bool is_dead) {
+  using namespace std::placeholders;
+  Rendezvous::DoneCallback done_cb = std::bind(
+      [ctx](DoneCallback done,
+            // Begin unbound arguments.
+            const Status& s, const Rendezvous::Args& send_args,
+            const Rendezvous::Args& recv_args, const Tensor& val,
+            bool is_dead) {
         ctx->SetStatus(s);
         if (s.ok()) {
-          // 'ctx' allocates the output tensor of the expected type.  The
-          // runtime checks whether the tensor received here is the same type.
+          // 'ctx' allocates the output tensor of the expected type.
+          // The runtime checks whether the tensor received here is
+          // the same type.
           if (!is_dead) {
             ctx->set_output(0, val);
           }
           *ctx->is_output_dead() = is_dead;
         }
         done();
-      });
+      },
+      std::move(done), _1, _2, _3, _4, _5);
+  ctx->rendezvous()->RecvAsync(parsed, args, std::move(done_cb));
 }
 
 REGISTER_KERNEL_BUILDER(Name("_Recv").Device(DEVICE_CPU), RecvOp);
 REGISTER_KERNEL_BUILDER(Name("_Recv").Device(DEVICE_GPU), RecvOp);
 
+#if TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(Name("_Recv").Device(DEVICE_SYCL), RecvOp);
+#endif
+
 REGISTER_KERNEL_BUILDER(Name("_HostRecv").Device(DEVICE_CPU), RecvOp);
 REGISTER_KERNEL_BUILDER(
     Name("_HostRecv").Device(DEVICE_GPU).HostMemory("tensor"), RecvOp);
+
+#if TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(
+    Name("_HostRecv").Device(DEVICE_SYCL).HostMemory("tensor"), RecvOp);
+#endif
 
 }  // end namespace tensorflow

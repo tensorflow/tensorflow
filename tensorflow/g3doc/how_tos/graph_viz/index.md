@@ -7,11 +7,6 @@ TensorFlow computation graphs are powerful but complicated. The graph visualizat
 
 To see your own graph, run TensorBoard pointing it to the log directory of the job, click on the graph tab on the top pane and select the appropriate run using the menu at the upper left corner. For in depth information on how to run TensorBoard and make sure you are logging all the necessary information, see [TensorBoard: Visualizing Learning](../../how_tos/summaries_and_tensorboard/index.md).
 
-You can interact with an instance of TensorBoard looking at data from an
-[MNIST](../../tutorials/mnist/beginners/index.md) training session, including the
-graph visualization, by clicking
-[here](https://www.tensorflow.org/tensorboard/index.html#graphs).
-
 ## Name scoping and nodes
 
 Typical TensorFlow graphs can have many thousands of nodes--far too many to see
@@ -33,9 +28,9 @@ with tf.name_scope('hidden') as scope:
 
 This results in the following three op names:
 
-* *hidden*/alpha
-* *hidden*/weights
-* *hidden*/biases
+* `hidden/alpha`
+* `hidden/weights`
+* `hidden/biases`
 
 By default, the visualization will collapse all three into a node labeled `hidden`.
 The extra detail isn't lost. You can double-click, or click
@@ -253,7 +248,7 @@ The images below show the CIFAR-10 model with tensor shape information:
 Often it is useful to collect runtime metadata for a run, such as total memory
 usage, total compute time, and tensor shapes for nodes. The code example below
 is a snippet from the train and test section of a modification of the
-[simple MNIST tutorial](http://tensorflow.org/tutorials/mnist/beginners/index.md),
+[simple MNIST tutorial](../../tutorials/mnist/beginners/index.md),
 in which we have recorded summaries and runtime statistics. See the [Summaries Tutorial](../../how_tos/summaries_and_tensorboard/index.md#serializing-the-data)
 for details on how to record summaries.
 Full source is [here](https://www.tensorflow.org/code/tensorflow/examples/tutorials/mnist/mnist_with_summaries.py).

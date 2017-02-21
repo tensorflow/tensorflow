@@ -18,12 +18,12 @@ from __future__ import division
 from __future__ import print_function
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
-import tensorflow as tf
 
+from tensorflow.python.platform import test
 from tensorflow.python.summary.impl import reservoir
 
 
-class ReservoirTest(tf.test.TestCase):
+class ReservoirTest(test.TestCase):
 
   def testEmptyReservoir(self):
     r = reservoir.Reservoir(1)
@@ -79,8 +79,8 @@ class ReservoirTest(tf.test.TestCase):
       interleaved_reservoir.AddItem('key2', i)
 
     for key in ['key1', 'key2']:
-      self.assertEqual(separate_reservoir.Items(key),
-                       interleaved_reservoir.Items(key))
+      self.assertEqual(
+          separate_reservoir.Items(key), interleaved_reservoir.Items(key))
 
   def testUsesSeed(self):
     """Tests that reservoirs with different seeds keep different samples."""
@@ -110,7 +110,7 @@ class ReservoirTest(tf.test.TestCase):
     self.assertEqual(len(r.Items('key2')), 8)
 
 
-class ReservoirBucketTest(tf.test.TestCase):
+class ReservoirBucketTest(test.TestCase):
 
   def testEmptyBucket(self):
     b = reservoir._ReservoirBucket(1)
@@ -190,8 +190,46 @@ class ReservoirBucketTest(tf.test.TestCase):
     self.assertEqual(b._num_items_seen,
                      int(round(10000 * (1 - float(num_removed) / 100))))
 
+  def testLazyFunctionEvaluationAndAlwaysKeepLast(self):
 
-class ReservoirBucketStatisticalDistributionTest(tf.test.TestCase):
+    class FakeRandom(object):
+
+      def randint(self, a, b):  # pylint:disable=unused-argument
+        return 999
+
+    class Incrementer(object):
+
+      def __init__(self):
+        self.n = 0
+
+      def increment_and_double(self, x):
+        self.n += 1
+        return x * 2
+
+    # We've mocked the randomness generator, so that once it is full, the last
+    # item will never get durable reservoir inclusion. Since always_keep_last is
+    # false, the function should only get invoked 100 times while filling up
+    # the reservoir. This laziness property is an essential performance
+    # optimization.
+    b = reservoir._ReservoirBucket(100, FakeRandom(), always_keep_last=False)
+    incrementer = Incrementer()
+    for i in xrange(1000):
+      b.AddItem(i, incrementer.increment_and_double)
+    self.assertEqual(incrementer.n, 100)
+    self.assertEqual(b.Items(), [x * 2 for x in xrange(100)])
+
+    # This time, we will always keep the last item, meaning that the function
+    # should get invoked once for every item we add.
+    b = reservoir._ReservoirBucket(100, FakeRandom(), always_keep_last=True)
+    incrementer = Incrementer()
+
+    for i in xrange(1000):
+      b.AddItem(i, incrementer.increment_and_double)
+    self.assertEqual(incrementer.n, 1000)
+    self.assertEqual(b.Items(), [x * 2 for x in xrange(99)] + [999 * 2])
+
+
+class ReservoirBucketStatisticalDistributionTest(test.TestCase):
 
   def setUp(self):
     self.total = 1000000
@@ -238,4 +276,4 @@ class ReservoirBucketStatisticalDistributionTest(tf.test.TestCase):
 
 
 if __name__ == '__main__':
-  tf.test.main()
+  test.main()

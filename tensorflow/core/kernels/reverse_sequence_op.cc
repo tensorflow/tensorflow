@@ -40,19 +40,19 @@ namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
-template <typename Device>
+template <typename Device, typename Tlen>
 void CheckErrors(OpKernelContext* context, int batch_dim, int seq_dim) {
   const Tensor& input = context->input(0);
   const Tensor& seq_lens = context->input(1);
 
-  auto seq_lens_t = seq_lens.vec<int64>();
+  auto seq_lens_t = seq_lens.vec<Tlen>();
 
-  std::vector<int64> seq_lens_vec(seq_lens_t.size());
+  std::vector<Tlen> seq_lens_vec(seq_lens_t.size());
 
   // Copy seq_len info down for validity checks
   context->eigen_device<Device>().memcpyDeviceToHost(
       seq_lens_vec.data(), seq_lens_t.data(),
-      sizeof(int64) * seq_lens_t.size());
+      sizeof(Tlen) * seq_lens_t.size());
 
   OP_REQUIRES(context, batch_dim != seq_dim,
               errors::InvalidArgument("batch_dim == seq_dim == ", seq_dim));
@@ -76,8 +76,7 @@ void CheckErrors(OpKernelContext* context, int batch_dim, int seq_dim) {
   }
 }
 
-template <>
-void CheckErrors<GPUDevice>(OpKernelContext* context, int batch_dim,
+void CheckErrorsGPU(OpKernelContext* context, int batch_dim,
                             int seq_dim) {
   const Tensor& input = context->input(0);
   const Tensor& seq_lens = context->input(1);
@@ -97,7 +96,19 @@ void CheckErrors<GPUDevice>(OpKernelContext* context, int batch_dim,
                                       " vs. ", input.dim_size(batch_dim)));
 }
 
-template <typename Device, typename T>
+template <>
+void CheckErrors<GPUDevice, int32>(OpKernelContext* context, int batch_dim,
+                            int seq_dim) {
+  CheckErrorsGPU(context, batch_dim, seq_dim);
+}
+
+template <>
+void CheckErrors<GPUDevice, int64>(OpKernelContext* context, int batch_dim,
+                            int seq_dim) {
+  CheckErrorsGPU(context, batch_dim, seq_dim);
+}
+
+template <typename Device, typename T, typename Tlen>
 class ReverseSequenceOp : public OpKernel {
  public:
   explicit ReverseSequenceOp(OpKernelConstruction* context)
@@ -115,9 +126,9 @@ class ReverseSequenceOp : public OpKernel {
                 errors::InvalidArgument("seq_lens input must be 1-dim, not ",
                                         seq_lens.dims()));
 
-    auto seq_lens_t = seq_lens.vec<int64>();
+    auto seq_lens_t = seq_lens.vec<Tlen>();
 
-    CheckErrors<Device>(context, batch_dim_, seq_dim_);
+    CheckErrors<Device, Tlen>(context, batch_dim_, seq_dim_);
 
     const int input_dims = input.dims();
 
@@ -127,7 +138,7 @@ class ReverseSequenceOp : public OpKernel {
 
 #define HANDLE_DIM(NDIM)                                                      \
   case NDIM:                                                                  \
-    functor::ReverseSequence<Device, T, NDIM>::Compute(                       \
+    functor::ReverseSequence<Device, T, Tlen, NDIM>::Compute(                 \
         context->eigen_device<Device>(), input.tensor<T, NDIM>(), batch_dim_, \
         seq_dim_, seq_lens_t, output->tensor<T, NDIM>());                     \
     break;
@@ -153,42 +164,57 @@ class ReverseSequenceOp : public OpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(ReverseSequenceOp);
 };
 
-#define REGISTER_REVERSE_SEQUENCE(type)                                     \
+#define REGISTER_REVERSE_SEQUENCE(type, len_type)                           \
   REGISTER_KERNEL_BUILDER(                                                  \
-      Name("ReverseSequence").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
-      ReverseSequenceOp<CPUDevice, type>);
+      Name("ReverseSequence").Device(DEVICE_CPU).TypeConstraint<type>("T"). \
+      TypeConstraint<len_type>("Tlen"),                                     \
+      ReverseSequenceOp<CPUDevice, type, len_type>);
 
-TF_CALL_NUMBER_TYPES(REGISTER_REVERSE_SEQUENCE);
+#define REGISTER_REVERSE_SEQUENCE_LEN(type)    \
+  REGISTER_REVERSE_SEQUENCE(type, int32);      \
+  REGISTER_REVERSE_SEQUENCE(type, int64);
+
+TF_CALL_NUMBER_TYPES(REGISTER_REVERSE_SEQUENCE_LEN);
 
 #if GOOGLE_CUDA
 
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
-#define DECLARE_GPU_SPEC(T, Dims)                                       \
-  template <>                                                           \
-  void ReverseSequence<GPUDevice, T, Dims>::Compute(                    \
-      const GPUDevice& d, typename TTypes<T, Dims>::ConstTensor input,  \
-      int32 batch_dim, int32 seq_dim, TTypes<int64>::ConstVec seq_lens, \
-      typename TTypes<T, Dims>::Tensor output);                         \
-  extern template struct ReverseSequence<GPUDevice, T, Dims>;
+#define DECLARE_GPU_SPEC(T, Tlen, Dims)                                     \
+  template <>                                                               \
+  void ReverseSequence<GPUDevice, T, Tlen, Dims>::Compute(                  \
+      const GPUDevice& d, typename TTypes<T, Dims>::ConstTensor input,      \
+      int32 batch_dim, int32 seq_dim,                                       \
+      typename TTypes<Tlen>::ConstVec seq_lens,                             \
+      typename TTypes<T, Dims>::Tensor output);                             \
+  extern template struct ReverseSequence<GPUDevice, T, Tlen, Dims>;
 
-#define DECLARE_GPU_SPECS(T) \
-  DECLARE_GPU_SPEC(T, 2);    \
-  DECLARE_GPU_SPEC(T, 3);    \
-  DECLARE_GPU_SPEC(T, 4);    \
-  DECLARE_GPU_SPEC(T, 5);
+#define DECLARE_GPU_SPEC_LEN(T, Dims)    \
+  DECLARE_GPU_SPEC(T, int32, Dims);      \
+  DECLARE_GPU_SPEC(T, int64, Dims);
+
+#define DECLARE_GPU_SPECS(T)     \
+  DECLARE_GPU_SPEC_LEN(T, 2);    \
+  DECLARE_GPU_SPEC_LEN(T, 3);    \
+  DECLARE_GPU_SPEC_LEN(T, 4);    \
+  DECLARE_GPU_SPEC_LEN(T, 5);
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);
 
 }  // namespace functor
 
 // Registration of the GPU implementations.
-#define REGISTER_REVERSE_SEQUENCE_GPU(type)                                 \
+#define REGISTER_REVERSE_SEQUENCE_GPU(type, len_type)                       \
   REGISTER_KERNEL_BUILDER(                                                  \
-      Name("ReverseSequence").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
-      ReverseSequenceOp<GPUDevice, type>);
+      Name("ReverseSequence").Device(DEVICE_GPU).TypeConstraint<type>("T"). \
+      TypeConstraint<len_type>("Tlen"),                                     \
+      ReverseSequenceOp<GPUDevice, type, len_type>);
 
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_REVERSE_SEQUENCE_GPU);
+#define REGISTER_REVERSE_SEQUENCE_GPU_LEN(type)   \
+  REGISTER_REVERSE_SEQUENCE_GPU(type, int32);     \
+  REGISTER_REVERSE_SEQUENCE_GPU(type, int64);
+
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_REVERSE_SEQUENCE_GPU_LEN);
 
 #undef REGISTER_REVERSE_SEQUENCE_GPU
 

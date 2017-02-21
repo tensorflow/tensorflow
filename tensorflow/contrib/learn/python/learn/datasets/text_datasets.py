@@ -27,7 +27,7 @@ import numpy as np
 from tensorflow.contrib.learn.python.learn.datasets import base
 from tensorflow.python.platform import gfile
 
-DBPEDIA_URL = 'https://googledrive.com/host/0Bz8a_Dbh9Qhbfll6bVpmNUtUcFdjYmF2SEpmZUZUcVNiMUw1TWN6RDV3a0JHT3kxLVhVR2M/dbpedia_csv.tar.gz'
+DBPEDIA_URL = 'https://github.com/le-scientifique/torchDatasets/raw/master/dbpedia_csv.tar.gz'
 
 
 def maybe_download_dbpedia(data_dir):
@@ -61,7 +61,9 @@ def load_dbpedia(size='small', test_with_fake_data=False):
     train_path = os.path.join(module_path, 'data', 'text_train.csv')
     test_path = os.path.join(module_path, 'data', 'text_test.csv')
 
-  train = base.load_csv(train_path, np.int32, 0, has_header=False)
-  test = base.load_csv(test_path, np.int32, 0, has_header=False)
+  train = base.load_csv_without_header(
+      train_path, target_dtype=np.int32, features_dtype=np.str, target_column=0)
+  test = base.load_csv_without_header(
+      test_path, target_dtype=np.int32, features_dtype=np.str, target_column=0)
 
   return base.Datasets(train=train, validation=None, test=test)

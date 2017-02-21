@@ -9,17 +9,25 @@ variables.
 
 The following standard keys are defined:
 
-* `VARIABLES`: the `Variable` objects that comprise a model, and
-  must be saved and restored together. See
-  [`tf.all_variables()`](../../api_docs/python/state_ops.md#all_variables)
+* `GLOBAL_VARIABLES`: the default collection of `Variable` objects, shared
+  across distributed environment (model variables are subset of these). See
+  [`tf.global_variables()`](../../api_docs/python/state_ops.md#global_variables)
   for more details.
+  Commonly, all `TRAINABLE_VARIABLES` variables will be in `MODEL_VARIABLES`,
+  and all `MODEL_VARIABLES` variables will be in `GLOBAL_VARIABLES`.
+* `LOCAL_VARIABLES`: the subset of `Variable` objects that are local to each
+  machine. Usually used for temporarily variables, like counters.
+  Note: use `tf.contrib.framework.local_variable` to add to this collection.
+* `MODEL_VARIABLES`: the subset of `Variable` objects that are used in the
+  model for inference (feed forward). Note: use
+  `tf.contrib.framework.model_variable` to add to this collection.
 * `TRAINABLE_VARIABLES`: the subset of `Variable` objects that will
   be trained by an optimizer. See
   [`tf.trainable_variables()`](../../api_docs/python/state_ops.md#trainable_variables)
   for more details.
 * `SUMMARIES`: the summary `Tensor` objects that have been created in the
   graph. See
-  [`tf.merge_all_summaries()`](../../api_docs/python/train.md#merge_all_summaries)
+  [`tf.summary.merge_all()`](../../api_docs/python/summary.md#merge_all)
   for more details.
 * `QUEUE_RUNNERS`: the `QueueRunner` objects that are used to
   produce input for a computation. See

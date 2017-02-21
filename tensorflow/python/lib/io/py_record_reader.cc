@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "tensorflow/python/lib/io/py_record_reader.h"
 
+#include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/record_reader.h"
+#include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -29,20 +31,21 @@ namespace io {
 PyRecordReader::PyRecordReader() {}
 
 PyRecordReader* PyRecordReader::New(const string& filename, uint64 start_offset,
-                                    const string& compression_type_string) {
+                                    const string& compression_type_string,
+                                    TF_Status* out_status) {
   std::unique_ptr<RandomAccessFile> file;
   Status s = Env::Default()->NewRandomAccessFile(filename, &file);
   if (!s.ok()) {
+    Set_TF_Status_from_Status(out_status, s);
     return nullptr;
   }
   PyRecordReader* reader = new PyRecordReader;
   reader->offset_ = start_offset;
   reader->file_ = file.release();
 
-  RecordReaderOptions options;
-  if (compression_type_string == "ZLIB") {
-    options.compression_type = RecordReaderOptions::ZLIB_COMPRESSION;
-  }
+  RecordReaderOptions options =
+      RecordReaderOptions::CreateRecordReaderOptions(compression_type_string);
+
   reader->reader_ = new RecordReader(reader->file_, options);
   return reader;
 }
@@ -52,10 +55,14 @@ PyRecordReader::~PyRecordReader() {
   delete file_;
 }
 
-bool PyRecordReader::GetNext() {
-  if (reader_ == nullptr) return false;
+void PyRecordReader::GetNext(TF_Status* status) {
+  if (reader_ == nullptr) {
+    Set_TF_Status_from_Status(status,
+                              errors::FailedPrecondition("Reader is closed."));
+    return;
+  }
   Status s = reader_->ReadRecord(&offset_, &record_);
-  return s.ok();
+  Set_TF_Status_from_Status(status, s);
 }
 
 void PyRecordReader::Close() {

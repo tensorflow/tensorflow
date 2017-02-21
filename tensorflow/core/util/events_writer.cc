@@ -97,7 +97,7 @@ void EventsWriter::WriteSerializedEvent(StringPiece event_str) {
     }
   }
   num_outstanding_events_++;
-  recordio_writer_->WriteRecord(event_str);
+  recordio_writer_->WriteRecord(event_str).IgnoreError();
 }
 
 // NOTE(touts); This is NOT the function called by the Python code.
@@ -154,7 +154,7 @@ bool EventsWriter::Close() {
 }
 
 bool EventsWriter::FileHasDisappeared() {
-  if (env_->FileExists(filename_)) {
+  if (env_->FileExists(filename_).ok()) {
     return false;
   } else {
     // This can happen even with non-null recordio_writer_ if some other

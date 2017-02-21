@@ -8,34 +8,30 @@ some input and generate a meaningful response? For example, could we train
 a neural network to translate from English to French? It turns out that
 the answer is *yes*.
 
-This tutorial will show you how to build and train such a system end-to-end.
-We are assuming you have already installed via the pip package, have cloned the
-tensorflow git repository, and are in the root of the git tree.
-
-You can then start by running the translate program:
+This tutorial will show you how to build and train such a system end-to-end. Clone the [TensorFlow main repo](https://github.com/tensorflow/tensorflow) and the [TensorFlow models repo](https://github.com/tensorflow/models) from GitHub. You can then start by running the translate program:
 
 ```
-cd tensorflow/models/rnn/translate
+cd models/tutorials/rnn/translate
 python translate.py --data_dir [your_data_directory]
 ```
 
 It will download English-to-French translation data from the
-[WMT'15 Website](http://www.statmt.org/wmt15/translation-task.html)
-prepare it for training and train. It takes about 20GB of disk space,
+[WMT'15 Website](http://www.statmt.org/wmt15/translation-task.html),
+prepare it for training, and train. It takes about 20GB of disk space,
 and a while to download and prepare (see [later](#lets-run-it) for details),
 so you can start and leave it running while reading this tutorial.
 
-This tutorial references the following files from `models/rnn`.
+This tutorial references the following files.
 
 File | What's in it?
 --- | ---
-`seq2seq.py` | Library for building sequence-to-sequence models.
-`translate/seq2seq_model.py` | Neural translation sequence-to-sequence model.
-`translate/data_utils.py` | Helper functions for preparing translation data.
-`translate/translate.py` | Binary that trains and runs the translation model.
+`tensorflow/tensorflow/python/ops/seq2seq.py` | Library for building sequence-to-sequence models.
+`models/tutorials/rnn/translate/seq2seq_model.py` | Neural translation sequence-to-sequence model.
+`models/tutorials/rnn/translate/data_utils.py` | Helper functions for preparing translation data.
+`models/tutorials/rnn/translate/translate.py` | Binary that trains and runs the translation model.
 
 
-## Sequence-to-Sequence Basics
+## Sequence-to-sequence basics
 
 A basic sequence-to-sequence model, as introduced in
 [Cho et al., 2014](http://arxiv.org/abs/1406.1078)
@@ -60,7 +56,7 @@ a fixed-size state vector, as that is the only thing passed to the decoder.
 To allow the decoder more direct access to the input, an *attention* mechanism
 was introduced in [Bahdanau et al., 2014](http://arxiv.org/abs/1409.0473)
 ([pdf](http://arxiv.org/pdf/1409.0473.pdf)).
-We will not go into the details of the attention mechanism (see the paper),
+We will not go into the details of the attention mechanism (see the paper);
 suffice it to say that it allows the decoder to peek into the input at every
 decoding step. A multi-layer sequence-to-sequence network with LSTM cells and
 attention mechanism in the decoder looks like this.
@@ -69,12 +65,12 @@ attention mechanism in the decoder looks like this.
 <img style="width:100%" src="../../images/attention_seq2seq.png" />
 </div>
 
-## TensorFlow seq2seq Library
+## TensorFlow seq2seq library
 
 As you can see above, there are many different sequence-to-sequence
 models. Each of these models can use different RNN cells, but all
 of them accept encoder inputs and decoder inputs. This motivates
-the interfaces in the TensorFlow seq2seq library (`models/rnn/seq2seq.py`).
+the interfaces in the TensorFlow seq2seq library (`tensorflow/tensorflow/python/ops/seq2seq.py`).
 The basic RNN encoder-decoder sequence-to-sequence model works as follows.
 
 ```python
@@ -86,12 +82,12 @@ to the encoder, i.e., corresponding to the letters *A, B, C* in the first
 picture above. Similarly, `decoder_inputs` are tensors representing inputs
 to the decoder, *GO, W, X, Y, Z* on the first picture.
 
-The `cell` argument is an instance of the `models.rnn.rnn_cell.RNNCell` class
+The `cell` argument is an instance of the `tf.contrib.rnn.RNNCell` class
 that determines which cell will be used inside the model. You can use
 an existing cell, such as `GRUCell` or `LSTMCell`, or you can write your own.
-Moreover, `rnn_cell` provides wrappers to construct multi-layer cells,
-add dropout to cell inputs or outputs, or to do other transformations,
-see the [RNN Tutorial](../../tutorials/recurrent/index.md) for examples.
+Moreover, `tf.contrib.rnn` provides wrappers to construct multi-layer cells,
+add dropout to cell inputs or outputs, or to do other transformations.
+See the [RNN Tutorial](../../tutorials/recurrent/index.md) for examples.
 
 The call to `basic_rnn_seq2seq` returns two arguments: `outputs` and `states`.
 Both of them are lists of tensors of the same length as `decoder_inputs`.
@@ -111,7 +107,8 @@ For example, let's analyze the following use of an embedding RNN model.
 outputs, states = embedding_rnn_seq2seq(
     encoder_inputs, decoder_inputs, cell,
     num_encoder_symbols, num_decoder_symbols,
-    output_projection=None, feed_previous=False)
+    embedding_size, output_projection=None,
+    feed_previous=False)
 ```
 
 In the `embedding_rnn_seq2seq` model, all inputs (both `encoder_inputs` and
@@ -126,7 +123,7 @@ In the above invocation, we set `feed_previous` to False. This means that the
 decoder will use `decoder_inputs` tensors as provided. If we set `feed_previous`
 to True, the decoder would only use the first element of `decoder_inputs`.
 All other tensors from this list would be ignored, and instead the previous
-output of the encoder would be used. This is used for decoding translations
+output of the decoder would be used. This is used for decoding translations
 in our translation model, but it can also be used during training, to make
 the model more robust to its own mistakes, similar
 to [Bengio et al., 2015](http://arxiv.org/abs/1506.03099)
@@ -144,16 +141,16 @@ in [Jean et. al., 2014](http://arxiv.org/abs/1412.2007)
 ([pdf](http://arxiv.org/pdf/1412.2007.pdf)).
 
 In addition to `basic_rnn_seq2seq` and `embedding_rnn_seq2seq` there are a few
-more sequence-to-sequence models in `seq2seq.py`, take a look there. They all
+more sequence-to-sequence models in `seq2seq.py`; take a look there. They all
 have similar interfaces, so we will not describe them in detail. We will use
 `embedding_attention_seq2seq` for our translation model below.
 
-## Neural Translation Model
+## Neural translation model
 
 While the core of the sequence-to-sequence model is constructed by
-the functions in `models/rnn/seq2seq.py`, there are still a few tricks
+the functions in `tensorflow/tensorflow/python/ops/seq2seq.py`, there are still a few tricks
 that are worth mentioning that are used in our translation model in
-`models/rnn/translate/seq2seq_model.py`.
+`models/tutorials/rnn/translate/seq2seq_model.py`.
 
 ### Sampled softmax and output projection
 
@@ -163,16 +160,29 @@ of the output projection. Both the sampled softmax loss and the output
 projections are constructed by the following code in `seq2seq_model.py`.
 
 ```python
-  if num_samples > 0 and num_samples < self.target_vocab_size:
-    w = tf.get_variable("proj_w", [size, self.target_vocab_size])
-    w_t = tf.transpose(w)
-    b = tf.get_variable("proj_b", [self.target_vocab_size])
-    output_projection = (w, b)
 
-    def sampled_loss(inputs, labels):
-      labels = tf.reshape(labels, [-1, 1])
-      return tf.nn.sampled_softmax_loss(w_t, b, inputs, labels, num_samples,
-                                        self.target_vocab_size)
+if num_samples > 0 and num_samples < self.target_vocab_size:
+  w_t = tf.get_variable("proj_w", [self.target_vocab_size, size], dtype=dtype)
+  w = tf.transpose(w_t)
+  b = tf.get_variable("proj_b", [self.target_vocab_size], dtype=dtype)
+  output_projection = (w, b)
+
+  def sampled_loss(labels, inputs):
+    labels = tf.reshape(labels, [-1, 1])
+    # We need to compute the sampled_softmax_loss using 32bit floats to
+    # avoid numerical instabilities.
+    local_w_t = tf.cast(w_t, tf.float32)
+    local_b = tf.cast(b, tf.float32)
+    local_inputs = tf.cast(inputs, tf.float32)
+    return tf.cast(
+        tf.nn.sampled_softmax_loss(
+            weights=local_w_t,
+            biases=local_b,
+            labels=labels,
+            inputs=local_inputs,
+            num_sampled=num_samples,
+            num_classes=self.target_vocab_size),
+        dtype)
 ```
 
 First, note that we only construct a sampled softmax if the number of samples
@@ -187,8 +197,9 @@ matrix and add the biases, as is done in lines 124-126 in `seq2seq_model.py`.
 
 ```python
 if output_projection is not None:
-  self.outputs[b] = [tf.matmul(output, output_projection[0]) +
-                     output_projection[1] for ...]
+  for b in xrange(len(buckets)):
+    self.outputs[b] = [tf.matmul(output, output_projection[0]) +
+                       output_projection[1] for ...]
 ```
 
 ### Bucketing and padding
@@ -238,7 +249,7 @@ with encoder inputs representing `[PAD PAD "." "go" "I"]` and decoder
 inputs `[GO "Je" "vais" "." EOS PAD PAD PAD PAD PAD]`.
 
 
-## Let's Run It
+## Let's run it
 
 To train the model described above, we need to a large English-French corpus.
 We will use the *10^9-French-English corpus* from the
@@ -312,7 +323,7 @@ Reading model parameters from /tmp/translate.ckpt-340000
  Qui est le président des États-Unis ?
 ```
 
-## What Next?
+## What next?
 
 The example above shows how you can build your own English-to-French
 translator, end-to-end. Run it and see how the model performs for yourself.

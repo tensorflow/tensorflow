@@ -63,6 +63,62 @@ inline CudaLaunchConfig GetCudaLaunchConfig(int work_element_count,
   return config;
 }
 
+struct Cuda2DLaunchConfig {
+  dim3 virtual_thread_count;
+  dim3 thread_per_block;
+  dim3 block_count;
+};
+
+inline Cuda2DLaunchConfig GetCuda2DLaunchConfig(int xdim, int ydim,
+                                                const GPUDevice& d) {
+  Cuda2DLaunchConfig config;
+
+  config.virtual_thread_count = dim3(xdim, ydim, 1);
+
+  const int kThreadsPerBlock = 256;
+  int block_cols = std::min(xdim, kThreadsPerBlock);
+  // ok to round down here and just do more loops in the kernel
+  int block_rows = std::max(kThreadsPerBlock / block_cols, 1);
+
+  const int physical_thread_count =
+      d.getNumCudaMultiProcessors() * d.maxCudaThreadsPerMultiProcessor();
+
+  const int max_blocks = std::max(physical_thread_count / kThreadsPerBlock, 1);
+
+  config.thread_per_block = dim3(block_cols, block_rows, 1);
+
+  int grid_x = std::min((xdim + block_cols - 1) / block_cols, max_blocks);
+
+  config.block_count = dim3(
+      grid_x, std::min(max_blocks / grid_x, std::max(ydim / block_rows, 1)), 1);
+
+  return config;
+}
+
+namespace gpu {
+
+template <typename IntType>
+__device__ IntType upper_bound(IntType* first, IntType count, IntType val) {
+  IntType* orig = first;
+  IntType* it = nullptr;
+  IntType step = 0;
+  while (count > 0) {
+    it = first;
+    step = count / 2;
+    it += step;
+    if (!(val < *it)) {
+      first = ++it;
+      count -= step + 1;
+    } else {
+      count = step;
+    }
+  }
+
+  return first - orig;
+}
+
+}  // namespace gpu
+
 template <typename T>
 __device__ __host__ inline T ldg(const T* address) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 350
@@ -77,14 +133,8 @@ __device__ __host__ inline T ldg(const T* address) {
 #define CUDA_ATOMIC_WRAPPER(op, T) \
   __device__ __forceinline__ T CudaAtomic##op(T* address, T val)
 
-// Reason of guarding: NVCC cannot compile the "::" in "cuda_builtin::atomicOp".
-#ifdef __GCUDACC__
-#define USE_CUDA_ATOMIC(op, T) \
-  CUDA_ATOMIC_WRAPPER(op, T) { return cuda_builtin::atomic##op(address, val); }
-#else
 #define USE_CUDA_ATOMIC(op, T) \
   CUDA_ATOMIC_WRAPPER(op, T) { return atomic##op(address, val); }
-#endif
 
 // For atomicAdd.
 USE_CUDA_ATOMIC(Add, int32);
@@ -101,7 +151,7 @@ USE_CUDA_ATOMIC(Max, uint64);
 // The uint64 overload of atomicMax() is only available for __CUDA_ARCH__ >=
 // 350.  If not satisfied, we provide a custom implementation using atomicCAS().
 CUDA_ATOMIC_WRAPPER(Max, uint64) {
-  uint64* address_as_ull = (uint64*)address;
+  uint64* address_as_ull = reinterpret_cast<uint64*>(address);
   uint64 old = *address_as_ull, assumed;
 
   do {
@@ -116,7 +166,7 @@ CUDA_ATOMIC_WRAPPER(Max, uint64) {
 // Custom implementation of atomicAdd for double.
 // This implementation is copied from CUDA manual.
 CUDA_ATOMIC_WRAPPER(Add, double) {
-  uint64* address_as_ull = (uint64*)address;
+  uint64* address_as_ull = reinterpret_cast<uint64*>(address);
   uint64 old = *address_as_ull, assumed;
 
   do {
@@ -220,6 +270,106 @@ WRAPPED_ATOMIC_SUB(float);
 WRAPPED_ATOMIC_SUB(double);
 
 #undef WRAPPED_ATOMIC_SUB
+
+// For atomicMul.
+CUDA_ATOMIC_WRAPPER(Mul, int32) {
+  int32 old = *address, assumed;
+  do {
+    assumed = old;
+    old = atomicCAS(address, assumed, val * assumed);
+  } while (assumed != old);
+  return old;
+}
+
+CUDA_ATOMIC_WRAPPER(Mul, uint32) {
+  uint32 old = *address, assumed;
+  do {
+    assumed = old;
+    old = atomicCAS(address, assumed, val * assumed);
+  } while (assumed != old);
+  return old;
+}
+
+CUDA_ATOMIC_WRAPPER(Mul, uint64) {
+  uint64 old = *address, assumed;
+  do {
+    assumed = old;
+    old = atomicCAS(address, assumed, val * assumed);
+  } while (assumed != old);
+  return old;
+}
+
+CUDA_ATOMIC_WRAPPER(Mul, float) {
+  int32* address_as_int = reinterpret_cast<int32*>(address);
+  int32 old = *address_as_int, assumed;
+  do {
+    assumed = old;
+    old = atomicCAS(address_as_int, assumed,
+                    __float_as_int(val * __int_as_float(assumed)));
+  } while (assumed != old);
+  return __int_as_float(old);
+}
+
+CUDA_ATOMIC_WRAPPER(Mul, double) {
+  uint64* address_as_ull = reinterpret_cast<uint64*>(address);
+  uint64 old = *address_as_ull, assumed;
+  do {
+    assumed = old;
+    old = atomicCAS(address_as_ull, assumed,
+                    __double_as_longlong(val * __longlong_as_double(assumed)));
+  } while (assumed != old);
+  return __longlong_as_double(old);
+}
+
+// For atomicDiv.
+CUDA_ATOMIC_WRAPPER(Div, int32) {
+  int32 old = *address, assumed;
+  do {
+    assumed = old;
+    old = atomicCAS(address, assumed, assumed / val);
+  } while (assumed != old);
+  return old;
+}
+
+CUDA_ATOMIC_WRAPPER(Div, uint32) {
+  uint32 old = *address, assumed;
+  do {
+    assumed = old;
+    old = atomicCAS(address, assumed, assumed / val);
+  } while (assumed != old);
+  return old;
+}
+
+CUDA_ATOMIC_WRAPPER(Div, uint64) {
+  uint64 old = *address, assumed;
+  do {
+    assumed = old;
+    old = atomicCAS(address, assumed, assumed / val);
+  } while (assumed != old);
+  return old;
+}
+
+CUDA_ATOMIC_WRAPPER(Div, float) {
+  int32* address_as_int = reinterpret_cast<int32*>(address);
+  int32 old = *address_as_int, assumed;
+  do {
+    assumed = old;
+    old = atomicCAS(address_as_int, assumed,
+                    __float_as_int(__int_as_float(assumed) / val));
+  } while (assumed != old);
+  return __int_as_float(old);
+}
+
+CUDA_ATOMIC_WRAPPER(Div, double) {
+  uint64* address_as_ull = reinterpret_cast<uint64*>(address);
+  uint64 old = *address_as_ull, assumed;
+  do {
+    assumed = old;
+    old = atomicCAS(address_as_ull, assumed,
+                    __double_as_longlong(__longlong_as_double(assumed) / val));
+  } while (assumed != old);
+  return __longlong_as_double(old);
+}
 
 #undef USE_CUDA_ATOMIC
 #undef CUDA_ATOMIC_WRAPPER

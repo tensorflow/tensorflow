@@ -63,7 +63,8 @@ reshape(t, []) ==> 7
 
 
 *  <b>`tensor`</b>: A `Tensor`.
-*  <b>`shape`</b>: A `Tensor` of type `int32`. Defines the shape of the output tensor.
+*  <b>`shape`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+    Defines the shape of the output tensor.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:

@@ -1,24 +1,38 @@
-FROM jpetazzo/dind
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+#
+# Docker image for testing distributed (GRPC) TensorFlow on a single machine.
+#
+# See ./local_test.sh for usage example.
+
+FROM ubuntu:16.04
 
 MAINTAINER Shanqing Cai <cais@google.com>
 
-RUN apt-get update
+# Pick up some TF dependencies.
+RUN apt-get update && apt-get install -y \
+        python-numpy \
+        python-pip \
+        && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
-RUN apt-get install -y --no-install-recommends \
-    build-essential \
-    dbus \
-    git \
-    software-properties-common
+# Install TensorFlow pip whl
+# TODO(cais): Should we build it locally instead?
+COPY tensorflow-*.whl /
+RUN pip install /tensorflow-*.whl
+RUN rm -f /tensorflow-*.whl
 
-# Install the latest golang
-RUN wget https://storage.googleapis.com/golang/go1.4.2.linux-amd64.tar.gz
-RUN tar -C /usr/local -xzf go1.4.2.linux-amd64.tar.gz
-RUN rm -f go1.4.2.linux-amd64.tar.gz
-RUN echo 'PATH=/usr/local/go/bin:${PATH}' >> /root/.bashrc
-
-# Create shared storage on host. k8s pods (docker containers) created on the
-# host can share it and all have read/write access.
-RUN mkdir /shared
-RUN chmod 666 /shared
-
-ADD . /var/tf-k8s
+ADD . /var/tf_dist_test

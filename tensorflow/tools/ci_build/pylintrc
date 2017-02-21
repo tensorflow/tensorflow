@@ -27,7 +27,7 @@ load-plugins=
 # Enable the message, report, category or checker with the given id(s). You can
 # either give multiple identifier separated by comma (,) or put this option
 # multiple time. See also the "--disable" option for examples.
-enable=old-raise-syntax
+enable=indexing-exception,old-raise-syntax
 
 # Disable the message, report, category or checker with the given id(s). You
 # can either give multiple identifiers separated by comma (,) or put this
@@ -40,6 +40,9 @@ enable=old-raise-syntax
 # --disable=W"
 disable=design,similarities,no-self-use,attribute-defined-outside-init,locally-disabled,star-args,pointless-except,bad-option-value,global-statement,fixme,suppressed-message,useless-suppression,locally-enabled,no-member,no-name-in-module,import-error,unsubscriptable-object,unbalanced-tuple-unpacking,undefined-variable
 
+
+# Set the cache size for astng objects.
+cache-size=500
 
 
 [REPORTS]
@@ -92,6 +95,10 @@ zope=no
 # expressions are accepted.
 generated-members=REQUEST,acl_users,aq_parent
 
+# List of decorators that create context managers from functions, such as
+# contextlib.contextmanager.
+contextmanager-decorators=contextlib.contextmanager,contextlib2.contextmanager
+
 
 [VARIABLES]
 
@@ -100,7 +107,7 @@ init-import=no
 
 # A regular expression matching the beginning of the name of dummy variables
 # (i.e. not used).
-dummy-variables-rgx=_$|dummy
+dummy-variables-rgx=^\*{0,2}(_$|unused_|dummy_)
 
 # List of additional names supposed to be defined in builtins. Remember that
 # you should avoid to define new builtins when possible.
@@ -114,6 +121,11 @@ required-attributes=
 
 # List of builtins function names that should not be used, separated by a comma
 bad-functions=apply,input,reduce
+
+
+# Disable the report(s) with the given id(s).
+# All non-Google reports are disabled by default.
+disable-report=R0001,R0002,R0003,R0004,R0101,R0102,R0201,R0202,R0220,R0401,R0402,R0701,R0801,R0901,R0902,R0903,R0904,R0911,R0912,R0913,R0914,R0915,R0921,R0922,R0923
 
 # Regular expression which should only match correct module names
 module-rgx=(([a-z_][a-z0-9_]*)|([A-Z][a-zA-Z0-9]+))$
@@ -279,3 +291,35 @@ max-public-methods=20
 # Exceptions that will emit a warning when being caught. Defaults to
 # "Exception"
 overgeneral-exceptions=Exception,StandardError,BaseException
+
+
+[AST]
+
+# Maximum line length for lambdas
+short-func-length=1
+
+# List of module members that should be marked as deprecated.
+# All of the string functions are listed in 4.1.4 Deprecated string functions
+# in the Python 2.4 docs.
+deprecated-members=string.atof,string.atoi,string.atol,string.capitalize,string.expandtabs,string.find,string.rfind,string.index,string.rindex,string.count,string.lower,string.split,string.rsplit,string.splitfields,string.join,string.joinfields,string.lstrip,string.rstrip,string.strip,string.swapcase,string.translate,string.upper,string.ljust,string.rjust,string.center,string.zfill,string.replace,sys.exitfunc
+
+
+[DOCSTRING]
+
+# List of exceptions that do not need to be mentioned in the Raises section of
+# a docstring.
+ignore-exceptions=AssertionError,NotImplementedError,StopIteration,TypeError
+
+
+
+[TOKENS]
+
+# Number of spaces of indent required when the last token on the preceding line
+# is an open (, [, or {.
+indent-after-paren=4
+
+
+[GOOGLE LINES]
+
+# Regexp for a proper copyright notice.
+copyright=Copyright \d{4} The TensorFlow Authors\. +All [Rr]ights [Rr]eserved\.

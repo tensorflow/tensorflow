@@ -42,10 +42,17 @@ const char kTestMp3Filename[] =
 mutex mu;
 bool should_ffmpeg_be_installed GUARDED_BY(mu) = false;
 
-void ParseTestFlags(int* argc, char** argv) {
+string ParseTestFlags(int* argc, char** argv) {
   mutex_lock l(mu);
-  CHECK(ParseFlags(argc, argv, {Flag("should_ffmpeg_be_installed",
-                                     &should_ffmpeg_be_installed)}));
+  std::vector<Flag> flag_list = {
+      Flag("should_ffmpeg_be_installed", &should_ffmpeg_be_installed,
+           "indicates that ffmpeg should be installed")};
+  string usage = Flags::Usage(argv[0], flag_list);
+  if (!Flags::Parse(argc, argv, flag_list)) {
+    LOG(ERROR) << "\n" << usage;
+    exit(2);
+  }
+  return usage;
 }
 
 TEST(FfmpegLibTest, TestUninstalled) {
@@ -132,7 +139,11 @@ TEST(FfmpegLibTest, TestRoundTripWav) {
 }  // namespace tensorflow
 
 int main(int argc, char **argv) {
-  tensorflow::ffmpeg::ParseTestFlags(&argc, argv);
+  tensorflow::string usage = tensorflow::ffmpeg::ParseTestFlags(&argc, argv);
   testing::InitGoogleTest(&argc, argv);
+  if (argc != 1) {
+    LOG(ERROR) << usage;
+    return 2;
+  }
   return RUN_ALL_TESTS();
 }

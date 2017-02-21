@@ -13,15 +13,13 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Wrappers for primitive Neural Net (NN) Operations."""
+"""Wrappers for candidate sampling operations."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_candidate_sampling_ops
 from tensorflow.python.ops import math_ops
@@ -364,30 +362,3 @@ def compute_accidental_hits(true_classes, sampled_candidates, num_true,
   return gen_candidate_sampling_ops._compute_accidental_hits(
       true_classes, sampled_candidates, num_true, seed=seed1, seed2=seed2,
       name=name)
-
-
-@ops.RegisterShape("AllCandidateSampler")
-@ops.RegisterShape("FixedUnigramCandidateSampler")
-@ops.RegisterShape("LearnedUnigramCandidateSampler")
-@ops.RegisterShape("LogUniformCandidateSampler")
-@ops.RegisterShape("ThreadUnsafeUnigramCandidateSampler")
-@ops.RegisterShape("UniformCandidateSampler")
-def _CandidateSamplerShape(op):
-  true_classes_shape = op.inputs[0].get_shape().with_rank(2)
-  batch_size = true_classes_shape[0]
-  num_sampled = op.get_attr("num_sampled")
-  num_true = op.get_attr("num_true")
-  return [tensor_shape.vector(num_sampled),
-          tensor_shape.matrix(batch_size, num_true),
-          tensor_shape.vector(num_sampled)]
-
-
-@ops.RegisterShape("ComputeAccidentalHits")
-def _ComputeAccidentalHitsShape(op):
-  num_true = op.get_attr("num_true")
-  # Validate that the input shape matches the attrs, even though it
-  # does not influence the shape of the output.
-  true_candidates_shape = op.inputs[0].get_shape().merge_with(
-      tensor_shape.matrix(None, num_true))
-  output_shape = tensor_shape.vector(None)
-  return [output_shape] * 3

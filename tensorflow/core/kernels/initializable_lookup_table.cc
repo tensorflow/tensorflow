@@ -20,7 +20,8 @@ limitations under the License.
 namespace tensorflow {
 namespace lookup {
 
-Status InitializableLookupTable::Find(const Tensor& keys, Tensor* values,
+Status InitializableLookupTable::Find(OpKernelContext* ctx, const Tensor& keys,
+                                      Tensor* values,
                                       const Tensor& default_value) {
   if (!is_initialized()) {
     return errors::FailedPrecondition("Table not initialized.");
@@ -35,7 +36,8 @@ Status InitializableLookupTable::Initialize(InitTableIterator& iter) {
   if (!iter.Valid()) {
     return iter.status();
   }
-  TF_RETURN_IF_ERROR(CheckKeyAndValueTensors(iter.keys(), iter.values()));
+  TF_RETURN_IF_ERROR(
+      CheckKeyAndValueTensorsForInsert(iter.keys(), iter.values()));
 
   mutex_lock l(mu_);
   if (is_initialized()) {

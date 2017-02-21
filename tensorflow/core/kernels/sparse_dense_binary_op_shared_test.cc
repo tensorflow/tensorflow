@@ -96,8 +96,10 @@ TEST_F(SparseDenseCDivTest, SameShape) {
   // [2    ]  cdiv [dense: same shape, all 1's]
   // [3   4]
   const auto indices_shape = TensorShape({4, 2});
-  const gtl::ArraySlice<int64> indices = {0, 1, 1, 0, 2, 0, 2, 1};
-  const gtl::ArraySlice<int64> shape = {3, 2};
+  std::initializer_list<int64> in{ 0, 1, 1, 0, 2, 0, 2, 1 };
+  const gtl::ArraySlice<int64> indices(in);
+  std::initializer_list<int64> sh{ 3, 2 };
+  const gtl::ArraySlice<int64> shape(sh);
 
   // Tensor dense(DT_FLOAT, TensorShape({3, 1}));
   Tensor dense(DT_FLOAT, TensorShape(shape));
@@ -123,8 +125,10 @@ TEST_F(SparseDenseCDivTest, BroadcastDenseSameDims) {
   // [2    ]  cdiv [dense: shape [3,1], all 1's]
   // [3   4]
   const auto indices_shape = TensorShape({4, 2});
-  const gtl::ArraySlice<int64> indices = {0, 1, 1, 0, 2, 0, 2, 1};
-  const gtl::ArraySlice<int64> shape = {3, 2};
+  std::initializer_list<int64> in{ 0, 1, 1, 0, 2, 0, 2, 1 };
+  const gtl::ArraySlice<int64> indices(in);
+  std::initializer_list<int64> sh{ 3, 2 };
+  const gtl::ArraySlice<int64> shape(sh);
 
   Tensor dense(DT_FLOAT, TensorShape({3, 1}));
   auto dense_flat = dense.flat<float>();
@@ -148,8 +152,10 @@ TEST_F(SparseDenseCDivTest, BroadcastDenseFewerDims) {
   // [2    ]  cdiv [dense: shape [2]]
   // [3   4]
   const auto indices_shape = TensorShape({4, 2});
-  const gtl::ArraySlice<int64> indices = {0, 1, 1, 0, 2, 0, 2, 1};
-  const gtl::ArraySlice<int64> shape = {3, 2};
+  std::initializer_list<int64> in{ 0, 1, 1, 0, 2, 0, 2, 1 };
+  const gtl::ArraySlice<int64> indices(in);
+  std::initializer_list<int64> sh{ 3, 2 };
+  const gtl::ArraySlice<int64> shape(sh);
 
   Tensor dense(DT_FLOAT, TensorShape({2}));
   auto dense_flat = dense.flat<float>();
@@ -178,8 +184,10 @@ TEST_F(SparseDenseCMulTest, BroadcastDense) {
   // [1   ?]  where ? remains implicitly zero.
   // [1.5 0]
   const auto indices_shape = TensorShape({4, 2});
-  const gtl::ArraySlice<int64> indices = {0, 1, 1, 0, 2, 0, 2, 1};
-  const gtl::ArraySlice<int64> shape = {3, 2};
+  std::initializer_list<int64> in{ 0, 1, 1, 0, 2, 0, 2, 1 };
+  const gtl::ArraySlice<int64> indices(in);
+  std::initializer_list<int64> sh{ 3, 2 };
+  const gtl::ArraySlice<int64> shape(sh);
 
   Tensor dense(DT_FLOAT, TensorShape({2}));
   auto dense_flat = dense.flat<float>();

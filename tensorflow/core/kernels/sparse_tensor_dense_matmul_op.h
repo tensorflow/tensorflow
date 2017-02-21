@@ -55,34 +55,13 @@ EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T MaybeConj(T v) {
   return v;
 }
 
-#ifdef __GCUDACC__
-// TODO(ebrevdo): remove this once a bugfix is in.
-#define MAYBE_CONJ(T)                                         \
-  template <>                                                 \
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T MaybeConj<T>(T v) { \
-    assert(false && "Conjugation not supported");             \
-  }
-#else
-#define MAYBE_CONJ(T)                                         \
-  template <>                                                 \
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T MaybeConj<T>(T v) { \
-    return Eigen::numext::conj(v);                            \
-  }
-#endif
-
-MAYBE_CONJ(std::complex<float>);
-MAYBE_CONJ(std::complex<double>);
-MAYBE_CONJ(std::complex<long double>);
-
-#undef MAYBE_CONJ
-
 template <typename MATRIX>
 class MaybeAdjoint<MATRIX, true> {
  public:
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE MaybeAdjoint(MATRIX m) : m_(m) {}
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE typename MATRIX::Scalar operator()(
       const typename MATRIX::Index i, const typename MATRIX::Index j) const {
-    return MaybeConj(m_(j, i));
+    return Eigen::numext::conj(m_(j, i));
   }
 
  private:

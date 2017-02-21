@@ -79,7 +79,7 @@ std::atomic<int64> TensorArray::tensor_array_counter{0};
 
 Status TensorArray::CopyShapesFrom(TensorArray* rhs) {
   mutex_lock l(mu_);
-  mutex_lock l_rhs(*rhs->mu());
+  mutex_lock l_rhs(rhs->mu_);
   TF_RETURN_IF_ERROR(LockedReturnIfClosed());
   TF_RETURN_IF_ERROR(rhs->LockedReturnIfClosed());
   if (tensors_.size() != rhs->tensors_.size()) {

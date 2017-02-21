@@ -1,15 +1,6 @@
 # TensorFlow Graph Editor
 
-The TensorFlow Graph Editor libray which allows for modification of an existing
-tf.Graph instance.
+The TensorFlow Graph Editor library allows for modification of an existing
+tf.Graph instance in-place.
 
-## Overview of the modules
-
-* util.py: utility functions
-* select.py: selection functions, allowing for various selection method of
-  tensors and operations.
-* subgraph.py: the SubGraphView class, allowing to manipulate subgraph of a
-  TensorFlow tf.Graph instance.
-* transform.py: the Transformer class, allowing to tranform a subgraph into
-  another one.
-* edit.py: various editing function operating on subgraph.
+The author's github username is [purpledog](https://github.com/purpledog).

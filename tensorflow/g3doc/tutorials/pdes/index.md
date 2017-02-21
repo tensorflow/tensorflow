@@ -127,7 +127,7 @@ This is where it gets fun -- running time forward with a simple for loop.
 
 ```python
 # Initialize state to initial conditions
-tf.initialize_all_variables().run()
+tf.global_variables_initializer().run()
 
 # Run 1000 steps of PDE
 for i in range(1000):

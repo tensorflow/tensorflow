@@ -1,12 +1,8 @@
-### `tf.all_variables()` {#all_variables}
+### `tf.all_variables(*args, **kwargs)` {#all_variables}
 
-Returns all variables that must be saved/restored.
+See `tf.global_variables`. (deprecated)
 
-The `Variable()` constructor automatically adds new variables to the graph
-collection `GraphKeys.VARIABLES`. This convenience function returns the
-contents of that collection.
-
-##### Returns:
-
-  A list of `Variable` objects.
+THIS FUNCTION IS DEPRECATED. It will be removed after 2017-03-02.
+Instructions for updating:
+Please use tf.global_variables instead.
 

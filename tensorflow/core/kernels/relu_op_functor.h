@@ -52,8 +52,7 @@ struct ReluGrad {
     // associated gradient value. This allows the output of the Relu to be used,
     // as well as its input.
     backprops.device(d) =
-        gradients *
-        (features > features.constant(static_cast<T>(0))).template cast<T>();
+        gradients * (features > static_cast<T>(0)).template cast<T>();
   }
 };
 
@@ -85,10 +84,10 @@ struct Relu6Grad {
     // NOTE: When the activation is exactly zero or six, we
     // arbitrarily choose to not propagate the associated gradient
     // value.
-    backprops.device(d) = gradients *
-                          ((features > features.constant(static_cast<T>(0))) *
-                           (features < features.constant(static_cast<T>(6))))
-                              .template cast<T>();
+    backprops.device(d) =
+        gradients *
+        ((features > static_cast<T>(0)) * (features < static_cast<T>(6)))
+            .template cast<T>();
   }
 };
 

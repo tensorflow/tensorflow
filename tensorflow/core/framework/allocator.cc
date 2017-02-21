@@ -68,7 +68,7 @@ class CPUAllocator : public Allocator {
   string Name() override { return "cpu"; }
 
   void* AllocateRaw(size_t alignment, size_t num_bytes) override {
-    void* p = port::aligned_malloc(num_bytes, alignment);
+    void* p = port::AlignedMalloc(num_bytes, alignment);
     if (cpu_allocator_collect_stats) {
       const std::size_t alloc_size = port::MallocExtension_GetAllocatedSize(p);
       mutex_lock l(mu_);
@@ -89,7 +89,7 @@ class CPUAllocator : public Allocator {
       mutex_lock l(mu_);
       stats_.bytes_in_use -= alloc_size;
     }
-    port::aligned_free(ptr);
+    port::AlignedFree(ptr);
   }
 
   void GetStats(AllocatorStats* stats) override {
@@ -120,6 +120,9 @@ Allocator* MakeCpuAllocator() {
 
 Allocator* cpu_allocator() {
   static Allocator* cpu_alloc = MakeCpuAllocator();
+  if (cpu_allocator_collect_full_stats && !cpu_alloc->TracksAllocationSizes()) {
+    cpu_alloc = new TrackingAllocator(cpu_alloc, true);
+  }
   return cpu_alloc;
 }
 

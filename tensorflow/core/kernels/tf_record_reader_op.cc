@@ -38,11 +38,8 @@ class TFRecordReader : public ReaderBase {
     offset_ = 0;
     TF_RETURN_IF_ERROR(env_->NewRandomAccessFile(current_work(), &file_));
 
-    io::RecordReaderOptions options;
-    if (compression_type_ == "ZLIB") {
-      options.compression_type = io::RecordReaderOptions::ZLIB_COMPRESSION;
-    }
-
+    io::RecordReaderOptions options =
+        io::RecordReaderOptions::CreateRecordReaderOptions(compression_type_);
     reader_.reset(new io::RecordReader(file_.get(), options));
     return Status::OK();
   }
@@ -90,7 +87,8 @@ class TFRecordReaderOp : public ReaderOpKernel {
     Env* env = context->env();
 
     string compression_type;
-    context->GetAttr("compression_type", &compression_type);
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("compression_type", &compression_type));
 
     SetReaderFactory([this, compression_type, env]() {
       return new TFRecordReader(name(), compression_type, env);
@@ -99,6 +97,8 @@ class TFRecordReaderOp : public ReaderOpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(Name("TFRecordReader").Device(DEVICE_CPU),
+                        TFRecordReaderOp);
+REGISTER_KERNEL_BUILDER(Name("TFRecordReaderV2").Device(DEVICE_CPU),
                         TFRecordReaderOp);
 
 }  // namespace tensorflow

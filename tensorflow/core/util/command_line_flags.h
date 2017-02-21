@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef THIRD_PARTY_TENSORFLOW_CORE_UTIL_COMMAND_LINE_FLAGS_H
 #define THIRD_PARTY_TENSORFLOW_CORE_UTIL_COMMAND_LINE_FLAGS_H
 
+#include <string>
 #include <vector>
 #include "tensorflow/core/platform/types.h"
 
@@ -30,10 +31,19 @@ namespace tensorflow {
 // int some_int = 10;
 // bool some_switch = false;
 // string some_name = "something";
-// bool parsed_values_ok = ParseFlags(&argc, argv, {
-//   Flag("some_int", &some_int),
-//   Flag("some_switch", &some_switch),
-//   Flag("some_name", &some_name)});
+// std::vector<tensorFlow::Flag> flag_list = {
+//   Flag("some_int", &some_int, "an integer that affects X"),
+//   Flag("some_switch", &some_switch, "a bool that affects Y"),
+//   Flag("some_name", &some_name, "a string that affects Z")
+// };
+// // Get usage message before ParseFlags() to capture default values.
+// string usage = Flag::Usage(argv[0], flag_list);
+// bool parsed_values_ok = Flags::Parse(&argc, argv, flag_list);
+//
+// tensorflow::port::InitMain(usage.c_str(), &argc, &argv);
+// if (argc != 1 || !parsed_values_ok) {
+//    ...output usage and error message...
+// }
 //
 // The argc and argv values are adjusted by the Parse function so all that
 // remains is the program name (at argv[0]) and any unknown arguments fill the
@@ -46,23 +56,44 @@ namespace tensorflow {
 // NOTE: Unlike gflags-style libraries, this library is intended to be
 // used in the `main()` function of your binary. It does not handle
 // flag definitions that are scattered around the source code.
+
+// A description of a single command line flag, holding its name, type, usage
+// text, and a pointer to the corresponding variable.
 class Flag {
  public:
-  Flag(const char* name, int32* dst1);
-  Flag(const char* name, bool* dst);
-  Flag(const char* name, string* dst);
+  Flag(const char* name, int32* dst1, const string& usage_text);
+  Flag(const char* name, int64* dst1, const string& usage_text);
+  Flag(const char* name, bool* dst, const string& usage_text);
+  Flag(const char* name, string* dst, const string& usage_text);
+
+ private:
+  friend class Flags;
 
   bool Parse(string arg, bool* value_parsing_ok) const;
 
- private:
   string name_;
-  enum { TYPE_INT, TYPE_BOOL, TYPE_STRING } type_;
+  enum { TYPE_INT, TYPE_INT64, TYPE_BOOL, TYPE_STRING } type_;
   int* int_value_;
+  int64* int64_value_;
   bool* bool_value_;
   string* string_value_;
+  string usage_text_;
 };
 
-bool ParseFlags(int* argc, char** argv, const std::vector<Flag>& flag_list);
+class Flags {
+ public:
+  // Parse the command line represented by argv[0, ..., (*argc)-1] to find flag
+  // instances matching flags in flaglist[].  Update the variables associated
+  // with matching flags, and remove the matching arguments from (*argc, argv).
+  // Return true iff all recognized flag values were parsed correctly, and the
+  // first remaining argument is not "--help".
+  static bool Parse(int* argc, char** argv, const std::vector<Flag>& flag_list);
+
+  // Return a usage message with command line cmdline, and the
+  // usage_text strings in flag_list[].
+  static string Usage(const string& cmdline,
+                      const std::vector<Flag>& flag_list);
+};
 
 }  // namespace tensorflow
 

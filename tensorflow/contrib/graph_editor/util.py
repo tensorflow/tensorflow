@@ -19,8 +19,23 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+import re
+from six import iteritems
 from tensorflow.python.framework import ops as tf_ops
 from tensorflow.python.ops import array_ops as tf_array_ops
+
+__all__ = [
+    "make_list_of_op",
+    "get_tensors",
+    "make_list_of_t",
+    "get_generating_ops",
+    "get_consuming_ops",
+    "ControlOutputs",
+    "placeholder_name",
+    "make_placeholder_from_tensor",
+    "make_placeholder_from_dtype_and_shape",
+]
 
 
 def concatenate_unique(la, lb):
@@ -58,6 +73,11 @@ class ListView(object):
   def __getitem__(self, i):
     return self._list[i]
 
+  def __add__(self, other):
+    if not isinstance(other, list):
+      other = list(other)
+    return list(self) + other
+
 
 # TODO(fkp): very generic code, it should be moved in a more generic place.
 def is_iterable(obj):
@@ -67,6 +87,66 @@ def is_iterable(obj):
   except Exception:  # pylint: disable=broad-except
     return False
   return True
+
+
+def flatten_tree(tree, leaves=None):
+  """Flatten a tree into a list.
+
+  Args:
+    tree: iterable or not. If iterable, its elements (child) can also be
+      iterable or not.
+    leaves: list to which the tree leaves are appended (None by default).
+  Returns:
+    A list of all the leaves in the tree.
+  """
+  if leaves is None:
+    leaves = []
+  if isinstance(tree, dict):
+    for _, child in iteritems(tree):
+      flatten_tree(child, leaves)
+  elif is_iterable(tree):
+    for child in tree:
+      flatten_tree(child, leaves)
+  else:
+    leaves.append(tree)
+  return leaves
+
+
+def transform_tree(tree, fn, iterable_type=tuple):
+  """Transform all the nodes of a tree.
+
+  Args:
+    tree: iterable or not. If iterable, its elements (child) can also be
+      iterable or not.
+    fn: function to apply to each leaves.
+    iterable_type: type use to construct the resulting tree for unknwon
+      iterable, typically `list` or `tuple`.
+  Returns:
+    A tree whose leaves has been transformed by `fn`.
+    The hierarchy of the output tree mimics the one of the input tree.
+  """
+  if is_iterable(tree):
+    if isinstance(tree, dict):
+      res = tree.__new__(type(tree))
+      res.__init__(
+          (k, transform_tree(child, fn)) for k, child in iteritems(tree))
+      return res
+    elif isinstance(tree, tuple):
+      # NamedTuple?
+      if hasattr(tree, "_asdict"):
+        res = tree.__new__(type(tree), **transform_tree(tree._asdict(), fn))
+      else:
+        res = tree.__new__(type(tree),
+                           (transform_tree(child, fn) for child in tree))
+      return res
+    elif isinstance(tree, collections.Sequence):
+      res = tree.__new__(type(tree))
+      res.__init__(transform_tree(child, fn) for child in tree)
+      return res
+    else:
+      return iterable_type(transform_tree(child, fn) for child in tree)
+  else:
+    return fn(tree)
 
 
 def check_graphs(*args):
@@ -107,10 +187,13 @@ def get_unique_graph(tops, check_types=None, none_if_empty=False):
     raise TypeError("{} is not iterable".format(type(tops)))
   if check_types is None:
     check_types = (tf_ops.Operation, tf_ops.Tensor)
+  elif not is_iterable(check_types):
+    check_types = (check_types,)
   g = None
   for op in tops:
     if not isinstance(op, check_types):
-      raise TypeError("Expected a tf.Operation, got: {}".format(type(op)))
+      raise TypeError("Expected a type in ({}), got: {}".format(", ".join([str(
+          t) for t in check_types]), type(op)))
     if g is None:
       g = op.graph
     elif g is not op.graph:
@@ -121,18 +204,20 @@ def get_unique_graph(tops, check_types=None, none_if_empty=False):
 
 
 def make_list_of_op(ops, check_graph=True, allow_graph=True, ignore_ts=False):
-  """Convert ops to a list of tf.Operation.
+  """Convert ops to a list of `tf.Operation`.
 
   Args:
-    ops: can be an iterable of tf.Operation, a tf.Graph or a single operation.
-    check_graph: if True check if all the operations belong to the same graph.
-    allow_graph: if False a tf.Graph cannot be converted.
-    ignore_ts: if True, silently ignore tf.Tensor.
+    ops: can be an iterable of `tf.Operation`, a `tf.Graph` or a single
+      operation.
+    check_graph: if `True` check if all the operations belong to the same graph.
+    allow_graph: if `False` a `tf.Graph` cannot be converted.
+    ignore_ts: if True, silently ignore `tf.Tensor`.
   Returns:
-    a newly created list of tf.Operation.
+    A newly created list of `tf.Operation`.
   Raises:
-    TypeError: if ops cannot be converted to a list of tf.Operation or,
-     if check_graph is True, if all the ops do not belong to the same graph.
+    TypeError: if ops cannot be converted to a list of `tf.Operation` or,
+     if `check_graph` is `True`, if all the ops do not belong to the
+     same graph.
   """
   if isinstance(ops, tf_ops.Graph):
     if allow_graph:
@@ -140,8 +225,10 @@ def make_list_of_op(ops, check_graph=True, allow_graph=True, ignore_ts=False):
     else:
       raise TypeError("allow_graph is False: cannot convert a tf.Graph.")
   else:
-    if not is_iterable(ops): ops = [ops]
-    if not ops: return []
+    if not is_iterable(ops):
+      ops = [ops]
+    if not ops:
+      return []
     if check_graph:
       check_types = None if ignore_ts else tf_ops.Operation
       get_unique_graph(ops, check_types=check_types)
@@ -153,34 +240,33 @@ def get_tensors(graph):
   """get all the tensors which are input or output of an op in the graph.
 
   Args:
-    graph: a tf.Graph.
+    graph: a `tf.Graph`.
   Returns:
-    A list of tf.Tensor.
+    A list of `tf.Tensor`.
   Raises:
-    TypeError: if graph is not a tf.Graph.
+    TypeError: if graph is not a `tf.Graph`.
   """
   if not isinstance(graph, tf_ops.Graph):
     raise TypeError("Expected a graph, got: {}".format(type(graph)))
   ts = []
   for op in graph.get_operations():
-    concatenate_unique(ts, op.inputs)
-    concatenate_unique(ts, op.outputs)
+    ts += op.outputs
   return ts
 
 
 def make_list_of_t(ts, check_graph=True, allow_graph=True, ignore_ops=False):
-  """Convert ts to a list of tf.Tensor.
+  """Convert ts to a list of `tf.Tensor`.
 
   Args:
-    ts: can be an iterable of tf.Tensor, a tf.Graph or a single tensor.
-    check_graph: if True check if all the tensors belong to the same graph.
-    allow_graph: if False a tf.Graph cannot be converted.
-    ignore_ops: if True, silently ignore tf.Operation.
+    ts: can be an iterable of `tf.Tensor`, a `tf.Graph` or a single tensor.
+    check_graph: if `True` check if all the tensors belong to the same graph.
+    allow_graph: if `False` a `tf.Graph` cannot be converted.
+    ignore_ops: if `True`, silently ignore `tf.Operation`.
   Returns:
-    a newly created list of tf.Tensor.
+    A newly created list of `tf.Tensor`.
   Raises:
-    TypeError: if ts cannot be converted to a list of tf.Tensor or,
-     if check_graph is True, if all the ops do not belong to the same graph.
+    TypeError: if `ts` cannot be converted to a list of `tf.Tensor` or,
+     if `check_graph` is `True`, if all the ops do not belong to the same graph.
   """
   if isinstance(ts, tf_ops.Graph):
     if allow_graph:
@@ -188,8 +274,10 @@ def make_list_of_t(ts, check_graph=True, allow_graph=True, ignore_ops=False):
     else:
       raise TypeError("allow_graph is False: cannot convert a tf.Graph.")
   else:
-    if not is_iterable(ts): ts = [ts]
-    if not ts: return []
+    if not is_iterable(ts):
+      ts = [ts]
+    if not ts:
+      return []
     if check_graph:
       check_types = None if ignore_ops else tf_ops.Tensor
       get_unique_graph(ts, check_types=check_types)
@@ -197,14 +285,14 @@ def make_list_of_t(ts, check_graph=True, allow_graph=True, ignore_ops=False):
 
 
 def get_generating_ops(ts):
-  """Return all the generating ops of the tensors in ts.
+  """Return all the generating ops of the tensors in `ts`.
 
   Args:
-    ts: a list of tf.Tensor
+    ts: a list of `tf.Tensor`
   Returns:
-    A list of all the generating tf.Operation of the tensors in ts.
+    A list of all the generating `tf.Operation` of the tensors in `ts`.
   Raises:
-    TypeError: if ts cannot be converted to a list of tf.Tensor.
+    TypeError: if `ts` cannot be converted to a list of `tf.Tensor`.
   """
   ts = make_list_of_t(ts, allow_graph=False)
   return [t.op for t in ts]
@@ -214,11 +302,11 @@ def get_consuming_ops(ts):
   """Return all the consuming ops of the tensors in ts.
 
   Args:
-    ts: a list of tf.Tensor
+    ts: a list of `tf.Tensor`
   Returns:
-    A list of all the consuming tf.Operation of the tensors in ts.
+    A list of all the consuming `tf.Operation` of the tensors in `ts`.
   Raises:
-    TypeError: if ts cannot be converted to a list of tf.Tensor.
+    TypeError: if ts cannot be converted to a list of `tf.Tensor`.
   """
   ts = make_list_of_t(ts, allow_graph=False)
   ops = []
@@ -236,13 +324,13 @@ class ControlOutputs(object):
     """Create a dictionary of control-output dependencies.
 
     Args:
-      graph: a tf.Graph.
+      graph: a `tf.Graph`.
     Returns:
-      A dictionary where a key is a tf.Operation instance and the corresponding
-      value is a list of all the ops which have the key as one of their
-      control-input dependencies.
+      A dictionary where a key is a `tf.Operation` instance and the
+         corresponding value is a list of all the ops which have the key
+         as one of their control-input dependencies.
     Raises:
-      TypeError: graph is not a tf.Graph.
+      TypeError: graph is not a `tf.Graph`.
     """
     if not isinstance(graph, tf_ops.Graph):
       raise TypeError("Expected a tf.Graph, got: {}".format(type(graph)))
@@ -292,23 +380,25 @@ def scope_finalize(scope):
 
 def scope_dirname(scope):
   slash = scope.rfind("/")
-  if slash == -1: return ""
-  return scope[:slash+1]
+  if slash == -1:
+    return ""
+  return scope[:slash + 1]
 
 
 def scope_basename(scope):
   slash = scope.rfind("/")
-  if slash == -1: return scope
-  return scope[slash+1:]
+  if slash == -1:
+    return scope
+  return scope[slash + 1:]
 
 
 def placeholder_name(t=None, scope=None):
-  """Create placeholder name for tjhe graph editor.
+  """Create placeholder name for the graph editor.
 
   Args:
     t: optional tensor on which the placeholder operation's name will be based
       on
-    scope: absolute scope with which to predix the placeholder's name. None
+    scope: absolute scope with which to prefix the placeholder's name. None
       means that the scope of t is preserved. "" means the root scope.
   Returns:
     A new placeholder name prefixed by "geph". Note that "geph" stands for
@@ -340,23 +430,23 @@ def placeholder_name(t=None, scope=None):
 
 
 def make_placeholder_from_tensor(t, scope=None):
-  """Create a tf.placeholder for the Graph Editor.
+  """Create a `tf.placeholder` for the Graph Editor.
 
   Note that the correct graph scope must be set by the calling function.
 
   Args:
-    t: a tf.Tensor whose name will be used to create the placeholder
+    t: a `tf.Tensor` whose name will be used to create the placeholder
       (see function placeholder_name).
     scope: absolute scope within which to create the placeholder. None
-      means that the scope of t is preserved. "" means the root scope.
+      means that the scope of `t` is preserved. `""` means the root scope.
   Returns:
-    A newly created tf.placeholder.
+    A newly created `tf.placeholder`.
   Raises:
-    TypeError: if t is not None or a tf.Tensor.
+    TypeError: if `t` is not `None` or a `tf.Tensor`.
   """
-  return tf_array_ops.placeholder(dtype=t.dtype,
-                                  shape=t.get_shape(),
-                                  name=placeholder_name(t, scope=scope))
+  return tf_array_ops.placeholder(
+      dtype=t.dtype, shape=t.get_shape(), name=placeholder_name(
+          t, scope=scope))
 
 
 def make_placeholder_from_dtype_and_shape(dtype, shape=None, scope=None):
@@ -374,6 +464,77 @@ def make_placeholder_from_dtype_and_shape(dtype, shape=None, scope=None):
   Returns:
     A newly created tf.placeholder.
   """
-  return tf_array_ops.placeholder(dtype=dtype,
-                                  shape=shape,
-                                  name=placeholder_name(scope=scope))
+  return tf_array_ops.placeholder(
+      dtype=dtype, shape=shape, name=placeholder_name(scope=scope))
+
+
+_INTERNAL_VARIABLE_RE = re.compile(r"^__\w+__$")
+
+
+def get_predefined_collection_names():
+  """Return all the predefined collection names."""
+  return [getattr(tf_ops.GraphKeys, key) for key in dir(tf_ops.GraphKeys)
+          if not _INTERNAL_VARIABLE_RE.match(key)]
+
+
+def find_corresponding_elem(target, dst_graph, dst_scope="", src_scope=""):
+  """Find corresponding op/tensor in a different graph.
+
+  Args:
+    target: A `tf.Tensor` or a `tf.Operation` belonging to the original graph.
+    dst_graph: The graph in which the corresponding graph element must be found.
+    dst_scope: A scope which is prepended to the name to look for.
+    src_scope: A scope which is removed from the original of `target` name.
+
+  Returns:
+    The corresponding tf.Tensor` or a `tf.Operation`.
+
+  Raises:
+    ValueError: if `src_name` does not start with `src_scope`.
+    TypeError: if `target` is not a `tf.Tensor` or a `tf.Operation`
+    KeyError: If the corresponding graph element cannot be found.
+  """
+  src_name = target.name
+  if src_scope:
+    src_scope = scope_finalize(src_scope)
+    if not src_name.startswidth(src_scope):
+      raise ValueError("{} does not start with {}".format(src_name, src_scope))
+    src_name = src_name[len(src_scope):]
+
+  dst_name = src_name
+  if dst_scope:
+    dst_scope = scope_finalize(dst_scope)
+    dst_name = dst_scope + dst_name
+
+  if isinstance(target, tf_ops.Tensor):
+    return dst_graph.get_tensor_by_name(dst_name)
+  if isinstance(target, tf_ops.Operation):
+    return dst_graph.get_operation_by_name(dst_name)
+  raise TypeError("Expected tf.Tensor or tf.Operation, got: {}", type(target))
+
+
+def find_corresponding(targets, dst_graph, dst_scope="", src_scope=""):
+  """Find corresponding ops/tensors in a different graph.
+
+  `targets` is a Python tree, that is, a nested structure of iterable
+  (list, tupple, dictionary) whose leaves are instances of
+  `tf.Tensor` or `tf.Operation`
+
+  Args:
+    targets: A Python tree containing `tf.Tensor` or `tf.Operation`
+      belonging to the original graph.
+    dst_graph: The graph in which the corresponding graph element must be found.
+    dst_scope: A scope which is prepended to the name to look for.
+    src_scope: A scope which is removed from the original of `top` name.
+
+  Returns:
+    A Python tree containin the corresponding tf.Tensor` or a `tf.Operation`.
+
+  Raises:
+    ValueError: if `src_name` does not start with `src_scope`.
+    TypeError: if `top` is not a `tf.Tensor` or a `tf.Operation`
+    KeyError: If the corresponding graph element cannot be found.
+  """
+  def func(top):
+    return find_corresponding_elem(top, dst_graph, dst_scope, src_scope)
+  return transform_tree(targets, func)

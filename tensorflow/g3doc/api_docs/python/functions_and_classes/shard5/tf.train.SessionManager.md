@@ -40,7 +40,7 @@ with tf.Graph().as_default():
 `wait_for_session()` waits for a model to be initialized by other processes.
 - - -
 
-#### `tf.train.SessionManager.__init__(local_init_op=None, ready_op=None, graph=None, recovery_wait_secs=30)` {#SessionManager.__init__}
+#### `tf.train.SessionManager.__init__(local_init_op=None, ready_op=None, ready_for_local_init_op=None, graph=None, recovery_wait_secs=30)` {#SessionManager.__init__}
 
 Creates a SessionManager.
 
@@ -48,9 +48,16 @@ The `local_init_op` is an `Operation` that is run always after a new session
 was created. If `None`, this step is skipped.
 
 The `ready_op` is an `Operation` used to check if the model is ready.  The
-model is considered ready if that operation returns an empty string tensor.
-If the operation returns non empty string tensor, the elements are
-concatenated and used to indicate to the user why the model is not ready.
+model is considered ready if that operation returns an empty 1D string
+tensor. If the operation returns a non empty 1D string tensor, the elements
+are concatenated and used to indicate to the user why the model is not
+ready.
+
+The `ready_for_local_init_op` is an `Operation` used to check if the model
+is ready to run local_init_op.  The model is considered ready if that
+operation returns an empty 1D string tensor. If the operation returns a non
+empty 1D string tensor, the elements are concatenated and used to indicate
+to the user why the model is not ready.
 
 If `ready_op` is `None`, the model is not checked for readiness.
 
@@ -64,13 +71,21 @@ be initialized or restored.  Defaults to 30 seconds.
 *  <b>`local_init_op`</b>: An `Operation` run immediately after session creation.
      Usually used to initialize tables and local variables.
 *  <b>`ready_op`</b>: An `Operation` to check if the model is initialized.
+*  <b>`ready_for_local_init_op`</b>: An `Operation` to check if the model is ready
+     to run local_init_op.
 *  <b>`graph`</b>: The `Graph` that the model will use.
 *  <b>`recovery_wait_secs`</b>: Seconds between checks for the model to be ready.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If ready_for_local_init_op is not None but local_init_op is
+    None
 
 
 - - -
 
-#### `tf.train.SessionManager.prepare_session(master, init_op=None, saver=None, checkpoint_dir=None, wait_for_checkpoint=False, max_wait_secs=7200, config=None, init_feed_dict=None, init_fn=None)` {#SessionManager.prepare_session}
+#### `tf.train.SessionManager.prepare_session(master, init_op=None, saver=None, checkpoint_dir=None, checkpoint_filename_with_path=None, wait_for_checkpoint=False, max_wait_secs=7200, config=None, init_feed_dict=None, init_fn=None)` {#SessionManager.prepare_session}
 
 Creates a `Session`. Makes sure the model is ready to be used.
 
@@ -83,21 +98,12 @@ up to `max_wait_secs`, for recovery to succeed.
 
 If the model cannot be recovered successfully then it is initialized by
 either running the provided `init_op`, or calling the provided `init_fn`.
-It is an error if the model cannot be recovered and neither an `init_op`
-or an `init_fn` are passed.
+The local_init_op is also run after init_op and init_fn, regardless of
+whether the model was recovered successfully, but only if
+ready_for_local_init_op passes.
 
-This is a convenient function for the following, with a few error checks
-added:
-
-```python
-sess, initialized = self.recover_session(master)
-if not initialized:
-  if init_op:
-    sess.run(init_op, feed_dict=init_feed_dict)
-  if init_fn;
-    init_fn(sess)
-return sess
-```
+It is an error if the model cannot be recovered and no `init_op`
+or `init_fn` or `local_init_op` are passed.
 
 ##### Args:
 
@@ -105,7 +111,9 @@ return sess
 *  <b>`master`</b>: `String` representation of the TensorFlow master to use.
 *  <b>`init_op`</b>: Optional `Operation` used to initialize the model.
 *  <b>`saver`</b>: A `Saver` object used to restore a model.
-*  <b>`checkpoint_dir`</b>: Path to the checkpoint files.
+*  <b>`checkpoint_dir`</b>: Path to the checkpoint files. The latest checkpoint in the
+    dir will be used to restore.
+*  <b>`checkpoint_filename_with_path`</b>: Full file name path to the checkpoint file.
 *  <b>`wait_for_checkpoint`</b>: Whether to wait for checkpoint to become available.
 *  <b>`max_wait_secs`</b>: Maximum time to wait for checkpoints to become available.
 *  <b>`config`</b>: Optional `ConfigProto` proto used to configure the session.
@@ -125,10 +133,16 @@ return sess
 
 *  <b>`RuntimeError`</b>: If the model cannot be initialized or recovered.
 
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If both checkpoint_dir and checkpoint_filename_with_path are
+    set.
+
 
 - - -
 
-#### `tf.train.SessionManager.recover_session(master, saver=None, checkpoint_dir=None, wait_for_checkpoint=False, max_wait_secs=7200, config=None)` {#SessionManager.recover_session}
+#### `tf.train.SessionManager.recover_session(master, saver=None, checkpoint_dir=None, checkpoint_filename_with_path=None, wait_for_checkpoint=False, max_wait_secs=7200, config=None)` {#SessionManager.recover_session}
 
 Creates a `Session`, recovering if possible.
 
@@ -140,7 +154,9 @@ and can be recovered from a checkpoint, recover it.
 
 *  <b>`master`</b>: `String` representation of the TensorFlow master to use.
 *  <b>`saver`</b>: A `Saver` object used to restore a model.
-*  <b>`checkpoint_dir`</b>: Path to the checkpoint files.
+*  <b>`checkpoint_dir`</b>: Path to the checkpoint files. The latest checkpoint in the
+    dir will be used to restore.
+*  <b>`checkpoint_filename_with_path`</b>: Full file name path to the checkpoint file.
 *  <b>`wait_for_checkpoint`</b>: Whether to wait for checkpoint to become available.
 *  <b>`max_wait_secs`</b>: Maximum time to wait for checkpoints to become available.
 *  <b>`config`</b>: Optional `ConfigProto` proto used to configure the session.
@@ -148,7 +164,13 @@ and can be recovered from a checkpoint, recover it.
 ##### Returns:
 
   A pair (sess, initialized) where 'initialized' is `True` if
-  the session could be recovered, `False` otherwise.
+  the session could be recovered and initialized, `False` otherwise.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If both checkpoint_dir and checkpoint_filename_with_path are
+    set.
 
 
 - - -

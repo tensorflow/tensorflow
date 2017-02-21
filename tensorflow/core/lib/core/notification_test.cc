@@ -67,13 +67,21 @@ TEST(NotificationTest, TestMultipleThreadsWaitingOnNotification) {
       ++counter;
     });
   }
-  sleep(1);
+
+  // Sleep 1 second.
+  Env::Default()->SleepForMicroseconds(1 * 1000 * 1000);
 
   EXPECT_EQ(0, counter);
 
   n.Notify();
   delete thread_pool;  // Wait for all closures to finish.
   EXPECT_EQ(4, counter);
+}
+
+TEST(NotificationTest, TestWaitWithTimeoutOnNotifiedNotification) {
+  Notification n;
+  n.Notify();
+  EXPECT_TRUE(WaitForNotificationWithTimeout(&n, 1000 * 1000));
 }
 
 }  // namespace

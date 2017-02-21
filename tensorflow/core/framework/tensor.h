@@ -38,6 +38,7 @@ namespace tensorflow {
 class TensorBuffer;  // Forward declaration.
 class TensorCApi;
 
+/// @ingroup core
 /// Represents an n-dimensional array of values.
 class Tensor {
  public:
@@ -99,11 +100,12 @@ class Tensor {
   /// for details.
   explicit Tensor(DataType type);
 
-  Tensor(const Tensor& other);  /// Copy constructor.
+  /// Copy constructor.
+  Tensor(const Tensor& other);
 
-  // Move constructor.  After this call, <other> is safely destructible and can
-  // be assigned to, but other calls on it (e.g. shape manipulation) are not
-  // valid.
+  /// \brief Move constructor. After this call, <other> is safely destructible and can
+  /// be assigned to, but other calls on it (e.g. shape manipulation) are not
+  /// valid.
   Tensor(Tensor&& other);
 
   ~Tensor();
@@ -133,10 +135,6 @@ class Tensor {
   // True iff the two tensors use the same underlying refcounted storage
   bool SharesBufferWith(const Tensor& b) const;
 
-  // The BufferHash of two tensors are equal when they share the same
-  // underlying refcounted storage
-  size_t BufferHash() const;
-
   /// \brief If necessary, has this Tensor been initialized?
   ///
   /// Zero-element Tensors are always considered initialized, even if they
@@ -148,11 +146,11 @@ class Tensor {
 
   /// Returns true iff this tensor is aligned.
   bool IsAligned() const {
-#if EIGEN_ALIGN == 1
+#if EIGEN_MAX_ALIGN_BYTES == 0
+    return true;
+#else
     void* ptr = base<void>();
     return reinterpret_cast<intptr_t>(ptr) % EIGEN_MAX_ALIGN_BYTES == 0;
-#else
-    return true;
 #endif
   }
 
@@ -242,6 +240,14 @@ class Tensor {
   template <typename T, size_t NDIMS>
   typename TTypes<T, NDIMS>::Tensor tensor();
 
+  /// \brief Return the tensor data to an `Eigen::Tensor` with the
+  /// same size but a bitwise cast to the specified dtype `T`.
+  ///
+  /// Using a bitcast is useful for move and copy operations.
+  /// NOTE: this is the same as `tensor()` except a bitcast is allowed.
+  template <typename T, size_t NDIMS>
+  typename TTypes<T, NDIMS>::Tensor bit_casted_tensor();
+
   /// \brief Return the tensor data as an `Eigen::Tensor` of the data type and a
   /// specified shape.
   ///
@@ -298,6 +304,15 @@ class Tensor {
   template <typename T, size_t NDIMS>
   typename TTypes<T, NDIMS>::Tensor shaped(gtl::ArraySlice<int64> new_sizes);
 
+  /// \brief Return the tensor data to an `Eigen::Tensor` with the new
+  /// shape specified in `new_sizes` and cast to a new dtype `T`.
+  ///
+  /// Using a bitcast is useful for move and copy operations.
+  /// The allowed bitcast is the only difference from `shaped()`.
+  template <typename T, size_t NDIMS>
+  typename TTypes<T, NDIMS>::Tensor bit_casted_shaped(
+      gtl::ArraySlice<int64> new_sizes);
+
   template <typename T, size_t NDIMS>
   typename TTypes<T, NDIMS>::UnalignedTensor unaligned_shaped(
       gtl::ArraySlice<int64> new_sizes);
@@ -324,6 +339,14 @@ class Tensor {
   template <typename T, size_t NDIMS>
   typename TTypes<T, NDIMS>::ConstTensor tensor() const;
 
+  /// \brief Return the tensor data to an `Eigen::Tensor` with the
+  /// same size but a bitwise cast to the specified dtype `T`.
+  ///
+  /// Using a bitcast is useful for move and copy operations.
+  /// NOTE: this is the same as `tensor()` except a bitcast is allowed.
+  template <typename T, size_t NDIMS>
+  typename TTypes<T, NDIMS>::ConstTensor bit_casted_tensor() const;
+
   template <typename T>
   typename TTypes<T>::ConstFlat flat() const {
     return shaped<T, 1>({NumElements()});
@@ -336,6 +359,15 @@ class Tensor {
 
   template <typename T, size_t NDIMS>
   typename TTypes<T, NDIMS>::ConstTensor shaped(
+      gtl::ArraySlice<int64> new_sizes) const;
+
+  /// \brief Return the tensor data to an `Eigen::Tensor` with the new
+  /// shape specified in `new_sizes` and cast to a new dtype `T`.
+  ///
+  /// Using a bitcast is useful for move and copy operations.
+  /// The allowed bitcast is the only difference from `shaped()`.
+  template <typename T, size_t NDIMS>
+  typename TTypes<T, NDIMS>::ConstTensor bit_casted_shaped(
       gtl::ArraySlice<int64> new_sizes) const;
 
   template <typename T, size_t NDIMS>
@@ -378,7 +410,8 @@ class Tensor {
   /// buffer's datatype.
   ///
   /// This tensor shares other's underlying storage.
-  void UnsafeCopyFromInternal(const Tensor&, const TensorShape&);
+  void UnsafeCopyFromInternal(const Tensor&, DataType dtype,
+                              const TensorShape&);
 
  private:
   void CheckType(DataType expected_dtype) const;
@@ -404,6 +437,8 @@ class Tensor {
   friend class VariableOp;            // For access to set_shape
   friend class AutoReloadVariableOp;  // For access to set_shape
   friend class TensorTestHelper;      // For access to set_shape
+  template <typename Device, typename T>
+  friend class CreateVariableOp;
 
   // Creates a tensor with the input datatype, shape and buf.
   //
@@ -434,6 +469,8 @@ class Tensor {
 };
 
 // Implementation details
+
+// START_SKIP_DOXYGEN
 
 // Interface to access the raw ref-counted data buffer.
 class TensorBuffer : public core::RefCounted {
@@ -477,6 +514,22 @@ typename TTypes<T, NDIMS>::ConstTensor Tensor::tensor() const {
                                                 shape().AsEigenDSizes<NDIMS>());
 }
 
+template <typename T, size_t NDIMS>
+typename TTypes<T, NDIMS>::Tensor Tensor::bit_casted_tensor() {
+  CHECK(IsAligned());
+  ;
+  return typename TTypes<T, NDIMS>::Tensor(base<T>(),
+                                           shape().AsEigenDSizes<NDIMS>());
+}
+
+template <typename T, size_t NDIMS>
+typename TTypes<T, NDIMS>::ConstTensor Tensor::bit_casted_tensor() const {
+  CHECK(IsAligned());
+  ;
+  return typename TTypes<T, NDIMS>::ConstTensor(base<const T>(),
+                                                shape().AsEigenDSizes<NDIMS>());
+}
+
 template <size_t NDIMS>
 void Tensor::FillDimsAndValidateCompatibleShape(
     gtl::ArraySlice<int64> new_sizes,
@@ -494,6 +547,16 @@ template <typename T, size_t NDIMS>
 typename TTypes<T, NDIMS>::Tensor Tensor::shaped(
     gtl::ArraySlice<int64> new_sizes) {
   CheckTypeAndIsAligned(DataTypeToEnum<T>::v());
+  Eigen::array<Eigen::DenseIndex, NDIMS> dims;
+  FillDimsAndValidateCompatibleShape<NDIMS>(new_sizes, &dims);
+  return typename TTypes<T, NDIMS>::Tensor(base<T>(), dims);
+}
+
+template <typename T, size_t NDIMS>
+typename TTypes<T, NDIMS>::Tensor Tensor::bit_casted_shaped(
+    gtl::ArraySlice<int64> new_sizes) {
+  CHECK(IsAligned());
+  ;
   Eigen::array<Eigen::DenseIndex, NDIMS> dims;
   FillDimsAndValidateCompatibleShape<NDIMS>(new_sizes, &dims);
   return typename TTypes<T, NDIMS>::Tensor(base<T>(), dims);
@@ -525,6 +588,16 @@ template <typename T, size_t NDIMS>
 typename TTypes<T, NDIMS>::ConstTensor Tensor::shaped(
     gtl::ArraySlice<int64> new_sizes) const {
   CheckTypeAndIsAligned(DataTypeToEnum<T>::v());
+  Eigen::array<Eigen::DenseIndex, NDIMS> dims;
+  FillDimsAndValidateCompatibleShape(&dims, new_sizes);
+  return typename TTypes<T, NDIMS>::ConstTensor(base<T>(), dims);
+}
+
+template <typename T, size_t NDIMS>
+typename TTypes<T, NDIMS>::ConstTensor Tensor::bit_casted_shaped(
+    gtl::ArraySlice<int64> new_sizes) const {
+  CHECK(IsAligned());
+  ;
   Eigen::array<Eigen::DenseIndex, NDIMS> dims;
   FillDimsAndValidateCompatibleShape(&dims, new_sizes);
   return typename TTypes<T, NDIMS>::ConstTensor(base<T>(), dims);
@@ -582,12 +655,17 @@ inline Tensor::Tensor(Tensor&& other)
 }
 
 inline Tensor& Tensor::operator=(Tensor&& other) {
-  shape_ = std::move(other.shape_);
-  if (buf_) buf_->Unref();
-  buf_ = other.buf_;
-  other.buf_ = nullptr;
+  // Avoid self-assignment, since we might destroy our underlying buffer.
+  if (&other != this) {
+    shape_ = std::move(other.shape_);
+    if (buf_) buf_->Unref();
+    buf_ = other.buf_;
+    other.buf_ = nullptr;
+  }
   return *this;
 }
+
+// END_SKIP_DOXYGEN
 
 }  // namespace tensorflow
 

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 
 #include <atomic>
+#include <utility>
 #include <vector>
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
@@ -26,7 +27,9 @@ namespace {
 
 struct RegistrationInfo {
   RegistrationInfo(DeviceType s, DeviceType r, CopyTensor::CopyFunction cf)
-      : sender_device_type(s), receiver_device_type(r), copy_function(cf) {}
+      : sender_device_type(std::move(s)),
+        receiver_device_type(std::move(r)),
+        copy_function(cf) {}
   DeviceType sender_device_type;
   DeviceType receiver_device_type;
   CopyTensor::CopyFunction copy_function;
@@ -73,12 +76,35 @@ void CopyTensor::ViaDMA(StringPiece edge_name, DeviceContext* send_dev_context,
       }
     }
 
-    // TODO(josh11b): If no CopyFunction is found, we currently fail
-    // but we could copy between devices via CPU.
-    done(errors::Unimplemented(
-        "No function registered to copy from devices of type ",
-        src_device_type.type(), " to devices of type ",
-        dst_device_type.type()));
+    // Fall back to copying via the host.
+    VLOG(1) << "No function registered to copy from devices of type "
+            << src_device_type.type() << " to devices of type "
+            << dst_device_type.type()
+            << ". Falling back to copying via the host.";
+
+    // TODO(phawkins): choose an allocator optimal for both the src and dst
+    // devices, not just the src device.
+    AllocatorAttributes host_alloc_attrs;
+    host_alloc_attrs.set_gpu_compatible(true);
+    host_alloc_attrs.set_on_host(true);
+    Allocator* cpu_allocator = src->GetAllocator(host_alloc_attrs);
+    Tensor* cpu_tensor =
+        new Tensor(cpu_allocator, input->dtype(), input->shape());
+    auto delete_and_done = [cpu_tensor, done](const Status& status) {
+      delete cpu_tensor;
+      done(status);
+    };
+    send_dev_context->CopyDeviceTensorToCPU(
+        input, edge_name, src, cpu_tensor,
+        [recv_dev_context, cpu_tensor, dst, output,
+         delete_and_done](const Status& status) {
+          if (!status.ok()) {
+            delete_and_done(status);
+            return;
+          }
+          recv_dev_context->CopyCPUTensorToDevice(cpu_tensor, dst, output,
+                                                  delete_and_done);
+        });
     return;
   }
 

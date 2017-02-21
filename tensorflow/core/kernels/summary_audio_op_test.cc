@@ -49,12 +49,12 @@ static void EXPECT_SummaryMatches(const Summary& actual,
 // --------------------------------------------------------------------------
 class SummaryAudioOpTest : public OpsTestBase {
  protected:
-  void MakeOp(const float sample_rate, const int max_outputs) {
-    TF_ASSERT_OK(NodeDefBuilder("myop", "AudioSummary")
+  void MakeOp(const int max_outputs) {
+    TF_ASSERT_OK(NodeDefBuilder("myop", "AudioSummaryV2")
+                     .Input(FakeInput())
                      .Input(FakeInput())
                      .Input(FakeInput())
                      .Attr("max_outputs", max_outputs)
-                     .Attr("sample_rate", sample_rate)
                      .Finalize(node_def()));
     TF_ASSERT_OK(InitOp());
   }
@@ -79,13 +79,14 @@ class SummaryAudioOpTest : public OpsTestBase {
 TEST_F(SummaryAudioOpTest, Basic3D) {
   const float kSampleRate = 44100.0f;
   const int kMaxOutputs = 3;
-  MakeOp(kSampleRate, kMaxOutputs);
+  MakeOp(kMaxOutputs);
 
   // Feed and run
   AddInputFromArray<string>(TensorShape({}), {"tag"});
   AddInputFromArray<float>(TensorShape({4, 2, 2}),
                            {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
                             0.0, 0.0, 0.0, 0.0, 0.0, 0.0});
+  AddInputFromArray<float>(TensorShape({}), {kSampleRate});
 
   TF_ASSERT_OK(RunOpKernel());
 
@@ -112,13 +113,14 @@ TEST_F(SummaryAudioOpTest, Basic3D) {
 TEST_F(SummaryAudioOpTest, Basic2D) {
   const float kSampleRate = 44100.0f;
   const int kMaxOutputs = 3;
-  MakeOp(kSampleRate, kMaxOutputs);
+  MakeOp(kMaxOutputs);
 
   // Feed and run
   AddInputFromArray<string>(TensorShape({}), {"tag"});
   AddInputFromArray<float>(TensorShape({4, 4}),
                            {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
                             0.0, 0.0, 0.0, 0.0, 0.0, 0.0});
+  AddInputFromArray<float>(TensorShape({}), {kSampleRate});
 
   TF_ASSERT_OK(RunOpKernel());
 

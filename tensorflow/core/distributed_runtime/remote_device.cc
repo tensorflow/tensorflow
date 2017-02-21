@@ -42,18 +42,15 @@ string GetLocalDeviceName(StringPiece fullname) {
 
 class RemoteDevice : public Device {
  public:
-  RemoteDevice(Env* env, const DeviceAttributes& da, WorkerInterface* wi)
+  RemoteDevice(Env* env, const DeviceAttributes& da)
       : Device(env, da, nullptr),
-        local_dev_name_(GetLocalDeviceName(da.name())),
-        wi_(wi) {}
+        local_dev_name_(GetLocalDeviceName(da.name())) {}
 
-  ~RemoteDevice() override { delete wi_; }
   Status Sync() override { return Status::OK(); }
   Allocator* GetAllocator(AllocatorAttributes attr) override { return nullptr; }
 
  private:
   const string local_dev_name_;
-  WorkerInterface* wi_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(RemoteDevice);
 };
@@ -76,13 +73,12 @@ void NewRemoteDevices(Env* env, WorkerCacheInterface* worker_cache,
     if (s.ok()) {
       remote_devices.reserve(call->resp.device_attributes_size());
       for (const DeviceAttributes& da : call->resp.device_attributes()) {
-        auto d =
-            new RemoteDevice(env, da, worker_cache->CreateWorker(worker_name));
+        auto d = new RemoteDevice(env, da);
         remote_devices.push_back(d);
       }
     }
+    worker_cache->ReleaseWorker(worker_name, wi);
     done(s, &remote_devices);
-    delete wi;
     delete call;
   };
   wi->GetStatusAsync(&call->req, &call->resp, cb);

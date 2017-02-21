@@ -33,9 +33,24 @@ struct Softplus {
   // activations: same shape as "features".
   void operator()(const Device& d, typename TTypes<T>::ConstTensor features,
                   typename TTypes<T>::Tensor activations) {
-    activations.device(d) =
-        (features > features.constant(T(30)))
-            .select(features, (features.exp() + features.constant(T(1))).log());
+    // Choose a threshold on x below which exp(x) may underflow
+    // when added to 1, but for which exp(x) is always within epsilon of the
+    // true softplus(x).  Offset of 2 from machine epsilon checked
+    // experimentally for float16, float32, float64.  Checked against
+    // softplus implemented with numpy's log1p and numpy's logaddexp.
+    static const T threshold =
+        Eigen::numext::log(Eigen::NumTraits<T>::epsilon()) + T(2);
+    // Value above which exp(x) may overflow, but softplus(x) == x
+    // is within machine epsilon.
+    auto too_large = features > features.constant(-threshold);
+    // Value below which exp(x) may underflow, but softplus(x) == exp(x)
+    // is within machine epsilon.
+    auto too_small = features < features.constant(threshold);
+    auto features_exp = features.exp();
+    activations.device(d) = too_large.select(
+        features,                       // softplus(x) ~= x for x large
+        too_small.select(features_exp,  // softplus(x) ~= exp(x) for x small
+                         (features_exp + features.constant(T(1))).log()));
   }
 };
 

@@ -13,76 +13,46 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Monitors allow user instrumentaiton of the training process.
+"""Monitors instrument the training process.
 
-Monitors are useful to track training, report progress, request early
-stopping and more. Monitors use the observer pattern and notify at the following
-points:
- - when training begins
- - before a training step
- - after a training step
- - when training ends
-
-Monitors are not intended to be reusable.
-
-There are a few pre-defined monitors:
- - CaptureVariable: saves a variable's values
- - GraphDump: intended for debug only - saves all tensor values
- - PrintTensor: outputs one or more tensor values to log
- - SummarySaver: saves summaries to a summary writer
- - ValidationMonitor: runs model validation, by periodically calculating eval
-     metrics on a separate data set; supports optional early stopping
-
-For more specific needs, you can create custom monitors by extending one of the
-following classes:
- - BaseMonitor: the base class for all monitors
- - EveryN: triggers a callback every N training steps
-
-Example:
-
-  class ExampleMonitor(monitors.BaseMonitor):
-    def __init__(self):
-      print 'Init'
-
-    def begin(self, max_steps):
-      print 'Starting run. Will train until step %d.' % max_steps
-
-    def end(self):
-      print 'Completed run.'
-
-    def step_begin(self, step):
-      print 'About to run step %d...' % step
-      return ['loss_1:0']
-
-    def step_end(self, step, outputs):
-      print 'Done running step %d. The value of "loss" tensor: %s' % (
-        step, outputs['loss_1:0'])
-
-  linear_regressor = LinearRegressor()
-  example_monitor = ExampleMonitor()
-  linear_regressor.fit(
-    x, y, steps=2, batch_size=1, monitors=[example_monitor])
-
+@@get_default_monitors
+@@BaseMonitor
+@@CaptureVariable
+@@CheckpointSaver
+@@EveryN
+@@ExportMonitor
+@@GraphDump
+@@LoggingTrainable
+@@NanLoss
+@@PrintTensor
+@@StepCounter
+@@StopAtStep
+@@SummarySaver
+@@ValidationMonitor
 """
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import inspect
 import os
 import time
 
 import numpy as np
 import six
 
+from tensorflow.contrib.framework import deprecated_arg_values
+from tensorflow.contrib.framework.python.ops import variables as contrib_variables
+from tensorflow.contrib.learn.python.learn import session_run_hook
 from tensorflow.contrib.learn.python.learn.summary_writer_cache import SummaryWriterCache
-from tensorflow.contrib.learn.python.learn.utils import export
 from tensorflow.core.framework.summary_pb2 import Summary
 from tensorflow.core.util.event_pb2 import SessionLog
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import summary_io
+from tensorflow.python.util import deprecation
 
 
 # TODO(ptucker): Split each monitor class into a separate file.
@@ -91,18 +61,28 @@ class BaseMonitor(object):
   """Base class for Monitors.
 
   Defines basic interfaces of Monitors.
+  Monitors can either be run on all workers or, more commonly, restricted
+  to run exclusively on the elected chief worker.
   """
 
+  @deprecation.deprecated(
+      "2016-12-05",
+      "Monitors are deprecated. Please use tf.train.SessionRunHook.")
   def __init__(self):
     self._begun = False
     self._current_epoch = None
     self._current_step = None
     self._max_steps = None
-    self._init_step = None
     self._estimator = None
+
+  @property
+  def run_on_all_workers(self):
+    return False
 
   def set_estimator(self, estimator):
     """A setter called automatically by the target estimator.
+
+    If the estimator is locked, this method does nothing.
 
     Args:
       estimator: the estimator that this monitor monitors.
@@ -115,14 +95,13 @@ class BaseMonitor(object):
     # TODO(mdan): This should fail if called twice with the same estimator.
     self._estimator = estimator
 
-  def begin(self, max_steps=None, init_step=None):
+  def begin(self, max_steps=None):
     """Called at the beginning of training.
 
     When called, the default graph is the one we are executing.
 
     Args:
       max_steps: `int`, the maximum global step this training will run until.
-      init_step: `int`, step at which this training will start.
 
     Raises:
       ValueError: if we've already begun a run.
@@ -130,7 +109,6 @@ class BaseMonitor(object):
     if self._begun:
       raise ValueError("begin called twice without end.")
     self._max_steps = max_steps
-    self._init_step = init_step
     self._begun = True
 
   def end(self, session=None):
@@ -243,13 +221,19 @@ class BaseMonitor(object):
     _ = step, session
 
 
+def _extract_output(outputs, request):
+  if request in outputs:
+    return outputs[request]
+  return outputs[request.name]
+
+
 class EveryN(BaseMonitor):
   """Base class for monitors that execute callbacks every N steps.
 
   This class adds three new callbacks:
     - every_n_step_begin
     - every_n_step_end
-    - every_n_pos_step
+    - every_n_post_step
 
   The callbacks are executed every n steps, or optionally every step for the
   first m steps, where m and n can both be user-specified.
@@ -261,7 +245,7 @@ class EveryN(BaseMonitor):
       super(ExampleMonitor, self).step_begin(step)
       return []
 
-  Failing to call the super implementation will cause unpredictible behavior.
+  Failing to call the super implementation will cause unpredictable behavior.
 
   The `every_n_post_step()` callback is also called after the last step if it
   was not already called through the regular conditions.  Note that
@@ -284,9 +268,10 @@ class EveryN(BaseMonitor):
     self._every_n_steps = every_n_steps
     self._first_n_steps = first_n_steps
     # Last step in the model.
-    self._last_step = None
+    self._last_successful_step = None
     # Last step at which we called one of the every_n methods
-    self._last_active_step = None
+    self._last_active_step = 0
+    self._every_n_step_begin_called = False
 
   def every_n_step_begin(self, step):  # pylint: disable=unused-argument
     """Callback before every n'th step begins.
@@ -344,14 +329,12 @@ class EveryN(BaseMonitor):
       ValueError: if called more than once during a step.
     """
     super(EveryN, self).step_begin(step)
-    self._last_step = step
-    if self._last_active_step is None:
-      self._last_active_step = step - 1
     if (step <= self._first_n_steps or
         step >= (self._every_n_steps + self._last_active_step) or
         step == self._max_steps):  # Note: max_steps can be None here.
-      self._last_active_step = step
+      self._every_n_step_begin_called = True
       return self.every_n_step_begin(step)
+    self._every_n_step_begin_called = False
     return []
 
   def step_end(self, step, output):
@@ -369,19 +352,21 @@ class EveryN(BaseMonitor):
       or `False` otherwise.
     """
     super(EveryN, self).step_end(step, output)
-    if self._last_active_step == step:
+    if self._every_n_step_begin_called:
       return self.every_n_step_end(step, output)
     return False
 
   def post_step(self, step, session):
     super(EveryN, self).post_step(step, session)
-    if self._last_active_step == step:
+    if self._every_n_step_begin_called:
       self.every_n_post_step(step, session)
+      self._last_active_step = step
+    self._last_successful_step = step
 
   def end(self, session=None):
     super(EveryN, self).end(session=session)
-    if self._last_step != self._last_active_step:
-      self.every_n_post_step(self._last_step, session)
+    if self._last_successful_step != self._last_active_step:
+      self.every_n_post_step(self._last_successful_step, session)
 
 
 class StopAtStep(BaseMonitor):
@@ -414,10 +399,15 @@ class StopAtStep(BaseMonitor):
     self._num_steps = num_steps
     self._last_step = last_step
 
-  def begin(self, max_steps=None, init_step=None):
-    super(StopAtStep, self).begin(max_steps=max_steps, init_step=init_step)
-    if self._num_steps is not None:
-      self._last_step = init_step + self._num_steps
+  @property
+  def run_on_all_workers(self):
+    return True
+
+  def step_begin(self, step):
+    super(StopAtStep, self).step_begin(step)
+    if self._last_step is None:
+      self._last_step = step + self._num_steps - 1
+    return []
 
   def step_end(self, step, output):
     super(StopAtStep, self).step_end(step, output)
@@ -457,12 +447,13 @@ class PrintTensor(EveryN):
     stats = []
     for tag, tensor_name in six.iteritems(self._tensor_names):
       if tensor_name in outputs:
-        stats.append("%s = %s" % (tag, str(outputs[tensor_name])))
+        stats.append("%s = %s" % (tag,
+                                  str(_extract_output(outputs, tensor_name))))
     logging.info("Step %d: %s", step, ", ".join(stats))
 
 
 class LoggingTrainable(EveryN):
-  """Writes trainable varialbe values into log every N steps.
+  """Writes trainable variable values into log every N steps.
 
   Write the tensors in trainable variables `every_n` steps,
   starting with the `first_n`th step.
@@ -496,26 +487,32 @@ class LoggingTrainable(EveryN):
     stats = []
     for tag, tensor_name in six.iteritems(self._names):
       if tensor_name in outputs:
-        stats.append("%s = %s" % (tag, str(outputs[tensor_name])))
+        stats.append("%s = %s" % (tag,
+                                  str(_extract_output(outputs, tensor_name))))
     logging.info("Logging Trainable: Step %d: %s", step, ", ".join(stats))
 
 
 class SummarySaver(EveryN):
   """Saves summaries every N steps."""
 
-  def __init__(self, summary_op, save_steps=100, output_dir=None,
-               summary_writer=None):
+  def __init__(self,
+               summary_op,
+               save_steps=100,
+               output_dir=None,
+               summary_writer=None,
+               scaffold=None):
     """Initializes a `SummarySaver` monitor.
 
     Args:
       summary_op: `Tensor` of type `string`. A serialized `Summary` protocol
-          buffer, as output by TF summary methods like `scalar_summary` or
-          `merge_all_summaries`.
+          buffer, as output by TF summary methods like `summary.scalar` or
+          `summary.merge_all`.
       save_steps: `int`, save summaries every N steps. See `EveryN`.
       output_dir: `string`, the directory to save the summaries to. Only used
           if no `summary_writer` is supplied.
       summary_writer: `SummaryWriter`. If `None` and an `output_dir` was passed,
           one will be created accordingly.
+      scaffold: `Scaffold` to get summary_op if it's not provided.
     """
     # TODO(ipolosukhin): Implement every N seconds.
     super(SummarySaver, self).__init__(every_n_steps=save_steps)
@@ -523,6 +520,7 @@ class SummarySaver(EveryN):
     self._summary_writer = summary_writer
     if summary_writer is None and output_dir:
       self._summary_writer = summary_io.SummaryWriter(output_dir)
+    self._scaffold = scaffold
     # TODO(mdan): Throw an error if output_dir and summary_writer are None.
 
   def set_estimator(self, estimator):
@@ -533,13 +531,18 @@ class SummarySaver(EveryN):
 
   def every_n_step_begin(self, step):
     super(SummarySaver, self).every_n_step_begin(step)
-    return [self._summary_op]
+    if self._summary_op is None and self._scaffold is not None:
+      self._summary_op = self._scaffold.summary_op
+    if self._summary_op is not None:
+      return [self._summary_op]
+    return []
 
   def every_n_step_end(self, step, outputs):
     super(SummarySaver, self).every_n_step_end(step, outputs)
-    summary_strs = outputs[self._summary_op.name]
-    if self._summary_writer:
-      self._summary_writer.add_summary(summary_strs, step)
+    if self._summary_op is not None:
+      summary_strs = _extract_output(outputs, self._summary_op)
+      if self._summary_writer:
+        self._summary_writer.add_summary(summary_strs, step)
     return False
 
   def end(self, session=None):
@@ -560,7 +563,8 @@ class ValidationMonitor(EveryN):
 
   def __init__(self, x=None, y=None, input_fn=None, batch_size=None,
                eval_steps=None,
-               every_n_steps=100, metrics=None, early_stopping_rounds=None,
+               every_n_steps=100, metrics=None, hooks=None,
+               early_stopping_rounds=None,
                early_stopping_metric="loss",
                early_stopping_metric_minimize=True, name=None):
     """Initializes a ValidationMonitor.
@@ -574,6 +578,8 @@ class ValidationMonitor(EveryN):
       every_n_steps: Check for new checkpoints to evaluate every N steps. If a
           new checkpoint is found, it is evaluated. See `EveryN`.
       metrics: See `BaseEstimator.evaluate`.
+      hooks: A list of `SessionRunHook` hooks to pass to the
+        `Estimator`'s `evaluate` function.
       early_stopping_rounds: `int`. If the metric indicated by
           `early_stopping_metric` does not change according to
           `early_stopping_metric_minimize` for this many steps, then training
@@ -602,6 +608,7 @@ class ValidationMonitor(EveryN):
     self.batch_size = batch_size
     self.eval_steps = eval_steps
     self.metrics = metrics
+    self.hooks = hooks
     self.early_stopping_rounds = early_stopping_rounds
     self.early_stopping_metric = early_stopping_metric
     self.early_stopping_metric_minimize = early_stopping_metric_minimize
@@ -636,30 +643,39 @@ class ValidationMonitor(EveryN):
       raise ValueError("Missing call to set_estimator.")
     # Check that we are not running evaluation on the same checkpoint.
     latest_path = saver_lib.latest_checkpoint(self._estimator.model_dir)
-    if latest_path == self._latest_path:
-      logging.info("Skipping evaluation due to same checkpoint %s for step %d "
-                   "as for step %d.", latest_path, step, self._latest_path_step)
+    if latest_path is None:
+      logging.debug("Skipping evaluation since model has not been saved yet "
+                    "at step %d.", step)
+      return False
+    if latest_path is not None and latest_path == self._latest_path:
+      logging.debug("Skipping evaluation due to same checkpoint %s for step %d "
+                    "as for step %d.", latest_path, step,
+                    self._latest_path_step)
       return False
     self._latest_path = latest_path
     self._latest_path_step = step
 
     # Run evaluation and log it.
-    outputs = self._estimator.evaluate(
+    validation_outputs = self._estimator.evaluate(
         x=self.x, y=self.y, input_fn=self.input_fn, batch_size=self.batch_size,
-        steps=self.eval_steps, metrics=self.metrics, name=self.name)
+        steps=self.eval_steps, metrics=self.metrics, hooks=self.hooks,
+        name=self.name)
     stats = []
-    for name in outputs:
-      stats.append("%s = %s" % (name, str(outputs[name])))
+    for name in validation_outputs:
+      stats.append("%s = %s" % (name, str(validation_outputs[name])))
     logging.info("Validation (step %d): %s", step, ", ".join(stats))
 
     # Early stopping logic.
     if self.early_stopping_rounds is not None:
-      if (self._best_value is None or
-          (self.early_stopping_metric_minimize and
-           outputs[self.early_stopping_metric] < self._best_value) or
+      if self.early_stopping_metric not in validation_outputs:
+        raise ValueError("Metric %s missing from outputs %s." % (
+            self.early_stopping_metric, set(validation_outputs.keys())))
+      current_value = validation_outputs[self.early_stopping_metric]
+      if (self._best_value is None or (self.early_stopping_metric_minimize and
+                                       (current_value < self._best_value)) or
           (not self.early_stopping_metric_minimize and
-           outputs[self.early_stopping_metric] > self._best_value)):
-        self._best_value = outputs[self.early_stopping_metric]
+           (current_value > self._best_value))):
+        self._best_value = current_value
         self._best_value_step = step
       stop_now = (step - self._best_value_step >= self.early_stopping_rounds)
       if stop_now:
@@ -711,7 +727,7 @@ class CaptureVariable(EveryN):
 
   def every_n_step_end(self, step, outputs):
     super(CaptureVariable, self).every_n_step_end(step, outputs)
-    self._var_values[step] = outputs[self._var_name]
+    self._var_values[step] = _extract_output(outputs, self._var_name)
 
 
 def get_default_monitors(loss_op=None, summary_op=None, save_summary_steps=100,
@@ -759,8 +775,8 @@ class GraphDump(BaseMonitor):
     self._ignore_ops = ignore_ops or GraphDump.IGNORE_OPS
     self._data = {}
 
-  def begin(self, max_steps=None, init_step=None):
-    super(GraphDump, self).begin(max_steps=max_steps, init_step=init_step)
+  def begin(self, max_steps=None):
+    super(GraphDump, self).begin(max_steps=max_steps)
     self._tensors = []
     graph = ops.get_default_graph()
     graph_def = graph.as_graph_def()
@@ -811,8 +827,8 @@ class GraphDump(BaseMonitor):
         continue
       if key not in other_output:
         raise ValueError("%s missing at step %s.", (key, step))
-      value1 = this_output[key]
-      value2 = other_output[key]
+      value1 = _extract_output(this_output, key)
+      value2 = _extract_output(other_output, key)
       if isinstance(value1, str):
         continue
       if isinstance(value1, np.ndarray):
@@ -831,78 +847,208 @@ class GraphDump(BaseMonitor):
 class ExportMonitor(EveryN):
   """Monitor that exports Estimator every N steps."""
 
+  # TODO(philstahlfeld): Investigate switching export.export_estimator
+  # configuration values to **kwargs so that updates to the export_estimator
+  # function don't have to be reflected here.
+  @deprecated_arg_values(
+      "2016-09-23",
+      "The signature of the input_fn accepted by export is changing to be "
+      "consistent with what's used by tf.Learn Estimator's train/evaluate. "
+      "input_fn (and in most cases, input_feature_key) will both become "
+      "required args.",
+      input_fn=None)
   def __init__(self,
                every_n_steps,
                export_dir,
+               input_fn=None,
+               input_feature_key=None,
                exports_to_keep=5,
-               signature_fn=None):
+               signature_fn=None,
+               default_batch_size=1):
     """Initializes ExportMonitor.
 
     Args:
       every_n_steps: Run monitor every N steps.
       export_dir: str, folder to export.
+      input_fn: A function that takes no argument and returns a tuple of
+        (features, labels), where features is a dict of string key to `Tensor`
+        and labels is a `Tensor` that's currently not used (and so can be
+        `None`).
+      input_feature_key: String key into the features dict returned by
+        `input_fn` that corresponds to the raw `Example` strings `Tensor` that
+        the exported model will take as input. Should be `None` if and only if
+        you're passing in a `signature_fn` that does not use the first arg
+        (`Tensor` of `Example` strings).
       exports_to_keep: int, number of exports to keep.
-      signature_fn: Function that given `Tensor` of `Example` strings,
-        `dict` of `Tensor`s for features and `dict` of `Tensor`s for predictions
-        and returns default and named exporting signautres.
+      signature_fn: Function that returns a default signature and a named
+        signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+        for features and `dict` of `Tensor`s for predictions.
+      default_batch_size: Default batch size of the `Example` placeholder.
+
+    Raises:
+      ValueError: If `input_fn` and `input_feature_key` are not both defined or
+        are not both `None`.
     """
     super(ExportMonitor, self).__init__(every_n_steps=every_n_steps)
-    self.export_dir = export_dir
-    self.exports_to_keep = exports_to_keep
-    self.signature_fn = signature_fn
+    self._export_dir = export_dir
+    self._input_fn = input_fn
+    self._input_feature_key = input_feature_key
+    self._use_deprecated_input_fn = input_fn is None
+    self._exports_to_keep = exports_to_keep
+    self._signature_fn = signature_fn
+    self._default_batch_size = default_batch_size
+    self._last_export_dir = None
+
+  @property
+  def export_dir(self):
+    return self._export_dir
+
+  @property
+  def exports_to_keep(self):
+    return self._exports_to_keep
+
+  @property
+  def signature_fn(self):
+    return self._signature_fn
+
+  @property
+  def last_export_dir(self):
+    """Returns the directory containing the last completed export.
+
+    Returns:
+      The string path to the exported directory. NB: this functionality was
+      added on 2016/09/25; clients that depend on the return value may need
+      to handle the case where this function returns None because the
+      estimator being fitted does not yet return a value during export.
+    """
+    return self._last_export_dir
 
   def every_n_step_end(self, step, outputs):
     super(ExportMonitor, self).every_n_step_end(step, outputs)
     try:
-      export.export_estimator(self._estimator,
-                              self.export_dir,
-                              exports_to_keep=self.exports_to_keep,
-                              signature_fn=self.signature_fn)
-    except (RuntimeError, TypeError):
+      self._last_export_dir = self._estimator.export(
+          self.export_dir,
+          exports_to_keep=self.exports_to_keep,
+          signature_fn=self.signature_fn,
+          input_fn=self._input_fn,
+          default_batch_size=self._default_batch_size,
+          input_feature_key=self._input_feature_key,
+          use_deprecated_input_fn=self._use_deprecated_input_fn)
+    except RuntimeError:
       # Currently we are not syncronized with saving checkpoints, which leads to
       # runtime errors when we are calling export on the same global step.
-      logging.info("Skipping exporting for the same step. "
+      # Exports depend on saved checkpoints for constructing the graph and
+      # getting the global step from the graph instance saved in the checkpoint.
+      # If the checkpoint is stale with respect to current step, the global step
+      # is taken to be the last saved checkpoint's global step and exporter
+      # doesn't export the same checkpoint again with the following error.
+      logging.info("Skipping exporting because the existing checkpoint has "
+                   "already been exported. "
                    "Consider exporting less frequently.")
 
   def end(self, session=None):
     super(ExportMonitor, self).end(session=session)
-    export.export_estimator(self._estimator,
-                            self.export_dir,
-                            exports_to_keep=self.exports_to_keep,
-                            signature_fn=self.signature_fn)
+    latest_path = saver_lib.latest_checkpoint(self._estimator.model_dir)
+    if latest_path is None:
+      logging.info("Skipping export at the end since model has not been saved "
+                   "yet.")
+      return
+    try:
+      self._last_export_dir = self._estimator.export(
+          self.export_dir,
+          exports_to_keep=self.exports_to_keep,
+          signature_fn=self.signature_fn,
+          input_fn=self._input_fn,
+          default_batch_size=self._default_batch_size,
+          input_feature_key=self._input_feature_key,
+          use_deprecated_input_fn=self._use_deprecated_input_fn)
+    except RuntimeError:
+      logging.info("Skipping exporting for the same step.")
 
 
-class CheckpointSaver(EveryN):
-  """Saves checkpoints every N steps."""
+class CheckpointSaver(BaseMonitor):
+  """Saves checkpoints every N steps or N seconds."""
 
-  def __init__(self, every_n_steps, saver, checkpoint_dir,
+  def __init__(self,
+               checkpoint_dir,
+               save_secs=None,
+               save_steps=None,
+               saver=None,
                checkpoint_basename="model.ckpt",
-               first_n_steps=-1):
+               scaffold=None):
     """Initialize CheckpointSaver monitor.
 
     Args:
-      every_n_steps: `int`, save every N steps.
-      saver: `Saver` object, used for saving.
       checkpoint_dir: `str`, base directory for the checkpoint files.
+      save_secs: `int`, save every N secs.
+      save_steps: `int`, save every N steps.
+      saver: `Saver` object, used for saving.
       checkpoint_basename: `str`, base name for the checkpoint files.
-      first_n_steps: `int`, if positive, save every step during the
-        first `first_n_steps` steps.
+      scaffold: `Scaffold`, use to get saver object.
+
+    Raises:
+      ValueError: If both `save_steps` and `save_secs` are not `None`.
+      ValueError: If both `save_steps` and `save_secs` are `None`.
     """
-    logging.info("Create CheckpointSaver")
-    super(CheckpointSaver, self).__init__(every_n_steps=every_n_steps,
-                                          first_n_steps=first_n_steps)
+    logging.info("Create CheckpointSaver.")
+    super(CheckpointSaver, self).__init__()
     self._saver = saver
     self._summary_writer = SummaryWriterCache.get(checkpoint_dir)
     self._save_path = os.path.join(checkpoint_dir, checkpoint_basename)
+    self._scaffold = scaffold
+    self._save_secs = save_secs
+    self._save_steps = save_steps
+    self._last_saved_time = None
+    self._last_begin_step = None
+    self._last_saved_step = None
 
-  def every_n_post_step(self, step, session):
-    logging.info("Saving checkpoints for %d into %s." % (step, self._save_path))
-    self._saver.save(session, self._save_path, global_step=step)
-    if self._summary_writer:
-      self._summary_writer.add_session_log(
-          SessionLog(status=SessionLog.CHECKPOINT,
-                     checkpoint_path=self._save_path),
-          step)
+    if save_steps is None and save_secs is None:
+      raise ValueError("Either save_steps or save_secs should be provided")
+    if (save_steps is not None) and (save_secs is not None):
+      raise ValueError("Can not provide both save_steps and save_secs.")
+
+  def begin(self, max_steps=None):
+    super(CheckpointSaver, self).begin(max_steps)
+    self._last_saved_time = None
+    self._last_begin_step = None
+    self._last_saved_step = None
+
+  def step_begin(self, step):
+    super(CheckpointSaver, self).step_begin(step)
+    self._last_begin_step = step
+
+  def post_step(self, step, session):
+    super(CheckpointSaver, self).post_step(step, session)
+    if self._last_saved_time is None:
+      self._save(step, session)
+
+    if self._save_steps is not None:
+      if step >= self._last_saved_step + self._save_steps:
+        self._save(step, session)
+
+    if self._save_secs is not None:
+      if time.time() >= self._last_saved_time + self._save_secs:
+        self._save(step, session)
+
+  def end(self, session=None):
+    super(CheckpointSaver, self).end(session)
+    self._save(self._last_begin_step, session)
+
+  def _save(self, step, session):
+    """Saves the latest checkpoint."""
+    if step == self._last_saved_step:
+      return
+    logging.info("Saving checkpoints for %d into %s.", step, self._save_path)
+    self._last_saved_time = time.time()
+    self._last_saved_step = step
+    if self._saver is None:
+      self._scaffold.saver.save(session, self._save_path, global_step=step)
+    else:
+      self._saver.save(session, self._save_path, global_step=step)
+    self._summary_writer.add_session_log(
+        SessionLog(
+            status=SessionLog.CHECKPOINT, checkpoint_path=self._save_path),
+        step)
 
 
 class StepCounter(EveryN):
@@ -914,14 +1060,9 @@ class StepCounter(EveryN):
     self._summary_tag = "global_step/sec"
     self._last_reported_step = None
     self._last_reported_time = None
-    self._summary_writer = None
+    self._summary_writer = summary_writer
     if summary_writer is None and output_dir:
       self._summary_writer = SummaryWriterCache.get(output_dir)
-
-  def begin(self, init_step):
-    super(StepCounter, self).begin(init_step)
-    self._last_reported_step = self._init_step
-    self._last_reported_time = time.time()
 
   def set_estimator(self, estimator):
     super(StepCounter, self).set_estimator(estimator)
@@ -968,11 +1109,11 @@ class NanLoss(EveryN):
 
   def every_n_step_begin(self, step):
     super(NanLoss, self).every_n_step_begin(step)
-    return self._loss_tensor
+    return [self._loss_tensor]
 
   def every_n_step_end(self, step, outputs):
     super(NanLoss, self).every_n_step_end(step, outputs)
-    if np.isnan(outputs):
+    if np.isnan(_extract_output(outputs, self._loss_tensor)):
       failure_message = "Model diverged with loss = NaN."
       if self._fail_on_nan_loss:
         logging.error(failure_message)
@@ -982,3 +1123,121 @@ class NanLoss(EveryN):
         # We don't raise an error but we return "should stop" so we stop, but
         # without an exception.
         return True
+
+
+class RunHookAdapterForMonitors(session_run_hook.SessionRunHook):
+  """Wraps monitors into a SessionRunHook."""
+
+  def __init__(self, monitors):
+    self._monitors = monitors
+
+  def begin(self):
+    self._last_step = None
+    self._global_step_tensor = contrib_variables.get_global_step()
+    for m in self._monitors:
+      m.begin(max_steps=None)
+
+  def before_run(self, run_context):
+    if self._last_step is None:
+      self._last_step = run_context.session.run(self._global_step_tensor) + 1
+
+    request = {self._global_step_tensor: self._global_step_tensor}
+    monitor_fetches = []
+    for m in self._monitors:
+      monitor_requests = m.step_begin(self._last_step)
+      if monitor_requests:
+        if not isinstance(monitor_requests, list):
+          raise ValueError("Monitor.step_begin should return a list.")
+        monitor_fetches.extend(monitor_requests)
+    if monitor_fetches:
+      request["monitors"] = dict(
+          zip(monitor_fetches, [_as_graph_element(f) for f in monitor_fetches]))
+
+    return session_run_hook.SessionRunArgs(request)
+
+  def after_run(self, run_context, run_values):
+    result = run_values.results[
+        "monitors"] if "monitors" in run_values.results else {}
+    for m in self._monitors:
+      induce_stop = m.step_end(self._last_step, result)
+      if induce_stop:
+        run_context.request_stop()
+
+    for m in self._monitors:
+      m.post_step(self._last_step, run_context.session)
+
+    self._last_step = run_values.results[self._global_step_tensor] + 1
+
+  def end(self, session):
+    self._last_step = None
+    for m in self._monitors:
+      if "session" in inspect.getargspec(m.end).args:
+        m.end(session=session)
+      else:
+        m.end()
+
+
+def replace_monitors_with_hooks(monitors_or_hooks, estimator):
+  """Wraps monitors with a hook.
+
+  `Monitor` is deprecated in favor of `SessionRunHook`. If you're using a
+  monitor, you can wrap it with a hook using function. It is recommended to
+  implement hook version of your monitor.
+
+  Args:
+    monitors_or_hooks: A `list` may contain both monitors and hooks.
+    estimator: An `Estimator` that monitor will be used with.
+
+  Returns:
+    Returns a list of hooks. If there is any monitor in the given list, it is
+    replaced by a hook.
+  """
+  monitors_or_hooks = monitors_or_hooks or []
+  hooks = [
+      m for m in monitors_or_hooks
+      if isinstance(m, session_run_hook.SessionRunHook)
+  ]
+
+  deprecated_monitors = [
+      m for m in monitors_or_hooks
+      if not isinstance(m, session_run_hook.SessionRunHook)
+  ]
+
+  if not estimator.config.is_chief:
+    # Prune list of monitor to the ones runnable on all workers.
+    deprecated_monitors = [
+        m for m in deprecated_monitors if m.run_on_all_workers
+    ]
+
+  # Setup monitors.
+  for monitor in deprecated_monitors:
+    monitor.set_estimator(estimator)
+
+  if deprecated_monitors:
+    hooks.append(RunHookAdapterForMonitors(deprecated_monitors))
+
+  return hooks
+
+
+def _as_graph_element(obj):
+  """Retrieves Graph element."""
+  graph = ops.get_default_graph()
+  if not isinstance(obj, six.string_types):
+    if not hasattr(obj, "graph") or obj.graph != graph:
+      raise ValueError("Passed %s should have graph attribute that is equal "
+                       "to current graph %s." % (obj, graph))
+    return obj
+  if ":" in obj:
+    element = graph.as_graph_element(obj)
+  else:
+    element = graph.as_graph_element(obj + ":0")
+    # Check that there is no :1 (e.g. it's single output).
+    try:
+      graph.as_graph_element(obj + ":1")
+    except (KeyError, ValueError):
+      pass
+    else:
+      raise ValueError("Name %s is ambiguous, "
+                       "as this `Operation` has multiple outputs "
+                       "(at least 2)." % obj)
+  return element

@@ -16,6 +16,7 @@ limitations under the License.
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <fnmatch.h>
 #include <stdio.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -55,10 +56,8 @@ class PosixEnv : public Env {
 
   ~PosixEnv() override { LOG(FATAL) << "Env::Default() must not be destroyed"; }
 
-  uint64 NowMicros() override {
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-    return static_cast<uint64>(tv.tv_sec) * 1000000 + tv.tv_usec;
+  bool MatchPath(const string& path, const string& pattern) override {
+    return fnmatch(pattern.c_str(), path.c_str(), FNM_PATHNAME) == 0;
   }
 
   void SleepForMicroseconds(int64 micros) override {
@@ -113,6 +112,11 @@ class PosixEnv : public Env {
                               void** symbol) override {
     return tensorflow::internal::GetSymbolFromLibrary(handle, symbol_name,
                                                       symbol);
+  }
+
+  string FormatLibraryFileName(const string& name,
+                               const string& version) override {
+    return tensorflow::internal::FormatLibraryFileName(name, version);
   }
 };
 

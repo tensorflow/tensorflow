@@ -8,7 +8,7 @@ Computes the percentage of times that predictions matches labels.
 *  <b>`predictions`</b>: the predicted values, a `Tensor` whose dtype and shape
                matches 'labels'.
 *  <b>`labels`</b>: the ground truth values, a `Tensor` of any shape and
-          integer or string dtype.
+          bool, integer, or string dtype.
 *  <b>`weights`</b>: None or `Tensor` of float values to reweight the accuracy.
 
 ##### Returns:
@@ -19,5 +19,5 @@ Computes the percentage of times that predictions matches labels.
 
 
 *  <b>`ValueError`</b>: if dtypes don't match or
-              if dtype is not integer or string.
+              if dtype is not bool, integer, or string.
 

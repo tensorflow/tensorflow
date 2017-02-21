@@ -2,15 +2,14 @@
 
 Decorator for marking functions or methods deprecated.
 
-This decorator adds a deprecation warning to a function's docstring. It has
-the following format:
+This decorator logs a deprecation warning whenever the decorated function is
+called. It has the following format:
 
   <function> (from <module>) is deprecated and will be removed after <date>.
   Instructions for updating:
   <instructions>
 
-whenever the decorated function is called. <function> will include the class
-name if it is a method.
+<function> will include the class name if it is a method.
 
 It also edits the docstring of the function: ' (deprecated)' is appended
 to the first line of the docstring and a deprecation notice is prepended

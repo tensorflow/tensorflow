@@ -18,8 +18,12 @@ limitations under the License.
 #if defined(__APPLE__)
 #include <mach-o/dyld.h>
 #endif
+#if defined(PLATFORM_WINDOWS)
+#include <windows.h>
+#define PATH_MAX MAX_PATH
+#else
 #include <unistd.h>
-
+#endif
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
 #include "tensorflow/stream_executor/cuda/cuda_driver.h"
 #include "tensorflow/stream_executor/cuda/cuda_event.h"
@@ -61,7 +65,6 @@ limitations under the License.
 #endif
 
 extern bool FLAGS_check_gpu_leaks;
-tensorflow::int32 FLAGS_register_occupancy_warning_threshold;
 bool FLAGS_prefer_cubin_to_ptx = true;
 
 namespace perftools {
@@ -169,11 +172,9 @@ bool CUDAExecutor::FindOnDiskForComputeCapability(
     return false;
   }
 
-  // TODO(22689637): Eliminate unnecessary ToString()s when all dependencies
-  // have been migrated.
-  string cc_specific = port::StrCat(filename.ToString(), ".cc", cc_major_,
-                                    cc_minor_, canonical_suffix.ToString());
-  if (port::FileExists(cc_specific)) {
+  string cc_specific =
+      port::StrCat(filename, ".cc", cc_major_, cc_minor_, canonical_suffix);
+  if (port::FileExists(cc_specific).ok()) {
     VLOG(2) << "found compute-capability-specific file, using that: "
             << cc_specific;
     *found_filename = cc_specific;
@@ -182,7 +183,7 @@ bool CUDAExecutor::FindOnDiskForComputeCapability(
 
   VLOG(2) << "could not find compute-capability specific file at: "
           << cc_specific;
-  if (port::FileExists(filename.ToString())) {
+  if (port::FileExists(filename.ToString()).ok()) {
     *found_filename = filename.ToString();
     return true;
   }
@@ -204,7 +205,12 @@ static string GetBinaryDir(bool strip_exe) {
     _NSGetExecutablePath(unresolved_path, &buffer_size);
     CHECK_ERR(realpath(unresolved_path, exe_path) ? 1 : -1);
 #else
-    CHECK_ERR(readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1));
+#if defined(PLATFORM_WINDOWS)
+  HMODULE hModule = GetModuleHandle(NULL);
+  GetModuleFileName(hModule, exe_path, MAX_PATH);
+#else
+  CHECK_ERR(readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1));
+#endif
 #endif
   // Make sure it's null-terminated:
   exe_path[sizeof(exe_path) - 1] = 0;
@@ -340,51 +346,39 @@ bool CUDAExecutor::GetKernelMetadata(CUDAKernel *cuda_kernel,
 
 bool CUDAExecutor::Launch(Stream *stream, const ThreadDim &thread_dims,
                           const BlockDim &block_dims, const KernelBase &kernel,
-                          const std::vector<KernelArg> &args) {
-  CHECK_EQ(kernel.Arity(), args.size());
+                          const KernelArgsArrayBase &args) {
+  CHECK_EQ(kernel.Arity(), args.number_of_arguments());
   CUstream custream = AsCUDAStreamValue(stream);
   const CUDAKernel *cuda_kernel = AsCUDAKernel(&kernel);
   CUfunction cufunc = cuda_kernel->AsCUDAFunctionValue();
 
-  std::vector<void *> addrs;
-  addrs.reserve(args.size());
-  int shmem_bytes = 0;
-  for (size_t i = 0; i < args.size(); i++) {
-    switch (args[i].type) {
-      case KernelArg::kNormal:
-        addrs.push_back(const_cast<void *>(
-            static_cast<const void *>(args[i].data.begin())));
-        break;
-      case KernelArg::kSharedMemory:
-        shmem_bytes += args[i].bytes;
-        break;
-      default:
-        LOG(ERROR) << "Invalid kernel arg type passed (" << args[i].type
-                   << ") for arg " << i;
-        return false;
+  // Only perform/print the occupancy check once.  Even just checking to see
+  // whether we've done an occupancy check on this kernel before isn't free
+  // (because we have to synchronize), so we only do this at -v 2+.
+  if (VLOG_IS_ON(2)) {
+    mutex_lock lock(launched_kernels_mu_);
+    if (!launched_kernels_.count(cufunc)) {
+      VlogOccupancyInfo(kernel, thread_dims, block_dims);
+      // TODO(rspringer): Remove elements from launched_kernels_...if we ever
+      // expose a kernel/module deallocation method.
+      launched_kernels_.insert(cufunc);
     }
   }
-
-  // Only perform/print the occupancy check 1x.
-  launched_kernels_mu_.lock();
-  if (launched_kernels_.find(cufunc) == launched_kernels_.end()) {
-    OccupancyCheck(kernel, thread_dims, block_dims);
-    // TODO(rspringer): Remove elements from launched_kernels_...if we ever
-    // expose a kernel/module deallocation method.
-    launched_kernels_.insert(cufunc);
-  }
-  launched_kernels_mu_.unlock();
 
   if (cuda_kernel->GetPreferredCacheConfig() !=
       KernelCacheConfig::kNoPreference) {
     CUDADriver::FuncSetCacheConfig(cufunc, cuda_kernel->GetCUDACacheConfig());
   }
 
-  if (!CUDADriver::LaunchKernel(
-          GetCudaContext(stream), cufunc, block_dims.x, block_dims.y,
-          block_dims.z, thread_dims.x, thread_dims.y, thread_dims.z,
-          shmem_bytes, custream, addrs.data(), nullptr /* = extra */)) {
-    LOG(ERROR) << "failed to launch CUDA kernel with args: " << args.size()
+  void **kernel_params = const_cast<void **>(args.argument_addresses().data());
+
+  if (!CUDADriver::LaunchKernel(GetCudaContext(stream), cufunc, block_dims.x,
+                                block_dims.y, block_dims.z, thread_dims.x,
+                                thread_dims.y, thread_dims.z,
+                                args.number_of_shared_bytes(), custream,
+                                kernel_params, nullptr /* = extra */)) {
+    LOG(ERROR) << "failed to launch CUDA kernel with args: "
+               << args.number_of_arguments()
                << "; thread dim: " << thread_dims.ToString()
                << "; block dim: " << block_dims.ToString();
     return false;
@@ -396,9 +390,9 @@ bool CUDAExecutor::Launch(Stream *stream, const ThreadDim &thread_dims,
 // This is a non-essential operation; if there's a failure, proceed without
 // logging an error. It's nearly certain that in case of failures, we'd never
 // get here in the first place; these are very low-impact routines.
-void CUDAExecutor::OccupancyCheck(const KernelBase &kernel,
-                                  const ThreadDim &thread_dims,
-                                  const BlockDim &block_dims) {
+void CUDAExecutor::VlogOccupancyInfo(const KernelBase &kernel,
+                                     const ThreadDim &thread_dims,
+                                     const BlockDim &block_dims) {
   VLOG(2) << "Computing kernel occupancy for kernel "
           << kernel.demangled_name();
   VLOG(2) << "Thread dimensions (" << thread_dims.x << ", " << thread_dims.y
@@ -438,16 +432,6 @@ void CUDAExecutor::OccupancyCheck(const KernelBase &kernel,
     VLOG(2) << "Reducing register usage from " << regs_per_thread
             << " to " << improved_regs_per_thread
             << " could increase resident blocks per SM by one.";
-
-    uint64 reg_reduction = regs_per_thread - improved_regs_per_thread;
-    if (reg_reduction <=
-        static_cast<uint64>(FLAGS_register_occupancy_warning_threshold)) {
-      LOG(INFO) << "Notice: occupancy would increase if register usage was"
-                << " reduced from " << regs_per_thread
-                << " to " << improved_regs_per_thread
-                << " registers per thread for kernel: "
-                << kernel.demangled_name();
-    }
   } else {
     VLOG(2) << "Resident blocks per SM cannot be increased by reducing "
         "register usage.";
@@ -514,20 +498,21 @@ bool CUDAExecutor::SynchronousMemSet(DeviceMemoryBase *location, int value,
                                             value, size);
 }
 
-bool CUDAExecutor::SynchronousMemcpy(DeviceMemoryBase *gpu_dst,
-                                     const void *host_src, uint64 size) {
+port::Status CUDAExecutor::SynchronousMemcpy(DeviceMemoryBase *gpu_dst,
+                                             const void *host_src,
+                                             uint64 size) {
   return CUDADriver::SynchronousMemcpyH2D(context_, AsCudaDevicePtr(gpu_dst),
                                           host_src, size);
 }
 
-bool CUDAExecutor::SynchronousMemcpy(void *host_dst,
-                                     const DeviceMemoryBase &gpu_src,
-                                     uint64 size) {
+port::Status CUDAExecutor::SynchronousMemcpy(void *host_dst,
+                                             const DeviceMemoryBase &gpu_src,
+                                             uint64 size) {
   return CUDADriver::SynchronousMemcpyD2H(context_, host_dst,
                                           AsCudaDevicePtr(gpu_src), size);
 }
 
-bool CUDAExecutor::SynchronousMemcpyDeviceToDevice(
+port::Status CUDAExecutor::SynchronousMemcpyDeviceToDevice(
     DeviceMemoryBase *gpu_dst, const DeviceMemoryBase &gpu_src, uint64 size) {
   return CUDADriver::SynchronousMemcpyD2D(context_, AsCudaDevicePtr(gpu_dst),
                                           AsCudaDevicePtr(gpu_src), size);
@@ -840,18 +825,6 @@ bool CUDAExecutor::FillBlockDimLimit(BlockDim *block_dim_limit) const {
   return true;
 }
 
-KernelArg CUDAExecutor::DeviceMemoryToKernelArg(
-    const DeviceMemoryBase &gpu_mem) const {
-  const void* arg = gpu_mem.opaque();
-  const uint8 *arg_ptr = reinterpret_cast<const uint8 *>(&arg);
-
-  KernelArg kernel_arg;
-  kernel_arg.type = KernelArg::kNormal;
-  kernel_arg.data = port::InlinedVector<uint8, 4>(arg_ptr, arg_ptr + sizeof(arg));
-  kernel_arg.bytes = sizeof(arg);
-  return kernel_arg;
-}
-
 bool CUDAExecutor::SupportsBlas() const { return true; }
 
 bool CUDAExecutor::SupportsFft() const { return true; }
@@ -891,6 +864,9 @@ static int TryToReadNumaNode(const string &pci_bus_id, int device_ordinal) {
 #if defined(__APPLE__)
   LOG(INFO) << "OS X does not support NUMA - returning NUMA node zero";
   return 0;
+#elif defined(PLATFORM_WINDOWS)
+  // Windows support for NUMA is not currently implemented. Return node 0.
+  return 0;
 #else
   VLOG(2) << "trying to read NUMA node for device ordinal: " << device_ordinal;
   static const int kUnknownNumaNode = -1;
@@ -925,8 +901,10 @@ static int TryToReadNumaNode(const string &pci_bus_id, int device_ordinal) {
       LOG(INFO) << "successful NUMA node read from SysFS had negative value ("
                 << value << "), but there must be at least one NUMA node"
                             ", so returning NUMA node zero";
+      fclose(file);
       return 0;
     }
+    fclose(file);
     return value;
   }
 
@@ -934,6 +912,7 @@ static int TryToReadNumaNode(const string &pci_bus_id, int device_ordinal) {
       << "could not convert SysFS file contents to integral NUMA node value: "
       << content;
 
+  fclose(file);
   return kUnknownNumaNode;
 #endif
 }
@@ -1070,19 +1049,6 @@ DeviceDescription *CUDAExecutor::PopulateDeviceDescription() const {
 namespace gpu = ::perftools::gputools;
 
 void initialize_cuda_gpu_executor() {
-  port::StatusOr<void *> status =
-      gpu::internal::CachedDsoLoader::GetLibcudaDsoHandle();
-  if (!status.ok()) {
-    gpu::cuda::Diagnostician::LogDriverVersionInformation();
-    LOG(INFO) << "LD_LIBRARY_PATH: " << getenv("LD_LIBRARY_PATH");
-    LOG(INFO) << "failed to find libcuda.so on this system: "
-              << status.status();
-  }
-
-  // TODO(b/22689637): Temporary until users are migrated off of PlatformKind.
-  gpu::PluginRegistry::Instance()->MapPlatformKindToId(
-      gpu::PlatformKind::kCuda, gpu::cuda::kCudaPlatformId);
-
   *gpu::internal::MakeCUDAExecutorImplementation() = [](
       const gpu::PluginConfig &config) {
     return new gpu::cuda::CUDAExecutor{config};

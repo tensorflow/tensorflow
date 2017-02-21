@@ -27,26 +27,14 @@ namespace tensorflow {
 typedef Eigen::GpuDevice GPUDevice;
 typedef Eigen::Index Index;
 
-#define DEFINE(REDUCER, T, D) \
-  template struct functor::Scan<GPUDevice, REDUCER, T, D>;
+#define DEFINE(REDUCER, T) template struct functor::Scan<GPUDevice, REDUCER, T>;
 
-#define DEFINE_FOR_ALL_DIMS(REDUCER, T) \
-  DEFINE(REDUCER, T, 1);                \
-  DEFINE(REDUCER, T, 2);                \
-  DEFINE(REDUCER, T, 3);                \
-  DEFINE(REDUCER, T, 4);                \
-  DEFINE(REDUCER, T, 5);                \
-  DEFINE(REDUCER, T, 6);                \
-  DEFINE(REDUCER, T, 7);                \
-  DEFINE(REDUCER, T, 8)
-
-#define DEFINE_FOR_ALL_REDUCERS(T)                        \
-  DEFINE_FOR_ALL_DIMS(Eigen::internal::SumReducer<T>, T); \
-  DEFINE_FOR_ALL_DIMS(Eigen::internal::ProdReducer<T>, T);
+#define DEFINE_FOR_ALL_REDUCERS(T)           \
+  DEFINE(Eigen::internal::SumReducer<T>, T); \
+  DEFINE(Eigen::internal::ProdReducer<T>, T);
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_FOR_ALL_REDUCERS);
 #undef DEFINE_FOR_ALL_REDUCERS
-#undef DEFINE_FOR_ALL_DIMS
 #undef DEFINE
 
 }  // end namespace tensorflow

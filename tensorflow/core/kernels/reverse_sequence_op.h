@@ -25,12 +25,12 @@ namespace tensorflow {
 
 namespace generator {
 
-template <typename T, size_t Dims>
+template <typename T, typename Tlen, size_t Dims>
 class ReverseGenerator {
  public:
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE
   ReverseGenerator(typename TTypes<T, Dims>::ConstTensor input, int32 batch_dim,
-                   int32 seq_dim, TTypes<int64>::ConstVec seq_lengths)
+                   int32 seq_dim, typename TTypes<Tlen>::ConstVec seq_lengths)
       : input_(input),
         batch_dim_(batch_dim),
         seq_dim_(seq_dim),
@@ -51,21 +51,22 @@ class ReverseGenerator {
   typename TTypes<T, Dims>::ConstTensor input_;
   int32 batch_dim_;
   int32 seq_dim_;
-  TTypes<int64>::ConstVec seq_lengths_;
+  typename TTypes<Tlen>::ConstVec seq_lengths_;
 };
 
 }  // namespace generator
 
 namespace functor {
 
-template <typename Device, typename T, size_t Dims>
+template <typename Device, typename T, typename Tlen, size_t Dims>
 struct ReverseSequence {
   EIGEN_ALWAYS_INLINE static void Compute(
       const Device& d, typename TTypes<T, Dims>::ConstTensor input,
-      int32 batch_dim, int32 seq_dim, TTypes<int64>::ConstVec seq_lengths,
+      int32 batch_dim, int32 seq_dim,
+      typename TTypes<Tlen>::ConstVec seq_lengths,
       typename TTypes<T, Dims>::Tensor output) {
-    generator::ReverseGenerator<T, Dims> generator(input, batch_dim, seq_dim,
-                                                   seq_lengths);
+    generator::ReverseGenerator<T, Tlen, Dims> generator(input, batch_dim,
+                                                         seq_dim, seq_lengths);
     output.device(d) = input.generate(generator);
   }
 };

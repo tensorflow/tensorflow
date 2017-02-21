@@ -15,11 +15,8 @@ limitations under the License.
 
 // See docs in ../ops/linalg_ops.cc.
 
-#include <cmath>
-
 #include "third_party/eigen3/Eigen/Core"
 #include "third_party/eigen3/Eigen/Eigenvalues"
-
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -28,41 +25,32 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
+
 namespace tensorflow {
 
-template <class Scalar, bool SupportsBatchOperationT>
-class SelfAdjointEigOp
-    : public UnaryLinearAlgebraOp<Scalar, SupportsBatchOperationT> {
+template <class Scalar>
+class SelfAdjointEigOp : public LinearAlgebraOp<Scalar> {
  public:
-  explicit SelfAdjointEigOp(OpKernelConstruction* context)
-      : UnaryLinearAlgebraOp<Scalar, SupportsBatchOperationT>(context) {}
+  typedef LinearAlgebraOp<Scalar> Base;
 
-  TensorShape GetOutputMatrixShape(
-      const TensorShape& input_matrix_shape) override {
-    int64 d = input_matrix_shape.dim_size(0);
-    return TensorShape({d + 1, d});
+  explicit SelfAdjointEigOp(OpKernelConstruction* context) : Base(context) {}
+
+  using TensorShapes = typename Base::TensorShapes;
+  using Matrix = typename Base::Matrix;
+  using MatrixMaps = typename Base::MatrixMaps;
+  using ConstMatrixMap = typename Base::ConstMatrixMap;
+  using ConstMatrixMaps = typename Base::ConstMatrixMaps;
+
+  TensorShapes GetOutputMatrixShapes(
+      const TensorShapes& input_matrix_shapes) const final {
+    int64 d = input_matrix_shapes[0].dim_size(0);
+    return TensorShapes({TensorShape({d + 1, d})});
   }
 
-  int64 GetCostPerUnit(const TensorShape& input_matrix_shape) override {
-    const int64 rows = input_matrix_shape.dim_size(0);
-    if (rows > (1LL << 20)) {
-      // A big number to cap the cost in case overflow.
-      return kint64max;
-    } else {
-      return rows * rows * rows;
-    }
-  }
-
-  using
-      typename UnaryLinearAlgebraOp<Scalar, SupportsBatchOperationT>::MatrixMap;
-  using typename UnaryLinearAlgebraOp<Scalar,
-                                      SupportsBatchOperationT>::ConstMatrixMap;
-
-  void ComputeMatrix(OpKernelContext* context, const ConstMatrixMap& input,
-                     MatrixMap* output) override {
-    OP_REQUIRES(context, input.rows() == input.cols(),
-                errors::InvalidArgument("Input matrix must be square."));
-    if (input.rows() == 0) {
+  void ComputeMatrix(OpKernelContext* context, const ConstMatrixMaps& inputs,
+                     MatrixMaps* outputs) final {
+    const int64 rows = inputs[0].rows();
+    if (rows == 0) {
       // If X is an empty matrix (0 rows, 0 col), X * X' == X.
       // Therefore, we return X.
       return;
@@ -70,20 +58,18 @@ class SelfAdjointEigOp
 
     Eigen::SelfAdjointEigenSolver<
         Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>
-        es(input);
-    output->row(0) = es.eigenvalues().transpose();
-    output->bottomRows(input.rows()) = es.eigenvectors();
+        es(inputs[0]);
     OP_REQUIRES(context, es.info() == Eigen::Success,
                 errors::InvalidArgument("Self Adjoint Eigen decomposition was"
                                         "not successful. "
                                         "The input might not be valid."));
+    outputs->at(0).row(0) = es.eigenvalues().transpose();
+    outputs->at(0).bottomRows(rows) = es.eigenvectors();
   }
 };
 
-REGISTER_LINALG_OP("SelfAdjointEig", (SelfAdjointEigOp<float, false>), float);
-REGISTER_LINALG_OP("SelfAdjointEig", (SelfAdjointEigOp<double, false>), double);
-REGISTER_LINALG_OP("BatchSelfAdjointEig", (SelfAdjointEigOp<float, true>),
-                   float);
-REGISTER_LINALG_OP("BatchSelfAdjointEig", (SelfAdjointEigOp<double, true>),
-                   double);
+REGISTER_LINALG_OP("SelfAdjointEig", (SelfAdjointEigOp<float>), float);
+REGISTER_LINALG_OP("SelfAdjointEig", (SelfAdjointEigOp<double>), double);
+REGISTER_LINALG_OP("BatchSelfAdjointEig", (SelfAdjointEigOp<float>), float);
+REGISTER_LINALG_OP("BatchSelfAdjointEig", (SelfAdjointEigOp<double>), double);
 }  // namespace tensorflow

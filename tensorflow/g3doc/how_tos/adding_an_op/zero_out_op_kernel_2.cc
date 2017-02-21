@@ -13,8 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/shape_inference.h"
 
 using namespace tensorflow;
 
@@ -22,6 +24,7 @@ REGISTER_OP("ZeroOut")
     .Attr("T: realnumbertype")
     .Input("to_zero: T")
     .Output("zeroed: T")
+    .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Zeros out all but the first value of a Tensor.
 

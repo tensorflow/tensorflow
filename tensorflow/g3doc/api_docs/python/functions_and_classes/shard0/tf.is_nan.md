@@ -2,6 +2,10 @@
 
 Returns which elements of x are NaN.
 
+@compatibility(numpy)
+Equivalent to np.isnan
+@end_compatibility
+
 ##### Args:
 
 

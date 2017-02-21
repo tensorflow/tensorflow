@@ -25,7 +25,7 @@ For example:
     run time.
 
   - Setting `new_shape` as [2, 3, 6] will be fine as this shape is larger or
-    eqaul in every dimension compared to the original shape [2, 3, 5].
+    equal in every dimension compared to the original shape [2, 3, 5].
 
   - On the other hand, setting new_shape as [2, 3, 4] is also an error: The
     third dimension is smaller than the original shape [2, 3, 5] (and an
@@ -39,7 +39,7 @@ For example:
 
 *  <b>`sp_input`</b>: The input `SparseTensor`.
 *  <b>`new_shape`</b>: None or a vector representing the new shape for the returned
-    `SpraseTensor`.
+    `SparseTensor`.
 
 ##### Returns:
 

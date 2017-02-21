@@ -26,8 +26,8 @@
 
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/host_info.h"
 
 using tensorflow::strings::StrCat;
 
@@ -37,7 +37,6 @@ namespace {
 
 const char kFfmpegExecutable[] = "ffmpeg";
 const int32 kDefaultProbeSize = 5000000;  // 5MB
-
 
 std::vector<string> FfmpegCommandLine(const string& input_filename,
                                       const string& output_filename,
@@ -61,6 +60,39 @@ std::vector<string> FfmpegCommandLine(const string& input_filename,
     "-y",  // Overwrite output file.
     StrCat(output_filename)
   };
+}
+
+// Is a named binary installed and executable by the current process?
+// Note that this is harder than it seems like it should be...
+bool IsBinaryInstalled(const string& binary_name) {
+  string path = ::getenv("PATH");
+  for (const string& dir : str_util::Split(path, ':')) {
+    const string binary_path = io::JoinPath(dir, binary_name);
+    char absolute_path[PATH_MAX + 1];
+    ::realpath(binary_path.c_str(), absolute_path);
+    struct stat statinfo;
+    int result = ::stat(absolute_path, &statinfo);
+    if (result < 0) {
+      continue;
+    }
+    if (!S_ISREG(statinfo.st_mode)) {
+      continue;
+    }
+
+    // Is the current user able to execute the file?
+    if (statinfo.st_uid == ::geteuid() && statinfo.st_mode & S_IXUSR) {
+      return true;
+    }
+    // Is the current group able to execute the file?
+    if (statinfo.st_uid == ::getegid() && statinfo.st_mode & S_IXGRP) {
+      return true;
+    }
+    // Is anyone able to execute the file?
+    if (statinfo.st_mode & S_IXOTH) {
+      return true;
+    }
+  }
+  return false;
 }
 
 [[noreturn]] int ExecuteFfmpeg(const std::vector<string>& args) {
@@ -191,6 +223,14 @@ Status ReadAudioFile(const string& filename,
       FfmpegCommandLine(filename, output_filename, audio_format_id,
                         samples_per_second, channel_count);
 
+  // Unfortunately, it's impossible to differentiate an exec failure due to the
+  // binary being missing and an error from the binary's execution. Therefore,
+  // check to see if the binary *should* be available. If not, return an error
+  // that will be converted into a helpful error message by the TensorFlow op.
+  if (!IsBinaryInstalled(kFfmpegExecutable)) {
+    return Status(error::Code::NOT_FOUND, StrCat("FFmpeg could not be found."));
+  }
+
   // Execute ffmpeg and report errors.
   pid_t child_pid = ::fork();
   if (child_pid < 0) {
@@ -202,7 +242,7 @@ Status ReadAudioFile(const string& filename,
     int status_code;
     ::waitpid(child_pid, &status_code, 0);
     if (status_code) {
-      return Status(error::Code::NOT_FOUND,
+      return Status(error::Code::UNKNOWN,
                     StrCat("FFmpeg execution failed: ", status_code));
     }
     *output_samples = ReadPcmFile(output_filename);

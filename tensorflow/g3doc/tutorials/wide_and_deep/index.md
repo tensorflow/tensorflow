@@ -62,8 +62,9 @@ https://github.com/tensorflow/tensorflow/blob/master/tensorflow/examples/learn/w
        $ sudo pip install pandas
        ```
 
-    If you have trouble installing pandas, consult the [instructions]
-(http://pandas.pydata.org/pandas-docs/stable/install.html) on the pandas site.
+    If you have trouble installing pandas, consult the
+    [instructions](http://pandas.pydata.org/pandas-docs/stable/install.html)
+    on the pandas site.
 
 4. Execute the tutorial code with the following command to train the linear
 model described in this tutorial:
@@ -85,11 +86,10 @@ part and the deep part of the model.
 import tensorflow as tf
 
 # Categorical base columns.
-gender = tf.contrib.layers.sparse_column_with_keys(column_name="gender", keys=["female", "male"])
+gender = tf.contrib.layers.sparse_column_with_keys(column_name="gender", keys=["Female", "Male"])
 race = tf.contrib.layers.sparse_column_with_keys(column_name="race", keys=[
   "Amer-Indian-Eskimo", "Asian-Pac-Islander", "Black", "Other", "White"])
 education = tf.contrib.layers.sparse_column_with_hash_bucket("education", hash_bucket_size=1000)
-marital_status = tf.contrib.layers.sparse_column_with_hash_bucket("marital_status", hash_bucket_size=100)
 relationship = tf.contrib.layers.sparse_column_with_hash_bucket("relationship", hash_bucket_size=100)
 workclass = tf.contrib.layers.sparse_column_with_hash_bucket("workclass", hash_bucket_size=100)
 occupation = tf.contrib.layers.sparse_column_with_hash_bucket("occupation", hash_bucket_size=1000)
@@ -111,10 +111,10 @@ columns:
 
 ```python
 wide_columns = [
-  gender, native_country, education, occupation, workclass, marital_status, relationship, age_buckets,
+  gender, native_country, education, occupation, workclass, relationship, age_buckets,
   tf.contrib.layers.crossed_column([education, occupation], hash_bucket_size=int(1e4)),
   tf.contrib.layers.crossed_column([native_country, occupation], hash_bucket_size=int(1e4)),
-  tf.contrib.layers.crossed_column([age_buckets, race, occupation], hash_bucket_size=int(1e6))]
+  tf.contrib.layers.crossed_column([age_buckets, education, occupation], hash_bucket_size=int(1e6))]
 ```
 
 Wide models with crossed feature columns can memorize sparse interactions
@@ -133,9 +133,9 @@ concatenated with the continuous features, and then fed into the hidden layers
 of a neural network in the forward pass. The embedding values are initialized
 randomly, and are trained along with all other model parameters to minimize the
 training loss. If you're interested in learning more about embeddings, check out
-the TensorFlow tutorial on [Vector Representations of Words]
-(https://www.tensorflow.org/versions/r0.9/tutorials/word2vec/index.html), or
-[Word Embedding](https://en.wikipedia.org/wiki/Word_embedding) on Wikipedia.
+the TensorFlow tutorial on
+[Vector Representations of Words](https://www.tensorflow.org/versions/r0.9/tutorials/word2vec/index.html),
+or [Word Embedding](https://en.wikipedia.org/wiki/Word_embedding) on Wikipedia.
 
 We'll configure the embeddings for the categorical columns using
 `embedding_column`, and concatenate them with the continuous columns:
@@ -144,10 +144,8 @@ We'll configure the embeddings for the categorical columns using
 deep_columns = [
   tf.contrib.layers.embedding_column(workclass, dimension=8),
   tf.contrib.layers.embedding_column(education, dimension=8),
-  tf.contrib.layers.embedding_column(marital_status, dimension=8),
   tf.contrib.layers.embedding_column(gender, dimension=8),
   tf.contrib.layers.embedding_column(relationship, dimension=8),
-  tf.contrib.layers.embedding_column(race, dimension=8),
   tf.contrib.layers.embedding_column(native_country, dimension=8),
   tf.contrib.layers.embedding_column(occupation, dimension=8),
   age, education_num, capital_gain, capital_loss, hours_per_week]
@@ -157,8 +155,8 @@ The higher the `dimension` of the embedding is, the more degrees of freedom the
 model will have to learn the representations of the features. For simplicity, we
 set the dimension to 8 for all feature columns here. Empirically, a more
 informed decision for the number of dimensions is to start with a value on the
-order of $$k\log_2(n)$$ or $$k\sqrt[4]n$$, where $$n$$ is the number of unique
-features in a feature column and $$k$$ is a small constant (usually smaller than
+order of \\(\log_2(n)\\) or \\(k\sqrt[4]n\\), where \\(n\\) is the number of unique
+features in a feature column and \\(k\\) is a small constant (usually smaller than
 10).
 
 Through dense embeddings, deep models can generalize better and make predictions
@@ -217,8 +215,8 @@ CONTINUOUS_COLUMNS = ["age", "education_num", "capital_gain", "capital_loss",
 # test_file to your own paths.
 train_file = tempfile.NamedTemporaryFile()
 test_file = tempfile.NamedTemporaryFile()
-urllib.urlretrieve("https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.data", train_file.name)
-urllib.urlretrieve("https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.test", test_file.name)
+urllib.urlretrieve("http://mlr.cs.umass.edu/ml/machine-learning-databases/adult/adult.data", train_file.name)
+urllib.urlretrieve("http://mlr.cs.umass.edu/ml/machine-learning-databases/adult/adult.test", test_file.name)
 
 # Read the training and test data sets into Pandas dataframe.
 df_train = pd.read_csv(train_file, names=COLUMNS, skipinitialspace=True)
@@ -264,8 +262,8 @@ for key in sorted(results):
 The first line of the output should be something like `accuracy: 0.84429705`. We
 can see that the accuracy was improved from about 83.6% using a wide-only linear
 model to about 84.4% using a Wide & Deep model. If you'd like to see a working
-end-to-end example, you can download our [example code]
-(https://github.com/tensorflow/tensorflow/blob/master/tensorflow/examples/learn/wide_n_deep_tutorial.py).
+end-to-end example, you can download our
+[example code](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/examples/learn/wide_n_deep_tutorial.py).
 
 Note that this tutorial is just a quick example on a small dataset to get you
 familiar with the API. Wide & Deep Learning will be even more powerful if you

@@ -60,7 +60,7 @@ void FIFOQueue::TryEnqueue(const Tuple& tuple, OpKernelContext* ctx,
           [tuple, this](Attempt* attempt) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
             if (closed_) {
               attempt->context->SetStatus(
-                  errors::Aborted("FIFOQueue '", name_, "' is closed."));
+                  errors::Cancelled("FIFOQueue '", name_, "' is closed."));
               return kComplete;
             }
             if (queues_[0].size() < static_cast<size_t>(capacity_)) {
@@ -118,7 +118,7 @@ void FIFOQueue::TryEnqueueMany(const Tuple& tuple, OpKernelContext* ctx,
           [tuple, this](Attempt* attempt) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
             if (closed_) {
               attempt->context->SetStatus(
-                  errors::Aborted("FIFOQueue '", name_, "' is closed."));
+                  errors::Cancelled("FIFOQueue '", name_, "' is closed."));
               return kComplete;
             }
             RunResult result = kNoProgress;
@@ -229,7 +229,13 @@ void FIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
       // an optimized case where the queue 'knows' what attributes to
       // use, and plumbs them through here.
       Tensor element;
-      ctx->allocate_temp(component_dtypes_[i], ManyOutShape(i, 0), &element);
+      Status status = ctx->allocate_temp(component_dtypes_[i],
+                                         ManyOutShape(i, 0), &element);
+      if (!status.ok()) {
+        ctx->SetStatus(status);
+        callback(Tuple());
+        return;
+      }
       tuple.emplace_back(element);
     }
     callback(tuple);
@@ -309,8 +315,10 @@ void FIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
                       const TensorShape shape =
                           ManyOutShape(i, attempt->elements_requested);
                       Tensor element;
-                      attempt->context->allocate_temp(component_dtypes_[i],
-                                                      shape, &element);
+                      attempt->context->SetStatus(
+                          attempt->context->allocate_temp(component_dtypes_[i],
+                                                          shape, &element));
+                      if (!attempt->context->status().ok()) return kComplete;
                       attempt->tuple.emplace_back(element);
                     }
                   }
@@ -347,7 +355,10 @@ void FIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
 }
 
 Status FIFOQueue::MatchesNodeDef(const NodeDef& node_def) {
-  TF_RETURN_IF_ERROR(MatchesNodeDefOp(node_def, "FIFOQueue"));
+  if (!MatchesNodeDefOp(node_def, "FIFOQueue").ok() &&
+      !MatchesNodeDefOp(node_def, "FIFOQueueV2").ok()) {
+    return errors::InvalidArgument("Expected FIFOQueue, found ", node_def.op());
+  }
   TF_RETURN_IF_ERROR(MatchesNodeDefCapacity(node_def, capacity_));
   TF_RETURN_IF_ERROR(MatchesNodeDefTypes(node_def));
   TF_RETURN_IF_ERROR(MatchesNodeDefShapes(node_def));

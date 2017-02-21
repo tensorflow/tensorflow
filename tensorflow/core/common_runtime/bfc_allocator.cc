@@ -85,9 +85,13 @@ BFCAllocator::Chunk* BFCAllocator::ChunkFromHandle(ChunkHandle h) {
 }
 
 bool BFCAllocator::Extend(size_t rounded_bytes) {
+  size_t available_bytes = memory_limit_ - total_region_allocated_bytes_;
+  // Rounds available_bytes down to the nearest multiple of kMinAllocationSize.
+  available_bytes = (available_bytes / kMinAllocationSize) * kMinAllocationSize;
+
   // Do we have enough space to handle the client's request?
   // If not, fail immediately.
-  if (total_region_allocated_bytes_ + rounded_bytes > memory_limit_) {
+  if (rounded_bytes > available_bytes) {
     return false;
   }
 
@@ -101,7 +105,7 @@ bool BFCAllocator::Extend(size_t rounded_bytes) {
   }
 
   // Try allocating.
-  size_t bytes = curr_region_allocation_bytes_;
+  size_t bytes = std::min(curr_region_allocation_bytes_, available_bytes);
   void* mem_addr = suballocator_->Alloc(32, bytes);
   if (mem_addr == nullptr && !started_backpedal_) {
     // Only backpedal once.
@@ -157,7 +161,7 @@ bool BFCAllocator::Extend(size_t rounded_bytes) {
   InsertFreeChunkIntoBin(h);
 
   // Invoke visitors on newly allocated region.
-  for (auto visitor : region_visitors_) {
+  for (const auto& visitor : region_visitors_) {
     visitor(mem_addr, bytes);
   }
   return true;

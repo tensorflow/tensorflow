@@ -25,7 +25,7 @@ from __future__ import division
 from __future__ import print_function
 ```
 
-* Use `six` to write compatible code (for example `six.range`).
+* Use `six` to write compatible code (for example `six.moves.range`).
 
 
 ## Bazel BUILD rules
@@ -134,7 +134,7 @@ Example:
                 output_collections=['MY_OPS'], name='add_t1t2')
       [2.3, 3.4]
     """
-    with tf.op_scope([tensor_in, other_tensor_in], name, "my_op"):
+    with tf.name_scope(name, "my_op", [tensor_in, other_tensor_in]):
       tensor_in = tf.convert_to_tensor(tensor_in)
       other_tensor_in = tf.convert_to_tensor(other_tensor_in)
       result = my_param * tensor_in + other_param * other_tensor_in

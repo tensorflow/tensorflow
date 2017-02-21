@@ -50,8 +50,20 @@ DEFINE_SETZERO_CPU(int32);
 DEFINE_SETZERO_CPU(int64);
 DEFINE_SETZERO_CPU(complex64);
 DEFINE_SETZERO_CPU(complex128);
-DEFINE_SETZERO_CPU(string);
 #undef DEFINE_SETZERO_CPU
+
+#ifdef TENSORFLOW_USE_SYCL
+template <typename T>
+void SetZeroFunctor<Eigen::SyclDevice, T>::operator()(
+    const Eigen::SyclDevice& d, typename TTypes<T>::Flat out) {
+  out.device(d) = out.constant(T(0));
+}
+
+#define DEFINE_SETZERO_SYCL(T) \
+  template struct SetZeroFunctor<Eigen::SyclDevice, T>;
+DEFINE_SETZERO_SYCL(float);
+#undef DEFINE_SETZERO_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace functor
 }  // namespace tensorflow

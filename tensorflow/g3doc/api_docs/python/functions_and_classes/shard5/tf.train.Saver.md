@@ -72,7 +72,7 @@ protocol buffer file in the call to `save()`.
 
 - - -
 
-#### `tf.train.Saver.__init__(var_list=None, reshape=False, sharded=False, max_to_keep=5, keep_checkpoint_every_n_hours=10000.0, name=None, restore_sequentially=False, saver_def=None, builder=None)` {#Saver.__init__}
+#### `tf.train.Saver.__init__(var_list=None, reshape=False, sharded=False, max_to_keep=5, keep_checkpoint_every_n_hours=10000.0, name=None, restore_sequentially=False, saver_def=None, builder=None, defer_build=False, allow_empty=False, write_version=2, pad_step_number=False)` {#Saver.__init__}
 
 Creates a `Saver`.
 
@@ -113,8 +113,9 @@ checkpoints per device.
 ##### Args:
 
 
-*  <b>`var_list`</b>: A list of `Variable` objects or a dictionary mapping names to
-    variables.  If `None`, defaults to the list of all variables.
+*  <b>`var_list`</b>: A list of `Variable`/`SaveableObject`, or a dictionary mapping
+    names to `SaveableObject`s. If `None`, defaults to the list of all
+    saveable objects.
 *  <b>`reshape`</b>: If `True`, allows restoring parameters from a checkpoint
     where the variables have a different shape.
 *  <b>`sharded`</b>: If `True`, shard the checkpoints, one per device.
@@ -133,6 +134,20 @@ checkpoints per device.
     `as_saver_def()` call of the `Saver` that was created for that `Graph`.
 *  <b>`builder`</b>: Optional `SaverBuilder` to use if a `saver_def` was not provided.
     Defaults to `BaseSaverBuilder()`.
+*  <b>`defer_build`</b>: If `True`, defer adding the save and restore ops to the
+    `build()` call. In that case `build()` should be called before
+    finalizing the graph or using the saver.
+*  <b>`allow_empty`</b>: If `False` (default) raise an error if there are no
+    variables in the graph. Otherwise, construct the saver anyway and make
+    it a no-op.
+*  <b>`write_version`</b>: controls what format to use when saving checkpoints.  It
+    also affects certain filepath matching logic.  The V2 format is the
+    recommended choice: it is much more optimized than V1 in terms of
+    memory required and latency incurred during restore.  Regardless of
+    this flag, the Saver is able to restore from both V2 and V1 checkpoints.
+*  <b>`pad_step_number`</b>: if True, pads the global step number in the checkpoint
+    filepaths to some fixed width (8 by default).  This is turned off by
+    default.
 
 ##### Raises:
 
@@ -143,7 +158,7 @@ checkpoints per device.
 
 - - -
 
-#### `tf.train.Saver.save(sess, save_path, global_step=None, latest_filename=None, meta_graph_suffix='meta', write_meta_graph=True)` {#Saver.save}
+#### `tf.train.Saver.save(sess, save_path, global_step=None, latest_filename=None, meta_graph_suffix='meta', write_meta_graph=True, write_state=True)` {#Saver.save}
 
 Saves variables.
 
@@ -171,18 +186,23 @@ path can be passed directly to a call to `restore()`.
 *  <b>`meta_graph_suffix`</b>: Suffix for `MetaGraphDef` file. Defaults to 'meta'.
 *  <b>`write_meta_graph`</b>: `Boolean` indicating whether or not to write the meta
     graph file.
+*  <b>`write_state`</b>: `Boolean` indicating whether or not to write the
+    `CheckpointStateProto`.
 
 ##### Returns:
 
   A string: path at which the variables were saved.  If the saver is
     sharded, this string ends with: '-?????-of-nnnnn' where 'nnnnn'
     is the number of shards created.
+  If the saver is empty, returns None.
 
 ##### Raises:
 
 
 *  <b>`TypeError`</b>: If `sess` is not a `Session`.
-*  <b>`ValueError`</b>: If `latest_filename` contains path components.
+*  <b>`ValueError`</b>: If `latest_filename` contains path components, or if it
+    collides with `save_path`.
+*  <b>`RuntimeError`</b>: If save and restore ops weren't built.
 
 
 - - -
@@ -205,11 +225,6 @@ The `save_path` argument is typically a value previously returned from a
 *  <b>`sess`</b>: A `Session` to use to restore the parameters.
 *  <b>`save_path`</b>: Path where parameters were previously saved.
 
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If the given `save_path` does not point to a file.
-
 
 
 Other utility methods.
@@ -225,6 +240,99 @@ You can pass any of the returned values to `restore()`.
 ##### Returns:
 
   A list of checkpoint filenames, sorted from oldest to newest.
+
+
+- - -
+
+#### `tf.train.Saver.set_last_checkpoints_with_time(last_checkpoints_with_time)` {#Saver.set_last_checkpoints_with_time}
+
+Sets the list of old checkpoint filenames and timestamps.
+
+##### Args:
+
+
+*  <b>`last_checkpoints_with_time`</b>: A list of tuples of checkpoint filenames and
+    timestamps.
+
+##### Raises:
+
+
+*  <b>`AssertionError`</b>: If last_checkpoints_with_time is not a list.
+
+
+- - -
+
+#### `tf.train.Saver.recover_last_checkpoints(checkpoint_paths)` {#Saver.recover_last_checkpoints}
+
+Recovers the internal saver state after a crash.
+
+This method is useful for recovering the "self._last_checkpoints" state.
+
+Globs for the checkpoints pointed to by `checkpoint_paths`.  If the files
+exist, use their mtime as the checkpoint timestamp.
+
+##### Args:
+
+
+*  <b>`checkpoint_paths`</b>: a list of checkpoint paths.
+
+
+- - -
+
+#### `tf.train.Saver.as_saver_def()` {#Saver.as_saver_def}
+
+Generates a `SaverDef` representation of this saver.
+
+##### Returns:
+
+  A `SaverDef` proto.
+
+
+
+#### Other Methods
+- - -
+
+#### `tf.train.Saver.build()` {#Saver.build}
+
+Builds saver_def.
+
+
+- - -
+
+#### `tf.train.Saver.export_meta_graph(filename=None, collection_list=None, as_text=False, export_scope=None, clear_devices=False)` {#Saver.export_meta_graph}
+
+Writes `MetaGraphDef` to save_path/filename.
+
+##### Args:
+
+
+*  <b>`filename`</b>: Optional meta_graph filename including the path.
+*  <b>`collection_list`</b>: List of string keys to collect.
+*  <b>`as_text`</b>: If `True`, writes the meta_graph as an ASCII proto.
+*  <b>`export_scope`</b>: Optional `string`. Name scope to remove.
+*  <b>`clear_devices`</b>: Whether or not to clear the device field for an `Operation`
+    or `Tensor` during export.
+
+##### Returns:
+
+  A `MetaGraphDef` proto.
+
+
+- - -
+
+#### `tf.train.Saver.from_proto(saver_def, import_scope=None)` {#Saver.from_proto}
+
+Returns a `Saver` object created from `saver_def`.
+
+##### Args:
+
+
+*  <b>`saver_def`</b>: a `SaveDef` protocol buffer.
+*  <b>`import_scope`</b>: Optional `string`. Name scope to use.
+
+##### Returns:
+
+  A `Saver` built from saver_def.
 
 
 - - -
@@ -248,65 +356,14 @@ Sets the list of old checkpoint filenames.
 
 - - -
 
-#### `tf.train.Saver.as_saver_def()` {#Saver.as_saver_def}
-
-Generates a `SaverDef` representation of this saver.
-
-##### Returns:
-
-  A `SaverDef` proto.
-
-
-
-#### Other Methods
-- - -
-
-#### `tf.train.Saver.export_meta_graph(filename=None, collection_list=None, as_text=False)` {#Saver.export_meta_graph}
-
-Writes `MetaGraphDef` to save_path/filename.
-
-##### Args:
-
-
-*  <b>`filename`</b>: Optional meta_graph filename including the path.
-*  <b>`collection_list`</b>: List of string keys to collect.
-*  <b>`as_text`</b>: If `True`, writes the meta_graph as an ASCII proto.
-
-##### Returns:
-
-  A `MetaGraphDef` proto.
-
-
-- - -
-
-#### `tf.train.Saver.from_proto(saver_def)` {#Saver.from_proto}
-
-Returns a `Saver` object created from `saver_def`.
-
-
-- - -
-
-#### `tf.train.Saver.set_last_checkpoints_with_time(last_checkpoints_with_time)` {#Saver.set_last_checkpoints_with_time}
-
-Sets the list of old checkpoint filenames and timestamps.
-
-##### Args:
-
-
-*  <b>`last_checkpoints_with_time`</b>: A list of tuples of checkpoint filenames and
-    timestamps.
-
-##### Raises:
-
-
-*  <b>`AssertionError`</b>: If last_checkpoints_with_time is not a list.
-
-
-- - -
-
-#### `tf.train.Saver.to_proto()` {#Saver.to_proto}
+#### `tf.train.Saver.to_proto(export_scope=None)` {#Saver.to_proto}
 
 Converts this `Saver` to a `SaverDef` protocol buffer.
+
+##### Args:
+
+
+*  <b>`export_scope`</b>: Optional `string`. Name scope to remove.
 
 ##### Returns:
 

@@ -1,6 +1,10 @@
-### `tf.contrib.learn.infer(restore_checkpoint_path, output_dict, feed_dict=None)` {#infer}
+### `tf.contrib.learn.infer(*args, **kwargs)` {#infer}
 
-Restore graph from `restore_checkpoint_path` and run `output_dict` tensors.
+Restore graph from `restore_checkpoint_path` and run `output_dict` tensors. (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2017-02-15.
+Instructions for updating:
+graph_actions.py will be deleted. Use tf.train.* utilities instead. You can use learn/estimators/estimator.py as an example.
 
 If `restore_checkpoint_path` is supplied, restore from checkpoint. Otherwise,
 init all variables.

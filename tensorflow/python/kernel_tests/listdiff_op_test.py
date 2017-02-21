@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for tensorflow.kernels.listdiff_op."""
 
 from __future__ import absolute_import
@@ -21,30 +20,36 @@ from __future__ import print_function
 
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
-import tensorflow as tf
 
-_TYPES = [tf.int32, tf.int64, tf.float32, tf.float64, tf.string]
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.platform import test
+from tensorflow.python.util import compat
+
+_TYPES = [
+    dtypes.int32, dtypes.int64, dtypes.float32, dtypes.float64, dtypes.string
+]
 
 
-class ListDiffTest(tf.test.TestCase):
+class ListDiffTest(test.TestCase):
 
   def _testListDiff(self, x, y, out, idx):
     for dtype in _TYPES:
-      if dtype == tf.string:
-        x = [tf.compat.as_bytes(str(a)) for a in x]
-        y = [tf.compat.as_bytes(str(a)) for a in y]
-        out = [tf.compat.as_bytes(str(a)) for a in out]
-
-      with self.test_session() as sess:
-        x_tensor = tf.convert_to_tensor(x, dtype=dtype)
-        y_tensor = tf.convert_to_tensor(y, dtype=dtype)
-        out_tensor, idx_tensor = tf.listdiff(x_tensor, y_tensor)
-        tf_out, tf_idx = sess.run([out_tensor, idx_tensor])
-
-      self.assertAllEqual(tf_out, out)
-      self.assertAllEqual(tf_idx, idx)
-      self.assertEqual(1, out_tensor.get_shape().ndims)
-      self.assertEqual(1, idx_tensor.get_shape().ndims)
+      if dtype == dtypes.string:
+        x = [compat.as_bytes(str(a)) for a in x]
+        y = [compat.as_bytes(str(a)) for a in y]
+        out = [compat.as_bytes(str(a)) for a in out]
+      for diff_func in [array_ops.setdiff1d]:
+        with self.test_session() as sess:
+          x_tensor = ops.convert_to_tensor(x, dtype=dtype)
+          y_tensor = ops.convert_to_tensor(y, dtype=dtype)
+          out_tensor, idx_tensor = diff_func(x_tensor, y_tensor)
+          tf_out, tf_idx = sess.run([out_tensor, idx_tensor])
+        self.assertAllEqual(tf_out, out)
+        self.assertAllEqual(tf_idx, idx)
+        self.assertEqual(1, out_tensor.get_shape().ndims)
+        self.assertEqual(1, idx_tensor.get_shape().ndims)
 
   def testBasic1(self):
     x = [1, 2, 3, 4]
@@ -127,5 +132,6 @@ class ListDiffTest(tf.test.TestCase):
     idx = []
     self._testListDiff(x, y, out, idx)
 
+
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

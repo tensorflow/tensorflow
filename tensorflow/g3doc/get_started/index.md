@@ -30,7 +30,7 @@ optimizer = tf.train.GradientDescentOptimizer(0.5)
 train = optimizer.minimize(loss)
 
 # Before starting, initialize the variables.  We will 'run' this first.
-init = tf.initialize_all_variables()
+init = tf.global_variables_initializer()
 
 # Launch the graph.
 sess = tf.Session()
@@ -43,6 +43,9 @@ for step in range(201):
         print(step, sess.run(W), sess.run(b))
 
 # Learns best fit is W: [0.1], b: [0.3]
+
+# Close the Session when we're done.
+sess.close()
 ```
 
 The first part of this code builds the data flow graph.  TensorFlow does not

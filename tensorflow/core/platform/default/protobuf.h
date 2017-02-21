@@ -24,6 +24,7 @@ limitations under the License.
 #include "google/protobuf/descriptor.h"
 #include "google/protobuf/io/coded_stream.h"
 #include "google/protobuf/io/zero_copy_stream.h"
+#include "google/protobuf/io/zero_copy_stream_impl_lite.h"
 #include "google/protobuf/map.h"
 #include "google/protobuf/repeated_field.h"
 #include "google/protobuf/text_format.h"
@@ -32,6 +33,10 @@ limitations under the License.
 
 namespace tensorflow {
 namespace protobuf = ::google::protobuf;
+using protobuf_int64 = ::google::protobuf::int64;
+using protobuf_uint64 = ::google::protobuf::uint64;
+extern const char* kProtobufInt64Typename;
+extern const char* kProtobufUint64Typename;
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_PLATFORM_DEFAULT_PROTOBUF_H_

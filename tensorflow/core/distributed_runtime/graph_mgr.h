@@ -19,9 +19,11 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "tensorflow/core/common_runtime/costmodel_manager.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -73,16 +75,12 @@ class GraphMgr {
   typedef std::function<void(const Status&)> StatusCallback;
   void ExecuteAsync(const string& handle, const int64 step_id,
                     const ExecutorOpts& opts, StepStatsCollector* collector,
+                    CostGraphDef* cost_graph,
                     CancellationManager* cancellation_manager,
-                    const NamedTensors& in, NamedTensors* out,
-                    StatusCallback done);
+                    const NamedTensors& in, StatusCallback done);
 
-  // Synchronous wrapper.
-  Status Execute(const string& handle, const int64 step_id,
-                 const ExecutorOpts& opts,
-                 StepStatsCollector* step_stats_collector,
-                 CancellationManager* cancellation_manager,
-                 const NamedTensors& in, NamedTensors* out);
+  Status SendInputs(const int64 step_id, const NamedTensors& in);
+  Status RecvOutputs(const int64 step_id, NamedTensors* out);
 
   // Deregisters a graph.
   Status Deregister(const string& handle);
@@ -94,9 +92,12 @@ class GraphMgr {
   typedef GraphMgr ME;
 
   struct ExecutionUnit {
+    Graph* graph = nullptr;
     Device* device = nullptr;
     Executor* root = nullptr;
     FunctionLibraryRuntime* lib = nullptr;
+    // Build the cost model if this value is strictly positive.
+    int64 build_cost_model = 0;
   };
 
   struct Item : public core::RefCounted {
@@ -117,10 +118,16 @@ class GraphMgr {
     // A graph is partitioned over multiple devices.  Each partition
     // has a root executor which may call into the runtime library.
     std::vector<ExecutionUnit> units;
+
+    // Used to deresgister a cost model when cost model is requried in graph
+    // manager.
+    GraphMgr* graph_mgr;
   };
 
   // Not owned.
   const WorkerEnv* worker_env_;
+
+  CostModelManager cost_model_manager_;
 
   // Owned.
   mutex mu_;
@@ -133,8 +140,22 @@ class GraphMgr {
   // mechanism to gc these graphs.
   std::unordered_map<string, Item*> table_;
 
-  void RunAllDone(Item* item, Rendezvous* rendezvous, NamedTensors* out,
-                  StatusCallback done, Status run_status);
+  void StartParallelExecutors(const string& handle, int64 step_id, Item* item,
+                              Rendezvous* rendezvous,
+                              StepStatsCollector* collector,
+                              CostGraphDef* cost_graph,
+                              CancellationManager* cancellation_manager,
+                              StatusCallback done);
+
+  // Don't attempt to process cost models unless explicitely requested for at
+  // least one of the items.
+  bool skip_cost_models_ = true;
+
+  void BuildCostModel(Item* item, StepStatsCollector* collector,
+                      CostGraphDef* cost_graph);
+
+  Status SendInputsToRendezvous(Rendezvous* rendezvous, const NamedTensors& in);
+  Status RecvOutputsFromRendezvous(Rendezvous* rendezvous, NamedTensors* out);
 
   Status InitItem(const string& session, const GraphDef& gdef,
                   const GraphOptions& graph_options, Item* item);

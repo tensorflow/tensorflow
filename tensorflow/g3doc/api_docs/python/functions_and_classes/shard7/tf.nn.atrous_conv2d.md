@@ -34,34 +34,41 @@ by Dilated Convolutions](http://arxiv.org/abs/1511.07122). Previous works
 that effectively use atrous convolution in different ways are, among others,
 [OverFeat: Integrated Recognition, Localization and Detection using
 Convolutional Networks](http://arxiv.org/abs/1312.6229) and [Fast Image
-Scanning with Deep Max-Pooling Convolutional Neural Networks]
-(http://arxiv.org/abs/1302.1700). Atrous convolution is also closely related
-to the so-called noble identities in multi-rate signal processing.
+Scanning with Deep Max-Pooling Convolutional Neural Networks](http://arxiv.org/abs/1302.1700).
+Atrous convolution is also closely related to the so-called noble identities
+in multi-rate signal processing.
 
 There are many different ways to implement atrous convolution (see the refs
 above). The implementation here reduces
 
+```python
     atrous_conv2d(value, filters, rate, padding=padding)
+```
 
 to the following three operations:
 
+```python
     paddings = ...
     net = space_to_batch(value, paddings, block_size=rate)
     net = conv2d(net, filters, strides=[1, 1, 1, 1], padding="VALID")
     crops = ...
     net = batch_to_space(net, crops, block_size=rate)
+```
 
 Advanced usage. Note the following optimization: A sequence of `atrous_conv2d`
 operations with identical `rate` parameters, 'SAME' `padding`, and filters
 with odd heights/ widths:
 
+```python
     net = atrous_conv2d(net, filters1, rate, padding="SAME")
     net = atrous_conv2d(net, filters2, rate, padding="SAME")
     ...
     net = atrous_conv2d(net, filtersK, rate, padding="SAME")
+```
 
 can be equivalently performed cheaper in terms of computation and memory as:
 
+```python
     pad = ...  # padding so that the input dims are multiples of rate
     net = space_to_batch(net, paddings=pad, block_size=rate)
     net = conv2d(net, filters1, strides=[1, 1, 1, 1], padding="SAME")
@@ -69,6 +76,7 @@ can be equivalently performed cheaper in terms of computation and memory as:
     ...
     net = conv2d(net, filtersK, strides=[1, 1, 1, 1], padding="SAME")
     net = batch_to_space(net, crops=pad, block_size=rate)
+```
 
 because a pair of consecutive `space_to_batch` and `batch_to_space` ops with
 the same `block_size` cancel out when their respective `paddings` and `crops`

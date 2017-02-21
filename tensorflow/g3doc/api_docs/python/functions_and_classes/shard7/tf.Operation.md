@@ -15,127 +15,6 @@ After the graph has been launched in a session, an `Operation` can
 be executed by passing it to
 [`Session.run()`](../../api_docs/python/client.md#Session.run).
 `op.run()` is a shortcut for calling `tf.get_default_session().run(op)`.
-
-- - -
-
-#### `tf.Operation.name` {#Operation.name}
-
-The full name of this operation.
-
-
-- - -
-
-#### `tf.Operation.type` {#Operation.type}
-
-The type of the op (e.g. `"MatMul"`).
-
-
-- - -
-
-#### `tf.Operation.inputs` {#Operation.inputs}
-
-The list of `Tensor` objects representing the data inputs of this op.
-
-
-- - -
-
-#### `tf.Operation.control_inputs` {#Operation.control_inputs}
-
-The `Operation` objects on which this op has a control dependency.
-
-Before this op is executed, TensorFlow will ensure that the
-operations in `self.control_inputs` have finished executing. This
-mechanism can be used to run ops sequentially for performance
-reasons, or to ensure that the side effects of an op are observed
-in the correct order.
-
-##### Returns:
-
-  A list of `Operation` objects.
-
-
-- - -
-
-#### `tf.Operation.outputs` {#Operation.outputs}
-
-The list of `Tensor` objects representing the outputs of this op.
-
-
-- - -
-
-#### `tf.Operation.device` {#Operation.device}
-
-The name of the device to which this op has been assigned, if any.
-
-##### Returns:
-
-  The string name of the device to which this op has been
-  assigned, or an empty string if it has not been assigned to a
-  device.
-
-
-- - -
-
-#### `tf.Operation.graph` {#Operation.graph}
-
-The `Graph` that contains this operation.
-
-
-
-- - -
-
-#### `tf.Operation.run(feed_dict=None, session=None)` {#Operation.run}
-
-Runs this operation in a `Session`.
-
-Calling this method will execute all preceding operations that
-produce the inputs needed for this operation.
-
-*N.B.* Before invoking `Operation.run()`, its graph must have been
-launched in a session, and either a default session must be
-available, or `session` must be specified explicitly.
-
-##### Args:
-
-
-*  <b>`feed_dict`</b>: A dictionary that maps `Tensor` objects to feed values.
-    See [`Session.run()`](../../api_docs/python/client.md#Session.run)
-    for a description of the valid feed values.
-*  <b>`session`</b>: (Optional.) The `Session` to be used to run to this operation. If
-    none, the default session will be used.
-
-
-
-- - -
-
-#### `tf.Operation.get_attr(name)` {#Operation.get_attr}
-
-Returns the value of the attr of this op with the given `name`.
-
-##### Args:
-
-
-*  <b>`name`</b>: The name of the attr to fetch.
-
-##### Returns:
-
-  The value of the attr, as a Python object.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If this op does not have an attr with the given `name`.
-
-
-- - -
-
-#### `tf.Operation.traceback` {#Operation.traceback}
-
-Returns the call stack from when this operation was constructed.
-
-
-
-#### Other Methods
 - - -
 
 #### `tf.Operation.__init__(node_def, g, inputs=None, output_types=None, control_inputs=None, input_types=None, original_op=None, op_def=None)` {#Operation.__init__}
@@ -146,13 +25,13 @@ NOTE: This constructor validates the name of the `Operation` (passed
 as `node_def.name`). Valid `Operation` names match the following
 regular expression:
 
-    [A-Za-z0-9.][A-Za-z0-9_.\-/]*
+    [A-Za-z0-9.][A-Za-z0-9_.\\-/]*
 
 ##### Args:
 
 
-*  <b>`node_def`</b>: `graph_pb2.NodeDef`.  `NodeDef` for the `Operation`.
-    Used for attributes of `graph_pb2.NodeDef`, typically `name`,
+*  <b>`node_def`</b>: `node_def_pb2.NodeDef`.  `NodeDef` for the `Operation`.
+    Used for attributes of `node_def_pb2.NodeDef`, typically `name`,
     `op`, and `device`.  The `input` attribute is irrelevant here
     as it will be computed when generating the model.
 *  <b>`g`</b>: `Graph`. The parent graph.
@@ -185,9 +64,95 @@ regular expression:
 
 - - -
 
+#### `tf.Operation.__repr__()` {#Operation.__repr__}
+
+
+
+
+- - -
+
+#### `tf.Operation.__str__()` {#Operation.__str__}
+
+
+
+
+- - -
+
 #### `tf.Operation.colocation_groups()` {#Operation.colocation_groups}
 
 Returns the list of colocation groups of the op.
+
+
+- - -
+
+#### `tf.Operation.control_inputs` {#Operation.control_inputs}
+
+The `Operation` objects on which this op has a control dependency.
+
+Before this op is executed, TensorFlow will ensure that the
+operations in `self.control_inputs` have finished executing. This
+mechanism can be used to run ops sequentially for performance
+reasons, or to ensure that the side effects of an op are observed
+in the correct order.
+
+##### Returns:
+
+  A list of `Operation` objects.
+
+
+- - -
+
+#### `tf.Operation.device` {#Operation.device}
+
+The name of the device to which this op has been assigned, if any.
+
+##### Returns:
+
+  The string name of the device to which this op has been
+  assigned, or an empty string if it has not been assigned to a
+  device.
+
+
+- - -
+
+#### `tf.Operation.get_attr(name)` {#Operation.get_attr}
+
+Returns the value of the attr of this op with the given `name`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name of the attr to fetch.
+
+##### Returns:
+
+  The value of the attr, as a Python object.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If this op does not have an attr with the given `name`.
+
+
+- - -
+
+#### `tf.Operation.graph` {#Operation.graph}
+
+The `Graph` that contains this operation.
+
+
+- - -
+
+#### `tf.Operation.inputs` {#Operation.inputs}
+
+The list of `Tensor` objects representing the data inputs of this op.
+
+
+- - -
+
+#### `tf.Operation.name` {#Operation.name}
+
+The full name of this operation.
 
 
 - - -
@@ -199,7 +164,7 @@ Returns a serialized `NodeDef` representation of this operation.
 ##### Returns:
 
   A
-  [`NodeDef`](https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto)
+  [`NodeDef`](https://www.tensorflow.org/code/tensorflow/core/framework/node_def.proto)
   protocol buffer.
 
 
@@ -214,6 +179,50 @@ Returns the `OpDef` proto that represents the type of this op.
   An
   [`OpDef`](https://www.tensorflow.org/code/tensorflow/core/framework/op_def.proto)
   protocol buffer.
+
+
+- - -
+
+#### `tf.Operation.outputs` {#Operation.outputs}
+
+The list of `Tensor` objects representing the outputs of this op.
+
+
+- - -
+
+#### `tf.Operation.run(feed_dict=None, session=None)` {#Operation.run}
+
+Runs this operation in a `Session`.
+
+Calling this method will execute all preceding operations that
+produce the inputs needed for this operation.
+
+*N.B.* Before invoking `Operation.run()`, its graph must have been
+launched in a session, and either a default session must be
+available, or `session` must be specified explicitly.
+
+##### Args:
+
+
+*  <b>`feed_dict`</b>: A dictionary that maps `Tensor` objects to feed values.
+    See [`Session.run()`](../../api_docs/python/client.md#Session.run)
+    for a description of the valid feed values.
+*  <b>`session`</b>: (Optional.) The `Session` to be used to run to this operation. If
+    none, the default session will be used.
+
+
+- - -
+
+#### `tf.Operation.traceback` {#Operation.traceback}
+
+Returns the call stack from when this operation was constructed.
+
+
+- - -
+
+#### `tf.Operation.type` {#Operation.type}
+
+The type of the op (e.g. `"MatMul"`).
 
 
 - - -

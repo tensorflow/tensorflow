@@ -34,6 +34,8 @@ message Event {
     SessionLog session_log = 7;
     // The metadata returned by running a session.run() call.
     TaggedRunMetadata tagged_run_metadata = 8;
+    // An encoded version of a MetaGraphDef.
+    bytes meta_graph_def = 9;
   }
 }
 
@@ -41,7 +43,11 @@ message Event {
 message LogMessage {
   enum Level {
     UNKNOWN = 0;
-    DEBUG = 10;
+    // Note: The logging level 10 cannot be named DEBUG. Some software
+    // projects compile their C/C++ code with -DDEBUG in debug builds. So the
+    // C++ code generated from this file should not have an identifier named
+    // DEBUG.
+    DEBUGGING = 10;
     INFO = 20;
     WARN = 30;
     ERROR = 40;

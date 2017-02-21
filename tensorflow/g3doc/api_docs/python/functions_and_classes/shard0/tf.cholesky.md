@@ -1,22 +1,20 @@
 ### `tf.cholesky(input, name=None)` {#cholesky}
 
-Calculates the Cholesky decomposition of a square matrix.
+Computes the Cholesky decomposition of one or more square matrices.
 
-The input has to be symmetric and positive definite. Only the lower-triangular
-part of the input will be used for this operation. The upper-triangular part
-will not be read.
-
-The result is the lower-triangular matrix of the Cholesky decomposition of the
-input, `L`, so that `input = L L^*`.
+The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
+form square matrices, with the same constraints as the single matrix Cholesky
+decomposition above. The output is a tensor of the same shape as the input
+containing the Cholesky decompositions for all input submatrices `[..., :, :]`.
 
 ##### Args:
 
 
 *  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float64`, `float32`.
-    Shape is `[M, M]`.
+    Shape is `[..., M, M]`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `input`. Shape is `[M, M]`.
+  A `Tensor`. Has the same type as `input`. Shape is `[..., M, M]`.
 

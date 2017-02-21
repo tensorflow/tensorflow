@@ -2,6 +2,10 @@
 
 Returns which elements of x are Inf.
 
+@compatibility(numpy)
+Equivalent to np.isinf
+@end_compatibility
+
 ##### Args:
 
 

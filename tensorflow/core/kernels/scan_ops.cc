@@ -37,7 +37,7 @@ typedef Eigen::GpuDevice GPUDevice;
 
 template <typename Device, class T, typename Reducer>
 class ScanOp : public OpKernel {
-public:
+ public:
   explicit ScanOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("reverse", &reverse_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("exclusive", &exclusive_));
@@ -51,48 +51,39 @@ public:
                 errors::InvalidArgument("ScanOp: axis must be a scalar, not ",
                                         tensor_axis.shape().DebugString()));
 
-    const int axis = internal::SubtleMustCopy(tensor_axis.scalar<int>()());
+    const int axis_arg = internal::SubtleMustCopy(tensor_axis.scalar<int>()());
+    const int axis = (axis_arg < 0) ? input.dims() + axis_arg : axis_arg;
+    OP_REQUIRES(ctx, FastBoundsCheck(axis, input.dims()),
+                errors::InvalidArgument(
+                    "ScanOp: Expected scan axis in the range [", -input.dims(),
+                    ", ", input.dims(), "), but got ", axis));
 
-    OP_REQUIRES(
-        ctx, FastBoundsCheck(axis, input.dims()),
-        errors::InvalidArgument("ScanOp: Expected scan axis in the range [", 0,
-                                ", ", input.dims(), "), but got ", axis));
-
-    TensorShape output_shape = input.shape();
+    const TensorShape& output_shape = input.shape();
     Tensor* output = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &output));
+
+    // Exit early if there's nothing to compute
+    if (output_shape.num_elements() == 0) return;
 
     const Device& d = ctx->eigen_device<Device>();
     Reducer reducer;
 
-#define HANDLE_SCAN(NDIMS)                                                \
-  case NDIMS:                                                             \
-    functor::Scan<Device, Reducer, T, NDIMS>()(                           \
-        d, input.tensor<T, NDIMS>(), output->tensor<T, NDIMS>(), reducer, \
-        axis, reverse_, exclusive_);                                      \
-    return;
-
-    switch (input.dims()) {
-      // input.dims() == 0 can't occur as there
-      // is no valid axis parameter in this case
-      HANDLE_SCAN(1);
-      HANDLE_SCAN(2);
-      HANDLE_SCAN(3);
-      HANDLE_SCAN(4);
-      HANDLE_SCAN(5);
-      HANDLE_SCAN(6);
-      HANDLE_SCAN(7);
-      HANDLE_SCAN(8);
-      default:
-        OP_REQUIRES(ctx, false, errors::InvalidArgument(
-                                    "Scan does not support tensors with "
-                                    "more than 8 dimensions",
-                                    input.dims()));
+    // Dim reduction.
+    int64 reduced_shape[3] = {1, 1, 1};
+    for (int i = 0; i < axis; ++i) {
+      reduced_shape[0] *= input.dim_size(i);
     }
-#undef HANDLE_SCAN
+    reduced_shape[1] = input.dim_size(axis);
+    for (int i = axis + 1; i < input.dims(); ++i) {
+      reduced_shape[2] *= input.dim_size(i);
+    }
+
+    functor::Scan<Device, Reducer, T>()(d, input.shaped<T, 3>(reduced_shape),
+                                        output->shaped<T, 3>(reduced_shape),
+                                        reducer, reverse_, exclusive_);
   }
 
-private:
+ private:
   bool reverse_;
   bool exclusive_;
 };
@@ -101,32 +92,21 @@ private:
 namespace functor {
 
 // Forward declarations of GPU functors
-#define DECLARE(REDUCER, T, D)                                             \
-  template <>                                                              \
-  void Scan<GPUDevice, REDUCER, T, D>::operator()(                         \
-      const GPUDevice& d, TTypes<T, D>::ConstTensor in,                    \
-      TTypes<T, D>::Tensor out, const REDUCER& reducer,                    \
-      const Eigen::Index& axis, const bool reverse, const bool exclusive); \
-  extern template struct Scan<GPUDevice, REDUCER, T, D>;
+#define DECLARE(REDUCER, T)                                                 \
+  template <>                                                               \
+  void Scan<GPUDevice, REDUCER, T>::operator()(                             \
+      const GPUDevice& d, TTypes<T, 3>::ConstTensor in,                     \
+      TTypes<T, 3>::Tensor out, const REDUCER& reducer, const bool reverse, \
+      const bool exclusive);                                                \
+  extern template struct Scan<GPUDevice, REDUCER, T>;
 
-#define DECLARE_FOR_ALL_DIMS(REDUCER, T) \
-  DECLARE(REDUCER, T, 1);                \
-  DECLARE(REDUCER, T, 2);                \
-  DECLARE(REDUCER, T, 3);                \
-  DECLARE(REDUCER, T, 4);                \
-  DECLARE(REDUCER, T, 5);                \
-  DECLARE(REDUCER, T, 6);                \
-  DECLARE(REDUCER, T, 7);                \
-  DECLARE(REDUCER, T, 8);
-
-#define DECLARE_FOR_ALL_REDUCERS(T)                        \
-  DECLARE_FOR_ALL_DIMS(Eigen::internal::SumReducer<T>, T); \
-  DECLARE_FOR_ALL_DIMS(Eigen::internal::ProdReducer<T>, T);
+#define DECLARE_FOR_ALL_REDUCERS(T)           \
+  DECLARE(Eigen::internal::SumReducer<T>, T); \
+  DECLARE(Eigen::internal::ProdReducer<T>, T);
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_FOR_ALL_REDUCERS);
 
 #undef DECLARE_FOR_ALL_REDUCERS
-#undef DECLARE_FOR_ALL_DIMS
 #undef DECLARE
 
 }  // namespace functor
@@ -134,44 +114,51 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_FOR_ALL_REDUCERS);
 
 
 // Register Cumsum kernels
-#define REGISTER_CPU_KERNELS(type)                                 \
-  REGISTER_KERNEL_BUILDER(                                         \
-      Name("Cumsum").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
+#define REGISTER_CPU_KERNELS(type)        \
+  REGISTER_KERNEL_BUILDER(                \
+      Name("Cumsum")                      \
+          .Device(DEVICE_CPU)             \
+          .TypeConstraint<type>("T")      \
+          .TypeConstraint<int32>("Tidx"), \
       ScanOp<CPUDevice, type, Eigen::internal::SumReducer<type>>)
 TF_CALL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
 
 #if GOOGLE_CUDA
-#define REGISTER_GPU_KERNELS(type)   \
-  REGISTER_KERNEL_BUILDER(           \
-      Name("Cumsum")                 \
-          .Device(DEVICE_GPU)        \
-          .TypeConstraint<type>("T") \
-          .HostMemory("axis"),       \
+#define REGISTER_GPU_KERNELS(type)       \
+  REGISTER_KERNEL_BUILDER(               \
+      Name("Cumsum")                     \
+          .Device(DEVICE_GPU)            \
+          .TypeConstraint<type>("T")     \
+          .TypeConstraint<int32>("Tidx") \
+          .HostMemory("axis"),           \
       ScanOp<GPUDevice, type, Eigen::internal::SumReducer<type>>)
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS)
 #undef REGISTER_GPU_KERNELS
-#endif // GOOGLE_CUDA
-
+#endif  // GOOGLE_CUDA
 
 // Register Cumprod kernels
-#define REGISTER_CPU_KERNELS(type)                                  \
-  REGISTER_KERNEL_BUILDER(                                          \
-      Name("Cumprod").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
+#define REGISTER_CPU_KERNELS(type)        \
+  REGISTER_KERNEL_BUILDER(                \
+      Name("Cumprod")                     \
+          .Device(DEVICE_CPU)             \
+          .TypeConstraint<type>("T")      \
+          .TypeConstraint<int32>("Tidx"), \
       ScanOp<CPUDevice, type, Eigen::internal::ProdReducer<type>>)
 TF_CALL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
 
 #if GOOGLE_CUDA
-#define REGISTER_GPU_KERNELS(type)   \
-  REGISTER_KERNEL_BUILDER(           \
-      Name("Cumprod")                \
-          .Device(DEVICE_GPU)        \
-          .TypeConstraint<type>("T") \
-          .HostMemory("axis"),       \
+#define REGISTER_GPU_KERNELS(type)       \
+  REGISTER_KERNEL_BUILDER(               \
+      Name("Cumprod")                    \
+          .Device(DEVICE_GPU)            \
+          .TypeConstraint<type>("T")     \
+          .TypeConstraint<int32>("Tidx") \
+          .HostMemory("axis"),           \
       ScanOp<GPUDevice, type, Eigen::internal::ProdReducer<type>>)
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS)
 #undef REGISTER_GPU_KERNELS
-#endif // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA
 
 }  // namespace tensorflow

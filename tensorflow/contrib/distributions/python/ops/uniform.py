@@ -18,13 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.distributions.python.ops import distribution  # pylint: disable=line-too-long
-from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util  # pylint: disable=line-too-long
+import math
+
+from tensorflow.contrib.distributions.python.ops import distribution
+from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
@@ -32,244 +33,172 @@ from tensorflow.python.ops import random_ops
 
 
 class Uniform(distribution.Distribution):
-  """Uniform distribution with `a` and `b` parameters.
+  """Uniform distribution with `low` and `high` parameters.
 
-  The PDF of this distribution is constant between [`a`, `b`], and 0 elsewhere.
+  #### Mathematical Details
+
+  The probability density function (pdf) is,
+
+  ```none
+  pdf(x; a, b) = I[a <= x < b] / Z
+  Z = b - a
+  ```
+
+  where:
+  * `low = a`,
+  * `high = b`,
+  * `Z` is the normalizing constant, and,
+  * `I[predicate]` is the [indicator function](
+    https://en.wikipedia.org/wiki/Indicator_function) for `predicate`.
+
+  The parameters `low` and `high` must be shaped in a way that supports
+  broadcasting (e.g., `high - low` is a valid operation).
+
+  #### Examples
+
+  ```python
+  # Without broadcasting:
+  u1 = Uniform(low=3.0, high=4.0)  # a single uniform distribution [3, 4]
+  u2 = Uniform(low=[1.0, 2.0],
+               high=[3.0, 4.0])  # 2 distributions [1, 3], [2, 4]
+  u3 = Uniform(low=[[1.0, 2.0],
+                    [3.0, 4.0]],
+               high=[[1.5, 2.5],
+                     [3.5, 4.5]])  # 4 distributions
+  ```
+
+  ```python
+  # With broadcasting:
+  u1 = Uniform(low=3.0, high=[5.0, 6.0, 7.0])  # 3 distributions
+  ```
+
   """
 
-  def __init__(
-      self, a=0.0, b=1.0, strict=True, strict_statistics=True, name="Uniform"):
-    """Construct Uniform distributions with `a` and `b`.
-
-    The parameters `a` and `b` must be shaped in a way that supports
-    broadcasting (e.g. `b - a` is a valid operation).
-
-    Here are examples without broadcasting:
-
-    ```python
-    # Without broadcasting
-    u1 = Uniform(3.0, 4.0)  # a single uniform distribution [3, 4]
-    u2 = Uniform([1.0, 2.0], [3.0, 4.0])  # 2 distributions [1, 3], [2, 4]
-    u3 = Uniform([[1.0, 2.0],
-                  [3.0, 4.0]],
-                 [[1.5, 2.5],
-                  [3.5, 4.5]])  # 4 distributions
-    ```
-
-    And with broadcasting:
-
-    ```python
-    u1 = Uniform(3.0, [5.0, 6.0, 7.0])  # 3 distributions
-    ```
+  def __init__(self,
+               low=0.,
+               high=1.,
+               validate_args=False,
+               allow_nan_stats=True,
+               name="Uniform"):
+    """Initialize a batch of Uniform distributions.
 
     Args:
-      a: `float` or `double` tensor, the minimum endpoint.
-      b: `float` or `double` tensor, the maximum endpoint. Must be > `a`.
-      strict: Whether to assert that `a > b`. If `strict` is False and inputs
-        are invalid, correct behavior is not guaranteed.
-      strict_statistics:  Boolean, default True.  If True, raise an exception if
-        a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-        If False, batch members with valid parameters leading to undefined
-        statistics will return NaN for this statistic.
-      name: The name to prefix Ops created by this distribution class.
+      low: Floating point tensor, lower boundary of the output interval. Must
+        have `low < high`.
+      high: Floating point tensor, upper boundary of the output interval. Must
+        have `low < high`.
+      validate_args: Python `bool`, default `False`. When `True` distribution
+        parameters are checked for validity despite possibly degrading runtime
+        performance. When `False` invalid inputs may silently render incorrect
+        outputs.
+      allow_nan_stats: Python `bool`, default `True`. When `True`, statistics
+        (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
+        result is undefined. When `False`, an exception is raised if one or
+        more of the statistic's batch members are undefined.
+      name: Python `str` name prefixed to Ops created by this class.
 
     Raises:
-      InvalidArgumentError: if `a >= b` and `strict=True`.
+      InvalidArgumentError: if `low >= high` and `validate_args=False`.
     """
-    self._strict_statistics = strict_statistics
-    self._strict = strict
-    with ops.op_scope([a, b], name):
-      with ops.control_dependencies(
-          [check_ops.assert_less(a, b)] if strict else []):
-        a = array_ops.identity(a, name="a")
-        b = array_ops.identity(b, name="b")
+    parameters = locals()
+    with ops.name_scope(name, values=[low, high]) as ns:
+      with ops.control_dependencies([
+          check_ops.assert_less(
+              low, high, message="uniform not defined when low >= high.")
+      ] if validate_args else []):
+        self._low = array_ops.identity(low, name="low")
+        self._high = array_ops.identity(high, name="high")
+        contrib_tensor_util.assert_same_float_dtype([self._low, self._high])
+    super(Uniform, self).__init__(
+        dtype=self._low.dtype,
+        reparameterization_type=distribution.FULLY_REPARAMETERIZED,
+        is_continuous=True,
+        validate_args=validate_args,
+        allow_nan_stats=allow_nan_stats,
+        parameters=parameters,
+        graph_parents=[self._low,
+                       self._high],
+        name=ns)
 
-    self._a = a
-    self._b = b
-    self._name = name
-    self._batch_shape = self._ones().get_shape()
-    self._event_shape = tensor_shape.TensorShape([])
-
-    contrib_tensor_util.assert_same_float_dtype((a, b))
-
-  @property
-  def strict_statistics(self):
-    """Boolean describing behavior when a stat is undefined for batch member."""
-    return self._strict_statistics
-
-  @property
-  def strict(self):
-    """Boolean describing behavior on invalid input."""
-    return self._strict
-
-  @property
-  def name(self):
-    return self._name
+  @staticmethod
+  def _param_shapes(sample_shape):
+    return dict(
+        zip(("low", "high"),
+            ([ops.convert_to_tensor(sample_shape, dtype=dtypes.int32)] * 2)))
 
   @property
-  def dtype(self):
-    return self.a.dtype
-
-  def batch_shape(self, name="batch_shape"):
-    with ops.name_scope(self.name):
-      with ops.op_scope([], name):
-        return array_ops.shape(self._ones())
-
-  def get_batch_shape(self):
-    return self._batch_shape
-
-  def event_shape(self, name="event_shape"):
-    with ops.name_scope(self.name):
-      with ops.op_scope([], name):
-        return constant_op.constant([], dtype=dtypes.int32)
-
-  def get_event_shape(self):
-    return self._event_shape
+  def low(self):
+    """Lower boundary of the output interval."""
+    return self._low
 
   @property
-  def a(self):
-    return self._a
-
-  @property
-  def b(self):
-    return self._b
-
-  def prob(self, x, name="prob"):
-    """The PDF of observations in `x` under these Uniform distribution(s).
-
-    Args:
-      x: tensor of dtype `dtype`, must be broadcastable with `a` and `b`.
-      name: The name to give this op.
-
-    Returns:
-      prob: tensor of dtype `dtype`, the prob values of `x`. If `x` is `nan`,
-          will return `nan`.
-    """
-    with ops.name_scope(self.name):
-      with ops.op_scope([self.a, self.b, x], name):
-        x = ops.convert_to_tensor(x, name="x")
-        if x.dtype != self.dtype:
-          raise TypeError("Input x dtype does not match dtype: %s vs. %s" %
-                          (x.dtype, self.dtype))
-
-        broadcasted_x = x * self._ones()
-        return math_ops.select(
-            math_ops.is_nan(broadcasted_x), broadcasted_x, math_ops.select(
-                math_ops.logical_or(broadcasted_x < self.a,
-                                    broadcasted_x > self.b),
-                array_ops.zeros_like(broadcasted_x),
-                (1.0 / self.range()) * array_ops.ones_like(broadcasted_x)))
-
-  def log_prob(self, x, name="log_prob"):
-    return super(Uniform, self).log_prob(x, name)
-
-  def cdf(self, x, name="cdf"):
-    """CDF of observations in `x` under these Uniform distribution(s).
-
-    Args:
-      x: tensor of dtype `dtype`, must be broadcastable with `a` and `b`.
-      name: The name to give this op.
-
-    Returns:
-      cdf: tensor of dtype `dtype`, the CDFs of `x`. If `x` is `nan`, will
-          return `nan`.
-    """
-    with ops.name_scope(self.name):
-      with ops.op_scope([self.a, self.b, x], name):
-        x = ops.convert_to_tensor(x, name="x")
-        if x.dtype != self.dtype:
-          raise TypeError("Input x dtype does not match dtype: %s vs. %s" %
-                          (x.dtype, self.dtype))
-
-        broadcasted_x = x * self._ones()
-        zeros = array_ops.zeros_like(x + self.a + self.b, dtype=self.dtype)
-        ones = array_ops.ones_like(x + self.a + self.b, dtype=self.dtype)
-        result_if_not_big = math_ops.select(
-            x < self.a, zeros, (broadcasted_x - self.a) / self.range())
-        return math_ops.select(x >= self.b, ones, result_if_not_big)
-
-  def log_cdf(self, x, name="log_cdf"):
-    with ops.name_scope(self.name):
-      with ops.op_scope([self.a, self.b, x], name):
-        x = ops.convert_to_tensor(x, name="x")
-        return math_ops.log(self.cdf(x))
-
-  def entropy(self, name="entropy"):
-    """The entropy of Uniform distribution(s).
-
-    Args:
-      name: The name to give this op.
-
-    Returns:
-      entropy: tensor of dtype `dtype`, the entropy.
-    """
-    with ops.name_scope(self.name):
-      with ops.op_scope([self.a, self.b, self.range()], name):
-        return math_ops.log(self.range())
-
-  def sample(self, n, seed=None, name="sample"):
-    """Sample `n` observations from the Uniform Distributions.
-
-    Args:
-      n: `Scalar`, type int32, the number of observations to sample.
-      seed: Python integer, the random seed.
-      name: The name to give this op.
-
-    Returns:
-      samples: a `Tensor` of shape `(n,) + self.batch_shape + self.event_shape`
-          with values of type `self.dtype`.
-    """
-    with ops.name_scope(self.name):
-      with ops.op_scope([self.a, self.b, n], name):
-        n = ops.convert_to_tensor(n, name="n")
-        n_val = tensor_util.constant_value(n)
-
-        shape = array_ops.concat(0, [array_ops.pack([n]), self.batch_shape()])
-        samples = random_ops.random_uniform(shape=shape,
-                                            dtype=self.dtype,
-                                            seed=seed)
-
-        # Provide some hints to shape inference
-        inferred_shape = tensor_shape.vector(n_val).concatenate(
-            self.get_batch_shape())
-        samples.set_shape(inferred_shape)
-
-        return (array_ops.expand_dims(self.a, 0) + array_ops.expand_dims(
-            self.range(), 0) * samples)
-
-  def mean(self, name="mean"):
-    with ops.name_scope(self.name):
-      with ops.op_scope([self._a, self._b], name):
-        return (self.a + self.b) / 2
-
-  def variance(self, name="variance"):
-    with ops.name_scope(self.name):
-      with ops.op_scope([self.range()], name):
-        return math_ops.square(self.range()) / 12.
-
-  def std(self, name="std"):
-    with ops.name_scope(self.name):
-      with ops.op_scope([self.range()], name):
-        return self.range() / math_ops.sqrt(12.)
+  def high(self):
+    """Upper boundary of the output interval."""
+    return self._high
 
   def range(self, name="range"):
-    """`b - a`."""
-    with ops.name_scope(self.name):
-      with ops.op_scope([self.a, self.b], name):
-        return self.b - self.a
+    """`high - low`."""
+    with self._name_scope(name):
+      return self.high - self.low
 
-  @property
-  def is_reparameterized(self):
-    return True
+  def _batch_shape_tensor(self):
+    return array_ops.broadcast_dynamic_shape(
+        array_ops.shape(self.low),
+        array_ops.shape(self.high))
 
-  # TODO(rsepassi): Find a more efficient way of doing the broadcasting in_ones
-  # and _zeros.
-  def _ones(self):
-    return array_ops.ones_like(self.a + self.b)
+  def _batch_shape(self):
+    return array_ops.broadcast_static_shape(
+        self.low.get_shape(),
+        self.high.get_shape())
 
-  def _zeros(self):
-    return array_ops.zeros_like(self.a + self.b)
+  def _event_shape_tensor(self):
+    return constant_op.constant([], dtype=dtypes.int32)
 
-  @property
-  def is_continuous(self):
-    return True
+  def _event_shape(self):
+    return tensor_shape.scalar()
+
+  def _sample_n(self, n, seed=None):
+    shape = array_ops.concat([[n], self.batch_shape_tensor()], 0)
+    samples = random_ops.random_uniform(shape=shape,
+                                        dtype=self.dtype,
+                                        seed=seed)
+    return self.low + self.range() * samples
+
+  def _log_prob(self, x):
+    return math_ops.log(self._prob(x))
+
+  def _prob(self, x):
+    broadcasted_x = x * array_ops.ones(self.batch_shape_tensor())
+    return array_ops.where(
+        math_ops.is_nan(broadcasted_x),
+        broadcasted_x,
+        array_ops.where(
+            math_ops.logical_or(broadcasted_x < self.low,
+                                broadcasted_x >= self.high),
+            array_ops.zeros_like(broadcasted_x),
+            array_ops.ones_like(broadcasted_x) / self.range()))
+
+  def _log_cdf(self, x):
+    return math_ops.log(self.cdf(x))
+
+  def _cdf(self, x):
+    broadcast_shape = array_ops.broadcast_dynamic_shape(
+        array_ops.shape(x), self.batch_shape_tensor())
+    zeros = array_ops.zeros(broadcast_shape, dtype=self.dtype)
+    ones = array_ops.ones(broadcast_shape, dtype=self.dtype)
+    broadcasted_x = x * ones
+    result_if_not_big = array_ops.where(
+        x < self.low, zeros, (broadcasted_x - self.low) / self.range())
+    return array_ops.where(x >= self.high, ones, result_if_not_big)
+
+  def _entropy(self):
+    return math_ops.log(self.range())
+
+  def _mean(self):
+    return (self.low + self.high) / 2.
+
+  def _variance(self):
+    return math_ops.square(self.range()) / 12.
+
+  def _stddev(self):
+    return self.range() / math.sqrt(12.)

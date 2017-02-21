@@ -45,8 +45,8 @@ TEST(RecordReaderWriterTest, TestBasics) {
       io::RecordWriterOptions options;
       options.zlib_options.output_buffer_size = buf_size;
       io::RecordWriter writer(file.get(), options);
-      writer.WriteRecord("abc");
-      writer.WriteRecord("defg");
+      TF_EXPECT_OK(writer.WriteRecord("abc"));
+      TF_EXPECT_OK(writer.WriteRecord("defg"));
       TF_CHECK_OK(writer.Flush());
     }
 
@@ -55,6 +55,44 @@ TEST(RecordReaderWriterTest, TestBasics) {
       // Read it back with the RecordReader.
       TF_CHECK_OK(env->NewRandomAccessFile(fname, &read_file));
       io::RecordReaderOptions options;
+      options.zlib_options.input_buffer_size = buf_size;
+      io::RecordReader reader(read_file.get(), options);
+      uint64 offset = 0;
+      string record;
+      TF_CHECK_OK(reader.ReadRecord(&offset, &record));
+      EXPECT_EQ("abc", record);
+      TF_CHECK_OK(reader.ReadRecord(&offset, &record));
+      EXPECT_EQ("defg", record);
+    }
+  }
+}
+
+TEST(RecordReaderWriterTest, TestZlib) {
+  Env* env = Env::Default();
+  string fname = testing::TmpDir() + "/record_reader_writer_zlib_test";
+
+  for (auto buf_size : BufferSizes()) {
+    // Zlib compression needs output buffer size > 1.
+    if (buf_size == 1) continue;
+    {
+      std::unique_ptr<WritableFile> file;
+      TF_CHECK_OK(env->NewWritableFile(fname, &file));
+
+      io::RecordWriterOptions options;
+      options.compression_type = io::RecordWriterOptions::ZLIB_COMPRESSION;
+      options.zlib_options.output_buffer_size = buf_size;
+      io::RecordWriter writer(file.get(), options);
+      TF_EXPECT_OK(writer.WriteRecord("abc"));
+      TF_EXPECT_OK(writer.WriteRecord("defg"));
+      TF_CHECK_OK(writer.Flush());
+    }
+
+    {
+      std::unique_ptr<RandomAccessFile> read_file;
+      // Read it back with the RecordReader.
+      TF_CHECK_OK(env->NewRandomAccessFile(fname, &read_file));
+      io::RecordReaderOptions options;
+      options.compression_type = io::RecordReaderOptions::ZLIB_COMPRESSION;
       options.zlib_options.input_buffer_size = buf_size;
       io::RecordReader reader(read_file.get(), options);
       uint64 offset = 0;

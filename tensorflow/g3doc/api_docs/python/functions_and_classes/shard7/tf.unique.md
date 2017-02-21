@@ -1,4 +1,4 @@
-### `tf.unique(x, name=None)` {#unique}
+### `tf.unique(x, out_idx=None, name=None)` {#unique}
 
 Finds unique elements in a 1-D tensor.
 
@@ -22,6 +22,7 @@ idx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]
 
 
 *  <b>`x`</b>: A `Tensor`. 1-D.
+*  <b>`out_idx`</b>: An optional `tf.DType` from: `tf.int32, tf.int64`. Defaults to `tf.int32`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -29,5 +30,5 @@ idx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]
   A tuple of `Tensor` objects (y, idx).
 
 *  <b>`y`</b>: A `Tensor`. Has the same type as `x`. 1-D.
-*  <b>`idx`</b>: A `Tensor` of type `int32`. 1-D.
+*  <b>`idx`</b>: A `Tensor` of type `out_idx`. 1-D.
 

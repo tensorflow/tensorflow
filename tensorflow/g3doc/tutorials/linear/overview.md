@@ -158,7 +158,7 @@ transformation lets you use continuous features in feature crosses, or learn
 cases where specific value ranges have particular importance.
 
 Bucketization divides the range of possible values into subranges called
-buckets: 
+buckets:
 
 ```python
 age_buckets = tf.contrib.layers.bucketized_column(
@@ -174,12 +174,13 @@ that value.
 indicating how to represent and transform the data. But they do not provide
 the data itself. You provide the data through an input function.
 
-The input function must return a dictionary of tensors. Each key corresponds
-to the name of a `FeatureColumn`. Each key's value is a tensor containing the
-values of that feature for all data instances. See `input_fn` in the [linear
-models tutorial code](
-https://www.tensorflow.org/code/tensorflow/examples/learn/wide_n_deep_tutorial.py?l=160)
-for an example of an input function.
+The input function must return a dictionary of tensors. Each key corresponds to
+the name of a `FeatureColumn`. Each key's value is a tensor containing the
+values of that feature for all data instances. See
+[Building Input Functions with tf.contrib.learn](../input_fn/index.md) for a
+more comprehensive look at input functions, and `input_fn` in the
+[linear models tutorial code](https://www.tensorflow.org/code/tensorflow/examples/learn/wide_n_deep_tutorial.py)
+for an example implementation of an input function.
 
 The input function is passed to the `fit()` and `evaluate()` calls that
 initiate training and testing, as described in the next section.

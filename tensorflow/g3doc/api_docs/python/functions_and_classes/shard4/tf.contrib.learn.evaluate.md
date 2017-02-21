@@ -1,6 +1,10 @@
-### `tf.contrib.learn.evaluate(graph, output_dir, checkpoint_path, eval_dict, update_op=None, global_step_tensor=None, supervisor_master='', log_every_steps=10, feed_fn=None, max_steps=None)` {#evaluate}
+### `tf.contrib.learn.evaluate(*args, **kwargs)` {#evaluate}
 
-Evaluate a model loaded from a checkpoint.
+Evaluate a model loaded from a checkpoint. (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2017-02-15.
+Instructions for updating:
+graph_actions.py will be deleted. Use tf.train.* utilities instead. You can use learn/estimators/estimator.py as an example.
 
 Given `graph`, a directory to write summaries to (`output_dir`), a checkpoint
 to restore variables from, and a `dict` of `Tensor`s to evaluate, run an eval
@@ -25,7 +29,7 @@ and written to `output_dir`.
     evaluated in every logging step. The result of the final evaluation is
     returned. If `update_op` is None, then it's evaluated in every step. If
     `max_steps` is `None`, this should depend on a reader that will raise an
-    end-of-inupt exception when the inputs are exhausted.
+    end-of-input exception when the inputs are exhausted.
 *  <b>`update_op`</b>: A `Tensor` which is run in every step.
 *  <b>`global_step_tensor`</b>: A `Variable` containing the global step. If `None`,
     one is extracted from the graph using the same logic as in `Supervisor`.
