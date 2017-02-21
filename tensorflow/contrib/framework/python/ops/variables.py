@@ -31,7 +31,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import gen_state_ops
@@ -121,45 +120,29 @@ def create_global_step(graph=None):
   """Create global step tensor in graph.
 
   Args:
-    graph: The graph in which to create the global step. If missing, use default
-        graph.
+    graph: The graph in which to create the global step tensor. If missing,
+      use default graph.
 
   Returns:
     Global step tensor.
 
   Raises:
-    ValueError: if global step key is already defined.
+    ValueError: if global step tensor is already defined.
   """
-  graph = ops.get_default_graph() if graph is None else graph
-  if get_global_step(graph) is not None:
-    raise ValueError('"global_step" already exists.')
-  # Create in proper graph and base name_scope.
-  with graph.as_default() as g, g.name_scope(None):
-    collections = [ops.GraphKeys.GLOBAL_VARIABLES, ops.GraphKeys.GLOBAL_STEP]
-    return variable(
-        ops.GraphKeys.GLOBAL_STEP,
-        shape=[],
-        dtype=dtypes.int64,
-        initializer=init_ops.zeros_initializer(),
-        trainable=False,
-        collections=collections)
+  return training_util.create_global_step(graph)
 
 
 def get_or_create_global_step(graph=None):
-  """Returns and create (if necessary) the global step variable.
+  """Returns and create (if necessary) the global step tensor.
 
   Args:
-    graph: The graph in which to create the global step. If missing, use default
-        graph.
+    graph: The graph in which to create the global step tensor. If missing, use
+      default graph.
 
   Returns:
-    the tensor representing the global step variable.
+    The global step tensor.
   """
-  graph = ops.get_default_graph() if graph is None else graph
-  globalstep = get_global_step(graph)
-  if globalstep is None:
-    globalstep = create_global_step(graph)
-  return globalstep
+  return training_util.get_or_create_global_step(graph)
 
 
 def local_variable(initial_value, validate_shape=True, name=None):
