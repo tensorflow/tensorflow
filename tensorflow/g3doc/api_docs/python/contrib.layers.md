@@ -5,11 +5,7 @@
 
 Ops for building neural network layers, regularizers, summaries, etc.
 
-## Higher level ops for building neural network layers.
-
-This package provides several ops that take care of creating variables that are
-used internally in a consistent way and provide the building blocks for many
-common machine learning algorithms.
+See the @{$python/contrib.layers} guide.
 
 - - -
 
@@ -43,7 +39,7 @@ It is assumed that the pooling is done per image but not in batch or channels.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if `data_format` is neither `NHWC` nor `NCHW`.
+*  <b>`ValueError`</b>: If `data_format` is neither `NHWC` nor `NCHW`.
 
 
 - - -
@@ -69,42 +65,43 @@ they need to be added as a dependency to the `train_op`, example:
     total_loss = control_flow_ops.with_dependencies([updates], total_loss)
 
 One can set updates_collections=None to force the updates in place, but that
-can have speed penalty, specially in distributed settings.
+can have speed penalty, especially in distributed settings.
 
 ##### Args:
 
 
-*  <b>`inputs`</b>: a tensor with 2 or more dimensions, where the first dimension has
+*  <b>`inputs`</b>: A tensor with 2 or more dimensions, where the first dimension has
     `batch_size`. The normalization is over all but the last dimension if
     `data_format` is `NHWC` and the second dimension if `data_format` is
     `NCHW`.
-*  <b>`decay`</b>: decay for the moving average. Reasonable values for `decay` are close
+*  <b>`decay`</b>: Decay for the moving average. Reasonable values for `decay` are close
     to 1.0, typically in the multiple-nines range: 0.999, 0.99, 0.9, etc.
     Lower `decay` value (recommend trying `decay`=0.9) if model experiences
     reasonably good training performance but poor validation and/or test
     performance. Try zero_debias_moving_mean=True for improved stability.
-*  <b>`center`</b>: If True, subtract `beta`. If False, `beta` is ignored.
+*  <b>`center`</b>: If True, add offset of `beta` to normalized tensor. If False, `beta`
+    is ignored.
 *  <b>`scale`</b>: If True, multiply by `gamma`. If False, `gamma` is
     not used. When the next layer is linear (also e.g. `nn.relu`), this can be
     disabled since the scaling can be done by the next layer.
-*  <b>`epsilon`</b>: small float added to variance to avoid dividing by zero.
-*  <b>`activation_fn`</b>: activation function, default set to None to skip it and
+*  <b>`epsilon`</b>: Small float added to variance to avoid dividing by zero.
+*  <b>`activation_fn`</b>: Activation function, default set to None to skip it and
     maintain a linear activation.
-*  <b>`param_initializers`</b>: optional initializers for beta, gamma, moving mean and
+*  <b>`param_initializers`</b>: Optional initializers for beta, gamma, moving mean and
     moving variance.
-*  <b>`updates_collections`</b>: collections to collect the update ops for computation.
+*  <b>`updates_collections`</b>: Collections to collect the update ops for computation.
     The updates_ops need to be executed with the train_op.
     If None, a control dependency would be added to make sure the updates are
     computed in place.
-*  <b>`is_training`</b>: whether or not the layer is in training mode. In training mode
+*  <b>`is_training`</b>: Whether or not the layer is in training mode. In training mode
     it would accumulate the statistics of the moments into `moving_mean` and
     `moving_variance` using an exponential moving average with the given
     `decay`. When it is not in training mode then it would use the values of
     the `moving_mean` and the `moving_variance`.
-*  <b>`reuse`</b>: whether or not the layer and its variables should be reused. To be
+*  <b>`reuse`</b>: Whether or not the layer and its variables should be reused. To be
     able to reuse the layer scope must be given.
-*  <b>`variables_collections`</b>: optional collections for the variables.
-*  <b>`outputs_collections`</b>: collections to add the outputs.
+*  <b>`variables_collections`</b>: Optional collections for the variables.
+*  <b>`outputs_collections`</b>: Collections to add the outputs.
 *  <b>`trainable`</b>: If `True` also add variables to the graph collection
     `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
 *  <b>`batch_weights`</b>: An optional tensor of shape `[batch_size]`,
@@ -125,10 +122,10 @@ can have speed penalty, specially in distributed settings.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if `batch_weights` is not None and `fused` is True.
-*  <b>`ValueError`</b>: if `data_format` is neither `NHWC` nor `NCHW`.
-*  <b>`ValueError`</b>: if the rank of `inputs` is undefined.
-*  <b>`ValueError`</b>: if rank or channels dimension of `inputs` is undefined.
+*  <b>`ValueError`</b>: If `batch_weights` is not None and `fused` is True.
+*  <b>`ValueError`</b>: If `data_format` is neither `NHWC` nor `NCHW`.
+*  <b>`ValueError`</b>: If the rank of `inputs` is undefined.
+*  <b>`ValueError`</b>: If rank or channels dimension of `inputs` is undefined.
 
 
 - - -
@@ -154,59 +151,111 @@ if a value > 1 for any dimension of `rate` is specified.  In this case
 ##### Args:
 
 
-*  <b>`inputs`</b>: a Tensor of rank N+2 of shape
+*  <b>`inputs`</b>: A Tensor of rank N+2 of shape
     `[batch_size] + input_spatial_shape + [in_channels]` if data_format does
     not start with "NC" (default), or
     `[batch_size, in_channels] + input_spatial_shape` if data_format starts
     with "NC".
-*  <b>`num_outputs`</b>: integer, the number of output filters.
-*  <b>`kernel_size`</b>: a sequence of N positive integers specifying the spatial
+*  <b>`num_outputs`</b>: Integer, the number of output filters.
+*  <b>`kernel_size`</b>: A sequence of N positive integers specifying the spatial
     dimensions of of the filters.  Can be a single integer to specify the same
     value for all spatial dimensions.
-*  <b>`stride`</b>: a sequence of N positive integers specifying the stride at which to
+*  <b>`stride`</b>: A sequence of N positive integers specifying the stride at which to
     compute output.  Can be a single integer to specify the same value for all
     spatial dimensions.  Specifying any `stride` value != 1 is incompatible
     with specifying any `rate` value != 1.
-*  <b>`padding`</b>: one of `"VALID"` or `"SAME"`.
+*  <b>`padding`</b>: One of `"VALID"` or `"SAME"`.
 *  <b>`data_format`</b>: A string or None.  Specifies whether the channel dimension of
     the `input` and output is the last dimension (default, or if `data_format`
     does not start with "NC"), or the second dimension (if `data_format`
     starts with "NC").  For N=1, the valid values are "NWC" (default) and
     "NCW".  For N=2, the valid values are "NHWC" (default) and "NCHW".  For
     N=3, currently the only valid value is "NDHWC".
-*  <b>`rate`</b>: a sequence of N positive integers specifying the dilation rate to use
+*  <b>`rate`</b>: A sequence of N positive integers specifying the dilation rate to use
     for a'trous convolution.  Can be a single integer to specify the same
     value for all spatial dimensions.  Specifying any `rate` value != 1 is
     incompatible with specifying any `stride` value != 1.
-*  <b>`activation_fn`</b>: activation function, set to None to skip it and maintain
-    a linear activation.
-*  <b>`normalizer_fn`</b>: normalization function to use instead of `biases`. If
+*  <b>`activation_fn`</b>: Activation function. The default value is a ReLU function.
+    Explicitly set it to None to skip it and maintain a linear activation.
+*  <b>`normalizer_fn`</b>: Normalization function to use instead of `biases`. If
     `normalizer_fn` is provided then `biases_initializer` and
     `biases_regularizer` are ignored and `biases` are not created nor added.
     default set to None for no normalizer function
-*  <b>`normalizer_params`</b>: normalization function parameters.
+*  <b>`normalizer_params`</b>: Normalization function parameters.
 *  <b>`weights_initializer`</b>: An initializer for the weights.
 *  <b>`weights_regularizer`</b>: Optional regularizer for the weights.
 *  <b>`biases_initializer`</b>: An initializer for the biases. If None skip biases.
 *  <b>`biases_regularizer`</b>: Optional regularizer for the biases.
-*  <b>`reuse`</b>: whether or not the layer and its variables should be reused. To be
+*  <b>`reuse`</b>: Whether or not the layer and its variables should be reused. To be
     able to reuse the layer scope must be given.
-*  <b>`variables_collections`</b>: optional list of collections for all the variables or
+*  <b>`variables_collections`</b>: Optional list of collections for all the variables or
     a dictionary containing a different list of collection per variable.
-*  <b>`outputs_collections`</b>: collection to add the outputs.
+*  <b>`outputs_collections`</b>: Collection to add the outputs.
 *  <b>`trainable`</b>: If `True` also add variables to the graph collection
     `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
 *  <b>`scope`</b>: Optional scope for `variable_scope`.
 
 ##### Returns:
 
-  a tensor representing the output of the operation.
+  A tensor representing the output of the operation.
 
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if `data_format` is invalid.
-*  <b>`ValueError`</b>: both 'rate' and `stride` are not uniformly 1.
+*  <b>`ValueError`</b>: If `data_format` is invalid.
+*  <b>`ValueError`</b>: Both 'rate' and `stride` are not uniformly 1.
+
+
+- - -
+
+### `tf.contrib.layers.conv2d_in_plane(*args, **kwargs)` {#conv2d_in_plane}
+
+Performs the same in-plane convolution to each channel independently.
+
+This is useful for performing various simple channel-independent convolution
+operations such as image gradients:
+
+  image = tf.constant(..., shape=(16, 240, 320, 3))
+  vert_gradients = layers.conv2d_in_plane(image,
+                                          kernel=[1, -1],
+                                          kernel_size=[2, 1])
+  horz_gradients = layers.conv2d_in_plane(image,
+                                          kernel=[1, -1],
+                                          kernel_size=[1, 2])
+
+##### Args:
+
+
+*  <b>`inputs`</b>: A 4-D tensor with dimensions [batch_size, height, width, channels].
+*  <b>`kernel_size`</b>: A list of length 2 holding the [kernel_height, kernel_width] of
+    of the pooling. Can be an int if both values are the same.
+*  <b>`stride`</b>: A list of length 2 `[stride_height, stride_width]`.
+    Can be an int if both strides are the same. Note that presently
+    both strides must have the same value.
+*  <b>`padding`</b>: The padding type to use, either 'SAME' or 'VALID'.
+*  <b>`activation_fn`</b>: Activation function. The default value is a ReLU function.
+    Explicitly set it to None to skip it and maintain a linear activation.
+*  <b>`normalizer_fn`</b>: Normalization function to use instead of `biases`. If
+    `normalizer_fn` is provided then `biases_initializer` and
+    `biases_regularizer` are ignored and `biases` are not created nor added.
+    default set to None for no normalizer function
+*  <b>`normalizer_params`</b>: Normalization function parameters.
+*  <b>`weights_initializer`</b>: An initializer for the weights.
+*  <b>`weights_regularizer`</b>: Optional regularizer for the weights.
+*  <b>`biases_initializer`</b>: An initializer for the biases. If None skip biases.
+*  <b>`biases_regularizer`</b>: Optional regularizer for the biases.
+*  <b>`reuse`</b>: Whether or not the layer and its variables should be reused. To be
+    able to reuse the layer scope must be given.
+*  <b>`variables_collections`</b>: Optional list of collections for all the variables or
+    a dictionary containing a different list of collection per variable.
+*  <b>`outputs_collections`</b>: Collection to add the outputs.
+*  <b>`trainable`</b>: If `True` also add variables to the graph collection
+    `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+*  <b>`scope`</b>: Optional scope for `variable_scope`.
+
+##### Returns:
+
+  A `Tensor` representing the output of the operation.
 
 
 - - -
@@ -229,29 +278,29 @@ operations such as image gradients:
 ##### Args:
 
 
-*  <b>`inputs`</b>: a 4-D tensor with dimensions [batch_size, height, width, channels].
-*  <b>`kernel_size`</b>: a list of length 2 holding the [kernel_height, kernel_width] of
+*  <b>`inputs`</b>: A 4-D tensor with dimensions [batch_size, height, width, channels].
+*  <b>`kernel_size`</b>: A list of length 2 holding the [kernel_height, kernel_width] of
     of the pooling. Can be an int if both values are the same.
-*  <b>`stride`</b>: a list of length 2 `[stride_height, stride_width]`.
+*  <b>`stride`</b>: A list of length 2 `[stride_height, stride_width]`.
     Can be an int if both strides are the same. Note that presently
     both strides must have the same value.
-*  <b>`padding`</b>: the padding type to use, either 'SAME' or 'VALID'.
-*  <b>`activation_fn`</b>: activation function, set to None to skip it and maintain
-    a linear activation.
-*  <b>`normalizer_fn`</b>: normalization function to use instead of `biases`. If
+*  <b>`padding`</b>: The padding type to use, either 'SAME' or 'VALID'.
+*  <b>`activation_fn`</b>: Activation function. The default value is a ReLU function.
+    Explicitly set it to None to skip it and maintain a linear activation.
+*  <b>`normalizer_fn`</b>: Normalization function to use instead of `biases`. If
     `normalizer_fn` is provided then `biases_initializer` and
     `biases_regularizer` are ignored and `biases` are not created nor added.
     default set to None for no normalizer function
-*  <b>`normalizer_params`</b>: normalization function parameters.
+*  <b>`normalizer_params`</b>: Normalization function parameters.
 *  <b>`weights_initializer`</b>: An initializer for the weights.
 *  <b>`weights_regularizer`</b>: Optional regularizer for the weights.
 *  <b>`biases_initializer`</b>: An initializer for the biases. If None skip biases.
 *  <b>`biases_regularizer`</b>: Optional regularizer for the biases.
-*  <b>`reuse`</b>: whether or not the layer and its variables should be reused. To be
+*  <b>`reuse`</b>: Whether or not the layer and its variables should be reused. To be
     able to reuse the layer scope must be given.
-*  <b>`variables_collections`</b>: optional list of collections for all the variables or
+*  <b>`variables_collections`</b>: Optional list of collections for all the variables or
     a dictionary containing a different list of collection per variable.
-*  <b>`outputs_collections`</b>: collection to add the outputs.
+*  <b>`outputs_collections`</b>: Collection to add the outputs.
 *  <b>`trainable`</b>: If `True` also add variables to the graph collection
     `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
 *  <b>`scope`</b>: Optional scope for `variable_scope`.
@@ -259,6 +308,46 @@ operations such as image gradients:
 ##### Returns:
 
   A `Tensor` representing the output of the operation.
+
+
+- - -
+
+### `tf.nn.conv2d_transpose(value, filter, output_shape, strides, padding='SAME', data_format='NHWC', name=None)` {#conv2d_transpose}
+
+The transpose of `conv2d`.
+
+This operation is sometimes called "deconvolution" after [Deconvolutional
+Networks](http://www.matthewzeiler.com/pubs/cvpr2010/cvpr2010.pdf), but is
+actually the transpose (gradient) of `conv2d` rather than an actual
+deconvolution.
+
+##### Args:
+
+
+*  <b>`value`</b>: A 4-D `Tensor` of type `float` and shape
+    `[batch, height, width, in_channels]` for `NHWC` data format or
+    `[batch, in_channels, height, width]` for `NCHW` data format.
+*  <b>`filter`</b>: A 4-D `Tensor` with the same type as `value` and shape
+    `[height, width, output_channels, in_channels]`.  `filter`'s
+    `in_channels` dimension must match that of `value`.
+*  <b>`output_shape`</b>: A 1-D `Tensor` representing the output shape of the
+    deconvolution op.
+*  <b>`strides`</b>: A list of ints. The stride of the sliding window for each
+    dimension of the input tensor.
+*  <b>`padding`</b>: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
+    See the [comment here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
+*  <b>`data_format`</b>: A string. 'NHWC' and 'NCHW' are supported.
+*  <b>`name`</b>: Optional name for the returned tensor.
+
+##### Returns:
+
+  A `Tensor` with the same type as `value`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If input/output depth does not match `filter`'s shape, or if
+    padding is other than `'VALID'` or `'SAME'`.
 
 
 - - -
@@ -277,43 +366,84 @@ second variable called 'biases' is added to the result of the operation.
 *  <b>`inputs`</b>: A 4-D `Tensor` of type `float` and shape
     `[batch, height, width, in_channels]` for `NHWC` data format or
     `[batch, in_channels, height, width]` for `NCHW` data format.
-*  <b>`num_outputs`</b>: integer, the number of output filters.
-*  <b>`kernel_size`</b>: a list of length 2 holding the [kernel_height, kernel_width] of
+*  <b>`num_outputs`</b>: Integer, the number of output filters.
+*  <b>`kernel_size`</b>: A list of length 2 holding the [kernel_height, kernel_width] of
     of the filters. Can be an int if both values are the same.
-*  <b>`stride`</b>: a list of length 2: [stride_height, stride_width].
+*  <b>`stride`</b>: A list of length 2: [stride_height, stride_width].
     Can be an int if both strides are the same.  Note that presently
     both strides must have the same value.
-*  <b>`padding`</b>: one of 'VALID' or 'SAME'.
+*  <b>`padding`</b>: One of 'VALID' or 'SAME'.
 *  <b>`data_format`</b>: A string. `NHWC` (default) and `NCHW` are supported.
-*  <b>`activation_fn`</b>: activation function, set to None to skip it and maintain
-    a linear activation.
-*  <b>`normalizer_fn`</b>: normalization function to use instead of `biases`. If
+*  <b>`activation_fn`</b>: Activation function. The default value is a ReLU function.
+    Explicitly set it to None to skip it and maintain a linear activation.
+*  <b>`normalizer_fn`</b>: Normalization function to use instead of `biases`. If
     `normalizer_fn` is provided then `biases_initializer` and
     `biases_regularizer` are ignored and `biases` are not created nor added.
     default set to None for no normalizer function
-*  <b>`normalizer_params`</b>: normalization function parameters.
+*  <b>`normalizer_params`</b>: Normalization function parameters.
 *  <b>`weights_initializer`</b>: An initializer for the weights.
 *  <b>`weights_regularizer`</b>: Optional regularizer for the weights.
 *  <b>`biases_initializer`</b>: An initializer for the biases. If None skip biases.
 *  <b>`biases_regularizer`</b>: Optional regularizer for the biases.
-*  <b>`reuse`</b>: whether or not the layer and its variables should be reused. To be
+*  <b>`reuse`</b>: Whether or not the layer and its variables should be reused. To be
     able to reuse the layer scope must be given.
-*  <b>`variables_collections`</b>: optional list of collections for all the variables or
+*  <b>`variables_collections`</b>: Optional list of collections for all the variables or
     a dictionary containing a different list of collection per variable.
-*  <b>`outputs_collections`</b>: collection to add the outputs.
-*  <b>`trainable`</b>: whether or not the variables should be trainable or not.
+*  <b>`outputs_collections`</b>: Collection to add the outputs.
+*  <b>`trainable`</b>: Whether or not the variables should be trainable or not.
 *  <b>`scope`</b>: Optional scope for variable_scope.
 
 ##### Returns:
 
-  a tensor representing the output of the operation.
+  A tensor representing the output of the operation.
 
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if 'kernel_size' is not a list of length 2.
-*  <b>`ValueError`</b>: if `data_format` is neither `NHWC` nor `NCHW`.
-*  <b>`ValueError`</b>: if `C` dimension of `inputs` is None.
+*  <b>`ValueError`</b>: If 'kernel_size' is not a list of length 2.
+*  <b>`ValueError`</b>: If `data_format` is neither `NHWC` nor `NCHW`.
+*  <b>`ValueError`</b>: If `C` dimension of `inputs` is None.
+
+
+- - -
+
+### `tf.nn.dropout(x, keep_prob, noise_shape=None, seed=None, name=None)` {#dropout}
+
+Computes dropout.
+
+With probability `keep_prob`, outputs the input element scaled up by
+`1 / keep_prob`, otherwise outputs `0`.  The scaling is so that the expected
+sum is unchanged.
+
+By default, each element is kept or dropped independently.  If `noise_shape`
+is specified, it must be
+[broadcastable](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+to the shape of `x`, and only dimensions with `noise_shape[i] == shape(x)[i]`
+will make independent decisions.  For example, if `shape(x) = [k, l, m, n]`
+and `noise_shape = [k, 1, 1, n]`, each batch and channel component will be
+kept independently and each row and column will be kept or not kept together.
+
+##### Args:
+
+
+*  <b>`x`</b>: A tensor.
+*  <b>`keep_prob`</b>: A scalar `Tensor` with the same type as x. The probability
+    that each element is kept.
+*  <b>`noise_shape`</b>: A 1-D `Tensor` of type `int32`, representing the
+    shape for randomly generated keep/drop flags.
+*  <b>`seed`</b>: A Python integer. Used to create random seeds. See
+    [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+    for behavior.
+*  <b>`name`</b>: A name for this operation (optional).
+
+##### Returns:
+
+  A Tensor of the same shape of `x`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `keep_prob` is not in `(0, 1]`.
 
 
 - - -
@@ -327,18 +457,18 @@ Flattens the input while maintaining the batch_size.
 ##### Args:
 
 
-*  <b>`inputs`</b>: a tensor of size [batch_size, ...].
-*  <b>`outputs_collections`</b>: collection to add the outputs.
+*  <b>`inputs`</b>: A tensor of size [batch_size, ...].
+*  <b>`outputs_collections`</b>: Collection to add the outputs.
 *  <b>`scope`</b>: Optional scope for name_scope.
 
 ##### Returns:
 
-  a flattened tensor with shape [batch_size, k].
+  A flattened tensor with shape [batch_size, k].
 
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if inputs.dense_shape is wrong.
+*  <b>`ValueError`</b>: If inputs rank is unknown or less than 2.
 
 
 - - -
@@ -361,25 +491,25 @@ prior to the initial matrix multiply by `weights`.
 ##### Args:
 
 
-*  <b>`inputs`</b>: A tensor of with at least rank 2 and value for the last dimension,
+*  <b>`inputs`</b>: A tensor of at least rank 2 and static value for the last dimension;
     i.e. `[batch_size, depth]`, `[None, None, None, channels]`.
 *  <b>`num_outputs`</b>: Integer or long, the number of output units in the layer.
-*  <b>`activation_fn`</b>: activation function, set to None to skip it and maintain
-    a linear activation.
-*  <b>`normalizer_fn`</b>: normalization function to use instead of `biases`. If
+*  <b>`activation_fn`</b>: Activation function. The default value is a ReLU function.
+    Explicitly set it to None to skip it and maintain a linear activation.
+*  <b>`normalizer_fn`</b>: Normalization function to use instead of `biases`. If
     `normalizer_fn` is provided then `biases_initializer` and
     `biases_regularizer` are ignored and `biases` are not created nor added.
     default set to None for no normalizer function
-*  <b>`normalizer_params`</b>: normalization function parameters.
+*  <b>`normalizer_params`</b>: Normalization function parameters.
 *  <b>`weights_initializer`</b>: An initializer for the weights.
 *  <b>`weights_regularizer`</b>: Optional regularizer for the weights.
 *  <b>`biases_initializer`</b>: An initializer for the biases. If None skip biases.
 *  <b>`biases_regularizer`</b>: Optional regularizer for the biases.
-*  <b>`reuse`</b>: whether or not the layer and its variables should be reused. To be
+*  <b>`reuse`</b>: Whether or not the layer and its variables should be reused. To be
     able to reuse the layer scope must be given.
 *  <b>`variables_collections`</b>: Optional list of collections for all the variables or
     a dictionary containing a different list of collections per variable.
-*  <b>`outputs_collections`</b>: collection to add the outputs.
+*  <b>`outputs_collections`</b>: Collection to add the outputs.
 *  <b>`trainable`</b>: If `True` also add variables to the graph collection
     `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
 *  <b>`scope`</b>: Optional scope for variable_scope.
@@ -391,7 +521,7 @@ prior to the initial matrix multiply by `weights`.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if x has rank less than 2 or if its last dimension is not set.
+*  <b>`ValueError`</b>: If x has rank less than 2 or if its last dimension is not set.
 
 
 - - -
@@ -409,18 +539,19 @@ Can be used as a normalizer function for conv2d and fully_connected.
 ##### Args:
 
 
-*  <b>`inputs`</b>: a tensor with 2 or more dimensions. The normalization
+*  <b>`inputs`</b>: A tensor with 2 or more dimensions. The normalization
           occurs over all but the first dimension.
-*  <b>`center`</b>: If True, subtract `beta`. If False, `beta` is ignored.
+*  <b>`center`</b>: If True, add offset of `beta` to normalized tensor. If False, `beta`
+    is ignored.
 *  <b>`scale`</b>: If True, multiply by `gamma`. If False, `gamma` is
     not used. When the next layer is linear (also e.g. `nn.relu`), this can be
     disabled since the scaling can be done by the next layer.
-*  <b>`activation_fn`</b>: activation function, default set to None to skip it and
+*  <b>`activation_fn`</b>: Activation function, default set to None to skip it and
     maintain a linear activation.
-*  <b>`reuse`</b>: whether or not the layer and its variables should be reused. To be
+*  <b>`reuse`</b>: Whether or not the layer and its variables should be reused. To be
     able to reuse the layer scope must be given.
-*  <b>`variables_collections`</b>: optional collections for the variables.
-*  <b>`outputs_collections`</b>: collections to add the outputs.
+*  <b>`variables_collections`</b>: Optional collections for the variables.
+*  <b>`outputs_collections`</b>: Collections to add the outputs.
 *  <b>`trainable`</b>: If `True` also add variables to the graph collection
     `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
 *  <b>`scope`</b>: Optional scope for `variable_scope`.
@@ -432,7 +563,15 @@ Can be used as a normalizer function for conv2d and fully_connected.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if rank or last dimension of `inputs` is undefined.
+*  <b>`ValueError`</b>: If rank or last dimension of `inputs` is undefined.
+
+
+- - -
+
+### `tf.contrib.layers.linear()` {#linear}
+
+partial(func, *args, **keywords) - new function with partial application
+of the given arguments and keywords.
 
 
 - - -
@@ -467,7 +606,7 @@ It is assumed that the pooling is done per image but not in batch or channels.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if `data_format` is neither `NHWC` nor `NCHW`.
+*  <b>`ValueError`</b>: If `data_format` is neither `NHWC` nor `NCHW`.
 *  <b>`ValueError`</b>: If 'kernel_size' is not a 2-D list
 
 
@@ -481,15 +620,50 @@ Transform numeric labels into onehot_labels using `tf.one_hot`.
 
 
 *  <b>`labels`</b>: [batch_size] target labels.
-*  <b>`num_classes`</b>: total number of classes.
+*  <b>`num_classes`</b>: Total number of classes.
 *  <b>`on_value`</b>: A scalar defining the on-value.
 *  <b>`off_value`</b>: A scalar defining the off-value.
-*  <b>`outputs_collections`</b>: collection to add the outputs.
+*  <b>`outputs_collections`</b>: Collection to add the outputs.
 *  <b>`scope`</b>: Optional scope for name_scope.
 
 ##### Returns:
 
-  one hot encoding of the labels.
+  One-hot encoding of the labels.
+
+
+- - -
+
+### `tf.nn.relu(features, name=None)` {#relu}
+
+Computes rectified linear: `max(features, 0)`.
+
+##### Args:
+
+
+*  <b>`features`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `features`.
+
+
+- - -
+
+### `tf.nn.relu6(features, name=None)` {#relu6}
+
+Computes Rectified Linear 6: `min(max(features, 0), 6)`.
+
+##### Args:
+
+
+*  <b>`features`</b>: A `Tensor` with type `float`, `double`, `int32`, `int64`, `uint8`,
+    `int16`, or `int8`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` with the same type as `features`.
 
 
 - - -
@@ -523,12 +697,12 @@ layers are called with `scope='stack'`.
 
 ##### Returns:
 
-  a tensor result of applying the layer, repetitions times.
+  A tensor result of applying the layer, repetitions times.
 
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if the op is unknown or wrong.
+*  <b>`ValueError`</b>: If the op is unknown or wrong.
 
 
 - - -
@@ -586,6 +760,63 @@ along the last dimension.
 
 - - -
 
+### `tf.nn.separable_conv2d(input, depthwise_filter, pointwise_filter, strides, padding, rate=None, name=None)` {#separable_conv2d}
+
+2-D convolution with separable filters.
+
+Performs a depthwise convolution that acts separately on channels followed by
+a pointwise convolution that mixes channels.  Note that this is separability
+between dimensions `[1, 2]` and `3`, not spatial separability between
+dimensions `1` and `2`.
+
+In detail,
+
+    output[b, i, j, k] = sum_{di, dj, q, r]
+        input[b, strides[1] * i + di, strides[2] * j + dj, q] *
+        depthwise_filter[di, dj, q, r] *
+        pointwise_filter[0, 0, q * channel_multiplier + r, k]
+
+`strides` controls the strides for the depthwise convolution only, since
+the pointwise convolution has implicit strides of `[1, 1, 1, 1]`.  Must have
+`strides[0] = strides[3] = 1`.  For the most common case of the same
+horizontal and vertical strides, `strides = [1, stride, stride, 1]`.
+If any value in `rate` is greater than 1, we perform atrous depthwise
+convolution, in which case all values in the `strides` tensor must be equal
+to 1.
+
+##### Args:
+
+
+*  <b>`input`</b>: 4-D `Tensor` with shape `[batch, in_height, in_width, in_channels]`.
+*  <b>`depthwise_filter`</b>: 4-D `Tensor` with shape
+    `[filter_height, filter_width, in_channels, channel_multiplier]`.
+    Contains `in_channels` convolutional filters of depth 1.
+*  <b>`pointwise_filter`</b>: 4-D `Tensor` with shape
+    `[1, 1, channel_multiplier * in_channels, out_channels]`.  Pointwise
+    filter to mix channels after `depthwise_filter` has convolved spatially.
+*  <b>`strides`</b>: 1-D of size 4.  The strides for the depthwise convolution for
+    each dimension of `input`.
+*  <b>`padding`</b>: A string, either `'VALID'` or `'SAME'`.  The padding algorithm.
+    See the [comment
+      here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
+*  <b>`rate`</b>: 1-D of size 2. The dilation rate in which we sample input values
+    across the `height` and `width` dimensions in atrous convolution. If it is
+    greater than 1, then all values of strides must be 1.
+*  <b>`name`</b>: A name for this operation (optional).
+
+##### Returns:
+
+  A 4-D `Tensor` of shape `[batch, out_height, out_width, out_channels]`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If channel_multiplier * in_channels > out_channels,
+    which means that the separable convolution is overparameterized.
+
+
+- - -
+
 ### `tf.contrib.layers.separable_convolution2d(*args, **kwargs)` {#separable_convolution2d}
 
 Adds a depth-separable 2D convolution with optional batch_norm layer.
@@ -601,42 +832,119 @@ to produce the end result.
 ##### Args:
 
 
-*  <b>`inputs`</b>: a tensor of size [batch_size, height, width, channels].
-*  <b>`num_outputs`</b>: the number of pointwise convolution output filters. If is
+*  <b>`inputs`</b>: A tensor of size [batch_size, height, width, channels].
+*  <b>`num_outputs`</b>: The number of pointwise convolution output filters. If is
     None, then we skip the pointwise convolution stage.
-*  <b>`kernel_size`</b>: a list of length 2: [kernel_height, kernel_width] of
+*  <b>`kernel_size`</b>: A list of length 2: [kernel_height, kernel_width] of
     of the filters. Can be an int if both values are the same.
-*  <b>`depth_multiplier`</b>: the number of depthwise convolution output channels for
+*  <b>`depth_multiplier`</b>: The number of depthwise convolution output channels for
     each input channel. The total number of depthwise convolution output
     channels will be equal to `num_filters_in * depth_multiplier`.
-*  <b>`stride`</b>: a list of length 2: [stride_height, stride_width], specifying the
+*  <b>`stride`</b>: A list of length 2: [stride_height, stride_width], specifying the
     depthwise convolution stride. Can be an int if both strides are the same.
-*  <b>`padding`</b>: one of 'VALID' or 'SAME'.
-*  <b>`rate`</b>: a list of length 2: [rate_height, rate_width], specifying the dilation
+*  <b>`padding`</b>: One of 'VALID' or 'SAME'.
+*  <b>`rate`</b>: A list of length 2: [rate_height, rate_width], specifying the dilation
     rates for a'trous convolution. Can be an int if both rates are the same.
     If any value is larger than one, then both stride values need to be one.
-*  <b>`activation_fn`</b>: activation function, set to None to skip it and maintain
-    a linear activation.
-*  <b>`normalizer_fn`</b>: normalization function to use instead of `biases`. If
+*  <b>`activation_fn`</b>: Activation function. The default value is a ReLU function.
+    Explicitly set it to None to skip it and maintain a linear activation.
+*  <b>`normalizer_fn`</b>: Normalization function to use instead of `biases`. If
     `normalizer_fn` is provided then `biases_initializer` and
     `biases_regularizer` are ignored and `biases` are not created nor added.
     default set to None for no normalizer function
-*  <b>`normalizer_params`</b>: normalization function parameters.
+*  <b>`normalizer_params`</b>: Normalization function parameters.
 *  <b>`weights_initializer`</b>: An initializer for the weights.
 *  <b>`weights_regularizer`</b>: Optional regularizer for the weights.
 *  <b>`biases_initializer`</b>: An initializer for the biases. If None skip biases.
 *  <b>`biases_regularizer`</b>: Optional regularizer for the biases.
-*  <b>`reuse`</b>: whether or not the layer and its variables should be reused. To be
+*  <b>`reuse`</b>: Whether or not the layer and its variables should be reused. To be
     able to reuse the layer scope must be given.
-*  <b>`variables_collections`</b>: optional list of collections for all the variables or
+*  <b>`variables_collections`</b>: Optional list of collections for all the variables or
     a dictionay containing a different list of collection per variable.
-*  <b>`outputs_collections`</b>: collection to add the outputs.
-*  <b>`trainable`</b>: whether or not the variables should be trainable or not.
+*  <b>`outputs_collections`</b>: Collection to add the outputs.
+*  <b>`trainable`</b>: Whether or not the variables should be trainable or not.
 *  <b>`scope`</b>: Optional scope for variable_scope.
 
 ##### Returns:
 
   A `Tensor` representing the output of the operation.
+
+
+- - -
+
+### `tf.nn.softmax(logits, dim=-1, name=None)` {#softmax}
+
+Computes softmax activations.
+
+For each batch `i` and class `j` we have
+
+    softmax = exp(logits) / reduce_sum(exp(logits), dim)
+
+##### Args:
+
+
+*  <b>`logits`</b>: A non-empty `Tensor`. Must be one of the following types: `half`,
+    `float32`, `float64`.
+*  <b>`dim`</b>: The dimension softmax would be performed on. The default is -1 which
+    indicates the last dimension.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `logits`. Same shape as `logits`.
+
+##### Raises:
+
+
+*  <b>`InvalidArgumentError`</b>: if `logits` is empty or `dim` is beyond the last
+    dimension of `logits`.
+
+
+- - -
+
+### `tf.stack(values, axis=0, name='stack')` {#stack}
+
+Stacks a list of rank-`R` tensors into one rank-`(R+1)` tensor.
+
+Packs the list of tensors in `values` into a tensor with rank one higher than
+each tensor in `values`, by packing them along the `axis` dimension.
+Given a list of length `N` of tensors of shape `(A, B, C)`;
+
+if `axis == 0` then the `output` tensor will have the shape `(N, A, B, C)`.
+if `axis == 1` then the `output` tensor will have the shape `(A, N, B, C)`.
+Etc.
+
+For example:
+
+```prettyprint
+# 'x' is [1, 4]
+# 'y' is [2, 5]
+# 'z' is [3, 6]
+stack([x, y, z]) => [[1, 4], [2, 5], [3, 6]]  # Pack along first dim.
+stack([x, y, z], axis=1) => [[1, 2, 3], [4, 5, 6]]
+```
+
+This is the opposite of unstack.  The numpy equivalent is
+
+    tf.stack([x, y, z]) = np.asarray([x, y, z])
+
+##### Args:
+
+
+*  <b>`values`</b>: A list of `Tensor` objects with the same shape and type.
+*  <b>`axis`</b>: An `int`. The axis to stack along. Defaults to the first dimension.
+    Supports negative indexes.
+*  <b>`name`</b>: A name for this operation (optional).
+
+##### Returns:
+
+
+*  <b>`output`</b>: A stacked `Tensor` with the same type as `values`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `axis` is out of the range [-(R+1), R+1).
 
 
 - - -
@@ -665,18 +973,43 @@ Note that the rank of `input` must be known.
 *  <b>`ValueError`</b>: If dim is smaller than the number of dimensions in 'inputs'.
 
 
+- - -
 
-Aliases for fully_connected which set a default activation function are
-available: `relu`, `relu6` and `linear`.
+### `tf.contrib.layers.embed_sequence(ids, vocab_size=None, embed_dim=None, unique=False, initializer=None, regularizer=None, trainable=True, scope=None, reuse=None)` {#embed_sequence}
 
-`stack` operation is also available. It builds a stack of layers by applying
-a layer repeatedly.
+Maps a sequence of symbols to a sequence of embeddings.
 
-## Regularizers
+Typical use case would be reusing embeddings between an encoder and decoder.
 
-Regularization can help prevent overfitting. These have the signature
-`fn(weights)`. The loss is typically added to
-`tf.GraphKeys.REGULARIZATION_LOSSES`.
+##### Args:
+
+
+*  <b>`ids`</b>: `[batch_size, doc_length]` `Tensor` of type `int32` or `int64`
+    with symbol ids.
+*  <b>`vocab_size`</b>: Integer number of symbols in vocabulary.
+*  <b>`embed_dim`</b>: Integer number of dimensions for embedding matrix.
+*  <b>`unique`</b>: If `True`, will first compute the unique set of indices, and then
+       lookup each embedding once, repeating them in the output as needed.
+*  <b>`initializer`</b>: An initializer for the embeddings, if `None` default for
+      current scope is used.
+*  <b>`regularizer`</b>: Optional regularizer for the embeddings.
+*  <b>`trainable`</b>: If `True` also add variables to the graph collection
+    `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
+*  <b>`scope`</b>: Optional string specifying the variable scope for the op, required
+      if `reuse=True`.
+*  <b>`reuse`</b>: If `True`, variables inside the op will be reused.
+
+##### Returns:
+
+  `Tensor` of `[batch_size, doc_length, embed_dim]` with embedded sequences.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `embed_dim` or `vocab_size` are not specified when not
+    `reuse` is `None` or `False`.
+
+
 
 - - -
 
@@ -775,11 +1108,6 @@ Returns a function that applies the sum of multiple regularizers.
   sum of all the input regularizers.
 
 
-
-## Initializers
-
-Initializers are used to initialize variables with sensible values given their
-size, data type, and purpose.
 
 - - -
 
@@ -903,10 +1231,6 @@ by reaching the final layer. This initializer use the following formula:
 
 
 
-## Optimization
-
-Optimize weights given a loss.
-
 - - -
 
 ### `tf.contrib.layers.optimize_loss(loss, global_step, learning_rate, optimizer, gradient_noise_scale=None, gradient_multipliers=None, clip_gradients=None, learning_rate_decay_fn=None, update_ops=None, variables=None, name=None, summaries=None, colocate_gradients_with_ops=False)` {#optimize_loss}
@@ -994,10 +1318,6 @@ Various ways of passing optimizers, include:
 
 
 
-## Summaries
-
-Helper functions to summarize specific variables or ops.
-
 - - -
 
 ### `tf.contrib.layers.summarize_activation(op)` {#summarize_activation}
@@ -1053,10 +1373,6 @@ Summarize a graph collection of tensors, possibly filtered by name.
 
 
 
-The layers module defines convenience functions `summarize_variables`,
-`summarize_weights` and `summarize_biases`, which set the `collection` argument
-of `summarize_collection` to `VARIABLES`, `WEIGHTS` and `BIASES`, respectively.
-
 - - -
 
 ### `tf.contrib.layers.summarize_activations(name_filter=None, summarizer=summarize_activation)` {#summarize_activations}
@@ -1064,10 +1380,6 @@ of `summarize_collection` to `VARIABLES`, `WEIGHTS` and `BIASES`, respectively.
 Summarize activations, using `summarize_activation` to summarize.
 
 
-
-## Feature columns
-
-Feature columns provide a mechanism to map data to a model.
 
 - - -
 
@@ -1100,11 +1412,12 @@ Checks the validity of the set of FeatureColumns.
 ##### Args:
 
 
-*  <b>`feature_columns`</b>: A set of instances or subclasses of FeatureColumn.
+*  <b>`feature_columns`</b>: An iterable of instances or subclasses of FeatureColumn.
 
 ##### Raises:
 
 
+*  <b>`ValueError`</b>: If `feature_columns` is a dict.
 *  <b>`ValueError`</b>: If there are duplicate feature column keys.
 
 
@@ -1155,7 +1468,7 @@ For the above example, create_feature_spec_for_parsing would return the dict:
 
 - - -
 
-### `tf.contrib.layers.crossed_column(columns, hash_bucket_size, combiner=None, ckpt_to_load_from=None, tensor_name_in_ckpt=None, hash_key=None)` {#crossed_column}
+### `tf.contrib.layers.crossed_column(columns, hash_bucket_size, combiner='sum', ckpt_to_load_from=None, tensor_name_in_ckpt=None, hash_key=None)` {#crossed_column}
 
 Creates a _CrossedColumn for performing feature crosses.
 
@@ -1165,7 +1478,15 @@ Creates a _CrossedColumn for performing feature crosses.
 *  <b>`columns`</b>: An iterable of _FeatureColumn. Items can be an instance of
     _SparseColumn, _CrossedColumn, or _BucketizedColumn.
 *  <b>`hash_bucket_size`</b>: An int that is > 1. The number of buckets.
-*  <b>`combiner`</b>: A combiner string, supports sum, mean, sqrtn.
+*  <b>`combiner`</b>: A string specifying how to reduce if there are multiple entries
+    in a single row. Currently "mean", "sqrtn" and "sum" are supported, with
+    "sum" the default. "sqrtn" often achieves good accuracy, in particular
+    with bag-of-words columns. Each of this can be thought as example level
+    normalizations on the column::
+      * "sum": do not normalize
+      * "mean": do l1 normalization
+      * "sqrtn": do l2 normalization
+    For more information: `tf.embedding_lookup_sparse`.
 *  <b>`ckpt_to_load_from`</b>: (Optional). String representing checkpoint name/pattern
     to restore the column weights. Required if `tensor_name_in_ckpt` is not
     None.
@@ -1192,7 +1513,7 @@ Creates a _CrossedColumn for performing feature crosses.
 
 - - -
 
-### `tf.contrib.layers.embedding_column(sparse_id_column, dimension, combiner=None, initializer=None, ckpt_to_load_from=None, tensor_name_in_ckpt=None, max_norm=None)` {#embedding_column}
+### `tf.contrib.layers.embedding_column(sparse_id_column, dimension, combiner='mean', initializer=None, ckpt_to_load_from=None, tensor_name_in_ckpt=None, max_norm=None)` {#embedding_column}
 
 Creates an `_EmbeddingColumn` for feeding sparse data into a DNN.
 
@@ -1204,8 +1525,10 @@ Creates an `_EmbeddingColumn` for feeding sparse data into a DNN.
     defined in `sparse_id_column` is ignored.
 *  <b>`dimension`</b>: An integer specifying dimension of the embedding.
 *  <b>`combiner`</b>: A string specifying how to reduce if there are multiple entries
-    in a single row. Currently "mean", "sqrtn" and "sum" are supported. Each
-    of this can be considered an example level normalization on the column:
+    in a single row. Currently "mean", "sqrtn" and "sum" are supported, with
+    "mean" the default. "sqrtn" often achieves good accuracy, in particular
+    with bag-of-words columns. Each of this can be thought as example level
+    normalizations on the column:
       * "sum": do not normalize
       * "mean": do l1 normalization
       * "sqrtn": do l2 normalization
@@ -1230,7 +1553,7 @@ Creates an `_EmbeddingColumn` for feeding sparse data into a DNN.
 
 - - -
 
-### `tf.contrib.layers.scattered_embedding_column(column_name, size, dimension, hash_key, combiner=None, initializer=None)` {#scattered_embedding_column}
+### `tf.contrib.layers.scattered_embedding_column(column_name, size, dimension, hash_key, combiner='mean', initializer=None)` {#scattered_embedding_column}
 
 Creates an embedding column of a sparse feature using parameter hashing.
 
@@ -1259,8 +1582,10 @@ collisions with a cost of slowing down training.
 *  <b>`hash_key`</b>: Specify the hash_key that will be used by the `FingerprintCat64`
     function to combine the crosses fingerprints on SparseFeatureCrossOp.
 *  <b>`combiner`</b>: A string specifying how to reduce if there are multiple entries
-    in a single row. Currently "mean", "sqrtn" and "sum" are supported. Each
-    of this can be thought as example level normalizations on the column:
+    in a single row. Currently "mean", "sqrtn" and "sum" are supported, with
+    "mean" the default. "sqrtn" often achieves good accuracy, in particular
+    with bag-of-words columns. Each of this can be thought as example level
+    normalizations on the column:
       * "sum": do not normalize features in the column
       * "mean": do l1 normalization on features in the column
       * "sqrtn": do l2 normalization on features in the column
@@ -1395,6 +1720,38 @@ Returns placeholder tensors for inference.
 
   A dict mapping feature keys to SparseTensors (sparse columns) or
   placeholder Tensors (dense columns).
+
+
+- - -
+
+### `tf.contrib.layers.multi_class_target(*args, **kwargs)` {#multi_class_target}
+
+Creates a _TargetColumn for multi class single label classification. (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-11-12.
+Instructions for updating:
+This file will be removed after the deprecation date.Please switch to third_party/tensorflow/contrib/learn/python/learn/estimators/head.py
+
+The target column uses softmax cross entropy loss.
+
+##### Args:
+
+
+*  <b>`n_classes`</b>: Integer, number of classes, must be >= 2
+*  <b>`label_name`</b>: String, name of the key in label dict. Can be null if label
+      is a tensor (single headed models).
+*  <b>`weight_column_name`</b>: A string defining feature column name representing
+    weights. It is used to down weight or boost examples during training. It
+    will be multiplied by the loss of the example.
+
+##### Returns:
+
+  An instance of _MultiClassTargetColumn.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if n_classes is < 2
 
 
 - - -
@@ -1551,7 +1908,7 @@ Creates a `_RealValuedColumn` for dense numeric data.
 
 - - -
 
-### `tf.contrib.layers.shared_embedding_columns(sparse_id_columns, dimension, combiner=None, shared_embedding_name=None, initializer=None, ckpt_to_load_from=None, tensor_name_in_ckpt=None, max_norm=None)` {#shared_embedding_columns}
+### `tf.contrib.layers.shared_embedding_columns(sparse_id_columns, dimension, combiner='mean', shared_embedding_name=None, initializer=None, ckpt_to_load_from=None, tensor_name_in_ckpt=None, max_norm=None)` {#shared_embedding_columns}
 
 Creates a list of `_EmbeddingColumn` sharing the same embedding.
 
@@ -1563,8 +1920,10 @@ Creates a list of `_EmbeddingColumn` sharing the same embedding.
     defined in each sparse_id_column is ignored.
 *  <b>`dimension`</b>: An integer specifying dimension of the embedding.
 *  <b>`combiner`</b>: A string specifying how to reduce if there are multiple entries
-    in a single row. Currently "mean", "sqrtn" and "sum" are supported. Each
-    of this can be considered an example level normalization on the column:
+    in a single row. Currently "mean", "sqrtn" and "sum" are supported, with
+    "mean" the default. "sqrtn" often achieves good accuracy, in particular
+    with bag-of-words columns. Each of this can be thought as example level
+    normalizations on the column:
       * "sum": do not normalize
       * "mean": do l1 normalization
       * "sqrtn": do l2 normalization
@@ -1600,7 +1959,7 @@ Creates a list of `_EmbeddingColumn` sharing the same embedding.
 
 - - -
 
-### `tf.contrib.layers.sparse_column_with_hash_bucket(column_name, hash_bucket_size, combiner=None, dtype=tf.string)` {#sparse_column_with_hash_bucket}
+### `tf.contrib.layers.sparse_column_with_hash_bucket(column_name, hash_bucket_size, combiner='sum', dtype=tf.string)` {#sparse_column_with_hash_bucket}
 
 Creates a _SparseColumn with hashed bucket configuration.
 
@@ -1614,8 +1973,9 @@ output_id = Hash(input_feature_string) % bucket_size
 *  <b>`column_name`</b>: A string defining sparse column name.
 *  <b>`hash_bucket_size`</b>: An int that is > 1. The number of buckets.
 *  <b>`combiner`</b>: A string specifying how to reduce if the sparse column is
-    multivalent. Currently "mean", "sqrtn" and "sum" are supported, with
-    "sum" the default:
+    multivalent. Currently "mean", "sqrtn" and "sum" are supported, with "sum"
+    the default. "sqrtn" often achieves good accuracy, in particular with
+    bag-of-words columns.
       * "sum": do not normalize features in the column
       * "mean": do l1 normalization on features in the column
       * "sqrtn": do l2 normalization on features in the column
@@ -1635,12 +1995,20 @@ output_id = Hash(input_feature_string) % bucket_size
 
 - - -
 
-### `tf.contrib.layers.sparse_column_with_integerized_feature(column_name, bucket_size, combiner=None, dtype=tf.int64)` {#sparse_column_with_integerized_feature}
+### `tf.contrib.layers.sparse_column_with_integerized_feature(column_name, bucket_size, combiner='sum', dtype=tf.int64)` {#sparse_column_with_integerized_feature}
 
 Creates an integerized _SparseColumn.
 
-Use this when your features are already pre-integerized into int64 IDs.
-output_id = input_feature
+Use this when your features are already pre-integerized into int64 IDs, that
+is, when the set of values to output is already coming in as what's desired in
+the output. Integerized means we can use the feature value itself as id.
+
+Typically this is used for reading contiguous ranges of integers indexes, but
+it doesn't have to be. The output value is simply copied from the
+input_feature, whatever it is. Just be aware, however, that if you have large
+gaps of unused integers it might affect what you feed those in (for instance,
+if you make up a one-hot tensor from these, the unused integers will appear as
+values in the tensor which are always zero.)
 
 ##### Args:
 
@@ -1650,8 +2018,9 @@ output_id = input_feature
     than maximum feature. In other words features in this column should be an
     int64 in range [0, bucket_size)
 *  <b>`combiner`</b>: A string specifying how to reduce if the sparse column is
-    multivalent. Currently "mean", "sqrtn" and "sum" are supported, with
-    "sum" the default:
+    multivalent. Currently "mean", "sqrtn" and "sum" are supported, with "sum"
+    the default. "sqrtn" often achieves good accuracy, in particular with
+    bag-of-words columns.
       * "sum": do not normalize features in the column
       * "mean": do l1 normalization on features in the column
       * "sqrtn": do l2 normalization on features in the column
@@ -1672,7 +2041,7 @@ output_id = input_feature
 
 - - -
 
-### `tf.contrib.layers.sparse_column_with_keys(column_name, keys, default_value=-1, combiner=None)` {#sparse_column_with_keys}
+### `tf.contrib.layers.sparse_column_with_keys(column_name, keys, default_value=-1, combiner='sum')` {#sparse_column_with_keys}
 
 Creates a _SparseColumn with keys.
 
@@ -1687,8 +2056,9 @@ lookup_id = index_of_feature_in_keys if feature in keys else default_value
 *  <b>`default_value`</b>: The value to use for out-of-vocabulary feature values.
     Default is -1.
 *  <b>`combiner`</b>: A string specifying how to reduce if the sparse column is
-    multivalent. Currently "mean", "sqrtn" and "sum" are supported, with
-    "sum" the default:
+    multivalent. Currently "mean", "sqrtn" and "sum" are supported, with "sum"
+    the default. "sqrtn" often achieves good accuracy, in particular with
+    bag-of-words columns.
       * "sum": do not normalize features in the column
       * "mean": do l1 normalization on features in the column
       * "sqrtn": do l2 normalization on features in the column
@@ -1731,7 +2101,8 @@ Example:
     `sparse_column_with_*` functions.
 *  <b>`weight_column_name`</b>: A string defining a sparse column name which represents
     weight or value of the corresponding sparse id feature.
-*  <b>`dtype`</b>: Type of weights, such as `tf.float32`
+*  <b>`dtype`</b>: Type of weights, such as `tf.float32`. Only floating and integer
+    weights are supported.
 
 ##### Returns:
 
@@ -1799,5 +2170,171 @@ Example:
 
 
 *  <b>`ValueError`</b>: if FeatureColumn cannot be used for linear predictions.
+
+
+- - -
+
+### `tf.contrib.layers.infer_real_valued_columns(features)` {#infer_real_valued_columns}
+
+
+
+
+- - -
+
+### `tf.contrib.layers.sequence_input_from_feature_columns(*args, **kwargs)` {#sequence_input_from_feature_columns}
+
+Builds inputs for sequence models from `FeatureColumn`s. (experimental)
+
+THIS FUNCTION IS EXPERIMENTAL. It may change or be removed at any time, and without warning.
+
+
+See documentation for `input_from_feature_columns`. The following types of
+`FeatureColumn` are permitted in `feature_columns`: `_OneHotColumn`,
+`_EmbeddingColumn`, `_ScatteredEmbeddingColumn`, `_RealValuedColumn`,
+`_DataFrameColumn`. In addition, columns in `feature_columns` may not be
+constructed using any of the following: `ScatteredEmbeddingColumn`,
+`BucketizedColumn`, `CrossedColumn`.
+
+##### Args:
+
+
+*  <b>`columns_to_tensors`</b>: A mapping from feature column to tensors. 'string' key
+    means a base feature (not-transformed). It can have FeatureColumn as a
+    key too. That means that FeatureColumn is already transformed by input
+    pipeline. For example, `inflow` may have handled transformations.
+*  <b>`feature_columns`</b>: A set containing all the feature columns. All items in the
+    set should be instances of classes derived by FeatureColumn.
+*  <b>`weight_collections`</b>: List of graph collections to which weights are added.
+*  <b>`trainable`</b>: If `True` also add variables to the graph collection
+    `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+*  <b>`scope`</b>: Optional scope for variable_scope.
+
+##### Returns:
+
+  A Tensor which can be consumed by hidden layers in the neural network.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if FeatureColumn cannot be consumed by a neural network.
+
+
+
+## Other Functions and Classes
+- - -
+
+### `tf.contrib.layers.legacy_fully_connected(x, num_output_units, activation_fn=None, weight_init=_initializer, bias_init=Zeros(), name=None, weight_collections=('weights',), bias_collections=('biases',), output_collections=('activations',), trainable=True, weight_regularizer=None, bias_regularizer=None)` {#legacy_fully_connected}
+
+Adds the parameters for a fully connected layer and returns the output.
+
+A fully connected layer is generally defined as a matrix multiply:
+`y = f(w * x + b)` where `f` is given by `activation_fn`. If
+`activation_fn` is `None`, the result of `y = w * x + b` is
+returned.
+
+If `x` has shape [\\\(\\text{dim}_0, \\text{dim}_1, ..., \\text{dim}_n\\\)]
+with more than 2 dimensions (\\\(n > 1\\\)), then we repeat the matrix
+multiply along the first dimensions. The result r is a tensor of shape
+[\\\(\\text{dim}_0, ..., \\text{dim}_{n-1},\\\) `num_output_units`],
+where \\\( r_{i_0, ..., i_{n-1}, k} =
+\\sum_{0 \\leq j < \\text{dim}_n} x_{i_0, ... i_{n-1}, j} \cdot w_{j, k}\\\).
+This is accomplished by reshaping `x` to 2-D
+[\\\(\\text{dim}_0 \\cdot ... \\cdot \\text{dim}_{n-1}, \\text{dim}_n\\\)]
+before the matrix multiply and afterwards reshaping it to
+[\\\(\\text{dim}_0, ..., \\text{dim}_{n-1},\\\) `num_output_units`].
+
+This op creates `w` and optionally `b`. Bias (`b`) can be disabled by setting
+`bias_init` to `None`.
+
+The variable creation is compatible with `tf.variable_scope` and so can be
+reused with `tf.variable_scope` or `tf.make_template`.
+
+Most of the details of variable creation can be controlled by specifying the
+initializers (`weight_init` and `bias_init`) and in which collections to place
+the created variables (`weight_collections` and `bias_collections`; note that
+the variables are always added to the `VARIABLES` collection). The output of
+the layer can be placed in custom collections using `output_collections`.
+The collections arguments default to `WEIGHTS`, `BIASES` and `ACTIVATIONS`,
+respectively.
+
+A per layer regularization can be specified by setting `weight_regularizer`
+and `bias_regularizer`, which are applied to the weights and biases
+respectively, and whose output is added to the `REGULARIZATION_LOSSES`
+collection.
+
+##### Args:
+
+
+*  <b>`x`</b>: The input `Tensor`.
+*  <b>`num_output_units`</b>: The size of the output.
+*  <b>`activation_fn`</b>: Activation function, default set to None to skip it and
+    maintain a linear activation.
+*  <b>`weight_init`</b>: An optional weight initialization, defaults to
+    `xavier_initializer`.
+*  <b>`bias_init`</b>: An initializer for the bias, defaults to 0. Set to `None` in
+    order to disable bias.
+*  <b>`name`</b>: The name for this operation is used to name operations and to find
+    variables. If specified it must be unique for this scope, otherwise a
+    unique name starting with "fully_connected" will be created.  See
+    `tf.variable_scope` for details.
+*  <b>`weight_collections`</b>: List of graph collections to which weights are added.
+*  <b>`bias_collections`</b>: List of graph collections to which biases are added.
+*  <b>`output_collections`</b>: List of graph collections to which outputs are added.
+*  <b>`trainable`</b>: If `True` also add variables to the graph collection
+    `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+*  <b>`weight_regularizer`</b>: A regularizer like the result of
+    `l1_regularizer` or `l2_regularizer`. Used for weights.
+*  <b>`bias_regularizer`</b>: A regularizer like the result of
+    `l1_regularizer` or `l2_regularizer`. Used for biases.
+
+##### Returns:
+
+  The output of the fully connected layer.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If x has rank less than 2 or if its last dimension is not set.
+
+
+- - -
+
+### `tf.contrib.layers.legacy_linear(x, num_output_units, weight_init=_initializer, bias_init=Zeros(), name=None, weight_collections=('weights',), bias_collections=('biases',), output_collections=('activations',), trainable=True, weight_regularizer=None, bias_regularizer=None)` {#legacy_linear}
+
+partial(func, *args, **keywords) - new function with partial application
+of the given arguments and keywords.
+
+
+- - -
+
+### `tf.contrib.layers.legacy_relu(x, num_output_units, weight_init=_initializer, bias_init=Zeros(), name=None, weight_collections=('weights',), bias_collections=('biases',), output_collections=('activations',), trainable=True, weight_regularizer=None, bias_regularizer=None)` {#legacy_relu}
+
+partial(func, *args, **keywords) - new function with partial application
+of the given arguments and keywords.
+
+
+- - -
+
+### `tf.contrib.layers.regression_target(*args, **kwargs)` {#regression_target}
+
+Creates a _TargetColumn for linear regression. (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-11-12.
+Instructions for updating:
+This file will be removed after the deprecation date.Please switch to third_party/tensorflow/contrib/learn/python/learn/estimators/head.py
+
+##### Args:
+
+
+*  <b>`label_name`</b>: String, name of the key in label dict. Can be null if label
+      is a tensor (single headed models).
+*  <b>`weight_column_name`</b>: A string defining feature column name representing
+    weights. It is used to down weight or boost examples during training. It
+    will be multiplied by the loss of the example.
+*  <b>`label_dimension`</b>: dimension of the target for multilabels.
+
+##### Returns:
+
+  An instance of _TargetColumn
 
 

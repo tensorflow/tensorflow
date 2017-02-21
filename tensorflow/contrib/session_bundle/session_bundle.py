@@ -82,7 +82,7 @@ def load_session_bundle_from_path(export_dir,
     # Reads meta graph file.
     meta_graph_def = meta_graph_pb2.MetaGraphDef()
     meta_graph_def.ParseFromString(
-        file_io.read_file_to_string(meta_graph_filename))
+        file_io.read_file_to_string(meta_graph_filename, binary_mode=True))
 
   variables_filename = ""
   variables_filename_list = []

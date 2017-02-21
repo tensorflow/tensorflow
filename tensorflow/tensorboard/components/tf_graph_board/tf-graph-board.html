@@ -142,6 +142,7 @@ paper-progress {
               color-by="[[colorBy]]"
               color-by-params="{{colorByParams}}"
               progress="{{progress}}"
+              node-names-to-health-pill="[[nodeNamesToHealthPill]]"
     ></tf-graph>
   </div>
   <div id="info">
@@ -186,6 +187,8 @@ Polymer({
       type: Object,
       notify: true
     },
+    // A mapping between node name to the tf.graph.scene.HealthPill to render.
+    nodeNamesToHealthPill: Object,
     // Private API: Data routing between child components.
     _selectedNode: String,
     // The enum value of the include property of the selected node.

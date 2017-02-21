@@ -67,35 +67,15 @@ bool ExecutableBuildOptions::has_hybrid_result() const {
 }
 
 namespace {
-
-// Convenience class which holds an acquired stream from the backend and
-// automatically releases it when destructed.
-class StreamManager {
- public:
-  static StatusOr<std::unique_ptr<StreamManager>> AcquireStream(
-      Backend* backend, int device_ordinal) {
-    TF_ASSIGN_OR_RETURN(
-        se::StreamExecutor * executor,
-        backend->stream_executor(device_ordinal == -1
-                                     ? backend->default_device_ordinal()
-                                     : device_ordinal));
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
-                        backend->AcquireStream(executor));
-    return WrapUnique(new StreamManager(backend, std::move(stream)));
+StatusOr<Backend::StreamPtr> BorrowStreamForDevice(int device_ordinal,
+                                                   Backend* backend) {
+  if (device_ordinal < 0) {
+    device_ordinal = backend->default_device_ordinal();
   }
-
-  ~StreamManager() { backend_->ReleaseStream(std::move(stream_)); }
-
-  se::Stream* stream() const { return stream_.get(); }
-
- private:
-  StreamManager(Backend* backend, std::unique_ptr<se::Stream> stream)
-      : backend_(backend), stream_(std::move(stream)) {}
-
-  Backend* backend_;
-  std::unique_ptr<se::Stream> stream_;
-};
-
+  TF_ASSIGN_OR_RETURN(se::StreamExecutor * exec,
+                      backend->stream_executor(device_ordinal));
+  return backend->BorrowStream(exec);
+}
 }  // namespace
 
 LocalExecutable::LocalExecutable(std::unique_ptr<Executable> executable,
@@ -186,12 +166,11 @@ StatusOr<std::unique_ptr<ShapedBuffer>> LocalExecutable::Run(
   TF_RETURN_IF_ERROR(ValidateExecutionOptions(arguments, options));
 
   ExecutableRunOptions actual_options = options;
-  std::unique_ptr<StreamManager> acquired_stream;
+  Backend::StreamPtr stream;
   if (options.stream() == nullptr) {
     TF_ASSIGN_OR_RETURN(
-        acquired_stream,
-        StreamManager::AcquireStream(backend_, options.device_ordinal()));
-    actual_options.set_stream(acquired_stream->stream());
+        stream, BorrowStreamForDevice(options.device_ordinal(), backend_));
+    actual_options.set_stream(stream.get());
   }
   if (options.allocator() == nullptr) {
     actual_options.set_allocator(backend_->memory_allocator());
@@ -222,12 +201,11 @@ tensorflow::Status LocalExecutable::Run(
   }
 
   ExecutableRunOptions actual_options = options;
-  std::unique_ptr<StreamManager> acquired_stream;
+  Backend::StreamPtr stream;
   if (options.stream() == nullptr) {
     TF_ASSIGN_OR_RETURN(
-        acquired_stream,
-        StreamManager::AcquireStream(backend_, options.device_ordinal()));
-    actual_options.set_stream(acquired_stream->stream());
+        stream, BorrowStreamForDevice(options.device_ordinal(), backend_));
+    actual_options.set_stream(stream.get());
   }
   if (options.allocator() == nullptr) {
     actual_options.set_allocator(backend_->memory_allocator());

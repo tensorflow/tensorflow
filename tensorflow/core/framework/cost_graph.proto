@@ -45,7 +45,12 @@ message CostGraphDef {
     // Temporary memory used by this node.
     int64 temporary_memory_size = 6;
 
-    // Estimate of the computational cost of this node.
+    int64 host_peak_memory_size = 10;
+    int64 device_peak_memory_size = 11;
+    int64 persisted_memory_size = 12;
+    int64 auxiliary_memory_size = 13;
+
+    // Estimate of the computational cost of this node, in microseconds.
     int64 compute_cost = 9;
 
     // If true, the output is permanent: it can't be discarded, because this

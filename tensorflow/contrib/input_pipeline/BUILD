@@ -10,6 +10,7 @@ package(default_visibility = ["//visibility:public"])
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "py_test",
     "tf_custom_op_library",
     "tf_cc_tests",
     "tf_gen_op_libs",
@@ -52,7 +53,7 @@ tf_kernel_library(
 
 py_library(
     name = "input_pipeline_py",
-    srcs = glob(["python/ops/*.py"]),
+    srcs = glob(["python/ops/*.py"]) + ["__init__.py"],
     data = [":python/ops/_input_pipeline_ops.so"],
     srcs_version = "PY2AND3",
     deps = [

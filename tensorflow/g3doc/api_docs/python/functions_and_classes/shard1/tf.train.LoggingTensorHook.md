@@ -3,7 +3,7 @@ Prints the given tensors once every N local steps or once every N seconds.
 The tensors will be printed to the log, with `INFO` severity.
 - - -
 
-#### `tf.train.LoggingTensorHook.__init__(tensors, every_n_iter=None, every_n_secs=None)` {#LoggingTensorHook.__init__}
+#### `tf.train.LoggingTensorHook.__init__(tensors, every_n_iter=None, every_n_secs=None, formatter=None)` {#LoggingTensorHook.__init__}
 
 Initializes a LoggingHook monitor.
 
@@ -17,6 +17,8 @@ Initializes a LoggingHook monitor.
 *  <b>`every_n_secs`</b>: `int` or `float`, print the values of `tensors` once every N
       seconds. Exactly one of `every_n_iter` and `every_n_secs` should be
       provided.
+*  <b>`formatter`</b>: function, takes dict of `tag`->`Tensor` and returns a string.
+      If `None` uses default printing all tensors.
 
 ##### Raises:
 

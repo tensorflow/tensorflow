@@ -98,6 +98,8 @@ string HloOpcodeString(HloOpcode opcode) {
       return "not-equal-to";
     case HloOpcode::kNegate:
       return "negate";
+    case HloOpcode::kOutfeed:
+      return "outfeed";
     case HloOpcode::kPad:
       return "pad";
     case HloOpcode::kParameter:

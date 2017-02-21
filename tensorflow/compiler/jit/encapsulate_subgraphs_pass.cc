@@ -602,12 +602,10 @@ Status EncapsulateSubgraphsPass::Run(
       std::unique_ptr<Graph>* subgraph, std::vector<int>* input_permutation,
       std::vector<int>* output_permutation, NodeDef* node) {
     // Optimize the subgraph.
-    Graph* g = subgraph->release();
-    OptimizeGraph(flr.get(), &g);
-    subgraph->reset(g);
+    OptimizeGraph(flr.get(), subgraph);
 
     std::vector<bool> const_args(input_permutation->size());
-    TF_RETURN_IF_ERROR(BackwardsConstAnalysis(*g, &const_args));
+    TF_RETURN_IF_ERROR(BackwardsConstAnalysis(**subgraph, &const_args));
 
     // Compute a permutation of the arguments such that the constant arguments
     // are first.

@@ -405,11 +405,38 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
     auto* stream = context->op_device_context()->stream();
     OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
 
-    if (filter_size[1] == 1 && filter_size[2] == 1 && filter_size[0] == 1 &&
+    if (filter_size[0] == 1 && filter_size[1] == 1 && filter_size[2] == 1 &&
         stride_[0] == 1 && stride_[1] == 1 && stride_[2] == 1) {
-      const uint64 m = batch * input_size[1] * input_size[2] * input_size[0];
+      const uint64 m = batch * input_size[0] * input_size[1] * input_size[2];
       const uint64 k = out_depth;
       const uint64 n = in_depth;
+
+      auto a_ptr = AsDeviceMemory(out_backprop.template flat<T>().data(),
+                                  out_backprop.template flat<T>().size());
+      auto b_ptr = AsDeviceMemory(filter.template flat<T>().data(),
+                                  filter.template flat<T>().size());
+      auto c_ptr = AsDeviceMemory(in_backprop->template flat<T>().data(),
+                                  in_backprop->template flat<T>().size());
+
+      auto transpose = perftools::gputools::blas::Transpose::kTranspose;
+      auto no_transpose = perftools::gputools::blas::Transpose::kNoTranspose;
+
+      bool blas_launch_status =
+          stream
+              ->ThenBlasGemm(transpose, no_transpose, n, m, k, 1.0f, b_ptr, k,
+                             a_ptr, k, 0.0f, &c_ptr, n)
+              .ok();
+      if (!blas_launch_status) {
+        context->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
+                                            ", n=", n, ", k=", k));
+      }
+      return;
+    } else if (filter_size[0] == input_size[0] &&
+               filter_size[1] == input_size[1] &&
+               filter_size[2] == input_size[2] && padding_ == Padding::VALID) {
+      const uint64 m = batch;
+      const uint64 k = out_depth;
+      const uint64 n = input_size[0] * input_size[1] * input_size[2] * in_depth;
 
       auto a_ptr = AsDeviceMemory(out_backprop.template flat<T>().data(),
                                   out_backprop.template flat<T>().size());
@@ -656,7 +683,33 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
                                             ", n=", n, ", k=", k));
       }
       return;
+    } else if (filter_size[0] == input_size[0] &&
+               filter_size[1] == input_size[1] &&
+               filter_size[2] == input_size[2] && padding_ == Padding::VALID) {
+      const uint64 m = input_size[0] * input_size[1] * input_size[2] * in_depth;
+      const uint64 k = batch;
+      const uint64 n = out_depth;
+
+      auto a_ptr = AsDeviceMemory(input.template flat<T>().data(),
+                                  input.template flat<T>().size());
+      auto b_ptr = AsDeviceMemory(out_backprop.template flat<T>().data(),
+                                  out_backprop.template flat<T>().size());
+      auto c_ptr = AsDeviceMemory(filter_backprop->template flat<T>().data(),
+                                  filter_backprop->template flat<T>().size());
+
+      bool blas_launch_status =
+          stream
+              ->ThenBlasGemm(perftools::gputools::blas::Transpose::kNoTranspose,
+                             perftools::gputools::blas::Transpose::kTranspose,
+                             n, m, k, 1.0f, b_ptr, n, a_ptr, m, 0.0f, &c_ptr, n)
+              .ok();
+      if (!blas_launch_status) {
+        context->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
+                                            ", n=", n, ", k=", k));
+      }
+      return;
     }
+
     int padding_rows = 0, padding_cols = 0, padding_planes = 0;
 
     if (padding_ == Padding::SAME) {

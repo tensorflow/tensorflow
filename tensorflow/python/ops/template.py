@@ -120,7 +120,7 @@ def make_template(name_, func_, create_scope_now_=False, unique_name_=None,
       template of the same scope/unique_name already exists and reuse is false,
       an error is raised. Defaults to None.
     custom_getter_: Optional custom getter for variables used in `func_`. See
-      the [`get_variable`](#get_variable) `custom_getter` documentation for
+      the @{tf.get_variable} `custom_getter` documentation for
       more information.
     **kwargs: Keyword arguments to apply to `func_`.
 

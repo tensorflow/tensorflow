@@ -104,8 +104,13 @@ def main(unused_argv):
 
   # Process vocabulary
   vocab_processor = learn.preprocessing.VocabularyProcessor(MAX_DOCUMENT_LENGTH)
-  x_train = np.array(list(vocab_processor.fit_transform(x_train)))
-  x_test = np.array(list(vocab_processor.transform(x_test)))
+  
+  x_transform_train = vocab_processor.fit_transform(x_train)
+  x_transform_test = vocab_processor.transform(x_test)
+  
+  x_train = np.array(list(x_transform_train))
+  x_test = np.array(list(x_transform_test))
+  
   n_words = len(vocab_processor.vocabulary_)
   print('Total words: %d' % n_words)
 

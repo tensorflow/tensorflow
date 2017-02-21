@@ -66,13 +66,18 @@ foreach(tf_cc_op_lib_name ${tf_cc_op_lib_names})
     add_custom_command(
         OUTPUT ${cc_ops_target_dir}/${tf_cc_op_lib_name}.h
                ${cc_ops_target_dir}/${tf_cc_op_lib_name}.cc
-        COMMAND ${tf_cc_op_lib_name}_gen_cc ${cc_ops_target_dir}/${tf_cc_op_lib_name}.h ${cc_ops_target_dir}/${tf_cc_op_lib_name}.cc ${cc_ops_include_internal}
+               ${cc_ops_target_dir}/${tf_cc_op_lib_name}_internal.h
+               ${cc_ops_target_dir}/${tf_cc_op_lib_name}_internal.cc
+        COMMAND ${tf_cc_op_lib_name}_gen_cc ${cc_ops_target_dir}/${tf_cc_op_lib_name}.h ${cc_ops_target_dir}/${tf_cc_op_lib_name}.cc ${tensorflow_source_dir}/tensorflow/cc/ops/op_gen_overrides.pbtxt ${cc_ops_include_internal}
         DEPENDS ${tf_cc_op_lib_name}_gen_cc create_cc_ops_header_dir
     )
-    
+
     list(APPEND tf_cc_ops_generated_files ${cc_ops_target_dir}/${tf_cc_op_lib_name}.h)
     list(APPEND tf_cc_ops_generated_files ${cc_ops_target_dir}/${tf_cc_op_lib_name}.cc)
+    list(APPEND tf_cc_ops_generated_files ${cc_ops_target_dir}/${tf_cc_op_lib_name}_internal.h)
+    list(APPEND tf_cc_ops_generated_files ${cc_ops_target_dir}/${tf_cc_op_lib_name}_internal.cc)
 endforeach()
+
 
 
 ########################################################

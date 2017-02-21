@@ -5,7 +5,7 @@ licenses(["notice"])  # BSD
 
 exports_files(["COPYING"])
 
-load("@//third_party:common.bzl", "template_rule")
+load("@%ws%//third_party:common.bzl", "template_rule")
 
 cc_library(
     name = "jemalloc",

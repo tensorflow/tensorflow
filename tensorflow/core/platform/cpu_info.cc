@@ -13,19 +13,29 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// SIMD extension querying is only available on x86.
-#if defined(__x86_64__) || defined(__amd64__)
-#define PORT_IS_X86
-#endif
-
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/types.h"
-#if defined(PORT_IS_X86)
+#if defined(PLATFORM_IS_X86)
 #include <mutex>  // NOLINT
 #endif
 
-#ifdef PORT_IS_X86
+// SIMD extension querying is only available on x86.
+#ifdef PLATFORM_IS_X86
+#ifdef PLATFORM_WINDOWS
+// Visual Studio defines a builtin function for CPUID, so use that if possible.
+#define GETCPUID(a, b, c, d, a_inp, c_inp) \
+  {                                        \
+    int cpu_info[4] = {-1};                \
+    __cpuidex(cpu_info, a_inp, c_inp);     \
+    a = cpu_info[0];                       \
+    b = cpu_info[1];                       \
+    c = cpu_info[2];                       \
+    d = cpu_info[3];                       \
+  }
+#else
+// Otherwise use gcc-format assembler to implement the underlying instructions.
 #define GETCPUID(a, b, c, d, a_inp, c_inp) \
   asm("mov %%rbx, %%rdi\n"                 \
       "cpuid\n"                            \
@@ -33,22 +43,28 @@ limitations under the License.
       : "=a"(a), "=D"(b), "=c"(c), "=d"(d) \
       : "a"(a_inp), "2"(c_inp))
 #endif
+#endif
 
 namespace tensorflow {
 namespace port {
 namespace {
 
-#ifdef PORT_IS_X86
+#ifdef PLATFORM_IS_X86
 class CPUIDInfo;
 void InitCPUIDInfo();
 
 CPUIDInfo *cpuid = nullptr;
 
+#ifdef PLATFORM_WINDOWS
+// Visual Studio defines a builtin function, so use that if possible.
+int GetXCR0EAX() { return _xgetbv(0); }
+#else
 int GetXCR0EAX() {
   int eax, edx;
   asm("XGETBV" : "=a"(eax), "=d"(edx) : "c"(0));
   return eax;
 }
+#endif
 
 // Structure for basic CPUID info
 struct CPUIDInfo {
@@ -273,12 +289,12 @@ void InitCPUIDInfo() {
   std::call_once(cpuid_once_flag, CPUIDInfo::Initialize);
 }
 
-#endif  // PORT_IS_X86
+#endif  // PLATFORM_IS_X86
 
 }  // namespace
 
 bool TestCPUFeature(CPUFeature feature) {
-#ifdef PORT_IS_X86
+#ifdef PLATFORM_IS_X86
   return CPUIDInfo::TestFeature(feature);
 #else
   return false;

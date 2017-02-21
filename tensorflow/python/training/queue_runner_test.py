@@ -164,7 +164,7 @@ class QueueRunnerTest(test.TestCase):
       coord.request_stop()
       # We should be able to join because the RequestStop() will cause
       # the queue to be closed and the enqueue to terminate.
-      coord.join(stop_grace_period_secs=0.05)
+      coord.join(stop_grace_period_secs=1.0)
 
   def testMultipleSessions(self):
     with self.test_session() as sess:

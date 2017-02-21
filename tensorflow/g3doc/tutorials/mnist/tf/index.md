@@ -195,13 +195,13 @@ The `training()` function adds the operations needed to minimize the loss via
 [Gradient Descent](https://en.wikipedia.org/wiki/Gradient_descent).
 
 Firstly, it takes the loss tensor from the `loss()` function and hands it to a
-[`tf.scalar_summary`](../../../api_docs/python/train.md#scalar_summary),
+[`tf.summary.scalar`](../../../api_docs/python/summary#scalar),
 an op for generating summary values into the events file when used with a
 `SummaryWriter` (see below).  In this case, it will emit the snapshot value of
 the loss every time the summaries are written out.
 
 ```python
-tf.scalar_summary(loss.op.name, loss)
+tf.summary.scalar('loss', loss)
 ```
 
 Next, we instantiate a [`tf.train.GradientDescentOptimizer`](../../../api_docs/python/train.md#GradientDescentOptimizer)
@@ -363,7 +363,7 @@ during the graph building phase.
 summary = tf.merge_all_summaries()
 ```
 
-And then after the session is created, a [`tf.train.SummaryWriter`](../../../api_docs/python/train.md#SummaryWriter)
+And then after the session is created, a [`tf.train.SummaryWriter`](../../../api_docs/python/train/adding_summaries_to_event_files#SummaryWriter)
 may be instantiated to write the events files, which
 contain both the graph itself and the values of the summaries.
 
@@ -385,7 +385,7 @@ folder to display the values from the summaries.
 
 ![MNIST TensorBoard](../../../images/mnist_tensorboard.png "MNIST TensorBoard")
 
-**NOTE**: For more info about how to build and run Tensorboard, please see the accompanying tutorial [Tensorboard: Visualizing Your Training](../../../how_tos/summaries_and_tensorboard/index.md).
+**NOTE**: For more info about how to build and run Tensorboard, please see the accompanying tutorial [Tensorboard: Visualizing Learning](../../../how_tos/summaries_and_tensorboard/index.md).
 
 #### Save a Checkpoint
 

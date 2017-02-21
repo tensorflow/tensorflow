@@ -29,11 +29,11 @@ import re
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
-from tensorflow.python.debug import debug_data
 from tensorflow.python.debug.cli import cli_shared
 from tensorflow.python.debug.cli import command_parser
 from tensorflow.python.debug.cli import debugger_cli_common
 from tensorflow.python.debug.cli import ui_factory
+from tensorflow.python.debug.lib import debug_data
 
 
 # String constants for the depth-dependent hanging indent at the beginning

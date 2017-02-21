@@ -28,6 +28,7 @@ module TF.Backend {
     graph: (run: string, limit_attr_size?: number, large_attrs_key?: string)
         => string;
     runMetadata: RunTagUrlFn;
+    healthPills: () => string;
   };
 
   /**
@@ -35,7 +36,7 @@ module TF.Backend {
    * @param dataDir {string} The base prefix for finding data on server.
    * @param demoMode {boolean} Whether to modify urls for filesystem demo usage.
    */
-  export function router(dataDir = '/data', demoMode = false): Router {
+  export function router(dataDir = 'data', demoMode = false): Router {
     var clean = demoMode ? demoify : (x) => x;
     if (dataDir[dataDir.length - 1] === '/') {
       dataDir = dataDir.slice(0, dataDir.length - 1);
@@ -98,6 +99,7 @@ module TF.Backend {
       images: standardRoute('images'),
       audio: standardRoute('audio'),
       runMetadata: standardRoute('run_metadata', '.pbtxt'),
+      healthPills: () => dataDir + '/plugin/debugger/health_pills',
     };
   };
 }

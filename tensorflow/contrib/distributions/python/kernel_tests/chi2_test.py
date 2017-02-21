@@ -37,11 +37,11 @@ class Chi2Test(test.TestCase):
       chi2 = chi2_lib.Chi2(df=df)
       expected_log_pdf = stats.chi2.logpdf(x, df_v)
 
-      log_pdf = chi2.log_pdf(x)
+      log_pdf = chi2.log_prob(x)
       self.assertEqual(log_pdf.get_shape(), (6,))
       self.assertAllClose(log_pdf.eval(), expected_log_pdf)
 
-      pdf = chi2.pdf(x)
+      pdf = chi2.prob(x)
       self.assertEqual(pdf.get_shape(), (6,))
       self.assertAllClose(pdf.eval(), np.exp(expected_log_pdf))
 
@@ -88,7 +88,8 @@ class Chi2Test(test.TestCase):
       df_v = np.array([-1.3, -3.2, 5], dtype=np.float64)
       chi2 = chi2_lib.Chi2WithAbsDf(df=df_v)
       self.assertAllClose(
-          math_ops.floor(math_ops.abs(df_v)).eval(), chi2.df.eval())
+          math_ops.floor(math_ops.abs(df_v)).eval(),
+          chi2.df.eval())
 
 
 if __name__ == "__main__":

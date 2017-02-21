@@ -113,6 +113,10 @@ string Status::ToString() const {
   }
 }
 
+void Status::IgnoreError() const {
+  // no-op
+}
+
 std::ostream& operator<<(std::ostream& os, const Status& x) {
   os << x.ToString();
   return os;

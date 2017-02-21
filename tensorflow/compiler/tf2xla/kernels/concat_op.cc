@@ -19,9 +19,9 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -175,7 +175,7 @@ class ConcatOffsetOp : public XlaOpKernel {
       const TensorShape inp_shape = ctx->InputShape(1 + i);
       OP_REQUIRES(ctx, dims == inp_shape.num_elements(),
                   errors::InvalidArgument("input ", i, " should contain ", dims,
-                                          " elements, but got",
+                                          " elements, but got ",
                                           inp_shape.num_elements()));
       xla::Literal inp_literal;
       OP_REQUIRES_OK(ctx, ctx->ConstantInput(1 + i, &inp_literal));

@@ -26,6 +26,7 @@ from tensorflow.python.layers import normalization as normalization_layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -453,6 +454,20 @@ class BNTest(test.TestCase):
       normed_np_output = ((np_output - epsilon) * np_gamma) + np_beta
       self.assertAlmostEqual(np.mean(normed_np_output), 0., places=2)
       self.assertAlmostEqual(np.std(normed_np_output), 1., places=1)
+
+  def testFunctionalReuseFromScope(self):
+    inputs = variables.Variable(
+        np.random.random((5, 4, 3, 6)), dtype=dtypes.float32)
+    epsilon = 1e-3
+    training = array_ops.placeholder(dtype='bool')
+    with variable_scope.variable_scope('scope'):
+      _ = normalization_layers.batch_norm(
+          inputs, axis=-1, momentum=0.9, epsilon=epsilon, training=training)
+      self.assertEqual(len(variables.global_variables()), 5)
+    with variable_scope.variable_scope('scope', reuse=True):
+      _ = normalization_layers.batch_norm(
+          inputs, axis=-1, momentum=0.9, epsilon=epsilon, training=training)
+      self.assertEqual(len(variables.global_variables()), 5)
 
   def testNoCenter(self):
     bn = normalization_layers.BatchNormalization(axis=1, center=False)

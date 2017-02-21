@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import stat
 import tempfile
 
 from tensorflow.python.debug.cli import debugger_cli_common
@@ -236,7 +237,7 @@ class RichTextLinesTest(test_util.TensorFlowTestCase):
     screen_output.write_to_file(file_path)
 
     with gfile.Open(file_path, "r") as f:
-      self.assertEqual(b"Roses are red\nViolets are blue\n", f.read())
+      self.assertEqual("Roses are red\nViolets are blue\n", f.read())
 
     # Clean up.
     gfile.Remove(file_path)
@@ -606,6 +607,22 @@ class RegexFindTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(ValueError, "Invalid regular expression"):
       debugger_cli_common.regex_find(self._orig_screen_output, "[", "yellow")
 
+  def testRegexFindOnPrependedLinesWorks(self):
+    rich_lines = debugger_cli_common.RichTextLines(["Violets are blue"])
+    rich_lines.prepend(["Roses are red"])
+    searched_rich_lines = debugger_cli_common.regex_find(
+        rich_lines, "red", "bold")
+    self.assertEqual(
+        {0: [(10, 13, "bold")]}, searched_rich_lines.font_attr_segs)
+
+    rich_lines = debugger_cli_common.RichTextLines(["Violets are blue"])
+    rich_lines.prepend(["A poem"], font_attr_segs=[(0, 1, "underline")])
+    searched_rich_lines = debugger_cli_common.regex_find(
+        rich_lines, "poem", "italic")
+    self.assertEqual(
+        {0: [(0, 1, "underline"), (2, 6, "italic")]},
+        searched_rich_lines.font_attr_segs)
+
 
 class WrapScreenOutputTest(test_util.TensorFlowTestCase):
 
@@ -888,7 +905,13 @@ class TabCompletionRegistryTest(test_util.TensorFlowTestCase):
 class CommandHistoryTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
-    self._cmd_hist = debugger_cli_common.CommandHistory(limit=3)
+    self._history_file_path = tempfile.mktemp()
+    self._cmd_hist = debugger_cli_common.CommandHistory(
+        limit=3, history_file_path=self._history_file_path)
+
+  def tearDown(self):
+    if os.path.isfile(self._history_file_path):
+      os.remove(self._history_file_path)
 
   def testLookUpMostRecent(self):
     self.assertEqual([], self._cmd_hist.most_recent_n(3))
@@ -942,6 +965,72 @@ class CommandHistoryTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(
         TypeError, "Attempt to enter non-str entry to command history"):
       self._cmd_hist.add_command(["print_tensor node_a:0"])
+
+  def testRepeatingCommandsDoNotGetLoggedRepeatedly(self):
+    self._cmd_hist.add_command("help")
+    self._cmd_hist.add_command("help")
+
+    self.assertEqual(["help"], self._cmd_hist.most_recent_n(2))
+
+  def testCommandHistoryFileIsCreated(self):
+    self.assertFalse(os.path.isfile(self._history_file_path))
+    self._cmd_hist.add_command("help")
+    self.assertTrue(os.path.isfile(self._history_file_path))
+    with open(self._history_file_path, "rt") as f:
+      self.assertEqual(["help\n"], f.readlines())
+
+  def testLoadingCommandHistoryFileObeysLimit(self):
+    self._cmd_hist.add_command("help 1")
+    self._cmd_hist.add_command("help 2")
+    self._cmd_hist.add_command("help 3")
+    self._cmd_hist.add_command("help 4")
+
+    cmd_hist_2 = debugger_cli_common.CommandHistory(
+        limit=3, history_file_path=self._history_file_path)
+    self.assertEqual(["help 2", "help 3", "help 4"],
+                     cmd_hist_2.most_recent_n(3))
+
+    with open(self._history_file_path, "rt") as f:
+      self.assertEqual(
+          ["help 2\n", "help 3\n", "help 4\n"], f.readlines())
+
+  def testCommandHistoryHandlesReadingIOErrorGracoiusly(self):
+    with open(self._history_file_path, "wt") as f:
+      f.write("help\n")
+
+    # Change file to not readable by anyone.
+    os.chmod(self._history_file_path, 0)
+
+    # The creation of a CommandHistory object should not error out.
+    debugger_cli_common.CommandHistory(
+        limit=3, history_file_path=self._history_file_path)
+
+  def testCommandHistoryHandlesWritingIOErrorGracoiusly(self):
+    with open(self._history_file_path, "wt") as f:
+      f.write("help\n")
+
+    # Change file to read-only.
+    os.chmod(self._history_file_path,
+             stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
+
+    # Reading from the file should still work.
+    cmd_hist_2 = debugger_cli_common.CommandHistory(
+        limit=3, history_file_path=self._history_file_path)
+    self.assertEqual(["help"], cmd_hist_2.most_recent_n(1))
+
+    # Writing should no longer work, but it should fail silently and
+    # the within instance-command history should still work.
+    cmd_hist_2.add_command("foo")
+    self.assertEqual(["help", "foo"], cmd_hist_2.most_recent_n(2))
+
+    cmd_hist_3 = debugger_cli_common.CommandHistory(
+        limit=3, history_file_path=self._history_file_path)
+    self.assertEqual(["help"], cmd_hist_3.most_recent_n(1))
+
+    # Change the file to back to read-write.
+    os.chmod(self._history_file_path,
+             (stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH | stat.S_IWUSR |
+              stat.S_IWGRP | stat.S_IWOTH))
 
 
 class MenuNodeTest(test_util.TensorFlowTestCase):

@@ -35,14 +35,14 @@ class ExponentialTest(test.TestCase):
       lam = constant_op.constant([2.0] * batch_size)
       lam_v = 2.0
       x = np.array([2.5, 2.5, 4.0, 0.1, 1.0, 2.0], dtype=np.float32)
-      exponential = exponential_lib.Exponential(lam=lam)
+      exponential = exponential_lib.Exponential(rate=lam)
       expected_log_pdf = stats.expon.logpdf(x, scale=1 / lam_v)
 
-      log_pdf = exponential.log_pdf(x)
+      log_pdf = exponential.log_prob(x)
       self.assertEqual(log_pdf.get_shape(), (6,))
       self.assertAllClose(log_pdf.eval(), expected_log_pdf)
 
-      pdf = exponential.pdf(x)
+      pdf = exponential.prob(x)
       self.assertEqual(pdf.get_shape(), (6,))
       self.assertAllClose(pdf.eval(), np.exp(expected_log_pdf))
 
@@ -53,7 +53,7 @@ class ExponentialTest(test.TestCase):
       lam_v = 2.0
       x = np.array([2.5, 2.5, 4.0, 0.1, 1.0, 2.0], dtype=np.float32)
 
-      exponential = exponential_lib.Exponential(lam=lam)
+      exponential = exponential_lib.Exponential(rate=lam)
       expected_cdf = stats.expon.cdf(x, scale=1 / lam_v)
 
       cdf = exponential.cdf(x)
@@ -64,7 +64,7 @@ class ExponentialTest(test.TestCase):
     with session.Session():
       lam_v = np.array([1.0, 4.0, 2.5])
       expected_mean = stats.expon.mean(scale=1 / lam_v)
-      exponential = exponential_lib.Exponential(lam=lam_v)
+      exponential = exponential_lib.Exponential(rate=lam_v)
       self.assertEqual(exponential.mean().get_shape(), (3,))
       self.assertAllClose(exponential.mean().eval(), expected_mean)
 
@@ -72,7 +72,7 @@ class ExponentialTest(test.TestCase):
     with session.Session():
       lam_v = np.array([1.0, 4.0, 2.5])
       expected_variance = stats.expon.var(scale=1 / lam_v)
-      exponential = exponential_lib.Exponential(lam=lam_v)
+      exponential = exponential_lib.Exponential(rate=lam_v)
       self.assertEqual(exponential.variance().get_shape(), (3,))
       self.assertAllClose(exponential.variance().eval(), expected_variance)
 
@@ -80,7 +80,7 @@ class ExponentialTest(test.TestCase):
     with session.Session():
       lam_v = np.array([1.0, 4.0, 2.5])
       expected_entropy = stats.expon.entropy(scale=1 / lam_v)
-      exponential = exponential_lib.Exponential(lam=lam_v)
+      exponential = exponential_lib.Exponential(rate=lam_v)
       self.assertEqual(exponential.entropy().get_shape(), (3,))
       self.assertAllClose(exponential.entropy().eval(), expected_entropy)
 
@@ -89,7 +89,7 @@ class ExponentialTest(test.TestCase):
       lam = constant_op.constant([3.0, 4.0])
       lam_v = [3.0, 4.0]
       n = constant_op.constant(100000)
-      exponential = exponential_lib.Exponential(lam=lam)
+      exponential = exponential_lib.Exponential(rate=lam)
 
       samples = exponential.sample(n, seed=137)
       sample_values = samples.eval()
@@ -107,7 +107,7 @@ class ExponentialTest(test.TestCase):
       lam_v = [3.0, 22.0]
       lam = constant_op.constant([lam_v] * batch_size)
 
-      exponential = exponential_lib.Exponential(lam=lam)
+      exponential = exponential_lib.Exponential(rate=lam)
 
       n = 100000
       samples = exponential.sample(n, seed=138)
@@ -128,11 +128,12 @@ class ExponentialTest(test.TestCase):
                 stats.expon(scale=1.0 / lam_v[i]).cdf)[0],
             0.01)
 
-  def testExponentialWithSoftplusLam(self):
+  def testExponentialWithSoftplusRate(self):
     with self.test_session():
       lam = [-2.2, -3.4]
-      exponential = exponential_lib.ExponentialWithSoftplusLam(lam=lam)
-      self.assertAllClose(nn_ops.softplus(lam).eval(), exponential.lam.eval())
+      exponential = exponential_lib.ExponentialWithSoftplusRate(rate=lam)
+      self.assertAllClose(nn_ops.softplus(lam).eval(),
+                          exponential.rate.eval())
 
 
 if __name__ == "__main__":

@@ -115,9 +115,18 @@ class ComputationBuilder {
   ComputationDataHandle ConstantR2(
       std::initializer_list<std::initializer_list<NativeT>> values);
   template <typename NativeT>
+  ComputationDataHandle ConstantR2FromArray2DWithLayout(
+      const Array2D<NativeT>& values, const Layout& layout);
+  template <typename NativeT>
   ComputationDataHandle ConstantR2FromArray2D(const Array2D<NativeT>& values);
   template <typename NativeT>
+  ComputationDataHandle ConstantR3FromArray3DWithLayout(
+      const Array3D<NativeT>& values, const Layout& layout);
+  template <typename NativeT>
   ComputationDataHandle ConstantR3FromArray3D(const Array3D<NativeT>& values);
+  template <typename NativeT>
+  ComputationDataHandle ConstantR4FromArray4DWithLayout(
+      const Array4D<NativeT>& values, const Layout& layout);
   template <typename NativeT>
   ComputationDataHandle ConstantR4FromArray4D(const Array4D<NativeT>& values);
 
@@ -345,7 +354,12 @@ class ComputationBuilder {
 
   // Enqueues an infeed instruction onto the computation, which reads data of
   // the given shape from the infeed buffer of the device.
-  ComputationDataHandle Infeed(const Shape& shape);
+  ComputationDataHandle Infeed(const Shape& shape, const string& config = "");
+
+  // Enqueues an outfeed instruction onto the computation. This instruction
+  // generates outgoing data transfers for the given data.
+  void Outfeed(const ComputationDataHandle& operand,
+               const string& outfeed_config);
 
   // Enqueues a call instruction onto the computation.
   ComputationDataHandle Call(
@@ -490,8 +504,9 @@ class ComputationBuilder {
   ComputationDataHandle SquareF32(const ComputationDataHandle& operand);
 
   // Enqueues a lhs^rhs computation onto the computation.
-  ComputationDataHandle Pow(const ComputationDataHandle& lhs,
-                            const ComputationDataHandle& rhs);
+  ComputationDataHandle Pow(
+      const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
+      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
 
   // Enqueues a convert instruction onto the computation that changes the
   // element type of the operand array to primitive_type.
@@ -541,7 +556,7 @@ class ComputationBuilder {
                                   const Shape& shape);
 
   // Enqueues a U(a, b) random number generation instruction onto the
-  // computation.
+  // computation. Returns values in the semi-open interval [a, b).
   ComputationDataHandle RngUniform(const ComputationDataHandle& a,
                                    const ComputationDataHandle& b,
                                    const Shape& shape);
@@ -755,6 +770,14 @@ ComputationDataHandle ComputationBuilder::ConstantR2(
 }
 
 template <typename NativeT>
+ComputationDataHandle ComputationBuilder::ConstantR2FromArray2DWithLayout(
+    const Array2D<NativeT>& values, const Layout& layout) {
+  return ConstantOp([&values, &layout](Literal* literal) {
+    LiteralUtil::PopulateR2FromArray2DWithLayout(values, layout, literal);
+  });
+}
+
+template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR2FromArray2D(
     const Array2D<NativeT>& values) {
   return ConstantOp([&values](Literal* literal) {
@@ -763,10 +786,26 @@ ComputationDataHandle ComputationBuilder::ConstantR2FromArray2D(
 }
 
 template <typename NativeT>
+ComputationDataHandle ComputationBuilder::ConstantR3FromArray3DWithLayout(
+    const Array3D<NativeT>& values, const Layout& layout) {
+  return ConstantOp([&values, &layout](Literal* literal) {
+    LiteralUtil::PopulateR3FromArray3DWithLayout(values, layout, literal);
+  });
+}
+
+template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR3FromArray3D(
     const Array3D<NativeT>& values) {
   return ConstantOp([&values](Literal* literal) {
     LiteralUtil::PopulateR3FromArray3D(values, literal);
+  });
+}
+
+template <typename NativeT>
+ComputationDataHandle ComputationBuilder::ConstantR4FromArray4DWithLayout(
+    const Array4D<NativeT>& values, const Layout& layout) {
+  return ConstantOp([&values, &layout](Literal* literal) {
+    LiteralUtil::PopulateR4FromArray4D(values, layout, literal);
   });
 }
 

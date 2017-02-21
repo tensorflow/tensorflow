@@ -150,9 +150,9 @@ TEST_F(DebugIOUtilsTest, DumpTensorToFileCannotCreateDirectory) {
 
   std::unique_ptr<WritableFile> file;
   ASSERT_TRUE(env_->NewWritableFile(txt_file_name, &file).ok());
-  file->Append("text in baz");
-  file->Flush();
-  file->Close();
+  TF_EXPECT_OK(file->Append("text in baz"));
+  TF_EXPECT_OK(file->Flush());
+  TF_ASSERT_OK(file->Close());
 
   // Verify that the path exists and that it is a file, not a directory.
   ASSERT_TRUE(env_->FileExists(txt_file_name).ok());

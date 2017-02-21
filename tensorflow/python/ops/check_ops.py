@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=g-short-docstring-punctuation
-"""## Asserts and Boolean Checks
+"""## Asserts and Boolean Checks.  See the @{$python/check_ops} guide.
 
 @@assert_negative
 @@assert_positive

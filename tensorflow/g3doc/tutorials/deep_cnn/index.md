@@ -136,7 +136,7 @@ artificially increase the data set size:
 
 Please see the [Images](../../api_docs/python/image.md) page for the list of
 available distortions. We also attach an
-[`image_summary`](../../api_docs/python/train.md#image_summary) to the images
+[`image`](../../api_docs/python/summary.md#image) to the images
 so that we may visualize them in [TensorBoard](../../how_tos/summaries_and_tensorboard/index.md).
 This is a good practice to verify that inputs are built correctly.
 
@@ -203,7 +203,7 @@ For regularization, we also apply the usual
 variables.  The objective function for the model is the sum of the cross entropy
 loss and all these weight decay terms, as returned by the `loss()` function.
 
-We visualize it in TensorBoard with a [`scalar_summary`](../../api_docs/python/train.md#scalar_summary):
+We visualize it in TensorBoard with a [`scalar`](../../api_docs/python/summary.md#scalar):
 
 ![CIFAR-10 Loss](../../images/cifar_loss.png "CIFAR-10 Total Loss")
 
@@ -289,7 +289,7 @@ how the model is training. We want more insight into the model during training:
 [TensorBoard](../../how_tos/summaries_and_tensorboard/index.md) provides this
 functionality, displaying data exported periodically from `cifar10_train.py` via
 a
-[`SummaryWriter`](../../api_docs/python/train.md#SummaryWriter).
+[`FileWriter`](../../api_docs/python/summary.md#FileWriter).
 
 For instance, we can watch how the distribution of activations and degree of
 sparsity in `local3` features evolve during training:

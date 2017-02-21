@@ -37,7 +37,10 @@ std::unique_ptr<GlobalData> MakeFakeDataOrDie(const Shape& shape,
   b.Broadcast(b.ConstantLiteral(LiteralUtil::One(shape.element_type())),
               AsInt64Slice(shape.dimensions()));
   Computation computation = b.Build().ConsumeValueOrDie();
-  return client->Execute(computation, /*arguments=*/{}, &shape)
+
+  ExecutionOptions execution_options;
+  *execution_options.mutable_shape_with_output_layout() = shape;
+  return client->Execute(computation, /*arguments=*/{}, &execution_options)
       .ConsumeValueOrDie();
 }
 

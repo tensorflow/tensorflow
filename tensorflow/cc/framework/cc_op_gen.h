@@ -17,12 +17,13 @@ limitations under the License.
 #define THIRD_PARTY_TENSORFLOW_CC_FRAMEWORK_CC_OP_GEN_H_
 
 #include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
-// Result is written to files dot_h and dot_cc.
-void WriteCCOps(const OpList& ops, const std::string& dot_h_fname,
-                const std::string& dot_cc_fname);
+/// Result is written to files dot_h and dot_cc.
+void WriteCCOps(const OpList& ops, const string& dot_h_fname,
+                const string& dot_cc_fname, const string& overrides_fnames);
 
 }  // namespace tensorflow
 

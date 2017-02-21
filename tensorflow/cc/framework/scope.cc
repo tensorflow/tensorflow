@@ -70,14 +70,14 @@ Scope::Scope(const Scope& other, Scope::Tags::OpName, const string& name,
       colocation_constraints_(other.colocation_constraints_) {}
 
 Scope::Scope(const Scope& other, Scope::Tags::ControlDeps,
-             std::vector<ops::Operation> control_deps, bool clear_control_deps)
+             std::vector<Operation> control_deps, bool clear_control_deps)
     : graph_(other.graph_),
       status_(other.status_),
       name_map_(other.name_map_),
       refiner_(other.refiner_),
       scope_used_(other.scope_used_),
       control_deps_(clear_control_deps
-                        ? std::vector<ops::Operation>()
+                        ? std::vector<Operation>()
                         : (control_deps.insert(control_deps.begin(),
                                                other.control_deps_.begin(),
                                                other.control_deps_.end()),
@@ -148,7 +148,7 @@ Scope::Scope(const Scope& other, Scope::Tags::KernelLabel,
       colocation_constraints_(other.colocation_constraints_) {}
 
 Scope::Scope(const Scope& other, Scope::Tags::Colocate,
-             const ops::Operation& colocate_with_op, bool clear_colocations)
+             const Operation& colocate_with_op, bool clear_colocations)
     : graph_(other.graph_),
       status_(other.status_),
       name_map_(other.name_map_),
@@ -166,7 +166,7 @@ Scope::Scope(const Scope& other, Scope::Tags::Colocate,
               : other.GetColocationConstraints(colocate_with_op)) {}
 
 std::unordered_set<string> Scope::GetColocationConstraints(
-    const ops::Operation& colocate_with_op) const {
+    const Operation& colocate_with_op) const {
   std::unordered_set<string> current_constraints(colocation_constraints_);
   const NodeDef& node_def = colocate_with_op.node()->def();
   std::vector<string> node_constraints;
@@ -298,21 +298,20 @@ Scope Scope::WithOpName(const string& op_name) const {
 }
 
 Scope Scope::WithControlDependencies(
-    const gtl::ArraySlice<ops::Operation>& control_deps) const {
-  return Scope(
-      *this, Scope::Tags::ControlDeps(),
-      std::vector<ops::Operation>(control_deps.begin(), control_deps.end()),
-      /* clear_control_deps */ false);
+    const gtl::ArraySlice<Operation>& control_deps) const {
+  return Scope(*this, Scope::Tags::ControlDeps(),
+               std::vector<Operation>(control_deps.begin(), control_deps.end()),
+               /* clear_control_deps */ false);
 }
 
-Scope Scope::WithControlDependencies(const ops::Output& control_dep) const {
+Scope Scope::WithControlDependencies(const Output& control_dep) const {
   return Scope(*this, Scope::Tags::ControlDeps(),
-               std::vector<ops::Operation>(1, control_dep.op()),
+               std::vector<Operation>(1, control_dep.op()),
                /* clear_control_deps */ false);
 }
 
 Scope Scope::WithNoControlDependencies() const {
-  return Scope(*this, Scope::Tags::ControlDeps(), std::vector<ops::Operation>(),
+  return Scope(*this, Scope::Tags::ControlDeps(), std::vector<Operation>(),
                /* clear_control_deps */ true);
 }
 
@@ -320,13 +319,13 @@ Scope Scope::WithDevice(const string& device) const {
   return Scope(*this, Scope::Tags::Device(), device);
 }
 
-Scope Scope::ColocateWith(const ops::Operation& op) const {
+Scope Scope::ColocateWith(const Operation& op) const {
   return Scope(*this, Scope::Tags::Colocate(), op,
                /* clear_colocations */ false);
 }
 
 Scope Scope::ClearColocation() const {
-  return Scope(*this, Scope::Tags::Colocate(), ops::Operation(),
+  return Scope(*this, Scope::Tags::Colocate(), Operation(),
                /* clear_colocations */ true);
 }
 

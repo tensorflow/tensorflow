@@ -7,19 +7,7 @@ Note: Functions taking `Tensor` arguments can also take anything accepted by
 
 [TOC]
 
-## Encoding and Decoding
-
-TensorFlow provides Ops to decode and encode JPEG and PNG formats.  Encoded
-images are represented by scalar string Tensors, decoded images by 3-D uint8
-tensors of shape `[height, width, channels]`. (PNG also supports uint16.)
-
-The encode and decode Ops apply to one image at a time.  Their input and output
-are all of variable size.  If you need fixed size images, pass the output of
-the decode Ops to one of the cropping and resizing Ops.
-
-Note: The PNG encode and decode Ops support RGBA, but the conversions Ops
-presently only support RGB, HSV, and GrayScale. Presently, the alpha channel has
-to be stripped from the image and re-attached using slicing ops.
+Image processing and decoding ops. See the @{$python/image} guide.
 
 - - -
 
@@ -42,7 +30,6 @@ convert $src.gif -coalesce $dst.gif
 
   A `Tensor` of type `uint8`.
   4-D with shape `[num_frames, height, width, 3]`. RGB order
-
 
 
 - - -
@@ -150,7 +137,6 @@ in function of the number of channels in `image`:
   A `Tensor` of type `string`. 0-D. JPEG-encoded image.
 
 
-
 - - -
 
 ### `tf.image.decode_png(contents, channels=None, dtype=None, name=None)` {#decode_png}
@@ -215,7 +201,6 @@ the smallest output, but is slower.
   A `Tensor` of type `string`. 0-D. PNG-encoded image.
 
 
-
 - - -
 
 ### `tf.image.decode_image(contents, channels=None, name=None)` {#decode_image}
@@ -244,29 +229,6 @@ files.
     JPEG and PNG images and shape `[num_frames, height, width, 3]` for GIF
     images.
 
-
-
-## Resizing
-
-The resizing Ops accept input images as tensors of several types.  They always
-output resized images as float32 tensors.
-
-The convenience function [`resize_images()`](#resize_images) supports both 4-D
-and 3-D tensors as input and output.  4-D tensors are for batches of images,
-3-D tensors for individual images.
-
-Other resizing Ops only support 4-D batches of images as input:
-[`resize_area`](#resize_area), [`resize_bicubic`](#resize_bicubic),
-[`resize_bilinear`](#resize_bilinear),
-[`resize_nearest_neighbor`](#resize_nearest_neighbor).
-
-Example:
-
-```python
-# Decode a JPG image and resize it to 299 by 299 using default method.
-image = tf.image.decode_jpeg(...)
-resized_image = tf.image.resize_images(image, [299, 299])
-```
 
 - - -
 
@@ -310,7 +272,6 @@ the same as `size`.  To avoid distortions see
   `[batch, new_height, new_width, channels]`.
   If `images` was 3-D, a 3-D float Tensor of shape
   `[new_height, new_width, channels]`.
-
 
 
 - - -
@@ -419,9 +380,6 @@ Resize `images` to `size` using nearest neighbor interpolation.
   `[batch, new_height, new_width, channels]`.
 
 
-
-## Cropping
-
 - - -
 
 ### `tf.image.resize_image_with_crop_or_pad(image, target_height, target_width)` {#resize_image_with_crop_or_pad}
@@ -453,7 +411,6 @@ dimension.
 
   Cropped and/or padded image of shape
   `[target_height, target_width, channels]`
-
 
 
 - - -
@@ -616,7 +573,6 @@ The argument `normalized` and `centered` controls how the windows are built:
   glimpse_height, glimpse_width, channels]`.
 
 
-
 - - -
 
 ### `tf.image.crop_and_resize(image, boxes, box_ind, crop_size, method=None, extrapolation_value=None, name=None)` {#crop_and_resize}
@@ -670,9 +626,6 @@ result is a 4-D tensor `[num_boxes, crop_height, crop_width, depth]`.
   A 4-D tensor of shape `[num_boxes, crop_height, crop_width, depth]`.
 
 
-
-## Flipping, Rotating and Transposing
-
 - - -
 
 ### `tf.image.flip_up_down(image)` {#flip_up_down}
@@ -724,7 +677,6 @@ dimension, which is `height`.  Otherwise output the image as-is.
 
 
 *  <b>`ValueError`</b>: if the shape of `image` not supported.
-
 
 
 - - -
@@ -780,7 +732,6 @@ second dimension, which is `width`.  Otherwise output the image as-is.
 *  <b>`ValueError`</b>: if the shape of `image` not supported.
 
 
-
 - - -
 
 ### `tf.image.transpose_image(image)` {#transpose_image}
@@ -804,7 +755,6 @@ See also `transpose()`.
 *  <b>`ValueError`</b>: if the shape of `image` not supported.
 
 
-
 - - -
 
 ### `tf.image.rot90(image, k=1, name=None)` {#rot90}
@@ -823,38 +773,6 @@ Rotate an image counter-clockwise by 90 degrees.
   A rotated 3-D tensor of the same type and shape as `image`.
 
 
-
-## Converting Between Colorspaces.
-
-Image ops work either on individual images or on batches of images, depending on
-the shape of their input Tensor.
-
-If 3-D, the shape is `[height, width, channels]`, and the Tensor represents one
-image. If 4-D, the shape is `[batch_size, height, width, channels]`, and the
-Tensor represents `batch_size` images.
-
-Currently, `channels` can usefully be 1, 2, 3, or 4. Single-channel images are
-grayscale, images with 3 channels are encoded as either RGB or HSV. Images
-with 2 or 4 channels include an alpha channel, which has to be stripped from the
-image before passing the image to most image processing functions (and can be
-re-attached later).
-
-Internally, images are either stored in as one `float32` per channel per pixel
-(implicitly, values are assumed to lie in `[0,1)`) or one `uint8` per channel
-per pixel (values are assumed to lie in `[0,255]`).
-
-TensorFlow can convert between images in RGB or HSV. The conversion functions
-work only on float images, so you need to convert images in other formats using
-[`convert_image_dtype`](#convert-image-dtype).
-
-Example:
-
-```python
-# Decode an image and convert it to HSV.
-rgb_image = tf.image.decode_png(...,  channels=3)
-rgb_image_float = tf.image.convert_image_dtype(rgb_image, tf.float32)
-hsv_image = tf.image.rgb_to_hsv(rgb_image)
-```
 
 - - -
 
@@ -896,7 +814,6 @@ last dimension of the output is 3, containing the RGB value of the pixels.
 ##### Returns:
 
   The converted grayscale image(s).
-
 
 
 - - -
@@ -949,7 +866,6 @@ corresponds to pure red, hue 1/3 is pure green, and 2/3 is pure blue.
   A `Tensor`. Has the same type as `images`. `images` converted to HSV.
 
 
-
 - - -
 
 ### `tf.image.convert_image_dtype(image, dtype, saturate=False, name=None)` {#convert_image_dtype}
@@ -984,18 +900,6 @@ effect on casts between floats, or on casts that increase the type's range).
 
   `image`, converted to `dtype`.
 
-
-
-## Image Adjustments
-
-TensorFlow provides functions to adjust images in various ways: brightness,
-contrast, hue, and saturation.  Each adjustment can be done with predefined
-parameters or with random parameters picked from predefined intervals. Random
-adjustments are often useful to expand a training set and reduce overfitting.
-
-If several adjustments are chained it is advisable to minimize the number of
-redundant conversions by first converting the images to the most natural data
-type and representation (RGB or HSV).
 
 - - -
 
@@ -1051,7 +955,6 @@ interval `[-max_delta, max_delta)`.
 
 
 *  <b>`ValueError`</b>: if `max_delta` is negative.
-
 
 
 - - -
@@ -1115,7 +1018,6 @@ picked in the interval `[lower, upper]`.
 *  <b>`ValueError`</b>: if `upper <= lower` or if `lower < 0`.
 
 
-
 - - -
 
 ### `tf.image.adjust_hue(image, delta, name=None)` {#adjust_hue}
@@ -1176,7 +1078,6 @@ picked in the interval `[-max_delta, max_delta]`.
 *  <b>`ValueError`</b>: if `max_delta` is invalid.
 
 
-
 - - -
 
 ### `tf.image.adjust_gamma(image, gamma=1, gain=1)` {#adjust_gamma}
@@ -1206,7 +1107,6 @@ Performs Gamma Correction on the input image.
 ##### References:
 
   [1] http://en.wikipedia.org/wiki/Gamma_correction
-
 
 
 - - -
@@ -1267,7 +1167,6 @@ picked in the interval `[lower, upper]`.
 *  <b>`ValueError`</b>: if `upper <= lower` or if `lower < 0`.
 
 
-
 - - -
 
 ### `tf.image.per_image_standardization(image)` {#per_image_standardization}
@@ -1295,9 +1194,6 @@ away from zero to protect against division by 0 when handling uniform images.
 
 *  <b>`ValueError`</b>: if the shape of 'image' is incompatible with this function.
 
-
-
-## Working with Bounding Boxes
 
 - - -
 
@@ -1472,5 +1368,48 @@ false and no bounding boxes are supplied, an error is raised.
     `tf.slice`.
 *  <b>`bboxes`</b>: A `Tensor` of type `float32`. 3-D with shape `[1, 1, 4]` containing the distorted bounding box.
     Provide as input to `tf.image.draw_bounding_boxes`.
+
+
+- - -
+
+### `tf.image.total_variation(images, name=None)` {#total_variation}
+
+Calculate and return the total variation for one or more images.
+
+The total variation is the sum of the absolute differences for neighboring
+pixel-values in the input images. This measures how much noise is in the
+images.
+
+This can be used as a loss-function during optimization so as to suppress
+noise in images. If you have a batch of images, then you should calculate
+the scalar loss-value as the sum:
+`loss = tf.reduce_sum(tf.image.total_variation(images))`
+
+This implements the anisotropic 2-D version of the formula described here:
+
+https://en.wikipedia.org/wiki/Total_variation_denoising
+
+##### Args:
+
+
+*  <b>`images`</b>: 4-D Tensor of shape `[batch, height, width, channels]` or
+          3-D Tensor of shape `[height, width, channels]`.
+
+
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if images.shape is not a 3-D or 4-D vector.
+
+##### Returns:
+
+  The total variation of `images`.
+
+  If `images` was 4-D, return a 1-D float Tensor of shape `[batch]` with the
+  total variation for each image in the batch.
+  If `images` was 3-D, return a scalar float with the total variation for
+  that image.
 
 

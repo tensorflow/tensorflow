@@ -20,10 +20,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
 
@@ -111,6 +113,12 @@ class XlaCompiler {
     // nested buffers in device memory, otherwise the whole result tuple is
     // stored in device memory.
     bool local_executable_has_hybrid_result = false;
+
+    // If 'resolve_compile_time_constants' is true, then outputs of a
+    // computation that are known to be compile-time constants will be returned
+    // as Tensors at compile-time, rather than as run-time outputs of the
+    // computation.
+    bool resolve_compile_time_constants = true;
   };
 
   explicit XlaCompiler(const Options& options);
@@ -180,15 +188,16 @@ class XlaCompiler {
 
  private:
   // Does the real work of Compile() and CompileToComputation().
-  Status CompileFunctionBody(FunctionLibraryRuntime* function_library,
+  Status CompileFunctionBody(FunctionLibraryRuntime* flr,
                              const FunctionBody& function_body,
                              const string& name,
                              const std::vector<Argument>& args,
                              bool use_tuple_arg, CompilationResult* result);
 
-  xla::Client* client_;                      // Not owned.
+  xla::Client* client_;  // Not owned.
   const bool allow_cpu_custom_calls_;
   const bool local_executable_has_hybrid_result_;
+  const bool resolve_compile_time_constants_;
 
   // Returns the next step sequence number.
   int64 NextStepId();

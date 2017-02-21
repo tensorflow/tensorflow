@@ -34,12 +34,18 @@ Create a local debugger command-line interface (CLI) hook.
 
 Add a tensor filter.
 
+See doc of `LocalCLIDebugWrapperSession.add_tensor_filter()` for details.
+Override default behavior to accomodate the possibility of this method being
+called prior to the initialization of the underlying
+`LocalCLIDebugWrapperSession` object.
+
 ##### Args:
 
 
-*  <b>`filter_name`</b>: (`str`) name of the filter.
-*  <b>`tensor_filter`</b>: (`callable`) the filter callable. See the doc string of
-    `DebugDumpDir.find()` for more details about its signature.
+*  <b>`filter_name`</b>: See doc of `LocalCLIDebugWrapperSession.add_tensor_filter()`
+    for details.
+*  <b>`tensor_filter`</b>: See doc of
+    `LocalCLIDebugWrapperSession.add_tensor_filter()` for details.
 
 
 - - -

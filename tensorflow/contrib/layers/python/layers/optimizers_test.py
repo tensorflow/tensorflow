@@ -108,6 +108,14 @@ class OptimizersTest(test.TestCase):
             optimizers_lib.optimize_loss(
                 loss, global_step, learning_rate=0.1, optimizer=optimizer)
 
+  def testBadSummaries(self):
+    with ops.Graph().as_default() as g, self.test_session(graph=g):
+      _, _, loss, global_step = _setup_model()
+      with self.assertRaises(ValueError):
+        optimizers_lib.optimize_loss(
+            loss, global_step, learning_rate=0.1, optimizer="SGD",
+            summaries=["loss", "bad_summary"])
+
   def testInvalidLoss(self):
     with ops.Graph().as_default() as g, self.test_session(graph=g):
       _, _, _, global_step = _setup_model()
@@ -124,7 +132,7 @@ class OptimizersTest(test.TestCase):
       var = variable_scope.get_variable(
           "test", [], initializer=init_ops.constant_initializer(10))
       loss = math_ops.abs(var * x)
-      with self.assertRaises(TypeError):
+      with self.assertRaises(AttributeError):
         optimizers_lib.optimize_loss(
             loss,
             global_step=constant_op.constant(

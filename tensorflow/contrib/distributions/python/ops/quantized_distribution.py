@@ -38,8 +38,9 @@ def _logsum_expbig_minus_expsmall(big, small):
   To work correctly, we should have the pointwise relation:  `small <= big`.
 
   Args:
-    big: Numeric `Tensor`
-    small: Numeric `Tensor` with same `dtype` as `big` and broadcastable shape.
+    big: Floating-point `Tensor`
+    small: Floating-point `Tensor` with same `dtype` as `big` and broadcastable
+      shape.
 
   Returns:
     `Tensor` of same `dtype` of `big` and broadcast shape.
@@ -52,23 +53,23 @@ _prob_base_note = """
 For whole numbers `y`,
 
 ```
-P[Y = y] := P[X <= lower_cutoff],  if y == lower_cutoff,
-         := P[X > upper_cutoff - 1],  y == upper_cutoff,
-         := 0, if j < lower_cutoff or y > upper_cutoff,
+P[Y = y] := P[X <= low],  if y == low,
+         := P[X > high - 1],  y == high,
+         := 0, if j < low or y > high,
          := P[y - 1 < X <= y],  all other y.
 ```
 
 """
 
 _prob_note = _prob_base_note + """
-The base distribution's `cdf` method must be defined on `y - 1`.  If the
+The base distribution's `cdf` method must be defined on `y - 1`. If the
 base distribution has a `survival_function` method, results will be more
 accurate for large values of `y`, and in this case the `survival_function` must
 also be defined on `y - 1`.
 """
 
 _log_prob_note = _prob_base_note + """
-The base distribution's `log_cdf` method must be defined on `y - 1`.  If the
+The base distribution's `log_cdf` method must be defined on `y - 1`. If the
 base distribution has a `log_survival_function` method results will be more
 accurate for large values of `y`, and in this case the `log_survival_function`
 must also be defined on `y - 1`.
@@ -81,8 +82,8 @@ For whole numbers `y`,
 
 ```
 cdf(y) := P[Y <= y]
-        = 1, if y >= upper_cutoff,
-        = 0, if y < lower_cutoff,
+        = 1, if y >= high,
+        = 0, if y < low,
         = P[X <= y], otherwise.
 ```
 
@@ -106,8 +107,8 @@ For whole numbers `y`,
 
 ```
 survival_function(y) := P[Y > y]
-                      = 0, if y >= upper_cutoff,
-                      = 1, if y < lower_cutoff,
+                      = 0, if y >= high,
+                      = 1, if y < low,
                       = P[X <= y], otherwise.
 ```
 
@@ -133,8 +134,8 @@ class QuantizedDistribution(distributions.Distribution):
   ```
   1. Draw X
   2. Set Y <-- ceiling(X)
-  3. If Y < lower_cutoff, reset Y <-- lower_cutoff
-  4. If Y > upper_cutoff, reset Y <-- upper_cutoff
+  3. If Y < low, reset Y <-- low
+  4. If Y > high, reset Y <-- high
   5. Return Y
   ```
 
@@ -144,9 +145,9 @@ class QuantizedDistribution(distributions.Distribution):
   supported on the integers as follows:
 
   ```
-  P[Y = j] := P[X <= lower_cutoff],  if j == lower_cutoff,
-           := P[X > upper_cutoff - 1],  j == upper_cutoff,
-           := 0, if j < lower_cutoff or j > upper_cutoff,
+  P[Y = j] := P[X <= low],  if j == low,
+           := P[X > high - 1],  j == high,
+           := 0, if j < low or j > high,
            := P[j - 1 < X <= j],  all other j.
   ```
 
@@ -160,7 +161,7 @@ class QuantizedDistribution(distributions.Distribution):
   ```
 
   `P[Y = j]` is the mass of `X` within the `jth` interval.
-  If `lower_cutoff = 0`, and `upper_cutoff = 2`, then the intervals are redrawn
+  If `low = 0`, and `high = 2`, then the intervals are redrawn
   and `j` is re-assigned:
 
   ```
@@ -180,8 +181,8 @@ class QuantizedDistribution(distributions.Distribution):
 
   def __init__(self,
                distribution,
-               lower_cutoff=None,
-               upper_cutoff=None,
+               low=None,
+               high=None,
                validate_args=False,
                name="QuantizedDistribution"):
     """Construct a Quantized Distribution representing `Y = ceiling(X)`.
@@ -193,19 +194,20 @@ class QuantizedDistribution(distributions.Distribution):
     Args:
       distribution:  The base distribution class to transform. Typically an
         instance of `Distribution`.
-      lower_cutoff:  `Tensor` with same `dtype` as this distribution and shape
-        able to be added to samples.  Should be a whole number.  Default `None`.
-        If provided, base distribution's pdf/pmf should be defined at
-        `lower_cutoff`.
-      upper_cutoff:  `Tensor` with same `dtype` as this distribution and shape
-        able to be added to samples.  Should be a whole number.  Default `None`.
-        If provided, base distribution's pdf/pmf should be defined at
-        `upper_cutoff - 1`.
-        `upper_cutoff` must be strictly greater than `lower_cutoff`.
-      validate_args: Python boolean.  Whether to validate input with asserts.
-        If `validate_args` is `False`, and the inputs are invalid,
-        correct behavior is not guaranteed.
-      name: The name for the distribution.
+      low: `Tensor` with same `dtype` as this distribution and shape
+        able to be added to samples. Should be a whole number. Default `None`.
+        If provided, base distribution's `prob` should be defined at
+        `low`.
+      high: `Tensor` with same `dtype` as this distribution and shape
+        able to be added to samples. Should be a whole number. Default `None`.
+        If provided, base distribution's `prob` should be defined at
+        `high - 1`.
+        `high` must be strictly greater than `low`.
+      validate_args: Python `bool`, default `False`. When `True` distribution
+        parameters are checked for validity despite possibly degrading runtime
+        performance. When `False` invalid inputs may silently render incorrect
+        outputs.
+      name: Python `str` name prefixed to Ops created by this class.
 
     Raises:
       TypeError: If `dist_cls` is not a subclass of
@@ -213,68 +215,67 @@ class QuantizedDistribution(distributions.Distribution):
       NotImplementedError:  If the base distribution does not implement `cdf`.
     """
     parameters = locals()
-    parameters.pop("self")
     values = (
         list(distribution.parameters.values()) +
-        [lower_cutoff, upper_cutoff])
+        [low, high])
     with ops.name_scope(name, values=values) as ns:
       self._dist = distribution
 
-      if lower_cutoff is not None:
-        lower_cutoff = ops.convert_to_tensor(lower_cutoff, name="lower_cutoff")
-      if upper_cutoff is not None:
-        upper_cutoff = ops.convert_to_tensor(upper_cutoff, name="upper_cutoff")
+      if low is not None:
+        low = ops.convert_to_tensor(low, name="low")
+      if high is not None:
+        high = ops.convert_to_tensor(high, name="high")
       contrib_tensor_util.assert_same_float_dtype(
-          tensors=[self.distribution, lower_cutoff, upper_cutoff])
+          tensors=[self.distribution, low, high])
 
       # We let QuantizedDistribution access _graph_parents since this class is
       # more like a baseclass.
       graph_parents = self._dist._graph_parents  # pylint: disable=protected-access
 
       checks = []
-      if lower_cutoff is not None and upper_cutoff is not None:
-        message = "lower_cutoff must be strictly less than upper_cutoff."
+      if low is not None and high is not None:
+        message = "low must be strictly less than high."
         checks.append(
             check_ops.assert_less(
-                lower_cutoff, upper_cutoff, message=message))
+                low, high, message=message))
       self._validate_args = validate_args  # self._check_integer uses this.
       with ops.control_dependencies(checks if validate_args else []):
-        if lower_cutoff is not None:
-          self._lower_cutoff = self._check_integer(lower_cutoff)
-          graph_parents += [self._lower_cutoff]
+        if low is not None:
+          self._low = self._check_integer(low)
+          graph_parents += [self._low]
         else:
-          self._lower_cutoff = None
-        if upper_cutoff is not None:
-          self._upper_cutoff = self._check_integer(upper_cutoff)
-          graph_parents += [self._upper_cutoff]
+          self._low = None
+        if high is not None:
+          self._high = self._check_integer(high)
+          graph_parents += [self._high]
         else:
-          self._upper_cutoff = None
+          self._high = None
 
     super(QuantizedDistribution, self).__init__(
         dtype=self._dist.dtype,
         is_continuous=False,
-        is_reparameterized=False,
+        reparameterization_type=distributions.NOT_REPARAMETERIZED,
         validate_args=validate_args,
         allow_nan_stats=self._dist.allow_nan_stats,
         parameters=parameters,
         graph_parents=graph_parents,
         name=ns)
 
-  def _batch_shape(self):
-    return self.distribution.batch_shape()
+  def _batch_shape_tensor(self):
+    return self.distribution.batch_shape_tensor()
 
-  def _get_batch_shape(self):
-    return self.distribution.get_batch_shape()
+  def _batch_shape(self):
+    return self.distribution.batch_shape
+
+  def _event_shape_tensor(self):
+    return self.distribution.event_shape_tensor()
 
   def _event_shape(self):
-    return self.distribution.event_shape()
-
-  def _get_event_shape(self):
-    return self.distribution.get_event_shape()
+    return self.distribution.event_shape
 
   def _sample_n(self, n, seed=None):
-    lower_cutoff = self._lower_cutoff
-    upper_cutoff = self._upper_cutoff
+    low = self._low
+    high = self._high
     with ops.name_scope("transform"):
       n = ops.convert_to_tensor(n, name="n")
       x_samps = self.distribution.sample(n, seed=seed)
@@ -283,13 +284,13 @@ class QuantizedDistribution(distributions.Distribution):
       # Snap values to the intervals (j - 1, j].
       result_so_far = math_ops.ceil(x_samps)
 
-      if lower_cutoff is not None:
-        result_so_far = array_ops.where(result_so_far < lower_cutoff,
-                                        lower_cutoff * ones, result_so_far)
+      if low is not None:
+        result_so_far = array_ops.where(result_so_far < low,
+                                        low * ones, result_so_far)
 
-      if upper_cutoff is not None:
-        result_so_far = array_ops.where(result_so_far > upper_cutoff,
-                                        upper_cutoff * ones, result_so_far)
+      if high is not None:
+        result_so_far = array_ops.where(result_so_far > high,
+                                        high * ones, result_so_far)
 
       return result_so_far
 
@@ -364,13 +365,13 @@ class QuantizedDistribution(distributions.Distribution):
 
   @distribution_util.AppendDocstring(_log_cdf_note)
   def _log_cdf(self, y):
-    lower_cutoff = self._lower_cutoff
-    upper_cutoff = self._upper_cutoff
+    low = self._low
+    high = self._high
 
     # Recall the promise:
     # cdf(y) := P[Y <= y]
-    #         = 1, if y >= upper_cutoff,
-    #         = 0, if y < lower_cutoff,
+    #         = 1, if y >= high,
+    #         = 0, if y < low,
     #         = P[X <= y], otherwise.
 
     # P[Y <= j] = P[floor(Y) <= j] since mass is only at integers, not in
@@ -384,11 +385,11 @@ class QuantizedDistribution(distributions.Distribution):
     j += array_ops.zeros_like(result_so_far)
 
     # Re-define values at the cutoffs.
-    if lower_cutoff is not None:
+    if low is not None:
       neg_inf = -np.inf * array_ops.ones_like(result_so_far)
-      result_so_far = array_ops.where(j < lower_cutoff, neg_inf, result_so_far)
-    if upper_cutoff is not None:
-      result_so_far = array_ops.where(j >= upper_cutoff,
+      result_so_far = array_ops.where(j < low, neg_inf, result_so_far)
+    if high is not None:
+      result_so_far = array_ops.where(j >= high,
                                       array_ops.zeros_like(result_so_far),
                                       result_so_far)
 
@@ -396,20 +397,20 @@ class QuantizedDistribution(distributions.Distribution):
 
   @distribution_util.AppendDocstring(_cdf_note)
   def _cdf(self, y):
-    lower_cutoff = self._lower_cutoff
-    upper_cutoff = self._upper_cutoff
+    low = self._low
+    high = self._high
 
     # Recall the promise:
     # cdf(y) := P[Y <= y]
-    #         = 1, if y >= upper_cutoff,
-    #         = 0, if y < lower_cutoff,
+    #         = 1, if y >= high,
+    #         = 0, if y < low,
     #         = P[X <= y], otherwise.
 
     # P[Y <= j] = P[floor(Y) <= j] since mass is only at integers, not in
     # between.
     j = math_ops.floor(y)
 
-    # P[X <= j], used when lower_cutoff < X < upper_cutoff.
+    # P[X <= j], used when low < X < high.
     result_so_far = self.distribution.cdf(j)
 
     # Broadcast, because it's possible that this is a single distribution being
@@ -417,12 +418,12 @@ class QuantizedDistribution(distributions.Distribution):
     j += array_ops.zeros_like(result_so_far)
 
     # Re-define values at the cutoffs.
-    if lower_cutoff is not None:
-      result_so_far = array_ops.where(j < lower_cutoff,
+    if low is not None:
+      result_so_far = array_ops.where(j < low,
                                       array_ops.zeros_like(result_so_far),
                                       result_so_far)
-    if upper_cutoff is not None:
-      result_so_far = array_ops.where(j >= upper_cutoff,
+    if high is not None:
+      result_so_far = array_ops.where(j >= high,
                                       array_ops.ones_like(result_so_far),
                                       result_so_far)
 
@@ -430,20 +431,20 @@ class QuantizedDistribution(distributions.Distribution):
 
   @distribution_util.AppendDocstring(_log_sf_note)
   def _log_survival_function(self, y):
-    lower_cutoff = self._lower_cutoff
-    upper_cutoff = self._upper_cutoff
+    low = self._low
+    high = self._high
 
     # Recall the promise:
     # survival_function(y) := P[Y > y]
-    #                       = 0, if y >= upper_cutoff,
-    #                       = 1, if y < lower_cutoff,
+    #                       = 0, if y >= high,
+    #                       = 1, if y < low,
     #                       = P[X > y], otherwise.
 
     # P[Y > j] = P[ceiling(Y) > j] since mass is only at integers, not in
     # between.
     j = math_ops.ceil(y)
 
-    # P[X > j], used when lower_cutoff < X < upper_cutoff.
+    # P[X > j], used when low < X < high.
     result_so_far = self.distribution.log_survival_function(j)
 
     # Broadcast, because it's possible that this is a single distribution being
@@ -451,32 +452,32 @@ class QuantizedDistribution(distributions.Distribution):
     j += array_ops.zeros_like(result_so_far)
 
     # Re-define values at the cutoffs.
-    if lower_cutoff is not None:
-      result_so_far = array_ops.where(j < lower_cutoff,
+    if low is not None:
+      result_so_far = array_ops.where(j < low,
                                       array_ops.zeros_like(result_so_far),
                                       result_so_far)
-    if upper_cutoff is not None:
+    if high is not None:
       neg_inf = -np.inf * array_ops.ones_like(result_so_far)
-      result_so_far = array_ops.where(j >= upper_cutoff, neg_inf, result_so_far)
+      result_so_far = array_ops.where(j >= high, neg_inf, result_so_far)
 
     return result_so_far
 
   @distribution_util.AppendDocstring(_sf_note)
   def _survival_function(self, y):
-    lower_cutoff = self._lower_cutoff
-    upper_cutoff = self._upper_cutoff
+    low = self._low
+    high = self._high
 
     # Recall the promise:
     # survival_function(y) := P[Y > y]
-    #                       = 0, if y >= upper_cutoff,
-    #                       = 1, if y < lower_cutoff,
+    #                       = 0, if y >= high,
+    #                       = 1, if y < low,
     #                       = P[X > y], otherwise.
 
     # P[Y > j] = P[ceiling(Y) > j] since mass is only at integers, not in
     # between.
     j = math_ops.ceil(y)
 
-    # P[X > j], used when lower_cutoff < X < upper_cutoff.
+    # P[X > j], used when low < X < high.
     result_so_far = self.distribution.survival_function(j)
 
     # Broadcast, because it's possible that this is a single distribution being
@@ -484,12 +485,12 @@ class QuantizedDistribution(distributions.Distribution):
     j += array_ops.zeros_like(result_so_far)
 
     # Re-define values at the cutoffs.
-    if lower_cutoff is not None:
-      result_so_far = array_ops.where(j < lower_cutoff,
+    if low is not None:
+      result_so_far = array_ops.where(j < low,
                                       array_ops.ones_like(result_so_far),
                                       result_so_far)
-    if upper_cutoff is not None:
-      result_so_far = array_ops.where(j >= upper_cutoff,
+    if high is not None:
+      result_so_far = array_ops.where(j >= high,
                                       array_ops.zeros_like(result_so_far),
                                       result_so_far)
 

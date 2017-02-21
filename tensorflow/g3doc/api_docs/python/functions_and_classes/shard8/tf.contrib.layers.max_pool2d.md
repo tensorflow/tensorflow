@@ -28,6 +28,6 @@ It is assumed that the pooling is done per image but not in batch or channels.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if `data_format` is neither `NHWC` nor `NCHW`.
+*  <b>`ValueError`</b>: If `data_format` is neither `NHWC` nor `NCHW`.
 *  <b>`ValueError`</b>: If 'kernel_size' is not a 2-D list
 

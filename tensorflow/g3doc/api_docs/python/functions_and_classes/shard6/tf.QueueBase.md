@@ -14,6 +14,162 @@ See [`tf.FIFOQueue`](#FIFOQueue) and
 [`tf.RandomShuffleQueue`](#RandomShuffleQueue) for concrete
 implementations of this class, and instructions on how to create
 them.
+- - -
+
+#### `tf.QueueBase.__init__(dtypes, shapes, names, queue_ref)` {#QueueBase.__init__}
+
+Constructs a queue object from a queue reference.
+
+The two optional lists, `shapes` and `names`, must be of the same length
+as `dtypes` if provided.  The values at a given index `i` indicate the
+shape and name to use for the corresponding queue component in `dtypes`.
+
+##### Args:
+
+
+*  <b>`dtypes`</b>: A list of types.  The length of dtypes must equal the number
+    of tensors in each element.
+*  <b>`shapes`</b>: Constraints on the shapes of tensors in an element:
+    A list of shape tuples or None. This list is the same length
+    as dtypes.  If the shape of any tensors in the element are constrained,
+    all must be; shapes can be None if the shapes should not be constrained.
+*  <b>`names`</b>: Optional list of names.  If provided, the `enqueue()` and
+    `dequeue()` methods will use dictionaries with these names as keys.
+    Must be None or a list or tuple of the same length as `dtypes`.
+*  <b>`queue_ref`</b>: The queue reference, i.e. the output of the queue op.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If one of the arguments is invalid.
+
+
+- - -
+
+#### `tf.QueueBase.close(cancel_pending_enqueues=False, name=None)` {#QueueBase.close}
+
+Closes this queue.
+
+This operation signals that no more elements will be enqueued in
+the given queue. Subsequent `enqueue` and `enqueue_many`
+operations will fail. Subsequent `dequeue` and `dequeue_many`
+operations will continue to succeed if sufficient elements remain
+in the queue. Subsequent `dequeue` and `dequeue_many` operations
+that would block will fail immediately.
+
+If `cancel_pending_enqueues` is `True`, all pending requests will also
+be cancelled.
+
+##### Args:
+
+
+*  <b>`cancel_pending_enqueues`</b>: (Optional.) A boolean, defaulting to
+    `False` (described above).
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  The operation that closes the queue.
+
+
+- - -
+
+#### `tf.QueueBase.dequeue(name=None)` {#QueueBase.dequeue}
+
+Dequeues one element from this queue.
+
+If the queue is empty when this operation executes, it will block
+until there is an element to dequeue.
+
+At runtime, this operation may raise an error if the queue is
+[closed](#QueueBase.close) before or during its execution. If the
+queue is closed, the queue is empty, and there are no pending
+enqueue operations that can fulfill this request,
+`tf.errors.OutOfRangeError` will be raised. If the session is
+[closed](../../api_docs/python/client.md#Session.close),
+`tf.errors.CancelledError` will be raised.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  The tuple of tensors that was dequeued.
+
+
+- - -
+
+#### `tf.QueueBase.dequeue_many(n, name=None)` {#QueueBase.dequeue_many}
+
+Dequeues and concatenates `n` elements from this queue.
+
+This operation concatenates queue-element component tensors along
+the 0th dimension to make a single component tensor.  All of the
+components in the dequeued tuple will have size `n` in the 0th dimension.
+
+If the queue is closed and there are less than `n` elements left, then an
+`OutOfRange` exception is raised.
+
+At runtime, this operation may raise an error if the queue is
+[closed](#QueueBase.close) before or during its execution. If the
+queue is closed, the queue contains fewer than `n` elements, and
+there are no pending enqueue operations that can fulfill this
+request, `tf.errors.OutOfRangeError` will be raised. If the
+session is [closed](../../api_docs/python/client.md#Session.close),
+`tf.errors.CancelledError` will be raised.
+
+##### Args:
+
+
+*  <b>`n`</b>: A scalar `Tensor` containing the number of elements to dequeue.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  The tuple of concatenated tensors that was dequeued.
+
+
+- - -
+
+#### `tf.QueueBase.dequeue_up_to(n, name=None)` {#QueueBase.dequeue_up_to}
+
+Dequeues and concatenates `n` elements from this queue.
+
+**Note** This operation is not supported by all queues.  If a queue does not
+support DequeueUpTo, then a `tf.errors.UnimplementedError` is raised.
+
+This operation concatenates queue-element component tensors along
+the 0th dimension to make a single component tensor. If the queue
+has not been closed, all of the components in the dequeued tuple
+will have size `n` in the 0th dimension.
+
+If the queue is closed and there are more than `0` but fewer than
+`n` elements remaining, then instead of raising a
+`tf.errors.OutOfRangeError` like [`dequeue_many`](#QueueBase.dequeue_many),
+less than `n` elements are returned immediately.  If the queue is
+closed and there are `0` elements left in the queue, then a
+`tf.errors.OutOfRangeError` is raised just like in `dequeue_many`.
+Otherwise the behavior is identical to `dequeue_many`.
+
+##### Args:
+
+
+*  <b>`n`</b>: A scalar `Tensor` containing the number of elements to dequeue.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  The tuple of concatenated tensors that was dequeued.
+
+
+- - -
+
+#### `tf.QueueBase.dtypes` {#QueueBase.dtypes}
+
+The list of dtypes for each component of a queue element.
+
 
 - - -
 
@@ -79,184 +235,6 @@ with `cancel_pending_enqueues=True`, or (ii) the session is
   The operation that enqueues a batch of tuples of tensors to the queue.
 
 
-
-- - -
-
-#### `tf.QueueBase.dequeue(name=None)` {#QueueBase.dequeue}
-
-Dequeues one element from this queue.
-
-If the queue is empty when this operation executes, it will block
-until there is an element to dequeue.
-
-At runtime, this operation may raise an error if the queue is
-[closed](#QueueBase.close) before or during its execution. If the
-queue is closed, the queue is empty, and there are no pending
-enqueue operations that can fulfill this request,
-`tf.errors.OutOfRangeError` will be raised. If the session is
-[closed](../../api_docs/python/client.md#Session.close),
-`tf.errors.CancelledError` will be raised.
-
-##### Args:
-
-
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  The tuple of tensors that was dequeued.
-
-
-- - -
-
-#### `tf.QueueBase.dequeue_many(n, name=None)` {#QueueBase.dequeue_many}
-
-Dequeues and concatenates `n` elements from this queue.
-
-This operation concatenates queue-element component tensors along
-the 0th dimension to make a single component tensor.  All of the
-components in the dequeued tuple will have size `n` in the 0th dimension.
-
-If the queue is closed and there are less than `n` elements left, then an
-`OutOfRange` exception is raised.
-
-At runtime, this operation may raise an error if the queue is
-[closed](#QueueBase.close) before or during its execution. If the
-queue is closed, the queue contains fewer than `n` elements, and
-there are no pending enqueue operations that can fulfill this
-request, `tf.errors.OutOfRangeError` will be raised. If the
-session is [closed](../../api_docs/python/client.md#Session.close),
-`tf.errors.CancelledError` will be raised.
-
-##### Args:
-
-
-*  <b>`n`</b>: A scalar `Tensor` containing the number of elements to dequeue.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  The tuple of concatenated tensors that was dequeued.
-
-
-
-- - -
-
-#### `tf.QueueBase.size(name=None)` {#QueueBase.size}
-
-Compute the number of elements in this queue.
-
-##### Args:
-
-
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A scalar tensor containing the number of elements in this queue.
-
-
-
-- - -
-
-#### `tf.QueueBase.close(cancel_pending_enqueues=False, name=None)` {#QueueBase.close}
-
-Closes this queue.
-
-This operation signals that no more elements will be enqueued in
-the given queue. Subsequent `enqueue` and `enqueue_many`
-operations will fail. Subsequent `dequeue` and `dequeue_many`
-operations will continue to succeed if sufficient elements remain
-in the queue. Subsequent `dequeue` and `dequeue_many` operations
-that would block will fail immediately.
-
-If `cancel_pending_enqueues` is `True`, all pending requests will also
-be cancelled.
-
-##### Args:
-
-
-*  <b>`cancel_pending_enqueues`</b>: (Optional.) A boolean, defaulting to
-    `False` (described above).
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  The operation that closes the queue.
-
-
-
-#### Other Methods
-- - -
-
-#### `tf.QueueBase.__init__(dtypes, shapes, names, queue_ref)` {#QueueBase.__init__}
-
-Constructs a queue object from a queue reference.
-
-The two optional lists, `shapes` and `names`, must be of the same length
-as `dtypes` if provided.  The values at a given index `i` indicate the
-shape and name to use for the corresponding queue component in `dtypes`.
-
-##### Args:
-
-
-*  <b>`dtypes`</b>: A list of types.  The length of dtypes must equal the number
-    of tensors in each element.
-*  <b>`shapes`</b>: Constraints on the shapes of tensors in an element:
-    A list of shape tuples or None. This list is the same length
-    as dtypes.  If the shape of any tensors in the element are constrained,
-    all must be; shapes can be None if the shapes should not be constrained.
-*  <b>`names`</b>: Optional list of names.  If provided, the `enqueue()` and
-    `dequeue()` methods will use dictionaries with these names as keys.
-    Must be None or a list or tuple of the same length as `dtypes`.
-*  <b>`queue_ref`</b>: The queue reference, i.e. the output of the queue op.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If one of the arguments is invalid.
-
-
-- - -
-
-#### `tf.QueueBase.dequeue_up_to(n, name=None)` {#QueueBase.dequeue_up_to}
-
-Dequeues and concatenates `n` elements from this queue.
-
-**Note** This operation is not supported by all queues.  If a queue does not
-support DequeueUpTo, then a `tf.errors.UnimplementedError` is raised.
-
-This operation concatenates queue-element component tensors along
-the 0th dimension to make a single component tensor. If the queue
-has not been closed, all of the components in the dequeued tuple
-will have size `n` in the 0th dimension.
-
-If the queue is closed and there are more than `0` but fewer than
-`n` elements remaining, then instead of raising a
-`tf.errors.OutOfRangeError` like [`dequeue_many`](#QueueBase.dequeue_many),
-less than `n` elements are returned immediately.  If the queue is
-closed and there are `0` elements left in the queue, then a
-`tf.errors.OutOfRangeError` is raised just like in `dequeue_many`.
-Otherwise the behavior is identical to `dequeue_many`.
-
-##### Args:
-
-
-*  <b>`n`</b>: A scalar `Tensor` containing the number of elements to dequeue.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  The tuple of concatenated tensors that was dequeued.
-
-
-- - -
-
-#### `tf.QueueBase.dtypes` {#QueueBase.dtypes}
-
-The list of dtypes for each component of a queue element.
-
-
 - - -
 
 #### `tf.QueueBase.from_list(index, queues)` {#QueueBase.from_list}
@@ -307,5 +285,21 @@ The underlying queue reference.
 #### `tf.QueueBase.shapes` {#QueueBase.shapes}
 
 The list of shapes for each component of a queue element.
+
+
+- - -
+
+#### `tf.QueueBase.size(name=None)` {#QueueBase.size}
+
+Compute the number of elements in this queue.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A scalar tensor containing the number of elements in this queue.
 
 

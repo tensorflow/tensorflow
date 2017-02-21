@@ -3,62 +3,9 @@
 # Monitors (contrib)
 [TOC]
 
-Monitors allow user instrumentation of the training process.
+Monitors instrument the training process.
 
-Monitors are useful to track training, report progress, request early
-stopping and more. Monitors use the observer pattern and notify at the following
-points:
-
-* when training begins
-* before a training step
-* after a training step
-* when training ends
-
-Monitors are not intended to be reusable.
-
-There are a few pre-defined monitors:
-
-* `CaptureVariable`: saves a variable's values
-* `GraphDump`: intended for debug only - saves all tensor values
-* `PrintTensor`: outputs one or more tensor values to log
-* `SummarySaver`: saves summaries to a summary writer
-* `ValidationMonitor`: runs model validation, by periodically calculating eval
-    metrics on a separate data set; supports optional early stopping
-
-For more specific needs, you can create custom monitors by extending one of the
-following classes:
-
-* `BaseMonitor`: the base class for all monitors
-* `EveryN`: triggers a callback every N training steps
-
-Example:
-
-```python
-  class ExampleMonitor(monitors.BaseMonitor):
-    def __init__(self):
-      print 'Init'
-
-    def begin(self, max_steps):
-      print 'Starting run. Will train until step %d.' % max_steps
-
-    def end(self):
-      print 'Completed run.'
-
-    def step_begin(self, step):
-      print 'About to run step %d...' % step
-      return ['loss_1:0']
-
-    def step_end(self, step, outputs):
-      print 'Done running step %d. The value of "loss" tensor: %s' % (
-        step, outputs['loss_1:0'])
-
-  linear_regressor = LinearRegressor()
-  example_monitor = ExampleMonitor()
-  linear_regressor.fit(
-    x, y, steps=2, batch_size=1, monitors=[example_monitor])
-```
-
-## Ops
+See the @{$python/contrib.learn.monitors} guide.
 
 - - -
 
@@ -2384,7 +2331,7 @@ Can do early stopping on validation metrics if `early_stopping_rounds` is
 provided.
 - - -
 
-#### `tf.contrib.learn.monitors.ValidationMonitor.__init__(x=None, y=None, input_fn=None, batch_size=None, eval_steps=None, every_n_steps=100, metrics=None, early_stopping_rounds=None, early_stopping_metric='loss', early_stopping_metric_minimize=True, name=None)` {#ValidationMonitor.__init__}
+#### `tf.contrib.learn.monitors.ValidationMonitor.__init__(x=None, y=None, input_fn=None, batch_size=None, eval_steps=None, every_n_steps=100, metrics=None, hooks=None, early_stopping_rounds=None, early_stopping_metric='loss', early_stopping_metric_minimize=True, name=None)` {#ValidationMonitor.__init__}
 
 Initializes a ValidationMonitor.
 
@@ -2399,6 +2346,8 @@ Initializes a ValidationMonitor.
 *  <b>`every_n_steps`</b>: Check for new checkpoints to evaluate every N steps. If a
       new checkpoint is found, it is evaluated. See `EveryN`.
 *  <b>`metrics`</b>: See `BaseEstimator.evaluate`.
+*  <b>`hooks`</b>: A list of `SessionRunHook` hooks to pass to the
+    `Estimator`'s `evaluate` function.
 *  <b>`early_stopping_rounds`</b>: `int`. If the metric indicated by
       `early_stopping_metric` does not change according to
       `early_stopping_metric_minimize` for this many steps, then training

@@ -80,7 +80,7 @@ StatusOr<perftools::gputools::DeviceMemoryBase> HloTestBase::Execute(
         arguments,
     Shape* result_shape) {
   auto module_config = MakeUnique<HloModuleConfig>(
-      MakeProgramShape(module->entry_computation()));
+      module->entry_computation()->ComputeProgramShape());
   return Execute(std::move(module), std::move(module_config), arguments,
                  result_shape);
 }
@@ -185,16 +185,6 @@ std::unique_ptr<Literal> HloTestBase::ExecuteAndTransfer(
               &result_shape)
           .ValueOrDie();
   return TransferFromDevice(result_shape, device_base);
-}
-
-ProgramShape HloTestBase::MakeProgramShape(HloComputation* computation) {
-  ProgramShape program_shape;
-  for (int64 i = 0; i < computation->num_parameters(); ++i) {
-    *program_shape.add_parameters() =
-        computation->parameter_instruction(i)->shape();
-  }
-  *program_shape.mutable_result() = computation->root_instruction()->shape();
-  return program_shape;
 }
 
 string HloTestBase::TestName() const {

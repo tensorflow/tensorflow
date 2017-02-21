@@ -31,7 +31,7 @@ class StageTest(test.TestCase):
       with ops.device('/cpu:0'):
         x = array_ops.placeholder(dtypes.float32)
         v = 2. * (array_ops.zeros([1024, 1024]) + x)
-      with ops.device('/gpu:0'):
+      with ops.device(test.gpu_device_name()):
         stager = data_flow_ops.StagingArea([dtypes.float32])
         stage = stager.put([v])
         y = stager.get()
@@ -46,7 +46,7 @@ class StageTest(test.TestCase):
       with ops.device('/cpu:0'):
         x = array_ops.placeholder(dtypes.float32)
         v = 2. * (array_ops.zeros([128, 128]) + x)
-      with ops.device('/gpu:0'):
+      with ops.device(test.gpu_device_name()):
         stager = data_flow_ops.StagingArea([dtypes.float32, dtypes.float32])
         stage = stager.put([x, v])
         z, y = stager.get()
@@ -62,7 +62,7 @@ class StageTest(test.TestCase):
       with ops.device('/cpu:0'):
         x = array_ops.placeholder(dtypes.float32)
         v = 2. * (array_ops.zeros([128, 128]) + x)
-      with ops.device('/gpu:0'):
+      with ops.device(test.gpu_device_name()):
         stager = data_flow_ops.StagingArea(
             [dtypes.float32, dtypes.float32],
             shapes=[[], [128, 128]],
@@ -77,6 +77,18 @@ class StageTest(test.TestCase):
         _, yval = sess.run([stage, y], feed_dict={x: i})
         self.assertAllClose(
             4 * (i - 1) * (i - 1) * (i - 1) * 128, yval, rtol=1e-4)
+
+  def testColocation1(self):
+    with ops.device('/cpu:0'):
+      x = array_ops.placeholder(dtypes.float32)
+      v = 2. * (array_ops.zeros([1024, 1024]) + x)
+    with ops.device('/gpu:0'):
+      stager = data_flow_ops.StagingArea([dtypes.float32])
+      y = stager.put([v])
+      self.assertEqual(y.device, '/device:GPU:0')
+    with ops.device('/cpu:0'):
+      x = stager.get()
+      self.assertEqual(x.device, '/device:CPU:0')
 
 
 if __name__ == '__main__':

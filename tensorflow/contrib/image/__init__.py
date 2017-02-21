@@ -21,8 +21,8 @@ transforms (including rotation) are supported.
 
 ## Image `Ops`
 
-@@ rotate
-@@ transform
+@@rotate
+@@transform
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -31,3 +31,8 @@ from __future__ import print_function
 # pylint: disable=line-too-long
 from tensorflow.contrib.image.python.ops.image_ops import rotate
 from tensorflow.contrib.image.python.ops.image_ops import transform
+
+from tensorflow.python.util.all_util import remove_undocumented
+
+
+remove_undocumented(__name__)

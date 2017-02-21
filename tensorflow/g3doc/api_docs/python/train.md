@@ -3,16 +3,7 @@
 # Training
 [TOC]
 
-This library provides a set of classes and functions that helps train models.
-
-## Optimizers
-
-The Optimizer base class provides methods to compute gradients for a loss and
-apply gradients to variables.  A collection of subclasses implement classic
-optimization algorithms such as GradientDescent and Adagrad.
-
-You never instantiate the Optimizer class itself, but instead instantiate one
-of the subclasses.
+Support for training models.  See the @{$python/train} guide.
 
 - - -
 
@@ -284,7 +275,6 @@ Use `get_slot_names()` to get the list of slot names created by the
 
 
 
-
 - - -
 
 ### `class tf.train.GradientDescentOptimizer` {#GradientDescentOptimizer}
@@ -312,11 +302,10 @@ Construct a new gradient descent optimizer.
 
 ### `class tf.train.AdadeltaOptimizer` {#AdadeltaOptimizer}
 
-Optimizer that implements the Adadelta algorithm. 
+Optimizer that implements the Adadelta algorithm.
 
 See [M. D. Zeiler](http://arxiv.org/abs/1212.5701)
 ([pdf](http://arxiv.org/pdf/1212.5701v1.pdf))
-
 - - -
 
 #### `tf.train.AdadeltaOptimizer.__init__(learning_rate=0.001, rho=0.95, epsilon=1e-08, use_locking=False, name='Adadelta')` {#AdadeltaOptimizer.__init__}
@@ -335,6 +324,160 @@ Construct a new Adadelta optimizer.
     gradients.  Defaults to "Adadelta".
 
 
+- - -
+
+#### `tf.train.AdadeltaOptimizer.apply_gradients(grads_and_vars, global_step=None, name=None)` {#AdadeltaOptimizer.apply_gradients}
+
+Apply gradients to variables.
+
+This is the second part of `minimize()`. It returns an `Operation` that
+applies gradients.
+
+##### Args:
+
+
+*  <b>`grads_and_vars`</b>: List of (gradient, variable) pairs as returned by
+    `compute_gradients()`.
+*  <b>`global_step`</b>: Optional `Variable` to increment by one after the
+    variables have been updated.
+*  <b>`name`</b>: Optional name for the returned operation.  Default to the
+    name passed to the `Optimizer` constructor.
+
+##### Returns:
+
+  An `Operation` that applies the specified gradients. If `global_step`
+  was not None, that operation also increments `global_step`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If `grads_and_vars` is malformed.
+*  <b>`ValueError`</b>: If none of the variables have gradients.
+
+
+- - -
+
+#### `tf.train.AdadeltaOptimizer.compute_gradients(loss, var_list=None, gate_gradients=1, aggregation_method=None, colocate_gradients_with_ops=False, grad_loss=None)` {#AdadeltaOptimizer.compute_gradients}
+
+Compute gradients of `loss` for the variables in `var_list`.
+
+This is the first part of `minimize()`.  It returns a list
+of (gradient, variable) pairs where "gradient" is the gradient
+for "variable".  Note that "gradient" can be a `Tensor`, an
+`IndexedSlices`, or `None` if there is no gradient for the
+given variable.
+
+##### Args:
+
+
+*  <b>`loss`</b>: A Tensor containing the value to minimize.
+*  <b>`var_list`</b>: Optional list of `tf.Variable` to update to minimize
+    `loss`.  Defaults to the list of variables collected in the graph
+    under the key `GraphKey.TRAINABLE_VARIABLES`.
+*  <b>`gate_gradients`</b>: How to gate the computation of gradients.  Can be
+    `GATE_NONE`, `GATE_OP`, or `GATE_GRAPH`.
+*  <b>`aggregation_method`</b>: Specifies the method used to combine gradient terms.
+    Valid values are defined in the class `AggregationMethod`.
+*  <b>`colocate_gradients_with_ops`</b>: If True, try colocating gradients with
+    the corresponding op.
+*  <b>`grad_loss`</b>: Optional. A `Tensor` holding the gradient computed for `loss`.
+
+##### Returns:
+
+  A list of (gradient, variable) pairs. Variable is always present, but
+  gradient can be `None`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If `var_list` contains anything else than `Variable` objects.
+*  <b>`ValueError`</b>: If some arguments are invalid.
+
+
+- - -
+
+#### `tf.train.AdadeltaOptimizer.get_name()` {#AdadeltaOptimizer.get_name}
+
+
+
+
+- - -
+
+#### `tf.train.AdadeltaOptimizer.get_slot(var, name)` {#AdadeltaOptimizer.get_slot}
+
+Return a slot named `name` created for `var` by the Optimizer.
+
+Some `Optimizer` subclasses use additional variables.  For example
+`Momentum` and `Adagrad` use variables to accumulate updates.  This method
+gives access to these `Variable` objects if for some reason you need them.
+
+Use `get_slot_names()` to get the list of slot names created by the
+`Optimizer`.
+
+##### Args:
+
+
+*  <b>`var`</b>: A variable passed to `minimize()` or `apply_gradients()`.
+*  <b>`name`</b>: A string.
+
+##### Returns:
+
+  The `Variable` for the slot if it was created, `None` otherwise.
+
+
+- - -
+
+#### `tf.train.AdadeltaOptimizer.get_slot_names()` {#AdadeltaOptimizer.get_slot_names}
+
+Return a list of the names of slots created by the `Optimizer`.
+
+See `get_slot()`.
+
+##### Returns:
+
+  A list of strings.
+
+
+- - -
+
+#### `tf.train.AdadeltaOptimizer.minimize(loss, global_step=None, var_list=None, gate_gradients=1, aggregation_method=None, colocate_gradients_with_ops=False, name=None, grad_loss=None)` {#AdadeltaOptimizer.minimize}
+
+Add operations to minimize `loss` by updating `var_list`.
+
+This method simply combines calls `compute_gradients()` and
+`apply_gradients()`. If you want to process the gradient before applying
+them call `compute_gradients()` and `apply_gradients()` explicitly instead
+of using this function.
+
+##### Args:
+
+
+*  <b>`loss`</b>: A `Tensor` containing the value to minimize.
+*  <b>`global_step`</b>: Optional `Variable` to increment by one after the
+    variables have been updated.
+*  <b>`var_list`</b>: Optional list of `Variable` objects to update to minimize
+    `loss`.  Defaults to the list of variables collected in the graph
+    under the key `GraphKeys.TRAINABLE_VARIABLES`.
+*  <b>`gate_gradients`</b>: How to gate the computation of gradients.  Can be
+    `GATE_NONE`, `GATE_OP`, or  `GATE_GRAPH`.
+*  <b>`aggregation_method`</b>: Specifies the method used to combine gradient terms.
+    Valid values are defined in the class `AggregationMethod`.
+*  <b>`colocate_gradients_with_ops`</b>: If True, try colocating gradients with
+    the corresponding op.
+*  <b>`name`</b>: Optional name for the returned operation.
+*  <b>`grad_loss`</b>: Optional. A `Tensor` holding the gradient computed for `loss`.
+
+##### Returns:
+
+  An Operation that updates the variables in `var_list`.  If `global_step`
+  was not `None`, that operation also increments `global_step`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If some of the variables are not `Variable` objects.
+
+
 
 - - -
 
@@ -342,8 +485,9 @@ Construct a new Adadelta optimizer.
 
 Optimizer that implements the Adagrad algorithm.
 
-See this [paper](http://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf).
-
+See this [paper](http://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf)
+or this
+[intro](http://cs.stanford.edu/~ppasupat/a9online/uploads/proximal_notes.pdf).
 - - -
 
 #### `tf.train.AdagradOptimizer.__init__(learning_rate, initial_accumulator_value=0.1, use_locking=False, name='Adagrad')` {#AdagradOptimizer.__init__}
@@ -366,6 +510,160 @@ Construct a new Adagrad optimizer.
 *  <b>`ValueError`</b>: If the `initial_accumulator_value` is invalid.
 
 
+- - -
+
+#### `tf.train.AdagradOptimizer.apply_gradients(grads_and_vars, global_step=None, name=None)` {#AdagradOptimizer.apply_gradients}
+
+Apply gradients to variables.
+
+This is the second part of `minimize()`. It returns an `Operation` that
+applies gradients.
+
+##### Args:
+
+
+*  <b>`grads_and_vars`</b>: List of (gradient, variable) pairs as returned by
+    `compute_gradients()`.
+*  <b>`global_step`</b>: Optional `Variable` to increment by one after the
+    variables have been updated.
+*  <b>`name`</b>: Optional name for the returned operation.  Default to the
+    name passed to the `Optimizer` constructor.
+
+##### Returns:
+
+  An `Operation` that applies the specified gradients. If `global_step`
+  was not None, that operation also increments `global_step`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If `grads_and_vars` is malformed.
+*  <b>`ValueError`</b>: If none of the variables have gradients.
+
+
+- - -
+
+#### `tf.train.AdagradOptimizer.compute_gradients(loss, var_list=None, gate_gradients=1, aggregation_method=None, colocate_gradients_with_ops=False, grad_loss=None)` {#AdagradOptimizer.compute_gradients}
+
+Compute gradients of `loss` for the variables in `var_list`.
+
+This is the first part of `minimize()`.  It returns a list
+of (gradient, variable) pairs where "gradient" is the gradient
+for "variable".  Note that "gradient" can be a `Tensor`, an
+`IndexedSlices`, or `None` if there is no gradient for the
+given variable.
+
+##### Args:
+
+
+*  <b>`loss`</b>: A Tensor containing the value to minimize.
+*  <b>`var_list`</b>: Optional list of `tf.Variable` to update to minimize
+    `loss`.  Defaults to the list of variables collected in the graph
+    under the key `GraphKey.TRAINABLE_VARIABLES`.
+*  <b>`gate_gradients`</b>: How to gate the computation of gradients.  Can be
+    `GATE_NONE`, `GATE_OP`, or `GATE_GRAPH`.
+*  <b>`aggregation_method`</b>: Specifies the method used to combine gradient terms.
+    Valid values are defined in the class `AggregationMethod`.
+*  <b>`colocate_gradients_with_ops`</b>: If True, try colocating gradients with
+    the corresponding op.
+*  <b>`grad_loss`</b>: Optional. A `Tensor` holding the gradient computed for `loss`.
+
+##### Returns:
+
+  A list of (gradient, variable) pairs. Variable is always present, but
+  gradient can be `None`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If `var_list` contains anything else than `Variable` objects.
+*  <b>`ValueError`</b>: If some arguments are invalid.
+
+
+- - -
+
+#### `tf.train.AdagradOptimizer.get_name()` {#AdagradOptimizer.get_name}
+
+
+
+
+- - -
+
+#### `tf.train.AdagradOptimizer.get_slot(var, name)` {#AdagradOptimizer.get_slot}
+
+Return a slot named `name` created for `var` by the Optimizer.
+
+Some `Optimizer` subclasses use additional variables.  For example
+`Momentum` and `Adagrad` use variables to accumulate updates.  This method
+gives access to these `Variable` objects if for some reason you need them.
+
+Use `get_slot_names()` to get the list of slot names created by the
+`Optimizer`.
+
+##### Args:
+
+
+*  <b>`var`</b>: A variable passed to `minimize()` or `apply_gradients()`.
+*  <b>`name`</b>: A string.
+
+##### Returns:
+
+  The `Variable` for the slot if it was created, `None` otherwise.
+
+
+- - -
+
+#### `tf.train.AdagradOptimizer.get_slot_names()` {#AdagradOptimizer.get_slot_names}
+
+Return a list of the names of slots created by the `Optimizer`.
+
+See `get_slot()`.
+
+##### Returns:
+
+  A list of strings.
+
+
+- - -
+
+#### `tf.train.AdagradOptimizer.minimize(loss, global_step=None, var_list=None, gate_gradients=1, aggregation_method=None, colocate_gradients_with_ops=False, name=None, grad_loss=None)` {#AdagradOptimizer.minimize}
+
+Add operations to minimize `loss` by updating `var_list`.
+
+This method simply combines calls `compute_gradients()` and
+`apply_gradients()`. If you want to process the gradient before applying
+them call `compute_gradients()` and `apply_gradients()` explicitly instead
+of using this function.
+
+##### Args:
+
+
+*  <b>`loss`</b>: A `Tensor` containing the value to minimize.
+*  <b>`global_step`</b>: Optional `Variable` to increment by one after the
+    variables have been updated.
+*  <b>`var_list`</b>: Optional list of `Variable` objects to update to minimize
+    `loss`.  Defaults to the list of variables collected in the graph
+    under the key `GraphKeys.TRAINABLE_VARIABLES`.
+*  <b>`gate_gradients`</b>: How to gate the computation of gradients.  Can be
+    `GATE_NONE`, `GATE_OP`, or  `GATE_GRAPH`.
+*  <b>`aggregation_method`</b>: Specifies the method used to combine gradient terms.
+    Valid values are defined in the class `AggregationMethod`.
+*  <b>`colocate_gradients_with_ops`</b>: If True, try colocating gradients with
+    the corresponding op.
+*  <b>`name`</b>: Optional name for the returned operation.
+*  <b>`grad_loss`</b>: Optional. A `Tensor` holding the gradient computed for `loss`.
+
+##### Returns:
+
+  An Operation that updates the variables in `var_list`.  If `global_step`
+  was not `None`, that operation also increments `global_step`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If some of the variables are not `Variable` objects.
+
+
 
 - - -
 
@@ -383,7 +681,6 @@ AdagradDA is typically used when there is a need for large sparsity in the
 trained model. This optimizer only guarantees sparsity for linear models. Be
 careful when using AdagradDA for deep networks as it will require careful
 initialization of the gradient accumulators for it to train.
-
 - - -
 
 #### `tf.train.AdagradDAOptimizer.__init__(learning_rate, global_step, initial_gradient_squared_accumulator_value=0.1, l1_regularization_strength=0.0, l2_regularization_strength=0.0, use_locking=False, name='AdagradDA')` {#AdagradDAOptimizer.__init__}
@@ -410,6 +707,160 @@ Construct a new AdagradDA optimizer.
 
 *  <b>`ValueError`</b>: If the `initial_gradient_squared_accumulator_value` is
   invalid.
+
+
+- - -
+
+#### `tf.train.AdagradDAOptimizer.apply_gradients(grads_and_vars, global_step=None, name=None)` {#AdagradDAOptimizer.apply_gradients}
+
+Apply gradients to variables.
+
+This is the second part of `minimize()`. It returns an `Operation` that
+applies gradients.
+
+##### Args:
+
+
+*  <b>`grads_and_vars`</b>: List of (gradient, variable) pairs as returned by
+    `compute_gradients()`.
+*  <b>`global_step`</b>: Optional `Variable` to increment by one after the
+    variables have been updated.
+*  <b>`name`</b>: Optional name for the returned operation.  Default to the
+    name passed to the `Optimizer` constructor.
+
+##### Returns:
+
+  An `Operation` that applies the specified gradients. If `global_step`
+  was not None, that operation also increments `global_step`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If `grads_and_vars` is malformed.
+*  <b>`ValueError`</b>: If none of the variables have gradients.
+
+
+- - -
+
+#### `tf.train.AdagradDAOptimizer.compute_gradients(loss, var_list=None, gate_gradients=1, aggregation_method=None, colocate_gradients_with_ops=False, grad_loss=None)` {#AdagradDAOptimizer.compute_gradients}
+
+Compute gradients of `loss` for the variables in `var_list`.
+
+This is the first part of `minimize()`.  It returns a list
+of (gradient, variable) pairs where "gradient" is the gradient
+for "variable".  Note that "gradient" can be a `Tensor`, an
+`IndexedSlices`, or `None` if there is no gradient for the
+given variable.
+
+##### Args:
+
+
+*  <b>`loss`</b>: A Tensor containing the value to minimize.
+*  <b>`var_list`</b>: Optional list of `tf.Variable` to update to minimize
+    `loss`.  Defaults to the list of variables collected in the graph
+    under the key `GraphKey.TRAINABLE_VARIABLES`.
+*  <b>`gate_gradients`</b>: How to gate the computation of gradients.  Can be
+    `GATE_NONE`, `GATE_OP`, or `GATE_GRAPH`.
+*  <b>`aggregation_method`</b>: Specifies the method used to combine gradient terms.
+    Valid values are defined in the class `AggregationMethod`.
+*  <b>`colocate_gradients_with_ops`</b>: If True, try colocating gradients with
+    the corresponding op.
+*  <b>`grad_loss`</b>: Optional. A `Tensor` holding the gradient computed for `loss`.
+
+##### Returns:
+
+  A list of (gradient, variable) pairs. Variable is always present, but
+  gradient can be `None`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If `var_list` contains anything else than `Variable` objects.
+*  <b>`ValueError`</b>: If some arguments are invalid.
+
+
+- - -
+
+#### `tf.train.AdagradDAOptimizer.get_name()` {#AdagradDAOptimizer.get_name}
+
+
+
+
+- - -
+
+#### `tf.train.AdagradDAOptimizer.get_slot(var, name)` {#AdagradDAOptimizer.get_slot}
+
+Return a slot named `name` created for `var` by the Optimizer.
+
+Some `Optimizer` subclasses use additional variables.  For example
+`Momentum` and `Adagrad` use variables to accumulate updates.  This method
+gives access to these `Variable` objects if for some reason you need them.
+
+Use `get_slot_names()` to get the list of slot names created by the
+`Optimizer`.
+
+##### Args:
+
+
+*  <b>`var`</b>: A variable passed to `minimize()` or `apply_gradients()`.
+*  <b>`name`</b>: A string.
+
+##### Returns:
+
+  The `Variable` for the slot if it was created, `None` otherwise.
+
+
+- - -
+
+#### `tf.train.AdagradDAOptimizer.get_slot_names()` {#AdagradDAOptimizer.get_slot_names}
+
+Return a list of the names of slots created by the `Optimizer`.
+
+See `get_slot()`.
+
+##### Returns:
+
+  A list of strings.
+
+
+- - -
+
+#### `tf.train.AdagradDAOptimizer.minimize(loss, global_step=None, var_list=None, gate_gradients=1, aggregation_method=None, colocate_gradients_with_ops=False, name=None, grad_loss=None)` {#AdagradDAOptimizer.minimize}
+
+Add operations to minimize `loss` by updating `var_list`.
+
+This method simply combines calls `compute_gradients()` and
+`apply_gradients()`. If you want to process the gradient before applying
+them call `compute_gradients()` and `apply_gradients()` explicitly instead
+of using this function.
+
+##### Args:
+
+
+*  <b>`loss`</b>: A `Tensor` containing the value to minimize.
+*  <b>`global_step`</b>: Optional `Variable` to increment by one after the
+    variables have been updated.
+*  <b>`var_list`</b>: Optional list of `Variable` objects to update to minimize
+    `loss`.  Defaults to the list of variables collected in the graph
+    under the key `GraphKeys.TRAINABLE_VARIABLES`.
+*  <b>`gate_gradients`</b>: How to gate the computation of gradients.  Can be
+    `GATE_NONE`, `GATE_OP`, or  `GATE_GRAPH`.
+*  <b>`aggregation_method`</b>: Specifies the method used to combine gradient terms.
+    Valid values are defined in the class `AggregationMethod`.
+*  <b>`colocate_gradients_with_ops`</b>: If True, try colocating gradients with
+    the corresponding op.
+*  <b>`name`</b>: Optional name for the returned operation.
+*  <b>`grad_loss`</b>: Optional. A `Tensor` holding the gradient computed for `loss`.
+
+##### Returns:
+
+  An Operation that updates the variables in `var_list`.  If `global_step`
+  was not `None`, that operation also increments `global_step`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If some of the variables are not `Variable` objects.
 
 
 
@@ -447,7 +898,6 @@ Optimizer that implements the Adam algorithm.
 
 See [Kingma et. al., 2014](http://arxiv.org/abs/1412.6980)
 ([pdf](http://arxiv.org/pdf/1412.6980.pdf)).
-
 - - -
 
 #### `tf.train.AdamOptimizer.__init__(learning_rate=0.001, beta1=0.9, beta2=0.999, epsilon=1e-08, use_locking=False, name='Adam')` {#AdamOptimizer.__init__}
@@ -496,6 +946,160 @@ will not update in iterations g is zero.
     Defaults to "Adam".
 
 
+- - -
+
+#### `tf.train.AdamOptimizer.apply_gradients(grads_and_vars, global_step=None, name=None)` {#AdamOptimizer.apply_gradients}
+
+Apply gradients to variables.
+
+This is the second part of `minimize()`. It returns an `Operation` that
+applies gradients.
+
+##### Args:
+
+
+*  <b>`grads_and_vars`</b>: List of (gradient, variable) pairs as returned by
+    `compute_gradients()`.
+*  <b>`global_step`</b>: Optional `Variable` to increment by one after the
+    variables have been updated.
+*  <b>`name`</b>: Optional name for the returned operation.  Default to the
+    name passed to the `Optimizer` constructor.
+
+##### Returns:
+
+  An `Operation` that applies the specified gradients. If `global_step`
+  was not None, that operation also increments `global_step`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If `grads_and_vars` is malformed.
+*  <b>`ValueError`</b>: If none of the variables have gradients.
+
+
+- - -
+
+#### `tf.train.AdamOptimizer.compute_gradients(loss, var_list=None, gate_gradients=1, aggregation_method=None, colocate_gradients_with_ops=False, grad_loss=None)` {#AdamOptimizer.compute_gradients}
+
+Compute gradients of `loss` for the variables in `var_list`.
+
+This is the first part of `minimize()`.  It returns a list
+of (gradient, variable) pairs where "gradient" is the gradient
+for "variable".  Note that "gradient" can be a `Tensor`, an
+`IndexedSlices`, or `None` if there is no gradient for the
+given variable.
+
+##### Args:
+
+
+*  <b>`loss`</b>: A Tensor containing the value to minimize.
+*  <b>`var_list`</b>: Optional list of `tf.Variable` to update to minimize
+    `loss`.  Defaults to the list of variables collected in the graph
+    under the key `GraphKey.TRAINABLE_VARIABLES`.
+*  <b>`gate_gradients`</b>: How to gate the computation of gradients.  Can be
+    `GATE_NONE`, `GATE_OP`, or `GATE_GRAPH`.
+*  <b>`aggregation_method`</b>: Specifies the method used to combine gradient terms.
+    Valid values are defined in the class `AggregationMethod`.
+*  <b>`colocate_gradients_with_ops`</b>: If True, try colocating gradients with
+    the corresponding op.
+*  <b>`grad_loss`</b>: Optional. A `Tensor` holding the gradient computed for `loss`.
+
+##### Returns:
+
+  A list of (gradient, variable) pairs. Variable is always present, but
+  gradient can be `None`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If `var_list` contains anything else than `Variable` objects.
+*  <b>`ValueError`</b>: If some arguments are invalid.
+
+
+- - -
+
+#### `tf.train.AdamOptimizer.get_name()` {#AdamOptimizer.get_name}
+
+
+
+
+- - -
+
+#### `tf.train.AdamOptimizer.get_slot(var, name)` {#AdamOptimizer.get_slot}
+
+Return a slot named `name` created for `var` by the Optimizer.
+
+Some `Optimizer` subclasses use additional variables.  For example
+`Momentum` and `Adagrad` use variables to accumulate updates.  This method
+gives access to these `Variable` objects if for some reason you need them.
+
+Use `get_slot_names()` to get the list of slot names created by the
+`Optimizer`.
+
+##### Args:
+
+
+*  <b>`var`</b>: A variable passed to `minimize()` or `apply_gradients()`.
+*  <b>`name`</b>: A string.
+
+##### Returns:
+
+  The `Variable` for the slot if it was created, `None` otherwise.
+
+
+- - -
+
+#### `tf.train.AdamOptimizer.get_slot_names()` {#AdamOptimizer.get_slot_names}
+
+Return a list of the names of slots created by the `Optimizer`.
+
+See `get_slot()`.
+
+##### Returns:
+
+  A list of strings.
+
+
+- - -
+
+#### `tf.train.AdamOptimizer.minimize(loss, global_step=None, var_list=None, gate_gradients=1, aggregation_method=None, colocate_gradients_with_ops=False, name=None, grad_loss=None)` {#AdamOptimizer.minimize}
+
+Add operations to minimize `loss` by updating `var_list`.
+
+This method simply combines calls `compute_gradients()` and
+`apply_gradients()`. If you want to process the gradient before applying
+them call `compute_gradients()` and `apply_gradients()` explicitly instead
+of using this function.
+
+##### Args:
+
+
+*  <b>`loss`</b>: A `Tensor` containing the value to minimize.
+*  <b>`global_step`</b>: Optional `Variable` to increment by one after the
+    variables have been updated.
+*  <b>`var_list`</b>: Optional list of `Variable` objects to update to minimize
+    `loss`.  Defaults to the list of variables collected in the graph
+    under the key `GraphKeys.TRAINABLE_VARIABLES`.
+*  <b>`gate_gradients`</b>: How to gate the computation of gradients.  Can be
+    `GATE_NONE`, `GATE_OP`, or  `GATE_GRAPH`.
+*  <b>`aggregation_method`</b>: Specifies the method used to combine gradient terms.
+    Valid values are defined in the class `AggregationMethod`.
+*  <b>`colocate_gradients_with_ops`</b>: If True, try colocating gradients with
+    the corresponding op.
+*  <b>`name`</b>: Optional name for the returned operation.
+*  <b>`grad_loss`</b>: Optional. A `Tensor` holding the gradient computed for `loss`.
+
+##### Returns:
+
+  An Operation that updates the variables in `var_list`.  If `global_step`
+  was not `None`, that operation also increments `global_step`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If some of the variables are not `Variable` objects.
+
+
 
 - - -
 
@@ -505,7 +1109,6 @@ Optimizer that implements the FTRL algorithm.
 
 See this [paper](
 https://www.eecs.tufts.edu/~dsculley/papers/ad-click-prediction.pdf).
-
 - - -
 
 #### `tf.train.FtrlOptimizer.__init__(learning_rate, learning_rate_power=-0.5, initial_accumulator_value=0.1, l1_regularization_strength=0.0, l2_regularization_strength=0.0, use_locking=False, name='Ftrl')` {#FtrlOptimizer.__init__}
@@ -531,6 +1134,160 @@ Construct a new FTRL optimizer.
 
 
 *  <b>`ValueError`</b>: If one of the arguments is invalid.
+
+
+- - -
+
+#### `tf.train.FtrlOptimizer.apply_gradients(grads_and_vars, global_step=None, name=None)` {#FtrlOptimizer.apply_gradients}
+
+Apply gradients to variables.
+
+This is the second part of `minimize()`. It returns an `Operation` that
+applies gradients.
+
+##### Args:
+
+
+*  <b>`grads_and_vars`</b>: List of (gradient, variable) pairs as returned by
+    `compute_gradients()`.
+*  <b>`global_step`</b>: Optional `Variable` to increment by one after the
+    variables have been updated.
+*  <b>`name`</b>: Optional name for the returned operation.  Default to the
+    name passed to the `Optimizer` constructor.
+
+##### Returns:
+
+  An `Operation` that applies the specified gradients. If `global_step`
+  was not None, that operation also increments `global_step`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If `grads_and_vars` is malformed.
+*  <b>`ValueError`</b>: If none of the variables have gradients.
+
+
+- - -
+
+#### `tf.train.FtrlOptimizer.compute_gradients(loss, var_list=None, gate_gradients=1, aggregation_method=None, colocate_gradients_with_ops=False, grad_loss=None)` {#FtrlOptimizer.compute_gradients}
+
+Compute gradients of `loss` for the variables in `var_list`.
+
+This is the first part of `minimize()`.  It returns a list
+of (gradient, variable) pairs where "gradient" is the gradient
+for "variable".  Note that "gradient" can be a `Tensor`, an
+`IndexedSlices`, or `None` if there is no gradient for the
+given variable.
+
+##### Args:
+
+
+*  <b>`loss`</b>: A Tensor containing the value to minimize.
+*  <b>`var_list`</b>: Optional list of `tf.Variable` to update to minimize
+    `loss`.  Defaults to the list of variables collected in the graph
+    under the key `GraphKey.TRAINABLE_VARIABLES`.
+*  <b>`gate_gradients`</b>: How to gate the computation of gradients.  Can be
+    `GATE_NONE`, `GATE_OP`, or `GATE_GRAPH`.
+*  <b>`aggregation_method`</b>: Specifies the method used to combine gradient terms.
+    Valid values are defined in the class `AggregationMethod`.
+*  <b>`colocate_gradients_with_ops`</b>: If True, try colocating gradients with
+    the corresponding op.
+*  <b>`grad_loss`</b>: Optional. A `Tensor` holding the gradient computed for `loss`.
+
+##### Returns:
+
+  A list of (gradient, variable) pairs. Variable is always present, but
+  gradient can be `None`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If `var_list` contains anything else than `Variable` objects.
+*  <b>`ValueError`</b>: If some arguments are invalid.
+
+
+- - -
+
+#### `tf.train.FtrlOptimizer.get_name()` {#FtrlOptimizer.get_name}
+
+
+
+
+- - -
+
+#### `tf.train.FtrlOptimizer.get_slot(var, name)` {#FtrlOptimizer.get_slot}
+
+Return a slot named `name` created for `var` by the Optimizer.
+
+Some `Optimizer` subclasses use additional variables.  For example
+`Momentum` and `Adagrad` use variables to accumulate updates.  This method
+gives access to these `Variable` objects if for some reason you need them.
+
+Use `get_slot_names()` to get the list of slot names created by the
+`Optimizer`.
+
+##### Args:
+
+
+*  <b>`var`</b>: A variable passed to `minimize()` or `apply_gradients()`.
+*  <b>`name`</b>: A string.
+
+##### Returns:
+
+  The `Variable` for the slot if it was created, `None` otherwise.
+
+
+- - -
+
+#### `tf.train.FtrlOptimizer.get_slot_names()` {#FtrlOptimizer.get_slot_names}
+
+Return a list of the names of slots created by the `Optimizer`.
+
+See `get_slot()`.
+
+##### Returns:
+
+  A list of strings.
+
+
+- - -
+
+#### `tf.train.FtrlOptimizer.minimize(loss, global_step=None, var_list=None, gate_gradients=1, aggregation_method=None, colocate_gradients_with_ops=False, name=None, grad_loss=None)` {#FtrlOptimizer.minimize}
+
+Add operations to minimize `loss` by updating `var_list`.
+
+This method simply combines calls `compute_gradients()` and
+`apply_gradients()`. If you want to process the gradient before applying
+them call `compute_gradients()` and `apply_gradients()` explicitly instead
+of using this function.
+
+##### Args:
+
+
+*  <b>`loss`</b>: A `Tensor` containing the value to minimize.
+*  <b>`global_step`</b>: Optional `Variable` to increment by one after the
+    variables have been updated.
+*  <b>`var_list`</b>: Optional list of `Variable` objects to update to minimize
+    `loss`.  Defaults to the list of variables collected in the graph
+    under the key `GraphKeys.TRAINABLE_VARIABLES`.
+*  <b>`gate_gradients`</b>: How to gate the computation of gradients.  Can be
+    `GATE_NONE`, `GATE_OP`, or  `GATE_GRAPH`.
+*  <b>`aggregation_method`</b>: Specifies the method used to combine gradient terms.
+    Valid values are defined in the class `AggregationMethod`.
+*  <b>`colocate_gradients_with_ops`</b>: If True, try colocating gradients with
+    the corresponding op.
+*  <b>`name`</b>: Optional name for the returned operation.
+*  <b>`grad_loss`</b>: Optional. A `Tensor` holding the gradient computed for `loss`.
+
+##### Returns:
+
+  An Operation that updates the variables in `var_list`.  If `global_step`
+  was not `None`, that operation also increments `global_step`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If some of the variables are not `Variable` objects.
 
 
 
@@ -633,15 +1390,6 @@ will not update in iterations g is zero.
 
 
 
-
-## Gradient Computation
-
-TensorFlow provides functions to compute the derivatives for a given
-TensorFlow computation graph, adding operations to the graph. The
-optimizer classes automatically compute derivatives on your graph, but
-creators of new Optimizers or expert users can call the lower-level
-functions below.
-
 - - -
 
 ### `tf.gradients(ys, xs, grad_ys=None, name='gradients', colocate_gradients_with_ops=False, gate_gradients=False, aggregation_method=None)` {#gradients}
@@ -708,7 +1456,6 @@ be used to combine gradients in the graph:
    gradients must be ready before any aggregation is performed.
 *  `DEFAULT`: The system-chosen default aggregation method.
 
-
 - - -
 
 ### `tf.stop_gradient(input, name=None)` {#stop_gradient}
@@ -744,7 +1491,6 @@ to pretend that the value was a constant. Some examples include:
 ##### Returns:
 
   A `Tensor`. Has the same type as `input`.
-
 
 
 - - -
@@ -785,15 +1531,6 @@ tensor (see https://en.wikipedia.org/wiki/Hessian_matrix for more details).
 *  <b>`ValueError`</b>: if the arguments are invalid or not supported. Currently,
     this function only supports one-dimensional `x` in `xs`.
 
-
-
-
-## Gradient Clipping
-
-TensorFlow provides several operations that you can use to add clipping
-functions to your graph. You can use these functions to perform general data
-clipping, but they're particularly useful for handling exploding or vanishing
-gradients.
 
 - - -
 
@@ -974,8 +1711,6 @@ Any entries in `t_list` that are of type None are ignored.
 *  <b>`TypeError`</b>: If `t_list` is not a sequence.
 
 
-
-## Decaying the learning rate
 - - -
 
 ### `tf.train.exponential_decay(learning_rate, global_step, decay_steps, decay_rate, staircase=False, name=None)` {#exponential_decay}
@@ -1282,13 +2017,6 @@ learning_step = (
 *  <b>`ValueError`</b>: if `global_step` is not supplied.
 
 
-
-## Moving Averages
-
-Some training algorithms, such as GradientDescent and Momentum often benefit
-from maintaining a moving average of variables during optimization.  Using the
-moving averages for evaluations often improve results significantly.
-
 - - -
 
 ### `class tf.train.ExponentialMovingAverage` {#ExponentialMovingAverage}
@@ -1526,13 +2254,6 @@ Below is an example of such mapping:
 
 
 
-
-## Coordinator and QueueRunner
-
-See [Threading and Queues](../../how_tos/threading_and_queues/index.md)
-for how to use threads and queues.  For documentation on the Queue API,
-see [Queues](../../api_docs/python/io_ops.md#queues).
-
 - - -
 
 ### `class tf.train.Coordinator` {#Coordinator}
@@ -1659,7 +2380,7 @@ After this is called, calls to `should_stop()` will return `False`.
 
 - - -
 
-#### `tf.train.Coordinator.join(threads=None, stop_grace_period_secs=120)` {#Coordinator.join}
+#### `tf.train.Coordinator.join(threads=None, stop_grace_period_secs=120, ignore_live_threads=False)` {#Coordinator.join}
 
 Wait for threads to terminate.
 
@@ -1684,6 +2405,8 @@ that `RuntimeError`.
     addition to the registered threads.
 *  <b>`stop_grace_period_secs`</b>: Number of seconds given to threads to stop after
     `request_stop()` has been called.
+*  <b>`ignore_live_threads`</b>: If `False`, raises an error if any of the threads are
+    still alive after `stop_grace_period_secs`.
 
 ##### Raises:
 
@@ -1984,6 +2707,233 @@ Converts this `QueueRunner` to a `QueueRunnerDef` protocol buffer.
 
 - - -
 
+### `class tf.train.LooperThread` {#LooperThread}
+
+A thread that runs code repeatedly, optionally on a timer.
+
+This thread class is intended to be used with a `Coordinator`.  It repeatedly
+runs code specified either as `target` and `args` or by the `run_loop()`
+method.
+
+Before each run the thread checks if the coordinator has requested stop.  In
+that case the looper thread terminates immediately.
+
+If the code being run raises an exception, that exception is reported to the
+coordinator and the thread terminates.  The coordinator will then request all
+the other threads it coordinates to stop.
+
+You typically pass looper threads to the supervisor `Join()` method.
+- - -
+
+#### `tf.train.LooperThread.__init__(coord, timer_interval_secs, target=None, args=None, kwargs=None)` {#LooperThread.__init__}
+
+Create a LooperThread.
+
+##### Args:
+
+
+*  <b>`coord`</b>: A Coordinator.
+*  <b>`timer_interval_secs`</b>: Time boundaries at which to call Run(), or None
+    if it should be called back to back.
+*  <b>`target`</b>: Optional callable object that will be executed in the thread.
+*  <b>`args`</b>: Optional arguments to pass to `target` when calling it.
+*  <b>`kwargs`</b>: Optional keyword arguments to pass to `target` when calling it.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If one of the arguments is invalid.
+
+
+- - -
+
+#### `tf.train.LooperThread.__repr__()` {#LooperThread.__repr__}
+
+
+
+
+- - -
+
+#### `tf.train.LooperThread.daemon` {#LooperThread.daemon}
+
+A boolean value indicating whether this thread is a daemon thread (True) or not (False).
+
+This must be set before start() is called, otherwise RuntimeError is
+raised. Its initial value is inherited from the creating thread; the
+main thread is not a daemon thread and therefore all threads created in
+the main thread default to daemon = False.
+
+The entire Python program exits when no alive non-daemon threads are
+left.
+
+
+- - -
+
+#### `tf.train.LooperThread.getName()` {#LooperThread.getName}
+
+
+
+
+- - -
+
+#### `tf.train.LooperThread.ident` {#LooperThread.ident}
+
+Thread identifier of this thread or None if it has not been started.
+
+This is a nonzero integer. See the thread.get_ident() function. Thread
+identifiers may be recycled when a thread exits and another thread is
+created. The identifier is available even after the thread has exited.
+
+
+- - -
+
+#### `tf.train.LooperThread.isAlive()` {#LooperThread.isAlive}
+
+Return whether the thread is alive.
+
+This method returns True just before the run() method starts until just
+after the run() method terminates. The module function enumerate()
+returns a list of all alive threads.
+
+
+- - -
+
+#### `tf.train.LooperThread.isDaemon()` {#LooperThread.isDaemon}
+
+
+
+
+- - -
+
+#### `tf.train.LooperThread.is_alive()` {#LooperThread.is_alive}
+
+Return whether the thread is alive.
+
+This method returns True just before the run() method starts until just
+after the run() method terminates. The module function enumerate()
+returns a list of all alive threads.
+
+
+- - -
+
+#### `tf.train.LooperThread.join(timeout=None)` {#LooperThread.join}
+
+Wait until the thread terminates.
+
+This blocks the calling thread until the thread whose join() method is
+called terminates -- either normally or through an unhandled exception
+or until the optional timeout occurs.
+
+When the timeout argument is present and not None, it should be a
+floating point number specifying a timeout for the operation in seconds
+(or fractions thereof). As join() always returns None, you must call
+isAlive() after join() to decide whether a timeout happened -- if the
+thread is still alive, the join() call timed out.
+
+When the timeout argument is not present or None, the operation will
+block until the thread terminates.
+
+A thread can be join()ed many times.
+
+join() raises a RuntimeError if an attempt is made to join the current
+thread as that would cause a deadlock. It is also an error to join() a
+thread before it has been started and attempts to do so raises the same
+exception.
+
+
+- - -
+
+#### `tf.train.LooperThread.loop(coord, timer_interval_secs, target, args=None, kwargs=None)` {#LooperThread.loop}
+
+Start a LooperThread that calls a function periodically.
+
+If `timer_interval_secs` is None the thread calls `target(args)`
+repeatedly.  Otherwise `target(args)` is called every `timer_interval_secs`
+seconds.  The thread terminates when a stop of the coordinator is
+requested.
+
+##### Args:
+
+
+*  <b>`coord`</b>: A Coordinator.
+*  <b>`timer_interval_secs`</b>: Number. Time boundaries at which to call `target`.
+*  <b>`target`</b>: A callable object.
+*  <b>`args`</b>: Optional arguments to pass to `target` when calling it.
+*  <b>`kwargs`</b>: Optional keyword arguments to pass to `target` when calling it.
+
+##### Returns:
+
+  The started thread.
+
+
+- - -
+
+#### `tf.train.LooperThread.name` {#LooperThread.name}
+
+A string used for identification purposes only.
+
+It has no semantics. Multiple threads may be given the same name. The
+initial name is set by the constructor.
+
+
+- - -
+
+#### `tf.train.LooperThread.run()` {#LooperThread.run}
+
+
+
+
+- - -
+
+#### `tf.train.LooperThread.run_loop()` {#LooperThread.run_loop}
+
+Called at 'timer_interval_secs' boundaries.
+
+
+- - -
+
+#### `tf.train.LooperThread.setDaemon(daemonic)` {#LooperThread.setDaemon}
+
+
+
+
+- - -
+
+#### `tf.train.LooperThread.setName(name)` {#LooperThread.setName}
+
+
+
+
+- - -
+
+#### `tf.train.LooperThread.start()` {#LooperThread.start}
+
+Start the thread's activity.
+
+It must be called at most once per thread object. It arranges for the
+object's run() method to be invoked in a separate thread of control.
+
+This method will raise a RuntimeError if called more than once on the
+same thread object.
+
+
+- - -
+
+#### `tf.train.LooperThread.start_loop()` {#LooperThread.start_loop}
+
+Called when the thread starts.
+
+
+- - -
+
+#### `tf.train.LooperThread.stop_loop()` {#LooperThread.stop_loop}
+
+Called when the thread stops.
+
+
+
+- - -
+
 ### `tf.train.add_queue_runner(qr, collection='queue_runners')` {#add_queue_runner}
 
 Adds a `QueueRunner` to a collection in the graph.
@@ -2029,12 +2979,6 @@ the list of all threads.
 
   A list of threads.
 
-
-
-## Distributed execution
-
-See [Distributed TensorFlow](../../how_tos/distributed/index.md) for
-more information about how to configure a distributed TensorFlow program.
 
 - - -
 
@@ -3531,7 +4475,7 @@ with tf.device(tf.train.replica_device_setter(cluster=cluster_spec)):
 
 - - -
 
-### `tf.train.MonitoredTrainingSession(master='', is_chief=True, checkpoint_dir=None, scaffold=None, hooks=None, chief_only_hooks=None, save_checkpoint_secs=600, save_summaries_steps=100, config=None)` {#MonitoredTrainingSession}
+### `tf.train.MonitoredTrainingSession(master='', is_chief=True, checkpoint_dir=None, scaffold=None, hooks=None, chief_only_hooks=None, save_checkpoint_secs=600, save_summaries_steps=100, save_summaries_secs=None, config=None, stop_grace_period_secs=120)` {#MonitoredTrainingSession}
 
 Creates a `MonitoredSession` for training.
 
@@ -3559,11 +4503,17 @@ inialize/restore.
     using a default checkpoint saver. If `save_checkpoint_secs` is set to
     `None`, then the default checkpoint saver isn't used.
 *  <b>`save_summaries_steps`</b>: The frequency, in number of global steps, that the
-    summaries are written to disk using a default summary saver. If
-    `save_summaries_steps` is set to `None`, then the default summary saver
+    summaries are written to disk using a default summary saver. If both
+    `save_summaries_steps` and `save_summaries_secs` are set to `None`, then
+    the default summary saver isn't used.
+*  <b>`save_summaries_secs`</b>: The frequency, in secs, that the summaries are written
+    to disk using a default summary saver.  If both `save_summaries_steps` and
+    `save_summaries_secs` are set to `None`, then the default summary saver
     isn't used.
 *  <b>`config`</b>: an instance of `tf.ConfigProto` proto used to configure the session.
     It's the `config` argument of constructor of `tf.Session`.
+*  <b>`stop_grace_period_secs`</b>: Number of seconds given to threads to stop after
+    `close()` has been called.
 
 ##### Returns:
 
@@ -3655,7 +4605,7 @@ Returns:
 
 - - -
 
-#### `tf.train.MonitoredSession.__init__(session_creator=None, hooks=None)` {#MonitoredSession.__init__}
+#### `tf.train.MonitoredSession.__init__(session_creator=None, hooks=None, stop_grace_period_secs=120)` {#MonitoredSession.__init__}
 
 
 
@@ -3771,7 +4721,7 @@ Exit: At the `close()`, the hooked session does following things in order:
 
 - - -
 
-#### `tf.train.SingularMonitoredSession.__init__(hooks=None, scaffold=None, master='', config=None, checkpoint_dir=None)` {#SingularMonitoredSession.__init__}
+#### `tf.train.SingularMonitoredSession.__init__(hooks=None, scaffold=None, master='', config=None, checkpoint_dir=None, stop_grace_period_secs=120)` {#SingularMonitoredSession.__init__}
 
 Creates a SingularMonitoredSession.
 
@@ -3785,6 +4735,8 @@ Creates a SingularMonitoredSession.
 *  <b>`config`</b>: `ConfigProto` proto used to configure the session.
 *  <b>`checkpoint_dir`</b>: A string.  Optional path to a directory where to restore
     variables.
+*  <b>`stop_grace_period_secs`</b>: Number of seconds given to threads to stop after
+    `close()` has been called.
 
 
 - - -
@@ -4058,13 +5010,6 @@ Initializes a worker session creator.
 
 
 
-
-## Reading Summaries from Event Files
-
-See [Summaries and
-TensorBoard](../../how_tos/summaries_and_tensorboard/index.md) for an
-overview of summaries, event files, and visualization in TensorBoard.
-
 - - -
 
 ### `tf.train.summary_iterator(path)` {#summary_iterator}
@@ -4108,134 +5053,6 @@ for more information about their attributes.
 ##### Yields:
 
   `Event` protocol buffers.
-
-
-
-## Training Utilities
-
-- - -
-
-### `tf.train.global_step(sess, global_step_tensor)` {#global_step}
-
-Small helper to get the global step.
-
-```python
-# Creates a variable to hold the global_step.
-global_step_tensor = tf.Variable(10, trainable=False, name='global_step')
-# Creates a session.
-sess = tf.Session()
-# Initializes the variable.
-print('global_step: %s' % tf.train.global_step(sess, global_step_tensor))
-
-global_step: 10
-```
-
-##### Args:
-
-
-*  <b>`sess`</b>: A TensorFlow `Session` object.
-*  <b>`global_step_tensor`</b>: `Tensor` or the `name` of the operation that contains
-    the global step.
-
-##### Returns:
-
-  The global step value.
-
-
-- - -
-
-### `tf.train.basic_train_loop(supervisor, train_step_fn, args=None, kwargs=None, master='')` {#basic_train_loop}
-
-Basic loop to train a model.
-
-Calls `train_step_fn` in a loop to train a model.  The function is called as:
-
-```python
-train_step_fn(session, *args, **kwargs)
-```
-
-It is passed a `tf.Session` in addition to `args` and `kwargs`.  The function
-typically runs one training step in the session.
-
-##### Args:
-
-
-*  <b>`supervisor`</b>: `tf.Supervisor` to run the training services.
-*  <b>`train_step_fn`</b>: Callable to execute one training step.  Called
-    repeatedly as `train_step_fn(session, *args **kwargs)`.
-*  <b>`args`</b>: Optional positional arguments passed to `train_step_fn`.
-*  <b>`kwargs`</b>: Optional keyword arguments passed to `train_step_fn`.
-*  <b>`master`</b>: Master to use to create the training session.  Defaults to
-    `""` which causes the session to be created in the local process.
-
-
-- - -
-
-### `tf.train.get_global_step(graph=None)` {#get_global_step}
-
-Get the global step tensor.
-
-The global step tensor must be an integer variable. We first try to find it
-in the collection `GLOBAL_STEP`, or by name `global_step:0`.
-
-##### Args:
-
-
-*  <b>`graph`</b>: The graph to find the global step in. If missing, use default graph.
-
-##### Returns:
-
-  The global step variable, or `None` if none was found.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: If the global step tensor has a non-integer type, or if it is not
-    a `Variable`.
-
-
-- - -
-
-### `tf.train.assert_global_step(global_step_tensor)` {#assert_global_step}
-
-Asserts `global_step_tensor` is a scalar int `Variable` or `Tensor`.
-
-##### Args:
-
-
-*  <b>`global_step_tensor`</b>: `Tensor` to test.
-
-
-- - -
-
-### `tf.train.write_graph(graph_or_graph_def, logdir, name, as_text=True)` {#write_graph}
-
-Writes a graph proto to a file.
-
-The graph is written as a binary proto unless `as_text` is `True`.
-
-```python
-v = tf.Variable(0, name='my_variable')
-sess = tf.Session()
-tf.train.write_graph(sess.graph_def, '/tmp/my-model', 'train.pbtxt')
-```
-
-or
-
-```python
-v = tf.Variable(0, name='my_variable')
-sess = tf.Session()
-tf.train.write_graph(sess.graph, '/tmp/my-model', 'train.pbtxt')
-```
-
-##### Args:
-
-
-*  <b>`graph_or_graph_def`</b>: A `Graph` or a `GraphDef` protocol buffer.
-*  <b>`logdir`</b>: Directory where to write the graph. This can refer to remote
-    filesystems, such as Google Cloud Storage (GCS).
-*  <b>`name`</b>: Filename for the graph.
-*  <b>`as_text`</b>: If `True`, writes the graph as an ASCII proto.
 
 
 - - -
@@ -4342,6 +5159,208 @@ such as saving a last checkpoint.
 
 - - -
 
+### `class tf.train.SessionRunArgs` {#SessionRunArgs}
+
+Represents arguments to be added to a `Session.run()` call.
+
+Args:
+  fetches: Exactly like the 'fetches' argument to Session.Run().
+    Can be a single tensor or op, a list of 'fetches' or a dictionary
+    of fetches.  For example:
+      fetches = global_step_tensor
+      fetches = [train_op, summary_op, global_step_tensor]
+      fetches = {'step': global_step_tensor, 'summ': summary_op}
+    Note that this can recurse as expected:
+      fetches = {'step': global_step_tensor,
+                 'ops': [train_op, check_nan_op]}
+  feed_dict: Exactly like the `feed_dict` argument to `Session.Run()`
+  options: Exactly like the `options` argument to `Session.run()`, i.e., a
+    config_pb2.RunOptions proto.
+- - -
+
+#### `tf.train.SessionRunArgs.__getnewargs__()` {#SessionRunArgs.__getnewargs__}
+
+Return self as a plain tuple.  Used by copy and pickle.
+
+
+- - -
+
+#### `tf.train.SessionRunArgs.__getstate__()` {#SessionRunArgs.__getstate__}
+
+Exclude the OrderedDict from pickling
+
+
+- - -
+
+#### `tf.train.SessionRunArgs.__new__(cls, fetches, feed_dict=None, options=None)` {#SessionRunArgs.__new__}
+
+
+
+
+- - -
+
+#### `tf.train.SessionRunArgs.__repr__()` {#SessionRunArgs.__repr__}
+
+Return a nicely formatted representation string
+
+
+- - -
+
+#### `tf.train.SessionRunArgs.feed_dict` {#SessionRunArgs.feed_dict}
+
+Alias for field number 1
+
+
+- - -
+
+#### `tf.train.SessionRunArgs.fetches` {#SessionRunArgs.fetches}
+
+Alias for field number 0
+
+
+- - -
+
+#### `tf.train.SessionRunArgs.options` {#SessionRunArgs.options}
+
+Alias for field number 2
+
+
+
+- - -
+
+### `class tf.train.SessionRunContext` {#SessionRunContext}
+
+Provides information about the `session.run()` call being made.
+
+Provides information about original request to `Session.Run()` function.
+SessionRunHook objects can stop the loop by calling `request_stop()` of
+`run_context`. In the future we may use this object to add more information
+about run without changing the Hook API.
+- - -
+
+#### `tf.train.SessionRunContext.__init__(original_args, session)` {#SessionRunContext.__init__}
+
+Initializes SessionRunContext.
+
+
+- - -
+
+#### `tf.train.SessionRunContext.original_args` {#SessionRunContext.original_args}
+
+A `SessionRunArgs` object holding the original arguments of `run()`.
+
+If user called `MonitoredSession.run(fetches=a, feed_dict=b)`, then this
+field is equal to SessionRunArgs(a, b).
+
+##### Returns:
+
+ A `SessionRunArgs` object
+
+
+- - -
+
+#### `tf.train.SessionRunContext.request_stop()` {#SessionRunContext.request_stop}
+
+Sets stop requested field.
+
+Hooks can use this function to request stop of iterations.
+`MonitoredSession` checks whether this is called or not.
+
+
+- - -
+
+#### `tf.train.SessionRunContext.session` {#SessionRunContext.session}
+
+A TensorFlow session object which will execute the `run`.
+
+
+- - -
+
+#### `tf.train.SessionRunContext.stop_requested` {#SessionRunContext.stop_requested}
+
+Returns whether a stop is requested or not.
+
+If true, `MonitoredSession` stops iterations.
+
+##### Returns:
+
+  A `bool`
+
+
+
+- - -
+
+### `class tf.train.SessionRunValues` {#SessionRunValues}
+
+Contains the results of `Session.run()`.
+
+In the future we may use this object to add more information about result of
+run without changing the Hook API.
+
+Args:
+  results: The return values from `Session.run()` corresponding to the fetches
+    attribute returned in the RunArgs. Note that this has the same shape as
+    the RunArgs fetches.  For example:
+      fetches = global_step_tensor
+      => results = nparray(int)
+      fetches = [train_op, summary_op, global_step_tensor]
+      => results = [None, nparray(string), nparray(int)]
+      fetches = {'step': global_step_tensor, 'summ': summary_op}
+      => results = {'step': nparray(int), 'summ': nparray(string)}
+  options: `RunOptions` from the `Session.run()` call.
+  run_metadata: `RunMetadata` from the `Session.run()` call.
+- - -
+
+#### `tf.train.SessionRunValues.__getnewargs__()` {#SessionRunValues.__getnewargs__}
+
+Return self as a plain tuple.  Used by copy and pickle.
+
+
+- - -
+
+#### `tf.train.SessionRunValues.__getstate__()` {#SessionRunValues.__getstate__}
+
+Exclude the OrderedDict from pickling
+
+
+- - -
+
+#### `tf.train.SessionRunValues.__new__(_cls, results, options, run_metadata)` {#SessionRunValues.__new__}
+
+Create new instance of SessionRunValues(results, options, run_metadata)
+
+
+- - -
+
+#### `tf.train.SessionRunValues.__repr__()` {#SessionRunValues.__repr__}
+
+Return a nicely formatted representation string
+
+
+- - -
+
+#### `tf.train.SessionRunValues.options` {#SessionRunValues.options}
+
+Alias for field number 1
+
+
+- - -
+
+#### `tf.train.SessionRunValues.results` {#SessionRunValues.results}
+
+Alias for field number 0
+
+
+- - -
+
+#### `tf.train.SessionRunValues.run_metadata` {#SessionRunValues.run_metadata}
+
+Alias for field number 2
+
+
+
+- - -
+
 ### `class tf.train.LoggingTensorHook` {#LoggingTensorHook}
 
 Prints the given tensors once every N local steps or once every N seconds.
@@ -4349,7 +5368,7 @@ Prints the given tensors once every N local steps or once every N seconds.
 The tensors will be printed to the log, with `INFO` severity.
 - - -
 
-#### `tf.train.LoggingTensorHook.__init__(tensors, every_n_iter=None, every_n_secs=None)` {#LoggingTensorHook.__init__}
+#### `tf.train.LoggingTensorHook.__init__(tensors, every_n_iter=None, every_n_secs=None, formatter=None)` {#LoggingTensorHook.__init__}
 
 Initializes a LoggingHook monitor.
 
@@ -4363,6 +5382,8 @@ Initializes a LoggingHook monitor.
 *  <b>`every_n_secs`</b>: `int` or `float`, print the values of `tensors` once every N
       seconds. Exactly one of `every_n_iter` and `every_n_secs` should be
       provided.
+*  <b>`formatter`</b>: function, takes dict of `tag`->`Tensor` and returns a string.
+      If `None` uses default printing all tensors.
 
 ##### Raises:
 
@@ -4953,431 +5974,340 @@ such as saving a last checkpoint.
 
 - - -
 
-### `class tf.train.SessionRunArgs` {#SessionRunArgs}
+### `class tf.train.FinalOpsHook` {#FinalOpsHook}
 
-Represents arguments to be added to a `Session.run()` call.
-
-Args:
-  fetches: Exactly like the 'fetches' argument to Session.Run().
-    Can be a single tensor or op, a list of 'fetches' or a dictionary
-    of fetches.  For example:
-      fetches = global_step_tensor
-      fetches = [train_op, summary_op, global_step_tensor]
-      fetches = {'step': global_step_tensor, 'summ': summary_op}
-    Note that this can recurse as expected:
-      fetches = {'step': global_step_tensor,
-                 'ops': [train_op, check_nan_op]}
-  feed_dict: Exactly like the `feed_dict` argument to `Session.Run()`
-  options: Exactly like the `options` argument to `Session.run()`, i.e., a
-    config_pb2.RunOptions proto.
+A run hook which evaluates `Tensors` at the end of a session.
 - - -
 
-#### `tf.train.SessionRunArgs.__getnewargs__()` {#SessionRunArgs.__getnewargs__}
+#### `tf.train.FinalOpsHook.__init__(final_ops, final_ops_feed_dict=None)` {#FinalOpsHook.__init__}
 
-Return self as a plain tuple.  Used by copy and pickle.
-
-
-- - -
-
-#### `tf.train.SessionRunArgs.__getstate__()` {#SessionRunArgs.__getstate__}
-
-Exclude the OrderedDict from pickling
-
-
-- - -
-
-#### `tf.train.SessionRunArgs.__new__(cls, fetches, feed_dict=None, options=None)` {#SessionRunArgs.__new__}
-
-
-
-
-- - -
-
-#### `tf.train.SessionRunArgs.__repr__()` {#SessionRunArgs.__repr__}
-
-Return a nicely formatted representation string
-
-
-- - -
-
-#### `tf.train.SessionRunArgs.feed_dict` {#SessionRunArgs.feed_dict}
-
-Alias for field number 1
-
-
-- - -
-
-#### `tf.train.SessionRunArgs.fetches` {#SessionRunArgs.fetches}
-
-Alias for field number 0
-
-
-- - -
-
-#### `tf.train.SessionRunArgs.options` {#SessionRunArgs.options}
-
-Alias for field number 2
-
-
-
-- - -
-
-### `class tf.train.SessionRunContext` {#SessionRunContext}
-
-Provides information about the `session.run()` call being made.
-
-Provides information about original request to `Session.Run()` function.
-SessionRunHook objects can stop the loop by calling `request_stop()` of
-`run_context`. In the future we may use this object to add more information
-about run without changing the Hook API.
-- - -
-
-#### `tf.train.SessionRunContext.__init__(original_args, session)` {#SessionRunContext.__init__}
-
-Initializes SessionRunContext.
-
-
-- - -
-
-#### `tf.train.SessionRunContext.original_args` {#SessionRunContext.original_args}
-
-A `SessionRunArgs` object holding the original arguments of `run()`.
-
-If user called `MonitoredSession.run(fetches=a, feed_dict=b)`, then this
-field is equal to SessionRunArgs(a, b).
-
-##### Returns:
-
- A `SessionRunArgs` object
-
-
-- - -
-
-#### `tf.train.SessionRunContext.request_stop()` {#SessionRunContext.request_stop}
-
-Sets stop requested field.
-
-Hooks can use this function to request stop of iterations.
-`MonitoredSession` checks whether this is called or not.
-
-
-- - -
-
-#### `tf.train.SessionRunContext.session` {#SessionRunContext.session}
-
-A TensorFlow session object which will execute the `run`.
-
-
-- - -
-
-#### `tf.train.SessionRunContext.stop_requested` {#SessionRunContext.stop_requested}
-
-Returns whether a stop is requested or not.
-
-If true, `MonitoredSession` stops iterations.
-
-##### Returns:
-
-  A `bool`
-
-
-
-- - -
-
-### `class tf.train.SessionRunValues` {#SessionRunValues}
-
-Contains the results of `Session.run()`.
-
-In the future we may use this object to add more information about result of
-run without changing the Hook API.
-
-Args:
-  results: The return values from `Session.run()` corresponding to the fetches
-    attribute returned in the RunArgs. Note that this has the same shape as
-    the RunArgs fetches.  For example:
-      fetches = global_step_tensor
-      => results = nparray(int)
-      fetches = [train_op, summary_op, global_step_tensor]
-      => results = [None, nparray(string), nparray(int)]
-      fetches = {'step': global_step_tensor, 'summ': summary_op}
-      => results = {'step': nparray(int), 'summ': nparray(string)}
-  options: `RunOptions` from the `Session.run()` call.
-  run_metadata: `RunMetadata` from the `Session.run()` call.
-- - -
-
-#### `tf.train.SessionRunValues.__getnewargs__()` {#SessionRunValues.__getnewargs__}
-
-Return self as a plain tuple.  Used by copy and pickle.
-
-
-- - -
-
-#### `tf.train.SessionRunValues.__getstate__()` {#SessionRunValues.__getstate__}
-
-Exclude the OrderedDict from pickling
-
-
-- - -
-
-#### `tf.train.SessionRunValues.__new__(_cls, results, options, run_metadata)` {#SessionRunValues.__new__}
-
-Create new instance of SessionRunValues(results, options, run_metadata)
-
-
-- - -
-
-#### `tf.train.SessionRunValues.__repr__()` {#SessionRunValues.__repr__}
-
-Return a nicely formatted representation string
-
-
-- - -
-
-#### `tf.train.SessionRunValues.options` {#SessionRunValues.options}
-
-Alias for field number 1
-
-
-- - -
-
-#### `tf.train.SessionRunValues.results` {#SessionRunValues.results}
-
-Alias for field number 0
-
-
-- - -
-
-#### `tf.train.SessionRunValues.run_metadata` {#SessionRunValues.run_metadata}
-
-Alias for field number 2
-
-
-
-- - -
-
-### `class tf.train.LooperThread` {#LooperThread}
-
-A thread that runs code repeatedly, optionally on a timer.
-
-This thread class is intended to be used with a `Coordinator`.  It repeatedly
-runs code specified either as `target` and `args` or by the `run_loop()`
-method.
-
-Before each run the thread checks if the coordinator has requested stop.  In
-that case the looper thread terminates immediately.
-
-If the code being run raises an exception, that exception is reported to the
-coordinator and the thread terminates.  The coordinator will then request all
-the other threads it coordinates to stop.
-
-You typically pass looper threads to the supervisor `Join()` method.
-- - -
-
-#### `tf.train.LooperThread.__init__(coord, timer_interval_secs, target=None, args=None, kwargs=None)` {#LooperThread.__init__}
-
-Create a LooperThread.
+Constructs the FinalOpHook with ops to run at the end of the session.
 
 ##### Args:
 
 
-*  <b>`coord`</b>: A Coordinator.
-*  <b>`timer_interval_secs`</b>: Time boundaries at which to call Run(), or None
-    if it should be called back to back.
-*  <b>`target`</b>: Optional callable object that will be executed in the thread.
-*  <b>`args`</b>: Optional arguments to pass to `target` when calling it.
-*  <b>`kwargs`</b>: Optional keyword arguments to pass to `target` when calling it.
+*  <b>`final_ops`</b>: A single `Tensor`, a list of `Tensors` or a dictionary of
+    names to `Tensors`.
+*  <b>`final_ops_feed_dict`</b>: A feed dictionary to use when running
+    `final_ops_dict`.
+
+
+- - -
+
+#### `tf.train.FinalOpsHook.after_create_session(session, coord)` {#FinalOpsHook.after_create_session}
+
+Called when new TensorFlow session is created.
+
+This is called to signal the hooks that a new session has been created. This
+has two essential differences with the situation in which `begin` is called:
+
+* When this is called, the graph is finalized and ops can no longer be added
+    to the graph.
+* This method will also be called as a result of recovering a wrapped
+    session, not only at the beginning of the overall session.
+
+##### Args:
+
+
+*  <b>`session`</b>: A TensorFlow Session that has been created.
+*  <b>`coord`</b>: A Coordinator object which keeps track of all threads.
+
+
+- - -
+
+#### `tf.train.FinalOpsHook.after_run(run_context, run_values)` {#FinalOpsHook.after_run}
+
+Called after each call to run().
+
+The `run_values` argument contains results of requested ops/tensors by
+`before_run()`.
+
+The `run_context` argument is the same one send to `before_run` call.
+`run_context.request_stop()` can be called to stop the iteration.
+
+##### Args:
+
+
+*  <b>`run_context`</b>: A `SessionRunContext` object.
+*  <b>`run_values`</b>: A SessionRunValues object.
+
+
+- - -
+
+#### `tf.train.FinalOpsHook.before_run(run_context)` {#FinalOpsHook.before_run}
+
+Called before each call to run().
+
+You can return from this call a `SessionRunArgs` object indicating ops or
+tensors to add to the upcoming `run()` call.  These ops/tensors will be run
+together with the ops/tensors originally passed to the original run() call.
+The run args you return can also contain feeds to be added to the run()
+call.
+
+The `run_context` argument is a `SessionRunContext` that provides
+information about the upcoming `run()` call: the originally requested
+op/tensors, the TensorFlow Session.
+
+At this point graph is finalized and you can not add ops.
+
+##### Args:
+
+
+*  <b>`run_context`</b>: A `SessionRunContext` object.
+
+##### Returns:
+
+  None or a `SessionRunArgs` object.
+
+
+- - -
+
+#### `tf.train.FinalOpsHook.begin()` {#FinalOpsHook.begin}
+
+Called once before using the session.
+
+When called, the default graph is the one that will be launched in the
+session.  The hook can modify the graph by adding new operations to it.
+After the `begin()` call the graph will be finalized and the other callbacks
+can not modify the graph anymore. Second call of `begin()` on the same
+graph, should not change the graph.
+
+
+- - -
+
+#### `tf.train.FinalOpsHook.end(session)` {#FinalOpsHook.end}
+
+
+
+
+- - -
+
+#### `tf.train.FinalOpsHook.final_ops_values` {#FinalOpsHook.final_ops_values}
+
+
+
+
+
+- - -
+
+### `class tf.train.FeedFnHook` {#FeedFnHook}
+
+Runs `feed_fn` and sets the `feed_dict` accordingly.
+- - -
+
+#### `tf.train.FeedFnHook.__init__(feed_fn)` {#FeedFnHook.__init__}
+
+Constructs the FeedFnHook with given `feed_fn`.
+
+##### Args:
+
+
+*  <b>`feed_fn`</b>: function, no arguments and returns `dict` to feed.
+
+
+- - -
+
+#### `tf.train.FeedFnHook.after_create_session(session, coord)` {#FeedFnHook.after_create_session}
+
+Called when new TensorFlow session is created.
+
+This is called to signal the hooks that a new session has been created. This
+has two essential differences with the situation in which `begin` is called:
+
+* When this is called, the graph is finalized and ops can no longer be added
+    to the graph.
+* This method will also be called as a result of recovering a wrapped
+    session, not only at the beginning of the overall session.
+
+##### Args:
+
+
+*  <b>`session`</b>: A TensorFlow Session that has been created.
+*  <b>`coord`</b>: A Coordinator object which keeps track of all threads.
+
+
+- - -
+
+#### `tf.train.FeedFnHook.after_run(run_context, run_values)` {#FeedFnHook.after_run}
+
+Called after each call to run().
+
+The `run_values` argument contains results of requested ops/tensors by
+`before_run()`.
+
+The `run_context` argument is the same one send to `before_run` call.
+`run_context.request_stop()` can be called to stop the iteration.
+
+##### Args:
+
+
+*  <b>`run_context`</b>: A `SessionRunContext` object.
+*  <b>`run_values`</b>: A SessionRunValues object.
+
+
+- - -
+
+#### `tf.train.FeedFnHook.before_run(run_context)` {#FeedFnHook.before_run}
+
+
+
+
+- - -
+
+#### `tf.train.FeedFnHook.begin()` {#FeedFnHook.begin}
+
+Called once before using the session.
+
+When called, the default graph is the one that will be launched in the
+session.  The hook can modify the graph by adding new operations to it.
+After the `begin()` call the graph will be finalized and the other callbacks
+can not modify the graph anymore. Second call of `begin()` on the same
+graph, should not change the graph.
+
+
+- - -
+
+#### `tf.train.FeedFnHook.end(session)` {#FeedFnHook.end}
+
+Called at the end of session.
+
+The `session` argument can be used in case the hook wants to run final ops,
+such as saving a last checkpoint.
+
+##### Args:
+
+
+*  <b>`session`</b>: A TensorFlow Session that will be soon closed.
+
+
+
+- - -
+
+### `tf.train.global_step(sess, global_step_tensor)` {#global_step}
+
+Small helper to get the global step.
+
+```python
+# Creates a variable to hold the global_step.
+global_step_tensor = tf.Variable(10, trainable=False, name='global_step')
+# Creates a session.
+sess = tf.Session()
+# Initializes the variable.
+print('global_step: %s' % tf.train.global_step(sess, global_step_tensor))
+
+global_step: 10
+```
+
+##### Args:
+
+
+*  <b>`sess`</b>: A TensorFlow `Session` object.
+*  <b>`global_step_tensor`</b>: `Tensor` or the `name` of the operation that contains
+    the global step.
+
+##### Returns:
+
+  The global step value.
+
+
+- - -
+
+### `tf.train.basic_train_loop(supervisor, train_step_fn, args=None, kwargs=None, master='')` {#basic_train_loop}
+
+Basic loop to train a model.
+
+Calls `train_step_fn` in a loop to train a model.  The function is called as:
+
+```python
+train_step_fn(session, *args, **kwargs)
+```
+
+It is passed a `tf.Session` in addition to `args` and `kwargs`.  The function
+typically runs one training step in the session.
+
+##### Args:
+
+
+*  <b>`supervisor`</b>: `tf.Supervisor` to run the training services.
+*  <b>`train_step_fn`</b>: Callable to execute one training step.  Called
+    repeatedly as `train_step_fn(session, *args **kwargs)`.
+*  <b>`args`</b>: Optional positional arguments passed to `train_step_fn`.
+*  <b>`kwargs`</b>: Optional keyword arguments passed to `train_step_fn`.
+*  <b>`master`</b>: Master to use to create the training session.  Defaults to
+    `""` which causes the session to be created in the local process.
+
+
+- - -
+
+### `tf.train.get_global_step(graph=None)` {#get_global_step}
+
+Get the global step tensor.
+
+The global step tensor must be an integer variable. We first try to find it
+in the collection `GLOBAL_STEP`, or by name `global_step:0`.
+
+##### Args:
+
+
+*  <b>`graph`</b>: The graph to find the global step in. If missing, use default graph.
+
+##### Returns:
+
+  The global step variable, or `None` if none was found.
 
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If one of the arguments is invalid.
+*  <b>`TypeError`</b>: If the global step tensor has a non-integer type, or if it is not
+    a `Variable`.
 
 
 - - -
 
-#### `tf.train.LooperThread.__repr__()` {#LooperThread.__repr__}
+### `tf.train.assert_global_step(global_step_tensor)` {#assert_global_step}
 
-
-
-
-- - -
-
-#### `tf.train.LooperThread.daemon` {#LooperThread.daemon}
-
-A boolean value indicating whether this thread is a daemon thread (True) or not (False).
-
-This must be set before start() is called, otherwise RuntimeError is
-raised. Its initial value is inherited from the creating thread; the
-main thread is not a daemon thread and therefore all threads created in
-the main thread default to daemon = False.
-
-The entire Python program exits when no alive non-daemon threads are
-left.
-
-
-- - -
-
-#### `tf.train.LooperThread.getName()` {#LooperThread.getName}
-
-
-
-
-- - -
-
-#### `tf.train.LooperThread.ident` {#LooperThread.ident}
-
-Thread identifier of this thread or None if it has not been started.
-
-This is a nonzero integer. See the thread.get_ident() function. Thread
-identifiers may be recycled when a thread exits and another thread is
-created. The identifier is available even after the thread has exited.
-
-
-- - -
-
-#### `tf.train.LooperThread.isAlive()` {#LooperThread.isAlive}
-
-Return whether the thread is alive.
-
-This method returns True just before the run() method starts until just
-after the run() method terminates. The module function enumerate()
-returns a list of all alive threads.
-
-
-- - -
-
-#### `tf.train.LooperThread.isDaemon()` {#LooperThread.isDaemon}
-
-
-
-
-- - -
-
-#### `tf.train.LooperThread.is_alive()` {#LooperThread.is_alive}
-
-Return whether the thread is alive.
-
-This method returns True just before the run() method starts until just
-after the run() method terminates. The module function enumerate()
-returns a list of all alive threads.
-
-
-- - -
-
-#### `tf.train.LooperThread.join(timeout=None)` {#LooperThread.join}
-
-Wait until the thread terminates.
-
-This blocks the calling thread until the thread whose join() method is
-called terminates -- either normally or through an unhandled exception
-or until the optional timeout occurs.
-
-When the timeout argument is present and not None, it should be a
-floating point number specifying a timeout for the operation in seconds
-(or fractions thereof). As join() always returns None, you must call
-isAlive() after join() to decide whether a timeout happened -- if the
-thread is still alive, the join() call timed out.
-
-When the timeout argument is not present or None, the operation will
-block until the thread terminates.
-
-A thread can be join()ed many times.
-
-join() raises a RuntimeError if an attempt is made to join the current
-thread as that would cause a deadlock. It is also an error to join() a
-thread before it has been started and attempts to do so raises the same
-exception.
-
-
-- - -
-
-#### `tf.train.LooperThread.loop(coord, timer_interval_secs, target, args=None, kwargs=None)` {#LooperThread.loop}
-
-Start a LooperThread that calls a function periodically.
-
-If `timer_interval_secs` is None the thread calls `target(args)`
-repeatedly.  Otherwise `target(args)` is called every `timer_interval_secs`
-seconds.  The thread terminates when a stop of the coordinator is
-requested.
+Asserts `global_step_tensor` is a scalar int `Variable` or `Tensor`.
 
 ##### Args:
 
 
-*  <b>`coord`</b>: A Coordinator.
-*  <b>`timer_interval_secs`</b>: Number. Time boundaries at which to call `target`.
-*  <b>`target`</b>: A callable object.
-*  <b>`args`</b>: Optional arguments to pass to `target` when calling it.
-*  <b>`kwargs`</b>: Optional keyword arguments to pass to `target` when calling it.
+*  <b>`global_step_tensor`</b>: `Tensor` to test.
+
+
+- - -
+
+### `tf.train.write_graph(graph_or_graph_def, logdir, name, as_text=True)` {#write_graph}
+
+Writes a graph proto to a file.
+
+The graph is written as a binary proto unless `as_text` is `True`.
+
+```python
+v = tf.Variable(0, name='my_variable')
+sess = tf.Session()
+tf.train.write_graph(sess.graph_def, '/tmp/my-model', 'train.pbtxt')
+```
+
+or
+
+```python
+v = tf.Variable(0, name='my_variable')
+sess = tf.Session()
+tf.train.write_graph(sess.graph, '/tmp/my-model', 'train.pbtxt')
+```
+
+##### Args:
+
+
+*  <b>`graph_or_graph_def`</b>: A `Graph` or a `GraphDef` protocol buffer.
+*  <b>`logdir`</b>: Directory where to write the graph. This can refer to remote
+    filesystems, such as Google Cloud Storage (GCS).
+*  <b>`name`</b>: Filename for the graph.
+*  <b>`as_text`</b>: If `True`, writes the graph as an ASCII proto.
 
 ##### Returns:
 
-  The started thread.
-
-
-- - -
-
-#### `tf.train.LooperThread.name` {#LooperThread.name}
-
-A string used for identification purposes only.
-
-It has no semantics. Multiple threads may be given the same name. The
-initial name is set by the constructor.
-
-
-- - -
-
-#### `tf.train.LooperThread.run()` {#LooperThread.run}
-
-
-
-
-- - -
-
-#### `tf.train.LooperThread.run_loop()` {#LooperThread.run_loop}
-
-Called at 'timer_interval_secs' boundaries.
-
-
-- - -
-
-#### `tf.train.LooperThread.setDaemon(daemonic)` {#LooperThread.setDaemon}
-
-
-
-
-- - -
-
-#### `tf.train.LooperThread.setName(name)` {#LooperThread.setName}
-
-
-
-
-- - -
-
-#### `tf.train.LooperThread.start()` {#LooperThread.start}
-
-Start the thread's activity.
-
-It must be called at most once per thread object. It arranges for the
-object's run() method to be invoked in a separate thread of control.
-
-This method will raise a RuntimeError if called more than once on the
-same thread object.
-
-
-- - -
-
-#### `tf.train.LooperThread.start_loop()` {#LooperThread.start_loop}
-
-Called when the thread starts.
-
-
-- - -
-
-#### `tf.train.LooperThread.stop_loop()` {#LooperThread.stop_loop}
-
-Called when the thread stops.
-
+  The path of the output proto file.
 
 
 

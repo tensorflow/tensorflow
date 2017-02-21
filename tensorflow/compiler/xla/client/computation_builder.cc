@@ -765,13 +765,15 @@ ComputationDataHandle ComputationBuilder::ConvGeneralDilated(
   return ParseOpResponse(s, &response);
 }
 
-ComputationDataHandle ComputationBuilder::Infeed(const Shape& shape) {
+ComputationDataHandle ComputationBuilder::Infeed(const Shape& shape,
+                                                 const string& config) {
   if (!first_error_.ok() || !PrepareComputation().ok()) {
     return ComputationDataHandle();
   }
 
   InfeedRequest request;
   *request.mutable_shape() = shape;
+  *request.mutable_config() = config;
   OpRequest op_request;
   *op_request.mutable_computation() = computation_.handle();
   *op_request.mutable_infeed_request() = request;
@@ -781,6 +783,29 @@ ComputationDataHandle ComputationBuilder::Infeed(const Shape& shape) {
   Status s = client_->stub()->Op(&op_request, &response);
 
   return ParseOpResponse(s, &response);
+}
+
+void ComputationBuilder::Outfeed(const ComputationDataHandle& operand,
+                                 const string& outfeed_config) {
+  if (!first_error_.ok() || !PrepareComputation().ok()) {
+    return;
+  }
+
+  OutfeedRequest request;
+  request.set_outfeed_config(outfeed_config);
+  *request.mutable_operand() = operand;
+  OpRequest op_request;
+  *op_request.mutable_outfeed_request() = request;
+  *op_request.mutable_computation() = computation_.handle();
+  OpResponse response;
+
+  VLOG(2) << "making outfeed op request";
+  tensorflow::Status s = client_->stub()->Op(&op_request, &response);
+
+  if (!s.ok()) {
+    NoteError(s);
+    return;
+  }
 }
 
 ComputationDataHandle ComputationBuilder::Call(
@@ -978,8 +1003,9 @@ ComputationDataHandle ComputationBuilder::SqrtF32(
 }
 
 ComputationDataHandle ComputationBuilder::Pow(
-    const ComputationDataHandle& lhs, const ComputationDataHandle& rhs) {
-  return BinaryOp(BINOP_POW, lhs, rhs, /*broadcast_dimensions=*/{});
+    const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
+    tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return BinaryOp(BINOP_POW, lhs, rhs, broadcast_dimensions);
 }
 
 ComputationDataHandle ComputationBuilder::ConvertElementType(

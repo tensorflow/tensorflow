@@ -80,8 +80,8 @@ def main(_):
                options=tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE),
                run_metadata=run_metadata)
       trace = timeline.Timeline(step_stats=run_metadata.step_stats)
-      trace_file = open('timeline.ctf.json', 'w')
-      trace_file.write(trace.generate_chrome_trace_format())
+      with open('timeline.ctf.json', 'w') as trace_file:
+        trace_file.write(trace.generate_chrome_trace_format())
     else:
       sess.run(train_step, feed_dict={x: batch_xs, y_: batch_ys})
 

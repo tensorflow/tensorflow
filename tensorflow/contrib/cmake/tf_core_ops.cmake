@@ -14,6 +14,7 @@ set(tf_op_lib_names
     "no_op"
     "parsing_ops"
     "random_ops"
+    "remote_fused_graph_ops"
     "resource_variable_ops"
     "script_ops"
     "sdca_ops"

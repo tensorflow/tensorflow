@@ -350,13 +350,20 @@ class DynamicUpdateSliceTest : public ClientLibraryTestBase {
 
     // Build dynamic slice computation.
     ComputationBuilder builder(client_, TestName());
+    // Initialize and transfer input parameter.
+    ComputationDataHandle input;
+    std::unique_ptr<GlobalData> input_data = CreateR3Parameter<float>(
+        input_values, 0, "input_values", &builder, &input);
+    // Initialize and transfer update parameter.
+    ComputationDataHandle update;
+    std::unique_ptr<GlobalData> update_data = CreateR3Parameter<float>(
+        update_values, 1, "update_values", &builder, &update);
     auto starts = builder.ConstantR1<int32>({index, 0, 0});
-    auto input = builder.ConstantR3FromArray3D<float>(input_values);
-    auto update = builder.ConstantR3FromArray3D<float>(update_values);
     builder.DynamicUpdateSlice(input, update, starts);
 
     // Run computation and compare against expected values.
-    ComputeAndCompareR3<float>(&builder, expected_values, {},
+    ComputeAndCompareR3<float>(&builder, expected_values,
+                               {input_data.get(), update_data.get()},
                                ErrorSpec(0.000001));
   }
 

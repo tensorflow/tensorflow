@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/stream_executor/lib/error.h"  // IWYU pragma: export
+#include "tensorflow/stream_executor/lib/stringpiece.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 
 namespace perftools {
@@ -32,6 +33,17 @@ using Status = tensorflow::Status;
   CHECK_EQ(::perftools::gputools::port::Status::OK(), (val))
 #define SE_ASSERT_OK(val) \
   ASSERT_EQ(::perftools::gputools::port::Status::OK(), (val))
+
+// Define some canonical error helpers.
+inline Status UnimplementedError(StringPiece message) {
+  return Status(error::UNIMPLEMENTED, message);
+}
+inline Status InternalError(StringPiece message) {
+  return Status(error::INTERNAL, message);
+}
+inline Status FailedPreconditionError(StringPiece message) {
+  return Status(error::FAILED_PRECONDITION, message);
+}
 
 }  // namespace port
 }  // namespace gputools

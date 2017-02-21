@@ -26,7 +26,9 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
 
@@ -41,9 +43,9 @@ class CategoricalTest(test.TestCase):
 
   def testP(self):
     p = [0.2, 0.8]
-    dist = categorical.Categorical(p=p)
+    dist = categorical.Categorical(probs=p)
     with self.test_session():
-      self.assertAllClose(p, dist.p.eval())
+      self.assertAllClose(p, dist.probs.eval())
       self.assertAllEqual([2], dist.logits.get_shape())
 
   def testLogits(self):
@@ -51,33 +53,33 @@ class CategoricalTest(test.TestCase):
     logits = np.log(p) - 50.
     dist = categorical.Categorical(logits=logits)
     with self.test_session():
-      self.assertAllEqual([2], dist.p.get_shape())
+      self.assertAllEqual([2], dist.probs.get_shape())
       self.assertAllEqual([2], dist.logits.get_shape())
-      self.assertAllClose(dist.p.eval(), p)
+      self.assertAllClose(dist.probs.eval(), p)
       self.assertAllClose(dist.logits.eval(), logits)
 
   def testShapes(self):
     with self.test_session():
       for batch_shape in ([], [1], [2, 3, 4]):
         dist = make_categorical(batch_shape, 10)
-        self.assertAllEqual(batch_shape, dist.get_batch_shape())
-        self.assertAllEqual(batch_shape, dist.batch_shape().eval())
-        self.assertAllEqual([], dist.get_event_shape())
-        self.assertAllEqual([], dist.event_shape().eval())
-        self.assertEqual(10, dist.num_classes.eval())
-        # num_classes is available as a constant because the shape is
+        self.assertAllEqual(batch_shape, dist.batch_shape)
+        self.assertAllEqual(batch_shape, dist.batch_shape_tensor().eval())
+        self.assertAllEqual([], dist.event_shape)
+        self.assertAllEqual([], dist.event_shape_tensor().eval())
+        self.assertEqual(10, dist.event_size.eval())
+        # event_size is available as a constant because the shape is
         # known at graph build time.
-        self.assertEqual(10, tensor_util.constant_value(dist.num_classes))
+        self.assertEqual(10, tensor_util.constant_value(dist.event_size))
 
       for batch_shape in ([], [1], [2, 3, 4]):
         dist = make_categorical(
             batch_shape, constant_op.constant(
                 10, dtype=dtypes.int32))
-        self.assertAllEqual(len(batch_shape), dist.get_batch_shape().ndims)
-        self.assertAllEqual(batch_shape, dist.batch_shape().eval())
-        self.assertAllEqual([], dist.get_event_shape())
-        self.assertAllEqual([], dist.event_shape().eval())
-        self.assertEqual(10, dist.num_classes.eval())
+        self.assertAllEqual(len(batch_shape), dist.batch_shape.ndims)
+        self.assertAllEqual(batch_shape, dist.batch_shape_tensor().eval())
+        self.assertAllEqual([], dist.event_shape)
+        self.assertAllEqual([], dist.event_shape_tensor().eval())
+        self.assertEqual(10, dist.event_size.eval())
 
   def testDtype(self):
     dist = make_categorical([], 5, dtype=dtypes.int32)
@@ -88,14 +90,14 @@ class CategoricalTest(test.TestCase):
     self.assertEqual(dist.dtype, dtypes.int64)
     self.assertEqual(dist.dtype, dist.sample(5).dtype)
     self.assertEqual(dist.dtype, dist.mode().dtype)
-    self.assertEqual(dist.p.dtype, dtypes.float32)
+    self.assertEqual(dist.probs.dtype, dtypes.float32)
     self.assertEqual(dist.logits.dtype, dtypes.float32)
     self.assertEqual(dist.logits.dtype, dist.entropy().dtype)
     self.assertEqual(
-        dist.logits.dtype, dist.pmf(np.array(
+        dist.logits.dtype, dist.prob(np.array(
             0, dtype=np.int64)).dtype)
     self.assertEqual(
-        dist.logits.dtype, dist.log_pmf(np.array(
+        dist.logits.dtype, dist.log_prob(np.array(
             0, dtype=np.int64)).dtype)
 
   def testUnknownShape(self):
@@ -116,19 +118,19 @@ class CategoricalTest(test.TestCase):
     histograms = [[0.2, 0.8], [0.6, 0.4]]
     dist = categorical.Categorical(math_ops.log(histograms) - 50.)
     with self.test_session():
-      self.assertAllClose(dist.pmf([0, 1]).eval(), [0.2, 0.4])
+      self.assertAllClose(dist.prob([0, 1]).eval(), [0.2, 0.4])
 
   def testPMFNoBatch(self):
     histograms = [0.2, 0.8]
     dist = categorical.Categorical(math_ops.log(histograms) - 50.)
     with self.test_session():
-      self.assertAllClose(dist.pmf(0).eval(), 0.2)
+      self.assertAllClose(dist.prob(0).eval(), 0.2)
 
   def testLogPMF(self):
     logits = np.log([[0.2, 0.8], [0.6, 0.4]]) - 50.
     dist = categorical.Categorical(logits)
     with self.test_session():
-      self.assertAllClose(dist.log_pmf([0, 1]).eval(), np.log([0.2, 0.4]))
+      self.assertAllClose(dist.log_prob([0, 1]).eval(), np.log([0.2, 0.4]))
 
   def testEntropyNoBatch(self):
     logits = np.log([0.2, 0.8]) - 50.
@@ -145,6 +147,32 @@ class CategoricalTest(test.TestCase):
           -(0.2 * np.log(0.2) + 0.8 * np.log(0.8)),
           -(0.6 * np.log(0.6) + 0.4 * np.log(0.4))
       ])
+
+  def testEntropyGradient(self):
+    with self.test_session() as sess:
+      logits = constant_op.constant([[1., 2., 3.], [2., 5., 1.]])
+
+      probabilities = nn_ops.softmax(logits)
+      log_probabilities = nn_ops.log_softmax(logits)
+      true_entropy = - math_ops.reduce_sum(
+          probabilities * log_probabilities, axis=-1)
+
+      categorical_distribution = categorical.Categorical(probs=probabilities)
+      categorical_entropy = categorical_distribution.entropy()
+
+      # works
+      true_entropy_g = gradients_impl.gradients(true_entropy, [logits])
+      categorical_entropy_g = gradients_impl.gradients(
+          categorical_entropy, [logits])
+
+      res = sess.run({"true_entropy": true_entropy,
+                      "categorical_entropy": categorical_entropy,
+                      "true_entropy_g": true_entropy_g,
+                      "categorical_entropy_g": categorical_entropy_g})
+      self.assertAllClose(res["true_entropy"],
+                          res["categorical_entropy"])
+      self.assertAllClose(res["true_entropy_g"],
+                          res["categorical_entropy_g"])
 
   def testSample(self):
     with self.test_session():

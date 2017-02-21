@@ -380,7 +380,7 @@ TEST_F(HloInstructionTest, ReplaceUseInBinaryOps) {
   EXPECT_EQ(1, bar->user_count());
 
   // Replace the use of foo in add_foofoo with bar.
-  foo->ReplaceUseWith(add_foofoo.get(), bar.get());
+  ASSERT_IS_OK(foo->ReplaceUseWith(add_foofoo.get(), bar.get()));
 
   EXPECT_EQ(1, foo->user_count());
   EXPECT_EQ(2, bar->user_count());
@@ -409,7 +409,7 @@ TEST_F(HloInstructionTest, ReplaceUseInVariadicOp) {
   EXPECT_ISET(foo->users(), tuple.get(), add_foobar.get());
 
   // Replace the use of foo in tuple with bar.
-  foo->ReplaceUseWith(tuple.get(), bar.get());
+  ASSERT_IS_OK(foo->ReplaceUseWith(tuple.get(), bar.get()));
 
   EXPECT_ISET(foo->users(), add_foobar.get());
 
@@ -431,7 +431,7 @@ TEST_F(HloInstructionTest, ReplaceUseInUnaryOp) {
   EXPECT_EQ(0, bar->user_count());
 
   // Replace the use of foo in exp with bar.
-  foo->ReplaceUseWith(exp.get(), bar.get());
+  ASSERT_IS_OK(foo->ReplaceUseWith(exp.get(), bar.get()));
 
   // The use of foo in log should not have been affected.
   EXPECT_EQ(1, foo->user_count());
@@ -462,7 +462,7 @@ TEST_F(HloInstructionTest, ReplaceAllUsesWithInBinaryOps) {
   EXPECT_EQ(1, bar->user_count());
 
   // Replace all uses of foo with bar.
-  foo->ReplaceAllUsesWith(bar.get());
+  ASSERT_IS_OK(foo->ReplaceAllUsesWith(bar.get()));
 
   EXPECT_EQ(0, foo->user_count());
   EXPECT_EQ(2, bar->user_count());
@@ -486,7 +486,7 @@ TEST_F(HloInstructionTest, ReplaceAllUsesInMultipleOps) {
   EXPECT_EQ(2, bar->user_count());
 
   // Replace all uses of foo with bar.
-  foo->ReplaceAllUsesWith(bar.get());
+  ASSERT_IS_OK(foo->ReplaceAllUsesWith(bar.get()));
 
   EXPECT_EQ(0, foo->user_count());
   EXPECT_EQ(3, bar->user_count());

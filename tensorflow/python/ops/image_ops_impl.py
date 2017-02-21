@@ -188,7 +188,7 @@ def random_flip_up_down(image, seed=None):
   Args:
     image: A 3-D tensor of shape `[height, width, channels].`
     seed: A Python integer. Used to create a random seed. See
-      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      @{tf.set_random_seed}
       for behavior.
 
   Returns:
@@ -201,8 +201,9 @@ def random_flip_up_down(image, seed=None):
   _Check3DImage(image, require_static=False)
   uniform_random = random_ops.random_uniform([], 0, 1.0, seed=seed)
   mirror_cond = math_ops.less(uniform_random, .5)
-  stride = array_ops.where(mirror_cond, -1, 1)
-  result = image[::stride, :, :]
+  result = control_flow_ops.cond(mirror_cond,
+                                 lambda: array_ops.reverse(image, [0]),
+                                 lambda: image)
   return fix_image_flip_shape(image, result)
 
 
@@ -215,7 +216,7 @@ def random_flip_left_right(image, seed=None):
   Args:
     image: A 3-D tensor of shape `[height, width, channels].`
     seed: A Python integer. Used to create a random seed. See
-      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      @{tf.set_random_seed}
       for behavior.
 
   Returns:
@@ -228,8 +229,9 @@ def random_flip_left_right(image, seed=None):
   _Check3DImage(image, require_static=False)
   uniform_random = random_ops.random_uniform([], 0, 1.0, seed=seed)
   mirror_cond = math_ops.less(uniform_random, .5)
-  stride = array_ops.where(mirror_cond, -1, 1)
-  result = image[:, ::stride, :]
+  result = control_flow_ops.cond(mirror_cond,
+                                 lambda: array_ops.reverse(image, [1]),
+                                 lambda: image)
   return fix_image_flip_shape(image, result)
 
 
@@ -252,7 +254,7 @@ def flip_left_right(image):
   """
   image = ops.convert_to_tensor(image, name='image')
   _Check3DImage(image, require_static=False)
-  return fix_image_flip_shape(image, image[:, ::-1, :])
+  return fix_image_flip_shape(image, array_ops.reverse(image, [1]))
 
 
 def flip_up_down(image):
@@ -274,7 +276,7 @@ def flip_up_down(image):
   """
   image = ops.convert_to_tensor(image, name='image')
   _Check3DImage(image, require_static=False)
-  return fix_image_flip_shape(image, array_ops.reverse_v2(image, [0]))
+  return fix_image_flip_shape(image, array_ops.reverse(image, [0]))
 
 
 def rot90(image, k=1, name=None):
@@ -608,7 +610,7 @@ def resize_images(images,
 
   Resized images will be distorted if their original aspect ratio is not
   the same as `size`.  To avoid distortions see
-  [`resize_image_with_crop_or_pad`](#resize_image_with_crop_or_pad).
+  @{tf.image.resize_image_with_crop_or_pad}.
 
   `method` can be one of:
 
@@ -750,7 +752,7 @@ def random_brightness(image, max_delta, seed=None):
     image: An image.
     max_delta: float, must be non-negative.
     seed: A Python integer. Used to create a random seed. See
-      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      @{tf.set_random_seed}
       for behavior.
 
   Returns:
@@ -777,7 +779,7 @@ def random_contrast(image, lower, upper, seed=None):
     lower: float.  Lower bound for the random contrast factor.
     upper: float.  Upper bound for the random contrast factor.
     seed: A Python integer. Used to create a random seed. See
-      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      @{tf.set_random_seed}
       for behavior.
 
   Returns:
@@ -1218,24 +1220,24 @@ def adjust_saturation(image, saturation_factor, name=None):
 
 def decode_image(contents, channels=None, name=None):
   """Convenience function for `decode_gif`, `decode_jpeg`, and `decode_png`.
-  Detects whether an image is a GIF, JPEG, or PNG, and performs the appropriate 
+  Detects whether an image is a GIF, JPEG, or PNG, and performs the appropriate
   operation to convert the input bytes `string` into a `Tensor` of type `uint8`.
 
-  Note: `decode_gif` returns a 4-D array `[num_frames, height, width, 3]`, as 
-  opposed to `decode_jpeg` and `decode_png`, which return 3-D arrays 
-  `[height, width, num_channels]`. Make sure to take this into account when 
-  constructing your graph if you are intermixing GIF files with JPEG and/or PNG 
+  Note: `decode_gif` returns a 4-D array `[num_frames, height, width, 3]`, as
+  opposed to `decode_jpeg` and `decode_png`, which return 3-D arrays
+  `[height, width, num_channels]`. Make sure to take this into account when
+  constructing your graph if you are intermixing GIF files with JPEG and/or PNG
   files.
 
   Args:
     contents: 0-D `string`. The encoded image bytes.
-    channels: An optional `int`. Defaults to `0`. Number of color channels for 
+    channels: An optional `int`. Defaults to `0`. Number of color channels for
       the decoded image.
     name: A name for the operation (optional)
-    
+
   Returns:
-    `Tensor` with type `uint8` with shape `[height, width, num_channels]` for 
-      JPEG and PNG images and shape `[num_frames, height, width, 3]` for GIF 
+    `Tensor` with type `uint8` with shape `[height, width, num_channels]` for
+      JPEG and PNG images and shape `[num_frames, height, width, 3]` for GIF
       images.
   """
   with ops.name_scope(name, 'decode_image') as scope:

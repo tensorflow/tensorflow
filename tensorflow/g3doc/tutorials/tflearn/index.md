@@ -202,8 +202,8 @@ The code above first defines the model's feature columns, which specify the data
 type for the features in the data set. All the feature data is continuous, so
 `tf.contrib.layers.real_valued_column` is the appropriate function to use to
 construct the feature columns. There are four features in the data set (sepal
-width, sepal height, petal width, and petal height), so `dimensions` must be set
-accordingly to `4` to hold all the data.
+width, sepal height, petal width, and petal height), so accordingly `dimension`
+must be set to `4` to hold all the data.
 
 Then, the code creates a `DNNClassifier` model using the following arguments:
 

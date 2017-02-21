@@ -9,7 +9,7 @@ def all_backends():
     return ["cpu"]
 
 def tf_xla_py_test(name, srcs=[], deps=[], tags=[], data=[], main=None,
-                   backends=None, **kwargs):
+                   disabled_backends=None, **kwargs):
   """Generates py_test targets, one per XLA backend.
 
   This rule generates py_test() targets named name_backend, for each backend
@@ -31,15 +31,16 @@ def tf_xla_py_test(name, srcs=[], deps=[], tags=[], data=[], main=None,
     tags: Tags to apply to the generated targets.
     data: Data dependencies of the target.
     main: Same as py_test's main attribute.
-    backends: A list of backends to test. Supported values include "cpu" and
-      "gpu". If not specified, defaults to all backends.
+    disabled_backends: A list of backends that should not be tested. Supported
+      values include "cpu" and "gpu". If not specified, defaults to None.
     **kwargs: keyword arguments passed onto the generated py_test() rules.
   """
-  if backends == None:
-    backends = all_backends()
+  if disabled_backends == None:
+    disabled_backends = []
 
+  enabled_backends = [b for b in all_backends() if b not in disabled_backends]
   test_names = []
-  for backend in backends:
+  for backend in enabled_backends:
     test_name = "{}_{}".format(name, backend)
     backend_tags = ["tf_xla_{}".format(backend)]
     backend_args = []

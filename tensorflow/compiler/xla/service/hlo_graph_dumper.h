@@ -33,8 +33,12 @@ string DumpGraph(const HloComputation& computation, const string& label,
 
 // Dumps the HloModule::ToString() as a file into the provided directory path
 // suffixed with the provided label.
+//
+// If do_prefix is true, a timestamp will be prepended onto the label to
+// construct a filename in the directory path; otherwise, the label is used
+// as the filename directly.
 void DumpText(const HloModule& module, const string& label,
-              const string& directory_path);
+              const string& directory_path, bool do_prefix = true);
 
 // Abstract interface for classes that render DOT graphs.
 class GraphRendererInterface {

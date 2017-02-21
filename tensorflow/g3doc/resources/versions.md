@@ -2,10 +2,9 @@
 
 ## Semantic Versioning 2.0
 
-Once we reach version 1.0, TensorFlow will follow Semantic Versioning 2.0
-([semver](http://semver.org)) for its public API. Each release version of
-TensorFlow has the form `MAJOR.MINOR.PATCH`.  Changes to the each number have
-the following meaning:
+TensorFlow follows Semantic Versioning 2.0 ([semver](http://semver.org)) for its
+public API. Each release version of TensorFlow has the form `MAJOR.MINOR.PATCH`.
+Changes to the each number have the following meaning:
 
 * **MAJOR**:  Backwards incompatible changes.  Code and data that worked with
   a previous major release will not necessarily work with a new release.
@@ -20,23 +19,23 @@ the following meaning:
 
 * **PATCH**: Backwards compatible bug fixes.
 
-Before 1.0, semver allows backwards incompatible changes at any time.  However,
-to support users now, we will use the format `0.MAJOR.MINOR` (shifted one step
-to the right).  Thus 0.5.0 to 0.6.0 may be backwards incompatible, but 0.6.0 to
-0.6.1 will include only backwards compatible features and bug fixes.
+## What is covered
 
-At some point (especially as we approach 1.0) we will likely use prerelease
-versions such as X.Y.Z-alpha.1, but we do not yet have specific plans (beyond
-the restrictions of semver).
+Only the public APIs of TensorFlow are backwards compatible across minor and
+patch versions.  The public APIs consist of
 
+* The documented public [Python](../api_docs/python) API, excluding `tf.contrib`.
+  This includes all public functions and classes (whose names do not start with
+  `_`) in the tensorflow module and its submodules. Note that the code in
+  the `examples/` to `tools/` directories is not reachable through the
+  tensorflow Python module and is thus not covered by the compatibility
+  guarantee.
 
-## Public API
+  If a symbol is available through the tensorflow Python module or its
+  submodules, but is not documented, then it is _not_ considered part of the
+  public API.
 
-Only the C, C++, and Python public APIs of TensorFlow are backwards compatible
-across minor and patch versions.  The public APIs consist of
-
-* The documented [Python](../api_docs/python), [C++](../api_docs/cc) and
-  the [C](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/c/c_api.h) APIs.
+* The [C API](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/c/c_api.h).
 
 * The following protocol buffer files:
   [`attr_value`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/attr_value.proto),
@@ -50,33 +49,27 @@ across minor and patch versions.  The public APIs consist of
   [`tensor_shape`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/tensor_shape.proto),
   and [`types`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/types.proto).
 
-The public C++ API is exposed through the header files in
-[`tensorflow/core/public`](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/core/public).
+## What is *not* covered
 
-The public Python API is unfortunately **not** everything available through the
-tensorflow python module and its submodules, since we do not yet use `__all__`
-everywhere ([#421](https://github.com/tensorflow/tensorflow/issues/421)).
-Please refer to the documentation to determine whether a given Python feature
-is part of the public API. For now, the protocol buffers are defined in
-[`tensorflow/core/framework/*.proto`](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/core/framework)
-([#484](https://github.com/tensorflow/tensorflow/issues/484)).
+Some API functions are explicitly marked as "experimental" and can change in
+backward incompatible ways between minor releases. These include:
 
-> The [Java](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/java)
-> ([#5](https://github.com/tensorflow/tensorflow/issues/5)) and
-> [Go](https://godoc.org/github.com/tensorflow/tensorflow/tensorflow/go) APIs
-> are experimental and are **not** covered by the versioning scheme at this time.
-> They are not guaranteed to backward compatible between releases.
+* **Experimental APIs**: The `tf.contrib` module and its submodules in Python
+  and any functions in the C API or fields in protocol buffers that are
+  explicitly commented as being experimental.
 
+* **Other languages**: TensorFlow APIs in languages other than Python and C,
+  such as:
 
-## Details That Are Not Public
-
-The following are specifically **not** part of the public API: they are allowed
-to change without notice across minor releases and even patch releases if bug
-fixes require it:
+  - [C++](../api_docs/cc) (exposed through header files in
+    [`tensorflow/cc`](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/cc)).
+  - [Java](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/java)
+    ([#5](https://github.com/tensorflow/tensorflow/issues/5)), and
+  - [Go](https://godoc.org/github.com/tensorflow/tensorflow/tensorflow/go)
 
 * **Details of composite ops:**  Many public functions in Python expand to
   several primitive ops in the graph, and these details will be part of any
-  graphs saved to disk as GraphDefs.  These details are allowed to change for
+  graphs saved to disk as `GraphDef`s.  These details are allowed to change for
   minor releases. In particular, regressions tests that check for exact
   matching between graphs are likely to break across minor releases, even though
   the behavior of the graph should be unchanged and existing checkpoints will
@@ -97,8 +90,10 @@ fixes require it:
   changes to random bits rarely and ideally never for patch releases, and all
   such intended changes will be documented.
 
+Furthermore, any API methods marked "deprecated" in the 1.0 release can
+be deleted in any subsequent minor release.
 
-## Compatibility for Graphs and Checkpoints {#graphs}
+## Compatibility for Graphs and Checkpoints
 
 Many users of TensorFlow will be saving graphs and trained models to disk for
 later evaluation or more training, often changing versions of TensorFlow in the
@@ -145,11 +140,3 @@ provide tools for automatically converting graphs to a newer supported
 For developer-level details about `GraphDef` versioning, including how to evolve
 the versions to account for changes, see [TensorFlow Data
 Versioning](data_versions.md).
-
-
-## C++ ABI Compatibility
-
-Only patch releases will be binary compatible at the C++ level.  That is, minor
-releases are backwards compatible in terms of behavior but may require a
-recompile for downstream C++ code.  As always, backwards compatibility is only
-provided for the public C++ API.

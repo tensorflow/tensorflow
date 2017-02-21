@@ -176,6 +176,11 @@ def optimize_loss(loss,
                                                 str(type(learning_rate))))
     if summaries is None:
       summaries = ["loss", "learning_rate"]
+    else:
+      for summ in summaries:
+        if summ not in OPTIMIZER_SUMMARIES:
+          raise ValueError("Summaries should be one of [%s], you provided %s." %
+                           (", ".join(OPTIMIZER_SUMMARIES), summ))
     if learning_rate is not None and learning_rate_decay_fn is not None:
       if global_step is None:
         raise ValueError("global_step is required for learning_rate_decay_fn.")

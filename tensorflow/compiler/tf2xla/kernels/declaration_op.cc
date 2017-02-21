@@ -14,10 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 
 namespace tensorflow {
@@ -104,12 +104,12 @@ class ArgOp : public XlaOpKernel {
 
     OP_REQUIRES(ctx, 0 <= index_ && index_ < tc.args().size(),
                 errors::InvalidArgument("Invalid argument index ", index_));
-    const XlaCompiler::Argument& arg = tc.args()[index_];
 
-    if (arg.parameter < 0) {
+    const XlaContext::HandleOrConstant& arg = tc.args()[index_];
+    if (arg.is_constant) {
       ctx->SetConstantOutput(0, arg.constant_value);
     } else {
-      ctx->SetOutput(0, tc.parameter(arg.parameter));
+      ctx->SetOutput(0, arg.handle);
     }
   }
 

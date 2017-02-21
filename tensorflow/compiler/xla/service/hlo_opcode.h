@@ -67,6 +67,7 @@ enum class HloOpcode {
   kMultiply,
   kNe,
   kNegate,
+  kOutfeed,
   kPad,
   kParameter,
   kPower,

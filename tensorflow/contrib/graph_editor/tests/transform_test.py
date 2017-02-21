@@ -75,7 +75,7 @@ class TransformTest(test.TestCase):
       _ = math_ops.add(a, b)
     sgv = ge.make_view([assert_op, eq.op, a.op, b.op])
     copier = ge.Transformer()
-    copied_sgv, info = copier(sgv, sgv.graph, "", "")
+    _, info = copier(sgv, sgv.graph, "", "")
     new_assert_op = info.transformed(assert_op)
     self.assertIsNotNone(new_assert_op)
 
@@ -84,61 +84,29 @@ class TransformTest(test.TestCase):
 
     def my_transform_op_handler(info, op):
       add_noise = op.name.startswith("Add")
-      op_ = ge.transform.copy_op_handler(info, op)
-      if add_noise:
-        # add some noise to op
-        with info.graph_.as_default():
-          t_ = math_ops.add(constant_op.constant(
-              1.0, shape=[10], name="Noise"),
-                            op_.outputs[0],
-                            name="AddNoise")
-        # return the "noisy" op
-        return t_.op
-      else:
-        return op_
+      op_, op_outputs_ = ge.transform.copy_op_handler(info, op)
+      if not add_noise:
+        return op_, op_outputs_
+      # add some noise to op
+      with info.graph_.as_default():
+        t_ = math_ops.add(
+            constant_op.constant(1.0, shape=[10], name="Noise"),
+            op_.outputs[0],
+            name="AddNoise")
+      # return the "noisy" op
+      return op_, [t_]
 
     transformer.transform_op_handler = my_transform_op_handler
 
     graph = ops.Graph()
     transformer(self.graph, graph, "", "")
-    matcher0 = ge.matcher("AddNoise").input_ops(
-        "Noise", ge.matcher("Add").input_ops("Const", "Input"))
-    matcher1 = ge.matcher("AddNoise_1").input_ops(
-        "Noise_1", ge.matcher("Add_1").input_ops("Const_1", matcher0))
-    matcher2 = ge.matcher("AddNoise_2").input_ops(
-        "Noise_2", ge.matcher("Add_2").input_ops("Const_2", matcher1))
+    matcher0 = ge.OpMatcher("AddNoise").input_ops(
+        "Noise", ge.OpMatcher("Add").input_ops("Const", "Input"))
+    matcher1 = ge.OpMatcher("AddNoise_1").input_ops(
+        "Noise_1", ge.OpMatcher("Add_1").input_ops("Const_1", matcher0))
+    matcher2 = ge.OpMatcher("AddNoise_2").input_ops(
+        "Noise_2", ge.OpMatcher("Add_2").input_ops("Const_2", matcher1))
     top = ge.select_ops("^AddNoise_2$", graph=graph)[0]
-    self.assertTrue(matcher2(top))
-
-  def test_transform_in_place(self):
-    transformer = ge.Transformer()
-
-    def my_transform_op_handler_in_place(info, op):
-      add_noise = op.name.startswith("Add")
-      op = ge.transform.transform_op_in_place(
-          info, op, detach_outputs=add_noise)
-      if add_noise:
-        # add some noise to op
-        with info.graph_.as_default():
-          t = math_ops.add(constant_op.constant(
-              1.0, shape=[10], name="Noise"),
-                           op.outputs[0],
-                           name="AddNoise")
-        # return the "noisy" op
-        return t.op
-      else:
-        return op
-
-    transformer.transform_op_handler = my_transform_op_handler_in_place
-
-    transformer(self.graph, self.graph, "", "")
-    matcher0 = ge.matcher("AddNoise").input_ops(
-        "Noise", ge.matcher("Add").input_ops("Const", "Input"))
-    matcher1 = ge.matcher("AddNoise_1").input_ops(
-        "Noise_1", ge.matcher("Add_1").input_ops("Const_1", matcher0))
-    matcher2 = ge.matcher("AddNoise_2").input_ops(
-        "Noise_2", ge.matcher("Add_2").input_ops("Const_2", matcher1))
-    top = ge.select_ops("^AddNoise_2$", graph=self.graph)[0]
     self.assertTrue(matcher2(top))
 
   def test_copy_with_input_replacements(self):

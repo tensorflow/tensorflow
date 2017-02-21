@@ -28,7 +28,7 @@ limitations under the License.
 // Run tests, comparing the Tensorflow CPU operators with their XLA-compiled
 // counterparts:
 // randomized_tests \
-//   --tf_xla_test_use_jit=true --tf_xla_test_device=CPU \
+//   --tf_xla_test_use_jit=true --tf_xla_test_device=CPU:0 \
 //   --tf_xla_test_repetitions=20
 
 // TODO(phawkins): add tests for:
@@ -50,6 +50,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -66,6 +67,7 @@ limitations under the License.
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/command_line_flags.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 namespace {
@@ -76,9 +78,8 @@ int32 tf_xla_test_repetitions = 20;
 string* tf_xla_test_device_ptr;  // initial value set in main()
 bool tf_xla_test_use_jit = true;
 
-string DeviceTypeToDeviceName(DeviceType type) {
-  return strings::StrCat("/job:localhost/replica:0/task:0/device:", type.type(),
-                         ":0");
+string LocalDeviceToFullDeviceName(const string& device) {
+  return strings::StrCat("/job:localhost/replica:0/task:0/device:", device);
 }
 
 constexpr std::array<DataType, 3> kAllXlaTypes = {
@@ -575,9 +576,14 @@ Status TensorsAreClose(const Tensor& a, const Tensor& b, double atol,
 
 void OpTest::ExpectTfAndXlaOutputsAreClose(const OpTestBuilder& builder,
                                            double atol, double rtol) {
-  string cpu_device = DeviceTypeToDeviceName(DEVICE_CPU);
-  DeviceType test_device_type(*tf_xla_test_device_ptr);
-  string test_device = DeviceTypeToDeviceName(test_device_type);
+  string cpu_device =
+      LocalDeviceToFullDeviceName(strings::StrCat(DEVICE_CPU, ":0"));
+  string test_device = LocalDeviceToFullDeviceName(*tf_xla_test_device_ptr);
+
+  DeviceNameUtils::ParsedName parsed_name;
+  ASSERT_TRUE(
+      DeviceNameUtils::ParseLocalName(*tf_xla_test_device_ptr, &parsed_name));
+  DeviceType test_device_type(parsed_name.type);
   ++num_tests_;
 
   GraphDef graph;
@@ -2058,7 +2064,7 @@ TEST_F(OpTest, ZerosLike) {
 }  // namespace tensorflow
 
 int main(int argc, char** argv) {
-  tensorflow::tf_xla_test_device_ptr = new tensorflow::string("GPU");
+  tensorflow::tf_xla_test_device_ptr = new tensorflow::string("GPU:0");
   std::vector<tensorflow::Flag> flag_list = {
       tensorflow::Flag(
           "tf_xla_random_seed", &tensorflow::tf_xla_random_seed,
@@ -2085,13 +2091,18 @@ int main(int argc, char** argv) {
     LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
     return 2;
   }
-  // XLA devices register kernels at construction time; create and destroy all
-  // known devices to make sure the kernels are registered.
+  // XLA devices register kernels at construction time; create all known devices
+  // to make sure the kernels are registered.
   std::vector<tensorflow::Device*> devices;
   TF_CHECK_OK(tensorflow::DeviceFactory::AddDevices(
       tensorflow::SessionOptions(), "", &devices));
-  for (tensorflow::Device* device : devices) {
-    delete device;
-  }
+  tensorflow::DeviceMgr device_mgr(devices);
+
+  tensorflow::Device* ignored;
+  TF_QCHECK_OK(
+      device_mgr.LookupDevice(*tensorflow::tf_xla_test_device_ptr, &ignored))
+      << "Unknown test device (" << *tensorflow::tf_xla_test_device_ptr
+      << "). Did you build in the right configuration (e.g., is CUDA enabled)?";
+
   return RUN_ALL_TESTS();
 }

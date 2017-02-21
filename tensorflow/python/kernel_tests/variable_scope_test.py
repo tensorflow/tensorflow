@@ -27,6 +27,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
@@ -38,14 +39,19 @@ class VariableScopeTest(test.TestCase):
     vs = variable_scope._get_default_variable_store()
     v = vs.get_variable("v", [1])
     v1 = vs.get_variable("v", [1])
-    assert v == v1
+    self.assertEqual(v, v1)
+
+  def testResource(self):
+    vs = variable_scope._get_default_variable_store()
+    v1 = vs.get_variable("v", [1], use_resource=True)
+    self.assertTrue(isinstance(v1, resource_variable_ops.ResourceVariable))
 
   def testNameExists(self):
     vs = variable_scope._get_default_variable_store()
     # No check by default, so we can both create and get existing names.
     v = vs.get_variable("v", [1])
     v1 = vs.get_variable("v", [1])
-    assert v == v1
+    self.assertEqual(v, v1)
     # When reuse is False, we fail when variables are already there.
     vs.get_variable("w", [1], reuse=False)  # That's ok.
     with self.assertRaises(ValueError):
@@ -81,10 +87,10 @@ class VariableScopeTest(test.TestCase):
       with variable_scope.variable_scope("tower") as tower:
         with variable_scope.variable_scope("foo", dtype=dtypes.float16):
           v = variable_scope.get_variable("v", [])
-          self.assertEqual(v.dtype, dtypes.float16_ref)
+          self.assertEqual(v.dtype.base_dtype, dtypes.float16)
         with variable_scope.variable_scope(tower, dtype=dtypes.float16):
           w = variable_scope.get_variable("w", [])
-          self.assertEqual(w.dtype, dtypes.float16_ref)
+          self.assertEqual(w.dtype.base_dtype, dtypes.float16)
 
   def testInitFromNonTensorValue(self):
     with self.test_session() as sess:
@@ -453,6 +459,25 @@ class VariableScopeTest(test.TestCase):
               variable_scope.get_variable("w", []).name,
               "defaultScope1_2/layer/w:0")
 
+  def testVarOpScopeUniqueNamesWithJump(self):
+    with self.test_session():
+      with variable_scope.variable_scope("default") as default:
+        with variable_scope.variable_scope(None, "layer"):
+          self.assertEqual(
+              variable_scope.get_variable("w", []).name,
+              "default/layer/w:0")
+        with variable_scope.variable_scope(None, "layer"):
+          self.assertEqual(
+              variable_scope.get_variable("w", []).name,
+              "default/layer_1/w:0")
+        with variable_scope.variable_scope(default):
+          pass
+        # No matter the jump in the middle, unique numbering continues.
+        with variable_scope.variable_scope(None, "layer"):
+          self.assertEqual(
+              variable_scope.get_variable("w", []).name,
+              "default/layer_2/w:0")
+
   def testVarOpScopeReuse(self):
     with self.test_session():
       with variable_scope.variable_scope("outer") as outer:
@@ -684,7 +709,7 @@ class VariableScopeTest(test.TestCase):
     varname_type = []
 
     def device_func(op):
-      if op.type in ["Variable", "VariableV2"]:
+      if op.type in ["Variable", "VariableV2", "VarHandleOp"]:
         varname_type.append((op.name, op.get_attr("dtype")))
       return "/gpu:0"
 
@@ -809,7 +834,7 @@ class VariableScopeWithPartitioningTest(test.TestCase):
       variables = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
       self.assertIn("scope0/name0:0", [x.name for x in variables])
 
-  def testPartitionConcatenatesAlongCorrectAxis(self):
+  def _testPartitionConcatenatesAlongCorrectAxis(self, use_resource):
 
     def _part_axis_0(**unused_kwargs):
       return (2, 1, 1)
@@ -817,7 +842,7 @@ class VariableScopeWithPartitioningTest(test.TestCase):
     def _part_axis_1(**unused_kwargs):
       return (1, 2, 1)
 
-    with variable_scope.variable_scope("root"):
+    with variable_scope.variable_scope("root", use_resource=use_resource):
       v0 = variable_scope.get_variable(
           "n0", shape=(2, 2, 2), partitioner=_part_axis_0)
       v1 = variable_scope.get_variable(
@@ -826,15 +851,21 @@ class VariableScopeWithPartitioningTest(test.TestCase):
     self.assertEqual(v0.get_shape(), (2, 2, 2))
     self.assertEqual(v1.get_shape(), (2, 2, 2))
 
-    n0_0 = ops.get_default_graph().get_tensor_by_name("root/n0/part_0:0")
-    n0_1 = ops.get_default_graph().get_tensor_by_name("root/n0/part_1:0")
+    n0_0 = list(v0)[0]
+    n0_1 = list(v0)[1]
     self.assertEqual(n0_0.get_shape(), (1, 2, 2))
     self.assertEqual(n0_1.get_shape(), (1, 2, 2))
 
-    n1_0 = ops.get_default_graph().get_tensor_by_name("root/n1/part_0:0")
-    n1_1 = ops.get_default_graph().get_tensor_by_name("root/n1/part_1:0")
+    n1_0 = list(v1)[0]
+    n1_1 = list(v1)[1]
     self.assertEqual(n1_0.get_shape(), (2, 1, 2))
     self.assertEqual(n1_1.get_shape(), (2, 1, 2))
+
+  def testPartitionConcatenatesAlongCorrectAxis(self):
+    self._testPartitionConcatenatesAlongCorrectAxis(use_resource=False)
+
+  def testPartitionConcatenatesAlongCorrectAxisResource(self):
+    self._testPartitionConcatenatesAlongCorrectAxis(use_resource=True)
 
 
 class VariableScopeWithCustomGetterTest(test.TestCase):

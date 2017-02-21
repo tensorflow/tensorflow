@@ -1342,8 +1342,8 @@ class FlattenTest(test.TestCase):
     with ops.Graph().as_default() as g, self.test_session(g):
       inputs = array_ops.placeholder(dtype=dtypes.float32)
       inputs.set_shape(tensor_shape.TensorShape((5, None)))
-      with self.assertRaisesRegexp(ValueError, '2nd dimension must be defined'):
-        _layers.flatten(inputs)
+      output = _layers.flatten(inputs)
+      self.assertEqual(output.get_shape().as_list(), [5, None])
 
   def testCollectOutputs(self):
     height, width = 3, 3
@@ -1382,6 +1382,17 @@ class FlattenTest(test.TestCase):
       inputs = array_ops.placeholder(dtypes.int32, (None, height, width, 3))
       output = _layers.flatten(inputs)
       self.assertEqual(output.get_shape().as_list(), [None, height * width * 3])
+      output = sess.run(output, {inputs: images.eval()})
+      self.assertEqual(output.size, images.get_shape().num_elements())
+      self.assertEqual(output.shape[0], images.get_shape()[0])
+
+  def testUnknownDims(self):
+    height = width = depth = 3
+    with self.test_session() as sess:
+      images = random_ops.random_uniform(
+          (5, height, width, depth), seed=1, name='images')
+      inputs = array_ops.placeholder(dtypes.int32, (None, None, None, None))
+      output = _layers.flatten(inputs)
       output = sess.run(output, {inputs: images.eval()})
       self.assertEqual(output.size, images.get_shape().num_elements())
       self.assertEqual(output.shape[0], images.get_shape()[0])
@@ -1563,7 +1574,7 @@ class FCTest(test.TestCase):
       _layers.fully_connected(inputs, 32, weights_regularizer=weight_decay)
       wd = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)[0]
       self.assertEqual(wd.op.name,
-                       'fully_connected/weights/Regularizer/l2_regularizer')
+                       'fully_connected/kernel/Regularizer/l2_regularizer')
       sess.run(variables_lib.global_variables_initializer())
       self.assertLess(sess.run(wd), 0.4)
 
@@ -2992,6 +3003,14 @@ class StackTests(test.TestCase):
       output = _layers.stack(images, _layers.fully_connected, [10, 20, 30])
       self.assertEqual(output.op.name, 'Stack/fully_connected_3/Relu')
       self.assertListEqual(output.get_shape().as_list(), [5, 30])
+
+  def testStackFullyConnectedFailOnReuse(self):
+    height, width = 3, 3
+    with self.test_session():
+      with variable_scope.variable_scope('test', reuse=True):
+        images = np.random.uniform(size=(5, height * width * 3))
+        with self.assertRaises(ValueError):
+          _layers.stack(images, _layers.fully_connected, [10, 20, 30])
 
   def testStackRelu(self):
     height, width = 3, 3

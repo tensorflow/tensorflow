@@ -21,7 +21,8 @@ from __future__ import print_function
 import os
 import sys
 
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
+# pylint: disable=g-import-not-at-top
+# TODO(jart): #6568 Remove this hack that makes dlopen() not crash.
 if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
   import ctypes
   sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
@@ -45,6 +46,7 @@ from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver as saver_lib
+# pylint: enable=g-import-not-at-top
 
 
 def logistic_classifier(inputs):
@@ -64,6 +66,22 @@ class CreateTrainOpTest(test.TestCase):
     # Create an easy training set:
     self._inputs = np.random.rand(16, 4).astype(np.float32)
     self._labels = np.random.randint(0, 2, size=(16, 1)).astype(np.float32)
+
+  def testTrainOpInCollection(self):
+    with ops.Graph().as_default():
+      random_seed.set_random_seed(0)
+      tf_inputs = constant_op.constant(self._inputs, dtype=dtypes.float32)
+      tf_labels = constant_op.constant(self._labels, dtype=dtypes.float32)
+
+      tf_predictions = batchnorm_classifier(tf_inputs)
+      loss_ops.log_loss(tf_predictions, tf_labels)
+      total_loss = loss_ops.get_total_loss()
+      optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=1.0)
+
+      train_op = training.create_train_op(total_loss, optimizer)
+
+      # Make sure the training op was recorded in the proper collection
+      self.assertTrue(train_op in ops.get_collection(ops.GraphKeys.TRAIN_OP))
 
   def testUseUpdateOps(self):
     with ops.Graph().as_default():

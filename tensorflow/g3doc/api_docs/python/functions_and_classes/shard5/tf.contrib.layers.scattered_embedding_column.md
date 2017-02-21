@@ -1,4 +1,4 @@
-### `tf.contrib.layers.scattered_embedding_column(column_name, size, dimension, hash_key, combiner=None, initializer=None)` {#scattered_embedding_column}
+### `tf.contrib.layers.scattered_embedding_column(column_name, size, dimension, hash_key, combiner='mean', initializer=None)` {#scattered_embedding_column}
 
 Creates an embedding column of a sparse feature using parameter hashing.
 
@@ -27,8 +27,10 @@ collisions with a cost of slowing down training.
 *  <b>`hash_key`</b>: Specify the hash_key that will be used by the `FingerprintCat64`
     function to combine the crosses fingerprints on SparseFeatureCrossOp.
 *  <b>`combiner`</b>: A string specifying how to reduce if there are multiple entries
-    in a single row. Currently "mean", "sqrtn" and "sum" are supported. Each
-    of this can be thought as example level normalizations on the column:
+    in a single row. Currently "mean", "sqrtn" and "sum" are supported, with
+    "mean" the default. "sqrtn" often achieves good accuracy, in particular
+    with bag-of-words columns. Each of this can be thought as example level
+    normalizations on the column:
       * "sum": do not normalize features in the column
       * "mean": do l1 normalization on features in the column
       * "sqrtn": do l2 normalization on features in the column

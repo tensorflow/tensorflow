@@ -257,7 +257,7 @@ def batch_normalization(inputs,
                         training=False,
                         trainable=True,
                         name=None,
-                        reuse=False):
+                        reuse=None):
   """Functional interface for the batch normalization layer.
 
   Reference: http://arxiv.org/abs/1502.03167

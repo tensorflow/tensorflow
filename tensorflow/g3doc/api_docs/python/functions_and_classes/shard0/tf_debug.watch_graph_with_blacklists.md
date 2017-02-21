@@ -1,4 +1,4 @@
-### `tf_debug.watch_graph_with_blacklists(run_options, graph, debug_ops='DebugIdentity', debug_urls=None, node_name_regex_blacklist=None, op_type_regex_blacklist=None)` {#watch_graph_with_blacklists}
+### `tf_debug.watch_graph_with_blacklists(run_options, graph, debug_ops='DebugIdentity', debug_urls=None, node_name_regex_blacklist=None, op_type_regex_blacklist=None, global_step=-1)` {#watch_graph_with_blacklists}
 
 Add debug tensor watches, blacklisting nodes and op types.
 
@@ -26,4 +26,6 @@ N.B.: Under certain circumstances, not all specified `Tensor`s will be
     relation. In other words, a node will be excluded if it hits either of
     the two blacklists; a node will be included if and only if it hits
     neither of the blacklists.
+*  <b>`global_step`</b>: (`int`) Optional global_step count for this debug tensor
+    watch.
 

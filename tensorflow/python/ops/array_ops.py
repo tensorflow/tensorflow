@@ -13,10 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""## Casting
-
-TensorFlow provides several operations that you can use to cast tensor data
-types in your graph.
+"""Support for manipulating tensors.  See the @{$python/array_ops} guide.
 
 @@string_to_number
 @@to_double
@@ -27,12 +24,6 @@ types in your graph.
 @@cast
 @@bitcast
 @@saturate_cast
-
-## Shapes and Shaping
-
-TensorFlow provides several operations that you can use to determine the shape
-of a tensor and change the shape of a tensor.
-
 @@broadcast_dynamic_shape
 @@broadcast_static_shape
 @@shape
@@ -43,12 +34,6 @@ of a tensor and change the shape of a tensor.
 @@squeeze
 @@expand_dims
 @@meshgrid
-
-## Slicing and Joining
-
-TensorFlow provides several operations to slice or extract parts of a tensor,
-or join multiple tensors together.
-
 @@slice
 @@strided_slice
 @@split
@@ -83,10 +68,6 @@ or join multiple tensors together.
 @@quantize_v2
 @@quantized_concat
 @@setdiff1d
-
-## Fake quantization
-Operations used to help train for better quantization accuracy.
-
 @@fake_quant_with_min_max_args
 @@fake_quant_with_min_max_args_gradient
 @@fake_quant_with_min_max_vars
@@ -94,6 +75,7 @@ Operations used to help train for better quantization accuracy.
 @@fake_quant_with_min_max_vars_per_channel
 @@fake_quant_with_min_max_vars_per_channel_gradient
 """
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -634,8 +616,8 @@ def strided_slice(input_,
   tf.strided_slice(input, [1, 0, 0], [2, 1, 3], [1, 1, 1]) ==> [[[3, 3, 3]]]
   tf.strided_slice(input, [1, 0, 0], [2, 2, 3], [1, 1, 1]) ==> [[[3, 3, 3],
                                                                  [4, 4, 4]]]
-  tf.strided_slice(input, [1, 1, 0], [2, -1, 3], [1, -1, 1]) ==>[[[4, 4, 4],
-                                                                  [3, 3, 3]]]
+  tf.strided_slice(input, [1, -1, 0], [2, -3, 3], [1, -1, 1]) ==>[[[4, 4, 4],
+                                                                   [3, 3, 3]]]
   ```
 
   Args:
@@ -697,9 +679,7 @@ def _SliceHelperVar(var, slice_spec):
   """Creates a slice helper object given a variable.
 
   This allows creating a sub-tensor from part of the current contents
-  of a variable.
-  See
-  [`Tensor.__getitem__`](../../api_docs/python/framework.md#Tensor.__getitem__)
+  of a variable.  See ${tf.Tensor$`Tensor.__getitem__`}
   for detailed examples of slicing.
 
   This function in addition also allows assignment to a sliced range.
@@ -740,194 +720,6 @@ def _SliceHelperVar(var, slice_spec):
   return _SliceHelper(var._AsTensor(), slice_spec, var)
 
 ops.Tensor._override_operator("__getitem__", _SliceHelper)
-
-
-def _inplace_helper(value, loc, update, op):
-  """Applies an inplace op on `value` at `loc` with `update`.
-
-  op is one of gen_array_ops._inplace_update, gen_array_ops._inplace_add, or
-  gen_array_ops._inplace_subtract.
-
-  If `loc` is None, `value` and `update` must be the same size.
-  ```
-  value op update
-  ```
-
-  If `loc` is a scalar, `value` has rank 1 higher than `update`
-  ```
-  value[i, :] op update
-  ```
-
-  If `loc` is a vector, `value` has the same rank as `update`
-  ```
-  value[loc, :] op update
-  ```
-
-  Args:
-    value: A `Tensor` object that will be updated in-place.
-    loc: None, scalar or 1-D `Tensor`.
-    update: A `Tensor` of rank one less than `value` if `loc` is a scalar,
-            otherwise of rank equal to `value` that contains the new values
-            for `value`.
-    op: One of gen_array_ops._inplace_update, ._inplace_add, ._inplace_subtract
-  Returns:
-    output: `value` that has been updated accordingly.
-  """
-
-  value = ops.convert_to_tensor(value)
-  update = ops.convert_to_tensor(update, value.dtype)
-
-  if loc is None:
-    # Full tensor
-    return reshape(op(reshape(value, [1, -1]),
-                      gen_math_ops.cast([0], dtypes.int64),
-                      reshape(update, [1, -1])),
-                   shape(value))
-
-  loc = gen_math_ops.cast(loc, dtypes.int64)
-
-  if loc.get_shape().ndims == 0:
-    # Single 0-dim update
-    return op(value, reshape(loc, [1]), expand_dims(update, 0))
-
-  return op(value, loc, update)
-
-
-def _empty(output_shape, dtype, init=False):
-  """Creates an empty Tensor with shape `output_shape` and type `dtype`.
-
-  The memory can optionally be initialized. This is usually useful in
-  conjunction with in-place operations.
-
-  Args:
-    output_shape: 1-D `Tensor` indicating the shape of the output.
-    dtype: The element type of the returned tensor.
-    init: `bool` indicating whether or not to zero the allocated memory.
-
-  Returns:
-    output: An empty Tensor of the specified type.
-  """
-  return gen_array_ops._empty(output_shape, dtype, init=init)
-
-
-def _empty_like(value, init=None):
-  """Creates an empty Tensor with the same shape and type `dtype` as value.
-
-  The memory can optionally be initialized. This op is usually useful in
-  conjunction with in-place operations.
-
-  Args:
-    value: A `Tensor` whose shape will be used.
-    init: Initalize the returned tensor with the default value of
-      `value.dtype()` if True.  Otherwise do not initialize.
-
-  Returns:
-    output: An empty Tensor of the specified shape and type.
-  """
-  value = ops.convert_to_tensor(value)
-  return gen_array_ops._empty(shape(value), value.dtype, init=init)
-
-
-def _alias_inplace_update(value, loc, update):
-  """Updates input `value` at `loc` with `update`. Aliases value.
-
-     If `loc` is None, `value` and `update` must be the same size.
-     ```
-     value = update
-     ```
-
-     If `loc` is a scalar, `value` has rank 1 higher than `update`
-     ```
-     value[i, :] = update
-     ```
-
-     If `loc` is a vector, `value` has the same rank as `update`
-     ```
-     value[loc, :] = update
-     ```
-
-     Warning: If you use this function you will almost certainly want to add
-     a control dependency as done in the implementation of parallel_stack to
-     avoid race conditions.
-  Args:
-    value: A `Tensor` object that will be updated in-place.
-    loc: None, scalar or 1-D `Tensor`.
-    update: A `Tensor` of rank one less than `value` if `loc` is a scalar,
-            otherwise of rank equal to `value` that contains the new values
-            for `value`.
-  Returns:
-    output: `value` that has been updated accordingly.
-  """
-
-  return _inplace_helper(value, loc, update, gen_array_ops._inplace_update)
-
-
-def _alias_inplace_add(value, loc, update):
-  """Updates input `value` at `loc` with `update`. Aliases value.
-
-     If `loc` is None, `value` and `update` must be the same size.
-     ```
-     value += update
-     ```
-
-     If `loc` is a scalar, `value` has rank 1 higher than `update`
-     ```
-     value[i, :] += update
-     ```
-
-     If `loc` is a vector, `value` has the same rank as `update`
-     ```
-     value[loc, :] += update
-     ```
-
-     Warning: If you use this function you will almost certainly want to add
-     a control dependency as done in the implementation of parallel_stack to
-     avoid race conditions.
-  Args:
-    value: A `Tensor` object that will be updated in-place.
-    loc: None, scalar or 1-D `Tensor`.
-    update: A `Tensor` of rank one less than `value` if `loc` is a scalar,
-            otherwise of rank equal to `value` that contains the new values
-            for `value`.
-  Returns:
-    output: `value` that has been updated accordingly.
-  """
-
-  return _inplace_helper(value, loc, update, gen_array_ops._inplace_add)
-
-
-def _alias_inplace_subtract(value, loc, update):
-  """Updates input `value` at `loc` with `update`. Aliases value.
-
-     If `loc` is None, `value` and `update` must be the same size.
-     ```
-     value -= update
-     ```
-
-     If `loc` is a scalar, `value` has rank 1 higher than `update`
-     ```
-     value[i, :] -= update
-     ```
-
-     If `loc` is a vector, `value` has the same rank as `update`
-     ```
-     value[loc, :] -= update
-     ```
-
-     Warning: If you use this function you will almost certainly want to add
-     a control dependency as done in the implementation of parallel_stack to
-     avoid race conditions.
-  Args:
-    value: A `Tensor` object that will be updated in-place.
-    loc: None, Scalar or 1-D `Tensor`.
-    update: A `Tensor` of rank one less than `value` if `loc` is a scalar,
-            otherwise of rank equal to `value` that contains the new values
-            for `value`.
-  Returns:
-    output: `value` that has been updated accordingly.
-  """
-
-  return _inplace_helper(value, loc, update, gen_array_ops._inplace_subtract)
 
 
 def parallel_stack(values, name="parallel_stack"):
@@ -972,16 +764,9 @@ def parallel_stack(values, name="parallel_stack"):
 
     output_shape = tensor_shape.TensorShape([len(values)])
     output_shape = output_shape.concatenate(value_shape)
-
-    outputs = _empty(output_shape, values[0].dtype)
-    output_ops = []
-    for i in range(len(values)):
-      with ops.colocate_with(outputs):
-        output_op = _alias_inplace_update(outputs, i, values[i])
-      output_ops.append(output_op)
-    with ops.control_dependencies(output_ops):
-      outputs = identity(outputs)
-    return outputs
+    # expand_dims converts concat to stack.
+    return gen_array_ops._parallel_concat(
+        [expand_dims(value, 0) for value in values], shape=output_shape)
 
 def stack(values, axis=0, name="stack"):
   """Stacks a list of rank-`R` tensors into one rank-`(R+1)` tensor.
@@ -1172,12 +957,6 @@ def unstack(value, num=None, axis=0, name="unstack"):
   if num is None:
     raise ValueError("Cannot infer num from shape %s" % value_shape)
   return gen_array_ops._unpack(value, num=num, axis=axis, name=name)
-
-
-# concat_v2 is an alias for concat. concat_v2 will be deprecated and removed
-# soon, please use concat.
-def concat_v2(values, axis, name="concat_v2"):
-  return concat(values, axis, name)
 
 
 def concat(values, axis, name="concat"):
@@ -1565,7 +1344,12 @@ def zeros(shape, dtype=dtypes.float32, name=None):
   """
   dtype = dtypes.as_dtype(dtype).base_dtype
   with ops.name_scope(name, "zeros", [shape]) as name:
-    zero = False if dtype == dtypes.bool else 0
+    if dtype == dtypes.bool:
+      zero = False
+    elif dtype == dtypes.string:
+      zero = ""
+    else:
+      zero = 0
     try:
       shape = tensor_shape.as_shape(shape)
       output = constant(zero, shape=shape, dtype=dtype, name=name)

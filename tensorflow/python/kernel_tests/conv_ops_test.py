@@ -403,6 +403,14 @@ class Conv2DTest(test.TestCase):
         padding="SAME",
         expected=[44, 28, 41, 16])
 
+  def testConv2DKernelSizeMatchesInputSize(self):
+    self._VerifyValues(
+        tensor_in_sizes=[1, 2, 2, 1],
+        filter_in_sizes=[2, 2, 1, 2],
+        strides=[1, 1],
+        padding="VALID",
+        expected=[50, 60])
+
     # TODO this currently fails.
     #self._VerifyValues(tensor_in_sizes=[1, 8, 8, 1],
     #                   filter_in_sizes=[2, 2, 1, 1],
@@ -549,6 +557,20 @@ class Conv2DTest(test.TestCase):
           use_gpu=use_gpu,
           err=1e-5)
 
+  def testConv2DKernelSizeMatchesInputSizeBackpropInput(self):
+    expected_output = [5.0, 11.0, 17.0, 23.0]
+    for (data_format, use_gpu) in GetTestConfigs():
+      self._RunAndVerifyBackpropInput(
+          input_sizes=[1, 2, 2, 1],
+          filter_sizes=[2, 2, 1, 2],
+          output_sizes=[1, 1, 1, 2],
+          strides=[1, 1],
+          padding="VALID",
+          expected=expected_output,
+          data_format=data_format,
+          use_gpu=use_gpu,
+          err=1e-5)
+
   # Testing for backprops
   def _RunAndVerifyBackpropFilter(self, input_sizes, filter_sizes, output_sizes,
                                   strides, padding, expected, data_format,
@@ -671,6 +693,19 @@ class Conv2DTest(test.TestCase):
           output_sizes=[1, 2, 2, 1],
           strides=[2, 2],
           padding="SAME",
+          expected=expected_output,
+          data_format=data_format,
+          use_gpu=use_gpu)
+
+  def testConv2DKernelSizeMatchesInputSizeBackpropFilter(self):
+    expected_output = [1.0, 2.0, 2.0, 4.0, 3.0, 6.0, 4.0, 8.0]
+    for (data_format, use_gpu) in GetTestConfigs():
+      self._RunAndVerifyBackpropFilter(
+          input_sizes=[1, 2, 2, 1],
+          filter_sizes=[2, 2, 1, 2],
+          output_sizes=[1, 1, 1, 2],
+          strides=[1, 1],
+          padding="VALID",
           expected=expected_output,
           data_format=data_format,
           use_gpu=use_gpu)
@@ -962,6 +997,40 @@ class Conv2DTest(test.TestCase):
           stride_rows=2,
           stride_cols=1,
           padding="SAME",
+          test_input=False,
+          data_format=data_format,
+          use_gpu=use_gpu)
+
+  def testInputGradientKernelSizeMatchesInputSize(self):
+    for (data_format, use_gpu) in GetTestConfigs():
+      self.ConstructAndTestGradient(
+          batch=2,
+          input_rows=4,
+          input_cols=3,
+          filter_rows=4,
+          filter_cols=3,
+          in_depth=2,
+          out_depth=3,
+          stride_rows=1,
+          stride_cols=1,
+          padding="VALID",
+          test_input=True,
+          data_format=data_format,
+          use_gpu=use_gpu)
+
+  def testFilterGradientKernelSizeMatchesInputSize(self):
+    for (data_format, use_gpu) in GetTestConfigs():
+      self.ConstructAndTestGradient(
+          batch=2,
+          input_rows=4,
+          input_cols=3,
+          filter_rows=4,
+          filter_cols=3,
+          in_depth=2,
+          out_depth=3,
+          stride_rows=1,
+          stride_cols=1,
+          padding="VALID",
           test_input=False,
           data_format=data_format,
           use_gpu=use_gpu)

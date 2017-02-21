@@ -44,7 +44,14 @@ from tensorflow.python.platform import googletest
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util.protobuf import compare
+from tensorflow.python.client import device_lib
 
+def gpu_device_name():
+  """Returns the name of a GPU device if available or the empty string."""
+  for x in device_lib.list_local_devices():
+    if x.device_type == 'GPU' or x.device_type == 'SYCL':
+      return x.name
+  return ''
 
 def assert_ops_in_graph(expected_ops, graph):
   """Assert all expected operations are found.
@@ -244,6 +251,13 @@ class TensorFlowTestCase(googletest.TestCase):
 
     This method should be used for all functional tests.
 
+    This method behaves different than session.Session: for performance reasons
+    `test_session` will by default (if `graph` is None) reuse the same session
+    across tests. This means you may want to either call the function
+    `reset_default_graph()` before tests, or if creating an explicit new graph,
+    pass it here (simply setting it with `as_default()` won't do it), which will
+    trigger the creation of a new session.
+
     Use the `use_gpu` and `force_gpu` options to control where ops are run. If
     `force_gpu` is True, all ops are pinned to `/gpu:0`. Otherwise, if `use_gpu`
     is True, TensorFlow tries to run as many ops on the GPU as possible. If both
@@ -294,7 +308,12 @@ class TensorFlowTestCase(googletest.TestCase):
       sess = self._cached_session
       with sess.graph.as_default(), sess.as_default():
         if force_gpu:
-          with sess.graph.device("/gpu:0"):
+          # Use the name of an actual device if one is detected, or '/gpu:0'
+          # otherwise
+          gpu_name = gpu_device_name()
+          if len(gpu_name) == 0:
+            gpu_name = '/gpu:0'
+          with sess.graph.device(gpu_name):
             yield sess
         elif use_gpu:
           yield sess
@@ -304,7 +323,12 @@ class TensorFlowTestCase(googletest.TestCase):
     else:
       with session.Session(graph=graph, config=prepare_config(config)) as sess:
         if force_gpu:
-          with sess.graph.device("/gpu:0"):
+          # Use the name of an actual device if one is detected, or '/gpu:0'
+          # otherwise
+          gpu_name = gpu_device_name()
+          if len(gpu_name) == 0:
+            gpu_name = '/gpu:0'
+          with sess.graph.device(gpu_name):
             yield sess
         elif use_gpu:
           yield sess
@@ -484,7 +508,9 @@ class TensorFlowTestCase(googletest.TestCase):
       print("dtype = %s, shape = %s" % (a.dtype, a.shape))
       np.testing.assert_allclose(a, b, rtol=rtol, atol=atol)
 
-  def assertAllCloseAccordingToType(self, a, b, rtol=1e-6, atol=1e-6):
+  def assertAllCloseAccordingToType(self, a, b, rtol=1e-6, atol=1e-6,
+                                    float_rtol=1e-6, float_atol=1e-6,
+                                    half_rtol=1e-3, half_atol=1e-3):
     """Like assertAllClose, but also suitable for comparing fp16 arrays.
 
     In particular, the tolerance is reduced to 1e-3 if at least
@@ -495,12 +521,19 @@ class TensorFlowTestCase(googletest.TestCase):
       b: a numpy ndarray or anything can be converted to one.
       rtol: relative tolerance
       atol: absolute tolerance
+      float_rtol: relative tolerance for float32
+      float_atol: absolute tolerance for float32
+      half_rtol: relative tolerance for float16
+      half_atol: absolute tolerance for float16
     """
     a = self._GetNdArray(a)
     b = self._GetNdArray(b)
+    if a.dtype == np.float32 or b.dtype == np.float32:
+      rtol = max(rtol, float_rtol)
+      atol = max(atol, float_atol)
     if a.dtype == np.float16 or b.dtype == np.float16:
-      rtol = max(rtol, 1e-3)
-      atol = max(atol, 1e-3)
+      rtol = max(rtol, half_rtol)
+      atol = max(atol, half_atol)
 
     self.assertAllClose(a, b, rtol=rtol, atol=atol)
 

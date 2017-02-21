@@ -151,6 +151,10 @@ class Node {
   // Returns into '*e' the edge connecting to the 'idx' input of this Node.
   Status input_edge(int idx, const Edge** e) const;
 
+  // Returns into '*edges' the input data edges of this Node, indexed by input
+  // number. Does not return control edges.
+  Status input_edges(std::vector<const Edge*>* edges) const;
+
   // Returns into '*n' the node that has an output connected to the
   // 'idx' input of this Node.
   Status input_node(int idx, const Node** n) const;
@@ -415,6 +419,8 @@ class Graph {
 
 // Helper routines
 
+inline bool IsSource(const Node* node) { return node->IsSource(); }
+inline bool IsSink(const Node* node) { return node->IsSink(); }
 inline bool IsSwitch(const Node* node) { return node->IsSwitch(); }
 inline bool IsMerge(const Node* node) { return node->IsMerge(); }
 inline bool IsEnter(const Node* node) { return node->IsEnter(); }

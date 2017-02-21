@@ -27,3 +27,7 @@ tf.train.write_graph(sess.graph, '/tmp/my-model', 'train.pbtxt')
 *  <b>`name`</b>: Filename for the graph.
 *  <b>`as_text`</b>: If `True`, writes the graph as an ASCII proto.
 
+##### Returns:
+
+  The path of the output proto file.
+

@@ -1109,7 +1109,7 @@ This op first slices `input` along the dimension `batch_axis`, and for each
 slice `i`, reverses the first `seq_lengths[i]` elements along
 the dimension `seq_axis`.
 
-The elements of `seq_lengths` must obey `seq_lengths[i] < input.dims[seq_dim]`,
+The elements of `seq_lengths` must obey `seq_lengths[i] <= input.dims[seq_dim]`,
 and `seq_lengths` must be a vector of length `input.dims[batch_dim]`.
 
 The output slice `i` along dimension `batch_axis` is then given by input
@@ -1166,7 +1166,7 @@ output[2:, :, 3, :, ...] = input[2:, :, 3, :, ...]
 *  <b>`input`</b>: A `Tensor`. The input to reverse.
 *  <b>`seq_lengths`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     1-D with length `input.dims(batch_dim)` and
-    `max(seq_lengths) < input.dims(seq_dim)`
+    `max(seq_lengths) <= input.dims(seq_dim)`
 *  <b>`seq_axis`</b>: An `int`. The dimension which is partially reversed.
 *  <b>`batch_axis`</b>: An optional `int`. Defaults to `0`.
     The dimension along which reversal is performed.
@@ -1512,7 +1512,7 @@ precise description.
     The output tensor has shape `[4, 2, 2, 1]` and value:
 
     ```prettyprint
-    x = [[[[1], [3]], [[5], [7]]],
+    x = [[[[1], [3]], [[9], [11]]],
          [[[2], [4]], [[10], [12]]],
          [[[5], [7]], [[13], [15]]],
          [[[6], [8]], [[14], [16]]]]
@@ -1627,7 +1627,7 @@ block size.
     The output tensor has shape `[4, 2, 2, 1]` and value:
 
     ```prettyprint
-    x = [[[[1], [3]], [[5], [7]]],
+    x = [[[[1], [3]], [[9], [11]]],
          [[[2], [4]], [[10], [12]]],
          [[[5], [7]], [[13], [15]]],
          [[[6], [8]], [[14], [16]]]]
@@ -1796,7 +1796,7 @@ reverse of SpaceToBatch.  See below for a precise description.
         `crops = [[0, 0], [0, 0]]`:
 
     ```prettyprint
-    x = [[[[1], [3]], [[5], [7]]],
+    x = [[[[1], [3]], [[9], [11]]],
          [[[2], [4]], [[10], [12]]],
          [[[5], [7]], [[13], [15]]],
          [[[6], [8]], [[14], [16]]]]
@@ -1908,7 +1908,7 @@ followed by cropping along the `height` and `width` dimensions.
   (3) For the following input of shape `[4, 2, 2, 1]` and block_size of 2:
 
   ```prettyprint
-  x = [[[[1], [3]], [[5], [7]]],
+  x = [[[[1], [3]], [[9], [11]]],
        [[[2], [4]], [[10], [12]]],
        [[[5], [7]], [[13], [15]]],
        [[[6], [8]], [[14], [16]]]]
@@ -2044,7 +2044,7 @@ The attr `block_size` indicates the input block size and how the data is moved.
 
   * Chunks of data of size `block_size * block_size` from depth are rearranged
     into non-overlapping blocks of size `block_size x block_size`
-  * The width the output tensor is `input_width * block_size`, whereas the
+  * The width the output tensor is `input_depth * block_size`, whereas the
     height is `input_height * block_size`.
   * The depth of the input tensor must be divisible by
     `block_size * block_size`.
@@ -3016,10 +3016,9 @@ Compute gradients for a FakeQuantWithMinMaxArgs operation.
 
 ### `tf.fake_quant_with_min_max_vars(inputs, min, max, name=None)` {#fake_quant_with_min_max_vars}
 
-Fake-quantize the 'inputs' tensor of type float and shape `[b, h, w, d]` via
+Fake-quantize the 'inputs' tensor of type float via global float scalars `min`
 
-global float scalars `min` and `max` to 'outputs' tensor of same shape as
-`inputs`.
+and `max` to 'outputs' tensor of same shape as `inputs`.
 
 [min; max] is the clamping range for the 'inputs' data.  Op divides this range
 into 255 steps (total of 256 values), then replaces each 'inputs' value with the
@@ -3135,8 +3134,35 @@ Compute gradients for a FakeQuantWithMinMaxVarsPerChannel operation.
 ## Other Functions and Classes
 - - -
 
-### `tf.concat_v2(values, axis, name='concat_v2')` {#concat_v2}
+### `tf.contrib.graph_editor.copy(sgv, dst_graph=None, dst_scope='', src_scope='', reuse_dst_scope=False)` {#copy}
+
+Copy a subgraph.
+
+##### Args:
 
 
+*  <b>`sgv`</b>: the source subgraph-view. This argument is converted to a subgraph
+    using the same rules than the function subgraph.make_view.
+*  <b>`dst_graph`</b>: the destination graph.
+*  <b>`dst_scope`</b>: the destination scope.
+*  <b>`src_scope`</b>: the source scope.
+*  <b>`reuse_dst_scope`</b>: if True the dst_scope is re-used if it already exists.
+    Otherwise, the scope is given a unique name based on the one given
+    by appending an underscore followed by a digit (default).
+
+##### Returns:
+
+  A tuple `(sgv, info)` where:
+    `sgv` is the transformed subgraph view;
+    `info` is an instance of TransformerInfo containing
+    information about the transform, including mapping between
+    original and transformed tensors and operations.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if `dst_graph` is not a `tf.Graph`.
+*  <b>`StandardError`</b>: if sgv cannot be converted to a SubGraphView using
+    the same rules than the function subgraph.make_view.
 
 

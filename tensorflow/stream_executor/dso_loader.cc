@@ -78,10 +78,20 @@ string GetCudnnVersion() { return TF_CUDNN_VERSION; }
                   GetCudaDriverLibraryPath()),
       dso_handle);
 #else
-  return GetDsoHandle(
+  port::Status status = GetDsoHandle(
       FindDsoPath(port::Env::Default()->FormatLibraryFileName("cuda", "1"),
                   GetCudaDriverLibraryPath()),
       dso_handle);
+#if defined(__APPLE__)
+  // On Mac OS X, CUDA sometimes installs libcuda.dylib instead of
+  // libcuda.1.dylib.
+  return status.ok() ? status : GetDsoHandle(
+     FindDsoPath(port::Env::Default()->FormatLibraryFileName("cuda", ""),
+                 GetCudaDriverLibraryPath()),
+     dso_handle);
+#else
+  return status;
+#endif
 #endif
 }
 
@@ -113,9 +123,13 @@ static mutex& GetRpathMutex() {
   port::Status s =
       port::Env::Default()->LoadLibrary(path_string.c_str(), dso_handle);
   if (!s.ok()) {
+#if !defined(PLATFORM_WINDOWS)
+    char* ld_library_path = getenv("LD_LIBRARY_PATH");
+#endif
     LOG(INFO) << "Couldn't open CUDA library " << path
 #if !defined(PLATFORM_WINDOWS)
-              << ". LD_LIBRARY_PATH: " << getenv("LD_LIBRARY_PATH")
+              << ". LD_LIBRARY_PATH: "
+              << (ld_library_path != nullptr ? ld_library_path : "")
 #endif
     ;
     return port::Status(port::error::FAILED_PRECONDITION,

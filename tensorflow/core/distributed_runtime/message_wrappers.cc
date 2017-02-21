@@ -17,6 +17,22 @@ limitations under the License.
 
 namespace tensorflow {
 
+namespace {
+
+bool ParseTensorProtoToTensor(const TensorProto& tensor_proto,
+                              Tensor* out_tensor) {
+  if (tensor_proto.dtype() > 0 && tensor_proto.dtype() <= DataType_MAX) {
+    Tensor parsed(tensor_proto.dtype());
+    if (parsed.FromProto(cpu_allocator(), tensor_proto)) {
+      *out_tensor = parsed;
+      return true;
+    }
+  }
+  return false;
+}
+
+}  // namespace
+
 const string& InMemoryRunStepRequest::session_handle() const {
   return session_handle_;
 }
@@ -38,13 +54,14 @@ const string& InMemoryRunStepRequest::feed_name(size_t i) const {
   return feeds_[i].first;
 }
 
-Status InMemoryRunStepRequest::FeedValue(size_t i, Tensor* tensor) const {
-  *tensor = feeds_[i].second;
+Status InMemoryRunStepRequest::FeedValue(size_t i, Tensor* out_tensor) const {
+  *out_tensor = feeds_[i].second;
   return Status::OK();
 }
 
-Status InMemoryRunStepRequest::FeedValue(size_t i, TensorProto* tensor) const {
-  feeds_[i].second.AsProtoTensorContent(tensor);
+Status InMemoryRunStepRequest::FeedValue(size_t i,
+                                         TensorProto* out_tensor) const {
+  feeds_[i].second.AsProtoTensorContent(out_tensor);
   return Status::OK();
 }
 
@@ -117,21 +134,18 @@ size_t MutableProtoRunStepRequest::num_feeds() const {
 const string& MutableProtoRunStepRequest::feed_name(size_t i) const {
   return request_.feed(i).name();
 }
-Status MutableProtoRunStepRequest::FeedValue(size_t i, Tensor* tensor) const {
-  const TensorProto& tensor_proto = request_.feed(i).tensor();
-  if (tensor_proto.dtype() > 0 && tensor_proto.dtype() <= DataType_MAX) {
-    Tensor parsed(tensor_proto.dtype());
-    if (parsed.FromProto(cpu_allocator(), tensor_proto)) {
-      *tensor = parsed;
-      return Status::OK();
-    }
+Status MutableProtoRunStepRequest::FeedValue(size_t i,
+                                             Tensor* out_tensor) const {
+  if (!ParseTensorProtoToTensor(request_.feed(i).tensor(), out_tensor)) {
+    return errors::InvalidArgument("Invalid TensorProto for feed value ", i);
+  } else {
+    return Status::OK();
   }
-  return errors::InvalidArgument("Invalid TensorProto for feed value ", i);
 }
 
 Status MutableProtoRunStepRequest::FeedValue(size_t i,
-                                             TensorProto* tensor) const {
-  *tensor = request_.feed(i).tensor();
+                                             TensorProto* out_tensor) const {
+  *out_tensor = request_.feed(i).tensor();
   return Status::OK();
 }
 
@@ -199,20 +213,16 @@ const string& ProtoRunStepRequest::feed_name(size_t i) const {
   return request_->feed(i).name();
 }
 
-Status ProtoRunStepRequest::FeedValue(size_t i, Tensor* tensor) const {
-  const TensorProto& tensor_proto = request_->feed(i).tensor();
-  if (tensor_proto.dtype() > 0 && tensor_proto.dtype() <= DataType_MAX) {
-    Tensor parsed(tensor_proto.dtype());
-    if (parsed.FromProto(cpu_allocator(), tensor_proto)) {
-      *tensor = parsed;
-      return Status::OK();
-    }
+Status ProtoRunStepRequest::FeedValue(size_t i, Tensor* out_tensor) const {
+  if (!ParseTensorProtoToTensor(request_->feed(i).tensor(), out_tensor)) {
+    return errors::InvalidArgument("Invalid TensorProto for feed value ", i);
+  } else {
+    return Status::OK();
   }
-  return errors::InvalidArgument("Invalid TensorProto for feed value ", i);
 }
 
-Status ProtoRunStepRequest::FeedValue(size_t i, TensorProto* tensor) const {
-  *tensor = request_->feed(i).tensor();
+Status ProtoRunStepRequest::FeedValue(size_t i, TensorProto* out_tensor) const {
+  *out_tensor = request_->feed(i).tensor();
   return Status::OK();
 }
 
@@ -361,15 +371,11 @@ const string& MutableProtoRunGraphRequest::send_key(size_t i) const {
 
 Status MutableProtoRunGraphRequest::SendValue(size_t i,
                                               Tensor* out_tensor) const {
-  const TensorProto& tensor_proto = request_.send(i).tensor();
-  if (tensor_proto.dtype() > 0 && tensor_proto.dtype() <= DataType_MAX) {
-    Tensor parsed(tensor_proto.dtype());
-    if (parsed.FromProto(cpu_allocator(), tensor_proto)) {
-      *out_tensor = parsed;
-      return Status::OK();
-    }
+  if (!ParseTensorProtoToTensor(request_.send(i).tensor(), out_tensor)) {
+    return errors::InvalidArgument("Invalid TensorProto for feed value ", i);
+  } else {
+    return Status::OK();
   }
-  return errors::InvalidArgument("Invalid TensorProto for feed value ", i);
 }
 
 Status MutableProtoRunGraphRequest::AddSendFromRunStepRequest(
@@ -434,15 +440,11 @@ const string& ProtoRunGraphRequest::send_key(size_t i) const {
 }
 
 Status ProtoRunGraphRequest::SendValue(size_t i, Tensor* out_tensor) const {
-  const TensorProto& tensor_proto = request_->send(i).tensor();
-  if (tensor_proto.dtype() > 0 && tensor_proto.dtype() <= DataType_MAX) {
-    Tensor parsed(tensor_proto.dtype());
-    if (parsed.FromProto(cpu_allocator(), tensor_proto)) {
-      *out_tensor = parsed;
-      return Status::OK();
-    }
+  if (!ParseTensorProtoToTensor(request_->send(i).tensor(), out_tensor)) {
+    return errors::InvalidArgument("Invalid TensorProto for feed value ", i);
+  } else {
+    return Status::OK();
   }
-  return errors::InvalidArgument("Invalid TensorProto for feed value ", i);
 }
 
 size_t ProtoRunGraphRequest::num_recvs() const {
@@ -462,5 +464,229 @@ bool ProtoRunGraphRequest::is_last_partial_run() const {
 const RunGraphRequest& ProtoRunGraphRequest::ToProto() const {
   return *request_;
 }
+
+size_t InMemoryRunGraphResponse::num_recvs() const { return recvs_.size(); }
+
+const string& InMemoryRunGraphResponse::recv_key(size_t i) const {
+  return recvs_[i].first;
+}
+
+Status InMemoryRunGraphResponse::RecvValue(size_t i, TensorProto* out_tensor) {
+  recvs_[i].second.AsProtoTensorContent(out_tensor);
+  return Status::OK();
+}
+
+Status InMemoryRunGraphResponse::RecvValue(size_t i, Tensor* out_tensor) {
+  *out_tensor = recvs_[i].second;
+  return Status::OK();
+}
+
+void InMemoryRunGraphResponse::AddRecv(const string& key, const Tensor& value) {
+  recvs_.emplace_back(key, value);
+}
+
+StepStats* InMemoryRunGraphResponse::mutable_step_stats() {
+  return &step_stats_;
+}
+
+CostGraphDef* InMemoryRunGraphResponse::mutable_cost_graph() {
+  return &cost_graph_;
+}
+
+RunGraphResponse* InMemoryRunGraphResponse::get_proto() {
+  LOG(FATAL) << "Cannot get a mutable protobuf for an InMemoryRunGraphResponse";
+}
+
+size_t OwnedProtoRunGraphResponse::num_recvs() const {
+  return response_.recv_size();
+}
+
+const string& OwnedProtoRunGraphResponse::recv_key(size_t i) const {
+  return response_.recv(i).name();
+}
+
+Status OwnedProtoRunGraphResponse::RecvValue(size_t i,
+                                             TensorProto* out_tensor) {
+  out_tensor->Swap(response_.mutable_recv(i)->mutable_tensor());
+  return Status::OK();
+}
+
+Status OwnedProtoRunGraphResponse::RecvValue(size_t i, Tensor* out_tensor) {
+  if (!ParseTensorProtoToTensor(response_.recv(i).tensor(), out_tensor)) {
+    return errors::InvalidArgument("Invalid TensorProto for recv value ", i);
+  } else {
+    return Status::OK();
+  }
+}
+
+void OwnedProtoRunGraphResponse::AddRecv(const string& key,
+                                         const Tensor& value) {
+  NamedTensorProto* recv = response_.add_recv();
+  recv->set_name(key);
+  TensorProto* value_proto = recv->mutable_tensor();
+  value.AsProtoTensorContent(value_proto);
+}
+
+StepStats* OwnedProtoRunGraphResponse::mutable_step_stats() {
+  return response_.mutable_step_stats();
+}
+
+CostGraphDef* OwnedProtoRunGraphResponse::mutable_cost_graph() {
+  return response_.mutable_cost_graph();
+}
+
+RunGraphResponse* OwnedProtoRunGraphResponse::get_proto() { return &response_; }
+
+NonOwnedProtoRunGraphResponse::NonOwnedProtoRunGraphResponse(
+    RunGraphResponse* response)
+    : response_(response) {}
+
+size_t NonOwnedProtoRunGraphResponse::num_recvs() const {
+  return response_->recv_size();
+}
+
+const string& NonOwnedProtoRunGraphResponse::recv_key(size_t i) const {
+  return response_->recv(i).name();
+}
+
+Status NonOwnedProtoRunGraphResponse::RecvValue(size_t i,
+                                                TensorProto* out_tensor) {
+  out_tensor->Swap(response_->mutable_recv(i)->mutable_tensor());
+  return Status::OK();
+}
+
+Status NonOwnedProtoRunGraphResponse::RecvValue(size_t i, Tensor* out_tensor) {
+  if (!ParseTensorProtoToTensor(response_->recv(i).tensor(), out_tensor)) {
+    return errors::InvalidArgument("Invalid TensorProto for recv value ", i);
+  } else {
+    return Status::OK();
+  }
+}
+
+void NonOwnedProtoRunGraphResponse::AddRecv(const string& key,
+                                            const Tensor& value) {
+  NamedTensorProto* recv = response_->add_recv();
+  recv->set_name(key);
+  TensorProto* value_proto = recv->mutable_tensor();
+  value.AsProtoTensorContent(value_proto);
+}
+
+StepStats* NonOwnedProtoRunGraphResponse::mutable_step_stats() {
+  return response_->mutable_step_stats();
+}
+
+CostGraphDef* NonOwnedProtoRunGraphResponse::mutable_cost_graph() {
+  return response_->mutable_cost_graph();
+}
+
+RunGraphResponse* NonOwnedProtoRunGraphResponse::get_proto() {
+  return response_;
+}
+
+MutableRunStepResponseWrapper::~MutableRunStepResponseWrapper() {}
+
+size_t InMemoryRunStepResponse::num_tensors() const { return tensors_.size(); }
+
+const string& InMemoryRunStepResponse::tensor_name(size_t i) const {
+  return tensors_[i].first;
+}
+
+Status InMemoryRunStepResponse::TensorValue(size_t i,
+                                            Tensor* out_tensor) const {
+  *out_tensor = tensors_[i].second;
+  return Status::OK();
+}
+
+const RunMetadata& InMemoryRunStepResponse::metadata() const {
+  return metadata_;
+}
+
+Status InMemoryRunStepResponse::AddTensorFromRunGraphResponse(
+    const string& name, MutableRunGraphResponseWrapper* wrapper, size_t i) {
+  Tensor tensor;
+  TF_RETURN_IF_ERROR(wrapper->RecvValue(i, &tensor));
+  tensors_.emplace_back(name, tensor);
+  return Status::OK();
+}
+
+RunMetadata* InMemoryRunStepResponse::mutable_metadata() { return &metadata_; }
+
+RunStepResponse* InMemoryRunStepResponse::get_proto() {
+  LOG(FATAL) << "Cannot get a mutable protobuf for an InMemoryRunStepResponse";
+}
+
+size_t OwnedProtoRunStepResponse::num_tensors() const {
+  return response_.tensor_size();
+}
+
+const string& OwnedProtoRunStepResponse::tensor_name(size_t i) const {
+  return response_.tensor(i).name();
+}
+
+Status OwnedProtoRunStepResponse::TensorValue(size_t i,
+                                              Tensor* out_tensor) const {
+  if (!ParseTensorProtoToTensor(response_.tensor(i).tensor(), out_tensor)) {
+    return errors::InvalidArgument("Invalid TensorProto for fetch value ", i);
+  } else {
+    return Status::OK();
+  }
+}
+
+const RunMetadata& OwnedProtoRunStepResponse::metadata() const {
+  return response_.metadata();
+}
+
+Status OwnedProtoRunStepResponse::AddTensorFromRunGraphResponse(
+    const string& name, MutableRunGraphResponseWrapper* run_graph_response,
+    size_t i) {
+  NamedTensorProto* response_tensor = response_.add_tensor();
+  response_tensor->set_name(name);
+  return run_graph_response->RecvValue(i, response_tensor->mutable_tensor());
+}
+
+RunMetadata* OwnedProtoRunStepResponse::mutable_metadata() {
+  return response_.mutable_metadata();
+}
+
+RunStepResponse* OwnedProtoRunStepResponse::get_proto() { return &response_; }
+
+NonOwnedProtoRunStepResponse::NonOwnedProtoRunStepResponse(
+    RunStepResponse* response)
+    : response_(response) {}
+
+size_t NonOwnedProtoRunStepResponse::num_tensors() const {
+  return response_->tensor_size();
+}
+
+const string& NonOwnedProtoRunStepResponse::tensor_name(size_t i) const {
+  return response_->tensor(i).name();
+}
+
+Status NonOwnedProtoRunStepResponse::TensorValue(size_t i,
+                                                 Tensor* out_tensor) const {
+  if (!ParseTensorProtoToTensor(response_->tensor(i).tensor(), out_tensor)) {
+    return errors::InvalidArgument("Invalid TensorProto for fetch value ", i);
+  } else {
+    return Status::OK();
+  }
+}
+
+const RunMetadata& NonOwnedProtoRunStepResponse::metadata() const {
+  return response_->metadata();
+}
+
+Status NonOwnedProtoRunStepResponse::AddTensorFromRunGraphResponse(
+    const string& name, MutableRunGraphResponseWrapper* run_graph_response,
+    size_t i) {
+  NamedTensorProto* response_tensor = response_->add_tensor();
+  response_tensor->set_name(name);
+  return run_graph_response->RecvValue(i, response_tensor->mutable_tensor());
+}
+
+RunMetadata* NonOwnedProtoRunStepResponse::mutable_metadata() {
+  return response_->mutable_metadata();
+}
+
+RunStepResponse* NonOwnedProtoRunStepResponse::get_proto() { return response_; }
 
 }  // namespace tensorflow

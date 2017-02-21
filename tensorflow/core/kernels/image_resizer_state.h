@@ -90,6 +90,18 @@ struct ImageResizerState {
         errors::InvalidArgument("input image must be of non-zero size"));
     height_scale = CalculateResizeScale(in_height, out_height, align_corners_);
     width_scale = CalculateResizeScale(in_width, out_width, align_corners_);
+
+    // Guard against overflows
+    OP_REQUIRES(context,
+                ceilf((out_height - 1) * height_scale) <=
+                    static_cast<float>(std::numeric_limits<int64>::max()),
+                errors::InvalidArgument(
+                    "input image height scale would cause an overflow"));
+    OP_REQUIRES(
+        context,
+        ceilf((out_width - 1) * width_scale) <= static_cast<float>(INT_MAX),
+        errors::InvalidArgument(
+            "input image width scale would cause an overflow"));
   }
 
   // Calculates all the required variables, and allocates the output.

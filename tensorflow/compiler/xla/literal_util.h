@@ -355,6 +355,17 @@ class LiteralUtil {
   // true.
   static bool IsAll(const Literal& literal, int8 value);
 
+  // Like IsAll(const Literal&, int8), except we check whether the literal is
+  // equal to a particular floating-point number.
+  //
+  // If the literal is not a floating-point value, this always returns false.
+  //
+  // This casts value to the type of literal, then compares using ==.  The usual
+  // admonishments about floating-point equality checks apply.  We expect you to
+  // use this to check for values that can be expressed precisely as a float,
+  // e.g. -0.5.
+  static bool IsAllFloat(const Literal& literal, float value);
+
   // Returns whether the literal is zero at the specified index. The literal
   // must be an array.
   static bool IsZero(const Literal& literal,

@@ -423,6 +423,7 @@ TF_CALL_double(REGISTER_CPU_KERNELS);
 #ifdef TENSORFLOW_USE_SYCL
 #define REGISTER_SYCL_KERNELS(T) REGISTER_KERNELS(SYCL, T);
 TF_CALL_float(REGISTER_SYCL_KERNELS);
+TF_CALL_double(REGISTER_SYCL_KERNELS);
 #undef REGISTER_SYCL_KERNELS
 #endif
 
@@ -1526,7 +1527,11 @@ using GPUDevice = Eigen::GpuDevice;
 #define REGISTER_KERNELS(D, T)                                          \
   REGISTER_KERNEL_BUILDER(                                              \
       Name("ApplyAdagradDA").Device(DEVICE_##D).TypeConstraint<T>("T"), \
-      ApplyAdagradDAOp<D##Device, T>);
+      ApplyAdagradDAOp<D##Device, T>);                                  \
+  REGISTER_KERNEL_BUILDER(Name("ResourceApplyAdagradDA")                \
+                              .Device(DEVICE_##D)                       \
+                              .TypeConstraint<T>("T"),                  \
+                          ApplyAdagradDAOp<D##Device, T>);
 
 REGISTER_KERNELS(CPU, float);
 REGISTER_KERNELS(CPU, double);
@@ -2351,6 +2356,7 @@ TF_CALL_double(REGISTER_CPU_KERNELS);
 #define REGISTER_SYCL_KERNELS(T) REGISTER_KERNELS(SYCL, T);
 
 TF_CALL_float(REGISTER_SYCL_KERNELS);
+TF_CALL_double(REGISTER_SYCL_KERNELS);
 #endif
 
 #if GOOGLE_CUDA

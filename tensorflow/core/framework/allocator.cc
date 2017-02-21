@@ -120,6 +120,9 @@ Allocator* MakeCpuAllocator() {
 
 Allocator* cpu_allocator() {
   static Allocator* cpu_alloc = MakeCpuAllocator();
+  if (cpu_allocator_collect_full_stats && !cpu_alloc->TracksAllocationSizes()) {
+    cpu_alloc = new TrackingAllocator(cpu_alloc, true);
+  }
   return cpu_alloc;
 }
 

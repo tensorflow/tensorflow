@@ -141,6 +141,9 @@ class ResourceMgr {
   template <typename T>
   Status Delete(const string& container, const string& name) TF_MUST_USE_RESULT;
 
+  // Deletes the resource pointed by "handle".
+  Status Delete(const ResourceHandle& handle) TF_MUST_USE_RESULT;
+
   // Deletes all resources from the "container" and removes the container.
   Status Cleanup(const string& container) TF_MUST_USE_RESULT;
 
@@ -151,10 +154,10 @@ class ResourceMgr {
   string DebugString() const;
 
  private:
-  typedef std::pair<TypeIndex, string> Key;
+  typedef std::pair<uint64, string> Key;
   struct KeyHash {
     std::size_t operator()(const Key& k) const {
-      return Hash64(k.second.data(), k.second.size(), k.first.hash_code());
+      return Hash64(k.second.data(), k.second.size(), k.first);
     }
   };
   struct KeyEqual {
@@ -172,8 +175,24 @@ class ResourceMgr {
                   ResourceBase* resource) TF_MUST_USE_RESULT;
   Status DoLookup(const string& container, TypeIndex type, const string& name,
                   ResourceBase** resource) const TF_MUST_USE_RESULT;
+  Status DoDelete(const string& container, uint64 type_hash_code,
+                  const string& resource_name,
+                  const string& type_name) TF_MUST_USE_RESULT;
   Status DoDelete(const string& container, TypeIndex type,
-                  const string& name) TF_MUST_USE_RESULT;
+                  const string& resource_name) TF_MUST_USE_RESULT;
+
+  // Inserts the type name for 'hash_code' into the hash_code to type name map.
+  Status InsertDebugTypeName(uint64 hash_code, const string& type_name)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_) TF_MUST_USE_RESULT;
+
+  // Returns the type name for the 'hash_code'.
+  // Returns "<unknown>" if a resource with such a type was never inserted into
+  // the container.
+  const char* DebugTypeName(uint64 hash_code) const
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  // Map from type hash_code to type name.
+  std::unordered_map<uint64, string> debug_type_names_ GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(ResourceMgr);
 };
@@ -205,6 +224,11 @@ Status LookupOrCreateResource(OpKernelContext* ctx, const ResourceHandle& p,
 
 // Destroys a resource pointed by a given resource handle.
 template <typename T>
+Status DeleteResource(OpKernelContext* ctx, const ResourceHandle& p);
+
+// Same as above, but uses the hash code of the type directly.
+// The type name information will be missing in the debug output when the
+// resource is not present in the container.
 Status DeleteResource(OpKernelContext* ctx, const ResourceHandle& p);
 
 // Policy helper to decide which container/shared_name to use for a
@@ -421,13 +445,11 @@ ResourceHandle MakePerStepResourceHandle(OpKernelContext* ctx,
 
 namespace internal {
 
+Status ValidateDevice(OpKernelContext* ctx, const ResourceHandle& p);
+
 template <typename T>
 Status ValidateDeviceAndType(OpKernelContext* ctx, const ResourceHandle& p) {
-  if (ctx->device()->attributes().name() != p.device()) {
-    return errors::InvalidArgument(
-        "Trying to access resource located in device ", p.device(),
-        " from device ", ctx->device()->attributes().name());
-  }
+  TF_RETURN_IF_ERROR(internal::ValidateDevice(ctx, p));
   auto type_index = MakeTypeIndex<T>();
   if (type_index.hash_code() != p.hash_code()) {
     return errors::InvalidArgument(
@@ -465,6 +487,8 @@ Status DeleteResource(OpKernelContext* ctx, const ResourceHandle& p) {
   TF_RETURN_IF_ERROR(internal::ValidateDeviceAndType<T>(ctx, p));
   return ctx->resource_manager()->Delete<T>(p.container(), p.name());
 }
+
+Status DeleteResource(OpKernelContext* ctx, const ResourceHandle& p);
 
 template <typename T>
 void IsResourceInitialized<T>::Compute(OpKernelContext* ctx) {
