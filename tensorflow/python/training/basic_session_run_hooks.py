@@ -195,11 +195,11 @@ class StopAtStepHook(session_run_hook.SessionRunHook):
     """Create a StopAtStep Hook.
 
     This hook requests stop after either a number of steps have been
-    executed or a last step has been reached.  Only of the two options can be
+    executed or a last step has been reached. Only one of the two options can be
     specified.
 
     if `num_steps` is specified, it indicates the number of steps to execute
-    after `begin()` is called.  If instead `last_step` is specified, it
+    after `begin()` is called. If instead `last_step` is specified, it
     indicates the last step we want to execute, as passed to the `after_run()`
     call.
 

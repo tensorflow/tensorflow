@@ -73,7 +73,7 @@ def _embeddings_from_arguments(column,
         shape=[args.vocab_size],
         dtype=dtypes.float32,
         initializer=args.initializer,
-        trainable=trainable,
+        trainable=(trainable and args.trainable),
         collections=weight_collections)
 
     return embedding_ops.scattered_embedding_lookup_sparse(
@@ -108,7 +108,7 @@ def _embeddings_from_arguments(column,
           shape=shape,
           dtype=dtypes.float32,
           initializer=args.initializer,
-          trainable=trainable,
+          trainable=(trainable and args.trainable),
           collections=weight_collections)
       graph.add_to_collection(shared_embedding_collection_name, embeddings)
   else:
@@ -117,7 +117,7 @@ def _embeddings_from_arguments(column,
         shape=[args.vocab_size, args.dimension],
         dtype=dtypes.float32,
         initializer=args.initializer,
-        trainable=trainable,
+        trainable=(trainable and args.trainable),
         collections=weight_collections)
 
   if isinstance(embeddings, variables.Variable):

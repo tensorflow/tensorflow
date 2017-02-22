@@ -414,6 +414,9 @@ class Tensor {
                               const TensorShape&);
 
  private:
+  // Returns true if the refcount on buf_ and any possible underlying root
+  // buffer is one.
+  bool RefCountIsOne() const;
   void CheckType(DataType expected_dtype) const;
   void CheckTypeAndIsAligned(DataType expected_dtype) const;
   void CheckIsAlignedAndSingleElement() const;
@@ -439,6 +442,7 @@ class Tensor {
   friend class TensorTestHelper;      // For access to set_shape
   template <typename Device, typename T>
   friend class CreateVariableOp;
+  friend class OpKernelContext;  // For access to RefCountIsOne().
 
   // Creates a tensor with the input datatype, shape and buf.
   //

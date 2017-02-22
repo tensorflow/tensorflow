@@ -83,7 +83,7 @@ flags.DEFINE_boolean('purge_orphaned_data', True, 'Whether to purge data that '
                      'Disabling purge_orphaned_data can be used to debug data '
                      'disappearance.')
 
-flags.DEFINE_integer('reload_interval', 60, 'How often the backend should load '
+flags.DEFINE_integer('reload_interval', 5, 'How often the backend should load '
                      'more data.')
 
 FLAGS = flags.FLAGS

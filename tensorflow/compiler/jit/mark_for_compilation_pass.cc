@@ -147,6 +147,12 @@ Status DeviceTypeOfDevice(const string& device, DeviceType* device_type) {
   return Status::OK();
 }
 
+// Does `node` have a DT_RESOURCE typed argument?
+bool HasResourceArgument(const Node& node) {
+  return std::find(node.input_types().begin(), node.input_types().end(),
+                   DT_RESOURCE) != node.input_types().end();
+}
+
 Status FindCompilationCandidates(
     const Graph& graph, FunctionLibraryDefinition* flib_def, Env* env,
     const std::function<bool(const Node*, const DeviceType&)>& is_compilable_fn,
@@ -171,6 +177,11 @@ Status FindCompilationCandidates(
     if (!HasXLAKernel(*node, jit_device_type) &&
         !IsCompilableCall(node->def(), jit_device_type, 0, lib_runtime.get())) {
       VLOG(2) << "Compilation rejected node: unsupported op " << node->name()
+              << ": " << node->def().op();
+      continue;
+    }
+    if (!registration->compile_resource_ops && HasResourceArgument(*node)) {
+      VLOG(2) << "Compilation rejected node: resource argument " << node->name()
               << ": " << node->def().op();
       continue;
     }

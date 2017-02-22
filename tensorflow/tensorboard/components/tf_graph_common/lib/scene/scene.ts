@@ -92,42 +92,35 @@ module tf.graph.scene {
    * Encapsulates how to render a single entry in a health pill. Each entry
    * corresponds to a category of tensor element values.
    */
-  interface HealthPillEntry {
+  export interface HealthPillEntry {
     background_color: string;
-    text_color: string;
     label: string;
   }
   ;
-  const _healthPillEntries: HealthPillEntry[] = [
+  export let healthPillEntries: HealthPillEntry[] = [
     {
-      background_color: '#762a83',
-      text_color: '#fff',
-      label: '-∞',
+      background_color: '#CC2F2C',
+      label: 'NaN',
     },
     {
-      background_color: '#af8dc3',
-      text_color: '#000',
+      background_color: '#FFFF00',
+      label: '- ∞',
+    },
+    {
+      background_color: '#A8A8A8',
       label: '-',
     },
     {
-      background_color: '#f7da0b',
-      text_color: '#000',
+      background_color: '#D8DBE2',
       label: '0',
     },
     {
-      background_color: '#a2c96f',
-      text_color: '#000',
+      background_color: '#424242',
       label: '+',
     },
     {
-      background_color: '#1f8926',
-      text_color: '#fff',
-      label: '+∞',
-    },
-    {
-      background_color: '#0909c6',
-      text_color: '#fff',
-      label: 'NaN',
+      background_color: '#FFA500',
+      label: '+ ∞',
     },
   ];
 
@@ -535,6 +528,12 @@ function _addHealthPill(
 
   let healthPillWidth = 60;
   let healthPillHeight = 10;
+  if (nodeInfo.node.type === tf.graph.NodeType.OP) {
+    // Use a smaller health pill for op nodes (rendered as smaller ellipses).
+    healthPillWidth /= 2;
+    healthPillHeight /= 2;
+  }
+
   let healthPillSvg = document.createElementNS(svgNamespace, 'svg');
   healthPillSvg.classList.add('health-pill-group');
   healthPillSvg.setAttribute('width', String(healthPillWidth));
@@ -571,24 +570,13 @@ function _addHealthPill(
     rect.setAttribute('width', String(rectWidth));
     let rectX = totalWidthDividedByTotalCount * totalCountSoFar;
     rect.setAttribute('x', String(rectX));
-    rect.setAttribute('fill', _healthPillEntries[i].background_color);
+    rect.setAttribute('fill', healthPillEntries[i].background_color);
     totalCountSoFar += lastHealthPillOverview[i];
     rectGroup.appendChild(rect);
 
-    // Append a label.
-    let textSvg = document.createElementNS(svgNamespace, 'text');
-    textSvg.setAttribute('font-size', '8');
-    textSvg.setAttribute('font-family', 'arial');
-    rectGroup.appendChild(textSvg);
-    textSvg.appendChild(document.createTextNode(_healthPillEntries[i].label));
-    textSvg.setAttribute('x', String(rectX + rectWidth / 2));
-    textSvg.setAttribute('y', String(7.5));
-    textSvg.setAttribute('text-anchor', 'middle');
-    textSvg.setAttribute('fill', _healthPillEntries[i].text_color);
-
     // Include this number in the title that appears on hover.
     titleOnHoverTextEntries.push(
-        _healthPillEntries[i].label + ': ' + lastHealthPillOverview[i]);
+        healthPillEntries[i].label + ': ' + lastHealthPillOverview[i]);
   }
 
   // Show a title with specific counts on hover.
@@ -597,11 +585,14 @@ function _addHealthPill(
   healthPillSvg.appendChild(titleSvg);
 
   // Center this health pill just right above the node for the op.
-  healthPillSvg.setAttribute(
-      'x', String(nodeInfo.x - healthPillWidth + nodeInfo.width / 2));
-  healthPillSvg.setAttribute(
-      'y',
-      String(nodeInfo.y - healthPillHeight - nodeInfo.coreBox.height / 2 - 2));
+  let healthPillX = nodeInfo.x - healthPillWidth / 2;
+  healthPillSvg.setAttribute('x', String(healthPillX));
+  let healthPillY = nodeInfo.y - healthPillHeight - nodeInfo.height / 2 - 2;
+  if (nodeInfo.labelOffset < 0) {
+    // The label is positioned above the node. Do not occlude the label.
+    healthPillY += nodeInfo.labelOffset;
+  }
+  healthPillSvg.setAttribute('y', String(healthPillY));
   Polymer.dom(nodeGroupElement.parentNode).appendChild(healthPillSvg);
 }
 
@@ -612,8 +603,9 @@ function _addHealthPill(
  * @param colors A list of colors to use.
  */
 export function addHealthPills(
-    svgRoot: SVGElement, nodeNamesToHealthPill: {[key: string]: HealthPill}) {
-  if (!nodeNamesToHealthPill) {
+    svgRoot: SVGElement, nodeNamesToHealthPills: {[key: string]: HealthPill[]},
+    healthPillStepIndex: number) {
+  if (!nodeNamesToHealthPills) {
     // No health pill information available.
     return;
   }
@@ -621,9 +613,10 @@ export function addHealthPills(
   let svgRootSelection = d3.select(svgRoot);
   svgRootSelection.selectAll('g.nodeshape')
       .each(function(nodeInfo: render.RenderGroupNodeInfo) {
-        // The element is the first item of a d3 selection.
-        _addHealthPill(
-            this, nodeNamesToHealthPill[nodeInfo.node.name], nodeInfo);
+        // Only show health pill data for this node if it is available.
+        let healthPills = nodeNamesToHealthPills[nodeInfo.node.name];
+        let healthPill = healthPills ? healthPills[healthPillStepIndex] : null;
+        _addHealthPill(this, healthPill, nodeInfo);
       });
 };
 

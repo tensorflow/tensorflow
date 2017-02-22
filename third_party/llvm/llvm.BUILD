@@ -351,6 +351,7 @@ llvm_target_list = [
         "lower_name": "arm",
         "short_name": "ARM",
         "tbl_outs": [
+            ("-gen-register-bank", "lib/Target/ARM/ARMGenRegisterBank.inc"),
             ("-gen-register-info", "lib/Target/ARM/ARMGenRegisterInfo.inc"),
             ("-gen-instr-info", "lib/Target/ARM/ARMGenInstrInfo.inc"),
             ("-gen-emitter", "lib/Target/ARM/ARMGenMCCodeEmitter.inc"),
@@ -398,6 +399,7 @@ llvm_target_list = [
         "lower_name": "x86",
         "short_name": "X86",
         "tbl_outs": [
+            ("-gen-register-bank", "lib/Target/X86/X86GenRegisterBank.inc"),
             ("-gen-register-info", "lib/Target/X86/X86GenRegisterInfo.inc"),
             ("-gen-disassembler", "lib/Target/X86/X86GenDisassemblerTables.inc"),
             ("-gen-instr-info", "lib/Target/X86/X86GenInstrInfo.inc"),

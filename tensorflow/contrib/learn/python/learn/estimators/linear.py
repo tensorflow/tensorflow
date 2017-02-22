@@ -566,6 +566,7 @@ class LinearClassifier(estimator.Estimator):
       return _as_iterable(preds, output=key)
     return preds[key]
 
+  @deprecated("2017-03-25", "Please use Estimator.export_savedmodel() instead.")
   def export(self,
              export_dir,
              input_fn=None,
@@ -833,6 +834,7 @@ class LinearRegressor(estimator.Estimator):
       return _as_iterable(preds, output=key)
     return preds[key]
 
+  @deprecated("2017-03-25", "Please use Estimator.export_savedmodel() instead.")
   def export(self,
              export_dir,
              input_fn=None,
