@@ -118,7 +118,7 @@ appearing in adb logcat.
 
 There are several ways to create the testsig library, the only prerequisite is Python and the correct version of the Hexagon-SDK. The following steps is one way to create this library:
 1. Run adb as root: `adb root`
-2. Run the command `adb shell /sys/devices/soc0/serial_number`
+2. Run the command `adb shell cat /sys/devices/soc0/serial_number`
 3. Convert the decimal number you get as output to hex
 4. Run the python script: `python ${QUALCOMM_SDK}/tools/elfsigner/elfsigner.py -t $(SERIAL_NUMBER_HEX_VALUE)`
 5. The output of the python script is a shared library stored in ${QUALCOMM_SDK}/tools/elfsigner/output/testsig-$(SERIAL_NUMBER_HEX_VALUE).so
