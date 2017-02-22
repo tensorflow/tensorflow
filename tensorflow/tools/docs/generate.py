@@ -199,8 +199,8 @@ def extract():
           'tfprof',
       ],
       'contrib.bayesflow': [
-          'special_math', 'stochastic_gradient_estimators', 'stochastic_graph',
-          'stochastic_tensor', 'stochastic_variables'
+          'special_math', 'stochastic_gradient_estimators',
+          'stochastic_variables'
       ],
       'contrib.distributions': ['bijector'],
       'contrib.ffmpeg': ['ffmpeg_ops'],
