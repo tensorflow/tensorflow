@@ -16,8 +16,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
-REGISTER5(UnaryOp, CPU, "Cosh", functor::cosh, float, Eigen::half, double,
-          complex64, complex128);
+REGISTER2(UnaryOp, CPU, "Cosh", functor::cosh, float, double);
 
 #if TENSORFLOW_USE_SYCL
 #define REGISTER_SYCL_KERNEL(TYPE)                                    \
