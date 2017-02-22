@@ -54,6 +54,8 @@
 @@acos
 @@asin
 @@atan
+@@sinh
+@@cosh
 @@lgamma
 @@digamma
 @@erf
