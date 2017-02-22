@@ -257,6 +257,7 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
   gpu_device_info_->stream = streams_[0].compute;
   gpu_device_info_->default_context = device_contexts_[0];
   gpu_device_info_->event_mgr = em_.get();
+  gpu_device_info_->gpu_id = gpu_id_;
   set_tensorflow_gpu_device_info(gpu_device_info_);
 
   return Status::OK();
