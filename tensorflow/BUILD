@@ -319,7 +319,9 @@ cc_binary(
     linkshared = 1,
     deps = [
         "//tensorflow/c:c_api",
+        "//tensorflow/cc:scope",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:client_session",
         "//tensorflow/core:tensorflow",
     ],
 )
