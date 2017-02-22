@@ -419,6 +419,7 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
 
       The input to `cell` at each time step will be a `Tensor` or (possibly
       nested) tuple of Tensors each with dimensions `[batch_size, ...]`.
+
     sequence_length: (optional) An int32/int64 vector sized `[batch_size]`.
     initial_state: (optional) An initial state for the RNN.
       If `cell.state_size` is an integer, this must be
