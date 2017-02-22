@@ -96,6 +96,7 @@ class GenerateTest(googletest.TestCase):
     # Make sure that the right files are written to disk.
     self.assertTrue(os.path.exists(os.path.join(output_dir, 'index.md')))
     self.assertTrue(os.path.exists(os.path.join(output_dir, 'tf.md')))
+    self.assertTrue(os.path.exists(os.path.join(output_dir, '_toc.yaml')))
     self.assertTrue(os.path.exists(os.path.join(
         output_dir, 'tf/TestModule.md')))
     self.assertTrue(os.path.exists(os.path.join(
