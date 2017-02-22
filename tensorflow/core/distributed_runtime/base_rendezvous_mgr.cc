@@ -161,10 +161,16 @@ Status BaseRemoteRendezvous::Send(const Rendezvous::ParsedKey& parsed,
 
   // Only test the first time we enter this function on this thread
   static int mpiDisabled = -1;
+#if USE_MPI
   if (mpiDisabled < 0) {
     const char* env = getenv("MPI_PATH_DISABLED");
     if (env && env[0] == '1') mpiDisabled = 1;
+    else  mpiDisabled = 0;
   }
+#else
+    mpiDisabled = 1;
+#endif
+
 
   // If the src_device and dst_device are different then use the
   // SendToRemote function. Otherwise use the original code path

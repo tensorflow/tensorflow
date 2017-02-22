@@ -82,11 +82,6 @@ toolchain {
   unfiltered_cxx_flag: "-D__TIMESTAMP__=\"redacted\""
   unfiltered_cxx_flag: "-D__TIME__=\"redacted\""
 
-  #Add the path to the MPI header and library files, should ideally come from the configure script
-  unfiltered_cxx_flag:            "-I/cm/shared/apps/openmpi/gcc/64/2.0.1-gcc48/include/"
-  cxx_builtin_include_directory:    "/cm/shared/apps/openmpi/gcc/64/2.0.1-gcc48//include/"
-  linker_flag:                    "-L/cm/shared/apps/openmpi/gcc/64/2.0.1-gcc48/lib/"
-
 
 
 

@@ -153,6 +153,7 @@ fi
 if is_windows; then
   TF_NEED_GCP=0
   TF_NEED_HDFS=0
+  TF_NEED_MPI=0
   TF_NEED_JEMALLOC=0
   TF_NEED_OPENCL=0
 fi
@@ -229,6 +230,79 @@ else
   # Update Bazel build configuration.
   sed -i -e "s/WITH_HDFS_SUPPORT = True/WITH_HDFS_SUPPORT = False/" tensorflow/core/platform/default/build_config.bzl
 fi
+
+while [ "$TF_NEED_MPI" == "" ]; do
+  read -p "Do you wish to build TensorFlow with "\
+"MPI support? [y/N] " INPUT
+  case $INPUT in
+    [Yy]* ) echo "MPI support will be enabled for "\
+"TensorFlow"; TF_NEED_MPI=1;;
+    [Nn]* ) echo "MPI support will not be enabled for "\
+"TensorFlow"; TF_NEED_MPI=0;;
+    "" ) echo "MPI support will not be enabled for "\
+"TensorFlow"; TF_NEED_MPI=0;;
+    * ) echo "Invalid selection: " $INPUT;;
+  esac
+done
+
+# Find out where the MPI toolkit is installed
+while true; do
+    if [ "$TF_NEED_MPI" == "0" ]; then
+        break;
+    fi
+
+    fromuser=""
+    if [ -z "$MPI_HOME" ]; then
+        #Get the base folder by removing the bin path
+        default_path=$(dirname $(dirname $(which mpirun)) || dirname $(dirname $(which mpiexec))  || true)
+        read -p "Please specify the MPI toolkit folder. [Default is $default_mpi_path]: " MPI_HOME
+        fromuser="1"
+        if [ -z "$MPI_HOME" ]; then
+            MPI_HOME=$default_path
+        fi
+    fi
+
+    #Check that the include and library folders are where we expect them to be
+    if [ -e "$MPI_HOME/include" -a -e "$MPI_HOME/lib" ]; then
+        break
+    fi
+ 
+    echo "Invalid path to the MPI Toolkit. ${MPI_HOME}/include or ${MPI_HOME}/lib cannot be found."
+    if [ -z "$fromuser" ]; then
+        exit 1
+    fi
+
+    # Retry
+    MPI_HOME="" 
+done
+    
+    
+if [ "$TF_NEED_MPI" == "1" ]; then
+  # Update Bazel build configuration.
+  sed -i -e "s/DUSE_MPI=0/DUSE_MPI=1/" tensorflow/tensorflow.bzl
+
+  #Link the MPI header files
+  ln -sf "${MPI_HOME}/include/mpi.h" third_party/mpi/mpi.h
+  
+  #OpenMPI requires this
+  if [ -e "${MPI_HOME}/include/mpi_portable_platform.h" ]; then
+        ln -sf "${MPI_HOME}/include/mpi_portable_platform.h" third_party/mpi/mpi_portable_platform.h
+  fi
+
+  if [ -e "${MPI_HOME}/lib/libmpi.so" ]; then
+    ln -sf "${MPI_HOME}/lib/libmpi.so" third_party/mpi/libmpi.so
+  else
+    echo "Cannot find the MPI library file in ${MPI_HOME}/lib "
+    exit 1
+  fi
+else
+  # Update the Bazel build configuration / C++ defines.
+  sed -i -e "s/DUSE_MPI=1/DUSE_MPI=0/" tensorflow/tensorflow.bzl
+fi
+
+
+
+
 
 ## Enable XLA.
 while [ "$TF_ENABLE_XLA" == "" ]; do

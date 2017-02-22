@@ -30,12 +30,12 @@ limitations under the License.
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
 
-#if 1
+#if USE_MPI
 
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/lib/hash/hash.h"
-#include <mpi.h>
+#include "third_party/mpi/mpi.h"
 
 #define MPICheck(cmd)                                                 \
   do {                                                                \
@@ -49,6 +49,7 @@ limitations under the License.
   } while (false)
 
 #endif
+
 
 namespace tensorflow {
 
@@ -288,13 +289,7 @@ class GrpcRemoteWorker : public WorkerInterface {
   TF_DISALLOW_COPY_AND_ASSIGN(GrpcRemoteWorker);
 };
 
-#if 0
-WorkerInterface* NewGrpcRemoteWorker(SharedGrpcChannelPtr channel,
-                                     ::grpc::CompletionQueue* completion_queue,
-                                     WorkerCacheLogger* logger) {
-  return new GrpcRemoteWorker(channel, completion_queue, logger);
-}
-#endif
+#if USE_MPI
 
 class RDMARemoteWorker : public GrpcRemoteWorker {
 
@@ -484,4 +479,12 @@ WorkerInterface* NewGrpcRemoteWorker(SharedGrpcChannelPtr channel,
   return new RDMARemoteWorker(channel, completion_queue, logger);
 }
 
+#else
+
+WorkerInterface* NewGrpcRemoteWorker(SharedGrpcChannelPtr channel,
+                                     ::grpc::CompletionQueue* completion_queue,
+                                     WorkerCacheLogger* logger) {
+  return new GrpcRemoteWorker(channel, completion_queue, logger);
+}
+#endif
 }  // namespace tensorflow

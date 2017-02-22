@@ -25,9 +25,9 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
 
-#if 1
+#if USE_MPI
 
-#include <mpi.h>
+#include "third_party/mpi/mpi.h"
 
 #define MPICheck(cmd)                                                 \
   do {                                                                \
@@ -82,7 +82,7 @@ LocalDevice::LocalDevice(const SessionOptions& options,
     : Device(options.env, attributes, device_allocator),
       owned_tp_info_(nullptr) {
 
-#if 1
+#if USE_MPI          
   // Initialize the MPI environment before code execution is split in threads.
   // This ensures the environment is setup before the other gRPC threads
   // are launched.

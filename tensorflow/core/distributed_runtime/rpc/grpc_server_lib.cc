@@ -45,9 +45,9 @@ limitations under the License.
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/public/session_options.h"
 
-#if 1
+#if USE_MPI
 
-#include <mpi.h>
+#include "third_party/mpi/mpi.h"
 
 #define MPICheck(cmd)                                                 \
   do {                                                                \
@@ -59,7 +59,6 @@ limitations under the License.
     }                                                                 \
     assert(MPI_SUCCESS == mpi_errno);                                 \
   } while (false)
-
 #endif
 
 namespace tensorflow {
@@ -239,7 +238,7 @@ Status GrpcServer::Init() {
   // Provide direct access to the master from in-process clients.
   LocalMaster::Register(target(), master_impl_.get());
 
-#if 1
+#if USE_MPI
   // Connect the MPI process IDs to the worker names that are used by TF
 
   // Gather the names of all the active processes (name can't be longer than 128
