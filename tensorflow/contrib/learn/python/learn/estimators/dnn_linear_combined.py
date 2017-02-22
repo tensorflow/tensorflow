@@ -687,6 +687,7 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
       return _as_iterable(preds, output=key)
     return preds[key]
 
+  @deprecated("2017-03-25", "Please use Estimator.export_savedmodel() instead.")
   def export(self,
              export_dir,
              input_fn=None,
@@ -1041,6 +1042,7 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
       return (pred[key] for pred in preds)
     return preds[key]
 
+  @deprecated("2017-03-25", "Please use Estimator.export_savedmodel() instead.")
   def export(self,
              export_dir,
              input_fn=None,

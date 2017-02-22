@@ -436,6 +436,7 @@ class DNNClassifier(estimator.Estimator):
       return (pred[key] for pred in preds)
     return preds[key]
 
+  @deprecated("2017-03-25", "Please use Estimator.export_savedmodel() instead.")
   def export(self,
              export_dir,
              input_fn=None,
@@ -739,6 +740,7 @@ class DNNRegressor(estimator.Estimator):
       return (pred[key] for pred in preds)
     return preds[key]
 
+  @deprecated("2017-03-25", "Please use Estimator.export_savedmodel() instead.")
   def export(self,
              export_dir,
              input_fn=None,
