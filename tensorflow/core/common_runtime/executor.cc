@@ -41,7 +41,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/edgeset.h"
-#include "tensorflow/core/lib/core/arena.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -290,7 +289,7 @@ typedef gtl::InlinedVector<AllocatorAttributes, 4> AllocatorAttributeVec;
 // Immutable view of a Graph organized for efficient execution.
 class GraphView {
  public:
-  GraphView() : arena_(8192) {}
+  GraphView() : space_(nullptr) {}
   ~GraphView();
 
   void Initialize(const Graph* g);
@@ -299,15 +298,21 @@ class GraphView {
   NodeItem* node(int id) const {
     DCHECK_GE(id, 0);
     DCHECK_LT(id, num_nodes_);
-    return nodes_[id];
+    uint32 offset = node_offsets_[id];
+    return ((offset == kuint32max)
+                ? nullptr
+                : reinterpret_cast<NodeItem*>(space_ + node_offsets_[id]));
   }
 
  private:
-  void InitializeNode(const Node* n);
+  char* InitializeNode(char* ptr, const Node* n);
+  size_t NodeItemBytes(const Node* n);
 
   int32 num_nodes_ = 0;
-  NodeItem** nodes_ = nullptr;  // array of size "graph_.num_node_ids()"
-  core::Arena arena_;           // NodeItem objects are allocated here
+  uint32* node_offsets_ = nullptr;  // array of size "graph_.num_node_ids()"
+  // node_offsets_[id] holds the byte offset for node w/ "id" in space_
+
+  char* space_;  // NodeItem objects are allocated here
 
   TF_DISALLOW_COPY_AND_ASSIGN(GraphView);
 };
@@ -315,7 +320,7 @@ class GraphView {
 class ExecutorImpl : public Executor {
  public:
   ExecutorImpl(const LocalExecutorParams& p, const Graph* g)
-      : params_(p), graph_(g) {
+      : params_(p), graph_(g), gview_() {
     CHECK(p.create_kernel != nullptr);
     CHECK(p.delete_kernel != nullptr);
   }
@@ -429,15 +434,14 @@ GraphView::~GraphView() {
     NodeItem* n = node(i);
     if (n != nullptr) {
       n->NodeItem::~NodeItem();
-      // Memory for "n" itself is held in arena_ & gets cleaned up automatically
+      // Memory for "n" itself is held in space_ & gets cleaned up below
     }
   }
-  delete[] nodes_;
+  delete[] node_offsets_;
+  delete[] space_;
 }
 
-void GraphView::InitializeNode(const Node* n) {
-  const int id = n->id();
-  CHECK(nodes_[id] == nullptr);
+size_t GraphView::NodeItemBytes(const Node* n) {
   const int num_output_edges = n->out_edges().size();
   const int num_inputs = n->num_inputs();
   const int num_outputs = n->num_outputs();
@@ -445,7 +449,7 @@ void GraphView::InitializeNode(const Node* n) {
   // Compute number of bytes needed for NodeItem and variable length data.
   // We do not subtract sizeof(var) since num_inputs/num_outputs might
   // both be zero.
-  const size_t bytes =
+  const size_t raw_bytes =
       sizeof(NodeItem)                             // Fixed
       + num_output_edges * sizeof(EdgeInfo)        // output_edges[...]
       + num_outputs * sizeof(AllocatorAttributes)  // output_attr[...]
@@ -464,10 +468,35 @@ void GraphView::InitializeNode(const Node* n) {
                 "NodeItem must be aligned with AllocatorAttributes");
   static_assert(sizeof(EdgeInfo) % alignof(AllocatorAttributes) == 0,
                 "EdgeInfo must be aligned with AllocatorAttributes");
-  NodeItem* item = reinterpret_cast<NodeItem*>(
-      arena_.AllocAligned(bytes, sizeof(NodeItem*)));
+  const size_t bytes =
+      ((raw_bytes + kItemAlignment - 1) / kItemAlignment) * kItemAlignment;
+  return bytes;
+}
+
+char* GraphView::InitializeNode(char* ptr, const Node* n) {
+  const int id = n->id();
+  CHECK(node_offsets_[id] == kuint32max);  // Initial value in constructor
+
+  const size_t bytes = NodeItemBytes(n);
+  static constexpr size_t kItemAlignment = sizeof(NodeItem*);
+  CHECK_EQ(reinterpret_cast<uintptr_t>(ptr) % kItemAlignment, 0);
+  NodeItem* item = reinterpret_cast<NodeItem*>(ptr);
+
+  // We store a 32-bit offset relative to the beginning of space_, so that we
+  // only need an array of 32-bit values to map from node id to the NodeItem*,
+  // (versus 64 bits on most machines if we just stored an array of NodeItem*
+  // pointers). Casting to int64 is needed on 32bit CPU to avoid comparing
+  // values as "int" vs "size_t" in CHECK_LE.
+  CHECK_LE(static_cast<int64>(ptr - space_), kuint32max);
+  const uint32 offset = ptr - space_;
+  node_offsets_[id] = offset;
+  ptr += bytes;
+
+  const int num_output_edges = n->out_edges().size();
+  const int num_inputs = n->num_inputs();
+  const int num_outputs = n->num_outputs();
+
   new (item) NodeItem();
-  nodes_[id] = item;
   item->num_inputs = num_inputs;
   item->num_outputs = num_outputs;
   item->num_output_edges = num_output_edges;
@@ -513,20 +542,29 @@ void GraphView::InitializeNode(const Node* n) {
     output_types[i] = static_cast<uint8>(n->output_type(i));
     DCHECK_EQ(item->output_type(i), n->output_type(i));
   }
+  return ptr;
 }
 
 void GraphView::Initialize(const Graph* g) {
-  CHECK(nodes_ == nullptr);
+  CHECK(node_offsets_ == nullptr);
   const int num_nodes = g->num_node_ids();
   num_nodes_ = num_nodes;
-  nodes_ = new NodeItem*[num_nodes];
-  for (int i = 0; i < num_nodes; i++) {
-    nodes_[i] = nullptr;
+  size_t total_bytes = 0;
+  for (const Node* n : g->nodes()) {
+    total_bytes += NodeItemBytes(n);
   }
 
-  for (const Node* n : g->nodes()) {
-    InitializeNode(n);
+  node_offsets_ = new uint32[num_nodes];
+  for (int i = 0; i < num_nodes; i++) {
+    node_offsets_[i] = kuint32max;
   }
+
+  space_ = new char[total_bytes];  // NodeItem objects are allocated here
+  char* ptr = space_;
+  for (const Node* n : g->nodes()) {
+    ptr = InitializeNode(ptr, n);
+  }
+  CHECK_EQ(ptr, space_ + total_bytes);
 }
 
 static void GetMaxPendingCounts(const Node* n, int* max_pending,
@@ -1791,7 +1829,8 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
                                           ctx->step_id(), i, to_log);
           }
 
-          // Experimental: debugger (tfdb) access to intermediate node outputs.
+          // Experimental: debugger (tfdb) access to intermediate node
+          // outputs.
           if (impl_->params_.node_outputs_cb != nullptr) {
             s.Update(impl_->params_.node_outputs_cb(item.node->name(), i,
                                                     out->ref, true, ctx));
@@ -2319,6 +2358,7 @@ void ExecutorState::FrameState::ActivateNodes(const NodeItem* item,
   IterationState* iter_state = GetIteration(iter);
   const int num_output_edges = item->num_output_edges;
   const EdgeInfo* edges = item->output_edge_list();
+  Entry* input_tensors = iter_state->input_tensors;
   for (int out_index = 0; out_index < num_output_edges; out_index++) {
     const EdgeInfo& e = edges[out_index];
     const int dst_id = e.dst_id;
@@ -2339,8 +2379,9 @@ void ExecutorState::FrameState::ActivateNodes(const NodeItem* item,
     bool dst_need_input = !is_control_edge;
     if (dst_item->is_merge) {
       // A merge node is ready if all control inputs have arrived and either
-      // a) a live data input becomes available or b) all data inputs are dead.
-      // For Merge, pending's LSB is set iff a live data input has arrived.
+      // a) a live data input becomes available or b) all data inputs are
+      // dead. For Merge, pending's LSB is set iff a live data input has
+      // arrived.
       if (is_control_edge) {
         iter_state->decrement_pending(dst_pending_id, 2);
         int count = iter_state->pending(dst_pending_id);
@@ -2385,8 +2426,7 @@ void ExecutorState::FrameState::ActivateNodes(const NodeItem* item,
 
     if (dst_need_input) {
       const int dst_slot = e.input_slot;
-      Entry* input_tensors = iter_state->input_tensors;
-      int dst_loc = dst_item->input_start + dst_slot;
+      const int dst_loc = dst_item->input_start + dst_slot;
       if (e.is_last) {
         input_tensors[dst_loc] = std::move((*outputs)[src_slot]);
       } else {

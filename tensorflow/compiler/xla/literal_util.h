@@ -127,7 +127,7 @@ class LiteralUtil {
   static std::unique_ptr<Literal> Transpose(
       const Literal& literal, tensorflow::gtl::ArraySlice<int64> permutation);
 
-  // Creates a sub-array from the the given literal by extracting the indices
+  // Creates a sub-array from the given literal by extracting the indices
   // [start_index, limit_index) of each dimension. The result literal has the
   // same rank and layout as for the given literal. The number of indices in
   // start_indices and limit_indices must be the rank of the literal, and the

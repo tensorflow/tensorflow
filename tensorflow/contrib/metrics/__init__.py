@@ -36,6 +36,7 @@ See the @{$python/contrib.metrics} guide.
 @@streaming_percentage_less
 @@streaming_sensitivity_at_specificity
 @@streaming_sparse_average_precision_at_k
+@@streaming_sparse_average_precision_at_top_k
 @@streaming_sparse_precision_at_k
 @@streaming_sparse_precision_at_top_k
 @@streaming_sparse_recall_at_k
@@ -96,6 +97,7 @@ from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_recall_at
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_root_mean_squared_error
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_sensitivity_at_specificity
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_sparse_average_precision_at_k
+from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_sparse_average_precision_at_top_k
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_sparse_precision_at_k
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_sparse_precision_at_top_k
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_sparse_recall_at_k

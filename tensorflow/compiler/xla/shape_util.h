@@ -227,7 +227,7 @@ class ShapeUtil {
   // Validates that the provided shape satisfies invariants.
   static Status ValidateShape(const Shape& shape);
 
-  // Validates the the provided shape satisfies invariants, except those that
+  // Validates the provided shape satisfies invariants, except those that
   // pertain to layout.
   //
   // Layout is optional for client-provided shapes, so that the compiler may

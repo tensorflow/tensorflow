@@ -306,6 +306,30 @@ TEST_F(HloComputationTest, CycleDetection) {
                testing::ContainsRegex("cycle is detecte"));
 }
 
+TEST_F(HloComputationTest, RemoveInstructionWithDuplicateOperand) {
+  // Test RemoveInstructionAndUnusedOperands with an instruction which has a
+  // duplicated (dead) operand. This verifies that the operand is not deleted
+  // twice.
+  auto builder = HloComputation::Builder(TestName());
+  auto constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
+  auto dead_negate = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, constant));
+  auto dead_add = builder.AddInstruction(HloInstruction::CreateBinary(
+      r0f32_, HloOpcode::kAdd, dead_negate, dead_negate));
+  auto negate = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, constant));
+  auto computation = builder.Build();
+
+  EXPECT_EQ(4, computation->instruction_count());
+  EXPECT_EQ(negate, computation->root_instruction());
+
+  ASSERT_IS_OK(computation->RemoveInstructionAndUnusedOperands(dead_add));
+
+  EXPECT_EQ(2, computation->instruction_count());
+  EXPECT_EQ(negate, computation->root_instruction());
+}
+
 }  // namespace
 
 }  // namespace xla

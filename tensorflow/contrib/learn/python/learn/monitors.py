@@ -42,7 +42,7 @@ import time
 import numpy as np
 import six
 
-from tensorflow.contrib.framework import deprecated_arg_values
+from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.learn.python.learn import session_run_hook
 from tensorflow.contrib.learn.python.learn.summary_writer_cache import SummaryWriterCache
@@ -847,16 +847,9 @@ class GraphDump(BaseMonitor):
 class ExportMonitor(EveryN):
   """Monitor that exports Estimator every N steps."""
 
-  # TODO(philstahlfeld): Investigate switching export.export_estimator
-  # configuration values to **kwargs so that updates to the export_estimator
-  # function don't have to be reflected here.
-  @deprecated_arg_values(
-      "2016-09-23",
-      "The signature of the input_fn accepted by export is changing to be "
-      "consistent with what's used by tf.Learn Estimator's train/evaluate. "
-      "input_fn (and in most cases, input_feature_key) will both become "
-      "required args.",
-      input_fn=None)
+  @deprecated("2017-03-25",
+              "ExportMonitor is deprecated. Please pass an "
+              "ExportStrategy to Experiment instead.")
   def __init__(self,
                every_n_steps,
                export_dir,

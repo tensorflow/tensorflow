@@ -193,9 +193,9 @@ TEST_F(NcclManagerTest, BasicSumReduction) {
       auto* event_mgr = device->tensorflow_gpu_device_info()->event_mgr;
       auto* stream = device->tensorflow_gpu_device_info()->stream;
       NcclManager::instance()->AddToAllReduce(
-          num_ranks, "allreduce", reduction_op, device->executor(), event_mgr,
-          stream, &test_case->ins[device_num], &test_case->outs[device_num],
-          CreateDoneCallback(test_case.get()));
+          num_ranks, "allreduce", reduction_op, device->executor(),
+          device->gpu_id(), event_mgr, stream, &test_case->ins[device_num],
+          &test_case->outs[device_num], CreateDoneCallback(test_case.get()));
     }
 
     LOG(ERROR) << "Verifying results";
@@ -259,8 +259,9 @@ TEST_F(NcclManagerTest, MultipleCallers) {
         TestCase* test_case = test_cases[test_num].get();
         NcclManager::instance()->AddToAllReduce(
             num_ranks, strings::StrCat("allreduce", test_num), ncclSum,
-            device->executor(), event_mgr, stream, &test_case->ins[device_num],
-            &test_case->outs[device_num], CreateDoneCallback(test_case));
+            device->executor(), device->gpu_id(), event_mgr, stream,
+            &test_case->ins[device_num], &test_case->outs[device_num],
+            CreateDoneCallback(test_case));
       };
       pool->Schedule(fn);
     }

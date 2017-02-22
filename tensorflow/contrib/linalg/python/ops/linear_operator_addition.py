@@ -138,7 +138,7 @@ def add_operators(operators,
 
 
 def _pop_a_match_at_tier(op1, operator_list, tier):
-  # Search from the back of list the the front in order to create nice default
+  # Search from the back of list to the front in order to create nice default
   # order of operations.
   for i in range(1, len(operator_list) + 1):
     op2 = operator_list[-i]

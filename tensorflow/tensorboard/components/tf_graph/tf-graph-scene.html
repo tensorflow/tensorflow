@@ -694,12 +694,14 @@ Polymer({
     },
     progress: Object,
     // A mapping between node name to the tf.graph.scene.HealthPill to render.
-    nodeNamesToHealthPill: Object,
+    nodeNamesToHealthPills: Object,
+    // The step of health pills to show throughout the graph.
+    healthPillStepIndex: Number,
   },
   observers: [
     '_colorByChanged(colorBy)',
     '_buildAndFit(renderHierarchy)',
-    '_updateHealthPills(nodeNamesToHealthPill)',
+    '_updateHealthPills(nodeNamesToHealthPills, healthPillStepIndex)',
   ],
   getNode: function(nodeName) {
     return this.renderHierarchy.getRenderNodeByName(nodeName);
@@ -742,7 +744,7 @@ Polymer({
     }.bind(this));
     // Update the minimap again when the graph is done animating.
     setTimeout(function() {
-      this._updateHealthPills(this.nodeNamesToHealthPill);
+      this._updateHealthPills(this.nodeNamesToHealthPills, this.healthPillStepIndex);
       this.minimap.update();
     }.bind(this), tf.graph.layout.PARAMS.animation.duration);
   },
@@ -892,8 +894,8 @@ Polymer({
   getEdgeGroup: function(e) {
     return this._edgeGroupIndex[e];
   },
-  _updateHealthPills: function(nodeNamesToHealthPill) {
-    tf.graph.scene.addHealthPills(this.$.svg, nodeNamesToHealthPill);
+  _updateHealthPills: function(nodeNamesToHealthPills, healthPillStepIndex) {
+    tf.graph.scene.addHealthPills(this.$.svg, nodeNamesToHealthPills, healthPillStepIndex);
   },
   /**
    * Update node and annotation node of the given name.

@@ -520,7 +520,9 @@ class FusedBatchNormOp : public OpKernel {
     }
 
     Tensor* y = nullptr;
-    OP_REQUIRES_OK(context, context->allocate_output(0, x.shape(), &y));
+    if (!context->forward_input_to_output(0, 0, &y)) {
+      OP_REQUIRES_OK(context, context->allocate_output(0, x.shape(), &y));
+    }
     Tensor* batch_mean = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(1, scale.shape(), &batch_mean));
