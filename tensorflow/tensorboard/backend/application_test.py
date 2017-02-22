@@ -137,7 +137,8 @@ class TensorboardServerTest(test.TestCase):
                 # if only_use_meta_graph, the graph is from the metagraph
                 'graph': True,
                 'meta_graph': self._only_use_meta_graph,
-                'run_metadata': ['test run']
+                'run_metadata': ['test run'],
+                'tensors': [],
             }
         })
 
