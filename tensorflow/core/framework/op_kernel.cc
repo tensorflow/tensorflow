@@ -347,6 +347,106 @@ void OpKernelContext::forward_ref_input_to_ref_output(int input_index,
                  (*params_->inputs)[input_index].tensor);
 }
 
+bool OpKernelContext::forward_input_to_output(int input_index, int output_index,
+                                              Tensor** output) {
+  DCHECK_GE(input_index, 0);
+  DCHECK_LT(input_index, params_->inputs->size());
+  const TensorValue& input = (*params_->inputs)[input_index];
+  if (input.tensor == nullptr) {
+    return false;
+  }
+  return forward_input_to_output_with_shape(input_index, output_index,
+                                            input.tensor->shape(), output);
+}
+
+Status OpKernelContext::forward_input_to_output(StringPiece input_name,
+                                                StringPiece output_name,
+                                                Tensor** output) {
+  int input_index, output_index, stop;
+  TF_RETURN_IF_ERROR(
+      params_->op_kernel->InputRange(input_name, &input_index, &stop));
+  if (stop != input_index + 1) {
+    return errors::InvalidArgument("OpKernel used list-valued input name '",
+                                   input_name,
+                                   "' when single-valued input was "
+                                   "expected");
+  }
+  TF_RETURN_IF_ERROR(
+      params_->op_kernel->OutputRange(output_name, &output_index, &stop));
+  if (stop != output_index + 1) {
+    return errors::InvalidArgument("OpKernel used list-valued output name '",
+                                   output_name,
+                                   "' when single-valued output was "
+                                   "expected");
+  }
+  if (!forward_input_to_output(input_index, output_index, output)) {
+    return errors::FailedPrecondition("OpKernel could not forward input '",
+                                      input_name, "' to output '", output_name);
+  }
+  return Status::OK();
+}
+
+bool OpKernelContext::forward_input_to_output_with_shape(
+    int input_index, int output_index, const TensorShape& output_shape,
+    Tensor** output) {
+  DCHECK_GE(input_index, 0);
+  DCHECK_LT(input_index, params_->inputs->size());
+  const TensorValue& input = (*params_->inputs)[input_index];
+  // Check that input tensor exists, is not a ref, and have no other consumers.
+  if (input.tensor == nullptr || input.is_ref() || !input->RefCountIsOne()) {
+    return false;
+  }
+  DCHECK_GE(output_index, 0);
+  DCHECK_LT(output_index, num_outputs());
+  // Check that input and output types match.
+  if (expected_output_dtype(output_index) != input_dtype(input_index)) {
+    return false;
+  }
+  // Check that the input and output sizes are compatible.
+  if (input.tensor->shape().num_elements() != output_shape.num_elements()) {
+    return false;
+  }
+  // Check that input and output memory types match, i.e.
+  // that they either both live in host or both live in device memmory.
+  if (op_kernel().output_memory_types()[output_index] !=
+      op_kernel().input_memory_types()[input_index]) {
+    return false;
+  }
+  Tensor* output_tensor = new Tensor();
+  CHECK(output_tensor->CopyFrom(*input.tensor, output_shape));
+  outputs_[output_index] = TensorValue(output_tensor);
+  *output = outputs_[output_index].tensor;
+  return true;
+}
+
+Status OpKernelContext::forward_input_to_output_with_shape(
+    StringPiece input_name, StringPiece output_name,
+    const TensorShape& output_shape, Tensor** output) {
+  int input_index, output_index, stop;
+  TF_RETURN_IF_ERROR(
+      params_->op_kernel->InputRange(input_name, &input_index, &stop));
+  if (stop != input_index + 1) {
+    return errors::InvalidArgument("OpKernel used list-valued input name '",
+                                   input_name,
+                                   "' when single-valued input was "
+                                   "expected");
+  }
+  TF_RETURN_IF_ERROR(
+      params_->op_kernel->OutputRange(output_name, &output_index, &stop));
+  if (stop != output_index + 1) {
+    return errors::InvalidArgument("OpKernel used list-valued output name '",
+                                   output_name,
+                                   "' when single-valued output was "
+                                   "expected");
+  }
+  if (!forward_input_to_output_with_shape(input_index, output_index,
+                                          output_shape, output)) {
+    return errors::FailedPrecondition("OpKernel could not forward input '",
+                                      input_name, "' to output '", output_name);
+  }
+  return Status::OK();
+}
+
 void OpKernelContext::delete_ref_input(int index, bool lock_held) {
   DCHECK_GE(index, 0);
   DCHECK_LT(index, params_->inputs->size());

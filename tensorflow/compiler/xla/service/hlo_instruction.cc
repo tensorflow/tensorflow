@@ -1484,10 +1484,20 @@ string HloInstruction::ToCategory() const {
         return "rank-1-broadcast binary fusion";
       }
     }
-    if (IsElementwise()) {
-      return "elementwise fusion";
-    } else {
-      return "non-elementwise fusion";
+    switch (fusion_kind()) {
+      case FusionKind::kLoop:
+        if (IsElementwise()) {
+          return "elementwise fusion";
+        } else {
+          return "non-elementwise fusion";
+        }
+      case FusionKind::kInput:
+        return "reduce fusion";
+      case FusionKind::kTransposeDot:
+        return "dot fusion";
+      case FusionKind::kConvBackwardFilter:
+      case FusionKind::kConvBackwardInput:
+        return "convolution fusion";
     }
   }
 

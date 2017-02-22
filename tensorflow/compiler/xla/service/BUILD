@@ -107,6 +107,7 @@ cc_library(
 
 cc_library(
     name = "versioned_computation_handle",
+    srcs = ["versioned_computation_handle.cc"],
     hdrs = ["versioned_computation_handle.h"],
     deps = [
         "//tensorflow/compiler/xla:xla_data_proto",
@@ -144,6 +145,22 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
+    ],
+)
+
+cc_test(
+    name = "user_computation_test",
+    srcs = ["user_computation_test.cc"],
+    deps = [
+        ":user_computation",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 

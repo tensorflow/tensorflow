@@ -120,50 +120,78 @@ tensorflow::Status ConvolutionThunk::ExecuteOnStream(
   VLOG(3) << "Dim nums: { " << dim_nums_.ShortDebugString() << " }";
   VLOG(3) << "Window: { " << window_.ShortDebugString() << " }";
 
+  const int num_dimensions = window_.dimensions_size();
+  CHECK_LE(num_dimensions, 3);
+  // cuDNN does not support 1D convolutions. We therefore express 1D
+  // convolutions as 2D convolutions where the first spatial dimension is 1.
+  // This matches the behaviour of TF (see definition of conv1d in
+  // tensorflow/python/ops/nn_ops.py).
+  const int effective_num_dimensions = std::max(2, num_dimensions);
+
   CHECK_EQ(F32, output_shape_.element_type());
-  CHECK_EQ(2, window_.dimensions_size());
+  CHECK_EQ(num_dimensions, dim_nums_.spatial_dimensions_size());
+  CHECK_EQ(num_dimensions, dim_nums_.kernel_spatial_dimensions_size());
   for (const WindowDimension& dim : window_.dimensions()) {
     CHECK_EQ(dim.padding_low(), dim.padding_high());
   }
 
-  const WindowDimension& height = window_.dimensions(0);
-  const WindowDimension& width = window_.dimensions(1);
   // cuDNN's convolution APIs support the BDYX layout for activations/output and
   // the OIYX layout for weights.
-  // TODO(b/29399649): Be more flexible about handling layouts of cuDNN calls
-  // when we switch to cuDNN v5.
-  BatchDescriptor input_descriptor;
+  BatchDescriptor input_descriptor(effective_num_dimensions);
   input_descriptor.set_layout(DataLayout::kBatchDepthYX)
-      .set_height(input_shape_.dimensions(dim_nums_.spatial_dimensions(0)))
-      .set_width(input_shape_.dimensions(dim_nums_.spatial_dimensions(1)))
       .set_feature_map_count(
           input_shape_.dimensions(dim_nums_.feature_dimension()))
       .set_count(input_shape_.dimensions(dim_nums_.batch_dimension()));
+  for (int dim = 0; dim < num_dimensions; ++dim) {
+    // Note that the dimensions are reversed. The same holds below.
+    input_descriptor.set_spatial_dim(
+        static_cast<se::dnn::DimIndex>(effective_num_dimensions - dim - 1),
+        input_shape_.dimensions(dim_nums_.spatial_dimensions(dim)));
+  }
 
-  FilterDescriptor filter_descriptor;
+  FilterDescriptor filter_descriptor(effective_num_dimensions);
   filter_descriptor.set_layout(FilterLayout::kOutputInputYX)
       .set_input_feature_map_count(
           filter_shape_.dimensions(dim_nums_.kernel_input_feature_dimension()))
-      .set_output_feature_map_count(
-          filter_shape_.dimensions(dim_nums_.kernel_output_feature_dimension()))
-      .set_input_filter_height(
-          filter_shape_.dimensions(dim_nums_.kernel_spatial_dimensions(0)))
-      .set_input_filter_width(
-          filter_shape_.dimensions(dim_nums_.kernel_spatial_dimensions(1)));
+      .set_output_feature_map_count(filter_shape_.dimensions(
+          dim_nums_.kernel_output_feature_dimension()));
+  for (int dim = 0; dim < num_dimensions; ++dim) {
+    filter_descriptor.set_spatial_dim(
+        static_cast<se::dnn::DimIndex>(effective_num_dimensions - dim - 1),
+        filter_shape_.dimensions(dim_nums_.kernel_spatial_dimensions(dim)));
+  }
 
-  ConvolutionDescriptor convolution_descriptor;
-  convolution_descriptor.set_zero_padding_width(width.padding_low())
-      .set_zero_padding_height(height.padding_low())
-      .set_horizontal_filter_stride(width.stride())
-      .set_vertical_filter_stride(height.stride());
+  ConvolutionDescriptor convolution_descriptor(effective_num_dimensions);
+  for (int dim = 0; dim < num_dimensions; ++dim) {
+    convolution_descriptor
+        .set_zero_padding(
+            static_cast<se::dnn::DimIndex>(effective_num_dimensions - dim - 1),
+            window_.dimensions(dim).padding_low())
+        .set_filter_stride(
+            static_cast<se::dnn::DimIndex>(effective_num_dimensions - dim - 1),
+            window_.dimensions(dim).stride());
+  }
 
-  BatchDescriptor output_descriptor;
+  BatchDescriptor output_descriptor(effective_num_dimensions);
   output_descriptor.set_layout(DataLayout::kBatchDepthYX)
-      .set_height(output_shape_.dimensions(dim_nums_.spatial_dimensions(0)))
-      .set_width(output_shape_.dimensions(dim_nums_.spatial_dimensions(1)))
       .set_feature_map_count(
           output_shape_.dimensions(dim_nums_.feature_dimension()))
       .set_count(output_shape_.dimensions(dim_nums_.batch_dimension()));
+  for (int dim = 0; dim < num_dimensions; ++dim) {
+    output_descriptor.set_spatial_dim(
+        static_cast<se::dnn::DimIndex>(effective_num_dimensions - dim - 1),
+        output_shape_.dimensions(dim_nums_.spatial_dimensions(dim)));
+  }
+
+  // Add a singleton dimension in the 1D convolution case.
+  if (num_dimensions == 1) {
+    input_descriptor.set_spatial_dim(static_cast<se::dnn::DimIndex>(0), 1);
+    output_descriptor.set_spatial_dim(static_cast<se::dnn::DimIndex>(0), 1);
+    filter_descriptor.set_spatial_dim(static_cast<se::dnn::DimIndex>(0), 1);
+    convolution_descriptor
+        .set_zero_padding(static_cast<se::dnn::DimIndex>(0), 0)
+        .set_filter_stride(static_cast<se::dnn::DimIndex>(0), 1);
+  }
 
   se::DeviceMemory<float> input_data(
       buffer_allocations.GetDeviceAddress(input_buffer_));

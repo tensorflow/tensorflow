@@ -271,14 +271,13 @@ TEST(GraphTransferer,
       GraphTransferer::InputNodeInfo{
           "Mul", Tensor{DT_FLOAT, {1, WIDTH, HEIGHT, DEPTH}}}};
   std::vector<string> output_node_names = {"softmax"};
-  const bool is_text_proto = false;
 
   GraphTransferer::OutputTensorInfo output_tensor_info;
   GraphTransferer gt;
   gt.EnableStrictCheckMode(false);
   Status status = gt.LoadGraphFromProtoFile(
       *ops_definitions, MODEL_FILENAME, input_node_info_list, output_node_names,
-      is_text_proto, false /* shape_inference_for_unknown_shape */,
+      false /* is_text_proto */, false /* shape_inference_for_unknown_shape */,
       true /* dry_run_for_unknown_shape */, &output_tensor_info);
   ASSERT_TRUE(status.ok()) << status;
 
@@ -318,7 +317,7 @@ TEST(GraphTransferer, RunInceptionV3OnHexagonExampleWithTfRuntime) {
   RunFusedGraph(fused_graph_def);
 }
 
-TEST(GraphTransferer, RunInceptionV3OnHexagonExampleWithFusedGraph) {
+TEST(GraphTransferer, DISABLED_RunInceptionV3OnHexagonExampleWithFusedGraph) {
   LOG(INFO) << "Run inception v3 with fused graph";
   CheckHexagonControllerVersion();
 
@@ -326,6 +325,78 @@ TEST(GraphTransferer, RunInceptionV3OnHexagonExampleWithFusedGraph) {
   Status status =
       ReadBinaryProto(Env::Default(), FUSED_MODEL_FILENAME, &fused_graph_def);
   RunFusedGraph(fused_graph_def);
+}
+
+TEST(GraphTransferer, DISABLED_CheckShapeInferencePerformance) {
+  CheckHexagonControllerVersion();
+  profile_utils::CpuUtils::EnableClockCycleProfiling(true);
+
+  const IGraphTransferOpsDefinitions* ops_definitions =
+      &HexagonOpsDefinitions::getInstance();
+  std::vector<GraphTransferer::InputNodeInfo> input_node_info_list = {
+      GraphTransferer::InputNodeInfo{
+          "Mul", Tensor{DT_FLOAT, {1, WIDTH, HEIGHT, DEPTH}}}};
+  std::vector<string> output_node_names = {"softmax"};
+
+  GraphTransferer::OutputTensorInfo output_tensor_info0;
+  GraphTransferer gt0;
+  gt0.EnableStrictCheckMode(false);
+  ClockCycleProfiler prof0;
+  prof0.Start();
+  Status status = gt0.LoadGraphFromProtoFile(
+      *ops_definitions, MODEL_FILENAME, input_node_info_list, output_node_names,
+      false /* is_text_proto */, false /* shape_inference_for_unknown_shape */,
+      true /* dry_run_for_unknown_shape */, &output_tensor_info0);
+  const GraphTransferInfo& gfi0 = gt0.GetGraphTransferInfo();
+
+  ASSERT_TRUE(status.ok());
+  prof0.Stop();
+  prof0.DumpStatistics("Estimate shape by dryrun");
+
+  LOG(INFO) << "(0) node count: " << gfi0.node_info_size() << ", "
+            << gfi0.const_node_info_size();
+
+  GraphTransferer::OutputTensorInfo output_tensor_info1;
+  GraphTransferer gt1;
+  gt1.EnableStrictCheckMode(true);
+  ClockCycleProfiler prof1;
+  prof1.Start();
+  status = gt1.LoadGraphFromProtoFile(
+      *ops_definitions, MODEL_FILENAME, input_node_info_list, output_node_names,
+      false /* is_text_proto */, true /* shape_inference_for_unknown_shape */,
+      false /* dry_run_for_unknown_shape */, &output_tensor_info1);
+  const GraphTransferInfo& gfi1 = gt1.GetGraphTransferInfo();
+
+  ASSERT_TRUE(status.ok());
+  prof1.Stop();
+  prof1.DumpStatistics("Estiame shape by shape inference");
+
+  LOG(INFO) << "(1) node count: " << gfi1.node_info_size() << ", "
+            << gfi1.const_node_info_size();
+
+  ASSERT_EQ(gfi0.node_info_size(), gfi1.node_info_size());
+
+  ASSERT_EQ(gt0.GetGraphTransferInfo().const_node_info_size(),
+            gt1.GetGraphTransferInfo().const_node_info_size());
+
+  for (int i = 0; i < gfi0.const_node_info_size(); ++i) {
+    const GraphTransferInfo::ConstNodeInfo& ni0 = gfi0.const_node_info(i);
+    const GraphTransferInfo::ConstNodeInfo& ni1 = gfi1.const_node_info(i);
+    ASSERT_EQ(ni0.shape_size(), ni1.shape_size());
+    for (int j = 0; j < ni0.shape_size(); ++j) {
+      EXPECT_EQ(ni0.shape(j), ni1.shape(j));
+    }
+  }
+
+  ASSERT_EQ(gfi0.node_output_info_size(), gfi1.node_output_info_size());
+  for (int i = 0; i < gfi0.node_output_info_size(); ++i) {
+    const GraphTransferInfo::NodeOutputInfo& no0 = gfi0.node_output_info(i);
+    const GraphTransferInfo::NodeOutputInfo& no1 = gfi1.node_output_info(i);
+    ASSERT_EQ(no0.max_byte_size_size(), no1.max_byte_size_size());
+    for (int j = 0; j < no0.max_byte_size_size(); ++j) {
+      EXPECT_EQ(no0.max_byte_size(j), no1.max_byte_size(j));
+    }
+  }
 }
 
 #endif

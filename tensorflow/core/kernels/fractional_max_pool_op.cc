@@ -343,8 +343,10 @@ class FractionalMaxPoolGradOp : public OpKernel {
     }
 
     Tensor* output = nullptr;
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(0, tensor_in.shape(), &output));
+    if (!context->forward_input_to_output(0, 0, &output)) {
+      OP_REQUIRES_OK(context,
+                     context->allocate_output(0, tensor_in.shape(), &output));
+    }
     output->flat<T>().setZero();
 
     auto out_backprop_flat = out_backprop.flat<T>();

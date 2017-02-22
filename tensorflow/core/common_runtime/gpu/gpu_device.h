@@ -113,6 +113,8 @@ class BaseGPUDevice : public LocalDevice {
 
   void ReinitializeDevice(OpKernelContext* context, PerOpGpuDevice* device,
                           int stream_id, Allocator* allocator);
+
+  void ComputeHelper(OpKernel* op_kernel, OpKernelContext* context);
 };
 
 class BaseGPUDeviceFactory : public DeviceFactory {

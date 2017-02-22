@@ -72,13 +72,15 @@ class ComputationTracker {
   // Builds an HLO module using the specified computation as the entry. The
   // module will include the entry computation as well as all computations which
   // are called directly or indirectly from the entry computation via operations
-  // like "map". If include_unused_parameters is true, then all parameters are
-  // lowered to HLO instructions even if they are not used. This ensures the
-  // entry HloComputation has the same program shape (ProgramShape) as the entry
-  // UserComputation.
+  // like "map". If include_unreachable_instructions is true, then instructions
+  // which are not reachable from the root are lowered into HloInstructions
+  // including unreachable parameters. This ensures the entry HloComputation has
+  // the same program shape (ProgramShape) as the entry UserComputation.
   StatusOr<std::unique_ptr<HloModule>> BuildHloModule(
       const VersionedComputationHandle& entry_handle,
-      bool include_unused_parameters = true) const;
+      bool include_unreachable_instructions = true) const;
+
+  string ToString() const;
 
  private:
   // Bumps the next_computation_ number and returns the allocated number wrapped
@@ -116,6 +118,8 @@ class ComputationTracker {
       std::set<VersionedComputationHandle>* visited,
       std::list<VersionedComputationHandle>* post_order) const
       EXCLUSIVE_LOCKS_REQUIRED(computation_mutex_);
+
+  string ToStringInternal() const EXCLUSIVE_LOCKS_REQUIRED(computation_mutex_);
 
   // Guards the computation mapping. Marked mutable so that the Resolve method
   // can remain const; Resolve does't really modify the tracker in any way, but

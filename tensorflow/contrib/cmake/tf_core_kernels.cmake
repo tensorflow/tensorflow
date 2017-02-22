@@ -49,7 +49,6 @@ if(tensorflow_BUILD_CONTRIB_KERNELS)
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/kernels/reinterpret_string_to_float_op.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/kernels/sample_inputs_op.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/kernels/scatter_add_ndim_op.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/kernels/topn_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/kernels/tree_predictions_op.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/kernels/tree_utils.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/kernels/update_fertile_slots_op.cc"

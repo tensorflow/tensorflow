@@ -263,8 +263,8 @@ Status CreateXlaArgs(const Graph& graph,
   TF_RETURN_IF_ERROR(CollectArgNodes(graph, &arg_nodes));
   for (const Node* node : arg_nodes) {
     XlaCompiler::Argument arg;
+    arg.kind = XlaCompiler::Argument::kParameter;
     TF_RETURN_IF_ERROR(GetNodeAttr(node->def(), "T", &arg.type));
-    TF_RETURN_IF_ERROR(GetNodeAttr(node->def(), "index", &arg.parameter));
     TF_RETURN_IF_ERROR(GetNodeAttr(node->def(), kShapeAttr, &arg.shape));
     TF_RETURN_IF_ERROR(GetNodeAttr(node->def(), kDebugNameAttr, &arg.name));
     xla_args->push_back(arg);

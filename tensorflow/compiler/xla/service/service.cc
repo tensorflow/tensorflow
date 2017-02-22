@@ -53,6 +53,9 @@ limitations under the License.
 
 namespace se = ::perftools::gputools;
 
+using ::tensorflow::strings::Printf;
+using ::tensorflow::strings::StrCat;
+
 namespace xla {
 
 namespace {
@@ -177,19 +180,19 @@ Service::Service(std::unique_ptr<Backend> execute_backend,
                  std::unique_ptr<Backend> compute_constant_backend)
     : execute_backend_(std::move(execute_backend)),
       compute_constant_backend_(std::move(compute_constant_backend)) {
-  LOG(INFO) << "XLA service executing computations on platform "
-            << execute_backend_->platform()->Name() << ". Devices:";
+  LOG(INFO) << Printf(
+      "XLA service %p executing computations on platform %s. Devices:", this,
+      execute_backend_->platform()->Name().c_str());
   for (int i = 0; i < execute_backend_->device_count(); ++i) {
     if (execute_backend_->device_ordinal_supported(i)) {
       se::StreamExecutor* executor =
           execute_backend_->stream_executor(i).ValueOrDie();
       const auto& description = executor->GetDeviceDescription();
-      LOG(INFO) << tensorflow::strings::Printf(
-          "  StreamExecutor device (%d): %s, %s", i, description.name().c_str(),
-          description.platform_version().c_str());
+      LOG(INFO) << Printf("  StreamExecutor device (%d): %s, %s", i,
+                          description.name().c_str(),
+                          description.platform_version().c_str());
     } else {
-      LOG(INFO) << tensorflow::strings::Printf(
-          "  StreamExecutor device (%d) not supported", i);
+      LOG(INFO) << Printf("  StreamExecutor device (%d) not supported", i);
     }
   }
 }
@@ -202,6 +205,8 @@ tensorflow::Status Service::Computation(const ComputationRequest* arg,
 
   *result->mutable_computation() =
       computation_tracker_.NewComputation(arg->name());
+  VLOG(1) << Printf("Created new computation %s on service %p",
+                    result->computation().ShortDebugString().c_str(), this);
   return tensorflow::Status::OK();
 }
 
@@ -255,9 +260,8 @@ StatusOr<std::vector<const Allocation*>> Service::ResolveAndValidateArguments(
     auto allocation_status = allocation_tracker_.Resolve(*arguments[i]);
     if (!allocation_status.ok()) {
       return Status(allocation_status.status().code(),
-                    tensorflow::strings::StrCat(
-                        allocation_status.status().error_message(), ", ",
-                        "failed to resolve allocation for parameter ", i));
+                    StrCat(allocation_status.status().error_message(), ", ",
+                           "failed to resolve allocation for parameter ", i));
     }
     const Allocation* allocation = allocation_status.ValueOrDie();
 
@@ -334,6 +338,8 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
     std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
     Backend* backend,
     std::vector<perftools::gputools::StreamExecutor*> executors) {
+  VLOG(1) << Printf("BuildExecutable on service %p", this);
+
   // Dump computation proto state if flag is set.
   std::vector<std::unique_ptr<SessionModule>> session_modules;
   legacy_flags::ServiceFlags* flags = legacy_flags::GetServiceFlags();
@@ -345,11 +351,10 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
                           computation_tracker_.SnapshotComputation(
                               versioned_handles[i].handle));
       if (!directory_path.empty()) {
-        string filename =
-            tensorflow::strings::Printf("computation_%lld__%s__version_%lld",
-                                        versioned_handles[i].handle.handle(),
-                                        session_module->entry().name().c_str(),
-                                        versioned_handles[i].version);
+        string filename = Printf("computation_%lld__%s__version_%lld",
+                                 versioned_handles[i].handle.handle(),
+                                 session_module->entry().name().c_str(),
+                                 versioned_handles[i].version);
         TF_RETURN_IF_ERROR(Executable::DumpToDirectory(directory_path, filename,
                                                        *session_module));
         session_modules.push_back(std::move(session_module));
@@ -357,10 +362,9 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
     }
   }
 
-  VLOG(1) << "building executables from:";
+  VLOG(1) << "Computation handles:";
   for (const VersionedComputationHandle& versioned_handle : versioned_handles) {
-    VLOG(1) << versioned_handle.handle.handle() << "@v"
-            << versioned_handle.version;
+    VLOG(1) << versioned_handle;
   }
 
   std::vector<std::unique_ptr<HloModule>> modules;
@@ -368,7 +372,7 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
     TF_ASSIGN_OR_RETURN(auto module,
                         computation_tracker_.BuildHloModule(
                             versioned_handle,
-                            /*include_unused_parameters=*/true));
+                            /*include_unreachable_instructions=*/true));
     modules.push_back(std::move(module));
   }
 
@@ -394,6 +398,9 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
     const tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
         arguments,
     Backend* backend, se::StreamExecutor* executor) {
+  VLOG(1) << Printf("BuildExecutable on service %p with handle %s", this,
+                    versioned_handle.ToString().c_str());
+
   // Dump computation proto state if flag is set.
   std::unique_ptr<SessionModule> session_module;
   legacy_flags::ServiceFlags* flags = legacy_flags::GetServiceFlags();
@@ -405,24 +412,20 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
         session_module,
         computation_tracker_.SnapshotComputation(versioned_handle.handle));
     if (!directory_path.empty()) {
-      string filename = tensorflow::strings::Printf(
-          "computation_%lld__%s__version_%lld",
-          versioned_handle.handle.handle(),
-          session_module->entry().name().c_str(), versioned_handle.version);
+      string filename = Printf("computation_%lld__%s__version_%lld",
+                               versioned_handle.handle.handle(),
+                               session_module->entry().name().c_str(),
+                               versioned_handle.version);
       TF_RETURN_IF_ERROR(Executable::DumpToDirectory(directory_path, filename,
                                                      *session_module));
     }
   }
 
-  VLOG(1) << tensorflow::strings::Printf("building executable %lld@v%lld",
-                                         versioned_handle.handle.handle(),
-                                         versioned_handle.version);
-
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> module,
-      computation_tracker_.BuildHloModule(
-          versioned_handle,
-          /*include_unused_parameters=*/!executable_for_compute_constant));
+      computation_tracker_.BuildHloModule(versioned_handle,
+                                          /*include_unreachable_instructions=*/
+                                          !executable_for_compute_constant));
 
   Compiler::HloDumper hlo_dumper = MakeHloDumper();
   if (executable_for_compute_constant &&
@@ -943,8 +946,7 @@ tensorflow::Status Service::TransferToServer(const TransferToServerRequest* arg,
 
   *result->mutable_data() = allocation_tracker_.Register(
       execute_backend_.get(), stream_executor->device_ordinal(), allocation,
-      shape, tensorflow::strings::StrCat("TransferToServer literal of size ",
-                                         allocation_size));
+      shape, StrCat("TransferToServer literal of size ", allocation_size));
 
   TF_ASSIGN_OR_RETURN(
       auto replicas,
@@ -963,10 +965,9 @@ tensorflow::Status Service::TransferToInfeed(const TransferToInfeedRequest* arg,
   if (arg->replica_id() < 0 || arg->replica_id() >= replica_count) {
     return FailedPrecondition(
         "%s",
-        tensorflow::strings::StrCat(
-            "The replica_id=", arg->replica_id(),
-            " on TransferToInfeedRequest not in range [0, replica_count=",
-            replica_count, ").")
+        StrCat("The replica_id=", arg->replica_id(),
+               " on TransferToInfeedRequest not in range [0, replica_count=",
+               replica_count, ").")
             .c_str());
   }
 
@@ -1043,8 +1044,7 @@ tensorflow::Status Service::TransferToServerInProcess(
 
   *result->mutable_data() = allocation_tracker_.Register(
       execute_backend_.get(), stream_executor->device_ordinal(), allocation,
-      shape, tensorflow::strings::StrCat("TransferToServer literal of size ",
-                                         allocation_size));
+      shape, StrCat("TransferToServer literal of size ", allocation_size));
 
   for (se::StreamExecutor* executor : execute_backend_->Replicas()) {
     TF_RETURN_IF_ERROR(

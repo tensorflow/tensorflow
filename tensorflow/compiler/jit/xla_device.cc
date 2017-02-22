@@ -62,6 +62,7 @@ namespace tensorflow {
   registration.compilation_device_name = jit_device_name;
   registration.requires_compilation = true;
   registration.enable_jit_by_default = false;
+  registration.compile_resource_ops = true;
   XlaOpRegistry::RegisterCompilationDevice(device_name, registration);
 
   auto platform = perftools::gputools::MultiPlatformManager::PlatformWithName(

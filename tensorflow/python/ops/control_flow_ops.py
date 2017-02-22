@@ -1994,6 +1994,7 @@ class WhileContext(ControlFlowContext):
       with ops.control_dependencies(None):
         enter = _Enter(result, self._name, is_constant=True,
                        parallel_iterations=self._parallel_iterations)
+        enter.graph.prevent_feeding(enter)
       # Fix the control inputs and control flow context of these enter ops.
       self._FixControlInputsAndContext([enter])
 
@@ -2060,6 +2061,8 @@ class WhileContext(ControlFlowContext):
         self._values.add(x.name)
     if self._outer_context or not IsLoopExit(op):
       op.graph.prevent_fetching(op)
+      for x in op.outputs:
+        op.graph.prevent_feeding(x)
 
   def _MaybeAddControlDependency(self, op):
     """Add a control input to the op if it only depends on loop invariants."""
@@ -2359,6 +2362,9 @@ class WhileContext(ControlFlowContext):
                            parallel_iterations=self._parallel_iterations,
                            use_input_shape=(shape_invariants is None))
                     for x in real_vars]
+      for x in enter_vars:
+        x.graph.prevent_feeding(x)
+
     if self._outer_context:
       control_pivot = self._outer_context.GetControlPivot().op
       for var in enter_vars:

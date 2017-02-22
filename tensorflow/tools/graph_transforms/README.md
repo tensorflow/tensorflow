@@ -280,14 +280,14 @@ bazel-bin/tensorflow/tools/graph_transforms/transform_graph \
 --out_graph=optimized_inception_graph.pb \
 --inputs='Mul:0' \
 --outputs='softmax:0' \
---transforms='\
-strip_unused_nodes(type=float, shape="1,299,299,3") \
-remove_nodes(op=Identity, op=CheckNumerics) \
-fold_old_batch_norms \
-quantize_weights \
-quantize_nodes \
-strip_unused_nodes \
-'
+--transforms='
+ add_default_attributes
+ strip_unused_nodes(type=float, shape="1,299,299,3")
+ remove_nodes(op=Identity, op=CheckNumerics)
+ fold_old_batch_norms
+ quantize_weights
+ quantize_nodes
+ strip_unused_nodes'
 ```
 
 This process converts all the operations in the graph that have eight-bit

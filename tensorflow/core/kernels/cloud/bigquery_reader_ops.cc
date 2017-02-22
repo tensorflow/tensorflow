@@ -18,10 +18,10 @@ limitations under the License.
 #include <set>
 
 #include "tensorflow/core/example/example.pb.h"
+#include "tensorflow/core/framework/reader_base.h"
 #include "tensorflow/core/framework/reader_op_kernel.h"
 #include "tensorflow/core/kernels/cloud/bigquery_table_accessor.h"
 #include "tensorflow/core/kernels/cloud/bigquery_table_partition.pb.h"
-#include "tensorflow/core/kernels/reader_base.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/lib/strings/numbers.h"

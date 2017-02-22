@@ -27,6 +27,7 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import nn_ops
@@ -78,27 +79,42 @@ def _test_capture_normal_sample_outputs():
 
 
 def make_univariate_mixture(batch_shape, num_components):
+  batch_shape = ops.convert_to_tensor(batch_shape, dtypes.int32)
   logits = random_ops.random_uniform(
-      list(batch_shape) + [num_components], -1, 1, dtype=dtypes.float32) - 50.
+      array_ops.concat((batch_shape, [num_components]), axis=0),
+      -1, 1, dtype=dtypes.float32) - 50.
   components = [
       distributions_py.Normal(
-          loc=np.float32(np.random.randn(*list(batch_shape))),
-          scale=np.float32(10 * np.random.rand(*list(batch_shape))))
+          loc=random_ops.random_normal(batch_shape),
+          scale=10 * random_ops.random_uniform(batch_shape))
       for _ in range(num_components)
   ]
   cat = distributions_py.Categorical(logits, dtype=dtypes.int32)
   return distributions_py.Mixture(cat, components)
 
 
-def make_multivariate_mixture(batch_shape, num_components, event_shape):
+def make_multivariate_mixture(batch_shape, num_components, event_shape,
+                              batch_shape_tensor=None):
+  if batch_shape_tensor is None:
+    batch_shape_tensor = batch_shape
+  batch_shape_tensor = ops.convert_to_tensor(batch_shape_tensor, dtypes.int32)
   logits = random_ops.random_uniform(
-      list(batch_shape) + [num_components], -1, 1, dtype=dtypes.float32) - 50.
-  components = [
-      distributions_py.MultivariateNormalDiag(
-          loc=np.float32(np.random.randn(*list(batch_shape + event_shape))),
-          scale_diag=np.float32(10 * np.random.rand(
-              *list(batch_shape + event_shape)))) for _ in range(num_components)
-  ]
+      array_ops.concat((batch_shape_tensor, [num_components]), 0),
+      -1, 1, dtype=dtypes.float32) - 50.
+  logits.set_shape(
+      tensor_shape.TensorShape(batch_shape).concatenate(num_components))
+  static_batch_and_event_shape = (
+      tensor_shape.TensorShape(batch_shape).concatenate(event_shape))
+  event_shape = ops.convert_to_tensor(event_shape, dtypes.int32)
+  batch_and_event_shape = array_ops.concat((batch_shape_tensor, event_shape), 0)
+  def create_component():
+    loc = random_ops.random_normal(batch_and_event_shape)
+    scale_diag = 10 * random_ops.random_uniform(batch_and_event_shape)
+    loc.set_shape(static_batch_and_event_shape)
+    scale_diag.set_shape(static_batch_and_event_shape)
+    return distributions_py.MultivariateNormalDiag(
+        loc=loc, scale_diag=scale_diag)
+  components = [create_component() for _ in range(num_components)]
   cat = distributions_py.Categorical(logits, dtype=dtypes.int32)
   return distributions_py.Mixture(cat, components)
 
@@ -343,8 +359,9 @@ class MixtureTest(test.TestCase):
   def testSampleScalarBatchUnivariate(self):
     with self.test_session() as sess:
       num_components = 3
+      batch_shape = []
       dist = make_univariate_mixture(
-          batch_shape=[], num_components=num_components)
+          batch_shape=batch_shape, num_components=num_components)
       n = 4
       with _test_capture_normal_sample_outputs() as component_samples:
         samples = dist.sample(n, seed=123)
@@ -438,19 +455,36 @@ class MixtureTest(test.TestCase):
         self.assertAllClose(which_dist_samples,
                             sample_values[which_c_s, which_c_b0, which_c_b1])
 
-  def testSampleBatchMultivariate(self):
+  def _testSampleBatchMultivariate(self, fully_known_batch_shape):
     with self.test_session() as sess:
       num_components = 3
+      if fully_known_batch_shape:
+        batch_shape = [2, 3]
+        batch_shape_tensor = [2, 3]
+      else:
+        batch_shape = [None, 3]
+        batch_shape_tensor = array_ops.placeholder(dtype=dtypes.int32)
+
       dist = make_multivariate_mixture(
-          batch_shape=[2, 3], num_components=num_components, event_shape=[4])
+          batch_shape=batch_shape,
+          num_components=num_components, event_shape=[4],
+          batch_shape_tensor=batch_shape_tensor)
       n = 5
       with _test_capture_mvndiag_sample_outputs() as component_samples:
         samples = dist.sample(n, seed=123)
       self.assertEqual(samples.dtype, dtypes.float32)
-      self.assertEqual((5, 2, 3, 4), samples.get_shape())
+      if fully_known_batch_shape:
+        self.assertEqual((5, 2, 3, 4), samples.get_shape())
+      else:
+        self.assertEqual([5, None, 3, 4], samples.get_shape().as_list())
       cat_samples = dist.cat.sample(n, seed=123)
+      if fully_known_batch_shape:
+        feed_dict = {}
+      else:
+        feed_dict = {batch_shape_tensor: [2, 3]}
       sample_values, cat_sample_values, dist_sample_values = sess.run(
-          [samples, cat_samples, component_samples])
+          [samples, cat_samples, component_samples],
+          feed_dict=feed_dict)
       self.assertEqual((5, 2, 3, 4), sample_values.shape)
 
       for c in range(num_components):
@@ -461,6 +495,12 @@ class MixtureTest(test.TestCase):
                                                    which_c_b1, :]
         self.assertAllClose(which_dist_samples,
                             sample_values[which_c_s, which_c_b0, which_c_b1, :])
+
+  def testSampleBatchMultivariateFullyKnownBatchShape(self):
+    self._testSampleBatchMultivariate(fully_known_batch_shape=True)
+
+  def testSampleBatchMultivariateNotFullyKnownBatchShape(self):
+    self._testSampleBatchMultivariate(fully_known_batch_shape=False)
 
   def testEntropyLowerBoundMultivariate(self):
     with self.test_session() as sess:

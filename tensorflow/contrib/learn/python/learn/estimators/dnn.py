@@ -436,6 +436,7 @@ class DNNClassifier(estimator.Estimator):
       return (pred[key] for pred in preds)
     return preds[key]
 
+  @deprecated("2017-03-25", "Please use Estimator.export_savedmodel() instead.")
   def export(self,
              export_dir,
              input_fn=None,
@@ -739,6 +740,7 @@ class DNNRegressor(estimator.Estimator):
       return (pred[key] for pred in preds)
     return preds[key]
 
+  @deprecated("2017-03-25", "Please use Estimator.export_savedmodel() instead.")
   def export(self,
              export_dir,
              input_fn=None,
@@ -761,3 +763,128 @@ class DNNRegressor(estimator.Estimator):
         prediction_key=prediction_key.PredictionKey.SCORES,
         default_batch_size=default_batch_size,
         exports_to_keep=exports_to_keep)
+
+
+# TODO(zakaria): Make it public when b/34751732 is fixed.
+class _DNNEstimator(estimator.Estimator):
+  """A Estimator for TensorFlow DNN models with user specified _Head.
+
+  Example:
+
+  ```python
+  sparse_feature_a = sparse_column_with_hash_bucket(...)
+  sparse_feature_b = sparse_column_with_hash_bucket(...)
+
+  sparse_feature_a_emb = embedding_column(sparse_id_column=sparse_feature_a,
+                                          ...)
+  sparse_feature_b_emb = embedding_column(sparse_id_column=sparse_feature_b,
+                                          ...)
+  To create a _DNNEstimator for binary classification, where
+  estimator = _DNNEstimator(
+      feature_columns=[sparse_feature_a_emb, sparse_feature_b_emb],
+      head=head=head_lib._multi_class__head(n_classes=2),
+      hidden_units=[1024, 512, 256])
+
+  If your label is keyed with "y" in your labels dict, and weights are keyed
+  with "w" in features dict, and you want to enable centered bias,
+  head=head_lib._multi_class__head(n_classes=2,
+                                   label_name="x"
+                                   weight_column_name="w",
+                                   enable_centered_bias=True)
+  estimator = _DNNEstimator(
+      feature_columns=[sparse_feature_a_emb, sparse_feature_b_emb],
+      head=head,
+      hidden_units=[1024, 512, 256])
+
+  # Input builders
+  def input_fn_train: # returns x, y (where y represents label's class index).
+    pass
+  estimator.fit(input_fn=input_fn_train)
+
+  def input_fn_eval: # returns x, y (where y represents label's class index).
+    pass
+  estimator.evaluate(input_fn=input_fn_eval)
+  estimator.predict(x=x) # returns predicted labels (i.e. label's class index).
+  ```
+
+  Input of `fit` and `evaluate` should have following features,
+    otherwise there will be a `KeyError`:
+
+  * if `weight_column_name` is not `None`, a feature with
+     `key=weight_column_name` whose value is a `Tensor`.
+  * for each `column` in `feature_columns`:
+    - if `column` is a `SparseColumn`, a feature with `key=column.name`
+      whose `value` is a `SparseTensor`.
+    - if `column` is a `WeightedSparseColumn`, two features: the first with
+      `key` the id column name, the second with `key` the weight column name.
+      Both features' `value` must be a `SparseTensor`.
+    - if `column` is a `RealValuedColumn`, a feature with `key=column.name`
+      whose `value` is a `Tensor`.
+  """
+
+  def __init__(self,
+               head,
+               hidden_units,
+               feature_columns,
+               model_dir=None,
+               optimizer=None,
+               activation_fn=nn.relu,
+               dropout=None,
+               gradient_clip_norm=None,
+               config=None,
+               feature_engineering_fn=None,
+               embedding_lr_multipliers=None,
+               input_layer_min_slice_size=None):
+    """Initializes a _DNNEstimator instance.
+
+    Args:
+      head: _Head instance.
+      hidden_units: List of hidden units per layer. All layers are fully
+        connected. Ex. `[64, 32]` means first layer has 64 nodes and second one
+        has 32.
+      feature_columns: An iterable containing all the feature columns used by
+        the model. All items in the set should be instances of classes derived
+        from `FeatureColumn`.
+      model_dir: Directory to save model parameters, graph and etc. This can
+        also be used to load checkpoints from the directory into a estimator to
+        continue training a previously saved model.
+      optimizer: An instance of `tf.Optimizer` used to train the model. If
+        `None`, will use an Adagrad optimizer.
+      activation_fn: Activation function applied to each layer. If `None`, will
+        use `tf.nn.relu`.
+      dropout: When not `None`, the probability we will drop out a given
+        coordinate.
+      gradient_clip_norm: A float > 0. If provided, gradients are
+        clipped to their global norm with this clipping ratio. See
+        `tf.clip_by_global_norm` for more details.
+      config: `RunConfig` object to configure the runtime settings.
+      feature_engineering_fn: Feature engineering function. Takes features and
+                        labels which are the output of `input_fn` and
+                        returns features and labels which will be fed
+                        into the model.
+      embedding_lr_multipliers: Optional. A dictionary from `EmbeddingColumn` to
+          a `float` multiplier. Multiplier will be used to multiply with
+          learning rate for the embedding variables.
+      input_layer_min_slice_size: Optional. The min slice size of input layer
+          partitions. If not provided, will use the default of 64M.
+
+    Returns:
+      A `_DNNEstimator` estimator.
+    """
+    super(_DNNEstimator, self).__init__(
+        model_fn=_dnn_model_fn,
+        model_dir=model_dir,
+        config=config,
+        params={
+            "head": head,
+            "hidden_units": hidden_units,
+            "feature_columns": feature_columns,
+            "optimizer": optimizer,
+            "activation_fn": activation_fn,
+            "dropout": dropout,
+            "gradient_clip_norm": gradient_clip_norm,
+            "embedding_lr_multipliers": embedding_lr_multipliers,
+            "input_layer_min_slice_size": input_layer_min_slice_size,
+        },
+        feature_engineering_fn=feature_engineering_fn)
+
