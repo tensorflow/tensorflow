@@ -603,8 +603,9 @@ function _addHealthPill(
  * @param colors A list of colors to use.
  */
 export function addHealthPills(
-    svgRoot: SVGElement, nodeNamesToHealthPill: {[key: string]: HealthPill}) {
-  if (!nodeNamesToHealthPill) {
+    svgRoot: SVGElement, nodeNamesToHealthPills: {[key: string]: HealthPill[]},
+    healthPillStepIndex: number) {
+  if (!nodeNamesToHealthPills) {
     // No health pill information available.
     return;
   }
@@ -612,9 +613,10 @@ export function addHealthPills(
   let svgRootSelection = d3.select(svgRoot);
   svgRootSelection.selectAll('g.nodeshape')
       .each(function(nodeInfo: render.RenderGroupNodeInfo) {
-        // The element is the first item of a d3 selection.
-        _addHealthPill(
-            this, nodeNamesToHealthPill[nodeInfo.node.name], nodeInfo);
+        // Only show health pill data for this node if it is available.
+        let healthPills = nodeNamesToHealthPills[nodeInfo.node.name];
+        let healthPill = healthPills ? healthPills[healthPillStepIndex] : null;
+        _addHealthPill(this, healthPill, nodeInfo);
       });
 };
 

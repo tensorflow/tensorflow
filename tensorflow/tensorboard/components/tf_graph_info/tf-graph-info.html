@@ -16,6 +16,7 @@ limitations under the License.
 -->
 
 <link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../paper-slider/paper-slider.html">
 <link rel="import" href="../tf-graph-common/tf-graph-common.html">
 <link rel="import" href="tf-node-info.html">
 
@@ -40,7 +41,6 @@ h2 {
 }
 
 .health-pill-legend h2 {
-  margin: 0 0 20px 0;
   text-align: left;
 }
 
@@ -68,6 +68,16 @@ h2 {
 .health-pill-entry .tensor-count {
   float: right;
 }
+
+#health-pill-step-slider {
+  width: 100%;
+  margin: 0 0 0 -15px;
+  /* 31 comes from adding a padding of 15px from both sides of the paper-slider, subtracting
+   * 1px so that the slider width aligns with the image (the last slider marker takes up 1px),
+   * and adding 2px to account for a border of 1px on both sides of the image. 30 - 1 + 2.
+   * Apparently, the paper-slider lacks a mixin for those padding values. */
+  width: calc(100% + 31px);
+}
 </style>
 <template is="dom-if" if="{{selectedNode}}">
   <paper-material elevation="1" class="card">
@@ -81,15 +91,35 @@ h2 {
     </tf-node-info>
   </paper-material>
 </template>
-<template is="dom-if" if="[[_healthPillsAvailable(nodeNamesToHealthPill)]]">
+<template is="dom-if" if="[[_healthPillsAvailable(nodeNamesToHealthPills)]]">
   <paper-material elevation="1" class="card health-pill-legend">
-    <h2>Health Pill Legend</h2>
+    <template is="dom-if" if="[[_maxStepIndex]]">
+      <h2>
+        Step of Health Pills: [[_currentStepDisplayValue]]
+      </h2>
+      <paper-slider
+            id="health-pill-step-slider"
+            immediate-value="{{healthPillStepIndex}}"
+            max="[[_maxStepIndex]]"
+            snaps
+            step="1"
+            value="{{healthPillStepIndex}}"></paper-slider>
+    </template>
+    <h2>
+      Health Pill
+      <template is="dom-if" if="[[healthPillValuesForSelectedNode]]">
+        Counts for Selected Node
+      </template>
+      <template is="dom-if" if="[[!healthPillValuesForSelectedNode]]">
+        Legend
+      </template>
+    </h2>
     <template is="dom-repeat" items="[[healthPillEntries]]">
       <div class="health-pill-entry">
         <div class="color-preview" style="background:[[item.background_color]]"></div>
         <div class="color-label">[[item.label]]</div>
         <div class="tensor-count">
-          [[_computeTensorCountString(nodeNamesToHealthPill, selectedNode, index)]]
+          [[_computeTensorCountString(healthPillValuesForSelectedNode, index)]]
         </div>
       </div>
     </template>
@@ -106,7 +136,11 @@ h2 {
       graphHierarchy: Object,
       graph: Object,
       renderHierarchy: Object,
-      nodeNamesToHealthPill: Object,
+      nodeNamesToHealthPills: Object,
+      healthPillStepIndex: {
+        type: Number,
+        notify: true,
+      },
       colorBy: String,
       // Two-ways
       selectedNode: {
@@ -126,7 +160,19 @@ h2 {
         type: Array,
         value: tf.graph.scene.healthPillEntries,
         readOnly: true,
-      }
+      },
+      healthPillValuesForSelectedNode: {
+        type: Array,
+        computed: '_computeHealthPillForNode(nodeNamesToHealthPills, healthPillStepIndex, selectedNode)',
+      },
+      _maxStepIndex: {
+        type: Number,
+        computed: '_computeMaxStepIndex(nodeNamesToHealthPills)',
+      },
+      _currentStepDisplayValue: {
+        type: String,
+        computed: '_computeCurrentStepDisplayValue(nodeNamesToHealthPills, healthPillStepIndex)',
+      },
     },
     listeners: {
       'node-list-item-click': '_nodeListItemClicked',
@@ -142,27 +188,63 @@ h2 {
     _nodeListItemMouseout: function() {
       this.highlightedNode = null;
     },
-    _healthPillsAvailable: function(nodeNamesToHealthPill) {
+    _healthPillsAvailable: function(nodeNamesToHealthPills) {
       let count = 0;
-      for (let nodeName in nodeNamesToHealthPill) {
+      for (let nodeName in nodeNamesToHealthPills) {
         return true;
       }
       return false;
     },
-    _computeTensorCountString: function(nodeNamesToHealthPill, selectedNode, index) {
+    _computeTensorCountString: function(healthPillValuesForSelectedNode, valueIndex) {
+      if (!healthPillValuesForSelectedNode) {
+        // No health pill data is available.
+        return '';
+      }
+
+      return healthPillValuesForSelectedNode[valueIndex].toFixed(0);
+    },
+    _computeHealthPillForNode: function(
+        nodeNamesToHealthPills, healthPillStepIndex, selectedNode) {
       if (!selectedNode) {
         // No node is selected.
-        return '';
+        return null;
       }
 
-      const healthPill = nodeNamesToHealthPill[selectedNode];
-      if (!healthPill) {
+      const healthPills = nodeNamesToHealthPills[selectedNode];
+      if (!healthPills) {
         // This node lacks a health pill.
-        return '';
+        return null;
       }
 
-      // The health pill count values start at 2.
-      return healthPill.value[index + 2].toFixed(0);
+      const healthPill = healthPills[healthPillStepIndex];
+      if (!healthPill) {
+        // This node lacks a health pill at the current step.
+        return null;
+      }
+
+      // The health pill count values start at 2. Each health pill contains 6 values.
+      return healthPill.value.slice(2, 8);
+    },
+    _computeCurrentStepDisplayValue: function(nodeNamesToHealthPills, healthPillStepIndex) {
+      for (let nodeName in nodeNamesToHealthPills) {
+        // All nodes have the same number of steps stored, so only examine 1 node. We cannot
+        // directly index into the nodeNamesToHealthPills object because we do not have a key.
+        return nodeNamesToHealthPills[nodeName][healthPillStepIndex].step.toFixed(0);
+      }
+
+      // The current step could not be computed.
+      return 0;
+    },
+    _computeMaxStepIndex: function(nodeNamesToHealthPills) {
+      for (let nodeName in nodeNamesToHealthPills) {
+        // All nodes have the same number of steps stored, so only examine 1 node.
+        // The index is 1 less than the count. Tensorboard backend logic guarantees that the length
+        // of the array will be greater than 1.
+        return nodeNamesToHealthPills[nodeName].length - 1;
+      }
+
+      // Return a falsy value. The slider should be hidden.
+      return 0;
     },
   });
 })();
