@@ -47,6 +47,7 @@
 @@static_state_saving_rnn
 @@static_bidirectional_rnn
 @@stack_bidirectional_dynamic_rnn
+@@stack_bidirectional_rnn
 """
 
 from __future__ import absolute_import
@@ -81,4 +82,3 @@ from tensorflow.contrib.rnn.python.ops.rnn_cell import *
 
 from tensorflow.python.util.all_util import remove_undocumented
 remove_undocumented(__name__, ['core_rnn_cell'])
-
