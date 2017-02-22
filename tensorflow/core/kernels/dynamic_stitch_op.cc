@@ -20,9 +20,119 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 
+#if GOOGLE_CUDA
+#include "tensorflow/core/kernels/cuda_device_array.h"
+#endif  // GOOGLE_CUDA
+
 namespace tensorflow {
 
-template <class T>
+typedef Eigen::ThreadPoolDevice CPUDevice;
+typedef Eigen::GpuDevice GPUDevice;
+
+template <typename Device, typename T>
+struct LaunchDynamicStitchOp;
+
+template <typename T>
+struct LaunchDynamicStitchOp<CPUDevice, T> {
+  static void launch(OpKernelContext* c, const int slice_size,
+                     const int first_dim_size, OpInputList indices_inputs,
+                     OpInputList data_inputs, Tensor* merged) {
+    auto merged_flat = merged->flat_outer_dims<T>();
+    for (int input_num = 0; input_num < indices_inputs.size(); input_num++) {
+      const Tensor& indices = indices_inputs[input_num];
+      auto indices_vec = indices.flat<int32>();
+      const Tensor& data = data_inputs[input_num];
+      auto data_flat =
+          data.shaped<T, 2>({indices_vec.dimension(0), slice_size});
+
+      if (DataTypeCanUseMemcpy(DataTypeToEnum<T>::v())) {
+        T* merged_base = &merged_flat(0, 0);
+        const T* data_base = &data_flat(0, 0);
+        const size_t slice_bytes = slice_size * sizeof(T);
+        for (int i = 0; i < indices_vec.size(); i++) {
+          int32 index = internal::SubtleMustCopy(indices_vec(i));
+          OP_REQUIRES(
+              c, FastBoundsCheck(index, first_dim_size),
+              errors::InvalidArgument("indices[", i, "] is out of range"));
+          memcpy(merged_base + index * slice_size, data_base + i * slice_size,
+                 slice_bytes);
+        }
+      } else {
+        Eigen::DSizes<Eigen::DenseIndex, 2> sizes(1, slice_size);
+        for (int i = 0; i < indices_vec.size(); i++) {
+          // Copy slice data[i] to merged[indices[i]]
+          Eigen::DSizes<Eigen::DenseIndex, 2> data_indices(i, 0);
+          int32 index = internal::SubtleMustCopy(indices_vec(i));
+          OP_REQUIRES(
+              c, FastBoundsCheck(index, first_dim_size),
+              errors::InvalidArgument("indices[", i, "] is out of range"));
+          Eigen::DSizes<Eigen::DenseIndex, 2> merged_indices(index, 0);
+          merged_flat.slice(merged_indices, sizes) =
+              data_flat.slice(data_indices, sizes);
+        }
+      }
+    }
+  }
+};
+
+#if GOOGLE_CUDA
+
+template <typename T>
+struct DynamicStitchGPULaunch {
+  static void Run(const GPUDevice& d, const int slice_size,
+                  const int first_dim_size,
+                  const CudaDeviceArrayStruct<int32>& indices_flat,
+                  const CudaDeviceArrayStruct<const T*>& data_slice_ptrs,
+                  T* output);
+};
+
+template <typename T>
+struct LaunchDynamicStitchOp<GPUDevice, T> {
+  static void launch(OpKernelContext* c, const int slice_size,
+                     const int first_dim_size, OpInputList indices_inputs,
+                     OpInputList data_inputs, Tensor* merged) {
+    // createt two arrays that will be sent to CUDA device
+    // one used as pointers to output's row id
+    CudaDeviceArrayOnHost<int32> indices_flat(c, first_dim_size);
+    // another used as pointers to the pointers of the head of each data_slice
+    CudaDeviceArrayOnHost<const T*> data_slice_ptrs(c, first_dim_size);
+    OP_REQUIRES_OK(c, indices_flat.Init());
+    OP_REQUIRES_OK(c, data_slice_ptrs.Init());
+
+    int ptr_num = 0;
+    for (int input_num = 0; input_num < indices_inputs.size(); input_num++) {
+      auto indices_vec = indices_inputs[input_num].flat<int32>();
+      auto base_ptr = data_inputs[input_num].template flat<T>().data();
+      for (int ind_num = 0; ind_num < indices_vec.size(); ind_num++) {
+        indices_flat.Set(ptr_num, indices_vec(ind_num));
+        // since each input data_slice is guranteed to be the same, we just
+        // offset
+        // base_ptr of each input tensor from data_inputs by a fixed amount.
+        data_slice_ptrs.Set(
+            ptr_num, const_cast<T*>(reinterpret_cast<const T*>(base_ptr) +
+                                    slice_size * ind_num));
+        ptr_num++;
+      }
+    }
+    OP_REQUIRES_OK(c, indices_flat.Finalize());
+    OP_REQUIRES_OK(c, data_slice_ptrs.Finalize());
+
+    auto output = merged->template flat<T>().data();
+
+    const GPUDevice& d = c->eigen_device<GPUDevice>();
+    DynamicStitchGPULaunch<T>().Run(d, slice_size, first_dim_size,
+                                    indices_flat.data(), data_slice_ptrs.data(),
+                                    output);
+    auto stream = c->op_device_context()->stream();
+    OP_REQUIRES(c, stream->ok(),
+                errors::Internal(
+                    "Launch of gpu kernel for DynamicStitchGPULaunch failed"));
+  }
+};
+
+#endif  // GOOGLE_CUDA
+
+template <typename Device, typename T>
 class DynamicStitchOp : public OpKernel {
  public:
   explicit DynamicStitchOp(OpKernelConstruction* c) : OpKernel(c) {
@@ -95,46 +205,13 @@ class DynamicStitchOp : public OpKernel {
     }
     Tensor* merged = nullptr;
     OP_REQUIRES_OK(c, c->allocate_output(0, result_shape, &merged));
-
     // TODO(jeff): Currently we leave uninitialized any portions of
     // merged that aren't covered by an index in indices.  What should we do?
     if (first_dim_size > 0) {
-      auto merged_flat = merged->flat_outer_dims<T>();
-      const int slice_size = merged_flat.dimension(1);
-      for (int input_num = 0; input_num < indices_inputs.size(); input_num++) {
-        const Tensor& indices = indices_inputs[input_num];
-        auto indices_vec = indices.flat<int32>();
-        const Tensor& data = data_inputs[input_num];
-        auto data_flat =
-            data.shaped<T, 2>({indices_vec.dimension(0), slice_size});
+      const int slice_size = merged->flat_outer_dims<T>().dimension(1);
 
-        if (DataTypeCanUseMemcpy(DataTypeToEnum<T>::v())) {
-          T* merged_base = &merged_flat(0, 0);
-          const T* data_base = &data_flat(0, 0);
-          const size_t slice_bytes = slice_size * sizeof(T);
-          for (int i = 0; i < indices_vec.size(); i++) {
-            int32 index = internal::SubtleMustCopy(indices_vec(i));
-            OP_REQUIRES(
-                c, FastBoundsCheck(index, first_dim_size),
-                errors::InvalidArgument("indices[", i, "] is out of range"));
-            memcpy(merged_base + index * slice_size, data_base + i * slice_size,
-                   slice_bytes);
-          }
-        } else {
-          Eigen::DSizes<Eigen::DenseIndex, 2> sizes(1, slice_size);
-          for (int i = 0; i < indices_vec.size(); i++) {
-            // Copy slice data[i] to merged[indices[i]]
-            Eigen::DSizes<Eigen::DenseIndex, 2> data_indices(i, 0);
-            int32 index = internal::SubtleMustCopy(indices_vec(i));
-            OP_REQUIRES(
-                c, FastBoundsCheck(index, first_dim_size),
-                errors::InvalidArgument("indices[", i, "] is out of range"));
-            Eigen::DSizes<Eigen::DenseIndex, 2> merged_indices(index, 0);
-            merged_flat.slice(merged_indices, sizes) =
-                data_flat.slice(data_indices, sizes);
-          }
-        }
-      }
+      LaunchDynamicStitchOp<Device, T>::launch(
+          c, slice_size, first_dim_size, indices_inputs, data_inputs, merged);
     }
   }
 
@@ -160,7 +237,7 @@ class DynamicStitchOp : public OpKernel {
                               .Device(DEVICE_CPU)        \
                               .TypeConstraint<type>("T") \
                               .HostMemory("indices"),    \
-                          DynamicStitchOp<type>)
+                          DynamicStitchOp<CPUDevice, type>)
 
 TF_CALL_POD_STRING_TYPES(REGISTER_DYNAMIC_STITCH);
 #undef REGISTER_DYNAMIC_STITCH
@@ -173,7 +250,7 @@ TF_CALL_POD_STRING_TYPES(REGISTER_DYNAMIC_STITCH);
                               .HostMemory("indices")     \
                               .HostMemory("data")        \
                               .HostMemory("merged"),     \
-                          DynamicStitchOp<type>)
+                          DynamicStitchOp<CPUDevice, type>)
 
 TF_CALL_ALL_TYPES(REGISTER_DYNAMIC_STITCH_SYCL);
 #undef REGISTER_DYNAMIC_STITCH_SYCL
@@ -184,12 +261,10 @@ TF_CALL_ALL_TYPES(REGISTER_DYNAMIC_STITCH_SYCL);
   REGISTER_KERNEL_BUILDER(Name("DynamicStitch")          \
                               .Device(DEVICE_GPU)        \
                               .TypeConstraint<type>("T") \
-                              .HostMemory("indices")     \
-                              .HostMemory("data")        \
-                              .HostMemory("merged"),     \
-                          DynamicStitchOp<type>)
+                              .HostMemory("indices"),    \
+                          DynamicStitchOp<GPUDevice, type>)
 
-TF_CALL_POD_STRING_TYPES(REGISTER_DYNAMIC_STITCH_GPU);
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_DYNAMIC_STITCH_GPU);
 #undef REGISTER_DYNAMIC_STITCH_GPU
 
 #endif  // GOOGLE_CUDA
