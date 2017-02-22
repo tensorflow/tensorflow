@@ -93,7 +93,7 @@ while true; do
   elif [[ "${1}" == "--integration_tests" ]]; then
     DO_INTEGRATION_TESTS=1
   else
-    BAZEL_FLAGS="$BAZEL_FLAGS ${1}"
+    BAZEL_FLAGS="${BAZEL_FLAGS} ${1}"
   fi
 
   shift
