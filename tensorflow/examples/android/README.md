@@ -12,7 +12,9 @@ Inference is done using the [TensorFlow Android Inference Interface](../../../te
 which may be built separately if you want a standalone library to drop into your
 existing application.
 
-A device running Android 5.0 (API 21) or higher is required to run the demo.
+A device running Android 5.0 (API 21) or higher is required to run the demo due
+to the use of the camera2 API, although the native libraries themselves can run
+on API >= 14 devices.
 
 ## Current samples:
 
@@ -95,7 +97,7 @@ be reported.
 Also edit the API levels for the SDK in WORKSPACE to the highest level you
 have installed in your SDK. This must be >= 23 (this is completely independent
 of the API level of the demo, which is defined in AndroidManifest.xml).
-The NDK API level may remain at 21.
+The NDK API level may remain at 14.
 
 ##### Install Model Files (optional)
 
