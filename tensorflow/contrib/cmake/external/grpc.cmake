@@ -33,7 +33,7 @@ endif()
 
 ExternalProject_Add(grpc
     PREFIX grpc
-    DEPENDS boringssl protobuf zlib
+    DEPENDS protobuf zlib
     GIT_REPOSITORY ${GRPC_URL}
     GIT_TAG ${GRPC_TAG}
     DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
@@ -43,9 +43,14 @@ ExternalProject_Add(grpc
     CMAKE_CACHE_ARGS
         -DCMAKE_BUILD_TYPE:STRING=Release
         -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
-	-Dboringssl_INCLUDE_DIR:STRING=${boringssl_INCLUDE_DIR}
         -DPROTOBUF_INCLUDE_DIRS:STRING=${PROTOBUF_INCLUDE_DIRS}
         -DPROTOBUF_LIBRARIES:STRING=${protobuf_STATIC_LIBRARIES}
         -DZLIB_ROOT:STRING=${ZLIB_INSTALL}
 )
 
+ExternalProject_Add_Step(grpc copy_rand
+COMMAND ${CMAKE_COMMAND} -E copy
+${CMAKE_SOURCE_DIR}/patches/grpc/rand.h ${GRPC_BUILD}/include/openssl/rand.h
+DEPENDEES patch
+DEPENDERS build
+)

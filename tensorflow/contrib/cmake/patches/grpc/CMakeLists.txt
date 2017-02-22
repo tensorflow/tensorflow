@@ -102,7 +102,6 @@ add_library(gpr
 target_include_directories(gpr
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include
-  PRIVATE ${boringssl_INCLUDE_DIR}
   PRIVATE ${PROTOBUF_INCLUDE_DIRS}
   PRIVATE ${ZLIB_INCLUDE_DIRS}
 )
@@ -309,7 +308,6 @@ add_library(grpc_unsecure
 target_include_directories(grpc_unsecure
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include
-  PRIVATE ${boringssl_INCLUDE_DIR}
   PRIVATE ${PROTOBUF_ROOT_DIR}/src
   PRIVATE ${ZLIB_INCLUDE_DIRS}
 )
@@ -356,7 +354,6 @@ add_library(grpc++_unsecure
 target_include_directories(grpc++_unsecure
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include
-  PRIVATE ${boringssl_INCLUDE_DIR}
   PRIVATE ${PROTOBUF_INCLUDE_DIRS}
   PRIVATE ${ZLIB_INCLUDE_DIRS}
 )
