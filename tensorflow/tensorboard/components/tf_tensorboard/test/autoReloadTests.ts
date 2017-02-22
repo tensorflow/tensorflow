@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-var assert = chai.assert;
 declare function fixture(id: string): void;
 window.HTMLImports.whenReady(() => {
   Polymer({
@@ -41,28 +40,28 @@ window.HTMLImports.whenReady(() => {
     it('reads and writes autoReload state from localStorage', function() {
       ls.removeItem(key);
       testElement = fixture('autoReloadFixture');
-      assert.isTrue(
+      chai.assert.isTrue(
           testElement.autoReloadEnabled, 'autoReload defaults to true');
-      assert.equal(ls.getItem(key), 'true', 'autoReload setting saved');
+      chai.assert.equal(ls.getItem(key), 'true', 'autoReload setting saved');
       testElement = fixture('autoReloadFixture');
-      assert.isTrue(
+      chai.assert.isTrue(
           testElement.autoReloadEnabled, 'read true from localStorage');
       testElement.autoReloadEnabled = false;
-      assert.equal(ls.getItem(key), 'false', 'autoReload setting saved');
+      chai.assert.equal(ls.getItem(key), 'false', 'autoReload setting saved');
       testElement = fixture('autoReloadFixture');
-      assert.isFalse(
+      chai.assert.isFalse(
           testElement.autoReloadEnabled, 'read false setting properly');
       testElement.autoReloadEnabled = true;
-      assert.equal(ls.getItem(key), 'true', 'saved true setting');
+      chai.assert.equal(ls.getItem(key), 'true', 'saved true setting');
     });
 
     it('reloads every interval secs when autoReloading', function() {
       testElement.autoReloadIntervalSecs = 1;
       testElement.autoReloadEnabled = true;
       clock.tick(1000);
-      assert.equal(callCount, 1, 'ticking clock triggered call');
+      chai.assert.equal(callCount, 1, 'ticking clock triggered call');
       clock.tick(20 * 1000);
-      assert.equal(callCount, 21, 'ticking clock 20s triggered 20 calls');
+      chai.assert.equal(callCount, 21, 'ticking clock 20s triggered 20 calls');
     });
 
     it('can cancel pending autoReload', function() {
@@ -71,7 +70,7 @@ window.HTMLImports.whenReady(() => {
       clock.tick(5 * 1000);
       testElement.autoReloadEnabled = false;
       clock.tick(20 * 1000);
-      assert.equal(callCount, 0, 'callCount is 0');
+      chai.assert.equal(callCount, 0, 'callCount is 0');
     });
 
     it('throws an error in absence of reload method', function() {
