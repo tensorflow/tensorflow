@@ -76,6 +76,7 @@ def dynamic_rnn_decoder(cell, decoder_fn, inputs=None, sequence_length=None,
 
       The input to `cell` at each time step will be a `Tensor` with dimensions
         `[batch_size, ...]`.
+
     sequence_length: (optional) An int32/int64 vector sized `[batch_size]`.
       if `inputs` is not None and `sequence_length` is None it is inferred
       from the `inputs` as the maximal possible sequence length.
