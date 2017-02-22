@@ -30,6 +30,6 @@ REGISTER_SYCL_KERNEL(float);
 #endif // TENSORFLOW_USE_SYC
 
 #if GOOGLE_CUDA
-REGISTER3(UnaryOp, GPU, "Sinh", functor::sinh, float, Eigen::half, double);
+REGISTER3(UnaryOp, GPU, "Sinh", functor::sinh, float, double);
 #endif
 }  // namespace tensorflow
