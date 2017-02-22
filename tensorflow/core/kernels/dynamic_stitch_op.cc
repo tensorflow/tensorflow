@@ -266,6 +266,7 @@ TF_CALL_ALL_TYPES(REGISTER_DYNAMIC_STITCH_SYCL);
 
 TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_DYNAMIC_STITCH_GPU);
 #undef REGISTER_DYNAMIC_STITCH_GPU
+<<<<<<< HEAD
 
 // dtypes that are not supported for current CUDA kernel use
 // CPU kernel instead.
@@ -282,6 +283,8 @@ TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_DYNAMIC_STITCH_GPU);
                               .HostMemory("data")        \
                               .HostMemory("merged"),     \
                           DynamicStitchOp<CPUDevice, type>)
+=======
+>>>>>>> f2d0bc2... initial commit, partially finished dynamic_stich kernel
 
 CALL_NOT_SUPPORTED_TYPES(REGISTER_DYNAMIC_STITCH_GPU_NOT_SUPPORTED);
 #undef REGISTER_DYNAMIC_STITCH_GPU_NOT_SUPPORTED
