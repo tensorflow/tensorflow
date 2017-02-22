@@ -103,9 +103,7 @@ done
 
 BAZEL_FLAGS=$(str_strip "${BAZEL_FLAGS}")
 
-if [[ ! -z "${BAZEL_FLAGS}" ]]; then
-  echo "Using Bazel flags: ${BAZEL_FLAGS}"
-fi
+echo "Using Bazel flags: ${BAZEL_FLAGS}"
 
 PIP_BUILD_TARGET="//tensorflow/tools/pip_package:build_pip_package"
 GPU_FLAG=""
