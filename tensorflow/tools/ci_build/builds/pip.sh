@@ -69,6 +69,7 @@ source "${SCRIPT_DIR}/builds_common.sh"
 
 # Get the command line arguments
 CONTAINER_TYPE=$( echo "$1" | tr '[:upper:]' '[:lower:]' )
+shift
 
 if [[ ! -z "${TF_BUILD_BAZEL_CLEAN}" ]] && \
    [[ "${TF_BUILD_BAZEL_CLEAN}" != "0" ]]; then
