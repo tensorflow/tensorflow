@@ -50,9 +50,11 @@ struct DynamicStitchGPULaunch {
                   const CudaDeviceArrayStruct<int32>& indices_flat,
                   const CudaDeviceArrayStruct<const T*>& data_slice_ptrs,
                   T* output) {
+    // TODO(MycChiu): Currently these launch settings are hard-coded and
+    // roughly optimized for my local system, is there a better way to 
+    // automatically determine the optimal launch settings?
     const int block_size = 256;
-    const int num_blocks = 60;
-    const int grid_size = std::min(120, num_blocks);
+    const int grid_size = 60;
     const int output_size = slice_size * first_dim_size;
     DynamicStitchGPUKernel<T><<<grid_size, block_size, 0>>>(
         slice_size, output_size, indices_flat, data_slice_ptrs, output);
