@@ -63,6 +63,15 @@ BFCAllocator::BFCAllocator(SubAllocator* sub_allocator, size_t total_memory,
       CHECK_NE(BinForSize(bin_size * 2), BinFromIndex(b));
     }
   }
+
+#ifdef INTEL_MKL
+  // For redirecting all allocations from MKL to this allocator
+  // From: http://software.intel.com/en-us/node/528565
+  i_malloc  = mkl_malloc;
+  i_calloc  = mkl_calloc;
+  i_realloc = mkl_realloc;
+  i_free    = mkl_free;
+#endif
 }
 
 BFCAllocator::~BFCAllocator() {
@@ -706,5 +715,30 @@ void BFCAllocator::GetStats(AllocatorStats* stats) {
   mutex_lock l(lock_);
   *stats = stats_;
 }
+
+#ifdef INTEL_MKL
+// Set of wrapper functions to allow the MKL library to use this allocator
+
+void* BFCAllocator::mkl_malloc(size_t size) {
+	return cpu_allocator()->AllocateRaw(64, size);
+}
+
+void BFCAllocator::mkl_free(void* ptr) {
+	cpu_allocator()->DeallocateRaw(ptr);
+}
+
+void* BFCAllocator::mkl_calloc(size_t num, size_t size) {
+	// Assert for now
+	CHECK(0);
+	return NULL;
+}
+
+void* BFCAllocator::mkl_realloc(void* ptr, size_t size) {
+	// Assert for now
+	CHECK(0);
+	return NULL;
+}
+
+#endif // INTEL_MKL
 
 }  // namespace tensorflow

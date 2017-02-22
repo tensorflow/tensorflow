@@ -31,6 +31,10 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
+#ifdef INTEL_MKL
+#include "i_malloc.h"
+#endif  // INTEL_MKL
+
 namespace tensorflow {
 
 // A memory allocator that implements a 'best-fit with coalescing'
@@ -53,6 +57,13 @@ class BFCAllocator : public VisitableAllocator {
   void* AllocateRaw(size_t alignment, size_t num_bytes,
                     const AllocationAttributes& allocation_attr) override;
   void DeallocateRaw(void* ptr) override;
+
+#ifdef INTEL_MKL
+  static void* mkl_malloc (size_t size);
+  static void  mkl_free   (void* ptr);
+  static void* mkl_calloc (size_t num, size_t size);
+  static void* mkl_realloc(void* ptr, size_t size);
+#endif  // INTEL_MKL
 
   void AddAllocVisitor(Visitor visitor) override;
 

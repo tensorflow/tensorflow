@@ -26,6 +26,10 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
+#ifdef INTEL_MKL
+#include "tensorflow/core/platform/mem.h"
+#endif
+
 namespace tensorflow {
 
 // Attributes for a single allocation call. Different calls to the same
@@ -314,6 +318,18 @@ class SubAllocator {
   virtual void* Alloc(size_t alignment, size_t num_bytes) = 0;
   virtual void Free(void* ptr, size_t num_bytes) = 0;
 };
+
+#ifdef INTEL_MKL
+class IntelCPUAllocator : public SubAllocator {
+ public:
+  ~IntelCPUAllocator() override {}
+
+  void* Alloc(size_t alignment, size_t num_bytes) override {
+    return port::AlignedMalloc(num_bytes, alignment);
+  }
+  void Free(void* ptr, size_t num_bytes) override { free(ptr); }
+};
+#endif // INTEL_MKL
 
 }  // namespace tensorflow
 
