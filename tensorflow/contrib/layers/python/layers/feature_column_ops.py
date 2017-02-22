@@ -181,7 +181,7 @@ def _input_from_feature_columns(columns_to_tensors,
           except ValueError as e:
             raise ValueError('Error creating input layer for column: {}.\n'
                              '{}, {}'.format(column.name, e, ee))
-    return array_ops.concat_v2(output_tensors, output_rank - 1)
+    return array_ops.concat(output_tensors, output_rank - 1)
 
 
 def input_from_feature_columns(columns_to_tensors,
@@ -798,11 +798,14 @@ def check_feature_columns(feature_columns):
   """Checks the validity of the set of FeatureColumns.
 
   Args:
-    feature_columns: A set of instances or subclasses of FeatureColumn.
+    feature_columns: An iterable of instances or subclasses of FeatureColumn.
 
   Raises:
+    ValueError: If `feature_columns` is a dict.
     ValueError: If there are duplicate feature column keys.
   """
+  if isinstance(feature_columns, dict):
+    raise ValueError('Expected feature_columns to be iterable, found dict.')
   seen_keys = set()
   for f in feature_columns:
     key = f.key

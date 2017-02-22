@@ -764,6 +764,8 @@ class _WeightedSparseColumn(_FeatureColumn, collections.namedtuple(
     if not isinstance(weight_tensor, sparse_tensor_py.SparseTensor):
       # The weight tensor can be a regular Tensor. In such case, sparsify it.
       weight_tensor = contrib_sparse_ops.dense_to_sparse_tensor(weight_tensor)
+    if not self.dtype.is_floating:
+      weight_tensor = math_ops.to_float(weight_tensor)
     columns_to_tensors[self] = tuple([
         columns_to_tensors[self.sparse_id_column],
         weight_tensor
@@ -826,7 +828,8 @@ def weighted_sparse_column(sparse_id_column,
       `sparse_column_with_*` functions.
     weight_column_name: A string defining a sparse column name which represents
       weight or value of the corresponding sparse id feature.
-    dtype: Type of weights, such as `tf.float32`
+    dtype: Type of weights, such as `tf.float32`. Only floating and integer
+      weights are supported.
   Returns:
     A _WeightedSparseColumn composed of two sparse features: one represents id,
     the other represents weight (value) of the id feature in that example.
