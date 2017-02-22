@@ -75,7 +75,7 @@ tensor so TensorBoard knows about it.
 ```python
 from tensorflow.contrib.tensorboard.plugins import projector
 # Use the same LOG_DIR where you stored your checkpoint.
-summary_writer = tf.train.SummaryWriter(LOG_DIR)
+summary_writer = tf.summary.FileWriter(LOG_DIR)
 
 # Format: tensorflow/contrib/tensorboard/plugins/projector/projector_config.proto
 config = projector.ProjectorConfig()
