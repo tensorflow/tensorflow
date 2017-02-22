@@ -77,6 +77,8 @@
 @@global_step
 @@basic_train_loop
 @@get_global_step
+@@get_or_create_global_step
+@@create_global_step
 @@assert_global_step
 @@write_graph
 """
@@ -159,6 +161,8 @@ from tensorflow.python.training.training_util import write_graph
 from tensorflow.python.training.training_util import global_step
 from tensorflow.python.training.training_util import get_global_step
 from tensorflow.python.training.training_util import assert_global_step
+from tensorflow.python.training.training_util import create_global_step
+from tensorflow.python.training.training_util import get_or_create_global_step
 from tensorflow.python.pywrap_tensorflow import do_quantize_training_on_graphdef
 from tensorflow.python.pywrap_tensorflow import NewCheckpointReader
 

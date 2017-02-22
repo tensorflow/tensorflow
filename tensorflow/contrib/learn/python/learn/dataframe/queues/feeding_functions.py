@@ -116,13 +116,25 @@ class _OrderedDictNumpyFeedFn(object):
     self._epoch_end = (self._trav - 1) % self._max
 
   def __call__(self):
-    if self._num_epochs and self._epoch >= self._num_epochs:
+    if self._num_epochs is not None and self._epoch >= self._num_epochs:
       raise errors.OutOfRangeError(None, None,
                                    "Already emitted %s epochs." % self._epoch)
 
-    integer_indexes = [
-        j % self._max for j in range(self._trav, self._trav + self._batch_size)
-    ]
+    indices_end = self._trav + self._batch_size
+
+    # _num_epochs will not be <= 0; otherwise, the OutOfRangeError has been
+    # raised already.
+    if self._num_epochs is not None and self._epoch == self._num_epochs - 1:
+      # If num_epochs is set and the feed_fn is on the final epoch, the end
+      # index of the next batch should not exceed the epoch_end.
+      if self._trav <= self._epoch_end:
+        epoch_end = self._epoch_end
+      else:
+        epoch_end = self._max + self._epoch_end
+      indices_end = min(epoch_end + 1, indices_end)
+
+    # The integer indices for next batch.
+    integer_indexes = [j % self._max for j in range(self._trav, indices_end)]
 
     if self._epoch_end in integer_indexes:
       # after this batch we will have processed self._epoch epochs, possibly

@@ -231,7 +231,7 @@ cc_library(
         "include/curl/typecheck-gcc.h",
     ],
     copts = select({
-        "@//tensorflow:windows": [
+        ":windows": [
             "/I%prefix%/curl/lib",
             "/DHAVE_CONFIG_H",
             "/DCURL_DISABLE_FTP",
@@ -386,7 +386,7 @@ cc_binary(
         "src/tool_xattr.h",
     ],
     copts = select({
-        "@//tensorflow:windows": [
+        ":windows": [
             "/I%prefix%/curl/lib",
             "/DHAVE_CONFIG_H",
             "/DCURL_DISABLE_LIBCURL_OPTION",

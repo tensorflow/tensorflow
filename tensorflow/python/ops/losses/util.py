@@ -17,6 +17,7 @@
 
 @@add_loss
 @@get_losses
+@@get_regularization_loss
 @@get_regularization_losses
 @@get_total_loss
 
@@ -45,7 +46,7 @@ def get_losses(scope=None, loss_collection=ops.GraphKeys.LOSSES):
   """Gets the list of losses from the loss_collection.
 
   Args:
-    scope: an optional scope for filtering the losses to return.
+    scope: An optional scope for filtering the losses to return.
     loss_collection: Optional losses collection.
 
   Returns:
@@ -58,12 +59,26 @@ def get_regularization_losses(scope=None):
   """Gets the regularization losses.
 
   Args:
-    scope: an optional scope for filtering the losses to return.
+    scope: An optional scope for filtering the losses to return.
 
   Returns:
     A list of loss variables.
   """
   return ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES, scope)
+
+
+def get_regularization_loss(scope=None, name="total_regularization_loss"):
+  """Gets the total regularization loss.
+
+  Args:
+    scope: An optional scope for filtering the losses to return.
+    name: The name of the returned tensor.
+
+  Returns:
+    A scalar regularization loss.
+  """
+  losses = get_regularization_losses(scope)
+  return math_ops.add_n(losses, name=name)
 
 
 def get_total_loss(add_regularization_losses=True, name="total_loss"):

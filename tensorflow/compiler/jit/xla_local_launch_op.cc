@@ -43,6 +43,8 @@ REGISTER_OP("_XlaLaunch")
     .Attr("Tconstants: list(type) >= 0")
     .Input("args: Targs")
     .Attr("Targs: list(type) >= 0")
+    .Input("resources: Nresources * resource")
+    .Attr("Nresources: int >= 0")
     .Output("results: Tresults")
     .Attr("Tresults: list(type) >= 0")
     .Attr("function: func")
@@ -144,6 +146,12 @@ XlaLocalLaunchOp::XlaLocalLaunchOp(OpKernelConstruction* ctx)
   DataTypeVector constant_types;
   OP_REQUIRES_OK(ctx, ctx->GetAttr("Tconstants", &constant_types));
   num_constant_args_ = constant_types.size();
+
+  int num_resource_args;
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("Nresources", &num_resource_args));
+  OP_REQUIRES(ctx, num_resource_args == 0,
+              errors::Unimplemented(
+                  "XlaLocalLaunchOp does not support resource variables"));
 }
 
 Status XlaLocalLaunchOp::BuildCompilationCache(XlaCompilationCache** compiler) {
@@ -207,9 +215,8 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
 
   const XlaCompiler::CompilationResult* kernel;
   xla::LocalExecutable* executable;
-  OP_REQUIRES_OK(ctx,
-                 compiler->Compile(function_, num_constant_args_, ctx, &kernel,
-                                   &executable));
+  OP_REQUIRES_OK(ctx, compiler->Compile(function_, num_constant_args_, {}, ctx,
+                                        &kernel, &executable));
 
   VLOG(1) << "Executing XLA Computation...";
 

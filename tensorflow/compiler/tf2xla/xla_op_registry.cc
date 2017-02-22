@@ -61,12 +61,20 @@ XlaOpRegistry::~XlaOpRegistry() = default;
   static void* registration_init = [&registry]() {
     mutex_lock lock(registry.mutex_);
     if (IsPlatformSupported(perftools::gputools::host::kHostPlatformId)) {
-      registry.compilation_devices_[DEVICE_CPU] =
-          DeviceRegistration{DEVICE_CPU_XLA_JIT, false, false};
+      DeviceRegistration& registration =
+          registry.compilation_devices_[DEVICE_CPU];
+      registration.compilation_device_name = DEVICE_CPU_XLA_JIT;
+      registration.requires_compilation = false;
+      registration.enable_jit_by_default = false;
+      registration.compile_resource_ops = false;
     }
     if (IsPlatformSupported(perftools::gputools::cuda::kCudaPlatformId)) {
-      registry.compilation_devices_[DEVICE_GPU] =
-          DeviceRegistration{DEVICE_GPU_XLA_JIT, false, true};
+      DeviceRegistration& registration =
+          registry.compilation_devices_[DEVICE_GPU];
+      registration.compilation_device_name = DEVICE_GPU_XLA_JIT;
+      registration.requires_compilation = false;
+      registration.enable_jit_by_default = true;
+      registration.compile_resource_ops = false;
     }
     return nullptr;
   }();

@@ -51,6 +51,7 @@
 @@get_or_create_global_step
 @@get_local_variables
 @@get_model_variables
+@@get_trainable_variables
 @@get_unique_variable
 @@get_variables_by_name
 @@get_variables_by_suffix

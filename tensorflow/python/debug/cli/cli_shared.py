@@ -203,7 +203,7 @@ def _recommend_command(command, description, indent=2, create_link=False):
 
   Args:
     command: (str) The command to recommend.
-    description: (str) A description of what the the command does.
+    description: (str) A description of what the command does.
     indent: (int) How many spaces to indent in the beginning.
     create_link: (bool) Whether a command link is to be applied to the command
       string.

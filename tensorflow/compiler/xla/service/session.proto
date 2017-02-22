@@ -57,15 +57,6 @@ message SessionComputation {
   // Map from ComputationDataHandle value to operation request. The highest
   // ComputationDataHandle value corresponds to the root of the computation.
   map<int64, OperationRequest> requests = 3;
-
-  // The list of Trace requests in this SessionComputation.
-  repeated TraceRequest trace_requests = 4;
-
-  // The list of Send requests in this SessionComputation.
-  repeated SendRequest send_requests = 5;
-
-  // The list of Outfeed requests in this SessionComputation.
-  repeated OutfeedRequest outfeed_requests = 6;
 }
 
 // Describes a group of SessionComputations with an "entry point" computation

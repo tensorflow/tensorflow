@@ -44,15 +44,34 @@ class XlaCompiler {
   // XLA computation (parameter >= 0), or a compile time constant
   // (parameter < 0).
   struct Argument {
-    // The type of the argument.
+    enum Kind {
+      // Default value; not a valid kind.
+      kInvalid,
+
+      // Argument is a compile-time constant. No associated runtime parameter.
+      kConstant,
+
+      // Argument is a variable that has not been initialized yet. No associated
+      // runtime parameter.
+      kUninitializedVariable,
+
+      // Argument is a variable that already has a value set. Expects a runtime
+      // parameter containing the current value.
+      kVariable,
+
+      // Argument is a run-time parameter.
+      kParameter,
+    };
+
+    Kind kind = kInvalid;
+
+    // The type of the argument. If the argument is a resource variable, this
+    // is the type of the variable's value, not DT_RESOURCE.
     DataType type;
 
-    // The shape of the argument.
+    // The shape of the argument. If the argument is a resource variable, this
+    // is the shape of the variable's value.
     TensorShape shape;
-
-    // The parameter number of this argument to the XLA computation. < 0
-    // means this is a compile-time constant argument.
-    int parameter;
 
     // The value of the argument, if it is a compile-time constant. Must be a
     // host-memory tensor.
@@ -72,6 +91,16 @@ class XlaCompiler {
     Tensor constant_value;
   };
 
+  // Describes a variable write side effect of the computation.
+  struct VariableWrite {
+    // Index of the input that contains the variable resource to write to.
+    int input_index;
+
+    // Type and shape of the tensor to be written back.
+    DataType type;
+    TensorShape shape;
+  };
+
   struct CompilationResult {
     // Vector of (Tensorflow input number, XLA shape) pairs that describe
     // the arguments of the compiled XLA computation. (Because of constant
@@ -89,8 +118,13 @@ class XlaCompiler {
 
     // TensorFlow shapes of outputs, together with the values of any
     // constant arguments. Vector indexed by Tensorflow _Retval number,
-    // containing both constant and non-constant arguments.
+    // containing both constant and non-constant results.
     std::vector<OutputDescription> outputs;
+
+    // Variables whose values should be written by the computation back, ordered
+    // by return value position. Variable write results follow the non-constant
+    // results in the outputs of XLA computation.
+    std::vector<VariableWrite> variable_writes;
 
     // The XLA computation built from the tensorflow subgraph. May be null
     // if the output consists solely of compile-time constants.

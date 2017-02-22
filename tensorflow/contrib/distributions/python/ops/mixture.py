@@ -258,7 +258,7 @@ class Mixture(distribution.Distribution):
         batch_size = static_batch_shape.num_elements()
       else:
         batch_shape = self.batch_shape_tensor()
-        batch_size = array_ops.reduce_prod(batch_shape)
+        batch_size = math_ops.reduce_prod(batch_shape)
       static_event_shape = self.event_shape
       if static_event_shape.is_fully_defined():
         event_shape = np.array(static_event_shape.as_list(), dtype=np.int32)

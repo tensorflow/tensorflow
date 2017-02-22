@@ -46,7 +46,9 @@ class UniqueOp : public OpKernel {
     const int64 N = static_cast<int64>(Tin.size());
 
     Tensor* idx = nullptr;
-    OP_REQUIRES_OK(context, context->allocate_output(1, input.shape(), &idx));
+    if (!context->forward_input_to_output(0, 1, &idx)) {
+      OP_REQUIRES_OK(context, context->allocate_output(1, input.shape(), &idx));
+    }
     auto idx_vec = idx->template vec<int32>();
 
     std::unordered_map<T, int32> uniq;
@@ -95,9 +97,10 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_UNIQUE);
 REGISTER_UNIQUE(string)
 #undef REGISTER_UNIQUE
 
-// A fake int32 GPU kernel so that the use of Unique in optimizers (to
+// Fake integer GPU kernels so that the use of Unique in optimizers (to
 // de-duplicate sparse gradient indices) does not conflict with gradients being
-// located on a GPU.
+// located on a GPU. These kernels run on the CPU, their inputs and outputs
+// residing in host (not GPU) memory.
 REGISTER_KERNEL_BUILDER(Name("Unique")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<int32>("T")
@@ -106,4 +109,12 @@ REGISTER_KERNEL_BUILDER(Name("Unique")
                             .HostMemory("y")
                             .HostMemory("idx"),
                         UniqueOp<int32>);
+REGISTER_KERNEL_BUILDER(Name("Unique")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<int64>("T")
+                            .TypeConstraint<int32>("out_idx")
+                            .HostMemory("x")
+                            .HostMemory("y")
+                            .HostMemory("idx"),
+                        UniqueOp<int64>);
 }  // namespace tensorflow

@@ -5,6 +5,12 @@ NLP, and many other applications. Indeed, in the context of TensorFlow, it's
 natural to view tensors (or slices of tensors) as points in space, so almost any
 TensorFlow system will naturally give rise to various embeddings.
 
+TensorBoard has a built-in visualizer, called the <i>Embedding Projector</i>,
+for interactive visualization and analysis of high-dimensional data like
+embeddings. The embedding projector will read the embeddings from your model
+checkpoint file. Although it's most useful for embeddings, it will load any 2D
+tensor, including your training weights.
+
 To learn more about embeddings and how to train them, see the
 [Vector Representations of Words](../../tutorials/word2vec/index.md) tutorial.
 If you are interested in embeddings of images, check out
@@ -14,36 +20,27 @@ interested in word embeddings,
 [this article](http://colah.github.io/posts/2015-01-Visualizing-Representations/)
 gives a good introduction.
 
-TensorBoard has a built-in visualizer, called the Embedding Projector, for
-interactive visualization and analysis of high-dimensional data like embeddings.
-It is meant to be useful for developers and researchers alike. It reads from the
-checkpoint files where you save your tensorflow variables. Although it's most
-useful for embeddings, it will load any 2D tensor, potentially including your
-training weights.
-
 <video autoplay loop style="max-width: 100%;">
   <source src="../../images/embedding-mnist.mp4" type="video/mp4">
   Sorry, your browser doesn't support HTML5 video in MP4 format.
 </video>
 
-By default, the Embedding Projector performs 3-dimensional
-[principal component analysis](https://en.wikipedia.org/wiki/Principal_component_analysis),
-meaning it takes your high-dimensional data and tries to find a
-structure-preserving projection onto three dimensional space. Basically, it does
-this by rotating your data so that the first three dimensions reveal as much of
-the variance in the data as possible. There's a nice visual explanation
-[here](http://setosa.io/ev/principal-component-analysis/). Another extremely
-useful projection you can use is
+By default, the Embedding Projector projects the high-dimensional data into 3
+dimensions using
+[principal component analysis](https://en.wikipedia.org/wiki/Principal_component_analysis).
+For a visual explanation of PCA, see
+[this article](http://setosa.io/ev/principal-component-analysis/). Another
+very useful projection you can use is
 [t-SNE](https://en.wikipedia.org/wiki/T-distributed_stochastic_neighbor_embedding).
 We talk about more t-SNE later in the tutorial.
 
 If you are working with an embedding, you'll probably want to attach
-labels/images to the data points to tell the visualizer what label/image each
-data point corresponds to. You can do this by generating a metadata file, and
-attaching it to the tensor using our Python API, or uploading it to an
-already-running TensorBoard.
-
-
+labels/images to the data points. You can do this by generating a
+[metadata file](#metadata) containing the labels for each point and configuring
+the projector either by using our Python API, or manually constructing and
+saving a
+<code>[projector_config.pbtxt](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/tensorboard/plugins/projector/projector_config.proto)</code>
+in the same directory as your checkpoint file.
 
 ## Setup
 
@@ -53,29 +50,46 @@ see [TensorBoard: Visualizing Learning](../../how_tos/summaries_and_tensorboard/
 
 To visualize your embeddings, there are 3 things you need to do:
 
-1) Setup a 2D tensor variable(s) that holds your embedding(s).
+1) Setup a 2D tensor that holds your embedding(s).
 
 ```python
 embedding_var = tf.Variable(....)
 ```
 
-2) Periodically save your embeddings in a <code>LOG_DIR</code>.
+2) Periodically save your model variables in a checkpoint in
+<code>LOG_DIR</code>.
 
 ```python
 saver = tf.train.Saver()
 saver.save(session, os.path.join(LOG_DIR, "model.ckpt"), step)
 ```
 
-The following step is not required, however if you have any metadata
-(labels, images) associated with your embedding, you need to link them to the
-tensor so TensorBoard knows about it.
+3) (Optional) Associate metadata with your embedding.
 
-3) Associate metadata with your embedding.
+If you have any metadata (labels, images) associated with your embedding, you
+can tell TensorBoard about it either by directly storing a
+<code>[projector_config.pbtxt](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/tensorboard/plugins/projector/projector_config.proto)</code>
+in the <code>LOG_DIR</code>, or use our python API.
+
+For instance, the following <code>projector_config.ptxt</code> associates the
+<code>word_embedding</code> tensor with metadata stored in <code>$LOG_DIR/metadata.tsv</code>:
+
+```
+embeddings {
+  tensor_name: 'word_embedding'
+  metadata_path: '$LOG_DIR/metadata.tsv'
+}
+```
+
+The same config can be produced programmatically using the following code snippet:
 
 ```python
 from tensorflow.contrib.tensorboard.plugins import projector
-# Use the same LOG_DIR where you stored your checkpoint.
-summary_writer = tf.train.SummaryWriter(LOG_DIR)
+
+# Create randomly initialized embedding weights which will be trained.
+N = 10000 # Number of items (vocab size).
+D = 200 # Dimensionality of the embedding.
+embedding_var = tf.Variable(tf.random_normal([N,D]), name='word_embedding')
 
 # Format: tensorflow/contrib/tensorboard/plugins/projector/projector_config.proto
 config = projector.ProjectorConfig()
@@ -86,7 +100,11 @@ embedding.tensor_name = embedding_var.name
 # Link this tensor to its metadata file (e.g. labels).
 embedding.metadata_path = os.path.join(LOG_DIR, 'metadata.tsv')
 
-# Saves a configuration file that TensorBoard will read during startup.
+# Use the same LOG_DIR where you stored your checkpoint.
+summary_writer = tf.train.SummaryWriter(LOG_DIR)
+
+# The next line writes a projector_config.pbtxt in the LOG_DIR. TensorBoard will
+# read this file during startup.
 projector.visualize_embeddings(summary_writer, config)
 ```
 
@@ -101,19 +119,20 @@ Then click on the *Embeddings* tab on the top pane
 and select the appropriate run (if there are more than one run).
 
 
-## Metadata (optional)
+## Metadata
 Usually embeddings have metadata associated with it (e.g. labels, images). The
 metadata should be stored in a separate file outside of the model checkpoint
 since the metadata is not a trainable parameter of the model. The format should
-be a TSV file with the first line containing column headers and subsequent lines
-contain the metadata values. Here's an example:
+be a [TSV file](https://en.wikipedia.org/wiki/Tab-separated_values)
+(tab characters shown in red) with the first line containing column headers
+(shown in bold) and subsequent lines contain the metadata values:
 
-```
-Name\tType\n
-Caterpie\tBug\n
-Charmeleon\tFire\n
-…
-```
+<code>
+<b>Word<span style="color:#800;">\t</span>Frequency</b><br/>
+  Airplane<span style="color:#800;">\t</span>345<br/>
+  Car<span style="color:#800;">\t</span>241<br/>
+  ...
+</code>
 
 There is no explicit key shared with the main data file; instead, the order in
 the metadata file is assumed to match the order in the embedding tensor. In

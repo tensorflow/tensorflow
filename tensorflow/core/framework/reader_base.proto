@@ -4,7 +4,7 @@ package tensorflow;
 option cc_enable_arenas = true;
 option java_outer_classname = "ReaderBaseProtos";
 option java_multiple_files = true;
-option java_package = "org.tensorflow.kernels";
+option java_package = "org.tensorflow.framework";
 
 // For serializing and restoring the state of ReaderBase, see
 // reader_base.h for details.
