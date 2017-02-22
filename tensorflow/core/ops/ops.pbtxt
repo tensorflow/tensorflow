@@ -6777,7 +6777,7 @@ op {
   }
   input_arg {
     name: "offsets"
-    description: "A 2-D integer tensor of shape `[batch_size, 2]` containing\nthe x, y locations of the center of each window."
+    description: "A 2-D integer tensor of shape `[batch_size, 2]` containing\nthe y, x locations of the center of each window."
     type: DT_FLOAT
   }
   output_arg {
