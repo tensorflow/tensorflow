@@ -71,6 +71,9 @@ class XlaOpRegistry {
     // (It is still possible to explicitly mark operators to JIT compile, even
     // if enable_jit_by_default is false.)
     bool enable_jit_by_default;
+
+    // Enable compilation of operators that use DT_RESOURCE types?
+    bool compile_resource_ops = false;
   };
 
   // Registers `device_name` for XLA compilation, using information from

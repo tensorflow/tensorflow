@@ -236,6 +236,23 @@ tf_xla_py_test(
     ],
 )
 
+tf_xla_py_test(
+    name = "variable_ops_test",
+    size = "small",
+    srcs = ["variable_ops_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:math_ops_gen",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:nn_ops_gen",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+    ],
+)
+
 cuda_py_test(
     name = "xla_device_test",
     size = "small",

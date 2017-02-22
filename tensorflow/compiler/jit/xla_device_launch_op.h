@@ -39,7 +39,13 @@ class XlaDeviceLaunchOp : public OpKernel {
 
  private:
   NameAttrList function_;
+
+  // Number of compile-time constant arguments.
   int num_constant_args_;
+
+  // Number of resource variable arguments.
+  int num_resource_args_;
+
   Tensor dummy_tensor_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(XlaDeviceLaunchOp);
