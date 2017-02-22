@@ -211,7 +211,8 @@ class DebugNumericSummaryOp : public OpKernel {
 
           if (x < min) {
             min = x;
-          } else if (x > max) {
+          }
+          if (x > max) {
             max = x;
           }
 
