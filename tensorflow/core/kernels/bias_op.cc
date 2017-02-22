@@ -74,8 +74,10 @@ class BiasOp<CPUDevice, T> : public BinaryOp<T> {
             bias.shape().DebugString(), " vs. ", input.shape().DebugString()));
 
     Tensor* output = nullptr;
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(0, input.shape(), &output));
+    if (!context->forward_input_to_output(0, 0, &output)) {
+      OP_REQUIRES_OK(context,
+                     context->allocate_output(0, input.shape(), &output));
+    }
     if (input.NumElements() == 0) return;
 
     switch (input.shape().dims()) {
@@ -271,8 +273,10 @@ class BiasOp<GPUDevice, T> : public BinaryOp<T> {
                     bias.shape().DebugString(), " vs. ", channel, " in ",
                     input.shape().DebugString()));
     Tensor* output = nullptr;
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(0, input.shape(), &output));
+    if (!context->forward_input_to_output(0, 0, &output)) {
+      OP_REQUIRES_OK(context,
+                     context->allocate_output(0, input.shape(), &output));
+    }
     if (input.NumElements() > 0) {
       BiasGPU<T>::compute(context->template eigen_device<Device>(),
                           input.flat<T>().data(), bias.flat<T>().data(),

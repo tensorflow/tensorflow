@@ -46,7 +46,9 @@ class UniqueOp : public OpKernel {
     const int64 N = static_cast<int64>(Tin.size());
 
     Tensor* idx = nullptr;
-    OP_REQUIRES_OK(context, context->allocate_output(1, input.shape(), &idx));
+    if (!context->forward_input_to_output(0, 1, &idx)) {
+      OP_REQUIRES_OK(context, context->allocate_output(1, input.shape(), &idx));
+    }
     auto idx_vec = idx->template vec<int32>();
 
     std::unordered_map<T, int32> uniq;

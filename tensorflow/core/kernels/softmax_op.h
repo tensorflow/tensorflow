@@ -40,8 +40,10 @@ class SoftmaxOp : public OpKernel {
     OP_REQUIRES(context, TensorShapeUtils::IsMatrix(logits_in.shape()),
                 errors::InvalidArgument("logits must be 2-dimensional"));
     Tensor* softmax_out = nullptr;
-    OP_REQUIRES_OK(
-        context, context->allocate_output(0, logits_in.shape(), &softmax_out));
+    if (!context->forward_input_to_output(0, 0, &softmax_out)) {
+      OP_REQUIRES_OK(context, context->allocate_output(0, logits_in.shape(),
+                                                       &softmax_out));
+    }
     if (logits_in.NumElements()) {
       functor::SoftmaxFunctor<Device, T> functor;
       functor(context->eigen_device<Device>(), logits_in.matrix<T>(),
