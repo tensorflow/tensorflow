@@ -1103,6 +1103,51 @@ class CreateInputLayersForDNNsTest(test.TestCase):
     # There should  one trainable variable for embeded sparse
     self.assertEqual(1, len(variables_lib.trainable_variables()))
 
+  def testInputLayerWithNonTrainableEmbeddingForDNN(self):
+    sparse_1 = feature_column.sparse_column_with_hash_bucket("wire_1", 10)
+    sparse_2 = feature_column.sparse_column_with_hash_bucket("wire_2", 10)
+    features = {
+        "wire_1":
+            sparse_tensor.SparseTensor(
+                values=["omar", "stringer", "marlo"],
+                indices=[[0, 0], [1, 0], [2, 0]],
+                dense_shape=[3, 1]),
+        "wire_2":
+            sparse_tensor.SparseTensor(
+                values=["jack", "jill"],
+                indices=[[0, 0], [1, 0]],
+                dense_shape=[4, 1])
+    }
+    dims_1 = 10
+    init_1 = 3.14
+    embeded_1 = feature_column.embedding_column(
+        sparse_1, dims_1, initializer=init_ops.constant_initializer(init_1),
+        trainable=False)
+    output_1 = feature_column_ops.input_from_feature_columns(
+        features, [embeded_1])
+    # There should be no trainable variables for sparse_1
+    self.assertEqual(0, len(variables_lib.trainable_variables()))
+
+    dims_2 = 7
+    init_2 = 6.14
+    embeded_2 = feature_column.embedding_column(
+        sparse_2, dims_2, initializer=init_ops.constant_initializer(init_2),
+        trainable=True)
+    output_2 = feature_column_ops.input_from_feature_columns(
+        features, [embeded_2])
+    # There should be one trainable variables for sparse_2
+    self.assertEqual(1, len(variables_lib.trainable_variables()))
+
+    with self.test_session():
+      variables_lib.global_variables_initializer().run()
+      output_1_eval = output_1.eval()
+      output_2_eval = output_2.eval()
+      self.assertAllEqual(output_1_eval.shape, [3, dims_1])
+      self.assertAllClose(output_1_eval, np.tile(init_1, [3, dims_1]))
+      self.assertAllEqual(output_2_eval.shape, [4, dims_2])
+      self.assertAllClose(output_2_eval, np.concatenate(
+          (np.tile(init_2, [2, dims_2]), np.tile(0, [2, dims_2]))))
+
 
 class SequenceInputFromFeatureColumnTest(test.TestCase):
 

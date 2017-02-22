@@ -406,7 +406,7 @@ class _SingleHead(_Head):
 
 
 # TODO(zakaria): use contrib losses.
-def _mean_squared_loss(logits, labels):
+def _mean_squared_loss(labels, logits):
   with ops.name_scope(None, "mean_squared_loss", (logits, labels)) as name:
     logits = ops.convert_to_tensor(logits)
     labels = ops.convert_to_tensor(labels)
@@ -420,7 +420,7 @@ def _mean_squared_loss(logits, labels):
     return math_ops.square(logits - math_ops.to_float(labels), name=name)
 
 
-def _poisson_loss(logits, labels):
+def _poisson_loss(labels, logits):
   """Computes poisson loss from logits."""
   with ops.name_scope(None, "_poisson_loss", (logits, labels)) as name:
     logits = ops.convert_to_tensor(logits)
@@ -516,7 +516,7 @@ def _create_model_fn_ops(features,
     if (mode != model_fn.ModeKeys.INFER) and (labels is not None):
       weight_tensor = _weight_tensor(features, weight_column_name)
       loss, weighted_average_loss = _loss(
-          loss_fn(logits, labels), weight_tensor)
+          loss_fn(labels, logits), weight_tensor)
       logging_ops.scalar_summary(
           _summary_key(head_name, mkey.LOSS), weighted_average_loss)
 
@@ -633,7 +633,7 @@ class _RegressionHead(_SingleHead):
               metrics_lib.streaming_mean(eval_loss)}
 
 
-def _log_loss_with_two_classes(logits, labels):
+def _log_loss_with_two_classes(labels, logits):
   with ops.name_scope(None, "log_loss_with_two_classes",
                       (logits, labels)) as name:
     logits = ops.convert_to_tensor(logits)
@@ -795,7 +795,7 @@ class _BinaryLogisticHead(_SingleHead):
     return metrics
 
 
-def _softmax_cross_entropy_loss(logits, labels):
+def _softmax_cross_entropy_loss(labels, logits):
   with ops.name_scope(
       None, "softmax_cross_entropy_loss", (logits, labels,)) as name:
     labels = ops.convert_to_tensor(labels)
@@ -1012,7 +1012,7 @@ class _BinarySvmHead(_SingleHead):
   def __init__(self, label_name, weight_column_name, enable_centered_bias,
                head_name, thresholds):
 
-    def _loss_fn(logits, labels):
+    def _loss_fn(labels, logits):
       with ops.name_scope(None, "hinge_loss", (logits, labels)) as name:
         with ops.control_dependencies((_assert_labels_rank(labels),)):
           labels = array_ops.reshape(labels, shape=(-1, 1))
@@ -1515,7 +1515,7 @@ def _centered_bias_step(centered_bias, logits_dimension, labels, loss_fn):
         (batch_size, logits_dimension))
     with ops.name_scope(None, "centered_bias", (labels, logits)):
       centered_bias_loss = math_ops.reduce_mean(
-          loss_fn(logits, labels), name="training_loss")
+          loss_fn(labels, logits), name="training_loss")
   # Learn central bias by an optimizer. 0.1 is a convervative lr for a
   # single variable.
   return training.AdagradOptimizer(0.1).minimize(
@@ -1545,7 +1545,7 @@ def _train_op(loss,
     return train_op
 
 
-def _sigmoid_cross_entropy_loss(logits, labels):
+def _sigmoid_cross_entropy_loss(labels, logits):
   with ops.name_scope(None, "sigmoid_cross_entropy_loss",
                       (logits, labels)) as name:
     # sigmoid_cross_entropy_with_logits requires [batch_size, n_classes] labels.

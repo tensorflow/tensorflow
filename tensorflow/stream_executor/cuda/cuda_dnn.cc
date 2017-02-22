@@ -1945,10 +1945,12 @@ bool CudnnSupport::DoConvolveImpl(
       timer->Destroy();
       return false;
     }
-    output_profile_result->set_is_valid(true);
-    output_profile_result->set_algorithm(algo);
-    output_profile_result->set_elapsed_time_in_ms(
-        timer->GetElapsedMilliseconds());
+    if (status == CUDNN_STATUS_SUCCESS) {
+      output_profile_result->set_is_valid(true);
+      output_profile_result->set_algorithm(algo);
+      output_profile_result->set_elapsed_time_in_ms(
+          timer->GetElapsedMilliseconds());
+    }
     timer->Destroy();
   }
 
@@ -1968,6 +1970,7 @@ bool CudnnSupport::DoConvolveImpl(
 // Doing so by default make a few TensorFlow test cases to fail. Users can
 // explicitly enable them through an env-var "TF_ENABLE_WINOGRAD_NONFUSED=1".
 // https://github.com/tensorflow/tensorflow/pull/4901
+template <bool DefaultFlag>
 class WinogradNonfused {
  public:
   static bool IsEnabled() {
@@ -1987,7 +1990,7 @@ class WinogradNonfused {
     }
     // TODO(zhengxq): turn the default to True when the test failure is
     // resolved.
-    return false;
+    return DefaultFlag;
   }
 };
 
@@ -2007,7 +2010,7 @@ bool CudnnSupport::GetConvolveAlgorithms(
       // clang-format on
   });
 #if CUDNN_VERSION >= 5100
-  if (WinogradNonfused::IsEnabled()) {
+  if (WinogradNonfused<true>::IsEnabled()) {
     out_algorithms->push_back(CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED);
   }
 #endif
@@ -2028,7 +2031,7 @@ bool CudnnSupport::GetConvolveBackwardDataAlgorithms(
       // clang-format on
   });
 #if CUDNN_VERSION >= 5100
-  if (WinogradNonfused::IsEnabled()) {
+  if (WinogradNonfused<true>::IsEnabled()) {
     out_algorithms->push_back(
         CUDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD_NONFUSED);
   }
@@ -2047,7 +2050,12 @@ bool CudnnSupport::GetConvolveBackwardFilterAlgorithms(
       // clang-format on
   });
 #if CUDNN_VERSION >= 5100
-  if (WinogradNonfused::IsEnabled()) {
+#if CUDNN_VERSION >= 5110
+  static constexpr bool kDefaultFlagWinogradNonfused = true;
+#else
+  static constexpr bool kDefaultFlagWinogradNonfused = false;
+#endif
+  if (WinogradNonfused<kDefaultFlagWinogradNonfused>::IsEnabled()) {
     out_algorithms->push_back(
         // Based on cudnn.h, the following is not implemented.
         // CUDNN_CONVOLUTION_BWD_FILTER_ALGO_WINOGRAD,
@@ -2453,10 +2461,12 @@ bool CudnnSupport::DoConvolveBackwardDataImpl(
       /*gradData=*/backward_input_data->opaque());
   if (is_profiling) {
     timer->Stop(AsCUDAStream(stream));
-    output_profile_result->set_is_valid(true);
-    output_profile_result->set_algorithm(algo);
-    output_profile_result->set_elapsed_time_in_ms(
-        timer->GetElapsedMilliseconds());
+    if (status == CUDNN_STATUS_SUCCESS) {
+      output_profile_result->set_is_valid(true);
+      output_profile_result->set_algorithm(algo);
+      output_profile_result->set_elapsed_time_in_ms(
+          timer->GetElapsedMilliseconds());
+    }
     timer->Destroy();
   }
   if (status != CUDNN_STATUS_SUCCESS) {
@@ -2686,10 +2696,12 @@ bool CudnnSupport::DoConvolveBackwardFilterImpl(
       /*gradData=*/backward_filter_data->opaque());
   if (is_profiling) {
     timer->Stop(AsCUDAStream(stream));
-    output_profile_result->set_is_valid(true);
-    output_profile_result->set_algorithm(algo);
-    output_profile_result->set_elapsed_time_in_ms(
-        timer->GetElapsedMilliseconds());
+    if (status == CUDNN_STATUS_SUCCESS) {
+      output_profile_result->set_is_valid(true);
+      output_profile_result->set_algorithm(algo);
+      output_profile_result->set_elapsed_time_in_ms(
+          timer->GetElapsedMilliseconds());
+    }
     timer->Destroy();
   }
   if (status != CUDNN_STATUS_SUCCESS) {

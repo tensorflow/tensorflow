@@ -49,7 +49,13 @@ class AddNOp : public OpKernel {
     }
 
     Tensor* output = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, input0.shape(), &output));
+    bool reused_input_buffer = false;
+    for (int i = 0; i < num && !reused_input_buffer; ++i) {
+      reused_input_buffer = ctx->forward_input_to_output(i, 0, &output);
+    }
+    if (!reused_input_buffer) {
+      OP_REQUIRES_OK(ctx, ctx->allocate_output(0, input0.shape(), &output));
+    }
     auto To = output->flat<T>();
 
 #define I(IDX) ctx->input(IDX).flat<T>()

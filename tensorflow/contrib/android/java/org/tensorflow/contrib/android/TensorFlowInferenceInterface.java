@@ -169,7 +169,9 @@ public class TensorFlowInferenceInterface {
     closeFetches();
     sess.close();
     g.close();
-    runStats.close();
+    if (runStats != null) {
+      runStats.close();
+    }
     runStats = null;
     enableStats = false;
   }

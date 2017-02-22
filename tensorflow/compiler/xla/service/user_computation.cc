@@ -164,6 +164,9 @@ UserComputation::UserComputation(const string& name,
     : name_(name), next_handle_value_(1) {
   *session_computation_.mutable_computation_handle() = handle;
   session_computation_.set_name(name);
+
+  VLOG(1) << "New UserComputation \"" << name
+          << "\", handle: " << handle.handle();
 }
 
 ComputationDataHandle UserComputation::CreateComputationDataHandle() {
@@ -198,15 +201,30 @@ StatusOr<ComputationDataHandle> UserComputation::AddParameterInstruction(
 
   parameters_[parameter_number] = &request;
 
+  VLOG(1) << "AddParameterInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle() << ": "
+          << parameter_request.ShortDebugString();
   return handle;
 }
 
 Status UserComputation::AddSendInstruction(const SendRequest& send_request) {
   tensorflow::mutex_lock lock(mutex_);
 
-  *session_computation_.add_send_requests() = send_request;
   // Check if the operand of the instruction is valid.
-  TF_RETURN_IF_ERROR(LookupRequest(send_request.operand()).status());
+  TF_RETURN_IF_ERROR(LookUpRequest(send_request.operand()).status());
+
+  // No handle is returned, but a handle must be assigned to this instruction
+  // for computation versioning.
+  ComputationDataHandle handle = CreateComputationDataHandle();
+  OperationRequest& request =
+      (*session_computation_.mutable_requests())[handle.handle()];
+  *request.mutable_output_handle() = handle;
+  *request.mutable_output_shape() = ShapeUtil::MakeNil();
+  *request.mutable_request()->mutable_send_request() = send_request;
+
+  VLOG(1) << "AddSendInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle() << ": "
+          << send_request.ShortDebugString();
   return Status::OK();
 }
 
@@ -223,6 +241,9 @@ StatusOr<ComputationDataHandle> UserComputation::AddRecvInstruction(
   *request.mutable_output_shape() = shape;
   *request.mutable_request()->mutable_recv_request() = recv_request;
 
+  VLOG(1) << "AddRecvInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle() << ": "
+          << recv_request.ShortDebugString();
   return handle;
 }
 
@@ -231,10 +252,10 @@ StatusOr<ComputationDataHandle> UserComputation::AddPadInstruction(
   tensorflow::mutex_lock lock(mutex_);
 
   TF_ASSIGN_OR_RETURN(const OperationRequest* operand,
-                      LookupRequest(pad_request.operand()));
+                      LookUpRequest(pad_request.operand()));
 
   TF_ASSIGN_OR_RETURN(const OperationRequest* padding_value,
-                      LookupRequest(pad_request.padding_value()));
+                      LookUpRequest(pad_request.padding_value()));
 
   TF_ASSIGN_OR_RETURN(Shape inferred_shape, ShapeInference::InferPadShape(
                                                 operand->output_shape(),
@@ -248,6 +269,9 @@ StatusOr<ComputationDataHandle> UserComputation::AddPadInstruction(
   *request.mutable_output_shape() = inferred_shape;
   *request.mutable_request()->mutable_pad_request() = pad_request;
 
+  VLOG(1) << "AddPadInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle() << ": "
+          << pad_request.ShortDebugString();
   return handle;
 }
 
@@ -267,6 +291,8 @@ StatusOr<ComputationDataHandle> UserComputation::AddConstantInstruction(
   *request.mutable_output_shape() = validated_shape;
   *request.mutable_request()->mutable_constant_request() = constant_request;
 
+  VLOG(1) << "AddConstantInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle();
   return handle;
 }
 
@@ -275,7 +301,7 @@ StatusOr<ComputationDataHandle> UserComputation::AddGetTupleElementInstruction(
   tensorflow::mutex_lock lock(mutex_);
 
   TF_ASSIGN_OR_RETURN(const OperationRequest* operand,
-                      LookupRequest(get_tuple_element_request.operand()));
+                      LookUpRequest(get_tuple_element_request.operand()));
   Shape element_shape = ShapeUtil::GetTupleElementShape(
       operand->output_shape(), get_tuple_element_request.index());
 
@@ -288,6 +314,9 @@ StatusOr<ComputationDataHandle> UserComputation::AddGetTupleElementInstruction(
   *request.mutable_request()->mutable_get_tuple_element_request() =
       get_tuple_element_request;
 
+  VLOG(1) << "AddGetTupleElementInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle() << ": "
+          << get_tuple_element_request.ShortDebugString();
   return handle;
 }
 
@@ -295,10 +324,18 @@ Status UserComputation::AddTraceInstruction(const TraceRequest& trace_request) {
   tensorflow::mutex_lock lock(mutex_);
 
   // Verify that the operand index is valid.
-  TF_RETURN_IF_ERROR(LookupRequest(trace_request.operand()).status());
+  TF_RETURN_IF_ERROR(LookUpRequest(trace_request.operand()).status());
 
-  *session_computation_.add_trace_requests() = trace_request;
+  ComputationDataHandle handle = CreateComputationDataHandle();
+  OperationRequest& request =
+      (*session_computation_.mutable_requests())[handle.handle()];
+  *request.mutable_output_handle() = handle;
+  *request.mutable_output_shape() = ShapeUtil::MakeNil();
+  *request.mutable_request()->mutable_trace_request() = trace_request;
 
+  VLOG(1) << "AddTraceInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle() << ": "
+          << trace_request.ShortDebugString();
   return Status::OK();
 }
 
@@ -331,7 +368,7 @@ StatusOr<ComputationDataHandle> UserComputation::AddRngInstruction(
 
   // Verify that the parameter indices are valid;
   for (const ComputationDataHandle& param : rng_request.parameter()) {
-    TF_RETURN_IF_ERROR(LookupRequest(param).status());
+    TF_RETURN_IF_ERROR(LookUpRequest(param).status());
   }
   const Shape& validated_shape = rng_request.shape();
   TF_RETURN_IF_ERROR(
@@ -345,6 +382,9 @@ StatusOr<ComputationDataHandle> UserComputation::AddRngInstruction(
   *request.mutable_output_shape() = validated_shape;
   *request.mutable_request()->mutable_rng_request() = rng_request;
 
+  VLOG(1) << "AddRngInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle() << ": "
+          << rng_request.ShortDebugString();
   return handle;
 }
 
@@ -355,7 +395,7 @@ StatusOr<ComputationDataHandle> UserComputation::AddMapInstruction(
 
   std::vector<const Shape*> operand_shapes;
   for (const ComputationDataHandle& handle : map_request.operands()) {
-    TF_ASSIGN_OR_RETURN(const OperationRequest* operand, LookupRequest(handle));
+    TF_ASSIGN_OR_RETURN(const OperationRequest* operand, LookUpRequest(handle));
     operand_shapes.push_back(&operand->output_shape());
   }
 
@@ -377,6 +417,9 @@ StatusOr<ComputationDataHandle> UserComputation::AddMapInstruction(
   request.add_embedded_computation_versions(to_apply_version);
   *request.mutable_request()->mutable_map_request() = map_request;
 
+  VLOG(1) << "AddMapInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle() << ": "
+          << map_request.ShortDebugString();
   return handle;
 }
 
@@ -386,9 +429,9 @@ StatusOr<ComputationDataHandle> UserComputation::AddReduceInstruction(
   tensorflow::mutex_lock lock(mutex_);
 
   TF_ASSIGN_OR_RETURN(const OperationRequest* operand,
-                      LookupRequest(reduce_request.operand()));
+                      LookUpRequest(reduce_request.operand()));
   TF_ASSIGN_OR_RETURN(const OperationRequest* init_value,
-                      LookupRequest(reduce_request.init_value()));
+                      LookUpRequest(reduce_request.init_value()));
 
   VersionedComputationHandle::Version to_apply_version =
       to_apply_computation.version();
@@ -411,6 +454,9 @@ StatusOr<ComputationDataHandle> UserComputation::AddReduceInstruction(
   request.add_embedded_computation_versions(to_apply_version);
   *request.mutable_request()->mutable_reduce_request() = reduce_request;
 
+  VLOG(1) << "AddReduceInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle() << ": "
+          << reduce_request.ShortDebugString();
   return handle;
 }
 
@@ -420,9 +466,9 @@ StatusOr<ComputationDataHandle> UserComputation::AddReduceWindowInstruction(
   tensorflow::mutex_lock lock(mutex_);
 
   TF_ASSIGN_OR_RETURN(const OperationRequest* operand,
-                      LookupRequest(reduce_window_request.operand()));
+                      LookUpRequest(reduce_window_request.operand()));
   TF_ASSIGN_OR_RETURN(const OperationRequest* init_value,
-                      LookupRequest(reduce_window_request.init_value()));
+                      LookUpRequest(reduce_window_request.init_value()));
 
   VersionedComputationHandle::Version to_apply_version =
       to_apply_computation.version();
@@ -446,6 +492,9 @@ StatusOr<ComputationDataHandle> UserComputation::AddReduceWindowInstruction(
   *request.mutable_request()->mutable_reduce_window_request() =
       reduce_window_request;
 
+  VLOG(1) << "AddReduceWindowInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle() << ": "
+          << reduce_window_request.ShortDebugString();
   return handle;
 }
 
@@ -456,11 +505,11 @@ StatusOr<ComputationDataHandle> UserComputation::AddSelectAndScatterInstruction(
   tensorflow::mutex_lock lock(mutex_);
 
   TF_ASSIGN_OR_RETURN(const OperationRequest* operand,
-                      LookupRequest(select_and_scatter_request.operand()));
+                      LookUpRequest(select_and_scatter_request.operand()));
   TF_ASSIGN_OR_RETURN(const OperationRequest* source,
-                      LookupRequest(select_and_scatter_request.source()));
+                      LookUpRequest(select_and_scatter_request.source()));
   TF_ASSIGN_OR_RETURN(const OperationRequest* init_value,
-                      LookupRequest(select_and_scatter_request.init_value()));
+                      LookUpRequest(select_and_scatter_request.init_value()));
 
   VersionedComputationHandle::Version select_version =
       select_computation.version();
@@ -489,6 +538,9 @@ StatusOr<ComputationDataHandle> UserComputation::AddSelectAndScatterInstruction(
   *request.mutable_request()->mutable_select_and_scatter_request() =
       select_and_scatter_request;
 
+  VLOG(1) << "AddSelectAndScatterInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle() << ": "
+          << select_and_scatter_request.ShortDebugString();
   return handle;
 }
 
@@ -497,7 +549,7 @@ StatusOr<ComputationDataHandle> UserComputation::AddReverseInstruction(
   tensorflow::mutex_lock lock(mutex_);
 
   TF_ASSIGN_OR_RETURN(const OperationRequest* operand,
-                      LookupRequest(reverse_request.operand()));
+                      LookUpRequest(reverse_request.operand()));
   TF_ASSIGN_OR_RETURN(
       Shape inferred_shape,
       ShapeInference::InferReverseShape(
@@ -509,6 +561,9 @@ StatusOr<ComputationDataHandle> UserComputation::AddReverseInstruction(
   *request.mutable_output_handle() = handle;
   *request.mutable_output_shape() = inferred_shape;
   *request.mutable_request()->mutable_reverse_request() = reverse_request;
+  VLOG(1) << "AddReverseInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle() << ": "
+          << reverse_request.ShortDebugString();
   return handle;
 }
 
@@ -519,7 +574,7 @@ StatusOr<ComputationDataHandle> UserComputation::AddWhileInstruction(
   tensorflow::mutex_lock lock(mutex_);
 
   TF_ASSIGN_OR_RETURN(const OperationRequest* init,
-                      LookupRequest(while_request.init()));
+                      LookUpRequest(while_request.init()));
 
   VersionedComputationHandle::Version condition_version =
       condition_computation.version();
@@ -546,6 +601,9 @@ StatusOr<ComputationDataHandle> UserComputation::AddWhileInstruction(
   request.add_embedded_computation_versions(body_version);
   *request.mutable_request()->mutable_while_request() = while_request;
 
+  VLOG(1) << "AddWhileInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle() << ": "
+          << while_request.ShortDebugString();
   return handle;
 }
 
@@ -555,7 +613,7 @@ StatusOr<ComputationDataHandle> UserComputation::AddBroadcastInstruction(
 
   // Fetches and validates the operand.
   TF_ASSIGN_OR_RETURN(const OperationRequest* operand,
-                      LookupRequest(broadcast_request.operand()));
+                      LookUpRequest(broadcast_request.operand()));
   TF_ASSIGN_OR_RETURN(Shape inferred_shape,
                       ShapeInference::InferBroadcastShape(
                           operand->output_shape(),
@@ -567,6 +625,10 @@ StatusOr<ComputationDataHandle> UserComputation::AddBroadcastInstruction(
   *request.mutable_output_handle() = handle;
   *request.mutable_output_shape() = inferred_shape;
   *request.mutable_request()->mutable_broadcast_request() = broadcast_request;
+
+  VLOG(1) << "AddBroadcastInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle() << ": "
+          << broadcast_request.ShortDebugString();
   return handle;
 }
 
@@ -576,7 +638,7 @@ StatusOr<ComputationDataHandle> UserComputation::AddReshapeInstruction(
 
   // Fetches and validates the operand.
   TF_ASSIGN_OR_RETURN(const OperationRequest* operand,
-                      LookupRequest(reshape_request.operand()));
+                      LookUpRequest(reshape_request.operand()));
 
   TF_ASSIGN_OR_RETURN(
       Shape inferred_shape,
@@ -592,6 +654,9 @@ StatusOr<ComputationDataHandle> UserComputation::AddReshapeInstruction(
   *request.mutable_output_shape() = inferred_shape;
   *request.mutable_request()->mutable_reshape_request() = reshape_request;
 
+  VLOG(1) << "AddReshapeInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle() << ": "
+          << reshape_request.ShortDebugString();
   return handle;
 }
 
@@ -600,7 +665,7 @@ StatusOr<ComputationDataHandle> UserComputation::AddSliceInstruction(
   tensorflow::mutex_lock lock(mutex_);
 
   TF_ASSIGN_OR_RETURN(const OperationRequest* operand,
-                      LookupRequest(slice_request.operand()));
+                      LookUpRequest(slice_request.operand()));
 
   TF_ASSIGN_OR_RETURN(
       Shape new_shape,
@@ -616,6 +681,9 @@ StatusOr<ComputationDataHandle> UserComputation::AddSliceInstruction(
   *request.mutable_output_shape() = new_shape;
   *request.mutable_request()->mutable_slice_request() = slice_request;
 
+  VLOG(1) << "AddSliceInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle() << ": "
+          << slice_request.ShortDebugString();
   return handle;
 }
 
@@ -624,10 +692,10 @@ StatusOr<ComputationDataHandle> UserComputation::AddDynamicSliceInstruction(
   tensorflow::mutex_lock lock(mutex_);
 
   TF_ASSIGN_OR_RETURN(const OperationRequest* operand,
-                      LookupRequest(dynamic_slice_request.operand()));
+                      LookUpRequest(dynamic_slice_request.operand()));
 
   TF_ASSIGN_OR_RETURN(const OperationRequest* start_indices,
-                      LookupRequest(dynamic_slice_request.start_indices()));
+                      LookUpRequest(dynamic_slice_request.start_indices()));
 
   TF_ASSIGN_OR_RETURN(
       Shape new_shape,
@@ -644,6 +712,9 @@ StatusOr<ComputationDataHandle> UserComputation::AddDynamicSliceInstruction(
   *request.mutable_request()->mutable_dynamic_slice_request() =
       dynamic_slice_request;
 
+  VLOG(1) << "AddDynamicSliceInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle() << ": "
+          << dynamic_slice_request.ShortDebugString();
   return handle;
 }
 
@@ -653,14 +724,14 @@ UserComputation::AddDynamicUpdateSliceInstruction(
   tensorflow::mutex_lock lock(mutex_);
 
   TF_ASSIGN_OR_RETURN(const OperationRequest* operand,
-                      LookupRequest(dynamic_update_slice_request.operand()));
+                      LookUpRequest(dynamic_update_slice_request.operand()));
 
   TF_ASSIGN_OR_RETURN(const OperationRequest* update,
-                      LookupRequest(dynamic_update_slice_request.update()));
+                      LookUpRequest(dynamic_update_slice_request.update()));
 
   TF_ASSIGN_OR_RETURN(
       const OperationRequest* start_indices,
-      LookupRequest(dynamic_update_slice_request.start_indices()));
+      LookUpRequest(dynamic_update_slice_request.start_indices()));
 
   TF_ASSIGN_OR_RETURN(Shape new_shape,
                       ShapeInference::InferDynamicUpdateSliceShape(
@@ -676,6 +747,10 @@ UserComputation::AddDynamicUpdateSliceInstruction(
   *request.mutable_request()->mutable_dynamic_update_slice_request() =
       dynamic_update_slice_request;
 
+  VLOG(1) << "AddDynamicUpdateSliceInstruction ("
+          << GetVersionedHandleInternal() << "), data handle "
+          << handle.handle() << ": "
+          << dynamic_update_slice_request.ShortDebugString();
   return handle;
 }
 
@@ -685,7 +760,7 @@ StatusOr<ComputationDataHandle> UserComputation::AddConcatenateInstruction(
 
   std::vector<const Shape*> operand_shapes;
   for (const ComputationDataHandle& handle : concatenate_request.operands()) {
-    TF_ASSIGN_OR_RETURN(const OperationRequest* operand, LookupRequest(handle));
+    TF_ASSIGN_OR_RETURN(const OperationRequest* operand, LookUpRequest(handle));
     operand_shapes.push_back(&operand->output_shape());
   }
 
@@ -702,6 +777,9 @@ StatusOr<ComputationDataHandle> UserComputation::AddConcatenateInstruction(
   *request.mutable_request()->mutable_concatenate_request() =
       concatenate_request;
 
+  VLOG(1) << "AddConcatenateInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle() << ": "
+          << concatenate_request.ShortDebugString();
   return handle;
 }
 
@@ -710,7 +788,7 @@ StatusOr<ComputationDataHandle> UserComputation::AddConvertInstruction(
   tensorflow::mutex_lock lock(mutex_);
 
   TF_ASSIGN_OR_RETURN(const OperationRequest* operand,
-                      LookupRequest(convert_request.operand()));
+                      LookUpRequest(convert_request.operand()));
 
   TF_ASSIGN_OR_RETURN(Shape new_shape, ShapeInference::InferConvertShape(
                                            operand->output_shape(),
@@ -724,6 +802,9 @@ StatusOr<ComputationDataHandle> UserComputation::AddConvertInstruction(
   *request.mutable_output_shape() = new_shape;
   *request.mutable_request()->mutable_convert_request() = convert_request;
 
+  VLOG(1) << "AddConvertInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle() << ": "
+          << convert_request.ShortDebugString();
   return handle;
 }
 
@@ -732,9 +813,9 @@ StatusOr<ComputationDataHandle> UserComputation::AddConvolveInstruction(
   tensorflow::mutex_lock lock(mutex_);
 
   TF_ASSIGN_OR_RETURN(const OperationRequest* lhs,
-                      LookupRequest(convolve_request.lhs()));
+                      LookUpRequest(convolve_request.lhs()));
   TF_ASSIGN_OR_RETURN(const OperationRequest* rhs,
-                      LookupRequest(convolve_request.rhs()));
+                      LookUpRequest(convolve_request.rhs()));
   TF_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferConvolveShape(
                                        lhs->output_shape(), rhs->output_shape(),
                                        convolve_request.window(),
@@ -748,6 +829,9 @@ StatusOr<ComputationDataHandle> UserComputation::AddConvolveInstruction(
   *request.mutable_output_shape() = shape;
   *request.mutable_request()->mutable_convolve_request() = convolve_request;
 
+  VLOG(1) << "AddConvolveInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle() << ": "
+          << convolve_request.ShortDebugString();
   return handle;
 }
 
@@ -756,7 +840,7 @@ StatusOr<ComputationDataHandle> UserComputation::AddCrossReplicaSumInstruction(
   tensorflow::mutex_lock lock(mutex_);
 
   TF_ASSIGN_OR_RETURN(const OperationRequest* operand,
-                      LookupRequest(cross_replica_sum_request.operand()));
+                      LookUpRequest(cross_replica_sum_request.operand()));
   TF_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferCrossReplicaSumShape(
                                        operand->output_shape()));
 
@@ -769,6 +853,9 @@ StatusOr<ComputationDataHandle> UserComputation::AddCrossReplicaSumInstruction(
   *request.mutable_request()->mutable_cross_replica_sum_request() =
       cross_replica_sum_request;
 
+  VLOG(1) << "AddCrossreplicaSumInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle() << ": "
+          << cross_replica_sum_request.ShortDebugString();
   return handle;
 }
 
@@ -792,6 +879,9 @@ StatusOr<ComputationDataHandle> UserComputation::AddInfeedInstruction(
   *request.mutable_output_shape() = shape;
   *request.mutable_request()->mutable_infeed_request() = infeed_request;
 
+  VLOG(1) << "AddInfeedInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle() << ": "
+          << infeed_request.ShortDebugString();
   return handle;
 }
 
@@ -799,9 +889,21 @@ Status UserComputation::AddOutfeedInstruction(
     const OutfeedRequest& outfeed_request) {
   tensorflow::mutex_lock lock(mutex_);
 
-  *session_computation_.add_outfeed_requests() = outfeed_request;
   // Verify that operand is valid.
-  TF_RETURN_IF_ERROR(LookupRequest(outfeed_request.operand()).status());
+  TF_RETURN_IF_ERROR(LookUpRequest(outfeed_request.operand()).status());
+
+  // No handle is returned, but a handle must be assigned to this instruction
+  // for computation versioning.
+  ComputationDataHandle handle = CreateComputationDataHandle();
+  OperationRequest& request =
+      (*session_computation_.mutable_requests())[handle.handle()];
+  *request.mutable_output_handle() = handle;
+  *request.mutable_output_shape() = ShapeUtil::MakeNil();
+  *request.mutable_request()->mutable_outfeed_request() = outfeed_request;
+
+  VLOG(1) << "AddOutfeedInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle() << ": "
+          << outfeed_request.ShortDebugString();
   return Status::OK();
 }
 
@@ -812,7 +914,7 @@ StatusOr<ComputationDataHandle> UserComputation::AddCallInstruction(
 
   std::vector<const Shape*> operand_shapes;
   for (const ComputationDataHandle& handle : call_request.operands()) {
-    TF_ASSIGN_OR_RETURN(const OperationRequest* operand, LookupRequest(handle));
+    TF_ASSIGN_OR_RETURN(const OperationRequest* operand, LookUpRequest(handle));
     operand_shapes.push_back(&operand->output_shape());
   }
 
@@ -834,6 +936,9 @@ StatusOr<ComputationDataHandle> UserComputation::AddCallInstruction(
   request.add_embedded_computation_versions(to_apply_version);
   *request.mutable_request()->mutable_call_request() = call_request;
 
+  VLOG(1) << "AddCallInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle() << ": "
+          << call_request.ShortDebugString();
   return handle;
 }
 
@@ -842,7 +947,7 @@ StatusOr<ComputationDataHandle> UserComputation::AddCustomCallInstruction(
   tensorflow::mutex_lock lock(mutex_);
 
   for (const ComputationDataHandle& handle : custom_call_request.operands()) {
-    TF_RETURN_IF_ERROR(LookupRequest(handle).status());
+    TF_RETURN_IF_ERROR(LookUpRequest(handle).status());
   }
 
   const ComputationDataHandle handle = CreateComputationDataHandle();
@@ -854,6 +959,9 @@ StatusOr<ComputationDataHandle> UserComputation::AddCustomCallInstruction(
   *request.mutable_request()->mutable_custom_call_request() =
       custom_call_request;
 
+  VLOG(1) << "AddCustomCallInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle() << ": "
+          << custom_call_request.ShortDebugString();
   return handle;
 }
 
@@ -862,7 +970,7 @@ StatusOr<ComputationDataHandle> UserComputation::AddUnaryInstruction(
   tensorflow::mutex_lock lock(mutex_);
 
   TF_ASSIGN_OR_RETURN(const OperationRequest* operand,
-                      LookupRequest(unary_request.operand()));
+                      LookUpRequest(unary_request.operand()));
   TF_ASSIGN_OR_RETURN(
       Shape shape, ShapeInference::InferUnaryOpShape(unary_request.unop(),
                                                      operand->output_shape()));
@@ -875,6 +983,9 @@ StatusOr<ComputationDataHandle> UserComputation::AddUnaryInstruction(
   *request.mutable_output_shape() = shape;
   *request.mutable_request()->mutable_unary_op_request() = unary_request;
 
+  VLOG(1) << "AddUnaryInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle() << ": "
+          << unary_request.ShortDebugString();
   return handle;
 }
 
@@ -883,9 +994,9 @@ StatusOr<ComputationDataHandle> UserComputation::AddBinaryInstruction(
   tensorflow::mutex_lock lock(mutex_);
 
   TF_ASSIGN_OR_RETURN(const OperationRequest* lhs,
-                      LookupRequest(binary_request.lhs()));
+                      LookUpRequest(binary_request.lhs()));
   TF_ASSIGN_OR_RETURN(const OperationRequest* rhs,
-                      LookupRequest(binary_request.rhs()));
+                      LookUpRequest(binary_request.rhs()));
   TF_ASSIGN_OR_RETURN(
       Shape shape,
       ShapeInference::InferBinaryOpShape(
@@ -900,6 +1011,9 @@ StatusOr<ComputationDataHandle> UserComputation::AddBinaryInstruction(
   *request.mutable_output_shape() = shape;
   *request.mutable_request()->mutable_binary_op_request() = binary_request;
 
+  VLOG(1) << "AddBinaryInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle() << ": "
+          << binary_request.ShortDebugString();
   return handle;
 }
 
@@ -908,11 +1022,11 @@ StatusOr<ComputationDataHandle> UserComputation::AddTernaryInstruction(
   tensorflow::mutex_lock lock(mutex_);
 
   TF_ASSIGN_OR_RETURN(const OperationRequest* lhs,
-                      LookupRequest(ternary_request.lhs()));
+                      LookUpRequest(ternary_request.lhs()));
   TF_ASSIGN_OR_RETURN(const OperationRequest* rhs,
-                      LookupRequest(ternary_request.rhs()));
+                      LookUpRequest(ternary_request.rhs()));
   TF_ASSIGN_OR_RETURN(const OperationRequest* ehs,
-                      LookupRequest(ternary_request.ehs()));
+                      LookUpRequest(ternary_request.ehs()));
   TF_ASSIGN_OR_RETURN(Shape shape,
                       ShapeInference::InferTernaryOpShape(
                           ternary_request.triop(), lhs->output_shape(),
@@ -926,6 +1040,9 @@ StatusOr<ComputationDataHandle> UserComputation::AddTernaryInstruction(
   *request.mutable_output_shape() = shape;
   *request.mutable_request()->mutable_ternary_op_request() = ternary_request;
 
+  VLOG(1) << "AddTernaryInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle() << ": "
+          << ternary_request.ShortDebugString();
   return handle;
 }
 
@@ -935,7 +1052,7 @@ StatusOr<ComputationDataHandle> UserComputation::AddVariadicInstruction(
 
   std::vector<const Shape*> operand_shapes;
   for (const ComputationDataHandle& handle : variadic_request.operands()) {
-    TF_ASSIGN_OR_RETURN(const OperationRequest* operand, LookupRequest(handle));
+    TF_ASSIGN_OR_RETURN(const OperationRequest* operand, LookUpRequest(handle));
     operand_shapes.push_back(&operand->output_shape());
   }
 
@@ -951,13 +1068,16 @@ StatusOr<ComputationDataHandle> UserComputation::AddVariadicInstruction(
   *request.mutable_output_shape() = shape;
   *request.mutable_request()->mutable_variadic_op_request() = variadic_request;
 
+  VLOG(1) << "AddVariadicInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle() << ": "
+          << variadic_request.ShortDebugString();
   return handle;
 }
 
 StatusOr<Shape> UserComputation::GetShape(const ComputationDataHandle& handle) {
   tensorflow::mutex_lock lock(mutex_);
 
-  TF_ASSIGN_OR_RETURN(const OperationRequest* operand, LookupRequest(handle));
+  TF_ASSIGN_OR_RETURN(const OperationRequest* operand, LookUpRequest(handle));
   return operand->output_shape();
 }
 
@@ -970,12 +1090,18 @@ Status UserComputation::SetReturnValue(const ComputationDataHandle& handle) {
 
   handle_to_return_ = handle;
 
+  VLOG(1) << "SetReturnValue of computation \"" << name() << "\" fixed to "
+          << GetVersionedHandleInternal();
+
   return Status::OK();
 }
 
 VersionedComputationHandle UserComputation::GetVersionedHandle() const {
   tensorflow::mutex_lock lock(mutex_);
+  return GetVersionedHandleInternal();
+}
 
+VersionedComputationHandle UserComputation::GetVersionedHandleInternal() const {
   VersionedComputationHandle versioned_handle;
   versioned_handle.handle = session_computation_.computation_handle();
 
@@ -1008,12 +1134,62 @@ VersionedComputationHandle::Version UserComputation::version() const {
   return GetVersionedHandle().version;
 }
 
+namespace {
+
+// Returns true if the operation type corresponding to the given opcase can be
+// the root of the computation.
+bool CanBeRoot(const OpRequest::OpCase& op_case) {
+  switch (op_case) {
+    case OpRequest::kTraceRequest:
+    case OpRequest::kSendRequest:
+    case OpRequest::kOutfeedRequest:
+      return false;
+    default:
+      return true;
+  }
+}
+
+// Returns a pointer to the operation with the given data handle value in the
+// given SessionComputation.
+StatusOr<const OperationRequest*> LookUpRequest(
+    int64 handle_value, const SessionComputation& session_computation) {
+  if (session_computation.requests().count(handle_value) == 0) {
+    return InvalidArgument("no ComputationDataHandle value %lld", handle_value);
+  }
+  return &session_computation.requests().at(handle_value);
+}
+
+// Returns the OperationRequestion corresponding to the root (result) of the
+// session computation.
+StatusOr<const OperationRequest*> GetRoot(
+    VersionedComputationHandle::Version version,
+    const SessionComputation& session_computation) {
+  TF_RET_CHECK(version > 0);
+  // Not all instructions can be roots. Walk backwards from the operation
+  // indicated by this version until a valid root is found.
+  const OperationRequest* root_request = nullptr;
+  while (version > 0) {
+    TF_ASSIGN_OR_RETURN(root_request,
+                        LookUpRequest(version, session_computation));
+    if (CanBeRoot(root_request->request().op_case())) {
+      break;
+    }
+    version--;
+  }
+  if (version == 0) {
+    return InternalError("Computation contains no root operation");
+  }
+  return root_request;
+}
+
+}  // namespace
+
 StatusOr<std::shared_ptr<const ProgramShape>>
 UserComputation::ComputeProgramShape(
     VersionedComputationHandle::Version version) const {
   tensorflow::mutex_lock lock(mutex_);
 
-  CHECK(version > 0 && version < next_handle_value_);
+  TF_RET_CHECK(version > 0 && version < next_handle_value_);
 
   if (program_shape_ == nullptr || program_shape_version_ != version) {
     // ProgramShape has not been computed yet, or is for different
@@ -1042,7 +1218,9 @@ UserComputation::ComputeProgramShape(
     }
 
     // The root determines the output shape.
-    *program_shape->mutable_result() = GetRoot(version).output_shape();
+    TF_ASSIGN_OR_RETURN(const OperationRequest* root_request,
+                        GetRoot(version, session_computation_));
+    *program_shape->mutable_result() = root_request->output_shape();
     if (ShapeUtil::IsOpaque(program_shape->result())) {
       return Unimplemented("Computation results cannot be opaque");
     }
@@ -1338,7 +1516,7 @@ StatusOr<bool> UserComputation::IsConstant(
   tensorflow::mutex_lock lock(mutex_);
 
   // Verify that the handle is valid.
-  auto operation_status = LookupRequest(handle);
+  auto operation_status = LookUpRequest(handle);
   if (!operation_status.ok()) {
     return operation_status.status();
   }
@@ -1350,16 +1528,17 @@ StatusOr<bool> UserComputation::IsConstant(
   return is_constant;
 }
 
-const OperationRequest& UserComputation::GetRoot(
-    VersionedComputationHandle::Version version) const {
-  CHECK(version > 0 && version < next_handle_value_);
-  return session_computation_.requests().at(version);
-}
-
 std::vector<VersionedComputationHandle>
 UserComputation::GetEmbeddedComputations(
     VersionedComputationHandle::Version version) const {
   tensorflow::mutex_lock lock(mutex_);
+
+  VLOG(1)
+      << "GetEmbeddedComputations(" << name() << " "
+      << VersionedComputationHandle{session_computation_.computation_handle(),
+                                    version}
+      << ")";
+  XLA_VLOG_LINES(3, session_computation_.DebugString());
 
   std::vector<VersionedComputationHandle> computations;
   for (const auto& handle_request : session_computation_.requests()) {
@@ -1442,6 +1621,12 @@ UserComputation::GetEmbeddedComputations(
       }
     }
   }
+  VLOG(2) << "Embedded computations: "
+          << tensorflow::str_util::Join(
+                 computations, ", ",
+                 [](string* out, const VersionedComputationHandle& h) {
+                   out->append(h.ToString());
+                 });
   return computations;
 }
 
@@ -1543,7 +1728,7 @@ SessionComputation UserComputation::CloneSessionComputation(
   return result;
 }
 
-StatusOr<const OperationRequest*> UserComputation::LookupRequest(
+StatusOr<const OperationRequest*> UserComputation::LookUpRequest(
     const ComputationDataHandle& handle) const {
   int64 handle_value = handle.handle();
   if (session_computation_.requests().count(handle_value) == 0) {
@@ -1594,15 +1779,15 @@ namespace {
 // DFS order lowering each OperationRequest to an HLO instruction.
 class ComputationLowerer {
  public:
-  static std::unique_ptr<HloComputation> Lower(
+  static StatusOr<std::unique_ptr<HloComputation>> Lower(
       const string& computation_name,
       const SessionComputation& session_computation,
       VersionedComputationHandle::Version version,
       UserComputation::HloComputationResolver hlo_resolver,
-      bool include_unused_parameters) {
+      bool include_unreachable_instructions) {
     ComputationLowerer lowerer(computation_name, session_computation, version,
                                std::move(hlo_resolver));
-    return lowerer.Lower(include_unused_parameters);
+    return lowerer.Lower(include_unreachable_instructions);
   }
 
  private:
@@ -1617,7 +1802,8 @@ class ComputationLowerer {
 
   // Build an HLO computation from the SessionComputation at the given
   // version.
-  std::unique_ptr<HloComputation> Lower(bool include_unused_parameters);
+  StatusOr<std::unique_ptr<HloComputation>> Lower(
+      bool include_unreachable_instructions);
 
  private:
   // DFS visitor of the UserComputation operations which lowers the operations
@@ -1637,62 +1823,27 @@ class ComputationLowerer {
   const UserComputation::HloComputationResolver hlo_resolver_;
 };
 
-std::unique_ptr<HloComputation> ComputationLowerer::Lower(
-    bool include_unused_parameters) {
+StatusOr<std::unique_ptr<HloComputation>> ComputationLowerer::Lower(
+    bool include_unreachable_instructions) {
   // Map from ComputationDataHandle to HLO instruction. Serves as a record of
   // which operations have been visited as well as a cache for looking up
   // ComputationDataHandles as HloInstructions.
   std::map<int64, HloInstruction*> visited;
 
-  // A version is simply a ComputationDataHandle of the root of the computation
-  // at the time the version was generated. Create a ComputationDataHandle with
-  // this value and pass it to the visitor as the root of the computation to
-  // lower.
-  ComputationDataHandle root_handle;
-  root_handle.set_handle(version_);
+  TF_ASSIGN_OR_RETURN(const OperationRequest* root_request,
+                      GetRoot(version_, session_computation_));
+  HloInstruction* hlo_root = Visit(root_request->output_handle(), &visited);
 
-  HloInstruction* hlo_root = Visit(root_handle, &visited);
-
-  // A computation may have unused parameters.
-  if (include_unused_parameters) {
+  if (include_unreachable_instructions) {
+    // Iterate through all computation data handles, and visit any unvisited
+    // operations.
     for (int64 request_num = 1; request_num <= version_; ++request_num) {
-      const OperationRequest& request =
-          session_computation_.requests().at(request_num);
-      if (request.request().op_case() == OpRequest::kParameterRequest &&
-          visited.count(request.output_handle().handle()) == 0) {
-        Visit(request.output_handle(), &visited);
+      TF_ASSIGN_OR_RETURN(const OperationRequest* request,
+                          LookUpRequest(request_num, session_computation_));
+      if (visited.count(request->output_handle().handle()) == 0) {
+        Visit(request->output_handle(), &visited);
       }
     }
-  }
-
-  // Add trace instructions.
-  for (const auto& trace_request : session_computation_.trace_requests()) {
-    if (trace_request.operand().handle() <= version_) {
-      HloInstruction* operand = visited[trace_request.operand().handle()];
-      // Trace instructions cannot be the root of a computation.
-      HloInstruction* trace_instruction = hlo_builder_.AddInstruction(
-          HloInstruction::CreateTrace(trace_request.tag(), operand));
-      operand->set_tracing(trace_instruction);
-    }
-  }
-
-  // Send instructions do not have users, so they are not reachable from the
-  // root instruction. Therefore, explicitly visit all Send requests (and their
-  // operand chains) and add to the builder.
-  for (const auto& send_request : session_computation_.send_requests()) {
-    Visit(send_request.operand(), &visited);
-    HloInstruction* operand = visited[send_request.operand().handle()];
-    hlo_builder_.AddInstruction(HloInstruction::CreateSend(
-        operand, send_request.channel_handle().handle()));
-  }
-
-  // Outfeed instructions do not have users. Explicitly visit all Outfeed
-  // requests (and their operand chains).
-  for (const auto& outfeed_request : session_computation_.outfeed_requests()) {
-    Visit(outfeed_request.operand(), &visited);
-    HloInstruction* operand = visited[outfeed_request.operand().handle()];
-    hlo_builder_.AddInstruction(HloInstruction::CreateOutfeed(
-        operand, outfeed_request.outfeed_config()));
   }
 
   return hlo_builder_.Build(hlo_root);
@@ -1708,6 +1859,7 @@ HloComputation* ComputationLowerer::ResolveComputation(
 HloInstruction* ComputationLowerer::Visit(
     const ComputationDataHandle& handle,
     std::map<int64, HloInstruction*>* visited) {
+  CHECK_LE(handle.handle(), version_);
   if (visited->count(handle.handle()) != 0) {
     return (*visited)[handle.handle()];
   }
@@ -2129,6 +2281,23 @@ HloInstruction* ComputationLowerer::Visit(
       break;
     }
 
+    case OpRequest::kTraceRequest: {
+      const TraceRequest& trace_request = request.request().trace_request();
+      HloInstruction* operand = Visit(trace_request.operand(), visited);
+      hlo_instruction = hlo_builder_.AddInstruction(
+          HloInstruction::CreateTrace(trace_request.tag(), operand));
+      operand->set_tracing(hlo_instruction);
+      break;
+    }
+
+    case OpRequest::kSendRequest: {
+      const SendRequest& send_request = request.request().send_request();
+      HloInstruction* operand = Visit(send_request.operand(), visited);
+      hlo_instruction = hlo_builder_.AddInstruction(HloInstruction::CreateSend(
+          operand, send_request.channel_handle().handle()));
+      break;
+    }
+
     case OpRequest::OP_NOT_SET:
       LOG(FATAL) << "OperationRequest doesn't contain a request";
 
@@ -2143,18 +2312,22 @@ HloInstruction* ComputationLowerer::Visit(
 
 StatusOr<std::unique_ptr<HloComputation>> UserComputation::BuildHloComputation(
     VersionedComputationHandle::Version version,
-    HloComputationResolver hlo_resolver, bool include_unused_parameters) const {
+    HloComputationResolver hlo_resolver,
+    bool include_unreachable_instructions) const {
   tensorflow::mutex_lock lock(mutex_);
 
   VLOG(2) << "Building HloComputation from UserComputation " << name_
-          << " at version " << version << ". Operation requests:\n"
-          << session_computation_.ShortDebugString();
+          << " at version " << version;
+  XLA_VLOG_LINES(3, session_computation_.DebugString());
 
-  std::unique_ptr<HloComputation> hlo_computation = ComputationLowerer::Lower(
-      tensorflow::strings::StrCat(name(), ".v", version), session_computation_,
-      version, std::move(hlo_resolver), include_unused_parameters);
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloComputation> hlo_computation,
+      ComputationLowerer::Lower(
+          tensorflow::strings::StrCat(name(), ".v", version),
+          session_computation_, version, std::move(hlo_resolver),
+          include_unreachable_instructions));
 
-  VLOG(2) << "HloComputation:\n" << hlo_computation->ToString();
+  XLA_VLOG_LINES(2, hlo_computation->ToString());
   return std::move(hlo_computation);
 }
 
