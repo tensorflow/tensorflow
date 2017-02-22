@@ -182,13 +182,16 @@ func TestConcurrency(t *testing.T) {
 	}
 }
 
-func ExamplePartialRun() {
+func TestGraph(t *testing.T) {
 	var (
 		// Create a graph: a + 2 + 3 + b.
 		//
-		// Skipping error handling for brevity of this example.
+		// Skipping error handling for brevity of this test.
 		// The 'op' package can be used to make graph construction code
 		// with error handling more succinct.
+		// Ops in 'op' package require Scope instead of Graph to
+		// construct graph. Please refer docs of `op` more detail.
+		// https://godoc.org/github.com/tensorflow/tensorflow/tensorflow/go/op
 		g        = NewGraph()
 		a, _     = Placeholder(g, "a", Int32)
 		b, _     = Placeholder(g, "b", Int32)
@@ -202,7 +205,7 @@ func ExamplePartialRun() {
 	)
 	sess, err := NewSession(g, nil)
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
 	defer sess.Close()
 
@@ -214,7 +217,7 @@ func ExamplePartialRun() {
 		[]*Operation{plus3.Op},
 	)
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
 
 	// Feed 'a=1', fetch 'plus2', and compute (but do not fetch) 'plus3'.
@@ -226,7 +229,7 @@ func ExamplePartialRun() {
 		[]Output{plus2},
 		nil)
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
 	v1 := fetches[0].Value().(int32)
 
@@ -239,7 +242,7 @@ func ExamplePartialRun() {
 		[]Output{plusB},
 		nil)
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
 	v2 := fetches[0].Value().(int32)
 
