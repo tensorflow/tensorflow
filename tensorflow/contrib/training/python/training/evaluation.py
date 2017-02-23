@@ -552,8 +552,7 @@ def evaluate_repeatedly(checkpoint_dir,
           '%Y-%m-%d-%H:%M:%S', time.gmtime()))
     num_evaluations += 1
 
-    reached_max = num_evaluations >= max_number_of_evaluations
-    if max_number_of_evaluations and reached_max:
+    if max_number_of_evaluations is not None and num_evaluations >= max_number_of_evaluations:
       return final_ops_hook.final_ops_values
 
   logging.info('Timed-out waiting for a checkpoint.')
