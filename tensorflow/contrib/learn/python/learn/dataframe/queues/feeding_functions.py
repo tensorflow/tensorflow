@@ -44,6 +44,54 @@ except ImportError:
   HAS_PANDAS = False
 
 
+def _get_integer_indices_for_next_batch(
+    batch_indices_start, batch_size, epoch_end, array_length,
+    current_epoch, total_epochs):
+  """Returns the integer indices for next batch.
+
+  If total epochs is not None and current epoch is the final epoch, the end
+  index of the next batch should not exceed the `epoch_end` (i.e., the final
+  batch might not have size `batch_size` to avoid overshooting the last epoch).
+
+  Args:
+    batch_indices_start: Integer, the index to start next batch.
+    batch_size: Integer, size of batches to return.
+    epoch_end: Integer, the end index of the epoch. The epoch could start from a
+      random position, so `epoch_end` provides the end index for that.
+    array_length: Integer, the length of the array.
+    current_epoch: Integer, the epoch number has been emitted.
+    total_epochs: Integer or `None`, the total number of epochs to emit. If
+      `None` will run forever.
+
+  Returns:
+    A tuple of a list with integer indices for next batch and `current_epoch`
+    value after the next batch.
+
+  Raises:
+    OutOfRangeError if `current_epoch` is not less than `total_epochs`.
+
+  """
+  if total_epochs is not None and current_epoch >= total_epochs:
+    raise errors.OutOfRangeError(None, None,
+                                 "Already emitted %s epochs." % current_epoch)
+
+  batch_indices_end = batch_indices_start + batch_size
+  batch_indices = [j % array_length for j in
+                   range(batch_indices_start, batch_indices_end)]
+  epoch_end_indices = [i for i, x in enumerate(batch_indices) if x == epoch_end]
+  current_epoch += len(epoch_end_indices)
+
+  if total_epochs is None or current_epoch < total_epochs:
+    return (batch_indices, current_epoch)
+
+  # Now we might have emitted more data for expected epochs. Need to trim.
+  final_epoch_end_inclusive = epoch_end_indices[
+      -(current_epoch - total_epochs + 1)]
+  batch_indices = batch_indices[:final_epoch_end_inclusive + 1]
+
+  return (batch_indices, total_epochs)
+
+
 class _ArrayFeedFn(object):
   """Creates feed dictionaries from numpy arrays."""
 
@@ -68,18 +116,13 @@ class _ArrayFeedFn(object):
     self._epoch_end = (self._trav - 1) % self._max
 
   def __call__(self):
-    if self._num_epochs and self._epoch >= self._num_epochs:
-      raise errors.OutOfRangeError(None, None,
-                                   "Already emitted %s epochs." % self._epoch)
-
-    integer_indexes = [
-        j % self._max for j in range(self._trav, self._trav + self._batch_size)
-    ]
-
-    if self._epoch_end in integer_indexes:
-      # after this batch we will have processed self._epoch epochs, possibly
-      # overshooting a bit to fill out a batch.
-      self._epoch += 1
+    integer_indexes, self._epoch = _get_integer_indices_for_next_batch(
+        batch_indices_start=self._trav,
+        batch_size=self._batch_size,
+        epoch_end=self._epoch_end,
+        array_length=self._max,
+        current_epoch=self._epoch,
+        total_epochs=self._num_epochs)
 
     self._trav = (integer_indexes[-1] + 1) % self._max
     return {
@@ -116,30 +159,13 @@ class _OrderedDictNumpyFeedFn(object):
     self._epoch_end = (self._trav - 1) % self._max
 
   def __call__(self):
-    if self._num_epochs is not None and self._epoch >= self._num_epochs:
-      raise errors.OutOfRangeError(None, None,
-                                   "Already emitted %s epochs." % self._epoch)
-
-    indices_end = self._trav + self._batch_size
-
-    # _num_epochs will not be <= 0; otherwise, the OutOfRangeError has been
-    # raised already.
-    if self._num_epochs is not None and self._epoch == self._num_epochs - 1:
-      # If num_epochs is set and the feed_fn is on the final epoch, the end
-      # index of the next batch should not exceed the epoch_end.
-      if self._trav <= self._epoch_end:
-        epoch_end = self._epoch_end
-      else:
-        epoch_end = self._max + self._epoch_end
-      indices_end = min(epoch_end + 1, indices_end)
-
-    # The integer indices for next batch.
-    integer_indexes = [j % self._max for j in range(self._trav, indices_end)]
-
-    if self._epoch_end in integer_indexes:
-      # after this batch we will have processed self._epoch epochs, possibly
-      # overshooting a bit to fill out a batch.
-      self._epoch += 1
+    integer_indexes, self._epoch = _get_integer_indices_for_next_batch(
+        batch_indices_start=self._trav,
+        batch_size=self._batch_size,
+        epoch_end=self._epoch_end,
+        array_length=self._max,
+        current_epoch=self._epoch,
+        total_epochs=self._num_epochs)
 
     self._trav = (integer_indexes[-1] + 1) % self._max
     feed_dict = {self._index_placeholder: integer_indexes}
@@ -176,22 +202,13 @@ class _PandasFeedFn(object):
     self._epoch_end = (self._trav - 1) % self._max
 
   def __call__(self):
-    if self._num_epochs and self._epoch >= self._num_epochs:
-      raise errors.OutOfRangeError(None, None,
-                                   "Already emitted %s epochs." % self._epoch)
-
-    integer_indexes = [
-        j % self._max for j in range(self._trav, self._trav + self._batch_size)
-    ]
-
-    if self._epoch_end in integer_indexes:
-      # after this batch we will have processed self._epoch epochs, possibly
-      # overshooting a bit to fill out a batch.
-      self._epoch += 1
-      if self._epoch == self._num_epochs:
-        # trim this batch, so as not to overshoot the last epoch.
-        batch_end_inclusive = integer_indexes.index(self._epoch_end)
-        integer_indexes = integer_indexes[:(batch_end_inclusive + 1)]
+    integer_indexes, self._epoch = _get_integer_indices_for_next_batch(
+        batch_indices_start=self._trav,
+        batch_size=self._batch_size,
+        epoch_end=self._epoch_end,
+        array_length=self._max,
+        current_epoch=self._epoch,
+        total_epochs=self._num_epochs)
 
     self._trav = (integer_indexes[-1] + 1) % self._max
     result = self._dataframe.iloc[integer_indexes]
