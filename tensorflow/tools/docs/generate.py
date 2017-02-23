@@ -36,7 +36,7 @@ from tensorflow.tools.docs import py_guide_parser
 
 
 def write_docs(output_dir, base_dir, duplicate_of, duplicates, index, tree,
-               reverse_index, doc_index, guide_index):
+               reverse_index, reference_resolver, guide_index):
   """Write previously extracted docs to disk.
 
   Write a docs page for each symbol in `index` to a tree of docs at
@@ -62,7 +62,7 @@ def write_docs(output_dir, base_dir, duplicate_of, duplicates, index, tree,
     tree: A `dict` mapping a fully qualified name to the names of all its
       members. Used to populate the members section of a class or module page.
     reverse_index: A `dict` mapping object ids to fully qualified names.
-    doc_index: A `dict` mapping a doc key to a DocInfo.
+    reference_resolver: A parser.ReferenceResolver object.
     guide_index: A `dict` mapping symbol name strings to GuideRef.
   """
   # Make output_dir.
@@ -118,12 +118,10 @@ def write_docs(output_dir, base_dir, duplicate_of, duplicates, index, tree,
 
     # Generate docs for `py_object`, resolving references.
     markdown = parser.generate_markdown(full_name, py_object,
-                                        duplicate_of=duplicate_of,
+                                        reference_resolver=reference_resolver,
                                         duplicates=duplicates,
-                                        index=index,
                                         tree=tree,
                                         reverse_index=reverse_index,
-                                        doc_index=doc_index,
                                         guide_index=guide_index,
                                         base_dir=base_dir)
 
@@ -165,7 +163,8 @@ def write_docs(output_dir, base_dir, duplicate_of, duplicates, index, tree,
 
   # Write a global index containing all full names with links.
   with open(os.path.join(output_dir, 'index.md'), 'w') as f:
-    f.write(parser.generate_global_index('TensorFlow', index, duplicate_of))
+    f.write(
+        parser.generate_global_index('TensorFlow', index, reference_resolver))
 
 
 def extract():
@@ -358,7 +357,7 @@ class UpdateTags(py_guide_parser.PyGuideParser):
     self.replace_line(line_number, '<h2 id="%s">%s</h2>' % (tag, section_title))
 
 
-def other_docs(src_dir, output_dir, visitor, doc_index):
+def other_docs(src_dir, output_dir, reference_resolver):
   """Convert all the files in `src_dir` and write results to `output_dir`."""
   header = '<!-- DO NOT EDIT! Automatically generated file. -->\n'
 
@@ -394,9 +393,8 @@ def other_docs(src_dir, output_dir, visitor, doc_index):
         print('Processing doc %s...' % suffix)
         md_string = open(full_in_path).read()
 
-      output = parser.replace_references(
-          md_string, relative_path_to_root, visitor.duplicate_of,
-          doc_index=doc_index, index=visitor.index)
+      output = reference_resolver.replace_references(
+          md_string, relative_path_to_root)
       with open(full_out_path, 'w') as f:
         f.write(header + output)
 
@@ -404,13 +402,17 @@ def other_docs(src_dir, output_dir, visitor, doc_index):
 
 
 def _main(src_dir, output_dir, base_dir):
+  """Generate docs from `src_dir` to `output_dir`."""
   doc_index = build_doc_index(src_dir)
   visitor = extract()
+  reference_resolver = parser.ReferenceResolver(
+      duplicate_of=visitor.duplicate_of,
+      doc_index=doc_index, index=visitor.index)
   write(os.path.join(output_dir, 'api_docs/python'), base_dir,
-        doc_index,
+        reference_resolver,
         build_guide_index(os.path.join(src_dir, 'api_guides/python')),
         visitor)
-  other_docs(src_dir, output_dir, visitor, doc_index)
+  other_docs(src_dir, output_dir, reference_resolver)
 
 
 if __name__ == '__main__':

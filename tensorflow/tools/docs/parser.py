@@ -30,8 +30,6 @@ import six
 
 # A regular expression capturing a python indentifier.
 IDENTIFIER_RE = '[a-zA-Z_][a-zA-Z0-9_]*'
-# A regular expression for capturing a @{symbol} reference.
-SYMBOL_REFERENCE_RE = re.compile(r'@\{([^}]+)\}')
 
 # Log of all reported errors
 all_errors = []
@@ -80,183 +78,204 @@ def _get_raw_docstring(py_object):
     return ''
 
 
-def _reference_to_link(ref_full_name, relative_path_to_root, duplicate_of,
-                       index):
-  """Resolve a "@{symbol}" reference to a relative path, respecting duplicates.
+# A regular expression for capturing a @{symbol} reference.
+SYMBOL_REFERENCE_RE = re.compile(r'@\{([^}]+)\}')
 
-  The input to this function should already be stripped of the '@' and '{}', and
-  its output is only the link, not the full Markdown.
 
-  If `ref_full_name` is the name of a class member, method, or property, the
-  link will point to the page of the containing class, and it will include the
-  method name as an anchor. For example, `tf.module.MyClass.my_method` will be
-  translated into a link to
-  `os.join.path(relative_path_to_root, 'tf/module/MyClass.md#my_method')`.
+class ReferenceResolver(object):
+  """Class for replacing @{...} references with Markdown links.
 
   Args:
-    ref_full_name: The fully qualified name of the symbol to link to.
-    relative_path_to_root: The relative path from the location of the current
-      document to the root of the API documentation.
-    duplicate_of: A map from duplicate full names to master names.
-    index: A map from all full names to python objects.
-
-  Returns:
-    A relative path that links from the documentation page of `from_full_name`
-    to the documentation page of `ref_full_name`.
-
-  Raises:
-    RuntimeError: If `ref_full_name` is not in `index`.
-  """
-  master_name = duplicate_of.get(ref_full_name, ref_full_name)
-
-  # Check whether this link exists
-  if master_name not in index:
-    print('ERROR: Cannot make link to %s (original: %s): Not in index.' %
-          (master_name, ref_full_name))
-    return 'BROKEN_LINK'
-
-  # If this is a member of a class, link to the class page with an anchor.
-  ref_path = None
-  py_object = index[master_name]
-  if not (inspect.isclass(py_object) or inspect.ismodule(py_object)):
-    idents = master_name.split('.')
-    if len(idents) > 1:
-      class_name = '.'.join(idents[:-1])
-      assert class_name in index
-      if inspect.isclass(index[class_name]):
-        ref_path = documentation_path(class_name) + '#%s' % idents[-1]
-
-  if not ref_path:
-    ref_path = documentation_path(master_name)
-
-  return os.path.join(relative_path_to_root, ref_path)
-
-
-def _markdown_link(link_text, ref_full_name, relative_path_to_root,
-                   duplicate_of, index, code_ref=True):
-  """Resolve a "@{symbol}" reference to a Markdown link, respecting duplicates.
-
-  The input to this function should already be stripped of the '@' and '{}'.
-  This function returns a Markdown link. It is assumed that this is a code
-  reference, so the link text will always be rendered as code (using backticks).
-
-  `link_text` should refer to a library symbol, starting with 'tf.'.
-
-  Args:
-    link_text: The text of the Markdown link.
-    ref_full_name: The fully qualified name of the symbol to link to.
-    relative_path_to_root: The relative path from the location of the current
-      document to the root of the API documentation.
-    duplicate_of: A map from duplicate full names to master names.
-    index: A map from all full names to python objects.
-    code_ref: If true (the default), put `link_text` in `...`.
-
-  Returns:
-    A markdown link from the documentation page of `from_full_name`
-    to the documentation page of `ref_full_name`.
-  """
-  link = _reference_to_link(ref_full_name, relative_path_to_root,
-                            duplicate_of, index)
-  if code_ref:
-    return '[`%s`](%s)' % (link_text, link)
-  else:
-    return '[%s](%s)' % (link_text, link)
-
-
-def _one_ref(string, relative_path_to_root, duplicate_of, doc_index, index):
-  """Return a link for a single "@{symbol}" reference."""
-  # Look for link text after $.
-  dollar = string.rfind('$')
-  if dollar > 0:  # Ignore $ in first character
-    link_text = string[dollar + 1:]
-    string = string[:dollar]
-    manual_link_text = True
-  else:
-    link_text = string
-    manual_link_text = False
-
-  # Handle different types of references.
-  if string.startswith('$'):  # Doc reference
-    string = string[1:]  # remove leading $
-
-    # If string has a #, split that part into `hash_tag`
-    hash_pos = string.find('#')
-    if hash_pos > -1:
-      hash_tag = string[hash_pos:]
-      string = string[:hash_pos]
-    else:
-      hash_tag = ''
-
-    if string in doc_index:
-      if not manual_link_text: link_text = doc_index[string].title
-      url = os.path.normpath(os.path.join(
-          relative_path_to_root, '../..', doc_index[string].url))
-      return '[%s](%s%s)' % (link_text, url, hash_tag)
-    log_error('Handle doc reference "@{$%s}"' % string)
-    return 'TODO:%s' % string
-
-  elif string.startswith('tf.') or string.startswith('tfdbg.'):  # Python symbol
-    return _markdown_link(link_text, string, relative_path_to_root,
-                          duplicate_of, index, code_ref=not manual_link_text)
-  elif string.startswith('tensorflow::'):  # C++ symbol
-    if string == 'tensorflow::ClientSession':
-      ret = 'class/tensorflow/client-session.md'
-    elif string == 'tensorflow::Scope':
-      ret = 'class/tensorflow/scope.md'
-    elif string == 'tensorflow::Status':
-      ret = 'class/tensorflow/status.md'
-    elif string == 'tensorflow::Tensor':
-      ret = 'class/tensorflow/tensor.md'
-    elif string == 'tensorflow::ops::Const':
-      ret = 'namespace/tensorflow/ops.md#const'
-    else:
-      log_error('Handle C++ reference "@{%s}"' % string)
-      return 'TODO_C++:%s' % string
-    # relative_path_to_root gets you to api_docs/python, we go from there
-    # to api_docs/cc, and then add ret.
-    cc_relative_path = os.path.normpath(os.path.join(
-        relative_path_to_root, '../cc', ret))
-    return '[`%s`](%s)' % (link_text, cc_relative_path)
-  # Error!
-  log_error('Did not understand "@{%s}"' % string)
-  return 'ERROR:%s' % string
-
-
-def replace_references(string, relative_path_to_root, duplicate_of, doc_index,
-                       index):
-  """Replace "@{symbol}" references with links to symbol's documentation page.
-
-  This functions finds all occurrences of "@{symbol}" in `string` and replaces
-  them with markdown links to the documentation page for "symbol".
-
-  `relative_path_to_root` is the relative path from the document that contains
-  the "@{symbol}" reference to the root of the API documentation that is linked
-  to. If the containing page is part of the same API docset,
-  `relative_path_to_root` can be set to
-  `os.path.dirname(documentation_path(name))`, where `name` is the python name
-  of the object whose documentation page the reference lives on.
-
-  Args:
-    string: A string in which "@{symbol}" references should be replaced.
-    relative_path_to_root: The relative path from the containing document to the
-      root of the API documentation that is being linked to.
-    duplicate_of: A map from duplicate names to preferred names of API symbols.
+    duplicate_of: A map from duplicate names to preferred names of API
+      symbols.
     doc_index: A `dict` mapping symbol name strings to objects with `url`
       and `title` fields. Used to resolve @{$doc} references in docstrings.
     index: A map from all full names to python objects.
-
-  Returns:
-    `string`, with "@{symbol}" references replaced by Markdown links.
   """
-  return re.sub(SYMBOL_REFERENCE_RE,
-                lambda match: _one_ref(match.group(1),  # pylint: disable=g-long-lambda
-                                       relative_path_to_root,
-                                       duplicate_of, doc_index, index),
-                string)
+
+  def __init__(self, duplicate_of, doc_index, index):
+    self._duplicate_of = duplicate_of
+    self._doc_index = doc_index
+    self._index = index
+
+  def replace_references(self, string, relative_path_to_root):
+    """Replace "@{symbol}" references with links to symbol's documentation page.
+
+    This functions finds all occurrences of "@{symbol}" in `string`
+    and replaces them with markdown links to the documentation page
+    for "symbol".
+
+    `relative_path_to_root` is the relative path from the document
+    that contains the "@{symbol}" reference to the root of the API
+    documentation that is linked to. If the containing page is part of
+    the same API docset, `relative_path_to_root` can be set to
+    `os.path.dirname(documentation_path(name))`, where `name` is the
+    python name of the object whose documentation page the reference
+    lives on.
+
+    Args:
+      string: A string in which "@{symbol}" references should be replaced.
+      relative_path_to_root: The relative path from the containing document to
+        the root of the API documentation that is being linked to.
+
+    Returns:
+      `string`, with "@{symbol}" references replaced by Markdown links.
+    """
+    return re.sub(SYMBOL_REFERENCE_RE,
+                  lambda match: self._one_ref(match.group(1),  # pylint: disable=g-long-lambda
+                                              relative_path_to_root),
+                  string)
+
+  def python_link(self, link_text, ref_full_name, relative_path_to_root,
+                  code_ref=True):
+    """Resolve a "@{python symbol}" reference to a Markdown link.
+
+    This will pick the canonical location for duplicate symbols.  The
+    input to this function should already be stripped of the '@' and
+    '{}'.  This function returns a Markdown link. If `code_ref` is
+    true, it is assumed that this is a code reference, so the link
+    text will be rendered as code (using backticks).
+    `link_text` should refer to a library symbol, starting with 'tf.'.
+
+    Args:
+      link_text: The text of the Markdown link.
+      ref_full_name: The fully qualified name of the symbol to link to.
+      relative_path_to_root: The relative path from the location of the current
+        document to the root of the API documentation.
+      code_ref: If true (the default), put `link_text` in `...`.
+
+    Returns:
+      A markdown link to the documentation page of `ref_full_name`.
+    """
+    link = self._reference_to_link(ref_full_name, relative_path_to_root)
+    if code_ref:
+      return '[`%s`](%s)' % (link_text, link)
+    else:
+      return '[%s](%s)' % (link_text, link)
+
+  def py_master_name(self, full_name):
+    """Return the master name for a Python symbol name."""
+    return self._duplicate_of.get(full_name, full_name)
+
+  def py_name_to_object(self, full_name):
+    """Return the Python object for a Python symbol name."""
+    return self._index[full_name]
+
+  def _reference_to_link(self, ref_full_name, relative_path_to_root):
+    """Resolve a "@{python symbol}" reference to a relative path.
+
+    The input to this function should already be stripped of the '@'
+    and '{}', and its output is only the link, not the full Markdown.
+
+    If `ref_full_name` is the name of a class member, method, or property, the
+    link will point to the page of the containing class, and it will include the
+    method name as an anchor. For example, `tf.module.MyClass.my_method` will be
+    translated into a link to
+    `os.join.path(relative_path_to_root, 'tf/module/MyClass.md#my_method')`.
+
+    Args:
+      ref_full_name: The fully qualified name of the symbol to link to.
+      relative_path_to_root: The relative path from the location of the current
+        document to the root of the API documentation.
+
+    Returns:
+      A relative path that links from the documentation page of `from_full_name`
+      to the documentation page of `ref_full_name`.
+
+    Raises:
+      RuntimeError: If `ref_full_name` is not in `self._index`.
+    """
+    master_name = self._duplicate_of.get(ref_full_name, ref_full_name)
+
+    # Check whether this link exists
+    if master_name not in self._index:
+      # TODO(josh11b): Make error reporting more uniform.
+      print('ERROR: Cannot make link to %s (original: %s): Not in index.' %
+            (master_name, ref_full_name))
+      return 'BROKEN_LINK'
+
+    # If this is a member of a class, link to the class page with an anchor.
+    ref_path = None
+    py_object = self._index[master_name]
+    if not (inspect.isclass(py_object) or inspect.ismodule(py_object)):
+      idents = master_name.split('.')
+      if len(idents) > 1:
+        class_name = '.'.join(idents[:-1])
+        assert class_name in self._index
+        if inspect.isclass(self._index[class_name]):
+          ref_path = documentation_path(class_name) + '#%s' % idents[-1]
+
+    if not ref_path:
+      ref_path = documentation_path(master_name)
+
+    return os.path.join(relative_path_to_root, ref_path)
+
+  def _one_ref(self, string, relative_path_to_root):
+    """Return a link for a single "@{symbol}" reference."""
+    # Look for link text after $.
+    dollar = string.rfind('$')
+    if dollar > 0:  # Ignore $ in first character
+      link_text = string[dollar + 1:]
+      string = string[:dollar]
+      manual_link_text = True
+    else:
+      link_text = string
+      manual_link_text = False
+
+    # Handle different types of references.
+    if string.startswith('$'):  # Doc reference
+      string = string[1:]  # remove leading $
+
+      # If string has a #, split that part into `hash_tag`
+      hash_pos = string.find('#')
+      if hash_pos > -1:
+        hash_tag = string[hash_pos:]
+        string = string[:hash_pos]
+      else:
+        hash_tag = ''
+
+      if string in self._doc_index:
+        if not manual_link_text: link_text = self._doc_index[string].title
+        url = os.path.normpath(os.path.join(
+            relative_path_to_root, '../..', self._doc_index[string].url))
+        return '[%s](%s%s)' % (link_text, url, hash_tag)
+      log_error('Handle doc reference "@{$%s}"' % string)
+      return 'TODO:%s' % string
+
+    # TODO(josh11b): The list of Python prefixes should be passed in.
+    elif string.startswith('tf.') or string.startswith('tfdbg.'):
+      # Python symbol
+      return self.python_link(link_text, string, relative_path_to_root,
+                              code_ref=not manual_link_text)
+
+    elif string.startswith('tensorflow::'):
+      # C++ symbol
+      # TODO(josh11b): Fix this hard-coding of paths.
+      if string == 'tensorflow::ClientSession':
+        ret = 'class/tensorflow/client-session.md'
+      elif string == 'tensorflow::Scope':
+        ret = 'class/tensorflow/scope.md'
+      elif string == 'tensorflow::Status':
+        ret = 'class/tensorflow/status.md'
+      elif string == 'tensorflow::Tensor':
+        ret = 'class/tensorflow/tensor.md'
+      elif string == 'tensorflow::ops::Const':
+        ret = 'namespace/tensorflow/ops.md#const'
+      else:
+        log_error('Handle C++ reference "@{%s}"' % string)
+        return 'TODO_C++:%s' % string
+      # relative_path_to_root gets you to api_docs/python, we go from there
+      # to api_docs/cc, and then add ret.
+      cc_relative_path = os.path.normpath(os.path.join(
+          relative_path_to_root, '../cc', ret))
+      return '[`%s`](%s)' % (link_text, cc_relative_path)
+
+    # Error!
+    log_error('Did not understand "@{%s}"' % string)
+    return 'ERROR:%s' % string
 
 
-def _md_brief_docstring(py_object, relative_path_to_root,
-                        duplicate_of, doc_index, index):
+def _md_brief_docstring(py_object, relative_path_to_root, reference_resolver):
   """Get the brief docstring from an object and make it into nice Markdown.
 
   For links within the same set of docs, the `relative_path_to_root` for a
@@ -273,19 +292,15 @@ def _md_brief_docstring(py_object, relative_path_to_root,
     relative_path_to_root: The relative path from the location of the current
       document to the root of the Python API documentation. This is used to
       compute links for "@{symbol}" references.
-    duplicate_of: A map from duplicate symbol names to master names. Used to
-      resolve "@symbol" references.
-    doc_index: A `dict` mapping symbol name strings to objects with `url`
-      and `title` fields. Used to resolve @{$doc} references in docstrings.
-    index: A map from all full names to python objects.
+    reference_resolver: An instance of ReferenceResolver.
 
   Returns:
     The docstring, or the empty string if no docstring was found.
   """
   # TODO(wicke): If this is a partial, use the .func docstring and add a note.
   docstring = _get_raw_docstring(py_object).split('\n')[0]
-  docstring = replace_references(docstring, relative_path_to_root,
-                                 duplicate_of, doc_index, index)
+  docstring = reference_resolver.replace_references(
+      docstring, relative_path_to_root)
   return docstring
 
 
@@ -310,8 +325,7 @@ def _handle_compatibility(doc):
   return match_compatibility.subn(r'', doc)[0], compatibility_notes
 
 
-def _md_docstring(py_object, relative_path_to_root, duplicate_of, doc_index,
-                  index):
+def _md_docstring(py_object, relative_path_to_root, reference_resolver):
   """Get the docstring from an object and make it into nice Markdown.
 
   For links within the same set of docs, the `relative_path_to_root` for a
@@ -328,19 +342,15 @@ def _md_docstring(py_object, relative_path_to_root, duplicate_of, doc_index,
     relative_path_to_root: The relative path from the location of the current
       document to the root of the Python API documentation. This is used to
       compute links for "@{symbol}" references.
-    duplicate_of: A map from duplicate symbol names to master names. Used to
-      resolve "@symbol" references.
-    doc_index: A `dict` mapping symbol name strings to objects with `url`
-      and `title` fields. Used to resolve @{$doc} references in docstrings.
-    index: A map from all full names to python objects.
+    reference_resolver: An instance of ReferenceResolver.
 
   Returns:
     The docstring, or the empty string if no docstring was found.
   """
   # TODO(wicke): If this is a partial, use the .func docstring and add a note.
   raw_docstring = _get_raw_docstring(py_object)
-  raw_docstring = replace_references(raw_docstring, relative_path_to_root,
-                                     duplicate_of, doc_index, index)
+  raw_docstring = reference_resolver.replace_references(
+      raw_docstring, relative_path_to_root)
   raw_docstring, compatibility = _handle_compatibility(raw_docstring)
   raw_lines = raw_docstring.split('\n')
 
@@ -542,8 +552,8 @@ def _get_guides_markdown(duplicate_names, guide_index, relative_path):
 
 
 def _generate_markdown_for_function(full_name, duplicate_names,
-                                    function, duplicate_of, index,
-                                    reverse_index, doc_index, guide_index):
+                                    function, reference_resolver,
+                                    reverse_index, guide_index):
   """Generate Markdown docs for a function or method.
 
   This function creates a documentation page for a function. It uses the
@@ -556,12 +566,8 @@ def _generate_markdown_for_function(full_name, duplicate_names,
       be present in `duplicate_of` (master names never are).
     duplicate_names: A sorted list of alternative names (incl. `full_name`).
     function: The python object referenced by `full_name`.
-    duplicate_of: A map of duplicate full names to master names. Used to resolve
-      @{symbol} references in the docstring.
-    index: A map from full names to python object references.
+    reference_resolver: An instance of ReferenceResolver.
     reverse_index: A map from object ids in the index to full names.
-    doc_index: A `dict` mapping symbol name strings to objects with `url`
-      and `title` fields. Used to resolve @{$doc} references in docstrings.
     guide_index: A `dict` mapping symbol name strings to objects with a
       `make_md_link()` method.
 
@@ -571,8 +577,7 @@ def _generate_markdown_for_function(full_name, duplicate_names,
   # TODO(wicke): Make sure this works for partials.
   relative_path = os.path.relpath(
       path='.', start=os.path.dirname(documentation_path(full_name)) or '.')
-  docstring = _md_docstring(function, relative_path, duplicate_of, doc_index,
-                            index)
+  docstring = _md_docstring(function, relative_path, reference_resolver)
   signature = _generate_signature(function, reverse_index)
   guides = _get_guides_markdown(duplicate_names, guide_index, relative_path)
 
@@ -588,8 +593,8 @@ def _generate_markdown_for_function(full_name, duplicate_names,
 
 
 def _generate_markdown_for_class(full_name, duplicate_names, py_class,
-                                 duplicate_of, index, tree,
-                                 reverse_index, doc_index, guide_index):
+                                 reference_resolver, tree, reverse_index,
+                                 guide_index):
   """Generate Markdown docs for a class.
 
   This function creates a documentation page for a class. It uses the
@@ -604,13 +609,9 @@ def _generate_markdown_for_class(full_name, duplicate_names, py_class,
       be present in `duplicate_of` (master names never are).
     duplicate_names: A sorted list of alternative names (incl. `full_name`).
     py_class: The python object referenced by `full_name`.
-    duplicate_of: A map of duplicate full names to master names. Used to resolve
-      @{symbol} references in the docstrings.
-    index: A map from full names to python object references.
+    reference_resolver: An instance of ReferenceResolver.
     tree: A map from full names to the names of all documentable child objects.
     reverse_index: A map from object ids in the index to full names.
-    doc_index: A `dict` mapping symbol name strings to objects with `url`
-      and `title` fields. Used to resolve @{$doc} references in docstrings.
     guide_index: A `dict` mapping symbol name strings to objects with a
       `make_md_link()` method.
 
@@ -619,8 +620,7 @@ def _generate_markdown_for_class(full_name, duplicate_names, py_class,
   """
   relative_path = os.path.relpath(
       path='.', start=os.path.dirname(documentation_path(full_name)) or '.')
-  docstring = _md_docstring(py_class, relative_path, duplicate_of, doc_index,
-                            index)
+  docstring = _md_docstring(py_class, relative_path, reference_resolver)
   guides = _get_guides_markdown(duplicate_names, guide_index, relative_path)
   if duplicate_names:
     aliases = '\n'.join(['### `class %s`' % name for name in duplicate_names])
@@ -636,13 +636,13 @@ def _generate_markdown_for_class(full_name, duplicate_names, py_class,
   class_links = []
   for member in tree[full_name]:
     child_name = '.'.join([full_name, member])
-    child = index[child_name]
+    child = reference_resolver.py_name_to_object(child_name)
 
     if isinstance(child, property):
       properties.append((member, child))
     elif inspect.isclass(child):
-      class_links.append(_markdown_link('class ' + member, child_name,
-                                        relative_path, duplicate_of, index))
+      class_links.append(reference_resolver.python_link(
+          'class ' + member, child_name, relative_path))
     elif inspect.ismethod(child) or inspect.isfunction(child):
       methods.append((member, child))
     else:
@@ -659,7 +659,7 @@ def _generate_markdown_for_class(full_name, duplicate_names, py_class,
     for property_name, prop in sorted(properties, key=lambda x: x[0]):
       docs += '<h3 id="%s"><code>%s</code></h3>\n\n%s\n\n' % (
           property_name, property_name,
-          _md_docstring(prop, relative_path, duplicate_of, doc_index, index))
+          _md_docstring(prop, relative_path, reference_resolver))
     docs += '\n\n'
 
   if methods:
@@ -669,7 +669,7 @@ def _generate_markdown_for_class(full_name, duplicate_names, py_class,
                                                            reverse_index)
       docs += '<h3 id="%s"><code>%s</code></h3>\n\n%s\n\n' % (
           method_name, method_signature, _md_docstring(
-              method, relative_path, duplicate_of, doc_index, index))
+              method, relative_path, reference_resolver))
     docs += '\n\n'
 
   if field_names:
@@ -685,7 +685,7 @@ def _generate_markdown_for_class(full_name, duplicate_names, py_class,
 
 
 def _generate_markdown_for_module(full_name, duplicate_names, module,
-                                  duplicate_of, index, tree, doc_index):
+                                  reference_resolver, tree):
   """Generate Markdown docs for a module.
 
   This function creates a documentation page for a module. It uses the
@@ -698,20 +698,15 @@ def _generate_markdown_for_module(full_name, duplicate_names, module,
       be present in `duplicate_of` (master names never are).
     duplicate_names: A sorted list of alternative names (incl. `full_name`).
     module: The python object referenced by `full_name`.
-    duplicate_of: A map of duplicate full names to master names. Used to resolve
-      @{symbol} references in the docstrings.
-    index: A map from full names to python object references.
+    reference_resolver: An instance of ReferenceResolver.
     tree: A map from full names to the names of all documentable child objects.
-    doc_index: A `dict` mapping symbol name strings to objects with `url`
-      and `title` fields. Used to resolve @{$doc} references in docstrings.
 
   Returns:
     A string that can be written to a documentation file for this module.
   """
   relative_path = os.path.relpath(
       path='.', start=os.path.dirname(documentation_path(full_name)) or '.')
-  docstring = _md_docstring(module, relative_path, duplicate_of, doc_index,
-                            index)
+  docstring = _md_docstring(module, relative_path, reference_resolver)
   if duplicate_names:
     aliases = '\n'.join(['### Module `%s`' % name for name in duplicate_names])
     aliases += '\n\n'
@@ -724,7 +719,7 @@ def _generate_markdown_for_module(full_name, duplicate_names, module,
   member_links = []
   for name in member_names:
     member_full_name = full_name + '.' + name if full_name else name
-    member = index[member_full_name]
+    member = reference_resolver.py_name_to_object(member_full_name)
 
     suffix = ''
     if inspect.isclass(member):
@@ -739,14 +734,12 @@ def _generate_markdown_for_module(full_name, duplicate_names, module,
       continue
 
     brief_docstring = _md_brief_docstring(
-        member, relative_path, duplicate_of=duplicate_of, doc_index=doc_index,
-        index=index)
+        member, relative_path, reference_resolver)
     if brief_docstring:
       suffix = '%s: %s' % (suffix, brief_docstring)
 
-    member_links.append(_markdown_link(link_text, member_full_name,
-                                       relative_path, duplicate_of, index) +
-                        suffix)
+    member_links.append(reference_resolver.python_link(
+        link_text, member_full_name, relative_path) + suffix)
 
   # TODO(deannarubin): Make this list into a table.
 
@@ -758,8 +751,8 @@ _CODE_URL_PREFIX = (
     'https://www.tensorflow.org/code/tensorflow/')
 
 
-def generate_markdown(full_name, py_object, duplicate_of, duplicates, index,
-                      tree, reverse_index, doc_index, guide_index, base_dir):
+def generate_markdown(full_name, py_object, duplicates, reference_resolver,
+                      tree, reverse_index, guide_index, base_dir):
   """Generate Markdown docs for a given object that's part of the TF API.
 
   This function uses _md_docstring to obtain the docs pertaining to
@@ -780,19 +773,13 @@ def generate_markdown(full_name, py_object, duplicate_of, duplicates, index,
       documented.
     py_object: The Python object to be documented. Its documentation is sourced
       from `py_object`'s docstring.
-    duplicate_of: A `dict` mapping fully qualified names to "master" names. This
-      is used to resolve "@{symbol}" references to the "master" name.
     duplicates: A `dict` mapping fully qualified names to a set of all
       aliases of this name. This is used to automatically generate a list of all
       aliases for each name.
-    index: A `dict` mapping fully qualified names to the corresponding Python
-      objects. Used to produce docs for child objects, and to check the validity
-      of "@{symbol}" references.
+    reference_resolver: An instance of ReferenceResolver.
     tree: A `dict` mapping a fully qualified name to the names of all its
       members. Used to populate the members section of a class or module page.
     reverse_index: A `dict` mapping objects in the index to full names.
-    doc_index: A `dict` mapping symbol name strings to objects with `url`
-      and `title` fields. Used to resolve @{$doc} references in docstrings.
     guide_index: A `dict` mapping symbol name strings to objects with a
       `make_md_link()` method.
     base_dir: A base path that is stripped from file locations written to the
@@ -807,7 +794,7 @@ def generate_markdown(full_name, py_object, duplicate_of, duplicates, index,
   """
 
   # Which other aliases exist for the object referenced by full_name?
-  master_name = duplicate_of.get(full_name, full_name)
+  master_name = reference_resolver.py_master_name(full_name)
   duplicate_names = duplicates.get(master_name, [full_name])
 
   # TODO(wicke): Once other pieces are ready, enable this also for partials.
@@ -815,16 +802,15 @@ def generate_markdown(full_name, py_object, duplicate_of, duplicates, index,
       # Some methods in classes from extensions come in as routines.
       inspect.isroutine(py_object)):
     markdown = _generate_markdown_for_function(
-        master_name, duplicate_names, py_object, duplicate_of, index,
-        reverse_index, doc_index, guide_index)
+        master_name, duplicate_names, py_object, reference_resolver,
+        reverse_index, guide_index)
   elif inspect.isclass(py_object):
     markdown = _generate_markdown_for_class(
-        master_name, duplicate_names, py_object, duplicate_of, index, tree,
-        reverse_index, doc_index, guide_index)
+        master_name, duplicate_names, py_object, reference_resolver, tree,
+        reverse_index, guide_index)
   elif inspect.ismodule(py_object):
-    markdown = _generate_markdown_for_module(master_name, duplicate_names,
-                                             py_object, duplicate_of,
-                                             index, tree, doc_index)
+    markdown = _generate_markdown_for_module(
+        master_name, duplicate_names, py_object, reference_resolver, tree)
   else:
     raise RuntimeError('Cannot make docs for object %s: %r' % (full_name,
                                                                py_object))
@@ -857,7 +843,7 @@ def generate_markdown(full_name, py_object, duplicate_of, duplicates, index,
   return markdown
 
 
-def generate_global_index(library_name, index, duplicate_of):
+def generate_global_index(library_name, index, reference_resolver):
   """Given a dict of full names to python objects, generate an index page.
 
   The index page generated contains a list of links for all symbols in `index`
@@ -866,7 +852,7 @@ def generate_global_index(library_name, index, duplicate_of):
   Args:
     library_name: The name for the documented library to use in the title.
     index: A dict mapping full names to python objects.
-    duplicate_of: A map of duplicate names to preferred names.
+    reference_resolver: An instance of ReferenceResolver.
 
   Returns:
     A string containing an index page as Markdown.
@@ -884,9 +870,8 @@ def generate_global_index(library_name, index, duplicate_of):
         if parent_name in index and inspect.isclass(index[parent_name]):
           # Skip methods (=functions with class parents).
           continue
-      symbol_links.append((full_name,
-                           _markdown_link(full_name, full_name,
-                                          '.', duplicate_of, index)))
+      symbol_links.append((
+          full_name, reference_resolver.python_link(full_name, full_name, '.')))
 
   lines = ['# All symbols in %s' % library_name, '']
   for _, link in sorted(symbol_links, key=lambda x: x[0]):

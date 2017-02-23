@@ -24,6 +24,7 @@ import tempfile
 
 from tensorflow.python.platform import googletest
 from tensorflow.tools.docs import generate
+from tensorflow.tools.docs import parser
 
 
 def test_function():
@@ -89,9 +90,12 @@ class GenerateTest(googletest.TestCase):
     output_dir = tempfile.mkdtemp()
     base_dir = os.path.dirname(__file__)
 
+    reference_resolver = parser.ReferenceResolver(
+        duplicate_of=duplicate_of,
+        doc_index={}, index=index)
     generate.write_docs(output_dir, base_dir, duplicate_of, duplicates,
-                        index, tree, reverse_index={}, doc_index={},
-                        guide_index={})
+                        index, tree, reverse_index={},
+                        reference_resolver=reference_resolver, guide_index={})
 
     # Make sure that the right files are written to disk.
     self.assertTrue(os.path.exists(os.path.join(output_dir, 'index.md')))
