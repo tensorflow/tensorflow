@@ -17,6 +17,8 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include <numeric>
+
 #include "tensorflow/core/kernels/aggregate_ops.h"
 #include "tensorflow/core/kernels/aggregate_ops_cpu.h"
 
