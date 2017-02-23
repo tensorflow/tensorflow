@@ -286,7 +286,7 @@ accept a _pandas_ `Dataframe` and return feature column and label values as
 
 ```python
 def input_fn(data_set):
-  feature_cols = {k: tf.constant(data_set[k].values
+  feature_cols = {k: tf.constant(data_set[k].values)
                   for k in FEATURES}
   labels = tf.constant(data_set[LABEL].values)
   return feature_cols, labels
