@@ -40,8 +40,11 @@ from werkzeug import wrappers
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import event_accumulator
+from tensorflow.python.summary import event_multiplexer
 from tensorflow.tensorboard.backend import process_graph
 from tensorflow.tensorboard.lib.python import http_util
+from tensorflow.tensorboard.plugins.debugger import debugger_plugin
+from tensorflow.tensorboard.plugins.projector import projector_plugin
 
 
 DEFAULT_SIZE_GUIDANCE = {
@@ -92,6 +95,22 @@ class _OutputFormat(object):
   CSV = 'csv'
 
 
+def standard_tensorboard_wsgi(logdir, purge_orphaned_data, reload_interval):
+  """Construct a TensorBoardWSGIApp with standard plugins and multiplexer."""
+  multiplexer = event_multiplexer.EventMultiplexer(
+      size_guidance=DEFAULT_SIZE_GUIDANCE,
+      purge_orphaned_data=purge_orphaned_data)
+
+  plugins = {
+      debugger_plugin.PLUGIN_PREFIX_ROUTE:
+          debugger_plugin.DebuggerPlugin(multiplexer),
+      projector_plugin.PLUGIN_PREFIX_ROUTE:
+          projector_plugin.ProjectorPlugin(),
+  }
+
+  return TensorBoardWSGIApp(logdir, plugins, multiplexer, reload_interval)
+
+
 class TensorBoardWSGIApp(object):
   """The TensorBoard application, conforming to WSGI spec."""
 
@@ -102,31 +121,29 @@ class TensorBoardWSGIApp(object):
   #                      responses using send_header.
   protocol_version = 'HTTP/1.1'
 
-  def __init__(self, logdir, plugins, multiplexer, reload_interval=60):
+  def __init__(self, logdir, plugins, multiplexer, reload_interval):
     """Constructs the TensorBoard application.
 
     Args:
       logdir: the logdir spec that describes where data will be loaded.
         may be a directory, or comma,separated list of directories, or colons
         can be used to provide named directories
-      plugins: Map from plugin name to plugin application.
-      multiplexer: Organizes events data from runs.
+      plugins: Map from plugin name to plugin application
+      multiplexer: The EventMultiplexer with TensorBoard data to serve
       reload_interval: How often (in seconds) to reload the Multiplexer
 
     Returns:
       A WSGI application that implements the TensorBoard backend.
     """
-    self._plugins = plugins
     self._logdir = logdir
+    self._plugins = plugins
     self._multiplexer = multiplexer
-    self._reload = reload_interval
-    self.initialize()
+    self.tag = get_tensorboard_tag()
 
-  def initialize(self):
-    """Setup the TensorBoard application."""
     path_to_run = parse_event_files_spec(self._logdir)
-    if self._reload:
-      start_reloading_multiplexer(self._multiplexer, path_to_run, self._reload)
+    if reload_interval:
+      start_reloading_multiplexer(self._multiplexer, path_to_run,
+                                  reload_interval)
     else:
       reload_multiplexer(self._multiplexer, path_to_run)
 
@@ -533,7 +550,7 @@ class TensorBoardWSGIApp(object):
       try:
         contents = resource_loader.load_resource(path)
       except IOError:
-        logging.info('path %s not found, sending 404', path)
+        logging.warning('path %s not found, sending 404', path)
         return http_util.Respond(request, 'Not found', 'text/plain', code=404)
     mimetype, content_encoding = mimetypes.guess_type(path)
     mimetype = mimetype or 'application/octet-stream'
@@ -665,3 +682,9 @@ def start_reloading_multiplexer(multiplexer, path_to_run, load_interval):
   thread.daemon = True
   thread.start()
   return thread
+
+
+def get_tensorboard_tag():
+  """Read the TensorBoard TAG number, and return it or an empty string."""
+  tag = resource_loader.load_resource('tensorboard/TAG').strip()
+  return tag

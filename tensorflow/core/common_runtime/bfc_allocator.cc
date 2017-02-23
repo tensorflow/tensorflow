@@ -215,8 +215,8 @@ void* BFCAllocator::AllocateRaw(size_t unused_alignment, size_t num_bytes,
       if (log_counter < 10) {
         log_counter++;
         LOG(WARNING)
-            << "Ran out of memory trying to allocate "
-            << strings::HumanReadableNumBytes(num_bytes)
+            << "Allocator (" << Name() << ") ran out of memory trying "
+            << "to allocate " << strings::HumanReadableNumBytes(num_bytes)
             << ". The caller indicates that this is not a failure, but"
             << " may mean that there could be performance gains if more"
             << " memory is available.";
@@ -270,11 +270,11 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
   // couldn't find one.  This means we must have run out of memory,
   // Dump the memory log for analysis.
   if (dump_log_on_failure) {
+    LOG(WARNING) << "Allocator (" << Name() << ") ran out of memory trying "
+                 << "to allocate " << strings::HumanReadableNumBytes(num_bytes)
+                 << ".  Current allocation summary follows.";
     DumpMemoryLog(rounded_bytes);
     LOG(WARNING) << RenderOccupancy();
-    LOG(WARNING) << "Ran out of memory trying to allocate "
-                 << strings::HumanReadableNumBytes(num_bytes)
-                 << ".  See logs for memory state.";
   }
   return nullptr;
 }

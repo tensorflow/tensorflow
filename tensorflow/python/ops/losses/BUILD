@@ -34,6 +34,18 @@ py_library(
     ],
 )
 
+py_test(
+    name = "util_test",
+    size = "small",
+    srcs = ["util_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":losses",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+    ],
+)
+
 filegroup(
     name = "all_files",
     srcs = glob(

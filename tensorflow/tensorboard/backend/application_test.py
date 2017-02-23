@@ -42,7 +42,6 @@ from tensorflow.core.framework import summary_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.util import event_pb2
-from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
 from tensorflow.python.summary import event_multiplexer
 from tensorflow.python.summary.writer import writer as writer_lib
@@ -137,7 +136,8 @@ class TensorboardServerTest(test.TestCase):
                 # if only_use_meta_graph, the graph is from the metagraph
                 'graph': True,
                 'meta_graph': self._only_use_meta_graph,
-                'run_metadata': ['test run']
+                'run_metadata': ['test run'],
+                'tensors': [],
             }
         })
 
@@ -423,8 +423,10 @@ class ParseEventFilesSpecTest(test.TestCase):
 class TensorBoardAssetsTest(test.TestCase):
 
   def testTagFound(self):
-    tag = resource_loader.load_resource('tensorboard/TAG')
+    tag = application.get_tensorboard_tag()
     self.assertTrue(tag)
+    app = application.standard_tensorboard_wsgi('', True, 60)
+    self.assertEqual(app.tag, tag)
 
 
 if __name__ == '__main__':

@@ -121,6 +121,13 @@ class DeviceFinder {
     return Status::OK();
   }
 
+  static void GetRemoteWorkers(
+      const protobuf::RepeatedPtrField<string>& device_filters, MasterEnv* env,
+      std::vector<string>* workers) {
+    DeviceFinder finder(device_filters, env);
+    *workers = finder.targets_;
+  }
+
  private:
   explicit DeviceFinder(
       const protobuf::RepeatedPtrField<string>& device_filters, MasterEnv* env)
@@ -427,7 +434,7 @@ void Master::ListDevices(const ListDevicesRequest* req,
 
 void Master::CleanupWorkers(const ResetRequest& reset) {
   std::vector<string> worker_names;
-  env_->worker_cache->ListWorkers(&worker_names);
+  DeviceFinder::GetRemoteWorkers(reset.device_filters(), env_, &worker_names);
   if (!worker_names.empty()) {
     const int num_workers = worker_names.size();
     std::vector<Notification> n(num_workers);

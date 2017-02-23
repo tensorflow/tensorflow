@@ -21,7 +21,7 @@ from __future__ import print_function
 import numpy as np
 from tensorflow.contrib import distributions as distributions_lib
 from tensorflow.contrib.bayesflow.python.ops import stochastic_gradient_estimators
-from tensorflow.contrib.bayesflow.python.ops import stochastic_tensor
+from tensorflow.contrib.bayesflow.python.ops import stochastic_tensor_impl
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -30,7 +30,7 @@ from tensorflow.python.platform import test
 
 distributions = distributions_lib
 sge = stochastic_gradient_estimators
-st = stochastic_tensor
+st = stochastic_tensor_impl
 
 
 class StochasticTensorTest(test.TestCase):

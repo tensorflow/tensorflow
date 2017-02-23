@@ -653,13 +653,28 @@ class ImportGraphDefTest(test.TestCase):
             self._MakeGraphDef(""), input_map=[constant_op.constant(5.0)])
       self.assertEqual("input_map must be a dictionary mapping strings to "
                        "Tensor objects.", str(e.exception))
+    graph_def = self._MakeGraphDef("""
+         node { name: 'a' op: 'Placeholder'
+                attr { key: 'dtype' value { type: DT_FLOAT } }}
+         node { name: 'id' op: 'Identity' input: 'a:0'
+                attr { key: 'T' value { type: DT_FLOAT } }}""")
+    with ops.Graph().as_default():
       with self.assertRaises(ValueError) as e:
         importer.import_graph_def(
-            self._MakeGraphDef(""),
-            input_map={"a:0": constant_op.constant(5.0)},
+            graph_def,
+            input_map={"a:0": variables.Variable(5.0)},
             name="")
-      self.assertEqual("tf.import_graph_def() requires a non-empty `name` "
-                       "if `input_map` is used.", str(e.exception))
+      self.assertStartsWith(str(e.exception),
+                            "tf.import_graph_def() requires a non-empty `name` "
+                            "if `input_map` contains non-Tensor values.")
+    with ops.Graph().as_default():
+      t, = importer.import_graph_def(
+          graph_def,
+          input_map={"a:0": constant_op.constant(5.0)},
+          name="",
+          return_elements=["id:0"])
+      with self.test_session():
+        self.assertEqual(5.0, t.eval())
 
   def testInvalidInputForReturnOperations(self):
     with ops.Graph().as_default():
