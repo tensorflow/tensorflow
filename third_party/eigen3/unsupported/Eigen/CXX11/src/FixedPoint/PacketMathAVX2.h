@@ -11,6 +11,13 @@ typedef struct Packet32q8i {
   Packet32q8i(__m256i val) : val(val) {}
 } Packet32q8i;
 
+typedef struct Packet16q16i {
+  __m256i val;
+  operator __m256i() const { return val; }
+  Packet16q16i();
+  Packet16q16i(__m256i val) : val(val) {}
+} Packet16q16i;
+
 typedef struct Packet32q8u {
   __m256i val;
   operator __m256i() const { return val; }
@@ -31,6 +38,13 @@ typedef struct Packet16q8u {
   Packet16q8u();
   Packet16q8u(__m128i val) : val(val) {}
 } Packet16q8u;
+
+typedef struct Packet8q16i {
+  __m128i val;
+  operator __m128i() const { return val; }
+  Packet8q16i();
+  Packet8q16i(__m128i val) : val(val) {}
+} Packet8q16i;
 
 typedef struct Packet8q32i {
   __m256i val;
@@ -92,6 +106,28 @@ struct packet_traits<QUInt8> : default_packet_traits {
   };
 };
 template <>
+struct packet_traits<QInt16> : default_packet_traits {
+  typedef Packet16q16i type;
+  typedef Packet8q16i half;
+  enum {
+    Vectorizable = 1,
+    AlignedOnScalar = 1,
+    size = 16,
+  };
+  enum {
+    HasAdd = 0,
+    HasSub = 0,
+    HasMul = 0,
+    HasNegate = 0,
+    HasAbs = 0,
+    HasAbs2 = 0,
+    HasMin = 1,
+    HasMax = 1,
+    HasConj = 0,
+    HasSetLinear = 0
+  };
+};
+template <>
 struct packet_traits<QInt32> : default_packet_traits {
   typedef Packet8q32i type;
   typedef Packet4q32i half;
@@ -122,6 +158,12 @@ struct unpacket_traits<Packet32q8i> {
   enum { size = 32, alignment=Aligned32 };
 };
 template <>
+struct unpacket_traits<Packet16q16i> {
+  typedef QInt16 type;
+  typedef Packet8q16i half;
+  enum { size = 16, alignment=Aligned32 };
+};
+template <>
 struct unpacket_traits<Packet32q8u> {
   typedef QUInt8 type;
   typedef Packet16q8u half;
@@ -142,6 +184,11 @@ EIGEN_STRONG_INLINE Packet32q8i ploadu<Packet32q8i>(const QInt8* from) {
 }
 template <>
 EIGEN_STRONG_INLINE Packet32q8u ploadu<Packet32q8u>(const QUInt8* from) {
+  EIGEN_DEBUG_UNALIGNED_LOAD return _mm256_loadu_si256(
+      reinterpret_cast<const __m256i*>(from));
+}
+template <>
+EIGEN_STRONG_INLINE Packet16q16i ploadu<Packet16q16i>(const QInt16* from) {
   EIGEN_DEBUG_UNALIGNED_LOAD return _mm256_loadu_si256(
       reinterpret_cast<const __m256i*>(from));
 }

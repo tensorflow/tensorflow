@@ -457,7 +457,7 @@ EIGEN_STRONG_INLINE QInt16 predux_max<Packet32q16i>(const Packet32q16i& a) {
   std::uint32_t w =
       pfirst(
         _mm_max_epi16(res, _mm_shuffle_epi32(res, _MM_SHUFFLE(0, 0, 0, 1))));
-  return std::min({
+  return std::max({
            static_cast<std::int16_t>(w >> 16),
            static_cast<std::int16_t>(w)
          });
@@ -493,7 +493,7 @@ EIGEN_STRONG_INLINE QUInt8 predux_max<Packet64q8u>(const Packet64q8u& a) {
   std::uint32_t w =
       pfirst(
         _mm_max_epu8(res, _mm_shuffle_epi32(res, _MM_SHUFFLE(0, 0, 0, 1))));
-  return std::min({
+  return std::max({
            static_cast<std::uint8_t>(w >> 24),
            static_cast<std::uint8_t>(w >> 16),
            static_cast<std::uint8_t>(w >> 8),
