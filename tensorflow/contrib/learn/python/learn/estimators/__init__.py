@@ -28,16 +28,16 @@ They support regression and classification problems.
     * `LinearRegressor`: Uses linear model.
     * `DNNRegressor`: Uses DNN.
     * `DNNLinearCombinedRegressor`: Uses Wide & Deep.
-    * `TensorForestEstimator`: Uses RandomForest. Use `.predict()` for
-       regression problems.
+    * `TensorForestEstimator`: Uses RandomForest.
+      See tf.contrib.tensor_forest.client.random_forest.TensorForestEstimator.
     * `Estimator`: Use when you need a custom model.
 
 * For **Classification** problems use one of the following:
     * `LinearClassifier`: Multiclass classifier using Linear model.
     * `DNNClassifier`: Multiclass classifier using DNN.
     * `DNNLinearCombinedClassifier`: Multiclass classifier using Wide & Deep.
-    * `TensorForestEstimator`: Uses RandomForest. Use `.predict_proba()` when
-      using for binary classification problems.
+    * `TensorForestEstimator`: Uses RandomForest.
+      See tf.contrib.tensor_forest.client.random_forest.TensorForestEstimator.
     * `SVM`: Binary classifier using linear SVMs.
     * `LogisticRegressor`: Use when you need custom model for binary
        classification.
@@ -217,32 +217,6 @@ prediction_type = PredictionType.SINGLE_VALUE  # or MULTIPLE_VALUE
 estimator = DynamicRnnEstimator(problem_type,
                                 prediction_type,
                                 my_feature_columns)
-```
-
-#### TensorForestEstimator
-
-Supports regression and binary classification.
-
-```python
-params = tf.contrib.tensor_forest.python.tensor_forest.ForestHParams(
-    num_classes=2, num_features=40, num_trees=10, max_nodes=1000)
-
-# Estimator using the default graph builder.
-estimator = TensorForestEstimator(params, model_dir=model_dir)
-
-# Or estimator using TrainingLossForest as the graph builder.
-estimator = TensorForestEstimator(
-    params, graph_builder_class=tensor_forest.TrainingLossForest,
-    model_dir=model_dir)
-
-# Input builders
-def input_fn_train: # returns x, y
-  ...
-def input_fn_eval: # returns x, y
-  ...
-estimator.fit(input_fn=input_fn_train)
-estimator.evaluate(input_fn=input_fn_eval)
-estimator.predict(x=x)
 ```
 
 ### Use the estimator
