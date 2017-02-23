@@ -77,6 +77,17 @@ class RichTextLinesTest(test_util.TensorFlowTestCase):
     self.assertEqual(1, len(screen_output.font_attr_segs[0]))
     self.assertEqual(1, len(screen_output.annotations))
 
+  def testRichLinesAppendRichLine(self):
+    rtl = debugger_cli_common.RichTextLines(
+        "Roses are red",
+        font_attr_segs={0: [(0, 5, "red")]})
+    rtl.append_rich_line(debugger_cli_common.RichLine("Violets are ") +
+                         debugger_cli_common.RichLine("blue", "blue"))
+    self.assertEqual(2, len(rtl.lines))
+    self.assertEqual(2, len(rtl.font_attr_segs))
+    self.assertEqual(1, len(rtl.font_attr_segs[0]))
+    self.assertEqual(1, len(rtl.font_attr_segs[1]))
+
   def testRichTextLinesConstructorIncomplete(self):
     # Test RichTextLines constructor, with incomplete keyword arguments.
     screen_output = debugger_cli_common.RichTextLines(
