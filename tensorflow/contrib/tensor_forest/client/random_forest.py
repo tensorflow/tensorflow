@@ -28,6 +28,7 @@ from tensorflow.contrib.tensor_forest.python import tensor_forest
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import tf_logging as logging
@@ -101,7 +102,8 @@ def get_model_fn(params,
                  weights_name=None,
                  early_stopping_rounds=100,
                  num_trainers=1,
-                 trainer_id=0):
+                 trainer_id=0,
+                 report_feature_importances=False):
   """Return a model function given a way to construct a graph builder."""
   def _model_fn(features, labels, mode):
     """Function that returns predictions, training loss, and training op."""
@@ -139,6 +141,10 @@ def get_model_fn(params,
       with ops.control_dependencies(loss_deps):
         training_loss = graph_builder.training_loss(
             features, labels, name=LOSS_NAME)
+      if report_feature_importances and mode == model_fn_lib.ModeKeys.EVAL:
+        training_loss = logging_ops.Print(training_loss,
+                                          [graph_builder.feature_importances()],
+                                          summarize=1000)
     # Put weights back in
     if weights is not None:
       features[weights_name] = weights
@@ -193,7 +199,8 @@ class TensorForestEstimator(estimator.Estimator):
                config=None, weights_name=None,
                feature_engineering_fn=None,
                early_stopping_rounds=100,
-               num_trainers=1, trainer_id=0):
+               num_trainers=1, trainer_id=0,
+               report_feature_importances=False):
     """Initializes a TensorForestEstimator instance.
 
     Args:
@@ -221,6 +228,8 @@ class TensorForestEstimator(estimator.Estimator):
       num_trainers: Number of training jobs, which will partition trees
         among them.
       trainer_id: Which trainer this instance is.
+      report_feature_importances: If True, print out feature importances
+        during evaluation.
 
     Returns:
       A `TensorForestEstimator` instance.
@@ -233,7 +242,9 @@ class TensorForestEstimator(estimator.Estimator):
             weights_name=weights_name,
             early_stopping_rounds=early_stopping_rounds,
             num_trainers=num_trainers,
-            trainer_id=trainer_id),
+            trainer_id=trainer_id,
+            report_feature_importances=report_feature_importances),
         model_dir=model_dir,
         config=config,
         feature_engineering_fn=feature_engineering_fn)
+
