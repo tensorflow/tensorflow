@@ -12,18 +12,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Chain bijector."""
+"""SigmoidCentered bijector."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# go/tf-wildcard-import
-# pylint: disable=wildcard-import
-from tensorflow.contrib.distributions.python.ops.bijectors.chain_impl import *
-# pylint: enable=wildcard-import
-from tensorflow.python.util.all_util import remove_undocumented
+from tensorflow.contrib.distributions.python.ops.bijectors import softmax_centered
 
-_allowed_symbols = ["Chain"]
 
-remove_undocumented(__name__, _allowed_symbols)
+__all__ = [
+    "SigmoidCentered",
+]
+
+
+class SigmoidCentered(softmax_centered.SoftmaxCentered):
+  """Bijector which computes Y = g(X) = exp([X 0]) / (1 + exp(-X)).
+
+  Equivalent to: `bijector.SoftmaxCentered(event_ndims=0)`.
+
+  See `bijector.SoftmaxCentered` for more details.
+  """
+
+  def __init__(self, validate_args=False, name="sigmoid_centered"):
+    super(SigmoidCentered, self).__init__(
+        event_ndims=0, validate_args=validate_args, name=name)

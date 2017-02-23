@@ -201,7 +201,6 @@ def extract():
           'special_math', 'stochastic_gradient_estimators',
           'stochastic_variables'
       ],
-      'contrib.distributions': ['bijector'],
       'contrib.ffmpeg': ['ffmpeg_ops'],
       'contrib.graph_editor': [
           'edit',
