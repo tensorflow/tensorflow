@@ -916,6 +916,7 @@ class TrainTest(test.TestCase):
   def testTrainWithEpochLimit(self):
     logdir = os.path.join(tempfile.mkdtemp(prefix=self.get_temp_dir()),
                           'tmp_logs')
+
     with ops.Graph().as_default():
       random_seed.set_random_seed(0)
       tf_inputs = constant_op.constant(self._inputs, dtype=dtypes.float32)
