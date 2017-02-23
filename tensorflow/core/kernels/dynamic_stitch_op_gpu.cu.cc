@@ -51,7 +51,7 @@ struct DynamicStitchGPULaunch {
                   const CudaDeviceArrayStruct<const T*>& data_slice_ptrs,
                   T* output) {
     // TODO(MycChiu): Currently these launch settings are hard-coded and
-    // roughly optimized for my local system, is there a better way to 
+    // roughly optimized for my local system, is there a better way to
     // automatically determine the optimal launch settings?
     const int block_size = 256;
     const int grid_size = 60;
