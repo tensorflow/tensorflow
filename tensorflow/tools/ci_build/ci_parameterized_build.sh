@@ -380,12 +380,7 @@ if [[ ${TF_BUILD_IS_PIP} == "pip" ]] ||
     exit 0
   fi
 
-  PIP_MAIN_CMD="${MAIN_CMD} ${PIP_CMD} ${CTYPE} ${EXTRA_AGRS}"
-
-  # Add flag for mavx/mavx2
-  if [[ ! -z "${TF_BUILD_MAVX}" ]]; then
-    PIP_MAIN_CMD="${PIP_MAIN_CMD} --${TF_BUILD_MAVX}"
-  fi
+  PIP_MAIN_CMD="${MAIN_CMD} ${PIP_CMD} ${CTYPE} ${EXTRA_ARGS} ${OPT_FLAG}"
 
   # Add flag for integration tests
   if [[ ! -z "${TF_BUILD_INTEGRATION_TESTS}" ]] &&
