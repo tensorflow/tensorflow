@@ -61,11 +61,11 @@ Status MatchSignatureHelper(const DataTypeSlice expected_inputs,
   }
 
   if (signature_mismatch) {
-    return errors::InvalidArgument("Signature mismatch, have: ",
-                                   DataTypeSliceString(inputs), "->",
-                                   DataTypeSliceString(outputs), " expected: ",
-                                   DataTypeSliceString(expected_inputs), "->",
-                                   DataTypeSliceString(expected_outputs));
+    return errors::InvalidArgument(
+        "Signature mismatch, have: ", DataTypeSliceString(inputs), "->",
+        DataTypeSliceString(outputs),
+        " expected: ", DataTypeSliceString(expected_inputs), "->",
+        DataTypeSliceString(expected_outputs));
   }
   return Status::OK();
 }
@@ -347,8 +347,9 @@ void OpKernelContext::forward_ref_input_to_ref_output(int input_index,
                  (*params_->inputs)[input_index].tensor);
 }
 
-bool OpKernelContext::forward_input_to_output(int input_index, int output_index,
-                                              Tensor** output) {
+bool OpKernelContext::forward_input_to_output_with_same_shape(int input_index,
+                                                              int output_index,
+                                                              Tensor** output) {
   DCHECK_GE(input_index, 0);
   DCHECK_LT(input_index, params_->inputs->size());
   const TensorValue& input = (*params_->inputs)[input_index];
@@ -359,9 +360,8 @@ bool OpKernelContext::forward_input_to_output(int input_index, int output_index,
                                             input.tensor->shape(), output);
 }
 
-Status OpKernelContext::forward_input_to_output(StringPiece input_name,
-                                                StringPiece output_name,
-                                                Tensor** output) {
+Status OpKernelContext::forward_input_to_output_with_same_shape(
+    StringPiece input_name, StringPiece output_name, Tensor** output) {
   int input_index, output_index, stop;
   TF_RETURN_IF_ERROR(
       params_->op_kernel->InputRange(input_name, &input_index, &stop));
@@ -379,7 +379,8 @@ Status OpKernelContext::forward_input_to_output(StringPiece input_name,
                                    "' when single-valued output was "
                                    "expected");
   }
-  if (!forward_input_to_output(input_index, output_index, output)) {
+  if (!forward_input_to_output_with_same_shape(input_index, output_index,
+                                               output)) {
     return errors::FailedPrecondition("OpKernel could not forward input '",
                                       input_name, "' to output '", output_name);
   }
@@ -890,8 +891,8 @@ Status FindKernelDef(DeviceType device_type, const NodeDef& node_def,
       errors::AppendToMessage(
           &s, " (OpKernel was found, but attributes didn't match)");
     }
-    errors::AppendToMessage(&s, ".  Registered:",
-                            KernelsRegisteredForOp(node_def.op()));
+    errors::AppendToMessage(
+        &s, ".  Registered:", KernelsRegisteredForOp(node_def.op()));
     return s;
   }
   if (def != nullptr) *def = &reg->def;
@@ -995,8 +996,8 @@ Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
       errors::AppendToMessage(
           &s, " (OpKernel was found, but attributes didn't match)");
     }
-    errors::AppendToMessage(&s, ".  Registered:",
-                            KernelsRegisteredForOp(node_def.op()));
+    errors::AppendToMessage(
+        &s, ".  Registered:", KernelsRegisteredForOp(node_def.op()));
     return s;
   }
 
@@ -1059,9 +1060,9 @@ Status ValidateKernelRegistrations(const OpRegistryInterface& op_registry) {
     for (const auto& host_memory_arg : kernel_def.host_memory_arg()) {
       if (!FindArgInOp(host_memory_arg, op_def.input_arg()) &&
           !FindArgInOp(host_memory_arg, op_def.output_arg())) {
-        return errors::InvalidArgument("HostMemory arg '", host_memory_arg,
-                                       "' not found in OpDef: ",
-                                       SummarizeOpDef(op_def));
+        return errors::InvalidArgument(
+            "HostMemory arg '", host_memory_arg,
+            "' not found in OpDef: ", SummarizeOpDef(op_def));
       }
     }
   }
