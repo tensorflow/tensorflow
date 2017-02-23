@@ -1837,6 +1837,7 @@ tf_cc_tests(
     srcs = [
         "common_runtime/device_set_test.cc",
         "common_runtime/optimization_registry_test.cc",
+        "common_runtime/resource_variable_read_optimizer_test.cc",
         "common_runtime/pending_counts_test.cc",
         "common_runtime/session_test.cc",
         "common_runtime/simple_placer_test.cc",

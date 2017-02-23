@@ -37,7 +37,7 @@ from tensorflow.python.training import slot_creator
 def _get_variable_for(v):
   """Returns the ResourceVariable responsible for v, or v if not necessary."""
   if v.op.type == "VarHandleOp":
-    for var in ops.get_collection(ops.GraphKeys.RESOURCES):
+    for var in variables.trainable_variables():
       if (isinstance(var, resource_variable_ops.ResourceVariable)
           and var.handle.op is v.op):
         return var
