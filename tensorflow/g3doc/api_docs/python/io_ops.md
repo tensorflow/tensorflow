@@ -94,7 +94,7 @@ with tf.Session() as sess:
     x: (indices, values, shape)}))  # Will succeed.
 
   sp = tf.SparseTensor(indices=indices, values=values, dense_shape=shape)
-  sp_value = sp.eval(session)
+  sp_value = sp.eval(session=sess)
   print(sess.run(y, feed_dict={x: sp_value}))  # Will succeed.
 ```
 
