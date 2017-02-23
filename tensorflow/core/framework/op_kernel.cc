@@ -412,6 +412,17 @@ bool OpKernelContext::forward_input_to_output_with_shape(
       op_kernel().input_memory_types()[input_index]) {
     return false;
   }
+  // Check that output allocator attributes are not more restrictive than
+  // input allocator attributes.
+  const auto input_attr = params_->input_alloc_attrs == nullptr
+                              ? AllocatorAttributes()
+                              : input_alloc_attr(input_index);
+  const auto output_attr = params_->output_attr_array == nullptr
+                               ? AllocatorAttributes()
+                               : output_alloc_attr(output_index);
+  if (!output_attr.IsEqualOrLessRestrictiveThan(input_attr)) {
+    return false;
+  }
   Tensor* output_tensor = new Tensor();
   CHECK(output_tensor->CopyFrom(*input.tensor, output_shape));
   outputs_[output_index] = TensorValue(output_tensor);
