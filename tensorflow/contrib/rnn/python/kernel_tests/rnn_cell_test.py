@@ -972,7 +972,7 @@ class CompiledWrapperTest(test.TestCase):
     num_layers = 2
     max_time = 20
 
-    atol = 1e-6
+    atol = 1e-5
 
     random_seed.set_random_seed(1234)
     with self.test_session(graph=ops.Graph()) as sess:
