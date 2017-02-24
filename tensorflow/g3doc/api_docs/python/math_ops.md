@@ -1685,7 +1685,7 @@ inf-norm) and up to 9218868437227405311 different vectors norms.
 
 *  <b>`tensor`</b>: `Tensor` of types `float32`, `float64`, `complex64`, `complex128`
 *  <b>`ord`</b>: Order of the norm. Supported values are 'fro', 'euclidean', `0`,
-    `1, `2`, `np.inf` and any positive real number yielding the corresponding
+    `1`, `2`, `np.inf` and any positive real number yielding the corresponding
     p-norm. Default is 'euclidean' which is equivalent to Frobenius norm if
     `tensor` is a matrix and equivalent to 2-norm for vectors.
     Some restrictions apply,
