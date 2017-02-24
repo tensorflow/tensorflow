@@ -171,12 +171,16 @@ static void RunInferenceByHexagonControlWrapper(
       std::make_tuple(reinterpret_cast<const uint8*>(img_floats.data()),
                       img_floats.size() * sizeof(float), DT_FLOAT);
 
+  const RemoteFusedGraphExecuteInfo execute_info =
+      GraphTransferUtils::BuildRemoteFusedGraphExecuteInfo(
+          gt.GetGraphTransferInfo());
+
   HexagonControlWrapper hexagon_control_wrapper;
   // 1. Initialize hexagon
-  hexagon_control_wrapper.Init();
+  hexagon_control_wrapper.Init(execute_info);
 
   // 2. Setup graph in hexagon
-  hexagon_control_wrapper.SetupGraph(gt);
+  hexagon_control_wrapper.SetupGraph();
 
   // 3. Fill input node's output
   hexagon_control_wrapper.FillInputNode("Mul", ba);
