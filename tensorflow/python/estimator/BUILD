@@ -18,6 +18,7 @@ py_library(
     deps = [
         ":checkpoint_utils",
         ":estimator",
+        ":export",
         ":model_fn",
         ":run_config",
     ],
@@ -104,6 +105,27 @@ py_test(
     deps = [
         ":estimator",
         ":run_config",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_library(
+    name = "export",
+    srcs = ["export.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:framework",
+    ],
+)
+
+py_test(
+    name = "export_test",
+    size = "small",
+    srcs = ["export_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":export",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
     ],
 )
