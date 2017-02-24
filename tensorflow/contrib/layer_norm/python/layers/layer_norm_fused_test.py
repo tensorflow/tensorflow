@@ -26,7 +26,7 @@ from tensorflow.python.platform import test
 class LayerNormFusedTest(tf.test.TestCase):
 
   def testUnknownShape(self):
-    if not test.is_gpu_available():
+    if not test.is_gpu_available(cuda_only=True):
       return  # Test requires access to a GPU
     with tf.Graph().as_default() as g, self.test_session(g):
       inputs = tf.placeholder(dtype=tf.float32)
@@ -34,7 +34,7 @@ class LayerNormFusedTest(tf.test.TestCase):
         tf.contrib.layer_norm.layer_norm_fused(inputs)
 
   def testUnknownLastDim(self):
-    if not test.is_gpu_available():
+    if not test.is_gpu_available(cuda_only=True):
       return  # Test requires access to a GPU
     with tf.Graph().as_default() as g, self.test_session(g):
       inputs = tf.placeholder(dtype=tf.float32)
@@ -43,7 +43,7 @@ class LayerNormFusedTest(tf.test.TestCase):
         tf.contrib.layer_norm.layer_norm_fused(inputs)
 
   def testCreateOp(self):
-    if not test.is_gpu_available():
+    if not test.is_gpu_available(cuda_only=True):
       return  # Test requires access to a GPU
     height, width = 3, 3
     with self.test_session():
@@ -54,7 +54,7 @@ class LayerNormFusedTest(tf.test.TestCase):
       self.assertListEqual(output.get_shape().as_list(), [5, height, width, 3])
 
   def testCreateVariables(self):
-    if not test.is_gpu_available():
+    if not test.is_gpu_available(cuda_only=True):
       return  # Test requires access to a GPU
     height, width = 3, 3
     with self.test_session():
@@ -66,7 +66,7 @@ class LayerNormFusedTest(tf.test.TestCase):
       self.assertEqual(gamma.op.name, 'LayerNorm/gamma')
 
   def testReuseVariables(self):
-    if not test.is_gpu_available():
+    if not test.is_gpu_available(cuda_only=True):
       return  # Test requires access to a GPU
     height, width = 3, 3
     with self.test_session():
@@ -79,7 +79,7 @@ class LayerNormFusedTest(tf.test.TestCase):
       self.assertEqual(len(gamma), 1)
 
   def testReuseVars(self):
-    if not test.is_gpu_available():
+    if not test.is_gpu_available(cuda_only=True):
       return  # Test requires access to a GPU
     height, width = 3, 3
     with self.test_session() as sess:
@@ -95,7 +95,7 @@ class LayerNormFusedTest(tf.test.TestCase):
       self.assertAllClose(sess.run([output_train]), sess.run([output_eval]))
 
   def doOutputTest(self, input_shape, center=False, scale=False):
-    if not test.is_gpu_available():
+    if not test.is_gpu_available(cuda_only=True):
       return  # Test requires access to a GPU
     with self.test_session() as sess:
       input_values = np.random.rand(*input_shape)
@@ -141,7 +141,7 @@ class LayerNormFusedTest(tf.test.TestCase):
     self.doOutputTest((100, 10, 10, 4), center=True, scale=True)
 
   def doGradientTest(self, input_shape, center=False, scale=False):
-    if not test.is_gpu_available():
+    if not test.is_gpu_available(cuda_only=True):
       return  # Test requires access to a GPU
     with self.test_session() as sess:
       # np.random.seed(5)
