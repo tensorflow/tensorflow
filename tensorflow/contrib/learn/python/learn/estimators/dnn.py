@@ -782,15 +782,16 @@ class _DNNEstimator(estimator.Estimator):
   To create a _DNNEstimator for binary classification, where
   estimator = _DNNEstimator(
       feature_columns=[sparse_feature_a_emb, sparse_feature_b_emb],
-      head=head=head_lib._multi_class__head(n_classes=2),
+      head=head_lib._multi_class__head(n_classes=2),
       hidden_units=[1024, 512, 256])
 
   If your label is keyed with "y" in your labels dict, and weights are keyed
   with "w" in features dict, and you want to enable centered bias,
-  head=head_lib._multi_class__head(n_classes=2,
-                                   label_name="x"
-                                   weight_column_name="w",
-                                   enable_centered_bias=True)
+  head = head_lib._multi_class__head(
+      n_classes=2,
+      label_name="x",
+      weight_column_name="w",
+      enable_centered_bias=True)
   estimator = _DNNEstimator(
       feature_columns=[sparse_feature_a_emb, sparse_feature_b_emb],
       head=head,
