@@ -47,5 +47,5 @@ ${CC} ${CFILE} -Itensorflow/include -Ltensorflow/lib -ltensorflow -oa.out
 # The tests for GPU require CUDA libraries to be accessible, which
 # are in DYLD_LIBRARY_PATH in the test harness for OS X.
 export DYLD_LIBRARY_PATH=tensorflow/lib:${DYLD_LIBRARY_PATH}
-export LD_LIBRARY_PATH=tensorflow/lib
+export LD_LIBRARY_PATH=tensorflow/lib:${LD_LIBRARY_PATH}
 ./a.out

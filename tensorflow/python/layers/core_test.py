@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.layers import core as core_layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
@@ -259,6 +260,27 @@ class DenseTest(test.TestCase):
       core_layers.dense(inputs, 2)
       var = variables.trainable_variables()[4]
       self.assertEqual(var.name, 'test2/dense/kernel:0')
+
+  def testComputeOutputShape(self):
+    dense = core_layers.Dense(2, activation=nn_ops.relu, name='dense1')
+    ts = tensor_shape.TensorShape
+    # pylint: disable=protected-access
+    with self.assertRaises(ValueError):
+      dense._compute_output_shape(ts(None))
+    with self.assertRaises(ValueError):
+      dense._compute_output_shape(ts([]))
+    with self.assertRaises(ValueError):
+      dense._compute_output_shape(ts([1]))
+    self.assertEqual(
+        [None, 2],
+        dense._compute_output_shape((None, 3)).as_list())
+    self.assertEqual(
+        [None, 2],
+        dense._compute_output_shape(ts([None, 3])).as_list())
+    self.assertEqual(
+        [None, 4, 2],
+        dense._compute_output_shape(ts([None, 4, 3])).as_list())
+    # pylint: enable=protected-access
 
 
 class DropoutTest(test.TestCase):

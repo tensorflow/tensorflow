@@ -234,6 +234,11 @@ class TensorForestEstimator(evaluable.Evaluable, trainable.Trainable):
     """See evaluable.Evaluable."""
     return self._estimator.model_dir
 
+  @property
+  def config(self):
+    """Get the underlying config object."""
+    return self._estimator.config
+
   def evaluate(self,
                x=None,
                y=None,

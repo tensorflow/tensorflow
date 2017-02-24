@@ -35,7 +35,7 @@ encapsulate the logic for preprocessing and piping data into your models.
 The following code illustrates the basic skeleton for an input function:
 
 ```python
-def my_input_fn()
+def my_input_fn():
 
     # Preprocess your data here...
 
@@ -78,8 +78,8 @@ For [sparse, categorical data](https://en.wikipedia.org/wiki/Sparse_matrix)
 `SparseTensor`, which is instantiated with three arguments:
 
 <dl>
-  <dt><code>shape</code></dt>
-  <dd>The shape of the tensor. Takes a list indicating the number of elements in each dimension. For example, <code>shape=[3,6]</code> specifies a two-dimensional 3x6 tensor, <code>shape=[2,3,4]</code> specifies a three-dimensional 2x3x4 tensor, and <code>shape=[9]</code> specifies a one-dimensional tensor with 9 elements.</dd>
+  <dt><code>dense_shape</code></dt>
+  <dd>The shape of the tensor. Takes a list indicating the number of elements in each dimension. For example, <code>dense_shape=[3,6]</code> specifies a two-dimensional 3x6 tensor, <code>dense_shape=[2,3,4]</code> specifies a three-dimensional 2x3x4 tensor, and <code>dense_shape=[9]</code> specifies a one-dimensional tensor with 9 elements.</dd>
   <dt><code>indices</code></dt>
   <dd>The indices of the elements in your tensor that contain nonzero values. Takes a list of terms, where each term is itself a list containing the index of a nonzero element. (Elements are zero-indexed—i.e., [0,0] is the index value for the element in the first column of the first row in a two-dimensional tensor.) For example, <code>indices=[[1,3], [2,4]]</code> specifies that the elements with indexes of [1,3] and [2,4] have nonzero values.</dd>
   <dt><code>values</code></dt>
@@ -93,7 +93,7 @@ index [2,4] has a value of 0.5 (all other values are 0):
 ```python
 sparse_tensor = tf.SparseTensor(indices=[[0,1], [2,4]],
                                 values=[6, 0.5],
-                                shape=[3, 5])
+                                dense_shape=[3, 5])
 ```
 
 This corresponds to the following dense tensor:
@@ -277,8 +277,9 @@ with 10 nodes each), and `feature_columns`, containing the list of
 `FeatureColumns` you just defined:
 
 ```python
-regressor = tf.contrib.learn.DNNRegressor(
-    feature_columns=feature_cols, hidden_units=[10, 10])
+regressor = tf.contrib.learn.DNNRegressor(feature_columns=feature_cols,
+                                          hidden_units=[10, 10],
+                                          model_dir="/tmp/boston_model")
 ```
 
 ### Building the input_fn
@@ -383,7 +384,7 @@ following resources:
     creating `FeatureColumn`s and an `input_fn` for a linear classification
     model that predicts income range based on census data.
 
-*   [TensorFlow Wide & Deep Learning Tutorial](../wide/index.md): Building on
+*   [TensorFlow Wide & Deep Learning Tutorial](../wide_and_deep/index.md): Building on
     the [Linear Model Tutorial](../wide/index.md), this tutorial covers
     `FeatureColumn` and `input_fn` creation for a "wide and deep" model that
     combines a linear model and a neural network using

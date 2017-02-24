@@ -290,7 +290,10 @@ class MaxPoolingGradOp : public OpKernel {
     }
 
     Tensor* output = nullptr;
-    OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
+    if (!context->forward_input_to_output(0, 0, &output)) {
+      OP_REQUIRES_OK(context,
+                     context->allocate_output(0, output_shape, &output));
+    }
 
     SpatialMaxPoolWithArgMaxHelper<CPUDevice, T>(
         context, &tensor_out_dup, &tensor_out_arg_max, output, tensor_in,
@@ -319,9 +322,10 @@ static void MaxPoolingBackwardCustomKernel(
     const std::vector<int32>& stride, Padding padding, const Tensor* tensor_in,
     const Tensor& out_backprop, const TensorShape& tensor_in_shape) {
   Tensor* output = nullptr;
-
-  OP_REQUIRES_OK(context,
-                 context->allocate_output(0, tensor_in_shape, &output));
+  if (!context->forward_input_to_output(0, 0, &output)) {
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(0, tensor_in_shape, &output));
+  }
 
   PoolParameters params{context, size,        stride,
                         padding, FORMAT_NHWC, tensor_in_shape};

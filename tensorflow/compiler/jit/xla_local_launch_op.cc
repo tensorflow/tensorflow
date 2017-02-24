@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_local_runtime_context.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -42,6 +43,8 @@ REGISTER_OP("_XlaLaunch")
     .Attr("Tconstants: list(type) >= 0")
     .Input("args: Targs")
     .Attr("Targs: list(type) >= 0")
+    .Input("resources: Nresources * resource")
+    .Attr("Nresources: int >= 0")
     .Output("results: Tresults")
     .Attr("Tresults: list(type) >= 0")
     .Attr("function: func")
@@ -143,6 +146,12 @@ XlaLocalLaunchOp::XlaLocalLaunchOp(OpKernelConstruction* ctx)
   DataTypeVector constant_types;
   OP_REQUIRES_OK(ctx, ctx->GetAttr("Tconstants", &constant_types));
   num_constant_args_ = constant_types.size();
+
+  int num_resource_args;
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("Nresources", &num_resource_args));
+  OP_REQUIRES(ctx, num_resource_args == 0,
+              errors::Unimplemented(
+                  "XlaLocalLaunchOp does not support resource variables"));
 }
 
 Status XlaLocalLaunchOp::BuildCompilationCache(XlaCompilationCache** compiler) {
@@ -164,14 +173,14 @@ Status XlaLocalLaunchOp::BuildCompilationCache(XlaCompilationCache** compiler) {
   if (!client.ok()) {
     return client.status();
   }
-  const string* compiler_device;
-  if (!XlaOpRegistry::GetJitDevice(device_type_.type(), &compiler_device,
-                                   /*requires_jit=*/nullptr)) {
+  const XlaOpRegistry::DeviceRegistration* registration;
+  if (!XlaOpRegistry::GetCompilationDevice(device_type_.type(),
+                                           &registration)) {
     return errors::InvalidArgument("No JIT device registered for ",
                                    device_type_.type());
   }
   XlaCompiler::Options options;
-  options.device_type = DeviceType(*compiler_device);
+  options.device_type = DeviceType(registration->compilation_device_name);
   options.client = client.ValueOrDie();
   options.allow_cpu_custom_calls = (platform_id == gpu::host::kHostPlatformId);
   options.local_executable_has_hybrid_result = true;
@@ -206,9 +215,8 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
 
   const XlaCompiler::CompilationResult* kernel;
   xla::LocalExecutable* executable;
-  OP_REQUIRES_OK(ctx,
-                 compiler->Compile(function_, num_constant_args_, ctx, &kernel,
-                                   &executable));
+  OP_REQUIRES_OK(ctx, compiler->Compile(function_, num_constant_args_, {}, ctx,
+                                        &kernel, &executable));
 
   VLOG(1) << "Executing XLA Computation...";
 

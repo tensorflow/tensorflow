@@ -53,4 +53,19 @@ TEST(RandomOpsTest, RandomGamma_ShapeFn) {
   INFER_OK(op, "[3];[]", "[1,2,3]");
 }
 
+TEST(RandomOpsTest, RandomPoisson_ShapeFn) {
+  ShapeInferenceTestOp op("RandomPoisson");
+  op.input_tensors.resize(2);
+
+  INFER_OK(op, "?;?", "?");
+  INFER_OK(op, "?;[3]", "?");
+  INFER_OK(op, "[1];?", "?");
+  INFER_ERROR("Shape must be rank 1 but is rank 2", op, "[1,2];[3,4]");
+  Tensor shape = test::AsTensor<int32>({1, 2, 3});
+  op.input_tensors[0] = &shape;
+  INFER_OK(op, "[3];[4,?]", "[1,2,3,d1_0,d1_1]");
+  INFER_OK(op, "[3];[4,5]", "[1,2,3,d1_0,d1_1]");
+  INFER_OK(op, "[3];[]", "[1,2,3]");
+}
+
 }  // end namespace tensorflow

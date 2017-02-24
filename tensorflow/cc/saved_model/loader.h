@@ -36,7 +36,7 @@ struct SavedModelBundle {
   /// resource leaks, we explicitly call Close on Sessions that we create.
   ~SavedModelBundle() {
     if (session) {
-      session->Close();
+      session->Close().IgnoreError();
     }
   }
 

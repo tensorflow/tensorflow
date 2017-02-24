@@ -48,8 +48,7 @@ from tensorflow.python.ops import variables
 
 def _is_resource(v):
   """Returns true if v is something you get from a resource variable."""
-  return (isinstance(v, resource_variable_ops.ResourceVariable) or
-          (isinstance(v, ops.Tensor) and v.op.type == "ResourceGather"))
+  return isinstance(v, resource_variable_ops.ResourceVariable)
 
 
 def _create_slot_var(primary, val, scope):
@@ -61,7 +60,8 @@ def _create_slot_var(primary, val, scope):
   variable_scope.get_variable_scope().set_partitioner(None)
   slot = variable_scope.get_variable(
       scope, initializer=val, trainable=False,
-      use_resource=_is_resource(primary))
+      use_resource=_is_resource(primary),
+      validate_shape=val.get_shape().is_fully_defined())
   variable_scope.get_variable_scope().set_partitioner(current_partitioner)
 
   # pylint: disable=protected-access
@@ -127,6 +127,9 @@ def create_zeros_slot(primary, name, dtype=None, colocate_with_primary=True):
   """
   if dtype is None:
     dtype = primary.dtype
-  val = array_ops.zeros(primary.get_shape().as_list(), dtype=dtype)
+  slot_shape = primary.get_shape()
+  slot_shape = (slot_shape if slot_shape.is_fully_defined()
+                else array_ops.shape(primary.initialized_value()))
+  val = array_ops.zeros(slot_shape, dtype=dtype)
   return create_slot(primary, val, name,
                      colocate_with_primary=colocate_with_primary)

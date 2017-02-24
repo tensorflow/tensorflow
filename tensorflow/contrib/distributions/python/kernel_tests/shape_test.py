@@ -41,6 +41,481 @@ def _constant(x):
   return tensor_util.constant_value(x)
 
 
+class MakeBatchReadyTest(test.TestCase):
+
+  def setUp(self):
+    self._rng = np.random.RandomState(42)
+
+  def _random_sample(self, sample_shape, dtype=np.float32):
+    return self._rng.random_sample(sample_shape).astype(dtype)
+
+  def _get_expected(self, x, batch_ndims, event_ndims, expand_batch_dim):
+    # Cast as int32 array explicitly, since an empty x.shape defaults
+    # to float64, and we can't index as float64 in numpy 1.12+.
+    x_shape = np.array(x.shape, dtype=np.int32)
+    n = x.ndim - batch_ndims - event_ndims
+    sample_shape = x_shape[:n]
+    y = np.reshape(x, np.concatenate([[-1], x_shape[n:]], 0))
+    y = np.transpose(y, np.roll(np.arange(y.ndim), -1))
+    if event_ndims == 0:
+      y = y[..., np.newaxis, :]
+    if batch_ndims == 0 and expand_batch_dim:
+      y = y[np.newaxis, ...]
+    return y, sample_shape
+
+  def _build_graph(self, x, batch_ndims, event_ndims, expand_batch_dim):
+    shaper = _DistributionShape(batch_ndims=batch_ndims,
+                                event_ndims=event_ndims)
+    y, sample_shape = shaper.make_batch_of_event_sample_matrices(
+        x, expand_batch_dim=expand_batch_dim)
+    should_be_x_value = shaper.undo_make_batch_of_event_sample_matrices(
+        y, sample_shape, expand_batch_dim=expand_batch_dim)
+    return y, sample_shape, should_be_x_value
+
+  def _test_dynamic(self, x, batch_ndims, event_ndims, expand_batch_dim=True):
+    with self.test_session() as sess:
+      x_pl = array_ops.placeholder(x.dtype)
+      batch_ndims_pl = array_ops.placeholder(dtypes.int32)
+      event_ndims_pl = array_ops.placeholder(dtypes.int32)
+      [y_, sample_shape_, should_be_x_value_] = sess.run(
+          self._build_graph(
+              x_pl, batch_ndims_pl, event_ndims_pl, expand_batch_dim),
+          feed_dict={
+              x_pl: x,
+              batch_ndims_pl: batch_ndims,
+              event_ndims_pl: event_ndims})
+    expected_y, expected_sample_shape = self._get_expected(
+        x, batch_ndims, event_ndims, expand_batch_dim)
+    self.assertAllEqual(expected_sample_shape, sample_shape_)
+    self.assertAllEqual(expected_y, y_)
+    self.assertAllEqual(x, should_be_x_value_)
+
+  def _test_static(self, x, batch_ndims, event_ndims, expand_batch_dim):
+    with self.test_session() as sess:
+      [y_, sample_shape_, should_be_x_value_] = sess.run(
+          self._build_graph(x, batch_ndims, event_ndims, expand_batch_dim))
+    expected_y, expected_sample_shape = self._get_expected(
+        x, batch_ndims, event_ndims, expand_batch_dim)
+    self.assertAllEqual(expected_sample_shape, sample_shape_)
+    self.assertAllEqual(expected_y, y_)
+    self.assertAllEqual(x, should_be_x_value_)
+
+  # Group 1a: Static scalar input.
+
+  def testStaticScalarNdims00ExpandNo(self):
+    self._test_static(x=self._random_sample([]),
+                      batch_ndims=0,
+                      event_ndims=0,
+                      expand_batch_dim=False)
+
+  def testStaticScalarNdims00ExpandYes(self):
+    self._test_static(x=self._random_sample([]),
+                      batch_ndims=0,
+                      event_ndims=0,
+                      expand_batch_dim=True)
+
+  def testStaticScalarNdims01ExpandNo(self):
+    with self.assertRaises(ValueError):
+      self._test_static(x=self._random_sample([]),
+                        batch_ndims=0,
+                        event_ndims=1,
+                        expand_batch_dim=False)
+
+  def testStaticScalarNdims01ExpandYes(self):
+    with self.assertRaises(ValueError):
+      self._test_static(x=self._random_sample([]),
+                        batch_ndims=0,
+                        event_ndims=1,
+                        expand_batch_dim=True)
+
+  def testStaticScalarNdims10ExpandNo(self):
+    with self.assertRaises(ValueError):
+      self._test_static(x=self._random_sample([]),
+                        batch_ndims=1,
+                        event_ndims=0,
+                        expand_batch_dim=False)
+
+  def testStaticScalarNdims10ExpandYes(self):
+    with self.assertRaises(ValueError):
+      self._test_static(x=self._random_sample([]),
+                        batch_ndims=1,
+                        event_ndims=0,
+                        expand_batch_dim=True)
+
+  def testStaticScalarNdims11ExpandNo(self):
+    with self.assertRaises(ValueError):
+      self._test_static(x=self._random_sample([]),
+                        batch_ndims=1,
+                        event_ndims=1,
+                        expand_batch_dim=False)
+
+  def testStaticScalarNdims11ExpandYes(self):
+    with self.assertRaises(ValueError):
+      self._test_static(x=self._random_sample([]),
+                        batch_ndims=1,
+                        event_ndims=1,
+                        expand_batch_dim=True)
+
+  # Group 1b: Dynamic scalar input.
+  def testDynamicScalar3Ndims00ExpandNo(self):
+    self._test_dynamic(x=self._random_sample([]),
+                       batch_ndims=0,
+                       event_ndims=0,
+                       expand_batch_dim=False)
+
+  def testDynamicScalar3Ndims00ExpandYes(self):
+    self._test_dynamic(x=self._random_sample([]),
+                       batch_ndims=0,
+                       event_ndims=0,
+                       expand_batch_dim=True)
+
+  def testDynamicScalarNdims01ExpandNo(self):
+    with self.assertRaisesOpError(""):
+      self._test_dynamic(x=self._random_sample([]),
+                         batch_ndims=0,
+                         event_ndims=1,
+                         expand_batch_dim=False)
+
+  def testDynamicScalarNdims01ExpandYes(self):
+    with self.assertRaisesOpError(""):
+      self._test_dynamic(x=self._random_sample([]),
+                         batch_ndims=0,
+                         event_ndims=1,
+                         expand_batch_dim=True)
+
+  def testDynamicScalarNdims10ExpandNo(self):
+    with self.assertRaisesOpError(""):
+      self._test_dynamic(x=self._random_sample([]),
+                         batch_ndims=1,
+                         event_ndims=0,
+                         expand_batch_dim=False)
+
+  def testDynamicScalarNdims10ExpandYes(self):
+    with self.assertRaisesOpError(""):
+      self._test_dynamic(x=self._random_sample([]),
+                         batch_ndims=1,
+                         event_ndims=0,
+                         expand_batch_dim=True)
+
+  def testDynamicScalarNdims11ExpandNo(self):
+    with self.assertRaisesOpError(""):
+      self._test_dynamic(x=self._random_sample([]),
+                         batch_ndims=1,
+                         event_ndims=1,
+                         expand_batch_dim=False)
+
+  def testDynamicScalarNdims11ExpandYes(self):
+    with self.assertRaisesOpError(""):
+      self._test_dynamic(x=self._random_sample([]),
+                         batch_ndims=1,
+                         event_ndims=1,
+                         expand_batch_dim=True)
+
+  # Group 2a: Static vector input.
+
+  def testStaticVectorNdims00ExpandNo(self):
+    self._test_static(x=self._random_sample([3]),
+                      batch_ndims=0,
+                      event_ndims=0,
+                      expand_batch_dim=False)
+
+  def testStaticVectorNdims00ExpandYes(self):
+    self._test_static(x=self._random_sample([3]),
+                      batch_ndims=0,
+                      event_ndims=0,
+                      expand_batch_dim=True)
+
+  def testStaticVectorNdims01ExpandNo(self):
+    self._test_static(x=self._random_sample([3]),
+                      batch_ndims=0,
+                      event_ndims=1,
+                      expand_batch_dim=False)
+
+  def testStaticVectorNdims01ExpandYes(self):
+    self._test_static(x=self._random_sample([3]),
+                      batch_ndims=0,
+                      event_ndims=1,
+                      expand_batch_dim=True)
+
+  def testStaticVectorNdims10ExpandNo(self):
+    self._test_static(x=self._random_sample([3]),
+                      batch_ndims=1,
+                      event_ndims=0,
+                      expand_batch_dim=False)
+
+  def testStaticVectorNdims10ExpandYes(self):
+    self._test_static(x=self._random_sample([3]),
+                      batch_ndims=1,
+                      event_ndims=0,
+                      expand_batch_dim=True)
+
+  def testStaticVectorNdims11ExpandNo(self):
+    with self.assertRaises(ValueError):
+      self._test_static(x=self._random_sample([3]),
+                        batch_ndims=1,
+                        event_ndims=1,
+                        expand_batch_dim=False)
+
+  def testStaticVectorNdims11ExpandYes(self):
+    with self.assertRaises(ValueError):
+      self._test_static(x=self._random_sample([3]),
+                        batch_ndims=1,
+                        event_ndims=1,
+                        expand_batch_dim=True)
+
+  # Group 2b: Dynamic vector input.
+
+  def testDynamicVectorNdims00ExpandNo(self):
+    self._test_dynamic(x=self._random_sample([3]),
+                       batch_ndims=0,
+                       event_ndims=0,
+                       expand_batch_dim=False)
+
+  def testDynamicVectorNdims00ExpandYes(self):
+    self._test_dynamic(x=self._random_sample([3]),
+                       batch_ndims=0,
+                       event_ndims=0,
+                       expand_batch_dim=True)
+
+  def testDynamicVectorNdims01ExpandNo(self):
+    self._test_dynamic(x=self._random_sample([3]),
+                       batch_ndims=0,
+                       event_ndims=1,
+                       expand_batch_dim=False)
+
+  def testDynamicVectorNdims01ExpandYes(self):
+    self._test_dynamic(x=self._random_sample([3]),
+                       batch_ndims=0,
+                       event_ndims=1,
+                       expand_batch_dim=True)
+
+  def testDynamicVectorNdims10ExpandNo(self):
+    self._test_dynamic(x=self._random_sample([3]),
+                       batch_ndims=1,
+                       event_ndims=0,
+                       expand_batch_dim=False)
+
+  def testDynamicVectorNdims10ExpandYes(self):
+    self._test_dynamic(x=self._random_sample([3]),
+                       batch_ndims=1,
+                       event_ndims=0,
+                       expand_batch_dim=True)
+
+  def testDynamicVectorNdims11ExpandNo(self):
+    with self.assertRaisesOpError(""):
+      self._test_dynamic(x=self._random_sample([3]),
+                         batch_ndims=1,
+                         event_ndims=1,
+                         expand_batch_dim=False)
+
+  def testDynamicVectorNdims11ExpandYes(self):
+    with self.assertRaisesOpError(""):
+      self._test_dynamic(x=self._random_sample([3]),
+                         batch_ndims=1,
+                         event_ndims=1,
+                         expand_batch_dim=True)
+
+  # Group 3a: Static matrix input.
+
+  def testStaticMatrixNdims00ExpandNo(self):
+    self._test_static(x=self._random_sample([2, 3]),
+                      batch_ndims=0,
+                      event_ndims=0,
+                      expand_batch_dim=False)
+
+  def testStaticMatrixNdims00ExpandYes(self):
+    self._test_static(x=self._random_sample([2, 3]),
+                      batch_ndims=0,
+                      event_ndims=0,
+                      expand_batch_dim=True)
+
+  def testStaticMatrixNdims01ExpandNo(self):
+    self._test_static(x=self._random_sample([2, 3]),
+                      batch_ndims=0,
+                      event_ndims=1,
+                      expand_batch_dim=False)
+
+  def testStaticMatrixNdims01ExpandYes(self):
+    self._test_static(x=self._random_sample([2, 3]),
+                      batch_ndims=0,
+                      event_ndims=1,
+                      expand_batch_dim=True)
+
+  def testStaticMatrixNdims10ExpandNo(self):
+    self._test_static(x=self._random_sample([2, 3]),
+                      batch_ndims=1,
+                      event_ndims=0,
+                      expand_batch_dim=False)
+
+  def testStaticMatrixNdims10ExpandYes(self):
+    self._test_static(x=self._random_sample([2, 3]),
+                      batch_ndims=1,
+                      event_ndims=0,
+                      expand_batch_dim=True)
+
+  def testStaticMatrixNdims11ExpandNo(self):
+    self._test_static(x=self._random_sample([2, 3]),
+                      batch_ndims=1,
+                      event_ndims=1,
+                      expand_batch_dim=False)
+
+  def testStaticMatrixNdims11ExpandYes(self):
+    self._test_static(x=self._random_sample([2, 3]),
+                      batch_ndims=1,
+                      event_ndims=1,
+                      expand_batch_dim=True)
+
+  # Group 3b: Dynamic matrix input.
+
+  def testDynamicMatrixNdims00ExpandNo(self):
+    self._test_dynamic(x=self._random_sample([2, 3]),
+                       batch_ndims=0,
+                       event_ndims=0,
+                       expand_batch_dim=False)
+
+  def testDynamicMatrixNdims00ExpandYes(self):
+    self._test_dynamic(x=self._random_sample([2, 3]),
+                       batch_ndims=0,
+                       event_ndims=0,
+                       expand_batch_dim=True)
+
+  def testDynamicMatrixNdims01ExpandNo(self):
+    self._test_dynamic(x=self._random_sample([2, 3]),
+                       batch_ndims=0,
+                       event_ndims=1,
+                       expand_batch_dim=False)
+
+  def testDynamicMatrixNdims01ExpandYes(self):
+    self._test_dynamic(x=self._random_sample([2, 3]),
+                       batch_ndims=0,
+                       event_ndims=1,
+                       expand_batch_dim=True)
+
+  def testDynamicMatrixNdims10ExpandNo(self):
+    self._test_dynamic(x=self._random_sample([2, 3]),
+                       batch_ndims=1,
+                       event_ndims=0,
+                       expand_batch_dim=False)
+
+  def testDynamicMatrixNdims10ExpandYes(self):
+    self._test_dynamic(x=self._random_sample([2, 3]),
+                       batch_ndims=1,
+                       event_ndims=0,
+                       expand_batch_dim=True)
+
+  def testDynamicMatrixNdims11ExpandNo(self):
+    self._test_dynamic(x=self._random_sample([2, 3]),
+                       batch_ndims=1,
+                       event_ndims=1,
+                       expand_batch_dim=False)
+
+  def testDynamicMatrixNdims11ExpandYes(self):
+    self._test_dynamic(x=self._random_sample([2, 3]),
+                       batch_ndims=1,
+                       event_ndims=1,
+                       expand_batch_dim=True)
+
+  # Group 4a: Static tensor input.
+
+  def testStaticTensorNdims00ExpandNo(self):
+    self._test_static(x=self._random_sample([4, 1, 2, 3]),
+                      batch_ndims=0,
+                      event_ndims=0,
+                      expand_batch_dim=False)
+
+  def testStaticTensorNdims00ExpandYes(self):
+    self._test_static(x=self._random_sample([4, 1, 2, 3]),
+                      batch_ndims=0,
+                      event_ndims=0,
+                      expand_batch_dim=True)
+
+  def testStaticTensorNdims01ExpandNo(self):
+    self._test_static(x=self._random_sample([4, 1, 2, 3]),
+                      batch_ndims=0,
+                      event_ndims=1,
+                      expand_batch_dim=False)
+
+  def testStaticTensorNdims01ExpandYes(self):
+    self._test_static(x=self._random_sample([4, 1, 2, 3]),
+                      batch_ndims=0,
+                      event_ndims=1,
+                      expand_batch_dim=True)
+
+  def testStaticTensorNdims10ExpandNo(self):
+    self._test_static(x=self._random_sample([4, 1, 2, 3]),
+                      batch_ndims=1,
+                      event_ndims=0,
+                      expand_batch_dim=False)
+
+  def testStaticTensorNdims10ExpandYes(self):
+    self._test_static(x=self._random_sample([4, 1, 2, 3]),
+                      batch_ndims=1,
+                      event_ndims=0,
+                      expand_batch_dim=True)
+
+  def testStaticTensorNdims11ExpandNo(self):
+    self._test_static(x=self._random_sample([4, 1, 2, 3]),
+                      batch_ndims=1,
+                      event_ndims=1,
+                      expand_batch_dim=False)
+
+  def testStaticTensorNdims11ExpandYes(self):
+    self._test_static(x=self._random_sample([4, 1, 2, 3]),
+                      batch_ndims=1,
+                      event_ndims=1,
+                      expand_batch_dim=True)
+
+  # Group 4b: Dynamic tensor input.
+
+  def testDynamicTensorNdims00ExpandNo(self):
+    self._test_dynamic(x=self._random_sample([4, 1, 2, 3]),
+                       batch_ndims=0,
+                       event_ndims=0,
+                       expand_batch_dim=False)
+
+  def testDynamicTensorNdims00ExpandYes(self):
+    self._test_dynamic(x=self._random_sample([4, 1, 2, 3]),
+                       batch_ndims=0,
+                       event_ndims=0,
+                       expand_batch_dim=True)
+
+  def testDynamicTensorNdims01ExpandNo(self):
+    self._test_dynamic(x=self._random_sample([4, 1, 2, 3]),
+                       batch_ndims=0,
+                       event_ndims=1,
+                       expand_batch_dim=False)
+
+  def testDynamicTensorNdims01ExpandYes(self):
+    self._test_dynamic(x=self._random_sample([4, 1, 2, 3]),
+                       batch_ndims=0,
+                       event_ndims=1,
+                       expand_batch_dim=True)
+
+  def testDynamicTensorNdims10ExpandNo(self):
+    self._test_dynamic(x=self._random_sample([4, 1, 2, 3]),
+                       batch_ndims=1,
+                       event_ndims=0,
+                       expand_batch_dim=False)
+
+  def testDynamicTensorNdims10ExpandYes(self):
+    self._test_dynamic(x=self._random_sample([4, 1, 2, 3]),
+                       batch_ndims=1,
+                       event_ndims=0,
+                       expand_batch_dim=True)
+
+  def testDynamicTensorNdims11ExpandNo(self):
+    self._test_dynamic(x=self._random_sample([4, 1, 2, 3]),
+                       batch_ndims=1,
+                       event_ndims=1,
+                       expand_batch_dim=False)
+
+  def testDynamicTensorNdims11ExpandYes(self):
+    self._test_dynamic(x=self._random_sample([4, 1, 2, 3]),
+                       batch_ndims=1,
+                       event_ndims=1,
+                       expand_batch_dim=True)
+
+
 class DistributionShapeTest(test.TestCase):
 
   def setUp(self):
@@ -215,277 +690,6 @@ class DistributionShapeTest(test.TestCase):
       self._assertNdArrayEqual(
           ([3], _empty_shape, [2]),
           sess.run(shaper.get_shape(y), feed_dict=feed_dict))
-
-  # TODO(jvdillon): Delete this test once we make expand_batch_dim=False
-  # the unalterable default.
-  def testDistributionShapeMakeBatchReadyStatic(self):
-    with self.test_session() as sess:
-      x = self._random_sample((1, 2, 3))
-      shaper = _DistributionShape(batch_ndims=1, event_ndims=1)
-      y, sample_shape = shaper.make_batch_of_event_sample_matrices(x)
-      self.assertAllEqual(np.transpose(x, axes=(1, 2, 0)), y.eval())
-      self.assertAllEqual((1,), sample_shape.eval())
-      should_be_x_value = shaper.undo_make_batch_of_event_sample_matrices(
-          y, sample_shape)
-      self.assertAllEqual(x, should_be_x_value.eval())
-
-      shaper = _DistributionShape(batch_ndims=1, event_ndims=1)
-      x = array_ops.placeholder(dtypes.float32)
-      x_value = self._random_sample((3, 4, 2), dtype=x.dtype)
-      feed_dict = {x: x_value}
-      y, sample_shape = shaper.make_batch_of_event_sample_matrices(x)
-      self.assertAllEqual((3,), sess.run(sample_shape, feed_dict=feed_dict))
-      self.assertAllClose(
-          np.transpose(np.reshape(x_value, (-1, 4, 2)), (1, 2, 0)),
-          sess.run(y, feed_dict=feed_dict),
-          rtol=1e-3)
-      should_be_x_value = shaper.undo_make_batch_of_event_sample_matrices(
-          y, sample_shape)
-      self.assertAllEqual(
-          x_value, sess.run(should_be_x_value, feed_dict=feed_dict))
-
-      shaper = _DistributionShape(batch_ndims=0, event_ndims=0)
-      x = array_ops.placeholder(dtypes.float32)
-      x_value = np.ones((3,), dtype=x.dtype.as_numpy_dtype())
-      feed_dict = {x: x_value}
-      y, sample_shape = shaper.make_batch_of_event_sample_matrices(x)
-      self.assertAllEqual((3,), sess.run(sample_shape, feed_dict=feed_dict))
-      # The following check shows we don't need to manually set_shape in the
-      # ShapeUtil.
-      self.assertAllEqual((1, 1, None),
-                          y.get_shape().ndims and y.get_shape().as_list())
-      self.assertAllEqual(
-          np.ones(
-              (1, 1, 3), dtype=x.dtype.as_numpy_dtype()),
-          sess.run(y, feed_dict=feed_dict))
-      should_be_x_value = shaper.undo_make_batch_of_event_sample_matrices(
-          y, sample_shape)
-      self.assertAllEqual(
-          x_value, sess.run(should_be_x_value, feed_dict=feed_dict))
-
-  def testDistributionShapeMakeBatchReadyStaticNoExpand(self):
-    with self.test_session() as sess:
-      x = self._random_sample((1, 2, 3))
-      shaper = _DistributionShape(batch_ndims=1, event_ndims=1)
-      y, sample_shape = shaper.make_batch_of_event_sample_matrices(
-          x, expand_batch_dim=False)
-      self.assertAllEqual(np.transpose(x, axes=(1, 2, 0)), y.eval())
-      self.assertAllEqual((1,), sample_shape.eval())
-      should_be_x_value = shaper.undo_make_batch_of_event_sample_matrices(
-          y, sample_shape, expand_batch_dim=False)
-      self.assertAllEqual(x, should_be_x_value.eval())
-
-      shaper = _DistributionShape(batch_ndims=1, event_ndims=1)
-      x = array_ops.placeholder(dtypes.float32)
-      x_value = self._random_sample((3, 4, 2), dtype=x.dtype)
-      feed_dict = {x: x_value}
-      y, sample_shape = shaper.make_batch_of_event_sample_matrices(
-          x, expand_batch_dim=False)
-      self.assertAllEqual((3,), sess.run(sample_shape, feed_dict=feed_dict))
-      self.assertAllClose(
-          np.transpose(np.reshape(x_value, (-1, 4, 2)), (1, 2, 0)),
-          sess.run(y, feed_dict=feed_dict),
-          rtol=1e-3)
-      should_be_x_value = shaper.undo_make_batch_of_event_sample_matrices(
-          y, sample_shape, expand_batch_dim=False)
-      self.assertAllEqual(
-          x_value, sess.run(should_be_x_value, feed_dict=feed_dict))
-
-      shaper = _DistributionShape(batch_ndims=0, event_ndims=0)
-      x = array_ops.placeholder(dtypes.float32)
-      x_value = np.ones([3], dtype=x.dtype.as_numpy_dtype())
-      feed_dict = {x: x_value}
-      y, sample_shape = shaper.make_batch_of_event_sample_matrices(
-          x, expand_batch_dim=False)
-      self.assertAllEqual([3], sess.run(sample_shape, feed_dict=feed_dict))
-      # The following check shows we don't need to manually set_shape in the
-      # ShapeUtil.
-      self.assertAllEqual([1, None],
-                          y.get_shape().ndims and y.get_shape().as_list())
-      self.assertAllEqual(
-          np.ones(
-              [1, 3], dtype=x.dtype.as_numpy_dtype()),
-          sess.run(y, feed_dict=feed_dict))
-      should_be_x_value = shaper.undo_make_batch_of_event_sample_matrices(
-          y, sample_shape, expand_batch_dim=False)
-      self.assertAllEqual(
-          x_value, sess.run(should_be_x_value, feed_dict=feed_dict))
-
-  # TODO(jvdillon): Delete this test once we make expand_batch_dim=False
-  # the unalterable default.
-  def testDistributionShapeMakeBatchReadyDynamic(self):
-    with self.test_session() as sess:
-      shaper = _DistributionShape(batch_ndims=1, event_ndims=1)
-      x = array_ops.placeholder(dtypes.float32, shape=(1, 2, 3))
-      x_value = self._random_sample(x.get_shape().as_list(), dtype=x.dtype)
-      y, sample_shape = sess.run(shaper.make_batch_of_event_sample_matrices(x),
-                                 feed_dict={x: x_value})
-      self.assertAllEqual(np.transpose(x_value, (1, 2, 0)), y)
-      self.assertAllEqual((1,), sample_shape)
-
-      feed_dict = {x: x_value}
-      y, sample_shape = shaper.make_batch_of_event_sample_matrices(x)
-      self.assertAllEqual((1,), sess.run(sample_shape, feed_dict=feed_dict))
-      self.assertAllEqual(
-          np.transpose(x_value, (1, 2, 0)), sess.run(y, feed_dict=feed_dict))
-      should_be_x_value = shaper.undo_make_batch_of_event_sample_matrices(
-          y, sample_shape)
-      self.assertAllEqual(
-          x_value, sess.run(should_be_x_value, feed_dict=feed_dict))
-
-      batch_ndims = array_ops.placeholder(dtypes.int32)
-      event_ndims = array_ops.placeholder(dtypes.int32)
-      shaper = _DistributionShape(
-          batch_ndims=batch_ndims, event_ndims=event_ndims)
-
-      # batch_ndims = 1, event_ndims = 1.
-      x = array_ops.placeholder(dtypes.float32)
-      x_value = np.ones((3, 4, 2), dtype=x.dtype.as_numpy_dtype())
-      feed_dict = {x: x_value, batch_ndims: 1, event_ndims: 1}
-      y, sample_shape = shaper.make_batch_of_event_sample_matrices(x)
-      self.assertAllEqual((3,), sess.run(sample_shape, feed_dict=feed_dict))
-      self.assertAllEqual(
-          np.ones(
-              (4, 2, 3), dtype=x.dtype.as_numpy_dtype()),
-          sess.run(y, feed_dict=feed_dict))
-      should_be_x_value = shaper.undo_make_batch_of_event_sample_matrices(
-          y, sample_shape)
-      self.assertAllEqual(
-          x_value, sess.run(should_be_x_value, feed_dict=feed_dict))
-
-      # batch_ndims = 0, event_ndims = 0.
-      x_value = np.ones((3,), dtype=x.dtype.as_numpy_dtype())
-      feed_dict = {x: x_value, batch_ndims: 0, event_ndims: 0}
-      y, sample_shape = shaper.make_batch_of_event_sample_matrices(x)
-      self.assertAllEqual((3,), sess.run(sample_shape, feed_dict=feed_dict))
-      self.assertAllEqual(
-          np.ones(
-              (1, 1, 3), dtype=x.dtype.as_numpy_dtype()),
-          sess.run(y, feed_dict=feed_dict))
-      should_be_x_value = shaper.undo_make_batch_of_event_sample_matrices(
-          y, sample_shape)
-      self.assertAllEqual(
-          x_value, sess.run(should_be_x_value, feed_dict=feed_dict))
-
-      # batch_ndims = 0, event_ndims = 1.
-      x_value = np.ones(
-          (
-              1,
-              2,), dtype=x.dtype.as_numpy_dtype())
-      feed_dict = {x: x_value, batch_ndims: 0, event_ndims: 1}
-      y, sample_shape = shaper.make_batch_of_event_sample_matrices(x)
-      self.assertAllEqual((1,), sess.run(sample_shape, feed_dict=feed_dict))
-      self.assertAllEqual(
-          np.ones(
-              (1, 2, 1), dtype=x.dtype.as_numpy_dtype()),
-          sess.run(y, feed_dict=feed_dict))
-      should_be_x_value = shaper.undo_make_batch_of_event_sample_matrices(
-          y, sample_shape)
-      self.assertAllEqual(
-          x_value, sess.run(should_be_x_value, feed_dict=feed_dict))
-
-      # batch_ndims = 1, event_ndims = 0.
-      x_value = np.ones((1, 2), dtype=x.dtype.as_numpy_dtype())
-      feed_dict = {x: x_value, batch_ndims: 1, event_ndims: 0}
-      y, sample_shape = shaper.make_batch_of_event_sample_matrices(x)
-      self.assertAllEqual((1,), sess.run(sample_shape, feed_dict=feed_dict))
-      self.assertAllEqual(
-          np.ones(
-              (2, 1, 1), dtype=x.dtype.as_numpy_dtype()),
-          sess.run(y, feed_dict=feed_dict))
-      should_be_x_value = shaper.undo_make_batch_of_event_sample_matrices(
-          y, sample_shape)
-      self.assertAllEqual(
-          x_value, sess.run(should_be_x_value, feed_dict=feed_dict))
-
-  def testDistributionShapeMakeBatchReadyDynamicNoExpand(self):
-    with self.test_session() as sess:
-      shaper = _DistributionShape(batch_ndims=1, event_ndims=1)
-      x = array_ops.placeholder(dtypes.float32, shape=(1, 2, 3))
-      x_value = self._random_sample(x.get_shape().as_list(), dtype=x.dtype)
-      y, sample_shape = sess.run(shaper.make_batch_of_event_sample_matrices(
-          x, expand_batch_dim=False),
-                                 feed_dict={x: x_value})
-      self.assertAllEqual(np.transpose(x_value, (1, 2, 0)), y)
-      self.assertAllEqual((1,), sample_shape)
-
-      feed_dict = {x: x_value}
-      y, sample_shape = shaper.make_batch_of_event_sample_matrices(
-          x, expand_batch_dim=False)
-      self.assertAllEqual((1,), sess.run(sample_shape, feed_dict=feed_dict))
-      self.assertAllEqual(
-          np.transpose(x_value, (1, 2, 0)), sess.run(y, feed_dict=feed_dict))
-      should_be_x_value = shaper.undo_make_batch_of_event_sample_matrices(
-          y, sample_shape, expand_batch_dim=False)
-      self.assertAllEqual(
-          x_value, sess.run(should_be_x_value, feed_dict=feed_dict))
-
-      batch_ndims = array_ops.placeholder(dtypes.int32)
-      event_ndims = array_ops.placeholder(dtypes.int32)
-      shaper = _DistributionShape(
-          batch_ndims=batch_ndims, event_ndims=event_ndims)
-
-      # batch_ndims = 1, event_ndims = 1.
-      x = array_ops.placeholder(dtypes.float32)
-      x_value = np.ones((3, 4, 2), dtype=x.dtype.as_numpy_dtype())
-      feed_dict = {x: x_value, batch_ndims: 1, event_ndims: 1}
-      y, sample_shape = shaper.make_batch_of_event_sample_matrices(
-          x, expand_batch_dim=False)
-      self.assertAllEqual([3], sess.run(sample_shape, feed_dict=feed_dict))
-      self.assertAllEqual(
-          np.ones(
-              [4, 2, 3], dtype=x.dtype.as_numpy_dtype()),
-          sess.run(y, feed_dict=feed_dict))
-      should_be_x_value = shaper.undo_make_batch_of_event_sample_matrices(
-          y, sample_shape, expand_batch_dim=False)
-      self.assertAllEqual(
-          x_value, sess.run(should_be_x_value, feed_dict=feed_dict))
-
-      # batch_ndims = 0, event_ndims = 0.
-      x_value = np.ones((3,), dtype=x.dtype.as_numpy_dtype())
-      feed_dict = {x: x_value, batch_ndims: 0, event_ndims: 0}
-      y, sample_shape = shaper.make_batch_of_event_sample_matrices(
-          x, expand_batch_dim=False)
-      self.assertAllEqual([3], sess.run(sample_shape, feed_dict=feed_dict))
-      self.assertAllEqual(
-          np.ones(
-              [1, 3], dtype=x.dtype.as_numpy_dtype()),
-          sess.run(y, feed_dict=feed_dict))
-      should_be_x_value = shaper.undo_make_batch_of_event_sample_matrices(
-          y, sample_shape, expand_batch_dim=False)
-      self.assertAllEqual(
-          x_value, sess.run(should_be_x_value, feed_dict=feed_dict))
-
-      # batch_ndims = 0, event_ndims = 1.
-      x_value = np.ones([2], dtype=x.dtype.as_numpy_dtype())
-      feed_dict = {x: x_value, batch_ndims: 0, event_ndims: 1}
-      y, sample_shape = shaper.make_batch_of_event_sample_matrices(
-          x, expand_batch_dim=False)
-      self.assertAllEqual([], sess.run(sample_shape, feed_dict=feed_dict))
-      self.assertAllEqual(
-          np.ones(
-              [2, 1], dtype=x.dtype.as_numpy_dtype()),
-          sess.run(y, feed_dict=feed_dict))
-      should_be_x_value = shaper.undo_make_batch_of_event_sample_matrices(
-          y, sample_shape, expand_batch_dim=False)
-      self.assertAllEqual(
-          x_value, sess.run(should_be_x_value, feed_dict=feed_dict))
-
-      # batch_ndims = 1, event_ndims = 0.
-      x_value = np.ones((1, 2), dtype=x.dtype.as_numpy_dtype())
-      feed_dict = {x: x_value, batch_ndims: 1, event_ndims: 0}
-      y, sample_shape = shaper.make_batch_of_event_sample_matrices(
-          x, expand_batch_dim=False)
-      self.assertAllEqual((1,), sess.run(sample_shape, feed_dict=feed_dict))
-      self.assertAllEqual(
-          np.ones(
-              (2, 1, 1), dtype=x.dtype.as_numpy_dtype()),
-          sess.run(y, feed_dict=feed_dict))
-      should_be_x_value = shaper.undo_make_batch_of_event_sample_matrices(
-          y, sample_shape, expand_batch_dim=False)
-      self.assertAllEqual(
-          x_value, sess.run(should_be_x_value, feed_dict=feed_dict))
-
 
 if __name__ == "__main__":
   test.main()

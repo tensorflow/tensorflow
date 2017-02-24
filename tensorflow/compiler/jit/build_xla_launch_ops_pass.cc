@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_local_launch_op.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
-#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -40,14 +40,16 @@ namespace tensorflow {
 static Status BuildLaunchNode(
     const string& nodename, const string& function_name,
     const AttrValueMap& function_attr, const string& device_name,
-    const DataTypeVector& constant_dtypes, const DataTypeVector& arg_dtypes,
-    const DataTypeVector& result_dtypes, Graph* graph, Node** node) {
+    const DataTypeVector& constant_dtypes, int num_resources,
+    const DataTypeVector& arg_dtypes, const DataTypeVector& result_dtypes,
+    Graph* graph, Node** node) {
   NodeDef def;
   def.set_name(graph->NewName(nodename));
   def.set_op("_XlaLaunch");
   def.set_device(device_name);
   AddNodeAttr("Tconstants", constant_dtypes, &def);
   AddNodeAttr("Targs", arg_dtypes, &def);
+  AddNodeAttr("Nresources", num_resources, &def);
   AddNodeAttr("Tresults", result_dtypes, &def);
   NameAttrList function;
   function.set_name(function_name);
@@ -62,25 +64,32 @@ static Status BuildLaunchNode(
 static Status ReplaceNodeWithXlaLaunch(Graph* graph, Node* node) {
   VLOG(2) << "Replacing " << node->name() << " with XlaLaunch";
 
-  int num_constant_args;
+  int num_constant_args, num_resource_args;
   TF_RETURN_IF_ERROR(
       GetNodeAttr(node->def(), kXlaNumConstantArgsAttr, &num_constant_args));
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(node->def(), kXlaNumResourceArgsAttr, &num_resource_args));
 
-  if (num_constant_args < 0 || num_constant_args > node->input_types().size()) {
+  if (num_constant_args < 0 || num_resource_args < 0 ||
+      num_constant_args + num_resource_args > node->num_inputs()) {
     return errors::InvalidArgument(
-        "Invalid number of constant arguments to XLA kernel");
+        "Invalid number of constant/resource arguments to XLA kernel.");
   }
+  const int num_nonconst_args =
+      node->num_inputs() - num_constant_args - num_resource_args;
+
   DataTypeVector const_dtypes(node->input_types().begin(),
                               node->input_types().begin() + num_constant_args);
-  DataTypeVector arg_dtypes(node->input_types().begin() + num_constant_args,
-                            node->input_types().end());
+  DataTypeVector arg_dtypes(
+      node->input_types().begin() + num_constant_args,
+      node->input_types().begin() + num_constant_args + num_nonconst_args);
 
   // Build a _XlaLaunch operator to execute the function body.
   Node* launch_node;
-  TF_RETURN_IF_ERROR(
-      BuildLaunchNode(graph->NewName(node->name()), node->type_string(),
-                      node->def().attr(), node->def().device(), const_dtypes,
-                      arg_dtypes, node->output_types(), graph, &launch_node));
+  TF_RETURN_IF_ERROR(BuildLaunchNode(
+      graph->NewName(node->name()), node->type_string(), node->def().attr(),
+      node->def().device(), const_dtypes, num_resource_args, arg_dtypes,
+      node->output_types(), graph, &launch_node));
   launch_node->set_assigned_device_name(node->assigned_device_name());
 
   // Copy incoming edges to the launch node.
@@ -128,6 +137,11 @@ Status BuildXlaLaunchOpsPass::Run(const GraphOptimizationPassOptions& options) {
       TF_RETURN_IF_ERROR(ReplaceNodeWithXlaLaunch(graph, n));
     }
   }
+
+  if (VLOG_IS_ON(1)) {
+    dump_graph::DumpGraphToFile("build_xla_launch_ops", *graph,
+                                options.flib_def);
+  }
   return Status::OK();
 }
 
@@ -151,7 +165,7 @@ Status CreateXlaLaunchOp(FunctionLibraryRuntime* flr, const NodeDef& ndef,
     return errors::InvalidArgument("No ", kXlaCompileAttr, " for ", ndef.op());
   }
   // Make sure that kernels have been registered on the JIT device.
-  XlaOpRegistry::RegisterJitKernels();
+  XlaOpRegistry::RegisterCompilationKernels();
   if (!IsCompilable(flr, ndef)) {
     // ndef is calling a function that XLA can't compile.
     return errors::InvalidArgument("Not compilable: ", ndef.ShortDebugString());
@@ -179,6 +193,7 @@ Status CreateXlaLaunchOp(FunctionLibraryRuntime* flr, const NodeDef& ndef,
   launch_def.set_op("_XlaLaunch");
   launch_def.set_device(flr->device()->name());
   AddNodeAttr("Tconstants", DataTypeVector{}, &launch_def);
+  AddNodeAttr("Nresources", 0, &launch_def);
   AddNodeAttr("Targs", fbody->arg_types, &launch_def);
   AddNodeAttr("Tresults", fbody->ret_types, &launch_def);
   NameAttrList func;

@@ -31,11 +31,37 @@ bool XlaOpKernelContext::ValidateInputsAreSameShape(OpKernel* op) {
 }
 
 xla::ComputationBuilder* XlaOpKernelContext::builder() const {
-  return &XlaContext::Get(this).builder();
+  return XlaContext::Get(this).builder();
+}
+
+// Retrieves an XlaExpression that was allocated by a previous Op.
+static const XlaExpression* CastExpressionFromTensor(const Tensor& tensor) {
+  const XlaExpression* expression =
+      reinterpret_cast<const XlaExpression*>(tensor.tensor_data().data());
+  CHECK(expression->handle().handle() != 0 || expression->variable_id() >= 0);
+  VLOG(1) << "Fetched T" << expression->handle().handle();
+  return expression;
+}
+
+// Retrieves an uninitialized XlaExpression from a newly-allocated tensor.
+static XlaExpression* CastExpressionFromUninitializedTensor(Tensor* tensor) {
+  const XlaExpression* expression =
+      reinterpret_cast<const XlaExpression*>(tensor->tensor_data().data());
+  CHECK_EQ(expression->handle().handle(), 0);
+  return const_cast<XlaExpression*>(expression);
+}
+
+// Retrieves the ComputationDataHandle from an input Tensor to an Op. This
+// computation was constructed by an Op that executed previously and
+// created the output Tensor using CreateOutputTensorFromComputation
+// or CreateConstantOutputTensor.
+static const xla::ComputationDataHandle& GetComputationFromTensor(
+    const Tensor& tensor) {
+  return CastExpressionFromTensor(tensor)->handle();
 }
 
 const xla::ComputationDataHandle& XlaOpKernelContext::Input(int index) {
-  return XlaContext::GetComputationFromTensor(context_->input(index));
+  return GetComputationFromTensor(context_->input(index));
 }
 
 TensorShape XlaOpKernelContext::InputShape(int index) {
@@ -60,8 +86,7 @@ Status XlaOpKernelContext::ConstantInputReshaped(
         " but was asked to be reshaped to incompatible shape ",
         new_shape.DebugString());
   }
-  const XlaExpression* expression =
-      XlaContext::CastExpressionFromTensor(tensor);
+  const XlaExpression* expression = CastExpressionFromTensor(tensor);
 
   // If the tensor has a known constant value, there is no need to invoke XLA.
   if (expression->has_constant_value()) {
@@ -159,7 +184,7 @@ Status XlaOpKernelContext::InputList(
   handles->clear();
   shapes->clear();
   for (const Tensor& input : inputs) {
-    handles->push_back(XlaContext::GetComputationFromTensor(input));
+    handles->push_back(GetComputationFromTensor(input));
     shapes->push_back(input.shape());
   }
   return Status::OK();
@@ -174,6 +199,14 @@ Status XlaOpKernelContext::ConstantInputList(
     TF_RETURN_IF_ERROR(ConstantInput(i, &(*outputs)[i]));
   }
   return Status::OK();
+}
+
+Status XlaOpKernelContext::ReadVariableInput(
+    int index, xla::ComputationDataHandle* value) {
+  const Tensor& tensor = context_->input(index);
+  const XlaExpression* expression = CastExpressionFromTensor(tensor);
+  int variable_id = expression->variable_id();
+  return XlaContext::Get(this).ReadVariable(variable_id, value);
 }
 
 void XlaOpKernelContext::SetOutput(int index,
@@ -196,8 +229,7 @@ void XlaOpKernelContext::SetOutput(int index,
 
   // The expression is stored in the tensor's data buffer. Fill in the
   // fields now.
-  XlaExpression* expression =
-      XlaContext::CastExpressionFromUninitializedTensor(output);
+  XlaExpression* expression = CastExpressionFromUninitializedTensor(output);
   expression->set_handle(handle);
 }
 
@@ -207,6 +239,7 @@ void XlaOpKernelContext::SetConstantOutput(int index, const Tensor& constant) {
   xla::Literal literal;
   OP_REQUIRES_OK(context_, HostTensorToLiteral(constant, &literal));
   xla::ComputationDataHandle handle = builder()->ConstantLiteral(literal);
+  CHECK_NE(handle.handle(), 0);
 
   // Make the Tensor that will refer to the expression.
   Tensor* output = nullptr;
@@ -217,10 +250,29 @@ void XlaOpKernelContext::SetConstantOutput(int index, const Tensor& constant) {
 
   // The expression is stored in the tensor's data buffer. Fill in the
   // fields now.
-  XlaExpression* expression =
-      XlaContext::CastExpressionFromUninitializedTensor(output);
+  XlaExpression* expression = CastExpressionFromUninitializedTensor(output);
   expression->set_handle(handle);
   expression->set_constant_value(constant);
+}
+
+void XlaOpKernelContext::SetVariableOutput(int index, int variable_id) {
+  Tensor* output = nullptr;
+  // The shape of the output tensor is the shape of the variable resource
+  // (i.e., a scalar), not the shape of the variable's value.
+  OP_REQUIRES_OK(context_,
+                 context_->allocate_output(index, TensorShape(), &output));
+  XlaExpression* expression = CastExpressionFromUninitializedTensor(output);
+  expression->set_variable_id(variable_id);
+}
+
+Status XlaOpKernelContext::AssignVariable(
+    int index, DataType type, const xla::ComputationDataHandle& handle) {
+  SetOpHasSideEffects();
+
+  const XlaExpression* expression =
+      CastExpressionFromTensor(context_->input(index));
+  XlaContext& context = XlaContext::Get(this);
+  return context.AssignVariable(expression->variable_id(), type, handle);
 }
 
 void XlaOpKernelContext::SetOpHasSideEffects() {

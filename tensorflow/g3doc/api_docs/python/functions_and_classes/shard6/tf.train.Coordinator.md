@@ -120,7 +120,7 @@ After this is called, calls to `should_stop()` will return `False`.
 
 - - -
 
-#### `tf.train.Coordinator.join(threads=None, stop_grace_period_secs=120)` {#Coordinator.join}
+#### `tf.train.Coordinator.join(threads=None, stop_grace_period_secs=120, ignore_live_threads=False)` {#Coordinator.join}
 
 Wait for threads to terminate.
 
@@ -145,6 +145,8 @@ that `RuntimeError`.
     addition to the registered threads.
 *  <b>`stop_grace_period_secs`</b>: Number of seconds given to threads to stop after
     `request_stop()` has been called.
+*  <b>`ignore_live_threads`</b>: If `False`, raises an error if any of the threads are
+    still alive after `stop_grace_period_secs`.
 
 ##### Raises:
 

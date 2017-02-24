@@ -101,6 +101,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:array",
+        "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:math",
         "//third_party/eigen3",
     ],

@@ -46,11 +46,13 @@ class VariablesTestCase(test.TestCase):
       self.assertEqual("Variable:0", var0.name)
       self.assertEqual([], var0.get_shape())
       self.assertEqual([], var0.get_shape())
+      self.assertEqual([], var0.shape)
 
       var1 = variables.Variable(1.1)
       self.assertEqual("Variable_1:0", var1.name)
       self.assertEqual([], var1.get_shape())
       self.assertEqual([], var1.get_shape())
+      self.assertEqual([], var1.shape)
 
       with self.assertRaisesOpError("Attempting to use uninitialized value"):
         var0.eval()
@@ -69,11 +71,13 @@ class VariablesTestCase(test.TestCase):
       self.assertEqual("rnd:0", rnd.name)
       self.assertEqual([3, 6], rnd.get_shape())
       self.assertEqual([3, 6], rnd.get_shape())
+      self.assertEqual([3, 6], rnd.shape)
 
       dep = variables.Variable(rnd.initialized_value(), name="dep")
       self.assertEqual("dep:0", dep.name)
       self.assertEqual([3, 6], dep.get_shape())
       self.assertEqual([3, 6], dep.get_shape())
+      self.assertEqual([3, 6], dep.shape)
 
       # Currently have to set the shape manually for Add.
       added_val = rnd.initialized_value() + dep.initialized_value() + 2.0
@@ -83,6 +87,7 @@ class VariablesTestCase(test.TestCase):
       self.assertEqual("depdep:0", depdep.name)
       self.assertEqual([3, 6], depdep.get_shape())
       self.assertEqual([3, 6], depdep.get_shape())
+      self.assertEqual([3, 6], depdep.shape)
 
       variables.global_variables_initializer().run()
 
@@ -132,6 +137,18 @@ class VariablesTestCase(test.TestCase):
 
       four.eval()
       self.assertAllClose(4.0, var.eval())
+
+  def testZeroSizeStringAssign(self):
+    with self.test_session() as sess:
+      array = variables.Variable(
+          initial_value=array_ops.zeros((0,), dtype=dtypes.string),
+          name="foo",
+          trainable=False,
+          collections=[ops.GraphKeys.LOCAL_VARIABLES])
+      sess.run(variables.local_variables_initializer())
+      old_value = array.value()
+      copy_op = array.assign(old_value)
+      self.assertEqual([], list(sess.run(copy_op)))
 
   def _countUpToTest(self, dtype):
     with self.test_session():
@@ -363,6 +380,7 @@ class VariablesTestCase(test.TestCase):
 
       v1 = variables.Variable(initializer, dtype=dtypes.float32)
       self.assertEqual(shape, v1.get_shape())
+      self.assertEqual(shape, v1.shape)
       self.assertAllClose(value, v1.initial_value.eval())
       with self.assertRaises(errors_impl.FailedPreconditionError):
         v1.eval()
@@ -370,6 +388,7 @@ class VariablesTestCase(test.TestCase):
       v2 = variables.Variable(
           math_ops.negative(v1.initialized_value()), dtype=dtypes.float32)
       self.assertEqual(v1.get_shape(), v2.get_shape())
+      self.assertEqual(v1.shape, v2.shape)
       self.assertAllClose(np.negative(value), v2.initial_value.eval())
 
       # Once v2.initial_value.eval() has been called, v1 has effectively been
@@ -406,6 +425,12 @@ class VariablesTestCase(test.TestCase):
       var.load(np.ones((5, 5), np.float32))
 
       self.assertAllClose(np.ones((5, 5), np.float32), var.eval())
+
+  def testRepr(self):
+    var = variables.Variable(np.zeros((5, 5), np.float32), name='noop')
+    self.assertEqual(
+        "<tf.Variable 'noop:0' shape=(5, 5) dtype=float32_ref>",
+        repr(var))
 
 
 class IsInitializedTest(test.TestCase):
@@ -514,6 +539,7 @@ class PartitionedVariableTest(test.TestCase):
       self.assertEqual(2, num_partitions)
       self.assertEqual([v0, v1], iterated_partitions)
       self.assertEqual([2], concatenated.get_shape())
+      self.assertEqual([2], concatenated.shape)
 
   def testPartitionedVariableFailures(self):
     with ops.Graph().as_default():

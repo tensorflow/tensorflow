@@ -428,8 +428,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerBinaryOp(
 llvm_ir::IrArray::Index ElementalIrEmitter::ElementwiseSourceIndex(
     const llvm_ir::IrArray::Index& target_index, const HloInstruction& hlo,
     int64 operand_no) const {
-  CHECK(hlo.IsElementwise()) << "HLO " << hlo.ToString()
-                             << " is not elementwise.";
+  CHECK(hlo.IsElementwise())
+      << "HLO " << hlo.ToString() << " is not elementwise.";
 
   const Shape& operand_shape = hlo.operand(operand_no)->shape();
   // If the operand is scalar, the source index is always {}.
@@ -474,8 +474,9 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeRngElementGenerator(
       llvm::APInt(128, {0x14057B7EF767814F, 0x5851F42D4C957F2D}));
 
   auto random_value = [hlo]() {
-    CHECK(hlo->parent() != nullptr && hlo->parent()->parent() != nullptr);
-    const HloModule* module = hlo->parent()->parent();
+    const HloModule* module =
+        hlo->IsFused() ? hlo->fusion_instruction()->parent()->parent()
+                       : hlo->parent()->parent();
     return module->RandomNew64();
   };
 

@@ -197,6 +197,12 @@ class Tracing::ScopedAnnotation {
   // label string is only done if tracing is enabled.
   ScopedAnnotation(StringPiece name_part1, StringPiece name_part2);
 
+  // Returns true iff scoped annotations are active.
+  static bool Enabled() {
+    auto e = Tracing::engine();
+    return e && e->IsEnabled();
+  }
+
  private:
   std::unique_ptr<Engine::Annotation> annotation_;
 };

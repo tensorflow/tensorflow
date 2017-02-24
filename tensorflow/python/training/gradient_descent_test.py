@@ -118,7 +118,7 @@ class GradientDescentOptimizerTest(test.TestCase):
         # doesn't work because the sessions and graph are reused across unit
         # tests and this would mean trying to reinitialize variables. Figure out
         # a long-term solution for this.
-        resources.initialize_resources([var0, var1]).run()
+        variables.global_variables_initializer().run()
         # Fetch params to validate initial values
         self.assertAllCloseAccordingToType([[1.0, 2.0]], var0.eval())
         self.assertAllCloseAccordingToType([3.0], var1.eval())

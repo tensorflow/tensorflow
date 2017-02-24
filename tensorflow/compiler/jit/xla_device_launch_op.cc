@@ -27,6 +27,8 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/variable_ops.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {
@@ -62,6 +64,28 @@ XlaDeviceLaunchOp::XlaDeviceLaunchOp(OpKernelConstruction* ctx)
   DataTypeVector constant_types;
   OP_REQUIRES_OK(ctx, ctx->GetAttr("Tconstants", &constant_types));
   num_constant_args_ = constant_types.size();
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("Nresources", &num_resource_args_));
+}
+
+// Takes a snapshot of the values of resource variable arguments, which are
+// the last `num_variables` arguments. We snapshot tensors that back
+// resource variables since concurrent updates may modify the shape, and it is
+// important that the shapes used for compilation match the true shapes of the
+// buffers.
+static std::vector<OptionalTensor> SnapshotResourceVariables(
+    OpKernelContext* ctx, int num_variables) {
+  std::vector<OptionalTensor> snapshot(num_variables);
+  int first_variable = ctx->num_inputs() - num_variables;
+  for (int i = 0; i < num_variables; ++i) {
+    Var* variable = nullptr;
+    if (LookupResource(ctx, HandleFromInput(ctx, first_variable + i), &variable)
+            .ok()) {
+      mutex_lock lock(*variable->mu());
+      snapshot[i].present = true;
+      snapshot[i].value = *variable->tensor();
+    }
+  }
+  return snapshot;
 }
 
 void XlaDeviceLaunchOp::Compute(OpKernelContext* ctx) {
@@ -79,35 +103,46 @@ void XlaDeviceLaunchOp::Compute(OpKernelContext* ctx) {
                      [rm](XlaCompilationCache** compiler) {
                        return BuildCompilationCache(rm, compiler);
                      }));
-  // Hold the reference to the JIT during evaluation. (We could probably
+  // Holds the reference to the JIT during evaluation. (We could probably
   // free it sooner because the ResourceMgr will retain a reference, but
   // this is more obviously correct.)
   core::ScopedUnref compiler_ref(compiler);
 
-  const XlaCompiler::CompilationResult* kernel;
-  OP_REQUIRES_OK(
-      ctx,
-      compiler->Compile(function_, num_constant_args_, ctx, &kernel, nullptr));
+  std::vector<OptionalTensor> variables =
+      SnapshotResourceVariables(ctx, num_resource_args_);
 
-  VLOG(1) << "Executing XLA Computation...";
+  const XlaCompiler::CompilationResult* kernel;
+  OP_REQUIRES_OK(ctx, compiler->Compile(function_, num_constant_args_,
+                                        variables, ctx, &kernel, nullptr));
+
+  VLOG(1) << "XLA compilation complete...";
 
   OP_REQUIRES(ctx, ctx->num_outputs() == kernel->outputs.size(),
               errors::Internal("Unexpected number of outputs"));
 
-  // Run the computation, if any. There might not be a computation if all
+  // Runs the computation, if any. There might not be a computation if all
   // outputs were compile-time constants.
   std::vector<std::unique_ptr<xla::GlobalData>> outputs;
   if (!kernel->computation.IsNull()) {
     auto opaque_shape = xla::ShapeUtil::MakeOpaqueShape();
 
-    // Convert argument tensors to xla::GlobalData pointers.
+    // Builds the inputs to the computation.
     std::vector<std::shared_ptr<xla::GlobalData>> arg_handles(
         kernel->xla_input_shapes.size());
     std::vector<xla::GlobalData*> arg_ptrs(kernel->xla_input_shapes.size());
+
+    // Adds the argument tensors.
+    const int first_variable_arg = ctx->num_inputs() - num_resource_args_;
     for (int i = 0; i < kernel->xla_input_shapes.size(); ++i) {
-      int input_num = kernel->xla_input_shapes[i].first;
-      arg_handles[i] =
-          XlaTransferManager::GetTensorGlobalData(ctx->input(input_num));
+      int op_input_num = kernel->xla_input_shapes[i].first;
+
+      if (op_input_num >= first_variable_arg) {
+        arg_handles[i] = XlaTransferManager::GetTensorGlobalData(
+            variables[op_input_num - first_variable_arg].value);
+      } else {
+        arg_handles[i] =
+            XlaTransferManager::GetTensorGlobalData(ctx->input(op_input_num));
+      }
       arg_ptrs[i] = arg_handles[i].get();
     }
 
@@ -118,6 +153,7 @@ void XlaDeviceLaunchOp::Compute(OpKernelContext* ctx) {
         kernel->xla_output_shape;
     Env* env = Env::Default();
     auto start_time = env->NowMicros();
+    VLOG(1) << "Executing XLA Computation...";
     auto result = compiler->client()->Execute(kernel->computation, arg_ptrs,
                                               &execution_options, &profile);
     auto elapsed = env->NowMicros() - start_time;
@@ -139,11 +175,13 @@ void XlaDeviceLaunchOp::Compute(OpKernelContext* ctx) {
   XlaDeviceContext* device_context = ctx->op_device_context<XlaDeviceContext>();
 
   // Copy XLA outputs to the operator's outputs.
+  VLOG(2) << "Setting operator output";
   int output_num = 0;
   for (int i = 0; i < ctx->num_outputs(); ++i) {
     Tensor* output;
     OP_REQUIRES_OK(ctx,
                    ctx->allocate_output(i, kernel->outputs[i].shape, &output));
+
     if (kernel->outputs[i].is_constant) {
       // TODO(phawkins): mark constant _XlaLaunch outputs as HostMemory and
       // remove the copy from this code.
@@ -162,6 +200,49 @@ void XlaDeviceLaunchOp::Compute(OpKernelContext* ctx) {
           output);
       ++output_num;
     }
+  }
+
+  // Apply variable writes, if any.
+  VLOG(2) << "Applying variable writes";
+  for (int i = 0; i < kernel->variable_writes.size(); ++i) {
+    const XlaCompiler::VariableWrite& write = kernel->variable_writes[i];
+    OP_REQUIRES(ctx,
+                write.input_index >= 0 && write.input_index < ctx->num_inputs(),
+                errors::Internal("Invalid input index for variable write."));
+    // This code is very close to being a clone of AssignVariableOp, but the
+    // key difference is that the contents of an XLA device tensor cannot be
+    // copied safely; instead we must use
+    // XlaTransferManager::SetTensorGlobalData.
+    Var* variable = nullptr;
+    // TODO(b/35625933): tensorflow::Var should contain a PersistentTensor, not
+    // a Tensor.
+    OP_REQUIRES_OK(ctx, LookupOrCreateResource<Var>(
+                            ctx, HandleFromInput(ctx, write.input_index),
+                            &variable, [this, ctx, &write](Var** ptr) {
+                              *ptr = new Var(write.type);
+                              PersistentTensor unused;
+                              Tensor* tmp;
+                              TF_RETURN_IF_ERROR(ctx->allocate_persistent(
+                                  write.type, write.shape, &unused, &tmp));
+                              *(*ptr)->tensor() = *tmp;
+                              return Status::OK();
+                            }));
+    core::ScopedUnref s(variable);
+
+    mutex_lock ml(*variable->mu());
+    OP_REQUIRES(ctx, variable->tensor()->dtype() == write.type,
+                errors::Internal("Mismatched type in variable write"));
+    if (!variable->tensor()->shape().IsSameSize(write.shape)) {
+      PersistentTensor unused;
+      Tensor* tmp;
+      OP_REQUIRES_OK(ctx, ctx->allocate_persistent(write.type, write.shape,
+                                                   &unused, &tmp));
+      *variable->tensor() = *tmp;
+    }
+    XlaTransferManager::SetTensorGlobalData(
+        std::shared_ptr<xla::GlobalData>(std::move(outputs[output_num])),
+        variable->tensor());
+    ++output_num;
   }
 
   VLOG(1) << "Done";

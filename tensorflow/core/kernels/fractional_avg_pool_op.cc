@@ -323,8 +323,10 @@ class FractionalAvgPoolGradOp : public OpKernel {
 
     // Depending on the type, cast double to type T.
     Tensor* in_backprop_tensor = nullptr;
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(0, in_shape, &in_backprop_tensor));
+    if (!context->forward_input_to_output(0, 0, &in_backprop_tensor)) {
+      OP_REQUIRES_OK(
+          context, context->allocate_output(0, in_shape, &in_backprop_tensor));
+    }
     auto in_backprop_tensor_flat = in_backprop_tensor->flat<T>();
     auto in_backprop_tensor_temp_flat = in_backprop_tensor_temp.flat<double>();
     for (int64 i = 0; i < in_backprop_tensor_flat.size(); ++i) {

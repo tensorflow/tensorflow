@@ -93,6 +93,7 @@ tf_cuda_cc_test(
         ],
         [],
     ),
+    tags = ["manual"],  # Disabled until errors finding nvmlShutdown are found.
     deps = if_cuda(
         [
             "@nccl_archive//:nccl",

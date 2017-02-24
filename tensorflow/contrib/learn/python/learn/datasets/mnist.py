@@ -193,8 +193,8 @@ class DataSet(object):
       start = 0
       self._index_in_epoch = batch_size - rest_num_examples
       end = self._index_in_epoch
-      images_new_part = self.images[start:end]
-      labels_new_part = self.labels[start:end]
+      images_new_part = self._images[start:end]
+      labels_new_part = self._labels[start:end]
       return numpy.concatenate((images_rest_part, images_new_part), axis=0) , numpy.concatenate((labels_rest_part, labels_new_part), axis=0)
     else:
       self._index_in_epoch += batch_size

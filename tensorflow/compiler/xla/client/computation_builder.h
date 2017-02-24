@@ -504,8 +504,9 @@ class ComputationBuilder {
   ComputationDataHandle SquareF32(const ComputationDataHandle& operand);
 
   // Enqueues a lhs^rhs computation onto the computation.
-  ComputationDataHandle Pow(const ComputationDataHandle& lhs,
-                            const ComputationDataHandle& rhs);
+  ComputationDataHandle Pow(
+      const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
+      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
 
   // Enqueues a convert instruction onto the computation that changes the
   // element type of the operand array to primitive_type.

@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_XLA_COMPILATION_CACHE_H_
 #define TENSORFLOW_COMPILER_JIT_XLA_COMPILATION_CACHE_H_
 
-#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
@@ -29,6 +28,12 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 
 namespace tensorflow {
+
+// Struct that represents a possibly-absent Tensor.
+struct OptionalTensor {
+  bool present = false;  // Is the tensor present?
+  Tensor value;          // If present, what is the Tensor's value?
+};
 
 // The XlaCompilationCache class caches the results of the XlaCompiler class,
 // which converts a Tensorflow graph into a compiled XLA compilation.
@@ -44,12 +49,19 @@ class XlaCompilationCache : public ResourceBase {
   ~XlaCompilationCache() override;
 
   // Compiles a function into a XlaCompiler::CompilationResult that can be used
-  // to execute an XLA Computation. `compilation_result` must be non-null.
-  // If `executable` is non-null, also builds an xla::LocalExecutable and sets
-  // `executable to point to it. The resulting executable pointer may be null if
-  // the computation has no non-constant outputs.
-  // Compilation results are cached.
+  // to execute an XLA Computation. Compilation results are cached.
+  // `function` is the name of a Tensorflow function to compile.
+  // `num_constant_args` is the number of compile-time constant arguments to
+  // `function`. `variable_args` is a snapshot of the current values of the
+  // resource variable arguments to `function`; uninitialized variables are
+  // represented by an absent OptionalTensor.
+  // The result of compilation is written to `*compilation_result`, which must
+  // be non-null. If `executable` is non-null, also builds an
+  // xla::LocalExecutable and sets `executable to point to it. The resulting
+  // executable pointer may be null if the computation has no non-constant
+  // outputs.
   Status Compile(const NameAttrList& function, int num_constant_args,
+                 const std::vector<OptionalTensor>& variable_args,
                  OpKernelContext* ctx,
                  const XlaCompiler::CompilationResult** compilation_result,
                  xla::LocalExecutable** executable);
@@ -63,16 +75,15 @@ class XlaCompilationCache : public ResourceBase {
   std::unique_ptr<FunctionLibraryRuntime> function_library_runtime_;
 
   // Describes the types, shapes and any compile-time constant arguments
-  // to a kernel.
+  // to a kernel. Key that uniquely identifies a compilation output.
   struct Signature {
     string name;
 
     std::vector<std::pair<DataType, TensorShape>> arg_types;
 
-    // List of (argument #, value) pairs for arguments whose values are
-    // part of the JIT signature, and that are therefore constants in any given
-    // JIT compilation. Tensors must be in host memory.
-    std::vector<std::pair<int, Tensor>> arg_values;
+    // List of Tensor values for compile-time constant arguments to the
+    // compilation, ordered by argument number. Tensors must be in host memory.
+    std::vector<Tensor> arg_values;
 
     bool operator==(const Signature& other) const;
 
@@ -81,6 +92,11 @@ class XlaCompilationCache : public ResourceBase {
     };
   };
   static string SignatureDebugString(const Signature& sig);
+
+  // Builds the signature for a compilation.
+  Status BuildSignature(const NameAttrList& function, int num_constant_args,
+                        const std::vector<OptionalTensor>& variable_args,
+                        OpKernelContext* ctx, Signature* signature);
 
   // The value associated with a cache entry.
   struct Entry {

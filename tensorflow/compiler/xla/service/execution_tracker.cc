@@ -24,22 +24,16 @@ limitations under the License.
 
 namespace xla {
 
-AsyncExecution::AsyncExecution(
-    Backend* backend,
-    std::vector<std::unique_ptr<perftools::gputools::Stream>> streams,
-    const ExecutionProfile& profile, GlobalDataHandle result)
+AsyncExecution::AsyncExecution(Backend* backend,
+                               std::vector<Backend::StreamPtr> streams,
+                               const ExecutionProfile& profile,
+                               GlobalDataHandle result)
     : backend_(CHECK_NOTNULL(backend)),
       streams_(std::move(streams)),
       profile_(profile),
       result_(result) {
   for (const auto& stream : streams_) {
     CHECK(stream != nullptr);
-  }
-}
-
-AsyncExecution::~AsyncExecution() {
-  for (auto& stream : streams_) {
-    backend_->ReleaseStream(std::move(stream));
   }
 }
 
@@ -55,8 +49,7 @@ tensorflow::Status AsyncExecution::BlockUntilDone() const {
 ExecutionTracker::ExecutionTracker() : next_handle_(1) {}
 
 ExecutionHandle ExecutionTracker::Register(
-    Backend* backend,
-    std::vector<std::unique_ptr<perftools::gputools::Stream>> streams,
+    Backend* backend, std::vector<Backend::StreamPtr> streams,
     const ExecutionProfile& profile, GlobalDataHandle result) {
   tensorflow::mutex_lock lock(execution_mutex_);
   int64 handle = next_handle_++;
