@@ -218,6 +218,7 @@ cc_test(
         "mark_for_compilation_pass_test.cc",
     ],
     deps = [
+        ":common",
         ":compilation_passes",
         ":xla_local_launch_op",
         "//tensorflow/cc:cc_ops",

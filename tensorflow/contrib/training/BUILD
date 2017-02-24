@@ -280,6 +280,7 @@ py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
+        "//tensorflow/python/ops/losses",
         "//third_party/py/numpy",
     ],
 )

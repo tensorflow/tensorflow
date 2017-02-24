@@ -247,42 +247,31 @@ class NodeStepperCLI(object):
     ]
 
     lines = []
-    font_attr_segs = {}
     if verbose:
       lines.extend(
           ["Topologically-sorted transitive input(s) and fetch(es):", ""])
 
-    line_counter = len(lines)
     for i, element_name in enumerate(self._sorted_nodes):
       if i < index_range[0] or i >= index_range[1]:
         continue
 
-      font_attr_segs[line_counter] = []
-
       # TODO(cais): Use fixed-width text to show node index.
-      node_prefix = "(%d / %d)" % (i + 1, len(self._sorted_nodes))
       if i == self._next:
-        node_prefix = "  " + self.NEXT_NODE_POINTER_STR + node_prefix
-        font_attr_segs[line_counter].append((0, 3, "bold"))
+        node_prefix = RL("  ") + RL(self.NEXT_NODE_POINTER_STR, "bold")
       else:
-        node_prefix = "     " + node_prefix
+        node_prefix = RL("     ")
 
-      node_prefix += "  ["
-      labels, label_font_attr_segs = self._get_status_labels(
+      node_prefix += "(%d / %d)" % (i + 1, len(self._sorted_nodes)) + "  ["
+      node_prefix += self._get_status_labels(
           element_name,
           handle_node_names,
           intermediate_tensor_names,
           override_names,
-          dirty_variable_names,
-          len(node_prefix))
-      node_prefix += labels
-      font_attr_segs[line_counter].extend(label_font_attr_segs)
+          dirty_variable_names)
 
       lines.append(node_prefix + "] " + element_name)
-      line_counter += 1
 
-    output = debugger_cli_common.RichTextLines(
-        lines, font_attr_segs=font_attr_segs)
+    output = debugger_cli_common.rich_text_lines_from_rich_line_list(lines)
 
     if verbose:
       output.extend(self._node_status_label_legend())
@@ -294,8 +283,7 @@ class NodeStepperCLI(object):
                          handle_node_names,
                          intermediate_tensor_names,
                          override_names,
-                         dirty_variable_names,
-                         offset):
+                         dirty_variable_names):
     """Get a string of status labels for a graph element.
 
     A status label indicates that a node has a certain state in this
@@ -313,15 +301,13 @@ class NodeStepperCLI(object):
       override_names: (list of str) Names of the tensors of which the values
         are overridden.
       dirty_variable_names: (list of str) Names of the dirty variables.
-      offset: (int) Initial offset of the font attribute segments.
 
     Returns:
-      (str) The string made of status labels that currently apply to the graph
-        element.
-      (list of tuples) The font attribute segments, with offset applied.
+      (RichLine) The rich text string of status labels that currently apply to
+        the graph element.
     """
 
-    status = RL(" " * offset)
+    status = RL()
 
     node_name = element_name.split(":")[0]
     status += (RL(self.STATE_IS_PLACEHOLDER,
@@ -350,9 +336,7 @@ class NodeStepperCLI(object):
                   self._STATE_COLORS[self.STATE_DIRTY_VARIABLE])
                if element_name in dirty_variable_names else " ")
 
-    # TODO(ebreck) Return status here, once the caller is updated with the
-    # RichLine API.
-    return status.text[offset:], status.font_attr_segs
+    return status
 
   def _node_status_label_legend(self):
     """Get legend for node-status labels.
@@ -362,8 +346,8 @@ class NodeStepperCLI(object):
     """
 
     return debugger_cli_common.rich_text_lines_from_rich_line_list([
-        RL(""),
-        RL("Legend:"),
+        "",
+        "Legend:",
         (RL("  ") +
          RL(self.STATE_IS_PLACEHOLDER,
             self._STATE_COLORS[self.STATE_IS_PLACEHOLDER]) +
@@ -444,18 +428,18 @@ class NodeStepperCLI(object):
     """
     feed_types = self._node_stepper.last_feed_types()
 
-    out = debugger_cli_common.RichTextLines(["Stepper used feeds:"])
+    out = ["Stepper used feeds:"]
     if feed_types:
       for feed_name in feed_types:
         feed_info = RL("  %s : " % feed_name)
         feed_info += RL(feed_types[feed_name],
                         self._FEED_COLORS[feed_types[feed_name]])
-        out.append(feed_info.text, font_attr_segs=feed_info.font_attr_segs)
+        out.append(feed_info)
     else:
       out.append("  (No feeds)")
     out.append("")
 
-    return out
+    return debugger_cli_common.rich_text_lines_from_rich_line_list(out)
 
   def _report_last_updated(self):
     """Generate a report of the variables updated in the last cont/step call.
@@ -472,8 +456,8 @@ class NodeStepperCLI(object):
     rich_lines = [RL("Updated:", self._UPDATED_ATTRIBUTE)]
     sorted_last_updated = sorted(list(last_updated))
     for updated in sorted_last_updated:
-      rich_lines.append(RL("  %s" % updated))
-    rich_lines.append(RL(""))
+      rich_lines.append("  %s" % updated)
+    rich_lines.append("")
     return debugger_cli_common.rich_text_lines_from_rich_line_list(rich_lines)
 
   def step(self, args, screen_info=None):

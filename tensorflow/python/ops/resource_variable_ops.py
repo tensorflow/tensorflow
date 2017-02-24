@@ -205,7 +205,6 @@ class ResourceVariable(object):
           else:
             self._cached_value = None
           ops.add_to_collections(collections, self)
-          ops.add_to_collections([ops.GraphKeys.RESOURCES], self)
 
   def _init_from_proto(self, variable_def, import_scope=None):
     """Initializes from `VariableDef` proto."""
