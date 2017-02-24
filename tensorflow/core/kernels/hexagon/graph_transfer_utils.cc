@@ -53,7 +53,7 @@ GraphTransferUtils::GetTopNFloatResults(const float* const data,
 GraphTransferUtils::BuildRemoteFusedGraphExecuteInfo(
     const GraphTransferInfo& graph_transfer_info) {
   RemoteFusedGraphExecuteInfo execute_info;
-  execute_info.set_executor_name("hexagon");
+  execute_info.set_executor_name("build_hexagon_remote_fused_graph_executor");
   for (const GraphTransferInfo::GraphInputNodeInfo& input :
        graph_transfer_info.graph_input_node_info()) {
     RemoteFusedGraphExecuteInfo::GraphIONodeInfo& graph_input_node_info =

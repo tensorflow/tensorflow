@@ -17,7 +17,8 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/remote_fused_graph_execute_info.pb.h"
-#include "tensorflow/core/kernels/hexagon/hexagon_control_wrapper.h"
+#include "tensorflow/core/kernels/i_remote_fused_graph_executor.h"
+#include "tensorflow/core/kernels/remote_fused_graph_execute_utils.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -30,30 +31,37 @@ class RemoteFusedGraphExecuteOp : public OpKernel {
     OP_REQUIRES_OK(
         ctx, ctx->GetAttr("serialized_graph_transfer_info", &serialized_proto));
     execute_info_.ParseFromString(serialized_proto);
-    // TODO(satok): Add a way to register executor.
-    if (execute_info_.executor_name() == "hexagon") {
-      soc_control_wrapper_.reset(new HexagonControlWrapper());
+    if (!execute_info_.executor_name().empty()) {
+      const RemoteFusedGraphExecuteUtils::ExecutorBuildFunc* build_func =
+          RemoteFusedGraphExecuteUtils::GetExecutorBuildFunc(
+              execute_info_.executor_name());
+      if (build_func != nullptr) {
+        Status status = (*build_func)(&remote_fused_graph_executor_);
+      } else {
+        LOG(ERROR) << "Executor not found for "
+                   << execute_info_.executor_name();
+      }
     }
 
-    if (soc_control_wrapper_) {
+    if (remote_fused_graph_executor_) {
       // 1. Initialize remote processor
-      soc_control_wrapper_->Init(execute_info_);
+      remote_fused_graph_executor_->Init(execute_info_);
       // Explicitly clear serialized executor parameter after initialization
       // to release unnecessary memory.
       execute_info_.clear_serialized_executor_parameters();
 
       // 2. Setup graph in remote processor
-      soc_control_wrapper_->SetupGraph();
+      remote_fused_graph_executor_->SetupGraph();
     }
   }
 
   ~RemoteFusedGraphExecuteOp() final {
-    if (soc_control_wrapper_) {
+    if (remote_fused_graph_executor_) {
       // 6. Teardown graph in remote processor
-      soc_control_wrapper_->TeardownGraph();
+      remote_fused_graph_executor_->TeardownGraph();
 
       // 7. Finalize remote processor
-      soc_control_wrapper_->Finalize();
+      remote_fused_graph_executor_->Finalize();
     }
   }
 
@@ -70,14 +78,15 @@ class RemoteFusedGraphExecuteOp : public OpKernel {
       const RemoteFusedGraphExecuteInfo::GraphIONodeInfo& input_node_info =
           execute_info_.graph_input_node_info(i);
       const string& input_node_name = input_node_info.name();
-      if (soc_control_wrapper_) {
-        soc_control_wrapper_->FillInputNode(input_node_name, input_tensor);
+      if (remote_fused_graph_executor_) {
+        remote_fused_graph_executor_->FillInputNode(input_node_name,
+                                                    input_tensor);
       }
     }
 
     // 4. Execute graph in remote processor
-    if (soc_control_wrapper_) {
-      soc_control_wrapper_->ExecuteGraph();
+    if (remote_fused_graph_executor_) {
+      remote_fused_graph_executor_->ExecuteGraph();
     }
 
     // 5. Load outputs from remote processor
@@ -92,9 +101,10 @@ class RemoteFusedGraphExecuteOp : public OpKernel {
         output_shape.AddDim(dim);
       }
       OP_REQUIRES_OK(ctx, ctx->allocate_output(i, output_shape, &output));
-      if (soc_control_wrapper_) {
-        std::vector<ISocControlWrapper::ByteArray> outputs;
-        soc_control_wrapper_->ReadOutputNode(output_node_info.name(), &outputs);
+      if (remote_fused_graph_executor_) {
+        std::vector<IRemoteFusedGraphExecutor::ByteArray> outputs;
+        remote_fused_graph_executor_->ReadOutputNode(output_node_info.name(),
+                                                     &outputs);
         // TODO(satok): Remove this check (<= 1). And support multiple outputs
         // for each output node
         CHECK(outputs.size() <= 1);
@@ -112,7 +122,7 @@ class RemoteFusedGraphExecuteOp : public OpKernel {
 
  private:
   RemoteFusedGraphExecuteInfo execute_info_;
-  std::unique_ptr<ISocControlWrapper> soc_control_wrapper_;
+  std::unique_ptr<IRemoteFusedGraphExecutor> remote_fused_graph_executor_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(RemoteFusedGraphExecuteOp);
 };
