@@ -63,15 +63,20 @@ bool IsElementwiseOfEquivalentReshapesOrTransposes(
 // reshapes or transposes.
 bool TrySinkReshapeOrTranspose(HloComputation* computation,
                                HloInstruction* instruction) {
-  // TODO(b/35693996): Take out this work-around after fixing the bug.
-  if (instruction->opcode() == HloOpcode::kFusion) {
-    return false;
-  }
   if (IsElementwiseOfEquivalentReshapesOrTransposes(instruction)) {
     std::vector<HloInstruction*> operands = instruction->operands();
     auto old_reshape = operands[0];
     for (size_t i = 0; i < operands.size(); ++i) {
       operands[i] = operands[i]->mutable_operand(0);
+    }
+    if (HloOpcode::kFusion == instruction->opcode()) {
+      // Here we already know `instruction` is elementwise, and no operand is
+      // implicit broadcast as if it were the operands would not be equivalent
+      // reshapes, so all the fused instructions have the same dimensions.
+      for (const auto& fused_instruction : instruction->fused_instructions()) {
+        *fused_instruction->mutable_shape()->mutable_dimensions() =
+            operands[0]->shape().dimensions();
+      }
     }
     auto new_elementwise =
         computation->AddInstruction(instruction->CloneWithNewOperands(
