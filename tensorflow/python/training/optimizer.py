@@ -32,6 +32,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training import slot_creator
+from tensorflow.python.util import nest
 
 
 def _get_variable_for(v):
@@ -288,9 +289,9 @@ class Optimizer(object):
       loss: A `Tensor` containing the value to minimize.
       global_step: Optional `Variable` to increment by one after the
         variables have been updated.
-      var_list: Optional list of `Variable` objects to update to minimize
-        `loss`.  Defaults to the list of variables collected in the graph
-        under the key `GraphKeys.TRAINABLE_VARIABLES`.
+      var_list: Optional list or tuple of `Variable` objects to update to
+        minimize `loss`.  Defaults to the list of variables collected in
+        the graph under the key `GraphKeys.TRAINABLE_VARIABLES`.
       gate_gradients: How to gate the computation of gradients.  Can be
         `GATE_NONE`, `GATE_OP`, or  `GATE_GRAPH`.
       aggregation_method: Specifies the method used to combine gradient terms.
@@ -338,7 +339,7 @@ class Optimizer(object):
 
     Args:
       loss: A Tensor containing the value to minimize.
-      var_list: Optional list of `tf.Variable` to update to minimize
+      var_list: Optional list or tuple of `tf.Variable` to update to minimize
         `loss`.  Defaults to the list of variables collected in the graph
         under the key `GraphKey.TRAINABLE_VARIABLES`.
       gate_gradients: How to gate the computation of gradients.  Can be
@@ -369,6 +370,8 @@ class Optimizer(object):
       var_list = (
           variables.trainable_variables() +
           ops.get_collection(ops.GraphKeys.TRAINABLE_RESOURCE_VARIABLES))
+    else:
+      var_list = nest.flatten(var_list)
     # pylint: disable=protected-access
     var_list += ops.get_collection(ops.GraphKeys._STREAMING_MODEL_PORTS)
     # pylint: enable=protected-access
