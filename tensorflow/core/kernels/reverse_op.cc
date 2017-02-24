@@ -119,11 +119,7 @@ class ReverseOp : public OpKernel {
     const Tensor& dims = context->input(1);
 
     if (TensorShapeUtils::IsScalar(input.shape())) {
-      Tensor* output = nullptr;
-      OP_REQUIRES_OK(context,
-                     context->allocate_output(0, input.shape(), &output));
-      output->scalar<T>() = input.scalar<T>();
-
+      context->set_output(0, input);
     } else {
       const int input_dims = input.dims();
       OP_REQUIRES(context, TensorShapeUtils::IsVector(dims.shape()),
@@ -200,10 +196,7 @@ class ReverseV2Op : public OpKernel {
     const Tensor& sparse_dims = context->input(1);
 
     if (TensorShapeUtils::IsScalar(input.shape())) {
-      Tensor* output = nullptr;
-      OP_REQUIRES_OK(context,
-                     context->allocate_output(0, input.shape(), &output));
-      output->scalar<T>() = input.scalar<T>();
+      context->set_output(0, input);
     } else {
       const int input_dims = input.dims();
       const TensorShape& sparse_dims_shape = sparse_dims.shape();

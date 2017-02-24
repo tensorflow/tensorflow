@@ -34,9 +34,9 @@ class HexagonControlWrapper final : public ISocControlWrapper {
  public:
   HexagonControlWrapper() = default;
   int GetVersion() final;
-  bool Init() final;
+  bool Init(const RemoteFusedGraphExecuteInfo& info) final;
   bool Finalize() final;
-  bool SetupGraph(const GraphTransferer& graph_transferer) final;
+  bool SetupGraph() final;
   bool ExecuteGraph() final;
   bool TeardownGraph() final;
   bool FillInputNode(const string& node_name, const ConstByteArray bytes) final;
@@ -50,6 +50,7 @@ class HexagonControlWrapper final : public ISocControlWrapper {
   static GraphTransferInfo::NodeInfo* FindNodeInfo(
       const string& node_name, GraphTransferInfo* graph_transfer_info);
 
+  GraphTransferer graph_transferer_;
   // Dummy float array for input node.
   // TODO(satok): Use actual data passed by FillInputNode and remove
   std::vector<float> dummy_input_float_;

@@ -13,7 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Control Flow Operations. See the @{python/control_flow_ops} guide.
+"""Control Flow Operations.
+
+See the @{$python/control_flow_ops} guide.
 
 @@identity
 @@tuple

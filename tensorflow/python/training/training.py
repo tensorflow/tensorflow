@@ -13,7 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Support for training models.  See the @{$python/train} guide.
+"""Support for training models.
+
+See the @{$python/train} guide.
 
 @@Optimizer
 @@GradientDescentOptimizer

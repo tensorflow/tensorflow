@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Linear algebra libraries. See the @{$python/contrib.linalg} guide.
+"""Linear algebra libraries.
+
+See the @{$python/contrib.linalg} guide.
 
 @@LinearOperator
 @@LinearOperatorDiag

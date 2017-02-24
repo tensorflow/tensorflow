@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_HEXAGON_I_SOC_CONTROL_WRAPPER_H_
 #define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_HEXAGON_I_SOC_CONTROL_WRAPPER_H_
 
+#include "tensorflow/core/framework/remote_fused_graph_execute_info.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/hexagon/graph_transferer.h"
@@ -39,14 +40,14 @@ class ISocControlWrapper {
 
   // Initialize SOC. This function should be called before
   // starting graph transfer.
-  virtual bool Init() = 0;
+  virtual bool Init(const RemoteFusedGraphExecuteInfo& info) = 0;
 
   // Finalize SOC. This function should be called when all graph executions
   // are finished.
   virtual bool Finalize() = 0;
 
   // Setup graph on SOC
-  virtual bool SetupGraph(const GraphTransferer &graph_transferer) = 0;
+  virtual bool SetupGraph() = 0;
 
   // Execute graph on SOC
   virtual bool ExecuteGraph() = 0;

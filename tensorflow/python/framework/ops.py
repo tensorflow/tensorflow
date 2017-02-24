@@ -4029,6 +4029,10 @@ class GraphKeys(object):
   COND_CONTEXT = "cond_context"
   WHILE_CONTEXT = "while_context"
 
+  # Key for streaming model ports.
+  # NOTE(yuanbyu): internal and experimental.
+  _STREAMING_MODEL_PORTS = "streaming_model_ports"
+
   @decorator_utils.classproperty
   def VARIABLES(cls):  # pylint: disable=no-self-argument
     logging.warning("VARIABLES collection name is deprecated, "

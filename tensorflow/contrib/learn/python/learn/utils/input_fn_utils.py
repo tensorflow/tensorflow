@@ -12,8 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+"""Utilities for creating input_fns.
 
-"""Utilities for creating input_fns."""
+InputFnOps is renamed to ServingInputReceiver and moved to
+tensorflow/python/estimator/export.py.
+"""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function

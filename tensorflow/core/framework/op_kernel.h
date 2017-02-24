@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/framework/unique_tensor_references.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/manual_constructor.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
@@ -443,8 +444,7 @@ class OpOutputList {
 struct TensorValue {
   TensorValue() : mutex_if_ref(nullptr), tensor(nullptr) {}
   TensorValue(Tensor* t)  // NOLINT(runtime/explicit)
-      : mutex_if_ref(nullptr),
-        tensor(t) {}
+      : mutex_if_ref(nullptr), tensor(t) {}
   TensorValue(mutex* mu, Tensor* t) : mutex_if_ref(mu), tensor(t) {}
   Tensor* operator->() const { return tensor; }
   bool is_ref() const { return mutex_if_ref != nullptr; }
@@ -673,10 +673,11 @@ class OpKernelContext {
   // in-place computation was written to *output. Returns false if
   // input[input_index] has a refcount greater than or if its type does not
   // match the expected output type of output[output_index].
-  bool forward_input_to_output(int input_index, int output_index,
-                               Tensor** output);
-  Status forward_input_to_output(StringPiece input_name,
-                                 StringPiece output_name, Tensor** output);
+  bool forward_input_to_output_with_same_shape(
+      int input_index, int output_index, Tensor** output) TF_MUST_USE_RESULT;
+  Status forward_input_to_output_with_same_shape(
+      StringPiece input_name, StringPiece output_name,
+      Tensor** output) TF_MUST_USE_RESULT;
 
   // Returns true when an alias to input[input_index], reshaped to output_shape,
   // which is is safe to use for in-place computation was written to *output.
@@ -686,11 +687,22 @@ class OpKernelContext {
   // of elements in output_shape.
   bool forward_input_to_output_with_shape(int input_index, int output_index,
                                           const TensorShape& output_shape,
-                                          Tensor** output);
+                                          Tensor** output) TF_MUST_USE_RESULT;
   Status forward_input_to_output_with_shape(StringPiece input_name,
                                             StringPiece output_name,
                                             const TensorShape& output_shape,
-                                            Tensor** output);
+                                            Tensor** output) TF_MUST_USE_RESULT;
+
+  // Tries to forward one of the inputs given in input_indices to
+  // output[output_index]. If none of the given inputs can be forwarded, calls
+  // allocate_output() to allocate a new output buffer.
+  Status forward_input_or_allocate_output(
+      gtl::ArraySlice<int> candidate_input_indices, int output_index,
+      const TensorShape& output_shape, Tensor** output) TF_MUST_USE_RESULT;
+  Status forward_input_or_allocate_output(
+      gtl::ArraySlice<StringPiece> candidate_input_names,
+      StringPiece output_name, const TensorShape& output_shape,
+      Tensor** output) TF_MUST_USE_RESULT;
 
   // Output
 
@@ -1119,16 +1131,17 @@ class Name : public KernelDefBuilder {
 #define REGISTER_KERNEL_BUILDER_UNIQ_HELPER(ctr, kernel_builder, ...) \
   REGISTER_KERNEL_BUILDER_UNIQ(ctr, kernel_builder, __VA_ARGS__)
 
-#define REGISTER_KERNEL_BUILDER_UNIQ(ctr, kernel_builder, ...)          \
-  static ::tensorflow::kernel_factory::OpKernelRegistrar                \
-      registrar__body__##ctr##__object(                                 \
-          SHOULD_REGISTER_OP_KERNEL(#__VA_ARGS__)                       \
-              ? ::tensorflow::register_kernel::kernel_builder.Build()   \
-              : nullptr,                                                \
-          #__VA_ARGS__, [](::tensorflow::OpKernelConstruction* context) \
-                            -> ::tensorflow::OpKernel* {                \
-                              return new __VA_ARGS__(context);          \
-                            });
+#define REGISTER_KERNEL_BUILDER_UNIQ(ctr, kernel_builder, ...)        \
+  static ::tensorflow::kernel_factory::OpKernelRegistrar              \
+      registrar__body__##ctr##__object(                               \
+          SHOULD_REGISTER_OP_KERNEL(#__VA_ARGS__)                     \
+              ? ::tensorflow::register_kernel::kernel_builder.Build() \
+              : nullptr,                                              \
+          #__VA_ARGS__,                                               \
+          [](::tensorflow::OpKernelConstruction* context)             \
+              -> ::tensorflow::OpKernel* {                            \
+            return new __VA_ARGS__(context);                          \
+          });
 
 void* GlobalKernelRegistry();
 
@@ -1239,6 +1252,31 @@ inline TensorValue OpKernelContext::release_output(int index) {
   TensorValue value = outputs_[index];
   outputs_[index] = TensorValue();
   return value;
+}
+
+inline Status OpKernelContext::forward_input_or_allocate_output(
+    gtl::ArraySlice<int> candidate_input_indices, int output_index,
+    const TensorShape& output_shape, Tensor** output) {
+  for (int input_index : candidate_input_indices) {
+    if (forward_input_to_output_with_shape(input_index, output_index,
+                                           output_shape, output)) {
+      return Status::OK();
+    }
+  }
+  return allocate_output(output_index, output_shape, output);
+}
+
+inline Status OpKernelContext::forward_input_or_allocate_output(
+    gtl::ArraySlice<StringPiece> candidate_input_names, StringPiece output_name,
+    const TensorShape& output_shape, Tensor** output) {
+  for (const StringPiece& input_name : candidate_input_names) {
+    if (forward_input_to_output_with_shape(input_name, output_name,
+                                           output_shape, output)
+            .ok()) {
+      return Status::OK();
+    }
+  }
+  return allocate_output(output_name, output_shape, output);
 }
 
 template <typename T>
