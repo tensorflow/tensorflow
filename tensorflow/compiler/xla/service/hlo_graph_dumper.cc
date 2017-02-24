@@ -202,6 +202,7 @@ string InstructionSequenceGraph(
       case HloOpcode::kGe:
       case HloOpcode::kGt:
       case HloOpcode::kIndex:
+      case HloOpcode::kIsFinite:
       case HloOpcode::kLe:
       case HloOpcode::kLog:
       case HloOpcode::kLogicalAnd:

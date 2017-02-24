@@ -26,6 +26,7 @@ from tensorflow.python.debug.cli import tensor_format
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variables
 
+RL = debugger_cli_common.RichLine
 
 # Default threshold number of elements above which ellipses will be used
 # when printing the value of the tensor.
@@ -152,9 +153,8 @@ def error(msg):
       for screen output.
   """
 
-  full_msg = "ERROR: " + msg
-  return debugger_cli_common.RichTextLines(
-      [full_msg], font_attr_segs={0: [(0, len(full_msg), "red")]})
+  return debugger_cli_common.rich_text_lines_from_rich_line_list([
+      RL("ERROR: " + msg, "red")])
 
 
 def _get_fetch_name(fetch):
@@ -214,16 +214,16 @@ def _recommend_command(command, description, indent=2, create_link=False):
   """
 
   indent_str = " " * indent
-  lines = [indent_str + command + ":", indent_str + "  " + description]
 
   if create_link:
-    font_attr_segs = {
-        0: [(indent, indent + len(command), [
-            debugger_cli_common.MenuItem("", command), "bold"])]}
+    font_attr = [debugger_cli_common.MenuItem("", command), "bold"]
   else:
-    font_attr_segs = {0: [(indent, indent + len(command), "bold")]}
+    font_attr = "bold"
 
-  return debugger_cli_common.RichTextLines(lines, font_attr_segs=font_attr_segs)
+  lines = [RL(indent_str) + RL(command, font_attr) + ":",
+           indent_str + "  " + description]
+
+  return debugger_cli_common.rich_text_lines_from_rich_line_list(lines)
 
 
 def get_tfdbg_logo():
@@ -308,23 +308,19 @@ def get_run_start_intro(run_call_count,
           "Keep executing run() calls until a dumped tensor passes a given, "
           "registered filter (conditional breakpoint mode)"))
 
-  more_font_attr_segs = {}
   more_lines = ["    Registered filter(s):"]
   if tensor_filters:
     filter_names = []
     for filter_name in tensor_filters:
       filter_names.append(filter_name)
-      more_lines.append("        * " + filter_name)
       command_menu_node = debugger_cli_common.MenuItem(
           "", "run -f %s" % filter_name)
-      more_font_attr_segs[len(more_lines) - 1] = [
-          (10, len(more_lines[-1]), command_menu_node)]
+      more_lines.append(RL("        * ") + RL(filter_name, command_menu_node))
   else:
     more_lines.append("        (None)")
 
   out.extend(
-      debugger_cli_common.RichTextLines(
-          more_lines, font_attr_segs=more_font_attr_segs))
+      debugger_cli_common.rich_text_lines_from_rich_line_list(more_lines))
 
   out.extend(
       _recommend_command(
@@ -334,11 +330,10 @@ def get_run_start_intro(run_call_count,
           "inspect/modify their values", create_link=True))
 
   out.append("")
-  suggest_help = "For more details, see help."
-  out.append(
-      suggest_help,
-      font_attr_segs=[(len(suggest_help) - 5, len(suggest_help) - 1,
-                       debugger_cli_common.MenuItem("", "help"))])
+
+  out.append_rich_line(RL("For more details, see ") +
+                       RL("help.", debugger_cli_common.MenuItem("", "help")) +
+                       ".")
   out.append("")
 
   # Make main menu for the run-start intro.
@@ -407,14 +402,12 @@ def get_error_intro(tf_error):
 
   intro_lines = [
       "--------------------------------------",
-      "!!! An error occurred during the run !!!",
+      RL("!!! An error occurred during the run !!!", "blink"),
       "",
       "You may use the following commands to debug:",
   ]
-  intro_font_attr_segs = {1: [(0, len(intro_lines[1]), "blink")]}
 
-  out = debugger_cli_common.RichTextLines(
-      intro_lines, font_attr_segs=intro_font_attr_segs)
+  out = debugger_cli_common.rich_text_lines_from_rich_line_list(intro_lines)
 
   out.extend(
       _recommend_command("ni -a -d -t %s" % op_name,

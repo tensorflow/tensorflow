@@ -26,7 +26,7 @@ It renders a tf-collapsable-pane for each category. Inside each category, the
 provided content template is rendered repeatedly for each tag within that
 category.
 
-This helper also incorporates an expand button and data download utility for
+This helper also incorporates an expand button for
 each card.
 
 To use it, just specify a template inside tf-panes-helper that contains the
@@ -46,10 +46,6 @@ code that will be replicated for each tag.
 
 If you want for the template to be replicated for each tag and run, not only for
 each tag, you can set the repeatForRuns property to true.
-
-You can also set the showDownloadLinks property, which will show a menu with
-options to download JSON and CSV data. For this, you must also set the
-downloadLinkUrlFunction property to an appropriate value.
 
 @element tf-panes-helper
 -->
@@ -91,14 +87,6 @@ downloadLinkUrlFunction property to an appropriate value.
                     icon="fullscreen"
                     on-tap="_toggleExpanded"
                     ></paper-icon-button>
-                  <template is="dom-if" if="[[showDownloadLinks]]">
-                    <tf-downloader
-                      runs="[[item.runs]]"
-                      tag="[[item.tag]]"
-                      url-fn="[[downloadLinkUrlFunction]]"
-                      >
-                    </tf-downloader>
-                  </template>
                 </div>
               </div>
           </template>
@@ -171,12 +159,6 @@ downloadLinkUrlFunction property to an appropriate value.
       .card-expanded .expand-button {
         background: var(--tb-ui-light-accent);
       }
-
-      tf-downloader {
-        margin-right: 30px;
-        pointer-events: auto;
-      }
-
     </style>
   </template>
   <script>
@@ -229,22 +211,6 @@ downloadLinkUrlFunction property to an appropriate value.
          * displayed).
          */
         selectedRuns: Array,
-
-        /**
-         * If true, shows a menu with download links for the template data.
-         * If this is set to true, urlFn must also be provided.
-         */
-        showDownloadLinks: Boolean,
-
-        /**
-         * Function that returns the route to get data to download. Must be
-         * provided if showDownloadLinks is enabled.
-         */
-        downloadLinkUrlFunction: Function,
-        _contentTemplate: {
-          type: Object,
-          value: null
-        },
         _stampedTemplates: {
           type: Array,
           value: function() { return [] }

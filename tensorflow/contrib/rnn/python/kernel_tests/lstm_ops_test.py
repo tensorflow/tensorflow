@@ -149,8 +149,8 @@ class LSTMBlockCellTest(test.TestCase):
         m3 = array_ops.zeros([1, 2])
         g, ((out_m0, out_m1),
             (out_m2, out_m3)) = core_rnn_cell_impl.MultiRNNCell(
-                [core_rnn_cell_impl.BasicLSTMCell(
-                    2, state_is_tuple=True)] * 2,
+                [core_rnn_cell_impl.BasicLSTMCell(2, state_is_tuple=True)
+                 for _ in range(2)],
                 state_is_tuple=True)(x, ((m0, m1), (m2, m3)))
         sess.run([variables.global_variables_initializer()])
         basic_res = sess.run([g, out_m0, out_m1, out_m2, out_m3], {
@@ -168,8 +168,8 @@ class LSTMBlockCellTest(test.TestCase):
         m3 = array_ops.zeros([1, 2])
         g, ((out_m0, out_m1),
             (out_m2, out_m3)) = core_rnn_cell_impl.MultiRNNCell(
-                [lstm_ops.LSTMBlockCell(2)] * 2, state_is_tuple=True)(x, (
-                    (m0, m1), (m2, m3)))
+                [lstm_ops.LSTMBlockCell(2) for _ in range(2)],
+                state_is_tuple=True)(x, ((m0, m1), (m2, m3)))
         sess.run([variables.global_variables_initializer()])
         block_res = sess.run([g, out_m0, out_m1, out_m2, out_m3], {
             x.name: x_values,
@@ -202,10 +202,9 @@ class LSTMBlockCellTest(test.TestCase):
         m3 = array_ops.zeros([1, 2])
         g, ((out_m0, out_m1),
             (out_m2, out_m3)) = core_rnn_cell_impl.MultiRNNCell(
-                [
-                    core_rnn_cell_impl.LSTMCell(
-                        2, use_peepholes=True, state_is_tuple=True)
-                ] * 2,
+                [core_rnn_cell_impl.LSTMCell(
+                    2, use_peepholes=True, state_is_tuple=True)
+                 for _ in range(2)],
                 state_is_tuple=True)(x, ((m0, m1), (m2, m3)))
         sess.run([variables.global_variables_initializer()])
         basic_res = sess.run([g, out_m0, out_m1, out_m2, out_m3], {
@@ -223,8 +222,8 @@ class LSTMBlockCellTest(test.TestCase):
         m3 = array_ops.zeros([1, 2])
         g, ((out_m0, out_m1),
             (out_m2, out_m3)) = core_rnn_cell_impl.MultiRNNCell(
-                [lstm_ops.LSTMBlockCell(
-                    2, use_peephole=True)] * 2,
+                [lstm_ops.LSTMBlockCell(2, use_peephole=True)
+                 for _ in range(2)],
                 state_is_tuple=True)(x, ((m0, m1), (m2, m3)))
         sess.run([variables.global_variables_initializer()])
         block_res = sess.run([g, out_m0, out_m1, out_m2, out_m3], {
