@@ -15,44 +15,58 @@ limitations under the License.
 
 package org.tensorflow;
 
-import java.util.Set;
-
 /**
  * SavedModel representation once the SavedModel is loaded from storage.
+ *
+ * SavedModelBundle represents a model loaded from storage.
+ *
+ * The model consists of a description of the computation (a {@link Graph}),
+ * a {@link Session} with tensors (e.g., parameters or variables in the graph)
+ * initialized to values saved in storage, and a description of the model (a
+ * serialized representation of a
+ * <a href="https://www.tensorflow.org/code/tensorflow/core/protobuf/meta_graph.proto">MetaGraphDef
+ * protocol buffer</a>).
  */
 public class SavedModelBundle implements AutoCloseable {
 
-    SavedModelBundle(Graph graph, Session session, byte[] metaGraphDef) {
-        this.graph = graph;
-        this.session = session;
-        this.metaGraphDef = metaGraphDef;
+    /**
+     * Load a saved model from an export directory.
+     * @param exportDir the directory path containing a saved model.
+     * @param tags the tags identifying the specific metagraphdef to load.
+     * @return a bundle containing the graph and associated session.
+     */
+    public static SavedModelBundle load(String exportDir, String... tags) {
+        return load(exportDir, tags, null);
     }
 
     /**
-     * Get the metagraphdef associated with the saved model bundle and tags used to load it.
+     * Returns the serialized <a
+     * href="https://www.tensorflow.org/code/tensorflow/core/protobuf/meta_graph.proto">MetaGraphDef
+     * protocol buffer</a> associated with the saved model.
      */
     public byte[] metaGraphDef() {
         return metaGraphDef;
     }
 
     /**
-     * Get the graph loaded from the saved model bundle.
+     * Returns the graph that describes the computation performed by the model.
      */
     public Graph graph() {
         return graph;
     }
 
     /**
-     * Get the session associated with the saved model bundle.
+     * Returns the {@link Session} with which to perform computation using the model.
+     *
+     * @return the initialized session
      */
     public Session session() {
         return session;
     }
 
     /**
-     * Release resources associated with the saved model bundle.
-     *
-     * <p>The session and graph are released when this method is called.
+     * Releases resources (the {@link Graph} and {@link Session}) associated with
+     * the saved model bundle.
      */
     @Override
     public void close() {
@@ -64,29 +78,25 @@ public class SavedModelBundle implements AutoCloseable {
     private final Session session;
     private final byte[] metaGraphDef;
 
-    /**
-     * Load a saved model from an export directory.
-     * @param exportDir the directory path containing a saved model.
-     * @param tags the tags identifying the specific metagraphdef to load.
-     * @return a bundle containing the graph and associated session.
-     */
-    public static SavedModelBundle loadSavedModel(String exportDir, Set<String> tags) {
-        return load(exportDir, tags.toArray(new String[tags.size()]));
+    SavedModelBundle(Graph graph, Session session, byte[] metaGraphDef) {
+        this.graph = graph;
+        this.session = session;
+        this.metaGraphDef = metaGraphDef;
     }
 
     /**
-     * Create a SavedModelBundle object from a handle to the C TF_Graph object and
-     * to the C TF_Session object, plus the associated metagraphdef.
+     * Create a SavedModelBundle object from a handle to the C <i>TF_Graph</i> object and
+     * to the C <i>TF_Session</i> object, plus the serialized <i>MetaGraphDef</i>.
      *
-     * <p>Takes ownership of the handles.
+     * <p>Invoked from the native <i>load</i> method. Takes ownership of the handles.
      */
-    static SavedModelBundle fromHandle(long graphHandle, long sessionHandle, byte[] metaGraphDef) {
+    private static SavedModelBundle fromHandle(long graphHandle, long sessionHandle, byte[] metaGraphDef) {
         Graph graph = new Graph(graphHandle);
         Session session = new Session(graph, sessionHandle);
         return new SavedModelBundle(graph, session, metaGraphDef);
     }
 
-    private static native SavedModelBundle load(String exportDir, String[] tags);
+    private static native SavedModelBundle load(String exportDir, String[] tags, byte[] runOptions);
 
     static {
         TensorFlow.init();
