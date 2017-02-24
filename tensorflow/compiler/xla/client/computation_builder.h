@@ -507,6 +507,12 @@ class ComputationBuilder {
   ComputationDataHandle Pow(const ComputationDataHandle& lhs,
                             const ComputationDataHandle& rhs);
 
+  // Enqueues an operator that tests if the operand's values are finite, i.e.,
+  // not Inf or NaN. Defined only for floating-point types. Returns an array of
+  // booleans with the same shape where entries are true iff the corresponding
+  // entry was NaN.
+  ComputationDataHandle IsFinite(const ComputationDataHandle& operand);
+
   // Enqueues a convert instruction onto the computation that changes the
   // element type of the operand array to primitive_type.
   ComputationDataHandle ConvertElementType(const ComputationDataHandle& operand,
