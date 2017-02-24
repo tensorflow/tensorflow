@@ -9,6 +9,8 @@ package(
     ],
 )
 
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 licenses(["notice"])  # Apache 2.0
 
 py_library(

@@ -8,7 +8,20 @@ package(
     ],
 )
 
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 licenses(["notice"])  # Apache 2.0
+
+py_library(
+    name = "estimator_py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":checkpoint_utils",
+        ":estimator",
+        ":model_fn",
+        ":run_config",
+    ],
+)
 
 py_library(
     name = "checkpoint_utils",
@@ -74,7 +87,9 @@ py_library(
 
 py_library(
     name = "estimator",
-    srcs = ["estimator.py"],
+    srcs = [
+        "estimator.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":run_config",

@@ -78,6 +78,7 @@ py_library(
         ":util",
         ":weights_broadcast_ops",
         "//third_party/py/numpy",
+        "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/saved_model",
     ] + if_not_windows([
