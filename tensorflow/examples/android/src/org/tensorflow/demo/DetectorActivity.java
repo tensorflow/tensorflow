@@ -52,12 +52,12 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
   private static final Logger LOGGER = new Logger();
 
   // Configuration values for the prepackaged multibox model.
-  private static final int MB_NUM_LOCATIONS = 784;
   private static final int MB_INPUT_SIZE = 224;
   private static final int MB_IMAGE_MEAN = 128;
   private static final float MB_IMAGE_STD = 128;
   private static final String MB_INPUT_NAME = "ResizeBilinear";
-  private static final String MB_OUTPUT_NAMES = "output_locations/Reshape,output_scores/Reshape";
+  private static final String MB_OUTPUT_LOCATIONS_NAME = "output_locations/Reshape";
+  private static final String MB_OUTPUT_SCORES_NAME = "output_scores/Reshape";
   private static final String MB_MODEL_FILE = "file:///android_asset/multibox_model.pb";
   private static final String MB_LOCATION_FILE =
       "file:///android_asset/multibox_location_priors.txt";
@@ -79,7 +79,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
   private static final int CROP_SIZE = USE_YOLO ? YOLO_INPUT_SIZE : MB_INPUT_SIZE;
 
   // Minimum detection confidence to track a detection.
-  private static final float MINIMUM_CONFIDENCE = USE_YOLO ? 0.0f : 0.1f;
+  private static final float MINIMUM_CONFIDENCE = USE_YOLO ? 0.25f : 0.1f;
 
   private static final boolean MAINTAIN_ASPECT = USE_YOLO;
 
@@ -140,12 +140,11 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
                 getAssets(),
                 MB_MODEL_FILE,
                 MB_LOCATION_FILE,
-                MB_NUM_LOCATIONS,
-                MB_INPUT_SIZE,
                 MB_IMAGE_MEAN,
                 MB_IMAGE_STD,
                 MB_INPUT_NAME,
-                MB_OUTPUT_NAMES);
+                MB_OUTPUT_LOCATIONS_NAME,
+                MB_OUTPUT_SCORES_NAME);
       }
     } catch (final Exception e) {
       throw new RuntimeException("Error initializing TensorFlow!", e);

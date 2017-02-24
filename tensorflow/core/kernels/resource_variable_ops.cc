@@ -115,6 +115,10 @@ class AssignVariableOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* context) override {
+    OP_REQUIRES(context, dtype_ == context->input(1).dtype(),
+                errors::InvalidArgument(
+                    "Variable and value dtypes don't match; respectively, ",
+                    dtype_, " and ", context->input(1).dtype()));
     Var* variable = nullptr;
     OP_REQUIRES_OK(
         context,
@@ -141,6 +145,18 @@ class AssignVariableOp : public OpKernel {
     // ownership.
     mutex_lock ml(*variable->mu());
     const Tensor& value = context->input(1);
+    // TODO(apassos): should check that the declared shapes are compatible
+    // somewhere, probably.
+    if (!variable->tensor()->shape().IsSameSize(value.shape())) {
+      PersistentTensor unused;
+      Tensor* tmp;
+      AllocatorAttributes attr;
+      attr.set_gpu_compatible(true);
+      attr.set_nic_compatible(true);
+      OP_REQUIRES_OK(context, context->allocate_persistent(
+                                  dtype_, value.shape(), &unused, &tmp, attr));
+      *variable->tensor() = *tmp;
+    }
     functor::DenseUpdate<Device, T, ASSIGN> copy_functor;
     copy_functor(context->eigen_device<Device>(), variable->tensor()->flat<T>(),
                  value.flat<T>());

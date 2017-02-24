@@ -185,6 +185,34 @@ REGISTER_KERNEL_BUILDER(Name("_ArrayToList")
                             .TypeConstraint<int32>("T"),
                         PassOn);
 
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNELS(type)                                      \
+  REGISTER_KERNEL_BUILDER(                                               \
+      Name("_ListToArray").Device(DEVICE_SYCL).TypeConstraint<type>("T"),\
+      PassOn);                                                           \
+  REGISTER_KERNEL_BUILDER(                                               \
+      Name("_ArrayToList").Device(DEVICE_SYCL).TypeConstraint<type>("T"),\
+      PassOn);
+
+REGISTER_SYCL_KERNELS(float);
+REGISTER_SYCL_KERNELS(double);
+
+#undef REGISTER_SYCL_KERNELS
+
+REGISTER_KERNEL_BUILDER(Name("_ListToArray")
+                            .Device(DEVICE_SYCL)
+                            .HostMemory("input")
+                            .HostMemory("output")
+                            .TypeConstraint<int32>("T"),
+                        PassOn);
+REGISTER_KERNEL_BUILDER(Name("_ArrayToList")
+                            .Device(DEVICE_SYCL)
+                            .HostMemory("input")
+                            .HostMemory("output")
+                            .TypeConstraint<int32>("T"),
+                        PassOn);
+#endif // TENSORFLOW_USE_SYCL
+
 class SymbolicGradientOp : public AsyncOpKernel {
  public:
   SymbolicGradientOp(OpKernelConstruction* ctx)

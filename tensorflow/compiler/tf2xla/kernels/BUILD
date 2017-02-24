@@ -53,6 +53,7 @@ tf_kernel_library(
         "transpose_op.cc",
         "unary_ops.cc",
         "unpack_op.cc",
+        "variable_ops.cc",
     ],
     hdrs = [
         "cwise_ops.h",

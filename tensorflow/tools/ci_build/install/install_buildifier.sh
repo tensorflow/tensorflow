@@ -16,8 +16,9 @@
 
 set -e
 BUILDIFIER_DIR="buildifier"
-rm -rf ${BUILDIFIER_DIR}
-git clone https://github.com/bazelbuild/buildifier.git ${BUILDIFIER_DIR}
+mkdir ${BUILDIFIER_DIR}
+curl -Ls https://github.com/bazelbuild/buildifier/archive/0.4.3.tar.gz | \
+    tar -C "${BUILDIFIER_DIR}" --strip-components=1 -xz
 pushd ${BUILDIFIER_DIR}
 
 bazel build buildifier:buildifier --spawn_strategy=standalone --genrule_strategy=standalone

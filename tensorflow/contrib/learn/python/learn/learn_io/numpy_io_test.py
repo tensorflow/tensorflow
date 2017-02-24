@@ -62,6 +62,134 @@ class NumpyIoTest(test.TestCase):
       coord.request_stop()
       coord.join(threads)
 
+  def testNumpyInputFnWithZeroEpochs(self):
+    a = np.arange(4) * 1.0
+    b = np.arange(32, 36)
+    x = {'a': a, 'b': b}
+    y = np.arange(-32, -28)
+
+    with self.test_session() as session:
+      input_fn = numpy_io.numpy_input_fn(
+          x, y, batch_size=2, shuffle=False, num_epochs=0)
+      features, target = input_fn()
+
+      coord = coordinator.Coordinator()
+      threads = queue_runner_impl.start_queue_runners(session, coord=coord)
+
+      with self.assertRaises(errors.OutOfRangeError):
+        session.run([features, target])
+
+      coord.request_stop()
+      coord.join(threads)
+
+  def testNumpyInputFnWithBatchSizeNotDividedByDataSize(self):
+    batch_size = 2
+    a = np.arange(5) * 1.0
+    b = np.arange(32, 37)
+    x = {'a': a, 'b': b}
+    y = np.arange(-32, -27)
+
+    with self.test_session() as session:
+      input_fn = numpy_io.numpy_input_fn(
+          x, y, batch_size=batch_size, shuffle=False, num_epochs=1)
+      features, target = input_fn()
+
+      coord = coordinator.Coordinator()
+      threads = queue_runner_impl.start_queue_runners(session, coord=coord)
+
+      res = session.run([features, target])
+      self.assertAllEqual(res[0]['a'], [0, 1])
+      self.assertAllEqual(res[0]['b'], [32, 33])
+      self.assertAllEqual(res[1], [-32, -31])
+
+      res = session.run([features, target])
+      self.assertAllEqual(res[0]['a'], [2, 3])
+      self.assertAllEqual(res[0]['b'], [34, 35])
+      self.assertAllEqual(res[1], [-30, -29])
+
+      res = session.run([features, target])
+      self.assertAllEqual(res[0]['a'], [4])
+      self.assertAllEqual(res[0]['b'], [36])
+      self.assertAllEqual(res[1], [-28])
+
+      with self.assertRaises(errors.OutOfRangeError):
+        session.run([features, target])
+
+      coord.request_stop()
+      coord.join(threads)
+
+  def testNumpyInputFnWithBatchSizeNotDividedByDataSizeAndMultipleEpochs(self):
+    batch_size = 2
+    a = np.arange(3) * 1.0
+    b = np.arange(32, 35)
+    x = {'a': a, 'b': b}
+    y = np.arange(-32, -29)
+
+    with self.test_session() as session:
+      input_fn = numpy_io.numpy_input_fn(
+          x, y, batch_size=batch_size, shuffle=False, num_epochs=3)
+      features, target = input_fn()
+
+      coord = coordinator.Coordinator()
+      threads = queue_runner_impl.start_queue_runners(session, coord=coord)
+
+      res = session.run([features, target])
+      self.assertAllEqual(res[0]['a'], [0, 1])
+      self.assertAllEqual(res[0]['b'], [32, 33])
+      self.assertAllEqual(res[1], [-32, -31])
+
+      res = session.run([features, target])
+      self.assertAllEqual(res[0]['a'], [2, 0])
+      self.assertAllEqual(res[0]['b'], [34, 32])
+      self.assertAllEqual(res[1], [-30, -32])
+
+      res = session.run([features, target])
+      self.assertAllEqual(res[0]['a'], [1, 2])
+      self.assertAllEqual(res[0]['b'], [33, 34])
+      self.assertAllEqual(res[1], [-31, -30])
+
+      res = session.run([features, target])
+      self.assertAllEqual(res[0]['a'], [0, 1])
+      self.assertAllEqual(res[0]['b'], [32, 33])
+      self.assertAllEqual(res[1], [-32, -31])
+
+      res = session.run([features, target])
+      self.assertAllEqual(res[0]['a'], [2])
+      self.assertAllEqual(res[0]['b'], [34])
+      self.assertAllEqual(res[1], [-30])
+
+      with self.assertRaises(errors.OutOfRangeError):
+        session.run([features, target])
+
+      coord.request_stop()
+      coord.join(threads)
+
+  def testNumpyInputFnWithBatchSizeLargerThanDataSize(self):
+    batch_size = 10
+    a = np.arange(4) * 1.0
+    b = np.arange(32, 36)
+    x = {'a': a, 'b': b}
+    y = np.arange(-32, -28)
+
+    with self.test_session() as session:
+      input_fn = numpy_io.numpy_input_fn(
+          x, y, batch_size=batch_size, shuffle=False, num_epochs=1)
+      features, target = input_fn()
+
+      coord = coordinator.Coordinator()
+      threads = queue_runner_impl.start_queue_runners(session, coord=coord)
+
+      res = session.run([features, target])
+      self.assertAllEqual(res[0]['a'], [0, 1, 2, 3])
+      self.assertAllEqual(res[0]['b'], [32, 33, 34, 35])
+      self.assertAllEqual(res[1], [-32, -31, -30, -29])
+
+      with self.assertRaises(errors.OutOfRangeError):
+        session.run([features, target])
+
+      coord.request_stop()
+      coord.join(threads)
+
   def testNumpyInputFnWithDifferentDimensionsOfFeatures(self):
     a = np.array([[1, 2], [3, 4]])
     b = np.array([5, 6])

@@ -33,6 +33,9 @@ class GraphDef;
 class NodeBuilder;
 struct CompositeOpScopes;
 
+/// @addtogroup core
+/// @{
+
 /// A `Scope` object represents a set of related TensorFlow ops that have the
 /// same properties such as a common name prefix.
 ///
@@ -272,6 +275,8 @@ struct CompositeOpScopes {
   /// Scope to be used for creating the last op.
   Scope last;
 };
+
+/// @}
 
 }  // namespace tensorflow
 

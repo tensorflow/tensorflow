@@ -94,7 +94,7 @@ class EventLoggingTest(test.TestCase):
     tensorboard_logging.debug("debug")
 
     self.assertLoggedMessagesAre([(event_pb2.LogMessage.ERROR, "error"),
-                                  (event_pb2.LogMessage.DEBUG, "debug")])
+                                  (event_pb2.LogMessage.DEBUGGING, "debug")])
     # All message should be logged because tensorboard_logging verbosity doesn't
     # affect logging verbosity.
     self.assertEqual(3, self.logged_message_count)

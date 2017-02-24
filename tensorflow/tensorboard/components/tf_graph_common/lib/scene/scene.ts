@@ -13,102 +13,157 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 module tf.graph.scene {
+  const svgNamespace = 'http://www.w3.org/2000/svg';
 
-/** Enums element class of objects in the scene */
-export let Class = {
-  Node: {
-    // <g> element that contains nodes.
-    CONTAINER: 'nodes',
-    // <g> element that contains detail about a node.
-    GROUP: 'node',
-    // <g> element that contains visual elements (like rect, ellipse).
-    SHAPE: 'nodeshape',
-    // <*> element(s) under SHAPE that should receive color updates.
-    COLOR_TARGET: 'nodecolortarget',
-    // <text> element showing the node's label.
-    LABEL: 'nodelabel',
-    // <g> element that contains all visuals for the expand/collapse
-    // button for expandable group nodes.
-    BUTTON_CONTAINER: 'buttoncontainer',
-    // <circle> element that surrounds expand/collapse buttons.
-    BUTTON_CIRCLE: 'buttoncircle',
-    // <path> element of the expand button.
-    EXPAND_BUTTON: 'expandbutton',
-    // <path> element of the collapse button.
-    COLLAPSE_BUTTON: 'collapsebutton'
-  },
-  Edge: {
-    CONTAINER: 'edges',
-    GROUP: 'edge',
-    LINE: 'edgeline',
-    REF_LINE: 'refline',
-    STRUCTURAL: 'structural'
-  },
-  Annotation: {
-    OUTBOX: 'out-annotations',
-    INBOX: 'in-annotations',
-    GROUP: 'annotation',
-    NODE: 'annotation-node',
-    EDGE: 'annotation-edge',
-    CONTROL_EDGE: 'annotation-control-edge',
-    LABEL: 'annotation-label',
-    ELLIPSIS: 'annotation-ellipsis'
-  },
-  Scene: {
-    GROUP: 'scene',
-    CORE: 'core',
-    INEXTRACT: 'in-extract',
-    OUTEXTRACT: 'out-extract'
-  },
-  Subscene: {GROUP: 'subscene'},
-  OPNODE: 'op',
-  METANODE: 'meta',
-  SERIESNODE: 'series',
-  BRIDGENODE: 'bridge',
-  ELLIPSISNODE: 'ellipsis'
-};
+  /** Enums element class of objects in the scene */
+  export let Class = {
+    Node: {
+      // <g> element that contains nodes.
+      CONTAINER: 'nodes',
+      // <g> element that contains detail about a node.
+      GROUP: 'node',
+      // <g> element that contains visual elements (like rect, ellipse).
+      SHAPE: 'nodeshape',
+      // <*> element(s) under SHAPE that should receive color updates.
+      COLOR_TARGET: 'nodecolortarget',
+      // <text> element showing the node's label.
+      LABEL: 'nodelabel',
+      // <g> element that contains all visuals for the expand/collapse
+      // button for expandable group nodes.
+      BUTTON_CONTAINER: 'buttoncontainer',
+      // <circle> element that surrounds expand/collapse buttons.
+      BUTTON_CIRCLE: 'buttoncircle',
+      // <path> element of the expand button.
+      EXPAND_BUTTON: 'expandbutton',
+      // <path> element of the collapse button.
+      COLLAPSE_BUTTON: 'collapsebutton'
+    },
+    Edge: {
+      CONTAINER: 'edges',
+      GROUP: 'edge',
+      LINE: 'edgeline',
+      REF_LINE: 'refline',
+      STRUCTURAL: 'structural'
+    },
+    Annotation: {
+      OUTBOX: 'out-annotations',
+      INBOX: 'in-annotations',
+      GROUP: 'annotation',
+      NODE: 'annotation-node',
+      EDGE: 'annotation-edge',
+      CONTROL_EDGE: 'annotation-control-edge',
+      LABEL: 'annotation-label',
+      ELLIPSIS: 'annotation-ellipsis'
+    },
+    Scene: {
+      GROUP: 'scene',
+      CORE: 'core',
+      INEXTRACT: 'in-extract',
+      OUTEXTRACT: 'out-extract'
+    },
+    Subscene: {GROUP: 'subscene'},
+    OPNODE: 'op',
+    METANODE: 'meta',
+    SERIESNODE: 'series',
+    BRIDGENODE: 'bridge',
+    ELLIPSISNODE: 'ellipsis'
+  };
 
-/**
- * Helper method for fitting the graph in the svg view.
- *
- * @param svg The main svg.
- * @param zoomG The svg group used for panning and zooming.
- * @param d3zoom The zoom behavior.
- * @param callback Called when the fitting is done.
- */
-export function fit(svg, zoomG, d3zoom, callback) {
-  let svgRect = svg.getBoundingClientRect();
-  let sceneSize = null;
-  try {
-    sceneSize = zoomG.getBBox();
-    if (sceneSize.width === 0) {
-      // There is no scene anymore. We have been detached from the dom.
+  /**
+   * A health pill encapsulates an overview of tensor element values. The value
+   * field is a list of 12 numbers that shed light on the status of the tensor.
+   * Visualized in health pills are the 3rd through 8th (inclusive) numbers of
+   * health pill values. Those 6 numbers are counts of tensor elements that fall
+   * under -Inf, negative, 0, positive, +Inf, NaN (in that order).
+   *
+   * Please keep this interface consistent with HealthPillDatum within
+   * backend.ts.
+   */
+  export interface HealthPill {
+    node_name: string;
+    output_slot: number;
+    value: number[];
+    wall_time: number;
+    step: number;
+  }
+  ;
+
+  /**
+   * Encapsulates how to render a single entry in a health pill. Each entry
+   * corresponds to a category of tensor element values.
+   */
+  export interface HealthPillEntry {
+    background_color: string;
+    label: string;
+  }
+  ;
+  export let healthPillEntries: HealthPillEntry[] = [
+    {
+      background_color: '#CC2F2C',
+      label: 'NaN',
+    },
+    {
+      background_color: '#FFFF00',
+      label: '- ∞',
+    },
+    {
+      background_color: '#A8A8A8',
+      label: '-',
+    },
+    {
+      background_color: '#D8DBE2',
+      label: '0',
+    },
+    {
+      background_color: '#424242',
+      label: '+',
+    },
+    {
+      background_color: '#FFA500',
+      label: '+ ∞',
+    },
+  ];
+
+  /**
+   * Helper method for fitting the graph in the svg view.
+   *
+   * @param svg The main svg.
+   * @param zoomG The svg group used for panning and zooming.
+   * @param d3zoom The zoom behavior.
+   * @param callback Called when the fitting is done.
+   */
+  export function fit(svg, zoomG, d3zoom, callback) {
+    let svgRect = svg.getBoundingClientRect();
+    let sceneSize = null;
+    try {
+      sceneSize = zoomG.getBBox();
+      if (sceneSize.width === 0) {
+        // There is no scene anymore. We have been detached from the dom.
+        return;
+      }
+    } catch (e) {
+      // Firefox produced NS_ERROR_FAILURE if we have been
+      // detached from the dom.
       return;
     }
-  } catch (e) {
-    // Firefox produced NS_ERROR_FAILURE if we have been
-    // detached from the dom.
-    return;
-  }
-  let scale = 0.9 * Math.min(
-      svgRect.width / sceneSize.width,
-      svgRect.height / sceneSize.height,
-      2
-    );
-  let params = layout.PARAMS.graph;
-  let zoomEvent =
-      d3zoom.scale(scale)
-          .on('zoomend.fitted',
-              () => {
-                // Remove the listener for the zoomend event,
-                // so we don't get called at the end of regular zoom events,
-                // just those that fit the graph to screen.
-                d3zoom.on('zoomend.fitted', null);
-                callback();
-              })
-          .translate([params.padding.paddingLeft, params.padding.paddingTop])
-          .event;
-  d3.select(zoomG).transition().duration(500).call(zoomEvent);
+    let scale = 0.9 *
+        Math.min(
+            svgRect.width / sceneSize.width, svgRect.height / sceneSize.height,
+            2);
+    let params = layout.PARAMS.graph;
+    let zoomEvent =
+        d3zoom.scale(scale)
+            .on('zoomend.fitted',
+                () => {
+                  // Remove the listener for the zoomend event,
+                  // so we don't get called at the end of regular zoom events,
+                  // just those that fit the graph to screen.
+                  d3zoom.on('zoomend.fitted', null);
+                  callback();
+                })
+            .translate([params.padding.paddingLeft, params.padding.paddingTop])
+            .event;
+    d3.select(zoomG).transition().duration(500).call(zoomEvent);
 };
 
 /**
@@ -448,6 +503,121 @@ export function positionEllipse(ellipse, cx: number, cy: number,
     rx: width / 2,
     ry: height / 2
   });
+};
+
+/**
+ * Renders a health pill for an op atop a node.
+ */
+function _addHealthPill(
+    nodeGroupElement: SVGElement, healthPill: HealthPill,
+    nodeInfo: render.RenderGroupNodeInfo) {
+  // Check if text already exists at location.
+  d3.select(nodeGroupElement.parentNode)
+      .selectAll('.health-pill-group')
+      .remove();
+
+  if (!nodeInfo || !healthPill) {
+    return;
+  }
+
+  let lastHealthPillData = healthPill.value;
+
+  // For now, we only visualize the 6 values that summarize counts of tensor
+  // elements of various categories: -Inf, negative, 0, positive, Inf, and NaN.
+  let lastHealthPillOverview = lastHealthPillData.slice(2, 8);
+
+  let healthPillWidth = 60;
+  let healthPillHeight = 10;
+  if (nodeInfo.node.type === tf.graph.NodeType.OP) {
+    // Use a smaller health pill for op nodes (rendered as smaller ellipses).
+    healthPillWidth /= 2;
+    healthPillHeight /= 2;
+  }
+
+  let healthPillSvg = document.createElementNS(svgNamespace, 'svg');
+  healthPillSvg.classList.add('health-pill-group');
+  healthPillSvg.setAttribute('width', String(healthPillWidth));
+  healthPillSvg.setAttribute('height', String(healthPillHeight));
+
+  let svgDefs = document.createElementNS(svgNamespace, 'defs');
+  healthPillSvg.appendChild(svgDefs);
+  let clipPath = document.createElementNS(svgNamespace, 'clipPath');
+  clipPath.setAttribute('id', 'health-pill-clip-path');
+  svgDefs.appendChild(clipPath);
+  let clipRect = document.createElementNS(svgNamespace, 'rect');
+  clipRect.setAttribute('height', String(healthPillHeight));
+  clipRect.setAttribute('width', String(healthPillWidth));
+  clipRect.setAttribute('rx', '2');
+  clipRect.setAttribute('ry', '2');
+  clipPath.appendChild(clipRect);
+
+  let rectGroup = document.createElementNS(svgNamespace, 'g');
+  rectGroup.setAttribute('clip-path', 'url(#health-pill-clip-path)');
+  healthPillSvg.appendChild(rectGroup);
+  let totalCount = lastHealthPillData[1];
+  // Create 1 rectangle for each category.
+  let totalCountSoFar = 0;
+  let totalWidthDividedByTotalCount = healthPillWidth / totalCount;
+  let titleOnHoverTextEntries = [];
+  for (let i = 0; i < lastHealthPillOverview.length; i++) {
+    if (!lastHealthPillOverview[i]) {
+      // Do not render empty rectangles.
+      continue;
+    }
+    let rect = document.createElementNS(svgNamespace, 'rect');
+    rect.setAttribute('height', String(healthPillHeight));
+    let rectWidth = totalWidthDividedByTotalCount * lastHealthPillOverview[i];
+    rect.setAttribute('width', String(rectWidth));
+    let rectX = totalWidthDividedByTotalCount * totalCountSoFar;
+    rect.setAttribute('x', String(rectX));
+    rect.setAttribute('fill', healthPillEntries[i].background_color);
+    totalCountSoFar += lastHealthPillOverview[i];
+    rectGroup.appendChild(rect);
+
+    // Include this number in the title that appears on hover.
+    titleOnHoverTextEntries.push(
+        healthPillEntries[i].label + ': ' + lastHealthPillOverview[i]);
+  }
+
+  // Show a title with specific counts on hover.
+  let titleSvg = document.createElementNS(svgNamespace, 'title');
+  titleSvg.textContent = titleOnHoverTextEntries.join(', ');
+  healthPillSvg.appendChild(titleSvg);
+
+  // Center this health pill just right above the node for the op.
+  let healthPillX = nodeInfo.x - healthPillWidth / 2;
+  healthPillSvg.setAttribute('x', String(healthPillX));
+  let healthPillY = nodeInfo.y - healthPillHeight - nodeInfo.height / 2 - 2;
+  if (nodeInfo.labelOffset < 0) {
+    // The label is positioned above the node. Do not occlude the label.
+    healthPillY += nodeInfo.labelOffset;
+  }
+  healthPillSvg.setAttribute('y', String(healthPillY));
+  Polymer.dom(nodeGroupElement.parentNode).appendChild(healthPillSvg);
+}
+
+/**
+ * Adds health pills (which visualize tensor summaries) to a graph group.
+ * @param svgRoot The root SVG element of the graph to add heath pills to.
+ * @param nodeNamesToHealthPills An object mapping node name to health pill.
+ * @param colors A list of colors to use.
+ */
+export function addHealthPills(
+    svgRoot: SVGElement, nodeNamesToHealthPills: {[key: string]: HealthPill[]},
+    healthPillStepIndex: number) {
+  if (!nodeNamesToHealthPills) {
+    // No health pill information available.
+    return;
+  }
+
+  let svgRootSelection = d3.select(svgRoot);
+  svgRootSelection.selectAll('g.nodeshape')
+      .each(function(nodeInfo: render.RenderGroupNodeInfo) {
+        // Only show health pill data for this node if it is available.
+        let healthPills = nodeNamesToHealthPills[nodeInfo.node.name];
+        let healthPill = healthPills ? healthPills[healthPillStepIndex] : null;
+        _addHealthPill(this, healthPill, nodeInfo);
+      });
 };
 
 } // close module

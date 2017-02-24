@@ -253,8 +253,8 @@ cc_binary(
     }),
     linkshared = 1,
     deps = [
+        "//:protobuf_headers",
         "//tensorflow/core:framework_headers_lib",
-        "@protobuf//:protobuf",
     ],
 )
 
@@ -657,6 +657,7 @@ py_test(
     srcs = ["framework/ops_test.py"],
     main = "framework/ops_test.py",
     srcs_version = "PY2AND3",
+    tags = ["no_pip"],  # test_ops_2 is not available in pip.
     deps = [
         ":control_flow_ops",
         ":errors",
@@ -1848,10 +1849,8 @@ cuda_py_test(
         ":tensor_array_grad",
         ":tensor_array_ops",
         ":test_ops",
-        "//tensorflow/contrib/compiler:compiler_py",
         "//third_party/py/numpy",
     ],
-    xla_enabled = True,
 )
 
 cuda_py_test(
@@ -2159,6 +2158,7 @@ py_test(
     srcs = ["util/protobuf/compare_test.py"],
     main = "util/protobuf/compare_test.py",
     srcs_version = "PY2AND3",
+    tags = ["no_pip"],  # compare_test_pb2 proto is not available in pip.
     deps = [
         ":compare_test_proto_py",
         ":platform_test",
@@ -2314,6 +2314,7 @@ tf_py_wrap_cc(
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_session",
         "//tensorflow/core:lib",
+        "//tensorflow/core:reader_base",
         "//tensorflow/core/debug",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/tools/graph_transforms:transform_graph_lib",
@@ -2537,6 +2538,7 @@ py_test(
     size = "small",
     srcs = ["client/session_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_pip_gpu"],  # testInteractivePlacePrunedGraph fails on invalid assumption about GPU ops.
     deps = [
         ":array_ops",
         ":client",
@@ -2635,7 +2637,6 @@ cuda_py_tests(
         "training/proximal_gradient_descent_test.py",
         "training/queue_runner_test.py",
         "training/rmsprop_test.py",
-        "training/saver_test.py",
         "training/slot_creator_test.py",
         "training/tensorboard_logging_test.py",
         "training/training_ops_test.py",
@@ -2666,6 +2667,41 @@ cuda_py_tests(
         ":sparse_ops",
         ":state_ops",
         ":state_ops_gen",
+        ":summary",
+        ":training",
+        ":util",
+        ":variable_scope",
+        ":variables",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+        "//tensorflow/core:protos_all_py",
+    ],
+)
+
+cuda_py_test(
+    name = "saver_test",
+    size = "medium",
+    srcs = [
+        "training/saver_test.py",
+    ],
+    additional_deps = [
+        ":array_ops",
+        ":client_testlib",
+        ":control_flow_ops",
+        ":data_flow_ops",
+        ":data_flow_ops_gen",
+        ":errors",
+        ":gradients",
+        ":math_ops",
+        ":nn_grad",
+        ":nn_ops",
+        ":partitioned_variables",
+        ":platform",
+        ":platform_test",
+        ":pywrap_tensorflow",
+        ":random_ops",
+        ":resource_variable_ops",
+        ":sparse_ops",
         ":summary",
         ":training",
         ":util",

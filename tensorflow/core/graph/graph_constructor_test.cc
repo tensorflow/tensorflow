@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
@@ -1430,7 +1431,8 @@ TEST_F(GraphConstructorTest, ImportGraphDef_ControlDepsErrors) {
 
 TEST_F(GraphConstructorTest, ImportGraphDef_ErrorsDoNoChangeTheGraph) {
   GraphDef def;
-  NodeDefBuilder("scope/A", "TestParams").Finalize(def.add_node());
+  TF_EXPECT_OK(
+      NodeDefBuilder("scope/A", "TestParams").Finalize(def.add_node()));
   ImportGraphDefOptions opts;
   const string& source = graph_.FindNodeId(Graph::kSourceId)->name();
   const string& sink = graph_.FindNodeId(Graph::kSinkId)->name();

@@ -43,6 +43,17 @@ class DebuggerState : public DebuggerStateInterface {
 
   const protobuf::RepeatedPtrField<DebugTensorWatch>& watches;
 
+  // Publish metadata about the debugged Session::Run() call.
+  //
+  // See the doc string of DebuggerStateInterface::PublishDebugMetadata() for
+  // details.
+  Status PublishDebugMetadata(const int64 global_step,
+                              const int64 session_run_count,
+                              const int64 executor_step_count,
+                              const std::vector<string>& input_names,
+                              const std::vector<string>& output_names,
+                              const std::vector<string>& target_names);
+
  private:
   std::unordered_set<string> debug_urls_;
 };

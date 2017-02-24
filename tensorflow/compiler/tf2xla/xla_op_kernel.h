@@ -45,9 +45,14 @@ class XlaOpKernel : public OpKernel {
 // XlaOpKernelContext is a variant of the standard OpKernel class, tailored for
 // implementing operators that perform symbolic execution as part of the XLA
 // compiler. The key difference is that XlaOpKernelContext produces and consumes
-// data as XLA computations, rather than as standard Tensors. (Under the hood,
-// symbolic execution communicates using special Tensors, but that is an
-// implementation detail that this class hides.)
+// data as XLA computations, rather than as standard Tensors.
+//
+// Under the hood, symbolic execution communicates using special Tensors that
+// wrap XlaExpression objects, however this is an implementation detail that
+// this class hides. The *only* correct way to allocate a Tensor during
+// compilation is using the XlaOpKernelContext methods, since they ensure there
+// is a valid XlaExpression backing the tensor. No Op should ever call
+// allocate_output or allocate_temp directly on the underlying OpKernelContext.
 class XlaOpKernelContext {
  public:
   explicit XlaOpKernelContext(OpKernelContext* context);
@@ -133,6 +138,21 @@ class XlaOpKernelContext {
 
   // Mark the op has having side effects (i.e., via Send).
   void SetOpHasSideEffects();
+
+  // Variables
+
+  // Reads the current value of the resouce variable referred to by input
+  // 'index'.
+  Status ReadVariableInput(int index, xla::ComputationDataHandle* value);
+
+  // Sets output 'index' to be a reference to variable 'variable_id'. Used
+  // to propagate resource variables through the compilation.
+  void SetVariableOutput(int index, int variable_id);
+
+  // Assigns the value `handle` to the variable referenced by input
+  // `variable_index`. Marks the operator as having side effects.
+  Status AssignVariable(int variable_index, DataType type,
+                        const xla::ComputationDataHandle& handle);
 
   // Helper routines for the OP_REQUIRES macros
   void CtxFailure(Status s);

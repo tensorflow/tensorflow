@@ -1,11 +1,19 @@
 # Description:
 # TensorBoard, a dashboard for investigating TensorFlow
 
-package(default_visibility = ["//tensorflow:internal"])
+package(
+    default_visibility = ["//tensorflow:internal"],
+    features = [
+        "-layering_check",
+        "-parse_headers",
+    ],
+)
 
 licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
+
+load("//tensorflow:tensorflow.bzl", "py_test")
 
 filegroup(
     name = "frontend",
@@ -77,7 +85,7 @@ py_library(
 ## Embedding Projector Plugin ##
 py_library(
     name = "projector",
-    srcs = glob(["plugins/projector/**/*.py"]),
+    srcs = ["plugins/projector/plugin.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":base_plugin",
@@ -87,5 +95,31 @@ py_library(
         "//tensorflow/python:lib",
         "//tensorflow/python:platform",
         "//tensorflow/python:training",
+        "//tensorflow/tensorboard/lib/python:http_util",
+        "//third_party/py/numpy",
+        "@org_pocoo_werkzeug//:werkzeug",
+    ],
+)
+
+py_test(
+    name = "projector_plugin_test",
+    size = "small",
+    srcs = ["plugins/projector/plugin_test.py"],
+    main = "plugins/projector/plugin_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":projector",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:summary",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//tensorflow/tensorboard/backend:application",
+        "//third_party/py/numpy",
+        "@org_pocoo_werkzeug//:werkzeug",
     ],
 )

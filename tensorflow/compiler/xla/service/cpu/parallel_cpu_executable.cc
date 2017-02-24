@@ -139,10 +139,12 @@ ParallelCpuExecutable::ExecuteOnStream(
               << " bytes for allocation #" << i << " ["
               << device_allocation.opaque() << "]";
       std::vector<string> parts;
-      for (const LogicalBuffer* buffer : allocation.assigned_buffers()) {
-        parts.push_back(buffer->ToString());
+      for (const auto& buffer_offset_size : allocation.assigned_buffers()) {
+        const LogicalBuffer& buffer = *buffer_offset_size.first;
+        parts.push_back(tensorflow::strings::StrCat(
+            buffer.instruction()->parent()->name(), "::", buffer.ToString()));
       }
-      VLOG(3) << " " << tensorflow::str_util::Join(parts, ", ");
+      VLOG(3) << "  " << tensorflow::str_util::Join(parts, ", ");
     }
 
     device_allocations.push_back(device_allocation);
@@ -154,9 +156,9 @@ ParallelCpuExecutable::ExecuteOnStream(
                                       allocation.size());
   }
 
-  TF_ASSIGN_OR_RETURN(const BufferAllocation* result_allocation,
-                      assignment_->GetUniqueTopLevelOutputAllocation());
-  BufferAllocation::Index result_index = result_allocation->index();
+  TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice result_slice,
+                      assignment_->GetUniqueTopLevelOutputSlice());
+  const BufferAllocation::Index result_index = result_slice.index();
   VLOG(3) << "result index: " << result_index;
 
   // Allocate profiling counters for each hlo instruction that we would like to
@@ -206,8 +208,8 @@ ParallelCpuExecutable::ExecuteOnStream(
     }
   }
 
-  auto* temps_array = buffer_pointers.data();
-  auto* profile_counters_array = profile_counters.data();
+  void** temps_array = buffer_pointers.data();
+  uint64* profile_counters_array = profile_counters.data();
   auto* thread_pool = CHECK_NOTNULL(run_options->inter_op_thread_pool());
   tensorflow::mutex completion_queue_lock;
   tensorflow::condition_variable completion_queue_cv;
@@ -227,11 +229,11 @@ ParallelCpuExecutable::ExecuteOnStream(
         continue;
       }
 
-      TF_ASSIGN_OR_RETURN(
-          const BufferAllocation* result_allocation,
-          assignment_->GetUniqueTopLevelAllocation(instruction));
-
-      void* result_buffer = buffer_pointers[result_allocation->index()];
+      TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice result_slice,
+                          assignment_->GetUniqueTopLevelSlice(instruction));
+      void* result_buffer =
+          static_cast<char*>(temps_array[result_slice.index()]) +
+          result_slice.offset();
       // We cannot use a move-only RAII type like std::unique_ptr because the
       // list of operands is allocated on the main thread and transferred to the
       // worker via the lambda passed to enqueue_function.  In order for the
@@ -279,9 +281,11 @@ ParallelCpuExecutable::ExecuteOnStream(
         break;
       }
     } while (1);
-    TF_ASSIGN_OR_RETURN(const BufferAllocation* result_allocation,
-                        assignment_->GetUniqueTopLevelAllocation(instruction));
-    void* result_buffer = buffer_pointers[result_allocation->index()];
+    TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice result_slice,
+                        assignment_->GetUniqueTopLevelSlice(instruction));
+    void* result_buffer =
+        static_cast<char*>(temps_array[result_slice.index()]) +
+        result_slice.offset();
     InsertOrDie(&results, instruction, result_buffer);
     --instructions_in_flight;
   }

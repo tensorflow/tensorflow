@@ -37,7 +37,7 @@ static std::vector<int> BufferSizes() {
 TEST(InputBuffer, ReadLine_Empty) {
   Env* env = Env::Default();
   string fname = testing::TmpDir() + "/inputbuffer_test";
-  WriteStringToFile(env, fname, "");
+  TF_ASSERT_OK(WriteStringToFile(env, fname, ""));
 
   for (auto buf_size : BufferSizes()) {
     std::unique_ptr<RandomAccessFile> file;
@@ -51,7 +51,8 @@ TEST(InputBuffer, ReadLine_Empty) {
 TEST(InputBuffer, ReadLine1) {
   Env* env = Env::Default();
   string fname = testing::TmpDir() + "/inputbuffer_test";
-  WriteStringToFile(env, fname, "line one\nline two\nline three\n");
+  TF_CHECK_OK(
+      WriteStringToFile(env, fname, "line one\nline two\nline three\n"));
 
   for (auto buf_size : BufferSizes()) {
     std::unique_ptr<RandomAccessFile> file;
@@ -73,7 +74,7 @@ TEST(InputBuffer, ReadLine1) {
 TEST(InputBuffer, ReadLine_NoTrailingNewLine) {
   Env* env = Env::Default();
   string fname = testing::TmpDir() + "/inputbuffer_test";
-  WriteStringToFile(env, fname, "line one\nline two\nline three");
+  TF_ASSERT_OK(WriteStringToFile(env, fname, "line one\nline two\nline three"));
 
   for (auto buf_size : BufferSizes()) {
     std::unique_ptr<RandomAccessFile> file;
@@ -95,7 +96,8 @@ TEST(InputBuffer, ReadLine_NoTrailingNewLine) {
 TEST(InputBuffer, ReadLine_EmptyLines) {
   Env* env = Env::Default();
   string fname = testing::TmpDir() + "/inputbuffer_test";
-  WriteStringToFile(env, fname, "line one\n\n\nline two\nline three");
+  TF_CHECK_OK(
+      WriteStringToFile(env, fname, "line one\n\n\nline two\nline three"));
 
   for (auto buf_size : BufferSizes()) {
     std::unique_ptr<RandomAccessFile> file;
@@ -121,7 +123,8 @@ TEST(InputBuffer, ReadLine_EmptyLines) {
 TEST(InputBuffer, ReadLine_CRLF) {
   Env* env = Env::Default();
   string fname = testing::TmpDir() + "/inputbuffer_test";
-  WriteStringToFile(env, fname, "line one\r\n\r\n\r\nline two\r\nline three");
+  TF_ASSERT_OK(WriteStringToFile(env, fname,
+                                 "line one\r\n\r\n\r\nline two\r\nline three"));
 
   for (auto buf_size : BufferSizes()) {
     std::unique_ptr<RandomAccessFile> file;
@@ -147,7 +150,7 @@ TEST(InputBuffer, ReadLine_CRLF) {
 TEST(InputBuffer, ReadNBytes) {
   Env* env = Env::Default();
   string fname = testing::TmpDir() + "/inputbuffer_test";
-  WriteStringToFile(env, fname, "0123456789");
+  TF_ASSERT_OK(WriteStringToFile(env, fname, "0123456789"));
 
   // ReadNBytes(int64, string*).
   for (auto buf_size : BufferSizes()) {
@@ -220,7 +223,7 @@ TEST(InputBuffer, ReadNBytes) {
 TEST(InputBuffer, SkipNBytes) {
   Env* env = Env::Default();
   string fname = testing::TmpDir() + "/inputbuffer_test";
-  WriteStringToFile(env, fname, "0123456789");
+  TF_ASSERT_OK(WriteStringToFile(env, fname, "0123456789"));
 
   for (auto buf_size : BufferSizes()) {
     std::unique_ptr<RandomAccessFile> file;
@@ -255,7 +258,7 @@ TEST(InputBuffer, SkipNBytes) {
 TEST(InputBuffer, Seek) {
   Env* env = Env::Default();
   string fname = testing::TmpDir() + "/inputbuffer_test";
-  WriteStringToFile(env, fname, "0123456789");
+  TF_ASSERT_OK(WriteStringToFile(env, fname, "0123456789"));
 
   for (auto buf_size : BufferSizes()) {
     std::unique_ptr<RandomAccessFile> file;

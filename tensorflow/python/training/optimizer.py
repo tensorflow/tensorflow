@@ -36,13 +36,12 @@ from tensorflow.python.training import slot_creator
 
 def _get_variable_for(v):
   """Returns the ResourceVariable responsible for v, or v if not necessary."""
-  if v.op.type == "ResourceGather":
-    for var in variables.global_variables() + variables.local_variables():
+  if v.op.type == "VarHandleOp":
+    for var in ops.get_collection(ops.GraphKeys.RESOURCES):
       if (isinstance(var, resource_variable_ops.ResourceVariable)
-          and var.handle is v.op.inputs[0]):
+          and var.handle.op is v.op):
         return var
-    raise ValueError("Got embedding lookup %s but"
-                     " could not locate source variable." % (str(v)))
+    raise ValueError("Got %s but  could not locate source variable." % (str(v)))
   return v
 
 
@@ -66,8 +65,6 @@ def _deduplicate_indexed_slices(values, indices):
 
 
 def _var_key(var):
-  if var.op.type == "ResourceGather":
-    var = var.op.inputs[0]
   return (var.op.graph, var.op.name)
 
 
@@ -129,33 +126,17 @@ class _DenseResourceVariableProcessor(_OptimizableVariable):
 
   def update_op(self, optimizer, g):
     # pylint: disable=protected-access
-    return optimizer._resource_apply_dense(g, self._v.handle)
-
-
-class _SparseResourceVariableProcessor(_OptimizableVariable):
-  """Processor for sparse ResourceVariables."""
-
-  def __init__(self, v):
-    self._v = v
-
-  def target(self):
-    return self._v
-
-  def update_op(self, optimizer, g):
-    # pylint: disable=protected-access
-    return optimizer._resource_apply_sparse_duplicate_indices(
-        g, self._v.op.inputs[0], self._v.op.inputs[1])
+    if isinstance(g, ops.IndexedSlices):
+      return optimizer._resource_apply_sparse_duplicate_indices(
+          g.values, self._v, g.indices)
+    return optimizer._resource_apply_dense(g, self._v)
 
 
 def _get_processor(v):
   if isinstance(v, variables.Variable):
     return _RefVariableProcessor(v)
-  if v.op.type == "ReadVariableOp":
-    return _DenseReadResourceVariableProcessor(v)
   if v.op.type == "VarHandleOp":
     return _DenseResourceVariableProcessor(v)
-  if v.op.type == "ResourceGather":
-    return _SparseResourceVariableProcessor(v)
   raise NotImplementedError("Trying to optimize unsupported type ", v)
 
 
@@ -211,12 +192,6 @@ class Optimizer(object):
   opt.apply_gradients(capped_grads_and_vars)
   ```
 
-  @@__init__
-
-  @@minimize
-  @@compute_gradients
-  @@apply_gradients
-
   ### Gating Gradients
 
   Both `minimize()` and `compute_gradients()` accept a `gate_gradients`
@@ -250,9 +225,6 @@ class Optimizer(object):
 
   This can be useful if you want to log debug a training algorithm, report stats
   about the slots, etc.
-
-  @@get_slot_names
-  @@get_slot
   """
 
   # Values for gate_gradients.
@@ -393,7 +365,9 @@ class Optimizer(object):
     if gate_gradients == Optimizer.GATE_GRAPH:
       grads = control_flow_ops.tuple(grads)
     grads_and_vars = list(zip(grads, var_list))
-    self._assert_valid_dtypes([v for g, v in grads_and_vars if g is not None])
+    self._assert_valid_dtypes(
+        [v for g, v in grads_and_vars
+         if g is not None and v.dtype != dtypes.resource])
     return grads_and_vars
 
   def apply_gradients(self, grads_and_vars, global_step=None, name=None):

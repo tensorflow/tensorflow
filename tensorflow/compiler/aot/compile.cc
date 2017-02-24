@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/aot/flags.h"
 #include "tensorflow/compiler/aot/tfcompile_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
@@ -262,8 +263,8 @@ Status CreateXlaArgs(const Graph& graph,
   TF_RETURN_IF_ERROR(CollectArgNodes(graph, &arg_nodes));
   for (const Node* node : arg_nodes) {
     XlaCompiler::Argument arg;
+    arg.kind = XlaCompiler::Argument::kParameter;
     TF_RETURN_IF_ERROR(GetNodeAttr(node->def(), "T", &arg.type));
-    TF_RETURN_IF_ERROR(GetNodeAttr(node->def(), "index", &arg.parameter));
     TF_RETURN_IF_ERROR(GetNodeAttr(node->def(), kShapeAttr, &arg.shape));
     TF_RETURN_IF_ERROR(GetNodeAttr(node->def(), kDebugNameAttr, &arg.name));
     xla_args->push_back(arg);
@@ -277,7 +278,7 @@ Status ConvertGraphToXla(xla::LocalClient* client, std::unique_ptr<Graph> graph,
                          const FunctionLibraryDefinition* flib_def,
                          xla::Computation* computation, bool* has_context_arg) {
   // Create a device and context to convert the graph into an XLA computation.
-  XlaOpRegistry::RegisterJitKernels();
+  XlaOpRegistry::RegisterCompilationKernels();
   // Populate the context with args from the graph.
   for (Node* node : graph->nodes()) {
     node->set_assigned_device_name(DEVICE_CPU_XLA_JIT);

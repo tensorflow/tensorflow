@@ -17,6 +17,7 @@ load(
     "if_ios",
     "if_mobile",
     "if_not_mobile",
+    "py_test",
 )
 
 filegroup(
@@ -68,6 +69,7 @@ py_test(
     ],
     main = "bundle_shim_test.py",
     srcs_version = "PY2AND3",
+    tags = ["no_pip"],
     deps = [
         ":bundle_shim_py",
         ":constants",
@@ -248,6 +250,7 @@ py_test(
     data = [":session_bundle_half_plus_two"],
     main = "session_bundle_test.py",
     srcs_version = "PY2AND3",
+    tags = ["no_pip"],
     deps = [
         ":constants",
         ":manifest_proto_py",

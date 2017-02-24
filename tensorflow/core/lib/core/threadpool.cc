@@ -50,10 +50,10 @@ struct EigenEnvironment {
 
   EnvThread* CreateThread(std::function<void()> f) {
     return env_->StartThread(thread_options_, name_, [=]() {
-      // Set the processor flag to flush denormals to zero
+      // Set the processor flag to flush denormals to zero.
       port::ScopedFlushDenormal flush;
-      // Set the C++ rounding mode to ROUND TO NEAREST
-      port::ScopedSetRound round;
+      // Set the processor rounding mode to ROUND TO NEAREST.
+      port::ScopedSetRound round(FE_TONEAREST);
       f();
     });
   }

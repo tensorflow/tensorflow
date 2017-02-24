@@ -89,6 +89,7 @@ To help you upgrade your existing TensorFlow Python code to match the API change
 * Change arg order for `{softmax,sparse_softmax,sigmoid}_cross_entropy_with_logits` to be (labels, predictions), and force use of named args.
 
 ## Bug Fixes and Other Changes
+* Numerous C++ API updates.
 * New op: `parallel_stack`.
 * Introducing common tf io compression options constants for
   RecordReader/RecordWriter.
@@ -127,6 +128,7 @@ To help you upgrade your existing TensorFlow Python code to match the API change
 * `tf.divide` now honors the name field.
 * Make metrics weight broadcasting more strict.
 * Add new queue-like `StagingArea` and new ops: `stage` and `unstage`.
+* Enable inplace update ops for strings on CPU. Speed up string concat.
 
 ## Thanks to our Contributors
 
@@ -193,7 +195,7 @@ answered questions, and were part of inspiring discussions.
   indexing now starts from 1 instead of 0, and `bus_id==0` is used where
   previously `BUS_ANY` was used.
 * `Env::FileExists` and `FileSystem::FileExists` now return a tensorflow::Status
-  intead of a bool. Any callers to this function can be converted to a bool
+  instead of a bool. Any callers to this function can be converted to a bool
   by adding .ok() to the call.
 * The C API type `TF_SessionWithGraph` has been renamed to `TF_Session`,
   indicating its preferred use in language bindings for TensorFlow.
@@ -212,7 +214,7 @@ answered questions, and were part of inspiring discussions.
 * `SparseTensor.shape` has been renamed to `SparseTensor.dense_shape`.  Same for
   `SparseTensorValue.shape`.
 * `Env::FileExists` and `FileSystem::FileExists` now return a
-  `tensorflow::Status` intead of a bool. Any callers to this function can be
+  `tensorflow::Status` instead of a bool. Any callers to this function can be
   converted to a bool by adding `.ok()` to the call.
 * C API: Type `TF_SessionWithGraph` has been renamed to `TF_Session`, indicating
   its preferred use in language bindings for TensorFlow. What was previously

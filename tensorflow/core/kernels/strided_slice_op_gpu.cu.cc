@@ -51,6 +51,7 @@ typedef Eigen::GpuDevice GPUDevice;
   template struct functor::StridedSliceAssign<GPUDevice, T, 7>; \
   template struct functor::StridedSliceAssignScalar<GPUDevice, T>;
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_KERNELS);
+TF_CALL_complex64(DEFINE_GPU_KERNELS);
 DEFINE_GPU_KERNELS(int32);
 
 #undef DEFINE_GPU_KERNELS

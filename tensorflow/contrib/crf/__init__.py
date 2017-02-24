@@ -12,9 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Linear-chain CRF layer.
-
-## This package provides functions for building a linear-chain CRF layer.
+"""Linear-chain CRF layer. See the @{$python/contrib.crf} guide.
 
 @@crf_sequence_score
 @@crf_log_norm

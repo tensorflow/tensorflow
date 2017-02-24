@@ -77,6 +77,8 @@ module TF.Backend {
     output_slot: number;
     value: number[];
   };
+  // When updating this type, keep it consistent with the HealthPill interface
+  // in tf_graph_common/lib/scene/scene.ts.
   export type HealthPillDatum = Datum & HealthPill;
   // A health pill response is a mapping from node name to a list of health pill
   // data entries.

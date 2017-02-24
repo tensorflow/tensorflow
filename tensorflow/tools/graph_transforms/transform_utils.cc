@@ -277,7 +277,7 @@ string NodeMatch::DebugString() const {
 }
 
 GraphMatcher::GraphMatcher(const GraphDef& graph_def) {
-  SortByExecutionOrder(graph_def, &graph_def_);
+  SortByExecutionOrder(graph_def, &graph_def_).IgnoreError();
   MapNamesToNodes(graph_def_, &node_map_);
 }
 
@@ -362,7 +362,7 @@ Status ReplaceMatchingOpTypes(
   // Start off by retrieving all the matching subgraphs.
   GraphMatcher matcher(input_graph_def);
   std::vector<NodeMatch> matches;
-  matcher.GetOpTypeMatches(pattern, &matches);
+  TF_RETURN_IF_ERROR(matcher.GetOpTypeMatches(pattern, &matches));
 
   // Do some housekeeping so we can easily look up the resulting matches given
   // a node name.

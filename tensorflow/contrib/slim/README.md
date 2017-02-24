@@ -505,7 +505,7 @@ regularization_loss = tf.add_n(slim.losses.get_regularization_losses())
 total_loss1 = classification_loss + sum_of_squares_loss + pose_loss + regularization_loss
 
 # (Regularization Loss is included in the total loss by default).
-total_loss2 = losses.get_total_loss()
+total_loss2 = slim.losses.get_total_loss()
 ```
 In this example, we can again either produce the total loss function manually
 or let TF-Slim know about the additional loss and let TF-Slim handle the losses.

@@ -40,8 +40,9 @@ class PywrapQuantizeTrainingTest(test.TestCase):
       result = pywrap_tensorflow.do_quantize_training_on_graphdef(
           sess.graph_def, 8)
 
-      # 2 convert ops are added so it should have 5 nodes now.
-      self.assertEquals(len(result.node), 5)
+      # 2 convert subgraphs (3 ops each) are added so it should have 9 nodes
+      # now.
+      self.assertEquals(len(result.node), 9)
 
       self.assertEquals(c.eval(), 42)
 

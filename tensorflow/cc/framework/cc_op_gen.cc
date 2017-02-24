@@ -57,6 +57,16 @@ string GetPath(const string& dot_h_fname) {
   return result;
 }
 
+// Converts: some/path/to/file.xx
+// to: file
+// (note that suffix is removed)
+string GetFilename(const string& path) {
+  size_t slash_pos = path.rfind('/');
+  if (slash_pos == path.npos) slash_pos = -1;
+  size_t dot_pos = path.rfind('.');
+  return path.substr(slash_pos + 1, dot_pos - (slash_pos + 1));
+}
+
 // Converts:
 //   cc/ops/gen_foo_ops.h
 // to:
@@ -75,6 +85,17 @@ string ToGuard(const string& path) {
   }
   guard += '_';
   return guard;
+}
+
+// Converts: some_name_xyz
+// to: Some Name Xyz
+string ToTitle(const string& name) {
+  string title = name;
+  for (int i = 0; i < title.size(); ++i) {
+    if (title[i] == '_') title[i] = ' ';
+  }
+  str_util::TitlecaseString(&title, " ");
+  return title;
 }
 
 // Change:     Into:
@@ -416,6 +437,7 @@ OpInfo::OpInfo(const OpDef& g_op_def, const OpDef& i_op_def,
   }
   strings::StrAppend(&comment, "\nArguments:\n* scope: A Scope object\n");
 
+  // Process inputs
   for (int i = 0; i < op_def.input_arg_size(); ++i) {
     const auto& arg(op_def.input_arg(i));
     arg_types.push_back(strings::StrCat(
@@ -430,30 +452,45 @@ OpInfo::OpInfo(const OpDef& g_op_def, const OpDef& i_op_def,
                          arg.description(), "\n");
     }
   }
+
+  // Process attrs
+  string required_attrs_comment;
+  string optional_attrs_comment;
   for (int i = 0; i < op_def.attr_size(); ++i) {
     const auto& attr(op_def.attr(i));
-    // If the attr is going to be inferred or is optional, don't add it as a
-    // required argument.
-    if ((inferred_input_attrs.find(attr.name()) !=
-         inferred_input_attrs.end()) ||
-        attr.has_default_value()) {
-      continue;
-    }
+    // Skip inferred arguments
+    if (inferred_input_attrs.count(attr.name()) > 0) continue;
+
     const auto entry = AttrTypeName(attr.type());
     const auto attr_type_name = entry.first;
     const bool use_const = entry.second;
+    string attr_name = AvoidCPPKeywords(attr.name());
 
-    arg_types.push_back(strings::StrCat(use_const ? "const " : "",
-                                        attr_type_name, use_const ? "&" : ""));
-    arg_names.push_back(AvoidCPPKeywords(attr.name()));
+    string attr_comment;
     if (!attr.description().empty()) {
-      strings::StrAppend(&comment, "* ", AvoidCPPKeywords(attr.name()), ":\n");
       // TODO(keveman): Word wrap and indent this, to handle multi-line
       // descriptions.
-      strings::StrAppend(&comment, "    ", attr.description(), "\n");
+      strings::StrAppend(&attr_comment, "* ", attr_name, ": ",
+                         attr.description(), "\n");
+    }
+    if (attr.has_default_value()) {
+      strings::StrAppend(&optional_attrs_comment, attr_comment);
+    } else {
+      strings::StrAppend(&required_attrs_comment, attr_comment);
+      arg_types.push_back(strings::StrCat(
+          use_const ? "const " : "", attr_type_name, use_const ? "&" : ""));
+      arg_names.push_back(attr_name);
     }
   }
 
+  strings::StrAppend(&comment, required_attrs_comment);
+
+  if (!optional_attrs_comment.empty()) {
+    strings::StrAppend(&comment, "\nOptional attributes (see `Attrs`):\n");
+    strings::StrAppend(&comment, optional_attrs_comment);
+  }
+
+  // Process outputs
   for (int i = 0; i < op_def.output_arg_size(); ++i) {
     const auto& arg = op_def.output_arg(i);
     bool is_list = ArgIsList(arg);
@@ -509,8 +546,6 @@ OpInfo::OpInfo(const OpDef& g_op_def, const OpDef& i_op_def,
 string OpInfo::GetOpAttrStruct() const {
   string struct_fields;
   string setters;
-  string attrs_comment =
-      strings::StrCat("Optional attribute setters for ", op_name, " :\n\n");
 
   for (int i = 0; i < op_def.attr_size(); ++i) {
     const auto& attr(op_def.attr(i));
@@ -531,13 +566,15 @@ string OpInfo::GetOpAttrStruct() const {
         strings::StrCat(camel_case_name, suffix, "(", use_const ? "const " : "",
                         attr_type_name, use_const ? "&" : "");
 
-    strings::StrAppend(&attrs_comment, attr_func_def, "): Defaults to ",
-                       SummarizeAttrValue(attr.default_value()), "\n");
+    string attr_comment;
     if (!attr.description().empty()) {
-      // TODO(keveman): Word wrap and indent this to handle multi-line
-      // description.
-      strings::StrAppend(&attrs_comment, "    ", attr.description(), "\n");
+      strings::StrAppend(&attr_comment, attr.description(), "\n\n");
     }
+    strings::StrAppend(&attr_comment, "Defaults to ",
+                       SummarizeAttrValue(attr.default_value()), "\n");
+    attr_comment = MakeComment(attr_comment, "    ");
+
+    strings::StrAppend(&setters, attr_comment);
     strings::StrAppend(&setters, "    Attrs ", attr_func_def, " x) {\n");
     strings::StrAppend(&setters, "      Attrs ret = *this;\n");
     strings::StrAppend(&setters, "      ret.", attr.name(), "_ = x;\n");
@@ -552,6 +589,8 @@ string OpInfo::GetOpAttrStruct() const {
     return "";
   }
 
+  string attrs_comment =
+      strings::StrCat("Optional attribute setters for ", op_name, "\n");
   string struct_decl = MakeComment(attrs_comment, "  ");
   strings::StrAppend(&struct_decl, "  struct Attrs {\n");
   strings::StrAppend(&struct_decl, setters, struct_fields);
@@ -841,6 +880,10 @@ namespace ops {
 )include",
       "#include \"", op_header, "\"\n", namespace_begin);
 
+  const string filename = GetFilename(dot_h_fname);
+  const string doxygen = strings::StrCat("/// @defgroup ", filename, " ",
+                                         ToTitle(filename), "\n", "/// @{\n\n");
+
   TF_CHECK_OK(h->Append(
       strings::StrCat("// This file is MACHINE GENERATED! Do not edit.\n\n"
                       "#ifndef ",
@@ -850,6 +893,7 @@ namespace ops {
                       *op_header_guard, "\n\n")));
   TF_CHECK_OK(h->Append(header));
   TF_CHECK_OK(h->Append(namespace_begin));
+  TF_CHECK_OK(h->Append(doxygen));
   TF_CHECK_OK(cc->Append(cc_header));
 }
 
@@ -860,7 +904,9 @@ void FinishFiles(bool internal, WritableFile* h, WritableFile* cc,
 }  // namespace tensorflow
 )footer"
                                  :
-                                 R"footer(}  // namespace ops
+                                 R"footer(/// @}
+
+}  // namespace ops
 }  // namespace tensorflow
 )footer";
 
@@ -892,7 +938,7 @@ void WriteCCOps(const OpList& ops, const string& dot_h_fname,
   // Load the override map.
   OpGenOverrideMap override_map;
   if (!overrides_fnames.empty()) {
-    override_map.LoadFileList(env, overrides_fnames);
+    TF_CHECK_OK(override_map.LoadFileList(env, overrides_fnames));
   }
 
   // Write the initial boilerplate to the .h and .cc files.

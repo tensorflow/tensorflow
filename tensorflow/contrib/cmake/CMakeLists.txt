@@ -59,7 +59,6 @@ if(WIN32)
   add_definitions(-DNOMINMAX -D_WIN32_WINNT=0x0A00 -DLANG_CXX11 -DCOMPILER_MSVC -D__VERSION__=\"MSVC\")
   add_definitions(-DWIN32 -DOS_WIN -D_MBCS -DWIN64 -DWIN32_LEAN_AND_MEAN -DNOGDI -DPLATFORM_WINDOWS)
   add_definitions(-DTENSORFLOW_USE_EIGEN_THREADPOOL -DEIGEN_HAS_C99_MATH -D_ITERATOR_DEBUG_LEVEL=0)
-  add_definitions(-DEIGEN_VECTORIZE_SSE3)  # Needed to suppress denormals without __SSE3__ in MSVC
   add_definitions(-DNDEBUG /O2)  # Equivalent of -c opt in Bazel.
   add_definitions(/bigobj /nologo /EHsc /GF /FC /MP /Gm-)
   # Suppress warnings to reduce build log size.

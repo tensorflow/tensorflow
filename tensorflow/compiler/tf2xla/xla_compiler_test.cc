@@ -17,7 +17,7 @@ limitations under the License.
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/ops/function_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
-#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -38,7 +38,7 @@ class XlaCompilerTest : public ::testing::Test {
   void SetUp() override {
     client_ = xla::ClientLibrary::LocalClientOrDie();
 
-    XlaOpRegistry::RegisterJitKernels();
+    XlaOpRegistry::RegisterCompilationKernels();
 
     FunctionDefLibrary flib;
     flib_def_.reset(new FunctionLibraryDefinition(OpRegistry::Global(), flib));
@@ -91,12 +91,12 @@ TEST_F(XlaCompilerTest, Simple) {
 
   // Builds a description of the arguments.
   std::vector<XlaCompiler::Argument> args(2);
+  args[0].kind = XlaCompiler::Argument::kParameter;
   args[0].type = DT_INT32;
   args[0].shape = TensorShape({2});
-  args[0].parameter = 0;
+  args[1].kind = XlaCompiler::Argument::kParameter;
   args[1].type = DT_INT32;
   args[1].shape = TensorShape({2});
-  args[1].parameter = 1;
 
   // Compiles the graph.
   XlaCompiler compiler(DefaultOptions());
@@ -144,9 +144,9 @@ TEST_F(XlaCompilerTest, ConstantOutputs) {
 
   // Builds a description of the arguments.
   std::vector<XlaCompiler::Argument> args(1);
+  args[0].kind = XlaCompiler::Argument::kParameter;
   args[0].type = DT_INT32;
   args[0].shape = TensorShape({2});
-  args[0].parameter = 0;
 
   {
     // Compiles the graph, with resolve_compile_time_constants enabled.

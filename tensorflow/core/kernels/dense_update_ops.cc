@@ -50,10 +50,15 @@ struct DenseUpdate<Eigen::ThreadPoolDevice, string, ASSIGN> {
                   update.data()[i].data(), update.data()[i].size());
         }
       };
-      // first element of the tensor seems as good a guess as any of the sizes
-      // of the strings contained within...
-      const int64 estimated_string_size =
-          std::max(update.data()[0].size(), sizeof(string));
+      int64 estimated_string_size;
+      if (update.size() > 0) {
+        // first element of the tensor seems as good a guess as any of the sizes
+        // of the strings contained within...
+        estimated_string_size =
+            std::max(update.data()[0].size(), sizeof(string));
+      } else {
+        estimated_string_size = sizeof(string);
+      }
       d.parallelFor(
           params.dimension(0),
           Eigen::TensorOpCost(estimated_string_size, estimated_string_size, 0),
@@ -147,6 +152,7 @@ typedef Eigen::SyclDevice SYCLDevice;
       DenseUpdateOp<SYCLDevice, type, DenseUpdateType::SUB>);
 
 REGISTER_SYCL_KERNEL(float);
+REGISTER_SYCL_KERNEL(double);
 #undef REGISTER_SYCL_KERNEL
 #endif
 

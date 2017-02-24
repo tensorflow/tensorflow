@@ -83,7 +83,7 @@ class MultinomialTest(test.TestCase):
       dist = ds.Multinomial(total_count=n, probs=p, validate_args=True)
       dist.prob([2., 3, 0]).eval()
       dist.prob([3., 0, 2]).eval()
-      with self.assertRaisesOpError("counts must be non-negative"):
+      with self.assertRaisesOpError("must be non-negative"):
         dist.prob([-1., 4, 2]).eval()
       with self.assertRaisesOpError("counts must sum to `self.total_count`"):
         dist.prob([3., 3, 0]).eval()
@@ -101,7 +101,7 @@ class MultinomialTest(test.TestCase):
         multinom.prob([2., 3, 2]).eval()
       # Counts are non-integers.
       with self.assertRaisesOpError(
-          "counts cannot contain fractional components."):
+          "cannot contain fractional components."):
         multinom.prob([1.0, 2.5, 1.5]).eval()
 
       multinom = ds.Multinomial(total_count=n, probs=p, validate_args=False)
@@ -239,7 +239,7 @@ class MultinomialTest(test.TestCase):
     # via broadcast between alpha, n.
     theta = np.array([[1., 2, 3],
                       [2.5, 4, 0.01]], dtype=np.float32)
-    theta /= np.sum(theta, 1)[..., None]
+    theta /= np.sum(theta, 1)[..., array_ops.newaxis]
     # Ideally we'd be able to test broadcasting but, the multinomial sampler
     # doesn't support different total counts.
     n = np.float32(5)
@@ -247,9 +247,10 @@ class MultinomialTest(test.TestCase):
       dist = ds.Multinomial(n, theta)  # batch_shape=[2], event_shape=[3]
       x = dist.sample(int(250e3), seed=1)
       sample_mean = math_ops.reduce_mean(x, 0)
-      x_centered = x - sample_mean[None, ...]
+      x_centered = x - sample_mean[array_ops.newaxis, ...]
       sample_cov = math_ops.reduce_mean(math_ops.matmul(
-          x_centered[..., None], x_centered[..., None, :]), 0)
+          x_centered[..., array_ops.newaxis],
+          x_centered[..., array_ops.newaxis, :]), 0)
       sample_var = array_ops.matrix_diag_part(sample_cov)
       sample_stddev = math_ops.sqrt(sample_var)
       [

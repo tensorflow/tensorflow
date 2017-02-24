@@ -97,15 +97,15 @@ class Categorical(distribution.Distribution):
         represents a vector of probabilities for each class. Only one of
         `logits` or `probs` should be passed in.
       dtype: The type of the event samples (default: int32).
-      validate_args: Python `Boolean`, default `False`. When `True` distribution
+      validate_args: Python `bool`, default `False`. When `True` distribution
         parameters are checked for validity despite possibly degrading runtime
         performance. When `False` invalid inputs may silently render incorrect
         outputs.
-      allow_nan_stats: Python `Boolean`, default `True`. When `True`, statistics
+      allow_nan_stats: Python `bool`, default `True`. When `True`, statistics
         (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
-        result is undefined.  When `False`, an exception is raised if one or
+        result is undefined. When `False`, an exception is raised if one or
         more of the statistic's batch members are undefined.
-      name: `String` name prefixed to Ops created by this class.
+      name: Python `str` name prefixed to Ops created by this class.
     """
     parameters = locals()
     with ops.name_scope(name, values=[logits, probs]) as ns:
@@ -133,9 +133,8 @@ class Categorical(distribution.Distribution):
             dtype=dtypes.int32,
             name="event_size")
       else:
-        self._event_size = array_ops.gather(logits_shape,
-                                            self._batch_rank,
-                                            name="event_size")
+        with ops.name_scope(name="event_size"):
+          self._event_size = logits_shape[self._batch_rank]
 
       if logits_shape_static[:-1].is_fully_defined():
         self._batch_shape_val = constant_op.constant(
@@ -192,7 +191,7 @@ class Categorical(distribution.Distribution):
     samples = math_ops.cast(samples, self.dtype)
     ret = array_ops.reshape(
         array_ops.transpose(samples),
-        array_ops.concat(([n], self.batch_shape_tensor()), 0))
+        array_ops.concat([[n], self.batch_shape_tensor()], 0))
     return ret
 
   def _log_prob(self, k):

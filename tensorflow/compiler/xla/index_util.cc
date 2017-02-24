@@ -28,13 +28,13 @@ namespace xla {
 
 /* static */ int64 IndexUtil::MultidimensionalIndexToLinearIndex(
     const Shape& shape, tensorflow::gtl::ArraySlice<int64> multi_index) {
-  CHECK_EQ(shape.dimensions_size(), multi_index.size());
+  DCHECK_EQ(shape.dimensions_size(), multi_index.size());
   // Padding and nested layouts not supported yet.
-  CHECK_EQ(0, shape.layout().padded_dimensions_size());
+  DCHECK_EQ(0, shape.layout().padded_dimensions_size());
 
   for (int i = 0; i < multi_index.size(); ++i) {
-    CHECK_GE(multi_index[i], 0);
-    CHECK_LT(multi_index[i], shape.dimensions(i))
+    DCHECK_GE(multi_index[i], 0);
+    DCHECK_LT(multi_index[i], shape.dimensions(i))
         << "indexing beyond extent in dimension " << i << ":"
         << "\n\tindex: " << tensorflow::str_util::Join(multi_index, ",")
         << "\n\tshape: " << ShapeUtil::HumanString(shape);
@@ -87,9 +87,9 @@ namespace xla {
 /* static */ std::vector<int64> IndexUtil::LinearIndexToMultidimensionalIndex(
     const Shape& shape, int64 linear_index) {
   // Padding and nested layouts not supported yet.
-  CHECK_EQ(0, shape.layout().padded_dimensions_size());
-  CHECK_GE(linear_index, 0);
-  CHECK_LT(linear_index, ShapeUtil::ElementsIn(shape));
+  DCHECK_EQ(0, shape.layout().padded_dimensions_size());
+  DCHECK_GE(linear_index, 0);
+  DCHECK_LT(linear_index, ShapeUtil::ElementsIn(shape));
 
   // The following formula computes each element of the multidimensional index
   // (See comments in MultidimensionalIndexToLinearIndex for notation):

@@ -515,7 +515,7 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
       state = initial_state
     else:
       if not dtype:
-        raise ValueError("If no initial_state is provided, dtype must be.")
+        raise ValueError("If there is no initial_state, you must give a dtype.")
       state = cell.zero_state(batch_size, dtype)
 
     def _assert_has_shape(x, shape):

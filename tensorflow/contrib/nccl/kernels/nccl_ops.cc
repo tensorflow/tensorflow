@@ -90,11 +90,11 @@ class NcclAllReduceOpKernel : public NcclAsyncOpBase {
     };
 
     auto* compute_stream = c->op_device_context()->stream();
-    EventMgr* event_mgr = c->device()->tensorflow_gpu_device_info()->event_mgr;
+    auto* gpu_info = c->device()->tensorflow_gpu_device_info();
     NcclManager::instance()->AddToAllReduce(
         num_devices(), GetCollectiveKey(c), reduction_op_,
-        compute_stream->parent(), event_mgr, compute_stream, in_t, out_t,
-        actual_done);
+        compute_stream->parent(), gpu_info->gpu_id, gpu_info->event_mgr,
+        compute_stream, in_t, out_t, actual_done);
   }
 
  private:
@@ -115,10 +115,11 @@ class NcclBroadcastSendKernel : public NcclAsyncOpBase {
     };
 
     auto* compute_stream = c->op_device_context()->stream();
-    EventMgr* event_mgr = c->device()->tensorflow_gpu_device_info()->event_mgr;
+    auto* gpu_info = c->device()->tensorflow_gpu_device_info();
     NcclManager::instance()->AddBroadcastSend(
-        num_devices(), GetCollectiveKey(c), compute_stream->parent(), event_mgr,
-        compute_stream, &c->input(0), std::move(actual_done));
+        num_devices(), GetCollectiveKey(c), compute_stream->parent(),
+        gpu_info->gpu_id, gpu_info->event_mgr, compute_stream, &c->input(0),
+        std::move(actual_done));
   }
 };
 REGISTER_KERNEL_BUILDER(Name("NcclBroadcastSend").Device(DEVICE_GPU),
@@ -142,10 +143,11 @@ class NcclBroadcastRecvKernel : public NcclAsyncOpBase {
     };
 
     auto* compute_stream = c->op_device_context()->stream();
-    EventMgr* event_mgr = c->device()->tensorflow_gpu_device_info()->event_mgr;
+    auto* gpu_info = c->device()->tensorflow_gpu_device_info();
     NcclManager::instance()->AddBroadcastRecv(
-        num_devices(), GetCollectiveKey(c), compute_stream->parent(), event_mgr,
-        compute_stream, out_t, std::move(actual_done));
+        num_devices(), GetCollectiveKey(c), compute_stream->parent(),
+        gpu_info->gpu_id, gpu_info->event_mgr, compute_stream, out_t,
+        std::move(actual_done));
   }
 };
 REGISTER_KERNEL_BUILDER(

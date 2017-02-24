@@ -96,19 +96,22 @@ func TestOperationShapeAttribute(t *testing.T) {
 	// If and when the API to get attributes is added, check that here.
 }
 
-func TestOutputShape(t *testing.T) {
+func TestOutputDataTypeAndShape(t *testing.T) {
 	graph := NewGraph()
 	testdata := []struct {
 		Value interface{}
 		Shape []int64
+		dtype DataType
 	}{
 		{ // Scalar
 			int64(0),
 			[]int64{},
+			Int64,
 		},
 		{ // Vector
-			[]int64{1, 2, 3},
+			[]int32{1, 2, 3},
 			[]int64{3},
+			Int32,
 		},
 		{ // Matrix
 			[][]float64{
@@ -116,6 +119,7 @@ func TestOutputShape(t *testing.T) {
 				{4, 5, 6},
 			},
 			[]int64{2, 3},
+			Double,
 		},
 	}
 	for idx, test := range testdata {
@@ -123,6 +127,9 @@ func TestOutputShape(t *testing.T) {
 			c, err := Const(graph, fmt.Sprintf("const%d", idx), test.Value)
 			if err != nil {
 				t.Fatal(err)
+			}
+			if got, want := c.DataType(), test.dtype; got != want {
+				t.Errorf("Got DataType %v, want %v", got, want)
 			}
 			shape := c.Shape()
 			if got, want := shape.NumDimensions(), len(test.Shape); got != want {

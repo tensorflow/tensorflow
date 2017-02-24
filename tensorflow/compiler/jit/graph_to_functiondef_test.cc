@@ -54,7 +54,7 @@ TEST(GraphToFunctionDefTest, Basics) {
   auto h = ops::_Retval(root.WithOpName("H"), g, 0);
 
   GraphDef graph_def;
-  root.ToGraphDef(&graph_def);
+  TF_EXPECT_OK(root.ToGraphDef(&graph_def));
 
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
   GraphConstructorOptions options;

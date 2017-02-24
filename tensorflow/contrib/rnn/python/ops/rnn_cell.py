@@ -1254,6 +1254,152 @@ class LayerNormBasicLSTMCell(core_rnn_cell.RNNCell):
       return new_h, new_state
 
 
+class NASCell(core_rnn_cell.RNNCell):
+  """Neural Architecture Search (NAS) recurrent network cell.
+
+  This implements the recurrent cell from the paper:
+
+    https://arxiv.org/abs/1611.01578
+
+  Barret Zoph and Quoc V. Le.
+  "Neural Architecture Search with Reinforcement Learning" Proc. ICLR 2017.
+
+  The class uses an optional projection layer.
+  """
+
+  def __init__(self, num_units, num_proj=None,
+               use_biases=False):
+    """Initialize the parameters for a NAS cell.
+
+    Args:
+      num_units: int, The number of units in the NAS cell
+      num_proj: (optional) int, The output dimensionality for the projection
+        matrices.  If None, no projection is performed.
+      use_biases: (optional) bool, If True then use biases within the cell. This
+        is False by default.
+    """
+    self._num_units = num_units
+    self._num_proj = num_proj
+    self._use_biases = use_biases
+
+    if num_proj is not None:
+      self._state_size = core_rnn_cell.LSTMStateTuple(num_units, num_proj)
+      self._output_size = num_proj
+    else:
+      self._state_size = core_rnn_cell.LSTMStateTuple(num_units, num_units)
+      self._output_size = num_units
+
+  @property
+  def state_size(self):
+    return self._state_size
+
+  @property
+  def output_size(self):
+    return self._output_size
+
+  def __call__(self, inputs, state, scope=None):
+    """Run one step of NAS Cell.
+
+    Args:
+      inputs: input Tensor, 2D, batch x num_units.
+      state: This must be a tuple of state Tensors, both `2-D`, with column
+        sizes `c_state` and `m_state`.
+      scope: VariableScope for the created subgraph; defaults to "nas_rnn".
+
+    Returns:
+      A tuple containing:
+      - A `2-D, [batch x output_dim]`, Tensor representing the output of the
+        NAS Cell after reading `inputs` when previous state was `state`.
+        Here output_dim is:
+           num_proj if num_proj was set,
+           num_units otherwise.
+      - Tensor(s) representing the new state of NAS Cell after reading `inputs`
+        when the previous state was `state`.  Same type and shape(s) as `state`.
+
+    Raises:
+      ValueError: If input size cannot be inferred from inputs via
+        static shape inference.
+    """
+    sigmoid = math_ops.sigmoid
+    tanh = math_ops.tanh
+    relu = nn_ops.relu
+
+    num_proj = self._num_units if self._num_proj is None else self._num_proj
+
+    (c_prev, m_prev) = state
+
+    dtype = inputs.dtype
+    input_size = inputs.get_shape().with_rank(2)[1]
+    if input_size.value is None:
+      raise ValueError("Could not infer input size from inputs.get_shape()[-1]")
+    with vs.variable_scope(scope or "nas_rnn"):
+
+      # Variables for the NAS cell. W_m is all matrices multiplying the
+      # hiddenstate and W_inputs is all matrices multiplying the inputs.
+      concat_w_m = vs.get_variable(
+          "W_m", [num_proj, 8 * self._num_units],
+          dtype)
+      concat_w_inputs = vs.get_variable(
+          "W_inputs", [input_size.value, 8 * self._num_units],
+          dtype)
+
+      m_matrix = math_ops.matmul(m_prev, concat_w_m)
+      inputs_matrix = math_ops.matmul(inputs, concat_w_inputs)
+
+      if self._use_biases:
+        b = vs.get_variable(
+            "B",
+            shape=[8 * self._num_units],
+            initializer=init_ops.zeros_initializer(),
+            dtype=dtype)
+        m_matrix = nn_ops.bias_add(m_matrix, b)
+
+      # The NAS cell branches into 8 different splits for both the hiddenstate
+      # and the input
+      m_matrix_splits = array_ops.split(axis=1, num_or_size_splits=8,
+                                        value=m_matrix)
+      inputs_matrix_splits = array_ops.split(axis=1, num_or_size_splits=8,
+                                             value=inputs_matrix)
+
+      # First layer
+      layer1_0 = sigmoid(inputs_matrix_splits[0] + m_matrix_splits[0])
+      layer1_1 = relu(inputs_matrix_splits[1] + m_matrix_splits[1])
+      layer1_2 = sigmoid(inputs_matrix_splits[2] + m_matrix_splits[2])
+      layer1_3 = relu(inputs_matrix_splits[3] * m_matrix_splits[3])
+      layer1_4 = tanh(inputs_matrix_splits[4] + m_matrix_splits[4])
+      layer1_5 = sigmoid(inputs_matrix_splits[5] + m_matrix_splits[5])
+      layer1_6 = tanh(inputs_matrix_splits[6] + m_matrix_splits[6])
+      layer1_7 = sigmoid(inputs_matrix_splits[7] + m_matrix_splits[7])
+
+      # Second layer
+      l2_0 = tanh(layer1_0 * layer1_1)
+      l2_1 = tanh(layer1_2 + layer1_3)
+      l2_2 = tanh(layer1_4 * layer1_5)
+      l2_3 = sigmoid(layer1_6 + layer1_7)
+
+      # Inject the cell
+      l2_0 = tanh(l2_0 + c_prev)
+
+      # Third layer
+      l3_0_pre = l2_0 * l2_1
+      new_c = l3_0_pre  # create new cell
+      l3_0 = l3_0_pre
+      l3_1 = tanh(l2_2 + l2_3)
+
+      # Final layer
+      new_m = tanh(l3_0 * l3_1)
+
+      # Projection layer if specified
+      if self._num_proj is not None:
+        concat_w_proj = vs.get_variable(
+            "W_P", [self._num_units, self._num_proj],
+            dtype)
+        new_m = math_ops.matmul(new_m, concat_w_proj)
+
+      new_state = core_rnn_cell.LSTMStateTuple(new_c, new_m)
+      return new_m, new_state
+
+
 _REGISTERED_OPS = None
 
 

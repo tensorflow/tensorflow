@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_VERSIONED_COMPUTATION_HANDLE_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_VERSIONED_COMPUTATION_HANDLE_H_
 
+#include <ostream>
+
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -32,6 +34,8 @@ struct VersionedComputationHandle {
 
   ComputationHandle handle;
   Version version;
+
+  string ToString() const;
   bool operator==(const VersionedComputationHandle& other) const {
     return (handle.handle() == other.handle.handle()) &&
            (version == other.version);
@@ -42,6 +46,9 @@ struct VersionedComputationHandle {
              (version < other.version)));
   }
 };
+
+std::ostream& operator<<(std::ostream& out,
+                         const VersionedComputationHandle& versioned_handle);
 
 }  // namespace xla
 

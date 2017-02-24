@@ -22,11 +22,11 @@ import argparse
 import numpy as np  # pylint: disable=unused-import
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
-from tensorflow.python.debug import stepper
 from tensorflow.python.debug.cli import cli_shared
 from tensorflow.python.debug.cli import command_parser
 from tensorflow.python.debug.cli import debugger_cli_common
 from tensorflow.python.debug.cli import tensor_format
+from tensorflow.python.debug.lib import stepper
 
 RL = debugger_cli_common.RichLine
 

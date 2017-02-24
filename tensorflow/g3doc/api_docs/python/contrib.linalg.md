@@ -3,18 +3,7 @@
 # Linear Algebra (contrib)
 [TOC]
 
-Linear algebra libraries for TensorFlow.
-
-## `LinearOperator`
-
-Subclasses of `LinearOperator` provide a access to common methods on a
-(batch) matrix, without the need to materialize the matrix.  This allows:
-
-* Matrix free computations
-* Different operators to take advantage of special strcture, while providing a
-  consistent API to users.
-
-### Base class
+Linear algebra libraries. See the @{$python/contrib.linalg} guide.
 
 - - -
 
@@ -280,6 +269,39 @@ Determinant for every batch member.
 
 - - -
 
+#### `tf.contrib.linalg.LinearOperator.diag_part(name='diag_part')` {#LinearOperator.diag_part}
+
+Efficiently get the [batch] diagonal part of this operator.
+
+If this operator has shape `[B1,...,Bb, M, N]`, this returns a
+`Tensor` `diagonal`, of shape `[B1,...,Bb, min(M, N)]`, where
+`diagonal[b1,...,bb, i] = self.to_dense()[b1,...,bb, i, i]`.
+
+```
+my_operator = LinearOperatorDiag([1., 2.])
+
+# Efficiently get the diagonal
+my_operator.diag_part()
+==> [1., 2.]
+
+# Equivalent, but inefficient method
+tf.matrix_diag_part(my_operator.to_dense())
+==> [1., 2.]
+```
+
+##### Args:
+
+
+*  <b>`name`</b>: A name for this `Op`.
+
+##### Returns:
+
+
+*  <b>`diag_part`</b>: A `Tensor` of same `dtype` as self.
+
+
+- - -
+
 #### `tf.contrib.linalg.LinearOperator.domain_dimension` {#LinearOperator.domain_dimension}
 
 Dimension (in the sense of vector spaces) of the domain of this operator.
@@ -541,9 +563,6 @@ Return a dense (batch) matrix representing this operator.
 
 
 
-
-### Individual operators
-
 - - -
 
 ### `class tf.contrib.linalg.LinearOperatorDiag` {#LinearOperatorDiag}
@@ -776,6 +795,46 @@ Determinant for every batch member.
 
 
 *  <b>`NotImplementedError`</b>: If `self.is_square` is `False`.
+
+
+- - -
+
+#### `tf.contrib.linalg.LinearOperatorDiag.diag` {#LinearOperatorDiag.diag}
+
+
+
+
+- - -
+
+#### `tf.contrib.linalg.LinearOperatorDiag.diag_part(name='diag_part')` {#LinearOperatorDiag.diag_part}
+
+Efficiently get the [batch] diagonal part of this operator.
+
+If this operator has shape `[B1,...,Bb, M, N]`, this returns a
+`Tensor` `diagonal`, of shape `[B1,...,Bb, min(M, N)]`, where
+`diagonal[b1,...,bb, i] = self.to_dense()[b1,...,bb, i, i]`.
+
+```
+my_operator = LinearOperatorDiag([1., 2.])
+
+# Efficiently get the diagonal
+my_operator.diag_part()
+==> [1., 2.]
+
+# Equivalent, but inefficient method
+tf.matrix_diag_part(my_operator.to_dense())
+==> [1., 2.]
+```
+
+##### Args:
+
+
+*  <b>`name`</b>: A name for this `Op`.
+
+##### Returns:
+
+
+*  <b>`diag_part`</b>: A `Tensor` of same `dtype` as self.
 
 
 - - -
@@ -1314,6 +1373,39 @@ Determinant for every batch member.
 
 - - -
 
+#### `tf.contrib.linalg.LinearOperatorIdentity.diag_part(name='diag_part')` {#LinearOperatorIdentity.diag_part}
+
+Efficiently get the [batch] diagonal part of this operator.
+
+If this operator has shape `[B1,...,Bb, M, N]`, this returns a
+`Tensor` `diagonal`, of shape `[B1,...,Bb, min(M, N)]`, where
+`diagonal[b1,...,bb, i] = self.to_dense()[b1,...,bb, i, i]`.
+
+```
+my_operator = LinearOperatorDiag([1., 2.])
+
+# Efficiently get the diagonal
+my_operator.diag_part()
+==> [1., 2.]
+
+# Equivalent, but inefficient method
+tf.matrix_diag_part(my_operator.to_dense())
+==> [1., 2.]
+```
+
+##### Args:
+
+
+*  <b>`name`</b>: A name for this `Op`.
+
+##### Returns:
+
+
+*  <b>`diag_part`</b>: A `Tensor` of same `dtype` as self.
+
+
+- - -
+
 #### `tf.contrib.linalg.LinearOperatorIdentity.domain_dimension` {#LinearOperatorIdentity.domain_dimension}
 
 Dimension (in the sense of vector spaces) of the domain of this operator.
@@ -1822,6 +1914,39 @@ Determinant for every batch member.
 
 - - -
 
+#### `tf.contrib.linalg.LinearOperatorScaledIdentity.diag_part(name='diag_part')` {#LinearOperatorScaledIdentity.diag_part}
+
+Efficiently get the [batch] diagonal part of this operator.
+
+If this operator has shape `[B1,...,Bb, M, N]`, this returns a
+`Tensor` `diagonal`, of shape `[B1,...,Bb, min(M, N)]`, where
+`diagonal[b1,...,bb, i] = self.to_dense()[b1,...,bb, i, i]`.
+
+```
+my_operator = LinearOperatorDiag([1., 2.])
+
+# Efficiently get the diagonal
+my_operator.diag_part()
+==> [1., 2.]
+
+# Equivalent, but inefficient method
+tf.matrix_diag_part(my_operator.to_dense())
+==> [1., 2.]
+```
+
+##### Args:
+
+
+*  <b>`name`</b>: A name for this `Op`.
+
+##### Returns:
+
+
+*  <b>`diag_part`</b>: A `Tensor` of same `dtype` as self.
+
+
+- - -
+
 #### `tf.contrib.linalg.LinearOperatorScaledIdentity.domain_dimension` {#LinearOperatorScaledIdentity.domain_dimension}
 
 Dimension (in the sense of vector spaces) of the domain of this operator.
@@ -2320,6 +2445,39 @@ Determinant for every batch member.
 
 - - -
 
+#### `tf.contrib.linalg.LinearOperatorMatrix.diag_part(name='diag_part')` {#LinearOperatorMatrix.diag_part}
+
+Efficiently get the [batch] diagonal part of this operator.
+
+If this operator has shape `[B1,...,Bb, M, N]`, this returns a
+`Tensor` `diagonal`, of shape `[B1,...,Bb, min(M, N)]`, where
+`diagonal[b1,...,bb, i] = self.to_dense()[b1,...,bb, i, i]`.
+
+```
+my_operator = LinearOperatorDiag([1., 2.])
+
+# Efficiently get the diagonal
+my_operator.diag_part()
+==> [1., 2.]
+
+# Equivalent, but inefficient method
+tf.matrix_diag_part(my_operator.to_dense())
+==> [1., 2.]
+```
+
+##### Args:
+
+
+*  <b>`name`</b>: A name for this `Op`.
+
+##### Returns:
+
+
+*  <b>`diag_part`</b>: A `Tensor` of same `dtype` as self.
+
+
+- - -
+
 #### `tf.contrib.linalg.LinearOperatorMatrix.domain_dimension` {#LinearOperatorMatrix.domain_dimension}
 
 Dimension (in the sense of vector spaces) of the domain of this operator.
@@ -2809,6 +2967,39 @@ Determinant for every batch member.
 
 
 *  <b>`NotImplementedError`</b>: If `self.is_square` is `False`.
+
+
+- - -
+
+#### `tf.contrib.linalg.LinearOperatorTriL.diag_part(name='diag_part')` {#LinearOperatorTriL.diag_part}
+
+Efficiently get the [batch] diagonal part of this operator.
+
+If this operator has shape `[B1,...,Bb, M, N]`, this returns a
+`Tensor` `diagonal`, of shape `[B1,...,Bb, min(M, N)]`, where
+`diagonal[b1,...,bb, i] = self.to_dense()[b1,...,bb, i, i]`.
+
+```
+my_operator = LinearOperatorDiag([1., 2.])
+
+# Efficiently get the diagonal
+my_operator.diag_part()
+==> [1., 2.]
+
+# Equivalent, but inefficient method
+tf.matrix_diag_part(my_operator.to_dense())
+==> [1., 2.]
+```
+
+##### Args:
+
+
+*  <b>`name`</b>: A name for this `Op`.
+
+##### Returns:
+
+
+*  <b>`diag_part`</b>: A `Tensor` of same `dtype` as self.
 
 
 - - -
@@ -3350,7 +3541,7 @@ Determinant for every batch member.
 
 - - -
 
-#### `tf.contrib.linalg.LinearOperatorUDVHUpdate.diag` {#LinearOperatorUDVHUpdate.diag}
+#### `tf.contrib.linalg.LinearOperatorUDVHUpdate.diag_arg` {#LinearOperatorUDVHUpdate.diag_arg}
 
 If this operator is `A = L + U D V^H`, this is the diagonal of `D`.
 
@@ -3360,6 +3551,39 @@ If this operator is `A = L + U D V^H`, this is the diagonal of `D`.
 #### `tf.contrib.linalg.LinearOperatorUDVHUpdate.diag_operator` {#LinearOperatorUDVHUpdate.diag_operator}
 
 If this operator is `A = L + U D V^H`, this is `D`.
+
+
+- - -
+
+#### `tf.contrib.linalg.LinearOperatorUDVHUpdate.diag_part(name='diag_part')` {#LinearOperatorUDVHUpdate.diag_part}
+
+Efficiently get the [batch] diagonal part of this operator.
+
+If this operator has shape `[B1,...,Bb, M, N]`, this returns a
+`Tensor` `diagonal`, of shape `[B1,...,Bb, min(M, N)]`, where
+`diagonal[b1,...,bb, i] = self.to_dense()[b1,...,bb, i, i]`.
+
+```
+my_operator = LinearOperatorDiag([1., 2.])
+
+# Efficiently get the diagonal
+my_operator.diag_part()
+==> [1., 2.]
+
+# Equivalent, but inefficient method
+tf.matrix_diag_part(my_operator.to_dense())
+==> [1., 2.]
+```
+
+##### Args:
+
+
+*  <b>`name`</b>: A name for this `Op`.
+
+##### Returns:
+
+
+*  <b>`diag_part`</b>: A `Tensor` of same `dtype` as self.
 
 
 - - -
@@ -3409,6 +3633,13 @@ The `DType` of `Tensor`s handled by this `LinearOperator`.
 #### `tf.contrib.linalg.LinearOperatorUDVHUpdate.graph_parents` {#LinearOperatorUDVHUpdate.graph_parents}
 
 List of graph dependencies of this `LinearOperator`.
+
+
+- - -
+
+#### `tf.contrib.linalg.LinearOperatorUDVHUpdate.is_diag_positive` {#LinearOperatorUDVHUpdate.is_diag_positive}
+
+If this operator is `A = L + U D V^H`, this hints `D > 0` elementwise.
 
 
 - - -
@@ -3638,9 +3869,6 @@ If this operator is `A = L + U D V^H`, this is the `U`.
 If this operator is `A = L + U D V^H`, this is the `V`.
 
 
-
-
-### Transformations and Combinations of operators
 
 - - -
 
@@ -3878,6 +4106,39 @@ Determinant for every batch member.
 
 
 *  <b>`NotImplementedError`</b>: If `self.is_square` is `False`.
+
+
+- - -
+
+#### `tf.contrib.linalg.LinearOperatorComposition.diag_part(name='diag_part')` {#LinearOperatorComposition.diag_part}
+
+Efficiently get the [batch] diagonal part of this operator.
+
+If this operator has shape `[B1,...,Bb, M, N]`, this returns a
+`Tensor` `diagonal`, of shape `[B1,...,Bb, min(M, N)]`, where
+`diagonal[b1,...,bb, i] = self.to_dense()[b1,...,bb, i, i]`.
+
+```
+my_operator = LinearOperatorDiag([1., 2.])
+
+# Efficiently get the diagonal
+my_operator.diag_part()
+==> [1., 2.]
+
+# Equivalent, but inefficient method
+tf.matrix_diag_part(my_operator.to_dense())
+==> [1., 2.]
+```
+
+##### Args:
+
+
+*  <b>`name`</b>: A name for this `Op`.
+
+##### Returns:
+
+
+*  <b>`diag_part`</b>: A `Tensor` of same `dtype` as self.
 
 
 - - -

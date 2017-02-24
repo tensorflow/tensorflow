@@ -35,12 +35,6 @@ class EventFileWriter(object):
   The `EventFileWriter` class creates an event file in the specified directory,
   and asynchronously writes Event protocol buffers to the file. The Event file
   is encoded using the tfrecord format, which is similar to RecordIO.
-
-  @@__init__
-
-  @@add_event
-  @@flush
-  @@close
   """
 
   def __init__(self, logdir, max_queue=10, flush_secs=120):

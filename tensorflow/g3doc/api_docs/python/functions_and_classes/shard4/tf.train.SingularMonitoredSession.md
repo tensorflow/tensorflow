@@ -62,7 +62,7 @@ Exit: At the `close()`, the hooked session does following things in order:
 
 - - -
 
-#### `tf.train.SingularMonitoredSession.__init__(hooks=None, scaffold=None, master='', config=None, checkpoint_dir=None)` {#SingularMonitoredSession.__init__}
+#### `tf.train.SingularMonitoredSession.__init__(hooks=None, scaffold=None, master='', config=None, checkpoint_dir=None, stop_grace_period_secs=120)` {#SingularMonitoredSession.__init__}
 
 Creates a SingularMonitoredSession.
 
@@ -76,6 +76,8 @@ Creates a SingularMonitoredSession.
 *  <b>`config`</b>: `ConfigProto` proto used to configure the session.
 *  <b>`checkpoint_dir`</b>: A string.  Optional path to a directory where to restore
     variables.
+*  <b>`stop_grace_period_secs`</b>: Number of seconds given to threads to stop after
+    `close()` has been called.
 
 
 - - -

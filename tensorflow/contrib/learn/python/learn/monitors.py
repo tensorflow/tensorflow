@@ -13,62 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Monitors allow user instrumentation of the training process.
-
-Monitors are useful to track training, report progress, request early
-stopping and more. Monitors use the observer pattern and notify at the following
-points:
-
-* when training begins
-* before a training step
-* after a training step
-* when training ends
-
-Monitors are not intended to be reusable.
-
-There are a few pre-defined monitors:
-
-* `CaptureVariable`: saves a variable's values
-* `GraphDump`: intended for debug only - saves all tensor values
-* `PrintTensor`: outputs one or more tensor values to log
-* `SummarySaver`: saves summaries to a summary writer
-* `ValidationMonitor`: runs model validation, by periodically calculating eval
-    metrics on a separate data set; supports optional early stopping
-
-For more specific needs, you can create custom monitors by extending one of the
-following classes:
-
-* `BaseMonitor`: the base class for all monitors
-* `EveryN`: triggers a callback every N training steps
-
-Example:
-
-```python
-  class ExampleMonitor(monitors.BaseMonitor):
-    def __init__(self):
-      print 'Init'
-
-    def begin(self, max_steps):
-      print 'Starting run. Will train until step %d.' % max_steps
-
-    def end(self):
-      print 'Completed run.'
-
-    def step_begin(self, step):
-      print 'About to run step %d...' % step
-      return ['loss_1:0']
-
-    def step_end(self, step, outputs):
-      print 'Done running step %d. The value of "loss" tensor: %s' % (
-        step, outputs['loss_1:0'])
-
-  linear_regressor = LinearRegressor()
-  example_monitor = ExampleMonitor()
-  linear_regressor.fit(
-    x, y, steps=2, batch_size=1, monitors=[example_monitor])
-```
-
-## Ops
+"""Monitors instrument the training process.
 
 @@get_default_monitors
 @@BaseMonitor
@@ -97,7 +42,7 @@ import time
 import numpy as np
 import six
 
-from tensorflow.contrib.framework import deprecated_arg_values
+from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.learn.python.learn import session_run_hook
 from tensorflow.contrib.learn.python.learn.summary_writer_cache import SummaryWriterCache
@@ -902,16 +847,9 @@ class GraphDump(BaseMonitor):
 class ExportMonitor(EveryN):
   """Monitor that exports Estimator every N steps."""
 
-  # TODO(philstahlfeld): Investigate switching export.export_estimator
-  # configuration values to **kwargs so that updates to the export_estimator
-  # function don't have to be reflected here.
-  @deprecated_arg_values(
-      "2016-09-23",
-      "The signature of the input_fn accepted by export is changing to be "
-      "consistent with what's used by tf.Learn Estimator's train/evaluate. "
-      "input_fn (and in most cases, input_feature_key) will both become "
-      "required args.",
-      input_fn=None)
+  @deprecated("2017-03-25",
+              "ExportMonitor is deprecated. Please pass an "
+              "ExportStrategy to Experiment instead.")
   def __init__(self,
                every_n_steps,
                export_dir,

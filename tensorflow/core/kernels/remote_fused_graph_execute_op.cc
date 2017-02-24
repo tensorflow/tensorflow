@@ -27,7 +27,8 @@ class RemoteFusedGraphExecuteOp : public OpKernel {
   explicit RemoteFusedGraphExecuteOp(OpKernelConstruction* const ctx)
       : OpKernel(ctx), graph_transferer_() {
     string serialized_proto;
-    ctx->GetAttr("serialized_graph_transfer_info", &serialized_proto);
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttr("serialized_graph_transfer_info", &serialized_proto));
     graph_transferer_.SetSerializedGraphTransferInfo(serialized_proto);
     const GraphTransferInfo& gt_info = graph_transferer_.GetGraphTransferInfo();
     switch (gt_info.destination()) {
@@ -65,7 +66,9 @@ class RemoteFusedGraphExecuteOp : public OpKernel {
     CHECK(ctx != nullptr);
     const int input_count = ctx->num_inputs();
     const GraphTransferInfo& gt_info = graph_transferer_.GetGraphTransferInfo();
-    CHECK(input_count == gt_info.graph_input_node_info_size());
+    CHECK(input_count == gt_info.graph_input_node_info_size())
+        << "input_count = " << input_count
+        << ", gt input count = " << gt_info.graph_input_node_info_size();
 
     // 3. Send inputs into remote processor
     for (int i = 0; i < input_count; ++i) {
@@ -102,8 +105,10 @@ class RemoteFusedGraphExecuteOp : public OpKernel {
         // for each output node
         CHECK(outputs.size() <= 1);
         if (!outputs.empty()) {
-          std::memcpy(output->vec<uint8>().data(), std::get<0>(outputs[0]),
-                      std::get<1>(outputs[2]));
+          CHECK(output->TotalBytes() >= std::get<1>(outputs[0]));
+          // TODO(satok): Avoid specifying float
+          std::memcpy(output->flat<float>().data(), std::get<0>(outputs[0]),
+                      std::get<1>(outputs[0]));
         }
       }
     }

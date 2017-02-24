@@ -3,7 +3,7 @@
 # Histograms
 [TOC]
 
-## Histograms
+Histograms. Please see @{$python/histogram_ops} guide.
 
 - - -
 

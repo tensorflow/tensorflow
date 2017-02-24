@@ -238,11 +238,6 @@ class HloComputation {
   HloInstruction* AddInstructionInternal(
       std::unique_ptr<HloInstruction> instruction);
 
-  // Remove an instruction from the computation if found. The instruction must
-  // have no users. Instruction is deallocated with this call.
-  // Return whether instruction was found and removed.
-  StatusOr<bool> RemoveInstructionIfFound(HloInstruction* instruction);
-
   // Fuses HLOs in instructions_to_fuse into fusion_instruction.
   //
   // Pre-condition: fusion_instruction's opcode is kFusion.

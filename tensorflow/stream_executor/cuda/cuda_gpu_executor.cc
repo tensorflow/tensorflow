@@ -65,7 +65,6 @@ limitations under the License.
 #endif
 
 extern bool FLAGS_check_gpu_leaks;
-tensorflow::int32 FLAGS_register_occupancy_warning_threshold;
 bool FLAGS_prefer_cubin_to_ptx = true;
 
 namespace perftools {
@@ -353,15 +352,18 @@ bool CUDAExecutor::Launch(Stream *stream, const ThreadDim &thread_dims,
   const CUDAKernel *cuda_kernel = AsCUDAKernel(&kernel);
   CUfunction cufunc = cuda_kernel->AsCUDAFunctionValue();
 
-  // Only perform/print the occupancy check 1x.
-  launched_kernels_mu_.lock();
-  if (launched_kernels_.find(cufunc) == launched_kernels_.end()) {
-    OccupancyCheck(kernel, thread_dims, block_dims);
-    // TODO(rspringer): Remove elements from launched_kernels_...if we ever
-    // expose a kernel/module deallocation method.
-    launched_kernels_.insert(cufunc);
+  // Only perform/print the occupancy check once.  Even just checking to see
+  // whether we've done an occupancy check on this kernel before isn't free
+  // (because we have to synchronize), so we only do this at -v 2+.
+  if (VLOG_IS_ON(2)) {
+    mutex_lock lock(launched_kernels_mu_);
+    if (!launched_kernels_.count(cufunc)) {
+      VlogOccupancyInfo(kernel, thread_dims, block_dims);
+      // TODO(rspringer): Remove elements from launched_kernels_...if we ever
+      // expose a kernel/module deallocation method.
+      launched_kernels_.insert(cufunc);
+    }
   }
-  launched_kernels_mu_.unlock();
 
   if (cuda_kernel->GetPreferredCacheConfig() !=
       KernelCacheConfig::kNoPreference) {
@@ -388,9 +390,9 @@ bool CUDAExecutor::Launch(Stream *stream, const ThreadDim &thread_dims,
 // This is a non-essential operation; if there's a failure, proceed without
 // logging an error. It's nearly certain that in case of failures, we'd never
 // get here in the first place; these are very low-impact routines.
-void CUDAExecutor::OccupancyCheck(const KernelBase &kernel,
-                                  const ThreadDim &thread_dims,
-                                  const BlockDim &block_dims) {
+void CUDAExecutor::VlogOccupancyInfo(const KernelBase &kernel,
+                                     const ThreadDim &thread_dims,
+                                     const BlockDim &block_dims) {
   VLOG(2) << "Computing kernel occupancy for kernel "
           << kernel.demangled_name();
   VLOG(2) << "Thread dimensions (" << thread_dims.x << ", " << thread_dims.y
@@ -430,16 +432,6 @@ void CUDAExecutor::OccupancyCheck(const KernelBase &kernel,
     VLOG(2) << "Reducing register usage from " << regs_per_thread
             << " to " << improved_regs_per_thread
             << " could increase resident blocks per SM by one.";
-
-    uint64 reg_reduction = regs_per_thread - improved_regs_per_thread;
-    if (reg_reduction <=
-        static_cast<uint64>(FLAGS_register_occupancy_warning_threshold)) {
-      LOG(INFO) << "Notice: occupancy would increase if register usage was"
-                << " reduced from " << regs_per_thread
-                << " to " << improved_regs_per_thread
-                << " registers per thread for kernel: "
-                << kernel.demangled_name();
-    }
   } else {
     VLOG(2) << "Resident blocks per SM cannot be increased by reducing "
         "register usage.";

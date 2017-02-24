@@ -43,7 +43,6 @@ from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.contrib.layers.python.layers import feature_column as feature_column_lib
 from tensorflow.contrib.layers.python.layers import optimizers
 from tensorflow.contrib.learn.python.learn import experiment
-from tensorflow.contrib.learn.python.learn import metric_spec
 from tensorflow.contrib.learn.python.learn import models
 from tensorflow.contrib.learn.python.learn import monitors as monitors_lib
 from tensorflow.contrib.learn.python.learn.datasets import base
@@ -469,32 +468,6 @@ class EstimatorTest(test.TestCase):
     with self.assertRaises(learn.NotFittedError):
       est.predict(x=boston.data)
 
-  def testContinueTrainingDictionaryInput(self):
-    boston = base.load_boston()
-    output_dir = tempfile.mkdtemp()
-    est = estimator.Estimator(model_fn=linear_model_fn, model_dir=output_dir)
-    boston_input = {'input': boston.data}
-    float64_target = {'labels': boston.target.astype(np.float64)}
-    est.fit(x=boston_input, y=float64_target, steps=50)
-    scores = est.evaluate(
-        x=boston_input,
-        y=float64_target,
-        metrics={'MSE': metric_ops.streaming_mean_squared_error})
-    del est
-    # Create another estimator object with the same output dir.
-    est2 = estimator.Estimator(model_fn=linear_model_fn, model_dir=output_dir)
-
-    # Check we can evaluate and predict.
-    scores2 = est2.evaluate(
-        x=boston_input,
-        y=float64_target,
-        metrics={'MSE': metric_ops.streaming_mean_squared_error})
-    self.assertAllClose(scores2['MSE'], scores['MSE'])
-    predictions = np.array(list(est2.predict(x=boston_input)))
-    other_score = _sklearn.mean_squared_error(predictions,
-                                              float64_target['labels'])
-    self.assertAllClose(other_score, scores['MSE'])
-
   def testContinueTraining(self):
     boston = base.load_boston()
     output_dir = tempfile.mkdtemp()
@@ -538,91 +511,6 @@ class EstimatorTest(test.TestCase):
             model_fn=linear_model_params_fn, params={'learning_rate': 0.01}))
     est.fit(x=boston.data, y=boston.target, steps=100)
 
-  def testBostonAll(self):
-    boston = base.load_boston()
-    est = estimator.SKCompat(estimator.Estimator(model_fn=linear_model_fn))
-    float64_labels = boston.target.astype(np.float64)
-    est.fit(x=boston.data, y=float64_labels, steps=100)
-    scores = est.score(
-        x=boston.data,
-        y=float64_labels,
-        metrics={'MSE': metric_ops.streaming_mean_squared_error})
-    predictions = np.array(list(est.predict(x=boston.data)))
-    other_score = _sklearn.mean_squared_error(predictions, boston.target)
-    self.assertAllClose(scores['MSE'], other_score)
-    self.assertTrue('global_step' in scores)
-    self.assertEqual(100, scores['global_step'])
-
-  def testBostonAllDictionaryInput(self):
-    boston = base.load_boston()
-    est = estimator.Estimator(model_fn=linear_model_fn)
-    boston_input = {'input': boston.data}
-    float64_target = {'labels': boston.target.astype(np.float64)}
-    est.fit(x=boston_input, y=float64_target, steps=100)
-    scores = est.evaluate(
-        x=boston_input,
-        y=float64_target,
-        metrics={'MSE': metric_ops.streaming_mean_squared_error})
-    predictions = np.array(list(est.predict(x=boston_input)))
-    other_score = _sklearn.mean_squared_error(predictions, boston.target)
-    self.assertAllClose(other_score, scores['MSE'])
-    self.assertTrue('global_step' in scores)
-    self.assertEqual(scores['global_step'], 100)
-
-  def testIrisAll(self):
-    iris = base.load_iris()
-    est = estimator.SKCompat(
-        estimator.Estimator(model_fn=logistic_model_no_mode_fn))
-    est.fit(iris.data, iris.target, steps=100)
-    scores = est.score(
-        x=iris.data,
-        y=iris.target,
-        metrics={('accuracy', 'class'): metric_ops.streaming_accuracy})
-    predictions = est.predict(x=iris.data)
-    predictions_class = est.predict(x=iris.data, outputs=['class'])['class']
-    self.assertEqual(predictions['prob'].shape[0], iris.target.shape[0])
-    self.assertAllClose(predictions['class'], predictions_class)
-    self.assertAllClose(
-        predictions['class'], np.argmax(
-            predictions['prob'], axis=1))
-    other_score = _sklearn.accuracy_score(iris.target, predictions['class'])
-    self.assertAllClose(scores['accuracy'], other_score)
-    self.assertTrue('global_step' in scores)
-    self.assertEqual(100, scores['global_step'])
-
-  def testIrisAllDictionaryInput(self):
-    iris = base.load_iris()
-    est = estimator.Estimator(model_fn=logistic_model_no_mode_fn)
-    iris_data = {'input': iris.data}
-    iris_target = {'labels': iris.target}
-    est.fit(iris_data, iris_target, steps=100)
-    scores = est.evaluate(
-        x=iris_data,
-        y=iris_target,
-        metrics={('accuracy', 'class'): metric_ops.streaming_accuracy})
-    predictions = list(est.predict(x=iris_data))
-    predictions_class = list(est.predict(x=iris_data, outputs=['class']))
-    self.assertEqual(len(predictions), iris.target.shape[0])
-    classes_batch = np.array([p['class'] for p in predictions])
-    self.assertAllClose(classes_batch,
-                        np.array([p['class'] for p in predictions_class]))
-    self.assertAllClose(
-        classes_batch,
-        np.argmax(
-            np.array([p['prob'] for p in predictions]), axis=1))
-    other_score = _sklearn.accuracy_score(iris.target, classes_batch)
-    self.assertAllClose(other_score, scores['accuracy'])
-    self.assertTrue('global_step' in scores)
-    self.assertEqual(scores['global_step'], 100)
-
-  def testIrisInputFn(self):
-    iris = base.load_iris()
-    est = estimator.Estimator(model_fn=logistic_model_no_mode_fn)
-    est.fit(input_fn=iris_input_fn, steps=100)
-    _ = est.evaluate(input_fn=iris_input_fn, steps=1)
-    predictions = list(est.predict(x=iris.data))
-    self.assertEqual(len(predictions), iris.target.shape[0])
-
   def testHooksNotChanged(self):
     est = estimator.Estimator(model_fn=logistic_model_no_mode_fn)
     # We pass empty array and expect it to remain empty after calling
@@ -632,23 +520,6 @@ class EstimatorTest(test.TestCase):
     est.fit(input_fn=iris_input_fn, steps=100, monitors=my_array)
     _ = est.evaluate(input_fn=iris_input_fn, steps=1, hooks=my_array)
     self.assertEqual(my_array, [])
-
-  def testIrisInputFnLabelsDict(self):
-    iris = base.load_iris()
-    est = estimator.Estimator(model_fn=logistic_model_no_mode_fn)
-    est.fit(input_fn=iris_input_fn_labels_dict, steps=100)
-    _ = est.evaluate(
-        input_fn=iris_input_fn_labels_dict,
-        steps=1,
-        metrics={
-            'accuracy':
-                metric_spec.MetricSpec(
-                    metric_fn=metric_ops.streaming_accuracy,
-                    prediction_key='class',
-                    label_key='labels')
-        })
-    predictions = list(est.predict(x=iris.data))
-    self.assertEqual(len(predictions), iris.target.shape[0])
 
   def testIrisIterator(self):
     iris = base.load_iris()
@@ -691,11 +562,6 @@ class EstimatorTest(test.TestCase):
     y_iter = ([np.int32(v)] for v in iris.target)
     est.fit(x_iter, y_iter, steps=100)
 
-  def testTrainInputFn(self):
-    est = estimator.Estimator(model_fn=linear_model_fn)
-    est.fit(input_fn=boston_input_fn, steps=1)
-    _ = est.evaluate(input_fn=boston_eval_fn, steps=1)
-
   def testTrainStepsIsIncremental(self):
     est = estimator.Estimator(model_fn=linear_model_fn)
     est.fit(input_fn=boston_input_fn, steps=10)
@@ -715,36 +581,6 @@ class EstimatorTest(test.TestCase):
     boston = base.load_boston()
     est.fit(input_fn=boston_input_fn, steps=1)
     output = list(est.predict(x=boston.data, batch_size=10))
-    self.assertEqual(len(output), boston.target.shape[0])
-
-  def testPredictInputFn(self):
-    est = estimator.Estimator(model_fn=linear_model_fn)
-    boston = base.load_boston()
-    est.fit(input_fn=boston_input_fn, steps=1)
-    input_fn = functools.partial(boston_input_fn, num_epochs=1)
-    output = list(est.predict(input_fn=input_fn))
-    self.assertEqual(len(output), boston.target.shape[0])
-
-  def testPredictInputFnWithQueue(self):
-    est = estimator.Estimator(model_fn=linear_model_fn)
-    boston = base.load_boston()
-    est.fit(input_fn=boston_input_fn, steps=1)
-    input_fn = functools.partial(boston_input_fn_with_queue, num_epochs=2)
-    output = list(est.predict(input_fn=input_fn))
-    self.assertEqual(len(output), boston.target.shape[0] * 2)
-
-  def testPredictConstInputFn(self):
-    est = estimator.Estimator(model_fn=linear_model_fn)
-    boston = base.load_boston()
-    est.fit(input_fn=boston_input_fn, steps=1)
-
-    def input_fn():
-      features = array_ops.reshape(
-          constant_op.constant(boston.data), [-1, _BOSTON_INPUT_DIM])
-      labels = array_ops.reshape(constant_op.constant(boston.target), [-1, 1])
-      return features, labels
-
-    output = list(est.predict(input_fn=input_fn))
     self.assertEqual(len(output), boston.target.shape[0])
 
   def testWithModelFnOps(self):

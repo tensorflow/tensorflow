@@ -109,8 +109,21 @@ void CreateTensorsFromInputInfo(
         InitializeTensor<uint8>(input.initialization_values, &input_tensor);
         break;
       }
+      case DT_BOOL: {
+        InitializeTensor<bool>(input.initialization_values, &input_tensor);
+        break;
+      }
+      case DT_STRING: {
+        if (!input.initialization_values.empty()) {
+          LOG(FATAL) << "Initialization values are not supported for strings";
+        }
+        auto type_tensor = input_tensor.flat<string>();
+        type_tensor = type_tensor.constant("");
+        break;
+      }
       default:
-        LOG(FATAL) << "Unsupported input type: " << input.data_type;
+        LOG(FATAL) << "Unsupported input type: "
+                   << DataTypeString(input.data_type);
     }
     input_tensors->push_back({input.name, input_tensor});
   }
@@ -212,6 +225,7 @@ Status RunBenchmark(const std::vector<InputLayerInfo>& inputs,
 
   if (!s.ok()) {
     LOG(ERROR) << "Error during inference: " << s;
+    return s;
   }
 
   assert(run_metadata.has_step_stats());
@@ -454,9 +468,9 @@ int Main(int argc, char** argv) {
 
     // Report the stats.
     TestReporter reporter(output_prefix, benchmark_name);
-    reporter.Initialize();
-    reporter.Benchmark(num_runs, -1.0, wall_time, throughput);
-    reporter.Close();
+    TF_QCHECK_OK(reporter.Initialize());
+    TF_QCHECK_OK(reporter.Benchmark(num_runs, -1.0, wall_time, throughput));
+    TF_QCHECK_OK(reporter.Close());
   }
 
   return 0;
