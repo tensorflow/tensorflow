@@ -13,7 +13,10 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Ops for building neural network losses. See @{$python/contrib.losses}."""
+"""Ops for building neural network losses.
+
+See @{$python/contrib.losses}.
+"""
 
 from __future__ import absolute_import
 from __future__ import division

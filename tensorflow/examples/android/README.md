@@ -10,9 +10,12 @@ TensorFlow in mobile applications.
 
 Inference is done using the [TensorFlow Android Inference Interface](../../../tensorflow/contrib/android),
 which may be built separately if you want a standalone library to drop into your
-existing application.
+existing application. Object tracking and YUV -> RGB conversion is handled by
+libtensorflow_demo.so.
 
-A device running Android 5.0 (API 21) or higher is required to run the demo.
+A device running Android 5.0 (API 21) or higher is required to run the demo due
+to the use of the camera2 API, although the native libraries themselves can run
+on API >= 14 devices.
 
 ## Current samples:
 
@@ -38,7 +41,7 @@ A device running Android 5.0 (API 21) or higher is required to run the demo.
 If you just want the fastest path to trying the demo, you may download the
 nightly build
 [here](https://ci.tensorflow.org/view/Nightly/job/nightly-android/). Expand the
-"View" and then the "out" folders under "Last Successful Artifacts to find
+"View" and then the "out" folders under "Last Successful Artifacts" to find
 tensorflow_demo.apk. Also available are precompiled native libraries that you
 may drop into your own applications. See
 [tensorflow/contrib/android/README.md](../../../tensorflow/contrib/android/README.md)
@@ -69,6 +72,12 @@ protobuf compilation.
 
 ### Bazel
 
+NOTE: Bazel does not currently support building for Android on Windows. Full
+support for gradle/cmake builds is coming soon, but in the meantime we suggest
+that Windows users download the
+[prebuilt binaries](https://ci.tensorflow.org/view/Nightly/job/nightly-android/)
+instead.
+
 ##### Install Bazel and Android Prerequisites
 
 Bazel is the primary build system for TensorFlow. To build with Bazel,
@@ -82,7 +91,8 @@ it and the Android NDK and SDK must be installed on your system.
         [here](https://developer.android.com/tools/revisions/build-tools.html),
         or alternatively as part of
         [Android Studio](https://developer.android.com/studio/index.html). Build
-        tools API >= 23 is required to build the TF Android demo.
+        tools API >= 23 is required to build the TF Android demo (though it will
+        run on API >= 21 devices).
 
 ##### Edit WORKSPACE
 
@@ -95,7 +105,7 @@ be reported.
 Also edit the API levels for the SDK in WORKSPACE to the highest level you
 have installed in your SDK. This must be >= 23 (this is completely independent
 of the API level of the demo, which is defined in AndroidManifest.xml).
-The NDK API level may remain at 21.
+The NDK API level may remain at 14.
 
 ##### Install Model Files (optional)
 
@@ -107,7 +117,7 @@ in `WORKSPACE` during the build process.
 **Optional**: If you wish to place the models in your assets manually (E.g. for
 non-Bazel builds), remove all of the `model_files` entries from the `assets`
 list in `tensorflow_demo` found in the `[BUILD](BUILD)` file. Then download
-and extract the archives yourself to the `assets` directory in thesource tree:
+and extract the archives yourself to the `assets` directory in the source tree:
 
 ```bash
 BASE_URL=https://storage.googleapis.com/download.tensorflow.org/models

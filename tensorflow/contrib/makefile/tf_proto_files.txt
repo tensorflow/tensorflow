@@ -21,6 +21,7 @@ tensorflow/core/framework/tensor.proto
 tensorflow/core/framework/summary.proto
 tensorflow/core/framework/step_stats.proto
 tensorflow/core/framework/resource_handle.proto
+tensorflow/core/framework/remote_fused_graph_execute_info.proto
 tensorflow/core/framework/reader_base.proto
 tensorflow/core/framework/op_def.proto
 tensorflow/core/framework/node_def.proto

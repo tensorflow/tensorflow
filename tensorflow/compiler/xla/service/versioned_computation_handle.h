@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <ostream>
 
+#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 

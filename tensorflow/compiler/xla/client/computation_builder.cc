@@ -950,6 +950,11 @@ ComputationDataHandle ComputationBuilder::Tanh(
   return UnaryOp(UNOP_TANH, operand);
 }
 
+ComputationDataHandle ComputationBuilder::IsFinite(
+    const ComputationDataHandle& operand) {
+  return UnaryOp(UNOP_IS_FINITE, operand);
+}
+
 ComputationDataHandle ComputationBuilder::Transpose(
     const ComputationDataHandle& operand,
     tensorflow::gtl::ArraySlice<int64> permutation) {
