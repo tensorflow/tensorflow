@@ -20,17 +20,22 @@ from __future__ import print_function
 
 import numpy as np
 import tensorflow as tf
+from tensorflow.python.platform import test
 
 
 class LayerNormFusedTest(tf.test.TestCase):
 
   def testUnknownShape(self):
+    if not test.is_gpu_available():
+      return  # Test requires access to a GPU
     with tf.Graph().as_default() as g, self.test_session(g):
       inputs = tf.placeholder(dtype=tf.float32)
       with self.assertRaisesRegexp(ValueError, 'undefined rank'):
         tf.contrib.layer_norm.layer_norm_fused(inputs)
 
   def testUnknownLastDim(self):
+    if not test.is_gpu_available():
+      return  # Test requires access to a GPU
     with tf.Graph().as_default() as g, self.test_session(g):
       inputs = tf.placeholder(dtype=tf.float32)
       inputs.set_shape(tf.TensorShape((5, 3, 3, None)))
@@ -38,6 +43,8 @@ class LayerNormFusedTest(tf.test.TestCase):
         tf.contrib.layer_norm.layer_norm_fused(inputs)
 
   def testCreateOp(self):
+    if not test.is_gpu_available():
+      return  # Test requires access to a GPU
     height, width = 3, 3
     with self.test_session():
       images = np.random.uniform(size=(5, height, width, 3))
@@ -47,6 +54,8 @@ class LayerNormFusedTest(tf.test.TestCase):
       self.assertListEqual(output.get_shape().as_list(), [5, height, width, 3])
 
   def testCreateVariables(self):
+    if not test.is_gpu_available():
+      return  # Test requires access to a GPU
     height, width = 3, 3
     with self.test_session():
       images = tf.random_uniform((5, height, width, 3), seed=1)
@@ -57,6 +66,8 @@ class LayerNormFusedTest(tf.test.TestCase):
       self.assertEqual(gamma.op.name, 'LayerNorm/gamma')
 
   def testReuseVariables(self):
+    if not test.is_gpu_available():
+      return  # Test requires access to a GPU
     height, width = 3, 3
     with self.test_session():
       images = tf.random_uniform((5, height, width, 3), seed=1)
@@ -68,6 +79,8 @@ class LayerNormFusedTest(tf.test.TestCase):
       self.assertEqual(len(gamma), 1)
 
   def testReuseVars(self):
+    if not test.is_gpu_available():
+      return  # Test requires access to a GPU
     height, width = 3, 3
     with self.test_session() as sess:
       image_shape = (10, height, width, 3)
@@ -82,6 +95,8 @@ class LayerNormFusedTest(tf.test.TestCase):
       self.assertAllClose(sess.run([output_train]), sess.run([output_eval]))
 
   def doOutputTest(self, input_shape, center=False, scale=False):
+    if not test.is_gpu_available():
+      return  # Test requires access to a GPU
     with self.test_session() as sess:
       input_values = np.random.rand(*input_shape)
       inputs = tf.constant(input_values, shape=input_shape, dtype=tf.float32)
@@ -126,6 +141,8 @@ class LayerNormFusedTest(tf.test.TestCase):
     self.doOutputTest((100, 10, 10, 4), center=True, scale=True)
 
   def doGradientTest(self, input_shape, center=False, scale=False):
+    if not test.is_gpu_available():
+      return  # Test requires access to a GPU
     with self.test_session() as sess:
       # np.random.seed(5)
       input_values = np.random.rand(*input_shape)
