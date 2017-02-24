@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Training and input utilities. See @{$python/contrib.training} guide.
+"""Training and input utilities.
+
+See @{$python/contrib.training} guide.
 
 @@batch_sequences_with_states
 @@NextQueuedSequenceBatch

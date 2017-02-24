@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Bijector Ops. See the @{$python/contrib.distributions.bijectors} guide.
+"""Bijector Ops.
+
+See the @{$python/contrib.distributions.bijectors} guide.
 
 @@Affine
 @@AffineLinearOperator

@@ -14,7 +14,7 @@
 # ==============================================================================
 """Support for creating Stochastic Tensors.
 
-See the ${@python/contrib.bayesflow.stochastic_tensor} guide.
+See the @{$python/contrib.bayesflow.stochastic_tensor} guide.
 
 @@BaseStochasticTensor
 @@StochasticTensor

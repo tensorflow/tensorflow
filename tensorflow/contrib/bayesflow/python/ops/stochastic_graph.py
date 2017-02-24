@@ -14,7 +14,7 @@
 # ==============================================================================
 """Support for Stochastic Computation Graphs.
 
-See the ${@python/contrib.bayesflow.stochastic_graph} guide.
+See the @{$python/contrib.bayesflow.stochastic_graph} guide.
 
 @@surrogate_loss
 """

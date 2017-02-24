@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""RNN Cells and additional RNN operations. See @{$python/contrib.rnn} guide.
+"""RNN Cells and additional RNN operations.
+
+See @{$python/contrib.rnn} guide.
 
 @@RNNCell
 @@BasicRNNCell
