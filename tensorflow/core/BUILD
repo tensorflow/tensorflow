@@ -1295,17 +1295,7 @@ tf_cuda_library(
             "framework/**/*.cc",
             "util/**/*.h",
             "util/**/*.cc",
-# INTEL_MKL start
-  	        "common_runtime/allocator_retry.h",
-            "common_runtime/allocator_retry.cc",
-            "common_runtime/bfc_allocator.h",
-            "common_runtime/bfc_allocator.cc",
-            "common_runtime/visitable_allocator.h",
-            "common_runtime/cpu/*.cc",
-            "common_runtime/cpu/*.h",
-            "public/version.h",
-# INTEL_MKL end
-        ],
+				],
         exclude = [
             "**/*test*",
             "**/*main.cc",
@@ -1326,11 +1316,11 @@ tf_cuda_library(
             "util/memmapped_file_system_writer.h",
             "util/memmapped_file_system_writer.cc",
         ],
-    }),
+    }) + if_mkl([
+            "common_runtime/allocator_retry.cc",
+            "common_runtime/bfc_allocator.cc",
+    ]),
     hdrs = [
-        "common_runtime/bfc_allocator.h",
-        "common_runtime/allocator_retry.h",
-        "common_runtime/visitable_allocator.h",
         "framework/op_segment.h",
         "framework/rendezvous.h",  # only needed for tests
         "framework/tensor_reference.h",
@@ -1341,14 +1331,20 @@ tf_cuda_library(
         "util/presized_cuckoo_map.h",
         "util/tensor_slice_set.h",
         "util/tensor_slice_util.h",
-    ],
+    ] + if_mkl([
+        "common_runtime/bfc_allocator.h",
+        "common_runtime/allocator_retry.h",
+        "common_runtime/visitable_allocator.h",
+		]),
     copts = tf_copts(),
     linkopts = select({
         "//tensorflow:freebsd": [],
         "//conditions:default": ["-ldl"],
     }) + [
         "-lm",
-    ],
+    ] + if_mkl([
+				"-lmklml_intel",
+		]),
     deps = [
         ":lib",
         ":lib_internal",
@@ -1357,7 +1353,9 @@ tf_cuda_library(
         ":version_lib",
         "//tensorflow/core/kernels:bounds_check",
         "//third_party/eigen3",
-    ],
+    ] + if_mkl([
+				"//third_party/mkl:intel_binary_blob",
+		]),
     alwayslink = 1,
 )
 
