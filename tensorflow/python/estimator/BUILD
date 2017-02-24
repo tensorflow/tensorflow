@@ -93,6 +93,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":model_fn",
         ":run_config",
         "//tensorflow/python:training",
     ],

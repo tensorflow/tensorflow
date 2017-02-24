@@ -31,46 +31,19 @@ from tensorflow.python.training import monitored_session
 from tensorflow.python.training import session_run_hook
 
 
-def _check_is_tensor(x, tensor_name):
-  """Returns `x` if it is a `Tensor`, raises TypeError otherwise."""
-  if not isinstance(x, ops.Tensor):
-    raise TypeError('{} must be Tensor, given: {}'.format(tensor_name, x))
-  return x
-
-
-def _prediction_values(predictions):
-  """Returns the values of the given predictions dict or `Tensor`."""
-  if predictions is None:
-    return []
-  if isinstance(predictions, dict):
-    return list(six.itervalues(predictions))
-  return [predictions]
-
-
-def _eval_metric_ops_values(eval_metric_ops):
-  """Returns the values of the given eval_metric_ops dict."""
-  if eval_metric_ops is None:
-    return []
-  result = []
-  for value_tuple in six.itervalues(eval_metric_ops):
-    result.append(value_tuple[0])
-    result.append(value_tuple[1])
-  return result
-
-
 class ModeKeys(object):
   """Standard names for model modes.
 
   The following standard keys are defined:
 
-  * `TRAIN`: training mode.
+  * `FIT`: training mode.
   * `EVAL`: evaluation mode.
-  * `INFER`: inference mode.
+  * `PREDICT`: inference mode.
   """
 
-  TRAIN = 'train'
+  FIT = 'train'
   EVAL = 'eval'
-  INFER = 'infer'
+  PREDICT = 'infer'
 
 
 class EstimatorSpec(
@@ -97,9 +70,9 @@ class EstimatorSpec(
     """Creates a validated `EstimatorSpec` instance.
 
     Depending on the value of `mode`, different arguments are required. Namely
-    * For `mode == ModeKeys.TRAIN`: required fields are `loss` and `train_op`.
+    * For `mode == ModeKeys.FIT`: required fields are `loss` and `train_op`.
     * For `mode == ModeKeys.EVAL`: required fields are `loss` and `predictions`.
-    * For `mode == ModeKeys.INFER`: required fields are `predictions`.
+    * For `mode == ModeKeys.PREDICT`: required fields are `predictions`.
 
     model_fn can populate all arguments independent of mode. In this case, some
     arguments will be ignored by `Estimator`. E.g. `train_op` will be ignored
@@ -122,17 +95,17 @@ class EstimatorSpec(
 
     ```python
     def my_model_fn(mode, features, labels):
-      if (mode == tf.estimator.ModeKeys.TRAIN or
+      if (mode == tf.estimator.ModeKeys.FIT or
           mode == tf.estimator.ModeKeys.EVAL):
         loss = ...
       else:
         loss = None
-      if mode == tf.estimator.ModeKeys.TRAIN:
+      if mode == tf.estimator.ModeKeys.FIT:
         train_op = ...
       else:
         train_op = None
       if (mode == tf.estimator.ModeKeys.EVAL or
-          mode == tf.estimator.ModeKeys.INFER):
+          mode == tf.estimator.ModeKeys.PREDICT):
         predictions = ...
       else:
         predictions = None
@@ -145,7 +118,7 @@ class EstimatorSpec(
     ```
 
     Args:
-      mode: One of `ModeKeys`. Specifies if this is training, evaluation or
+      mode: A `ModeKeys`. Specifies if this is training, evaluation or
         prediction.
       predictions: Predictions `Tensor` or dict of `Tensor`.
       loss: Training loss `Tensor`. Must be either scalar, or with shape `[1]`.
@@ -180,14 +153,14 @@ class EstimatorSpec(
     """
     # Validate train_op.
     if train_op is None:
-      if mode == ModeKeys.TRAIN:
+      if mode == ModeKeys.FIT:
         raise ValueError('Missing train_op.')
-    elif not isinstance(train_op, ops.Operation):
-      raise TypeError('train_op must be Operation, given: {}'.format(train_op))
+    else:
+      _check_is_tensor_or_operation(train_op, 'train_op')
 
     # Validate loss.
     if loss is None:
-      if mode in (ModeKeys.TRAIN, ModeKeys.EVAL):
+      if mode in (ModeKeys.FIT, ModeKeys.EVAL):
         raise ValueError('Missing loss.')
     else:
       loss = _check_is_tensor(loss, 'loss')
@@ -199,7 +172,7 @@ class EstimatorSpec(
 
     # Validate predictions.
     if predictions is None:
-      if mode == ModeKeys.INFER or mode == ModeKeys.EVAL:
+      if mode == ModeKeys.PREDICT or mode == ModeKeys.EVAL:
         raise ValueError('Missing predictions.')
     else:
       if isinstance(predictions, dict):
@@ -223,6 +196,10 @@ class EstimatorSpec(
           raise TypeError(
               'Values of eval_metric_ops must be (update_op, value) tuples, '
               'given: {} for key: {}'.format(metric_value, key))
+        _check_is_tensor_or_operation(metric_value[0],
+                                      'eval_metric_ops[{}]'.format(key))
+        _check_is_tensor_or_operation(metric_value[1],
+                                      'eval_metric_ops[{}]'.format(key))
 
     # Validate export_outputs.
     if export_outputs is not None:
@@ -283,3 +260,35 @@ class EstimatorSpec(
         training_chief_hooks=training_chief_hooks,
         training_hooks=training_hooks,
         scaffold=scaffold)
+
+
+def _check_is_tensor_or_operation(x, name):
+  if not (isinstance(x, ops.Operation) or isinstance(x, ops.Tensor)):
+    raise TypeError('{} must be Operation or Tensor, given: {}'.format(name, x))
+
+
+def _check_is_tensor(x, tensor_name):
+  """Returns `x` if it is a `Tensor`, raises TypeError otherwise."""
+  if not isinstance(x, ops.Tensor):
+    raise TypeError('{} must be Tensor, given: {}'.format(tensor_name, x))
+  return x
+
+
+def _prediction_values(predictions):
+  """Returns the values of the given predictions dict or `Tensor`."""
+  if predictions is None:
+    return []
+  if isinstance(predictions, dict):
+    return list(six.itervalues(predictions))
+  return [predictions]
+
+
+def _eval_metric_ops_values(eval_metric_ops):
+  """Returns the values of the given eval_metric_ops dict."""
+  if eval_metric_ops is None:
+    return []
+  result = []
+  for value_tuple in six.itervalues(eval_metric_ops):
+    result.append(value_tuple[0])
+    result.append(value_tuple[1])
+  return result
