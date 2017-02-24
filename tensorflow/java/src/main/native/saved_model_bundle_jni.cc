@@ -21,19 +21,40 @@ limitations under the License.
 #include "tensorflow/java/src/main/native/saved_model_bundle_jni.h"
 
 namespace {
+void TF_MaybeDeleteBuffer(TF_Buffer* buf) {
+  if (buf == nullptr) return;
+  TF_DeleteBuffer(buf);
+}
 
+typedef std::unique_ptr<TF_Buffer, decltype(&TF_MaybeDeleteBuffer)>
+    unique_tf_buffer;
+
+unique_tf_buffer MakeUniqueBuffer(TF_Buffer* buf) {
+  return unique_tf_buffer(buf, TF_MaybeDeleteBuffer);
+}
 }  // namespace
+
 JNIEXPORT jobject JNICALL Java_org_tensorflow_SavedModelBundle_load(JNIEnv * env,
                                                                     jclass clazz,
                                                                     jstring export_dir,
-                                                                    jobjectArray tags) {
+                                                                    jobjectArray tags,
+                                                                    jbyteArray run_options) {
 
   TF_Status* status = TF_NewStatus();
   jobject bundle = nullptr;
 
   // allocate parameters for TF_LoadSessionFromSavedModel
   TF_SessionOptions* opts = TF_NewSessionOptions();
-  const TF_Buffer* crun_options = nullptr;
+  unique_tf_buffer crun_options(MakeUniqueBuffer(nullptr));
+  jbyte* run_options_data = nullptr;
+  if (run_options != nullptr) {
+    size_t sz = env->GetArrayLength(run_options);
+    if (sz > 0) {
+      run_options_data = env->GetByteArrayElements(run_options, nullptr);
+      crun_options.reset(
+          TF_NewBufferFromString(static_cast<void*>(run_options_data), sz));
+    }
+  }
   const char* cexport_dir = env->GetStringUTFChars(export_dir, nullptr);
   std::unique_ptr<const char* []> tags_ptrs;
   size_t tags_len = env->GetArrayLength(tags);
@@ -47,12 +68,15 @@ JNIEXPORT jobject JNICALL Java_org_tensorflow_SavedModelBundle_load(JNIEnv * env
   // load the session
   TF_Graph* graph = TF_NewGraph();
   TF_Buffer* metagraph_def = TF_NewBuffer();
-  TF_Session* session = TF_LoadSessionFromSavedModel(opts, crun_options, cexport_dir,
+  TF_Session* session = TF_LoadSessionFromSavedModel(opts, crun_options.get(), cexport_dir,
                                                      tags_ptrs.get(), tags_len, graph,
                                                      metagraph_def, status);
 
   // release the parameters
   TF_DeleteSessionOptions(opts);
+  if (run_options_data != nullptr) {
+    env->ReleaseByteArrayElements(run_options, run_options_data, JNI_ABORT);
+  }
   env->ReleaseStringUTFChars(export_dir, cexport_dir);
   for (size_t i = 0; i < tags_len; ++i) {
     jstring tag = static_cast<jstring>(env->GetObjectArrayElement(tags, i));
@@ -65,16 +89,14 @@ JNIEXPORT jobject JNICALL Java_org_tensorflow_SavedModelBundle_load(JNIEnv * env
     // sizeof(jsize) is less than sizeof(size_t) on some platforms.
     if (metagraph_def->length > std::numeric_limits<jint>::max()) {
       throwException(env, kIndexOutOfBoundsException,
-                     "GraphDef is too large to serialize into a byte[] array");
-    }
-    else {
+                     "MetaGraphDef is too large to serialize into a byte[] array");
+    } else {
         static_assert(sizeof(jbyte) == 1, "unexpected size of the jbyte type");
         jint jmetagraph_len = static_cast<jint>(metagraph_def->length);
         jbyteArray jmetagraph_def = env->NewByteArray(jmetagraph_len);
         env->SetByteArrayRegion(jmetagraph_def, 0, jmetagraph_len,
                                 static_cast<const jbyte*>(metagraph_def->data));
 
-        jclass clazz = env->FindClass("org/tensorflow/SavedModelBundle");
         jmethodID method = env->GetStaticMethodID(clazz, "fromHandle", "(JJ[B)Lorg/tensorflow/SavedModelBundle;");
         bundle = env->CallStaticObjectMethod(clazz, method,
                                              reinterpret_cast<jlong>(graph),

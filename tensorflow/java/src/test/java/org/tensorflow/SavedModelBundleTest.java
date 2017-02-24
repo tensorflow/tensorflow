@@ -19,8 +19,6 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
-import java.util.Collections;
-
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
@@ -33,8 +31,7 @@ public class SavedModelBundleTest {
 
     @Test
     public void load() {
-        try(SavedModelBundle bundle = SavedModelBundle.loadSavedModel(
-                SAVED_MODEL_PATH, Collections.singleton("serve"))) {
+        try(SavedModelBundle bundle = SavedModelBundle.load(SAVED_MODEL_PATH, "serve")) {
             assertNotNull(bundle.session());
             assertNotNull(bundle.graph());
             assertNotNull(bundle.metaGraphDef());
@@ -44,8 +41,7 @@ public class SavedModelBundleTest {
     @Test
     public void loadNonExistentBundle() {
         try {
-            SavedModelBundle bundle = SavedModelBundle.loadSavedModel(
-                    "__BAD__", Collections.singleton("serve"));
+            SavedModelBundle bundle = SavedModelBundle.load("__BAD__", "serve");
             bundle.close();
             fail("not expected");
         } catch(org.tensorflow.TensorFlowException e) {
