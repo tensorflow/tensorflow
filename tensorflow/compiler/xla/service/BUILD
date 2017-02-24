@@ -110,6 +110,7 @@ cc_library(
     srcs = ["versioned_computation_handle.cc"],
     hdrs = ["versioned_computation_handle.h"],
     deps = [
+        "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
     ],

@@ -23,7 +23,7 @@ import json
 
 from tensorflow.python.platform import test
 from tensorflow.python.summary import event_accumulator
-from tensorflow.tensorboard.plugins.debugger import plugin as debugger_plugin
+from tensorflow.tensorboard.plugins.debugger import debugger_plugin
 
 
 class FakeRequest(object):
