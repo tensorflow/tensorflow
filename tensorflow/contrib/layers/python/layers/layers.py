@@ -525,7 +525,7 @@ def batch_norm(
       if layer.beta:
         _add_variable_to_collections(layer.beta, variables_collections, 'beta')
       if layer.gamma:
-        _add_variable_to_collections(layer.beta, variables_collections, 'gamma')
+        _add_variable_to_collections(layer.gamma, variables_collections, 'gamma')
 
       if activation_fn is not None:
         outputs = activation_fn(outputs)
