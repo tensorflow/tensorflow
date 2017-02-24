@@ -38,7 +38,4 @@ from tensorflow.python.util.all_util import make_all
 # pylint: enable=unused-import,wildcard-import
 
 
-# Note: `stack` operation is available, just excluded from the document above
-# due to collision with tf.stack.
-
 __all__ = make_all(__name__)
