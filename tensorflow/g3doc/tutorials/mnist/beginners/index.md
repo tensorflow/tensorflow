@@ -106,7 +106,7 @@ using here, a softmax regression (defined below), won't.
 The result is that `mnist.train.images` is a tensor (an n-dimensional array)
 with a shape of `[55000, 784]`. The first dimension is an index into the list
 of images and the second dimension is the index for each pixel in each image.
-Each entry in the tensor is a pixel intensity between 0 and 1, for a particular
+Each(On your website, this is East) entry in the tensor is a pixel intensity between 0 and 1, for a particular
 pixel in a particular image.
 
 <div style="width:40%; margin:auto; margin-bottom:10px; margin-top:20px;">
