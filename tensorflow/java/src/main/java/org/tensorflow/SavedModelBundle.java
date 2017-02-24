@@ -16,8 +16,6 @@ limitations under the License.
 package org.tensorflow;
 
 /**
- * SavedModel representation once the SavedModel is loaded from storage.
- *
  * SavedModelBundle represents a model loaded from storage.
  *
  * The model consists of a description of the computation (a {@link Graph}),
@@ -78,17 +76,17 @@ public class SavedModelBundle implements AutoCloseable {
     private final Session session;
     private final byte[] metaGraphDef;
 
-    SavedModelBundle(Graph graph, Session session, byte[] metaGraphDef) {
+    private SavedModelBundle(Graph graph, Session session, byte[] metaGraphDef) {
         this.graph = graph;
         this.session = session;
         this.metaGraphDef = metaGraphDef;
     }
 
     /**
-     * Create a SavedModelBundle object from a handle to the C <i>TF_Graph</i> object and
-     * to the C <i>TF_Session</i> object, plus the serialized <i>MetaGraphDef</i>.
+     * Create a SavedModelBundle object from a handle to the C TF_Graph object and
+     * to the C TF_Session object, plus the serialized MetaGraphDef.
      *
-     * <p>Invoked from the native <i>load</i> method. Takes ownership of the handles.
+     * Invoked from the native load method. Takes ownership of the handles.
      */
     private static SavedModelBundle fromHandle(long graphHandle, long sessionHandle, byte[] metaGraphDef) {
         Graph graph = new Graph(graphHandle);
