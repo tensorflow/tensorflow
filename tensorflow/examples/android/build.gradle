@@ -21,7 +21,7 @@ buildscript {
     }
 
     dependencies {
-        classpath 'com.android.tools.build:gradle:2.1.3'
+        classpath 'com.android.tools.build:gradle:2.2.2'
     }
 }
 
@@ -29,7 +29,7 @@ apply plugin: 'com.android.application'
 
 android {
     compileSdkVersion 24
-    buildToolsVersion "24.0.1"
+    buildToolsVersion "24.0.2"
 
     lintOptions {
         abortOnError false
@@ -69,4 +69,8 @@ task copyNativeLibs(type: Copy) {
 
 copyNativeLibs.dependsOn buildNative
 assemble.dependsOn copyNativeLibs
-assembleDebug.dependsOn copyNativeLibs
+tasks.whenTaskAdded { task ->
+    if (task.name == 'assembleDebug') {
+        task.dependsOn 'copyNativelibs'
+    }
+}
