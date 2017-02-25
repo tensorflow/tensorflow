@@ -413,6 +413,18 @@ bool OpKernelContext::forward_input_to_output_with_shape(
       op_kernel().input_memory_types()[input_index]) {
     return false;
   }
+
+  // TODO(rmlarsen,zhengxq): Re-enable for GPU memory once kernels have been
+  // made forwarding aware or decorated to expose which inputs they rely on
+  // to access via the read-only texture cache.
+  // TODO(rmlarsen): Short term, move disabling logic into the kernels
+  // themselves for fine-grained control.
+  DCHECK(params_->device != nullptr);
+  if (op_kernel().output_memory_types()[output_index] == DEVICE_MEMORY &&
+      params_->device->attributes().device_type() == DEVICE_GPU) {
+    return false;
+  }
+
   // Check that output allocator attributes are not more restrictive than
   // input allocator attributes.
   const auto input_attr = params_->input_alloc_attrs == nullptr
