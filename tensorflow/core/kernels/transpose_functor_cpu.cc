@@ -161,9 +161,11 @@ Status DoTranspose<SYCLDevice>(const SYCLDevice& d, const Tensor& in,
   CHECK_EQ(in.dtype(), out->dtype());
   switch (in.dtype()) {
     case DT_FLOAT:
-    case DT_DOUBLE:
     case DT_INT32:
       internal::Transpose<SYCLDevice, uint32>::run(d, in, perm, out);
+      break;
+    case DT_DOUBLE:
+      internal::Transpose<SYCLDevice, uint64>(d, in, perm, out);
       break;
 
     default:

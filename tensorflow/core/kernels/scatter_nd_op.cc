@@ -31,6 +31,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif // TENSORFLOW_USE_SYCL
 
 // Check whether updates.shape = indices.shape[:batch_dim] +
 // params_shape[slice_dim:]
@@ -418,6 +421,19 @@ TF_CALL_GPU_NUMBER_TYPES_NO_HALF(DECLARE_GPU_SPECS);
 }  // namespace functor
 
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SCATTER_ND_ADD_SUB_SYCL(type) \
+  REGISTER_SCATTER_ND_ADD_SUB(type, SYCL);
+
+#define REGISTER_SCATTER_ND_UPDATE_SYCL(type) \
+  REGISTER_SCATTER_ND_UPDATE(type, SYCL);
+
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_ADD_SUB_SYCL);
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_UPDATE_SYCL);
+#undef REGISTER_SCATTER_ND_ADD_SUB_SYCL
+#undef REGISTER_SCATTER_ND_UPDATE_SYCL
+#endif // TENSORFLOW_USE_SYCL
 
 #undef REGISTER_SCATTER_ND_ADD
 #undef REGISTER_SCATTER_ND_ADD_SUB
