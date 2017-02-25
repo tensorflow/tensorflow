@@ -72,6 +72,7 @@ cuda_py_tests(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
+    xla_enabled = True,
 )
 
 cuda_py_tests(

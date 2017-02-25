@@ -38,6 +38,9 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 
 
+_checked_scope = core_rnn_cell_impl._checked_scope  # pylint: disable=protected-access
+
+
 def _get_concat_variable(name, shape, dtype, num_shards):
   """Get a sharded variable concatenated into one tensor."""
   sharded_variable = _get_sharded_variable(name, shape, dtype, num_shards)
@@ -106,7 +109,7 @@ class CoupledInputForgetGateLSTMCell(core_rnn_cell.RNNCell):
                initializer=None, num_proj=None, proj_clip=None,
                num_unit_shards=1, num_proj_shards=1,
                forget_bias=1.0, state_is_tuple=False,
-               activation=math_ops.tanh):
+               activation=math_ops.tanh, reuse=None):
     """Initialize the parameters for an LSTM cell.
 
     Args:
@@ -130,6 +133,9 @@ class CoupledInputForgetGateLSTMCell(core_rnn_cell.RNNCell):
         the `c_state` and `m_state`.  By default (False), they are concatenated
         along the column axis.  This default behavior will soon be deprecated.
       activation: Activation function of the inner states.
+      reuse: (optional) Python boolean describing whether to reuse variables
+        in an existing scope.  If not `True`, and the existing scope already has
+        the given variables, an error is raised.
     """
     if not state_is_tuple:
       logging.warn(
@@ -145,6 +151,7 @@ class CoupledInputForgetGateLSTMCell(core_rnn_cell.RNNCell):
     self._forget_bias = forget_bias
     self._state_is_tuple = state_is_tuple
     self._activation = activation
+    self._reuse = reuse
 
     if num_proj:
       self._state_size = (
@@ -204,8 +211,8 @@ class CoupledInputForgetGateLSTMCell(core_rnn_cell.RNNCell):
     input_size = inputs.get_shape().with_rank(2)[1]
     if input_size.value is None:
       raise ValueError("Could not infer input size from inputs.get_shape()[-1]")
-    with vs.variable_scope(scope or "coupled_input_forget_gate_lstm_cell",
-                           initializer=self._initializer):
+    with _checked_scope(self, scope or "coupled_input_forget_gate_lstm_cell",
+                        initializer=self._initializer, reuse=self._reuse):
       concat_w = _get_concat_variable(
           "W", [input_size.value + num_proj, 3 * self._num_units],
           dtype, self._num_unit_shards)
@@ -270,7 +277,8 @@ class TimeFreqLSTMCell(core_rnn_cell.RNNCell):
   def __init__(self, num_units, use_peepholes=False,
                cell_clip=None, initializer=None,
                num_unit_shards=1, forget_bias=1.0,
-               feature_size=None, frequency_skip=None):
+               feature_size=None, frequency_skip=None,
+               reuse=None):
     """Initialize the parameters for an LSTM cell.
 
     Args:
@@ -288,6 +296,9 @@ class TimeFreqLSTMCell(core_rnn_cell.RNNCell):
       feature_size: int, The size of the input feature the LSTM spans over.
       frequency_skip: int, The amount the LSTM filter is shifted by in
         frequency.
+      reuse: (optional) Python boolean describing whether to reuse variables
+        in an existing scope.  If not `True`, and the existing scope already has
+        the given variables, an error is raised.
     """
     self._num_units = num_units
     self._use_peepholes = use_peepholes
@@ -299,6 +310,7 @@ class TimeFreqLSTMCell(core_rnn_cell.RNNCell):
     self._frequency_skip = frequency_skip
     self._state_size = 2 * num_units
     self._output_size = num_units
+    self._reuse = reuse
 
   @property
   def output_size(self):
@@ -334,8 +346,8 @@ class TimeFreqLSTMCell(core_rnn_cell.RNNCell):
     freq_inputs = self._make_tf_features(inputs)
     dtype = inputs.dtype
     actual_input_size = freq_inputs[0].get_shape().as_list()[1]
-    with vs.variable_scope(scope or "time_freq_lstm_cell",
-                           initializer=self._initializer):  # "TimeFreqLSTMCell"
+    with _checked_scope(self, scope or "time_freq_lstm_cell",
+                        initializer=self._initializer, reuse=self._reuse):
       concat_w = _get_concat_variable(
           "W", [actual_input_size + 2*self._num_units, 4 * self._num_units],
           dtype, self._num_unit_shards)
@@ -444,7 +456,8 @@ class GridLSTMCell(core_rnn_cell.RNNCell):
                start_freqindex_list=None,
                end_freqindex_list=None,
                couple_input_forget_gates=False,
-               state_is_tuple=False):
+               state_is_tuple=False,
+               reuse=None):
     """Initialize the parameters for an LSTM cell.
 
     Args:
@@ -479,6 +492,9 @@ class GridLSTMCell(core_rnn_cell.RNNCell):
       state_is_tuple: If True, accepted and returned states are 2-tuples of
         the `c_state` and `m_state`.  By default (False), they are concatenated
         along the column axis.  This default behavior will soon be deprecated.
+      reuse: (optional) Python boolean describing whether to reuse variables
+        in an existing scope.  If not `True`, and the existing scope already has
+        the given variables, an error is raised.
     Raises:
       ValueError: if the num_frequency_blocks list is not specified
     """
@@ -500,6 +516,7 @@ class GridLSTMCell(core_rnn_cell.RNNCell):
     self._end_freqindex_list = end_freqindex_list
     self._num_frequency_blocks = num_frequency_blocks
     self._total_blocks = 0
+    self._reuse = reuse
     if self._num_frequency_blocks is None:
       raise ValueError("Must specify num_frequency_blocks")
 
@@ -555,8 +572,8 @@ class GridLSTMCell(core_rnn_cell.RNNCell):
     """
     batch_size = int(inputs.get_shape()[0])
     freq_inputs = self._make_tf_features(inputs)
-    with vs.variable_scope(scope or "grid_lstm_cell",
-                           initializer=self._initializer):  # "GridLSTMCell"
+    with _checked_scope(self, scope or "grid_lstm_cell",
+                        initializer=self._initializer, reuse=self._reuse):
       m_out_lst = []
       state_out_lst = []
       for block in range(len(freq_inputs)):
@@ -898,7 +915,8 @@ class BidirectionalGridLSTMCell(GridLSTMCell):
                start_freqindex_list=None,
                end_freqindex_list=None,
                couple_input_forget_gates=False,
-               backward_slice_offset=0):
+               backward_slice_offset=0,
+               reuse=None):
     """Initialize the parameters for an LSTM cell.
 
     Args:
@@ -932,13 +950,16 @@ class BidirectionalGridLSTMCell(GridLSTMCell):
         model parameters and computation cost.
       backward_slice_offset: (optional) int32, default 0, the starting offset to
         slice the feature for backward processing.
+      reuse: (optional) Python boolean describing whether to reuse variables
+        in an existing scope.  If not `True`, and the existing scope already has
+        the given variables, an error is raised.
     """
     super(BidirectionalGridLSTMCell, self).__init__(
         num_units, use_peepholes, share_time_frequency_weights, cell_clip,
         initializer, num_unit_shards, forget_bias, feature_size, frequency_skip,
         num_frequency_blocks, start_freqindex_list, end_freqindex_list,
         couple_input_forget_gates=False,
-        state_is_tuple=True)
+        state_is_tuple=True, reuse=reuse)
     self._backward_slice_offset = int(backward_slice_offset)
     state_names = ""
     for direction in ["fwd", "bwd"]:
@@ -981,8 +1002,8 @@ class BidirectionalGridLSTMCell(GridLSTMCell):
       bwd_inputs = fwd_inputs
 
     # Forward processing
-    with vs.variable_scope(scope or "bidirectional_grid_lstm_cell",
-                           initializer=self._initializer):
+    with _checked_scope(self, scope or "bidirectional_grid_lstm_cell",
+                        initializer=self._initializer, reuse=self._reuse):
       with vs.variable_scope("fwd"):
         fwd_m_out_lst = []
         fwd_state_out_lst = []
@@ -1022,7 +1043,7 @@ class AttentionCellWrapper(core_rnn_cell.RNNCell):
   """
 
   def __init__(self, cell, attn_length, attn_size=None, attn_vec_size=None,
-               input_size=None, state_is_tuple=False):
+               input_size=None, state_is_tuple=False, reuse=None):
     """Create a cell with attention.
 
     Args:
@@ -1039,6 +1060,9 @@ class AttentionCellWrapper(core_rnn_cell.RNNCell):
       state_is_tuple: If True, accepted and returned states are n-tuples, where
         `n = len(cells)`.  By default (False), the states are all
         concatenated along the column axis.
+      reuse: (optional) Python boolean describing whether to reuse variables
+        in an existing scope.  If not `True`, and the existing scope already has
+        the given variables, an error is raised.
 
     Raises:
       TypeError: if cell is not an RNNCell.
@@ -1068,6 +1092,7 @@ class AttentionCellWrapper(core_rnn_cell.RNNCell):
     self._input_size = input_size
     self._attn_size = attn_size
     self._attn_length = attn_length
+    self._reuse = reuse
 
   @property
   def state_size(self):
@@ -1084,7 +1109,8 @@ class AttentionCellWrapper(core_rnn_cell.RNNCell):
 
   def __call__(self, inputs, state, scope=None):
     """Long short-term memory cell with attention (LSTMA)."""
-    with vs.variable_scope(scope or "attention_cell_wrapper"):
+    with _checked_scope(self, scope or "attention_cell_wrapper",
+                        reuse=self._reuse):
       if self._state_is_tuple:
         state, attns, attn_states = state
       else:
@@ -1165,7 +1191,8 @@ class LayerNormBasicLSTMCell(core_rnn_cell.RNNCell):
   def __init__(self, num_units, forget_bias=1.0,
                input_size=None, activation=math_ops.tanh,
                layer_norm=True, norm_gain=1.0, norm_shift=0.0,
-               dropout_keep_prob=1.0, dropout_prob_seed=None):
+               dropout_keep_prob=1.0, dropout_prob_seed=None,
+               reuse=None):
     """Initializes the basic LSTM cell.
 
     Args:
@@ -1182,6 +1209,9 @@ class LayerNormBasicLSTMCell(core_rnn_cell.RNNCell):
         recurrent dropout probability value. If float and 1.0, no dropout will
         be applied.
       dropout_prob_seed: (optional) integer, the randomness seed.
+      reuse: (optional) Python boolean describing whether to reuse variables
+        in an existing scope.  If not `True`, and the existing scope already has
+        the given variables, an error is raised.
     """
 
     if input_size is not None:
@@ -1195,6 +1225,7 @@ class LayerNormBasicLSTMCell(core_rnn_cell.RNNCell):
     self._layer_norm = layer_norm
     self._g = norm_gain
     self._b = norm_shift
+    self._reuse = reuse
 
   @property
   def state_size(self):
@@ -1228,7 +1259,8 @@ class LayerNormBasicLSTMCell(core_rnn_cell.RNNCell):
   def __call__(self, inputs, state, scope=None):
     """LSTM cell with layer normalization and recurrent dropout."""
 
-    with vs.variable_scope(scope or "layer_norm_basic_lstm_cell"):
+    with _checked_scope(self, scope or "layer_norm_basic_lstm_cell",
+                        reuse=self._reuse):
       c, h = state
       args = array_ops.concat([inputs, h], 1)
       concat = self._linear(args)
@@ -1268,7 +1300,7 @@ class NASCell(core_rnn_cell.RNNCell):
   """
 
   def __init__(self, num_units, num_proj=None,
-               use_biases=False):
+               use_biases=False, reuse=None):
     """Initialize the parameters for a NAS cell.
 
     Args:
@@ -1277,10 +1309,14 @@ class NASCell(core_rnn_cell.RNNCell):
         matrices.  If None, no projection is performed.
       use_biases: (optional) bool, If True then use biases within the cell. This
         is False by default.
+      reuse: (optional) Python boolean describing whether to reuse variables
+        in an existing scope.  If not `True`, and the existing scope already has
+        the given variables, an error is raised.
     """
     self._num_units = num_units
     self._num_proj = num_proj
     self._use_biases = use_biases
+    self._reuse = reuse
 
     if num_proj is not None:
       self._state_size = core_rnn_cell.LSTMStateTuple(num_units, num_proj)
@@ -1332,15 +1368,14 @@ class NASCell(core_rnn_cell.RNNCell):
     input_size = inputs.get_shape().with_rank(2)[1]
     if input_size.value is None:
       raise ValueError("Could not infer input size from inputs.get_shape()[-1]")
-    with vs.variable_scope(scope or "nas_rnn"):
-
+    with _checked_scope(self, scope or "nas_rnn", reuse=self._reuse):
       # Variables for the NAS cell. W_m is all matrices multiplying the
       # hiddenstate and W_inputs is all matrices multiplying the inputs.
       concat_w_m = vs.get_variable(
-          "W_m", [num_proj, 8 * self._num_units],
+          "recurrent_weights", [num_proj, 8 * self._num_units],
           dtype)
       concat_w_inputs = vs.get_variable(
-          "W_inputs", [input_size.value, 8 * self._num_units],
+          "weights", [input_size.value, 8 * self._num_units],
           dtype)
 
       m_matrix = math_ops.matmul(m_prev, concat_w_m)
@@ -1348,7 +1383,7 @@ class NASCell(core_rnn_cell.RNNCell):
 
       if self._use_biases:
         b = vs.get_variable(
-            "B",
+            "bias",
             shape=[8 * self._num_units],
             initializer=init_ops.zeros_initializer(),
             dtype=dtype)
@@ -1392,7 +1427,7 @@ class NASCell(core_rnn_cell.RNNCell):
       # Projection layer if specified
       if self._num_proj is not None:
         concat_w_proj = vs.get_variable(
-            "W_P", [self._num_units, self._num_proj],
+            "projection_weights", [self._num_units, self._num_proj],
             dtype)
         new_m = math_ops.matmul(new_m, concat_w_proj)
 

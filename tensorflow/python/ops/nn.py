@@ -14,7 +14,9 @@
 # =============================================================================
 
 # pylint: disable=unused-import,g-bad-import-order
-"""## Neural network support. See the @{$python/nn} guide.
+"""Neural network support.
+
+See the @{$python/nn} guide.
 
 @@relu
 @@relu6

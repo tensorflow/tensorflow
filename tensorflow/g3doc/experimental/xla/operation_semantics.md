@@ -552,6 +552,11 @@ ComputationBuilder supports these element-wise unary functions:
 
 <b>`Floor(operand)`</b> Element-wise floor `x -> ⌊x⌋`.
 
+<b>`IsFinite(operand)`</b> Tests whether each element of `operand` is finite,
+i.e., is not positive or negative infinity, and is not `NaN`. Returns an array
+of `PRED` values with the same shape as the input, where each element is `true`
+if and only if the corresponding input element is finite.
+
 <b>`Log(operand)`</b> Element-wise natural logarithm `x -> ln(x)`.
 
 <b>`LogicalNot(operand)`</b> Element-wise logical not `x -> !(x)`.

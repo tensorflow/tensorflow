@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""RNN Cells and additional RNN operations. See @{$python/contrib.rnn} guide.
+"""RNN Cells and additional RNN operations.
+
+See @{$python/contrib.rnn} guide.
 
 @@RNNCell
 @@BasicRNNCell
@@ -47,6 +49,7 @@
 @@static_state_saving_rnn
 @@static_bidirectional_rnn
 @@stack_bidirectional_dynamic_rnn
+@@stack_bidirectional_rnn
 """
 
 from __future__ import absolute_import
@@ -81,4 +84,3 @@ from tensorflow.contrib.rnn.python.ops.rnn_cell import *
 
 from tensorflow.python.util.all_util import remove_undocumented
 remove_undocumented(__name__, ['core_rnn_cell'])
-
