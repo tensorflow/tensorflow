@@ -1,4 +1,4 @@
-### `tf.nn.conv1d(value, filters, stride, padding, use_cudnn_on_gpu=None, data_format=None, name=None)` {#conv1d}
+### `tf.nn.conv1d(input, filters, stride, padding, use_cudnn_on_gpu=None, data_format=None, name=None)` {#conv1d}
 
 Computes a 1-D convolution given 3-D input and filter tensors.
 
@@ -47,4 +47,3 @@ returned to the caller.
 
 
 *  <b>`ValueError`</b>: if `data_format` is invalid.
-
