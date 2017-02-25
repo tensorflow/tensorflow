@@ -18,46 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.distributions.python.ops.bijectors import bijector
-from tensorflow.python.framework import constant_op
+# go/tf-wildcard-import
+# pylint: disable=wildcard-import
+from tensorflow.contrib.distributions.python.ops.bijectors.identity_impl import *
+# pylint: enable=wildcard-import
+from tensorflow.python.util.all_util import remove_undocumented
 
+_allowed_symbols = ["Identity"]
 
-__all__ = [
-    "Identity",
-]
-
-
-class Identity(bijector.Bijector):
-  """Compute Y = g(X) = X.
-
-    Example Use:
-
-    ```python
-    # Create the Y=g(X)=X transform which is intended for Tensors with 1 batch
-    # ndim and 1 event ndim (i.e., vector of vectors).
-    identity = Identity(event_ndims=1)
-    x = [[1., 2],
-         [3, 4]]
-    x == identity.forward(x) == identity.inverse(x)
-    ```
-
-  """
-
-  def __init__(self, validate_args=False, event_ndims=0, name="identity"):
-    super(Identity, self).__init__(
-        is_constant_jacobian=True,
-        event_ndims=event_ndims,
-        validate_args=validate_args,
-        name=name)
-
-  def _forward(self, x):
-    return x
-
-  def _inverse(self, y):
-    return y
-
-  def _inverse_log_det_jacobian(self, y):
-    return constant_op.constant(0., dtype=y.dtype)
-
-  def _forward_log_det_jacobian(self, x):
-    return constant_op.constant(0., dtype=x.dtype)
+remove_undocumented(__name__, _allowed_symbols)

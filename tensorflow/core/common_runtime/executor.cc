@@ -185,9 +185,9 @@ class GraphView;
 
 struct EdgeInfo {
   int dst_id;
-  int16 output_slot;
+  int output_slot : 31;
   // true if this is the last info for output_slot in the EdgeInfo list.
-  bool is_last;
+  bool is_last : 1;
   int input_slot;
 };
 
@@ -510,11 +510,12 @@ char* GraphView::InitializeNode(char* ptr, const Node* n) {
   EdgeInfo* dst_edge = item->output_edge_base();
   for (auto e : n->out_edges()) {
     dst_edge->dst_id = e->dst()->id();
-    CHECK_LT(e->src_output(), 32768);  // Must fit in int16
+    CHECK_LE(e->src_output(), ((int32)0x3FFFFFFF));  // Must fit in 31 bits
     dst_edge->output_slot = e->src_output();
     dst_edge->is_last = false;
-    if (dst_edge->output_slot >= 0) {
-      last_indices[dst_edge->output_slot] = dst_edge;
+    const int output_slot = dst_edge->output_slot;
+    if (output_slot >= 0) {
+      last_indices[output_slot] = dst_edge;
     }
     dst_edge->input_slot = e->dst_input();
     dst_edge++;

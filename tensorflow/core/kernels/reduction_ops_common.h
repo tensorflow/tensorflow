@@ -151,19 +151,16 @@ class ReductionOp : public OpKernel {
     OP_REQUIRES_OK(ctx, helper.Simplify(data, axes, keep_dims_));
     CHECK_GE(helper.ndims(), 0);
 
-    // The real output shape will be assigned below.
-    TensorShape empty_shape;
-    Tensor* out = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, empty_shape, &out));
-
     if (helper.ndims() == 0 ||
         (helper.ndims() == 1 && !helper.reduce_first_axis())) {
       // Special case. Reduces nothing.  It is unclear why this is
       // necessary, but tests fail without it.  Look into why this
       // case occurs.
-      if (!out->CopyFrom(data, helper.out_shape())) {
+      Tensor out;
+      if (!out.CopyFrom(data, helper.out_shape())) {
         ctx->SetStatus(errors::Internal("Error during reduction copy."));
       }
+      ctx->set_output(0, out);
       return;
     }
 
@@ -174,8 +171,9 @@ class ReductionOp : public OpKernel {
     // A temporary tensor whose size matches the size of the reduced
     // output.
     Tensor tmp_out;
-    OP_REQUIRES_OK(ctx, ctx->allocate_temp(out->dtype(), helper.out_reshape(),
-                                           &tmp_out, alloc_attr));
+    OP_REQUIRES_OK(
+        ctx, ctx->allocate_temp(ctx->expected_output_dtype(0),
+                                helper.out_reshape(), &tmp_out, alloc_attr));
 
     typedef functor::ReduceFunctor<Device, Reducer> Functor;
     Constants<Device> constants;
@@ -233,9 +231,11 @@ class ReductionOp : public OpKernel {
     // Set the real output using the contents of the reduction but the
     // real expected output shape.  The number of elements should
     // match between the two shapes.
-    if (!out->CopyFrom(tmp_out, helper.out_shape())) {
+    Tensor out;
+    if (!out.CopyFrom(tmp_out, helper.out_shape())) {
       ctx->SetStatus(errors::Internal("Error during reduction copy."));
     }
+    ctx->set_output(0, out);
   }
 
  private:

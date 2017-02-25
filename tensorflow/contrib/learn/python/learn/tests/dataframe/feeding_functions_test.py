@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import sys
 
 # TODO: #6568 Remove this hack that makes dlopen() not crash.
@@ -79,6 +80,32 @@ class _FeedingFunctionsTestCase(test.TestCase):
     actual = aff()
     self.assertEqual(expected, vals_to_list(actual))
 
+  def testArrayFeedFnBatchTwoWithOneEpoch(self):
+    array = np.arange(5) + 10
+    placeholders = ["index_placeholder", "value_placeholder"]
+    aff = ff._ArrayFeedFn(placeholders, array, batch_size=2, num_epochs=1)
+
+    expected = {
+        "index_placeholder": [0, 1],
+        "value_placeholder": [10, 11]
+    }
+    actual = aff()
+    self.assertEqual(expected, vals_to_list(actual))
+
+    expected = {
+        "index_placeholder": [2, 3],
+        "value_placeholder": [12, 13]
+    }
+    actual = aff()
+    self.assertEqual(expected, vals_to_list(actual))
+
+    expected = {
+        "index_placeholder": [4],
+        "value_placeholder": [14]
+    }
+    actual = aff()
+    self.assertEqual(expected, vals_to_list(actual))
+
   def testArrayFeedFnBatchOneHundred(self):
     array = np.arange(32).reshape([16, 2])
     placeholders = ["index_placeholder", "value_placeholder"]
@@ -90,6 +117,18 @@ class _FeedingFunctionsTestCase(test.TestCase):
         "value_placeholder":
             np.arange(32).reshape([16, 2]).tolist() * 6 +
             [[0, 1], [2, 3], [4, 5], [6, 7]]
+    }
+    actual = aff()
+    self.assertEqual(expected, vals_to_list(actual))
+
+  def testArrayFeedFnBatchOneHundredWithSmallerArrayAndMultipleEpochs(self):
+    array = np.arange(2) + 10
+    placeholders = ["index_placeholder", "value_placeholder"]
+    aff = ff._ArrayFeedFn(placeholders, array, batch_size=100, num_epochs=2)
+
+    expected = {
+        "index_placeholder": [0, 1, 0, 1],
+        "value_placeholder": [10, 11, 10, 11],
     }
     actual = aff()
     self.assertEqual(expected, vals_to_list(actual))
@@ -135,6 +174,39 @@ class _FeedingFunctionsTestCase(test.TestCase):
     actual = aff()
     self.assertEqual(expected, vals_to_list(actual))
 
+  def testPandasFeedFnBatchTwoWithOneEpoch(self):
+    if not HAS_PANDAS:
+      return
+    array1 = np.arange(32, 37)
+    array2 = np.arange(64, 69)
+    df = pd.DataFrame({"a": array1, "b": array2}, index=np.arange(96, 101))
+    placeholders = ["index_placeholder", "a_placeholder", "b_placeholder"]
+    aff = ff._PandasFeedFn(placeholders, df, batch_size=2, num_epochs=1)
+
+    expected = {
+        "index_placeholder": [96, 97],
+        "a_placeholder": [32, 33],
+        "b_placeholder": [64, 65]
+    }
+    actual = aff()
+    self.assertEqual(expected, vals_to_list(actual))
+
+    expected = {
+        "index_placeholder": [98, 99],
+        "a_placeholder": [34, 35],
+        "b_placeholder": [66, 67]
+    }
+    actual = aff()
+    self.assertEqual(expected, vals_to_list(actual))
+
+    expected = {
+        "index_placeholder": [100],
+        "a_placeholder": [36],
+        "b_placeholder": [68]
+    }
+    actual = aff()
+    self.assertEqual(expected, vals_to_list(actual))
+
   def testPandasFeedFnBatchOneHundred(self):
     if not HAS_PANDAS:
       return
@@ -148,6 +220,75 @@ class _FeedingFunctionsTestCase(test.TestCase):
         "index_placeholder": list(range(96, 128)) * 3 + list(range(96, 100)),
         "a_placeholder": list(range(32, 64)) * 3 + list(range(32, 36)),
         "b_placeholder": list(range(64, 96)) * 3 + list(range(64, 68))
+    }
+    actual = aff()
+    self.assertEqual(expected, vals_to_list(actual))
+
+  def testPandasFeedFnBatchOneHundredWithSmallDataArrayAndMultipleEpochs(self):
+    if not HAS_PANDAS:
+      return
+    array1 = np.arange(32, 34)
+    array2 = np.arange(64, 66)
+    df = pd.DataFrame({"a": array1, "b": array2}, index=np.arange(96, 98))
+    placeholders = ["index_placeholder", "a_placeholder", "b_placeholder"]
+    aff = ff._PandasFeedFn(placeholders, df, batch_size=100, num_epochs=2)
+
+    expected = {
+        "index_placeholder": [96, 97, 96, 97],
+        "a_placeholder": [32, 33, 32, 33],
+        "b_placeholder": [64, 65, 64, 65]
+    }
+    actual = aff()
+    self.assertEqual(expected, vals_to_list(actual))
+
+  def testOrderedDictNumpyFeedFnBatchTwoWithOneEpoch(self):
+    a = np.arange(32, 37)
+    b = np.arange(64, 69)
+    x = {"a": a, "b": b}
+    ordered_dict_x = collections.OrderedDict(
+        sorted(x.items(), key=lambda t: t[0]))
+    placeholders = ["index_placeholder", "a_placeholder", "b_placeholder"]
+    aff = ff._OrderedDictNumpyFeedFn(
+        placeholders, ordered_dict_x, batch_size=2, num_epochs=1)
+
+    expected = {
+        "index_placeholder": [0, 1],
+        "a_placeholder": [32, 33],
+        "b_placeholder": [64, 65]
+    }
+    actual = aff()
+    self.assertEqual(expected, vals_to_list(actual))
+
+    expected = {
+        "index_placeholder": [2, 3],
+        "a_placeholder": [34, 35],
+        "b_placeholder": [66, 67]
+    }
+    actual = aff()
+    self.assertEqual(expected, vals_to_list(actual))
+
+    expected = {
+        "index_placeholder": [4],
+        "a_placeholder": [36],
+        "b_placeholder": [68]
+    }
+    actual = aff()
+    self.assertEqual(expected, vals_to_list(actual))
+
+  def testOrderedDictNumpyFeedFnLargeBatchWithSmallArrayAndMultipleEpochs(self):
+    a = np.arange(32, 34)
+    b = np.arange(64, 66)
+    x = {"a": a, "b": b}
+    ordered_dict_x = collections.OrderedDict(
+        sorted(x.items(), key=lambda t: t[0]))
+    placeholders = ["index_placeholder", "a_placeholder", "b_placeholder"]
+    aff = ff._OrderedDictNumpyFeedFn(
+        placeholders, ordered_dict_x, batch_size=100, num_epochs=2)
+
+    expected = {
+        "index_placeholder": [0, 1, 0, 1],
+        "a_placeholder": [32, 33, 32, 33],
+        "b_placeholder": [64, 65, 64, 65]
     }
     actual = aff()
     self.assertEqual(expected, vals_to_list(actual))

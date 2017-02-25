@@ -25,7 +25,7 @@ from google.protobuf import text_format
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
-from tensorflow.python.tools import print_selective_registration_header
+from tensorflow.python.tools import selective_registration_header_lib
 
 # Note that this graph def is not valid to be loaded - its inputs are not
 # assigned correctly in all cases.
@@ -87,7 +87,7 @@ class PrintOpFilegroupTest(test.TestCase):
         for d in [GRAPH_DEF_TXT, GRAPH_DEF_TXT_2]
     ]
 
-    ops_and_kernels = print_selective_registration_header.get_ops_and_kernels(
+    ops_and_kernels = selective_registration_header_lib.get_ops_and_kernels(
         'rawproto', self.WriteGraphFiles(graphs), default_ops)
     self.assertListEqual(
         [
@@ -103,7 +103,7 @@ class PrintOpFilegroupTest(test.TestCase):
 
     graphs[0].node[0].ClearField('device')
     graphs[0].node[2].ClearField('device')
-    ops_and_kernels = print_selective_registration_header.get_ops_and_kernels(
+    ops_and_kernels = selective_registration_header_lib.get_ops_and_kernels(
         'rawproto', self.WriteGraphFiles(graphs), default_ops)
     self.assertListEqual(
         [
@@ -123,11 +123,11 @@ class PrintOpFilegroupTest(test.TestCase):
         text_format.Parse(d, graph_pb2.GraphDef())
         for d in [GRAPH_DEF_TXT, GRAPH_DEF_TXT_2]
     ]
-    ops_and_kernels = print_selective_registration_header.get_ops_and_kernels(
+    ops_and_kernels = selective_registration_header_lib.get_ops_and_kernels(
         'rawproto', self.WriteGraphFiles(graphs), default_ops)
 
-    header = print_selective_registration_header.get_header(ops_and_kernels,
-                                                            default_ops)
+    header = selective_registration_header_lib.get_header_from_ops_and_kernels(
+        ops_and_kernels, include_all_ops_and_kernels=True)
     self.assertListEqual(
         [
             '#ifndef OPS_TO_REGISTER',  #
@@ -138,6 +138,38 @@ class PrintOpFilegroupTest(test.TestCase):
             '#endif'
         ],
         header.split('\n'))
+
+    self.assertListEqual(
+        header.split('\n'),
+        selective_registration_header_lib.get_header(
+            self.WriteGraphFiles(graphs), 'rawproto', default_ops).split('\n'))
+
+  def testGetSelectiveHeader(self):
+    default_ops = ''
+    graphs = [text_format.Parse(GRAPH_DEF_TXT_2, graph_pb2.GraphDef())]
+
+    header = selective_registration_header_lib.get_header(
+        self.WriteGraphFiles(graphs), 'rawproto', default_ops)
+    print(header)
+    self.assertListEqual([
+        '#ifndef OPS_TO_REGISTER',
+        '#define OPS_TO_REGISTER',
+        'constexpr inline bool ShouldRegisterOp(const char op[]) {',
+        '  return false',
+        '     || (strcmp(op, "BiasAdd") == 0)',
+        '  ;',
+        '}',
+        '#define SHOULD_REGISTER_OP(op) ShouldRegisterOp(op)',
+        '',
+        'const char kNecessaryOpKernelClasses[] = ","',
+        '"BiasOp<CPUDevice, float>,"',
+        ';',
+        '#define SHOULD_REGISTER_OP_KERNEL(clz)'
+        ' (strstr(kNecessaryOpKernelClasses, "," clz ",") != nullptr)',
+        '',
+        '#define SHOULD_REGISTER_OP_GRADIENT false',
+        '#endif',
+    ], header.split('\n'))
 
 
 if __name__ == '__main__':

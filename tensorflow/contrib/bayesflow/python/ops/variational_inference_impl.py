@@ -26,8 +26,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.bayesflow.python.ops import stochastic_graph as sg
-from tensorflow.contrib.bayesflow.python.ops import stochastic_tensor as st
+from tensorflow.contrib.bayesflow.python.ops import stochastic_graph_impl as sg
+from tensorflow.contrib.bayesflow.python.ops import stochastic_tensor_impl as st
 from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.distributions.python.ops import kullback_leibler
 from tensorflow.python.framework import ops

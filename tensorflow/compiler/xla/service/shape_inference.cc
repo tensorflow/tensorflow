@@ -208,6 +208,16 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
             PrimitiveType_Name(arg.element_type()).c_str());
       }
       return arg;
+
+    case UNOP_IS_FINITE:
+      if (!ShapeUtil::ElementIsFloating(arg)) {
+        return InvalidArgument(
+            "expected element type in shape to be floating point for IsFinite "
+            "operation; got %s",
+            PrimitiveType_Name(arg.element_type()).c_str());
+      }
+      return ShapeUtil::ChangeElementType(arg, PRED);
+
     default:
       return InvalidArgument("unknown operation %s",
                              UnaryOperation_Name(operation).c_str());

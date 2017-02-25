@@ -38,6 +38,12 @@ class PrngTest : public ClientLibraryTestBase {
   template <typename T>
   void UniformTest(T a, T b, tensorflow::gtl::ArraySlice<int64> dims);
   void BernoulliTest(float p, tensorflow::gtl::ArraySlice<int64> dims);
+
+  // Computes the χ² statistic of a sample of the discrete uniform distribution
+  // of the given range size. `expected_count` is the number of times each
+  // possible value is expected to be generated. Thus, the sample size is
+  // `range_size * expected_count`.
+  double UniformChiSquared(int32 range_size, int32 expected_count);
 };
 
 template <typename T>
@@ -96,6 +102,56 @@ XLA_TEST_F(PrngTest, TenValuesU37) { UniformTest<float>(3, 7, {10}); }
 XLA_TEST_F(PrngTest, ZeroValuesR2) { UniformTest<float>(0, 1, {0, 20}); }
 XLA_TEST_F(PrngTest, LargeU01) { UniformTest<float>(0, 1, {0x100, 0x100}); }
 XLA_TEST_F(PrngTest, TwelveValuesU524) { UniformTest<int32>(5, 24, {12}); }
+
+namespace {
+template <typename T>
+T Square(T x) {
+  return x * x;
+}
+}  // namespace
+
+double PrngTest::UniformChiSquared(int32 range_size, int32 expected_count) {
+  int32 sample_size = range_size * expected_count;
+
+  ComputationBuilder builder(client_, TestName());
+  builder.RngUniform(builder.ConstantR0<int32>(0),
+                     builder.ConstantR0<int32>(range_size),
+                     ShapeUtil::MakeShape(S32, {sample_size}));
+
+  auto actual = ExecuteAndTransferOrDie(&builder, /*arguments=*/{});
+  std::vector<int32> counts(range_size, 0);
+  LiteralUtil::EachCell<int32>(
+      *actual, [&counts](tensorflow::gtl::ArraySlice<int64>, int32 value) {
+        ++counts[value];
+      });
+  int64 sum = 0;
+  for (int32 i = 0; i < range_size; ++i) {
+    sum += Square(counts[i] - expected_count);
+  }
+  return static_cast<double>(sum) / expected_count;
+}
+
+// We only test distribution of uniform discrete PRNG as other types are based
+// on it.
+// These range sizes are arbitrary but include prime numbers, powers of 2, and
+// other composite numbers.
+// The level of significance in all these cases is 1/20.
+// TODO(b/35723038): Use parametrized tests where possible.
+XLA_TEST_F(PrngTest, Uniformity7) {
+  EXPECT_LT(UniformChiSquared(7, 256), 12.5916);
+}
+XLA_TEST_F(PrngTest, Uniformity61) {
+  EXPECT_LT(UniformChiSquared(61, 256), 79.0819);
+}
+XLA_TEST_F(PrngTest, Uniformity64) {
+  EXPECT_LT(UniformChiSquared(64, 256), 82.5287);
+}
+XLA_TEST_F(PrngTest, Uniformity108) {
+  EXPECT_LT(UniformChiSquared(108, 256), 132.144);
+}
+XLA_TEST_F(PrngTest, Uniformity256) {
+  EXPECT_LT(UniformChiSquared(256, 256), 293.248);
+}
 
 XLA_TEST_F(PrngTest, MapUsingRng) {
   // Build a x -> (x + U[0,1)) computation.
