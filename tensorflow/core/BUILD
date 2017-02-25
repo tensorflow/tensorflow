@@ -656,7 +656,6 @@ cc_library(
         "//tensorflow/core/kernels:quantized_ops",
     ]) + if_mkl([
         "//tensorflow/core/kernels:mkl_matmul_op",
-        "//tensorflow/core/kernels:mkl_transpose_op",
     ]),
 )
 
