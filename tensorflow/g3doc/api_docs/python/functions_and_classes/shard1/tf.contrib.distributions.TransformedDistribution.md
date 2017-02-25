@@ -17,7 +17,7 @@ We now describe how a `TransformedDistribution` alters the input/outputs of a
 Write `cdf(Y=y)` for an absolutely continuous cumulative distribution function
 of random variable `Y`; write the probability density function `pdf(Y=y) :=
 d^k / (dy_1,...,dy_k) cdf(Y=y)` for its derivative wrt to `Y` evaluated at
-`y`.  Assume that `Y = g(X)` where `g` is a deterministic diffeomorphism,
+`y`. Assume that `Y = g(X)` where `g` is a deterministic diffeomorphism,
 i.e., a non-random, continuous, differentiable, and invertible function.
 Write the inverse of `g` as `X = g^{-1}(Y)` and `(J o g)(x)` for the Jacobian
 of `g` evaluated at `x`.
@@ -77,7 +77,7 @@ distribution:
 ```python
 ds = tf.contrib.distributions
 log_normal = ds.TransformedDistribution(
-  distribution=ds.Normal(mu=mu, sigma=sigma),
+  distribution=ds.Normal(loc=mu, scale=sigma),
   bijector=ds.bijector.Exp(),
   name="LogNormalTransformedDistribution")
 ```
@@ -87,12 +87,12 @@ A `LogNormal` made from callables:
 ```python
 ds = tf.contrib.distributions
 log_normal = ds.TransformedDistribution(
-  distribution=ds.Normal(mu=mu, sigma=sigma),
+  distribution=ds.Normal(loc=mu, scale=sigma),
   bijector=ds.bijector.Inline(
     forward_fn=tf.exp,
     inverse_fn=tf.log,
     inverse_log_det_jacobian_fn=(
-      lambda y: -tf.reduce_sum(tf.log(y), reduction_indices=-1)),
+      lambda y: -tf.reduce_sum(tf.log(y), axis=-1)),
   name="LogNormalTransformedDistribution")
 ```
 
@@ -101,14 +101,14 @@ Another example constructing a Normal from a StandardNormal:
 ```python
 ds = tf.contrib.distributions
 normal = ds.TransformedDistribution(
-  distribution=ds.Normal(mu=0, sigma=1),
+  distribution=ds.Normal(loc=0, scale=1),
   bijector=ds.bijector.ScaleAndShift(loc=mu, scale=sigma, event_ndims=0),
   name="NormalTransformedDistribution")
 ```
 
 A `TransformedDistribution`'s batch- and event-shape are implied by the base
 distribution unless explicitly overridden by `batch_shape` or `event_shape`
-arguments.  Specifying an overriding `batch_shape` (`event_shape`) is
+arguments. Specifying an overriding `batch_shape` (`event_shape`) is
 permitted only if the base distribution has scalar batch-shape (event-shape).
 The bijector is applied to the distribution as if the distribution possessed
 the overridden shape(s). The following example demonstrates how to construct a
@@ -125,11 +125,11 @@ chol_cov = [[[1., 0],
             [[1, 0],
              [2, 2]]]  # batch:1
 mvn1 = ds.TransformedDistribution(
-    distribution=ds.Normal(mu=0., sigma=1.),
+    distribution=ds.Normal(loc=0., scale=1.),
     bijector=bs.Affine(shift=mean, tril=chol_cov),
     batch_shape=[2],  # Valid because base_distribution.batch_shape == [].
     event_shape=[2])  # Valid because base_distribution.event_shape == [].
-mvn2 = ds.MultivariateNormalCholesky(mu=mean, chol=chol_cov)
+mvn2 = ds.MultivariateNormalTriL(loc=mean, scale_tril=chol_cov)
 # mvn1.log_prob(x) == mvn2.log_prob(x)
 ```
 - - -
@@ -149,11 +149,11 @@ Construct a Transformed Distribution.
     `batch_shape`; valid only if `distribution.is_scalar_batch()`.
 *  <b>`event_shape`</b>: `integer` vector `Tensor` which overrides `distribution`
     `event_shape`; valid only if `distribution.is_scalar_event()`.
-*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+*  <b>`validate_args`</b>: Python `bool`, default `False`. When `True` distribution
     parameters are checked for validity despite possibly degrading runtime
     performance. When `False` invalid inputs may silently render incorrect
     outputs.
-*  <b>`name`</b>: `String` name prefixed to Ops created by this class. Default:
+*  <b>`name`</b>: Python `str` name prefixed to Ops created by this class. Default:
     `bijector.name + distribution.name`.
 
 
@@ -161,21 +161,20 @@ Construct a Transformed Distribution.
 
 #### `tf.contrib.distributions.TransformedDistribution.allow_nan_stats` {#TransformedDistribution.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
@@ -387,7 +386,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -404,7 +403,7 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -441,15 +440,6 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 #### `tf.contrib.distributions.TransformedDistribution.log_prob(value, name='log_prob')` {#TransformedDistribution.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
-
-
-Additional documentation from `TransformedDistribution`:
-
-Implements `(log o p o g^{-1})(y) + (log o abs o det o J o g^{-1})(y)`,
-where `g^{-1}` is the inverse of `transform`.
-
-Also raises a `ValueError` if `inverse` was not provided to the
-distribution and `y` was not returned from `sample`.
 
 ##### Args:
 
@@ -546,8 +536,8 @@ param_shapes with static (i.e. `TensorShape`) shapes.
 
 This is a class method that describes what key/value arguments are required
 to instantiate the given `Distribution` so that a particular shape is
-returned for that instance's call to `sample()`.  Assumes that
-the sample's shape is known statically.
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
 
 Subclasses should override class method `_param_shapes` to return
 constant-valued tensors when constant values are fed.
@@ -580,15 +570,6 @@ Dictionary of parameters used to instantiate this `Distribution`.
 #### `tf.contrib.distributions.TransformedDistribution.prob(value, name='prob')` {#TransformedDistribution.prob}
 
 Probability density/mass function (depending on `is_continuous`).
-
-
-Additional documentation from `TransformedDistribution`:
-
-Implements `p(g^{-1}(y)) det|J(g^{-1}(y))|`, where `g^{-1}` is the
-inverse of `transform`.
-
-Also raises a `ValueError` if `inverse` was not provided to the
-distribution and `y` was not returned from `sample`.
 
 ##### Args:
 
@@ -697,7 +678,7 @@ survival_function(x) = P[X > x]
 
 #### `tf.contrib.distributions.TransformedDistribution.validate_args` {#TransformedDistribution.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -

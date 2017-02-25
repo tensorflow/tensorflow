@@ -48,7 +48,9 @@ class BinaryOpShared : public OpKernel {
  protected:
   struct BinaryOpState {
     // Sets up bcast with the shape of in0 and in1, ensures that the bcast
-    // is valid, and if so, allocates out using ctx->output(...).
+    // is valid, and if so, set out, either by allocating a new buffer using
+    // ctx->output(...) or by creating an alias for an owned input buffer for
+    // in-place computation.
     // Caller must check ctx->status() upon return for non-ok status.
     // If ctx->status().ok() is true, then out is guaranteed to be allocated.
     BinaryOpState(OpKernelContext* ctx);
@@ -168,14 +170,18 @@ class SimpleBinaryOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const Tensor& in0 = ctx->input(0);
     const Tensor& in1 = ctx->input(1);
-
-    Tensor* out;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, in0.shape(), &out));
-    auto out_flat = out->flat<Tout>();
     auto in0_flat = in0.flat<Tin>();
     auto in1_flat = in1.flat<Tin>();
     const Device& eigen_device = ctx->eigen_device<Device>();
 
+    Tensor* out = nullptr;
+    if (!std::is_same<Tin, Tout>::value) {
+      OP_REQUIRES_OK(ctx, ctx->allocate_output(0, in0.shape(), &out));
+    } else if (!ctx->forward_input_to_output(0, 0, &out) &&
+               !ctx->forward_input_to_output(1, 0, &out)) {
+      OP_REQUIRES_OK(ctx, ctx->allocate_output(0, in0.shape(), &out));
+    }
+    auto out_flat = out->flat<Tout>();
     functor::SimpleBinaryFunctor<Device, Functor>()(eigen_device, out_flat,
                                                     in0_flat, in1_flat);
   }
@@ -200,7 +206,10 @@ class UnaryOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const Tensor& inp = ctx->input(0);
     Tensor* out = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, inp.shape(), &out));
+    if (!std::is_same<Tin, Tout>::value ||
+        !ctx->forward_input_to_output(0, 0, &out)) {
+      OP_REQUIRES_OK(ctx, ctx->allocate_output(0, inp.shape(), &out));
+    }
     functor::UnaryFunctor<Device, Functor>()(
         ctx->eigen_device<Device>(), out->flat<Tout>(), inp.flat<Tin>());
   }

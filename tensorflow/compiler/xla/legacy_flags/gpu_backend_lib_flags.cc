@@ -38,7 +38,6 @@ static void AllocateFlags() {
   flags->dump_temp_products_to = "";
   flags->ftz = false;
   flags->fma = true;
-  flags->gpu_architecture = "compute_35";
   flags->verbose_ptx_asm = false;
   flags->kernel = "";
   flags->llvm_dump_passes = false;
@@ -51,8 +50,6 @@ static void AllocateFlags() {
                        "If empty, no dump is produced"),
       tensorflow::Flag("ftz", &flags->ftz, "flush to zero semantics"),
       tensorflow::Flag("fma", &flags->fma, "use FMA synthesis"),
-      tensorflow::Flag("gpu_architecture", &flags->gpu_architecture,
-                       "GPU architecture"),
       tensorflow::Flag("verbose_ptx_asm", &flags->verbose_ptx_asm,
                        "emit PTX assembly with extra comments"),
       tensorflow::Flag("kernel", &flags->kernel,

@@ -632,6 +632,38 @@ class LinearOperator(object):
     with self._name_scope(name):
       return self._to_dense()
 
+  def _diag_part(self):
+    """Generic and often inefficient implementation.  Override often."""
+    return array_ops.matrix_diag_part(self.to_dense())
+
+  def diag_part(self, name="diag_part"):
+    """Efficiently get the [batch] diagonal part of this operator.
+
+    If this operator has shape `[B1,...,Bb, M, N]`, this returns a
+    `Tensor` `diagonal`, of shape `[B1,...,Bb, min(M, N)]`, where
+    `diagonal[b1,...,bb, i] = self.to_dense()[b1,...,bb, i, i]`.
+
+    ```
+    my_operator = LinearOperatorDiag([1., 2.])
+
+    # Efficiently get the diagonal
+    my_operator.diag_part()
+    ==> [1., 2.]
+
+    # Equivalent, but inefficient method
+    tf.matrix_diag_part(my_operator.to_dense())
+    ==> [1., 2.]
+    ```
+
+    Args:
+      name:  A name for this `Op`.
+
+    Returns:
+      diag_part:  A `Tensor` of same `dtype` as self.
+    """
+    with self._name_scope(name):
+      return self._diag_part()
+
   def _add_to_tensor(self, x):
     # Override if a more efficient implementation is available.
     return self.to_dense() + x

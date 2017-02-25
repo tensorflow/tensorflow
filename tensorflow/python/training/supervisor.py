@@ -127,7 +127,7 @@ class Supervisor(object):
 
   * Specifying `'local'` requests a session that uses the RPC-based
     "Master interface" to run TensorFlow programs. See
-    [`tf.train.Server.create_local_server()`](#Server.create_local_server) for
+    @{tf.train.Server.create_local_server} for
     details.
 
   * Specifying `'grpc://hostname:port'` requests a session that uses
@@ -190,19 +190,6 @@ class Supervisor(object):
   initialization needs, see how to specify a `local_init_op` when creating the
   supervisor.  You can also use the `SessionManager` directly to create a
   session and check if it could be initialized automatically.
-
-  @@__init__
-  @@managed_session
-  @@prepare_or_wait_for_session
-  @@start_standard_services
-  @@start_queue_runners
-  @@summary_computed
-
-  @@stop
-  @@request_stop
-  @@should_stop
-  @@stop_on_exception
-  @@wait_for_stop
   """
 
   # Value to pass for the 'ready_op', 'init_op', 'summary_op', 'saver',
@@ -1040,7 +1027,7 @@ class SVStepCounterThread(coordinator.LooperThread):
     elapsed_time = current_time - self._last_time
     self._last_time = current_time
     # Reports the number of steps done per second
-    steps_per_sec = added_steps / elapsed_time
+    steps_per_sec = added_steps / elapsed_time if elapsed_time != 0. else float("inf")
     summary = Summary(value=[Summary.Value(tag=self._summary_tag,
                                            simple_value=steps_per_sec)])
     if self._sv.summary_writer:

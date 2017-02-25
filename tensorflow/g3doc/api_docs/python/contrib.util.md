@@ -3,9 +3,7 @@
 # Utilities (contrib)
 [TOC]
 
-Utilities for dealing with Tensors.
-
-## Miscellaneous Utility Functions
+Utilities for dealing with Tensors. See @{$python/contrib.util} guide.
 
 - - -
 

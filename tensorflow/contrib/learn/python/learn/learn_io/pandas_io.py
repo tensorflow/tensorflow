@@ -26,6 +26,9 @@ try:
   # pylint: disable=g-import-not-at-top
   import pandas as pd
   HAS_PANDAS = True
+except IOError:
+  # Pandas writes a temporary file during import. If it fails, don't use pandas.
+  HAS_PANDAS = False
 except ImportError:
   HAS_PANDAS = False
 

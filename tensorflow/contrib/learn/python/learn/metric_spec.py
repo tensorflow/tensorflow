@@ -53,7 +53,8 @@ def _args(fn):
 _CANONICAL_LABELS_ARG = 'labels'
 _LABELS_ARGS = set((_CANONICAL_LABELS_ARG, 'label', 'targets', 'target'))
 _CANONICAL_PREDICTIONS_ARG = 'predictions'
-_PREDICTIONS_ARGS = set((_CANONICAL_PREDICTIONS_ARG, 'prediction'))
+_PREDICTIONS_ARGS = set((_CANONICAL_PREDICTIONS_ARG, 'prediction',
+                         'logits', 'logit'))
 _CANONICAL_WEIGHTS_ARG = 'weights'
 _WEIGHTS_ARGS = set((_CANONICAL_WEIGHTS_ARG, 'weight'))
 

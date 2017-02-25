@@ -64,19 +64,19 @@ the `distribution`.
 *  <b>`distribution`</b>: The base distribution class to transform. Typically an
     instance of `Distribution`.
 *  <b>`low`</b>: `Tensor` with same `dtype` as this distribution and shape
-    able to be added to samples.  Should be a whole number.  Default `None`.
+    able to be added to samples. Should be a whole number. Default `None`.
     If provided, base distribution's `prob` should be defined at
     `low`.
 *  <b>`high`</b>: `Tensor` with same `dtype` as this distribution and shape
-    able to be added to samples.  Should be a whole number.  Default `None`.
+    able to be added to samples. Should be a whole number. Default `None`.
     If provided, base distribution's `prob` should be defined at
     `high - 1`.
     `high` must be strictly greater than `low`.
-*  <b>`validate_args`</b>: Python `Boolean`, default `False`. When `True` distribution
+*  <b>`validate_args`</b>: Python `bool`, default `False`. When `True` distribution
     parameters are checked for validity despite possibly degrading runtime
     performance. When `False` invalid inputs may silently render incorrect
     outputs.
-*  <b>`name`</b>: `String` name prefixed to Ops created by this class.
+*  <b>`name`</b>: Python `str` name prefixed to Ops created by this class.
 
 ##### Raises:
 
@@ -90,21 +90,20 @@ the `distribution`.
 
 #### `tf.contrib.distributions.QuantizedDistribution.allow_nan_stats` {#QuantizedDistribution.allow_nan_stats}
 
-Python boolean describing behavior when a stat is undefined.
+Python `bool` describing behavior when a stat is undefined.
 
-Stats return +/- infinity when it makes sense.  E.g., the variance
-of a Cauchy distribution is infinity.  However, sometimes the
-statistic is undefined, e.g., if a distribution's pdf does not achieve a
-maximum within the support of the distribution, the mode is undefined.
-If the mean is undefined, then by definition the variance is undefined.
-E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
-it is either + or - infinity), so the variance = E[(X - mean)^2] is also
-undefined.
+Stats return +/- infinity when it makes sense. E.g., the variance of a
+Cauchy distribution is infinity. However, sometimes the statistic is
+undefined, e.g., if a distribution's pdf does not achieve a maximum within
+the support of the distribution, the mode is undefined. If the mean is
+undefined, then by definition the variance is undefined. E.g. the mean for
+Student's T for df = 1 is undefined (no clear way to say it is either + or -
+infinity), so the variance = E[(X - mean)**2] is also undefined.
 
 ##### Returns:
 
 
-*  <b>`allow_nan_stats`</b>: Python boolean.
+*  <b>`allow_nan_stats`</b>: Python `bool`.
 
 
 - - -
@@ -327,7 +326,7 @@ Indicates that `batch_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_batch`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_batch`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -344,7 +343,7 @@ Indicates that `event_shape == []`.
 ##### Returns:
 
 
-*  <b>`is_scalar_event`</b>: `Boolean` `scalar` `Tensor`.
+*  <b>`is_scalar_event`</b>: `bool` scalar `Tensor`.
 
 
 - - -
@@ -413,7 +412,7 @@ P[Y = y] := P[X <= low],  if y == low,
 ```
 
 
-The base distribution's `log_cdf` method must be defined on `y - 1`.  If the
+The base distribution's `log_cdf` method must be defined on `y - 1`. If the
 base distribution has a `log_survival_function` method results will be more
 accurate for large values of `y`, and in this case the `log_survival_function`
 must also be defined on `y - 1`.
@@ -531,8 +530,8 @@ param_shapes with static (i.e. `TensorShape`) shapes.
 
 This is a class method that describes what key/value arguments are required
 to instantiate the given `Distribution` so that a particular shape is
-returned for that instance's call to `sample()`.  Assumes that
-the sample's shape is known statically.
+returned for that instance's call to `sample()`. Assumes that the sample's
+shape is known statically.
 
 Subclasses should override class method `_param_shapes` to return
 constant-valued tensors when constant values are fed.
@@ -579,7 +578,7 @@ P[Y = y] := P[X <= low],  if y == low,
 ```
 
 
-The base distribution's `cdf` method must be defined on `y - 1`.  If the
+The base distribution's `cdf` method must be defined on `y - 1`. If the
 base distribution has a `survival_function` method, results will be more
 accurate for large values of `y`, and in this case the `survival_function` must
 also be defined on `y - 1`.
@@ -709,7 +708,7 @@ The base distribution's `cdf` method must be defined on `y - 1`.
 
 #### `tf.contrib.distributions.QuantizedDistribution.validate_args` {#QuantizedDistribution.validate_args}
 
-Python boolean indicated possibly expensive checks are enabled.
+Python `bool` indicating possibly expensive checks are enabled.
 
 
 - - -

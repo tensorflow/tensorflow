@@ -14,19 +14,26 @@
 # limitations under the License.
 # ==============================================================================
 #
-# Script to generate a tarball containing the TensorFlow C-library which
-# consists of the C API header file and libtensorflow.so.
+# Script to generate tarballs:
+# (1) The TensorFlow C-library: Containing C API header files and libtensorflow.so
+# (2) Native library for the TensorFlow Java API: Containing libtensorflow_jni.so
+# And jars:
+# (3) Java API .jar
+# (4) Java API sources .jar
 #
-# Work in progress but this is a step towards a "binary" distribution of the
-# TensorFlow C-library allowing TensorFlow language bindings to be used
-# without having to recompile the TensorFlow framework from sources, which
-# takes a while and also introduces many other dependencies.
+# These binary distributions will allow use of TensorFlow in various languages
+# without having to compile the TensorFlow framework from sources, which takes
+# a while and also introduces many other dependencies.
 #
 # Usage:
 # - Source this file in another bash script
 # - Execute build_libtensorflow_tarball SUFFIX
 #
-# Produces: lib_package/libtensorflow${SUFFIX}.tar.gz
+# Produces:
+# - lib_package/libtensorflow${SUFFIX}.tar.gz
+# - lib_package/libtensorflow_jni${SUFFIX}.tar.gz
+# - lib_package/libtensorflow.jar
+# - lib_package/libtensorflow-src.jar
 #
 # ASSUMPTIONS:
 # - build_libtensorflow_tarball is invoked from the root of the git tree.
@@ -52,11 +59,21 @@ function build_libtensorflow_tarball() {
   # and https://github.com/bazelbuild/bazel/issues/1580
   # have been resolved and the "manual" tags on the BUILD targets
   # in tensorflow/tools/lib_package/BUILD are removed.
-  # Till then, must manually run the test.
-  bazel test ${BAZEL_OPTS} //tensorflow/tools/lib_package:libtensorflow_test
+  # Till then, must manually run the test since these tests are
+  # not covered by the continuous integration.
+  bazel test ${BAZEL_OPTS} \
+    //tensorflow/tools/lib_package:libtensorflow_test \
+    //tensorflow/tools/lib_package:libtensorflow_java_test
 
-  bazel build ${BAZEL_OPTS} //tensorflow/tools/lib_package:libtensorflow.tar.gz
+  bazel build ${BAZEL_OPTS} \
+    //tensorflow/tools/lib_package:libtensorflow.tar.gz \
+    //tensorflow/tools/lib_package:libtensorflow_jni.tar.gz \
+    //tensorflow/java:libtensorflow.jar \
+    //tensorflow/java:libtensorflow-src.jar
+
   DIR=lib_package
   mkdir -p ${DIR}
   cp bazel-bin/tensorflow/tools/lib_package/libtensorflow.tar.gz ${DIR}/libtensorflow${TARBALL_SUFFIX}.tar.gz
+  cp bazel-bin/tensorflow/tools/lib_package/libtensorflow_jni.tar.gz ${DIR}/libtensorflow_jni${TARBALL_SUFFIX}.tar.gz
+  cp bazel-bin/tensorflow/java/libtensorflow.jar bazel-bin/tensorflow/java/libtensorflow-src.jar ${DIR}
 }

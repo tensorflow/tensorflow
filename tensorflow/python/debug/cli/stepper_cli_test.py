@@ -23,8 +23,8 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.client import session
-from tensorflow.python.debug import stepper
 from tensorflow.python.debug.cli import stepper_cli
+from tensorflow.python.debug.lib import stepper
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util

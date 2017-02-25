@@ -39,6 +39,12 @@ limitations under the License.
 namespace xla {
 namespace {
 
+constexpr int64 kPointerSize = 8;
+
+int64 ShapeSize(const Shape& shape) {
+  return ShapeUtil::ByteSizeOf(shape, kPointerSize);
+}
+
 // This test suite tests the HLO cost analysis by first building a computation
 // using the client computation builder and running the HloCostAnalysis that
 // returns the number of floating point and transcendental operations in the
@@ -144,12 +150,18 @@ TEST_F(HloCostAnalysisTest, MatrixMultiply) {
 
   // Run HLO cost analysis.
   auto hlo_module = BuildHloGraph(&builder);
-  HloCostAnalysis analysis;
+  HloCostAnalysis analysis(ShapeSize);
   ASSERT_IS_OK(
       hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
 
   // Check the number of computations returned from the analysis (1500 FMAs).
   EXPECT_EQ(analysis.flop_count(), 2 * 10 * 30 * 5);
+
+  EXPECT_EQ(analysis.transcendental_count(), 0);
+
+  // Bytes accessed is sum of inputs and output.
+  EXPECT_EQ(analysis.bytes_accessed(),
+            sizeof(float) * (10 * 5 + 5 * 30 + 10 * 30));
 }
 
 TEST_F(HloCostAnalysisTest, Map) {
@@ -159,13 +171,14 @@ TEST_F(HloCostAnalysisTest, Map) {
 
   // Run HLO cost analysis.
   auto hlo_module = BuildHloGraph(&builder);
-  HloCostAnalysis analysis;
+  HloCostAnalysis analysis(ShapeSize);
   ASSERT_IS_OK(
       hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
 
   // add contributes to 10 flops and exp contributes to 10 transcendental ops.
   EXPECT_EQ(analysis.flop_count(), 10);
   EXPECT_EQ(analysis.transcendental_count(), 10);
+  EXPECT_EQ(analysis.bytes_accessed(), 80);
 }
 
 TEST_F(HloCostAnalysisTest, Convolution) {
@@ -182,13 +195,17 @@ TEST_F(HloCostAnalysisTest, Convolution) {
 
   // Run HLO cost analysis.
   auto hlo_module = BuildHloGraph(&builder);
-  HloCostAnalysis analysis;
+  HloCostAnalysis analysis(ShapeSize);
   ASSERT_IS_OK(
       hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
 
   // Output shape is [1x1x8x18] and each output element requires (3x3)
   // FMAs and one FMA is 2 flops.
   EXPECT_EQ(analysis.flop_count(), 8 * 18 * 2 * 3 * 3);
+
+  // Bytes accessed is sum of inputs and output.
+  EXPECT_EQ(analysis.bytes_accessed(),
+            sizeof(float) * (10 * 20 + 3 * 3 + 8 * 18));
 }
 
 TEST_F(HloCostAnalysisTest, Reduce) {
@@ -200,7 +217,7 @@ TEST_F(HloCostAnalysisTest, Reduce) {
 
   // Run HLO cost analysis.
   auto hlo_module = BuildHloGraph(&builder);
-  HloCostAnalysis analysis;
+  HloCostAnalysis analysis(ShapeSize);
   ASSERT_IS_OK(
       hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
 
@@ -218,7 +235,7 @@ TEST_F(HloCostAnalysisTest, ReduceWindow) {
 
   // Run HLO cost analysis.
   auto hlo_module = BuildHloGraph(&builder);
-  HloCostAnalysis analysis;
+  HloCostAnalysis analysis(ShapeSize);
   ASSERT_IS_OK(
       hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
 
@@ -238,7 +255,7 @@ TEST_F(HloCostAnalysisTest, SelectAndScatter) {
 
   // Run HLO cost analysis.
   auto hlo_module = BuildHloGraph(&builder);
-  HloCostAnalysis analysis;
+  HloCostAnalysis analysis(ShapeSize);
   ASSERT_IS_OK(
       hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
 
@@ -251,7 +268,7 @@ TEST_F(HloCostAnalysisTest, Broadcast) {
   ComputationBuilder b(client_, "broadcast");
   b.Broadcast(b.ConstantR0<float>(42), {10, 7});
   auto hlo_module = BuildHloGraph(&b);
-  HloCostAnalysis analysis;
+  HloCostAnalysis analysis(ShapeSize);
   ASSERT_IS_OK(
       hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
   EXPECT_EQ(analysis.flop_count(), 0);
@@ -271,7 +288,7 @@ TEST_F(HloCostAnalysisTest, FullyConnectedForward) {
 
   // Run HLO cost analysis.
   auto hlo_module = BuildHloGraph(&builder);
-  HloCostAnalysis analysis;
+  HloCostAnalysis analysis(ShapeSize);
   ASSERT_IS_OK(
       hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
 
@@ -282,7 +299,7 @@ TEST_F(HloCostAnalysisTest, FullyConnectedForward) {
 }
 
 TEST_F(HloCostAnalysisTest, MatmulAndConvolutionCanBeTheSameComputation) {
-  HloCostAnalysis conv_analysis;
+  HloCostAnalysis conv_analysis(ShapeSize);
   {
     ComputationBuilder builder(client_, "conv_looking_matmul");
     auto lhs = builder.Parameter(0, ShapeUtil::MakeShape(F32, {64, 64, 1, 1}),
@@ -295,7 +312,7 @@ TEST_F(HloCostAnalysisTest, MatmulAndConvolutionCanBeTheSameComputation) {
         &conv_analysis));
   }
 
-  HloCostAnalysis matmul_analysis;
+  HloCostAnalysis matmul_analysis(ShapeSize);
   {
     ComputationBuilder builder(client_, "matmul");
     auto lhs =
@@ -309,28 +326,6 @@ TEST_F(HloCostAnalysisTest, MatmulAndConvolutionCanBeTheSameComputation) {
   }
 
   EXPECT_EQ(conv_analysis.flop_count(), matmul_analysis.flop_count());
-}
-
-// Note that we still expect that any given operation won't overflow 2^64 FLOPs,
-// just that the sum total may.
-TEST_F(HloCostAnalysisTest, TotalOverflowsInt64) {
-  HloCostAnalysis matmul_analysis;
-  {
-    ComputationBuilder builder(client_, "matmul");
-    auto lhs = builder.Parameter(0, ShapeUtil::MakeShape(F32, {1, 1LL << 62}),
-                                 "input");
-    auto rhs = builder.Parameter(1, ShapeUtil::MakeShape(F32, {1LL << 62, 1}),
-                                 "weights");
-    auto a = builder.Dot(lhs, rhs);
-    auto b = builder.Dot(a, lhs);
-    builder.Dot(b, rhs);
-    auto hlo_module = BuildHloGraph(&builder);
-    ASSERT_IS_OK(hlo_module->entry_computation()->root_instruction()->Accept(
-        &matmul_analysis));
-  }
-
-  LOG(INFO) << matmul_analysis.flop_count();
-  EXPECT_GT(matmul_analysis.flop_count(), std::numeric_limits<int64>::max());
 }
 
 using FusionCostAnalysis = ::testing::Test;
@@ -373,11 +368,29 @@ TEST_F(FusionCostAnalysis, LoopFusion) {
   fusion->FuseInstruction(clamp.get());
   fusion->FuseInstruction(add.get());
 
-  HloCostAnalysis fusion_analysis;
+  HloCostAnalysis fusion_analysis(ShapeSize);
   ASSERT_IS_OK(fusion->Accept(&fusion_analysis));
 
   EXPECT_EQ(fusion_analysis.flop_count(), 16);
   EXPECT_EQ(fusion_analysis.transcendental_count(), 4);
+}
+
+TEST_F(HloCostAnalysisTest, TupleCost) {
+  HloCostAnalysis analysis(ShapeSize);
+  {
+    ComputationBuilder builder(client_, "matmul");
+    auto x = builder.Parameter(0, ShapeUtil::MakeShape(F32, {123}), "x");
+    auto y = builder.Parameter(1, ShapeUtil::MakeShape(F32, {42}), "y");
+    auto tuple = builder.Tuple({x, y});
+    auto hlo_module = BuildHloGraph(&builder);
+
+    ASSERT_IS_OK(
+        hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
+  }
+
+  EXPECT_EQ(analysis.flop_count(), 0);
+  EXPECT_EQ(analysis.transcendental_count(), 0);
+  EXPECT_EQ(analysis.bytes_accessed(), kPointerSize * 2);
 }
 
 }  // namespace

@@ -23,10 +23,8 @@ import numbers
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
-# pylint: disable=wildcard-import,undefined-variable
-# pylint: enable=wildcard-import
 
-from tensorflow.contrib.factorization.python.ops.gen_factorization_ops import *
+from tensorflow.contrib.factorization.python.ops import gen_factorization_ops
 from tensorflow.contrib.util import loader
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -53,10 +51,13 @@ class WALSModel(object):
   r"""A model for Weighted Alternating Least Squares matrix factorization.
 
   It minimizes the following loss function over U, V:
-   \\( ||W \odot (A - U V^T) ||_F^2 + \lambda (||U||_F^2 + ||V||_F^2) )\\
+   \\(
+   \|\sqrt W \odot (A - U V^T) \|_F^2 + \lambda (\|U\|_F^2 + \|V\|_F^2)
+   )\\
     where,
     A: input matrix,
-    W: weight matrix,
+    W: weight matrix. Note that the (element-wise) square root of the weights
+      is used in the objective function.
     U, V: row_factors and column_factors matrices,
     \\(\lambda)\\: regularization.
   Also we assume that W is of the following special form:
@@ -75,6 +76,18 @@ class WALSModel(object):
   creating the worker caches and instead the relevant weight and factor values
   are looked up from parameter servers at each step.
 
+  Loss computation: The loss can be computed efficiently by decomposing it into
+  a sparse term and a Gramian term, see wals.md.
+  The loss is returned by the update_{col, row}_factors(sp_input), and is
+  normalized as follows:
+  _, _, minibatch_loss = update_row_factors(sp_input)
+  if sp_input contains the rows {A_i, i \in I}, and the input matrix A has n
+  total rows, then minibatch_loss is
+   \\(
+   (\|\sqrt W \odot (A_I - U_I V^T)\|_F^2 + \lambda \|U_I\|_F^2) * n / |I| +
+   \lambda \|V\|_F^2
+   )\\
+
   A typical usage example (pseudocode):
 
     with tf.Graph().as_default():
@@ -87,15 +100,15 @@ class WALSModel(object):
       model_init_op = model.initialize_op
 
       # To be run once per worker after session is available, prior to
-      # the gramian_prep_ops for row(column) can be run.
+      # the prep_gramian_op for row(column) can be run.
       worker_init_op = model.worker_init
 
       # To be run once per interation sweep before the row(column) update
       # initialize ops can be run. Note that in the distributed training
       # situations, this should only be run by the chief trainer. All other
       # trainers need to block until this is done.
-      row_update_gramian_prep_op = model.row_update_prep_gramian_op
-      col_update_gramian_prep_op = model.col_update_prep_gramian_op
+      row_update_prep_gramian_op = model.row_update_prep_gramian_op
+      col_update_prep_gramian_op = model.col_update_prep_gramian_op
 
       # To be run once per worker per iteration sweep. Must be run before
       # any actual update ops can be run.
@@ -105,11 +118,11 @@ class WALSModel(object):
       # Ops to upate row(column). This can either take the entire sparse tensor
       # or slices of sparse tensor. For distributed trainer, each trainer
       # handles just part of the matrix.
-      row_update_op = model.update_row_factors(
-           sp_input=matrix_slices_from_queue_for_worker_shard)[1]
-      col_update_op = model.update_col_factors(
+      _, row_update_op, row_loss = model.update_row_factors(
+           sp_input=matrix_slices_from_queue_for_worker_shard)
+      _, col_update_op, col_loss = model.update_col_factors(
            sp_input=transposed_matrix_slices_from_queue_for_worker_shard,
-           transpose_input=True)[1]
+           transpose_input=True)
 
       ...
 
@@ -134,7 +147,7 @@ class WALSModel(object):
 
           # Row update sweep.
           if is_chief:
-            row_update_gramian_prep_op.run(session=sess)
+            row_update_prep_gramian_op.run(session=sess)
           else:
             wait_for_chief
 
@@ -152,7 +165,7 @@ class WALSModel(object):
 
           # Column update sweep.
           if is_chief:
-            col_update_gramian_prep_op.run(session=sess)
+            col_update_prep_gramian_op.run(session=sess)
           else:
             wait_for_chief
 
@@ -218,10 +231,10 @@ class WALSModel(object):
     self._num_col_shards = num_col_shards
     self._n_components = n_components
     self._unobserved_weight = unobserved_weight
-    self._regularization = (array_ops.diag(
-        constant_op.constant(
-            regularization, shape=[self._n_components], dtype=dtypes.float32))
-                            if regularization is not None else None)
+    self._regularization = regularization
+    self._regularization_matrix = (
+        regularization * linalg_ops.eye(self._n_components)
+        if regularization is not None else None)
     assert (row_weights is None) == (col_weights is None)
     self._row_weights = WALSModel._create_weights(row_weights, self._input_rows,
                                                   self._num_row_shards,
@@ -584,13 +597,14 @@ class WALSModel(object):
     return func
 
   @classmethod
-  def scatter_update(cls, factor, indices, values, sharding_func):
+  def scatter_update(cls, factor, indices, values, sharding_func, name=None):
     """Helper function for doing sharded scatter update."""
     assert isinstance(factor, list)
     if len(factor) == 1:
       with ops.colocate_with(factor[0]):
         # TODO(agarwal): assign instead of scatter update for full batch update.
-        return state_ops.scatter_update(factor[0], indices, values).op
+        return state_ops.scatter_update(factor[0], indices, values,
+                                        name=name).op
     else:
       num_shards = len(factor)
       assignments, new_ids = sharding_func(indices)
@@ -602,13 +616,12 @@ class WALSModel(object):
                                                        num_shards)
       updates = []
       for i in xrange(num_shards):
-        updates.append(
-            state_ops.scatter_update(factor[i], sharded_ids[i], sharded_values[
-                i]))
-      return control_flow_ops.group(*updates)
+        updates.append(state_ops.scatter_update(factor[i], sharded_ids[i],
+                                                sharded_values[i]))
+      return control_flow_ops.group(*updates, name=name)
 
   def update_row_factors(self, sp_input=None, transpose_input=False):
-    """Updates the row factors.
+    r"""Updates the row factors.
 
     Args:
       sp_input: A SparseTensor representing a subset of rows of the full input
@@ -618,16 +631,22 @@ class WALSModel(object):
         rows corresponding to the transposed input are updated.
 
     Returns:
-      A tuple consisting of the following two elements:
+      A tuple consisting of the following elements:
       new_values: New values for the row factors.
       update_op: An op that assigns the newly computed values to the row
         factors.
+      loss: A tensor (scalar) that contains the normalized minibatch loss,
+        corresponding to sp_input.
+        if sp_input contains the rows {A_{i, :}, i \in I}, and the input matrix
+        A has n total rows, then loss is:
+        (\|\sqrt W_I \odot (A_I - U_I V^T)\|_F^2 + \lambda \|U_I\|_F^2) *
+        n / |I| + \lambda \|V\|_F^2.
     """
-    return self._process_input_helper(
-        True, sp_input=sp_input, transpose_input=transpose_input)
+    return self._process_input_helper(True, sp_input=sp_input,
+                                      transpose_input=transpose_input)
 
   def update_col_factors(self, sp_input=None, transpose_input=False):
-    """Updates the column factors.
+    r"""Updates the column factors.
 
     Args:
       sp_input: A SparseTensor representing a subset of columns of the full
@@ -641,13 +660,17 @@ class WALSModel(object):
       new_values: New values for the column factors.
       update_op: An op that assigns the newly computed values to the column
         factors.
+      loss: A tensor (scalar) that contains the normalized minibatch loss,
+        corresponding to sp_input.
+        If sp_input contains the columns {A_{:, j}, j \in J}, and the input
+        matrix A has m total columns, then loss is:
+        (\|\sqrt W_J \odot (A_J - U V_J^T)\|_F^2 + \lambda \|V_J\|_F^2) *
+        m / |J| + \lambda \|U\|_F^2.
     """
-    return self._process_input_helper(
-        False, sp_input=sp_input, transpose_input=transpose_input)
+    return self._process_input_helper(False, sp_input=sp_input,
+                                      transpose_input=transpose_input)
 
-  def project_row_factors(self,
-                          sp_input=None,
-                          transpose_input=False,
+  def project_row_factors(self, sp_input=None, transpose_input=False,
                           projection_weights=None):
     """Projects the row factors.
 
@@ -672,11 +695,9 @@ class WALSModel(object):
     """
     if projection_weights is None:
       projection_weights = 1
-    return self._process_input_helper(
-        True,
-        sp_input=sp_input,
-        transpose_input=transpose_input,
-        row_weights=projection_weights)[0]
+    return self._process_input_helper(True, sp_input=sp_input,
+                                      transpose_input=transpose_input,
+                                      row_weights=projection_weights)[0]
 
   def project_col_factors(self,
                           sp_input=None,
@@ -705,16 +726,12 @@ class WALSModel(object):
     """
     if projection_weights is None:
       projection_weights = 1
-    return self._process_input_helper(
-        False,
-        sp_input=sp_input,
-        transpose_input=transpose_input,
-        row_weights=projection_weights)[0]
+    return self._process_input_helper(False, sp_input=sp_input,
+                                      transpose_input=transpose_input,
+                                      row_weights=projection_weights)[0]
 
-  def _process_input_helper(self,
-                            update_row_factors,
-                            sp_input=None,
-                            transpose_input=False,
+  def _process_input_helper(self, update_row_factors,
+                            sp_input=None, transpose_input=False,
                             row_weights=None):
     """Creates the graph for processing a sparse slice of input.
 
@@ -734,10 +751,12 @@ class WALSModel(object):
         of columns to be updated/projected.
 
     Returns:
-      A tuple consisting of the following two elements:
+      A tuple consisting of the following three elements:
       new_values: New values for the row/column factors.
       update_op: An op that assigns the newly computed values to the row/column
         factors.
+      loss: A tensor (scalar) that contains the normalized minibatch loss,
+        corresponding to sp_input.
     """
     assert isinstance(sp_input, sparse_tensor.SparseTensor)
 
@@ -746,6 +765,7 @@ class WALSModel(object):
       right_factors = self._col_factors_cache
       row_wt = self._row_wt_cache
       col_wt = self._col_wt_cache
+      total_rows = self._input_rows
       sharding_func = WALSModel._get_sharding_func(self._input_rows,
                                                    self._num_row_shards)
       gramian = self._col_gramian_cache
@@ -754,6 +774,7 @@ class WALSModel(object):
       right_factors = self._row_factors_cache
       row_wt = self._col_wt_cache
       col_wt = self._row_wt_cache
+      total_rows = self._input_cols
       sharding_func = WALSModel._get_sharding_func(self._input_cols,
                                                    self._num_col_shards)
       gramian = self._row_gramian_cache
@@ -799,8 +820,8 @@ class WALSModel(object):
 
     # Compute lhs and rhs of the normal equations
     total_lhs = (self._unobserved_weight * gramian)
-    if self._regularization is not None:
-      total_lhs += self._regularization
+    if self._regularization_matrix is not None:
+      total_lhs += self._regularization_matrix
     if self._row_weights is None:
       # Special case of ALS. Use a much simpler update rule.
       total_rhs = (self._unobserved_weight *
@@ -819,30 +840,68 @@ class WALSModel(object):
         row_weights_slice = embedding_ops.embedding_lookup(
             row_wt, update_indices, partition_strategy="div")
       else:
+        num_indices = array_ops.shape(update_indices)[0]
         with ops.control_dependencies(
             [check_ops.assert_less_equal(array_ops.rank(row_weights), 1)]):
           row_weights_slice = control_flow_ops.cond(
               math_ops.equal(array_ops.rank(row_weights), 0),
-              lambda: (array_ops.ones([array_ops.shape(update_indices)[0]]) * row_weights),
+              lambda: (array_ops.ones([num_indices]) * row_weights),
               lambda: math_ops.cast(row_weights, dtypes.float32))
 
       col_weights = embedding_ops.embedding_lookup(
           col_wt, gather_indices, partition_strategy="div")
-      partial_lhs, total_rhs = wals_compute_partial_lhs_and_rhs(
-          right,
-          col_weights,
-          self._unobserved_weight,
-          row_weights_slice,
-          new_sp_input.indices,
-          new_sp_input.values,
-          num_rows,
-          transpose_input,
-          name="wals_compute_partial_lhs_rhs")
+      partial_lhs, total_rhs = (
+          gen_factorization_ops.wals_compute_partial_lhs_and_rhs(
+              right,
+              col_weights,
+              self._unobserved_weight,
+              row_weights_slice,
+              new_sp_input.indices,
+              new_sp_input.values,
+              num_rows,
+              transpose_input,
+              name="wals_compute_partial_lhs_rhs"))
       total_lhs = array_ops.expand_dims(total_lhs, 0) + partial_lhs
       total_rhs = array_ops.expand_dims(total_rhs, -1)
       new_left_values = array_ops.squeeze(
           linalg_ops.matrix_solve(total_lhs, total_rhs), [2])
 
-    return (new_left_values, self.scatter_update(left, update_indices,
-                                                 new_left_values,
-                                                 sharding_func))
+    update_op_name = "row_update" if update_row_factors else "col_update"
+    update_op = self.scatter_update(left, update_indices, new_left_values,
+                                    sharding_func, name=update_op_name)
+
+    # Create the loss subgraph
+    loss_sp_input = (sparse_ops.sparse_transpose(new_sp_input)
+                     if transpose_input else new_sp_input)
+    # sp_approx is the low rank estimate of the input matrix, formed by
+    # computing the product <u_i, v_j> for (i, j) in loss_sp_input.indices.
+    sp_approx_vals = gen_factorization_ops.masked_matmul(
+        new_left_values, right, loss_sp_input.indices, transpose_a=False,
+        transpose_b=True)
+    sp_approx = sparse_tensor.SparseTensor(
+        loss_sp_input.indices, sp_approx_vals, loss_sp_input.dense_shape)
+    sp_approx_sq = math_ops.square(sp_approx)
+    sp_residual = sparse_ops.sparse_add(loss_sp_input, sp_approx * (-1))
+    sp_residual_sq = math_ops.square(sp_residual)
+    row_wt_mat = (constant_op.constant(0.) if self._row_weights is None else
+                  array_ops.expand_dims(row_weights_slice, 1))
+    col_wt_mat = (constant_op.constant(0.) if self._col_weights is None else
+                  array_ops.expand_dims(col_weights, 0))
+    # We return the normalized loss
+    partial_row_gramian = math_ops.matmul(
+        new_left_values, new_left_values, transpose_a=True)
+    normalization_factor = total_rows / math_ops.cast(num_rows, dtypes.float32)
+    loss = (
+        self._unobserved_weight * (
+            sparse_ops.sparse_reduce_sum(sp_residual_sq) -
+            sparse_ops.sparse_reduce_sum(sp_approx_sq) +
+            math_ops.trace(math_ops.matmul(partial_row_gramian, gramian))
+        ) +
+        sparse_ops.sparse_reduce_sum(row_wt_mat * (sp_residual_sq * col_wt_mat))
+    ) * normalization_factor
+    if self._regularization is not None:
+      loss += self._regularization * (
+          math_ops.trace(partial_row_gramian) * normalization_factor +
+          math_ops.trace(gramian)
+      )
+    return (new_left_values, update_op, loss)

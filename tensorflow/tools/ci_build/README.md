@@ -53,10 +53,10 @@ tensorflow/tools/ci_build/ci_build.sh CPU bazel test //tensorflow/...
 tensorflow/tools/ci_build/ci_build.sh GPU bazel test -c opt --config=cuda //tensorflow/...
 
 # build pip with gpu support
-tensorflow/tools/ci_build/ci_build.sh GPU tensorflow/tools/ci_build/builds/pip.sh GPU
+tensorflow/tools/ci_build/ci_build.sh GPU tensorflow/tools/ci_build/builds/pip.sh GPU -c opt --config=cuda
 
 # build and run gpu tests using python 3
-CI_DOCKER_EXTRA_PARAMS="-e CI_BUILD_PYTHON=python3" tensorflow/tools/ci_build/ci_build.sh GPU tensorflow/tools/ci_build/builds/pip.sh GPU
+CI_DOCKER_EXTRA_PARAMS="-e CI_BUILD_PYTHON=python3" tensorflow/tools/ci_build/ci_build.sh GPU tensorflow/tools/ci_build/builds/pip.sh GPU -c opt --config=cuda
 
 # build android example app
 tensorflow/tools/ci_build/ci_build.sh ANDROID tensorflow/tools/ci_build/builds/android.sh

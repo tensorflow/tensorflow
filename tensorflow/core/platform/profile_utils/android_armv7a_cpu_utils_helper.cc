@@ -24,6 +24,7 @@ limitations under the License.
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/syscall.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 #include "tensorflow/core/lib/strings/stringprintf.h"
@@ -112,14 +113,14 @@ int64 AndroidArmV7ACpuUtilsHelper::ReadCpuFrequencyFile(
   if (fp == nullptr) {
     return INVALID_CPU_FREQUENCY;
   }
-  int64 freq = INVALID_CPU_FREQUENCY;
-  const int retval = fscanf(fp, "%lld", &freq);
+  int64 freq_in_khz = INVALID_CPU_FREQUENCY;
+  const int retval = fscanf(fp, "%lld", &freq_in_khz);
   if (retval < 0) {
     LOG(WARNING) << "Failed to \"" << file_path << "\"";
     return INVALID_CPU_FREQUENCY;
   }
   pclose(fp);
-  return freq;
+  return freq_in_khz * 1000;  // The file contains cpu frequency in khz
 }
 
 }  // namespace profile_utils

@@ -18,7 +18,9 @@ limitations under the License.
 
 #include <queue>
 
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/hexagon/graph_transferer.h"
 #include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
@@ -26,11 +28,18 @@ namespace tensorflow {
 class GraphTransferUtils {
  public:
   static std::priority_queue<std::tuple<float, int, string>>
-  GetTopNFloatResults(const float *const data, const string *const labels,
+  GetTopNFloatResults(const float* const data, const string* const labels,
                       const int element_count);
-  static void DumpTopNFloatResults(const float *const data,
-                                   const string *const labels,
+  static void DumpTopNFloatResults(const float* const data,
+                                   const string* const labels,
                                    const int element_count, const int top_n);
+
+  static GraphDef BuildFusedGraphDef(
+      const IGraphTransferOpsDefinitions& ops_definitions,
+      const string& remote_graph_execute_name,
+      const std::vector<GraphTransferer::InputNodeInfo>& inputs,
+      const std::vector<string>& outputs, const GraphDef& def,
+      GraphTransferer* gt);
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(GraphTransferUtils);

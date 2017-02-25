@@ -131,6 +131,64 @@ class EmbeddingMultiplierTest(test.TestCase):
       self.assertFalse(np.all(np.isclose(wire_value, initial_value)))
 
 
+class DNNEstimatorTest(test.TestCase):
+
+  def _assertInRange(self, expected_min, expected_max, actual):
+    self.assertLessEqual(expected_min, actual)
+    self.assertGreaterEqual(expected_max, actual)
+
+  def testExperimentIntegration(self):
+    exp = experiment.Experiment(
+        estimator=dnn.DNNClassifier(
+            n_classes=3,
+            feature_columns=[
+                feature_column.real_valued_column(
+                    'feature', dimension=4)
+            ],
+            hidden_units=[3, 3]),
+        train_input_fn=test_data.iris_input_multiclass_fn,
+        eval_input_fn=test_data.iris_input_multiclass_fn)
+    exp.test()
+
+  def testEstimatorContract(self):
+    estimator_test_utils.assert_estimator_contract(self, dnn._DNNEstimator)
+
+  def testTrainWithWeights(self):
+    """Tests training with given weight column."""
+
+    def _input_fn_train():
+      # Create 4 rows, one of them (y = x), three of them (y=Not(x))
+      # First row has more weight than others. Model should fit (y=x) better
+      # than (y=Not(x)) due to the relative higher weight of the first row.
+      labels = constant_op.constant([[1], [0], [0], [0]])
+      features = {
+          'x': array_ops.ones(
+              shape=[4, 1], dtype=dtypes.float32),
+          'w': constant_op.constant([[100.], [3.], [2.], [2.]])
+      }
+      return features, labels
+
+    def _input_fn_eval():
+      # Create 4 rows (y = x)
+      labels = constant_op.constant([[1], [1], [1], [1]])
+      features = {
+          'x': array_ops.ones(
+              shape=[4, 1], dtype=dtypes.float32),
+          'w': constant_op.constant([[1.], [1.], [1.], [1.]])
+      }
+      return features, labels
+
+    dnn_estimator = dnn._DNNEstimator(
+        head=head_lib._multi_class_head(2, weight_column_name='w'),
+        feature_columns=[feature_column.real_valued_column('x')],
+        hidden_units=[3, 3],
+        config=run_config.RunConfig(tf_random_seed=1))
+
+    dnn_estimator.fit(input_fn=_input_fn_train, steps=5)
+    scores = dnn_estimator.evaluate(input_fn=_input_fn_eval, steps=1)
+    self._assertInRange(0.0, 1.0, scores['accuracy'])
+
+
 class DNNClassifierTest(test.TestCase):
 
   def testExperimentIntegration(self):

@@ -55,11 +55,14 @@ BinaryOpShared::BinaryOpState::BinaryOpState(OpKernelContext* ctx)
                                            in1.shape().DebugString()));
     return;
   }
-  OP_REQUIRES_OK(
-      ctx, ctx->allocate_output(0, BCast::ToShape(bcast.output_shape()), &out));
-  out_num_elements = out->NumElements();
+  const TensorShape output_shape = BCast::ToShape(bcast.output_shape());
+  out_num_elements = output_shape.num_elements();
   in0_num_elements = in0.NumElements();
   in1_num_elements = in1.NumElements();
+  if (!ctx->forward_input_to_output_with_shape(0, 0, output_shape, &out) &&
+      !ctx->forward_input_to_output_with_shape(1, 0, output_shape, &out)) {
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &out));
+  }
 
   ndims = static_cast<int>(bcast.x_reshape().size());
 }

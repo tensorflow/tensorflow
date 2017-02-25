@@ -1850,9 +1850,13 @@ bool CUDABlas::DoBlasGemmBatched(
     const port::ArraySlice<DeviceMemory<float> *> &b_array, int ldb, float beta,
     const port::ArraySlice<DeviceMemory<float> *> &c_array, int ldc,
     int batch_count, ScratchAllocator *scratch_allocator) {
-  SE_RETURN_STATUS_AS_BOOL(DoBlasGemmBatchedInternal(
+  port::Status status = DoBlasGemmBatchedInternal(
       wrap::cublasSgemmBatched, stream, transa, transb, m, n, k, alpha, a_array,
-      lda, b_array, ldb, beta, c_array, ldc, batch_count, scratch_allocator));
+      lda, b_array, ldb, beta, c_array, ldc, batch_count, scratch_allocator);
+  if (!status.ok()) {
+    LOG(ERROR) << status;
+  }
+  return status.ok();
 }
 
 bool CUDABlas::DoBlasGemmBatched(
@@ -1862,9 +1866,13 @@ bool CUDABlas::DoBlasGemmBatched(
     const port::ArraySlice<DeviceMemory<double> *> &b_array, int ldb,
     double beta, const port::ArraySlice<DeviceMemory<double> *> &c_array,
     int ldc, int batch_count, ScratchAllocator *scratch_allocator) {
-  SE_RETURN_STATUS_AS_BOOL(DoBlasGemmBatchedInternal(
+  port::Status status = DoBlasGemmBatchedInternal(
       wrap::cublasDgemmBatched, stream, transa, transb, m, n, k, alpha, a_array,
-      lda, b_array, ldb, beta, c_array, ldc, batch_count, scratch_allocator));
+      lda, b_array, ldb, beta, c_array, ldc, batch_count, scratch_allocator);
+  if (!status.ok()) {
+    LOG(ERROR) << status;
+  }
+  return status.ok();
 }
 
 bool CUDABlas::DoBlasGemmBatched(
@@ -1876,9 +1884,13 @@ bool CUDABlas::DoBlasGemmBatched(
     int ldb, std::complex<float> beta,
     const port::ArraySlice<DeviceMemory<std::complex<float>> *> &c_array,
     int ldc, int batch_count, ScratchAllocator *scratch_allocator) {
-  SE_RETURN_STATUS_AS_BOOL(DoBlasGemmBatchedInternal(
+  port::Status status = DoBlasGemmBatchedInternal(
       wrap::cublasCgemmBatched, stream, transa, transb, m, n, k, alpha, a_array,
-      lda, b_array, ldb, beta, c_array, ldc, batch_count, scratch_allocator));
+      lda, b_array, ldb, beta, c_array, ldc, batch_count, scratch_allocator);
+  if (!status.ok()) {
+    LOG(ERROR) << status;
+  }
+  return status.ok();
 }
 
 bool CUDABlas::DoBlasGemmBatched(
@@ -1890,9 +1902,13 @@ bool CUDABlas::DoBlasGemmBatched(
     int ldb, std::complex<double> beta,
     const port::ArraySlice<DeviceMemory<std::complex<double>> *> &c_array,
     int ldc, int batch_count, ScratchAllocator *scratch_allocator) {
-  SE_RETURN_STATUS_AS_BOOL(DoBlasGemmBatchedInternal(
+  port::Status status = DoBlasGemmBatchedInternal(
       wrap::cublasZgemmBatched, stream, transa, transb, m, n, k, alpha, a_array,
-      lda, b_array, ldb, beta, c_array, ldc, batch_count, scratch_allocator));
+      lda, b_array, ldb, beta, c_array, ldc, batch_count, scratch_allocator);
+  if (!status.ok()) {
+    LOG(ERROR) << status;
+  }
+  return status.ok();
 }
 
 bool CUDABlas::DoBlasHemm(Stream *stream, blas::Side side,

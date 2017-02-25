@@ -77,7 +77,7 @@ TEST(XlaCompilationTest, Chains) {
         ops::UnaryOp("UncompilableUnary", c, builder.opts().WithName("D"));
     Node* e = ops::UnaryOp("Relu", d, builder.opts().WithName("E"));
     ops::UnaryOp("Relu", e, builder.opts().WithName("F"));
-    builder.ToGraph(graph.get());
+    TF_EXPECT_OK(builder.ToGraph(graph.get()));
   }
 
   MarkForCompilation(&graph);
@@ -102,7 +102,7 @@ TEST(XlaCompilationTest, UncompilableCycles) {
     Node* b =
         ops::UnaryOp("UncompilableUnary", a, builder.opts().WithName("B"));
     ops::BinaryOp("MatMul", a, b, builder.opts().WithName("C"));
-    builder.ToGraph(graph.get());
+    TF_EXPECT_OK(builder.ToGraph(graph.get()));
   }
 
   MarkForCompilation(&graph);
@@ -122,7 +122,7 @@ TEST(XlaCompilationTest, CompilableCycles) {
                                          .WithAttr("value", Tensor()));
     Node* b = ops::UnaryOp("Relu", a, builder.opts().WithName("B"));
     ops::BinaryOp("MatMul", a, b, builder.opts().WithName("C"));
-    builder.ToGraph(graph.get());
+    TF_EXPECT_OK(builder.ToGraph(graph.get()));
   }
 
   MarkForCompilation(&graph);
@@ -145,7 +145,7 @@ TEST(XlaCompilationTest, UnsupportedTypes) {
                      .WithAttr("value", Tensor(DT_COMPLEX64, TensorShape())));
     Node* b = ops::UnaryOp("Neg", a, builder.opts().WithName("B"));
     ops::BinaryOp("MatMul", a, b, builder.opts().WithName("C"));
-    builder.ToGraph(graph.get());
+    TF_EXPECT_OK(builder.ToGraph(graph.get()));
   }
 
   MarkForCompilation(&graph);
@@ -174,7 +174,7 @@ TEST(XlaCompilationTest, ConcatWithConstArg) {
     concat_builder.Input(dim).Input({a, a}).Attr("N", 2);
     builder.opts().FinalizeBuilder(&concat_builder);
 
-    builder.ToGraph(graph.get());
+    TF_EXPECT_OK(builder.ToGraph(graph.get()));
   }
 
   MarkForCompilation(&graph);
@@ -201,7 +201,7 @@ TEST(XlaCompilationTest, FunctionCalls) {
     Node* b = ops::BinaryOp("CompilableFn", a, a, builder.opts().WithName("B"));
     Node* c = ops::UnaryOp("Relu", b, builder.opts().WithName("C"));
     ops::UnaryOp("UncompilableFn", c, builder.opts().WithName("D"));
-    builder.ToGraph(graph.get());
+    TF_EXPECT_OK(builder.ToGraph(graph.get()));
   }
 
   MarkForCompilation(&graph, &flib_def);
@@ -231,8 +231,8 @@ TEST(XlaCompilationTest, MetadataOpsDontStartClusters) {
     Node* b = ops::UnaryOp("Shape", a, builder.opts().WithName("B"));
     Node* c = ops::UnaryOp("Rank", b, builder.opts().WithName("C"));
     Node* d = ops::UnaryOp("Size", c, builder.opts().WithName("D"));
-    ops::UnaryOp("Shape", d, builder.opts().WithName("C"));
-    builder.ToGraph(graph.get());
+    ops::UnaryOp("Shape", d, builder.opts().WithName("E"));
+    TF_EXPECT_OK(builder.ToGraph(graph.get()));
   }
   MarkForCompilation(&graph);
   auto clusters = GetClusters(*graph);
@@ -318,7 +318,7 @@ TEST(XlaCompilationTest, SymbolicGradients) {
     d_builder.Input({c, c});
     builder.opts().FinalizeBuilder(&d_builder);
 
-    builder.ToGraph(graph.get());
+    TF_EXPECT_OK(builder.ToGraph(graph.get()));
   }
 
   MarkForCompilation(&graph);
@@ -344,7 +344,7 @@ TEST(XlaCompilationTest, Loops) {
   auto d = ops::Add(root.WithOpName("D"), c, exit);
 
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
-  root.ToGraph(graph.get());
+  TF_EXPECT_OK(root.ToGraph(graph.get()));
 
   MarkForCompilation(&graph);
   auto clusters = GetClusters(*graph);

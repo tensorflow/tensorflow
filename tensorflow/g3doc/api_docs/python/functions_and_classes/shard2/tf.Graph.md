@@ -365,7 +365,8 @@ names match one of the following regular expressions:
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If `name` is not a valid scope name. The rules are the
+*  <b>`ValueError`</b>: If `name` is not a valid scope name, according to the rules
+    above.
 
 
 

@@ -40,8 +40,23 @@ $(GTEST_HEADERS)
 # TODO(satok): Remove once it's fixed
 CXXFLAGS += -DTENSORFLOW_DISABLE_META
 
+GRAPH_TRANSFER_SRCS := \
+tensorflow/cc/framework/scope.cc \
+tensorflow/cc/framework/ops.cc \
+tensorflow/cc/ops/const_op.cc \
+tensorflow/core/kernels/hexagon/graph_transfer_utils.cc \
+tensorflow/core/kernels/hexagon/graph_transferer.cc \
+tensorflow/core/kernels/hexagon/graph_transferer_test.cc \
+tensorflow/core/kernels/hexagon/hexagon_control_wrapper.cc \
+tensorflow/core/kernels/hexagon/hexagon_ops_definitions.cc \
+tensorflow/core/kernels/remote_fused_graph_execute_op.cc \
+tensorflow/core/ops/remote_fused_graph_ops.cc \
+tensorflow/core/platform/posix/test.cc
+
 QUANTIZATION_TEST_SRCS := \
+$(GRAPH_TRANSFER_SRCS) \
 tensorflow/core/kernels/hexagon/quantized_matmul_op_for_hexagon_test.cc \
+tensorflow/core/kernels/hexagon/graph_transferer_test.cc \
 tensorflow/contrib/makefile/test/test_main.cc
 
 QUANTIZATION_TEST_OBJS := $(addprefix $(OBJDIR), $(QUANTIZATION_TEST_SRCS:.cc=.o))

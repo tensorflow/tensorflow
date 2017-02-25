@@ -643,12 +643,6 @@ class OpKernelContext {
   Status replace_ref_input(StringPiece name, const Tensor& tensor,
                            bool lock_held);
 
-  // Set the output Ref Tensor at output_index to be an alias of the
-  // input Ref Tensor at input_index.
-  // REQUIRES: IsRefType(input_dtype(input_index)).
-  // REQUIRES: IsRefType(output_dtype(output_index)).
-  void forward_ref_input_to_ref_output(int input_index, int output_index);
-
   // Deletes the Tensor object used as the Ref Input at
   // input_index. This is not usually necessary and should be used
   // with caution. If !lock_held the input mutex will be acquired
@@ -666,6 +660,37 @@ class OpKernelContext {
   // status to a non-OK value and returns false.
   // Usage: if (!context->ValidateInputsAreSameShape(this)) return;
   bool ValidateInputsAreSameShape(OpKernel* op);
+
+  // Input to output forwarding.
+
+  // Set the output Ref Tensor at output_index to be an alias of the
+  // input Ref Tensor at input_index.
+  // REQUIRES: IsRefType(input_dtype(input_index)).
+  // REQUIRES: IsRefType(output_dtype(output_index)).
+  void forward_ref_input_to_ref_output(int input_index, int output_index);
+
+  // Returns true when an alias to input[input_index] that is safe to use for
+  // in-place computation was written to *output. Returns false if
+  // input[input_index] has a refcount greater than or if its type does not
+  // match the expected output type of output[output_index].
+  bool forward_input_to_output(int input_index, int output_index,
+                               Tensor** output);
+  Status forward_input_to_output(StringPiece input_name,
+                                 StringPiece output_name, Tensor** output);
+
+  // Returns true when an alias to input[input_index], reshaped to output_shape,
+  // which is is safe to use for in-place computation was written to *output.
+  // Returns false if input[input_index] has a refcount greater than one, or if
+  // its type does not match the expected output type of output[output_index],
+  // or the number of elements in input[input_index] does not equal the number
+  // of elements in output_shape.
+  bool forward_input_to_output_with_shape(int input_index, int output_index,
+                                          const TensorShape& output_shape,
+                                          Tensor** output);
+  Status forward_input_to_output_with_shape(StringPiece input_name,
+                                            StringPiece output_name,
+                                            const TensorShape& output_shape,
+                                            Tensor** output);
 
   // Output
 

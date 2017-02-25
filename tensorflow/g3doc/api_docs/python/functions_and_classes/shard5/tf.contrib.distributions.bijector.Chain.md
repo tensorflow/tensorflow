@@ -40,10 +40,10 @@ Instantiates `Chain` bijector.
 
 *  <b>`bijectors`</b>: Python list of bijector instances. An empty list makes this
     bijector equivalent to the `Identity` bijector.
-*  <b>`validate_args`</b>: `Boolean` indicating whether arguments should be checked
-    for correctness.
-*  <b>`name`</b>: `String`, name given to ops managed by this object. Default: E.g.,
-    `Chain([Exp(), Softplus()]).name == "chain_of_exp_of_softplus"`.
+*  <b>`validate_args`</b>: Python `bool` indicating whether arguments should be
+    checked for correctness.
+*  <b>`name`</b>: Python `str`, name given to ops managed by this object. Default:
+    E.g., `Chain([Exp(), Softplus()]).name == "chain_of_exp_of_softplus"`.
 
 ##### Raises:
 
@@ -304,7 +304,8 @@ Note: Jacobian is either constant for both forward and inverse or neither.
 
 ##### Returns:
 
-  `Boolean`.
+
+*  <b>`is_constant_jacobian`</b>: Python `bool`.
 
 
 - - -

@@ -36,6 +36,7 @@ from tensorflow.contrib.learn.python.learn.datasets import base
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators import estimator_test_utils
+from tensorflow.contrib.learn.python.learn.estimators import head as head_lib
 from tensorflow.contrib.learn.python.learn.estimators import linear
 from tensorflow.contrib.learn.python.learn.estimators import run_config
 from tensorflow.contrib.learn.python.learn.estimators import test_data
@@ -1625,6 +1626,92 @@ class LinearRegressorTest(test.TestCase):
         regressor.get_variable_value('linear/bias_weight')[0], 0.0, err=0.05)
     self.assertNear(regressor.weights_['linear/a/weight'][0], 0.1, err=0.05)
     self.assertNear(regressor.weights_['linear/b/weight'][0], -0.1, err=0.05)
+
+
+class LinearEstimatorTest(test.TestCase):
+
+  def testExperimentIntegration(self):
+    cont_features = [
+        feature_column_lib.real_valued_column(
+            'feature', dimension=4)
+    ]
+    exp = experiment.Experiment(
+        estimator=linear._LinearEstimator(feature_columns=cont_features,
+                                          head=head_lib._regression_head()),
+        train_input_fn=test_data.iris_input_logistic_fn,
+        eval_input_fn=test_data.iris_input_logistic_fn)
+    exp.test()
+
+  def testEstimatorContract(self):
+    estimator_test_utils.assert_estimator_contract(self,
+                                                   linear._LinearEstimator)
+
+  def testLinearRegression(self):
+    """Tests that loss goes down with training."""
+
+    def input_fn():
+      return {
+          'age':
+              constant_op.constant([1]),
+          'language':
+              sparse_tensor.SparseTensor(
+                  values=['english'], indices=[[0, 0]], dense_shape=[1, 1])
+      }, constant_op.constant([[10.]])
+
+    language = feature_column_lib.sparse_column_with_hash_bucket('language',
+                                                                 100)
+    age = feature_column_lib.real_valued_column('age')
+
+    linear_estimator = linear._LinearEstimator(feature_columns=[age, language],
+                                               head=head_lib._regression_head())
+    linear_estimator.fit(input_fn=input_fn, steps=100)
+    loss1 = linear_estimator.evaluate(input_fn=input_fn, steps=1)['loss']
+    linear_estimator.fit(input_fn=input_fn, steps=400)
+    loss2 = linear_estimator.evaluate(input_fn=input_fn, steps=1)['loss']
+
+    self.assertLess(loss2, loss1)
+    self.assertLess(loss2, 0.5)
+
+  def testPoissonRegression(self):
+    """Tests that loss goes down with training."""
+
+    def input_fn():
+      return {
+          'age':
+              constant_op.constant([1]),
+          'language':
+              sparse_tensor.SparseTensor(
+                  values=['english'], indices=[[0, 0]], dense_shape=[1, 1])
+      }, constant_op.constant([[10.]])
+
+    language = feature_column_lib.sparse_column_with_hash_bucket('language',
+                                                                 100)
+    age = feature_column_lib.real_valued_column('age')
+
+    linear_estimator = linear._LinearEstimator(
+        feature_columns=[age, language],
+        head=head_lib._poisson_regression_head())
+    linear_estimator.fit(input_fn=input_fn, steps=10)
+    loss1 = linear_estimator.evaluate(input_fn=input_fn, steps=1)['loss']
+    linear_estimator.fit(input_fn=input_fn, steps=100)
+    loss2 = linear_estimator.evaluate(input_fn=input_fn, steps=1)['loss']
+
+    self.assertLess(loss2, loss1)
+    # Here loss of 2.1 implies a prediction of ~9.9998
+    self.assertLess(loss2, 2.1)
+
+  def testSDCANotSupported(self):
+    """Tests that we detect error for SDCA."""
+    maintenance_cost = feature_column_lib.real_valued_column('maintenance_cost')
+    sq_footage = feature_column_lib.real_valued_column('sq_footage')
+    sdca_optimizer = sdca_optimizer_lib.SDCAOptimizer(
+        example_id_column='example_id')
+    with self.assertRaises(ValueError):
+      linear._LinearEstimator(
+          head=head_lib._regression_head(label_dimension=1),
+          feature_columns=[maintenance_cost, sq_footage],
+          optimizer=sdca_optimizer,
+          _joint_weights=True)
 
 
 def boston_input_fn():

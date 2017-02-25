@@ -179,6 +179,26 @@ class _Layer(object):
     """
     raise NotImplementedError
 
+  def _compute_output_shape(self, input_shape):
+    """Computes the output shape of the layer given the input shape.
+
+    Assumes that the layer will be built to match that input shape.
+
+    Args:
+      input_shape: A (possibly nested tuple of) `TensorShape`.  It need not
+        be fully defined (e.g. the batch size may be unknown).
+
+    Returns:
+      A (possibly nested tuple of) `TensorShape`.
+
+    Raises:
+      TypeError: if `input_shape` is not a (possibly nested tuple of)
+        `TensorShape`.
+      ValueError: if `input_shape` is incomplete or is incompatible with the
+        the layer.
+    """
+    raise NotImplementedError
+
   def _add_variable(self, name, shape, dtype=None,
                     initializer=None, regularizer=None, trainable=True,
                     variable_getter=vs.get_variable):

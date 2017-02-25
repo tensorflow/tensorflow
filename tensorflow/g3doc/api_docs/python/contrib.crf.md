@@ -3,9 +3,7 @@
 # CRF (contrib)
 [TOC]
 
-Linear-chain CRF layer.
-
-## This package provides functions for building a linear-chain CRF layer.
+Linear-chain CRF layer. See the @{$python/contrib.crf} guide.
 
 - - -
 
