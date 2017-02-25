@@ -53,7 +53,7 @@
     net = layers.conv2d(net, 256, [5, 5], scope='conv2')
   ```
 
-  Example of how to use tf.contrib.framework.add_arg_scope:
+  Example of how to use tf.contrib.framework.add_arg_scope to enable your function to be called within an arg_scope later:
 
   @tf.contrib.framework.add_arg_scope
   def conv2d(*args, **kwargs)
