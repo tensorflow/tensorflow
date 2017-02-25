@@ -62,6 +62,31 @@ class NumpyIoTest(test.TestCase):
       coord.request_stop()
       coord.join(threads)
 
+  def testNumpyInputFnWithVeryLargeBatchSizeAndMultipleEpochs(self):
+    a = np.arange(2) * 1.0
+    b = np.arange(32, 34)
+    x = {'a': a, 'b': b}
+    y = np.arange(-32, -30)
+
+    with self.test_session() as session:
+      input_fn = numpy_io.numpy_input_fn(
+          x, y, batch_size=128, shuffle=False, num_epochs=2)
+      features, target = input_fn()
+
+      coord = coordinator.Coordinator()
+      threads = queue_runner_impl.start_queue_runners(session, coord=coord)
+
+      res = session.run([features, target])
+      self.assertAllEqual(res[0]['a'], [0, 1, 0, 1])
+      self.assertAllEqual(res[0]['b'], [32, 33, 32, 33])
+      self.assertAllEqual(res[1], [-32, -31, -32, -31])
+
+      with self.assertRaises(errors.OutOfRangeError):
+        session.run([features, target])
+
+      coord.request_stop()
+      coord.join(threads)
+
   def testNumpyInputFnWithZeroEpochs(self):
     a = np.arange(4) * 1.0
     b = np.arange(32, 36)

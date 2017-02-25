@@ -84,6 +84,35 @@ resource: handle to the resource in which to store the variable.
 dtype: the dtype of the value.
 )");
 
+REGISTER_OP("_UnsafeReadVariable")
+    .Input("resource: resource")
+    .Output("value: dtype")
+    .Attr("dtype: type")
+    .SetShapeFn([](InferenceContext* c) {
+      DataType handle_dtype = c->input_handle_dtype(0);
+      DataType value_dtype;
+      c->GetAttr("dtype", &value_dtype);
+      if (handle_dtype != value_dtype) {
+        return errors::InvalidArgument(
+            "Trying to read variable with wrong dtype. "
+            "Expected ",
+            handle_dtype, " got ", value_dtype);
+      }
+      c->set_output(0, c->input_handle_shape(0));
+      return Status::OK();
+    })
+    .Doc(R"(
+Reads the value of a variable without any memory model.
+
+The tensor returned by this operation aliases a mutable Tensor, and its value
+can be observed to be different by different ops.
+
+Internal and private to the tensorflow implementation.
+
+resource: handle to the resource in which to store the variable.
+dtype: the dtype of the value.
+)");
+
 REGISTER_OP("DestroyResourceOp")
     .Input("resource: resource")
     .Attr("ignore_lookup_error: bool = true")

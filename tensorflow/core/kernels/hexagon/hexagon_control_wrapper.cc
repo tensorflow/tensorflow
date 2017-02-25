@@ -50,20 +50,21 @@ int HexagonControlWrapper::GetVersion() {
   return soc_interface_GetSocControllerVersion();
 }
 
-bool HexagonControlWrapper::Init() {
+bool HexagonControlWrapper::Init(const RemoteFusedGraphExecuteInfo& info) {
   soc_interface_SetLogLevel(SHOW_DBG_IN_SOC ? -1 /* debug */ : 0 /* info */);
   if (DBG_USE_SAMPLE_INPUT) {
     soc_interface_SetDebugFlag(FLAG_ENABLE_PANDA_BINARY_INPUT);
   }
+  graph_transferer_.SetSerializedGraphTransferInfo(
+      info.serialized_executor_parameters());
   return soc_interface_Init();
 }
 
 bool HexagonControlWrapper::Finalize() { return soc_interface_Finalize(); }
-bool HexagonControlWrapper::SetupGraph(
-    const GraphTransferer& graph_transferer) {
+bool HexagonControlWrapper::SetupGraph() {
   // Copy graph transfer info to modify to adapt hexnn library
-  GraphTransferInfo graph_transfer_info =
-      graph_transferer.GetGraphTransferInfo();
+  GraphTransferInfo& graph_transfer_info =
+      graph_transferer_.GetMutableGraphTransferInfo();
 
   // Overwrite op type of input nodes for hexagon
   for (const GraphTransferInfo::GraphInputNodeInfo& graph_input :
@@ -309,11 +310,11 @@ bool HexagonControlWrapper::FillInputNode(const string& node_name,
 
 #else
 int HexagonControlWrapper::GetVersion() { return -1; }
-bool HexagonControlWrapper::Init() { return false; }
-bool HexagonControlWrapper::Finalize() { return false; }
-bool HexagonControlWrapper::SetupGraph(const GraphTransferer &) {
+bool HexagonControlWrapper::Init(const RemoteFusedGraphExecuteInfo&) {
   return false;
 }
+bool HexagonControlWrapper::Finalize() { return false; }
+bool HexagonControlWrapper::SetupGraph() { return false; }
 bool HexagonControlWrapper::ExecuteGraph() { return false; }
 bool HexagonControlWrapper::TeardownGraph() { return false; }
 bool HexagonControlWrapper::FillInputNode(const string&, const ConstByteArray) {

@@ -106,6 +106,9 @@ class GraphTransferer {
   // Return parameters for graph transfer
   const GraphTransferInfo& GetGraphTransferInfo() const;
 
+  // Return mutable GraphTransferInfo for graph transfer
+  GraphTransferInfo& GetMutableGraphTransferInfo();
+
   // Dump verification string of parameters to verify with offline tools
   void DumpVerificationStringOfNodeTransferParams() const;
 

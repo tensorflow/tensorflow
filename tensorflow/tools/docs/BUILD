@@ -62,32 +62,45 @@ py_test(
 )
 
 py_binary(
-    name = "generate",
-    srcs = ["generate.py"],
+    name = "generate_lib",
+    srcs = ["generate_lib.py"],
     srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
     deps = [
         ":doc_generator_visitor",
         ":parser",
         ":py_guide_parser",
-        "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/ffmpeg:ffmpeg_ops_py",
-        "//tensorflow/python/debug:debug_py",
         "//tensorflow/tools/common:public_api",
         "//tensorflow/tools/common:traverse",
     ],
 )
 
 py_test(
-    name = "generate_test",
+    name = "generate_lib_test",
     size = "small",
     srcs = [
-        "generate_test.py",
+        "generate_lib_test.py",
     ],
     srcs_version = "PY2AND3",
     tags = ["manual"],
     deps = [
-        ":generate",
+        ":generate_lib",
+        ":parser",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python/debug:debug_py",
+    ],
+)
+
+py_binary(
+    name = "generate",
+    srcs = ["generate.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":generate_lib",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python/debug:debug_py",
     ],
 )
 

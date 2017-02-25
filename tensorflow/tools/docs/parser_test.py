@@ -104,8 +104,9 @@ class ParserTest(googletest.TestCase):
              'tf.reference.foo': HasOneMember.foo,
              'tf.third': HasOneMember,
              'tf.fourth': HasOneMember}
-    result = parser.replace_references(
-        string, '../..', duplicate_of, doc_index={}, index=index)
+    reference_resolver = parser.ReferenceResolver(
+        duplicate_of=duplicate_of, doc_index={}, index=index)
+    result = reference_resolver.replace_references(string, '../..')
     self.assertEqual(
         'A [`tf.reference`](../../tf/reference.md), another '
         '[`tf.reference`](../../tf/reference.md), '
@@ -125,8 +126,9 @@ class ParserTest(googletest.TestCase):
     doc2.title = 'Two words'
     doc2.url = 'somewhere/else'
     doc_index = {'doc1': doc1, 'do/c2': doc2}
-    result = parser.replace_references(string, 'python', {},
-                                       doc_index=doc_index, index={})
+    reference_resolver = parser.ReferenceResolver(
+        duplicate_of={}, doc_index=doc_index, index={})
+    result = reference_resolver.replace_references(string, 'python')
     self.assertEqual(
         '[Title1](../URL1) [Title1](../URL1#abc) [link](../URL1) '
         '[zelda](../URL1#def) [Two words](../somewhere/else)',
@@ -141,15 +143,17 @@ class ParserTest(googletest.TestCase):
         'TestClass.ChildClass': TestClass.ChildClass,
         'TestClass.CLASS_MEMBER': TestClass.CLASS_MEMBER
     }
+    reference_resolver = parser.ReferenceResolver(
+        duplicate_of={}, doc_index={}, index=index)
 
     tree = {
         'TestClass': ['a_method', 'a_property', 'ChildClass', 'CLASS_MEMBER']
     }
 
-    docs = parser.generate_markdown(
-        full_name='TestClass', py_object=TestClass, duplicate_of={},
-        duplicates={}, index=index, tree=tree, reverse_index={}, doc_index={},
-        guide_index={}, base_dir='/')
+    docs = parser.generate_markdown(full_name='TestClass', py_object=TestClass,
+                                    reference_resolver=reference_resolver,
+                                    duplicates={}, tree=tree, reverse_index={},
+                                    guide_index={}, base_dir='/')
 
     # Make sure all required docstrings are present.
     self.assertTrue(inspect.getdoc(TestClass) in docs)
@@ -178,6 +182,8 @@ class ParserTest(googletest.TestCase):
         test_function_with_args_kwargs,
         'TestModule.TestClass': TestClass,
     }
+    reference_resolver = parser.ReferenceResolver(
+        duplicate_of={}, doc_index={}, index=index)
 
     tree = {
         'TestModule': ['TestClass', 'test_function',
@@ -185,9 +191,9 @@ class ParserTest(googletest.TestCase):
     }
 
     docs = parser.generate_markdown(full_name='TestModule', py_object=module,
-                                    duplicate_of={}, duplicates={},
-                                    index=index, tree=tree, reverse_index={},
-                                    doc_index={}, guide_index={}, base_dir='/')
+                                    reference_resolver=reference_resolver,
+                                    duplicates={}, tree=tree, reverse_index={},
+                                    guide_index={}, base_dir='/')
 
     # Make sure all required docstrings are present.
     self.assertTrue(inspect.getdoc(module) in docs)
@@ -207,6 +213,8 @@ class ParserTest(googletest.TestCase):
     index = {
         'test_function': test_function
     }
+    reference_resolver = parser.ReferenceResolver(
+        duplicate_of={}, doc_index={}, index=index)
 
     tree = {
         '': ['test_function']
@@ -214,9 +222,9 @@ class ParserTest(googletest.TestCase):
 
     docs = parser.generate_markdown(full_name='test_function',
                                     py_object=test_function,
-                                    duplicate_of={}, duplicates={},
-                                    index=index, tree=tree, reverse_index={},
-                                    doc_index={}, guide_index={}, base_dir='/')
+                                    reference_resolver=reference_resolver,
+                                    duplicates={}, tree=tree, reverse_index={},
+                                    guide_index={}, base_dir='/')
 
     # Make sure docstring shows up.
     self.assertTrue(inspect.getdoc(test_function) in docs)
@@ -231,6 +239,8 @@ class ParserTest(googletest.TestCase):
     index = {
         'test_function_with_args_kwargs': test_function_with_args_kwargs
     }
+    reference_resolver = parser.ReferenceResolver(
+        duplicate_of={}, doc_index={}, index=index)
 
     tree = {
         '': ['test_function_with_args_kwargs']
@@ -238,9 +248,9 @@ class ParserTest(googletest.TestCase):
 
     docs = parser.generate_markdown(full_name='test_function_with_args_kwargs',
                                     py_object=test_function_with_args_kwargs,
-                                    duplicate_of={}, duplicates={},
-                                    index=index, tree=tree, reverse_index={},
-                                    doc_index={}, guide_index={}, base_dir='/')
+                                    reference_resolver=reference_resolver,
+                                    duplicates={}, tree=tree, reverse_index={},
+                                    guide_index={}, base_dir='/')
 
     # Make sure docstring shows up.
     self.assertTrue(inspect.getdoc(test_function_with_args_kwargs) in docs)
@@ -255,6 +265,8 @@ class ParserTest(googletest.TestCase):
         'test_function_for_markdown_reference':
         test_function_for_markdown_reference
     }
+    reference_resolver = parser.ReferenceResolver(
+        duplicate_of={}, doc_index={}, index=index)
 
     tree = {
         '': ['test_function_for_markdown_reference']
@@ -262,14 +274,14 @@ class ParserTest(googletest.TestCase):
 
     docs = parser.generate_markdown(
         full_name='test_function_for_markdown_reference',
-        py_object=test_function_for_markdown_reference, duplicate_of={},
-        duplicates={}, index=index, tree=tree, reverse_index={}, doc_index={},
-        guide_index={}, base_dir='/')
+        py_object=test_function_for_markdown_reference,
+        reference_resolver=reference_resolver, duplicates={}, tree=tree,
+        reverse_index={}, guide_index={}, base_dir='/')
 
     # Make sure docstring shows up and is properly processed.
-    expected_docs = parser.replace_references(
+    expected_docs = reference_resolver.replace_references(
         inspect.getdoc(test_function_for_markdown_reference),
-        relative_path_to_root='.', duplicate_of={}, doc_index={}, index={})
+        relative_path_to_root='.')
 
     self.assertTrue(expected_docs in docs)
 
@@ -277,6 +289,8 @@ class ParserTest(googletest.TestCase):
     index = {
         'test_function': test_function_with_fancy_docstring
     }
+    reference_resolver = parser.ReferenceResolver(
+        duplicate_of={}, doc_index={}, index=index)
 
     tree = {
         '': 'test_function'
@@ -284,8 +298,8 @@ class ParserTest(googletest.TestCase):
 
     docs = parser.generate_markdown(
         full_name='test_function', py_object=test_function_with_fancy_docstring,
-        duplicate_of={}, duplicates={}, index=index, tree=tree,
-        reverse_index={}, doc_index={}, guide_index={}, base_dir='/')
+        reference_resolver=reference_resolver, duplicates={}, tree=tree,
+        reverse_index={}, guide_index={}, base_dir='/')
     expected = '\n'.join([
         'Function with a fancy docstring.',
         '',
@@ -329,13 +343,14 @@ class ParserTest(googletest.TestCase):
         'TestModule.TestClass.a_property': TestClass.a_property,
         'TestModule.TestClass.ChildClass': TestClass.ChildClass,
     }
-
     duplicate_of = {
         'TestModule.test_function': 'test_function'
     }
+    reference_resolver = parser.ReferenceResolver(
+        duplicate_of=duplicate_of, doc_index={}, index=index)
 
     docs = parser.generate_global_index('TestLibrary', index=index,
-                                        duplicate_of=duplicate_of)
+                                        reference_resolver=reference_resolver)
 
     # Make sure duplicates and non-top-level symbols are in the index, but
     # methods and properties are not.
@@ -348,7 +363,7 @@ class ParserTest(googletest.TestCase):
     # This depends on formatting, but should be stable.
     self.assertTrue('`test_function' in docs)
 
-  def test_argspec_for_functoos_partial(self):
+  def test_argspec_for_functools_partial(self):
 
     # pylint: disable=unused-argument
     def test_function_for_partial1(arg1, arg2, kwarg1=1, kwarg2=2):

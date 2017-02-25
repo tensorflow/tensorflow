@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Basic arithmetic operators. See the @{$python/math_ops} guide.
+"""Basic arithmetic operators.
+
+See the @{$python/math_ops} guide.
 
 @@add
 @@subtract

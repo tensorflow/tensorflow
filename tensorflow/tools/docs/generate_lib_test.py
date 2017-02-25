@@ -22,8 +22,12 @@ import os
 import sys
 import tempfile
 
+import tensorflow as tf
+
+from tensorflow.python import debug as tf_debug
 from tensorflow.python.platform import googletest
-from tensorflow.tools.docs import generate
+from tensorflow.tools.docs import generate_lib
+from tensorflow.tools.docs import parser
 
 
 def test_function():
@@ -45,8 +49,10 @@ class TestClass(object):
 class GenerateTest(googletest.TestCase):
 
   def test_extraction(self):
+    modules = [('tf', tf), ('tfdbg', tf_debug)]
+    _ = tf.contrib.__name__  # Trigger loading of tf.contrib
     try:
-      generate.extract()
+      generate_lib.extract(modules)
     except RuntimeError:
       print('*****************************************************************')
       print('If this test fails, you have most likely introduced an unsealed')
@@ -89,13 +95,18 @@ class GenerateTest(googletest.TestCase):
     output_dir = tempfile.mkdtemp()
     base_dir = os.path.dirname(__file__)
 
-    generate.write_docs(output_dir, base_dir, duplicate_of, duplicates,
-                        index, tree, reverse_index={}, doc_index={},
-                        guide_index={})
+    reference_resolver = parser.ReferenceResolver(
+        duplicate_of=duplicate_of,
+        doc_index={}, index=index)
+    generate_lib.write_docs(output_dir, base_dir, duplicate_of, duplicates,
+                            index, tree, reverse_index={},
+                            reference_resolver=reference_resolver,
+                            guide_index={})
 
     # Make sure that the right files are written to disk.
     self.assertTrue(os.path.exists(os.path.join(output_dir, 'index.md')))
     self.assertTrue(os.path.exists(os.path.join(output_dir, 'tf.md')))
+    self.assertTrue(os.path.exists(os.path.join(output_dir, '_toc.yaml')))
     self.assertTrue(os.path.exists(os.path.join(
         output_dir, 'tf/TestModule.md')))
     self.assertTrue(os.path.exists(os.path.join(

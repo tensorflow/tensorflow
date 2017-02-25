@@ -4657,6 +4657,25 @@ class StreamingConcatTest(test.TestCase):
       sess.run([update_op], feed_dict={values: [5, 6, 7, 8, 9]})
       self.assertAllEqual(np.arange(10), concatenated.eval())
 
+  def testStreamingConcatStringValues(self):
+    with self.test_session() as sess:
+      values = array_ops.placeholder(dtypes_lib.string, [None])
+      concatenated, update_op = metrics.streaming_concat(values)
+      sess.run(variables.local_variables_initializer())
+
+      self.assertItemsEqual([], concatenated.eval())
+
+      sess.run([update_op], feed_dict={values: ['a', 'b', 'c']})
+      self.assertItemsEqual([b'a', b'b', b'c'], concatenated.eval())
+
+      sess.run([update_op], feed_dict={values: ['d', 'e']})
+      self.assertItemsEqual([b'a', b'b', b'c', b'd', b'e'], concatenated.eval())
+
+      sess.run([update_op], feed_dict={values: ['f', 'g', 'h', 'i', 'j']})
+      self.assertItemsEqual(
+          [b'a', b'b', b'c', b'd', b'e', b'f', b'g', b'h', b'i', b'j'],
+          concatenated.eval())
+
   def testStreamingConcatMaxSize(self):
     with self.test_session() as sess:
       values = math_ops.range(3)

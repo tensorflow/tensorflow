@@ -32,7 +32,7 @@ adb push /tmp/imagenet_comp_graph_label_strings.txt /data/local/tmp
 #include "tensorflow/core/kernels/hexagon/hexagon_control_wrapper.h"
 #include "tensorflow/core/kernels/hexagon/hexagon_ops_definitions.h"
 #include "tensorflow/core/kernels/hexagon/i_graph_transfer_ops_definitions.h"
-#include "tensorflow/core/kernels/hexagon/i_soc_control_wrapper.h"
+#include "tensorflow/core/kernels/i_remote_fused_graph_executor.h"
 #include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -45,8 +45,8 @@ adb push /tmp/imagenet_comp_graph_label_strings.txt /data/local/tmp
 
 namespace tensorflow {
 
-using ByteArray = ISocControlWrapper::ByteArray;
-using ConstByteArray = ISocControlWrapper::ConstByteArray;
+using ByteArray = IRemoteFusedGraphExecutor::ByteArray;
+using ConstByteArray = IRemoteFusedGraphExecutor::ConstByteArray;
 
 constexpr const char* const IMAGE_FILENAME = "/data/local/tmp/img_299x299.bmp";
 constexpr const char* const MODEL_FILENAME =
@@ -86,7 +86,7 @@ static void DumpTop10Results(const int byte_size,
 }
 
 static void DumpTop10Results(
-    const std::vector<ISocControlWrapper::ByteArray>& outputs) {
+    const std::vector<IRemoteFusedGraphExecutor::ByteArray>& outputs) {
   CHECK(outputs.size() == 1);
   const int byte_size = std::get<1>(outputs.at(0));
   const float* float_array =
@@ -95,7 +95,7 @@ static void DumpTop10Results(
 }
 
 static void CheckFirstResult(
-    const std::vector<ISocControlWrapper::ByteArray>& outputs,
+    const std::vector<IRemoteFusedGraphExecutor::ByteArray>& outputs,
     const int expected_first_id) {
   EXPECT_GE(outputs.size(), 1);
   const int byte_size = std::get<1>(outputs.at(0));
@@ -171,12 +171,16 @@ static void RunInferenceByHexagonControlWrapper(
       std::make_tuple(reinterpret_cast<const uint8*>(img_floats.data()),
                       img_floats.size() * sizeof(float), DT_FLOAT);
 
+  const RemoteFusedGraphExecuteInfo execute_info =
+      GraphTransferUtils::BuildRemoteFusedGraphExecuteInfo(
+          gt.GetGraphTransferInfo());
+
   HexagonControlWrapper hexagon_control_wrapper;
   // 1. Initialize hexagon
-  hexagon_control_wrapper.Init();
+  hexagon_control_wrapper.Init(execute_info);
 
   // 2. Setup graph in hexagon
-  hexagon_control_wrapper.SetupGraph(gt);
+  hexagon_control_wrapper.SetupGraph();
 
   // 3. Fill input node's output
   hexagon_control_wrapper.FillInputNode("Mul", ba);
@@ -191,7 +195,7 @@ static void RunInferenceByHexagonControlWrapper(
   }
 
   // 5-1. Read output node's outputs
-  std::vector<ISocControlWrapper::ByteArray> outputs;
+  std::vector<IRemoteFusedGraphExecutor::ByteArray> outputs;
   hexagon_control_wrapper.ReadOutputNode("softmax", &outputs);
 
   // 5-2. Dump results

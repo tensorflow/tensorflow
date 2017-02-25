@@ -55,6 +55,7 @@ enum class HloOpcode {
   kGt,
   kIndex,
   kInfeed,
+  kIsFinite,
   kLe,
   kLog,
   kLogicalAnd,

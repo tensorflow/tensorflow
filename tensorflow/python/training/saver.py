@@ -1212,11 +1212,23 @@ class Saver(object):
     Returns:
       A `SaverDef` protocol buffer.
     """
-    if (export_scope is None or
-        self._name.startswith(export_scope)):
+    if export_scope is None:
       return self.saver_def
-    else:
+
+    if not (self.saver_def.filename_tensor_name.startswith(export_scope) and
+            self.saver_def.save_tensor_name.startswith(export_scope) and
+            self.saver_def.restore_op_name.startswith(export_scope)):
       return None
+
+    saver_def = saver_pb2.SaverDef()
+    saver_def.CopyFrom(self.saver_def)
+    saver_def.filename_tensor_name = ops.strip_name_scope(
+        saver_def.filename_tensor_name, export_scope)
+    saver_def.save_tensor_name = ops.strip_name_scope(
+        saver_def.save_tensor_name, export_scope)
+    saver_def.restore_op_name = ops.strip_name_scope(
+        saver_def.restore_op_name, export_scope)
+    return saver_def
 
   @staticmethod
   def from_proto(saver_def, import_scope=None):

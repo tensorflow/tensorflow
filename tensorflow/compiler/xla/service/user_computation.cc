@@ -50,6 +50,8 @@ HloOpcode UnaryOperationToHloOpcode(UnaryOperation unop) {
       return HloOpcode::kExp;
     case UNOP_FLOOR:
       return HloOpcode::kFloor;
+    case UNOP_IS_FINITE:
+      return HloOpcode::kIsFinite;
     case UNOP_LOG:
       return HloOpcode::kLog;
     case UNOP_LOGICAL_NOT:

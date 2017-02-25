@@ -21,6 +21,7 @@ tensorflow/core/framework/tensor.pb.h
 tensorflow/core/framework/summary.pb.h
 tensorflow/core/framework/step_stats.pb.h
 tensorflow/core/framework/resource_handle.pb.h
+tensorflow/core/framework/remote_fused_graph_execute_info.pb.h
 tensorflow/core/framework/op_def.pb.h
 tensorflow/core/framework/node_def.pb.h
 tensorflow/core/framework/log_memory.pb.h
