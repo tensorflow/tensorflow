@@ -81,7 +81,6 @@ class ArgOp : public XlaOpKernel {
   explicit ArgOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("index", &index_));
-    OP_REQUIRES_OK(ctx, DataTypeToPrimitiveType(dtype_, &type_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -101,22 +100,22 @@ class ArgOp : public XlaOpKernel {
     }
 
     XlaContext& tc = XlaContext::Get(ctx);
-
-    OP_REQUIRES(ctx, 0 <= index_ && index_ < tc.args().size(),
-                errors::InvalidArgument("Invalid argument index ", index_));
-
-    const XlaContext::HandleOrConstant& arg = tc.args()[index_];
-    if (arg.is_constant) {
-      ctx->SetConstantOutput(0, arg.constant_value);
+    const XlaContext::Argument& arg = tc.args()[index_];
+    if (arg.is_variable) {
+      // We use the argument position of the variable input as a unique ID.
+      // TODO(phawkins): this code assumes that variables do not alias.
+      tc.CreateVariable(index_, arg.name, arg.value.type, arg.value.handle);
+      ctx->SetVariableOutput(0, index_);
+    } else if (arg.value.is_constant) {
+      ctx->SetConstantOutput(0, arg.value.constant_value);
     } else {
-      ctx->SetOutput(0, arg.handle);
+      ctx->SetOutput(0, arg.value.handle);
     }
   }
 
  private:
   int index_;
   DataType dtype_;
-  xla::PrimitiveType type_;  // Corresponding XLA type.
 
   TF_DISALLOW_COPY_AND_ASSIGN(ArgOp);
 };

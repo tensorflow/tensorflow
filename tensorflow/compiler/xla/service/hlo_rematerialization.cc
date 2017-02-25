@@ -203,7 +203,11 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
   VLOG(2) << "limit = " << memory_limit_bytes_;
   bool changed = false;
 
+  // Total count of instructions rematerialized.
   int64 remat_count = 0;
+  // Total count of clones created minus original rematerialized instructions
+  // deleted.
+  int64 net_instructions_added = 0;
 
   // Iterate through all instructions in the sequence. At each instruction
   // (program point) if memory_usage exceeds the specified limit then
@@ -372,15 +376,25 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
             bytes_accessed / ShapeUtil::ByteSizeOfPrimitiveType(
                                  candidate->shape().element_type());
         TF_RET_CHECK(net_memory_reduced > 0);
+
+        // A duplicate of the rematerialized instruction will be created at each
+        // remaining use.
+        int64 duplication = remaining_uses.at(candidate).size();
+        if (remaining_uses.at(candidate).size() == candidate->users().size()) {
+          // All remaining uses of candidate are after this point so we can
+          // remove the original instruciton after rematerialization.
+          duplication -= 1;
+        }
         // Multiply by 256 to improve precision of cost. Without this factor,
         // many instructions such as many elementwise instructions would have
         // zero cost because the bytes reduced can be several times greater than
         // the element count.
-        int64 candidate_cost = 256 *
+        int64 candidate_cost = 256 * duplication *
                                (cost_analysis.flop_count(*candidate) +
                                 cost_analysis.transcendental_count(*candidate) +
                                 elements_accessed) /
                                net_memory_reduced;
+
         VLOG(5) << "candidate " << candidate->name() << " cost per byte "
                 << candidate_cost;
 
@@ -431,6 +445,8 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
         // Add rematerialized instruction to remat_instructions so the
         // rematerialized instruction is not rematerialized again.
         remat_instructions.insert(remat);
+
+        net_instructions_added++;
       }
 
       // The instruction which was rematerialized ('best') has no remaining
@@ -444,6 +460,7 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
         TF_RETURN_IF_ERROR(instruction_list.Remove(best));
         remaining_uses.erase(best);
         TF_RETURN_IF_ERROR(computation->RemoveInstruction(best));
+        net_instructions_added--;
       }
 
       memory_usage -= best_bytes_reduced;
@@ -478,7 +495,8 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
   // Memory usage should be exactly back to its initial value.
   TF_RET_CHECK(memory_usage == initial_memory_usage);
 
-  VLOG(2) << "Rematerialized " << remat_count << " instructions";
+  VLOG(2) << "Rematerialized " << remat_count << " instructions; "
+          << net_instructions_added << " net instructions added";
   VLOG(2) << "maximum memory usage now " << HumanReadableNumBytes(max_usage);
 
   // Update order to include rematerialized instructions.

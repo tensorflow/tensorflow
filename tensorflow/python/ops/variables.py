@@ -723,13 +723,18 @@ class Variable(object):
     """The `Graph` of this variable."""
     return self._variable.graph
 
-  def get_shape(self):
+  @property
+  def shape(self):
     """The `TensorShape` of this variable.
 
     Returns:
       A `TensorShape`.
     """
     return self._variable.get_shape()
+
+  def get_shape(self):
+    """Alias of Variable.shape."""
+    return self.shape
 
   def to_proto(self, export_scope=None):
     """Converts a `Variable` to a `VariableDef` protocol buffer.

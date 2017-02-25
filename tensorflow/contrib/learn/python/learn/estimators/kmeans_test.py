@@ -22,13 +22,14 @@ import math
 import sys
 import time
 
+import numpy as np
+from sklearn.cluster import KMeans as SklearnKMeans
+
+# pylint: disable=g-import-not-at-top
 # TODO: #6568 Remove this hack that makes dlopen() not crash.
 if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
   import ctypes
   sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
-
-import numpy as np
-from sklearn.cluster import KMeans as SklearnKMeans
 
 from tensorflow.contrib import factorization
 from tensorflow.contrib.learn.python import learn
@@ -492,10 +493,10 @@ class TensorflowKMeansBenchmark(KMeansBenchmark):
           initial_clusters=factorization.KMEANS_PLUS_PLUS_INIT,
           kmeans_plus_plus_num_retries=int(math.log(self.num_clusters) + 2),
           random_seed=i * 42,
+          relative_tolerance=1e-6,
           config=run_config.RunConfig(tf_random_seed=3))
       tf_kmeans.fit(input_fn=lambda: (constant_op.constant(self.points), None),
-                    steps=50,
-                    relative_tolerance=1e-6)
+                    steps=50)
       _ = tf_kmeans.clusters()
       scores.append(
           tf_kmeans.score(

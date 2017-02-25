@@ -52,7 +52,7 @@ const char XlaContext::kXlaContextResourceName[] = "_xla_context";
   return *context;
 }
 
-void XlaContext::set_args(std::vector<HandleOrConstant> args) {
+void XlaContext::set_args(std::vector<Argument> args) {
   args_ = std::move(args);
 }
 
@@ -72,8 +72,8 @@ XlaContext::GetOrCreateRuntimeContextParameter() {
 
   // Allocate the next available parameter for the context parameter.
   int num_parameters = 0;
-  for (const HandleOrConstant& arg : args_) {
-    if (!arg.is_constant) {
+  for (const Argument& arg : args_) {
+    if (!arg.value.is_constant) {
       ++num_parameters;
     }
   }
@@ -120,6 +120,51 @@ void XlaContext::AddSideEffects() {
 }
 
 xla::ComputationBuilder* XlaContext::builder() { return builder_; }
+
+Status XlaContext::CreateVariable(int variable_id, string name, DataType type,
+                                  const xla::ComputationDataHandle& handle) {
+  auto result = variables_.emplace(variable_id, Variable());
+  if (!result.second) {
+    return errors::InvalidArgument("Duplicate ID ", variable_id,
+                                   " for variable ", name);
+  }
+  Variable& var = result.first->second;
+  var.name = std::move(name);
+  var.type = type;
+  var.initial_value = var.value = handle;
+  return Status::OK();
+}
+
+Status XlaContext::AssignVariable(int variable_id, DataType type,
+                                  const xla::ComputationDataHandle& handle) {
+  auto it = variables_.find(variable_id);
+  if (it == variables_.end()) {
+    return errors::InvalidArgument("Unknown variable ID ", variable_id);
+  }
+  Variable& var = it->second;
+  if (!((var.type == DT_INVALID && type != DT_INVALID) || (var.type == type))) {
+    return errors::InvalidArgument(
+        "Types of variables cannot change after initialization: old type was ",
+        DataTypeString(var.type), ", new type is ", DataTypeString(type));
+  }
+  var.type = type;
+  var.value = handle;
+  return Status::OK();
+}
+
+Status XlaContext::ReadVariable(int variable_id,
+                                xla::ComputationDataHandle* handle) {
+  auto it = variables_.find(variable_id);
+  if (it == variables_.end()) {
+    return errors::InvalidArgument("Unknown variable ID ", variable_id);
+  }
+  *handle = it->second.value;
+  if (handle->handle() == 0) {
+    return errors::InvalidArgument("Read of uninitialized variable ",
+                                   it->second.name);
+  }
+  return Status::OK();
+}
 
 const xla::Computation* XlaContext::GetOrCreateMax(const DataType type) {
   return LookupOrCreate(type, &max_func_, [this, type] {
@@ -185,4 +230,4 @@ const xla::Computation* XlaContext::LookupOrCreate(
   }
 }
 
-}  // end namespace tensorflow
+}  // namespace tensorflow

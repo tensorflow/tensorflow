@@ -2351,6 +2351,31 @@ class StreamingSparsePrecisionTest(test.TestCase):
         self.assertAlmostEqual(expected, update.eval())
         self.assertAlmostEqual(expected, metric.eval())
 
+  def _test_streaming_sparse_average_precision_at_top_k(self,
+                                                        top_k_predictions,
+                                                        labels,
+                                                        expected,
+                                                        weights=None):
+    with ops.Graph().as_default() as g, self.test_session(g):
+      if weights is not None:
+        weights = constant_op.constant(weights, dtypes_lib.float32)
+      metric, update = metrics.streaming_sparse_average_precision_at_top_k(
+          top_k_predictions, labels, weights=weights)
+
+      # Fails without initialized vars.
+      self.assertRaises(errors_impl.OpError, metric.eval)
+      self.assertRaises(errors_impl.OpError, update.eval)
+      local_variables = variables.local_variables()
+      variables.variables_initializer(local_variables).run()
+
+      # Run per-step op and assert expected values.
+      if math.isnan(expected):
+        _assert_nan(self, update.eval())
+        _assert_nan(self, metric.eval())
+      else:
+        self.assertAlmostEqual(expected, update.eval())
+        self.assertAlmostEqual(expected, metric.eval())
+
   def test_top_k_rank_invalid(self):
     with self.test_session():
       # top_k_predictions has rank < 2.
@@ -2388,6 +2413,8 @@ class StreamingSparsePrecisionTest(test.TestCase):
           (predictions_top_k_ex1[:k],), labels, expected=precision_ex1[i])
       self._test_streaming_sparse_average_precision_at_k(
           predictions, labels, k, expected=avg_precision_ex1[i])
+      self._test_streaming_sparse_average_precision_at_top_k(
+          (predictions_top_k_ex1[:k],), labels, expected=avg_precision_ex1[i])
 
     # Example 2.
     labels_ex2 = (0, 2, 4, 5, 6)
@@ -2406,6 +2433,8 @@ class StreamingSparsePrecisionTest(test.TestCase):
           (predictions_top_k_ex2[:k],), labels, expected=precision_ex2[i])
       self._test_streaming_sparse_average_precision_at_k(
           predictions, labels, k, expected=avg_precision_ex2[i])
+      self._test_streaming_sparse_average_precision_at_top_k(
+          (predictions_top_k_ex2[:k],), labels, expected=avg_precision_ex2[i])
 
     # Both examples, we expect both precision and average precision to be the
     # average of the 2 examples.
@@ -2426,6 +2455,8 @@ class StreamingSparsePrecisionTest(test.TestCase):
           predictions_top_k, labels, expected=streaming_precision[i])
       self._test_streaming_sparse_average_precision_at_k(
           predictions, labels, k, expected=streaming_average_precision[i])
+      self._test_streaming_sparse_average_precision_at_top_k(
+          predictions_top_k, labels, expected=streaming_average_precision[i])
 
     # Weighted examples, we expect streaming average precision to be the
     # weighted average of the 2 examples.
@@ -2440,6 +2471,11 @@ class StreamingSparsePrecisionTest(test.TestCase):
           predictions,
           labels,
           k,
+          expected=streaming_average_precision[i],
+          weights=weights)
+      self._test_streaming_sparse_average_precision_at_top_k(
+          (predictions_top_k_ex1[:k], predictions_top_k_ex2[:k]),
+          labels,
           expected=streaming_average_precision[i],
           weights=weights)
 
@@ -2461,6 +2497,27 @@ class StreamingSparsePrecisionTest(test.TestCase):
           (predictions_top_k_ex1[:k],), labels, expected=precision_ex1[i])
       self._test_streaming_sparse_average_precision_at_k(
           predictions, labels, k, expected=avg_precision_ex1[i])
+      self._test_streaming_sparse_average_precision_at_top_k(
+          (predictions_top_k_ex1[:k],), labels, expected=avg_precision_ex1[i])
+
+  def test_average_precision_at_top_k_static_shape_check(self):
+    predictions_top_k = array_ops.placeholder(shape=(2, None),
+                                              dtype=dtypes_lib.int64)
+    labels = np.array(((1,), (2,)), dtype=np.int64)
+    # Fails due to non-static predictions_idx shape.
+    with self.assertRaises(ValueError):
+      metric_ops.streaming_sparse_average_precision_at_top_k(predictions_top_k,
+                                                             labels)
+
+    predictions_top_k = (2, 1)
+    # Fails since rank of predictions_idx is less than one.
+    with self.assertRaises(ValueError):
+      metric_ops.streaming_sparse_average_precision_at_top_k(predictions_top_k,
+                                                             labels)
+    predictions_top_k = ((2,), (1,))
+    # Valid static shape.
+    metric_ops.streaming_sparse_average_precision_at_top_k(predictions_top_k,
+                                                           labels)
 
   def test_one_label_at_k1_nan(self):
     predictions = [[0.1, 0.3, 0.2, 0.4], [0.1, 0.2, 0.3, 0.4]]

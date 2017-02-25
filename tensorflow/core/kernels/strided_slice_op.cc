@@ -413,6 +413,7 @@ REGISTER_STRIDED_SLICE(bfloat16);
                           StridedSliceAssignOp<GPUDevice, type>)
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
+TF_CALL_complex64(REGISTER_GPU);
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
@@ -450,4 +451,71 @@ REGISTER_KERNEL_BUILDER(Name("StridedSliceAssign")
 #undef REGISTER_GPU
 
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL(type)                                    \
+  REGISTER_KERNEL_BUILDER(Name("StridedSlice")                 \
+                              .Device(DEVICE_SYCL)             \
+                              .TypeConstraint<type>("T")       \
+                              .HostMemory("begin")             \
+                              .HostMemory("end")               \
+                              .HostMemory("strides")           \
+                              .TypeConstraint<int32>("Index"), \
+                          StridedSliceOp<SYCLDevice, type>)    \
+  REGISTER_KERNEL_BUILDER(Name("StridedSliceGrad")             \
+                              .Device(DEVICE_SYCL)             \
+                              .TypeConstraint<type>("T")       \
+                              .HostMemory("shape")             \
+                              .HostMemory("begin")             \
+                              .HostMemory("end")               \
+                              .HostMemory("strides")           \
+                              .TypeConstraint<int32>("Index"), \
+                          StridedSliceGradOp<SYCLDevice, type>)\
+  REGISTER_KERNEL_BUILDER(Name("StridedSliceAssign")           \
+                              .Device(DEVICE_SYCL)             \
+                              .TypeConstraint<type>("T")       \
+                              .HostMemory("begin")             \
+                              .HostMemory("end")               \
+                              .HostMemory("strides")           \
+                              .TypeConstraint<int32>("Index"), \
+                          StridedSliceAssignOp<SYCLDevice, type>)
+
+REGISTER_SYCL(float);
+REGISTER_SYCL(double);
+
+// A special GPU kernel for int32.
+// TODO(b/25387198): Also enable int32 in device memory. This kernel
+// registration requires all int32 inputs and outputs to be in host memory.
+REGISTER_KERNEL_BUILDER(Name("StridedSlice")
+                            .Device(DEVICE_SYCL)
+                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32>("Index")
+                            .HostMemory("input")
+                            .HostMemory("begin")
+                            .HostMemory("end")
+                            .HostMemory("strides")
+                            .HostMemory("output"),
+                        StridedSliceOp<CPUDevice, int32>);
+REGISTER_KERNEL_BUILDER(Name("StridedSliceGrad")
+                            .Device(DEVICE_SYCL)
+                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32>("Index")
+                            .HostMemory("shape")
+                            .HostMemory("begin")
+                            .HostMemory("end")
+                            .HostMemory("strides")
+                            .HostMemory("dy")
+                            .HostMemory("output"),
+                        StridedSliceGradOp<CPUDevice, int32>);
+REGISTER_KERNEL_BUILDER(Name("StridedSliceAssign")
+                            .Device(DEVICE_SYCL)
+                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32>("Index")
+                            .HostMemory("ref")
+                            .HostMemory("begin")
+                            .HostMemory("end")
+                            .HostMemory("strides"),
+                        StridedSliceAssignOp<CPUDevice, int32>)
+#undef REGISTER_SYCL
+#endif // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

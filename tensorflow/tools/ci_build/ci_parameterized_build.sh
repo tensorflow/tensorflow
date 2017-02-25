@@ -83,7 +83,8 @@
 #                      support for Google Cloud Platform (GCP), which is
 #                      enabled by default.
 #   TF_BUILD_OPTIONS:
-#                     (FASTBUILD | OPT | OPTDBG | MAVX | MAVX2)
+#                     (FASTBUILD | OPT | OPTDBG | MAVX | MAVX2 | MAVX_DBG |
+#                      MAVX2_FMA_DBG)
 #                     Use the specified configurations when building.
 #                     When set, overrides TF_BUILD_IS_OPT and TF_BUILD_MAVX
 #                     options, as this will replace the two.
@@ -304,11 +305,14 @@ else
     MAVX)
       OPT_FLAG="${OPT_FLAG} -c opt --copt=-mavx"
       ;;
-    MAVXDBG)
+    MAVX_DBG)
       OPT_FLAG="${OPT_FLAG} -c opt --copt=-g --copt=-mavx"
       ;;
     MAVX2)
       OPT_FLAG="${OPT_FLAG} -c opt --copt=-mavx2"
+      ;;
+    MAVX2_FMA_DBG)
+      OPT_FLAG="${OPT_FLAG} -c opt --copt=-g --copt=-mavx2 --copt=-mfma"
       ;;
   esac
 fi
@@ -376,12 +380,7 @@ if [[ ${TF_BUILD_IS_PIP} == "pip" ]] ||
     exit 0
   fi
 
-  PIP_MAIN_CMD="${MAIN_CMD} ${PIP_CMD} ${CTYPE} ${EXTRA_AGRS}"
-
-  # Add flag for mavx/mavx2
-  if [[ ! -z "${TF_BUILD_MAVX}" ]]; then
-    PIP_MAIN_CMD="${PIP_MAIN_CMD} --${TF_BUILD_MAVX}"
-  fi
+  PIP_MAIN_CMD="${MAIN_CMD} ${PIP_CMD} ${CTYPE} ${EXTRA_ARGS} ${OPT_FLAG}"
 
   # Add flag for integration tests
   if [[ ! -z "${TF_BUILD_INTEGRATION_TESTS}" ]] &&

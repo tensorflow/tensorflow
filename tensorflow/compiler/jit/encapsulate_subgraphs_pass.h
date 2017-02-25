@@ -70,11 +70,21 @@ extern const char* const kXlaCompiledKernelAttr;
 // Does `node` have the kXlaCompiledKernelAttr attribute?
 bool IsXlaCompiledKernel(const Node& node);
 
-// Functions produce by the EncapsulateSubgraphs pass have their arguments
-// ordered such that compile-time constant arguments are first in the argument
-// order. The functions are annotated with the following attribute giving the
-// number of constant arguments.
+// Functions produced by the EncapsulateSubgraphs pass have their arguments in
+// the order:
+// 1) compile-time constant arguments, in host memory,
+// 2) other arguments, in device memory.
+// 3) resource variable arguments, in host memory. Note that only the resource
+//    Tensor itself is in host memory; the underlying value may be in device
+//    memory.
+// The functions are annotated with the following attributes that describe how
+// many constant and resource arguments there are:
+
+// Name of the attribute containing the number of constant arguments.
 extern const char* const kXlaNumConstantArgsAttr;
+
+// Name of the attribute containing the number of resource variable arguments.
+extern const char* const kXlaNumResourceArgsAttr;
 
 class EncapsulateSubgraphsPass : public GraphOptimizationPass {
  public:

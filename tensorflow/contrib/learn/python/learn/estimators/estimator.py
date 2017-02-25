@@ -32,7 +32,6 @@ from tensorflow.contrib import framework as contrib_framework
 from tensorflow.contrib import layers
 from tensorflow.contrib import metrics as metrics_lib
 from tensorflow.contrib.framework import deprecated
-from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.framework import deprecated_args
 from tensorflow.contrib.framework import list_variables
 from tensorflow.contrib.framework import load_variable
@@ -576,15 +575,7 @@ class BaseEstimator(
   def model_dir(self):
     return self._model_dir
 
-  @deprecated_arg_values(
-      '2016-09-23',
-      'The signature of the input_fn accepted by export is changing to be '
-      'consistent with what\'s used by tf.Learn Estimator\'s train/evaluate. '
-      'input_fn (and in most cases, input_feature_key) will become required '
-      'args, and use_deprecated_input_fn will default to False and be removed '
-      'altogether.',
-      use_deprecated_input_fn=True,
-      input_fn=None)
+  @deprecated('2017-03-25', 'Please use Estimator.export_savedmodel() instead.')
   def export(self,
              export_dir,
              input_fn=export._default_input_fn,  # pylint: disable=protected-access

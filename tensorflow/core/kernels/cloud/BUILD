@@ -45,7 +45,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/kernels:reader_base",
+        "//tensorflow/core:reader_base",
     ],
 )
 
@@ -64,7 +64,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/kernels:reader_base",
+        "//tensorflow/core:reader_base",
         "//tensorflow/core/platform/cloud:google_auth_provider",
         "//tensorflow/core/platform/cloud:http_request",
     ],

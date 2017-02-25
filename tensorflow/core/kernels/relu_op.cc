@@ -29,6 +29,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif // TENSORFLOW_USE_SYCL
 
 #define REGISTER_RELU_KERNELS(type)                                   \
   REGISTER_KERNEL_BUILDER(                                            \
@@ -130,5 +133,31 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+// Registration of the GPU implementations.
+#define REGISTER_SYCL_KERNELS(type)                                    \
+  REGISTER_KERNEL_BUILDER(                                             \
+      Name("Relu").Device(DEVICE_SYCL).TypeConstraint<type>("T"),      \
+      ReluOp<SYCLDevice, type>);                                       \
+  REGISTER_KERNEL_BUILDER(                                             \
+      Name("ReluGrad").Device(DEVICE_SYCL).TypeConstraint<type>("T"),  \
+      ReluGradOp<SYCLDevice, type>);                                   \
+  REGISTER_KERNEL_BUILDER(                                             \
+      Name("Relu6").Device(DEVICE_SYCL).TypeConstraint<type>("T"),     \
+      Relu6Op<SYCLDevice, type>);                                      \
+  REGISTER_KERNEL_BUILDER(                                             \
+      Name("Relu6Grad").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
+      Relu6GradOp<SYCLDevice, type>);                                  \
+  REGISTER_KERNEL_BUILDER(                                             \
+      Name("Elu").Device(DEVICE_SYCL).TypeConstraint<type>("T"),       \
+      EluOp<SYCLDevice, type>);                                        \
+  REGISTER_KERNEL_BUILDER(                                             \
+      Name("EluGrad").Device(DEVICE_SYCL).TypeConstraint<type>("T"),   \
+      EluGradOp<SYCLDevice, type>)
+
+REGISTER_SYCL_KERNELS(float);
+#undef REGISTER_SYCL_KERNELS
+#endif // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

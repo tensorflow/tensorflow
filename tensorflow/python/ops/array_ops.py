@@ -584,7 +584,7 @@ def strided_slice(input_,
   `foo[::-1]` reverses a tensor with shape 8.
 
 
-  If the ith bit of `ellipsis_mask`, as many unspecified dimensions
+  If the ith bit of `ellipsis_mask` is non-zero, as many unspecified dimensions
   as needed will be inserted between other dimensions. Only one
   non-zero bit is allowed in `ellipsis_mask`.
 
@@ -592,7 +592,7 @@ def strided_slice(input_,
   equivalent to `foo[3:5,:,:,4:5]` and
   `foo[3:5,...]` is equivalent to `foo[3:5,:,:,:]`.
 
-  If the ith bit of `new_axis_mask` is one, then a `begin`,
+  If the ith bit of `new_axis_mask` is one, then `begin`,
   `end`, and `stride` are ignored and a new length 1 dimension is
   added at this point in the output tensor.
 
@@ -1543,7 +1543,7 @@ def sparse_placeholder(dtype, shape=None, name=None):
       x: (indices, values, shape)}))  # Will succeed.
 
     sp = tf.SparseTensor(indices=indices, values=values, dense_shape=shape)
-    sp_value = sp.eval(session)
+    sp_value = sp.eval(session=sess)
     print(sess.run(y, feed_dict={x: sp_value}))  # Will succeed.
   ```
 
