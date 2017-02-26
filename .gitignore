@@ -14,3 +14,5 @@ node_modules
 __pycache__
 *.swp
 .vscode/
+
+tensorflow/go/data/*.gz
