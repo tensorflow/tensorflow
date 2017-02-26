@@ -76,7 +76,11 @@ def configure(src_base_path, debug=False):
   # Remove and recreate the path
   if os.path.exists(gen_path):
     if os.path.isdir(gen_path):
-      shutil.rmtree(gen_path)
+      try:
+        shutil.rmtree(gen_path)
+      except PermissionError:
+        raise RuntimeError("Cannot delete directory %s due to permission "
+                           "error, inspect and remove manually" % gen_path)
     else:
       raise RuntimeError("Cannot delete non-directory %s, inspect ",
                          "and remove manually" % gen_path)
