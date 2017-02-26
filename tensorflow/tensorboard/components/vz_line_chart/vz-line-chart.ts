@@ -441,15 +441,14 @@ module VZ {
       let data = dataset.data();
       let kernelRadius = Math.floor(data.length * factor / 2);
       data.forEach(function (d, i) {
-          var start = Math.max(0, i - kernelRadius);
-          var end = Math.min(data.length-1, i + kernelRadius);
-          // Only smooth finite numbers.
-          if (!_.isFinite(d.scalar)) {
-              d.smoothed = d.scalar;
-          }
-          else {
-              d.smoothed = d3.mean(data.slice(start, end).filter(function (d) { return _.isFinite(d.scalar); }), function (d) { return d.scalar; });
-          }
+        var start = Math.max(0, i - kernelRadius);
+        var end = Math.min(data.length - 1, i + kernelRadius);
+        // Only smooth finite numbers.
+        if (!_.isFinite(d.scalar)) {
+          d.smoothed = d.scalar;
+        } else {
+          d.smoothed = d3.mean(data.slice(start, end).filter(function (d) { return _.isFinite(d.scalar); }), function (d) { return d.scalar; });
+        }
       });
 
     }
