@@ -23123,7 +23123,7 @@ op {
     description: "The key for the keyed hash function passed as a list of two uint64\nelements."
   }
   summary: "Converts each string in the input Tensor to its hash mod by a number of buckets."
-  description: "The hash function is deterministic on the content of the string within the\nprocess. The hash function is a keyed hash function, where attribute `key`\ndefines the key of the hash function. `key` is an array of 2 elements.\n\nA strong hash is important when inputs may be malicious, e.g. URLs with\nadditional components. Adversaries could try to make their inputs hash to the\nsame bucket for a denial-of-service attack or to skew the results. A strong\nhash prevents this by making it dificult, if not infeasible, to compute inputs\nthat hash to the same bucket. This comes at a cost of roughly 4x higher compute\ntime than `tf.string_to_hash_bucket_fast`."
+  description: "The hash function is deterministic on the content of the string within the\nprocess. The hash function is a keyed hash function, where attribute `key`\ndefines the key of the hash function. `key` is an array of 2 elements.\n\nA strong hash is important when inputs may be malicious, e.g. URLs with\nadditional components. Adversaries could try to make their inputs hash to the\nsame bucket for a denial-of-service attack or to skew the results. A strong\nhash prevents this by making it difficult, if not infeasible, to compute inputs\nthat hash to the same bucket. This comes at a cost of roughly 4x higher compute\ntime than `tf.string_to_hash_bucket_fast`."
 }
 op {
   name: "StringToNumber"
