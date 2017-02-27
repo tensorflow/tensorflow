@@ -36,8 +36,6 @@ py_binary(
     data = [":frontend"],
     srcs_version = "PY2AND3",
     deps = [
-        ":debugger",
-        ":projector",
         "//tensorflow/python:platform",
         "//tensorflow/tensorboard/backend:application",
         "@org_pocoo_werkzeug//:werkzeug",
@@ -56,70 +54,4 @@ filegroup(
         ],
     ),
     visibility = ["//tensorflow:__subpackages__"],
-)
-
-###### PLUGINS ######
-
-# Plugins don't have their own packages (BUILD files) because we want to
-# have only one BUILD file since each BUILD file needs special rewrite rules
-# in the git world.
-
-py_library(
-    name = "base_plugin",
-    srcs = ["plugins/base_plugin.py"],
-    srcs_version = "PY2AND3",
-)
-
-## TensorFlow Debugger Plugin ##
-py_library(
-    name = "debugger",
-    srcs = ["plugins/debugger/plugin.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":base_plugin",
-        "//tensorflow/python:platform",
-        "//tensorflow/tensorboard/lib/python:http_util",
-    ],
-)
-
-## Embedding Projector Plugin ##
-py_library(
-    name = "projector",
-    srcs = ["plugins/projector/plugin.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":base_plugin",
-        "//tensorflow/contrib/tensorboard:projector",
-        "//tensorflow/contrib/tensorboard:protos_all_py",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:lib",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:training",
-        "//tensorflow/tensorboard/lib/python:http_util",
-        "//third_party/py/numpy",
-        "@org_pocoo_werkzeug//:werkzeug",
-    ],
-)
-
-py_test(
-    name = "projector_plugin_test",
-    size = "small",
-    srcs = ["plugins/projector/plugin_test.py"],
-    main = "plugins/projector/plugin_test.py",
-    srcs_version = "PY2AND3",
-    deps = [
-        ":projector",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:client",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:init_ops",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:summary",
-        "//tensorflow/python:training",
-        "//tensorflow/python:variable_scope",
-        "//tensorflow/python:variables",
-        "//tensorflow/tensorboard/backend:application",
-        "//third_party/py/numpy",
-        "@org_pocoo_werkzeug//:werkzeug",
-    ],
 )

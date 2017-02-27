@@ -13,7 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Testing. See the @{$python/test} guide.
+"""Testing.
+
+See the @{$python/test} guide.
 
 @@main
 @@TestCase

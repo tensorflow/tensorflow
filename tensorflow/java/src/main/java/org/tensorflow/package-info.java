@@ -18,7 +18,7 @@ limitations under the License.
  *
  * <p><b>WARNING</b>: The API is currently experimental and is not covered by TensorFlow <a
  * href="https://www.tensorflow.org/programmers_guide/version_semantics">API stability
- * quarantees</a>. See <a
+ * guarantees</a>. See <a
  * href="https://www.tensorflow.org/code/tensorflow/java/README.md">README.md</a>
  * for installation instructions.
  *

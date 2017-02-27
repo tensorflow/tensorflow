@@ -31,15 +31,14 @@ import numpy as np
 
 from tensorflow.contrib.framework.python.ops import variables as variables_lib
 from tensorflow.contrib.layers.python.layers import layers
-from tensorflow.contrib.losses.python.losses import loss_ops
 from tensorflow.contrib.training.python.training import training
-from tensorflow.python.client import session as session_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables as variables_lib2
+from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.training import basic_session_run_hooks
@@ -69,16 +68,13 @@ class CreateTrainOpTest(test.TestCase):
 
   def testTrainOpInCollection(self):
     with ops.Graph().as_default():
-      random_seed.set_random_seed(0)
       tf_inputs = constant_op.constant(self._inputs, dtype=dtypes.float32)
       tf_labels = constant_op.constant(self._labels, dtype=dtypes.float32)
 
       tf_predictions = batchnorm_classifier(tf_inputs)
-      loss_ops.log_loss(tf_predictions, tf_labels)
-      total_loss = loss_ops.get_total_loss()
+      loss = losses.log_loss(tf_labels, tf_predictions)
       optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=1.0)
-
-      train_op = training.create_train_op(total_loss, optimizer)
+      train_op = training.create_train_op(loss, optimizer)
 
       # Make sure the training op was recorded in the proper collection
       self.assertTrue(train_op in ops.get_collection(ops.GraphKeys.TRAIN_OP))
@@ -93,26 +89,26 @@ class CreateTrainOpTest(test.TestCase):
       expected_var = np.var(self._inputs, axis=(0))
 
       tf_predictions = batchnorm_classifier(tf_inputs)
-      loss_ops.log_loss(tf_predictions, tf_labels)
-      total_loss = loss_ops.get_total_loss()
+      loss = losses.log_loss(tf_labels, tf_predictions)
       optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=1.0)
 
-      train_op = training.create_train_op(total_loss, optimizer)
+      train_op = training.create_train_op(loss, optimizer)
 
       moving_mean = variables_lib.get_variables_by_name('moving_mean')[0]
       moving_variance = variables_lib.get_variables_by_name('moving_variance')[
           0]
 
-      with session_lib.Session() as sess:
+      with self.test_session() as session:
         # Initialize all variables
-        sess.run(variables_lib2.global_variables_initializer())
-        mean, variance = sess.run([moving_mean, moving_variance])
+        session.run(variables_lib2.global_variables_initializer())
+        mean, variance = session.run([moving_mean, moving_variance])
         # After initialization moving_mean == 0 and moving_variance == 1.
         self.assertAllClose(mean, [0] * 4)
         self.assertAllClose(variance, [1] * 4)
 
         for _ in range(10):
-          sess.run([train_op])
+          session.run(train_op)
+
         mean = moving_mean.eval()
         variance = moving_variance.eval()
         # After 10 updates with decay 0.1 moving_mean == expected_mean and
@@ -127,26 +123,25 @@ class CreateTrainOpTest(test.TestCase):
       tf_labels = constant_op.constant(self._labels, dtype=dtypes.float32)
 
       tf_predictions = batchnorm_classifier(tf_inputs)
-      loss_ops.log_loss(tf_predictions, tf_labels)
-      total_loss = loss_ops.get_total_loss()
+      loss = losses.log_loss(tf_labels, tf_predictions)
       optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=1.0)
-
-      train_op = training.create_train_op(total_loss, optimizer, update_ops=[])
+      train_op = training.create_train_op(loss, optimizer, update_ops=[])
 
       moving_mean = variables_lib.get_variables_by_name('moving_mean')[0]
       moving_variance = variables_lib.get_variables_by_name('moving_variance')[
           0]
 
-      with session_lib.Session() as sess:
+      with self.test_session() as session:
         # Initialize all variables
-        sess.run(variables_lib2.global_variables_initializer())
-        mean, variance = sess.run([moving_mean, moving_variance])
+        session.run(variables_lib2.global_variables_initializer())
+        mean, variance = session.run([moving_mean, moving_variance])
         # After initialization moving_mean == 0 and moving_variance == 1.
         self.assertAllClose(mean, [0] * 4)
         self.assertAllClose(variance, [1] * 4)
 
         for _ in range(10):
-          sess.run([train_op])
+          session.run(train_op)
+
         mean = moving_mean.eval()
         variance = moving_variance.eval()
 
@@ -154,59 +149,54 @@ class CreateTrainOpTest(test.TestCase):
         self.assertAllClose(mean, [0] * 4)
         self.assertAllClose(variance, [1] * 4)
 
-  def testUseGlobalStep(self):
+  def testGlobalStepIsIncrementedByDefault(self):
     with ops.Graph().as_default():
       random_seed.set_random_seed(0)
       tf_inputs = constant_op.constant(self._inputs, dtype=dtypes.float32)
       tf_labels = constant_op.constant(self._labels, dtype=dtypes.float32)
 
       tf_predictions = batchnorm_classifier(tf_inputs)
-      loss_ops.log_loss(tf_predictions, tf_labels)
-      total_loss = loss_ops.get_total_loss()
+      loss = losses.log_loss(tf_labels, tf_predictions)
       optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=1.0)
-
-      train_op = training.create_train_op(total_loss, optimizer)
+      train_op = training.create_train_op(loss, optimizer)
 
       global_step = variables_lib.get_or_create_global_step()
 
-      with session_lib.Session() as sess:
+      with self.test_session() as session:
         # Initialize all variables
-        sess.run(variables_lib2.global_variables_initializer())
+        session.run(variables_lib2.global_variables_initializer())
 
         for _ in range(10):
-          sess.run([train_op])
-        global_step = global_step.eval()
+          session.run(train_op)
+
         # After 10 updates global_step should be 10.
-        self.assertAllClose(global_step, 10)
+        self.assertAllClose(global_step.eval(), 10)
 
-  def testNoneGlobalStep(self):
+  def testGlobalStepNotIncrementedWhenSetToNone(self):
     with ops.Graph().as_default():
       random_seed.set_random_seed(0)
       tf_inputs = constant_op.constant(self._inputs, dtype=dtypes.float32)
       tf_labels = constant_op.constant(self._labels, dtype=dtypes.float32)
 
       tf_predictions = batchnorm_classifier(tf_inputs)
-      loss_ops.log_loss(tf_predictions, tf_labels)
-      total_loss = loss_ops.get_total_loss()
+      loss = losses.log_loss(tf_labels, tf_predictions)
       optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=1.0)
-
-      train_op = training.create_train_op(
-          total_loss, optimizer, global_step=None)
+      train_op = training.create_train_op(loss, optimizer, global_step=None)
 
       global_step = variables_lib.get_or_create_global_step()
 
-      with session_lib.Session() as sess:
+      with self.test_session() as session:
         # Initialize all variables
-        sess.run(variables_lib2.global_variables_initializer())
+        session.run(variables_lib2.global_variables_initializer())
 
         for _ in range(10):
-          sess.run([train_op])
-        global_step = global_step.eval()
+          session.run(train_op)
+
         # Since train_op don't use global_step it shouldn't change.
-        self.assertAllClose(global_step, 0)
+        self.assertAllClose(global_step.eval(), 0)
 
 
-class TrainBNClassifierTest(test.TestCase):
+class TrainBatchNormClassifierTest(test.TestCase):
 
   def setUp(self):
     # Create an easy training set:
@@ -214,22 +204,20 @@ class TrainBNClassifierTest(test.TestCase):
 
     self._inputs = np.zeros((16, 4))
     self._labels = np.random.randint(0, 2, size=(16, 1)).astype(np.float32)
-    self._logdir = os.path.join(self.get_temp_dir(), 'tmp_bnlogs/')
 
     for i in range(16):
       j = int(2 * self._labels[i] + np.random.randint(0, 2))
       self._inputs[i, j] = 1
 
   def testTrainWithNoInitAssignCanAchieveZeroLoss(self):
-    g = ops.Graph()
-    with g.as_default():
+    with ops.Graph().as_default():
       random_seed.set_random_seed(0)
       tf_inputs = constant_op.constant(self._inputs, dtype=dtypes.float32)
       tf_labels = constant_op.constant(self._labels, dtype=dtypes.float32)
 
       tf_predictions = batchnorm_classifier(tf_inputs)
-      loss_ops.log_loss(tf_predictions, tf_labels)
-      total_loss = loss_ops.get_total_loss()
+      losses.log_loss(tf_labels, tf_predictions)
+      total_loss = losses.get_total_loss()
 
       optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=1.0)
 
@@ -237,8 +225,10 @@ class TrainBNClassifierTest(test.TestCase):
 
       loss = training.train(
           train_op,
-          self._logdir,
-          hooks=[basic_session_run_hooks.StopAtStepHook(num_steps=300)])
+          None,
+          hooks=[basic_session_run_hooks.StopAtStepHook(num_steps=300)],
+          save_summaries_steps=None,
+          save_checkpoint_secs=None)
       self.assertLess(loss, .1)
 
 
@@ -256,31 +246,27 @@ class TrainTest(test.TestCase):
       self._inputs[i, j] = 1
 
   def testCanAchieveZeroLoss(self):
-    logdir = os.path.join(self.get_temp_dir(), 'can_achieve_zero_loss')
-
     with ops.Graph().as_default():
       random_seed.set_random_seed(0)
       tf_inputs = constant_op.constant(self._inputs, dtype=dtypes.float32)
       tf_labels = constant_op.constant(self._labels, dtype=dtypes.float32)
 
       tf_predictions = logistic_classifier(tf_inputs)
-      loss_ops.log_loss(tf_predictions, tf_labels)
-      total_loss = loss_ops.get_total_loss()
-
+      losses.log_loss(tf_labels, tf_predictions)
+      total_loss = losses.get_total_loss()
       optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=1.0)
-
       train_op = training.create_train_op(total_loss, optimizer)
 
       loss = training.train(
           train_op,
-          logdir,
-          hooks=[basic_session_run_hooks.StopAtStepHook(num_steps=300)])
+          None,
+          hooks=[basic_session_run_hooks.StopAtStepHook(num_steps=300)],
+          save_summaries_steps=None,
+          save_checkpoint_secs=None)
       self.assertIsNotNone(loss)
       self.assertLess(loss, .015)
 
   def testTrainWithLocalVariable(self):
-    logdir = os.path.join(self.get_temp_dir(), 'train_with_local_variable')
-
     with ops.Graph().as_default():
       random_seed.set_random_seed(0)
       tf_inputs = constant_op.constant(self._inputs, dtype=dtypes.float32)
@@ -289,17 +275,17 @@ class TrainTest(test.TestCase):
       local_multiplier = variables_lib.local_variable(1.0)
 
       tf_predictions = logistic_classifier(tf_inputs) * local_multiplier
-      loss_ops.log_loss(tf_predictions, tf_labels)
-      total_loss = loss_ops.get_total_loss()
-
+      losses.log_loss(tf_labels, tf_predictions)
+      total_loss = losses.get_total_loss()
       optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=1.0)
-
       train_op = training.create_train_op(total_loss, optimizer)
 
       loss = training.train(
           train_op,
-          logdir,
-          hooks=[basic_session_run_hooks.StopAtStepHook(num_steps=300)])
+          None,
+          hooks=[basic_session_run_hooks.StopAtStepHook(num_steps=300)],
+          save_summaries_steps=None,
+          save_checkpoint_secs=None)
       self.assertIsNotNone(loss)
       self.assertLess(loss, .015)
 
@@ -314,8 +300,8 @@ class TrainTest(test.TestCase):
         tf_labels = constant_op.constant(self._labels, dtype=dtypes.float32)
 
         tf_predictions = logistic_classifier(tf_inputs)
-        loss_ops.log_loss(tf_predictions, tf_labels)
-        total_loss = loss_ops.get_total_loss()
+        losses.log_loss(tf_labels, tf_predictions)
+        total_loss = losses.get_total_loss()
 
         optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=1.0)
 
@@ -331,7 +317,9 @@ class TrainTest(test.TestCase):
                     num_steps=number_of_steps[i]),
                 basic_session_run_hooks.CheckpointSaverHook(
                     logdir, save_steps=50, saver=saver),
-            ])
+            ],
+            save_checkpoint_secs=None,
+            save_summaries_steps=None)
         self.assertIsNotNone(loss)
         self.assertLess(loss, .015)
 
@@ -340,8 +328,8 @@ class TrainTest(test.TestCase):
     tf_labels = constant_op.constant(self._labels, dtype=dtypes.float32)
 
     tf_predictions = logistic_classifier(tf_inputs)
-    loss_ops.log_loss(tf_predictions, tf_labels)
-    total_loss = loss_ops.get_total_loss()
+    losses.log_loss(tf_labels, tf_predictions)
+    total_loss = losses.get_total_loss()
 
     optimizer = gradient_descent.GradientDescentOptimizer(
         learning_rate=learning_rate)
@@ -381,7 +369,8 @@ class TrainTest(test.TestCase):
                   logdir1, save_steps=1, saver=saver),
               basic_session_run_hooks.StopAtStepHook(num_steps=1),
           ],
-          save_checkpoint_secs=None)
+          save_checkpoint_secs=None,
+          save_summaries_steps=None)
       self.assertGreater(loss, .5)
 
     # Next, train the model to convergence.
@@ -394,10 +383,11 @@ class TrainTest(test.TestCase):
           logdir1,
           hooks=[
               basic_session_run_hooks.CheckpointSaverHook(
-                  logdir1, save_steps=1, saver=saver),
+                  logdir1, save_steps=300, saver=saver),
               basic_session_run_hooks.StopAtStepHook(num_steps=300),
           ],
-          save_checkpoint_secs=None)
+          save_checkpoint_secs=None,
+          save_summaries_steps=None)
       self.assertIsNotNone(loss)
       self.assertLess(loss, .02)
 
@@ -408,19 +398,21 @@ class TrainTest(test.TestCase):
       train_op = self.create_train_op()
 
       model_variables = variables_lib2.global_variables()
-      model_path = os.path.join(logdir1, 'model.ckpt-300')
+      model_path = saver_lib.latest_checkpoint(logdir1)
 
-      assign_fn = variables_lib.assign_from_checkpoint_fn(model_path,
-                                                          model_variables)
+      assign_fn = variables_lib.assign_from_checkpoint_fn(
+          model_path, model_variables)
 
       def init_fn(_, session):
         assign_fn(session)
 
       loss = training.train(
           train_op,
-          logdir2,
+          None,
           scaffold=monitored_session.Scaffold(init_fn=init_fn),
-          hooks=[basic_session_run_hooks.StopAtStepHook(num_steps=1)])
+          hooks=[basic_session_run_hooks.StopAtStepHook(num_steps=1)],
+          save_checkpoint_secs=None,
+          save_summaries_steps=None)
 
       self.assertIsNotNone(loss)
       self.assertLess(loss, .02)
@@ -430,8 +422,8 @@ class TrainTest(test.TestCase):
     tf_labels = constant_op.constant(self._labels, dtype=dtypes.float32)
 
     tf_predictions = logistic_classifier(tf_inputs)
-    loss_ops.log_loss(tf_predictions, tf_labels)
-    return loss_ops.get_total_loss()
+    losses.log_loss(tf_labels, tf_predictions)
+    return losses.get_total_loss()
 
   def testTrainAllVarsHasLowerLossThanTrainSubsetOfVars(self):
     logdir = os.path.join(self.get_temp_dir(), 'tmp_logs3/')
@@ -454,9 +446,11 @@ class TrainTest(test.TestCase):
           logdir,
           hooks=[
               basic_session_run_hooks.CheckpointSaverHook(
-                  logdir, save_steps=1, saver=saver),
+                  logdir, save_steps=200, saver=saver),
               basic_session_run_hooks.StopAtStepHook(num_steps=200),
-          ])
+          ],
+          save_checkpoint_secs=None,
+          save_summaries_steps=None)
       self.assertGreater(loss, .015)
       self.assertLess(loss, .05)
 
@@ -476,9 +470,11 @@ class TrainTest(test.TestCase):
           logdir,
           hooks=[
               basic_session_run_hooks.CheckpointSaverHook(
-                  logdir, save_steps=1, saver=saver),
+                  logdir, save_steps=300, saver=saver),
               basic_session_run_hooks.StopAtStepHook(num_steps=300),
-          ])
+          ],
+          save_checkpoint_secs=None,
+          save_summaries_steps=None)
       self.assertGreater(loss, .015)
       self.assertLess(loss, .05)
 
@@ -494,10 +490,10 @@ class TrainTest(test.TestCase):
           train_op,
           logdir,
           hooks=[
-              basic_session_run_hooks.CheckpointSaverHook(
-                  logdir, save_steps=1, saver=saver),
               basic_session_run_hooks.StopAtStepHook(num_steps=400),
-          ])
+          ],
+          save_checkpoint_secs=None,
+          save_summaries_steps=None)
       self.assertIsNotNone(loss)
       self.assertLess(loss, .015)
 
@@ -515,19 +511,19 @@ class TrainTest(test.TestCase):
       train_biases = training.create_train_op(
           total_loss, optimizer, variables_to_train=[biases])
 
-      with session_lib.Session() as sess:
+      with self.test_session() as session:
         # Initialize the variables.
-        sess.run(variables_lib2.global_variables_initializer())
+        session.run(variables_lib2.global_variables_initializer())
 
         # Get the intial weights and biases values.
-        weights_values, biases_values = sess.run([weights, biases])
+        weights_values, biases_values = session.run([weights, biases])
         self.assertGreater(np.linalg.norm(weights_values), 0)
         self.assertAlmostEqual(np.linalg.norm(biases_values), 0)
 
         # Update weights and biases.
-        loss = sess.run(train_op)
+        loss = session.run(train_op)
         self.assertGreater(loss, .5)
-        new_weights, new_biases = sess.run([weights, biases])
+        new_weights, new_biases = session.run([weights, biases])
 
         # Check that the weights and biases have been updated.
         self.assertGreater(np.linalg.norm(weights_values - new_weights), 0)
@@ -536,9 +532,9 @@ class TrainTest(test.TestCase):
         weights_values, biases_values = new_weights, new_biases
 
         # Update only weights.
-        loss = sess.run(train_weights)
+        loss = session.run(train_weights)
         self.assertGreater(loss, .5)
-        new_weights, new_biases = sess.run([weights, biases])
+        new_weights, new_biases = session.run([weights, biases])
 
         # Check that the weights have been updated, but biases have not.
         self.assertGreater(np.linalg.norm(weights_values - new_weights), 0)
@@ -546,9 +542,9 @@ class TrainTest(test.TestCase):
         weights_values = new_weights
 
         # Update only biases.
-        loss = sess.run(train_biases)
+        loss = session.run(train_biases)
         self.assertGreater(loss, .5)
-        new_weights, new_biases = sess.run([weights, biases])
+        new_weights, new_biases = session.run([weights, biases])
 
         # Check that the biases have been updated, but weights have not.
         self.assertAlmostEqual(np.linalg.norm(weights_values - new_weights), 0)
@@ -559,17 +555,8 @@ class TrainTest(test.TestCase):
     # to train two models. Model with equivalently larger learning
     # rate (i.e., learning_rate * gradient_multiplier) has smaller
     # training loss.
-    logdir1 = os.path.join(self.get_temp_dir(), 'tmp_logs6/')
-    logdir2 = os.path.join(self.get_temp_dir(), 'tmp_logs7/')
-
-    if gfile.Exists(logdir1):
-      gfile.DeleteRecursively(logdir1)
-    if gfile.Exists(logdir2):
-      gfile.DeleteRecursively(logdir2)
-
     multipliers = [1., 1000.]
     number_of_steps = 10
-    losses = []
     learning_rate = 0.001
 
     # First, train the model with equivalently smaller learning rate.
@@ -578,43 +565,37 @@ class TrainTest(test.TestCase):
       train_op = self.create_train_op(
           learning_rate=learning_rate, gradient_multiplier=multipliers[0])
 
-      saver = saver_lib.Saver()
-
-      loss = training.train(
+      loss0 = training.train(
           train_op,
-          logdir1,
+          None,
           hooks=[
               basic_session_run_hooks.StopAtStepHook(num_steps=number_of_steps),
-              basic_session_run_hooks.CheckpointSaverHook(
-                  logdir1, save_steps=50, saver=saver),
-          ])
-
-      losses.append(loss)
-      self.assertGreater(loss, .5)
+          ],
+          save_checkpoint_secs=None,
+          save_summaries_steps=None)
+      self.assertIsNotNone(loss0)
+      self.assertGreater(loss0, .5)
 
     # Second, train the model with equivalently larger learning rate.
     with ops.Graph().as_default():
       random_seed.set_random_seed(0)
       train_op = self.create_train_op(
           learning_rate=learning_rate, gradient_multiplier=multipliers[1])
-      saver = saver_lib.Saver()
 
-      loss = training.train(
+      loss1 = training.train(
           train_op,
-          logdir2,
+          None,
           hooks=[
               basic_session_run_hooks.StopAtStepHook(num_steps=number_of_steps),
-              basic_session_run_hooks.CheckpointSaverHook(
-                  logdir2, save_steps=50, saver=saver),
-          ])
-
-      losses.append(loss)
-      self.assertIsNotNone(loss)
-      self.assertLess(loss, .5)
+          ],
+          save_checkpoint_secs=None,
+          save_summaries_steps=None)
+      self.assertIsNotNone(loss1)
+      self.assertLess(loss1, .5)
 
     # The loss of the model trained with larger learning rate should
     # be smaller.
-    self.assertGreater(losses[0], losses[1])
+    self.assertGreater(loss0, loss1)
 
 
 if __name__ == '__main__':

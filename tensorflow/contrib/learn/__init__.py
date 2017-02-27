@@ -14,7 +14,9 @@
 # ==============================================================================
 
 # TODO(ptucker,ipolosukhin): Improve descriptions.
-"""High level API for learning. See the @{$python/contrib.learn} guide.
+"""High level API for learning.
+
+See the @{$python/contrib.learn} guide.
 
 @@BaseEstimator
 @@Estimator
