@@ -2042,25 +2042,6 @@ HloInstruction::UseKind HloInstruction::OperandElementUse(int64 i) const {
   }
 }
 
-namespace {
-
-// Prereq: `order` is a permutation of {0, 1, ..., `dims.size()-1`}
-void Strip1SizedDimensions(tensorflow::protobuf::RepeatedField<int64>* dims,
-                           std::vector<int64>* order) {
-  // We can't merely call StripDegenerateDimensions here as we must also delete
-  // the dimension indices.
-  for (size_t i = 0; i < dims->size(); ++i) {
-    if (1 == dims->Get(i)) {
-      dims->erase(dims->begin() + i);
-      // We must find this, as order must be a permutation of operand
-      // dimensions.
-      order->erase(std::find(order->begin(), order->end(), i));
-    }
-  }
-}
-
-}  // namespace
-
 std::tuple<bool, std::vector<int64>, std::vector<int64>>
 HloInstruction::ReshapeMerelyInsertsOrDeletes1SizedDimensions() const {
   if (HloOpcode::kReshape != opcode_) {
