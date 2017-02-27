@@ -155,6 +155,7 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       # misc
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/variable_scope_test.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/reshape_op_test.py"
+      "${tensorflow_source_dir}/tensorflow/python/training/evaluation_test.py"
       "${tensorflow_source_dir}/tensorflow/tensorboard/backend/server_test.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/diag_op_test.py"  # Silently failing with GPU kernel disabled.
       # int32/int64 mixup
