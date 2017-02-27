@@ -1797,7 +1797,7 @@ def separable_convolution2d(
     reuse: Whether or not the layer and its variables should be reused. To be
       able to reuse the layer scope must be given.
     variables_collections: Optional list of collections for all the variables or
-      a dictionay containing a different list of collection per variable.
+      a dictionary containing a different list of collection per variable.
     outputs_collections: Collection to add the outputs.
     trainable: Whether or not the variables should be trainable or not.
     scope: Optional scope for variable_scope.

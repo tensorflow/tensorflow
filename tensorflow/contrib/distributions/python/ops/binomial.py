@@ -65,7 +65,7 @@ class Binomial(distribution.Distribution):
   where:
   * `total_count = n`,
   * `probs = p`,
-  * `Z` is the normalizaing constant, and,
+  * `Z` is the normalizing constant, and,
   * `n!` is the factorial of `n`.
 
   #### Examples

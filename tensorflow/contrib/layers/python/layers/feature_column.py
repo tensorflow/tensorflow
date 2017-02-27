@@ -50,7 +50,7 @@ should choose depends on (1) the feature type and (2) the model type.
    Sparse features can be fed directly into linear models.
 
      dept_column = sparse_column_with_keys("department",
-       ["math", "philosphy", "english"])
+       ["math", "philosophy", "english"])
 
    It is recommended that continuous features be bucketized before being
    fed into linear models.
@@ -1508,7 +1508,7 @@ def real_valued_column(column_name,
     TypeError: if default_value is a list but its length is not equal to the
       value of `dimension`.
     TypeError: if default_value is not compatible with dtype.
-    ValueError: if dtype is not convertable to tf.float32.
+    ValueError: if dtype is not convertible to tf.float32.
   """
 
   if dimension is not None:

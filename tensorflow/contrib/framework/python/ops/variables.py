@@ -610,8 +610,8 @@ def assign_from_checkpoint_fn(model_path, var_list, ignore_missing_vars=False,
     model_path: The full path to the model checkpoint. To get latest checkpoint
         use `model_path = tf.train.latest_checkpoint(checkpoint_dir)`
     var_list: A list of `Variable` objects or a dictionary mapping names in the
-        checkpoint to the correspoing variables to initialize. If empty or None,
-        it would return  no_op(), None.
+        checkpoint to the corresponding variables to initialize. If empty or
+        `None`, it would return `no_op(), None`.
     ignore_missing_vars: Boolean, if True it would ignore variables missing in
         the checkpoint with a warning instead of failing.
     reshape_variables: Boolean, if True it would automatically reshape variables

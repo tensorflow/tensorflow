@@ -156,7 +156,7 @@ class LinearOperatorUDVHUpdate(linear_operator.LinearOperator):
          Defaults to `D` being the identity operator.
       v:  Optional `Tensor` of same `dtype` as `u` and shape `[B1,...,Bb, N, K]`
          Defaults to `v = u`, in which case the perturbation is symmetric.
-         If `M != N`, then `v` must be set since the pertrubation is not square.
+         If `M != N`, then `v` must be set since the perturbation is not square.
       is_diag_positive:  Python `bool`.  If `True`, expect `diag > 0`.
       is_non_singular:  Expect that this operator is non-singular.
         Default is `None`, unless `is_positive_definite` is auto-set to be

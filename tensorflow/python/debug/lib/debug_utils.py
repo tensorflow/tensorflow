@@ -159,7 +159,7 @@ def watch_graph_with_blacklists(run_options,
     run_options: An instance of `config_pb2.RunOptions` to be modified.
     graph: An instance of `ops.Graph`.
     debug_ops: (`str` or `list` of `str`) name(s) of the debug op(s) to use.
-    debug_urls: URL(s) to send ebug values to, e.g.,
+    debug_urls: URL(s) to send debug values to, e.g.,
       `file:///tmp/tfdbg_dump_1`, `grpc://localhost:12345`.
     node_name_regex_blacklist: Regular-expression blacklist for node_name.
       This should be a string, e.g., `"(weight_[0-9]+|bias_.*)"`.
