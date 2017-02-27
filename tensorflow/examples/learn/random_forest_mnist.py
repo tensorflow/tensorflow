@@ -62,9 +62,11 @@ def train_and_eval():
   monitor = random_forest.TensorForestLossHook(early_stopping_rounds)
 
   mnist = input_data.read_data_sets(FLAGS.data_dir, one_hot=False)
-
-  estimator.fit(x=mnist.train.images, y=mnist.train.labels,
-                batch_size=FLAGS.batch_size, monitors=[monitor])
+        
+        x=mnist.train.images
+        y=mnist.train.labels
+        
+  estimator.fit(x, y,batch_size=FLAGS.batch_size, monitors=[monitor])
 
   metric_name = 'accuracy'
   metric = {metric_name:
@@ -72,9 +74,7 @@ def train_and_eval():
                 eval_metrics.get_metric(metric_name),
                 prediction_key=eval_metrics.get_prediction_key(metric_name))}
 
-  results = estimator.evaluate(x=mnist.test.images, y=mnist.test.labels,
-                               batch_size=FLAGS.batch_size,
-                               metrics=metric)
+  results = estimator.evaluate(x,y,batch_size=FLAGS.batch_size,metrics=metric)
   for key in sorted(results):
     print('%s: %s' % (key, results[key]))
 
