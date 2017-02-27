@@ -82,6 +82,8 @@ See the @{$python/contrib.layers} guide.
 @@weighted_sum_from_feature_columns
 @@infer_real_valued_columns
 @@sequence_input_from_feature_columns
+
+@@bow_encoder
 """
 
 from __future__ import absolute_import
