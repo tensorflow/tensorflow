@@ -1005,6 +1005,11 @@ class CommandHistoryTest(test_util.TensorFlowTestCase):
     debugger_cli_common.CommandHistory(
         limit=3, history_file_path=self._history_file_path)
 
+    # Change the file to back to read-write.
+    os.chmod(self._history_file_path,
+             (stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH | stat.S_IWUSR |
+              stat.S_IWGRP | stat.S_IWOTH))
+
   def testCommandHistoryHandlesWritingIOErrorGracoiusly(self):
     with open(self._history_file_path, "wt") as f:
       f.write("help\n")
