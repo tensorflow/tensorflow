@@ -58,7 +58,7 @@ def tf_xla_py_test(name, srcs=[], deps=[], tags=[], data=[], main=None,
       backend_tags += ["requires-gpu-sm35"]
     elif backend == "ipu":
           backend_args += ["--test_device=XLA_IPU",
-                           "--types=DT_FLOAT,DT_HALF",
+                           "--types=DT_FLOAT,DT_INT32",
                            "--plugin_loader=tensorflow.compiler.poplar.poplar_plugin"]
           backend_deps += ["//tensorflow/compiler/poplar:poplar_plugin_py"]
     else:
