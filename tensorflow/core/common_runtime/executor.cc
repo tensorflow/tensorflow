@@ -680,11 +680,11 @@ Status GraphView::SetAllocAttrs(const Graph* g, const Device* device) {
     // Examine the out edges of each node looking for special use
     // cases that may affect memory allocation attributes.
     for (auto e : n->out_edges()) {
-      AllocatorAttributes attr;
-      s = InferAllocAttr(n, e->dst(), local_dev_name, &attr);
-      if (!s.ok()) return s;
-      if (attr.value != 0) {
-        if (!e->IsControlEdge()) {
+      if (!e->IsControlEdge()) {
+        AllocatorAttributes attr;
+        s = InferAllocAttr(n, e->dst(), local_dev_name, &attr);
+        if (!s.ok()) return s;
+        if (attr.value != 0) {
           attrs[e->src_output()].Merge(attr);
         }
       }
@@ -758,11 +758,6 @@ static Status InferAllocAttr(const Node* n, const Node* dst,
     } else {
       VLOG(2) << "default alloc case local type " << local_dev_name.type
               << " remote type " << parsed_dst_name.type;
-    }
-  } else if (dst->type_string() == "ToFloat") {
-    for (auto e : dst->out_edges()) {
-      s = InferAllocAttr(n, e->dst(), local_dev_name, attr);
-      if (!s.ok()) return s;
     }
   }
   return s;
