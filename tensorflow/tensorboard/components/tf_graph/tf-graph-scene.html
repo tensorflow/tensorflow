@@ -479,6 +479,15 @@ limitations under the License.
   display: none;
 }
 
+::content .health-pill {
+  filter: url(#health-pill-shadow);
+}
+
+::content .health-pill rect {
+  rx: 3;
+  ry: 3;
+}
+
 .titleContainer {
   position: relative;
   top: 20px;
@@ -581,6 +590,18 @@ limitations under the License.
     <pattern id="ellipseHatch" patternTransform="rotate(45 0 0)" width="2" height="2" patternUnits="userSpaceOnUse">
       <line x1="0" y1="0" x2="0" y2="2" style="stroke-width: 1"/>
     </pattern>
+
+    <!-- A shadow for health pills. -->
+    <filter id="health-pill-shadow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="0.8"/>
+      <feOffset dx="0" dy="0" result="offsetblur"/>
+      <feFlood flood-color="#000000"/>
+      <feComposite in2="offsetblur" operator="in"/>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
   </defs>
   <!-- Make a large rectangle that fills the svg space so that
   zoom events get captured on safari -->
@@ -895,7 +916,8 @@ Polymer({
     return this._edgeGroupIndex[e];
   },
   _updateHealthPills: function(nodeNamesToHealthPills, healthPillStepIndex) {
-    tf.graph.scene.addHealthPills(this.$.svg, nodeNamesToHealthPills, healthPillStepIndex);
+    tf.graph.scene.addHealthPills(
+        this.$.svg, nodeNamesToHealthPills, healthPillStepIndex);
   },
   /**
    * Update node and annotation node of the given name.

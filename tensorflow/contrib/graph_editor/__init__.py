@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""TensorFlow Graph Editor. See the @{$python/contrib.graph_editor} guide.
+"""TensorFlow Graph Editor.
+
+See the @{$python/contrib.graph_editor} guide.
 """
 
 from __future__ import absolute_import

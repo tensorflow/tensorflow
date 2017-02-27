@@ -13,7 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Operations that generate constants.  See the ${@python/constant} guide.
+"""Operations that generate constants.
+
+See the @{$python/constant} guide.
 
 @@zeros
 @@zeros_like

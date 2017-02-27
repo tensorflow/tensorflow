@@ -13,7 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=g-short-docstring-punctuation
-"""Histograms. Please see @{$python/histogram_ops} guide.
+"""Histograms.
+
+Please see @{$python/histogram_ops} guide.
 
 @@histogram_fixed_width
 """

@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/hexagon/graph_transferer.h"
 #include "tensorflow/core/kernels/hexagon/hexagon_ops_definitions.h"
 #include "tensorflow/core/kernels/hexagon/i_graph_transfer_ops_definitions.h"
+#include "tensorflow/core/kernels/i_remote_fused_graph_executor.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/test.h"

@@ -26,8 +26,9 @@ from tensorflow.python.framework import ops
 DEFAULT_GRAPH_SEED = 87654321
 _MAXINT32 = 2**31 - 1
 
+
 def _truncate_seed(seed):
-  return seed % _MAXINT32 # truncate to fit into 32-bit integer
+  return seed % _MAXINT32  # Truncate to fit into 32-bit integer
 
 
 def get_seed(op_seed):
@@ -50,15 +51,20 @@ def get_seed(op_seed):
   """
   graph_seed = ops.get_default_graph().seed
   if graph_seed is not None:
-    if op_seed is not None:
-      return _truncate_seed(graph_seed), _truncate_seed(op_seed)
-    else:
-      return _truncate_seed(graph_seed), _truncate_seed(ops.get_default_graph()._last_id)
+    if op_seed is None:
+      # pylint: disable=protected-access
+      op_seed = ops.get_default_graph()._last_id
+    seeds = _truncate_seed(graph_seed), _truncate_seed(op_seed)
   else:
     if op_seed is not None:
-      return _truncate_seed(DEFAULT_GRAPH_SEED), _truncate_seed(op_seed)
+      seeds = DEFAULT_GRAPH_SEED, _truncate_seed(op_seed)
     else:
-      return None, None
+      seeds = None, None
+  # Avoid (0, 0) as the C++ ops interpret it as nondeterminism, which would
+  # be unexpected since Python docs say nondeterminism is (None, None).
+  if seeds == (0, 0):
+    return (0, _MAXINT32)
+  return seeds
 
 
 def set_random_seed(seed):

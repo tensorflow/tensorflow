@@ -13,7 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Framework utilities. See the @{$python/contrib.framework} guide.
+"""Framework utilities.
+
+See the @{$python/contrib.framework} guide.
 
 @@assert_same_float_dtype
 @@assert_scalar

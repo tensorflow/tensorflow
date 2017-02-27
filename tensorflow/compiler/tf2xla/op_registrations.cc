@@ -193,6 +193,9 @@ REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
 REGISTER_XLA_KERNEL(
     DEVICE_CPU_XLA_JIT,
     Name("ReadVariableOp").TypeConstraint("dtype", kCpuAllTypes));
+REGISTER_XLA_KERNEL(
+    DEVICE_CPU_XLA_JIT,
+    Name("_UnsafeReadVariable").TypeConstraint("dtype", kCpuAllTypes));
 REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
                     Name("Relu").TypeConstraint("T", kCpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
@@ -448,6 +451,9 @@ REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT, Name("Rank"));
 REGISTER_XLA_KERNEL(
     DEVICE_GPU_XLA_JIT,
     Name("ReadVariableOp").TypeConstraint("dtype", kGpuAllTypes));
+REGISTER_XLA_KERNEL(
+    DEVICE_GPU_XLA_JIT,
+    Name("_UnsafeReadVariable").TypeConstraint("dtype", kGpuAllTypes));
 REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT,
                     Name("RealDiv").TypeConstraint("T", kGpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT,

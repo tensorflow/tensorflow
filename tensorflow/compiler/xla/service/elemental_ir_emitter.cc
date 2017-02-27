@@ -195,6 +195,19 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
           ir_builder_->CreateSelect(olt, llvm::ConstantFP::get(type, -1.0),
                                     llvm::ConstantFP::get(type, 1.0)));
     }
+    case HloOpcode::kIsFinite: {
+      // (x == x) && abs(x) != inf
+      auto type = operand_value->getType();
+      auto equal_self =
+          ir_builder_->CreateFCmpOEQ(operand_value, operand_value);
+      auto abs_value = llvm_ir::EmitCallToIntrinsic(
+          llvm::Intrinsic::fabs, {operand_value}, {type}, ir_builder_);
+      auto infinity = llvm::ConstantFP::getInfinity(type);
+      auto not_infinite = ir_builder_->CreateFCmpONE(abs_value, infinity);
+      auto result_i1 = ir_builder_->CreateAnd(equal_self, not_infinite);
+      return ir_builder_->CreateZExt(
+          result_i1, llvm_ir::PrimitiveTypeToIrType(PRED, ir_builder_));
+    }
     case HloOpcode::kNegate:
       return ir_builder_->CreateFNeg(operand_value);
     default:
@@ -632,6 +645,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     case HloOpcode::kCopy:
     case HloOpcode::kExp:
     case HloOpcode::kFloor:
+    case HloOpcode::kIsFinite:
     case HloOpcode::kLog:
     case HloOpcode::kNegate:
     case HloOpcode::kSign:
