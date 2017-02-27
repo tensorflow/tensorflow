@@ -346,7 +346,7 @@ class _VariableStore(object):
           initializer=initializer, regularizer=regularizer,
           reuse=reuse, trainable=trainable, collections=collections,
           caching_device=caching_device, partitioner=partitioner,
-          validate_shape=validate_shape)
+          validate_shape=validate_shape, use_resource=use_resource)
     else:
       return _true_getter(
           name, shape=shape, dtype=dtype,

@@ -71,8 +71,7 @@ TEST_F(XlaCompilerTest, EmptyReturnValues) {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
   XlaCompiler::CompilationResult result;
   TF_ASSERT_OK(compiler.CompileGraph("add", std::move(graph), flr.get(),
-                                     /*args=*/{}, /*use_tuple_arg=*/false,
-                                     &result));
+                                     /*args=*/{}, &result));
 
   // No computation should be generated.
   EXPECT_EQ(0, result.computation.handle().handle());
@@ -103,8 +102,8 @@ TEST_F(XlaCompilerTest, Simple) {
   auto flr = BuildFunctionLibraryRuntime(compiler);
 
   XlaCompiler::CompilationResult result;
-  TF_ASSERT_OK(compiler.CompileGraph("add", std::move(graph), flr.get(), args,
-                                     /*use_tuple_arg=*/false, &result));
+  TF_ASSERT_OK(
+      compiler.CompileGraph("add", std::move(graph), flr.get(), args, &result));
 
   // Tests that the generated computation works.
   std::unique_ptr<xla::Literal> param0_literal =
@@ -160,8 +159,7 @@ TEST_F(XlaCompilerTest, ConstantOutputs) {
 
     XlaCompiler::CompilationResult result;
     TF_ASSERT_OK(compiler.CompileGraph("constants", std::move(graph_copy),
-                                       flr.get(), args, /*use_tuple_arg=*/false,
-                                       &result));
+                                       flr.get(), args, &result));
 
     ASSERT_EQ(2, result.outputs.size());
     EXPECT_TRUE(result.outputs[0].is_constant);
@@ -198,8 +196,7 @@ TEST_F(XlaCompilerTest, ConstantOutputs) {
 
     XlaCompiler::CompilationResult result;
     TF_ASSERT_OK(compiler.CompileGraph("constants", std::move(graph_copy),
-                                       flr.get(), args, /*use_tuple_arg=*/false,
-                                       &result));
+                                       flr.get(), args, &result));
 
     ASSERT_EQ(2, result.outputs.size());
     EXPECT_FALSE(result.outputs[0].is_constant);

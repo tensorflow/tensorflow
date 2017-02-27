@@ -93,7 +93,8 @@ class XlaContext : public ResourceBase {
 
   // This is called by the Retval Op to associate a computed value
   // with a specific return value of the subgraph.
-  void AddRetval(int retval_index, const xla::ComputationDataHandle& handle);
+  void AddRetval(int retval_index, DataType type,
+                 const xla::ComputationDataHandle& handle);
 
   // As for Retval, but for return values that are compile-time constants.
   Status AddConstRetval(int retval_index, DataType dtype,
@@ -103,22 +104,6 @@ class XlaContext : public ResourceBase {
   void AddSideEffects();
 
   bool has_side_effects() const { return has_side_effects_; }
-
-  // Creates a variable with variable `variable_id` and initial type `type` and
-  // value `handle`. `name` is a descriptive name for use in error messages.
-  // Fails if the variable already exists.
-  Status CreateVariable(int variable_id, string name, DataType type,
-                        const xla::ComputationDataHandle& handle);
-
-  // Assigns value `handle` with type `type` to variable `variable_id`. Fails if
-  // the variable has not already been created using CreateVariable.
-  Status AssignVariable(int variable_id, DataType type,
-                        const xla::ComputationDataHandle& handle);
-
-  // Reads the current value of `variable_id`, setting `handle` to its current
-  // value. Returns a failure status if the variable has not been created or
-  // its value has not been initialized.
-  Status ReadVariable(int variable_id, xla::ComputationDataHandle* handle);
 
   struct Variable {
     // A descriptive name for the variable, used in error messages.
@@ -136,6 +121,16 @@ class XlaContext : public ResourceBase {
     // variables have new values that need to be written back.
     xla::ComputationDataHandle initial_value;
   };
+
+  // Creates a variable with variable `variable_id` and initial type `type` and
+  // value `handle`. `name` is a descriptive name for use in error messages.
+  // Fails if the variable already exists.
+  Status CreateVariable(int variable_id, string name, DataType type,
+                        const xla::ComputationDataHandle& handle);
+
+  // Retrieves variable `variable_id`. Fails if the variable does not exist.
+  Status GetVariable(int variable_id, Variable** variable);
+
   const std::unordered_map<int, Variable>& variables() { return variables_; }
 
   // Get an XLA lambda to compute Max. This is cached in the

@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/compiler/jit/kernels/xla_device_launch_op.h"
 
 #include "tensorflow/compiler/jit/defs.h"
-#include "tensorflow/compiler/jit/xla_compilation_cache.h"
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_device_context.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
@@ -67,20 +66,16 @@ XlaDeviceLaunchOp::XlaDeviceLaunchOp(OpKernelConstruction* ctx)
   OP_REQUIRES_OK(ctx, ctx->GetAttr("Nresources", &num_resource_args_));
 }
 
-// Takes a snapshot of the values of resource variable arguments, which are
-// the last `num_variables` arguments. We snapshot tensors that back
-// resource variables since concurrent updates may modify the shape, and it is
-// important that the shapes used for compilation match the true shapes of the
-// buffers.
-static std::vector<OptionalTensor> SnapshotResourceVariables(
-    OpKernelContext* ctx, int num_variables) {
+std::vector<OptionalTensor> SnapshotResourceVariables(OpKernelContext* ctx,
+                                                      int num_variables) {
   std::vector<OptionalTensor> snapshot(num_variables);
   int first_variable = ctx->num_inputs() - num_variables;
   for (int i = 0; i < num_variables; ++i) {
     Var* variable = nullptr;
-    if (LookupResource(ctx, HandleFromInput(ctx, first_variable + i), &variable)
-            .ok()) {
+    ResourceHandle handle = HandleFromInput(ctx, first_variable + i);
+    if (LookupResource(ctx, handle, &variable).ok()) {
       mutex_lock lock(*variable->mu());
+      snapshot[i].name = handle.name();
       snapshot[i].present = true;
       snapshot[i].value = *variable->tensor();
     }
@@ -127,13 +122,13 @@ void XlaDeviceLaunchOp::Compute(OpKernelContext* ctx) {
 
     // Builds the inputs to the computation.
     std::vector<std::shared_ptr<xla::GlobalData>> arg_handles(
-        kernel->xla_input_shapes.size());
-    std::vector<xla::GlobalData*> arg_ptrs(kernel->xla_input_shapes.size());
+        kernel->input_mapping.size());
+    std::vector<xla::GlobalData*> arg_ptrs(kernel->input_mapping.size());
 
     // Adds the argument tensors.
     const int first_variable_arg = ctx->num_inputs() - num_resource_args_;
-    for (int i = 0; i < kernel->xla_input_shapes.size(); ++i) {
-      int op_input_num = kernel->xla_input_shapes[i].first;
+    for (int i = 0; i < kernel->input_mapping.size(); ++i) {
+      int op_input_num = kernel->input_mapping[i];
 
       if (op_input_num >= first_variable_arg) {
         arg_handles[i] = XlaTransferManager::GetTensorGlobalData(
@@ -201,10 +196,10 @@ void XlaDeviceLaunchOp::Compute(OpKernelContext* ctx) {
     }
   }
 
-  // Apply variable writes, if any.
-  VLOG(2) << "Applying variable writes";
-  for (int i = 0; i < kernel->variable_writes.size(); ++i) {
-    const XlaCompiler::VariableWrite& write = kernel->variable_writes[i];
+  // Apply variable updates, if any.
+  VLOG(2) << "Applying variable updates";
+  for (int i = 0; i < kernel->variable_updates.size(); ++i) {
+    const XlaCompiler::VariableUpdate& write = kernel->variable_updates[i];
     OP_REQUIRES(ctx,
                 write.input_index >= 0 && write.input_index < ctx->num_inputs(),
                 errors::Internal("Invalid input index for variable write."));

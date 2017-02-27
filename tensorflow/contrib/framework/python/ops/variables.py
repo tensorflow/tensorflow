@@ -165,7 +165,7 @@ def local_variable(initial_value, validate_shape=True, name=None):
 def variable(name, shape=None, dtype=None, initializer=None,
              regularizer=None, trainable=True, collections=None,
              caching_device=None, device=None,
-             partitioner=None, custom_getter=None):
+             partitioner=None, custom_getter=None, use_resource=None):
   """Gets an existing variable with these parameters or creates a new one.
 
   Args:
@@ -190,6 +190,7 @@ def variable(name, shape=None, dtype=None, initializer=None,
       partitions for each axis (currently only one axis can be partitioned).
     custom_getter: Callable that allows overwriting the internal
       get_variable method and has to have the same signature.
+    use_resource: If `True` use a ResourceVariable instead of a Variable.
 
   Returns:
     The created or existing variable.
@@ -209,14 +210,15 @@ def variable(name, shape=None, dtype=None, initializer=None,
                   trainable=trainable,
                   collections=collections,
                   caching_device=caching_device,
-                  partitioner=partitioner)
+                  partitioner=partitioner,
+                  use_resource=use_resource)
 
 
 @contrib_add_arg_scope
 def model_variable(name, shape=None, dtype=dtypes.float32, initializer=None,
                    regularizer=None, trainable=True, collections=None,
                    caching_device=None, device=None, partitioner=None,
-                   custom_getter=None):
+                   custom_getter=None, use_resource=None):
   """Gets an existing model variable with these parameters or creates a new one.
 
   Args:
@@ -242,6 +244,7 @@ def model_variable(name, shape=None, dtype=dtypes.float32, initializer=None,
       partitions for each axis (currently only one axis can be partitioned).
     custom_getter: Callable that allows overwriting the internal
       get_variable method and has to have the same signature.
+    use_resource: If `True` use a ResourceVariable instead of a Variable.
 
   Returns:
     The created or existing variable.
@@ -252,7 +255,8 @@ def model_variable(name, shape=None, dtype=dtypes.float32, initializer=None,
                  initializer=initializer, regularizer=regularizer,
                  trainable=trainable, collections=collections,
                  caching_device=caching_device, device=device,
-                 partitioner=partitioner, custom_getter=custom_getter)
+                 partitioner=partitioner, custom_getter=custom_getter,
+                 use_resource=use_resource)
   return var
 
 

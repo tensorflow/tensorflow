@@ -219,8 +219,8 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
 
     // Pass remaining parameters.
     for (int i = 0; i < kernel->xla_input_shapes.size(); ++i) {
-      int arg_num = kernel->xla_input_shapes[i].first;
-      const xla::Shape& shape = kernel->xla_input_shapes[i].second;
+      int arg_num = kernel->input_mapping[i];
+      const xla::Shape& shape = kernel->xla_input_shapes[i];
       gpu::DeviceMemoryBase dmem(
           const_cast<char*>(ctx->input(arg_num).tensor_data().data()),
           ctx->input(arg_num).tensor_data().size());

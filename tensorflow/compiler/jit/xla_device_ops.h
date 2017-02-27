@@ -112,12 +112,7 @@ class XlaDeviceDummyOp : public OpKernel {
                                                                                \
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("VarHandleOp").Device(DEVICE).HostMemory("resource"),               \
-      ResourceHandleOp<Var>);                                                  \
-  REGISTER_KERNEL_BUILDER(Name("VarIsInitializedOp")                           \
-                              .Device(DEVICE)                                  \
-                              .HostMemory("resource")                          \
-                              .HostMemory("is_initialized"),                   \
-                          IsResourceInitialized<Var>);
+      ResourceHandleOp<Var>);
 
 // TODO(b/32507444): the registrations for the control flow operators are
 // temporary and exist primarily to work around a bug in the graph partitioning
