@@ -139,7 +139,7 @@ Status SummarizeGraph(const GraphDef& graph, const string& graph_path) {
   std::vector<const NodeDef*> outputs;
   for (const NodeDef& node : graph.node()) {
     if ((output_map.count(node.name()) == 0) && (node.op() != "Const") &&
-        (node.op() != "Assign")) {
+        (node.op() != "Assign") && (node.op() != "NoOp")) {
       outputs.push_back(&node);
     }
   }
@@ -260,7 +260,7 @@ int ParseFlagsAndSummarizeGraph(int argc, char* argv[]) {
   }
 
   GraphDef graph_def;
-  Status load_status = ReadBinaryProto(Env::Default(), in_graph, &graph_def);
+  Status load_status = LoadTextOrBinaryGraphFile(in_graph, &graph_def);
   if (!load_status.ok()) {
     LOG(ERROR) << "Loading graph '" << in_graph << "' failed with "
                << load_status.error_message();

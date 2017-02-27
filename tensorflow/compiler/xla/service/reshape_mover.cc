@@ -63,6 +63,10 @@ bool IsElementwiseOfEquivalentReshapesOrTransposes(
 // reshapes or transposes.
 bool TrySinkReshapeOrTranspose(HloComputation* computation,
                                HloInstruction* instruction) {
+  // TODO(b/35693996): Take out this work-around after fixing the bug.
+  if (instruction->opcode() == HloOpcode::kFusion) {
+    return false;
+  }
   if (IsElementwiseOfEquivalentReshapesOrTransposes(instruction)) {
     std::vector<HloInstruction*> operands = instruction->operands();
     auto old_reshape = operands[0];

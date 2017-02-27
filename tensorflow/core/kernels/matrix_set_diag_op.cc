@@ -78,10 +78,8 @@ class MatrixSetDiagOp : public OpKernel {
     auto diag_reshaped = diag.flat_inner_dims<T, 2>();
 
     Tensor* output = nullptr;
-    if (!context->forward_input_to_output(0, 0, &output)) {
-      OP_REQUIRES_OK(context,
-                     context->allocate_output(0, input_shape, &output));
-    }
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                {0}, 0, input_shape, &output));
     auto output_reshaped = output->flat_inner_dims<T, 3>();
     Tensor scratch_tensor;
     OP_REQUIRES_OK(context,

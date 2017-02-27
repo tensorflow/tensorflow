@@ -33,15 +33,14 @@ from tensorflow.python.ops.control_flow_ops import with_dependencies
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training.session_run_hook import SessionRunArgs
 
-SQUARED_EUCLIDEAN_DISTANCE = clustering_ops.SQUARED_EUCLIDEAN_DISTANCE
-COSINE_DISTANCE = clustering_ops.COSINE_DISTANCE
-RANDOM_INIT = clustering_ops.RANDOM_INIT
-KMEANS_PLUS_PLUS_INIT = clustering_ops.KMEANS_PLUS_PLUS_INIT
-
 
 # TODO(agarwal,ands): support sharded input.
 class KMeansClustering(estimator.Estimator):
   """An Estimator for K-Means clustering."""
+  SQUARED_EUCLIDEAN_DISTANCE = clustering_ops.SQUARED_EUCLIDEAN_DISTANCE
+  COSINE_DISTANCE = clustering_ops.COSINE_DISTANCE
+  RANDOM_INIT = clustering_ops.RANDOM_INIT
+  KMEANS_PLUS_PLUS_INIT = clustering_ops.KMEANS_PLUS_PLUS_INIT
   SCORES = 'scores'
   CLUSTER_IDX = 'cluster_idx'
   CLUSTERS = 'clusters'
@@ -51,8 +50,8 @@ class KMeansClustering(estimator.Estimator):
   def __init__(self,
                num_clusters,
                model_dir=None,
-               initial_clusters=clustering_ops.RANDOM_INIT,
-               distance_metric=clustering_ops.SQUARED_EUCLIDEAN_DISTANCE,
+               initial_clusters=RANDOM_INIT,
+               distance_metric=SQUARED_EUCLIDEAN_DISTANCE,
                random_seed=0,
                use_mini_batch=True,
                mini_batch_steps_per_iteration=1,

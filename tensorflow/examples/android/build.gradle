@@ -37,8 +37,23 @@ android {
 
     sourceSets {
         main {
+            // TensorFlow Java API sources.
+            java {
+                srcDir '../../java/src/main/java'
+                exclude '**/examples/**'
+            }
+
+            // Android TensorFlow wrappers, etc.
+            java {
+                srcDir '../../contrib/android/java'
+            }
+
+            // Android demo app sources.
+            java {
+                srcDir 'src'
+            }
+
             manifest.srcFile 'AndroidManifest.xml'
-            java.srcDirs = ['src', '../../contrib/android/java']
             resources.srcDirs = ['src']
             aidl.srcDirs = ['src']
             renderscript.srcDirs = ['src']

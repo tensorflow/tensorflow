@@ -118,7 +118,6 @@ def _linear_model_fn(features, labels, mode, params, config=None):
           optimizer to use for training. If `None`, will use a FTRL optimizer.
       * gradient_clip_norm: A float > 0. If provided, gradients are
           clipped to their global norm with this clipping ratio.
-      * num_ps_replicas: The number of parameter server replicas.
       * joint_weights: If True, the weights for all columns will be stored in a
         single (possibly partitioned) variable. It's more efficient, but it's
         incompatible with SDCAOptimizer, and requires all feature columns are

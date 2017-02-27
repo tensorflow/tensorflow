@@ -14,7 +14,9 @@
 # ==============================================================================
 
 # pylint: disable=line-too-long
-"""Inputs and Readers. See the @{$python/io_ops} guide.
+"""Inputs and Readers.
+
+See the @{$python/io_ops} guide.
 
 @@placeholder
 @@placeholder_with_default

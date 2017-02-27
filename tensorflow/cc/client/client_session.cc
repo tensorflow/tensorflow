@@ -19,29 +19,51 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
 
+class ClientSession::Impl {
+ private:
+  friend class ClientSession;
+
+  Impl(Session* session, std::shared_ptr<Graph> graph)
+      : session_(session), graph_(graph) {}
+
+  static SessionOptions MakeDefaultSessionOptions(const string& target);
+  Status MaybeExtendGraph() const;
+
+  std::unique_ptr<Session> session_;
+  std::shared_ptr<Graph> graph_;
+
+  mutable mutex mu_;
+  mutable int last_num_graph_nodes_ GUARDED_BY(mu_) = 0;
+};
+
 ClientSession::ClientSession(const Scope& scope, const string& target)
-    : ClientSession(scope, MakeDefaultSessionOptions(target)) {}
+    : ClientSession(scope, Impl::MakeDefaultSessionOptions(target)) {}
 
 ClientSession::ClientSession(const Scope& scope) : ClientSession(scope, "") {}
 
 ClientSession::ClientSession(const Scope& scope,
-                             const SessionOptions& session_options)
-    : graph_(scope.graph_as_shared_ptr()) {
+                             const SessionOptions& session_options) {
   Session* new_session;
   Status status = NewSession(session_options, &new_session);
   TF_CHECK_OK(status) << status;
-  session_.reset(new_session);
-  CHECK_NOTNULL(session_.get());
+  impl_.reset(new Impl(new_session, scope.graph_as_shared_ptr()));
+  CHECK_NOTNULL(impl()->session_.get());
 }
 
-SessionOptions ClientSession::MakeDefaultSessionOptions(
-    const string& target) const {
+// Define destructor here so we can forward declare `Impl` in client_session.h.
+// If we define a dtor in the header file or use the default dtor,
+// unique_ptr<Impl> needs the complete type.
+ClientSession::~ClientSession() {}
+
+SessionOptions ClientSession::Impl::MakeDefaultSessionOptions(
+    const string& target) {
   SessionOptions options;
   options.env = Env::Default();
   options.target = target;
@@ -67,7 +89,7 @@ Status ClientSession::Run(const FeedType& inputs,
              nullptr);
 }
 
-Status ClientSession::MaybeExtendGraph() const {
+Status ClientSession::Impl::MaybeExtendGraph() const {
   mutex_lock l(mu_);
   int num_nodes = graph_->num_node_ids();
   if (num_nodes > last_num_graph_nodes_) {
@@ -97,9 +119,9 @@ Status ClientSession::Run(const RunOptions& run_options, const FeedType& inputs,
   for (auto const& output : run_outputs) {
     target_node_names.push_back(output.node()->name());
   }
-  TF_RETURN_IF_ERROR(MaybeExtendGraph());
-  return session_->Run(run_options, feeds, output_tensor_names,
-                       target_node_names, outputs, run_metadata);
+  TF_RETURN_IF_ERROR(impl()->MaybeExtendGraph());
+  return impl()->session_->Run(run_options, feeds, output_tensor_names,
+                               target_node_names, outputs, run_metadata);
 }
 
 }  // end namespace tensorflow
