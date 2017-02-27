@@ -441,8 +441,9 @@ module VZ {
       let data = dataset.data();
       let kernelRadius = Math.floor(data.length * factor / 2);
       data.forEach(function (d, i) {
-        var start = Math.max(0, i - kernelRadius);
-        var end = Math.min(data.length - 1, i + kernelRadius);
+        var actualKernelRadius = Math.min(kernelRadius, i)
+        var start = Math.max(0, i - actualKernelRadius);
+        var end = Math.min(data.length - 1, i + actualKernelRadius);
         // Only smooth finite numbers.
         if (!_.isFinite(d.scalar)) {
           d.smoothed = d.scalar;
