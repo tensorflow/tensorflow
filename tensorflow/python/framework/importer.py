@@ -242,11 +242,13 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
     # more nuanced.
     g.graph_def_versions.CopyFrom(graph_def.versions)
 
-    if input_map:
+    if not all(isinstance(v, ops.Tensor) for v in input_map.values()):
       if not scope:
         # The caller must have passed `name=''`.
-        raise ValueError('tf.import_graph_def() requires a non-empty `name` '
-                         'if `input_map` is used.')
+        raise ValueError(
+            'tf.import_graph_def() requires a non-empty `name` if `input_map` '
+            'contains non-Tensor values. Try calling tf.convert_to_tensor() on '
+            '`input_map` values before calling tf.import_graph_def().')
       with ops.name_scope('_inputs'):
         input_map = {k: ops.convert_to_tensor(v) for k, v in input_map.items()}
 

@@ -77,6 +77,17 @@ class RichTextLinesTest(test_util.TensorFlowTestCase):
     self.assertEqual(1, len(screen_output.font_attr_segs[0]))
     self.assertEqual(1, len(screen_output.annotations))
 
+  def testRichLinesAppendRichLine(self):
+    rtl = debugger_cli_common.RichTextLines(
+        "Roses are red",
+        font_attr_segs={0: [(0, 5, "red")]})
+    rtl.append_rich_line(debugger_cli_common.RichLine("Violets are ") +
+                         debugger_cli_common.RichLine("blue", "blue"))
+    self.assertEqual(2, len(rtl.lines))
+    self.assertEqual(2, len(rtl.font_attr_segs))
+    self.assertEqual(1, len(rtl.font_attr_segs[0]))
+    self.assertEqual(1, len(rtl.font_attr_segs[1]))
+
   def testRichTextLinesConstructorIncomplete(self):
     # Test RichTextLines constructor, with incomplete keyword arguments.
     screen_output = debugger_cli_common.RichTextLines(
@@ -913,6 +924,11 @@ class CommandHistoryTest(test_util.TensorFlowTestCase):
     if os.path.isfile(self._history_file_path):
       os.remove(self._history_file_path)
 
+  def _restoreFileReadWritePermissions(self, file_path):
+    os.chmod(file_path,
+             (stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH | stat.S_IWUSR |
+              stat.S_IWGRP | stat.S_IWOTH))
+
   def testLookUpMostRecent(self):
     self.assertEqual([], self._cmd_hist.most_recent_n(3))
 
@@ -1005,6 +1021,8 @@ class CommandHistoryTest(test_util.TensorFlowTestCase):
     debugger_cli_common.CommandHistory(
         limit=3, history_file_path=self._history_file_path)
 
+    self._restoreFileReadWritePermissions(self._history_file_path)
+
   def testCommandHistoryHandlesWritingIOErrorGracoiusly(self):
     with open(self._history_file_path, "wt") as f:
       f.write("help\n")
@@ -1027,10 +1045,7 @@ class CommandHistoryTest(test_util.TensorFlowTestCase):
         limit=3, history_file_path=self._history_file_path)
     self.assertEqual(["help"], cmd_hist_3.most_recent_n(1))
 
-    # Change the file to back to read-write.
-    os.chmod(self._history_file_path,
-             (stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH | stat.S_IWUSR |
-              stat.S_IWGRP | stat.S_IWOTH))
+    self._restoreFileReadWritePermissions(self._history_file_path)
 
 
 class MenuNodeTest(test_util.TensorFlowTestCase):

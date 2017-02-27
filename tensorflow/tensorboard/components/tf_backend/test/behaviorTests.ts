@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-var assert = chai.assert;
 declare function fixture(id: string): void;
 
     module TF.Backend {
@@ -47,26 +46,27 @@ declare function fixture(id: string): void;
         });
 
         it('load states work as expected', function(done) {
-          assert.equal(testElement.loadState, 'noload');
+          chai.assert.equal(testElement.loadState, 'noload');
           var reloaded = testElement.reload();
-          assert.equal(testElement.loadState, 'pending');
+          chai.assert.equal(testElement.loadState, 'pending');
           resolve();
           reloaded
               .then(function() {
-                assert.equal(testElement.loadState, 'loaded');
+                chai.assert.equal(testElement.loadState, 'loaded');
                 var reloaded2 = testElement.reload();
-                assert.equal(testElement.loadState, 'pending');
+                chai.assert.equal(testElement.loadState, 'pending');
                 reject();
                 return reloaded2;
               })
               .then(function() {
-                assert.equal(testElement.loadState, 'failure');
+                chai.assert.equal(testElement.loadState, 'failure');
                 done();
               });
         });
 
         it('data provider set appropriately', function() {
-          assert.deepEqual(testElement.dataProvider(), testElement.backend);
+          chai.assert.deepEqual(
+              testElement.dataProvider(), testElement.backend);
         });
 
         it('loads data as expected', function(done) {
@@ -80,9 +80,9 @@ declare function fixture(id: string): void;
           testElement.backend = fakeBackend;
           testElement.dataType = 'scalar';
           testElement.reload().then(function(x) {
-            assert.deepEqual(testElement.run2tag, r2t);
-            assert.deepEqual(testElement.runs, runs);
-            assert.deepEqual(testElement.tags, tags);
+            chai.assert.deepEqual(testElement.run2tag, r2t);
+            chai.assert.deepEqual(testElement.runs, runs);
+            chai.assert.deepEqual(testElement.tags, tags);
             done();
           });
           resolve(r2t);
@@ -90,24 +90,28 @@ declare function fixture(id: string): void;
 
         it('errors thrown on bad data types', function() {
           testElement.backend = undefined;
-          assert.throws(function() { testElement.dataType = 'foo'; });
+          chai.assert.throws(function() {
+            testElement.dataType = 'foo';
+          });
           testElement.dataType = 'scalar';
           testElement.dataType = 'graph';
           testElement.dataType = 'histogram';
         });
 
         it('dataNotFound flag works', function(done) {
-          assert.isFalse(testElement.dataNotFound, 'initially false');
+          chai.assert.isFalse(testElement.dataNotFound, 'initially false');
           var next = testElement.reload();
-          assert.isFalse(testElement.dataNotFound, 'still false while pending');
+          chai.assert.isFalse(
+              testElement.dataNotFound, 'still false while pending');
           resolve({foo: [], bar: []});
           next.then(() => {
-            assert.isTrue(testElement.dataNotFound, 'true on empty data');
+            chai.assert.isTrue(testElement.dataNotFound, 'true on empty data');
             var last = testElement.reload();
-            assert.isTrue(testElement.dataNotFound, 'still true while pending');
+            chai.assert.isTrue(
+                testElement.dataNotFound, 'still true while pending');
             resolve({foo: ['bar'], bar: ['zod']});
             last.then(() => {
-              assert.isFalse(
+              chai.assert.isFalse(
                   testElement.dataNotFound, 'false now that we have data');
               done();
             });
@@ -124,7 +128,7 @@ declare function fixture(id: string): void;
           testElement.dataType = 'scalar';
           testElement.backend = fakeBackend;
           setTimeout(() => {
-            assert.equal(testElement.run2tag, r2t);
+            chai.assert.equal(testElement.run2tag, r2t);
             done();
           });
         });
@@ -143,7 +147,8 @@ declare function fixture(id: string): void;
             var tags = testElement.tags;
             testElement.reload().then(() => {
               // shallow equality ensures it wasn't recomputed
-              assert.equal(tags, testElement.tags, 'tags was not recomputed');
+              chai.assert.equal(
+                  tags, testElement.tags, 'tags was not recomputed');
               done();
             });
           });
