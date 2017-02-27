@@ -25,7 +25,7 @@ from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.layers.python.layers import optimizers
-from tensorflow.contrib.learn.python.learn import metric_spec
+from tensorflow.contrib.learn.python.learn import MetricSpec
 from tensorflow.contrib.learn.python.learn.estimators import dnn_linear_combined
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators import head as head_lib
@@ -644,7 +644,7 @@ class DNNRegressor(estimator.Estimator):
     custom_metrics = {}
     if metrics:
       for key, metric in six.iteritems(metrics):
-        if (not isinstance(metric, metric_spec.MetricSpec) and
+        if (not isinstance(metric, MetricSpec) and
             not isinstance(key, tuple)):
           custom_metrics[(key, prediction_key.PredictionKey.SCORES)] = metric
         else:

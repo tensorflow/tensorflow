@@ -23,7 +23,7 @@ import tempfile
 
 # pylint: disable=g-backslash-continuation
 from tensorflow.contrib.learn.python.learn\
-        import metric_spec
+        import MetricSpec
 from tensorflow.contrib.tensor_forest.client\
         import eval_metrics
 from tensorflow.contrib.tensor_forest.client\
@@ -68,8 +68,7 @@ def train_and_eval():
 
   metric_name = 'accuracy'
   metric = {metric_name:
-            metric_spec.MetricSpec(
-                eval_metrics.get_metric(metric_name),
+                MetricSpec(eval_metrics.get_metric(metric_name),
                 prediction_key=eval_metrics.get_prediction_key(metric_name))}
 
   results = estimator.evaluate(x=mnist.test.images, y=mnist.test.labels,

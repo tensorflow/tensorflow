@@ -34,7 +34,7 @@ import numpy as np
 
 from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.contrib.layers.python.layers import optimizers
-from tensorflow.contrib.learn.python.learn import metric_spec
+from tensorflow.contrib.learn.python.learn import MetricSpec
 from tensorflow.contrib.learn.python.learn import models
 from tensorflow.contrib.learn.python.learn.datasets import base
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn
@@ -292,7 +292,7 @@ class EstimatorInputTest(test.TestCase):
         steps=1,
         metrics={
             'accuracy':
-                metric_spec.MetricSpec(
+                MetricSpec(
                     metric_fn=metric_ops.streaming_accuracy,
                     prediction_key='class',
                     label_key='labels')
