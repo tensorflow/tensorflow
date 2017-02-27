@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
@@ -368,25 +369,12 @@ def random_gamma(shape,
     samples = tf.random_gamma([30], [[1.],[3.],[5.]], beta=[[3., 4.]])
     # samples has shape [30, 3, 2], with 30 samples each of 3x2 distributions.
 
-    Note that for small alpha values, there is a chance you will draw a value of
-    exactly 0, which gets worse for lower-precision dtypes, even though zero is
-    not in the support of the gamma distribution.
-
-    Relevant cdfs (~chance you will draw a exactly-0 value):
-    ```
-      stats.gamma(.01).cdf(np.finfo(np.float16).tiny)
-          0.91269738769897879
-      stats.gamma(.01).cdf(np.finfo(np.float32).tiny)
-          0.41992668622045726
-      stats.gamma(.01).cdf(np.finfo(np.float64).tiny)
-          0.00084322740680686662
-      stats.gamma(.35).cdf(np.finfo(np.float16).tiny)
-          0.037583276135263931
-      stats.gamma(.35).cdf(np.finfo(np.float32).tiny)
-          5.9514895726818067e-14
-      stats.gamma(.35).cdf(np.finfo(np.float64).tiny)
-          2.3529843400647272e-108
-    ```
+    Note: Because internal calculations are done using `float64` and casting has
+    `floor` semantics, we must manually map zero outcomes to the smallest
+    possible positive floating-point value, i.e., `np.finfo(dtype).tiny`.  This
+    means that `np.finfo(dtype).tiny` occurs more frequently than it otherwise
+    should.  This bias can only happen for small values of `alpha`, i.e.,
+    `alpha << 1` or large values of `beta`, i.e., `beta >> 1`.
 
   Args:
     shape: A 1-D integer Tensor or Python array. The shape of the output samples
@@ -416,9 +404,10 @@ def random_gamma(shape,
         beta if beta is not None else 1, name="beta", dtype=dtype)
     alpha_broadcast = alpha + array_ops.zeros_like(beta)
     seed1, seed2 = random_seed.get_seed(seed)
-    return gen_random_ops._random_gamma(
-        shape, alpha_broadcast, seed=seed1, seed2=seed2) / beta
-
+    return math_ops.maximum(
+        np.finfo(dtype.as_numpy_dtype).tiny,
+        gen_random_ops._random_gamma(
+            shape, alpha_broadcast, seed=seed1, seed2=seed2) / beta)
 
 ops.NotDifferentiable("RandomGamma")
 
