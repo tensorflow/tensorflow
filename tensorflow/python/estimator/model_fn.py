@@ -124,8 +124,8 @@ class EstimatorSpec(
       loss: Training loss `Tensor`. Must be either scalar, or with shape `[1]`.
       train_op: Op for the training step.
       eval_metric_ops: Dict of metric results keyed by name. The values of the
-        dict are the results of calling a metric function, namely an
-        `(update_op, metric_tensor)` tuple.
+        dict are the results of calling a metric function, namely a
+        `(metric_tensor, update_op)` tuple.
       export_outputs: Describes the output signature to be exported to
         `SavedModel` and used during serving.
         A dict `{name: (signature_method_name, predictions)}` where:
@@ -194,8 +194,8 @@ class EstimatorSpec(
         if (not isinstance(metric_value, tuple) or
             len(metric_value) != 2):
           raise TypeError(
-              'Values of eval_metric_ops must be (update_op, value) tuples, '
-              'given: {} for key: {}'.format(metric_value, key))
+              'Values of eval_metric_ops must be (metric_tensor, update_op) '
+              'tuples, given: {} for key: {}'.format(metric_value, key))
         _check_is_tensor_or_operation(metric_value[0],
                                       'eval_metric_ops[{}]'.format(key))
         _check_is_tensor_or_operation(metric_value[1],

@@ -213,7 +213,11 @@ Status CpuCompiler::RunHloPasses(HloModule* hlo_module,
                                  HloDumper dump_hlo) {
   // Optimization pipeline.
   HloPassPipeline pipeline("CPU", dump_hlo);
-  pipeline.AddPass<Inliner>();
+
+  // TODO(b/35786417): Re-enable inliner pass after fixing the bug and deciding
+  // where we will take this pass in future.
+  // pipeline.AddPass<Inliner>();
+
   pipeline.AddPass<ConvCanonicalization>();
   {
     auto& pass = pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification",
