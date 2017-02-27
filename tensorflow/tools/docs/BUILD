@@ -87,6 +87,7 @@ py_test(
     tags = ["manual"],
     deps = [
         ":generate",
+        ":parser",
         "//tensorflow/python:platform_test",
     ],
 )

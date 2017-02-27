@@ -532,13 +532,13 @@ Status InferenceContext::MakeShapeFromShapeTensor(int input_idx,
   ShapeHandle input_shape;
   TF_RETURN_IF_ERROR(WithRank(input(input_idx), 1, &input_shape));
 
+  requested_input_tensor_as_partial_shape_[input_idx] = true;
   if (input_idx < input_tensors_as_shapes_.size() &&
       input_tensors_as_shapes_[input_idx].IsSet() &&
       RankKnown(input_tensors_as_shapes_[input_idx])) {
     *out = input_tensors_as_shapes_[input_idx];
     return Status::OK();
   }
-  requested_input_tensor_as_partial_shape_[input_idx] = true;
 
   return MakeShapeFromTensor(input_tensor(input_idx), input_shape, out);
 }
@@ -787,9 +787,38 @@ Status InferenceContext::AttachContext(const Status& status) {
     input_shapes.emplace_back(DebugString(input_shape));
   }
 
+  // Add information about the input tensors and partial tensor shapes used.
+  std::vector<string> input_from_tensors_str;
+  std::vector<string> input_from_tensors_as_shape_str;
+  for (int i = 0; i < inputs_.size(); ++i) {
+    if (requested_input_tensor_as_partial_shape_[i] &&
+        i < input_tensors_as_shapes_.size() &&
+        input_tensors_as_shapes_[i].IsSet() &&
+        RankKnown(input_tensors_as_shapes_[i])) {
+      input_from_tensors_as_shape_str.push_back(strings::StrCat(
+          "input[", i, "] = ", DebugString(input_tensors_as_shapes_[i])));
+    } else if (requested_input_tensor_[i] && i < input_tensors_.size() &&
+               input_tensors_[i] != nullptr) {
+      input_from_tensors_str.push_back(strings::StrCat(
+          "input[", i, "] = <",
+          input_tensors_[i]->SummarizeValue(256 /* max_values */), ">"));
+    }
+  }
+
   string error_context = strings::StrCat(
       " for '", node_def_.name(), "' (op: '", node_def_.op(),
-      "') with input shapes: ", str_util::Join(input_shapes, ", "), ".");
+      "') with input shapes: ", str_util::Join(input_shapes, ", "));
+  if (!input_from_tensors_str.empty()) {
+    strings::StrAppend(&error_context, " and with computed input tensors: ",
+                       str_util::Join(input_from_tensors_str, ", "));
+  }
+  if (!input_from_tensors_as_shape_str.empty()) {
+    strings::StrAppend(&error_context,
+                       " and with input tensors computed as partial shapes: ",
+                       str_util::Join(input_from_tensors_as_shape_str, ","));
+  }
+
+  strings::StrAppend(&error_context, ".");
   return Status(status.code(),
                 strings::StrCat(status.error_message(), error_context));
 }

@@ -37,7 +37,7 @@ REGISTER_RESOURCE_HANDLE_KERNEL(Var);
 template <typename Device, typename T>
 class ReadVariableOp : public OpKernel {
  public:
-  ReadVariableOp(OpKernelConstruction* c) : OpKernel(c) {}
+  explicit ReadVariableOp(OpKernelConstruction* c) : OpKernel(c) {}
 
   void Compute(OpKernelContext* ctx) {
     Var* variable = nullptr;
@@ -56,29 +56,6 @@ class ReadVariableOp : public OpKernel {
     copy_functor(ctx->eigen_device<Device>(), out->flat<T>(), t.flat<T>());
   }
 };
-
-class DestroyResourceOp : public OpKernel {
- public:
-  explicit DestroyResourceOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx,
-                   ctx->GetAttr("ignore_lookup_error", &ignore_lookup_error_));
-  }
-
-  void Compute(OpKernelContext* ctx) override {
-    const ResourceHandle& p = HandleFromInput(ctx, 0);
-    Status status = DeleteResource(ctx, p);
-    if (ignore_lookup_error_ && errors::IsNotFound(status)) {
-      return;
-    }
-    OP_REQUIRES_OK(ctx, status);
-  }
-
- private:
-  bool ignore_lookup_error_;
-};
-
-REGISTER_KERNEL_BUILDER(Name("DestroyResourceOp").Device(DEVICE_CPU),
-                        DestroyResourceOp);
 
 // TODO(apassos) register for the GPU as well.
 #define REGISTER_KERNELS(type)                                                 \
@@ -106,6 +83,53 @@ TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 #endif  // GOOGLE_CUDA
+
+class UnsafeReadVariableOp : public OpKernel {
+ public:
+  explicit UnsafeReadVariableOp(OpKernelConstruction* c) : OpKernel(c) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    Var* variable = nullptr;
+    OP_REQUIRES_OK(ctx,
+                   LookupResource(ctx, HandleFromInput(ctx, 0), &variable));
+    core::ScopedUnref s(variable);
+    ctx->set_output(0, *variable->tensor());
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("_UnsafeReadVariable").Device(DEVICE_CPU),
+                        UnsafeReadVariableOp);
+
+#if GOOGLE_CUDA
+
+REGISTER_KERNEL_BUILDER(
+    Name("_UnsafeReadVariable").Device(DEVICE_GPU).HostMemory("resource"),
+    UnsafeReadVariableOp);
+
+#endif  // GOOGLE_CUDA
+
+class DestroyResourceOp : public OpKernel {
+ public:
+  explicit DestroyResourceOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    OP_REQUIRES_OK(ctx,
+                   ctx->GetAttr("ignore_lookup_error", &ignore_lookup_error_));
+  }
+
+  void Compute(OpKernelContext* ctx) override {
+    const ResourceHandle& p = HandleFromInput(ctx, 0);
+    Status status = DeleteResource(ctx, p);
+    if (ignore_lookup_error_ && errors::IsNotFound(status)) {
+      return;
+    }
+    OP_REQUIRES_OK(ctx, status);
+  }
+
+ private:
+  bool ignore_lookup_error_;
+};
+
+REGISTER_KERNEL_BUILDER(Name("DestroyResourceOp").Device(DEVICE_CPU),
+                        DestroyResourceOp);
 
 template <typename Device, typename T>
 class AssignVariableOp : public OpKernel {

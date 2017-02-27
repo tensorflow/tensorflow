@@ -20,6 +20,7 @@ from __future__ import print_function
 import os
 
 import numpy as np
+import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import graph_pb2
@@ -29,6 +30,7 @@ from tensorflow.core.util import event_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import googletest
@@ -156,26 +158,19 @@ class _EventGenerator(object):
 
 class EventAccumulatorTest(test.TestCase):
 
-  def assertTagsEqual(self, tags1, tags2):
-    # Make sure the two dictionaries have the same keys.
-    self.assertItemsEqual(tags1, tags2)
-    # Additionally, make sure each key in the dictionary maps to the same value.
-    for key in tags1:
-      if isinstance(tags1[key], list):
-        # We don't care about the order of the values in lists, thus asserting
-        # only if the items are equal.
-        self.assertItemsEqual(tags1[key], tags2[key])
-      else:
-        # Make sure the values are equal.
-        self.assertEqual(tags1[key], tags2[key])
+  def assertTagsEqual(self, actual, expected):
+    """Utility method for checking the return value of the Tags() call.
 
+    It fills out the `expected` arg with the default (empty) values for every
+    tag type, so that the author needs only specify the non-empty values they
+    are interested in testing.
 
-class MockingEventAccumulatorTest(EventAccumulatorTest):
+    Args:
+      actual: The actual Accumulator tags response.
+      expected: The expected tags response (empty fields may be omitted)
+    """
 
-  def setUp(self):
-    super(MockingEventAccumulatorTest, self).setUp()
-    self.stubs = googletest.StubOutForTesting()
-    self.empty = {
+    empty_tags = {
         ea.IMAGES: [],
         ea.AUDIO: [],
         ea.SCALARS: [],
@@ -183,8 +178,28 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
         ea.COMPRESSED_HISTOGRAMS: [],
         ea.GRAPH: False,
         ea.META_GRAPH: False,
-        ea.RUN_METADATA: []
+        ea.RUN_METADATA: [],
+        ea.TENSORS: [],
     }
+
+    # Verifies that there are no unexpected keys in the actual response.
+    # If this line fails, likely you added a new tag type, and need to update
+    # the empty_tags dictionary above.
+    self.assertItemsEqual(actual.keys(), empty_tags.keys())
+
+    for key in actual:
+      expected_value = expected.get(key, empty_tags[key])
+      if isinstance(expected_value, list):
+        self.assertItemsEqual(actual[key], expected_value)
+      else:
+        self.assertEqual(actual[key], expected_value)
+
+
+class MockingEventAccumulatorTest(EventAccumulatorTest):
+
+  def setUp(self):
+    super(MockingEventAccumulatorTest, self).setUp()
+    self.stubs = googletest.StubOutForTesting()
     self._real_constructor = ea.EventAccumulator
     self._real_generator = ea._GeneratorFromPath
 
@@ -203,7 +218,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     gen = _EventGenerator()
     x = ea.EventAccumulator(gen)
     x.Reload()
-    self.assertEqual(x.Tags(), self.empty)
+    self.assertTagsEqual(x.Tags(), {})
 
   def testTags(self):
     gen = _EventGenerator()
@@ -223,16 +238,13 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
         ea.SCALARS: ['s1', 's2'],
         ea.HISTOGRAMS: ['hst1', 'hst2'],
         ea.COMPRESSED_HISTOGRAMS: ['hst1', 'hst2'],
-        ea.GRAPH: False,
-        ea.META_GRAPH: False,
-        ea.RUN_METADATA: []
     })
 
   def testReload(self):
     gen = _EventGenerator()
     acc = ea.EventAccumulator(gen)
     acc.Reload()
-    self.assertEqual(acc.Tags(), self.empty)
+    self.assertTagsEqual(acc.Tags(), {})
     gen.AddScalar('s1')
     gen.AddScalar('s2')
     gen.AddHistogram('hst1')
@@ -248,9 +260,6 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
         ea.SCALARS: ['s1', 's2'],
         ea.HISTOGRAMS: ['hst1', 'hst2'],
         ea.COMPRESSED_HISTOGRAMS: ['hst1', 'hst2'],
-        ea.GRAPH: False,
-        ea.META_GRAPH: False,
-        ea.RUN_METADATA: []
     })
 
   def testScalars(self):
@@ -572,9 +581,6 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
         ea.SCALARS: ['s1', 's3'],
         ea.HISTOGRAMS: ['hst1'],
         ea.COMPRESSED_HISTOGRAMS: ['hst1'],
-        ea.GRAPH: False,
-        ea.META_GRAPH: False,
-        ea.RUN_METADATA: []
     })
 
   def testExpiredDataDiscardedAfterRestartForFileVersionLessThan2(self):
@@ -751,7 +757,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     self.assertEqual(acc.file_version, 2.0)
 
   def testTFSummaryScalar(self):
-    """Verify processing of tf.summary.scalar, which uses TensorSummary op."""
+    """Verify processing of tf.summary.scalar."""
     event_sink = _EventGenerator(zero_out_timestamps=True)
     writer = SummaryToEventTransformer(event_sink)
     with self.test_session() as sess:
@@ -774,14 +780,9 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     ]
 
     self.assertTagsEqual(accumulator.Tags(), {
-        ea.IMAGES: [],
-        ea.AUDIO: [],
         ea.SCALARS: ['scalar1', 'scalar2'],
-        ea.HISTOGRAMS: [],
-        ea.COMPRESSED_HISTOGRAMS: [],
         ea.GRAPH: True,
         ea.META_GRAPH: False,
-        ea.RUN_METADATA: []
     })
 
     self.assertEqual(accumulator.Scalars('scalar1'), seq1)
@@ -821,14 +822,41 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
 
     self.assertTagsEqual(accumulator.Tags(), {
         ea.IMAGES: tags,
-        ea.AUDIO: [],
-        ea.SCALARS: [],
-        ea.HISTOGRAMS: [],
-        ea.COMPRESSED_HISTOGRAMS: [],
         ea.GRAPH: True,
         ea.META_GRAPH: False,
-        ea.RUN_METADATA: []
     })
+
+  def testTFSummaryTensor(self):
+    """Verify processing of tf.summary.tensor."""
+    event_sink = _EventGenerator(zero_out_timestamps=True)
+    writer = SummaryToEventTransformer(event_sink)
+    with self.test_session() as sess:
+      summary_lib.tensor_summary('scalar', constant_op.constant(1.0))
+      summary_lib.tensor_summary('vector', constant_op.constant(
+          [1.0, 2.0, 3.0]))
+      summary_lib.tensor_summary('string',
+                                 constant_op.constant(six.b('foobar')))
+      merged = summary_lib.merge_all()
+      summ = sess.run(merged)
+      writer.add_summary(summ, 0)
+
+    accumulator = ea.EventAccumulator(event_sink)
+    accumulator.Reload()
+
+    self.assertTagsEqual(accumulator.Tags(), {
+        ea.TENSORS: ['scalar', 'vector', 'string'],
+    })
+
+    scalar_proto = accumulator.Tensors('scalar')[0].tensor_proto
+    scalar = tensor_util.MakeNdarray(scalar_proto)
+    vector_proto = accumulator.Tensors('vector')[0].tensor_proto
+    vector = tensor_util.MakeNdarray(vector_proto)
+    string_proto = accumulator.Tensors('string')[0].tensor_proto
+    string = tensor_util.MakeNdarray(string_proto)
+
+    self.assertTrue(np.array_equal(scalar, 1.0))
+    self.assertTrue(np.array_equal(vector, [1.0, 2.0, 3.0]))
+    self.assertTrue(np.array_equal(string, six.b('foobar')))
 
 
 class RealisticEventAccumulatorTest(EventAccumulatorTest):
@@ -876,14 +904,10 @@ class RealisticEventAccumulatorTest(EventAccumulatorTest):
     acc = ea.EventAccumulator(directory)
     acc.Reload()
     self.assertTagsEqual(acc.Tags(), {
-        ea.IMAGES: [],
-        ea.AUDIO: [],
         ea.SCALARS: ['id', 'sq'],
-        ea.HISTOGRAMS: [],
-        ea.COMPRESSED_HISTOGRAMS: [],
         ea.GRAPH: True,
         ea.META_GRAPH: True,
-        ea.RUN_METADATA: ['test run']
+        ea.RUN_METADATA: ['test run'],
     })
     id_events = acc.Scalars('id')
     sq_events = acc.Scalars('sq')
@@ -940,14 +964,8 @@ class RealisticEventAccumulatorTest(EventAccumulatorTest):
     acc = ea.EventAccumulator(directory)
     acc.Reload()
     self.assertTagsEqual(acc.Tags(), {
-        ea.IMAGES: [],
-        ea.AUDIO: [],
-        ea.SCALARS: [],
-        ea.HISTOGRAMS: [],
-        ea.COMPRESSED_HISTOGRAMS: [],
         ea.GRAPH: True,
         ea.META_GRAPH: True,
-        ea.RUN_METADATA: []
     })
     self.assertProtoEquals(graph.as_graph_def(add_shapes=True), acc.Graph())
     self.assertProtoEquals(meta_graph_def, acc.MetaGraph())

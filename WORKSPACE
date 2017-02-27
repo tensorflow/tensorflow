@@ -33,7 +33,7 @@ check_version("0.4.2")
 #android_ndk_repository(
 #    name="androidndk",
 #    path="<PATH_TO_NDK>",
-#    api_level=21)
+#    api_level=14)
 
 # Please add all new TensorFlow dependencies in workspace.bzl.
 tf_workspace()
