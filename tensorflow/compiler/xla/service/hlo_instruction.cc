@@ -236,11 +236,13 @@ HloInstruction::CreateCrossReplicaSum(const Shape& shape,
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateOutfeed(
-    HloInstruction* operand, tensorflow::StringPiece outfeed_config) {
+    const Shape& shape, HloInstruction* operand,
+    tensorflow::StringPiece outfeed_config) {
   std::unique_ptr<HloInstruction> instruction =
       WrapUnique(new HloInstruction(HloOpcode::kOutfeed, ShapeUtil::MakeNil()));
   instruction->AppendOperand(operand);
   instruction->outfeed_config_ = outfeed_config.ToString();
+  instruction->outfeed_shape_ = shape;
   return instruction;
 }
 
@@ -1850,6 +1852,12 @@ Status HloInstruction::AcceptOrdered(
   }
 
   return visitor->FinishVisit(this);
+}
+
+const Shape& HloInstruction::outfeed_shape() const {
+  DCHECK_EQ(opcode_, HloOpcode::kOutfeed);
+  TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(shape_));
+  return outfeed_shape_;
 }
 
 const Shape& HloInstruction::shape() const {

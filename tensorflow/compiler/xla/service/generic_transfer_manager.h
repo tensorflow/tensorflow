@@ -55,6 +55,10 @@ class GenericTransferManager : public TransferManager {
   Status TransferLiteralToInfeed(perftools::gputools::StreamExecutor* executor,
                                  const Literal& literal) override;
 
+  Status TransferLiteralFromOutfeed(
+      perftools::gputools::StreamExecutor* executor, const Shape& literal_shape,
+      Literal* literal) override;
+
   Status ResetDevices(
       tensorflow::gtl::ArraySlice<perftools::gputools::StreamExecutor*>
           executors) override;

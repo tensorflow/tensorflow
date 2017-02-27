@@ -162,6 +162,12 @@ class Service : public ServiceInterface {
       const TransferToInfeedRequest* arg,
       TransferToInfeedResponse* result) override;
 
+  // Transfers data from the Outfeed othe device to the literal provided by the
+  // client.
+  tensorflow::Status TransferFromOutfeed(
+      const TransferFromOutfeedRequest* arg,
+      TransferFromOutfeedResponse* result) override;
+
   // Resets devices, clearing all existing state on all the devices associated
   // with this service (including memory allocated on the devices).
   //

@@ -786,6 +786,7 @@ ComputationDataHandle ComputationBuilder::Infeed(const Shape& shape,
 }
 
 void ComputationBuilder::Outfeed(const ComputationDataHandle& operand,
+                                 const Shape& shape,
                                  const string& outfeed_config) {
   if (!first_error_.ok() || !PrepareComputation().ok()) {
     return;
@@ -794,6 +795,7 @@ void ComputationBuilder::Outfeed(const ComputationDataHandle& operand,
   OutfeedRequest request;
   request.set_outfeed_config(outfeed_config);
   *request.mutable_operand() = operand;
+  *request.mutable_shape() = shape;
   OpRequest op_request;
   *op_request.mutable_outfeed_request() = request;
   *op_request.mutable_computation() = computation_.handle();
