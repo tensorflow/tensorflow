@@ -25,16 +25,6 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-REGISTER_OP("ParallelCheck")
-    .Attr("T: list(type) >= 0")
-    .Input("expected: T")
-    .Input("actual: T")
-    .Output("result: T")
-    .Doc(R"doc(
-Op that compares two sets of inputs for near-identity, and propagates the first.
-Inequality is logged to ERROR log.
-)doc");
-
 // Inputs 2*N tensors, outputs the first N inputs.
 // Logs errors if input tensor i and i + N are not (near) identical
 // in any position.

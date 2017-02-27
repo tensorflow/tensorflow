@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_JIT_XLA_LOCAL_LAUNCH_OP_H_
-#define TENSORFLOW_COMPILER_JIT_XLA_LOCAL_LAUNCH_OP_H_
+#ifndef TENSORFLOW_COMPILER_JIT_KERNELS_XLA_LOCAL_LAUNCH_OP_H_
+#define TENSORFLOW_COMPILER_JIT_KERNELS_XLA_LOCAL_LAUNCH_OP_H_
 
 #include "tensorflow/compiler/jit/xla_compilation_cache.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -52,4 +52,4 @@ class XlaLocalLaunchOp : public OpKernel {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMPILER_JIT_XLA_LOCAL_LAUNCH_OP_H_
+#endif  // TENSORFLOW_COMPILER_JIT_KERNELS_XLA_LOCAL_LAUNCH_OP_H_

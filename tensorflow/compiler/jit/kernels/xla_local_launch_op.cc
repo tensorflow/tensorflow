@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/jit/xla_local_launch_op.h"
+#include "tensorflow/compiler/jit/kernels/xla_local_launch_op.h"
 
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
@@ -37,21 +37,6 @@ limitations under the License.
 namespace gpu = perftools::gputools;
 
 namespace tensorflow {
-
-REGISTER_OP("_XlaLaunch")
-    .Input("constants: Tconstants")
-    .Attr("Tconstants: list(type) >= 0")
-    .Input("args: Targs")
-    .Attr("Targs: list(type) >= 0")
-    .Input("resources: Nresources * resource")
-    .Attr("Nresources: int >= 0")
-    .Output("results: Tresults")
-    .Attr("Tresults: list(type) >= 0")
-    .Attr("function: func")
-    // XLA random-number generation ops are stateful.
-    // TODO(phawkins): create stateful and non-stateful variants of _XlaLaunch.
-    .SetIsStateful()
-    .Doc("XLA Launch Op. For use by the XLA JIT only.");
 
 // Adapter class that wraps a Tensorflow allocator as an XLA allocator.
 class XlaAllocator : public xla::DeviceMemoryAllocator {
@@ -200,12 +185,11 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
       ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr;
 
   XlaCompilationCache* compiler;
-  OP_REQUIRES_OK(ctx,
-                 rm->LookupOrCreate<XlaCompilationCache>(
-                     rm->default_container(), "xla_compiler", &compiler,
-                     [this](XlaCompilationCache** compiler) {
-                       return BuildCompilationCache(compiler);
-                     }));
+  OP_REQUIRES_OK(ctx, rm->LookupOrCreate<XlaCompilationCache>(
+                          rm->default_container(), "xla_compiler", &compiler,
+                          [this](XlaCompilationCache** compiler) {
+                            return BuildCompilationCache(compiler);
+                          }));
   // Hold the reference to the JIT during evaluation. (We could probably
   // free it sooner because the ResourceMgr will retain a reference, but
   // this is more obviously correct.)
@@ -324,10 +308,9 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
       }
       Tensor output_tensor;
       // Looks up the owning Tensor by buffer address.
-      OP_REQUIRES_OK(
-          ctx,
-          xla_allocator.MakeTensorFromBuffer(
-              buffer, ctx->expected_output_dtype(i), shape, &output_tensor));
+      OP_REQUIRES_OK(ctx, xla_allocator.MakeTensorFromBuffer(
+                              buffer, ctx->expected_output_dtype(i), shape,
+                              &output_tensor));
       ctx->set_output(i, output_tensor);
       ++output_num;
     }

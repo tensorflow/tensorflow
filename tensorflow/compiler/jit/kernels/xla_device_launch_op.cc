@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/jit/xla_device_launch_op.h"
+#include "tensorflow/compiler/jit/kernels/xla_device_launch_op.h"
 
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/xla_compilation_cache.h"
@@ -97,12 +97,11 @@ void XlaDeviceLaunchOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES(ctx, rm, errors::Internal("No resource manager."));
 
   XlaCompilationCache* compiler;
-  OP_REQUIRES_OK(ctx,
-                 rm->LookupOrCreate<XlaCompilationCache>(
-                     rm->default_container(), "xla_compiler", &compiler,
-                     [rm](XlaCompilationCache** compiler) {
-                       return BuildCompilationCache(rm, compiler);
-                     }));
+  OP_REQUIRES_OK(ctx, rm->LookupOrCreate<XlaCompilationCache>(
+                          rm->default_container(), "xla_compiler", &compiler,
+                          [rm](XlaCompilationCache** compiler) {
+                            return BuildCompilationCache(rm, compiler);
+                          }));
   // Holds the reference to the JIT during evaluation. (We could probably
   // free it sooner because the ResourceMgr will retain a reference, but
   // this is more obviously correct.)

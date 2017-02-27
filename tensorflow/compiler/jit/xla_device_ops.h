@@ -18,7 +18,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_XLA_DEVICE_OPS_H_
 #define TENSORFLOW_COMPILER_JIT_XLA_DEVICE_OPS_H_
 
-#include "tensorflow/compiler/jit/xla_device_launch_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/kernels/assign_op.h"

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_JIT_XLA_DEVICE_LAUNCH_OP_H_
-#define TENSORFLOW_COMPILER_JIT_XLA_DEVICE_LAUNCH_OP_H_
+#ifndef TENSORFLOW_COMPILER_JIT_KERNELS_XLA_DEVICE_LAUNCH_OP_H_
+#define TENSORFLOW_COMPILER_JIT_KERNELS_XLA_DEVICE_LAUNCH_OP_H_
 
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/op.h"
@@ -53,4 +53,4 @@ class XlaDeviceLaunchOp : public OpKernel {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMPILER_JIT_XLA_DEVICE_LAUNCH_OP_H_
+#endif  // TENSORFLOW_COMPILER_JIT_KERNELS_XLA_DEVICE_LAUNCH_OP_H_
