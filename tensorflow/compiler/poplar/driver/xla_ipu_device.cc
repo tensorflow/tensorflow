@@ -29,13 +29,13 @@ const char* const DEVICE_XLA_IPU = "XLA_IPU";
 const char* const DEVICE_IPU_XLA_JIT = "XLA_IPU_JIT";
 
 constexpr std::array<DataType, 5> kIpuAllTypes =
-        {{DT_INT32, DT_INT64, DT_FLOAT, DT_BOOL}};
+        {{DT_INT32, DT_FLOAT, DT_BOOL}};
 constexpr std::array<DataType, 2> kIpuIntTypes =
-        {{DT_INT32, DT_INT64}};
+        {{DT_INT32}};
 constexpr std::array<DataType, 2> kIpuFloatTypes =
         {{DT_FLOAT}};
 constexpr std::array<DataType, 4> kIpuNumericTypes =
-        {{DT_INT32, DT_INT64, DT_FLOAT}};
+        {{DT_INT32, DT_FLOAT}};
 
 class XlaIpuDeviceFactory : public DeviceFactory {
  public:
@@ -296,7 +296,8 @@ REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("StopGradient").TypeConstraint("T", kIpuAllTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
-        Name("StridedSlice").TypeConstraint("T", kIpuAllTypes));
+        Name("StridedSlice").TypeConstraint("T", kIpuAllTypes)
+                            .TypeConstraint("Index", kIpuIntTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("StridedSliceGrad").TypeConstraint("T", kIpuAllTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
