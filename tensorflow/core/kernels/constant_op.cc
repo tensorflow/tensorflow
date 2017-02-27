@@ -243,9 +243,8 @@ class ZerosLikeOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const Tensor& input = ctx->input(0);
     Tensor* out = nullptr;
-    if (!ctx->forward_input_to_output(0, 0, &out)) {
-      OP_REQUIRES_OK(ctx, ctx->allocate_output(0, input.shape(), &out));
-    }
+    OP_REQUIRES_OK(ctx, ctx->forward_input_or_allocate_output(
+                            {0}, 0, input.shape(), &out));
     functor::SetZeroFunctor<Device, T> f;
     f(ctx->eigen_device<Device>(), out->flat<T>());
   }

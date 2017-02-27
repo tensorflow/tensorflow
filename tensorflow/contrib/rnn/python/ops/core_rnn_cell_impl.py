@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import contextlib
 import math
 
 from tensorflow.python.framework import ops
@@ -40,14 +41,66 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 
 
+_BIAS_VARIABLE_NAME = "biases"
+_WEIGHTS_VARIABLE_NAME = "weights"
+
+
+@contextlib.contextmanager
+def _checked_scope(cell, scope, reuse=None, **kwargs):
+  if reuse is not None:
+    kwargs["reuse"] = reuse
+  with vs.variable_scope(scope, **kwargs) as checking_scope:
+    scope_name = checking_scope.name
+    if hasattr(cell, "_scope"):
+      cell_scope = cell._scope  # pylint: disable=protected-access
+      if cell_scope.name != checking_scope.name:
+        raise ValueError(
+            "Attempt to reuse RNNCell %s with a different variable scope than "
+            "its first use.  First use of cell was with scope '%s', this "
+            "attempt is with scope '%s'.  Please create a new instance of the "
+            "cell if you would like it to use a different set of weights.  "
+            "If before you were using: MultiRNNCell([%s(...)] * num_layers), "
+            "change to: MultiRNNCell([%s(...) for _ in range(num_layers)]).  "
+            "If before you were using the same cell instance as both the "
+            "forward and reverse cell of a bidirectional RNN, simply create "
+            "two instances (one for forward, one for reverse).  "
+            "In May 2017, we will start transitioning this cell's behavior "
+            "to use existing stored weights, if any, when it is called "
+            "with scope=None (which can lead to silent model degradation, so "
+            "this error will remain until then.)"
+            % (cell, cell_scope.name, scope_name, type(cell).__name__,
+               type(cell).__name__))
+    else:
+      weights_found = False
+      try:
+        with vs.variable_scope(checking_scope, reuse=True):
+          vs.get_variable(_WEIGHTS_VARIABLE_NAME)
+        weights_found = True
+      except ValueError:
+        pass
+      if weights_found and reuse is None:
+        raise ValueError(
+            "Attempt to have a second RNNCell use the weights of a variable "
+            "scope that already has weights: '%s' (and RNNCell was not "
+            "constructed with reuse=True).  "
+            "To share the weights of an RNNCell, simply "
+            "reuse it in your second calculation, or create a new one with "
+            "the argument reuse=True." % scope_name)
+
+    # Everything is OK.  Update the cell's scope and yield it.
+    cell._scope = checking_scope  # pylint: disable=protected-access
+    yield checking_scope
+
+
 class BasicRNNCell(RNNCell):
   """The most basic RNN cell."""
 
-  def __init__(self, num_units, input_size=None, activation=tanh):
+  def __init__(self, num_units, input_size=None, activation=tanh, reuse=None):
     if input_size is not None:
       logging.warn("%s: The input_size parameter is deprecated.", self)
     self._num_units = num_units
     self._activation = activation
+    self._reuse = reuse
 
   @property
   def state_size(self):
@@ -59,7 +112,7 @@ class BasicRNNCell(RNNCell):
 
   def __call__(self, inputs, state, scope=None):
     """Most basic RNN: output = new_state = act(W * input + U * state + B)."""
-    with vs.variable_scope(scope or "basic_rnn_cell"):
+    with _checked_scope(self, scope or "basic_rnn_cell", reuse=self._reuse):
       output = self._activation(
           _linear([inputs, state], self._num_units, True))
     return output, output
@@ -68,11 +121,12 @@ class BasicRNNCell(RNNCell):
 class GRUCell(RNNCell):
   """Gated Recurrent Unit cell (cf. http://arxiv.org/abs/1406.1078)."""
 
-  def __init__(self, num_units, input_size=None, activation=tanh):
+  def __init__(self, num_units, input_size=None, activation=tanh, reuse=None):
     if input_size is not None:
       logging.warn("%s: The input_size parameter is deprecated.", self)
     self._num_units = num_units
     self._activation = activation
+    self._reuse = reuse
 
   @property
   def state_size(self):
@@ -84,7 +138,7 @@ class GRUCell(RNNCell):
 
   def __call__(self, inputs, state, scope=None):
     """Gated recurrent unit (GRU) with nunits cells."""
-    with vs.variable_scope(scope or "gru_cell"):
+    with _checked_scope(self, scope or "gru_cell", reuse=self._reuse):
       with vs.variable_scope("gates"):  # Reset gate and update gate.
         # We start with bias of 1.0 to not reset and not update.
         r, u = array_ops.split(
@@ -136,7 +190,7 @@ class BasicLSTMCell(RNNCell):
   """
 
   def __init__(self, num_units, forget_bias=1.0, input_size=None,
-               state_is_tuple=True, activation=tanh):
+               state_is_tuple=True, activation=tanh, reuse=None):
     """Initialize the basic LSTM cell.
 
     Args:
@@ -147,6 +201,9 @@ class BasicLSTMCell(RNNCell):
         the `c_state` and `m_state`.  If False, they are concatenated
         along the column axis.  The latter behavior will soon be deprecated.
       activation: Activation function of the inner states.
+      reuse: (optional) Python boolean describing whether to reuse variables
+        in an existing scope.  If not `True`, and the existing scope already has
+        the given variables, an error is raised.
     """
     if not state_is_tuple:
       logging.warn("%s: Using a concatenated state is slower and will soon be "
@@ -157,6 +214,7 @@ class BasicLSTMCell(RNNCell):
     self._forget_bias = forget_bias
     self._state_is_tuple = state_is_tuple
     self._activation = activation
+    self._reuse = reuse
 
   @property
   def state_size(self):
@@ -169,7 +227,7 @@ class BasicLSTMCell(RNNCell):
 
   def __call__(self, inputs, state, scope=None):
     """Long short-term memory cell (LSTM)."""
-    with vs.variable_scope(scope or "basic_lstm_cell"):
+    with _checked_scope(self, scope or "basic_lstm_cell", reuse=self._reuse):
       # Parameters of gates are concatenated into one multiply for efficiency.
       if self._state_is_tuple:
         c, h = state
@@ -218,7 +276,7 @@ class LSTMCell(RNNCell):
                initializer=None, num_proj=None, proj_clip=None,
                num_unit_shards=None, num_proj_shards=None,
                forget_bias=1.0, state_is_tuple=True,
-               activation=tanh):
+               activation=tanh, reuse=None):
     """Initialize the parameters for an LSTM cell.
 
     Args:
@@ -245,6 +303,9 @@ class LSTMCell(RNNCell):
         the `c_state` and `m_state`.  If False, they are concatenated
         along the column axis.  This latter behavior will soon be deprecated.
       activation: Activation function of the inner states.
+      reuse: (optional) Python boolean describing whether to reuse variables
+        in an existing scope.  If not `True`, and the existing scope already has
+        the given variables, an error is raised.
     """
     if not state_is_tuple:
       logging.warn("%s: Using a concatenated state is slower and will soon be "
@@ -268,6 +329,7 @@ class LSTMCell(RNNCell):
     self._forget_bias = forget_bias
     self._state_is_tuple = state_is_tuple
     self._activation = activation
+    self._reuse = reuse
 
     if num_proj:
       self._state_size = (
@@ -326,8 +388,9 @@ class LSTMCell(RNNCell):
     input_size = inputs.get_shape().with_rank(2)[1]
     if input_size.value is None:
       raise ValueError("Could not infer input size from inputs.get_shape()[-1]")
-    with vs.variable_scope(scope or "lstm_cell",
-                           initializer=self._initializer) as unit_scope:
+    with _checked_scope(self, scope or "lstm_cell",
+                        initializer=self._initializer,
+                        reuse=self._reuse) as unit_scope:
       if self._num_unit_shards is not None:
         unit_scope.set_partitioner(
             partitioned_variables.fixed_size_partitioner(
@@ -391,12 +454,15 @@ class OutputProjectionWrapper(RNNCell):
   if needed or directly feed into a softmax.
   """
 
-  def __init__(self, cell, output_size):
+  def __init__(self, cell, output_size, reuse=None):
     """Create a cell with output projection.
 
     Args:
       cell: an RNNCell, a projection to output_size is added to it.
       output_size: integer, the size of the output after projection.
+      reuse: (optional) Python boolean describing whether to reuse variables
+        in an existing scope.  If not `True`, and the existing scope already has
+        the given variables, an error is raised.
 
     Raises:
       TypeError: if cell is not an RNNCell.
@@ -408,6 +474,7 @@ class OutputProjectionWrapper(RNNCell):
       raise ValueError("Parameter output_size must be > 0: %d." % output_size)
     self._cell = cell
     self._output_size = output_size
+    self._reuse = reuse
 
   @property
   def state_size(self):
@@ -421,7 +488,8 @@ class OutputProjectionWrapper(RNNCell):
     """Run the cell and output projection on inputs, starting from state."""
     output, res_state = self._cell(inputs, state)
     # Default scope: "OutputProjectionWrapper"
-    with vs.variable_scope(scope or "output_projection_wrapper"):
+    with _checked_scope(self, scope or "output_projection_wrapper",
+                        reuse=self._reuse):
       projected = _linear(output, self._output_size, True)
     return projected, res_state
 
@@ -607,7 +675,8 @@ class EmbeddingWrapper(RNNCell):
   feed into your RNN.
   """
 
-  def __init__(self, cell, embedding_classes, embedding_size, initializer=None):
+  def __init__(self, cell, embedding_classes, embedding_size, initializer=None,
+               reuse=None):
     """Create a cell with an added input embedding.
 
     Args:
@@ -616,6 +685,9 @@ class EmbeddingWrapper(RNNCell):
       embedding_size: integer, the size of the vectors we embed into.
       initializer: an initializer to use when creating the embedding;
         if None, the initializer from variable scope or a default one is used.
+      reuse: (optional) Python boolean describing whether to reuse variables
+        in an existing scope.  If not `True`, and the existing scope already has
+        the given variables, an error is raised.
 
     Raises:
       TypeError: if cell is not an RNNCell.
@@ -630,6 +702,7 @@ class EmbeddingWrapper(RNNCell):
     self._embedding_classes = embedding_classes
     self._embedding_size = embedding_size
     self._initializer = initializer
+    self._reuse = reuse
 
   @property
   def state_size(self):
@@ -641,7 +714,7 @@ class EmbeddingWrapper(RNNCell):
 
   def __call__(self, inputs, state, scope=None):
     """Run the cell on embedded inputs."""
-    with vs.variable_scope(scope or "embedding_wrapper"):  # "EmbeddingWrapper"
+    with _checked_scope(self, scope or "embedding_wrapper", reuse=self._reuse):
       with ops.device("/cpu:0"):
         if self._initializer:
           initializer = self._initializer
@@ -817,7 +890,7 @@ def _linear(args, output_size, bias, bias_start=0.0):
   scope = vs.get_variable_scope()
   with vs.variable_scope(scope) as outer_scope:
     weights = vs.get_variable(
-        "weights", [total_arg_size, output_size], dtype=dtype)
+        _WEIGHTS_VARIABLE_NAME, [total_arg_size, output_size], dtype=dtype)
     if len(args) == 1:
       res = math_ops.matmul(args[0], weights)
     else:
@@ -827,7 +900,7 @@ def _linear(args, output_size, bias, bias_start=0.0):
     with vs.variable_scope(outer_scope) as inner_scope:
       inner_scope.set_partitioner(None)
       biases = vs.get_variable(
-          "biases", [output_size],
+          _BIAS_VARIABLE_NAME, [output_size],
           dtype=dtype,
           initializer=init_ops.constant_initializer(bias_start, dtype=dtype))
     return nn_ops.bias_add(res, biases)

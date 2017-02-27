@@ -287,7 +287,8 @@ bazel-bin/tensorflow/tools/graph_transforms/transform_graph \
  fold_old_batch_norms
  quantize_weights
  quantize_nodes
- strip_unused_nodes'
+ strip_unused_nodes
+ sort_by_execution_order'
 ```
 
 This process converts all the operations in the graph that have eight-bit

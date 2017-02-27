@@ -19,6 +19,7 @@ limitations under the License.
 #include <queue>
 
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/remote_fused_graph_execute_info.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/hexagon/graph_transferer.h"
 #include "tensorflow/core/platform/macros.h"
@@ -30,9 +31,13 @@ class GraphTransferUtils {
   static std::priority_queue<std::tuple<float, int, string>>
   GetTopNFloatResults(const float* const data, const string* const labels,
                       const int element_count);
+
   static void DumpTopNFloatResults(const float* const data,
                                    const string* const labels,
                                    const int element_count, const int top_n);
+
+  static RemoteFusedGraphExecuteInfo BuildRemoteFusedGraphExecuteInfo(
+      const GraphTransferInfo& graph_transfer_info);
 
   static GraphDef BuildFusedGraphDef(
       const IGraphTransferOpsDefinitions& ops_definitions,

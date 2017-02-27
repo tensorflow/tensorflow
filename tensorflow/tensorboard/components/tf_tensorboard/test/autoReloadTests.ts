@@ -77,7 +77,7 @@ window.HTMLImports.whenReady(() => {
       testElement.reload = undefined;
       testElement.autoReloadIntervalSecs = 1;
       testElement.autoReloadEnabled = true;
-      assert.throws(function() {
+      chai.assert.throws(function() {
         clock.tick(5000);
       });
     });

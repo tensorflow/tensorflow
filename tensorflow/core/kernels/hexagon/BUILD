@@ -65,6 +65,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:quantized_ops",
         "//tensorflow/core/kernels:reduction_ops",
+        "//tensorflow/core/kernels:remote_fused_graph_execute_utils",
         "//tensorflow/core/kernels:remote_fused_graph_ops",
         "//tensorflow/core/kernels:reshape_op",
         "//tensorflow/core/kernels:softmax_op",
@@ -86,7 +87,6 @@ tf_kernel_library(
         "hexagon_control_wrapper.h",
         "hexagon_ops_definitions.h",
         "i_graph_transfer_ops_definitions.h",
-        "i_soc_control_wrapper.h",
     ],
     deps = [
         "//tensorflow/cc:cc_ops",
@@ -96,6 +96,7 @@ tf_kernel_library(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/kernels:remote_fused_graph_execute_utils",
         "//third_party/eigen3",
     ],
 )
@@ -134,5 +135,30 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/tools/graph_transforms:transform_utils",
+    ],
+)
+
+cc_library(
+    name = "hexagon_remote_fused_graph_executor_build",
+    srcs = [
+        "hexagon_remote_fused_graph_executor_build.cc",
+    ],
+    deps = [
+        ":graph_transferer",
+        "//tensorflow/core/kernels:remote_fused_graph_execute_utils",
+    ],
+    alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "hexagon_remote_fused_graph_executor_build_test",
+    size = "small",
+    srcs = ["hexagon_remote_fused_graph_executor_build_test.cc"],
+    deps = [
+        ":hexagon_remote_fused_graph_executor_build",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:remote_fused_graph_execute_utils",
     ],
 )
