@@ -88,17 +88,18 @@ class EvaluateOnceTest(test.TestCase):
       tf_labels = constant_op.constant(self._labels, dtype=dtypes.float32)
 
       tf_predictions = logistic_classifier(tf_inputs)
-      loss = losses.log_loss(labels=tf_labels, predictions=tf_predictions)
+      loss_op = losses.log_loss(labels=tf_labels, predictions=tf_predictions)
 
       optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=1.0)
-      train_op = optimizer.minimize(loss, training.get_or_create_global_step())
+      train_op = optimizer.minimize(loss_op,
+                                    training.get_or_create_global_step())
 
       with monitored_session.MonitoredTrainingSession(
           checkpoint_dir=checkpoint_dir,
           hooks=[basic_session_run_hooks.StopAtStepHook(num_steps)]) as session:
         loss = None
         while not session.should_stop():
-          loss = session.run(train_op)
+          _, loss = session.run([train_op, loss_op])
 
         if num_steps >= 300:
           assert loss < .015
