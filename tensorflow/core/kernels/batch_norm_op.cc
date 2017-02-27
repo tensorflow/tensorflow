@@ -115,25 +115,19 @@ class BatchNormGradOp : public OpKernel {
                                         out_backprop.shape().DebugString()));
 
     Tensor* dx = nullptr;
-    if (!context->forward_input_to_output(0, 0, &dx)) {
-      OP_REQUIRES_OK(context, context->allocate_output(0, input.shape(), &dx));
-    }
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                {0, 4}, 0, input.shape(), &dx));
     Tensor* dm = nullptr;
-    if (!context->forward_input_to_output(1, 1, &dm)) {
-      OP_REQUIRES_OK(context, context->allocate_output(1, mean.shape(), &dm));
-    }
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                {1}, 1, mean.shape(), &dm));
     Tensor* dv = nullptr;
-    if (!context->forward_input_to_output(2, 2, &dv)) {
-      OP_REQUIRES_OK(context, context->allocate_output(2, var.shape(), &dv));
-    }
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                {2}, 2, var.shape(), &dv));
     Tensor* db = nullptr;
-    if (!context->forward_input_to_output(3, 3, &db)) {
-      OP_REQUIRES_OK(context, context->allocate_output(3, mean.shape(), &db));
-    }
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                {3}, 3, mean.shape(), &db));
     Tensor* dg = nullptr;
-    if (!context->forward_input_to_output(4, 4, &dg)) {
-      OP_REQUIRES_OK(context, context->allocate_output(4, gamma.shape(), &dg));
-    }
+    OP_REQUIRES_OK(context, context->allocate_output(4, gamma.shape(), &dg));
 
     // Scratch buffer of [depth] dimension, aka the 4th dimension of input,
     // which is dim_size(3), for calculating various combinations of

@@ -13,7 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Support for manipulating tensors.  See the @{$python/array_ops} guide.
+"""Support for manipulating tensors.
+
+See the @{$python/array_ops} guide.
 
 @@string_to_number
 @@to_double

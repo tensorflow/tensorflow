@@ -74,6 +74,8 @@ string HloOpcodeString(HloOpcode opcode) {
       return "index";
     case HloOpcode::kInfeed:
       return "infeed";
+    case HloOpcode::kIsFinite:
+      return "is-finite";
     case HloOpcode::kLe:
       return "less-than-or-equal-to";
     case HloOpcode::kLog:

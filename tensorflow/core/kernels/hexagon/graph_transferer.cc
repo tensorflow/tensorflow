@@ -396,6 +396,10 @@ const GraphTransferInfo& GraphTransferer::GetGraphTransferInfo() const {
   return graph_transfer_info_;
 }
 
+GraphTransferInfo& GraphTransferer::GetMutableGraphTransferInfo() {
+  return graph_transfer_info_;
+}
+
 int GraphTransferer::CacheNode(const Node& node) {
   if (node_name_to_id_cache_map_.count(node.name()) > 0) {
     VLOG(1) << "Emplace node to cache failed";

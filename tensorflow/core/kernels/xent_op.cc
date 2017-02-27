@@ -65,10 +65,8 @@ class SoftmaxXentWithLogitsOp : public OpKernel {
                        0, TensorShape({logits_in.dim_size(0)}), &loss_out));
     Tensor* back_out = nullptr;
     // Try to reuse the logits_in buffer for the backprop output.
-    if (!context->forward_input_to_output(0, 1, &back_out)) {
-      OP_REQUIRES_OK(context,
-                     context->allocate_output(1, logits_in.shape(), &back_out));
-    }
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                {0}, 1, logits_in.shape(), &back_out));
     functor::XentFunctor<Device, T> functor;
     functor(context->eigen_device<Device>(), logits_in.matrix<T>(),
             labels_in.matrix<T>(), scratch.matrix<T>(), loss_out->vec<T>(),

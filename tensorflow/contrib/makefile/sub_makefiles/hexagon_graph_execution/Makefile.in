@@ -51,7 +51,9 @@ tensorflow/core/kernels/hexagon/graph_transfer_utils.cc \
 tensorflow/core/kernels/hexagon/graph_transferer.cc \
 tensorflow/core/kernels/hexagon/hexagon_control_wrapper.cc \
 tensorflow/core/kernels/hexagon/hexagon_ops_definitions.cc \
+tensorflow/core/kernels/hexagon/hexagon_remote_fused_graph_executor_build.cc \
 tensorflow/core/kernels/remote_fused_graph_execute_op.cc \
+tensorflow/core/kernels/remote_fused_graph_execute_utils.cc \
 tensorflow/core/ops/remote_fused_graph_ops.cc \
 tensorflow/core/platform/posix/test.cc
 

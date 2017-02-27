@@ -58,10 +58,8 @@ class AdjustHueOpBase : public OpKernel {
                                 channels, " channels."));
 
     Tensor* output = nullptr;
-    if (!context->forward_input_to_output(0, 0, &output)) {
-      OP_REQUIRES_OK(context,
-                     context->allocate_output(0, input.shape(), &output));
-    }
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                {0}, 0, input.shape(), &output));
 
     if (input.NumElements() > 0) {
       const int64 channel_count = input.NumElements() / channels;
