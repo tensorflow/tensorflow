@@ -31,7 +31,6 @@ if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
   import ctypes
   sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
-from tensorflow.contrib import factorization
 from tensorflow.contrib.learn.python import learn
 from tensorflow.contrib.learn.python.learn.estimators import kmeans as kmeans_lib
 from tensorflow.contrib.learn.python.learn.estimators import run_config
@@ -147,8 +146,8 @@ class KMeansTest(KMeansTestBase):
   def _kmeans(self, relative_tolerance=None):
     return kmeans_lib.KMeansClustering(
         self.num_centers,
-        initial_clusters=factorization.KMEANS_PLUS_PLUS_INIT,
-        distance_metric=factorization.SQUARED_EUCLIDEAN_DISTANCE,
+        initial_clusters=kmeans_lib.KMeansClustering.KMEANS_PLUS_PLUS_INIT,
+        distance_metric=kmeans_lib.KMeansClustering.SQUARED_EUCLIDEAN_DISTANCE,
         use_mini_batch=self.use_mini_batch,
         mini_batch_steps_per_iteration=self.mini_batch_steps_per_iteration,
         random_seed=24,
@@ -178,8 +177,8 @@ class KMeansTest(KMeansTestBase):
       return
     kmeans = kmeans_lib.KMeansClustering(
         self.num_centers,
-        initial_clusters=factorization.KMEANS_PLUS_PLUS_INIT,
-        distance_metric=factorization.SQUARED_EUCLIDEAN_DISTANCE,
+        initial_clusters=kmeans_lib.KMeansClustering.KMEANS_PLUS_PLUS_INIT,
+        distance_metric=kmeans_lib.KMeansClustering.SQUARED_EUCLIDEAN_DISTANCE,
         use_mini_batch=self.use_mini_batch,
         mini_batch_steps_per_iteration=self.mini_batch_steps_per_iteration,
         config=learn.RunConfig(tf_random_seed=14),
@@ -233,7 +232,7 @@ class KMeansTest(KMeansTestBase):
           num_clusters=3,
           use_mini_batch=self.use_mini_batch,
           mini_batch_steps_per_iteration=self.mini_batch_steps_per_iteration,
-          initial_clusters=factorization.RANDOM_INIT)
+          initial_clusters=kmeans_lib.KMeansClustering.RANDOM_INIT)
       kmeans.fit(input_fn=lambda: (constant_op.constant(points), None),
                  steps=10)
 
@@ -246,7 +245,7 @@ class KMeansTest(KMeansTestBase):
           num_clusters=3,
           use_mini_batch=self.use_mini_batch,
           mini_batch_steps_per_iteration=self.mini_batch_steps_per_iteration,
-          initial_clusters=factorization.KMEANS_PLUS_PLUS_INIT)
+          initial_clusters=kmeans_lib.KMeansClustering.KMEANS_PLUS_PLUS_INIT)
       kmeans.fit(input_fn=lambda: (constant_op.constant(points), None),
                  steps=10)
 
@@ -302,8 +301,8 @@ class KMeansCosineDistanceTest(KMeansTestBase):
     self.num_centers = 2
     self.kmeans = kmeans_lib.KMeansClustering(
         self.num_centers,
-        initial_clusters=factorization.RANDOM_INIT,
-        distance_metric=factorization.COSINE_DISTANCE,
+        initial_clusters=kmeans_lib.KMeansClustering.RANDOM_INIT,
+        distance_metric=kmeans_lib.KMeansClustering.COSINE_DISTANCE,
         use_mini_batch=self.use_mini_batch,
         mini_batch_steps_per_iteration=self.mini_batch_steps_per_iteration,
         config=self.config(3))
@@ -369,8 +368,8 @@ class KMeansCosineDistanceTest(KMeansTestBase):
 
     kmeans = kmeans_lib.KMeansClustering(
         3,
-        initial_clusters=factorization.KMEANS_PLUS_PLUS_INIT,
-        distance_metric=factorization.COSINE_DISTANCE,
+        initial_clusters=kmeans_lib.KMeansClustering.KMEANS_PLUS_PLUS_INIT,
+        distance_metric=kmeans_lib.KMeansClustering.COSINE_DISTANCE,
         use_mini_batch=self.use_mini_batch,
         mini_batch_steps_per_iteration=self.mini_batch_steps_per_iteration,
         config=self.config(3))
@@ -490,7 +489,7 @@ class TensorflowKMeansBenchmark(KMeansBenchmark):
       print('Starting tensorflow KMeans: %d' % i)
       tf_kmeans = kmeans_lib.KMeansClustering(
           self.num_clusters,
-          initial_clusters=factorization.KMEANS_PLUS_PLUS_INIT,
+          initial_clusters=kmeans_lib.KMeansClustering.KMEANS_PLUS_PLUS_INIT,
           kmeans_plus_plus_num_retries=int(math.log(self.num_clusters) + 2),
           random_seed=i * 42,
           relative_tolerance=1e-6,

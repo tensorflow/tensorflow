@@ -40,7 +40,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.summary import event_multiplexer
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.tensorboard.backend import application
-from tensorflow.tensorboard.plugins.projector import plugin as projector_plugin
+from tensorflow.tensorboard.plugins.projector import projector_plugin
 
 
 class ProjectorAppTest(test.TestCase):

@@ -555,6 +555,9 @@ enum UnaryOperation {
 
   // Elementwise, computes the sign of x.
   UNOP_SIGN = 10;
+
+  // Elementwise, tests if values are finite (not NaN or inf)
+  UNOP_IS_FINITE = 11;
 }
 
 message UnaryOpRequest {
