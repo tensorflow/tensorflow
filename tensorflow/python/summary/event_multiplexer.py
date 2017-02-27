@@ -65,6 +65,7 @@ class EventMultiplexer(object):
   If you would like to watch `/parent/directory/path`, wait for it to be created
     (if necessary) and then periodically pick up new runs, use
     `AutoloadingMultiplexer`
+  @@Tensors
   """
 
   def __init__(self,
@@ -369,6 +370,23 @@ class EventMultiplexer(object):
     """
     accumulator = self._GetAccumulator(run)
     return accumulator.Audio(tag)
+
+  def Tensors(self, run, tag):
+    """Retrieve the tensor events associated with a run and tag.
+
+    Args:
+      run: A string name of the run for which values are retrieved.
+      tag: A string name of the tag for which values are retrieved.
+
+    Raises:
+      KeyError: If the run is not found, or the tag is not available for
+        the given run.
+
+    Returns:
+      An array of `event_accumulator.TensorEvent`s.
+    """
+    accumulator = self._GetAccumulator(run)
+    return accumulator.Tensors(tag)
 
   def Runs(self):
     """Return all the run names in the `EventMultiplexer`.

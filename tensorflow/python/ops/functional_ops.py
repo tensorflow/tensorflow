@@ -13,7 +13,9 @@
 # limitations under the License.
 # =============================================================================
 
-"""Functional operations. See the @{$python/functional_ops} guide.
+"""Functional operations.
+
+See the @{$python/functional_ops} guide.
 
 @@map_fn
 @@foldl

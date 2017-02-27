@@ -17,13 +17,16 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include <numeric>
+
 #include "tensorflow/core/kernels/aggregate_ops.h"
 #include "tensorflow/core/kernels/aggregate_ops_cpu.h"
 
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/register_types.h"
-
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/logging.h"
+
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
@@ -49,13 +52,10 @@ class AddNOp : public OpKernel {
     }
 
     Tensor* output = nullptr;
-    bool reused_input_buffer = false;
-    for (int i = 0; i < num && !reused_input_buffer; ++i) {
-      reused_input_buffer = ctx->forward_input_to_output(i, 0, &output);
-    }
-    if (!reused_input_buffer) {
-      OP_REQUIRES_OK(ctx, ctx->allocate_output(0, input0.shape(), &output));
-    }
+    gtl::InlinedVector<int, 8> input_indices(num);
+    std::iota(input_indices.begin(), input_indices.end(), 0);
+    OP_REQUIRES_OK(ctx, ctx->forward_input_or_allocate_output(
+                            input_indices, 0, input0.shape(), &output));
     auto To = output->flat<T>();
 
 #define I(IDX) ctx->input(IDX).flat<T>()

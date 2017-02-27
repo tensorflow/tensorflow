@@ -35,6 +35,7 @@ class ReadVariableOp : public XlaOpKernel {
   }
 };
 REGISTER_XLA_OP("ReadVariableOp", ReadVariableOp);
+REGISTER_XLA_OP("_UnsafeReadVariable", ReadVariableOp);
 
 class AssignVariableOp : public XlaOpKernel {
  public:
