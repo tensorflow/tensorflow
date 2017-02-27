@@ -543,9 +543,8 @@ static void TF_Run_Helper(
 
   if (handle == nullptr) {
     RunOptions run_options_proto;
-    if (run_options != nullptr &&
-        !run_options_proto.ParseFromArray(run_options->data,
-                                          run_options->length)) {
+    if (run_options != nullptr && !run_options_proto.ParseFromArray(
+                                      run_options->data, run_options->length)) {
       status->status = InvalidArgument("Unparseable RunOptions proto");
       return;
     }
@@ -2111,11 +2110,19 @@ TF_Session* TF_NewSession(TF_Graph* graph, const TF_SessionOptions* opt,
   }
 }
 
-#ifndef __ANDROID__
 TF_Session* TF_LoadSessionFromSavedModel(
     const TF_SessionOptions* session_options, const TF_Buffer* run_options,
     const char* export_dir, const char* const* tags, int tags_len,
     TF_Graph* graph, TF_Buffer* meta_graph_def, TF_Status* status) {
+// TODO(ashankar): Remove the __ANDROID__ guard. This will require ensuring that
+// the tensorflow/cc/saved_model:loader build target is Android friendly.
+#ifdef __ANDROID__
+  status->status = tensorflow::errors::Unimplemented(
+      "Loading a SavedModel is not supported in Android. File a bug at "
+      "https://github.com/tensorflow/tensorflow/issues if this feature is "
+      "important to you");
+  return nullptr;
+#else
   mutex_lock l(graph->mu);
 
   if (!graph->name_map.empty()) {
@@ -2124,9 +2131,8 @@ TF_Session* TF_LoadSessionFromSavedModel(
   }
 
   RunOptions run_options_proto;
-  if (run_options != nullptr &&
-      !run_options_proto.ParseFromArray(run_options->data,
-                                        run_options->length)) {
+  if (run_options != nullptr && !run_options_proto.ParseFromArray(
+                                    run_options->data, run_options->length)) {
     status->status = InvalidArgument("Unparseable RunOptions proto");
     return nullptr;
   }
@@ -2164,8 +2170,8 @@ TF_Session* TF_LoadSessionFromSavedModel(
   graph->num_sessions += 1;
   session->last_num_graph_nodes = graph->graph.num_node_ids();
   return session;
-}
 #endif  // __ANDROID__
+}
 
 void TF_CloseSession(TF_Session* s, TF_Status* status) {
   status->status = s->session->Close();

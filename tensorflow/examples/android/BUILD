@@ -43,7 +43,9 @@ cc_binary(
         "manual",
         "notap",
     ],
-    deps = [LINKER_SCRIPT],
+    deps = [
+        LINKER_SCRIPT,
+    ],
 )
 
 cc_library(
