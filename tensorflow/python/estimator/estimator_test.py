@@ -23,8 +23,11 @@ from tensorflow.python.estimator import estimator
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator import run_config
 from tensorflow.python.framework import constant_op
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import test
+from tensorflow.python.training import saver
+from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training
 
 
@@ -152,6 +155,30 @@ class EstimatorFitTest(test.TestCase):
     self.assertEqual(
         5, estimator._load_global_step_from_checkpoint_dir(est.model_dir))
 
+  def test_steps0_raises_error(self):
+    est = estimator.Estimator(
+        model_fn=_model_fn_with_eval_metric_ops)
+    with self.assertRaisesRegexp(ValueError, 'Must specify steps >= 0'):
+      est.fit(dummy_input_fn, steps=0)
+
+  def test_steps_negative_raises_error(self):
+    est = estimator.Estimator(
+        model_fn=_model_fn_with_eval_metric_ops)
+    with self.assertRaisesRegexp(ValueError, 'Must specify steps >= 0'):
+      est.fit(dummy_input_fn, steps=-1)
+
+  def test_max_steps0_raises_error(self):
+    est = estimator.Estimator(
+        model_fn=_model_fn_with_eval_metric_ops)
+    with self.assertRaisesRegexp(ValueError, 'Must specify max_steps >= 0'):
+      est.fit(dummy_input_fn, max_steps=0)
+
+  def test_max_steps_negative_raises_error(self):
+    est = estimator.Estimator(
+        model_fn=_model_fn_with_eval_metric_ops)
+    with self.assertRaisesRegexp(ValueError, 'Must specify max_steps >= 0'):
+      est.fit(dummy_input_fn, max_steps=-1)
+
   def test_scaffold_is_used(self):
     self.is_init_fn_called = False
 
@@ -232,6 +259,128 @@ class EstimatorFitTest(test.TestCase):
       est.fit(dummy_input_fn, steps=1)
       self.assertFalse(chief_hook.begin.called)
       self.assertTrue(hook.begin.called)
+
+
+def _model_fn_with_eval_metric_ops(features, labels, mode, params):
+  _, _ = features, labels
+  metric_name = params.get('metric_name') or 'metric'
+  metric_value = params.get('metric_value') or 2.
+  global_step = training.get_global_step()
+  loss = constant_op.constant(1.)
+  metric_update_op = loss.op
+  metric_tensor = control_flow_ops.with_dependencies(
+      [metric_update_op], constant_op.constant(metric_value))
+  return model_fn_lib.EstimatorSpec(
+      mode,
+      loss=loss,
+      predictions={'predictions': constant_op.constant(1.)},
+      train_op=state_ops.assign_add(global_step, 1),
+      eval_metric_ops={metric_name: (metric_tensor, metric_update_op)})
+
+
+class EstimatorEvaluateTest(test.TestCase):
+
+  def test_model_fn_must_return_estimator_spec(self):
+    def _model_fn(features, labels, mode):
+      _, _ = features, labels
+      if mode == model_fn_lib.ModeKeys.EVAL:
+        return 'NotGoodNotGood'
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          loss=constant_op.constant(1.),
+          train_op=control_flow_ops.no_op())
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.fit(dummy_input_fn, steps=1)
+    with self.assertRaisesRegexp(
+        ValueError, 'model_fn should return an EstimatorSpec'):
+      est.evaluate(dummy_input_fn, steps=1)
+
+  def test_no_trained_model(self):
+    est = estimator.Estimator(model_fn=_model_fn_with_eval_metric_ops)
+    with self.assertRaisesRegexp(
+        ValueError, 'Could not find trained model in model_dir'):
+      est.evaluate(dummy_input_fn, steps=1)
+
+  def test_scores(self):
+    est = estimator.Estimator(
+        model_fn=_model_fn_with_eval_metric_ops,
+        params={
+            'metric_name': 'metric',
+            'metric_value': 2.})
+    est.fit(dummy_input_fn, steps=5)
+    scores = est.evaluate(dummy_input_fn, steps=1)
+    self.assertDictEqual(
+        {'metric': 2.,
+         'global_step': 5},
+        scores)
+
+  def test_steps0_raises_error(self):
+    est = estimator.Estimator(
+        model_fn=_model_fn_with_eval_metric_ops)
+    est.fit(dummy_input_fn, steps=5)
+    with self.assertRaisesRegexp(ValueError, 'Must specify steps >= 0'):
+      est.evaluate(dummy_input_fn, steps=0)
+
+  def test_steps_negative_raises_error(self):
+    est = estimator.Estimator(
+        model_fn=_model_fn_with_eval_metric_ops)
+    est.fit(dummy_input_fn, steps=5)
+    with self.assertRaisesRegexp(ValueError, 'Must specify steps >= 0'):
+      est.evaluate(dummy_input_fn, steps=-1)
+
+  def test_global_step_metric_raises_error(self):
+    est = estimator.Estimator(
+        model_fn=_model_fn_with_eval_metric_ops,
+        params={
+            'metric_name': 'global_step',
+            'metric_value': 2.})
+    est.fit(dummy_input_fn, steps=5)
+    with self.assertRaisesRegexp(
+        ValueError, 'Metric with name `global_step` is not allowed'):
+      est.evaluate(dummy_input_fn, steps=1)
+
+  def test_hooks_are_used(self):
+    class _StepCounterHook(session_run_hook.SessionRunHook):
+      """Hooks that counts the number of times it is called."""
+
+      def __init__(self):
+        self._steps = 0
+
+      def before_run(self, run_context):
+        del run_context
+        self._steps += 1
+
+      @property
+      def steps(self):
+        return self._steps
+
+    step_counter_hook = _StepCounterHook()
+
+    est = estimator.Estimator(model_fn=_model_fn_with_eval_metric_ops)
+    est.fit(dummy_input_fn, steps=1)
+    est.evaluate(dummy_input_fn, steps=5, hooks=[step_counter_hook])
+    self.assertEqual(5, step_counter_hook.steps)
+
+  def test_evaluate_from_checkpoint(self):
+    params = {
+        'metric_name': 'metric',
+        'metric_value': 2.}
+    est1 = estimator.Estimator(
+        model_fn=_model_fn_with_eval_metric_ops,
+        params=params)
+    est1.fit(dummy_input_fn, steps=5)
+    est2 = estimator.Estimator(
+        model_fn=_model_fn_with_eval_metric_ops,
+        params=params)
+    scores = est2.evaluate(
+        dummy_input_fn,
+        steps=1,
+        checkpoint_path=saver.latest_checkpoint(est1.model_dir))
+    self.assertDictEqual(
+        {'metric': 2.,
+         'global_step': 5},
+        scores)
 
 
 if __name__ == '__main__':

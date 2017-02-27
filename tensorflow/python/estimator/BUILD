@@ -108,6 +108,12 @@ py_library(
     deps = [
         ":model_fn",
         ":run_config",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:summary",
         "//tensorflow/python:training",
     ],
 )
@@ -118,8 +124,14 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":estimator",
+        ":model_fn",
         ":run_config",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:session",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:training",
     ],
 )
 
