@@ -338,7 +338,8 @@ class EstimatorSpecEvalTest(test.TestCase):
       loss = constant_op.constant(1.)
       with self.assertRaisesRegexp(
           TypeError,
-          r'Values of eval_metric_ops must be \(update_op, value\) tuples'):
+          (r'Values of eval_metric_ops must be \(metric_tensor, update_op\) '
+           'tuples')):
         model_fn.EstimatorSpec(
             mode=model_fn.ModeKeys.EVAL,
             predictions={'loss': loss},

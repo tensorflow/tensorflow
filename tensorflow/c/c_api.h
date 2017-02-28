@@ -932,10 +932,6 @@ typedef struct TF_Session TF_Session;
 extern TF_Session* TF_NewSession(TF_Graph* graph, const TF_SessionOptions* opts,
                                  TF_Status* status);
 
-#ifndef __ANDROID__
-// TODO(ashankar): Remove the __ANDROID__ guard. This will require ensuring that
-// the tensorflow/cc/saved_model:loader build target is Android friendly.
-
 // This function creates a new TF_Session (which is created on success) using
 // `session_options`, and then initializes state (restoring tensors and other
 // assets) using `run_options`.
@@ -954,7 +950,6 @@ TF_Session* TF_LoadSessionFromSavedModel(
     const TF_SessionOptions* session_options, const TF_Buffer* run_options,
     const char* export_dir, const char* const* tags, int tags_len,
     TF_Graph* graph, TF_Buffer* meta_graph_def, TF_Status* status);
-#endif  // __ANDROID__
 
 // Close a session.
 //

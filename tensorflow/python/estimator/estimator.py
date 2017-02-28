@@ -21,14 +21,23 @@ from __future__ import print_function
 
 import copy
 import inspect
+import os
 import tempfile
 
+import numpy as np
+import six
+
+from tensorflow.core.framework import summary_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator import run_config
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.summary.writer import writer_cache
+from tensorflow.python.training import evaluation
+from tensorflow.python.training import saver
 from tensorflow.python.training import training
 
 _VALID_MODEL_FN_ARGS = set(
@@ -126,7 +135,7 @@ class Estimator(object):
       raise ValueError('model_fn must be provided to Estimator.')
     _verify_model_fn_args(model_fn, params)
     self._model_fn = model_fn
-    self._params = params
+    self._params = params or {}
 
   @property
   def model_dir(self):
@@ -172,9 +181,15 @@ class Estimator(object):
 
     Raises:
       ValueError: If both `steps` and `max_steps` are not `None`.
+      ValueError: If either `steps` or `max_steps` is <= 0.
     """
     if (steps is not None) and (max_steps is not None):
       raise ValueError('Can not provide both steps and max_steps.')
+    if steps is not None and steps <= 0:
+      raise ValueError('Must specify steps >= 0, given: {}'.format(steps))
+    if max_steps is not None and max_steps <= 0:
+      raise ValueError(
+          'Must specify max_steps >= 0, given: {}'.format(max_steps))
 
     if max_steps is not None:
       start_step = _load_global_step_from_checkpoint_dir(self._model_dir)
@@ -189,6 +204,56 @@ class Estimator(object):
     loss = self._train_model(input_fn=input_fn, hooks=hooks)
     logging.info('Loss for final step: %s.', loss)
     return self
+
+  def evaluate(self, input_fn, steps=None, hooks=None, checkpoint_path=None,
+               name=None):
+    """Evaluates the model given evaluation data input_fn.
+
+    For each step, calls `input_fn`, which returns one batch of data.
+    Evaluates until:
+    - `steps` batches are processed, or
+    - `input_fn` raises an end-of-input exception (`OutOfRangeError` or
+    `StopIteration`).
+
+    Args:
+      input_fn: Input function returning a tuple of:
+          features - Dictionary of string feature name to `Tensor` or
+            `SparseTensor`.
+          labels - `Tensor` or dictionary of `Tensor` with labels.
+      steps: Number of steps for which to evaluate model. If `None`, evaluates
+        until `input_fn` raises an end-of-input exception.
+      hooks: List of `SessionRunHook` subclass instances. Used for callbacks
+        inside the evaluation call.
+      checkpoint_path: Path of a specific checkpoint to evaluate. If `None`, the
+        latest checkpoint in `model_dir` is used.
+      name: Name of the evaluation if user needs to run multiple evaluations on
+        different data sets, such as on training data vs test data. Metrics for
+        different evaluations are saved in separate folders, and appear
+        separately in tensorboard.
+
+    Returns:
+      A dict containing the evaluation metrics specified in `model_fn` keyed by
+      name, as well as an entry `global_step` which contains the value of the
+      global step for which this evaluation was performed.
+
+    Raises:
+      ValueError: If `steps <= 0`.
+      ValueError: If no model has been trained, namely `model_dir`, or the
+        given `checkpoint_path` is empty.
+    """
+    # We need to copy the hook array as we modify it, thus [:].
+    hooks = hooks[:] if hooks else []
+    if steps is not None:
+      if steps <= 0:
+        raise ValueError('Must specify steps >= 0, given: {}'.format(steps))
+      hooks.append(evaluation._StopAfterNEvalsHook(  # pylint: disable=protected-access
+          num_evals=steps))
+
+    return self._evaluate_model(
+        input_fn=input_fn,
+        hooks=hooks,
+        checkpoint_path=checkpoint_path,
+        name=name)
 
   def _call_model_fn(self, features, labels, mode):
     """Calls model function.
@@ -281,6 +346,55 @@ class Estimator(object):
           _, loss = mon_sess.run([estimator_spec.train_op, estimator_spec.loss])
       return loss
 
+  def _evaluate_model(self,
+                      input_fn,
+                      hooks=None,
+                      checkpoint_path=None,
+                      name=''):
+    """Evaluates the model using the training.evaluation library."""
+    # Check that model has been trained (if nothing has been set explicitly).
+    if not checkpoint_path:
+      latest_path = saver.latest_checkpoint(self._model_dir)
+      if not latest_path:
+        raise ValueError('Could not find trained model in model_dir: {}.'.
+                         format(self._model_dir))
+      checkpoint_path = latest_path
+
+    # Setup output directory.
+    eval_dir = os.path.join(self._model_dir, 'eval' if not name else
+                            'eval_' + name)
+
+    with ops.Graph().as_default() as g:
+      random_seed.set_random_seed(self._config.tf_random_seed)
+      global_step_tensor = training.create_global_step(g)
+      features, labels = input_fn()
+      estimator_spec = self._call_model_fn(
+          features, labels, model_fn_lib.ModeKeys.EVAL)
+
+      update_op, eval_dict = _extract_metric_update_ops(
+          estimator_spec.eval_metric_ops)
+
+      if ops.GraphKeys.GLOBAL_STEP in six.iterkeys(eval_dict):
+        raise ValueError(
+            'Metric with name `global_step` is not allowed, because Estimator '
+            'already defines a default metric with the same name.')
+      eval_dict[ops.GraphKeys.GLOBAL_STEP] = global_step_tensor
+
+      eval_results = evaluation._evaluate_once(  # pylint: disable=protected-access
+          checkpoint_path=checkpoint_path,
+          master=self._config.evaluation_master,
+          eval_ops=update_op,
+          final_ops=eval_dict,
+          hooks=hooks,
+          config=config_pb2.ConfigProto(allow_soft_placement=True))
+
+      _write_dict_to_summary(
+          output_dir=eval_dir,
+          dictionary=eval_results,
+          current_global_step=eval_results[ops.GraphKeys.GLOBAL_STEP])
+
+    return eval_results
+
 
 def _get_replica_device_setter(config):
   """Creates a replica device setter if required as a default device_fn.
@@ -357,3 +471,62 @@ def _load_global_step_from_checkpoint_dir(checkpoint_dir):
     return checkpoint_reader.get_tensor(ops.GraphKeys.GLOBAL_STEP)
   except:  # pylint: disable=bare-except
     return 0
+
+
+def _extract_metric_update_ops(eval_dict):
+  """Separate update operations from metric value operations."""
+  update_ops = []
+  value_ops = {}
+  # Sort metrics lexicographically so graph is identical every time.
+  for name, metric_ops in sorted(six.iteritems(eval_dict)):
+    value_ops[name] = metric_ops[0]
+    update_ops.append(metric_ops[1])
+
+  if update_ops:
+    update_op = control_flow_ops.group(*update_ops)
+  else:
+    update_op = None
+
+  return update_op, value_ops
+
+
+def _dict_to_str(dictionary):
+  """Get a `str` representation of a `dict`.
+
+  Args:
+    dictionary: The `dict` to be represented as `str`.
+
+  Returns:
+    A `str` representing the `dictionary`.
+  """
+  return ', '.join('%s = %s' % (k, v)
+                   for k, v in sorted(six.iteritems(dictionary)))
+
+
+def _write_dict_to_summary(output_dir,
+                           dictionary,
+                           current_global_step):
+  """Writes a `dict` into summary file in given output directory.
+
+  Args:
+    output_dir: `str`, directory to write the summary file in.
+    dictionary: the `dict` to be written to summary file.
+    current_global_step: `int`, the current global step.
+  """
+  logging.info('Saving dict for global step %d: %s', current_global_step,
+               _dict_to_str(dictionary))
+  summary_writer = writer_cache.FileWriterCache.get(output_dir)
+  summary_proto = summary_pb2.Summary()
+  for key in dictionary:
+    if dictionary[key] is None:
+      continue
+    value = summary_proto.value.add()
+    value.tag = key
+    if (isinstance(dictionary[key], np.float32) or
+        isinstance(dictionary[key], float)):
+      value.simple_value = float(dictionary[key])
+    else:
+      logging.warn('Skipping summary for %s, must be a float or np.float32.',
+                   key)
+  summary_writer.add_summary(summary_proto, current_global_step)
+  summary_writer.flush()
