@@ -303,10 +303,12 @@ class RandomGammaOp : public OpKernel {
                                                       &samples_shape));
     }
     const int64 num_samples = samples_shape.num_elements();
-    OP_REQUIRES(ctx, num_samples > 0,
-                errors::InvalidArgument(
-                    "Input shape should have non-zero element count, got: ",
-                    num_samples));
+    if (num_samples == 0) {
+      Tensor* samples_t = nullptr;
+      OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({0}),
+                                               &samples_t));
+      return;
+    }
 
     samples_shape.AppendShape(alpha_t.shape());
     // Allocate output samples.
