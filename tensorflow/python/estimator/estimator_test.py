@@ -25,6 +25,7 @@ from tensorflow.python.estimator import run_config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import saver
 from tensorflow.python.training import session_run_hook
@@ -389,6 +390,26 @@ class EstimatorEvaluateTest(test.TestCase):
         {'metric': 2.,
          'global_step': 5},
         scores)
+
+  def test_scaffold_is_used(self):
+
+    def _model_fn_scaffold(features, labels, mode):
+      _, _ = features, labels
+      variables.Variable(1., 'weight')
+      real_saver = saver.Saver()
+      self.mock_saver = test.mock.Mock(
+          wraps=real_saver, saver_def=real_saver.saver_def)
+      return model_fn_lib.EstimatorSpec(
+          mode=mode,
+          predictions=constant_op.constant([[1.]]),
+          loss=constant_op.constant(0.),
+          train_op=constant_op.constant(0.),
+          scaffold=training.Scaffold(saver=self.mock_saver))
+
+    est = estimator.Estimator(model_fn=_model_fn_scaffold)
+    est.fit(dummy_input_fn, steps=1)
+    est.evaluate(dummy_input_fn, steps=1)
+    self.assertTrue(self.mock_saver.restore.called)
 
 
 if __name__ == '__main__':
