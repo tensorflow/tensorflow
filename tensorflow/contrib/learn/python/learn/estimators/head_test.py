@@ -438,6 +438,45 @@ class MultiLabelHeadTest(test.TestCase):
       _assert_metrics(self, expected_loss,
                       self._expected_eval_metrics(expected_loss), model_fn_ops)
 
+  def testMultiClassEvalModeWithLargeLogits(self):
+    n_classes = 3
+    head = head_lib._multi_label_head(
+        n_classes=n_classes, metric_class_ids=range(n_classes))
+    logits = ((2., 0., -1),)
+    with ops.Graph().as_default(), session.Session():
+      # logloss: z:label, x:logit
+      # z * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
+      model_fn_ops = head.create_model_fn_ops(
+          {}, model_fn.ModeKeys.EVAL, self._labels, _noop_train_op,
+          logits=logits)
+      self._assert_output_alternatives(model_fn_ops)
+      self.assertIsNone(model_fn_ops.train_op)
+      _assert_no_variables(self)
+      _assert_summary_tags(self, ["loss"])
+      expected_loss = 1.377779
+      expected_eval_metrics = {
+          "accuracy": 1. / 3,
+          "auc": 9.99999e-07,
+          "loss": expected_loss,
+          "auc/class0": 1.,
+          "auc/class1": 1.,
+          "auc/class2": 0.,
+          "labels/actual_label_mean/class0": 0. / 1,
+          "labels/actual_label_mean/class1": 0. / 1,
+          "labels/actual_label_mean/class2": 1. / 1,
+          "labels/logits_mean/class0": logits[0][0],
+          "labels/logits_mean/class1": logits[0][1],
+          "labels/logits_mean/class2": logits[0][2],
+          "labels/prediction_mean/class0": 1,
+          "labels/prediction_mean/class1": 0,
+          "labels/prediction_mean/class2": 0,
+          "labels/probability_mean/class0": _sigmoid(logits[0][0]),
+          "labels/probability_mean/class1": _sigmoid(logits[0][1]),
+          "labels/probability_mean/class2": _sigmoid(logits[0][2]),
+      }
+      _assert_metrics(self, expected_loss,
+                      expected_eval_metrics, model_fn_ops)
+
   def testMultiLabelWithLabelName(self):
     n_classes = 3
     label_name = "my_label"
@@ -905,6 +944,45 @@ class MultiClassHeadTest(test.TestCase):
       expected_loss = 1.5514446
       _assert_metrics(self, expected_loss,
                       self._expected_eval_metrics(expected_loss), model_fn_ops)
+
+  def testMultiClassEvalModeWithLargeLogits(self):
+    n_classes = 3
+    head = head_lib._multi_class_head(
+        n_classes=n_classes, metric_class_ids=range(n_classes))
+    logits = ((2., 0., -1),)
+    with ops.Graph().as_default(), session.Session():
+      # logloss: z:label, x:logit
+      # z * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
+      model_fn_ops = head.create_model_fn_ops(
+          {}, model_fn.ModeKeys.EVAL, self._labels, _noop_train_op,
+          logits=logits)
+      self._assert_output_alternatives(model_fn_ops)
+      self.assertIsNone(model_fn_ops.train_op)
+      _assert_no_variables(self)
+      _assert_summary_tags(self, ["loss"])
+      expected_loss = 3.1698461
+      expected_eval_metrics = {
+          "accuracy": 0.,
+          "auc": 9.99999e-07,
+          "loss": expected_loss,
+          "auc/class0": 1.,
+          "auc/class1": 1.,
+          "auc/class2": 0.,
+          "labels/actual_label_mean/class0": 0. / 1,
+          "labels/actual_label_mean/class1": 0. / 1,
+          "labels/actual_label_mean/class2": 1. / 1,
+          "labels/logits_mean/class0": logits[0][0],
+          "labels/logits_mean/class1": logits[0][1],
+          "labels/logits_mean/class2": logits[0][2],
+          "labels/prediction_mean/class0": 1,
+          "labels/prediction_mean/class1": 0,
+          "labels/prediction_mean/class2": 0,
+          "labels/probability_mean/class0": 0.843795,  # softmax
+          "labels/probability_mean/class1": 0.114195,  # softmax
+          "labels/probability_mean/class2": 0.0420101,  # softmax
+      }
+      _assert_metrics(self, expected_loss,
+                      expected_eval_metrics, model_fn_ops)
 
   def testMultiClassWithWeight(self):
     n_classes = 3

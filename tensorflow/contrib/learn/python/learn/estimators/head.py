@@ -952,7 +952,7 @@ class _MultiClassHead(_SingleHead):
             self.head_name, mkey.CLASS_LOGITS_MEAN % class_id)] = (
                 _predictions_streaming_mean(logits, weights, class_id))
         metrics[_summary_key(self.head_name, mkey.CLASS_AUC % class_id)] = (
-            _class_streaming_auc(logits, labels, weights, class_id,
+            _class_streaming_auc(probabilities, labels, weights, class_id,
                                  self.logits_dimension))
 
     return metrics
@@ -1201,7 +1201,7 @@ class _MultiLabelHead(_SingleHead):
             self.head_name, mkey.CLASS_LOGITS_MEAN % class_id)] = (
                 _predictions_streaming_mean(logits, weights, class_id))
         metrics[_summary_key(self.head_name, mkey.CLASS_AUC % class_id)] = (
-            _streaming_auc(logits, labels, weights, class_id))
+            _streaming_auc(probabilities, labels, weights, class_id))
 
     return metrics
 
