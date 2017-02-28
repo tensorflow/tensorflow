@@ -403,7 +403,9 @@ tf_cuda_library(
             "util/memmapped_file_system.h",
             "util/memmapped_file_system_writer.h",
         ],
-    }),
+    }) + if_mkl([
+        "util/mkl_util.h",
+    ]),
     visibility = ["//visibility:public"],
     deps = [":framework_internal"],
 )
@@ -690,6 +692,8 @@ cc_library(
         "//tensorflow/core/kernels:quantized_ops",
     ]) + if_mkl([
         "//tensorflow/core/kernels:mkl_ops",
+        "//tensorflow/core/kernels:mkl_conv_op",
+        "//tensorflow/core/kernels:mkl_tfconv_op",
     ]),
 )
 
@@ -1941,7 +1945,12 @@ if_mkl(
     tf_cc_test_mkl(
         name = "mkl_related_tests",
         size = "small",
-        srcs = ["graph/mkl_optimizer_merge_test.cc"],
+        srcs = [
+            "common_runtime/mkl_layer_registry_test.cc",
+            "graph/mkl_layout_pass_test.cc",
+            "graph/mkl_optimizer_merge_test.cc",
+            "graph/mkl_tfconversion_pass_test.cc",
+        ],
         linkstatic = tf_kernel_tests_linkstatic(),
         deps = [
             ":core",
