@@ -948,8 +948,10 @@ def _compute_sampled_logits(weights,
           range_max=num_classes)
     # NOTE: pylint cannot tell that 'sampled_values' is a sequence
     # pylint: disable=unpacking-non-sequence
-    sampled, true_expected_count, sampled_expected_count = sampled_values
+    sampled, true_expected_count, sampled_expected_count = (
+        array_ops.stop_gradient(s) for s in sampled_values)
     # pylint: enable=unpacking-non-sequence
+    sampled = math_ops.cast(sampled, dtypes.int64)
 
     # labels_flat is a [batch_size * num_true] tensor
     # sampled is a [num_sampled] int tensor
