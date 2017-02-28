@@ -138,9 +138,13 @@ class ScatterUpdateOp : public OpKernel {
                               .TypeConstraint<index_type>("Tindices"), \
                           ScatterUpdateOp<dev##Device, type, index_type, op>)
 
+// There can be no space in front of "dev" here as that space would become part
+// of the kernel name due to a Clang bug.
+// clang-format off
 #define REGISTER_SCATTER_KERNEL(type, dev, name, op)         \
-  REGISTER_SCATTER_KERNEL_INDEX(type, int32, dev, name, op); \
-  REGISTER_SCATTER_KERNEL_INDEX(type, int64, dev, name, op);
+  REGISTER_SCATTER_KERNEL_INDEX(type, int32,dev, name, op);  \
+  REGISTER_SCATTER_KERNEL_INDEX(type, int64,dev, name, op);
+// clang-format on
 
 #define REGISTER_SCATTER_ARITHEMTIC(type, dev)                                 \
   REGISTER_SCATTER_KERNEL(type, dev, "ScatterAdd", scatter_op::UpdateOp::ADD); \
