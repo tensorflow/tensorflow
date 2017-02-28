@@ -296,8 +296,12 @@ the target word using the noise-contrastive training objective.
 ```python
 # Compute the NCE loss, using a sample of the negative labels each time.
 loss = tf.reduce_mean(
-  tf.nn.nce_loss(nce_weights, nce_biases, embed, train_labels,
-                 num_sampled, vocabulary_size))
+  tf.nn.nce_loss(weights=nce_weights,
+                 biases=nce_biases,
+                 labels=train_labels,
+                 inputs=embed,
+                 num_sampled=num_sampled,
+                 num_classes=vocabulary_size))
 ```
 
 Now that we have a loss node, we need to add the nodes required to compute
@@ -318,7 +322,7 @@ in a loop.
 
 ```python
 for inputs, labels in generate_batch(...):
-  feed_dict = {training_inputs: inputs, training_labels: labels}
+  feed_dict = {train_inputs: inputs, train_labels: labels}
   _, cur_loss = session.run([optimizer, loss], feed_dict=feed_dict)
 ```
 
