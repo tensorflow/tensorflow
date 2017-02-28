@@ -418,6 +418,7 @@ class _SparseColumn(_FeatureColumn,
         ignore_value = ""
       else:
         ignore_value = -1
+      input_tensor = _reshape_real_valued_tensor(input_tensor, 2, self.name)
       input_tensor = contrib_sparse_ops.dense_to_sparse_tensor(
           input_tensor, ignore_value=ignore_value)
 
