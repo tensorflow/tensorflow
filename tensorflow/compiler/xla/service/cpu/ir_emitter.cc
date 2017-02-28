@@ -506,7 +506,7 @@ Status IrEmitter::HandleReduceWindow(HloInstruction* reduce_window,
 
         llvm_ir::IrArray::Index input_index(index.size());
         llvm::Value* in_bounds_condition = nullptr;
-        for (auto i = 0; i < index.size(); ++i) {
+        for (size_t i = 0; i < index.size(); ++i) {
           llvm::Value* strided_index = ir_builder_.CreateNSWMul(
               index[i], ir_builder_.getInt64(window.dimensions(i).stride()));
           input_index[i] = ir_builder_.CreateNSWSub(
