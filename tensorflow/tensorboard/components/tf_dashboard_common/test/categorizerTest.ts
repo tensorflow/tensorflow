@@ -64,22 +64,6 @@ module Categorizer {
       });
     });
 
-    describe('legacyUnderscoreCategorizer', () => {
-      it('splits by shorter of first _ or /', () => {
-        let tags = [
-          'l0_bar/foo', 'l0_bar/baz', 'l0_foo/wob', 'l1_zoink/bla',
-          'l1_wibble/woz', 'l1/foo_woink', 'l2/wozzle_wizzle'
-        ];
-        let actual = legacyUnderscoreCategorizer(tags);
-        let expected = [
-          {name: 'l0', tags: ['l0_bar/baz', 'l0_bar/foo', 'l0_foo/wob']},
-          {name: 'l1', tags: ['l1/foo_woink', 'l1_wibble/woz', 'l1_zoink/bla']},
-          {name: 'l2', tags: ['l2/wozzle_wizzle']},
-        ];
-        assert.deepEqual(actual, expected);
-      });
-    });
-
     describe('customCategorizer', () => {
       function noFallbackCategorizer(tags: string[]): Category[] {
         return [];
