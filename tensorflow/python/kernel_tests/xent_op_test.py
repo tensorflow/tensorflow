@@ -195,9 +195,9 @@ class XentTest(test.TestCase):
                                                    name="xent")
       loss = math_ops.reduce_sum(x)
 
-      hessians = gradients_impl.hessians(loss, [f])[0]
+      gradients = gradients_impl.gradients(loss, [f])[0]
 
-      err = gradient_checker.compute_gradient_error(f, [12], hessians, [12, 12])
+      err = gradient_checker.compute_gradient_error(f, [12], gradients, [12])
 
       # Check that second derivative is calculated.
       # (it is equivalent to being `BatchMatMul` op in the graph because of implementation of xentropy grad)
