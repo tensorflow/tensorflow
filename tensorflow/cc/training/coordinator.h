@@ -115,8 +115,6 @@ class Coordinator {
   std::vector<std::unique_ptr<RunnerInterface>> runners_
       GUARDED_BY(runners_lock_);
 
-  std::atomic<int> num_runners_to_cancel_;
-
   TF_DISALLOW_COPY_AND_ASSIGN(Coordinator);
 };
 
