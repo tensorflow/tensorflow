@@ -683,7 +683,7 @@ class _VariableStore(object):
         init_val = initializer
         variable_dtype = None
       else:
-        init_val = lambda: initializer(
+        init_val = lambda: initializer(  # pylint: disable=g-long-lambda
             shape.as_list(), dtype=dtype, partition_info=partition_info)
         variable_dtype = dtype.base_dtype
 
@@ -725,7 +725,6 @@ class _VariableStore(object):
 
     return v
 
-
   # Initialize variable when no initializer provided
   def _get_default_initializer(self, name, shape=None, dtype=dtypes.float32):
     """Provide a default initializer and a corresponding value.
@@ -754,7 +753,7 @@ class _VariableStore(object):
     # NOTES:Do we need to support for handling DT_STRING and DT_COMPLEX here?
     else:
       raise ValueError("An initializer for variable %s of %s is required"
-          % (name, dtype.base_dtype))
+                       % (name, dtype.base_dtype))
 
     return initializer, initializing_from_value
 
@@ -1468,11 +1467,15 @@ def variable_scope(name_or_scope,
 
   Raises:
     ValueError: when trying to reuse within a create scope, or create within
-      a reuse scope, or if reuse is not `None` or `True`.
+      a reuse scope.
     TypeError: when the types of some arguments are not appropriate.
   """
   if default_name is None and name_or_scope is None:
     raise TypeError("If default_name is None then name_or_scope is required")
+  if not (reuse is True or reuse is False or reuse is None):
+    raise ValueError("The reuse parameter must be True or False or None.")
+  if reuse is False:  # We don't allow non-inheriting scopes, False = None here.
+    reuse = None
   if values is None:
     values = []
   g = ops._get_graph_from_inputs(values)  # pylint: disable=protected-access
