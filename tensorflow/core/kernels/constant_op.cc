@@ -240,7 +240,11 @@ class ZerosLikeOp : public OpKernel {
       Name("ZerosLike").Device(DEVICE_##dev).TypeConstraint<type>("T"), \
       ZerosLikeOp<dev##Device, type>)
 
-#define REGISTER_CPU(type) REGISTER_KERNEL(type, CPU)
+// There can be no space in front of "CPU" here as that space would become part
+// of the kernel name due to a Clang bug.
+// clang-format off
+#define REGISTER_CPU(type) REGISTER_KERNEL(type,CPU)
+// clang-format on
 TF_CALL_POD_STRING_TYPES(REGISTER_CPU);
 #undef REGISTER_CPU
 
