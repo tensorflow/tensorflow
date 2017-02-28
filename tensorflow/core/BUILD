@@ -250,7 +250,6 @@ cc_library(
         "lib/gtl/flatmap.h",
         "lib/gtl/flatset.h",
         "lib/gtl/inlined_vector.h",
-        "lib/gtl/optional.h",
         "lib/gtl/priority_queue_util.h",
         "lib/hash/crc32c.h",
         "lib/histogram/histogram.h",
@@ -500,24 +499,10 @@ tf_gen_op_libs(
         "script_ops",
         "sendrecv_ops",
         "sparse_ops",
-        "spectral_ops",
         "state_ops",
         "string_ops",
         "training_ops",
     ],
-)
-
-cc_library(
-    name = "debug_ops_op_lib",
-    srcs = ["ops/debug_ops.cc"],
-    copts = tf_copts(),
-    linkstatic = 1,
-    visibility = ["//tensorflow:internal"],
-    deps = [
-        ":framework",
-        "//tensorflow/core/kernels:debug_ops",
-    ],
-    alwayslink = 1,
 )
 
 # And one for all user ops
@@ -537,6 +522,16 @@ cc_library(
     linkstatic = 1,
     visibility = ["//tensorflow:internal"],
     deps = ["//tensorflow/core:framework"],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "cloud_ops_op_lib",
+    srcs = ["ops/cloud_ops.cc"],
+    copts = tf_copts(),
+    linkstatic = 1,
+    visibility = ["//visibility:public"],
+    deps = [":framework"],
     alwayslink = 1,
 )
 
@@ -565,7 +560,6 @@ cc_library(
         ":sendrecv_ops_op_lib",
         ":set_ops_op_lib",
         ":sparse_ops_op_lib",
-        ":spectral_ops_op_lib",
         ":state_ops_op_lib",
         ":string_ops_op_lib",
         ":training_ops_op_lib",
@@ -668,11 +662,11 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core/kernels:array",
-        "//tensorflow/core/kernels:bincount_op",
         "//tensorflow/core/kernels:candidate_sampler_ops",
         "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:ctc_ops",
         "//tensorflow/core/kernels:data_flow",
+        "//tensorflow/core/kernels:debug_ops",
         "//tensorflow/core/kernels:fake_quant_ops",
         "//tensorflow/core/kernels:function_ops",
         "//tensorflow/core/kernels:image",
@@ -702,8 +696,8 @@ cc_library(
         "//tensorflow/core/kernels:math_not_windows",
         "//tensorflow/core/kernels:quantized_ops",
     ]) + if_mkl([
-        "//tensorflow/core/kernels:mkl_conv_op",
         "//tensorflow/core/kernels:mkl_matmul_op",
+        "//tensorflow/core/kernels:mkl_conv_op",
         "//tensorflow/core/kernels:mkl_tfconv_op",
     ]),
 )
@@ -1478,19 +1472,19 @@ tf_cuda_library(
     ),
     copts = tf_copts(),
     deps = [
-               ":framework",
-               ":framework_internal",
-               ":function_ops_op_lib",
-               ":functional_grad",
-               ":functional_ops_op_lib",
-               ":lib",
-               ":lib_internal",
-               ":proto_text",
-               ":protos_all_cc",
-               "//third_party/eigen3",
-               "//tensorflow/core/kernels:required",
-           ] + if_mkl(["//third_party/mkl:intel_binary_blob"]) +
-           tf_additional_core_deps(),
+        ":framework",
+        ":framework_internal",
+        ":function_ops_op_lib",
+        ":functional_grad",
+        ":functional_ops_op_lib",
+        ":lib",
+        ":lib_internal",
+        ":proto_text",
+        ":protos_all_cc",
+        "//third_party/eigen3",
+        "//tensorflow/core/kernels:required",
+    ] + if_mkl(["//third_party/mkl:intel_binary_blob"]) +
+    ] + tf_additional_core_deps(),
     alwayslink = 1,
 )
 
@@ -1719,7 +1713,6 @@ tf_cc_tests(
         "lib/gtl/iterator_range_test.cc",
         "lib/gtl/manual_constructor_test.cc",
         "lib/gtl/map_util_test.cc",
-        "lib/gtl/optional_test.cc",
         "lib/gtl/top_n_test.cc",
         "lib/hash/crc32c_test.cc",
         "lib/hash/hash_test.cc",
@@ -1855,28 +1848,6 @@ cc_test(
     ],
 )
 
-tf_cc_test(
-    name = "quantize_training_test",
-    srcs = ["graph/quantize_training_test.cc"],
-    deps = [
-        ":all_kernels",
-        ":core",
-        ":core_cpu",
-        ":core_cpu_internal",
-        ":direct_session_internal",
-        ":framework",
-        ":framework_internal",
-        ":lib",
-        ":lib_internal",
-        ":ops",
-        ":protos_all_cc",
-        ":protos_test_cc",
-        ":test",
-        ":test_main",
-        ":testlib",
-    ],
-)
-
 tf_cc_tests(
     name = "higher_level_tests",
     size = "small",
@@ -1925,6 +1896,7 @@ tf_cc_tests(
         "graph/graph_test.cc",
         "graph/node_builder_test.cc",
         "graph/optimizer_cse_test.cc",
+        "graph/quantize_training_test.cc",
         "graph/subgraph_test.cc",
         "graph/tensor_id_test.cc",
         "graph/validate_test.cc",
@@ -2017,6 +1989,7 @@ if_mkl(
         name = "mkl_related_tests",
         size = "small",
         srcs = [
+            "common_runtime/mkl_layer_registry_test.cc",
             "graph/mkl_layout_pass_test.cc",
             "graph/mkl_optimizer_merge_test.cc",
             "graph/mkl_tfconversion_pass_test.cc",
@@ -2538,7 +2511,6 @@ tf_cc_tests(
         "ops/random_ops_test.cc",
         "ops/set_ops_test.cc",
         "ops/sparse_ops_test.cc",
-        "ops/spectral_ops_test.cc",
         "ops/state_ops_test.cc",
         "ops/string_ops_test.cc",
         "ops/training_ops_test.cc",
