@@ -195,17 +195,17 @@ class XentTest(test.TestCase):
                                                    name="xent")
       loss = math_ops.reduce_sum(x)
 
-      trivia_loss = -math_ops.reduce_sum(l * math_ops.log(nn_ops.softmax(f)))
+      hessians = gradients_impl.hessians(loss, [f])[0]
 
-      hessians = sess.run(gradients_impl.hessians(loss, [f]))
-      trivia_hessians = sess.run(gradients_impl.hessians(trivia_loss, [f]))
-
-      self.assertAllClose(hessians, trivia_hessians)
+      err = gradient_checker.compute_gradient_error(f, [12], hessians, [12, 12])
 
       # Check that second derivative is calculated.
       # (it is equivalent to being `BatchMatMul` op in the graph because of implementation of xentropy grad)
       op_names = [op.op_def.name for op in sess.graph.get_operations() if op.op_def]
       self.assertIn('BatchMatMul', op_names)
+
+    print("cross entropy hessian err = ", err)
+    self.assertLess(err, 5e-8)
 
   def testWrapper(self):
     features = np.array(

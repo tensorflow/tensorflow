@@ -321,22 +321,23 @@ def _BroadcastMul(vec, mat):
 
 
 @ops.RegisterGradient("SoftmaxCrossEntropyWithLogits")
-def _SoftmaxCrossEntropyWithLogitsGrad(op, grad_0, grad_1):
+def _SoftmaxCrossEntropyWithLogitsGrad(op, grad_loss, grad_grad):
   """Gradient function for SoftmaxCrossEntropyWithLogits."""
-  # grad_0 is the backprop for cost, and we multiply it with the gradients
+  # grad_loss is the backprop for cost, and we multiply it with the gradients
   # (which is output[1])
-  # grad_1 is the backprop for softmax gradient.
+  # grad_grad is the backprop for softmax gradient.
   # There is no gradient for the labels
   #
   # Second derivative is just softmax derivative w.r.t. logits.
   softmax_grad = op.outputs[1]
-  grad = _BroadcastMul(grad_0, softmax_grad)
+  grad = _BroadcastMul(grad_loss, softmax_grad)
 
-  if grad_1.op.type not in ('ZerosLike', 'Zeros'):  # or `in ('Zeros', 'ZerosLike')`
+  if grad_grad.op.type not in ('ZerosLike', 'Zeros'):
       logits = op.inputs[0]
       softmax = nn_ops.softmax(logits)
 
-      grad += ((grad_1 - math_ops.matmul(grad_1[:, None, :], softmax[:, :, None])[:, 0]) * softmax)
+      grad += ((grad_grad - array_ops.squeeze(math_ops.matmul(grad_grad[:, None, :],
+                                                              softmax[:, :, None]), axis=1)) * softmax)
 
   return grad, None
 
