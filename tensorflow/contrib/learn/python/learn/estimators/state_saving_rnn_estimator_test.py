@@ -652,12 +652,12 @@ class StateSavingRNNEstimatorLearningTest(test.TestCase):
     vocab = set(lyrics_list)
     batch_size = 16
     num_classes = len(vocab)
-    num_unroll = 5  # not a divisor of sequence_length
-    train_steps = 300
+    num_unroll = 7  # not a divisor of sequence_length
+    train_steps = 350
     eval_steps = 30
     num_units = 4
     learning_rate = 0.4
-    accuracy_threshold = 0.70
+    accuracy_threshold = 0.65
 
     def get_lyrics_input_fn(seed):
 
