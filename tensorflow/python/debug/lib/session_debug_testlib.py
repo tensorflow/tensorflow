@@ -42,6 +42,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
@@ -1095,6 +1096,55 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       self.assertLess(numeric_summary[9], 0.0)
       self.assertTrue(np.isnan(numeric_summary[10]))
       self.assertTrue(np.isnan(numeric_summary[11]))
+
+  def testDebugNumericSummaryFailureIsToleratedWhenOrdered(self):
+    with session.Session() as sess:
+      a = variables.Variable("1", name="a")
+      b = variables.Variable("3", name="b")
+      c = variables.Variable("2", name="c")
+
+      d = math_ops.add(a, b, name="d")
+      e = math_ops.add(d, c, name="e")
+      n = parsing_ops.string_to_number(e, name="n")
+      m = math_ops.add(n, n, name="m")
+
+      sess.run(variables.global_variables_initializer())
+
+      # Using DebugNumericSummary on sess.run(m) with the default
+      # tolerate_debug_op_creation_failures=False should error out due to the
+      # presence of string-dtype Tensors in the graph.
+      run_metadata = config_pb2.RunMetadata()
+      run_options = config_pb2.RunOptions(output_partition_graphs=True)
+      debug_utils.watch_graph(
+          run_options,
+          sess.graph,
+          debug_ops=["DebugNumericSummary"],
+          debug_urls=self._debug_urls())
+      with self.assertRaises(errors.FailedPreconditionError):
+        sess.run(m, options=run_options, run_metadata=run_metadata)
+
+      # Using tolerate_debug_op_creation_failures=True should get rid of the
+      # error.
+      new_run_options = config_pb2.RunOptions(output_partition_graphs=True)
+      debug_utils.watch_graph(
+          new_run_options,
+          sess.graph,
+          debug_ops=["DebugNumericSummary"],
+          debug_urls=self._debug_urls(),
+          tolerate_debug_op_creation_failures=True)
+
+      self.assertEqual(264,
+                       sess.run(
+                           m,
+                           options=new_run_options,
+                           run_metadata=run_metadata))
+
+      # The integer-dtype Tensors in the graph should have been dumped
+      # properly.
+      dump = debug_data.DebugDumpDir(
+          self._dump_root, partition_graphs=run_metadata.partition_graphs)
+      self.assertIn("n:0:DebugNumericSummary", dump.debug_watch_keys("n"))
+      self.assertIn("m:0:DebugNumericSummary", dump.debug_watch_keys("m"))
 
   def testDebugQueueOpsDoesNotoErrorOut(self):
     with session.Session() as sess:

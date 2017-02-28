@@ -413,6 +413,7 @@ py_library(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:parsing_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:training",
