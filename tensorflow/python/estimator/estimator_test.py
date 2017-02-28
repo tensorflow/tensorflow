@@ -97,13 +97,21 @@ class EstimatorConstructorTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, 'params'):
       estimator.Estimator(model_fn=model_fn, params={'hidden_layers': 4})
 
-  def test_not_known_model_fn_args_without_default(self):
+  def test_not_known_model_fn_args(self):
 
     def model_fn(features, labels, something):
       _, _, _ = features, labels, something
 
     with self.assertRaisesRegexp(ValueError, 'something'):
       estimator.Estimator(model_fn=model_fn)
+
+  def test_not_known_model_fn_args_handled_by_lambda(self):
+    def model_fn(features, labels, something):
+      _, _, _ = features, labels, something
+
+    new_model_fn = lambda features, labels: model_fn(  # pylint: disable=g-long-lambda
+        features, labels, 'something')
+    estimator.Estimator(model_fn=new_model_fn)
 
 
 def dummy_input_fn():
