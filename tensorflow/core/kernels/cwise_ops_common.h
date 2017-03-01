@@ -420,16 +420,7 @@ struct UnaryFunctor<CPUDevice, Functor> {
 
 }  // end namespace functor
 
-// This is a workaround for a bug in Clang. Clang currently keeps up to one
-// space in front of a macro arg when first concatenating (##) and then
-// stringifying (#). We are currently relying on a pure substring match in the
-// generated SHOULD_REGISTER_OP_KERNEL macros and the space can lead to a
-// mismatch. Remove when all supported versions of Clang are fixed or
-// SHOULD_REGISTER_OP_KERNEL is made more robust wrt. these spaces.
-// clang-format off
-#define REGISTER(OP, D, N, F, T) REGISTER_INTERNAL(OP,D, N, F, T)
-// clang-format on
-#define REGISTER_INTERNAL(OP, D, N, F, T)                                    \
+#define REGISTER(OP, D, N, F, T)                                             \
   REGISTER_KERNEL_BUILDER(Name(N).Device(DEVICE_##D).TypeConstraint<T>("T"), \
                           OP<D##Device, F<T>>);
 

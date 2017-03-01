@@ -140,11 +140,7 @@ class AddNOp : public OpKernel {
       Name("AddN").Device(DEVICE_##dev).TypeConstraint<type>("T"), \
       AddNOp<dev##Device, type>)
 
-// There can be no space in front of "CPU" here as that space would become part
-// of the kernel name due to a Clang bug.
-// clang-format off
-#define REGISTER_ADDN_CPU(type) REGISTER_ADDN(type,CPU)
-// clang-format on
+#define REGISTER_ADDN_CPU(type) REGISTER_ADDN(type, CPU)
 
 TF_CALL_NUMBER_TYPES(REGISTER_ADDN_CPU);
 #undef REGISTER_ADDN_CPU
