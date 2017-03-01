@@ -418,15 +418,15 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   )
 
   # Make junit-4.12 available as //external:junit
-  native.http_jar(
-      name = "junit_jar",
-      url = "https://github.com/junit-team/junit4/releases/download/r4.12/junit-4.12.jar",
-      sha256 = "59721f0805e223d84b90677887d9ff567dc534d7c502ca903c0c2b17f05c116a",
+  native.maven_jar(
+      name = "junit_junit",
+      artifact = "junit:junit:4.12",
+      sha1 = "2973d150c0dc1fefe998f834810d68f278ea58ec",
   )
 
   native.bind(
       name = "junit",
-      actual = "@junit_jar//jar",
+      actual = "@junit_junit//jar",
   )
 
   temp_workaround_http_archive(
