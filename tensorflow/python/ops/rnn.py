@@ -23,7 +23,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -485,19 +484,20 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
   flat_input = nest.flatten(inputs)
 
   if not time_major:
-    # (B,T,D) => (T,B,D)
     def _get_transpose_indices(x):
+      # Only swap the first two dimensions; rest are unchanged.
       x = ops.convert_to_tensor(x)
       x_rank = x.get_shape().ndims
       if x_rank is None:
         x_rank = array_ops.rank(x)
-        indices = array_ops.concat([[1,0],math_ops.range(2,x_rank)],0)
+        indices = array_ops.concat([[1, 0], math_ops.range(2, x_rank)], 0)
       else:
-        indices = [1,0] + range(2,x_rank)
+        indices = [1, 0] + range(2, x_rank)
       return indices
-
-    flat_input = tuple(array_ops.transpose(input_,
-                       _get_transpose_indices(input_)) for input_ in flat_input)
+    # (B, T, ...) => (T, B, ...)
+    transpose_indices = _get_transpose_indices(input_)
+    flat_input = tuple(array_ops.transpose(input_, transpose_indices)
+                       for input_ in flat_input)
 
   parallel_iterations = parallel_iterations or 32
   if sequence_length is not None:
@@ -561,10 +561,11 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
     if not time_major:
       # (T,B,D) => (B,T,D)
       flat_output = nest.flatten(outputs)
-      flat_output = [array_ops.transpose(output,
-                     _get_transpose_indices(output)) for output in flat_output]
-      outputs = nest.pack_sequence_as(
-          structure=outputs, flat_sequence=flat_output)
+      transpose_indices = _get_transpose_indices(output)
+      flat_output = [array_ops.transpose(output, transpose_indices)
+                     for output in flat_output]
+      outputs = nest.pack_sequence_as(structure=outputs,
+                                      flat_sequence=flat_output)
 
     return (outputs, final_state)
 
@@ -623,6 +624,7 @@ def _dynamic_rnn_loop(cell,
                            for input_ in flat_input)
 
   const_time_steps,const_batch_size = inputs_got_shape[0][:2].as_list()
+
 
   # Prepare dynamic conditional copying of state & output
   def _create_zero_arrays(size):
