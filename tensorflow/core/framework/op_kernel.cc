@@ -200,7 +200,12 @@ OpKernelContext::OpKernelContext(Params* params)
           params, static_cast<int>(params->op_kernel->output_types().size())) {}
 
 OpKernelContext::OpKernelContext(Params* params, int num_outputs)
-    : params_(params), outputs_(num_outputs) {
+    : params_(params),
+      outputs_(num_outputs),
+      host_temp_memory_size_(0),
+      device_temp_memory_size_(0),
+      host_persistent_memory_allocated_(0),
+      device_persistent_memory_allocated_(0) {
   Allocator* eigen_gpu_allocator = get_allocator(AllocatorAttributes());
   params_->ensure_eigen_gpu_device();
   params_->device->ReinitializeGpuDevice(this, params_->eigen_gpu_device,
@@ -223,7 +228,7 @@ OpKernelContext::~OpKernelContext() {
 Allocator* OpKernelContext::get_allocator(AllocatorAttributes attr) {
   Allocator* allocator =
       params_->device->GetStepAllocator(attr, resource_manager());
-  if (params_->track_allocations) {
+  if (track_allocations()) {
     mutex_lock lock(mu_);
     for (const auto& wrapped : wrapped_allocators_) {
       if (wrapped.first == allocator) {
@@ -602,6 +607,18 @@ Status OpKernelContext::allocate_temp(
     const AllocationAttributes& allocation_attr) {
   Status s =
       allocate_tensor(type, shape, out_temp, allocator_attr, allocation_attr);
+  if (track_allocations()) {
+    Allocator* a = get_allocator(allocator_attr);
+    if (a->TracksAllocationSizes()) {
+      int64 alloc_size =
+          a->AllocatedSize(const_cast<char*>(out_temp->tensor_data().data()));
+      if (allocate_on_host(allocator_attr)) {
+        record_host_temp_memory_size(alloc_size);
+      } else {
+        record_device_temp_memory_size(alloc_size);
+      }
+    }
+  }
   return s;
 }
 
@@ -610,13 +627,30 @@ Status OpKernelContext::allocate_persistent(DataType type,
                                             PersistentTensor* out_persistent,
                                             Tensor** out_tensor,
                                             AllocatorAttributes attr) {
-  // TODO(misard) add specific memory tracking for persistent tensors
   Tensor persistent;
   Status s = allocate_tensor(type, shape, &persistent, attr);
   if (s.ok()) {
     *out_persistent = PersistentTensor(persistent);
     if (out_tensor) {
       *out_tensor = out_persistent->AccessTensor(this);
+    }
+  }
+  if (track_allocations()) {
+    Allocator* a = get_allocator(attr);
+    if (a->TracksAllocationSizes()) {
+      int64 alloc_size =
+          a->AllocatedSize(const_cast<char*>(persistent.tensor_data().data()));
+      int64 alloc_id =
+          a->AllocationId(const_cast<char*>(persistent.tensor_data().data()));
+      if (allocate_on_host(attr)) {
+        record_host_persistent_memory_allocation(alloc_size, alloc_id);
+        // This function has called allocate_temp(), so we need to deduct the
+        // recorded temp memory size.
+        record_host_temp_memory_size(-alloc_size);
+      } else {
+        record_device_persistent_memory_allocation(alloc_size, alloc_id);
+        record_device_temp_memory_size(-alloc_size);
+      }
     }
   }
   return s;
@@ -717,6 +751,32 @@ Status OpKernelContext::MatchSignature(const DataTypeSlice expected_inputs,
   DataTypeVector outputs = params_->op_kernel->output_types();
   return MatchSignatureHelper(expected_inputs, expected_outputs, inputs,
                               outputs);
+}
+
+bool OpKernelContext::allocate_on_host(AllocatorAttributes alloc_attr) const {
+  return alloc_attr.on_host() || device()->attributes().device_type() == "CPU";
+}
+
+void OpKernelContext::record_host_persistent_memory_allocation(int64 size,
+                                                               int64 alloc_id) {
+  host_persistent_memory_allocated_ += size;
+  host_persistent_alloc_ids_.push_back(alloc_id);
+}
+
+void OpKernelContext::record_device_persistent_memory_allocation(
+    int64 size, int64 alloc_id) {
+  device_persistent_memory_allocated_ += size;
+  device_persistent_alloc_ids_.push_back(alloc_id);
+}
+
+std::vector<int64> OpKernelContext::host_persistent_alloc_ids() const {
+  return std::vector<int64>(host_persistent_alloc_ids_.begin(),
+                            host_persistent_alloc_ids_.end());
+}
+
+std::vector<int64> OpKernelContext::device_persistent_alloc_ids() const {
+  return std::vector<int64>(device_persistent_alloc_ids_.begin(),
+                            device_persistent_alloc_ids_.end());
 }
 
 // OpKernel registration ------------------------------------------------------

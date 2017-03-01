@@ -166,6 +166,18 @@ void SetMemory(NodeExecStats* nt, OpKernelContext* ctx) {
       memory->set_live_bytes(std::get<2>(sizes));
     }
   }
+  auto* ms = nt->mutable_memory_stats();
+  ms->set_host_temp_memory_size(ctx->host_temp_memory_size());
+  ms->set_device_temp_memory_size(ctx->device_temp_memory_size());
+  for (const auto& alloc_id : ctx->host_persistent_alloc_ids()) {
+    ms->mutable_host_persistent_tensor_alloc_ids()->Add(alloc_id);
+  }
+  for (const auto& alloc_id : ctx->device_persistent_alloc_ids()) {
+    ms->mutable_device_persistent_tensor_alloc_ids()->Add(alloc_id);
+  }
+  ms->set_host_persistent_memory_size(ctx->host_persistent_memory_allocated());
+  ms->set_device_persistent_memory_size(
+      ctx->device_persistent_memory_allocated());
 }
 
 void SetReferencedTensors(NodeExecStats* nt,

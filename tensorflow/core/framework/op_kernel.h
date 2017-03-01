@@ -1004,6 +1004,37 @@ class OpKernelContext {
   void set_output_ref(int index, mutex* mu, Tensor* tensor_for_ref);
   TensorValue release_output(int index);
 
+  bool track_allocations() const { return params_->track_allocations; }
+
+  // Records temporary memory sizes.
+  void record_host_temp_memory_size(int64 size) {
+    host_temp_memory_size_ += size;
+  }
+  void record_device_temp_memory_size(int64 size) {
+    device_temp_memory_size_ += size;
+  }
+
+  // Returns recorded size of temporary memory;
+  int64 host_temp_memory_size() const { return host_temp_memory_size_; }
+  int64 device_temp_memory_size() const { return device_temp_memory_size_; }
+
+  // Records persistent memory allocation, size can be negative indicating
+  // deallocation.
+  void record_host_persistent_memory_allocation(int64 size,
+                                                int64 alloc_id = -1);
+  void record_device_persistent_memory_allocation(int64 size,
+                                                  int64 alloc_id = -1);
+
+  // Returns recorded size and ids of persistent memory.
+  int64 host_persistent_memory_allocated() const {
+    return host_persistent_memory_allocated_;
+  }
+  int64 device_persistent_memory_allocated() const {
+    return device_persistent_memory_allocated_;
+  }
+  std::vector<int64> host_persistent_alloc_ids() const;
+  std::vector<int64> device_persistent_alloc_ids() const;
+
  private:
   bool input_is_ref(int index) const;
 
@@ -1028,6 +1059,8 @@ class OpKernelContext {
                          Tensor* out_tensor, AllocatorAttributes allocator_attr,
                          const AllocationAttributes& allocation_attr);
 
+  bool allocate_on_host(AllocatorAttributes alloc_attr) const;
+
   // This is called by PersistentTensor::AccessTensor whenever the
   // wrapped tensor is retrieved, to ensure the runtime knows that the
   // Tensor is being accessed within an Op. This is necessary for
@@ -1046,6 +1079,13 @@ class OpKernelContext {
   ManualConstructor<UniqueTensorReferences> referenced_tensors_ GUARDED_BY(mu_);
 
   bool is_output_dead_ = false;
+
+  int64 host_temp_memory_size_;
+  int64 device_temp_memory_size_;
+  gtl::InlinedVector<int64, 2> host_persistent_alloc_ids_;
+  gtl::InlinedVector<int64, 2> device_persistent_alloc_ids_;
+  int64 host_persistent_memory_allocated_;
+  int64 device_persistent_memory_allocated_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(OpKernelContext);
 };
