@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <limits>
 
 #include "tensorflow/compiler/poplar/driver/vertex_templates.h"
 #include "tensorflow/compiler/poplar/driver/ops.h"
@@ -9,12 +10,14 @@
 #include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/stream_executor/lib/strcat.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/bcast.h"
 
 #include <poplar/Graph.hpp>
 #include <poplar/Engine.hpp>
+#include <popnn/Reduce.hpp>
 
 namespace xla {
 namespace poplarplugin {
@@ -137,18 +140,102 @@ CreateSimpleReduction(poplar::Graph &graph,
   poplar::Tensor out;
   TF_ASSIGN_OR_RETURN(out, AddTensor(graph, inst->name(), output_shape));
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+  out = out.flatten();
 
   // One vertex per non-reduced element
   auto cs = graph.addComputeSet(inst->name());
 
-  const unsigned long N = shuffled.dim(0);
+  //   reduceByDstMapping(graph, shuffled, out, graph.getTileMapping(out), cs);
+
+  const unsigned long N = out.dim(0);
   const auto &device_info = graph.getDevice().getDeviceInfo();
 
   for (unsigned i = 0; i < N; ++i) {
     auto v = graph.addVertex(cs, vertex_name,
                              {{"a", shuffled[i]},
-                              {"out", out.flatten().slice(i, i+1)}});
+                              {"out", out.slice(i, i+1)}});
     graph.setTileMapping(v, (i / device_info.numWorkerContexts) % device_info.getNumTiles());
+  }
+
+  return poplar::program::Execute(cs);
+}
+
+port::StatusOr<poplar::program::Program>
+CreateSimpleWindowReduction(poplar::Graph &graph,
+                            const HloInstruction *inst,
+                            const xla::Shape& output_shape,
+                            TensorMap& tensor_map) {
+
+  // Find the input tensors
+  poplar::Tensor to_reduce;
+  TF_ASSIGN_OR_RETURN(to_reduce, FindInstructionInput(tensor_map, inst, 0, 0));
+
+  poplar::Tensor init_val;
+  TF_ASSIGN_OR_RETURN(init_val, FindInstructionInput(tensor_map, inst, 1, 0));
+
+  // Find the type and vertex
+  HloInstruction* root(inst->to_apply()->root_instruction());
+  std::string vertex_name = templateVertex(ReductionVertexBaseName(root),
+                                           graph.getTensorElementType(to_reduce));
+
+  const Window& window(inst->window());
+
+  // Find the number of windows in each dimension
+  std::vector<unsigned> window_count(ShapeUtil::Rank(output_shape));
+  for (unsigned d=0; d<window.dimensions().size(); d++) {
+    std::size_t input_dim(to_reduce.dim(d));
+    input_dim += window.dimensions(d).padding_low();
+    input_dim += window.dimensions(d).padding_high();
+
+    window_count[d] = window_util::StridedBound(input_dim,
+                                                window.dimensions(d).size(),
+                                                window.dimensions(d).stride());
+  }
+
+  // Allocate the output tensor
+  poplar::Tensor out;
+  TF_ASSIGN_OR_RETURN(out, AddTensor(graph, inst->name(), output_shape));
+  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+  out = out.flatten();
+
+  // One vertex per non-reduced element
+  auto cs = graph.addComputeSet(inst->name());
+
+  const unsigned long N = out.dim(0);
+  const auto &device_info = graph.getDevice().getDeviceInfo();
+
+  unsigned dim_count(to_reduce.rank());
+
+  // Vector for walking the window through the tensor
+  std::vector<std::size_t> pos(dim_count, 0);
+
+  // Slice boundaries
+  std::vector<std::size_t> start(dim_count);
+  std::vector<std::size_t> end(dim_count);
+
+  for (unsigned i = 0; i < N; ++i) {
+    // Find the window
+    for (unsigned d=0; d<dim_count; d++) {
+      const auto& wd(window.dimensions(d));
+
+      std::size_t s(pos[d] * wd.stride() - wd.padding_low());
+      std::size_t e(s + wd.size());
+      start[d] = std::max(s, (std::size_t)0);
+      end[d] = std::min(e, to_reduce.dim(d));
+    }
+
+    poplar::Tensor w = to_reduce.slice(start, end).flatten();
+
+    // Create the vertex
+    auto v = graph.addVertex(cs, vertex_name, {{"a", w}, {"out", out.slice(i,i+1)}});
+    graph.setTileMapping(v, (i / device_info.numWorkerContexts) % device_info.getNumTiles());
+
+    // Advance the window
+    for (int d=dim_count-1; d>=0; d--) {
+      pos[d]++;
+      if (pos[d] < window_count[d]) break;
+      pos[d] = 0;
+    }
   }
 
   return poplar::program::Execute(cs);

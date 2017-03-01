@@ -100,6 +100,12 @@ CreateSimpleReduction(poplar::Graph &graph,
                       TensorMap& tensor_map);
 
 port::StatusOr<poplar::program::Program>
+CreateSimpleWindowReduction(poplar::Graph &graph,
+                            const HloInstruction *inst,
+                            const xla::Shape& output_shape,
+                            TensorMap& tensor_map);
+
+port::StatusOr<poplar::program::Program>
 CreateParallelMap(poplar::Graph &graph,
                   const HloInstruction *inst,
                   const xla::Shape& output,
