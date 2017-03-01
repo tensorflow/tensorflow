@@ -333,10 +333,10 @@ def _SoftmaxCrossEntropyWithLogitsGrad(op, grad_loss, grad_grad):
   grad = _BroadcastMul(grad_loss, softmax_grad)
 
   if grad_grad.op.type not in ('ZerosLike', 'Zeros'):
-      logits = op.inputs[0]
-      softmax = nn_ops.softmax(logits)
+    logits = op.inputs[0]
+    softmax = nn_ops.softmax(logits)
 
-      grad += ((grad_grad - array_ops.squeeze(math_ops.matmul(grad_grad[:, None, :],
+    grad += ((grad_grad - array_ops.squeeze(math_ops.matmul(grad_grad[:, None, :],
                                                               softmax[:, :, None]), axis=1)) * softmax)
 
   return grad, None
