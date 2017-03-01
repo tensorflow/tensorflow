@@ -686,7 +686,6 @@ Status AlgebraicSimplifierVisitor::HandlePower(HloInstruction* power,
     }
     changed_ = true;
     return computation_->ReplaceWithNewInstruction(power, std::move(ones));
-    return Status::OK();
   }
 
   VLOG(10) << "trying transform [pow(A, 1) => A]: " << power->ToString();
