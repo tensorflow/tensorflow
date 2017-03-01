@@ -19,4 +19,5 @@ cc_library(
         "//conditions:default": ["libmpi.so"],
     }),
     hdrs = ["mpi.h", "mpi_portable_platform.h"],
+    visibility = ["//visibility:public"],
 )
