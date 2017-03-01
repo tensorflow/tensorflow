@@ -18,13 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
-
 from tensorflow.contrib.layers.python.layers import target_column as target_column_lib
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op

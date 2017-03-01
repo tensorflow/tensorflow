@@ -19,18 +19,12 @@ from __future__ import division
 from __future__ import print_function
 
 import math
-import sys
 import time
 
 import numpy as np
 from sklearn.cluster import KMeans as SklearnKMeans
 
 # pylint: disable=g-import-not-at-top
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
-
 from tensorflow.contrib.learn.python import learn
 from tensorflow.contrib.learn.python.learn.estimators import kmeans as kmeans_lib
 from tensorflow.contrib.learn.python.learn.estimators import run_config

@@ -154,9 +154,9 @@ matches = ['../' + x for x in find_files('*', 'external') if '.py' not in x]
 matches += ['../' + x for x in find_files('*', '_solib_k8') if '.py' not in x]
 
 if os.name == 'nt':
-  EXTENSION_NAME = 'python/_pywrap_tensorflow.pyd'
+  EXTENSION_NAME = 'python/_pywrap_tensorflow_internal.pyd'
 else:
-  EXTENSION_NAME = 'python/_pywrap_tensorflow.so'
+  EXTENSION_NAME = 'python/_pywrap_tensorflow_internal.so'
 
 headers = (list(find_files('*.h', 'tensorflow/core')) +
            list(find_files('*.h', 'tensorflow/stream_executor')) +

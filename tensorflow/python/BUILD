@@ -2524,8 +2524,15 @@ tf_cuda_library(
     ],
 )
 
-tf_py_wrap_cc(
+py_library(
     name = "pywrap_tensorflow",
+    srcs = ["pywrap_tensorflow.py"],
+    srcs_version = "PY2AND3",
+    deps = [":pywrap_tensorflow_internal"],
+)
+
+tf_py_wrap_cc(
+    name = "pywrap_tensorflow_internal",
     srcs = ["tensorflow.i"],
     swig_includes = [
         "client/device_lib.i",
