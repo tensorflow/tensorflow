@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/common_runtime/shape_refiner.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/types.h"
@@ -842,6 +843,10 @@ Status ImportGraphDef(const ImportGraphDefOptions& opts, const GraphDef& gdef,
           "return_tensors argument to ImportNodeDef() should be empty (has "
           "size ", return_tensors->size(), ")");
     }
+  }
+  if (gdef.library().function_size() != 0) {
+    return errors::Unimplemented(
+        "Importing GraphDefs containing functions not yet implemented");
   }
   return GraphConstructor::Construct(opts, &gdef, g, refiner, return_tensors);
 }
