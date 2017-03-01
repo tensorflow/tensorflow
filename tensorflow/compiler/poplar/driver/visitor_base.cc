@@ -171,9 +171,14 @@ Status PoplarBaseVisitor::HandleConvolution(
         HloInstruction* rhs,
         const Window& window) {
   LOG(INFO) << inst->ToString();
-  return port::Status(port::error::UNIMPLEMENTED,
-                      port::StrCat(inst->name(),
-                                   " not implemented"));
+  poplar::program::Program prog;
+  TF_ASSIGN_OR_RETURN(prog,
+                      CreateConv2D(*graph_,
+                                   inst,
+                                   GetOutputShape(inst),
+                                   tensor_map));
+  sequence.add(prog);
+  return Status::OK();
 }
 
 Status PoplarBaseVisitor::HandleCrossReplicaSum(HloInstruction* inst) {
