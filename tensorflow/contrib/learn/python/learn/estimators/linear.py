@@ -20,7 +20,6 @@ from __future__ import division
 from __future__ import print_function
 
 import math
-import re
 
 import six
 
@@ -413,7 +412,6 @@ class LinearClassifier(estimator.Estimator):
     #    requested for SDCA once its default changes to False.
     self._feature_columns = tuple(feature_columns or [])
     assert self._feature_columns
-    self._optimizer = optimizer
 
     chief_hook = None
     if (isinstance(optimizer, sdca_optimizer.SDCAOptimizer) and
@@ -590,37 +588,6 @@ class LinearClassifier(estimator.Estimator):
         default_batch_size=default_batch_size,
         exports_to_keep=exports_to_keep)
 
-  @property
-  @deprecated("2016-10-30",
-              "This method will be removed after the deprecation date. "
-              "To inspect variables, use get_variable_names() and "
-              "get_variable_value().")
-  def weights_(self):
-    values = {}
-    if self._optimizer and not callable(self._optimizer):
-      optimizer_name = _get_optimizer(self._optimizer).get_name()
-    elif self._optimizer and callable(self._optimizer):
-      raise ValueError("Callable optimizer is not supported in this method.")
-    else:
-      optimizer_name = _get_default_optimizer(self._feature_columns).get_name()
-    optimizer_regex = r".*/" + optimizer_name + r"(_\d)?$"
-    for name in self.get_variable_names():
-      if (name.startswith("linear/") and
-          name != "linear/bias_weight" and
-          not re.match(optimizer_regex, name)):
-        values[name] = self.get_variable_value(name)
-    if len(values) == 1:
-      return values[list(values.keys())[0]]
-    return values
-
-  @property
-  @deprecated("2016-10-30",
-              "This method will be removed after the deprecation date. "
-              "To inspect variables, use get_variable_names() and "
-              "get_variable_value().")
-  def bias_(self):
-    return self.get_variable_value("linear/bias_weight")
-
 
 class LinearRegressor(estimator.Estimator):
   """Linear regressor model.
@@ -712,7 +679,6 @@ class LinearRegressor(estimator.Estimator):
     """
     self._feature_columns = tuple(feature_columns or [])
     assert self._feature_columns
-    self._optimizer = optimizer
 
     chief_hook = None
     if (isinstance(optimizer, sdca_optimizer.SDCAOptimizer) and
@@ -856,37 +822,6 @@ class LinearRegressor(estimator.Estimator):
         prediction_key=prediction_key.PredictionKey.SCORES,
         default_batch_size=default_batch_size,
         exports_to_keep=exports_to_keep)
-
-  @property
-  @deprecated("2016-10-30",
-              "This method will be removed after the deprecation date. "
-              "To inspect variables, use get_variable_names() and "
-              "get_variable_value().")
-  def weights_(self):
-    values = {}
-    if self._optimizer and not callable(self._optimizer):
-      optimizer_name = _get_optimizer(self._optimizer).get_name()
-    elif self._optimizer and callable(self._optimizer):
-      raise ValueError("Callable optimizer is not supported in this method.")
-    else:
-      optimizer_name = _get_default_optimizer(self._feature_columns).get_name()
-    optimizer_regex = r".*/" + optimizer_name + r"(_\d)?$"
-    for name in self.get_variable_names():
-      if (name.startswith("linear/") and
-          name != "linear/bias_weight" and
-          not re.match(optimizer_regex, name)):
-        values[name] = self.get_variable_value(name)
-    if len(values) == 1:
-      return values[list(values.keys())[0]]
-    return values
-
-  @property
-  @deprecated("2016-10-30",
-              "This method will be removed after the deprecation date. "
-              "To inspect variables, use get_variable_names() and "
-              "get_variable_value().")
-  def bias_(self):
-    return self.get_variable_value("linear/bias_weight")
 
 
 # TODO(zakaria): Make it public when b/34751732 is fixed.

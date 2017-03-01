@@ -40,8 +40,10 @@ class RegressionTest(test.TestCase):
         feature_columns=learn.infer_real_valued_columns_from_input(x),
         optimizer="SGD")
     regressor.fit(x, y, steps=200)
+    self.assertIn("linear//weight", regressor.get_variable_names())
+    regressor_weights = regressor.get_variable_value("linear//weight")
     # Have to flatten weights since they come in (x, 1) shape.
-    self.assertAllClose(weights, regressor.weights_.flatten(), rtol=0.01)
+    self.assertAllClose(weights, regressor_weights.flatten(), rtol=0.01)
     # TODO(ispir): Disable centered_bias.
     # assert abs(bias - regressor.bias_) < 0.1
 
