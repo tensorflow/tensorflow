@@ -80,11 +80,17 @@ Status FileSystem::GetMatchingPaths(const string& pattern,
                                     std::vector<string>* results) {
   results->clear();
   // Find the fixed prefix by looking for the first wildcard.
-  const string& fixed_prefix =
-      pattern.substr(0, pattern.find_first_of("*?[\\"));
+  string fixed_prefix = pattern.substr(0, pattern.find_first_of("*?[\\"));
+  string eval_pattern = pattern;
   std::vector<string> all_files;
   string dir = io::Dirname(fixed_prefix).ToString();
-  if (dir.empty()) dir = ".";
+  // If dir is empty then we need to fix up fixed_prefix and eval_pattern to
+  // include . as the top level directory.
+  if (dir.empty()) {
+    dir = ".";
+    fixed_prefix = io::JoinPath(dir, fixed_prefix);
+    eval_pattern = io::JoinPath(dir, pattern);
+  }
 
   // Setup a BFS to explore everything under dir.
   std::deque<string> dir_q;
@@ -132,7 +138,7 @@ Status FileSystem::GetMatchingPaths(const string& pattern,
 
   // Match all obtained files to the input pattern.
   for (const auto& f : all_files) {
-    if (Env::Default()->MatchPath(f, pattern)) {
+    if (Env::Default()->MatchPath(f, eval_pattern)) {
       results->push_back(f);
     }
   }
