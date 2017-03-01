@@ -192,9 +192,14 @@ Status PoplarBaseVisitor::HandleRng(
         HloInstruction* inst,
         RandomDistribution distribution) {
   LOG(INFO) << inst->ToString();
-  return port::Status(port::error::UNIMPLEMENTED,
-                      port::StrCat(inst->name(),
-                                   " not implemented"));
+  poplar::program::Program prog;
+  TF_ASSIGN_OR_RETURN(prog,
+                      CreateRandomOp(*graph_,
+                                     inst,
+                                     GetOutputShape(inst),
+                                     tensor_map));
+  sequence.add(prog);
+  return Status::OK();
 }
 
 Status PoplarBaseVisitor::HandleReverse(
