@@ -172,7 +172,6 @@ class Multinomial(distribution.Distribution):
       self._mean_val = self._total_count[..., array_ops.newaxis] * self._probs
     super(Multinomial, self).__init__(
         dtype=self._probs.dtype,
-        is_continuous=False,
         reparameterization_type=distribution.NOT_REPARAMETERIZED,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,

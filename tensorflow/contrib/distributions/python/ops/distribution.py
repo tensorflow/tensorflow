@@ -343,7 +343,6 @@ class Distribution(_BaseDistribution):
 
   def __init__(self,
                dtype,
-               is_continuous,
                reparameterization_type,
                validate_args,
                allow_nan_stats,
@@ -356,8 +355,6 @@ class Distribution(_BaseDistribution):
 
     Args:
       dtype: The type of the event samples. `None` implies no type-enforcement.
-      is_continuous: Python `bool`. If `True` this `Distribution` is continuous
-        over its supported domain.
       reparameterization_type: Instance of `ReparameterizationType`.
         If `distributions.FULLY_REPARAMETERIZED`, this
         `Distribution` can be reparameterized in terms of some standard
@@ -387,7 +384,6 @@ class Distribution(_BaseDistribution):
       if t is None or not contrib_framework.is_tensor(t):
         raise ValueError("Graph parent item %d is not a Tensor; %s." % (i, t))
     self._dtype = dtype
-    self._is_continuous = is_continuous
     self._reparameterization_type = reparameterization_type
     self._allow_nan_stats = allow_nan_stats
     self._validate_args = validate_args
@@ -476,10 +472,6 @@ class Distribution(_BaseDistribution):
     # if the subclass used `parameters = locals()`.
     return dict((k, v) for k, v in self._parameters.items()
                 if not k.startswith("__") and k != "self")
-
-  @property
-  def is_continuous(self):
-    return self._is_continuous
 
   @property
   def reparameterization_type(self):
@@ -681,7 +673,7 @@ class Distribution(_BaseDistribution):
           raise original_exception
 
   def log_prob(self, value, name="log_prob"):
-    """Log probability density/mass function (depending on `is_continuous`).
+    """Log probability density/mass function.
 
     Args:
       value: `float` or `double` `Tensor`.
@@ -708,7 +700,7 @@ class Distribution(_BaseDistribution):
           raise original_exception
 
   def prob(self, value, name="prob"):
-    """Probability density/mass function (depending on `is_continuous`).
+    """Probability density/mass function.
 
     Args:
       value: `float` or `double` `Tensor`.

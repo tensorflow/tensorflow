@@ -79,7 +79,6 @@ class Bernoulli(distribution.Distribution):
           name=name)
     super(Bernoulli, self).__init__(
         dtype=dtype,
-        is_continuous=False,
         reparameterization_type=distribution.NOT_REPARAMETERIZED,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,

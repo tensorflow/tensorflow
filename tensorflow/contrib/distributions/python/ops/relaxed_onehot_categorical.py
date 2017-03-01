@@ -187,7 +187,6 @@ class ExpRelaxedOneHotCategorical(distribution.Distribution):
 
     super(ExpRelaxedOneHotCategorical, self).__init__(
         dtype=dtype,
-        is_continuous=True,
         reparameterization_type=distribution.FULLY_REPARAMETERIZED,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
