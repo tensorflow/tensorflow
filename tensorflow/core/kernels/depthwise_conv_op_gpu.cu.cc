@@ -135,11 +135,11 @@ template struct DepthwiseConv2dGPULaunch<double>;
 
 // A Cuda kernel to compute the depthwise convolution backprop w.r.t. input.
 template <typename T>
-__global__ void DepthwiseConv2dBackpropInputGPUKernel(const DepthwiseArgs args,
-                                                      const T* out_backprop,
-                                                      const T* filter,
-                                                      T* in_backprop,
-                                                      int num_in_backprop) {
+__global__ void __launch_bounds__(1024)
+    DepthwiseConv2dBackpropInputGPUKernel(const DepthwiseArgs args,
+                                          const T* out_backprop,
+                                          const T* filter, T* in_backprop,
+                                          int num_in_backprop) {
   const int in_rows = args.in_rows;
   const int in_cols = args.in_cols;
   const int in_depth = args.in_depth;
