@@ -6484,6 +6484,8 @@ func AvgPoolGrad(scope *Scope, orig_input_shape tf.Output, grad tf.Output, ksize
 // \\(output_i = \max_j(data_j)\\) where `max` is over `j` such
 // that `segment_ids[j] == i`.
 //
+// If the max is empty for a given segment ID `i`, `output[i] = 0`.
+//
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 // <img style="width:100%" src="../../images/SegmentMax.png" alt>
 // </div>
@@ -7944,6 +7946,8 @@ func SdcaOptimizer(scope *Scope, sparse_example_indices []tf.Output, sparse_feat
 // Computes a tensor such that
 // \\(output_i = \min_j(data_j)\\) where `min` is over `j` such
 // that `segment_ids[j] == i`.
+//
+// If the min is empty for a given segment ID `i`, `output[i] = 0`.
 //
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 // <img style="width:100%" src="../../images/SegmentMin.png" alt>
@@ -9776,6 +9780,8 @@ func ResourceSparseApplyCenteredRMSProp(scope *Scope, var_ tf.Output, mg tf.Outp
 // \\(output_i = \frac{\sum_j data_j}{N}\\) where `mean` is
 // over `j` such that `segment_ids[j] == i` and `N` is the total number of
 // values summed.
+//
+// If the mean is empty for a given segment ID `i`, `output[i] = 0`.
 //
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 // <img style="width:100%" src="../../images/SegmentMean.png" alt>
@@ -16876,6 +16882,8 @@ func ArgMax(scope *Scope, input tf.Output, dimension tf.Output) (output tf.Outpu
 // \\(output_i = \sum_j data_j\\) where sum is over `j` such
 // that `segment_ids[j] == i`.
 //
+// If the sum is empty for a given segment ID `i`, `output[i] = 0`.
+//
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 // <img style="width:100%" src="../../images/SegmentSum.png" alt>
 // </div>
@@ -17038,6 +17046,8 @@ func SparseReshape(scope *Scope, input_indices tf.Output, input_shape tf.Output,
 // Computes a tensor such that
 // \\(output_i = \prod_j data_j\\) where the product is over `j` such
 // that `segment_ids[j] == i`.
+//
+// If the product is empty for a given segment ID `i`, `output[i] = 1`.
 //
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 // <img style="width:100%" src="../../images/SegmentProd.png" alt>
