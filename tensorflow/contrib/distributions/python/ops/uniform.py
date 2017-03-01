@@ -112,7 +112,6 @@ class Uniform(distribution.Distribution):
     super(Uniform, self).__init__(
         dtype=self._low.dtype,
         reparameterization_type=distribution.FULLY_REPARAMETERIZED,
-        is_continuous=True,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
         parameters=parameters,

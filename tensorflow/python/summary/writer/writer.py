@@ -185,7 +185,7 @@ class SummaryToEventTransformer(object):
     `saver.import_meta_graph()`.
 
     Args:
-      meta_graph_def: A `MetaGraphDef` object, often as retured by
+      meta_graph_def: A `MetaGraphDef` object, often as returned by
         `saver.export_meta_graph()`.
       global_step: Number. Optional global step counter to record with the
         graph.

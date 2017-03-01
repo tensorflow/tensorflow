@@ -1466,6 +1466,36 @@ TEST_F(OpTest, NotEqual) {
   });
 }
 
+TEST_F(OpTest, OneHot) {
+  Repeatedly([this]() {
+    DataType type = Choose<DataType>(kAllXlaTypes);
+
+    std::vector<int64> dims = RandomDims();
+    int num_dims = dims.size();
+
+    int32 depth = RandomDim();
+
+    Tensor indices(DT_INT32, TensorShape(dims));
+    std::uniform_int_distribution<int32> distribution(-depth * 2, depth * 2);
+    test::FillFn<int32>(&indices, [this, &distribution](int i) -> int32 {
+      return distribution(generator());
+    });
+
+    int axis = std::uniform_int_distribution<int32>(-num_dims - 5,
+                                                    num_dims + 5)(generator());
+
+    OpTestBuilder builder("OneHot");
+    builder.Attr("T", type);
+    builder.Attr("TI", DT_INT32);
+    builder.Attr("axis", axis);
+    builder.Input(indices);
+    builder.Input(test::AsScalar<int32>(depth));
+    builder.Input(RandomTensor(type, {}));
+    builder.Input(RandomTensor(type, {}));
+    ExpectTfAndXlaOutputsAreClose(builder);
+  });
+}
+
 TEST_F(OpTest, Pack) {
   Repeatedly([this]() {
     DataType type = Choose<DataType>(kAllXlaTypes);

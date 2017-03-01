@@ -77,9 +77,17 @@ namespace xla {
   // Scale factor holding the growing product of D{L(i)} terms.
   int64 scale = 1;
   int64 linear_index = 0;
+  bool first = true;
   for (auto dimension : shape.layout().minor_to_major()) {
-    linear_index += scale * multi_index[dimension];
-    scale *= shape.dimensions(dimension);
+    if (first) {
+      // Avoid two multiplies on the first loop iteration
+      linear_index = multi_index[dimension];
+      scale = shape.dimensions(dimension);
+      first = false;
+    } else {
+      linear_index += scale * multi_index[dimension];
+      scale *= shape.dimensions(dimension);
+    }
   }
   return linear_index;
 }

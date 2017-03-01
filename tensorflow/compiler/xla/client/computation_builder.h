@@ -352,13 +352,13 @@ class ComputationBuilder {
       tensorflow::gtl::ArraySlice<int64> rhs_dilation,
       const ConvolutionDimensionNumbers& dimension_numbers);
 
-  // Enqueues an infeed instruction onto the computation, which reads data of
-  // the given shape from the infeed buffer of the device.
+  // Enqueues an infeed instruction onto the computation, which writes data of
+  // the given shape to the infeed buffer of the device.
   ComputationDataHandle Infeed(const Shape& shape, const string& config = "");
 
   // Enqueues an outfeed instruction onto the computation. This instruction
   // generates outgoing data transfers for the given data.
-  void Outfeed(const ComputationDataHandle& operand,
+  void Outfeed(const ComputationDataHandle& operand, const Shape& shape,
                const string& outfeed_config);
 
   // Enqueues a call instruction onto the computation.

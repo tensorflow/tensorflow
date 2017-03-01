@@ -569,8 +569,11 @@ class OpKernelContext {
   int num_inputs() const { return params_->inputs->size(); }
   DataType input_dtype(int index) const;
   Status input_dtype(StringPiece name, DataType* dtype) const;
+  MemoryType input_memory_type(int index) const;
+
   int num_outputs() const { return outputs_.size(); }
   DataType expected_output_dtype(int index) const;
+  MemoryType output_memory_type(int index) const;
 
   // Input
 
@@ -669,16 +672,6 @@ class OpKernelContext {
   // REQUIRES: IsRefType(output_dtype(output_index)).
   void forward_ref_input_to_ref_output(int input_index, int output_index);
 
-  // Returns true when an alias to input[input_index] that is safe to use for
-  // in-place computation was written to *output. Returns false if
-  // input[input_index] has a refcount greater than or if its type does not
-  // match the expected output type of output[output_index].
-  bool forward_input_to_output_with_same_shape(
-      int input_index, int output_index, Tensor** output) TF_MUST_USE_RESULT;
-  Status forward_input_to_output_with_same_shape(
-      StringPiece input_name, StringPiece output_name,
-      Tensor** output) TF_MUST_USE_RESULT;
-
   // Returns true when an alias to input[input_index], reshaped to output_shape,
   // which is is safe to use for in-place computation was written to *output.
   // Returns false if input[input_index] has a refcount greater than one, or if
@@ -692,6 +685,19 @@ class OpKernelContext {
                                             StringPiece output_name,
                                             const TensorShape& output_shape,
                                             Tensor** output) TF_MUST_USE_RESULT;
+
+  // Returns a pointer to a Tensor aliasing the underlying buffer backing
+  // input[input_index] iff
+  //   * input[input_index] is not a ref,
+  //   * the data type, shape, memory type, and allocator attributes of
+  //     input[input_index] are compatible with those given in dtype, shape,
+  //     memory_type, and attr,
+  //   * refcount on the underlying buffer is one.
+  // Otherwise returns nullptr.
+  std::unique_ptr<Tensor> forward_input(
+      int input_index, DataType dtype, const TensorShape& shape,
+      MemoryType memory_type,
+      const AllocatorAttributes& attr) TF_MUST_USE_RESULT;
 
   // Tries to forward one of the inputs given in input_indices to
   // output[output_index]. If none of the given inputs can be forwarded, calls
@@ -998,7 +1004,40 @@ class OpKernelContext {
   void set_output_ref(int index, mutex* mu, Tensor* tensor_for_ref);
   TensorValue release_output(int index);
 
+  bool track_allocations() const { return params_->track_allocations; }
+
+  // Records temporary memory sizes.
+  void record_host_temp_memory_size(int64 size) {
+    host_temp_memory_size_ += size;
+  }
+  void record_device_temp_memory_size(int64 size) {
+    device_temp_memory_size_ += size;
+  }
+
+  // Returns recorded size of temporary memory;
+  int64 host_temp_memory_size() const { return host_temp_memory_size_; }
+  int64 device_temp_memory_size() const { return device_temp_memory_size_; }
+
+  // Records persistent memory allocation, size can be negative indicating
+  // deallocation.
+  void record_host_persistent_memory_allocation(int64 size,
+                                                int64 alloc_id = -1);
+  void record_device_persistent_memory_allocation(int64 size,
+                                                  int64 alloc_id = -1);
+
+  // Returns recorded size and ids of persistent memory.
+  int64 host_persistent_memory_allocated() const {
+    return host_persistent_memory_allocated_;
+  }
+  int64 device_persistent_memory_allocated() const {
+    return device_persistent_memory_allocated_;
+  }
+  std::vector<int64> host_persistent_alloc_ids() const;
+  std::vector<int64> device_persistent_alloc_ids() const;
+
  private:
+  bool input_is_ref(int index) const;
+
   Allocator* get_allocator(AllocatorAttributes attr);
 
   // Internal method to add a tensor's buffer to the list of buffers
@@ -1020,6 +1059,8 @@ class OpKernelContext {
                          Tensor* out_tensor, AllocatorAttributes allocator_attr,
                          const AllocationAttributes& allocation_attr);
 
+  bool allocate_on_host(AllocatorAttributes alloc_attr) const;
+
   // This is called by PersistentTensor::AccessTensor whenever the
   // wrapped tensor is retrieved, to ensure the runtime knows that the
   // Tensor is being accessed within an Op. This is necessary for
@@ -1038,6 +1079,13 @@ class OpKernelContext {
   ManualConstructor<UniqueTensorReferences> referenced_tensors_ GUARDED_BY(mu_);
 
   bool is_output_dead_ = false;
+
+  int64 host_temp_memory_size_;
+  int64 device_temp_memory_size_;
+  gtl::InlinedVector<int64, 2> host_persistent_alloc_ids_;
+  gtl::InlinedVector<int64, 2> device_persistent_alloc_ids_;
+  int64 host_persistent_memory_allocated_;
+  int64 device_persistent_memory_allocated_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(OpKernelContext);
 };
@@ -1132,9 +1180,11 @@ class Name : public KernelDefBuilder {
   REGISTER_KERNEL_BUILDER_UNIQ(ctr, kernel_builder, __VA_ARGS__)
 
 #define REGISTER_KERNEL_BUILDER_UNIQ(ctr, kernel_builder, ...)        \
+  constexpr bool should_register_##ctr##__flag =                      \
+      SHOULD_REGISTER_OP_KERNEL(#__VA_ARGS__);                        \
   static ::tensorflow::kernel_factory::OpKernelRegistrar              \
       registrar__body__##ctr##__object(                               \
-          SHOULD_REGISTER_OP_KERNEL(#__VA_ARGS__)                     \
+          should_register_##ctr##__flag                               \
               ? ::tensorflow::register_kernel::kernel_builder.Build() \
               : nullptr,                                              \
           #__VA_ARGS__,                                               \
@@ -1187,7 +1237,7 @@ Status OpKernelConstruction::GetAttr(StringPiece attr_name, T* value) const {
 
 inline DataType OpKernelContext::input_dtype(int index) const {
   DCHECK_GE(index, 0);
-  DCHECK_LT(index, params_->inputs->size());
+  DCHECK_LT(index, num_inputs());
   const TensorValue& value((*params_->inputs)[index]);
   if (value.is_ref()) {
     return MakeRefType(value->dtype());
@@ -1196,10 +1246,26 @@ inline DataType OpKernelContext::input_dtype(int index) const {
   }
 }
 
+inline MemoryType OpKernelContext::input_memory_type(int index) const {
+  DCHECK_GE(index, 0);
+  DCHECK_LT(index, num_inputs());
+  return op_kernel().input_memory_types()[index];
+}
+
 inline DataType OpKernelContext::expected_output_dtype(int index) const {
   DCHECK_GE(index, 0);
-  DCHECK_LT(index, params_->op_kernel->output_types().size());
+  DCHECK_LT(index, num_outputs());
   return params_->op_kernel->output_type(index);
+}
+
+inline MemoryType OpKernelContext::output_memory_type(int index) const {
+  DCHECK_GE(index, 0);
+  DCHECK_LT(index, num_outputs());
+  return op_kernel().output_memory_types()[index];
+}
+
+inline bool OpKernelContext::input_is_ref(int index) const {
+  return IsRefType(input_dtype(index));
 }
 
 inline void OpKernelContext::record_tensor_reference(const Tensor& tensor) {
@@ -1221,14 +1287,14 @@ inline void OpKernelContext::retrieve_accessed_tensors(
 // no input if tensor == nullptr.
 inline bool OpKernelContext::has_input(int index) const {
   DCHECK_GE(index, 0);
-  DCHECK_LT(index, params_->inputs->size());
+  DCHECK_LT(index, num_inputs());
   return (*params_->inputs)[index].tensor != nullptr;
 }
 
 inline mutex* OpKernelContext::input_ref_mutex(int index) {
   DCHECK_GE(index, 0);
-  DCHECK_LT(index, params_->inputs->size());
-  DCHECK((*params_->inputs)[index].is_ref());
+  DCHECK_LT(index, num_inputs());
+  DCHECK(input_is_ref(index));
   return (*params_->inputs)[index].mutex_if_ref;
 }
 
@@ -1240,7 +1306,7 @@ inline void OpKernelContext::NotifyUseOfPersistentTensor(const Tensor& t) {
 
 inline Tensor* OpKernelContext::mutable_output(int index) {
   DCHECK_GE(index, 0);
-  DCHECK_LT(index, outputs_.size());
+  DCHECK_LT(index, num_outputs());
   // No need to record_tensor_reference since the output must already
   // have been set by a call that did so.
   return outputs_[index].tensor;
@@ -1248,7 +1314,7 @@ inline Tensor* OpKernelContext::mutable_output(int index) {
 
 inline TensorValue OpKernelContext::release_output(int index) {
   DCHECK_GE(index, 0);
-  DCHECK_LT(index, outputs_.size());
+  DCHECK_LT(index, num_outputs());
   TensorValue value = outputs_[index];
   outputs_[index] = TensorValue();
   return value;

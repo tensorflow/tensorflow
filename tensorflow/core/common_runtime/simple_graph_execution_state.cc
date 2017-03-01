@@ -257,6 +257,7 @@ Status SimpleGraphExecutionState::InitBaseGraph(
   optimization_options.session_options = session_options_;
   optimization_options.graph = &new_graph;
   optimization_options.flib_def = flib_def_.get();
+  optimization_options.device_set = device_set_;
   optimization_options.cost_model = &costs;
 
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
@@ -306,6 +307,7 @@ Status SimpleGraphExecutionState::BuildGraph(
   optimization_options.session_options = session_options_;
   optimization_options.graph = &ng;
   optimization_options.flib_def = flib.get();
+  optimization_options.device_set = device_set_;
   optimization_options.cost_model = &costs;
 
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(

@@ -104,6 +104,17 @@ py_binary(
     ],
 )
 
+py_binary(
+    name = "generate_1_0",
+    srcs = ["generate_1_0.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":generate_lib",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python/debug:debug_py",
+    ],
+)
+
 py_library(
     name = "py_guide_parser",
     srcs = [

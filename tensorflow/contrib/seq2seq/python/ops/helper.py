@@ -23,10 +23,12 @@ import abc
 
 import six
 
+from tensorflow.contrib.distributions.python.ops import bernoulli
 from tensorflow.contrib.distributions.python.ops import categorical
 from tensorflow.contrib.seq2seq.python.ops import decoder
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.layers import base as layers_base
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import embedding_ops
@@ -279,6 +281,104 @@ class ScheduledEmbeddingTrainingHelper(TrainingHelper):
         inputs_not_sampling = array_ops.gather(
             base_next_inputs, where_not_sampling_flat)
         sampled_next_inputs = self._embedding_fn(sample_ids_sampling)
+        base_shape = array_ops.shape(base_next_inputs)
+        return (array_ops.scatter_nd(indices=where_sampling,
+                                     updates=sampled_next_inputs,
+                                     shape=base_shape)
+                + array_ops.scatter_nd(indices=where_not_sampling,
+                                       updates=inputs_not_sampling,
+                                       shape=base_shape))
+
+      all_finished = math_ops.reduce_all(finished)
+      next_inputs = control_flow_ops.cond(
+          all_finished, lambda: base_next_inputs, maybe_sample)
+      return (finished, next_inputs, state)
+
+
+class ScheduledOutputTrainingHelper(TrainingHelper):
+  """A training helper that adds scheduled sampling directly to outputs.
+
+  Returns False for sample_ids where no sampling took place; True elsewhere.
+  """
+
+  def __init__(self, inputs, sequence_length, sampling_probability,
+               time_major=False, seed=None, next_input_layer=None, name=None):
+    """Initializer.
+
+    Args:
+      inputs: A (structure) of input tensors.
+      sequence_length: An int32 vector tensor.
+      sampling_probability: A 0D `float32` tensor: the probability of sampling
+        from the outputs instead of reading directly from the inputs.
+      time_major: Python bool.  Whether the tensors in `inputs` are time major.
+        If `False` (default), they are assumed to be batch major.
+      seed: The sampling seed.
+      next_input_layer: (Optional) An instance of `tf.layers.Layer`, i.e.,
+        `tf.layers.Dense`.  Optional layer to apply to the RNN output to create
+        the next input.
+      name: Name scope for any created operations.
+
+    Raises:
+      ValueError: if `sampling_probability` is not a scalar or vector.
+    """
+    with ops.name_scope(name, "ScheduledOutputTrainingHelper",
+                        [sampling_probability]):
+      self._sampling_probability = ops.convert_to_tensor(
+          sampling_probability, name="sampling_probability")
+      if self._sampling_probability.get_shape().ndims not in (0, 1):
+        raise ValueError(
+            "sampling_probability must be either a scalar or a vector. "
+            "saw shape: %s" % (self._sampling_probability.get_shape()))
+
+      self._seed = seed
+
+      if (next_input_layer is not None and not isinstance(next_input_layer,
+                                                          layers_base._Layer)):  # pylint: disable=protected-access
+        raise TypeError("next_input_layer must be a Layer, received: %s" %
+                        type(next_input_layer))
+      self._next_input_layer = next_input_layer
+
+      super(ScheduledOutputTrainingHelper, self).__init__(
+          inputs=inputs,
+          sequence_length=sequence_length,
+          time_major=time_major,
+          name=name)
+
+  def initialize(self, name=None):
+    return super(ScheduledOutputTrainingHelper, self).initialize(name=name)
+
+  def sample(self, time, outputs, state, name=None):
+    with ops.name_scope(name, "ScheduledOutputTrainingHelperSample",
+                        [time, outputs, state]):
+      sampler = bernoulli.Bernoulli(probs=self._sampling_probability)
+      return math_ops.cast(
+          sampler.sample(sample_shape=self.batch_size, seed=self._seed),
+          dtypes.bool)
+
+  def next_inputs(self, time, outputs, state, sample_ids, name=None):
+    with ops.name_scope(name, "ScheduledOutputTrainingHelperNextInputs",
+                        [time, outputs, state, sample_ids]):
+      (finished, base_next_inputs, state) = (
+          super(ScheduledOutputTrainingHelper, self).next_inputs(
+              time=time,
+              outputs=outputs,
+              state=state,
+              sample_ids=sample_ids,
+              name=name))
+
+      def maybe_sample():
+        """Perform scheduled sampling."""
+        if self._next_input_layer is None:
+          return array_ops.where(sample_ids, outputs, base_next_inputs)
+
+        where_sampling = math_ops.cast(
+            array_ops.where(sample_ids), dtypes.int32)
+        where_not_sampling = math_ops.cast(
+            array_ops.where(math_ops.logical_not(sample_ids)), dtypes.int32)
+        outputs_sampling = array_ops.gather_nd(outputs, where_sampling)
+        inputs_not_sampling = array_ops.gather_nd(base_next_inputs,
+                                                  where_not_sampling)
+        sampled_next_inputs = self._next_input_layer(outputs_sampling)
         base_shape = array_ops.shape(base_next_inputs)
         return (array_ops.scatter_nd(indices=where_sampling,
                                      updates=sampled_next_inputs,

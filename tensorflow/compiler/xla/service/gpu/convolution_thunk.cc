@@ -91,6 +91,7 @@ string ConvolutionKindToString(
     case ConvolutionThunk::ConvolutionKind::kBackwardInput:
       return "backward_input";
   }
+  return "unknown convolution kind";
 }
 
 ConvolutionThunk::ConvolutionThunk(

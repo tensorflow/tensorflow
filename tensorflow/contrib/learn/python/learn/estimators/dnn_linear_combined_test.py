@@ -20,13 +20,7 @@ from __future__ import print_function
 
 import functools
 import json
-import sys
 import tempfile
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 import numpy as np
 
@@ -256,9 +250,10 @@ class DNNLinearCombinedClassifierTest(test.TestCase):
 
     with self.assertRaisesRegexp(
         ValueError,
-        'dnn_hidden_units must be defined when dnn_feature_columns is specified'):
+        'dnn_hidden_units must be defined when dnn_feature_columns is '
+        'specified'):
       classifier = dnn_linear_combined.DNNLinearCombinedClassifier(
-        dnn_feature_columns=[age, language])
+          dnn_feature_columns=[age, language])
       classifier.fit(input_fn=_input_fn, steps=2)
 
   def testEmbeddingMultiplier(self):
@@ -866,13 +861,16 @@ class DNNLinearCombinedClassifierTest(test.TestCase):
     loss2 = classifier.evaluate(input_fn=input_fn, steps=1)['loss']
     self.assertLess(loss2, loss1)
 
-    self.assertNotIn('dnn/logits/biases', classifier.get_variable_names())
-    self.assertNotIn('dnn/logits/weights', classifier.get_variable_names())
-    self.assertEquals(1, len(classifier.linear_bias_))
-    self.assertEquals(2, len(classifier.linear_weights_))
-    self.assertEquals(1, len(classifier.linear_weights_['linear/age/weight']))
+    variable_names = classifier.get_variable_names()
+    self.assertNotIn('dnn/logits/biases', variable_names)
+    self.assertNotIn('dnn/logits/weights', variable_names)
+    self.assertIn('linear/bias_weight', variable_names)
+    self.assertIn('linear/age/weight', variable_names)
+    self.assertIn('linear/language/weights', variable_names)
     self.assertEquals(
-        100, len(classifier.linear_weights_['linear/language/weights']))
+        1, len(classifier.get_variable_value('linear/age/weight')))
+    self.assertEquals(
+        100, len(classifier.get_variable_value('linear/language/weights')))
 
   def testLinearOnlyOneFeature(self):
     """Tests that linear-only instantiation works for one feature only."""
@@ -894,10 +892,15 @@ class DNNLinearCombinedClassifierTest(test.TestCase):
     loss2 = classifier.evaluate(input_fn=input_fn, steps=1)['loss']
     self.assertLess(loss2, loss1)
 
-    self.assertNotIn('dnn/logits/biases', classifier.get_variable_names())
-    self.assertNotIn('dnn/logits/weights', classifier.get_variable_names())
-    self.assertEquals(1, len(classifier.linear_bias_))
-    self.assertEquals(99, len(classifier.linear_weights_))
+    variable_names = classifier.get_variable_names()
+    self.assertNotIn('dnn/logits/biases', variable_names)
+    self.assertNotIn('dnn/logits/weights', variable_names)
+    self.assertIn('linear/bias_weight', variable_names)
+    self.assertIn('linear/language/weights', variable_names)
+    self.assertEquals(
+        1, len(classifier.get_variable_value('linear/bias_weight')))
+    self.assertEquals(
+        99, len(classifier.get_variable_value('linear/language/weights')))
 
   def testDNNOnly(self):
     """Tests that DNN-only instantiation works."""
@@ -909,11 +912,15 @@ class DNNLinearCombinedClassifierTest(test.TestCase):
     classifier.fit(input_fn=test_data.iris_input_multiclass_fn, steps=1000)
     classifier.evaluate(input_fn=test_data.iris_input_multiclass_fn, steps=100)
 
-    self.assertEquals(3, len(classifier.dnn_bias_))
-    self.assertEquals(3, len(classifier.dnn_weights_))
-    self.assertNotIn('linear/bias_weight', classifier.get_variable_names())
-    self.assertNotIn('linear/feature_BUCKETIZED_weights',
-                     classifier.get_variable_names())
+    variable_names = classifier.get_variable_names()
+    self.assertIn('dnn/hiddenlayer_0/weights', variable_names)
+    self.assertIn('dnn/hiddenlayer_0/biases', variable_names)
+    self.assertIn('dnn/hiddenlayer_1/weights', variable_names)
+    self.assertIn('dnn/hiddenlayer_1/biases', variable_names)
+    self.assertIn('dnn/logits/weights', variable_names)
+    self.assertIn('dnn/logits/biases', variable_names)
+    self.assertNotIn('linear/bias_weight', variable_names)
+    self.assertNotIn('linear/feature_BUCKETIZED/weight', variable_names)
 
   def testDNNWeightsBiasesNames(self):
     """Tests the names of DNN weights and biases in the checkpoints."""
@@ -930,10 +937,13 @@ class DNNLinearCombinedClassifierTest(test.TestCase):
         dnn_hidden_units=[3, 3])
 
     classifier.fit(input_fn=_input_fn_train, steps=5)
-    # hiddenlayer_0/weights,hiddenlayer_1/weights and dnn_logits/weights.
-    self.assertEquals(3, len(classifier.dnn_weights_))
-    # hiddenlayer_0/biases, hiddenlayer_1/biases, dnn_logits/biases.
-    self.assertEquals(3, len(classifier.dnn_bias_))
+    variable_names = classifier.get_variable_names()
+    self.assertIn('dnn/hiddenlayer_0/weights', variable_names)
+    self.assertIn('dnn/hiddenlayer_0/biases', variable_names)
+    self.assertIn('dnn/hiddenlayer_1/weights', variable_names)
+    self.assertIn('dnn/hiddenlayer_1/biases', variable_names)
+    self.assertIn('dnn/logits/weights', variable_names)
+    self.assertIn('dnn/logits/biases', variable_names)
 
 
 class DNNLinearCombinedRegressorTest(test.TestCase):

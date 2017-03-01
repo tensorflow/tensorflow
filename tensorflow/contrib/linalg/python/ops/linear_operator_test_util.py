@@ -336,7 +336,7 @@ class NonSquareLinearOperatorDerivedClassTest(LinearOperatorDerivedClassTest):
 
   Square shapes are never tested by this class, so if you want to test your
   operator with a square shape, create two test classes, the other subclassing
-  SquareLinearOperatorMatrixTest.
+  SquareLinearOperatorFullMatrixTest.
 
   Sub-classes must still define all abstractmethods from
   LinearOperatorDerivedClassTest that are not defined here.

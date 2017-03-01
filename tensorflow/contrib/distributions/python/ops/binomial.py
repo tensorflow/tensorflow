@@ -65,7 +65,7 @@ class Binomial(distribution.Distribution):
   where:
   * `total_count = n`,
   * `probs = p`,
-  * `Z` is the normalizaing constant, and,
+  * `Z` is the normalizing constant, and,
   * `n!` is the factorial of `n`.
 
   #### Examples
@@ -153,7 +153,6 @@ class Binomial(distribution.Distribution):
           name=name)
     super(Binomial, self).__init__(
         dtype=self._probs.dtype,
-        is_continuous=False,
         reparameterization_type=distribution.NOT_REPARAMETERIZED,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,

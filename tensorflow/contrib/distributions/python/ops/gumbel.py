@@ -132,7 +132,6 @@ class _Gumbel(distribution.Distribution):
         contrib_tensor_util.assert_same_float_dtype([self._loc, self._scale])
     super(_Gumbel, self).__init__(
         dtype=self._scale.dtype,
-        is_continuous=True,
         reparameterization_type=distribution.FULLY_REPARAMETERIZED,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,

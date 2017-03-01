@@ -109,6 +109,41 @@ class ReduceTest : public ClientLibraryTestBase {
                                ErrorSpec(0.001));
   }
 
+  void RunR1ToR0PredTest(bool and_reduce,
+                         tensorflow::gtl::ArraySlice<int> input_data) {
+    const int element_count = input_data.size();
+    ComputationBuilder builder(client_, TestName());
+    const Shape input_shape = ShapeUtil::MakeShape(S32, {element_count});
+    auto input_par = builder.Parameter(0, input_shape, "input");
+    auto pred_values =
+        builder.Eq(input_par, builder.ConstantR1<int>(element_count, 1));
+    ComputationDataHandle init_value;
+    Computation reduce;
+    if (and_reduce) {
+      init_value = builder.ConstantR0<bool>(true);
+      reduce = CreateScalarLogicalAndComputation(&builder);
+    } else {
+      init_value = builder.ConstantR0<bool>(false);
+      reduce = CreateScalarLogicalOrComputation(&builder);
+    }
+    builder.Reduce(pred_values, init_value, reduce,
+                   /*dimensions_to_reduce=*/{0});
+
+    std::unique_ptr<Literal> input_literal = LiteralUtil::CreateR1(input_data);
+    std::unique_ptr<GlobalData> input_global_data =
+        client_->TransferToServer(*input_literal).ConsumeValueOrDie();
+
+    bool expected = and_reduce;
+    for (bool item : input_data) {
+      if (and_reduce) {
+        expected = expected && item;
+      } else {
+        expected = expected || item;
+      }
+    }
+    ComputeAndCompareR0<bool>(&builder, expected, {input_global_data.get()});
+  }
+
   // Runs an R2 => R0 reduction test with the given number of (rows, cols).
   void RunR2ToR0Test(int64 rows, int64 cols, int64 minor = 1, int64 major = 0) {
     ComputationBuilder builder(client_, TestName());
@@ -218,6 +253,40 @@ XLA_TEST_F(ReduceTest, ReduceR2_111x50_01_To_R1) {
 }
 XLA_TEST_F(ReduceTest, ReduceR2_1024x1024_To_R1) { RunR2ToR1Test(1024, 1024); }
 XLA_TEST_F(ReduceTest, ReduceR2_1000x1500_To_R1) { RunR2ToR1Test(1000, 1500); }
+
+// TODO(b/34969189): Invalid CAS generated on GPU.
+XLA_TEST_F(ReduceTest, DISABLED_ON_GPU(AndReduceAllOnesR1_10_Pred)) {
+  constexpr int element_count = 10;
+  std::vector<int> input(element_count, 1);
+  RunR1ToR0PredTest(/*and_reduce=*/true, input);
+}
+
+// TODO(b/34969189): Invalid CAS generated on GPU.
+XLA_TEST_F(ReduceTest, DISABLED_ON_GPU(AndReduceOnesAndZerosR1_10_Pred)) {
+  constexpr int element_count = 10;
+  std::vector<int> input(element_count);
+  for (int i = 0; i < element_count; ++i) {
+    input[i] = i % 2;
+  }
+  RunR1ToR0PredTest(/*and_reduce=*/true, input);
+}
+
+// TODO(b/34969189): Invalid CAS generated on GPU.
+XLA_TEST_F(ReduceTest, DISABLED_ON_GPU(OrReduceAllOnesR1_10_Pred)) {
+  constexpr int element_count = 10;
+  std::vector<int> input(element_count, 1);
+  RunR1ToR0PredTest(/*and_reduce=*/false, input);
+}
+
+// TODO(b/34969189): Invalid CAS generated on GPU.
+XLA_TEST_F(ReduceTest, DISABLED_ON_GPU(OrReduceOnesAndZerosR1_10_Pred)) {
+  constexpr int element_count = 10;
+  std::vector<int> input(element_count);
+  for (int i = 0; i < element_count; ++i) {
+    input[i] = i % 2;
+  }
+  RunR1ToR0PredTest(/*and_reduce=*/false, input);
+}
 
 XLA_TEST_F(ReduceTest, ReduceElementwiseR2_111x50_To_R1) {
   const int64 rows = 111, cols = 50;
