@@ -76,13 +76,13 @@ class PredecessorHloOrdering : public HloOrdering {
 // An HLO ordering based on data dependencies in the HLO graph. In this partial
 // order, instruction A executes before instruction B only if there is a path
 // from A to B in the HLO graph. For example, given the following graph:
-//
-//        param
-//       /     \
-//    negate   exp
-//        \    /
-//         add
-//
+/*
+          param
+         /     \
+      negate   exp
+          \    /
+           add
+*/
 // DependencyHloOrdering gives the following executes-before relations:
 //   param executes before negate, exp, and add
 //   negate executes before add
@@ -105,13 +105,13 @@ class DependencyHloOrdering : public PredecessorHloOrdering {
 // The computation total order is a sequencing of all of its instructions in
 // the computation (eg, {inst0, inst1, inst2,...}) as in single-threaded
 // execution. For example, given the following HLO graph:
-//
-//        param
-//       /     \
-//    negate   exp
-//        \    /
-//         add
-//
+/*
+          param
+         /     \
+      negate   exp
+          \    /
+           add
+*/
 // and the following sequence:
 //
 //  {param, negate, exp, add}

@@ -240,8 +240,8 @@ class MultivariateNormalDiagPlusLowRank(
           scale = linalg.LinearOperatorUDVHUpdate(
               scale,
               u=scale_perturb_factor,
-              diag=scale_perturb_diag,
-              is_diag_positive=scale_perturb_diag is None,
+              diag_update=scale_perturb_diag,
+              is_diag_update_positive=scale_perturb_diag is None,
               is_non_singular=True,  # Implied by is_positive_definite=True.
               is_self_adjoint=True,
               is_positive_definite=True,

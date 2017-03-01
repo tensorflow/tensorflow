@@ -328,7 +328,7 @@ def tf_gen_op_wrapper_py(name, out=None, hidden=None, visibility=None, deps=[],
                     srcs_version="PY2AND3",
                     visibility=visibility,
                     deps=[
-                        "//tensorflow/python:framework_for_generated_wrappers",
+                        "//tensorflow/python:framework_for_generated_wrappers_v2",
                     ],)
 
 # Define a bazel macro that creates cc_test for tensorflow.

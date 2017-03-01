@@ -25,6 +25,17 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+class VarIsInitializedOp : public XlaOpKernel {
+ public:
+  explicit VarIsInitializedOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
+  void Compile(XlaOpKernelContext* ctx) override {
+    xla::ComputationDataHandle handle;
+    bool initialized = ctx->ReadVariableInput(0, &handle).ok();
+    ctx->SetOutput(0, ctx->builder()->ConstantR0<bool>(initialized));
+  }
+};
+REGISTER_XLA_OP("VarIsInitializedOp", VarIsInitializedOp);
+
 class ReadVariableOp : public XlaOpKernel {
  public:
   explicit ReadVariableOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}

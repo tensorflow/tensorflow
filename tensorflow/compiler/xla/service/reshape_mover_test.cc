@@ -53,5 +53,30 @@ TEST_F(ReshapeMoverTest, ReshapesWithNonSameInputShapesNotMoved) {
   EXPECT_EQ(add4, computation->root_instruction());
 }
 
+TEST_F(ReshapeMoverTest, EquivalentReshapesMovedAcrossFusion) {
+  auto root_shape = ShapeUtil::MakeShape(F32, {8, 7});
+  HloComputation::Builder builder(TestName());
+  auto param0 = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {1, 8, 1, 7}), "param0"));
+  auto param1 = builder.AddInstruction(HloInstruction::CreateParameter(
+      1, ShapeUtil::MakeShape(F32, {1, 8, 1, 7}), "param0"));
+  auto reshape2 =
+      builder.AddInstruction(HloInstruction::CreateReshape(root_shape, param0));
+  auto reshape3 =
+      builder.AddInstruction(HloInstruction::CreateReshape(root_shape, param1));
+  auto add4 = builder.AddInstruction(HloInstruction::CreateBinary(
+      root_shape, HloOpcode::kAdd, reshape2, reshape3));
+
+  auto module = MakeUnique<HloModule>(TestName());
+  auto computation = module->AddEntryComputation(builder.Build());
+  auto fusion = computation->AddInstruction(HloInstruction::CreateFusion(
+      add4->shape(), HloInstruction::FusionKind::kLoop, add4));
+  TF_CHECK_OK(computation->ReplaceInstruction(add4, fusion));
+  EXPECT_EQ(fusion, computation->root_instruction());
+  EXPECT_TRUE(ReshapeMover().Run(module.get()).ValueOrDie());
+  EXPECT_NE(fusion, computation->root_instruction());
+  EXPECT_EQ(HloOpcode::kReshape, computation->root_instruction()->opcode());
+}
+
 }  // namespace
 }  // namespace xla

@@ -19,11 +19,13 @@ from __future__ import division
 from __future__ import print_function
 
 import contextlib
+import copy
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import function
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -171,7 +173,8 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
       `graph_def` that will be returned as `Operation` objects; and/or
       tensor names in `graph_def` that will be returned as `Tensor` objects.
     name: (Optional.) A prefix that will be prepended to the names in
-      `graph_def`. Defaults to `"import"`.
+      `graph_def`. Note that this does not apply to imported function names.
+      Defaults to `"import"`.
     op_dict: (Optional.) A dictionary mapping op type names to `OpDef` protos.
       Must contain an `OpDef` proto for each op type named in `graph_def`.
       If omitted, uses the `OpDef` protos registered in the global registry.
@@ -232,9 +235,24 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
   else:
     producer_op_dict = {op.name: op for op in producer_op_list.op}
 
+  g = ops.get_default_graph()
+
+  # Add any functions defined in `graph_def` to `g`
+  if graph_def.library and graph_def.library.function:
+    # Copy op_dict so we don't clobber the original
+    op_dict = copy.copy(op_dict)
+    # pylint: disable=protected-access
+    # Note that we do not prepend `name` to the function name. The reasoning is
+    # that function names are similar to op definition names, which currently do
+    # not have a scoped name or namespace scheme.
+    functions = function._from_library(graph_def.library)
+    for f in functions:
+      g._add_function(f)
+      op_dict[f.name] = f.definition.signature
+    # pylint: enable=protected-access
+
   # LINT.IfChange
   with ops.name_scope(name, 'import', input_map.values()) as scope:
-    g = ops.get_default_graph()
     # TODO(ashankar): Should this just copy over or should it do some
     # more nuanced merging? For example, the graph may already have some
     # marked "bad versions" and we don't want to lose those because of
@@ -369,7 +387,7 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
             raise ValueError(_InvalidNodeMessage(
                 node, 'Input tensor %r %s' % (input_name, te)))
 
-      # pylint: disable=protected_access
+      # pylint: disable=protected-access
       if op._input_dtypes != input_types:
         raise ValueError(
             _InvalidNodeMessage(
@@ -377,12 +395,13 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
                 'Input types mismatch (expected %r but got %r)'
                 % (', '.join(dtypes.as_dtype(x).name for x in input_types),
                    ', '.join(x.name for x in op._input_dtypes))))
-      # pylint: enable=protected_access
+      # pylint: enable=protected-access
 
-      # Execute shape inference for this op.
-      # NOTE(mrry): If the graph contains a cycle, the full shape information
-      # may not be available for this op's inputs.
-      ops.set_shapes_for_outputs(op)
+      if not g._is_function(op.type):  # pylint: disable=protected-access
+        # Execute shape inference for this op.
+        # NOTE(mrry): If the graph contains a cycle, the full shape information
+        # may not be available for this op's inputs.
+        ops.set_shapes_for_outputs(op)
       # For nodes with _output_shapes set, set the output shapes.
       if '_output_shapes' in op.node_def.attr:
         for i, output in enumerate(op.outputs):

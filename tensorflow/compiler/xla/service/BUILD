@@ -130,6 +130,36 @@ cc_test(
 )
 
 cc_library(
+    name = "call_graph",
+    srcs = ["call_graph.cc"],
+    hdrs = ["call_graph.h"],
+    deps = [
+        ":hlo",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_test(
+    name = "call_graph_test",
+    srcs = ["call_graph_test.cc"],
+    deps = [
+        ":call_graph",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
     name = "user_computation",
     srcs = ["user_computation.cc"],
     hdrs = ["user_computation.h"],

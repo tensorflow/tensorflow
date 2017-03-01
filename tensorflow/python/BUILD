@@ -329,59 +329,112 @@ cc_library(
     deps = [":python_op_gen"],
 )
 
-# What is needed for tf_gen_op_wrapper_py.
 py_library(
     name = "framework_for_generated_wrappers",
-    srcs = [
-        "framework/constant_op.py",
-        "framework/device.py",
-        "framework/dtypes.py",
-        "framework/function.py",
-        "framework/op_def_library.py",
-        "framework/op_def_registry.py",
-        "framework/ops.py",
-        "framework/registry.py",
-        "framework/tensor_shape.py",
-        "framework/versions.py",
-    ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
-        ":platform",
-        ":util",
-        "//tensorflow/core:protos_all_py",
-        "//third_party/py/numpy",
-        "@six_archive//:six",
+        ":constant_op",
+        ":device",
+        ":dtypes",
+        ":framework_ops",
+        ":function",
+        ":op_def_library",
+        ":op_def_registry",
+        ":registry",
+        ":tensor_shape",
+        ":versions",
+    ],
+)
+
+# What is needed for tf_gen_op_wrapper_py. This is the same as
+# "framework_for_generated_wrappers" minus the "function" dep. This is to avoid
+# circular dependencies, as "function" uses generated op wrappers.
+py_library(
+    name = "framework_for_generated_wrappers_v2",
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":constant_op",
+        ":device",
+        ":dtypes",
+        ":framework_ops",
+        ":op_def_library",
+        ":op_def_registry",
+        ":registry",
+        ":tensor_shape",
+        ":versions",
     ],
 )
 
 py_library(
     name = "framework",
     srcs = [
-        "framework/common_shapes.py",
         "framework/framework_lib.py",
         "framework/graph_io.py",
-        "framework/graph_util.py",
-        "framework/graph_util_impl.py",
         "framework/importer.py",
         "framework/load_library.py",
         "framework/meta_graph.py",
-        "framework/random_seed.py",
-        "framework/sparse_tensor.py",
         "framework/subscribe.py",
-        "framework/tensor_util.py",
     ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":common_shapes",
+        ":cpp_shape_inference_proto_py",
+        ":errors",
+        ":framework_for_generated_wrappers",
+        ":graph_util",
+        ":lib",
+        ":platform",
+        ":pywrap_tensorflow",
+        ":random_seed",
+        ":sparse_tensor",
+        ":tensor_util",
+        ":util",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "common_shapes",
+    srcs = ["framework/common_shapes.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":cpp_shape_inference_proto_py",
         ":errors",
-        ":framework_for_generated_wrappers",
-        ":lib",
-        ":platform",
+        ":framework_ops",
         ":pywrap_tensorflow",
-        ":util",
-        "//third_party/py/numpy",
-        "@six_archive//:six",
+        ":tensor_shape",
+        ":tensor_util",
+        "//tensorflow/core:protos_all_py",
+    ],
+)
+
+py_library(
+    name = "constant_op",
+    srcs = ["framework/constant_op.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":dtypes",
+        ":framework_ops",
+        ":tensor_shape",
+        "//tensorflow/core:protos_all_py",
+    ],
+)
+
+py_library(
+    name = "device",
+    srcs = ["framework/device.py"],
+    srcs_version = "PY2AND3",
+)
+
+py_library(
+    name = "dtypes",
+    srcs = ["framework/dtypes.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/core:protos_all_py",
     ],
 )
 
@@ -393,6 +446,139 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [":util"],
+)
+
+py_library(
+    name = "function",
+    srcs = ["framework/function.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":dtypes",
+        ":framework_ops",
+        ":op_def_registry",
+        ":util",
+        ":variable_scope",
+        "//tensorflow/core:protos_all_py",
+    ],
+)
+
+py_library(
+    name = "graph_util",
+    srcs = [
+        "framework/graph_util.py",
+        "framework/graph_util_impl.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":dtypes",
+        ":framework_ops",
+        ":platform",
+        ":tensor_util",
+        "//tensorflow/core:protos_all_py",
+    ],
+)
+
+py_library(
+    name = "op_def_library",
+    srcs = ["framework/op_def_library.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":dtypes",
+        ":framework_ops",
+        ":platform",
+        ":tensor_shape",
+        ":util",
+        "//tensorflow/core:protos_all_py",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "op_def_registry",
+    srcs = ["framework/op_def_registry.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/core:protos_all_py",
+    ],
+)
+
+py_library(
+    name = "framework_ops",  # "ops" is already the name of a deprecated target
+    srcs = ["framework/ops.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":device",
+        ":dtypes",
+        ":op_def_registry",
+        ":platform",
+        ":registry",
+        ":tensor_shape",
+        ":util",
+        ":versions",
+        "//tensorflow/core:protos_all_py",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "random_seed",
+    srcs = ["framework/random_seed.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_ops",
+    ],
+)
+
+py_library(
+    name = "registry",
+    srcs = ["framework/registry.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":platform",
+        ":util",
+    ],
+)
+
+py_library(
+    name = "sparse_tensor",
+    srcs = ["framework/sparse_tensor.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":dtypes",
+        ":framework_ops",
+        ":tensor_util",
+    ],
+)
+
+py_library(
+    name = "tensor_shape",
+    srcs = ["framework/tensor_shape.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":util",
+        "//tensorflow/core:protos_all_py",
+    ],
+)
+
+py_library(
+    name = "tensor_util",
+    srcs = ["framework/tensor_util.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":tensor_shape",
+        ":util",
+        "//tensorflow/core:protos_all_py",
+    ],
+)
+
+py_library(
+    name = "versions",
+    srcs = ["framework/versions.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":pywrap_tensorflow",
+    ],
 )
 
 # load("//third_party/py/cython:build_defs.bzl", "pyx_library")
@@ -514,11 +700,13 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
+        ":constant_op",
         ":control_flow_ops",
-        ":framework",
-        ":framework_for_generated_wrappers",
+        ":framework_ops",
         ":functional_ops_gen",
+        ":sparse_tensor",
         ":tensor_array_ops",
+        ":tensor_shape",
         ":util",
         ":variable_scope",
     ],
@@ -997,9 +1185,14 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops_gen",
-        ":framework",
-        ":framework_for_generated_wrappers",
+        ":common_shapes",
+        ":constant_op",
+        ":dtypes",
+        ":framework_ops",
         ":math_ops_gen",
+        ":sparse_tensor",
+        ":tensor_shape",
+        ":tensor_util",
         ":util",
         "//third_party/py/numpy",
         "@six_archive//:six",
@@ -1079,17 +1272,21 @@ py_library(
     srcs = ["ops/control_flow_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "tensor_shape",
         ":array_ops",
         ":array_ops_gen",
+        ":constant_op",
         ":control_flow_ops_gen",
         ":data_flow_ops_gen",
-        ":framework",
-        ":framework_for_generated_wrappers",
+        ":dtypes",
+        ":framework_ops",
         ":logging_ops_gen",
         ":math_ops",
         ":platform",
+        ":sparse_tensor",
         ":tensor_array_ops",
         ":util",
+        "//tensorflow/core:protos_all_py",
         "@six_archive//:six",
     ],
 )
@@ -1232,7 +1429,8 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
-        ":framework_for_generated_wrappers",
+        ":constant_op",
+        ":dtypes",
         ":linalg_ops",
         ":math_ops",
         ":nn_ops",
@@ -1270,7 +1468,8 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
-        ":framework_for_generated_wrappers",
+        ":dtypes",
+        ":framework_ops",
         ":linalg_ops_gen",
         ":math_ops",
         "//third_party/py/numpy",
@@ -1308,15 +1507,20 @@ py_library(
     srcs = ["ops/math_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "constant_op",
         ":array_ops",
+        ":common_shapes",
         ":control_flow_ops_gen",
         ":data_flow_ops_gen",
-        ":framework",
-        ":framework_for_generated_wrappers",
+        ":dtypes",
+        ":framework_ops",
+        ":graph_util",
         ":math_ops_gen",
         ":sparse_ops_gen",
+        ":sparse_tensor",
         ":state_ops",
         ":state_ops_gen",
+        ":tensor_shape",
         ":util",
         "//third_party/py/numpy",
     ],
@@ -1340,10 +1544,12 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
-        ":framework_for_generated_wrappers",
+        ":framework_ops",
         ":resource_variable_ops_gen",
+        ":tensor_shape",
         ":util",
         ":variables",
+        "//tensorflow/core:protos_all_py",
     ],
 )
 
@@ -1390,11 +1596,14 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
-        ":framework",
-        ":framework_for_generated_wrappers",
+        ":dtypes",
+        ":framework_ops",
+        ":graph_util",
         ":math_ops",
         ":nn_ops_gen",
         ":random_ops",
+        ":tensor_shape",
+        ":tensor_util",
         "//third_party/py/numpy",
     ],
 )
@@ -1443,10 +1652,11 @@ py_library(
     deps = [
         ":array_ops",
         ":control_flow_ops",
-        ":framework",
-        ":framework_for_generated_wrappers",
+        ":dtypes",
+        ":framework_ops",
         ":math_ops",
         ":random_ops_gen",
+        ":random_seed",
     ],
 )
 
@@ -1669,9 +1879,10 @@ py_library(
     srcs = ["ops/state_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":framework_for_generated_wrappers",
+        ":framework_ops",
         ":resource_variable_ops_gen",
         ":state_ops_gen",
+        ":tensor_shape",
     ],
 )
 
@@ -1726,9 +1937,10 @@ py_library(
     deps = [
         ":array_ops",
         ":data_flow_ops_gen",
-        ":framework",
-        ":framework_for_generated_wrappers",
+        ":framework_ops",
         ":math_ops",
+        ":tensor_shape",
+        ":tensor_util",
         ":util",
     ],
 )
@@ -1738,11 +1950,12 @@ py_library(
     srcs = ["ops/variable_scope.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":array_ops",
-        ":framework_for_generated_wrappers",
+        ":dtypes",
+        ":framework_ops",
         ":init_ops",
         ":platform",
         ":resource_variable_ops",
+        ":tensor_shape",
         ":variables",
         "@six_archive//:six",
     ],
@@ -1755,10 +1968,13 @@ py_library(
     deps = [
         ":array_ops",
         ":control_flow_ops",
-        ":framework_for_generated_wrappers",
+        ":dtypes",
+        ":framework_ops",
         ":math_ops",
         ":state_ops",
+        ":tensor_shape",
         ":util",
+        "//tensorflow/core:protos_all_py",
     ],
 )
 
@@ -2308,8 +2524,15 @@ tf_cuda_library(
     ],
 )
 
-tf_py_wrap_cc(
+py_library(
     name = "pywrap_tensorflow",
+    srcs = ["pywrap_tensorflow.py"],
+    srcs_version = "PY2AND3",
+    deps = [":pywrap_tensorflow_internal"],
+)
+
+tf_py_wrap_cc(
+    name = "pywrap_tensorflow_internal",
     srcs = ["tensorflow.i"],
     swig_includes = [
         "client/device_lib.i",

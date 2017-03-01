@@ -74,8 +74,9 @@ bool TrySinkReshapeOrTranspose(HloComputation* computation,
       // implicit broadcast as if it were the operands would not be equivalent
       // reshapes, so all the fused instructions have the same dimensions.
       for (const auto& fused_instruction : instruction->fused_instructions()) {
-        *fused_instruction->mutable_shape()->mutable_dimensions() =
-            operands[0]->shape().dimensions();
+        Shape* shape = fused_instruction->mutable_shape();
+        *shape->mutable_dimensions() = operands[0]->shape().dimensions();
+        *shape->mutable_layout() = operands[0]->shape().layout();
       }
     }
     auto new_elementwise =

@@ -87,7 +87,7 @@ class Scaffold(object):
 
   You can also pass the following additional pieces to the constructor:
 
-  * `init_feed_dict`: A sessionn feed dictionary that should be used when
+  * `init_feed_dict`: A session feed dictionary that should be used when
      running the init op.
   * `init_fn`: A callable to run run after the init op to perform additional
     initializations.  The callable will be called as
@@ -261,7 +261,7 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
   For a chief, this utility sets proper session initializer/restorer. It also
   creates hooks related to checkpoint and summary saving. For workers, this
   utility sets proper session creator which waits for the chief to
-  inialize/restore.
+  initialize/restore.
 
 
   Args:
@@ -673,7 +673,7 @@ class SingularMonitoredSession(_MonitoredSession):
 
   * calls `hook.end()`
   * closes the queue runners and the session
-  * surpresses `OutOfRange` error which indicates that all inputs have been
+  * suppresses `OutOfRange` error which indicates that all inputs have been
     processed if the `SingularMonitoredSession` is used as a context.
   """
 

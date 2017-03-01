@@ -1563,6 +1563,32 @@ TEST_F(GraphConstructorTest, ImportGraphDef_ErrorsDoNoChangeTheGraph) {
 #undef EXPECT_IMPORT_FAILURE
 }
 
+TEST_F(GraphConstructorTest, ImportGraphDef_ErrorFunctionDefsUnimplemented) {
+  ExpectError(
+      R"EOF(
+library {
+  function {
+    signature {
+      name: "Foo_cc661786"
+      input_arg {
+        name: "x"
+        type: DT_FLOAT
+      }
+      output_arg {
+        name: "x"
+        type: DT_FLOAT
+      }
+    }
+    ret {
+      key: "x"
+      value: "x:0"
+    }
+  }
+})EOF",
+      ImportGraphDefOptions(),
+      {"Importing GraphDefs containing functions not yet implemented"});
+}
+
 TEST_F(GraphConstructorTest, CopyGraph) {
   const int v = TF_GRAPH_DEF_VERSION;
   const int bad = v + 17;
