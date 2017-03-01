@@ -484,7 +484,7 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
   flat_input = nest.flatten(inputs)
 
   if not time_major:
-    def _get_transpose_indices(x):
+    def _transpose_indices(x):
       # Only swap the first two dimensions; rest are unchanged.
       x = ops.convert_to_tensor(x)
       x_rank = x.get_shape().ndims
@@ -495,8 +495,7 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
         indices = [1, 0] + range(2, x_rank)
       return indices
     # (B, T, ...) => (T, B, ...)
-    transpose_indices = _get_transpose_indices(input_)
-    flat_input = tuple(array_ops.transpose(input_, transpose_indices)
+    flat_input = tuple(array_ops.transpose(input_, _transpose_indices(input_))
                        for input_ in flat_input)
 
   parallel_iterations = parallel_iterations or 32
@@ -561,8 +560,7 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
     if not time_major:
       # (T,B,D) => (B,T,D)
       flat_output = nest.flatten(outputs)
-      transpose_indices = _get_transpose_indices(output)
-      flat_output = [array_ops.transpose(output, transpose_indices)
+      flat_output = [array_ops.transpose(output, _transpose_indices(output))
                      for output in flat_output]
       outputs = nest.pack_sequence_as(structure=outputs,
                                       flat_sequence=flat_output)
