@@ -38,7 +38,7 @@ java_test(
     deps = [
         ":tensorflow",
         ":testutil",
-        "//external:junit",
+        "@junit",
     ],
 )
 
@@ -50,7 +50,7 @@ java_test(
     deps = [
         ":tensorflow",
         ":testutil",
-        "//external:junit",
+        "@junit",
     ],
 )
 
@@ -62,7 +62,7 @@ java_test(
     deps = [
         ":tensorflow",
         ":testutil",
-        "//external:junit",
+        "@junit",
     ],
 )
 
@@ -74,7 +74,7 @@ java_test(
     deps = [
         ":tensorflow",
         ":testutil",
-        "//external:junit",
+        "@junit",
     ],
 )
 
@@ -85,7 +85,7 @@ java_test(
     test_class = "org.tensorflow.TensorFlowTest",
     deps = [
         ":tensorflow",
-        "//external:junit",
+        "@junit",
     ],
 )
 
@@ -97,7 +97,7 @@ java_test(
     deps = [
         ":tensorflow",
         ":testutil",
-        "//external:junit",
+        "@junit",
     ],
 )
 

@@ -100,9 +100,9 @@ cuda_py_tests(
 )
 
 cuda_py_tests(
-    name = "linear_operator_matrix_test",
+    name = "linear_operator_full_matrix_test",
     size = "medium",
-    srcs = ["python/kernel_tests/linear_operator_matrix_test.py"],
+    srcs = ["python/kernel_tests/linear_operator_full_matrix_test.py"],
     additional_deps = [
         ":linalg_py",
         "//tensorflow/python:array_ops",

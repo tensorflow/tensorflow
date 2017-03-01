@@ -162,6 +162,12 @@ Status GenericTransferManager::TransferLiteralToInfeed(
   return Unimplemented("Infeed is not supported on GPU (b/30467474)");
 }
 
+Status GenericTransferManager::TransferLiteralFromOutfeed(
+    perftools::gputools::StreamExecutor* executor, const Shape& literal_shape,
+    Literal* literal) {
+  return Unimplemented("Outfeed is not supported on CPU/GPU (b/30467474)");
+}
+
 Status GenericTransferManager::ResetDevices(
     tensorflow::gtl::ArraySlice<perftools::gputools::StreamExecutor*>
         executors) {

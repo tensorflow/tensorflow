@@ -148,7 +148,7 @@ void LinearAlgebraOp<Scalar>::AnalyzeInputs(OpKernelContext* context,
     // TODO(rmlarsen): Use emplace_back when it is added to InlinedVector. Same
     // in several places below.
     input_matrix_shapes->push_back(TensorShape({num_rows, num_cols}));
-    inputs->push_back(in);
+    inputs->push_back(&in);
   }
   // Have the derived class validate that the inputs are as expected.
   ValidateInputMatrixShapes(context, *input_matrix_shapes);
@@ -197,12 +197,14 @@ void LinearAlgebraOp<Scalar>::PrepareOutputs(
     Tensor* out = nullptr;
     // See if there is an input buffer we can reuse for this output.
     bool reused_input = false;
-    for (int input_idx : unused_inputs) {
-      if (context->forward_input_to_output_with_shape(
-              input_idx, output_idx, output_tensor_shape, &out)) {
-        reused_input = true;
-        unused_inputs.erase(input_idx);
-        break;
+    if (EnableInputForwarding()) {
+      for (int input_idx : unused_inputs) {
+        if (context->forward_input_to_output_with_shape(
+                input_idx, output_idx, output_tensor_shape, &out)) {
+          reused_input = true;
+          unused_inputs.erase(input_idx);
+          break;
+        }
       }
     }
     if (!reused_input) {
@@ -223,7 +225,7 @@ void LinearAlgebraOp<Scalar>::ComputeTensorSlice(
     // TODO(kalakris): Handle alignment if possible. Eigen::Map is
     // unaligned by default.
     matrix_inputs.push_back(
-        ConstMatrixMap(inputs[i].flat<Scalar>().data() +
+        ConstMatrixMap(inputs[i]->flat<Scalar>().data() +
                            matrix_index * input_matrix_shapes[i].num_elements(),
                        input_matrix_shapes[i].dim_size(0),
                        input_matrix_shapes[i].dim_size(1)));

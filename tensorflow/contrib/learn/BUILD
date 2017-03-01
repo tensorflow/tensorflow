@@ -77,6 +77,16 @@ py_library(
     ],
 )
 
+# Exposes constants without having to build the entire :learn target.
+py_library(
+    name = "estimator_constants_py",
+    srcs = [
+        "python/learn/estimators/constants.py",
+        "python/learn/estimators/prediction_key.py",
+    ],
+    srcs_version = "PY2AND3",
+)
+
 py_test(
     name = "data_feeder_test",
     size = "small",
@@ -862,6 +872,22 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "rnn_common_test",
+    size = "medium",
+    srcs = ["python/learn/estimators/rnn_common_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
     ],
 )
 

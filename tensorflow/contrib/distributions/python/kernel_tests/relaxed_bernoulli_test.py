@@ -101,12 +101,6 @@ class RelaxedBernoulliTest(test.TestCase):
       with self.assertRaises(errors_impl.InvalidArgumentError):
         sample.eval()
 
-  def testContinuous(self):
-    temperature = 1.0
-    p = [0.1, 0.4]
-    dist = relaxed_bernoulli.RelaxedBernoulli(temperature, probs=p)
-    self.assertTrue(dist.is_continuous)
-
   def testDtype(self):
     temperature = constant_op.constant(1.0, dtype=dtypes.float32)
     p = constant_op.constant([0.1, 0.4], dtype=dtypes.float32)

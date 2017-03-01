@@ -229,6 +229,9 @@ message RecvTensorRequest {
 
   // Optional information on server-side device locality.
   DeviceLocality server_locality = 5;
+
+  // Optional information needed by the RPC subsystem.
+  google.protobuf.Any transport_options = 6;
 }
 
 message RecvTensorResponse {
@@ -243,7 +246,7 @@ message RecvTensorResponse {
   int64 send_start_micros = 3;
 
   // Optional additional information about how to receive the tensor,
-  // in the event that `RecvTensorRequest.dma_ok` was true.
+  // e.g. in the event that `RecvTensorRequest.dma_ok` was true.
   google.protobuf.Any transport_options = 4;
 }
 

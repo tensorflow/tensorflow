@@ -107,7 +107,7 @@ class VariableScopeTest(test.TestCase):
         variable_scope.get_variable("x", initializer={})
 
   def testInitFromNonInitializer(self):
-    with self.test_session() as sess:
+    with self.test_session():
       # Test various dtypes with zeros initializer as following:
       types = [
           dtypes.int8, dtypes.uint8, dtypes.int16, dtypes.uint16, dtypes.int32,
@@ -396,7 +396,7 @@ class VariableScopeTest(test.TestCase):
         self.assertTrue(jump_reuse.reuse)
 
       with variable_scope.variable_scope(vs, reuse=False) as jump_no_reuse:
-        self.assertFalse(jump_no_reuse.reuse)
+        self.assertTrue(jump_no_reuse.reuse)  # Inherited, cannot be undone.
 
       with variable_scope.variable_scope("jump", reuse=False) as scope:
         vs = scope

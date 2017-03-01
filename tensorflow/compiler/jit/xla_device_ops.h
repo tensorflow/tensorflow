@@ -18,7 +18,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_XLA_DEVICE_OPS_H_
 #define TENSORFLOW_COMPILER_JIT_XLA_DEVICE_OPS_H_
 
-#include "tensorflow/compiler/jit/xla_device_launch_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/kernels/assign_op.h"
@@ -113,12 +112,7 @@ class XlaDeviceDummyOp : public OpKernel {
                                                                                \
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("VarHandleOp").Device(DEVICE).HostMemory("resource"),               \
-      ResourceHandleOp<Var>);                                                  \
-  REGISTER_KERNEL_BUILDER(Name("VarIsInitializedOp")                           \
-                              .Device(DEVICE)                                  \
-                              .HostMemory("resource")                          \
-                              .HostMemory("is_initialized"),                   \
-                          IsResourceInitialized<Var>);
+      ResourceHandleOp<Var>);
 
 // TODO(b/32507444): the registrations for the control flow operators are
 // temporary and exist primarily to work around a bug in the graph partitioning

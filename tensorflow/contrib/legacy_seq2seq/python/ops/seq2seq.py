@@ -933,7 +933,7 @@ def one2many_rnn_seq2seq(encoder_inputs,
 
   Args:
     encoder_inputs: A list of 1D int32 Tensors of shape [batch_size].
-    decoder_inputs_dict: A dictionany mapping decoder name (string) to
+    decoder_inputs_dict: A dictionary mapping decoder name (string) to
       the corresponding decoder_inputs; each decoder_inputs is a list of 1D
       Tensors of shape [batch_size]; num_decoders is defined as
       len(decoder_inputs_dict).
@@ -1177,7 +1177,7 @@ def model_with_buckets(encoder_inputs,
         if per_example_loss is set, a list of 1D batch-sized float Tensors.
 
   Raises:
-    ValueError: If length of encoder_inputsut, targets, or weights is smaller
+    ValueError: If length of encoder_inputs, targets, or weights is smaller
       than the largest (last) bucket.
   """
   if len(encoder_inputs) < buckets[-1][0]:

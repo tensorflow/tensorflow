@@ -1169,15 +1169,21 @@ void FeedFetchBenchmarkHelper(int num_feeds, int iters) {
 
   Graph g(OpRegistry::Global());
   for (int i = 0; i < num_feeds; ++i) {
+    // NOTE(mrry): We pin nodes to the "/cpu:0" device, so as not to
+    // measure CPU<->GPU copying overhead. We should also optimize and
+    // monitor this overhead where possible, but that is not the
+    // object of study in this benchmark.
     Node* placeholder;
     TF_CHECK_OK(NodeBuilder(g.NewName("Placeholder"), "PlaceholderV2")
                     .Attr("shape", TensorShape())
                     .Attr("dtype", DT_FLOAT)
+                    .Device("/cpu:0")
                     .Finalize(&g, &placeholder));
     Node* identity;
     TF_CHECK_OK(NodeBuilder(g.NewName("Identity"), "Identity")
                     .Input(placeholder)
                     .Attr("T", DT_FLOAT)
+                    .Device("/cpu:0")
                     .Finalize(&g, &identity));
     inputs.push_back({placeholder->name() + ":0", value});
     outputs.push_back(identity->name() + ":0");

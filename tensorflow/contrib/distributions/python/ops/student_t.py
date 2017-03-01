@@ -165,7 +165,6 @@ class StudentT(distribution.Distribution):
             (self._df, self._loc, self._scale))
     super(StudentT, self).__init__(
         dtype=self._scale.dtype,
-        is_continuous=True,
         reparameterization_type=distribution.NOT_REPARAMETERIZED,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,

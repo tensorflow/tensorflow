@@ -124,7 +124,7 @@ def run_and_gather_logs(name, test_name, test_args):
     test_executable = os.path.join(".", test_executable)
 
   temp_directory = tempfile.mkdtemp(prefix="run_and_gather_logs")
-  mangled_test_name = test_name.strip("/").replace("/", "_").replace(":", "_")
+  mangled_test_name = name.strip("/").replace("/", "_").replace(":", "_")
   test_file_prefix = os.path.join(temp_directory, mangled_test_name)
   test_file_prefix = "%s." % test_file_prefix
 

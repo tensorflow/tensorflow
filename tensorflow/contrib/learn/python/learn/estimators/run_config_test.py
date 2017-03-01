@@ -19,12 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import json
-import sys
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 from tensorflow.contrib.learn.python.learn import run_config
 from tensorflow.contrib.learn.python.learn.estimators import run_config as run_config_lib

@@ -226,7 +226,7 @@ def _multi_label_head(n_classes,
                       metric_class_ids=None):
   """Creates a _Head for multi label classification.
 
-  The Head uses softmax cross entropy loss.
+  The Head uses sigmoid cross entropy loss.
 
   Args:
     n_classes: Integer, number of classes, must be >= 2
@@ -246,7 +246,7 @@ def _multi_label_head(n_classes,
       metrics. Must all be in the range `[0, n_classes)`.
 
   Returns:
-    An instance of _MultiClassHead.
+    An instance of _MultiLabelHead.
 
   Raises:
     ValueError: if n_classes is < 2
@@ -295,6 +295,11 @@ def _multi_head(heads, loss_weights=None):
   return _MultiHead(heads, loss_combiner=_weighted_loss_combiner)
 
 
+def no_op_train_fn(loss):
+  del loss
+  return control_flow_ops.no_op()
+
+
 # TODO(zakaria): Make the classes public once we are ready for users to subclass
 #   them. See b/34751732
 class _Head(object):
@@ -336,7 +341,8 @@ class _Head(object):
       mode: Estimator's `ModeKeys`.
       labels: Labels `Tensor`, or `dict` of same.
       train_op_fn: Function that takes a scalar loss and returns an op to
-          optimize with the loss.
+          optimize with the loss. Must not be `None` in TRAIN mode. If you want
+          to optimize loss yourself you can pass `no_op_train_fn`.
       logits: logits `Tensor`, or `dict` of same, to be used for the head.
       logits_input: `Tensor` from which to build logits.
       scope: Optional scope for `variable_scope`.
@@ -520,7 +526,9 @@ def _create_model_fn_ops(features,
       logging_ops.scalar_summary(
           _summary_key(head_name, mkey.LOSS), weighted_average_loss)
 
-      if (mode == model_fn.ModeKeys.TRAIN) and (train_op_fn is not None):
+      if mode == model_fn.ModeKeys.TRAIN:
+        if train_op_fn is None:
+          raise ValueError("train_op_fn can not be None in TRAIN mode")
         train_op = _train_op(loss, labels, train_op_fn, centered_bias,
                              logits_dimension, loss_fn)
       eval_metric_ops = metrics_fn(
@@ -952,7 +960,7 @@ class _MultiClassHead(_SingleHead):
             self.head_name, mkey.CLASS_LOGITS_MEAN % class_id)] = (
                 _predictions_streaming_mean(logits, weights, class_id))
         metrics[_summary_key(self.head_name, mkey.CLASS_AUC % class_id)] = (
-            _class_streaming_auc(logits, labels, weights, class_id,
+            _class_streaming_auc(probabilities, labels, weights, class_id,
                                  self.logits_dimension))
 
     return metrics
@@ -1201,13 +1209,9 @@ class _MultiLabelHead(_SingleHead):
             self.head_name, mkey.CLASS_LOGITS_MEAN % class_id)] = (
                 _predictions_streaming_mean(logits, weights, class_id))
         metrics[_summary_key(self.head_name, mkey.CLASS_AUC % class_id)] = (
-            _streaming_auc(logits, labels, weights, class_id))
+            _streaming_auc(probabilities, labels, weights, class_id))
 
     return metrics
-
-
-def _noop(unused_loss):
-  return control_flow_ops.no_op()
 
 
 class _MultiHead(_Head):
@@ -1266,10 +1270,15 @@ class _MultiHead(_Head):
       labels: Labels `Tensor`, or `dict` of same.
       train_op_fn: Function that takes a scalar loss and returns an op to
           optimize with the loss.
-      logits: Concatenated logits of (x, 1) shape where x is the sum of
-          `logits_dimension` of all the heads, i.e., same as `logits_dimension`
-          of this class. This function will split the logits tensor and pass
-          logits of proper size to each head.
+      logits: Concatenated logits for all heads or a dict of head name to logits
+          tensor. If concatenated logits, it should have (batchsize, x) shape
+          where x is the sum of `logits_dimension` of all the heads,
+          i.e., same as `logits_dimension` of this class. create_model_fn_ops
+          will split the logits tensor and pass logits of proper size to each
+          head. This is useful if we want to be agnostic about whether you
+          creating a single versus multihead. logits can also be a dict for
+          convenience where you are creating the head specific logits explicitly
+          and don't want to concatenate them yourself.
       logits_input: tensor to build logits from.
       scope: Optional scope for variable_scope. If provided, will be passed to
         all heads. Most users will want to set this to `None`, so each head
@@ -1287,28 +1296,37 @@ class _MultiHead(_Head):
     if logits is None:
       # Use logits_input.
       for head in self._heads:
-        # TODO(ptucker): Do we need to let each head create its own logits?
         all_model_fn_ops.append(
             head.create_model_fn_ops(
                 features=features,
                 mode=mode,
                 labels=labels,
-                train_op_fn=_noop,
+                train_op_fn=no_op_train_fn,
                 logits_input=logits_input,
                 scope=scope))
     else:
-      # Split logits for each head.
-      for head, head_logits in zip(self._heads, self._split_logits(logits)):
+      head_logits_pairs = []
+      if isinstance(logits, dict):
+        head_logits_pairs = []
+        for head in self._heads:
+          head_logits_pairs.append((head, logits[head.head_name]))
+      else:
+        # Split logits for each head.
+        head_logits_pairs = zip(self._heads, self._split_logits(logits))
+
+      for head, head_logits in head_logits_pairs:
         all_model_fn_ops.append(
             head.create_model_fn_ops(
                 features=features,
                 mode=mode,
                 labels=labels,
-                train_op_fn=_noop,
+                train_op_fn=no_op_train_fn,
                 logits=head_logits,
                 scope=scope))
 
     if mode == model_fn.ModeKeys.TRAIN:
+      if train_op_fn is None:
+        raise ValueError("train_op_fn can not be None in TRAIN mode.")
       return self._combine_train(all_model_fn_ops, train_op_fn)
     if mode == model_fn.ModeKeys.INFER:
       return self._combine_infer(all_model_fn_ops)
