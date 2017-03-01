@@ -506,6 +506,17 @@ export function positionEllipse(ellipse, cx: number, cy: number,
 };
 
 /**
+ * @param {number} stat A stat for a health pill (such as mean or variance).
+ * @return {string} A human-friendly string representation of that stat.
+ */
+function _humanizeHealthPillStat(stat) {
+  if (Math.abs(stat) >= 1) {
+    return stat.toFixed(1);
+  }
+  return stat.toExponential(1);
+}
+
+/**
  * Renders a health pill for an op atop a node.
  */
 function _addHealthPill(
@@ -592,6 +603,20 @@ function _addHealthPill(
   if (nodeInfo.labelOffset < 0) {
     // The label is positioned above the node. Do not occlude the label.
     healthPillY += nodeInfo.labelOffset;
+  }
+
+  if (lastHealthPillOverview[4] || lastHealthPillOverview[5] ||
+      lastHealthPillOverview[6]) {
+    // At least 1 "non-Inf and non-NaN" value exists. Show stats on tensor
+    // values.
+    let statsSvg = document.createElementNS(svgNamespace, 'text');
+    const minString = _humanizeHealthPillStat(lastHealthPillData[8]);
+    const maxString = _humanizeHealthPillStat(lastHealthPillData[9]);
+    statsSvg.textContent = minString + ' ~ ' + maxString;
+    statsSvg.classList.add('health-pill-stats');
+    statsSvg.setAttribute('x', String(healthPillWidth / 2));
+    statsSvg.setAttribute('y', '-2');
+    healthPillGroup.appendChild(statsSvg);
   }
 
   healthPillGroup.setAttribute(

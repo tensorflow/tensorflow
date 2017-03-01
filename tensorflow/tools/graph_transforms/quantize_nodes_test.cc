@@ -152,6 +152,58 @@ class QuantizeNodesTest : public ::testing::Test {
                                     context, 2.0, quantized_graph_def);
   }
 
+  void TestIgnoreOps(std::initializer_list<string> ops_to_ignore) {
+    auto root = tensorflow::Scope::NewRootScope();
+    using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
+
+    // A small helper to construct a Const op.
+    auto const_op = [&](const string& name, const TensorShape& shape,
+                        std::initializer_list<float> values) {
+      Tensor tensor(DT_FLOAT, shape);
+      test::FillValues<float>(&tensor, values);
+      return Const(root.WithOpName(name), Input::Initializer(tensor));
+    };
+
+    // A simple graph with two different quantizable ops.
+    int m = 1;
+    int n = 1;
+    int k = 1;
+    Output a_op = const_op("a_op", {m, k}, {2});
+    Output b_op = const_op("b_op", {k, n}, {3});
+    Output c_op = const_op("c_op", {m, k}, {1});
+    Output d_op = const_op("d_op", {k, n}, {4});
+    Output mat_mul_op = MatMul(root.WithOpName("mat_mul_op"), a_op, b_op);
+    Output mul_op = Mul(root.WithOpName("mul"), c_op, d_op);
+
+    GraphDef float_graph_def;
+    TF_ASSERT_OK(root.ToGraphDef(&float_graph_def));
+
+    TransformFuncContext context;
+    if (ops_to_ignore.size() > 0) {
+      context.params["ignore_op"] = ops_to_ignore;
+    }
+
+    GraphDef quantized_graph_def;
+    TestTransformedVersusFloatGraph(QuantizeNodes, float_graph_def, {}, {},
+                                    {"mat_mul_op", "mul"}, context, 1.0,
+                                    &quantized_graph_def);
+
+    // Make sure the quantized graph still contains the op that should have
+    // been ignored by QuantizeNodes.
+    for (const string& op_name : ops_to_ignore) {
+      bool exists_in_quantized_graph = false;
+      for (const NodeDef& node : quantized_graph_def.node()) {
+        if (node.op() == op_name) {
+          exists_in_quantized_graph = true;
+          break;
+        }
+      }
+      EXPECT_TRUE(exists_in_quantized_graph)
+          << "Op " << op_name
+          << " should not have been replace by a quantized version";
+    }
+  }
+
   void TestQuantizeMatMul(int m, int n, int k,
                           const std::vector<float>& a_values,
                           const std::vector<float>& b_values) {
@@ -1315,6 +1367,12 @@ class QuantizeNodesTest : public ::testing::Test {
     EXPECT_EQ("Dequantize", node_map.at("included_reshape_op")->op());
   }
 };
+
+TEST_F(QuantizeNodesTest, TestIgnoreOps) {
+  TestIgnoreOps({});
+  TestIgnoreOps({"MatMul"});
+  TestIgnoreOps({"MatMul", "Mul"});
+}
 
 TEST_F(QuantizeNodesTest, TestQuantizeMatMulTiny) { TestQuantizeMatMulTiny(); }
 

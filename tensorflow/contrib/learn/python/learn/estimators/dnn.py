@@ -37,8 +37,6 @@ from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.summary import summary
 
-_CENTERED_BIAS_WEIGHT = "centered_bias_weight"
-
 # The default learning rate of 0.05 is a historical artifact of the initial
 # implementation, but seems a reasonable choice.
 _LEARNING_RATE = 0.05
@@ -299,9 +297,7 @@ class DNNClassifier(estimator.Estimator):
     Raises:
       ValueError: If `n_classes` < 2.
     """
-    self._hidden_units = hidden_units
     self._feature_columns = tuple(feature_columns or [])
-    self._enable_centered_bias = enable_centered_bias
     super(DNNClassifier, self).__init__(
         model_fn=_dnn_model_fn,
         model_dir=model_dir,
@@ -461,36 +457,6 @@ class DNNClassifier(estimator.Estimator):
         prediction_key=prediction_key.PredictionKey.PROBABILITIES,
         default_batch_size=default_batch_size,
         exports_to_keep=exports_to_keep)
-
-  @property
-  @deprecated("2016-10-30",
-              "This method will be removed after the deprecation date. "
-              "To inspect variables, use get_variable_names() and "
-              "get_variable_value().")
-  def weights_(self):
-    hiddenlayer_weights = [
-        self.get_variable_value("dnn/hiddenlayer_%d/weights" % i)
-        for i, _ in enumerate(self._hidden_units)
-    ]
-    logits_weights = [self.get_variable_value("dnn/logits/weights")]
-    return hiddenlayer_weights + logits_weights
-
-  @property
-  @deprecated("2016-10-30",
-              "This method will be removed after the deprecation date. "
-              "To inspect variables, use get_variable_names() and "
-              "get_variable_value().")
-  def bias_(self):
-    hiddenlayer_bias = [
-        self.get_variable_value("dnn/hiddenlayer_%d/biases" % i)
-        for i, _ in enumerate(self._hidden_units)
-    ]
-    logits_bias = [self.get_variable_value("dnn/logits/biases")]
-    if self._enable_centered_bias:
-      centered_bias = [self.get_variable_value(_CENTERED_BIAS_WEIGHT)]
-    else:
-      centered_bias = []
-    return hiddenlayer_bias + logits_bias + centered_bias
 
 
 class DNNRegressor(estimator.Estimator):

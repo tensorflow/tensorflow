@@ -34,7 +34,7 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 
 namespace Eigen {
-class ThreadPoolDevice;
+struct ThreadPoolDevice;
 }
 
 namespace xla {

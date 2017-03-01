@@ -19,18 +19,12 @@ from __future__ import division
 from __future__ import print_function
 
 import math
-import sys
 import time
 
 import numpy as np
 from sklearn.cluster import KMeans as SklearnKMeans
 
 # pylint: disable=g-import-not-at-top
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
-
 from tensorflow.contrib.learn.python import learn
 from tensorflow.contrib.learn.python.learn.estimators import kmeans as kmeans_lib
 from tensorflow.contrib.learn.python.learn.estimators import run_config
@@ -47,6 +41,7 @@ from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import test
 from tensorflow.python.training import input as input_lib
+from tensorflow.python.training import queue_runner
 
 FLAGS = flags.FLAGS
 
@@ -521,6 +516,28 @@ class SklearnKMeansBenchmark(KMeansBenchmark):
       sklearn_kmeans.fit(self.points)
       scores.append(sklearn_kmeans.inertia_)
     self._report(num_iters, start, time.time(), scores)
+
+
+class KMeansTestQueues(test.TestCase):
+
+  def input_fn(self):
+    def _fn():
+      queue = data_flow_ops.FIFOQueue(capacity=10,
+                                      dtypes=dtypes.float32,
+                                      shapes=[10, 3])
+      enqueue_op = queue.enqueue(array_ops.zeros([10, 3], dtype=dtypes.float32))
+      queue_runner.add_queue_runner(queue_runner.QueueRunner(queue,
+                                                             [enqueue_op]))
+      return queue.dequeue(), None
+    return _fn
+
+  # This test makes sure that there are no deadlocks when using a QueueRunner.
+  # Note that since cluster initialization is dependendent on inputs, if input
+  # is generated using a QueueRunner, one has to make sure that these runners
+  # are started before the initialization.
+  def test_queues(self):
+    kmeans = kmeans_lib.KMeansClustering(5)
+    kmeans.fit(input_fn=self.input_fn(), steps=1)
 
 
 if __name__ == '__main__':

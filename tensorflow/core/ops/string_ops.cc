@@ -59,7 +59,7 @@ defines the key of the hash function. `key` is an array of 2 elements.
 A strong hash is important when inputs may be malicious, e.g. URLs with
 additional components. Adversaries could try to make their inputs hash to the
 same bucket for a denial-of-service attack or to skew the results. A strong
-hash prevents this by making it dificult, if not infeasible, to compute inputs
+hash prevents this by making it difficult, if not infeasible, to compute inputs
 that hash to the same bucket. This comes at a cost of roughly 4x higher compute
 time than `tf.string_to_hash_bucket_fast`.
 
@@ -308,10 +308,10 @@ REGISTER_OP("Substr")
     .Doc(R"doc(
 Return substrings from `Tensor` of strings.
 
-For each string in the input `Tensor`, creates a substring starting at index 
-`pos` with a total length of `len`. 
+For each string in the input `Tensor`, creates a substring starting at index
+`pos` with a total length of `len`.
 
-If `len` defines a substring that would extend beyond the length of the input 
+If `len` defines a substring that would extend beyond the length of the input
 string, then as many characters as possible are used.
 
 If `pos` is negative or specifies a character index larger than any of the input
@@ -320,7 +320,7 @@ strings, then an `InvalidArgumentError` is thrown.
 `pos` and `len` must have the same shape, otherwise a `ValueError` is thrown on
 Op creation.
 
-*NOTE*: `Substr` supports broadcasting up to two dimensions. More about 
+*NOTE*: `Substr` supports broadcasting up to two dimensions. More about
 broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 
@@ -382,7 +382,7 @@ length =   [3, 2, 1]
 output = [b'hir', b'ee', b'n"]
 ```
 
-input: Tensor of strings 
+input: Tensor of strings
 pos: Scalar defining the position of first character in each substring
 len: Scalar defining the number of characters to include in each substring
 output: Tensor of substrings

@@ -20,7 +20,7 @@ See the @{$python/contrib.linalg} guide.
 @@LinearOperatorDiag
 @@LinearOperatorIdentity
 @@LinearOperatorScaledIdentity
-@@LinearOperatorMatrix
+@@LinearOperatorFullMatrix
 @@LinearOperatorTriL
 @@LinearOperatorUDVHUpdate
 @@LinearOperatorComposition
@@ -37,8 +37,8 @@ from tensorflow.contrib.linalg.python.ops.linear_operator import *
 from tensorflow.contrib.linalg.python.ops.linear_operator_addition import *
 from tensorflow.contrib.linalg.python.ops.linear_operator_composition import *
 from tensorflow.contrib.linalg.python.ops.linear_operator_diag import *
+from tensorflow.contrib.linalg.python.ops.linear_operator_full_matrix import *
 from tensorflow.contrib.linalg.python.ops.linear_operator_identity import *
-from tensorflow.contrib.linalg.python.ops.linear_operator_matrix import *
 from tensorflow.contrib.linalg.python.ops.linear_operator_tril import *
 from tensorflow.contrib.linalg.python.ops.linear_operator_udvh_update import *
 

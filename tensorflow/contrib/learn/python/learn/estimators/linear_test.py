@@ -20,13 +20,7 @@ from __future__ import print_function
 
 import functools
 import json
-import sys
 import tempfile
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 import numpy as np
 
@@ -239,8 +233,14 @@ class LinearClassifierTest(test.TestCase):
         n_classes=3, feature_columns=[feature_column])
 
     classifier.fit(input_fn=test_data.iris_input_multiclass_fn, steps=100)
-    self.assertEqual(4, len(classifier.weights_))
-    self.assertEqual(3, len(classifier.bias_))
+
+    variable_names = classifier.get_variable_names()
+    self.assertIn('linear/feature/weight', variable_names)
+    self.assertIn('linear/bias_weight', variable_names)
+    self.assertEqual(
+        4, len(classifier.get_variable_value('linear/feature/weight')))
+    self.assertEqual(
+        3, len(classifier.get_variable_value('linear/bias_weight')))
 
   def testCustomOptimizerByObject(self):
     """Tests multi-class classification using matrix data as input."""
@@ -1365,8 +1365,10 @@ class LinearRegressorTest(test.TestCase):
         feature_columns=feature_columns,
         optimizer=ftrl.FtrlOptimizer(learning_rate=0.8))
     regressor.fit(x, y, batch_size=64, steps=2000)
+    self.assertIn('linear//weight', regressor.get_variable_names())
+    regressor_weights = regressor.get_variable_value('linear//weight')
     # Have to flatten weights since they come in (x, 1) shape.
-    self.assertAllClose(weights, regressor.weights_.flatten(), rtol=1)
+    self.assertAllClose(weights, regressor_weights.flatten(), rtol=1)
     # TODO(ispir): Disable centered_bias.
     # assert abs(bias - regressor.bias_) < 0.1
 
@@ -1393,8 +1395,10 @@ class LinearRegressorTest(test.TestCase):
     regressor.fit(input_fn=input_fn, steps=20)
     loss = regressor.evaluate(input_fn=input_fn, steps=1)['loss']
     self.assertLess(loss, 0.01)
+    self.assertIn('linear/x/weight', regressor.get_variable_names())
+    regressor_weights = regressor.get_variable_value('linear/x/weight')
     self.assertAllClose(
-        [w[0] for w in weights], regressor.weights_.flatten(), rtol=0.1)
+        [w[0] for w in weights], regressor_weights.flatten(), rtol=0.1)
 
   def testSdcaOptimizerMixedFeaturesArbitraryWeights(self):
     """Tests LinearRegressor with SDCAOptimizer and a mix of features."""
@@ -1464,7 +1468,15 @@ class LinearRegressorTest(test.TestCase):
         optimizer=sdca_optimizer)
     regressor.fit(input_fn=input_fn, steps=20)
     no_l1_reg_loss = regressor.evaluate(input_fn=input_fn, steps=1)['loss']
-    no_l1_reg_weights = regressor.weights_
+    variable_names = regressor.get_variable_names()
+    self.assertIn('linear/price/weight', variable_names)
+    self.assertIn('linear/country/weights', variable_names)
+    no_l1_reg_weights = {
+        'linear/price/weight': regressor.get_variable_value(
+            'linear/price/weight'),
+        'linear/country/weights': regressor.get_variable_value(
+            'linear/country/weights'),
+    }
 
     # Regressor with L1 regularization.
     sdca_optimizer = sdca_optimizer_lib.SDCAOptimizer(
@@ -1475,7 +1487,12 @@ class LinearRegressorTest(test.TestCase):
         optimizer=sdca_optimizer)
     regressor.fit(input_fn=input_fn, steps=20)
     l1_reg_loss = regressor.evaluate(input_fn=input_fn, steps=1)['loss']
-    l1_reg_weights = regressor.weights_
+    l1_reg_weights = {
+        'linear/price/weight': regressor.get_variable_value(
+            'linear/price/weight'),
+        'linear/country/weights': regressor.get_variable_value(
+            'linear/country/weights'),
+    }
 
     # Unregularized loss is lower when there is no L1 regularization.
     self.assertLess(no_l1_reg_loss, l1_reg_loss)
@@ -1576,11 +1593,17 @@ class LinearRegressorTest(test.TestCase):
 
     regressor.fit(input_fn=input_fn, steps=200)
 
+    variable_names = regressor.get_variable_names()
+    self.assertIn('linear/bias_weight', variable_names)
+    self.assertIn('linear/a/weight', variable_names)
+    self.assertIn('linear/b/weight', variable_names)
     # TODO(b/29339026): Change the expected results to expect a centered bias.
     self.assertNear(
         regressor.get_variable_value('linear/bias_weight')[0], 0.2, err=0.05)
-    self.assertNear(regressor.weights_['linear/a/weight'][0], 0.2, err=0.05)
-    self.assertNear(regressor.weights_['linear/b/weight'][0], 0.0, err=0.05)
+    self.assertNear(
+        regressor.get_variable_value('linear/a/weight')[0], 0.2, err=0.05)
+    self.assertNear(
+        regressor.get_variable_value('linear/b/weight')[0], 0.0, err=0.05)
 
   def testSdcaOptimizerBiasAndOtherColumnsFabricatedCentered(self):
     """Tests LinearClasssifier with SDCAOptimizer and validates bias weight."""
@@ -1622,10 +1645,16 @@ class LinearRegressorTest(test.TestCase):
 
     regressor.fit(input_fn=input_fn, steps=100)
 
+    variable_names = regressor.get_variable_names()
+    self.assertIn('linear/bias_weight', variable_names)
+    self.assertIn('linear/a/weight', variable_names)
+    self.assertIn('linear/b/weight', variable_names)
     self.assertNear(
         regressor.get_variable_value('linear/bias_weight')[0], 0.0, err=0.05)
-    self.assertNear(regressor.weights_['linear/a/weight'][0], 0.1, err=0.05)
-    self.assertNear(regressor.weights_['linear/b/weight'][0], -0.1, err=0.05)
+    self.assertNear(
+        regressor.get_variable_value('linear/a/weight')[0], 0.1, err=0.05)
+    self.assertNear(
+        regressor.get_variable_value('linear/b/weight')[0], -0.1, err=0.05)
 
 
 class LinearEstimatorTest(test.TestCase):

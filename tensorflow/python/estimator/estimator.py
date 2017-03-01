@@ -383,6 +383,7 @@ class Estimator(object):
       eval_results = evaluation._evaluate_once(  # pylint: disable=protected-access
           checkpoint_path=checkpoint_path,
           master=self._config.evaluation_master,
+          scaffold=estimator_spec.scaffold,
           eval_ops=update_op,
           final_ops=eval_dict,
           hooks=hooks,

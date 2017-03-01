@@ -197,13 +197,10 @@ class MixtureTest(test.TestCase):
           ])
     with self.assertRaisesWithPredicateMatch(ValueError, "non-empty list"):
       distributions_py.Mixture(distributions_py.Categorical([0.3, 0.2]), None)
-    with self.assertRaisesWithPredicateMatch(TypeError,
-                                             "either be continuous or not"):
-      distributions_py.Mixture(
-          cat, [
-              distributions_py.Normal(loc=[1.0], scale=[2.0]),
-              distributions_py.Bernoulli(dtype=dtypes.float32, logits=[1.0]),
-          ])
+
+    # TODO(ebrevdo): once distribution Domains have been added, add a
+    # test to ensure that the domains of the distributions in a
+    # mixture are checked for equivalence.
 
   def testMeanUnivariate(self):
     with self.test_session() as sess:

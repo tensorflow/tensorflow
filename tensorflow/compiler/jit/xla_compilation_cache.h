@@ -31,6 +31,7 @@ namespace tensorflow {
 
 // Struct that represents a possibly-absent Tensor.
 struct OptionalTensor {
+  string name;           // A descriptive name
   bool present = false;  // Is the tensor present?
   Tensor value;          // If present, what is the Tensor's value?
 };

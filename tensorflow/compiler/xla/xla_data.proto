@@ -386,6 +386,9 @@ message InfeedRequest {
 }
 
 message OutfeedRequest {
+  // The shape of the data returned by reading the device's outfeed buffer.
+  Shape shape = 1;
+
   // Operand to the Outfeed. Supports tuple.
   ComputationDataHandle operand = 2;
 

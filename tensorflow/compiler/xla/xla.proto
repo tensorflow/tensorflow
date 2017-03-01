@@ -76,7 +76,7 @@ message TransferToClientRequest {
   GlobalDataHandle data = 1;
 
   // This optional field directs the service to return the literal in this
-  // layout. A shape is used to hold the layout to accomodate tuples.
+  // layout. A shape is used to hold the layout to accommodate tuples.
   Shape shape_with_layout = 2;
 }
 
@@ -117,6 +117,19 @@ message TransferToInfeedRequest {
 }
 
 message TransferToInfeedResponse {
+}
+
+message TransferFromOutfeedRequest {
+  // This optional field directs the service to return the literal in this
+  // layout. A shape is used to hold the layout to accommodate tuples.
+  Shape shape_with_layout = 1;
+
+  int64 replica_id = 2;
+  DeviceHandle device_handle = 3;
+}
+
+message TransferFromOutfeedResponse {
+  Literal literal = 1;
 }
 
 message ResetDeviceRequest {

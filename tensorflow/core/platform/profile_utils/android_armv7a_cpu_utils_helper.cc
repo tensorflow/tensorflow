@@ -127,25 +127,4 @@ int64 AndroidArmV7ACpuUtilsHelper::ReadCpuFrequencyFile(
 }  // namespace tensorflow
 
 // defined(__ANDROID__) && defined(__ARM_ARCH_7A__) && (__ANDROID_API__ >= 21)
-#else
-
-// Dummy implementations to avoid link error.
-
-namespace tensorflow {
-namespace profile_utils {
-
-void AndroidArmV7ACpuUtilsHelper::ResetClockCycle() {}
-uint64 AndroidArmV7ACpuUtilsHelper::GetCurrentClockCycle() { return 1; }
-void AndroidArmV7ACpuUtilsHelper::EnableClockCycleProfiling(bool) {}
-int AndroidArmV7ACpuUtilsHelper::OpenPerfEvent(perf_event_attr *const,
-                                               const pid_t, const int,
-                                               const int, const unsigned long) {
-  return 0;
-}
-int64 AndroidArmV7ACpuUtilsHelper::CalculateCpuFrequency() { return 0; }
-
-}  // namespace profile_utils
-}  // namespace tensorflow
-
-// defined(__ANDROID__) && defined(__ARM_ARCH_7A__) && (__ANDROID_API__ >= 21)
 #endif

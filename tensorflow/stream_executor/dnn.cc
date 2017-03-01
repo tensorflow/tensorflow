@@ -123,6 +123,7 @@ string PadAlignmentString(PadAlignment alignment) {
     case PadAlignment::kTensorFlowPadding:
       return "TensorFlow padding";
   }
+  return "unknown pad alignment";
 }
 
 string ShortPoolingModeString(PoolingMode mode) {
