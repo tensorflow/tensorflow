@@ -1,5 +1,6 @@
 # TensorFlow external dependencies that can be loaded in WORKSPACE files.
 
+load("@io_bazel_rules_closure//closure/private:java_import_external.bzl", "java_import_external")
 load("@io_bazel_rules_closure//closure:defs.bzl", "filegroup_external")
 load("@io_bazel_rules_closure//closure:defs.bzl", "webfiles_external")
 load("//third_party/gpus:cuda_configure.bzl", "cuda_configure")
@@ -413,16 +414,29 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
       build_file = str(Label("//third_party:nccl.BUILD")),
   )
 
-  # Make junit-4.12 available as //external:junit
-  native.maven_jar(
-      name = "junit_junit",
-      artifact = "junit:junit:4.12",
-      sha1 = "2973d150c0dc1fefe998f834810d68f278ea58ec",
+  java_import_external(
+      name = "junit",
+      jar_sha256 = "59721f0805e223d84b90677887d9ff567dc534d7c502ca903c0c2b17f05c116a",
+      jar_urls = [
+          "http://bazel-mirror.storage.googleapis.com/repo1.maven.org/maven2/junit/junit/4.12/junit-4.12.jar",
+          "http://repo1.maven.org/maven2/junit/junit/4.12/junit-4.12.jar",
+          "http://maven.ibiblio.org/maven2/junit/junit/4.12/junit-4.12.jar",
+      ],
+      licenses = ["reciprocal"],  # Common Public License Version 1.0
+      testonly_ = True,
+      deps = ["@org_hamcrest_core"],
   )
 
-  native.bind(
-      name = "junit",
-      actual = "@junit_junit//jar",
+  java_import_external(
+      name = "org_hamcrest_core",
+      jar_sha256 = "66fdef91e9739348df7a096aa384a5685f4e875584cce89386a7a47251c4d8e9",
+      jar_urls = [
+          "http://bazel-mirror.storage.googleapis.com/repo1.maven.org/maven2/org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3.jar",
+          "http://repo1.maven.org/maven2/org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3.jar",
+          "http://maven.ibiblio.org/maven2/org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3.jar",
+      ],
+      licenses = ["notice"],  # New BSD License
+      testonly_ = True,
   )
 
   temp_workaround_http_archive(
