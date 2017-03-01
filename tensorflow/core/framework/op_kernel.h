@@ -1140,9 +1140,11 @@ class Name : public KernelDefBuilder {
   REGISTER_KERNEL_BUILDER_UNIQ(ctr, kernel_builder, __VA_ARGS__)
 
 #define REGISTER_KERNEL_BUILDER_UNIQ(ctr, kernel_builder, ...)        \
+  constexpr bool should_register_##ctr##__flag =                      \
+      SHOULD_REGISTER_OP_KERNEL(#__VA_ARGS__);                        \
   static ::tensorflow::kernel_factory::OpKernelRegistrar              \
       registrar__body__##ctr##__object(                               \
-          SHOULD_REGISTER_OP_KERNEL(#__VA_ARGS__)                     \
+          should_register_##ctr##__flag                               \
               ? ::tensorflow::register_kernel::kernel_builder.Build() \
               : nullptr,                                              \
           #__VA_ARGS__,                                               \
