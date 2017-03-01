@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 
 #include <poplar/exceptions.hpp>
+#include <popnn/exceptions.hpp>
 
 namespace se = ::perftools::gputools;
 namespace sep = ::perftools::gputools::poplarplugin;
@@ -183,6 +184,11 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
   catch (poplar::poplar_error e) {
     return port::Status(port::error::UNKNOWN,
                         port::StrCat("[Poplar Compile] ",
+                                     e.what()));
+  }
+  catch (popnn::popnn_error e) {
+    return port::Status(port::error::UNKNOWN,
+                        port::StrCat("[Popnn Compile] ",
                                      e.what()));
   }
 

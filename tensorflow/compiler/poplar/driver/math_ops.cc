@@ -92,8 +92,9 @@ CreateBinaryElementwiseOp(poplar::Graph &graph,
 
     tensorflow::BCast bcast(shape1, shape2);
     if (!bcast.IsValid()) {
-      port::Status(port::error::FAILED_PRECONDITION,
-                   port::StrCat("Incompatible broadcast on ", inst->name()));
+      return port::Status(port::error::FAILED_PRECONDITION,
+                          port::StrCat("Incompatible broadcast on ",
+                                       inst->name()));
     }
 
     poplar::Tensor r0 =
