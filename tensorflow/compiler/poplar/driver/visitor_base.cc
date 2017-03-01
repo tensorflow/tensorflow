@@ -421,6 +421,19 @@ Status PoplarBaseVisitor::HandleReduceWindow(
         const Window& window,
         HloComputation* function) {
   LOG(INFO) << inst->ToString();
+  bool simple_reduction;
+  TF_ASSIGN_OR_RETURN(simple_reduction,
+                      IsComputationReducableArtithmetic(function));
+  if (simple_reduction) {
+    poplar::program::Program prog;
+    TF_ASSIGN_OR_RETURN(prog,
+                        CreateSimpleWindowReduction(*graph_,
+                                                    inst,
+                                                    GetOutputShape(inst),
+                                                    tensor_map));
+    sequence.add(prog);
+    return Status::OK();
+  }
   return port::Status(port::error::UNIMPLEMENTED,
                       port::StrCat(inst->name(),
                                    " not implemented"));
