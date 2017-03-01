@@ -362,8 +362,8 @@ class Conv2D(_Conv):
     data_format: A string, one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
       `channels_last` corresponds to inputs with shape
-      `(batch, width, height, channels)` while `channels_first` corresponds to
-      inputs with shape `(batch, channels, width, height)`.
+      `(batch, height, width, channels)` while `channels_first` corresponds to
+      inputs with shape `(batch, channels, height, width)`.
     dilation_rate: an integer or tuple/list of 2 integers, specifying
       the dilation rate to use for dilated convolution.
       Can be a single integer to specify the same value for
@@ -462,8 +462,8 @@ def conv2d(inputs,
     data_format: A string, one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
       `channels_last` corresponds to inputs with shape
-      `(batch, width, height, channels)` while `channels_first` corresponds to
-      inputs with shape `(batch, channels, width, height)`.
+      `(batch, height, width, channels)` while `channels_first` corresponds to
+      inputs with shape `(batch, channels, height, width)`.
     dilation_rate: an integer or tuple/list of 2 integers, specifying
       the dilation rate to use for dilated convolution.
       Can be a single integer to specify the same value for
@@ -535,8 +535,8 @@ class Conv3D(_Conv):
     data_format: A string, one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
       `channels_last` corresponds to inputs with shape
-      `(batch, width, height, channels)` while `channels_first` corresponds to
-      inputs with shape `(batch, channels, width, height)`.
+      `(batch, height, width, channels)` while `channels_first` corresponds to
+      inputs with shape `(batch, channels, height, width)`.
     dilation_rate: an integer or tuple/list of 3 integers, specifying
       the dilation rate to use for dilated convolution.
       Can be a single integer to specify the same value for
@@ -635,8 +635,8 @@ def conv3d(inputs,
     data_format: A string, one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
       `channels_last` corresponds to inputs with shape
-      `(batch, width, height, channels)` while `channels_first` corresponds to
-      inputs with shape `(batch, channels, width, height)`.
+      `(batch, height, width, channels)` while `channels_first` corresponds to
+      inputs with shape `(batch, channels, height, width)`.
     dilation_rate: an integer or tuple/list of 3 integers, specifying
       the dilation rate to use for dilated convolution.
       Can be a single integer to specify the same value for
@@ -705,9 +705,9 @@ class SeparableConv2D(Conv2D):
     padding: one of `"valid"` or `"same"` (case-insensitive).
     data_format: A string, one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
-      `channels_last` corresponds to inputs with shapedata_format = 'NWHC'
-      `(batch, width, height, channels)` while `channels_first` corresponds to
-      inputs with shape `(batch, channels, width, height)`.
+      `channels_last` corresponds to inputs with shape
+      `(batch, height, width, channels)` while `channels_first` corresponds to
+      inputs with shape `(batch, channels, height, width)`.
     dilation_rate: an integer or tuple/list of 2 integers, specifying
       the dilation rate to use for dilated convolution.
       Can be a single integer to specify the same value for
@@ -891,9 +891,9 @@ def separable_conv2d(inputs,
     padding: one of `"valid"` or `"same"` (case-insensitive).
     data_format: A string, one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
-      `channels_last` corresponds to inputs with shapedata_format = 'NWHC'
-      `(batch, width, height, channels)` while `channels_first` corresponds to
-      inputs with shape `(batch, channels, width, height)`.
+      `channels_last` corresponds to inputs with shape
+      `(batch, height, width, channels)` while `channels_first` corresponds to
+      inputs with shape `(batch, channels, height, width)`.
     dilation_rate: an integer or tuple/list of 2 integers, specifying
       the dilation rate to use for dilated convolution.
       Can be a single integer to specify the same value for
@@ -972,8 +972,8 @@ class Conv2DTranspose(Conv2D):
     data_format: A string, one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
       `channels_last` corresponds to inputs with shape
-      `(batch, width, height, channels)` while `channels_first` corresponds to
-      inputs with shape `(batch, channels, width, height)`.
+      `(batch, height, width, channels)` while `channels_first` corresponds to
+      inputs with shape `(batch, channels, height, width)`.
     activation: Activation function. Set it to None to maintain a
       linear activation.
     use_bias: Boolean, whether the layer uses a bias.
@@ -1152,8 +1152,8 @@ def conv2d_transpose(inputs,
     data_format: A string, one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
       `channels_last` corresponds to inputs with shape
-      `(batch, width, height, channels)` while `channels_first` corresponds to
-      inputs with shape `(batch, channels, width, height)`.
+      `(batch, height, width, channels)` while `channels_first` corresponds to
+      inputs with shape `(batch, channels, height, width)`.
     activation: Activation function. Set it to None to maintain a
       linear activation.
     use_bias: Boolean, whether the layer uses a bias.
