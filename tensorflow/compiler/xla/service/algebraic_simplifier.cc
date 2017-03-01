@@ -757,21 +757,23 @@ StatusOr<bool> AlgebraicSimplifierVisitor::
     new_user_operands[reshape_or_broadcast_operand_index] = operand;
     auto new_user = computation_->AddInstruction(user->CloneWithNewOperands(
         ShapeUtil::MakeShape(user->shape().element_type(),
-                             operand->shape().dimensions()),
+                             AsInt64Slice(operand->shape().dimensions())),
         new_user_operands));
     HloInstruction* new_reshape_or_broadcast = nullptr;
     if (reshape_or_broadcast->opcode() == HloOpcode::kReshape) {
       new_reshape_or_broadcast =
           computation_->AddInstruction(HloInstruction::CreateReshape(
-              ShapeUtil::MakeShape(user->shape().element_type(),
-                                   reshape_or_broadcast->shape().dimensions()),
+              ShapeUtil::MakeShape(
+                  user->shape().element_type(),
+                  AsInt64Slice(reshape_or_broadcast->shape().dimensions())),
               new_user));
     } else {
       TF_RET_CHECK(reshape_or_broadcast->opcode() == HloOpcode::kBroadcast);
       new_reshape_or_broadcast =
           computation_->AddInstruction(HloInstruction::CreateBroadcast(
-              ShapeUtil::MakeShape(user->shape().element_type(),
-                                   reshape_or_broadcast->shape().dimensions()),
+              ShapeUtil::MakeShape(
+                  user->shape().element_type(),
+                  AsInt64Slice(reshape_or_broadcast->shape().dimensions())),
               new_user, reshape_or_broadcast->dimensions()));
     }
     TF_RETURN_IF_ERROR(
