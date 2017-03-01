@@ -93,6 +93,7 @@ set(tf_proto_text_srcs
     "tensorflow/core/framework/log_memory.proto"
     "tensorflow/core/framework/node_def.proto"
     "tensorflow/core/framework/op_def.proto"
+    "tensorflow/core/framework/remote_fused_graph_execute_info.proto"
     "tensorflow/core/framework/resource_handle.proto"
     "tensorflow/core/framework/step_stats.proto"
     "tensorflow/core/framework/summary.proto"

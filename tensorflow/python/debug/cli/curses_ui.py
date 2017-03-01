@@ -202,6 +202,7 @@ class CursesUI(base_ui.BaseUI):
 
   CLI_TERMINATOR_KEY = 7  # Terminator key for input text box.
   CLI_TAB_KEY = ord("\t")
+  BACKSPACE_KEY = ord("\b")
   REGEX_SEARCH_PREFIX = "/"
   TENSOR_INDICES_NAVIGATION_PREFIX = "@"
 
@@ -732,7 +733,7 @@ class CursesUI(base_ui.BaseUI):
         else:
           command = self._fetch_hyperlink_command(mouse_x, mouse_y)
           if command:
-            self._auto_key_in(command)
+            self._auto_key_in(command, erase_existing=True)
             self._textbox_curr_terminator = x
             return self.CLI_TERMINATOR_KEY
     else:
@@ -782,14 +783,26 @@ class CursesUI(base_ui.BaseUI):
     self._screen_draw_text_line(
         self._title_row, self._title_line, color=title_color)
 
-  def _auto_key_in(self, command):
+  def _auto_key_in(self, command, erase_existing=False):
     """Automatically key in a command to the command Textbox.
 
     Args:
       command: The command, as a string.
+      erase_existing: (bool) whether existing text (if any) is to be erased
+          first.
     """
+    if erase_existing:
+      self._erase_existing_command()
+
     for c in command:
       self._command_textbox.do_command(ord(c))
+
+  def _erase_existing_command(self):
+    """Erase existing text in command textpad."""
+
+    existing_len = len(self._command_textbox.gather())
+    for _ in xrange(existing_len):
+      self._command_textbox.do_command(self.BACKSPACE_KEY)
 
   def _screen_draw_text_line(self, row, line, attr=curses.A_NORMAL, color=None):
     """Render a line of text on the screen.

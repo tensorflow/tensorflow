@@ -948,8 +948,10 @@ def _compute_sampled_logits(weights,
           range_max=num_classes)
     # NOTE: pylint cannot tell that 'sampled_values' is a sequence
     # pylint: disable=unpacking-non-sequence
-    sampled, true_expected_count, sampled_expected_count = sampled_values
+    sampled, true_expected_count, sampled_expected_count = (
+        array_ops.stop_gradient(s) for s in sampled_values)
     # pylint: enable=unpacking-non-sequence
+    sampled = math_ops.cast(sampled, dtypes.int64)
 
     # labels_flat is a [batch_size * num_true] tensor
     # sampled is a [num_sampled] int tensor
@@ -1054,7 +1056,7 @@ def nce_loss(weights,
   unnormalized statistical
   models](http://www.jmlr.org/proceedings/papers/v9/gutmann10a/gutmann10a.pdf).
   Also see our [Candidate Sampling Algorithms
-  Reference](../../extras/candidate_sampling.pdf)
+  Reference](https://www.tensorflow.org/extras/candidate_sampling.pdf)
 
   Note: By default this uses a log-uniform (Zipfian) distribution for sampling,
   so your labels must be sorted in order of decreasing frequency to achieve
@@ -1091,7 +1093,7 @@ def nce_loss(weights,
         `True`, this is a "Sampled Logistic" loss instead of NCE, and we are
         learning to generate log-odds instead of log probabilities.  See
         our [Candidate Sampling Algorithms Reference]
-        (../../extras/candidate_sampling.pdf).
+        (https://www.tensorflow.org/extras/candidate_sampling.pdf).
         Default is False.
     partition_strategy: A string specifying the partitioning strategy, relevant
         if `len(weights) > 1`. Currently `"div"` and `"mod"` are supported.
@@ -1144,7 +1146,7 @@ def sampled_softmax_loss(weights,
   expression `tf.nn.softmax(tf.matmul(inputs, tf.transpose(weights)) + biases)`.
 
   See our [Candidate Sampling Algorithms Reference]
-  (../../extras/candidate_sampling.pdf)
+  (https://www.tensorflow.org/extras/candidate_sampling.pdf)
 
   Also see Section 3 of [Jean et al., 2014](http://arxiv.org/abs/1412.2007)
   ([pdf](http://arxiv.org/pdf/1412.2007.pdf)) for the math.

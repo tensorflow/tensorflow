@@ -91,12 +91,12 @@ TEST_F(XlaCompilerTest, Simple) {
 
   // Builds a description of the arguments.
   std::vector<XlaCompiler::Argument> args(2);
+  args[0].kind = XlaCompiler::Argument::kParameter;
   args[0].type = DT_INT32;
   args[0].shape = TensorShape({2});
-  args[0].parameter = 0;
+  args[1].kind = XlaCompiler::Argument::kParameter;
   args[1].type = DT_INT32;
   args[1].shape = TensorShape({2});
-  args[1].parameter = 1;
 
   // Compiles the graph.
   XlaCompiler compiler(DefaultOptions());
@@ -144,9 +144,9 @@ TEST_F(XlaCompilerTest, ConstantOutputs) {
 
   // Builds a description of the arguments.
   std::vector<XlaCompiler::Argument> args(1);
+  args[0].kind = XlaCompiler::Argument::kParameter;
   args[0].type = DT_INT32;
   args[0].shape = TensorShape({2});
-  args[0].parameter = 0;
 
   {
     // Compiles the graph, with resolve_compile_time_constants enabled.

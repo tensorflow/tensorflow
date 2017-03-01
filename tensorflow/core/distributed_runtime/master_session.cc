@@ -383,7 +383,6 @@ Status MasterSession::ReffedClientGraph::DoBuildPartitions(
 
   // Partition the graph.
   Status s;
-  std::unordered_map<string, GraphDef> graph_partitions;
   return Partition(popts, &client_graph_->graph, out_partitions);
 }
 

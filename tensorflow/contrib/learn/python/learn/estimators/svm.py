@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib import layers
+from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators import head as head_lib
@@ -183,6 +184,7 @@ class SVM(estimator.Estimator):
     return preds[key]
   # pylint: enable=protected-access
 
+  @deprecated("2017-03-25", "Please use Estimator.export_savedmodel() instead.")
   def export(self, export_dir, signature_fn=None,
              input_fn=None, default_batch_size=1,
              exports_to_keep=None):
@@ -194,6 +196,7 @@ class SVM(estimator.Estimator):
         default_batch_size=default_batch_size,
         exports_to_keep=exports_to_keep)
 
+  @deprecated("2017-03-25", "Please use Estimator.export_savedmodel() instead.")
   def export_with_defaults(
       self,
       export_dir,

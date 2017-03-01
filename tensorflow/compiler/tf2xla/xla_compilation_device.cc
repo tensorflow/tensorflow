@@ -94,18 +94,17 @@ Status XlaCompilationDevice::MakeTensorFromProto(
       "XLACompilationDevice::MakeTensorFromProto should not be called");
 }
 
-XlaExpression::XlaExpression() : has_constant_value_(false) {}
+XlaExpression::XlaExpression() = default;
 
 void XlaExpression::set_handle(const xla::ComputationDataHandle& h) {
   handle_ = h;
-}
-const xla::ComputationDataHandle& XlaExpression::handle() const {
-  return handle_;
 }
 
 void XlaExpression::set_constant_value(Tensor value) {
   has_constant_value_ = true;
   constant_value_ = std::move(value);
 }
+
+void XlaExpression::set_variable_id(int id) { variable_id_ = id; }
 
 }  // namespace tensorflow

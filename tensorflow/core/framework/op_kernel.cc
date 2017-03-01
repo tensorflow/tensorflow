@@ -61,11 +61,11 @@ Status MatchSignatureHelper(const DataTypeSlice expected_inputs,
   }
 
   if (signature_mismatch) {
-    return errors::InvalidArgument("Signature mismatch, have: ",
-                                   DataTypeSliceString(inputs), "->",
-                                   DataTypeSliceString(outputs), " expected: ",
-                                   DataTypeSliceString(expected_inputs), "->",
-                                   DataTypeSliceString(expected_outputs));
+    return errors::InvalidArgument(
+        "Signature mismatch, have: ", DataTypeSliceString(inputs), "->",
+        DataTypeSliceString(outputs),
+        " expected: ", DataTypeSliceString(expected_inputs), "->",
+        DataTypeSliceString(expected_outputs));
   }
   return Status::OK();
 }
@@ -345,6 +345,130 @@ void OpKernelContext::forward_ref_input_to_ref_output(int input_index,
   DCHECK((*params_->inputs)[input_index].is_ref());
   set_output_ref(output_index, (*params_->inputs)[input_index].mutex_if_ref,
                  (*params_->inputs)[input_index].tensor);
+}
+
+bool OpKernelContext::forward_input_to_output_with_same_shape(int input_index,
+                                                              int output_index,
+                                                              Tensor** output) {
+  DCHECK_GE(input_index, 0);
+  DCHECK_LT(input_index, params_->inputs->size());
+  const TensorValue& input = (*params_->inputs)[input_index];
+  if (input.tensor == nullptr) {
+    return false;
+  }
+  return forward_input_to_output_with_shape(input_index, output_index,
+                                            input.tensor->shape(), output);
+}
+
+Status OpKernelContext::forward_input_to_output_with_same_shape(
+    StringPiece input_name, StringPiece output_name, Tensor** output) {
+  int input_index, output_index, stop;
+  TF_RETURN_IF_ERROR(
+      params_->op_kernel->InputRange(input_name, &input_index, &stop));
+  if (stop != input_index + 1) {
+    return errors::InvalidArgument("OpKernel used list-valued input name '",
+                                   input_name,
+                                   "' when single-valued input was "
+                                   "expected");
+  }
+  TF_RETURN_IF_ERROR(
+      params_->op_kernel->OutputRange(output_name, &output_index, &stop));
+  if (stop != output_index + 1) {
+    return errors::InvalidArgument("OpKernel used list-valued output name '",
+                                   output_name,
+                                   "' when single-valued output was "
+                                   "expected");
+  }
+  if (!forward_input_to_output_with_same_shape(input_index, output_index,
+                                               output)) {
+    return errors::FailedPrecondition("OpKernel could not forward input '",
+                                      input_name, "' to output '", output_name);
+  }
+  return Status::OK();
+}
+
+bool OpKernelContext::forward_input_to_output_with_shape(
+    int input_index, int output_index, const TensorShape& output_shape,
+    Tensor** output) {
+  DCHECK_GE(input_index, 0);
+  DCHECK_LT(input_index, params_->inputs->size());
+  const TensorValue& input = (*params_->inputs)[input_index];
+  // Check that input tensor exists, is not a ref, and have no other consumers.
+  if (input.tensor == nullptr || input.is_ref() || !input->RefCountIsOne()) {
+    return false;
+  }
+  DCHECK_GE(output_index, 0);
+  DCHECK_LT(output_index, num_outputs());
+  // Check that input and output types match.
+  if (expected_output_dtype(output_index) != input_dtype(input_index)) {
+    return false;
+  }
+  // Check that the input and output sizes are compatible.
+  if (input.tensor->shape().num_elements() != output_shape.num_elements()) {
+    return false;
+  }
+  // Check that input and output memory types match, i.e.
+  // that they either both live in host or both live in device memmory.
+  if (op_kernel().output_memory_types()[output_index] !=
+      op_kernel().input_memory_types()[input_index]) {
+    return false;
+  }
+
+  // TODO(rmlarsen,zhengxq): Re-enable for GPU memory once kernels have been
+  // made forwarding aware or decorated to expose which inputs they rely on
+  // to access via the read-only texture cache.
+  // TODO(rmlarsen): Short term, move disabling logic into the kernels
+  // themselves for fine-grained control.
+  DCHECK(params_->device != nullptr);
+  if (op_kernel().output_memory_types()[output_index] == DEVICE_MEMORY &&
+      params_->device->attributes().device_type() == DEVICE_GPU) {
+    return false;
+  }
+
+  // Check that output allocator attributes are not more restrictive than
+  // input allocator attributes.
+  const auto input_attr = params_->input_alloc_attrs == nullptr
+                              ? AllocatorAttributes()
+                              : input_alloc_attr(input_index);
+  const auto output_attr = params_->output_attr_array == nullptr
+                               ? AllocatorAttributes()
+                               : output_alloc_attr(output_index);
+  if (!output_attr.IsEqualOrLessRestrictiveThan(input_attr)) {
+    return false;
+  }
+  Tensor* output_tensor = new Tensor();
+  CHECK(output_tensor->CopyFrom(*input.tensor, output_shape));
+  outputs_[output_index] = TensorValue(output_tensor);
+  *output = outputs_[output_index].tensor;
+  return true;
+}
+
+Status OpKernelContext::forward_input_to_output_with_shape(
+    StringPiece input_name, StringPiece output_name,
+    const TensorShape& output_shape, Tensor** output) {
+  int input_index, output_index, stop;
+  TF_RETURN_IF_ERROR(
+      params_->op_kernel->InputRange(input_name, &input_index, &stop));
+  if (stop != input_index + 1) {
+    return errors::InvalidArgument("OpKernel used list-valued input name '",
+                                   input_name,
+                                   "' when single-valued input was "
+                                   "expected");
+  }
+  TF_RETURN_IF_ERROR(
+      params_->op_kernel->OutputRange(output_name, &output_index, &stop));
+  if (stop != output_index + 1) {
+    return errors::InvalidArgument("OpKernel used list-valued output name '",
+                                   output_name,
+                                   "' when single-valued output was "
+                                   "expected");
+  }
+  if (!forward_input_to_output_with_shape(input_index, output_index,
+                                          output_shape, output)) {
+    return errors::FailedPrecondition("OpKernel could not forward input '",
+                                      input_name, "' to output '", output_name);
+  }
+  return Status::OK();
 }
 
 void OpKernelContext::delete_ref_input(int index, bool lock_held) {
@@ -779,8 +903,8 @@ Status FindKernelDef(DeviceType device_type, const NodeDef& node_def,
       errors::AppendToMessage(
           &s, " (OpKernel was found, but attributes didn't match)");
     }
-    errors::AppendToMessage(&s, ".  Registered:",
-                            KernelsRegisteredForOp(node_def.op()));
+    errors::AppendToMessage(
+        &s, ".  Registered:", KernelsRegisteredForOp(node_def.op()));
     return s;
   }
   if (def != nullptr) *def = &reg->def;
@@ -884,8 +1008,8 @@ Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
       errors::AppendToMessage(
           &s, " (OpKernel was found, but attributes didn't match)");
     }
-    errors::AppendToMessage(&s, ".  Registered:",
-                            KernelsRegisteredForOp(node_def.op()));
+    errors::AppendToMessage(
+        &s, ".  Registered:", KernelsRegisteredForOp(node_def.op()));
     return s;
   }
 
@@ -948,9 +1072,9 @@ Status ValidateKernelRegistrations(const OpRegistryInterface& op_registry) {
     for (const auto& host_memory_arg : kernel_def.host_memory_arg()) {
       if (!FindArgInOp(host_memory_arg, op_def.input_arg()) &&
           !FindArgInOp(host_memory_arg, op_def.output_arg())) {
-        return errors::InvalidArgument("HostMemory arg '", host_memory_arg,
-                                       "' not found in OpDef: ",
-                                       SummarizeOpDef(op_def));
+        return errors::InvalidArgument(
+            "HostMemory arg '", host_memory_arg,
+            "' not found in OpDef: ", SummarizeOpDef(op_def));
       }
     }
   }

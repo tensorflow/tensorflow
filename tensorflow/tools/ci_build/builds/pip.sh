@@ -19,8 +19,7 @@
 # The PIP installation is done using the --user flag.
 #
 # Usage:
-#   pip.sh CONTAINER_TYPE [--mavx] [--mavx2]
-#                         [--test_tutorials] [--integration_tests]
+#   pip.sh CONTAINER_TYPE [--test_tutorials] [--integration_tests] [bazel flags]
 #
 # When executing the Python unit tests, the script obeys the shell
 # variables: TF_BUILD_BAZEL_CLEAN, TF_BUILD_INSTALL_EXTRA_PIP_PACKAGES,
@@ -39,8 +38,7 @@
 # If NO_TEST_USER_OPS has any non-empty and non-0 value, the testing of user-
 # defined ops against the installation will be skipped.
 #
-# Use --mavx or --mavx2 to let bazel use --copt=-mavx or --copt=-mavx2 options
-# while building the pip package, respectively.
+# Any flags not listed in the usage above will be passed directly to Bazel.
 #
 # If the --test_tutorials flag is set, it will cause the script to run the
 # tutorial tests (see test_tutorials.sh) after the PIP
@@ -48,6 +46,11 @@
 # --integration_tests will cause the integration tests (integration_tests.sh)
 # to run.
 #
+
+# Helper function: Strip leading and trailing whitespaces
+str_strip () {
+  echo -e "$1" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
+}
 
 # Fixed naming patterns for wheel (.whl) files given different python versions
 if [[ $(uname) == "Linux" ]]; then
@@ -66,6 +69,7 @@ source "${SCRIPT_DIR}/builds_common.sh"
 
 # Get the command line arguments
 CONTAINER_TYPE=$( echo "$1" | tr '[:upper:]' '[:lower:]' )
+shift
 
 if [[ ! -z "${TF_BUILD_BAZEL_CLEAN}" ]] && \
    [[ "${TF_BUILD_BAZEL_CLEAN}" != "0" ]]; then
@@ -82,16 +86,14 @@ fi
 
 DO_TEST_TUTORIALS=0
 DO_INTEGRATION_TESTS=0
-MAVX_FLAG=""
+BAZEL_FLAGS=""
 while true; do
   if [[ "${1}" == "--test_tutorials" ]]; then
     DO_TEST_TUTORIALS=1
   elif [[ "${1}" == "--integration_tests" ]]; then
     DO_INTEGRATION_TESTS=1
-  elif [[ "${1}" == "--mavx" ]]; then
-    MAVX_FLAG="--copt=-mavx"
-  elif [[ "${1}" == "--mavx2" ]]; then
-    MAVX_FLAG="--copt=-mavx2"
+  else
+    BAZEL_FLAGS="${BAZEL_FLAGS} ${1}"
   fi
 
   shift
@@ -100,18 +102,18 @@ while true; do
   fi
 done
 
-if [[ ! -z "${MAVX_FLAG}" ]]; then
-  echo "Using MAVX flag: ${MAVX_FLAG}"
-fi
+BAZEL_FLAGS=$(str_strip "${BAZEL_FLAGS}")
+
+echo "Using Bazel flags: ${BAZEL_FLAGS}"
 
 PIP_BUILD_TARGET="//tensorflow/tools/pip_package:build_pip_package"
 GPU_FLAG=""
 if [[ ${CONTAINER_TYPE} == "cpu" ]] || \
    [[ ${CONTAINER_TYPE} == "debian.jessie.cpu" ]]; then
-  bazel build -c opt ${MAVX_FLAG} ${PIP_BUILD_TARGET} || \
+  bazel build ${BAZEL_FLAGS} ${PIP_BUILD_TARGET} || \
       die "Build failed."
 elif [[ ${CONTAINER_TYPE} == "gpu" ]]; then
-  bazel build -c opt --config=cuda ${MAVX_FLAG} ${PIP_BUILD_TARGET} || \
+  bazel build ${BAZEL_FLAGS} ${PIP_BUILD_TARGET} || \
       die "Build failed."
   GPU_FLAG="--gpu"
 else

@@ -113,6 +113,7 @@ file(GLOB_RECURSE tf_protos_python_srcs RELATIVE ${tensorflow_source_dir}
     "${tensorflow_source_dir}/tensorflow/python/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/session_bundle/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/tensorboard/*.proto"
+    "${tensorflow_source_dir}/tensorflow/contrib/training/*.proto"
 )
 RELATIVE_PROTOBUF_GENERATE_PYTHON(
     ${tensorflow_source_dir} PYTHON_PROTO_GENFILES ${tf_protos_python_srcs}
@@ -125,6 +126,7 @@ file(GLOB_RECURSE tf_python_protos_cc_srcs RELATIVE ${tensorflow_source_dir}
     "${tensorflow_source_dir}/tensorflow/python/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/session_bundle/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/tensorboard/*.proto"
+    "${tensorflow_source_dir}/tensorflow/contrib/training/*.proto"
 )
 RELATIVE_PROTOBUF_GENERATE_CPP(PROTO_SRCS PROTO_HDRS
     ${tensorflow_source_dir} ${tf_python_protos_cc_srcs}
@@ -180,7 +182,11 @@ add_python_module("tensorflow/python/client")
 add_python_module("tensorflow/python/debug")
 add_python_module("tensorflow/python/debug/cli")
 add_python_module("tensorflow/python/debug/examples")
+add_python_module("tensorflow/python/debug/lib")
 add_python_module("tensorflow/python/debug/wrappers")
+add_python_module("tensorflow/python/estimator")
+add_python_module("tensorflow/python/estimator/inputs")
+add_python_module("tensorflow/python/estimator/inputs/queues")
 add_python_module("tensorflow/python/framework")
 add_python_module("tensorflow/python/kernel_tests")
 add_python_module("tensorflow/python/layers")

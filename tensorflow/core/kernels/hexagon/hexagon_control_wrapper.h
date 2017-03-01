@@ -20,23 +20,23 @@ limitations under the License.
 
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/hexagon/graph_transferer.h"
-#include "tensorflow/core/kernels/hexagon/i_soc_control_wrapper.h"
+#include "tensorflow/core/kernels/i_remote_fused_graph_executor.h"
 #include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
 
 /*
-  HexagonControlWrapper is implementing interfaces in ISocControlWrapper.
+  HexagonControlWrapper is implementing interfaces in IRemoteFusedGraphExecutor.
   This class calls APIs on hexagon via hexagon control binary.
   TODO(satok): Add more documents about hexagon control binary.
  */
-class HexagonControlWrapper final : public ISocControlWrapper {
+class HexagonControlWrapper final : public IRemoteFusedGraphExecutor {
  public:
   HexagonControlWrapper() = default;
   int GetVersion() final;
-  bool Init() final;
+  bool Init(const RemoteFusedGraphExecuteInfo& info) final;
   bool Finalize() final;
-  bool SetupGraph(const GraphTransferer& graph_transferer) final;
+  bool SetupGraph() final;
   bool ExecuteGraph() final;
   bool TeardownGraph() final;
   bool FillInputNode(const string& node_name, const ConstByteArray bytes) final;
@@ -50,6 +50,7 @@ class HexagonControlWrapper final : public ISocControlWrapper {
   static GraphTransferInfo::NodeInfo* FindNodeInfo(
       const string& node_name, GraphTransferInfo* graph_transfer_info);
 
+  GraphTransferer graph_transferer_;
   // Dummy float array for input node.
   // TODO(satok): Use actual data passed by FillInputNode and remove
   std::vector<float> dummy_input_float_;

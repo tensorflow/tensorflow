@@ -149,7 +149,6 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
           DNN coordinate.
       * gradient_clip_norm: A float > 0. If provided, gradients are
           clipped to their global norm with this clipping ratio.
-      * num_ps_replicas: The number of parameter server replicas.
       * embedding_lr_multipliers: Optional. A dictionary from
           `EmbeddingColumn` to a `float` multiplier. Multiplier will be used to
           multiply with learning rate for the embedding variables.
@@ -687,6 +686,7 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
       return _as_iterable(preds, output=key)
     return preds[key]
 
+  @deprecated("2017-03-25", "Please use Estimator.export_savedmodel() instead.")
   def export(self,
              export_dir,
              input_fn=None,
@@ -1041,6 +1041,7 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
       return (pred[key] for pred in preds)
     return preds[key]
 
+  @deprecated("2017-03-25", "Please use Estimator.export_savedmodel() instead.")
   def export(self,
              export_dir,
              input_fn=None,

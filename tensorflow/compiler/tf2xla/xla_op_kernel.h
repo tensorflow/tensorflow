@@ -139,6 +139,21 @@ class XlaOpKernelContext {
   // Mark the op has having side effects (i.e., via Send).
   void SetOpHasSideEffects();
 
+  // Variables
+
+  // Reads the current value of the resouce variable referred to by input
+  // 'index'.
+  Status ReadVariableInput(int index, xla::ComputationDataHandle* value);
+
+  // Sets output 'index' to be a reference to variable 'variable_id'. Used
+  // to propagate resource variables through the compilation.
+  void SetVariableOutput(int index, int variable_id);
+
+  // Assigns the value `handle` to the variable referenced by input
+  // `variable_index`. Marks the operator as having side effects.
+  Status AssignVariable(int variable_index, DataType type,
+                        const xla::ComputationDataHandle& handle);
+
   // Helper routines for the OP_REQUIRES macros
   void CtxFailure(Status s);
   void CtxFailureWithWarning(Status s);

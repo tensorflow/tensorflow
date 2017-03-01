@@ -1060,7 +1060,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       self.assertTrue(dump.loaded_partition_graphs())
 
       self.assertAllClose([[
-          1.0, 18.0, 2.0, 2.0, 3.0, 2.0, 5.0, 4.0, -3.0, 7.0, 0.85714286,
+          1.0, 18.0, 4.0, 2.0, 2.0, 3.0, 2.0, 5.0, -3.0, 7.0, 0.85714286,
           8.97959184
       ]], dump.get_tensors("numeric_summary/a/read", 0, "DebugNumericSummary"))
 

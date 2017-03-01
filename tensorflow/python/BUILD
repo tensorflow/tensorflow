@@ -78,6 +78,7 @@ py_library(
         ":util",
         ":weights_broadcast_ops",
         "//third_party/py/numpy",
+        "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/saved_model",
     ] + if_not_windows([
@@ -2050,6 +2051,37 @@ py_library(
     ],
 )
 
+py_test(
+    name = "evaluation_test",
+    size = "small",
+    srcs = ["training/evaluation_test.py"],
+    shard_count = 3,
+    srcs_version = "PY2AND3",
+    tags = [
+        "manual",
+        "notap",  # Disabling until b/33000128 and b/33040312 are fixed.
+    ],
+    deps = [
+        ":array_ops",
+        ":client",
+        ":client_testlib",
+        ":framework",
+        ":framework_for_generated_wrappers",
+        ":framework_test_lib",
+        ":layers",
+        ":math_ops",
+        ":metrics",
+        ":platform",
+        ":state_ops",
+        ":summary",
+        ":training",
+        ":variables",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/ops/losses",
+        "//third_party/py/numpy",
+    ],
+)
+
 py_library(
     name = "client",
     srcs = [
@@ -2314,6 +2346,7 @@ tf_py_wrap_cc(
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_session",
         "//tensorflow/core:lib",
+        "//tensorflow/core:reader_base",
         "//tensorflow/core/debug",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/tools/graph_transforms:transform_graph_lib",

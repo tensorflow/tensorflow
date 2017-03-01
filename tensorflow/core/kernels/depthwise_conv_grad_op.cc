@@ -542,9 +542,8 @@ class DepthwiseConv2dNativeBackpropInputOp : public OpKernel {
 
     EXTRACT_AND_VERIFY_DIMENSIONS("DepthwiseConv2DBackpropInput");
     Tensor* in_backprop = nullptr;
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(0, input_shape, &in_backprop));
-
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                {0}, 0, input_shape, &in_backprop));
     auto out_backprop_ptr = out_backprop.template flat<T>().data();
     auto filter_ptr = filter.template flat<T>().data();
     auto in_backprop_ptr = in_backprop->template flat<T>().data();
@@ -925,8 +924,8 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
 
     EXTRACT_AND_VERIFY_DIMENSIONS("DepthwiseConv2DBackpropFilter");
     Tensor* filter_backprop = nullptr;
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(0, filter_shape, &filter_backprop));
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                {1}, 0, filter_shape, &filter_backprop));
 
     auto out_backprop_ptr = out_backprop.template flat<T>().data();
     auto input_ptr = input.template flat<T>().data();

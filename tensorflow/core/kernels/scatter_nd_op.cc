@@ -308,11 +308,12 @@ class ScatterNdUpdateOp : public OpKernel {
   }
 };
 
-#define REGISTER_SCATTER_ND_KERNEL_INDEX(type, index_type, dev, name)  \
-  REGISTER_KERNEL_BUILDER(Name(name)                                   \
-                              .Device(DEVICE_##dev)                    \
-                              .TypeConstraint<type>("T")               \
-                              .TypeConstraint<index_type>("Tindices"), \
+#define REGISTER_SCATTER_ND_KERNEL_INDEX(type, index_type, dev, name) \
+  REGISTER_KERNEL_BUILDER(Name(name)                                  \
+                              .Device(DEVICE_##dev)                   \
+                              .TypeConstraint<type>("T")              \
+                              .TypeConstraint<index_type>("Tindices") \
+                              .HostMemory("shape"),                   \
                           ScatterNdOp<dev##Device, type, index_type>)
 
 #define REGISTER_SCATTER_ND_UPDATE_KERNEL_INDEX(type, index_type, dev, name, \
@@ -359,6 +360,7 @@ class ScatterNdUpdateOp : public OpKernel {
   REGISTER_SCATTER_ND_UPDATE(type, CPU);
 
 #define REGISTER_SCATTER_ND_CPU(type) REGISTER_SCATTER_ND(type, CPU);
+#define REGISTER_SCATTER_ND_GPU(type) REGISTER_SCATTER_ND(type, GPU);
 
 TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ND_ADD_SUB_CPU);
 // TODO(simister): Re-enable all types after binary size is under control.
@@ -376,6 +378,8 @@ TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ND_CPU);
 
 TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_ADD_SUB_GPU);
 TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_UPDATE_GPU);
+
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_GPU);
 
 // Forward declarations of the functor specializations for GPU.
 namespace functor {

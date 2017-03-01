@@ -108,3 +108,29 @@ Finally, you can run the inference tests on your device.
 adb shell 'LD_LIBRARY_PATH=/data/local/tmp:$LD_LIBRARY_PATH' \
 "/data/local/tmp/hexagon_graph_execution"
 ```
+
+#### Troubleshooting
+If you're using the Open-Q 820 Snapdragon development kit, you may run into an issue with running the executable due to a missing testsig library. From the Hexagon SDK documentation: *Dynamic shared objects are required to be digitally signed and then authenticated at runtime before they are allowed to be loaded and executed.* Generating a testsig library is necessary to run the unsigned sample library built from this project.
+
+If the lack of a testsig library is your problem, you will see errors of the type:
+`vendor/qcom/proprietary/adsprpc/src/fastrpc_apps_user.c:169::error: -1: 0 == (nErr = remotectl_open(name, (int*)ph, dlerrstr, sizeof(dlerrstr), &dlerr))`
+appearing in adb logcat.
+
+There are several ways to create the testsig library, the only prerequisite is Python and the correct version of the Hexagon-SDK. The following steps is one way to create this library:
+1. Run adb as root: `adb root`
+2. Run the command `adb shell cat /sys/devices/soc0/serial_number`
+3. Convert the decimal number you get as output to hex
+4. Run the python script: `python ${QUALCOMM_SDK}/tools/elfsigner/elfsigner.py -t $(SERIAL_NUMBER_HEX_VALUE)`
+5. The output of the python script is a shared library stored in ${QUALCOMM_SDK}/tools/elfsigner/output/testsig-$(SERIAL_NUMBER_HEX_VALUE).so
+6. Push the shared library to your device:
+```
+adb root
+adb wait-for-device
+adb remount
+adb wait-for-device
+adb shell mkdir /system/lib/rfsa
+adb shell mkdir /system/lib/rfsa/adsp
+adb push ${QUALCOMM_SDK}/tools/elfsigner/output/testsig-$(SERIAL_NUMBER_HEX_VALUE).so /system/lib/rfsa/adsp/
+```
+
+After rebooting your device, you should be able to run the sample application.

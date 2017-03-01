@@ -38,13 +38,13 @@ class RunConfigTest(test.TestCase):
 
   def test_defaults_with_no_tf_config(self):
     config = run_config.RunConfig()
-    self.assertEquals(config.master, "")
-    self.assertEquals(config.task_id, 0)
-    self.assertEquals(config.num_ps_replicas, 0)
-    self.assertEquals(config.cluster_spec, {})
+    self.assertEqual(config.master, "")
+    self.assertEqual(config.task_id, 0)
+    self.assertEqual(config.num_ps_replicas, 0)
+    self.assertEqual(config.cluster_spec, {})
     self.assertIsNone(config.task_type)
     self.assertTrue(config.is_chief)
-    self.assertEquals(config.evaluation_master, "")
+    self.assertEqual(config.evaluation_master, "")
 
   def test_values_from_tf_config(self):
     tf_config = {
@@ -60,13 +60,14 @@ class RunConfigTest(test.TestCase):
     with patch.dict("os.environ", {"TF_CONFIG": json.dumps(tf_config)}):
       config = run_config.RunConfig()
 
-    self.assertEquals(config.master, "grpc://host4:4")
-    self.assertEquals(config.task_id, 1)
-    self.assertEquals(config.num_ps_replicas, 2)
-    self.assertEquals(config.cluster_spec.as_dict(), tf_config["cluster"])
-    self.assertEquals(config.task_type, run_config_lib.TaskType.WORKER)
+    self.assertEqual(config.master, "grpc://host4:4")
+    self.assertEqual(config.task_id, 1)
+    self.assertEqual(config.num_ps_replicas, 2)
+    self.assertEqual(config.num_worker_replicas, 3)
+    self.assertEqual(config.cluster_spec.as_dict(), tf_config["cluster"])
+    self.assertEqual(config.task_type, run_config_lib.TaskType.WORKER)
     self.assertFalse(config.is_chief)
-    self.assertEquals(config.evaluation_master, "")
+    self.assertEqual(config.evaluation_master, "")
 
   def test_explicitly_specified_values(self):
     cluster_spec = {
@@ -84,19 +85,20 @@ class RunConfigTest(test.TestCase):
       config = run_config.RunConfig(
           master="localhost:0", evaluation_master="localhost:9991")
 
-    self.assertEquals(config.master, "localhost:0")
-    self.assertEquals(config.task_id, 2)
-    self.assertEquals(config.num_ps_replicas, 1)
-    self.assertEquals(config.cluster_spec, server_lib.ClusterSpec(cluster_spec))
-    self.assertEquals(config.task_type, run_config_lib.TaskType.WORKER)
+    self.assertEqual(config.master, "localhost:0")
+    self.assertEqual(config.task_id, 2)
+    self.assertEqual(config.num_ps_replicas, 1)
+    self.assertEqual(config.num_worker_replicas, 0)
+    self.assertEqual(config.cluster_spec, server_lib.ClusterSpec(cluster_spec))
+    self.assertEqual(config.task_type, run_config_lib.TaskType.WORKER)
     self.assertFalse(config.is_chief)
-    self.assertEquals(config.evaluation_master, "localhost:9991")
+    self.assertEqual(config.evaluation_master, "localhost:9991")
 
   def test_single_node_in_cluster_spec_produces_empty_master(self):
     tf_config = {"cluster": {run_config_lib.TaskType.WORKER: ["host1:1"]}}
     with patch.dict("os.environ", {"TF_CONFIG": json.dumps(tf_config)}):
       config = run_config.RunConfig()
-      self.assertEquals(config.master, "")
+      self.assertEqual(config.master, "")
 
   def test_no_task_type_produces_empty_master(self):
     tf_config = {
@@ -108,7 +110,7 @@ class RunConfigTest(test.TestCase):
     }
     with patch.dict("os.environ", {"TF_CONFIG": json.dumps(tf_config)}):
       config = run_config.RunConfig()
-      self.assertEquals(config.master, "")
+      self.assertEqual(config.master, "")
 
   def test_invalid_job_name_raises(self):
     tf_config = {

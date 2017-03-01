@@ -604,6 +604,7 @@ class RNNCellTest(test.TestCase):
         dtype=np.float32)
     seed = 12345
     random_seed.set_random_seed(seed)
+    rnn_scope = None
     for state_is_tuple in [False, True]:
       with session.Session() as sess:
         with variable_scope.variable_scope(
@@ -613,6 +614,12 @@ class RNNCellTest(test.TestCase):
               num_units, state_is_tuple=state_is_tuple)
           cell = rnn_cell.AttentionCellWrapper(
               lstm_cell, attn_length, state_is_tuple=state_is_tuple)
+          # This is legacy behavior to preserve the test.  Weight
+          # sharing no longer works by creating a new RNNCell in the
+          # same variable scope; so here we restore the scope of the
+          # RNNCells after the first use below.
+          if rnn_scope is not None:
+            (cell._scope, lstm_cell._scope) = rnn_scope  # pylint: disable=protected-access,unpacking-non-sequence
           zeros1 = random_ops.random_uniform(
               (batch_size, num_units), 0.0, 1.0, seed=seed + 1)
           zeros2 = random_ops.random_uniform(
@@ -629,6 +636,12 @@ class RNNCellTest(test.TestCase):
           inputs = random_ops.random_uniform(
               (batch_size, num_units), 0.0, 1.0, seed=seed + 5)
           output, state = cell(inputs, zero_state)
+          # This is legacy behavior to preserve the test.  Weight
+          # sharing no longer works by creating a new RNNCell in the
+          # same variable scope; so here we store the scope of the
+          # first RNNCell for reuse above.
+          if rnn_scope is None:
+            rnn_scope = (cell._scope, lstm_cell._scope)  # pylint: disable=protected-access
           if state_is_tuple:
             state = array_ops.concat(
                 [state[0][0], state[0][1], state[1], state[2]], 1)
@@ -830,11 +843,8 @@ class LayerNormBasicLSTMCellTest(test.TestCase):
         c1 = array_ops.zeros([1, 2])
         h1 = array_ops.zeros([1, 2])
         state1 = core_rnn_cell_impl.LSTMStateTuple(c1, h1)
-        def single_cell():
-          return rnn_cell.LayerNormBasicLSTMCell(2)
-
         cell = core_rnn_cell_impl.MultiRNNCell(
-            [single_cell() for _ in range(2)])
+            [rnn_cell.LayerNormBasicLSTMCell(2) for _ in range(2)])
         h, (s0, s1) = cell(x, (state0, state1))
         sess.run([variables.global_variables_initializer()])
         res = sess.run([h, s0, s1], {
@@ -962,7 +972,7 @@ class CompiledWrapperTest(test.TestCase):
     num_layers = 2
     max_time = 20
 
-    atol = 1e-6
+    atol = 1e-5
 
     random_seed.set_random_seed(1234)
     with self.test_session(graph=ops.Graph()) as sess:

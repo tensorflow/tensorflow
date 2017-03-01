@@ -13,7 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Framework utilities. See the @{$python/contrib.framework} guide.
+"""Framework utilities.
+
+See the @{$python/contrib.framework} guide.
 
 @@assert_same_float_dtype
 @@assert_scalar
@@ -51,6 +53,7 @@
 @@get_or_create_global_step
 @@get_local_variables
 @@get_model_variables
+@@get_trainable_variables
 @@get_unique_variable
 @@get_variables_by_name
 @@get_variables_by_suffix
