@@ -183,18 +183,48 @@ template class Dot<half>;
 template class Dot<int>;
 
 // Random
-/*
+
+template<typename T>
+class RandomBernoulli : public Vertex {
+public:
+  Output<Vector<T>> out;
+  Input<float> mean;
+
+  std::default_random_engine random_engine;
+  std::uniform_real_distribution<float> uniform_real_distribution;
+
+  bool compute() {
+    for (unsigned i = 0; i != out.size(); ++i) {
+      T val = (T)uniform_real_distribution(random_engine);
+      out[i] = (val > mean) ? (T)0 : (T)1;
+    }
+    return true;
+  }
+
+  int getCycleEstimate() const { return 1; }
+};
+
+template class RandomBernoulli<unsigned int>;
+
+
 template<typename T>
 class RandomUniform : public Vertex {
 public:
   Output<Vector<T>> out;
+  Input<T> lower;
+  Input<T> upper;
 
-  std::default_random_engine engine;
-  std::uniform_real_distribution<float> dis;
+  std::default_random_engine random_engine;
+  std::uniform_real_distribution<float> uniform_real_distribution;
 
   bool compute() {
+    T l = lower;
+    T u = upper;
+    float range = (float)(u - l);
+
     for (unsigned i = 0; i != out.size(); ++i) {
-      out[i] = (T)dis(engine);
+      T val = (T)(uniform_real_distribution(random_engine) * range);
+      out[i] = val + l;
     }
     return true;
   }
@@ -202,20 +232,27 @@ public:
   int getCycleEstimate() const { return 1; }
 };
 
+template class RandomUniform<int>;
+template class RandomUniform<unsigned int>;
 template class RandomUniform<float>;
 template class RandomUniform<half>;
 
 template<typename T>
-class RandomStandardNormal : public Vertex {
+class RandomNormal : public Vertex {
 public:
   Output<Vector<T>> out;
+  Input<T> mean;
+  Input<T> sd;
 
-  std::default_random_engine engine;
-  std::normal_distribution<float> dis;
+  std::default_random_engine random_engine;
+  std::normal_distribution<float> normal_distribution;
 
   bool compute() {
+    T m = mean;
+    T s = sd;
     for (unsigned i = 0; i != out.size(); ++i) {
-      out[i] = (T)dis(engine);
+      T val = (T)normal_distribution(random_engine);
+      out[i] = val * s + m;
     }
     return true;
   }
@@ -223,34 +260,10 @@ public:
   int getCycleEstimate() const { return 1; }
 };
 
-template class RandomStandardNormal<float>;
-template class RandomStandardNormal<half>;
+template class RandomNormal<float>;
+template class RandomNormal<half>;
 
-template<typename T>
-class TruncatedNormal : public Vertex {
-public:
-  Output<Vector<T>> out;
 
-  std::default_random_engine engine;
-  std::normal_distribution<float> dis;
-
-  bool compute() {
-    for (unsigned i = 0; i != out.size(); ++i) {
-      T val = (T)dis(engine);
-      while (val >= (T)2 || val <= (T)-2) {
-        val = (T)dis(engine);
-      }
-      out[i] = val;
-    }
-    return true;
-  }
-
-  int getCycleEstimate() const { return 1; }
-};
-
-template class TruncatedNormal<float>;
-template class TruncatedNormal<half>;
-*/
 
 #define UNARY_ELEMENTWISE(NAME, EXP) \
 template<typename T> \

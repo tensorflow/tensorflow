@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 
 #include <poplar/exceptions.hpp>
+#include <xgraph_core/exceptions.hpp>
 #include <popnn/exceptions.hpp>
 
 namespace se = ::perftools::gputools;
@@ -189,6 +190,11 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
   catch (popnn::popnn_error e) {
     return port::Status(port::error::UNKNOWN,
                         port::StrCat("[Popnn Compile] ",
+                                     e.what()));
+  }
+  catch (xgraph_core::xgraph_core_error e) {
+    return port::Status(port::error::UNKNOWN,
+                        port::StrCat("[Xgraph Compile] ",
                                      e.what()));
   }
 

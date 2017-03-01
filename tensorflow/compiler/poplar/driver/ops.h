@@ -123,6 +123,12 @@ CreateConv2D(poplar::Graph &graph,
              const xla::Shape& output_shape,
              TensorMap& tensor_map);
 
+port::StatusOr<poplar::program::Program>
+CreateRandomOp(poplar::Graph &graph,
+               const HloInstruction *inst,
+               const xla::Shape& output,
+               TensorMap& tensor_map);
+
 /* Optimization tests */
 
 port::StatusOr<bool>
