@@ -81,11 +81,11 @@ def _checked_scope(cell, scope, reuse=None, **kwargs):
       if weights_found and reuse is None:
         raise ValueError(
             "Attempt to have a second RNNCell use the weights of a variable "
-            "scope that already has weights: '%s' (and RNNCell was not "
-            "constructed with reuse=True).  "
+            "scope that already has weights: '%s'; and the cell was not "
+            "constructed as %s(..., reuse=True).  "
             "To share the weights of an RNNCell, simply "
             "reuse it in your second calculation, or create a new one with "
-            "the argument reuse=True." % scope_name)
+            "the argument reuse=True." % (scope_name, type(cell).__name__))
 
     # Everything is OK.  Update the cell's scope and yield it.
     cell._scope = checking_scope  # pylint: disable=protected-access

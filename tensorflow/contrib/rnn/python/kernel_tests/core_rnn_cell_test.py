@@ -344,6 +344,29 @@ class RNNCellTest(test.TestCase):
       outputs, _ = cell(x, m)
       self.assertTrue("cpu:14159" in outputs.device.lower())
 
+  def testUsingSecondCellInScopeWithExistingVariablesFails(self):
+    # This test should go away when this behavior is no longer an
+    # error (Approx. May 2017)
+    cell1 = core_rnn_cell_impl.LSTMCell(3)
+    cell2 = core_rnn_cell_impl.LSTMCell(3)
+    x = array_ops.zeros([1, 3])
+    m = core_rnn_cell_impl.LSTMStateTuple(*[array_ops.zeros([1, 3])] * 2)
+    cell1(x, m)
+    with self.assertRaisesRegexp(ValueError, r"LSTMCell\(..., reuse=True\)"):
+      cell2(x, m)
+
+  def testUsingCellInDifferentScopeFromFirstCallFails(self):
+    # This test should go away when this behavior is no longer an
+    # error (Approx. May 2017)
+    cell = core_rnn_cell_impl.LSTMCell(3)
+    x = array_ops.zeros([1, 3])
+    m = core_rnn_cell_impl.LSTMStateTuple(*[array_ops.zeros([1, 3])] * 2)
+    with variable_scope.variable_scope("scope1"):
+      cell(x, m)
+    with variable_scope.variable_scope("scope2"):
+      with self.assertRaisesRegexp(ValueError, r"Attempt to reuse RNNCell"):
+        cell(x, m)
+
   def testDropoutWrapper(self):
     with self.test_session() as sess:
       with variable_scope.variable_scope(
