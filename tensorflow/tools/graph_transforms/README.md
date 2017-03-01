@@ -341,12 +341,13 @@ Args: None \
 Prerequisites: [fold_constants](#fold_constants)
 
 This transform tries to optimize away the Mul that's introduced after a Conv2D
-when batch normalization has been used during training. It scans the graph for
-any channel-wise multiplies immediately after convolutions, and multiplies the
-convolution's weights with the Mul instead so this can be omitted at inference
-time. You'll need to make sure you run [fold_constants](#fold_constants) first,
-since the pattern can only be spotted if the normal complex expression that's
-produced by training for the Mul input is collapsed down into a simple constant.
+(or a MatMul) when batch normalization has been used during training. It scans
+the graph for any channel-wise multiplies immediately after convolutions, and
+multiplies the convolution's (or matrix multiplication's) weights with the Mul
+instead so this can be omitted at inference time. You'll need to make sure you
+run [fold_constants](#fold_constants) first, since the pattern can only be
+spotted if the normal complex expression that's produced by training for the Mul
+input is collapsed down into a simple constant.
 
 ### fold_constants
 
