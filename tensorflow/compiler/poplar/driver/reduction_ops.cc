@@ -198,9 +198,7 @@ CreateSimpleWindowReduction(poplar::Graph &graph,
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
   out = out.flatten();
 
-  // One vertex per non-reduced element
   auto cs = graph.addComputeSet(inst->name());
-
   const unsigned long N = out.dim(0);
   const auto &device_info = graph.getDevice().getDeviceInfo();
 
@@ -218,10 +216,10 @@ CreateSimpleWindowReduction(poplar::Graph &graph,
     for (unsigned d=0; d<dim_count; d++) {
       const auto& wd(window.dimensions(d));
 
-      std::size_t s(pos[d] * wd.stride() - wd.padding_low());
-      std::size_t e(s + wd.size());
-      start[d] = std::max(s, (std::size_t)0);
-      end[d] = std::min(e, to_reduce.dim(d));
+      int s(pos[d] * wd.stride() - wd.padding_low());
+      int e(s + wd.size());
+      start[d] = std::max(s, 0);
+      end[d] = std::min(e, (int)to_reduce.dim(d));
     }
 
     poplar::Tensor w = to_reduce.slice(start, end).flatten();
