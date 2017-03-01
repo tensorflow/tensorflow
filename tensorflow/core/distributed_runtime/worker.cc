@@ -357,7 +357,8 @@ void Worker::RecvTensorAsync(WorkerEnv* env, CallOptions* opts,
 void Worker::SendTensorSync(const WorkerEnv* env,
                             const Rendezvous::ParsedKey& key,
                             const Rendezvous::Args& args, const Tensor& val,
-                            const bool is_dead, Status& s) {
+                            const bool is_dead, const int64 step_id_,
+                            Status& s) {
   s = Status(tensorflow::error::UNIMPLEMENTED, "Worker::SendTensorSync()");
 
   // done(errors::Unimplemented("Worker::RecvTensorAsync()"));

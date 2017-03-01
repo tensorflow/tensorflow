@@ -110,7 +110,8 @@ class WorkerInterface {
   virtual void SendTensorSync(const WorkerEnv* env,
                               const Rendezvous::ParsedKey& key,
                               const Rendezvous::Args& args, const Tensor& val,
-                              const bool is_dead, Status& s) = 0;
+                              const bool is_dead, const int64 step_id_,
+                              Status& s) = 0;
 
   virtual void LoggingAsync(const LoggingRequest* request,
                             LoggingResponse* response, StatusCallback done) = 0;

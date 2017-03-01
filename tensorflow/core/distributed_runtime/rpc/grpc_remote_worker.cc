@@ -50,7 +50,6 @@ limitations under the License.
 
 #endif
 
-
 namespace tensorflow {
 
 class GrpcRemoteWorker : public WorkerInterface {
@@ -116,7 +115,7 @@ class GrpcRemoteWorker : public WorkerInterface {
 
   void SendTensorSync(const WorkerEnv* env, const Rendezvous::ParsedKey& key,
                       const Rendezvous::Args& args, const Tensor& val,
-                      const bool is_dead, Status& s) {
+                      const bool is_dead, const int64 step_id_, Status& s) {
     s = Status(tensorflow::error::UNIMPLEMENTED, "SendTensorSync()");
   }
 
@@ -436,9 +435,11 @@ class RDMARemoteWorker : public GrpcRemoteWorker {
 
   void SendTensorSync(const WorkerEnv* env, const Rendezvous::ParsedKey& key,
                       const Rendezvous::Args& args, const Tensor& val,
-                      const bool is_dead, Status& s) override {
+                      const bool is_dead, const int64 step_id_,
+                      Status& s) override {
     const int dst = getMPIPartnerID(false, key.FullKey().ToString(), env);
-    const int hash = tensorHash(key.FullKey().ToString());
+    const int hash =
+        tensorHash(strings::StrCat(key.FullKey().ToString(), step_id_));
     // fprintf(stderr, "JBDBG Going to send data to: %s  : %d  || %d
     // devContext: %d\n", key.FullKey().ToString().c_str(), dst, hash,
     // args.device_context);
@@ -463,7 +464,9 @@ class RDMARemoteWorker : public GrpcRemoteWorker {
       const int src = getMPIPartnerID(true, request->rendezvous_key(), env);
       // fprintf(stderr, "JBDBG Going to receive data from: %s  : %d \n",
       // request->rendezvous_key().c_str(), src);
-      MPIRecvTensor(src, tensorHash(request->rendezvous_key()), response);
+      std::string keyStr =
+          strings::StrCat(request->rendezvous_key(), request->step_id());
+      MPIRecvTensor(src, tensorHash(keyStr), response);
       //   response->ClearTensor();  //Reset the receive tensor, invalidates all
       // the above received data :)
       done(Status::OK());

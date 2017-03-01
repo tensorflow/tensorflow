@@ -292,7 +292,7 @@ void RpcRemoteRendezvous::SendToRemote(const Rendezvous::ParsedKey& key,
     s = errors::Internal(key.dst_device, " is invalid remote source device.");
   }
   WorkerInterface* rwi = cache_->CreateWorker(call->src_worker_);
-  rwi->SendTensorSync(env_, key, args, val, is_dead, s);
+  rwi->SendTensorSync(env_, key, args, val, is_dead, step_id_, s);
 
   // TODO: Should we do this or not? We did not call Ref()
   // if (args.device_context) args.device_context->Unref();
