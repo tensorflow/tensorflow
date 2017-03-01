@@ -29,7 +29,7 @@ linalg = linalg_lib
 random_seed.set_random_seed(23)
 
 
-class SquareLinearOperatorMatrixTest(
+class SquareLinearOperatorFullMatrixTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
 
@@ -45,10 +45,10 @@ class SquareLinearOperatorMatrixTest(
       # values are random and we want the same value used for both mat and
       # feed_dict.
       matrix = matrix.eval()
-      operator = linalg.LinearOperatorMatrix(matrix)
+      operator = linalg.LinearOperatorFullMatrix(matrix)
       feed_dict = {matrix_ph: matrix}
     else:
-      operator = linalg.LinearOperatorMatrix(matrix)
+      operator = linalg.LinearOperatorFullMatrix(matrix)
       feed_dict = None
 
     # Convert back to Tensor.  Needed if use_placeholder, since then we have
@@ -60,7 +60,7 @@ class SquareLinearOperatorMatrixTest(
   def test_is_x_flags(self):
     # Matrix with two positive eigenvalues.
     matrix = [[1., 0.], [1., 11.]]
-    operator = linalg.LinearOperatorMatrix(
+    operator = linalg.LinearOperatorFullMatrix(
         matrix,
         is_positive_definite=True,
         is_non_singular=True,
@@ -70,7 +70,7 @@ class SquareLinearOperatorMatrixTest(
     self.assertFalse(operator.is_self_adjoint)
 
 
-class SquareLinearOperatorMatrixSymmetricPositiveDefiniteTest(
+class SquareLinearOperatorFullMatrixSymmetricPositiveDefiniteTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest.
 
@@ -104,11 +104,11 @@ class SquareLinearOperatorMatrixSymmetricPositiveDefiniteTest(
       # values are random and we want the same value used for both mat and
       # feed_dict.
       matrix = matrix.eval()
-      operator = linalg.LinearOperatorMatrix(
+      operator = linalg.LinearOperatorFullMatrix(
           matrix, is_self_adjoint=True, is_positive_definite=True)
       feed_dict = {matrix_ph: matrix}
     else:
-      operator = linalg.LinearOperatorMatrix(
+      operator = linalg.LinearOperatorFullMatrix(
           matrix, is_self_adjoint=True, is_positive_definite=True)
       feed_dict = None
 
@@ -121,7 +121,7 @@ class SquareLinearOperatorMatrixSymmetricPositiveDefiniteTest(
   def test_is_x_flags(self):
     # Matrix with two positive eigenvalues.
     matrix = [[1., 0.], [0., 7.]]
-    operator = linalg.LinearOperatorMatrix(
+    operator = linalg.LinearOperatorFullMatrix(
         matrix, is_positive_definite=True, is_self_adjoint=True)
 
     self.assertTrue(operator.is_positive_definite)
@@ -132,7 +132,7 @@ class SquareLinearOperatorMatrixSymmetricPositiveDefiniteTest(
     self.assertTrue(operator._is_spd)
 
 
-class NonSquareLinearOperatorMatrixTest(
+class NonSquareLinearOperatorFullMatrixTest(
     linear_operator_test_util.NonSquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
 
@@ -144,10 +144,10 @@ class NonSquareLinearOperatorMatrixTest(
       # values are random and we want the same value used for both mat and
       # feed_dict.
       matrix = matrix.eval()
-      operator = linalg.LinearOperatorMatrix(matrix)
+      operator = linalg.LinearOperatorFullMatrix(matrix)
       feed_dict = {matrix_ph: matrix}
     else:
-      operator = linalg.LinearOperatorMatrix(matrix)
+      operator = linalg.LinearOperatorFullMatrix(matrix)
       feed_dict = None
 
     # Convert back to Tensor.  Needed if use_placeholder, since then we have
@@ -159,7 +159,7 @@ class NonSquareLinearOperatorMatrixTest(
   def test_is_x_flags(self):
     # Matrix with two positive eigenvalues.
     matrix = [[3., 0.], [1., 1.]]
-    operator = linalg.LinearOperatorMatrix(
+    operator = linalg.LinearOperatorFullMatrix(
         matrix,
         is_positive_definite=True,
         is_non_singular=True,
@@ -170,7 +170,7 @@ class NonSquareLinearOperatorMatrixTest(
 
   def test_matrix_must_have_at_least_two_dims_or_raises(self):
     with self.assertRaisesRegexp(ValueError, "at least 2 dimensions"):
-      linalg.LinearOperatorMatrix([1.])
+      linalg.LinearOperatorFullMatrix([1.])
 
 
 if __name__ == "__main__":

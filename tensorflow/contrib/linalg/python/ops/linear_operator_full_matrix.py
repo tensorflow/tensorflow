@@ -25,10 +25,10 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 
-__all__ = ["LinearOperatorMatrix"]
+__all__ = ["LinearOperatorFullMatrix"]
 
 
-class LinearOperatorMatrix(linear_operator.LinearOperator):
+class LinearOperatorFullMatrix(linear_operator.LinearOperator):
   """`LinearOperator` that wraps a [batch] matrix.
 
   This operator wraps a [batch] matrix `A` (which is a `Tensor`) with shape
@@ -39,7 +39,7 @@ class LinearOperatorMatrix(linear_operator.LinearOperator):
   ```python
   # Create a 2 x 2 linear operator.
   matrix = [[1., 2.], [3., 4.]]
-  operator = LinearOperatorMatrix(matrix)
+  operator = LinearOperatorFullMatrix(matrix)
 
   operator.to_dense()
   ==> [[1., 2.]
@@ -57,7 +57,7 @@ class LinearOperatorMatrix(linear_operator.LinearOperator):
 
   # Create a [2, 3] batch of 4 x 4 linear operators.
   matrix = tf.random_normal(shape=[2, 3, 4, 4])
-  operator = LinearOperatorMatrix(matrix)
+  operator = LinearOperatorFullMatrix(matrix)
   ```
 
   #### Shape compatibility
@@ -72,14 +72,14 @@ class LinearOperatorMatrix(linear_operator.LinearOperator):
 
   #### Performance
 
-  `LinearOperatorMatrix` has exactly the same performance as would be achieved
-  by using standard `TensorFlow` matrix ops.  Intelligent choices are made
-  based on the following initialization hints.
+  `LinearOperatorFullMatrix` has exactly the same performance as would be
+  achieved by using standard `TensorFlow` matrix ops.  Intelligent choices are
+  made based on the following initialization hints.
 
   * If `dtype` is real, and `is_self_adjoint` and `is_positive_definite`, a
     Cholesky factorization is used for the determinant and solve.
 
-  In all cases, suppose `operator` is a `LinearOperatorMatrix` of shape
+  In all cases, suppose `operator` is a `LinearOperatorFullMatrix` of shape
   `[M, N]`, and `x.shape = [N, R]`.  Then
 
   * `operator.apply(x)` is `O(M * N * R)`.
@@ -108,8 +108,8 @@ class LinearOperatorMatrix(linear_operator.LinearOperator):
                is_non_singular=None,
                is_self_adjoint=None,
                is_positive_definite=None,
-               name="LinearOperatorMatrix"):
-    """Initialize a `LinearOperatorMatrix`.
+               name="LinearOperatorFullMatrix"):
+    """Initialize a `LinearOperatorFullMatrix`.
 
     Args:
       matrix:  Shape `[B1,...,Bb, M, N]` with `b >= 0`, `M, N >= 0`.
@@ -139,7 +139,7 @@ class LinearOperatorMatrix(linear_operator.LinearOperator):
       if self._is_spd:
         self._chol = linalg_ops.cholesky(self._matrix)
 
-      super(LinearOperatorMatrix, self).__init__(
+      super(LinearOperatorFullMatrix, self).__init__(
           dtype=self._matrix.dtype,
           graph_parents=[self._matrix],
           is_non_singular=is_non_singular,
