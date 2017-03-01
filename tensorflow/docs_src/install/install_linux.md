@@ -255,7 +255,7 @@ take the following steps:
      $ <b>pip3 install tensorflow-gpu</b> # Python 3.n; GPU support </pre>
 
      If the preceding command runs to completion, you should now
-     [validate your installation](#ValidateInstallation).
+     [validate your installation](#ValidateYourInstallation).
 
   3. (Optional.) If Step 2 failed, install the latest version of TensorFlow 
      by issuing a command of the following format:

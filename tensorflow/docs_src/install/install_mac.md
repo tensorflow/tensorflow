@@ -184,7 +184,7 @@ If you encounter installation problems, see
 ### Next Steps
 
 After installing TensorFlow,
-[validate your installation](#ValidateInstallation)
+[validate your installation](#ValidateYourInstallation)
 to confirm that the installation worked properly.
 
 Note that you must activate the virtualenv environment each time you
@@ -295,7 +295,7 @@ take the following steps:
      $ <b>pip3 install tensorflow-gpu</b> # Python 3.n; GPU support </pre>
 
      If the preceding command runs to completion, you should now
-     [validate your installation](#ValidateInstallation).
+     [validate your installation](#ValidateYourInstallation).
 
   3. (Optional.) If Step 2 failed, install the latest version of TensorFlow
      by issuing a command of the following format:
@@ -392,7 +392,7 @@ Docker will download the TensorFlow binary image the first time you launch it.
 ### Next Steps
 
 You should now
-[validate your installation](#ValidateInstallation).
+[validate your installation](#ValidateYourInstallation).
 
 
 ## Installing with Anaconda
@@ -430,7 +430,7 @@ Take the following steps to install TensorFlow in an Anaconda environment:
      </pre>
 
 
-<a name="ValidateInstallation"></a>
+<a name="ValidateYourInstallation"></a>
 ## Validate your installation
 
 To validate your TensorFlow installation, do the following:
