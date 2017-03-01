@@ -623,7 +623,23 @@ def _dynamic_rnn_loop(cell,
   inputs_got_shape = tuple(input_.get_shape().with_rank_at_least(3)
                            for input_ in flat_input)
 
+  # ensure that the time-steps and batch-sizes are the same, if available:
   const_time_steps,const_batch_size = inputs_got_shape[0][:2].as_list()
+  if const_time_steps is not None:
+    for shape in inputs_got_shape[1:]:
+      got_time_steps = shape[0].value
+      if got_time_steps is not None:
+        if const_time_steps != got_time_steps:
+          raise ValueError(
+              "Time steps is not the same for all the elements in the input in "
+              "a batch.")
+  if const_batch_size is not None:
+    for shape in inputs_got_shape[1:]:
+      got_batch_size = shape[1].value
+      if got_batch_size is not None:
+        if const_batch_size != got_batch_size:
+          raise ValueError(
+              "Batch_size is not the same for all the elements in the input.")
 
 
   # Prepare dynamic conditional copying of state & output
