@@ -430,6 +430,304 @@ all
 sorts of domains. We hope this small example gives you some ideas on how to use
 TensorFlow within your own products.
 
+## Usage with the Go API
+
+You can run the same [Inception-v3] model in Go for use in production
+environments. You can download the archive containing the GraphDef that defines
+the model like this (running from the root directory of the TensorFlow
+repository):
+
+```bash
+wget https://storage.googleapis.com/download.tensorflow.org/models/inception_dec_2015.zip -O tensorflow/examples/label_image_go/data/inception_dec_2015.zip
+
+unzip tensorflow/examples/label_image_go/data/inception_dec_2015.zip -d tensorflow/examples/label_image_go/data/
+```
+
+Now we are ready to run the example code using the provided test image:
+
+```bash
+go run tensorflow/examples/label_image_go/main.go tensorflow/examples/label_image/data/grace_hopper.jpg
+```
+
+You can also compile the code and run it:
+
+```bash
+go build -o label_image tensorflow/examples/label_image_go/main.go
+
+./label_image tensorflow/examples/label_image/data/grace_hopper.jpg
+```
+
+In this case, we're using the default image of [Admiral Grace
+Hopper](https://en.wikipedia.org/wiki/Grace_Hopper), and you can see the
+network correctly identifies she's wearing a military uniform, with a high
+score of 0.6.
+
+
+<div style="width:45%; margin:auto; margin-bottom:10px; margin-top:20px;">
+  <img style="width:100%" src="../../images/grace_hopper.jpg">
+</div>
+
+Next, try it out on your own images by supplying the as first parameter, e.g.
+
+```bash
+./label_image my_image.png
+```
+
+If you look inside the [`tensorflow/examples/label_image/main.cc`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/examples/label_image_go/main.go)
+file, you can find out
+how it works. We hope this code will help you integrate TensorFlow into
+your own applications, so we will walk step by step through the main functions:
+
+The constants defines where the files are loaded from, and properties of the input images.
+The model expects to get square 299x299 RGB images, so those are the `cInputWidth`
+and `cInputHeight` flags. We also need to scale the pixel values from integers that
+are between 0 and 255 to the floating point values that the graph operates on.
+We control the scaling with the `cInputMean` and `cInputStd` constants: we first subtract
+`cInputMean` from each pixel value, then divide it by `cInputStd`.
+
+These values probably look somewhat magical, but they are just defined by the 
+original model author based on what he/she wanted to use as input images for 
+training. If you have a graph that you've trained yourself, you'll just need
+to adjust the values to match whatever you used during your training process.
+
+You can see how they're applied to an image in the [`readTensorFromImageFile()`]
+(https://github.com/tensorflow/tensorflow/blob/master/tensorflow/examples/label_image_go/main.go#L64)
+function.
+
+```Go
+// readTensorFromImageFile Given an image file name, read in the data, try to
+// decode it as an image, resize it to the requested size, and then scale the
+// values as desired.
+func readTensorFromImageFile(filePath string) *tf.Tensor
+```
+We start by creating a `GraphDefBuilder`, which is an object we can use to
+specify a model to run or load.
+
+```Go
+graph := tf.NewGraph()
+
+// Load the image file path into the graph as a constant, and read its
+// content.
+fileNameNode, _ := graph.Constant("file_name", filePath)
+fileReader, _ := graph.Op("ReadFile", "file_reader", []*tf.GraphNode{fileNameNode}, "", nil)
+```
+We then start creating nodes for the small model we want to run
+to load, resize, and scale the pixel values to get the result the main model
+expects as its input. The first node we create is just a `Const` op that holds a
+tensor with the file name of the image we want to load. That's then passed as the
+first input to the `ReadFile` op. As you can see from the example, the second parameter
+corresponds to the name of the Graph node to be added, the third are the inputs of this node, the
+fourth  the device where we want this node to be executer, if we leave this parameter as an empty
+string we are not specifying any special preference, and the last paramte corresponds to the
+necessary attributes to execute this operation.
+
+```Go
+// Now try to figure out what kind of file it is and decode it.
+if filePath[len(filePath)-4:] == ".png" {
+	imageReader, _ = graph.Op("DecodePng", "png_reader", []*tf.GraphNode{fileReader}, "", map[string]interface{}{
+		"channels": int64(3),
+	})
+} else {
+	// Assume if it's not a PNG then it must be a JPEG.
+	imageReader, _ = graph.Op("DecodeJpeg", "jpeg_reader", []*tf.GraphNode{fileReader}, "", map[string]interface{}{
+		"channels": int64(3),
+	})
+}
+
+// Now cast the image data to float so we can do normal math on it. In
+// the attributes we have to specify the output datatype that we want.
+floatCaster, _ := graph.Op("Cast", "float_caster", []*tf.GraphNode{imageReader}, "", map[string]interface{}{
+	"DstT": tf.DtFloat,
+})
+
+// The convention for image ops in TensorFlow is that all images are expected
+// to be in batches, so that they're four-dimensional arrays with indices of
+// [batch, height, width, channel]. Because we only have a single image, we
+// have to add a batch dimension of 1 to the start with ExpandDims operation.
+dimIndex, _ := graph.Constant("dim_index", []int32{0})
+dimsExpander, _ := graph.Op("ExpandDims", "dims_expander", []*tf.GraphNode{floatCaster, dimIndex}, "", map[string]interface{}{
+	"T":   tf.DtFloat,
+	"dim": 0,
+})
+
+// Bilinearly resize the image to fit the required dimensions.
+sizeDims, _ := graph.Constant("size_dims", []int32{cInputWidth, cInputHeight})
+size, _ := graph.Op("ResizeBilinear", "size", []*tf.GraphNode{dimsExpander, sizeDims}, "", map[string]interface{}{
+	"T": tf.DtFloat,
+})
+
+// Subtract the mean and divide by the scale.
+inputMean, _ := graph.Constant("input_mean", float32(cInputMean))
+subMean, _ := graph.Op("Sub", "sub_mean", []*tf.GraphNode{size, inputMean}, "", nil)
+inputStd, _ := graph.Constant("input_std", float32(cInputStd))
+_, _ = graph.Op("Div", "normalized", []*tf.GraphNode{subMean, inputStd}, "", nil)
+```
+
+We then keep adding more nodes, to decode the file data as an image, to cast the
+integers into floating point values, to resize it, and then finally to run the
+subtraction and division operations on the pixel values.
+
+```Go
+// Create the session and extend the Graph
+s, err := tf.NewSession()
+s.ExtendGraph(graph)
+```
+At the end of this we have a model definition stored in the graph variable, which we
+load into a new session with `ExtendGraph`
+
+```Go
+/// This runs the GraphDef network definition that we've just constructed, and
+// returns the results in the output tensor.
+out, err := s.Run(nil, []string{"normalized"}, nil)
+```
+Then we execute the loaded graph on the session with `Run` specifying which
+node or nodes we want to get the output from as second parameter. The function
+Run will return the outputs as []\*tensorflow.Tensor in the same order
+specified on the second input paramater
+
+This gives us a slice of `*tensorflow.Tensor`, which in this case we know will only be a
+single object long. You can think of the output tensor as a multi-dimensional
+array in this context, and it holds a 299 pixel high, 299 pixel width, 3
+channel image as float values. If you have your own image-processing framework
+in your product already, you should be able to use that instead, as long as you
+apply the same transformations before you feed images into the main graph.
+
+This is a simple example of creating a small TensorFlow graph dynamically in Go
+but for the pre-trained Inception model we want to load a much larger definition from
+a file. You can see how we do that in the 
+[`NewGraphFromReader()`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/examples/label_image_go/main.go#L174)
+function.
+
+On the lines below the `NewGraphFromReader` invocation are similar to the
+previously used to run the graph we defined, but on this case we are loading
+the graph from a file stored on disk, and adding the result of the previous
+execution as input of this new one.
+
+The first parameter of the Run function corresponds to the map with the tensors to be
+used to feed the Graph, the key of each tensor on this map has to match with the name
+of the node where they are going to be used.
+
+```Go
+// First we load and initialize the model.
+reader, _ := os.Open(cInceptionGraphFile)
+graph, _ := tf.NewGraphFromReader(reader, false)
+
+s, _ := tf.NewSession()
+s.ExtendGraph(graph)
+
+// Get the image from disk as a float array of numbers, resized and
+// normalized to the specifications the main graph expects.
+resizedTensor := readTensorFromImageFile(imagePath)
+
+// Prepare map of input tensors to run the model.
+input := map[string]*tf.Tensor{
+	"Mul": resizedTensor,
+}
+
+// Actually run the image through the model.
+out, err := s.Run(input, []string{"softmax"}, nil)
+```
+
+The `getTopLabels()` function is a lot like the image loading, we want to take
+the results of building a small graph, running it, and turn it into a sorted
+list of the highest-scoring labels. Just like the image loader, it creates a new
+`Graph`, adds a couple of nodes to it, and then runs the short graph to get a
+pair of output tensors. In this case they represent the sorted scores and index
+positions of the highest results.
+
+```Go
+graph := tf.NewGraph()
+
+// We are going to use the next placeholder to allocate the tensor with
+// the scores that we will provide as input
+dims := make([]int64, outputs.NumDims())
+for i := 0; i < outputs.NumDims(); i++ {
+	dims[i] = int64(outputs.Dim(i))
+}
+normalized := graph.Placeholder("normalized_placeholder", tf.DtFloat, dims, nil)
+
+// Here instead of using a placeholder to send and input we are using a
+// constant that is oing to be part of the graph
+labelsConstant, _ := graph.Constant("lables", labels)
+
+// The TopK node returns two outputs, the scores and their original indices,
+// so we have to append :0 and :1 to specify them both.
+_, _ = graph.Op("TopKV2", "normalized", []*tf.GraphNode{normalized, labelsConstant}, "", nil)
+
+input := map[string]*tf.Tensor{
+	"normalized_placeholder": outputs,
+}
+
+// Create the session and run the previously prepared graph
+s, _ := tf.NewSession()
+s.ExtendGraph(graph)
+out, _ := s.Run(input, []string{"normalized:0", "normalized:1"}, nil)
+
+return out[1], out[0]
+```
+
+At the end, [`main()`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/examples/label_image_go/main.go#L170)
+ties together all of these calls.
+
+```Go
+if len(os.Args) < 2 {
+	log.Println("Usage:", os.Args[0], "<image_path>")
+}
+imagePath := os.Args[1]
+
+// First we load and initialize the model.
+reader, _ := os.Open(cInceptionGraphFile)
+graph, _ := tf.NewGraphFromReader(reader, false)
+
+s, _ := tf.NewSession()
+s.ExtendGraph(graph)
+
+// Get the image from disk as a float array of numbers, resized and
+// normalized to the specifications the main graph expects.
+resizedTensor := readTensorFromImageFile(imagePath)
+
+// Prepare map of input tensors to run the model.
+input := map[string]*tf.Tensor{
+	"Mul": resizedTensor,
+}
+
+// Actually run the image through the model.
+out, err := s.Run(input, []string{"softmax"}, nil)
+if err != nil {
+	log.Fatal("Problem trying to run the saved graph, Error:", err)
+}
+
+// Using the output tensor from the previous run, get the best matching
+// labels.
+indexTens, scoresTens := getTopLabels(out[0], cLabelsToShow)
+```
+
+At the end of the main function we just take those sorted results, and prints them out in a
+friendly way using the labels from the file located on the `cLabelsFile` path.
+
+```Go
+// Associate the labels with the returned data and print them with the
+// corresponding scores.
+labelsStr, err := ioutil.ReadFile("data/imagenet_comp_graph_label_strings.txt")
+if err != nil {
+	log.Fatal("Error reading the image labels file, Error:", err)
+}
+
+labels := strings.Split(string(labelsStr), "\n")
+
+for i := 0; i < cLabelsToShow; i++ {
+	index, _ := indexTens.GetVal(0, i)
+	score, _ := scoresTens.GetVal(0, i)
+	fmt.Println(labels[index.(int32)], ":", score)
+}
+```
+
+In this case we are demonstrating object recognition, but you should be able to
+use very similar code on other models you've found or trained yourself, across
+all
+sorts of domains. We hope this small example gives you some ideas on how to use
+TensorFlow within your own products.
+
 > **EXERCISE**: Transfer learning is the idea that, if you know how to solve a task well, you
 should be able to transfer some of that understanding to solving related
 problems.  One way to perform transfer learning is to remove the final
