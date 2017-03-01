@@ -448,8 +448,11 @@ LiteralUtil::GetMutableRepeatedField<tensorflow::protobuf_int64>(
     Literal* literal);
 
 template <>
-/* static */ tensorflow::gtl::ArraySlice<float>
-LiteralUtil::GetArraySlice<float>(const Literal& literal);
+/* static */ inline tensorflow::gtl::ArraySlice<float>
+LiteralUtil::GetArraySlice<float>(const Literal& literal) {
+  DCHECK(literal.shape().element_type() == F32);
+  return literal.f32s();
+}
 
 template <>
 /* static */ tensorflow::protobuf::RepeatedField<float>*
