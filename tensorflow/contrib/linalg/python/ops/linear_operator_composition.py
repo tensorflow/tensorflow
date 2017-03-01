@@ -122,7 +122,7 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
 
     Args:
       operators:  Iterable of `LinearOperator` objects, each with
-        the same `dtype` and composible shape.
+        the same `dtype` and composable shape.
       is_non_singular:  Expect that this operator is non-singular.
       is_self_adjoint:  Expect that this operator is equal to its hermitian
         transpose.

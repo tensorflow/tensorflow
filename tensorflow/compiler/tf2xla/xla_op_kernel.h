@@ -103,6 +103,9 @@ class XlaOpKernelContext {
   Status ConstantInputReshaped(int index, gtl::ArraySlice<int64> new_shape,
                                xla::Literal* constant_literal);
 
+  // Converts a constant 1D int32 or int64 tensor into an int64.
+  Status ConstantInputAsIntScalar(int index, int64* out);
+
   // Converts a constant 1D int32 or int64 tensor into a vector of int64s.
   Status ConstantInputAsIntVector(int index, std::vector<int64>* out);
 
@@ -141,6 +144,11 @@ class XlaOpKernelContext {
 
   // Variables
 
+  // Sets `*type` and `*shape` to the current type and shape of a variable's
+  // value.
+  Status GetVariableTypeAndShape(int index, DataType* type,
+                                 TensorShape* shape) const;
+
   // Reads the current value of the resouce variable referred to by input
   // 'index'.
   Status ReadVariableInput(int index, xla::ComputationDataHandle* value);
@@ -153,6 +161,9 @@ class XlaOpKernelContext {
   // `variable_index`. Marks the operator as having side effects.
   Status AssignVariable(int variable_index, DataType type,
                         const xla::ComputationDataHandle& handle);
+
+  // Returns a human-readable debug string describing 'variable_index'.
+  string VariableDebugString(int variable_index);
 
   // Helper routines for the OP_REQUIRES macros
   void CtxFailure(Status s);

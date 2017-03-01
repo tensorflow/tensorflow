@@ -86,7 +86,7 @@ string XlaContext::DebugString() { return "TLA JIT context"; }
 
 // This is called by the Retval Op to associate a computed value
 // with a specific return value of the subgraph.
-void XlaContext::AddRetval(int retval_index,
+void XlaContext::AddRetval(int retval_index, DataType type,
                            const xla::ComputationDataHandle& handle) {
   VLOG(1) << "Added retval index " << retval_index << " to XLA computation";
   // Add the return value to the list being built up.
@@ -94,6 +94,7 @@ void XlaContext::AddRetval(int retval_index,
     retvals_.resize(retval_index + 1);
   }
   retvals_[retval_index].is_constant = false;
+  retvals_[retval_index].type = type;
   retvals_[retval_index].handle = handle;
 }
 
@@ -104,6 +105,7 @@ Status XlaContext::AddConstRetval(int retval_index, DataType dtype,
   if (retvals_.size() <= retval_index) {
     retvals_.resize(retval_index + 1);
   }
+  retvals_[retval_index].type = dtype;
   if (resolve_compile_time_constants_) {
     retvals_[retval_index].is_constant = true;
     TF_RETURN_IF_ERROR(LiteralToHostTensor(
@@ -135,34 +137,12 @@ Status XlaContext::CreateVariable(int variable_id, string name, DataType type,
   return Status::OK();
 }
 
-Status XlaContext::AssignVariable(int variable_id, DataType type,
-                                  const xla::ComputationDataHandle& handle) {
+Status XlaContext::GetVariable(int variable_id, Variable** variable) {
   auto it = variables_.find(variable_id);
   if (it == variables_.end()) {
     return errors::InvalidArgument("Unknown variable ID ", variable_id);
   }
-  Variable& var = it->second;
-  if (!((var.type == DT_INVALID && type != DT_INVALID) || (var.type == type))) {
-    return errors::InvalidArgument(
-        "Types of variables cannot change after initialization: old type was ",
-        DataTypeString(var.type), ", new type is ", DataTypeString(type));
-  }
-  var.type = type;
-  var.value = handle;
-  return Status::OK();
-}
-
-Status XlaContext::ReadVariable(int variable_id,
-                                xla::ComputationDataHandle* handle) {
-  auto it = variables_.find(variable_id);
-  if (it == variables_.end()) {
-    return errors::InvalidArgument("Unknown variable ID ", variable_id);
-  }
-  *handle = it->second.value;
-  if (handle->handle() == 0) {
-    return errors::InvalidArgument("Read of uninitialized variable ",
-                                   it->second.name);
-  }
+  *variable = &it->second;
   return Status::OK();
 }
 

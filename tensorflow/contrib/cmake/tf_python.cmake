@@ -6,7 +6,7 @@
 # * No support for tf.contrib. (TODO(mrry): Add rules for building op libraries.)
 # * No support for Python 3. (TODO(mrry): Add override for FindPythonInterp.)
 #
-# The _pywrap_tensorflow target builds everything.
+# The _pywrap_tensorflow_internal target builds everything.
 
 ########################################################
 # Resolve installed dependencies
@@ -545,27 +545,27 @@ find_package(SWIG REQUIRED)
 # always re-link the Python extension, but we don't have to track the
 # individual headers on which the SWIG wrapper depends.
 add_custom_command(
-      OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/pywrap_tensorflow.py"
-             "${CMAKE_CURRENT_BINARY_DIR}/pywrap_tensorflow.cc"
+      OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/pywrap_tensorflow_internal.py"
+             "${CMAKE_CURRENT_BINARY_DIR}/pywrap_tensorflow_internal.cc"
       DEPENDS tf_python_touchup_modules __force_rebuild
       COMMAND ${SWIG_EXECUTABLE}
       ARGS -python -c++
            -I${tensorflow_source_dir}
            -I${CMAKE_CURRENT_BINARY_DIR}
-           -module pywrap_tensorflow
+           -module pywrap_tensorflow_internal
            -outdir ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python
-           -o ${CMAKE_CURRENT_BINARY_DIR}/pywrap_tensorflow.cc
+           -o ${CMAKE_CURRENT_BINARY_DIR}/pywrap_tensorflow_internal.cc
            -globals ''
            ${tensorflow_source_dir}/tensorflow/python/tensorflow.i
       COMMENT "Running SWIG to generate Python wrappers"
       VERBATIM )
 
-# pywrap_tensorflow is a shared library containing all of the TensorFlow
-# runtime and the standard ops and kernels. These are installed into
+# pywrap_tensorflow_internal is a shared library containing all of the
+# TensorFlow runtime and the standard ops and kernels. These are installed into
 # tf_python/tensorflow/python/.
 # TODO(mrry): Refactor this to expose a framework library that
 # facilitates `tf.load_op_library()`.
-add_library(pywrap_tensorflow SHARED
+add_library(pywrap_tensorflow_internal SHARED
     "${tensorflow_source_dir}/tensorflow/python/client/tf_session_helper.h"
     "${tensorflow_source_dir}/tensorflow/python/client/tf_session_helper.cc"
     "${tensorflow_source_dir}/tensorflow/python/framework/cpp_shape_inference.h"
@@ -588,7 +588,7 @@ add_library(pywrap_tensorflow SHARED
     "${tensorflow_source_dir}/tensorflow/c/checkpoint_reader.h"
     "${tensorflow_source_dir}/tensorflow/c/tf_status_helper.cc"
     "${tensorflow_source_dir}/tensorflow/c/tf_status_helper.h"
-    "${CMAKE_CURRENT_BINARY_DIR}/pywrap_tensorflow.cc"
+    "${CMAKE_CURRENT_BINARY_DIR}/pywrap_tensorflow_internal.cc"
     $<TARGET_OBJECTS:tf_core_lib>
     $<TARGET_OBJECTS:tf_core_cpu>
     $<TARGET_OBJECTS:tf_core_framework>
@@ -600,11 +600,11 @@ add_library(pywrap_tensorflow SHARED
     $<$<BOOL:${tensorflow_ENABLE_GPU}>:$<TARGET_OBJECTS:tf_core_kernels_cpu_only>>
     $<$<BOOL:${tensorflow_ENABLE_GPU}>:$<TARGET_OBJECTS:tf_stream_executor>>
 )
-target_include_directories(pywrap_tensorflow PUBLIC
+target_include_directories(pywrap_tensorflow_internal PUBLIC
     ${PYTHON_INCLUDE_DIR}
     ${NUMPY_INCLUDE_DIR}
 )
-target_link_libraries(pywrap_tensorflow
+target_link_libraries(pywrap_tensorflow_internal
     ${tf_core_gpu_kernels_lib}
     ${tensorflow_EXTERNAL_LIBRARIES}
     tf_protos_cc
@@ -617,7 +617,7 @@ target_link_libraries(pywrap_tensorflow
 ############################################################
 add_custom_target(tf_python_build_pip_package)
 add_dependencies(tf_python_build_pip_package
-    pywrap_tensorflow
+    pywrap_tensorflow_internal
     tensorboard_copy_dependencies
     tf_python_copy_scripts_to_destination
     tf_python_touchup_modules
@@ -627,12 +627,12 @@ add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
                                    ${CMAKE_CURRENT_BINARY_DIR}/tf_python/)
 if(WIN32)
   add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/pywrap_tensorflow.dll
-                                     ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/_pywrap_tensorflow.pyd)
+    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/pywrap_tensorflow_internal.dll
+                                     ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/_pywrap_tensorflow_internal.pyd)
 else()
   add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/libpywrap_tensorflow.so
-                                     ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/_pywrap_tensorflow.so)
+    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/libpywrap_tensorflow_internal.so
+                                     ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/_pywrap_tensorflow_internal.so)
 endif()
 add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy ${tensorflow_source_dir}/tensorflow/tools/pip_package/README

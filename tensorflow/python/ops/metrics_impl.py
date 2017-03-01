@@ -216,6 +216,58 @@ def _safe_scalar_div(numerator, denominator, name):
       name=name)
 
 
+def _streaming_confusion_matrix(labels, predictions, num_classes, weights=None):
+  """Calculate a streaming confusion matrix.
+
+  Calculates a confusion matrix. For estimation over a stream of data,
+  the function creates an  `update_op` operation.
+
+  Args:
+    labels: A `Tensor` of ground truth labels with shape [batch size] and of
+      type `int32` or `int64`. The tensor will be flattened if its rank > 1.
+    predictions: A `Tensor` of prediction results for semantic labels, whose
+      shape is [batch size] and type `int32` or `int64`. The tensor will be
+      flattened if its rank > 1.
+    num_classes: The possible number of labels the prediction task can
+      have. This value must be provided, since a confusion matrix of
+      dimension = [num_classes, num_classes] will be allocated.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `labels` dimension).
+
+  Returns:
+    total_cm: A `Tensor` representing the confusion matrix.
+    update_op: An operation that increments the confusion matrix.
+  """
+  # Local variable to accumulate the predictions in the confusion matrix.
+  cm_dtype = dtypes.int64 if weights is not None else dtypes.float64
+  total_cm = _create_local(
+      'total_confusion_matrix',
+      shape=[num_classes, num_classes],
+      dtype=cm_dtype)
+
+  # Cast the type to int64 required by confusion_matrix_ops.
+  predictions = math_ops.to_int64(predictions)
+  labels = math_ops.to_int64(labels)
+  num_classes = math_ops.to_int64(num_classes)
+
+  # Flatten the input if its rank > 1.
+  if predictions.get_shape().ndims > 1:
+    predictions = array_ops.reshape(predictions, [-1])
+
+  if labels.get_shape().ndims > 1:
+    labels = array_ops.reshape(labels, [-1])
+
+  if (weights is not None) and (weights.get_shape().ndims > 1):
+    weights = array_ops.reshape(weights, [-1])
+
+  # Accumulate the prediction to current confusion matrix.
+  current_cm = confusion_matrix.confusion_matrix(
+      labels, predictions, num_classes, weights=weights, dtype=cm_dtype)
+  update_op = state_ops.assign_add(total_cm, current_cm)
+  return total_cm, update_op
+
+
 def mean(values, weights=None, metrics_collections=None,
          updates_collections=None, name=None):
   """Computes the (weighted) mean of the given values.
@@ -706,6 +758,85 @@ def mean_cosine_distance(labels, predictions, dim, weights=None,
   return mean_distance, update_op
 
 
+def mean_per_class_accuracy(labels,
+                            predictions,
+                            num_classes,
+                            weights=None,
+                            metrics_collections=None,
+                            updates_collections=None,
+                            name=None):
+  """Calculates the mean of the per-class accuracies.
+
+  Calculates the accuracy for each class, then takes the mean of that.
+
+  For estimation of the metric over a stream of data, the function creates an
+  `update_op` operation that updates these variables and returns the
+  `mean_accuracy`.
+
+  If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
+
+  Args:
+    labels: A `Tensor` of ground truth labels with shape [batch size] and of
+      type `int32` or `int64`. The tensor will be flattened if its rank > 1.
+    predictions: A `Tensor` of prediction results for semantic labels, whose
+      shape is [batch size] and type `int32` or `int64`. The tensor will be
+      flattened if its rank > 1.
+    num_classes: The possible number of labels the prediction task can
+      have. This value must be provided, since a confusion matrix of
+      dimension = [num_classes, num_classes] will be allocated.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `labels` dimension).
+    metrics_collections: An optional list of collections that
+      `mean_per_class_accuracy'
+      should be added to.
+    updates_collections: An optional list of collections `update_op` should be
+      added to.
+    name: An optional variable_scope name.
+
+  Returns:
+    mean_accuracy: A `Tensor` representing the mean per class accuracy.
+    update_op: An operation that increments the confusion matrix.
+
+  Raises:
+    ValueError: If `predictions` and `labels` have mismatched shapes, or if
+      `weights` is not `None` and its shape doesn't match `predictions`, or if
+      either `metrics_collections` or `updates_collections` are not a list or
+      tuple.
+  """
+  with variable_scope.variable_scope(name, 'mean_accuracy',
+                                     (predictions, labels, weights)):
+    # Check if shape is compatible.
+    predictions.get_shape().assert_is_compatible_with(labels.get_shape())
+
+    total_cm, update_op = _streaming_confusion_matrix(
+        labels, predictions, num_classes, weights=weights)
+
+    def compute_mean_accuracy(name):
+      """Compute the mean per class accuracy via the confusion matrix."""
+      per_row_sum = math_ops.to_float(math_ops.reduce_sum(total_cm, 1))
+      cm_diag = math_ops.to_float(array_ops.diag_part(total_cm))
+      denominator = per_row_sum
+
+      # If the value of the denominator is 0, set it to 1 to avoid
+      # zero division.
+      denominator = array_ops.where(
+          math_ops.greater(denominator, 0), denominator,
+          array_ops.ones_like(denominator))
+      accuracies = math_ops.div(cm_diag, denominator)
+      return math_ops.reduce_mean(accuracies, name=name)
+
+    mean_accuracy_v = compute_mean_accuracy('mean_accuracy')
+
+    if metrics_collections:
+      ops.add_to_collections(metrics_collections, mean_accuracy_v)
+
+    if updates_collections:
+      ops.add_to_collections(updates_collections, update_op)
+
+    return mean_accuracy_v, update_op
+
+
 def mean_iou(labels,
              predictions,
              num_classes,
@@ -761,31 +892,8 @@ def mean_iou(labels,
     # Check if shape is compatible.
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
 
-    # Local variable to accumulate the predictions in the confusion matrix.
-    cm_dtype = dtypes.int64 if weights is not None else dtypes.float64
-    total_cm = _create_local('total_confusion_matrix',
-                             shape=[num_classes, num_classes], dtype=cm_dtype)
-
-    # Cast the type to int64 required by confusion_matrix_ops.
-    predictions = math_ops.to_int64(predictions)
-    labels = math_ops.to_int64(labels)
-    num_classes = math_ops.to_int64(num_classes)
-
-    # Flatten the input if its rank > 1.
-    if predictions.get_shape().ndims > 1:
-      predictions = array_ops.reshape(predictions, [-1])
-
-    if labels.get_shape().ndims > 1:
-      labels = array_ops.reshape(labels, [-1])
-
-    if (weights is not None) and (weights.get_shape().ndims > 1):
-      weights = array_ops.reshape(weights, [-1])
-
-    # Accumulate the prediction to current confusion matrix.
-    current_cm = confusion_matrix.confusion_matrix(
-        labels, predictions, num_classes, weights=weights, dtype=cm_dtype)
-    update_op = state_ops.assign_add(total_cm, current_cm)
-
+    total_cm, update_op = _streaming_confusion_matrix(labels, predictions,
+                                                      num_classes, weights)
     def compute_mean_iou(name):
       """Compute the mean intersection-over-union via the confusion matrix."""
       sum_over_row = math_ops.to_float(math_ops.reduce_sum(total_cm, 0))

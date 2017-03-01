@@ -77,12 +77,14 @@ class MatrixTriangularSolveOp : public LinearAlgebraOp<Scalar> {
   int64 GetCostPerUnit(const TensorShapes& input_matrix_shapes) const final {
     double rows = static_cast<double>(input_matrix_shapes[0].dim_size(0));
     double num_rhss = static_cast<double>(input_matrix_shapes[1].dim_size(1));
-    double cost = rows * rows * num_rhss * 
-          (Eigen::TensorOpCost::AddCost<Scalar>() + 
-           Eigen::TensorOpCost::MulCost<Scalar>());
+    double cost = rows * rows * num_rhss *
+                  (Eigen::TensorOpCost::AddCost<Scalar>() +
+                   Eigen::TensorOpCost::MulCost<Scalar>());
     return cost >= static_cast<double>(kint64max) ? kint64max
                                                   : static_cast<int64>(cost);
   }
+
+  bool EnableInputForwarding() const final { return false; }
 
   void ComputeMatrix(OpKernelContext* context, const ConstMatrixMaps& inputs,
                      MatrixMaps* outputs) final {
@@ -157,9 +159,9 @@ class MatrixTriangularSolveOpGPU : public LinearAlgebraOp<Scalar> {
   int64 GetCostPerUnit(const TensorShapes& input_matrix_shapes) const final {
     double rows = static_cast<double>(input_matrix_shapes[0].dim_size(0));
     double num_rhss = static_cast<double>(input_matrix_shapes[1].dim_size(1));
-    double cost = rows * rows * num_rhss * 
-          (Eigen::TensorOpCost::AddCost<Scalar>() + 
-           Eigen::TensorOpCost::MulCost<Scalar>());
+    double cost = rows * rows * num_rhss *
+                  (Eigen::TensorOpCost::AddCost<Scalar>() +
+                   Eigen::TensorOpCost::MulCost<Scalar>());
     return cost >= static_cast<double>(kint64max) ? kint64max
                                                   : static_cast<int64>(cost);
   }
@@ -209,21 +211,20 @@ class MatrixTriangularSolveOpGPU : public LinearAlgebraOp<Scalar> {
     } else {
       transpose_matrix = perftools::gputools::blas::Transpose::kNoTranspose;
     }
-    uint64 leading_dim_matrix = matrix.cols();   
-    uint64 leading_dim_output = output.cols();      
-    uint64 colmajor_rows = output.cols(); 
-    uint64 colmajor_cols = output.rows(); 
+    uint64 leading_dim_matrix = matrix.cols();
+    uint64 leading_dim_output = output.cols();
+    uint64 colmajor_rows = output.cols();
+    uint64 colmajor_cols = output.rows();
     bool blas_launch_status =
-      stream
-        ->ThenBlasTrsm(perftools::gputools::blas::Side::kRight /*side*/, 
-                       upper_lower_matrix /*uplo*/, 
-                       transpose_matrix /*trans*/,
-                       perftools::gputools::blas::Diagonal::kNonUnit /*diag*/,
-                       colmajor_rows /*m*/, colmajor_cols /*n*/, 
-                       Scalar(1.0) /*alpha*/, 
-                       matrix_ptr, leading_dim_matrix /*lda*/, 
-                       &out_ptr, leading_dim_output /*ldb*/)
-        .ok();
+        stream
+            ->ThenBlasTrsm(
+                perftools::gputools::blas::Side::kRight /*side*/,
+                upper_lower_matrix /*uplo*/, transpose_matrix /*trans*/,
+                perftools::gputools::blas::Diagonal::kNonUnit /*diag*/,
+                colmajor_rows /*m*/, colmajor_cols /*n*/, Scalar(1.0) /*alpha*/,
+                matrix_ptr, leading_dim_matrix /*lda*/, &out_ptr,
+                leading_dim_output /*ldb*/)
+            .ok();
     if (!blas_launch_status) {
       context->SetStatus(errors::Internal("Blas TRSM launch failed"));
     }

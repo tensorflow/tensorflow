@@ -601,8 +601,6 @@ func Copy(scope *Scope, input tf.Output, optional ...CopyAttr) (output tf.Output
 type QuantizeAndDequantizeAttr func(optionalAttr)
 
 // QuantizeAndDequantizeSignedInput sets the optional signed_input attribute to value.
-//
-// value: If the quantization is signed or unsigned.
 // If not specified, defaults to b:true
 func QuantizeAndDequantizeSignedInput(value bool) QuantizeAndDequantizeAttr {
 	return func(m optionalAttr) {
@@ -611,8 +609,6 @@ func QuantizeAndDequantizeSignedInput(value bool) QuantizeAndDequantizeAttr {
 }
 
 // QuantizeAndDequantizeNumBits sets the optional num_bits attribute to value.
-//
-// value: The bitwidth of the quantization.
 // If not specified, defaults to i:8
 func QuantizeAndDequantizeNumBits(value int64) QuantizeAndDequantizeAttr {
 	return func(m optionalAttr) {
@@ -621,8 +617,6 @@ func QuantizeAndDequantizeNumBits(value int64) QuantizeAndDequantizeAttr {
 }
 
 // QuantizeAndDequantizeRangeGiven sets the optional range_given attribute to value.
-//
-// value: If the range is given or should be computed from the tensor.
 // If not specified, defaults to b:false
 func QuantizeAndDequantizeRangeGiven(value bool) QuantizeAndDequantizeAttr {
 	return func(m optionalAttr) {
@@ -631,8 +625,6 @@ func QuantizeAndDequantizeRangeGiven(value bool) QuantizeAndDequantizeAttr {
 }
 
 // QuantizeAndDequantizeInputMin sets the optional input_min attribute to value.
-//
-// value: If range is given, this is the min of the range.
 // If not specified, defaults to f:0
 func QuantizeAndDequantizeInputMin(value float32) QuantizeAndDequantizeAttr {
 	return func(m optionalAttr) {
@@ -641,8 +633,6 @@ func QuantizeAndDequantizeInputMin(value float32) QuantizeAndDequantizeAttr {
 }
 
 // QuantizeAndDequantizeInputMax sets the optional input_max attribute to value.
-//
-// value: If range is given, this is the max of the range.
 // If not specified, defaults to f:0
 func QuantizeAndDequantizeInputMax(value float32) QuantizeAndDequantizeAttr {
 	return func(m optionalAttr) {
@@ -650,62 +640,9 @@ func QuantizeAndDequantizeInputMax(value float32) QuantizeAndDequantizeAttr {
 	}
 }
 
-// Quantizes then dequantizes a tensor.
+// Use QuantizeAndDequantizeV2 instead.
 //
-// DEPRECATED at GraphDef version 21: Replaced by QuantizeAndDequantizeV2
-//
-// This op simulates the precision loss from the quantized forward pass by:
-// 1. Quantizing the tensor to fixed point numbers, which should match the target
-//    quantization method when it is used in inference.
-// 2. Dequantizing it back to floating point numbers for the following ops, most
-//    likely matmul.
-//
-// There are different ways to quantize. This version does not use the full range
-// of the output type, choosing to elide the lowest possible value for symmetry
-// (e.g., output range is -127 to 127, not -128 to 127 for signed 8 bit
-// quantization), so that 0.0 maps to 0.
-//
-// To perform this op, we first find the range of values in our tensor. The range
-// we use is always centered on 0, so we find m such that
-//
-// 1. m = max(abs(input_min), abs(input_max)) if range_given is true,
-// 2. m = max(max(abs(min_elem(input)), abs(max_elem(input))) otherwise.
-//
-// Our input tensor range is then [-m, m].
-//
-// Next, we choose our fixed-point quantization buckets, [min_fixed, max_fixed].
-// If signed_input is true, this is
-//
-//   [min_fixed, max_fixed ] =
-//       [-(1 << (num_bits - 1) - 1), (1 << (num_bits - 1)) - 1].
-//
-// Otherwise, if signed_input is false, the fixed-point range is
-//
-//   [min_fixed, max_fixed] = [0, (1 << num_bits) - 1].
-//
-// From this we compute our scaling factor, s:
-//
-//   s = (max_fixed - min_fixed) / (2 * m).
-//
-// Now we can quantize and dequantize the elements of our tensor.  An element e
-// is transformed into e':
-//
-//   e' = (e * s).round_to_nearest() / s.
-//
-// Note that we have a different number of buckets in the signed vs. unsigned
-// cases.  For example, if num_bits == 8, we get 254 buckets in the signed case
-// vs. 255 in the unsigned case.
-//
-// For example, suppose num_bits = 8 and m = 1.  Then
-//
-//   [min_fixed, max_fixed] = [-127, 127], and
-//   s = (127 + 127) / 2 = 127.
-//
-// Given the vector {-1, -0.5, 0, 0.3}, this is quantized to
-// {-127, -63, 0, 38}, and dequantized to {-1, -63.0/127, 0, 38.0/127}.
-//
-// Arguments:
-//	input: Tensor to quantize and then dequantize.
+// DEPRECATED at GraphDef version 22: Replaced by QuantizeAndDequantizeV2
 func QuantizeAndDequantize(scope *Scope, input tf.Output, optional ...QuantizeAndDequantizeAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -8247,7 +8184,7 @@ func SparseAddGrad(scope *Scope, backprop_val_grad tf.Output, a_indices tf.Outpu
 // A strong hash is important when inputs may be malicious, e.g. URLs with
 // additional components. Adversaries could try to make their inputs hash to the
 // same bucket for a denial-of-service attack or to skew the results. A strong
-// hash prevents this by making it dificult, if not infeasible, to compute inputs
+// hash prevents this by making it difficult, if not infeasible, to compute inputs
 // that hash to the same bucket. This comes at a cost of roughly 4x higher compute
 // time than `tf.string_to_hash_bucket_fast`.
 //

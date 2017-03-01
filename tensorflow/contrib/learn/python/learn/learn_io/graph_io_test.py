@@ -21,19 +21,14 @@ from __future__ import print_function
 import base64
 import os
 import random
-import sys
 import tempfile
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.contrib.learn.python.learn.learn_io import graph_io
 from tensorflow.contrib.learn.python.learn.learn_io.graph_io import _read_keyed_batch_examples_shared_queue
 from tensorflow.python.client import session as session_lib
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -740,6 +735,17 @@ class GraphIOTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         session.run((keys, inputs))
 
+      coord.request_stop()
+      coord.join(threads)
+
+  def test_queue_parsed_features_single_tensor(self):
+    with ops.Graph().as_default() as g, self.test_session(graph=g) as session:
+      features = {"test": constant_op.constant([1, 2, 3])}
+      _, queued_features = graph_io.queue_parsed_features(features)
+      coord = coordinator.Coordinator()
+      threads = queue_runner_impl.start_queue_runners(session, coord=coord)
+      out_features = session.run(queued_features["test"])
+      self.assertAllEqual([1, 2, 3], out_features)
       coord.request_stop()
       coord.join(threads)
 

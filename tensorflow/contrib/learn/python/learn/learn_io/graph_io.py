@@ -673,6 +673,11 @@ def queue_parsed_features(parsed_features,
                                           errors.CancelledError)))
 
     dequeued_tensors = input_queue.dequeue()
+    if not isinstance(dequeued_tensors, list):
+      # input_queue.dequeue() returns a single tensor instead of a list of
+      # tensors if there is only one tensor to dequeue, which breaks the
+      # assumption of a list below.
+      dequeued_tensors = [dequeued_tensors]
 
     # Reset shapes on dequeued tensors.
     for i in range(len(tensors_to_enqueue)):

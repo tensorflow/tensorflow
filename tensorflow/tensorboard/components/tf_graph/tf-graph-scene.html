@@ -479,11 +479,13 @@ limitations under the License.
   display: none;
 }
 
-::content .health-pill {
-  filter: url(#health-pill-shadow);
+::content .health-pill-stats {
+  font-size: 4px;
+  text-anchor: middle;
 }
 
 ::content .health-pill rect {
+  filter: url(#health-pill-shadow);
   rx: 3;
   ry: 3;
 }

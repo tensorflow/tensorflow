@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/cc/ops/array_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 
 #include "tensorflow/cc/framework/grad_op_registry.h"
 #include "tensorflow/cc/framework/gradients.h"
@@ -151,9 +152,12 @@ REGISTER_GRADIENT_OP("GatherNd", GatherNdGrad);
 Status CheckNumericsGrad(const Scope& scope, const Operation& op,
                          const std::vector<Output>& grad_inputs,
                          std::vector<Output>* grad_outputs) {
-  grad_outputs->push_back(CheckNumerics(
-      scope, grad_inputs[0],
-      "Not a number (NaN) or infinity (Inf) values detected in gradient."));
+  string message;
+  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->def(), "message", &message));
+  string err_msg = strings::StrCat(
+      "Not a number (NaN) or infinity (Inf) values detected in gradient. ",
+      message);
+  grad_outputs->push_back(CheckNumerics(scope, grad_inputs[0], err_msg));
   return scope.status();
 }
 REGISTER_GRADIENT_OP("CheckNumerics", CheckNumericsGrad);

@@ -229,6 +229,7 @@ cc_library(
         ":cc_ops_internal",
         ":grad_op_registry",
         ":gradients",
+        "//tensorflow/core:lib_proto_parsing",
     ],
 )
 

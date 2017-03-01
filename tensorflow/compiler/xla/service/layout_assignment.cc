@@ -298,8 +298,8 @@ string LayoutConstraints::ToString() const {
     for (int64 i = 0; i < instruction->operand_count(); ++i) {
       if (OperandLayout(instruction, i) != nullptr) {
         tensorflow::strings::StrAppend(
-            &output, "    operand (", i, "): ",
-            OperandLayout(instruction, i)->ToString(), "\n");
+            &output, "    operand (", i,
+            "): ", OperandLayout(instruction, i)->ToString(), "\n");
       }
     }
     for (const LogicalBuffer* buffer :
@@ -338,6 +338,11 @@ Status LayoutAssignment::AddMandatoryConstraints(
       // TODO(b/31425034): Change infeeds to be more like parameters, with
       // shapes in the ComputationLayout.
       shape_with_layout = &instruction->shape();
+    } else if (instruction->opcode() == HloOpcode::kOutfeed) {
+      // Constrain the input to the Outfeed instruction to be the expected
+      // layout of the Outfeed.
+      TF_RETURN_IF_ERROR(constraints->SetOperandLayout(
+          instruction->outfeed_shape(), instruction.get(), 0));
     } else if (instruction->opcode() == HloOpcode::kParameter) {
       // Parameter layouts must match the respective layout in
       // ComputationLayout.

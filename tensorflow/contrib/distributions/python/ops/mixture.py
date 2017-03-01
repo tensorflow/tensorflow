@@ -106,11 +106,6 @@ class Mixture(distribution.Distribution):
     if not all(d.dtype == dtype for d in components):
       raise TypeError("All components must have the same dtype, but saw "
                       "dtypes: %s" % [(d.name, d.dtype) for d in components])
-    is_continuous = components[0].is_continuous
-    if not all(d.is_continuous == is_continuous for d in components):
-      raise TypeError(
-          "All components must either be continuous or not, but continuity "
-          "values are: %s" % [(d.name, d.is_continuous) for d in components])
     static_event_shape = components[0].event_shape
     static_batch_shape = cat.batch_shape
     for d in components:
@@ -170,7 +165,6 @@ class Mixture(distribution.Distribution):
     super(Mixture, self).__init__(
         dtype=dtype,
         reparameterization_type=distribution.NOT_REPARAMETERIZED,
-        is_continuous=is_continuous,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
         parameters=parameters,
