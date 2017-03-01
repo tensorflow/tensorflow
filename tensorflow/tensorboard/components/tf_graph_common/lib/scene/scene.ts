@@ -605,7 +605,8 @@ function _addHealthPill(
     healthPillY += nodeInfo.labelOffset;
   }
 
-  if (lastHealthPillOverview[8] !== Infinity) {
+  if (lastHealthPillOverview[4] || lastHealthPillOverview[5] ||
+      lastHealthPillOverview[6]) {
     // At least 1 "non-Inf and non-NaN" value exists. Show stats on tensor
     // values.
     let statsSvg = document.createElementNS(svgNamespace, 'text');
