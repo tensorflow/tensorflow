@@ -337,6 +337,12 @@ add_python_module("tensorflow/contrib/losses/python")
 add_python_module("tensorflow/contrib/losses/python/losses")
 add_python_module("tensorflow/contrib/makefile")
 add_python_module("tensorflow/contrib/makefile/test")
+add_python_module("tensorflow/contrib/memory_stats")
+add_python_module("tensorflow/contrib/memory_stats/kernels")
+add_python_module("tensorflow/contrib/memory_stats/ops")
+add_python_module("tensorflow/contrib/memory_stats/python")
+add_python_module("tensorflow/contrib/memory_stats/python/kernel_tests")
+add_python_module("tensorflow/contrib/memory_stats/python/ops")
 add_python_module("tensorflow/contrib/metrics")
 add_python_module("tensorflow/contrib/metrics/kernels")
 add_python_module("tensorflow/contrib/metrics/ops")
@@ -528,6 +534,8 @@ GENERATE_PYTHON_OP_LIB("contrib_factorization_factorization_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/factorization/python/ops/gen_factorization_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_framework_variable_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/framework/python/ops/gen_variable_ops.py)
+GENERATE_PYTHON_OP_LIB("contrib_memory_stats_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/memory_stats/ops/gen_memory_stats_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_tensor_forest_ops"
 	  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/tensor_forest/python/ops/gen_tensor_forest_ops.py)
 
