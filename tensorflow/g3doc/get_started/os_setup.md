@@ -211,7 +211,7 @@ $ sudo pip install --upgrade virtualenv
 Create a Virtualenv environment in the directory `~/tensorflow`:
 
 ```bash
-$ virtualenv --system-site-packages ~/tensorflow
+$ virtualenv --no-site-packages ~/tensorflow
 ```
 
 Activate the environment:
