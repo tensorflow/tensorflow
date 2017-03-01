@@ -281,7 +281,7 @@ output of the convolution. Here, we specify ReLU activation with
 @{tf.nn.relu}.
 
 Our output tensor produced by `conv2d()` has a shape of
-<code>[<em>batch_size</em>, 28, 28, 1]</code>: the same width and height
+<code>[<em>batch_size</em>, 28, 28, 32]</code>: the same width and height
 dimensions as the input, but now with 32 channels holding the output from each
 of the filters.
 
