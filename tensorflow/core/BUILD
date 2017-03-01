@@ -107,6 +107,7 @@ load(
     "tf_kernel_tests_linkstatic",
     "tf_additional_cloud_op_deps",
     "tf_additional_cloud_kernel_deps",
+    "tf_lib_proto_parsing_deps",
 )
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
@@ -221,10 +222,7 @@ cc_library(
         "platform/types.h",
     ] + glob(tf_additional_proto_hdrs()) + glob(tf_env_time_hdrs()),
     copts = tf_copts(),
-    deps = [
-        ":protos_all_cc",
-        "//tensorflow/core/platform/default/build_config:proto_parsing",
-    ],
+    deps = tf_lib_proto_parsing_deps(),
 )
 
 cc_library(
@@ -446,7 +444,9 @@ cc_library(
         "framework/type_traits.h",
         "platform/default/dynamic_annotations.h",
         "platform/default/integral_types.h",
+        "platform/default/logging.h",
         "platform/default/mutex.h",
+        "platform/default/protobuf.h",
         "platform/default/thread_annotations.h",
         "platform/dynamic_annotations.h",
         "platform/macros.h",
