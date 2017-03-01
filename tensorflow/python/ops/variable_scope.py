@@ -882,6 +882,11 @@ class VariableScope(object):
     """Set custom getter for this scope."""
     self._custom_getter = custom_getter
 
+  def get_collection(self, name):
+    """Get this scope's variables."""
+    scope = self._name + '/' if self._name else self._name
+    return ops.get_collection(name, scope)
+
   def get_variable(self,
                    var_store,
                    name,
