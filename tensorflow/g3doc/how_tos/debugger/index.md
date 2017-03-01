@@ -71,7 +71,7 @@ def has_inf_or_nan(datum, tensor):
 ```
 
 TIP: You can also write your own custom filters. See
-the [API documentation](../../../g3doc/api_docs/python/tf_debug.md#DebugDumpDir.find)
+the [API documentation](../../../g3doc/api_docs/tfdbg/DebugDumpDir#find)
 of `DebugDumpDir.find()` for additional information.
 
 ## Debugging Model Training with tfdbg
