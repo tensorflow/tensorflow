@@ -169,6 +169,8 @@ REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
 REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
                     Name("NotEqual").TypeConstraint("T", kCpuNumericTypes));
 REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
+                    Name("OneHot").TypeConstraint("T", kCpuAllTypes));
+REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
                     Name("Pack").TypeConstraint("T", kCpuAllTypes));
 REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
                     Name("Pad").TypeConstraint("T", kCpuAllTypes));
@@ -432,6 +434,8 @@ REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT,
                     Name("Neg").TypeConstraint("T", kGpuNumericTypes));
 REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT,
                     Name("NotEqual").TypeConstraint("T", kGpuNumericTypes));
+REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT,
+                    Name("OneHot").TypeConstraint("T", kGpuAllTypes));
 REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT,
                     Name("Pack").TypeConstraint("T", kGpuAllTypes));
 REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT,

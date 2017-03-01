@@ -103,6 +103,9 @@ class XlaOpKernelContext {
   Status ConstantInputReshaped(int index, gtl::ArraySlice<int64> new_shape,
                                xla::Literal* constant_literal);
 
+  // Converts a constant 1D int32 or int64 tensor into an int64.
+  Status ConstantInputAsIntScalar(int index, int64* out);
+
   // Converts a constant 1D int32 or int64 tensor into a vector of int64s.
   Status ConstantInputAsIntVector(int index, std::vector<int64>* out);
 

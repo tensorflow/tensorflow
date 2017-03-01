@@ -137,6 +137,27 @@ Status XlaOpKernelContext::ConstantInputReshaped(
   return Status::OK();
 }
 
+// Converts an int32 or int64 scalar literal to an int64.
+static Status LiteralToInt64Scalar(const xla::Literal& literal, int64* out) {
+  if (xla::ShapeUtil::Rank(literal.shape()) != 0) {
+    return errors::InvalidArgument("value is not a scalar");
+  }
+  if (literal.shape().element_type() == xla::S32) {
+    *out = xla::LiteralUtil::Get<int32>(literal, {});
+  } else if (literal.shape().element_type() == xla::S64) {
+    *out = xla::LiteralUtil::Get<int64>(literal, {});
+  } else {
+    return errors::InvalidArgument("value must be either int32 or int64");
+  }
+  return Status::OK();
+}
+
+Status XlaOpKernelContext::ConstantInputAsIntScalar(int index, int64* out) {
+  xla::Literal literal;
+  TF_RETURN_IF_ERROR(ConstantInput(index, &literal));
+  return LiteralToInt64Scalar(literal, out);
+}
+
 // Converts an int32 or int64 1D literal to an int64 vector.
 static Status LiteralToInt64Vector(const xla::Literal& literal,
                                    std::vector<int64>* out) {
