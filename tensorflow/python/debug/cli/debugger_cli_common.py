@@ -104,6 +104,9 @@ class RichLine(object):
     else:
       raise TypeError("%r cannot be concatenated with a RichLine" % other)
 
+  def __len__(self):
+    return len(self.text)
+
 
 def rich_text_lines_from_rich_line_list(rich_text_list):
   """Convert a list of RichLine objects or strings to a RichTextLines object.
