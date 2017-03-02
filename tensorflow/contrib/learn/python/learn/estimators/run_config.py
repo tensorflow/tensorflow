@@ -18,8 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
 import json
 import os
+
+import six
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.training import server_lib
@@ -207,7 +210,8 @@ class RunConfig(ClusterConfig):
                save_checkpoints_steps=None,
                keep_checkpoint_max=5,
                keep_checkpoint_every_n_hours=10000,
-               evaluation_master=''):
+               evaluation_master='',
+               model_dir=None):
     """Constructor.
 
     Note that the superclass `ClusterConfig` may set properties like
@@ -237,6 +241,8 @@ class RunConfig(ClusterConfig):
         to be saved. The default value of 10,000 hours effectively disables
         the feature.
       evaluation_master: the master on which to perform evaluation.
+      model_dir: directory where model parameters, graph etc are saved. If
+        `None`, see `Estimator` about where the model will be saved.
     """
     super(RunConfig, self).__init__(
         master=master, evaluation_master=evaluation_master)
@@ -258,6 +264,40 @@ class RunConfig(ClusterConfig):
     # create Scaffold and Saver in their model_fn to set these.
     self._keep_checkpoint_max = keep_checkpoint_max
     self._keep_checkpoint_every_n_hours = keep_checkpoint_every_n_hours
+    self._model_dir = model_dir
+
+  def replace(self, **kwargs):
+    """Returns a new instance of `RunConfig` replacing specified properties.
+
+    Only the properties in the following list are allowed to be replaced:
+      - `model_dir`.
+
+    Args:
+      **kwargs: keyword named properties with new values.
+
+    Raises:
+      ValueError: If any property name in `kwargs` does not exist or is not
+        allowed to be replaced.
+
+    Returns:
+      a new instance of `RunConfig`.
+    """
+
+    new_copy = copy.deepcopy(self)
+
+    # TODO(xiejw): Allow more fields, such as the user allowed changed ones.
+    for key, new_value in six.iteritems(kwargs):
+      if key == 'model_dir':
+        new_copy._model_dir = new_value  # pylint: disable=protected-access
+        continue
+
+      raise ValueError('{} is not supported by RunConfig replace'.format(key))
+
+    return new_copy
+
+  @property
+  def model_dir(self):
+    return self._model_dir
 
   @property
   def tf_config(self):
