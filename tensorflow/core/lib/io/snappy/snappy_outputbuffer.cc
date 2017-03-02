@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/lib/io/snappy/snappy_outputbuffer.h"
 
+#include "tensorflow/core/platform/logging.h"
+
 namespace tensorflow {
 namespace io {
 

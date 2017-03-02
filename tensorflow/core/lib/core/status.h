@@ -21,7 +21,6 @@ limitations under the License.
 #include <string>
 #include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 
@@ -45,6 +44,11 @@ class Status {
 
   /// Returns true iff the status indicates success.
   bool ok() const { return (state_ == NULL); }
+
+  /// CHECKs that this is ok().
+  void CheckOk() const;
+  /// QCHECKs that this is ok();
+  void QCheckOk() const;
 
   tensorflow::error::Code code() const {
     return ok() ? tensorflow::error::OK : state_->code;
@@ -112,8 +116,8 @@ std::ostream& operator<<(std::ostream& os, const Status& x);
 
 typedef std::function<void(const Status&)> StatusCallback;
 
-#define TF_CHECK_OK(val) CHECK_EQ(::tensorflow::Status::OK(), (val))
-#define TF_QCHECK_OK(val) QCHECK_EQ(::tensorflow::Status::OK(), (val))
+#define TF_CHECK_OK(val) val.CheckOk()
+#define TF_QCHECK_OK(val) val.QCheckOk()
 
 // DEBUG only version of TF_CHECK_OK.  Compiler still parses 'val' even in opt
 // mode.

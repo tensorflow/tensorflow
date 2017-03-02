@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/tracking_allocator.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
@@ -46,6 +47,11 @@ string AllocatorStats::DebugString() const {
 constexpr size_t Allocator::kAllocatorAlignment;
 
 Allocator::~Allocator() {}
+
+size_t Allocator::RequestedSize(void* ptr) {
+  CHECK(false) << "allocator doesn't track sizes";
+  return size_t(0);
+}
 
 // If true, cpu allocator collects more stats.
 static bool cpu_allocator_collect_stats = false;
