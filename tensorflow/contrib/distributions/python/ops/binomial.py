@@ -142,7 +142,7 @@ class Binomial(distribution.Distribution):
       name: Python `str` name prefixed to Ops created by this class.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[total_count, logits, probs]) as ns:
+    with ops.name_scope(name, values=[total_count, logits, probs]):
       self._total_count = self._maybe_assert_valid_total_count(
           ops.convert_to_tensor(total_count, name="total_count"),
           validate_args)
@@ -160,7 +160,7 @@ class Binomial(distribution.Distribution):
         graph_parents=[self._total_count,
                        self._logits,
                        self._probs],
-        name=ns)
+        name=name)
 
   @property
   def total_count(self):

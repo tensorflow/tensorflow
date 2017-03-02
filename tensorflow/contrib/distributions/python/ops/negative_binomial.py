@@ -91,7 +91,7 @@ class NegativeBinomial(distribution.Distribution):
     """
 
     parameters = locals()
-    with ops.name_scope(name, values=[total_count, logits, probs]) as ns:
+    with ops.name_scope(name, values=[total_count, logits, probs]):
       self._logits, self._probs = distribution_util.get_logits_and_probs(
           logits, probs, validate_args=validate_args, name=name)
       with ops.control_dependencies(
@@ -105,7 +105,7 @@ class NegativeBinomial(distribution.Distribution):
         allow_nan_stats=allow_nan_stats,
         parameters=parameters,
         graph_parents=[self._total_count, self._probs, self._logits],
-        name=ns)
+        name=name)
 
   @property
   def total_count(self):

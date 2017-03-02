@@ -80,7 +80,7 @@ class Poisson(distribution.Distribution):
       name: Python `str` name prefixed to Ops created by this class.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[rate]) as ns:
+    with ops.name_scope(name, values=[rate]):
       with ops.control_dependencies([check_ops.assert_positive(rate)] if
                                     validate_args else []):
         self._rate = array_ops.identity(rate, name="rate")
@@ -91,7 +91,7 @@ class Poisson(distribution.Distribution):
         allow_nan_stats=allow_nan_stats,
         parameters=parameters,
         graph_parents=[self._rate],
-        name=ns)
+        name=name)
 
   @property
   def rate(self):

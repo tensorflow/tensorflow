@@ -218,7 +218,7 @@ class MultivariateNormalDiagPlusLowRank(
     parameters = locals()
     def _convert_to_tensor(x, name):
       return None if x is None else ops.convert_to_tensor(x, name=name)
-    with ops.name_scope(name) as ns:
+    with ops.name_scope(name):
       with ops.name_scope("init", values=[
           loc, scale_diag, scale_identity_multiplier, scale_perturb_factor,
           scale_perturb_diag]):
@@ -251,5 +251,5 @@ class MultivariateNormalDiagPlusLowRank(
         scale=scale,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
-        name=ns)
+        name=name)
     self._parameters = parameters
