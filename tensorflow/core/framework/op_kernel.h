@@ -207,6 +207,8 @@ class PersistentTensor {
 
   int64 NumElements() const { return tensor_.NumElements(); }
 
+  int64 TotalBytes() const { return tensor_.TotalBytes(); }
+
  private:
   Tensor tensor_;
 };
