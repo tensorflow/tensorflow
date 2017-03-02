@@ -82,7 +82,7 @@ them directly is very convenient.
 
 ## How Can You Quantize Your Models?
 
-TensorFlow has production-grade support for eight-bit calculations built it. It
+TensorFlow has production-grade support for eight-bit calculations built in. It
 also has a process for converting many models trained in floating-point over to
 equivalent graphs using quantized calculations for inference. For example,
 here's how you can translate the latest GoogLeNet model into a version that uses
@@ -153,7 +153,7 @@ bit.
 
 The min and max operations actually look at the values in the input float
 tensor, and then feeds them into the Dequantize operation that converts the
-tensor into eight-bits. There's more details on how the quantized representation
+tensor into eight-bits. There're more details on how the quantized representation
 works later on.
 
 Once the individual operations have been converted, the next stage is to remove
