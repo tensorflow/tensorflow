@@ -277,7 +277,10 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
   const int sourceRowBytes = (int)CVPixelBufferGetBytesPerRow(pixelBuffer);
   const int image_width = (int)CVPixelBufferGetWidth(pixelBuffer);
   const int fullHeight = (int)CVPixelBufferGetHeight(pixelBuffer);
-  CVPixelBufferLockBaseAddress(pixelBuffer, 0);
+
+  CVPixelBufferLockFlags unlockFlags = kNilOptions;
+  CVPixelBufferLockBaseAddress(pixelBuffer, unlockFlags);
+
   unsigned char *sourceBaseAddr =
       (unsigned char *)(CVPixelBufferGetBaseAddress(pixelBuffer));
   int image_height;
@@ -313,6 +316,8 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
       }
     }
   }
+
+  CVPixelBufferUnlockBaseAddress(pixelBuffer, unlockFlags);
 
   if (tf_session.get()) {
     std::vector<tensorflow::Tensor> outputs;
