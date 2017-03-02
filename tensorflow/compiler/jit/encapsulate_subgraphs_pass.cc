@@ -46,6 +46,7 @@ namespace tensorflow {
 
 const char* const kXlaCompiledKernelAttr = "_XlaCompiledKernel";
 const char* const kXlaNumConstantArgsAttr = "_XlaNumConstantArgs";
+const char* const kXlaNumResourceArgsAttr = "_XlaNumResourceArgs";
 
 namespace {
 
@@ -563,6 +564,21 @@ Status EncapsulateSubgraphsInFunctions(
   return s;
 }
 
+// Finds the types of the _Arg nodes, indexed by position.
+static Status GetArgTypes(const Graph& graph, DataTypeVector* types) {
+  for (Node* n : graph.nodes()) {
+    if (n->type_string() == kArgOp) {
+      int index;
+      TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "index", &index));
+      if (index < 0 || index >= types->size()) {
+        return errors::InvalidArgument("Invalid argument number");
+      }
+      (*types)[index] = n->output_type(0);
+    }
+  }
+  return Status::OK();
+}
+
 // Renumber the indices of _Arg nodes in a graph, according to
 // 'permutation' that maps old indices to new indices.
 static Status RenumberArguments(Graph* graph,
@@ -604,19 +620,40 @@ Status EncapsulateSubgraphsPass::Run(
     // Optimize the subgraph.
     OptimizeGraph(flr.get(), subgraph);
 
-    std::vector<bool> const_args(input_permutation->size());
+    const int num_args = input_permutation->size();
+    std::vector<bool> const_args(num_args);
     TF_RETURN_IF_ERROR(BackwardsConstAnalysis(**subgraph, &const_args));
+
+    DataTypeVector arg_types(num_args);
+    TF_RETURN_IF_ERROR(GetArgTypes(**subgraph, &arg_types));
 
     // Compute a permutation of the arguments such that the constant arguments
     // are first.
     const int num_consts =
         std::count(const_args.begin(), const_args.end(), true);
+
+    const int num_resources =
+        std::count(arg_types.begin(), arg_types.end(), DT_RESOURCE);
+    const int num_nonconsts = num_args - num_resources - num_consts;
+    if (num_nonconsts < 0) {
+      return errors::Internal("num_nonconsts should be >= 0, was ",
+                              num_nonconsts);
+    }
+
     int const_pos = 0;
     int arg_pos = num_consts;
-    for (int i = 0; i < const_args.size(); ++i) {
+    int resource_pos = num_consts + num_nonconsts;
+    for (int i = 0; i < num_args; ++i) {
       if (const_args[i]) {
+        if (arg_types[i] == DT_RESOURCE) {
+          return errors::Internal(
+              "Resource arguments cannot be constant (argument ", i, ")");
+        }
         (*input_permutation)[i] = const_pos;
         ++const_pos;
+      } else if (arg_types[i] == DT_RESOURCE) {
+        (*input_permutation)[i] = resource_pos;
+        ++resource_pos;
       } else {
         (*input_permutation)[i] = arg_pos;
         ++arg_pos;
@@ -631,6 +668,7 @@ Status EncapsulateSubgraphsPass::Run(
 
     AddNodeAttr(kXlaCompiledKernelAttr, true, node);
     AddNodeAttr(kXlaNumConstantArgsAttr, num_consts, node);
+    AddNodeAttr(kXlaNumResourceArgsAttr, num_resources, node);
     return Status::OK();
   };
 

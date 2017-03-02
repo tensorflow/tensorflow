@@ -216,6 +216,58 @@ def _safe_scalar_div(numerator, denominator, name):
       name=name)
 
 
+def _streaming_confusion_matrix(labels, predictions, num_classes, weights=None):
+  """Calculate a streaming confusion matrix.
+
+  Calculates a confusion matrix. For estimation over a stream of data,
+  the function creates an  `update_op` operation.
+
+  Args:
+    labels: A `Tensor` of ground truth labels with shape [batch size] and of
+      type `int32` or `int64`. The tensor will be flattened if its rank > 1.
+    predictions: A `Tensor` of prediction results for semantic labels, whose
+      shape is [batch size] and type `int32` or `int64`. The tensor will be
+      flattened if its rank > 1.
+    num_classes: The possible number of labels the prediction task can
+      have. This value must be provided, since a confusion matrix of
+      dimension = [num_classes, num_classes] will be allocated.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `labels` dimension).
+
+  Returns:
+    total_cm: A `Tensor` representing the confusion matrix.
+    update_op: An operation that increments the confusion matrix.
+  """
+  # Local variable to accumulate the predictions in the confusion matrix.
+  cm_dtype = dtypes.int64 if weights is not None else dtypes.float64
+  total_cm = _create_local(
+      'total_confusion_matrix',
+      shape=[num_classes, num_classes],
+      dtype=cm_dtype)
+
+  # Cast the type to int64 required by confusion_matrix_ops.
+  predictions = math_ops.to_int64(predictions)
+  labels = math_ops.to_int64(labels)
+  num_classes = math_ops.to_int64(num_classes)
+
+  # Flatten the input if its rank > 1.
+  if predictions.get_shape().ndims > 1:
+    predictions = array_ops.reshape(predictions, [-1])
+
+  if labels.get_shape().ndims > 1:
+    labels = array_ops.reshape(labels, [-1])
+
+  if (weights is not None) and (weights.get_shape().ndims > 1):
+    weights = array_ops.reshape(weights, [-1])
+
+  # Accumulate the prediction to current confusion matrix.
+  current_cm = confusion_matrix.confusion_matrix(
+      labels, predictions, num_classes, weights=weights, dtype=cm_dtype)
+  update_op = state_ops.assign_add(total_cm, current_cm)
+  return total_cm, update_op
+
+
 def mean(values, weights=None, metrics_collections=None,
          updates_collections=None, name=None):
   """Computes the (weighted) mean of the given values.
@@ -706,6 +758,85 @@ def mean_cosine_distance(labels, predictions, dim, weights=None,
   return mean_distance, update_op
 
 
+def mean_per_class_accuracy(labels,
+                            predictions,
+                            num_classes,
+                            weights=None,
+                            metrics_collections=None,
+                            updates_collections=None,
+                            name=None):
+  """Calculates the mean of the per-class accuracies.
+
+  Calculates the accuracy for each class, then takes the mean of that.
+
+  For estimation of the metric over a stream of data, the function creates an
+  `update_op` operation that updates these variables and returns the
+  `mean_accuracy`.
+
+  If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
+
+  Args:
+    labels: A `Tensor` of ground truth labels with shape [batch size] and of
+      type `int32` or `int64`. The tensor will be flattened if its rank > 1.
+    predictions: A `Tensor` of prediction results for semantic labels, whose
+      shape is [batch size] and type `int32` or `int64`. The tensor will be
+      flattened if its rank > 1.
+    num_classes: The possible number of labels the prediction task can
+      have. This value must be provided, since a confusion matrix of
+      dimension = [num_classes, num_classes] will be allocated.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `labels` dimension).
+    metrics_collections: An optional list of collections that
+      `mean_per_class_accuracy'
+      should be added to.
+    updates_collections: An optional list of collections `update_op` should be
+      added to.
+    name: An optional variable_scope name.
+
+  Returns:
+    mean_accuracy: A `Tensor` representing the mean per class accuracy.
+    update_op: An operation that increments the confusion matrix.
+
+  Raises:
+    ValueError: If `predictions` and `labels` have mismatched shapes, or if
+      `weights` is not `None` and its shape doesn't match `predictions`, or if
+      either `metrics_collections` or `updates_collections` are not a list or
+      tuple.
+  """
+  with variable_scope.variable_scope(name, 'mean_accuracy',
+                                     (predictions, labels, weights)):
+    # Check if shape is compatible.
+    predictions.get_shape().assert_is_compatible_with(labels.get_shape())
+
+    total_cm, update_op = _streaming_confusion_matrix(
+        labels, predictions, num_classes, weights=weights)
+
+    def compute_mean_accuracy(name):
+      """Compute the mean per class accuracy via the confusion matrix."""
+      per_row_sum = math_ops.to_float(math_ops.reduce_sum(total_cm, 1))
+      cm_diag = math_ops.to_float(array_ops.diag_part(total_cm))
+      denominator = per_row_sum
+
+      # If the value of the denominator is 0, set it to 1 to avoid
+      # zero division.
+      denominator = array_ops.where(
+          math_ops.greater(denominator, 0), denominator,
+          array_ops.ones_like(denominator))
+      accuracies = math_ops.div(cm_diag, denominator)
+      return math_ops.reduce_mean(accuracies, name=name)
+
+    mean_accuracy_v = compute_mean_accuracy('mean_accuracy')
+
+    if metrics_collections:
+      ops.add_to_collections(metrics_collections, mean_accuracy_v)
+
+    if updates_collections:
+      ops.add_to_collections(updates_collections, update_op)
+
+    return mean_accuracy_v, update_op
+
+
 def mean_iou(labels,
              predictions,
              num_classes,
@@ -761,31 +892,8 @@ def mean_iou(labels,
     # Check if shape is compatible.
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
 
-    # Local variable to accumulate the predictions in the confusion matrix.
-    cm_dtype = dtypes.int64 if weights is not None else dtypes.float64
-    total_cm = _create_local('total_confusion_matrix',
-                             shape=[num_classes, num_classes], dtype=cm_dtype)
-
-    # Cast the type to int64 required by confusion_matrix_ops.
-    predictions = math_ops.to_int64(predictions)
-    labels = math_ops.to_int64(labels)
-    num_classes = math_ops.to_int64(num_classes)
-
-    # Flatten the input if its rank > 1.
-    if predictions.get_shape().ndims > 1:
-      predictions = array_ops.reshape(predictions, [-1])
-
-    if labels.get_shape().ndims > 1:
-      labels = array_ops.reshape(labels, [-1])
-
-    if (weights is not None) and (weights.get_shape().ndims > 1):
-      weights = array_ops.reshape(weights, [-1])
-
-    # Accumulate the prediction to current confusion matrix.
-    current_cm = confusion_matrix.confusion_matrix(
-        labels, predictions, num_classes, weights=weights, dtype=cm_dtype)
-    update_op = state_ops.assign_add(total_cm, current_cm)
-
+    total_cm, update_op = _streaming_confusion_matrix(labels, predictions,
+                                                      num_classes, weights)
     def compute_mean_iou(name):
       """Compute the mean intersection-over-union via the confusion matrix."""
       sum_over_row = math_ops.to_float(math_ops.reduce_sum(total_cm, 0))
@@ -2125,7 +2233,7 @@ def _num_relevant(labels, k):
     return array_ops.fill(labels_shape[0:-1], num_relevant_scalar, name=scope)
 
 
-def _sparse_average_precision_at_k(labels, predictions, k):
+def _sparse_average_precision_at_top_k(labels, predictions_idx):
   """Computes average precision@k of predictions with respect to sparse labels.
 
   From en.wikipedia.org/wiki/Information_retrieval#Average_precision, formula
@@ -2133,46 +2241,39 @@ def _sparse_average_precision_at_k(labels, predictions, k):
 
     AveP = sum_{i=1...k} P_{i} * rel_{i} / num_relevant_items
 
-  A "row" is the elements in dimension [D1, ... DN] of `predictions`, `labels`,
-  and the result `Tensors`. In the common case, this is [batch_size]. Each row
-  of the results contains the average precision for that row.
-
-  Internally, a `top_k` operation computes a `Tensor` indicating the top `k`
-  `predictions`. Set operations applied to `top_k` and `labels` calculate the
-  true positives, which are used to calculate the precision ("P_{i}" term,
-  above).
+  A "row" is the elements in dimension [D1, ... DN] of `predictions_idx`,
+  `labels`, and the result `Tensors`. In the common case, this is [batch_size].
+  Each row of the results contains the average precision for that row.
 
   Args:
     labels: `int64` `Tensor` or `SparseTensor` with shape
       [D1, ... DN, num_labels] or [D1, ... DN], where the latter implies
       num_labels=1. N >= 1 and num_labels is the number of target classes for
       the associated prediction. Commonly, N=1 and `labels` has shape
-      [batch_size, num_labels]. [D1, ... DN] must match `predictions`. Values
-      should be in range [0, num_classes), where num_classes is the last
-      dimension of `predictions`. Values outside this range are ignored.
-    predictions: Float `Tensor` with shape [D1, ... DN, num_classes] where
-      N >= 1. Commonly, N=1 and `predictions` has shape
-      [batch size, num_classes]. The final dimension contains the logit values
-      for each class. [D1, ... DN] must match `labels`.
-    k: Integer, k for @k metric. This will calculate an average precision for
-      range `[1,k]`, as documented above.
+      [batch_size, num_labels]. [D1, ... DN] must match `predictions_idx`.
+      Values should be in range [0, num_classes).
+    predictions_idx: Integer `Tensor` with shape [D1, ... DN, k] where N >= 1.
+      Commonly, N=1 and `predictions_idx` has shape [batch size, k]. The final
+      dimension must be set and contains the top `k` predicted class indices.
+      [D1, ... DN] must match `labels`. Values should be in range
+      [0, num_classes).
 
   Returns:
     `float64` `Tensor` of shape [D1, ... DN], where each value is the average
     precision for that row.
 
   Raises:
-    ValueError: if k is invalid.
+    ValueError: if the last dimension of predictions_idx is not set.
   """
-  if k < 1:
-    raise ValueError('Invalid k=%s.' % k)
   with ops.name_scope(
-      None, 'average_precision', (predictions, labels, k)) as scope:
-    labels = _maybe_expand_labels(labels, predictions)
-
-    # Calculate top k indices to produce [D1, ... DN, k] tensor.
-    _, predictions_idx = nn.top_k(predictions, k)
+      None, 'average_precision', (predictions_idx, labels)) as scope:
     predictions_idx = math_ops.to_int64(predictions_idx, name='predictions_idx')
+    if predictions_idx.get_shape().ndims == 0:
+      raise ValueError('The rank of predictions_idx must be at least 1.')
+    k = predictions_idx.get_shape().as_list()[-1]
+    if k is None:
+      raise ValueError('The last dimension of predictions_idx must be set.')
+    labels = _maybe_expand_labels(labels, predictions_idx)
 
     # Expand dims to produce [D1, ... DN, k, 1] tensor. This gives us a separate
     # prediction for each k, so we can calculate separate true positive values
@@ -2216,6 +2317,99 @@ def _sparse_average_precision_at_k(labels, predictions, k):
     # the "num_relevant_items" and "AveP" terms from the formula above.
     num_relevant_items = math_ops.to_double(_num_relevant(labels, k))
     return math_ops.div(precision_sum, num_relevant_items, name=scope)
+
+
+def _streaming_sparse_average_precision_at_top_k(labels,
+                                                 predictions_idx,
+                                                 weights=None,
+                                                 metrics_collections=None,
+                                                 updates_collections=None,
+                                                 name=None):
+  """Computes average precision@k of predictions with respect to sparse labels.
+
+  `sparse_average_precision_at_top_k` creates two local variables,
+  `average_precision_at_<k>/total` and `average_precision_at_<k>/max`, that
+  are used to compute the frequency. This frequency is ultimately returned as
+  `average_precision_at_<k>`: an idempotent operation that simply divides
+  `average_precision_at_<k>/total` by `average_precision_at_<k>/max`.
+
+  For estimation of the metric over a stream of data, the function creates an
+  `update_op` operation that updates these variables and returns the
+  `precision_at_<k>`. Set operations applied to `top_k` and `labels` calculate
+  the true positives and false positives weighted by `weights`. Then `update_op`
+  increments `true_positive_at_<k>` and `false_positive_at_<k>` using these
+  values.
+
+  If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
+
+  Args:
+    labels: `int64` `Tensor` or `SparseTensor` with shape
+      [D1, ... DN, num_labels] or [D1, ... DN], where the latter implies
+      num_labels=1. N >= 1 and num_labels is the number of target classes for
+      the associated prediction. Commonly, N=1 and `labels` has shape
+      [batch_size, num_labels]. [D1, ... DN] must match `predictions_idx`.
+      Values should be in range [0, num_classes).
+    predictions_idx: Integer `Tensor` with shape [D1, ... DN, k] where N >= 1.
+      Commonly, N=1 and `predictions_idx` has shape [batch size, k]. The final
+      dimension contains the top `k` predicted class indices. [D1, ... DN] must
+      match `labels`. Values should be in range [0, num_classes).
+    weights: `Tensor` whose rank is either 0, or n-1, where n is the rank of
+      `labels`. If the latter, it must be broadcastable to `labels` (i.e., all
+      dimensions must be either `1`, or the same as the corresponding `labels`
+      dimension).
+    metrics_collections: An optional list of collections that values should
+      be added to.
+    updates_collections: An optional list of collections that updates should
+      be added to.
+    name: Name of new update operation, and namespace for other dependent ops.
+
+  Returns:
+    mean_average_precision: Scalar `float64` `Tensor` with the mean average
+      precision values.
+    update: `Operation` that increments  variables appropriately, and whose
+      value matches `metric`.
+  """
+  with ops.name_scope(name, 'average_precision_at_top_k',
+                      (predictions_idx, labels, weights)) as scope:
+    # Calculate per-example average precision, and apply weights.
+    average_precision = _sparse_average_precision_at_top_k(
+        predictions_idx=predictions_idx, labels=labels)
+    if weights is not None:
+      weights = weights_broadcast_ops.broadcast_weights(
+          math_ops.to_double(weights), average_precision)
+      average_precision = math_ops.multiply(average_precision, weights)
+
+    # Create accumulation variables and update ops for max average precision and
+    # total average precision.
+    with ops.name_scope(None, 'max', (average_precision,)) as max_scope:
+      # `max` is the max possible precision. Since max for any row is 1.0:
+      # - For the unweighted case, this is just the number of rows.
+      # - For the weighted case, it's the sum of the weights broadcast across
+      #   `average_precision` rows.
+      max_var = _local_variable(
+          array_ops.zeros([], dtype=dtypes.float64), name=max_scope)
+      if weights is None:
+        batch_max = math_ops.to_double(
+            array_ops.size(average_precision, name='batch_max'))
+      else:
+        batch_max = math_ops.reduce_sum(weights, name='batch_max')
+      max_update = state_ops.assign_add(max_var, batch_max, name='update')
+    with ops.name_scope(None, 'total', (average_precision,)) as total_scope:
+      total_var = _local_variable(
+          array_ops.zeros([], dtype=dtypes.float64), name=total_scope)
+      batch_total = math_ops.reduce_sum(average_precision, name='batch_total')
+      total_update = state_ops.assign_add(total_var, batch_total, name='update')
+
+    # Divide total by max to get mean, for both vars and the update ops.
+    mean_average_precision = _safe_scalar_div(total_var, max_var, name='mean')
+    update = _safe_scalar_div(total_update, max_update, name=scope)
+
+    if metrics_collections:
+      ops.add_to_collections(metrics_collections, mean_average_precision)
+    if updates_collections:
+      ops.add_to_collections(updates_collections, update)
+
+    return mean_average_precision, update
 
 
 def sparse_average_precision_at_k(labels,
@@ -2272,49 +2466,24 @@ def sparse_average_precision_at_k(labels,
       precision values.
     update: `Operation` that increments  variables appropriately, and whose
       value matches `metric`.
+
+  Raises:
+    ValueError: if k is invalid.
   """
+  if k < 1:
+    raise ValueError('Invalid k=%s.' % k)
   with ops.name_scope(
       name, _at_k_name('average_precision', k),
       (predictions, labels, weights)) as scope:
-    # Calculate per-example average precision, and apply weights.
-    average_precision = _sparse_average_precision_at_k(
-        predictions=predictions, labels=labels, k=k)
-    if weights is not None:
-      weights = weights_broadcast_ops.broadcast_weights(
-          math_ops.to_double(weights), average_precision)
-      average_precision = math_ops.multiply(average_precision, weights)
-
-    # Create accumulation variables and update ops for max average precision and
-    # total average precision.
-    with ops.name_scope(None, 'max', (average_precision,)) as max_scope:
-      # `max` is the max possible precision. Since max for any row is 1.0:
-      # - For the unweighted case, this is just the number of rows.
-      # - For the weighted case, it's the sum of the weights broadcast across
-      #   `average_precision` rows.
-      max_var = _local_variable(
-          array_ops.zeros([], dtype=dtypes.float64), name=max_scope)
-      if weights is None:
-        batch_max = math_ops.to_double(
-            array_ops.size(average_precision, name='batch_max'))
-      else:
-        batch_max = math_ops.reduce_sum(weights, name='batch_max')
-      max_update = state_ops.assign_add(max_var, batch_max, name='update')
-    with ops.name_scope(None, 'total', (average_precision,)) as total_scope:
-      total_var = _local_variable(
-          array_ops.zeros([], dtype=dtypes.float64), name=total_scope)
-      batch_total = math_ops.reduce_sum(average_precision, name='batch_total')
-      total_update = state_ops.assign_add(total_var, batch_total, name='update')
-
-    # Divide total by max to get mean, for both vars and the update ops.
-    mean_average_precision = _safe_scalar_div(total_var, max_var, name='mean')
-    update = _safe_scalar_div(total_update, max_update, name=scope)
-
-    if metrics_collections:
-      ops.add_to_collections(metrics_collections, mean_average_precision)
-    if updates_collections:
-      ops.add_to_collections(updates_collections, update)
-
-    return mean_average_precision, update
+    # Calculate top k indices to produce [D1, ... DN, k] tensor.
+    _, predictions_idx = nn.top_k(predictions, k)
+    return _streaming_sparse_average_precision_at_top_k(
+        labels=labels,
+        predictions_idx=predictions_idx,
+        weights=weights,
+        metrics_collections=metrics_collections,
+        updates_collections=updates_collections,
+        name=scope)
 
 
 def _sparse_false_positive_at_k(labels,

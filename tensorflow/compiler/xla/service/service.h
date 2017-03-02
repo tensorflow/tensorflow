@@ -162,6 +162,12 @@ class Service : public ServiceInterface {
       const TransferToInfeedRequest* arg,
       TransferToInfeedResponse* result) override;
 
+  // Transfers data from the Outfeed othe device to the literal provided by the
+  // client.
+  tensorflow::Status TransferFromOutfeed(
+      const TransferFromOutfeedRequest* arg,
+      TransferFromOutfeedResponse* result) override;
+
   // Resets devices, clearing all existing state on all the devices associated
   // with this service (including memory allocated on the devices).
   //
@@ -444,7 +450,9 @@ ReturnT Service::ExecuteOnStreamWrapper(
   }
 
   if (profile_ptr != nullptr) {
-    HloCostAnalysis analysis;
+    HloCostAnalysis analysis([this](const Shape& shape) {
+      return execute_backend_->compiler()->ShapeSizeBytes(shape);
+    });
     tensorflow::Status analysis_status =
         executable->module().entry_computation()->root_instruction()->Accept(
             &analysis);

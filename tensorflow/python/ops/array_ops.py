@@ -13,10 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 
-"""## Casting
+"""Support for manipulating tensors.
 
-TensorFlow provides several operations that you can use to cast tensor data
-types in your graph.
+See the @{$python/array_ops} guide.
 
 @@string_to_number
 @@to_double
@@ -27,12 +26,6 @@ types in your graph.
 @@cast
 @@bitcast
 @@saturate_cast
-
-## Shapes and Shaping
-
-TensorFlow provides several operations that you can use to determine the shape
-of a tensor and change the shape of a tensor.
-
 @@broadcast_dynamic_shape
 @@broadcast_static_shape
 @@shape
@@ -43,12 +36,6 @@ of a tensor and change the shape of a tensor.
 @@squeeze
 @@expand_dims
 @@meshgrid
-
-## Slicing and Joining
-
-TensorFlow provides several operations to slice or extract parts of a tensor,
-or join multiple tensors together.
-
 @@slice
 @@strided_slice
 @@split
@@ -83,10 +70,6 @@ or join multiple tensors together.
 @@quantize_v2
 @@quantized_concat
 @@setdiff1d
-
-## Fake quantization
-Operations used to help train for better quantization accuracy.
-
 @@fake_quant_with_min_max_args
 @@fake_quant_with_min_max_args_gradient
 @@fake_quant_with_min_max_vars
@@ -94,6 +77,7 @@ Operations used to help train for better quantization accuracy.
 @@fake_quant_with_min_max_vars_per_channel
 @@fake_quant_with_min_max_vars_per_channel_gradient
 """
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -602,7 +586,7 @@ def strided_slice(input_,
   `foo[::-1]` reverses a tensor with shape 8.
 
 
-  If the ith bit of `ellipsis_mask`, as many unspecified dimensions
+  If the ith bit of `ellipsis_mask` is non-zero, as many unspecified dimensions
   as needed will be inserted between other dimensions. Only one
   non-zero bit is allowed in `ellipsis_mask`.
 
@@ -610,7 +594,7 @@ def strided_slice(input_,
   equivalent to `foo[3:5,:,:,4:5]` and
   `foo[3:5,...]` is equivalent to `foo[3:5,:,:,:]`.
 
-  If the ith bit of `new_axis_mask` is one, then a `begin`,
+  If the ith bit of `new_axis_mask` is one, then `begin`,
   `end`, and `stride` are ignored and a new length 1 dimension is
   added at this point in the output tensor.
 
@@ -634,8 +618,8 @@ def strided_slice(input_,
   tf.strided_slice(input, [1, 0, 0], [2, 1, 3], [1, 1, 1]) ==> [[[3, 3, 3]]]
   tf.strided_slice(input, [1, 0, 0], [2, 2, 3], [1, 1, 1]) ==> [[[3, 3, 3],
                                                                  [4, 4, 4]]]
-  tf.strided_slice(input, [1, 1, 0], [2, -1, 3], [1, -1, 1]) ==>[[[4, 4, 4],
-                                                                  [3, 3, 3]]]
+  tf.strided_slice(input, [1, -1, 0], [2, -3, 3], [1, -1, 1]) ==>[[[4, 4, 4],
+                                                                   [3, 3, 3]]]
   ```
 
   Args:
@@ -697,9 +681,7 @@ def _SliceHelperVar(var, slice_spec):
   """Creates a slice helper object given a variable.
 
   This allows creating a sub-tensor from part of the current contents
-  of a variable.
-  See
-  [`Tensor.__getitem__`](../../api_docs/python/framework.md#Tensor.__getitem__)
+  of a variable.  See ${tf.Tensor$`Tensor.__getitem__`}
   for detailed examples of slicing.
 
   This function in addition also allows assignment to a sliced range.
@@ -1563,7 +1545,7 @@ def sparse_placeholder(dtype, shape=None, name=None):
       x: (indices, values, shape)}))  # Will succeed.
 
     sp = tf.SparseTensor(indices=indices, values=values, dense_shape=shape)
-    sp_value = sp.eval(session)
+    sp_value = sp.eval(session=sess)
     print(sess.run(y, feed_dict={x: sp_value}))  # Will succeed.
   ```
 

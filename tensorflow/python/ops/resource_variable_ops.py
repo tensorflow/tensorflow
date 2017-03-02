@@ -22,6 +22,7 @@ from __future__ import print_function
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import variable_pb2
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import variables
@@ -30,16 +31,6 @@ from tensorflow.python.ops import variables
 from tensorflow.python.ops.gen_resource_variable_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.util import compat
-
-
-def _register_variable_read(read, collections, trainable):
-  """Helper function to put a read from a variable in the collections."""
-  if collections is None:
-    collections = []
-  if (trainable and ops.GraphKeys.TRAINABLE_VARIABLES
-       not in collections):
-    collections = (list(collections) + [ops.GraphKeys.TRAINABLE_VARIABLES])
-    ops.add_to_collections(collections, read)
 
 
 class ResourceVariable(object):
@@ -205,18 +196,14 @@ class ResourceVariable(object):
             self._initialize_op = gen_resource_variable_ops.assign_variable_op(
                 self._handle, self._initial_value, name=n)
         with ops.name_scope("Read"), ops.colocate_with(self._handle):
-          self._value = gen_resource_variable_ops.read_variable_op(
+          value = gen_resource_variable_ops.read_variable_op(
               self._handle, dtype=self._dtype)
+          self._graph_element = value
           if caching_device is not None:
             with ops.device(caching_device):
-              self._cached_value = array_ops.identity(self._value)
+              self._cached_value = array_ops.identity(value)
           else:
-            with ops.colocate_with(self._handle.op):
-              self._cached_value = array_ops.identity(self._value)
-          # TODO(apassos) this is terrible monkey-patching required to make
-          # initialize_all_variables work. Replace self._value with an explicit
-          # class instead of monkey-patching.
-          self._value.initializer = self._initialize_op
+            self._cached_value = None
           ops.add_to_collections(collections, self)
 
   def _init_from_proto(self, variable_def, import_scope=None):
@@ -233,10 +220,12 @@ class ResourceVariable(object):
     self._initialize_op = g.as_graph_element(
         ops.prepend_name_scope(variable_def.initializer_name,
                                import_scope=import_scope))
-    self._cached_value = g.as_graph_element(
-        ops.prepend_name_scope(variable_def.snapshot_name,
-                               import_scope=import_scope))
-    self._value = self._cached_value
+    if variable_def.snapshot_name:
+      self._cached_value = g.as_graph_element(
+          ops.prepend_name_scope(variable_def.snapshot_name,
+                                 import_scope=import_scope))
+    else:
+      self._cached_value = None
     if variable_def.HasField("save_slice_info_def"):
       self._save_slice_info = variables.Variable.SaveSliceInfo(
           save_slice_info_def=variable_def.save_slice_info_def)
@@ -262,7 +251,7 @@ class ResourceVariable(object):
 
   def get_shape(self):
     """The shape of this variable."""
-    return self._value.get_shape()
+    return tensor_shape.TensorShape(self._handle.op.get_attr("shape"))
 
   @property
   def create(self):
@@ -276,11 +265,14 @@ class ResourceVariable(object):
 
   def value(self):
     """A cached operation which reads the value of this variable."""
-    return self._cached_value
+    if self._cached_value is not None:
+      return self._cached_value
+    return gen_resource_variable_ops.read_variable_op(
+        self._handle, dtype=self._dtype)
 
   def _as_graph_element(self):
     """Conversion function for Graph.as_graph_element()."""
-    return self._value
+    return self._graph_element
 
   @property
   def initializer(self):
@@ -294,7 +286,7 @@ class ResourceVariable(object):
 
   def eval(self, session=None):
     """Evaluates and returns the value of this variable."""
-    return self._value.eval(session=session)
+    return self._graph_element.eval(session=session)
 
   def _set_save_slice_info(self, save_slice_info):
     """Sets the slice info for this `ResourceVariable`.
@@ -307,15 +299,11 @@ class ResourceVariable(object):
   def _get_save_slice_info(self):
     return self._save_slice_info
 
-  def read_value(self, collections=None, trainable=True):
+  def read_value(self):
     """Constructs an op which reads the value of this variable.
 
     Should be used when there are multiple reads, or when it is desirable to
     read the value only after some condition is true.
-
-    Args:
-     collections: any collections in which this operation should be inserted.
-     trainable: whether this read is to be used for training.
 
     Returns:
      the read operation.
@@ -323,15 +311,15 @@ class ResourceVariable(object):
     with ops.name_scope("Read"):
       value = gen_resource_variable_ops.read_variable_op(
           self._handle, dtype=self._dtype)
-    _register_variable_read(value, collections=collections, trainable=trainable)
+    # Return an identity so it can get placed on whatever device the context
+    # specifies instead of the device where the variable is.
     return array_ops.identity(value)
 
-  def sparse_read(self, indices, collections=None, trainable=True, name=None):
+  def sparse_read(self, indices, name=None):
     """Reads the value of this variable sparsely, using `gather`."""
     with ops.name_scope("Gather" if name is None else name) as name:
       value = gen_resource_variable_ops.resource_gather(
           self._handle, indices, dtype=self._dtype, name=name)
-    _register_variable_read(value, collections=collections, trainable=trainable)
     return array_ops.identity(value)
 
   def to_proto(self, export_scope=None):
@@ -351,8 +339,9 @@ class ResourceVariable(object):
           self.handle.name, export_scope)
       var_def.initializer_name = ops.strip_name_scope(
           self.initializer.name, export_scope)
-      var_def.snapshot_name = ops.strip_name_scope(
-          self.value().name, export_scope)
+      if self._cached_value is not None:
+        var_def.snapshot_name = ops.strip_name_scope(
+            self._cached_value.name, export_scope)
       var_def.is_resource = True
       if self._save_slice_info:
         var_def.save_slice_info_def.MergeFrom(self._save_slice_info.to_proto(
@@ -432,9 +421,7 @@ def _dense_var_to_tensor(var, dtype=None, name=None, as_ref=False):
   if dtype is not None and dtype != var.value().dtype:
     print("trying to switch the dtype to ", dtype, " from ", var.value().dtype)
     return NotImplemented
-  if as_ref:
-    return var._value
-  return var._cached_value
+  return var.value()
 # pylint: enable=unused-argument,protected-access
 
 # Register a conversion function which reads the value of the variable,
@@ -444,6 +431,31 @@ ops.register_tensor_conversion_function(ResourceVariable, _dense_var_to_tensor)
 # pylint: disable=protected-access
 ResourceVariable._OverloadAllOperators()
 ops.register_dense_tensor_like_type(ResourceVariable)
+
+
+@ops.RegisterGradient("ReadVariableOp")
+def _ReadGrad(_, grad):
+  """Gradient for read op."""
+  return grad
+
+
+@ops.RegisterGradient("ResourceGather")
+def _GatherGrad(op, grad):
+  """Gradient for gather op."""
+  # Build appropriately shaped IndexedSlices
+  # Walk graph back until the original handle is found.
+  # TODO(apassos): more robust way of getting the shape.
+  handle = op.inputs[0]
+  while handle.op.type != "VarHandleOp":
+    handle = handle.op.inputs[0]
+  params_shape = ops.convert_to_tensor(
+      tensor_shape.TensorShape(handle.op.get_attr("shape")))
+  indices = op.inputs[1]
+  size = array_ops.expand_dims(array_ops.size(indices), 0)
+  values_shape = array_ops.concat([size, params_shape[1:]], 0)
+  values = array_ops.reshape(grad, values_shape)
+  indices = array_ops.reshape(indices, size)
+  return [ops.IndexedSlices(values, indices, params_shape), None]
 
 
 def _to_proto_fn(v, export_scope=None):

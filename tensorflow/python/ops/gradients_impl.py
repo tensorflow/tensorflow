@@ -43,6 +43,7 @@ from tensorflow.python.ops import linalg_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import logging_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import math_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
 
 
@@ -348,20 +349,27 @@ def _SymGrad(op, out_grads):
   return in_grads
 
 
-def _MaybeCompile(op, is_func, grad_fn):
+def _MaybeCompile(scope, op, func, grad_fn):
   """Compile the calculation in grad_fn if op was marked as compiled."""
-  if is_func:
-    # Functions handle their own gradient compilation
+  scope = scope.rstrip("/").replace("/", "_")
+  if func is not None:
+    xla_compile = func.definition.attr["_XlaCompile"].b
+    xla_scope = func.definition.attr["_XlaScope"].s.decode()
+  else:
+    try:
+      xla_compile = op.get_attr("_XlaCompile")
+      xla_scope = op.get_attr("_XlaScope").decode()
+    except ValueError:
+      return grad_fn()  # Exit early
+
+  if not xla_compile:
+    return grad_fn()  # Exit early
+
+  attrs = {"_XlaCompile": attr_value_pb2.AttrValue(b=xla_compile),
+           "_XlaScope": attr_value_pb2.AttrValue(
+               s=("%s_grad_%s" % (xla_scope, scope)).encode())}
+  with ops.get_default_graph()._attr_scope(attrs):  # pylint: disable=protected-access
     return grad_fn()
-  try:
-    xla_compile = op.get_attr("_XlaCompile")
-    attrs = {"_XlaCompile": attr_value_pb2.AttrValue(b=xla_compile)}
-    with ops.get_default_graph()._attr_scope(attrs):  # pylint: disable=protected-access
-      return grad_fn()
-  except ValueError as e:
-    if "No attr named" in str(e):
-      return grad_fn()
-    raise e
 
 
 def gradients(ys,
@@ -420,9 +428,13 @@ def gradients(ys,
   else:
     grad_ys = _AsList(grad_ys)
 
-  with ops.name_scope(name, "gradients", ys + xs + grad_ys):
+  with ops.name_scope(name, "gradients", ys + xs + grad_ys) as grad_scope:
     ys = ops.convert_n_to_tensor_or_indexed_slices(ys, name="y")
-    xs = ops.convert_n_to_tensor_or_indexed_slices(xs, name="x")
+    xs = [x.handle if isinstance(x, resource_variable_ops.ResourceVariable)
+          else x
+          for x in xs]
+    xs = ops.internal_convert_n_to_tensor_or_indexed_slices(xs, name="x",
+                                                            as_ref=True)
     grad_ys = _DefaultGradYs(grad_ys, ys, colocate_gradients_with_ops)
 
     # The approach we take here is as follows: Create a list of all ops in the
@@ -488,12 +500,13 @@ def gradients(ys,
 
         grad_fn = None
         # pylint: disable=protected-access
+        func_call = None
         is_func_call = ops.get_default_graph()._is_function(op.type)
         has_out_grads = any(isinstance(g, ops.Tensor) or g for g in out_grads)
         if has_out_grads and (op._id not in stop_ops):
           if is_func_call:
-            grad_fn = ops.get_default_graph()._get_function(
-                op.type).python_grad_func
+            func_call = ops.get_default_graph()._get_function(op.type)
+            grad_fn = func_call.python_grad_func
             # pylint: enable=protected-access
           else:
             # A grad_fn must be defined, either as a function or as None
@@ -515,6 +528,8 @@ def gradients(ys,
                 not out_grad) and _IsTrainable(op.outputs[i]):
               # Only floating-point outputs get a zero gradient. Gradient
               # functions should ignore the gradient for other outputs.
+              # TODO(apassos) gradients of resource handles might be an
+              # issue here because of zeros.
               if loop_state:
                 out_grads[i] = loop_state.ZerosLike(op, i)
               else:
@@ -527,12 +542,12 @@ def gradients(ys,
                 # If grad_fn was found, do not use SymbolicGradient even for
                 # functions.
                 in_grads = _MaybeCompile(
-                    op, is_func_call, lambda: grad_fn(op, *out_grads))
+                    grad_scope, op, func_call, lambda: grad_fn(op, *out_grads))
               else:
                 # For function call ops, we add a 'SymbolicGradient'
                 # node to the graph to compute gradients.
                 in_grads = _MaybeCompile(
-                    op, is_func_call, lambda: _SymGrad(op, out_grads))
+                    grad_scope, op, func_call, lambda: _SymGrad(op, out_grads))
               in_grads = _AsList(in_grads)
               _VerifyGeneratedGradients(in_grads, op)
               if gate_gradients and len(
@@ -545,7 +560,8 @@ def gradients(ys,
           in_grads = [None] * len(op.inputs)
         for t_in, in_grad in zip(op.inputs, in_grads):
           if in_grad is not None:
-            if isinstance(in_grad, ops.Tensor):
+            if (isinstance(in_grad, ops.Tensor) and
+                t_in.dtype != dtypes.resource):
               in_grad.set_shape(t_in.get_shape())
             _SetGrad(grads, t_in, in_grad)
         if loop_state:

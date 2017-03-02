@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import re
 
 from tensorflow.contrib.framework.python.ops import add_arg_scope as contrib_add_arg_scope
@@ -30,7 +31,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import gen_state_ops
@@ -57,6 +57,7 @@ __all__ = ['add_model_variable',
            'get_unique_variable',
            'get_variables_by_name',
            'get_variables_by_suffix',
+           'get_variable_full_name',
            'get_variables_to_restore',
            'get_variables',
            'local_variable',
@@ -119,45 +120,29 @@ def create_global_step(graph=None):
   """Create global step tensor in graph.
 
   Args:
-    graph: The graph in which to create the global step. If missing, use default
-        graph.
+    graph: The graph in which to create the global step tensor. If missing,
+      use default graph.
 
   Returns:
     Global step tensor.
 
   Raises:
-    ValueError: if global step key is already defined.
+    ValueError: if global step tensor is already defined.
   """
-  graph = ops.get_default_graph() if graph is None else graph
-  if get_global_step(graph) is not None:
-    raise ValueError('"global_step" already exists.')
-  # Create in proper graph and base name_scope.
-  with graph.as_default() as g, g.name_scope(None):
-    collections = [ops.GraphKeys.GLOBAL_VARIABLES, ops.GraphKeys.GLOBAL_STEP]
-    return variable(
-        ops.GraphKeys.GLOBAL_STEP,
-        shape=[],
-        dtype=dtypes.int64,
-        initializer=init_ops.zeros_initializer(),
-        trainable=False,
-        collections=collections)
+  return training_util.create_global_step(graph)
 
 
 def get_or_create_global_step(graph=None):
-  """Returns and create (if necessary) the global step variable.
+  """Returns and create (if necessary) the global step tensor.
 
   Args:
-    graph: The graph in which to create the global step. If missing, use default
-        graph.
+    graph: The graph in which to create the global step tensor. If missing, use
+      default graph.
 
   Returns:
-    the tensor representing the global step variable.
+    The global step tensor.
   """
-  graph = ops.get_default_graph() if graph is None else graph
-  globalstep = get_global_step(graph)
-  if globalstep is None:
-    globalstep = create_global_step(graph)
-  return globalstep
+  return training_util.get_or_create_global_step(graph)
 
 
 def local_variable(initial_value, validate_shape=True, name=None):
@@ -180,7 +165,7 @@ def local_variable(initial_value, validate_shape=True, name=None):
 def variable(name, shape=None, dtype=None, initializer=None,
              regularizer=None, trainable=True, collections=None,
              caching_device=None, device=None,
-             partitioner=None, custom_getter=None):
+             partitioner=None, custom_getter=None, use_resource=None):
   """Gets an existing variable with these parameters or creates a new one.
 
   Args:
@@ -205,6 +190,7 @@ def variable(name, shape=None, dtype=None, initializer=None,
       partitions for each axis (currently only one axis can be partitioned).
     custom_getter: Callable that allows overwriting the internal
       get_variable method and has to have the same signature.
+    use_resource: If `True` use a ResourceVariable instead of a Variable.
 
   Returns:
     The created or existing variable.
@@ -215,7 +201,8 @@ def variable(name, shape=None, dtype=None, initializer=None,
   collections = set(collections)
   getter = variable_scope.get_variable
   if custom_getter is not None:
-    getter = custom_getter
+    getter = functools.partial(custom_getter,
+                               reuse=variable_scope.get_variable_scope().reuse)
   with ops.device(device or ''):
     return getter(name, shape=shape, dtype=dtype,
                   initializer=initializer,
@@ -223,14 +210,15 @@ def variable(name, shape=None, dtype=None, initializer=None,
                   trainable=trainable,
                   collections=collections,
                   caching_device=caching_device,
-                  partitioner=partitioner)
+                  partitioner=partitioner,
+                  use_resource=use_resource)
 
 
 @contrib_add_arg_scope
 def model_variable(name, shape=None, dtype=dtypes.float32, initializer=None,
                    regularizer=None, trainable=True, collections=None,
                    caching_device=None, device=None, partitioner=None,
-                   custom_getter=None):
+                   custom_getter=None, use_resource=None):
   """Gets an existing model variable with these parameters or creates a new one.
 
   Args:
@@ -256,6 +244,7 @@ def model_variable(name, shape=None, dtype=dtypes.float32, initializer=None,
       partitions for each axis (currently only one axis can be partitioned).
     custom_getter: Callable that allows overwriting the internal
       get_variable method and has to have the same signature.
+    use_resource: If `True` use a ResourceVariable instead of a Variable.
 
   Returns:
     The created or existing variable.
@@ -266,7 +255,8 @@ def model_variable(name, shape=None, dtype=dtypes.float32, initializer=None,
                  initializer=initializer, regularizer=regularizer,
                  trainable=trainable, collections=collections,
                  caching_device=caching_device, device=device,
-                 partitioner=partitioner, custom_getter=custom_getter)
+                 partitioner=partitioner, custom_getter=custom_getter,
+                 use_resource=use_resource)
   return var
 
 
@@ -508,8 +498,31 @@ def assign_from_values_fn(var_names_to_values):
 # pylint: disable=protected-access
 # Currently variable_scope doesn't provide very good APIs to access
 # all variables under scope and retrieve and check existing scopes.
-#
+def get_variable_full_name(var):
+  """Returns the full name of a variable.
+
+  For normal Variables, this is the same as the var.op.name.  For
+  sliced or PartitionedVariables, this name is the same for all the
+  slices/partitions. In both cases, this is normally the name used in
+  a checkpoint file.
+
+  Args:
+    var: A `Variable` object.
+
+  Returns:
+    A string that is the full name.
+  """
+  if var._save_slice_info:
+    return var._save_slice_info.full_name
+  else:
+    return var.op.name
+
+
 # TODO(nsilberman): add flag to load exponential moving averages instead
+#
+# TODO(sguada): Update docs in slim/g3doc/index.md to describe
+# the new feature where the var_list dictionary can have values that
+# are each a list of Variables.
 def assign_from_checkpoint(model_path, var_list):
   """Creates an operation to assign specific variables from a checkpoint.
 
@@ -538,10 +551,7 @@ def assign_from_checkpoint(model_path, var_list):
   grouped_vars = {}
   if isinstance(var_list, (tuple, list)):
     for var in var_list:
-      if var._save_slice_info:
-        ckpt_name = var._save_slice_info.full_name
-      else:
-        ckpt_name = var.op.name
+      ckpt_name = get_variable_full_name(var)
       if ckpt_name not in grouped_vars:
         grouped_vars[ckpt_name] = []
       grouped_vars[ckpt_name].append(var)
@@ -568,7 +578,7 @@ def assign_from_checkpoint(model_path, var_list):
       placeholder_tensor = array_ops.placeholder(
           dtype=var.dtype.base_dtype,
           shape=var.get_shape(),
-          name='placeholder/' + ckpt_name)
+          name='placeholder/' + var.op.name)
       assign_ops.append(var.assign(placeholder_tensor))
 
       if not var._save_slice_info:
@@ -585,6 +595,7 @@ def assign_from_checkpoint(model_path, var_list):
         slice_dims = [(start, start + size) for (start, size) in slice_dims]
         slice_dims = [slice(*x) for x in slice_dims]
         slice_value = ckpt_value[slice_dims]
+        slice_value = slice_value.reshape(var._save_slice_info.var_shape)
         feed_dict[placeholder_tensor] = slice_value
 
   assign_op = control_flow_ops.group(*assign_ops)
@@ -596,12 +607,15 @@ def assign_from_checkpoint_fn(model_path, var_list, ignore_missing_vars=False,
                               reshape_variables=False):
   """Returns a function that assigns specific variables from a checkpoint.
 
+  If ignore_missing_vars is True and no variables are found in the checkpoint
+  it returns None.
+
   Args:
     model_path: The full path to the model checkpoint. To get latest checkpoint
         use `model_path = tf.train.latest_checkpoint(checkpoint_dir)`
     var_list: A list of `Variable` objects or a dictionary mapping names in the
-        checkpoint to the correspoing variables to initialize. If empty or None,
-        it would return  no_op(), None.
+        checkpoint to the corresponding variables to initialize. If empty or
+        `None`, it would return `no_op(), None`.
     ignore_missing_vars: Boolean, if True it would ignore variables missing in
         the checkpoint with a warning instead of failing.
     reshape_variables: Boolean, if True it would automatically reshape variables
@@ -610,12 +624,14 @@ def assign_from_checkpoint_fn(model_path, var_list, ignore_missing_vars=False,
 
   Returns:
     A function that takes a single argument, a `tf.Session`, that applies the
-    assignment operation.
+    assignment operation. If no matching variables were found in the checkpoint
+    then `None` is returned.
 
   Raises:
-    ValueError: If the checkpoint specified at `model_path` is missing one of
-      the variables in `var_list`.
+    ValueError: If var_list is empty.
   """
+  if not var_list:
+    raise ValueError('var_list cannot be empty')
   if ignore_missing_vars:
     reader = pywrap_tensorflow.NewCheckpointReader(model_path)
     if isinstance(var_list, dict):
@@ -630,10 +646,14 @@ def assign_from_checkpoint_fn(model_path, var_list, ignore_missing_vars=False,
         logging.warning(
             'Variable %s missing in checkpoint %s', var, model_path)
     var_list = available_vars
-  saver = tf_saver.Saver(var_list, reshape=reshape_variables)
-  def callback(session):
-    saver.restore(session, model_path)
-  return callback
+  if var_list:
+    saver = tf_saver.Saver(var_list, reshape=reshape_variables)
+    def callback(session):
+      saver.restore(session, model_path)
+    return callback
+  else:
+    logging.warning('No Variables to restore')
+    return None
 
 
 class VariableDeviceChooser(object):

@@ -8,8 +8,6 @@ package(
 
 licenses(["notice"])  # Apache 2.0
 
-exports_files(["LICENSE"])
-
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
@@ -231,6 +229,7 @@ cc_library(
         ":cc_ops_internal",
         ":grad_op_registry",
         ":gradients",
+        "//tensorflow/core:lib_proto_parsing",
     ],
 )
 

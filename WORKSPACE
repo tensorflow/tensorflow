@@ -25,7 +25,7 @@ check_version("0.4.2")
 #android_sdk_repository(
 #    name = "androidsdk",
 #    api_level = 23,
-#    build_tools_version = "23.0.1",
+#    build_tools_version = "25.0.1",
 #    # Replace with path to Android SDK on your system
 #    path = "<PATH_TO_SDK>",
 #)
@@ -33,7 +33,7 @@ check_version("0.4.2")
 #android_ndk_repository(
 #    name="androidndk",
 #    path="<PATH_TO_NDK>",
-#    api_level=21)
+#    api_level=14)
 
 # Please add all new TensorFlow dependencies in workspace.bzl.
 tf_workspace()
@@ -480,7 +480,7 @@ new_http_archive(
 )
 
 new_http_archive(
-  name = "polymer_archive",
+  name = "polymer",
   build_file = "bower.BUILD",
   url = "https://github.com/polymer/polymer/archive/v1.7.0.tar.gz",
   strip_prefix = "polymer-1.7.0",

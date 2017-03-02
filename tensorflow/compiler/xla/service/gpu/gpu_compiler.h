@@ -60,6 +60,8 @@ class GpuCompiler : public Compiler {
 
   perftools::gputools::Platform::Id PlatformId() const override;
 
+  int64 ShapeSizeBytes(const Shape& shape) const override;
+
  private:
   // The parent directory of libdevice IR libraries.
   const string libdevice_dir_;
@@ -69,6 +71,9 @@ class GpuCompiler : public Compiler {
   // StreamExecutor (b/24776264).
   tensorflow::mutex mutex_;
   std::vector<std::unique_ptr<string>> generated_ptxes_ GUARDED_BY(mutex_);
+
+  // The size in bytes of a pointer. Used for computing ShapeSizeBytes.
+  int64 pointer_size_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GpuCompiler);
 };

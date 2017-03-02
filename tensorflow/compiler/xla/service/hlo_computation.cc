@@ -111,50 +111,43 @@ Status HloComputation::RemoveInstructionAndUnusedOperands(
 
   TF_RET_CHECK(instruction->user_count() == 0);
   TF_RET_CHECK(HloComputation::IsRemovable(instruction->opcode()));
-  std::queue<HloInstruction*> remove;
-  remove.push(instruction);
-  while (!remove.empty()) {
-    HloInstruction* item = remove.front();
-    remove.pop();
-    if (item->user_count() != 0 || item == root_instruction_ ||
+  std::unordered_set<HloInstruction*> removed;
+  std::queue<HloInstruction*> worklist;
+  worklist.push(instruction);
+  while (!worklist.empty()) {
+    HloInstruction* item = worklist.front();
+    worklist.pop();
+
+    if (removed.count(item) != 0 || item->user_count() != 0 ||
+        item == root_instruction() ||
         !HloComputation::IsRemovable(item->opcode())) {
       continue;
     }
     for (int i = 0; i < item->operand_count(); ++i) {
-      remove.push(item->mutable_operand(i));
+      worklist.push(item->mutable_operand(i));
     }
 
-    // If an instruction has the same operand more than once, we must not remove
-    // it again.
     TF_RETURN_IF_ERROR(RemoveInstruction(item));
+    removed.insert(item);
   }
   return Status::OK();
 }
 
-StatusOr<bool> HloComputation::RemoveInstructionIfFound(
-    HloInstruction* instruction) {
-  TF_RET_CHECK(IsRemovable(instruction->opcode()));
-  TF_RET_CHECK(root_instruction() != instruction)
-      << "cannot remove root instruction";
-  TF_RET_CHECK(instruction->user_count() == 0)
-      << "instruction with users cannot be removed";
-
-  if (instruction_iterators_.count(instruction) == 0) {
-    return false;
-  }
+Status HloComputation::RemoveInstruction(HloInstruction* instruction) {
   VLOG(2) << "Removing instruction " << instruction->name()
           << " from computation " << name();
+  TF_RET_CHECK(IsRemovable(instruction->opcode()));
+  TF_RET_CHECK(root_instruction() != instruction)
+      << "cannot remove root instruction " << instruction->name();
+  TF_RET_CHECK(instruction->user_count() == 0)
+      << "instruction " << instruction->name()
+      << " has users and cannot be removed";
+
+  TF_RET_CHECK(instruction_iterators_.count(instruction) != 0);
   auto inst_it = instruction_iterators_.at(instruction);
   (*inst_it)->set_parent(nullptr);
   instruction->DetachFromOperands();
   instructions_.erase(inst_it);
-  return true;
-}
-
-Status HloComputation::RemoveInstruction(HloInstruction* instruction) {
-  TF_ASSIGN_OR_RETURN(bool removed, RemoveInstructionIfFound(instruction));
-  TF_RET_CHECK(removed) << instruction->ToString()
-                        << " is not a member of computation " << name();
   return Status::OK();
 }
 
@@ -511,17 +504,22 @@ HloComputation::ComputeTransitiveOperands() const {
 }
 
 Status HloComputation::Accept(DfsHloVisitor* visitor) const {
-  // Visit all dead roots.
+  // Visit all roots. Build a vector of roots ahead of time because visitor
+  // might delete the currently visited root which would invalidate the
+  // iterator.
+  std::vector<HloInstruction*> unreachable_roots;
   for (auto& instruction : instructions()) {
     if (instruction->user_count() == 0 &&
         instruction->control_successors().empty() &&
         instruction.get() != root_instruction()) {
-      // Call FinishVisit only at the end.
-      TF_RETURN_IF_ERROR(
-          instruction->Accept(visitor, /*call_finish_visit=*/false));
+      unreachable_roots.push_back(instruction.get());
     }
   }
-  // Visit root instruction last.
+  for (HloInstruction* root : unreachable_roots) {
+    // Call FinishVisit only at the end.
+    TF_RETURN_IF_ERROR(root->Accept(visitor, /*call_finish_visit=*/false));
+  }
+  // Visit the computation root instruction last.
   return root_instruction()->Accept(visitor, /*call_finish_visit=*/true);
 }
 

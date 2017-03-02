@@ -19,7 +19,7 @@
 #
 # The script obeys the following required environment variables:
 #   TF_BUILD_CONTAINER_TYPE:   (CPU | GPU | ANDROID | ANDROID_FULL)
-#   TF_BUILD_PYTHON_VERSION:   (PYTHON2 | PYTHON3 | PYTHON3.5)
+#   TF_BUILD_PYTHON_VERSION:   (PYTHON2 | PYTHON3)
 #   TF_BUILD_IS_PIP:           (NO_PIP | PIP | BOTH)
 #
 # The below environment variable is required, but will be deprecated together
@@ -33,8 +33,7 @@
 #   ANDROID & PIP    (Android and PIP builds are mutually exclusive)
 #
 #   2) TF_BUILD_PYTHON_VERSION is set to PYTHON3, the build will use the version
-# pointed to by "which python3" on the system, which is typically python3.4. To
-# build for python3.5, set the environment variable to PYTHON3.5
+# pointed to by "which python3" on the system.
 #
 #
 # Additionally, the script follows the directions of optional environment
@@ -84,7 +83,8 @@
 #                      support for Google Cloud Platform (GCP), which is
 #                      enabled by default.
 #   TF_BUILD_OPTIONS:
-#                     (FASTBUILD | OPT | OPTDBG | MAVX | MAVX2)
+#                     (FASTBUILD | OPT | OPTDBG | MAVX | MAVX2_FMA | MAVX_DBG |
+#                      MAVX2_FMA_DBG)
 #                     Use the specified configurations when building.
 #                     When set, overrides TF_BUILD_IS_OPT and TF_BUILD_MAVX
 #                     options, as this will replace the two.
@@ -305,11 +305,14 @@ else
     MAVX)
       OPT_FLAG="${OPT_FLAG} -c opt --copt=-mavx"
       ;;
-    MAVXDBG)
+    MAVX_DBG)
       OPT_FLAG="${OPT_FLAG} -c opt --copt=-g --copt=-mavx"
       ;;
-    MAVX2)
-      OPT_FLAG="${OPT_FLAG} -c opt --copt=-mavx2"
+    MAVX2_FMA)
+      OPT_FLAG="${OPT_FLAG} -c opt --copt=-mavx2 --copt=-mfma"
+      ;;
+    MAVX2_FMA_DBG)
+      OPT_FLAG="${OPT_FLAG} -c opt --copt=-g --copt=-mavx2 --copt=-mfma"
       ;;
   esac
 fi
@@ -377,12 +380,7 @@ if [[ ${TF_BUILD_IS_PIP} == "pip" ]] ||
     exit 0
   fi
 
-  PIP_MAIN_CMD="${MAIN_CMD} ${PIP_CMD} ${CTYPE} ${EXTRA_AGRS}"
-
-  # Add flag for mavx/mavx2
-  if [[ ! -z "${TF_BUILD_MAVX}" ]]; then
-    PIP_MAIN_CMD="${PIP_MAIN_CMD} --${TF_BUILD_MAVX}"
-  fi
+  PIP_MAIN_CMD="${MAIN_CMD} ${PIP_CMD} ${CTYPE} ${EXTRA_ARGS} ${OPT_FLAG}"
 
   # Add flag for integration tests
   if [[ ! -z "${TF_BUILD_INTEGRATION_TESTS}" ]] &&
@@ -422,9 +420,7 @@ fi
 # Process Python version
 if [[ ${TF_BUILD_PYTHON_VERSION} == "python2" ]]; then
   :
-elif [[ ${TF_BUILD_PYTHON_VERSION} == "python3" || \
-        ${TF_BUILD_PYTHON_VERSION} == "python3.4" || \
-        ${TF_BUILD_PYTHON_VERSION} == "python3.5" ]]; then
+elif [[ ${TF_BUILD_PYTHON_VERSION} == "python3" ]]; then
   # Supply proper environment variable to select Python 3
   if [[ "${DO_DOCKER}" == "1" ]]; then
     EXTRA_PARAMS="${EXTRA_PARAMS} -e CI_BUILD_PYTHON=${TF_BUILD_PYTHON_VERSION}"
@@ -491,30 +487,6 @@ echo ""
 
 TMP_DIR=""
 DOCKERFILE_FLAG=""
-if [[ "${TF_BUILD_PYTHON_VERSION}" == "python3.5" ]]; then
-  # Modify Dockerfile for Python3.5 build
-  TMP_DIR=$(mktemp -d)
-  echo "Docker build will occur in temporary directory: ${TMP_DIR}"
-
-  # Copy the files required for the docker build
-  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  cp -r "${SCRIPT_DIR}/install" "${TMP_DIR}/install" || \
-      die "ERROR: Failed to copy directory ${SCRIPT_DIR}/install"
-
-  DOCKERFILE="${SCRIPT_DIR}/Dockerfile.${TF_BUILD_CONTAINER_TYPE}"
-  cp "${DOCKERFILE}" "${TMP_DIR}/" || \
-      die "ERROR: Failed to copy Dockerfile at ${DOCKERFILE}"
-  DOCKERFILE="${TMP_DIR}/Dockerfile.${TF_BUILD_CONTAINER_TYPE}"
-
-  # Replace a line in the Dockerfile
-  sed -i \
-      's/RUN \/install\/install_pip_packages.sh/RUN \/install\/install_python3.5_pip_packages.sh/g' \
-      "${DOCKERFILE}" && \
-      echo "Copied and modified Dockerfile for Python 3.5 build: ${DOCKERFILE}" || \
-      die "ERROR: Faild to copy and modify Dockerfile: ${DOCKERFILE}"
-
-  DOCKERFILE_FLAG="--dockerfile ${DOCKERFILE}"
-fi
 
 chmod +x ${TMP_SCRIPT}
 

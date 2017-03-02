@@ -15,6 +15,10 @@ exports_files(["LICENSE"])
 
 LINKER_SCRIPT = "//tensorflow/contrib/android:jni/version_script.lds"
 
+# libtensorflow_demo.so contains the native code for image colorspace conversion
+# and object tracking used by the demo. It does not require TF as a dependency
+# to build if STANDALONE_DEMO_LIB is defined.
+# TF support for the demo is provided separately by libtensorflow_inference.so.
 cc_binary(
     name = "libtensorflow_demo.so",
     srcs = glob([
@@ -22,6 +26,7 @@ cc_binary(
         "jni/**/*.h",
     ]),
     copts = tf_copts(),
+    defines = ["STANDALONE_DEMO_LIB"],
     linkopts = [
         "-landroid",
         "-ljnigraphics",
@@ -39,15 +44,16 @@ cc_binary(
         "notap",
     ],
     deps = [
-        "//tensorflow/contrib/android:android_tensorflow_inference_jni",
-        "//tensorflow/core:android_tensorflow_lib",
         LINKER_SCRIPT,
     ],
 )
 
 cc_library(
     name = "tensorflow_native_libs",
-    srcs = [":libtensorflow_demo.so"],
+    srcs = [
+        ":libtensorflow_demo.so",
+        "//tensorflow/contrib/android:libtensorflow_inference.so",
+    ],
     tags = [
         "manual",
         "notap",

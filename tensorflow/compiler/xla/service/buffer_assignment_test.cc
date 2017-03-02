@@ -74,6 +74,17 @@ class BufferAssignmentTest : public HloTestBase {
   BufferAssignmentTest() : computation_tracker_() {}
   ~BufferAssignmentTest() override {}
 
+  std::unique_ptr<BufferAssignment> RunBufferAssignment(HloModule* module,
+                                                        int64 alignment = 1) {
+    return BufferAssigner::Run(
+               module, MakeUnique<DependencyHloOrdering>(module),
+               [this](const LogicalBuffer& buffer) {
+                 return backend_->compiler()->ShapeSizeBytes(buffer.shape());
+               },
+               alignment)
+        .ConsumeValueOrDie();
+  }
+
   // Builds an x+1.0 computation to use in a Map.
   std::unique_ptr<HloComputation> BuildMapComputationPlus1(const string& name) {
     auto builder = HloComputation::Builder(name);
@@ -234,15 +245,6 @@ class BufferAssignmentTest : public HloTestBase {
   Shape t_s32_f32v4_ = ShapeUtil::MakeTupleShape({s32_, f32vec4_});
   Shape t_s32_f32v10_ = ShapeUtil::MakeTupleShape({s32_, f32vec10_});
 };
-
-namespace {
-std::unique_ptr<BufferAssignment> RunBufferAssignment(HloModule* module,
-                                                      int64 alignment = 1) {
-  return BufferAssigner::Run(module, MakeUnique<DependencyHloOrdering>(module),
-                             /*pointer_size=*/sizeof(void*), alignment)
-      .ConsumeValueOrDie();
-}
-}
 
 // Tests a computation consisting of a single scalar constant node.
 TEST_F(BufferAssignmentTest, ScalarConstant) {

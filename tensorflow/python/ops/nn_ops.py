@@ -516,7 +516,7 @@ def convolution(input, filter,  # pylint: disable=redefined-builtin
   where `padded_input` is obtained by zero padding the input using an effective
   spatial filter shape of `(spatial_filter_shape-1) * dilation_rate + 1` and
   output striding `strides` as described in the
-  [comment here](https://www.tensorflow.org/api_docs/python/nn.html#convolution).
+  @{tf.nn.convolution$comment here}.
 
   In the case that `data_format` does start with `"NC"`, the `input` and output
   (but not the `filter`) are simply transposed as follows:
@@ -665,7 +665,7 @@ def pool(input,  # pylint: disable=redefined-builtin
 
   where the reduction function REDUCE depends on the value of `pooling_type`,
   and pad_before is defined based on the value of `padding` as described in the
-  [comment here](https://www.tensorflow.org/api_docs/python/nn.html#convolution).
+  @{tf.nn.convolution$comment here}.
   The reduction never includes out-of-bounds positions.
 
   In the case that `data_format` starts with `"NC"`, the `input` and output are
@@ -685,7 +685,7 @@ def pool(input,  # pylint: disable=redefined-builtin
     window_shape: Sequence of N ints >= 1.
     pooling_type: Specifies pooling operation, must be "AVG" or "MAX".
     padding: The padding algorithm, must be "SAME" or "VALID".
-      See the [comment here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
+      See the @{tf.nn.convolution$comment here}
     dilation_rate: Optional.  Dilation rate.  List of N ints >= 1.
       Defaults to [1]*N.  If any value of dilation_rate is > 1, then all values
       of strides must be 1.
@@ -1029,7 +1029,7 @@ def conv2d_transpose(value,
     strides: A list of ints. The stride of the sliding window for each
       dimension of the input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
-      See the [comment here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
+      See the @{tf.nn.convolution$comment here}
     data_format: A string. 'NHWC' and 'NCHW' are supported.
     name: Optional name for the returned tensor.
 
@@ -1246,7 +1246,7 @@ def conv3d_transpose(value,
     strides: A list of ints. The stride of the sliding window for each
       dimension of the input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
-      See the [comment here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
+      See the @{tf.nn.convolution$comment here}
     name: Optional name for the returned tensor.
 
   Returns:
@@ -1719,8 +1719,7 @@ def sparse_softmax_cross_entropy_with_logits(_sentinel=None,  # pylint: disable=
         return cost
 
     # Reshape logits to 2 dim, labels to 1 dim.
-    num_classes = array_ops.gather(array_ops.shape(logits),
-                                   array_ops.rank(logits) - 1)
+    num_classes = array_ops.shape(logits)[array_ops.rank(logits) - 1]
     precise_logits = array_ops.reshape(precise_logits, [-1, num_classes])
     labels = array_ops.reshape(labels, [-1])
     # The second output tensor contains the gradients.  We use it in
@@ -1750,7 +1749,7 @@ def avg_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
       The stride of the sliding window for each dimension of the
       input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
-      See the [comment here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
+      See the @{tf.nn.convolution$comment here}
     data_format: A string. 'NHWC' and 'NCHW' are supported.
     name: Optional name for the operation.
 
@@ -1778,7 +1777,7 @@ def max_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
     strides: A list of ints that has length >= 4.  The stride of the sliding
       window for each dimension of the input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
-      See the [comment here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
+      See the @{tf.nn.convolution$comment here}
     data_format: A string. 'NHWC' and 'NCHW' are supported.
     name: Optional name for the operation.
 
@@ -1906,7 +1905,7 @@ def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):  # pylint: di
     noise_shape: A 1-D `Tensor` of type `int32`, representing the
       shape for randomly generated keep/drop flags.
     seed: A Python integer. Used to create random seeds. See
-      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      @{tf.set_random_seed}
       for behavior.
     name: A name for this operation (optional).
 

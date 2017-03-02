@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/jit/legacy_flags/mark_for_compilation_pass_flags.h"
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
-#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/memory_types.h"
@@ -147,6 +147,12 @@ Status DeviceTypeOfDevice(const string& device, DeviceType* device_type) {
   return Status::OK();
 }
 
+// Does `node` have a DT_RESOURCE typed argument?
+bool HasResourceArgument(const Node& node) {
+  return std::find(node.input_types().begin(), node.input_types().end(),
+                   DT_RESOURCE) != node.input_types().end();
+}
+
 Status FindCompilationCandidates(
     const Graph& graph, FunctionLibraryDefinition* flib_def, Env* env,
     const std::function<bool(const Node*, const DeviceType&)>& is_compilable_fn,
@@ -164,14 +170,18 @@ Status FindCompilationCandidates(
 
     if (is_compilable_fn && !is_compilable_fn(node, device_type)) continue;
 
-    const string* jit_device_name;
-    CHECK(XlaOpRegistry::GetJitDevice(device_type.type(), &jit_device_name,
-                                      /*requires_jit=*/nullptr,
-                                      /*enable_jit_by_default=*/nullptr));
-    DeviceType jit_device_type(*jit_device_name);
+    const XlaOpRegistry::DeviceRegistration* registration;
+    CHECK(
+        XlaOpRegistry::GetCompilationDevice(device_type.type(), &registration));
+    DeviceType jit_device_type(registration->compilation_device_name);
     if (!HasXLAKernel(*node, jit_device_type) &&
         !IsCompilableCall(node->def(), jit_device_type, 0, lib_runtime.get())) {
       VLOG(2) << "Compilation rejected node: unsupported op " << node->name()
+              << ": " << node->def().op();
+      continue;
+    }
+    if (!registration->compile_resource_ops && HasResourceArgument(*node)) {
+      VLOG(2) << "Compilation rejected node: resource argument " << node->name()
               << ": " << node->def().op();
       continue;
     }
@@ -253,18 +263,17 @@ Cluster* Cluster::FindRoot() {
 
 bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef) {
   Device* device = flr->device();
-  const string* jit_device_name;
-  CHECK(XlaOpRegistry::GetJitDevice(device->device_type(), &jit_device_name,
-                                    /*requires_jit=*/nullptr,
-                                    /*enable_jit_by_default=*/nullptr));
-  DeviceType jit_device_type(*jit_device_name);
+  const XlaOpRegistry::DeviceRegistration* registration;
+  CHECK(XlaOpRegistry::GetCompilationDevice(device->device_type(),
+                                            &registration));
+  DeviceType jit_device_type(registration->compilation_device_name);
   return IsCompilableCall(ndef, jit_device_type, 0, flr);
 }
 
 Status MarkForCompilationPass::Run(
     const GraphOptimizationPassOptions& options) {
-  // TODO(phawkins): precompute the "GetJitDevice" properties each device ahead
-  // of time.
+  // TODO(phawkins): precompute the "GetCompilationDevice" properties of each
+  // device ahead of time.
   OptimizerOptions::GlobalJitLevel global_jit_level =
       options.session_options->config.graph_options()
           .optimizer_options()
@@ -285,14 +294,13 @@ Status MarkForCompilationPass::Run(
   const FunctionLibraryDefinition* fld = options.flib_def;
   auto is_compilable = [global_jit_level, fld](const Node* node,
                                                const DeviceType& device_type) {
-    const string* jit_device;
-    bool requires_jit, enable_jit_by_default;
-    if (!XlaOpRegistry::GetJitDevice(device_type.type(), &jit_device,
-                                     &requires_jit, &enable_jit_by_default)) {
+    const XlaOpRegistry::DeviceRegistration* registration;
+    if (!XlaOpRegistry::GetCompilationDevice(device_type.type(),
+                                             &registration)) {
       return false;
     }
     // If this device requires a JIT, we must say yes.
-    if (requires_jit) return true;
+    if (registration->requires_compilation) return true;
 
     // If there is a _XlaCompile annotation, use its value.
     bool compile = false;
@@ -303,7 +311,7 @@ Status MarkForCompilationPass::Run(
     if (status.ok()) return compile;
 
     // Otherwise use the value of global_jit_level.
-    return enable_jit_by_default && global_jit_level > 0;
+    return registration->enable_jit_by_default && global_jit_level > 0;
   };
   return RunImpl(options, is_compilable);
 }
@@ -325,7 +333,7 @@ Status MarkForCompilationPass::RunImpl(
   VLOG(1) << "MarkForCompilationPass::Run";
 
   // Make sure that kernels have been registered on the JIT device.
-  XlaOpRegistry::RegisterJitKernels();
+  XlaOpRegistry::RegisterCompilationKernels();
 
   Graph* graph = options.graph->get();
 
@@ -433,8 +441,12 @@ Status MarkForCompilationPass::RunImpl(
     if (node_from->IsControlFlow()) {
       // Control flow nodes aren't compilation candidates and should never
       // appear.
-      return errors::Internal("Found control flow node in clustering worklist");
+      return errors::Internal(
+          "Found control flow node in clustering worklist: ",
+          node_from->type_string());
     }
+    string from_scope;
+    string to_scope;
     for (int to : cycles.Successors(from)) {
       if (to >= graph->num_node_ids()) {
         // Node is a "frame" node that is present only in the cycle detection
@@ -442,10 +454,27 @@ Status MarkForCompilationPass::RunImpl(
         continue;
       }
       Node* node_to = graph->FindNodeId(to);
-      if (compilation_candidates.find(node_to) == compilation_candidates.cend())
+      if (compilation_candidates.find(node_to) ==
+          compilation_candidates.cend()) {
         continue;
-      if (node_from->assigned_device_name() != node_to->assigned_device_name())
+      }
+      if (node_from->assigned_device_name() !=
+          node_to->assigned_device_name()) {
         continue;
+      }
+      // Look for an _XlaScope on both nodes.  If both nodes have a
+      // scope and the scopes do not match, do not cluster along this
+      // edge.  If even one of the nodes lacks an _XlaScope attribute,
+      // then it is treated as a "bridge" and a cluster may be created
+      // along it.  We may want to restrict this behavior to require
+      // all nodes marked with _XlaCompile=true to also have a
+      // _XlaScope property set (and raise an error otherwise); but
+      // for now we don't do this.
+      if (GetNodeAttr(node_from->def(), kXlaScopeAttr, &from_scope).ok() &&
+          GetNodeAttr(node_to->def(), kXlaScopeAttr, &to_scope).ok() &&
+          from_scope != to_scope) {
+        continue;
+      }
 
       // Ops that consume shapes cannot be the root of a cluster. This is an
       // optimization.
@@ -507,18 +536,16 @@ Status MarkForCompilationPass::RunImpl(
 
     // Compile if this operator is placed on a device that requires
     // compilation.
-    bool requires_jit = false;
     DeviceType device_type("");
     TF_RETURN_IF_ERROR(
         DeviceTypeOfDevice(n->assigned_device_name(), &device_type));
-    XlaOpRegistry::GetJitDevice(device_type.type(),
-                                /*jit_device_name=*/nullptr, &requires_jit,
-                                /*enable_jit_by_default=*/nullptr);
+    const XlaOpRegistry::DeviceRegistration* registration;
+    XlaOpRegistry::GetCompilationDevice(device_type.type(), &registration);
 
     // Or compile if this is a cluster of >= min_cluster_size compilable
     // operators.
     if (cluster_sizes[cluster] >= min_cluster_size || marked_for_compilation ||
-        requires_jit) {
+        registration->requires_compilation) {
       string& name = cluster_names[cluster];
       if (name.empty()) {
         name = strings::StrCat("cluster_", cluster_sequence_num++);

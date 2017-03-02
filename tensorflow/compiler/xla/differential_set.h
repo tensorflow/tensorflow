@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_DIFFERENTIAL_SET_H_
 #define TENSORFLOW_COMPILER_XLA_DIFFERENTIAL_SET_H_
 
-#include <set>
+#include <unordered_set>
 
 #include "tensorflow/core/platform/macros.h"
 
@@ -50,7 +50,7 @@ class DifferentialSet {
 
  private:
   // Values held directly by this node in the chain of sets.
-  std::set<T> held_;
+  std::unordered_set<T> held_;
 
   // Parent node in the chain of sets.
   const DifferentialSet* parent_;

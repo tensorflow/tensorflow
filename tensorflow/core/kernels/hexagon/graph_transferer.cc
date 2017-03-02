@@ -19,6 +19,7 @@ limitations under the License.
 #include <cinttypes>
 
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/types.h"
@@ -65,6 +66,7 @@ Status GraphTransferer::LoadGraphFromProto(
     const GraphDef& graph_def,
     const std::vector<InputNodeInfo>& input_node_info_list,
     const std::vector<string>& output_node_names,
+    const bool shape_inference_for_unknown_shape,
     const OutputTensorMap& output_tensor_map) {
   ImportGraphDefOptions opts;
   Graph graph(OpRegistry::Global());
@@ -74,6 +76,45 @@ Status GraphTransferer::LoadGraphFromProto(
   if (!status.ok()) {
     VLOG(1) << "Failed to import graph " << status.ToString();
     return status;
+  }
+
+  if (shape_inference_for_unknown_shape && !input_node_info_list.empty()) {
+    auto visit = [&shape_refiner, &input_node_info_list, &status](Node* node) {
+      CHECK_NE(node, nullptr);
+      // If we visit an input node, we use the shape provided and set the
+      // shape accordingly.
+      bool is_input_node = false;
+      for (const InputNodeInfo& input_node_info : input_node_info_list) {
+        if (node->name() == input_node_info.name) {
+          shape_inference::InferenceContext* context =
+              shape_refiner.GetContext(node);
+          TensorShapeProto proto;
+          input_node_info.tensor.shape().AsProto(&proto);
+          shape_inference::ShapeHandle handle;
+          context->MakeShapeFromShapeProto(proto, &handle);
+          shape_refiner.SetShape(node, 0, handle);
+          is_input_node = true;
+        }
+      }
+      // If not an input node call AddNode() that recomputes the shape.
+      if (!is_input_node) {
+        status = shape_refiner.AddNode(node);
+        if (!status.ok()) {
+          VLOG(1) << "Shape inference failed for node: " << node->name();
+        }
+      }
+    };
+
+    // Runs a reverse DFS over the entire graph setting the shape for the input
+    // nodes provided and then recomputing the shape of all the nodes downstream
+    // from them. The "visit" function is executed for each node after all its
+    // parents have been visited.
+    ReverseDFS(graph, {}, visit);
+
+    if (!status.ok()) {
+      VLOG(1) << "Failed to run shape inference: " << status.ToString();
+      return status;
+    }
   }
 
   std::unordered_multimap<string, const Node*> op_name_to_node_multimap(
@@ -145,6 +186,7 @@ Status GraphTransferer::LoadGraphFromProtoFile(
     const string& graph_def_path,
     const std::vector<InputNodeInfo>& input_node_info_list,
     const std::vector<string>& output_node_names, const bool is_text_proto,
+    const bool shape_inference_for_unknown_shape,
     const bool dry_run_for_unknown_shape,
     OutputTensorInfo* output_tensor_info) {
   GraphDef graph_def;
@@ -172,9 +214,9 @@ Status GraphTransferer::LoadGraphFromProtoFile(
     }
   }
   VLOG(1) << "Load graph with output tensors";
-  return LoadGraphFromProto(ops_definitions, graph_def, input_node_info_list,
-                            output_node_names,
-                            output_tensor_info->output_tensor_map);
+  return LoadGraphFromProto(
+      ops_definitions, graph_def, input_node_info_list, output_node_names,
+      shape_inference_for_unknown_shape, output_tensor_info->output_tensor_map);
 }
 
 /**
@@ -354,6 +396,10 @@ const GraphTransferInfo& GraphTransferer::GetGraphTransferInfo() const {
   return graph_transfer_info_;
 }
 
+GraphTransferInfo& GraphTransferer::GetMutableGraphTransferInfo() {
+  return graph_transfer_info_;
+}
+
 int GraphTransferer::CacheNode(const Node& node) {
   if (node_name_to_id_cache_map_.count(node.name()) > 0) {
     VLOG(1) << "Emplace node to cache failed";
@@ -402,9 +448,6 @@ Status GraphTransferer::RegisterNode(
     return Status();
   } else if (IsInputNode(input_node_info_list, node.name())) {
     RegisterInputNode(ops_definitions, shape_refiner, output_tensor_map, node);
-  } else if (std::find(output_node_names.begin(), output_node_names.end(),
-                       node.name()) != output_node_names.end()) {
-    RegisterOutputNode(ops_definitions, shape_refiner, output_tensor_map, node);
   } else if (node.IsConstant()) {
     RegisterConstantNode(shape_refiner, node, output_tensor_map);
   } else if (HasPaddingAndStrides(node)) {
@@ -419,8 +462,9 @@ Status GraphTransferer::RegisterNode(
                         node);
   } else {
     return errors::InvalidArgument(node.type_string() +
-                                   " has not implemented yet.");
+                                   " has not been implemented yet.");
   }
+
   return Status();
 }
 
@@ -564,15 +608,15 @@ void GraphTransferer::RegisterNodeWithPaddingAndStrides(
   CHECK_GT(node.def().attr().count(PADDING_ATTR_NAME), 0);
   // TODO(satok): Use context->GetAttr(...) instead?
   Padding padding;
-  context->GetAttr(PADDING_ATTR_NAME, &padding);
+  TF_CHECK_OK(context->GetAttr(PADDING_ATTR_NAME, &padding));
   CHECK_GT(node.def().attr().count(STRIDES_ATTR_NAME), 0);
   std::vector<int32> strides;
-  context->GetAttr(STRIDES_ATTR_NAME, &strides);
+  TF_CHECK_OK(context->GetAttr(STRIDES_ATTR_NAME, &strides));
   const int stride_id = RegisterConstantShape(strides);
   std::vector<int> extra_inputs{stride_id};
   if (node.def().attr().count(KSIZE_ATTR_NAME) > 0) {
     std::vector<int32> kernel_sizes;
-    context->GetAttr(KSIZE_ATTR_NAME, &kernel_sizes);
+    TF_CHECK_OK(context->GetAttr(KSIZE_ATTR_NAME, &kernel_sizes));
     const int ksize_id = RegisterConstantShape(kernel_sizes);
     extra_inputs.insert(extra_inputs.begin(), ksize_id);
   }
@@ -596,30 +640,15 @@ void GraphTransferer::RegisterInputNode(
   VLOG(1) << "Register input node: " << node.name();
   CHECK_EQ(node_name_to_id_cache_map_.count(node.name()), 1);
   const int id = node_name_to_id_cache_map_[node.name()];
-  const string op_type = IGraphTransferOpsDefinitions::INPUT_OP_NAME;
+  const string op_type = node.type_string();
   const int op_type_id = ops_definitions.GetOpIdFor(op_type);
-  CHECK(op_type_id >= 0 && op_type_id < ops_definitions.GetTotalOpsCount());
+  CHECK(op_type_id >= 0 && op_type_id < ops_definitions.GetTotalOpsCount())
+      << "Op" << node.name() << ", " << op_type << " is not supported,"
+      << op_type_id;
   AppendNodeParamsWithIoParams(
       shape_refiner, output_tensor_map, node, node.name(), id,
       node.type_string(), op_type_id, PADDING_NA_ID, node.num_inputs(), {},
       node.num_outputs(), true /* append_input */, true /* append_output */);
-}
-
-void GraphTransferer::RegisterOutputNode(
-    const IGraphTransferOpsDefinitions& ops_definitions,
-    const ShapeRefiner& shape_refiner, const OutputTensorMap& output_tensor_map,
-    const Node& node) {
-  VLOG(1) << "Register output node: " << node.name();
-  CHECK_EQ(node_name_to_id_cache_map_.count(node.name()), 1);
-  const int id = node_name_to_id_cache_map_[node.name()];
-  const string op_type = IGraphTransferOpsDefinitions::OUTPUT_OP_NAME;
-  const int op_type_id = ops_definitions.GetOpIdFor(op_type);
-  CHECK(op_type_id >= 0 && op_type_id < ops_definitions.GetTotalOpsCount());
-  // TODO(satok): Set output for output node?
-  AppendNodeParamsWithIoParams(
-      shape_refiner, output_tensor_map, node, node.name(), id,
-      node.type_string(), op_type_id, PADDING_NA_ID, node.num_inputs(), {},
-      0 /* outputs_size */, true /* append_input */, false /* append_output */);
 }
 
 void GraphTransferer::RegisterFlattenNode(
@@ -729,22 +758,16 @@ void GraphTransferer::AppendNodeOutputParams(
       *graph_transfer_info_.add_node_output_info();
   node_output_info.set_node_id(id);
   for (int i = 0; i < node.num_outputs(); ++i) {
-    const Node* output_node = nullptr;
-    for (const Edge* const output_edge : node.out_edges()) {
-      if (output_edge->src_output() == i) {
-        output_node = output_edge->src();
-      }
-    }
-    CHECK(output_node != nullptr) << node.name() << ", " << node.type_string();
+    int data_size = -1;
     const int output_index = i;
     const DataType dt = node.output_type(output_index);
     const size_t max_bytes_per_data = DataTypeSize(dt);
+
     shape_inference::InferenceContext* context =
-        shape_refiner.GetContext(output_node);
+        shape_refiner.GetContext(&node);
     shape_inference::ShapeHandle shape_handle = context->output(output_index);
     const shape_inference::DimensionHandle num_elements_dim =
         context->NumElements(shape_handle);
-    int data_size = -1;
     if (context->ValueKnown(num_elements_dim)) {
       const int64 num_output_elements = context->Value(num_elements_dim);
       data_size = max_bytes_per_data * num_output_elements;

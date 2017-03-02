@@ -61,11 +61,11 @@ Status MatchSignatureHelper(const DataTypeSlice expected_inputs,
   }
 
   if (signature_mismatch) {
-    return errors::InvalidArgument("Signature mismatch, have: ",
-                                   DataTypeSliceString(inputs), "->",
-                                   DataTypeSliceString(outputs), " expected: ",
-                                   DataTypeSliceString(expected_inputs), "->",
-                                   DataTypeSliceString(expected_outputs));
+    return errors::InvalidArgument(
+        "Signature mismatch, have: ", DataTypeSliceString(inputs), "->",
+        DataTypeSliceString(outputs),
+        " expected: ", DataTypeSliceString(expected_inputs), "->",
+        DataTypeSliceString(expected_outputs));
   }
   return Status::OK();
 }
@@ -199,8 +199,13 @@ OpKernelContext::OpKernelContext(Params* params)
     : OpKernelContext(
           params, static_cast<int>(params->op_kernel->output_types().size())) {}
 
-OpKernelContext::OpKernelContext(Params* params, int noutputs)
-    : params_(params), outputs_(noutputs) {
+OpKernelContext::OpKernelContext(Params* params, int num_outputs)
+    : params_(params),
+      outputs_(num_outputs),
+      host_temp_memory_size_(0),
+      device_temp_memory_size_(0),
+      host_persistent_memory_allocated_(0),
+      device_persistent_memory_allocated_(0) {
   Allocator* eigen_gpu_allocator = get_allocator(AllocatorAttributes());
   params_->ensure_eigen_gpu_device();
   params_->device->ReinitializeGpuDevice(this, params_->eigen_gpu_device,
@@ -223,7 +228,7 @@ OpKernelContext::~OpKernelContext() {
 Allocator* OpKernelContext::get_allocator(AllocatorAttributes attr) {
   Allocator* allocator =
       params_->device->GetStepAllocator(attr, resource_manager());
-  if (params_->track_allocations) {
+  if (track_allocations()) {
     mutex_lock lock(mu_);
     for (const auto& wrapped : wrapped_allocators_) {
       if (wrapped.first == allocator) {
@@ -258,9 +263,9 @@ Status OpKernelContext::input(StringPiece name, const Tensor** tensor) {
                                    "' when single-valued input was "
                                    "expected");
   }
-  if ((*params_->inputs)[start].is_ref()) {
+  if (input_is_ref(start)) {
     return errors::InvalidArgument("OpKernel used ref input name '", name,
-                                   "' when immutable input was expected");
+                                   "' when non-ref input was expected");
   }
   *tensor = (*params_->inputs)[start].tensor;
   record_tensor_reference(**tensor);
@@ -299,8 +304,8 @@ Status OpKernelContext::input_ref_mutex(StringPiece name, mutex** out_mutex) {
 
 const Tensor& OpKernelContext::input(int index) {
   DCHECK_GE(index, 0);
-  DCHECK_LT(index, params_->inputs->size());
-  DCHECK(!(*params_->inputs)[index].is_ref());
+  DCHECK_LT(index, num_inputs());
+  DCHECK(!input_is_ref(index));
   const Tensor& tensor = *((*params_->inputs)[index].tensor);
   record_tensor_reference(tensor);
   return tensor;
@@ -308,8 +313,8 @@ const Tensor& OpKernelContext::input(int index) {
 
 Tensor OpKernelContext::mutable_input(int index, bool lock_held) {
   DCHECK_GE(index, 0);
-  DCHECK_LT(index, params_->inputs->size());
-  DCHECK((*params_->inputs)[index].is_ref());
+  DCHECK_LT(index, num_inputs());
+  DCHECK(input_is_ref(index));
   // return a copy of the Ref acquired while holding the mutex
   if (lock_held) {
     Tensor& tensor = *((*params_->inputs)[index].tensor);
@@ -326,8 +331,8 @@ Tensor OpKernelContext::mutable_input(int index, bool lock_held) {
 void OpKernelContext::replace_ref_input(int index, const Tensor& tensor,
                                         bool lock_held) {
   DCHECK_GE(index, 0);
-  DCHECK_LT(index, params_->inputs->size());
-  DCHECK((*params_->inputs)[index].is_ref());
+  DCHECK_LT(index, num_inputs());
+  DCHECK(input_is_ref(index));
   // should only modify the tensor while holding the mutex
   if (lock_held) {
     *(*params_->inputs)[index].tensor = tensor;
@@ -341,16 +346,113 @@ void OpKernelContext::replace_ref_input(int index, const Tensor& tensor,
 void OpKernelContext::forward_ref_input_to_ref_output(int input_index,
                                                       int output_index) {
   DCHECK_GE(input_index, 0);
-  DCHECK_LT(input_index, params_->inputs->size());
-  DCHECK((*params_->inputs)[input_index].is_ref());
+  DCHECK_LT(input_index, num_inputs());
+  DCHECK(input_is_ref(input_index));
   set_output_ref(output_index, (*params_->inputs)[input_index].mutex_if_ref,
                  (*params_->inputs)[input_index].tensor);
 }
 
+bool OpKernelContext::forward_input_to_output_with_shape(
+    int input_index, int output_index, const TensorShape& output_shape,
+    Tensor** output) {
+  const auto output_attr = params_->output_attr_array == nullptr
+                               ? AllocatorAttributes()
+                               : output_alloc_attr(output_index);
+  std::unique_ptr<Tensor> new_tensor = forward_input(
+      input_index, expected_output_dtype(output_index), output_shape,
+      output_memory_type(output_index), output_attr);
+  if (new_tensor != nullptr) {
+    // Transfer ownership to the output slot in OpKernelContext.
+    outputs_[output_index] = TensorValue(new_tensor.release());
+    *output = outputs_[output_index].tensor;
+    return true;
+  } else {
+    return false;
+  }
+}
+
+Status OpKernelContext::forward_input_to_output_with_shape(
+    StringPiece input_name, StringPiece output_name,
+    const TensorShape& output_shape, Tensor** output) {
+  int input_index, output_index, stop;
+  TF_RETURN_IF_ERROR(
+      params_->op_kernel->InputRange(input_name, &input_index, &stop));
+  if (stop != input_index + 1) {
+    return errors::InvalidArgument("OpKernel used list-valued input name '",
+                                   input_name,
+                                   "' when single-valued input was "
+                                   "expected");
+  }
+  TF_RETURN_IF_ERROR(
+      params_->op_kernel->OutputRange(output_name, &output_index, &stop));
+  if (stop != output_index + 1) {
+    return errors::InvalidArgument("OpKernel used list-valued output name '",
+                                   output_name,
+                                   "' when single-valued output was "
+                                   "expected");
+  }
+  if (!forward_input_to_output_with_shape(input_index, output_index,
+                                          output_shape, output)) {
+    return errors::FailedPrecondition("OpKernel could not forward input '",
+                                      input_name, "' to output '", output_name);
+  }
+  return Status::OK();
+}
+
+std::unique_ptr<Tensor> OpKernelContext::forward_input(
+    int input_index, DataType output_dtype, const TensorShape& output_shape,
+    MemoryType output_memory_type, const AllocatorAttributes& output_attr) {
+  // TODO(rmlarsen,zhengxq): Re-enable for GPU memory once kernels have been
+  // made forwarding aware or decorated to expose which inputs they rely on
+  // to access via the read-only texture cache.
+  // TODO(rmlarsen): Short term, move disabling logic into the kernels
+  // themselves for fine-grained control.
+  DCHECK(params_->device != nullptr);
+  if (output_memory_type == DEVICE_MEMORY &&
+      params_->device->attributes().device_type() == DEVICE_GPU) {
+    return nullptr;
+  }
+
+  DCHECK_GE(input_index, 0);
+  DCHECK_LT(input_index, num_inputs());
+  const TensorValue& input = (*params_->inputs)[input_index];
+  // Check that input tensor exists, is not a ref, and has no other consumers.
+  if (input.tensor == nullptr || input.is_ref() || !input->RefCountIsOne()) {
+    return nullptr;
+  }
+  // Check that input type matches.
+  if (input_dtype(input_index) != output_dtype) {
+    return nullptr;
+  }
+  // Check that the input and output sizes are compatible.
+  if (input.tensor->shape().num_elements() != output_shape.num_elements()) {
+    return nullptr;
+  }
+  // Check that input and output memory types match, i.e.
+  // that they either both live in host or both live in device memmory.
+  if (input_memory_type(input_index) != output_memory_type) {
+    return nullptr;
+  }
+  // Check that output allocator attributes are not more restrictive than
+  // input allocator attributes.
+  const auto input_attr = params_->input_alloc_attrs == nullptr
+                              ? AllocatorAttributes()
+                              : input_alloc_attr(input_index);
+  if (!output_attr.IsEqualOrLessRestrictiveThan(input_attr)) {
+    return nullptr;
+  }
+  // TODO(rmlarsen): Use MakeUnique here. There is already a copy in
+  // tensorflow/compiler/xla/ptr_util.h. Perhaps this should be part of
+  // general cleanup of ownership in this code.
+  std::unique_ptr<Tensor> output_tensor(new Tensor());
+  CHECK(output_tensor->CopyFrom(*input.tensor, output_shape));
+  return output_tensor;
+}
+
 void OpKernelContext::delete_ref_input(int index, bool lock_held) {
   DCHECK_GE(index, 0);
-  DCHECK_LT(index, params_->inputs->size());
-  DCHECK((*params_->inputs)[index].is_ref());
+  DCHECK_LT(index, num_inputs());
+  DCHECK(input_is_ref(index));
   // should only modify the tensor while holding the mutex
   if (lock_held) {
     delete (*params_->inputs)[index].tensor;
@@ -369,8 +471,8 @@ Status OpKernelContext::mutable_input(StringPiece name, Tensor* tensor,
                                    name,
                                    "' when single-valued input was expected");
   }
-  if (!(*params_->inputs)[start].is_ref()) {
-    return errors::InvalidArgument("OpKernel used immutable input name '", name,
+  if (!input_is_ref(start)) {
+    return errors::InvalidArgument("OpKernel used non-ref input name '", name,
                                    "' when ref input was expected");
   }
   // return a copy of the Ref acquired while holding the mutex
@@ -394,7 +496,7 @@ Status OpKernelContext::replace_ref_input(StringPiece name,
                                    name,
                                    "' when single-valued input was expected");
   }
-  if (!(*params_->inputs)[start].is_ref()) {
+  if (!input_is_ref(start)) {
     return errors::InvalidArgument("OpKernel used immutable input name '", name,
                                    "' when ref input was expected");
   }
@@ -505,6 +607,18 @@ Status OpKernelContext::allocate_temp(
     const AllocationAttributes& allocation_attr) {
   Status s =
       allocate_tensor(type, shape, out_temp, allocator_attr, allocation_attr);
+  if (track_allocations()) {
+    Allocator* a = get_allocator(allocator_attr);
+    if (a->TracksAllocationSizes()) {
+      int64 alloc_size =
+          a->AllocatedSize(const_cast<char*>(out_temp->tensor_data().data()));
+      if (allocate_on_host(allocator_attr)) {
+        record_host_temp_memory_size(alloc_size);
+      } else {
+        record_device_temp_memory_size(alloc_size);
+      }
+    }
+  }
   return s;
 }
 
@@ -513,13 +627,30 @@ Status OpKernelContext::allocate_persistent(DataType type,
                                             PersistentTensor* out_persistent,
                                             Tensor** out_tensor,
                                             AllocatorAttributes attr) {
-  // TODO(misard) add specific memory tracking for persistent tensors
   Tensor persistent;
   Status s = allocate_tensor(type, shape, &persistent, attr);
   if (s.ok()) {
     *out_persistent = PersistentTensor(persistent);
     if (out_tensor) {
       *out_tensor = out_persistent->AccessTensor(this);
+    }
+  }
+  if (track_allocations()) {
+    Allocator* a = get_allocator(attr);
+    if (a->TracksAllocationSizes()) {
+      int64 alloc_size =
+          a->AllocatedSize(const_cast<char*>(persistent.tensor_data().data()));
+      int64 alloc_id =
+          a->AllocationId(const_cast<char*>(persistent.tensor_data().data()));
+      if (allocate_on_host(attr)) {
+        record_host_persistent_memory_allocation(alloc_size, alloc_id);
+        // This function has called allocate_temp(), so we need to deduct the
+        // recorded temp memory size.
+        record_host_temp_memory_size(-alloc_size);
+      } else {
+        record_device_persistent_memory_allocation(alloc_size, alloc_id);
+        record_device_temp_memory_size(-alloc_size);
+      }
     }
   }
   return s;
@@ -620,6 +751,32 @@ Status OpKernelContext::MatchSignature(const DataTypeSlice expected_inputs,
   DataTypeVector outputs = params_->op_kernel->output_types();
   return MatchSignatureHelper(expected_inputs, expected_outputs, inputs,
                               outputs);
+}
+
+bool OpKernelContext::allocate_on_host(AllocatorAttributes alloc_attr) const {
+  return alloc_attr.on_host() || device()->attributes().device_type() == "CPU";
+}
+
+void OpKernelContext::record_host_persistent_memory_allocation(int64 size,
+                                                               int64 alloc_id) {
+  host_persistent_memory_allocated_ += size;
+  host_persistent_alloc_ids_.push_back(alloc_id);
+}
+
+void OpKernelContext::record_device_persistent_memory_allocation(
+    int64 size, int64 alloc_id) {
+  device_persistent_memory_allocated_ += size;
+  device_persistent_alloc_ids_.push_back(alloc_id);
+}
+
+std::vector<int64> OpKernelContext::host_persistent_alloc_ids() const {
+  return std::vector<int64>(host_persistent_alloc_ids_.begin(),
+                            host_persistent_alloc_ids_.end());
+}
+
+std::vector<int64> OpKernelContext::device_persistent_alloc_ids() const {
+  return std::vector<int64>(device_persistent_alloc_ids_.begin(),
+                            device_persistent_alloc_ids_.end());
 }
 
 // OpKernel registration ------------------------------------------------------
@@ -738,7 +895,7 @@ Status FindKernelRegistration(DeviceType device_type, const NodeDef& node_def,
   *reg = nullptr;
   *was_attr_mismatch = false;
   string label;  // Label defaults to empty if not found in NodeDef.
-  GetNodeAttr(node_def, "_kernel", &label);
+  GetNodeAttr(node_def, "_kernel", &label).IgnoreError();
   const string key = Key(node_def.op(), device_type, label);
   auto regs = GlobalKernelRegistryTyped()->equal_range(key);
   for (auto iter = regs.first; iter != regs.second; ++iter) {
@@ -779,8 +936,8 @@ Status FindKernelDef(DeviceType device_type, const NodeDef& node_def,
       errors::AppendToMessage(
           &s, " (OpKernel was found, but attributes didn't match)");
     }
-    errors::AppendToMessage(&s, ".  Registered:",
-                            KernelsRegisteredForOp(node_def.op()));
+    errors::AppendToMessage(
+        &s, ".  Registered:", KernelsRegisteredForOp(node_def.op()));
     return s;
   }
   if (def != nullptr) *def = &reg->def;
@@ -884,8 +1041,8 @@ Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
       errors::AppendToMessage(
           &s, " (OpKernel was found, but attributes didn't match)");
     }
-    errors::AppendToMessage(&s, ".  Registered:",
-                            KernelsRegisteredForOp(node_def.op()));
+    errors::AppendToMessage(
+        &s, ".  Registered:", KernelsRegisteredForOp(node_def.op()));
     return s;
   }
 
@@ -948,9 +1105,9 @@ Status ValidateKernelRegistrations(const OpRegistryInterface& op_registry) {
     for (const auto& host_memory_arg : kernel_def.host_memory_arg()) {
       if (!FindArgInOp(host_memory_arg, op_def.input_arg()) &&
           !FindArgInOp(host_memory_arg, op_def.output_arg())) {
-        return errors::InvalidArgument("HostMemory arg '", host_memory_arg,
-                                       "' not found in OpDef: ",
-                                       SummarizeOpDef(op_def));
+        return errors::InvalidArgument(
+            "HostMemory arg '", host_memory_arg,
+            "' not found in OpDef: ", SummarizeOpDef(op_def));
       }
     }
   }

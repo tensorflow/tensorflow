@@ -9,6 +9,8 @@ package(
     default_visibility = ["//tensorflow:__subpackages__"],
 )
 
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 py_binary(
     name = "gen_cc_md",
     srcs = ["gen_cc_md.py"],
@@ -60,39 +62,77 @@ py_test(
 )
 
 py_binary(
-    name = "generate",
-    srcs = ["generate.py"],
+    name = "generate_lib",
+    srcs = ["generate_lib.py"],
     srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow:tensorflow_py",
+        ":doc_generator_visitor",
+        ":parser",
+        ":py_guide_parser",
+        "//tensorflow/contrib/ffmpeg:ffmpeg_ops_py",
         "//tensorflow/tools/common:public_api",
         "//tensorflow/tools/common:traverse",
-        "//tensorflow/tools/docs:doc_generator_visitor",
-        "//tensorflow/tools/docs:parser",
     ],
 )
 
 py_test(
-    name = "generate_test",
+    name = "generate_lib_test",
     size = "small",
     srcs = [
-        "generate_test.py",
+        "generate_lib_test.py",
     ],
     srcs_version = "PY2AND3",
     tags = ["manual"],
     deps = [
-        ":generate",
+        ":generate_lib",
+        ":parser",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python/debug:debug_py",
     ],
 )
 
 py_binary(
-    name = "make_py_guides",
-    srcs = ["make_py_guides.py"],
+    name = "generate",
+    srcs = ["generate.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/tools/docs:generate",
-        "//tensorflow/tools/docs:parser",
+        ":generate_lib",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python/debug:debug_py",
+    ],
+)
+
+py_binary(
+    name = "generate_1_0",
+    srcs = ["generate_1_0.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":generate_lib",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python/debug:debug_py",
+    ],
+)
+
+py_library(
+    name = "py_guide_parser",
+    srcs = [
+        "py_guide_parser.py",
+    ],
+    srcs_version = "PY2AND3",
+)
+
+py_test(
+    name = "py_guide_parser_test",
+    size = "small",
+    srcs = [
+        "py_guide_parser_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":py_guide_parser",
+        "//tensorflow/python:client_testlib",
     ],
 )
 
@@ -121,6 +161,10 @@ sh_test(
         ":gen_docs",
         "//tensorflow/core:all_files",
         "//tensorflow/python:all_files",
+    ],
+    tags = [
+        "manual",
+        "notap",
     ],
 )
 

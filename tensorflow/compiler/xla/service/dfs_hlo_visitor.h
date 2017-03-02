@@ -150,6 +150,10 @@ class DfsHloVisitor {
   virtual Status HandleTanh(HloInstruction* tanh, HloInstruction* operand) {
     return HandleElementwiseUnary(tanh, HloOpcode::kTanh, operand);
   }
+  virtual Status HandleIsFinite(HloInstruction* is_finite,
+                                HloInstruction* operand) {
+    return HandleElementwiseUnary(is_finite, HloOpcode::kIsFinite, operand);
+  }
   virtual Status HandleLogicalAnd(HloInstruction* logical_and,
                                   HloInstruction* lhs, HloInstruction* rhs) {
     return HandleElementwiseBinary(logical_and, HloOpcode::kLogicalAnd, lhs,

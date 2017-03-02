@@ -386,6 +386,9 @@ message InfeedRequest {
 }
 
 message OutfeedRequest {
+  // The shape of the data returned by reading the device's outfeed buffer.
+  Shape shape = 1;
+
   // Operand to the Outfeed. Supports tuple.
   ComputationDataHandle operand = 2;
 
@@ -555,6 +558,9 @@ enum UnaryOperation {
 
   // Elementwise, computes the sign of x.
   UNOP_SIGN = 10;
+
+  // Elementwise, tests if values are finite (not NaN or inf)
+  UNOP_IS_FINITE = 11;
 }
 
 message UnaryOpRequest {

@@ -111,7 +111,7 @@ class HloComputation {
   // Returns the parameter instruction for the given parameter number.
   HloInstruction* parameter_instruction(int64 param_no) const {
     CHECK_GE(param_no, 0);
-    CHECK_LT(param_no, param_instructions_.size());
+    CHECK_LT(param_no, static_cast<int64>(param_instructions_.size()));
     return param_instructions_[param_no];
   }
 
@@ -237,11 +237,6 @@ class HloComputation {
   // Internal helper for adding instructions.
   HloInstruction* AddInstructionInternal(
       std::unique_ptr<HloInstruction> instruction);
-
-  // Remove an instruction from the computation if found. The instruction must
-  // have no users. Instruction is deallocated with this call.
-  // Return whether instruction was found and removed.
-  StatusOr<bool> RemoveInstructionIfFound(HloInstruction* instruction);
 
   // Fuses HLOs in instructions_to_fuse into fusion_instruction.
   //

@@ -19,14 +19,8 @@ from __future__ import print_function
 
 import json
 import os
-import sys
 import tempfile
 import threading
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import experiment
@@ -325,7 +319,7 @@ class ExperimentTest(test.TestCase):
             StopIteration,
             ex.continuous_eval,
             evaluate_checkpoint_only_once=False)
-        self.assertAlmostEqual(5 * delay, sheep.total_time, delta=0.1)
+        self.assertAlmostEqual(5 * delay, sheep.total_time, delta=0.15)
 
   def test_continuous_eval_predicate_fn(self):
     est = TestEstimator()

@@ -58,8 +58,8 @@ from tensorflow.python.util import compat
 _VARIABLE_OPS = set(["Variable",
                      "VariableV2",
                      "AutoReloadVariable",
-                     "ReadVariableOp",
-                     "ResourceGather"])
+                     "VarHandleOp",
+                     "ReadVariableOp"])
 
 
 def _set_cpu0(device_string):
@@ -872,7 +872,7 @@ def get_checkpoint_state(checkpoint_dir, latest_filename=None):
 class Saver(object):
   """Saves and restores variables.
 
-  See [Variables](../../how_tos/variables/index.md)
+  See @{$variables$Variables}
   for an overview of variables, saving and restoring.
 
   The `Saver` class adds ops to save and restore variables to and from
@@ -941,17 +941,6 @@ class Saver(object):
 
   If you create several savers, you can specify a different filename for the
   protocol buffer file in the call to `save()`.
-
-  @@__init__
-  @@save
-  @@restore
-
-  Other utility methods.
-
-  @@last_checkpoints
-  @@set_last_checkpoints_with_time
-  @@recover_last_checkpoints
-  @@as_saver_def
   """
 
   def __init__(self,
@@ -1223,11 +1212,23 @@ class Saver(object):
     Returns:
       A `SaverDef` protocol buffer.
     """
-    if (export_scope is None or
-        self._name.startswith(export_scope)):
+    if export_scope is None:
       return self.saver_def
-    else:
+
+    if not (self.saver_def.filename_tensor_name.startswith(export_scope) and
+            self.saver_def.save_tensor_name.startswith(export_scope) and
+            self.saver_def.restore_op_name.startswith(export_scope)):
       return None
+
+    saver_def = saver_pb2.SaverDef()
+    saver_def.CopyFrom(self.saver_def)
+    saver_def.filename_tensor_name = ops.strip_name_scope(
+        saver_def.filename_tensor_name, export_scope)
+    saver_def.save_tensor_name = ops.strip_name_scope(
+        saver_def.save_tensor_name, export_scope)
+    saver_def.restore_op_name = ops.strip_name_scope(
+        saver_def.restore_op_name, export_scope)
+    return saver_def
 
   @staticmethod
   def from_proto(saver_def, import_scope=None):

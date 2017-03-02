@@ -19,12 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import itertools
-import sys
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 import numpy as np
 
@@ -604,6 +598,7 @@ class RNNCellTest(test.TestCase):
         dtype=np.float32)
     seed = 12345
     random_seed.set_random_seed(seed)
+    rnn_scope = None
     for state_is_tuple in [False, True]:
       with session.Session() as sess:
         with variable_scope.variable_scope(
@@ -613,6 +608,12 @@ class RNNCellTest(test.TestCase):
               num_units, state_is_tuple=state_is_tuple)
           cell = rnn_cell.AttentionCellWrapper(
               lstm_cell, attn_length, state_is_tuple=state_is_tuple)
+          # This is legacy behavior to preserve the test.  Weight
+          # sharing no longer works by creating a new RNNCell in the
+          # same variable scope; so here we restore the scope of the
+          # RNNCells after the first use below.
+          if rnn_scope is not None:
+            (cell._scope, lstm_cell._scope) = rnn_scope  # pylint: disable=protected-access,unpacking-non-sequence
           zeros1 = random_ops.random_uniform(
               (batch_size, num_units), 0.0, 1.0, seed=seed + 1)
           zeros2 = random_ops.random_uniform(
@@ -629,12 +630,131 @@ class RNNCellTest(test.TestCase):
           inputs = random_ops.random_uniform(
               (batch_size, num_units), 0.0, 1.0, seed=seed + 5)
           output, state = cell(inputs, zero_state)
+          # This is legacy behavior to preserve the test.  Weight
+          # sharing no longer works by creating a new RNNCell in the
+          # same variable scope; so here we store the scope of the
+          # first RNNCell for reuse above.
+          if rnn_scope is None:
+            rnn_scope = (cell._scope, lstm_cell._scope)  # pylint: disable=protected-access
           if state_is_tuple:
             state = array_ops.concat(
                 [state[0][0], state[0][1], state[1], state[2]], 1)
           sess.run(variables.global_variables_initializer())
           self.assertAllClose(sess.run(output), expected_output)
           self.assertAllClose(sess.run(state), expected_state)
+
+  def testNASCell(self):
+    num_units = 6
+    batch_size = 3
+    expected_output = np.array([[0.576751, 0.576751, 0.576751, 0.576751,
+                                 0.576751, 0.576751],
+                                [0.618936, 0.618936, 0.618936, 0.618936,
+                                 0.618936, 0.618936],
+                                [0.627393, 0.627393, 0.627393, 0.627393,
+                                 0.627393, 0.627393]])
+    expected_state = np.array([[0.71579772, 0.71579772, 0.71579772, 0.71579772,
+                                0.71579772, 0.71579772, 0.57675087, 0.57675087,
+                                0.57675087, 0.57675087, 0.57675087, 0.57675087],
+                               [0.78041625, 0.78041625, 0.78041625, 0.78041625,
+                                0.78041625, 0.78041625, 0.6189357, 0.6189357,
+                                0.61893570, 0.6189357, 0.6189357, 0.6189357],
+                               [0.79457647, 0.79457647, 0.79457647, 0.79457647,
+                                0.79457653, 0.79457653, 0.62739348, 0.62739348,
+                                0.62739348, 0.62739348, 0.62739348, 0.62739348]
+                              ])
+    with self.test_session() as sess:
+      with variable_scope.variable_scope(
+          "nas_test",
+          initializer=init_ops.constant_initializer(0.5)):
+        cell = rnn_cell.NASCell(
+            num_units=num_units)
+        inputs = constant_op.constant(
+            np.array([[1., 1., 1., 1.],
+                      [2., 2., 2., 2.],
+                      [3., 3., 3., 3.]],
+                     dtype=np.float32),
+            dtype=dtypes.float32)
+        state_value = constant_op.constant(
+            0.1 * np.ones(
+                (batch_size, num_units), dtype=np.float32),
+            dtype=dtypes.float32)
+        init_state = core_rnn_cell_impl.LSTMStateTuple(state_value,
+                                                       state_value)
+        output, state = cell(inputs, init_state)
+        sess.run([variables.global_variables_initializer()])
+        res = sess.run([output, state])
+
+        # This is a smoke test: Only making sure expected values not change.
+        self.assertEqual(len(res), 2)
+        self.assertAllClose(res[0], expected_output)
+        # There should be 2 states in the tuple.
+        self.assertEqual(len(res[1]), 2)
+        # Checking the shape of each state to be batch_size * num_units
+        new_c, new_h = res[1]
+        self.assertEqual(new_c.shape[0], batch_size)
+        self.assertEqual(new_c.shape[1], num_units)
+        self.assertEqual(new_h.shape[0], batch_size)
+        self.assertEqual(new_h.shape[1], num_units)
+        self.assertAllClose(np.concatenate(res[1], axis=1), expected_state)
+
+  def testNASCellProj(self):
+    num_units = 6
+    batch_size = 3
+    num_proj = 5
+    expected_output = np.array([[1.697418, 1.697418, 1.697418, 1.697418,
+                                 1.697418],
+                                [1.840037, 1.840037, 1.840037, 1.840037,
+                                 1.840037],
+                                [1.873985, 1.873985, 1.873985, 1.873985,
+                                 1.873985]])
+    expected_state = np.array([[0.69855207, 0.69855207, 0.69855207, 0.69855207,
+                                0.69855207, 0.69855207, 1.69741797, 1.69741797,
+                                1.69741797, 1.69741797, 1.69741797],
+                               [0.77073824, 0.77073824, 0.77073824, 0.77073824,
+                                0.77073824, 0.77073824, 1.84003687, 1.84003687,
+                                1.84003687, 1.84003687, 1.84003687],
+                               [0.78973997, 0.78973997, 0.78973997, 0.78973997,
+                                0.78973997, 0.78973997, 1.87398517, 1.87398517,
+                                1.87398517, 1.87398517, 1.87398517]])
+    with self.test_session() as sess:
+      with variable_scope.variable_scope(
+          "nas_proj_test",
+          initializer=init_ops.constant_initializer(0.5)):
+        cell = rnn_cell.NASCell(
+            num_units=num_units,
+            num_proj=num_proj)
+        inputs = constant_op.constant(
+            np.array([[1., 1., 1., 1.],
+                      [2., 2., 2., 2.],
+                      [3., 3., 3., 3.]],
+                     dtype=np.float32),
+            dtype=dtypes.float32)
+        state_value_c = constant_op.constant(
+            0.1 * np.ones(
+                (batch_size, num_units), dtype=np.float32),
+            dtype=dtypes.float32)
+        state_value_h = constant_op.constant(
+            0.1 * np.ones(
+                (batch_size, num_proj), dtype=np.float32),
+            dtype=dtypes.float32)
+        init_state = core_rnn_cell_impl.LSTMStateTuple(state_value_c,
+                                                       state_value_h)
+        output, state = cell(inputs, init_state)
+        sess.run([variables.global_variables_initializer()])
+        res = sess.run([output, state])
+
+        # This is a smoke test: Only making sure expected values not change.
+        self.assertEqual(len(res), 2)
+        self.assertAllClose(res[0], expected_output)
+        # There should be 2 states in the tuple.
+        self.assertEqual(len(res[1]), 2)
+        # Checking the shape of each state to be batch_size * num_units
+        new_c, new_h = res[1]
+        self.assertEqual(new_c.shape[0], batch_size)
+        self.assertEqual(new_c.shape[1], num_units)
+        self.assertEqual(new_h.shape[0], batch_size)
+        self.assertEqual(new_h.shape[1], num_proj)
+        self.assertAllClose(np.concatenate(res[1], axis=1), expected_state)
 
 
 class LayerNormBasicLSTMCellTest(test.TestCase):
@@ -717,11 +837,8 @@ class LayerNormBasicLSTMCellTest(test.TestCase):
         c1 = array_ops.zeros([1, 2])
         h1 = array_ops.zeros([1, 2])
         state1 = core_rnn_cell_impl.LSTMStateTuple(c1, h1)
-        def single_cell():
-          return rnn_cell.LayerNormBasicLSTMCell(2)
-
         cell = core_rnn_cell_impl.MultiRNNCell(
-            [single_cell() for _ in range(2)])
+            [rnn_cell.LayerNormBasicLSTMCell(2) for _ in range(2)])
         h, (s0, s1) = cell(x, (state0, state1))
         sess.run([variables.global_variables_initializer()])
         res = sess.run([h, s0, s1], {
@@ -849,7 +966,7 @@ class CompiledWrapperTest(test.TestCase):
     num_layers = 2
     max_time = 20
 
-    atol = 1e-6
+    atol = 1e-5
 
     random_seed.set_random_seed(1234)
     with self.test_session(graph=ops.Graph()) as sess:

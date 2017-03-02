@@ -49,7 +49,6 @@ if(tensorflow_BUILD_CONTRIB_KERNELS)
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/kernels/reinterpret_string_to_float_op.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/kernels/sample_inputs_op.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/kernels/scatter_add_ndim_op.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/kernels/topn_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/kernels/tree_predictions_op.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/kernels/tree_utils.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/kernels/update_fertile_slots_op.cc"
@@ -82,8 +81,6 @@ file(GLOB_RECURSE tf_core_kernels_exclude_srcs
    "${tensorflow_source_dir}/tensorflow/core/kernels/*testutil.cc"
    "${tensorflow_source_dir}/tensorflow/core/kernels/*main.cc"
    "${tensorflow_source_dir}/tensorflow/core/kernels/*.cu.cc"
-   "${tensorflow_source_dir}/tensorflow/core/kernels/debug_ops.h"  # stream_executor dependency
-   "${tensorflow_source_dir}/tensorflow/core/kernels/debug_ops.cc"  # stream_executor dependency
    "${tensorflow_source_dir}/tensorflow/core/kernels/hexagon/*"
    "${tensorflow_source_dir}/tensorflow/core/kernels/remote_fused_graph_execute*.cc"
 )

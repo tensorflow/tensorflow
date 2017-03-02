@@ -126,8 +126,8 @@ Status GraphToFunctionDef(const Graph& graph, const string& name,
     if (node->type_string() == kArgOp) {
       int index;
       DataType type;
-      GetNodeAttr(node->def(), "T", &type);
-      GetNodeAttr(node->def(), "index", &index);
+      TF_RETURN_IF_ERROR(GetNodeAttr(node->def(), "T", &type));
+      TF_RETURN_IF_ERROR(GetNodeAttr(node->def(), "index", &index));
       while (fdef->signature().input_arg_size() <= index) {
         fdef->mutable_signature()->add_input_arg();
       }
@@ -143,8 +143,8 @@ Status GraphToFunctionDef(const Graph& graph, const string& name,
     if (node->type_string() == kRetValOp) {
       int index;
       DataType type;
-      GetNodeAttr(node->def(), "T", &type);
-      GetNodeAttr(node->def(), "index", &index);
+      TF_RETURN_IF_ERROR(GetNodeAttr(node->def(), "T", &type));
+      TF_RETURN_IF_ERROR(GetNodeAttr(node->def(), "index", &index));
       while (fdef->signature().output_arg_size() <= index) {
         fdef->mutable_signature()->add_output_arg();
       }
@@ -185,7 +185,7 @@ Status GraphToFunctionDef(const Graph& graph, const string& name,
     }
 
     // Add regular inputs
-    for (int i = 0; i < in_edges.size(); ++i) {
+    for (std::vector<const Edge*>::size_type i = 0; i < in_edges.size(); ++i) {
       const Edge* edge = in_edges[i];
       if (edge == nullptr) {
         return errors::InvalidArgument(

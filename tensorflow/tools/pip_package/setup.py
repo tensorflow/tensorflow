@@ -29,7 +29,7 @@ from setuptools.dist import Distribution
 # This version string is semver compatible, but incompatible with pip.
 # For pip, we will remove all '-' characters from this string, and use the
 # result for pip.
-_VERSION = '1.0.0-rc2'
+_VERSION = '1.0.0'
 
 REQUIRED_PACKAGES = [
     'numpy >= 1.11.0',
@@ -154,9 +154,9 @@ matches = ['../' + x for x in find_files('*', 'external') if '.py' not in x]
 matches += ['../' + x for x in find_files('*', '_solib_k8') if '.py' not in x]
 
 if os.name == 'nt':
-  EXTENSION_NAME = 'python/_pywrap_tensorflow.pyd'
+  EXTENSION_NAME = 'python/_pywrap_tensorflow_internal.pyd'
 else:
-  EXTENSION_NAME = 'python/_pywrap_tensorflow.so'
+  EXTENSION_NAME = 'python/_pywrap_tensorflow_internal.so'
 
 headers = (list(find_files('*.h', 'tensorflow/core')) +
            list(find_files('*.h', 'tensorflow/stream_executor')) +

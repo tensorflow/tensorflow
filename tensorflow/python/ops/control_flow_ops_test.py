@@ -205,11 +205,12 @@ class SwitchTestCase(TensorFlowTestCase):
         sess.run(variables.global_variables_initializer())
         self.assertAllEqual(10.0, cost.eval())
 
-  def testIndexedSlicesGradientInCondInWhileLoop(self):
+  def doTestIndexedSlicesGradientInCondInWhileLoop(self, use_resource=False):
     with ops.Graph().as_default():
       embedding_matrix = variable_scope.get_variable(
           "embedding_matrix", [5, 5],
-          initializer=init_ops.random_normal_initializer())
+          initializer=init_ops.random_normal_initializer(),
+          use_resource=use_resource)
 
       def Cond(it, _):
         return it < 5
@@ -239,6 +240,12 @@ class SwitchTestCase(TensorFlowTestCase):
       with self.test_session() as sess:
         sess.run(variables.global_variables_initializer())
         self.assertAllEqual(*sess.run([static_grads, dynamic_grads]))
+
+  def testIndexedSlicesGradientInCondInWhileLoop(self):
+    self.doTestIndexedSlicesGradientInCondInWhileLoop(use_resource=False)
+
+  def testIndexedSlicesGradientInCondInWhileLoopResource(self):
+    self.doTestIndexedSlicesGradientInCondInWhileLoop(use_resource=True)
 
   def testIndexedSlicesWithShapeGradientInWhileLoop(self):
     for dtype in [dtypes.float32, dtypes.float64]:

@@ -8,6 +8,7 @@ load(
     "tf_cc_logged_benchmark",
     "tf_py_logged_benchmark",
 )
+load("//tensorflow:tensorflow.bzl", "py_test")
 
 licenses(["notice"])  # Apache 2.0
 

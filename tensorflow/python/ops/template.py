@@ -120,7 +120,7 @@ def make_template(name_, func_, create_scope_now_=False, unique_name_=None,
       template of the same scope/unique_name already exists and reuse is false,
       an error is raised. Defaults to None.
     custom_getter_: Optional custom getter for variables used in `func_`. See
-      the [`get_variable`](#get_variable) `custom_getter` documentation for
+      the @{tf.get_variable} `custom_getter` documentation for
       more information.
     **kwargs: Keyword arguments to apply to `func_`.
 
@@ -197,8 +197,9 @@ class Template(object):
     if name is None:
       raise ValueError("name cannot be None.")
     if create_scope_now:
-      with variable_scope.variable_scope(
-          self._unique_name, self._name,
+      with variable_scope._pure_variable_scope(  # pylint:disable=protected-access
+          (self._unique_name or
+           variable_scope._get_unique_variable_scope(self._name)),  # pylint:disable=protected-access
           custom_getter=self._custom_getter) as vs:
         self._variable_scope = vs
     else:

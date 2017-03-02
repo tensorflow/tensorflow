@@ -39,11 +39,16 @@ class PublicAPIVisitor(object):
   # sytem modules exposed through platforms for compatibility reasons.
   # Each entry maps a module path to a name to ignore in traversal.
   _do_not_descend_map = {
-      # TODO(drpng): This can be removed once sealed off.
-      '': ['platform', 'pywrap_tensorflow', 'user_ops', 'python', 'tools'],
-
-      # Exclude protos, they leak a lot.
-      'core': ['protobuf'],
+      '': [
+          'core',
+          'examples',
+          'flags',  # Don't add flags
+          'platform',  # TODO(drpng): This can be removed once sealed off.
+          'pywrap_tensorflow',  # TODO(drpng): This can be removed once sealed.
+          'user_ops',  # TODO(drpng): This can be removed once sealed.
+          'python',
+          'tools'
+      ],
 
       # Some implementations have this internal module that we shouldn't expose.
       'flags': ['cpp_flags'],

@@ -150,7 +150,7 @@ def _collect_partitioned_variable(name, var_scope):
 
 
 def init_from_checkpoint(checkpoint_dir, assignment_map):
-  """Using assingment map initializes current variables with loaded tensors.
+  """Using assignment map initializes current variables with loaded tensors.
 
   Note: This overrides default initialization ops of specified variables and
   redefines dtype.
@@ -160,7 +160,7 @@ def init_from_checkpoint(checkpoint_dir, assignment_map):
       current `scope_name` from `checkpoint_scope_name` with matching variable
       names.
     `'checkpoint_scope_name/some_other_variable': 'scope_name/variable_name'` -
-      will initalize `scope_name/variable_name` variable
+      will initialize `scope_name/variable_name` variable
       from `checkpoint_scope_name/some_other_variable`.
     `'scope_variable_name': variable` - will initialize given `tf.Variable`
       object with variable from the checkpoint.

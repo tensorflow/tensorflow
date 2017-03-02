@@ -346,7 +346,7 @@ class _VariableStore(object):
           initializer=initializer, regularizer=regularizer,
           reuse=reuse, trainable=trainable, collections=collections,
           caching_device=caching_device, partitioner=partitioner,
-          validate_shape=validate_shape)
+          validate_shape=validate_shape, use_resource=use_resource)
     else:
       return _true_getter(
           name, shape=shape, dtype=dtype,
@@ -683,7 +683,7 @@ class _VariableStore(object):
         init_val = initializer
         variable_dtype = None
       else:
-        init_val = lambda: initializer(
+        init_val = lambda: initializer(  # pylint: disable=g-long-lambda
             shape.as_list(), dtype=dtype, partition_info=partition_info)
         variable_dtype = dtype.base_dtype
 
@@ -725,7 +725,6 @@ class _VariableStore(object):
 
     return v
 
-
   # Initialize variable when no initializer provided
   def _get_default_initializer(self, name, shape=None, dtype=dtypes.float32):
     """Provide a default initializer and a corresponding value.
@@ -754,7 +753,7 @@ class _VariableStore(object):
     # NOTES:Do we need to support for handling DT_STRING and DT_COMPLEX here?
     else:
       raise ValueError("An initializer for variable %s of %s is required"
-          % (name, dtype.base_dtype))
+                       % (name, dtype.base_dtype))
 
     return initializer, initializing_from_value
 
@@ -766,9 +765,9 @@ def no_regularizer(_):
 
 
 class VariableScope(object):
-  """Variable scope object to carry defaults to provide to get_variable.
+  """Variable scope object to carry defaults to provide to `get_variable`.
 
-  Many of the arguments we need for get_variable in a variable store are most
+  Many of the arguments we need for `get_variable` in a variable store are most
   easily handled with a context. This object is used for the defaults.
 
   Attributes:
@@ -1037,7 +1036,7 @@ get_variable_or_local_docstring = (
 
 %sThis function prefixes the name with the current variable scope
 and performs reuse checks. See the
-[Variable Scope How To](../../how_tos/variable_scope/index.md)
+@{$variable_scope$Variable Scope How To}
 for an extensive description of how reusing works. Here is a basic example:
 
 ```python
@@ -1071,7 +1070,7 @@ Args:
   initializer: Initializer for the variable if one is created.
   regularizer: A (Tensor -> Tensor or None) function; the result of
     applying it on a newly created variable will be added to the collection
-    GraphKeys.REGULARIZATION_LOSSES and can be used for regularization.
+    @{tf.GraphKeys.REGULARIZATION_LOSSES} and can be used for regularization.
   %scollections: List of graph collections keys to add the Variable to.
     Defaults to `[%s]` (see `tf.Variable`).
   caching_device: Optional device string or function describing where the
@@ -1390,7 +1389,7 @@ def variable_scope(name_or_scope,
 
   Variable scope allows to create new variables and to share already created
   ones while providing checks to not create or share by accident. For details,
-  see the [Variable Scope How To](../../how_tos/variable_scope/index.md),
+  see the @{$variable_scope$Variable Scope How To},
   here we present only a few basic examples.
 
   Simple example of how to create a new variable:
@@ -1468,11 +1467,15 @@ def variable_scope(name_or_scope,
 
   Raises:
     ValueError: when trying to reuse within a create scope, or create within
-      a reuse scope, or if reuse is not `None` or `True`.
+      a reuse scope.
     TypeError: when the types of some arguments are not appropriate.
   """
   if default_name is None and name_or_scope is None:
     raise TypeError("If default_name is None then name_or_scope is required")
+  if not (reuse is True or reuse is False or reuse is None):
+    raise ValueError("The reuse parameter must be True or False or None.")
+  if reuse is False:  # We don't allow non-inheriting scopes, False = None here.
+    reuse = None
   if values is None:
     values = []
   g = ops._get_graph_from_inputs(values)  # pylint: disable=protected-access

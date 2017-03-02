@@ -120,7 +120,7 @@ int main(int argc, char* argv[]) {
     return -1;
   }
   std::unique_ptr<tensorflow::ServerInterface> server;
-  tensorflow::NewServer(server_def, &server);
-  server->Start();
-  server->Join();
+  TF_QCHECK_OK(tensorflow::NewServer(server_def, &server));
+  TF_QCHECK_OK(server->Start());
+  TF_QCHECK_OK(server->Join());
 }

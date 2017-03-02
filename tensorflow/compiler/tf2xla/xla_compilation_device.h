@@ -16,44 +16,21 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_XLA_COMPILATION_DEVICE_H_
 #define TENSORFLOW_COMPILER_TF2XLA_XLA_COMPILATION_DEVICE_H_
 
-#include <map>
 #include <memory>
 
-#include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/mem.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
 
-// Names of the XLA JIT devices. These are not user-visible, and are used
-// internally by the JIT to perform symbolic execution of a Tensorflow graph.
-
-extern const char* const DEVICE_CPU_XLA_JIT;  // "CPU_XLA_JIT"
-extern const char* const DEVICE_GPU_XLA_JIT;  // "GPU_XLA_JIT"
-
-constexpr std::array<DataType, 5> kCpuAllTypes = {
-    {DT_INT32, DT_INT64, DT_FLOAT, DT_DOUBLE, DT_BOOL}};
-constexpr std::array<DataType, 2> kCpuIntTypes = {{DT_INT32, DT_INT64}};
-constexpr std::array<DataType, 2> kCpuFloatTypes = {{DT_FLOAT, DT_DOUBLE}};
-constexpr std::array<DataType, 4> kCpuNumericTypes = {
-    {DT_INT32, DT_INT64, DT_FLOAT, DT_DOUBLE}};
-
-constexpr std::array<DataType, 5> kGpuAllTypes = {
-    {DT_INT32, DT_INT64, DT_FLOAT, DT_DOUBLE, DT_BOOL}};
-constexpr std::array<DataType, 2> kGpuIntTypes = {{DT_INT32, DT_INT64}};
-constexpr std::array<DataType, 2> kGpuFloatTypes = {{DT_FLOAT, DT_DOUBLE}};
-constexpr std::array<DataType, 4> kGpuNumericTypes = {
-    {DT_INT32, DT_INT64, DT_FLOAT, DT_DOUBLE}};
-
-// Class is declared and defined in tla_jit_device.cc, reference
+// Class is defined in xla_compilation_device.cc, reference
 // included here only so the XlaCompilationDevice allocator_ member can be
-// defined.
+// declared.
 class XlaCompilationAllocator;
 
 // Deliberately don't register the device factory because we *never*
@@ -85,136 +62,41 @@ class XlaCompilationDevice : public LocalDevice {
   std::unique_ptr<XlaCompilationAllocator> allocator_;
 };
 
-// Class that manages registrations of operators and devices for the XLA JIT.
-// Not thread-safe.
-class XlaOpRegistry {
+// A XlaExpression wraps an XLA computation. Each Tensor on an
+// XlaCompilationDevice contains an XlaExpression, and the shape of the Tensor
+// matches the shape of the subcomputation in the ComputationDataHandle. Each
+// expression is either a constant, or a function of previously-compiled
+// expressions.
+class XlaExpression {
  public:
-  typedef OpKernel* (*Factory)(OpKernelConstruction*);
+  XlaExpression();
 
-  // Registers 'jit_device_name' as the JIT device corresponding to
-  // 'device_name'. If 'requires_jit' is true, then operators placed on this
-  // device must be JIT-compiled. Dies if a conflicting registration already
-  // exists.
-  static void RegisterJitDevice(const string& device_name,
-                                const string& jit_device_name,
-                                bool requires_jit, bool enable_jit_by_default);
+  // handle() stores the XLA handle of the computation that the
+  // expression represents.
+  void set_handle(const xla::ComputationDataHandle& h);
+  const xla::ComputationDataHandle& handle() const { return handle_; }
 
-  // Returns the JIT device name associated with 'device_name', setting
-  // 'jit_device_name', 'requires_jit', and 'enabled_jit_by_default', if they
-  // are not null. Returns false and leaves the outputs unchanged if no matching
-  // JIT device is registered.
-  // '*enable_jit_by_default' is set to true if we should try to JIT using this
-  // device when the JIT is enabled via the Session OptimizerOptions.
-  static bool GetJitDevice(const string& device_name,
-                           const string** jit_device_name, bool* requires_jit,
-                           bool* enable_jit_by_default);
+  void set_constant_value(Tensor value);
+  bool has_constant_value() const { return has_constant_value_; }
+  const Tensor& constant_value() const { return constant_value_; }
 
-  // Registers all JIT kernels on JIT devices, if not already registered.
-  // Does nothing otherwise.
-  static void RegisterJitKernels();
-
-  // Returns KernelDefs for JIT ops registered on 'jit_device_type'.
-  // Does not include kernels registered using REGISTER_XLA_JIT_ONLY_KERNEL.
-  static std::vector<const KernelDef*> DeviceKernels(
-      const string& jit_device_type);
+  void set_variable_id(int id);
+  int variable_id() const { return variable_id_; }
 
  private:
-  friend class XlaKernelRegistrar;
-  friend class XlaOpRegistrar;
+  // The XLA handle of the expression's computation.
+  xla::ComputationDataHandle handle_;
 
-  static XlaOpRegistry& Instance();
+  // If this expression is a constant with a known value, 'constant_value' is a
+  // host-memory Tensor containing the value. Used to avoid invoking XLA for
+  // expressions that are trivially constant.
+  bool has_constant_value_ = false;
+  Tensor constant_value_;
 
-  XlaOpRegistry();
-  ~XlaOpRegistry();
+  int variable_id_ = -1;
 
-  mutex mutex_;
-
-  // Map from Tensorflow device names to the corresponding JIT device metadata.
-  struct JitDevice {
-    string jit_device_name;
-    bool requires_jit;
-    bool enable_jit_by_default;
-  };
-  std::unordered_map<string, JitDevice> jit_devices_ GUARDED_BY(mutex_);
-
-  // Map from operator name to OpKernel factory, populated by REGISTER_XLA_OP.
-  std::unordered_map<string, Factory> ops_ GUARDED_BY(mutex_);
-
-  // Have we already registered the JIT kernels on the JIT devices?
-  bool jit_kernels_registered_ = false;
-
-  struct XlaKernel {
-    // Should this kernel be registered only on JIT devices, without a dummy
-    // kernel registered on the corresponding XLA device?
-    bool jit_only;
-
-    // KernelDef as built by REGISTER_XLA_KERNEL.
-    std::unique_ptr<const KernelDef> kernel_def;
-  };
-
-  // Map from JIT device name to a vector of XLA kernel descriptors.
-  std::unordered_map<string, std::vector<XlaKernel>> kernels_
-      GUARDED_BY(mutex_);
-
-  // Holds ownership of OpKernelRegistrars that represent the Tensorflow kernel
-  // registrations created by RegisterJitKernels() and RegisterDeviceKernels().
-  std::vector<std::unique_ptr<kernel_factory::OpKernelRegistrar>>
-      kernel_registrars_ GUARDED_BY(mutex_);
+  TF_DISALLOW_COPY_AND_ASSIGN(XlaExpression);
 };
-
-// REGISTER_XLA_OP() registers an XLA OpKernel by name, for example:
-// REGISTER_XLA_OP("Add", AddOp);
-// where 'AddOp' is the name of a JIT OpKernel class that implements "Add".
-//
-// We don't use a variadic macro here because we don't expect JIT operators to
-// be templated.
-
-#define REGISTER_XLA_OP(NAME, OP) \
-  REGISTER_XLA_OP_UNIQ_HELPER(__COUNTER__, NAME, OP)
-
-// REGISTER_XLA_KERNEL() associates an XLA OpKernel with a particular device and
-// set of type constraints, e.g.,
-// REGISTER_XLA_KERNEL(DEVICE_XLA_CPU_JIT,
-//                     Name("Relu").TypeConstraint("T", DT_FLOAT));
-//
-// REGISTER_XLA_JIT_ONLY_KERNEL is similar to REGISTER_XLA_KERNEL(), but causes
-// XlaOpRegistry::RegisterDeviceKernels() to ignore the kernel.
-
-#define REGISTER_XLA_KERNEL(DEVICE, BUILDER) \
-  REGISTER_XLA_KERNEL_UNIQ_HELPER(__COUNTER__, DEVICE, BUILDER, false)
-
-#define REGISTER_XLA_JIT_ONLY_KERNEL(DEVICE, BUILDER) \
-  REGISTER_XLA_KERNEL_UNIQ_HELPER(__COUNTER__, DEVICE, BUILDER, true)
-
-// Implementation details.
-
-class XlaOpRegistrar {
- public:
-  XlaOpRegistrar(StringPiece name, XlaOpRegistry::Factory factory);
-};
-
-#define REGISTER_XLA_OP_UNIQ_HELPER(COUNTER, NAME, OP) \
-  REGISTER_XLA_OP_UNIQ(COUNTER, NAME, OP)
-
-#define REGISTER_XLA_OP_UNIQ(CTR, NAME, OP)                                    \
-  static ::tensorflow::XlaOpRegistrar xla_op_registrar__body__##CTR##__object( \
-      NAME, [](::tensorflow::OpKernelConstruction* context)                    \
-                -> ::tensorflow::OpKernel* { return new OP(context); });
-
-// Implementation details.
-class XlaKernelRegistrar {
- public:
-  XlaKernelRegistrar(bool jit_only, const KernelDef* def);
-};
-
-#define REGISTER_XLA_KERNEL_UNIQ_HELPER(COUNTER, DEVICE, BUILDER, JIT_ONLY) \
-  REGISTER_XLA_KERNEL_UNIQ(COUNTER, DEVICE, BUILDER, JIT_ONLY)
-
-#define REGISTER_XLA_KERNEL_UNIQ(CTR, DEVICE, BUILDER, JIT_ONLY) \
-  static ::tensorflow::XlaKernelRegistrar                        \
-      xla_kernel_registrar__body__##CTR##__object(               \
-          JIT_ONLY,                                              \
-          ::tensorflow::register_kernel::BUILDER.Device(DEVICE).Build());
 
 }  // namespace tensorflow
 

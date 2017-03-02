@@ -28,9 +28,7 @@ limitations under the License.
 #include <sys/time.h>
 #endif  // ifdef HAVE_CLOCK_GETTIME
 
-#include "tensorflow/core/platform/logging.h"
-
-using namespace tensorflow;
+#include "tensorflow/examples/android/jni/object_tracking/logging.h"
 
 // TODO(andrewharp): clean up these macros to use the codebase statndard.
 

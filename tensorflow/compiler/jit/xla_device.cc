@@ -19,11 +19,10 @@ limitations under the License.
 #include <unordered_set>
 
 #include "tensorflow/compiler/jit/defs.h"
-#include "tensorflow/compiler/jit/xla_compilation_cache.h"
 #include "tensorflow/compiler/jit/xla_device_context.h"
 #include "tensorflow/compiler/jit/xla_device_ops.h"
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
-#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -56,11 +55,14 @@ namespace tensorflow {
           << device_ordinal;
 
   // These are no-ops if they have already been done previously for
-  // this device_name/jit_device_name pair.
-  XlaOpRegistry::RegisterJitKernels();
-  XlaOpRegistry::RegisterJitDevice(device_name, jit_device_name,
-                                   /*requires_jit=*/true,
-                                   /*enable_jit_by_default=*/false);
+  // this device_name/compilation_device_name pair.
+  XlaOpRegistry::RegisterCompilationKernels();
+  XlaOpRegistry::DeviceRegistration registration;
+  registration.compilation_device_name = jit_device_name;
+  registration.requires_compilation = true;
+  registration.enable_jit_by_default = false;
+  registration.compile_resource_ops = true;
+  XlaOpRegistry::RegisterCompilationDevice(device_name, registration);
 
   auto platform = perftools::gputools::MultiPlatformManager::PlatformWithName(
       platform_name);

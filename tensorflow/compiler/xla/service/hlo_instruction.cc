@@ -117,6 +117,7 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
     case HloOpcode::kCopy:
     case HloOpcode::kExp:
     case HloOpcode::kFloor:
+    case HloOpcode::kIsFinite:
     case HloOpcode::kLog:
     case HloOpcode::kLogicalNot:
     case HloOpcode::kNegate:
@@ -235,11 +236,13 @@ HloInstruction::CreateCrossReplicaSum(const Shape& shape,
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateOutfeed(
-    HloInstruction* operand, tensorflow::StringPiece outfeed_config) {
+    const Shape& shape, HloInstruction* operand,
+    tensorflow::StringPiece outfeed_config) {
   std::unique_ptr<HloInstruction> instruction =
       WrapUnique(new HloInstruction(HloOpcode::kOutfeed, ShapeUtil::MakeNil()));
   instruction->AppendOperand(operand);
   instruction->outfeed_config_ = outfeed_config.ToString();
+  instruction->outfeed_shape_ = shape;
   return instruction;
 }
 
@@ -733,6 +736,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kCeil:
     case HloOpcode::kCopy:
     case HloOpcode::kExp:
+    case HloOpcode::kIsFinite:
     case HloOpcode::kFloor:
     case HloOpcode::kLog:
     case HloOpcode::kLogicalNot:
@@ -1033,6 +1037,7 @@ bool HloInstruction::Identical(
     case HloOpcode::kFloor:
     case HloOpcode::kGe:
     case HloOpcode::kGt:
+    case HloOpcode::kIsFinite:
     case HloOpcode::kLe:
     case HloOpcode::kLog:
     case HloOpcode::kLogicalAnd:
@@ -1484,10 +1489,20 @@ string HloInstruction::ToCategory() const {
         return "rank-1-broadcast binary fusion";
       }
     }
-    if (IsElementwise()) {
-      return "elementwise fusion";
-    } else {
-      return "non-elementwise fusion";
+    switch (fusion_kind()) {
+      case FusionKind::kLoop:
+        if (IsElementwise()) {
+          return "elementwise fusion";
+        } else {
+          return "non-elementwise fusion";
+        }
+      case FusionKind::kInput:
+        return "reduce fusion";
+      case FusionKind::kTransposeDot:
+        return "dot fusion";
+      case FusionKind::kConvBackwardFilter:
+      case FusionKind::kConvBackwardInput:
+        return "convolution fusion";
     }
   }
 
@@ -1496,6 +1511,15 @@ string HloInstruction::ToCategory() const {
   }
 
   return HloOpcodeString(opcode());
+}
+
+string HloInstruction::FullyQualifiedName() const {
+  if (IsFused()) {
+    return tensorflow::strings::StrCat(fusion_instruction()->parent()->name(),
+                                       "::", fusion_instruction()->name(),
+                                       "::", name_);
+  }
+  return tensorflow::strings::StrCat(parent_->name(), "::", name_);
 }
 
 HloInstruction* HloInstruction::tracing() const { return trace_instruction_; }
@@ -1554,6 +1578,11 @@ HloInstruction* HloInstruction::fused_parameter(int64 parameter_number) const {
   CHECK_GE(parameter_number, 0);
   CHECK_LT(parameter_number, fused_parameters_.size());
   return fused_parameters_[parameter_number];
+}
+
+const std::vector<HloInstruction*>& HloInstruction::fused_parameters() const {
+  CHECK_EQ(opcode_, HloOpcode::kFusion);
+  return fused_parameters_;
 }
 
 const std::list<std::unique_ptr<HloInstruction>>&
@@ -1649,6 +1678,8 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
       return visitor->HandleLog(this, operands_[0]);
     case HloOpcode::kTanh:
       return visitor->HandleTanh(this, operands_[0]);
+    case HloOpcode::kIsFinite:
+      return visitor->HandleIsFinite(this, operands_[0]);
     case HloOpcode::kLogicalNot:
       return visitor->HandleLogicalNot(this, operands_[0]);
     case HloOpcode::kBitcast:
@@ -1823,6 +1854,12 @@ Status HloInstruction::AcceptOrdered(
   return visitor->FinishVisit(this);
 }
 
+const Shape& HloInstruction::outfeed_shape() const {
+  DCHECK_EQ(opcode_, HloOpcode::kOutfeed);
+  TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(shape_));
+  return outfeed_shape_;
+}
+
 const Shape& HloInstruction::shape() const {
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(shape_));
   return shape_;
@@ -1852,6 +1889,7 @@ bool HloInstruction::IsElementwise() const {
     case HloOpcode::kCopy:
     case HloOpcode::kExp:
     case HloOpcode::kFloor:
+    case HloOpcode::kIsFinite:
     case HloOpcode::kLog:
     case HloOpcode::kLogicalNot:
     case HloOpcode::kNegate:
@@ -2011,25 +2049,6 @@ HloInstruction::UseKind HloInstruction::OperandElementUse(int64 i) const {
       return IsElementwise() ? UseKind::kUse : UseKind::kReuse;
   }
 }
-
-namespace {
-
-// Prereq: `order` is a permutation of {0, 1, ..., `dims.size()-1`}
-void Strip1SizedDimensions(tensorflow::protobuf::RepeatedField<int64>* dims,
-                           std::vector<int64>* order) {
-  // We can't merely call StripDegenerateDimensions here as we must also delete
-  // the dimension indices.
-  for (size_t i = 0; i < dims->size(); ++i) {
-    if (1 == dims->Get(i)) {
-      dims->erase(dims->begin() + i);
-      // We must find this, as order must be a permutation of operand
-      // dimensions.
-      order->erase(std::find(order->begin(), order->end(), i));
-    }
-  }
-}
-
-}  // namespace
 
 std::tuple<bool, std::vector<int64>, std::vector<int64>>
 HloInstruction::ReshapeMerelyInsertsOrDeletes1SizedDimensions() const {

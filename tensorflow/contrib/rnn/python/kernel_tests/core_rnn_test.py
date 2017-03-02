@@ -19,12 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import itertools
-import sys
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
@@ -561,6 +555,13 @@ class LSTMTest(test.TestCase):
             sequence_length=sequence_length,
             scope=scope)
         scope.reuse_variables()
+        # TODO(ebrevdo): For this test, we ensure values are identical and
+        # therefore the weights here are tied.  In the future, we may consider
+        # making the state_is_tuple property mutable so we can avoid
+        # having to do this - especially if users ever need to reuse
+        # the parameters from different RNNCell instances.  Right now,
+        # this seems an unrealistic use case except for testing.
+        cell_tuple._scope = cell_notuple._scope  # pylint: disable=protected-access
         outputs_tuple, state_tuple = core_rnn.static_rnn(
             cell_tuple,
             inputs,

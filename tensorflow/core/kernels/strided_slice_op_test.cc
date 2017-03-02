@@ -83,6 +83,12 @@ static void BM_SliceFloat(int iters, int dim2) {
 
 BENCHMARK(BM_SliceFloat)->Arg(100)->Arg(1000)->Arg(10000);
 
+static void BM_SliceComplex64(int iters, int dim2) {
+  SliceHelper<std::complex<float>>(iters, dim2);
+}
+
+BENCHMARK(BM_SliceComplex64)->Arg(100)->Arg(1000)->Arg(10000);
+
 static void BM_SliceBFloat16(int iters, int dim2) {
   SliceHelper<bfloat16>(iters, dim2);
 }

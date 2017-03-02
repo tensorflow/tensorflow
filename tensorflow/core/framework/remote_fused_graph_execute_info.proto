@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package tensorflow;
+option cc_enable_arenas = true;
+option java_outer_classname = "RemoteFusedGraphExecuteInfoProto";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.framework";
+
+import "tensorflow/core/framework/node_def.proto";
+
+// Protocol buffer representing a handle to a tensorflow resource. Handles are
+// not valid across executions, but can be serialized back and forth from within
+// a single run.
+message RemoteFusedGraphExecuteInfo {
+  message GraphIONodeInfo {
+    string name = 1;
+    repeated int64 shape = 2;
+  }
+
+  // Nodes in remote fused graph
+  repeated NodeDef node = 1;
+
+  // Remote fused graph input
+  repeated GraphIONodeInfo graph_input_node_info = 2;
+
+  // Remote fused graph output
+  repeated GraphIONodeInfo graph_output_node_info = 3;
+
+  // Executor's name
+  string executor_name = 4;
+
+  // Optional parameters given to the executor
+  bytes serialized_executor_parameters = 5;
+};

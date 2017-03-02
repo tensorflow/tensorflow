@@ -350,8 +350,7 @@ def depthwise_conv2d(input, filter, strides, padding, rate=None, name=None):
     strides: 1-D of size 4.  The stride of the sliding window for each
       dimension of `input`.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
-      See the [comment
-        here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
+      See the @{tf.nn.convolution$comment here}
     rate: 1-D of size 2. The dilation rate in which we sample input values
       across the `height` and `width` dimensions in atrous convolution. If it is
       greater than 1, then all values of strides must be 1.
@@ -427,8 +426,7 @@ def separable_conv2d(input,
     strides: 1-D of size 4.  The strides for the depthwise convolution for
       each dimension of `input`.
     padding: A string, either `'VALID'` or `'SAME'`.  The padding algorithm.
-      See the [comment
-        here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
+      See the @{tf.nn.convolution$comment here}
     rate: 1-D of size 2. The dilation rate in which we sample input values
       across the `height` and `width` dimensions in atrous convolution. If it is
       greater than 1, then all values of strides must be 1.
@@ -950,8 +948,10 @@ def _compute_sampled_logits(weights,
           range_max=num_classes)
     # NOTE: pylint cannot tell that 'sampled_values' is a sequence
     # pylint: disable=unpacking-non-sequence
-    sampled, true_expected_count, sampled_expected_count = sampled_values
+    sampled, true_expected_count, sampled_expected_count = (
+        array_ops.stop_gradient(s) for s in sampled_values)
     # pylint: enable=unpacking-non-sequence
+    sampled = math_ops.cast(sampled, dtypes.int64)
 
     # labels_flat is a [batch_size * num_true] tensor
     # sampled is a [num_sampled] int tensor
@@ -1056,12 +1056,12 @@ def nce_loss(weights,
   unnormalized statistical
   models](http://www.jmlr.org/proceedings/papers/v9/gutmann10a/gutmann10a.pdf).
   Also see our [Candidate Sampling Algorithms
-  Reference](../../extras/candidate_sampling.pdf)
+  Reference](https://www.tensorflow.org/extras/candidate_sampling.pdf)
 
   Note: By default this uses a log-uniform (Zipfian) distribution for sampling,
   so your labels must be sorted in order of decreasing frequency to achieve
   good results.  For more details, see
-  [log_uniform_candidate_sampler](#log_uniform_candidate_sampler).
+  @{tf.nn.log_uniform_candidate_sampler}.
 
   Note: In the case where `num_true` > 1, we assign to each target class
   the target probability 1 / `num_true` so that the target probabilities
@@ -1093,7 +1093,7 @@ def nce_loss(weights,
         `True`, this is a "Sampled Logistic" loss instead of NCE, and we are
         learning to generate log-odds instead of log probabilities.  See
         our [Candidate Sampling Algorithms Reference]
-        (../../extras/candidate_sampling.pdf).
+        (https://www.tensorflow.org/extras/candidate_sampling.pdf).
         Default is False.
     partition_strategy: A string specifying the partitioning strategy, relevant
         if `len(weights) > 1`. Currently `"div"` and `"mod"` are supported.
@@ -1146,7 +1146,7 @@ def sampled_softmax_loss(weights,
   expression `tf.nn.softmax(tf.matmul(inputs, tf.transpose(weights)) + biases)`.
 
   See our [Candidate Sampling Algorithms Reference]
-  (../../extras/candidate_sampling.pdf)
+  (https://www.tensorflow.org/extras/candidate_sampling.pdf)
 
   Also see Section 3 of [Jean et al., 2014](http://arxiv.org/abs/1412.2007)
   ([pdf](http://arxiv.org/pdf/1412.2007.pdf)) for the math.

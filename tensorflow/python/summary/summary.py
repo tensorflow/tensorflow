@@ -13,13 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 
-"""## Generation of summaries.
+"""Tensor summaries for exporting information about a model.
 
-### Class for writing Summaries
+See the @{$python/summary} guide.
+
 @@FileWriter
 @@FileWriterCache
-
-### Summary Ops
 @@tensor_summary
 @@scalar
 @@histogram
@@ -27,10 +26,7 @@
 @@image
 @@merge
 @@merge_all
-
-## Utilities
 @@get_summary_description
-
 """
 
 from __future__ import absolute_import

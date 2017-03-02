@@ -64,6 +64,7 @@ class GraphTransferer {
       const GraphDef& graph_def,
       const std::vector<InputNodeInfo>& input_node_info_list,
       const std::vector<string>& output_node_names,
+      const bool shape_inference_for_unkown_shape,
       const OutputTensorMap& output_tensor_map);
 
   // Load graph structure into GraphTransferer from protobuf file
@@ -72,6 +73,7 @@ class GraphTransferer {
       const string& graph_def_path,
       const std::vector<InputNodeInfo>& input_node_info_list,
       const std::vector<string>& output_node_names, const bool is_text_proto,
+      const bool shape_inference_for_unknown_shape,
       const bool dry_run_for_unknown_shape,
       OutputTensorInfo* output_tensor_info);
 
@@ -103,6 +105,12 @@ class GraphTransferer {
 
   // Return parameters for graph transfer
   const GraphTransferInfo& GetGraphTransferInfo() const;
+
+  // Return mutable GraphTransferInfo for graph transfer
+  GraphTransferInfo& GetMutableGraphTransferInfo();
+
+  // Dump verification string of parameters to verify with offline tools
+  void DumpVerificationStringOfNodeTransferParams() const;
 
  private:
   class TransferParamsComparator {
@@ -152,11 +160,6 @@ class GraphTransferer {
                          const ShapeRefiner& shape_refiner,
                          const OutputTensorMap& output_tensor_map,
                          const Node& node);
-
-  void RegisterOutputNode(const IGraphTransferOpsDefinitions& ops_definitions,
-                          const ShapeRefiner& shape_refiner,
-                          const OutputTensorMap& output_tensor_map,
-                          const Node& node);
 
   void RegisterFlattenNode(const IGraphTransferOpsDefinitions& ops_definitions,
                            const ShapeRefiner& shape_refiner,
@@ -219,9 +222,6 @@ class GraphTransferer {
 
   // Dump pretty print of parameters
   void DumpNodeTransferParams() const;
-
-  // Dump verification string of parameters to verify with offline tools
-  void DumpVerificationStringOfNodeTransferParams() const;
 
   GraphTransferInfo graph_transfer_info_{};
 

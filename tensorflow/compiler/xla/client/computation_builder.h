@@ -352,13 +352,13 @@ class ComputationBuilder {
       tensorflow::gtl::ArraySlice<int64> rhs_dilation,
       const ConvolutionDimensionNumbers& dimension_numbers);
 
-  // Enqueues an infeed instruction onto the computation, which reads data of
-  // the given shape from the infeed buffer of the device.
+  // Enqueues an infeed instruction onto the computation, which writes data of
+  // the given shape to the infeed buffer of the device.
   ComputationDataHandle Infeed(const Shape& shape, const string& config = "");
 
   // Enqueues an outfeed instruction onto the computation. This instruction
   // generates outgoing data transfers for the given data.
-  void Outfeed(const ComputationDataHandle& operand,
+  void Outfeed(const ComputationDataHandle& operand, const Shape& shape,
                const string& outfeed_config);
 
   // Enqueues a call instruction onto the computation.
@@ -504,8 +504,15 @@ class ComputationBuilder {
   ComputationDataHandle SquareF32(const ComputationDataHandle& operand);
 
   // Enqueues a lhs^rhs computation onto the computation.
-  ComputationDataHandle Pow(const ComputationDataHandle& lhs,
-                            const ComputationDataHandle& rhs);
+  ComputationDataHandle Pow(
+      const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
+      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+
+  // Enqueues an operator that tests if the operand's values are finite, i.e.,
+  // not Inf or NaN. Defined only for floating-point types. Returns an array of
+  // booleans with the same shape where entries are true iff the corresponding
+  // entry was NaN.
+  ComputationDataHandle IsFinite(const ComputationDataHandle& operand);
 
   // Enqueues a convert instruction onto the computation that changes the
   // element type of the operand array to primitive_type.

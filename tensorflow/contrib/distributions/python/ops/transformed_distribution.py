@@ -19,9 +19,9 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.distributions.python.ops import bijector as bijectors
 from tensorflow.contrib.distributions.python.ops import distribution as distributions
 from tensorflow.contrib.distributions.python.ops import distribution_util
+from tensorflow.contrib.distributions.python.ops.bijectors import identity as identity_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -139,7 +139,7 @@ class TransformedDistribution(distributions.Distribution):
   Write `cdf(Y=y)` for an absolutely continuous cumulative distribution function
   of random variable `Y`; write the probability density function `pdf(Y=y) :=
   d^k / (dy_1,...,dy_k) cdf(Y=y)` for its derivative wrt to `Y` evaluated at
-  `y`.  Assume that `Y = g(X)` where `g` is a deterministic diffeomorphism,
+  `y`. Assume that `Y = g(X)` where `g` is a deterministic diffeomorphism,
   i.e., a non-random, continuous, differentiable, and invertible function.
   Write the inverse of `g` as `X = g^{-1}(Y)` and `(J o g)(x)` for the Jacobian
   of `g` evaluated at `x`.
@@ -199,8 +199,8 @@ class TransformedDistribution(distributions.Distribution):
   ```python
   ds = tf.contrib.distributions
   log_normal = ds.TransformedDistribution(
-    distribution=ds.Normal(mu=mu, sigma=sigma),
-    bijector=ds.bijector.Exp(),
+    distribution=ds.Normal(loc=mu, scale=sigma),
+    bijector=ds.bijectors.Exp(),
     name="LogNormalTransformedDistribution")
   ```
 
@@ -209,12 +209,12 @@ class TransformedDistribution(distributions.Distribution):
   ```python
   ds = tf.contrib.distributions
   log_normal = ds.TransformedDistribution(
-    distribution=ds.Normal(mu=mu, sigma=sigma),
-    bijector=ds.bijector.Inline(
+    distribution=ds.Normal(loc=mu, scale=sigma),
+    bijector=ds.bijectors.Inline(
       forward_fn=tf.exp,
       inverse_fn=tf.log,
       inverse_log_det_jacobian_fn=(
-        lambda y: -tf.reduce_sum(tf.log(y), reduction_indices=-1)),
+        lambda y: -tf.reduce_sum(tf.log(y), axis=-1)),
     name="LogNormalTransformedDistribution")
   ```
 
@@ -223,14 +223,14 @@ class TransformedDistribution(distributions.Distribution):
   ```python
   ds = tf.contrib.distributions
   normal = ds.TransformedDistribution(
-    distribution=ds.Normal(mu=0, sigma=1),
-    bijector=ds.bijector.ScaleAndShift(loc=mu, scale=sigma, event_ndims=0),
+    distribution=ds.Normal(loc=0, scale=1),
+    bijector=ds.bijectors.ScaleAndShift(loc=mu, scale=sigma, event_ndims=0),
     name="NormalTransformedDistribution")
   ```
 
   A `TransformedDistribution`'s batch- and event-shape are implied by the base
   distribution unless explicitly overridden by `batch_shape` or `event_shape`
-  arguments.  Specifying an overriding `batch_shape` (`event_shape`) is
+  arguments. Specifying an overriding `batch_shape` (`event_shape`) is
   permitted only if the base distribution has scalar batch-shape (event-shape).
   The bijector is applied to the distribution as if the distribution possessed
   the overridden shape(s). The following example demonstrates how to construct a
@@ -247,11 +247,11 @@ class TransformedDistribution(distributions.Distribution):
               [[1, 0],
                [2, 2]]]  # batch:1
   mvn1 = ds.TransformedDistribution(
-      distribution=ds.Normal(mu=0., sigma=1.),
+      distribution=ds.Normal(loc=0., scale=1.),
       bijector=bs.Affine(shift=mean, tril=chol_cov),
       batch_shape=[2],  # Valid because base_distribution.batch_shape == [].
       event_shape=[2])  # Valid because base_distribution.event_shape == [].
-  mvn2 = ds.MultivariateNormalCholesky(mu=mean, chol=chol_cov)
+  mvn2 = ds.MultivariateNormalTriL(loc=mean, scale_tril=chol_cov)
   # mvn1.log_prob(x) == mvn2.log_prob(x)
   ```
 
@@ -275,11 +275,11 @@ class TransformedDistribution(distributions.Distribution):
         `batch_shape`; valid only if `distribution.is_scalar_batch()`.
       event_shape: `integer` vector `Tensor` which overrides `distribution`
         `event_shape`; valid only if `distribution.is_scalar_event()`.
-      validate_args: Python `Boolean`, default `False`. When `True` distribution
+      validate_args: Python `bool`, default `False`. When `True` distribution
         parameters are checked for validity despite possibly degrading runtime
         performance. When `False` invalid inputs may silently render incorrect
         outputs.
-      name: `String` name prefixed to Ops created by this class. Default:
+      name: Python `str` name prefixed to Ops created by this class. Default:
         `bijector.name + distribution.name`.
     """
     parameters = locals()
@@ -291,7 +291,7 @@ class TransformedDistribution(distributions.Distribution):
       self._empty = constant_op.constant([], dtype=dtypes.int32, name="empty")
 
       if bijector is None:
-        bijector = bijectors.Identity(validate_args=validate_args)
+        bijector = identity_lib.Identity(validate_args=validate_args)
 
       # We will keep track of a static and dynamic version of
       # self._is_{batch,event}_override. This way we can do more prior to graph
@@ -304,7 +304,7 @@ class TransformedDistribution(distributions.Distribution):
           _ndims_from_shape(self._override_batch_shape), self._zero))
       self._is_maybe_batch_override = bool(
           tensor_util.constant_value(self._override_batch_shape) is None or
-          tensor_util.constant_value(self._override_batch_shape))
+          tensor_util.constant_value(self._override_batch_shape).size != 0)
 
       self._override_event_shape = self._maybe_validate_shape_override(
           event_shape, distribution.is_scalar_event(), validate_args,
@@ -313,12 +313,12 @@ class TransformedDistribution(distributions.Distribution):
           _ndims_from_shape(self._override_event_shape), self._zero))
       self._is_maybe_event_override = bool(
           tensor_util.constant_value(self._override_event_shape) is None or
-          tensor_util.constant_value(self._override_event_shape))
+          tensor_util.constant_value(self._override_event_shape).size != 0)
 
       # To convert a scalar distribution into a multivariate distribution we
       # will draw dims from the sample dims, which are otherwise iid. This is
       # easy to do except in the case that the base distribution has batch dims
-      # and we're overriding event shape.  When that case happens the event dims
+      # and we're overriding event shape. When that case happens the event dims
       # will incorrectly be to the left of the batch dims. In this case we'll
       # cyclically permute left the new dims.
       self._needs_rotation = _logical_and(
@@ -337,7 +337,6 @@ class TransformedDistribution(distributions.Distribution):
     self._bijector = bijector
     super(TransformedDistribution, self).__init__(
         dtype=self._distribution.dtype,
-        is_continuous=self._distribution.is_continuous,
         reparameterization_type=self._distribution.reparameterization_type,
         validate_args=validate_args,
         allow_nan_stats=self._distribution.allow_nan_stats,
@@ -366,11 +365,19 @@ class TransformedDistribution(distributions.Distribution):
             self.distribution.event_shape_tensor()))
 
   def _event_shape(self):
+    # If there's a chance that the event_shape has been overriden, we return
+    # what we statically know about the `event_shape_override`. This works
+    # because: `_is_maybe_event_override` means `static_override` is `None` or a
+    # non-empty list, i.e., we don't statically know the `event_shape` or we do.
+    #
+    # Since the `bijector` may change the `event_shape`, we then forward what we
+    # know to the bijector. This allows the `bijector` to have final say in the
+    # `event_shape`.
     static_override = tensor_util.constant_value(self._override_event_shape)
     return self.bijector.forward_event_shape(
-        self.distribution.event_shape
-        if static_override is not None and not static_override
-        else tensor_shape.TensorShape(static_override))
+        tensor_shape.TensorShape(static_override)
+        if self._is_maybe_event_override
+        else self.distribution.event_shape)
 
   def _batch_shape_tensor(self):
     return distribution_util.pick_vector(
@@ -379,14 +386,20 @@ class TransformedDistribution(distributions.Distribution):
         self.distribution.batch_shape_tensor())
 
   def _batch_shape(self):
+    # If there's a chance that the batch_shape has been overriden, we return
+    # what we statically know about the `batch_shape_override`. This works
+    # because: `_is_maybe_batch_override` means `static_override` is `None` or a
+    # non-empty list, i.e., we don't statically know the `batch_shape` or we do.
+    #
+    # Notice that this implementation parallels the `_event_shape` except that
+    # the `bijector` doesn't get to alter the `batch_shape`. Recall that
+    # `batch_shape` is a property of a distribution while `event_shape` is
+    # shared between both the `distribution` instance and the `bijector`.
     static_override = tensor_util.constant_value(self._override_batch_shape)
-    if static_override is not None and not static_override:
-      return self.distribution.batch_shape
-    return tensor_shape.TensorShape(static_override)
+    return (tensor_shape.TensorShape(static_override)
+            if self._is_maybe_batch_override
+            else self.distribution.batch_shape)
 
-  @distribution_util.AppendDocstring(
-      """Samples from the base distribution and then passes through
-      the bijector's forward transform.""")
   def _sample_n(self, n, seed=None):
     sample_shape = _concat_vectors(
         distribution_util.pick_vector(self._needs_rotation, self._empty, [n]),
@@ -397,33 +410,31 @@ class TransformedDistribution(distributions.Distribution):
     x = self._maybe_rotate_dims(x)
     return self.bijector.forward(x)
 
-  @distribution_util.AppendDocstring(
-      """Implements `(log o p o g^{-1})(y) + (log o abs o det o J o g^{-1})(y)`,
-      where `g^{-1}` is the inverse of `transform`.
-
-      Also raises a `ValueError` if `inverse` was not provided to the
-      distribution and `y` was not returned from `sample`.""")
   def _log_prob(self, y):
-    x, ildj = self.bijector.inverse_and_inverse_log_det_jacobian(y)
+    x = self.bijector.inverse(y)
+    ildj = self.bijector.inverse_log_det_jacobian(y)
     x = self._maybe_rotate_dims(x, rotate_right=True)
     log_prob = self.distribution.log_prob(x)
     if self._is_maybe_event_override:
       log_prob = math_ops.reduce_sum(log_prob, self._reduce_event_indices)
-    return ildj + log_prob
+    log_prob = ildj + log_prob
+    if self._is_maybe_event_override:
+      log_prob.set_shape(array_ops.broadcast_static_shape(
+          y.get_shape().with_rank_at_least(1)[:-1], self.batch_shape))
+    return log_prob
 
-  @distribution_util.AppendDocstring(
-      """Implements `p(g^{-1}(y)) det|J(g^{-1}(y))|`, where `g^{-1}` is the
-      inverse of `transform`.
-
-      Also raises a `ValueError` if `inverse` was not provided to the
-      distribution and `y` was not returned from `sample`.""")
   def _prob(self, y):
-    x, ildj = self.bijector.inverse_and_inverse_log_det_jacobian(y)
+    x = self.bijector.inverse(y)
+    ildj = self.bijector.inverse_log_det_jacobian(y)
     x = self._maybe_rotate_dims(x, rotate_right=True)
     prob = self.distribution.prob(x)
     if self._is_maybe_event_override:
       prob = math_ops.reduce_prod(prob, self._reduce_event_indices)
-    return math_ops.exp(ildj) * prob
+    prob *= math_ops.exp(ildj)
+    if self._is_maybe_event_override:
+      prob.set_shape(array_ops.broadcast_static_shape(
+          y.get_shape().with_rank_at_least(1)[:-1], self.batch_shape))
+    return prob
 
   def _log_cdf(self, y):
     if self._is_maybe_event_override:
@@ -454,8 +465,7 @@ class TransformedDistribution(distributions.Distribution):
     return self.distribution.survival_function(x)
 
   def _entropy(self):
-    if (not self.distribution.is_continuous or
-        not self.bijector.is_constant_jacobian):
+    if not self.bijector.is_constant_jacobian:
       raise NotImplementedError("entropy is not implemented")
     # Suppose Y = g(X) where g is a diffeomorphism and X is a continuous rv. It
     # can be shown that:
@@ -480,8 +490,10 @@ class TransformedDistribution(distributions.Distribution):
           _ones_like(self.distribution.batch_shape_tensor())
       ], 0)
       entropy = array_ops.tile(entropy, multiples)
-    dummy = 0.
-    return entropy - self.bijector.inverse_log_det_jacobian(dummy)
+    dummy = array_ops.zeros([], self.dtype)
+    entropy -= self.bijector.inverse_log_det_jacobian(dummy)
+    entropy.set_shape(self.batch_shape)
+    return entropy
 
   def _maybe_validate_shape_override(self, override_shape, base_is_scalar,
                                      validate_args, name):

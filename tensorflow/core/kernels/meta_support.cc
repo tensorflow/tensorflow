@@ -136,12 +136,12 @@ void QuantizedGemmImpl(OpKernelContext* tf_context, const quint8* a_data,
 
   params.left_stream.count = k;
   params.left_stream.stride = lda;
-  params.left_stream.multiplicative_sum_offset = offset_b;
+  params.left_stream.multiplicative_sum_offset = -offset_b;
   params.left_stream.additive_sum_offset = k * offset_a * offset_b;
 
   params.right_stream.count = k;
   params.right_stream.stride = ldb;
-  params.right_stream.multiplicative_sum_offset = offset_a;
+  params.right_stream.multiplicative_sum_offset = -offset_a;
   params.right_stream.additive_sum_offset = 0;
 
   params.fused_kernel.kernel.count = k;
@@ -332,7 +332,7 @@ void Quantize(OpKernelContext* tf_context, const float* input, int count,
   // The float to int/uint cast in NEON uses round toward 0. To keep the
   // rounding consistent with Eigen, which uses round toward closest, we can
   // add 0.5f and exploit the fact that we only operate on non negative values.
-  // TODO(maciekc): fix the the actual kernel in gemmlowp/meta
+  // TODO(maciekc): fix the actual kernel in gemmlowp/meta
   params.kernel.range_offset =
       static_cast<float>(std::numeric_limits<uint8_t>::lowest()) + 0.5f;
 

@@ -20,7 +20,7 @@ limitations under the License.
 
 #define TF_MAJOR_VERSION 1
 #define TF_MINOR_VERSION 0
-#define TF_PATCH_VERSION 0-rc2
+#define TF_PATCH_VERSION 0
 
 // TF_VERSION_SUFFIX is non-empty for pre-releases (e.g. "-alpha", "-alpha.1",
 // "-beta", "-rc", "-rc.1")
@@ -77,7 +77,7 @@ limitations under the License.
 //     (08dec2016)
 // 20. Catch all version 1.0 changes to Python API generation. SplitV is now
 //     used for tf.split, ReverseV2 is now used by tf.reverse, ConcatV2 is
-//     now used by tf.concat_v2 (and soon tf.concat). Graphs use flooring
+//     now used by tf.concat. Graphs use flooring
 //     division and mod semantics. TensorArrayV3. (12dec2016)
 // 21. Dropped FunctionDef.Node support, switched to node_def introduced
 //     in version 12. (11jan2017)

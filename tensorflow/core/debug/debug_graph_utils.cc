@@ -37,7 +37,7 @@ DebuggerState::DebuggerState(const DebugOptions& debug_options)
 
 DebuggerState::~DebuggerState() {
   for (const string& debug_url : debug_urls_) {
-    DebugIO::CloseDebugURL(debug_url);
+    DebugIO::CloseDebugURL(debug_url).IgnoreError();
   }
 }
 
@@ -47,6 +47,9 @@ const string DebuggerState::SummarizeDebugTensorWatches() {
   for (const DebugTensorWatch& watch : watches) {
     string tensor_name =
         strings::StrCat(watch.node_name(), ":", watch.output_slot());
+    if (watch.tolerate_debug_op_creation_failures()) {
+      oss << "(TOL)";  // Shorthand for "tolerate".
+    }
     oss << tensor_name << "|";
 
     for (const string& debug_op : watch.debug_ops()) {
@@ -99,6 +102,7 @@ Status DebugNodeInserter::InsertNodes(
   std::unordered_map<string, std::vector<string>> tensor_watches;
   // A map from tensor name to debug_url.
   std::unordered_map<string, std::vector<string>> tensor_watch_urls;
+  std::unordered_map<string, bool> tensor_tolerate_failures;
 
   // Cache the proto content for fast lookup later
   for (const DebugTensorWatch& watch : watches) {
@@ -121,6 +125,8 @@ Status DebugNodeInserter::InsertNodes(
     }
 
     tensor_watches[tensor_name] = debug_ops;
+    tensor_tolerate_failures[tensor_name] =
+        watch.tolerate_debug_op_creation_failures();
 
     std::vector<string> urls;
     for (const string& url : watch.debug_urls()) {
@@ -177,8 +183,8 @@ Status DebugNodeInserter::InsertNodes(
 
       const DataType src_dt = src_node->output_type(src_output_slot);
       MemoryType memory_type;
-      MemoryTypeForOutput(device_type, graph, src_node, src_output_slot,
-                          &memory_type);
+      TF_RETURN_IF_ERROR(MemoryTypeForOutput(device_type, graph, src_node,
+                                             src_output_slot, &memory_type));
 
       // Create the copy node for the watched tensor.
       Node* copy_node;
@@ -204,18 +210,22 @@ Status DebugNodeInserter::InsertNodes(
         Status debug_s = CreateDebugNode(
             graph, device_type, copy_node->name(), src_dt, tensor_name,
             tensor_watch_urls[tensor_name], i, debug_op_name, &debug_node);
-        if (!debug_s.ok()) {
-          return Status(
-              error::FAILED_PRECONDITION,
-              strings::StrCat("Failed to create debug node ", debug_op_name,
-                              " for tensor ", tensor_name, ", due to: ",
-                              debug_s.error_message()));
+        if (debug_s.ok()) {
+          graph->AddEdge(copy_node, 0, debug_node, 0);
+          debug_nodes.push_back(debug_node);
+        } else {
+          if (tensor_tolerate_failures[tensor_name]) {
+            LOG(INFO) << "Tolerating failure to create debug node: "
+                      << "tensor name = " << tensor_name << "; "
+                      << "debug op name = " << debug_op_name;
+          } else {
+            return Status(
+                error::FAILED_PRECONDITION,
+                strings::StrCat("Failed to create debug node ", debug_op_name,
+                                " for tensor ", tensor_name,
+                                ", due to: ", debug_s.error_message()));
+          }
         }
-
-        // Create edges from the Copy node to the debug node.
-        graph->AddEdge(copy_node, 0, debug_node, 0);
-
-        debug_nodes.push_back(debug_node);
       }
 
       // Is the output a reference?
@@ -231,10 +241,12 @@ Status DebugNodeInserter::InsertNodes(
 
         // Add control edges from the debug nodes to the destination node
         // to ensure that the debug nodes are executed before the destination
-        // node.
+        // node. Skip Enter and NextIteration ops to avoid hanging.
         for (Node* debug_node : debug_nodes) {
-          graph->AddEdge(debug_node, Graph::kControlSlot, edge->dst(),
-                         Graph::kControlSlot);
+          if (!src_node->IsEnter() && !src_node->IsNextIteration()) {
+            graph->AddEdge(debug_node, Graph::kControlSlot, edge->dst(),
+                           Graph::kControlSlot);
+          }
         }
       }
     }

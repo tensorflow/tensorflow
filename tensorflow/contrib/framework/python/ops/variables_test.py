@@ -687,6 +687,23 @@ class GetVariablesByNameTest(test.TestCase):
       self.assertEquals([fooa], matched_variables)
 
 
+class GetVariableFullNameTest(test.TestCase):
+
+  def testVariable(self):
+    my_var0 = variables_lib2.variable('my_var0', shape=[])
+    full_name = variables_lib2.get_variable_full_name(my_var0)
+    self.assertEquals(full_name, my_var0.op.name)
+
+  def testPartitionedVariable(self):
+    input_full_name = 'my_var0'
+    partitioner = partitioned_variables.variable_axis_size_partitioner(2)
+    my_var0 = variables_lib2.variable(
+        'my_var0', shape=[2, 2], partitioner=partitioner)
+    for part_var in list(my_var0):
+      computed_full_name = variables_lib2.get_variable_full_name(part_var)
+      self.assertEquals(input_full_name, computed_full_name)
+
+
 class AssignFromValuesTest(test.TestCase):
 
   def testNoScopes(self):

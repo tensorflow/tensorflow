@@ -141,10 +141,8 @@ Status InsertLogging(const GraphDef& input_graph_def,
   }
 
   output_graph_def->Clear();
-  RenameNodeInputs(logged_graph_def, inputs_to_rename, ignore_when_renaming,
-                   output_graph_def);
-
-  return Status::OK();
+  return RenameNodeInputs(logged_graph_def, inputs_to_rename,
+                          ignore_when_renaming, output_graph_def);
 }
 
 REGISTER_GRAPH_TRANSFORM("insert_logging", InsertLogging);

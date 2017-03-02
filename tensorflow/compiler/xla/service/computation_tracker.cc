@@ -26,7 +26,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
+
+using ::tensorflow::strings::Appendf;
 
 namespace xla {
 
@@ -130,7 +133,7 @@ void ComputationTracker::ComputeComputationPostOrder(
     std::set<VersionedComputationHandle>* visited,
     std::list<VersionedComputationHandle>* post_order) const {
   if (visited->count(versioned_handle) > 0) {
-    DCHECK_EQ(1, visited->count(versioned_handle));
+    CHECK_EQ(1, visited->count(versioned_handle));
     return;
   }
 
@@ -150,8 +153,13 @@ void ComputationTracker::ComputeComputationPostOrder(
 
 StatusOr<std::unique_ptr<HloModule>> ComputationTracker::BuildHloModule(
     const VersionedComputationHandle& entry_handle,
-    bool include_unused_parameters) const {
+    bool include_unreachable_instructions) const {
   tensorflow::mutex_lock lock(computation_mutex_);
+
+  VLOG(1) << "BuildHloModule(" << entry_handle
+          << ", include_unreachable_instructions="
+          << include_unreachable_instructions << ")";
+  XLA_VLOG_LINES(1, ToStringInternal());
 
   TF_ASSIGN_OR_RETURN(UserComputation * entry_computation,
                       ResolveInternal(entry_handle.handle));
@@ -174,6 +182,14 @@ StatusOr<std::unique_ptr<HloModule>> ComputationTracker::BuildHloModule(
     return hlo_computations.at(versioned_handle);
   };
 
+  // Print the post-order list for this entry computation.
+  if (VLOG_IS_ON(2)) {
+    VLOG(2) << "Visiting UserComputations in post order:";
+    for (const VersionedComputationHandle& versioned_handle : post_order) {
+      VLOG(2) << "  " << versioned_handle;
+    }
+  }
+
   string module_name =
       tensorflow::strings::StrCat(entry_computation->name(), "_module");
   auto module = MakeUnique<HloModule>(module_name, entry_handle);
@@ -184,7 +200,7 @@ StatusOr<std::unique_ptr<HloModule>> ComputationTracker::BuildHloModule(
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<HloComputation> hlo_computation,
         computation->BuildHloComputation(versioned_handle.version, resolver,
-                                         include_unused_parameters));
+                                         include_unreachable_instructions));
 
     // Add the newly created computation to VersionedHandle-to-HloComputation
     // map.
@@ -199,6 +215,25 @@ StatusOr<std::unique_ptr<HloModule>> ComputationTracker::BuildHloModule(
   }
 
   return std::move(module);
+}
+
+string ComputationTracker::ToString() const {
+  tensorflow::mutex_lock lock(computation_mutex_);
+  return ToStringInternal();
+}
+
+string ComputationTracker::ToStringInternal() const {
+  string out;
+  Appendf(&out, "ComputationTracker(%p):\n", this);
+  for (const auto& handle_computation : opaque_to_computation_) {
+    int64 handle = handle_computation.first;
+    const std::unique_ptr<UserComputation>& computation =
+        handle_computation.second;
+    Appendf(&out, "  %4lld : %s \"%s\"\n", handle,
+            computation->GetVersionedHandle().ToString().c_str(),
+            computation->name().c_str());
+  }
+  return out;
 }
 
 }  // namespace xla

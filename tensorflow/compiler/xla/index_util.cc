@@ -32,7 +32,8 @@ namespace xla {
   // Padding and nested layouts not supported yet.
   DCHECK_EQ(0, shape.layout().padded_dimensions_size());
 
-  for (int i = 0; i < multi_index.size(); ++i) {
+  for (tensorflow::gtl::ArraySlice<int64>::size_type i = 0;
+       i < multi_index.size(); ++i) {
     DCHECK_GE(multi_index[i], 0);
     DCHECK_LT(multi_index[i], shape.dimensions(i))
         << "indexing beyond extent in dimension " << i << ":"
@@ -77,9 +78,17 @@ namespace xla {
   // Scale factor holding the growing product of D{L(i)} terms.
   int64 scale = 1;
   int64 linear_index = 0;
+  bool first = true;
   for (auto dimension : shape.layout().minor_to_major()) {
-    linear_index += scale * multi_index[dimension];
-    scale *= shape.dimensions(dimension);
+    if (first) {
+      // Avoid two multiplies on the first loop iteration
+      linear_index = multi_index[dimension];
+      scale = shape.dimensions(dimension);
+      first = false;
+    } else {
+      linear_index += scale * multi_index[dimension];
+      scale *= shape.dimensions(dimension);
+    }
   }
   return linear_index;
 }

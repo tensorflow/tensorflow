@@ -521,7 +521,7 @@ class StreamingAccuracyTest(test.TestCase):
     predictions = random_ops.random_uniform(
         (10, 3), maxval=3, dtype=dtypes_lib.int64, seed=1)
     labels = random_ops.random_uniform(
-        (10, 3), maxval=3, dtype=dtypes_lib.int64, seed=1)
+        (10, 3), maxval=3, dtype=dtypes_lib.int64, seed=2)
     accuracy, update_op = metrics.streaming_accuracy(predictions, labels)
 
     with self.test_session() as sess:
@@ -1073,7 +1073,7 @@ class StreamingPrecisionTest(test.TestCase):
     predictions = random_ops.random_uniform(
         (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=1)
     labels = random_ops.random_uniform(
-        (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=1)
+        (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=2)
     precision, update_op = metrics.streaming_precision(predictions, labels)
 
     with self.test_session() as sess:
@@ -1237,7 +1237,7 @@ class StreamingRecallTest(test.TestCase):
     predictions = random_ops.random_uniform(
         (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=1)
     labels = random_ops.random_uniform(
-        (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=1)
+        (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=2)
     recall, update_op = metrics.streaming_recall(predictions, labels)
 
     with self.test_session() as sess:
@@ -1360,7 +1360,7 @@ class StreamingAUCTest(test.TestCase):
     predictions = random_ops.random_uniform(
         (10, 3), maxval=1, dtype=dtypes_lib.float32, seed=1)
     labels = random_ops.random_uniform(
-        (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=1)
+        (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=2)
     auc, update_op = metrics.streaming_auc(predictions, labels)
 
     with self.test_session() as sess:
@@ -1623,7 +1623,7 @@ class StreamingSpecificityAtSensitivityTest(test.TestCase):
     predictions = random_ops.random_uniform(
         (10, 3), maxval=1, dtype=dtypes_lib.float32, seed=1)
     labels = random_ops.random_uniform(
-        (10, 3), maxval=2, dtype=dtypes_lib.int64, seed=1)
+        (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=2)
     specificity, update_op = metrics.streaming_specificity_at_sensitivity(
         predictions, labels, sensitivity=0.7)
 
@@ -1759,7 +1759,7 @@ class StreamingSensitivityAtSpecificityTest(test.TestCase):
     predictions = random_ops.random_uniform(
         (10, 3), maxval=1, dtype=dtypes_lib.float32, seed=1)
     labels = random_ops.random_uniform(
-        (10, 3), maxval=2, dtype=dtypes_lib.int64, seed=1)
+        (10, 3), maxval=2, dtype=dtypes_lib.int64, seed=2)
     sensitivity, update_op = metrics.streaming_sensitivity_at_specificity(
         predictions, labels, specificity=0.7)
 
@@ -1885,7 +1885,7 @@ class StreamingPrecisionRecallThresholdsTest(test.TestCase):
     predictions = random_ops.random_uniform(
         (10, 3), maxval=1, dtype=dtypes_lib.float32, seed=1)
     labels = random_ops.random_uniform(
-        (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=1)
+        (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=2)
     thresholds = [0, 0.5, 1.0]
     prec, prec_op = metrics.streaming_precision_at_thresholds(predictions,
                                                               labels,
@@ -2351,6 +2351,31 @@ class StreamingSparsePrecisionTest(test.TestCase):
         self.assertAlmostEqual(expected, update.eval())
         self.assertAlmostEqual(expected, metric.eval())
 
+  def _test_streaming_sparse_average_precision_at_top_k(self,
+                                                        top_k_predictions,
+                                                        labels,
+                                                        expected,
+                                                        weights=None):
+    with ops.Graph().as_default() as g, self.test_session(g):
+      if weights is not None:
+        weights = constant_op.constant(weights, dtypes_lib.float32)
+      metric, update = metrics.streaming_sparse_average_precision_at_top_k(
+          top_k_predictions, labels, weights=weights)
+
+      # Fails without initialized vars.
+      self.assertRaises(errors_impl.OpError, metric.eval)
+      self.assertRaises(errors_impl.OpError, update.eval)
+      local_variables = variables.local_variables()
+      variables.variables_initializer(local_variables).run()
+
+      # Run per-step op and assert expected values.
+      if math.isnan(expected):
+        _assert_nan(self, update.eval())
+        _assert_nan(self, metric.eval())
+      else:
+        self.assertAlmostEqual(expected, update.eval())
+        self.assertAlmostEqual(expected, metric.eval())
+
   def test_top_k_rank_invalid(self):
     with self.test_session():
       # top_k_predictions has rank < 2.
@@ -2388,6 +2413,8 @@ class StreamingSparsePrecisionTest(test.TestCase):
           (predictions_top_k_ex1[:k],), labels, expected=precision_ex1[i])
       self._test_streaming_sparse_average_precision_at_k(
           predictions, labels, k, expected=avg_precision_ex1[i])
+      self._test_streaming_sparse_average_precision_at_top_k(
+          (predictions_top_k_ex1[:k],), labels, expected=avg_precision_ex1[i])
 
     # Example 2.
     labels_ex2 = (0, 2, 4, 5, 6)
@@ -2406,6 +2433,8 @@ class StreamingSparsePrecisionTest(test.TestCase):
           (predictions_top_k_ex2[:k],), labels, expected=precision_ex2[i])
       self._test_streaming_sparse_average_precision_at_k(
           predictions, labels, k, expected=avg_precision_ex2[i])
+      self._test_streaming_sparse_average_precision_at_top_k(
+          (predictions_top_k_ex2[:k],), labels, expected=avg_precision_ex2[i])
 
     # Both examples, we expect both precision and average precision to be the
     # average of the 2 examples.
@@ -2426,6 +2455,8 @@ class StreamingSparsePrecisionTest(test.TestCase):
           predictions_top_k, labels, expected=streaming_precision[i])
       self._test_streaming_sparse_average_precision_at_k(
           predictions, labels, k, expected=streaming_average_precision[i])
+      self._test_streaming_sparse_average_precision_at_top_k(
+          predictions_top_k, labels, expected=streaming_average_precision[i])
 
     # Weighted examples, we expect streaming average precision to be the
     # weighted average of the 2 examples.
@@ -2440,6 +2471,11 @@ class StreamingSparsePrecisionTest(test.TestCase):
           predictions,
           labels,
           k,
+          expected=streaming_average_precision[i],
+          weights=weights)
+      self._test_streaming_sparse_average_precision_at_top_k(
+          (predictions_top_k_ex1[:k], predictions_top_k_ex2[:k]),
+          labels,
           expected=streaming_average_precision[i],
           weights=weights)
 
@@ -2461,6 +2497,27 @@ class StreamingSparsePrecisionTest(test.TestCase):
           (predictions_top_k_ex1[:k],), labels, expected=precision_ex1[i])
       self._test_streaming_sparse_average_precision_at_k(
           predictions, labels, k, expected=avg_precision_ex1[i])
+      self._test_streaming_sparse_average_precision_at_top_k(
+          (predictions_top_k_ex1[:k],), labels, expected=avg_precision_ex1[i])
+
+  def test_average_precision_at_top_k_static_shape_check(self):
+    predictions_top_k = array_ops.placeholder(shape=(2, None),
+                                              dtype=dtypes_lib.int64)
+    labels = np.array(((1,), (2,)), dtype=np.int64)
+    # Fails due to non-static predictions_idx shape.
+    with self.assertRaises(ValueError):
+      metric_ops.streaming_sparse_average_precision_at_top_k(predictions_top_k,
+                                                             labels)
+
+    predictions_top_k = (2, 1)
+    # Fails since rank of predictions_idx is less than one.
+    with self.assertRaises(ValueError):
+      metric_ops.streaming_sparse_average_precision_at_top_k(predictions_top_k,
+                                                             labels)
+    predictions_top_k = ((2,), (1,))
+    # Valid static shape.
+    metric_ops.streaming_sparse_average_precision_at_top_k(predictions_top_k,
+                                                           labels)
 
   def test_one_label_at_k1_nan(self):
     predictions = [[0.1, 0.3, 0.2, 0.4], [0.1, 0.2, 0.3, 0.4]]
@@ -4341,7 +4398,7 @@ class StreamingMeanIOUTest(test.TestCase):
     predictions = random_ops.random_uniform(
         [10], maxval=num_classes, dtype=dtypes_lib.int64, seed=1)
     labels = random_ops.random_uniform(
-        [10], maxval=num_classes, dtype=dtypes_lib.int64, seed=1)
+        [10], maxval=num_classes, dtype=dtypes_lib.int64, seed=2)
     miou, update_op = metrics.streaming_mean_iou(
         predictions, labels, num_classes=num_classes)
 
@@ -4599,6 +4656,25 @@ class StreamingConcatTest(test.TestCase):
 
       sess.run([update_op], feed_dict={values: [5, 6, 7, 8, 9]})
       self.assertAllEqual(np.arange(10), concatenated.eval())
+
+  def testStreamingConcatStringValues(self):
+    with self.test_session() as sess:
+      values = array_ops.placeholder(dtypes_lib.string, [None])
+      concatenated, update_op = metrics.streaming_concat(values)
+      sess.run(variables.local_variables_initializer())
+
+      self.assertItemsEqual([], concatenated.eval())
+
+      sess.run([update_op], feed_dict={values: ['a', 'b', 'c']})
+      self.assertItemsEqual([b'a', b'b', b'c'], concatenated.eval())
+
+      sess.run([update_op], feed_dict={values: ['d', 'e']})
+      self.assertItemsEqual([b'a', b'b', b'c', b'd', b'e'], concatenated.eval())
+
+      sess.run([update_op], feed_dict={values: ['f', 'g', 'h', 'i', 'j']})
+      self.assertItemsEqual(
+          [b'a', b'b', b'c', b'd', b'e', b'f', b'g', b'h', b'i', b'j'],
+          concatenated.eval())
 
   def testStreamingConcatMaxSize(self):
     with self.test_session() as sess:

@@ -19,12 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import math
-import sys
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 import numpy as np
 
@@ -1754,6 +1748,22 @@ class BatchNormTest(test.TestCase):
       self.assertEqual(update_moving_variance.op.name,
                        'BatchNorm/AssignMovingAvg_1')
 
+  def testVariablesCollections(self):
+    variables_collections = {
+        'beta': ['beta'],
+        'gamma': ['gamma'],
+        'moving_mean': ['moving_mean'],
+        'moving_variance': ['moving_variance'],
+    }
+    images = random_ops.random_uniform((5, 5, 5, 3), seed=1)
+    _layers.batch_norm(
+        images, scale=True, variables_collections=variables_collections)
+    for var_name, collection_names in variables_collections.items():
+      collection = ops.get_collection(collection_names[0])
+      self.assertEqual(len(collection), 1)
+      var_name_in_collection = collection[0].op.name
+      self.assertEqual(var_name_in_collection, 'BatchNorm/' + var_name)
+
   def testReuseVariables(self):
     height, width = 3, 3
     with self.test_session():
@@ -3003,6 +3013,14 @@ class StackTests(test.TestCase):
       output = _layers.stack(images, _layers.fully_connected, [10, 20, 30])
       self.assertEqual(output.op.name, 'Stack/fully_connected_3/Relu')
       self.assertListEqual(output.get_shape().as_list(), [5, 30])
+
+  def testStackFullyConnectedFailOnReuse(self):
+    height, width = 3, 3
+    with self.test_session():
+      with variable_scope.variable_scope('test', reuse=True):
+        images = np.random.uniform(size=(5, height * width * 3))
+        with self.assertRaises(ValueError):
+          _layers.stack(images, _layers.fully_connected, [10, 20, 30])
 
   def testStackRelu(self):
     height, width = 3, 3

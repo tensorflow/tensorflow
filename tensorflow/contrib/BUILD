@@ -25,7 +25,9 @@ py_library(
         "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/contrib/graph_editor:graph_editor_py",
         "//tensorflow/contrib/grid_rnn:grid_rnn_py",
+        "//tensorflow/contrib/hooks",
         "//tensorflow/contrib/image:image_py",
+        "//tensorflow/contrib/imperative",
         "//tensorflow/contrib/input_pipeline:input_pipeline_py",
         "//tensorflow/contrib/integrate:integrate_py",
         "//tensorflow/contrib/labeled_tensor",
@@ -36,6 +38,7 @@ py_library(
         "//tensorflow/contrib/linear_optimizer:sdca_ops_py",
         "//tensorflow/contrib/lookup:lookup_py",
         "//tensorflow/contrib/losses:losses_py",
+        "//tensorflow/contrib/memory_stats:memory_stats_py",
         "//tensorflow/contrib/metrics:metrics_py",
         "//tensorflow/contrib/nccl:nccl_py",
         "//tensorflow/contrib/ndlstm",
@@ -68,6 +71,7 @@ cc_library(
         "//tensorflow/contrib/input_pipeline:input_pipeline_ops_kernels",
         "//tensorflow/contrib/layers:bucketization_op_kernel",
         "//tensorflow/contrib/layers:sparse_feature_cross_op_kernel",
+        "//tensorflow/contrib/tensor_forest:all_ops",
     ],
 )
 

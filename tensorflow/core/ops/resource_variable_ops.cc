@@ -34,10 +34,10 @@ REGISTER_OP("VarHandleOp")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Scalar());
       DataType t;
-      c->GetAttr("dtype", &t);
+      TF_RETURN_IF_ERROR(c->GetAttr("dtype", &t));
       c->set_output_handle_dtype(0, t);
       TensorShapeProto p;
-      c->GetAttr("shape", &p);
+      TF_RETURN_IF_ERROR(c->GetAttr("shape", &p));
       shape_inference::ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeProto(p, &s));
       c->set_output_handle_shape(0, s);
@@ -60,7 +60,7 @@ REGISTER_OP("ReadVariableOp")
     .SetShapeFn([](InferenceContext* c) {
       DataType handle_dtype = c->input_handle_dtype(0);
       DataType value_dtype;
-      c->GetAttr("dtype", &value_dtype);
+      TF_RETURN_IF_ERROR(c->GetAttr("dtype", &value_dtype));
       if (handle_dtype != value_dtype) {
         return errors::InvalidArgument(
             "Trying to read variable with wrong dtype. "
@@ -79,6 +79,35 @@ The value returned by this operation is guaranteed to be influenced by all the
 writes on which this operation depends directly or indirectly, and to not be
 influenced by any of the writes which depend directly or indirectly on this
 operation.
+
+resource: handle to the resource in which to store the variable.
+dtype: the dtype of the value.
+)");
+
+REGISTER_OP("_UnsafeReadVariable")
+    .Input("resource: resource")
+    .Output("value: dtype")
+    .Attr("dtype: type")
+    .SetShapeFn([](InferenceContext* c) {
+      DataType handle_dtype = c->input_handle_dtype(0);
+      DataType value_dtype;
+      c->GetAttr("dtype", &value_dtype);
+      if (handle_dtype != value_dtype) {
+        return errors::InvalidArgument(
+            "Trying to read variable with wrong dtype. "
+            "Expected ",
+            handle_dtype, " got ", value_dtype);
+      }
+      c->set_output(0, c->input_handle_shape(0));
+      return Status::OK();
+    })
+    .Doc(R"(
+Reads the value of a variable without any memory model.
+
+The tensor returned by this operation aliases a mutable Tensor, and its value
+can be observed to be different by different ops.
+
+Internal and private to the tensorflow implementation.
 
 resource: handle to the resource in which to store the variable.
 dtype: the dtype of the value.
@@ -103,7 +132,7 @@ ignore_lookup_error: whether to ignore the error when the resource
 Status CreateAssignShapeFn(InferenceContext* c) {
   DataType handle_dtype = c->input_handle_dtype(0);
   DataType value_dtype;
-  c->GetAttr("dtype", &value_dtype);
+  TF_RETURN_IF_ERROR(c->GetAttr("dtype", &value_dtype));
   if (handle_dtype != value_dtype) {
     return errors::InvalidArgument(
         "Trying to initialize handle for variable with wrong dtype. "

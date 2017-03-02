@@ -12,26 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Module for constructing RNN Cells and additional RNN operations.
+"""RNN Cells and additional RNN operations.
 
-## Base interface for all RNN Cells
+See @{$python/contrib.rnn} guide.
 
 @@RNNCell
-
-## Core RNN Cells for use with TensorFlow's core RNN methods
-
 @@BasicRNNCell
 @@BasicLSTMCell
 @@GRUCell
 @@LSTMCell
 @@LayerNormBasicLSTMCell
-
-## Classes storing split `RNNCell` state
-
 @@LSTMStateTuple
-
-## Core RNN Cell wrappers (RNNCells that wrap other RNNCells)
-
 @@MultiRNNCell
 @@LSTMBlockWrapper
 @@DropoutWrapper
@@ -40,36 +31,25 @@
 @@OutputProjectionWrapper
 @@DeviceWrapper
 @@ResidualWrapper
-
-### Block RNNCells
 @@LSTMBlockCell
 @@GRUBlockCell
-
-### Fused RNNCells
 @@FusedRNNCell
 @@FusedRNNCellAdaptor
 @@TimeReversedFusedRNN
 @@LSTMBlockFusedCell
-
-### LSTM-like cells
 @@CoupledInputForgetGateLSTMCell
 @@TimeFreqLSTMCell
 @@GridLSTMCell
+@@NASCell
 
 ### RNNCell wrappers
 @@AttentionCellWrapper
 @@CompiledWrapper
-
-
-## Recurrent Neural Networks
-
-TensorFlow provides a number of methods for constructing Recurrent Neural
-Networks.
-
 @@static_rnn
 @@static_state_saving_rnn
 @@static_bidirectional_rnn
 @@stack_bidirectional_dynamic_rnn
+@@stack_bidirectional_rnn
 """
 
 from __future__ import absolute_import

@@ -21,12 +21,6 @@ from __future__ import print_function
 import functools
 import math
 import random
-import sys
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 import numpy as np
 
@@ -211,24 +205,25 @@ class Seq2SeqTest(test.TestCase):
               num_decoder_symbols=5,
               embedding_size=2,
               feed_previous=constant_op.constant(True))
+        with variable_scope.variable_scope("other_2"):
+          d1, _ = seq2seq_lib.embedding_rnn_seq2seq(
+              enc_inp,
+              dec_inp,
+              cell_fn(),
+              num_encoder_symbols=2,
+              num_decoder_symbols=5,
+              embedding_size=2,
+              feed_previous=True)
+        with variable_scope.variable_scope("other_3"):
+          d2, _ = seq2seq_lib.embedding_rnn_seq2seq(
+              enc_inp,
+              dec_inp2,
+              cell_fn(),
+              num_encoder_symbols=2,
+              num_decoder_symbols=5,
+              embedding_size=2,
+              feed_previous=True)
         sess.run([variables.global_variables_initializer()])
-        variable_scope.get_variable_scope().reuse_variables()
-        d1, _ = seq2seq_lib.embedding_rnn_seq2seq(
-            enc_inp,
-            dec_inp,
-            cell_fn(),
-            num_encoder_symbols=2,
-            num_decoder_symbols=5,
-            embedding_size=2,
-            feed_previous=True)
-        d2, _ = seq2seq_lib.embedding_rnn_seq2seq(
-            enc_inp,
-            dec_inp2,
-            cell_fn(),
-            num_encoder_symbols=2,
-            num_decoder_symbols=5,
-            embedding_size=2,
-            feed_previous=True)
         res1 = sess.run(d1)
         res2 = sess.run(d2)
         res3 = sess.run(d3)
@@ -302,22 +297,23 @@ class Seq2SeqTest(test.TestCase):
               num_symbols=5,
               embedding_size=2,
               feed_previous=constant_op.constant(True))
+        with variable_scope.variable_scope("other_2"):
+          d1, _ = seq2seq_lib.embedding_tied_rnn_seq2seq(
+              enc_inp,
+              dec_inp,
+              cell(),
+              num_symbols=5,
+              embedding_size=2,
+              feed_previous=True)
+        with variable_scope.variable_scope("other_3"):
+          d2, _ = seq2seq_lib.embedding_tied_rnn_seq2seq(
+              enc_inp,
+              dec_inp2,
+              cell(),
+              num_symbols=5,
+              embedding_size=2,
+              feed_previous=True)
         sess.run([variables.global_variables_initializer()])
-        variable_scope.get_variable_scope().reuse_variables()
-        d1, _ = seq2seq_lib.embedding_tied_rnn_seq2seq(
-            enc_inp,
-            dec_inp,
-            cell(),
-            num_symbols=5,
-            embedding_size=2,
-            feed_previous=True)
-        d2, _ = seq2seq_lib.embedding_tied_rnn_seq2seq(
-            enc_inp,
-            dec_inp2,
-            cell(),
-            num_symbols=5,
-            embedding_size=2,
-            feed_previous=True)
         res1 = sess.run(d1)
         res2 = sess.run(d2)
         res3 = sess.run(d3)
@@ -654,9 +650,15 @@ class Seq2SeqTest(test.TestCase):
                 i, dtypes.int32, shape=[2]) for i in range(4)
         ]
         dec_symbols_dict = {"0": 5, "1": 6}
-        cell = core_rnn_cell_impl.BasicLSTMCell(2, state_is_tuple=True)
+        def EncCellFn():
+          return core_rnn_cell_impl.BasicLSTMCell(2, state_is_tuple=True)
+        def DecCellsFn():
+          return dict(
+              (k, core_rnn_cell_impl.BasicLSTMCell(2, state_is_tuple=True))
+              for k in dec_symbols_dict)
         outputs_dict, state_dict = (seq2seq_lib.one2many_rnn_seq2seq(
-            enc_inp, dec_inp_dict, cell, 2, dec_symbols_dict, embedding_size=2))
+            enc_inp, dec_inp_dict, EncCellFn(), DecCellsFn(),
+            2, dec_symbols_dict, embedding_size=2))
 
         sess.run([variables.global_variables_initializer()])
         res = sess.run(outputs_dict["0"])
@@ -688,29 +690,33 @@ class Seq2SeqTest(test.TestCase):
           outputs_dict3, _ = seq2seq_lib.one2many_rnn_seq2seq(
               enc_inp,
               dec_inp_dict2,
-              cell,
+              EncCellFn(),
+              DecCellsFn(),
               2,
               dec_symbols_dict,
               embedding_size=2,
               feed_previous=constant_op.constant(True))
+        with variable_scope.variable_scope("other_2"):
+          outputs_dict1, _ = seq2seq_lib.one2many_rnn_seq2seq(
+              enc_inp,
+              dec_inp_dict,
+              EncCellFn(),
+              DecCellsFn(),
+              2,
+              dec_symbols_dict,
+              embedding_size=2,
+              feed_previous=True)
+        with variable_scope.variable_scope("other_3"):
+          outputs_dict2, _ = seq2seq_lib.one2many_rnn_seq2seq(
+              enc_inp,
+              dec_inp_dict2,
+              EncCellFn(),
+              DecCellsFn(),
+              2,
+              dec_symbols_dict,
+              embedding_size=2,
+              feed_previous=True)
         sess.run([variables.global_variables_initializer()])
-        variable_scope.get_variable_scope().reuse_variables()
-        outputs_dict1, _ = seq2seq_lib.one2many_rnn_seq2seq(
-            enc_inp,
-            dec_inp_dict,
-            cell,
-            2,
-            dec_symbols_dict,
-            embedding_size=2,
-            feed_previous=True)
-        outputs_dict2, _ = seq2seq_lib.one2many_rnn_seq2seq(
-            enc_inp,
-            dec_inp_dict2,
-            cell,
-            2,
-            dec_symbols_dict,
-            embedding_size=2,
-            feed_previous=True)
         res1 = sess.run(outputs_dict1["0"])
         res2 = sess.run(outputs_dict2["0"])
         res3 = sess.run(outputs_dict3["0"])

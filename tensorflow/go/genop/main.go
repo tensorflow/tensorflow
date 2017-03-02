@@ -33,7 +33,7 @@ func main() {
 	var (
 		filename = flag.String("outfile", "", "File to write generated source code to.")
 		header   = flag.String("header", "", "Path to a file whose contents will be copied into the generated file. Can be empty")
-		buf bytes.Buffer
+		buf      bytes.Buffer
 	)
 	flag.Parse()
 	if *filename == "" {

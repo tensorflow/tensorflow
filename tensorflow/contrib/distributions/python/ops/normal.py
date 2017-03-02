@@ -117,15 +117,15 @@ class Normal(distribution.Distribution):
       loc: Floating point tensor; the means of the distribution(s).
       scale: Floating point tensor; the stddevs of the distribution(s).
         Must contain only positive values.
-      validate_args: Python `Boolean`, default `False`. When `True` distribution
+      validate_args: Python `bool`, default `False`. When `True` distribution
         parameters are checked for validity despite possibly degrading runtime
         performance. When `False` invalid inputs may silently render incorrect
         outputs.
-      allow_nan_stats: Python `Boolean`, default `True`. When `True`,
+      allow_nan_stats: Python `bool`, default `True`. When `True`,
         statistics (e.g., mean, mode, variance) use the value "`NaN`" to
-        indicate the result is undefined.  When `False`, an exception is raised
+        indicate the result is undefined. When `False`, an exception is raised
         if one or more of the statistic's batch members are undefined.
-      name: `String` name prefixed to Ops created by this class.
+      name: Python `str` name prefixed to Ops created by this class.
 
     Raises:
       TypeError: if `loc` and `scale` have different `dtype`.
@@ -136,10 +136,9 @@ class Normal(distribution.Distribution):
                                     validate_args else []):
         self._loc = array_ops.identity(loc, name="loc")
         self._scale = array_ops.identity(scale, name="scale")
-        contrib_tensor_util.assert_same_float_dtype((self._loc, self._scale))
+        contrib_tensor_util.assert_same_float_dtype([self._loc, self._scale])
     super(Normal, self).__init__(
         dtype=self._scale.dtype,
-        is_continuous=True,
         reparameterization_type=distribution.FULLY_REPARAMETERIZED,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
@@ -180,7 +179,7 @@ class Normal(distribution.Distribution):
     return tensor_shape.scalar()
 
   def _sample_n(self, n, seed=None):
-    shape = array_ops.concat(([n], array_ops.shape(self.mean())), 0)
+    shape = array_ops.concat([[n], self.batch_shape_tensor()], 0)
     sampled = random_ops.random_normal(
         shape=shape, mean=0., stddev=1., dtype=self.loc.dtype, seed=seed)
     return sampled * self.scale + self.loc
