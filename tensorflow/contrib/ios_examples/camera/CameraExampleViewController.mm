@@ -256,7 +256,9 @@ static const NSString *AVCaptureStillImageIsCapturingStillImageContext =
 didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
        fromConnection:(AVCaptureConnection *)connection {
   CVPixelBufferRef pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
+  CFRetain(pixelBuffer);
   [self runCNNOnFrame:pixelBuffer];
+  CFRelease(pixelBuffer);
 }
 
 - (void)runCNNOnFrame:(CVPixelBufferRef)pixelBuffer {
