@@ -89,25 +89,22 @@ CreateConv2D(poplar::Graph &graph,
                       (unsigned int)dims.feature_dimension(),
                       (unsigned int)dims.spatial_dimensions(0),
                       (unsigned int)dims.spatial_dimensions(1)});
-
   in = in.reshape({n_b,
                    in_chan_groups,
                    plan.inChansPerGroup,
                    n_y,
                    n_x});
-
   in = in.dimShuffle({0, 1, 3, 4, 2});
-
-  kernel = kernel.dimShuffle({(unsigned int)dims.kernel_input_feature_dimension(),
-                              (unsigned int)dims.kernel_spatial_dimensions(0),
+  kernel = kernel.dimShuffle({(unsigned int)dims.kernel_spatial_dimensions(0),
                               (unsigned int)dims.kernel_spatial_dimensions(1),
+                              (unsigned int)dims.kernel_input_feature_dimension(),
                               (unsigned int)dims.kernel_output_feature_dimension()});
-  kernel = kernel.reshape({in_chan_groups,
+  kernel = kernel.reshape({f_y, f_x,
+                           in_chan_groups,
                            plan.inChansPerGroup,
-                           f_y, f_x,
                            out_chan_groups,
                            plan.partialChansPerGroup});
-  kernel = kernel.dimShuffle({4, 0, 2, 3, 1, 5});
+  kernel = kernel.dimShuffle({4, 2, 0, 1, 5, 3});
 
   out = out.dimShuffle({(unsigned int)dims.batch_dimension(),
                         (unsigned int)dims.feature_dimension(),
