@@ -168,6 +168,11 @@ class Service : public ServiceInterface {
       const TransferFromOutfeedRequest* arg,
       TransferFromOutfeedResponse* result) override;
 
+  // Transfers data from a buffer provided by the client, into device memory.
+  tensorflow::Status TransferToServerInProcess(
+      const TransferToServerInProcessRequest* arg,
+      TransferToServerInProcessResponse* result) override;
+
   // Resets devices, clearing all existing state on all the devices associated
   // with this service (including memory allocated on the devices).
   //
@@ -179,11 +184,6 @@ class Service : public ServiceInterface {
   // state (e.g., architectural state) that the next Execution depends on.
   tensorflow::Status ResetDevice(const ResetDeviceRequest* arg,
                                  ResetDeviceResponse* result) override;
-
-  // Transfers data from a buffer provided by the client, into device memory.
-  tensorflow::Status TransferToServerInProcess(
-      const TransferToServerInProcessRequest* arg,
-      TransferToServerInProcessResponse* result) override;
 
   // Tests if an expression is a compile-time constant.
   tensorflow::Status IsConstant(const IsConstantRequest* arg,
