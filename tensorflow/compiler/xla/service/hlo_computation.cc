@@ -503,10 +503,7 @@ HloComputation::ComputeTransitiveOperands() const {
   return result;
 }
 
-Status HloComputation::Accept(DfsHloVisitor* visitor) const {
-  // Visit all roots. Build a vector of roots ahead of time because visitor
-  // might delete the currently visited root which would invalidate the
-  // iterator.
+std::vector<HloInstruction*> HloComputation::CollectUnreachableRoots() const {
   std::vector<HloInstruction*> unreachable_roots;
   for (auto& instruction : instructions()) {
     if (instruction->user_count() == 0 &&
@@ -515,12 +512,35 @@ Status HloComputation::Accept(DfsHloVisitor* visitor) const {
       unreachable_roots.push_back(instruction.get());
     }
   }
-  for (HloInstruction* root : unreachable_roots) {
+  return unreachable_roots;
+}
+
+Status HloComputation::Accept(DfsHloVisitor* visitor) const {
+  // Visit unreachable roots. Beware that the visitor might delete the currently
+  // visited root, which would invalidate iterators if the unreachable roots
+  // weren't computed ahead of time.
+  for (HloInstruction* root : CollectUnreachableRoots()) {
     // Call FinishVisit only at the end.
     TF_RETURN_IF_ERROR(root->Accept(visitor, /*call_finish_visit=*/false));
   }
   // Visit the computation root instruction last.
   return root_instruction()->Accept(visitor, /*call_finish_visit=*/true);
+}
+
+Status HloComputation::AcceptWithOperandOrder(
+    DfsHloVisitor* visitor,
+    const HloInstruction::CompareFunction& operand_order) const {
+  // Visit unreachable roots. Beware that the visitor might delete the currently
+  // visited root, which would invalidate iterators if the unreachable roots
+  // weren't computed ahead of time.
+  for (HloInstruction* root : CollectUnreachableRoots()) {
+    TF_RETURN_IF_ERROR(
+        root->AcceptWithOperandOrder(visitor, operand_order,
+                                     /*call_finish_visit=*/false));
+  }
+  // Visit the computation root instruction last.
+  return root_instruction()->AcceptWithOperandOrder(visitor, operand_order,
+                                                    /*call_finish_visit=*/true);
 }
 
 Status HloComputation::AcceptOrdered(

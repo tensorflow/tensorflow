@@ -1732,7 +1732,8 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
                        HloOpcodeString(opcode_).c_str());
 }
 
-Status HloInstruction::AcceptInternal(DfsHloVisitor* visitor) {
+Status HloInstruction::AcceptInternal(DfsHloVisitor* visitor,
+                                      const CompareFunction* operand_order) {
   // Do not visit this HLO node again if it is already visited.
   if (visitor->DidVisit(*this)) {
     VLOG(3) << "Not visiting HLO " << name() << " as it was already visited.";
@@ -1747,16 +1748,34 @@ Status HloInstruction::AcceptInternal(DfsHloVisitor* visitor) {
   }
   visitor->SetVisiting(*this);
 
-  for (auto operand : operands_) {
-    VLOG(3) << "Going to visit HLO " << operand->name() << " as operand of HLO "
-            << name();
-    TF_RETURN_IF_ERROR(operand->AcceptInternal(visitor));
+  // Sort operands and control predecessors, if an ordering was provided.  Note
+  // that 'temp_sorted_operands' must live at this scope, since 'operands' will
+  // point to it if the operands are sorted.  The point of the 'operands'
+  // pointer is to avoid copying the operands in the common case where the
+  // operands are not sorted.
+  std::vector<HloInstruction*>* operands = &operands_;
+  std::vector<HloInstruction*> temp_sorted_operands;
+  std::vector<HloInstruction*> predecessors(control_predecessors_.begin(),
+                                            control_predecessors_.end());
+  if (operand_order != nullptr) {
+    temp_sorted_operands = operands_;
+    std::sort(temp_sorted_operands.begin(), temp_sorted_operands.end(),
+              *operand_order);
+    std::sort(predecessors.begin(), predecessors.end(), *operand_order);
+    operands = &temp_sorted_operands;
   }
 
-  for (auto control_predecessor : control_predecessors_) {
+  for (auto operand : *operands) {
+    VLOG(3) << "Going to visit HLO " << operand->name() << " as operand of HLO "
+            << name();
+    TF_RETURN_IF_ERROR(operand->AcceptInternal(visitor, operand_order));
+  }
+
+  for (auto control_predecessor : predecessors) {
     VLOG(3) << "Going to visit HLO " << control_predecessor->name()
             << " as a control predecessor of HLO " << name();
-    TF_RETURN_IF_ERROR(control_predecessor->AcceptInternal(visitor));
+    TF_RETURN_IF_ERROR(
+        control_predecessor->AcceptInternal(visitor, operand_order));
   }
 
   TF_RETURN_IF_ERROR(visitor->Preprocess(this));
@@ -1768,16 +1787,22 @@ Status HloInstruction::AcceptInternal(DfsHloVisitor* visitor) {
 
 Status HloInstruction::Accept(DfsHloVisitor* visitor, bool call_finish_visit) {
   VLOG(2) << "HloInstruction::Accept(" << name() << ")";
-  auto status = AcceptInternal(visitor);
-  if (!status.ok()) {
-    return status;
-  }
-
+  TF_RETURN_IF_ERROR(AcceptInternal(visitor, nullptr));
   if (call_finish_visit) {
-    return visitor->FinishVisit(this);
-  } else {
-    return Status::OK();
+    TF_RETURN_IF_ERROR(visitor->FinishVisit(this));
   }
+  return Status::OK();
+}
+
+Status HloInstruction::AcceptWithOperandOrder(
+    DfsHloVisitor* visitor, const CompareFunction& operand_order,
+    bool call_finish_visit) {
+  VLOG(2) << "HloInstruction::AcceptWithOperandOrder(" << name() << ")";
+  TF_RETURN_IF_ERROR(AcceptInternal(visitor, &operand_order));
+  if (call_finish_visit) {
+    TF_RETURN_IF_ERROR(visitor->FinishVisit(this));
+  }
+  return Status::OK();
 }
 
 namespace {
@@ -1810,7 +1835,8 @@ bool OrderIsTopologicalSort(const std::vector<const HloInstruction*>& order) {
 
 }  // namespace
 
-Status HloInstruction::Accept(FunctionVisitor::VisitorFunction visitor_func) {
+Status HloInstruction::Accept(
+    const FunctionVisitor::VisitorFunction& visitor_func) {
   FunctionVisitor visitor(visitor_func);
   return this->Accept(&visitor);
 }

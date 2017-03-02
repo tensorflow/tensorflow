@@ -63,11 +63,9 @@ tensorflow::Status BufferLiveness::Analyze() {
     }
 
     if (computation.get() == module_->entry_computation()) {
-      for (const LogicalBuffer* live_out_buffer :
-           points_to_analysis_->GetPointsToSet(computation->root_instruction())
-               .CreateFlattenedSet()) {
-        maybe_live_out_buffers_.insert(live_out_buffer);
-      }
+      const HloInstruction* root = computation->root_instruction();
+      maybe_live_out_buffers_ =
+          points_to_analysis_->GetPointsToSet(root).CreateFlattenedSet();
     }
   }
 

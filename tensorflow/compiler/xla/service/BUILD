@@ -534,6 +534,7 @@ cc_library(
     ],
     deps = [
         ":buffer_liveness",
+        ":heap_simulator",
         ":hlo",
         ":logical_buffer",
         ":tuple_points_to_analysis",
@@ -569,6 +570,44 @@ cc_test(
 )
 
 cc_library(
+    name = "heap_simulator",
+    srcs = [
+        "heap_simulator.cc",
+    ],
+    hdrs = [
+        "heap_simulator.h",
+    ],
+    deps = [
+        ":hlo",
+        ":logical_buffer",
+        ":tuple_points_to_analysis",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_test(
+    name = "heap_simulator_test",
+    srcs = ["heap_simulator_test.cc"],
+    deps = [
+        ":heap_simulator",
+        ":hlo",
+        ":logical_buffer",
+        ":tuple_points_to_analysis",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
     name = "hlo_ordering",
     srcs = [
         "hlo_ordering.cc",
@@ -577,6 +616,7 @@ cc_library(
         "hlo_ordering.h",
     ],
     deps = [
+        ":heap_simulator",
         ":hlo",
         ":logical_buffer",
         ":tuple_points_to_analysis",
