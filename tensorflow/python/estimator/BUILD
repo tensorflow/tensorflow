@@ -140,7 +140,9 @@ py_library(
     srcs = ["export.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
+        "//tensorflow/python:parsing_ops",
     ],
 )
 
@@ -151,7 +153,6 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":export",
-        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
     ],
 )

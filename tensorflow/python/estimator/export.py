@@ -20,12 +20,15 @@ from __future__ import print_function
 
 import collections
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_shape
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import parsing_ops
 
-
-SINGLE_FEATURE_DEFAULT_NAME = 'feature'
-SINGLE_RECEIVER_DEFAULT_NAME = 'input'
+_SINGLE_FEATURE_DEFAULT_NAME = 'feature'
+_SINGLE_RECEIVER_DEFAULT_NAME = 'input'
 
 
 class ServingInputReceiver(collections.namedtuple('ServingInputReceiver',
@@ -46,7 +49,7 @@ class ServingInputReceiver(collections.namedtuple('ServingInputReceiver',
     if features is None:
       raise ValueError('features must be defined.')
     if not isinstance(features, dict):
-      features = {SINGLE_FEATURE_DEFAULT_NAME: features}
+      features = {_SINGLE_FEATURE_DEFAULT_NAME: features}
     for name, tensor in features.items():
       if not isinstance(name, str):
         raise ValueError('feature keys must be strings: {}.'.format(name))
@@ -58,7 +61,7 @@ class ServingInputReceiver(collections.namedtuple('ServingInputReceiver',
     if receiver_tensors is None:
       raise ValueError('receiver_tensors must be defined.')
     if not isinstance(receiver_tensors, dict):
-      receiver_tensors = {SINGLE_RECEIVER_DEFAULT_NAME: receiver_tensors}
+      receiver_tensors = {_SINGLE_RECEIVER_DEFAULT_NAME: receiver_tensors}
     for name, tensor in receiver_tensors.items():
       if not isinstance(name, str):
         raise ValueError(
@@ -69,3 +72,67 @@ class ServingInputReceiver(collections.namedtuple('ServingInputReceiver',
 
     return super(ServingInputReceiver, cls).__new__(
         cls, features=features, receiver_tensors=receiver_tensors)
+
+
+def build_parsing_serving_input_receiver_fn(feature_spec,
+                                            default_batch_size=None):
+  """Build a serving_input_receiver_fn expecting fed tf.Examples.
+
+  Creates an input_fn that expects a serialized tf.Example fed into a string
+  placeholder.  The function parses the tf.Example according to the provided
+  feature_spec, and returns all parsed Tensors as features.  This input_fn is
+  for use at serving time, so the labels return value is always None.
+
+  Args:
+    feature_spec: a dict of string to `VarLenFeature`/`FixedLenFeature`.
+    default_batch_size: the number of query examples expected per batch.
+        Leave unset for variable batch size (recommended).
+
+  Returns:
+    A serving_input_receiver_fn suitable for use in serving.
+  """
+  def serving_input_receiver_fn():
+    """An input_fn that expects a serialized tf.Example."""
+    serialized_tf_example = array_ops.placeholder(dtype=dtypes.string,
+                                                  shape=[default_batch_size],
+                                                  name='input_example_tensor')
+    receiver_tensors = {'examples': serialized_tf_example}
+    features = parsing_ops.parse_example(serialized_tf_example, feature_spec)
+    return ServingInputReceiver(features, receiver_tensors)
+
+  return serving_input_receiver_fn
+
+
+def build_raw_serving_input_receiver_fn(features, default_batch_size=None):
+  """Build a serving_input_receiver_fn expecting feature Tensors.
+
+  Creates an serving_input_receiver_fn that expects all features to be fed
+  directly.
+
+  Args:
+    features: a dict of string to `Tensor`.
+    default_batch_size: the number of query examples expected per batch.
+        Leave unset for variable batch size (recommended).
+
+  Returns:
+    A serving_input_receiver_fn.
+  """
+  def serving_input_receiver_fn():
+    """A serving_input_receiver_fn that expects features to be fed directly."""
+    receiver_tensors = {}
+    for name, t in features.items():
+      shape_list = t.get_shape().as_list()
+      shape_list[0] = default_batch_size
+      shape = tensor_shape.TensorShape(shape_list)
+
+      # Reuse the feature tensor name for the placeholder, excluding the index
+      placeholder_name = t.name.split(':')[0]
+      receiver_tensors[name] = array_ops.placeholder(dtype=t.dtype,
+                                                     shape=shape,
+                                                     name=placeholder_name)
+    # TODO(b/34885899): remove the unnecessary copy
+    # The features provided are simply the placeholders, but we defensively copy
+    # the dict because it may be mutated.
+    return ServingInputReceiver(receiver_tensors, receiver_tensors.copy())
+
+  return serving_input_receiver_fn
