@@ -46,12 +46,14 @@ from tensorflow.python.util import compat
 from tensorflow.python.util.protobuf import compare
 from tensorflow.python.client import device_lib
 
+
 def gpu_device_name():
   """Returns the name of a GPU device if available or the empty string."""
   for x in device_lib.list_local_devices():
-    if x.device_type == 'GPU' or x.device_type == 'SYCL':
+    if x.device_type == "GPU" or x.device_type == "SYCL":
       return x.name
-  return ''
+  return ""
+
 
 def assert_ops_in_graph(expected_ops, graph):
   """Assert all expected operations are found.
@@ -70,14 +72,12 @@ def assert_ops_in_graph(expected_ops, graph):
   for node in gd.node:
     if node.name in expected_ops:
       if expected_ops[node.name] != node.op:
-        raise ValueError(
-            "Expected op for node %s is different. %s vs %s" % (
-                node.name, expected_ops[node.name], node.op))
+        raise ValueError("Expected op for node %s is different. %s vs %s" %
+                         (node.name, expected_ops[node.name], node.op))
       actual_ops[node.name] = node
   if set(expected_ops.keys()) != set(actual_ops.keys()):
-    raise ValueError(
-        "Not all expected ops are present. Expected %s, found %s" % (
-            expected_ops.keys(), actual_ops.keys()))
+    raise ValueError("Not all expected ops are present. Expected %s, found %s" %
+                     (expected_ops.keys(), actual_ops.keys()))
   return actual_ops
 
 
@@ -221,7 +221,10 @@ class TensorFlowTestCase(googletest.TestCase):
                      (type(expected_message_maybe_ascii), type(message)))
 
   def assertProtoEqualsVersion(
-      self, expected, actual, producer=versions.GRAPH_DEF_VERSION,
+      self,
+      expected,
+      actual,
+      producer=versions.GRAPH_DEF_VERSION,
       min_consumer=versions.GRAPH_DEF_VERSION_MIN_CONSUMER):
     expected = "versions { producer: %d min_consumer: %d };\n%s" % (
         producer, min_consumer, expected)
@@ -288,6 +291,7 @@ class TensorFlowTestCase(googletest.TestCase):
     """
     if self.id().endswith(".test_session"):
       self.skipTest("Not a test.")
+
     def prepare_config(config):
       if config is None:
         config = config_pb2.ConfigProto()
@@ -303,8 +307,8 @@ class TensorFlowTestCase(googletest.TestCase):
 
     if graph is None:
       if self._cached_session is None:
-        self._cached_session = session.Session(graph=None,
-                                               config=prepare_config(config))
+        self._cached_session = session.Session(
+            graph=None, config=prepare_config(config))
       sess = self._cached_session
       with sess.graph.as_default(), sess.as_default():
         if force_gpu:
@@ -312,7 +316,7 @@ class TensorFlowTestCase(googletest.TestCase):
           # otherwise
           gpu_name = gpu_device_name()
           if len(gpu_name) == 0:
-            gpu_name = '/gpu:0'
+            gpu_name = "/gpu:0"
           with sess.graph.device(gpu_name):
             yield sess
         elif use_gpu:
@@ -327,7 +331,7 @@ class TensorFlowTestCase(googletest.TestCase):
           # otherwise
           gpu_name = gpu_device_name()
           if len(gpu_name) == 0:
-            gpu_name = '/gpu:0'
+            gpu_name = "/gpu:0"
           with sess.graph.device(gpu_name):
             yield sess
         elif use_gpu:
@@ -335,6 +339,7 @@ class TensorFlowTestCase(googletest.TestCase):
         else:
           with sess.graph.device("/cpu:0"):
             yield sess
+
   # pylint: enable=g-doc-return-or-yield
 
   class _CheckedThread(object):
@@ -385,8 +390,7 @@ class TensorFlowTestCase(googletest.TestCase):
       """
       self._thread.join()
       if self._exception is not None:
-        self._testcase.fail(
-            "Error in checkedThread: %s" % str(self._exception))
+        self._testcase.fail("Error in checkedThread: %s" % str(self._exception))
 
     def is_alive(self):
       """Returns whether the thread is alive.
@@ -418,6 +422,7 @@ class TensorFlowTestCase(googletest.TestCase):
     ret = TensorFlowTestCase._CheckedThread(self, target, args, kwargs)
     self._threads.append(ret)
     return ret
+
 # pylint: enable=invalid-name
 
   def assertNear(self, f1, f2, err, msg=None):
@@ -432,9 +437,10 @@ class TensorFlowTestCase(googletest.TestCase):
       err: A float value.
       msg: An optional string message to append to the failure message.
     """
-    self.assertTrue(math.fabs(f1 - f2) <= err,
-                    "%f != %f +/- %f%s" % (
-                        f1, f2, err, " (%s)" % msg if msg is not None else ""))
+    self.assertTrue(
+        math.fabs(f1 - f2) <= err,
+        "%f != %f +/- %f%s" % (f1, f2, err, " (%s)" % msg
+                               if msg is not None else ""))
 
   def assertArrayNear(self, farray1, farray2, err):
     """Asserts that two float arrays are near each other.
@@ -480,9 +486,8 @@ class TensorFlowTestCase(googletest.TestCase):
     """
     a = self._GetNdArray(a)
     b = self._GetNdArray(b)
-    self.assertEqual(
-        a.shape, b.shape,
-        "Shape mismatch: expected %s, got %s." % (a.shape, b.shape))
+    self.assertEqual(a.shape, b.shape, "Shape mismatch: expected %s, got %s." %
+                     (a.shape, b.shape))
     if not np.allclose(a, b, rtol=rtol, atol=atol):
       # Prints more details than np.testing.assert_allclose.
       #
@@ -508,9 +513,15 @@ class TensorFlowTestCase(googletest.TestCase):
       print("dtype = %s, shape = %s" % (a.dtype, a.shape))
       np.testing.assert_allclose(a, b, rtol=rtol, atol=atol)
 
-  def assertAllCloseAccordingToType(self, a, b, rtol=1e-6, atol=1e-6,
-                                    float_rtol=1e-6, float_atol=1e-6,
-                                    half_rtol=1e-3, half_atol=1e-3):
+  def assertAllCloseAccordingToType(self,
+                                    a,
+                                    b,
+                                    rtol=1e-6,
+                                    atol=1e-6,
+                                    float_rtol=1e-6,
+                                    float_atol=1e-6,
+                                    half_rtol=1e-3,
+                                    half_atol=1e-3):
     """Like assertAllClose, but also suitable for comparing fp16 arrays.
 
     In particular, the tolerance is reduced to 1e-3 if at least
@@ -528,7 +539,8 @@ class TensorFlowTestCase(googletest.TestCase):
     """
     a = self._GetNdArray(a)
     b = self._GetNdArray(b)
-    if a.dtype == np.float32 or b.dtype == np.float32:
+    if (a.dtype == np.float32 or b.dtype == np.float32 or
+        a.dtype == np.complex64 or b.dtype == np.complex64):
       rtol = max(rtol, float_rtol)
       atol = max(atol, float_atol)
     if a.dtype == np.float16 or b.dtype == np.float16:
@@ -546,9 +558,8 @@ class TensorFlowTestCase(googletest.TestCase):
     """
     a = self._GetNdArray(a)
     b = self._GetNdArray(b)
-    self.assertEqual(
-        a.shape, b.shape,
-        "Shape mismatch: expected %s, got %s." % (a.shape, b.shape))
+    self.assertEqual(a.shape, b.shape, "Shape mismatch: expected %s, got %s." %
+                     (a.shape, b.shape))
     same = (a == b)
 
     if a.dtype == np.float32 or a.dtype == np.float64:
@@ -590,6 +601,7 @@ class TensorFlowTestCase(googletest.TestCase):
     if callable(expected_err_re_or_predicate):
       predicate = expected_err_re_or_predicate
     else:
+
       def predicate(e):
         err_str = e.message if isinstance(e, errors.OpError) else str(e)
         op = e.op if isinstance(e, errors.OpError) else None
@@ -599,13 +611,15 @@ class TensorFlowTestCase(googletest.TestCase):
         logging.info("Searching within error strings: '%s' within '%s'",
                      expected_err_re_or_predicate, err_str)
         return re.search(expected_err_re_or_predicate, err_str)
+
     try:
       yield
       self.fail(exception_type.__name__ + " not raised")
     except Exception as e:  # pylint: disable=broad-except
       if not isinstance(e, exception_type) or not predicate(e):
-        raise AssertionError("Exception of type %s: %s" %
-                             (str(type(e)), str(e)))
+        raise AssertionError("Exception of type %s: %s" % (str(type(e)),
+                                                           str(e)))
+
   # pylint: enable=g-doc-return-or-yield
 
   def assertRaisesOpError(self, expected_err_re_or_predicate):
