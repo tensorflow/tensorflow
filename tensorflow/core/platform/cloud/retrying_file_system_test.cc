@@ -109,7 +109,9 @@ class MockFileSystem : public FileSystem {
     return calls_.ConsumeNextCall("NewReadOnlyMemoryRegionFromFile");
   }
 
-  Status FileExists(const string& fname) override { return Status::OK(); }
+  Status FileExists(const string& fname) override {
+    return calls_.ConsumeNextCall("FileExists");
+  }
 
   Status GetChildren(const string& dir, std::vector<string>* result) override {
     return calls_.ConsumeNextCall("GetChildren");
@@ -597,6 +599,26 @@ TEST(RetryingFileSystemTest, Stat_AllRetriesFailed) {
 
   FileStatistics stat;
   EXPECT_EQ("Retriable error #5", fs.Stat("file_name", &stat).error_message());
+}
+
+TEST(RetryingFileSystemTest, FileExists_AllRetriesFailed) {
+  ExpectedCalls expected_fs_calls = CreateRetriableErrors("FileExists", 6);
+  std::unique_ptr<MockFileSystem> base_fs(
+      new MockFileSystem(expected_fs_calls));
+  RetryingFileSystem fs(std::move(base_fs), 0);
+
+  EXPECT_EQ("Retriable error #5", fs.FileExists("file_name").error_message());
+}
+
+TEST(RetryingFileSystemTest, FileExists_SuccessWith2ndTry) {
+  ExpectedCalls expected_fs_calls(
+      {std::make_tuple("FileExists", errors::Unavailable("Something is wrong")),
+       std::make_tuple("FileExists", Status::OK())});
+  std::unique_ptr<MockFileSystem> base_fs(
+      new MockFileSystem(expected_fs_calls));
+  RetryingFileSystem fs(std::move(base_fs), 0);
+
+  TF_EXPECT_OK(fs.FileExists("gs://path/dir"));
 }
 
 TEST(RetryingFileSystemTest, IsDirectory_SuccessWith2ndTry) {
