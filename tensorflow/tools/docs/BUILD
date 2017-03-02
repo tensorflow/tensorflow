@@ -61,6 +61,12 @@ py_test(
     ],
 )
 
+py_library(
+    name = "pretty_docs",
+    srcs = ["pretty_docs.py"],
+    srcs_version = "PY2AND3",
+)
+
 py_binary(
     name = "generate_lib",
     srcs = ["generate_lib.py"],
@@ -69,6 +75,7 @@ py_binary(
     deps = [
         ":doc_generator_visitor",
         ":parser",
+        ":pretty_docs",
         ":py_guide_parser",
         "//tensorflow/contrib/ffmpeg:ffmpeg_ops_py",
         "//tensorflow/tools/common:public_api",

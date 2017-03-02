@@ -27,6 +27,7 @@ from tensorflow.tools.common import public_api
 from tensorflow.tools.common import traverse
 from tensorflow.tools.docs import doc_generator_visitor
 from tensorflow.tools.docs import parser
+from tensorflow.tools.docs import pretty_docs
 from tensorflow.tools.docs import py_guide_parser
 
 
@@ -112,13 +113,15 @@ def write_docs(output_dir, base_dir, duplicate_of, duplicates, index, tree,
     print('Writing docs for %s (%r).' % (full_name, py_object))
 
     # Generate docs for `py_object`, resolving references.
-    markdown = parser.generate_markdown(full_name, py_object,
-                                        reference_resolver=reference_resolver,
-                                        duplicates=duplicates,
-                                        tree=tree,
-                                        reverse_index=reverse_index,
-                                        guide_index=guide_index,
-                                        base_dir=base_dir)
+    page_info = parser.docs_for_object(
+        full_name,
+        py_object,
+        reference_resolver=reference_resolver,
+        duplicates=duplicates,
+        tree=tree,
+        reverse_index=reverse_index,
+        guide_index=guide_index,
+        base_dir=base_dir)
 
     path = os.path.join(output_dir, parser.documentation_path(full_name))
     directory = os.path.dirname(path)
@@ -126,7 +129,7 @@ def write_docs(output_dir, base_dir, duplicate_of, duplicates, index, tree,
       if not os.path.exists(directory):
         os.makedirs(directory)
       with open(path, 'w') as f:
-        f.write(markdown)
+        f.write(pretty_docs.build_md_page(page_info))
     except OSError as e:
       print('Cannot write documentation for %s to %s: %s' % (full_name,
                                                              directory, e))
