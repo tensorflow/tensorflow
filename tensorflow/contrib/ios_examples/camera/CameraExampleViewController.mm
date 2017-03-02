@@ -337,6 +337,7 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
       });
     }
   }
+  CVPixelBufferUnlockBaseAddress(pixelBuffer, 0);
 }
 
 - (void)dealloc {
