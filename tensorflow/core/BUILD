@@ -117,6 +117,8 @@ load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
 )
+load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl")
+
 # -----------------------------------------------------------------------------
 # Public targets
 
@@ -686,6 +688,8 @@ cc_library(
         "//tensorflow/core/kernels:array_not_windows",
         "//tensorflow/core/kernels:math_not_windows",
         "//tensorflow/core/kernels:quantized_ops",
+    ]) + if_mkl([
+        "//tensorflow/core/kernels:mkl_ops",
     ]),
 )
 
@@ -745,6 +749,7 @@ cc_library(
         ":proto_text",
         ":protos_all_cc",
         ":shape_inference_testutil",
+        ":sycl_runtime",
         ":tensor_testutil",
         ":test",
         "//tensorflow/core/kernels:constant_op",

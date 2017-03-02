@@ -97,6 +97,7 @@ REGISTER_GPU_DEBUG_NAN_COUNT(double);
                               .TypeConstraint<type>("T"), \
                           DebugNanCountOp<type>);
 REGISTER_GPU_DEBUG_NAN_COUNT(float);
+REGISTER_GPU_DEBUG_NAN_COUNT(double);
 #endif // TENSORFLOW_USE_SYCL
 
 // Register debug numeric summary ops.
@@ -133,6 +134,7 @@ TF_CALL_double(REGISTER_GPU_DEBUG_NUMERIC_SUMMARY_COUNT);
                               .TypeConstraint<type>("T"), \
                           DebugNumericSummaryOp<type>);
 REGISTER_GPU_DEBUG_NUMERIC_SUMMARY_COUNT(float);
+REGISTER_GPU_DEBUG_NUMERIC_SUMMARY_COUNT(double);
 #endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

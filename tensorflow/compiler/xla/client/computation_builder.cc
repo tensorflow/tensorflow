@@ -1010,8 +1010,9 @@ ComputationDataHandle ComputationBuilder::SqrtF32(
 }
 
 ComputationDataHandle ComputationBuilder::Pow(
-    const ComputationDataHandle& lhs, const ComputationDataHandle& rhs) {
-  return BinaryOp(BINOP_POW, lhs, rhs, /*broadcast_dimensions=*/{});
+    const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
+    tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return BinaryOp(BINOP_POW, lhs, rhs, broadcast_dimensions);
 }
 
 ComputationDataHandle ComputationBuilder::ConvertElementType(

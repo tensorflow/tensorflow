@@ -406,12 +406,16 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
       actual = "@zlib_archive//:zlib",
   )
 
-  native.new_http_archive(
+  temp_workaround_http_archive(
       name = "nccl_archive",
-      url = "https://github.com/nvidia/nccl/archive/024d1e267845f2ed06f3e2e42476d50f04a00ee6.tar.gz",
+      urls = [
+          "http://bazel-mirror.storage.googleapis.com/github.com/nvidia/nccl/archive/024d1e267845f2ed06f3e2e42476d50f04a00ee6.tar.gz",
+          "https://github.com/nvidia/nccl/archive/024d1e267845f2ed06f3e2e42476d50f04a00ee6.tar.gz",
+      ],
       sha256 = "6787f0eed88d52ee8e32956fa4947d92c139da469f1d8e311c307f27d641118e",
       strip_prefix = "nccl-024d1e267845f2ed06f3e2e42476d50f04a00ee6",
       build_file = str(Label("//third_party:nccl.BUILD")),
+      repository = tf_repo_name,
   )
 
   java_import_external(
