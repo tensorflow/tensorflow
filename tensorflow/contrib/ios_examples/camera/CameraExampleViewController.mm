@@ -107,15 +107,22 @@ static const NSString *AVCaptureStillImageIsCapturingStillImageContext =
 
   [session release];
   if (error) {
-    UIAlertView *alertView = [[UIAlertView alloc]
-            initWithTitle:[NSString stringWithFormat:@"Failed with error %d",
-                                                     (int)[error code]]
-                  message:[error localizedDescription]
-                 delegate:nil
-        cancelButtonTitle:@"Dismiss"
-        otherButtonTitles:nil];
-    [alertView show];
-    [alertView release];
+    NSString *title = \
+      [NSString stringWithFormat:@"Failed with error %d", (int)[error code]];
+    UIAlertController *alertController = \
+      [[UIAlertController alertControllerWithTitle:title
+                                           message:[error localizedDescription]
+                                    preferredStyle:UIAlertControllerStyleAlert]
+       autorelease];
+    UIAlertAction *dismiss = \
+      [[UIAlertAction actionWithTitle:@"Dismiss"
+                                style:UIAlertActionStyleDefault
+                              handler:nil]
+       autorelease];
+    [alertController addAction:dismiss];
+    [self presentViewController:alertController
+                       animated:YES
+                     completion:nil];
     [self teardownAVCapture];
   }
 }
@@ -334,7 +341,7 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
         const float predictionValue = predictions(index);
         if (predictionValue > 0.05f) {
           std::string label = labels[index % predictions.size()];
-          NSString *labelObject = [NSString stringWithCString:label.c_str()];
+          NSString *labelObject = [NSString stringWithUTF8String:label.c_str()];
           NSNumber *valueObject = [NSNumber numberWithFloat:predictionValue];
           [newValues setObject:valueObject forKey:labelObject];
         }
