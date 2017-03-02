@@ -27,4 +27,5 @@ _memory_stats_ops_so = loader.load_op_library(
 
 
 def MaxBytesInUse():
+  """Generates an op that computes the peak memory of a device."""
   return gen_memory_stats_ops.max_bytes_in_use()

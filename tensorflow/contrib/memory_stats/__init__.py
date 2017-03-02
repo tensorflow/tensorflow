@@ -12,7 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Ops for memory statistics."""
+"""Ops for memory statistics.
+
+@@MaxBytesInUse
+"""
 
 from tensorflow.contrib.memory_stats.python.ops.memory_stats_ops import MaxBytesInUse
 
