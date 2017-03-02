@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 
 def _convert_watch_key_to_tensor_name(watch_key):
   return watch_key[:watch_key.rfind(":")]
@@ -59,6 +61,8 @@ def annotate_source(dump,
     raise ValueError("Cannot perform source annotation due to a lack of set "
                      "Python graph in the dump object")
 
+  source_file_path = os.path.normpath(source_file_path)
+
   line_to_op_names = {}
   for op in py_graph.get_operations():
     try:
@@ -71,7 +75,7 @@ def annotate_source(dump,
           max_line is not None and line_number >= max_line):
         continue
 
-      if file_path != source_file_path:
+      if os.path.normpath(file_path) != source_file_path:
         continue
 
       if do_dumped_tensors:
