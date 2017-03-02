@@ -691,16 +691,14 @@ tf_kernel_library(
 tf_kernel_library(
     name = "transpose_op",
     srcs = [
-        "transpose_op.cc"
-        ]
-        + if_mkl([
-        "mkl_transpose_op.cc"
-        ]),
+        "transpose_op.cc",
+    ] + if_mkl([
+        "mkl_transpose_op.cc",
+    ]),
     hdrs = ["transpose_op.h"],
-    deps = ARRAY_DEPS
-        + if_mkl([
-                "//third_party/mkl:intel_binary_blob",
-        ]),
+    deps = ARRAY_DEPS + if_mkl([
+        "//third_party/mkl:intel_binary_blob",
+    ]),
 )
 
 tf_kernel_library(
