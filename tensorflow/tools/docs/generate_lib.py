@@ -362,6 +362,9 @@ class _UpdateTags(py_guide_parser.PyGuideParser):
     self.replace_line(line_number, '<h2 id="%s">%s</h2>' % (tag, section_title))
 
 
+EXCLUDED = set(['__init__.py', 'OWNERS', 'README.txt'])
+
+
 def _other_docs(src_dir, output_dir, reference_resolver):
   """Convert all the files in `src_dir` and write results to `output_dir`."""
   header = '<!-- DO NOT EDIT! Automatically generated file. -->\n'
@@ -384,6 +387,9 @@ def _other_docs(src_dir, output_dir, reference_resolver):
       raise
 
     for base_name in filenames:
+      if base_name in EXCLUDED:
+        print('Skipping excluded file %s...' % base_name)
+        continue
       full_in_path = os.path.join(dirpath, base_name)
       suffix = os.path.relpath(path=full_in_path, start=src_dir)
       full_out_path = os.path.join(output_dir, suffix)
