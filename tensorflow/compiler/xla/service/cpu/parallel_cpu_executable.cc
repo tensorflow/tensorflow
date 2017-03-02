@@ -190,8 +190,8 @@ ParallelCpuExecutable::ExecuteOnStream(
   std::list<HloInstruction*> pending;
 
   // Call the function for each HLO instruction in topological order.
-  for (auto* instruction :
-       module().entry_computation()->MakeInstructionPostOrder()) {
+  const HloComputation& entry_computation = *module().entry_computation();
+  for (auto* instruction : entry_computation.MakeInstructionPostOrder()) {
     // Parameters and constants have no functions associated with them. Instead
     // just copy the existing buffer into the map containing instruction
     // results..
@@ -299,7 +299,8 @@ ParallelCpuExecutable::ExecuteOnStream(
     execution_profile_.set_compute_cycle_count(profile_counters.back());
   }
   if (hlo_execution_profile != nullptr) {
-    hlo_execution_profile->set_total_cycles_executed(profile_counters.back());
+    hlo_execution_profile->set_total_cycles_executed(entry_computation,
+                                                     profile_counters.back());
 
     for (auto hlo_prof_idx : hlo_to_profile_idx_) {
       const HloInstruction* hlo = hlo_prof_idx.first;

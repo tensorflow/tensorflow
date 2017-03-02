@@ -230,7 +230,8 @@ Status CpuExecutable::ExecuteComputeFunction(
   }
 
   if (hlo_execution_profile != nullptr) {
-    hlo_execution_profile->set_total_cycles_executed(profile_counters.back());
+    hlo_execution_profile->set_total_cycles_executed(
+        *module().entry_computation(), profile_counters.back());
 
     for (auto hlo_prof_idx : hlo_to_profile_idx_) {
       const HloInstruction* hlo = hlo_prof_idx.first;

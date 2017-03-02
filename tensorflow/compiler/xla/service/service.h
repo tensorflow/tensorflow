@@ -450,16 +450,23 @@ ReturnT Service::ExecuteOnStreamWrapper(
   }
 
   if (profile_ptr != nullptr) {
-    HloCostAnalysis analysis([this](const Shape& shape) {
+    HloCostAnalysis::ShapeSizeFunction shape_size = [this](const Shape& shape) {
       return execute_backend_->compiler()->ShapeSizeBytes(shape);
-    });
-    tensorflow::Status analysis_status =
-        executable->module().entry_computation()->root_instruction()->Accept(
-            &analysis);
-    if (analysis_status.ok()) {
-      XLA_LOG_LINES(tensorflow::INFO,
-                    profile_ptr->ToString(
-                        stream->parent()->GetDeviceDescription(), analysis));
+    };
+    std::unordered_set<const xla::HloComputation*> profiled_computations =
+        profile_ptr->profiled_computations();
+    // To ensure we have print the profiles in a stable order, iterate over the
+    // computations in post order.
+    std::list<xla::HloComputation*> all_computations =
+        executable->module().MakeComputationPostOrder();
+    for (xla::HloComputation* computation : all_computations) {
+      if (profiled_computations.count(computation) > 0) {
+        string profile_string = profile_ptr->ToString(
+            *computation, stream->parent()->GetDeviceDescription(), shape_size);
+        if (!profile_string.empty()) {
+          XLA_LOG_LINES(tensorflow::INFO, profile_string);
+        }
+      }
     }
     DumpExecutedHlo(executable->module(), "Service::Execute", profile_ptr);
   }

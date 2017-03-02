@@ -47,8 +47,12 @@ class HloExecutionProfiler {
  public:
   // If profiling is enabled, start an execution timer running.
   explicit HloExecutionProfiler(bool do_profile, HloExecutionProfile* profile,
-                                se::Stream* stream)
-      : do_profile_(do_profile), profile_(profile), stream_(stream) {
+                                se::Stream* stream,
+                                const HloComputation* computation)
+      : do_profile_(do_profile),
+        profile_(profile),
+        stream_(stream),
+        computation_(computation) {
     if (do_profile_) {
       clock_rate_ghz_ =
           stream->parent()->GetDeviceDescription().clock_rate_ghz();
@@ -66,8 +70,8 @@ class HloExecutionProfiler {
     if (do_profile_) {
       stream_->ThenStopTimer(execution_timer_.get());
       stream_->BlockHostUntilDone();
-      profile_->set_total_cycles_executed(execution_timer_->Nanoseconds() *
-                                          clock_rate_ghz_);
+      profile_->set_total_cycles_executed(
+          *computation_, execution_timer_->Nanoseconds() * clock_rate_ghz_);
     }
   }
 
@@ -94,6 +98,7 @@ class HloExecutionProfiler {
   double clock_rate_ghz_;
   HloExecutionProfile* profile_;
   se::Stream* stream_;
+  const HloComputation* computation_;
   std::unique_ptr<se::Timer> execution_timer_;
   std::unique_ptr<se::Timer> per_op_timer_;
 };
@@ -119,7 +124,8 @@ Status GpuExecutable::ExecuteThunks(
   if (do_profile) {
     LOG(WARNING) << "PROFILING: profiling is enabled";
   }
-  HloExecutionProfiler profiler(do_profile, hlo_execution_profile, main_stream);
+  HloExecutionProfiler profiler(do_profile, hlo_execution_profile, main_stream,
+                                hlo_module_->entry_computation());
 
   std::vector<std::unique_ptr<se::Stream>> sub_streams;
   // Stream 0 indicates `main_stream` and substreams start from stream 1.
