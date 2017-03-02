@@ -286,6 +286,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
       ],
       strip_prefix = "curl-7.49.1",
       build_file = str(Label("//third_party:curl.BUILD")),
+      repository = tf_repo_name
   )
 
   # grpc expects //external:protobuf_clib and //external:protobuf_compiler
