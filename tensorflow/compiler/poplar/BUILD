@@ -131,6 +131,16 @@ py_test(
     ],
 )
 
+py_test(
+    name = "conv_test",
+    size = "large",
+    srcs = ["tests/conv_test.py"],
+    deps = [
+        ":poplar_plugin_py",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
 test_suite(
     name = "all_tests",
     tests = [
