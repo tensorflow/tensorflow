@@ -887,6 +887,14 @@ class VariableScope(object):
     scope = self._name + '/' if self._name else self._name
     return ops.get_collection(name, scope)
 
+  def trainable_variables(self):
+    """Get this scope's trainable variables."""
+    return self.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
+
+  def global_variables(self):
+    """Get this scope's global variables."""
+    return self.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
+
   def get_variable(self,
                    var_store,
                    name,
