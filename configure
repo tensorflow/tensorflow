@@ -92,8 +92,8 @@ if false; then # Disable building with MKL for now
 
   if [ "$TF_NEED_MKL" == "1" ]; then # TF_NEED_MKL
     DST=`dirname $0`
-    ARCHIVE_BASENAME=mklml_lnx_2017.0.2.20170110.tgz
-    GITHUB_RELEASE_TAG=v0.3
+    ARCHIVE_BASENAME=mklml_lnx_2017.0.2.20170209.tgz
+    GITHUB_RELEASE_TAG=v0.5
     MKLURL="https://github.com/01org/mkl-dnn/releases/download/$GITHUB_RELEASE_TAG/$ARCHIVE_BASENAME"
     if ! [ -e "$DST/third_party/mkl/$ARCHIVE_BASENAME" ]; then
       wget --no-check-certificate -P $DST/third_party/mkl/ $MKLURL
