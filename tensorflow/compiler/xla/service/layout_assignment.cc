@@ -115,11 +115,12 @@ bool LayoutConstraints::OperandBufferForwarded(
   auto operand_buffers =
       points_to_analysis_.GetPointsToSet(instruction->operand(operand_no))
           .CreateFlattenedSet();
-  std::vector<const LogicalBuffer*> intersection;
-  std::set_intersection(output_buffers.begin(), output_buffers.end(),
-                        operand_buffers.begin(), operand_buffers.end(),
-                        std::back_inserter(intersection));
-  return !intersection.empty();
+  for (const LogicalBuffer* output_buffer : output_buffers) {
+    if (operand_buffers.count(output_buffer) > 0) {
+      return true;
+    }
+  }
+  return false;
 }
 
 Status LayoutConstraints::SetBufferLayout(const Layout& layout,

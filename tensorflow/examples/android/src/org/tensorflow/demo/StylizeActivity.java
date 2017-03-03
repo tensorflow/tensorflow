@@ -51,6 +51,7 @@ import android.widget.Toast;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Vector;
 import org.tensorflow.contrib.android.TensorFlowInferenceInterface;
 import org.tensorflow.demo.OverlayView.DrawCallback;
@@ -171,6 +172,9 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
                 slider = null;
               }
               break;
+
+            default: // fall out
+
           }
           return true;
         }
@@ -264,7 +268,7 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
 
   private class ImageGridAdapter extends BaseAdapter {
     final ImageSlider[] items = new ImageSlider[NUM_STYLES];
-    final ArrayList<Button> buttons = new ArrayList<Button>();
+    final ArrayList<Button> buttons = new ArrayList<>();
 
     {
       final Button sizeButton =
@@ -553,8 +557,6 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
     Trace.endSection();
   }
 
-  String outputNode = "";
-
   private void stylizeImage(final Bitmap bitmap) {
     ++frameNum;
     bitmap.getPixels(intValues, 0, bitmap.getWidth(), 0, 0, bitmap.getWidth(), bitmap.getHeight());
@@ -640,12 +642,10 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
         canvas.getHeight() - copy.getHeight() * scaleFactor);
     canvas.drawBitmap(copy, matrix, new Paint());
 
-    final Vector<String> lines = new Vector<String>();
+    final Vector<String> lines = new Vector<>();
 
     final String[] statLines = inferenceInterface.getStatString().split("\n");
-    for (final String line : statLines) {
-      lines.add(line);
-    }
+    Collections.addAll(lines, statLines);
 
     lines.add("");
 

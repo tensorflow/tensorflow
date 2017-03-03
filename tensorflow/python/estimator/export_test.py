@@ -18,11 +18,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from google.protobuf import text_format
+from tensorflow.core.example import example_pb2
 from tensorflow.python.estimator import export
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import parsing_ops
 from tensorflow.python.platform import googletest
 
 
@@ -64,6 +68,71 @@ class ExportTest(test_util.TensorFlowTestCase):
     receiver_tensor = 'not a tensor'
     with self.assertRaises(ValueError):
       _ = export.ServingInputReceiver(feature, receiver_tensor)
+
+  def test_build_parsing_serving_input_receiver_fn(self):
+    feature_spec = {'int_feature': parsing_ops.VarLenFeature(dtypes.int64),
+                    'float_feature': parsing_ops.VarLenFeature(dtypes.float32)}
+    serving_input_receiver_fn = export.build_parsing_serving_input_receiver_fn(
+        feature_spec)
+    with ops.Graph().as_default():
+      serving_input_receiver = serving_input_receiver_fn()
+      self.assertEqual(set(['int_feature', 'float_feature']),
+                       set(serving_input_receiver.features.keys()))
+      self.assertEqual(set(['examples']),
+                       set(serving_input_receiver.receiver_tensors.keys()))
+
+      example = example_pb2.Example()
+      text_format.Parse("features: { "
+                        "  feature: { "
+                        "    key: 'int_feature' "
+                        "    value: { "
+                        "      int64_list: { "
+                        "        value: [ 21, 2, 5 ] "
+                        "      } "
+                        "    } "
+                        "  } "
+                        "  feature: { "
+                        "    key: 'float_feature' "
+                        "    value: { "
+                        "      float_list: { "
+                        "        value: [ 525.25 ] "
+                        "      } "
+                        "    } "
+                        "  } "
+                        "} ", example)
+
+      with self.test_session() as sess:
+        sparse_result = sess.run(
+            serving_input_receiver.features,
+            feed_dict={
+                serving_input_receiver.receiver_tensors['examples'].name:
+                [example.SerializeToString()]})
+        self.assertAllEqual([[0, 0], [0, 1], [0, 2]],
+                            sparse_result['int_feature'].indices)
+        self.assertAllEqual([21, 2, 5],
+                            sparse_result['int_feature'].values)
+        self.assertAllEqual([[0, 0]],
+                            sparse_result['float_feature'].indices)
+        self.assertAllEqual([525.25],
+                            sparse_result['float_feature'].values)
+
+  def test_build_raw_serving_input_receiver_fn(self):
+    features = {'feature_1': constant_op.constant(['hello']),
+                'feature_2': constant_op.constant([42])}
+    serving_input_receiver_fn = export.build_raw_serving_input_receiver_fn(
+        features)
+    with ops.Graph().as_default():
+      serving_input_receiver = serving_input_receiver_fn()
+      self.assertEqual(set(['feature_1', 'feature_2']),
+                       set(serving_input_receiver.features.keys()))
+      self.assertEqual(set(['feature_1', 'feature_2']),
+                       set(serving_input_receiver.receiver_tensors.keys()))
+      self.assertEqual(
+          dtypes.string,
+          serving_input_receiver.receiver_tensors['feature_1'].dtype)
+      self.assertEqual(
+          dtypes.int32,
+          serving_input_receiver.receiver_tensors['feature_2'].dtype)
 
 
 if __name__ == '__main__':

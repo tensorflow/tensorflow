@@ -93,14 +93,14 @@ class Exponential(gamma.Gamma):
     # true in the parent class "Gamma."  Therefore, passing
     # allow_nan_stats=True
     # through to the parent class results in unnecessary asserts.
-    with ops.name_scope(name, values=[rate]) as ns:
+    with ops.name_scope(name, values=[rate]):
       self._rate = ops.convert_to_tensor(rate, name="rate")
     super(Exponential, self).__init__(
         concentration=array_ops.ones([], dtype=self._rate.dtype),
         rate=self._rate,
         allow_nan_stats=allow_nan_stats,
         validate_args=validate_args,
-        name=ns)
+        name=name)
     # While the Gamma distribution is not reparameterizable, the exponential
     # distribution is.
     self._reparameterization_type = True

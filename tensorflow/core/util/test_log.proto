@@ -174,4 +174,13 @@ message TestResults {
 
   // Benchmark target identifier.
   string name = 9;
+
+  // The type of benchmark.
+  enum BenchmarkType {
+    UNKNOWN = 0;  // Fallback for protos written before Type was introduced.
+    CPP_MICROBENCHMARK = 1;
+    PYTHON_BENCHMARK = 2;
+    ANDROID_BENCHMARK = 3;
+  }
+  BenchmarkType benchmark_type = 10;
 };

@@ -32,6 +32,10 @@ class RetryingUtils {
   /// If all retries failed, returns the last error status.
   static Status CallWithRetries(const std::function<Status()>& f,
                                 const int64 initial_delay_microseconds);
+  /// sleep_usec is a function that sleeps for the given number of microseconds.
+  static Status CallWithRetries(const std::function<Status()>& f,
+                                const int64 initial_delay_microseconds,
+                                const std::function<void(int64)>& sleep_usec);
 };
 
 }  // namespace tensorflow

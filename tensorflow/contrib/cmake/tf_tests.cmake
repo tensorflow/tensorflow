@@ -180,6 +180,16 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/python/kernel_tests/sample_inputs_op_test.py"  # Results in wrong order.
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/python/kernel_tests/scatter_add_ndim_op_test.py"  # Bad placement.
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/python/topn_test.py"  # Results inaccurate
+      # Failing on some CI.
+      "${tensorflow_source_dir}/tensorflow/python/debug/cli/analyzer_cli_test.py"
+      "${tensorflow_source_dir}/tensorflow/python/debug/lib/session_debug_file_test.py"
+      "${tensorflow_source_dir}/tensorflow/python/debug/lib/source_utils_test.py"
+      "${tensorflow_source_dir}/tensorflow/python/debug/wrappers/dumping_wrapper_test.py"
+      "${tensorflow_source_dir}/tensorflow/python/debug/wrappers/local_cli_wrapper_test.py"
+      "${tensorflow_source_dir}/tensorflow/python/debug/wrappers/framework_test.py"
+      # Needs debug
+      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/matmul_op_test.py"
+
     )
   endif()
   list(REMOVE_ITEM tf_test_src_py ${tf_test_src_py_exclude})

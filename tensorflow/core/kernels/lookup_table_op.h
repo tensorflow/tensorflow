@@ -58,6 +58,10 @@ class LookupTableOp : public OpKernel {
           container->Unref();
           return ctx->status();
         }
+        if (ctx->track_allocations()) {
+          ctx->record_device_persistent_memory_allocation(
+              container->MemoryUsed());
+        }
         *ret = container;
         return Status::OK();
       };

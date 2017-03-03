@@ -218,7 +218,7 @@ class QuantizedDistribution(distributions.Distribution):
     values = (
         list(distribution.parameters.values()) +
         [low, high])
-    with ops.name_scope(name, values=values) as ns:
+    with ops.name_scope(name, values=values):
       self._dist = distribution
 
       if low is not None:
@@ -258,7 +258,7 @@ class QuantizedDistribution(distributions.Distribution):
         allow_nan_stats=self._dist.allow_nan_stats,
         parameters=parameters,
         graph_parents=graph_parents,
-        name=ns)
+        name=name)
 
   def _batch_shape_tensor(self):
     return self.distribution.batch_shape_tensor()

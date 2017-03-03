@@ -35,6 +35,7 @@ from tensorflow.python.ops import sparse_ops
 # pylint: disable=wildcard-import,undefined-variable
 from tensorflow.python.ops.gen_parsing_ops import *
 # pylint: enable=wildcard-import,undefined-variable
+from tensorflow.python.platform import tf_logging
 
 
 ops.NotDifferentiable("DecodeRaw")
@@ -55,21 +56,69 @@ class SparseFeature(
     collections.namedtuple(
         "SparseFeature",
         ["index_key", "value_key", "dtype", "size", "already_sorted"])):
-  """Configuration for parsing a sparse input feature.
+  """Configuration for parsing a sparse input feature from an `Example`.
+
+  Note, preferrably use `VarLenFeature` (possibly in combination with a
+  `SequenceExample`) in order to parse out `SparseTensor`s instead of
+  `SparseFeature` due to its simplicity.
+
+  Closely mimicking the `SparseTensor` that will be obtained by parsing an
+  `Example` with a `SparseFeature` config, a `SparseFeature` contains a
+
+  * `value_key`: The name of key for a `Feature` in the `Example` whose parsed
+    `Tensor` will be the resulting `SparseTensor.values`.
+
+  * `index_key`: A list of names - one for each dimension in the resulting
+    `SparseTensor` whose `indices[i][dim]` indicating the position of
+    the `i`-th value in the `dim` dimension will be equal to the `i`-th value in
+    the Feature with key named `index_key[dim]` in the `Example`.
+
+  * `size`: A list of ints for the resulting `SparseTensor.dense_shape`.
+
+  For example, we can represent the following 2D `SparseTensor`
+
+  ```python
+  SparseTensor(indices=[[3, 1], [20, 0]],
+               values=[0.5, -1.0]
+               dense_shape=[100, 3])
+  ```
+
+  with an `Example` input proto
+
+  ```python
+  features {
+    feature { key: "val" value { float_list { value: [ 0.5, -1.0 ] } } }
+    feature { key: "ix0" value { int64_list { value: [ 3, 20 ] } } }
+    feature { key: "ix1" value { int64_list { value: [ 1, 0 ] } } }
+  }
+  ```
+
+  and `SparseFeature` config with 2 `index_key`s
+
+  ```python
+  SparseFeature(index_key=["ix0", "ix1"],
+                value_key="val",
+                dtype=tf.float32,
+                size=[100, 3])
+  ```
 
   Fields:
-    index_key: Name of index feature.  The underlying feature's type must
-      be `int64` and its length must always match that of the `value_key`
-      feature.
+    index_key: A single string name or a list of string names of index features.
+      For each key the underlying feature's type must be `int64` and its length
+      must always match that of the `value_key` feature.
+      To represent `SparseTensor`s with a `dense_shape` of `rank` higher than 1
+      a list of length `rank` should be used.
     value_key: Name of value feature.  The underlying feature's type must
-      be `dtype` and its length must always match that of the `index_key`
-      feature.
+      be `dtype` and its length must always match that of all the `index_key`s'
+      features.
     dtype: Data type of the `value_key` feature.
-    size: A Python int to specify a dimension of the dense shape. Each value in
-      the `index_key` feature must be in `[0, size)`.
+    size: A Python int or list thereof specifying the dense shape. Should be a
+      list if and only if `index_key` is a list. In that case the list must be
+      equal to the length of `index_key`. Each for each entry `i` all values in
+      the `index_key`[i] feature must be in `[0, size[i])`.
     already_sorted: A Python boolean to specify whether the values in
-      `index_key` are already sorted. If so skip sorting.
-      False by default (optional).
+      `value_key` are already sorted by their index position. If so skip
+      sorting. False by default (optional).
   """
   pass
 SparseFeature.__new__.__defaults__ = (False,)
@@ -147,6 +196,7 @@ def _features_to_raw_params(features, types):
       elif isinstance(feature, SparseFeature):
         if SparseFeature not in types:
           raise ValueError("Unsupported SparseFeature %s.", feature)
+
         if not feature.index_key:
           raise ValueError(
               "Missing index_key for SparseFeature %s.", feature)
@@ -155,15 +205,22 @@ def _features_to_raw_params(features, types):
               "Missing value_key for SparseFeature %s.", feature)
         if not feature.dtype:
           raise ValueError("Missing type for feature %s." % key)
-        if feature.index_key in sparse_keys:
-          dtype = sparse_types[sparse_keys.index(feature.index_key)]
-          if dtype != dtypes.int64:
-            raise ValueError("Conflicting type %s vs int64 for feature %s." % (
-                dtype, feature.index_key))
-        else:
-          sparse_keys.append(feature.index_key)
-          sparse_types.append(dtypes.int64)
-
+        index_keys = feature.index_key
+        if isinstance(index_keys, str):
+          index_keys = [index_keys]
+        elif len(index_keys) > 1:
+          tf_logging.warning("SparseFeature is a complicated feature config "
+                             "and should only be used after careful "
+                             "consideration of VarLenFeature.")
+        for index_key in sorted(index_keys):
+          if index_key in sparse_keys:
+            dtype = sparse_types[sparse_keys.index(index_key)]
+            if dtype != dtypes.int64:
+              raise ValueError("Conflicting type %s vs int64 for feature %s." %
+                               (dtype, index_key))
+          else:
+            sparse_keys.append(index_key)
+            sparse_types.append(dtypes.int64)
         if feature.value_key in sparse_keys:
           dtype = sparse_types[sparse_keys.index(feature.value_key)]
           if dtype != feature.dtype:
@@ -229,7 +286,10 @@ def _construct_sparse_tensors_for_sparse_features(features, tensor_dict):
   for key in sorted(features.keys()):
     feature = features[key]
     if isinstance(feature, SparseFeature):
-      sp_ids = tensor_dict[feature.index_key]
+      if isinstance(feature.index_key, str):
+        sp_ids = tensor_dict[feature.index_key]
+      else:
+        sp_ids = [tensor_dict[index_key] for index_key in feature.index_key]
       sp_values = tensor_dict[feature.value_key]
       tensor_dict[key] = sparse_ops.sparse_merge(
           sp_ids,
@@ -248,7 +308,8 @@ def parse_example(serialized, features, name=None, example_names=None):
   """Parses `Example` protos into a `dict` of tensors.
 
   Parses a number of serialized [`Example`](https://www.tensorflow.org/code/tensorflow/core/example/example.proto)
-  protos given in `serialized`.
+  protos given in `serialized`. We refer to `serialized` as a batch with
+  `batch_size` many entries of individual `Example` protos.
 
   `example_names` may contain descriptive names for the corresponding serialized
   protos. These may be useful for debugging purposes, but they have no effect on
@@ -263,15 +324,20 @@ def parse_example(serialized, features, name=None, example_names=None):
 
   Each `VarLenFeature` maps to a `SparseTensor` of the specified type
   representing a ragged matrix. Its indices are `[batch, index]` where `batch`
-  is the batch entry the value is from in `serialized`, and `index` is the
-  value's index in the list of values associated with that feature and example.
+  identifies the example in `serialized`, and `index` is the value's index in
+  the list of values associated with that feature and example.
 
   Each `SparseFeature` maps to a `SparseTensor` of the specified type
-  representing a sparse matrix of shape
-  `(serialized.size(), SparseFeature.size)`. Its indices are `[batch, index]`
-  where `batch` is the batch entry the value is from in `serialized`, and
-  `index` is the value's index is given by the values in the
-  `SparseFeature.index_key` feature column.
+  representing a Tensor of `dense_shape` `[batch_size] + SparseFeature.size`.
+  Its `values` come from the feature in the examples with key `value_key`.
+  A `values[i]` comes from a position `k` in the feature of an example at batch
+  entry `batch`. This positional information is recorded in `indices[i]` as
+  `[batch, index_0, index_1, ...]` where `index_j` is the `k-th` value of
+  the feature in the example at with key `SparseFeature.index_key[j].
+  In other words, we split the indices (except the first index indicating the
+  batch entry) of a `SparseTensor` by dimension into different features of the
+  `Example`. Due to its complexity a `VarLenFeature` should be preferred over a
+  `SparseFeature` whenever possible.
 
   Each `FixedLenFeature` `df` maps to a `Tensor` of the specified type (or
   `tf.float32` if not specified) and shape `(serialized.size(),) + df.shape`.
@@ -282,7 +348,7 @@ def parse_example(serialized, features, name=None, example_names=None):
 
   Examples:
 
-  For example, if one expects a `tf.float32` sparse feature `ft` and three
+  For example, if one expects a `tf.float32` VarlenFeature `ft` and three
   serialized `Example`s are provided:
 
   ```
@@ -384,7 +450,9 @@ def parse_example(serialized, features, name=None, example_names=None):
   }
   ```
 
-  Given two `Example` input protos in `serialized`:
+  An alternative to `VarLenFeature` to obtain a `SparseTensor` is
+  `SparseFeature`. For example, given two `Example` input protos in
+  `serialized`:
 
   ```
   [

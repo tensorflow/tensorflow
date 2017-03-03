@@ -179,7 +179,7 @@ class MultivariateNormalTriL(
       return None if x is None else ops.convert_to_tensor(x, name=name)
     if loc is None and scale_tril is None:
       raise ValueError("Must specify one or both of `loc`, `scale_tril`.")
-    with ops.name_scope(name) as ns:
+    with ops.name_scope(name):
       with ops.name_scope("init", values=[loc, scale_tril]):
         loc = _convert_to_tensor(loc, name="loc")
         scale_tril = _convert_to_tensor(scale_tril, name="scale_tril")
@@ -209,5 +209,5 @@ class MultivariateNormalTriL(
         scale=scale,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
-        name=ns)
+        name=name)
     self._parameters = parameters

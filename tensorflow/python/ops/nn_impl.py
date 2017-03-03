@@ -1058,6 +1058,30 @@ def nce_loss(weights,
   Also see our [Candidate Sampling Algorithms
   Reference](https://www.tensorflow.org/extras/candidate_sampling.pdf)
 
+  A common use case is to use this method for training, and calculate the full
+  sigmoid loss for evaluation or inference. In this case, you must set
+  `partition_strategy="div"` for the two losses to be consistent, as in the
+  following example:
+
+  ```python
+  if mode == "train":
+    loss = tf.nn.nce_loss(
+        weights=weights,
+        biases=biases,
+        labels=labels,
+        inputs=inputs,
+        ...,
+        partition_strategy="div")
+  elif mode == "eval":
+    logits = tf.matmul(inputs, tf.transpose(weights))
+    logits = tf.nn.bias_add(logits, biases)
+    labels_one_hot = tf.one_hot(labels, n_classes)
+    loss = tf.nn.sigmoid_cross_entropy_with_logits(
+        labels=labels_one_hot,
+        logits=logits)
+    loss = tf.reduce_sum(loss, axis=1)
+  ```
+
   Note: By default this uses a log-uniform (Zipfian) distribution for sampling,
   so your labels must be sorted in order of decreasing frequency to achieve
   good results.  For more details, see
@@ -1142,8 +1166,28 @@ def sampled_softmax_loss(weights,
   This operation is for training only.  It is generally an underestimate of
   the full softmax loss.
 
-  At inference time, you can compute full softmax probabilities with the
-  expression `tf.nn.softmax(tf.matmul(inputs, tf.transpose(weights)) + biases)`.
+  A common use case is to use this method for training, and calculate the full
+  softmax loss for evaluation or inference. In this case, you must set
+  `partition_strategy="div"` for the two losses to be consistent, as in the
+  following example:
+
+  ```python
+  if mode == "train":
+    loss = tf.nn.sampled_softmax_loss(
+        weights=weights,
+        biases=biases,
+        labels=labels,
+        inputs=inputs,
+        ...,
+        partition_strategy="div")
+  elif mode == "eval":
+    logits = tf.matmul(inputs, tf.transpose(weights))
+    logits = tf.nn.bias_add(logits, biases)
+    labels_one_hot = tf.one_hot(labels, n_classes)
+    loss = tf.nn.softmax_cross_entropy_with_logits(
+        labels=labels_one_hot,
+        logits=logits)
+  ```
 
   See our [Candidate Sampling Algorithms Reference]
   (https://www.tensorflow.org/extras/candidate_sampling.pdf)

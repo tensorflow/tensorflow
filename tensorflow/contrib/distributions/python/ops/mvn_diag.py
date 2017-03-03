@@ -194,7 +194,7 @@ class MultivariateNormalDiag(
       ValueError: if at most `scale_identity_multiplier` is specified.
     """
     parameters = locals()
-    with ops.name_scope(name) as ns:
+    with ops.name_scope(name):
       with ops.name_scope("init", values=[
           loc, scale_diag, scale_identity_multiplier]):
         scale = distribution_util.make_diag_scale(
@@ -208,7 +208,7 @@ class MultivariateNormalDiag(
         scale=scale,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
-        name=ns)
+        name=name)
     self._parameters = parameters
 
 
@@ -222,11 +222,11 @@ class MultivariateNormalDiagWithSoftplusScale(MultivariateNormalDiag):
                allow_nan_stats=True,
                name="MultivariateNormalDiagWithSoftplusScale"):
     parameters = locals()
-    with ops.name_scope(name, values=[scale_diag]) as ns:
+    with ops.name_scope(name, values=[scale_diag]):
       super(MultivariateNormalDiagWithSoftplusScale, self).__init__(
           loc=loc,
           scale_diag=nn.softplus(scale_diag),
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
-          name=ns)
+          name=name)
     self._parameters = parameters

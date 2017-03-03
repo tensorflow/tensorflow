@@ -70,7 +70,7 @@ class Estimator(object):
   inspect it. The structure of params is therefore entirely up to the developer.
   """
 
-  def __init__(self, model_fn=None, model_dir=None, config=None, params=None):
+  def __init__(self, model_fn, model_dir=None, config=None, params=None):
     """Constructs an `Estimator` instance.
 
     Args:
@@ -109,7 +109,10 @@ class Estimator(object):
 
     Raises:
       ValueError: parameters of `model_fn` don't match `params`.
+      ValueError: if this is called via a subclass and if that class overrides
+        a member of `Estimator`.
     """
+    self._assert_members_are_not_overridden()
     # Model directory.
     self._model_dir = model_dir
     if self._model_dir is None:
@@ -197,7 +200,7 @@ class Estimator(object):
         logging.info('Skipping training since max_steps has already saved.')
         return self
 
-    hooks = hooks[:] if hooks else []
+    hooks = list(hooks or [])
     if steps is not None or max_steps is not None:
       hooks.append(training.StopAtStepHook(steps, max_steps))
 
@@ -241,8 +244,7 @@ class Estimator(object):
       ValueError: If no model has been trained, namely `model_dir`, or the
         given `checkpoint_path` is empty.
     """
-    # We need to copy the hook array as we modify it, thus [:].
-    hooks = hooks[:] if hooks else []
+    hooks = list(hooks or [])
     if steps is not None:
       if steps <= 0:
         raise ValueError('Must specify steps >= 0, given: {}'.format(steps))
@@ -254,6 +256,113 @@ class Estimator(object):
         hooks=hooks,
         checkpoint_path=checkpoint_path,
         name=name)
+
+  def predict(self, input_fn, predict_keys=None, hooks=None):
+    """Returns predictions for given features.
+
+    Args:
+      input_fn: Input function returning features which is a dictionary of
+        string feature name to `Tensor` or `SparseTensor`. If it returns a
+        tuple, first item is extracted as features. Prediction continues until
+        `input_fn` raises an end-of-input exception (`OutOfRangeError` or
+        `StopIteration`).
+      predict_keys: list of `str`, name of the keys to predict. It is used if
+        the `EstimatorSpec.predictions` is a `dict`. If `predict_keys` is used
+        then rest of the predictions will be filtered from the dictionary. If
+        `None`, returns all.
+      hooks: List of `SessionRunHook` subclass instances. Used for callbacks
+        inside the prediction call.
+
+    Yields:
+      Evaluated values of `predictions` tensors.
+
+    Raises:
+      ValueError: Could not find a trained model in model_dir.
+      ValueError: if batch length of predictions are not same.
+      ValueError: If there is a conflict between `predict_keys` and
+        `predictions`. For example if `predict_keys` is not `None` but
+        `EstimatorSpec.predictions` is not a `dict`.
+    """
+    hooks = list(hooks or [])
+    # Check that model has been trained.
+    checkpoint_path = saver.latest_checkpoint(self._model_dir)
+    if not checkpoint_path:
+      raise ValueError('Could not find trained model in model_dir: {}.'.format(
+          self._model_dir))
+
+    with ops.Graph().as_default() as g:
+      random_seed.set_random_seed(self._config.tf_random_seed)
+      training.create_global_step(g)
+      features = self._get_features_from_input_fn(input_fn)
+      estimator_spec = self._call_model_fn(features, None,
+                                           model_fn_lib.ModeKeys.FIT)
+      predictions = self._extract_keys(estimator_spec.predictions, predict_keys)
+      with training.MonitoredSession(
+          session_creator=training.ChiefSessionCreator(
+              checkpoint_filename_with_path=checkpoint_path,
+              scaffold=estimator_spec.scaffold,
+              config=config_pb2.ConfigProto(allow_soft_placement=True)),
+          hooks=hooks) as mon_sess:
+        while not mon_sess.should_stop():
+          preds_evaluated = mon_sess.run(predictions)
+          if not isinstance(predictions, dict):
+            for pred in preds_evaluated:
+              yield pred
+          else:
+            for i in range(self._extract_batch_length(preds_evaluated)):
+              yield {
+                  key: value[i]
+                  for key, value in six.iteritems(preds_evaluated)
+              }
+
+  def _assert_members_are_not_overridden(self):
+    estimator_members = set([m for m in Estimator.__dict__.keys()
+                             if not m.startswith('__')])
+    subclass_members = set(self.__class__.__dict__.keys())
+    common_members = estimator_members & subclass_members
+    overriden_members = [m for m in common_members
+                         if Estimator.__dict__[m] != self.__class__.__dict__[m]]
+    if overriden_members:
+      raise ValueError(
+          'Subclasses of Estimator cannot override members of Estimator. '
+          '{} does override {}'.format(self.__class__, overriden_members))
+
+  def _get_features_from_input_fn(self, input_fn):
+    result = input_fn()
+    if not ops.get_default_graph().get_collection(ops.GraphKeys.QUEUE_RUNNERS):
+      logging.warning('Input graph does not contain a QueueRunner. '
+                      'That means predict yields forever. '
+                      'This is probably a mistake.')
+    if isinstance(result, (list, tuple)):
+      return result[0]
+    return result
+
+  def _extract_batch_length(self, preds_evaluated):
+    """Extracts batch length of predictions."""
+    batch_length = None
+    for key, value in six.iteritems(preds_evaluated):
+      batch_length = batch_length or value.shape[0]
+      if value.shape[0] != batch_length:
+        raise ValueError('Batch length of predictions should be same. %s has '
+                         'different batch length then others.' % key)
+    return batch_length
+
+  def _extract_keys(self, predictions, predict_keys):
+    """Extracts `predict_keys` from `predictions`."""
+    if not predict_keys:
+      return predictions
+    if not isinstance(predictions, dict):
+      raise ValueError(
+          'predict_keys argument is not valid in case of non-dict predictions.')
+    existing_keys = predictions.keys()
+    predictions = {
+        key: value
+        for key, value in six.iteritems(predictions) if key in predict_keys
+    }
+    if not predictions:
+      raise ValueError('Expected to run at least one output from %s, '
+                       'provided %s.' % (existing_keys, predict_keys))
+    return predictions
 
   def _call_model_fn(self, features, labels, mode):
     """Calls model function.

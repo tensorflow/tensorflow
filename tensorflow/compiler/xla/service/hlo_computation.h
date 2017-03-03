@@ -214,6 +214,13 @@ class HloComputation {
   // root instruction as the argument).
   Status Accept(DfsHloVisitor* visitor) const;
 
+  // Same as Accept() above, but the order of operand and control predecessor
+  // visitation is determined by the given operand order; if compare(A, B) ==
+  // true, A is visited before B.
+  Status AcceptWithOperandOrder(
+      DfsHloVisitor* visitor,
+      const HloInstruction::CompareFunction& operand_order) const;
+
   // Visit every node in the computation in the given order. 'order' must
   // be a topological sort of all instructions in the computation.
   Status AcceptOrdered(DfsHloVisitor* visitor,
@@ -248,6 +255,9 @@ class HloComputation {
   // Internal helper for copying a tuple value. Creates and returns a deep copy
   // of the given instruction. The given instruction must be tuple-shaped.
   StatusOr<HloInstruction*> DeepCopyTuple(HloInstruction* instruction);
+
+  // Internal helper to collect unreachable roots.
+  std::vector<HloInstruction*> CollectUnreachableRoots() const;
 
   const string name_;
   HloInstruction* root_instruction_;

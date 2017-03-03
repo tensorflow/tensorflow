@@ -71,7 +71,7 @@ class Bernoulli(distribution.Distribution):
       ValueError: If p and logits are passed, or if neither are passed.
     """
     parameters = locals()
-    with ops.name_scope(name) as ns:
+    with ops.name_scope(name):
       self._logits, self._probs = distribution_util.get_logits_and_probs(
           logits=logits,
           probs=probs,
@@ -84,7 +84,7 @@ class Bernoulli(distribution.Distribution):
         allow_nan_stats=allow_nan_stats,
         parameters=parameters,
         graph_parents=[self._logits, self._probs],
-        name=ns)
+        name=name)
 
   @staticmethod
   def _param_shapes(sample_shape):

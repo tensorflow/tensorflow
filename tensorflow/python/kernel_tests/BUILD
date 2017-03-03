@@ -1359,6 +1359,7 @@ cuda_py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:variables",
     ],
+    shard_count = 10,
 )
 
 cuda_py_test(

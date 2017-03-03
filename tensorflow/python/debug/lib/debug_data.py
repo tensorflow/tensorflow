@@ -634,6 +634,17 @@ class DebugDumpDir(object):
         self._node_traceback[op.name] = op.traceback
 
   @property
+  def python_graph(self):
+    """Get the Python graph.
+
+    Returns:
+      If the Python graph has been set, returns a `tf.Graph` object. Otherwise,
+      returns None.
+    """
+
+    return self._python_graph
+
+  @property
   def core_metadata(self):
     """Metadata about the `Session.run()` call from the core runtime.
 

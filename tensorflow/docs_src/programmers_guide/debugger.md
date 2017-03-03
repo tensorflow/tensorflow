@@ -128,6 +128,9 @@ Try the following commands at the `tfdbg>` prompt (referencing the code at
 | `lo -r hidden/Relu:0` | List the recipients of the output of the node `hidden/Relu`, recursively—i.e., the output recipient tree. |
 | `lt -n softmax.*` | List all dumped tensors whose names match the regular-expression pattern `softmax.*`. |
 | `lt -t MatMul` | List all dumped tensors whose node type is `MatMul`. |
+| `ps /path/to/source.py` | Print the Python source file source.py, with the lines annotated with the ops created at each of them, respectively. |
+| `ps -t /path/to/source.py` | Same as the command above, but perform annotation using dumped Tensors, instead of ops. |
+| `ps -b 30 /path/to/source.py` | Annotate source.py beginning at line 30. |
 | `run_info` or `ri` | Display information about the current run, including fetches and feeds. |
 | `help` | Print general help information listing all available **tfdbg** commands and their flags. |
 | `help lt` | Print the help information for the `lt` command. |
@@ -238,12 +241,21 @@ to show the traceback of the node's construction:
 tfdbg> ni -t cross_entropy/Log
 ```
 
+The `-t` flag is used by default, if you use the clickable "node_info" menu item
+at the top of the screen.
+
 From the traceback, you can see that the op is constructed at line 109 of
 [`debug_mnist.py`](https://www.tensorflow.org/code/tensorflow/python/debug/examples/debug_mnist.py):
 
 ```python
 diff = y_ * tf.log(y)
 ```
+
+TIP: tfdbg lets you view a Python source file with its lines annotated with
+the ops or Tensors created by them. To use this feature,
+simply click the underlined line numbers in the stack trace output of the
+`ni -t <op_name>` commands, or use the `ps` (or `print_source`) command such as:
+`ps /path/to/source.py`
 
 Apply a value clipping on the input to @{tf.log}
 to resolve this problem:

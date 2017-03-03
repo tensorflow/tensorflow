@@ -1318,11 +1318,8 @@ def _model_variable_getter(getter, name, shape=None, dtype=None,
 
 def _build_variable_getter(rename=None):
   """Build a model variable getter that respects scope getter and renames."""
-  # Respect current getter, if one is set.
-  current_custom_getter = variable_scope.get_variable_scope().custom_getter
+  # VariableScope will nest the getters
   def layer_variable_getter(getter, *args, **kwargs):
-    if current_custom_getter is not None:
-      getter = functools.partial(current_custom_getter, getter)
     kwargs['rename'] = rename
     return _model_variable_getter(getter, *args, **kwargs)
   return layer_variable_getter

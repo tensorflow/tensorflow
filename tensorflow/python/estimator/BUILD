@@ -140,7 +140,9 @@ py_library(
     srcs = ["export.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
+        "//tensorflow/python:parsing_ops",
     ],
 )
 
@@ -151,7 +153,6 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":export",
-        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -162,7 +163,6 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":numpy_io",
-        ":pandas_import",
         ":pandas_io",
     ],
 )
@@ -190,19 +190,10 @@ py_test(
 )
 
 py_library(
-    name = "pandas_import",
-    srcs = ["inputs/pandas_import.py"],
-    srcs_version = "PY2AND3",
-)
-
-py_library(
     name = "pandas_io",
     srcs = ["inputs/pandas_io.py"],
     srcs_version = "PY2AND3",
-    deps = [
-        ":inputs_queues",
-        ":pandas_import",
-    ],
+    deps = [":inputs_queues"],
 )
 
 py_test(
@@ -227,10 +218,7 @@ py_library(
         "inputs/queues/feeding_queue_runner.py",
     ],
     srcs_version = "PY2AND3",
-    deps = [
-        ":pandas_import",
-        "//tensorflow/python:training",
-    ],
+    deps = ["//tensorflow/python:training"],
 )
 
 py_test(

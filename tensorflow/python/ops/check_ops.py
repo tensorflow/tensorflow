@@ -19,11 +19,10 @@ See the @{$python/check_ops} guide.
 
 @@assert_negative
 @@assert_positive
-@@assert_proper_iterable
 @@assert_non_negative
 @@assert_non_positive
 @@assert_equal
-@@assert_integer
+@@assert_none_equal
 @@assert_less
 @@assert_less_equal
 @@assert_greater
@@ -31,6 +30,8 @@ See the @{$python/check_ops} guide.
 @@assert_rank
 @@assert_rank_at_least
 @@assert_type
+@@assert_integer
+@@assert_proper_iterable
 @@is_non_decreasing
 @@is_numeric_tensor
 @@is_strictly_increasing
@@ -63,6 +64,7 @@ __all__ = [
     'assert_non_negative',
     'assert_non_positive',
     'assert_equal',
+    'assert_none_equal',
     'assert_integer',
     'assert_less',
     'assert_less_equal',
@@ -282,6 +284,49 @@ def assert_equal(x, y, data=None, summarize=None, message=None, name=None):
           y.name, y
       ]
     condition = math_ops.reduce_all(math_ops.equal(x, y))
+    return control_flow_ops.Assert(condition, data, summarize=summarize)
+
+
+def assert_none_equal(
+    x, y, data=None, summarize=None, message=None, name=None):
+  """Assert the condition `x != y` holds for all elements.
+
+  Example of adding a dependency to an operation:
+
+  ```python
+  with tf.control_dependencies([tf.assert_none_equal(x, y)]):
+    output = tf.reduce_sum(x)
+  ```
+
+  This condition holds if for every pair of (possibly broadcast) elements
+  `x[i]`, `y[i]`, we have `x[i] != y[i]`.
+  If both `x` and `y` are empty, this is trivially satisfied.
+
+  Args:
+    x:  Numeric `Tensor`.
+    y:  Numeric `Tensor`, same dtype as and broadcastable to `x`.
+    data:  The tensors to print out if the condition is False.  Defaults to
+      error message and first few entries of `x`, `y`.
+    summarize: Print this many entries of each tensor.
+    message: A string to prefix to the default message.
+    name: A name for this operation (optional).
+      Defaults to "assert_none_equal".
+
+  Returns:
+    Op that raises `InvalidArgumentError` if `x != y` is ever False.
+  """
+  message = message or ''
+  with ops.name_scope(name, 'assert_none_equal', [x, y, data]):
+    x = ops.convert_to_tensor(x, name='x')
+    y = ops.convert_to_tensor(y, name='y')
+    if data is None:
+      data = [
+          message,
+          'Condition x != y did not hold for every single element: x = ',
+          x.name, x,
+          'y = ', y.name, y
+      ]
+    condition = math_ops.reduce_all(math_ops.not_equal(x, y))
     return control_flow_ops.Assert(condition, data, summarize=summarize)
 
 

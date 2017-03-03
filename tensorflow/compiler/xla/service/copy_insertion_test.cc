@@ -42,7 +42,7 @@ class CopyInsertionTest : public HloTestBase {
     // insertion contains no constants or parameters.
     auto points_to_analysis =
         TuplePointsToAnalysis::Run(module).ConsumeValueOrDie();
-    const std::set<const LogicalBuffer*> maybe_live_out_buffers =
+    tensorflow::gtl::FlatSet<const LogicalBuffer*> maybe_live_out_buffers =
         points_to_analysis
             ->GetPointsToSet(module->entry_computation()->root_instruction())
             .CreateFlattenedSet();

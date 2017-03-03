@@ -1391,6 +1391,8 @@ Computes a tensor such that
 \\(output_i = \sum_j data_j\\) where sum is over `j` such
 that `segment_ids[j] == i`.
 
+If the sum is empty for a given segment ID `i`, `output[i] = 0`.
+
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="../../images/SegmentSum.png" alt>
 </div>
@@ -1421,6 +1423,8 @@ Computes a tensor such that
 over `j` such that `segment_ids[j] == i` and `N` is the total number of
 values summed.
 
+If the mean is empty for a given segment ID `i`, `output[i] = 0`.
+
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="../../images/SegmentMean.png" alt>
 </div>
@@ -1449,6 +1453,8 @@ of segments.
 Computes a tensor such that
 \\(output_i = \prod_j data_j\\) where the product is over `j` such
 that `segment_ids[j] == i`.
+
+If the product is empty for a given segment ID `i`, `output[i] = 1`.
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="../../images/SegmentProd.png" alt>
@@ -1479,6 +1485,8 @@ Computes a tensor such that
 \\(output_i = \min_j(data_j)\\) where `min` is over `j` such
 that `segment_ids[j] == i`.
 
+If the min is empty for a given segment ID `i`, `output[i] = 0`.
+
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="../../images/SegmentMin.png" alt>
 </div>
@@ -1506,6 +1514,8 @@ for an explanation of segments.
 Computes a tensor such that
 \\(output_i = \max_j(data_j)\\) where `max` is over `j` such
 that `segment_ids[j] == i`.
+
+If the max is empty for a given segment ID `i`, `output[i] = 0`.
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="../../images/SegmentMax.png" alt>
