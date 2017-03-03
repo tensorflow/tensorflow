@@ -229,7 +229,7 @@ TEST(MathOpsTest, Select_ShapeFn) {
 
   ASSERT_TRUE(op_reg_data->shape_inference_fn != nullptr);
   shape_inference::InferenceContext c(
-      &op.node_def, op_reg_data->op_def,
+      TF_GRAPH_DEF_VERSION, &op.node_def, op_reg_data->op_def,
       {TensorShapeProto(), TensorShapeProto(), TensorShapeProto()}, {}, {},
       {TensorShapeProto(), i0, i1}, {});
   TF_ASSERT_OK(c.construction_status());
@@ -242,7 +242,7 @@ TEST(MathOpsTest, Select_ShapeFn) {
   i1.add_dim()->set_size(2);
   i1.add_dim()->set_size(2);
   shape_inference::InferenceContext c2(
-      &op.node_def, op_reg_data->op_def,
+      TF_GRAPH_DEF_VERSION, &op.node_def, op_reg_data->op_def,
       {TensorShapeProto(), TensorShapeProto(), TensorShapeProto()}, {}, {},
       {TensorShapeProto(), i0, i2}, {});
   TF_ASSERT_OK(c.construction_status());

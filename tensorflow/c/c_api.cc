@@ -729,7 +729,7 @@ extern "C" {
 struct TF_Graph {
   TF_Graph()
       : graph(OpRegistry::Global()),
-        refiner(graph.op_registry()),
+        refiner(graph.versions().producer(), graph.op_registry()),
         num_sessions(0),
         delete_requested(false) {}
   mutex mu;
