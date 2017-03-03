@@ -21,15 +21,20 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.estimator.inputs import pandas_io
-from tensorflow.python.estimator.inputs.pandas_import import HAS_PANDAS
 from tensorflow.python.framework import errors
 from tensorflow.python.platform import test
 from tensorflow.python.training import coordinator
 from tensorflow.python.training import queue_runner_impl
 
-if HAS_PANDAS:
+try:
   # pylint: disable=g-import-not-at-top
   import pandas as pd
+  HAS_PANDAS = True
+except IOError:
+  # Pandas writes a temporary file during import. If it fails, don't use pandas.
+  HAS_PANDAS = False
+except ImportError:
+  HAS_PANDAS = False
 
 
 class PandasIoTest(test.TestCase):

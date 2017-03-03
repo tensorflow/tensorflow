@@ -779,7 +779,16 @@ class LookupTableInsertOp : public OpKernel {
     const Tensor& keys = ctx->input(1);
     const Tensor& values = ctx->input(2);
     OP_REQUIRES_OK(ctx, table->CheckKeyAndValueTensorsForInsert(keys, values));
+
+    int64 memory_used_before = 0;
+    if (ctx->track_allocations()) {
+      memory_used_before = table->MemoryUsed();
+    }
     OP_REQUIRES_OK(ctx, table->Insert(ctx, keys, values));
+    if (ctx->track_allocations()) {
+      ctx->record_host_persistent_memory_allocation(table->MemoryUsed() -
+                                                    memory_used_before);
+    }
   }
 };
 
@@ -839,7 +848,16 @@ class LookupTableImportOp : public OpKernel {
     const Tensor& keys = ctx->input(1);
     const Tensor& values = ctx->input(2);
     OP_REQUIRES_OK(ctx, table->CheckKeyAndValueTensorsForImport(keys, values));
+
+    int memory_used_before = 0;
+    if (ctx->track_allocations()) {
+      memory_used_before = table->MemoryUsed();
+    }
     OP_REQUIRES_OK(ctx, table->ImportValues(ctx, keys, values));
+    if (ctx->track_allocations()) {
+      ctx->record_host_persistent_memory_allocation(table->MemoryUsed() -
+                                                    memory_used_before);
+    }
   }
 };
 

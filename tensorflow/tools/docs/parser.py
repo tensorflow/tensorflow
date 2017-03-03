@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import ast
+import collections
 import functools
 import inspect
 import os
@@ -91,12 +92,14 @@ class ReferenceResolver(object):
     doc_index: A `dict` mapping symbol name strings to objects with `url`
       and `title` fields. Used to resolve @{$doc} references in docstrings.
     index: A map from all full names to python objects.
+    py_module_names: A list of string names of Python modules.
   """
 
-  def __init__(self, duplicate_of, doc_index, index):
+  def __init__(self, duplicate_of, doc_index, index, py_module_names):
     self._duplicate_of = duplicate_of
     self._doc_index = doc_index
     self._index = index
+    self._py_module_names = py_module_names
 
   def replace_references(self, string, relative_path_to_root):
     """Replace "@{symbol}" references with links to symbol's documentation page.
@@ -147,7 +150,7 @@ class ReferenceResolver(object):
     Returns:
       A markdown link to the documentation page of `ref_full_name`.
     """
-    link = self._reference_to_link(ref_full_name, relative_path_to_root)
+    link = self.reference_to_url(ref_full_name, relative_path_to_root)
     if code_ref:
       return '[`%s`](%s)' % (link_text, link)
     else:
@@ -161,7 +164,7 @@ class ReferenceResolver(object):
     """Return the Python object for a Python symbol name."""
     return self._index[full_name]
 
-  def _reference_to_link(self, ref_full_name, relative_path_to_root):
+  def reference_to_url(self, ref_full_name, relative_path_to_root):
     """Resolve a "@{python symbol}" reference to a relative path.
 
     The input to this function should already be stripped of the '@'
@@ -224,84 +227,77 @@ class ReferenceResolver(object):
 
     # Handle different types of references.
     if string.startswith('$'):  # Doc reference
-      string = string[1:]  # remove leading $
-
-      # If string has a #, split that part into `hash_tag`
-      hash_pos = string.find('#')
-      if hash_pos > -1:
-        hash_tag = string[hash_pos:]
-        string = string[:hash_pos]
-      else:
-        hash_tag = ''
-
-      if string in self._doc_index:
-        if not manual_link_text: link_text = self._doc_index[string].title
-        url = os.path.normpath(os.path.join(
-            relative_path_to_root, '../..', self._doc_index[string].url))
-        return '[%s](%s%s)' % (link_text, url, hash_tag)
-      log_error('Handle doc reference "@{$%s}"' % string)
-      return 'TODO:%s' % string
-
-    # TODO(josh11b): The list of Python prefixes should be passed in.
-    elif string.startswith('tf.') or string.startswith('tfdbg.'):
-      # Python symbol
-      return self.python_link(link_text, string, relative_path_to_root,
-                              code_ref=not manual_link_text)
+      return self._doc_link(
+          string, link_text, manual_link_text, relative_path_to_root)
 
     elif string.startswith('tensorflow::'):
       # C++ symbol
-      # TODO(josh11b): Fix this hard-coding of paths.
-      if string == 'tensorflow::ClientSession':
-        ret = 'class/tensorflow/client-session.md'
-      elif string == 'tensorflow::Scope':
-        ret = 'class/tensorflow/scope.md'
-      elif string == 'tensorflow::Status':
-        ret = 'class/tensorflow/status.md'
-      elif string == 'tensorflow::Tensor':
-        ret = 'class/tensorflow/tensor.md'
-      elif string == 'tensorflow::ops::Const':
-        ret = 'namespace/tensorflow/ops.md#const'
-      else:
-        log_error('Handle C++ reference "@{%s}"' % string)
-        return 'TODO_C++:%s' % string
-      # relative_path_to_root gets you to api_docs/python, we go from there
-      # to api_docs/cc, and then add ret.
-      cc_relative_path = os.path.normpath(os.path.join(
-          relative_path_to_root, '../cc', ret))
-      return '[`%s`](%s)' % (link_text, cc_relative_path)
+      return self._cc_link(
+          string, link_text, manual_link_text, relative_path_to_root)
+
+    else:
+      is_python = False
+      for py_module_name in self._py_module_names:
+        if string == py_module_name or string.startswith(py_module_name + '.'):
+          is_python = True
+          break
+      if is_python:  # Python symbol
+        return self.python_link(link_text, string, relative_path_to_root,
+                                code_ref=not manual_link_text)
 
     # Error!
     log_error('Did not understand "@{%s}"' % string)
     return 'ERROR:%s' % string
 
+  def _doc_link(self, string, link_text, manual_link_text,
+                relative_path_to_root):
+    """Generate a link for a @{$...} reference."""
+    string = string[1:]  # remove leading $
 
-def _md_brief_docstring(py_object, relative_path_to_root, reference_resolver):
-  """Get the brief docstring from an object and make it into nice Markdown.
+    # If string has a #, split that part into `hash_tag`
+    hash_pos = string.find('#')
+    if hash_pos > -1:
+      hash_tag = string[hash_pos:]
+      string = string[:hash_pos]
+    else:
+      hash_tag = ''
 
-  For links within the same set of docs, the `relative_path_to_root` for a
-  docstring on the page for `full_name` can be set to
+    if string in self._doc_index:
+      if not manual_link_text: link_text = self._doc_index[string].title
+      url = os.path.normpath(os.path.join(
+          relative_path_to_root, '../..', self._doc_index[string].url))
+      return '[%s](%s%s)' % (link_text, url, hash_tag)
+    return self._doc_missing(string, hash_tag, link_text, manual_link_text,
+                             relative_path_to_root)
 
-  ```python
-  relative_path_to_root = os.path.relpath(
-    path='.', start=os.path.dirname(documentation_path(full_name)) or '.')
-  ```
+  def _doc_missing(self, string, unused_hash_tag, link_text,
+                   unused_manual_link_text, unused_relative_path_to_root):
+    """Generate an error for unrecognized @{$...} references."""
+    log_error('Handle doc reference "@{$%s}"' % string)
+    return link_text
 
-  Args:
-    py_object: A python object to retrieve the docs for (class, function/method,
-      or module).
-    relative_path_to_root: The relative path from the location of the current
-      document to the root of the Python API documentation. This is used to
-      compute links for "@{symbol}" references.
-    reference_resolver: An instance of ReferenceResolver.
-
-  Returns:
-    The docstring, or the empty string if no docstring was found.
-  """
-  # TODO(wicke): If this is a partial, use the .func docstring and add a note.
-  docstring = _get_raw_docstring(py_object).split('\n')[0]
-  docstring = reference_resolver.replace_references(
-      docstring, relative_path_to_root)
-  return docstring
+  def _cc_link(self, string, link_text, unused_manual_link_text,
+               relative_path_to_root):
+    """Generate a link for a @{tensorflow::...} reference."""
+    # TODO(josh11b): Fix this hard-coding of paths.
+    if string == 'tensorflow::ClientSession':
+      ret = 'class/tensorflow/client-session.md'
+    elif string == 'tensorflow::Scope':
+      ret = 'class/tensorflow/scope.md'
+    elif string == 'tensorflow::Status':
+      ret = 'class/tensorflow/status.md'
+    elif string == 'tensorflow::Tensor':
+      ret = 'class/tensorflow/tensor.md'
+    elif string == 'tensorflow::ops::Const':
+      ret = 'namespace/tensorflow/ops.md#const'
+    else:
+      log_error('Handle C++ reference "@{%s}"' % string)
+      return 'TODO_C++:%s' % string
+    # relative_path_to_root gets you to api_docs/python, we go from there
+    # to api_docs/cc, and then add ret.
+    cc_relative_path = os.path.normpath(os.path.join(
+        relative_path_to_root, '../cc', ret))
+    return '[`%s`](%s)' % (link_text, cc_relative_path)
 
 
 # TODO(aselle): Collect these into a big list for all modules and functions
@@ -325,11 +321,123 @@ def _handle_compatibility(doc):
   return match_compatibility.subn(r'', doc)[0], compatibility_notes
 
 
-def _md_docstring(py_object, relative_path_to_root, reference_resolver):
-  """Get the docstring from an object and make it into nice Markdown.
+def _gen_pairs(items):
+  """Given an list of items [a,b,a,b...], generate pairs [(a,b),(a,b)...].
+
+  Args:
+    items: A list of items (length must be even)
+
+  Yields:
+    The original items, in pairs
+  """
+  assert len(items) % 2 == 0
+  items = iter(items)
+  while True:
+    yield next(items), next(items)
+
+
+class _FunctionDetail(
+    collections.namedtuple('_FunctionDetail', ['keyword', 'header', 'items'])):
+  """A simple class to contain function details.
+
+  Composed of a "keyword", a possibly empty "header" string, and a possibly
+  empty
+  list of key-value pair "items".
+  """
+  __slots__ = []
+
+  def __str__(self):
+    """Return the original string that represents the function detail."""
+    parts = [self.keyword + ':\n']
+    parts.append(self.header)
+    for key, value in self.items:
+      parts.append('  ' + key + ':')
+      parts.append(value)
+
+    return ''.join(parts)
+
+
+def _parse_function_details(docstring):
+  r"""Given a docstring, split off the header and parse the function details.
+
+  For example the docstring of tf.nn.relu:
+
+  '''Computes rectified linear: `max(features, 0)`.
+
+  Args:
+    features: A `Tensor`. Must be one of the following types: `float32`,
+      `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`,
+      `half`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor`. Has the same type as `features`.
+  '''
+
+  This is parsed, and returned as:
+
+  ```
+  ('Computes rectified linear: `max(features, 0)`.\n\n', [
+      _FunctionDetail(
+          keyword='Args',
+          header='',
+          items=[
+              ('features', ' A `Tensor`. Must be ...'),
+              ('name', ' A name for the operation (optional).\n\n')]),
+      _FunctionDetail(
+          keyword='Returns',
+          header='  A `Tensor`. Has the same type as `features`.',
+          items=[])
+  ])
+  ```
+
+  Args:
+    docstring: The docstring to parse
+
+  Returns:
+    A (header, function_details) pair, where header is a string and
+    function_details is a (possibly empty) list of `_FunctionDetail` objects.
+  """
+
+  detail_keywords = '|'.join([
+      'Args', 'Arguments', 'Fields', 'Returns', 'Yields', 'Raises', 'Attributes'
+  ])
+  # TODO(markdaoust): Check if the leading blank line is used consistently.
+  tag_re = re.compile('(?<=\n\n)(' + detail_keywords + '):\n', re.MULTILINE)
+  parts = tag_re.split(docstring)
+
+  # The first part is the main docstring
+  docstring = parts[0]
+
+  # Everything else alternates keyword-content
+  pairs = list(_gen_pairs(parts[1:]))
+
+  function_details = []
+  item_re = re.compile(r'^  (\w+):', re.MULTILINE)
+
+  for keyword, content in pairs:
+    content = item_re.split(content)
+    header = content[0]
+    items = list(_gen_pairs(content[1:]))
+
+    function_details.append(_FunctionDetail(keyword, header, items))
+
+  return docstring, function_details
+
+
+_DocstringInfo = collections.namedtuple('_DocstringInfo', [
+    'brief', 'docstring', 'function_details', 'compatibility'
+])
+
+
+def _parse_md_docstring(py_object, relative_path_to_root, reference_resolver):
+  """Parse the object's docstring and return a `_DocstringInfo`.
+
+  This function clears @@'s from the docstring, and replaces @{} references
+  with markdown links.
 
   For links within the same set of docs, the `relative_path_to_root` for a
-  docstring on the page for `full_name` can be set to
+  docstring on the page for `full_name` can be set to:
 
   ```python
   relative_path_to_root = os.path.relpath(
@@ -345,57 +453,23 @@ def _md_docstring(py_object, relative_path_to_root, reference_resolver):
     reference_resolver: An instance of ReferenceResolver.
 
   Returns:
-    The docstring, or the empty string if no docstring was found.
+    A _DocstringInfo object, all fields will be empty if no docstring was found.
   """
   # TODO(wicke): If this is a partial, use the .func docstring and add a note.
   raw_docstring = _get_raw_docstring(py_object)
+
   raw_docstring = reference_resolver.replace_references(
       raw_docstring, relative_path_to_root)
-  raw_docstring, compatibility = _handle_compatibility(raw_docstring)
-  raw_lines = raw_docstring.split('\n')
 
-  # Define regular expressions used during parsing below.
-  symbol_list_item_re = re.compile(r'^  (%s): ' % IDENTIFIER_RE)
-  section_re = re.compile(r'^(\w+):\s*$')
-  atat_re = re.compile(r'^\s*@@[a-zA-Z_.0-9]+\s*$')
+  atat_re = re.compile(r' *@@[a-zA-Z_.0-9]+ *$')
+  raw_docstring = '\n'.join(
+      line for line in raw_docstring.split('\n') if not atat_re.match(line))
 
-  # Translate docstring line by line.
-  in_special_section = False
-  lines = []
+  docstring, compatibility = _handle_compatibility(raw_docstring)
+  docstring, function_details = _parse_function_details(docstring)
 
-  def is_section_start(i):
-    # Previous line is empty, line i is "Word:", and next line is indented.
-    return (i > 0  and i < len(raw_lines) and not raw_lines[i-1].strip() and
-            re.match(section_re, raw_lines[i]) and
-            len(raw_lines) > i+1 and raw_lines[i+1].startswith('  '))
-  for i, line in enumerate(raw_lines):
-    if re.match(atat_re, line):
-      continue
-
-    if not in_special_section and is_section_start(i):
-      in_special_section = True
-      lines.append('#### ' + section_re.sub(r'\1:', line))
-      lines.append('')
-      continue
-
-    # If the next line starts a new section, this one ends. Add an extra line.
-    if in_special_section and is_section_start(i+1):
-      in_special_section = False
-      lines.append('')
-
-    if in_special_section:
-      # Translate symbols in 'Args:', 'Parameters:', 'Raises:', etc. sections.
-      lines.append(symbol_list_item_re.sub(r'* <b>`\1`</b>: ', line))
-    else:
-      lines.append(line)
-  docstring = '\n'.join(lines)
-  sorted_keys = compatibility.keys()
-  sorted_keys.sort()
-  for key in sorted_keys:
-    value = compatibility[key]
-    docstring += ('\n\n#### %s compatibility\n%s\n' % (key, value))
-  # TODO(deannarubin): Improve formatting for devsite
-  return docstring
+  return _DocstringInfo(
+      docstring.split('\n')[0], docstring, function_details, compatibility)
 
 
 def _get_arg_spec(func):
@@ -551,211 +625,375 @@ def _get_guides_markdown(duplicate_names, guide_index, relative_path):
       's' if len(links) > 1 else '', ', '.join(links))
 
 
-def _generate_markdown_for_function(full_name, duplicate_names,
-                                    function, reference_resolver,
-                                    reverse_index, guide_index):
-  """Generate Markdown docs for a function or method.
+class _LinkInfo(
+    collections.namedtuple(
+        '_LinkInfo', ['short_name', 'full_name', 'obj', 'doc', 'url'])):
 
-  This function creates a documentation page for a function. It uses the
-  function name (incl. signature) as the title, followed by a list of duplicate
-  names (if there are any), and the Markdown formatted docstring of the
-  function.
+  __slots__ = []
 
-  Args:
-    full_name: The preferred name of the function. Used in the title. Must not
-      be present in `duplicate_of` (master names never are).
-    duplicate_names: A sorted list of alternative names (incl. `full_name`).
-    function: The python object referenced by `full_name`.
-    reference_resolver: An instance of ReferenceResolver.
-    reverse_index: A map from object ids in the index to full names.
-    guide_index: A `dict` mapping symbol name strings to objects with a
-      `make_md_link()` method.
-
-  Returns:
-    A string that can be written to a documentation file for this function.
-  """
-  # TODO(wicke): Make sure this works for partials.
-  relative_path = os.path.relpath(
-      path='.', start=os.path.dirname(documentation_path(full_name)) or '.')
-  docstring = _md_docstring(function, relative_path, reference_resolver)
-  signature = _generate_signature(function, reverse_index)
-  guides = _get_guides_markdown(duplicate_names, guide_index, relative_path)
-
-  if duplicate_names:
-    aliases = '\n'.join(['### `%s`' % (name + signature)
-                         for name in duplicate_names])
-    aliases += '\n\n'
-  else:
-    aliases = ''
-
-  return '# %s%s\n\n%s%s%s' % (
-      full_name, signature, aliases, guides, docstring)
+  def is_link(self):
+    return True
 
 
-def _generate_markdown_for_class(full_name, duplicate_names, py_class,
-                                 reference_resolver, tree, reverse_index,
-                                 guide_index):
-  """Generate Markdown docs for a class.
+class _OtherMemberInfo(
+    collections.namedtuple('_OtherMemberInfo',
+                           ['short_name', 'full_name', 'obj', 'doc'])):
 
-  This function creates a documentation page for a class. It uses the
-  class name as the title, followed by a list of duplicate
-  names (if there are any), the Markdown formatted docstring of the
-  class, a list of links to all child class docs, a list of all properties
-  including their docstrings, a list of all methods incl. their docstrings, and
-  a list of all class member names (public fields).
+  __slots__ = []
 
-  Args:
-    full_name: The preferred name of the class. Used in the title. Must not
-      be present in `duplicate_of` (master names never are).
-    duplicate_names: A sorted list of alternative names (incl. `full_name`).
-    py_class: The python object referenced by `full_name`.
-    reference_resolver: An instance of ReferenceResolver.
-    tree: A map from full names to the names of all documentable child objects.
-    reverse_index: A map from object ids in the index to full names.
-    guide_index: A `dict` mapping symbol name strings to objects with a
-      `make_md_link()` method.
+  def is_link(self):
+    return False
 
-  Returns:
-    A string that can be written to a documentation file for this class.
-  """
-  relative_path = os.path.relpath(
-      path='.', start=os.path.dirname(documentation_path(full_name)) or '.')
-  docstring = _md_docstring(py_class, relative_path, reference_resolver)
-  guides = _get_guides_markdown(duplicate_names, guide_index, relative_path)
-  if duplicate_names:
-    aliases = '\n'.join(['### `class %s`' % name for name in duplicate_names])
-    aliases += '\n\n'
-  else:
-    aliases = ''
 
-  docs = '# %s\n\n%s%s%s\n\n' % (full_name, aliases, guides, docstring)
+_PropertyInfo = collections.namedtuple(
+    '_PropertyInfo', ['short_name', 'full_name', 'obj', 'doc'])
 
-  field_names = []
-  properties = []
-  methods = []
-  class_links = []
-  for member in tree[full_name]:
-    child_name = '.'.join([full_name, member])
-    child = reference_resolver.py_name_to_object(child_name)
+_MethodInfo = collections.namedtuple(
+    '_MethodInfo', ['short_name', 'full_name', 'obj', 'doc', 'signature'])
 
-    if isinstance(child, property):
-      properties.append((member, child))
-    elif inspect.isclass(child):
-      class_links.append(reference_resolver.python_link(
-          'class ' + member, child_name, relative_path))
-    elif inspect.ismethod(child) or inspect.isfunction(child):
-      methods.append((member, child))
+
+class _FunctionPageInfo(object):
+  """Collects docs For a function Page."""
+
+  def __init__(self, full_name):
+    self._full_name = full_name
+    self._defined_in = None
+    self._aliases = None
+    self._doc = None
+    self._guides = None
+
+    self._signature = None
+
+  def for_function(self):
+    return True
+
+  def for_class(self):
+    return False
+
+  def for_module(self):
+    return False
+
+  @property
+  def full_name(self):
+    return self._full_name
+
+  @property
+  def defined_in(self):
+    return self._defined_in
+
+  def set_defined_in(self, defined_in):
+    assert self.defined_in is None
+    self._defined_in = defined_in
+
+  @property
+  def aliases(self):
+    return self._aliases
+
+  def set_aliases(self, aliases):
+    assert self.aliases is None
+    self._aliases = aliases
+
+  @property
+  def doc(self):
+    return self._doc
+
+  def set_doc(self, doc):
+    assert self.doc is None
+    self._doc = doc
+
+  @property
+  def guides(self):
+    return self._guides
+
+  def set_guides(self, guides):
+    assert self.guides is None
+    self._guides = guides
+
+  @property
+  def signature(self):
+    return self._signature
+
+  def set_signature(self, function, reverse_index):
+    """Attach the function's signature.
+
+    Args:
+      function: The python function being documented.
+      reverse_index: A map from object ids in the index to full names.
+    """
+
+    assert self.signature is None
+    self._signature = _generate_signature(function, reverse_index)
+
+
+class _ClassPageInfo(object):
+  """Collects docs for a class page."""
+
+  def __init__(self, full_name):
+    self._full_name = full_name
+    self._defined_in = None
+    self._aliases = None
+    self._doc = None
+    self._guides = None
+
+    self._properties = []
+    self._methods = []
+    self._classes = []
+    self._other_members = []
+
+  def for_function(self):
+    return False
+
+  def for_class(self):
+    return True
+
+  def for_module(self):
+    return False
+
+  @property
+  def full_name(self):
+    return self._full_name
+
+  @property
+  def defined_in(self):
+    return self._defined_in
+
+  def set_defined_in(self, defined_in):
+    assert self.defined_in is None
+    self._defined_in = defined_in
+
+  @property
+  def aliases(self):
+    return self._aliases
+
+  def set_aliases(self, aliases):
+    assert self.aliases is None
+    self._aliases = aliases
+
+  @property
+  def doc(self):
+    return self._doc
+
+  def set_doc(self, doc):
+    assert self.doc is None
+    self._doc = doc
+
+  @property
+  def guides(self):
+    return self._guides
+
+  def set_guides(self, guides):
+    assert self.guides is None
+    self._guides = guides
+
+  @property
+  def properties(self):
+    return self._properties
+
+  def _add_property(self, short_name, full_name, obj, doc):
+    property_info = _PropertyInfo(short_name, full_name, obj, doc)
+    self._properties.append(property_info)
+
+  @property
+  def methods(self):
+    return self._methods
+
+  def _add_method(self, short_name, full_name, obj, doc, signature):
+    method_info = _MethodInfo(short_name, full_name, obj, doc, signature)
+
+    self._methods.append(method_info)
+
+  @property
+  def classes(self):
+    return self._classes
+
+  def _add_class(self, short_name, full_name, obj, doc, url):
+    page_info = _LinkInfo(short_name, full_name, obj, doc, url)
+
+    self._classes.append(page_info)
+
+  @property
+  def other_members(self):
+    return self._other_members
+
+  def _add_other_member(self, short_name, full_name, obj, doc):
+    other_member_info = _OtherMemberInfo(short_name, full_name, obj, doc)
+    self._other_members.append(other_member_info)
+
+  def collect_docs_for_class(self, reference_resolver, tree, reverse_index):
+    """Collect information necessary specifically for a class's doc page.
+
+    Mainly, this is details about information about the class's members.
+
+    Args:
+      reference_resolver: An instance of ReferenceResolver.
+      tree: A map from full names to the names of all documentable child
+        objects.
+      reverse_index: A map from object ids in the index to full names.
+    """
+    doc_path = documentation_path(self.full_name)
+    relative_path = os.path.relpath(
+        path='.', start=os.path.dirname(doc_path) or '.')
+
+    for short_name in tree[self.full_name]:
+      child_name = '.'.join([self.full_name, short_name])
+      child = reference_resolver.py_name_to_object(child_name)
+
+      child_doc = _parse_md_docstring(child, relative_path, reference_resolver)
+
+      if isinstance(child, property):
+        self._add_property(short_name, child_name, child, child_doc)
+
+      elif inspect.isclass(child):
+        url = reference_resolver.reference_to_url(
+            child_name, relative_path)
+        self._add_class(short_name, child_name, child, child_doc, url)
+
+      elif inspect.ismethod(child) or inspect.isfunction(child):
+        child_signature = _generate_signature(child, reverse_index)
+        self._add_method(short_name, child_name, child, child_doc,
+                         child_signature)
+
+      else:
+        # TODO(wicke): We may want to also remember the object itself.
+        self._add_other_member(short_name, child_name, child, child_doc)
+
+
+class _ModulePageInfo(object):
+  """Collects docs for a module page."""
+
+  def __init__(self, full_name):
+    self._full_name = full_name
+    self._defined_in = None
+    self._aliases = None
+    self._doc = None
+    self._guides = None
+
+    self._members = []
+
+  def for_function(self):
+    return False
+
+  def for_class(self):
+    return False
+
+  def for_module(self):
+    return True
+
+  @property
+  def full_name(self):
+    return self._full_name
+
+  @property
+  def defined_in(self):
+    return self._defined_in
+
+  def set_defined_in(self, defined_in):
+    assert self.defined_in is None
+    self._defined_in = defined_in
+
+  @property
+  def aliases(self):
+    return self._aliases
+
+  def set_aliases(self, aliases):
+    assert self.aliases is None
+    self._aliases = aliases
+
+  @property
+  def doc(self):
+    return self._doc
+
+  def set_doc(self, doc):
+    assert self.doc is None
+    self._doc = doc
+
+  @property
+  def guides(self):
+    return self._guides
+
+  def set_guides(self, guides):
+    assert self.guides is None
+    self._guides = guides
+
+  @property
+  def members(self):
+    return self._members
+
+  def _add_member(self, short_name, full_name, obj, doc, url=None):
+    if url is None:
+      member = _OtherMemberInfo(short_name, full_name, obj, doc)
     else:
-      # TODO(wicke): We may want to also remember the object itself.
-      field_names.append(member)
+      member = _LinkInfo(short_name, full_name, obj, doc, url)
 
-  if class_links:
-    docs += '## Child Classes\n'
-    docs += '\n\n'.join(sorted(class_links))
-    docs += '\n\n'
+    self._members.append(member)
 
-  if properties:
-    docs += '## Properties\n\n'
-    for property_name, prop in sorted(properties, key=lambda x: x[0]):
-      docs += '<h3 id="%s"><code>%s</code></h3>\n\n%s\n\n' % (
-          property_name, property_name,
-          _md_docstring(prop, relative_path, reference_resolver))
-    docs += '\n\n'
+  def collect_docs_for_module(self, reference_resolver, tree):
+    """Collect information necessary specifically for a module's doc page.
 
-  if methods:
-    docs += '## Methods\n\n'
-    for method_name, method in sorted(methods, key=lambda x: x[0]):
-      method_signature = method_name + _generate_signature(method,
-                                                           reverse_index)
-      docs += '<h3 id="%s"><code>%s</code></h3>\n\n%s\n\n' % (
-          method_name, method_signature, _md_docstring(
-              method, relative_path, reference_resolver))
-    docs += '\n\n'
+    Mainly this is information about the members of the module.
 
-  if field_names:
-    docs += '## Class Members\n\n'
-    # TODO(wicke): Document the value of the members, at least for basic types.
-    docs += '\n\n'.join(
-        ['<h3 id="%s"><code>%s</code></h3>' % (field, field)
-         for field in sorted(field_names)])
+    Args:
+      reference_resolver: An instance of ReferenceResolver.
+      tree: A map from full names to the names of all documentable child
+        objects.
+    """
+    relative_path = os.path.relpath(
+        path='.',
+        start=os.path.dirname(documentation_path(self.full_name)) or '.')
 
-    docs += '\n\n'
+    member_names = tree.get(self.full_name, [])
+    for name in member_names:
+      member_full_name = self.full_name + '.' + name if self.full_name else name
+      member = reference_resolver.py_name_to_object(member_full_name)
 
-  return docs
+      member_doc = _parse_md_docstring(member, relative_path,
+                                       reference_resolver)
 
+      if (not inspect.isclass(member) and not inspect.isfunction(member) and
+          not inspect.ismodule(member)):
+        self._add_member(name, member_full_name, member, member_doc)
+        continue
 
-def _generate_markdown_for_module(full_name, duplicate_names, module,
-                                  reference_resolver, tree):
-  """Generate Markdown docs for a module.
+      url = reference_resolver.reference_to_url(
+          member_full_name, relative_path)
 
-  This function creates a documentation page for a module. It uses the
-  module name as the title, followed by a list of duplicate
-  names (if there are any), the Markdown formatted docstring of the
-  class, and a list of links to all members of this module.
-
-  Args:
-    full_name: The preferred name of the module. Used in the title. Must not
-      be present in `duplicate_of` (master names never are).
-    duplicate_names: A sorted list of alternative names (incl. `full_name`).
-    module: The python object referenced by `full_name`.
-    reference_resolver: An instance of ReferenceResolver.
-    tree: A map from full names to the names of all documentable child objects.
-
-  Returns:
-    A string that can be written to a documentation file for this module.
-  """
-  relative_path = os.path.relpath(
-      path='.', start=os.path.dirname(documentation_path(full_name)) or '.')
-  docstring = _md_docstring(module, relative_path, reference_resolver)
-  if duplicate_names:
-    aliases = '\n'.join(['### Module `%s`' % name for name in duplicate_names])
-    aliases += '\n\n'
-  else:
-    aliases = ''
-
-  member_names = tree.get(full_name, [])
-
-  # Make links to all members.
-  member_links = []
-  for name in member_names:
-    member_full_name = full_name + '.' + name if full_name else name
-    member = reference_resolver.py_name_to_object(member_full_name)
-
-    suffix = ''
-    if inspect.isclass(member):
-      link_text = 'class ' + name
-    elif inspect.isfunction(member):
-      link_text = name + '(...)'
-    elif inspect.ismodule(member):
-      link_text = name
-      suffix = ' module'
-    else:
-      member_links.append('Constant ' + name)
-      continue
-
-    brief_docstring = _md_brief_docstring(
-        member, relative_path, reference_resolver)
-    if brief_docstring:
-      suffix = '%s: %s' % (suffix, brief_docstring)
-
-    member_links.append(reference_resolver.python_link(
-        link_text, member_full_name, relative_path) + suffix)
-
-  # TODO(deannarubin): Make this list into a table.
-
-  return '# Module: %s\n\n%s%s\n\n## Members\n\n%s' % (
-      full_name, aliases, docstring, '\n\n'.join(member_links))
+      self._add_member(name, member_full_name, member, member_doc, url)
 
 
-_CODE_URL_PREFIX = (
-    'https://www.tensorflow.org/code/tensorflow/')
+class ParserConfig(object):
+
+  def __init__(self, reference_resolver, duplicates, tree, reverse_index,
+               guide_index, base_dir):
+    """Object with the common config for docs_for_object() calls.
+
+    Args:
+      reference_resolver: An instance of ReferenceResolver.
+      duplicates: A `dict` mapping fully qualified names to a set of all
+        aliases of this name. This is used to automatically generate a list of
+        all aliases for each name.
+      tree: A `dict` mapping a fully qualified name to the names of all its
+        members. Used to populate the members section of a class or module page.
+      reverse_index: A `dict` mapping objects in the index to full names.
+      guide_index: A `dict` mapping symbol name strings to objects with a
+        `make_md_link()` method.
+      base_dir: A base path that is stripped from file locations written to the
+        docs.
+    """
+    self.reference_resolver = reference_resolver
+    self.duplicates = duplicates
+    self.tree = tree
+    self.reverse_index = reverse_index
+    self.guide_index = guide_index
+    self.base_dir = base_dir
+    self.defined_in_prefix = 'tensorflow/'
+    self.code_url_prefix = (
+        'https://www.tensorflow.org/code/tensorflow/')  # pylint: disable=line-too-long
 
 
-def generate_markdown(full_name, py_object, duplicates, reference_resolver,
-                      tree, reverse_index, guide_index, base_dir):
-  """Generate Markdown docs for a given object that's part of the TF API.
+def docs_for_object(full_name, py_object, parser_config):
+  """Return a PageInfo object describing a given object from the TF API.
 
-  This function uses _md_docstring to obtain the docs pertaining to
+  This function uses _parse_md_docstring to parse the docs pertaining to
   `object`.
 
   This function resolves '@{symbol}' references in the docstrings into links to
@@ -766,27 +1004,16 @@ def generate_markdown(full_name, py_object, duplicates, reference_resolver,
   `documentation_path`, and that relative links to files within the
   documentation are resolvable.
 
-  The output is Markdown that can be written to file and published.
-
   Args:
     full_name: The fully qualified name of the symbol to be
       documented.
     py_object: The Python object to be documented. Its documentation is sourced
       from `py_object`'s docstring.
-    duplicates: A `dict` mapping fully qualified names to a set of all
-      aliases of this name. This is used to automatically generate a list of all
-      aliases for each name.
-    reference_resolver: An instance of ReferenceResolver.
-    tree: A `dict` mapping a fully qualified name to the names of all its
-      members. Used to populate the members section of a class or module page.
-    reverse_index: A `dict` mapping objects in the index to full names.
-    guide_index: A `dict` mapping symbol name strings to objects with a
-      `make_md_link()` method.
-    base_dir: A base path that is stripped from file locations written to the
-      docs.
+    parser_config: A ParserConfig object.
 
   Returns:
-    A string containing the Markdown docs for `py_object`.
+    Either a `_FunctionPageInfo`, `_ClassPageInfo`, or a `_ModulePageInfo`
+    depending on the type of the python object being documented.
 
   Raises:
     RuntimeError: If an object is encountered for which we don't know how
@@ -794,53 +1021,154 @@ def generate_markdown(full_name, py_object, duplicates, reference_resolver,
   """
 
   # Which other aliases exist for the object referenced by full_name?
-  master_name = reference_resolver.py_master_name(full_name)
-  duplicate_names = duplicates.get(master_name, [full_name])
+  master_name = parser_config.reference_resolver.py_master_name(full_name)
+  duplicate_names = parser_config.duplicates.get(master_name, [full_name])
 
   # TODO(wicke): Once other pieces are ready, enable this also for partials.
   if (inspect.ismethod(py_object) or inspect.isfunction(py_object) or
       # Some methods in classes from extensions come in as routines.
       inspect.isroutine(py_object)):
-    markdown = _generate_markdown_for_function(
-        master_name, duplicate_names, py_object, reference_resolver,
-        reverse_index, guide_index)
+    page_info = _FunctionPageInfo(master_name)
+    page_info.set_signature(py_object, parser_config.reverse_index)
+
   elif inspect.isclass(py_object):
-    markdown = _generate_markdown_for_class(
-        master_name, duplicate_names, py_object, reference_resolver, tree,
-        reverse_index, guide_index)
+    page_info = _ClassPageInfo(master_name)
+    page_info.collect_docs_for_class(parser_config.reference_resolver,
+                                     parser_config.tree,
+                                     parser_config.reverse_index)
+
   elif inspect.ismodule(py_object):
-    markdown = _generate_markdown_for_module(
-        master_name, duplicate_names, py_object, reference_resolver, tree)
+    page_info = _ModulePageInfo(master_name)
+    page_info.collect_docs_for_module(parser_config.reference_resolver,
+                                      parser_config.tree)
+
   else:
     raise RuntimeError('Cannot make docs for object %s: %r' % (full_name,
                                                                py_object))
 
-  # Every page gets a note on the bottom about where this object is defined
+  relative_path = os.path.relpath(
+      path='.', start=os.path.dirname(documentation_path(full_name)) or '.')
+
+  page_info.set_doc(_parse_md_docstring(
+      py_object, relative_path, parser_config.reference_resolver))
+
+  page_info.set_aliases(duplicate_names)
+
+  page_info.set_guides(_get_guides_markdown(
+      duplicate_names, parser_config.guide_index, relative_path))
+
+  page_info.set_defined_in(_get_defined_in(py_object, parser_config))
+
+  return page_info
+
+
+class _PythonBuiltin(object):
+  """This class indicated that the object in question is a python builtin.
+
+  This can be used for the `defined_in` slot of the `PageInfo` obejcts.
+  """
+
+  def is_builtin(self):
+    return True
+
+  def is_python_file(self):
+    return False
+
+  def is_generated_file(self):
+    return False
+
+  def __str__(self):
+    return 'This is an alias for a Python built-in.\n\n'
+
+
+class _PythonFile(object):
+  """This class indicates that the object is defined in a regular python file.
+
+  This can be used for the `defined_in` slot of the `PageInfo` obejcts.
+  """
+
+  def __init__(self, path, parser_config):
+    self.path = path
+    self.path_prefix = parser_config.defined_in_prefix
+    self.code_url_prefix = parser_config.code_url_prefix
+
+  def is_builtin(self):
+    return False
+
+  def is_python_file(self):
+    return True
+
+  def is_generated_file(self):
+    return False
+
+  def __str__(self):
+    return 'Defined in [`{prefix}{path}`]({code_prefix}{path}).\n\n'.format(
+        path=self.path, prefix=self.path_prefix,
+        code_prefix=self.code_url_prefix)
+
+
+class _GeneratedFile(object):
+  """This class indicates that the object is defined in a generated python file.
+
+  Generated files should not be linked to directly.
+
+  This can be used for the `defined_in` slot of the `PageInfo` obejcts.
+  """
+
+  def __init__(self, path, parser_config):
+    self.path = path
+    self.path_prefix = parser_config.defined_in_prefix
+
+  def is_builtin(self):
+    return False
+
+  def is_python_file(self):
+    return False
+
+  def is_generated_file(self):
+    return True
+
+  def __str__(self):
+    return 'Defined in `%s%s`.\n\n' % (self.path_prefix, self.path)
+
+
+def _get_defined_in(py_object, parser_config):
+  """Returns a description of where the passed in python object was defined.
+
+  Arguments:
+    py_object: The Python object.
+    parser_config: A ParserConfig object.
+
+  Returns:
+    Either a `_PythonBuiltin`, `_PythonFile`, or a `_GeneratedFile`
+  """
+  # Every page gets a note about where this object is defined
   # TODO(wicke): If py_object is decorated, get the decorated object instead.
   # TODO(wicke): Only use decorators that support this in TF.
 
   try:
-    path = os.path.relpath(path=inspect.getfile(py_object), start=base_dir)
-
-    # In case this is compiled, point to the original
-    if path.endswith('.pyc'):
-      path = path[:-1]
-
-    # TODO(wicke): If this is a generated file, link to the source instead.
-    # TODO(wicke): Move all generated files to a generated/ directory.
-    # TODO(wicke): And make their source file predictable from the file name.
-    # Never include links outside this code base.
-    if not path.startswith('..'):
-      if re.match('.*/gen_[^/]*.py$', path):
-        # Generated file, don't incude a futile link.
-        markdown += '\n\nDefined in `tensorflow/%s`.\n\n' % path
-      else:
-        markdown += '\n\nDefined in [`tensorflow/%s`](%s%s).\n\n' % (
-            path, _CODE_URL_PREFIX, path)
+    path = os.path.relpath(path=inspect.getfile(py_object),
+                           start=parser_config.base_dir)
   except TypeError:  # getfile throws TypeError if py_object is a builtin.
-    markdown += '\n\nThis is an alias for a Python built-in.'
+    return _PythonBuiltin()
 
-  return markdown
+  # TODO(wicke): If this is a generated file, link to the source instead.
+  # TODO(wicke): Move all generated files to a generated/ directory.
+  # TODO(wicke): And make their source file predictable from the file name.
+
+  # In case this is compiled, point to the original
+  if path.endswith('.pyc'):
+    path = path[:-1]
+
+  # Never include links outside this code base.
+  if path.startswith('..'):
+    return None
+
+  if re.match(r'.*/gen_[^/]*\.py$', path):
+    return _GeneratedFile(path, parser_config)
+
+  else:
+    return _PythonFile(path, parser_config)
 
 
 def generate_global_index(library_name, index, reference_resolver):
@@ -878,6 +1206,4 @@ def generate_global_index(library_name, index, reference_resolver):
     lines.append('*  %s' % link)
 
   # TODO(deannarubin): Make this list into a table and add the brief docstring.
-  # (use _md_brief_docstring)
-
   return '\n'.join(lines)

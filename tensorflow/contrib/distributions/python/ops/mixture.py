@@ -117,7 +117,7 @@ class Mixture(distribution.Distribution):
           "none of the components provide a static number of ndims")
 
     # Ensure that all batch and event ndims are consistent.
-    with ops.name_scope(name, values=[cat.logits]) as ns:
+    with ops.name_scope(name, values=[cat.logits]):
       num_components = cat.event_size
       static_num_components = tensor_util.constant_value(num_components)
       if static_num_components is None:
@@ -169,7 +169,7 @@ class Mixture(distribution.Distribution):
         allow_nan_stats=allow_nan_stats,
         parameters=parameters,
         graph_parents=graph_parents,
-        name=ns)
+        name=name)
 
   @property
   def cat(self):

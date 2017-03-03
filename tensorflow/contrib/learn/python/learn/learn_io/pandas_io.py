@@ -19,12 +19,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.estimator.inputs.pandas_import import HAS_PANDAS
 from tensorflow.python.estimator.inputs.pandas_io import pandas_input_fn  # pylint: disable=unused-import
 
-if HAS_PANDAS:
+try:
   # pylint: disable=g-import-not-at-top
   import pandas as pd
+  HAS_PANDAS = True
+except IOError:
+  # Pandas writes a temporary file during import. If it fails, don't use pandas.
+  HAS_PANDAS = False
+except ImportError:
+  HAS_PANDAS = False
 
 PANDAS_DTYPES = {
     'int8': 'int',

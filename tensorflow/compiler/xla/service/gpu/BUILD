@@ -258,6 +258,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_execution_profile",
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service:logical_buffer",
+        "//tensorflow/compiler/xla/service:pool",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:transfer_manager",
         "//tensorflow/compiler/xla/service:tuple_points_to_analysis",

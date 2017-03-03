@@ -108,7 +108,7 @@ class Categorical(distribution.Distribution):
       name: Python `str` name prefixed to Ops created by this class.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[logits, probs]) as ns:
+    with ops.name_scope(name, values=[logits, probs]):
       self._logits, self._probs = distribution_util.get_logits_and_probs(
           logits=logits,
           probs=probs,
@@ -152,7 +152,7 @@ class Categorical(distribution.Distribution):
         parameters=parameters,
         graph_parents=[self._logits,
                        self._probs],
-        name=ns)
+        name=name)
 
   @property
   def event_size(self):

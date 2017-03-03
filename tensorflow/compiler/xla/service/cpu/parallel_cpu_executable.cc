@@ -99,7 +99,7 @@ static void MarkLiveAddressesInOutput(
 
 StatusOr<perftools::gputools::DeviceMemoryBase>
 ParallelCpuExecutable::ExecuteOnStream(
-    const ExecutableRunOptions* run_options,
+    const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> arguments,
     HloExecutionProfile* hlo_execution_profile) {
   se::Stream* stream = run_options->stream();
@@ -190,8 +190,8 @@ ParallelCpuExecutable::ExecuteOnStream(
   std::list<HloInstruction*> pending;
 
   // Call the function for each HLO instruction in topological order.
-  for (auto* instruction :
-       module().entry_computation()->MakeInstructionPostOrder()) {
+  const HloComputation& entry_computation = *module().entry_computation();
+  for (auto* instruction : entry_computation.MakeInstructionPostOrder()) {
     // Parameters and constants have no functions associated with them. Instead
     // just copy the existing buffer into the map containing instruction
     // results..
@@ -210,7 +210,8 @@ ParallelCpuExecutable::ExecuteOnStream(
 
   void** temps_array = buffer_pointers.data();
   uint64* profile_counters_array = profile_counters.data();
-  auto* thread_pool = CHECK_NOTNULL(run_options->inter_op_thread_pool());
+  auto* thread_pool =
+      CHECK_NOTNULL(run_options->run_options().inter_op_thread_pool());
   tensorflow::mutex completion_queue_lock;
   tensorflow::condition_variable completion_queue_cv;
   std::deque<HloInstruction*> completion_queue;
@@ -299,7 +300,8 @@ ParallelCpuExecutable::ExecuteOnStream(
     execution_profile_.set_compute_cycle_count(profile_counters.back());
   }
   if (hlo_execution_profile != nullptr) {
-    hlo_execution_profile->set_total_cycles_executed(profile_counters.back());
+    hlo_execution_profile->set_total_cycles_executed(entry_computation,
+                                                     profile_counters.back());
 
     for (auto hlo_prof_idx : hlo_to_profile_idx_) {
       const HloInstruction* hlo = hlo_prof_idx.first;
@@ -340,7 +342,7 @@ ParallelCpuExecutable::ExecuteOnStream(
 }
 
 StatusOr<std::unique_ptr<ShapedBuffer>> ParallelCpuExecutable::ExecuteOnStream(
-    const ExecutableRunOptions* run_options,
+    const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
     HloExecutionProfile* hlo_execution_profile) {
   return Unimplemented(
@@ -348,7 +350,7 @@ StatusOr<std::unique_ptr<ShapedBuffer>> ParallelCpuExecutable::ExecuteOnStream(
 }
 
 Status ParallelCpuExecutable::ExecuteOnStream(
-    const ExecutableRunOptions* run_options,
+    const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
     ShapedBuffer* result_buffer, HloExecutionProfile* hlo_execution_profile) {
   return Unimplemented(
@@ -357,7 +359,7 @@ Status ParallelCpuExecutable::ExecuteOnStream(
 
 StatusOr<perftools::gputools::DeviceMemoryBase>
 ParallelCpuExecutable::ExecuteAsyncOnStream(
-    const ExecutableRunOptions* run_options,
+    const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> arguments) {
   // TODO(b/30671675): Implement asynchronous execution mode.
   return Unimplemented(

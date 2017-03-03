@@ -126,7 +126,7 @@ class InverseGamma(distribution.Distribution):
       TypeError: if `concentration` and `rate` are different dtypes.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[concentration, rate]) as ns:
+    with ops.name_scope(name, values=[concentration, rate]):
       with ops.control_dependencies([
           check_ops.assert_positive(concentration),
           check_ops.assert_positive(rate),
@@ -144,7 +144,7 @@ class InverseGamma(distribution.Distribution):
         parameters=parameters,
         graph_parents=[self._concentration,
                        self._rate],
-        name=ns)
+        name=name)
 
   @staticmethod
   def _param_shapes(sample_shape):

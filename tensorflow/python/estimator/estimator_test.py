@@ -27,9 +27,42 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import saver
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training
+
+
+def dummy_model_fn(features, labels, params):
+  _, _, _ = features, labels, params
+
+
+class EstimatorInheritanceConstraintTest(test.TestCase):
+  """Tests that sub classes cannot override methods of Estimator."""
+
+  def test_override_a_method(self):
+    class _Estimator(estimator.Estimator):
+
+      def __init__(self):
+        super(_Estimator, self).__init__(model_fn=dummy_model_fn)
+
+      def predict(self, input_fn, predict_keys=None, hooks=None):
+        pass
+
+    with self.assertRaisesRegexp(
+        ValueError, 'cannot override members of Estimator.*predict'):
+      _Estimator()
+
+  def test_extension_of_api_is_ok(self):
+    class _Estimator(estimator.Estimator):
+
+      def __init__(self):
+        super(_Estimator, self).__init__(model_fn=dummy_model_fn)
+
+      def predict_proba(self, input_fn, predict_keys=None, hooks=None):
+        pass
+
+    _Estimator()
 
 
 class EstimatorConstructorTest(test.TestCase):
@@ -287,6 +320,21 @@ def _model_fn_with_eval_metric_ops(features, labels, mode, params):
       eval_metric_ops={metric_name: (metric_tensor, metric_update_op)})
 
 
+class _StepCounterHook(session_run_hook.SessionRunHook):
+  """Hooks that counts the number of times it is called."""
+
+  def __init__(self):
+    self._steps = 0
+
+  def before_run(self, run_context):
+    del run_context
+    self._steps += 1
+
+  @property
+  def steps(self):
+    return self._steps
+
+
 class EstimatorEvaluateTest(test.TestCase):
 
   def test_model_fn_must_return_estimator_spec(self):
@@ -350,20 +398,6 @@ class EstimatorEvaluateTest(test.TestCase):
       est.evaluate(dummy_input_fn, steps=1)
 
   def test_hooks_are_used(self):
-    class _StepCounterHook(session_run_hook.SessionRunHook):
-      """Hooks that counts the number of times it is called."""
-
-      def __init__(self):
-        self._steps = 0
-
-      def before_run(self, run_context):
-        del run_context
-        self._steps += 1
-
-      @property
-      def steps(self):
-        return self._steps
-
     step_counter_hook = _StepCounterHook()
 
     est = estimator.Estimator(model_fn=_model_fn_with_eval_metric_ops)
@@ -409,6 +443,233 @@ class EstimatorEvaluateTest(test.TestCase):
     est = estimator.Estimator(model_fn=_model_fn_scaffold)
     est.fit(dummy_input_fn, steps=1)
     est.evaluate(dummy_input_fn, steps=1)
+    self.assertTrue(self.mock_saver.restore.called)
+
+
+class EstimatorPredictTest(test.TestCase):
+
+  def test_no_trained_model(self):
+    est = estimator.Estimator(model_fn=model_fn_global_step_incrementer)
+    with self.assertRaisesRegexp(ValueError,
+                                 'Could not find trained model in model_dir'):
+      next(est.predict(dummy_input_fn))
+
+  def test_tensor_predictions(self):
+
+    def _model_fn(features, labels, mode):
+      _, _ = features, labels
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          loss=constant_op.constant(0.),
+          train_op=constant_op.constant(0.),
+          predictions=constant_op.constant([[10.]]))
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.fit(dummy_input_fn, steps=1)
+    self.assertEqual(10., next(est.predict(dummy_input_fn)))
+
+  def test_warn_if_no_queue_runner(self):
+
+    def _model_fn(features, labels, mode):
+      _, _ = features, labels
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          loss=constant_op.constant(0.),
+          train_op=constant_op.constant(0.),
+          predictions=constant_op.constant([[10.]]))
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.fit(dummy_input_fn, steps=1)
+    with test.mock.patch.object(logging, 'warning') as mock_log:
+      next(est.predict(dummy_input_fn))
+      self.assertRegexpMatches(
+          str(mock_log.call_args),
+          'Input graph does not contain a QueueRunner.')
+
+  def test_input_fn_can_return_just_features(self):
+
+    def _model_fn(features, labels, mode):
+      _, _ = features, labels
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          loss=constant_op.constant(0.),
+          train_op=constant_op.constant(0.),
+          predictions=constant_op.constant([[10.]]))
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.fit(dummy_input_fn, steps=1)
+
+    def _only_features():
+      return {'x': constant_op.constant([[0.]])}
+
+    self.assertEqual([10.], next(est.predict(_only_features)))
+
+  def test_batch_size_mismatch(self):
+
+    def _model_fn(features, labels, mode):
+      _, _ = features, labels
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          loss=constant_op.constant(0.),
+          train_op=constant_op.constant(0.),
+          predictions={
+              'y1': constant_op.constant([[10.]]),
+              'y2': constant_op.constant([[12.], [13]])
+          })
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.fit(dummy_input_fn, steps=1)
+    with self.assertRaisesRegexp(ValueError,
+                                 'Batch length of predictions should be same'):
+      next(est.predict(dummy_input_fn))
+
+  def test_predict_keys_defined_for_tensor(self):
+
+    def _model_fn(features, labels, mode):
+      _, _ = features, labels
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          loss=constant_op.constant(0.),
+          train_op=constant_op.constant(0.),
+          predictions=constant_op.constant([[10.]]))
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.fit(dummy_input_fn, steps=1)
+    with self.assertRaisesRegexp(
+        ValueError,
+        'predict_keys argument is not valid in case of non-dict predictions'):
+      next(est.predict(dummy_input_fn, predict_keys=['y']))
+
+  def test_predict_keys_does_not_exists(self):
+
+    def _model_fn(features, labels, mode):
+      _, _ = features, labels
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          loss=constant_op.constant(0.),
+          train_op=constant_op.constant(0.),
+          predictions={
+              'y1': constant_op.constant([[10.]]),
+              'y2': constant_op.constant([[12.]])
+          })
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.fit(dummy_input_fn, steps=1)
+    with self.assertRaisesRegexp(ValueError,
+                                 'Expected to run at least one output from'):
+      next(est.predict(dummy_input_fn, predict_keys=['y3']))
+
+  def test_return_given_predict_keys(self):
+
+    def _model_fn(features, labels, mode):
+      _, _ = features, labels
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          loss=constant_op.constant(0.),
+          train_op=constant_op.constant(0.),
+          predictions={
+              'y1': constant_op.constant([[10.]]),
+              'y2': constant_op.constant([[12.]])
+          })
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.fit(dummy_input_fn, steps=1)
+    results = next(est.predict(dummy_input_fn, predict_keys=['y1']))
+    self.assertIn('y1', results)
+    self.assertNotIn('y2', results)
+
+  def test_yield_rows_of_tensor(self):
+
+    def _model_fn(features, labels, mode):
+      _, _ = features, labels
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          loss=constant_op.constant(0.),
+          train_op=constant_op.constant(0.),
+          predictions=constant_op.constant([[10.], [12.]]))
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.fit(dummy_input_fn, steps=1)
+    results = est.predict(dummy_input_fn)
+    self.assertEqual([10.], next(results))
+    self.assertEqual([12.], next(results))
+
+  def test_yield_rows_of_dict(self):
+
+    def _model_fn(features, labels, mode):
+      _, _ = features, labels
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          loss=constant_op.constant(0.),
+          train_op=constant_op.constant(0.),
+          predictions={
+              'y1': constant_op.constant([[10.], [12]]),
+              'y2': constant_op.constant([[0.], [2.]])
+          })
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.fit(dummy_input_fn, steps=1)
+    results = est.predict(dummy_input_fn)
+    self.assertDictEqual({'y1': [10.], 'y2': [0.]}, next(results))
+    self.assertDictEqual({'y1': [12.], 'y2': [2.]}, next(results))
+
+  def test_hooks_are_used(self):
+
+    def _model_fn(features, labels, mode):
+      _, _ = features, labels
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          loss=constant_op.constant(0.),
+          train_op=constant_op.constant(0.),
+          predictions=constant_op.constant([[10.], [12.]]))
+
+    step_counter_hook = _StepCounterHook()
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.fit(dummy_input_fn, steps=1)
+    results = est.predict(dummy_input_fn, hooks=[step_counter_hook])
+    self.assertEqual(0, step_counter_hook.steps)  # not called yet
+    next(results)
+    self.assertEqual(1, step_counter_hook.steps)  # first call
+    next(results)
+    self.assertEqual(1, step_counter_hook.steps)  # it's in same batch
+    next(results)
+    self.assertEqual(2, step_counter_hook.steps)  # next batch
+
+  def test_predict_from_old_model_dir(self):
+
+    def _model_fn(features, labels, mode):
+      _, _ = features, labels
+      v = variables.Variable([[16.]], 'weight')
+      prediction = v * 2
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          loss=constant_op.constant(0.),
+          train_op=constant_op.constant(0.),
+          predictions=prediction)
+
+    est1 = estimator.Estimator(model_fn=_model_fn)
+    est1.fit(dummy_input_fn, steps=1)
+    est2 = estimator.Estimator(model_fn=_model_fn, model_dir=est1.model_dir)
+    self.assertEqual([32.], next(est2.predict(dummy_input_fn)))
+
+  def test_scaffold_is_used(self):
+
+    def _model_fn_scaffold(features, labels, mode):
+      _, _ = features, labels
+      variables.Variable(1., 'weight')
+      real_saver = saver.Saver()
+      self.mock_saver = test.mock.Mock(
+          wraps=real_saver, saver_def=real_saver.saver_def)
+      return model_fn_lib.EstimatorSpec(
+          mode=mode,
+          predictions=constant_op.constant([[1.]]),
+          loss=constant_op.constant(0.),
+          train_op=constant_op.constant(0.),
+          scaffold=training.Scaffold(saver=self.mock_saver))
+
+    est = estimator.Estimator(model_fn=_model_fn_scaffold)
+    est.fit(dummy_input_fn, steps=1)
+    next(est.predict(dummy_input_fn))
     self.assertTrue(self.mock_saver.restore.called)
 
 

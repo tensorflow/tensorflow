@@ -116,8 +116,16 @@ class Backend {
   // Borrows a stream for use by the caller, either by grabbing it from an
   // internal pool, or by constructing/initializating it, and returns the result
   // to the caller.
+  StatusOr<StreamPtr> BorrowStream(int device_ordinal);
   StatusOr<StreamPtr> BorrowStream(
       perftools::gputools::StreamExecutor* executor);
+
+  // Returns a function to borrow a stream, as `BorrowStream` above does.
+  // Purely for convenience, the caller could rather make this anonymous
+  // function itself.
+  std::function<StatusOr<StreamPtr>(int)> StreamBorrower() {
+    return [this](int device_ordinal) { return BorrowStream(device_ordinal); };
+  }
 
   // Returns whether the given device ordinal of the backend is supported.
   bool device_ordinal_supported(int device_ordinal) const {

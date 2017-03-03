@@ -136,12 +136,12 @@ void QuantizedGemmImpl(OpKernelContext* tf_context, const quint8* a_data,
 
   params.left_stream.count = k;
   params.left_stream.stride = lda;
-  params.left_stream.multiplicative_sum_offset = -offset_b;
+  params.left_stream.multiplicative_sum_offset = offset_b;
   params.left_stream.additive_sum_offset = k * offset_a * offset_b;
 
   params.right_stream.count = k;
   params.right_stream.stride = ldb;
-  params.right_stream.multiplicative_sum_offset = -offset_a;
+  params.right_stream.multiplicative_sum_offset = offset_a;
   params.right_stream.additive_sum_offset = 0;
 
   params.fused_kernel.kernel.count = k;

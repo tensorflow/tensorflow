@@ -25,7 +25,7 @@ namespace xla {
 
 StatusOr<std::vector<perftools::gputools::DeviceMemoryBase>>
 Executable::ExecuteOnStreams(
-    tensorflow::gtl::ArraySlice<const ExecutableRunOptions> run_options,
+    tensorflow::gtl::ArraySlice<const ServiceExecutableRunOptions> run_options,
     tensorflow::gtl::ArraySlice<
         tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>>
         arguments) {
