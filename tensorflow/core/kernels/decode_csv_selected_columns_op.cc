@@ -334,6 +334,7 @@ REGISTER_OP("DecodeCSVSelectedColumns")
 			for (int i = 1; i < c->num_inputs(); ++i) {
 				::tensorflow::shape_inference::ShapeHandle v;
 				TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 1, &v));
+				if(i==c->num_inputs()-1)break; //dimension of field_indices can be larger than 1
 				if (c->Value(c->Dim(v, 0)) > 1) {
 					return errors::InvalidArgument(
 							"Shape of a default must be a length-0 or length-1 vector");
