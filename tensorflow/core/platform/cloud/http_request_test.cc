@@ -528,5 +528,24 @@ TEST(HttpRequestTest, EscapeString) {
   EXPECT_EQ("a%2Fb%2Fc", http_request.EscapeString(test_string));
 }
 
+TEST(HttpRequestTest, ErrorReturnsNoResponse) {
+  FakeLibCurl libcurl("get response", 500);
+  HttpRequest http_request(&libcurl);
+  TF_EXPECT_OK(http_request.Init());
+
+  std::vector<char> scratch;
+  scratch.insert(scratch.begin(), kTestContent.begin(), kTestContent.end());
+  StringPiece result;
+  scratch.reserve(100);
+
+  TF_EXPECT_OK(http_request.SetUri("http://www.testuri.com"));
+  TF_EXPECT_OK(http_request.AddAuthBearerHeader("fake-bearer"));
+  TF_EXPECT_OK(http_request.SetRange(100, 199));
+  TF_EXPECT_OK(http_request.SetResultBuffer(&scratch));
+  EXPECT_EQ(error::UNAVAILABLE, http_request.Send().code());
+
+  EXPECT_EQ("", string(scratch.begin(), scratch.end()));
+}
+
 }  // namespace
 }  // namespace tensorflow
