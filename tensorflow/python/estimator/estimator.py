@@ -70,7 +70,7 @@ class Estimator(object):
   inspect it. The structure of params is therefore entirely up to the developer.
   """
 
-  def __init__(self, model_fn=None, model_dir=None, config=None, params=None):
+  def __init__(self, model_fn, model_dir=None, config=None, params=None):
     """Constructs an `Estimator` instance.
 
     Args:
@@ -109,7 +109,10 @@ class Estimator(object):
 
     Raises:
       ValueError: parameters of `model_fn` don't match `params`.
+      ValueError: if this is called via a subclass and if that class overrides
+        a member of `Estimator`.
     """
+    self._assert_members_are_not_overridden()
     # Model directory.
     self._model_dir = model_dir
     if self._model_dir is None:
@@ -311,6 +314,18 @@ class Estimator(object):
                   key: value[i]
                   for key, value in six.iteritems(preds_evaluated)
               }
+
+  def _assert_members_are_not_overridden(self):
+    estimator_members = set([m for m in Estimator.__dict__.keys()
+                             if not m.startswith('__')])
+    subclass_members = set(self.__class__.__dict__.keys())
+    common_members = estimator_members & subclass_members
+    overriden_members = [m for m in common_members
+                         if Estimator.__dict__[m] != self.__class__.__dict__[m]]
+    if overriden_members:
+      raise ValueError(
+          'Subclasses of Estimator cannot override members of Estimator. '
+          '{} does override {}'.format(self.__class__, overriden_members))
 
   def _get_features_from_input_fn(self, input_fn):
     result = input_fn()

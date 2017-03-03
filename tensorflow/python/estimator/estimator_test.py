@@ -33,6 +33,38 @@ from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training
 
 
+def dummy_model_fn(features, labels, params):
+  _, _, _ = features, labels, params
+
+
+class EstimatorInheritanceConstraintTest(test.TestCase):
+  """Tests that sub classes cannot override methods of Estimator."""
+
+  def test_override_a_method(self):
+    class _Estimator(estimator.Estimator):
+
+      def __init__(self):
+        super(_Estimator, self).__init__(model_fn=dummy_model_fn)
+
+      def predict(self, input_fn, predict_keys=None, hooks=None):
+        pass
+
+    with self.assertRaisesRegexp(
+        ValueError, 'cannot override members of Estimator.*predict'):
+      _Estimator()
+
+  def test_extension_of_api_is_ok(self):
+    class _Estimator(estimator.Estimator):
+
+      def __init__(self):
+        super(_Estimator, self).__init__(model_fn=dummy_model_fn)
+
+      def predict_proba(self, input_fn, predict_keys=None, hooks=None):
+        pass
+
+    _Estimator()
+
+
 class EstimatorConstructorTest(test.TestCase):
 
   def test_config_must_be_a_run_config(self):
