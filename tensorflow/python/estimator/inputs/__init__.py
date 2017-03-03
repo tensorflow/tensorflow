@@ -19,5 +19,4 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.estimator.inputs.numpy_io import numpy_input_fn
-from tensorflow.python.estimator.inputs.pandas_import import HAS_PANDAS
 from tensorflow.python.estimator.inputs.pandas_io import pandas_input_fn

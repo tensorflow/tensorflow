@@ -20,8 +20,18 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-from tensorflow.python.estimator.inputs.pandas_import import HAS_PANDAS
 from tensorflow.python.estimator.inputs.queues import feeding_functions
+
+try:
+  # pylint: disable=g-import-not-at-top
+  # pylint: disable=unused-import
+  import pandas as pd
+  HAS_PANDAS = True
+except IOError:
+  # Pandas writes a temporary file during import. If it fails, don't use pandas.
+  HAS_PANDAS = False
+except ImportError:
+  HAS_PANDAS = False
 
 
 def pandas_input_fn(x,
