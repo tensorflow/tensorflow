@@ -31,6 +31,7 @@ from tensorflow.python.framework import importer
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_ops  # pylint: disable=unused-import
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
@@ -828,6 +829,24 @@ class ImportGraphDefTest(test.TestCase):
       with self.test_session(graph=g) as sess:
         with self.assertRaisesRegexp(Exception, pat):
           sess.run(x)
+
+  def testVersionAppliesToOpConstruction(self):
+    """These tests rely on shape fns in test_ops.cc."""
+    with ops.Graph().as_default():
+      importer.import_graph_def(
+          self._MakeGraphDef(
+              "node { name: 'A' op: 'RequiresOlderGraphVersion' }",
+              producer=versions.GRAPH_DEF_VERSION - 1),
+          return_elements=["A"])
+
+    with ops.Graph().as_default():
+      with self.assertRaisesWithPredicateMatch(ValueError,
+                                               "Wrong graph version.*"):
+        importer.import_graph_def(
+            self._MakeGraphDef(
+                "node { name: 'A' op: 'RequiresOlderGraphVersion' }",
+                producer=versions.GRAPH_DEF_VERSION),
+            return_elements=["A"])
 
   def testDefaultAttrsAdded(self):
     with ops.Graph().as_default():

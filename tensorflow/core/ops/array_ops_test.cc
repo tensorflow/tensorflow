@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
 
@@ -161,9 +162,9 @@ TEST(ArrayOpsTest, Identity_ShapeFnHandles) {
   // Check that handle dtypes are preserved.
   const OpRegistrationData* op_reg_data;
   TF_ASSERT_OK(OpRegistry::Global()->LookUp(op.name, &op_reg_data));
-  shape_inference::InferenceContext c(&op.node_def, op_reg_data->op_def,
-                                      {TensorShapeProto()}, {}, {}, {},
-                                      {DT_BOOL});
+  shape_inference::InferenceContext c(TF_GRAPH_DEF_VERSION, &op.node_def,
+                                      op_reg_data->op_def, {TensorShapeProto()},
+                                      {}, {}, {}, {DT_BOOL});
   TF_ASSERT_OK(c.construction_status());
   ASSERT_TRUE(op_reg_data->shape_inference_fn != nullptr);
   TF_ASSERT_OK(c.Run(op_reg_data->shape_inference_fn));

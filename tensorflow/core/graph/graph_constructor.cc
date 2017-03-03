@@ -734,8 +734,8 @@ Status GraphConstructor::UpdateVersionDef() {
     return Status::OK();
   }
   VersionDef versions = g_->versions();
-  // This new graph is being "produced" by the binary invoking ImportGraphDef.
-  versions.set_producer(TF_GRAPH_DEF_VERSION);
+  versions.set_producer(
+      std::min(versions.producer(), gdef_->versions().producer()));
   versions.set_min_consumer(
       std::max(versions.min_consumer(), gdef_->versions().min_consumer()));
   if (gdef_->versions().bad_consumers_size() > 0) {
@@ -779,13 +779,13 @@ Status GraphConstructor::MakeEdge(Node* src, int output_index, Node* dst,
 
 Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
                               const GraphDef& gdef, Graph* g) {
-  ShapeRefiner refiner(g->op_registry());
+  ShapeRefiner refiner(gdef.versions().producer(), g->op_registry());
   return GraphConstructor::Construct(opts, &gdef, g, &refiner);
 }
 
 Status ImportGraphDef(const ImportGraphDefOptions& opts, const GraphDef& gdef,
                       Graph* g, ShapeRefiner* refiner) {
-  ShapeRefiner default_refiner(g->op_registry());
+  ShapeRefiner default_refiner(gdef.versions().producer(), g->op_registry());
   if (refiner == nullptr) {
     refiner = &default_refiner;
   }
