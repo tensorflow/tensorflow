@@ -884,7 +884,7 @@ class VariableScope(object):
 
   def get_collection(self, name):
     """Get this scope's variables."""
-    scope = self._name + '/' if self._name else self._name
+    scope = self._name + '/' if self._name else ""
     return ops.get_collection(name, scope)
 
   def trainable_variables(self):
