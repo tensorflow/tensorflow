@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
 import inspect
 import os
 
@@ -31,35 +32,24 @@ from tensorflow.tools.docs import pretty_docs
 from tensorflow.tools.docs import py_guide_parser
 
 
-def write_docs(output_dir, base_dir, duplicate_of, duplicates, index, tree,
-               reverse_index, reference_resolver, guide_index):
+def write_docs(output_dir, parser_config, duplicate_of, index, yaml_toc):
   """Write previously extracted docs to disk.
 
   Write a docs page for each symbol in `index` to a tree of docs at
   `output_dir`.
 
-  Symbols with multiple aliases will have only one page written about them,
-  which is referenced for all aliases. `duplicate_of` and `duplicates` are used
-  to determine which docs pages to write.
+  Symbols with multiple aliases will have only one page written about
+  them, which is referenced for all aliases.
 
   Args:
     output_dir: Directory to write documentation markdown files to. Will be
       created if it doesn't exist.
-    base_dir: Base directory of the code being documented. This prefix is
-      stripped from all file paths that are part of the documentation.
-    duplicate_of: A `dict` mapping fully qualified names to "master" names. This
-      is used to resolve "@{symbol}" references to the "master" name.
-    duplicates: A `dict` mapping fully qualified names to a set of all
-      aliases of this name. This is used to automatically generate a list of all
-      aliases for each name.
+    parser_config: A `parser.ParserConfig` object.
+    duplicate_of: A `dict` mapping fully qualified names to "master" names.
+      Used to determine which docs pages to write.
     index: A `dict` mapping fully qualified names to the corresponding Python
-      objects. Used to produce docs for child objects, and to check the validity
-      of "@{symbol}" references.
-    tree: A `dict` mapping a fully qualified name to the names of all its
-      members. Used to populate the members section of a class or module page.
-    reverse_index: A `dict` mapping object ids to fully qualified names.
-    reference_resolver: A parser.ReferenceResolver object.
-    guide_index: A `dict` mapping symbol name strings to _GuideRef.
+      objects. Used to produce docs for child objects.
+    yaml_toc: Set to `True` to generate a "_toc.yaml" file.
   """
   # Make output_dir.
   try:
@@ -97,7 +87,7 @@ def write_docs(output_dir, base_dir, duplicate_of, duplicates, index, tree,
 
     # For a module, remember the module for the table-of-contents
     if inspect.ismodule(py_object):
-      if full_name in tree:
+      if full_name in parser_config.tree:
         module_children.setdefault(full_name, [])
 
     # For something else that's documented,
@@ -113,15 +103,7 @@ def write_docs(output_dir, base_dir, duplicate_of, duplicates, index, tree,
     print('Writing docs for %s (%r).' % (full_name, py_object))
 
     # Generate docs for `py_object`, resolving references.
-    page_info = parser.docs_for_object(
-        full_name,
-        py_object,
-        reference_resolver=reference_resolver,
-        duplicates=duplicates,
-        tree=tree,
-        reverse_index=reverse_index,
-        guide_index=guide_index,
-        base_dir=base_dir)
+    page_info = parser.docs_for_object(full_name, py_object, parser_config)
 
     path = os.path.join(output_dir, parser.documentation_path(full_name))
     directory = os.path.dirname(path)
@@ -135,34 +117,35 @@ def write_docs(output_dir, base_dir, duplicate_of, duplicates, index, tree,
                                                              directory, e))
       raise
 
-  # Generate table of contents
+  if yaml_toc:
+    # Generate table of contents
 
-  # Put modules in alphabetical order, case-insensitive
-  modules = sorted(module_children.keys(), key=lambda a: a.upper())
+    # Put modules in alphabetical order, case-insensitive
+    modules = sorted(module_children.keys(), key=lambda a: a.upper())
 
-  leftnav_path = os.path.join(output_dir, '_toc.yaml')
-  with open(leftnav_path, 'w') as f:
+    leftnav_path = os.path.join(output_dir, '_toc.yaml')
+    with open(leftnav_path, 'w') as f:
 
-    # Generate header
-    f.write('# Automatically generated file; please do not edit\ntoc:\n')
-    for module in modules:
-      f.write('  - title: ' + module + '\n'
-              '    section:\n' +
-              '    - title: Overview\n' +
-              '      path: /TARGET_DOC_ROOT/' + symbol_to_file[module] + '\n')
+      # Generate header
+      f.write('# Automatically generated file; please do not edit\ntoc:\n')
+      for module in modules:
+        f.write('  - title: ' + module + '\n'
+                '    section:\n' +
+                '    - title: Overview\n' +
+                '      path: /TARGET_DOC_ROOT/' + symbol_to_file[module] + '\n')
 
-      symbols_in_module = module_children.get(module, [])
-      symbols_in_module.sort(key=lambda a: a.upper())
+        symbols_in_module = module_children.get(module, [])
+        symbols_in_module.sort(key=lambda a: a.upper())
 
-      for full_name in symbols_in_module:
-        f.write('    - title: ' + full_name[len(module)+1:] + '\n'
-                '      path: /TARGET_DOC_ROOT/' +
-                symbol_to_file[full_name] + '\n')
+        for full_name in symbols_in_module:
+          f.write('    - title: ' + full_name[len(module)+1:] + '\n'
+                  '      path: /TARGET_DOC_ROOT/' +
+                  symbol_to_file[full_name] + '\n')
 
   # Write a global index containing all full names with links.
   with open(os.path.join(output_dir, 'index.md'), 'w') as f:
-    f.write(
-        parser.generate_global_index('TensorFlow', index, reference_resolver))
+    f.write(parser.generate_global_index(
+        'TensorFlow', index, parser_config.reference_resolver))
 
 
 def add_dict_to_dict(add_from, add_to):
@@ -174,67 +157,68 @@ def add_dict_to_dict(add_from, add_to):
 
 
 # Exclude some libaries in contrib from the documentation altogether.
-# TODO(wicke): Shrink this list.
-do_not_descend_map = {
-    '': ['cli', 'lib', 'wrappers'],
-    'contrib': [
-        'compiler',
-        'factorization',
-        'grid_rnn',
-        'labeled_tensor',
-        'ndlstm',
-        'quantization',
-        'session_bundle',
-        'slim',
-        'solvers',
-        'specs',
-        'tensor_forest',
-        'tensorboard',
-        'testing',
-        'training',
-        'tfprof',
-    ],
-    'contrib.bayesflow': [
-        'special_math', 'stochastic_gradient_estimators',
-        'stochastic_variables'
-    ],
-    'contrib.ffmpeg': ['ffmpeg_ops'],
-    'contrib.graph_editor': [
-        'edit',
-        'match',
-        'reroute',
-        'subgraph',
-        'transform',
-        'select',
-        'util'
-    ],
-    'contrib.layers': ['feature_column', 'summaries'],
-    'contrib.learn': [
-        'datasets',
-        'head',
-        'graph_actions',
-        'io',
-        'models',
-        'monitors',
-        'ops',
-        'preprocessing',
-        'utils',
-    ],
-    'contrib.util': ['loader'],
-}
+def _get_default_do_not_descend_map():
+  # TODO(wicke): Shrink this list.
+  return {
+      '': ['cli', 'lib', 'wrappers'],
+      'contrib': [
+          'compiler',
+          'factorization',
+          'grid_rnn',
+          'labeled_tensor',
+          'ndlstm',
+          'quantization',
+          'session_bundle',
+          'slim',
+          'solvers',
+          'specs',
+          'tensor_forest',
+          'tensorboard',
+          'testing',
+          'training',
+          'tfprof',
+      ],
+      'contrib.bayesflow': [
+          'special_math', 'stochastic_gradient_estimators',
+          'stochastic_variables'
+      ],
+      'contrib.ffmpeg': ['ffmpeg_ops'],
+      'contrib.graph_editor': [
+          'edit',
+          'match',
+          'reroute',
+          'subgraph',
+          'transform',
+          'select',
+          'util'
+      ],
+      'contrib.layers': ['feature_column', 'summaries'],
+      'contrib.learn': [
+          'datasets',
+          'head',
+          'graph_actions',
+          'io',
+          'models',
+          'monitors',
+          'ops',
+          'preprocessing',
+          'utils',
+      ],
+      'contrib.util': ['loader'],
+  }
 
 
-def extract(modules):
+def extract(py_modules, do_not_descend_map):
   """Extract docs from tf namespace and write them to disk."""
   # Traverse the first module.
-  visitor = doc_generator_visitor.DocGeneratorVisitor(modules[0][0])
+  visitor = doc_generator_visitor.DocGeneratorVisitor(py_modules[0][0])
   api_visitor = public_api.PublicAPIVisitor(visitor)
   add_dict_to_dict(do_not_descend_map, api_visitor.do_not_descend_map)
 
-  traverse.traverse(modules[0][1], api_visitor)
+  traverse.traverse(py_modules[0][1], api_visitor)
 
-  # Traverse all modules after the first:
-  for module_name, module in modules[1:]:
+  # Traverse all py_modules after the first:
+  for module_name, module in py_modules[1:]:
     visitor.set_root_name(module_name)
     traverse.traverse(module, api_visitor)
 
@@ -261,7 +245,7 @@ class _DocInfo(object):
     self.title = title
 
 
-def _build_doc_index(src_dir):
+def build_doc_index(src_dir):
   """Build an index from a keyword designating a doc to _DocInfo objects."""
   doc_index = {}
   for dirpath, _, filenames in os.walk(src_dir):
@@ -329,30 +313,10 @@ class _GenerateGuideIndex(py_guide_parser.PyGuideParser):
 def _build_guide_index(guide_src_dir):
   """Return dict: symbol name -> _GuideRef from the files in `guide_src_dir`."""
   index_generator = _GenerateGuideIndex()
-  for full_path, base_name in py_guide_parser.md_files_in_dir(guide_src_dir):
-    index_generator.process(full_path, base_name)
+  if os.path.exists(guide_src_dir):
+    for full_path, base_name in py_guide_parser.md_files_in_dir(guide_src_dir):
+      index_generator.process(full_path, base_name)
   return index_generator.index
-
-
-def _write(output_dir, base_dir, doc_index, guide_index, visitor):
-  """Write documentation for an index in a `DocGeneratorVisitor` to disk.
-
-  This function will create `output_dir` if it doesn't exist, and write
-  the documentation contained in `visitor`.
-
-  Args:
-    output_dir: The directory to write documentation to. Must not exist.
-    base_dir: The base dir of the library `visitor` has traversed. This is used
-      to compute relative paths for file references.
-    doc_index: A `dict` mapping a doc key to a _DocInfo.
-    guide_index: A `dict` mapping symbol name strings to _GuideRef.
-    visitor: A `DocGeneratorVisitor` that has traversed a library located at
-      `base_dir`.
-  """
-  write_docs(output_dir, os.path.abspath(base_dir),
-             visitor.duplicate_of, visitor.duplicates,
-             visitor.index, visitor.tree, visitor.reverse_index,
-             doc_index, guide_index)
 
 
 class _UpdateTags(py_guide_parser.PyGuideParser):
@@ -412,19 +376,105 @@ def _other_docs(src_dir, output_dir, reference_resolver):
   print('Done.')
 
 
-def main(src_dir, output_dir, base_dir, modules):
-  """Generate docs from `src_dir` to `output_dir`."""
-  doc_index = _build_doc_index(src_dir)
-  visitor = extract(modules)
-  reference_resolver = parser.ReferenceResolver(
-      duplicate_of=visitor.duplicate_of,
-      doc_index=doc_index, index=visitor.index)
-  _write(os.path.join(output_dir, 'api_docs/python'), base_dir,
-         reference_resolver,
-         _build_guide_index(os.path.join(src_dir, 'api_guides/python')),
-         visitor)
-  _other_docs(src_dir, output_dir, reference_resolver)
-  if parser.all_errors:
-    print('Errors during processing:' + '\n  '.join(parser.all_errors))
-    return 1
-  return 0
+class DocGenerator(object):
+  """Main entry point for generating docs."""
+
+  def __init__(self):
+    self.argument_parser = argparse.ArgumentParser()
+    self._py_modules = None
+    self._do_not_descend_map = _get_default_do_not_descend_map()
+    self.yaml_toc = True
+
+  def add_output_dir_argument(self):
+    self.argument_parser.add_argument(
+        '--output_dir',
+        type=str,
+        default=None,
+        required=True,
+        help='Directory to write docs to.'
+    )
+
+  def add_src_dir_argument(self):
+    self.argument_parser.add_argument(
+        '--src_dir',
+        type=str,
+        default=None,
+        required=True,
+        help='Directory with the source docs.'
+    )
+
+  def add_base_dir_argument(self, default_base_dir):
+    self.argument_parser.add_argument(
+        '--base_dir',
+        type=str,
+        default=default_base_dir,
+        help='Base directory to to strip from file names referenced in docs.'
+    )
+
+  def parse_known_args(self):
+    flags, _ = self.argument_parser.parse_known_args()
+    return flags
+
+  def add_to_do_not_descend_map(self, d):
+    add_dict_to_dict(d, self._do_not_descend_map)
+
+  def set_do_not_descend_map(self, d):
+    self._do_not_descend_map = d
+
+  def set_py_modules(self, py_modules):
+    self._py_modules = py_modules
+
+  def load_contrib(self):
+    """Access something in contrib so tf.contrib is properly loaded."""
+    # Without this, it ends up hidden behind lazy loading.  Requires
+    # that the caller has already called set_py_modules().
+    if self._py_modules is None:
+      raise RuntimeError(
+          'Must call set_py_modules() before running load_contrib().')
+    for name, module in self._py_modules:
+      if name == 'tf':
+        _ = module.contrib.__name__
+        return True
+    return False
+
+  def py_module_names(self):
+    if self._py_modules is None:
+      raise RuntimeError(
+          'Must call set_py_modules() before running py_module_names().')
+    return [name for (name, _) in self._py_modules]
+
+  def make_reference_resolver(self, visitor, doc_index):
+    return parser.ReferenceResolver(
+        duplicate_of=visitor.duplicate_of,
+        doc_index=doc_index, index=visitor.index,
+        py_module_names=self.py_module_names())
+
+  def make_parser_config(self, visitor, reference_resolver, guide_index,
+                         base_dir):
+    return parser.ParserConfig(
+        reference_resolver=reference_resolver,
+        duplicates=visitor.duplicates,
+        tree=visitor.tree,
+        reverse_index=visitor.reverse_index,
+        guide_index=guide_index,
+        base_dir=base_dir)
+
+  def build(self, flags):
+    """Actually build the docs."""
+    doc_index = build_doc_index(flags.src_dir)
+    visitor = extract(self._py_modules, self._do_not_descend_map)
+    reference_resolver = self.make_reference_resolver(visitor, doc_index)
+    guide_index = _build_guide_index(
+        os.path.join(flags.src_dir, 'api_guides/python'))
+    parser_config = self.make_parser_config(visitor, reference_resolver,
+                                            guide_index, flags.base_dir)
+    output_dir = os.path.join(flags.output_dir, 'api_docs/python')
+
+    write_docs(output_dir, parser_config, visitor.duplicate_of, visitor.index,
+               yaml_toc=self.yaml_toc)
+    _other_docs(flags.src_dir, flags.output_dir, reference_resolver)
+
+    if parser.all_errors:
+      print('Errors during processing:\n  ' + '\n  '.join(parser.all_errors))
+      return 1
+    return 0

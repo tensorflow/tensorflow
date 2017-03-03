@@ -76,7 +76,8 @@ class ParserTest(googletest.TestCase):
              'tf.third': HasOneMember,
              'tf.fourth': HasOneMember}
     reference_resolver = parser.ReferenceResolver(
-        duplicate_of=duplicate_of, doc_index={}, index=index)
+        duplicate_of=duplicate_of, doc_index={}, index=index,
+        py_module_names=['tf'])
     result = reference_resolver.replace_references(string, '../..')
     self.assertEqual(
         'A [`tf.reference`](../../tf/reference.md), another '
@@ -98,7 +99,7 @@ class ParserTest(googletest.TestCase):
     doc2.url = 'somewhere/else'
     doc_index = {'doc1': doc1, 'do/c2': doc2}
     reference_resolver = parser.ReferenceResolver(
-        duplicate_of={}, doc_index=doc_index, index={})
+        duplicate_of={}, doc_index=doc_index, index={}, py_module_names=['tf'])
     result = reference_resolver.replace_references(string, 'python')
     self.assertEqual(
         '[Title1](../URL1) [Title1](../URL1#abc) [link](../URL1) '
@@ -115,21 +116,17 @@ class ParserTest(googletest.TestCase):
         'TestClass.CLASS_MEMBER': TestClass.CLASS_MEMBER
     }
     reference_resolver = parser.ReferenceResolver(
-        duplicate_of={}, doc_index={}, index=index)
+        duplicate_of={}, doc_index={}, index=index, py_module_names=['tf'])
 
     tree = {
         'TestClass': ['a_method', 'a_property', 'ChildClass', 'CLASS_MEMBER']
     }
+    parser_config = parser.ParserConfig(
+        reference_resolver=reference_resolver, duplicates={}, tree=tree,
+        reverse_index={}, guide_index={}, base_dir='/')
 
     page_info = parser.docs_for_object(
-        full_name='TestClass',
-        py_object=TestClass,
-        reference_resolver=reference_resolver,
-        duplicates={},
-        tree=tree,
-        reverse_index={},
-        guide_index={},
-        base_dir='/')
+        full_name='TestClass', py_object=TestClass, parser_config=parser_config)
 
     # Make sure the brief docstring is present
     self.assertEqual(
@@ -162,22 +159,18 @@ class ParserTest(googletest.TestCase):
         'TestModule.TestClass': TestClass,
     }
     reference_resolver = parser.ReferenceResolver(
-        duplicate_of={}, doc_index={}, index=index)
+        duplicate_of={}, doc_index={}, index=index, py_module_names=['tf'])
 
     tree = {
         'TestModule': ['TestClass', 'test_function',
                        'test_function_with_args_kwargs']
     }
+    parser_config = parser.ParserConfig(
+        reference_resolver=reference_resolver, duplicates={}, tree=tree,
+        reverse_index={}, guide_index={}, base_dir='/')
 
     page_info = parser.docs_for_object(
-        full_name='TestModule',
-        py_object=module,
-        reference_resolver=reference_resolver,
-        duplicates={},
-        tree=tree,
-        reverse_index={},
-        guide_index={},
-        base_dir='/')
+        full_name='TestModule', py_object=module, parser_config=parser_config)
 
     # Make sure the brief docstring is present
     self.assertEqual(inspect.getdoc(module).split('\n')[0], page_info.doc.brief)
@@ -196,21 +189,19 @@ class ParserTest(googletest.TestCase):
         'test_function': test_function
     }
     reference_resolver = parser.ReferenceResolver(
-        duplicate_of={}, doc_index={}, index=index)
+        duplicate_of={}, doc_index={}, index=index, py_module_names=['tf'])
 
     tree = {
         '': ['test_function']
     }
+    parser_config = parser.ParserConfig(
+        reference_resolver=reference_resolver, duplicates={}, tree=tree,
+        reverse_index={}, guide_index={}, base_dir='/')
 
     page_info = parser.docs_for_object(
         full_name='test_function',
         py_object=test_function,
-        reference_resolver=reference_resolver,
-        duplicates={},
-        tree=tree,
-        reverse_index={},
-        guide_index={},
-        base_dir='/')
+        parser_config=parser_config)
 
     # Make sure the brief docstring is present
     self.assertEqual(
@@ -228,21 +219,19 @@ class ParserTest(googletest.TestCase):
         'test_function_with_args_kwargs': test_function_with_args_kwargs
     }
     reference_resolver = parser.ReferenceResolver(
-        duplicate_of={}, doc_index={}, index=index)
+        duplicate_of={}, doc_index={}, index=index, py_module_names=['tf'])
 
     tree = {
         '': ['test_function_with_args_kwargs']
     }
+    parser_config = parser.ParserConfig(
+        reference_resolver=reference_resolver, duplicates={}, tree=tree,
+        reverse_index={}, guide_index={}, base_dir='/')
 
     page_info = parser.docs_for_object(
         full_name='test_function_with_args_kwargs',
         py_object=test_function_with_args_kwargs,
-        reference_resolver=reference_resolver,
-        duplicates={},
-        tree=tree,
-        reverse_index={},
-        guide_index={},
-        base_dir='/')
+        parser_config=parser_config)
 
     # Make sure the brief docstring is present
     self.assertEqual(
@@ -298,7 +287,8 @@ class ParserTest(googletest.TestCase):
         'tf.fourth': HasOneMember
     }
     reference_resolver = parser.ReferenceResolver(
-        duplicate_of=duplicate_of, doc_index={}, index=index)
+        duplicate_of=duplicate_of, doc_index={}, index=index,
+        py_module_names=['tf'])
 
     doc_info = parser._parse_md_docstring(test_function_with_fancy_docstring,
                                           '../..', reference_resolver)
@@ -329,7 +319,8 @@ class ParserTest(googletest.TestCase):
         'TestModule.test_function': 'test_function'
     }
     reference_resolver = parser.ReferenceResolver(
-        duplicate_of=duplicate_of, doc_index={}, index=index)
+        duplicate_of=duplicate_of, doc_index={}, index=index,
+        py_module_names=['tf'])
 
     docs = parser.generate_global_index('TestLibrary', index=index,
                                         reference_resolver=reference_resolver)

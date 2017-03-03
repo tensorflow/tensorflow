@@ -92,12 +92,14 @@ class ReferenceResolver(object):
     doc_index: A `dict` mapping symbol name strings to objects with `url`
       and `title` fields. Used to resolve @{$doc} references in docstrings.
     index: A map from all full names to python objects.
+    py_module_names: A list of string names of Python modules.
   """
 
-  def __init__(self, duplicate_of, doc_index, index):
+  def __init__(self, duplicate_of, doc_index, index, py_module_names):
     self._duplicate_of = duplicate_of
     self._doc_index = doc_index
     self._index = index
+    self._py_module_names = py_module_names
 
   def replace_references(self, string, relative_path_to_root):
     """Replace "@{symbol}" references with links to symbol's documentation page.
@@ -225,55 +227,77 @@ class ReferenceResolver(object):
 
     # Handle different types of references.
     if string.startswith('$'):  # Doc reference
-      string = string[1:]  # remove leading $
-
-      # If string has a #, split that part into `hash_tag`
-      hash_pos = string.find('#')
-      if hash_pos > -1:
-        hash_tag = string[hash_pos:]
-        string = string[:hash_pos]
-      else:
-        hash_tag = ''
-
-      if string in self._doc_index:
-        if not manual_link_text: link_text = self._doc_index[string].title
-        url = os.path.normpath(os.path.join(
-            relative_path_to_root, '../..', self._doc_index[string].url))
-        return '[%s](%s%s)' % (link_text, url, hash_tag)
-      log_error('Handle doc reference "@{$%s}"' % string)
-      return 'TODO:%s' % string
-
-    # TODO(josh11b): The list of Python prefixes should be passed in.
-    elif string.startswith('tf.') or string.startswith('tfdbg.'):
-      # Python symbol
-      return self.python_link(link_text, string, relative_path_to_root,
-                              code_ref=not manual_link_text)
+      return self._doc_link(
+          string, link_text, manual_link_text, relative_path_to_root)
 
     elif string.startswith('tensorflow::'):
       # C++ symbol
-      # TODO(josh11b): Fix this hard-coding of paths.
-      if string == 'tensorflow::ClientSession':
-        ret = 'class/tensorflow/client-session.md'
-      elif string == 'tensorflow::Scope':
-        ret = 'class/tensorflow/scope.md'
-      elif string == 'tensorflow::Status':
-        ret = 'class/tensorflow/status.md'
-      elif string == 'tensorflow::Tensor':
-        ret = 'class/tensorflow/tensor.md'
-      elif string == 'tensorflow::ops::Const':
-        ret = 'namespace/tensorflow/ops.md#const'
-      else:
-        log_error('Handle C++ reference "@{%s}"' % string)
-        return 'TODO_C++:%s' % string
-      # relative_path_to_root gets you to api_docs/python, we go from there
-      # to api_docs/cc, and then add ret.
-      cc_relative_path = os.path.normpath(os.path.join(
-          relative_path_to_root, '../cc', ret))
-      return '[`%s`](%s)' % (link_text, cc_relative_path)
+      return self._cc_link(
+          string, link_text, manual_link_text, relative_path_to_root)
+
+    else:
+      is_python = False
+      for py_module_name in self._py_module_names:
+        if string == py_module_name or string.startswith(py_module_name + '.'):
+          is_python = True
+          break
+      if is_python:  # Python symbol
+        return self.python_link(link_text, string, relative_path_to_root,
+                                code_ref=not manual_link_text)
 
     # Error!
     log_error('Did not understand "@{%s}"' % string)
     return 'ERROR:%s' % string
+
+  def _doc_link(self, string, link_text, manual_link_text,
+                relative_path_to_root):
+    """Generate a link for a @{$...} reference."""
+    string = string[1:]  # remove leading $
+
+    # If string has a #, split that part into `hash_tag`
+    hash_pos = string.find('#')
+    if hash_pos > -1:
+      hash_tag = string[hash_pos:]
+      string = string[:hash_pos]
+    else:
+      hash_tag = ''
+
+    if string in self._doc_index:
+      if not manual_link_text: link_text = self._doc_index[string].title
+      url = os.path.normpath(os.path.join(
+          relative_path_to_root, '../..', self._doc_index[string].url))
+      return '[%s](%s%s)' % (link_text, url, hash_tag)
+    return self._doc_missing(string, hash_tag, link_text, manual_link_text,
+                             relative_path_to_root)
+
+  def _doc_missing(self, string, unused_hash_tag, link_text,
+                   unused_manual_link_text, unused_relative_path_to_root):
+    """Generate an error for unrecognized @{$...} references."""
+    log_error('Handle doc reference "@{$%s}"' % string)
+    return link_text
+
+  def _cc_link(self, string, link_text, unused_manual_link_text,
+               relative_path_to_root):
+    """Generate a link for a @{tensorflow::...} reference."""
+    # TODO(josh11b): Fix this hard-coding of paths.
+    if string == 'tensorflow::ClientSession':
+      ret = 'class/tensorflow/client-session.md'
+    elif string == 'tensorflow::Scope':
+      ret = 'class/tensorflow/scope.md'
+    elif string == 'tensorflow::Status':
+      ret = 'class/tensorflow/status.md'
+    elif string == 'tensorflow::Tensor':
+      ret = 'class/tensorflow/tensor.md'
+    elif string == 'tensorflow::ops::Const':
+      ret = 'namespace/tensorflow/ops.md#const'
+    else:
+      log_error('Handle C++ reference "@{%s}"' % string)
+      return 'TODO_C++:%s' % string
+    # relative_path_to_root gets you to api_docs/python, we go from there
+    # to api_docs/cc, and then add ret.
+    cc_relative_path = os.path.normpath(os.path.join(
+        relative_path_to_root, '../cc', ret))
+    return '[`%s`](%s)' % (link_text, cc_relative_path)
 
 
 # TODO(aselle): Collect these into a big list for all modules and functions
@@ -936,8 +960,37 @@ class _ModulePageInfo(object):
       self._add_member(name, member_full_name, member, member_doc, url)
 
 
-def docs_for_object(full_name, py_object, duplicates, reference_resolver, tree,
-                    reverse_index, guide_index, base_dir):
+class ParserConfig(object):
+
+  def __init__(self, reference_resolver, duplicates, tree, reverse_index,
+               guide_index, base_dir):
+    """Object with the common config for docs_for_object() calls.
+
+    Args:
+      reference_resolver: An instance of ReferenceResolver.
+      duplicates: A `dict` mapping fully qualified names to a set of all
+        aliases of this name. This is used to automatically generate a list of
+        all aliases for each name.
+      tree: A `dict` mapping a fully qualified name to the names of all its
+        members. Used to populate the members section of a class or module page.
+      reverse_index: A `dict` mapping objects in the index to full names.
+      guide_index: A `dict` mapping symbol name strings to objects with a
+        `make_md_link()` method.
+      base_dir: A base path that is stripped from file locations written to the
+        docs.
+    """
+    self.reference_resolver = reference_resolver
+    self.duplicates = duplicates
+    self.tree = tree
+    self.reverse_index = reverse_index
+    self.guide_index = guide_index
+    self.base_dir = base_dir
+    self.defined_in_prefix = 'tensorflow/'
+    self.code_url_prefix = (
+        'https://www.tensorflow.org/code/tensorflow/')  # pylint: disable=line-too-long
+
+
+def docs_for_object(full_name, py_object, parser_config):
   """Return a PageInfo object describing a given object from the TF API.
 
   This function uses _parse_md_docstring to parse the docs pertaining to
@@ -956,17 +1009,7 @@ def docs_for_object(full_name, py_object, duplicates, reference_resolver, tree,
       documented.
     py_object: The Python object to be documented. Its documentation is sourced
       from `py_object`'s docstring.
-    duplicates: A `dict` mapping fully qualified names to a set of all
-      aliases of this name. This is used to automatically generate a list of all
-      aliases for each name.
-    reference_resolver: An instance of ReferenceResolver.
-    tree: A `dict` mapping a fully qualified name to the names of all its
-      members. Used to populate the members section of a class or module page.
-    reverse_index: A `dict` mapping objects in the index to full names.
-    guide_index: A `dict` mapping symbol name strings to objects with a
-      `make_md_link()` method.
-    base_dir: A base path that is stripped from file locations written to the
-      docs.
+    parser_config: A ParserConfig object.
 
   Returns:
     Either a `_FunctionPageInfo`, `_ClassPageInfo`, or a `_ModulePageInfo`
@@ -978,23 +1021,26 @@ def docs_for_object(full_name, py_object, duplicates, reference_resolver, tree,
   """
 
   # Which other aliases exist for the object referenced by full_name?
-  master_name = reference_resolver.py_master_name(full_name)
-  duplicate_names = duplicates.get(master_name, [full_name])
+  master_name = parser_config.reference_resolver.py_master_name(full_name)
+  duplicate_names = parser_config.duplicates.get(master_name, [full_name])
 
   # TODO(wicke): Once other pieces are ready, enable this also for partials.
   if (inspect.ismethod(py_object) or inspect.isfunction(py_object) or
       # Some methods in classes from extensions come in as routines.
       inspect.isroutine(py_object)):
     page_info = _FunctionPageInfo(master_name)
-    page_info.set_signature(py_object, reverse_index)
+    page_info.set_signature(py_object, parser_config.reverse_index)
 
   elif inspect.isclass(py_object):
     page_info = _ClassPageInfo(master_name)
-    page_info.collect_docs_for_class(reference_resolver, tree, reverse_index)
+    page_info.collect_docs_for_class(parser_config.reference_resolver,
+                                     parser_config.tree,
+                                     parser_config.reverse_index)
 
   elif inspect.ismodule(py_object):
     page_info = _ModulePageInfo(master_name)
-    page_info.collect_docs_for_module(reference_resolver, tree)
+    page_info.collect_docs_for_module(parser_config.reference_resolver,
+                                      parser_config.tree)
 
   else:
     raise RuntimeError('Cannot make docs for object %s: %r' % (full_name,
@@ -1003,15 +1049,15 @@ def docs_for_object(full_name, py_object, duplicates, reference_resolver, tree,
   relative_path = os.path.relpath(
       path='.', start=os.path.dirname(documentation_path(full_name)) or '.')
 
-  page_info.set_doc(
-      _parse_md_docstring(py_object, relative_path, reference_resolver))
+  page_info.set_doc(_parse_md_docstring(
+      py_object, relative_path, parser_config.reference_resolver))
 
   page_info.set_aliases(duplicate_names)
 
-  page_info.set_guides(
-      _get_guides_markdown(duplicate_names, guide_index, relative_path))
+  page_info.set_guides(_get_guides_markdown(
+      duplicate_names, parser_config.guide_index, relative_path))
 
-  page_info.set_defined_in(_get_defined_in(py_object, base_dir))
+  page_info.set_defined_in(_get_defined_in(py_object, parser_config))
 
   return page_info
 
@@ -1041,11 +1087,10 @@ class _PythonFile(object):
   This can be used for the `defined_in` slot of the `PageInfo` obejcts.
   """
 
-  _code_url_prefix = (
-      'https://www.tensorflow.org/code/tensorflow/')  # pylint: disable=line-too-long
-
-  def __init__(self, path):
+  def __init__(self, path, parser_config):
     self.path = path
+    self.path_prefix = parser_config.defined_in_prefix
+    self.code_url_prefix = parser_config.code_url_prefix
 
   def is_builtin(self):
     return False
@@ -1057,8 +1102,9 @@ class _PythonFile(object):
     return False
 
   def __str__(self):
-    return 'Defined in [`tensorflow/{path}`]({code_prefix}{path}).\n\n'.format(
-        path=self.path, code_prefix=self._code_url_prefix)
+    return 'Defined in [`{prefix}{path}`]({code_prefix}{path}).\n\n'.format(
+        path=self.path, prefix=self.path_prefix,
+        code_prefix=self.code_url_prefix)
 
 
 class _GeneratedFile(object):
@@ -1069,8 +1115,9 @@ class _GeneratedFile(object):
   This can be used for the `defined_in` slot of the `PageInfo` obejcts.
   """
 
-  def __init__(self, path):
+  def __init__(self, path, parser_config):
     self.path = path
+    self.path_prefix = parser_config.defined_in_prefix
 
   def is_builtin(self):
     return False
@@ -1082,16 +1129,15 @@ class _GeneratedFile(object):
     return True
 
   def __str__(self):
-    return 'Defined in `tensorflow/%s`.\n\n' % self.path
+    return 'Defined in `%s%s`.\n\n' % (self.path_prefix, self.path)
 
 
-def _get_defined_in(py_object, base_dir):
+def _get_defined_in(py_object, parser_config):
   """Returns a description of where the passed in python object was defined.
 
   Arguments:
     py_object: The Python object.
-    base_dir: A base path that is stripped from file locations written to the
-      docs.
+    parser_config: A ParserConfig object.
 
   Returns:
     Either a `_PythonBuiltin`, `_PythonFile`, or a `_GeneratedFile`
@@ -1101,7 +1147,8 @@ def _get_defined_in(py_object, base_dir):
   # TODO(wicke): Only use decorators that support this in TF.
 
   try:
-    path = os.path.relpath(path=inspect.getfile(py_object), start=base_dir)
+    path = os.path.relpath(path=inspect.getfile(py_object),
+                           start=parser_config.base_dir)
   except TypeError:  # getfile throws TypeError if py_object is a builtin.
     return _PythonBuiltin()
 
@@ -1118,10 +1165,10 @@ def _get_defined_in(py_object, base_dir):
     return None
 
   if re.match(r'.*/gen_[^/]*\.py$', path):
-    return _GeneratedFile(path)
+    return _GeneratedFile(path, parser_config)
 
   else:
-    return _PythonFile(path)
+    return _PythonFile(path, parser_config)
 
 
 def generate_global_index(library_name, index, reference_resolver):

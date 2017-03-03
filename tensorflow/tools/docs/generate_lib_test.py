@@ -49,10 +49,11 @@ class TestClass(object):
 class GenerateTest(googletest.TestCase):
 
   def test_extraction(self):
-    modules = [('tf', tf), ('tfdbg', tf_debug)]
+    py_modules = [('tf', tf), ('tfdbg', tf_debug)]
     _ = tf.contrib.__name__  # Trigger loading of tf.contrib
     try:
-      generate_lib.extract(modules)
+      generate_lib.extract(
+          py_modules, generate_lib._get_default_do_not_descend_map())
     except RuntimeError:
       print('*****************************************************************')
       print('If this test fails, you have most likely introduced an unsealed')
@@ -97,11 +98,12 @@ class GenerateTest(googletest.TestCase):
 
     reference_resolver = parser.ReferenceResolver(
         duplicate_of=duplicate_of,
-        doc_index={}, index=index)
-    generate_lib.write_docs(output_dir, base_dir, duplicate_of, duplicates,
-                            index, tree, reverse_index={},
-                            reference_resolver=reference_resolver,
-                            guide_index={})
+        doc_index={}, index=index, py_module_names=['tf'])
+    parser_config = parser.ParserConfig(
+        reference_resolver=reference_resolver, duplicates=duplicates, tree=tree,
+        reverse_index={}, guide_index={}, base_dir=base_dir)
+    generate_lib.write_docs(output_dir, parser_config, duplicate_of, index,
+                            yaml_toc=True)
 
     # Make sure that the right files are written to disk.
     self.assertTrue(os.path.exists(os.path.join(output_dir, 'index.md')))
