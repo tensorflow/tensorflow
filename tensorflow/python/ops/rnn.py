@@ -266,6 +266,10 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
   length(s) of the sequence(s) or completely unrolled if length(s) is not
   given.
 
+  When not passing `sequence_length`, make sure that you do not use padding
+  (i.e. your sequences really have the same lengths), because it can lead you
+  to wrong final cell states.
+
   Args:
     cell_fw: An instance of RNNCell, to be used for forward direction.
     cell_bw: An instance of RNNCell, to be used for backward direction.
@@ -275,8 +279,9 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
       If time_major == True, this must be a tensor of shape:
         `[max_time, batch_size, input_size]`.
       [batch_size, input_size].
-    sequence_length: An int32/int64 vector, size `[batch_size]`,
-      containing the actual lengths for each of the sequences.
+    sequence_length (optional): An int32/int64 vector, size `[batch_size]`,
+      containing the actual lengths for each of the sequences. If not provided,
+      input sequence will be completely unrolled.
     initial_state_fw: (optional) An initial state for the forward RNN.
       This must be a tensor of appropriate type and shape
       `[batch_size, cell_fw.state_size]`.
@@ -358,18 +363,24 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
       batch_dim = 1
 
     with vs.variable_scope("bw") as bw_scope:
-      inputs_reverse = array_ops.reverse_sequence(
-          input=inputs, seq_lengths=sequence_length,
-          seq_dim=time_dim, batch_dim=batch_dim)
+      if sequence_length is None:
+        inputs_reverse = array_ops.reverse(inputs, axis=[time_dim])
+      else:
+        inputs_reverse = array_ops.reverse_sequence(
+            input=inputs, seq_lengths=sequence_length,
+            seq_dim=time_dim, batch_dim=batch_dim)
       tmp, output_state_bw = dynamic_rnn(
           cell=cell_bw, inputs=inputs_reverse, sequence_length=sequence_length,
           initial_state=initial_state_bw, dtype=dtype,
           parallel_iterations=parallel_iterations, swap_memory=swap_memory,
           time_major=time_major, scope=bw_scope)
 
-  output_bw = array_ops.reverse_sequence(
-      input=tmp, seq_lengths=sequence_length,
-      seq_dim=time_dim, batch_dim=batch_dim)
+  if sequence_length is None:
+    output_bw = array_ops.reverse(tmp, axis=[time_dim])
+  else:
+    output_bw = array_ops.reverse_sequence(
+        input=tmp, seq_lengths=sequence_length,
+        seq_dim=time_dim, batch_dim=batch_dim)
 
   outputs = (output_fw, output_bw)
   output_states = (output_state_fw, output_state_bw)
