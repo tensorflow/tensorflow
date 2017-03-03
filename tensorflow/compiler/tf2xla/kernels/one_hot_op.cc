@@ -16,21 +16,12 @@ limitations under the License.
 // XLA implementation of OneHot operator.
 
 #include "tensorflow/compiler/tf2xla/literal_util.h"
+#include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 
 namespace tensorflow {
 namespace {
-
-template <typename T>
-Tensor MakeLinspaceTensor(const TensorShape& shape, int64 depth) {
-  Tensor linspace(DataTypeToEnum<T>::v(), shape);
-  auto linspace_flat = linspace.flat<T>();
-  for (int64 i = 0; i < depth; ++i) {
-    linspace_flat(i) = i;
-  }
-  return linspace;
-}
 
 class OneHotOp : public XlaOpKernel {
  public:
@@ -71,52 +62,12 @@ class OneHotOp : public XlaOpKernel {
         ctx, depth >= 0,
         errors::InvalidArgument("depth must be non-negative, got: ", depth));
 
-    TensorShape output_shape = indices_shape;
-    output_shape.InsertDim(axis, depth);
-
-    xla::ComputationDataHandle on_value = ctx->Input(2);
-    xla::ComputationDataHandle off_value = ctx->Input(3);
-
-    // Build a Tensor populated with values 0, 1, 2, ... depth.
-    std::vector<int64> linspace_dims(output_dims, 1);
-    linspace_dims[axis] = depth;
-    TensorShape linspace_shape(linspace_dims);
-    Tensor linspace;
-    switch (ctx->input_type(0)) {
-      case DT_UINT8:
-        linspace = MakeLinspaceTensor<uint8>(linspace_shape, depth);
-        break;
-      case DT_INT32:
-        linspace = MakeLinspaceTensor<int32>(linspace_shape, depth);
-        break;
-      case DT_INT64:
-        linspace = MakeLinspaceTensor<int64>(linspace_shape, depth);
-        break;
-      default:
-        ctx->SetStatus(errors::InvalidArgument(
-            "Invalid argument type ", DataTypeString(ctx->input_type(0))));
-        return;
-    }
-    xla::Literal linspace_literal;
-    OP_REQUIRES_OK(ctx, HostTensorToLiteral(linspace, &linspace_literal));
-
-    xla::ComputationBuilder* builder = ctx->builder();
-    xla::ComputationDataHandle indices = ctx->Input(0);
-
-    // Broadcast the linspace constant across the indices along the new axis,
-    // and test equality at each position.
-    std::vector<int64> broadcast_dims(indices_shape.dims());
-    std::iota(broadcast_dims.begin(), broadcast_dims.begin() + axis, 0);
-    std::iota(broadcast_dims.begin() + axis, broadcast_dims.end(), axis + 1);
-    xla::ComputationDataHandle one_hot =
-        builder->Eq(indices, builder->ConstantLiteral(linspace_literal),
-                   broadcast_dims);
-
-    // Selects the user-provided off_value and on_value values.
-    ctx->SetOutput(
-        0, builder->Select(
-               one_hot, builder->Broadcast(on_value, output_shape.dim_sizes()),
-               builder->Broadcast(off_value, output_shape.dim_sizes())));
+    xla::ComputationDataHandle one_hot;
+    OP_REQUIRES_OK(
+        ctx, XlaHelpers::OneHot(ctx->builder(), depth, axis, input_type(0),
+                                indices_shape, ctx->Input(0), ctx->Input(2),
+                                ctx->Input(3), &one_hot));
+    ctx->SetOutput(0, one_hot);
   }
 
  private:

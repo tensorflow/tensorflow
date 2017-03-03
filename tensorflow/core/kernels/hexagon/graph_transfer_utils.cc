@@ -56,21 +56,25 @@ GraphTransferUtils::BuildRemoteFusedGraphExecuteInfo(
   execute_info.set_executor_name("build_hexagon_remote_fused_graph_executor");
   for (const GraphTransferInfo::GraphInputNodeInfo& input :
        graph_transfer_info.graph_input_node_info()) {
-    RemoteFusedGraphExecuteInfo::GraphIONodeInfo& graph_input_node_info =
-        *execute_info.add_graph_input_node_info();
-    graph_input_node_info.set_name(input.name());
+    execute_info.add_graph_input_node_name(input.name());
+    RemoteFusedGraphExecuteInfo::TensorShapeTypeProto& tensor_shape_type =
+        *execute_info.add_default_graph_input_tensor_shape();
+    tensor_shape_type.set_dtype(input.dtype());
+    TensorShapeProto& tensor_shape_proto = *tensor_shape_type.mutable_shape();
     for (const int64 dim : input.shape()) {
-      graph_input_node_info.add_shape(dim);
+      tensor_shape_proto.add_dim()->set_size(dim);
     }
   }
 
   for (const GraphTransferInfo::GraphOutputNodeInfo& output :
        graph_transfer_info.graph_output_node_info()) {
-    RemoteFusedGraphExecuteInfo::GraphIONodeInfo& graph_output_node_info =
-        *execute_info.add_graph_output_node_info();
-    graph_output_node_info.set_name(output.name());
+    execute_info.add_graph_output_node_name(output.name());
+    RemoteFusedGraphExecuteInfo::TensorShapeTypeProto& tensor_shape_type =
+        *execute_info.add_default_graph_output_tensor_shape();
+    tensor_shape_type.set_dtype(output.dtype());
+    TensorShapeProto& tensor_shape_proto = *tensor_shape_type.mutable_shape();
     for (const int64 dim : output.shape()) {
-      graph_output_node_info.add_shape(dim);
+      tensor_shape_proto.add_dim()->set_size(dim);
     }
   }
 
@@ -82,26 +86,26 @@ GraphTransferUtils::BuildRemoteFusedGraphExecuteInfo(
 /* static */ GraphDef GraphTransferUtils::BuildFusedGraphDef(
     const IGraphTransferOpsDefinitions& ops_definitions,
     const string& remote_graph_execute_name,
-    const std::vector<GraphTransferer::InputNodeInfo>& inputs,
+    const std::vector<std::pair<string, Tensor>>& inputs,
     const std::vector<string>& outputs, const GraphDef& def,
     GraphTransferer* const gt) {
   CHECK(gt != nullptr);
-  GraphTransferer::OutputTensorInfo output_tensor_info;
-  Status status = gt->DryRunInferenceForAllNode(
-      def, inputs, true /* initialize_by_zero */, &output_tensor_info);
+  RemoteFusedGraphExecuteUtils::TensorShapeMap tensor_shape_map;
+  Status status = RemoteFusedGraphExecuteUtils::DryRunInferenceForAllNode(
+      def, inputs, true /* initialize_by_zero */, &tensor_shape_map);
   CHECK(status.ok());
   status = gt->LoadGraphFromProto(ops_definitions, def, inputs, outputs, false,
-                                  output_tensor_info.output_tensor_map);
+                                  tensor_shape_map);
 
   Scope root = Scope::NewRootScope();
   std::vector<Output> output_list;
-  for (const GraphTransferer::InputNodeInfo& input_node_info : inputs) {
-    const Scope& scope = root.WithOpName(input_node_info.name);
+  for (const std::pair<string, Tensor>& input_node_info : inputs) {
+    const Scope& scope = root.WithOpName(input_node_info.first);
     Node* ret;
     const auto unique_name = scope.GetUniqueNameForOp("PlaceholderV2");
     auto builder = NodeBuilder(unique_name, "PlaceholderV2")
-                       .Attr("dtype", input_node_info.tensor.dtype())
-                       .Attr("shape", input_node_info.tensor.shape());
+                       .Attr("dtype", input_node_info.second.dtype())
+                       .Attr("shape", input_node_info.second.shape());
     scope.UpdateBuilder(&builder);
     scope.UpdateStatus(builder.Finalize(scope.graph(), &ret));
     CHECK(scope.ok());

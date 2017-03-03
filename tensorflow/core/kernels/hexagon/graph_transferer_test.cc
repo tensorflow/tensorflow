@@ -296,124 +296,29 @@ TEST_F(GraphTransfererTest, LoadAddGraph) {
   EXPECT_EQ(4, params_b->data().length());
 }
 
-TEST_F(GraphTransfererTest, DryRunAddGraphA) {
-  GraphDef def = CreateAddGraphDef();
-  GraphTransferer::InputNodeInfo input_node_info;
-  input_node_info.name = NAME_A;
-  input_node_info.tensor = Tensor(DT_FLOAT, {});
-  input_node_info.tensor.scalar<float>()() = 1.0f;
-  const std::vector<GraphTransferer::InputNodeInfo> inputs{input_node_info};
-  std::vector<string> outputs = {NAME_B, NAME_A_PLUS_B};
-  std::vector<tensorflow::Tensor> output_tensors;
-  Status status = gt_.DryRunInference(
-      def, inputs, outputs, false /* initialize_by_zero */, &output_tensors);
-  ASSERT_TRUE(status.ok()) << status;
-  EXPECT_EQ(outputs.size(), output_tensors.size());
-  EXPECT_NEAR(NODE_B_VAL, output_tensors.at(0).scalar<float>()(),
-              VALUE_TOLERANCE_FLOAT);
-  EXPECT_NEAR(1.0f + NODE_B_VAL, output_tensors.at(1).scalar<float>()(),
-              VALUE_TOLERANCE_FLOAT);
-}
-
-TEST_F(GraphTransfererTest, DryRunAddGraphAUninitialized) {
-  GraphDef def = CreateAddGraphDef();
-  GraphTransferer::InputNodeInfo input_node_info;
-  input_node_info.name = NAME_A;
-  input_node_info.tensor = Tensor(DT_FLOAT, {});
-  const std::vector<GraphTransferer::InputNodeInfo> inputs{input_node_info};
-  std::vector<string> outputs = {NAME_B, NAME_A_PLUS_B};
-  std::vector<tensorflow::Tensor> output_tensors;
-  Status status = gt_.DryRunInference(
-      def, inputs, outputs, true /* initialize_by_zero */, &output_tensors);
-  ASSERT_TRUE(status.ok()) << status;
-  EXPECT_EQ(outputs.size(), output_tensors.size());
-  EXPECT_NEAR(NODE_B_VAL, output_tensors.at(0).scalar<float>()(),
-              VALUE_TOLERANCE_FLOAT);
-  EXPECT_NEAR(NODE_B_VAL, output_tensors.at(1).scalar<float>()(),
-              VALUE_TOLERANCE_FLOAT);
-}
-
-TEST_F(GraphTransfererTest, DryRunAddGraphAB) {
-  GraphDef def = CreateAddGraphDef();
-  GraphTransferer::InputNodeInfo input_node_info_a;
-  input_node_info_a.name = NAME_A;
-  input_node_info_a.tensor = Tensor(DT_FLOAT, {});
-  input_node_info_a.tensor.scalar<float>()() = 1.0f;
-  GraphTransferer::InputNodeInfo input_node_info_b;
-  input_node_info_b.name = NAME_B;
-  input_node_info_b.tensor = Tensor(DT_FLOAT, {});
-  input_node_info_b.tensor.scalar<float>()() = 10.0f;
-  const std::vector<GraphTransferer::InputNodeInfo> inputs{input_node_info_a,
-                                                           input_node_info_b};
-  std::vector<string> outputs = {NAME_A_PLUS_B};
-  std::vector<tensorflow::Tensor> output_tensors;
-  Status status = gt_.DryRunInference(
-      def, inputs, outputs, false /* initialize_by_zero */, &output_tensors);
-  ASSERT_TRUE(status.ok()) << status;
-  EXPECT_EQ(outputs.size(), output_tensors.size());
-  EXPECT_NEAR(11.0f, output_tensors.at(0).scalar<float>()(),
-              VALUE_TOLERANCE_FLOAT);
-}
-
-TEST_F(GraphTransfererTest, DryRunAddGraphForAllNodes) {
-  // Set Node "a" as an input with value (= 1.0f)
-  GraphTransferer::InputNodeInfo input_node_info_a;
-  input_node_info_a.name = NAME_A;
-  input_node_info_a.tensor = Tensor(DT_FLOAT, {});
-  input_node_info_a.tensor.scalar<float>()() = 1.0f;
-
-  // Setup dryrun arguments
-  const std::vector<GraphTransferer::InputNodeInfo> inputs{input_node_info_a};
-  GraphTransferer::OutputTensorInfo output_tensor_info;
-  GraphDef def = CreateAddGraphDef();
-
-  // dryrun
-  const Status status = GraphTransferer::DryRunInferenceForAllNode(
-      def, inputs, false /* initialize_by_zero */, &output_tensor_info);
-  const std::vector<Tensor>& output_tensors = output_tensor_info.output_tensors;
-  const std::unordered_map<string, Tensor*>& output_tensor_map =
-      output_tensor_info.output_tensor_map;
-  ASSERT_TRUE(status.ok()) << status;
-
-  // Assert output node count
-  ASSERT_EQ(3, output_tensors.size());
-  ASSERT_EQ(1, output_tensor_map.count(NAME_A));
-  ASSERT_EQ(1, output_tensor_map.count(NAME_B));
-  ASSERT_EQ(1, output_tensor_map.count(NAME_A_PLUS_B));
-
-  // Assert output nodes' values
-  const float name_b_output = output_tensor_map.at(NAME_B)->scalar<float>()();
-  const float name_a_b_output =
-      output_tensor_map.at(NAME_A_PLUS_B)->scalar<float>()();
-  EXPECT_NEAR(NODE_B_VAL, name_b_output, VALUE_TOLERANCE_FLOAT);
-  EXPECT_NEAR(1.0f + NODE_B_VAL, name_a_b_output, VALUE_TOLERANCE_FLOAT);
-}
-
 TEST_F(GraphTransfererTest, LoadAddGraphWithOutputTensorMap) {
   GraphDef def = CreateAddGraphDef();
-  GraphTransferer::InputNodeInfo input_node_info_a;
-  input_node_info_a.name = NAME_A;
-  input_node_info_a.tensor = Tensor(DT_FLOAT, {});
-  input_node_info_a.tensor.scalar<float>()() = 1.0f;
-  const std::vector<GraphTransferer::InputNodeInfo> inputs{input_node_info_a};
-  GraphTransferer::OutputTensorInfo output_tensor_info;
-  Status status = GraphTransferer::DryRunInferenceForAllNode(
+  std::pair<string, Tensor> input_node_info_a;
+  input_node_info_a.first = NAME_A;
+  input_node_info_a.second = Tensor(DT_FLOAT, {});
+  input_node_info_a.second.scalar<float>()() = 1.0f;
+  const std::vector<std::pair<string, Tensor>> inputs{input_node_info_a};
+  RemoteFusedGraphExecuteUtils::TensorShapeMap output_tensor_info;
+  Status status = RemoteFusedGraphExecuteUtils::DryRunInferenceForAllNode(
       def, inputs, {}, &output_tensor_info);
   ASSERT_TRUE(status.ok()) << status;
-  const GraphTransferer::OutputTensorMap& output_tensor_map =
-      output_tensor_info.output_tensor_map;
   const std::vector<string> output_node_names = {NAME_A_PLUS_B};
   status =
       gt_.LoadGraphFromProto(TEST_GRAPH_TRANSFER_OPS_DEFINITIONS, def, inputs,
-                             output_node_names, false, output_tensor_map);
+                             output_node_names, false, output_tensor_info);
   ASSERT_TRUE(status.ok());
 }
 
 TEST_F(GraphTransfererTest, LoadConvGraph) {
   GraphDef def = CreateConvGraphDef();
-  std::vector<GraphTransferer::InputNodeInfo> input_node_info_list;
+  std::vector<std::pair<string, Tensor>> input_node_info_list;
   input_node_info_list.emplace_back(
-      GraphTransferer::InputNodeInfo{"input", Tensor{DT_FLOAT, {1, 1, 1, 1}}});
+      std::pair<string, Tensor>{"input", Tensor{DT_FLOAT, {1, 1, 1, 1}}});
   const std::vector<string> output_node_names = {"softmax"};
   ASSERT_TRUE(gt_.LoadGraphFromProto(TEST_GRAPH_TRANSFER_OPS_DEFINITIONS, def,
                                      input_node_info_list, output_node_names,
@@ -437,9 +342,9 @@ TEST_F(GraphTransfererTest, LoadConvGraph) {
 
 TEST_F(GraphTransfererTest, LoadMaxPoolGraph) {
   GraphDef def = CreatePoolGraphDef();
-  std::vector<GraphTransferer::InputNodeInfo> input_node_info_list;
+  std::vector<std::pair<string, Tensor>> input_node_info_list;
   input_node_info_list.emplace_back(
-      GraphTransferer::InputNodeInfo{"input", Tensor{DT_FLOAT, {1, 1, 1, 1}}});
+      std::pair<string, Tensor>{"input", Tensor{DT_FLOAT, {1, 1, 1, 1}}});
   const std::vector<string> output_node_names = {"softmax"};
   ASSERT_TRUE(gt_.LoadGraphFromProto(TEST_GRAPH_TRANSFER_OPS_DEFINITIONS, def,
                                      input_node_info_list, output_node_names,
@@ -475,19 +380,19 @@ TEST(GraphTransferer, LoadGraphFromProtoFile) {
   string filename =
       io::JoinPath(testing::TensorFlowSrcRoot(),
                    "core/example/testdata/parse_example_graph_def.pbtxt");
-  std::vector<GraphTransferer::InputNodeInfo> input_node_info_list = {};
+  std::vector<std::pair<string, Tensor>> input_node_info_list = {};
   std::vector<string> output_node_names = {};
   bool is_text_proto = true;
 
   // Keep following comments for debugging purpose for now
   // filename = "v3_stripped_quantized_graph_opt.pb";
   // input_node_info_list.emplace_back(
-  // GraphTransferer::InputNodeInfo{"Mul", Tensor{DT_FLOAT, {1,299,299,3}}});
+  // std::pair<string, Tensor>{"Mul", Tensor{DT_FLOAT, {1,299,299,3}}});
   // output_node_names.emplace_back("softmax");
   // is_text_proto = false;
   // ops_definitions = &HexagonOpsDefinitions::getInstance();
 
-  GraphTransferer::OutputTensorInfo output_tensor_info;
+  RemoteFusedGraphExecuteUtils::TensorShapeMap output_tensor_info;
   GraphTransferer gt;
   gt.EnableStrictCheckMode(false);
   Status status = gt.LoadGraphFromProtoFile(
@@ -497,16 +402,16 @@ TEST(GraphTransferer, LoadGraphFromProtoFile) {
 
 TEST_F(GraphTransfererTest, BuildRemoteFusedGraphDefAddGraph) {
   GraphDef def = CreateAddGraphDef();
-  GraphTransferer::InputNodeInfo input_node_info_a;
-  input_node_info_a.name = NAME_A;
-  input_node_info_a.tensor = Tensor(DT_FLOAT, {});
-  input_node_info_a.tensor.scalar<float>()() = 1.0f;
-  GraphTransferer::InputNodeInfo input_node_info_b;
-  input_node_info_b.name = NAME_B;
-  input_node_info_b.tensor = Tensor(DT_FLOAT, {});
-  input_node_info_b.tensor.scalar<float>()() = 10.0f;
-  const std::vector<GraphTransferer::InputNodeInfo> inputs{input_node_info_a,
-                                                           input_node_info_b};
+  std::pair<string, Tensor> input_node_info_a;
+  input_node_info_a.first = NAME_A;
+  input_node_info_a.second = Tensor(DT_FLOAT, {});
+  input_node_info_a.second.scalar<float>()() = 1.0f;
+  std::pair<string, Tensor> input_node_info_b;
+  input_node_info_b.first = NAME_B;
+  input_node_info_b.second = Tensor(DT_FLOAT, {});
+  input_node_info_b.second.scalar<float>()() = 10.0f;
+  const std::vector<std::pair<string, Tensor>> inputs{input_node_info_a,
+                                                      input_node_info_b};
   std::vector<string> outputs = {NAME_A_PLUS_B};
 
   GraphDef fused_graph_def = GraphTransferUtils::BuildFusedGraphDef(
@@ -539,20 +444,20 @@ TEST(GraphTransferer, LoadGraphFromProtoFileShapeInferenceSimple) {
   string filename =
       io::JoinPath(testing::TensorFlowSrcRoot(),
                    "core/example/testdata/parse_example_graph_def.pbtxt");
-  std::vector<GraphTransferer::InputNodeInfo> input_node_info_list = {};
+  std::vector<std::pair<string, Tensor>> input_node_info_list = {};
   std::vector<string> output_node_names = {};
   bool is_text_proto = true;
 
   // In order to run with a more complex graph uncomment the following lines
   // filename = "v3_stripped_quantized_graph_opt.pb";
   // input_node_info_list.emplace_back(
-  // GraphTransferer::InputNodeInfo{"Mul", Tensor{DT_FLOAT, {1,299,299,3}}});
+  // std::pair<string, Tensor>{"Mul", Tensor{DT_FLOAT, {1,299,299,3}}});
   // output_node_names.emplace_back("softmax");
   // is_text_proto = false;
   // ops_definitions = &HexagonOpsDefinitions::getInstance();
 
   // First compute using Shape inference.
-  GraphTransferer::OutputTensorInfo si_output_tensor_info;
+  RemoteFusedGraphExecuteUtils::TensorShapeMap si_output_tensor_info;
   GraphTransferer si_gt;
   si_gt.EnableStrictCheckMode(false);
   bool shape_inference_for_unknown_shape = true;
@@ -565,7 +470,7 @@ TEST(GraphTransferer, LoadGraphFromProtoFileShapeInferenceSimple) {
       si_gt.GetGraphTransferInfo();
 
   // Now compute using dry run.
-  GraphTransferer::OutputTensorInfo dr_output_tensor_info;
+  RemoteFusedGraphExecuteUtils::TensorShapeMap dr_output_tensor_info;
   GraphTransferer dr_gt;
   dr_gt.EnableStrictCheckMode(false);
   shape_inference_for_unknown_shape = false;

@@ -66,6 +66,17 @@ class XlaHelpers {
   static Status ReshapeLiteral(const xla::Literal& input,
                                gtl::ArraySlice<int64> shape,
                                xla::Literal* output);
+
+  // Converts `indices` into a one-hot representation. `depth` is the size
+  // of the new axis to add. `axis` is the position at which to add the new
+  // axis. `indices_shape` is the shape of `indices`. `on_value` and `off_value`
+  // represent the values to use for the on and off positions, respectively.
+  static Status OneHot(xla::ComputationBuilder* builder, int64 depth, int axis,
+                       DataType index_type, const TensorShape& indices_shape,
+                       const xla::ComputationDataHandle& indices,
+                       const xla::ComputationDataHandle& on_value,
+                       const xla::ComputationDataHandle& off_value,
+                       xla::ComputationDataHandle* one_hot);
 };
 
 }  // end namespace tensorflow

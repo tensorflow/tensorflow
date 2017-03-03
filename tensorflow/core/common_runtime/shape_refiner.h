@@ -31,7 +31,7 @@ namespace tensorflow {
 // construction time.
 class ShapeRefiner {
  public:
-  explicit ShapeRefiner(const OpRegistryInterface* ops);
+  ShapeRefiner(int graph_def_version, const OpRegistryInterface* ops);
 
   // Performs validation of 'node' and runs 'node's shape function,
   // storing its shape outputs.
@@ -98,7 +98,8 @@ class ShapeRefiner {
                               const Node* node, int dst_idx,
                               shape_inference::ShapeHandle* result);
 
-  const OpRegistryInterface* ops_registry_ = nullptr;
+  const int graph_def_version_;
+  const OpRegistryInterface* const ops_registry_;
 
   // Stores a map from a node to its InferenceContext.
   //
