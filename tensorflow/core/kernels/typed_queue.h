@@ -95,15 +95,14 @@ int64 SizeOf(const std::vector<PersistentTensor>& sq) {
   return sq.size() * sq.front().TotalBytes();
 }
 
-using PriorityTensorPair = std::pair<int64, PersistentTensor>;
+using TensorPair = std::pair<int64, PersistentTensor>;
 
 template <typename U, typename V>
-int64 SizeOf(const std::priority_queue<PriorityTensorPair, U, V>& sq) {
+int64 SizeOf(const std::priority_queue<TensorPair, U, V>& sq) {
   if (sq.empty()) {
     return 0;
   }
-  return sq.size() *
-         (sizeof(PriorityTensorPair) + sq.top().second.TotalBytes());
+  return sq.size() * (sizeof(TensorPair) + sq.top().second.TotalBytes());
 }
 
 }  // namespace
