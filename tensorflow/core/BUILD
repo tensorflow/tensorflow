@@ -197,6 +197,10 @@ tf_proto_library(
     visibility = ["//visibility:public"],
 )
 
+exports_files([
+    "framework/types.proto",
+])
+
 tf_proto_library(
     name = "protos_test",
     srcs = ["util/example_proto_fast_parsing_test.proto"],
