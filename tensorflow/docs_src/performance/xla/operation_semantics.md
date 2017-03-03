@@ -734,9 +734,15 @@ inserted anywhere during computation if the back-end chooses to do so. So in
 most cases `init_value` should be an identity of the reduction function (for
 example, 0 for addition).
 
-The evaluation order of the reduction function across the reduction dimensions
-is arbitrary and may be non-deterministic. Therefore, the reduction function
-should not be overly sensitive to reassociation[^1].
+The evaluation order of the reduction function is arbitrary and may be
+non-deterministic. Therefore, the reduction function should not be overly
+sensitive to reassociation.
+
+Some reduction functions like addition are not strictly associative for floats.
+However, if the range of the data is limited, floating-point addition is close
+enough to being associative for most practical uses. It is possible to conceive
+of some completely non-associative reductions, however, and these will produce
+incorrect or unpredictable results in XLA reductions.
 
 As an example, when reducing across the one dimension in a 1D array with values
 [10, 11, 12, 13], with reduction function `f` (this is `computation`) then that
@@ -898,6 +904,11 @@ padding.
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
   <img style="width:75%" src="../../images/ops_reduce_window_stride.png">
 </div>
+
+The evaluation order of the reduction function is arbitrary and may be
+non-deterministic. Therefore, the reduction function should not be overly
+sensitive to reassociation. See the discussion about associativity in the
+context of [`Reduce`](#reduce) for more details.
 
 ## Reshape
 
@@ -1117,7 +1128,7 @@ padding, source, init_value, scatter)`</b>
 | `source`            | `ComputationDataHandle` | array of type T with the     |
 :                     :                         : values to scatter            :
 | `init_value`        | `ComputationDataHandle` | scalar value of type T for   |
-:                     :                         : the inital value of the      :
+:                     :                         : the initial value of the     :
 :                     :                         : output array                 :
 | `scatter`           | `Computation`           | binary computation of type   |
 :                     :                         : `T, T -> T`, to apply each   :
@@ -1135,6 +1146,11 @@ addition `scatter` function produces the output element of value 8 (2 + 6).
   <img style="width:100%"
     src="../../images/ops_scatter_to_selected_window_element.png">
 </div>
+
+The evaluation order of the `scatter` function is arbitrary and may be
+non-deterministic. Therefore, the `scatter` function should not be overly
+sensitive to reassociation. See the discussion about associativity in the
+context of [`Reduce`](#reduce) for more details.
 
 ## Select
 
@@ -1468,9 +1484,3 @@ while (result(0) < 1000) {
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
   <img style="width:100%" src="../../images/ops_while.png">
 </div>
-
-[^1]: Some obvious reductions like "add reduction" are not strictly associative
-    for floats. However, if the range of the data is limited, floating-point
-    addition is close enough to being associative for most practical uses. It
-    is possible to conceive some complete un-associative reductions, however,
-    and these will produce wrong results in TLA reductions.

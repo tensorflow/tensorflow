@@ -252,8 +252,9 @@ static void RunFusedGraph(const GraphDef& fused_graph_def) {
   const Tensor& output_tensor = output_tensors.at(0);
   LOG(INFO) << "Output byte size = " << output_tensor.TotalBytes();
   LOG(INFO) << "Output shape = " << output_tensor.shape().DebugString();
-  DumpTop10Results(output_tensor.TotalBytes(),
-                   output_tensor.flat<float>().data());
+  DumpTop10Results(
+      output_tensor.TotalBytes(),
+      reinterpret_cast<const float*>(output_tensor.flat<float>().data()));
 }
 
 // CAVEAT: This test only runs when you specify hexagon library using
@@ -271,16 +272,15 @@ TEST(GraphTransferer,
 
   const IGraphTransferOpsDefinitions* ops_definitions =
       &HexagonOpsDefinitions::getInstance();
-  std::vector<GraphTransferer::InputNodeInfo> input_node_info_list = {
-      GraphTransferer::InputNodeInfo{
-          "Mul", Tensor{DT_FLOAT, {1, WIDTH, HEIGHT, DEPTH}}}};
+  std::vector<std::pair<string, Tensor>> inputs;
+  inputs.emplace_back("Mul", Tensor(DT_FLOAT, {1, WIDTH, HEIGHT, DEPTH}));
   std::vector<string> output_node_names = {"softmax"};
 
-  GraphTransferer::OutputTensorInfo output_tensor_info;
+  RemoteFusedGraphExecuteUtils::TensorShapeMap output_tensor_info;
   GraphTransferer gt;
   gt.EnableStrictCheckMode(false);
   Status status = gt.LoadGraphFromProtoFile(
-      *ops_definitions, MODEL_FILENAME, input_node_info_list, output_node_names,
+      *ops_definitions, MODEL_FILENAME, inputs, output_node_names,
       false /* is_text_proto */, false /* shape_inference_for_unknown_shape */,
       true /* dry_run_for_unknown_shape */, &output_tensor_info);
   ASSERT_TRUE(status.ok()) << status;
@@ -296,9 +296,8 @@ TEST(GraphTransferer, RunInceptionV3OnHexagonExampleWithTfRuntime) {
 
   const IGraphTransferOpsDefinitions* ops_definitions =
       &HexagonOpsDefinitions::getInstance();
-  std::vector<GraphTransferer::InputNodeInfo> inputs = {
-      GraphTransferer::InputNodeInfo{
-          "Mul", Tensor{DT_FLOAT, {1, WIDTH, HEIGHT, DEPTH}}}};
+  std::vector<std::pair<string, Tensor>> inputs;
+  inputs.emplace_back("Mul", Tensor(DT_FLOAT, {1, WIDTH, HEIGHT, DEPTH}));
   std::vector<string> outputs = {"softmax"};
 
   std::vector<float> img_floats;
@@ -337,18 +336,17 @@ TEST(GraphTransferer, DISABLED_CheckShapeInferencePerformance) {
 
   const IGraphTransferOpsDefinitions* ops_definitions =
       &HexagonOpsDefinitions::getInstance();
-  std::vector<GraphTransferer::InputNodeInfo> input_node_info_list = {
-      GraphTransferer::InputNodeInfo{
-          "Mul", Tensor{DT_FLOAT, {1, WIDTH, HEIGHT, DEPTH}}}};
+  std::vector<std::pair<string, Tensor>> inputs;
+  inputs.emplace_back("Mul", Tensor(DT_FLOAT, {1, WIDTH, HEIGHT, DEPTH}));
   std::vector<string> output_node_names = {"softmax"};
 
-  GraphTransferer::OutputTensorInfo output_tensor_info0;
+  RemoteFusedGraphExecuteUtils::TensorShapeMap output_tensor_info0;
   GraphTransferer gt0;
   gt0.EnableStrictCheckMode(false);
   ClockCycleProfiler prof0;
   prof0.Start();
   Status status = gt0.LoadGraphFromProtoFile(
-      *ops_definitions, MODEL_FILENAME, input_node_info_list, output_node_names,
+      *ops_definitions, MODEL_FILENAME, inputs, output_node_names,
       false /* is_text_proto */, false /* shape_inference_for_unknown_shape */,
       true /* dry_run_for_unknown_shape */, &output_tensor_info0);
   const GraphTransferInfo& gfi0 = gt0.GetGraphTransferInfo();
@@ -360,13 +358,13 @@ TEST(GraphTransferer, DISABLED_CheckShapeInferencePerformance) {
   LOG(INFO) << "(0) node count: " << gfi0.node_info_size() << ", "
             << gfi0.const_node_info_size();
 
-  GraphTransferer::OutputTensorInfo output_tensor_info1;
+  RemoteFusedGraphExecuteUtils::TensorShapeMap output_tensor_info1;
   GraphTransferer gt1;
   gt1.EnableStrictCheckMode(true);
   ClockCycleProfiler prof1;
   prof1.Start();
   status = gt1.LoadGraphFromProtoFile(
-      *ops_definitions, MODEL_FILENAME, input_node_info_list, output_node_names,
+      *ops_definitions, MODEL_FILENAME, inputs, output_node_names,
       false /* is_text_proto */, true /* shape_inference_for_unknown_shape */,
       false /* dry_run_for_unknown_shape */, &output_tensor_info1);
   const GraphTransferInfo& gfi1 = gt1.GetGraphTransferInfo();
