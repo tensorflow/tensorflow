@@ -435,8 +435,6 @@ class MklConv2DOp : public OpKernel {
   void* mkl_conv_res_[dnnResourceNumber];
   dnnLayout_t mkl_lt_filter_ = nullptr, mkl_lt_bias_ = nullptr,
               mkl_lt_input_ = nullptr;
-  
-
 };
 
 #define REGISTER_MKL_CPU(T)                                                \
