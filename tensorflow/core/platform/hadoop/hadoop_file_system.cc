@@ -112,6 +112,11 @@ class LibHDFS {
     }
     string path = io::JoinPath(hdfs_home, "lib", "native", "libhdfs.so");
     status_ = TryLoadAndBind(path.c_str(), &handle_);
+    if (!status_.ok()) {
+      // try load libhdfs.so using dynamic loader's search path in case libhdfs.so
+      // is installed in non-standard location
+      status_ = TryLoadAndBind("libhdfs.so", &handle_);
+    }
     return;
   }
 
