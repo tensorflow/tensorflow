@@ -29,13 +29,14 @@ constexpr int32 InferenceContext::kUnknownRank;
 constexpr int64 InferenceContext::kUnknownDim;
 
 InferenceContext::InferenceContext(
-    const NodeDef* node_def, const OpDef& op_def,
+    int graph_def_version, const NodeDef* node_def, const OpDef& op_def,
     const std::vector<TensorShapeProto>& input_shapes,
     const std::vector<const Tensor*>& input_tensors,
     const std::vector<TensorShapeProto>& input_tensors_as_shapes,
     const std::vector<TensorShapeProto>& input_handle_shapes,
     const std::vector<DataType>& input_handle_dtypes)
-    : node_def_(*CHECK_NOTNULL(node_def)) {
+    : graph_def_version_(graph_def_version),
+      node_def_(*CHECK_NOTNULL(node_def)) {
   std::vector<ShapeHandle> input_tensors_as_shape_handles;
   for (const TensorShapeProto& p : input_tensors_as_shapes) {
     ShapeHandle shape;
@@ -68,13 +69,14 @@ InferenceContext::InferenceContext(
 }
 
 InferenceContext::InferenceContext(
-    const NodeDef* node_def, const OpDef& op_def,
+    int graph_def_version, const NodeDef* node_def, const OpDef& op_def,
     const std::vector<ShapeHandle>& input_shapes,
     const std::vector<const Tensor*>& input_tensors,
     const std::vector<ShapeHandle>& input_tensors_as_shapes,
     const std::vector<ShapeHandle>& input_handle_shapes,
     const std::vector<DataType>& input_handle_dtypes)
-    : node_def_(*CHECK_NOTNULL(node_def)) {
+    : graph_def_version_(graph_def_version),
+      node_def_(*CHECK_NOTNULL(node_def)) {
   PreInputInit(op_def, input_tensors, input_tensors_as_shapes);
   if (!construction_status_.ok()) return;
   inputs_ = input_shapes;
