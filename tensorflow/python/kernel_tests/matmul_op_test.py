@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import sys
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -439,6 +440,48 @@ class MatMulStatsTest(test.TestCase):
         flops = ops.get_stats_for_node_def(g, op.node_def, "flops").value
         if op.name == "MatMul":
           self.assertEqual(7200, flops)
+
+
+# @ operator supported since python 3.5.
+if sys.version_info >= (3, 5):
+  # Use eval() to avoid a compilation error on earlier versions.
+  _MATMUL = lambda x, y: eval("x @ y")
+else:
+  # For earlier versions of python, emulate regular behavior.
+  # Useful to build and test for 3.5+ on earlier versions.
+  def _MATMUL(x, y):
+    try:
+      r = type(x).__matmul__(x, y)
+    except AttributeError:
+      r = NotImplemented
+    if r is NotImplemented and type(x) is not type(y):
+      try:
+        r = type(y).__rmatmul__(y, x)
+      except AttributeError:
+        r = NotImplemented
+    if r is NotImplemented:
+      raise TypeError(
+        "unsupported operand type(s) for @: '{}' and '{}'"
+        .format(type(x).__name__, type(y).__name__)
+        )
+    return r
+
+
+class MatMulInfixOperatorTest(test.TestCase):
+
+  def testMismatchedShape(self):
+    with self.assertRaisesWithPredicateMatch(
+        ValueError, lambda e: "Shape must" in str(e)):
+      _MATMUL(
+        ops.convert_to_tensor([10.0, 20.0, 30.0]),
+        ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0]]))
+
+  def testMismatchedDimensions(self):
+    with self.assertRaisesWithPredicateMatch(
+        ValueError, lambda e: "Dimensions must" in str(e)):
+      _MATMUL(
+        ops.convert_to_tensor([[10.0, 20.0, 30.0]]),
+        ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0]]))
 
 
 if __name__ == "__main__":
