@@ -70,157 +70,6 @@ class MklConv2DOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
   }
 
-  typedef struct {
-    int in_dims;
-    size_t in_sizes[4];
-    size_t in_strides[4];
-    size_t out_sizes[4];
-    size_t out_strides[4];
-    int filter_dims;
-    size_t filter_sizes[4];
-    size_t filter_strides[4];
-    size_t bias_sizes[1];
-    size_t bias_strides[1];
-    int input_offset[2];
-    size_t conv_stride[2];
-    MklShape input_shape;
-  } MklConv2DOpParams;
-
-  // Create MKL dnnLayout_t objects for tensors coming into the layer
-  void MklCreateInputLayouts(OpKernelContext* context) {
-    bool input_in_mkl_format = mkl_params_.input_shape.IsMklTensor();
-    if (input_in_mkl_format) {
-      mkl_lt_input_ =
-          static_cast<dnnLayout_t>(mkl_params_.input_shape.GetCurLayout());
-    } else {
-      CHECK_EQ(
-          dnnLayoutCreate_F32(&mkl_lt_input_, mkl_params_.in_dims,
-                              mkl_params_.in_sizes, mkl_params_.in_strides),
-          E_SUCCESS);
-    }
-
-    CHECK_EQ(dnnLayoutCreate_F32(&mkl_lt_filter_, mkl_params_.filter_dims,
-                                 mkl_params_.filter_sizes,
-                                 mkl_params_.filter_strides),
-             E_SUCCESS);
-
-    if (biasEnabled) {
-      CHECK_EQ(dnnLayoutCreate_F32(&mkl_lt_bias_, 1, mkl_params_.bias_sizes,
-                                   mkl_params_.bias_strides),
-               E_SUCCESS);
-    }
-  }
-
-  // Compare incoming tensor layouts with MKL preferred layouts and convert
-  // data to the preferred layout if necessary
-  void MklPrepareConvolutionInputs(OpKernelContext* context,
-                                   Tensor* mkl_tmp_input_buf_tensor,
-                                   Tensor* mkl_tmp_filter_buf_tensor,
-                                   Tensor* mkl_tmp_bias_buf_tensor) {
-    bool mkl_convert_input, mkl_convert_filter, mkl_convert_bias;
-    dnnPrimitive_t mkl_prim_convert_filter, mkl_prim_convert_bias,
-        mkl_prim_convert_input;
-    dnnLayout_t mkl_lt_internal_filter, mkl_lt_internal_bias,
-        mkl_lt_internal_input;
-    void *mkl_buf_convert_input, *mkl_buf_convert_filter,
-         *mkl_buf_convert_bias;
-    mkl_prim_convert_filter = nullptr;
-    mkl_prim_convert_bias   = nullptr;
-    mkl_prim_convert_input  = nullptr;
-    mkl_lt_internal_filter  = nullptr;
-    mkl_lt_internal_bias    = nullptr;
-    mkl_lt_internal_input   = nullptr;
-    mkl_buf_convert_input   = nullptr;
-    mkl_buf_convert_filter  = nullptr;
-    mkl_buf_convert_bias    = nullptr;
-
-    // Compare with internal layouts and convert if needed
-    const Tensor& input = MklGetInput(context, 0);
-    void* mkl_buf_input =
-        const_cast<void*>(static_cast<const void*>(input.flat<T>().data()));
-    CHECK_EQ(
-        dnnLayoutCreateFromPrimitive_F32(
-            &mkl_lt_internal_input, mkl_prim_convolution_fwd_, dnnResourceSrc),
-        E_SUCCESS);
-    mkl_convert_input =
-        !dnnLayoutCompare_F32(mkl_lt_internal_input, mkl_lt_input_);
-    if (mkl_convert_input) {
-      CHECK_EQ(dnnConversionCreate_F32(&mkl_prim_convert_input, mkl_lt_input_,
-                                       mkl_lt_internal_input),
-               E_SUCCESS);
-      AllocTmpBuffer(context, mkl_tmp_input_buf_tensor, mkl_lt_internal_input,
-                     &mkl_buf_convert_input);
-      CHECK_EQ(dnnConversionExecute_F32(mkl_prim_convert_input, mkl_buf_input,
-                                        mkl_buf_convert_input),
-               E_SUCCESS);
-      dnnDelete_F32(mkl_prim_convert_input);
-    }
-    dnnLayoutDelete_F32(mkl_lt_internal_input);
-
-    mkl_conv_res_[dnnResourceSrc] =
-        (mkl_convert_input) ? mkl_buf_convert_input : mkl_buf_input;
-
-    const Tensor& filter = MklGetInput(context, 1);
-    void* mkl_buf_filter =
-        const_cast<void*>(static_cast<const void*>(filter.flat<T>().data()));
-    CHECK_EQ(dnnLayoutCreateFromPrimitive_F32(&mkl_lt_internal_filter,
-                                              mkl_prim_convolution_fwd_,
-                                              dnnResourceFilter),
-             E_SUCCESS);
-    mkl_convert_filter =
-        !dnnLayoutCompare_F32(mkl_lt_internal_filter, mkl_lt_filter_);
-    if (mkl_convert_filter) {
-      CHECK_EQ(dnnConversionCreate_F32(&mkl_prim_convert_filter, mkl_lt_filter_,
-                                       mkl_lt_internal_filter),
-               E_SUCCESS);
-      AllocTmpBuffer(context, mkl_tmp_filter_buf_tensor, mkl_lt_internal_filter,
-                     &mkl_buf_convert_filter);
-      CHECK_EQ(dnnConversionExecute_F32(mkl_prim_convert_filter, mkl_buf_filter,
-                                        mkl_buf_convert_filter),
-               E_SUCCESS);
-      dnnDelete_F32(mkl_prim_convert_filter);
-    }
-    dnnLayoutDelete_F32(mkl_lt_internal_filter);
-
-    mkl_conv_res_[dnnResourceFilter] =
-        (mkl_convert_filter) ? mkl_buf_convert_filter : mkl_buf_filter;
-
-    if (biasEnabled) {
-      const Tensor& bias = MklGetInput(context, 2);
-      void* mkl_buf_bias =
-          const_cast<void*>(static_cast<const void*>(bias.flat<T>().data()));
-      CHECK_EQ(dnnLayoutCreateFromPrimitive_F32(&mkl_lt_internal_bias,
-                                                mkl_prim_convolution_fwd_,
-                                                dnnResourceBias),
-               E_SUCCESS);
-      mkl_convert_bias =
-          !dnnLayoutCompare_F32(mkl_lt_internal_bias, mkl_lt_bias_);
-      if (mkl_convert_bias) {
-        CHECK_EQ(dnnConversionCreate_F32(&mkl_prim_convert_bias, mkl_lt_bias_,
-                                         mkl_lt_internal_bias),
-                 E_SUCCESS);
-        AllocTmpBuffer(context, mkl_tmp_bias_buf_tensor, mkl_lt_internal_bias,
-                       &mkl_buf_convert_bias);
-        CHECK_EQ(dnnConversionExecute_F32(mkl_prim_convert_bias, mkl_buf_bias,
-                                          mkl_buf_convert_bias),
-                 E_SUCCESS);
-        dnnDelete_F32(mkl_prim_convert_bias);
-      }
-      dnnLayoutDelete_F32(mkl_lt_internal_bias);
-
-      mkl_conv_res_[dnnResourceBias] =
-          (mkl_convert_bias) ? mkl_buf_convert_bias : mkl_buf_bias;
-    }
-  }
-
-  void MklCleanup() {
-    bool input_in_mkl_format = mkl_params_.input_shape.IsMklTensor();
-    dnnDelete_F32(mkl_prim_convolution_fwd_);
-    if (!input_in_mkl_format) dnnLayoutDelete_F32(mkl_lt_input_);
-    dnnLayoutDelete_F32(mkl_lt_filter_);
-    if (biasEnabled) dnnLayoutDelete_F32(mkl_lt_bias_);
-  }
-
   void Compute(OpKernelContext* context) override {
     const Tensor& input = MklGetInput(context, 0);
     GetMklShape(context, 0, &(mkl_params_.input_shape));
@@ -427,6 +276,157 @@ class MklConv2DOp : public OpKernel {
   }
 
  private:
+  typedef struct {
+    int in_dims;
+    size_t in_sizes[4];
+    size_t in_strides[4];
+    size_t out_sizes[4];
+    size_t out_strides[4];
+    int filter_dims;
+    size_t filter_sizes[4];
+    size_t filter_strides[4];
+    size_t bias_sizes[1];
+    size_t bias_strides[1];
+    int input_offset[2];
+    size_t conv_stride[2];
+    MklShape input_shape;
+  } MklConv2DOpParams;
+
+  // Create MKL dnnLayout_t objects for tensors coming into the layer
+  void MklCreateInputLayouts(OpKernelContext* context) {
+    bool input_in_mkl_format = mkl_params_.input_shape.IsMklTensor();
+    if (input_in_mkl_format) {
+      mkl_lt_input_ =
+          static_cast<dnnLayout_t>(mkl_params_.input_shape.GetCurLayout());
+    } else {
+      CHECK_EQ(
+          dnnLayoutCreate_F32(&mkl_lt_input_, mkl_params_.in_dims,
+                              mkl_params_.in_sizes, mkl_params_.in_strides),
+          E_SUCCESS);
+    }
+
+    CHECK_EQ(dnnLayoutCreate_F32(&mkl_lt_filter_, mkl_params_.filter_dims,
+                                 mkl_params_.filter_sizes,
+                                 mkl_params_.filter_strides),
+             E_SUCCESS);
+
+    if (biasEnabled) {
+      CHECK_EQ(dnnLayoutCreate_F32(&mkl_lt_bias_, 1, mkl_params_.bias_sizes,
+                                   mkl_params_.bias_strides),
+               E_SUCCESS);
+    }
+  }
+
+  // Compare incoming tensor layouts with MKL preferred layouts and convert
+  // data to the preferred layout if necessary
+  void MklPrepareConvolutionInputs(OpKernelContext* context,
+                                   Tensor* mkl_tmp_input_buf_tensor,
+                                   Tensor* mkl_tmp_filter_buf_tensor,
+                                   Tensor* mkl_tmp_bias_buf_tensor) {
+    bool mkl_convert_input, mkl_convert_filter, mkl_convert_bias;
+    dnnPrimitive_t mkl_prim_convert_filter, mkl_prim_convert_bias,
+        mkl_prim_convert_input;
+    dnnLayout_t mkl_lt_internal_filter, mkl_lt_internal_bias,
+        mkl_lt_internal_input;
+    void *mkl_buf_convert_input, *mkl_buf_convert_filter,
+         *mkl_buf_convert_bias;
+    mkl_prim_convert_filter = nullptr;
+    mkl_prim_convert_bias   = nullptr;
+    mkl_prim_convert_input  = nullptr;
+    mkl_lt_internal_filter  = nullptr;
+    mkl_lt_internal_bias    = nullptr;
+    mkl_lt_internal_input   = nullptr;
+    mkl_buf_convert_input   = nullptr;
+    mkl_buf_convert_filter  = nullptr;
+    mkl_buf_convert_bias    = nullptr;
+
+    // Compare with internal layouts and convert if needed
+    const Tensor& input = MklGetInput(context, 0);
+    void* mkl_buf_input =
+        const_cast<void*>(static_cast<const void*>(input.flat<T>().data()));
+    CHECK_EQ(
+        dnnLayoutCreateFromPrimitive_F32(
+            &mkl_lt_internal_input, mkl_prim_convolution_fwd_, dnnResourceSrc),
+        E_SUCCESS);
+    mkl_convert_input =
+        !dnnLayoutCompare_F32(mkl_lt_internal_input, mkl_lt_input_);
+    if (mkl_convert_input) {
+      CHECK_EQ(dnnConversionCreate_F32(&mkl_prim_convert_input, mkl_lt_input_,
+                                       mkl_lt_internal_input),
+               E_SUCCESS);
+      AllocTmpBuffer(context, mkl_tmp_input_buf_tensor, mkl_lt_internal_input,
+                     &mkl_buf_convert_input);
+      CHECK_EQ(dnnConversionExecute_F32(mkl_prim_convert_input, mkl_buf_input,
+                                        mkl_buf_convert_input),
+               E_SUCCESS);
+      dnnDelete_F32(mkl_prim_convert_input);
+    }
+    dnnLayoutDelete_F32(mkl_lt_internal_input);
+
+    mkl_conv_res_[dnnResourceSrc] =
+        (mkl_convert_input) ? mkl_buf_convert_input : mkl_buf_input;
+
+    const Tensor& filter = MklGetInput(context, 1);
+    void* mkl_buf_filter =
+        const_cast<void*>(static_cast<const void*>(filter.flat<T>().data()));
+    CHECK_EQ(dnnLayoutCreateFromPrimitive_F32(&mkl_lt_internal_filter,
+                                              mkl_prim_convolution_fwd_,
+                                              dnnResourceFilter),
+             E_SUCCESS);
+    mkl_convert_filter =
+        !dnnLayoutCompare_F32(mkl_lt_internal_filter, mkl_lt_filter_);
+    if (mkl_convert_filter) {
+      CHECK_EQ(dnnConversionCreate_F32(&mkl_prim_convert_filter, mkl_lt_filter_,
+                                       mkl_lt_internal_filter),
+               E_SUCCESS);
+      AllocTmpBuffer(context, mkl_tmp_filter_buf_tensor, mkl_lt_internal_filter,
+                     &mkl_buf_convert_filter);
+      CHECK_EQ(dnnConversionExecute_F32(mkl_prim_convert_filter, mkl_buf_filter,
+                                        mkl_buf_convert_filter),
+               E_SUCCESS);
+      dnnDelete_F32(mkl_prim_convert_filter);
+    }
+    dnnLayoutDelete_F32(mkl_lt_internal_filter);
+
+    mkl_conv_res_[dnnResourceFilter] =
+        (mkl_convert_filter) ? mkl_buf_convert_filter : mkl_buf_filter;
+
+    if (biasEnabled) {
+      const Tensor& bias = MklGetInput(context, 2);
+      void* mkl_buf_bias =
+          const_cast<void*>(static_cast<const void*>(bias.flat<T>().data()));
+      CHECK_EQ(dnnLayoutCreateFromPrimitive_F32(&mkl_lt_internal_bias,
+                                                mkl_prim_convolution_fwd_,
+                                                dnnResourceBias),
+               E_SUCCESS);
+      mkl_convert_bias =
+          !dnnLayoutCompare_F32(mkl_lt_internal_bias, mkl_lt_bias_);
+      if (mkl_convert_bias) {
+        CHECK_EQ(dnnConversionCreate_F32(&mkl_prim_convert_bias, mkl_lt_bias_,
+                                         mkl_lt_internal_bias),
+                 E_SUCCESS);
+        AllocTmpBuffer(context, mkl_tmp_bias_buf_tensor, mkl_lt_internal_bias,
+                       &mkl_buf_convert_bias);
+        CHECK_EQ(dnnConversionExecute_F32(mkl_prim_convert_bias, mkl_buf_bias,
+                                          mkl_buf_convert_bias),
+                 E_SUCCESS);
+        dnnDelete_F32(mkl_prim_convert_bias);
+      }
+      dnnLayoutDelete_F32(mkl_lt_internal_bias);
+
+      mkl_conv_res_[dnnResourceBias] =
+          (mkl_convert_bias) ? mkl_buf_convert_bias : mkl_buf_bias;
+    }
+  }
+
+  void MklCleanup() {
+    bool input_in_mkl_format = mkl_params_.input_shape.IsMklTensor();
+    dnnDelete_F32(mkl_prim_convolution_fwd_);
+    if (!input_in_mkl_format) dnnLayoutDelete_F32(mkl_lt_input_);
+    dnnLayoutDelete_F32(mkl_lt_filter_);
+    if (biasEnabled) dnnLayoutDelete_F32(mkl_lt_bias_);
+  }
+  
   std::vector<int32> strides_;
   Padding padding_;
   TensorFormat data_format_;
@@ -436,6 +436,8 @@ class MklConv2DOp : public OpKernel {
   void* mkl_conv_res_[dnnResourceNumber];
   dnnLayout_t mkl_lt_filter_ = nullptr, mkl_lt_bias_ = nullptr,
               mkl_lt_input_ = nullptr;
+  
+
 };
 
 #define REGISTER_MKL_CPU(T)                                                \
