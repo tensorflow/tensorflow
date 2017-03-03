@@ -1701,6 +1701,12 @@ void TF_ImportGraphDefOptionsAddInputMapping(TF_ImportGraphDefOptions* opts,
   opts->opts.input_map[TensorId(src_name, src_index)] = ToTensorId(dst);
 }
 
+void TF_ImportGraphDefOptionsRemapControlDependency(
+    TF_ImportGraphDefOptions* opts, const char* src_name, TF_Operation* dst) {
+  opts->opts.input_map[TensorId(src_name, tensorflow::Graph::kControlSlot)] =
+    TensorId(dst->node.name(), tensorflow::Graph::kControlSlot);
+}
+
 extern void TF_ImportGraphDefOptionsAddControlDependency(
     TF_ImportGraphDefOptions* opts, TF_Operation* oper) {
   opts->opts.control_dependencies.push_back(oper->node.name());
