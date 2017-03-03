@@ -68,16 +68,14 @@ class RemoteFusedGraphExecuteOp : public OpKernel {
   void Compute(OpKernelContext* const ctx) final {
     CHECK(ctx != nullptr);
     const int input_count = ctx->num_inputs();
-    CHECK(input_count == execute_info_.graph_input_node_info_size())
+    CHECK(input_count == execute_info_.graph_input_node_name_size())
         << "input_count = " << input_count
-        << ", gt input count = " << execute_info_.graph_input_node_info_size();
+        << ", gt input count = " << execute_info_.graph_input_node_name_size();
 
     // 3. Send inputs into remote processor
     for (int i = 0; i < input_count; ++i) {
       const Tensor& input_tensor = ctx->input(i);
-      const RemoteFusedGraphExecuteInfo::GraphIONodeInfo& input_node_info =
-          execute_info_.graph_input_node_info(i);
-      const string& input_node_name = input_node_info.name();
+      const string& input_node_name = execute_info_.graph_input_node_name(i);
       if (remote_fused_graph_executor_) {
         remote_fused_graph_executor_->FillInputNode(input_node_name,
                                                     input_tensor);
@@ -91,19 +89,20 @@ class RemoteFusedGraphExecuteOp : public OpKernel {
 
     // 5. Load outputs from remote processor
     const int output_count = ctx->num_outputs();
-    CHECK(output_count == execute_info_.graph_output_node_info_size());
+    CHECK(output_count == execute_info_.graph_output_node_name_size());
     for (int i = 0; i < output_count; ++i) {
       Tensor* output = nullptr;
       TensorShape output_shape;
-      const RemoteFusedGraphExecuteInfo::GraphIONodeInfo& output_node_info =
-          execute_info_.graph_output_node_info(i);
-      for (const int64 dim : output_node_info.shape()) {
-        output_shape.AddDim(dim);
+      const string& output_node_name = execute_info_.graph_output_node_name(i);
+      // TODO(satok): Switch shape corresponding to input shape
+      for (const TensorShapeProto::Dim& dim :
+           execute_info_.default_graph_output_tensor_shape(i).shape().dim()) {
+        output_shape.AddDim(dim.size());
       }
       OP_REQUIRES_OK(ctx, ctx->allocate_output(i, output_shape, &output));
       if (remote_fused_graph_executor_) {
         std::vector<IRemoteFusedGraphExecutor::ByteArray> outputs;
-        remote_fused_graph_executor_->ReadOutputNode(output_node_info.name(),
+        remote_fused_graph_executor_->ReadOutputNode(output_node_name,
                                                      &outputs);
         // TODO(satok): Remove this check (<= 1). And support multiple outputs
         // for each output node

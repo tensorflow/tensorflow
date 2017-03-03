@@ -118,7 +118,8 @@ Scope::Impl::Impl(Graph* graph, Status* status, NameMap* name_map,
 
 Scope Scope::NewRootScope() {
   Graph* graph = new Graph(OpRegistry::Global());
-  ShapeRefiner* refiner = new ShapeRefiner(graph->op_registry());
+  ShapeRefiner* refiner =
+      new ShapeRefiner(graph->versions().producer(), graph->op_registry());
   return Scope(new Impl(graph, new Status, new Impl::NameMap, refiner));
 }
 

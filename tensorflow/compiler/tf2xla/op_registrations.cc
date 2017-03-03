@@ -241,6 +241,10 @@ REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
                         .TypeConstraint("Ta", kCpuFloatTypes)
                         .TypeConstraint("Tb", kCpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
+                    Name("SparseSoftmaxCrossEntropyWithLogits")
+                        .TypeConstraint("T", kCpuFloatTypes)
+                        .TypeConstraint("Tlabels", kCpuIntTypes));
+REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
                     Name("Split").TypeConstraint("T", kCpuAllTypes));
 REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
                     Name("SplitV").TypeConstraint("T", kCpuAllTypes));
@@ -503,6 +507,10 @@ REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT,
                     Name("SparseMatMul")
                         .TypeConstraint("Ta", kGpuFloatTypes)
                         .TypeConstraint("Tb", kGpuFloatTypes));
+REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT,
+                    Name("SparseSoftmaxCrossEntropyWithLogits")
+                        .TypeConstraint("T", kGpuFloatTypes)
+                        .TypeConstraint("Tlabels", kGpuIntTypes));
 REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT,
                     Name("Split").TypeConstraint("T", kGpuAllTypes));
 REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT,

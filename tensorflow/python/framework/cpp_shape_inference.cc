@@ -47,7 +47,7 @@ void ProtoFromShapeHandle(tensorflow::shape_inference::ShapeHandle s,
 }
 
 Status RunCppShapeInferenceImpl(
-    const string& serialized_node_def,
+    int graph_def_version, const string& serialized_node_def,
     const std::vector<string>& input_serialized_shapes,
     const std::vector<PyObject*>& input_constant_tensor_values,
     const std::vector<string>& input_constant_tensor_as_shape_values,
@@ -115,8 +115,9 @@ Status RunCppShapeInferenceImpl(
 
   // Run shape inference.
   tensorflow::shape_inference::InferenceContext c(
-      &node, op_reg_data->op_def, input_shapes, input_tensors,
-      input_tensor_as_shapes_protos, input_handle_shapes, input_handle_dtypes);
+      graph_def_version, &node, op_reg_data->op_def, input_shapes,
+      input_tensors, input_tensor_as_shapes_protos, input_handle_shapes,
+      input_handle_dtypes);
   TF_RETURN_IF_ERROR(c.construction_status());
 
   TF_RETURN_IF_ERROR(c.Run(op_reg_data->shape_inference_fn));
@@ -151,7 +152,7 @@ Status RunCppShapeInferenceImpl(
 }  // namespace
 
 std::vector<string> RunCppShapeInference(
-    const string& serialized_node_def,
+    int graph_def_version, const string& serialized_node_def,
     const std::vector<string>& input_serialized_shapes,
     PyObject* input_constant_tensor_values,
     const std::vector<string>& input_constant_tensor_as_shape_values,
@@ -171,7 +172,7 @@ std::vector<string> RunCppShapeInference(
   std::vector<string> output;
   string input_tensors_needed_out;
   tensorflow::Status status = RunCppShapeInferenceImpl(
-      serialized_node_def, input_serialized_shapes,
+      graph_def_version, serialized_node_def, input_serialized_shapes,
       input_constant_tensor_values_v, input_constant_tensor_as_shape_values,
       &output, &input_tensors_needed_out);
 
