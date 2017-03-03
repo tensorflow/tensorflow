@@ -1010,7 +1010,7 @@ if __name__ == '__main__':
   parser.add_argument(
       '--bottleneck_dir',
       type=str,
-      default='/Users/SneakyPT/Potato_exp/bottleneck',
+      default='/tmp/bottleneck',
       help='Path to cache bottleneck layer values as files.'
   )
   parser.add_argument(
