@@ -1495,16 +1495,6 @@ Stream &Stream::ThenWaitFor(Stream *other) {
   return *this;
 }
 
-Stream &Stream::ThenWaitFor(std::vector<std::unique_ptr<Stream>> *others) {
-  VLOG_CALL(PARAM(others));
-
-  for (auto &stream : *others) {
-    CHECK_NE(stream.get(), this);
-    ThenWaitFor(stream.get());
-  }
-  return *this;
-}
-
 Stream &Stream::ThenWaitFor(Event *event) {
   VLOG_CALL(PARAM(event));
 

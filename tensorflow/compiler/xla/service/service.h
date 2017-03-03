@@ -361,10 +361,10 @@ class Service : public ServiceInterface {
   // method is templated on return-type of the execute function.
   template <typename ReturnT>
   ReturnT ExecuteOnStreamWrapper(
-      Executable* executable, const ExecutableRunOptions* run_options,
+      Executable* executable, const ServiceExecutableRunOptions* run_options,
       ExecutionProfile* profile,
       std::function<ReturnT(Executable* executable,
-                            const ExecutableRunOptions* run_options,
+                            const ServiceExecutableRunOptions* run_options,
                             HloExecutionProfile* hlo_execution_profile)>
           execute_func);
 
@@ -399,10 +399,10 @@ class Service : public ServiceInterface {
 
 template <typename ReturnT>
 ReturnT Service::ExecuteOnStreamWrapper(
-    Executable* executable, const ExecutableRunOptions* run_options,
+    Executable* executable, const ServiceExecutableRunOptions* run_options,
     ExecutionProfile* profile,
     std::function<ReturnT(Executable* executable,
-                          const ExecutableRunOptions* run_options,
+                          const ServiceExecutableRunOptions* run_options,
                           HloExecutionProfile* hlo_execution_profile)>
         execute_func) {
   perftools::gputools::Stream* stream = run_options->stream();

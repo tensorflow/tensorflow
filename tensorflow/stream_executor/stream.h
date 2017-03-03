@@ -194,8 +194,15 @@ class Stream {
 
   // Waits for all streams values in others.
   // Checks that there is no shallow circular wait (i.e. that "this" is not in
-  // others).
-  Stream &ThenWaitFor(std::vector<std::unique_ptr<Stream>> *others);
+  // others)
+  template <typename P>
+  Stream &ThenWaitFor(P others) {
+    for (auto &stream : *others) {
+      CHECK_NE(stream.get(), this);
+      ThenWaitFor(stream.get());
+    }
+    return *this;
+  }
 
   // Waits for an event object to be set.
   // Note that ThenRecordEvent must have been called on the event before

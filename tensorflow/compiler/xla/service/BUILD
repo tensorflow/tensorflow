@@ -351,13 +351,17 @@ cc_library(
 cc_library(
     name = "executable",
     srcs = ["executable.cc"],
-    hdrs = ["executable.h"],
+    hdrs = [
+        "executable.h",
+        "service_executable_run_options.h",
+    ],
     deps = [
         ":computation_layout",
         ":device_memory_allocator",
         ":hlo",
         ":hlo_execution_profile",
         ":hlo_module_config",
+        ":pool",
         ":session_proto",
         ":shaped_buffer",
         ":versioned_computation_handle",
@@ -368,6 +372,7 @@ cc_library(
         "//tensorflow/compiler/xla/legacy_flags:service_flags",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
+        "//tensorflow/stream_executor",
     ],
 )
 

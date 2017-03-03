@@ -66,29 +66,29 @@ class GpuExecutable : public Executable {
   tensorflow::StringPiece ptx() const { return ptx_; }
 
   StatusOr<perftools::gputools::DeviceMemoryBase> ExecuteOnStream(
-      const ExecutableRunOptions* run_options,
+      const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
           arguments,
       HloExecutionProfile* hlo_execution_profile) override;
 
   StatusOr<std::unique_ptr<ShapedBuffer>> ExecuteOnStream(
-      const ExecutableRunOptions* run_options,
+      const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       HloExecutionProfile* hlo_execution_profile) override;
 
   Status ExecuteOnStream(
-      const ExecutableRunOptions* run_options,
+      const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       ShapedBuffer* result_buffer,
       HloExecutionProfile* hlo_execution_profile) override;
 
   StatusOr<perftools::gputools::DeviceMemoryBase> ExecuteAsyncOnStream(
-      const ExecutableRunOptions* run_options,
+      const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
           arguments) override;
 
  private:
-  Status ExecuteThunks(perftools::gputools::Stream* stream,
+  Status ExecuteThunks(const ServiceExecutableRunOptions* run_options,
                        const BufferAllocations& buffer_allocations,
                        HloExecutionProfile* hlo_execution_profile);
 

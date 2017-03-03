@@ -510,15 +510,15 @@ Service::ExecuteParallelAndRegisterResult(
   }
 
   // Set up run options.
-  std::vector<ExecutableRunOptions> run_options;
+  std::vector<ServiceExecutableRunOptions> run_options;
   for (const Pool<se::Stream>::SmartPtr& stream : streams) {
-    run_options.emplace_back();
-    auto& options = run_options.back();
+    ExecutableRunOptions options;
     options.set_stream(stream.get());
     options.set_allocator(backend->memory_allocator());
     options.set_inter_op_thread_pool(backend->inter_op_thread_pool());
     options.set_intra_op_thread_pool(
         backend->eigen_intra_op_thread_pool_device());
+    run_options.emplace_back(options, backend->StreamBorrower());
   }
 
   // Asynchronously launch all executables.
@@ -560,15 +560,15 @@ StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
   }
 
   // Set up run options.
-  std::vector<ExecutableRunOptions> run_options;
+  std::vector<ServiceExecutableRunOptions> run_options;
   for (const Pool<se::Stream>::SmartPtr& stream : streams) {
-    run_options.emplace_back();
-    auto& options = run_options.back();
+    ExecutableRunOptions options;
     options.set_stream(stream.get());
     options.set_allocator(backend->memory_allocator());
     options.set_inter_op_thread_pool(backend->inter_op_thread_pool());
     options.set_intra_op_thread_pool(
         backend->eigen_intra_op_thread_pool_device());
+    run_options.emplace_back(options, backend->StreamBorrower());
   }
 
   perftools::gputools::DeviceMemoryBase result;
@@ -577,7 +577,7 @@ StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
         result, ExecuteOnStreamWrapper<StatusOr<se::DeviceMemoryBase>>(
                     executable, &run_options[0], profile,
                     [&arguments](Executable* executable,
-                                 const ExecutableRunOptions* run_options,
+                                 const ServiceExecutableRunOptions* run_options,
                                  HloExecutionProfile* hlo_execution_profile) {
                       return executable->ExecuteOnStream(run_options, arguments,
                                                          hlo_execution_profile);
@@ -856,8 +856,12 @@ tensorflow::Status Service::ExecuteAsync(const ExecuteAsyncRequest* arg,
     options.set_intra_op_thread_pool(
         execute_backend_->eigen_intra_op_thread_pool_device());
 
-    TF_ASSIGN_OR_RETURN(perftools::gputools::DeviceMemoryBase this_result_data,
-                        executable->ExecuteAsyncOnStream(&options, arguments));
+    ServiceExecutableRunOptions service_options(
+        options, execute_backend_->StreamBorrower());
+
+    TF_ASSIGN_OR_RETURN(
+        perftools::gputools::DeviceMemoryBase this_result_data,
+        executable->ExecuteAsyncOnStream(&service_options, arguments));
 
     // Take the first result.
     if (result_data == nullptr) {

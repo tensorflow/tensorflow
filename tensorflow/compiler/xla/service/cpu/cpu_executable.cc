@@ -243,7 +243,7 @@ Status CpuExecutable::ExecuteComputeFunction(
 }
 
 StatusOr<perftools::gputools::DeviceMemoryBase> CpuExecutable::ExecuteOnStream(
-    const ExecutableRunOptions* run_options,
+    const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> arguments,
     HloExecutionProfile* hlo_execution_profile) {
   se::Stream* stream = run_options->stream();
@@ -252,8 +252,8 @@ StatusOr<perftools::gputools::DeviceMemoryBase> CpuExecutable::ExecuteOnStream(
 
   TF_RETURN_IF_ERROR(AllocateBuffers(
       memory_allocator, stream->parent()->device_ordinal(), &buffers));
-  TF_RETURN_IF_ERROR(ExecuteComputeFunction(run_options, arguments, buffers,
-                                            hlo_execution_profile));
+  TF_RETURN_IF_ERROR(ExecuteComputeFunction(
+      &run_options->run_options(), arguments, buffers, hlo_execution_profile));
 
   // Mark the buffers that are actually live (used in the output) when the
   // computation finishes executing.
@@ -289,7 +289,7 @@ StatusOr<perftools::gputools::DeviceMemoryBase> CpuExecutable::ExecuteOnStream(
 }
 
 StatusOr<std::unique_ptr<ShapedBuffer>> CpuExecutable::ExecuteOnStream(
-    const ExecutableRunOptions* run_options,
+    const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
     HloExecutionProfile* hlo_execution_profile) {
   if (GetRootPointsToSet().IsAmbiguous()) {
@@ -306,8 +306,8 @@ StatusOr<std::unique_ptr<ShapedBuffer>> CpuExecutable::ExecuteOnStream(
                           stream->parent()->device_ordinal()));
   TF_RETURN_IF_ERROR(AllocateBuffers(
       memory_allocator, stream->parent()->device_ordinal(), &buffers));
-  TF_RETURN_IF_ERROR(ExecuteComputeFunction(run_options, arguments, buffers,
-                                            hlo_execution_profile));
+  TF_RETURN_IF_ERROR(ExecuteComputeFunction(
+      &run_options->run_options(), arguments, buffers, hlo_execution_profile));
 
   // Copy DeviceMemoryBase values which contain the array(s) of the result into
   // the respective location in ShapedBuffer which is returned to the caller.
@@ -361,7 +361,7 @@ StatusOr<std::unique_ptr<ShapedBuffer>> CpuExecutable::ExecuteOnStream(
 }
 
 Status CpuExecutable::ExecuteOnStream(
-    const ExecutableRunOptions* run_options,
+    const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
     ShapedBuffer* result_buffer, HloExecutionProfile* hlo_execution_profile) {
   // Every array element in the result of the computation must be unambiguously
@@ -445,8 +445,8 @@ Status CpuExecutable::ExecuteOnStream(
 
   TF_RETURN_IF_ERROR(AllocateBuffers(
       memory_allocator, stream->parent()->device_ordinal(), &buffers));
-  TF_RETURN_IF_ERROR(ExecuteComputeFunction(run_options, arguments, buffers,
-                                            hlo_execution_profile));
+  TF_RETURN_IF_ERROR(ExecuteComputeFunction(
+      &run_options->run_options(), arguments, buffers, hlo_execution_profile));
 
   // Free all buffers not in the result.
   for (size_t i = 0; i < buffers.size(); ++i) {
@@ -464,7 +464,7 @@ Status CpuExecutable::ExecuteOnStream(
 
 StatusOr<perftools::gputools::DeviceMemoryBase>
 CpuExecutable::ExecuteAsyncOnStream(
-    const ExecutableRunOptions* run_options,
+    const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> arguments) {
   // TODO(b/30671675): Implement asynchronous execution mode.
   return Unimplemented(
