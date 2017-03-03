@@ -121,12 +121,8 @@ class Stream {
   // Convenience wrapper around Init() and InitTimer().
   Stream &InitWithTimer(Timer *t);
 
-  // Warning! After calling BlockHostUntilDone(), all sub-streams will be
-  // returned and hence invalid. This may be a temporary solution to the issue
-  // b/18070215.
-  // Get or create a sub-stream from this stream. If there is any sub-stream
-  // in the pool that can be reused then just return this sub-stream.
-  // Otherwise
+  // Get or create a sub-stream from this stream. If there is any sub-stream in
+  // the pool that can be reused then just return this sub-stream.  Otherwise
   // create a new sub-stream.
   Stream *GetOrCreateSubStream();
 
