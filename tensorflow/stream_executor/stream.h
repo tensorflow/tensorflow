@@ -1179,6 +1179,47 @@ class Stream {
                        std::complex<double> beta,
                        DeviceMemory<std::complex<double>> *c, int ldc);
 
+  // See BlasSupport::DoBlasGemmWithAlgorithm.
+  Stream &ThenBlasGemmWithAlgorithm(
+      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
+      uint64 k, const Eigen::half &alpha, const DeviceMemory<Eigen::half> &a,
+      int lda, const DeviceMemory<Eigen::half> &b, int ldb,
+      const Eigen::half &beta, DeviceMemory<Eigen::half> *c, int ldc,
+      blas::ComputationType computation_type, blas::AlgorithmType algorithm,
+      blas::ProfileResult *output_profile_result);
+  Stream &ThenBlasGemmWithAlgorithm(blas::Transpose transa,
+                                    blas::Transpose transb, uint64 m, uint64 n,
+                                    uint64 k, float alpha,
+                                    const DeviceMemory<float> &a, int lda,
+                                    const DeviceMemory<float> &b, int ldb,
+                                    float beta, DeviceMemory<float> *c, int ldc,
+                                    blas::ComputationType computation_type,
+                                    blas::AlgorithmType algorithm,
+                                    blas::ProfileResult *output_profile_result);
+  Stream &ThenBlasGemmWithAlgorithm(
+      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
+      uint64 k, double alpha, const DeviceMemory<double> &a, int lda,
+      const DeviceMemory<double> &b, int ldb, double beta,
+      DeviceMemory<double> *c, int ldc, blas::ComputationType computation_type,
+      blas::AlgorithmType algorithm,
+      blas::ProfileResult *output_profile_result);
+  Stream &ThenBlasGemmWithAlgorithm(
+      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
+      uint64 k, std::complex<float> alpha,
+      const DeviceMemory<std::complex<float>> &a, int lda,
+      const DeviceMemory<std::complex<float>> &b, int ldb,
+      std::complex<float> beta, DeviceMemory<std::complex<float>> *c, int ldc,
+      blas::ComputationType computation_type, blas::AlgorithmType algorithm,
+      blas::ProfileResult *output_profile_result);
+  Stream &ThenBlasGemmWithAlgorithm(
+      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
+      uint64 k, std::complex<double> alpha,
+      const DeviceMemory<std::complex<double>> &a, int lda,
+      const DeviceMemory<std::complex<double>> &b, int ldb,
+      std::complex<double> beta, DeviceMemory<std::complex<double>> *c, int ldc,
+      blas::ComputationType computation_type, blas::AlgorithmType algorithm,
+      blas::ProfileResult *output_profile_result);
+
   // See BlasSupport::DoBlasGemmBatched.
   Stream &ThenBlasGemmBatched(blas::Transpose transa, blas::Transpose transb,
                               uint64 m, uint64 n, uint64 k, float alpha,
