@@ -483,6 +483,12 @@ class MatMulInfixOperatorTest(test.TestCase):
         ops.convert_to_tensor([[10.0, 20.0, 30.0]]),
         ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0]]))
 
+  def testInfixMatmulIsTfMatmul(self):
+      a = ops.convert_to_tensor([[10.0, 20.0, 30.0]])
+      b = ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0], [80.0, 90.0]])
+      c = infix_matmul(a, b)
+      self.assertEqual(c.op.type, 'MatMul')
+
 
 if __name__ == "__main__":
   test.main()
