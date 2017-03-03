@@ -104,6 +104,9 @@ class RichLine(object):
     else:
       raise TypeError("%r cannot be concatenated with a RichLine" % other)
 
+  def __len__(self):
+    return len(self.text)
+
 
 def rich_text_lines_from_rich_line_list(rich_text_list):
   """Convert a list of RichLine objects or strings to a RichTextLines object.
@@ -172,7 +175,7 @@ class RichTextLines(object):
     """
     if isinstance(lines, list):
       self._lines = lines
-    elif isinstance(lines, str):
+    elif isinstance(lines, six.string_types):
       self._lines = [lines]
     else:
       raise ValueError("Unexpected type in lines: %s" % type(lines))
@@ -603,7 +606,7 @@ class CommandHandlerRegistry(object):
       raise ValueError("handler is not callable")
 
     # Make sure that help info is a string.
-    if not isinstance(help_info, str):
+    if not isinstance(help_info, six.string_types):
       raise ValueError("help_info is not a str")
 
     # Process prefix aliases.
@@ -1028,7 +1031,7 @@ class CommandHistory(object):
       # Ignore repeating commands in a row.
       return
 
-    if not isinstance(command, str):
+    if not isinstance(command, six.string_types):
       raise TypeError("Attempt to enter non-str entry to command history")
 
     self._commands.append(command)

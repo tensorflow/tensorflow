@@ -132,6 +132,10 @@ class PresizedCuckooMap {
            FindInBucket(k, fast_map_to_buckets(h2(tk)), out);
   }
 
+  int64 MemoryUsed() const {
+    return sizeof(PresizedCuckooMap<value>) + sizeof(CuckooPathQueue);
+  }
+
  private:
   static constexpr int kSlotsPerBucket = 4;
 

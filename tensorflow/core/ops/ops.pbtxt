@@ -4135,14 +4135,17 @@ op {
   name: "Conv2D"
   input_arg {
     name: "input"
+    description: "A 4-D tensor. The dimension order is interpreted according to the value\nof `data_format`, see below for details."
     type_attr: "T"
   }
   input_arg {
     name: "filter"
+    description: "A 4-D tensor of shape\n`[filter_height, filter_width, in_channels, out_channels]`"
     type_attr: "T"
   }
   output_arg {
     name: "output"
+    description: "A 4-D tensor. The dimension order is determined by the value of\n`data_format`, see below for details."
     type_attr: "T"
   }
   attr {
@@ -4159,7 +4162,7 @@ op {
   attr {
     name: "strides"
     type: "list(int)"
-    description: "1-D of length 4.  The stride of the sliding window for each dimension\nof `input`. Must be in the same order as the dimension specified with format."
+    description: "1-D tensor of length 4.  The stride of the sliding window for each\ndimension of `input`. The dimension order is determined by the value of\n  `data_format`, see below for details."
   }
   attr {
     name: "use_cudnn_on_gpu"
@@ -4185,7 +4188,7 @@ op {
     default_value {
       s: "NHWC"
     }
-    description: "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, in_channels, in_height, in_width]."
+    description: "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, height, width, channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, channels, height, width]."
     allowed_values {
       list {
         s: "NHWC"
@@ -18950,7 +18953,7 @@ op {
     }
   }
   summary: "Computes the maximum along segments of a tensor."
-  description: "Read [the section on Segmentation](../../api_docs/python/math_ops.md#segmentation)\nfor an explanation of segments.\n\nComputes a tensor such that\n\\\\(output_i = \\max_j(data_j)\\\\) where `max` is over `j` such\nthat `segment_ids[j] == i`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/SegmentMax.png\" alt>\n</div>"
+  description: "Read [the section on Segmentation](../../api_docs/python/math_ops.md#segmentation)\nfor an explanation of segments.\n\nComputes a tensor such that\n\\\\(output_i = \\max_j(data_j)\\\\) where `max` is over `j` such\nthat `segment_ids[j] == i`.\n\nIf the max is empty for a given segment ID `i`, `output[i] = 0`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/SegmentMax.png\" alt>\n</div>"
 }
 op {
   name: "SegmentMean"
@@ -18996,7 +18999,7 @@ op {
     }
   }
   summary: "Computes the mean along segments of a tensor."
-  description: "Read [the section on\nSegmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation\nof segments.\n\nComputes a tensor such that\n\\\\(output_i = \\frac{\\sum_j data_j}{N}\\\\) where `mean` is\nover `j` such that `segment_ids[j] == i` and `N` is the total number of\nvalues summed.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/SegmentMean.png\" alt>\n</div>"
+  description: "Read [the section on\nSegmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation\nof segments.\n\nComputes a tensor such that\n\\\\(output_i = \\frac{\\sum_j data_j}{N}\\\\) where `mean` is\nover `j` such that `segment_ids[j] == i` and `N` is the total number of\nvalues summed.\n\nIf the mean is empty for a given segment ID `i`, `output[i] = 0`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/SegmentMean.png\" alt>\n</div>"
 }
 op {
   name: "SegmentMin"
@@ -19042,7 +19045,7 @@ op {
     }
   }
   summary: "Computes the minimum along segments of a tensor."
-  description: "Read [the section on\nSegmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation\nof segments.\n\nComputes a tensor such that\n\\\\(output_i = \\min_j(data_j)\\\\) where `min` is over `j` such\nthat `segment_ids[j] == i`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/SegmentMin.png\" alt>\n</div>"
+  description: "Read [the section on\nSegmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation\nof segments.\n\nComputes a tensor such that\n\\\\(output_i = \\min_j(data_j)\\\\) where `min` is over `j` such\nthat `segment_ids[j] == i`.\n\nIf the min is empty for a given segment ID `i`, `output[i] = 0`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/SegmentMin.png\" alt>\n</div>"
 }
 op {
   name: "SegmentProd"
@@ -19093,7 +19096,7 @@ op {
     }
   }
   summary: "Computes the product along segments of a tensor."
-  description: "Read [the section on\nSegmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation\nof segments.\n\nComputes a tensor such that\n\\\\(output_i = \\prod_j data_j\\\\) where the product is over `j` such\nthat `segment_ids[j] == i`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/SegmentProd.png\" alt>\n</div>"
+  description: "Read [the section on\nSegmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation\nof segments.\n\nComputes a tensor such that\n\\\\(output_i = \\prod_j data_j\\\\) where the product is over `j` such\nthat `segment_ids[j] == i`.\n\nIf the product is empty for a given segment ID `i`, `output[i] = 1`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/SegmentProd.png\" alt>\n</div>"
 }
 op {
   name: "SegmentSum"
@@ -19144,7 +19147,7 @@ op {
     }
   }
   summary: "Computes the sum along segments of a tensor."
-  description: "Read [the section on Segmentation](../../api_docs/python/math_ops.md#segmentation)\nfor an explanation of segments.\n\nComputes a tensor such that\n\\\\(output_i = \\sum_j data_j\\\\) where sum is over `j` such\nthat `segment_ids[j] == i`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/SegmentSum.png\" alt>\n</div>"
+  description: "Read [the section on Segmentation](../../api_docs/python/math_ops.md#segmentation)\nfor an explanation of segments.\n\nComputes a tensor such that\n\\\\(output_i = \\sum_j data_j\\\\) where sum is over `j` such\nthat `segment_ids[j] == i`.\n\nIf the sum is empty for a given segment ID `i`, `output[i] = 0`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/SegmentSum.png\" alt>\n</div>"
 }
 op {
   name: "Select"

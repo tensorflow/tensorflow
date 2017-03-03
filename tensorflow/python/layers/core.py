@@ -49,7 +49,7 @@ class Dense(base._Layer):  # pylint: disable=protected-access
   (only if `use_bias` is `True`).
 
   Note: if the input to the layer has a rank greater than 2, then it is
-  flattened prior to the initial matrix multiply by `w`.
+  flattened prior to the initial matrix multiply by `kernel`.
 
   Arguments:
     units: Integer or Long, dimensionality of the output space.
@@ -62,7 +62,7 @@ class Dense(base._Layer):  # pylint: disable=protected-access
     bias_regularizer: Regularizer function for the bias.
     activity_regularizer: Regularizer function for the output.
     trainable: Boolean, if `True` also add variables to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: String, the name of the layer. Layers with the same name will
       share weights, but to avoid mistakes we require reuse=True in such cases.
     reuse: Boolean, whether to reuse the weights of a previous layer
@@ -187,7 +187,7 @@ def dense(
   (only if `use_bias` is `True`).
 
   Note: if the `inputs` tensor has a rank greater than 2, then it is
-  flattened prior to the initial matrix multiply by `w`.
+  flattened prior to the initial matrix multiply by `kernel`.
 
   Arguments:
     inputs: Tensor input.
@@ -201,7 +201,7 @@ def dense(
     bias_regularizer: Regularizer function for the bias.
     activity_regularizer: Regularizer function for the output.
     trainable: Boolean, if `True` also add variables to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: String, the name of the layer.
     reuse: Boolean, whether to reuse the weights of a previous layer
       by the same name.
@@ -234,7 +234,7 @@ class Dropout(base._Layer):  # pylint: disable=protected-access
   sum is unchanged at training time and inference time.
 
   Arguments:
-    rate: The dropout rate, between 0 and 1. E.g. "rate=0.1" would drop out
+    rate: The dropout rate, between 0 and 1. E.g. `rate=0.1` would drop out
       10% of input units.
     noise_shape: 1D tensor of type `int32` representing the shape of the
       binary dropout mask that will be multiplied with the input.
@@ -243,7 +243,7 @@ class Dropout(base._Layer):  # pylint: disable=protected-access
       to be the same for all timesteps, you can use
       `noise_shape=[batch_size, 1, features]`.
     seed: A Python integer. Used to create random seeds. See
-      @{tf.set_random_seed}
+      @{tf.set_random_seed}.
       for behavior.
     name: The name of the layer (string).
   """

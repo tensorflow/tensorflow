@@ -44,7 +44,9 @@ from tensorflow.python.training import queue_runner_impl
 from tensorflow.python.training import server_lib
 
 _VALID_FILE_PATTERN = "VALID"
+_VALID_FILE_PATTERN_2 = "VALID_2"
 _FILE_NAMES = [b"abc", b"def", b"ghi", b"jkl"]
+_FILE_NAMES_2 = [b"mno", b"pqr"]
 _INVALID_FILE_PATTERN = "INVALID"
 
 
@@ -53,6 +55,8 @@ class GraphIOTest(test.TestCase):
   def _mock_glob(self, pattern):
     if _VALID_FILE_PATTERN == pattern:
       return _FILE_NAMES
+    if _VALID_FILE_PATTERN_2 == pattern:
+      return _FILE_NAMES_2
     self.assertEqual(_INVALID_FILE_PATTERN, pattern)
     return []
 
@@ -257,14 +261,14 @@ class GraphIOTest(test.TestCase):
       self.assertEqual(queue_capacity,
                        op_nodes[example_queue_name].attr["capacity"].i)
 
-  def test_batch_randomized(self):
+  def test_batch_randomized_multiple_globs(self):
     batch_size = 17
     queue_capacity = 1234
     name = "my_batch"
 
     with ops.Graph().as_default() as g, self.test_session(graph=g) as sess:
       inputs = graph_io.read_batch_examples(
-          _VALID_FILE_PATTERN,
+          [_VALID_FILE_PATTERN, _VALID_FILE_PATTERN_2],
           batch_size,
           reader=io_ops.TFRecordReader,
           randomize_input=True,
@@ -283,7 +287,8 @@ class GraphIOTest(test.TestCase):
           name: "QueueDequeueManyV2"
       }, g)
       self.assertEqual(
-          set(_FILE_NAMES), set(sess.run(["%s:0" % file_names_name])[0]))
+          set(_FILE_NAMES + _FILE_NAMES_2),
+          set(sess.run(["%s:0" % file_names_name])[0]))
       self.assertEqual(queue_capacity,
                        op_nodes[example_queue_name].attr["capacity"].i)
 

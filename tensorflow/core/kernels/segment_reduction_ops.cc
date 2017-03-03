@@ -59,7 +59,8 @@ static bool SegmentReductionDoValidation(OpKernelContext* c,
 
 // This operator handles reducing segments along the first dimension.
 // See core/ops/math_ops.cc for more details.
-template <typename Device, class T, class Index, typename Reducer>
+template <typename Device, class T, class Index, typename Reducer,
+          int default_value>
 class SegmentReductionOp : public OpKernel {
  public:
   explicit SegmentReductionOp(OpKernelConstruction* context)
@@ -90,9 +91,8 @@ class SegmentReductionOp : public OpKernel {
     TensorShape output_shape = input.shape();
     output_shape.set_dim(0, output_rows);
 
-    // Note that we do not initialize the output buffer with a default value.
-    // We require that segment ids be sorted and cover all values (otherwise we
-    // return an error).
+    // Note that we do not initialize the output buffer with a default value, so
+    // we need to explicitly set missing indices to the default value.
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
     if (num_indices == 0) return;
@@ -108,9 +108,8 @@ class SegmentReductionOp : public OpKernel {
 #endif
     Index start = 0, end = 1;
 
+    Index uninitialized_index = 0;  // Index from which the output is not set.
     Index out_index = internal::SubtleMustCopy(segment_vec(start));
-    OP_REQUIRES(context, out_index == 0,
-                errors::InvalidArgument("segment ids do not start at 0"));
 
     // TODO(agarwal): if this loop becomes a bottleneck, consider sharding it
     // across threads.
@@ -126,11 +125,9 @@ class SegmentReductionOp : public OpKernel {
           ++end;
           continue;
         }
-        // We have a new segment here.  Verify that the segment ids grow by one
-        // each time, so that we cover every possible output value.
-        OP_REQUIRES(
-            context, out_index + 1 == next_index,
-            errors::InvalidArgument("segment ids are not increasing by 1"));
+        // We have a new segment here.  Verify that the segment ids are growing.
+        OP_REQUIRES(context, out_index < next_index,
+                    errors::InvalidArgument("segment ids are not increasing"));
       }
 
       // Process segment [start, end)
@@ -143,7 +140,18 @@ class SegmentReductionOp : public OpKernel {
           context, FastBoundsCheck(out_index, output_rows),
           errors::InvalidArgument(
               "Segment id ", out_index, " out of range [0, ", output_rows,
-              "), probably because 'segment_ids' input is not sorted."));
+              "), possibly because 'segment_ids' input is not sorted."));
+
+      // If there is a gap between two indices, we need to set that gap to the
+      // default value.
+      if (out_index > uninitialized_index) {
+        Eigen::DSizes<Eigen::DenseIndex, 2> gap_slice_shape(
+            out_index - uninitialized_index, num_col);
+        Eigen::TensorMap<Eigen::Tensor<T, 2, Eigen::RowMajor>, Eigen::Unaligned>
+            gap_slice(&output_flat(uninitialized_index, 0), gap_slice_shape);
+        gap_slice.setConstant(T(default_value));
+      }
+
       T* out_slice_ptr = &output_flat(out_index, 0);
       OutT out_slice(out_slice_ptr, out_slice_shape);
       // We don't use out_slice.device(context->eigen_device<Device>)
@@ -169,36 +177,38 @@ class SegmentReductionOp : public OpKernel {
       if (end >= num_indices) break;
       start = end;
       ++end;
+      uninitialized_index = out_index + 1;
       out_index = next_index;
     }
   }
 };
 
-#define REGISTER_CPU_KERNEL_SEGMENT(name, functor, type, index_type) \
+#define REGISTER_CPU_KERNEL_SEGMENT(name, functor, type, index_type, \
+                                    default_value)                   \
   REGISTER_KERNEL_BUILDER(                                           \
       Name(name)                                                     \
           .Device(DEVICE_CPU)                                        \
           .TypeConstraint<type>("T")                                 \
           .TypeConstraint<index_type>("Tindices"),                   \
-      SegmentReductionOp<CPUDevice, type, index_type, functor>)
+      SegmentReductionOp<CPUDevice, type, index_type, functor, default_value>)
 
-#define REGISTER_REAL_CPU_KERNELS(type, index_type)                         \
-  REGISTER_CPU_KERNEL_SEGMENT(                                              \
-      "SegmentSum", Eigen::internal::SumReducer<type>, type, index_type);   \
-  REGISTER_CPU_KERNEL_SEGMENT(                                              \
-      "SegmentMean", Eigen::internal::MeanReducer<type>, type, index_type); \
-  REGISTER_CPU_KERNEL_SEGMENT(                                              \
-      "SegmentProd", Eigen::internal::ProdReducer<type>, type, index_type); \
-  REGISTER_CPU_KERNEL_SEGMENT(                                              \
-      "SegmentMin", Eigen::internal::MinReducer<type>, type, index_type);   \
-  REGISTER_CPU_KERNEL_SEGMENT(                                              \
-      "SegmentMax", Eigen::internal::MaxReducer<type>, type, index_type)
+#define REGISTER_REAL_CPU_KERNELS(type, index_type)                            \
+  REGISTER_CPU_KERNEL_SEGMENT("SegmentSum", Eigen::internal::SumReducer<type>, \
+                              type, index_type, 0);                            \
+  REGISTER_CPU_KERNEL_SEGMENT(                                                 \
+      "SegmentMean", Eigen::internal::MeanReducer<type>, type, index_type, 0); \
+  REGISTER_CPU_KERNEL_SEGMENT(                                                 \
+      "SegmentProd", Eigen::internal::ProdReducer<type>, type, index_type, 1); \
+  REGISTER_CPU_KERNEL_SEGMENT("SegmentMin", Eigen::internal::MinReducer<type>, \
+                              type, index_type, 0);                            \
+  REGISTER_CPU_KERNEL_SEGMENT("SegmentMax", Eigen::internal::MaxReducer<type>, \
+                              type, index_type, 0)
 
-#define REGISTER_COMPLEX_CPU_KERNELS(type, index_type)                      \
-  REGISTER_CPU_KERNEL_SEGMENT(                                              \
-      "SegmentSum", Eigen::internal::SumReducer<type>, type, index_type);   \
-  REGISTER_CPU_KERNEL_SEGMENT(                                              \
-      "SegmentProd", Eigen::internal::ProdReducer<type>, type, index_type)
+#define REGISTER_COMPLEX_CPU_KERNELS(type, index_type)                         \
+  REGISTER_CPU_KERNEL_SEGMENT("SegmentSum", Eigen::internal::SumReducer<type>, \
+                              type, index_type, 0);                            \
+  REGISTER_CPU_KERNEL_SEGMENT(                                                 \
+      "SegmentProd", Eigen::internal::ProdReducer<type>, type, index_type, 1)
 
 #define REGISTER_REAL_CPU_KERNELS_ALL(type) \
   REGISTER_REAL_CPU_KERNELS(type, int32);   \
@@ -408,8 +418,12 @@ template <typename Device, class T>
 class SparseSegmentReductionOpBase : public OpKernel {
  public:
   explicit SparseSegmentReductionOpBase(OpKernelConstruction* context,
-                                        bool is_mean, bool is_sqrtn)
-      : OpKernel(context), is_mean_(is_mean), is_sqrtn_(is_sqrtn) {}
+                                        bool is_mean, bool is_sqrtn,
+                                        T default_value)
+      : OpKernel(context),
+        is_mean_(is_mean),
+        is_sqrtn_(is_sqrtn),
+        default_value_(default_value) {}
 
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
@@ -427,6 +441,7 @@ class SparseSegmentReductionOpBase : public OpKernel {
                     "segment_ids and indices should have same size."));
 
     auto input_flat = input.flat_outer_dims<T>();
+    const int64 num_col = input_flat.dimension(1);
     const auto indices_vec = indices.vec<Index>();
     typedef int32 OutputRow;
     const auto segment_vec = segment_ids.vec<OutputRow>();
@@ -442,9 +457,8 @@ class SparseSegmentReductionOpBase : public OpKernel {
     TensorShape output_shape = input.shape();
     output_shape.set_dim(0, output_rows);
 
-    // Note that we do not initialize the output buffer with a default value.
-    // We require that segment ids be sorted and cover all values (otherwise we
-    // return an error).
+    // Note that we do not initialize the output buffer with a default value, so
+    // we need to explicitly set missing indices to the default value.
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
     if (num_indices == 0) return;
@@ -453,9 +467,9 @@ class SparseSegmentReductionOpBase : public OpKernel {
     auto output_flat = output->flat_outer_dims<T>();
 
     int64 start = 0, end = 1;
+    // Index from which the output is not initialized.
+    OutputRow uninitialized_index = 0;
     OutputRow out_index = internal::SubtleMustCopy(segment_vec(start));
-    OP_REQUIRES(context, out_index == 0,
-                errors::InvalidArgument("segment ids do not start at 0"));
 
     while (true) {
       // We initialize next_index to 0 to avoid "warning: 'next_index' may be
@@ -468,18 +482,27 @@ class SparseSegmentReductionOpBase : public OpKernel {
           ++end;
           continue;
         }
-        // We have a new segment here.  Verify that the segment ids grow by one
-        // each time, so that we cover every possible output value.
-        OP_REQUIRES(
-            context, out_index + 1 == next_index,
-            errors::InvalidArgument("segment ids are not increasing by 1"));
+        // We have a new segment here.  Verify that the segment ids are growing.
+        OP_REQUIRES(context, out_index < next_index,
+                    errors::InvalidArgument("segment ids are not increasing"));
       }
 
       OP_REQUIRES(
           context, FastBoundsCheck(out_index, output_rows),
           errors::InvalidArgument(
               "Segment id ", out_index, " out of range [0, ", output_rows,
-              "), probably because 'segment_ids' input is not sorted."));
+              "), possibly because 'segment_ids' input is not sorted."));
+
+      // If there is a gap between two indices, we need to set that gap to the
+      // default value.
+      if (out_index > uninitialized_index) {
+        Eigen::DSizes<Eigen::DenseIndex, 2> gap_slice_shape(
+            out_index - uninitialized_index, num_col);
+        Eigen::TensorMap<Eigen::Tensor<T, 2, Eigen::RowMajor>, Eigen::Unaligned>
+            gap_slice(&output_flat(uninitialized_index, 0), gap_slice_shape);
+        gap_slice.setConstant(default_value_);
+      }
+
       auto out = output_flat.template chip<0>(out_index);
       const int bad_offset =
           Reduce(input_flat, indices_vec, start, end - start, out);
@@ -492,6 +515,7 @@ class SparseSegmentReductionOpBase : public OpKernel {
       if (end >= num_indices) break;
       start = end;
       ++end;
+      uninitialized_index = out_index + 1;
       out_index = next_index;
     }
   }
@@ -628,6 +652,7 @@ class SparseSegmentReductionOpBase : public OpKernel {
 
   const bool is_mean_;
   const bool is_sqrtn_;
+  const T default_value_;
 };
 
 template <typename Device, class T>
@@ -636,7 +661,8 @@ class SparseSegmentReductionMeanOp
  public:
   explicit SparseSegmentReductionMeanOp(OpKernelConstruction* context)
       : SparseSegmentReductionOpBase<Device, T>(context, true /*is_mean*/,
-                                                false /*is_sqrtn*/) {}
+                                                false /*is_sqrtn*/,
+                                                T(0) /* default_value */) {}
 };
 
 template <typename Device, class T>
@@ -645,7 +671,8 @@ class SparseSegmentReductionSqrtNOp
  public:
   explicit SparseSegmentReductionSqrtNOp(OpKernelConstruction* context)
       : SparseSegmentReductionOpBase<Device, T>(context, false /*is_mean*/,
-                                                true /*is_sqrtn*/) {}
+                                                true /*is_sqrtn*/,
+                                                T(0) /* default_value */) {}
 };
 
 template <typename Device, class T>
@@ -654,7 +681,8 @@ class SparseSegmentReductionSumOp
  public:
   explicit SparseSegmentReductionSumOp(OpKernelConstruction* context)
       : SparseSegmentReductionOpBase<Device, T>(context, false /*is_mean*/,
-                                                false /*is_sqrtn*/) {}
+                                                false /*is_sqrtn*/,
+                                                T(0) /* default_value */) {}
 };
 
 #define REGISTER_CPU_SPARSE_KERNELS(type)                     \

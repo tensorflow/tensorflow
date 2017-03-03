@@ -444,28 +444,32 @@ StatusOr<std::unique_ptr<ShapedBuffer>> LocalService::ExecuteLocallyInternal(
     run_options.set_stream(stream.get());
   }
 
+  ServiceExecutableRunOptions service_run_options(
+      run_options, mutable_backend()->StreamBorrower());
+
   ExecutionProfile* profile = options.execution_profile();
   TF_ASSIGN_OR_RETURN(
       std::shared_ptr<Executable> executable,
       BuildAndCacheExecutable(versioned_handle, std::move(module_config),
                               argument_buffers, execute_backend_.get(),
-                              run_options.stream()->parent(), profile));
+                              service_run_options.stream()->parent(), profile));
 
   if (preallocated_result_buffer == nullptr) {
     return Service::ExecuteOnStreamWrapper<
         StatusOr<std::unique_ptr<ShapedBuffer>>>(
-        executable.get(), &run_options, profile,
+        executable.get(), &service_run_options, profile,
         [&arguments](Executable* executable,
-                     const ExecutableRunOptions* run_options,
+                     const ServiceExecutableRunOptions* run_options,
                      HloExecutionProfile* hlo_execution_profile) {
           return executable->ExecuteOnStream(run_options, arguments,
                                              hlo_execution_profile);
         });
   } else {
     TF_RETURN_IF_ERROR(Service::ExecuteOnStreamWrapper<tensorflow::Status>(
-        executable.get(), &run_options, profile,
+        executable.get(), &service_run_options, profile,
         [&arguments, preallocated_result_buffer](
-            Executable* executable, const ExecutableRunOptions* run_options,
+            Executable* executable,
+            const ServiceExecutableRunOptions* run_options,
             HloExecutionProfile* hlo_execution_profile) {
           return executable->ExecuteOnStream(run_options, arguments,
                                              preallocated_result_buffer,

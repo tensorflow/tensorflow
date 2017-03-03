@@ -87,7 +87,7 @@ class TuplePointsToAnalysisTest : public HloTestBase {
 
   // Overload which takes a std::set instead of a std::vector.
   void ExpectHasTopLevelBuffers(
-      const std::set<const LogicalBuffer*>& points_to_set,
+      const tensorflow::gtl::FlatSet<const LogicalBuffer*>& points_to_set,
       tensorflow::gtl::ArraySlice<HloInstruction*> instructions) {
     ExpectHasTopLevelBuffers(std::vector<const LogicalBuffer*>(
                                  points_to_set.begin(), points_to_set.end()),

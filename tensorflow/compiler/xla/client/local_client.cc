@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
 namespace se = ::perftools::gputools;
@@ -72,9 +73,7 @@ StatusOr<Backend::StreamPtr> BorrowStreamForDevice(int device_ordinal,
   if (device_ordinal < 0) {
     device_ordinal = backend->default_device_ordinal();
   }
-  TF_ASSIGN_OR_RETURN(se::StreamExecutor * exec,
-                      backend->stream_executor(device_ordinal));
-  return backend->BorrowStream(exec);
+  return backend->BorrowStream(device_ordinal);
 }
 }  // namespace
 
@@ -175,11 +174,13 @@ StatusOr<std::unique_ptr<ShapedBuffer>> LocalExecutable::Run(
   if (options.allocator() == nullptr) {
     actual_options.set_allocator(backend_->memory_allocator());
   }
+  ServiceExecutableRunOptions service_options(actual_options,
+                                              backend_->StreamBorrower());
 
   if (executable_->dumping()) {
-    return ExecuteAndDump(&actual_options, arguments);
+    return ExecuteAndDump(&service_options, arguments);
   }
-  return executable_->ExecuteOnStream(&actual_options, arguments,
+  return executable_->ExecuteOnStream(&service_options, arguments,
                                       /*hlo_execution_profile=*/nullptr);
 }
 
@@ -210,16 +211,18 @@ tensorflow::Status LocalExecutable::Run(
   if (options.allocator() == nullptr) {
     actual_options.set_allocator(backend_->memory_allocator());
   }
+  ServiceExecutableRunOptions service_options(actual_options,
+                                              backend_->StreamBorrower());
 
   if (executable_->dumping()) {
     return Unimplemented("dumping execution not supported on this path");
   }
-  return executable_->ExecuteOnStream(&actual_options, arguments, result,
+  return executable_->ExecuteOnStream(&service_options, arguments, result,
                                       /*hlo_execution_profile=*/nullptr);
 }
 
 StatusOr<std::unique_ptr<ShapedBuffer>> LocalExecutable::ExecuteAndDump(
-    const ExecutableRunOptions* run_options,
+    const ServiceExecutableRunOptions* run_options,
     const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) {
   executable_->session_module()->set_execution_platform(
       backend_->platform()->Name());

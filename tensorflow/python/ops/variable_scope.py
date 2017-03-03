@@ -1306,7 +1306,9 @@ def _pure_variable_scope(name_or_scope,
       if partitioner is not None:
         default_varscope[0].set_partitioner(partitioner)
       if custom_getter is not None:
-        default_varscope[0].set_custom_getter(custom_getter)
+        default_varscope[0].set_custom_getter(
+            _maybe_wrap_custom_getter(
+                custom_getter, name_or_scope.custom_getter))
       if dtype is not None:
         default_varscope[0].set_dtype(dtype)
       if use_resource is not None:
@@ -1337,7 +1339,8 @@ def _pure_variable_scope(name_or_scope,
       if partitioner is not None:
         default_varscope[0].set_partitioner(partitioner)
       if custom_getter is not None:
-        default_varscope[0].set_custom_getter(custom_getter)
+        default_varscope[0].set_custom_getter(
+            _maybe_wrap_custom_getter(custom_getter, old.custom_getter))
       if dtype is not None:
         default_varscope[0].set_dtype(dtype)
       if use_resource is not None:
@@ -1349,6 +1352,26 @@ def _pure_variable_scope(name_or_scope,
     if isinstance(name_or_scope, VariableScope):
       var_store.variable_scopes_count = old_subscopes
     default_varscope[0] = old
+
+
+def _maybe_wrap_custom_getter(custom_getter, old_getter):
+  """Wrap a call to a custom_getter to use the old_getter internally."""
+  if old_getter is None:
+    return custom_getter
+
+  # The new custom_getter should call the old one
+  def wrapped_custom_getter(getter, *args, **kwargs):
+    # Call:
+    #  custom_getter(
+    #    lambda: old_getter(true_getter, ...), *args, **kwargs)
+    # which means custom_getter will call old_getter, which
+    # will call the true_getter, perform any intermediate
+    # processing, and return the results to the current
+    # getter, which will also perform additional processing.
+    return custom_getter(
+        functools.partial(old_getter, getter),
+        *args, **kwargs)
+  return wrapped_custom_getter
 
 
 def _get_unique_variable_scope(prefix):

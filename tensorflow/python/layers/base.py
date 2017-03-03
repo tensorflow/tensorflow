@@ -266,12 +266,9 @@ class _Layer(object):
       Output tensor(s).
     """
     # Define a custom getter to override tf.get_variable when creating layer
-    # variables. We respect current custom getter, if one is set.
-    current_custom_getter = vs.get_variable_scope().custom_getter
+    # variables. The current custom getter is nested by the variable scope.
     def variable_getter(getter, name, shape, dtype=None, initializer=None,
                         regularizer=None, trainable=True, **kwargs):
-      if current_custom_getter is not None:
-        getter = functools.partial(current_custom_getter, getter)
       return self._add_variable(
           name, shape, initializer=initializer, regularizer=regularizer,
           dtype=dtype, trainable=trainable,

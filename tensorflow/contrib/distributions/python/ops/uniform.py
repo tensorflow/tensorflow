@@ -101,7 +101,7 @@ class Uniform(distribution.Distribution):
       InvalidArgumentError: if `low >= high` and `validate_args=False`.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[low, high]) as ns:
+    with ops.name_scope(name, values=[low, high]):
       with ops.control_dependencies([
           check_ops.assert_less(
               low, high, message="uniform not defined when low >= high.")
@@ -117,7 +117,7 @@ class Uniform(distribution.Distribution):
         parameters=parameters,
         graph_parents=[self._low,
                        self._high],
-        name=ns)
+        name=name)
 
   @staticmethod
   def _param_shapes(sample_shape):

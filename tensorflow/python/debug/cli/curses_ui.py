@@ -235,6 +235,9 @@ class CursesUI(base_ui.BaseUI):
   _ERROR_TOAST_COLOR_PAIR = "red_on_white"
   _INFO_TOAST_COLOR_PAIR = "blue_on_white"
   _STATUS_BAR_COLOR_PAIR = "black_on_white"
+  _UI_WAIT_COLOR_PAIR = "magenta_on_white"
+
+  _UI_WAIT_MESSAGE = "Processing..."
 
   def __init__(self, on_ui_exit=None):
     """Constructor of CursesUI.
@@ -478,7 +481,11 @@ class CursesUI(base_ui.BaseUI):
         existing_command = self._pending_command
       self._screen_create_command_textbox(existing_command)
 
-      command, terminator, pending_command_changed = self._get_user_command()
+      try:
+        command, terminator, pending_command_changed = self._get_user_command()
+      except debugger_cli_common.CommandLineExit as e:
+        return e.exit_token
+
       if not command and terminator != self.CLI_TAB_KEY:
         continue
 
@@ -545,6 +552,9 @@ class CursesUI(base_ui.BaseUI):
       An exit token object. None value means that the UI loop should not exit.
       A non-None value means the UI loop should exit.
     """
+
+    if self._output_pad:
+      self._toast(self._UI_WAIT_MESSAGE, color=self._UI_WAIT_COLOR_PAIR)
 
     if command in self.CLI_EXIT_COMMANDS:
       # Explicit user command-triggered exit: EXPLICIT_USER_EXIT as the exit
@@ -660,6 +670,8 @@ class CursesUI(base_ui.BaseUI):
 
     Raises:
       TypeError: If the input x is not of type int.
+      debugger_cli_common.CommandLineExit: If a mouse-triggered command returns
+        an exit token when dispatched.
     """
     if not isinstance(x, int):
       raise TypeError("Key validator expected type int, received type %s" %
@@ -733,9 +745,9 @@ class CursesUI(base_ui.BaseUI):
         else:
           command = self._fetch_hyperlink_command(mouse_x, mouse_y)
           if command:
-            self._auto_key_in(command, erase_existing=True)
-            self._textbox_curr_terminator = x
-            return self.CLI_TERMINATOR_KEY
+            exit_token = self._dispatch_command(command)
+            if exit_token is not None:
+              raise debugger_cli_common.CommandLineExit(exit_token=exit_token)
     else:
       # Mark the pending command as modified.
       self._textbox_pending_command_changed = True

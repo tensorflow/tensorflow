@@ -248,8 +248,9 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
   // must also be used to determine the thunk launch schedule.
   std::unique_ptr<StreamAssignment> stream_assignment =
       AssignStreams(*hlo_module);
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloSchedule> hlo_schedule,
-                      HloSchedule::Build(*hlo_module, *stream_assignment));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloSchedule> hlo_schedule,
+      HloSchedule::Build(*hlo_module, *stream_assignment, pointer_size_));
 
   // Run buffer analysis on the HLO graph. This analysis figures out which
   // temporary buffers are required to run the computation.

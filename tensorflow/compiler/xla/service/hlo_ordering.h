@@ -43,6 +43,12 @@ class HloOrdering {
   // not reflexive, that is, an instruction does not execute before itself.
   virtual bool ExecutesBefore(const HloInstruction* a,
                               const HloInstruction* b) const = 0;
+
+  // Returns the sequential instruction order for the given computation, or
+  // nullptr if the computation does not have a sequential ordering.
+  virtual const std::vector<const HloInstruction*>* SequentialOrder(
+      const HloComputation& computation) const = 0;
+
   virtual string ToString() const = 0;
 };
 
@@ -56,6 +62,13 @@ class PredecessorHloOrdering : public HloOrdering {
   // Instructions in different computations are not ordered.
   bool ExecutesBefore(const HloInstruction* a,
                       const HloInstruction* b) const override;
+
+  // Returns nullptr indicating the computation does not have a sequential
+  // ordering.
+  const std::vector<const HloInstruction*>* SequentialOrder(
+      const HloComputation& computation) const override {
+    return nullptr;
+  }
 
  protected:
   explicit PredecessorHloOrdering(const HloModule* module);
@@ -142,10 +155,16 @@ class SequentialHloOrdering : public HloOrdering {
   // computations are unordered.
   bool ExecutesBefore(const HloInstruction* a,
                       const HloInstruction* b) const override;
+
+  // Returns the sequential instruction order for the given computation.
+  const std::vector<const HloInstruction*>* SequentialOrder(
+      const HloComputation& computation) const override;
+
   string ToString() const override;
 
  protected:
   const HloModule* module_;
+  const HloModuleSequence module_sequence_;
 
   // The position of every instruction in the HLO module in its respective
   // computation sequence (a value of zero indicates the instruction is first in
@@ -156,6 +175,16 @@ class SequentialHloOrdering : public HloOrdering {
   tensorflow::gtl::FlatMap<const HloInstruction*, int> order_position_;
 };
 
+std::ostream& operator<<(
+    std::ostream& out,
+    const SequentialHloOrdering::HloModuleSequence& module_sequence);
+
+// Returns the minimum memory required to compute the given module sequence,
+// assuming no fragmentation.
+StatusOr<int64> MinimumMemoryForSequence(
+    const SequentialHloOrdering::HloModuleSequence& module_sequence,
+    const LogicalBuffer::SizeFunction& size_function);
+
 // Returns an HloModuleSequence which seeks to minimize the memory required for
 // the computation. size_function is the function returning the number of bytes
 // required for a LogicalBuffer.
@@ -163,9 +192,10 @@ StatusOr<SequentialHloOrdering::HloModuleSequence>
 CreateMemoryMinimizingSequence(
     const HloModule& module, const LogicalBuffer::SizeFunction& size_function);
 
-std::ostream& operator<<(
-    std::ostream& out,
-    const SequentialHloOrdering::HloModuleSequence& module_sequence);
+// Overload of above that computes the sequence for a single computation.
+StatusOr<std::vector<const HloInstruction*>> CreateMemoryMinimizingSequence(
+    const HloComputation& computation,
+    const LogicalBuffer::SizeFunction& size_function);
 
 }  // namespace xla
 

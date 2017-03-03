@@ -6484,6 +6484,8 @@ func AvgPoolGrad(scope *Scope, orig_input_shape tf.Output, grad tf.Output, ksize
 // \\(output_i = \max_j(data_j)\\) where `max` is over `j` such
 // that `segment_ids[j] == i`.
 //
+// If the max is empty for a given segment ID `i`, `output[i] = 0`.
+//
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 // <img style="width:100%" src="../../images/SegmentMax.png" alt>
 // </div>
@@ -7944,6 +7946,8 @@ func SdcaOptimizer(scope *Scope, sparse_example_indices []tf.Output, sparse_feat
 // Computes a tensor such that
 // \\(output_i = \min_j(data_j)\\) where `min` is over `j` such
 // that `segment_ids[j] == i`.
+//
+// If the min is empty for a given segment ID `i`, `output[i] = 0`.
 //
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 // <img style="width:100%" src="../../images/SegmentMin.png" alt>
@@ -9777,6 +9781,8 @@ func ResourceSparseApplyCenteredRMSProp(scope *Scope, var_ tf.Output, mg tf.Outp
 // over `j` such that `segment_ids[j] == i` and `N` is the total number of
 // values summed.
 //
+// If the mean is empty for a given segment ID `i`, `output[i] = 0`.
+//
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 // <img style="width:100%" src="../../images/SegmentMean.png" alt>
 // </div>
@@ -10128,9 +10134,9 @@ func Conv2DUseCudnnOnGpu(value bool) Conv2DAttr {
 //
 // value: Specify the data format of the input and output data. With the
 // default format "NHWC", the data is stored in the order of:
-//     [batch, in_height, in_width, in_channels].
+//     [batch, height, width, channels].
 // Alternatively, the format could be "NCHW", the data storage order of:
-//     [batch, in_channels, in_height, in_width].
+//     [batch, channels, height, width].
 // If not specified, defaults to s:"NHWC"
 func Conv2DDataFormat(value string) Conv2DAttr {
 	return func(m optionalAttr) {
@@ -10163,11 +10169,17 @@ func Conv2DDataFormat(value string) Conv2DAttr {
 // horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
 //
 // Arguments:
-//
-//
-//	strides: 1-D of length 4.  The stride of the sliding window for each dimension
-// of `input`. Must be in the same order as the dimension specified with format.
+//	input: A 4-D tensor. The dimension order is interpreted according to the value
+// of `data_format`, see below for details.
+//	filter: A 4-D tensor of shape
+// `[filter_height, filter_width, in_channels, out_channels]`
+//	strides: 1-D tensor of length 4.  The stride of the sliding window for each
+// dimension of `input`. The dimension order is determined by the value of
+//   `data_format`, see below for details.
 //	padding: The type of padding algorithm to use.
+//
+// Returns A 4-D tensor. The dimension order is determined by the value of
+// `data_format`, see below for details.
 func Conv2D(scope *Scope, input tf.Output, filter tf.Output, strides []int64, padding string, optional ...Conv2DAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -16876,6 +16888,8 @@ func ArgMax(scope *Scope, input tf.Output, dimension tf.Output) (output tf.Outpu
 // \\(output_i = \sum_j data_j\\) where sum is over `j` such
 // that `segment_ids[j] == i`.
 //
+// If the sum is empty for a given segment ID `i`, `output[i] = 0`.
+//
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 // <img style="width:100%" src="../../images/SegmentSum.png" alt>
 // </div>
@@ -17038,6 +17052,8 @@ func SparseReshape(scope *Scope, input_indices tf.Output, input_shape tf.Output,
 // Computes a tensor such that
 // \\(output_i = \prod_j data_j\\) where the product is over `j` such
 // that `segment_ids[j] == i`.
+//
+// If the product is empty for a given segment ID `i`, `output[i] = 1`.
 //
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 // <img style="width:100%" src="../../images/SegmentProd.png" alt>

@@ -122,7 +122,7 @@ class LocalExecutable {
   // Records the computation in a SessionModule proto with the arguments used to
   // invoke it, and the result. Enabled by flag: --tla_dump_executions_to.
   StatusOr<std::unique_ptr<ShapedBuffer>> ExecuteAndDump(
-      const ExecutableRunOptions* run_options,
+      const ServiceExecutableRunOptions* run_options,
       const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments);
 
   // Records the arguments used to invoke the computation in a SessionModule
