@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -41,7 +41,7 @@ struct HistoryBeamState {
 //
 // The dictionary itself is hard-coded a static const variable of the class.
 class DictionaryBeamScorer
-    : public tensorflow::ctc::BeamScorerInterface<HistoryBeamState> {
+    : public tensorflow::ctc::BaseBeamScorer<HistoryBeamState> {
  public:
   void InitializeState(HistoryBeamState* root) const override {
     root->score = 0;
@@ -107,12 +107,13 @@ TEST(CtcBeamSearch, DecodingWithAndWithoutDictionary) {
   const int num_classes = 6;
 
   // Plain decoder using hibernating beam search algorithm.
-  CTCBeamSearchDecoder<> decoder(num_classes, 10 * top_paths, batch_size,
-                                 false);
+  CTCBeamSearchDecoder<>::DefaultBeamScorer default_scorer;
+  CTCBeamSearchDecoder<> decoder(num_classes, 10 * top_paths, &default_scorer);
 
   // Dictionary decoder, allowing only two dictionary words : {3}, {3, 1}.
-  CTCBeamSearchDecoder<HistoryBeamState, DictionaryBeamScorer>
-      dictionary_decoder(num_classes, top_paths, batch_size, false);
+  DictionaryBeamScorer dictionary_scorer;
+  CTCBeamSearchDecoder<HistoryBeamState> dictionary_decoder(
+      num_classes, top_paths, &dictionary_scorer);
 
   // Raw data containers (arrays of floats, ints, etc.).
   int sequence_lengths[batch_size] = {timesteps};
@@ -183,7 +184,7 @@ TEST(CtcBeamSearch, DecodingWithAndWithoutDictionary) {
 typedef int LabelState;  // The state is simply the final label.
 
 class RapidlyDroppingLabelScorer
-    : public tensorflow::ctc::BeamScorerInterface<LabelState> {
+    : public tensorflow::ctc::BaseBeamScorer<LabelState> {
  public:
   void InitializeState(LabelState* root) const override {}
 
@@ -213,8 +214,8 @@ TEST(CtcBeamSearch, LabelSelection) {
   const int num_classes = 6;
 
   // Decoder which drops off log-probabilities for labels 0 >> 1 >> 2 >> 3.
-  CTCBeamSearchDecoder<LabelState, RapidlyDroppingLabelScorer> decoder(
-      num_classes, top_paths, batch_size, false);
+  RapidlyDroppingLabelScorer scorer;
+  CTCBeamSearchDecoder<LabelState> decoder(num_classes, top_paths, &scorer);
 
   // Raw data containers (arrays of floats, ints, etc.).
   int sequence_lengths[batch_size] = {timesteps};

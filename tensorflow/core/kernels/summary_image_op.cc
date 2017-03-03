@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -84,7 +84,8 @@ class SummaryImageOp : public OpKernel {
         return typename TTypes<uint8>::ConstMatrix(
             &values(i, 0, 0), Eigen::DSizes<Eigen::DenseIndex, 2>(hw, depth));
       };
-      AddImages(base_tag, batch_size, w, h, depth, ith_image, &s);
+      OP_REQUIRES_OK(
+          c, AddImages(base_tag, batch_size, w, h, depth, ith_image, &s));
     } else if (tensor.dtype() == DT_HALF) {
       NormalizeAndAddImages<Eigen::half>(c, tensor, h, w, hw, depth, batch_size,
                                          base_tag, &s);
@@ -121,7 +122,8 @@ class SummaryImageOp : public OpKernel {
       NormalizeFloatImage<T>(hw, depth, values, bad_color, &image);
       return image;
     };
-    AddImages(base_tag, batch_size, w, h, depth, ith_image, s);
+    OP_REQUIRES_OK(c,
+                   AddImages(base_tag, batch_size, w, h, depth, ith_image, s));
   }
 
   // Add the sequence of images specified by ith_image to the summary.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,13 +21,9 @@ export LAUNCHPAD_CHROME=${LAUNCHPAD_CHROME:-$(which chromium-browser)}
 cd tensorflow/tensorboard
 
 # Install all js dependencies (tooling via npm, frontend assets via bower)
-npm install
-npm install bower gulp
-./node_modules/bower/bin/bower install
+npm run prepare
 
-# Compile the frontend code
-./node_modules/gulp/bin/gulp.js compile.all
+npm run compile
 
 # Run wct in headless chrome using xvfb
 xvfb-run ./node_modules/web-component-tester/bin/wct --skip-plugin=sauce
-

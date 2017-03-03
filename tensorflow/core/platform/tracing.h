@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -196,6 +196,12 @@ class Tracing::ScopedAnnotation {
   // single-argument constructor because the concatenation of the
   // label string is only done if tracing is enabled.
   ScopedAnnotation(StringPiece name_part1, StringPiece name_part2);
+
+  // Returns true iff scoped annotations are active.
+  static bool Enabled() {
+    auto e = Tracing::engine();
+    return e && e->IsEnabled();
+  }
 
  private:
   std::unique_ptr<Engine::Annotation> annotation_;

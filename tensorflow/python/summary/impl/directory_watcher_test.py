@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,8 +23,10 @@ import os
 import shutil
 
 from tensorflow.python.framework import test_util
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import googletest
 from tensorflow.python.summary.impl import directory_watcher
+from tensorflow.python.summary.impl import io_wrapper
 
 
 class _ByteLoader(object):
@@ -53,9 +55,15 @@ class DirectoryWatcherTest(test_util.TensorFlowTestCase):
     os.mkdir(self._directory)
     self._watcher = directory_watcher.DirectoryWatcher(self._directory,
                                                        _ByteLoader)
+    self.stubs = googletest.StubOutForTesting()
 
   def tearDown(self):
-    shutil.rmtree(self._directory)
+    self.stubs.CleanUp()
+    try:
+      shutil.rmtree(self._directory)
+    except OSError:
+      # Some tests delete the directory.
+      pass
 
   def _WriteToFile(self, filename, data):
     path = os.path.join(self._directory, filename)
@@ -153,6 +161,48 @@ class DirectoryWatcherTest(test_util.TensorFlowTestCase):
     self._WriteToFile('a', 'c')
     self._LoadAllEvents()
     self.assertTrue(self._watcher.OutOfOrderWritesDetected())
+
+  def testDoesntCrashWhenFileIsDeleted(self):
+    self._WriteToFile('a', 'a')
+    self._LoadAllEvents()
+    os.remove(os.path.join(self._directory, 'a'))
+    self._WriteToFile('b', 'b')
+    self.assertWatcherYields(['b'])
+
+  def testRaisesRightErrorWhenDirectoryIsDeleted(self):
+    self._WriteToFile('a', 'a')
+    self._LoadAllEvents()
+    shutil.rmtree(self._directory)
+    with self.assertRaises(directory_watcher.DirectoryDeletedError):
+      self._LoadAllEvents()
+
+  def testDoesntRaiseDirectoryDeletedErrorIfOutageIsTransient(self):
+    self._WriteToFile('a', 'a')
+    self._LoadAllEvents()
+    shutil.rmtree(self._directory)
+
+    # Fake a single transient I/O error.
+    def FakeFactory(original):
+
+      def Fake(*args, **kwargs):
+        if FakeFactory.has_been_called:
+          original(*args, **kwargs)
+        else:
+          raise OSError('lp0 temporarily on fire')
+
+      return Fake
+
+    FakeFactory.has_been_called = False
+
+    for stub_name in ['ListDirectoryAbsolute', 'ListRecursively']:
+      self.stubs.Set(io_wrapper, stub_name,
+                     FakeFactory(getattr(io_wrapper, stub_name)))
+    for stub_name in ['IsDirectory', 'Exists', 'Stat']:
+      self.stubs.Set(gfile, stub_name,
+                     FakeFactory(getattr(gfile, stub_name)))
+
+    with self.assertRaises((IOError, OSError)):
+      self._LoadAllEvents()
 
 
 if __name__ == '__main__':

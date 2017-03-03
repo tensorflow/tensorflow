@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -58,6 +58,18 @@ TEST(Uint64ToHexString, Ints) {
   EXPECT_FALSE(HexStringToUint64("0000000000000000xyz", &dummy));
 }
 
+TEST(HumanReadableNum, Basic) {
+  EXPECT_EQ(HumanReadableNum(823), "823");
+  EXPECT_EQ(HumanReadableNum(1024), "1.02k");
+  EXPECT_EQ(HumanReadableNum(4000), "4.00k");
+  EXPECT_EQ(HumanReadableNum(999499), "999.50k");
+  EXPECT_EQ(HumanReadableNum(1000000), "1.00M");
+  EXPECT_EQ(HumanReadableNum(1048575), "1.05M");
+  EXPECT_EQ(HumanReadableNum(1048576), "1.05M");
+  EXPECT_EQ(HumanReadableNum(23956812342), "23.96B");
+  EXPECT_EQ(HumanReadableNum(123456789012345678), "1.23E+17");
+}
+
 TEST(HumanReadableNumBytes, Bytes) {
   EXPECT_EQ("0B", HumanReadableNumBytes(0));
   EXPECT_EQ("4B", HumanReadableNumBytes(4));
@@ -83,6 +95,25 @@ TEST(HumanReadableNumBytes, Bytes) {
   EXPECT_EQ("-1000B", HumanReadableNumBytes(-1000));
   EXPECT_EQ("-11.77MiB", HumanReadableNumBytes(-12345678));
   EXPECT_EQ("-8E", HumanReadableNumBytes(kint64min));
+}
+
+TEST(HumanReadableElapsedTime, Basic) {
+  EXPECT_EQ(HumanReadableElapsedTime(-10), "-10 s");
+  EXPECT_EQ(HumanReadableElapsedTime(-0.001), "-1 ms");
+  EXPECT_EQ(HumanReadableElapsedTime(-60.0), "-1 min");
+  EXPECT_EQ(HumanReadableElapsedTime(0.00000001), "0.01 us");
+  EXPECT_EQ(HumanReadableElapsedTime(0.0000012), "1.2 us");
+  EXPECT_EQ(HumanReadableElapsedTime(0.0012), "1.2 ms");
+  EXPECT_EQ(HumanReadableElapsedTime(0.12), "120 ms");
+  EXPECT_EQ(HumanReadableElapsedTime(1.12), "1.12 s");
+  EXPECT_EQ(HumanReadableElapsedTime(90.0), "1.5 min");
+  EXPECT_EQ(HumanReadableElapsedTime(600.0), "10 min");
+  EXPECT_EQ(HumanReadableElapsedTime(9000.0), "2.5 h");
+  EXPECT_EQ(HumanReadableElapsedTime(87480.0), "1.01 days");
+  EXPECT_EQ(HumanReadableElapsedTime(7776000.0), "2.96 months");
+  EXPECT_EQ(HumanReadableElapsedTime(78840000.0), "2.5 years");
+  EXPECT_EQ(HumanReadableElapsedTime(382386614.40), "12.1 years");
+  EXPECT_EQ(HumanReadableElapsedTime(DBL_MAX), "5.7e+300 years");
 }
 
 TEST(safe_strto32, Int32s) {
@@ -233,8 +264,20 @@ TEST(safe_strtof, Float) {
   // Overflow to infinity, underflow to 0.
   EXPECT_TRUE(safe_strtof("1e39", &result));
   EXPECT_EQ(std::numeric_limits<float>::infinity(), result);
+
+  EXPECT_TRUE(safe_strtof("-1e39", &result));
+  EXPECT_EQ(-std::numeric_limits<float>::infinity(), result);
+
   EXPECT_TRUE(safe_strtof("1e-50", &result));
   EXPECT_EQ(0, result);
+
+  EXPECT_TRUE(safe_strtof("0xF", &result));
+  EXPECT_EQ(0xF, result);
+
+  EXPECT_TRUE(safe_strtof("-0x2A", &result));
+  EXPECT_EQ(-42.0f, result);
+
+  EXPECT_FALSE(safe_strtof("-infinity is awesome", &result));
 }
 
 TEST(safe_strtod, Double) {
@@ -247,6 +290,10 @@ TEST(safe_strtod, Double) {
   // Overflow to infinity, underflow to 0.
   EXPECT_TRUE(safe_strtod("1e310", &result));
   EXPECT_EQ(std::numeric_limits<double>::infinity(), result);
+
+  EXPECT_TRUE(safe_strtod("-1e310", &result));
+  EXPECT_EQ(-std::numeric_limits<double>::infinity(), result);
+
   EXPECT_TRUE(safe_strtod("1e-325", &result));
   EXPECT_EQ(0, result);
 }

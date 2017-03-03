@@ -28,6 +28,14 @@ from the `AudioSummary`, and the `images` from `ImageSummary`. The tag type
 boolean denoting if there is a graph definition associated with the run. The tag
 is provided to the summary op (usually as a constant).
 
+## `data/logdir`
+
+Returns a JSON object with a key "logdir" that maps to the `logdir` argument
+(string) with which Tensorboard started up. Example:
+`{logdir: '/foo/logdir/argument'}`
+
+The `logdir` argument is the path of the directory that contains events files.
+
 ## `data/runs`
 
 Returns a dictionary mapping from `run name` (quoted string) to dictionaries
@@ -43,6 +51,7 @@ from the TensorBoard server. Here is an example:
         "images": ["input"],
         "audio": ["input_audio"],
         "graph": true,
+        "firstEventTimestamp": 123456.789
         "run_metadata": ["forward prop", "inference"]
       },
       "eval": {
@@ -54,7 +63,9 @@ from the TensorBoard server. Here is an example:
         "graph": false,
         "run_metadata": []
       }
-    }
+      }
+
+The `firstEventTimestamp` value is in seconds since the epoch.
 
 Note that the same tag may be present for many runs. It is not guaranteed that
 they will have the same meaning across runs. It is also not guaranteed that they
@@ -324,7 +335,7 @@ proto. For example:
 ## Notes
 
 All returned values, histograms, audio, and images are returned in the order
-they were written by Tensorflow (which should correspond to increasing
+they were written by TensorFlow (which should correspond to increasing
 `wall_time` order, but may not necessarily correspond to increasing step count
 if the process had to restart from a previous checkpoint).
 

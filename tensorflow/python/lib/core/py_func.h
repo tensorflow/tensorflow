@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -46,6 +46,10 @@ void InitializePyTrampoline(PyObject* trampoline);
 // Creates a numpy array in 'ret' and copies the content of tensor 't'
 // into 'ret'.
 Status ConvertTensorToNdarray(const Tensor& t, PyObject** ret);
+
+// Given an numpy ndarray object 'obj', creates a corresponding tf
+// Tensor in '*ret'.
+Status ConvertNdarrayToTensor(PyObject* obj, Tensor* ret);
 
 }  // end namespace tensorflow
 

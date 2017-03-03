@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -29,21 +29,45 @@ from __future__ import print_function
 
 import math
 
+from tensorflow.python.util import compat
 
-def WrapSpecialFloats(obj):
-  """Replaces all instances of Infinity/-Infinity/NaN with strings."""
-  if obj == float('inf'):
-    return 'Infinity'
-  elif obj == float('-inf'):
-    return '-Infinity'
-  elif isinstance(obj, float) and math.isnan(obj):
-    return 'NaN'
+_INFINITY = float('inf')
+_NEGATIVE_INFINITY = float('-inf')
+
+
+def Cleanse(obj, encoding='utf-8'):
+  """Makes Python object appropriate for JSON serialization.
+
+  - Replaces instances of Infinity/-Infinity/NaN with strings.
+  - Turns byte strings into unicode strings.
+  - Turns sets into sorted lists.
+  - Turns tuples into lists.
+
+  Args:
+    obj: Python data structure.
+    encoding: Charset used to decode byte strings.
+
+  Returns:
+    Unicode JSON data structure.
+  """
+  if isinstance(obj, int):
+    return obj
+  elif isinstance(obj, float):
+    if obj == _INFINITY:
+      return 'Infinity'
+    elif obj == _NEGATIVE_INFINITY:
+      return '-Infinity'
+    elif math.isnan(obj):
+      return 'NaN'
+    else:
+      return obj
+  elif isinstance(obj, bytes):
+    return compat.as_text(obj, encoding)
   elif isinstance(obj, list) or isinstance(obj, tuple):
-    return list(map(WrapSpecialFloats, obj))
+    return [Cleanse(i, encoding) for i in obj]
+  elif isinstance(obj, set):
+    return [Cleanse(i, encoding) for i in sorted(obj)]
   elif isinstance(obj, dict):
-    return {
-        WrapSpecialFloats(k): WrapSpecialFloats(v)
-        for k, v in obj.items()
-    }
+    return {Cleanse(k, encoding): Cleanse(v, encoding) for k, v in obj.items()}
   else:
     return obj

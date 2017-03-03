@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -54,27 +54,39 @@ class Rendezvous : public core::RefCounted {
   // Parses the key constructed by CreateKey and parse src/dst device
   // names into structures respectively.
   struct ParsedKey {
-    string src_device;
+    StringPiece src_device;
     DeviceNameUtils::ParsedName src;
     uint64 src_incarnation = 0;
-    string dst_device;
+    StringPiece dst_device;
     DeviceNameUtils::ParsedName dst;
-    string edge_name;
+    StringPiece edge_name;
+
+    ParsedKey() {}
+    ParsedKey(const ParsedKey& b) { *this = b; }
+
+    ParsedKey& operator=(const ParsedKey& b);
+    StringPiece FullKey() const { return buf_; }
+
+   private:
+    friend class Rendezvous;
+    friend class SendOp;
+    friend class RecvOp;
+    string buf_;
   };
-  static Status ParseKey(const string& key, ParsedKey* out);
+  static Status ParseKey(StringPiece key, ParsedKey* out);
 
   // The caller is a tensor producer and it sends a message (a tensor
   // "val" and a bool "is_dead") under the given "key".
   //
   // {val, is_dead} is bundled as a message sent and received.
   // Typically, is_dead is set by some control flow nodes
-  // (e.g., a not-take branch).  args is passed by Send to the
+  // (e.g., a not-taken branch).  args is passed by Send to the
   // Recv function to communicate any information that the Recv
   // function might need.  This is typically only necessary for
   // Send/Recv on the same worker.
   //
   // Send() never blocks.
-  virtual Status Send(const string& key, const Args& args, const Tensor& val,
+  virtual Status Send(const ParsedKey& key, const Args& args, const Tensor& val,
                       const bool is_dead) = 0;
 
   // Callback provided by a tensor consumer waiting on the rendezvous.
@@ -84,13 +96,17 @@ class Rendezvous : public core::RefCounted {
   // receiver, which may be needed when a non-CPU device is in use
   // by either side.
   typedef std::function<void(const Status&, const Args&, const Args&,
-                             const Tensor&, const bool)> DoneCallback;
+                             const Tensor&, const bool)>
+      DoneCallback;
 
-  virtual void RecvAsync(const string& key, const Args& args,
+  virtual void RecvAsync(const ParsedKey& key, const Args& args,
                          DoneCallback done) = 0;
 
   // Synchronous wrapper for RecvAsync.
-  Status Recv(const string& key, const Args& args, Tensor* val, bool* is_dead);
+  Status Recv(const ParsedKey& key, const Args& args, Tensor* val,
+              bool* is_dead, int64 timeout_ms);
+  Status Recv(const ParsedKey& key, const Args& args, Tensor* val,
+              bool* is_dead);
 
   // Aborts all pending and future Send/Recv with the given "status".
   //

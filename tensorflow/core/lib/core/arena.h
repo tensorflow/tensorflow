@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -40,6 +40,10 @@ class Arena {
 
   char* Alloc(const size_t size) {
     return reinterpret_cast<char*>(GetMemory(size, 1));
+  }
+
+  char* AllocAligned(const size_t size, const size_t alignment) {
+    return reinterpret_cast<char*>(GetMemory(size, alignment));
   }
 
   void Reset();

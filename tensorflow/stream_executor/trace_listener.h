@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -50,7 +50,7 @@ class TraceListener {
   virtual void LaunchSubmit(Stream* stream, const ThreadDim& thread_dims,
                             const BlockDim& block_dims,
                             const KernelBase& kernel,
-                            const std::vector<KernelArg>& args) {}
+                            const KernelArgsArrayBase& args) {}
 
   virtual void SynchronousMemcpyH2DBegin(int64 correlation_id,
                                          const void* host_src, int64 size,

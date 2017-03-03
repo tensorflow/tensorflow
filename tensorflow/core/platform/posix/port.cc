@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,8 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifdef TENSORFLOW_USE_JEMALLOC
+#include "jemalloc/jemalloc.h"
+#endif
+
+#include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/types.h"
-#if defined(__linux) && !defined(__ANDROID__)
+#if defined(__linux__) && !defined(__ANDROID__)
 #include <sched.h>
 #endif
 #include <stdio.h>
@@ -41,7 +48,7 @@ string Hostname() {
 }
 
 int NumSchedulableCPUs() {
-#if defined(__linux) && !defined(__ANDROID__)
+#if defined(__linux__) && !defined(__ANDROID__)
   cpu_set_t cpuset;
   if (sched_getaffinity(0, sizeof(cpu_set_t), &cpuset) == 0) {
     return CPU_COUNT(&cpuset);
@@ -58,7 +65,7 @@ int NumSchedulableCPUs() {
   return kDefaultCores;
 }
 
-void* aligned_malloc(size_t size, int minimum_alignment) {
+void* AlignedMalloc(size_t size, int minimum_alignment) {
 #if defined(__ANDROID__)
   return memalign(minimum_alignment, size);
 #else  // !defined(__ANDROID__)
@@ -67,15 +74,49 @@ void* aligned_malloc(size_t size, int minimum_alignment) {
   // sizeof(void*). In this case, fall back on malloc which should return
   // memory aligned to at least the size of a pointer.
   const int required_alignment = sizeof(void*);
-  if (minimum_alignment < required_alignment) return malloc(size);
-  if (posix_memalign(&ptr, minimum_alignment, size) != 0)
+  if (minimum_alignment < required_alignment) return Malloc(size);
+#ifdef TENSORFLOW_USE_JEMALLOC
+  int err = jemalloc_posix_memalign(&ptr, minimum_alignment, size);
+#else
+  int err = posix_memalign(&ptr, minimum_alignment, size);
+#endif
+  if (err != 0) {
     return NULL;
-  else
+  } else {
     return ptr;
+  }
 #endif
 }
 
-void aligned_free(void* aligned_memory) { free(aligned_memory); }
+void AlignedFree(void* aligned_memory) { Free(aligned_memory); }
+
+void* Malloc(size_t size) {
+#ifdef TENSORFLOW_USE_JEMALLOC
+  return jemalloc_malloc(size);
+#else
+  return malloc(size);
+#endif
+}
+
+void* Realloc(void* ptr, size_t size) {
+#ifdef TENSORFLOW_USE_JEMALLOC
+  return jemalloc_realloc(ptr, size);
+#else
+  return realloc(ptr, size);
+#endif
+}
+
+void Free(void* ptr) {
+#ifdef TENSORFLOW_USE_JEMALLOC
+  jemalloc_free(ptr);
+#else
+  free(ptr);
+#endif
+}
+
+void MallocExtension_ReleaseToSystem(std::size_t num_bytes) {
+  // No-op.
+}
 
 std::size_t MallocExtension_GetAllocatedSize(const void* p) { return 0; }
 

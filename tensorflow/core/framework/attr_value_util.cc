@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -40,6 +40,16 @@ string SummarizeTensor(const TensorProto& tensor_proto) {
                            ProtoShortDebugString(tensor_proto), ">");
   }
   return t.DebugString();
+}
+
+string SummarizeFunc(const NameAttrList& func) {
+  std::vector<string> entries;
+  for (auto p : func.attr()) {
+    entries.push_back(
+        strings::StrCat(p.first, "=", SummarizeAttrValue(p.second)));
+  }
+  sort(entries.begin(), entries.end());
+  return strings::StrCat(func.name(), "[", str_util::Join(entries, ", "), "]");
 }
 
 }  // namespace
@@ -100,20 +110,18 @@ string SummarizeAttrValue(const AttrValue& attr_value) {
           strings::StrAppend(&ret,
                              SummarizeTensor(attr_value.list().tensor(i)));
         }
+      } else if (attr_value.list().func_size() > 0) {
+        for (int i = 0; i < attr_value.list().func_size(); ++i) {
+          if (i > 0) strings::StrAppend(&ret, ", ");
+          strings::StrAppend(&ret, SummarizeFunc(attr_value.list().func(i)));
+        }
       }
 
       strings::StrAppend(&ret, "]");
       return ret;
     }
     case AttrValue::kFunc: {
-      std::vector<string> entries;
-      for (auto p : attr_value.func().attr()) {
-        entries.push_back(
-            strings::StrCat(p.first, "=", SummarizeAttrValue(p.second)));
-      }
-      sort(entries.begin(), entries.end());
-      return strings::StrCat(attr_value.func().name(), "[",
-                             str_util::Join(entries, ", "), "]");
+      return SummarizeFunc(attr_value.func());
     }
     case AttrValue::kPlaceholder:
       return strings::StrCat("$", attr_value.placeholder());
@@ -154,20 +162,13 @@ Status AttrValueHasType(const AttrValue& attr_value, StringPiece type) {
   VALIDATE_FIELD(type, "type", kType);
   VALIDATE_FIELD(shape, "shape", kShape);
   VALIDATE_FIELD(tensor, "tensor", kTensor);
+  VALIDATE_FIELD(func, "func", kFunc);
 
 #undef VALIDATE_FIELD
 
-  if (attr_value.value_case() == AttrValue::kFunc) {
-    if (type != "func") {
-      return errors::InvalidArgument(
-          "AttrValue had value with type 'func' when '", type, "' expected");
-    }
-    ++num_set;
-  }
-
   if (attr_value.value_case() == AttrValue::kPlaceholder) {
     return errors::InvalidArgument(
-        "AttrValue had value with unexpected type 'placeholder");
+        "AttrValue had value with unexpected type 'placeholder'");
   }
 
   // If the attr type is 'list', we expect attr_value.has_list() to be
@@ -192,8 +193,13 @@ Status AttrValueHasType(const AttrValue& attr_value, StringPiece type) {
         "AttrValue missing value with expected type '", type, "'");
   }
 
-  // Ref types and DT_INVALID are illegal.
+  // Ref types and DT_INVALID are illegal, and DataTypes must
+  // be a valid enum type.
   if (type == "type") {
+    if (!DataType_IsValid(attr_value.type())) {
+      return errors::InvalidArgument("AttrValue has invalid DataType enum: ",
+                                     attr_value.type());
+    }
     if (IsRefType(attr_value.type())) {
       return errors::InvalidArgument(
           "AttrValue must not have reference type value of ",
@@ -205,6 +211,10 @@ Status AttrValueHasType(const AttrValue& attr_value, StringPiece type) {
   } else if (type == "list(type)") {
     for (auto as_int : attr_value.list().type()) {
       const DataType dtype = static_cast<DataType>(as_int);
+      if (!DataType_IsValid(dtype)) {
+        return errors::InvalidArgument("AttrValue has invalid DataType enum: ",
+                                       as_int);
+      }
       if (IsRefType(dtype)) {
         return errors::InvalidArgument(
             "AttrValue must not have reference type value of ",
@@ -308,8 +318,19 @@ void SetAttrValue(StringPiece value, AttrValue* out) {
   out->set_s(value.data(), value.size());
 }
 
+void SetAttrValue(const gtl::ArraySlice<StringPiece> value, AttrValue* out) {
+  out->mutable_list();  // Create list() even if value empty.
+  for (const auto& v : value) {
+    out->mutable_list()->add_s(v.data(), v.size());
+  }
+}
+
 void SetAttrValue(const TensorShape& value, AttrValue* out) {
   value.AsProto(out->mutable_shape());
+}
+
+void SetAttrValue(const TensorShapeProto& value, AttrValue* out) {
+  *out->mutable_shape() = value;
 }
 
 void SetAttrValue(const PartialTensorShape& value, AttrValue* out) {
@@ -320,6 +341,13 @@ void SetAttrValue(const gtl::ArraySlice<TensorShape> value, AttrValue* out) {
   out->mutable_list();  // Create list() even if value empty.
   for (const auto& v : value) {
     v.AsProto(out->mutable_list()->add_shape());
+  }
+}
+
+void SetAttrValue(gtl::ArraySlice<TensorShapeProto> value, AttrValue* out) {
+  out->mutable_list();  // Create list() even if value empty.
+  for (const auto& v : value) {
+    *out->mutable_list()->add_shape() = v;
   }
 }
 
@@ -365,6 +393,13 @@ void SetAttrValue(const NameAttrList& value, AttrValue* out) {
   *out->mutable_func() = value;
 }
 
+void SetAttrValue(gtl::ArraySlice<NameAttrList> value, AttrValue* out) {
+  out->mutable_list();  // Create list() even if value empty.
+  for (const auto& v : value) {
+    *out->mutable_list()->add_func() = v;
+  }
+}
+
 bool AreAttrValuesEqual(const AttrValue& a, const AttrValue& b) {
   string a_str, b_str;
   a.SerializeToString(&a_str);
@@ -380,6 +415,16 @@ bool AreAttrValuesEqual(const AttrValue& a, const AttrValue& b) {
 
 bool HasPlaceHolder(const AttrValue& val) {
   switch (val.value_case()) {
+    case AttrValue::kList: {
+      for (const NameAttrList& func : val.list().func()) {
+        for (const auto& p : func.attr()) {
+          if (HasPlaceHolder(p.second)) {
+            return true;
+          }
+        }
+      }
+      break;
+    }
     case AttrValue::kFunc:
       for (const auto& p : val.func().attr()) {
         if (HasPlaceHolder(p.second)) {
@@ -397,6 +442,16 @@ bool HasPlaceHolder(const AttrValue& val) {
 
 bool SubstitutePlaceholders(SubstituteFunc substitute, AttrValue* value) {
   switch (value->value_case()) {
+    case AttrValue::kList: {
+      for (NameAttrList& func : *value->mutable_list()->mutable_func()) {
+        for (auto& p : *func.mutable_attr()) {
+          if (!SubstitutePlaceholders(substitute, &p.second)) {
+            return false;
+          }
+        }
+      }
+      break;
+    }
     case AttrValue::kFunc:
       for (auto& p : *(value->mutable_func()->mutable_attr())) {
         if (!SubstitutePlaceholders(substitute, &p.second)) {

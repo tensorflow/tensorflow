@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -49,10 +49,6 @@ string StackTraceIfVLOG10() {
     return "";
   }
 }
-
-// Maximum stack depth to report when generating backtrace on mem allocation
-// (for GPU memory leak checker)
-static const int kMaxStackDepth = 256;
 
 // Make sure the executor is done with its work; we know (because this isn't
 // publicly visible) that all enqueued work is quick.
@@ -168,9 +164,10 @@ StreamExecutor::StreamExecutor(PlatformKind platform_kind,
 }
 
 StreamExecutor::StreamExecutor(
-    const Platform *platform, internal::StreamExecutorInterface *implementation)
+    const Platform *platform,
+    std::unique_ptr<internal::StreamExecutorInterface> implementation)
     : platform_(platform),
-      implementation_(implementation),
+      implementation_(std::move(implementation)),
       device_ordinal_(-1),
       background_threads_(new port::ThreadPool(
           port::Env::Default(), "stream_executor", kNumBackgroundThreads)),
@@ -313,6 +310,48 @@ bool StreamExecutor::GetConvolveBackwardFilterAlgorithms(
   return dnn_support->GetConvolveBackwardFilterAlgorithms(out_algorithms);
 }
 
+port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>
+StreamExecutor::createRnnDescriptor(
+    int num_layers, int hidden_size, int input_size,
+    dnn::RnnInputMode input_mode, dnn::RnnDirectionMode direction_mode,
+    dnn::RnnMode rnn_mode, dnn::DataType data_type, float dropout, uint64 seed,
+    ScratchAllocator *state_allocator) {
+  dnn::DnnSupport *dnn_support = AsDnn();
+  if (!dnn_support) {
+    return port::Status(port::error::UNKNOWN,
+                        "Fail to find the dnn implementation.");
+  }
+  return dnn_support->createRnnDescriptor(
+      num_layers, hidden_size, input_size, input_mode, direction_mode, rnn_mode,
+      data_type, dropout, seed, state_allocator);
+}
+
+port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
+StreamExecutor::createRnnSequenceTensorDescriptor(int seq_length,
+                                                  int batch_size, int data_size,
+                                                  dnn::DataType data_type) {
+  dnn::DnnSupport *dnn_support = AsDnn();
+  if (!dnn_support) {
+    return port::Status(port::error::UNKNOWN,
+                        "Fail to find the dnn implementation.");
+  }
+  return dnn_support->createRnnSequenceTensorDescriptor(seq_length, batch_size,
+                                                        data_size, data_type);
+}
+
+port::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
+StreamExecutor::createRnnStateTensorDescriptor(int num_layer, int batch_size,
+                                               int data_size,
+                                               dnn::DataType data_type) {
+  dnn::DnnSupport *dnn_support = AsDnn();
+  if (!dnn_support) {
+    return port::Status(port::error::UNKNOWN,
+                        "Fail to find the dnn implementation.");
+  }
+  return dnn_support->createRnnStateTensorDescriptor(num_layer, batch_size,
+                                                     data_size, data_type);
+}
+
 dnn::DnnSupport *StreamExecutor::AsDnn() {
   mutex_lock lock{mu_};
   if (dnn_ != nullptr) {
@@ -356,7 +395,7 @@ rng::RngSupport *StreamExecutor::AsRng() {
 bool StreamExecutor::Launch(Stream *stream, const ThreadDim &thread_dims,
                             const BlockDim &block_dims,
                             const KernelBase &kernel,
-                            const std::vector<KernelArg> &args) {
+                            const KernelArgsArrayBase &args) {
   SubmitTrace(&TraceListener::LaunchSubmit, stream, thread_dims, block_dims,
               kernel, args);
 
@@ -453,7 +492,12 @@ bool StreamExecutor::SynchronousMemcpy(DeviceMemoryBase *gpu_dst,
   // Tracing overloaded methods is very difficult due to issues with type
   // inference on template args. Since use of these overloaded methods is
   // discouraged anyway, this isn't a huge deal.
-  return implementation_->SynchronousMemcpy(gpu_dst, host_src, size);
+  port::Status status =
+      implementation_->SynchronousMemcpy(gpu_dst, host_src, size);
+  if (!status.ok()) {
+    LOG(ERROR) << "synchronous memcpy: " << status;
+  }
+  return status.ok();
 }
 
 bool StreamExecutor::SynchronousMemcpy(void *host_dst,
@@ -463,7 +507,12 @@ bool StreamExecutor::SynchronousMemcpy(void *host_dst,
           << ", gpu_src=" << gpu_src.opaque() << ", size=" << size << ") D2H"
           << StackTraceIfVLOG10();
 
-  return implementation_->SynchronousMemcpy(host_dst, gpu_src, size);
+  port::Status status =
+      implementation_->SynchronousMemcpy(host_dst, gpu_src, size);
+  if (!status.ok()) {
+    LOG(ERROR) << "synchronous memcpy: " << status;
+  }
+  return status.ok();
 }
 
 bool StreamExecutor::SynchronousMemcpy(DeviceMemoryBase *gpu_dst,
@@ -473,8 +522,12 @@ bool StreamExecutor::SynchronousMemcpy(DeviceMemoryBase *gpu_dst,
           << gpu_dst->opaque() << ", gpu_src=" << gpu_src.opaque()
           << ", size=" << size << ") D2D" << StackTraceIfVLOG10();
 
-  return implementation_->SynchronousMemcpyDeviceToDevice(gpu_dst, gpu_src,
-                                                          size);
+  port::Status status =
+      implementation_->SynchronousMemcpyDeviceToDevice(gpu_dst, gpu_src, size);
+  if (!status.ok()) {
+    LOG(ERROR) << "synchronous memcpy: " << status;
+  }
+  return status.ok();
 }
 
 port::Status StreamExecutor::SynchronousMemcpyD2H(
@@ -487,13 +540,15 @@ port::Status StreamExecutor::SynchronousMemcpyD2H(
   SCOPED_TRACE(TraceListener::SynchronousMemcpyD2H,
                &result, gpu_src, size, host_dst);
 
-  if (!implementation_->SynchronousMemcpy(host_dst, gpu_src, size)) {
+  port::Status status =
+      implementation_->SynchronousMemcpy(host_dst, gpu_src, size);
+  if (!status.ok()) {
     return port::Status{
         port::error::INTERNAL,
         port::Printf(
             "failed to synchronously memcpy device-to-host: GPU %p to host %p "
-            "size %lld",
-            gpu_src.opaque(), host_dst, size)};
+            "size %lld: %s",
+            gpu_src.opaque(), host_dst, size, status.ToString().c_str())};
   }
 
   return result;
@@ -510,12 +565,15 @@ port::Status StreamExecutor::SynchronousMemcpyH2D(const void *host_src,
   SCOPED_TRACE(TraceListener::SynchronousMemcpyH2D,
                &result, host_src, size, gpu_dst);
 
-  if (!implementation_->SynchronousMemcpy(gpu_dst, host_src, size)) {
+  port::Status status =
+      implementation_->SynchronousMemcpy(gpu_dst, host_src, size);
+  if (!status.ok()) {
     result = port::Status{
         port::error::INTERNAL,
         port::Printf("failed to synchronously memcpy host-to-device: host "
-                     "%p to GPU %p size %lld",
-                     host_src, gpu_dst->opaque(), size)};
+                     "%p to GPU %p size %lld: %s",
+                     host_src, gpu_dst->opaque(), size,
+                     status.ToString().c_str())};
   }
 
   return result;
@@ -619,11 +677,6 @@ DeviceDescription *StreamExecutor::PopulateDeviceDescription() const {
 
 bool StreamExecutor::DeviceMemoryUsage(int64 *free, int64 *total) const {
   return implementation_->DeviceMemoryUsage(free, total);
-}
-
-KernelArg StreamExecutor::DeviceMemoryToKernelArg(
-    const DeviceMemoryBase &gpu_mem) const {
-  return implementation_->DeviceMemoryToKernelArg(gpu_mem);
 }
 
 void StreamExecutor::EnqueueOnBackgroundThread(std::function<void()> task) {

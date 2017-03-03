@@ -1,0 +1,1023 @@
+<!--
+@license
+Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+<link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../tf-dashboard-common/tensorboard-color.html">
+<link rel="import" href="tf-graph-minimap.html">
+
+<!--
+  A module that takes a render hierarchy as input and produces an SVG DOM using
+  dagre and d3.
+-->
+<dom-module id="tf-graph-scene">
+<template>
+<style>
+:host {
+  display: flex;
+  width: 100%;
+  font-size: 20px;
+}
+
+::content #svg {
+  overflow: hidden;
+  flex: 1;
+  height: 100%;
+  width: 100%;
+}
+
+::content #hidden {
+  position: fixed;
+  top: 0px;
+  visibility: hidden;
+}
+
+/* --- Node and annotation-node for Metanode --- */
+
+::content .meta > .nodeshape > rect,
+::content .meta > .annotation-node > rect {
+  cursor: pointer;
+  fill: hsl(0, 0%, 70%);
+}
+
+::content .node.meta.highlighted > .nodeshape > rect,
+::content .node.meta.highlighted > .annotation-node > rect {
+  stroke-width: 2;
+}
+
+::content .annotation.meta.highlighted > .nodeshape > rect,
+::content .annotation.meta.highlighted > .annotation-node > rect {
+  stroke-width: 1;
+}
+
+::content .meta.selected > .nodeshape > rect,
+::content .meta.selected > .annotation-node > rect {
+  stroke: red;
+  stroke-width: 2;
+}
+
+::content .node.meta.selected.expanded > .nodeshape > rect,
+::content .node.meta.selected.expanded > .annotation-node > rect {
+  stroke: red;
+  stroke-width: 3;
+}
+
+::content .annotation.meta.selected > .nodeshape > rect,
+::content .annotation.meta.selected > .annotation-node > rect {
+  stroke: red;
+  stroke-width: 2;
+}
+
+::content .node.meta.selected.expanded.highlighted > .nodeshape > rect,
+::content .node.meta.selected.expanded.highlighted > .annotation-node > rect {
+  stroke: red;
+  stroke-width: 4;
+}
+
+::content .faded,
+::content .faded rect,
+::content .faded ellipse,
+::content .faded path,
+::content .faded use,
+::content #rectHatch line,
+::content #ellipseHatch line {
+  color: #e0d4b3 !important;
+  fill: white;
+  stroke: #e0d4b3 !important;
+}
+
+
+::content .faded path {
+  stroke-width: 1px !important;
+}
+
+::content .faded rect {
+  fill: url(#rectHatch) !important;
+}
+
+::content .faded ellipse,
+::content .faded use {
+  fill: url(#ellipseHatch) !important;
+}
+
+::content .faded text {
+  opacity: 0;
+}
+
+/* Rules used for input-tracing. */
+::content .input-highlight > * > rect,
+::content .input-highlight > * > ellipse,
+::content .input-highlight > * > use
+{
+  fill: white;
+  stroke: #ff9800 !important;
+}
+
+/*  - Faded non-input styling */
+::content .non-input > * > rect,
+::content .non-input > * > ellipse,
+::content .non-input > * > use,
+/* For Const nodes. */
+::content .non-input > * > .constant:not([class*="input-highlight"]) >
+  .annotation-node > ellipse,
+/* For styling of annotation nodes of non-input nodes. */
+::content .non-input > g > .annotation > .annotation-node > rect {
+  stroke: #e0d4b3 !important;
+  stroke-width: inherit;
+  stroke-dasharray: inherit;
+}
+
+
+::content .non-input path {
+  visibility: hidden;
+}
+
+::content .non-input > .nodeshape > rect,
+::content .non-input > .annotation-node > rect,
+/* For styling of annotation nodes of non-input nodes. */
+::content .non-input > g > .annotation > .annotation-node > rect
+{
+  fill: url(#rectHatch) !important;
+}
+
+::content .non-input ellipse,
+::content .non-input use {
+  fill: url(#ellipseHatch) !important;
+}
+
+::content .non-input > text {
+  opacity: 0;
+}
+
+::content .non-input .annotation > .annotation-edge {
+  marker-end: url(#annotation-arrowhead-faded);
+}
+
+::content .non-input .annotation > .annotation-edge.refline {
+  marker-start: url(#ref-annotation-arrowhead-faded);
+}
+
+/* Input edges. */
+::content .input-edge-highlight > text {
+  fill: black !important;
+}
+::content .input-edge-highlight > path,
+::content .input-highlight > .in-annotations > .annotation > .annotation-edge,
+::content .input-highlight-selected > .in-annotations > .annotation >
+.annotation-edge {
+  stroke: #999 !important;
+}
+
+/* Non-input edges. */
+::content .non-input-edge-highlight,
+::content .non-input > g > .annotation > path,
+/* Annotation styles (label and edges respectively). */
+::content .non-input > g >
+.annotation:not(.input-highlight):not(.input-highlight-selected) >
+.annotation-label
+/*.annotation-edge*/
+{
+  visibility: hidden;
+}
+
+/* --- Op Node --- */
+
+::content .op > .nodeshape > ellipse,
+::content .op > .annotation-node > ellipse {
+  cursor: pointer;
+  fill: #fff;
+  stroke: #ccc;
+}
+
+::content .op.selected > .nodeshape > ellipse,
+::content .op.selected > .annotation-node > ellipse {
+  stroke: red;
+  stroke-width: 2;
+}
+
+::content .op.highlighted > .nodeshape > ellipse,
+::content .op.highlighted > .annotation-node > ellipse {
+  stroke-width: 2;
+}
+
+/* --- Series Node --- */
+
+/* By default, don't show the series background <rect>. */
+::content .series > .nodeshape > rect {
+  fill: hsl(0, 0%, 70%);
+  fill-opacity: 0;
+  stroke-dasharray: 5, 5;
+  stroke-opacity: 0;
+  cursor: pointer;
+}
+
+/* Once expanded, show the series background <rect> and hide the <use>. */
+::content .series.expanded > .nodeshape > rect {
+  fill-opacity: 0.15;
+  stroke: hsl(0, 0%, 70%);
+  stroke-opacity: 1;
+}
+::content .series.expanded > .nodeshape > use {
+  visibility: hidden;
+}
+
+/**
+ * TODO(jimbo): Simplify this by applying a stable class name to all <g>
+ * elements that currently have either the nodeshape or annotation-node classes.
+ */
+::content .series > .nodeshape > use ,
+::content .series > .annotation-node > use {
+  stroke: #ccc;
+}
+::content .series.highlighted > .nodeshape > use ,
+::content .series.highlighted > .annotation-node > use {
+  stroke-width: 2;
+}
+::content .series.selected > .nodeshape > use ,
+::content .series.selected > .annotation-node > use {
+  stroke: red;
+  stroke-width: 2;
+}
+
+::content .series.selected > .nodeshape > rect {
+  stroke: red;
+  stroke-width: 2;
+}
+
+::content .annotation.series.selected > .annotation-node > use {
+  stroke: red;
+  stroke-width: 2;
+}
+
+/* --- Bridge Node --- */
+::content .bridge > .nodeshape > rect {
+  stroke: #f0f;
+  opacity: 0.2;
+  display: none;
+}
+
+/* --- Structural Elements --- */
+::content .edge > path.edgeline.structural {
+  stroke: #f0f;
+  opacity: 0.2;
+  display: none;
+}
+
+/* --- Series Nodes --- */
+
+/* Hide the rect for a series' annotation. */
+::content .series > .annotation-node > rect {
+  display: none;
+}
+
+/* --- Node label --- */
+
+
+::content .node > text.nodelabel {
+  cursor: pointer;
+  fill: #444;
+}
+
+::content .meta.expanded > text.nodelabel {
+  font-size: 9px;
+}
+
+::content .series > text.nodelabel {
+  font-size: 8px;
+}
+
+::content .op > text.nodelabel {
+  font-size: 6px;
+}
+
+::content .bridge > text.nodelabel {
+  display: none;
+}
+
+::content .node.meta.expanded > text.nodelabel{
+  cursor: normal;
+}
+
+::content .annotation.meta.highlighted > text.annotation-label {
+  fill: #50A3F7;
+}
+
+::content .annotation.meta.selected > text.annotation-label {
+  fill: #4285F4;
+}
+
+/* --- Annotation --- */
+
+/* only applied for annotations that are not summary or constant.
+(.summary, .constant gets overriden below) */
+::content .annotation > .annotation-node > * {
+  stroke-width: 0.5;
+  stroke-dasharray: 1, 1;
+}
+
+::content .annotation.summary > .annotation-node > *,
+::content .annotation.constant > .annotation-node > * {
+  stroke-width: 1;
+  stroke-dasharray: none;
+}
+
+::content .annotation > .annotation-edge {
+  fill: none;
+  stroke: #aaa;
+  stroke-width: 0.5;
+  marker-end: url(#annotation-arrowhead);
+}
+
+::content .faded .annotation > .annotation-edge {
+  marker-end: url(#annotation-arrowhead-faded);
+}
+
+::content .annotation > .annotation-edge.refline {
+  marker-start: url(#ref-annotation-arrowhead);
+}
+
+::content .faded .annotation > .annotation-edge.refline {
+  marker-start: url(#ref-annotation-arrowhead-faded);
+}
+
+::content .annotation > .annotation-control-edge {
+  stroke-dasharray: 1, 1;
+}
+
+::content #annotation-arrowhead {
+  fill: #aaa;
+}
+
+::content #annotation-arrowhead-faded {
+  fill: #e0d4b3;
+}
+
+::content #ref-annotation-arrowhead {
+  fill: #aaa;
+}
+
+::content #ref-annotation-arrowhead-faded {
+  fill: #e0d4b3;
+}
+
+::content .annotation > .annotation-label {
+  font-size: 5px;
+  cursor: pointer;
+}
+::content .annotation > .annotation-label.annotation-ellipsis {
+  cursor: default;
+}
+
+/* Hide annotations on expanded meta nodes since they're redundant. */
+::content .expanded > .in-annotations,
+::content .expanded > .out-annotations {
+  display: none;
+}
+
+/* --- Annotation: Constant --- */
+
+::content .constant > .annotation-node > ellipse {
+  cursor: pointer;
+  fill: white;
+  stroke: #848484;
+}
+
+::content .constant.selected > .annotation-node > ellipse {
+  fill: white;
+  stroke: red;
+}
+
+::content .constant.highlighted > .annotation-node > ellipse {
+  stroke-width: 1.5;
+}
+
+/* --- Annotation: Summary --- */
+
+::content .summary > .annotation-node > ellipse {
+  cursor: pointer;
+  fill: #DB4437;
+  stroke: #DB4437;
+}
+
+::content .summary.selected > .annotation-node > ellipse {
+  fill: #A52714;
+  stroke: #A52714;
+}
+
+::content .summary.highlighted > .annotation-node > ellipse {
+  stroke-width: 1.5;
+}
+
+/* --- Edge --- */
+
+::content .edge > path.edgeline {
+  fill: none;
+  stroke: #bbb;
+  stroke-linecap: round;
+  stroke-width: 0.75;
+}
+
+/* Labels showing tensor shapes on edges */
+::content .edge > text {
+  font-size: 3.5px;
+  fill: #666;
+}
+
+::content .ref-arrowhead {
+  fill: #bbb;
+}
+
+::content .edge .control-dep {
+  stroke-dasharray: 2, 2;
+}
+
+/* --- Group node expand/collapse button --- */
+
+/* Hides expand/collapse buttons when a node isn't expanded or highlighted. Using
+   incredibly small opacity so that the bounding box of the <g> parent still takes
+   this container into account even when it isn't visible */
+::content .node:not(.highlighted):not(.expanded) > .nodeshape > .buttoncontainer {
+  opacity: 0.01;
+}
+::content .node.highlighted > .nodeshape > .buttoncontainer {
+  cursor: pointer;
+}
+::content .buttoncircle {
+  fill: #E7811D;
+}
+::content .buttoncircle:hover {
+  fill: #B96717;
+}
+::content .expandbutton,
+::content .collapsebutton {
+  stroke: white;
+}
+/* Do not let the path elements in the button take pointer focus */
+::content .node > .nodeshape > .buttoncontainer > .expandbutton,
+::content .node > .nodeshape > .buttoncontainer > .collapsebutton {
+  pointer-events: none;
+}
+/* Only show the expand button when a node is collapsed and only show the
+   collapse button when a node is expanded. */
+::content .node.expanded > .nodeshape > .buttoncontainer > .expandbutton {
+  display: none;
+}
+::content .node:not(.expanded) > .nodeshape > .buttoncontainer > .collapsebutton {
+  display: none;
+}
+
+::content .health-pill-stats {
+  font-size: 4px;
+  text-anchor: middle;
+}
+
+::content .health-pill rect {
+  filter: url(#health-pill-shadow);
+  rx: 3;
+  ry: 3;
+}
+
+.titleContainer {
+  position: relative;
+  top: 20px;
+}
+
+.title {
+  position: absolute;
+}
+
+.auxTitle {
+  position: absolute;
+}
+
+#minimap {
+  position: absolute;
+  right: 20px;
+  bottom: 20px;
+}
+</style>
+<div class="titleContainer">
+  <div id="title" class="title">Main Graph</div>
+  <div id="auxTitle" class="auxTitle">Auxiliary Nodes</div>
+</div>
+<svg id="svg">
+  <defs>
+
+    <!-- Arrow heads for edge paths of different predefined sizes. -->
+    <path id="ref-arrowhead-path" d="M 10,0 L 0,5 L 10,10 C 7,7 7,3 10,0"/>
+    <marker class="ref-arrowhead" id="ref-arrowhead-small" viewBox="0 0 10 10" markerWidth="10" markerHeight="10"
+      refX="8" refY="5" orient="auto" markerUnits="userSpaceOnUse">
+      <use xlink:href="#ref-arrowhead-path" />
+    </marker>
+    <marker class="ref-arrowhead" id="ref-arrowhead-medium" viewBox="0 0 10 10" markerWidth="13" markerHeight="13"
+        refX="8" refY="5" orient="auto" markerUnits="userSpaceOnUse">
+      <use xlink:href="#ref-arrowhead-path" />
+    </marker>
+    <marker class="ref-arrowhead" id="ref-arrowhead-large" viewBox="0 0 10 10" markerWidth="16" markerHeight="16"
+        refX="8" refY="5" orient="auto" markerUnits="userSpaceOnUse">
+      <use xlink:href="#ref-arrowhead-path" />
+    </marker>
+    <marker class="ref-arrowhead" id="ref-arrowhead-xlarge" viewBox="0 0 10 10" markerWidth="20" markerHeight="20"
+        refX="8" refY="5" orient="auto" markerUnits="userSpaceOnUse">
+      <use xlink:href="#ref-arrowhead-path" />
+    </marker>
+
+    <!-- Arrow head for annotation edge paths. -->
+    <marker id="annotation-arrowhead" markerWidth="5" markerHeight="5"
+      refX="5" refY="2.5" orient="auto">
+      <path d="M 0,0 L 5,2.5 L 0,5 L 0,0"/>
+    </marker>
+    <marker id="annotation-arrowhead-faded" markerWidth="5" markerHeight="5"
+      refX="5" refY="2.5" orient="auto">
+      <path d="M 0,0 L 5,2.5 L 0,5 L 0,0"/>
+    </marker>
+    <marker id="ref-annotation-arrowhead" markerWidth="5" markerHeight="5"
+      refX="0" refY="2.5" orient="auto">
+      <path d="M 5,0 L 0,2.5 L 5,5 L 5,0"/>
+    </marker>
+    <marker id="ref-annotation-arrowhead-faded" markerWidth="5" markerHeight="5"
+      refX="0" refY="2.5" orient="auto">
+      <path d="M 5,0 L 0,2.5 L 5,5 L 5,0"/>
+    </marker>
+    <!-- Template for an Op node ellipse. -->
+    <ellipse id="op-node-stamp"
+        rx="7.5" ry="3" stroke="inherit" fill="inherit" />
+    <!-- Template for an Op node annotation ellipse (smaller). -->
+    <ellipse id="op-node-annotation-stamp"
+        rx="5" ry="2" stroke="inherit" fill="inherit" />
+    <!-- Vertically stacked series of Op nodes when unexpanded. -->
+    <g id="op-series-vertical-stamp">
+      <use xlink:href="#op-node-stamp" x="8" y="9" />
+      <use xlink:href="#op-node-stamp" x="8" y="6" />
+      <use xlink:href="#op-node-stamp" x="8" y="3" />
+    </g>
+    <!-- Horizontally stacked series of Op nodes when unexpanded. -->
+    <g id="op-series-horizontal-stamp">
+      <use xlink:href="#op-node-stamp" x="16" y="4" />
+      <use xlink:href="#op-node-stamp" x="12" y="4" />
+      <use xlink:href="#op-node-stamp" x="8" y="4" />
+    </g>
+    <!-- Horizontally stacked series of Op nodes for annotation. -->
+    <g id="op-series-annotation-stamp">
+      <use xlink:href="#op-node-annotation-stamp" x="9" y="2" />
+      <use xlink:href="#op-node-annotation-stamp" x="7" y="2" />
+      <use xlink:href="#op-node-annotation-stamp" x="5" y="2" />
+    </g>
+    <svg id="summary-icon" fill="#848484" height="12" viewBox="0 0 24 24" width="12">
+      <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z" />
+    </svg>
+    <!--
+      Where the linearGradient for each node is stored. Used when coloring
+      by proportions of devices.
+    -->
+    <g id="linearGradients"></g>
+
+    <!-- Hatch patterns for faded out nodes. -->
+    <pattern id="rectHatch" patternTransform="rotate(45 0 0)" width="5" height="5" patternUnits="userSpaceOnUse">
+      <line x1="0" y1="0" x2="0" y2="5" style="stroke-width: 1"/>
+    </pattern>
+    <pattern id="ellipseHatch" patternTransform="rotate(45 0 0)" width="2" height="2" patternUnits="userSpaceOnUse">
+      <line x1="0" y1="0" x2="0" y2="2" style="stroke-width: 1"/>
+    </pattern>
+
+    <!-- A shadow for health pills. -->
+    <filter id="health-pill-shadow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="0.8"/>
+      <feOffset dx="0" dy="0" result="offsetblur"/>
+      <feFlood flood-color="#000000"/>
+      <feComposite in2="offsetblur" operator="in"/>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <!-- Make a large rectangle that fills the svg space so that
+  zoom events get captured on safari -->
+  <rect fill="white" width="10000" height="10000"></rect>
+  <g id="root"></g>
+</svg>
+<tf-graph-minimap id="minimap"></tf-graph-minimap>
+</template>
+<script>
+Polymer({
+  is: 'tf-graph-scene',
+  properties: {
+    renderHierarchy: Object,
+    name: String,
+    colorBy: String,
+    /** @type {d3_zoom} d3 zoom object */
+    _zoom: Object,
+    highlightedNode: {
+      type: String,
+      observer: '_highlightedNodeChanged'
+    },
+    selectedNode: {
+      type: String,
+      observer: '_selectedNodeChanged'
+    },
+    /** Keeps track of if the graph has been zoomed/panned since loading */
+    _zoomed: {
+      type: Boolean,
+      observer: '_onZoomChanged',
+      value: false
+    },
+    /** Keeps track of the starting coordinates of a graph zoom/pan */
+    _zoomStartCoords: {
+      type: Array,
+      value: null
+    },
+    /** Keeps track of the current coordinates of a graph zoom/pan */
+    _zoomCoords: {
+      type: Array,
+      value: null
+    },
+    /** Maximum distance of a zoom event for it to be interpreted as a click */
+    _maxZoomDistanceForClick: {
+      type: Number,
+      value: 20
+    },
+    /**
+     * @type {d3.scale.ordinal}
+     * Scale mapping from template name to a number between 0 and N-1
+     * where N is the number of different template names. Used by
+     * tf.graph.scene.node when computing node color by structure.
+     */
+    templateIndex: Function,
+    /**
+     * @type {tf.scene.Minimap}
+     * A minimap object to notify for zoom events.
+     */
+    minimap: Object,
+    /*
+     * Dictionary for easily stylizing nodes when state changes.
+     * _nodeGroupIndex[nodeName] = d3_selection of the nodeGroup
+     */
+    _nodeGroupIndex: {
+      type: Object,
+      value: function() { return {}; }
+    },
+    /*
+     * Dictionary for easily stylizing annotation nodes when state changes.
+     * _annotationGroupIndex[nodeName][hostNodeName] =
+     *   d3_selection of the annotationGroup
+     */
+    _annotationGroupIndex: {
+      type: Object,
+      value: function() { return {}; }
+    },
+    /*
+     * Dictionary for easily stylizing edges when state changes.
+     * _edgeGroupIndex[edgeName] = d3_selection of the edgeGroup
+     */
+    _edgeGroupIndex: {
+      type: Object,
+      value: function() { return {}; }
+    },
+    /**
+     * Max font size for metanode label strings.
+     */
+    maxMetanodeLabelLengthFontSize: {
+      type: Number,
+      value: 9
+    },
+    /**
+     * Min font size for metanode label strings.
+     */
+    minMetanodeLabelLengthFontSize: {
+      type: Number,
+      value: 6
+    },
+    /**
+     * Metanode label strings longer than this are given smaller fonts.
+     */
+    maxMetanodeLabelLengthLargeFont: {
+      type: Number,
+      value: 11
+    },
+    /**
+     * Metanode label strings longer than this are truncated with ellipses.
+     */
+    maxMetanodeLabelLength: {
+      type: Number,
+      value: 18
+    },
+    progress: Object,
+    // A mapping between node name to the tf.graph.scene.HealthPill to render.
+    nodeNamesToHealthPills: Object,
+    // The step of health pills to show throughout the graph.
+    healthPillStepIndex: Number,
+  },
+  observers: [
+    '_colorByChanged(colorBy)',
+    '_buildAndFit(renderHierarchy)',
+    '_updateHealthPills(nodeNamesToHealthPills, healthPillStepIndex)',
+  ],
+  getNode: function(nodeName) {
+    return this.renderHierarchy.getRenderNodeByName(nodeName);
+  },
+  isNodeExpanded: function(node) {
+    return node.expanded;
+  },
+  setNodeExpanded: function(renderNode) {
+    this._build(this.renderHierarchy);
+    this._updateLabels(!this._zoomed);
+  },
+  /**
+   * Resets the state of the component. Called whenever the whole graph
+   * (dataset) changes.
+   */
+  _resetState: function() {
+    // Reset the state of the component.
+    this._nodeGroupIndex = {};
+    this._annotationGroupIndex = {};
+    this._edgeGroupIndex = {};
+    this._updateLabels(false);
+    // Remove all svg elements under the 'root' svg group.
+    d3.select(this.$.svg).select('#root').selectAll('*').remove();
+    // And the defs.
+    d3.select(this.$.svg).select('defs #linearGradients')
+        .selectAll('*').remove();
+  },
+  /** Main method for building the scene */
+  _build: function(renderHierarchy) {
+    this.templateIndex = renderHierarchy.hierarchy.getTemplateIndex();
+    tf.graph.util.time('tf-graph-scene (layout):', function() {
+      // layout the scene for this meta / series node
+      tf.graph.layout.layoutScene(renderHierarchy.root, this);
+    }.bind(this));
+
+    tf.graph.util.time('tf-graph-scene (build scene):', function() {
+      tf.graph.scene.buildGroup(d3.select(this.$.root), renderHierarchy.root, this);
+      tf.graph.scene.addGraphClickListener(this.$.svg, this);
+      tf.graph.scene.node.traceInputs(renderHierarchy);
+    }.bind(this));
+    // Update the minimap again when the graph is done animating.
+    setTimeout(function() {
+      this._updateHealthPills(this.nodeNamesToHealthPills, this.healthPillStepIndex);
+      this.minimap.update();
+    }.bind(this), tf.graph.layout.PARAMS.animation.duration);
+  },
+  ready: function() {
+    this._zoom = d3.behavior.zoom()
+      .on('zoomend', function() {
+        if (this._zoomStartCoords) {
+          // Calculate the total distance dragged during the zoom event.
+          // If it is sufficiently small, then fire an event indicating
+          // that zooming has ended. Otherwise wait to fire the zoom end
+          // event, so that a mouse click registered as part of this zooming
+          // is ignored (as this mouse click was part of a zooming, and should
+          // not be used to indicate an actual click on the graph).
+          var dragDistance = Math.sqrt(
+            Math.pow(this._zoomStartCoords[0] - this._zoomCoords[0], 2) +
+            Math.pow(this._zoomStartCoords[1] - this._zoomCoords[1], 2));
+          if (dragDistance < this._maxZoomDistanceForClick) {
+            this._fireEnableClick();
+          } else {
+            setTimeout(this._fireEnableClick.bind(this), 50);
+          }
+        }
+        this._zoomStartCoords = null;
+      }.bind(this))
+      .on('zoom', function() {
+        // Store the coordinates of the zoom event
+        this._zoomCoords = d3.event.translate;
+
+        // If this is the first zoom event after a zoom-end, then
+        // store the coordinates as the start coordinates as well,
+        // and fire an event to indicate that zooming has started.
+        // This doesn't use the zoomstart event, as d3 sends this
+        // event on mouse-down, even if there has been no dragging
+        // done to translate the graph around.
+        if (!this._zoomStartCoords) {
+          this._zoomStartCoords = this._zoomCoords.slice();
+          this.fire('disable-click');
+        }
+        this._zoomed = true;
+        d3.select(this.$.root).attr('transform',
+                    'translate(' + d3.event.translate + ')' +
+                    'scale(' + d3.event.scale + ')');
+        // Notify the minimap.
+        this.minimap.zoom(d3.event.translate, d3.event.scale);
+      }.bind(this));
+    d3.select(this.$.svg).call(this._zoom)
+      .on('dblclick.zoom', null);
+    d3.select(window).on('resize', function() {
+      // Notify the minimap that the user's window was resized.
+      // The minimap will figure out the new dimensions of the main svg
+      // and will use the existing translate and scale params.
+      this.minimap.zoom();
+    }.bind(this));
+    // Initialize the minimap.
+    this.minimap = this.$.minimap.init(this.$.svg, this.$.root, this._zoom,
+        tf.graph.layout.PARAMS.minimap.size,
+        tf.graph.layout.PARAMS.subscene.meta.labelHeight);
+  },
+  _buildAndFit: function(renderHierarchy) {
+    this._resetState();
+    this._build(renderHierarchy);
+    // Fit to screen after the graph is done animating.
+    setTimeout(this.fit.bind(this), tf.graph.layout.PARAMS.animation.duration);
+  },
+  _updateLabels: function(showLabels) {
+    var mainGraphTitleElement = this.getElementsByClassName('title')[0];
+    var titleStyle = mainGraphTitleElement.style;
+    var auxTitleStyle = this.getElementsByClassName('auxTitle')[0].style;
+    var core = d3.select("." + tf.graph.scene.Class.Scene.GROUP + ">." +
+      tf.graph.scene.Class.Scene.CORE)[0][0];
+    // Only show labels if the graph is fully loaded.
+    if (showLabels && core && this.progress && this.progress.value === 100) {
+      var aux =
+        d3.select("." + tf.graph.scene.Class.Scene.GROUP + ">." +
+          tf.graph.scene.Class.Scene.INEXTRACT)[0][0] ||
+        d3.select("." + tf.graph.scene.Class.Scene.GROUP + ">." +
+          tf.graph.scene.Class.Scene.OUTEXTRACT)[0][0];
+      var coreX = core.getCTM().e;
+      var auxX = aux ? aux.getCTM().e : null;
+      titleStyle.display = 'inline';
+      titleStyle.left = coreX + 'px';
+      if (auxX !== null && auxX !== coreX) {
+        auxTitleStyle.display = 'inline';
+
+        // Make sure that the aux title is positioned rightwards enough so as to
+        // prevent overlap with the main graph title.
+        auxX = Math.max(
+            coreX + mainGraphTitleElement.getBoundingClientRect().width, auxX);
+
+        auxTitleStyle.left = auxX + 'px';
+      } else {
+        auxTitleStyle.display = 'none';
+      }
+    } else {
+      titleStyle.display='none';
+      auxTitleStyle.display = 'none';
+    }
+  },
+  /**
+    * Called whenever the user changed the 'color by' option in the
+    * UI controls.
+    */
+  _colorByChanged: function() {
+    if (this.renderHierarchy != null) {
+      // We iterate through each svg node and update its state.
+      _.each(this._nodeGroupIndex, function(nodeGroup, nodeName) {
+        this._updateNodeState(nodeName);
+      }, this);
+      // Notify also the minimap.
+      this.minimap.update();
+    }
+  },
+  fit: function() {
+    tf.graph.scene.fit(this.$.svg, this.$.root, this._zoom, function() {
+      this._zoomed = false;
+    }.bind(this));
+  },
+  isNodeSelected: function(n) {
+    return n === this.selectedNode;
+  },
+  isNodeHighlighted: function(n) {
+    return n === this.highlightedNode;
+  },
+  addAnnotationGroup: function(a, d, selection) {
+    var an = a.node.name;
+    this._annotationGroupIndex[an] = this._annotationGroupIndex[an] || {};
+    this._annotationGroupIndex[an][d.node.name] = selection;
+  },
+  getAnnotationGroupsIndex: function(a) {
+    return this._annotationGroupIndex[a];
+  },
+  removeAnnotationGroup: function(a, d) {
+    delete this._annotationGroupIndex[a.node.name][d.node.name];
+  },
+  addNodeGroup: function(n, selection) {
+    this._nodeGroupIndex[n] = selection;
+  },
+  getNodeGroup: function(n) {
+    return this._nodeGroupIndex[n];
+  },
+  removeNodeGroup: function(n) {
+    delete this._nodeGroupIndex[n];
+  },
+  addEdgeGroup: function(n, selection) {
+    this._edgeGroupIndex[e] = selection;
+  },
+  getEdgeGroup: function(e) {
+    return this._edgeGroupIndex[e];
+  },
+  _updateHealthPills: function(nodeNamesToHealthPills, healthPillStepIndex) {
+    tf.graph.scene.addHealthPills(
+        this.$.svg, nodeNamesToHealthPills, healthPillStepIndex);
+  },
+  /**
+   * Update node and annotation node of the given name.
+   * @param  {String} n node name
+   */
+  _updateNodeState: function(n) {
+    var node = this.getNode(n);
+    var nodeGroup = this.getNodeGroup(n);
+
+    if (nodeGroup) {
+      tf.graph.scene.node.stylize(nodeGroup, node, this);
+    }
+
+    var annotationGroupIndex = this.getAnnotationGroupsIndex(n);
+    _.each(annotationGroupIndex, function(aGroup, hostName) {
+      tf.graph.scene.node.stylize(aGroup, node, this,
+          tf.graph.scene.Class.Annotation.NODE);
+    }, this);
+  },
+
+  /**
+   * Handles new node selection. 1) Updates the selected-state of each node,
+   * 2) triggers input tracing.
+   * @param selectedNode {string} The name of the newly selected node.
+   * @param oldSelectedNode {string} The name of the previously selected node.
+   * @private
+   */
+  _selectedNodeChanged: function(selectedNode, oldSelectedNode) {
+    if (selectedNode === oldSelectedNode) {
+      return;
+    }
+
+    if (selectedNode) {
+      this._updateNodeState(selectedNode);
+    }
+    if (oldSelectedNode) {
+      this._updateNodeState(oldSelectedNode);
+    }
+
+    tf.graph.scene.node.traceInputs(this.renderHierarchy);
+
+    if (!selectedNode) {
+      return;
+    }
+
+
+    // Update the minimap to reflect the highlighted (selected) node.
+    this.minimap.update();
+    var node = this.renderHierarchy.hierarchy.node(selectedNode);
+    var nodeParents = [];
+    // Create list of all metanode parents of the selected node.
+    while (node.parentNode != null
+        && node.parentNode.name != tf.graph.ROOT_NAME) {
+      node = node.parentNode;
+      nodeParents.push(node.name);
+    }
+    // Ensure each parent metanode is built and expanded.
+    var topParentNodeToBeExpanded;
+    _.forEachRight(nodeParents, function(parentName) {
+      this.renderHierarchy.buildSubhierarchy(parentName);
+      var renderNode = this.renderHierarchy.getRenderNodeByName(parentName);
+      if (renderNode.node.isGroupNode && !renderNode.expanded) {
+        renderNode.expanded = true;
+        if (!topParentNodeToBeExpanded) {
+          topParentNodeToBeExpanded = renderNode;
+        }
+      }
+    }, this);
+    // If any expansion was needed to display this selected node, then
+    // inform the scene of the top-most expansion.
+    if (topParentNodeToBeExpanded) {
+      this.setNodeExpanded(topParentNodeToBeExpanded);
+      this._zoomed = true;
+    }
+
+    if (tf.graph.scene.panToNode(selectedNode, this.$.svg, this.$.root,
+        this._zoom)) {
+      this._zoomed = true;
+    }
+  },
+  _highlightedNodeChanged: function(highlightedNode, oldHighlightedNode) {
+    if (highlightedNode === oldHighlightedNode) {
+      return;
+    }
+
+    if (highlightedNode) {
+      this._updateNodeState(highlightedNode);
+    }
+    if (oldHighlightedNode) {
+      this._updateNodeState(oldHighlightedNode);
+    }
+  },
+  _onZoomChanged: function() {
+    this._updateLabels(!this._zoomed);
+  },
+  _fireEnableClick: function() {
+    this.fire('enable-click');
+  },
+});
+</script>
+</dom-module>

@@ -1,17 +1,20 @@
-"""Implements preprocesing transformers for categorical variables."""
-#  Copyright 2015-present The Scikit Flow Authors. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
-#  Licensed under the Apache License, Version 2.0 (the "License");
-#  you may not use this file except in compliance with the License.
-#  You may obtain a copy of the License at
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
 #
-#   http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
-#  Unless required by applicable law or agreed to in writing, software
-#  distributed under the License is distributed on an "AS IS" BASIS,
-#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-#  See the License for the specific language governing permissions and
-#  limitations under the License.
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
+"""Implements preprocessing transformers for categorical variables."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -19,8 +22,10 @@ from __future__ import print_function
 import math
 import numpy as np
 
+# pylint: disable=g-bad-import-order
 from . import categorical_vocabulary
-from ..io.data_feeder import setup_processor_data_feeder
+from ..learn_io.data_feeder import setup_processor_data_feeder
+# pylint: enable=g-bad-import-order
 
 
 class CategoricalProcessor(object):
@@ -28,18 +33,20 @@ class CategoricalProcessor(object):
 
   As a common convention, Nan values are handled as unknown tokens.
   Both float('nan') and np.nan are accepted.
-
-  Parameters:
-    min_frequency: Minimum frequency of categories in the vocabulary.
-    share: Share vocabulary between variables.
-    vocabularies: list of CategoricalVocabulary objects for each variable in
-      the input dataset.
-
-  Attributes:
-    vocabularies_: list of CategoricalVocabulary objects.
   """
 
   def __init__(self, min_frequency=0, share=False, vocabularies=None):
+    """Initializes a CategoricalProcessor instance.
+
+    Args:
+      min_frequency: Minimum frequency of categories in the vocabulary.
+      share: Share vocabulary between variables.
+      vocabularies: list of CategoricalVocabulary objects for each variable in
+        the input dataset.
+
+    Attributes:
+      vocabularies_: list of CategoricalVocabulary objects.
+    """
     self.min_frequency = min_frequency
     self.share = share
     self.vocabularies_ = vocabularies
@@ -53,18 +60,18 @@ class CategoricalProcessor(object):
     for vocab in self.vocabularies_:
       vocab.freeze(freeze)
 
-  def fit(self, X, unused_y=None):
-    """Learn a vocabulary dictionary of all categories in X.
+  def fit(self, x, unused_y=None):
+    """Learn a vocabulary dictionary of all categories in `x`.
 
     Args:
-      X: numpy matrix or iterable of lists/numpy arrays.
+      x: numpy matrix or iterable of lists/numpy arrays.
       unused_y: to match fit format signature of estimators.
 
     Returns:
       self
     """
-    X = setup_processor_data_feeder(X)
-    for row in X:
+    x = setup_processor_data_feeder(x)
+    for row in x:
       # Create vocabularies if not given.
       if self.vocabularies_ is None:
         # If not share, one per column, else one shared across.
@@ -86,34 +93,34 @@ class CategoricalProcessor(object):
     self.freeze()
     return self
 
-  def fit_transform(self, X, unused_y=None):
+  def fit_transform(self, x, unused_y=None):
     """Learn the vocabulary dictionary and return indexies of categories.
 
     Args:
-      X: numpy matrix or iterable of lists/numpy arrays.
+      x: numpy matrix or iterable of lists/numpy arrays.
       unused_y: to match fit_transform signature of estimators.
 
     Returns:
-      X: iterable, [n_samples]. Category-id matrix.
+      x: iterable, [n_samples]. Category-id matrix.
     """
-    self.fit(X)
-    return self.transform(X)
+    self.fit(x)
+    return self.transform(x)
 
-  def transform(self, X):
+  def transform(self, x):
     """Transform documents to category-id matrix.
 
     Converts categories to ids give fitted vocabulary from `fit` or
     one provided in the constructor.
 
     Args:
-      X: numpy matrix or iterable of lists/numpy arrays.
+      x: numpy matrix or iterable of lists/numpy arrays.
 
-    Returns:
-      X: iterable, [n_samples]. Category-id matrix.
+    Yields:
+      x: iterable, [n_samples]. Category-id matrix.
     """
     self.freeze()
-    X = setup_processor_data_feeder(X)
-    for row in X:
+    x = setup_processor_data_feeder(x)
+    for row in x:
       output_row = []
       for idx, value in enumerate(row):
         # Return <UNK> when it's Nan.

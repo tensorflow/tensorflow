@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,3 +22,4 @@ from __future__ import print_function
 from tensorflow.contrib.quantization.python.array_ops import *
 from tensorflow.contrib.quantization.python.math_ops import *
 from tensorflow.contrib.quantization.python.nn_ops import *
+# pylint: enable=unused-import,wildcard-import

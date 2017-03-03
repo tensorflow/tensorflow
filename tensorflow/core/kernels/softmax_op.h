@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -40,8 +40,8 @@ class SoftmaxOp : public OpKernel {
     OP_REQUIRES(context, TensorShapeUtils::IsMatrix(logits_in.shape()),
                 errors::InvalidArgument("logits must be 2-dimensional"));
     Tensor* softmax_out = nullptr;
-    OP_REQUIRES_OK(
-        context, context->allocate_output(0, logits_in.shape(), &softmax_out));
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                {0}, 0, logits_in.shape(), &softmax_out));
     if (logits_in.NumElements()) {
       functor::SoftmaxFunctor<Device, T> functor;
       functor(context->eigen_device<Device>(), logits_in.matrix<T>(),

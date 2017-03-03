@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -326,7 +326,7 @@ TEST_F(OptimizerCSETest, Constant_Dedup) {
 
   // A graph contains a bunch of constants.
   Graph g(OpRegistry::Global());
-  for (auto val : {a, b, c, d, d, c, b, a}) {
+  for (const auto& val : {a, b, c, d, d, c, b, a}) {
     test::graph::Constant(&g, val);  // Node name is n/_0, n/_1, ...
   }
   GraphDef gdef;

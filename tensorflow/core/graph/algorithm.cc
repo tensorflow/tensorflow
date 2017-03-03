@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -132,6 +132,7 @@ bool PruneForReverseReachability(Graph* g,
 
   // Make a pass over the graph to remove nodes not in "visited"
   std::vector<Node*> all_nodes;
+  all_nodes.reserve(g->num_nodes());
   for (Node* n : g->nodes()) {
     all_nodes.push_back(n);
   }

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -183,8 +183,9 @@ bool OptimizerCSE::Equivalent(const Node* a, const Node* b, Scratch* scratch) {
 bool OptimizerCSE::Optimize(std::function<bool(const Node*)> consider_fn) {
   // This very simple implementation works if the whole graph is one
   // giant basic block (because we just traverse nodes in a
-  // topological order).  We'll need to do something more
-  // sophisticated when we have control flow/loops/etc.
+  // topological order). This simple implementation works well
+  // with control flow/loops/etc. But we need to be careful about
+  // control flow if we want to add more sophisticated CSE optimizations.
 
   // TODO(jeff): We need to handle Update nodes specially, but dealing
   // with more general control flow will also solve this issue, and for

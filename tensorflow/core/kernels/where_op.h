@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -35,7 +36,7 @@ struct NumTrue {
 
 template <typename Device, int NDIM>
 struct Where {
-  EIGEN_ALWAYS_INLINE static void Compute(
+  EIGEN_ALWAYS_INLINE static int64 Compute(
       const Device& d, typename TTypes<bool, NDIM>::ConstTensor input,
       typename TTypes<int64>::Matrix output) {
     Eigen::DenseIndex true_n = 0;
@@ -52,14 +53,16 @@ struct Where {
       strides[i] = strides[i + 1] * dims[i + 1];
     }
 
-    // Note, no bounds checking is done on true_n.  It is assumed that
-    // the output was correctly sized via output of NumTrue::Compute.
+    Eigen::DenseIndex output_size = output.dimension(0);
     for (Eigen::DenseIndex n = 0; n < input.size(); ++n) {
       if (input.data()[n]) {
-        WriteIndexRowMajor(output, strides, true_n, n);
+        if (TF_PREDICT_TRUE(true_n < output_size)) {
+          WriteIndexRowMajor(output, strides, true_n, n);
+        }
         ++true_n;
       }
     }
+    return true_n;
   }
 
   EIGEN_ALWAYS_INLINE static void WriteIndexRowMajor(

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -38,13 +38,12 @@ void NodeDefBuilder::NodeOut::Reset(StringPiece n, int i, DataType dt) {
 NodeDefBuilder::NodeDefBuilder(StringPiece name, StringPiece op_name,
                                const OpRegistryInterface* op_registry) {
   node_def_.set_name(name.ToString());
-  Status status;
-  op_def_ = op_registry->LookUp(op_name.ToString(), &status);
-  if (op_def_ == nullptr) {
+  const Status status = op_registry->LookUpOpDef(op_name.ToString(), &op_def_);
+  if (status.ok()) {
+    Initialize();
+  } else {
     errors_.push_back(status.error_message());
     inputs_specified_ = 0;
-  } else {
-    Initialize();
   }
 }
 

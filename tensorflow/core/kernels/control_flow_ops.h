@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -30,6 +30,71 @@ class ControlTriggerOp : public OpKernel {
       : OpKernel(context) {}
   void Compute(OpKernelContext* context) override {}
   bool IsExpensive() override { return false; }
+};
+
+// A switch op has two inputs and two outputs. It forwards the value of
+// Input:0 to the output specified by input:1. Input:1 is a boolean tensor.
+// Input:0 is forwarded to output:0 if input:1 is false, otherwise to
+// output:1.
+class SwitchOp : public OpKernel {
+ public:
+  explicit SwitchOp(OpKernelConstruction* context) : OpKernel(context) {}
+  void Compute(OpKernelContext* context) override;
+  bool IsExpensive() override { return false; }
+  ~SwitchOp() override {}
+
+  TF_DISALLOW_COPY_AND_ASSIGN(SwitchOp);
+};
+
+// A merge op has n inputs and two outputs. It forwards the value of the
+// first input that becomes available to its first output, and the
+// index of the first input to its second output.
+class MergeOp : public OpKernel {
+ public:
+  explicit MergeOp(OpKernelConstruction* context);
+  void Compute(OpKernelContext* context) override;
+  bool IsExpensive() override { return false; }
+  ~MergeOp() override {}
+
+  TF_DISALLOW_COPY_AND_ASSIGN(MergeOp);
+};
+
+// An enter op has one input and one output. It creates or finds
+// the child frame that is uniquely identified by the frame_name,
+// and makes its input available to the child frame.
+class EnterOp : public OpKernel {
+ public:
+  explicit EnterOp(OpKernelConstruction* context) : OpKernel(context) {}
+  void Compute(OpKernelContext* context) override;
+  bool IsExpensive() override { return false; }
+  ~EnterOp() override {}
+
+  TF_DISALLOW_COPY_AND_ASSIGN(EnterOp);
+};
+
+// An exit op has one input and one output. It exits the current
+// frame to its parent frame, and makes its input available to the
+// parent frame.
+class ExitOp : public OpKernel {
+ public:
+  explicit ExitOp(OpKernelConstruction* context) : OpKernel(context) {}
+  void Compute(OpKernelContext* context) override;
+  bool IsExpensive() override { return false; }
+  ~ExitOp() override {}
+
+  TF_DISALLOW_COPY_AND_ASSIGN(ExitOp);
+};
+
+// A next_iteration op has one input and one output. It makes its input
+// available to the next iteration.
+class NextIterationOp : public OpKernel {
+ public:
+  explicit NextIterationOp(OpKernelConstruction* context) : OpKernel(context) {}
+  void Compute(OpKernelContext* context) override;
+  bool IsExpensive() override { return false; }
+  ~NextIterationOp() override {}
+
+  TF_DISALLOW_COPY_AND_ASSIGN(NextIterationOp);
 };
 
 }  // namespace tensorflow

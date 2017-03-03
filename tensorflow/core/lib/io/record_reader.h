@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,6 +18,11 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#if !defined(IS_SLIM_BUILD)
+#include "tensorflow/core/lib/io/random_inputstream.h"
+#include "tensorflow/core/lib/io/zlib_compression_options.h"
+#include "tensorflow/core/lib/io/zlib_inputstream.h"
+#endif  // IS_SLIM_BUILD
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -27,13 +32,28 @@ class RandomAccessFile;
 
 namespace io {
 
+class RecordReaderOptions {
+ public:
+  enum CompressionType { NONE = 0, ZLIB_COMPRESSION = 1 };
+  CompressionType compression_type = NONE;
+
+  static RecordReaderOptions CreateRecordReaderOptions(
+      const string& compression_type);
+
+#if !defined(IS_SLIM_BUILD)
+  // Options specific to zlib compression.
+  ZlibCompressionOptions zlib_options;
+#endif  // IS_SLIM_BUILD
+};
+
 class RecordReader {
  public:
   // Create a reader that will return log records from "*file".
   // "*file" must remain live while this Reader is in use.
-  explicit RecordReader(RandomAccessFile* file);
+  RecordReader(RandomAccessFile* file,
+               const RecordReaderOptions& options = RecordReaderOptions());
 
-  ~RecordReader();
+  virtual ~RecordReader();
 
   // Read the record at "*offset" into *record and update *offset to
   // point to the offset of the next record.  Returns OK on success,
@@ -41,7 +61,15 @@ class RecordReader {
   Status ReadRecord(uint64* offset, string* record);
 
  private:
+  Status ReadChecksummed(uint64 offset, size_t n, StringPiece* result,
+                         string* storage);
+
   RandomAccessFile* src_;
+  RecordReaderOptions options_;
+#if !defined(IS_SLIM_BUILD)
+  std::unique_ptr<RandomAccessInputStream> random_input_stream_;
+  std::unique_ptr<ZlibInputStream> zlib_input_stream_;
+#endif  // IS_SLIM_BUILD
 
   TF_DISALLOW_COPY_AND_ASSIGN(RecordReader);
 };

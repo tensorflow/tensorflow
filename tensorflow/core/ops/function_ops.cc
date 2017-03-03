@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/shape_inference.h"
 
 namespace tensorflow {
 
@@ -22,6 +23,10 @@ REGISTER_OP("_Arg")
     .Attr("T: type")
     .Attr("index: int >= 0")
     .SetIsStateful()
+    .SetShapeFn([](shape_inference::InferenceContext* context) {
+      context->set_output(0, context->UnknownShape());
+      return Status::OK();
+    })
     .Doc(R"doc(
 A graph node which represents an argument to a function.
 
@@ -34,6 +39,9 @@ REGISTER_OP("_Retval")
     .Attr("T: type")
     .Attr("index: int >= 0")
     .SetIsStateful()
+    .SetShapeFn([](shape_inference::InferenceContext* context) {
+      return Status::OK();
+    })
     .Doc(R"doc(
 A graph node which represents a return value of a function.
 

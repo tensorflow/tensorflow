@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -33,5 +33,19 @@ REGISTER_KERNEL_BUILDER(Name("Greater")
                             .TypeConstraint<int32>("T"),
                         BinaryOp<CPUDevice, functor::greater<int32>>);
 #endif
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER(BinaryOp, SYCL, "Greater", functor::greater, float);
+
+// A special GPU kernel for int32.
+// TODO(b/25387198): Also enable int32 in device memory. This kernel
+// registration requires all int32 inputs and outputs to be in host memory.
+REGISTER_KERNEL_BUILDER(Name("Greater")
+                            .Device(DEVICE_SYCL)
+                            .HostMemory("x")
+                            .HostMemory("y")
+                            .HostMemory("z")
+                            .TypeConstraint<int32>("T"),
+                        BinaryOp<CPUDevice, functor::greater<int32>>);
+#endif // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

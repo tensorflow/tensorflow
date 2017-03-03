@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,8 +31,19 @@ limitations under the License.
 
 namespace tensorflow {
 
+// START_SKIP_DOXYGEN
 class TensorShapeIter;  // Declared below
+// END_SKIP_DOXYGEN
 
+/// Represents the shape of a Tensor.
+///
+/// A tensor's shape is denoted by its number of dimensions and a size for each
+/// dimension.  For example, a Tensor represented by a 3 x 4 matrix would have
+/// a shape of 2-D, [3,4].
+///
+/// If you know the exact shape of your Tensor when you create the TensorShape
+/// object, you can specify it then, or you can create a TensorShape with
+/// zero dimensions and one element, and call AddDim() to add dimensions later.
 class TensorShape {
  public:
   /// \brief Construct a `TensorShape` from the provided sizes.
@@ -197,11 +208,10 @@ class TensorShape {
   // an extra word of storage.
   friend class Tensor;
   friend class TensorShapeTestHelper;
-  friend class BitcastOp;
   DataType data_type() const { return static_cast<DataType>(buf()[13]); }
   void set_data_type(DataType dt) {
     // We only have 8 bits available to store DataType, so make sure it fits
-    DCHECK_LT(static_cast<uint32>(dt), 256);
+    DCHECK_LT(static_cast<uint32>(dt), 256u);
     buf()[13] = static_cast<uint8>(dt);
   }
 
@@ -221,11 +231,13 @@ class TensorShape {
   int64 num_elements_;
 };
 
+/// Represents the value of one dimension in a TensorShape.
 struct TensorShapeDim {
   explicit TensorShapeDim(int64 s) : size(s) {}
   int64 size;
 };
 
+// START_SKIP_DOXYGEN
 class TensorShapeIter {
  public:
   TensorShapeIter(const TensorShape* shape, int d) : shape_(shape), d_(d) {}
@@ -244,6 +256,7 @@ class TensorShapeIter {
   const TensorShape* shape_;
   int d_;
 };
+// END_SKIP_DOXYGEN
 
 /// \brief Static helper routines for `TensorShape`. Includes a few common
 /// predicates on a tensor shape.
@@ -259,6 +272,10 @@ class TensorShapeUtils {
 
   static bool IsMatrix(const TensorShape& shape) { return shape.dims() == 2; }
 
+  static bool IsSquareMatrix(const TensorShape& shape) {
+    return shape.dims() == 2 && shape.dim_size(0) == shape.dim_size(1);
+  }
+
   static bool IsMatrixOrHigher(const TensorShape& shape) {
     return shape.dims() >= 2;
   }
@@ -267,10 +284,16 @@ class TensorShapeUtils {
   /// `dims[0]`, `dims[1]`, ..., `dims[n-1]`.
   static Status MakeShape(const int32* dims, int64 n, TensorShape* out);
   static Status MakeShape(const int64* dims, int64 n, TensorShape* out);
+  static Status MakeShape(gtl::ArraySlice<int32> shape, TensorShape* out);
+  static Status MakeShape(gtl::ArraySlice<int64> shape, TensorShape* out);
 
   static string ShapeListString(const gtl::ArraySlice<TensorShape>& shapes);
 
-  static bool StartsWith(const TensorShape& shape0, const TensorShape& shape1);
+  /// \brief Returns true iff `shape` starts with `prefix`.
+  static bool StartsWith(const TensorShape& shape, const TensorShape& prefix);
+
+  /// \brief Returns true iff `shape` ends with `suffix`.
+  static bool EndsWith(const TensorShape& shape, const TensorShape& suffix);
 };
 
 // ----------------------------------------------------------------------------

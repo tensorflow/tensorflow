@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/io/table.h"
 
+#include <algorithm>
 #include <map>
 #include <string>
 #include <vector>
@@ -32,6 +33,10 @@ limitations under the License.
 
 namespace tensorflow {
 namespace table {
+
+namespace {
+typedef std::pair<StringPiece, StringPiece> StringPiecePair;
+}
 
 namespace test {
 static StringPiece RandomString(random::SimplePhilox* rnd, int len,
@@ -284,13 +289,13 @@ class Harness : public ::testing::Test {
     constructor_->Add(key, value);
   }
 
-  void Test(random::SimplePhilox* rnd) {
+  void Test(random::SimplePhilox* rnd, int num_random_access_iters = 200) {
     std::vector<string> keys;
     KVMap data;
     constructor_->Finish(options_, &keys, &data);
 
     TestForwardScan(keys, data);
-    TestRandomAccess(rnd, keys, data);
+    TestRandomAccess(rnd, keys, data, num_random_access_iters);
   }
 
   void TestForwardScan(const std::vector<string>& keys, const KVMap& data) {
@@ -299,7 +304,7 @@ class Harness : public ::testing::Test {
     iter->SeekToFirst();
     for (KVMap::const_iterator model_iter = data.begin();
          model_iter != data.end(); ++model_iter) {
-      ASSERT_EQ(ToString(data, model_iter), ToString(iter));
+      ASSERT_EQ(ToStringPiecePair(data, model_iter), ToStringPiecePair(iter));
       iter->Next();
     }
     ASSERT_TRUE(!iter->Valid());
@@ -307,13 +312,14 @@ class Harness : public ::testing::Test {
   }
 
   void TestRandomAccess(random::SimplePhilox* rnd,
-                        const std::vector<string>& keys, const KVMap& data) {
+                        const std::vector<string>& keys, const KVMap& data,
+                        int num_random_access_iters) {
     static const bool kVerbose = false;
     Iterator* iter = constructor_->NewIterator();
     ASSERT_TRUE(!iter->Valid());
     KVMap::const_iterator model_iter = data.begin();
     if (kVerbose) fprintf(stderr, "---\n");
-    for (int i = 0; i < 200; i++) {
+    for (int i = 0; i < num_random_access_iters; i++) {
       const int toss = rnd->Uniform(3);
       switch (toss) {
         case 0: {
@@ -321,7 +327,8 @@ class Harness : public ::testing::Test {
             if (kVerbose) fprintf(stderr, "Next\n");
             iter->Next();
             ++model_iter;
-            ASSERT_EQ(ToString(data, model_iter), ToString(iter));
+            ASSERT_EQ(ToStringPiecePair(data, model_iter),
+                      ToStringPiecePair(iter));
           }
           break;
         }
@@ -330,7 +337,8 @@ class Harness : public ::testing::Test {
           if (kVerbose) fprintf(stderr, "SeekToFirst\n");
           iter->SeekToFirst();
           model_iter = data.begin();
-          ASSERT_EQ(ToString(data, model_iter), ToString(iter));
+          ASSERT_EQ(ToStringPiecePair(data, model_iter),
+                    ToStringPiecePair(iter));
           break;
         }
 
@@ -340,7 +348,8 @@ class Harness : public ::testing::Test {
           if (kVerbose)
             fprintf(stderr, "Seek '%s'\n", str_util::CEscape(key).c_str());
           iter->Seek(StringPiece(key));
-          ASSERT_EQ(ToString(data, model_iter), ToString(iter));
+          ASSERT_EQ(ToStringPiecePair(data, model_iter),
+                    ToStringPiecePair(iter));
           break;
         }
       }
@@ -348,27 +357,29 @@ class Harness : public ::testing::Test {
     delete iter;
   }
 
-  string ToString(const KVMap& data, const KVMap::const_iterator& it) {
+  StringPiecePair ToStringPiecePair(const KVMap& data,
+                                    const KVMap::const_iterator& it) {
     if (it == data.end()) {
-      return "END";
+      return StringPiecePair("END", "");
     } else {
-      return "'" + it->first + "->" + it->second + "'";
+      return StringPiecePair(it->first, it->second);
     }
   }
 
-  string ToString(const KVMap& data, const KVMap::const_reverse_iterator& it) {
+  StringPiecePair ToStringPiecePair(const KVMap& data,
+                                    const KVMap::const_reverse_iterator& it) {
     if (it == data.rend()) {
-      return "END";
+      return StringPiecePair("END", "");
     } else {
-      return "'" + it->first + "->" + it->second + "'";
+      return StringPiecePair(it->first, it->second);
     }
   }
 
-  string ToString(const Iterator* it) {
+  StringPiecePair ToStringPiecePair(const Iterator* it) {
     if (!it->Valid()) {
-      return "END";
+      return StringPiecePair("END", "");
     } else {
-      return "'" + it->key().ToString() + "->" + it->value().ToString() + "'";
+      return StringPiecePair(it->key(), it->value());
     }
   }
 
@@ -476,7 +487,7 @@ TEST_F(Harness, SimpleMultiBigValues) {
     Add("anext", string(10000000, 'a'));
     Add("anext2", string(10000000, 'b'));
     Add("azz", "tiny");
-    Test(&rnd);
+    Test(&rnd, 100 /* num_random_access_iters */);
   }
 }
 

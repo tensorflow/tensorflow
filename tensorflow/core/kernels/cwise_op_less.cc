@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -33,5 +33,15 @@ REGISTER_KERNEL_BUILDER(Name("Less")
                             .TypeConstraint<int32>("T"),
                         BinaryOp<CPUDevice, functor::less<int32>>);
 #endif
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER3(BinaryOp, SYCL, "Less", functor::less, float, double, int64);
 
+REGISTER_KERNEL_BUILDER(Name("Less")
+                            .Device(DEVICE_SYCL)
+                            .HostMemory("x")
+                            .HostMemory("y")
+                            .HostMemory("z")
+                            .TypeConstraint<int32>("T"),
+                        BinaryOp<CPUDevice, functor::less<int32>>);
+#endif // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

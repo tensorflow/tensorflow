@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -56,13 +56,14 @@ class WhereOp : public OpKernel {
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
 
-#define HANDLE_DIM(NDIM)                                                   \
-  case NDIM:                                                               \
-    functor::Where<Device, NDIM>::Compute(context->eigen_device<Device>(), \
-                                          input.tensor<bool, NDIM>(),      \
-                                          output->matrix<int64>());        \
+#define HANDLE_DIM(NDIM)                                             \
+  case NDIM:                                                         \
+    found_true = functor::Where<Device, NDIM>::Compute(              \
+        context->eigen_device<Device>(), input.tensor<bool, NDIM>(), \
+        output->matrix<int64>());                                    \
     break;
 
+    int64 found_true = 0;
     switch (input_dims) {
       HANDLE_DIM(1);
       HANDLE_DIM(2);
@@ -76,6 +77,14 @@ class WhereOp : public OpKernel {
                         "WhereOp : Unhandled input dimensions: ", input_dims));
     }
 #undef HANDLE_DIM
+
+    OP_REQUIRES(
+        context, num_true_t() == found_true,
+        errors::InvalidArgument(
+            "WhereOp: Race condition between counting the number of true "
+            "elements and writing them.  When counting, saw ",
+            num_true_t(), " elements; but when writing their indices, saw ",
+            found_true, " elements."));
   }
 
  private:

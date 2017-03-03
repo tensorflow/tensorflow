@@ -11,9 +11,12 @@ package(default_visibility = ["//tensorflow:__subpackages__"])
 cc_library(
     name = "ffmpeg_lib",
     srcs = ["ffmpeg_lib.cc"],
-    hdrs = ["ffmpeg_lib.h"],
+    hdrs = [
+        # Header is shared between implementations.
+        "//tensorflow/contrib/ffmpeg:ffmpeg_lib.h",
+    ],
     deps = [
-        "//google/protobuf",
+        "//:protobuf_headers",
         "//tensorflow/core:framework_headers_lib",
     ],
 )

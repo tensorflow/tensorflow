@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -40,6 +40,17 @@ CostModel* CostModelManager::FindOrCreateCostModel(const Graph* graph) {
   cost_model->InitFromGraph(*graph);
   cost_models_.emplace(graph, cost_model);
   return cost_model;
+}
+
+bool CostModelManager::RemoveCostModelForGraph(const Graph* graph) {
+  mutex_lock l(mu_);
+  auto itr = cost_models_.find(graph);
+  if (itr == cost_models_.end()) {
+    return false;
+  }
+  delete itr->second;
+  cost_models_.erase(graph);
+  return true;
 }
 
 Status CostModelManager::AddToCostGraphDef(const Graph* graph,

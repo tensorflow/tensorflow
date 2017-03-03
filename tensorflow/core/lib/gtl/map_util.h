@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -90,6 +90,30 @@ const typename Collection::value_type::second_type& FindWithDefault(
     return value;
   }
   return it->second;
+}
+
+// Inserts the given key-value pair into the collection. Returns true if and
+// only if the key from the given pair didn't previously exist. Otherwise, the
+// value in the map is replaced with the value from the given pair.
+template <class Collection>
+bool InsertOrUpdate(Collection* const collection,
+                    const typename Collection::value_type& vt) {
+  std::pair<typename Collection::iterator, bool> ret = collection->insert(vt);
+  if (!ret.second) {
+    // update
+    ret.first->second = vt.second;
+    return false;
+  }
+  return true;
+}
+
+// Same as above, except that the key and value are passed separately.
+template <class Collection>
+bool InsertOrUpdate(Collection* const collection,
+                    const typename Collection::value_type::first_type& key,
+                    const typename Collection::value_type::second_type& value) {
+  return InsertOrUpdate(collection,
+                        typename Collection::value_type(key, value));
 }
 
 // Inserts the given key and value into the given collection if and only if the

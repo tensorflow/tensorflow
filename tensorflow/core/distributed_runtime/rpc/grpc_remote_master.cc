@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,11 +17,11 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/master_interface.h"
+#include "tensorflow/core/distributed_runtime/rpc/grpc_master_service_impl.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/protobuf/master.pb.h"
-#include "tensorflow/core/protobuf/master_service.grpc.pb.h"
 
 namespace tensorflow {
 
@@ -52,12 +52,22 @@ class GrpcRemoteMaster : public MasterInterface {
     return FromGrpcStatus(stub_->ExtendSession(&ctx, *request, response));
   }
 
-  Status RunStep(CallOptions* call_options, const RunStepRequest* request,
-                 RunStepResponse* response) override {
+  Status PartialRunSetup(CallOptions* call_options,
+                         const PartialRunSetupRequest* request,
+                         PartialRunSetupResponse* response) override {
     ::grpc::ClientContext ctx;
     ctx.set_fail_fast(false);
     SetDeadline(&ctx, call_options->GetTimeout());
-    return FromGrpcStatus(stub_->RunStep(&ctx, *request, response));
+    return FromGrpcStatus(stub_->PartialRunSetup(&ctx, *request, response));
+  }
+
+  Status RunStep(CallOptions* call_options, RunStepRequestWrapper* request,
+                 MutableRunStepResponseWrapper* response) override {
+    ::grpc::ClientContext ctx;
+    ctx.set_fail_fast(false);
+    SetDeadline(&ctx, call_options->GetTimeout());
+    return FromGrpcStatus(stub_->RunStep(&ctx, request->ToProto(),
+                                         get_proto_from_wrapper(response)));
   }
 
   Status CloseSession(CallOptions* call_options,

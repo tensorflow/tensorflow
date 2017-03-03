@@ -1,10 +1,12 @@
 syntax = "proto3";
 
 package tensorflow;
-// option cc_enable_arenas = true;
+option cc_enable_arenas = true;
 option java_outer_classname = "QueueRunnerProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
+
+import "tensorflow/core/lib/core/error_codes.proto";
 
 // Protocol buffer representing a QueueRunner.
 message QueueRunnerDef {
@@ -19,4 +21,8 @@ message QueueRunnerDef {
 
   // The operation to run to cancel the queue.
   string cancel_op_name = 4;
+
+  // A list of exception types considered to signal a safely closed queue
+  // if raised during enqueue operations.
+  repeated error.Code queue_closed_exception_types = 5;
 }

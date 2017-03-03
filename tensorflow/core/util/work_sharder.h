@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -30,6 +30,12 @@ namespace tensorflow {
 // "workers" are used to compute each shard (calling work(start,
 // limit). A common configuration is that "workers" is a thread pool
 // with at least "max_parallelism" threads.
+//
+// "cost_per_unit" is an estimate of the number of CPU cycles (or nanoseconds
+// if not CPU-bound) to complete a unit of work. Overestimating creates too
+// many shards and CPU time will be dominated by per-shard overhead, such as
+// Context creation. Underestimating may not fully make use of the specified
+// parallelism.
 //
 // "work" should be a callable taking (int64, int64) arguments.
 // work(start, limit) computes the work units from [start,

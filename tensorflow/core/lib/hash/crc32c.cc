@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,6 +23,9 @@ limitations under the License.
 
 namespace tensorflow {
 namespace crc32c {
+
+extern bool CanAccelerate();
+extern uint32_t AcceleratedExtend(uint32_t crc, const char *buf, size_t size);
 
 static const uint32 table0_[256] = {
     0x00000000, 0xf26b8303, 0xe13b70f7, 0x1350f3f4, 0xc79a971f, 0x35f1141c,
@@ -207,6 +210,11 @@ static inline uint32_t LE_LOAD32(const uint8_t *p) {
 }
 
 uint32 Extend(uint32 crc, const char *buf, size_t size) {
+  static bool can_accelerate = CanAccelerate();
+  if (can_accelerate) {
+    return AcceleratedExtend(crc, buf, size);
+  }
+
   const uint8 *p = reinterpret_cast<const uint8 *>(buf);
   const uint8 *e = p + size;
   uint32 l = crc ^ 0xffffffffu;

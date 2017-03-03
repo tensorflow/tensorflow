@@ -1,5 +1,5 @@
 # Description:
-#   Tensorflow C++ inference example for labeling images.
+#   TensorFlow C++ inference example for labeling images.
 
 package(default_visibility = ["//tensorflow:internal"])
 

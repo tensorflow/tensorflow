@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,7 +28,8 @@ namespace internal {
 }  //  namespace internal
 
 template <>
-bool ExampleHasFeature<int64>(const string& name, const Example& example) {
+bool ExampleHasFeature<protobuf_int64>(const string& name,
+                                       const Example& example) {
   auto it = example.features().feature().find(name);
   return (it != example.features().feature().end()) &&
          (it->second.kind_case() == Feature::KindCase::kInt64List);
@@ -49,14 +50,14 @@ bool ExampleHasFeature<string>(const string& name, const Example& example) {
 }
 
 template <>
-const protobuf::RepeatedField<int64>& GetFeatureValues<int64>(
+const protobuf::RepeatedField<protobuf_int64>& GetFeatureValues<protobuf_int64>(
     const string& name, const Example& example) {
   return example.features().feature().at(name).int64_list().value();
 }
 
 template <>
-protobuf::RepeatedField<int64>* GetFeatureValues<int64>(const string& name,
-                                                        Example* example) {
+protobuf::RepeatedField<protobuf_int64>* GetFeatureValues<protobuf_int64>(
+    const string& name, Example* example) {
   return internal::ExampleFeature(name, example)
       .mutable_int64_list()
       ->mutable_value();

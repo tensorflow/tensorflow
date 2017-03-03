@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -262,6 +262,9 @@ FixedUnigramSampler::FixedUnigramSampler(int64 range,
 }
 
 float FixedUnigramSampler::Probability(int64 value) const {
+  if (value >= weights_.size() || value < 0) {
+    return 0.0;
+  }
   return weights_.at(value) / total_weight_;
 }
 
@@ -277,9 +280,10 @@ void FixedUnigramSampler::FillReservedIds(int32 num_reserved_ids) {
 
 Status FixedUnigramSampler::LoadFromFile(Env* env, const string& vocab_file,
                                          float distortion) {
-  RandomAccessFile* file;
+  std::unique_ptr<RandomAccessFile> file;
   TF_RETURN_IF_ERROR(env->NewRandomAccessFile(vocab_file, &file));
-  io::InputBuffer in(file, 262144 /*bytes*/);
+
+  io::InputBuffer in(file.get(), 262144 /*bytes*/);
   string line;
   int32 word_id = weights_.size();
   while (in.ReadLine(&line).ok()) {

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -75,9 +75,11 @@ TF_CALL_GPU_NUMBER_TYPES(TENSOR_ARRAY_SET_ZERO_GPU);
 
 }  // namespace tensor_array
 
+std::atomic<int64> TensorArray::tensor_array_counter{0};
+
 Status TensorArray::CopyShapesFrom(TensorArray* rhs) {
   mutex_lock l(mu_);
-  mutex_lock l_rhs(*rhs->mu());
+  mutex_lock l_rhs(rhs->mu_);
   TF_RETURN_IF_ERROR(LockedReturnIfClosed());
   TF_RETURN_IF_ERROR(rhs->LockedReturnIfClosed());
   if (tensors_.size() != rhs->tensors_.size()) {

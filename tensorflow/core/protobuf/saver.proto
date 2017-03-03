@@ -1,12 +1,12 @@
 syntax = "proto3";
 
 package tensorflow;
-// option cc_enable_arenas = true;
+option cc_enable_arenas = true;
 option java_outer_classname = "SaverProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.util";
 
-// Protocol buffer representing the configuration of a SaveRestoreHelper.
+// Protocol buffer representing the configuration of a Saver.
 message SaverDef {
   // The name of the tensor in which to specify the filename when saving or
   // restoring a model checkpoint.
@@ -29,4 +29,18 @@ message SaverDef {
   // the last "max_to_keep" checkpoints, an additional checkpoint will be kept
   // for every n hours of training.
   float keep_checkpoint_every_n_hours = 6;
+
+  // A version number that identifies a different on-disk checkpoint format.
+  // Usually, each subclass of BaseSaverBuilder works with a particular
+  // version/format.  However, it is possible that the same builder may be
+  // upgraded to support a newer checkpoint format in the future.
+  enum CheckpointFormatVersion {
+    // Internal legacy format.
+    LEGACY = 0;
+    // Current format: tf.Saver() which works with tensorflow::table::Table.
+    V1 = 1;
+    // Experimental format under development.
+    V2 = 2;
+  }
+  CheckpointFormatVersion version = 7;
 }

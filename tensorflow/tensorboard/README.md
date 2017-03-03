@@ -4,9 +4,6 @@ TensorBoard is a suite of web applications for inspecting and understanding your
 TensorFlow runs and graphs. TensorBoard currently supports five visualizations:
 scalars, images, audio, histograms, and the graph.
 
-You can play with an interactive demo TensorBoard at
-[tensorflow.org/tensorboard/](https://www.tensorflow.org/tensorboard/).
-
 This README gives an overview of key concepts in TensorBoard, as well as how to
 interpret the visualizations TensorBoard provides. For an in-depth example of
 using TensorBoard, see the tutorial: [TensorBoard: Visualizing
@@ -16,12 +13,12 @@ For in-depth information on the Graph Visualizer, see this tutorial: [TensorBoar
 # Usage
 
 Before running TensorBoard, make sure you have generated summary data in a log
-directory by creating a `SummaryWriter`:
+directory by creating a summary writer:
 
 ``` python
-# sess.graph_def is the graph definition; that enables the Graph Visualizer.
+# sess.graph contains the graph definition; that enables the Graph Visualizer.
 
-summary_writer = tf.train.SummaryWriter('/path/to/logs', sess.graph_def)
+file_writer = tf.summary.FileWriter('/path/to/logs', sess.graph)
 ```
 
 For more details, see [this
@@ -42,8 +39,11 @@ bazel build tensorflow/tensorboard:tensorboard
 
 This should print that TensorBoard has started. Next, connect to http://localhost:6006.
 
-Note that TensorBoard requires a `logdir` to read logs from. For info on
-configuring TensorBoard, run `tensorboard --help`.
+TensorBoard requires a `logdir` to read logs from. For info on configuring
+TensorBoard, run `tensorboard --help`.
+
+TensorBoard can be used in Google Chrome or Firefox. Other browsers might
+work, but there may be bugs or performance issues.
 
 # Key Concepts
 
@@ -51,18 +51,18 @@ configuring TensorBoard, run `tensorboard --help`.
 
 The first step in using TensorBoard is acquiring data from your TensorFlow run.
 For this, you need [summary
-ops](https://www.tensorflow.org/versions/r0.8/api_docs/python/train.html#summary-operations).
+ops](https://www.tensorflow.org/versions/r1.0/api_docs/python/train.html#summary-operations).
 Summary ops are ops, like
-[`tf.matmul`](https://www.tensorflow.org/versions/r0.8/api_docs/python/math_ops.html#matmul)
+[`tf.matmul`](https://www.tensorflow.org/versions/r1.0/api_docs/python/math_ops.html#matmul)
 or
-[`tf.nn.relu`](https://www.tensorflow.org/versions/r0.8/api_docs/python/nn.html#relu),
+[`tf.nn.relu`](https://www.tensorflow.org/versions/r1.0/api_docs/python/nn.html#relu),
 which means they take in tensors, produce tensors, and are evaluated from within
 a TensorFlow graph. However, summary ops have a twist: the Tensors they produce
 contain serialized protobufs, which are written to disk and sent to TensorBoard.
 To visualize the summary data in TensorBoard, you should evaluate the summary
 op, retrieve the result, and then write that result to disk using a
-SummaryWriter. A full explanation, with examples, is in [the
-tutorial](https://www.tensorflow.org/versions/r0.8/how_tos/summaries_and_tensorboard/index.html).
+summary.FileWriter. A full explanation, with examples, is in [the
+tutorial](https://www.tensorflow.org/versions/r1.0/how_tos/summaries_and_tensorboard/index.html).
 
 ### Tags: Giving names to data
 
@@ -74,7 +74,7 @@ a lot of tags, we recommend grouping them with slashes.
 
 ### Event Files & LogDirs: How TensorBoard loads the data
 
-`SummaryWriters` take summary data from TensorFlow, and then write them to a
+`summary.FileWriters` take summary data from TensorFlow, and then write them to a
 specified directory, known as the `logdir`. Specifically, the data is written to
 an append-only record dump that will have "tfevents" in the filename.
 TensorBoard reads data from a full directory, and organizes it into the history
@@ -102,7 +102,8 @@ For example, here is a well-organized TensorBoard log directory, with two runs,
 "run1" and "run2".
 
 ```
-/some/path/mnist_experiments/ some/path/mnist_experiments/run1/
+/some/path/mnist_experiments/
+/some/path/mnist_experiments/run1/
 /some/path/mnist_experiments/run1/events.out.tfevents.1456525581.name
 /some/path/mnist_experiments/run1/events.out.tfevents.1456525585.name
 /some/path/mnist_experiments/run2/
@@ -110,11 +111,19 @@ For example, here is a well-organized TensorBoard log directory, with two runs,
 /tensorboard --logdir=/some/path/mnist_experiments
 ```
 
+You may also pass a comma separated list of log directories, and TensorBoard
+will watch each directory. You can also assign names to individual log
+directories by putting a colon between the name and the path, as in
+
+```
+tensorboard --logdir=name1:/path/to/logs/1,name2:/path/to/logs/2
+```
+
 # The Visualizations
 
-### Scalar Dashboard
+### Events Dashboard
 
-TensorBoard's Scalar Dashboard visualizes scalar statistics that vary over time;
+TensorBoard's Events Dashboard visualizes scalar statistics that vary over time;
 for example, you might want to track the model's loss or learning rate. As
 described in *Key Concepts*, you can compare multiple runs, and the data is
 organized by tag. The line charts have the following interactions:
@@ -132,11 +141,11 @@ the run-selector on the left.
 Additionally, you can create new folders to organize tags by writing regular
 expressions in the box in the top-left of the dashboard.
 
-### Histogram Dashboard
+### Distribution Dashboard
 
-The Histogram Dashboard is for visualizing how the statistical distribution of a
-Tensor has varied over time. It visualizes data recorded via a
-tf.histogram_summary. Right now, its name is a bit of a misnomer, as it doesn't
+The Distribution Dashboard is for visualizing how the statistical distribution
+of a Tensor has varied over time. It visualizes data recorded via a
+tf.summary.histogram. Right now, its name is a bit of a misnomer, as it doesn't
 show histograms; instead, it shows some high-level statistics on a distribution.
 Each line on the chart represents a percentile in the distribution over the
 data: for example, the bottom line shows how the minimum value has changed over
@@ -155,7 +164,7 @@ replacement.
 
 ### Image Dashboard
 
-The Image Dashboard can display pngs that were saved via a tf.image_summary. The
+The Image Dashboard can display pngs that were saved via a tf.summary.image. The
 dashboard is set up so that each row corresponds to a different tag, and each
 column corresponds to a run. Since the image dashboard supports arbitrary pngs,
 you can use this to embed custom visualizations (e.g. matplotlib scatterplots)
@@ -164,7 +173,7 @@ into TensorBoard. This dashboard always shows you the latest image for each tag.
 ### Audio Dashboard
 
 The Audio Dashboard can embed playable audio widgets for audio saved via a
-tf.audio_summary. The dashboard is set up so that each row corresponds to a
+tf.summary.audio. The dashboard is set up so that each row corresponds to a
 different tag, and each column corresponds to a run. This dashboard always
 embeds the latest audio for each tag.
 
@@ -175,18 +184,9 @@ TensorFlow model. To get best use of the graph visualizer, you should use name
 scopes to hierarchically group the ops in your graph - otherwise, the graph may
 be difficult to decipher. For more information, including examples, see [the
 graph visualizer
-tutorial](https://www.tensorflow.org/versions/r0.8/how_tos/graph_viz/index.html#tensorboard-graph-visualization).
+tutorial](https://www.tensorflow.org/versions/r1.0/how_tos/graph_viz/index.html#tensorboard-graph-visualization).
 
 # Frequently Asked Questions
-
-### Does TensorBoard support distributed summary writers?
-
-No. Currently, TensorBoard expects that only a single summary writer will be
-active at a time, and as consequence, only a single events file is ever written
-to at a time. Violating this assumption may cause TensorBoard to lose data or
-stop updating unexpectedly. If you are running a distributed training process,
-we encourage you to designate a single worker as the "chief" that is responsible
-for writing all summaries to disk.
 
 ### My TensorBoard isn't showing any data! What's wrong?
 
@@ -225,7 +225,7 @@ only reads one file at a time. Let's suppose we have files with timestamps `a`
 and `b`, where `a<b`. Once TensorBoard has read all the events in `a`, it will
 never return to it, because it assumes any new events are being written in the
 more recent file. This could cause an issue if, for example, you have two
-`SummaryWriters` simultaneously writing to the same directory. If you have
+`FileWriters` simultaneously writing to the same directory. If you have
 multiple summary writers, each one should be writing to a separate directory.
 
 ### Does TensorBoard support multiple or distributed summary writers?
@@ -246,7 +246,7 @@ with itself, there are a few possible explanations.
 directory. Please have each TensorFlow run write to its own logdir.
 
 * You may have a have a bug in your code where the global_step variable (passed
-to `SummaryWriter.add_summary`) is being maintained incorrectly.
+to `FileWriter.add_summary`) is being maintained incorrectly.
 
 * It may be that your TensorFlow job crashed, and was restarted from an earlier
 checkpoint. See *How to handle TensorFlow restarts*, below.
@@ -298,7 +298,7 @@ have the same tag name.
 
 This isn't yet possible. As a workaround, you could create your custom plot in
 your own code (e.g. matplotlib) and then write it into an `SummaryProto`
-(`core/framework/summary.proto`) and add it to your `SummaryWriter`. Then, your
+(`core/framework/summary.proto`) and add it to your `FileWriter`. Then, your
 custom plot will appear in the TensorBoard image tab.
 
 ### Is my data being downsampled? Am I really seeing all the data?

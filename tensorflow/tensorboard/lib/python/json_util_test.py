@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@ class FloatWrapperTest(googletest.TestCase):
 
   def _assertWrapsAs(self, to_wrap, expected):
     """Asserts that |to_wrap| becomes |expected| when wrapped."""
-    actual = json_util.WrapSpecialFloats(to_wrap)
+    actual = json_util.Cleanse(to_wrap)
     for a, e in zip(actual, expected):
       self.assertEqual(e, a)
 
@@ -49,6 +49,15 @@ class FloatWrapperTest(googletest.TestCase):
 
   def testWrapsRecursively(self):
     self._assertWrapsAs({'x': [_INFINITY]}, {'x': ['Infinity']})
+
+  def testTuple_turnsIntoList(self):
+    self.assertEqual(json_util.Cleanse(('a', 'b')), ['a', 'b'])
+
+  def testSet_turnsIntoSortedList(self):
+    self.assertEqual(json_util.Cleanse(set(['b', 'a'])), ['a', 'b'])
+
+  def testByteString_turnsIntoUnicodeString(self):
+    self.assertEqual(json_util.Cleanse(b'\xc2\xa3'), u'\u00a3')  # is # sterling
 
 
 if __name__ == '__main__':

@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -33,7 +33,7 @@ UniqueTensorReferences::~UniqueTensorReferences() {
 void UniqueTensorReferences::Add(const Tensor& tensor) {
   DCHECK(!frozen_);
   // Do nothing if the tensor has a null buffer.
-  if (tensor.IsInitialized()) {
+  if (tensor.IsInitialized() && tensor.NumElements() > 0) {
     if (referenced_tensors_set_ != nullptr) {
       // There are enough tensors that we are using a hash set to
       // de-duplicate.

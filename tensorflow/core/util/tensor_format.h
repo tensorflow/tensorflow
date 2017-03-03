@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -58,6 +58,7 @@ inline int32 GetTensorDimIndex(TensorFormat format, char dimension) {
         return 1 + NDIMS;
       default:
         LOG(FATAL) << "Invalid dimension: " << dimension;
+        return -1; // Avoid compiler warning about missing return value
     }
   } else if (format == FORMAT_NCHW) {
     switch (dimension) {
@@ -77,9 +78,11 @@ inline int32 GetTensorDimIndex(TensorFormat format, char dimension) {
         return NDIMS + 1;
       default:
         LOG(FATAL) << "Invalid dimension: " << dimension;
+        return -1; // Avoid compiler warning about missing return value
     }
   } else {
     LOG(FATAL) << "Invalid format: " << static_cast<int>(format);
+    return -1; // Avoid compiler warning about missing return value
   }
 }
 

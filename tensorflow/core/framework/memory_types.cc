@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -40,10 +40,6 @@ int GetTotal(const NameRangeMap& name_map) {
 void MemoryTypesHelper(const NameRangeMap& name_map,
                        std::vector<string>* host_memory_args,
                        MemoryTypeVector* memory_types) {
-  // Now that we know the size, fill with the default 'DEVICE_MEMORY'.
-  memory_types->clear();
-  memory_types->resize(GetTotal(name_map), DEVICE_MEMORY);
-
   // Update args that have been marked as in "HOST_MEMORY".
   size_t keep = 0;
   for (size_t i = 0; i < host_memory_args->size(); ++i) {
@@ -65,17 +61,6 @@ MemoryType MTypeFromDType(const DataType dtype) {
   return (dtype == DT_INT32) ? HOST_MEMORY : DEVICE_MEMORY;
 }
 
-// Returns true if an arg of op_def's input/output is a type list.
-bool HasTypeList(const OpDef& op_def) {
-  for (const auto& a : op_def.input_arg()) {
-    if (!a.type_list_attr().empty()) return true;
-  }
-  for (const auto& a : op_def.output_arg()) {
-    if (!a.type_list_attr().empty()) return true;
-  }
-  return false;
-}
-
 }  // namespace
 
 Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
@@ -83,29 +68,30 @@ Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
                           MemoryTypeVector* inp_mtypes,
                           MemoryTypeVector* out_mtypes) {
   // Look up the Op registered for this op name.
-  Status status;
-  const OpDef* op_def = op_registry->LookUp(ndef.op(), &status);
-  if (op_def == nullptr) return status;
+  const OpDef* op_def;
+  TF_RETURN_IF_ERROR(op_registry->LookUpOpDef(ndef.op(), &op_def));
 
   // Look up the Kernel registered for this node def.
   const KernelDef* kdef = nullptr;
-  status =
+  Status status =
       FindKernelDef(device_type, ndef, &kdef, nullptr /* kernel_class_name */);
 
-  if (!status.ok() || HasTypeList(*op_def)) {
-    // When there is no kernel def for this op or the op's arg is a
-    // type list, we can only best-effort derive the memory type from
-    // the data type.  For now, we assume int32 is always on host
-    // memory and other types are always on device memory. We should
-    // do type inference over function body to derive the correct
-    // input/output memory types.
-    DataTypeVector inp_dtypes;
-    DataTypeVector out_dtypes;
-    TF_RETURN_IF_ERROR(
-        InOutTypesForNode(ndef, *op_def, &inp_dtypes, &out_dtypes));
-    inp_mtypes->clear();
+  DataTypeVector inp_dtypes;
+  DataTypeVector out_dtypes;
+  TF_RETURN_IF_ERROR(
+      InOutTypesForNode(ndef, *op_def, &inp_dtypes, &out_dtypes));
+
+  inp_mtypes->clear();
+  out_mtypes->clear();
+
+  // For functions (which have no KernelDef) and their gradients, we can only
+  // best-effort derive the memory type from the data type. For now, we assume
+  // int32 is always on host memory and other types are always on device memory.
+  // TODO(zhifengc,phawkins): We should do type inference over function bodies
+  // to derive the correct input/output memory types. We should also split
+  // host-memory and non host-memory arguments into separate type lists.
+  if (!status.ok() || ndef.op() == "SymbolicGradient") {
     for (const auto& t : inp_dtypes) inp_mtypes->push_back(MTypeFromDType(t));
-    out_mtypes->clear();
     for (const auto& t : out_dtypes) out_mtypes->push_back(MTypeFromDType(t));
     return Status::OK();
   }
@@ -114,6 +100,10 @@ Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
   NameRangeMap inp_names;
   NameRangeMap out_names;
   TF_RETURN_IF_ERROR(NameRangesForNode(ndef, *op_def, &inp_names, &out_names));
+
+  // Now that we know the size, fill with the default 'DEVICE_MEMORY'.
+  inp_mtypes->resize(GetTotal(inp_names), DEVICE_MEMORY);
+  out_mtypes->resize(GetTotal(out_names), DEVICE_MEMORY);
 
   // Fills in host memory types based on the kernel def.
   const auto& from_proto = kdef->host_memory_arg();
@@ -125,6 +115,23 @@ Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
         "HostMemory args '", str_util::Join(host_memory_args, "', '"),
         "' not found in OpDef: ", SummarizeOpDef(*op_def));
   }
+
+  std::vector<int32> hostmem_attr;
+  if (GetNodeAttr(ndef, "_input_hostmem", &hostmem_attr).ok()) {
+    for (int32 i : hostmem_attr) {
+      if (0 <= i && i < inp_mtypes->size()) {
+        (*inp_mtypes)[i] = HOST_MEMORY;
+      }
+    }
+  }
+  if (GetNodeAttr(ndef, "_output_hostmem", &hostmem_attr).ok()) {
+    for (int32 i : hostmem_attr) {
+      if (0 <= i && i < out_mtypes->size()) {
+        (*out_mtypes)[i] = HOST_MEMORY;
+      }
+    }
+  }
+
   return Status::OK();
 }
 

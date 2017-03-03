@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,11 +16,11 @@ import os
 from IPython.lib import passwd
 
 c.NotebookApp.ip = '*'
-c.NotebookApp.port = 8888
+c.NotebookApp.port = int(os.getenv('PORT', 8888))
 c.NotebookApp.open_browser = False
 c.MultiKernelManager.default_kernel_name = 'python2'
 
 # sets a password if PASSWORD is set in the environment
 if 'PASSWORD' in os.environ:
-    c.NotebookApp.password = passwd(os.environ['PASSWORD'])
-    del os.environ['PASSWORD']
+  c.NotebookApp.password = passwd(os.environ['PASSWORD'])
+  del os.environ['PASSWORD']

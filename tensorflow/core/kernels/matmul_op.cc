@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,10 +21,11 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 
 #if GOOGLE_CUDA
-#include "third_party/gpus/cuda/include/cuda.h"
+#include "cuda/include/cuda.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA
 
@@ -45,25 +46,116 @@ perftools::gputools::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory) {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename T, bool USE_CUBLAS>
 struct LaunchMatMul;
 
-// On CPUs, we ignore USE_CUBLAS
+namespace {
+// Converts a TensorFlow Tensor to an Eigen Matrix.
 template <typename T>
-struct LaunchMatMulCPU {
+Eigen::Map<
+    const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>
+ToEigenMatrix(const Tensor& tensor) {
+  auto matrix = tensor.matrix<T>();
+  return Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>::Map(
+      matrix.data(), matrix.dimension(0), matrix.dimension(1));
+}
+
+// Converts a TensorFlow Tensor to an Eigen Vector.
+template <typename T>
+Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, 1>> ToEigenVector(Tensor* tensor) {
+  auto v = tensor->flat<T>();
+  return Eigen::Matrix<T, Eigen::Dynamic, 1>::Map(v.data(), v.dimension(0));
+}
+template <typename T>
+Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>> ToEigenVector(
+    const Tensor& tensor) {
+  auto v = tensor.flat<T>();
+  return Eigen::Matrix<T, Eigen::Dynamic, 1>::Map(v.data(), v.dimension(0));
+}
+}  // namespace
+
+// If either side can be represented as a vector, do an explicit vector
+// matrix multiply and return true; else return false.
+//
+// Note: this uses plain Eigen and not Eigen Tensor because it is more
+// efficient.
+template <typename T>
+bool ExplicitVectorMatrixOptimization(
+    const Tensor& a, const Tensor& b,
+    const Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1>& dim_pair,
+    Tensor* out) {
+  if (out->dim_size(0) == 1) {
+    if (dim_pair[0].second == 0) {
+      // Note: this case is optimized in Eigen Tensors.
+      return false;
+    } else {
+      auto out_v = ToEigenVector<T>(out);
+      auto a_v = ToEigenVector<T>(a);
+      auto b_m = ToEigenMatrix<T>(b);
+      out_v.noalias() = b_m * a_v;
+    }
+    return true;
+  } else if (out->dim_size(1) == 1) {
+    auto out_v = ToEigenVector<T>(out);
+    auto a_m = ToEigenMatrix<T>(a);
+    auto b_v = ToEigenVector<T>(b);
+    if (dim_pair[0].first == 0) {
+      out_v.noalias() = a_m.transpose() * b_v;
+    } else {
+      out_v.noalias() = a_m * b_v;
+    }
+    return true;
+  }
+  return false;
+}
+// Half is not supported.
+template <>
+bool ExplicitVectorMatrixOptimization<Eigen::half>(
+    const Tensor& a, const Tensor& b,
+    const Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1>& dim_pair,
+    Tensor* out) {
+  return false;
+}
+
+template <typename Device, typename T>
+struct LaunchMatMulBase {
   static void launch(
       OpKernelContext* ctx, OpKernel* kernel, const Tensor& a, const Tensor& b,
       const Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1>& dim_pair,
       Tensor* out) {
-    functor::MatMulFunctor<CPUDevice, T>()(ctx->eigen_device<CPUDevice>(),
-                                           out->matrix<T>(), a.matrix<T>(),
-                                           b.matrix<T>(), dim_pair);
+#ifndef TENSORFLOW_USE_SYCL
+    // An explicit vector-matrix multiply is much better optimized than an
+    // implicit one and this is a bottleneck during non-batched inference.
+    bool was_vector = ExplicitVectorMatrixOptimization<T>(a, b, dim_pair, out);
+    if (!was_vector) {
+#endif // TENSORFLOW_USE_SYCL
+      functor::MatMulFunctor<Device, T>()(ctx->eigen_device<Device>(),
+                                             out->matrix<T>(), a.matrix<T>(),
+                                             b.matrix<T>(), dim_pair);
+#ifndef TENSORFLOW_USE_SYCL
+    }
+#endif // TENSORFLOW_USE_SYCL
   }
 };
+// On CPUs, we ignore USE_CUBLAS
+template <typename T>
+struct LaunchMatMulCPU : LaunchMatMulBase<CPUDevice, T> {};
+
 
 template <typename T, bool USE_CUBLAS>
 struct LaunchMatMul<CPUDevice, T, USE_CUBLAS> : public LaunchMatMulCPU<T> {};
+
+#ifdef TENSORFLOW_USE_SYCL
+template <typename T>
+struct LaunchMatMulSYCL : LaunchMatMulBase<SYCLDevice, T> {};
+
+template <typename T, bool USE_CUBLAS>
+struct LaunchMatMul<SYCLDevice, T, USE_CUBLAS> : public LaunchMatMulSYCL<T> {};
+#endif // TENSORFLOW_USE_SYCL
 
 #if GOOGLE_CUDA
 
@@ -135,7 +227,7 @@ class MatMulOp : public OpKernel {
 
     OP_REQUIRES(ctx,
                 a.dim_size(dim_pair[0].first) == b.dim_size(dim_pair[0].second),
-                errors::InvalidArgument("Matrix size-compatible: In[0]: ",
+                errors::InvalidArgument("Matrix size-incompatible: In[0]: ",
                                         a.shape().DebugString(), ", In[1]: ",
                                         b.shape().DebugString()));
     int a_dim_remaining = 1 - dim_pair[0].first;
@@ -182,6 +274,20 @@ struct MatMulFunctor<CPUDevice, T> {
   }
 };
 
+#ifdef TENSORFLOW_USE_SYCL
+// Partial specialization MatMulFunctor<Device=SYCLDevice, T>.
+template <typename T>
+struct MatMulFunctor<SYCLDevice, T> {
+  void operator()(
+      const SYCLDevice& d, typename MatMulTypes<T>::out_type out,
+      typename MatMulTypes<T>::in_type in0,
+      typename MatMulTypes<T>::in_type in1,
+      const Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1>& dim_pair) {
+    MatMul<SYCLDevice>(d, out, in0, in1, dim_pair);
+  }
+};
+#endif // TENSORFLOW_USE_SYCL
+
 }  // end namespace functor
 
 #define REGISTER_CPU(T)                                                        \
@@ -202,18 +308,42 @@ struct MatMulFunctor<CPUDevice, T> {
                               .Label("cublas"),                    \
                           MatMulOp<GPUDevice, T, true /* cublas */>)
 
-REGISTER_CPU(float);
-REGISTER_CPU(double);
-REGISTER_CPU(int32);
-REGISTER_CPU(Eigen::half);
-REGISTER_CPU(complex64);
-REGISTER_CPU(complex128);
+#if defined (INTEL_MKL)
+// MKL does not support half and int32 types for matrix-multiplication, so
+// register the kernel to use default Eigen based implementations for these types
+TF_CALL_half(REGISTER_CPU);
+TF_CALL_int32(REGISTER_CPU);
+#else
+TF_CALL_float(REGISTER_CPU);
+TF_CALL_double(REGISTER_CPU);
+TF_CALL_half(REGISTER_CPU);
+
+TF_CALL_int32(REGISTER_CPU);
+TF_CALL_complex64(REGISTER_CPU);
+TF_CALL_complex128(REGISTER_CPU);
+#endif
+
 #if GOOGLE_CUDA
-REGISTER_GPU(float);
-REGISTER_GPU(double);
+TF_CALL_float(REGISTER_GPU);
+TF_CALL_double(REGISTER_GPU);
+TF_CALL_complex64(REGISTER_GPU);
+TF_CALL_complex128(REGISTER_GPU);
 #if CUDA_VERSION >= 7050
-REGISTER_GPU(Eigen::half);
+TF_CALL_half(REGISTER_GPU);
 #endif
 #endif  // GOOGLE_CUDA
 
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL(T)                                            \
+  REGISTER_KERNEL_BUILDER(                                          \
+      Name("MatMul").Device(DEVICE_SYCL).TypeConstraint<T>("T"),    \
+      MatMulOp<SYCLDevice, T, false /* xxblas */>); \
+  REGISTER_KERNEL_BUILDER(Name("MatMul")                            \
+                              .Device(DEVICE_SYCL)                  \
+                              .TypeConstraint<T>("T")               \
+                              .Label("eigen"),                      \
+                          MatMulOp<SYCLDevice, T, false /* xxblas */>)
+TF_CALL_float(REGISTER_SYCL);
+
+#endif // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

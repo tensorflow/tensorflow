@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,9 +17,12 @@ limitations under the License.
 
 namespace tensorflow {
 
-#define REGISTER_CPU_KERNELS(type)                               \
-  REGISTER_KERNEL_BUILDER(                                       \
-      Name("Mean").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
+#define REGISTER_CPU_KERNELS(type)        \
+  REGISTER_KERNEL_BUILDER(                \
+      Name("Mean")                        \
+          .Device(DEVICE_CPU)             \
+          .TypeConstraint<type>("T")      \
+          .TypeConstraint<int32>("Tidx"), \
       ReductionOp<CPUDevice, type, Eigen::internal::MeanReducer<type>>);
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
@@ -31,6 +34,7 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
       Name("Mean")                          \
           .Device(DEVICE_GPU)               \
           .TypeConstraint<type>("T")        \
+          .TypeConstraint<int32>("Tidx")    \
           .HostMemory("reduction_indices"), \
       ReductionOp<GPUDevice, type, Eigen::internal::MeanReducer<type>>);
 REGISTER_GPU_KERNELS(Eigen::half);
@@ -39,5 +43,18 @@ REGISTER_GPU_KERNELS(double);
 #undef REGISTER_GPU_KERNELS
 
 #endif
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNELS(type)         \
+  REGISTER_KERNEL_BUILDER(                  \
+      Name("Mean")                          \
+          .Device(DEVICE_SYCL)              \
+          .TypeConstraint<type>("T")        \
+          .TypeConstraint<int32>("Tidx")    \
+          .HostMemory("reduction_indices"), \
+      ReductionOp<SYCLDevice, type, Eigen::internal::MeanReducer<type>>);
+REGISTER_SYCL_KERNELS(float);
+#undef REGISTER_SYCL_KERNELS
+#endif // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -164,7 +164,7 @@ bool ProtoParseNumericFromScanner(Scanner* scanner, T* value) {
 
   // Special case to disallow multiple leading zeroes, to match proto parsing.
   int leading_zero = 0;
-  for (int i = 0; i < numeric_str.size(); ++i) {
+  for (size_t i = 0; i < numeric_str.size(); ++i) {
     const char ch = numeric_str[i];
     if (ch == '0') {
       if (++leading_zero > 1) return false;

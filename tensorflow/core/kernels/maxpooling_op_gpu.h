@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -37,10 +37,23 @@ bool MaxPoolForwardWithOptionalArgmax(
     const int stride_h, const int stride_w, const int pad_t, const int pad_l,
     float* top_data, int64* mask, const Eigen::GpuDevice& d);
 
+bool MaxPoolForwardWithOptionalArgmax(
+    const Eigen::half* bottom_data, const int batch, const int height,
+    const int width, const int channels, const int pooled_height,
+    const int pooled_width, const int kernel_h, const int kernel_w,
+    const int stride_h, const int stride_w, const int pad_t, const int pad_l,
+    Eigen::half* top_data, int64* mask, const Eigen::GpuDevice& d);
+
 bool MaxPoolBackwardWithArgmax(const int output_size, const int input_size,
                                const float* top_diff, const int64* mask,
                                const int top_offset, const int bottom_offset,
                                float* bottom_diff, const Eigen::GpuDevice& d);
+
+bool MaxPoolBackwardWithArgmax(const int output_size, const int input_size,
+                               const Eigen::half* top_diff, const int64* mask,
+                               const int top_offset, const int bottom_offset,
+                               Eigen::half* bottom_diff,
+                               const Eigen::GpuDevice& d);
 
 bool MaxPoolBackwardNoMask(const float* bottom_data, const int batch,
                            const int height, const int width,
@@ -49,6 +62,15 @@ bool MaxPoolBackwardNoMask(const float* bottom_data, const int batch,
                            const int kernel_w, const int stride_h,
                            const int stride_w, const int pad_t, const int pad_l,
                            const float* top_diff, float* bottom_diff,
+                           const Eigen::GpuDevice& d);
+
+bool MaxPoolBackwardNoMask(const Eigen::half* bottom_data, const int batch,
+                           const int height, const int width,
+                           const int channels, const int pooled_height,
+                           const int pooled_width, const int kernel_h,
+                           const int kernel_w, const int stride_h,
+                           const int stride_w, const int pad_t, const int pad_l,
+                           const Eigen::half* top_diff, Eigen::half* bottom_diff,
                            const Eigen::GpuDevice& d);
 
 }  // namespace tensorflow

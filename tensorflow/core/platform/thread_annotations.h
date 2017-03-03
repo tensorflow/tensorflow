@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ limitations under the License.
 #if defined(PLATFORM_GOOGLE)
 #include "tensorflow/core/platform/google/build_config/thread_annotations.h"
 #elif defined(PLATFORM_POSIX) || defined(PLATFORM_POSIX_ANDROID) || \
-    defined(PLATFORM_GOOGLE_ANDROID)
+    defined(PLATFORM_GOOGLE_ANDROID) || defined(PLATFORM_WINDOWS)
 #include "tensorflow/core/platform/default/thread_annotations.h"
 #else
 #error Define the appropriate PLATFORM_<foo> macro for this platform

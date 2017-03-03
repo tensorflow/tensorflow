@@ -1,0 +1,333 @@
+<!--
+@license
+Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+<link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../iron-icons/iron-icons.html">
+<link rel="import" href="../paper-checkbox/paper-checkbox.html">
+<link rel="import" href="../paper-icon-button/paper-icon-button.html">
+<link rel="import" href="../paper-input/paper-input.html">
+<link rel="import" href="../tf-imports/lodash.html">
+<link rel="import" href="../tf-dashboard-common/scrollbar-style.html">
+<link rel="import" href="../tf-dashboard-common/run-color-style.html">
+<link rel="import" href="../tf-storage/tf-storage.html">
+
+<!--
+tf-multi-checkbox creates a list of checkboxes that can be used to toggle on or off
+a large number of values. Each checkbox displays a name, and may also have an
+associated tooltip value. Checkboxes can be highlighted, hidden, and re-ordered.
+
+tf-multi-checkbox assumes that the names may be very long compared to the width
+of the checkbox, and the number of names may also be very large, and works to
+handle these situations gracefully.
+-->
+<dom-module id="tf-multi-checkbox">
+  <style include="scrollbar-style"></style>
+  <style include="run-color-style"></style>
+
+  <template>
+      <paper-input
+        id="runs-regex"
+        no-label-float
+        label="Write a regex to filter runs"
+        value="[[regexInput]]"
+        on-bind-value-changed="_debouncedRegexChange"
+      ></paper-input>
+    <div id="outer-container" class="scrollbar">
+      <template
+        is="dom-repeat"
+        items="[[namesMatchingRegex]]"
+      >
+        <div
+          class="run-row"
+        >
+          <div class="icon-container checkbox-container vertical-align-container">
+            <paper-checkbox
+              class="checkbox vertical-align-center"
+              name="[[item]]"
+              checked$="[[_isChecked(item, runSelectionState.*)]]"
+              on-change="_checkboxChange"
+            ></paper-checkbox>
+
+          </div>
+          <div class="icon-container isolator-container vertical-align-container">
+            <paper-icon-button
+              icon="radio-button-unchecked"
+              class="isolator vertical-align-center"
+              on-tap="_isolateRun"
+              name="[[item]]"
+            ></paper-icon-button>
+          </div>
+          <div class="item-label-container">
+            <span>[[item]]</span>
+          </div>
+        </div>
+      </template>
+    </div>
+  <style>
+    paper-input {
+      --paper-input-container-focus-color: var(--tb-orange-strong);
+      --paper-input-container-input: {
+        font-size: 14px;
+      };
+      --paper-input-container-label: {
+        font-size: 14px;
+      };
+    }
+    :host {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+    #outer-container {
+      overflow-y: auto;
+      overflow-x: hidden;
+      width: 100%;
+      height: 0; /* Quirk to make firefox add scrolling instead of expand div */
+      flex-grow: 1;
+      flex-shrink: 1;
+      word-wrap: break-word;
+    }
+    .run-row {
+      padding-top: 5px;
+      padding-bottom: 5px;
+      display: flex;
+      flex-direction: row;
+      font-size: 13px;
+    }
+    .icon-container {
+      flex-grow: 0;
+      flex-shrink: 0;
+      padding-left: 2px;
+    }
+    .checkbox {
+      padding-left: 2px;
+      width: 18px;
+      height: 18px;
+    }
+    .isolator {
+      width: 18px;
+      height: 18px;
+      padding: 0px;
+    }
+    .isolator-container {
+      padding-left: 6px;
+      padding-right: 3px;
+    }
+    .checkbox-container {
+      padding-left: 2px;
+    }
+    .item-label-container {
+      padding-left: 5px;
+      flex-grow: 1;
+      flex-shrink: 1;
+      width: 0px; /* hack to get the flex-grow to work properly */
+    }
+    .tooltip-value-container {
+      display: flex;
+      justify-content: center;
+      flex-grow: 0;
+      flex-shrink: 0;
+      text-align:right;
+      padding-left: 2px;
+    }
+    .vertical-align-container {
+      display: flex;
+      justify-content: center;
+    }
+    .vertical-align-container .vertical-align-center {
+      align-self: center;
+    }
+    .vertical-align-container .vertical-align-top {
+      align-self: start;
+    }
+  </style>
+  </template>
+
+  <script>
+  Polymer({
+    is: "tf-multi-checkbox",
+    properties: {
+      names: {
+        type: Array,
+        value: function() {return [];},
+      }, // All the runs in consideration
+      regexInput: {
+        type: String,
+        value: TF.URIStorage.getStringInitializer("regexInput", ""),
+        observer: "_regexInputObserver",
+      }, // Regex for filtering the runs
+      regex: {
+        type: Object,
+        computed: "_makeRegex(regexInput)"
+      },
+      namesMatchingRegex: {
+        type: Array,
+        computed: "computeNamesMatchingRegex(names.*, regex)"
+      }, // Runs that match the regex
+      runSelectionState: {
+      // if a run is explicitly enabled, True, if explicitly disabled, False.
+      // if undefined, default value (enable for first k runs, disable after).
+        type: Object,
+        value: TF.URIStorage.getObjectInitializer('runSelectionState', {}),
+      },
+      // (Allows state to persist across regex filtering)
+      outSelected: {
+        type: Array,
+        notify: true,
+        computed: 'computeOutSelected(namesMatchingRegex.*, runSelectionState.*)'
+      },
+      colorScale: {
+        type: Object,
+        observer: "synchronizeColors",
+      }, // map from run name to css class
+      numRunsEnabledByDefault: {
+        // When TB first loads, first k runs are enabled, rest are disabled.
+        type: Number,
+        value: 10,
+      },
+      _debouncedRegexChange: {
+        type: Function,
+        // Updating the regex can be slow, because it involves updating styles
+        // on a large number of Polymer paper-checkboxes. We don't want to do
+        // this while the user is typing, as it may make a bad, laggy UI.
+        // So we debounce the updates that come from user typing.
+        value: function() {
+          _this = this;
+          var debounced = _.debounce(function(r) {
+            _this.regexInput = r;
+          }, 150, {leading: false});
+          return function() {
+            var r = this.$$("#runs-regex").value;
+            if (r == "") {
+              // If the user cleared the field, they may be done typing, so
+              // update more quickly.
+              this.async(function() {
+                _this.regexInput = r;
+              }, 30);
+            } else {
+              debounced(r);
+            };
+          };
+        },
+      },
+    },
+    listeners: {
+      'dom-change': 'synchronizeColors',
+    },
+    observers: [
+      "_setIsolatorIcon(runSelectionState, names)",
+      "_storeRunToIsCheckedMapping(runSelectionState)",
+    ],
+    _storeRunToIsCheckedMapping: TF.URIStorage.getObjectObserver('runSelectionState', {}),
+    _makeRegex: function(regex) {
+      try {
+        return new RegExp(regex)
+      } catch (e) {
+        return null;
+      }
+    },
+    _setIsolatorIcon: function() {
+      var runMap = this.runSelectionState;
+      var numChecked = _.filter(_.values(runMap)).length;
+      var buttons = Array.prototype.slice.call(this.querySelectorAll(".isolator"));
+
+      buttons.forEach(function(b) {
+        if (numChecked === 1 && runMap[b.name]) {
+          b.icon = "radio-button-checked";
+        } else {
+          b.icon = "radio-button-unchecked";
+        }
+      });
+    },
+    computeNamesMatchingRegex: function(__, ___) {
+      var regex = this.regex;
+      return this.names.filter(function(n) {
+        return regex == null || regex.test(n);
+      });
+    },
+    computeOutSelected: function(__, ___) {
+      var runSelectionState = this.runSelectionState;
+      var num = this.numRunsEnabledByDefault;
+      return this.namesMatchingRegex.filter(function(n, i) {
+        return runSelectionState[n] == null ? i<num : runSelectionState[n];
+      });
+    },
+    synchronizeColors: function(e) {
+      if (!this.colorScale) return;
+
+      this._setIsolatorIcon();
+
+      var checkboxes = Array.prototype.slice.call(this.querySelectorAll("paper-checkbox"));
+      var scale = this.colorScale;
+      checkboxes.forEach(function(p) {
+        var color = scale.scale(p.name);
+        p.customStyle['--paper-checkbox-checked-color'] = color;
+        p.customStyle['--paper-checkbox-checked-ink-color'] = color;
+        p.customStyle['--paper-checkbox-unchecked-color'] = color;
+        p.customStyle['--paper-checkbox-unchecked-ink-color'] = color;
+      });
+      var buttons = Array.prototype.slice.call(this.querySelectorAll(".isolator"));
+      buttons.forEach(function(p) {
+        var color = scale.scale(p.name);
+        p.style['color'] = color;
+      });
+      // The updateStyles call fails silently if the browser doesn't have focus,
+      // e.g. if TensorBoard was opened into a new tab that isn't visible.
+      // So we wait for requestAnimationFrame.
+      var _this = this;
+      window.requestAnimationFrame(function() {_this.updateStyles();});
+    },
+    _isolateRun: function(e) {
+      // If user clicks on the label for one run, enable it and disable all other runs.
+
+      var name = Polymer.dom(e).localTarget.name;
+      var selectionState = {};
+      this.names.forEach(function(n) {
+        selectionState[n] = n == name;
+      })
+      this.runSelectionState = selectionState;
+    },
+    _checkboxChange: function(e) {
+      var target = Polymer.dom(e).localTarget;
+      this.runSelectionState[target.name] = target.checked;
+      // n.b. notifyPath won't work because run names may have periods.
+      this.runSelectionState = _.clone(this.runSelectionState);
+    },
+    _isChecked: function(item, outSelectedChange) {
+      return this.outSelected.indexOf(item) != -1;
+    },
+    _regexInputObserver: TF.URIStorage.getStringObserver("regexInput", ""),
+    toggleAll: function() {
+      var _this = this;
+      var allToggledOn = this.namesMatchingRegex
+                    .every(function(n) {return _this.runSelectionState[n]});
+
+      var runSelectionStateIsDefault = Object.keys(this.runSelectionState).length == 0;
+
+      var numRuns = this.namesMatchingRegex.length;
+
+      var shouldDisable = allToggledOn || runSelectionStateIsDefault;
+
+      var newRunsDisabled = {};
+      this.names.forEach(function(n) {
+        newRunsDisabled[n] = !shouldDisable;
+      })
+      this.runSelectionState = newRunsDisabled;
+    },
+  });
+  </script>
+</dom-module>

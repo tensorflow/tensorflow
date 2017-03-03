@@ -5,8 +5,11 @@ startup --batch
 
 # Similarly, we need to workaround sandboxing issues:
 #   https://github.com/bazelbuild/bazel/issues/418
-build --spawn_strategy=standalone --genrule_strategy=standalone
+build  --verbose_failures --spawn_strategy=standalone --genrule_strategy=standalone
 test --spawn_strategy=standalone
 
-build --color=yes --verbose_failures
-test --color=yes --verbose_failures --test_output=errors --test_verbose_timeout_warnings
+# Force bazel output to use colors (good for jenkins) and print useful errors.
+common --color=yes
+
+# Configure tests - increase timeout, print errors and timeout warnings
+test --verbose_failures --test_output=errors --test_verbose_timeout_warnings

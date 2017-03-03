@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_bfc_allocator.h"
 
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 
 namespace gpu = ::perftools::gputools;
 
@@ -29,6 +30,7 @@ GPUBFCAllocator::GPUBFCAllocator(int device_id, size_t total_memory,
     : BFCAllocator(
           new GPUMemAllocator(
               GPUMachineManager()->ExecutorForDevice(device_id).ValueOrDie()),
-          total_memory, gpu_options.allow_growth(), "gpu_bfc") {}
+          total_memory, gpu_options.allow_growth(),
+          strings::StrCat("GPU_", device_id, "_bfc")) {}
 
 }  // namespace tensorflow

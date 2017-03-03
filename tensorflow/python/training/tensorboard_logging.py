@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -56,7 +56,7 @@ _summary_writer = _sentinel_summary_writer
 # Map from the tensorboard_logging logging enum values to the proto's enum
 # values.
 _LEVEL_PROTO_MAP = {
-    DEBUG: event_pb2.LogMessage.DEBUG,
+    DEBUG: event_pb2.LogMessage.DEBUGGING,
     INFO: event_pb2.LogMessage.INFO,
     WARN: event_pb2.LogMessage.WARN,
     ERROR: event_pb2.LogMessage.ERROR,

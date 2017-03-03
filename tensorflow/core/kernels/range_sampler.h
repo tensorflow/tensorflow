@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -115,10 +115,12 @@ class AllSampler : public RangeSampler {
 
   int64 Sample(random::SimplePhilox* rnd) const override {
     LOG(FATAL) << "Should not be called";
+    return 0;
   }
 
   float Probability(int64 value) const override {
     LOG(FATAL) << "Should not be called";
+    return 0;
   }
 
   void SampleBatchGetExpectedCountAvoid(

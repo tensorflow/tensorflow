@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,9 +31,9 @@ class TestRandomAccessFile : public RandomAccessFile {
 
 class TestFileSystem : public NullFileSystem {
  public:
-  Status NewRandomAccessFile(const string& fname,
-                             RandomAccessFile** result) override {
-    *result = new TestRandomAccessFile;
+  Status NewRandomAccessFile(
+      const string& fname, std::unique_ptr<RandomAccessFile>* result) override {
+    result->reset(new TestRandomAccessFile);
     return Status::OK();
   }
   // Always return size of 10

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -85,9 +85,13 @@ BFCAllocator::Chunk* BFCAllocator::ChunkFromHandle(ChunkHandle h) {
 }
 
 bool BFCAllocator::Extend(size_t rounded_bytes) {
+  size_t available_bytes = memory_limit_ - total_region_allocated_bytes_;
+  // Rounds available_bytes down to the nearest multiple of kMinAllocationSize.
+  available_bytes = (available_bytes / kMinAllocationSize) * kMinAllocationSize;
+
   // Do we have enough space to handle the client's request?
   // If not, fail immediately.
-  if (total_region_allocated_bytes_ + rounded_bytes > memory_limit_) {
+  if (rounded_bytes > available_bytes) {
     return false;
   }
 
@@ -101,7 +105,7 @@ bool BFCAllocator::Extend(size_t rounded_bytes) {
   }
 
   // Try allocating.
-  size_t bytes = curr_region_allocation_bytes_;
+  size_t bytes = std::min(curr_region_allocation_bytes_, available_bytes);
   void* mem_addr = suballocator_->Alloc(32, bytes);
   if (mem_addr == nullptr && !started_backpedal_) {
     // Only backpedal once.
@@ -157,7 +161,7 @@ bool BFCAllocator::Extend(size_t rounded_bytes) {
   InsertFreeChunkIntoBin(h);
 
   // Invoke visitors on newly allocated region.
-  for (auto visitor : region_visitors_) {
+  for (const auto& visitor : region_visitors_) {
     visitor(mem_addr, bytes);
   }
   return true;
@@ -211,8 +215,8 @@ void* BFCAllocator::AllocateRaw(size_t unused_alignment, size_t num_bytes,
       if (log_counter < 10) {
         log_counter++;
         LOG(WARNING)
-            << "Ran out of memory trying to allocate "
-            << strings::HumanReadableNumBytes(num_bytes)
+            << "Allocator (" << Name() << ") ran out of memory trying "
+            << "to allocate " << strings::HumanReadableNumBytes(num_bytes)
             << ". The caller indicates that this is not a failure, but"
             << " may mean that there could be performance gains if more"
             << " memory is available.";
@@ -266,11 +270,11 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
   // couldn't find one.  This means we must have run out of memory,
   // Dump the memory log for analysis.
   if (dump_log_on_failure) {
+    LOG(WARNING) << "Allocator (" << Name() << ") ran out of memory trying "
+                 << "to allocate " << strings::HumanReadableNumBytes(num_bytes)
+                 << ".  Current allocation summary follows.";
     DumpMemoryLog(rounded_bytes);
     LOG(WARNING) << RenderOccupancy();
-    LOG(WARNING) << "Ran out of memory trying to allocate "
-                 << strings::HumanReadableNumBytes(num_bytes)
-                 << ".  See logs for memory state.";
   }
   return nullptr;
 }

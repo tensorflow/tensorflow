@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import six  # pylint: disable=unused-import
-
 from tensorflow.core.framework import device_attributes_pb2
 from tensorflow.python import pywrap_tensorflow
 
@@ -34,4 +32,5 @@ def list_local_devices():
     m = device_attributes_pb2.DeviceAttributes()
     m.ParseFromString(pb_str)
     return m
-  return [_convert(s) for s in pywrap_tensorflow.DeviceFactory_AddDevices()]
+
+  return [_convert(s) for s in pywrap_tensorflow.list_devices()]

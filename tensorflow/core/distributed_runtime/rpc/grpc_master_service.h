@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_MASTER_SERVICE_H_
 #define THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_MASTER_SERVICE_H_
 
+#include <memory>
+
 namespace grpc {
 class ServerBuilder;
 }  // namespace grpc
@@ -23,9 +25,9 @@ class ServerBuilder;
 namespace tensorflow {
 
 class AsyncServiceInterface;
-class MasterEnv;
+class Master;
 
-AsyncServiceInterface* NewGrpcMasterService(MasterEnv* env,
+AsyncServiceInterface* NewGrpcMasterService(Master* master,
                                             ::grpc::ServerBuilder* builder);
 
 }  // namespace tensorflow

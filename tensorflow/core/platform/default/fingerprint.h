@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,12 +16,18 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_DEFAULT_FINGERPRINT_H_
 #define TENSORFLOW_CORE_PLATFORM_DEFAULT_FINGERPRINT_H_
 
-#include "farmhash-34c13ddfab0e35422f4c3979f360635a8c050260/src/farmhash.h"
+#include <farmhash.h>
 
 namespace tensorflow {
 
 inline uint64 Fingerprint64(const string& s) {
   return ::util::Fingerprint64(s);
+}
+
+inline Fprint128 Fingerprint128(const string& s) {
+  const auto fingerprint = ::util::Fingerprint128(s);
+  return {::util::Uint128Low64(fingerprint),
+          ::util::Uint128High64(fingerprint)};
 }
 
 }  // namespace tensorflow

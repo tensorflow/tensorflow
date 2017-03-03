@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,7 +21,11 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
 
+#if !defined(_MSC_VER)
 #define UNROLL _Pragma("unroll")
+#else
+#define UNROLL 
+#endif
 
 namespace tensorflow {
 
@@ -131,11 +135,11 @@ template struct DepthwiseConv2dGPULaunch<double>;
 
 // A Cuda kernel to compute the depthwise convolution backprop w.r.t. input.
 template <typename T>
-__global__ void DepthwiseConv2dBackpropInputGPUKernel(const DepthwiseArgs args,
-                                                      const T* out_backprop,
-                                                      const T* filter,
-                                                      T* in_backprop,
-                                                      int num_in_backprop) {
+__global__ void __launch_bounds__(1024)
+    DepthwiseConv2dBackpropInputGPUKernel(const DepthwiseArgs args,
+                                          const T* out_backprop,
+                                          const T* filter, T* in_backprop,
+                                          int num_in_backprop) {
   const int in_rows = args.in_rows;
   const int in_cols = args.in_cols;
   const int in_depth = args.in_depth;

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -77,6 +77,12 @@ class PartialTensorShape {
   /// Return true iff the rank and all of the dimensions are well defined
   bool IsFullyDefined() const;
 
+  /// Exact equality test. Returns true iff the ranks match (i.e., both are
+  /// unknown, or both are known and equal), and all dimensions are equal (i.e.,
+  /// both dimensions are known, or both are known and equal). This is a
+  /// stronger condition that IsCompatibleWith.
+  bool IsIdenticalTo(const PartialTensorShape& shape) const;
+
   /// Return true iff the ranks match, and if the
   /// dimensions all either match or one is unknown.
   bool IsCompatibleWith(const PartialTensorShape& shape) const;
@@ -132,6 +138,9 @@ class PartialTensorShapeUtils {
  public:
   static string PartialShapeListString(
       const gtl::ArraySlice<PartialTensorShape>& shapes);
+
+  static bool AreIdentical(const gtl::ArraySlice<PartialTensorShape>& shapes0,
+                           const gtl::ArraySlice<PartialTensorShape>& shapes1);
 
   static bool AreCompatible(const gtl::ArraySlice<PartialTensorShape>& shapes0,
                             const gtl::ArraySlice<PartialTensorShape>& shapes1);

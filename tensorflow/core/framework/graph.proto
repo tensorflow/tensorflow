@@ -1,12 +1,12 @@
 syntax = "proto3";
 
 package tensorflow;
-// option cc_enable_arenas = true;
+option cc_enable_arenas = true;
 option java_outer_classname = "GraphProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
 
-import "tensorflow/core/framework/attr_value.proto";
+import "tensorflow/core/framework/node_def.proto";
 import "tensorflow/core/framework/function.proto";
 import "tensorflow/core/framework/versions.proto";
 
@@ -34,7 +34,7 @@ message GraphDef {
   //     different orgs. E.g.,
   //     { "/google/nn", { ... }},
   //     { "/google/vision", { ... }}
-  //     { "/org_foo/module_bar", {...}}
+  //     { "/org_foo/module_bar", { ... }}
   //     map<string, FunctionDefLib> named_lib;
   //   * If node[i].op is the name of one function in "library",
   //     node[i] is deemed as a function call. Otherwise, node[i].op
@@ -53,60 +53,4 @@ message GraphDef {
   //     consumer does not start until all return values of the callee
   //     function are ready.
   FunctionDefLibrary library = 2;
-};
-
-message NodeDef {
-  // The name given to this operator. Used for naming inputs,
-  // logging, visualization, etc.  Unique within a single GraphDef.
-  // Must match the regexp "[A-Za-z0-9.][A-Za-z0-9_./]*".
-  string name = 1;
-
-  // The operation name.  There may be custom parameters in attrs.
-  // Op names starting with an underscore are reserved for internal use.
-  string op = 2;
-
-  // Each input is "node:src_output" with "node" being a string name and
-  // "src_output" indicating which output tensor to use from "node". If
-  // "src_output" is 0 the ":0" suffix can be omitted.  Regular inputs
-  // may optionally be followed by control inputs that have the format
-  // "^node".
-  repeated string input = 3;
-
-  // A (possibly partial) specification for the device on which this
-  // node should be placed.
-  // The expected syntax for this string is as follows:
-  //
-  // DEVICE_SPEC ::= COLOCATED_NODE | PARTIAL_SPEC
-  //
-  // COLOCATED_NODE ::= "@" NODE_NAME  // See NodeDef.name above.
-  // PARTIAL_SPEC ::= ("/" CONSTRAINT) *
-  // CONSTRAINT ::= ("job:" JOB_NAME)
-  //              | ("replica:" [1-9][0-9]*)
-  //              | ("task:" [1-9][0-9]*)
-  //              | ( ("gpu" | "cpu") ":" ([1-9][0-9]* | "*") )
-  //
-  // Valid values for this string include:
-  // * "@other/node"                         (colocate with "other/node")
-  // * "/job:worker/replica:0/task:1/gpu:3"  (full specification)
-  // * "/job:worker/gpu:3"                   (partial specification)
-  // * ""                                    (no specification)
-  //
-  // If the constraints do not resolve to a single device (or if this
-  // field is empty or not present), the runtime will attempt to
-  // choose a device automatically.
-  string device = 4;
-
-  // Operation-specific graph-construction-time configuration.
-  // Note that this should include all attrs defined in the
-  // corresponding OpDef, including those with a value matching
-  // the default -- this allows the default to change and makes
-  // NodeDefs easier to interpret on their own.  However, if
-  // an attr with a default is not specified in this list, the
-  // default will be used.
-  // The "names" (keys) must match the regexp "[a-z][a-z0-9_]+" (and
-  // one of the names from the corresponding OpDef's attr field).
-  // The values must have a type matching the corresponding OpDef
-  // attr's type field.
-  // TODO(josh11b): Add some examples here showing best practices.
-  map<string, AttrValue> attr = 5;
 };

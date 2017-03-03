@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,9 +15,25 @@
 
 # Bring in all of the public TensorFlow interface into this
 # module.
-# pylint: disable=wildcard-import
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+# pylint: disable=wildcard-import
 from tensorflow.python import *
+# pylint: enable=wildcard-import
+
+# Lazily import the `tf.contrib` module. This avoids loading all of the
+# dependencies of `tf.contrib` at `import tensorflow` time.
+class _LazyContribLoader(object):
+
+  def __getattr__(self, item):
+    global contrib
+    # Replace the lazy loader with the imported module itself.
+    import importlib  # pylint: disable=g-import-not-at-top
+    contrib = importlib.import_module('tensorflow.contrib')
+    return getattr(contrib, item)
+
+
+contrib = _LazyContribLoader()

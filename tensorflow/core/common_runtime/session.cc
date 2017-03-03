@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -74,6 +74,13 @@ Status NewSession(const SessionOptions& options, Session** out_session) {
     return errors::Internal("Failed to create session.");
   }
   return Status::OK();
+}
+
+Status Reset(const SessionOptions& options,
+             const std::vector<string>& containers) {
+  SessionFactory* factory;
+  TF_RETURN_IF_ERROR(SessionFactory::GetFactory(options, &factory));
+  return factory->Reset(options, containers);
 }
 
 }  // namespace tensorflow

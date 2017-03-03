@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/types.h"
@@ -31,6 +32,13 @@ class SessionFactory {
  public:
   virtual Session* NewSession(const SessionOptions& options) = 0;
   virtual bool AcceptsOptions(const SessionOptions& options) = 0;
+
+  // Sessions that support resource containers should override this functions.
+  virtual Status Reset(const SessionOptions& options,
+                       const std::vector<string>& containers) {
+    return errors::Unimplemented("Reset()");
+  }
+
   virtual ~SessionFactory() {}
   static void Register(const string& runtime_type, SessionFactory* factory);
   static Status GetFactory(const SessionOptions& options,

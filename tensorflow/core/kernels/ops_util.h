@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,88 +21,13 @@ limitations under the License.
 #include <array>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/util/padding.h"
 
 namespace tensorflow {
-
-// Get2dOutputSize(): Given an input tensor, kernel, stride and padding
-// type, the function computes the output and padding dimensions.
-//
-// Convolution layers take in an input tensor of shape (D, C, R, B), and
-// convolve it with a set of filters, which can also be presented as a
-// tensor (D, K, K, M), where M is the number of filters, K is the filter size,
-// and each 3-dimensional tensor of size (D, K, K) is a filter. For
-// simplicity we assume that we always use square filters (which is usually the
-// case in images). It also takes in a few additional parameters:
-//
-// Stride (S): the stride with which we apply the filters. This is the offset
-// between locations where we apply the filters. A larger stride
-// means that the output will be spatially smaller.
-//
-// Padding (P): the padding we apply to the input tensor along the R and C
-// dimensions. This is usually used to make sure that the spatial dimension
-// do not shrink when we progress with convolutions. Two types of padding are
-// often used:
-//   SAME: the pad value is computed so that the output will have size R/S
-//         and C/S.
-//   VALID: no padding is carried out.
-// The padded area is zero-filled.
-//
-// The output dimensions for convolution and many other operations, when given
-// all the parameters above, are as follows:
-// - When Padding = SAME: the output size is (B, R', C', M), where
-//     R' = ceil(float(R) / float(S))
-//     C' = ceil(float(C) / float(S))
-//   where ceil is the ceiling function. The number of padded rows and columns
-//   are computed as:
-//     Pr = ((R' - 1) * S + K - R) / 2
-//     Pc = ((C' - 1) * S + K - C) / 2
-//   When the stride is 1, we have the simplified case
-//     R'=R, C'=C, Pr=Pc=(K-1)/2.
-//   This is where SAME comes from - the output has the same size as the input
-//   has.
-//
-// - When Padding = VALID: the output size is computed as
-//     R' = ceil(float(R - K + 1) / float(S))
-//     C' = ceil(float(C - K + 1) / float(S))
-//   and the number of padded rows and columns are computed in the same way.
-//   When the stride is 1, we have the simplified case
-//     R'=R-K+1, C'=C-K+1, Pr=0, Pc=0.
-//
-// For convolution, mathematically, the output value at location (b, r', c', m)
-// is the inner product of two vectors: the chunk of input at
-//    (b, (r'*S-Pr) : (r'*S-Pr+K), (c'*S-Pc) : (c'*S-Pc+K), :),
-// and the filter at (m, :, :, :).
-//
-Status Get2dOutputSize(const int in_height, const int in_width,
-                       int filter_height, int filter_width, int row_stride,
-                       int col_stride, Padding padding, int* new_height,
-                       int* new_width, int* pad_rows, int* pad_cols);
-
-// Returns the same output dimensions as in Get2dOutputSize, but returns verbose
-// padding dimensions (top/bottom/left/right). Any excess padding (caused by
-// an odd padding size value) is added to the 'pad_bottom' and 'pad_right'
-// dimensions.
-Status Get2dOutputSizeVerbose(const int in_height, const int in_width,
-                              int filter_height, int filter_width,
-                              int row_stride, int col_stride, Padding padding,
-                              int* new_height, int* new_width, int* pad_top,
-                              int* pad_bottom, int* pad_left, int* pad_right);
-
-// Given an input tensor, kernel, stride and padding type, populates the 3D size
-// of the output tensor and padding to be applied to the input tensor at the
-// lower end of every dimension. Use for 3D convolutions, where the input data
-// is padded with zeros, as well as for 3D avg/max pooling, where the input data
-// is padded with invalid values that are not considered for pooling.
-//
-// TODO(mjanusz): Unify this with Get2dOutputSize by using a common template.
-Status Get3dOutputSize(const std::array<int64, 3>& input,
-                       const std::array<int64, 3>& window,
-                       const std::array<int64, 3>& strides,
-                       Padding padding_type, std::array<int64, 3>* output,
-                       std::array<int64, 3>* padding);
 
 // Calculates broadcast starting index and size.  For SAME padding, addition
 // padding could be applied to right, left, top and bottom.  Depending on the
@@ -129,74 +54,22 @@ bool IsInnerDimsSizeAligned(const TensorShape& s) {
   return bytes_per_dim0 % EIGEN_MAX_ALIGN_BYTES == 0;
 }
 
-// Returns in 'col_data', image patches in storage order (height, width, depth)
-// extracted from image at 'input_data', which is required to be in storage
-// order (batch, height, width, depth).
-// Implementation written by Yangqing Jia (jiayq).
+// Given a shape 's' of a tensor of type T and the `start` and `end` index of a
+// dim 0 slice, returns true iff slice is aligned with respect to original
+// tensor. Here aligned implies the address is a multiple of
+// EIGEN_MAX_ALIGN_BYTES.
 template <typename T>
-void Im2col(const T* input_data, const int depth, const int height,
-            const int width, const int filter_h, const int filter_w,
-            const int pad_t, const int pad_l, const int pad_b, const int pad_r,
-            const int stride_h, const int stride_w, T* col_data) {
-  int height_col = (height + pad_t + pad_b - filter_h) / stride_h + 1;
-  int width_col = (width + pad_l + pad_r - filter_w) / stride_w + 1;
-
-  int h_pad = -pad_t;
-  for (int h = 0; h < height_col; ++h) {
-    int w_pad = -pad_l;
-    for (int w = 0; w < width_col; ++w) {
-      for (int ih = h_pad; ih < h_pad + filter_h; ++ih) {
-        for (int iw = w_pad; iw < w_pad + filter_w; ++iw) {
-          if (ih >= 0 && ih < height && iw >= 0 && iw < width) {
-            memcpy(col_data, input_data + (ih * width + iw) * depth,
-                   sizeof(T) * depth);
-          } else {
-            // This should be simply padded with zero.
-            memset(col_data, 0, sizeof(T) * depth);
-          }
-          col_data += depth;
-        }
-      }
-      w_pad += stride_w;
-    }
-    h_pad += stride_h;
-  }
-}
-
-// Returns in 'im_data' image patch in storage order (height, width, depth),
-// constructed from patches in 'col_data', which is required to be in storage
-// order (out_height * out_width, filter_height, filter_width, in_depth).
-// Implementation by Yangqing Jia (jiayq).
-template <typename T>
-void Col2im(const T* col_data, const int depth, const int height,
-            const int width, const int filter_h, const int filter_w,
-            const int pad_t, const int pad_l, const int pad_b, const int pad_r,
-            const int stride_h, const int stride_w, T* im_data) {
-  memset(im_data, 0, sizeof(T) * height * width * depth);
-  int height_col = (height + pad_t + pad_b - filter_h) / stride_h + 1;
-  int width_col = (width + pad_l + pad_r - filter_w) / stride_w + 1;
-  int h_pad = -pad_t;
-  for (int h = 0; h < height_col; ++h) {
-    int w_pad = -pad_l;
-    for (int w = 0; w < width_col; ++w) {
-      T* im_patch_data = im_data + (h_pad * width + w_pad) * depth;
-      for (int ih = h_pad; ih < h_pad + filter_h; ++ih) {
-        for (int iw = w_pad; iw < w_pad + filter_w; ++iw) {
-          if (ih >= 0 && ih < height && iw >= 0 && iw < width) {
-            // TODO(andydavis) Vectorize this loop (if compiler does not).
-            for (int i = 0; i < depth; ++i) {
-              im_patch_data[i] += col_data[i];
-            }
-          }
-          im_patch_data += depth;
-          col_data += depth;
-        }
-        // Jump over remaining number of depth.
-        im_patch_data += depth * (width - filter_w);
-      }
-      w_pad += stride_w;
-    }
-    h_pad += stride_h;
+bool IsDim0SliceAligned(const TensorShape& s, int64 start, int64 end_or_size) {
+  if (s.dims() == 1) {
+    bool start_aligned = (start * sizeof(T)) % EIGEN_MAX_ALIGN_BYTES == 0;
+    // End is aligned if either the explicit end index is passed and is a
+    // a multiple of EIGEN_MAX_ALIGN_BYTES, or the start index is aligned and
+    // the size is aligned. So for convenience we can either pass start and
+    // index, or start and size.
+    bool end_aligned = (end_or_size * sizeof(T)) % EIGEN_MAX_ALIGN_BYTES == 0;
+    return start_aligned && end_aligned;
+  } else {
+    return IsInnerDimsSizeAligned<T>(s);
   }
 }
 

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -79,8 +79,8 @@ struct SoftmaxEigenImpl {
                                .sum(along_class)
                                .eval()
                                .reshape(batch_by_one)
-                               .broadcast(one_by_class)
-                               .log());
+                               .log()
+                               .broadcast(one_by_class));
     } else {
       // NOTE(touts): If you modify this implementation please run
       // the BM_ImageNetSoftmaxFwd benchmark in nn_ops_test.cc.

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,19 +16,16 @@ limitations under the License.
 #ifndef ORG_TENSORFLOW_JNI_IMAGEUTILS_RGB2YUV_H_
 #define ORG_TENSORFLOW_JNI_IMAGEUTILS_RGB2YUV_H_
 
-#include "tensorflow/core/platform/types.h"
-
-using namespace tensorflow;
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-void ConvertARGB8888ToYUV420SP(const uint32* const input, uint8* const output,
-                               int width, int height);
+void ConvertARGB8888ToYUV420SP(const uint32_t* const input,
+                               uint8_t* const output, int width, int height);
 
-void ConvertRGB565ToYUV420SP(const uint16* const input,
-                             uint8* const output,
+void ConvertRGB565ToYUV420SP(const uint16_t* const input, uint8_t* const output,
                              const int width, const int height);
 
 #ifdef __cplusplus
