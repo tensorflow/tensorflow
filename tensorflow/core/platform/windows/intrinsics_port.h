@@ -25,8 +25,8 @@ limitations under the License.
 
 #define _mm_load_pd1 _mm_load1_pd
 
-// only define these intrinsics if imminitrin.h by Intel wasn't included
-#ifndef _INCLUDED_IMM
+// only define these intrinsics if immintrin.h doesn't have them (VS2015 and earlier)
+#if _MSC_VER < 1910
 static inline int
 _mm256_extract_epi32(__m256i a, const int i)
 {
