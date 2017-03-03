@@ -25,6 +25,10 @@ from tensorflow.contrib.learn.python.learn.estimators import run_config as run_c
 from tensorflow.python.platform import test
 from tensorflow.python.training import server_lib
 
+TEST_DIR = "test_dir"
+ANOTHER_TEST_DIR = "another_test_dir"
+RANDOM_SEED = 123
+
 patch = test.mock.patch
 
 
@@ -206,6 +210,33 @@ class RunConfigTest(test.TestCase):
       config = run_config.RunConfig()
 
     self.assertTrue(config.is_chief)
+
+  def test_model_dir(self):
+    empty_config = run_config.RunConfig()
+    self.assertIsNone(empty_config.model_dir)
+
+    config = run_config.RunConfig(model_dir=TEST_DIR)
+    self.assertEqual(TEST_DIR, config.model_dir)
+
+  def test_replace(self):
+    config = run_config.RunConfig(
+        tf_random_seed=RANDOM_SEED, model_dir=TEST_DIR)
+    self.assertEqual(TEST_DIR, config.model_dir)
+    self.assertEqual(RANDOM_SEED, config.tf_random_seed)
+
+    new_config = config.replace(model_dir=ANOTHER_TEST_DIR)
+    self.assertEqual(ANOTHER_TEST_DIR, new_config.model_dir)
+    self.assertEqual(RANDOM_SEED, new_config.tf_random_seed)
+
+    self.assertEqual(TEST_DIR, config.model_dir)
+    self.assertEqual(RANDOM_SEED, config.tf_random_seed)
+
+    with self.assertRaises(ValueError):
+      # tf_random_seed is not allowed to be replaced.
+      config.replace(tf_random_seed=RANDOM_SEED)
+
+    with self.assertRaises(ValueError):
+      config.replace(some_undefined_property=RANDOM_SEED)
 
 
 if __name__ == "__main__":

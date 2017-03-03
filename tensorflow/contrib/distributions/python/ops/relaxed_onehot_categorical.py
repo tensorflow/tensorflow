@@ -162,7 +162,7 @@ class ExpRelaxedOneHotCategorical(distribution.Distribution):
       name: Python `str` name prefixed to Ops created by this class.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[logits, probs, temperature]) as ns:
+    with ops.name_scope(name, values=[logits, probs, temperature]):
       with ops.control_dependencies([check_ops.assert_positive(temperature)]
                                     if validate_args else []):
         self._temperature = array_ops.identity(temperature, name="temperature")
@@ -194,7 +194,7 @@ class ExpRelaxedOneHotCategorical(distribution.Distribution):
         graph_parents=[self._logits,
                        self._probs,
                        self._temperature],
-        name=ns)
+        name=name)
 
   @property
   def event_size(self):

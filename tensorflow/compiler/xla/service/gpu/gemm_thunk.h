@@ -63,6 +63,14 @@ class GemmThunk : public Thunk {
 
   const bool transpose_lhs_;
   const bool transpose_rhs_;
+
+  // Maps device names (StreamExecutor::DeviceDescription::name()) to autotune
+  // results.  The map's value is the best algorithm we've found for this thunk
+  // on this device, or an error if none of the algorithms worked and we should
+  // use the regular gemm without an algorithm.
+  std::unordered_map<string,
+                     StatusOr<::perftools::gputools::blas::AlgorithmType>>
+      autotune_results_;
 };
 
 }  // namespace gpu

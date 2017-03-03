@@ -2793,7 +2793,10 @@ py_test(
     size = "small",
     srcs = ["client/session_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_pip_gpu"],  # testInteractivePlacePrunedGraph fails on invalid assumption about GPU ops.
+    tags = [
+        "no_gpu",
+        "no_pip_gpu",  # testInteractivePlacePrunedGraph fails on invalid assumption about GPU ops.
+    ],
     deps = [
         ":array_ops",
         ":client",

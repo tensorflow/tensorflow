@@ -86,7 +86,7 @@ class Geometric(distribution.Distribution):
     """
 
     parameters = locals()
-    with ops.name_scope(name, values=[logits, probs]) as ns:
+    with ops.name_scope(name, values=[logits, probs]):
       self._logits, self._probs = distribution_util.get_logits_and_probs(
           logits, probs, validate_args=validate_args, name=name)
 
@@ -101,7 +101,7 @@ class Geometric(distribution.Distribution):
         allow_nan_stats=allow_nan_stats,
         parameters=parameters,
         graph_parents=[self._probs, self._logits],
-        name=ns)
+        name=name)
 
   @property
   def logits(self):

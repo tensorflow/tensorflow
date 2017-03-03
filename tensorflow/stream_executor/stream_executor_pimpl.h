@@ -353,6 +353,9 @@ class StreamExecutor {
   bool GetConvolveBackwardFilterAlgorithms(
       std::vector<dnn::AlgorithmType> *out_algorithms);
 
+  // Get the list of supported algorithms for BLAS gemm.
+  bool GetBlasGemmAlgorithms(std::vector<blas::AlgorithmType> *out_algorithms);
+
   // Create an RNN descriptor based on model shapes and configurations.
   // The caller retains the ownership of the descriptor.
   port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>> createRnnDescriptor(
