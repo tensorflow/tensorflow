@@ -445,11 +445,11 @@ class MatMulStatsTest(test.TestCase):
 # @ operator supported since python 3.5.
 if sys.version_info >= (3, 5):
   # Use eval() to avoid a compilation error on earlier versions.
-  _MATMUL = lambda x, y: eval("x @ y")
+  infix_matmul = lambda x, y: eval("x @ y")
 else:
   # For earlier versions of python, emulate regular behavior.
   # Useful to build and test for 3.5+ on earlier versions.
-  def _MATMUL(x, y):
+  def infix_matmul(x, y):
     try:
       r = type(x).__matmul__(x, y)
     except AttributeError:
@@ -472,14 +472,14 @@ class MatMulInfixOperatorTest(test.TestCase):
   def testMismatchedShape(self):
     with self.assertRaisesWithPredicateMatch(
         ValueError, lambda e: "Shape must" in str(e)):
-      _MATMUL(
+      infix_matmul(
         ops.convert_to_tensor([10.0, 20.0, 30.0]),
         ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0]]))
 
   def testMismatchedDimensions(self):
     with self.assertRaisesWithPredicateMatch(
         ValueError, lambda e: "Dimensions must" in str(e)):
-      _MATMUL(
+      infix_matmul(
         ops.convert_to_tensor([[10.0, 20.0, 30.0]]),
         ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0]]))
 
