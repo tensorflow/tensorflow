@@ -281,6 +281,13 @@ Status ShapeRefiner::ExtractConstantSubgraph(
       return Status::OK();
     }
 
+    // During construction or import from GraphConstructor, back edges may not
+    // be filled in.  Don't constant fold through merges at all for now.
+    if (IsMerge(current_node)) {
+      *is_constant_graph = false;
+      return Status::OK();
+    }
+
     // If there is nothing more to recurse down, see if
     // the generator node is a constant.
     if (current_node->num_inputs() == 0) {
