@@ -621,26 +621,6 @@ TEST(RetryingFileSystemTest, FileExists_SuccessWith2ndTry) {
   TF_EXPECT_OK(fs.FileExists("gs://path/dir"));
 }
 
-TEST(RetryingFileSystemTest, FileExists_AllRetriesFailed) {
-  ExpectedCalls expected_fs_calls = CreateRetriableErrors("FileExists", 6);
-  std::unique_ptr<MockFileSystem> base_fs(
-      new MockFileSystem(expected_fs_calls));
-  RetryingFileSystem fs(std::move(base_fs), 0);
-
-  EXPECT_EQ("Retriable error #5", fs.FileExists("file_name").error_message());
-}
-
-TEST(RetryingFileSystemTest, FileExists_SuccessWith2ndTry) {
-  ExpectedCalls expected_fs_calls(
-      {std::make_tuple("FileExists", errors::Unavailable("Something is wrong")),
-       std::make_tuple("FileExists", Status::OK())});
-  std::unique_ptr<MockFileSystem> base_fs(
-      new MockFileSystem(expected_fs_calls));
-  RetryingFileSystem fs(std::move(base_fs), 0);
-
-  TF_EXPECT_OK(fs.FileExists("gs://path/dir"));
-}
-
 TEST(RetryingFileSystemTest, IsDirectory_SuccessWith2ndTry) {
   ExpectedCalls expected_fs_calls(
       {std::make_tuple("IsDirectory",
