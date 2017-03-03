@@ -76,14 +76,12 @@ zip -j ${DIR}/libtensorflow_jni-cpu-windows-$(uname -m).zip \
 rm -f ${DIR}/tensorflow_jni.dll
 
 # Zip up the .dll, LICENSE and include files for the C library.
+mkdir -p ${DIR}/include/tensorflow/c
+mkdir -p ${DIR}/lib
+cp bazel-bin/tensorflow/libtensorflow.so ${DIR}/lib/tensorflow.dll
+cp tensorflow/c/c_api.h ${DIR}/include/tensorflow/c
+cp bazel-genfiles/tensorflow/tools/lib_package/include/tensorflow/c/LICENSE ${DIR}/include/tensorflow/c
 cd ${DIR}
-mkdir -p include/tensorflow/c
-mkdir -p lib
-cp bazel-bin/tensorflow/libtensorflow.so lib/tensorflow.dll
-cp tensorflow/c/c_api.h include/tensorflow/c
-cp ../bazel-genfiles/tensorflow/tools/lib_package/include/tensorflow/c/LICENSE include/tensorflow/c
-zip libtensorflow-cpu-windows-$(uname -m).zip lib/* include/*
-# Zip up the .dll, LICENSE and header files for the C library.
 zip -j libtensorflow-cpu-windows-$(uname -m).zip \
   lib/tensorflow.dll \
   include/c/c_api.h \
