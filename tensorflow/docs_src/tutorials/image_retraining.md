@@ -29,7 +29,7 @@ set of flower photos, run these commands:
 
 ```sh
 cd ~
-curl -O http://download.tensorflow.org/example_../images/flower_photos.tgz
+curl -O http://download.tensorflow.org/example_images/flower_photos.tgz
 tar xzf flower_photos.tgz
 ```
 
