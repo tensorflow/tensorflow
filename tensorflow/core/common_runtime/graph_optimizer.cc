@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/constant_folding.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/graph/algorithm.h"
+#include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/optimizer_cse.h"
 
 namespace tensorflow {
@@ -32,8 +33,8 @@ GraphOptimizer::GraphOptimizer(const OptimizerOptions& opts) : opts_(opts) {
 GraphOptimizer::~GraphOptimizer() {}
 
 void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Env* env,
-                              Device* device, Graph** graph) {
-  Graph* g = *graph;
+                              Device* device, std::unique_ptr<Graph>* graph) {
+  Graph* g = graph->get();
   DumpGraph("Initial", g);
 
   bool changed = true;
@@ -78,11 +79,11 @@ void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Env* env,
     if (!changed) break;
   }
 
-  Graph* copy = new Graph(g->op_registry());
-  CopyGraph(*g, copy);
-  delete g;
-  *graph = copy;
-  DumpGraph("ReCopy", *graph);
+  std::unique_ptr<Graph> copy(new Graph(g->op_registry()));
+  CopyGraph(*g, copy.get());
+  graph->swap(copy);
+
+  DumpGraph("ReCopy", graph->get());
 }
 
 }  // end namespace tensorflow

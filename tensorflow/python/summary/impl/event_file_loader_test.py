@@ -78,6 +78,15 @@ class EventFileLoaderTest(test_util.TensorFlowTestCase):
     loader = self._LoaderForTestFile(filename)
     self.assertEqual(len(list(loader.Load())), 2)
 
+  def testMultipleWritesWithBadWrite(self):
+    filename = tempfile.NamedTemporaryFile(dir=self.get_temp_dir()).name
+    self._WriteToFile(filename, EventFileLoaderTest.RECORD)
+    self._WriteToFile(filename, EventFileLoaderTest.RECORD)
+    # Test that we ignore partial record writes at the end of the file.
+    self._WriteToFile(filename, b'123')
+    loader = self._LoaderForTestFile(filename)
+    self.assertEqual(len(list(loader.Load())), 2)
+
 
 if __name__ == '__main__':
   googletest.main()

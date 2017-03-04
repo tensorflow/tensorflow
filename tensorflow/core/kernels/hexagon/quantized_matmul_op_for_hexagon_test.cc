@@ -46,7 +46,7 @@ class QuantizedMatMulOpForHexagonTest : public OpsTestBase {
     LOG(INFO) << "Hexagon libs are linked (wrapper version = "
               << soc_interface_GetWrapperVersion()
               << ", hexagon binary version = "
-              << soc_interface_GetHexagonBinaryVersion() << ")";
+              << soc_interface_GetSocControllerVersion() << ")";
     LOG(INFO) << "Cpu frequency = "
               << profile_utils::CpuUtils::GetCycleCounterFrequency();
 #else
@@ -67,7 +67,7 @@ TEST_F(QuantizedMatMulOpForHexagonTest, EvaluateSharedLibOverhead) {
       (overhead_shared_lib_end - overhead_shared_lib_start);
   const uint64 overhead_hexagon_rpc_start =
       profile_utils::CpuUtils::GetCurrentClockCycle();
-  const int hexagon_binary_version = soc_interface_GetHexagonBinaryVersion();
+  const int hexagon_binary_version = soc_interface_GetSocControllerVersion();
   const uint64 overhead_hexagon_rpc_end =
       profile_utils::CpuUtils::GetCurrentClockCycle();
   const uint64 overhead_hexagon_rpc_diff =

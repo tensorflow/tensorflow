@@ -48,6 +48,9 @@ SharedGrpcChannelPtr NewHostPortGrpcChannel(const string& target) {
   // TODO(mrry): Implement secure channels.
   ::grpc::ChannelArguments args;
   args.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH, std::numeric_limits<int32>::max());
+  // NOTE(mrry): Some versions of gRPC use a 20-second minimum backoff
+  // on connection failure, which makes our tests time out.
+  args.SetInt("grpc.testing.fixed_reconnect_backoff_ms", 1000);
   return ::grpc::CreateCustomChannel(
       target, ::grpc::InsecureChannelCredentials(), args);
 }

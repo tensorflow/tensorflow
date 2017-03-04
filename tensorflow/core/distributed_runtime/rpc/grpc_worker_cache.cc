@@ -25,10 +25,16 @@ limitations under the License.
 
 namespace tensorflow {
 
+namespace {
+
 class GrpcWorkerCache : public WorkerCachePartial {
  public:
-  explicit GrpcWorkerCache(GrpcChannelCache* channel_cache)
-      : channel_cache_(channel_cache) {
+  explicit GrpcWorkerCache(GrpcChannelCache* channel_cache,
+                           WorkerInterface* local_worker,
+                           const string& local_target)
+      : local_target_(local_target),
+        local_worker_(local_worker),
+        channel_cache_(channel_cache) {
     // TODO(mrry): Investigate possible performance improvements by
     // replacing this thread with a threadpool.
     polling_thread_ = Env::Default()->StartThread(
@@ -54,11 +60,24 @@ class GrpcWorkerCache : public WorkerCachePartial {
   }
 
   WorkerInterface* CreateWorker(const string& target) override {
-    SharedGrpcChannelPtr channel = channel_cache_->FindWorkerChannel(target);
-    if (!channel) return nullptr;
-    WorkerInterface* ret =
-        NewGrpcRemoteWorker(channel, &completion_queue_, &logger_);
-    return ret;
+    if (target == local_target_) {
+      return local_worker_;
+    } else {
+      SharedGrpcChannelPtr channel = channel_cache_->FindWorkerChannel(target);
+      if (!channel) return nullptr;
+      WorkerInterface* ret =
+          NewGrpcRemoteWorker(channel, &completion_queue_, &logger_);
+      return ret;
+    }
+  }
+
+  void ReleaseWorker(const string& target, WorkerInterface* worker) override {
+    if (target == local_target_) {
+      CHECK_EQ(worker, local_worker_)
+          << "Releasing a worker that was not returned by this WorkerCache";
+    } else {
+      WorkerCacheInterface::ReleaseWorker(target, worker);
+    }
   }
 
   void SetLogging(bool v) override { logger_.SetLogging(v); }
@@ -70,14 +89,24 @@ class GrpcWorkerCache : public WorkerCachePartial {
   }
 
  private:
+  const string local_target_;
+  WorkerInterface* const local_worker_;  // Not owned.
   GrpcChannelCache* channel_cache_;  // Owned.
   ::grpc::CompletionQueue completion_queue_;
   Thread* polling_thread_;  // Owned.
   WorkerCacheLogger logger_;
 };
 
+}  // namespace
+
 WorkerCacheInterface* NewGrpcWorkerCache(GrpcChannelCache* cc) {
-  return new GrpcWorkerCache(cc);
+  return new GrpcWorkerCache(cc, nullptr, "");
+}
+
+WorkerCacheInterface* NewGrpcWorkerCacheWithLocalWorker(
+    GrpcChannelCache* cc, WorkerInterface* local_worker,
+    const string& local_target) {
+  return new GrpcWorkerCache(cc, local_worker, local_target);
 }
 
 }  // namespace tensorflow

@@ -21,6 +21,8 @@ import android.graphics.Paint;
 import android.graphics.Paint.Align;
 import android.graphics.Paint.Style;
 import android.graphics.Rect;
+import android.graphics.Typeface;
+import java.util.Vector;
 
 /**
  * A class that encapsulates the tedious bits of rendering legible, bordered text onto a canvas.
@@ -68,26 +70,22 @@ public class BorderedText {
     this.textSize = textSize;
   }
 
+  public void setTypeface(Typeface typeface) {
+    interiorPaint.setTypeface(typeface);
+    exteriorPaint.setTypeface(typeface);
+  }
+
   public void drawText(final Canvas canvas, final float posX, final float posY, final String text) {
-    /*
-    if (widths == null || widths.length < text.length()) {
-      widths = new float[text.length()];
-      positions = new float[text.length() * 2];
-    }
-
-    exteriorPaint.getTextWidths(text, widths);
-    float lastPosX = posX;
-    for (int i = 0; i < widths.length; ++i) {
-      positions[i * 2] = lastPosX;
-      positions[i * 2 + 1] = posY;
-      lastPosX += widths[i];
-    }
-    */
-
-    //canvas.drawPosText(text, positions, exteriorPaint);
-    //canvas.drawPosText(text, positions, exteriorPaint);
     canvas.drawText(text, posX, posY, exteriorPaint);
     canvas.drawText(text, posX, posY, interiorPaint);
+  }
+
+  public void drawLines(Canvas canvas, final float posX, final float posY, Vector<String> lines) {
+    int lineNum = 0;
+    for (final String line : lines) {
+      drawText(canvas, posX, posY - getTextSize() * (lines.size() - lineNum - 1), line);
+      ++lineNum;
+    }
   }
 
   public void setInteriorColor(final int color) {

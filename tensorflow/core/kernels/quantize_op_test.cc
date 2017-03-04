@@ -47,6 +47,46 @@ TEST_F(QuantizedOpTest, QuantizeV2) {
   test::ExpectTensorEqual<quint8>(expected, *GetOutput(0));
 }
 
+TEST_F(QuantizedOpTest, QuantizeV2_32Bit) {
+  TF_ASSERT_OK(NodeDefBuilder("quantize_op", "QuantizeV2")
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Attr("T", DataTypeToEnum<qint32>::v())
+                   .Attr("mode", "MIN_FIRST")
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  const int element_count = 8;
+  AddInputFromArray<float>(
+      TensorShape({element_count}),
+      {-500.0f, 0.0f, 1.0f, 1.25f, 1.75f, 127.0f, 255.0f, 500.0f});
+  AddInputFromArray<float>(TensorShape({1}), {-256.0f});
+  AddInputFromArray<float>(TensorShape({1}), {256.0f});
+  TF_ASSERT_OK(RunOpKernel());
+  Tensor expected(allocator(), DT_QINT32, TensorShape({element_count}));
+  test::FillValues<qint32>(&expected,
+                           {
+                               std::numeric_limits<int32>::min(), 0,
+                               static_cast<int32>(1.0f * (1 << 23)),
+                               static_cast<int32>(1.25f * (1 << 23)),
+                               static_cast<int32>(1.75f * (1 << 23)),
+                               static_cast<int32>(127.0f * (1 << 23)),
+                               static_cast<int32>(255.0f * (1 << 23)),
+                               std::numeric_limits<int32>::max(),
+                           });
+  // We expect there will be some fuzziness in the lower bits, since this is
+  // converting from float.
+  const int64 epsilon = 1 << 8;
+  const qint32* output_data = GetOutput(0)->flat<qint32>().data();
+  const qint32* expected_data = expected.flat<qint32>().data();
+  for (int i = 0; i < element_count; ++i) {
+    const int64 delta = output_data[i] - expected_data[i];
+    EXPECT_GT(epsilon, std::abs(delta))
+        << "output_data[" << i << "]=" << output_data[i] << ", expected_data["
+        << i << "]=" << expected_data[i] << ", delta=" << delta;
+  }
+}
+
 TEST_F(QuantizedOpTest, QuantizeV2Ports) {
   TF_ASSERT_OK(NodeDefBuilder("quantize_op", "QuantizeV2")
                    .Input(FakeInput(DT_FLOAT))
@@ -79,17 +119,17 @@ TEST_F(QuantizedOpTest, QuantizeV2EqualRange) {
                    .Attr("mode", "MIN_FIRST")
                    .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
-  AddInputFromArray<float>(TensorShape({6}), {1.0, 1.0, 1.0, 1.0, 1.0, 1.0});
-  AddInputFromArray<float>(TensorShape({1}), {1.0f});
-  AddInputFromArray<float>(TensorShape({1}), {1.0f});
+  AddInputFromArray<float>(TensorShape({6}), {0.0, 0.0, 0.0, 0.0, 0.0, 0.0});
+  AddInputFromArray<float>(TensorShape({1}), {0.0f});
+  AddInputFromArray<float>(TensorShape({1}), {0.0f});
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_QUINT8, TensorShape({6}));
   test::FillValues<quint8>(&expected, {0, 0, 0, 0, 0, 0});
   test::ExpectTensorEqual<quint8>(expected, *GetOutput(0));
   const float output_min = GetOutput(1)->flat<float>()(0);
   const float output_max = GetOutput(2)->flat<float>()(0);
-  EXPECT_NEAR(1.0f, output_min, 1e-5f);
-  EXPECT_LT(1.0f, output_max);
+  EXPECT_NEAR(0.0f, output_min, 1e-5f);
+  EXPECT_LT(0.0f, output_max);
 }
 
 TEST_F(QuantizedOpTest, Dequantize) {

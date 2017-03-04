@@ -61,7 +61,7 @@ class SplitVOpBase : public OpKernel {
         context,
         split_tensor.dims() == 1 && split_tensor.NumElements() == num_split,
         errors::InvalidArgument("size of the split_tensor must be 1-D and have "
-                                "the same elements as outputs got",
+                                "the same elements as outputs got ",
                                 split_tensor.dims(), " -D and ",
                                 split_tensor.NumElements(), " elements"));
 
@@ -353,6 +353,7 @@ class SplitVOpGPU : public SplitVOpBase<GPUDevice, T, Tlen> {
   REGISTER_SPLIT(type, int64);
 
 TF_CALL_ALL_TYPES(REGISTER_SPLIT_LEN);
+REGISTER_SPLIT_LEN(bfloat16);
 
 #undef REGISTER_SPLIT_LEN
 #undef REGISTER_SPLIT

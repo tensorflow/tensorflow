@@ -21,7 +21,11 @@ cc_toolchain(
     objcopy_files = ":empty",
     static_runtime_libs = [":empty"],
     strip_files = ":empty",
-    supports_param_files = 0,
+    # To support linker flags that need to go to the start of command line
+    # we need the toolchain to support parameter files. Parameter files are
+    # last on the command line and contain all shared libraries to link, so all
+    # regular options will be left of them.
+    supports_param_files = 1,
 )
 
 cc_toolchain(

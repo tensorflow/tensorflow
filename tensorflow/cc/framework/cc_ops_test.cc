@@ -68,7 +68,7 @@ TEST(CCOpTest, Attrs) {
 TEST(CCOpTest, SplitConcat) {
   Scope root = Scope::NewRootScope();
   Split p(root, 0, {{1}, {2}}, 2);
-  auto c = Concat(root, 0, {p[0], p[1]});
+  auto c = Concat(root, {p[0], p[1]}, 0);
   TF_EXPECT_OK(root.status());
   Tensor out;
   test::GetTensor(root, c, &out);
@@ -236,6 +236,17 @@ TEST(CCOpTest, EmptyConst) {
 
   ops::Const(root, {{}, {{}}});
   EXPECT_FALSE(root.status().ok());
+}
+
+TEST(CCOpTest, InvalidFinalize) {
+  Scope root = Scope::NewRootScope();
+  auto read_up_to =
+      ops::ReaderReadUpTo(root, Variable(root, {}, DT_STRING),
+                          Variable(root, {}, DT_STRING), static_cast<int32>(2));
+  EXPECT_FALSE(root.status().ok());
+  auto err_msg = root.status().error_message();
+  EXPECT_NE(err_msg.find("'num_records' passed int32 expected int64"),
+            string::npos);
 }
 
 }  // namespace tensorflow

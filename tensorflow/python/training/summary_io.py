@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Reads Summaries from and writes Summaries to event files."""
 
 from __future__ import absolute_import
@@ -22,7 +21,7 @@ from __future__ import print_function
 # pylint: disable=unused-import
 from tensorflow.python.summary.summary_iterator import summary_iterator
 from tensorflow.python.summary.writer.writer import FileWriter as _FileWriter
-from tensorflow.python.summary.writer.writer_cache import SummaryWriterCache
+from tensorflow.python.summary.writer.writer_cache import FileWriterCache as SummaryWriterCache
 # pylint: enable=unused-import
 from tensorflow.python.util.deprecation import deprecated
 
@@ -59,7 +58,7 @@ class SummaryWriter(_FileWriter):
     # Launch the graph in a session.
     sess = tf.Session()
     # Create a summary writer, add the 'graph' to the event file.
-    writer = tf.train.SummaryWriter(<some-directory>, sess.graph)
+    writer = tf.summary.FileWriter(<some-directory>, sess.graph)
     ```
 
     The other arguments to the constructor control the asynchronous writes to

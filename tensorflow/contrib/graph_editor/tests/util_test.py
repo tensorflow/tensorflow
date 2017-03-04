@@ -12,17 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for tensorflow.contrib.graph_editor."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
 from tensorflow.contrib import graph_editor as ge
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import test
 
 
-class UtilTest(tf.test.TestCase):
+class UtilTest(test.TestCase):
 
   def test_list_view(self):
     """Test for ge.util.ListView."""
@@ -43,14 +46,14 @@ class UtilTest(tf.test.TestCase):
 
   def test_unique_graph(self):
     """Test for ge.util.check_graphs and ge.util.get_unique_graph."""
-    g0 = tf.Graph()
+    g0 = ops.Graph()
     with g0.as_default():
-      a0 = tf.constant(1)
-      b0 = tf.constant(2)
-    g1 = tf.Graph()
+      a0 = constant_op.constant(1)
+      b0 = constant_op.constant(2)
+    g1 = ops.Graph()
     with g1.as_default():
-      a1 = tf.constant(1)
-      b1 = tf.constant(2)
+      a1 = constant_op.constant(1)
+      b1 = constant_op.constant(2)
     # Same graph, should be fine.
     self.assertIsNone(ge.util.check_graphs(a0, b0))
     # Two different graphs, should assert.
@@ -64,10 +67,10 @@ class UtilTest(tf.test.TestCase):
 
   def test_make_list_of_op(self):
     """Test for ge.util.make_list_of_op."""
-    g0 = tf.Graph()
+    g0 = ops.Graph()
     with g0.as_default():
-      a0 = tf.constant(1)
-      b0 = tf.constant(2)
+      a0 = constant_op.constant(1)
+      b0 = constant_op.constant(2)
     # Should extract the ops from the graph.
     self.assertEqual(len(ge.util.make_list_of_op(g0)), 2)
     # Should extract the ops from the tuple.
@@ -75,26 +78,27 @@ class UtilTest(tf.test.TestCase):
 
   def test_make_list_of_t(self):
     """Test for ge.util.make_list_of_t."""
-    g0 = tf.Graph()
+    g0 = ops.Graph()
     with g0.as_default():
-      a0 = tf.constant(1)
-      b0 = tf.constant(2)
-      c0 = tf.add(a0, b0)  # pylint: disable=unused-variable
+      a0 = constant_op.constant(1)
+      b0 = constant_op.constant(2)
+      c0 = math_ops.add(a0, b0)  # pylint: disable=unused-variable
     # Should extract the tensors from tre graph.
     self.assertEqual(len(ge.util.make_list_of_t(g0)), 3)
     # Should extract the tensors from the tuple
     self.assertEqual(len(ge.util.make_list_of_t((a0, b0))), 2)
     # Should extract the tensors and ignore the ops.
     self.assertEqual(
-        len(ge.util.make_list_of_t((a0, a0.op, b0), ignore_ops=True)), 2)
+        len(ge.util.make_list_of_t(
+            (a0, a0.op, b0), ignore_ops=True)), 2)
 
   def test_get_generating_consuming(self):
     """Test for ge.util.get_generating_ops and ge.util.get_generating_ops."""
-    g0 = tf.Graph()
+    g0 = ops.Graph()
     with g0.as_default():
-      a0 = tf.constant(1)
-      b0 = tf.constant(2)
-      c0 = tf.add(a0, b0)
+      a0 = constant_op.constant(1)
+      b0 = constant_op.constant(2)
+      c0 = math_ops.add(a0, b0)
     self.assertEqual(len(ge.util.get_generating_ops([a0, b0])), 2)
     self.assertEqual(len(ge.util.get_consuming_ops([a0, b0])), 1)
     self.assertEqual(len(ge.util.get_generating_ops([c0])), 1)
@@ -102,13 +106,13 @@ class UtilTest(tf.test.TestCase):
 
   def test_control_outputs(self):
     """Test for the ge.util.ControlOutputs class."""
-    g0 = tf.Graph()
+    g0 = ops.Graph()
     with g0.as_default():
-      a0 = tf.constant(1)
-      b0 = tf.constant(2)
-      x0 = tf.constant(3)
-      with tf.control_dependencies([x0.op]):
-        c0 = tf.add(a0, b0)  # pylint: disable=unused-variable
+      a0 = constant_op.constant(1)
+      b0 = constant_op.constant(2)
+      x0 = constant_op.constant(3)
+      with ops.control_dependencies([x0.op]):
+        c0 = math_ops.add(a0, b0)  # pylint: disable=unused-variable
     control_outputs = ge.util.ControlOutputs(g0).get_all()
     self.assertEqual(len(control_outputs), 1)
     self.assertEqual(len(control_outputs[x0.op]), 1)
@@ -122,28 +126,30 @@ class UtilTest(tf.test.TestCase):
 
   def test_placeholder(self):
     """Test placeholder functionalities."""
-    g0 = tf.Graph()
+    g0 = ops.Graph()
     with g0.as_default():
-      a0 = tf.constant(1, name="foo")
+      a0 = constant_op.constant(1, name="foo")
     # Test placeholder name.
     self.assertEqual(ge.util.placeholder_name(a0), "geph__foo_0")
     self.assertEqual(ge.util.placeholder_name(None), "geph")
     self.assertEqual(
-        ge.util.placeholder_name(a0, scope="foo/"), "foo/geph__foo_0")
+        ge.util.placeholder_name(
+            a0, scope="foo/"), "foo/geph__foo_0")
     self.assertEqual(
-        ge.util.placeholder_name(a0, scope="foo"), "foo/geph__foo_0")
+        ge.util.placeholder_name(
+            a0, scope="foo"), "foo/geph__foo_0")
     self.assertEqual(ge.util.placeholder_name(None, scope="foo/"), "foo/geph")
     self.assertEqual(ge.util.placeholder_name(None, scope="foo"), "foo/geph")
     # Test placeholder creation.
-    g0 = tf.Graph()
+    g0 = ops.Graph()
     with g0.as_default():
-      a0 = tf.constant(1, dtype=tf.float32, name="a0")
-      c0 = tf.add(
+      a0 = constant_op.constant(1, dtype=dtypes.float32, name="a0")
+      c0 = math_ops.add(
           ge.util.make_placeholder_from_tensor(a0),
-          ge.util.make_placeholder_from_dtype_and_shape(dtype=tf.float32))
+          ge.util.make_placeholder_from_dtype_and_shape(dtype=dtypes.float32))
       self.assertEqual(c0.op.inputs[0].op.name, "geph__a0_0")
       self.assertEqual(c0.op.inputs[1].op.name, "geph")
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

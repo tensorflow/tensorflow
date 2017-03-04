@@ -52,7 +52,15 @@ class EventFileLoader(object):
     Yields:
       All values that were written to disk that have not been yielded yet.
     """
-    while self._reader.GetNext():
+    while True:
+      try:
+        with errors.raise_exception_on_not_ok_status() as status:
+          self._reader.GetNext(status)
+      except (errors.DataLossError, errors.OutOfRangeError):
+        # We ignore partial read exceptions, because a record may be truncated.
+        # PyRecordReader holds the offset prior to the failed read, so retrying
+        # will succeed.
+        break
       event = event_pb2.Event()
       event.ParseFromString(self._reader.record())
       yield event

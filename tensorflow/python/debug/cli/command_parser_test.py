@@ -96,6 +96,53 @@ class ParseCommandTest(test_util.TensorFlowTestCase):
                      command_parser.parse_command(command))
 
 
+class ExtractOutputFilePathTest(test_util.TensorFlowTestCase):
+
+  def testNoOutputFilePathIsReflected(self):
+    args, output_path = command_parser.extract_output_file_path(["pt", "a:0"])
+    self.assertEqual(["pt", "a:0"], args)
+    self.assertIsNone(output_path)
+
+  def testHasOutputFilePathInOneArgsIsReflected(self):
+    args, output_path = command_parser.extract_output_file_path(
+        ["pt", "a:0", ">/tmp/foo.txt"])
+    self.assertEqual(["pt", "a:0"], args)
+    self.assertEqual(output_path, "/tmp/foo.txt")
+
+  def testHasOutputFilePathInTwoArgsIsReflected(self):
+    args, output_path = command_parser.extract_output_file_path(
+        ["pt", "a:0", ">", "/tmp/foo.txt"])
+    self.assertEqual(["pt", "a:0"], args)
+    self.assertEqual(output_path, "/tmp/foo.txt")
+
+  def testHasGreaterThanSignButNoFileNameCausesSyntaxError(self):
+    with self.assertRaisesRegexp(SyntaxError, "Redirect file path is empty"):
+      command_parser.extract_output_file_path(
+          ["pt", "a:0", ">"])
+
+  def testOutputPathMergedWithLastArgIsHandledCorrectly(self):
+    args, output_path = command_parser.extract_output_file_path(
+        ["pt", "a:0>/tmp/foo.txt"])
+    self.assertEqual(["pt", "a:0"], args)
+    self.assertEqual(output_path, "/tmp/foo.txt")
+
+  def testOutputPathInLastArgGreaterThanInSecondLastIsHandledCorrectly(self):
+    args, output_path = command_parser.extract_output_file_path(
+        ["pt", "a:0>", "/tmp/foo.txt"])
+    self.assertEqual(["pt", "a:0"], args)
+    self.assertEqual(output_path, "/tmp/foo.txt")
+
+  def testOneArgumentIsHandledCorrectly(self):
+    args, output_path = command_parser.extract_output_file_path(["lt"])
+    self.assertEqual(["lt"], args)
+    self.assertIsNone(output_path)
+
+  def testEmptyArgumentIsHandledCorrectly(self):
+    args, output_path = command_parser.extract_output_file_path([])
+    self.assertEqual([], args)
+    self.assertIsNone(output_path)
+
+
 class ParseTensorNameTest(test_util.TensorFlowTestCase):
 
   def testParseTensorNameWithoutSlicing(self):
@@ -202,6 +249,52 @@ class ParseRangesTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(ValueError,
                                  "Incorrect type in the 2nd element of range"):
       command_parser.parse_ranges("[1, 1j]")
+
+
+class ParseReadableSizeStrTest(test_util.TensorFlowTestCase):
+
+  def testParseNoUnitWorks(self):
+    self.assertEqual(0, command_parser.parse_readable_size_str("0"))
+    self.assertEqual(1024, command_parser.parse_readable_size_str("1024 "))
+    self.assertEqual(2000, command_parser.parse_readable_size_str(" 2000 "))
+
+  def testParseKiloBytesWorks(self):
+    self.assertEqual(0, command_parser.parse_readable_size_str("0kB"))
+    self.assertEqual(1024**2, command_parser.parse_readable_size_str("1024 kB"))
+    self.assertEqual(1024**2 * 2,
+                     command_parser.parse_readable_size_str("2048k"))
+    self.assertEqual(1024**2 * 2,
+                     command_parser.parse_readable_size_str("2048kB"))
+    self.assertEqual(1024 / 4, command_parser.parse_readable_size_str("0.25k"))
+
+  def testParseMegaBytesWorks(self):
+    self.assertEqual(0, command_parser.parse_readable_size_str("0MB"))
+    self.assertEqual(1024**3, command_parser.parse_readable_size_str("1024 MB"))
+    self.assertEqual(1024**3 * 2,
+                     command_parser.parse_readable_size_str("2048M"))
+    self.assertEqual(1024**3 * 2,
+                     command_parser.parse_readable_size_str("2048MB"))
+    self.assertEqual(1024**2 / 4,
+                     command_parser.parse_readable_size_str("0.25M"))
+
+  def testParseGigaBytesWorks(self):
+    self.assertEqual(0, command_parser.parse_readable_size_str("0GB"))
+    self.assertEqual(1024**4, command_parser.parse_readable_size_str("1024 GB"))
+    self.assertEqual(1024**4 * 2,
+                     command_parser.parse_readable_size_str("2048G"))
+    self.assertEqual(1024**4 * 2,
+                     command_parser.parse_readable_size_str("2048GB"))
+    self.assertEqual(1024**3 / 4,
+                     command_parser.parse_readable_size_str("0.25G"))
+
+  def testParseUnsupportedUnitRaisesException(self):
+    with self.assertRaisesRegexp(
+        ValueError, "Failed to parsed human-readable byte size str: \"0foo\""):
+      command_parser.parse_readable_size_str("0foo")
+
+    with self.assertRaisesRegexp(
+        ValueError, "Failed to parsed human-readable byte size str: \"2E\""):
+      command_parser.parse_readable_size_str("2EB")
 
 
 if __name__ == "__main__":

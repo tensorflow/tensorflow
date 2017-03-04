@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Reads Summaries from and writes Summaries to event files."""
+"""A cache for FileWriters."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -21,38 +21,38 @@ from __future__ import print_function
 import threading
 
 from tensorflow.python.framework import ops
-from tensorflow.python.summary.writer.writer import FileWriter as SummaryWriter
+from tensorflow.python.summary.writer.writer import FileWriter
 
 
-class SummaryWriterCache(object):
-  """Cache for summary writers.
+class FileWriterCache(object):
+  """Cache for file writers.
 
-  This class caches summary writers, one per directory.
+  This class caches file writers, one per directory.
   """
   # Cache, keyed by directory.
   _cache = {}
 
-  # Lock protecting _SUMMARY_WRITERS.
+  # Lock protecting _FILE_WRITERS.
   _lock = threading.RLock()
 
   @staticmethod
   def clear():
     """Clear cached summary writers. Currently only used for unit tests."""
-    with SummaryWriterCache._lock:
-      SummaryWriterCache._cache = {}
+    with FileWriterCache._lock:
+      FileWriterCache._cache = {}
 
   @staticmethod
   def get(logdir):
-    """Returns the SummaryWriter for the specified directory.
+    """Returns the FileWriter for the specified directory.
 
     Args:
       logdir: str, name of the directory.
 
     Returns:
-      A `SummaryWriter`.
+      A `FileWriter`.
     """
-    with SummaryWriterCache._lock:
-      if logdir not in SummaryWriterCache._cache:
-        SummaryWriterCache._cache[logdir] = SummaryWriter(
+    with FileWriterCache._lock:
+      if logdir not in FileWriterCache._cache:
+        FileWriterCache._cache[logdir] = FileWriter(
             logdir, graph=ops.get_default_graph())
-      return SummaryWriterCache._cache[logdir]
+      return FileWriterCache._cache[logdir]

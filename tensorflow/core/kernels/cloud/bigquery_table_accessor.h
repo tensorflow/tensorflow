@@ -55,16 +55,23 @@ class BigQueryTableAccessor {
   };
 
   /// \brief Creates a new BigQueryTableAccessor object.
+  //
+  // We do not allow relative (negative or zero) snapshot times here since we
+  // want to have a consistent snapshot of the table for the lifetime of this
+  // object.
+  // Use end_point if you want to connect to a different end point than the
+  // official BigQuery end point. Otherwise send an empty string.
   static Status New(const string& project_id, const string& dataset_id,
                     const string& table_id, int64 timestamp_millis,
-                    int64 row_buffer_size, const std::set<string>& columns,
+                    int64 row_buffer_size, const string& end_point,
+                    const std::vector<string>& columns,
                     const BigQueryTablePartition& partition,
                     std::unique_ptr<BigQueryTableAccessor>* accessor);
 
   /// \brief Starts reading a new partition.
-  void SetPartition(const BigQueryTablePartition& partition);
+  Status SetPartition(const BigQueryTablePartition& partition);
 
-  /// \brief Returns false if there are more rows available in the current
+  /// \brief Returns true if there are more rows available in the current
   /// partition.
   bool Done();
 
@@ -74,8 +81,10 @@ class BigQueryTableAccessor {
   /// in the BigQuery service.
   Status ReadRow(int64* row_id, Example* example);
 
-  /// \brief Returns total number of rows.
+  /// \brief Returns total number of rows in the table.
   int64 total_num_rows() { return total_num_rows_; }
+
+  virtual ~BigQueryTableAccessor() {}
 
  private:
   friend class BigQueryTableAccessorTest;
@@ -95,7 +104,8 @@ class BigQueryTableAccessor {
   /// these two variables.
   static Status New(const string& project_id, const string& dataset_id,
                     const string& table_id, int64 timestamp_millis,
-                    int64 row_buffer_size, const std::set<string>& columns,
+                    int64 row_buffer_size, const string& end_point,
+                    const std::vector<string>& columns,
                     const BigQueryTablePartition& partition,
                     std::unique_ptr<AuthProvider> auth_provider,
                     std::unique_ptr<HttpRequest::Factory> http_request_factory,
@@ -104,14 +114,16 @@ class BigQueryTableAccessor {
   /// \brief Constructs an object for a given table and partition.
   BigQueryTableAccessor(const string& project_id, const string& dataset_id,
                         const string& table_id, int64 timestamp_millis,
-                        int64 row_buffer_size, const std::set<string>& columns,
+                        int64 row_buffer_size, const string& end_point,
+                        const std::vector<string>& columns,
                         const BigQueryTablePartition& partition);
 
   /// Used for unit testing.
   BigQueryTableAccessor(
       const string& project_id, const string& dataset_id,
       const string& table_id, int64 timestamp_millis, int64 row_buffer_size,
-      const std::set<string>& columns, const BigQueryTablePartition& partition,
+      const string& end_point, const std::vector<string>& columns,
+      const BigQueryTablePartition& partition,
       std::unique_ptr<AuthProvider> auth_provider,
       std::unique_ptr<HttpRequest::Factory> http_request_factory);
 
@@ -132,7 +144,7 @@ class BigQueryTableAccessor {
   Status AppendValueToExample(const string& column_name,
                               const Json::Value& column_value,
                               const BigQueryTableAccessor::ColumnType type,
-                              Example* ex);
+                              Example* example);
 
   /// \brief Resets internal counters for reading a partition.
   void Reset();
@@ -140,24 +152,27 @@ class BigQueryTableAccessor {
   /// \brief Helper function that returns BigQuery http endpoint prefix.
   string BigQueryUriPrefix();
 
+  /// \brief Computes the maxResults arg to send to BigQuery.
+  int64 ComputeMaxResultsArg();
+
   /// \brief Returns full name of the underlying table name.
-  string FullTableName();
+  string FullTableName() {
+    return strings::StrCat(project_id_, ":", dataset_id_, ".", table_id_, "@",
+                           timestamp_millis_);
+  }
 
   const string project_id_;
   const string dataset_id_;
   const string table_id_;
 
   // Snapshot timestamp.
-  //
-  // Indicates a snapshot of the table in milliseconds since the epoch.
-  //
-  // We do not allow relative (negative or zero) times here since we want to
-  // have a consistent snapshot of the table for the lifetime of this object.
-  // For more details, see 'Table Decorators' in BigQuery documentation.
   const int64 timestamp_millis_;
 
   // Columns that should be read. Empty means all columns.
   const std::set<string> columns_;
+
+  // HTTP address of BigQuery end point to use.
+  const string bigquery_end_point_;
 
   // Describes the portion of the table that we are currently accessing.
   BigQueryTablePartition partition_;

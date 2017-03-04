@@ -31,7 +31,7 @@ BINARY_TRANSFORMS = [("__eq__", math_ops.equal),
                      ("__ge__", math_ops.greater_equal),
                      ("__lt__", math_ops.less),
                      ("__le__", math_ops.less_equal),
-                     ("__mul__", math_ops.mul),
+                     ("__mul__", math_ops.multiply),
                      ("__div__", math_ops.div),
                      ("__truediv__", math_ops.truediv),
                      ("__floordiv__", math_ops.floordiv),
@@ -92,7 +92,7 @@ class ScalarBinaryTransform(transform.TensorFlowTransform):
     if isinstance(input_tensor, sparse_tensor.SparseTensor):
       result = sparse_tensor.SparseTensor(input_tensor.indices,
                                           self._apply_op(input_tensor.values),
-                                          input_tensor.shape)
+                                          input_tensor.dense_shape)
     else:
       result = self._apply_op(input_tensor)
 

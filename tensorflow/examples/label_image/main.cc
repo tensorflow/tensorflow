@@ -97,7 +97,7 @@ Status ReadTensorFromImageFile(string file_name, const int input_height,
                                                file_name);
   // Now try to figure out what kind of file it is and decode it.
   const int wanted_channels = 3;
-  Output image_reader;
+  tensorflow::Output image_reader;
   if (tensorflow::StringPiece(file_name).ends_with(".png")) {
     image_reader = DecodePng(root.WithOpName("png_reader"), file_reader,
                              DecodePng::Channels(wanted_channels));
@@ -163,7 +163,7 @@ Status GetTopLabels(const std::vector<Tensor>& outputs, int how_many_labels,
   using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
 
   string output_name = "top_k";
-  TopKV2(root.WithOpName(output_name), outputs[0], how_many_labels);
+  TopK(root.WithOpName(output_name), outputs[0], how_many_labels);
   // This runs the GraphDef network definition that we've just constructed, and
   // returns the results in the output tensors.
   tensorflow::GraphDef graph;

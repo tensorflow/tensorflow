@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {DataSet} from './data';
 import {RenderContext} from './renderContext';
 
 /**
@@ -33,8 +32,7 @@ export interface ScatterPlotVisualizer {
   /**
    * Called when the positions of the scatter plot points have changed.
    */
-  onPointPositionsChanged(
-      newWorldSpacePointPositions: Float32Array, dataSet: DataSet);
+  onPointPositionsChanged(newWorldSpacePointPositions: Float32Array);
   /**
    * Called immediately before the main scatter plot performs a picking
    * (selection) render. Set up render state for any geometry to use picking IDs

@@ -12,17 +12,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-""" Tests for ExtractImagePatches gradient. """
+"""Tests for ExtractImagePatches gradient."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import random_seed as random_seed_lib
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradient_checker
+from tensorflow.python.platform import test
 
 
-class ExtractImagePatchesGradTest(tf.test.TestCase):
+class ExtractImagePatchesGradTest(test.TestCase):
   """Gradient-checking for ExtractImagePatches op."""
 
   _TEST_CASES = [
@@ -73,29 +79,27 @@ class ExtractImagePatchesGradTest(tf.test.TestCase):
   def testGradient(self):
     # Set graph seed for determinism.
     random_seed = 42
-    tf.set_random_seed(random_seed)
+    random_seed_lib.set_random_seed(random_seed)
 
     with self.test_session():
       for test_case in self._TEST_CASES:
         np.random.seed(random_seed)
         in_shape = test_case['in_shape']
-        in_val = tf.constant(np.random.random(in_shape),
-                             dtype=tf.float32)
+        in_val = constant_op.constant(
+            np.random.random(in_shape), dtype=dtypes.float32)
 
         for padding in ['VALID', 'SAME']:
-          out_val = tf.extract_image_patches(in_val,
-                                             test_case['ksizes'],
-                                             test_case['strides'],
-                                             test_case['rates'],
-                                             padding)
+          out_val = array_ops.extract_image_patches(in_val, test_case['ksizes'],
+                                                    test_case['strides'],
+                                                    test_case['rates'], padding)
           out_shape = out_val.get_shape().as_list()
 
-          err = tf.test.compute_gradient_error(
-              in_val, in_shape, out_val, out_shape
-          )
+          err = gradient_checker.compute_gradient_error(in_val, in_shape,
+                                                        out_val, out_shape)
 
           print('extract_image_patches gradient err: %.4e' % err)
           self.assertLess(err, 1e-4)
 
+
 if __name__ == '__main__':
-  tf.test.main()
+  test.main()

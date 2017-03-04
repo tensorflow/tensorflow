@@ -21,10 +21,10 @@ from __future__ import print_function
 import functools
 import re
 
-from tensorflow.python import summary
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import standard_ops
+from tensorflow.python.summary import summary
 
 __all__ = [
     'summarize_tensor',
@@ -89,13 +89,17 @@ def summarize_activation(op):
   if op.op.type in ('Relu', 'Softplus', 'Relu6'):
     # Using inputs to avoid floating point equality and/or epsilons.
     _add_scalar_summary(
-        standard_ops.reduce_mean(standard_ops.to_float(standard_ops.less(
-            op.op.inputs[0], standard_ops.cast(0.0, op.op.inputs[0].dtype)))),
+        standard_ops.reduce_mean(
+            standard_ops.to_float(
+                standard_ops.less(op.op.inputs[
+                    0], standard_ops.cast(0.0, op.op.inputs[0].dtype)))),
         '%s/zeros' % op.op.name)
   if op.op.type == 'Relu6':
     _add_scalar_summary(
-        standard_ops.reduce_mean(standard_ops.to_float(standard_ops.greater(
-            op.op.inputs[0], standard_ops.cast(6.0, op.op.inputs[0].dtype)))),
+        standard_ops.reduce_mean(
+            standard_ops.to_float(
+                standard_ops.greater(op.op.inputs[
+                    0], standard_ops.cast(6.0, op.op.inputs[0].dtype)))),
         '%s/sixes' % op.op.name)
   return _add_histogram_summary(op, '%s/activation' % op.op.name)
 
@@ -133,7 +137,8 @@ def summarize_tensors(tensors, summarizer=summarize_tensor):
   return [summarizer(tensor) for tensor in tensors]
 
 
-def summarize_collection(collection, name_filter=None,
+def summarize_collection(collection,
+                         name_filter=None,
                          summarizer=summarize_tensor):
   """Summarize a graph collection of tensors, possibly filtered by name."""
   tensors = []
@@ -147,13 +152,10 @@ def summarize_collection(collection, name_filter=None,
 summarize_variables = functools.partial(summarize_collection,
                                         ops.GraphKeys.GLOBAL_VARIABLES)
 
-
 summarize_weights = functools.partial(summarize_collection,
                                       ops.GraphKeys.WEIGHTS)
 
-
-summarize_biases = functools.partial(summarize_collection,
-                                     ops.GraphKeys.BIASES)
+summarize_biases = functools.partial(summarize_collection, ops.GraphKeys.BIASES)
 
 
 def summarize_activations(name_filter=None, summarizer=summarize_activation):

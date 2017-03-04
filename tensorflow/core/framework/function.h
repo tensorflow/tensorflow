@@ -35,6 +35,7 @@ namespace tensorflow {
 class CancellationManager;
 class OpKernel;
 class ResourceMgr;
+class ScopedStepContainer;
 
 // FunctionDefHelper::Create is a convenient helper to construct a
 // FunctionDef proto.
@@ -107,7 +108,6 @@ class FunctionDefHelper {
     std::vector<std::pair<string, AttrValueWrapper>> attr;
     std::vector<string> dep;
 
-    FunctionDef::Node ToProto() const;
     NodeDef ToNodeDef() const;
   };
 
@@ -381,8 +381,8 @@ class FunctionLibraryRuntime {
     // The id of the step that is calling this function.
     int64 step_id = 0;
 
-    // Per-step resource manager. Does not take ownership.
-    ResourceMgr* step_resource_manager = nullptr;
+    // Per-step container.
+    ScopedStepContainer* step_container;
 
     std::function<void(std::function<void()>)>* runner = nullptr;
   };

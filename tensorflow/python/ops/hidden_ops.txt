@@ -1,5 +1,6 @@
 # array_ops
 BatchToSpace
+BroadcastArgs
 BroadcastGradientArgs
 ConcatOffset
 Concat
@@ -13,8 +14,10 @@ MirrorPadGrad
 OneHot
 Pack
 Pad
+ParallelConcat
 Placeholder
 RefIdentity
+Reverse
 SpaceToBatch
 Split
 SplitV
@@ -52,8 +55,12 @@ BarrierIncompleteSize
 BarrierInsertMany
 BarrierReadySize
 BarrierTakeMany
-PriorityQueue
+DeleteSessionTensor
+FakeQueue
 FIFOQueue
+FIFOQueueV2
+GetSessionHandle
+GetSessionTensor
 HashTable
 InitializeTable
 InitializeTableFromTextFile
@@ -69,45 +76,65 @@ Mutex
 MutexAcquire
 MutexRelease
 PaddingFIFOQueue
+PaddingFIFOQueueV2
+PriorityQueue
+PriorityQueueV2
 QueueClose
+QueueCloseV2
 QueueDequeue
+QueueDequeueV2
 QueueDequeueMany
+QueueDequeueManyV2
 QueueDequeueUpTo
+QueueDequeueUpToV2
 QueueEnqueue
+QueueEnqueueV2
 QueueEnqueueMany
+QueueEnqueueManyV2
 QueueSize
+QueueSizeV2
 RandomShuffleQueue
+RandomShuffleQueueV2
 Stack
+StackClose
 StackPop
 StackPush
-StackClose
 TensorArray
 TensorArrayClose
-TensorArrayConcat
-TensorArrayGather
-TensorArrayGrad
-TensorArrayRead
-TensorArrayPack
-TensorArrayScatter
-TensorArraySize
-TensorArraySplit
-TensorArrayUnpack
-TensorArrayWrite
-TensorArrayV2
 TensorArrayCloseV2
+TensorArrayConcat
 TensorArrayConcatV2
+TensorArrayGather
 TensorArrayGatherV2
+TensorArrayGrad
 TensorArrayGradV2
-TensorArrayReadV2
+TensorArrayPack
 TensorArrayPackV2
+TensorArrayRead
+TensorArrayReadV2
+TensorArrayScatter
 TensorArrayScatterV2
+TensorArraySize
 TensorArraySizeV2
+TensorArraySplit
 TensorArraySplitV2
+TensorArrayUnpack
 TensorArrayUnpackV2
+TensorArrayV2
+TensorArrayWrite
 TensorArrayWriteV2
-GetSessionHandle
-GetSessionTensor
-DeleteSessionTensor
+TensorArrayV3
+TensorArrayCloseV3
+TensorArrayConcatV3
+TensorArrayGatherV3
+TensorArrayGradV3
+TensorArrayReadV3
+TensorArrayPackV3
+TensorArrayScatterV3
+TensorArraySizeV3
+TensorArraySplitV3
+TensorArrayUnpackV3
+TensorArrayWriteV3
 
 # functional_ops
 SymbolicGradient
@@ -122,8 +149,6 @@ ScaleImageGrad
 # io_ops
 FixedLengthRecordReader
 IdentityReader
-ReaderClose
-ReaderEnqueueWork
 ReaderNumRecordsProduced
 ReaderNumWorkUnitsCompleted
 ReaderRead
@@ -132,6 +157,16 @@ ReaderReset
 ReaderRestoreState
 ReaderSerializeState
 ReaderWorkQueueLength
+FixedLengthRecordReaderV2
+IdentityReaderV2
+ReaderNumRecordsProducedV2
+ReaderNumWorkUnitsCompletedV2
+ReaderReadV2
+ReaderReadUpToV2
+ReaderResetV2
+ReaderRestoreStateV2
+ReaderSerializeStateV2
+ReaderWorkQueueLengthV2
 Restore
 RestoreSlice
 Save
@@ -141,6 +176,9 @@ ShardedFilespec
 TextLineReader
 TFRecordReader
 WholeFileReader
+TextLineReaderV2
+TFRecordReaderV2
+WholeFileReaderV2
 
 # linalg_ops
 BatchCholesky
@@ -162,7 +200,6 @@ Svd
 Assert
 AudioSummary
 AudioSummaryV2
-HistogramAccumulatorSummary
 HistogramSummary
 ImageSummary
 MergeSummary
@@ -183,14 +220,22 @@ BatchIFFT
 BatchIFFT2D
 BatchIFFT3D
 Complex
+ComplexAbs
 Conj
+FloorDiv
+FloorMod
 Max
 Mean
 Min
+Mul
+Neg
 Pow
 Prod
 Range
+RealDiv
+Select
 SparseMatMul
+Sub
 Sum
 MatMul
 Sigmoid
@@ -201,6 +246,8 @@ InvGrad
 ReciprocalGrad
 SqrtGrad
 RsqrtGrad
+TruncateDiv
+TruncateMod
 
 # nn_ops
 AvgPoolGrad  # "*Grad" accessible through nn_grad instead of nn_ops.
@@ -235,6 +282,7 @@ ParseSingleSequenceExample
 
 # random_ops
 RandomGamma
+RandomPoisson
 RandomUniform
 RandomUniformInt
 RandomShuffle
@@ -253,6 +301,7 @@ SdcaShrinkL1
 
 # state_ops
 Variable
+VariableV2
 TemporaryVariable
 DestroyTemporaryVariable
 
@@ -282,3 +331,7 @@ Fact
 
 # training_ops
 # (None)
+
+# word2vec deprecated ops
+NegTrain
+Skipgram

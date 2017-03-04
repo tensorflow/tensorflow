@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #include "tensorflow/core/kernels/cloud/bigquery_table_accessor.h"
 
 #include "tensorflow/core/example/feature.pb.h"
@@ -23,6 +22,15 @@ namespace tensorflow {
 namespace {
 
 constexpr size_t kBufferSize = 1024 * 1024;  // In bytes.
+const string kBigQueryEndPoint = "https://www.googleapis.com/bigquery/v2";
+
+bool IsPartitionEmpty(const BigQueryTablePartition& partition) {
+  if (partition.end_index() != -1 &&
+      partition.end_index() < partition.start_index()) {
+    return true;
+  }
+  return false;
+}
 
 Status ParseJson(StringPiece json, Json::Value* result) {
   Json::Reader reader;
@@ -92,17 +100,18 @@ Status ParseColumnType(const string& type,
 
 Status BigQueryTableAccessor::New(
     const string& project_id, const string& dataset_id, const string& table_id,
-    int64 timestamp_millis, int64 row_buffer_size,
-    const std::set<string>& columns, const BigQueryTablePartition& partition,
+    int64 timestamp_millis, int64 row_buffer_size, const string& end_point,
+    const std::vector<string>& columns, const BigQueryTablePartition& partition,
     std::unique_ptr<BigQueryTableAccessor>* accessor) {
   return New(project_id, dataset_id, table_id, timestamp_millis,
-             row_buffer_size, columns, partition, nullptr, nullptr, accessor);
+             row_buffer_size, end_point, columns, partition, nullptr, nullptr,
+             accessor);
 }
 
 Status BigQueryTableAccessor::New(
     const string& project_id, const string& dataset_id, const string& table_id,
-    int64 timestamp_millis, int64 row_buffer_size,
-    const std::set<string>& columns, const BigQueryTablePartition& partition,
+    int64 timestamp_millis, int64 row_buffer_size, const string& end_point,
+    const std::vector<string>& columns, const BigQueryTablePartition& partition,
     std::unique_ptr<AuthProvider> auth_provider,
     std::unique_ptr<HttpRequest::Factory> http_request_factory,
     std::unique_ptr<BigQueryTableAccessor>* accessor) {
@@ -110,14 +119,16 @@ Status BigQueryTableAccessor::New(
     return errors::InvalidArgument(
         "Cannot use zero or negative timestamp to query a table.");
   }
+  const string& big_query_end_point =
+      end_point.empty() ? kBigQueryEndPoint : end_point;
   if (auth_provider == nullptr && http_request_factory == nullptr) {
-    accessor->reset(new BigQueryTableAccessor(project_id, dataset_id, table_id,
-                                              timestamp_millis, row_buffer_size,
-                                              columns, partition));
+    accessor->reset(new BigQueryTableAccessor(
+        project_id, dataset_id, table_id, timestamp_millis, row_buffer_size,
+        big_query_end_point, columns, partition));
   } else {
     accessor->reset(new BigQueryTableAccessor(
         project_id, dataset_id, table_id, timestamp_millis, row_buffer_size,
-        columns, partition, std::move(auth_provider),
+        big_query_end_point, columns, partition, std::move(auth_provider),
         std::move(http_request_factory)));
   }
   return (*accessor)->ReadSchema();
@@ -125,11 +136,11 @@ Status BigQueryTableAccessor::New(
 
 BigQueryTableAccessor::BigQueryTableAccessor(
     const string& project_id, const string& dataset_id, const string& table_id,
-    int64 timestamp_millis, int64 row_buffer_size,
-    const std::set<string>& columns, const BigQueryTablePartition& partition)
+    int64 timestamp_millis, int64 row_buffer_size, const string& end_point,
+    const std::vector<string>& columns, const BigQueryTablePartition& partition)
     : BigQueryTableAccessor(
           project_id, dataset_id, table_id, timestamp_millis, row_buffer_size,
-          columns, partition,
+          end_point, columns, partition,
           std::unique_ptr<AuthProvider>(new GoogleAuthProvider()),
           std::unique_ptr<HttpRequest::Factory>(new HttpRequest::Factory())) {
   row_buffer_.resize(row_buffer_size);
@@ -137,15 +148,16 @@ BigQueryTableAccessor::BigQueryTableAccessor(
 
 BigQueryTableAccessor::BigQueryTableAccessor(
     const string& project_id, const string& dataset_id, const string& table_id,
-    int64 timestamp_millis, int64 row_buffer_size,
-    const std::set<string>& columns, const BigQueryTablePartition& partition,
+    int64 timestamp_millis, int64 row_buffer_size, const string& end_point,
+    const std::vector<string>& columns, const BigQueryTablePartition& partition,
     std::unique_ptr<AuthProvider> auth_provider,
     std::unique_ptr<HttpRequest::Factory> http_request_factory)
     : project_id_(project_id),
       dataset_id_(dataset_id),
       table_id_(table_id),
       timestamp_millis_(timestamp_millis),
-      columns_(columns),
+      columns_(columns.begin(), columns.end()),
+      bigquery_end_point_(end_point),
       partition_(partition),
       auth_provider_(std::move(auth_provider)),
       http_request_factory_(std::move(http_request_factory)) {
@@ -153,10 +165,14 @@ BigQueryTableAccessor::BigQueryTableAccessor(
   Reset();
 }
 
-void BigQueryTableAccessor::SetPartition(
+Status BigQueryTableAccessor::SetPartition(
     const BigQueryTablePartition& partition) {
+  if (partition.start_index() < 0) {
+    return errors::InvalidArgument("Start index cannot be negative.");
+  }
   partition_ = partition;
   Reset();
+  return Status::OK();
 }
 
 void BigQueryTableAccessor::Reset() {
@@ -172,7 +188,8 @@ Status BigQueryTableAccessor::ReadRow(int64* row_id, Example* example) {
 
   // If the next row is already fetched and cached, return the row from the
   // buffer. Otherwise, fill up the row buffer from BigQuery and return a row.
-  if (next_row_in_buffer_ != -1 && next_row_in_buffer_ < row_buffer_.size()) {
+  if (next_row_in_buffer_ != -1 &&
+      next_row_in_buffer_ < ComputeMaxResultsArg()) {
     *row_id = first_buffered_row_index_ + next_row_in_buffer_;
     *example = row_buffer_[next_row_in_buffer_];
     next_row_in_buffer_++;
@@ -190,12 +207,12 @@ Status BigQueryTableAccessor::ReadRow(int64* row_id, Example* example) {
     // we use the page token (which returns rows faster).
     if (!next_page_token_.empty()) {
       TF_RETURN_IF_ERROR(request->SetUri(strings::StrCat(
-          BigQueryUriPrefix(), "data?maxResults=", row_buffer_.size(),
+          BigQueryUriPrefix(), "data?maxResults=", ComputeMaxResultsArg(),
           "&pageToken=", request->EscapeString(next_page_token_))));
       first_buffered_row_index_ += row_buffer_.size();
     } else {
       TF_RETURN_IF_ERROR(request->SetUri(strings::StrCat(
-          BigQueryUriPrefix(), "data?maxResults=", row_buffer_.size(),
+          BigQueryUriPrefix(), "data?maxResults=", ComputeMaxResultsArg(),
           "&startIndex=", first_buffered_row_index_)));
     }
     TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
@@ -220,6 +237,18 @@ Status BigQueryTableAccessor::ReadRow(int64* row_id, Example* example) {
     next_row_in_buffer_ = 1;
   }
   return Status::OK();
+}
+
+int64 BigQueryTableAccessor::ComputeMaxResultsArg() {
+  if (partition_.end_index() == -1) {
+    return row_buffer_.size();
+  }
+  if (IsPartitionEmpty(partition_)) {
+    return 0;
+  }
+  return std::min(static_cast<int64>(row_buffer_.size()),
+                  static_cast<int64>(partition_.end_index() -
+                                     partition_.start_index() + 1));
 }
 
 Status BigQueryTableAccessor::ParseColumnValues(
@@ -364,21 +393,17 @@ Status BigQueryTableAccessor::AppendValueToExample(
 
 string BigQueryTableAccessor::BigQueryTableAccessor::BigQueryUriPrefix() {
   HttpRequest request;
-  return strings::StrCat("https://www.googleapis.com/bigquery/v2/projects/",
+  return strings::StrCat(bigquery_end_point_, "/projects/",
                          request.EscapeString(project_id_), "/datasets/",
                          request.EscapeString(dataset_id_), "/tables/",
                          request.EscapeString(table_id_), "/");
 }
 
-string BigQueryTableAccessor::FullTableName() {
-  return strings::StrCat(project_id_, ":", dataset_id_, ".", table_id_, "@",
-                         timestamp_millis_);
-}
-
 bool BigQueryTableAccessor::Done() {
   return (total_num_rows_ <= first_buffered_row_index_ + next_row_in_buffer_) ||
+         IsPartitionEmpty(partition_) ||
          (partition_.end_index() != -1 &&
-          partition_.end_index() <=
+          partition_.end_index() <
               first_buffered_row_index_ + next_row_in_buffer_);
 }
 

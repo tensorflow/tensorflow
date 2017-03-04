@@ -38,6 +38,42 @@ module tf.graph.proto {
   }
 
   /**
+   * Generic graph as defined in the graph_explorer.proto file.
+   */
+  export interface GenericGraph {
+    /** List of nodes in the graph */
+    node: GenericNode[];
+    /** List of nodes in the graph */
+    edge: GenericEdge[];
+    /** List of attributes that describe/modify the operation. */
+    attr: Array<{[key: string]: any}>;
+  }
+
+  /**
+   * GenericEdge corresponds to the Edge message in graph_explorer.proto.
+   */
+  export interface GenericEdge {
+    /** Name of the source node. */
+    source: string;
+    /** Name of the target node. */
+    target: string;
+    /** Attributes of the edge. */
+    edge_attr: Array<{[key: string]: any}>;
+  }
+
+  /**
+   * GenericNode corresponds to the Node message in graph_explorer.proto.
+   */
+  export interface GenericNode {
+    /** Name of the node */
+    name: string;
+    /** Attributes of a leaf node or leaf nodes within a metanode. */
+    node_attr: Array<{[key: string]: any}>;
+    /** Attributes of a metanode. */
+    metanode_attr: Array<{[key: string]: any}>;
+  }
+
+  /**
    * TensorFlow stats file definition as defined in the stats proto file.
    */
   export interface StepStats {

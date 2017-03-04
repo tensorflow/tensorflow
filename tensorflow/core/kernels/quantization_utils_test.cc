@@ -252,12 +252,11 @@ class QuantizationUtilsTest : public ::testing::Test {
       Eigen::ThreadPoolDevice* eigen_device) {
     // These are the float values we're going to test the conversions on.
     typedef std::pair<float, float> FPair;
-    for (FPair min_and_max : std::vector<FPair>{FPair(-255.0f, 255.0f),  //
-                                                FPair(-1.0f, 1.0f),      //
-                                                FPair(-1.0f, 255.0f),    //
-                                                FPair(0.0f, 1e6),        //
-                                                FPair(0.0f, 1.0f),       //
-                                                FPair(-31.0f, 13.0f)}) {
+    for (FPair min_and_max : std::vector<FPair>{
+             FPair(-255.0f, 255.0f), FPair(-1.0f, 1.0f), FPair(-1.0f, 255.0f),
+             FPair(0.0f, 1e6), FPair(0.0f, 1.0f), FPair(-31.0f, 13.0f),
+             FPair(-5.89505e+08, 5.89505e+08),
+         }) {
       const float f_min = min_and_max.first;
       const float f_max = min_and_max.second;
       const int values_count = sizeof(T) == 1 ? 256 : 50000;
@@ -272,8 +271,8 @@ class QuantizationUtilsTest : public ::testing::Test {
         } else {
           int64 offset = static_cast<int64>(q_range / values_count * i);
           input_array(i) = static_cast<int32>(
-              Eigen::NumTraits<T>::lowest() +
-              std::min<int64>(Eigen::NumTraits<T>::highest(), offset));
+              std::min<int64>(Eigen::NumTraits<T>::lowest() + offset,
+                              Eigen::NumTraits<T>::highest()));
         }
       }
 
@@ -285,7 +284,7 @@ class QuantizationUtilsTest : public ::testing::Test {
       for (int i = 0; i < values_count; ++i) {
         float expected = QuantizedToFloat<T>(input_array(i), f_min, f_max);
         float actual = output_array(i);
-        ASSERT_NEAR(expected, actual, range * 1e-6)
+        ASSERT_NEAR(expected, actual, range * 1.1e-7)
             << "expected=" << expected << " actual=" << actual
             << " v=" << input_array(i) << " i=" << i << " f_min=" << f_min
             << " f_max=" << f_max
@@ -340,14 +339,14 @@ TEST_F(QuantizationUtilsTest, QuantizedToFloat) {
   const int int32_min = std::numeric_limits<int>::min();
   const int int32_max = std::numeric_limits<int>::max();
 
-  EXPECT_LT(
-      fabsf(-1.0f - QuantizedToFloat<qint32>(qint32(int32_min), -1.0f, 1.0f)),
-      1e-5f);
-  EXPECT_LT(fabsf(0.0f - QuantizedToFloat<qint32>(qint32(0), -1.0f, 1.0f)),
-            1e-5f);
-  EXPECT_LT(
-      fabsf(1.0f - QuantizedToFloat<qint32>(qint32(int32_max), -1.0f, 1.0f)),
-      1e-5f);
+  EXPECT_NEAR(-1.0f, QuantizedToFloat<qint32>(qint32(int32_min), -1.0f, 1.0f),
+              1e-5f);
+  EXPECT_NEAR(0.0f, QuantizedToFloat<qint32>(qint32(0), -1.0f, 1.0f), 1e-5f);
+  EXPECT_NEAR(1.0f, QuantizedToFloat<qint32>(qint32(int32_max), -1.0f, 1.0f),
+              1e-5f);
+
+  EXPECT_NEAR(32.0f, QuantizedToFloat<qint32>(qint32(32), int32_min, int32_max),
+              1.0);
 }
 
 TEST_F(QuantizationUtilsTest, AvoidBias) {
@@ -531,6 +530,32 @@ TEST_F(QuantizationUtilsTest, QuantizedTensorToFloat) {
                                       -103.0f, 115.0f, 116.0f, 117.0f});
   Tensor output = QuantizedTensorToFloat<quint8>(input, input_min, input_max);
   test::ExpectTensorEqual<float>(expected, output);
+
+  // Test for signed 32 bit.
+  // Note that we cannot use input mins and maxes that match the range because
+  // there are 7 too few bits of mantissa accuracy in floats to represent
+  // 2**31-1 accurately.  Also there is no good fraction to use because 2**31-1
+  // is a mersenne prime.
+  Tensor input32(DT_QINT32, TensorShape({input_height, input_width}));
+
+  // Use a quantizer centered at 0.
+  float input_range = 1LL << 25;
+  int64 num_levels = (1LL << 32) - 1;
+  float step_size =
+      static_cast<float>(static_cast<double>(input_range) / num_levels);
+  float q_compatible_min_value =
+      roundf(-(input_range / 2.0) / step_size) * step_size;
+  float q_compatible_max_value = q_compatible_min_value + input_range;
+  test::FillValues<qint32>(&input32, {-16384, 0, 16256, -13440, -13312, -13184,
+                                      14720, 14848, 14976});
+
+  Tensor output32 = QuantizedTensorToFloat<qint32>(
+      input32, q_compatible_min_value, q_compatible_max_value);
+  test::FillValues<float>(&expected, {-128.0f, 0.0f, 127.0f, -105.0f, -104.0f,
+                                      -103.0f, 115.0f, 116.0f, 117.0f});
+  // The quantization error in going between 1<<25 and 1<<32 levels.
+  const double kTolerance = .5 / 128.0;
+  test::ExpectTensorNear<float>(expected, output32, kTolerance);
 }
 
 // Verify that QuantizedToFloatInPlaceUsingEigen is same result as

@@ -7,6 +7,8 @@ exports_files(["LICENSE"])
 
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 py_library(
     name = "data",
     deps = [
@@ -51,10 +53,20 @@ py_test(
     srcs = ["dataset_data_provider_test.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":dataset",
+        ":dataset_data_provider",
         ":test_utils",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/contrib/slim",
+        ":tfexample_decoder",
+        "//tensorflow/contrib/slim:queues",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:image_ops",
+        "//tensorflow/python:io_ops",
+        "//tensorflow/python:parsing_ops",
+        "//tensorflow/python:platform",
         "//tensorflow/python:platform_test",
     ],
 )
@@ -64,9 +76,14 @@ py_library(
     srcs = ["parallel_reader.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:io_ops",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:ops",
         "//tensorflow/python:platform",
+        "//tensorflow/python:summary",
         "//tensorflow/python:training",
     ],
 )
@@ -77,11 +94,18 @@ py_test(
     srcs = ["parallel_reader_test.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":parallel_reader",
         ":test_utils",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/contrib/slim",
+        "//tensorflow/contrib/slim:queues",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:data_flow_ops",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:io_ops",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
     ],
 )
 
@@ -90,8 +114,12 @@ py_library(
     srcs = ["prefetch_queue.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:ops",
+        "//tensorflow/python:summary",
         "//tensorflow/python:training",
     ],
 )
@@ -102,10 +130,16 @@ py_test(
     srcs = ["prefetch_queue_test.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/contrib/slim",
+        ":prefetch_queue",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -114,7 +148,11 @@ py_library(
     srcs = ["test_utils.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:image_ops",
+        "//tensorflow/python:lib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -124,7 +162,15 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":data_decoder",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:image_ops",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:ops",
+        "//tensorflow/python:parsing_ops",
+        "//tensorflow/python:sparse_ops",
     ],
 )
 
@@ -133,10 +179,18 @@ py_test(
     srcs = ["tfexample_decoder_test.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/contrib/slim",
+        ":tfexample_decoder",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:image_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:parsing_ops",
         "//tensorflow/python:platform_test",
+        "//third_party/py/numpy",
     ],
 )
 

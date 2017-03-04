@@ -12,21 +12,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for tensorflow.ops.reverse_sequence_op."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+
+from tensorflow.python.framework import constant_op
+from tensorflow.python.ops import array_ops
+from tensorflow.python.platform import test
 
 
-class WhereOpTest(tf.test.TestCase):
+class WhereOpTest(test.TestCase):
 
   def _testWhere(self, x, truth, expected_err_re=None):
     with self.test_session():
-      ans = tf.where(x)
+      ans = array_ops.where(x)
       self.assertEqual([None, x.ndim], ans.get_shape().as_list())
       if expected_err_re is None:
         tf_ans = ans.eval()
@@ -38,9 +41,9 @@ class WhereOpTest(tf.test.TestCase):
   def testWrongNumbers(self):
     with self.test_session():
       with self.assertRaises(ValueError):
-        tf.where([False, True], [1, 2], None)
+        array_ops.where([False, True], [1, 2], None)
       with self.assertRaises(ValueError):
-        tf.where([False, True], None, [1, 2])
+        array_ops.where([False, True], None, [1, 2])
 
   def testBasicMat(self):
     x = np.asarray([[True, False], [True, False]])
@@ -51,23 +54,23 @@ class WhereOpTest(tf.test.TestCase):
     self._testWhere(x, truth)
 
   def testBasic3Tensor(self):
-    x = np.asarray(
-        [[[True, False], [True, False]], [[False, True], [False, True]],
-         [[False, False], [False, True]]])
+    x = np.asarray([[[True, False], [True, False]],
+                    [[False, True], [False, True]],
+                    [[False, False], [False, True]]])
 
     # Ensure RowMajor mode
     truth = np.asarray(
-        [[0, 0, 0], [0, 1, 0], [1, 0, 1], [1, 1, 1], [2, 1, 1]],
-        dtype=np.int64)
+        [[0, 0, 0], [0, 1, 0], [1, 0, 1], [1, 1, 1], [2, 1, 1]], dtype=np.int64)
 
     self._testWhere(x, truth)
 
   def testThreeArgument(self):
     x = np.array([[-2, 3, -1], [1, -3, -3]])
-    np_val = np.where(x > 0, x*x, -x)
+    np_val = np.where(x > 0, x * x, -x)
     with self.test_session():
-      tf_val = tf.where(tf.constant(x) > 0, x*x, -x).eval()
+      tf_val = array_ops.where(constant_op.constant(x) > 0, x * x, -x).eval()
     self.assertAllEqual(tf_val, np_val)
 
+
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

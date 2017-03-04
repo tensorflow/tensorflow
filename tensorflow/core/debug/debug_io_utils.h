@@ -19,11 +19,12 @@ limitations under the License.
 #include <unordered_map>
 #include <unordered_set>
 
-#include "tensorflow/core/debug/debug_service.grpc.pb.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/util/event.pb.h"
 
 namespace tensorflow {
 
@@ -31,6 +32,13 @@ Status ReadEventFromFile(const string& dump_file_path, Event* event);
 
 class DebugIO {
  public:
+  static Status PublishDebugMetadata(
+      const int64 global_step, const int64 session_run_count,
+      const int64 executor_step_count, const std::vector<string>& input_names,
+      const std::vector<string>& output_names,
+      const std::vector<string>& target_nodes,
+      const std::unordered_set<string>& debug_urls);
+
   // Publish a tensor to a debug target URL.
   //
   // Args:
@@ -48,9 +56,16 @@ class DebugIO {
                                    const uint64 wall_time_us,
                                    const gtl::ArraySlice<string>& debug_urls);
 
+  // Publish a graph to a set of debug URLs.
+  //
+  // Args:
+  //   graph: The graph to be published.
+  //   debug_urls: The set of debug URLs to publish the graph to.
+  static Status PublishGraph(const Graph& graph,
+                             const std::unordered_set<string>& debug_urls);
+
   static Status CloseDebugURL(const string& debug_url);
 
- private:
   static const char* const kFileURLScheme;
   static const char* const kGrpcURLScheme;
 };
@@ -100,6 +115,10 @@ class DebugFileIO {
                                 const int32 output_slot, const string& debug_op,
                                 const uint64 wall_time_us);
 
+  static Status DumpEventProtoToFile(const Event& event_proto,
+                                     const string& dir_name,
+                                     const string& file_name);
+
  private:
   // Encapsulate the Tensor in an Event protobuf and write it to file.
   static Status DumpTensorToEventFile(
@@ -111,6 +130,15 @@ class DebugFileIO {
   // fixed.
   static Status RecursiveCreateDir(Env* env, const string& dir);
 };
+
+}  // namespace tensorflow
+
+// TODO(cais): Support grpc:// debug URLs in open source once Python grpc
+//   genrule becomes available. See b/23796275.
+#if defined(PLATFORM_GOOGLE)
+#include "tensorflow/core/debug/debug_service.grpc.pb.h"
+
+namespace tensorflow {
 
 class DebugGrpcChannel {
  public:
@@ -154,19 +182,23 @@ class DebugGrpcChannel {
 class DebugGrpcIO {
  public:
   // Send a tensor through a debug gRPC stream.
-  // Thread-safety: Safe with respect to other calls to the same method and
-  // calls to CloseGrpcStream().
   static Status SendTensorThroughGrpcStream(const string& node_name,
                                             const int32 output_slot,
                                             const string& debug_op,
                                             const Tensor& tensor,
                                             const uint64 wall_time_us,
-                                            const string& server_stream_addr);
+                                            const string& grpc_stream_url);
+
+  // Send an Event proto through a debug gRPC stream.
+  // Thread-safety: Safe with respect to other calls to the same method and
+  // calls to CloseGrpcStream().
+  static Status SendEventProtoThroughGrpcStream(const Event& event_proto,
+                                                const string& grpc_stream_url);
 
   // Close a gRPC stream to the given address, if it exists.
   // Thread-safety: Safe with respect to other calls to the same method and
   // calls to SendTensorThroughGrpcStream().
-  static Status CloseGrpcStream(const string& server_stream_addr);
+  static Status CloseGrpcStream(const string& grpc_stream_url);
 
  private:
   static mutex streams_mu;
@@ -175,5 +207,6 @@ class DebugGrpcIO {
 };
 
 }  // namespace tensorflow
+#endif  // #if defined(PLATFORM_GOOGLE)
 
 #endif  // TENSORFLOW_DEBUG_IO_UTILS_H_

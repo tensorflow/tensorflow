@@ -121,6 +121,7 @@ def einsum(equation, *inputs):
 
   Many common operations can be expressed in this way.  For example:
 
+  ```python
   # Matrix multiplication
   >>> einsum('ij,jk->ik', m0, m1)  # output[i,k] = sum_j m0[i,j] * m1[j, k]
 
@@ -135,6 +136,7 @@ def einsum(equation, *inputs):
 
   # Batch matrix multiplication
   >>> einsum('aij,ajk->aik', s, t)  # out[a,i,k] = sum_j s[a,i,j] * t[a, j, k]
+  ```
 
   This function behaves like `numpy.einsum`, but does not support:
   * Ellipses (subscripts like `ij...,jk...->ik...`)
@@ -306,7 +308,7 @@ def _einsum_reduction(t0, t0_axis_labels, t1, t1_axis_labels, axes_to_sum):
       t0 = array_ops.expand_dims(t0, -1)
     for _ in broadcast_axes[0]:
       t1 = array_ops.expand_dims(t1, len(preserved_axes))
-    product = math_ops.mul(t0, t1)
+    product = math_ops.multiply(t0, t1)
     product_axes = sorted_axes[0] + sorted_axes[1][len(preserved_axes):]
     return product, ''.join(product_axes)
   else:
@@ -316,27 +318,27 @@ def _einsum_reduction(t0, t0_axis_labels, t1, t1_axis_labels, axes_to_sum):
     # into a single axis, and combine multiple summed axes into a
     # single axis.
 
-    t0_shape = tuple(x.value for x in t0.get_shape())
+    t0_shape = _get_shape(t0)
     num_broadcast_elements_t0 = _total_size(
         t0_shape[len(preserved_axes):-len(axes_to_sum)])
     num_summed_elements = _total_size(t0_shape[-len(axes_to_sum):])
-    new_shape = t0_shape[:len(preserved_axes)] + (num_broadcast_elements_t0,
-                                                  num_summed_elements)
+    new_shape = (t0_shape[:len(preserved_axes)]
+                 + [num_broadcast_elements_t0, num_summed_elements])
     t0 = _reshape_if_necessary(t0, new_shape)
 
-    t1_shape = tuple(x.value for x in t1.get_shape())
+    t1_shape = _get_shape(t1)
     num_broadcast_elements_t1 = _total_size(
         t1_shape[len(preserved_axes)+len(axes_to_sum):])
-    new_shape = t1_shape[:len(preserved_axes)] + (num_summed_elements,
-                                                  num_broadcast_elements_t1)
+    new_shape = (t1_shape[:len(preserved_axes)]
+                 + [num_summed_elements, num_broadcast_elements_t1])
     t1 = _reshape_if_necessary(t1, new_shape)
 
     product = math_ops.matmul(t0, t1)
 
     # Undo compaction of broadcast axes
     uncompacted_shape = (
-        t0_shape[:len(preserved_axes)+len(broadcast_axes[0])] +
-        t1_shape[len(t1_shape)-len(broadcast_axes[1]):]
+        t0_shape[:len(preserved_axes)+len(broadcast_axes[0])]
+        + t1_shape[len(t1_shape)-len(broadcast_axes[1]):]
     )
     product = _reshape_if_necessary(product, uncompacted_shape)
 
@@ -358,6 +360,8 @@ def _transpose_if_necessary(tensor, perm):
 
 def _reshape_if_necessary(tensor, new_shape):
   """Like reshape(), but avoids creating a new tensor if possible."""
+  # Accept None as an alias for -1 in new_shape.
+  new_shape = tuple(-1 if x is None else x for x in new_shape)
   cur_shape = tuple(x.value for x in tensor.get_shape())
   if (len(new_shape) == len(cur_shape) and
       all(d0 == d1 or d1 == -1 for d0, d1 in zip(cur_shape, new_shape))):
@@ -366,13 +370,27 @@ def _reshape_if_necessary(tensor, new_shape):
     return array_ops.reshape(tensor, new_shape)
 
 
+def _get_shape(tensor):
+  """Like get_shape().as_list(), but explicitly queries the shape of a tensor
+  if necessary to ensure that the returned value contains no unknown value."""
+
+  shape = tensor.get_shape().as_list()
+  none_indices = [i for i, d in enumerate(shape) if d is None]
+  if none_indices:
+    # Query the shape if shape contains None values
+    shape_tensor = array_ops.shape(tensor)
+    for i in none_indices:
+      shape[i] = shape_tensor[i]
+  return shape
+
 def _total_size(shape_values):
-  """Given list of tensor shape values, returns total size or -1 if unknown."""
+  """Given list of tensor shape values, returns total size.
+  If shape_values contains tensor values (which are results of
+  array_ops.shape), then it returns a scalar tensor.
+  If not, it returns an integer."""
+
   result = 1
   for val in shape_values:
-    if val is None:
-      return -1
-    assert isinstance(val, int)
     result *= val
   return result
 

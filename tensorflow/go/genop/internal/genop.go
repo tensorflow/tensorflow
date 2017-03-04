@@ -212,6 +212,10 @@ func {{$.Op.Name}}{{CamelCase .Name}}(value {{GoType .Type}}) {{$.Op.Name}}Attr 
 {{- end -}}
 {{- end -}}
 
+{{- if (not .Op.OutputArg) }}
+//
+// Returns the created operation.
+{{- else }}
 {{- if .DescribeOutputs}}
 //
 {{- if ((len .Op.OutputArg) eq 1) }}
@@ -220,6 +224,7 @@ func {{$.Op.Name}}{{CamelCase .Name}}(value {{GoType .Type}}) {{$.Op.Name}}Attr 
 // Returns:
 {{- range .Op.OutputArg}}
 //	{{Identifier .Name}}{{if .Description}}: {{MakeComment .Description}}{{end}}
+{{- end -}}
 {{- end -}}
 {{- end -}}
 {{- end -}}
@@ -244,10 +249,12 @@ func {{.Op.Name}}
 {{if .OptionalAttrs}}, optional ...{{.Op.Name}}Attr{{end -}}
 )
 
-{{- /* Construct outputs: len(OpDef.OutputArg) */ -}}
+{{- /* Construct outputs: len(OpDef.OutputArg) or a *tf.Operation */ -}}
 
 {{if .Op.OutputArg -}}
 ({{range $i,$a := .Op.OutputArg}}{{if $i}}, {{end}}{{Identifier $a.Name}} {{if IsListArg $a}}[]{{end}}tf.Output{{end -}})
+{{- else -}}
+(o *tf.Operation)
 {{- end }} {
 	if scope.Err() != nil {
 		return
@@ -295,7 +302,7 @@ func {{.Op.Name}}
 	return {{range $i, $a := .Op.OutputArg}}{{if $i}}, {{end}}op.Output({{$i}}){{end}}
 	{{- end }}{{- /* if .HasListOutput */}}
 	{{- else }}
-	scope.AddOperation(opspec)
+	return scope.AddOperation(opspec)
 	{{- end }}{{- /* if .Op.OutputArg */}}
 }
 `))
@@ -395,7 +402,7 @@ func goType(tfType string) (string, error) {
 	case "type":
 		gotype = "tf.DataType"
 	case "shape":
-		gotype = "[]int64"
+		gotype = "tf.Shape"
 	case "tensor":
 		gotype = "tf.Tensor"
 	case "string":

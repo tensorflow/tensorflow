@@ -43,6 +43,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/core/util/stream_executor_util.h"
 #endif  // GOOGLE_CUDA
 
 /*
@@ -79,6 +80,12 @@ template <typename Device, typename T, typename Index>
 class CudnnRNNParamsSizeOp;
 
 template <typename Device, typename T>
+class CudnnRNNParamsToCanonical;
+
+template <typename Device, typename T>
+class CudnnRNNCanonicalToParams;
+
+template <typename Device, typename T>
 class CudnnRNNForwardOp;
 
 template <typename Device, typename T>
@@ -96,6 +103,7 @@ using perftools::gputools::dnn::RnnInputMode;
 using perftools::gputools::dnn::RnnDirectionMode;
 using perftools::gputools::dnn::ToDataType;
 using perftools::gputools::DeviceMemory;
+using perftools::gputools::DeviceMemoryBase;
 using perftools::gputools::ScratchAllocator;
 using perftools::gputools::port::StatusOr;
 
@@ -182,6 +190,16 @@ DeviceMemory<U> CastDeviceMemory(Tensor* tensor) {
   return DeviceMemory<U>::MakeFromByteSize(
       tensor->template flat<T>().data(),
       tensor->template flat<T>().size() * sizeof(T));
+}
+
+DeviceMemoryBase SliceDeviceMemory(const DeviceMemoryBase& device_memory,
+                                   int64 offset, int64 size) {
+  const void* base_ptr = device_memory.opaque();
+  void* offset_ptr =
+      const_cast<char*>(reinterpret_cast<const char*>(base_ptr) + offset);
+  CHECK(offset + size <= device_memory.size())
+      << "The slice is not within the region of DeviceMemory.";
+  return DeviceMemoryBase(offset_ptr, size);
 }
 
 inline Status FromExecutorStatus(const perftools::gputools::port::Status& s) {
@@ -357,6 +375,28 @@ Status ExtractForwardInput(OpKernelContext* context,
 
 using perftools::gputools::dnn::RnnDescriptor;
 
+template <typename T>
+void RestoreParams(const OpInputList params_input,
+                   const std::vector<RnnDescriptor::ParamsRegion>& params,
+                   DeviceMemoryBase* data_dst,
+                   perftools::gputools::Stream* stream) {
+  int num_params = params.size();
+  CHECK(params_input.size() == num_params)
+      << "Number of params mismatch. Expected " << params_input.size()
+      << ", got " << num_params;
+  for (int i = 0; i < params.size(); i++) {
+    int64 size_in_bytes = params[i].size;
+    int64 size = size_in_bytes / sizeof(T);
+    CHECK(size == params_input[i].NumElements())
+        << "Params size mismatch. Expected " << size << ", got "
+        << params_input[i].NumElements();
+    auto data_src_ptr = StreamExecutorUtil::AsDeviceMemory<T>(params_input[i]);
+    DeviceMemoryBase data_dst_ptr =
+        SliceDeviceMemory(*data_dst, params[i].offset, size_in_bytes);
+    stream->ThenMemcpy(&data_dst_ptr, data_src_ptr, size_in_bytes);
+  }
+}
+
 }  // namespace
 
 // A common base class for RNN kernels. It extracts common attributes and
@@ -457,6 +497,162 @@ REGISTER_KERNEL_BUILDER(Name("CudnnRNNParamsSize")
                             .TypeConstraint<float>("T")
                             .TypeConstraint<int32>("S"),
                         CudnnRNNParamsSizeOp<GPUDevice, float, int32>);
+
+// Convert weight and bias params from a platform-specific layout to the
+// canonical form.
+template <typename T>
+class CudnnRNNParamsToCanonical<GPUDevice, T> : public CudnnRNNKernelCommon {
+ public:
+  typedef GPUDevice Device;
+  explicit CudnnRNNParamsToCanonical(OpKernelConstruction* context)
+      : CudnnRNNKernelCommon(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("num_params", &num_params_));
+  }
+
+  void Compute(OpKernelContext* context) override {
+    const Tensor& input = context->input(3);
+    auto input_ptr = StreamExecutorUtil::AsDeviceMemory<T>(input);
+    auto* stream = context->op_device_context()->stream();
+
+    std::unique_ptr<RnnDescriptor> rnn_desc;
+    OP_REQUIRES_OK(context, ExtractCudnnRNNParamsInfo<T>(context, &rnn_desc));
+    int64 params_size_in_bytes = rnn_desc->ParamsSizeInBytes();
+    CHECK(params_size_in_bytes % sizeof(T) == 0)
+        << "params_size_in_bytes must be multiple of element size";
+
+    const Tensor* num_units_t = nullptr;
+    OP_REQUIRES_OK(context, context->input("num_units", &num_units_t));
+    CHECK(TensorShapeUtils::IsScalar(num_units_t->shape()))
+        << "num_units is not a scalar";
+    int num_units = num_units_t->scalar<int>()();
+
+    const Tensor* input_size_t = nullptr;
+    OP_REQUIRES_OK(context, context->input("input_size", &input_size_t));
+    CHECK(TensorShapeUtils::IsScalar(input_size_t->shape()))
+        << "input_size is not a scalar";
+    int input_size = input_size_t->scalar<int>()();
+
+    const Tensor* num_layers_t = nullptr;
+    OP_REQUIRES_OK(context, context->input("num_layers", &num_layers_t));
+    CHECK(TensorShapeUtils::IsScalar(num_layers_t->shape()))
+        << "num_layers is not a scalar";
+    int num_layers = num_layers_t->scalar<int>()();
+    int num_params_per_layer = num_params_ / num_layers;
+
+    CHECK(num_params_ == rnn_desc->ParamsWeightRegions().size())
+        << "Number of params mismatch. Expected " << num_params_ << ", got "
+        << rnn_desc->ParamsWeightRegions().size();
+    for (int i = 0; i < rnn_desc->ParamsWeightRegions().size(); i++) {
+      int64 size_in_bytes = rnn_desc->ParamsWeightRegions()[i].size;
+      int64 size = size_in_bytes / sizeof(T);
+      int width = (i < num_params_per_layer / 2) ? input_size : num_units;
+      int height = num_units;
+      CHECK(size == width * height) << "Params size mismatch. Expected "
+                                    << width * height << ", got " << size;
+      // If data is aligned, use slice view to avoid expensive memcpy.
+      bool start_aligned =
+          rnn_desc->ParamsWeightRegions()[i].offset % EIGEN_MAX_ALIGN_BYTES ==
+          0;
+      bool size_aligned = size_in_bytes % EIGEN_MAX_ALIGN_BYTES == 0;
+      if (start_aligned && size_aligned) {
+        int start = rnn_desc->ParamsWeightRegions()[i].offset / sizeof(T);
+        int end = start + size_in_bytes / sizeof(T);
+        context->set_output(i, input.Slice(start, end));
+      } else {
+        Tensor* output = nullptr;
+        OP_REQUIRES_OK(
+            context,
+            context->allocate_output(i, TensorShape({width, height}), &output));
+        DeviceMemoryBase data_src_ptr = SliceDeviceMemory(
+            input_ptr, rnn_desc->ParamsWeightRegions()[i].offset,
+            size_in_bytes);
+        auto data_dst_ptr = StreamExecutorUtil::AsDeviceMemory<T>(*output);
+        stream->ThenMemcpy(&data_dst_ptr, data_src_ptr, size_in_bytes);
+      }
+    }
+
+    CHECK(num_params_ == rnn_desc->ParamsBiasRegions().size())
+        << "Number of params mismatch. Expected " << num_params_ << ", got "
+        << rnn_desc->ParamsBiasRegions().size();
+    for (int i = 0; i < rnn_desc->ParamsBiasRegions().size(); i++) {
+      int64 size_in_bytes = rnn_desc->ParamsBiasRegions()[i].size;
+      int64 size = size_in_bytes / sizeof(T);
+      CHECK(size == num_units) << "Params size mismatch. Expected " << num_units
+                               << ", got " << size;
+      // If data is aligned, use slice view to avoid expensive memcpy.
+      bool start_aligned =
+          rnn_desc->ParamsBiasRegions()[i].offset % EIGEN_MAX_ALIGN_BYTES == 0;
+      bool size_aligned = size_in_bytes % EIGEN_MAX_ALIGN_BYTES == 0;
+      if (start_aligned && size_aligned) {
+        int start = rnn_desc->ParamsBiasRegions()[i].offset / sizeof(T);
+        int end = start + size_in_bytes / sizeof(T);
+        context->set_output(num_params_ + i, input.Slice(start, end));
+      } else {
+        Tensor* output = nullptr;
+        OP_REQUIRES_OK(context,
+                       context->allocate_output(num_params_ + i,
+                                                TensorShape({size}), &output));
+        DeviceMemoryBase data_src_ptr = SliceDeviceMemory(
+            input_ptr, rnn_desc->ParamsBiasRegions()[i].offset, size_in_bytes);
+        auto data_dst_ptr = StreamExecutorUtil::AsDeviceMemory<T>(*output);
+        stream->ThenMemcpy(&data_dst_ptr, data_src_ptr, size_in_bytes);
+      }
+    }
+  }
+
+ private:
+  int num_params_;
+};
+
+REGISTER_KERNEL_BUILDER(Name("CudnnRNNParamsToCanonical")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("num_layers")
+                            .HostMemory("num_units")
+                            .HostMemory("input_size")
+                            .TypeConstraint<float>("T"),
+                        CudnnRNNParamsToCanonical<GPUDevice, float>);
+
+// Convert weight and bias params from the canonical form to a
+// platform-specific layout.
+template <typename T>
+class CudnnRNNCanonicalToParams<GPUDevice, T> : public CudnnRNNKernelCommon {
+ public:
+  typedef GPUDevice Device;
+  explicit CudnnRNNCanonicalToParams(OpKernelConstruction* context)
+      : CudnnRNNKernelCommon(context) {}
+
+  void Compute(OpKernelContext* context) override {
+    std::unique_ptr<RnnDescriptor> rnn_desc;
+    OP_REQUIRES_OK(context, ExtractCudnnRNNParamsInfo<T>(context, &rnn_desc));
+    int64 params_size_in_bytes = rnn_desc->ParamsSizeInBytes();
+    CHECK(params_size_in_bytes % sizeof(T) == 0)
+        << "params_size_in_bytes must be multiple of element size";
+    Tensor* output = nullptr;
+    int params_size = params_size_in_bytes / sizeof(T);
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(0, {params_size}, &output));
+    auto output_ptr = StreamExecutorUtil::AsDeviceMemory<T>(*output);
+    auto* stream = context->op_device_context()->stream();
+
+    OpInputList weights;
+    OP_REQUIRES_OK(context, context->input_list("weights", &weights));
+    RestoreParams<T>(weights, rnn_desc->ParamsWeightRegions(), &output_ptr,
+                     stream);
+
+    OpInputList biases;
+    OP_REQUIRES_OK(context, context->input_list("biases", &biases));
+    RestoreParams<T>(biases, rnn_desc->ParamsBiasRegions(), &output_ptr,
+                     stream);
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("CudnnRNNCanonicalToParams")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("num_layers")
+                            .HostMemory("num_units")
+                            .HostMemory("input_size")
+                            .TypeConstraint<float>("T"),
+                        CudnnRNNCanonicalToParams<GPUDevice, float>);
 
 // Run the forward operation of the RNN model.
 template <typename T>

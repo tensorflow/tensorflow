@@ -28,8 +28,11 @@ message TensorProto {
   // to represent a constant Tensor with a single value.
   int32 version_number = 3;
 
-  // Serialized content from Tensor::AsProtoTensorContent(). This representation
-  // can be used for all tensor types.
+  // Serialized raw tensor content from either Tensor::AsProtoTensorContent or
+  // memcpy in tensorflow::grpc::EncodeTensorToByteBuffer. This representation
+  // can be used for all tensor types. The purpose of this representation is to
+  // reduce serialization overhead during RPC call by avoiding serialization of
+  // many repeated small items.
   bytes tensor_content = 4;
 
   // Type specific representations that make it easy to create tensor protos in

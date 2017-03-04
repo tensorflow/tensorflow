@@ -465,6 +465,34 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
                                             ", n=", n, ", k=", k));
       }
       return;
+    } else if (dims.rows.filter_size == dims.rows.input_size &&
+               dims.cols.filter_size == dims.cols.input_size &&
+               padding_ == VALID && data_format_ == FORMAT_NHWC) {
+      // The input data and filter have the same height/width, so call cublas
+      // directly.
+      const uint64 m =
+          dims.rows.input_size * dims.cols.input_size * dims.in_depth;
+      const uint64 k = dims.batch_size;
+      const uint64 n = dims.out_depth;
+
+      auto a_ptr = AsDeviceMemory(input.template flat<T>().data(),
+                                  input.template flat<T>().size());
+      auto b_ptr = AsDeviceMemory(out_backprop.template flat<T>().data(),
+                                  out_backprop.template flat<T>().size());
+      auto c_ptr = AsDeviceMemory(filter_backprop->template flat<T>().data(),
+                                  filter_backprop->template flat<T>().size());
+
+      bool blas_launch_status =
+          stream
+              ->ThenBlasGemm(perftools::gputools::blas::Transpose::kNoTranspose,
+                             perftools::gputools::blas::Transpose::kTranspose,
+                             n, m, k, 1.0f, b_ptr, n, a_ptr, m, 0.0f, &c_ptr, n)
+              .ok();
+      if (!blas_launch_status) {
+        context->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
+                                            ", n=", n, ", k=", k));
+      }
+      return;
     }
 
     Tensor compatible_input;

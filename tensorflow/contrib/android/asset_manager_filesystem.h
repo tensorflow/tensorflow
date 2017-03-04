@@ -69,6 +69,11 @@ class AssetManagerFileSystem : public FileSystem {
  private:
   string RemoveAssetPrefix(const string& name);
 
+  // Return a string path that can be passed into AAssetManager functions.
+  // For example, 'my_prefix://some/dir/' would return 'some/dir'.
+  string NormalizeDirectoryPath(const string& fname);
+  bool DirectoryExists(const std::string& fname);
+
   AAssetManager* asset_manager_;
   string prefix_;
 };

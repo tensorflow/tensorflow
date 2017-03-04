@@ -22,35 +22,44 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/reader_interface.h"
 #include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/framework/resource_op_kernel.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
-// Implementation for ops providing a Reader.
-class ReaderOpKernel : public OpKernel {
- public:
-  explicit ReaderOpKernel(OpKernelConstruction* context);
-  ~ReaderOpKernel() override;
+// NOTE: This is now a very thin layer over ResourceOpKernel.
+// TODO(sjhwang): Remove dependencies to this class, then delete this.
 
-  void Compute(OpKernelContext* context) override;
+// Implementation for ops providing a Reader.
+class ReaderOpKernel : public ResourceOpKernel<ReaderInterface> {
+ public:
+  using ResourceOpKernel::ResourceOpKernel;
 
   // Must be called by descendants before the first call to Compute()
   // (typically called during construction).  factory must return a
   // ReaderInterface descendant allocated with new that ReaderOpKernel
   // will take ownership of.
-  void SetReaderFactory(std::function<ReaderInterface*()> factory) {
+  void SetReaderFactory(std::function<ReaderInterface*()> factory)
+      LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
-    DCHECK(!have_handle_);
+    DCHECK(resource_ == nullptr);
     factory_ = factory;
   }
 
  private:
-  mutex mu_;
-  bool have_handle_ GUARDED_BY(mu_);
-  PersistentTensor handle_ GUARDED_BY(mu_);
-  ContainerInfo cinfo_;
-  std::function<ReaderInterface*()> factory_;
+  Status CreateResource(ReaderInterface** reader)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_) override {
+    *reader = factory_();
+    if (*reader == nullptr) {
+      return errors::ResourceExhausted("Failed to allocate reader");
+    }
+    std::function<ReaderInterface*()> temp = nullptr;
+    factory_.swap(temp);
+    return Status::OK();
+  }
+
+  std::function<ReaderInterface*()> factory_ GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

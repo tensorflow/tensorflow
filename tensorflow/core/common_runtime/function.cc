@@ -261,7 +261,7 @@ class CallOp : public AsyncOpKernel {
                       done);
     FunctionLibraryRuntime::Options opts;
     opts.step_id = ctx->step_id();
-    opts.step_resource_manager = ctx->step_resource_manager();
+    opts.step_container = ctx->step_container();
     opts.runner = ctx->runner();
     std::vector<Tensor> args;
     args.reserve(ctx->num_inputs());
@@ -463,7 +463,7 @@ void DumpGraph(StringPiece label, const Graph* g) {
   }
 }
 
-void OptimizeGraph(FunctionLibraryRuntime* lib, Graph** g) {
+void OptimizeGraph(FunctionLibraryRuntime* lib, std::unique_ptr<Graph>* g) {
   OptimizerOptions opts;
   opts.set_do_common_subexpression_elimination(true);
   opts.set_do_function_inlining(true);
@@ -475,16 +475,12 @@ void OptimizeGraph(FunctionLibraryRuntime* lib, Graph** g) {
 Status FunctionLibraryRuntimeImpl::CreateItem(Handle handle, Item** item) {
   const FunctionBody* fbody = GetFunctionBody(handle);
   CHECK_NOTNULL(fbody);
-  Graph* g = new Graph(lib_def_);
-  CopyGraph(*fbody->graph, g);
+  std::unique_ptr<Graph> g(new Graph(lib_def_));
+  CopyGraph(*fbody->graph, g.get());
 
   optimizer_.Optimize(this, env(), device(), &g);
-  auto s = EnsureMemoryTypes(DeviceType(device()->device_type()),
-                             device()->name(), g);
-  if (!s.ok()) {
-    delete g;
-    return Status::OK();
-  }
+  TF_RETURN_IF_ERROR(EnsureMemoryTypes(DeviceType(device()->device_type()),
+                                       device()->name(), g.get()));
 
   // Creates an executor based on the g.  This must be done without
   // holding mu_ because create_kernel_ calls back into the library.
@@ -495,11 +491,12 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Handle handle, Item** item) {
   params.delete_kernel = [](OpKernel* kernel) {
     DeleteNonCachedKernel(kernel);
   };
+  Graph* graph = g.get();
   Executor* exec;
-  TF_RETURN_IF_ERROR(NewLocalExecutor(params, g, &exec));
+  TF_RETURN_IF_ERROR(NewLocalExecutor(params, g.release(), &exec));
 
   *item = new Item;
-  (*item)->graph = g;
+  (*item)->graph = graph;
   (*item)->exec = exec;
   return Status::OK();
 }
@@ -558,7 +555,7 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
   Executor::Args exec_args;
   // Inherit the step_id from the caller.
   exec_args.step_id = opts.step_id;
-  exec_args.step_resource_manager = opts.step_resource_manager;
+  exec_args.step_container = opts.step_container;
   exec_args.call_frame = frame;
   exec_args.cancellation_manager = opts.cancellation_manager;
   exec_args.runner = *opts.runner;
@@ -670,6 +667,16 @@ const Edge* GetTheOnlyDataEdge(const EdgeSet& edges) {
     if (IsRefType(e->src()->output_type(e->src_output()))) {
       // Don't touch it if the identity node is effectively de-reffing
       // a ref.
+      return nullptr;
+    }
+    if (IsRecv(e->src()) || IsSwitch(e->src())) {
+      // Don't touch it if the identity is introduced for control flow.
+      // Recv disables all its successors if it receives a dead signal.
+      // When Recv has an outgoing control edge, the current executor
+      // would not disable the destination. The current solution (see
+      // graph_partition.cc) is to add an identity after Recv and change
+      // the control edge to be from this identity node. So the identity
+      // can't be removed.
       return nullptr;
     }
     ret = e;

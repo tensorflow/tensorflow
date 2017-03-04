@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
 
@@ -139,7 +140,7 @@ TEST(ArrayOpsTest, Const_ShapeFn) {
 
 TEST(ArrayOpsTest, UnchangedShapes_ShapeFn) {
   for (const char* op_name : {
-           "CheckNumerics", "Identity", "QuantizeAndDequantize", "RefIdentity",
+           "CheckNumerics", "Identity", "RefIdentity", "QuantizeAndDequantize",
            "StopGradient", "ZerosLike",
        }) {
     ShapeInferenceTestOp op(op_name);
@@ -161,9 +162,9 @@ TEST(ArrayOpsTest, Identity_ShapeFnHandles) {
   // Check that handle dtypes are preserved.
   const OpRegistrationData* op_reg_data;
   TF_ASSERT_OK(OpRegistry::Global()->LookUp(op.name, &op_reg_data));
-  shape_inference::InferenceContext c(&op.node_def, op_reg_data->op_def,
-                                      {TensorShapeProto()}, {}, {}, {},
-                                      {DT_BOOL});
+  shape_inference::InferenceContext c(TF_GRAPH_DEF_VERSION, &op.node_def,
+                                      op_reg_data->op_def, {TensorShapeProto()},
+                                      {}, {}, {}, {DT_BOOL});
   TF_ASSERT_OK(c.construction_status());
   ASSERT_TRUE(op_reg_data->shape_inference_fn != nullptr);
   TF_ASSERT_OK(c.Run(op_reg_data->shape_inference_fn));
@@ -331,6 +332,7 @@ TEST(ArrayOpsTest, PadD_ShapeFn) {
     INFER_OK(op, "[100,200,300];[3,2]", "[111,222,333]");
     INFER_OK(op, "[100,?,300];[3,2]", "[111,?,333]");
     INFER_OK(op, "?;[3,2]", "[?,?,?]");
+    INFER_OK(op, "?;?", "[?,?,?]");
   }
 }
 
@@ -364,6 +366,18 @@ TEST(ArrayOpsTest, MirrorPadGrad_ShapeFn) {
 
   INFER_OK(op, "[111,222,333];[3,2]", "[100,200,300]");
   INFER_OK(op, "[111,?,333];[3,2]", "[100,?,300]");
+}
+
+TEST(ArrayOpsTest, BroadcastArgs_ShapeFn) {
+  ShapeInferenceTestOp op("BroadcastArgs");
+  INFER_OK(op, "?;?", "[?]");
+  INFER_OK(op, "[123];[1]", "[123]");
+  INFER_OK(op, "[1];[123]", "[123]");
+  INFER_OK(op, "[123];[121]", "[123]");
+
+  // Rank checks
+  INFER_ERROR("Shape must be rank 1 but is rank 0", op, "[];?");
+  INFER_ERROR("Shape must be rank 1 but is rank 0", op, "?;[]");
 }
 
 TEST(ArrayOpsTest, BroadcastGradientArgs_ShapeFn) {
@@ -545,7 +559,7 @@ TEST(ArrayOpsTest, Concat_ShapeFn) {
   set_n(4);
   INFER_OK(op, "?;?;?;[1,2,3,4];[4,3,2,1]", "[?,?,?,?]");
   INFER_OK(op, "?;?;?;?;?", "?");  // output rank unknown
-  INFER_ERROR("Can't concatenate scalars (use tf.pack instead)", op,
+  INFER_ERROR("Can't concatenate scalars (use tf.stack instead)", op,
               "?;?;?;[];[]");
   INFER_ERROR("Shape must be rank 2 but is rank 3", op, "?;?;?;[1,2];[1,2,3]");
 
@@ -556,24 +570,32 @@ TEST(ArrayOpsTest, Concat_ShapeFn) {
   set_n(2);
 
   // Sum dim 0, merge the other two dims.
-  concat_dim_t = test::AsScalar(0);
-  INFER_OK(op, "[];[100,2,?];[10,?,3]", "[110,d1_1,d2_2]");
-  INFER_ERROR("Dimension 1 in both shapes must be equal, but are 5 and 3", op,
-              "[];[100,2,5];[10,?,3]");
-  // concat_dim can't be summed, as one value is unknown.
-  INFER_OK(op, "[];[100,2,?];[?,?,3]", "[?,d1_1,d2_2]");
-  INFER_OK(op, "[];[?,2,?];[10,?,3]", "[?,d1_1,d2_2]");
+  for (int concat_dim : {0, -3}) {
+    concat_dim_t = test::AsScalar(concat_dim);
+    INFER_OK(op, "[];[100,2,?];[10,?,3]", "[110,d1_1,d2_2]");
+    INFER_ERROR("Dimension 1 in both shapes must be equal, but are 5 and 3", op,
+                "[];[100,2,5];[10,?,3]");
+    // concat_dim can't be summed, as one value is unknown.
+    INFER_OK(op, "[];[100,2,?];[?,?,3]", "[?,d1_1,d2_2]");
+    INFER_OK(op, "[];[?,2,?];[10,?,3]", "[?,d1_1,d2_2]");
+  }
 
   // Test with a higher concat_dim.
-  concat_dim_t = test::AsScalar(1);
-  INFER_OK(op, "[];[1,100,?];[?,10,3]", "[d1_0,110,d2_2]");
-  INFER_OK(op, "[];[1,100];[?,10]", "[d1_0,110]");
-  INFER_OK(op, "[];[?,100];[1,10]", "[d2_0,110]");
-  // concat_dim is too high.
-  INFER_ERROR("Shape must be at least rank 2 but is rank 1", op,
-              "[];[100];[10,?]");
-  INFER_ERROR("Shape must be at least rank 2 but is rank 1", op,
-              "[];[100,5];[10]");
+  for (bool use_negative : {false, true}) {
+    concat_dim_t = test::AsScalar(use_negative ? -2 : 1);
+    INFER_OK(op, "[];[1,100,?];[?,10,3]", "[d1_0,110,d2_2]");
+    concat_dim_t = test::AsScalar(use_negative ? -1 : 1);
+    INFER_OK(op, "[];[1,100];[?,10]", "[d1_0,110]");
+    INFER_OK(op, "[];[?,100];[1,10]", "[d2_0,110]");
+
+    // concat_dim is out of bounds.
+    concat_dim_t = test::AsScalar(use_negative ? -2 : 1);
+    INFER_ERROR("Shape must be at least rank 2 but is rank 1", op,
+                "[];[100];[10,?]");
+    INFER_ERROR("Shape must be at least rank 2 but is rank 1", op,
+                "[];[100,5];[10]");
+  }
+
   // concat_dim is too low.
   concat_dim_t = test::AsScalar(-2);
   INFER_ERROR("Shape must be at least rank 2 but is rank 1", op,
@@ -610,7 +632,7 @@ TEST(ArrayOpsTest, ConcatV2_ShapeFn) {
   set_n(4);
   INFER_OK(op, "?;?;[1,2,3,4];[4,3,2,1];?", "[?,?,?,?]");
   INFER_OK(op, "?;?;?;?;?", "?");  // output rank unknown
-  INFER_ERROR("Can't concatenate scalars (use tf.pack instead)", op,
+  INFER_ERROR("Can't concatenate scalars (use tf.stack instead)", op,
               "?;?;[];[];?");
   INFER_ERROR("Shape must be rank 2 but is rank 3", op, "?;?;[1,2];[1,2,3];?");
 
@@ -1152,6 +1174,17 @@ TEST(ArrayOpsTest, ExtractImagePatchesShapeTest) {
       "ExtractImagePatches requires the ksizes attribute to contain 4 values, "
       "but got: 5",
       op, "[1,7,7,2]");
+}
+
+TEST(ArrayOpsTest, QuantizeAndDequantizeV2_ShapeFn) {
+  ShapeInferenceTestOp op("QuantizeAndDequantizeV2");
+  INFER_OK(op, "?;?;?", "in0");
+  INFER_OK(op, "[];?;?", "in0");
+  INFER_OK(op, "[1,2,?,4,5];?;?", "in0");
+
+  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "[1,2,?,4,5];[1];[]");
+  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "[1,2,?,4,5];[];[1]");
+  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "[1,2,?,4,5];[1];[1]");
 }
 
 TEST(ArrayOpsTest, SpaceToBatch_ShapeFn) {

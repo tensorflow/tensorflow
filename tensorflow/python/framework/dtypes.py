@@ -54,21 +54,6 @@ class DType(object):
 
   The `tf.as_dtype()` function converts numpy types and string type
   names to a `DType` object.
-
-  @@is_compatible_with
-  @@name
-  @@base_dtype
-  @@real_dtype
-  @@is_floating
-  @@is_complex
-  @@is_integer
-  @@is_quantized
-  @@is_unsigned
-
-  @@as_numpy_dtype
-  @@as_datatype_enum
-
-  @@limits
   """
 
   def __init__(self, type_enum):
@@ -140,6 +125,11 @@ class DType(object):
   def as_datatype_enum(self):
     """Returns a `types_pb2.DataType` enum value based on this `DType`."""
     return self._type_enum
+
+  @property
+  def is_bool(self):
+    """Returns whether this is a boolean data type"""
+    return self.base_dtype == bool
 
   @property
   def is_integer(self):
@@ -291,6 +281,8 @@ class DType(object):
 
   @property
   def size(self):
+    if self._type_enum == types_pb2.DT_RESOURCE:
+      return 1
     return np.dtype(self.as_numpy_dtype).itemsize
 
 # Define data type range of numpy dtype

@@ -17,7 +17,7 @@
 
 Run using bazel:
 
-bazel run -c opt \
+bazel run --config opt \
     <...>/tensorflow/examples/how_tos/reading_data:fully_connected_preloaded_var
 
 or, if installed via pip:
@@ -101,7 +101,7 @@ def run_training():
              feed_dict={labels_initializer: data_sets.train.labels})
 
     # Instantiate a SummaryWriter to output summaries and the Graph.
-    summary_writer = tf.train.SummaryWriter(FLAGS.train_dir, sess.graph)
+    summary_writer = tf.summary.FileWriter(FLAGS.train_dir, sess.graph)
 
     # Start input enqueue threads.
     coord = tf.train.Coordinator()

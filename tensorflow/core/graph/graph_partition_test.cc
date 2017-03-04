@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/control_flow_ops.h"
+#include "tensorflow/cc/ops/control_flow_ops_internal.h"
 #include "tensorflow/cc/ops/random_ops.h"
 #include "tensorflow/cc/ops/sendrecv_ops.h"
 #include "tensorflow/core/framework/op.h"
@@ -128,13 +129,13 @@ void CheckLoopConstruction(const GraphDef& graph_def) {
   }
 }
 
-REGISTER_OP("Input").Output("o: float");
+REGISTER_OP("FloatInput").Output("o: float");
 REGISTER_OP("BoolInput").Output("o: bool");
 REGISTER_OP("Combine").Input("a: float").Input("b: float").Output("o: float");
 
-ops::Output ConstructOp(const Scope& scope, const string& op_type,
-                        const gtl::ArraySlice<ops::Input>& inputs) {
-  if (!scope.ok()) return ops::Output();
+Output ConstructOp(const Scope& scope, const string& op_type,
+                   const gtl::ArraySlice<Input>& inputs) {
+  if (!scope.ok()) return Output();
   const string unique_name = scope.GetUniqueNameForOp(op_type);
   auto builder = NodeBuilder(unique_name, op_type);
   for (auto const& input : inputs) {
@@ -143,19 +144,19 @@ ops::Output ConstructOp(const Scope& scope, const string& op_type,
   scope.UpdateBuilder(&builder);
   Node* ret;
   scope.UpdateStatus(builder.Finalize(scope.graph(), &ret));
-  if (!scope.ok()) return ops::Output();
-  return ops::Output(ret);
+  if (!scope.ok()) return Output();
+  return Output(ret);
 }
 
-ops::Output Input(const Scope& scope) {
-  return ConstructOp(scope, "Input", {});
+Output FloatInput(const Scope& scope) {
+  return ConstructOp(scope, "FloatInput", {});
 }
 
-ops::Output BoolInput(const Scope& scope) {
+Output BoolInput(const Scope& scope) {
   return ConstructOp(scope, "BoolInput", {});
 }
 
-ops::Output Combine(const Scope& scope, ops::Input a, ops::Input b) {
+Output Combine(const Scope& scope, Input a, Input b) {
   return ConstructOp(scope, "Combine", {a, b});
 }
 
@@ -169,20 +170,20 @@ class GraphPartitionTest : public ::testing::Test {
             "/job:a/replica:0/task:0/cpu:1")) {}
 
   const GraphDef& ToGraphDef() {
-    in_.ToGraphDef(&in_graph_def_);
+    TF_EXPECT_OK(in_.ToGraphDef(&in_graph_def_));
     return in_graph_def_;
   }
 
   void ExpectMatchA() {
     GraphDef graph_def;
-    scope_a_.ToGraphDef(&graph_def);
+    TF_EXPECT_OK(scope_a_.ToGraphDef(&graph_def));
     string a = "/job:a/replica:0/task:0/cpu:0";
     TF_EXPECT_GRAPH_EQ(graph_def, partitions_[a]);
   }
 
   void ExpectMatchB() {
     GraphDef graph_def;
-    scope_b_.ToGraphDef(&graph_def);
+    TF_EXPECT_OK(scope_b_.ToGraphDef(&graph_def));
     string b = "/job:a/replica:0/task:0/cpu:1";
     TF_EXPECT_GRAPH_EQ(graph_def, partitions_[b]);
   }
@@ -196,21 +197,21 @@ class GraphPartitionTest : public ::testing::Test {
 
 TEST_F(GraphPartitionTest, SingleDevice) {
   using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
-  auto a1 = Input(in_.WithOpName("A1"));
+  auto a1 = FloatInput(in_.WithOpName("A1"));
   Combine(in_.WithOpName("A2"), a1, a1);
 
   Partition(ToGraphDef(), &partitions_);
   EXPECT_EQ(1, partitions_.size());
 
-  a1 = Input(scope_a_.WithOpName("A1"));
+  a1 = FloatInput(scope_a_.WithOpName("A1"));
   Combine(scope_a_.WithOpName("A2"), a1, a1);
   ExpectMatchA();
 }
 
 TEST_F(GraphPartitionTest, CrossDeviceData) {
   using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
-  auto a1 = Input(in_.WithOpName("A1"));
-  auto b1 = Input(in_.WithOpName("B1"));
+  auto a1 = FloatInput(in_.WithOpName("A1"));
+  auto b1 = FloatInput(in_.WithOpName("B1"));
   Combine(in_.WithOpName("B2"), a1, b1);
 
   Partition(ToGraphDef(), &partitions_);
@@ -218,11 +219,11 @@ TEST_F(GraphPartitionTest, CrossDeviceData) {
 
   string a = "/job:a/replica:0/task:0/cpu:0";
   string b = "/job:a/replica:0/task:0/cpu:1";
-  a1 = Input(scope_a_.WithOpName("A1"));
+  a1 = FloatInput(scope_a_.WithOpName("A1"));
   _Send(scope_a_.WithOpName("A1/_0"), a1, "edge_1_A1", a, 82, b);
   ExpectMatchA();
 
-  b1 = Input(scope_b_.WithOpName("B1"));
+  b1 = FloatInput(scope_b_.WithOpName("B1"));
   auto recv =
       _Recv(scope_b_.WithOpName("A1/_1"), DT_FLOAT, "edge_1_A1", a, 82, b);
   Combine(scope_b_.WithOpName("B2"), recv, b1);
@@ -231,8 +232,8 @@ TEST_F(GraphPartitionTest, CrossDeviceData) {
 
 TEST_F(GraphPartitionTest, CrossDeviceControl) {
   using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
-  auto a1 = Input(in_.WithOpName("A1"));
-  auto b1 = Input(in_.WithOpName("B1"));
+  auto a1 = FloatInput(in_.WithOpName("A1"));
+  auto b1 = FloatInput(in_.WithOpName("B1"));
   Combine(in_.WithOpName("B2").WithControlDependencies(a1), b1, b1);
 
   Partition(ToGraphDef(), &partitions_);
@@ -240,7 +241,7 @@ TEST_F(GraphPartitionTest, CrossDeviceControl) {
 
   string a = "/job:a/replica:0/task:0/cpu:0";
   string b = "/job:a/replica:0/task:0/cpu:1";
-  a1 = Input(scope_a_.WithOpName("A1"));
+  a1 = FloatInput(scope_a_.WithOpName("A1"));
   auto c = Const(scope_a_.WithOpName("A1/_0").WithControlDependencies(a1), {});
   _Send(scope_a_.WithOpName("A1/_1"), c, "edge_3_A1", a, 82, b);
   ExpectMatchA();
@@ -248,15 +249,15 @@ TEST_F(GraphPartitionTest, CrossDeviceControl) {
   auto recv =
       _Recv(scope_b_.WithOpName("A1/_2"), DT_FLOAT, "edge_3_A1", a, 82, b);
   auto id = Identity(scope_b_.WithOpName("A1/_3"), recv);
-  b1 = Input(scope_b_.WithOpName("B1"));
+  b1 = FloatInput(scope_b_.WithOpName("B1"));
   Combine(scope_b_.WithOpName("B2").WithControlDependencies(id), b1, b1);
   ExpectMatchB();
 }
 
 TEST_F(GraphPartitionTest, CrossDeviceData_MultiUse) {
   using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
-  auto a1 = Input(in_.WithOpName("A1"));
-  auto b1 = Input(in_.WithOpName("B1"));
+  auto a1 = FloatInput(in_.WithOpName("A1"));
+  auto b1 = FloatInput(in_.WithOpName("B1"));
   Combine(in_.WithOpName("B2"), a1, b1);
   Combine(in_.WithOpName("B3"), a1, a1);
 
@@ -265,13 +266,13 @@ TEST_F(GraphPartitionTest, CrossDeviceData_MultiUse) {
 
   string a = "/job:a/replica:0/task:0/cpu:0";
   string b = "/job:a/replica:0/task:0/cpu:1";
-  a1 = Input(scope_a_.WithOpName("A1"));
+  a1 = FloatInput(scope_a_.WithOpName("A1"));
   _Send(scope_a_.WithOpName("A1/_0"), a1, "edge_1_A1", a, 82, b);
   ExpectMatchA();
 
   auto recv =
       _Recv(scope_b_.WithOpName("A1/_1"), DT_FLOAT, "edge_1_A1", a, 82, b);
-  b1 = Input(scope_b_.WithOpName("B1"));
+  b1 = FloatInput(scope_b_.WithOpName("B1"));
   Combine(scope_b_.WithOpName("B2"), recv, b1);
   Combine(scope_b_.WithOpName("B3"), recv, recv);
   ExpectMatchB();
@@ -279,17 +280,17 @@ TEST_F(GraphPartitionTest, CrossDeviceData_MultiUse) {
 
 TEST_F(GraphPartitionTest, CrossDeviceControl_MultiUse) {
   using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
-  auto a1 = Input(in_.WithOpName("A1"));
-  auto b1 = Input(in_.WithOpName("B1"));
+  auto a1 = FloatInput(in_.WithOpName("A1"));
+  auto b1 = FloatInput(in_.WithOpName("B1"));
   Combine(in_.WithOpName("B2").WithControlDependencies(a1), b1, b1);
-  Input(in_.WithOpName("B3").WithControlDependencies(a1));
+  FloatInput(in_.WithOpName("B3").WithControlDependencies(a1));
 
   Partition(ToGraphDef(), &partitions_);
   EXPECT_EQ(2, partitions_.size());
 
   string a = "/job:a/replica:0/task:0/cpu:0";
   string b = "/job:a/replica:0/task:0/cpu:1";
-  a1 = Input(scope_a_.WithOpName("A1"));
+  a1 = FloatInput(scope_a_.WithOpName("A1"));
   auto c = Const(scope_a_.WithOpName("A1/_0").WithControlDependencies(a1), {});
   _Send(scope_a_.WithOpName("A1/_1"), c, "edge_1_A1", a, 82, b);
   ExpectMatchA();
@@ -297,25 +298,25 @@ TEST_F(GraphPartitionTest, CrossDeviceControl_MultiUse) {
   auto recv =
       _Recv(scope_b_.WithOpName("A1/_2"), DT_FLOAT, "edge_1_A1", a, 82, b);
   auto id = Identity(scope_b_.WithOpName("A1/_3"), recv);
-  b1 = Input(scope_b_.WithOpName("B1"));
+  b1 = FloatInput(scope_b_.WithOpName("B1"));
   Combine(scope_b_.WithOpName("B2").WithControlDependencies(id), b1, b1);
-  Input(scope_b_.WithOpName("B3").WithControlDependencies(id));
+  FloatInput(scope_b_.WithOpName("B3").WithControlDependencies(id));
   ExpectMatchB();
 }
 
 TEST_F(GraphPartitionTest, CrossDevice_DataControl) {
   using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
-  auto a1 = Input(in_.WithOpName("A1"));
-  auto b1 = Input(in_.WithOpName("B1"));
+  auto a1 = FloatInput(in_.WithOpName("A1"));
+  auto b1 = FloatInput(in_.WithOpName("B1"));
   Combine(in_.WithOpName("B2"), a1, b1);
-  Input(in_.WithOpName("B3").WithControlDependencies(a1));
+  FloatInput(in_.WithOpName("B3").WithControlDependencies(a1));
 
   Partition(ToGraphDef(), &partitions_);
   EXPECT_EQ(2, partitions_.size());
 
   string a = "/job:a/replica:0/task:0/cpu:0";
   string b = "/job:a/replica:0/task:0/cpu:1";
-  a1 = Input(scope_a_.WithOpName("A1"));
+  a1 = FloatInput(scope_a_.WithOpName("A1"));
   auto c = Const(scope_a_.WithOpName("A1/_0").WithControlDependencies(a1), {});
   // NOTE: Send 0 A1/_1 -> A1/_2 is not necessarily needed. We could
   // use A1/_0 -> A1/_4 as the control as a minor optimization.
@@ -328,18 +329,19 @@ TEST_F(GraphPartitionTest, CrossDevice_DataControl) {
   auto id1 = Identity(scope_b_.WithOpName("A1/_3"), recv1);
   auto recv2 =
       _Recv(scope_b_.WithOpName("A1/_5"), DT_FLOAT, "edge_2_A1", a, 82, b);
-  b1 = Input(scope_b_.WithOpName("B1"));
+  b1 = FloatInput(scope_b_.WithOpName("B1"));
   Combine(scope_b_.WithOpName("B2"), recv2, b1);
-  Input(scope_b_.WithOpName("B3").WithControlDependencies(id1));
+  FloatInput(scope_b_.WithOpName("B3").WithControlDependencies(id1));
   ExpectMatchB();
 }
 
 TEST_F(GraphPartitionTest, CrossDeviceLoop) {
   using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
   auto a1 = BoolInput(in_.WithOpName("A1"));
-  auto a2 = Enter(in_.WithOpName("A2"), a1, "foo");
-  auto a3 =
-      Merge(in_.WithOpName("A3"), {a2, ops::Input("A5", 0, DT_BOOL)}).output;
+  auto a2 = ::tensorflow::ops::internal::Enter(in_.WithOpName("A2"), a1, "foo");
+  auto a3 = ::tensorflow::ops::Merge(in_.WithOpName("A3"),
+                                     {a2, Input("A5", 0, DT_BOOL)})
+                .output;
   LoopCond(in_.WithOpName("A4"), a3);
   auto b1 = Identity(in_.WithOpName("B1"), a3);
   NextIteration(in_.WithOpName("A5"), b1);
@@ -350,9 +352,10 @@ TEST_F(GraphPartitionTest, CrossDeviceLoop) {
 TEST_F(GraphPartitionTest, CrossDeviceLoop1) {
   using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
   auto a1 = BoolInput(in_.WithOpName("A1"));
-  auto a2 = Enter(in_.WithOpName("B2"), a1, "foo");
-  auto a3 =
-      Merge(in_.WithOpName("A3"), {a2, ops::Input("B5", 0, DT_BOOL)}).output;
+  auto a2 = ::tensorflow::ops::internal::Enter(in_.WithOpName("B2"), a1, "foo");
+  auto a3 = ::tensorflow::ops::Merge(in_.WithOpName("A3"),
+                                     {a2, Input("B5", 0, DT_BOOL)})
+                .output;
   LoopCond(in_.WithOpName("A4"), a3);
   auto b1 = Identity(in_.WithOpName("B1"), a3);
   NextIteration(in_.WithOpName("B5"), b1);

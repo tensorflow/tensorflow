@@ -140,7 +140,7 @@ class GraphMgr {
   // mechanism to gc these graphs.
   std::unordered_map<string, Item*> table_;
 
-  void StartParallelExecutors(const string& handle, Item* item,
+  void StartParallelExecutors(const string& handle, int64 step_id, Item* item,
                               Rendezvous* rendezvous,
                               StepStatsCollector* collector,
                               CostGraphDef* cost_graph,

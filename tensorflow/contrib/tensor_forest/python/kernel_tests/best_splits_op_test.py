@@ -19,7 +19,7 @@ from __future__ import print_function
 
 import tensorflow  # pylint: disable=unused-import
 
-from tensorflow.contrib.tensor_forest.python.ops import training_ops
+from tensorflow.contrib.tensor_forest.python.ops import tensor_forest_ops
 
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
@@ -41,21 +41,30 @@ class BestSplitsClassificationTests(test_util.TensorFlowTestCase):
                          [0., 0., 0., 0., 0.],
                          [400., 100., 100., 100., 100.]]
     self.squares = []
-    self.ops = training_ops.Load()
 
   def testSimple(self):
     with self.test_session():
-      split_indices = self.ops.best_splits(
-          self.finished, self.node_map, self.candidate_counts, self.squares,
-          self.total_counts, self.squares, regression=False)
+      split_indices = tensor_forest_ops.best_splits(
+          self.finished,
+          self.node_map,
+          self.candidate_counts,
+          self.squares,
+          self.total_counts,
+          self.squares,
+          regression=False)
 
       self.assertAllEqual([0, 1], split_indices.eval())
 
   def testNoFinished(self):
     with self.test_session():
-      split_indices = self.ops.best_splits(
-          [], self.node_map, self.candidate_counts, self.squares,
-          self.total_counts, self.squares, regression=False)
+      split_indices = tensor_forest_ops.best_splits(
+          [],
+          self.node_map,
+          self.candidate_counts,
+          self.squares,
+          self.total_counts,
+          self.squares,
+          regression=False)
 
       self.assertAllEqual([], split_indices.eval())
 
@@ -66,9 +75,14 @@ class BestSplitsClassificationTests(test_util.TensorFlowTestCase):
       with self.assertRaisesOpError(
           'Number of accumulators should be the same in split_sums '
           'and accumulator_sums.'):
-        self.ops.best_splits(
-            self.finished, self.node_map, self.candidate_counts, self.squares,
-            self.total_counts, self.squares, regression=False).eval()
+        tensor_forest_ops.best_splits(
+            self.finished,
+            self.node_map,
+            self.candidate_counts,
+            self.squares,
+            self.total_counts,
+            self.squares,
+            regression=False).eval()
 
 
 class BestSplitsRegressionTests(test_util.TensorFlowTestCase):
@@ -95,13 +109,16 @@ class BestSplitsRegressionTests(test_util.TensorFlowTestCase):
                           [0., 0., 0., 0.],
                           [0., 0., 0., 0.],
                           [20., 60., 60., 60.]]
-    self.ops = training_ops.Load()
 
   def testSimple(self):
     with self.test_session():
-      split_indices = self.ops.best_splits(
-          self.finished, self.node_map, self.candidate_sums,
-          self.candidate_squares, self.total_sums, self.total_squares,
+      split_indices = tensor_forest_ops.best_splits(
+          self.finished,
+          self.node_map,
+          self.candidate_sums,
+          self.candidate_squares,
+          self.total_sums,
+          self.total_squares,
           regression=True)
 
       self.assertAllEqual([1, 0], split_indices.eval())

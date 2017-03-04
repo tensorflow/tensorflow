@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Core classes and core ops for LabeledTensor.
 
 Core ops are ops which will eventually be called by LabeledTensor methods,
@@ -42,7 +41,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-
 
 # pylint: disable=invalid-name
 
@@ -124,10 +122,8 @@ class Axis(object):
 
   @tc.returns(bool)
   def __eq__(self, other):
-    return (isinstance(other, Axis) and
-            self.name == other.name and
-            self.size == other.size and
-            self.labels == other.labels)
+    return (isinstance(other, Axis) and self.name == other.name and
+            self.size == other.size and self.labels == other.labels)
 
   def __hash__(self):
     return hash((self.name, self.size, self.labels))
@@ -504,9 +500,8 @@ def _convert_labeled_tensor_to_tensor(value, *args, **kwargs):
   return ops.internal_convert_to_tensor(value.tensor, *args, **kwargs)
 
 
-ops.register_tensor_conversion_function(
-    LabeledTensor, _convert_labeled_tensor_to_tensor)
-
+ops.register_tensor_conversion_function(LabeledTensor,
+                                        _convert_labeled_tensor_to_tensor)
 
 # tc class for anything that can be coerced into a LabeledTensor
 # pylint: disable=invalid-name
@@ -609,14 +604,16 @@ def identity(labeled_tensor, name=None):
   with ops.name_scope(name, 'lt_identity', [labeled_tensor]) as scope:
     labeled_tensor = convert_to_labeled_tensor(labeled_tensor)
     return LabeledTensor(
-        array_ops.identity(labeled_tensor.tensor, name=scope),
+        array_ops.identity(
+            labeled_tensor.tensor, name=scope),
         labeled_tensor.axes)
 
 
 # We don't call this slice because that shadows a built-in. Instead, we alias
 # this to lt.slice in __init__.py.
 @tc.returns(LabeledTensor)
-@tc.accepts(LabeledTensorLike, tc.Mapping(string_types, tc.Union(int, slice)),
+@tc.accepts(LabeledTensorLike,
+            tc.Mapping(string_types, tc.Union(int, slice)),
             tc.Optional(string_types))
 def slice_function(labeled_tensor, selection, name=None):
   """Slice out a subset of the tensor.
@@ -667,13 +664,14 @@ def slice_function(labeled_tensor, selection, name=None):
         # If the slice is an int this dimension now has size 1, so we remove it.
         assert isinstance(s, int)
 
-    return LabeledTensor(array_ops.identity(sliced_tensor, name=scope),
-                         sliced_axes)
+    return LabeledTensor(
+        array_ops.identity(
+            sliced_tensor, name=scope), sliced_axes)
 
 
 @tc.returns(LabeledTensor)
-@tc.accepts(LabeledTensorLike, tc.Optional(tc.Collection(string_types)),
-            tc.Optional(string_types))
+@tc.accepts(LabeledTensorLike,
+            tc.Optional(tc.Collection(string_types)), tc.Optional(string_types))
 def transpose(labeled_tensor, axis_order=None, name=None):
   """Permute a tensor's axes.
 
@@ -707,9 +705,8 @@ def transpose(labeled_tensor, axis_order=None, name=None):
     permutation = [axis_names.index(n) for n in axis_order]
 
     # Note: TensorFlow doesn't copy data for the identity tranpose.
-    transpose_tensor = array_ops.transpose(labeled_tensor.tensor,
-                                           permutation,
-                                           name=scope)
+    transpose_tensor = array_ops.transpose(
+        labeled_tensor.tensor, permutation, name=scope)
 
     permuted_axes = [labeled_tensor.axes[n] for n in axis_order]
 
@@ -717,8 +714,11 @@ def transpose(labeled_tensor, axis_order=None, name=None):
 
 
 @tc.returns(LabeledTensor)
-@tc.accepts(LabeledTensorLike, tc.Collection(tc.Union(string_types, tc.Tuple(
-    string_types, collections.Hashable))), tc.Optional(string_types))
+@tc.accepts(
+    LabeledTensorLike,
+    tc.Collection(
+        tc.Union(string_types, tc.Tuple(string_types, collections.Hashable))),
+    tc.Optional(string_types))
 def expand_dims(labeled_tensor, axes, name=None):
   """Insert dimensions of size 1.
 
@@ -762,10 +762,11 @@ def expand_dims(labeled_tensor, axes, name=None):
 
         shape.append(1)
 
-    reshaped_tensor = array_ops.reshape(labeled_tensor.tensor, shape,
-                                        name=scope)
+    reshaped_tensor = array_ops.reshape(
+        labeled_tensor.tensor, shape, name=scope)
 
     return LabeledTensor(reshaped_tensor, reshaped_axes)
+
 
 # This should only be added to a graph collection once.
 _AXIS_ORDER_KEY = ('__axis_order',)
@@ -881,8 +882,8 @@ def check_axis_order(labeled_tensor, axis_order=None):
 
 
 @tc.returns(LabeledTensor)
-@tc.accepts(LabeledTensorLike, tc.Optional(tc.Collection(string_types)),
-            tc.Optional(string_types))
+@tc.accepts(LabeledTensorLike,
+            tc.Optional(tc.Collection(string_types)), tc.Optional(string_types))
 def impose_axis_order(labeled_tensor, axis_order=None, name=None):
   """Impose desired axis order on a labeled tensor.
 
@@ -1036,12 +1037,10 @@ def align(labeled_tensor_0, labeled_tensor_1, name=None):
             'impose_axis_order to reorder axes on one of more of the inputs.' %
             (axes_0.keys(), axes_1.keys()))
 
-    labeled_tensor_0 = expand_dims(labeled_tensor_0,
-                                   new_axis_names,
-                                   name=scope + '0')
-    labeled_tensor_1 = expand_dims(labeled_tensor_1,
-                                   new_axis_names,
-                                   name=scope + '1')
+    labeled_tensor_0 = expand_dims(
+        labeled_tensor_0, new_axis_names, name=scope + '0')
+    labeled_tensor_1 = expand_dims(
+        labeled_tensor_1, new_axis_names, name=scope + '1')
 
     broadcast_axes = []
     for axis_name in new_axis_names:
@@ -1096,7 +1095,7 @@ def define_unary_op(op_name, elementwise_function):
 
 
 abs_function = define_unary_op('abs', math_ops.abs)
-neg = define_unary_op('neg', math_ops.neg)
+neg = define_unary_op('neg', math_ops.negative)
 sign = define_unary_op('sign', math_ops.sign)
 reciprocal = define_unary_op('reciprocal', math_ops.reciprocal)
 square = define_unary_op('square', math_ops.square)
@@ -1171,8 +1170,8 @@ def define_binary_op(op_name, elementwise_function):
 
 
 add = define_binary_op('add', math_ops.add)
-sub = define_binary_op('sub', math_ops.sub)
-mul = define_binary_op('mul', math_ops.mul)
+sub = define_binary_op('sub', math_ops.subtract)
+mul = define_binary_op('mul', math_ops.multiply)
 div = define_binary_op('div', math_ops.div)
 mod = define_binary_op('mod', math_ops.mod)
 pow_function = define_binary_op('pow', math_ops.pow)
@@ -1189,8 +1188,8 @@ logical_xor = define_binary_op('logical_xor', math_ops.logical_xor)
 
 maximum = define_binary_op('maximum', math_ops.maximum)
 minimum = define_binary_op('minimum', math_ops.minimum)
-squared_difference = define_binary_op(
-    'squared_difference', math_ops.squared_difference)
+squared_difference = define_binary_op('squared_difference',
+                                      math_ops.squared_difference)
 igamma = define_binary_op('igamma', math_ops.igamma)
 igammac = define_binary_op('igammac', math_ops.igammac)
 zeta = define_binary_op('zeta', math_ops.zeta)

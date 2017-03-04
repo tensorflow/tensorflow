@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for Multinomial."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -22,37 +22,44 @@ import collections
 import timeit
 
 import numpy as np
-import tensorflow as tf
 
+from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.client import session
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.platform import test
 
 
 def composed_sampler(logits, num_samples):
   # [batch size, num classes, num samples]
-  unif = tf.random_uniform(
-      logits.get_shape().concatenate(tensor_shape.TensorShape([num_samples])))
-  noise = -tf.log(-tf.log(unif))
+  unif = random_ops.random_uniform(logits.get_shape().concatenate(
+      tensor_shape.TensorShape([num_samples])))
+  noise = -math_ops.log(-math_ops.log(unif))
   # [batch size, num classes, 1]
-  logits = tf.expand_dims(logits, -1)
+  logits = array_ops.expand_dims(logits, -1)
 
   # [batch size, num samples]
-  return tf.argmax(logits + noise, dimension=1)
+  return math_ops.argmax(logits + noise, dimension=1)
 
 
 native_sampler = random_ops.multinomial
 
 
-class MultinomialTest(tf.test.TestCase):
+class MultinomialTest(test.TestCase):
   use_gpu = False
 
   def testSmallEntropy(self):
-    tf.set_random_seed(1618)
+    random_seed.set_random_seed(1618)
     with self.test_session(use_gpu=self.use_gpu):
       # A logit value of -10 corresponds to a probability of ~5e-5.
-      logits = tf.constant([[-10., 10., -10.], [-10., -10., 10.]])
+      logits = constant_op.constant([[-10., 10., -10.], [-10., -10., 10.]])
       num_samples = 1000
-      samples = tf.multinomial(logits, num_samples).eval()
+      samples = random_ops.multinomial(logits, num_samples).eval()
       self.assertAllEqual([[1] * num_samples, [2] * num_samples], samples)
 
   def testOneOpMultipleStepsIndependent(self):
@@ -83,7 +90,7 @@ class MultinomialTest(tf.test.TestCase):
         logits = np.array([[1000.] * 5])
         if neg:
           logits *= -1
-        samples = tf.multinomial(logits, 10).eval()
+        samples = random_ops.multinomial(logits, 10).eval()
       # Sampled classes should be in-range.
       self.assertTrue((samples >= 0).all())
       self.assertTrue((samples < 5).all())
@@ -117,8 +124,8 @@ class MultinomialTest(tf.test.TestCase):
       check(composed_native_chi2)
 
   def _make_ops(self, num_samples, seed=None):
-    prob_dist = tf.constant([[0.15, 0.5, 0.3, 0.05]])
-    logits = tf.log(prob_dist)
+    prob_dist = constant_op.constant([[0.15, 0.5, 0.3, 0.05]])
+    logits = math_ops.log(prob_dist)
     # Two independent sets of samples from the same distribution
     sample_op1 = random_ops.multinomial(logits, num_samples, seed)
     sample_op2 = random_ops.multinomial(logits, num_samples, seed)
@@ -141,8 +148,8 @@ class MultinomialTest(tf.test.TestCase):
       Frequencies from sampled classes; shape [batch_size, num_classes].
     """
     with self.test_session(use_gpu=self.use_gpu) as sess:
-      tf.set_random_seed(1618)
-      op = sampler(tf.constant(logits), num_samples)
+      random_seed.set_random_seed(1618)
+      op = sampler(constant_op.constant(logits), num_samples)
       d = sess.run(op)
 
     batch_size, num_classes = logits.shape
@@ -172,21 +179,22 @@ class MultinomialTest(tf.test.TestCase):
     with self.test_session(use_gpu=self.use_gpu):
       for batch in 0, 3:
         for samples in 0, 7:
-          x = tf.multinomial(tf.zeros([batch, classes]), samples).eval()
+          x = random_ops.multinomial(
+              array_ops.zeros([batch, classes]), samples).eval()
           self.assertEqual(x.shape, (batch, samples))
 
   def testEmptyClasses(self):
     with self.test_session(use_gpu=self.use_gpu):
-      x = tf.multinomial(tf.zeros([5, 0]), 7)
+      x = random_ops.multinomial(array_ops.zeros([5, 0]), 7)
       with self.assertRaisesOpError("num_classes should be positive"):
         x.eval()
 
   def testNegativeMinLogits(self):
-    tf.set_random_seed(78844)
+    random_seed.set_random_seed(78844)
     with self.test_session(use_gpu=self.use_gpu):
-      logits = tf.constant([[np.finfo(np.float32).min] * 1023 + [0]])
+      logits = constant_op.constant([[np.finfo(np.float32).min] * 1023 + [0]])
       num_samples = 1000
-      samples = tf.multinomial(logits, num_samples).eval()
+      samples = random_ops.multinomial(logits, num_samples).eval()
       self.assertAllEqual([[1023] * num_samples], samples)
 
 
@@ -201,21 +209,22 @@ def native_op_vs_composed_ops(batch_size, num_classes, num_samples, num_iters):
   logits_np = np.random.randn(*shape).astype(np.float32)
 
   # No CSE/CF.
-  optimizer_options = tf.OptimizerOptions(opt_level=tf.OptimizerOptions.L0)
-  config = tf.ConfigProto(
-      graph_options=tf.GraphOptions(optimizer_options=optimizer_options))
+  optimizer_options = config_pb2.OptimizerOptions(
+      opt_level=config_pb2.OptimizerOptions.L0)
+  config = config_pb2.ConfigProto(graph_options=config_pb2.GraphOptions(
+      optimizer_options=optimizer_options))
 
-  with tf.Session(config=config) as sess:
-    logits = tf.constant(logits_np, shape=shape)
-    native_op = tf.group(native_sampler(logits, num_samples))
-    composed_op = tf.group(composed_sampler(logits, num_samples))
+  with session.Session(config=config) as sess:
+    logits = constant_op.constant(logits_np, shape=shape)
+    native_op = control_flow_ops.group(native_sampler(logits, num_samples))
+    composed_op = control_flow_ops.group(composed_sampler(logits, num_samples))
 
     native_dt = timeit.timeit(lambda: sess.run(native_op), number=num_iters)
     composed_dt = timeit.timeit(lambda: sess.run(composed_op), number=num_iters)
     return native_dt, composed_dt
 
 
-class MultinomialBenchmark(tf.test.Benchmark):
+class MultinomialBenchmark(test.Benchmark):
 
   def benchmarkNativeOpVsComposedOps(self):
     num_iters = 50
@@ -230,16 +239,20 @@ class MultinomialBenchmark(tf.test.Benchmark):
           n_dt, c_dt = native_op_vs_composed_ops(batch_size, num_classes,
                                                  num_samples, num_iters)
           print("%d\t%d\t%d\t%.3f\t%.3f\t%.2f" % (batch_size, num_classes,
-                                                  num_samples, c_dt, n_dt, c_dt
-                                                  / n_dt))
+                                                  num_samples, c_dt, n_dt,
+                                                  c_dt / n_dt))
 
-          self.report_benchmark(name="native_batch%d_classes%d_s%d" %
-                                (batch_size, num_classes, num_samples),
-                                iters=num_iters, wall_time=n_dt)
-          self.report_benchmark(name="composed_batch%d_classes%d_s%d" %
-                                (batch_size, num_classes, num_samples),
-                                iters=num_iters, wall_time=c_dt)
+          self.report_benchmark(
+              name="native_batch%d_classes%d_s%d" %
+              (batch_size, num_classes, num_samples),
+              iters=num_iters,
+              wall_time=n_dt)
+          self.report_benchmark(
+              name="composed_batch%d_classes%d_s%d" %
+              (batch_size, num_classes, num_samples),
+              iters=num_iters,
+              wall_time=c_dt)
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

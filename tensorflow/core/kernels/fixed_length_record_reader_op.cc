@@ -16,8 +16,8 @@ limitations under the License.
 // See docs in ../ops/io_ops.cc.
 
 #include <memory>
+#include "tensorflow/core/framework/reader_base.h"
 #include "tensorflow/core/framework/reader_op_kernel.h"
-#include "tensorflow/core/kernels/reader_base.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/inputbuffer.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -120,6 +120,8 @@ class FixedLengthRecordReaderOp : public ReaderOpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(Name("FixedLengthRecordReader").Device(DEVICE_CPU),
+                        FixedLengthRecordReaderOp);
+REGISTER_KERNEL_BUILDER(Name("FixedLengthRecordReaderV2").Device(DEVICE_CPU),
                         FixedLengthRecordReaderOp);
 
 }  // namespace tensorflow

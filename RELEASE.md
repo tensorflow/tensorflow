@@ -1,11 +1,158 @@
-# Changes since the last release
+# Release 1.0.0
+
+## Major Features and Improvements
+* XLA (experimental): initial release of [XLA](https://www.tensorflow.org/versions/master/experimental/xla/), a domain-specific compiler for TensorFlow graphs, that targets CPUs and GPUs.
+* TensorFlow Debugger (tfdbg): command-line interface and API.
+* New python 3 docker images added.
+* Made pip packages pypi compliant. TensorFlow can now be installed by `pip
+  install tensorflow` command.
+* Several python API calls have been changed to resemble NumPy more closely.
+* Android: person detection + tracking demo implementing Scalable Object
+  Detection using Deep Neural Networks.
+* New (experimental) [Java API](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/java).
+* Add new Android image stylization demo based on "A Learned Representation For Artistic Style", and add YOLO object detector support.
 
 ## Breaking Changes to the API
-
+To help you upgrade your existing TensorFlow Python code to match the API changes below, we have prepared a [conversion script](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/tools/compatibility).
+* TensorFlow/models have been moved to a separate github repository.
 * Division and modulus operators (/, //, %) now match Python (flooring)
-  semantics. tf.div is renamed to tf.division. New operators tf.truncatediv and
-  tf.truncatemod are available for achieving the previous C++ (truncation)
-  division/modulus semantics.
+  semantics. This applies to `tf.div` and `tf.mod` as well. To obtain forced
+  integer truncation based behaviors you can use `tf.truncatediv`
+  and `tf.truncatemod`.
+* `tf.divide()` is now the recommended division function. `tf.div()` will
+  remain, but its semantics do not respond to Python 3 or `from future`
+  mechanisms.
+* tf.reverse() now takes indices of axes to be reversed. E.g.
+  `tf.reverse(a, [True, False, True])` must now be written as
+  `tf.reverse(a, [0, 2])`. `tf.reverse_v2()` will remain until 1.0 final.
+* `tf.mul`, `tf.sub` and `tf.neg` are deprecated in favor of `tf.multiply`,
+  `tf.subtract` and `tf.negative`.
+* `tf.pack` and `tf.unpack` are deprecated in favor of `tf.stack` and
+  `tf.unstack`.
+* `TensorArray.pack` and `TensorArray.unpack` are getting deprecated in favor of
+  `TensorArray.stack` and `TensorArray.unstack`.
+* The following Python functions have had their arguments changed to use `axis`
+  when referring to specific dimensions. We have kept the old keyword arguments
+  for compatibility currently, but we will be removing them well before the
+  final 1.0.
+  * `tf.argmax`: `dimension` becomes `axis`
+  * `tf.argmin`: `dimension` becomes `axis`
+  * `tf.count_nonzero`: `reduction_indices` becomes `axis`
+  * `tf.expand_dims`: `dim` becomes `axis`
+  * `tf.reduce_all`: `reduction_indices` becomes `axis`
+  * `tf.reduce_any`: `reduction_indices` becomes `axis`
+  * `tf.reduce_join`: `reduction_indices` becomes `axis`
+  * `tf.reduce_logsumexp`: `reduction_indices` becomes `axis`
+  * `tf.reduce_max`: `reduction_indices` becomes `axis`
+  * `tf.reduce_mean`: `reduction_indices` becomes `axis`
+  * `tf.reduce_min`: `reduction_indices` becomes `axis`
+  * `tf.reduce_prod`: `reduction_indices` becomes `axis`
+  * `tf.reduce_sum`: `reduction_indices` becomes `axis`
+  * `tf.reverse_sequence`: `batch_dim` becomes `batch_axis`, `seq_dim` becomes `seq_axis`
+  * `tf.sparse_concat`: `concat_dim` becomes `axis`
+  * `tf.sparse_reduce_sum`: `reduction_axes` becomes `axis`
+  * `tf.sparse_reduce_sum_sparse`: `reduction_axes` becomes `axis`
+  * `tf.sparse_split`: `split_dim` becomes `axis`
+* `tf.listdiff` has been renamed to `tf.setdiff1d` to match NumPy naming.
+* `tf.inv` has been renamed to be `tf.reciprocal` (component-wise reciprocal)
+  to avoid confusion with `np.inv` which is matrix inversion
+* tf.round now uses banker's rounding (round to even) semantics to match NumPy.
+* `tf.split` now takes arguments in a reversed order and with different
+  keywords. In particular, we now match NumPy order as
+  `tf.split(value, num_or_size_splits, axis)`.
+* `tf.sparse_split` now takes arguments in reversed order and with different
+  keywords. In particular we now match NumPy order as
+  `tf.sparse_split(sp_input, num_split, axis)`. NOTE: we have temporarily
+  made `tf.sparse_split` require keyword arguments.
+* `tf.concat` now takes arguments in reversed order and with different keywords. In particular we now match NumPy order as `tf.concat(values, axis, name)`.
+* `tf.image.decode_jpeg` by default uses the faster DCT method, sacrificing
+  a little fidelity for improved speed. One can revert to the old
+  behavior by specifying the attribute `dct_method='INTEGER_ACCURATE'`.
+* `tf.complex_abs` has been removed from the Python interface. `tf.abs`
+  supports complex tensors and should be used instead.
+* In the C++ API (in tensorflow/cc), Input, Output, etc. have moved
+  from the tensorflow::ops namespace to tensorflow.
+* Template.`var_scope` property renamed to `.variable_scope`
+* SyncReplicasOptimizer is removed and SyncReplicasOptimizerV2 renamed to SyncReplicasOptimizer.
+* `tf.zeros_initializer()` and `tf.ones_initializer()` now return a callable
+  that must be called with initializer arguments, in your code replace
+  `tf.zeros_initializer` with `tf.zeros_initializer()`.
+* `SparseTensor.shape` has been renamed to `SparseTensor.dense_shape`.  Same for
+  `SparseTensorValue.shape`.
+* Replace tf.scalar_summary, tf.histogram_summary, tf.audio_summary, tf.image_summary with tf.summary.scalar, tf.summary.histogram, tf.summary.audio, tf.summary.image, respectively. The new summary ops take name rather than tag as their first argument, meaning summary ops now respect TensorFlow name scopes.
+* Replace tf.train.SummaryWriter and tf.train.SummaryWriterCache with tf.summary.FileWriter and tf.summary.FileWriterCache.
+* Removes RegisterShape from public API. Use C++ shape function registration
+  instead.
+* Deprecated `_ref` dtypes from the python API.
+* In the C++ API (in tensorflow/cc), Input, Output, etc. have moved
+  from the tensorflow::ops namespace to tensorflow.
+* Change arg order for `{softmax,sparse_softmax,sigmoid}_cross_entropy_with_logits` to be (labels, predictions), and force use of named args.
+
+## Bug Fixes and Other Changes
+* Numerous C++ API updates.
+* New op: `parallel_stack`.
+* Introducing common tf io compression options constants for
+  RecordReader/RecordWriter.
+* Add `sparse_column_with_vocabulary_file`, to specify a feature column that
+  transform string features to IDs, where the mapping is defined by a vocabulary
+  file.
+* Added `index_to_string_table` which returns a lookup table that maps indices to
+  strings.
+* Add `string_to_index_table`, which returns a lookup table that matches strings
+  to indices.
+* Add a `ParallelForWithWorkerId` function.
+* Add `string_to_index_table`, which returns a lookup table that matches strings
+  to indices.
+* Support restore session from checkpoint files in v2 in `contrib/session_bundle`.
+* Added a tf.contrib.image.rotate function for arbitrary angles.
+* Added `tf.contrib.framework.filter_variables` as a convenience function to
+  filter lists of variables based on regular expressions.
+* `make_template()` takes an optional `custom_getter_ param`.
+* Added comment about how existing directories are handled by
+  `recursive_create_dir`.
+* Added an op for QR factorizations.
+* Divides and mods in Python API now use flooring (Python) semantics.
+* Android: pre-built libs are now built nightly.
+* Android: cmake/gradle build for TensorFlow Inference library under
+  `contrib/android/cmake`
+* Android: Much more robust Session initialization code.
+* Android: TF stats now exposed directly in demo and log when debug mode is
+  active
+* Android: new/better README.md documentation
+* saved_model is available as `tf.saved_model`.
+* Empty op is now stateful.
+* Improve speed of scatter_update on the cpu for ASSIGN operations.
+* Change `reduce_join` to treat `reduction_indices` in the same way as other `reduce_` ops.
+* Move `TensorForestEstimator` to `contrib/tensor_forest`.
+* Enable compiler optimizations by default and allow configuration in configure.
+* `tf.divide` now honors the name field.
+* Make metrics weight broadcasting more strict.
+* Add new queue-like `StagingArea` and new ops: `stage` and `unstage`.
+* Enable inplace update ops for strings on CPU. Speed up string concat.
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+Aaron Hu, Abhishek Aggarwal, Adam Michael, Adriano Carmezim, @AfirSraftGarrier,
+Alexander Novikov, Alexander Rosenberg Johansen, Andrew Gibiansky, Andrew Hundt,
+Anish Shah, Anton Loss, @b0noI, @BoyuanJiang, Carl Thomé, Chad Kennedy, Comic
+Chang, Connor Braa, Daniel N. Lang, Daniel Trebbien,
+@danielgordon10, Darcy Liu, Darren Garvey, Dmitri Lapin, Eron Wright, Evan
+Cofer, Fabrizio Milo, Finbarr Timbers, Franck Dernoncourt, Garrett Smith,
+@guschmue, Hao Wei, Henrik Holst, Huazuo Gao, @Ian, @Issac, Jacob Israel,
+Jangsoo Park, Jin Kim, Jingtian Peng, John Pope, Kye Bostelmann, Liangliang He,
+Ling Zhang, Luheng He, Luke Iwanski, @lvli, Michael Basilyan, Mihir Patel,
+Mikalai Drabovich, Morten Just, @newge, Nick Butlin, Nishant Shukla,
+Pengfei Ni, Przemyslaw Tredak, @rasbt, @Ronny, Rudolf Rosa, @RustingSword,
+Sam Abrahams, Sam Putnam, @SeongAhJo, Shi Jiaxin, @skavulya, Steffen MüLler,
+@TheUSER123, @tiriplicamihai, @vhasanov, Victor Costan, Vit Stepanovs,
+Wangda Tan, Wenjian Huang, Xingdong Zuo, Yaroslav Bulatov, Yota Toyama,
+Yuan (Terry) Tang, Yuxin Wu
+
+We are also grateful to all who filed issues or helped resolve them, asked and
+answered questions, and were part of inspiring discussions.
+
 
 # Release 0.12.0
 
@@ -17,9 +164,7 @@
   acceleration. Known limitations include: It is not currently possible to load
   a custom op library. The GCS and HDFS file systems are not currently
   supported. The following ops are not currently implemented:
-  DepthwiseConv2dNative, DepthwiseConv2dNativeBackpropFilter,
-  DepthwiseConv2dNativeBackpropInput, Dequantize, Digamma, Erf, Erfc, Igamma,
-  Igammac, Lgamma, Polygamma, QuantizeAndDequantize, QuantizedAvgPool,
+  Dequantize, QuantizeAndDequantize, QuantizedAvgPool,
   QuantizedBatchNomWithGlobalNormalization, QuantizedBiasAdd, QuantizedConcat,
   QuantizedConv2D, QuantizedMatmul, QuantizedMaxPool,
   QuantizeDownAndShrinkRange, QuantizedRelu, QuantizedRelu6, QuantizedReshape,
@@ -47,20 +192,29 @@
 ## Breaking Changes to the API
 
 * `BusAdjacency` enum replaced with a protocol buffer `DeviceLocality`.  PCI bus
-  indexing now starts from 1 instead of 0, and bus_id==0 is used where
-  previously BUS_ANY was used.
+  indexing now starts from 1 instead of 0, and `bus_id==0` is used where
+  previously `BUS_ANY` was used.
 * `Env::FileExists` and `FileSystem::FileExists` now return a tensorflow::Status
-  intead of a bool. Any callers to this function can be converted to a bool
+  instead of a bool. Any callers to this function can be converted to a bool
   by adding .ok() to the call.
 * The C API type `TF_SessionWithGraph` has been renamed to `TF_Session`,
   indicating its preferred use in language bindings for TensorFlow.
   What was previously `TF_Session` has been renamed to `TF_DeprecatedSession`.
-* Renamed TF_Port to TF_Output in the C API.
+* Renamed `TF_Port` to `TF_Output` in the C API.
 * Removes RegisterShape from public API. Use C++ shape function registration instead.
   indexing now starts from 1 instead of 0, and `bus_id==0` is used where
   previously `BUS_ANY` was used.
+* Most RNN cells and RNN functions now use different variable scopes to be
+  consistent with layers (`tf.contrib.layers`).  This means old checkpoints
+  written using this code will not load after this change without providing
+  `Saver` a list of variable renames.  Examples of variable scope changes
+  include `RNN` -> `rnn` in `tf.nn.rnn`, `tf.nn.dynamic_rnn` and moving from
+  `Linear/Matrix` -> `weights` and `Linear/Bias` -> `biases` in most RNN cells.
+* Deprecated tf.select op. tf.where should be used instead.
+* `SparseTensor.shape` has been renamed to `SparseTensor.dense_shape`.  Same for
+  `SparseTensorValue.shape`.
 * `Env::FileExists` and `FileSystem::FileExists` now return a
-  `tensorflow::Status` intead of a bool. Any callers to this function can be
+  `tensorflow::Status` instead of a bool. Any callers to this function can be
   converted to a bool by adding `.ok()` to the call.
 * C API: Type `TF_SessionWithGraph` has been renamed to `TF_Session`, indicating
   its preferred use in language bindings for TensorFlow. What was previously
@@ -78,7 +232,10 @@
   removed.
 * `tf.all_variables`, `tf.VARIABLES` and `tf.initialize_all_variables` renamed
   to `tf.global_variables`, `tf.GLOBAL_VARIABLES` and
-  `tf.global_variable_initializers` respectively.
+  `tf.global_variables_initializer` respectively.
+* `tf.zeros_initializer()` and `tf.ones_initializer()` now return a callable
+  that must be called with initializer arguments, in your code replace
+  `tf.zeros_initializer` with `tf.zeros_initializer()`
 
 ## Bug Fixes and Other Changes
 
@@ -118,7 +275,6 @@ Yuming Wang, Zafar Takhirov, @zhongyuk, Ziming Dong, @guotong1988
 
 We are also grateful to all who filed issues or helped resolve them, asked and
 answered questions, and were part of inspiring discussions.
->>>>>>> r0.12
 
 # Release 0.11.0
 

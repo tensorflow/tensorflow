@@ -48,6 +48,7 @@ class _FakeAccumulator(object):
   def __init__(self, path):
     self._path = path
     self.reload_called = False
+    self._node_names_to_health_pills = {'Add': ['hp1', 'hp2']}
 
   def Tags(self):
     return {event_accumulator.IMAGES: ['im1', 'im2'],
@@ -59,30 +60,34 @@ class _FakeAccumulator(object):
   def FirstEventTimestamp(self):
     return 0
 
-  def Scalars(self, tag_name):
-    if tag_name not in self.Tags()[event_accumulator.SCALARS]:
+  def _TagHelper(self, tag_name, enum):
+    if tag_name not in self.Tags()[enum]:
       raise KeyError
     return ['%s/%s' % (self._path, tag_name)]
+
+  def Scalars(self, tag_name):
+    return self._TagHelper(tag_name, event_accumulator.SCALARS)
+
+  def HealthPills(self, node_name):
+    if node_name not in self._node_names_to_health_pills:
+      raise KeyError
+    health_pills = self._node_names_to_health_pills[node_name]
+    return [self._path + '/' + health_pill for health_pill in health_pills]
 
   def Histograms(self, tag_name):
-    if tag_name not in self.Tags()[event_accumulator.HISTOGRAMS]:
-      raise KeyError
-    return ['%s/%s' % (self._path, tag_name)]
+    return self._TagHelper(tag_name, event_accumulator.HISTOGRAMS)
 
   def CompressedHistograms(self, tag_name):
-    if tag_name not in self.Tags()[event_accumulator.COMPRESSED_HISTOGRAMS]:
-      raise KeyError
-    return ['%s/%s' % (self._path, tag_name)]
+    return self._TagHelper(tag_name, event_accumulator.COMPRESSED_HISTOGRAMS)
 
   def Images(self, tag_name):
-    if tag_name not in self.Tags()[event_accumulator.IMAGES]:
-      raise KeyError
-    return ['%s/%s' % (self._path, tag_name)]
+    return self._TagHelper(tag_name, event_accumulator.IMAGES)
 
   def Audio(self, tag_name):
-    if tag_name not in self.Tags()[event_accumulator.AUDIO]:
-      raise KeyError
-    return ['%s/%s' % (self._path, tag_name)]
+    return self._TagHelper(tag_name, event_accumulator.AUDIO)
+
+  def Tensors(self, tag_name):
+    return self._TagHelper(tag_name, event_accumulator.TENSORS)
 
   def Reload(self):
     self.reload_called = True
@@ -134,6 +139,10 @@ class EventMultiplexerTest(test_util.TensorFlowTestCase):
     run1_expected = ['path1/sv1']
 
     self.assertEqual(run1_expected, run1_actual)
+
+  def testHealthPills(self):
+    x = event_multiplexer.EventMultiplexer({'run1': 'path1', 'run2': 'path2'})
+    self.assertEqual(['path1/hp1', 'path1/hp2'], x.HealthPills('run1', 'Add'))
 
   def testExceptions(self):
     x = event_multiplexer.EventMultiplexer({'run1': 'path1', 'run2': 'path2'})

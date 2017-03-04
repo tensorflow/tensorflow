@@ -38,6 +38,41 @@ limitations under the License.
 #include "tensorflow/core/util/strided_slice_op.h"
 
 namespace tensorflow {
+namespace {
+
+template <typename T>
+struct MemCpyFunctor {
+  // Returns true if the copy was made with memcpy, false otherwise.
+  bool Copy(const Tensor& input, const gtl::InlinedVector<int64, 4>& begin,
+            const gtl::InlinedVector<int64, 4>& end, Tensor* result) {
+    if (DataTypeCanUseMemcpy(DataTypeToEnum<T>::v())) {
+      auto in = input.tensor<T, 2>();
+      auto output = result->tensor<T, 2>();
+      // TODO(agarwal): Consider multi-threading if size[0] is large
+      for (int row_in = begin[0], row_out = 0; row_in < end[0];
+           ++row_in, ++row_out) {
+        if (row_in + 1 < end[0]) {
+          port::prefetch<port::PREFETCH_HINT_T0>(&output(row_in + 1, 0));
+          port::prefetch<port::PREFETCH_HINT_T0>(&in(row_in + 1, begin[1]));
+        }
+        memcpy(&output(row_out, 0), &in(row_in, begin[1]),
+               (end[1] - begin[1]) * sizeof(T));
+      }
+      return true;
+    }
+    return false;
+  }
+};
+
+template <>
+struct MemCpyFunctor<ResourceHandle> {
+  bool Copy(const Tensor& input, const gtl::InlinedVector<int64, 4>& begin,
+            const gtl::InlinedVector<int64, 4>& end, Tensor* result) {
+    return false;
+  }
+};
+
+}  // namespace
 
 template <typename Device, typename T>
 class StridedSliceOp : public OpKernel {
@@ -106,21 +141,11 @@ class StridedSliceOp : public OpKernel {
       // NDIM and T
       if (is_simple_slice && std::is_same<Device, CPUDevice>::value &&
           input_dims == 2 && processing_shape.dims() == 2 &&
-          final_shape.dims() == 2 &&
-          DataTypeCanUseMemcpy(DataTypeToEnum<T>::v())) {
-        auto in = input.tensor<T, 2>();
-        auto output = result->tensor<T, 2>();
-        // TODO(agarwal): Consider multi-threading if size[0] is large
-        for (int row_in = begin[0], row_out = 0; row_in < end[0];
-             ++row_in, ++row_out) {
-          if (row_in + 1 < end[0]) {
-            port::prefetch<port::PREFETCH_HINT_T0>(&output(row_in + 1, 0));
-            port::prefetch<port::PREFETCH_HINT_T0>(&in(row_in + 1, begin[1]));
-          }
-          memcpy(&output(row_out, 0), &in(row_in, begin[1]),
-                 (end[1] - begin[1]) * sizeof(T));
+          final_shape.dims() == 2) {
+        MemCpyFunctor<T> functor;
+        if (functor.Copy(input, begin, end, result)) {
+          return;
         }
-        return;
       }
 
 #define HANDLE_DIM(NDIM)                                                       \
@@ -137,6 +162,7 @@ class StridedSliceOp : public OpKernel {
       HANDLE_DIM(4);
       HANDLE_DIM(5);
       HANDLE_DIM(6);
+      HANDLE_DIM(7);
 
 #undef HANDLE_DIM
 
@@ -236,6 +262,7 @@ class StridedSliceGradOp : public OpKernel {
     HANDLE_DIM(4);
     HANDLE_DIM(5);
     HANDLE_DIM(6);
+    HANDLE_DIM(7);
 
 #undef HANDLE_DIM
   }
@@ -313,6 +340,7 @@ class StridedSliceAssignOp : public OpKernel {
       HANDLE_DIM(4);
       HANDLE_DIM(5);
       HANDLE_DIM(6);
+      HANDLE_DIM(7);
 #undef HANDLE_DIM
 
       OP_REQUIRES(context, false,
@@ -385,6 +413,7 @@ REGISTER_STRIDED_SLICE(bfloat16);
                           StridedSliceAssignOp<GPUDevice, type>)
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
+TF_CALL_complex64(REGISTER_GPU);
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
@@ -422,4 +451,71 @@ REGISTER_KERNEL_BUILDER(Name("StridedSliceAssign")
 #undef REGISTER_GPU
 
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL(type)                                    \
+  REGISTER_KERNEL_BUILDER(Name("StridedSlice")                 \
+                              .Device(DEVICE_SYCL)             \
+                              .TypeConstraint<type>("T")       \
+                              .HostMemory("begin")             \
+                              .HostMemory("end")               \
+                              .HostMemory("strides")           \
+                              .TypeConstraint<int32>("Index"), \
+                          StridedSliceOp<SYCLDevice, type>)    \
+  REGISTER_KERNEL_BUILDER(Name("StridedSliceGrad")             \
+                              .Device(DEVICE_SYCL)             \
+                              .TypeConstraint<type>("T")       \
+                              .HostMemory("shape")             \
+                              .HostMemory("begin")             \
+                              .HostMemory("end")               \
+                              .HostMemory("strides")           \
+                              .TypeConstraint<int32>("Index"), \
+                          StridedSliceGradOp<SYCLDevice, type>)\
+  REGISTER_KERNEL_BUILDER(Name("StridedSliceAssign")           \
+                              .Device(DEVICE_SYCL)             \
+                              .TypeConstraint<type>("T")       \
+                              .HostMemory("begin")             \
+                              .HostMemory("end")               \
+                              .HostMemory("strides")           \
+                              .TypeConstraint<int32>("Index"), \
+                          StridedSliceAssignOp<SYCLDevice, type>)
+
+REGISTER_SYCL(float);
+REGISTER_SYCL(double);
+
+// A special GPU kernel for int32.
+// TODO(b/25387198): Also enable int32 in device memory. This kernel
+// registration requires all int32 inputs and outputs to be in host memory.
+REGISTER_KERNEL_BUILDER(Name("StridedSlice")
+                            .Device(DEVICE_SYCL)
+                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32>("Index")
+                            .HostMemory("input")
+                            .HostMemory("begin")
+                            .HostMemory("end")
+                            .HostMemory("strides")
+                            .HostMemory("output"),
+                        StridedSliceOp<CPUDevice, int32>);
+REGISTER_KERNEL_BUILDER(Name("StridedSliceGrad")
+                            .Device(DEVICE_SYCL)
+                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32>("Index")
+                            .HostMemory("shape")
+                            .HostMemory("begin")
+                            .HostMemory("end")
+                            .HostMemory("strides")
+                            .HostMemory("dy")
+                            .HostMemory("output"),
+                        StridedSliceGradOp<CPUDevice, int32>);
+REGISTER_KERNEL_BUILDER(Name("StridedSliceAssign")
+                            .Device(DEVICE_SYCL)
+                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32>("Index")
+                            .HostMemory("ref")
+                            .HostMemory("begin")
+                            .HostMemory("end")
+                            .HostMemory("strides"),
+                        StridedSliceAssignOp<CPUDevice, int32>)
+#undef REGISTER_SYCL
+#endif // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

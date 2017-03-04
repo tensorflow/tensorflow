@@ -174,7 +174,7 @@ Allocator* ProcessState::GetCPUAllocator(int numa_node) {
 
 Allocator* ProcessState::GetCUDAHostAllocator(int numa_node) {
   if (!HasGPUDevice() || !FLAGS_brain_mem_reg_cuda_dma) {
-    return GetCPUAllocator(numa_node);
+    return cpu_allocator();
   }
   // Although we're temporarily ignoring numa_node, check for legality.
   CHECK_GE(numa_node, 0);
@@ -201,26 +201,19 @@ Allocator* ProcessState::GetCUDAHostAllocator(int numa_node) {
   CHECK_NE(nullptr, se);
 
   while (static_cast<int>(cuda_host_allocators_.size()) <= numa_node) {
-    Allocator* allocator = nullptr;
-    static constexpr bool kCudaHostMemoryUseBFC = true;
-    if (kCudaHostMemoryUseBFC) {
-      // TODO(zheng-xq): evaluate whether 64GB by default is the best choice.
-      int64 cuda_host_mem_limit_in_mb = -1;
-      Status status = ReadInt64FromEnvVar("TF_CUDA_HOST_MEM_LIMIT_IN_MB",
-                                          1LL << 16 /*64GB max by default*/,
-                                          &cuda_host_mem_limit_in_mb);
-      if (!status.ok()) {
-        LOG(ERROR) << "GetCUDAHostAllocator: " << status.error_message();
-      }
-      int64 cuda_host_mem_limit = cuda_host_mem_limit_in_mb * (1LL << 20);
-      allocator =
-          new BFCAllocator(new CUDAHostAllocator(se), cuda_host_mem_limit,
-                           true /*allow_growth*/, "cuda_host_bfc" /*name*/);
-    } else {
-      allocator = new PoolAllocator(
-          100 /*pool_size_limit*/, true /*auto_resize*/,
-          new CUDAHostAllocator(se), new Pow2Rounder, "cuda_host");
+    // TODO(zheng-xq): evaluate whether 64GB by default is the best choice.
+    int64 cuda_host_mem_limit_in_mb = -1;
+    Status status = ReadInt64FromEnvVar("TF_CUDA_HOST_MEM_LIMIT_IN_MB",
+                                        1LL << 16 /*64GB max by default*/,
+                                        &cuda_host_mem_limit_in_mb);
+    if (!status.ok()) {
+      LOG(ERROR) << "GetCUDAHostAllocator: " << status.error_message();
     }
+    int64 cuda_host_mem_limit = cuda_host_mem_limit_in_mb * (1LL << 20);
+    Allocator* allocator =
+        new BFCAllocator(new CUDAHostAllocator(se), cuda_host_mem_limit,
+                         true /*allow_growth*/, "cuda_host_bfc" /*name*/);
+
     if (LogMemory::IsEnabled()) {
       // Wrap the allocator to track allocation ids for better logging
       // at the cost of performance.

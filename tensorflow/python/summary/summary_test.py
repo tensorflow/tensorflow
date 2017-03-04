@@ -18,22 +18,28 @@ from __future__ import division
 from __future__ import print_function
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
-import tensorflow as tf
 
 from google.protobuf import json_format
+
 from tensorflow.core.framework import summary_pb2
 from tensorflow.core.framework import types_pb2
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import test
+from tensorflow.python.summary import summary as summary_lib
 
 
-class ScalarSummaryTest(tf.test.TestCase):
+class ScalarSummaryTest(test.TestCase):
 
   def testScalarSummary(self):
     with self.test_session() as s:
-      i = tf.constant(3)
-      with tf.name_scope('outer'):
-        im = tf.summary.scalar('inner', i)
+      i = constant_op.constant(3)
+      with ops.name_scope('outer'):
+        im = summary_lib.scalar('inner', i)
       summary_str = s.run(im)
-    summary = tf.summary.Summary()
+    summary = summary_pb2.Summary()
     summary.ParseFromString(summary_str)
     values = summary.value
     self.assertEqual(len(values), 1)
@@ -42,13 +48,13 @@ class ScalarSummaryTest(tf.test.TestCase):
 
   def testSummarizingVariable(self):
     with self.test_session() as s:
-      c = tf.constant(42.0)
-      v = tf.Variable(c)
-      ss = tf.summary.scalar('summary', v)
-      init = tf.global_variables_initializer()
+      c = constant_op.constant(42.0)
+      v = variables.Variable(c)
+      ss = summary_lib.scalar('summary', v)
+      init = variables.global_variables_initializer()
       s.run(init)
       summ_str = s.run(ss)
-    summary = tf.summary.Summary()
+    summary = summary_pb2.Summary()
     summary.ParseFromString(summ_str)
     self.assertEqual(len(summary.value), 1)
     value = summary.value[0]
@@ -57,11 +63,11 @@ class ScalarSummaryTest(tf.test.TestCase):
 
   def testImageSummary(self):
     with self.test_session() as s:
-      i = tf.ones((5, 4, 4, 3))
-      with tf.name_scope('outer'):
-        im = tf.summary.image('inner', i, max_outputs=3)
+      i = array_ops.ones((5, 4, 4, 3))
+      with ops.name_scope('outer'):
+        im = summary_lib.image('inner', i, max_outputs=3)
       summary_str = s.run(im)
-    summary = tf.summary.Summary()
+    summary = summary_pb2.Summary()
     summary.ParseFromString(summary_str)
     values = summary.value
     self.assertEqual(len(values), 3)
@@ -71,26 +77,26 @@ class ScalarSummaryTest(tf.test.TestCase):
 
   def testHistogramSummary(self):
     with self.test_session() as s:
-      i = tf.ones((5, 4, 4, 3))
-      with tf.name_scope('outer'):
-        summ_op = tf.summary.histogram('inner', i)
+      i = array_ops.ones((5, 4, 4, 3))
+      with ops.name_scope('outer'):
+        summ_op = summary_lib.histogram('inner', i)
       summary_str = s.run(summ_op)
-    summary = tf.summary.Summary()
+    summary = summary_pb2.Summary()
     summary.ParseFromString(summary_str)
     self.assertEqual(len(summary.value), 1)
     self.assertEqual(summary.value[0].tag, 'outer/inner')
 
   def testSummaryNameConversion(self):
-    c = tf.constant(3)
-    s = tf.summary.scalar('name with spaces', c)
+    c = constant_op.constant(3)
+    s = summary_lib.scalar('name with spaces', c)
     self.assertEqual(s.op.name, 'name_with_spaces')
 
-    s2 = tf.summary.scalar('name with many $#illegal^: characters!', c)
+    s2 = summary_lib.scalar('name with many $#illegal^: characters!', c)
     self.assertEqual(s2.op.name, 'name_with_many___illegal___characters_')
 
-    s3 = tf.summary.scalar('/name/with/leading/slash', c)
+    s3 = summary_lib.scalar('/name/with/leading/slash', c)
     self.assertEqual(s3.op.name, 'name/with/leading/slash')
 
 
 if __name__ == '__main__':
-  tf.test.main()
+  test.main()

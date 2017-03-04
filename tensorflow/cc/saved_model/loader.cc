@@ -31,11 +31,13 @@ namespace tensorflow {
 namespace {
 
 auto* load_attempt_count = monitoring::Counter<2>::New(
-    "/tensorflow/cc/saved_model/load_attempt_count", "model_path", "status",
-    "The number of times a SavedModel was successfully loaded.");
+    "/tensorflow/cc/saved_model/load_attempt_count",
+    "The number of times a SavedModel was successfully loaded.", "model_path",
+    "status");
 auto* load_latency = monitoring::Counter<1>::New(
-    "/tensorflow/cc/saved_model/load_latency", "model_path",
-    "Latency in microseconds for SavedModels that were successfully loaded.");
+    "/tensorflow/cc/saved_model/load_latency",
+    "Latency in microseconds for SavedModels that were succesfully loaded.",
+    "model_path");
 constexpr char kLoadAttemptFail[] = "fail";
 constexpr char kLoadAttemptSuccess[] = "success";
 
@@ -119,8 +121,9 @@ Status RunRestore(const RunOptions& run_options, const string& export_dir,
   const string variables_index_path = io::JoinPath(
       variables_directory, MetaFilename(kSavedModelVariablesFilename));
   if (!Env::Default()->FileExists(variables_index_path).ok()) {
-    return errors::NotFound(
-        "Checkpoint index file not found in SavedModel directory.");
+    LOG(INFO) << "The specified SavedModel has no variables; no checkpoints "
+                 "were restored.";
+    return Status::OK();
   }
   const string variables_path =
       io::JoinPath(variables_directory, kSavedModelVariablesFilename);

@@ -17,17 +17,23 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include <numeric>
+
 #include "tensorflow/core/kernels/aggregate_ops.h"
 #include "tensorflow/core/kernels/aggregate_ops_cpu.h"
 
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/register_types.h"
-
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/logging.h"
+
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename T>
 class AddNOp : public OpKernel {
@@ -46,7 +52,10 @@ class AddNOp : public OpKernel {
     }
 
     Tensor* output = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, input0.shape(), &output));
+    gtl::InlinedVector<int, 8> input_indices(num);
+    std::iota(input_indices.begin(), input_indices.end(), 0);
+    OP_REQUIRES_OK(ctx, ctx->forward_input_or_allocate_output(
+                            input_indices, 0, input0.shape(), &output));
     auto To = output->flat<T>();
 
 #define I(IDX) ctx->input(IDX).flat<T>()
@@ -151,6 +160,21 @@ REGISTER_KERNEL_BUILDER(Name("AddN")
                             .HostMemory("sum"),
                         AddNOp<CPUDevice, int32>);
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_ADDN(float, SYCL);
+REGISTER_ADDN(double, SYCL);
+
+// A special GPU kernel for int32.
+// TODO(b/25387198): Also enable int32 in device memory. This kernel
+// registration requires all int32 inputs and outputs to be in host memory.
+REGISTER_KERNEL_BUILDER(Name("AddN")
+                            .Device(DEVICE_SYCL)
+                            .TypeConstraint<int32>("T")
+                            .HostMemory("inputs")
+                            .HostMemory("sum"),
+                        AddNOp<CPUDevice, int32>);
+#endif // TENSORFLOW_USE_SYCL
 
 #undef REGISTER_ADDN
 

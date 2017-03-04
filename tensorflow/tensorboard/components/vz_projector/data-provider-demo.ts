@@ -49,7 +49,14 @@ export class DemoDataProvider implements DataProvider {
     let msgId = logging.setModalMessage('Fetching projector config...');
     d3.json(this.projectorConfigPath, (err, projectorConfig) => {
       if (err) {
-        logging.setErrorMessage(err.responseText);
+        let errorMessage = err;
+        // If the error is a valid XMLHttpResponse, it's possible this is a
+        // cross-origin error.
+        if (err.responseText != null) {
+          errorMessage = 'Cannot fetch projector config, possibly a ' +
+              'Cross-Origin request error.';
+        }
+        logging.setErrorMessage(errorMessage, 'fetching projector config');
         return;
       }
       logging.setModalMessage(null, msgId);
@@ -71,7 +78,7 @@ export class DemoDataProvider implements DataProvider {
       logging.setModalMessage('Fetching tensors...', TENSORS_MSG_ID);
       d3.text(url, (error: any, dataString: string) => {
         if (error) {
-          logging.setErrorMessage(error.responseText);
+          logging.setErrorMessage(error.responseText, 'fetching tensors');
           return;
         }
         dataProvider.parseTensors(dataString).then(points => {

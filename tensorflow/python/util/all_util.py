@@ -83,8 +83,7 @@ def reveal_undocumented(symbol_name, target_module=None):
 
 def remove_undocumented(module_name, allowed_exception_list=None,
                         doc_string_modules=None):
-  """Removes symbols in a module that are not referenced by a docstring that
-  contributes to documentation.
+  """Removes symbols in a module that are not referenced by a docstring.
 
   Args:
     module_name: the name of the module (usually `__name__`).
@@ -100,7 +99,7 @@ def remove_undocumented(module_name, allowed_exception_list=None,
   """
   current_symbols = set(dir(_sys.modules[module_name]))
   should_have = make_all(module_name, doc_string_modules)
-  should_have += allowed_exception_list
+  should_have += allowed_exception_list or []
   extra_symbols = current_symbols - set(should_have)
   target_module = _sys.modules[module_name]
   for extra_symbol in extra_symbols:

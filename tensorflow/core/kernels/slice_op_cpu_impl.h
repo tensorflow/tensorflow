@@ -34,6 +34,18 @@ DEFINE_CPU_KERNELS(bfloat16);
 
 #undef DEFINE_CPU_KERNELS
 
+#ifdef TENSORFLOW_USE_SYCL
+using SyclDevice = Eigen::SyclDevice;
+
+#define DEFINE_SYCL_KERNELS(T) \
+  template struct functor::Slice<SyclDevice, T, CPU_PROVIDED_IXDIM>;
+
+TF_CALL_GPU_NUMBER_TYPES(DEFINE_SYCL_KERNELS);
+DEFINE_SYCL_KERNELS(int32);
+
+#undef DEFINE_SYCL_KERNELS
+#endif // TENSORFLOW_USE_SYCL
+
 }  // namespace tensorflow
 
 #endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_SLICE_OP_CPU_IMPL_H_

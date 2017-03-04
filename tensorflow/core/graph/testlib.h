@@ -100,6 +100,9 @@ Node* Multi(Graph* g, const string& func, gtl::ArraySlice<Node*> ins);
 // Adds a binary add node in "g" doing in0 + in1.
 Node* Add(Graph* g, Node* in0, Node* in1);
 
+// Reverses <axis> dimensions of <tensor>>
+Node* Reverse(Graph* g, Node* tensor, Node* axis);
+
 // Generates random unit uniform distribution of the input shape.
 Node* RandomUniform(Graph* g, Node* input, DataType dtype);
 
@@ -109,6 +112,10 @@ Node* RandomGaussian(Graph* g, Node* input, DataType dtype);
 // Generates random gamma distribution with the given shape and alpha[s].
 // Output dtype determined by alpha.
 Node* RandomGamma(Graph* g, Node* shape, Node* alpha);
+
+// Generates random poisson distribution with the given shape and lam[s].
+// Output dtype determined by lam.
+Node* RandomPoisson(Graph* g, Node* shape, Node* lam);
 
 // Generates random parameters from the truncated standard normal distribution
 // of the nput shape
@@ -167,6 +174,9 @@ Node* Cast(Graph* g, Node* in, DataType dst);
 // Perform gather op on params "in0" with indices "in1".
 Node* Gather(Graph* g, Node* in0, Node* in1);
 
+// Computes broadcasted shape from the given input shapes.
+Node* BroadcastArgs(Graph* g, Node* s0, Node* s1);
+
 // Computes the args needed broadcast gradient function.
 Node* BroadcastGradientArgs(Graph* g, Node* s0, Node* s1);
 
@@ -177,6 +187,11 @@ Node* GetSessionTensor(Graph* g, Node* in);
 // dimension to concatenate on, and the tensors to concatenate are
 // given in "tensors".
 Node* Concat(Graph* g, Node* concat_dim, gtl::ArraySlice<Node*> tensors);
+
+// Adds a ConcatV2 node in "g". The last input is "concat_dim", the
+// dimension to concatenate on, and the tensors to concatenate are
+// given in "tensors".
+Node* ConcatV2(Graph* g, gtl::ArraySlice<Node*> tensors, Node* concat_dim);
 
 // Add a Relu node in "g".
 Node* Relu(Graph* g, Node* in);

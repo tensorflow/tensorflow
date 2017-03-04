@@ -22,6 +22,38 @@ using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
 
+REGISTER_OP("VariableV2")
+    .Output("ref: Ref(dtype)")
+    .Attr("shape: shape")
+    .Attr("dtype: type")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetIsStateful()
+    .SetShapeFn([](InferenceContext* c) {
+      TensorShapeProto shape_proto;
+      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape_proto));
+      ShapeHandle output_shape;
+      TF_RETURN_IF_ERROR(
+          c->MakeShapeFromShapeProto(shape_proto, &output_shape));
+      c->set_output(0, output_shape);
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Holds state in the form of a tensor that persists across steps.
+
+Outputs a ref to the tensor state so it may be read or modified.
+TODO(zhifengc/mrry): Adds a pointer to a more detail document
+about sharing states in tensorflow.
+
+ref: A reference to the variable tensor.
+shape: The shape of the variable tensor.
+dtype: The type of elements in the variable tensor.
+container: If non-empty, this variable is placed in the given container.
+        Otherwise, a default container is used.
+shared_name: If non-empty, this variable is named in the given bucket
+             with this shared_name. Otherwise, the node name is used instead.
+)doc");
+
 REGISTER_OP("Variable")
     .Output("ref: Ref(dtype)")
     .Attr("shape: shape")
@@ -47,21 +79,7 @@ REGISTER_OP("Variable")
       c->set_output(0, out);
       return Status::OK();
     })
-    .Doc(R"doc(
-Holds state in the form of a tensor that persists across steps.
-
-Outputs a ref to the tensor state so it may be read or modified.
-TODO(zhifengc/mrry): Adds a pointer to a more detail document
-about sharing states in tensorflow.
-
-ref: A reference to the variable tensor.
-shape: The shape of the variable tensor.
-dtype: The type of elements in the variable tensor.
-container: If non-empty, this variable is placed in the given container.
-        Otherwise, a default container is used.
-shared_name: If non-empty, this variable is named in the given bucket
-             with this shared_name. Otherwise, the node name is used instead.
-)doc");
+    .Doc("Use VariableV2 instead.");
 
 REGISTER_OP("IsVariableInitialized")
     .Input("ref: Ref(dtype)")

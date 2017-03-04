@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/cloud/google_auth_provider.h"
+#include "tensorflow/core/platform/cloud/retrying_utils.h"
 #include "tensorflow/core/platform/cloud/time_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -240,7 +241,11 @@ class GcsRandomAccessFile : public RandomAccessFile {
         buffer_.reserve(desired_buffer_size);
       }
 
+      // Shift the offset and clear the buffer so that the state stays
+      // consistent if loading from GCS fails.
       buffer_start_offset_ = offset;
+      buffer_.clear();
+
       TF_RETURN_IF_ERROR(LoadBufferFromGCS());
 
       // Set the results.
@@ -302,12 +307,13 @@ class GcsWritableFile : public WritableFile {
   GcsWritableFile(const string& bucket, const string& object,
                   AuthProvider* auth_provider,
                   HttpRequest::Factory* http_request_factory,
-                  int32 max_upload_attempts)
+                  int64 initial_retry_delay_usec)
       : bucket_(bucket),
         object_(object),
         auth_provider_(auth_provider),
         http_request_factory_(http_request_factory),
-        max_upload_attempts_(max_upload_attempts) {
+        sync_needed_(true),
+        initial_retry_delay_usec_(initial_retry_delay_usec) {
     if (GetTmpFilename(&tmp_content_filename_).ok()) {
       outfile_.open(tmp_content_filename_,
                     std::ofstream::binary | std::ofstream::app);
@@ -323,21 +329,23 @@ class GcsWritableFile : public WritableFile {
                   AuthProvider* auth_provider,
                   const string& tmp_content_filename,
                   HttpRequest::Factory* http_request_factory,
-                  int32 max_upload_attempts)
+                  int64 initial_retry_delay_usec)
       : bucket_(bucket),
         object_(object),
         auth_provider_(auth_provider),
         http_request_factory_(http_request_factory),
-        max_upload_attempts_(max_upload_attempts) {
+        sync_needed_(true),
+        initial_retry_delay_usec_(initial_retry_delay_usec) {
     tmp_content_filename_ = tmp_content_filename;
     outfile_.open(tmp_content_filename_,
                   std::ofstream::binary | std::ofstream::app);
   }
 
-  ~GcsWritableFile() { Close(); }
+  ~GcsWritableFile() override { Close().IgnoreError(); }
 
   Status Append(const StringPiece& data) override {
     TF_RETURN_IF_ERROR(CheckWritable());
+    sync_needed_ = true;
     outfile_ << data;
     if (!outfile_.good()) {
       return errors::Internal(
@@ -357,14 +365,26 @@ class GcsWritableFile : public WritableFile {
 
   Status Flush() override { return Sync(); }
 
+  Status Sync() override {
+    TF_RETURN_IF_ERROR(CheckWritable());
+    if (!sync_needed_) {
+      return Status::OK();
+    }
+    Status status = SyncImpl();
+    if (status.ok()) {
+      sync_needed_ = false;
+    }
+    return status;
+  }
+
+ private:
   /// Copies the current version of the file to GCS.
   ///
-  /// This Sync() uploads the object to GCS.
+  /// This SyncImpl() uploads the object to GCS.
   /// In case of a failure, it resumes failed uploads as recommended by the GCS
   /// resumable API documentation. When the whole upload needs to be
   /// restarted, Sync() returns UNAVAILABLE and relies on RetryingFileSystem.
-  Status Sync() override {
-    TF_RETURN_IF_ERROR(CheckWritable());
+  Status SyncImpl() {
     outfile_.flush();
     if (!outfile_.good()) {
       return errors::Internal(
@@ -373,44 +393,42 @@ class GcsWritableFile : public WritableFile {
     string session_uri;
     TF_RETURN_IF_ERROR(CreateNewUploadSession(&session_uri));
     uint64 already_uploaded = 0;
-    for (int attempt = 0; attempt < max_upload_attempts_; attempt++) {
-      if (attempt > 0) {
-        bool completed;
-        TF_RETURN_IF_ERROR(RequestUploadSessionStatus(session_uri, &completed,
-                                                      &already_uploaded));
-        if (completed) {
-          // It's unclear why UploadToSession didn't return OK in the previous
-          // attempt, but GCS reports that the file is fully uploaded,
-          // so succeed.
-          return Status::OK();
-        }
-      }
-      const Status upload_status =
-          UploadToSession(session_uri, already_uploaded);
-      if (upload_status.ok()) {
+    bool first_attempt = true;
+    const Status upload_status = RetryingUtils::CallWithRetries(
+        [&first_attempt, &already_uploaded, &session_uri, this]() {
+          if (!first_attempt) {
+            bool completed;
+            TF_RETURN_IF_ERROR(RequestUploadSessionStatus(
+                session_uri, &completed, &already_uploaded));
+            if (completed) {
+              // It's unclear why UploadToSession didn't return OK in the
+              // previous attempt, but GCS reports that the file is fully
+              // uploaded, so succeed.
+              return Status::OK();
+            }
+          }
+          first_attempt = false;
+          return UploadToSession(session_uri, already_uploaded);
+        },
+        initial_retry_delay_usec_);
+    switch (upload_status.code()) {
+      case errors::Code::OK:
         return Status::OK();
-      }
-      switch (upload_status.code()) {
-        case errors::Code::NOT_FOUND:
-          // GCS docs recommend retrying the whole upload. We're relying on the
-          // RetryingFileSystem to retry the Sync() call.
-          return errors::Unavailable("Could not upload gs://", bucket_, "/",
-                                     object_);
-        case errors::Code::UNAVAILABLE:
-          // The upload can be resumed, but GCS docs recommend an exponential
-          // back-off.
-          Env::Default()->SleepForMicroseconds(kUploadRetryDelayMicros
-                                               << attempt);
-          break;
-        default:
-          // Something unexpected happen, fail.
-          return upload_status;
-      }
+      case errors::Code::NOT_FOUND:
+        // GCS docs recommend retrying the whole upload. We're relying on the
+        // RetryingFileSystem to retry the Sync() call.
+        return errors::Unavailable("Could not upload gs://", bucket_, "/",
+                                   object_);
+      case errors::Code::UNAVAILABLE:
+        // Return ABORTED so that RetryingFileSystem doesn't retry again.
+        return errors::Aborted("Upload gs://", bucket_, "/", object_,
+                               " failed.");
+      default:
+        // Something unexpected happen, fail.
+        return upload_status;
     }
-    return errors::Aborted("Upload gs://", bucket_, "/", object_, " failed.");
   }
 
- private:
   Status CheckWritable() const {
     if (!outfile_.is_open()) {
       return errors::FailedPrecondition(
@@ -556,7 +574,8 @@ class GcsWritableFile : public WritableFile {
   string tmp_content_filename_;
   std::ofstream outfile_;
   HttpRequest::Factory* http_request_factory_;
-  int32 max_upload_attempts_;
+  bool sync_needed_;  // whether there is buffered data that needs to be synced
+  int64 initial_retry_delay_usec_;
 };
 
 class GcsReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {
@@ -579,11 +598,11 @@ GcsFileSystem::GcsFileSystem()
 GcsFileSystem::GcsFileSystem(
     std::unique_ptr<AuthProvider> auth_provider,
     std::unique_ptr<HttpRequest::Factory> http_request_factory,
-    size_t read_ahead_bytes, int32 max_upload_attempts)
+    size_t read_ahead_bytes, int64 initial_retry_delay_usec)
     : auth_provider_(std::move(auth_provider)),
       http_request_factory_(std::move(http_request_factory)),
       read_ahead_bytes_(read_ahead_bytes),
-      max_upload_attempts_(max_upload_attempts) {}
+      initial_retry_delay_usec_(initial_retry_delay_usec) {}
 
 Status GcsFileSystem::NewRandomAccessFile(
     const string& fname, std::unique_ptr<RandomAccessFile>* result) {
@@ -601,7 +620,7 @@ Status GcsFileSystem::NewWritableFile(const string& fname,
   TF_RETURN_IF_ERROR(ParseGcsPath(fname, false, &bucket, &object));
   result->reset(new GcsWritableFile(bucket, object, auth_provider_.get(),
                                     http_request_factory_.get(),
-                                    max_upload_attempts_));
+                                    initial_retry_delay_usec_));
   return Status::OK();
 }
 
@@ -641,7 +660,7 @@ Status GcsFileSystem::NewAppendableFile(const string& fname,
   TF_RETURN_IF_ERROR(ParseGcsPath(fname, false, &bucket, &object));
   result->reset(new GcsWritableFile(
       bucket, object, auth_provider_.get(), old_content_filename,
-      http_request_factory_.get(), max_upload_attempts_));
+      http_request_factory_.get(), initial_retry_delay_usec_));
   return Status::OK();
 }
 
@@ -752,8 +771,9 @@ Status GcsFileSystem::BucketExists(const string& bucket, bool* result) {
 
   std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
   TF_RETURN_IF_ERROR(request->Init());
-  request->SetUri(strings::StrCat(kGcsUriBase, "b/", bucket));
-  request->AddAuthBearerHeader(auth_token);
+  TF_RETURN_IF_ERROR(
+      request->SetUri(strings::StrCat(kGcsUriBase, "b/", bucket)));
+  TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
   const Status status = request->Send();
   switch (status.code()) {
     case errors::Code::OK:

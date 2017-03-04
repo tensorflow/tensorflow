@@ -60,12 +60,6 @@ class PosixEnv : public Env {
     return fnmatch(pattern.c_str(), path.c_str(), FNM_PATHNAME) == 0;
   }
 
-  uint64 NowMicros() override {
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-    return static_cast<uint64>(tv.tv_sec) * 1000000 + tv.tv_usec;
-  }
-
   void SleepForMicroseconds(int64 micros) override {
     while (micros > 0) {
       timespec sleep_time;

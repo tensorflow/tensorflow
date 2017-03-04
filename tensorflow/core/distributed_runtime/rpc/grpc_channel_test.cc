@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -56,7 +57,8 @@ TEST(GrpcChannelTest, IsSameAddressSpace) {
 
 TEST(GrpcChannelTest, HostPorts) {
   GrpcChannelSpec spec;
-  spec.AddHostPortsJob("mnist", {"a:1", "b:2", "c:3", "d:4", "e:5", "f:6"});
+  TF_EXPECT_OK(spec.AddHostPortsJob(
+      "mnist", {"a:1", "b:2", "c:3", "d:4", "e:5", "f:6"}));
   std::unique_ptr<GrpcChannelCache> cc(
       NewGrpcChannelCache(spec, NewHostPortGrpcChannel));
   EXPECT_EQ(nullptr, cc->FindWorkerChannel("invalid_target"));
@@ -96,7 +98,8 @@ TEST(GrpcChannelTest, HostPorts) {
 
 TEST(GrpcChannelTest, SparseHostPorts) {
   GrpcChannelSpec spec;
-  spec.AddHostPortsJob("mnist", {{0, "a:1"}, {3, "d:4"}, {4, "e:5"}});
+  TF_EXPECT_OK(
+      spec.AddHostPortsJob("mnist", {{0, "a:1"}, {3, "d:4"}, {4, "e:5"}}));
   std::unique_ptr<GrpcChannelCache> cc(
       NewGrpcChannelCache(spec, NewHostPortGrpcChannel));
   EXPECT_EQ(nullptr, cc->FindWorkerChannel("invalid_target"));

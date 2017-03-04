@@ -43,7 +43,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import versions
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
-from tensorflow.python.util import deprecation
+from tensorflow.python.util import decorator_utils
 
 
 def _override_helper(clazz_object, operator, func):
@@ -199,7 +199,7 @@ class Tensor(_TensorLike):
   A `Tensor` is a symbolic handle to one of the outputs of an
   `Operation`. It does not hold the values of that operation's output,
   but instead provides a means of computing those values in a
-  TensorFlow [`Session`](../../api_docs/python/client.md#Session).
+  TensorFlow @{tf.Session}.
 
   This class has two primary purposes:
 
@@ -210,7 +210,7 @@ class Tensor(_TensorLike):
 
   2. After the graph has been launched in a session, the value of the
      `Tensor` can be computed by passing it to
-     [`Session.run()`](../../api_docs/python/client.md#Session.run).
+     @{tf.Session.run}.
      `t.eval()` is a shortcut for calling
      `tf.get_default_session().run(t)`.
 
@@ -230,19 +230,6 @@ class Tensor(_TensorLike):
   # Execute the graph and store the value that `e` represents in `result`.
   result = sess.run(e)
   ```
-
-  @@dtype
-  @@name
-  @@value_index
-  @@graph
-  @@op
-  @@consumers
-
-  @@eval
-
-  @@get_shape
-  @@set_shape
-
   """
 
   # List of Python operators that we allow to override.
@@ -334,18 +321,13 @@ class Tensor(_TensorLike):
     """The name of the device on which this tensor will be produced, or None."""
     return self._op.device
 
-  def _shape_as_list(self):
-    if self._shape.ndims is not None:
-      return [dim.value for dim in self._shape.dims]
-    else:
-      return None
-
-  def get_shape(self):
+  @property
+  def shape(self):
     """Returns the `TensorShape` that represents the shape of this tensor.
 
     The shape is computed using shape inference functions that are
     registered in the Op for each `Operation`.  See
-    [`TensorShape`](../../api_docs/python/framework.md#TensorShape)
+    @{tf.TensorShape}
     for more details of what a shape represents.
 
     The inferred shape of a tensor is used to provide shape
@@ -356,12 +338,12 @@ class Tensor(_TensorLike):
     ```python
     c = tf.constant([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
 
-    print(c.get_shape())
+    print(c.shape)
     ==> TensorShape([Dimension(2), Dimension(3)])
 
     d = tf.constant([[1.0, 0.0], [0.0, 1.0], [1.0, 0.0], [0.0, 1.0]])
 
-    print(d.get_shape())
+    print(d.shape)
     ==> TensorShape([Dimension(4), Dimension(2)])
 
     # Raises a ValueError, because `c` and `d` do not have compatible
@@ -370,7 +352,7 @@ class Tensor(_TensorLike):
 
     f = tf.matmul(c, d, transpose_a=True, transpose_b=True)
 
-    print(f.get_shape())
+    print(f.shape)
     ==> TensorShape([Dimension(3), Dimension(4)])
     ```
 
@@ -384,6 +366,16 @@ class Tensor(_TensorLike):
 
     """
     return self._shape
+
+  def _shape_as_list(self):
+    if self._shape.ndims is not None:
+      return [dim.value for dim in self._shape.dims]
+    else:
+      return None
+
+  def get_shape(self):
+    """Alias of Tensor.shape."""
+    return self.shape
 
   def set_shape(self, shape):
     """Updates the shape of this tensor.
@@ -400,12 +392,12 @@ class Tensor(_TensorLike):
 
     # The height and width dimensions of `image` are data dependent, and
     # cannot be computed without executing the op.
-    print(image.get_shape())
+    print(image.shape)
     ==> TensorShape([Dimension(None), Dimension(None), Dimension(3)])
 
     # We know that each image in this dataset is 28 x 28 pixels.
     image.set_shape([28, 28, 3])
-    print(image.get_shape())
+    print(image.shape)
     ==> TensorShape([Dimension(28), Dimension(28), Dimension(3)])
     ```
 
@@ -563,7 +555,7 @@ class Tensor(_TensorLike):
 
     Args:
       feed_dict: A dictionary that maps `Tensor` objects to feed values.
-        See [`Session.run()`](../../api_docs/python/client.md#Session.run) for a
+        See @{tf.Session.run} for a
         description of the valid feed values.
       session: (Optional.) The `Session` to be used to evaluate this tensor. If
         none, the default session will be used.
@@ -1010,22 +1002,11 @@ class IndexedSlices(_TensorLike):
 
   The `IndexedSlices` class is used principally in the definition of
   gradients for operations that have sparse gradients
-  (e.g. [`tf.gather`](../../api_docs/python/array_ops.md#gather)).
+  (e.g. @{tf.gather}).
 
   Contrast this representation with
-  [`SparseTensor`](../../api_docs/python/sparse_ops.md#SparseTensor),
+  @{tf.SparseTensor},
   which uses multi-dimensional indices and scalar values.
-
-  @@__init__
-
-  @@values
-  @@indices
-  @@dense_shape
-
-  @@name
-  @@dtype
-  @@device
-  @@op
   """
 
   def __init__(self, values, indices, dense_shape=None):
@@ -1138,8 +1119,8 @@ class Operation(object):
   more `Tensor` objects as input, and produces zero or more `Tensor`
   objects as output. Objects of type `Operation` are created by
   calling a Python op constructor (such as
-  [`tf.matmul()`](../../api_docs/python/math_ops.md#matmul))
-  or [`Graph.create_op()`](../../api_docs/python/framework.md#Graph.create_op).
+  @{tf.matmul})
+  or @{tf.Graph.create_op}.
 
   For example `c = tf.matmul(a, b)` creates an `Operation` of type
   "MatMul" that takes tensors `a` and `b` as input, and produces `c`
@@ -1147,21 +1128,8 @@ class Operation(object):
 
   After the graph has been launched in a session, an `Operation` can
   be executed by passing it to
-  [`Session.run()`](../../api_docs/python/client.md#Session.run).
+  @{tf.Session.run}.
   `op.run()` is a shortcut for calling `tf.get_default_session().run(op)`.
-
-  @@name
-  @@type
-  @@inputs
-  @@control_inputs
-  @@outputs
-  @@device
-  @@graph
-
-  @@run
-
-  @@get_attr
-  @@traceback
   """
 
   def __init__(self, node_def, g, inputs=None, output_types=None,
@@ -1438,6 +1406,9 @@ class Operation(object):
   def __str__(self):
     return str(self._node_def)
 
+  def __repr__(self):
+    return "<tf.Operation '%s' type=%s>" % (self.name, self.type)
+
   @property
   def outputs(self):
     """The list of `Tensor` objects representing the outputs of this op."""
@@ -1571,7 +1542,7 @@ class Operation(object):
 
     Args:
       feed_dict: A dictionary that maps `Tensor` objects to feed values.
-        See [`Session.run()`](../../api_docs/python/client.md#Session.run)
+        See @{tf.Session.run}
         for a description of the valid feed values.
       session: (Optional.) The `Session` to be used to run to this operation. If
         none, the default session will be used.
@@ -1599,14 +1570,12 @@ class RegisterGradient(object):
   ```python
   @tf.RegisterGradient("Sub")
   def _sub_grad(unused_op, grad):
-    return grad, tf.neg(grad)
+    return grad, tf.negative(grad)
   ```
 
   The decorator argument `op_type` is the string type of an
   operation. This corresponds to the `OpDef.name` field for the proto
   that defines the operation.
-
-  @@__init__
   """
 
   def __init__(self, op_type):
@@ -1905,17 +1874,29 @@ def get_stats_for_node_def(graph, node, statistic_type):
   return result
 
 
+def _name_from_scope_name(name):
+  """Returns the name of an op given the name of its scope.
+
+  Args:
+    name: the name of the scope.
+
+  Returns:
+    the name of the op (equal to scope name minus any trailing slash).
+  """
+  return name[:-1] if name[-1] == "/" else name
+
+
 class Graph(object):
   """A TensorFlow computation, represented as a dataflow graph.
 
   A `Graph` contains a set of
-  [`Operation`](../../api_docs/python/framework.md#Operation) objects,
+  @{tf.Operation} objects,
   which represent units of computation; and
-  [`Tensor`](../../api_docs/python/framework.md#Tensor) objects, which represent
+  @{tf.Tensor} objects, which represent
   the units of data that flow between operations.
 
   A default `Graph` is always registered, and accessible by calling
-  [`tf.get_default_graph()`](../../api_docs/python/framework.md#get_default_graph).
+  @{tf.get_default_graph}.
   To add an operation to the default graph, simply call one of the functions
   that defines a new `Operation`:
 
@@ -1925,7 +1906,7 @@ class Graph(object):
   ```
 
   Another typical usage involves the
-  [`Graph.as_default()`](../../api_docs/python/framework.md#Graph.as_default)
+  @{tf.Graph.as_default}
   context manager, which overrides the current default graph for the
   lifetime of the context:
 
@@ -1942,41 +1923,13 @@ class Graph(object):
   synchronization must be provided. Unless otherwise specified, all methods
   are not thread-safe.
 
-  @@__init__
-  @@as_default
-  @@as_graph_def
-  @@finalize
-  @@finalized
-
-  @@control_dependencies
-  @@device
-  @@name_scope
-
   A `Graph` instance supports an arbitrary number of "collections"
   that are identified by name. For convenience when building a large
   graph, collections can store groups of related objects: for
   example, the `tf.Variable` uses a collection (named
-  [`tf.GraphKeys.GLOBAL_VARIABLES`](../../api_docs/python/framework.md#GraphKeys)) for
+  @{tf.GraphKeys.GLOBAL_VARIABLES}) for
   all variables that are created during the construction of a graph. The caller
   may define additional collections by specifying a new name.
-
-  @@add_to_collection
-  @@add_to_collections
-  @@get_collection
-  @@get_collection_ref
-
-  @@as_graph_element
-  @@get_operation_by_name
-  @@get_tensor_by_name
-  @@get_operations
-
-  @@seed
-  @@unique_name
-  @@version
-  @@graph_def_versions
-
-  @@create_op
-  @@gradient_override_map
   """
 
   def __init__(self):
@@ -2086,7 +2039,7 @@ class Graph(object):
     """Returns a version number that increases as ops are added to the graph.
 
     Note that this is unrelated to the
-    [GraphDef version](#Graph.graph_def_version).
+    @{tf.Graph.graph_def_versions}.
     """
     if self._finalized:
       return self._version
@@ -2126,7 +2079,7 @@ class Graph(object):
     After calling `g.finalize()`, no new operations can be added to
     `g`.  This method is used to ensure that no operations are added
     to a graph when it is shared between multiple threads, for example
-    when using a [`QueueRunner`](../../api_docs/python/train.md#QueueRunner).
+    when using a @{tf.train.QueueRunner}.
     """
     self._finalized = True
 
@@ -2160,8 +2113,8 @@ class Graph(object):
     """Returns a serialized `GraphDef` representation of this graph.
 
     The serialized `GraphDef` can be imported into another `Graph`
-    (using [`import_graph_def()`](#import_graph_def)) or used with the
-    [C++ Session API](../../api_docs/cc/index.md).
+    (using @{tf.import_graph_def}) or used with the
+    [C++ Session API](../../../../api_docs/cc/index.md).
 
     This method is thread-safe.
 
@@ -2214,7 +2167,7 @@ class Graph(object):
     """Returns a serialized `GraphDef` representation of this graph.
 
     The serialized `GraphDef` can be imported into another `Graph`
-    (using [`import_graph_def()`](#import_graph_def)) or used with the
+    (using @{tf.import_graph_def}) or used with the
     [C++ Session API](../../api_docs/cc/index.md).
 
     This method is thread-safe.
@@ -2278,6 +2231,9 @@ class Graph(object):
     if (function.grad_func_name is not None) and (
         function.python_grad_func is not None):
       raise ValueError("Gradient defined twice for function %s" % name)
+    # Need a new-enough consumer to support the functions we add to the graph.
+    if self._graph_def_versions.min_consumer < 12:
+      self._graph_def_versions.min_consumer = 12
     self._functions[name] = function
 
   @property
@@ -2336,7 +2292,7 @@ class Graph(object):
     # If a names ends with a '/' it is a "name scope" and we use it as-is,
     # after removing the trailing '/'.
     if name and name[-1] == "/":
-      name = name[:-1]
+      name = _name_from_scope_name(name)
     else:
       name = self.unique_name(name)
 
@@ -2346,6 +2302,13 @@ class Graph(object):
     # attributes.
     for key, value in self._attr_scope_map.items():
       if key not in node_def.attr:
+        if callable(value):
+          value = value(node_def)
+          if not isinstance(value, (type(None), attr_value_pb2.AttrValue)):
+            raise TypeError(
+                "Callable for scope map key '%s' must return either None or "
+                "an AttrValue protocol buffer; but it returned: %s" %
+                (key, value))
         node_def.attr[key].CopyFrom(value)
 
     # Apply a kernel label if one has been specified for this op_type.
@@ -2868,7 +2831,8 @@ class Graph(object):
       A context manager that installs `name` as a new name scope.
 
     Raises:
-      ValueError: If `name` is not a valid scope name. The rules are the
+      ValueError: If `name` is not a valid scope name, according to the rules
+        above.
     """
     if name:
       if self._name_stack:
@@ -2887,7 +2851,7 @@ class Graph(object):
       if not name:  # Both for name=None and name="" we re-set to empty scope.
         new_stack = None
       elif name and name[-1] == "/":
-        new_stack = name[:-1]
+        new_stack = _name_from_scope_name(name)
       else:
         new_stack = self.unique_name(name)
       self._name_stack = new_stack
@@ -3404,10 +3368,12 @@ class Graph(object):
     saved_attrs = {}
     # Install the given attribute
     for name, attr in attr_map.items():
-      if not (isinstance(name, six.string_types)
-              and isinstance(attr, (type(None), attr_value_pb2.AttrValue))):
+      if not (isinstance(name, six.string_types) and
+              (isinstance(attr, (type(None), attr_value_pb2.AttrValue)) or
+               callable(attr))):
         raise TypeError("attr_map must be a dictionary mapping "
-                        "strings to AttrValue protocol buffers")
+                        "strings to AttrValue protocol buffers or "
+                        "callables that emit AttrValue protocol buffers")
       try:
         saved_attrs[name] = self._attr_scope_map[name]
       except KeyError:
@@ -3577,7 +3543,7 @@ def device(device_name_or_function):
   """Wrapper for `Graph.device()` using the default graph.
 
   See
-  [`Graph.device()`](../../api_docs/python/framework.md#Graph.device)
+  @{tf.Graph.device}
   for more details.
 
   Args:
@@ -3611,7 +3577,7 @@ def colocate_with(op, ignore_existing=False):
 def control_dependencies(control_inputs):
   """Wrapper for `Graph.control_dependencies()` using the default graph.
 
-  See [`Graph.control_dependencies()`](../../api_docs/python/framework.md#Graph.control_dependencies)
+  See @{tf.Graph.control_dependencies}
   for more details.
 
   Args:
@@ -3964,7 +3930,7 @@ class GraphKeys(object):
 
   * `GLOBAL_VARIABLES`: the default collection of `Variable` objects, shared
     across distributed environment (model variables are subset of these). See
-    [`tf.global_variables()`](../../api_docs/python/state_ops.md#global_variables)
+    @{tf.global_variables}
     for more details.
     Commonly, all `TRAINABLE_VARIABLES` variables will be in `MODEL_VARIABLES`,
     and all `MODEL_VARIABLES` variables will be in `GLOBAL_VARIABLES`.
@@ -3976,19 +3942,19 @@ class GraphKeys(object):
     `tf.contrib.framework.model_variable` to add to this collection.
   * `TRAINABLE_VARIABLES`: the subset of `Variable` objects that will
     be trained by an optimizer. See
-    [`tf.trainable_variables()`](../../api_docs/python/state_ops.md#trainable_variables)
+    @{tf.trainable_variables}
     for more details.
   * `SUMMARIES`: the summary `Tensor` objects that have been created in the
     graph. See
-    [`tf.merge_all_summaries()`](../../api_docs/python/train.md#merge_all_summaries)
+    @{tf.summary.merge_all}
     for more details.
   * `QUEUE_RUNNERS`: the `QueueRunner` objects that are used to
     produce input for a computation. See
-    [`tf.start_queue_runners()`](../../api_docs/python/train.md#start_queue_runners)
+    @{tf.train.start_queue_runners}
     for more details.
   * `MOVING_AVERAGE_VARIABLES`: the subset of `Variable` objects that will also
     keep moving averages.  See
-    [`tf.moving_average_variables()`](../../api_docs/python/state_ops.md#moving_average_variables)
+    @{tf.moving_average_variables}
     for more details.
   * `REGULARIZATION_LOSSES`: regularization losses collected during graph
     construction.
@@ -4063,18 +4029,22 @@ class GraphKeys(object):
   COND_CONTEXT = "cond_context"
   WHILE_CONTEXT = "while_context"
 
-  @property
-  @deprecation.deprecated("2017-03-02",
-              "VARIABLES collection name is deprecated, "
-              "please use GLOBAL_VARIABLES instead")
-  def VARIABLES(self):
-    return self.GLOBAL_VARIABLES
+  # Key for streaming model ports.
+  # NOTE(yuanbyu): internal and experimental.
+  _STREAMING_MODEL_PORTS = "streaming_model_ports"
+
+  @decorator_utils.classproperty
+  def VARIABLES(cls):  # pylint: disable=no-self-argument
+    logging.warning("VARIABLES collection name is deprecated, "
+                    "please use GLOBAL_VARIABLES instead; "
+                    "VARIABLES will be removed after 2017-03-02.")
+    return cls.GLOBAL_VARIABLES
 
 
 def add_to_collection(name, value):
   """Wrapper for `Graph.add_to_collection()` using the default graph.
 
-  See [`Graph.add_to_collection()`](../../api_docs/python/framework.md#Graph.add_to_collection)
+  See @{tf.Graph.add_to_collection}
   for more details.
 
   Args:
@@ -4088,7 +4058,7 @@ def add_to_collection(name, value):
 def add_to_collections(names, value):
   """Wrapper for `Graph.add_to_collections()` using the default graph.
 
-  See [`Graph.add_to_collections()`](../../api_docs/python/framework.md#Graph.add_to_collections)
+  See @{tf.Graph.add_to_collections}
   for more details.
 
   Args:
@@ -4102,7 +4072,7 @@ def add_to_collections(names, value):
 def get_collection_ref(key):
   """Wrapper for `Graph.get_collection_ref()` using the default graph.
 
-  See [`Graph.get_collection_ref()`](../../api_docs/python/framework.md#Graph.get_collection_ref)
+  See @{tf.Graph.get_collection_ref}
   for more details.
 
   Args:
@@ -4121,7 +4091,7 @@ def get_collection_ref(key):
 def get_collection(key, scope=None):
   """Wrapper for `Graph.get_collection()` using the default graph.
 
-  See [`Graph.get_collection()`](../../api_docs/python/framework.md#Graph.get_collection)
+  See @{tf.Graph.get_collection}
   for more details.
 
   Args:
@@ -4155,7 +4125,7 @@ def name_scope(name, default_name=None, values=None):
   This context manager validates that the given `values` are from the
   same graph, makes that graph the default graph, and pushes a
   name scope in that graph (see
-  [`Graph.name_scope()`](../../api_docs/python/framework.md#Graph.name_scope)
+  @{tf.Graph.name_scope}
   for more details on that).
 
   For example, to define a new Python op called `my_op`:

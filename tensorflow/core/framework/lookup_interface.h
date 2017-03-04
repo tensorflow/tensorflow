@@ -114,7 +114,9 @@ class LookupInterface : public ResourceBase {
   // - the default_value tensor shape matches the table's value shape.
   Status CheckFindArguments(const Tensor& keys, const Tensor& default_value);
 
-  string DebugString() override { return "A lookup table"; }
+  string DebugString() override {
+    return strings::StrCat("A lookup table of size: ", size());
+  }
 
   // Returns an InitializableLookupTable, a subclass of LookupInterface, if the
   // current object is an InitializableLookupTable. Otherwise, returns nullptr.

@@ -105,7 +105,7 @@ do_pylint() {
   if [[ $1 == "PYTHON2" ]]; then
     PYLINT_BIN="python /usr/local/lib/python2.7/dist-packages/pylint/lint.py"
   elif [[ $1 == "PYTHON3" ]]; then
-    PYLINT_BIN="python3 /usr/local/lib/python3.4/dist-packages/pylint/lint.py"
+    PYLINT_BIN="python3 /usr/local/lib/python3.5/dist-packages/pylint/lint.py"
   else
     echo "Unrecognized python version (PYTHON2 | PYTHON3): $1"
     return 1
@@ -291,6 +291,94 @@ do_buildifier(){
   fi
 }
 
+do_external_licenses_check(){
+  BUILD_TARGET="$1"
+  LICENSES_TARGET="$2"
+
+  EXTERNAL_LICENSES_CHECK_START_TIME=$(date +'%s')
+
+  EXTERNAL_DEPENDENCIES_FILE="$(mktemp)_external_dependencies.log"
+  LICENSES_FILE="$(mktemp)_licenses.log"
+  MISSING_LICENSES_FILE="$(mktemp)_missing_licenses.log"
+  EXTRA_LICENSES_FILE="$(mktemp)_extra_licenses.log"
+
+  echo "Getting external dependencies for ${BUILD_TARGET}"
+ bazel query "attr('licenses', 'notice', deps(${BUILD_TARGET}))" --no_implicit_deps --no_host_deps --keep_going \
+  | egrep -v "^//tensorflow" \
+  | sed -e 's|:.*||' \
+  | sort \
+  | uniq 2>&1 \
+  | tee ${EXTERNAL_DEPENDENCIES_FILE}
+
+  echo
+  echo "Getting list of external licenses mentioned in ${LICENSES_TARGET}."
+  bazel query "deps(${LICENSES_TARGET})" --no_implicit_deps --no_host_deps --keep_going \
+  | egrep -v "^//tensorflow" \
+  | sed -e 's|:.*||' \
+  | sort \
+  | uniq 2>&1 \
+  | tee ${LICENSES_FILE}
+
+  echo
+  comm -1 -3 ${EXTERNAL_DEPENDENCIES_FILE}  ${LICENSES_FILE} 2>&1 | tee ${EXTRA_LICENSES_FILE}
+  echo
+  comm -2 -3 ${EXTERNAL_DEPENDENCIES_FILE}  ${LICENSES_FILE} 2>&1 | tee ${MISSING_LICENSES_FILE}
+
+  EXTERNAL_LICENSES_CHECK_END_TIME=$(date +'%s')
+
+  echo
+  echo "do_external_licenses_check took $((${EXTERNAL_LICENSES_CHECK_END_TIME} - ${EXTERNAL_LICENSES_CHECK_START_TIME})) s"
+  echo
+
+  if [[ -s ${MISSING_LICENSES_FILE} ]] || [[ -s ${EXTRA_LICENSES_FILE} ]] ; then
+    echo "FAIL: mismatch in packaged licenses and external dependencies"
+    if [[ -s ${MISSING_LICENSES_FILE} ]] ; then
+      echo "Missing the licenses for the following external dependencies:"
+      cat ${MISSING_LICENSES_FILE}
+    fi
+    if [[ -s ${EXTRA_LICENSES_FILE} ]] ; then
+      echo "Please remove the licenses for the following external dependencies:"
+      cat ${EXTRA_LICENSES_FILE}
+    fi
+    rm -rf ${EXTERNAL_DEPENDENCIES_FILE}
+    rm -rf ${LICENSES_FILE}
+    rm -rf ${MISSING_LICENSES_FILE}
+    rm -rf ${EXTRA_LICENSES_FILE}
+    return 1
+  else
+    echo "PASS: all external licenses included."
+    rm -rf ${EXTERNAL_DEPENDENCIES_FILE}
+    rm -rf ${LICENSES_FILE}
+    rm -rf ${MISSING_LICENSES_FILE}
+    rm -rf ${EXTRA_LICENSES_FILE}
+    return 0
+  fi
+}
+
+do_pip_package_licenses_check() {
+  echo "Running do_pip_package_licenses_check"
+  echo ""
+  do_external_licenses_check \
+    "//tensorflow/tools/pip_package:build_pip_package" \
+    "//tensorflow/tools/pip_package:licenses"
+}
+
+do_lib_package_licenses_check() {
+  echo "Running do_lib_package_licenses_check"
+  echo ""
+  do_external_licenses_check \
+    "//tensorflow:libtensorflow.so" \
+    "//tensorflow/tools/lib_package:clicenses_generate"
+}
+
+do_java_package_licenses_check() {
+  echo "Running do_java_package_licenses_check"
+  echo ""
+  do_external_licenses_check \
+    "//tensorflow/java:libtensorflow_jni.so" \
+    "//tensorflow/tools/lib_package:jnilicenses_generate"
+}
+
 # Run bazel build --nobuild to test the validity of the BUILD files
 do_bazel_nobuild() {
   BUILD_TARGET="//tensorflow/..."
@@ -311,8 +399,8 @@ do_bazel_nobuild() {
 }
 
 # Supply all sanity step commands and descriptions
-SANITY_STEPS=("do_pylint PYTHON2" "do_pylint PYTHON3" "do_buildifier" "do_bazel_nobuild")
-SANITY_STEPS_DESC=("Python 2 pylint" "Python 3 pylint" "buildifier check" "bazel nobuild")
+SANITY_STEPS=("do_pylint PYTHON2" "do_pylint PYTHON3" "do_buildifier" "do_bazel_nobuild" "do_pip_package_licenses_check" "do_lib_package_licenses_check" "do_java_package_licenses_check")
+SANITY_STEPS_DESC=("Python 2 pylint" "Python 3 pylint" "buildifier check" "bazel nobuild" "pip: license check for external dependencies" "C library: license check for external dependencies" "Java Native Library: license check for external dependencies")
 
 INCREMENTAL_FLAG=""
 

@@ -21,17 +21,20 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging as base_logging
 import os
 import socket
+import sys
+from werkzeug import serving
 
 from tensorflow.python.platform import app
 from tensorflow.python.platform import flags
-from tensorflow.python.platform import resource_loader
-from tensorflow.python.platform import status_bar
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import event_file_inspector as efi
-from tensorflow.python.summary import event_multiplexer
-from tensorflow.tensorboard.backend import server
+from tensorflow.tensorboard.backend import application
+
+
+# TensorBoard flags
 
 flags.DEFINE_string('logdir', '', """logdir specifies the directory where
 TensorBoard will look to find TensorFlow event files that it can display.
@@ -45,12 +48,21 @@ directories by putting a colon between the name and the path, as in
 tensorboard --logdir=name1:/path/to/logs/1,name2:/path/to/logs/2
 """)
 
-flags.DEFINE_boolean('debug', False, 'Whether to run the app in debug mode. '
-                     'This increases log verbosity to DEBUG.')
-
 flags.DEFINE_string('host', '0.0.0.0', 'What host to listen to. Defaults to '
                     'serving on 0.0.0.0, set to 127.0.0.1 (localhost) to'
                     'disable remote access (also quiets security warnings).')
+
+flags.DEFINE_integer('port', 6006, 'What port to serve TensorBoard on.')
+
+flags.DEFINE_boolean('purge_orphaned_data', True, 'Whether to purge data that '
+                     'may have been orphaned due to TensorBoard restarts. '
+                     'Disabling purge_orphaned_data can be used to debug data '
+                     'disappearance.')
+
+flags.DEFINE_integer('reload_interval', 5, 'How often the backend should load '
+                     'more data.')
+
+# Inspect Mode flags
 
 flags.DEFINE_boolean('inspect', False, """Use this flag to print out a digest
 of your event files to the command line, when no data is shown on TensorBoard or
@@ -73,83 +85,61 @@ flags.DEFINE_string(
     'The particular event file to query for. Only used if --inspect is present '
     'and --logdir is not specified.')
 
-flags.DEFINE_integer('port', 6006, 'What port to serve TensorBoard on.')
-
-flags.DEFINE_boolean('purge_orphaned_data', True, 'Whether to purge data that '
-                     'may have been orphaned due to TensorBoard restarts. '
-                     'Disabling purge_orphaned_data can be used to debug data '
-                     'disappearance.')
-
-flags.DEFINE_integer('reload_interval', 60, 'How often the backend should load '
-                     'more data.')
-
 FLAGS = flags.FLAGS
 
 
-def main(unused_argv=None):
+def create_tb_app():
+  """Read the flags, and create a TensorBoard WSGI application."""
+  if not FLAGS.logdir:
+    raise ValueError('A logdir must be specified. Run `tensorboard --help` for '
+                     'details and examples.')
+
   logdir = os.path.expanduser(FLAGS.logdir)
-  event_file = os.path.expanduser(FLAGS.event_file)
+  return application.standard_tensorboard_wsgi(
+      logdir=logdir,
+      purge_orphaned_data=FLAGS.purge_orphaned_data,
+      reload_interval=FLAGS.reload_interval)
 
-  if FLAGS.debug:
-    logging.set_verbosity(logging.DEBUG)
-    logging.info('TensorBoard is in debug mode.')
 
-  if FLAGS.inspect:
-    logging.info('Not bringing up TensorBoard, but inspecting event files.')
-    efi.inspect(logdir, event_file, FLAGS.tag)
-    return 0
+def run_simple_server(tb_app):
+  """Start serving TensorBoard, and print some messages to console."""
+  # Mute the werkzeug logging.
+  base_logging.getLogger('werkzeug').setLevel(base_logging.WARNING)
 
-  if not logdir:
-    msg = ('A logdir must be specified. Run `tensorboard --help` for '
-           'details and examples.')
-    logging.error(msg)
-    print(msg)
-    return -1
-
-  logging.info('Starting TensorBoard in directory %s', os.getcwd())
-  path_to_run = server.ParseEventFilesSpec(logdir)
-  logging.info('TensorBoard path_to_run is: %s', path_to_run)
-
-  multiplexer = event_multiplexer.EventMultiplexer(
-      size_guidance=server.TENSORBOARD_SIZE_GUIDANCE,
-      purge_orphaned_data=FLAGS.purge_orphaned_data)
-  server.StartMultiplexerReloadingThread(multiplexer, path_to_run,
-                                         FLAGS.reload_interval)
   try:
-    tb_server = server.BuildServer(multiplexer, FLAGS.host, FLAGS.port, logdir)
+    server = serving.make_server(FLAGS.host, FLAGS.port, tb_app, threaded=True)
+    server.daemon_threads = True
   except socket.error:
     if FLAGS.port == 0:
-      msg = 'Unable to find any open ports.'
-      logging.error(msg)
-      print(msg)
-      return -2
+      msg = 'TensorBoard unable to find any open port'
     else:
-      msg = 'Tried to connect to port %d, but address is in use.' % FLAGS.port
-      logging.error(msg)
-      print(msg)
-      return -3
+      msg = (
+          'TensorBoard attempted to bind to port %d, but it was already in use'
+          % FLAGS.port)
+    logging.error(msg)
+    print(msg)
+    exit(-1)
 
-  try:
-    tag = resource_loader.load_resource('tensorboard/TAG').strip()
-    logging.info('TensorBoard is tag: %s', tag)
-  except IOError:
-    logging.info('Unable to read TensorBoard tag')
-    tag = ''
+  port = server.socket.getsockname()[1]
+  msg = 'Starting TensorBoard %s at http://%s:%d' % (tb_app.tag, FLAGS.host,
+                                                     port)
+  print(msg)
+  logging.info(msg)
+  print('(Press CTRL+C to quit)')
+  sys.stdout.flush()
 
-  status_bar.SetupStatusBarInsideGoogle('TensorBoard %s' % tag, FLAGS.port)
-  print('Starting TensorBoard %s on port %d' % (tag, FLAGS.port))
+  server.serve_forever()
 
-  if FLAGS.host == "0.0.0.0":
-    try:
-      host = socket.gethostbyname(socket.gethostname())
-      print('(You can navigate to http://%s:%d)' % (host, FLAGS.port))
-    except socket.gaierror:
-      pass
+
+def main(unused_argv=None):
+  if FLAGS.inspect:
+    logging.info('Not bringing up TensorBoard, but inspecting event files.')
+    event_file = os.path.expanduser(FLAGS.event_file)
+    efi.inspect(FLAGS.logdir, event_file, FLAGS.tag)
+    return 0
   else:
-    print('(You can navigate to http://%s:%d)' % (FLAGS.host, FLAGS.port))
-
-  tb_server.serve_forever()
-
+    tb = create_tb_app()
+    run_simple_server(tb)
 
 if __name__ == '__main__':
   app.run()

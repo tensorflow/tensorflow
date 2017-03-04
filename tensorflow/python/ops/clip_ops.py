@@ -41,8 +41,10 @@ def clip_by_value(t, clip_value_min, clip_value_max,
 
   Args:
     t: A `Tensor`.
-    clip_value_min: A 0-D (scalar) `Tensor`. The minimum value to clip by.
-    clip_value_max: A 0-D (scalar) `Tensor`. The maximum value to clip by.
+    clip_value_min: A 0-D (scalar) `Tensor`, or a `Tensor` with the same shape
+      as `t`. The minimum value to clip by.
+    clip_value_max: A 0-D (scalar) `Tensor`, or a `Tensor` with the same shape
+      as `t`. The maximum value to clip by.
     name: A name for the operation (optional).
 
   Returns:
@@ -142,7 +144,7 @@ def global_norm(t_list, name=None):
         with ops.colocate_with(v):
           half_squared_norms.append(gen_nn_ops.l2_loss(v))
 
-    half_squared_norm = math_ops.reduce_sum(array_ops.pack(half_squared_norms))
+    half_squared_norm = math_ops.reduce_sum(array_ops.stack(half_squared_norms))
 
     norm = math_ops.sqrt(
         half_squared_norm *

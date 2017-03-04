@@ -169,57 +169,6 @@ class Function(Composable):
     return self.f(x, *args, **kw)
 
 
-class AutoFunction(object):
-  """Automatically curry functions when accessed as attributes.
-
-  This class wraps a dictionary mapping keys to values. When an attribute
-  is accessed, the class looks up the attribute in the dictionary and
-  wraps it (curries it) using Function(...). When wrapped around
-  existing modules implementing TensorFlow functions or layers, this
-  turns those functions or layers automatically into specs-compatible
-  layers.
-
-  For example, `net` and `net2` are equivalent:
-      TF = AutoFunction(tf)
-      with specs.ops:
-        net = TF.conv2d(64, 5) ** 3 | Flat
-        net2 = Cr(64, 5) ** 3 | Flat
-
-  Attributes:
-      source: A dictionary holding the underlying key-value mappings.
-  """
-
-  def __init__(self, source):
-    """Creates an AutoFunction wrapper for a module.
-
-    Args:
-        source: A dictionary or a module.
-    """
-    if not isinstance(source, dict):
-      source = vars(source)
-    self.source = source
-
-  def __getattr__(self, key):
-    """Looks up the key in the source dictionary and curries the result.
-
-    Args:
-        key: The symbol name to look up.
-
-    Returns:
-        The curried argument.
-
-    Raises:
-        ValueError: The key does not exist, or it doesn't refer to a callable.
-    """
-    result = self.source.get(key, None)
-    if result is None:
-      raise ValueError("%s: no such symbol")
-    if not callable(result):
-      raise ValueError("value of %s is not callable (type is %s)" %
-                       (key, type(result)))
-    return Function(result)
-
-
 class Composition(Composable):
   """A function composition.
 

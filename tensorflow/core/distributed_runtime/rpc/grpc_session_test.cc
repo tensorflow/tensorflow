@@ -269,7 +269,9 @@ void SetDevice(GraphDef* graph, const string& name, const string& dev) {
   LOG(FATAL) << "Name '" << name << "' not found.";
 }
 
-TEST(GrpcSessionTest, MultiDevices) {
+// TODO(b/32636929): This test fails 1/1000 times. Disable it while we
+// figure out why.
+TEST(GrpcSessionTest, DISABLED_MultiDevices) {
   std::unique_ptr<test::TestCluster> cluster;
   TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 2, &cluster));
 

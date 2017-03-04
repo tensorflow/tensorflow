@@ -29,9 +29,10 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-constexpr char kTestDataPbTxt[] = "cc/saved_model/testdata/half_plus_two_pbtxt";
+constexpr char kTestDataPbTxt[] =
+    "cc/saved_model/testdata/half_plus_two_pbtxt/00000123";
 constexpr char kTestDataSharded[] =
-    "cc/saved_model/testdata/half_plus_two_sharded";
+    "cc/saved_model/testdata/half_plus_two/00000123";
 
 class LoaderTest : public ::testing::Test {
  protected:
@@ -66,7 +67,7 @@ class LoaderTest : public ::testing::Test {
     ValidateAssets(export_dir, bundle);
     // Retrieve the regression signature from meta graph def.
     const auto signature_def_map = bundle.meta_graph_def.signature_def();
-    const auto signature_def = signature_def_map.at(kRegressMethodName);
+    const auto signature_def = signature_def_map.at("regress_x_to_y");
 
     const string input_name = signature_def.inputs().at(kRegressInputs).name();
     const string output_name =
@@ -189,7 +190,7 @@ TEST_F(LoaderTest, MaybeSavedModelDirectory) {
 
   // Directory that exists but is an invalid SavedModel location.
   const string invalid_export_dir =
-      io::JoinPath(testing::TensorFlowSrcRoot(), "cc/saved_model/testdata");
+      io::JoinPath(testing::TensorFlowSrcRoot(), "cc/saved_model");
   EXPECT_FALSE(MaybeSavedModelDirectory(invalid_export_dir));
 }
 

@@ -229,7 +229,7 @@ TEST(MathOpsTest, Select_ShapeFn) {
 
   ASSERT_TRUE(op_reg_data->shape_inference_fn != nullptr);
   shape_inference::InferenceContext c(
-      &op.node_def, op_reg_data->op_def,
+      TF_GRAPH_DEF_VERSION, &op.node_def, op_reg_data->op_def,
       {TensorShapeProto(), TensorShapeProto(), TensorShapeProto()}, {}, {},
       {TensorShapeProto(), i0, i1}, {});
   TF_ASSERT_OK(c.construction_status());
@@ -242,7 +242,7 @@ TEST(MathOpsTest, Select_ShapeFn) {
   i1.add_dim()->set_size(2);
   i1.add_dim()->set_size(2);
   shape_inference::InferenceContext c2(
-      &op.node_def, op_reg_data->op_def,
+      TF_GRAPH_DEF_VERSION, &op.node_def, op_reg_data->op_def,
       {TensorShapeProto(), TensorShapeProto(), TensorShapeProto()}, {}, {},
       {TensorShapeProto(), i0, i2}, {});
   TF_ASSERT_OK(c.construction_status());
@@ -450,11 +450,15 @@ TEST(MathOpsTest, ArgOps_ShapeFn) {
   // Dimension value out of bounds
   dimension = test::AsScalar(10);
   op.input_tensors[1] = &dimension;
-  INFER_ERROR("must be in the range [0, 3)", op, "[2,3,4];[]");
+  INFER_ERROR("must be in the range [-3, 3)", op, "[2,3,4];[]");
 
   dimension = test::AsScalar(-10);
   op.input_tensors[1] = &dimension;
-  INFER_ERROR("must be in the range [0, 3)", op, "[2,3,4];[]");
+  INFER_ERROR("must be in the range [-3, 3)", op, "[2,3,4];[]");
+
+  dimension = test::AsScalar(-1);
+  op.input_tensors[1] = &dimension;
+  INFER_OK(op, "[2,3,4];[]", "[d0_0,d0_1]");
 }
 
 TEST(MathOpsTest, Betainc_ShapeFn) {

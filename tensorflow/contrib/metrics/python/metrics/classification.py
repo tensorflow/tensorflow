@@ -56,8 +56,8 @@ def accuracy(predictions, labels, weights=None):
     is_correct = math_ops.cast(
         math_ops.equal(predictions, labels), dtypes.float32)
     if weights is not None:
-      is_correct = math_ops.mul(is_correct, weights)
-      num_values = math_ops.mul(weights, array_ops.ones_like(is_correct))
+      is_correct = math_ops.multiply(is_correct, weights)
+      num_values = math_ops.multiply(weights, array_ops.ones_like(is_correct))
       return math_ops.div(math_ops.reduce_sum(is_correct),
                           math_ops.reduce_sum(num_values))
     return math_ops.reduce_mean(is_correct)

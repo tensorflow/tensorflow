@@ -25,7 +25,6 @@ import re
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
-from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -41,29 +40,13 @@ _VARIABLE_OPS = {
     "ScatterUpdate",
     "TruncatedNormal",
     "Variable",
+    "VariableV2",
 }
 
 
 def _is_variable_op(op):
   """Returns true if 'op' refers to a Variable node."""
   return op in _VARIABLE_OPS
-
-
-def set_cpu0(device_string):
-  """Creates a new device string based on `device_string' but using /CPU:0.
-
-   If the device is already on /CPU:0, this is a no-op.
-
-   Args:
-     device_string: A device string.
-
-   Returns:
-     A device string.
-  """
-  parsed_device = pydev.DeviceSpec.from_string(device_string)
-  parsed_device.device_type = "CPU"
-  parsed_device.device_index = 0
-  return parsed_device.to_string()
 
 
 def must_run_on_cpu(node, pin_variables_on_cpu=False):
@@ -193,7 +176,8 @@ def tensor_shape_from_node_def_name(graph, input_name):
 
 
 def convert_variables_to_constants(sess, input_graph_def, output_node_names,
-                                   variable_names_whitelist=None):
+                                   variable_names_whitelist=None,
+                                   variable_names_blacklist=None):
   """Replaces all the variables in a graph with constants of the same values.
 
   If you have a trained graph containing Variable ops, it can be convenient to
@@ -207,18 +191,26 @@ def convert_variables_to_constants(sess, input_graph_def, output_node_names,
     output_node_names: List of name strings for the result nodes of the graph.
     variable_names_whitelist: The set of variable names to convert (by default,
                               all variables are converted).
+    variable_names_blacklist: The set of variable names to omit converting
+                              to constants.
 
   Returns:
     GraphDef containing a simplified version of the original.
   """
+  # This graph only includes the nodes needed to evaluate the output nodes, and
+  # removes unneeded nodes like those involved in saving and assignment.
+  inference_graph = extract_sub_graph(input_graph_def, output_node_names)
+
   found_variables = {}
   variable_names = []
   variable_dict_names = []
-  for node in input_graph_def.node:
-    if node.op == "Assign":
-      variable_name = node.input[0]
-      if (variable_names_whitelist is not None and
-          variable_name not in variable_names_whitelist):
+  for node in inference_graph.node:
+    if node.op in ["Variable", "VariableV2"]:
+      variable_name = node.name
+      if ((variable_names_whitelist is not None and
+           variable_name not in variable_names_whitelist) or
+          (variable_names_blacklist is not None and
+           variable_name in variable_names_blacklist)):
         continue
       variable_dict_names.append(variable_name)
       variable_names.append(variable_name + ":0")
@@ -228,10 +220,6 @@ def convert_variables_to_constants(sess, input_graph_def, output_node_names,
     returned_variables = []
   found_variables = dict(zip(variable_dict_names, returned_variables))
   logging.info("Froze %d variables." % len(returned_variables))
-
-  # This graph only includes the nodes needed to evaluate the output nodes, and
-  # removes unneeded nodes like those involved in saving and assignment.
-  inference_graph = extract_sub_graph(input_graph_def, output_node_names)
 
   output_graph_def = graph_pb2.GraphDef()
   how_many_converted = 0

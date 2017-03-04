@@ -20,7 +20,10 @@ from __future__ import print_function
 
 import collections
 
-import tensorflow as tf
+from tensorflow.python.framework import constant_op
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_ops
 
 
 def create_operator(matrix):
@@ -34,29 +37,27 @@ def create_operator(matrix):
   if shape.is_fully_defined():
     shape = shape.as_list()
   else:
-    shape = tf.shape(matrix)
+    shape = array_ops.shape(matrix)
   return linear_operator(
       shape=shape,
       dtype=matrix.dtype,
-      # TODO(rmlarsen): We are only using batch_matmul here because matmul
-      # only has transpose and not adjoint.
-      apply=lambda v: tf.matmul(matrix, v, adjoint_a=False),
-      apply_adjoint=lambda v: tf.matmul(matrix, v, adjoint_a=True))
+      apply=lambda v: math_ops.matmul(matrix, v, adjoint_a=False),
+      apply_adjoint=lambda v: math_ops.matmul(matrix, v, adjoint_a=True))
 
 
 # TODO(rmlarsen): Measure if we should just call matmul.
 def dot(x, y):
-  return tf.reduce_sum(tf.conj(x) * y)
+  return math_ops.reduce_sum(math_ops.conj(x) * y)
 
 
 # TODO(rmlarsen): Implement matrix/vector norm op in C++ in core.
 # We need 1-norm, inf-norm, and Frobenius norm.
 def l2norm_squared(v):
-  return tf.constant(2, dtype=v.dtype.base_dtype) * tf.nn.l2_loss(v)
+  return constant_op.constant(2, dtype=v.dtype.base_dtype) * nn_ops.l2_loss(v)
 
 
 def l2norm(v):
-  return tf.sqrt(l2norm_squared(v))
+  return math_ops.sqrt(l2norm_squared(v))
 
 
 def l2normalize(v):

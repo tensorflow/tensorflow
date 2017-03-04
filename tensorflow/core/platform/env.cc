@@ -15,6 +15,15 @@ limitations under the License.
 
 #include <deque>
 #include <vector>
+#if defined(__APPLE__)
+#include <mach-o/dyld.h>
+#endif
+#if defined(PLATFORM_WINDOWS)
+#include <windows.h>
+#define PATH_MAX MAX_PATH
+#else
+#include <unistd.h>
+#endif
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -195,6 +204,26 @@ Status Env::RenameFile(const string& src, const string& target) {
                                  " not implemented");
   }
   return src_fs->RenameFile(src, target);
+}
+
+string Env::GetExecutablePath() {
+  char exe_path[PATH_MAX] = {0};
+#ifdef __APPLE__
+  uint32_t buffer_size(0U);
+  _NSGetExecutablePath(nullptr, &buffer_size);
+  char unresolved_path[buffer_size];
+  _NSGetExecutablePath(unresolved_path, &buffer_size);
+  CHECK(realpath(unresolved_path, exe_path));
+#elif defined(PLATFORM_WINDOWS)
+  HMODULE hModule = GetModuleHandle(NULL);
+  GetModuleFileName(hModule, exe_path, MAX_PATH);
+#else
+  CHECK_NE(-1, readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1));
+#endif
+  // Make sure it's null-terminated:
+  exe_path[sizeof(exe_path) - 1] = 0;
+
+  return exe_path;
 }
 
 Thread::~Thread() {}

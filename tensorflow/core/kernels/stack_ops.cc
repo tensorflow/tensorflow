@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -130,11 +129,12 @@ Status GetStack(OpKernelContext* ctx, Stack** stack) {
   }
   const string& container = Tstack_handle.flat<string>()(0);
   const string& stack_name = Tstack_handle.flat<string>()(1);
-  ResourceMgr* rm = ctx->step_resource_manager();
+  ResourceMgr* rm = ctx->resource_manager();
   if (rm == nullptr) {
-    return errors::Internal("No per-step resource manager.");
+    return errors::Internal("No resource manager.");
   }
-  TF_RETURN_IF_ERROR(rm->Lookup(container, stack_name, stack));
+  TF_RETURN_IF_ERROR(rm->Lookup(ctx->step_container()->name(),
+                                strings::StrCat(container, stack_name), stack));
   return Status::OK();
 }
 
@@ -162,12 +162,13 @@ class StackOp : public OpKernel {
     auto handle = stack_handle.flat<string>();
     handle(0) = "_stacks";
     handle(1) = strings::StrCat(stack_name_, "_", stack_id);
-    // Store the handle in a container of the per-step RM.
-    ResourceMgr* rm = ctx->step_resource_manager();
-    OP_REQUIRES(ctx, rm != nullptr,
-                errors::Internal("No per-step resource manager."));
+    // Store the handle in a per-step container.
+    ResourceMgr* rm = ctx->resource_manager();
+    OP_REQUIRES(ctx, rm != nullptr, errors::Internal("No resource manager."));
     Stack* stack = new Stack(elem_type_, stack_handle);
-    OP_REQUIRES_OK(ctx, rm->Create(handle(0), handle(1), stack));
+    OP_REQUIRES_OK(ctx,
+                   rm->Create(ctx->step_container()->name(),
+                              strings::StrCat(handle(0), handle(1)), stack));
     ctx->set_output_ref(0, stack->mu(), stack->handle());
   }
 
@@ -247,7 +248,7 @@ class StackPushOp : public AsyncOpKernel {
     }
 
     // Execute synchronously if not swapped.
-    OP_REQUIRES_OK(ctx, stack->Push({tensor, alloc_attrs, false}));
+    OP_REQUIRES_OK_ASYNC(ctx, stack->Push({tensor, alloc_attrs, false}), done);
     ctx->set_output(0, tensor);
     done();
   }

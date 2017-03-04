@@ -13,12 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 
-"""## Generation of summaries.
+"""Tensor summaries for exporting information about a model.
 
-### Class for writing Summaries
+See the @{$python/summary} guide.
+
 @@FileWriter
-
-### Summary Ops
+@@FileWriterCache
 @@tensor_summary
 @@scalar
 @@histogram
@@ -26,10 +26,7 @@
 @@image
 @@merge
 @@merge_all
-
-## Utilities
 @@get_summary_description
-
 """
 
 from __future__ import absolute_import
@@ -56,9 +53,10 @@ from tensorflow.python.ops import gen_logging_ops as _gen_logging_ops
 from tensorflow.python.ops.summary_ops import tensor_summary
 # pylint: enable=unused-import
 from tensorflow.python.platform import tf_logging as _logging
-# exports FileWriter
+# exports FileWriter, FileWriterCache
 # pylint: disable=unused-import
 from tensorflow.python.summary.writer.writer import FileWriter
+from tensorflow.python.summary.writer.writer_cache import FileWriterCache
 # pylint: enable=unused-import
 from tensorflow.python.util import compat as _compat
 from tensorflow.python.util.all_util import remove_undocumented
@@ -123,7 +121,7 @@ def scalar(name, tensor, collections=None):
 def image(name, tensor, max_outputs=3, collections=None):
   """Outputs a `Summary` protocol buffer with images.
 
-  The summary has up to `max_images` summary values containing images. The
+  The summary has up to `max_outputs` summary values containing images. The
   images are built from `tensor` which must be 4-D with shape `[batch_size,
   height, width, channels]` and where `channels` can be:
 
@@ -271,7 +269,7 @@ def merge(inputs, collections=None, name=None):
     inputs: A list of `string` `Tensor` objects containing serialized `Summary`
       protocol buffers.
     collections: Optional list of graph collections keys. The new summary op is
-      added to these collections. Defaults to `[GraphKeys.SUMMARIES]`.
+      added to these collections. Defaults to `[]`.
     name: A name for the operation (optional).
 
   Returns:

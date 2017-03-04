@@ -20,11 +20,20 @@ Optionally you can install [scikit-learn](http://scikit-learn.org/stable/) and [
 
 ### Tutorials
 
-- [TF Learn Quickstart](../../../../g3doc/tutorials/tflearn/index.md). Build, train, and evaluate a neural network with just a few lines of code.
-- [Linear Model](../../../../g3doc/tutorials/wide/index.md). Learn the basics of building linear models.
-- [Logging and Monitoring](../../../../g3doc/tutorials/monitors/index.md). Use the Monitor API to audit training of a neural network.
-- [Wide and Deep Learning](../../../../g3doc/tutorials/wide_and_deep/index.md). Jointly train a linear model and a deep neural network.
--  More coming soon.
+-   [TF Learn Quickstart](../../../../g3doc/tutorials/tflearn/index.md). Build,
+    train, and evaluate a neural network with just a few lines of code.
+-   [Input Functions](../../../../g3doc/tutorials/input_fn/index.md). Learn how
+    to create input functions to feed data into your models.
+-   [Linear Model](../../../../g3doc/tutorials/wide/index.md). Learn the basics
+    of building linear models.
+-   [Wide and Deep
+    Learning](../../../../g3doc/tutorials/wide_and_deep/index.md). Jointly train
+    a linear model and a deep neural network.
+-   [Logging and Monitoring](../../../../g3doc/tutorials/monitors/index.md). Use
+    the Monitor API to audit training of a neural network.
+-   [Custom Estimators](../../../../g3doc/tutorials/estimators/index.md). Learn
+    how to create a custom estimator.
+-   More coming soon.
 
 ### Community
 
@@ -32,9 +41,30 @@ Optionally you can install [scikit-learn](http://scikit-learn.org/stable/) and [
 - StackOverflow with [tensorflow tag](http://stackoverflow.com/questions/tagged/tensorflow) for questions and struggles.
 - GitHub [issues](https://github.com/tensorflow/tensorflow/issues) for technical discussions and feature requests.
 
-### Usage
+### Existing Estimator Implementations
 
-Below are a few simple examples of the API. For more examples, please see [examples](https://www.tensorflow.org/code/tensorflow/examples/skflow).
+-   [`LinearClassifier`](https://www.tensorflow.org/code/tensorflow/contrib/learn/python/learn/estimators/linear.py)
+    ([docs](../../../../g3doc/api_docs/python/contrib.learn.md#LinearClassifier))
+-   [`LinearRegressor`](https://www.tensorflow.org/code/tensorflow/contrib/learn/python/learn/estimators/linear.py)
+    ([docs](../../../../g3doc/api_docs/python/contrib.learn.md#LinearRegressor))
+-   [`DNNClassifier`](https://www.tensorflow.org/code/tensorflow/contrib/learn/python/learn/estimators/dnn.py)
+    ([docs](../../../../g3doc/api_docs/python/contrib.learn.md#DNNClassifier))
+-   [`DNNRegressor`](https://www.tensorflow.org/code/tensorflow/contrib/learn/python/learn/estimators/dnn.py)
+    ([docs](../../../../g3doc/api_docs/python/contrib.learn.md#DNNRegressor))
+-   [`DNNLinearCombinedClassifier`](https://www.tensorflow.org/code/tensorflow/contrib/learn/python/learn/estimators/dnn_linear_combined.py)
+    ([docs](../../../../g3doc/api_docs/python/contrib.learn.md#DNNLinearCombinedClassifier))
+-   [`DNNLinearCombinedRegressor`](https://www.tensorflow.org/code/tensorflow/contrib/learn/python/learn/estimators/dnn_linear_combined.py)
+    ([docs](../../../../g3doc/api_docs/python/contrib.learn.md#DNNLinearCombinedRegressor))
+-   [`SVM`](https://www.tensorflow.org/code/tensorflow/contrib/learn/python/learn/estimators/svm.py)
+    ([docs](https://www.tensorflow.org/code/tensorflow/contrib/learn/python/learn/estimators/g3doc/svm.md))
+-   [`GMM`](https://www.tensorflow.org/code/tensorflow/contrib/factorization/python/ops/gmm.py)
+    ([docs](https://www.tensorflow.org/code/tensorflow/contrib/factorization/g3doc/gmm.md))
+-   [`KMeansClustering`](https://www.tensorflow.org/code/tensorflow/contrib/learn/python/learn/estimators/kmeans.py)
+    ([docs](https://www.tensorflow.org/code/tensorflow/contrib/factorization/g3doc/kmeans.md))
+
+### Usage Examples
+
+Below are a few simple examples of the API. For more examples, please see [examples](https://www.tensorflow.org/code/tensorflow/examples/learn).
 
 General tips:
 
@@ -108,13 +138,12 @@ import tensorflow.contrib.learn.python.learn as learn
 iris = datasets.load_iris()
 
 def my_model(features, labels):
-  """DNN with three hidden layers, and dropout of 0.1 probability."""
+  """DNN with three hidden layers."""
   # Convert the labels to a one-hot tensor of shape (length of features, 3) and
   # with a on-value of 1 for each one-hot vector of length 3.
   labels = tf.one_hot(labels, 3, 1, 0)
 
-  # Create three fully connected layers respectively of size 10, 20, and 10 with
-  # each layer having a dropout probability of 0.1.
+  # Create three fully connected layers respectively of size 10, 20, and 10.
   features = layers.stack(features, layers.fully_connected, [10, 20, 10])
 
   # Create two tensors respectively for prediction and loss.
@@ -211,10 +240,9 @@ and then load the reported URL.
 
 ## More examples
 
-See the [examples folder](https://www.tensorflow.org/code/tensorflow/examples/skflow) for:
+See the [examples folder](https://www.tensorflow.org/code/tensorflow/examples/learn) for:
 
--  An easy way to handle [categorical variables](https://www.tensorflow.org/code/tensorflow/examples/skflow/text_classification.py) (words are just an example of a categorical variable)
--  Text Classification: see examples for [RNN](https://www.tensorflow.org/code/tensorflow/examples/skflow/text_classification_character_rnn.py) and [CNN](https://www.tensorflow.org/code/tensorflow/examples/skflow/text_classification_character_cnn.py) on characters
--  [Language modeling and text sequence to sequence](https://www.tensorflow.org/code/tensorflow/examples/skflow/language_model.py)
--  [Digit recognition using a CNN](https://www.tensorflow.org/code/tensorflow/examples/skflow/digits.py)
+-  An easy way to handle [categorical variables](https://www.tensorflow.org/code/tensorflow/examples/learn/text_classification.py) (words are just an example of a categorical variable)
+-  Text Classification: see examples for [RNN](https://www.tensorflow.org/code/tensorflow/examples/learn/text_classification_character_rnn.py) and [CNN](https://www.tensorflow.org/code/tensorflow/examples/learn/text_classification_character_cnn.py) on characters
+-  [Digit recognition using a CNN](https://www.tensorflow.org/code/tensorflow/examples/learn/mnist.py)
 -  And much more!

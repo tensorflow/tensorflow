@@ -24,15 +24,13 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/common_runtime/costmodel_manager.h"
+#include "tensorflow/core/common_runtime/debugger_state_interface.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/common_runtime/session_factory.h"
 #include "tensorflow/core/common_runtime/simple_graph_execution_state.h"
-#ifndef NOTFDBG
-#include "tensorflow/core/debug/debug_graph_utils.h"
-#endif
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/session_state.h"
@@ -48,9 +46,7 @@ limitations under the License.
 namespace tensorflow {
 
 class CostModel;
-#ifndef NOTFDBG
 class DebugGateway;
-#endif
 class Device;
 class DirectSessionFactory;
 
@@ -129,7 +125,9 @@ class DirectSession : public Session {
   // library. Consider giving each partition its own function library to enable
   // per-partition rewrites.
   struct ExecutorsAndKeys {
-    int64 step_count = 0;
+    ExecutorsAndKeys() : step_count(0) {}
+
+    std::atomic_int_fast64_t step_count;
     std::unique_ptr<Graph> graph;
     NameNodeMap name_to_node;
     std::unique_ptr<FunctionLibraryDefinition> flib_def;
@@ -151,10 +149,13 @@ class DirectSession : public Session {
     std::unordered_set<string> pending_inputs;
     std::unordered_set<string> pending_outputs;
     TensorStore tensor_store;
-    ResourceMgr step_resource_manager;
+    ScopedStepContainer step_container;
 
-    RunState(const std::vector<string>& input_names,
-             const std::vector<string>& output_names);
+    RunState(int64 step_id, const std::vector<Device*>* devices);
+
+    RunState(const std::vector<string>& pending_input_names,
+             const std::vector<string>& pending_output_names, int64 step_id,
+             const std::vector<Device*>* devices);
 
     ~RunState();
   };
@@ -163,9 +164,7 @@ class DirectSession : public Session {
     bool is_partial_run = false;
     string handle;
     std::unique_ptr<Graph> graph;
-#ifndef NOTFDBG
-    std::unique_ptr<DebuggerState> debugger_state;
-#endif
+    std::unique_ptr<DebuggerStateInterface> debugger_state;
   };
 
   // Initializes the base execution state given the 'graph',
@@ -252,7 +251,9 @@ class DirectSession : public Session {
   // Holds mappings from signature to the executors that process
   // it. The reason for a level of indirection around mapped_type is
   // to guarantee address stability.
-  std::unordered_map<string, std::unique_ptr<ExecutorsAndKeys>> executors_
+  // The map value is a shared_ptr since multiple map keys can point to the
+  // same ExecutorsAndKey object.
+  std::unordered_map<string, std::shared_ptr<ExecutorsAndKeys>> executors_
       GUARDED_BY(executor_lock_);
 
   // Holds mappings from handle to partial run state.
@@ -302,10 +303,8 @@ class DirectSession : public Session {
 
   TF_DISALLOW_COPY_AND_ASSIGN(DirectSession);
 
-#ifndef NOTFDBG
   // EXPERIMENTAL: debugger (tfdbg) related
   friend class DebugGateway;
-#endif
 };
 
 }  // end namespace tensorflow
