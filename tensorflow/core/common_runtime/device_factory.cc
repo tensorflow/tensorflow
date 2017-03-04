@@ -46,8 +46,22 @@ std::unordered_map<string, FactoryItem>& device_factories() {
       new std::unordered_map<string, FactoryItem>;
   return *factories;
 }
+
 }  // namespace
 
+// static
+int32 DeviceFactory::DevicePriority(const string& device_type) {
+  mutex_lock l(*get_device_factory_lock());
+  std::unordered_map<string, FactoryItem>& factories = device_factories();
+  auto iter = factories.find(device_type);
+  if (iter != factories.end()) {
+    return iter->second.priority;
+  }
+
+  return -1;
+}
+
+// static
 void DeviceFactory::Register(const string& device_type, DeviceFactory* factory,
                              int priority) {
   mutex_lock l(*get_device_factory_lock());
@@ -85,7 +99,7 @@ Status DeviceFactory::AddDevices(const SessionOptions& options,
         "CPU Factory not registered.  Did you link in threadpool_device?");
   }
   size_t init_size = devices->size();
-  cpu_factory->CreateDevices(options, name_prefix, devices);
+  TF_RETURN_IF_ERROR(cpu_factory->CreateDevices(options, name_prefix, devices));
   if (devices->size() == init_size) {
     return errors::NotFound("No CPU devices are available in this process");
   }
@@ -112,7 +126,7 @@ Device* DeviceFactory::NewDevice(const string& type,
   SessionOptions opt = options;
   (*opt.config.mutable_device_count())[type] = 1;
   std::vector<Device*> devices;
-  device_factory->CreateDevices(opt, name_prefix, &devices);
+  TF_CHECK_OK(device_factory->CreateDevices(opt, name_prefix, &devices));
   CHECK_EQ(devices.size(), size_t{1});
   return devices[0];
 }

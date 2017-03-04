@@ -27,14 +27,17 @@ import argparse
 import copy
 import re
 
+import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
-from tensorflow.python.debug import debug_data
 from tensorflow.python.debug.cli import cli_shared
 from tensorflow.python.debug.cli import command_parser
-from tensorflow.python.debug.cli import curses_ui
 from tensorflow.python.debug.cli import debugger_cli_common
+from tensorflow.python.debug.cli import ui_factory
+from tensorflow.python.debug.lib import debug_data
+from tensorflow.python.debug.lib import source_utils
 
+RL = debugger_cli_common.RichLine
 
 # String constants for the depth-dependent hanging indent at the beginning
 # of each line.
@@ -51,6 +54,7 @@ CTRL_LABEL = "(Ctrl) "
 ELLIPSIS = "..."
 
 SORT_TENSORS_BY_TIMESTAMP = "timestamp"
+SORT_TENSORS_BY_DUMP_SIZE = "dump_size"
 SORT_TENSORS_BY_OP_TYPE = "op_type"
 SORT_TENSORS_BY_TENSOR_NAME = "tensor_name"
 
@@ -88,7 +92,7 @@ def _add_main_menu(output,
     menu.append(
         debugger_cli_common.MenuItem(
             "node_info",
-            "node_info -a -d %s" % node_name,
+            "node_info -a -d -t %s" % node_name,
             enabled=enable_node_info))
     menu.append(
         debugger_cli_common.MenuItem(
@@ -173,11 +177,9 @@ class DebugAnalyzer(object):
         dest="sort_by",
         type=str,
         default=SORT_TENSORS_BY_TIMESTAMP,
-        help=("the field to sort the data by: " +
-              "(%s | %s | %s)" %
-              (SORT_TENSORS_BY_TIMESTAMP,
-               SORT_TENSORS_BY_OP_TYPE,
-               SORT_TENSORS_BY_TENSOR_NAME)))
+        help=("the field to sort the data by: (%s | %s | %s | %s)" %
+              (SORT_TENSORS_BY_TIMESTAMP, SORT_TENSORS_BY_DUMP_SIZE,
+               SORT_TENSORS_BY_OP_TYPE, SORT_TENSORS_BY_TENSOR_NAME)))
     ap.add_argument(
         "-r",
         "--reverse",
@@ -304,7 +306,6 @@ class DebugAnalyzer(object):
         help="Numerical ranges to highlight tensor elements in. "
         "Examples: -r 0,1e-8, -r [-0.1,0.1], "
         "-r \"[[-inf, -0.1], [0.1, inf]]\"")
-
     ap.add_argument(
         "-a",
         "--all",
@@ -312,6 +313,37 @@ class DebugAnalyzer(object):
         action="store_true",
         help="Print the tensor in its entirety, i.e., do not use ellipses.")
     self._arg_parsers["print_tensor"] = ap
+
+    # Parser for print_source.
+    ap = argparse.ArgumentParser(
+        description="Print a Python source file with overlaid debug "
+        "information, including the nodes (ops) or Tensors created at the "
+        "source lines.",
+        usage=argparse.SUPPRESS)
+    ap.add_argument(
+        "source_file_path",
+        type=str,
+        help="Path to the source file.")
+    ap.add_argument(
+        "-t",
+        "--tensors",
+        dest="tensors",
+        action="store_true",
+        help="Label lines with dumped Tensors, instead of ops.")
+    ap.add_argument(
+        "-m",
+        "--max_elements_per_line",
+        type=int,
+        default=10,
+        help="Maximum number of elements (ops or Tensors) to show per source "
+             "line.")
+    ap.add_argument(
+        "-b",
+        "--line_begin",
+        type=int,
+        default=1,
+        help="Print source beginning at line number (1-based.)")
+    self._arg_parsers["print_source"] = ap
 
     # TODO(cais): Implement list_nodes.
 
@@ -431,7 +463,7 @@ class DebugAnalyzer(object):
 
     # TODO(cais): Implement filter by lambda on tensor value.
 
-    max_timestamp_width, max_op_type_width = (
+    max_timestamp_width, max_dump_size_width, max_op_type_width = (
         self._measure_tensor_list_column_widths(data_to_show))
 
     # Sort the data.
@@ -440,7 +472,7 @@ class DebugAnalyzer(object):
 
     output.extend(
         self._tensor_list_column_heads(parsed, max_timestamp_width,
-                                       max_op_type_width))
+                                       max_dump_size_width, max_op_type_width))
 
     dump_count = 0
     for dump in data_to_show:
@@ -453,13 +485,17 @@ class DebugAnalyzer(object):
           continue
 
       rel_time = (dump.timestamp - self._debug_dump.t0) / 1000.0
+      dump_size_str = cli_shared.bytes_to_readable_str(dump.dump_size_bytes)
       dumped_tensor_name = "%s:%d" % (dump.node_name, dump.output_slot)
       op_type = self._debug_dump.node_op_type(dump.node_name)
 
       line = "[%.3f]" % rel_time
       line += " " * (max_timestamp_width - len(line))
+      line += dump_size_str
+      line += " " * (max_timestamp_width + max_dump_size_width - len(line))
       line += op_type
-      line += " " * (max_timestamp_width + max_op_type_width - len(line))
+      line += " " * (max_timestamp_width + max_dump_size_width +
+                     max_op_type_width - len(line))
       line += " %s" % dumped_tensor_name
 
       output.append(
@@ -492,6 +528,7 @@ class DebugAnalyzer(object):
 
     Returns:
       (int) maximum width of the timestamp column. 0 if data is empty.
+      (int) maximum width of the dump size column. 0 if data is empty.
       (int) maximum width of the op type column. 0 if data is empty.
     """
 
@@ -500,13 +537,19 @@ class DebugAnalyzer(object):
       max_rel_time_ms = (data[-1].timestamp - self._debug_dump.t0) / 1000.0
       max_timestamp_width = len("[%.3f] " % max_rel_time_ms)
 
+    max_dump_size_width = 0
+    for dump in data:
+      dump_size_str = cli_shared.bytes_to_readable_str(dump.dump_size_bytes)
+      if len(dump_size_str) + 1 > max_dump_size_width:
+        max_dump_size_width = len(dump_size_str) + 1
+
     max_op_type_width = 0
     for dump in data:
       op_type = self._debug_dump.node_op_type(dump.node_name)
       if len(op_type) > max_op_type_width:
         max_op_type_width = len(op_type)
 
-    return max_timestamp_width, max_op_type_width
+    return max_timestamp_width, max_dump_size_width, max_op_type_width
 
   def _sort_dump_data_by(self, data, sort_by, reverse):
     """Sort a list of DebugTensorDatum in specified order.
@@ -528,6 +571,8 @@ class DebugAnalyzer(object):
           data,
           reverse=reverse,
           key=lambda x: x.timestamp)
+    elif sort_by == SORT_TENSORS_BY_DUMP_SIZE:
+      return sorted(data, reverse=reverse, key=lambda x: x.dump_size_bytes)
     elif sort_by == SORT_TENSORS_BY_OP_TYPE:
       return sorted(
           data,
@@ -542,12 +587,13 @@ class DebugAnalyzer(object):
       raise ValueError("Unsupported key to sort tensors by: %s" % sort_by)
 
   def _tensor_list_column_heads(self, parsed, max_timestamp_width,
-                                max_op_type_width):
+                                max_dump_size_width, max_op_type_width):
     """Generate a line containing the column heads of the tensor list.
 
     Args:
       parsed: Parsed arguments (by argparse) of the list_tensors command.
       max_timestamp_width: (int) maximum width of the timestamp column.
+      max_dump_size_width: (int) maximum width of the dump size column.
       max_op_type_width: (int) maximum width of the op type column.
 
     Returns:
@@ -564,30 +610,43 @@ class DebugAnalyzer(object):
 
     attr_segs = {0: []}
     row = "t (ms)"
-    command = "%s -s timestamp" % base_command
-    if parsed.sort_by == "timestamp" and not parsed.reverse:
+    command = "%s -s %s" % (base_command, SORT_TENSORS_BY_TIMESTAMP)
+    if parsed.sort_by == SORT_TENSORS_BY_TIMESTAMP and not parsed.reverse:
       command += " -r"
     attr_segs[0].append(
         (0, len(row), [debugger_cli_common.MenuItem(None, command), "bold"]))
     row += " " * (max_timestamp_width - len(row))
 
     prev_len = len(row)
-    row += "Op type"
-    command = "%s -s op_type" % base_command
-    if parsed.sort_by == "op_type" and not parsed.reverse:
+    row += "Size"
+    command = "%s -s %s" % (base_command, SORT_TENSORS_BY_DUMP_SIZE)
+    if parsed.sort_by == SORT_TENSORS_BY_DUMP_SIZE and not parsed.reverse:
       command += " -r"
     attr_segs[0].append((prev_len, len(row),
                          [debugger_cli_common.MenuItem(None, command), "bold"]))
-    row += " " * (max_op_type_width + max_timestamp_width - len(row))
+    row += " " * (max_dump_size_width + max_timestamp_width - len(row))
+
+    prev_len = len(row)
+    row += "Op type"
+    command = "%s -s %s" % (base_command, SORT_TENSORS_BY_OP_TYPE)
+    if parsed.sort_by == SORT_TENSORS_BY_OP_TYPE and not parsed.reverse:
+      command += " -r"
+    attr_segs[0].append((prev_len, len(row),
+                         [debugger_cli_common.MenuItem(None, command), "bold"]))
+    row += " " * (
+        max_op_type_width + max_dump_size_width + max_timestamp_width - len(row)
+    )
 
     prev_len = len(row)
     row += " Tensor name"
-    command = "%s -s tensor_name" % base_command
-    if parsed.sort_by == "tensor_name" and not parsed.reverse:
+    command = "%s -s %s" % (base_command, SORT_TENSORS_BY_TENSOR_NAME)
+    if parsed.sort_by == SORT_TENSORS_BY_TENSOR_NAME and not parsed.reverse:
       command += " -r"
     attr_segs[0].append((prev_len + 1, len(row),
                          [debugger_cli_common.MenuItem("", command), "bold"]))
-    row += " " * (max_op_type_width + max_timestamp_width - len(row))
+    row += " " * (
+        max_op_type_width + max_dump_size_width + max_timestamp_width - len(row)
+    )
 
     return debugger_cli_common.RichTextLines([row], font_attr_segs=attr_segs)
 
@@ -683,15 +742,20 @@ class DebugAnalyzer(object):
       construction.
     """
 
-    lines = ["", "", "Traceback of node construction:"]
-    font_attr_segs = {len(lines) - 1: [(0, len(lines[-1]), "bold")]}
+    lines = [RL(""), RL(""), RL("Traceback of node construction:", "bold")]
 
     try:
       node_stack = self._debug_dump.node_traceback(node_name)
       for depth, (file_path, line, function_name, text) in enumerate(
           node_stack):
         lines.append("%d: %s" % (depth, file_path))
-        lines.append("  Line:     %d" % line)
+
+        attribute = debugger_cli_common.MenuItem(
+            "", "ps %s -b %d" % (file_path, line)) if text else None
+        line_number_line = RL("  ")
+        line_number_line += RL("Line:     %d" % line, attribute)
+        lines.append(line_number_line)
+
         lines.append("  Function: %s" % function_name)
         lines.append("  Text:     " + (("\"%s\"" % text) if text else "None"))
         lines.append("")
@@ -700,8 +764,7 @@ class DebugAnalyzer(object):
     except LookupError:
       lines.append("(Unavailable because no Python graph has been loaded)")
 
-    return debugger_cli_common.RichTextLines(lines,
-                                             font_attr_segs=font_attr_segs)
+    return debugger_cli_common.rich_text_lines_from_rich_line_list(lines)
 
   def list_inputs(self, args, screen_info=None):
     """Command handler for inputs.
@@ -914,6 +977,63 @@ class DebugAnalyzer(object):
     node_name = debug_data.get_node_name(parsed.node_name)
     _add_main_menu(output, node_name=node_name, enable_list_outputs=False)
 
+    return output
+
+  def print_source(self, args, screen_info=None):
+    """Print the content of a source file."""
+    del screen_info  # Unused.
+
+    parsed = self._arg_parsers["print_source"].parse_args(args)
+
+    source_annotation = source_utils.annotate_source(
+        self._debug_dump,
+        parsed.source_file_path,
+        do_dumped_tensors=parsed.tensors,
+        min_line=parsed.line_begin)
+
+    with open(parsed.source_file_path, "rU") as f:
+      source_text = f.read()
+
+    source_lines = source_text.split("\n")
+    num_lines = len(source_lines)
+    line_num_width = int(np.ceil(np.log10(num_lines))) + 3
+
+    labeled_source_lines = []
+    if parsed.line_begin > 1:
+      labeled_source_lines.append(
+          RL("(... Omitted %d source lines ...)" % (parsed.line_begin - 1),
+             "bold"))
+
+    for i, line in enumerate(source_lines[parsed.line_begin - 1:]):
+      annotated_line = RL("L%d" % (i + parsed.line_begin), "yellow")
+      annotated_line += " " * (line_num_width - len(annotated_line))
+      annotated_line += line
+      labeled_source_lines.append(annotated_line)
+
+      if i + parsed.line_begin in source_annotation:
+        sorted_elements = sorted(source_annotation[i + parsed.line_begin])
+        for k, element in enumerate(sorted_elements):
+          if k >= parsed.max_elements_per_line:
+            labeled_source_lines.append(
+                "    (... Omitted %d of %d %s ...)" % (
+                    len(sorted_elements) - parsed.max_elements_per_line,
+                    len(sorted_elements),
+                    "tensor(s)" if parsed.tensors else "op(s)"))
+            break
+
+          label = RL(" " * 4)
+          if self._debug_dump.debug_watch_keys(
+              debug_data.get_node_name(element)):
+            attribute = debugger_cli_common.MenuItem("", "pt %s" % element)
+          else:
+            attribute = "blue"
+
+          label += RL(element, attribute)
+          labeled_source_lines.append(label)
+
+    output = debugger_cli_common.rich_text_lines_from_rich_line_list(
+        labeled_source_lines)
+    _add_main_menu(output, node_name=None)
     return output
 
   def _list_inputs_or_outputs(self,
@@ -1220,16 +1340,17 @@ class DebugAnalyzer(object):
     return output_with_header
 
 
-def create_analyzer_curses_cli(debug_dump, tensor_filters=None):
+def create_analyzer_ui(debug_dump, tensor_filters=None, ui_type="curses"):
   """Create an instance of CursesUI based on a DebugDumpDir object.
 
   Args:
     debug_dump: (debug_data.DebugDumpDir) The debug dump to use.
     tensor_filters: (dict) A dict mapping tensor filter name (str) to tensor
       filter (Callable).
+    ui_type: (str) requested UI type, e.g., "curses", "readline".
 
   Returns:
-    (curses_ui.CursesUI) A curses CLI object with a set of standard analyzer
+    (base_ui.BaseUI) A BaseUI subtype object with a set of standard analyzer
       commands and tab-completions registered.
   """
 
@@ -1239,7 +1360,7 @@ def create_analyzer_curses_cli(debug_dump, tensor_filters=None):
       analyzer.add_tensor_filter(
           tensor_filter_name, tensor_filters[tensor_filter_name])
 
-  cli = curses_ui.CursesUI()
+  cli = ui_factory.get_ui(ui_type)
   cli.register_command_handler(
       "list_tensors",
       analyzer.list_tensors,
@@ -1265,6 +1386,11 @@ def create_analyzer_curses_cli(debug_dump, tensor_filters=None):
       analyzer.print_tensor,
       analyzer.get_help("print_tensor"),
       prefix_aliases=["pt"])
+  cli.register_command_handler(
+      "print_source",
+      analyzer.print_source,
+      analyzer.get_help("print_source"),
+      prefix_aliases=["ps"])
 
   dumped_tensor_names = []
   for datum in debug_dump.dumped_tensor_data:

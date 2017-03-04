@@ -80,8 +80,8 @@ class IoOpsTest(test.TestCase):
             io_ops.matching_files(f.name).eval(), compat.as_bytes(f.name))
 
       # We will look for files matching "ABxDEF.GH*" where "x" is some wildcard.
-      pos = files[0].name.find(cases[0])
-      pattern = files[0].name[:pos] + 'AB%sDEF.GH*'
+      directory_path = files[0].name[:files[0].name.find(cases[0])]
+      pattern = directory_path + 'AB%sDEF.GH*'
 
       self.assertEqual(
           set(io_ops.matching_files(pattern % 'z').eval()),
@@ -101,6 +101,21 @@ class IoOpsTest(test.TestCase):
         self.assertEqual(
             set(io_ops.matching_files(pattern % '[0-9]').eval()),
             self._subset(files, [3, 4]))
+
+      # Test an empty list input.
+      self.assertItemsEqual(io_ops.matching_files([]).eval(), [])
+
+      # Test multiple exact filenames.
+      self.assertItemsEqual(
+          io_ops.matching_files([
+              files[0].name, files[1].name, files[2].name]).eval(),
+          self._subset(files, [0, 1, 2]))
+
+      # Test multiple globs.
+      self.assertItemsEqual(
+          io_ops.matching_files([
+              pattern % '?', directory_path + 'X?Z*']).eval(),
+          self._subset(files, [0, 1, 3, 4, 6]))
 
     for f in files:
       f.close()

@@ -32,15 +32,21 @@ namespace tensorflow {
 namespace serving {
 namespace internal {
 
-// Adds an entry (key and value) to the input map of the signature def.
-void AddInputToSignatureDef(const string& tensor_name,
-                            const string& input_map_key,
-                            SignatureDef* signature_def);
+// Adds an entry (key and value) to the input map of the signature def. Builds
+// TensorInfos for the SignatureDefs by using the name and dtype information
+// from the supplied map.
+void AddInputToSignatureDef(
+    const string& tensor_name,
+    const std::unordered_map<string, DataType>& tensor_name_to_dtype,
+    const string& input_map_key, SignatureDef* signature_def);
 
-// Adds an entry (key and value) to the output map of the signature def.
-void AddOutputToSignatureDef(const string& tensor_name,
-                             const string& output_map_key,
-                             SignatureDef* signature_def);
+// Adds an entry (key and value) to the output map of the signature def. Builds
+// TensorInfos for the SignatureDefs by using the name and dtype information
+// from the supplied map.
+void AddOutputToSignatureDef(
+    const string& tensor_name,
+    const std::unordered_map<string, DataType>& tensor_name_to_dtype,
+    const string& output_map_key, SignatureDef* signature_def);
 
 // Converts signatures in the MetaGraphDef into a SignatureDefs in the
 // MetaGraphDef.
@@ -58,14 +64,6 @@ Status LoadSessionBundleOrSavedModelBundle(
     const SessionOptions& session_options, const RunOptions& run_options,
     const string& export_dir, const std::unordered_set<string>& tags,
     SavedModelBundle* bundle);
-
-// Checks whether the provided directory could contain a SessionBundle or a
-// SavedModel. Note that the method does not load any data by itself. If the
-// method returns `false`, the export directory definitely does not contain a
-// SessionBundle or SavedModel. If the method returns `true`, the export
-// directory may contain a SessionBundle or a SavedModel but provides no
-// guarantee that it can be loaded.
-bool MaybeSessionBundleOrSavedModelDirectory(const string& export_dir);
 
 }  // namespace serving
 }  // namespace tensorflow

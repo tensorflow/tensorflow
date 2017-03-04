@@ -32,10 +32,12 @@ module TF.TensorBoard {
       },
       autoReloadIntervalSecs: {
         type: Number,
-        value: 120,
+        value: 30,
       },
     },
-    detached: function() { window.clearTimeout(this._autoReloadId);},
+    detached: function() {
+      window.clearTimeout(this._autoReloadId);
+    },
     _autoReloadObserver: function(autoReload) {
       window.localStorage.setItem(AUTORELOAD_LOCALSTORAGE_KEY, autoReload);
       if (autoReload) {

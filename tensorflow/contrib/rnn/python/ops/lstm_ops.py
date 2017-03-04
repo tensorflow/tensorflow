@@ -277,7 +277,7 @@ def _LSTMBlockCellGrad(op, *grad):
   h_prev_grad.get_shape().merge_with(h_prev.get_shape())
 
   # Backprop from dicfo to w.
-  xh = array_ops.concat_v2([x, h_prev], 1)
+  xh = array_ops.concat([x, h_prev], 1)
   w_grad = math_ops.matmul(xh, dicfo, transpose_a=True)
   w_grad.get_shape().merge_with(w.get_shape())
 
@@ -333,7 +333,7 @@ class LSTMBlockCell(core_rnn_cell.RNNCell):
   reduce the scale of forgetting in the beginning of the training.
 
   Unlike `core_rnn_cell.LSTMCell`, this is a monolithic op and should be much
-  faster.  The weight and bias matrixes should be compatible as long as the
+  faster.  The weight and bias matrices should be compatible as long as the
   variable scope matches.
   """
 
@@ -362,7 +362,7 @@ class LSTMBlockCell(core_rnn_cell.RNNCell):
 
   @property
   def state_size(self):
-    return (self._num_units,) * 2
+    return core_rnn_cell.LSTMStateTuple(self._num_units, self._num_units)
 
   @property
   def output_size(self):
@@ -401,7 +401,8 @@ class LSTMBlockCell(core_rnn_cell.RNNCell):
           forget_bias=self._forget_bias,
           use_peephole=self._use_peephole)
 
-      return (h, (cs, h))
+      new_state = core_rnn_cell.LSTMStateTuple(cs, h)
+      return h, new_state
 
 
 class LSTMBlockWrapper(fused_rnn_cell.FusedRNNCell):
@@ -527,9 +528,9 @@ class LSTMBlockWrapper(fused_rnn_cell.FusedRNNCell):
         # correctly,since we want to access the last valid state at
         # sequence_length - 1, which can even be -1, corresponding to the
         # initial state.
-        mod_cell_states = array_ops.concat_v2(
+        mod_cell_states = array_ops.concat(
             [array_ops.expand_dims(initial_cell_state, [0]), cell_states], 0)
-        mod_outputs = array_ops.concat_v2(
+        mod_outputs = array_ops.concat(
             [array_ops.expand_dims(initial_output, [0]), outputs], 0)
         final_cell_state = self._gather_states(mod_cell_states, sequence_length,
                                                batch_size)
@@ -544,7 +545,9 @@ class LSTMBlockWrapper(fused_rnn_cell.FusedRNNCell):
         # Input was a list, so return a list
         outputs = array_ops.unstack(outputs)
 
-      return outputs, (final_cell_state, final_output)
+      final_state = core_rnn_cell.LSTMStateTuple(final_cell_state,
+                                                 final_output)
+      return outputs, final_state
 
   def _gather_states(self, data, indices, batch_size):
     """Produce `out`, s.t. out(i, j) = data(indices(i), i, j)."""
@@ -635,7 +638,7 @@ class LSTMBlockFusedCell(LSTMBlockWrapper):
       wci = wco = wcf = array_ops.zeros([self._num_units], dtype=dtype)
 
     if sequence_length is None:
-      max_seq_len = time_len
+      max_seq_len = math_ops.to_int64(time_len)
     else:
       max_seq_len = math_ops.to_int64(math_ops.reduce_max(sequence_length))
 

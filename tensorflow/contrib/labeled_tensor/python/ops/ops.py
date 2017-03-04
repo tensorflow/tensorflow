@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Non-core ops for LabeledTensor."""
 from __future__ import absolute_import
 from __future__ import division
@@ -29,6 +28,7 @@ from tensorflow.contrib.labeled_tensor.python.ops import core
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import numerics
 from tensorflow.python.ops import random_ops
@@ -40,18 +40,19 @@ from tensorflow.python.training import input  # pylint: disable=redefined-builti
             tc.Optional(string_types))
 def _gather_1d_on_axis(labeled_tensor, indexer, axis, name=None):
   with ops.name_scope(name, 'lt_take', [labeled_tensor]) as scope:
-    temp_axes = core.Axes(
-        [axis] + list(labeled_tensor.axes.remove(axis.name).values()))
+    temp_axes = core.Axes([axis] + list(
+        labeled_tensor.axes.remove(axis.name).values()))
     transposed = core.transpose(labeled_tensor, temp_axes.keys())
-    indexed = core.LabeledTensor(array_ops.gather(transposed.tensor, indexer),
-                                 temp_axes)
+    indexed = core.LabeledTensor(
+        array_ops.gather(transposed.tensor, indexer), temp_axes)
     return core.transpose(indexed, labeled_tensor.axes.keys(), name=scope)
 
 
 @tc.returns(core.LabeledTensor)
 @tc.accepts(core.LabeledTensorLike,
-            tc.Mapping(string_types, tc.Union(
-                slice, collections.Hashable, collections.Sequence)),
+            tc.Mapping(string_types,
+                       tc.Union(slice, collections.Hashable,
+                                collections.Sequence)),
             tc.Optional(string_types))
 def select(labeled_tensor, selection, name=None):
   """Slice out a subset of the tensor.
@@ -143,8 +144,9 @@ def select(labeled_tensor, selection, name=None):
 
 
 @tc.returns(core.LabeledTensor)
-@tc.accepts(tc.Collection(core.LabeledTensorLike), string_types,
-            tc.Optional(string_types))
+@tc.accepts(
+    tc.Collection(core.LabeledTensorLike), string_types,
+    tc.Optional(string_types))
 def concat(labeled_tensors, axis_name, name=None):
   """Concatenate tensors along a dimension.
 
@@ -165,8 +167,9 @@ def concat(labeled_tensors, axis_name, name=None):
       have incompatible axes, or if `axis_name` isn't the name of an axis.
   """
   with ops.name_scope(name, 'lt_concat', labeled_tensors) as scope:
-    labeled_tensors = [core.convert_to_labeled_tensor(lt)
-                       for lt in labeled_tensors]
+    labeled_tensors = [
+        core.convert_to_labeled_tensor(lt) for lt in labeled_tensors
+    ]
 
     if len(labeled_tensors) < 1:
       raise ValueError('concat expects at least 1 tensor, but received %s' %
@@ -198,7 +201,7 @@ def concat(labeled_tensors, axis_name, name=None):
 
     concat_axis = core.concat_axes(concat_axis_list)
     concat_dimension = axis_names.index(axis_name)
-    concat_tensor = array_ops.concat_v2(tensors, concat_dimension, name=scope)
+    concat_tensor = array_ops.concat(tensors, concat_dimension, name=scope)
     values = list(axes_0.values())
     concat_axes = (values[:concat_dimension] + [concat_axis] +
                    values[concat_dimension + 1:])
@@ -212,8 +215,7 @@ def concat(labeled_tensors, axis_name, name=None):
 @tc.returns(core.LabeledTensor)
 @tc.accepts(
     tc.Collection(core.LabeledTensorLike),
-    tc.Union(string_types, core.AxisLike),
-    int, tc.Optional(string_types))
+    tc.Union(string_types, core.AxisLike), int, tc.Optional(string_types))
 def pack(labeled_tensors, new_axis, axis_position=0, name=None):
   """Pack tensors along a new axis.
 
@@ -235,8 +237,9 @@ def pack(labeled_tensors, new_axis, axis_position=0, name=None):
       don't have identical axes.
   """
   with ops.name_scope(name, 'lt_pack', labeled_tensors) as scope:
-    labeled_tensors = [core.convert_to_labeled_tensor(lt)
-                       for lt in labeled_tensors]
+    labeled_tensors = [
+        core.convert_to_labeled_tensor(lt) for lt in labeled_tensors
+    ]
 
     if len(labeled_tensors) < 1:
       raise ValueError('pack expects at least 1 tensors, but received %s' %
@@ -256,8 +259,8 @@ def pack(labeled_tensors, new_axis, axis_position=0, name=None):
 
 
 @tc.returns(tc.List(core.LabeledTensor))
-@tc.accepts(core.LabeledTensorLike, tc.Optional(string_types),
-            tc.Optional(string_types))
+@tc.accepts(core.LabeledTensorLike,
+            tc.Optional(string_types), tc.Optional(string_types))
 def unpack(labeled_tensor, axis_name=None, name=None):
   """Unpack the tensor.
 
@@ -287,13 +290,13 @@ def unpack(labeled_tensor, axis_name=None, name=None):
     axis = axis_names.index(axis_name)
 
     unpack_ops = array_ops.unstack(labeled_tensor.tensor, axis=axis, name=scope)
-    axes = [a for i, a in enumerate(labeled_tensor.axes.values())
-            if i != axis]
+    axes = [a for i, a in enumerate(labeled_tensor.axes.values()) if i != axis]
     return [core.LabeledTensor(t, axes) for t in unpack_ops]
 
 
 @tc.returns(core.LabeledTensor)
-@tc.accepts(core.LabeledTensorLike, tc.Collection(string_types),
+@tc.accepts(core.LabeledTensorLike,
+            tc.Collection(string_types),
             tc.Collection(tc.Union(string_types, core.AxisLike)),
             tc.Optional(string_types))
 def reshape(labeled_tensor, existing_axes, new_axes, name=None):
@@ -409,8 +412,9 @@ def _batch_helper(default_name,
                   allow_smaller_final_batch,
                   name=None):
   with ops.name_scope(name, default_name, labeled_tensors) as scope:
-    labeled_tensors = [core.convert_to_labeled_tensor(lt)
-                       for lt in labeled_tensors]
+    labeled_tensors = [
+        core.convert_to_labeled_tensor(lt) for lt in labeled_tensors
+    ]
 
     batch_ops = batch_fn([t.tensor for t in labeled_tensors], scope)
     # TODO(shoyer): Remove this when they sanitize the TF API.
@@ -481,13 +485,14 @@ def batch(labeled_tensors,
   """
 
   def fn(tensors, scope):
-    return input.batch(tensors,
-                       batch_size=batch_size,
-                       num_threads=num_threads,
-                       capacity=capacity,
-                       enqueue_many=enqueue_many,
-                       allow_smaller_final_batch=allow_smaller_final_batch,
-                       name=scope)
+    return input.batch(
+        tensors,
+        batch_size=batch_size,
+        num_threads=num_threads,
+        capacity=capacity,
+        enqueue_many=enqueue_many,
+        allow_smaller_final_batch=allow_smaller_final_batch,
+        name=scope)
 
   return _batch_helper('lt_batch', fn, batch_size, enqueue_many,
                        labeled_tensors, allow_smaller_final_batch, name)
@@ -552,7 +557,8 @@ def shuffle_batch(labeled_tensors,
 
 
 @tc.returns(core.LabeledTensor)
-@tc.accepts(core.LabeledTensorLike, tc.Mapping(string_types, int),
+@tc.accepts(core.LabeledTensorLike,
+            tc.Mapping(string_types, int),
             tc.Optional(int), tc.Optional(string_types))
 def random_crop(labeled_tensor, shape_map, seed=None, name=None):
   """Randomly crops a tensor to a given size.
@@ -593,10 +599,8 @@ def random_crop(labeled_tensor, shape_map, seed=None, name=None):
         shape.append(len(axis))
         axes.append(axis)
 
-    crop_op = random_ops.random_crop(labeled_tensor.tensor,
-                                     shape,
-                                     seed=seed,
-                                     name=scope)
+    crop_op = random_ops.random_crop(
+        labeled_tensor.tensor, shape, seed=seed, name=scope)
 
     return core.LabeledTensor(crop_op, axes)
 
@@ -622,14 +626,82 @@ def map_fn(fn, labeled_tensor, name=None):
   """
   with ops.name_scope(name, 'lt_map_fn', [labeled_tensor]) as scope:
     labeled_tensor = core.convert_to_labeled_tensor(labeled_tensor)
+
     unpack_lts = unpack(labeled_tensor)
-    map_lts = [fn(t) for t in unpack_lts]
-    return pack(map_lts, list(labeled_tensor.axes.values())[0], name=scope)
+
+    # TODO(ericmc): Fix this upstream.
+    if labeled_tensor.dtype == dtypes.string:
+      # We must construct the full graph here, because functional_ops.map_fn
+      # doesn't work for string-valued tensors.
+      # Constructing the full graph may be slow.
+      map_lts = [fn(t) for t in unpack_lts]
+      return pack(map_lts, list(labeled_tensor.axes.values())[0], name=scope)
+    else:
+      # Figure out what the axis labels should be, but use tf.map_fn to
+      # construct the graph because it's efficient.
+      # It may be slow to construct the full graph, so we infer the labels from
+      # the first element.
+      # TODO(ericmc): This builds a subgraph which then gets thrown away.
+      # Find a more elegant solution.
+      first_map_lt = fn(unpack_lts[0])
+      final_axes = list(labeled_tensor.axes.values())[:1] + list(
+          first_map_lt.axes.values())
+
+      @tc.returns(ops.Tensor)
+      @tc.accepts(ops.Tensor)
+      def tf_fn(tensor):
+        original_axes = list(labeled_tensor.axes.values())[1:]
+        tensor_lt = core.LabeledTensor(tensor, original_axes)
+        return fn(tensor_lt).tensor
+
+      map_op = functional_ops.map_fn(tf_fn, labeled_tensor.tensor)
+      map_lt = core.LabeledTensor(map_op, final_axes)
+
+      return core.identity(map_lt, name=scope)
 
 
 @tc.returns(core.LabeledTensor)
-@tc.accepts(core.LabeledTensorLike, tc.Optional(tc.Collection(string_types)),
-            tc.Optional(string_types))
+@tc.accepts(collections.Callable, core.LabeledTensorLike,
+            core.LabeledTensorLike, tc.Optional(string_types))
+def foldl(fn, labeled_tensor, initial_value, name=None):
+  """Left fold on the list of tensors unpacked from labeled_tensor.
+
+  See tf.foldl.
+
+  Args:
+    fn: The function to apply to each unpacked LabeledTensor.
+      It should have type (LabeledTensor, LabeledTensor) -> LabeledTensor.
+      Its arguments are (accumulated_value, next_value).
+    labeled_tensor: The input tensor.
+    initial_value: The initial value of the accumulator.
+    name: Optional op name.
+
+  Returns:
+    The accumulated value.
+  """
+  with ops.name_scope(name, 'lt_foldl',
+                      [labeled_tensor, initial_value]) as scope:
+    labeled_tensor = core.convert_to_labeled_tensor(labeled_tensor)
+    initial_value = core.convert_to_labeled_tensor(initial_value)
+
+    @tc.returns(ops.Tensor)
+    @tc.accepts(ops.Tensor, ops.Tensor)
+    def tf_fn(accumulator, next_element):
+      accumulator_lt = core.LabeledTensor(accumulator, initial_value.axes)
+      next_element_lt = core.LabeledTensor(
+          next_element, list(labeled_tensor.axes.values())[1:])
+      return fn(accumulator_lt, next_element_lt).tensor
+
+    foldl_op = functional_ops.foldl(
+        tf_fn, labeled_tensor.tensor, initializer=initial_value.tensor)
+    foldl_lt = core.LabeledTensor(foldl_op, initial_value.axes)
+
+    return core.identity(foldl_lt, name=scope)
+
+
+@tc.returns(core.LabeledTensor)
+@tc.accepts(core.LabeledTensorLike,
+            tc.Optional(tc.Collection(string_types)), tc.Optional(string_types))
 def squeeze(labeled_tensor, axis_names=None, name=None):
   """Remove size-1 dimensions.
 
@@ -672,17 +744,17 @@ def squeeze(labeled_tensor, axis_names=None, name=None):
         axes.append(axis)
 
     if squeeze_dimensions:
-      squeeze_op = array_ops.squeeze(labeled_tensor.tensor,
-                                     squeeze_dimensions,
-                                     name=scope)
+      squeeze_op = array_ops.squeeze(
+          labeled_tensor.tensor, squeeze_dimensions, name=scope)
     else:
       squeeze_op = array_ops.identity(labeled_tensor.tensor, name=scope)
 
     return core.LabeledTensor(squeeze_op, axes)
 
+
 # pylint: disable=invalid-name
-ReduceAxis = tc.Union(
-    string_types, tc.Tuple(string_types, collections.Hashable))
+ReduceAxis = tc.Union(string_types,
+                      tc.Tuple(string_types, collections.Hashable))
 ReduceAxes = tc.Optional(tc.Union(ReduceAxis, tc.Collection(ReduceAxis)))
 # pylint: enable=invalid-name
 
@@ -766,8 +838,9 @@ def matmul(a, b, name=None):
     axis_scope_order = core.get_axis_order()
     if axis_scope_order is not None:
       result_axis_names = [axis.name for axis in result_axes]
-      new_axis_names = [name for name in axis_scope_order
-                        if name in result_axis_names]
+      new_axis_names = [
+          name for name in axis_scope_order if name in result_axis_names
+      ]
       if new_axis_names != result_axis_names:
         # switch a and b
         b, a = a, b
@@ -792,10 +865,8 @@ def matmul(a, b, name=None):
       b_tensor = b.tensor
       transpose_b = list(b.axes.keys()).index(shared_axis) == 1
 
-    result_op = math_ops.matmul(a_tensor,
-                                b_tensor,
-                                transpose_a=transpose_a,
-                                transpose_b=transpose_b)
+    result_op = math_ops.matmul(
+        a_tensor, b_tensor, transpose_a=transpose_a, transpose_b=transpose_b)
 
     if squeeze_dims:
       result_op = array_ops.squeeze(result_op, squeeze_dims)
@@ -881,9 +952,8 @@ def define_reduce_op(op_name, reduce_fn):
         else:
           intermediate_axes.append(axis)
 
-      reduce_op = reduce_fn(labeled_tensor.tensor,
-                            reduction_dimensions,
-                            keep_dims=True)
+      reduce_op = reduce_fn(
+          labeled_tensor.tensor, reduction_dimensions, keep_dims=True)
       reduce_lt = core.LabeledTensor(reduce_op, intermediate_axes)
 
       return squeeze(reduce_lt, axes_to_squeeze, name=scope)
@@ -906,7 +976,8 @@ reduce_sum = define_reduce_op('reduce_sum', math_ops.reduce_sum)
 
 
 @tc.returns(core.LabeledTensor)
-@tc.accepts(core.LabeledTensorLike, tc.Mapping(str, tc.Union(int, ops.Tensor)),
+@tc.accepts(core.LabeledTensorLike,
+            tc.Mapping(str, tc.Union(int, ops.Tensor)),
             tc.Optional(string_types))
 def tile(labeled_tensor, multiples, name=None):
   """Constructs a tensor by tiling a given tensor.
@@ -938,16 +1009,20 @@ def tile(labeled_tensor, multiples, name=None):
                        'names %r on the input labeled tensor' %
                        (multiples.keys(), labeled_tensor.axes))
 
-    labeled_axes = [name for name in multiples
-                    if labeled_tensor.axes[name].labels is not None]
+    labeled_axes = [
+        name for name in multiples
+        if labeled_tensor.axes[name].labels is not None
+    ]
     if labeled_axes:
       raise ValueError('cannot tile axes with tick labels: %r' % labeled_axes)
 
     multiples_list = [multiples.get(name, 1) for name in labeled_tensor.axes]
     tile_op = array_ops.tile(labeled_tensor.tensor, multiples_list, name=scope)
 
-    new_axes = [axis.name if axis.labels is None else axis
-                for axis in labeled_tensor.axes.values()]
+    new_axes = [
+        axis.name if axis.labels is None else axis
+        for axis in labeled_tensor.axes.values()
+    ]
     return core.LabeledTensor(tile_op, new_axes)
 
 
@@ -997,19 +1072,21 @@ def pad(labeled_tensor, paddings, mode='CONSTANT', name=None):
         new_axes.append(axis)
         padding_pairs.append((0, 0))
 
-    pad_op = array_ops.pad(
-        labeled_tensor.tensor, padding_pairs, mode, name=scope)
+    pad_op = array_ops.pad(labeled_tensor.tensor,
+                           padding_pairs,
+                           mode,
+                           name=scope)
 
     return core.LabeledTensor(pad_op, new_axes)
 
 
 @tc.returns(core.LabeledTensor)
-@tc.accepts(tc.Union(np.ndarray, list, tuple, core.Scalar),
-            tc.Optional(dtypes.DType),
-            tc.Optional(tc.Union(
-                core.Axes,
-                tc.Collection(tc.Union(string_types, core.AxisLike)))),
-            tc.Optional(string_types))
+@tc.accepts(
+    tc.Union(np.ndarray, list, tuple, core.Scalar),
+    tc.Optional(dtypes.DType),
+    tc.Optional(
+        tc.Union(core.Axes, tc.Collection(
+            tc.Union(string_types, core.AxisLike)))), tc.Optional(string_types))
 def constant(value, dtype=None, axes=None, name=None):
   """Creates a constant tensor.
 
@@ -1050,8 +1127,8 @@ def constant(value, dtype=None, axes=None, name=None):
 
 
 @tc.returns(core.LabeledTensor)
-@tc.accepts(core.LabeledTensorLike, tc.Optional(dtypes.DType),
-            tc.Optional(string_types))
+@tc.accepts(core.LabeledTensorLike,
+            tc.Optional(dtypes.DType), tc.Optional(string_types))
 def zeros_like(labeled_tensor, dtype=None, name=None):
   """Creates an identical tensor with all elements set to zero.
 
@@ -1070,8 +1147,8 @@ def zeros_like(labeled_tensor, dtype=None, name=None):
 
 
 @tc.returns(core.LabeledTensor)
-@tc.accepts(core.LabeledTensorLike, tc.Optional(dtypes.DType),
-            tc.Optional(string_types))
+@tc.accepts(core.LabeledTensorLike,
+            tc.Optional(dtypes.DType), tc.Optional(string_types))
 def ones_like(labeled_tensor, dtype=None, name=None):
   """Creates an identical tensor with all elements set to one.
 
@@ -1090,8 +1167,8 @@ def ones_like(labeled_tensor, dtype=None, name=None):
 
 
 @tc.returns(core.LabeledTensor)
-@tc.accepts(core.LabeledTensorLike, tc.Optional(dtypes.DType),
-            tc.Optional(string_types))
+@tc.accepts(core.LabeledTensorLike,
+            tc.Optional(dtypes.DType), tc.Optional(string_types))
 def cast(labeled_tensor, dtype=None, name=None):
   """Casts a labeled tensor to a new type.
 
@@ -1127,9 +1204,8 @@ def verify_tensor_all_finite(labeled_tensor, message, name=None):
   with ops.name_scope(name, 'lt_verify_tensor_all_finite',
                       [labeled_tensor]) as scope:
     labeled_tensor = core.convert_to_labeled_tensor(labeled_tensor)
-    op = numerics.verify_tensor_all_finite(labeled_tensor.tensor,
-                                           msg=message,
-                                           name=scope)
+    op = numerics.verify_tensor_all_finite(
+        labeled_tensor.tensor, msg=message, name=scope)
     return core.LabeledTensor(op, labeled_tensor.axes)
 
 

@@ -19,56 +19,61 @@ from __future__ import print_function
 
 import numpy as np
 from scipy import stats
-import tensorflow as tf
+from tensorflow.contrib.distributions.python.ops import laplace as laplace_lib
+from tensorflow.python.client import session
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import tensor_shape
+from tensorflow.python.ops import nn_ops
+from tensorflow.python.platform import test
 
 
-class LaplaceTest(tf.test.TestCase):
+class LaplaceTest(test.TestCase):
 
   def testLaplaceShape(self):
     with self.test_session():
-      loc = tf.constant([3.0] * 5)
-      scale = tf.constant(11.0)
-      laplace = tf.contrib.distributions.Laplace(loc=loc, scale=scale)
+      loc = constant_op.constant([3.0] * 5)
+      scale = constant_op.constant(11.0)
+      laplace = laplace_lib.Laplace(loc=loc, scale=scale)
 
-      self.assertEqual(laplace.batch_shape().eval(), (5,))
-      self.assertEqual(laplace.get_batch_shape(), tf.TensorShape([5]))
-      self.assertAllEqual(laplace.event_shape().eval(), [])
-      self.assertEqual(laplace.get_event_shape(), tf.TensorShape([]))
+      self.assertEqual(laplace.batch_shape_tensor().eval(), (5,))
+      self.assertEqual(laplace.batch_shape, tensor_shape.TensorShape([5]))
+      self.assertAllEqual(laplace.event_shape_tensor().eval(), [])
+      self.assertEqual(laplace.event_shape, tensor_shape.TensorShape([]))
 
   def testLaplaceLogPDF(self):
     with self.test_session():
       batch_size = 6
-      loc = tf.constant([2.0] * batch_size)
-      scale = tf.constant([3.0] * batch_size)
+      loc = constant_op.constant([2.0] * batch_size)
+      scale = constant_op.constant([3.0] * batch_size)
       loc_v = 2.0
       scale_v = 3.0
       x = np.array([2.5, 2.5, 4.0, 0.1, 1.0, 2.0], dtype=np.float32)
-      laplace = tf.contrib.distributions.Laplace(loc=loc, scale=scale)
+      laplace = laplace_lib.Laplace(loc=loc, scale=scale)
       expected_log_pdf = stats.laplace.logpdf(x, loc_v, scale=scale_v)
-      log_pdf = laplace.log_pdf(x)
+      log_pdf = laplace.log_prob(x)
       self.assertEqual(log_pdf.get_shape(), (6,))
       self.assertAllClose(log_pdf.eval(), expected_log_pdf)
 
-      pdf = laplace.pdf(x)
+      pdf = laplace.prob(x)
       self.assertEqual(pdf.get_shape(), (6,))
       self.assertAllClose(pdf.eval(), np.exp(expected_log_pdf))
 
   def testLaplaceLogPDFMultidimensional(self):
     with self.test_session():
       batch_size = 6
-      loc = tf.constant([[2.0, 4.0]] * batch_size)
-      scale = tf.constant([[3.0, 4.0]] * batch_size)
+      loc = constant_op.constant([[2.0, 4.0]] * batch_size)
+      scale = constant_op.constant([[3.0, 4.0]] * batch_size)
       loc_v = np.array([2.0, 4.0])
       scale_v = np.array([3.0, 4.0])
       x = np.array([[2.5, 2.5, 4.0, 0.1, 1.0, 2.0]], dtype=np.float32).T
-      laplace = tf.contrib.distributions.Laplace(loc=loc, scale=scale)
+      laplace = laplace_lib.Laplace(loc=loc, scale=scale)
       expected_log_pdf = stats.laplace.logpdf(x, loc_v, scale=scale_v)
-      log_pdf = laplace.log_pdf(x)
+      log_pdf = laplace.log_prob(x)
       log_pdf_values = log_pdf.eval()
       self.assertEqual(log_pdf.get_shape(), (6, 2))
       self.assertAllClose(log_pdf_values, expected_log_pdf)
 
-      pdf = laplace.pdf(x)
+      pdf = laplace.prob(x)
       pdf_values = pdf.eval()
       self.assertEqual(pdf.get_shape(), (6, 2))
       self.assertAllClose(pdf_values, np.exp(expected_log_pdf))
@@ -76,19 +81,19 @@ class LaplaceTest(tf.test.TestCase):
   def testLaplaceLogPDFMultidimensionalBroadcasting(self):
     with self.test_session():
       batch_size = 6
-      loc = tf.constant([[2.0, 4.0]] * batch_size)
-      scale = tf.constant(3.0)
+      loc = constant_op.constant([[2.0, 4.0]] * batch_size)
+      scale = constant_op.constant(3.0)
       loc_v = np.array([2.0, 4.0])
       scale_v = 3.0
       x = np.array([[2.5, 2.5, 4.0, 0.1, 1.0, 2.0]], dtype=np.float32).T
-      laplace = tf.contrib.distributions.Laplace(loc=loc, scale=scale)
+      laplace = laplace_lib.Laplace(loc=loc, scale=scale)
       expected_log_pdf = stats.laplace.logpdf(x, loc_v, scale=scale_v)
-      log_pdf = laplace.log_pdf(x)
+      log_pdf = laplace.log_prob(x)
       log_pdf_values = log_pdf.eval()
       self.assertEqual(log_pdf.get_shape(), (6, 2))
       self.assertAllClose(log_pdf_values, expected_log_pdf)
 
-      pdf = laplace.pdf(x)
+      pdf = laplace.prob(x)
       pdf_values = pdf.eval()
       self.assertEqual(pdf.get_shape(), (6, 2))
       self.assertAllClose(pdf_values, np.exp(expected_log_pdf))
@@ -96,24 +101,56 @@ class LaplaceTest(tf.test.TestCase):
   def testLaplaceCDF(self):
     with self.test_session():
       batch_size = 6
-      loc = tf.constant([2.0] * batch_size)
-      scale = tf.constant([3.0] * batch_size)
+      loc = constant_op.constant([2.0] * batch_size)
+      scale = constant_op.constant([3.0] * batch_size)
       loc_v = 2.0
       scale_v = 3.0
       x = np.array([2.5, 2.5, 4.0, 0.1, 1.0, 2.0], dtype=np.float32)
 
-      laplace = tf.contrib.distributions.Laplace(loc=loc, scale=scale)
+      laplace = laplace_lib.Laplace(loc=loc, scale=scale)
       expected_cdf = stats.laplace.cdf(x, loc_v, scale=scale_v)
 
       cdf = laplace.cdf(x)
       self.assertEqual(cdf.get_shape(), (6,))
       self.assertAllClose(cdf.eval(), expected_cdf)
 
+  def testLaplaceLogCDF(self):
+    with self.test_session():
+      batch_size = 6
+      loc = constant_op.constant([2.0] * batch_size)
+      scale = constant_op.constant([3.0] * batch_size)
+      loc_v = 2.0
+      scale_v = 3.0
+      x = np.array([-2.5, 2.5, -4.0, 0.1, 1.0, 2.0], dtype=np.float32)
+
+      laplace = laplace_lib.Laplace(loc=loc, scale=scale)
+      expected_cdf = stats.laplace.logcdf(x, loc_v, scale=scale_v)
+
+      cdf = laplace.log_cdf(x)
+      self.assertEqual(cdf.get_shape(), (6,))
+      self.assertAllClose(cdf.eval(), expected_cdf)
+
+  def testLaplaceLogSurvivalFunction(self):
+    with self.test_session():
+      batch_size = 6
+      loc = constant_op.constant([2.0] * batch_size)
+      scale = constant_op.constant([3.0] * batch_size)
+      loc_v = 2.0
+      scale_v = 3.0
+      x = np.array([-2.5, 2.5, -4.0, 0.1, 1.0, 2.0], dtype=np.float32)
+
+      laplace = laplace_lib.Laplace(loc=loc, scale=scale)
+      expected_sf = stats.laplace.logsf(x, loc_v, scale=scale_v)
+
+      sf = laplace.log_survival_function(x)
+      self.assertEqual(sf.get_shape(), (6,))
+      self.assertAllClose(sf.eval(), expected_sf)
+
   def testLaplaceMean(self):
     with self.test_session():
       loc_v = np.array([1.0, 3.0, 2.5])
       scale_v = np.array([1.0, 4.0, 5.0])
-      laplace = tf.contrib.distributions.Laplace(loc=loc_v, scale=scale_v)
+      laplace = laplace_lib.Laplace(loc=loc_v, scale=scale_v)
       expected_means = stats.laplace.mean(loc_v, scale=scale_v)
       self.assertEqual(laplace.mean().get_shape(), (3,))
       self.assertAllClose(laplace.mean().eval(), expected_means)
@@ -122,7 +159,7 @@ class LaplaceTest(tf.test.TestCase):
     with self.test_session():
       loc_v = np.array([0.5, 3.0, 2.5])
       scale_v = np.array([1.0, 4.0, 5.0])
-      laplace = tf.contrib.distributions.Laplace(loc=loc_v, scale=scale_v)
+      laplace = laplace_lib.Laplace(loc=loc_v, scale=scale_v)
       self.assertEqual(laplace.mode().get_shape(), (3,))
       self.assertAllClose(laplace.mode().eval(), loc_v)
 
@@ -130,7 +167,7 @@ class LaplaceTest(tf.test.TestCase):
     with self.test_session():
       loc_v = np.array([1.0, 3.0, 2.5])
       scale_v = np.array([1.0, 4.0, 5.0])
-      laplace = tf.contrib.distributions.Laplace(loc=loc_v, scale=scale_v)
+      laplace = laplace_lib.Laplace(loc=loc_v, scale=scale_v)
       expected_variances = stats.laplace.var(loc_v, scale=scale_v)
       self.assertEqual(laplace.variance().get_shape(), (3,))
       self.assertAllClose(laplace.variance().eval(), expected_variances)
@@ -139,45 +176,50 @@ class LaplaceTest(tf.test.TestCase):
     with self.test_session():
       loc_v = np.array([1.0, 3.0, 2.5])
       scale_v = np.array([1.0, 4.0, 5.0])
-      laplace = tf.contrib.distributions.Laplace(loc=loc_v, scale=scale_v)
-      expected_std = stats.laplace.std(loc_v, scale=scale_v)
-      self.assertEqual(laplace.std().get_shape(), (3,))
-      self.assertAllClose(laplace.std().eval(), expected_std)
+      laplace = laplace_lib.Laplace(loc=loc_v, scale=scale_v)
+      expected_stddev = stats.laplace.std(loc_v, scale=scale_v)
+      self.assertEqual(laplace.stddev().get_shape(), (3,))
+      self.assertAllClose(laplace.stddev().eval(), expected_stddev)
 
   def testLaplaceEntropy(self):
     with self.test_session():
       loc_v = np.array([1.0, 3.0, 2.5])
       scale_v = np.array([1.0, 4.0, 5.0])
       expected_entropy = stats.laplace.entropy(loc_v, scale=scale_v)
-      laplace = tf.contrib.distributions.Laplace(loc=loc_v, scale=scale_v)
+      laplace = laplace_lib.Laplace(loc=loc_v, scale=scale_v)
       self.assertEqual(laplace.entropy().get_shape(), (3,))
       self.assertAllClose(laplace.entropy().eval(), expected_entropy)
 
   def testLaplaceSample(self):
-    with tf.Session():
+    with session.Session():
       loc_v = 4.0
       scale_v = 3.0
-      loc = tf.constant(loc_v)
-      scale = tf.constant(scale_v)
+      loc = constant_op.constant(loc_v)
+      scale = constant_op.constant(scale_v)
       n = 100000
-      laplace = tf.contrib.distributions.Laplace(loc=loc, scale=scale)
+      laplace = laplace_lib.Laplace(loc=loc, scale=scale)
       samples = laplace.sample(n, seed=137)
       sample_values = samples.eval()
       self.assertEqual(samples.get_shape(), (n,))
       self.assertEqual(sample_values.shape, (n,))
-      self.assertAllClose(sample_values.mean(),
-                          stats.laplace.mean(loc_v, scale=scale_v),
-                          rtol=0.05, atol=0.)
-      self.assertAllClose(sample_values.var(),
-                          stats.laplace.var(loc_v, scale=scale_v),
-                          rtol=0.05, atol=0.)
+      self.assertAllClose(
+          sample_values.mean(),
+          stats.laplace.mean(
+              loc_v, scale=scale_v),
+          rtol=0.05,
+          atol=0.)
+      self.assertAllClose(
+          sample_values.var(),
+          stats.laplace.var(loc_v, scale=scale_v),
+          rtol=0.05,
+          atol=0.)
       self.assertTrue(self._kstest(loc_v, scale_v, sample_values))
 
   def testLaplaceSampleMultiDimensional(self):
-    with tf.Session():
+    with session.Session():
       loc_v = np.array([np.arange(1, 101, dtype=np.float32)])  # 1 x 100
       scale_v = np.array([np.arange(1, 11, dtype=np.float32)]).T  # 10 x 1
-      laplace = tf.contrib.distributions.Laplace(loc=loc_v, scale=scale_v)
+      laplace = laplace_lib.Laplace(loc=loc_v, scale=scale_v)
       n = 10000
       samples = laplace.sample(n, seed=137)
       sample_values = samples.eval()
@@ -188,12 +230,15 @@ class LaplaceTest(tf.test.TestCase):
       scale_bc = scale_v + zeros
       self.assertAllClose(
           sample_values.mean(axis=0),
-          stats.laplace.mean(loc_bc, scale=scale_bc),
-          rtol=0.35, atol=0.)
+          stats.laplace.mean(
+              loc_bc, scale=scale_bc),
+          rtol=0.35,
+          atol=0.)
       self.assertAllClose(
           sample_values.var(axis=0),
           stats.laplace.var(loc_bc, scale=scale_bc),
-          rtol=0.10, atol=0.)
+          rtol=0.10,
+          atol=0.)
       fails = 0
       trials = 0
       for ai, a in enumerate(np.reshape(loc_v, [-1])):
@@ -210,25 +255,26 @@ class LaplaceTest(tf.test.TestCase):
     return ks < 0.02
 
   def testLaplacePdfOfSampleMultiDims(self):
-    with tf.Session() as sess:
-      laplace = tf.contrib.distributions.Laplace(
-          loc=[7., 11.], scale=[[5.], [6.]])
+    with session.Session() as sess:
+      laplace = laplace_lib.Laplace(loc=[7., 11.], scale=[[5.], [6.]])
       num = 50000
       samples = laplace.sample(num, seed=137)
-      pdfs = laplace.pdf(samples)
+      pdfs = laplace.prob(samples)
       sample_vals, pdf_vals = sess.run([samples, pdfs])
       self.assertEqual(samples.get_shape(), (num, 2, 2))
       self.assertEqual(pdfs.get_shape(), (num, 2, 2))
       self.assertAllClose(
-          stats.laplace.mean([[7., 11.], [7., 11.]],
-                             scale=np.array([[5., 5.], [6., 6.]])),
+          stats.laplace.mean(
+              [[7., 11.], [7., 11.]], scale=np.array([[5., 5.], [6., 6.]])),
           sample_vals.mean(axis=0),
-          rtol=0.05, atol=0.)
+          rtol=0.05,
+          atol=0.)
       self.assertAllClose(
           stats.laplace.var([[7., 11.], [7., 11.]],
                             scale=np.array([[5., 5.], [6., 6.]])),
           sample_vals.var(axis=0),
-          rtol=0.05, atol=0.)
+          rtol=0.05,
+          atol=0.)
       self._assertIntegral(sample_vals[:, 0, 0], pdf_vals[:, 0, 0], err=0.02)
       self._assertIntegral(sample_vals[:, 0, 1], pdf_vals[:, 0, 1], err=0.02)
       self._assertIntegral(sample_vals[:, 1, 0], pdf_vals[:, 1, 0], err=0.02)
@@ -246,27 +292,27 @@ class LaplaceTest(tf.test.TestCase):
 
   def testLaplaceNonPositiveInitializationParamsRaises(self):
     with self.test_session():
-      loc_v = tf.constant(0.0, name="loc")
-      scale_v = tf.constant(-1.0, name="scale")
-      laplace = tf.contrib.distributions.Laplace(
+      loc_v = constant_op.constant(0.0, name="loc")
+      scale_v = constant_op.constant(-1.0, name="scale")
+      laplace = laplace_lib.Laplace(
           loc=loc_v, scale=scale_v, validate_args=True)
       with self.assertRaisesOpError("scale"):
         laplace.mean().eval()
-      loc_v = tf.constant(1.0, name="loc")
-      scale_v = tf.constant(0.0, name="scale")
-      laplace = tf.contrib.distributions.Laplace(
+      loc_v = constant_op.constant(1.0, name="loc")
+      scale_v = constant_op.constant(0.0, name="scale")
+      laplace = laplace_lib.Laplace(
           loc=loc_v, scale=scale_v, validate_args=True)
       with self.assertRaisesOpError("scale"):
         laplace.mean().eval()
 
   def testLaplaceWithSoftplusScale(self):
     with self.test_session():
-      loc_v = tf.constant([0.0, 1.0], name="loc")
-      scale_v = tf.constant([-1.0, 2.0], name="scale")
-      laplace = tf.contrib.distributions.LaplaceWithSoftplusScale(
-          loc=loc_v, scale=scale_v)
-      self.assertAllClose(tf.nn.softplus(scale_v).eval(), laplace.scale.eval())
+      loc_v = constant_op.constant([0.0, 1.0], name="loc")
+      scale_v = constant_op.constant([-1.0, 2.0], name="scale")
+      laplace = laplace_lib.LaplaceWithSoftplusScale(loc=loc_v, scale=scale_v)
+      self.assertAllClose(nn_ops.softplus(scale_v).eval(), laplace.scale.eval())
       self.assertAllClose(loc_v.eval(), laplace.loc.eval())
 
+
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

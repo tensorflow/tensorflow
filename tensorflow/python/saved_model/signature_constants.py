@@ -19,6 +19,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.util.all_util import remove_undocumented
+
+
 # Key in the signature def map for `default` serving signatures. The default
 # signature is used in inference requests where a specific signature was not
 # specified.
@@ -64,3 +67,19 @@ REGRESS_METHOD_NAME = "tensorflow/serving/regress"
 REGRESS_OUTPUTS = "outputs"
 
 ################################################################################
+
+
+_allowed_symbols = [
+    "DEFAULT_SERVING_SIGNATURE_DEF_KEY",
+    "CLASSIFY_INPUTS",
+    "CLASSIFY_METHOD_NAME",
+    "CLASSIFY_OUTPUT_CLASSES",
+    "CLASSIFY_OUTPUT_SCORES",
+    "PREDICT_INPUTS",
+    "PREDICT_METHOD_NAME",
+    "PREDICT_OUTPUTS",
+    "REGRESS_INPUTS",
+    "REGRESS_METHOD_NAME",
+    "REGRESS_OUTPUTS",
+]
+remove_undocumented(__name__, _allowed_symbols)

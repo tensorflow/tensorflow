@@ -48,12 +48,21 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
   // INPUT_NAME = "Mul:0", and OUTPUT_NAME = "final_result:0".
   // You'll also need to update the MODEL_FILE and LABEL_FILE paths to point to
   // the ones you produced.
-  private static final int NUM_CLASSES = 1001;
+  //
+  // To use v3 Inception model, strip the DecodeJpeg Op from your retrained
+  // model first:
+  //
+  // python strip_unused.py \
+  // --input_graph=<retrained-pb-file> \
+  // --output_graph=<your-stripped-pb-file> \
+  // --input_node_names="Mul" \
+  // --output_node_names="final_result" \
+  // --input_binary=true
   private static final int INPUT_SIZE = 224;
   private static final int IMAGE_MEAN = 117;
   private static final float IMAGE_STD = 1;
-  private static final String INPUT_NAME = "input:0";
-  private static final String OUTPUT_NAME = "output:0";
+  private static final String INPUT_NAME = "input";
+  private static final String OUTPUT_NAME = "output";
 
   private static final String MODEL_FILE = "file:///android_asset/tensorflow_inception_graph.pb";
   private static final String LABEL_FILE =
@@ -63,7 +72,7 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
 
   private static final boolean MAINTAIN_ASPECT = true;
 
-  private TensorFlowImageClassifier classifier;
+  private Classifier classifier;
 
   private Integer sensorOrientation;
 
@@ -77,7 +86,6 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
   private Bitmap cropCopyBitmap;
 
   private boolean computing = false;
-
 
   private Matrix frameToCropTransform;
   private Matrix cropToFrameTransform;
@@ -102,30 +110,23 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
 
   @Override
   public void onPreviewSizeChosen(final Size size, final int rotation) {
-    final float textSizePx = TypedValue.applyDimension(
-        TypedValue.COMPLEX_UNIT_DIP, TEXT_SIZE_DIP,
-        getResources().getDisplayMetrics());
+    final float textSizePx =
+        TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_DIP, TEXT_SIZE_DIP, getResources().getDisplayMetrics());
     borderedText = new BorderedText(textSizePx);
     borderedText.setTypeface(Typeface.MONOSPACE);
 
-    classifier = new TensorFlowImageClassifier();
-
     try {
-      final int initStatus =
-          classifier.initializeTensorFlow(
+      classifier =
+          TensorFlowImageClassifier.create(
               getAssets(),
               MODEL_FILE,
               LABEL_FILE,
-              NUM_CLASSES,
               INPUT_SIZE,
               IMAGE_MEAN,
               IMAGE_STD,
               INPUT_NAME,
               OUTPUT_NAME);
-      if (initStatus != 0) {
-        LOGGER.e("TF init status != 0: %d", initStatus);
-        throw new RuntimeException();
-      }
     } catch (final Exception e) {
       throw new RuntimeException("Error initializing TensorFlow!", e);
     }
@@ -137,8 +138,7 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
     final Display display = getWindowManager().getDefaultDisplay();
     final int screenOrientation = display.getRotation();
 
-    LOGGER.i("Sensor orientation: %d, Screen orientation: %d",
-        rotation, screenOrientation);
+    LOGGER.i("Sensor orientation: %d, Screen orientation: %d", rotation, screenOrientation);
 
     sensorOrientation = rotation + screenOrientation;
 
@@ -147,22 +147,24 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
     rgbFrameBitmap = Bitmap.createBitmap(previewWidth, previewHeight, Config.ARGB_8888);
     croppedBitmap = Bitmap.createBitmap(INPUT_SIZE, INPUT_SIZE, Config.ARGB_8888);
 
-    frameToCropTransform = ImageUtils.getTransformationMatrix(
-        previewWidth, previewHeight,
-        INPUT_SIZE, INPUT_SIZE,
-        sensorOrientation, MAINTAIN_ASPECT);
+    frameToCropTransform =
+        ImageUtils.getTransformationMatrix(
+            previewWidth, previewHeight,
+            INPUT_SIZE, INPUT_SIZE,
+            sensorOrientation, MAINTAIN_ASPECT);
 
     cropToFrameTransform = new Matrix();
     frameToCropTransform.invert(cropToFrameTransform);
 
     yuvBytes = new byte[3][];
 
-    addCallback(new DrawCallback() {
-      @Override
-      public void drawCallback(final Canvas canvas) {
-        renderDebug(canvas);
-      }
-    });
+    addCallback(
+        new DrawCallback() {
+          @Override
+          public void drawCallback(final Canvas canvas) {
+            renderDebug(canvas);
+          }
+        });
   }
 
   @Override

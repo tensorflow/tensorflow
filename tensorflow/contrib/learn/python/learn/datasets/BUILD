@@ -6,6 +6,8 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 filegroup(
     name = "data_csv",
     srcs = glob(["data/*.csv"]),
@@ -33,13 +35,12 @@ py_library(
 
 py_binary(
     name = "produce_small_datasets",
-    srcs = [
-        "produce_small_datasets.py",
-    ],
+    srcs = ["produce_small_datasets.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":datasets",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/python",  # TODO(b/34059704): remove when fixed
+        "//tensorflow/python:platform",
     ],
 )
 
@@ -62,8 +63,8 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":datasets",
-        "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/learn",
+        "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
     ],
 )
@@ -75,8 +76,8 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":datasets",
-        "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/learn",
+        "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
     ],
 )
@@ -92,5 +93,7 @@ py_test(
         "//tensorflow/contrib/learn",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )

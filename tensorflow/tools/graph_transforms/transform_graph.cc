@@ -47,11 +47,11 @@ Status ParseTransformParameters(const string& transforms_string,
       // Reset the list of parameters.
       func_parameters.clear();
       // Eat up any leading spaces.
-      Scanner(remaining).Any(Scanner::SPACE).GetResult(&remaining, &match);
+      Scanner(remaining).AnySpace().GetResult(&remaining, &match);
       // See if we have a valid transform name.
       const bool found_transform_name =
           Scanner(remaining)
-              .Any(Scanner::LETTER_DIGIT_UNDERSCORE)
+              .Many(Scanner::LETTER_DIGIT_UNDERSCORE)
               .GetResult(&remaining, &transform_name);
       if (!found_transform_name) {
         return errors::InvalidArgument("Looking for transform name, but found ",
@@ -73,11 +73,11 @@ Status ParseTransformParameters(const string& transforms_string,
       } else {
         // Eat up any leading spaces or commas.
         Scanner(remaining).ZeroOrOneLiteral(",").GetResult(&remaining, &match);
-        Scanner(remaining).Any(Scanner::SPACE).GetResult(&remaining, &match);
+        Scanner(remaining).AnySpace().GetResult(&remaining, &match);
         // See if we have a valid parameter name.
         const bool found_parameter_name =
             Scanner(remaining)
-                .Any(Scanner::LETTER_DIGIT_UNDERSCORE)
+                .Many(Scanner::LETTER_DIGIT_UNDERSCORE)
                 .GetResult(&remaining, &parameter_name);
         if (!found_parameter_name) {
           return errors::InvalidArgument(
@@ -105,7 +105,7 @@ Status ParseTransformParameters(const string& transforms_string,
         // See if we have a valid parameter name.
         found_parameter_value =
             Scanner(remaining)
-                .Any(Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE)
+                .Many(Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE)
                 .GetResult(&remaining, &parameter_value);
       }
       if (!found_parameter_value) {
@@ -129,12 +129,15 @@ int ParseFlagsAndTransformGraph(int argc, char* argv[], bool init_main) {
   string inputs_string = "";
   string outputs_string = "";
   string transforms_string = "";
+  bool output_as_text = false;
   std::vector<Flag> flag_list = {
       Flag("in_graph", &in_graph, "input graph file name"),
       Flag("out_graph", &out_graph, "output graph file name"),
       Flag("inputs", &inputs_string, "inputs"),
       Flag("outputs", &outputs_string, "outputs"),
       Flag("transforms", &transforms_string, "list of transforms"),
+      Flag("output_as_text", &output_as_text,
+           "whether to write the graph in text protobuf format"),
   };
   string usage = Flags::Usage(argv[0], flag_list);
   usage += "\nTransforms are:\n";
@@ -185,7 +188,7 @@ int ParseFlagsAndTransformGraph(int argc, char* argv[], bool init_main) {
   }
 
   GraphDef graph_def;
-  Status load_status = ReadBinaryProto(Env::Default(), in_graph, &graph_def);
+  Status load_status = LoadTextOrBinaryGraphFile(in_graph, &graph_def);
   if (!load_status.ok()) {
     LOG(ERROR) << "Loading graph '" << in_graph << "' failed with "
                << load_status.error_message();
@@ -202,7 +205,12 @@ int ParseFlagsAndTransformGraph(int argc, char* argv[], bool init_main) {
     return -1;
   }
 
-  Status save_status = WriteBinaryProto(Env::Default(), out_graph, graph_def);
+  Status save_status;
+  if (output_as_text) {
+    save_status = WriteTextProto(Env::Default(), out_graph, graph_def);
+  } else {
+    save_status = WriteBinaryProto(Env::Default(), out_graph, graph_def);
+  }
   if (!save_status.ok()) {
     LOG(ERROR) << "Saving graph '" << out_graph << "' failed with "
                << save_status.error_message();

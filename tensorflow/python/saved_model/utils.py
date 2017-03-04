@@ -20,24 +20,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.core.protobuf import meta_graph_pb2
-from tensorflow.python.framework import dtypes
+# pylint: disable=unused-import
+from tensorflow.python.saved_model.utils_impl import build_tensor_info
+# pylint: enable=unused-import
+from tensorflow.python.util.all_util import remove_undocumented
 
-
-# TensorInfo helpers.
-
-
-def build_tensor_info(tensor):
-  """Utility function to build TensorInfo proto.
-
-  Args:
-    tensor: Tensor whose name, dtype and shape are used to build the TensorInfo.
-
-  Returns:
-    A TensorInfo protocol buffer constructed based on the supplied argument.
-  """
-  dtype_enum = dtypes.as_dtype(tensor.dtype).as_datatype_enum
-  return meta_graph_pb2.TensorInfo(
-      name=tensor.name,
-      dtype=dtype_enum,
-      tensor_shape=tensor.get_shape().as_proto())
+_allowed_symbols = ["build_tensor_info",]
+remove_undocumented(__name__, _allowed_symbols)

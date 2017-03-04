@@ -172,8 +172,34 @@ struct LaunchConvOp<GPUDevice, T> {
     if (filter_planes == 1 && filter_rows == 1 && filter_cols == 1 &&
         strides[0] == 1 && strides[1] == 1 && strides[2] == 1) {
       // 1x1 filter, so call cublas directly.
-      const uint64 m = in_batch * in_cols * in_rows * in_planes;
+      const uint64 m = in_batch * in_planes * in_rows * in_cols;
       const uint64 k = in_depth;
+      const uint64 n = out_depth;
+
+      auto a_ptr = AsDeviceMemory(input.template flat<T>().data(),
+                                  input.template flat<T>().size());
+      auto b_ptr = AsDeviceMemory(filter.template flat<T>().data(),
+                                  filter.template flat<T>().size());
+      auto c_ptr = AsDeviceMemory(output->template flat<T>().data(),
+                                  output->template flat<T>().size());
+
+      auto no_transpose = perftools::gputools::blas::Transpose::kNoTranspose;
+      bool blas_launch_status =
+          stream
+              ->ThenBlasGemm(no_transpose, no_transpose, n, m, k, 1.0f, b_ptr,
+                             n, a_ptr, k, 0.0f, &c_ptr, n)
+              .ok();
+      if (!blas_launch_status) {
+        ctx->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
+                                        ", n=", n, ", k=", k));
+      }
+      return;
+    } else if (filter_planes == in_planes && filter_rows == in_rows &&
+               filter_cols == in_cols && padding == Padding::VALID) {
+      // The input data and filter have the same planes/height/width, so call
+      // cublas directly.
+      const uint64 m = in_batch;
+      const uint64 k = in_planes * in_rows * in_cols * in_depth;
       const uint64 n = out_depth;
 
       auto a_ptr = AsDeviceMemory(input.template flat<T>().data(),

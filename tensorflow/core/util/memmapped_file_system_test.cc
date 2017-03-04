@@ -142,7 +142,7 @@ TEST(MemmappedFileSystemTest, ProxyToDefault) {
   // Making sure to clean up after the test finishes.
   const auto adh = [&memmapped_env, &filename](WritableFile* f) {
       delete f;
-      memmapped_env.DeleteFile(filename);
+      TF_CHECK_OK(memmapped_env.DeleteFile(filename));
   };
   std::unique_ptr<WritableFile, decltype(adh)> writable_file(
       writable_file_temp.release(), adh);

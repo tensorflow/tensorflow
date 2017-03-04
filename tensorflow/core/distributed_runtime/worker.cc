@@ -92,31 +92,26 @@ void Worker::AbortStep(int64 step_id) {
   });
 }
 
-Status Worker::PrepareRunGraph(const RunGraphRequest& req,
+Status Worker::PrepareRunGraph(RunGraphRequestWrapper* req,
                                GraphMgr::NamedTensors* in,
                                GraphMgr::NamedTensors* out) {
   static Tensor empty_tensor(DT_FLOAT);
-  if (req.send_size() > 0) {
-    // TODO(zhifengc): Let the caller decide on which device to
-    // allocate the tensor.
-    Device* cpu_dev = nullptr;
-    TF_RETURN_IF_ERROR(env_->device_mgr->LookupDevice("CPU:0", &cpu_dev));
-    AllocatorAttributes alloc_attrs;
+  if (req->num_sends() > 0) {
     Tensor val;
-    for (const NamedTensorProto& entry : req.send()) {
-      TF_RETURN_IF_ERROR(
-          cpu_dev->MakeTensorFromProto(entry.tensor(), alloc_attrs, &val));
-      in->insert({entry.name(), val});
+    for (size_t i = 0; i < req->num_sends(); ++i) {
+      TF_RETURN_IF_ERROR(req->SendValue(i, &val));
+      in->insert({req->send_key(i), val});
     }
   }
-  for (const string& key : req.recv_key()) {
-    out->insert({key, empty_tensor});
+  for (size_t i = 0; i < req->num_recvs(); ++i) {
+    out->insert({req->recv_key(i), empty_tensor});
   }
   return Status::OK();
 }
 
-void Worker::RunGraphAsync(CallOptions* opts, const RunGraphRequest* request,
-                           RunGraphResponse* response, StatusCallback done) {
+void Worker::RunGraphAsync(CallOptions* opts, RunGraphRequestWrapper* request,
+                           MutableRunGraphResponseWrapper* response,
+                           StatusCallback done) {
   if (request->is_partial()) {
     DoPartialRunGraph(opts, request, response, std::move(done));
   } else {
@@ -124,13 +119,22 @@ void Worker::RunGraphAsync(CallOptions* opts, const RunGraphRequest* request,
   }
 }
 
-void Worker::DoRunGraph(CallOptions* opts, const RunGraphRequest* request,
-                        RunGraphResponse* response, StatusCallback done) {
+MutableRunGraphRequestWrapper* Worker::CreateRunGraphRequest() {
+  return new InMemoryRunGraphRequest;
+}
+
+MutableRunGraphResponseWrapper* Worker::CreateRunGraphResponse() {
+  return new InMemoryRunGraphResponse;
+}
+
+void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
+                        MutableRunGraphResponseWrapper* response,
+                        StatusCallback done) {
   const int64 step_id = request->step_id();
   TRACEPRINTF("RunGraph: %lld", step_id);
   GraphMgr::NamedTensors in;
   GraphMgr::NamedTensors* out = new GraphMgr::NamedTensors;
-  Status s = PrepareRunGraph(*request, &in, out);
+  Status s = PrepareRunGraph(request, &in, out);
   if (!s.ok()) {
     delete out;
     done(s);
@@ -168,7 +172,7 @@ void Worker::DoRunGraph(CallOptions* opts, const RunGraphRequest* request,
       cost_graph, cm, in, [this, step_id, response, cm, out, token, collector,
                            opts, done](Status s) {
         if (s.ok()) {
-          env_->graph_mgr->RecvOutputs(step_id, out);
+          s = env_->graph_mgr->RecvOutputs(step_id, out);
         }
         opts->ClearCancelCallback();
         {
@@ -181,11 +185,7 @@ void Worker::DoRunGraph(CallOptions* opts, const RunGraphRequest* request,
           for (const auto& p : *out) {
             const string& key = p.first;
             const Tensor& val = p.second;
-            auto* recv = response->add_recv();
-            recv->set_name(key);
-            // TODO(zhifengc): Deal with gpu -> cpu copy.
-            TensorProto* proto = recv->mutable_tensor();
-            val.AsProtoTensorContent(proto);
+            response->AddRecv(key, val);
           }
         }
         delete collector;
@@ -196,15 +196,15 @@ void Worker::DoRunGraph(CallOptions* opts, const RunGraphRequest* request,
 
 // TODO(suharshs): Add stats collection support to partial run.
 void Worker::DoPartialRunGraph(CallOptions* opts,
-                               const RunGraphRequest* request,
-                               RunGraphResponse* response,
+                               RunGraphRequestWrapper* request,
+                               MutableRunGraphResponseWrapper* response,
                                StatusCallback done) {
   const int64 step_id = request->step_id();
   const string& graph_handle = request->graph_handle();
   TRACEPRINTF("PartialRunGraph: %lld", step_id);
   GraphMgr::NamedTensors in;
   GraphMgr::NamedTensors* out = new GraphMgr::NamedTensors;
-  Status s = PrepareRunGraph(*request, &in, out);
+  Status s = PrepareRunGraph(request, &in, out);
   auto finish = [this, done, out](const Status& s) {
     delete out;
     done(s);
@@ -278,11 +278,7 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
     for (const auto& p : *out) {
       const string& key = p.first;
       const Tensor& val = p.second;
-      auto* recv = response->add_recv();
-      recv->set_name(key);
-      // TODO(zhifengc): Deal with gpu -> cpu copy.
-      TensorProto* proto = recv->mutable_tensor();
-      val.AsProtoTensorContent(proto);
+      response->AddRecv(key, val);
     }
 
     // If this is the last partial run request we must also wait for the entire

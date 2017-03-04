@@ -105,12 +105,13 @@ class QuantizeNodesTest : public ::testing::Test {
                                     &quantized_graph_def);
     // Reshape is not included here because it can be added as part of the
     // quantization process.
-    const std::set<string> quantizable_ops = {
-        "BiasAdd", "Concat", "Conv2D",  "MatMul",
-        "Relu",    "Relu6",  "AvgPool", "MaxPool",
-    };
+    const std::set<string> quantizable_ops = {"BiasAdd", "Concat",  "Conv2D",
+                                              "MatMul",  "Relu",    "Relu6",
+                                              "AvgPool", "MaxPool", "Mul"};
     for (const NodeDef& node : quantized_graph_def.node()) {
-      EXPECT_EQ(0, quantizable_ops.count(node.op()));
+      EXPECT_EQ(0, quantizable_ops.count(node.op()))
+          << "Found quantizable node " << node.op() << " for node named "
+          << node.name();
     }
   }
 
@@ -151,6 +152,58 @@ class QuantizeNodesTest : public ::testing::Test {
                                     context, 2.0, quantized_graph_def);
   }
 
+  void TestIgnoreOps(std::initializer_list<string> ops_to_ignore) {
+    auto root = tensorflow::Scope::NewRootScope();
+    using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
+
+    // A small helper to construct a Const op.
+    auto const_op = [&](const string& name, const TensorShape& shape,
+                        std::initializer_list<float> values) {
+      Tensor tensor(DT_FLOAT, shape);
+      test::FillValues<float>(&tensor, values);
+      return Const(root.WithOpName(name), Input::Initializer(tensor));
+    };
+
+    // A simple graph with two different quantizable ops.
+    int m = 1;
+    int n = 1;
+    int k = 1;
+    Output a_op = const_op("a_op", {m, k}, {2});
+    Output b_op = const_op("b_op", {k, n}, {3});
+    Output c_op = const_op("c_op", {m, k}, {1});
+    Output d_op = const_op("d_op", {k, n}, {4});
+    Output mat_mul_op = MatMul(root.WithOpName("mat_mul_op"), a_op, b_op);
+    Output mul_op = Mul(root.WithOpName("mul"), c_op, d_op);
+
+    GraphDef float_graph_def;
+    TF_ASSERT_OK(root.ToGraphDef(&float_graph_def));
+
+    TransformFuncContext context;
+    if (ops_to_ignore.size() > 0) {
+      context.params["ignore_op"] = ops_to_ignore;
+    }
+
+    GraphDef quantized_graph_def;
+    TestTransformedVersusFloatGraph(QuantizeNodes, float_graph_def, {}, {},
+                                    {"mat_mul_op", "mul"}, context, 1.0,
+                                    &quantized_graph_def);
+
+    // Make sure the quantized graph still contains the op that should have
+    // been ignored by QuantizeNodes.
+    for (const string& op_name : ops_to_ignore) {
+      bool exists_in_quantized_graph = false;
+      for (const NodeDef& node : quantized_graph_def.node()) {
+        if (node.op() == op_name) {
+          exists_in_quantized_graph = true;
+          break;
+        }
+      }
+      EXPECT_TRUE(exists_in_quantized_graph)
+          << "Op " << op_name
+          << " should not have been replace by a quantized version";
+    }
+  }
+
   void TestQuantizeMatMul(int m, int n, int k,
                           const std::vector<float>& a_values,
                           const std::vector<float>& b_values) {
@@ -187,6 +240,41 @@ class QuantizeNodesTest : public ::testing::Test {
   void TestQuantizeMatMulSmall() {
     TestQuantizeMatMul(2, 4, 3, {1, 2, 3, 4, 5, 6},
                        {7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18});
+  }
+
+  void TestQuantizeMul() {
+    using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
+
+    std::vector<int64> x_shape({10, 100});
+    const size_t x_num_elements = TensorShape(x_shape).num_elements();
+    std::vector<float> x_values(x_num_elements);
+    for (int i = 0; i < x_num_elements; ++i) {
+      x_values[i] = (i % 256) / 256.0f;
+    }
+
+    std::vector<int64> y_shape({100});
+    const size_t y_num_elements = TensorShape(y_shape).num_elements();
+    std::vector<float> y_values(y_num_elements);
+    for (int i = 0; i < y_num_elements; ++i) {
+      y_values[i] = ((i + 23) % 123) - 50;
+    }
+
+    Scope root = Scope::NewRootScope();
+
+    Tensor x_float_tensor(DT_FLOAT, TensorShape(x_shape));
+    test::FillValues<float>(&x_float_tensor, x_values);
+    Output x = Const(root.WithOpName("x"), Input::Initializer(x_float_tensor));
+
+    Tensor y_float_tensor(DT_FLOAT, TensorShape(y_shape));
+    test::FillValues<float>(&y_float_tensor, y_values);
+    Output y = Const(root.WithOpName("y"), Input::Initializer(y_float_tensor));
+
+    Mul mul = Mul(root.WithOpName("mul"), x, y);
+
+    GraphDef float_graph_def;
+    TF_ASSERT_OK(root.ToGraphDef(&float_graph_def));
+
+    TestQuantizedVersusFloatGraph(float_graph_def, {}, {"mul"});
   }
 
   void TestQuantizeConv2D(int depth, int input_width, int input_height,
@@ -260,7 +348,7 @@ class QuantizeNodesTest : public ::testing::Test {
     Output b_op = Const(root.WithOpName("b_op"), Input::Initializer(b_tensor));
 
     Output concat_op =
-        Concat(root.WithOpName("concat_op"), shape_op, {a_op, b_op});
+        Concat(root.WithOpName("concat_op"), {a_op, b_op}, shape_op);
 
     GraphDef float_graph_def;
     TF_ASSERT_OK(root.ToGraphDef(&float_graph_def));
@@ -1232,13 +1320,67 @@ class QuantizeNodesTest : public ::testing::Test {
     EXPECT_EQ("add_op", node_map["mul_op1"]->input(0));
     EXPECT_EQ("c_op", node_map["mul_op1"]->input(1));
   }
+
+  void TestExcludeNonFloat() {
+    auto root = tensorflow::Scope::NewRootScope();
+    using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
+
+    Tensor int_constant_tensor(DT_INT32, TensorShape({4, 5}));
+    test::FillIota<int32>(&int_constant_tensor, 1);
+    Output int_constant = Const(root.WithOpName("int_constant"),
+                                Input::Initializer(int_constant_tensor));
+
+    Tensor float_constant_tensor(DT_FLOAT, TensorShape({4, 5}));
+    test::FillIota<float>(&float_constant_tensor, 2.0f);
+    Output float_constant = Const(root.WithOpName("float_constant"),
+                                  Input::Initializer(float_constant_tensor));
+
+    Output excluded_reshape_op =
+        Reshape(root.WithOpName("excluded_reshape_op"), int_constant, {10, 2});
+
+    Output included_reshape_op = Reshape(root.WithOpName("included_reshape_op"),
+                                         float_constant, {10, 2});
+
+    Output excluded_relu_op =
+        Relu(root.WithOpName("excluded_relu_op"), excluded_reshape_op);
+
+    Output excluded_float_caster = Cast(
+        root.WithOpName("excluded_float_caster"), excluded_relu_op, DT_FLOAT);
+
+    Output included_relu_op =
+        Relu(root.WithOpName("included_relu_op"), included_reshape_op);
+
+    GraphDef float_graph_def;
+    TF_ASSERT_OK(root.ToGraphDef(&float_graph_def));
+
+    GraphDef quantized_graph_def;
+    TestTransformedVersusFloatGraph(
+        QuantizeNodes, float_graph_def, {}, {},
+        {"excluded_float_caster", "included_relu_op"}, {}, 1.0,
+        &quantized_graph_def);
+
+    std::map<string, const NodeDef*> node_map;
+    MapNamesToNodes(quantized_graph_def, &node_map);
+    ASSERT_EQ(1, node_map.count("excluded_reshape_op"));
+    EXPECT_EQ("Reshape", node_map.at("excluded_reshape_op")->op());
+    ASSERT_EQ(1, node_map.count("included_reshape_op"));
+    EXPECT_EQ("Dequantize", node_map.at("included_reshape_op")->op());
+  }
 };
+
+TEST_F(QuantizeNodesTest, TestIgnoreOps) {
+  TestIgnoreOps({});
+  TestIgnoreOps({"MatMul"});
+  TestIgnoreOps({"MatMul", "Mul"});
+}
 
 TEST_F(QuantizeNodesTest, TestQuantizeMatMulTiny) { TestQuantizeMatMulTiny(); }
 
 TEST_F(QuantizeNodesTest, TestQuantizeMatMulSmall) {
   TestQuantizeMatMulSmall();
 }
+
+TEST_F(QuantizeNodesTest, TestQuantizeMul) { TestQuantizeMul(); }
 
 TEST_F(QuantizeNodesTest, TestOddPaddingProblem) {
   // Tests one error case we ran into in a real graph.
@@ -1316,6 +1458,8 @@ TEST_F(QuantizeNodesTest, TestMergeDuplicatesNested) {
 TEST_F(QuantizeNodesTest, TestMergeDuplicateInOut) {
   TestMergeDuplicatesInOut();
 }
+
+TEST_F(QuantizeNodesTest, TestExcludeNonFloat) { TestExcludeNonFloat(); }
 
 }  // namespace graph_transforms
 }  // namespace tensorflow

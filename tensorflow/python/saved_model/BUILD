@@ -2,6 +2,8 @@
 # TensorFlow SavedModel.
 
 package(
+    # TODO(drpng): change that to //third_party/tensorflow:internal
+    # when we have migrated all users.
     default_visibility = ["//visibility:public"],
 )
 
@@ -10,6 +12,23 @@ licenses(["notice"])  # Apache 2.0
 exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
+
+py_library(
+    name = "saved_model",
+    srcs = ["saved_model.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":builder",
+        ":constants",
+        ":loader",
+        ":main_op",
+        ":signature_constants",
+        ":signature_def_utils",
+        ":tag_constants",
+        ":utils",
+    ],
+)
 
 py_library(
     name = "constants",
@@ -31,7 +50,10 @@ py_library(
 
 py_library(
     name = "builder",
-    srcs = ["builder.py"],
+    srcs = [
+        "builder.py",
+        "builder_impl.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":constants",
@@ -47,7 +69,10 @@ py_library(
 
 py_library(
     name = "loader",
-    srcs = ["loader.py"],
+    srcs = [
+        "loader.py",
+        "loader_impl.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":constants",
@@ -61,7 +86,10 @@ py_library(
 
 py_library(
     name = "main_op",
-    srcs = ["main_op.py"],
+    srcs = [
+        "main_op.py",
+        "main_op_impl.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:control_flow_ops",
@@ -77,7 +105,6 @@ py_test(
     srcs = ["saved_model_test.py"],
     data = ["//tensorflow/cc/saved_model:saved_model_half_plus_two"],
     srcs_version = "PY2AND3",
-    tags = ["manual"],
     visibility = ["//visibility:private"],
     deps = [
         ":builder",
@@ -86,6 +113,7 @@ py_test(
         ":main_op",
         ":signature_def_utils",
         ":tag_constants",
+        ":utils",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
@@ -102,7 +130,10 @@ py_test(
 
 py_library(
     name = "utils",
-    srcs = ["utils.py"],
+    srcs = [
+        "utils.py",
+        "utils_impl.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/core:protos_all_py",
@@ -126,7 +157,10 @@ py_test(
 
 py_library(
     name = "signature_def_utils",
-    srcs = ["signature_def_utils.py"],
+    srcs = [
+        "signature_def_utils.py",
+        "signature_def_utils_impl.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":signature_constants",

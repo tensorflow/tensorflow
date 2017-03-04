@@ -20,16 +20,21 @@ from __future__ import print_function
 
 import os
 import shutil
-import tensorflow as tf
 
 from google.protobuf import text_format
 
+from tensorflow.contrib.tensorboard.plugins import projector
+from tensorflow.contrib.tensorboard.plugins.projector import projector_config_pb2
+from tensorflow.python.platform import gfile
+from tensorflow.python.platform import test
+from tensorflow.python.summary.writer import writer as writer_lib
 
-class ProjectorApiTest(tf.test.TestCase):
+
+class ProjectorApiTest(test.TestCase):
 
   def testVisualizeEmbeddings(self):
     # Create a dummy configuration.
-    config = tf.contrib.tensorboard.plugins.projector.ProjectorConfig()
+    config = projector_config_pb2.ProjectorConfig()
     config.model_checkpoint_path = 'test'
     emb1 = config.embeddings.add()
     emb1.tensor_name = 'tensor1'
@@ -38,16 +43,15 @@ class ProjectorApiTest(tf.test.TestCase):
     # Call the API method to save the configuration to a temporary dir.
     temp_dir = self.get_temp_dir()
     self.addCleanup(shutil.rmtree, temp_dir)
-    writer = tf.summary.FileWriter(temp_dir)
-    tf.contrib.tensorboard.plugins.projector.visualize_embeddings(writer,
-                                                                  config)
+    writer = writer_lib.FileWriter(temp_dir)
+    projector.visualize_embeddings(writer, config)
 
     # Read the configuratin from disk and make sure it matches the original.
-    with tf.gfile.GFile(os.path.join(temp_dir, 'projector_config.pbtxt')) as f:
-      config2 = tf.contrib.tensorboard.plugins.projector.ProjectorConfig()
+    with gfile.GFile(os.path.join(temp_dir, 'projector_config.pbtxt')) as f:
+      config2 = projector_config_pb2.ProjectorConfig()
       text_format.Parse(f.read(), config2)
       self.assertEqual(config, config2)
 
 
-if __name__ == "__main__":
-  tf.test.main()
+if __name__ == '__main__':
+  test.main()

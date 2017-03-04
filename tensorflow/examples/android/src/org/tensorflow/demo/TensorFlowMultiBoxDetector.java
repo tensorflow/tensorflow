@@ -19,11 +19,16 @@ import android.content.res.AssetManager;
 import android.graphics.Bitmap;
 import android.graphics.RectF;
 import android.os.Trace;
+import java.io.BufferedReader;
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.PriorityQueue;
+import java.util.StringTokenizer;
 import org.tensorflow.contrib.android.TensorFlowInferenceInterface;
 import org.tensorflow.demo.env.Logger;
 
@@ -70,45 +75,92 @@ public class TensorFlowMultiBoxDetector implements Classifier {
    * @param imageStd The assumed std of the image values.
    * @param inputName The label of the image input node.
    * @param outputName The label of the output node.
-   * @return The native return value, 0 indicating success.
-   * @throws IOException
    */
-  public int initializeTensorFlow(
+  public static Classifier create(
       final AssetManager assetManager,
       final String modelFilename,
       final String locationFilename,
-      final int numLocations,
-      final int inputSize,
       final int imageMean,
       final float imageStd,
       final String inputName,
-      final String outputName)
-      throws IOException {
-    this.inputName = inputName;
-    this.inputSize = inputSize;
-    this.imageMean = imageMean;
-    this.imageStd = imageStd;
-    this.numLocations = numLocations;
+      final String outputLocationsName,
+      final String outputScoresName) {
+    final TensorFlowMultiBoxDetector d = new TensorFlowMultiBoxDetector();
 
-    this.boxPriors = new float[numLocations * 8];
+    d.inferenceInterface = new TensorFlowInferenceInterface();
+    if (d.inferenceInterface.initializeTensorFlow(assetManager, modelFilename) != 0) {
+      throw new RuntimeException("TF initialization failed");
+    }
 
-    loadCoderOptions(assetManager, locationFilename, boxPriors);
+    d.inputName = inputName;
+    // The inputName node has a shape of [N, H, W, C], where
+    // N is the batch size
+    // H = W are the height and width
+    // C is the number of channels (3 for our purposes - RGB)
+    d.inputSize = (int) d.inferenceInterface.graph().operation(inputName).output(0).shape().size(1);
+    d.imageMean = imageMean;
+    d.imageStd = imageStd;
+    // The outputScoresName node has a shape of [N, NumLocations], where N
+    // is the batch size.
+    d.numLocations =
+        (int) d.inferenceInterface.graph().operation(outputScoresName).output(0).shape().size(1);
+
+    d.boxPriors = new float[d.numLocations * 8];
+
+    try {
+      d.loadCoderOptions(assetManager, locationFilename, d.boxPriors);
+    } catch (final IOException e) {
+      throw new RuntimeException("Error initializing box priors from " + locationFilename);
+    }
 
     // Pre-allocate buffers.
-    outputNames = outputName.split(",");
-    intValues = new int[inputSize * inputSize];
-    floatValues = new float[inputSize * inputSize * 3];
-    outputScores = new float[numLocations];
-    outputLocations = new float[numLocations * 4];
+    d.outputNames = new String[] {outputLocationsName, outputScoresName};
+    d.intValues = new int[d.inputSize * d.inputSize];
+    d.floatValues = new float[d.inputSize * d.inputSize * 3];
+    d.outputScores = new float[d.numLocations];
+    d.outputLocations = new float[d.numLocations * 4];
 
-    inferenceInterface = new TensorFlowInferenceInterface();
-
-    return inferenceInterface.initializeTensorFlow(assetManager, modelFilename);
+    return d;
   }
 
-  // Load BoxCoderOptions from native code.
-  private native void loadCoderOptions(
-      AssetManager assetManager, String locationFilename, float[] boxPriors);
+  private TensorFlowMultiBoxDetector() {}
+
+  private void loadCoderOptions(
+      final AssetManager assetManager, final String locationFilename, final float[] boxPriors)
+      throws IOException {
+    // Try to be intelligent about opening from assets or sdcard depending on prefix.
+    final String assetPrefix = "file:///android_asset/";
+    InputStream is;
+    if (locationFilename.startsWith(assetPrefix)) {
+      is = assetManager.open(locationFilename.split(assetPrefix)[1]);
+    } else {
+      is = new FileInputStream(locationFilename);
+    }
+
+    // Read values. Number of values per line doesn't matter, as long as they are separated
+    // by commas and/or whitespace, and there are exactly numLocations * 8 values total.
+    // Values are in the order mean, std for each consecutive corner of each box, for a total of 8
+    // per location.
+    final BufferedReader reader = new BufferedReader(new InputStreamReader(is));
+    int priorIndex = 0;
+    String line;
+    while ((line = reader.readLine()) != null) {
+      final StringTokenizer st = new StringTokenizer(line, ", ");
+      while (st.hasMoreTokens()) {
+        final String token = st.nextToken();
+        try {
+          final float number = Float.parseFloat(token);
+          boxPriors[priorIndex++] = number;
+        } catch (final NumberFormatException e) {
+          // Silently ignore.
+        }
+      }
+    }
+    if (priorIndex != boxPriors.length) {
+      throw new RuntimeException(
+          "BoxPrior length mismatch: " + priorIndex + " vs " + boxPriors.length);
+    }
+  }
 
   private float[] decodeLocationsEncoding(final float[] locationEncoding) {
     final float[] locations = new float[locationEncoding.length];
@@ -200,7 +252,7 @@ public class TensorFlowMultiBoxDetector implements Classifier {
               outputLocations[4 * i + 1] * inputSize,
               outputLocations[4 * i + 2] * inputSize,
               outputLocations[4 * i + 3] * inputSize);
-      pq.add(new Recognition("" + i, "" + i, outputScores[i], detection));
+      pq.add(new Recognition("" + i, null, outputScores[i], detection));
     }
 
     final ArrayList<Recognition> recognitions = new ArrayList<Recognition>();
@@ -211,10 +263,12 @@ public class TensorFlowMultiBoxDetector implements Classifier {
     return recognitions;
   }
 
-  public void enableStatLogging(boolean debug) {
+  @Override
+  public void enableStatLogging(final boolean debug) {
     inferenceInterface.enableStatLogging(debug);
   }
 
+  @Override
   public String getStatString() {
     return inferenceInterface.getStatString();
   }

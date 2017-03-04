@@ -100,15 +100,15 @@ Status RemoveUnusedNodes(const GraphDef& input_graph_def,
   std::map<string, const NodeDef*> node_map;
   MapNamesToNodes(input_graph_def, &node_map);
 
-  std::map<string, bool> used_nodes;
+  std::set<string> used_nodes;
   for (const string& input : context.input_names) {
-    used_nodes[input] = true;
+    used_nodes.insert(input);
   }
   std::vector<string> current_nodes = context.output_names;
   while (!current_nodes.empty()) {
-    std::vector<string> next_nodes;
+    std::set<string> next_nodes;
     for (const string& node_name : current_nodes) {
-      used_nodes[node_name] = true;
+      used_nodes.insert(node_name);
       if (node_map.count(node_name) == 0) {
         LOG(ERROR) << "Bad graph structure, no node named '" << node_name
                    << "' found for input lookup";
@@ -119,11 +119,11 @@ Status RemoveUnusedNodes(const GraphDef& input_graph_def,
       for (const string& input_name : node.input()) {
         const string& input_node_name = NodeNameFromInput(input_name);
         if (used_nodes.count(input_node_name) == 0) {
-          next_nodes.push_back(input_node_name);
+          next_nodes.insert(input_node_name);
         }
       }
     }
-    current_nodes = next_nodes;
+    current_nodes = std::vector<string>(next_nodes.begin(), next_nodes.end());
   }
   FilterGraphDef(
       input_graph_def,

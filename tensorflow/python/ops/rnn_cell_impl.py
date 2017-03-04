@@ -67,7 +67,7 @@ class _RNNCell(object):
   of operators that allow add dropouts, projections, or embeddings for inputs.
   Constructing multi-layer cells is supported by the class `MultiRNNCell`,
   or by calling the `rnn` ops several times. Every `RNNCell` must have the
-  properties below and and implement `__call__` with the following signature.
+  properties below and implement `__call__` with the following signature.
   """
 
   def __call__(self, inputs, state, scope=None):

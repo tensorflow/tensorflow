@@ -47,16 +47,13 @@ class ModeKeys(object):
   INFER = 'infer'
 
 
-# TODO(roumposg): Pass output_signature_fn instead of signature_fn.
 class ModelFnOps(
     collections.namedtuple('ModelFnOps', [
-        'predictions', 'loss', 'train_op', 'eval_metric_ops', 'signature_fn',
+        'predictions', 'loss', 'train_op', 'eval_metric_ops',
         'output_alternatives', 'training_chief_hooks', 'training_hooks',
-        'training_scaffold'
+        'scaffold'
     ])):
   """Ops returned from a model_fn."""
-
-  # TODO(soergel): remove signature_fn once sessionbundle export is deprecated.
 
   def __new__(cls,
               mode,
@@ -64,11 +61,10 @@ class ModelFnOps(
               loss=None,
               train_op=None,
               eval_metric_ops=None,
-              signature_fn=None,
               output_alternatives=None,
               training_chief_hooks=None,
               training_hooks=None,
-              training_scaffold=None):
+              scaffold=None):
     """Creates a validated `ModelFnOps` instance.
 
     For a multi-headed model, the predictions dict here will contain the outputs
@@ -95,7 +91,6 @@ class ModelFnOps(
       train_op: Op for the training step.
       eval_metric_ops: Dict of metric results keyed by name. The values of the
         dict are the results of calling a metric function, such as `Tensor`.
-      signature_fn: The signature_fn used for exporting.
       output_alternatives: a dict of
         `{submodel_name: (problem_type, {tensor_name: Tensor})}`, where
         `submodel_name` is a submodel identifier that should be consistent
@@ -108,7 +103,7 @@ class ModelFnOps(
         run on the chief worker during training.
       training_hooks: A list of `SessionRunHook` objects that will be run on
         all workers during training.
-      training_scaffold: A `tf.train.Scaffold` object that can be used to set
+      scaffold: A `tf.train.Scaffold` object that can be used to set
         initialization, saver, and more to be used in training.
 
     Returns:
@@ -161,11 +156,6 @@ class ModelFnOps(
       if not isinstance(eval_metric_ops, dict):
         raise ValueError('eval_metric_ops must be a dict.')
 
-    # Validate signature_fn
-    if signature_fn:
-      if not callable(signature_fn):
-        raise ValueError('signature_fn is not callable.')
-
     # Validate hooks
     if training_chief_hooks is None:
       training_chief_hooks = []
@@ -177,8 +167,13 @@ class ModelFnOps(
                         'SessionRunHook instances, got instance of %s: %s' %
                         (type(hook), hook))
 
-    return super(ModelFnOps, cls).__new__(cls, predictions, loss, train_op,
-                                          eval_metric_ops, signature_fn,
-                                          output_alternatives,
-                                          training_chief_hooks, training_hooks,
-                                          training_scaffold)
+    return super(ModelFnOps, cls).__new__(
+        cls,
+        predictions=predictions,
+        loss=loss,
+        train_op=train_op,
+        eval_metric_ops=eval_metric_ops,
+        output_alternatives=output_alternatives,
+        training_chief_hooks=training_chief_hooks,
+        training_hooks=training_hooks,
+        scaffold=scaffold)

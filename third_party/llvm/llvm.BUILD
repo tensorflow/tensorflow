@@ -7,18 +7,18 @@ licenses(["notice"])
 exports_files(["LICENSE.TXT"])
 
 load(
-    "@//third_party/llvm:llvm.bzl",
+    "@%ws%//third_party/llvm:llvm.bzl",
     "gentbl",
     "expand_cmake_vars",
     "llvm_target_cmake_vars",
     "cmake_var_string",
 )
 load(
-    "@//third_party:common.bzl",
+    "@%ws%//third_party:common.bzl",
     "template_rule",
 )
 
-package(default_visibility = ["@//tensorflow/compiler/xla:internal"])
+package(default_visibility = ["@%ws%//tensorflow/compiler/xla:internal"])
 
 llvm_host_triple = "x86_64-unknown-linux_gnu"
 
@@ -104,6 +104,8 @@ cmake_vars = {
     # LLVM features
     "ENABLE_BACKTRACES": 1,
     "LLVM_BINDIR": "/dev/null",
+    "LLVM_DISABLE_ABI_BREAKING_CHECKS_ENFORCING": 0,
+    "LLVM_ENABLE_ABI_BREAKING_CHECKS": 0,
     "LLVM_ENABLE_THREADS": 1,
     "LLVM_ENABLE_ZLIB": 1,
     "LLVM_HAS_ATOMICS": 1,
@@ -145,7 +147,7 @@ darwin_cmake_vars = {
 # TODO(phawkins): use a better method to select the right host triple, rather
 # than hardcoding x86_64.
 all_cmake_vars = select({
-    "@//tensorflow:darwin": cmake_var_string(
+    "@%ws%//tensorflow:darwin": cmake_var_string(
         cmake_vars + llvm_target_cmake_vars("X86", "x86_64-apple-darwin") +
         darwin_cmake_vars,
     ),
@@ -176,6 +178,13 @@ expand_cmake_vars(
     src = "include/llvm/Config/llvm-config.h.cmake",
     cmake_vars = all_cmake_vars,
     dst = "include/llvm/Config/llvm-config.h",
+)
+
+expand_cmake_vars(
+    name = "abi_breaking_gen",
+    src = "include/llvm/Config/abi-breaking.h.cmake",
+    cmake_vars = all_cmake_vars,
+    dst = "include/llvm/Config/abi-breaking.h",
 )
 
 # Performs macro expansions on .def.in files
@@ -231,6 +240,7 @@ cc_library(
         "include/llvm/Config/AsmPrinters.def",
         "include/llvm/Config/Disassemblers.def",
         "include/llvm/Config/Targets.def",
+        "include/llvm/Config/abi-breaking.h",
         "include/llvm/Config/config.h",
         "include/llvm/Config/llvm-config.h",
     ],
@@ -319,6 +329,7 @@ llvm_target_list = [
         "lower_name": "aarch64",
         "short_name": "AArch64",
         "tbl_outs": [
+            ("-gen-register-bank", "lib/Target/AArch64/AArch64GenRegisterBank.inc"),
             ("-gen-register-info", "lib/Target/AArch64/AArch64GenRegisterInfo.inc"),
             ("-gen-instr-info", "lib/Target/AArch64/AArch64GenInstrInfo.inc"),
             ("-gen-emitter", "lib/Target/AArch64/AArch64GenMCCodeEmitter.inc"),
@@ -328,6 +339,7 @@ llvm_target_list = [
             ("-gen-asm-matcher", "lib/Target/AArch64/AArch64GenAsmMatcher.inc"),
             ("-gen-dag-isel", "lib/Target/AArch64/AArch64GenDAGISel.inc"),
             ("-gen-fast-isel", "lib/Target/AArch64/AArch64GenFastISel.inc"),
+            ("-gen-global-isel", "lib/Target/AArch64/AArch64GenGlobalISel.inc"),
             ("-gen-callingconv", "lib/Target/AArch64/AArch64GenCallingConv.inc"),
             ("-gen-subtarget", "lib/Target/AArch64/AArch64GenSubtargetInfo.inc"),
             ("-gen-disassembler", "lib/Target/AArch64/AArch64GenDisassemblerTables.inc"),
@@ -339,6 +351,7 @@ llvm_target_list = [
         "lower_name": "arm",
         "short_name": "ARM",
         "tbl_outs": [
+            ("-gen-register-bank", "lib/Target/ARM/ARMGenRegisterBank.inc"),
             ("-gen-register-info", "lib/Target/ARM/ARMGenRegisterInfo.inc"),
             ("-gen-instr-info", "lib/Target/ARM/ARMGenInstrInfo.inc"),
             ("-gen-emitter", "lib/Target/ARM/ARMGenMCCodeEmitter.inc"),
@@ -386,6 +399,7 @@ llvm_target_list = [
         "lower_name": "x86",
         "short_name": "X86",
         "tbl_outs": [
+            ("-gen-register-bank", "lib/Target/X86/X86GenRegisterBank.inc"),
             ("-gen-register-info", "lib/Target/X86/X86GenRegisterInfo.inc"),
             ("-gen-disassembler", "lib/Target/X86/X86GenDisassemblerTables.inc"),
             ("-gen-instr-info", "lib/Target/X86/X86GenInstrInfo.inc"),
@@ -818,7 +832,6 @@ cc_library(
         ":mc_parser",
         ":support",
         ":target",
-        ":transform_utils",
     ],
 )
 
@@ -887,9 +900,7 @@ cc_library(
         ":bit_writer",
         ":config",
         ":core",
-        ":instrumentation",
         ":mc",
-        ":profile_data",
         ":scalar",
         ":support",
         ":target",
@@ -1095,6 +1106,7 @@ cc_library(
     ]),
     deps = [
         ":analysis",
+        ":bit_writer",
         ":config",
         ":core",
         ":inst_combine",
@@ -1257,6 +1269,7 @@ cc_library(
         ":code_gen",
         ":config",
         ":core",
+        ":ipo",
         ":mc",
         ":nvptx_asm_printer",
         ":nvptx_desc",
@@ -1575,6 +1588,7 @@ cc_library(
         "include/llvm/ExecutionEngine/RTDyldMemoryManager.h",
         "lib/ExecutionEngine/RuntimeDyld/*.h",
         "lib/ExecutionEngine/RuntimeDyld/Targets/*.h",
+        "lib/ExecutionEngine/RuntimeDyld/Targets/*.cpp",
         "lib/ExecutionEngine/RuntimeDyld/*.h",
     ]),
     hdrs = glob([

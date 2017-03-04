@@ -226,15 +226,15 @@ def _BiasAddGradGrad(op, received_grad):
   bias_shape = array_ops.shape(received_grad)
 
   if data_format == b"NCHW":
-    expanded_shape = array_ops.concat_v2([
-        array_ops.ones_like(shape[:-3]), bias_shape, array_ops.ones_like(shape[
-            -2:])
+    expanded_shape = array_ops.concat([
+        array_ops.ones_like(shape[:-3]), bias_shape,
+        array_ops.ones_like(shape[-2:])
     ], 0)
-    tile_mults = array_ops.concat_v2([shape[:-3], [1], shape[-2:]], 0)
+    tile_mults = array_ops.concat([shape[:-3], [1], shape[-2:]], 0)
   else:
-    expanded_shape = array_ops.concat_v2(
+    expanded_shape = array_ops.concat(
         [array_ops.ones_like(shape[:-1]), bias_shape], 0)
-    tile_mults = array_ops.concat_v2([shape[:-1], [1]], 0)
+    tile_mults = array_ops.concat([shape[:-1], [1]], 0)
 
   expanded_grad = array_ops.reshape(received_grad, expanded_shape)
   return array_ops.tile(expanded_grad, tile_mults)
@@ -321,19 +321,43 @@ def _BroadcastMul(vec, mat):
 
 
 @ops.RegisterGradient("SoftmaxCrossEntropyWithLogits")
-def _SoftmaxCrossEntropyWithLogitsGrad(op, grad_0, _):
-  # grad_0 is the backprop for cost, and we multiply it with the gradients
+def _SoftmaxCrossEntropyWithLogitsGrad(op, grad_loss, grad_grad):
+  """Gradient function for SoftmaxCrossEntropyWithLogits."""
+  # grad_loss is the backprop for cost, and we multiply it with the gradients
   # (which is output[1])
+  # grad_grad is the backprop for softmax gradient.
   # There is no gradient for the labels
-  return _BroadcastMul(grad_0, op.outputs[1]), None
+  #
+  # Second derivative is just softmax derivative w.r.t. logits.
+  softmax_grad = op.outputs[1]
+  grad = _BroadcastMul(grad_loss, softmax_grad)
+
+  if grad_grad.op.type not in ('ZerosLike', 'Zeros'):
+    logits = op.inputs[0]
+    softmax = nn_ops.softmax(logits)
+
+    grad += ((grad_grad - array_ops.squeeze(math_ops.matmul(grad_grad[:, None, :],
+                                                              softmax[:, :, None]), axis=1)) * softmax)
+
+  return grad, None
 
 
 @ops.RegisterGradient("SparseSoftmaxCrossEntropyWithLogits")
 def _SparseSoftmaxCrossEntropyWithLogitsGrad(op, grad_0, _):
+  """Gradient function for SparseSoftmaxCrossEntropyWithLogits."""
   # grad_0 is the backprop for cost, and we multiply it with the gradients
   # (which is output[1])
   # There is no gradient for the labels
-  return _BroadcastMul(grad_0, op.outputs[1]), None
+  #
+  # Currently there is no way to take the second derivative of this op
+  # due to the fused implementation's interaction with tf.gradients(),
+  # so we make sure we prevent silently incorrect results by raising
+  # an error if the second derivative is requested via prevent_gradient.
+  sparse_softmax_grad_without_gradient = array_ops.prevent_gradient(
+      op.outputs[1], message="Currently there is no way to take the second "
+      "derivative of sparse_softmax_cross_entropy_with_logits due to the fused "
+      "implementation's interaction with tf.gradients()")
+  return _BroadcastMul(grad_0, sparse_softmax_grad_without_gradient), None
 
 
 @ops.RegisterGradient("Conv2D")

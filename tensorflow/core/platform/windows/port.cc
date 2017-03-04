@@ -52,11 +52,17 @@ int NumSchedulableCPUs() {
   return system_info.dwNumberOfProcessors;
 }
 
-void* aligned_malloc(size_t size, int minimum_alignment) {
+void* AlignedMalloc(size_t size, int minimum_alignment) {
   return _aligned_malloc(size, minimum_alignment);
 }
 
-void aligned_free(void* aligned_memory) { _aligned_free(aligned_memory); }
+void AlignedFree(void* aligned_memory) { _aligned_free(aligned_memory); }
+
+void* Malloc(size_t size) { return ::malloc(size); }
+
+void* Realloc(void* ptr, size_t size) { return ::realloc(ptr, size); }
+
+void Free(void* ptr) { ::free(ptr); }
 
 void MallocExtension_ReleaseToSystem(std::size_t num_bytes) {
   // No-op.

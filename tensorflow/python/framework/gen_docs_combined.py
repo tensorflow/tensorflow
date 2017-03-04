@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
 import collections
 import os.path
 import sys
@@ -31,17 +32,12 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import docs
 from tensorflow.python.framework import framework_lib
 
-
-tf.flags.DEFINE_string("out_dir", None,
-                       "Directory to which docs should be written.")
-tf.flags.DEFINE_boolean("print_hidden_regex", False,
-                        "Dump a regular expression matching any hidden symbol")
-FLAGS = tf.flags.FLAGS
+FLAGS = None
 
 
 PREFIX_TEXT = """
 Note: Functions taking `Tensor` arguments can also take anything accepted by
-[`tf.convert_to_tensor`](framework.md#convert_to_tensor).
+@{tf.convert_to_tensor}.
 """
 
 
@@ -53,6 +49,7 @@ def module_names():
       "tf.nn",
       "tf.train",
       "tf.python_io",
+      "tf.saved_model",
       "tf.summary",
       "tf.test",
       "tf.contrib.bayesflow.entropy",
@@ -172,6 +169,7 @@ def all_libraries(module_to_name, members, documented):
               "Inputs and Readers",
               exclude_symbols=["LookupTableBase", "HashTable",
                                "initialize_all_tables",
+                               "tables_initializer",
                                "parse_single_sequence_example",
                                "string_to_hash_bucket"],
               prefix=PREFIX_TEXT),
@@ -254,7 +252,7 @@ _hidden_symbols = ["Event", "LogMessage", "Summary", "SessionLog", "xrange",
                    "AttrValue", "OptimizerOptions",
                    "CollectionDef", "MetaGraphDef", "QueueRunnerDef",
                    "SaverDef", "VariableDef", "TestCase", "GrpcServer",
-                   "ClusterDef", "JobDef", "ServerDef"]
+                   "ClusterDef", "JobDef", "ServerDef", "TensorInfo"]
 
 # TODO(skleinfeld, deannarubin) Address shortname
 # conflict between tf.contrib.learn.NanLossDuringTrainingError and
@@ -263,11 +261,18 @@ _hidden_symbols = ["Event", "LogMessage", "Summary", "SessionLog", "xrange",
 # TODO(wicke): Remove contrib.layers.relu* after shortnames are
 # disabled.  These conflict with tf.nn.relu*
 EXCLUDE = frozenset(["tf.contrib.learn.monitors.NanLossDuringTrainingError",
+                     "tf.contrib.layers.dropout",
+                     "tf.contrib.layers.bias_add",
+                     "tf.contrib.layers.conv2d",
+                     "tf.contrib.layers.conv2d_transpose",
+                     "tf.contrib.layers.separable_conv2d",
+                     "tf.contrib.layers.softmax",
                      "tf.contrib.layers.relu", "tf.contrib.layers.relu6",
                      "tf.contrib.framework.assert_global_step",
                      "tf.contrib.framework.get_global_step",
                      "tf.contrib.learn.NanLossDuringTrainingError",
                      "tf.contrib.layers.stack",
+                     "tf.contrib.layers.ProblemType",
                      "tf.confusion_matrix"])
 
 
@@ -309,4 +314,19 @@ def main(unused_argv):
 
 
 if __name__ == "__main__":
-  tf.app.run()
+  parser = argparse.ArgumentParser()
+  parser.register("type", "bool", lambda v: v.lower() == "true")
+  parser.add_argument(
+      "--out_dir",
+      type=str,
+      default=None,
+      help="Directory to which docs should be written.")
+  parser.add_argument(
+      "--print_hidden_regex",
+      type="bool",
+      nargs="?",
+      const=True,
+      default=False,
+      help="Dump a regular expression matching any hidden symbol")
+  FLAGS, unparsed = parser.parse_known_args()
+  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

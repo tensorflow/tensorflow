@@ -291,10 +291,43 @@ class Library(Document):
   def _generate_signature_for_function(self, func):
     """Given a function, returns a string representing its args."""
     args_list = []
-    argspec = inspect.getargspec(func)
+    if isinstance(func, functools.partial):
+      argspec = inspect.getargspec(func.func)
+      # Remove the args from the original function that have been used up.
+      first_default_arg = (
+          len(argspec.args or []) - len(argspec.defaults or []))
+      partial_args = len(func.args)
+      if argspec.args:
+        argspec_args = list(argspec.args[partial_args:])
+      else:
+        argspec_args = []
+      if argspec.defaults:
+        argspec_defaults = list(argspec.defaults[
+            max(0, partial_args-first_default_arg):])
+      else:
+        argspec_defaults = []
+      first_default_arg = max(0, first_default_arg - partial_args)
+      for kwarg in func.keywords:
+        if kwarg in argspec_args:
+          i = argspec_args.index(kwarg)
+          argspec_args.pop(i)
+          if i >= first_default_arg:
+            argspec_defaults.pop(i-first_default_arg)
+          else:
+            first_default_arg -= 1
+      argspec_varargs = None
+      argspec_keywords = None
+
+    else:
+      argspec = inspect.getargspec(func)
+      argspec_args = argspec.args
+      argspec_defaults = argspec.defaults
+      argspec_varargs = argspec.varargs
+      argspec_keywords = argspec.keywords
+
     first_arg_with_default = (
-        len(argspec.args or []) - len(argspec.defaults or []))
-    for arg in argspec.args[:first_arg_with_default]:
+        len(argspec_args or []) - len(argspec_defaults or []))
+    for arg in argspec_args[:first_arg_with_default]:
       if arg == "self":
         # Python documentation typically skips `self` when printing method
         # signatures.
@@ -306,24 +339,30 @@ class Library(Document):
     # TODO(aselle): This workaround is brittle on TestCase.__call__
     #  so we need to wrap this in a try/catch
     # We should do something better.
-    if argspec.varargs == "args" and argspec.keywords == "kwds":
+    if argspec_varargs == "args" and argspec_keywords == "kwds":
       try:
         original_func = func.__closure__[0].cell_contents
         return self._generate_signature_for_function(original_func)
       except TypeError:
         pass
 
-    if argspec.defaults:
+    if argspec_defaults:
       for arg, default in zip(
-          argspec.args[first_arg_with_default:], argspec.defaults):
+          argspec_args[first_arg_with_default:], argspec_defaults):
         if callable(default):
-          args_list.append("%s=%s" % (arg, default.__name__))
+          if hasattr(default, "__name__"):
+            args_list.append("%s=%s" % (arg, default.__name__))
+          else:
+            # A callable may be a class instance.
+            # TODO(fchollet): handle case with non-default constructor
+            # arguments (currently not present in the TF codebase).
+            args_list.append("%s=%s()" % (arg, default.__class__.__name__))
         else:
           args_list.append("%s=%r" % (arg, default))
-    if argspec.varargs:
-      args_list.append("*" + argspec.varargs)
-    if argspec.keywords:
-      args_list.append("**" + argspec.keywords)
+    if argspec_varargs:
+      args_list.append("*" + argspec_varargs)
+    if argspec_keywords:
+      args_list.append("**" + argspec_keywords)
     return "(" + ", ".join(args_list) + ")"
 
   def _remove_docstring_indent(self, docstring):

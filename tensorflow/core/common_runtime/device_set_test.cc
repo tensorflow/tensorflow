@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/common_runtime/device_set.h"
+#include "tensorflow/core/common_runtime/device_factory.h"
 
 #include <vector>
 #include "tensorflow/core/lib/core/status.h"
@@ -54,37 +55,43 @@ class DeviceSetTest : public ::testing::Test {
   std::vector<std::unique_ptr<Device>> owned_;
 };
 
+class DummyFactory : public DeviceFactory {
+ public:
+  Status CreateDevices(const SessionOptions& options, const string& name_prefix,
+                       std::vector<Device*>* devices) override {
+    return Status::OK();
+  }
+};
+
+// Assumes the default priority is '50'.
+REGISTER_LOCAL_DEVICE_FACTORY("d1", DummyFactory);
+REGISTER_LOCAL_DEVICE_FACTORY("d2", DummyFactory, 51);
+REGISTER_LOCAL_DEVICE_FACTORY("d3", DummyFactory, 49);
+
 TEST_F(DeviceSetTest, PrioritizedDeviceTypeList) {
+  EXPECT_EQ(50, DeviceSet::DeviceTypeOrder(DeviceType("d1")));
+  EXPECT_EQ(51, DeviceSet::DeviceTypeOrder(DeviceType("d2")));
+  EXPECT_EQ(49, DeviceSet::DeviceTypeOrder(DeviceType("d3")));
+
   EXPECT_EQ(std::vector<DeviceType>{}, types());
 
-  AddDevice("CPU", "/job:a/replica:0/task:0/cpu:0");
-  EXPECT_EQ(std::vector<DeviceType>{DeviceType(DEVICE_CPU)}, types());
+  AddDevice("d1", "/job:a/replica:0/task:0/device:d1:0");
+  EXPECT_EQ(std::vector<DeviceType>{DeviceType("d1")}, types());
 
-  AddDevice("CPU", "/job:a/replica:0/task:0/cpu:1");
-  EXPECT_EQ(std::vector<DeviceType>{DeviceType(DEVICE_CPU)}, types());
+  AddDevice("d1", "/job:a/replica:0/task:0/device:d1:1");
+  EXPECT_EQ(std::vector<DeviceType>{DeviceType("d1")}, types());
 
-  AddDevice("GPU", "/job:a/replica:0/task:0/gpu:0");
-  EXPECT_EQ(
-      (std::vector<DeviceType>{DeviceType(DEVICE_GPU), DeviceType(DEVICE_CPU)}),
-      types());
+  // D2 is prioritized higher than D1.
+  AddDevice("d2", "/job:a/replica:0/task:0/device:d2:0");
+  EXPECT_EQ((std::vector<DeviceType>{DeviceType("d2"), DeviceType("d1")}),
+            types());
 
-  AddDevice("SYCL", "/job:a/replica:0/task:0/device:sycl:0");
-  EXPECT_TRUE((types()[0] == DeviceType(DEVICE_SYCL) ||
-               types()[0] == DeviceType(DEVICE_GPU)));
-  EXPECT_TRUE((types()[1] == DeviceType(DEVICE_SYCL) ||
-               types()[1] == DeviceType(DEVICE_GPU)));
-  EXPECT_TRUE(types()[2] == DeviceType(DEVICE_CPU));
-
-  AddDevice("T1", "/job:a/replica:0/task:0/device:T1:0");
-  AddDevice("T1", "/job:a/replica:0/task:0/device:T1:1");
-  AddDevice("T2", "/job:a/replica:0/task:0/device:T2:0");
-  EXPECT_TRUE((types()[0] == DeviceType(DEVICE_SYCL) ||
-               types()[0] == DeviceType(DEVICE_GPU)));
-  EXPECT_TRUE((types()[1] == DeviceType(DEVICE_SYCL) ||
-               types()[1] == DeviceType(DEVICE_GPU)));
-  EXPECT_TRUE(types()[2] == DeviceType(DEVICE_CPU));
-  EXPECT_TRUE(types()[3] == DeviceType("T1"));
-  EXPECT_TRUE(types()[4] == DeviceType("T2"));
+  // D3 is prioritized below D1.
+  AddDevice("d3", "/job:a/replica:0/task:0/device:d3:0");
+  EXPECT_EQ((std::vector<DeviceType>{
+                DeviceType("d2"), DeviceType("d1"), DeviceType("d3"),
+            }),
+            types());
 }
 
 }  // namespace

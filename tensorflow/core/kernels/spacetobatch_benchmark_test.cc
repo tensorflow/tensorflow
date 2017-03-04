@@ -37,19 +37,19 @@ static Graph* ConstructSpaceToBatchGraph(
   if (dtype == DT_FLOAT) {
     Tensor input(DT_FLOAT, input_shape);
     input.flat<float>().setRandom();
-    NodeBuilder(g->NewName("n"), op_name)
-        .Input(test::graph::Constant(g, input))
-        .Input(test::graph::Constant(g, paddings_tensor))
-        .Attr("block_size", block_size)
-        .Finalize(g, &ret);
+    TF_CHECK_OK(NodeBuilder(g->NewName("n"), op_name)
+                    .Input(test::graph::Constant(g, input))
+                    .Input(test::graph::Constant(g, paddings_tensor))
+                    .Attr("block_size", block_size)
+                    .Finalize(g, &ret));
   } else if (dtype == DT_HALF) {
     Tensor input(DT_HALF, input_shape);
     input.flat<Eigen::half>().setRandom();
-    NodeBuilder(g->NewName("n"), op_name)
-        .Input(test::graph::Constant(g, input))
-        .Input(test::graph::Constant(g, paddings_tensor))
-        .Attr("block_size", block_size)
-        .Finalize(g, &ret);
+    TF_CHECK_OK(NodeBuilder(g->NewName("n"), op_name)
+                    .Input(test::graph::Constant(g, input))
+                    .Input(test::graph::Constant(g, paddings_tensor))
+                    .Attr("block_size", block_size)
+                    .Finalize(g, &ret));
   }
   return g;
 }

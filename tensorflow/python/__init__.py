@@ -46,36 +46,16 @@ import traceback
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import,g-bad-import-order,g-import-not-at-top
 
-# On UNIX-based platforms, pywrap_tensorflow is a SWIG-generated
-# python library that dynamically loads _pywrap_tensorflow.so. The
-# default mode for loading keeps all the symbol private and not
-# visible to other libraries that may be loaded. Setting the mode to
-# RTLD_GLOBAL to make the symbols visible, so that custom op libraries
-# imported using `tf.load_op_library()` can access symbols defined in
-# _pywrap_tensorflow.so.
 import numpy as np
-try:
-  if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
-    _default_dlopen_flags = sys.getdlopenflags()
-    sys.setdlopenflags(_default_dlopen_flags | ctypes.RTLD_GLOBAL)
-    from tensorflow.python import pywrap_tensorflow
-    sys.setdlopenflags(_default_dlopen_flags)
-  else:
-    # TODO(keveman,mrry): Support dynamic op loading on platforms that do not
-    # use `dlopen()` for dynamic loading.
-    from tensorflow.python import pywrap_tensorflow
-except ImportError:
-  msg = """%s\n\nError importing tensorflow.  Unless you are using bazel,
-you should not try to import tensorflow from its source directory;
-please exit the tensorflow source tree, and relaunch your python interpreter
-from there.""" % traceback.format_exc()
-  raise ImportError(msg)
+
+from tensorflow.python import pywrap_tensorflow
 
 # Protocol buffers
 from tensorflow.core.framework.graph_pb2 import *
 from tensorflow.core.framework.node_def_pb2 import *
 from tensorflow.core.framework.summary_pb2 import *
 from tensorflow.core.framework.attr_value_pb2 import *
+from tensorflow.core.protobuf.meta_graph_pb2 import TensorInfo
 from tensorflow.core.protobuf.config_pb2 import *
 from tensorflow.core.util.event_pb2 import *
 
@@ -101,6 +81,8 @@ from tensorflow.python.ops import sdca_ops as sdca
 from tensorflow.python.ops import image_ops as image
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.ops import sets
+from tensorflow.python.saved_model import saved_model
+from tensorflow.python.util import compat
 from tensorflow.python.user_ops import user_ops
 from tensorflow.python.util import compat
 from tensorflow.python.summary import summary
@@ -166,6 +148,7 @@ _allowed_symbols = [
     'RunMetadata',
     'SessionLog',
     'Summary',
+    'TensorInfo',  # Used for tf.saved_model functionality.
 ]
 
 # The following symbols are kept for compatibility. It is our plan
@@ -189,7 +172,6 @@ _allowed_symbols.extend([
 
 # This is needed temporarily because we import it explicitly.
 _allowed_symbols.extend([
-    'platform',  ## This is included by the tf.learn main template.
     'pywrap_tensorflow',
 ])
 
@@ -237,6 +219,7 @@ _allowed_symbols.extend([
     'nn',
     'python_io',
     'resource_loader',
+    'saved_model',
     'sdca',
     'sets',
     'summary',
@@ -256,13 +239,13 @@ _allowed_symbols.extend([
 
 # Remove all extra symbols that don't have a docstring or are not explicitly
 # referenced in the whitelist.
-remove_undocumented(__name__, _allowed_symbols,
-                    [framework_lib, array_ops, client_lib, check_ops,
-                     compat, constant_op, control_flow_ops, confusion_matrix_m,
-                     functional_ops, histogram_ops, io_ops, losses, math_ops,
-                     metrics, nn, resource_loader, sets, script_ops,
-                     session_ops, sparse_ops, state_ops, string_ops, summary,
-                     tensor_array_ops, train, layers])
+remove_undocumented(__name__, _allowed_symbols, [
+    framework_lib, array_ops, check_ops, client_lib, compat, constant_op,
+    control_flow_ops, confusion_matrix_m, functional_ops, histogram_ops, io_ops,
+    losses, math_ops, metrics, nn, resource_loader, sets, script_ops,
+    session_ops, sparse_ops, state_ops, string_ops, summary, tensor_array_ops,
+    train, layers
+])
 
 # Special dunders that we choose to export:
 _exported_dunders = set([

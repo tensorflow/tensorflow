@@ -51,13 +51,14 @@ std::vector<Device*> FilterSupportedDevices(
   }
 
   auto device_sort = [](const Device* a, const Device* b) {
-    // First sort by prioritized device type and then by device name.
-    return std::make_pair(
-               DeviceSet::DeviceTypeOrder(DeviceType(a->device_type())),
-               StringPiece(a->name())) <
-           std::make_pair(
-               DeviceSet::DeviceTypeOrder(DeviceType(b->device_type())),
-               StringPiece(b->name()));
+    auto a_priority = DeviceSet::DeviceTypeOrder(DeviceType(a->device_type()));
+    auto b_priority = DeviceSet::DeviceTypeOrder(DeviceType(b->device_type()));
+    // First sort by prioritized device type (higher is preferred) and
+    // then by device name (lexicographically).
+    if (a_priority != b_priority) {
+      return a_priority > b_priority;
+    }
+    return StringPiece(a->name()) < StringPiece(b->name());
   };
   std::sort(filtered_devices.begin(), filtered_devices.end(), device_sort);
   return filtered_devices;
@@ -604,7 +605,7 @@ bool IsMetadataNode(const Node* node) {
 // outputs that are connected to nodes in the same colocation group.
 bool IsGeneratorNode(const Node* node) {
   return node->num_inputs() == 0 && node->num_outputs() == 1 &&
-         node->out_edges().size() == 1 && !IsRefType(node->output_type(0));
+         !IsRefType(node->output_type(0));
 }
 
 }  // namespace
@@ -715,17 +716,23 @@ Status SimplePlacer::Run() {
     if (!node->IsOp()) {
       continue;
     }
-    // Skip nodes that already have an assigned name.
+
+    // The graph may have come pre-populated by the framework with assigned
+    // devices (e.g., for stateful placements), so the placer should not try to
+    // place nodes that are already placed.
     if (!node->assigned_device_name().empty()) {
+      // Although the device is already assigned, we run this function to
+      // possibly log pre-assigned placements.
+      AssignAndLog(node->assigned_device_name(), node);
       continue;
     }
 
     // Heuristic A: prefer to place "generators" with their only
     // consumers.
     //
-    // If this is a node with no inputs and a single (non-ref)
-    // consumer, we save this for a second pass, so that the
-    // consumer's placement is chosen.
+    // If this is a node with no inputs and one output, we save
+    // this for a second pass, so that the consumer's placement
+    // is chosen.
     if (IsGeneratorNode(node)) {
       second_pass.push_back(node);
       continue;
@@ -787,7 +794,15 @@ Status SimplePlacer::Run() {
     if (IsGeneratorNode(node)) {
       const Node* output = (*node->out_edges().begin())->dst();
       const string& output_device_name = output->assigned_device_name();
-      if (CanAssignToDevice(output_device_name, devices)) {
+
+      const bool consumers_on_same_device = std::all_of(
+          node->out_edges().begin(), node->out_edges().end(),
+          [output_device_name](const Edge* e) {
+            return e->dst()->assigned_device_name() == output_device_name;
+          });
+
+      if (consumers_on_same_device && 
+          CanAssignToDevice(output_device_name, devices)) {
         assigned_device = output_device_name;
       }
     }
@@ -798,17 +813,17 @@ Status SimplePlacer::Run() {
   return Status::OK();
 }
 
-bool SimplePlacer::CanAssignToDevice(const string& candidate_device_name,
-                                     const std::vector<Device*> devices) const {
+bool SimplePlacer::CanAssignToDevice(
+    const string& candidate_device_name,
+    const std::vector<Device*>& devices) const {
   if (!candidate_device_name.empty()) {
-    // Can we assign to the same device?  Check by validating that
-    // the device type of 'candidate_device_name' is present
-    // in 'devices'.
+    // 'devices' lists the set of devices that the placer or the user has
+    // constrained the operation to.  "candidate_device_name" must
+    // refer to a concrete Device that is in the list of 'devices'.
     const Device* other_device =
         devices_->FindDeviceByName(candidate_device_name);
-    if (std::any_of(devices.begin(), devices.end(), [other_device](Device* d) {
-          return d->device_type() == other_device->device_type();
-        })) {
+    if (std::find(devices.begin(), devices.end(), other_device) !=
+        devices.end()) {
       return true;
     }
   }
@@ -821,10 +836,10 @@ void SimplePlacer::AssignAndLog(const string& assigned_device,
   node->set_assigned_device_name(assigned_device);
   // Log placement if log_device_placement is set.
   if (options_ && options_->config.log_device_placement()) {
-    printf("%s: (%s): %s\n", node->name().c_str(),
-           node->type_string().c_str(),
+    printf("%s: (%s): %s\n", node->name().c_str(), node->type_string().c_str(),
            node->assigned_device_name().c_str());
-    LOG(INFO) << node->name() << ": " << "(" << node->type_string() << ")" 
+    LOG(INFO) << node->name() << ": "
+              << "(" << node->type_string() << ")"
               << node->assigned_device_name();
   }
 }

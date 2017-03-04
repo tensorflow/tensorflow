@@ -325,7 +325,7 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
         It returns a tuple instead of a single concatenated `Tensor`, unlike
         in the `bidirectional_rnn`. If the concatenated one is preferred,
         the forward and backward outputs can be concatenated as
-        `tf.concat_v2(outputs, 2)`.
+        `tf.concat(outputs, 2)`.
       output_states: A tuple (output_state_fw, output_state_bw) containing
         the forward and the backward final states of bidirectional rnn.
 
@@ -515,7 +515,7 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
       state = initial_state
     else:
       if not dtype:
-        raise ValueError("If no initial_state is provided, dtype must be.")
+        raise ValueError("If there is no initial_state, you must give a dtype.")
       state = cell.zero_state(batch_size, dtype)
 
     def _assert_has_shape(x, shape):

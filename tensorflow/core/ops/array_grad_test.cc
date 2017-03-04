@@ -172,6 +172,8 @@ TEST_F(ArrayGradTest, ConcatGrad) {
   x1.flat<float>().setZero();
   Tensor dy(DT_FLOAT, {2, 4, 5});
   test::FillIota<float>(&dy, 0);
+
+  // Test Concat.
   auto dx = ConcatGrad(1, x0, x1, dy);
   test::ExpectTensorEqual<int32>(dx[0], test::AsScalar(0));
   test::ExpectClose(
@@ -184,7 +186,21 @@ TEST_F(ArrayGradTest, ConcatGrad) {
                                                   36., 37., 38., 39.},
                                                  {2, 1, 5}));
 
+  // Test ConcatV2 with positive concat axis.
   dx = ConcatGradV2(1, x0, x1, dy);
+  test::ExpectTensorEqual<int32>(dx[dx.size() - 1], test::AsScalar(0));
+  test::ExpectClose(
+      dx[0],
+      test::AsTensor<float>({0.,  1.,  2.,  3.,  4.,  5.,  6.,  7.,  8.,  9.,
+                             10., 11., 12., 13., 14., 20., 21., 22., 23., 24.,
+                             25., 26., 27., 28., 29., 30., 31., 32., 33., 34.},
+                            {2, 3, 5}));
+  test::ExpectClose(dx[1], test::AsTensor<float>({15., 16., 17., 18., 19., 35.,
+                                                  36., 37., 38., 39.},
+                                                 {2, 1, 5}));
+
+  // Test ConcatV2 with negative concat axis.
+  dx = ConcatGradV2(-2, x0, x1, dy);
   test::ExpectTensorEqual<int32>(dx[dx.size() - 1], test::AsScalar(0));
   test::ExpectClose(
       dx[0],

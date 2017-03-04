@@ -259,13 +259,38 @@ func setAttr(cdesc *C.TF_OperationDescription, status *status, name string, valu
 		if err := status.Err(); err != nil {
 			return fmt.Errorf("bad value for attribute %q: %v", name, err)
 		}
+	case Shape:
+		ndims, dims := cshape(value)
+		var dimsp *C.int64_t
+		if ndims > 0 {
+			dimsp = &dims[0]
+		}
+		C.TF_SetAttrShape(cdesc, cAttrName, dimsp, ndims)
+	case []Shape:
+		ndims := make([]C.int, len(value))
+		dims := make([][]C.int64_t, len(value))
+		dimsp := make([]*C.int64_t, len(value))
+		for i, s := range value {
+			ndims[i], dims[i] = cshape(s)
+			if ndims[i] > 0 {
+				dimsp[i] = &dims[i][0]
+			}
+		}
+		C.TF_SetAttrShapeList(cdesc, cAttrName, &dimsp[0], &ndims[0], C.int(len(value)))
 	default:
-		// Shapes can be done, but will require that it be
-		// distinguishable from []int64. Which is fine, it
-		// probably makes sense to define a Shape type anyway,
-		// since that should handle partially known shapes as
-		// well and hide the special meaning of -1?
 		return fmt.Errorf("attribute %q has a type (%T) which is not valid for operation attributes", name, value)
 	}
 	return nil
+}
+
+func cshape(s Shape) (C.int, []C.int64_t) {
+	ndims := C.int(s.NumDimensions())
+	if ndims < 0 {
+		return -1, nil
+	}
+	dims := make([]C.int64_t, ndims)
+	for i, s := range s.dims {
+		dims[i] = C.int64_t(s)
+	}
+	return ndims, dims
 }

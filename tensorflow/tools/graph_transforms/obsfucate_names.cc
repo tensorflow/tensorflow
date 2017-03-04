@@ -40,10 +40,6 @@ Status ObsfucateNames(const GraphDef& input_graph_def,
     required_nodes.insert(output);
   }
 
-  for (const string& required_node : required_nodes) {
-    LOG(INFO) << "required_node=" << required_node;
-  }
-
   const string valid_chars =
       "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
   const int64 chars_size = valid_chars.size();

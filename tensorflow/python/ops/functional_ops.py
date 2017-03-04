@@ -15,10 +15,7 @@
 
 """Functional operations.
 
-## Higher Order Operators
-
-TensorFlow provides several higher order operators to simplify the common
-map-reduce programming patterns.
+See the @{$python/functional_ops} guide.
 
 @@map_fn
 @@foldl

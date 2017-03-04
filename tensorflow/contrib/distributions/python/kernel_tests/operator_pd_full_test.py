@@ -18,12 +18,13 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
 
 from tensorflow.contrib.distributions.python.ops import operator_pd_full
+from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import test
 
 
-class OperatorPDFullTest(tf.test.TestCase):
+class OperatorPDFullTest(test.TestCase):
   # The only method needing checked (because it isn't part of the parent class)
   # is the check for symmetry.
 
@@ -32,7 +33,7 @@ class OperatorPDFullTest(tf.test.TestCase):
 
   def _random_positive_def_array(self, *shape):
     matrix = self._rng.rand(*shape)
-    return tf.matmul(matrix, matrix, adjoint_b=True).eval()
+    return math_ops.matmul(matrix, matrix, adjoint_b=True).eval()
 
   def testPositiveDefiniteMatrixDoesntRaise(self):
     with self.test_session():
@@ -59,4 +60,4 @@ class OperatorPDFullTest(tf.test.TestCase):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

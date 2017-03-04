@@ -18,23 +18,21 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.graph_editor import subgraph
-from tensorflow.contrib.graph_editor import util
-from tensorflow.python.framework import ops as tf_ops
+from tensorflow.contrib.graph_editor import subgraph as _subgraph
+from tensorflow.contrib.graph_editor import util as _util
+from tensorflow.python.framework import ops as _tf_ops
 
-__all__ = [
+from tensorflow.python.util.all_util import remove_undocumented
+
+_allowed_symbols = [
     "swap_ts",
-    "reroute_a2b_ts",
-    "reroute_b2a_ts",
+    "reroute_ts",
     "swap_inputs",
-    "reroute_a2b_inputs",
-    "reroute_b2a_inputs",
+    "reroute_inputs",
     "swap_outputs",
-    "reroute_a2b_outputs",
-    "reroute_b2a_outputs",
-    "swap",
-    "reroute_a2b",
-    "reroute_b2a",
+    "reroute_outputs",
+    "swap_ios",
+    "reroute_ios",
     "remove_control_inputs",
     "add_control_inputs",
 ]
@@ -50,8 +48,8 @@ def _check_ts_compatibility(ts0, ts1):
     ValueError: if any pair of tensors (same index in ts0 and ts1) have
       a dtype or a shape which is not compatible.
   """
-  ts0 = util.make_list_of_t(ts0)
-  ts1 = util.make_list_of_t(ts1)
+  ts0 = _util.make_list_of_t(ts0)
+  ts1 = _util.make_list_of_t(ts1)
   if len(ts0) != len(ts1):
     raise ValueError("ts0 and ts1 have different sizes: {} != {}".format(
         len(ts0), len(ts1)))
@@ -180,13 +178,13 @@ def _reroute_ts(ts0, ts1, mode, can_modify=None, cannot_modify=None):
       converted to a list of `tf.Operation`.
   """
   a2b, b2a = _RerouteMode.check(mode)
-  ts0 = util.make_list_of_t(ts0)
-  ts1 = util.make_list_of_t(ts1)
+  ts0 = _util.make_list_of_t(ts0)
+  ts1 = _util.make_list_of_t(ts1)
   _check_ts_compatibility(ts0, ts1)
   if cannot_modify is not None:
-    cannot_modify = frozenset(util.make_list_of_op(cannot_modify))
+    cannot_modify = frozenset(_util.make_list_of_op(cannot_modify))
   if can_modify is not None:
-    can_modify = frozenset(util.make_list_of_op(can_modify))
+    can_modify = frozenset(_util.make_list_of_op(can_modify))
   nb_update_inputs = 0
   precomputed_consumers = []
   # precompute consumers to avoid issue with repeated tensors:
@@ -232,7 +230,7 @@ def swap_ts(ts0, ts1, can_modify=None, cannot_modify=None):
   return _reroute_ts(ts0, ts1, _RerouteMode.swap, can_modify, cannot_modify)
 
 
-def reroute_a2b_ts(ts0, ts1, can_modify=None, cannot_modify=None):
+def reroute_ts(ts0, ts1, can_modify=None, cannot_modify=None):
   """For each tensor's pair, replace the end of t1 by the end of t0.
 
   B0 B1     B0 B1
@@ -258,33 +256,6 @@ def reroute_a2b_ts(ts0, ts1, can_modify=None, cannot_modify=None):
   return _reroute_ts(ts0, ts1, _RerouteMode.a2b, can_modify, cannot_modify)
 
 
-def reroute_b2a_ts(ts0, ts1, can_modify=None, cannot_modify=None):
-  r"""For each tensor's pair, replace the end of t0 by the end of t1.
-
-  B0 B1     B0 B1
-  |  |    =>  \|
-  A0 A1     A0 A1
-
-  The end of the tensors in ts0 are left dangling.
-
-  Args:
-    ts0: an object convertible to a list of `tf.Tensor`.
-    ts1: an object convertible to a list of `tf.Tensor`.
-    can_modify: iterable of operations which can be modified. Any operation
-      outside within_ops will be left untouched by this function.
-    cannot_modify: iterable of operations which cannot be modified.
-      Any operation within cannot_modify will be left untouched by this
-      function.
-  Returns:
-    The number of individual modifications made by the function.
-  Raises:
-    TypeError: if ts0 or ts1 cannot be converted to a list of tf.Tensor.
-    TypeError: if can_modify or cannot_modify is not None and cannot be
-      converted to a list of tf.Operation.
-  """
-  return _reroute_ts(ts0, ts1, _RerouteMode.b2a, can_modify, cannot_modify)
-
-
 def _reroute_sgv_remap(sgv0, sgv1, mode):
   """Remap in place the inputs of two subgraph views to mimic the reroute.
 
@@ -299,11 +270,11 @@ def _reroute_sgv_remap(sgv0, sgv1, mode):
     ValueError: if sgv0 and sgv1 do not belong to the same graph.
   """
   a2b, b2a = _RerouteMode.check(mode)
-  if not isinstance(sgv0, subgraph.SubGraphView):
+  if not isinstance(sgv0, _subgraph.SubGraphView):
     raise TypeError("Expected a SubGraphView, got {}".format(type(sgv0)))
-  if not isinstance(sgv1, subgraph.SubGraphView):
+  if not isinstance(sgv1, _subgraph.SubGraphView):
     raise TypeError("Expected a SubGraphView, got {}".format(type(sgv1)))
-  util.check_graphs(sgv0, sgv1)
+  _util.check_graphs(sgv0, sgv1)
   sgv0_ = sgv0.copy()
   sgv1_ = sgv1.copy()
   # pylint: disable=protected-access
@@ -358,13 +329,13 @@ def _reroute_sgv_inputs(sgv0, sgv1, mode):
     StandardError: if sgv0 or sgv1 cannot be converted to a SubGraphView using
       the same rules than the function subgraph.make_view.
   """
-  sgv0 = subgraph.make_view(sgv0)
-  sgv1 = subgraph.make_view(sgv1)
-  util.check_graphs(sgv0, sgv1)
+  sgv0 = _subgraph.make_view(sgv0)
+  sgv1 = _subgraph.make_view(sgv1)
+  _util.check_graphs(sgv0, sgv1)
   can_modify = sgv0.ops + sgv1.ops
   # also allow consumers of passthrough to be modified:
-  can_modify += util.get_consuming_ops(sgv0.passthroughs)
-  can_modify += util.get_consuming_ops(sgv1.passthroughs)
+  can_modify += _util.get_consuming_ops(sgv0.passthroughs)
+  can_modify += _util.get_consuming_ops(sgv1.passthroughs)
   _reroute_ts(sgv0.inputs, sgv1.inputs, mode, can_modify=can_modify)
   _reroute_sgv_remap(sgv0, sgv1, mode)
   return sgv0, sgv1
@@ -388,9 +359,9 @@ def _reroute_sgv_outputs(sgv0, sgv1, mode):
     StandardError: if sgv0 or sgv1 cannot be converted to a SubGraphView using
       the same rules than the function subgraph.make_view.
   """
-  sgv0 = subgraph.make_view(sgv0)
-  sgv1 = subgraph.make_view(sgv1)
-  util.check_graphs(sgv0, sgv1)
+  sgv0 = _subgraph.make_view(sgv0)
+  sgv1 = _subgraph.make_view(sgv1)
+  _util.check_graphs(sgv0, sgv1)
   cannot_modify = sgv0.ops + sgv1.ops
   _reroute_ts(sgv0.outputs, sgv1.outputs, mode, cannot_modify=cannot_modify)
   return sgv0, sgv1
@@ -425,14 +396,9 @@ def swap_inputs(sgv0, sgv1):
   return _reroute_sgv_inputs(sgv0, sgv1, _RerouteMode.swap)
 
 
-def reroute_a2b_inputs(sgv0, sgv1):
+def reroute_inputs(sgv0, sgv1):
   """Re-route all the inputs of sgv0 to sgv1 (see reroute_inputs)."""
   return _reroute_sgv_inputs(sgv0, sgv1, _RerouteMode.a2b)
-
-
-def reroute_b2a_inputs(sgv0, sgv1):
-  """Re-route all the inputs of sgv1 to sgv0 (see reroute_inputs)."""
-  return _reroute_sgv_inputs(sgv0, sgv1, _RerouteMode.b2a)
 
 
 def swap_outputs(sgv0, sgv1):
@@ -440,29 +406,19 @@ def swap_outputs(sgv0, sgv1):
   return _reroute_sgv_outputs(sgv0, sgv1, _RerouteMode.swap)
 
 
-def reroute_a2b_outputs(sgv0, sgv1):
+def reroute_outputs(sgv0, sgv1):
   """Re-route all the outputs of sgv0 to sgv1 (see _reroute_outputs)."""
   return _reroute_sgv_outputs(sgv0, sgv1, _RerouteMode.a2b)
 
 
-def reroute_b2a_outputs(sgv0, sgv1):
-  """Re-route all the outputs of sgv1 to sgv0 (see _reroute_outputs)."""
-  return _reroute_sgv_outputs(sgv0, sgv1, _RerouteMode.b2a)
-
-
-def swap(sgv0, sgv1):
+def swap_ios(sgv0, sgv1):
   """Swap the inputs and outputs of sgv1 to sgv0 (see _reroute)."""
   return _reroute_sgv(sgv0, sgv1, _RerouteMode.swap)
 
 
-def reroute_a2b(sgv0, sgv1):
+def reroute_ios(sgv0, sgv1):
   """Re-route the inputs and outputs of sgv0 to sgv1 (see _reroute)."""
   return _reroute_sgv(sgv0, sgv1, _RerouteMode.a2b)
-
-
-def reroute_b2a(sgv0, sgv1):
-  """Re-route the inputs and outputs of sgv1 to sgv0 (see _reroute)."""
-  return _reroute_sgv(sgv0, sgv1, _RerouteMode.b2a)
 
 
 def remove_control_inputs(op, cops):
@@ -478,9 +434,9 @@ def remove_control_inputs(op, cops):
     TypeError: if op is not a `tf.Operation`.
     ValueError: if any cop in cops is not a control input of op.
   """
-  if not isinstance(op, tf_ops.Operation):
+  if not isinstance(op, _tf_ops.Operation):
     raise TypeError("Expected a tf.Operation, got: {}", type(op))
-  cops = util.make_list_of_op(cops, allow_graph=False)
+  cops = _util.make_list_of_op(cops, allow_graph=False)
   for cop in cops:
     if cop not in op.control_inputs:
       raise ValueError("{} is not a control_input of {}".format(op.name,
@@ -492,7 +448,7 @@ def remove_control_inputs(op, cops):
 
 
 def add_control_inputs(op, cops):
-  """Add the control inputs cops to co.
+  """Add the control inputs cops to op.
 
   Warning: this function is directly manipulating the internals of the tf.Graph.
 
@@ -503,14 +459,16 @@ def add_control_inputs(op, cops):
     TypeError: if op is not a tf.Operation
     ValueError: if any cop in cops is already a control input of op.
   """
-  if not isinstance(op, tf_ops.Operation):
+  if not isinstance(op, _tf_ops.Operation):
     raise TypeError("Expected a tf.Operation, got: {}", type(op))
-  cops = util.make_list_of_op(cops, allow_graph=False)
+  cops = _util.make_list_of_op(cops, allow_graph=False)
   for cop in cops:
     if cop in op.control_inputs:
-      raise ValueError("{} is already a control_input of {}".format(op.name,
-                                                                    cop.name))
+      raise ValueError("{} is already a control_input of {}".format(cop.name,
+                                                                    op.name))
   # pylint: disable=protected-access
   op._control_inputs += cops
   op._recompute_node_def()
   # pylint: enable=protected-access
+
+remove_undocumented(__name__, _allowed_symbols)

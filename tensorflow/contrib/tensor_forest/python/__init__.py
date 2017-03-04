@@ -20,4 +20,5 @@ from __future__ import print_function
 
 from tensorflow.contrib.tensor_forest.python import constants
 from tensorflow.contrib.tensor_forest.python import tensor_forest
+from tensorflow.contrib.tensor_forest.python.ops import data_ops
 from tensorflow.contrib.tensor_forest.python.ops import tensor_forest_ops

@@ -32,20 +32,13 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
-def _call_concat(values, axis, use_concat_v2):
-  if use_concat_v2:
-    return gen_array_ops._concat_v2(values, axis)
-  else:
-    return array_ops.concat(axis, values)
-
-
 class ConcatOpTest(test.TestCase):
 
   def testHStack(self):
     with self.test_session():
       p1 = array_ops.placeholder(dtypes.float32, shape=[4, 4])
       p2 = array_ops.placeholder(dtypes.float32, shape=[4, 4])
-      c = array_ops.concat(0, [p1, p2])
+      c = array_ops.concat([p1, p2], 0)
       params = {
           p1: np.random.rand(4, 4).astype("f"),
           p2: np.random.rand(4, 4).astype("f")
@@ -60,7 +53,7 @@ class ConcatOpTest(test.TestCase):
     with self.test_session():
       p1 = array_ops.placeholder(dtypes.float32, shape=[4, 4])
       p2 = array_ops.placeholder(dtypes.float32, shape=[4, 4])
-      c = array_ops.concat(1, [p1, p2])
+      c = array_ops.concat([p1, p2], 1)
       params = {
           p1: np.random.rand(4, 4).astype("f"),
           p2: np.random.rand(4, 4).astype("f")
@@ -77,7 +70,7 @@ class ConcatOpTest(test.TestCase):
       p2 = np.random.rand(2, 3).astype("i")
       x1 = constant_op.constant(p1)
       x2 = constant_op.constant(p2)
-      c = array_ops.concat(0, [x1, x2])
+      c = array_ops.concat([x1, x2], 0)
       result = c.eval()
     self.assertAllEqual(result[:2, :], p1)
     self.assertAllEqual(result[2:, :], p2)
@@ -88,7 +81,7 @@ class ConcatOpTest(test.TestCase):
       p2 = np.random.rand(4, 4).astype("f")
       v1 = variables.Variable(p1)
       v2 = variables.Variable(p2)
-      c = array_ops.concat(0, [v1, v2])
+      c = array_ops.concat([v1, v2], 0)
       variables.global_variables_initializer().run()
       result = c.eval()
 
@@ -123,7 +116,7 @@ class ConcatOpTest(test.TestCase):
         concat_inputs = [math_ops.cast(p_i, dtype) for p_i in p]
       else:
         concat_inputs = p
-      c = array_ops.concat(concat_dim, concat_inputs)
+      c = array_ops.concat(concat_inputs, concat_dim)
       if dtype != dtype_feed:
         c = math_ops.cast(c, dtype_feed)
       result = c.eval(feed_dict=params)
@@ -156,53 +149,54 @@ class ConcatOpTest(test.TestCase):
     a = variables.Variable(constant_op.constant(1.0, shape=[1]))
     b = variables.Variable(constant_op.constant(2.0, shape=[1]))
     with self.assertRaises(ValueError):
-      array_ops.concat(a, b)
+      array_ops.concat(b, a)
     with self.assertRaises(TypeError):
-      array_ops.concat(4.2, 1)
+      array_ops.concat(1, 4.2)
     with self.assertRaises(ValueError):
-      array_ops.concat(a, 1)
+      array_ops.concat(1, a)
     with self.assertRaises(TypeError):
-      array_ops.concat(a, [a, b])
+      array_ops.concat([a, b], a)
     with self.assertRaises(ValueError):
-      array_ops.concat([3], [a, b])
+      array_ops.concat([a, b], [3])
     with self.assertRaises(ValueError):
-      array_ops.concat(0, [])
+      array_ops.concat([], 0)
     # An integer tensor for shape dim should throw no error.
-    array_ops.concat(constant_op.constant(0, shape=[]), 1)
+    array_ops.concat(1, constant_op.constant(0, shape=[]))
     # A non-scalar tensor for shape should throw ValueError.
     with self.assertRaises(ValueError):
-      array_ops.concat(constant_op.constant(0, shape=[1]), 1)
+      array_ops.concat(1, constant_op.constant(0, shape=[1]))
 
-  def _testGradientsSimple(self, use_gpu, use_concat_v2):
-    with self.test_session(use_gpu=use_gpu):
-      inp = []
-      inp_tensors = []
-      for x in [1, 2, 6]:
-        shape = [10, x, 2]
-        t = np.random.rand(*shape).astype("f")
-        inp.append(t)
-        inp_tensors.append(
-            constant_op.constant(
-                [float(y) for y in t.flatten()],
-                shape=shape,
-                dtype=dtypes.float32))
-      c = _call_concat(inp_tensors, 1, use_concat_v2)
-      output_shape = [10, 9, 2]
-      grad_inp = np.random.rand(*output_shape).astype("f")
-      grad_tensor = constant_op.constant(
-          [float(x) for x in grad_inp.flatten()], shape=output_shape)
-      grad = gradients_impl.gradients([c], inp_tensors, [grad_tensor])
-      concated_grad = _call_concat(grad, 1, use_concat_v2)
-      result = concated_grad.eval()
+  def _testGradientsSimple(self, use_gpu):
+    # Test both positive and negative concat axis.
+    # -2 and 1 correspond to the same axis for 3-dimensional tensors.
+    for axis in [-2, 1]:
+      with self.test_session(use_gpu=use_gpu):
+        inp = []
+        inp_tensors = []
+        for x in [1, 2, 6]:
+          shape = [10, x, 2]
+          t = np.random.rand(*shape).astype("f")
+          inp.append(t)
+          inp_tensors.append(
+              constant_op.constant(
+                  [float(y) for y in t.flatten()],
+                  shape=shape,
+                  dtype=dtypes.float32))
+        c = array_ops.concat(inp_tensors, axis)
+        output_shape = [10, 9, 2]
+        grad_inp = np.random.rand(*output_shape).astype("f")
+        grad_tensor = constant_op.constant(
+            [float(x) for x in grad_inp.flatten()], shape=output_shape)
+        grad = gradients_impl.gradients([c], inp_tensors, [grad_tensor])
+        concated_grad = array_ops.concat(grad, axis)
+        result = concated_grad.eval()
     self.assertAllEqual(result, grad_inp)
 
   def testGradientsSimpleAll(self):
-    self._testGradientsSimple(use_gpu=True, use_concat_v2=False)
-    self._testGradientsSimple(use_gpu=False, use_concat_v2=False)
-    self._testGradientsSimple(use_gpu=True, use_concat_v2=True)
-    self._testGradientsSimple(use_gpu=False, use_concat_v2=True)
+    self._testGradientsSimple(use_gpu=True)
+    self._testGradientsSimple(use_gpu=False)
 
-  def _testGradientsFirstDim(self, use_gpu, use_concat_v2):
+  def _testGradientsFirstDim(self, use_gpu):
     with self.test_session(use_gpu=use_gpu):
       inp = []
       inp_tensors = []
@@ -215,54 +209,53 @@ class ConcatOpTest(test.TestCase):
                 [float(y) for y in t.flatten()],
                 shape=shape,
                 dtype=dtypes.float32))
-      c = _call_concat(inp_tensors, 0, use_concat_v2)
+      c = array_ops.concat(inp_tensors, 0)
       output_shape = [9, 10, 2]
       grad_inp = np.random.rand(*output_shape).astype("f")
       grad_tensor = constant_op.constant(
           [float(x) for x in grad_inp.flatten()], shape=output_shape)
       grad = gradients_impl.gradients([c], inp_tensors, [grad_tensor])
-      concated_grad = _call_concat(grad, 0, use_concat_v2)
+      concated_grad = array_ops.concat(grad, 0)
       result = concated_grad.eval()
 
     self.assertAllEqual(result, grad_inp)
 
   def testGradientsFirstDimAll(self):
-    self._testGradientsFirstDim(use_gpu=False, use_concat_v2=False)
-    self._testGradientsFirstDim(use_gpu=True, use_concat_v2=False)
-    self._testGradientsFirstDim(use_gpu=False, use_concat_v2=True)
-    self._testGradientsFirstDim(use_gpu=True, use_concat_v2=True)
+    self._testGradientsFirstDim(use_gpu=False)
+    self._testGradientsFirstDim(use_gpu=True)
 
-  def _testGradientsLastDim(self, use_gpu, use_concat_v2):
-    with self.test_session(use_gpu=use_gpu):
-      inp = []
-      inp_tensors = []
-      for x in [1, 2, 6]:
-        shape = [10, 2, x]
-        t = np.random.rand(*shape).astype("f")
-        inp.append(t)
-        inp_tensors.append(
-            constant_op.constant(
-                [float(y) for y in t.flatten()],
-                shape=shape,
-                dtype=dtypes.float32))
-      c = _call_concat(inp_tensors, 2, use_concat_v2)
-      output_shape = [10, 2, 9]
-      grad_inp = np.random.rand(*output_shape).astype("f")
-      grad_tensor = constant_op.constant(
-          [float(x) for x in grad_inp.flatten()], shape=output_shape)
-      grad = gradients_impl.gradients([c], inp_tensors, [grad_tensor])
-      concated_grad = _call_concat(grad, 2, use_concat_v2)
-      result = concated_grad.eval()
+  def _testGradientsLastDim(self, use_gpu):
+    # Test both positive and negative concat axis.
+    # -1 and 2 correspond to the same axis for 3-dimensional tensors.
+    for axis in [-1, 2]:
+      with self.test_session(use_gpu=use_gpu):
+        inp = []
+        inp_tensors = []
+        for x in [1, 2, 6]:
+          shape = [10, 2, x]
+          t = np.random.rand(*shape).astype("f")
+          inp.append(t)
+          inp_tensors.append(
+              constant_op.constant(
+                  [float(y) for y in t.flatten()],
+                  shape=shape,
+                  dtype=dtypes.float32))
+        c = array_ops.concat(inp_tensors, 2)
+        output_shape = [10, 2, 9]
+        grad_inp = np.random.rand(*output_shape).astype("f")
+        grad_tensor = constant_op.constant(
+            [float(x) for x in grad_inp.flatten()], shape=output_shape)
+        grad = gradients_impl.gradients([c], inp_tensors, [grad_tensor])
+        concated_grad = array_ops.concat(grad, axis)
+        result = concated_grad.eval()
 
     self.assertAllEqual(result, grad_inp)
 
   def testGradientsLastDimAll(self):
-    self._testGradientsLastDim(use_gpu=False, use_concat_v2=False)
-    self._testGradientsLastDim(use_gpu=True, use_concat_v2=False)
-    self._testGradientsLastDim(use_gpu=False, use_concat_v2=True)
-    self._testGradientsLastDim(use_gpu=True, use_concat_v2=True)
+    self._testGradientsLastDim(use_gpu=False)
+    self._testGradientsLastDim(use_gpu=True)
 
-  def _RunAndVerifyGradientsRandom(self, use_gpu, use_concat_v2):
+  def _RunAndVerifyGradientsRandom(self, use_gpu):
     # Random dims of rank 5
     input_shape = np.random.randint(1, 5, size=5)
     # Random number of tensors
@@ -283,61 +276,72 @@ class ConcatOpTest(test.TestCase):
                 [float(y) for y in t.flatten()],
                 shape=shape,
                 dtype=dtypes.float32))
-      c = _call_concat(inp_tensors, concat_dim, use_concat_v2)
+      c = array_ops.concat(inp_tensors, concat_dim)
       output_shape = input_shape
       output_shape[concat_dim] = concat_dim_sizes.sum()
       grad_inp = np.random.rand(*output_shape).astype("f")
       grad_tensor = constant_op.constant(
           [float(x) for x in grad_inp.flatten()], shape=output_shape)
       grad = gradients_impl.gradients([c], inp_tensors, [grad_tensor])
-      concated_grad = _call_concat(grad, concat_dim, use_concat_v2)
+      concated_grad = array_ops.concat(grad, concat_dim)
       result = concated_grad.eval()
 
     self.assertAllEqual(result, grad_inp)
 
   def testGradientsRandom(self):
     for _ in range(5):
-      self._RunAndVerifyGradientsRandom(use_gpu=False, use_concat_v2=False)
-      self._RunAndVerifyGradientsRandom(use_gpu=True, use_concat_v2=False)
-      self._RunAndVerifyGradientsRandom(use_gpu=False, use_concat_v2=True)
-      self._RunAndVerifyGradientsRandom(use_gpu=True, use_concat_v2=True)
+      self._RunAndVerifyGradientsRandom(use_gpu=False)
+      self._RunAndVerifyGradientsRandom(use_gpu=True)
+
+  def testGradientWithUnknownInputDim(self):
+    with self.test_session(use_gpu=True):
+      x = array_ops.placeholder(dtypes.float32)
+      y = array_ops.placeholder(dtypes.float32)
+      c = array_ops.concat([x, y], 2)
+
+      output_shape = [10, 2, 9]
+      grad_inp = np.random.rand(*output_shape).astype("f")
+      grad_tensor = constant_op.constant(
+          [float(inp) for inp in grad_inp.flatten()], shape=output_shape)
+
+      grad = gradients_impl.gradients([c], [x, y], [grad_tensor])
+      concated_grad = array_ops.concat(grad, 2)
+      params = {
+          x: np.random.rand(10, 2, 3).astype("f"),
+          y: np.random.rand(10, 2, 6).astype("f")
+      }
+      result = concated_grad.eval(feed_dict=params)
+
+      self.assertAllEqual(result, grad_inp)
 
   def testShapeError(self):
     # Rank doesn't match.
     with self.assertRaises(ValueError):
       array_ops.concat(
-          1, [
-              constant_op.constant(
-                  10.0, shape=[4, 4, 4, 4]), constant_op.constant(
-                      20.0, shape=[4, 4, 4])
-          ])
+          [constant_op.constant(10.0, shape=[4, 4, 4, 4]),
+           constant_op.constant(20.0, shape=[4, 4, 4])
+          ], 1)
 
     # Dimensions don't match in a non-concat dim.
     with self.assertRaises(ValueError):
       array_ops.concat(
-          1, [
-              constant_op.constant(
-                  10.0, shape=[1, 2, 1]), constant_op.constant(
-                      20.0, shape=[3, 2, 1])
-          ])
+          [constant_op.constant(10.0, shape=[1, 2, 1]),
+           constant_op.constant(20.0, shape=[3, 2, 1])
+          ], 1)
 
     # concat_dim out of range.
     with self.assertRaises(ValueError):
       array_ops.concat(
-          3, [
-              constant_op.constant(
-                  10.0, shape=[4, 4, 4]), constant_op.constant(
-                      20.0, shape=[4, 4, 4])
-          ])
+          [constant_op.constant(10.0, shape=[4, 4, 4]),
+           constant_op.constant(20.0, shape=[4, 4, 4])
+          ], 3)
 
     # concat_dim out of range
     with self.assertRaises(ValueError):
       array_ops.concat(
-          -4, [
-              constant_op.constant(
-                  10.0, shape=[4, 4, 4]), constant_op.constant(
-                      20.0, shape=[4, 4, 4])
-          ])
+          [constant_op.constant(10.0, shape=[4, 4, 4]),
+           constant_op.constant(20.0, shape=[4, 4, 4])
+          ], -4)
 
   def testShapeWithUnknownConcatDim(self):
     p1 = array_ops.placeholder(dtypes.float32)
@@ -345,17 +349,17 @@ class ConcatOpTest(test.TestCase):
     p2 = array_ops.placeholder(dtypes.float32)
     c2 = constant_op.constant(20.0, shape=[4, 4, 4, 4])
     dim = array_ops.placeholder(dtypes.int32)
-    concat = array_ops.concat(dim, [p1, c1, p2, c2])
+    concat = array_ops.concat([p1, c1, p2, c2], dim)
     self.assertEqual(4, concat.get_shape().ndims)
 
     # All dimensions unknown.
-    concat2 = array_ops.concat(dim, [p1, p2])
+    concat2 = array_ops.concat([p1, p2], dim)
     self.assertEqual(None, concat2.get_shape())
 
     # Rank doesn't match.
     c3 = constant_op.constant(30.0, shape=[4, 4, 4])
     with self.assertRaises(ValueError):
-      array_ops.concat(dim, [p1, c1, p2, c3])
+      array_ops.concat([p1, c1, p2, c3], dim)
 
   def testZeroSize(self):
     # Verify that concat doesn't crash and burn for zero size inputs
@@ -372,7 +376,7 @@ class ConcatOpTest(test.TestCase):
                 correct = np.concatenate([x0, x1], axis=axis)
                 # TODO(irving): Make tf.concat handle map, then drop list().
                 xs = list(map(constant_op.constant, [x0, x1]))
-                c = array_ops.concat(axis, xs)
+                c = array_ops.concat(xs, axis)
                 self.assertAllEqual(c.eval(), correct)
                 # Check gradients
                 dc = np.random.randn(*c.get_shape().as_list())
@@ -388,7 +392,7 @@ class ConcatOpTest(test.TestCase):
     ]
     with self.test_session():
       xs = [constant_op.constant(x_val) for x_val in x_vals]
-      output = array_ops.concat(0, xs)
+      output = array_ops.concat(xs, 0)
       err = gradient_checker.compute_gradient_error(xs, x_shapes, output,
                                                     output_shape)
     self.assertLess(err, 1e-11)
@@ -402,7 +406,7 @@ class ConcatOpTest(test.TestCase):
     ]
     with self.test_session():
       xs = [constant_op.constant(x_val) for x_val in x_vals]
-      output = array_ops.concat(1, xs)
+      output = array_ops.concat(xs, 1)
       err = gradient_checker.compute_gradient_error(xs, x_shapes, output,
                                                     output_shape)
     self.assertLess(err, 1e-11)
@@ -416,7 +420,7 @@ class ConcatOpTest(test.TestCase):
     ]
     with self.test_session():
       xs = [constant_op.constant(x_val) for x_val in x_vals]
-      x_concat = array_ops.concat(0, xs)
+      x_concat = array_ops.concat(xs, 0)
       output = array_ops.gather(x_concat, [1, 2, 0, 5])
       err = gradient_checker.compute_gradient_error(xs, x_shapes, output,
                                                     output_shape)
@@ -431,7 +435,7 @@ class ConcatOpTest(test.TestCase):
     ]
     with self.test_session():
       xs = [constant_op.constant(x_val) for x_val in x_vals]
-      x_concat = array_ops.concat(1, xs)
+      x_concat = array_ops.concat(xs, 1)
       output = array_ops.gather(x_concat, [1, 2, 0, 5])
       err = gradient_checker.compute_gradient_error(xs, x_shapes, output,
                                                     output_shape)
@@ -446,18 +450,39 @@ class ConcatOpTest(test.TestCase):
     ]
     with self.test_session():
       xs = [constant_op.constant(x_val) for x_val in x_vals]
-      x_concat = array_ops.concat(2, xs)
+      x_concat = array_ops.concat(xs, 2)
       output = array_ops.gather(x_concat, [1, 2, 0, 5])
       err = gradient_checker.compute_gradient_error(xs, x_shapes, output,
                                                     output_shape)
+    self.assertLess(err, 1e-11)
+
+  def testIndexedSlicesConcatDim1Grad_UnknownInputDim(self):
+    x_shapes = [[20, 7, 3], [20, 3, 3], [20, 1, 3]]
+    output_shape = [4, 11, 3]
+    with self.test_session():
+      x_1 = array_ops.placeholder(dtypes.float64)
+      x_2 = array_ops.placeholder(dtypes.float64)
+      x_3 = array_ops.placeholder(dtypes.float64)
+      xs = [x_1, x_2, x_3]
+
+      x_concat = array_ops.concat(xs, 1)
+      output = array_ops.gather(x_concat, [1, 2, 0, 5])
+      params = {
+          x_1: np.random.random_sample(x_shapes[0]).astype(np.float64),
+          x_2: np.random.random_sample(x_shapes[1]).astype(np.float64),
+          x_3: np.random.random_sample(x_shapes[2]).astype(np.float64)
+      }
+      err = gradient_checker.compute_gradient_error(xs, x_shapes, output,
+                                                    output_shape,
+                                                    extra_feed_dict=params)
     self.assertLess(err, 1e-11)
 
   def testConcatTuple(self):
     c1 = np.random.rand(4, 4)
     c2 = np.random.rand(4, 4)
     with self.test_session():
-      concat_list_t = array_ops.concat(0, [c1, c2])
-      concat_tuple_t = array_ops.concat(0, (c1, c2))
+      concat_list_t = array_ops.concat([c1, c2], 0)
+      concat_tuple_t = array_ops.concat((c1, c2), 0)
       self.assertAllEqual(concat_list_t.eval(), concat_tuple_t.eval())
 
   def testConcatNoScalars(self):
@@ -465,8 +490,8 @@ class ConcatOpTest(test.TestCase):
       scalar = constant_op.constant(7)
       dim = array_ops.placeholder(dtypes.int32)
       with self.assertRaisesRegexp(
-          ValueError, r"Can't concatenate scalars \(use tf\.pack instead\)"):
-        array_ops.concat(dim, [scalar, scalar, scalar])
+          ValueError, r"Can't concatenate scalars \(use tf\.stack instead\)"):
+        array_ops.concat([scalar, scalar, scalar], dim)
 
   # important as gpu implementation could fail if
   # shared memory is not large for all the inputs
@@ -488,7 +513,7 @@ class ConcatOpTest(test.TestCase):
           params[placeholder] = np.random.rand(*input_shape).astype(np.float32)
 
         concat_inputs = p
-        c = array_ops.concat(concat_dim, concat_inputs)
+        c = array_ops.concat(concat_inputs, concat_dim)
         result = c.eval(feed_dict=params)
 
         self.assertEqual(result.shape, c.get_shape())
@@ -504,37 +529,21 @@ class ConcatOpTest(test.TestCase):
           cur_offset += params[p[i]].shape[concat_dim]
           self.assertAllEqual(result[index], params[p[i]])
 
-  def testConcatNegativeAxis(self):
-    with self.test_session(use_gpu=True):
-      t1 = [[1, 2, 3], [4, 5, 6]]
-      t2 = [[7, 8, 9], [10, 11, 12]]
-
-      c = array_ops.concat(-2, [t1, t2])
-      output = c.eval()
-      self.assertEqual([4, 3], c.get_shape().as_list())
-      self.assertAllEqual([[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]],
-                          output)
-
-      c = array_ops.concat(-1, [t1, t2])
-      self.assertEqual([2, 6], c.get_shape().as_list())
-      output = c.eval()
-      self.assertAllEqual([[1, 2, 3, 7, 8, 9], [4, 5, 6, 10, 11, 12]], output)
-
-  def testConcatV2Empty(self):
+  def testConcatEmpty(self):
     with self.test_session(use_gpu=True):
       t1 = []
       t2 = []
       output = gen_array_ops._concat_v2([t1, t2], 0).eval()
       self.assertFalse(output)  # Checks that output is empty
 
-  def testConcatV2InvalidAxis(self):
+  def testConcatInvalidAxis(self):
     with self.assertRaises(ValueError):
       with self.test_session(use_gpu=True):
         t1 = [1]
         t2 = [2]
         gen_array_ops._concat_v2([t1, t2], 1).eval()
 
-  def testConcatV2NegativeAxis(self):
+  def testConcatNegativeAxis(self):
     with self.test_session(use_gpu=True):
       t1 = [[1, 2, 3], [4, 5, 6]]
       t2 = [[7, 8, 9], [10, 11, 12]]
@@ -549,6 +558,60 @@ class ConcatOpTest(test.TestCase):
       self.assertEqual([2, 6], c.get_shape().as_list())
       output = c.eval()
       self.assertAllEqual([[1, 2, 3, 7, 8, 9], [4, 5, 6, 10, 11, 12]], output)
+
+  def _testGradientsForAxis(
+      self, inp_tensors, axis, output_shape, feed_dict=None):
+    with self.test_session():
+      c = array_ops.concat(inp_tensors, axis)
+      grad_inp = np.random.rand(*output_shape).astype("f")
+      grad_tensor = constant_op.constant(
+          [float(x) for x in grad_inp.flatten()], shape=output_shape)
+      grad = gradients_impl.gradients([c], inp_tensors, [grad_tensor])
+      concated_grad = array_ops.concat(grad, axis)
+      result = concated_grad.eval(feed_dict=feed_dict)
+      self.assertAllEqual(result, grad_inp)
+
+  def _testIndexedSlicesGradientsForAxis(
+      self, inp_tensors, axis, output_shape, gather_indexes, feed_dict=None):
+    with self.test_session():
+      c = array_ops.gather(
+          array_ops.concat(inp_tensors, axis), gather_indexes)
+      grad_inp = np.random.rand(*output_shape).astype("f")
+      grad_tensor = constant_op.constant(
+          [float(x) for x in grad_inp.flatten()], shape=output_shape)
+      grad = gradients_impl.gradients([c], inp_tensors, [grad_tensor])
+      concated_grad = array_ops.gather(
+          array_ops.concat(grad, axis), gather_indexes)
+      result = concated_grad.eval(feed_dict=feed_dict)
+      self.assertAllEqual(result, grad_inp)
+
+  def testGradientsNegativeAxis(self):
+    x1 = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
+    x2 = [[7.0, 8.0, 9.0], [10.0, 11.0, 12.0]]
+    inp_tensors = [constant_op.constant(x1, shape=(2, 3), dtype=dtypes.float32),
+                   constant_op.constant(x2, shape=(2, 3), dtype=dtypes.float32)]
+
+    # Test concat gradient with axis == -2
+    self._testGradientsForAxis(inp_tensors, -2, output_shape=[4, 3])
+
+    # Test concat gradient with unknown-shape tensors.
+    x1_placeholder = array_ops.placeholder(dtypes.float32)
+    x2_placeholder = array_ops.placeholder(dtypes.float32)
+    inp_tensors_placeholders = [x1_placeholder, x2_placeholder]
+    feed_dict = {x1_placeholder: x1, x2_placeholder: x2}
+    self._testGradientsForAxis(
+        inp_tensors_placeholders, -1, output_shape=[2, 6], feed_dict=feed_dict)
+
+    # Test IndexedSlices concat gradient.
+    self._testIndexedSlicesGradientsForAxis(
+        inp_tensors, -2, output_shape=[2, 3], gather_indexes=[2, 0])
+
+    # We don't support calculating IndexedSlices concat gradient for
+    # negative indexes when rank is not known.
+    with self.assertRaises(ValueError):
+      self._testIndexedSlicesGradientsForAxis(
+          inp_tensors_placeholders, -2, output_shape=[2, 3],
+          gather_indexes=[2, 0], feed_dict=feed_dict)
 
 
 class ConcatOffsetTest(test.TestCase):
@@ -605,6 +668,24 @@ class ConcatOffsetTest(test.TestCase):
           r"All dimensions except 1 must match. Input 1 has shape \[2 7 10\] "
           r"and doesn't match input 0 with shape \[2 3 5\]."):
         sess.run(off)
+
+  def testNegativeDim(self):
+    with self.test_session(use_gpu=True) as sess:
+      cdim = constant_op.constant(-2, dtypes.int32)
+      s0 = constant_op.constant([2, 3, 5], dtypes.int32)
+      s1 = constant_op.constant([2, 7, 5], dtypes.int32)
+      s2 = constant_op.constant([2, 20, 5], dtypes.int32)
+      off = gen_array_ops._concat_offset(cdim, [s0, s1, s2])
+      ans = sess.run(off)
+      self.assertAllEqual(ans, [[0, 0, 0], [0, 3, 0], [0, 10, 0]])
+
+      cdim = constant_op.constant(-3, dtypes.int32)
+      s0 = constant_op.constant([2, 3, 5], dtypes.int32)
+      s1 = constant_op.constant([1, 3, 5], dtypes.int32)
+      s2 = constant_op.constant([3, 3, 5], dtypes.int32)
+      off = gen_array_ops._concat_offset(cdim, [s0, s1, s2])
+      ans = sess.run(off)
+      self.assertAllEqual(ans, [[0, 0, 0], [2, 0, 0], [3, 0, 0]])
 
 
 if __name__ == "__main__":

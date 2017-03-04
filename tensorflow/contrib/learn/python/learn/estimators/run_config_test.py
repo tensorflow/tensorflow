@@ -20,56 +20,62 @@ from __future__ import print_function
 
 import json
 
-import tensorflow as tf
 from tensorflow.contrib.learn.python.learn import run_config
+from tensorflow.contrib.learn.python.learn.estimators import run_config as run_config_lib
+from tensorflow.python.platform import test
+from tensorflow.python.training import server_lib
 
-patch = tf.test.mock.patch
+TEST_DIR = "test_dir"
+ANOTHER_TEST_DIR = "another_test_dir"
+RANDOM_SEED = 123
+
+patch = test.mock.patch
 
 
-class RunConfigTest(tf.test.TestCase):
+class RunConfigTest(test.TestCase):
 
   def test_defaults_with_no_tf_config(self):
     config = run_config.RunConfig()
-    self.assertEquals(config.master, "")
-    self.assertEquals(config.task_id, 0)
-    self.assertEquals(config.num_ps_replicas, 0)
-    self.assertEquals(config.cluster_spec, {})
+    self.assertEqual(config.master, "")
+    self.assertEqual(config.task_id, 0)
+    self.assertEqual(config.num_ps_replicas, 0)
+    self.assertEqual(config.cluster_spec, {})
     self.assertIsNone(config.task_type)
     self.assertTrue(config.is_chief)
-    self.assertEquals(config.evaluation_master, "")
+    self.assertEqual(config.evaluation_master, "")
 
   def test_values_from_tf_config(self):
     tf_config = {
         "cluster": {
-            tf.contrib.learn.TaskType.PS: ["host1:1", "host2:2"],
-            tf.contrib.learn.TaskType.WORKER:
-                ["host3:3", "host4:4", "host5:5"]
+            run_config_lib.TaskType.PS: ["host1:1", "host2:2"],
+            run_config_lib.TaskType.WORKER: ["host3:3", "host4:4", "host5:5"]
         },
         "task": {
-            "type": tf.contrib.learn.TaskType.WORKER,
+            "type": run_config_lib.TaskType.WORKER,
             "index": 1
         }
     }
     with patch.dict("os.environ", {"TF_CONFIG": json.dumps(tf_config)}):
       config = run_config.RunConfig()
 
-    self.assertEquals(config.master, "grpc://host4:4")
-    self.assertEquals(config.task_id, 1)
-    self.assertEquals(config.num_ps_replicas, 2)
-    self.assertEquals(config.cluster_spec.as_dict(), tf_config["cluster"])
-    self.assertEquals(config.task_type, tf.contrib.learn.TaskType.WORKER)
+    self.assertEqual(config.master, "grpc://host4:4")
+    self.assertEqual(config.task_id, 1)
+    self.assertEqual(config.num_ps_replicas, 2)
+    self.assertEqual(config.num_worker_replicas, 3)
+    self.assertEqual(config.cluster_spec.as_dict(), tf_config["cluster"])
+    self.assertEqual(config.task_type, run_config_lib.TaskType.WORKER)
     self.assertFalse(config.is_chief)
-    self.assertEquals(config.evaluation_master, "")
+    self.assertEqual(config.evaluation_master, "")
 
   def test_explicitly_specified_values(self):
     cluster_spec = {
-        tf.contrib.learn.TaskType.PS: ["localhost:9990"],
+        run_config_lib.TaskType.PS: ["localhost:9990"],
         "my_job_name": ["localhost:9991", "localhost:9992", "localhost:0"]
     }
     tf_config = {
         "cluster": cluster_spec,
         "task": {
-            "type": tf.contrib.learn.TaskType.WORKER,
+            "type": run_config_lib.TaskType.WORKER,
             "index": 2
         }
     }
@@ -77,39 +83,38 @@ class RunConfigTest(tf.test.TestCase):
       config = run_config.RunConfig(
           master="localhost:0", evaluation_master="localhost:9991")
 
-    self.assertEquals(config.master, "localhost:0")
-    self.assertEquals(config.task_id, 2)
-    self.assertEquals(config.num_ps_replicas, 1)
-    self.assertEquals(config.cluster_spec, tf.train.ClusterSpec(cluster_spec))
-    self.assertEquals(config.task_type, tf.contrib.learn.TaskType.WORKER)
+    self.assertEqual(config.master, "localhost:0")
+    self.assertEqual(config.task_id, 2)
+    self.assertEqual(config.num_ps_replicas, 1)
+    self.assertEqual(config.num_worker_replicas, 0)
+    self.assertEqual(config.cluster_spec, server_lib.ClusterSpec(cluster_spec))
+    self.assertEqual(config.task_type, run_config_lib.TaskType.WORKER)
     self.assertFalse(config.is_chief)
-    self.assertEquals(config.evaluation_master, "localhost:9991")
+    self.assertEqual(config.evaluation_master, "localhost:9991")
 
   def test_single_node_in_cluster_spec_produces_empty_master(self):
-    tf_config = {"cluster": {tf.contrib.learn.TaskType.WORKER: ["host1:1"]}}
+    tf_config = {"cluster": {run_config_lib.TaskType.WORKER: ["host1:1"]}}
     with patch.dict("os.environ", {"TF_CONFIG": json.dumps(tf_config)}):
       config = run_config.RunConfig()
-      self.assertEquals(config.master, "")
+      self.assertEqual(config.master, "")
 
   def test_no_task_type_produces_empty_master(self):
     tf_config = {
         "cluster": {
-            tf.contrib.learn.TaskType.PS: ["host1:1", "host2:2"],
-            tf.contrib.learn.TaskType.WORKER:
-                ["host3:3", "host4:4", "host5:5"]
+            run_config_lib.TaskType.PS: ["host1:1", "host2:2"],
+            run_config_lib.TaskType.WORKER: ["host3:3", "host4:4", "host5:5"]
         },
         # Omits "task": {"type": "worker}
     }
     with patch.dict("os.environ", {"TF_CONFIG": json.dumps(tf_config)}):
       config = run_config.RunConfig()
-      self.assertEquals(config.master, "")
+      self.assertEqual(config.master, "")
 
   def test_invalid_job_name_raises(self):
     tf_config = {
         "cluster": {
-            tf.contrib.learn.TaskType.PS: ["host1:1", "host2:2"],
-            tf.contrib.learn.TaskType.WORKER:
-                ["host3:3", "host4:4", "host5:5"]
+            run_config_lib.TaskType.PS: ["host1:1", "host2:2"],
+            run_config_lib.TaskType.WORKER: ["host3:3", "host4:4", "host5:5"]
         },
         "task": {
             "type": "not_in_cluster_spec"
@@ -125,12 +130,11 @@ class RunConfigTest(tf.test.TestCase):
   def test_illegal_task_index_raises(self):
     tf_config = {
         "cluster": {
-            tf.contrib.learn.TaskType.PS: ["host1:1", "host2:2"],
-            tf.contrib.learn.TaskType.WORKER:
-                ["host3:3", "host4:4", "host5:5"]
+            run_config_lib.TaskType.PS: ["host1:1", "host2:2"],
+            run_config_lib.TaskType.WORKER: ["host3:3", "host4:4", "host5:5"]
         },
         "task": {
-            "type": tf.contrib.learn.TaskType.WORKER,
+            "type": run_config_lib.TaskType.WORKER,
             "index": 3
         }
     }
@@ -147,17 +151,15 @@ class RunConfigTest(tf.test.TestCase):
     # test_values_from_tf_config covers the non-master case.
     tf_config = {
         "cluster": {
-            tf.contrib.learn.TaskType.PS: ["host1:1", "host2:2"],
-            tf.contrib.learn.TaskType.MASTER: ["host3:3"],
-            tf.contrib.learn.TaskType.WORKER:
-                ["host4:4", "host5:5", "host6:6"]
+            run_config_lib.TaskType.PS: ["host1:1", "host2:2"],
+            run_config_lib.TaskType.MASTER: ["host3:3"],
+            run_config_lib.TaskType.WORKER: ["host4:4", "host5:5", "host6:6"]
         },
         "task": {
-            "type": tf.contrib.learn.TaskType.MASTER,
+            "type": run_config_lib.TaskType.MASTER,
             "index": 0
         },
-        "environment":
-            "cloud"
+        "environment": "cloud"
     }
     with patch.dict("os.environ", {"TF_CONFIG": json.dumps(tf_config)}):
       config = run_config.RunConfig()
@@ -169,17 +171,15 @@ class RunConfigTest(tf.test.TestCase):
     # index == 0 if ["task"]["environment"] != "cloud".
     tf_config = {
         "cluster": {
-            tf.contrib.learn.TaskType.PS: ["host1:1", "host2:2"],
-            tf.contrib.learn.TaskType.MASTER: ["host3:3"],
-            tf.contrib.learn.TaskType.WORKER:
-                ["host4:4", "host5:5", "host6:6"]
+            run_config_lib.TaskType.PS: ["host1:1", "host2:2"],
+            run_config_lib.TaskType.MASTER: ["host3:3"],
+            run_config_lib.TaskType.WORKER: ["host4:4", "host5:5", "host6:6"]
         },
         "task": {
-            "type": tf.contrib.learn.TaskType.WORKER,
+            "type": run_config_lib.TaskType.WORKER,
             "index": 0
         },
-        "environment":
-            "random"
+        "environment": "random"
     }
     with patch.dict("os.environ", {"TF_CONFIG": json.dumps(tf_config)}):
       config = run_config.RunConfig()
@@ -189,17 +189,15 @@ class RunConfigTest(tf.test.TestCase):
     # But task 0 for a job named "master" should not be.
     tf_config = {
         "cluster": {
-            tf.contrib.learn.TaskType.PS: ["host1:1", "host2:2"],
-            tf.contrib.learn.TaskType.MASTER: ["host3:3"],
-            tf.contrib.learn.TaskType.WORKER:
-                ["host4:4", "host5:5", "host6:6"]
+            run_config_lib.TaskType.PS: ["host1:1", "host2:2"],
+            run_config_lib.TaskType.MASTER: ["host3:3"],
+            run_config_lib.TaskType.WORKER: ["host4:4", "host5:5", "host6:6"]
         },
         "task": {
-            "type": tf.contrib.learn.TaskType.MASTER,
+            "type": run_config_lib.TaskType.MASTER,
             "index": 0
         },
-        "environment":
-            "random"
+        "environment": "random"
     }
     with patch.dict("os.environ", {"TF_CONFIG": json.dumps(tf_config)}):
       config = run_config.RunConfig()
@@ -213,6 +211,33 @@ class RunConfigTest(tf.test.TestCase):
 
     self.assertTrue(config.is_chief)
 
+  def test_model_dir(self):
+    empty_config = run_config.RunConfig()
+    self.assertIsNone(empty_config.model_dir)
+
+    config = run_config.RunConfig(model_dir=TEST_DIR)
+    self.assertEqual(TEST_DIR, config.model_dir)
+
+  def test_replace(self):
+    config = run_config.RunConfig(
+        tf_random_seed=RANDOM_SEED, model_dir=TEST_DIR)
+    self.assertEqual(TEST_DIR, config.model_dir)
+    self.assertEqual(RANDOM_SEED, config.tf_random_seed)
+
+    new_config = config.replace(model_dir=ANOTHER_TEST_DIR)
+    self.assertEqual(ANOTHER_TEST_DIR, new_config.model_dir)
+    self.assertEqual(RANDOM_SEED, new_config.tf_random_seed)
+
+    self.assertEqual(TEST_DIR, config.model_dir)
+    self.assertEqual(RANDOM_SEED, config.tf_random_seed)
+
+    with self.assertRaises(ValueError):
+      # tf_random_seed is not allowed to be replaced.
+      config.replace(tf_random_seed=RANDOM_SEED)
+
+    with self.assertRaises(ValueError):
+      config.replace(some_undefined_property=RANDOM_SEED)
+
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

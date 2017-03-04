@@ -17,9 +17,9 @@ limitations under the License.
 
 #include <memory>
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/reader_base.h"
 #include "tensorflow/core/framework/reader_op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/kernels/reader_base.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
@@ -95,6 +95,8 @@ class WholeFileReaderOp : public ReaderOpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(Name("WholeFileReader").Device(DEVICE_CPU),
+                        WholeFileReaderOp);
+REGISTER_KERNEL_BUILDER(Name("WholeFileReaderV2").Device(DEVICE_CPU),
                         WholeFileReaderOp);
 
 class ReadFileOp : public OpKernel {

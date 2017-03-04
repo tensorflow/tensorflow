@@ -12,21 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests of the Transform class."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
-
 from tensorflow.contrib.learn.python import learn
 from tensorflow.contrib.learn.python.learn.dataframe.transform import _make_list_of_series
 from tensorflow.contrib.learn.python.learn.tests.dataframe import mocks
+from tensorflow.python.platform import test
 
 
-class TransformTest(tf.test.TestCase):
+class TransformTest(test.TestCase):
   """Tests of the Transform class."""
 
   def test_make_list_of_column(self):
@@ -49,17 +47,20 @@ class TransformTest(tf.test.TestCase):
     expected_keys = [
         "MockTransform("
         "{'param_one': 'thb', 'param_three': 'snt', 'param_two': 'nth'})"
-        "(foobar)[out1]",
-        "MockTransform("
+        "(foobar)[out1]", "MockTransform("
         "{'param_one': 'thb', 'param_three': 'snt', 'param_two': 'nth'})"
-        "(foobar)[out2]"]
+        "(foobar)[out2]"
+    ]
 
     self.assertEqual(expected_keys, sorted(cache.keys()))
 
   def test_parameters(self):
     t = mocks.MockTwoOutputTransform("a", "b", "c")
-    self.assertEqual({"param_one": "a", "param_three": "c", "param_two": "b"},
-                     t.parameters())
+    self.assertEqual({
+        "param_one": "a",
+        "param_three": "c",
+        "param_two": "b"
+    }, t.parameters())
 
   def test_parameters_inherited_combined(self):
     t = mocks.MockTwoOutputTransform("thb", "nth", "snt")
@@ -90,4 +91,4 @@ class TransformTest(tf.test.TestCase):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

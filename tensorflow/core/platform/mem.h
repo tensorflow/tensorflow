@@ -24,9 +24,14 @@ limitations under the License.
 namespace tensorflow {
 namespace port {
 
-// Aligned allocation/deallocation
-void* aligned_malloc(size_t size, int minimum_alignment);
-void aligned_free(void* aligned_memory);
+// Aligned allocation/deallocation. `minimum_alignment` must be a power of 2
+// and a multiple of sizeof(void*).
+void* AlignedMalloc(size_t size, int minimum_alignment);
+void AlignedFree(void* aligned_memory);
+
+void* Malloc(size_t size);
+void* Realloc(void* ptr, size_t size);
+void Free(void* ptr);
 
 // Tries to release num_bytes of free memory back to the operating
 // system for reuse.  Use this routine with caution -- to get this

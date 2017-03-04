@@ -31,8 +31,8 @@ Coordinator::Coordinator(const std::vector<error::Code>& clean_stop_errors)
 }
 
 Coordinator::~Coordinator() {
-  RequestStop();
-  Join();
+  RequestStop().IgnoreError();
+  Join().IgnoreError();
 }
 
 Status Coordinator::RegisterRunner(std::unique_ptr<RunnerInterface> runner) {

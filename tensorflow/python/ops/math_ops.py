@@ -12,13 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Note: Elementwise binary operations in TensorFlow follow [numpy-style
-broadcasting](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html).
+"""Basic arithmetic operators.
 
-## Arithmetic Operators
-
-TensorFlow provides several operations that you can use to add basic arithmetic
-operators to your graph.
+See the @{$python/math_ops} guide.
 
 @@add
 @@subtract
@@ -35,12 +31,6 @@ operators to your graph.
 @@floormod
 @@mod
 @@cross
-
-## Basic Math Functions
-
-TensorFlow provides several operations that you can use to add basic
-mathematical functions to your graph.
-
 @@add_n
 @@abs
 @@negative
@@ -77,26 +67,17 @@ mathematical functions to your graph.
 @@polygamma
 @@betainc
 @@rint
-
-## Matrix Math Functions
-
-TensorFlow provides several operations that you can use to add linear algebra
-functions on matrices to your graph.
-
 @@diag
 @@diag_part
 @@trace
 @@transpose
-
 @@eye
 @@matrix_diag
 @@matrix_diag_part
 @@matrix_band_part
 @@matrix_set_diag
 @@matrix_transpose
-
 @@matmul
-
 @@norm
 @@matrix_determinant
 @@matrix_inverse
@@ -109,43 +90,17 @@ functions on matrices to your graph.
 @@self_adjoint_eig
 @@self_adjoint_eigvals
 @@svd
-
-
-## Tensor Math Function
-
-TensorFlow provides operations that you can use to add tensor functions to your
-graph.
-
 @@tensordot
-
-
-## Complex Number Functions
-
-TensorFlow provides several operations that you can use to add complex number
-functions to your graph.
-
 @@complex
 @@conj
 @@imag
 @@real
-
-## Fourier Transform Functions
-
-TensorFlow provides several operations that you can use to add discrete
-Fourier transform functions to your graph.
-
 @@fft
 @@ifft
 @@fft2d
 @@ifft2d
 @@fft3d
 @@ifft3d
-
-## Reduction
-
-TensorFlow provides several operations that you can use to perform
-common math computations that reduce various dimensions of a tensor.
-
 @@reduce_sum
 @@reduce_prod
 @@reduce_min
@@ -155,69 +110,26 @@ common math computations that reduce various dimensions of a tensor.
 @@reduce_any
 @@reduce_logsumexp
 @@count_nonzero
-
 @@accumulate_n
-
 @@einsum
-
-## Scan
-
-TensorFlow provides several operations that you can use to perform scans
-(running totals) across one axis of a tensor.
-
 @@cumsum
 @@cumprod
-
-## Segmentation
-
-TensorFlow provides several operations that you can use to perform common
-math computations on tensor segments.
-Here a segmentation is a partitioning of a tensor along
-the first dimension, i.e. it  defines a mapping from the first dimension onto
-`segment_ids`. The `segment_ids` tensor should be the size of
-the first dimension, `d0`, with consecutive IDs in the range `0` to `k`,
-where `k<d0`.
-In particular, a segmentation of a matrix tensor is a mapping of rows to
-segments.
-
-For example:
-
-```python
-c = tf.constant([[1,2,3,4], [-1,-2,-3,-4], [5,6,7,8]])
-tf.segment_sum(c, tf.constant([0, 0, 1]))
-  ==>  [[0 0 0 0]
-        [5 6 7 8]]
-```
-
 @@segment_sum
 @@segment_prod
 @@segment_min
 @@segment_max
 @@segment_mean
-
 @@unsorted_segment_sum
-
+@@unsorted_segment_max
 @@sparse_segment_sum
 @@sparse_segment_mean
 @@sparse_segment_sqrt_n
-
-
-## Sequence Comparison and Indexing
-
-TensorFlow provides several operations that you can use to add sequence
-comparison and index extraction to your graph. You can use these operations to
-determine sequence differences and determine the indexes of specific values in
-a tensor.
-
 @@argmin
 @@argmax
-
 @@setdiff1d
 @@where
 @@unique
-
 @@edit_distance
-
 @@invert_permutation
 """
 from __future__ import absolute_import
@@ -246,6 +158,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops.gen_math_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.util import compat
+from tensorflow.python.util.deprecation import deprecated
 
 
 # Aliases for some automatically-generated names.
@@ -259,6 +172,8 @@ def argmax(input, axis=None, name=None, dimension=None):
     if axis is not None:
       raise ValueError("Cannot specify both 'axis' and 'dimension'")
     axis = dimension
+  elif axis is None:
+    axis = 0
   return gen_math_ops.arg_max(input, axis, name)
 
 
@@ -272,6 +187,8 @@ def argmin(input, axis=None, name=None, dimension=None):
     if axis is not None:
       raise ValueError("Cannot specify both 'axis' and 'dimension'")
     axis = dimension
+  elif axis is None:
+    axis = 0
   return gen_math_ops.arg_min(input, axis, name)
 
 
@@ -282,6 +199,7 @@ argmin.__doc__ = (gen_math_ops.arg_min.__doc__.replace(
 
 
 # pylint: disable=anomalous-backslash-in-string,protected-access
+# pylint: disable=g-docstring-has-escape
 def abs(x, name=None):
   """Computes the absolute value of a tensor.
 
@@ -314,21 +232,75 @@ def abs(x, name=None):
       if x.dtype in (dtypes.complex64, dtypes.complex128):
         return gen_math_ops._complex_abs(x, Tout=x.dtype.real_dtype, name=name)
       return gen_math_ops._abs(x, name=name)
+# pylint: enable=g-docstring-has-escape
+
+
+class DivideDelegateWithName(object):
+  """Use Python2/Python3 division delegation to implement divide for tensors."""
+
+  def __init__(self, x, name):
+    """Construct DivideDelegateWithName.
+
+    Args:
+      x: Tensor to use as left operand in operator overloads
+      name: The name that is preferred for the op created.
+    """
+    self.x = x
+    self.name = name
+
+  def __truediv__(self, y):
+    return _truediv_python3(self.x, y, self.name)
+
+  def __floordiv__(self, y):
+    return floordiv(self.x, y, self.name)
+
+  def __div__(self, y):
+    return _div_python2(self.x, y, self.name)
 
 
 def divide(x, y, name=None):
   """Computes Python style division of `x` by `y`."""
-  with ops.name_scope(name, "Divide", [x]) as name:
+
+  if name is not None:
+    # Cannot use tensors operator overload, because it has no way to track
+    # override names. Use a dummy class to track the runtime division behavior
+    return DivideDelegateWithName(x, name) / y
+  else:
     return x / y
 
 
-# Make Python Aliases
-multiply = gen_math_ops.mul
-subtract = gen_math_ops.sub
-negative = gen_math_ops.neg
+def multiply(x, y, name=None):
+  return gen_math_ops._mul(x, y, name)
+multiply.__doc__ = gen_math_ops._mul.__doc__.replace("Mul", "`tf.multiply`")
 
 
-def neg(x, name=None):
+# TODO(aselle): put deprecation in after another round of global code changes
+@deprecated(
+    "2016-12-30",
+    "`tf.mul(x, y)` is deprecated, please use `tf.multiply(x, y)` or `x * y`")
+def _mul(x, y, name=None):
+  return gen_math_ops._mul(x, y, name)
+_mul.__doc__ = (gen_math_ops._mul.__doc__
+                + ("" if _mul.__doc__ is None else _mul.__doc__))
+
+
+def subtract(x, y, name=None):
+  return gen_math_ops._sub(x, y, name)
+subtract.__doc__ = gen_math_ops._sub.__doc__.replace("`Sub`", "`tf.subtract`")
+
+
+# TODO(aselle): put deprecation in after another round of global code changes
+@deprecated(
+    "2016-12-30",
+    "`tf.sub(x, y)` is deprecated, please use `tf.subtract(x, y)` or `x - y`")
+def _sub(x, y, name=None):
+  return gen_math_ops._sub(x, y, name)
+_sub.__doc__ = (gen_math_ops._sub.__doc__
+                + ("" if _sub.__doc__ is None else _sub.__doc__))
+
+
+# pylint: disable=g-docstring-has-escape
+def negative(x, name=None):
   """Computes numerical negative value element-wise.
 
   I.e., \\(y = -x\\).
@@ -343,11 +315,33 @@ def neg(x, name=None):
   """
   with ops.name_scope(name, "Neg", [x]) as name:
     if isinstance(x, sparse_tensor.SparseTensor):
-      x_neg = gen_math_ops.neg(x.values, name=name)
+      x_neg = gen_math_ops._neg(x.values, name=name)
       return sparse_tensor.SparseTensor(
           indices=x.indices, values=x_neg, dense_shape=x.dense_shape)
     else:
-      return gen_math_ops.neg(x, name=name)
+      return gen_math_ops._neg(x, name=name)
+# pylint: enable=g-docstring-has-escape
+
+
+# pylint: disable=g-docstring-has-escape
+@deprecated(
+    "2016-12-30",
+    "`tf.neg(x)` is deprecated, please use `tf.negative(x)` or `-x`")
+def _neg(x, name=None):
+  """Computes numerical negative value element-wise.
+
+  I.e., \\(y = -x\\).
+
+  Args:
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+      `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+  """
+  return negative(x, name)
+# pylint: enable=g-docstring-has-escape
 
 
 def sign(x, name=None):
@@ -779,7 +773,7 @@ def to_bfloat16(x, name="ToBFloat16"):
   return cast(x, dtypes.bfloat16, name=name)
 
 
-ops.Tensor._override_operator("__neg__", gen_math_ops.neg)
+ops.Tensor._override_operator("__neg__", gen_math_ops._neg)
 ops.Tensor._override_operator("__abs__", abs)
 # __invert__ corresponds to the ~ operator.  Here we follow the numpy convention
 # ~ marks an elementwise bit-wise inverse.  This is only implemented for boolean
@@ -1024,7 +1018,7 @@ def _mul_dispatch(x, y, name=None):
   """Dispatches cwise mul for "Dense*Dense" and "Dense*Sparse"."""
   is_tensor_y = isinstance(y, ops.Tensor)
   if is_tensor_y:
-    return gen_math_ops.mul(x, y, name=name)
+    return gen_math_ops._mul(x, y, name=name)
   else:
     assert isinstance(y, sparse_tensor.SparseTensor)  # Case: Dense * Sparse.
     new_vals = gen_sparse_ops.sparse_dense_cwise_mul(y.indices, y.values,
@@ -1043,7 +1037,7 @@ _OverrideBinaryOperatorHelper(gen_sparse_ops.sparse_dense_cwise_mul, "mul",
                               sparse_tensor.SparseTensor)
 
 _OverrideBinaryOperatorHelper(gen_math_ops.add, "add")
-_OverrideBinaryOperatorHelper(gen_math_ops.sub, "sub")
+_OverrideBinaryOperatorHelper(gen_math_ops._sub, "sub")
 _OverrideBinaryOperatorHelper(_mul_dispatch, "mul")
 _OverrideBinaryOperatorHelper(_div_python2, "div")
 _OverrideBinaryOperatorHelper(_truediv_python3, "truediv")
@@ -2256,12 +2250,12 @@ def tensordot(a, b, axes, name=None):
       axes_dims = array_ops.gather(shape_a, axes)
       prod_free_dims = reduce_prod(free_dims)
       prod_axes_dims = reduce_prod(axes_dims)
-      perm = array_ops.concat(0, [axes_dims, free_dims])
+      perm = array_ops.concat([axes_dims, free_dims], 0)
       if flipped:
-        perm = array_ops.concat(0, [axes, free])
+        perm = array_ops.concat([axes, free], 0)
         new_shape = array_ops.stack([prod_axes_dims, prod_free_dims])
       else:
-        perm = array_ops.concat(0, [free, axes])
+        perm = array_ops.concat([free, axes], 0)
         new_shape = array_ops.stack([prod_free_dims, prod_axes_dims])
       reshaped_a = array_ops.reshape(array_ops.transpose(a, perm), new_shape)
       return reshaped_a, free_dims
@@ -2306,4 +2300,4 @@ def tensordot(a, b, axes, name=None):
       a_free_dims = ops.convert_to_tensor(a_free_dims)
       b_free_dims = ops.convert_to_tensor(b_free_dims)
       return array_ops.reshape(
-          ab_matmul, array_ops.concat(0, [a_free_dims, b_free_dims]), name=name)
+          ab_matmul, array_ops.concat([a_free_dims, b_free_dims], 0), name=name)

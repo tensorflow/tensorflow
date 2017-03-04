@@ -32,46 +32,46 @@ limitations under the License.
 
 namespace tensorflow {
 
-// QueueRunner class imitates the behavior of the python version of QueueRunner
-// which creates a thread for each enqueue op, runs close op on completion.
+/// QueueRunner class imitates the behavior of the python version of QueueRunner
+/// which creates a thread for each enqueue op, runs close op on completion.
 class QueueRunner : public RunnerInterface {
  public:
-  // Creates a new QueueRunner from proto.
+  /// Creates a new QueueRunner from proto.
   // TODO(yuefengz): we may want to initialize from queues and ops in the
   // future.
   static Status New(const QueueRunnerDef& queue_runner_def,
                     std::unique_ptr<QueueRunner>* result);
 
-  // Creates a new QueueRunner with a coordinator, see coordinator.h for usage.
+  /// Creates a new QueueRunner with a coordinator, see coordinator.h for usage.
   static Status New(const QueueRunnerDef& queue_runner_def, Coordinator* coord,
                     std::unique_ptr<QueueRunner>* result);
 
-  // Adds a callback that the queue runner will call when it detects an error.
+  /// Adds a callback that the queue runner will call when it detects an error.
   void AddErrorCallback(const std::function<void(Status)>& cb);
 
-  // Delete the previously registered callbacks.
+  /// Delete the previously registered callbacks.
   void ClearErrorCallbacks();
 
-  // The destructor would join all the threads.
+  /// The destructor would join all the threads.
   ~QueueRunner();
 
-  // Starts the queue runner with the given session.
+  /// Starts the queue runner with the given session.
   Status Start(Session* sess);
 
-  // Starts the queue runner with the given session, and wait for up to the
-  // specified time (in milliseconds) for the queues to start to fill up.
+  /// Starts the queue runner with the given session, and wait for up to the
+  /// specified time (in milliseconds) for the queues to start to fill up.
   Status Start(Session* sess, int wait_for_ms);
 
-  // Requests to stop and runs the cancel op. It would be called in a separate
-  // thread when coordinator is set. If there is no coordinator it should be
-  // called before calling Join.
+  /// Requests to stop and runs the cancel op. It would be called in a separate
+  /// thread when coordinator is set. If there is no coordinator it should be
+  /// called before calling Join.
   void Stop(Session* sess);
 
-  // Joins all the threads. Returns okay if all threads run successfully;
-  // otherwise returns the first captured failure status.
+  /// Joins all the threads. Returns okay if all threads run successfully;
+  /// otherwise returns the first captured failure status.
   Status Join() final;
 
-  // Returns the latest status.
+  /// Returns the latest status.
   Status GetStatus();
 
  private:

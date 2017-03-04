@@ -25,11 +25,11 @@ namespace port {
 
 TEST(Port, AlignedMalloc) {
   for (size_t alignment = 1; alignment <= 1 << 20; alignment <<= 1) {
-    void* p = aligned_malloc(1, alignment);
-    ASSERT_TRUE(p != NULL) << "aligned_malloc(1, " << alignment << ")";
+    void* p = AlignedMalloc(1, alignment);
+    ASSERT_TRUE(p != NULL) << "AlignedMalloc(1, " << alignment << ")";
     uintptr_t pval = reinterpret_cast<uintptr_t>(p);
     EXPECT_EQ(pval % alignment, 0);
-    aligned_free(p);
+    AlignedFree(p);
   }
 }
 

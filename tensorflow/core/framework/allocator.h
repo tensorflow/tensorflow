@@ -286,6 +286,11 @@ struct AllocatorAttributes {
   void set_track_sizes(bool v) { value |= (static_cast<int>(v) << 3); }
   bool track_sizes() const { return value & (0x1 << 3); }
   void Merge(AllocatorAttributes other) { value |= other.value; }
+  // Returns true if the fields set in *this is a subset of or equal to
+  // those set in other.
+  bool IsEqualOrLessRestrictiveThan(const AllocatorAttributes& other) const {
+    return (value | other.value) == other.value;
+  }
 
   // NOTE: The upper 8 bits of the value are reserved for
   // device-specific uses.  Implementors of a device can interpret these

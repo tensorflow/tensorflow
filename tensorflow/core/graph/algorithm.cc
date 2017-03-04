@@ -132,6 +132,7 @@ bool PruneForReverseReachability(Graph* g,
 
   // Make a pass over the graph to remove nodes not in "visited"
   std::vector<Node*> all_nodes;
+  all_nodes.reserve(g->num_nodes());
   for (Node* n : g->nodes()) {
     all_nodes.push_back(n);
   }

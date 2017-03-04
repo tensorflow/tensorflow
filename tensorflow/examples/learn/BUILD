@@ -26,6 +26,7 @@ py_binary(
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/learn",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -118,6 +119,7 @@ py_binary(
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/learn",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -128,6 +130,7 @@ py_binary(
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/learn",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -138,6 +141,7 @@ py_binary(
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/learn",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -148,6 +152,7 @@ py_binary(
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/learn",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -171,6 +176,7 @@ py_binary(
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/contrib/learn",
         "//tensorflow/examples/tutorials/mnist:input_data",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -200,7 +206,6 @@ sh_test(
         ":random_forest_mnist",
         ":resnet",
         ":text_classification",
-        ":text_classification_builtin_rnn_model",
         ":text_classification_character_cnn",
         ":text_classification_character_rnn",
         ":text_classification_cnn",

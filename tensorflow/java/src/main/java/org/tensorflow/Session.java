@@ -40,7 +40,7 @@ import java.util.List;
  * }
  * }</pre>
  *
- * <p><b>WARNING:</b>A {@code Session} ownes resources that <b>must</b> be explicitly freed by
+ * <p><b>WARNING:</b>A {@code Session} owns resources that <b>must</b> be explicitly freed by
  * invoking {@link #close()}.
  *
  * <p>Instances of a Session are thread-safe.
@@ -50,9 +50,12 @@ public final class Session implements AutoCloseable {
   /** Construct a new session with the associated {@link Graph}. */
   public Session(Graph g) {
     graph = g;
-    try (Graph.Reference r = g.ref()) {
+    Graph.Reference r = g.ref();
+    try {
       nativeHandle = allocate(r.nativeHandle());
       graphRef = g.ref();
+    } finally {
+      r.close();
     }
   }
 
@@ -152,6 +155,25 @@ public final class Session implements AutoCloseable {
     }
 
     /**
+     * (Experimental method): set options (typically for debugging) for this run.
+     *
+     * <p>The options are presented as a serialized <a
+     * href="https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto">RunOptions
+     * protocol buffer</a>.
+     *
+     * <p>The org.tensorflow package is free of any protocol buffer dependencies in order to remain
+     * friendly to resource constrained systems (where something like <a
+     * href="https://github.com/google/protobuf/tree/master/javanano#nano-version">nanoproto</a> may
+     * be more appropriate). A cost of that is this lack of type-safety in this API function. This
+     * choice is under review and this function may be replaced by more type-safe equivalents at any
+     * time.
+     */
+    public Runner setOptions(byte[] options) {
+      this.runOptions = options;
+      return this;
+    }
+
+    /**
      * Execute the graph fragments necessary to compute all requested fetches.
      *
      * <p><b>WARNING:</b> The caller assumes ownership of all returned {@link Tensor}s, i.e., the
@@ -164,6 +186,22 @@ public final class Session implements AutoCloseable {
      * {@code Map<Output, Tensor>}?
      */
     public List<Tensor> run() {
+      return runHelper(false).outputs;
+    }
+
+    /**
+     * Execute graph fragments to compute requested fetches and return metadata about the run.
+     *
+     * <p>This is exactly like {@link #run()}, but in addition to the requested Tensors, also
+     * returns metadata about the graph execution in the form of a serialized <a
+     * href="https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto">RunMetadata
+     * protocol buffer</a>.
+     */
+    public Run runAndFetchMetadata() {
+      return runHelper(true);
+    }
+
+    private Run runHelper(boolean wantMetadata) {
       long[] inputTensorHandles = new long[inputTensors.size()];
       long[] inputOpHandles = new long[inputs.size()];
       int[] inputOpIndices = new int[inputs.size()];
@@ -188,36 +226,45 @@ public final class Session implements AutoCloseable {
       for (Output o : outputs) {
         outputOpHandles[idx] = o.op().getUnsafeNativeHandle();
         outputOpIndices[idx] = o.index();
+        idx++;
       }
       idx = 0;
       for (Operation op : targets) {
         targetOpHandles[idx++] = op.getUnsafeNativeHandle();
       }
-      try (Reference runref = new Reference()) {
-        Session.run(
-            nativeHandle,
-            null, /* runOptions */
-            inputTensorHandles,
-            inputOpHandles,
-            inputOpIndices,
-            outputOpHandles,
-            outputOpIndices,
-            targetOpHandles,
-            false, /* wantRunMetadata */
-            outputTensorHandles);
+      Reference runRef = new Reference();
+      byte[] metadata = null;
+      try {
+        metadata =
+            Session.run(
+                nativeHandle,
+                runOptions,
+                inputTensorHandles,
+                inputOpHandles,
+                inputOpIndices,
+                outputOpHandles,
+                outputOpIndices,
+                targetOpHandles,
+                wantMetadata,
+                outputTensorHandles);
+      } finally {
+        runRef.close();
       }
-      List<Tensor> ret = new ArrayList<Tensor>();
+      List<Tensor> outputs = new ArrayList<Tensor>();
       for (long h : outputTensorHandles) {
         try {
-          ret.add(Tensor.fromHandle(h));
+          outputs.add(Tensor.fromHandle(h));
         } catch (Exception e) {
-          for (Tensor t : ret) {
+          for (Tensor t : outputs) {
             t.close();
           }
-          ret.clear();
+          outputs.clear();
           throw e;
         }
       }
+      Run ret = new Run();
+      ret.outputs = outputs;
+      ret.metadata = metadata;
       return ret;
     }
 
@@ -256,11 +303,35 @@ public final class Session implements AutoCloseable {
     private ArrayList<Tensor> inputTensors = new ArrayList<Tensor>();
     private ArrayList<Output> outputs = new ArrayList<Output>();
     private ArrayList<Operation> targets = new ArrayList<Operation>();
+    private byte[] runOptions = null;
   }
 
   /** Create a Runner to execute graph operations and evaluate Tensors. */
   public Runner runner() {
     return new Runner();
+  }
+
+  /**
+   * Output tensors and metadata obtained when executing a session.
+   *
+   * <p>See {@link Runner#runAndFetchMetadata()}
+   */
+  public static final class Run {
+    /** Tensors from requested fetches. */
+    public List<Tensor> outputs;
+
+    /**
+     * (Experimental): Metadata about the run.
+     *
+     * <p>A serialized <a
+     * href="https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto">RunMetadata
+     * protocol buffer</a>. The org.tensorflow package is free of any protocol buffer dependencies
+     * in order to remain friendly to resource constrained systems (where something like <a
+     * href="https://github.com/google/protobuf/tree/master/javanano#nano-version">nanoproto</a> may
+     * be more appropriate). A cost of that is this opaque blob. This choice is under review and
+     * this field may be replaced by more type-safe equivalents at any time.
+     */
+    public byte[] metadata;
   }
 
   private final Graph graph;

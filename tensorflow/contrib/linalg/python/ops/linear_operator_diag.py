@@ -135,41 +135,49 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
       ValueError:  If `diag.dtype` is real, and `is_self_adjoint` is not `True`.
     """
 
-    allowed_dtypes = [
-        dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128]
-
     with ops.name_scope(name, values=[diag]):
       self._diag = ops.convert_to_tensor(diag, name="diag")
-      dtype = self._diag.dtype
-      if dtype not in allowed_dtypes:
-        raise TypeError(
-            "Argument diag must have dtype in %s.  Found: %s"
-            % (allowed_dtypes, dtype))
+      self._check_diag(self._diag)
 
       # Check and auto-set hints.
-      if not dtype.is_complex:
+      if not self._diag.dtype.is_complex:
         if is_self_adjoint is False:
           raise ValueError("A real diagonal operator is always self adjoint.")
         else:
           is_self_adjoint = True
 
       super(LinearOperatorDiag, self).__init__(
-          dtype=dtype,
+          dtype=self._diag.dtype,
           graph_parents=[self._diag],
           is_non_singular=is_non_singular,
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
           name=name)
 
+  def _check_diag(self, diag):
+    """Static check of diag."""
+    allowed_dtypes = [
+        dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128]
+
+    dtype = diag.dtype
+    if dtype not in allowed_dtypes:
+      raise TypeError(
+          "Argument diag must have dtype in %s.  Found: %s"
+          % (allowed_dtypes, dtype))
+
+    if diag.get_shape().ndims is not None and diag.get_shape().ndims < 1:
+      raise ValueError("Argument diag must have at least 1 dimension.  "
+                       "Found: %s" % diag)
+
   def _shape(self):
     # If d_shape = [5, 3], we return [5, 3, 3].
     d_shape = self._diag.get_shape()
     return d_shape.concatenate(d_shape[-1:])
 
-  def _shape_dynamic(self):
+  def _shape_tensor(self):
     d_shape = array_ops.shape(self._diag)
     k = d_shape[-1]
-    return array_ops.concat_v2((d_shape, [k]), 0)
+    return array_ops.concat((d_shape, [k]), 0)
 
   def _assert_non_singular(self):
     return linear_operator_util.assert_no_entries_with_modulus_zero(
@@ -217,7 +225,14 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
   def _to_dense(self):
     return array_ops.matrix_diag(self._diag)
 
+  def _diag_part(self):
+    return self.diag
+
   def _add_to_tensor(self, x):
     x_diag = array_ops.matrix_diag_part(x)
     new_diag = self._diag + x_diag
     return array_ops.matrix_set_diag(x, new_diag)
+
+  @property
+  def diag(self):
+    return self._diag

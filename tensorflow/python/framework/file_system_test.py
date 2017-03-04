@@ -19,13 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import sys
-
-# TODO(mrry): Remove this hack which makes dlopen() in
-#             sparse_feature_cross_op.py not crash in the open source world.
-if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import load_library

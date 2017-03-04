@@ -112,6 +112,8 @@ def generate_batch(batch_size, num_skips, skip_window):
       labels[i * num_skips + j, 0] = buffer[target]
     buffer.append(data[data_index])
     data_index = (data_index + 1) % len(data)
+  # Backtrack a little bit to avoid skipping words in the end of a batch
+  data_index = (data_index + len(data) - span) % len(data)
   return batch, labels
 
 batch, labels = generate_batch(batch_size=8, num_skips=2, skip_window=1)
@@ -179,7 +181,7 @@ with graph.as_default():
       valid_embeddings, normalized_embeddings, transpose_b=True)
 
   # Add variable initializer.
-  init = tf.global_variables_initializer()
+  init = tf.initialize_all_variables()
 
 # Step 5: Begin training.
 num_steps = 100001

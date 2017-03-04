@@ -275,8 +275,18 @@ cc_library(
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/distributed_runtime:worker_env",
         "@grpc//:grpc++_unsecure",
+        "@grpc//:grpc_unsecure",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "grpc_runtime",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":grpc_server_lib",
+        ":grpc_session",
+    ],
 )
 
 cc_binary(

@@ -23,7 +23,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-static std::unordered_set<SYCLDevice*> live_devices;
+static std::unordered_set<SYCLDevice *> live_devices;
 static bool first_time = true;
 
 void ShutdownSycl() {

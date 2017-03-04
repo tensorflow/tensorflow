@@ -154,7 +154,7 @@ public class LabelImage {
   }
 
   // In the fullness of time, equivalents of the methods of this class should be auto-generated from
-  // the OpDefs linked into libtensorflow-jni.so. That would match what is done in other languages
+  // the OpDefs linked into libtensorflow_jni.so. That would match what is done in other languages
   // like Python, C++ and Go.
   static class GraphBuilder {
     GraphBuilder(Graph g) {

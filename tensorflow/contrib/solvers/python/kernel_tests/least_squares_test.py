@@ -18,10 +18,12 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
 
 from tensorflow.contrib.solvers.python.ops import least_squares
 from tensorflow.contrib.solvers.python.ops import util
+from tensorflow.python.framework import constant_op
+from tensorflow.python.ops import array_ops
+from tensorflow.python.platform import test as test_lib
 
 
 def _add_test(test, test_name, fn):
@@ -31,7 +33,7 @@ def _add_test(test, test_name, fn):
   setattr(test, test_name, fn)
 
 
-class LeastSquaresTest(tf.test.TestCase):
+class LeastSquaresTest(test_lib.TestCase):
   pass  # Filled in below.
 
 
@@ -47,11 +49,11 @@ def _get_least_squares_tests(dtype_, use_static_shape_, shape_):
     max_iter = 20
     with self.test_session() as sess:
       if use_static_shape_:
-        a = tf.constant(a_np)
-        rhs = tf.constant(rhs_np)
+        a = constant_op.constant(a_np)
+        rhs = constant_op.constant(rhs_np)
       else:
-        a = tf.placeholder(dtype_)
-        rhs = tf.placeholder(dtype_)
+        a = array_ops.placeholder(dtype_)
+        rhs = array_ops.placeholder(dtype_)
       operator = util.create_operator(a)
       cgls_graph = least_squares.cgls(operator, rhs, tol=tol, max_iter=max_iter)
       if use_static_shape_:
@@ -82,4 +84,4 @@ if __name__ == "__main__":
           name = "_".join(["LeastSquares", test_fn.__name__, arg_string])
           _add_test(LeastSquaresTest, name, test_fn)
 
-  tf.test.main()
+  test_lib.main()

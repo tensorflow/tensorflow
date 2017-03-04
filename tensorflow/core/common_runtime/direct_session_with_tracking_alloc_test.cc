@@ -45,8 +45,6 @@ namespace tensorflow {
 namespace {
 
 TEST(DirectSessionWithTrackingAllocTest, CostModelTest) {
-  EnableCPUAllocatorFullStats(true);
-
   Graph graph(OpRegistry::Global());
 
   Tensor a_tensor(DT_FLOAT, TensorShape({2, 2}));
@@ -71,7 +69,7 @@ TEST(DirectSessionWithTrackingAllocTest, CostModelTest) {
 
   SessionOptions options;
   (*options.config.mutable_device_count())["CPU"] = 2;
-  options.config.mutable_graph_options()->set_build_cost_model(true);
+  options.config.mutable_graph_options()->set_build_cost_model(1);
   std::unique_ptr<Session> session(NewSession(options));
   TF_ASSERT_OK(session->Create(def));
   std::vector<std::pair<string, Tensor>> inputs;
@@ -100,9 +98,9 @@ TEST(DirectSessionWithTrackingAllocTest, CostModelTest) {
         EXPECT_EQ(2, shape.dim(0).size());
         EXPECT_EQ(1, shape.dim(1).size());
         if (node->name() == y->name()) {
-          EXPECT_EQ(5, cm->AllocationId(node, 0));
+          EXPECT_EQ(3, cm->AllocationId(node, 0));
         } else {
-          EXPECT_EQ(7, cm->AllocationId(node, 0));
+          EXPECT_EQ(4, cm->AllocationId(node, 0));
         }
       }
       EXPECT_LE(0, cm->MaxExecutionTime(node));
@@ -114,9 +112,38 @@ TEST(DirectSessionWithTrackingAllocTest, CostModelTest) {
   ASSERT_EQ(2, graph_cnt);
 }
 
-static void TestHWAccelerator(bool enableHWTrace) {
-  EnableCPUAllocatorFullStats(true);
+TEST(DirectSessionWithTrackingAllocTest, CostModelWarmup) {
+  Graph g(OpRegistry::Global());
+  Tensor vx(DT_FLOAT, TensorShape({}));
+  vx.scalar<float>()() = 1.0;
+  Node* x = test::graph::Constant(&g, vx);
 
+  int warmup_steps = 10;
+  int measure_steps = 15;
+  SessionOptions options;
+  options.config.mutable_graph_options()->set_build_cost_model(1);
+  options.config.mutable_graph_options()->set_build_cost_model_after(
+      warmup_steps);
+  std::unique_ptr<Session> session(NewSession(options));
+
+  GraphDef def;
+  test::graph::ToGraphDef(&g, &def);
+  TF_ASSERT_OK(session->Create(def));
+  std::vector<Tensor> outputs;
+
+  for (int i = 0; i < warmup_steps + measure_steps; i++) {
+    TF_EXPECT_OK(session->Run({}, {x->name() + ":0"}, {}, &outputs));
+  }
+
+  DirectSession* ds = static_cast<DirectSession*>(session.get());
+  CostModelManager::CostModelMap cost_models;
+  ds->ExportCostModels(&cost_models);
+  CHECK_EQ(cost_models.size(), 1);
+  const CostModel* cm = (*cost_models.begin()).second;
+  EXPECT_EQ(measure_steps, cm->GetUpdateTimes());
+}
+
+static void TestHWAccelerator(bool enableHWTrace) {
   Graph graph(OpRegistry::Global());
 
   Tensor a_tensor(DT_FLOAT, TensorShape({2, 2}));
@@ -143,7 +170,7 @@ static void TestHWAccelerator(bool enableHWTrace) {
   (*options.config.mutable_device_count())["CPU"] = 1;
   (*options.config.mutable_device_count())["GPU"] = 1;
   options.config.set_allow_soft_placement(true);
-  options.config.mutable_graph_options()->set_build_cost_model(true);
+  options.config.mutable_graph_options()->set_build_cost_model(1);
   std::unique_ptr<Session> session(NewSession(options));
   TF_ASSERT_OK(session->Create(def));
   std::vector<std::pair<string, Tensor>> inputs;
@@ -199,8 +226,6 @@ TEST(DirectSessionWithTrackingAllocTest, CostModelWithHardwareStats) {
 }
 
 TEST(DirectSessionWithTrackingAllocTest, CostGraph) {
-  EnableCPUAllocatorFullStats(true);
-
   Graph graph(OpRegistry::Global());
 
   Tensor a_tensor(DT_FLOAT, TensorShape({2, 2}));
@@ -225,7 +250,7 @@ TEST(DirectSessionWithTrackingAllocTest, CostGraph) {
 
   SessionOptions options;
   (*options.config.mutable_device_count())["CPU"] = 2;
-  options.config.mutable_graph_options()->set_build_cost_model(true);
+  options.config.mutable_graph_options()->set_build_cost_model(1);
   options.config.mutable_graph_options()
       ->mutable_optimizer_options()
       ->set_opt_level(OptimizerOptions::L0);

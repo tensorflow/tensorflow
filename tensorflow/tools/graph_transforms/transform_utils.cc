@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/tools/graph_transforms/transform_utils.h"
 
+#include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/public/session.h"
@@ -275,7 +277,7 @@ string NodeMatch::DebugString() const {
 }
 
 GraphMatcher::GraphMatcher(const GraphDef& graph_def) {
-  SortByExecutionOrder(graph_def, &graph_def_);
+  SortByExecutionOrder(graph_def, &graph_def_).IgnoreError();
   MapNamesToNodes(graph_def_, &node_map_);
 }
 
@@ -360,7 +362,7 @@ Status ReplaceMatchingOpTypes(
   // Start off by retrieving all the matching subgraphs.
   GraphMatcher matcher(input_graph_def);
   std::vector<NodeMatch> matches;
-  matcher.GetOpTypeMatches(pattern, &matches);
+  TF_RETURN_IF_ERROR(matcher.GetOpTypeMatches(pattern, &matches));
 
   // Do some housekeeping so we can easily look up the resulting matches given
   // a node name.
@@ -467,6 +469,7 @@ Status ReplaceMatchingOpTypes(
 
 Status RenameNodeInputs(const GraphDef& input_graph_def,
                         const std::map<string, string>& inputs_to_rename,
+                        const std::unordered_set<string>& nodes_to_ignore,
                         GraphDef* output_graph_def) {
   std::map<string, std::vector<std::pair<string, string>>>
       canonical_inputs_to_rename;
@@ -492,6 +495,9 @@ Status RenameNodeInputs(const GraphDef& input_graph_def,
               input_node_name);
         }
         already_visited.insert(input_node_name);
+        if (nodes_to_ignore.count(node.name())) {
+          break;
+        }
         bool any_match_found = false;
         for (const std::pair<string, string>& input_to_rename :
              canonical_inputs_to_rename.at(input_node_name)) {
@@ -573,29 +579,133 @@ Status IsGraphValid(const GraphDef& graph_def) {
   return Status::OK();
 }
 
-int CountParameters(const TransformFuncContext& context, const string& name) {
-  if (context.params.count(name)) {
-    return context.params.at(name).size();
+Status GetInOutTypes(const NodeDef& node_def, DataTypeVector* inputs,
+                     DataTypeVector* outputs) {
+  const OpDef* op_def;
+  TF_RETURN_IF_ERROR(OpRegistry::Global()->LookUpOpDef(node_def.op(), &op_def));
+  TF_RETURN_IF_ERROR(InOutTypesForNode(node_def, *op_def, inputs, outputs));
+  return Status::OK();
+}
+
+Status LoadTextOrBinaryGraphFile(const string& file_name, GraphDef* graph_def) {
+  string file_data;
+  Status load_file_status =
+      ReadFileToString(Env::Default(), file_name, &file_data);
+  if (!load_file_status.ok()) {
+    errors::AppendToMessage(&load_file_status, " (for file ", file_name, ")");
+    return load_file_status;
+  }
+  // Try to load in binary format first, and then try ascii if that fails.
+  Status load_status = ReadBinaryProto(Env::Default(), file_name, graph_def);
+  if (!load_status.ok()) {
+    if (protobuf::TextFormat::ParseFromString(file_data, graph_def)) {
+      load_status = Status::OK();
+    } else {
+      errors::AppendToMessage(&load_status,
+                              " (both text and binary parsing failed for file ",
+                              file_name, ")");
+    }
+  }
+  return load_status;
+}
+
+int TransformFuncContext::CountParameters(const string& name) const {
+  if (params.count(name)) {
+    return params.at(name).size();
   } else {
     return 0;
   }
 }
 
-Status GetExactlyOneParameter(const TransformFuncContext& context,
-                              const string& name, const string& default_value,
-                              string* result) {
-  const int params_count = CountParameters(context, name);
+Status TransformFuncContext::GetOneStringParameter(const string& name,
+                                                   const string& default_value,
+                                                   string* result) const {
+  const int params_count = CountParameters(name);
   if (params_count == 0) {
     *result = default_value;
     return Status::OK();
   } else if (params_count == 1) {
-    *result = context.params.at(name).at(0);
+    *result = params.at(name).at(0);
     return Status::OK();
   } else {
     return errors::InvalidArgument("Expected a single '", name,
                                    "' parameter, but found ", params_count,
                                    " occurrences");
   }
+}
+
+Status TransformFuncContext::GetOneInt32Parameter(const string& name,
+                                                  int32 default_value,
+                                                  int32* result) const {
+  const int params_count = CountParameters(name);
+  if (params_count == 0) {
+    *result = default_value;
+    return Status::OK();
+  }
+  string string_value;
+  TF_RETURN_IF_ERROR(GetOneStringParameter(name, "", &string_value));
+  if (!strings::safe_strto32(StringPiece(string_value), result)) {
+    return errors::InvalidArgument("Couldn't interpret the ", name,
+                                   " argument as a number:", string_value);
+  }
+  return Status::OK();
+}
+
+Status TransformFuncContext::GetOneInt64Parameter(const string& name,
+                                                  int64 default_value,
+                                                  int64* result) const {
+  const int params_count = CountParameters(name);
+  if (params_count == 0) {
+    *result = default_value;
+    return Status::OK();
+  }
+  string string_value;
+  TF_RETURN_IF_ERROR(GetOneStringParameter(name, "", &string_value));
+  if (!strings::safe_strto64(StringPiece(string_value), result)) {
+    return errors::InvalidArgument("Couldn't interpret the ", name,
+                                   " argument as a number:", string_value);
+  }
+  return Status::OK();
+}
+
+Status TransformFuncContext::GetOneFloatParameter(const string& name,
+                                                  float default_value,
+                                                  float* result) const {
+  const int params_count = CountParameters(name);
+  if (params_count == 0) {
+    *result = default_value;
+    return Status::OK();
+  }
+  string string_value;
+  TF_RETURN_IF_ERROR(GetOneStringParameter(name, "", &string_value));
+  if (!strings::safe_strtof(string_value.c_str(), result)) {
+    return errors::InvalidArgument(
+        "Couldn't interpret the ", name,
+        " argument as a float number:", string_value);
+  }
+  return Status::OK();
+}
+
+Status TransformFuncContext::GetOneBoolParameter(const string& name,
+                                                 bool default_value,
+                                                 bool* result) const {
+  const int params_count = CountParameters(name);
+  if (params_count == 0) {
+    *result = default_value;
+    return Status::OK();
+  }
+  string string_value;
+  TF_RETURN_IF_ERROR(GetOneStringParameter(name, "", &string_value));
+  if (string_value == "true" || string_value == "1") {
+    *result = true;
+  } else if (string_value == "false" || string_value == "0") {
+    *result = false;
+  } else {
+    return errors::InvalidArgument("Couldn't interpret the ", name,
+                                   " argument as a boolean:", string_value,
+                                   " (expected true, false, 0 or 1)");
+  }
+  return Status::OK();
 }
 
 }  // namespace graph_transforms

@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+# This sub Makefile compiles the TensorFlow Android Inference library. This is
+# designed to be used as a sub Makefile with tensorflow/contrib/makefile/Makefile.
+#
+# You can build targets in this file by including this sub makefile like:
+# $ make -f tensorflow/contrib/makefile/Makefile TARGET=ANDROID \
+# SUB_MAKEFILES=\
+# $(pwd)/tensorflow/contrib/makefile/sub_makefiles/android_inference/Makefile.in \
+# (optional: NDK_ROOT=<ndk_root>) libtensorflow_inference.so
+#
+# Alternatively, use build_all_android.sh:
+# $ tensorflow/contrib/makefile/build_all_android.sh \
+# -s $(pwd)/tensorflow/contrib/makefile/sub_makefiles/android_inference/Makefile.in \
+# -t libtensorflow_inference.so
+#
+# The resulting library should be packaged into the Android APK along with
+# the tensorflow/java and tensorflow/contrib/android/java counterparts to
+# provide TensorFlow inference support on Android devices.
+
+ANDROID_SRCS := \
+tensorflow/c/tf_status_helper.cc \
+tensorflow/c/checkpoint_reader.cc \
+tensorflow/c/test_op.cc \
+tensorflow/c/c_api.cc \
+tensorflow/java/src/main/native/exception_jni.cc \
+tensorflow/java/src/main/native/graph_jni.cc \
+tensorflow/java/src/main/native/operation_builder_jni.cc \
+tensorflow/java/src/main/native/operation_jni.cc \
+tensorflow/java/src/main/native/session_jni.cc \
+tensorflow/java/src/main/native/tensorflow_jni.cc \
+tensorflow/java/src/main/native/tensor_jni.cc \
+tensorflow/contrib/android/jni/run_stats_jni.cc
+
+ANDROID_OBJS := $(addprefix $(OBJDIR), $(ANDROID_SRCS:.cc=.o))
+
+SO_NAME := libtensorflow_inference.so
+SO_PATH := $(LIBDIR)$(SO_NAME)
+
+$(SO_PATH): $(LIB_OBJS) $(ANDROID_OBJS)
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) \
+	-o $@ $(ANDROID_OBJS) $(LIB_OBJS) \
+	$(LIBFLAGS) $(LDFLAGS) -shared $(LIBS)
+
+$(SO_NAME): $(SO_PATH)

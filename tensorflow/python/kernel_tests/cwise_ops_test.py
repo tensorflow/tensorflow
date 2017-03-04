@@ -186,7 +186,7 @@ class UnaryOpTest(test.TestCase):
 
     self._compareBoth(x, np.abs, math_ops.abs)
     self._compareBoth(x, np.abs, _ABS)
-    self._compareBoth(x, np.negative, math_ops.neg)
+    self._compareBoth(x, np.negative, math_ops.negative)
     self._compareBoth(x, np.negative, _NEG)
     self._compareBoth(y, self._inv, math_ops.reciprocal)
     self._compareBoth(x, np.square, math_ops.square)
@@ -213,7 +213,7 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(x, np.vectorize(math.erfc), math_ops.erfc)
 
     self._compareBothSparse(x, np.abs, math_ops.abs)
-    self._compareBothSparse(x, np.negative, math_ops.neg)
+    self._compareBothSparse(x, np.negative, math_ops.negative)
     self._compareBothSparse(x, np.square, math_ops.square)
     self._compareBothSparse(z, np.sqrt, math_ops.sqrt, tol=1e-3)
     self._compareBothSparse(x, np.tanh, math_ops.tanh)
@@ -230,7 +230,7 @@ class UnaryOpTest(test.TestCase):
     x = np.empty((2, 0, 5), dtype=np.float32)
     self._compareBoth(x, np.abs, math_ops.abs)
     self._compareBoth(x, np.abs, _ABS)
-    self._compareBoth(x, np.negative, math_ops.neg)
+    self._compareBoth(x, np.negative, math_ops.negative)
     self._compareBoth(x, np.negative, _NEG)
     self._compareBoth(x, self._inv, math_ops.reciprocal)
     self._compareBoth(x, np.square, math_ops.square)
@@ -255,7 +255,7 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(x, np.arctan, math_ops.atan)
 
     self._compareBothSparse(x, np.abs, math_ops.abs)
-    self._compareBothSparse(x, np.negative, math_ops.neg)
+    self._compareBothSparse(x, np.negative, math_ops.negative)
     self._compareBothSparse(x, np.square, math_ops.square)
     self._compareBothSparse(x, np.sqrt, math_ops.sqrt, tol=1e-3)
     self._compareBothSparse(x, np.tanh, math_ops.tanh)
@@ -270,7 +270,7 @@ class UnaryOpTest(test.TestCase):
         np.float64)  # between -1 and 1
     self._compareBoth(x, np.abs, math_ops.abs)
     self._compareBoth(x, np.abs, _ABS)
-    self._compareBoth(x, np.negative, math_ops.neg)
+    self._compareBoth(x, np.negative, math_ops.negative)
     self._compareBoth(x, np.negative, _NEG)
     self._compareBoth(y, self._inv, math_ops.reciprocal)
     self._compareBoth(x, np.square, math_ops.square)
@@ -297,7 +297,7 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(k, np.tan, math_ops.tan)
 
     self._compareBothSparse(x, np.abs, math_ops.abs)
-    self._compareBothSparse(x, np.negative, math_ops.neg)
+    self._compareBothSparse(x, np.negative, math_ops.negative)
     self._compareBothSparse(x, np.square, math_ops.square)
     self._compareBothSparse(z, np.sqrt, math_ops.sqrt, tol=1e-3)
     self._compareBothSparse(x, np.tanh, math_ops.tanh)
@@ -310,7 +310,7 @@ class UnaryOpTest(test.TestCase):
     z = (x + 15.5).astype(np.float16)  # all positive
     self._compareBoth(x, np.abs, math_ops.abs)
     self._compareBoth(x, np.abs, _ABS)
-    self._compareBoth(x, np.negative, math_ops.neg)
+    self._compareBoth(x, np.negative, math_ops.negative)
     self._compareBoth(x, np.negative, _NEG)
     self._compareBoth(y, self._inv, math_ops.reciprocal)
     self._compareBoth(x, np.square, math_ops.square)
@@ -333,7 +333,7 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(x, np.vectorize(math.erfc), math_ops.erfc)
 
     self._compareBothSparse(x, np.abs, math_ops.abs)
-    self._compareBothSparse(x, np.negative, math_ops.neg)
+    self._compareBothSparse(x, np.negative, math_ops.negative)
     self._compareBothSparse(x, np.square, math_ops.square)
     self._compareBothSparse(z, np.sqrt, math_ops.sqrt, tol=1e-3)
     self._compareBothSparse(x, np.tanh, math_ops.tanh)
@@ -344,13 +344,13 @@ class UnaryOpTest(test.TestCase):
     x = np.arange(-6, 6, 2).reshape(1, 3, 2).astype(np.int32)
     self._compareCpu(x, np.abs, math_ops.abs)
     self._compareCpu(x, np.abs, _ABS)
-    self._compareBoth(x, np.negative, math_ops.neg)
+    self._compareBoth(x, np.negative, math_ops.negative)
     self._compareBoth(x, np.negative, _NEG)
     self._compareBoth(x, np.square, math_ops.square)
     self._compareCpu(x, np.sign, math_ops.sign)
 
     self._compareBothSparse(x, np.abs, math_ops.abs)
-    self._compareBothSparse(x, np.negative, math_ops.neg)
+    self._compareBothSparse(x, np.negative, math_ops.negative)
     self._compareBothSparse(x, np.square, math_ops.square)
     self._compareBothSparse(x, np.sign, math_ops.sign)
 
@@ -358,13 +358,13 @@ class UnaryOpTest(test.TestCase):
     x = np.arange(-6 << 40, 6 << 40, 2 << 40).reshape(1, 3, 2).astype(np.int64)
     self._compareCpu(x, np.abs, math_ops.abs)
     self._compareCpu(x, np.abs, _ABS)
-    self._compareCpu(x, np.negative, math_ops.neg)
+    self._compareCpu(x, np.negative, math_ops.negative)
     self._compareCpu(x, np.negative, _NEG)
     self._compareCpu(x, np.square, math_ops.square)
     self._compareCpu(x, np.sign, math_ops.sign)
 
     self._compareBothSparse(x, np.abs, math_ops.abs)
-    self._compareBothSparse(x, np.negative, math_ops.neg)
+    self._compareBothSparse(x, np.negative, math_ops.negative)
     self._compareBothSparse(x, np.square, math_ops.square)
     self._compareBothSparse(x, np.sign, math_ops.sign)
 
@@ -374,7 +374,7 @@ class UnaryOpTest(test.TestCase):
     y = x + 0.5  # no zeros
     self._compareCpu(x, np.abs, math_ops.abs)
     self._compareCpu(x, np.abs, _ABS)
-    self._compareCpu(x, np.negative, math_ops.neg)
+    self._compareCpu(x, np.negative, math_ops.negative)
     self._compareCpu(x, np.negative, _NEG)
     self._compareCpu(y, self._inv, math_ops.reciprocal)
     self._compareCpu(x, np.square, math_ops.square)
@@ -390,7 +390,7 @@ class UnaryOpTest(test.TestCase):
     self._compareCpu(x, np.cos, math_ops.cos)
 
     self._compareBothSparse(x, np.abs, math_ops.abs)
-    self._compareBothSparse(x, np.negative, math_ops.neg)
+    self._compareBothSparse(x, np.negative, math_ops.negative)
     self._compareBothSparse(x, np.square, math_ops.square)
     self._compareBothSparse(x, np.sqrt, math_ops.sqrt, 1e-3)
     self._compareBothSparse(x, np.tanh, math_ops.tanh)
@@ -408,7 +408,7 @@ class UnaryOpTest(test.TestCase):
     y = x + 0.5  # no zeros
     self._compareCpu(x, np.abs, math_ops.abs)
     self._compareCpu(x, np.abs, _ABS)
-    self._compareCpu(x, np.negative, math_ops.neg)
+    self._compareCpu(x, np.negative, math_ops.negative)
     self._compareCpu(x, np.negative, _NEG)
     self._compareCpu(y, self._inv, math_ops.reciprocal)
     self._compareCpu(x, np.square, math_ops.square)
@@ -424,7 +424,7 @@ class UnaryOpTest(test.TestCase):
     self._compareCpu(x, np.cos, math_ops.cos)
 
     self._compareBothSparse(x, np.abs, math_ops.abs)
-    self._compareBothSparse(x, np.negative, math_ops.neg)
+    self._compareBothSparse(x, np.negative, math_ops.negative)
     self._compareBothSparse(x, np.square, math_ops.square)
     self._compareBothSparse(x, np.sqrt, math_ops.sqrt, 1e-3)
     self._compareBothSparse(x, np.tanh, math_ops.tanh)
@@ -600,8 +600,8 @@ class BinaryOpTest(test.TestCase):
     x = np.linspace(-5, 20, 15).reshape(1, 3, 5).astype(np.float32)
     y = np.linspace(20, -5, 15).reshape(1, 3, 5).astype(np.float32)
     self._compareBoth(x, y, np.add, math_ops.add, also_compare_variables=True)
-    self._compareBoth(x, y, np.subtract, math_ops.sub)
-    self._compareBoth(x, y, np.multiply, math_ops.mul)
+    self._compareBoth(x, y, np.subtract, math_ops.subtract)
+    self._compareBoth(x, y, np.multiply, math_ops.multiply)
     self._compareBoth(x, y + 0.1, np.true_divide, math_ops.truediv)
     self._compareBoth(x, y + 0.1, np.floor_divide, math_ops.floordiv)
     self._compareBoth(x, y, np.add, _ADD)
@@ -657,8 +657,8 @@ class BinaryOpTest(test.TestCase):
     x = np.linspace(-5, 20, 15).reshape(1, 3, 5).astype(np.float64)
     y = np.linspace(20, -5, 15).reshape(1, 3, 5).astype(np.float64)
     self._compareBoth(x, y, np.add, math_ops.add)
-    self._compareBoth(x, y, np.subtract, math_ops.sub)
-    self._compareBoth(x, y, np.multiply, math_ops.mul)
+    self._compareBoth(x, y, np.subtract, math_ops.subtract)
+    self._compareBoth(x, y, np.multiply, math_ops.multiply)
     self._compareBoth(x, y + 0.1, np.true_divide, math_ops.truediv)
     self._compareBoth(x, y + 0.1, np.floor_divide, math_ops.floordiv)
     self._compareBoth(x, y, np.add, _ADD)
@@ -680,19 +680,19 @@ class BinaryOpTest(test.TestCase):
   def testInt8Basic(self):
     x = np.arange(1, 13, 2).reshape(1, 3, 2).astype(np.int8)
     y = np.arange(1, 7, 1).reshape(1, 3, 2).astype(np.int8)
-    self._compareBoth(x, y, np.multiply, math_ops.mul)
+    self._compareBoth(x, y, np.multiply, math_ops.multiply)
     self._compareBoth(x, y, np.multiply, _MUL)
 
   def testInt16Basic(self):
     x = np.arange(1, 13, 2).reshape(1, 3, 2).astype(np.int16)
     y = np.arange(1, 7, 1).reshape(1, 3, 2).astype(np.int16)
-    self._compareBoth(x, y, np.multiply, math_ops.mul)
+    self._compareBoth(x, y, np.multiply, math_ops.multiply)
     self._compareBoth(x, y, np.multiply, _MUL)
 
   def testUint16Basic(self):
     x = np.arange(1, 13, 2).reshape(1, 3, 2).astype(np.uint16)
     y = np.arange(1, 7, 1).reshape(1, 3, 2).astype(np.uint16)
-    self._compareBoth(x, y, np.multiply, math_ops.mul)
+    self._compareBoth(x, y, np.multiply, math_ops.multiply)
     self._compareBoth(x, y, np.multiply, _MUL)
     self._compareBoth(x, y, np.true_divide, math_ops.truediv)
     self._compareBoth(x, y, np.floor_divide, math_ops.floordiv)
@@ -703,8 +703,8 @@ class BinaryOpTest(test.TestCase):
     x = np.arange(1, 13, 2).reshape(1, 3, 2).astype(np.int32)
     y = np.arange(1, 7, 1).reshape(1, 3, 2).astype(np.int32)
     self._compareBoth(x, y, np.add, math_ops.add)
-    self._compareBoth(x, y, np.subtract, math_ops.sub)
-    self._compareBoth(x, y, np.multiply, math_ops.mul)
+    self._compareBoth(x, y, np.subtract, math_ops.subtract)
+    self._compareBoth(x, y, np.multiply, math_ops.multiply)
     self._compareBoth(x, y, np.true_divide, math_ops.truediv)
     self._compareBoth(x, y, np.floor_divide, math_ops.floordiv)
     self._compareBoth(x, y, np.mod, math_ops.mod)
@@ -721,8 +721,8 @@ class BinaryOpTest(test.TestCase):
   def testInt64Basic(self):
     x = np.arange(1 << 40, 13 << 40, 2 << 40).reshape(1, 3, 2).astype(np.int64)
     y = np.arange(1, 7, 1).reshape(1, 3, 2).astype(np.int64)
-    self._compareBoth(x, y, np.subtract, math_ops.sub)
-    self._compareBoth(x, y, np.multiply, math_ops.mul)
+    self._compareBoth(x, y, np.subtract, math_ops.subtract)
+    self._compareBoth(x, y, np.multiply, math_ops.multiply)
     self._compareBoth(x, y, np.true_divide, math_ops.truediv)
     self._compareBoth(x, y, np.floor_divide, math_ops.floordiv)
     self._compareBoth(x, y, np.mod, math_ops.mod)
@@ -738,8 +738,8 @@ class BinaryOpTest(test.TestCase):
     y = np.complex(1, 1) * np.linspace(20, -20, 6).reshape(
         1, 3, 2).astype(np.complex64)
     self._compareBoth(x, y, np.add, math_ops.add)
-    self._compareBoth(x, y, np.subtract, math_ops.sub)
-    self._compareBoth(x, y, np.multiply, math_ops.mul)
+    self._compareBoth(x, y, np.subtract, math_ops.subtract)
+    self._compareBoth(x, y, np.multiply, math_ops.multiply)
     self._compareBoth(x, y + 0.1, np.true_divide, math_ops.truediv)
     self._compareBoth(x, y, np.add, _ADD)
     self._compareBoth(x, y, np.subtract, _SUB)
@@ -752,8 +752,8 @@ class BinaryOpTest(test.TestCase):
     y = np.complex(1, 1) * np.linspace(20, -20, 6).reshape(
         1, 3, 2).astype(np.complex128)
     self._compareBoth(x, y, np.add, math_ops.add)
-    self._compareBoth(x, y, np.subtract, math_ops.sub)
-    self._compareBoth(x, y, np.multiply, math_ops.mul)
+    self._compareBoth(x, y, np.subtract, math_ops.subtract)
+    self._compareBoth(x, y, np.multiply, math_ops.multiply)
     self._compareBoth(x, y + 0.1, np.true_divide, math_ops.truediv)
     self._compareBoth(x, y, np.add, _ADD)
     self._compareBoth(x, y, np.subtract, _SUB)
@@ -839,7 +839,7 @@ class BinaryOpTest(test.TestCase):
 
   def _testBCastB(self, xs, ys):
     funcs = [
-        (np.subtract, math_ops.sub),
+        (np.subtract, math_ops.subtract),
         (np.subtract, _SUB),
         (np.power, math_ops.pow),
     ]
@@ -847,7 +847,7 @@ class BinaryOpTest(test.TestCase):
 
   def _testBCastC(self, xs, ys):
     funcs = [
-        (np.multiply, math_ops.mul),
+        (np.multiply, math_ops.multiply),
         (np.multiply, _MUL),
     ]
     self._testBCastByFunc(funcs, xs, ys)
@@ -1055,8 +1055,8 @@ class BinaryOpTest(test.TestCase):
 
   def testMismatchedDimensions(self):
     for func in [
-        math_ops.add, math_ops.sub, math_ops.mul, math_ops.div, _ADD, _SUB,
-        _MUL, _TRUEDIV, _FLOORDIV
+        math_ops.add, math_ops.subtract, math_ops.multiply, math_ops.div,
+        _ADD, _SUB, _MUL, _TRUEDIV, _FLOORDIV
     ]:
       with self.assertRaisesWithPredicateMatch(
           ValueError, lambda e: "Dimensions must" in str(e)):

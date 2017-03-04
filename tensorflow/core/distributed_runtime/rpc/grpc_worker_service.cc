@@ -54,12 +54,11 @@ class GrpcWorkerService : public AsyncServiceInterface {
   GrpcWorkerService(GrpcWorker* worker, ::grpc::ServerBuilder* builder)
       : worker_(worker), is_shutdown_(false) {
     builder->RegisterService(&worker_service_);
-    cq_ = builder->AddCompletionQueue().release();
+    cq_ = builder->AddCompletionQueue();
   }
 
   ~GrpcWorkerService() {
     delete shutdown_alarm_;
-    delete cq_;
   }
 
   void Shutdown() override {
@@ -77,7 +76,7 @@ class GrpcWorkerService : public AsyncServiceInterface {
       // that causes the completion queue to be shut down on the
       // polling thread.
       shutdown_alarm_ =
-          new ::grpc::Alarm(cq_, gpr_now(GPR_CLOCK_MONOTONIC), nullptr);
+          new ::grpc::Alarm(cq_.get(), gpr_now(GPR_CLOCK_MONOTONIC), nullptr);
     }
   }
 
@@ -99,7 +98,7 @@ class GrpcWorkerService : public AsyncServiceInterface {
       Call<GrpcWorkerService, grpc::WorkerService::AsyncService,       \
            method##Request, method##Response>::                        \
           EnqueueRequestForMethod(                                     \
-              &worker_service_, cq_,                                   \
+              &worker_service_, cq_.get(),                             \
               static_cast<int>(GrpcWorkerMethod::k##method),           \
               &GrpcWorkerService::method##Handler, (supports_cancel)); \
     }                                                                  \
@@ -151,14 +150,14 @@ class GrpcWorkerService : public AsyncServiceInterface {
   }
 
  private:
-  GrpcWorker* worker_;                 // Not owned.
-  ::grpc::ServerCompletionQueue* cq_;  // Owned.
+  GrpcWorker* worker_ = nullptr;  // Not owned.
+  std::unique_ptr<::grpc::ServerCompletionQueue> cq_;
 
   grpc::WorkerService::AsyncService worker_service_;
 
   mutex shutdown_mu_;
   bool is_shutdown_ GUARDED_BY(shutdown_mu_);
-  ::grpc::Alarm* shutdown_alarm_;
+  ::grpc::Alarm* shutdown_alarm_ = nullptr;
 
   void Schedule(std::function<void()> f) {
     worker_->env()->compute_pool->Schedule(std::move(f));
@@ -213,11 +212,18 @@ class GrpcWorkerService : public AsyncServiceInterface {
   void RunGraphHandler(WorkerCall<RunGraphRequest, RunGraphResponse>* call) {
     Schedule([this, call]() {
       CallOptions* call_opts = new CallOptions;
+      ProtoRunGraphRequest* wrapped_request =
+          new ProtoRunGraphRequest(&call->request);
+      NonOwnedProtoRunGraphResponse* wrapped_response =
+          new NonOwnedProtoRunGraphResponse(&call->response);
       call->SetCancelCallback([call_opts]() { call_opts->StartCancel(); });
-      worker_->RunGraphAsync(call_opts, &call->request, &call->response,
-                             [call, call_opts](const Status& s) {
+      worker_->RunGraphAsync(call_opts, wrapped_request, wrapped_response,
+                             [call, call_opts, wrapped_request,
+                              wrapped_response](const Status& s) {
                                call->ClearCancelCallback();
                                delete call_opts;
+                               delete wrapped_request;
+                               delete wrapped_response;
                                call->SendResponse(ToGrpcStatus(s));
                              });
     });
@@ -271,7 +277,7 @@ class GrpcWorkerService : public AsyncServiceInterface {
       Call<GrpcWorkerService, grpc::WorkerService::AsyncService,
            RecvTensorRequest, ::grpc::ByteBuffer>::
           EnqueueRequestForMethod(
-              &worker_service_, cq_,
+              &worker_service_, cq_.get(),
               static_cast<int>(GrpcWorkerMethod::kRecvTensor),
               &GrpcWorkerService::RecvTensorHandlerRaw,
               true /* supports cancel*/);

@@ -53,8 +53,13 @@ class Worker : public WorkerInterface {
                             DeregisterGraphResponse* response,
                             StatusCallback done) override;
 
-  void RunGraphAsync(CallOptions* opts, const RunGraphRequest* request,
-                     RunGraphResponse* response, StatusCallback done) override;
+  void RunGraphAsync(CallOptions* opts, RunGraphRequestWrapper* request,
+                     MutableRunGraphResponseWrapper* response,
+                     StatusCallback done) override;
+
+  MutableRunGraphRequestWrapper* CreateRunGraphRequest() override;
+
+  MutableRunGraphResponseWrapper* CreateRunGraphResponse() override;
 
   void CleanupGraphAsync(const CleanupGraphRequest* request,
                          CleanupGraphResponse* response,
@@ -110,14 +115,17 @@ class Worker : public WorkerInterface {
 
   void RemovePartialRun(const string& graph_handle, int step_id);
 
-  Status PrepareRunGraph(const RunGraphRequest& req, GraphMgr::NamedTensors* in,
+  Status PrepareRunGraph(RunGraphRequestWrapper* req,
+                         GraphMgr::NamedTensors* in,
                          GraphMgr::NamedTensors* out);
 
-  void DoRunGraph(CallOptions* opts, const RunGraphRequest* request,
-                  RunGraphResponse* response, StatusCallback done);
+  void DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
+                  MutableRunGraphResponseWrapper* response,
+                  StatusCallback done);
 
-  void DoPartialRunGraph(CallOptions* opts, const RunGraphRequest* request,
-                         RunGraphResponse* response, StatusCallback done);
+  void DoPartialRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
+                         MutableRunGraphResponseWrapper* response,
+                         StatusCallback done);
 
   TF_DISALLOW_COPY_AND_ASSIGN(Worker);
 };

@@ -24,12 +24,12 @@ import sys
 import tempfile
 
 # Google-internal import(s).
-from tensorflow.python.debug import debug_data
 from tensorflow.python.debug.cli import analyzer_cli
 from tensorflow.python.debug.cli import cli_shared
-from tensorflow.python.debug.cli import curses_ui
 from tensorflow.python.debug.cli import debugger_cli_common
 from tensorflow.python.debug.cli import stepper_cli
+from tensorflow.python.debug.cli import ui_factory
+from tensorflow.python.debug.lib import debug_data
 from tensorflow.python.debug.wrappers import framework
 
 
@@ -44,7 +44,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
   will launch the command-line interface (CLI) of tfdbg.
   """
 
-  def __init__(self, sess, dump_root=None, log_usage=True):
+  def __init__(self, sess, dump_root=None, log_usage=True, ui_type="curses"):
     """Constructor of LocalCLIDebugWrapperSession.
 
     Args:
@@ -54,6 +54,8 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
         does not exist, it will be created by the debugger core during debug
         `run()` calls and removed afterwards.
       log_usage: (`bool`) whether the usage of this class is to be logged.
+      ui_type: (`str`) requested UI type. Currently supported:
+        (curses | readline)
 
     Raises:
       ValueError: If dump_root is an existing and non-empty directory or if
@@ -101,6 +103,9 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     self._run_through_times = 1
     self._skip_debug = False
     self._run_start_response = None
+    self._is_run_start = True
+
+    self._ui_type = ui_type
 
   def _initialize_argparsers(self):
     self._argparsers = {}
@@ -157,7 +162,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
       request: An instance of `OnSessionInitRequest`.
 
     Returns:
-      An instance of OnSessionInitResponse.
+      An instance of `OnSessionInitResponse`.
     """
 
     return framework.OnSessionInitResponse(
@@ -179,6 +184,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
       RuntimeError: If user chooses to prematurely exit the debugger.
     """
 
+    self._is_run_start = True
     self._update_run_calls_state(request.run_call_count, request.fetches,
                                  request.feed_dict)
 
@@ -203,7 +209,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     if self._run_start_response is None:
       self._prep_cli_for_run_start()
 
-      self._run_start_response = self._launch_cli(is_run_start=True)
+      self._run_start_response = self._launch_cli()
       if self._run_through_times > 1:
         self._run_through_times -= 1
 
@@ -219,7 +225,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
   def _prep_cli_for_run_start(self):
     """Prepare (but not launch) the CLI for run-start."""
 
-    self._run_cli = curses_ui.CursesUI()
+    self._run_cli = ui_factory.get_ui(self._ui_type)
 
     help_intro = debugger_cli_common.RichTextLines([])
     if self._run_call_count == 1:
@@ -232,7 +238,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
 
     # Create initial screen output detailing the run.
     self._title = "run-start: " + self._run_description
-    self._init_command = "help"
+    self._init_command = "run_info"
     self._title_color = "blue_on_white"
 
   def on_run_end(self, request):
@@ -249,6 +255,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
       An instance of OnSessionInitResponse.
     """
 
+    self._is_run_start = False
     if request.performed_action == framework.OnRunStartAction.DEBUG_RUN:
       partition_graphs = None
       if request.run_metadata and request.run_metadata.partition_graphs:
@@ -318,8 +325,8 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
         self._init_command = "lt -f %s" % passed_filter
         self._title_color = "red_on_white"
 
-    self._run_cli = analyzer_cli.create_analyzer_curses_cli(
-        debug_dump, self._tensor_filters)
+    self._run_cli = analyzer_cli.create_analyzer_ui(
+        debug_dump, self._tensor_filters, ui_type=self._ui_type)
 
     # Get names of all dumped tensors.
     dumped_tensor_names = []
@@ -345,12 +352,8 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     if help_intro:
       self._run_cli.set_help_intro(help_intro)
 
-  def _launch_cli(self, is_run_start=False):
+  def _launch_cli(self):
     """Launch the interactive command-line interface.
-
-    Args:
-      is_run_start: (bool) whether this CLI launch occurs at a run-start
-        callback.
 
     Returns:
       The OnRunStartResponse specified by the user using the "run" command.
@@ -365,13 +368,18 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     return response
 
   def _run_info_handler(self, args, screen_info=None):
-    output = self._run_info
+    output = debugger_cli_common.RichTextLines([])
 
-    # Add main menu.
-    menu = debugger_cli_common.Menu()
-    menu.append(debugger_cli_common.MenuItem("list_tensors", "lt"))
-    menu.append(debugger_cli_common.MenuItem("help", "help"))
-    output.annotations[debugger_cli_common.MAIN_MENU_KEY] = menu
+    if self._run_call_count == 1:
+      output.extend(cli_shared.get_tfdbg_logo())
+    output.extend(self._run_info)
+
+    if (not self._is_run_start and
+        debugger_cli_common.MAIN_MENU_KEY in output.annotations):
+      menu = output.annotations[debugger_cli_common.MAIN_MENU_KEY]
+      if "list_tensors" not in menu.captions():
+        menu.insert(
+            0, debugger_cli_common.MenuItem("list_tensors", "list_tensors"))
 
     return output
 
@@ -503,9 +511,10 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     # TODO(cais): Perhaps some users will want the effect of the interactive
     # stepping and value injection to persist. When that happens, make the call
     # to finalize optional.
-    stepper_ui = curses_ui.CursesUI(
-        on_ui_exit=(node_stepper.restore_variable_values
-                    if restore_variable_values_on_exit else None))
+    stepper_ui = ui_factory.get_ui(
+        self._ui_type,
+        on_ui_exit=(node_stepper.restore_variable_values if
+                    restore_variable_values_on_exit else None))
 
     stepper_ui.register_command_handler(
         "list_sorted_nodes",

@@ -17,21 +17,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
 import sys
 
 # Google-internal import(s).
-from tensorflow.python.debug import debug_data
-from tensorflow.python.debug.cli import analyzer_cli
-from tensorflow.python.platform import app
-from tensorflow.python.platform import flags
 
-FLAGS = flags.FLAGS
-flags.DEFINE_string("dump_dir", "", "tfdbg dump directory to load")
-flags.DEFINE_boolean(
-    "log_usage", True, "Whether the usage of this tool is to be logged")
-flags.DEFINE_boolean(
-    "validate_graph", True,
-    "Whether the dumped tensors will be validated against the GraphDefs")
+from tensorflow.python.debug.cli import analyzer_cli
+from tensorflow.python.debug.lib import debug_data
+from tensorflow.python.platform import app
 
 
 def main(_):
@@ -46,13 +39,40 @@ def main(_):
 
   debug_dump = debug_data.DebugDumpDir(
       FLAGS.dump_dir, validate=FLAGS.validate_graph)
-  cli = analyzer_cli.create_analyzer_curses_cli(
+  cli = analyzer_cli.create_analyzer_ui(
       debug_dump,
-      tensor_filters={"has_inf_or_nan": debug_data.has_inf_or_nan})
+      tensor_filters={"has_inf_or_nan": debug_data.has_inf_or_nan},
+      ui_type=FLAGS.ui_type)
 
   title = "tfdbg offline @ %s" % FLAGS.dump_dir
   cli.run_ui(title=title, title_color="black_on_white", init_command="lt")
 
 
 if __name__ == "__main__":
-  app.run()
+  parser = argparse.ArgumentParser()
+  parser.register("type", "bool", lambda v: v.lower() == "true")
+  parser.add_argument(
+      "--dump_dir", type=str, default="", help="tfdbg dump directory to load")
+  parser.add_argument(
+      "--log_usage",
+      type="bool",
+      nargs="?",
+      const=True,
+      default=True,
+      help="Whether the usage of this tool is to be logged")
+  parser.add_argument(
+      "--ui_type",
+      type=str,
+      default="curses",
+      help="Command-line user interface type (curses | readline)")
+  parser.add_argument(
+      "--validate_graph",
+      nargs="?",
+      const=True,
+      type="bool",
+      default=True,
+      help="""\
+      Whether the dumped tensors will be validated against the GraphDefs\
+      """)
+  FLAGS, unparsed = parser.parse_known_args()
+  app.run(main=main, argv=[sys.argv[0]] + unparsed)

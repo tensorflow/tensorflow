@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 #if defined(PLATFORM_WINDOWS)
+#include "tensorflow/core/platform/windows/cpu_info.h"
 #include "tensorflow/core/platform/windows/intrinsics_port.h"
 #endif
 
@@ -30,8 +31,12 @@ namespace internal {
 // in the lower 16-bits of input
 template <typename Packet>
 EIGEN_DEVICE_FUNC inline Packet pexpand_bf16_l(const Packet& from) {
-  tensorflow::uint32 tmp =
-      (reinterpret_cast<const tensorflow::uint32&>(from) << 16) & 0xffff0000;
+  tensorflow::uint32 tmp;  
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    tmp = (reinterpret_cast<const tensorflow::uint32&>(from) ) & 0xffff0000;  
+#else    
+    tmp = (reinterpret_cast<const tensorflow::uint32&>(from) << 16) & 0xffff0000;  
+#endif
   return reinterpret_cast<const float&>(tmp);
 }
 
@@ -39,8 +44,12 @@ EIGEN_DEVICE_FUNC inline Packet pexpand_bf16_l(const Packet& from) {
 // in the upper 16-bits of input
 template <typename Packet>
 EIGEN_DEVICE_FUNC inline Packet pexpand_bf16_u(const Packet& from) {
-  tensorflow::uint32 tmp =
-      (reinterpret_cast<const tensorflow::uint32&>(from)) & 0xffff0000;
+  tensorflow::uint32 tmp;  
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    tmp = (reinterpret_cast<const tensorflow::uint32&>(from) << 16 ) & 0xffff0000;  
+#else
+    tmp = (reinterpret_cast<const tensorflow::uint32&>(from)) & 0xffff0000;  
+#endif 
   return reinterpret_cast<const float&>(tmp);
 }
 
@@ -246,12 +255,12 @@ EIGEN_STRONG_INLINE Packet8d pbroadcast_second<Packet8d>(const Packet8d& a_in) {
 }
 template <>
 EIGEN_STRONG_INLINE Packet8d pbroadcast_third<Packet8d>(const Packet8d& a_in) {
-  Packet2d a = _mm512_extractf32x4_ps(a_in, 1);
+  Packet2d a = _mm256_extractf128_pd(_mm512_castpd512_pd256(a_in), 1);
   return _mm512_broadcastsd_pd(a);
 }
 template <>
 EIGEN_STRONG_INLINE Packet8d pbroadcast_fourth<Packet8d>(const Packet8d& a_in) {
-  Packet2d a = _mm_permute_pd(_mm512_extractf32x4_ps(a_in, 1), 3);
+  Packet2d a = _mm_permute_pd(_mm256_extractf128_pd(_mm512_castpd512_pd256(a_in), 1), 3);
   return _mm512_broadcastsd_pd(a);
 }
 template <>
@@ -408,14 +417,14 @@ EIGEN_STRONG_INLINE Packet8f pbroadcast_fourth<Packet8f>(const Packet8f& a) {
 
 template <typename Packet>
 EIGEN_DEVICE_FUNC inline Packet16f pexpand_bf16_l(const Packet16f& from) {
-  return _mm512_slli_epi32(_mm512_cvtepu16_epi32(_mm512_castsi512_si256(from)),
-                           16);
+  return _mm512_castsi512_ps(_mm512_slli_epi32(_mm512_cvtepu16_epi32(_mm512_castsi512_si256(_mm512_castps_si512(from))),
+                           16));
 }
 
 template <typename Packet>
 EIGEN_DEVICE_FUNC inline Packet16f pexpand_bf16_u(const Packet16f& from) {
-  return _mm512_slli_epi32(
-      _mm512_cvtepu16_epi32(_mm512_extractf64x4_pd(from, 1)), 16);
+  return _mm512_castsi512_ps(_mm512_slli_epi32(
+      _mm512_cvtepu16_epi32(_mm256_castpd_si256(_mm512_extractf64x4_pd(_mm512_castps_pd(from), 1))), 16));
 }
 
 #endif

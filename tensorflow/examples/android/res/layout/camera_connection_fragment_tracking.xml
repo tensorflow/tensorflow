@@ -23,8 +23,12 @@
           android:layout_height="wrap_content"/>
 
       <org.tensorflow.demo.OverlayView
-          android:id="@+id/overlay"
+          android:id="@+id/tracking_overlay"
           android:layout_width="match_parent"
           android:layout_height="match_parent"/>
 
+      <org.tensorflow.demo.OverlayView
+          android:id="@+id/debug_overlay"
+          android:layout_width="match_parent"
+          android:layout_height="match_parent"/>
 </FrameLayout>

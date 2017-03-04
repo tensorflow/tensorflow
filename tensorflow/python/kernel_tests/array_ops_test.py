@@ -309,6 +309,46 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
     reverse_2d_t = reverse_v2(data_2d_t, axis_2d_t)
     self.assertEqual(2, reverse_2d_t.get_shape().ndims)
 
+  def testReverseRowsOf3Channels(self):
+    """Tests optimized code for reversing rows with last dim size = 3."""
+    with self.test_session(use_gpu=True):
+      for reverse_f in [array_ops.reverse_v2, array_ops.reverse]:
+        for outer_size in (1, 2):
+          for middle_size in list(range(50)) + [100000]:
+            x_np = np.reshape(
+                np.arange(
+                    outer_size * middle_size * 3, dtype=np.float32),
+                newshape=(outer_size, middle_size, 3))
+            x_tf = reverse_f(x_np, [1]).eval()
+            np_answer = x_np[:, ::-1, :]
+            self.assertAllEqual(x_tf, np_answer)
+
+  def testReverseRowsOf4Channels(self):
+    with self.test_session(use_gpu=True):
+      for reverse_f in [array_ops.reverse_v2, array_ops.reverse]:
+        for outer_size in (1, 2):
+          for middle_size in list(range(50)) + [100000]:
+            x_np = np.reshape(
+                np.arange(
+                    outer_size * middle_size * 4, dtype=np.float32),
+                newshape=(outer_size, middle_size, 4))
+            x_tf = reverse_f(x_np, [1]).eval()
+            np_answer = x_np[:, ::-1, :]
+            self.assertAllEqual(x_tf, np_answer)
+
+  def testReverseColumnsOf3Channels(self):
+    with self.test_session(use_gpu=True):
+      for reverse_f in [array_ops.reverse_v2, array_ops.reverse]:
+        for outer_size in list(range(50)) + [100000]:
+          for middle_size in (1, 2):
+            x_np = np.reshape(
+                np.arange(
+                    outer_size * middle_size * 3, dtype=np.float32),
+                newshape=(outer_size, middle_size, 3))
+            x_tf = reverse_f(x_np, [0]).eval()
+            np_answer = x_np[::-1, :, :]
+            self.assertAllEqual(x_tf, np_answer)
+
 
 class MeshgridTest(test_util.TensorFlowTestCase):
 
@@ -394,14 +434,15 @@ class StridedSliceChecker(object):
     return tensor
 
 
+STRIDED_SLICE_TYPES = [dtypes.int32, dtypes.int64, dtypes.int16, dtypes.int8,
+                       dtypes.float32, dtypes.float64, dtypes.complex64]
+
+
 class StridedSliceTest(test_util.TensorFlowTestCase):
   """Test the strided slice operation with variants of slices."""
 
   def test_basic_slice(self):
-    for tensor_type in [
-        dtypes.int32, dtypes.int64, dtypes.int16, dtypes.int8, dtypes.float32,
-        dtypes.float64
-    ]:
+    for tensor_type in STRIDED_SLICE_TYPES:
       for use_gpu in [False, True]:
         with self.test_session(use_gpu=use_gpu):
           checker = StridedSliceChecker(
@@ -423,7 +464,7 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
           _ = checker[-2::-1, :, ::2]
 
           # Check rank-0 examples
-          checker2 = StridedSliceChecker(self, 5, tensor_type=dtypes.int32)
+          checker2 = StridedSliceChecker(self, 5, tensor_type=tensor_type)
           _ = checker2[None]
           _ = checker2[...]
           _ = checker2[tuple()]
@@ -807,26 +848,28 @@ class SliceAssignTest(test_util.TensorFlowTestCase):
         sess.run(bar)
 
   def testSliceAssign(self):
-    checker = StridedSliceAssignChecker(self, [[1, 2, 3], [4, 5, 6]])
-    # Check if equal
-    checker[:] = [[10, 20, 30], [40, 50, 60]]
-    # Check trivial (1,1) shape tensor
-    checker[1:2, 1:2] = [[666]]
-    # shrinks shape changes
-    checker[1:2, 1] = [666]
-    checker[1, 1:2] = [666]
-    checker[1, 1] = 666
-    # newaxis shape changes
-    checker[:, None, :] = [[[10, 20, 30]], [[40, 50, 50]]]
-    # shrink and newaxis
-    checker[None, None, 0, 0:1] = [[[999]]]
-    # Non unit strides
-    checker[::1, ::-2] = [[33, 333], [44, 444]]
-    # degenerate interval
-    checker[8:10, 0] = []
-    checker[8:10, 8:10] = [[]]
+    for dtype in STRIDED_SLICE_TYPES:
+      checker = StridedSliceAssignChecker(self, [[1, 2, 3], [4, 5, 6]],
+                                          tensor_type=dtype)
+      # Check if equal
+      checker[:] = [[10, 20, 30], [40, 50, 60]]
+      # Check trivial (1,1) shape tensor
+      checker[1:2, 1:2] = [[66]]
+      # shrinks shape changes
+      checker[1:2, 1] = [66]
+      checker[1, 1:2] = [66]
+      checker[1, 1] = 66
+      # newaxis shape changes
+      checker[:, None, :] = [[[10, 20, 30]], [[40, 50, 50]]]
+      # shrink and newaxis
+      checker[None, None, 0, 0:1] = [[[99]]]
+      # Non unit strides
+      checker[::1, ::-2] = [[3, 33], [4, 44]]
+      # degenerate interval
+      checker[8:10, 0] = []
+      checker[8:10, 8:10] = [[]]
     # Assign vector to scalar (rank-0) using newaxis
-    checker2 = StridedSliceAssignChecker(self, 2225)
+    checker2 = StridedSliceAssignChecker(self, 222)
     checker2[()] = 6  # no indices
     checker2[...] = 6  # ellipsis
     checker2[None] = [6]  # new axis

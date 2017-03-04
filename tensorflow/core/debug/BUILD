@@ -1,8 +1,12 @@
 # Description:
 # TensorFlow Debugger (tfdbg).
 #
-# Public Android targets:
-# filegroup ":android_srcs" - Debugger source files for Android.
+# Public target(s):
+#
+# ":debug" - Depending on this target causes a concrete implementation of
+#    DebuggerState to be constructed at initialization time, enabling
+#    TensorFlow Debugger (tfdbg) support. For details, please see
+#    core/common_runtime/debugger_state_interface.h.
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -39,14 +43,12 @@ tf_proto_library_cc(
     protodeps = ["//tensorflow/core:protos_all"],
 )
 
-# Depending on this target causes a concrete DebuggerState implementation
-# to be registered at initialization time.  For details, please see
-# core/common_runtime/debugger_state_interface.h.
 cc_library(
     name = "debug",
     srcs = ["debug.cc"],
     copts = tf_copts(),
     linkstatic = 1,
+    visibility = ["//visibility:public"],
     deps = [
         ":debug_graph_utils",
         "//tensorflow/core:core_cpu_internal",
@@ -181,31 +183,6 @@ tf_cc_test(
     srcs = ["debug_io_utils_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
-        ":debug_grpc_testlib",
-        ":debug_io_utils",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-    ],
-)
-
-tf_cc_test(
-    name = "debug_grpc_io_utils_test",
-    size = "small",
-    srcs = ["debug_grpc_io_utils_test.cc"],
-    data = [
-        ":debug_test_server_main",
-    ],
-    linkstatic = tf_kernel_tests_linkstatic(),
-    deps = [
-        ":debug_graph_utils",
         ":debug_grpc_testlib",
         ":debug_io_utils",
         "//tensorflow/core:core_cpu",

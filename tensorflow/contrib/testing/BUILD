@@ -18,6 +18,7 @@ py_library(
     deps = [
         "//tensorflow/python:summary",
         "//tensorflow/python:training",
+        "//third_party/py/numpy",
     ],
 )
 

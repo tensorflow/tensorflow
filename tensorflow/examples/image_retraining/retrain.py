@@ -346,6 +346,17 @@ def read_list_of_floats_from_file(file_path):
 
 bottleneck_path_2_bottleneck_values = {}
 
+def create_bottleneck_file(bottleneck_path, image_lists, label_name, index,
+                           image_dir, category, sess, jpeg_data_tensor, bottleneck_tensor):
+  print('Creating bottleneck at ' + bottleneck_path)
+  image_path = get_image_path(image_lists, label_name, index, image_dir, category)
+  if not gfile.Exists(image_path):
+    tf.logging.fatal('File does not exist %s', image_path)
+  image_data = gfile.FastGFile(image_path, 'rb').read()
+  bottleneck_values = run_bottleneck_on_image(sess, image_data, jpeg_data_tensor, bottleneck_tensor)
+  bottleneck_string = ','.join(str(x) for x in bottleneck_values)
+  with open(bottleneck_path, 'w') as bottleneck_file:
+    bottleneck_file.write(bottleneck_string)
 
 def get_or_create_bottleneck(sess, image_lists, label_name, index, image_dir,
                              category, bottleneck_dir, jpeg_data_tensor,
@@ -376,27 +387,24 @@ def get_or_create_bottleneck(sess, image_lists, label_name, index, image_dir,
   sub_dir = label_lists['dir']
   sub_dir_path = os.path.join(bottleneck_dir, sub_dir)
   ensure_dir_exists(sub_dir_path)
-  bottleneck_path = get_bottleneck_path(image_lists, label_name, index,
-                                        bottleneck_dir, category)
+  bottleneck_path = get_bottleneck_path(image_lists, label_name, index, bottleneck_dir, category)
   if not os.path.exists(bottleneck_path):
-    print('Creating bottleneck at ' + bottleneck_path)
-    image_path = get_image_path(image_lists, label_name, index, image_dir,
-                                category)
-    if not gfile.Exists(image_path):
-      tf.logging.fatal('File does not exist %s', image_path)
-    image_data = gfile.FastGFile(image_path, 'rb').read()
-    bottleneck_values = run_bottleneck_on_image(sess, image_data,
-                                                jpeg_data_tensor,
-                                                bottleneck_tensor)
-    bottleneck_string = ','.join(str(x) for x in bottleneck_values)
-    with open(bottleneck_path, 'w') as bottleneck_file:
-      bottleneck_file.write(bottleneck_string)
-
+    create_bottleneck_file(bottleneck_path, image_lists, label_name, index, image_dir, category, sess, jpeg_data_tensor, bottleneck_tensor)
   with open(bottleneck_path, 'r') as bottleneck_file:
     bottleneck_string = bottleneck_file.read()
-  bottleneck_values = [float(x) for x in bottleneck_string.split(',')]
+  did_hit_error = False
+  try:
+    bottleneck_values = [float(x) for x in bottleneck_string.split(',')]
+  except:
+    print("Invalid float found, recreating bottleneck")
+    did_hit_error = True
+  if did_hit_error:
+    create_bottleneck_file(bottleneck_path, image_lists, label_name, index, image_dir, category, sess, jpeg_data_tensor, bottleneck_tensor)
+    with open(bottleneck_path, 'r') as bottleneck_file:
+      bottleneck_string = bottleneck_file.read()
+    # Allow exceptions to propagate here, since they shouldn't happen after a fresh creation
+    bottleneck_values = [float(x) for x in bottleneck_string.split(',')]
   return bottleneck_values
-
 
 def cache_bottlenecks(sess, image_lists, image_dir, bottleneck_dir,
                       jpeg_data_tensor, bottleneck_tensor):
@@ -430,6 +438,7 @@ def cache_bottlenecks(sess, image_lists, image_dir, bottleneck_dir,
         get_or_create_bottleneck(sess, image_lists, label_name, index,
                                  image_dir, category, bottleneck_dir,
                                  jpeg_data_tensor, bottleneck_tensor)
+
         how_many_bottlenecks += 1
         if how_many_bottlenecks % 100 == 0:
           print(str(how_many_bottlenecks) + ' bottleneck files created.')
@@ -723,7 +732,7 @@ def add_final_training_ops(class_count, final_tensor_name, bottleneck_tensor):
 
   with tf.name_scope('cross_entropy'):
     cross_entropy = tf.nn.softmax_cross_entropy_with_logits(
-      logits, ground_truth_input)
+        labels=ground_truth_input, logits=logits)
     with tf.name_scope('total'):
       cross_entropy_mean = tf.reduce_mean(cross_entropy)
   tf.summary.scalar('cross_entropy', cross_entropy_mean)
@@ -884,7 +893,8 @@ def main(_):
     print('=== MISCLASSIFIED TEST IMAGES ===')
     for i, test_filename in enumerate(test_filenames):
       if predictions[i] != test_ground_truth[i].argmax():
-        print('%70s  %s' % (test_filename, image_lists.keys()[predictions[i]]))
+        print('%70s  %s' % (test_filename, 
+                            list(image_lists.keys())[predictions[i]]))
 
   # Write out the trained graph and labels with the weights stored as constants.
   output_graph_def = graph_util.convert_variables_to_constants(

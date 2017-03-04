@@ -270,9 +270,9 @@ struct ProtoHelper<int64> {
 
 template <>
 struct ProtoHelper<ResourceHandle> {
-  static const ResourceHandle* Begin(const TensorProto& proto) {
-    return reinterpret_cast<const ResourceHandle*>(
-        &(*proto.resource_handle_val().begin()));
+  static protobuf::RepeatedPtrField<ResourceHandle>::const_iterator Begin(
+      const TensorProto& proto) {
+    return proto.resource_handle_val().begin();
   }
   static size_t NumElements(const TensorProto& proto) {
     return proto.resource_handle_val().size();
@@ -524,6 +524,14 @@ void Tensor::UnsafeCopyFromInternal(const Tensor& other, DataType dtype,
     buf_ = other.buf_;
     RefIfNonNull(buf_);
   }
+}
+
+// Notice that buf_ either points to a regular TensorBuffer or a SubBuffer.
+// For the latter case, we have to make sure that the refcount is
+// one both for the SubBuffer _and_ the underlying TensorBuffer.
+bool Tensor::RefCountIsOne() const {
+  return buf_ != nullptr && buf_->RefCountIsOne() &&
+         buf_->root_buffer()->RefCountIsOne();
 }
 
 // The macro CASES() expands to a switch statement conditioned on
@@ -867,9 +875,9 @@ bool Tensor::SharesBufferWith(const Tensor& b) const {
 }
 
 string Tensor::DebugString() const {
-  return strings::StrCat("Tensor<type: ", DataTypeString(dtype()), " shape: ",
-                         shape().DebugString(), " values: ", SummarizeValue(3),
-                         ">");
+  return strings::StrCat("Tensor<type: ", DataTypeString(dtype()),
+                         " shape: ", shape().DebugString(),
+                         " values: ", SummarizeValue(3), ">");
 }
 
 void Tensor::FillDescription(TensorDescription* description) const {

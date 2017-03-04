@@ -12,6 +12,7 @@ load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 py_library(
     name = "factorization_py",
@@ -30,13 +31,32 @@ py_library(
     deps = [
         ":gen_clustering_ops",
         ":gen_factorization_ops",
-        "//tensorflow/contrib/learn",
+        "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:check_ops",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:embedding_ops",
+        "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:linalg_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn",
         "//tensorflow/python:platform",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:summary",
+        "//tensorflow/python:variables",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "factorization_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
+    deps = [
+        "//tensorflow/contrib/learn",
     ],
 )
 
@@ -57,6 +77,7 @@ tf_custom_op_library(
         "ops/factorization_ops.cc",
     ],
     deps = [
+        "//tensorflow/contrib/factorization/kernels:masked_matmul_ops",
         "//tensorflow/contrib/factorization/kernels:wals_solver_ops",
     ],
 )
@@ -97,9 +118,15 @@ tf_py_test(
         "python/ops/gmm_test.py",
     ],
     additional_deps = [
+        ":factorization_py",
+        ":factorization_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
         "//third_party/py/numpy",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/learn",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform",
         "//tensorflow/python:platform_test",
     ],
     tags = [
@@ -114,11 +141,15 @@ tf_py_test(
     ],
     additional_deps = [
         ":factorization_py",
+        ":factorization_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
         "//third_party/py/numpy",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:variables",
     ],
 )
 
@@ -126,8 +157,13 @@ tf_py_test(
     name = "factorization_ops_test",
     srcs = ["python/ops/factorization_ops_test.py"],
     additional_deps = [
+        ":factorization_py",
+        ":factorization_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
         "//third_party/py/numpy",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
@@ -138,8 +174,11 @@ tf_py_test(
     name = "wals_solver_ops_test",
     srcs = ["python/kernel_tests/wals_solver_ops_test.py"],
     additional_deps = [
+        ":factorization_py",
+        ":factorization_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
         "//third_party/py/numpy",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
@@ -149,11 +188,47 @@ tf_py_test(
     name = "clustering_ops_test",
     srcs = ["python/kernel_tests/clustering_ops_test.py"],
     additional_deps = [
+        ":factorization_py",
+        ":factorization_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
         "//third_party/py/numpy",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
+)
+
+tf_py_test(
+    name = "masked_matmul_ops_test",
+    srcs = ["python/kernel_tests/masked_matmul_ops_test.py"],
+    additional_deps = [
+        ":gen_factorization_ops",
+        ":factorization_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_test(
+    name = "masked_matmul_benchmark",
+    srcs = ["python/kernel_tests/masked_matmul_benchmark.py"],
+    additional_deps = [
+        ":gen_factorization_ops",
+        ":factorization_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:variables",
+    ],
+    main = "python/kernel_tests/masked_matmul_benchmark.py",
 )
 
 # All files

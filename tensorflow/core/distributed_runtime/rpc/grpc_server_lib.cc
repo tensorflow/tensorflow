@@ -21,6 +21,7 @@ limitations under the License.
 #include "grpc++/grpc++.h"
 #include "grpc++/security/credentials.h"
 #include "grpc++/server_builder.h"
+#include "grpc/support/alloc.h"
 
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -41,9 +42,26 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
+
+namespace {
+
+// Define an option subclass in order to disable SO_REUSEPORT for the
+// server socket.
+class NoReusePortOption : public ::grpc::ServerBuilderOption {
+ public:
+  void UpdateArguments(::grpc::ChannelArguments* args) override {
+    args->SetInt(GRPC_ARG_ALLOW_REUSEPORT, 0);
+  }
+
+  void UpdatePlugins(std::vector<std::unique_ptr<::grpc::ServerBuilderPlugin>>*
+                         plugins) override {}
+};
+
+}  // namespace
 
 GrpcServer::GrpcServer(const ServerDef& server_def, Env* env)
     : server_def_(server_def), env_(env), state_(NEW) {}
@@ -142,14 +160,16 @@ Status GrpcServer::Init() {
   builder.AddListeningPort(strings::StrCat("0.0.0.0:", requested_port_),
                            GetServerCredentials(server_def_), &bound_port_);
   builder.SetMaxMessageSize(std::numeric_limits<int32>::max());
-  master_impl_.reset(new Master(&master_env_, 0.0));
+  builder.SetOption(
+      std::unique_ptr<::grpc::ServerBuilderOption>(new NoReusePortOption));
+  master_impl_ = CreateMaster(&master_env_);
   master_service_ = NewGrpcMasterService(master_impl_.get(), &builder);
   worker_impl_.reset(NewGrpcWorker(&worker_env_));
   worker_service_ = NewGrpcWorkerService(worker_impl_.get(), &builder);
   server_ = builder.BuildAndStart();
 
   if (!server_) {
-    return errors::Internal("Could not start gRPC server");
+    return errors::Unknown("Could not start gRPC server");
   }
 
   GrpcChannelSpec channel_spec;
@@ -170,7 +190,7 @@ Status GrpcServer::Init() {
         host_port = task.second;
       }
     }
-    channel_spec.AddHostPortsJob(job.name(), host_ports);
+    TF_RETURN_IF_ERROR(channel_spec.AddHostPortsJob(job.name(), host_ports));
   }
 
   std::unique_ptr<GrpcChannelCache> channel_cache(NewGrpcChannelCache(
@@ -277,10 +297,15 @@ ChannelCreationFunction GrpcServer::GetChannelCreationFunction(
   return NewHostPortGrpcChannel;
 }
 
+std::unique_ptr<Master> GrpcServer::CreateMaster(MasterEnv* master_env) {
+  return std::unique_ptr<Master>(new Master(master_env, 0.0));
+}
+
 /* static */
 Status GrpcServer::Create(const ServerDef& server_def, Env* env,
                           std::unique_ptr<ServerInterface>* out_server) {
-  std::unique_ptr<GrpcServer> ret(new GrpcServer(server_def, Env::Default()));
+  std::unique_ptr<GrpcServer> ret(new GrpcServer(server_def,
+	  env == nullptr ? Env::Default() : env));
   TF_RETURN_IF_ERROR(ret->Init());
   *out_server = std::move(ret);
   return Status::OK();
@@ -304,6 +329,11 @@ class GrpcServerFactory : public ServerFactory {
 class GrpcServerRegistrar {
  public:
   GrpcServerRegistrar() {
+    gpr_allocation_functions alloc_fns;
+    alloc_fns.malloc_fn = port::Malloc;
+    alloc_fns.realloc_fn = port::Realloc;
+    alloc_fns.free_fn = port::Free;
+    gpr_set_allocation_functions(alloc_fns);
     ServerFactory::Register("GRPC_SERVER", new GrpcServerFactory());
   }
 };

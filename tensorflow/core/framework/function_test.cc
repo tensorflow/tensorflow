@@ -48,52 +48,8 @@ y: A scalar in type T.
 
 static InstantiateAttrValueMap kNoAttrs;
 
-TEST(TFunc, SquarePlusOneOld) {
-  auto fdef = FDH::Define(  // Create a FunctionDef using Function::Nodes.
-      // Name
-      "SquarePlusOne",
-      // Args
-      {"x: T"},
-      // Return values
-      {"y: T"},
-      // Attrs
-      {"T: {float, double, int32, int64}"},
-      // Nodes
-      {// a = Square<T>(x)
-       {{"a"}, "Square", {"x"}, {{"T", "$T"}}},
-       // o = One<T>()
-       // NOTE: We can also have a Cast<Tin, Tout>(x) instead.
-       {{"o"}, "One", {}, {{"T", "$T"}}},
-       // y = Add<T>(a, o)
-       {{"y"}, "Add", {"a", "o"}, {{"T", "$T"}}}});
-
-  const char* e = R"P(
-SquarePlusOne[T:{float, double, int32, int64}](x:T) -> (y:T) {
-  a = Square[T=$T](x)
-  o = One[T=$T]()
-  y = Add[T=$T](a:y:0, o:y:0)
-  return y = y:z:0
-}
-)P";
-  EXPECT_EQ(DebugString(fdef), e);
-
-  // Instantiate one with T=float
-  InstantiationResult result;
-  TF_ASSERT_OK(InstantiateFunction(fdef, {{"T", DT_FLOAT}}, GetOpSig, &result));
-  const char* e2 = R"P(
-(n0:float) -> (n3:float) {
-  n1 = Square[T=float](n0)
-  n2 = One[T=float]()
-  n3 = Add[T=float](n1, n2)
-}
-)P";
-  EXPECT_EQ(result.arg_types, DataTypeVector({DT_FLOAT}));
-  EXPECT_EQ(result.ret_types, DataTypeVector({DT_FLOAT}));
-  EXPECT_EQ(DebugString(result.gdef), e2);
-}
-
-TEST(TFunc, SquarePlusOneNodeDef) {
-  auto fdef = FDH::Create(  // Create a FunctionDef using NodeDefs.
+TEST(TFunc, SquarePlusOne) {
+  auto fdef = FDH::Create(
       // Name
       "SquarePlusOne",
       // Inputs
@@ -138,8 +94,8 @@ SquarePlusOne[T:{float, double, int32, int64}](x:T) -> (y:T) {
   EXPECT_EQ(DebugString(result.gdef), e2);
 }
 
-TEST(TFunc, ControlDepNodeDef) {
-  auto fdef = FDH::Create(  // Create a FunctionDef using NodeDefs.
+TEST(TFunc, ControlDep) {
+  auto fdef = FDH::Create(
       // Name
       "ControlDep",
       // Inputs
@@ -190,44 +146,8 @@ REGISTER_OP("HasDefaultType")
 // This verifies that a function using an op before a type attr (with
 // a default) is added, still works.  This is important for backwards
 // compatibilty.
-TEST(TFunc, MissingTypeAttrOld) {
-  auto fdef = FDH::Define(  // Create a FunctionDef using Function::Nodes.
-      // Name
-      "BackCompat",
-      // Args
-      {},
-      // Return values
-      {"y: float"},
-      // Attrs
-      {},
-      // Nodes
-      {// y = HasDefaultType(x), T missing, defaults to float
-       {{"y"}, "HasDefaultType", {}, {}}});
-
-  const char* e = R"P(
-BackCompat() -> (y:float) {
-  y = HasDefaultType()
-  return y = y:out:0
-}
-)P";
-  EXPECT_EQ(DebugString(fdef), e);
-
-  InstantiationResult result;
-  TF_ASSERT_OK(
-      InstantiateFunction(fdef, InstantiateAttrValueMap{}, GetOpSig, &result));
-  // Should get T=float from Op's default.
-  const char* e2 = R"P(
-() -> (n0:float) {
-  n0 = HasDefaultType[T=float]()
-}
-)P";
-  EXPECT_EQ(result.arg_types, DataTypeVector());
-  EXPECT_EQ(result.ret_types, DataTypeVector({DT_FLOAT}));
-  EXPECT_EQ(DebugString(result.gdef), e2);
-}
-
-TEST(TFunc, MissingTypeAttrNodeDef) {
-  auto fdef = FDH::Create(  // Create a FunctionDef using NodeDefs.
+TEST(TFunc, MissingTypeAttr) {
+  auto fdef = FDH::Create(
       // Name
       "BackCompat",
       // Args
@@ -264,11 +184,8 @@ BackCompat() -> (y:float) {
   EXPECT_EQ(DebugString(result.gdef), e2);
 }
 
-TEST(TFunc, NTimesTNodeDef) {
-  // Note that the equivalent FunctionDef using FunctionDef::Node requires
-  // using a _ListToArray to package up the two inputs to AddN as a single
-  // N*T edge.
-  auto fdef = FDH::Create(  // Create a FunctionDef using NodeDefs.
+TEST(TFunc, NTimesT) {
+  auto fdef = FDH::Create(
       // Name
       "NTimesT",
       // Inputs
@@ -790,8 +707,8 @@ TEST(InstantiateErrors, TypeList_Missing_Arg) {
            "input unknown is not found");
 }
 
-TEST(InstantiateErrors, NodeDef_TooManyInputs) {
-  auto fdef = FDH::Create(  // Create a FunctionDef using NodeDefs.
+TEST(InstantiateErrors, TooManyInputs) {
+  auto fdef = FDH::Create(
       // Name
       "TooManyInputs",
       // Inputs
@@ -811,8 +728,8 @@ TEST(InstantiateErrors, NodeDef_TooManyInputs) {
            "Expected input[2] == 'x' to be a control input.");
 }
 
-TEST(InstantiateErrors, NodeDef_TooFewInputs) {
-  auto fdef = FDH::Create(  // Create a FunctionDef using NodeDefs.
+TEST(InstantiateErrors, TooFewInputs) {
+  auto fdef = FDH::Create(
       // Name
       "TooFewInputs",
       // Inputs
@@ -832,8 +749,8 @@ TEST(InstantiateErrors, NodeDef_TooFewInputs) {
            "Attempt to access beyond input size: 2 >= 2");
 }
 
-TEST(InstantiateErrors, NodeDef_TooManyInputsFromArray1) {
-  auto fdef = FDH::Create(  // Create a FunctionDef using NodeDefs.
+TEST(InstantiateErrors, TooManyInputsFromArray1) {
+  auto fdef = FDH::Create(
       // Name
       "TooManyInputsFromArray",
       // Inputs
@@ -860,8 +777,8 @@ TEST(InstantiateErrors, NodeDef_TooManyInputsFromArray1) {
            "Expected input[1] == 'y' to be a control input.");
 }
 
-TEST(InstantiateErrors, NodeDef_TooManyInputsFromArray2) {
-  auto fdef = FDH::Create(  // Create a FunctionDef using NodeDefs.
+TEST(InstantiateErrors, TooManyInputsFromArray2) {
+  auto fdef = FDH::Create(
       // Name
       "TooManyInputsFromArray",
       // Inputs
@@ -888,8 +805,8 @@ TEST(InstantiateErrors, NodeDef_TooManyInputsFromArray2) {
            "Input a:output too long for inputs");
 }
 
-TEST(InstantiateErrors, NodeDef_TypeMismatch) {
-  auto fdef = FDH::Create(  // Create a FunctionDef using NodeDefs.
+TEST(InstantiateErrors, TypeMismatch) {
+  auto fdef = FDH::Create(
       // Name
       "TypeMismatch",
       // Inputs

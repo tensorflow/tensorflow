@@ -213,7 +213,7 @@ def stack_bidirectional_dynamic_rnn(cells_fw,
             sequence_length=sequence_length,
             dtype=dtype)
         # Concat the outputs to create the new input.
-        prev_layer = array_ops.concat_v2(outputs, 2)
+        prev_layer = array_ops.concat(outputs, 2)
       states_fw.append(state_fw)
       states_bw.append(state_bw)
 
