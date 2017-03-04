@@ -172,8 +172,10 @@ class SparseConditionalAccumulator
     }
 
     // Assign values to accum_val_tensor
+    // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
     ctx->allocate_persistent(dtype_, grad_val->shape(), accum_val_persistent_,
-                             &accum_val_);
+                             &accum_val_)
+        .IgnoreError();
     accum_val_->flat<T>().device(ctx->template eigen_device<Device>()) =
         grad_val->flat<T>();
 
