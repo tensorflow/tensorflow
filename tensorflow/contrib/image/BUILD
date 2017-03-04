@@ -76,36 +76,35 @@ cuda_py_test(
 tf_custom_op_library(
     name = "python/ops/_single_image_random_dot_stereograms.so",
     srcs = [
-        "kernels/single_image_random_dot_stereograms_op.cc",
-        "ops/single_image_random_dot_stereograms_op.cc",
+        "kernels/single_image_random_dot_stereograms_ops.cc",
+        "ops/single_image_random_dot_stereograms_ops.cc",
         ],
 )
 
 tf_gen_op_libs(
-    op_lib_names = ["single_image_random_dot_stereograms_op"],
+    op_lib_names = ["single_image_random_dot_stereograms_ops"],
 )
 
 tf_gen_op_wrapper_py(
-    name = "single_image_random_dot_stereograms_op",
-    deps = [":single_image_random_dot_stereograms_op_op_lib"],
+    name = "single_image_random_dot_stereograms_ops",
+    deps = [":single_image_random_dot_stereograms_ops_op_lib"],
 )
 
 py_library(
     name = "single_image_random_dot_stereograms_py",
     srcs = [
         "__init__.py",
-        "python/ops/single_image_random_dot_stereograms_op.py",
     ],
     data = [":python/ops/_single_image_random_dot_stereograms.so"],
     srcs_version = "PY2AND3",
     deps = [
-        ":single_image_random_dot_stereograms_op",
-        "//tensorflow/contrib/util:util_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform",
+        ":single_image_random_dot_stereograms_ops",
+#        "//tensorflow/contrib/util:util_py",
+#        "//tensorflow/python:array_ops",
+#        "//tensorflow/python:framework",
+#        "//tensorflow/python:framework_for_generated_wrappers",
+#        "//tensorflow/python:math_ops",
+#        "//tensorflow/python:platform",
     ],
 )
 

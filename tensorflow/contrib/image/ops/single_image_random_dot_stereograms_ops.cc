@@ -18,7 +18,9 @@ limitations under the License.
 #include "tensorflow/core/framework/shape_inference.h"
 
 
-using namespace tensorflow;
+namespace tensorflow {
+
+using shape_inference::InferenceContext;
 
 REGISTER_OP("SingleImageRandomDotStereograms")
     .Attr("T: {double,float,int64,int32}")   
@@ -89,6 +91,8 @@ output_image_shape:     Output size of returned image in X,Y, Channels 1-graysca
 output_data_window:     Size of "DATA" window, must be equal to or smaller than output_image_shape, will be centered
                           and use convergence_dots_size for best fit to avoid overlap if possible
 
-image:                  returns a Tensor of size output_image_shape with depth_values encoded into image
+aimage                  returns a Tensor of size output_image_shape with depth_values encoded into image
 
 )doc");
+
+}  // namespace tensorflow

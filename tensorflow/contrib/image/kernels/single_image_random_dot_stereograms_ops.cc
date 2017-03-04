@@ -17,8 +17,9 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/shape_inference.h"
  
-using namespace tensorflow;
-
+namespace tensorflow {
+ 
+using shape_inference::InferenceContext;
 
 template <typename T>
 class SingleImageRandomDotStereogramsOp : public OpKernel {
@@ -308,11 +309,12 @@ class SingleImageRandomDotStereogramsOp : public OpKernel {
     }
     
     { 	// in data set Z interpolate if need
-        int xi,yi;
-        double dx1,dy1,x1,x2,gz,gz1;
+        double gz;
+        // int xi,yi;
+        // double dx1,dy1,x1,x2,gz1;
         
-        xi=xofz;
-        yi=yofz;
+        // xi=xofz;
+        // yi=yofz;
         
         gz=getZfromZbuffer(xofz,yofz);
         // if ((interp_x || interp_y) && (false)) // Disable this for now, getZfromZbuffer should handle in the future
@@ -477,3 +479,5 @@ REGISTER_KERNEL(float);
 REGISTER_KERNEL(double);
 
 #undef REGISTER_KERNEL
+
+}  // end namespace tensorflow
