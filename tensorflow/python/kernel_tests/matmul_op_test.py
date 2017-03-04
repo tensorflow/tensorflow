@@ -19,7 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import sys
+import operator
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -442,11 +442,10 @@ class MatMulStatsTest(test.TestCase):
           self.assertEqual(7200, flops)
 
 
-# @ operator supported since python 3.5.
-if sys.version_info >= (3, 5):
-  # Use eval() to avoid a compilation error on earlier versions.
-  infix_matmul = lambda x, y: eval("x @ y")
-else:
+try:
+    # @ operator supported since python 3.5.
+    infix_matmul = operator.matmul
+except AttributeError:
   # For earlier versions of python, emulate regular behavior.
   # Useful to build and test for 3.5+ on earlier versions.
   def infix_matmul(x, y):
@@ -484,10 +483,18 @@ class MatMulInfixOperatorTest(test.TestCase):
         ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0]]))
 
   def testInfixMatmulIsTfMatmul(self):
-      a = ops.convert_to_tensor([[10.0, 20.0, 30.0]])
-      b = ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0], [80.0, 90.0]])
-      c = infix_matmul(a, b)
-      self.assertEqual(c.op.type, 'MatMul')
+    a = ops.convert_to_tensor([[10.0, 20.0, 30.0]])
+    b = ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0], [80.0, 90.0]])
+    c = infix_matmul(a, b)
+    self.assertEqual(c.op.type, 'MatMul')
+
+  def testInfixMatmulDoesDotProduct(self):
+    a = ops.convert_to_tensor([[10.0, 20.0, 30.0]])
+    b = ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0], [80.0, 90.0]])
+    c = infix_matmul(a, b)
+    d = math_ops.matmul(a, b)
+    with self.test_session():
+      self.assertAllEqual(c.eval(), d.eval())
 
 
 if __name__ == "__main__":
