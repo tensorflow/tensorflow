@@ -26,7 +26,7 @@
 #                  directory as this script will be used.
 #
 # COMMAND: Command to be executed in the docker container, e.g.,
-#          tensorflow/tools/ci_build/builds/pip.sh gpu
+#          tensorflow/tools/ci_build/builds/pip.sh gpu -c opt --config=cuda
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/builds/builds_common.sh"
