@@ -1326,21 +1326,9 @@ class Saver(object):
     Args:
       sess: A `Session` to use to restore the parameters.
       save_path: Path where parameters were previously saved.
-
-    Raises:
-      ValueError: If the given `save_path` does not point to a file.
     """
     if self._is_empty:
       return
-
-    # Performs this check only for V1, as the V2 restore op can read either a
-    # V1 ckpt or a V2 ckpt, making this check invalid.
-    if self.saver_def.version == saver_pb2.SaverDef.V1:
-      file_path = _prefix_to_checkpoint_path(save_path, self.saver_def.version)
-      if not file_io.get_matching_files(file_path):
-        raise ValueError("Restore called with invalid save path: %r. "
-                         "File path is: %r" % (save_path, file_path))
-
     sess.run(self.saver_def.restore_op_name,
              {self.saver_def.filename_tensor_name: save_path})
 
