@@ -71,7 +71,7 @@ Status GraphTransferer::LoadGraphFromProto(
     const OutputTensorMap& output_tensor_map) {
   ImportGraphDefOptions opts;
   Graph graph(OpRegistry::Global());
-  ShapeRefiner shape_refiner(graph.op_registry());
+  ShapeRefiner shape_refiner(graph.versions().producer(), graph.op_registry());
   VLOG(1) << "Start import graph";
   Status status = ImportGraphDef(opts, graph_def, &graph, &shape_refiner);
   if (!status.ok()) {
