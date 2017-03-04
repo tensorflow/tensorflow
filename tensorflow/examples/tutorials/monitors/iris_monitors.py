@@ -39,17 +39,17 @@ def main(unused_argv):
 
   validation_metrics = {
       "accuracy":
-          tf.contrib.learn.metric_spec.MetricSpec(
+          tf.contrib.learn.MetricSpec(
               metric_fn=tf.contrib.metrics.streaming_accuracy,
               prediction_key=tf.contrib.learn.prediction_key.PredictionKey.
               CLASSES),
       "precision":
-          tf.contrib.learn.metric_spec.MetricSpec(
+          tf.contrib.learn.MetricSpec(
               metric_fn=tf.contrib.metrics.streaming_precision,
               prediction_key=tf.contrib.learn.prediction_key.PredictionKey.
               CLASSES),
       "recall":
-          tf.contrib.learn.metric_spec.MetricSpec(
+          tf.contrib.learn.MetricSpec(
               metric_fn=tf.contrib.metrics.streaming_recall,
               prediction_key=tf.contrib.learn.prediction_key.PredictionKey.
               CLASSES)
