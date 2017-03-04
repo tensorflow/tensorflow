@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/base64.h"
 #include "tensorflow/core/platform/cloud/http_request.h"
+#include "tensorflow/core/platform/cloud/retrying_utils.h"
 #include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {
@@ -33,6 +34,9 @@ namespace {
 // Application Default Credentials.
 constexpr char kGoogleApplicationCredentials[] =
     "GOOGLE_APPLICATION_CREDENTIALS";
+
+// The environment variable to override token generation for testing.
+constexpr char kGoogleAuthTokenForTesting[] = "GOOGLE_AUTH_TOKEN_FOR_TESTING";
 
 // The environment variable which can override '~/.config/gcloud' if set.
 constexpr char kCloudSdkConfig[] = "CLOUDSDK_CONFIG";
@@ -62,6 +66,9 @@ constexpr char kGceTokenUrl[] =
 
 // The authentication token scope to request.
 constexpr char kOAuthScope[] = "https://www.googleapis.com/auth/cloud-platform";
+
+// The default intial delay between retries with exponential backoff.
+constexpr int kInitialRetryDelayUsec = 500000;  // 0.5 sec
 
 /// Returns whether the given path points to a readable file.
 bool IsFile(const string& filename) {
@@ -115,14 +122,16 @@ GoogleAuthProvider::GoogleAuthProvider()
     : GoogleAuthProvider(
           std::unique_ptr<OAuthClient>(new OAuthClient()),
           std::unique_ptr<HttpRequest::Factory>(new HttpRequest::Factory()),
-          Env::Default()) {}
+          Env::Default(), kInitialRetryDelayUsec) {}
 
 GoogleAuthProvider::GoogleAuthProvider(
     std::unique_ptr<OAuthClient> oauth_client,
-    std::unique_ptr<HttpRequest::Factory> http_request_factory, Env* env)
+    std::unique_ptr<HttpRequest::Factory> http_request_factory, Env* env,
+    int64 initial_retry_delay_usec)
     : oauth_client_(std::move(oauth_client)),
       http_request_factory_(std::move(http_request_factory)),
-      env_(env) {}
+      env_(env),
+      initial_retry_delay_usec_(initial_retry_delay_usec) {}
 
 Status GoogleAuthProvider::GetToken(string* t) {
   mutex_lock lock(mu_);
@@ -134,12 +143,12 @@ Status GoogleAuthProvider::GetToken(string* t) {
     return Status::OK();
   }
 
-  // First, try to get the token using credentials stored in a few special
-  // file locations.
-  auto token_from_files_status = GetTokenFromFiles();
+  if (GetTokenForTesting().ok()) {
+    *t = current_token_;
+    return Status::OK();
+  }
 
-  // If that didn't work, try to get the token assuming we're running on
-  // Google Compute Engine (GCE).
+  auto token_from_files_status = GetTokenFromFiles();
   auto token_from_gce_status =
       token_from_files_status.ok() ? Status::OK() : GetTokenFromGce();
 
@@ -195,20 +204,34 @@ Status GoogleAuthProvider::GetTokenFromFiles() {
 }
 
 Status GoogleAuthProvider::GetTokenFromGce() {
-  std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
-  std::vector<char> response_buffer;
-  const uint64 request_timestamp_sec = env_->NowSeconds();
-  TF_RETURN_IF_ERROR(request->Init());
-  TF_RETURN_IF_ERROR(request->SetUri(kGceTokenUrl));
-  TF_RETURN_IF_ERROR(request->AddHeader("Metadata-Flavor", "Google"));
-  TF_RETURN_IF_ERROR(request->SetResultBuffer(&response_buffer));
-  TF_RETURN_IF_ERROR(request->Send());
-  StringPiece response =
-      StringPiece(&response_buffer[0], response_buffer.size());
+  const auto get_token_from_gce = [this]() {
+    std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
+    std::vector<char> response_buffer;
+    const uint64 request_timestamp_sec = env_->NowSeconds();
+    TF_RETURN_IF_ERROR(request->Init());
+    TF_RETURN_IF_ERROR(request->SetUri(kGceTokenUrl));
+    TF_RETURN_IF_ERROR(request->AddHeader("Metadata-Flavor", "Google"));
+    TF_RETURN_IF_ERROR(request->SetResultBuffer(&response_buffer));
+    TF_RETURN_IF_ERROR(request->Send());
+    StringPiece response =
+        StringPiece(&response_buffer[0], response_buffer.size());
 
-  TF_RETURN_IF_ERROR(oauth_client_->ParseOAuthResponse(
-      response, request_timestamp_sec, &current_token_,
-      &expiration_timestamp_sec_));
+    TF_RETURN_IF_ERROR(oauth_client_->ParseOAuthResponse(
+        response, request_timestamp_sec, &current_token_,
+        &expiration_timestamp_sec_));
+    return Status::OK();
+  };
+  return RetryingUtils::CallWithRetries(get_token_from_gce,
+                                        initial_retry_delay_usec_);
+}
+
+Status GoogleAuthProvider::GetTokenForTesting() {
+  const char* token = std::getenv(kGoogleAuthTokenForTesting);
+  if (!token) {
+    return errors::NotFound("The env variable for testing was not set.");
+  }
+  expiration_timestamp_sec_ = UINT64_MAX;
+  current_token_ = token;
   return Status::OK();
 }
 
