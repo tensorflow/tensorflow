@@ -198,6 +198,15 @@ REGISTER_OP("TestOneInputOneOutput")
 REGISTER_OP("TestDefaultAttr")
     .Attr("default_int: int=31415")
     .SetShapeFn(shape_inference::NoOutputs);
+REGISTER_OP("RequiresCurrentGraphVersion")
+    .Output("version: int32")
+    .SetIsStateful()
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      if (c->graph_def_version() != TF_GRAPH_DEF_VERSION) {
+        return errors::InvalidArgument("Wrong graph version for shape");
+      }
+      return shape_inference::ScalarShape(c);
+    });
 
 TEST_F(GraphConstructorTest, InvalidNodeName) {
   auto expect_invalid_name = [this](const char* name) {
@@ -716,7 +725,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef_ShapeWhitelist) {
 }
 
 TEST_F(GraphConstructorTest, ImportGraphDef_InputMap) {
-  ShapeRefiner refiner(graph_.op_registry());
+  ShapeRefiner refiner(TF_GRAPH_DEF_VERSION, graph_.op_registry());
 
   // Populate graph with node we'll use in input map
   ExpectOK("node { name: 'input' op: 'TestInput' }", ImportGraphDefOptions(),
@@ -756,7 +765,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef_InputMap) {
 }
 
 TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithPrefix) {
-  ShapeRefiner refiner(graph_.op_registry());
+  ShapeRefiner refiner(TF_GRAPH_DEF_VERSION, graph_.op_registry());
 
   // Populate graph with node we'll use in input map
   ExpectOK(
@@ -819,7 +828,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithPrefix) {
 }
 
 TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithControlEdges) {
-  ShapeRefiner refiner(graph_.op_registry());
+  ShapeRefiner refiner(TF_GRAPH_DEF_VERSION, graph_.op_registry());
 
   // Populate graph with node we'll use in input map
   ExpectOK("node { name: 'W1' op: 'TestParams' }", ImportGraphDefOptions(),
@@ -883,7 +892,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithControlEdges) {
 }
 
 TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithBadControlEdge) {
-  ShapeRefiner refiner(graph_.op_registry());
+  ShapeRefiner refiner(TF_GRAPH_DEF_VERSION, graph_.op_registry());
 
   // Populate graph with node we'll use in input map
   ExpectOK("node { name: 'W1' op: 'TestParams' }", ImportGraphDefOptions(),
@@ -915,7 +924,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithBadControlEdge) {
 }
 
 TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithInvalidNodeIndex) {
-  ShapeRefiner refiner(graph_.op_registry());
+  ShapeRefiner refiner(TF_GRAPH_DEF_VERSION, graph_.op_registry());
 
   // Populate graph with node we'll use in input map
   ExpectOK("node { name: 'input1' op: 'TestInput' }", ImportGraphDefOptions(),
@@ -936,7 +945,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithInvalidNodeIndex) {
 }
 
 TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithMissingEntries) {
-  ShapeRefiner refiner(graph_.op_registry());
+  ShapeRefiner refiner(TF_GRAPH_DEF_VERSION, graph_.op_registry());
 
   // Populate graph with node we'll use in input map
   ExpectOK("node { name: 'W1' op: 'TestParams' }", ImportGraphDefOptions(),
@@ -957,7 +966,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithMissingEntries) {
 }
 
 TEST_F(GraphConstructorTest, ImportGraphDef_InputMapDuplicateNodeNames) {
-  ShapeRefiner refiner(graph_.op_registry());
+  ShapeRefiner refiner(TF_GRAPH_DEF_VERSION, graph_.op_registry());
 
   // Add two nodes with the same name to graph
   Node* node;
@@ -1200,7 +1209,7 @@ versions {
 }
 
 TEST_F(GraphConstructorTest, ImportGraphDef_ControlDeps) {
-  ShapeRefiner refiner(graph_.op_registry());
+  ShapeRefiner refiner(TF_GRAPH_DEF_VERSION, graph_.op_registry());
 
   // Populate graph with nodes we'll use in control deps and input map
   ExpectOK(
@@ -1267,7 +1276,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef_ControlDeps) {
 }
 
 TEST_F(GraphConstructorTest, ImportGraphDef_ControlDepsWithCycle) {
-  ShapeRefiner refiner(graph_.op_registry());
+  ShapeRefiner refiner(TF_GRAPH_DEF_VERSION, graph_.op_registry());
 
   // Populate graph with nodes we'll use in control deps and input map
   ExpectOK(
@@ -1476,6 +1485,57 @@ TEST_F(GraphConstructorTest, CopyGraph) {
   EXPECT_EQ(dst.versions().min_consumer(), versions.min_consumer());
   EXPECT_EQ(dst.versions().bad_consumers_size(), 1);
   EXPECT_EQ(dst.versions().bad_consumers(0), bad);
+}
+
+// Confirms that graph def version in the graph reaches the shape inference
+// function.
+TEST_F(GraphConstructorTest, GraphDefVersionUsedForShapeInference) {
+  string gdef_ascii = strings::StrCat(R"EOF(
+      node{ name:"A" op:"RequiresCurrentGraphVersion" }
+      versions { producer: )EOF",
+                                      TF_GRAPH_DEF_VERSION - 1, "}");
+  ImportGraphDefOptions opts;
+  ExpectError(gdef_ascii, opts, {"Wrong graph version for shape"});
+  gdef_ascii = strings::StrCat(R"EOF(
+      node{ name:"A" op:"RequiresCurrentGraphVersion" }
+      versions { producer: )EOF",
+                               TF_GRAPH_DEF_VERSION, "}");
+  ExpectOK(gdef_ascii, opts);
+}
+
+TEST_F(GraphConstructorTest, GraphDefVersionMergingDuringImport) {
+  ImportGraphDefOptions opts;
+  ExpectOK(
+      "versions { producer: 15 min_consumer: 5 bad_consumers: 2 bad_consumers: "
+      "3 "
+      "}",
+      opts);
+  EXPECT_EQ(15, graph_.versions().producer());
+  EXPECT_EQ(5, graph_.versions().min_consumer());
+  ASSERT_EQ(2, graph_.versions().bad_consumers_size());
+  EXPECT_EQ(2, graph_.versions().bad_consumers(0));
+  EXPECT_EQ(3, graph_.versions().bad_consumers(1));
+
+  ExpectOK(
+      "versions { producer: 10 min_consumer: 8 bad_consumers: 1 bad_consumers: "
+      "3 "
+      "}",
+      opts);
+  EXPECT_EQ(10, graph_.versions().producer());
+  EXPECT_EQ(8, graph_.versions().min_consumer());
+  ASSERT_EQ(3, graph_.versions().bad_consumers_size());
+  EXPECT_EQ(1, graph_.versions().bad_consumers(0));
+  EXPECT_EQ(2, graph_.versions().bad_consumers(1));
+  EXPECT_EQ(3, graph_.versions().bad_consumers(2));
+
+  // This one is a no-op.
+  ExpectOK("versions { producer: 20 min_consumer: 7 }", opts);
+  EXPECT_EQ(10, graph_.versions().producer());
+  EXPECT_EQ(8, graph_.versions().min_consumer());
+  ASSERT_EQ(3, graph_.versions().bad_consumers_size());
+  EXPECT_EQ(1, graph_.versions().bad_consumers(0));
+  EXPECT_EQ(2, graph_.versions().bad_consumers(1));
+  EXPECT_EQ(3, graph_.versions().bad_consumers(2));
 }
 
 }  // namespace

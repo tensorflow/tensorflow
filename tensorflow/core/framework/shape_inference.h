@@ -144,7 +144,8 @@ class InferenceContext {
   // Values of <input_tensors_as_shapes> do not need to outlive the context.
   //
   // REQUIRES: <node_def> is not NULL, and must outlive the InferenceContext.
-  InferenceContext(const NodeDef* node_def, const OpDef& op_def,
+  InferenceContext(int graph_def_version, const NodeDef* node_def,
+                   const OpDef& op_def,
                    const std::vector<ShapeHandle>& input_shapes,
                    const std::vector<const Tensor*>& input_tensors,
                    const std::vector<ShapeHandle>& input_tensors_as_shapes,
@@ -161,7 +162,8 @@ class InferenceContext {
   // Values of <input_tensors_as_shapes> do not need to outlive the context.
   //
   // REQUIRES: <node_def> is not NULL, and must outlive the InferenceContext.
-  InferenceContext(const NodeDef* node_def, const OpDef& op_def,
+  InferenceContext(int graph_def_version, const NodeDef* node_def,
+                   const OpDef& op_def,
                    const std::vector<TensorShapeProto>& input_shapes,
                    const std::vector<const Tensor*>& input_tensors,
                    const std::vector<TensorShapeProto>& input_tensors_as_shapes,
@@ -436,6 +438,8 @@ class InferenceContext {
   Status MakeShapeFromTensor(const Tensor* t, ShapeHandle tensor_shape,
                              ShapeHandle* out);
 
+  int graph_def_version() const { return graph_def_version_; }
+
  private:
   // Creates and stores shapes for use in InferenceContext.
   class ShapeManager {
@@ -508,6 +512,7 @@ class InferenceContext {
   std::vector<ShapeHandle> output_handle_shape_;
   std::vector<DataType> output_handle_dtype_;
 
+  const int graph_def_version_;
   const NodeDef& node_def_;
   NameRangeMap input_name_map_;
   NameRangeMap output_name_map_;

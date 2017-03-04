@@ -579,6 +579,7 @@ py_test(
         ":nn_grad",
         ":nn_ops",
         ":random_ops",
+        ":test_ops",
         ":variables",
         "//tensorflow/core:protos_all_py",
         "//third_party/py/numpy",
