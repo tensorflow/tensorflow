@@ -37,3 +37,16 @@ class _LazyContribLoader(object):
 
 
 contrib = _LazyContribLoader()
+
+del absolute_import
+del division
+del print_function
+
+# These symbols appear because we import the python package which
+# in turn imports from tensorflow.core and tensorflow.python. They
+# must come from this module. So python adds these symbols for the
+# resolution to succeed.
+# pylint: disable=undefined-variable
+del python
+del core
+# pylint: enable=undefined-variable
