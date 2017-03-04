@@ -22,10 +22,6 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 
-#ifdef INTEL_MKL
-#include "tensorflow/core/common_runtime/bfc_allocator.h"
-#endif // INTEL_MKL
-
 namespace tensorflow {
 
 void AllocatorStats::Clear() {
@@ -114,15 +110,7 @@ class CPUAllocator : public Allocator {
 
 namespace {
 Allocator* MakeCpuAllocator() {
-#ifdef INTEL_MKL
-  Allocator* allocator =
-    new BFCAllocator(new IntelCPUAllocator(),
-                     (size_t)128*1024*1024*1024 /* memory_limit - 128GB */,
-                     true,
-                     "cpu_host_bfc");
-#else
   Allocator* allocator = new CPUAllocator;
-#endif
   if (cpu_allocator_collect_full_stats || LogMemory::IsEnabled()) {
     allocator = new TrackingAllocator(allocator, true);
   }

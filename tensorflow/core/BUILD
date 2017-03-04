@@ -1295,16 +1295,6 @@ tf_cuda_library(
             "framework/**/*.cc",
             "util/**/*.h",
             "util/**/*.cc",
-# INTEL_MKL start
-  	        "common_runtime/allocator_retry.h",
-            "common_runtime/allocator_retry.cc",
-            "common_runtime/bfc_allocator.h",
-            "common_runtime/bfc_allocator.cc",
-            "common_runtime/visitable_allocator.h",
-            "common_runtime/cpu/*.cc",
-            "common_runtime/cpu/*.h",
-            "public/version.h",
-# INTEL_MKL end
         ],
         exclude = [
             "**/*test*",
@@ -1328,9 +1318,6 @@ tf_cuda_library(
         ],
     }),
     hdrs = [
-        "common_runtime/bfc_allocator.h",
-        "common_runtime/allocator_retry.h",
-        "common_runtime/visitable_allocator.h",
         "framework/op_segment.h",
         "framework/rendezvous.h",  # only needed for tests
         "framework/tensor_reference.h",
@@ -1426,10 +1413,6 @@ tf_cuda_library(
         exclude = [
             "**/*test*",
             "**/*main.cc",
-            "common_runtime/bfc_allocator.h",
-            "common_runtime/bfc_allocator.cc",
-            "common_runtime/allocator_retry.cc",
-            "common_runtime/allocator_retry.h",
             "common_runtime/direct_session.cc",
             "common_runtime/direct_session.h",
             "common_runtime/gpu_device_context.h",
