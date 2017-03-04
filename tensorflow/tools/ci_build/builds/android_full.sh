@@ -74,10 +74,10 @@ fi
 echo "========== Benchmark Makefile Build Test =========="
 tensorflow/contrib/makefile/build_all_android.sh
 
-echo "========== Inference Makefile Build Test =========="
+echo "========== Demo Makefile Build Test =========="
 tensorflow/contrib/makefile/build_all_android.sh \
--s $(pwd)/tensorflow/contrib/makefile/sub_makefiles/android_inference/Makefile.in \
--t libtensorflow_inference.so
+-s $(pwd)/tensorflow/contrib/makefile/sub_makefiles/android/Makefile.in \
+-t "libtensorflow_inference.so libtensorflow_demo.so"
 
 # Test Makefile build for tensorflow runtime with hexagon.
 # -b ... build only, -p ... use prebuilt binaries
