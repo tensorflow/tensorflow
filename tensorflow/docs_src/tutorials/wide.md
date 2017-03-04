@@ -294,7 +294,7 @@ only learn one of the three cases:
 1.  Income stays the same no matter at what age (no correlation)
 
 If we want to learn the fine-grained correlation between income and each age
-group seperately, we can leverage **bucketization**. Bucketization is a process
+group separately, we can leverage **bucketization**. Bucketization is a process
 of dividing the entire range of a continuous feature into a set of consecutive
 bins/buckets, and then converting the original numerical feature into a bucket
 ID (as a categorical feature) depending on which bucket that value falls into.
