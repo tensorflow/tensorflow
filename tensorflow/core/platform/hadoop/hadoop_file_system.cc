@@ -147,6 +147,10 @@ Status HadoopFileSystem::Connect(StringPiece fname, hdfsFS* fs) {
   hdfsBuilder* builder = hdfs_->hdfsNewBuilder();
   if (scheme == "file") {
     hdfs_->hdfsBuilderSetNameNode(builder, nullptr);
+  } else if (scheme == "viewfs") {
+    // The default NameNode configuration will be used (from the XML configuration files). See:
+    // https://github.com/tensorflow/tensorflow/blob/v1.0.0/third_party/hadoop/hdfs.h#L259
+    hdfs_->hdfsBuilderSetNameNode(builder, "default");
   } else {
     hdfs_->hdfsBuilderSetNameNode(builder, nn.c_str());
   }
