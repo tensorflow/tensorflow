@@ -46,7 +46,7 @@ class RemoteDeviceTest : public ::testing::Test {
     TF_CHECK_OK(test::TestCluster::MakeTestCluster(options, 1, &cluster_));
     const string& hostport = cluster_->targets()[0];
     GrpcChannelSpec spec;
-    spec.AddHostPortsJob("localhost", {hostport});
+    TF_CHECK_OK(spec.AddHostPortsJob("localhost", {hostport}));
     worker_cache_.reset(
         NewGrpcWorkerCache(NewGrpcChannelCache(spec, NewHostPortGrpcChannel)));
     remote_name_ = "/job:localhost/replica:0/task:0";
