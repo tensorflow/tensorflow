@@ -46,8 +46,12 @@ try:
     sys.setdlopenflags(_default_dlopen_flags)
 except ImportError:
   msg = """%s\n\nFailed to load the native TensorFlow runtime.\n
-See https://github.com/tensorflow/tensorflow/blob/master/tensorflow/g3doc/get_started/os_setup.md#import_error\n
-for some common reasons and solutions.  Include the entire stack trace
+Visit https://github.com/tensorflow/tensorflow/blob/master/tensorflow/docs_src/install/index.md\n
+and click on the link that corresponds to your operating system to read about\n
+common reasons and solutions in the "Common installation problems"\n
+subsection.
+
+Include the entire stack trace
 above this error message when asking for help.""" % traceback.format_exc()
   raise ImportError(msg)
 
