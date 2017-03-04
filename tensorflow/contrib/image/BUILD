@@ -71,17 +71,7 @@ cuda_py_test(
     ],
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
+
 
 tf_custom_op_library(
     name = "python/ops/_single_image_random_dot_stereograms.so",
@@ -117,4 +107,16 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
     ],
+)
+
+filegroup(
+    name = "all_files",
+    srcs = glob(
+        ["**/*"],
+        exclude = [
+            "**/METADATA",
+            "**/OWNERS",
+        ],
+    ),
+    visibility = ["//tensorflow:__subpackages__"],
 )
