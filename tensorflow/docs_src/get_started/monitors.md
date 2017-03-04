@@ -300,7 +300,7 @@ validation_metrics = {
 Add the above code before the `ValidationMonitor` constructor. Then revise the
 `ValidationMonitor` constructor as follows to add a `metrics` parameter to log
 the accuracy, precision, and recall metrics specified in `validation_metrics`
-(loss is always logged, and doesn't need to be explicity specified):
+(loss is always logged, and doesn't need to be explicitly specified):
 
 ```python
 validation_monitor = tf.contrib.learn.monitors.ValidationMonitor(
