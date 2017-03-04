@@ -79,6 +79,9 @@ limitations under the License.
 //     used for tf.split, ReverseV2 is now used by tf.reverse, ConcatV2 is
 //     now used by tf.concat_v2 (and soon tf.concat). Graphs use flooring
 //     division and mod semantics. TensorArrayV3. (12dec2016)
+//     Also considered the version for when it is required for reduction
+//     ops' indices to be scalar or vector, and not higher rank.
+//     Some earlier graph def versions allowed this.
 // 21. Dropped FunctionDef.Node support, switched to node_def introduced
 //     in version 12. (11jan2017)
 
