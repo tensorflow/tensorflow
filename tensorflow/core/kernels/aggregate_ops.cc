@@ -52,10 +52,7 @@ class AddNOp : public OpKernel {
     }
 
     Tensor* output = nullptr;
-    gtl::InlinedVector<int, 8> input_indices(num);
-    std::iota(input_indices.begin(), input_indices.end(), 0);
-    OP_REQUIRES_OK(ctx, ctx->forward_input_or_allocate_output(
-                            input_indices, 0, input0.shape(), &output));
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, input0.shape(), &output));
     auto To = output->flat<T>();
 
 #define I(IDX) ctx->input(IDX).flat<T>()
