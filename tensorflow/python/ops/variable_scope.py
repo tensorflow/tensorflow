@@ -683,6 +683,8 @@ class _VariableStore(object):
         init_val = initializer
         variable_dtype = None
       else:
+        if type(initializer)==type:
+          initializer=initializer(dtype)
         init_val = lambda: initializer(  # pylint: disable=g-long-lambda
             shape.as_list(), dtype=dtype, partition_info=partition_info)
         variable_dtype = dtype.base_dtype
