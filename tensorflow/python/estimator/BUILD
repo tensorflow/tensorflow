@@ -201,6 +201,7 @@ py_test(
     size = "small",
     srcs = ["inputs/pandas_io_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["manual"],
     deps = [
         ":pandas_io",
         "//tensorflow/python:client_testlib",

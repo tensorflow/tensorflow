@@ -27,47 +27,87 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+import os
+import urllib
+
 import numpy as np
+import tensorflow as tf
 
 # Data sets
 IRIS_TRAINING = "iris_training.csv"
+IRIS_TRAINING_URL = "http://download.tensorflow.org/data/iris_training.csv"
+
 IRIS_TEST = "iris_test.csv"
+IRIS_TEST_URL = "http://download.tensorflow.org/data/iris_test.csv"
 
-# Load datasets.
-training_set = tf.contrib.learn.datasets.base.load_csv_with_header(
-    filename=IRIS_TRAINING,
-    target_dtype=np.int,
-    features_dtype=np.float32)
-test_set = tf.contrib.learn.datasets.base.load_csv_with_header(
-    filename=IRIS_TEST,
-    target_dtype=np.int,
-    features_dtype=np.float32)
 
-# Specify that all features have real-value data
-feature_columns = [tf.contrib.layers.real_valued_column("", dimension=4)]
+def main():
+  # If the training and test sets aren't stored locally, download them.
+  if not os.path.exists(IRIS_TRAINING):
+    raw = urllib.urlopen(IRIS_TRAINING_URL).read()
+    with open(IRIS_TRAINING, "w") as f:
+      f.write(raw)
 
-# Build 3 layer DNN with 10, 20, 10 units respectively.
-classifier = tf.contrib.learn.DNNClassifier(feature_columns=feature_columns,
-                                            hidden_units=[10, 20, 10],
-                                            n_classes=3,
-                                            model_dir="/tmp/iris_model")
+  if not os.path.exists(IRIS_TEST):
+    raw = urllib.urlopen(IRIS_TEST_URL).read()
+    with open(IRIS_TEST, "w") as f:
+      f.write(raw)
 
-# Fit model.
-classifier.fit(x=training_set.data,
-               y=training_set.target,
-               steps=2000)
+  # Load datasets.
+  training_set = tf.contrib.learn.datasets.base.load_csv_with_header(
+      filename=IRIS_TRAINING,
+      target_dtype=np.int,
+      features_dtype=np.float32)
+  test_set = tf.contrib.learn.datasets.base.load_csv_with_header(
+      filename=IRIS_TEST,
+      target_dtype=np.int,
+      features_dtype=np.float32)
 
-# Evaluate accuracy.
-accuracy_score = classifier.evaluate(x=test_set.data,
-                                     y=test_set.target)["accuracy"]
-print('Accuracy: {0:f}'.format(accuracy_score))
+  # Specify that all features have real-value data
+  feature_columns = [tf.contrib.layers.real_valued_column("", dimension=4)]
 
-# Classify two new flower samples.
-new_samples = np.array(
-    [[6.4, 3.2, 4.5, 1.5], [5.8, 3.1, 5.0, 1.7]], dtype=float)
-y = list(classifier.predict(new_samples, as_iterable=True))
-print('Predictions: {}'.format(str(y)))
+  # Build 3 layer DNN with 10, 20, 10 units respectively.
+  classifier = tf.contrib.learn.DNNClassifier(feature_columns=feature_columns,
+                                              hidden_units=[10, 20, 10],
+                                              n_classes=3,
+                                              model_dir="/tmp/iris_model")
+  # Define the training inputs
+  def get_train_inputs():
+    x = tf.constant(training_set.data)
+    y = tf.constant(training_set.target)
+
+    return x, y
+
+  # Fit model.
+  classifier.fit(input_fn=get_train_inputs, steps=2000)
+
+  # Define the test inputs
+  def get_test_inputs():
+    x = tf.constant(test_set.data)
+    y = tf.constant(test_set.target)
+
+    return x, y
+
+  # Evaluate accuracy.
+  accuracy_score = classifier.evaluate(input_fn=get_test_inputs,
+                                       steps=1)["accuracy"]
+
+  print("\nTest Accuracy: {0:f}\n".format(accuracy_score))
+
+  # Classify two new flower samples.
+  def new_samples():
+    return np.array(
+      [[6.4, 3.2, 4.5, 1.5],
+       [5.8, 3.1, 5.0, 1.7]], dtype=np.float32)
+
+  predictions = list(classifier.predict(input_fn=new_samples))
+
+  print(
+      "New Samples, Class Predictions:    {}\n"
+      .format(predictions))
+
+if __name__ == "__main__":
+    main()
 ```
 
 The following sections walk through the code in detail.
@@ -115,17 +155,40 @@ CSVs:
 *   A test set of 30 samples
     ([iris_test.csv](http://download.tensorflow.org/data/iris_test.csv)).
 
-Place these files in the same directory as your Python code.
-
-To get started, first import TensorFlow and numpy:
+To get started, first import all the necessary modules, and define where to
+download and store the dataset:
 
 ```python
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+import urllib
+
 import tensorflow as tf
 import numpy as np
+
+IRIS_TRAINING = "iris_training.csv"
+IRIS_TRAINING_URL = "http://download.tensorflow.org/data/iris_training.csv"
+
+IRIS_TEST = "iris_test.csv"
+IRIS_TEST_URL = "http://download.tensorflow.org/data/iris_test.csv"
+```
+
+Then, if the training and test sets aren't already stored locally, download
+them.
+
+```python
+if not os.path.exists(IRIS_TRAINING):
+  raw = urllib.urlopen(IRIS_TRAINING_URL).read()
+  with open(IRIS_TRAINING,'w') as f:
+    f.write(raw)
+
+if not os.path.exists(IRIS_TEST):
+  raw = urllib.urlopen(IRIS_TEST_URL).read()
+  with open(IRIS_TEST,'w') as f:
+    f.write(raw)
 ```
 
 Next, load the training and test sets into `Dataset`s using the
@@ -147,10 +210,6 @@ species, which is an integer from 0&ndash;2, so the appropriate `numpy` datatype
 is `np.int`:
 
 ```python
-# Data sets
-IRIS_TRAINING = "iris_training.csv"
-IRIS_TEST = "iris_test.csv"
-
 # Load datasets.
 training_set = tf.contrib.learn.datasets.base.load_csv_with_header(
     filename=IRIS_TRAINING,
@@ -215,16 +274,32 @@ Then, the code creates a `DNNClassifier` model using the following arguments:
     checkpoint data during model training. For more on logging and monitoring
     with TensorFlow, see @{$monitors$Logging and Monitoring Basics with     tf.contrib.learn}.
 
+## Describe the training input pipeline {#train-input}
+
+The `tf.contrib.learn` API uses input functions, which create the TensorFlow
+operations that generate data for the model. In this case, the data is small
+enough that it can be stored in @{tf.constant TensorFlow constants}. The
+following code produces the simplest possible input pipeline:
+
+```python
+# Define the test inputs
+def get_train_inputs():
+  x = tf.constant(training_set.data)
+  y = tf.constant(training_set.target)
+
+  return x, y
+```
+
 ## Fit the DNNClassifier to the Iris Training Data {#fit-dnnclassifier}
 
 Now that you've configured your DNN `classifier` model, you can fit it to the
-Iris training data using the @{tf.contrib.learn.BaseEstimator.fit$`fit`}
-method. Pass as arguments your feature data (`training_set.data`), target
-values (`training_set.target`), and the number of steps to train (here, 2000):
+Iris training data using the @{tf.contrib.learn.BaseEstimator.fit$`fit`} method.
+Pass `get_train_inputs` as the `input_fn`, and the number of steps to train
+(here, 2000):
 
 ```python
-# Fit model
-classifier.fit(x=training_set.data, y=training_set.target, steps=2000)
+# Fit model.
+classifier.fit(input_fn=get_train_inputs, steps=2000)
 ```
 
 The state of the model is preserved in the `classifier`, which means you can
@@ -246,21 +321,37 @@ for more on this topic.
 
 You've fit your `DNNClassifier` model on the Iris training data; now, you can
 check its accuracy on the Iris test data using the
-@{tf.contrib.learn.BaseEstimator.evaluate$`evaluate`}
-method. Like `fit`, `evaluate` takes feature data and target values as
-arguments, and returns a `dict` with the evaluation results. The following code
-passes the Iris test data&mdash;`test_set.data` and `test_set.target`&mdash;to
-`evaluate` and prints the `accuracy` from the results:
+@{tf.contrib.learn.BaseEstimator.evaluate$`evaluate`} method. Like `fit`,
+`evaluate` takes an input function that builds its input pipeline. `evaluate`
+returns a `dict` with the evaluation results. The following code passes the Iris
+test data&mdash;`test_set.data` and `test_set.target`&mdash;to `evaluate` and
+prints the `accuracy` from the results:
 
 ```python
-accuracy_score = classifier.evaluate(x=test_set.data, y=test_set.target)["accuracy"]
-print('Accuracy: {0:f}'.format(accuracy_score))
+# Define the test inputs
+def get_test_inputs():
+  x = tf.constant(test_set.data)
+  y = tf.constant(test_set.target)
+
+  return x, y
+
+# Evaluate accuracy.
+accuracy_score = classifier.evaluate(input_fn=get_test_inputs,
+                                     steps=1)["accuracy"]
+
+print("\nTest Accuracy: {0:f}\n".format(accuracy_score))
 ```
 
-Run the full script, and check the accuracy results:
+Note: The `steps` argument to `evaluate` is important here.
+@{tf.contrib.learn.Evaluable.evaluate$`evaluate`} normally runs until it reaches
+the end of the input. This is perfect for evaluating over a set of files, but
+the constants being used here will never throw the `OutOfRangeError` or
+`StopIteration` that it is expecting.
+
+When you run the full script, it will print something close to:
 
 ```
-Accuracy: 0.966667
+Test Accuracy: 0.966667
 ```
 
 Your accuracy result may vary a bit, but should be higher than 90%. Not bad for
@@ -276,20 +367,28 @@ Sepal Length | Sepal Width | Petal Length | Petal Width
 6.4          | 3.2         | 4.5          | 1.5
 5.8          | 3.1         | 5.0          | 1.7
 
-You can predict their species with the following code:
+You can predict their species using the `predict()` method. `predict` returns a
+generator, which can easily be converted to a list. The following code retrieves
+and prints the class predictions:
 
 ```python
 # Classify two new flower samples.
-new_samples = np.array(
-    [[6.4, 3.2, 4.5, 1.5], [5.8, 3.1, 5.0, 1.7]], dtype=float)
-y = list(classifier.predict(new_samples, as_iterable=True))
-print('Predictions: {}'.format(str(y)))
+def new_samples():
+  return np.array(
+    [[6.4, 3.2, 4.5, 1.5],
+     [5.8, 3.1, 5.0, 1.7]], dtype=np.float32)
+
+predictions = list(classifier.predict(input_fn=new_samples))
+
+print(
+    "New Samples, Class Predictions:    {}\n"
+    .format(predictions))
 ```
 
-The `predict()` method returns an array of predictions, one for each sample:
+Your results should look as follows:
 
-```python
-Prediction: [1 2]
+```
+New Samples, Class Predictions:    [1 2]
 ```
 
 The model thus predicts that the first sample is *Iris versicolor*, and the
@@ -297,17 +396,18 @@ second sample is *Iris virginica*.
 
 ## Additional Resources
 
-*   For further reference materials on tf.contrib.learn, see the official @{$python/contrib.learn$API     docs}.
+*   For further reference materials on tf.contrib.learn, see the official
+    @{$python/contrib.learn$API docs}.
 
 *   To learn more about using tf.contrib.learn to create linear models, see
     @{$linear$Large-scale Linear Models with TensorFlow}.
 
 *   To build your own Estimator using tf.contrib.learn APIs, check out
-    [Building Machine Learning Estimator in TensorFlow](http://terrytangyuan.github.io/2016/07/08/understand-and-build-tensorflow-estimator/).
+    @{$estimators$Creating Estimators in tf.contrib.learn}.
 
 *   To experiment with neural network modeling and visualization in the browser,
     check out [Deep Playground](http://playground.tensorflow.org/).
 
 *   For more advanced tutorials on neural networks, see
-    @{$deep_cnn$Convolutional Neural Networks} and
-    @{$recurrent$Recurrent Neural Networks}.
+    @{$deep_cnn$Convolutional Neural Networks} and @{$recurrent$Recurrent Neural
+    Networks}.
