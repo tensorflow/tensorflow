@@ -49,7 +49,7 @@ The simplest scenario for using a supervisor is to:
   ...create graph...
   my_train_op = ...
 
-  sv = tf.Supervisor(logdir="/my/training/directory")
+  sv = tf.train.Supervisor(logdir="/my/training/directory")
   with sv.managed_session() as sess:
     for step in range(100000):
       if sv.should_stop():
@@ -130,7 +130,7 @@ For example this code runs the summary op every 100 steps in the training loop:
   my_train_op = ...
   my_summary_op = tf.summary.merge_all()
 
-  sv = tf.Supervisor(logdir="/my/training/directory",
+  sv = tf.train.Supervisor(logdir="/my/training/directory",
                      summary_op=None) # Do not run the summary service
   with sv.managed_session() as sess:
     for step in range(100000):
@@ -179,7 +179,7 @@ the new model from the pre-trained checkpoint.
   #
   # The init function is called _after_ the variables have been initialized
   # by running the init_op.
-  sv = tf.Supervisor(logdir="/my/training/directory",
+  sv = tf.train.Supervisor(logdir="/my/training/directory",
                      init_fn=load_pretrain)
   with sv.managed_session() as sess:
     # Here sess was either initialized from the pre-trained-checkpoint or
@@ -207,7 +207,7 @@ def my_additional_sumaries(sv, sess):
  ...fetch and write summaries, see below...
 
 ...
-  sv = tf.Supervisor(logdir="/my/training/directory")
+  sv = tf.train.Supervisor(logdir="/my/training/directory")
   with sv.managed_session() as sess:
     # Call my_additional_sumaries() every 1200s, or 20mn,
     # passing (sv, sess) as arguments.
@@ -284,8 +284,8 @@ Example: Use a custom Saver and checkpoint every 30 seconds.
 
 ```python
   ...create graph...
-  my_saver = tf.Saver(<only some variables>)
-  sv = tf.Supervisor(logdir="/my/training/directory",
+  my_saver = tf.train.Saver(<only some variables>)
+  sv = tf.train.Supervisor(logdir="/my/training/directory",
                      saver=my_saver,
                      save_model_secs=30)
   with sv.managed_session() as sess:
