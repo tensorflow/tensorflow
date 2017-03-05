@@ -102,7 +102,7 @@ left corner of the screen to proceed.
 
 This will bring up another screen
 right after the `run()` call has ended, which will display all dumped
-intermedate tensors from the run. (These tensors can also be obtained by
+intermediate tensors from the run. (These tensors can also be obtained by
 running the command `lt` after you executed `run`.) This is called the
 **run-end UI**:
 

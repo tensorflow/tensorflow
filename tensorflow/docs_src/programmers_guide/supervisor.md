@@ -278,7 +278,7 @@ constructor:
 
    If you do not pass one, the supervisor creates one for you by calling
    `tf.Saver()`, which add ops to save and restore all variables in your model.
-   This is usally what you need.
+   This is usually what you need.
 
 Example: Use a custom Saver and checkpoint every 30 seconds.
 

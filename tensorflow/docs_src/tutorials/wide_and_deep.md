@@ -269,4 +269,4 @@ familiar with the API. Wide & Deep Learning will be even more powerful if you
 try it on a large dataset with many sparse feature columns that have a large
 number of possible feature values. Again, feel free to take a look at our
 [research paper](http://arxiv.org/abs/1606.07792) for more ideas about how to
-apply Wide & Deep Learning in real-world large-scale maching learning problems.
+apply Wide & Deep Learning in real-world large-scale machine learning problems.
