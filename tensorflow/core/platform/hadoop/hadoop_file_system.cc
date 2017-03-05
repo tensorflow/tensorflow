@@ -482,5 +482,6 @@ Status HadoopFileSystem::Stat(const string& fname, FileStatistics* stats) {
 }
 
 REGISTER_FILE_SYSTEM("hdfs", HadoopFileSystem);
+REGISTER_FILE_SYSTEM("viewfs", HadoopFileSystem);
 
 }  // namespace tensorflow
