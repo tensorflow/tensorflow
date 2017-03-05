@@ -93,7 +93,7 @@ set -e
 pip3.5 install --upgrade six==1.10.0
 
 # Install protobuf.
-pip3.5 install --upgrade protobuf==3.0.0
+pip3.5 install --upgrade protobuf==3.1.0
 
 # Remove obsolete version of six, which can sometimes confuse virtualenv.
 rm -rf /usr/lib/python3/dist-packages/six*
