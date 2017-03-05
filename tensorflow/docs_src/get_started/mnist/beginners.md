@@ -368,7 +368,7 @@ In this case, we ask TensorFlow to minimize `cross_entropy` using the
 with a learning rate of 0.5. Gradient descent is a simple procedure, where
 TensorFlow simply shifts each variable a little bit in the direction that
 reduces the cost. But TensorFlow also provides
-@{$python/train#optimizers$many other optimization algorithms}:
+@{$python/train#Optimizers$many other optimization algorithms}:
 using one is as simple as tweaking one line.
 
 What TensorFlow actually does here, behind the scenes, is to add new operations
