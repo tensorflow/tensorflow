@@ -371,7 +371,7 @@ TEST(XlaCompilationTest, CyclesWithAllDifferentScopes) {
     ops::BinaryOp(
         "MatMul", a, b,
         builder.opts().WithName("C").WithAttr(kXlaScopeAttr, "ScopeC"));
-    builder.ToGraph(graph.get());
+    TF_CHECK_OK(builder.ToGraph(graph.get()));
   }
 
   MarkForCompilation(&graph);
@@ -402,7 +402,7 @@ TEST(XlaCompilationTest, CyclesWithSplittingScopes) {
     ops::BinaryOp(
         "Add", b, c,
         builder.opts().WithName("D").WithAttr(kXlaScopeAttr, "Scope2"));
-    builder.ToGraph(graph.get());
+    TF_CHECK_OK(builder.ToGraph(graph.get()));
   }
 
   MarkForCompilation(&graph);
@@ -432,7 +432,7 @@ TEST(XlaCompilationTest, CyclesWithDifferentScopesAndBridge) {
         "Relu", a,
         builder.opts().WithName("B").WithAttr(kXlaScopeAttr, "ScopeB"));
     ops::BinaryOp("MatMul", a, b, builder.opts().WithName("C"));
-    builder.ToGraph(graph.get());
+    TF_CHECK_OK(builder.ToGraph(graph.get()));
   }
 
   MarkForCompilation(&graph);

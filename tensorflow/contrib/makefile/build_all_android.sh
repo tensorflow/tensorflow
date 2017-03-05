@@ -89,8 +89,10 @@ if [[ -z "${BUILD_TARGET}" ]]; then
 HEXAGON_LIBS="${HEXAGON_LIBS}" HEXAGON_INCLUDE="${HEXAGON_INCLUDE}" \
 SUB_MAKEFILES="${SUB_MAKEFILES}"
 else
+    # BUILD_TARGET explicitly uncommented to allow multiple targets to be
+    # passed to make in a single build_all_android.sh invocation.
     make -j"${JOB_COUNT}" -f tensorflow/contrib/makefile/Makefile \
          TARGET=ANDROID NDK_ROOT="${NDK_ROOT}" CC_PREFIX="${CC_PREFIX}" \
 HEXAGON_LIBS="${HEXAGON_LIBS}" HEXAGON_INCLUDE="${HEXAGON_INCLUDE}" \
-SUB_MAKEFILES="${SUB_MAKEFILES}" "${BUILD_TARGET}"
+SUB_MAKEFILES="${SUB_MAKEFILES}" ${BUILD_TARGET}
 fi
