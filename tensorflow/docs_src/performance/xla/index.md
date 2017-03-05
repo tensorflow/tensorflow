@@ -10,7 +10,7 @@ XLA (Accelerated Linear Algebra) is a domain-specific compiler for linear
 algebra that optimizes TensorFlow computations. The results are improvements in
 speed, memory usage, and portability on server and mobile platforms. Initially,
 most users will not see large benefits from XLA, but are welcome to experiment
-by using XLA via @{$jit$just-in-time (JIT) compilaton} or @{$tfcompile$ahead-of-time (AOT) compilation}. Developers targeting new hardware accelerators are
+by using XLA via @{$jit$just-in-time (JIT) compilation} or @{$tfcompile$ahead-of-time (AOT) compilation}. Developers targeting new hardware accelerators are
 especially encouraged to try out XLA.
 
 The XLA framework is experimental and in active development. In particular,
