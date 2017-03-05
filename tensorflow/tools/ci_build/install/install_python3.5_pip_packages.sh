@@ -93,13 +93,17 @@ set -e
 pip3.5 install --upgrade six==1.10.0
 
 # Install protobuf.
-pip3.5 install --upgrade protobuf==3.0.0
+pip3.5 install --upgrade protobuf==3.1.0
 
 # Remove obsolete version of six, which can sometimes confuse virtualenv.
 rm -rf /usr/lib/python3/dist-packages/six*
 
 # Install numpy, scipy and scikit-learn required by the builds
-pip3.5 install --upgrade numpy
+
+# numpy needs to be installed from source to fix segfaults. See:
+# https://github.com/tensorflow/tensorflow/issues/6968
+# This workaround isn't needed for Ubuntu 16.04 or later.
+pip3.5 install --no-binary=:all: --upgrade numpy
 
 set +e
 SCIPY_VERSION="0.17.1"
