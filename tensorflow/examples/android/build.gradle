@@ -19,15 +19,15 @@ buildscript {
     }
 
     dependencies {
-        classpath 'com.android.tools.build:gradle:2.2.0'
+        classpath 'com.android.tools.build:gradle:2.3.0'
     }
 }
 
 apply plugin: 'com.android.application'
 
 android {
-    compileSdkVersion 24
-    buildToolsVersion "24.0.1"
+    compileSdkVersion 23
+    buildToolsVersion "25.0.1"
 
     lintOptions {
         abortOnError false
@@ -75,7 +75,8 @@ task buildNative(type:Exec) {
 }
 
 task copyNativeLibs(type: Copy) {
-    from('../../../bazel-bin/tensorflow/examples/android') { include '**/*.so' }
+    from('../../../bazel-bin/tensorflow/contrib/android/') { include '*.so' }
+    from('../../../bazel-bin/tensorflow/examples/android/') { include '*.so' }
     into nativeDir
     duplicatesStrategy = 'include'
     dependsOn 'buildNative'
