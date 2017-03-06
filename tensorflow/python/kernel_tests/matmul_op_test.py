@@ -443,8 +443,8 @@ class MatMulStatsTest(test.TestCase):
 
 
 try:
-    # @ operator supported since python 3.5.
-    infix_matmul = operator.matmul
+  # @ operator supported since python 3.5.
+  infix_matmul = operator.matmul
 except AttributeError:
   # For earlier versions of python, emulate regular behavior.
   # Useful to build and test for 3.5+ on earlier versions.
