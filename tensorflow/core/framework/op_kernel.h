@@ -696,6 +696,9 @@ class OpKernelContext {
   //     memory_type, and attr,
   //   * refcount on the underlying buffer is one.
   // Otherwise returns nullptr.
+  // NOTE: For Cuda kernels that read inputs using the __ldg() intrinsic,
+  // forwarding is only safe if there are no reads via __ldg() after writes
+  // to the same address.
   std::unique_ptr<Tensor> forward_input(
       int input_index, DataType dtype, const TensorShape& shape,
       MemoryType memory_type,
