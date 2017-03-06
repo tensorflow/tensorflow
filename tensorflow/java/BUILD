@@ -63,7 +63,7 @@ java_test(
     deps = [
         ":tensorflow",
         ":testutil",
-        "//external:junit",
+        "@junit",
     ],
 )
 
