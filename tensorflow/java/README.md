@@ -110,7 +110,7 @@ libraries will need to be built from source.
     brew install swig
     ```
 
-3.  [Configure](https://www.tensorflow.org/get_started/os_setup#configure_the_installation)
+3.  [Configure](https://www.tensorflow.org/install/install_sources#configure_the_installation)
     (e.g., enable GPU support) and build:
 
     ```sh
