@@ -67,33 +67,34 @@ REGISTER_XLA_LAUNCH_KERNEL(DEVICE_XLA_IPU, XlaDeviceLaunchOp, kIpuAllTypes);
 REGISTER_XLA_DEVICE_KERNELS(DEVICE_XLA_IPU, kIpuAllTypes);
 
 // Register JIT kernels for IPU device
+// synced @ eaa668e7e5d28072964ce8b78c155720aed951d3
 
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("_Arg").TypeConstraint("T", kIpuAllTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("_Arg").TypeConstraint("T", DT_RESOURCE));
 
-REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT, Name("_ArrayToList"));
-REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT, Name("_ListToArray"));
+REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
+        Name("_ArrayToList"));
+REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
+        Name("_ListToArray"));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("_Retval").TypeConstraint("T", kIpuAllTypes));
-
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("Abs").TypeConstraint("T", kIpuNumericTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("Add").TypeConstraint("T", kIpuNumericTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("AddN").TypeConstraint("T", kIpuNumericTypes));
-REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT, Name("All"));
-REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT, Name("Any"));
-REGISTER_XLA_KERNEL(
-        DEVICE_IPU_XLA_JIT,
+REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
+        Name("All"));
+REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
+        Name("Any"));
+REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("AssignVariableOp").TypeConstraint("dtype", kIpuAllTypes));
-REGISTER_XLA_KERNEL(
-        DEVICE_IPU_XLA_JIT,
+REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("AssignAddVariableOp").TypeConstraint("dtype", kIpuNumericTypes));
-REGISTER_XLA_KERNEL(
-        DEVICE_IPU_XLA_JIT,
+REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("AssignSubVariableOp").TypeConstraint("dtype", kIpuNumericTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("AvgPool").TypeConstraint("T", kIpuFloatTypes));
@@ -107,30 +108,27 @@ REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("BiasAddV1").TypeConstraint("T", kIpuNumericTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("BiasAddGrad").TypeConstraint("T", kIpuFloatTypes));
-REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT, Name("BroadcastGradientArgs"));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
-        Name("Cast")
-.TypeConstraint("SrcT", kIpuAllTypes)
-.TypeConstraint("DstT", kIpuAllTypes));
+        Name("BroadcastGradientArgs"));
+REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
+        Name("Cast").TypeConstraint("SrcT", kIpuAllTypes)
+                    .TypeConstraint("DstT", kIpuAllTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("Ceil").TypeConstraint("T", kIpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("Concat").TypeConstraint("T", kIpuAllTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
-        Name("ConcatV2")
-.TypeConstraint("T", kIpuAllTypes)
-.TypeConstraint("Tidx", DT_INT32));
-REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT, Name("ConcatOffset"));
+        Name("ConcatV2").TypeConstraint("T", kIpuAllTypes)
+                        .TypeConstraint("Tidx", DT_INT32));
+REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
+        Name("ConcatOffset"));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("Conv2D").TypeConstraint("T", kIpuFloatTypes));
-REGISTER_XLA_KERNEL(
-        DEVICE_IPU_XLA_JIT,
+REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("Conv2DBackpropFilter").TypeConstraint("T", kIpuFloatTypes));
-REGISTER_XLA_KERNEL(
-        DEVICE_IPU_XLA_JIT,
+REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("Conv2DBackpropInput").TypeConstraint("T", kIpuFloatTypes));
-REGISTER_XLA_KERNEL(
-        DEVICE_IPU_XLA_JIT,
+REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("DepthwiseConv2dNative").TypeConstraint("T", kIpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("Diag").TypeConstraint("T", kIpuAllTypes));
@@ -176,9 +174,12 @@ REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("Log").TypeConstraint("T", kIpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("Log1p").TypeConstraint("T", kIpuFloatTypes));
-REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT, Name("LogicalAnd"));
-REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT, Name("LogicalNot"));
-REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT, Name("LogicalOr"));
+REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
+        Name("LogicalAnd"));
+REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
+        Name("LogicalNot"));
+REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
+        Name("LogicalOr"));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("LogSoftmax").TypeConstraint("T", kIpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
@@ -214,6 +215,8 @@ REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("NotEqual").TypeConstraint("T", kIpuNumericTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
+        Name("OneHot").TypeConstraint("T", kIpuAllTypes));
+REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("Pack").TypeConstraint("T", kIpuAllTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("Pad").TypeConstraint("T", kIpuAllTypes));
@@ -227,16 +230,17 @@ REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("Range").TypeConstraint("Tidx", kIpuNumericTypes));
 // TODO(b/34339814): implement inverse erf for double types and update the
 // type constraint.
-REGISTER_XLA_KERNEL(
-        DEVICE_IPU_XLA_JIT,
+REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("RandomStandardNormal").TypeConstraint("dtype", DT_FLOAT));
-REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT, Name("RandomUniform"));
-REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT, Name("RandomUniformInt"));
-REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT, Name("Rank"));
+REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
+        Name("RandomUniform"));
+REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
+        Name("RandomUniformInt"));
+REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
+        Name("Rank"));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("RealDiv").TypeConstraint("T", kIpuFloatTypes));
-REGISTER_XLA_KERNEL(
-        DEVICE_IPU_XLA_JIT,
+REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("ReadVariableOp").TypeConstraint("dtype", kIpuAllTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("Relu").TypeConstraint("T", kIpuFloatTypes));
@@ -248,47 +252,51 @@ REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("Relu6Grad").TypeConstraint("T", kIpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("Reshape").TypeConstraint("T", kIpuAllTypes));
-REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT, Name("ResourceApplyGradientDescent")
-.TypeConstraint("T", kIpuAllTypes));
+REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
+        Name("ResourceApplyGradientDescent").TypeConstraint("T", kIpuAllTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("Rsqrt").TypeConstraint("T", kIpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("RsqrtGrad").TypeConstraint("T", kIpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("Select").TypeConstraint("T", kIpuAllTypes));
-REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT, Name("Shape"));
-REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT, Name("ShapeN"));
+REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
+        Name("Shape"));
+REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
+        Name("ShapeN"));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("Sigmoid").TypeConstraint("T", kIpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("SigmoidGrad").TypeConstraint("T", kIpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("Sign").TypeConstraint("T", kIpuNumericTypes));
-REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT, Name("Size"));
+REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
+        Name("Size"));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("Slice").TypeConstraint("T", kIpuAllTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("Softmax").TypeConstraint("T", kIpuFloatTypes));
-REGISTER_XLA_KERNEL(
-        DEVICE_IPU_XLA_JIT,
-        Name("SoftmaxCrossEntropyWithLogits").TypeConstraint("T", kIpuFloatTypes));
-
+REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
+        Name("SoftmaxCrossEntropyWithLogits")
+            .TypeConstraint("T", kIpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("Softplus").TypeConstraint("T", kIpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("SoftplusGrad").TypeConstraint("T", kIpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
-        Name("SparseMatMul")
-.TypeConstraint("Ta", kIpuFloatTypes)
-.TypeConstraint("Tb", kIpuFloatTypes));
+        Name("SparseMatMul").TypeConstraint("Ta", kIpuFloatTypes)
+                            .TypeConstraint("Tb", kIpuFloatTypes));
+REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
+        Name("SparseSoftmaxCrossEntropyWithLogits")
+            .TypeConstraint("T", kCpuFloatTypes)
+            .TypeConstraint("Tlabels", kCpuIntTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("Split").TypeConstraint("T", kIpuAllTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("SplitV").TypeConstraint("T", kIpuAllTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("Square").TypeConstraint("T", kIpuNumericTypes));
-REGISTER_XLA_KERNEL(
-        DEVICE_IPU_XLA_JIT,
+REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("SquaredDifference").TypeConstraint("T", kIpuNumericTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("Squeeze").TypeConstraint("T", kIpuAllTypes));
@@ -305,7 +313,8 @@ REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("Sub").TypeConstraint("T", kIpuNumericTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("Sum").TypeConstraint("T", kIpuNumericTypes));
-REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT, Name("SymbolicGradient"));
+REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
+        Name("SymbolicGradient"));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("Tanh").TypeConstraint("T", kIpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
@@ -321,15 +330,15 @@ REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("Unpack").TypeConstraint("T", kIpuAllTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
+        Name("VarIsInitializedOp"));
+REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("ZerosLike").TypeConstraint("T", kIpuNumericTypes));
-
 REGISTER_XLA_JIT_ONLY_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("Const").TypeConstraint("dtype",kIpuAllTypes));
-
 REGISTER_XLA_JIT_ONLY_KERNEL(
         DEVICE_IPU_XLA_JIT, Name("Identity").TypeConstraint("T", kIpuAllTypes));
-
-REGISTER_XLA_JIT_ONLY_KERNEL(DEVICE_IPU_XLA_JIT, Name("NoOp"));
+REGISTER_XLA_JIT_ONLY_KERNEL(DEVICE_IPU_XLA_JIT,
+        Name("NoOp"));
 
 
 
