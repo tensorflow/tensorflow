@@ -84,30 +84,24 @@ class Array4D {
 
   // Construct an Array4D with the given nested initializer list.
   Array4D(std::initializer_list<std::initializer_list<
-              std::initializer_list<std::initializer_list<T>>>>
-              values)
-      : Array4D(values.size(), values.begin()->size(),
-                values.begin()->begin()->size(),
-                values.begin()->begin()->begin()->size()) {
-    int64 plane = 0;
+      std::initializer_list<std::initializer_list<T>>>> values)
+      : planes_(values.size()),
+        depth_(values.begin()->size()),
+        height_(values.begin()->begin()->size()),
+        width_(values.begin()->begin()->size()) {
+    values_.reserve(planes_ * depth_ * height_ * width_);
+
     for (const auto values_in_plane : values) {
       DCHECK_EQ(values_in_plane.size(), depth_);
-      int64 depth = 0;
       for (const auto values_in_depth : values_in_plane) {
         DCHECK_EQ(values_in_depth.size(), height_);
-        int64 height = 0;
         for (const auto values_in_height : values_in_depth) {
           DCHECK_EQ(values_in_height.size(), width_);
-          int64 width = 0;
           for (const auto element_value : values_in_height) {
-            (*this)(plane, depth, height, width) = element_value;
-            ++width;
+            values_.emplace_back(element_value);
           }
-          ++height;
         }
-        ++depth;
       }
-      ++plane;
     }
   }
 

@@ -54,16 +54,15 @@ class Array3D {
   // results in an array with n1=3, n2=4, n3=2.
   Array3D(std::initializer_list<std::initializer_list<std::initializer_list<T>>>
               values)
-      : Array3D(values.size(), values.begin()->size(),
-                values.begin()->begin()->size()) {
-    int64 n1 = 0;
-    for (auto n1_it = values.begin(); n1_it != values.end(); ++n1_it, ++n1) {
-      int64 n2 = 0;
-      for (auto n2_it = n1_it->begin(); n2_it != n1_it->end(); ++n2_it, ++n2) {
-        int64 n3 = 0;
-        for (auto n3_it = n2_it->begin(); n3_it != n2_it->end();
-             ++n3_it, ++n3) {
-          (*this)(n1, n2, n3) = *n3_it;
+      : n1_(values.size()),
+        n2_(values.begin()->size()),
+        n3_(values.begin()->begin()->size()) {
+    values_.reserve(n1_ * n2_ * n3_);
+
+    for (auto n1_it = values.begin(); n1_it != values.end(); ++n1_it) {
+      for (auto n2_it = n1_it->begin(); n2_it != n1_it->end(); ++n2_it) {
+        for (auto n3_it = n2_it->begin(); n3_it != n2_it->end(); ++n3_it) {
+          values_.emplace_back(*n3_it);
         }
       }
     }
