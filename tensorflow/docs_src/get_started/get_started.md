@@ -2,7 +2,7 @@
 # Getting Started With TensorFlow
 
 This guide gets you started programming in TensorFlow. Before using this guide,
-@{$install$install TensorFlow}. To get the most out of
+see [Install TensorFlow](../install/index.md). To get the most out of
 this guide, you should know the following:
 
 *   How to program in Python.
@@ -443,5 +443,5 @@ to our manual model training loop from the lower level API.
 
 Now you have a working knowledge of the basics of TensorFlow. We have several
 more tutorials that you can look at to learn more. If you are a beginner in
-machine learning see @{$beginners$MNIST for beginners},
-otherwise see @{$pros$Deep MNIST for experts}.
+machine learning see [MNIST for beginners](mnist/beginners.md),
+otherwise see [Deep MNIST for experts](mnist/pros.md).
