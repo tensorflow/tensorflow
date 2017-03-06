@@ -367,192 +367,62 @@ template class Select<bool>;
 
 // Simple reductions
 
-template<typename T>
-class ReductionMax : public Vertex {
-public:
-  Input<Vector<T>> a;
-  Output<Vector<T>> out;
+#define REDUCTION_ELEMENTWISE(NAME, INIT, EXP) \
+template<typename T> \
+class NAME : public Vertex { \
+public: \
+  Input<Vector<T>> a; \
+  Output<Vector<T>> out; \
+\
+  bool compute() { \
+    T v = (INIT); \
+\
+    for (unsigned i = 0; i != a.size(); ++i) { \
+      v = (EXP); \
+    } \
+\
+    out[0] = v; \
+    return true; \
+  } \
+\
+  int getCycleEstimate() const { return 1; } \
+}; \
+\
+template class NAME<float>; \
+template class NAME<half>; \
+template class NAME<int>;
 
-  bool compute() {
-    T max = std::numeric_limits<T>::lowest();
+REDUCTION_ELEMENTWISE(ReductionMax, std::numeric_limits<T>::lowest(), std::max(a[i], v))
+REDUCTION_ELEMENTWISE(ReductionMin, std::numeric_limits<T>::max(),    std::min(a[i], v))
+REDUCTION_ELEMENTWISE(ReductionAdd, 0.0, v + a[i])
+REDUCTION_ELEMENTWISE(ReductionSub, 0.0, v - a[i])
+REDUCTION_ELEMENTWISE(ReductionMul, 1.0, v * a[i])
+REDUCTION_ELEMENTWISE(ReductionDiv, 1.0, v / a[i])
 
-    for (unsigned i = 0; i != a.size(); ++i) {
-      max = std::max(a[i], max);
-    }
+#define LOGICAL_REDUCTION_ELEMENTWISE(NAME, INIT, EXP) \
+template<typename T> \
+class NAME : public Vertex { \
+public: \
+  Input<Vector<T>> a; \
+  Output<Vector<T>> out; \
+\
+  bool compute() { \
+    T v = (INIT); \
+\
+    for (unsigned i = 0; i != a.size(); ++i) { \
+      v = (EXP); \
+    } \
+\
+    out[0] = v; \
+    return true; \
+  } \
+\
+  int getCycleEstimate() const { return 1; } \
+}; \
+\
+template class NAME<bool>;
 
-    out[0] = max;
-    return true;
-  }
+REDUCTION_ELEMENTWISE(ReductionAnd, true,  v && a[i])
+REDUCTION_ELEMENTWISE(ReductionOr,  false, v || a[i])
 
-  int getCycleEstimate() const { return 1; }
-};
-
-template class ReductionMax<float>;
-template class ReductionMax<half>;
-template class ReductionMax<int>;
-
-template<typename T>
-class ReductionMin : public Vertex {
-public:
-  Input<Vector<T>> a;
-  Output<Vector<T>> out;
-
-  bool compute() {
-    T min = std::numeric_limits<T>::max();
-
-    for (unsigned i = 0; i != a.size(); ++i) {
-      min = std::min(a[i], min);
-    }
-
-    out[0] = min;
-    return true;
-  }
-
-  int getCycleEstimate() const { return 1; }
-};
-
-template class ReductionMin<float>;
-template class ReductionMin<half>;
-template class ReductionMin<int>;
-
-template<typename T>
-class ReductionAdd : public Vertex {
-public:
-  Input<Vector<T>> a;
-  Output<Vector<T>> out;
-
-  bool compute() {
-    T sum = 0.0;
-
-    for (unsigned i = 0; i != a.size(); ++i) {
-      sum += a[i];
-    }
-
-    out[0] = sum;
-    return true;
-  }
-
-  int getCycleEstimate() const { return 1; }
-};
-
-template class ReductionAdd<float>;
-template class ReductionAdd<half>;
-template class ReductionAdd<int>;
-
-template<typename T>
-class ReductionSub : public Vertex {
-public:
-  Input<Vector<T>> a;
-  Output<Vector<T>> out;
-
-  bool compute() {
-    T diff = 0.0;
-
-    for (unsigned i = 0; i != a.size(); ++i) {
-      diff -= a[i];
-    }
-
-    out[0] = diff;
-    return true;
-  }
-
-  int getCycleEstimate() const { return 1; }
-};
-
-template class ReductionSub<float>;
-template class ReductionSub<half>;
-template class ReductionSub<int>;
-
-
-template<typename T>
-class ReductionMul : public Vertex {
-public:
-  Input<Vector<T>> a;
-  Output<Vector<T>> out;
-
-  bool compute() {
-    T product = 1.0;
-
-    for (unsigned i = 0; i != a.size(); ++i) {
-      product *= a[i];
-    }
-
-    out[0] = product;
-    return true;
-  }
-
-  int getCycleEstimate() const { return 1; }
-};
-
-template class ReductionMul<float>;
-template class ReductionMul<half>;
-template class ReductionMul<int>;
-
-template<typename T>
-class ReductionDiv : public Vertex {
-public:
-  Input<Vector<T>> a;
-  Output<Vector<T>> out;
-
-  bool compute() {
-    T quot = 1.0;
-
-    for (unsigned i = 0; i != a.size(); ++i) {
-      quot /= a[i];
-    }
-
-    out[0] = quot;
-    return true;
-  }
-
-  int getCycleEstimate() const { return 1; }
-};
-
-template class ReductionDiv<float>;
-template class ReductionDiv<half>;
-template class ReductionDiv<int>;
-
-template<typename T>
-class ReductionAnd : public Vertex {
-public:
-  Input<Vector<T>> a;
-  Output<Vector<T>> out;
-
-  bool compute() {
-    T res = true;
-
-    for (unsigned i = 0; i != a.size(); ++i) {
-      res = res && a[i];
-    }
-
-    out[0] = res;
-    return true;
-  }
-
-  int getCycleEstimate() const { return 1; }
-};
-
-template class ReductionAnd<bool>;
-
-template<typename T>
-class ReductionOr : public Vertex {
-public:
-  Input<Vector<T>> a;
-  Output<Vector<T>> out;
-
-  bool compute() {
-    T res = false;
-
-    for (unsigned i = 0; i != a.size(); ++i) {
-      res = res || a[i];
-    }
-
-    out[0] = res;
-    return true;
-  }
-
-  int getCycleEstimate() const { return 1; }
-};
-
-template class ReductionOr<bool>;
 
