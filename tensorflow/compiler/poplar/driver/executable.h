@@ -46,35 +46,28 @@ class PoplarExecutable : public Executable {
                    const std::vector<char*>& outputs);
   ~PoplarExecutable() override;
 
+
   StatusOr<perftools::gputools::DeviceMemoryBase> ExecuteOnStream(
-      const ExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
+          const ServiceExecutableRunOptions* run_options,
+          tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
           arguments,
-      HloExecutionProfile* hlo_execution_profile) override;
+          HloExecutionProfile* hlo_execution_profile) override;
 
   StatusOr<std::unique_ptr<ShapedBuffer>> ExecuteOnStream(
-      const ExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-      HloExecutionProfile* hlo_execution_profile) override;
+          const ServiceExecutableRunOptions* run_options,
+          tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
+          HloExecutionProfile* hlo_execution_profile) override;
 
   Status ExecuteOnStream(
-      const ExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-      ShapedBuffer* result_buffer,
-      HloExecutionProfile* hlo_execution_profile) override;
+          const ServiceExecutableRunOptions* run_options,
+          tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
+          ShapedBuffer* result_buffer,
+          HloExecutionProfile* hlo_execution_profile) override;
 
   StatusOr<perftools::gputools::DeviceMemoryBase> ExecuteAsyncOnStream(
-      const ExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
+          const ServiceExecutableRunOptions* run_options,
+          tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
           arguments) override;
-
-  // TODO - are these necessary?
-  const string& ir_module_string() const {
-    static const std::string none("");
-    return none;
-  }
-
-  void set_ir_module_string(const string& ir_module_string) {}
 
  private:
 

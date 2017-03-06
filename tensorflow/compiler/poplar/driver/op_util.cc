@@ -41,6 +41,7 @@ LookupPoplarVertexName(HloOpcode opcode) {
     POPLAR_OPCODE(kGt, "GreaterThan");
     POPLAR_OPCODE(kIndex, "");
     UNUSED_OPCODE(kInfeed);
+    POPLAR_OPCODE(kIsFinite, "");
     POPLAR_OPCODE(kLe, "LessEqual");
     POPLAR_OPCODE(kLog, "Log");
     POPLAR_OPCODE(kLogicalAnd, "LogicalAnd");

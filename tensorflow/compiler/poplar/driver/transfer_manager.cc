@@ -159,6 +159,19 @@ PoplarTransferManager::TransferLiteralToInfeed(se::StreamExecutor *executor,
   return Status::OK();
 }
 
+Status
+PoplarTransferManager::TransferLiteralFromOutfeed(
+        perftools::gputools::StreamExecutor* executor,
+        const Shape& literal_shape,
+        Literal* literal) {
+  const Shape &shape = literal->shape();
+  VLOG(1) << "transferring literal shape from outfeed: "
+          << ShapeUtil::HumanString(shape);
+
+  return Status::OK();
+}
+
+
 Status PoplarTransferManager::ResetDevices(
         tensorflow::gtl::ArraySlice<perftools::gputools::StreamExecutor*>
         executors) {
