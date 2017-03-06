@@ -46,24 +46,33 @@ public:
 
   StatusOr<std::vector<se::DeviceMemoryBase>>
   ShallowCopyTupleFromDevice(
-          se::StreamExecutor* executor, const se::DeviceMemoryBase& source,
+          se::StreamExecutor* executor,
+          const se::DeviceMemoryBase& source,
           const Shape& shape) override;
 
   Status TransferLiteralFromDevice(
-          se::StreamExecutor* executor, const se::DeviceMemoryBase& source,
-          const Shape& device_shape, const Shape& literal_shape, Literal* literal) override;
+          se::StreamExecutor* executor,
+          const se::DeviceMemoryBase& source,
+          const Shape& device_shape,
+          const Shape& literal_shape,
+          Literal* literal) override;
 
   Status TransferLiteralToDevice(
-          se::StreamExecutor* executor, const Literal& literal,
+          se::StreamExecutor* executor,
+          const Literal& literal,
           se::DeviceMemoryBase* destination) override;
 
   Status
   TransferLiteralToInfeed(se::StreamExecutor *executor,
-                                                 const Literal &literal) override;
+                          const Literal &literal) override;
+
+  Status TransferLiteralFromOutfeed(
+          se::StreamExecutor* executor,
+          const Shape& literal_shape,
+          Literal* literal) override;
 
   Status ResetDevices(
-          tensorflow::gtl::ArraySlice<perftools::gputools::StreamExecutor*>
-          executors) override;
+          tensorflow::gtl::ArraySlice<se::StreamExecutor*> executors) override;
 
   int64 GetByteSizeRequirement(const Shape& shape) override;
 

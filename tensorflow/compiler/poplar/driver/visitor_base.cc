@@ -446,6 +446,22 @@ Status PoplarBaseVisitor::HandleReduceWindow(
 
 Status PoplarBaseVisitor::HandleSelectAndScatter(HloInstruction* inst) {
   LOG(INFO) << inst->ToString();
+  bool simple_selection;
+  TF_ASSIGN_OR_RETURN(simple_selection,
+                      IsComputationSimpleSelection(inst->scatter()));
+  bool simple_reduction;
+  TF_ASSIGN_OR_RETURN(simple_reduction,
+                      IsComputationReducableArtithmetic(inst->scatter()));
+  if (simple_selection && simple_reduction) {
+    poplar::program::Program prog;
+    TF_ASSIGN_OR_RETURN(prog,
+                        CreateSimpleSelectAndScatter(*graph_,
+                                                     inst,
+                                                     GetOutputShape(inst),
+                                                     tensor_map));
+    sequence.add(prog);
+    return Status::OK();
+  }
   return port::Status(port::error::UNIMPLEMENTED,
                       port::StrCat(inst->name(),
                                    " not implemented"));

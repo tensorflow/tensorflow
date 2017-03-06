@@ -59,9 +59,9 @@ PoplarExecutable::~PoplarExecutable() {
   }
 }
 
-StatusOr<perftools::gputools::DeviceMemoryBase>
+StatusOr<se::DeviceMemoryBase>
 PoplarExecutable::ExecuteOnStream(
-    const ExecutableRunOptions* run_options,
+    const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> arguments,
     HloExecutionProfile* hlo_execution_profile) {
   se::Stream* stream = run_options->stream();
@@ -95,7 +95,7 @@ PoplarExecutable::ExecuteOnStream(
 }
 
 StatusOr<std::unique_ptr<ShapedBuffer>> PoplarExecutable::ExecuteOnStream(
-    const ExecutableRunOptions* run_options,
+    const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
     HloExecutionProfile* hlo_execution_profile) {
   return tensorflow::errors::Unimplemented(
@@ -103,16 +103,17 @@ StatusOr<std::unique_ptr<ShapedBuffer>> PoplarExecutable::ExecuteOnStream(
 }
 
 Status PoplarExecutable::ExecuteOnStream(
-    const ExecutableRunOptions* run_options,
+    const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-    ShapedBuffer* result_buffer, HloExecutionProfile* hlo_execution_profile) {
+    ShapedBuffer* result_buffer,
+    HloExecutionProfile* hlo_execution_profile) {
   return tensorflow::errors::Unimplemented(
           "ExecuteOnStream is not yet supported on Poplar.");
 }
 
-StatusOr<perftools::gputools::DeviceMemoryBase>
+StatusOr<se::DeviceMemoryBase>
 PoplarExecutable::ExecuteAsyncOnStream(
-    const ExecutableRunOptions* run_options,
+    const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> arguments) {
   return tensorflow::errors::Unimplemented(
           "ExecuteAsyncOnStream is not yet supported on Poplar.");

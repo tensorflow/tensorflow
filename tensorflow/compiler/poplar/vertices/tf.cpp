@@ -422,7 +422,7 @@ public: \
 \
 template class NAME<bool>;
 
-REDUCTION_ELEMENTWISE(ReductionAnd, true,  v && a[i])
-REDUCTION_ELEMENTWISE(ReductionOr,  false, v || a[i])
+LOGICAL_REDUCTION_ELEMENTWISE(ReductionAnd, true,  v && a[i])
+LOGICAL_REDUCTION_ELEMENTWISE(ReductionOr,  false, v || a[i])
 
 
