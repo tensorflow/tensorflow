@@ -124,11 +124,12 @@ class Conv2DFastBackpropFilterOp : public OpKernel {
     OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
                                 filter_sizes.vec<int32>(), &filter_shape));
 
-    Conv2DBackpropDimensions dims;
-    OP_REQUIRES_OK(context, Conv2DBackpropComputeDimensions(
-                                "Conv2DFastBackpropFilter", input.shape(),
-                                filter_shape, out_backprop.shape(), strides_,
-                                padding_, data_format_, &dims));
+    ConvBackpropDimensions dims;
+    OP_REQUIRES_OK(
+        context,
+        ConvBackpropComputeDimensions(
+            type_string(), /*num_spatial_dims=*/2, input.shape(), filter_shape,
+            out_backprop.shape(), strides_, padding_, data_format_, &dims));
 
     Tensor* filter_backprop = nullptr;
     OP_REQUIRES_OK(context,
@@ -137,8 +138,8 @@ class Conv2DFastBackpropFilterOp : public OpKernel {
     functor::SpatialConvolutionBackwardKernel<Device, T>()(
         context->eigen_device<Device>(), filter_backprop->tensor<T, 4>(),
         input.tensor<T, 4>(), out_backprop.tensor<T, 4>(),
-        dims.rows.filter_size, dims.cols.filter_size, dims.rows.stride,
-        dims.cols.stride);
+        dims.spatial_dims[0].filter_size, dims.spatial_dims[1].filter_size,
+        dims.spatial_dims[0].stride, dims.spatial_dims[1].stride);
   }
 
  private:
@@ -187,11 +188,12 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
     OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
                                 filter_sizes.vec<int32>(), &filter_shape));
 
-    Conv2DBackpropDimensions dims;
-    OP_REQUIRES_OK(context, Conv2DBackpropComputeDimensions(
-                                "Conv2DCustomBackpropFilter", input.shape(),
-                                filter_shape, out_backprop.shape(), strides_,
-                                padding_, data_format_, &dims));
+    ConvBackpropDimensions dims;
+    OP_REQUIRES_OK(context,
+                   ConvBackpropComputeDimensions(
+                       "Conv2DCustomBackpropFilter", /*num_spatial_dims=*/2,
+                       input.shape(), filter_shape, out_backprop.shape(),
+                       strides_, padding_, data_format_, &dims));
 
     Tensor* filter_backprop;
     OP_REQUIRES_OK(context,
@@ -199,20 +201,26 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
 
     int64 pad_top, pad_bottom;
     int64 pad_left, pad_right;
-    OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(
-                                dims.rows.input_size, dims.rows.filter_size,
-                                dims.rows.stride, padding_,
-                                &dims.rows.output_size, &pad_top, &pad_bottom));
-    OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(
-                                dims.cols.input_size, dims.cols.filter_size,
-                                dims.cols.stride, padding_,
-                                &dims.cols.output_size, &pad_left, &pad_right));
+    OP_REQUIRES_OK(
+        context,
+        GetWindowedOutputSizeVerbose(
+            dims.spatial_dims[0].input_size, dims.spatial_dims[0].filter_size,
+            dims.spatial_dims[0].stride, padding_,
+            &dims.spatial_dims[0].output_size, &pad_top, &pad_bottom));
+    OP_REQUIRES_OK(
+        context,
+        GetWindowedOutputSizeVerbose(
+            dims.spatial_dims[1].input_size, dims.spatial_dims[1].filter_size,
+            dims.spatial_dims[1].stride, padding_,
+            &dims.spatial_dims[1].output_size, &pad_left, &pad_right));
 
     // The total dimension size of each kernel.
-    const int filter_total_size =
-        dims.rows.filter_size * dims.cols.filter_size * dims.in_depth;
+    const int filter_total_size = dims.spatial_dims[0].filter_size *
+                                  dims.spatial_dims[1].filter_size *
+                                  dims.in_depth;
     // The output image size is the spatial size of the output.
-    const int output_image_size = dims.rows.output_size * dims.cols.output_size;
+    const int output_image_size =
+        dims.spatial_dims[0].output_size * dims.spatial_dims[1].output_size;
 
     // Shard 'batch' images into 'shard_size' groups of images to be fed
     // into the parallel matmul. Calculate 'shard_size' by dividing the L3 cache
@@ -246,11 +254,11 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
                        &col_buffer));
 
     // The input offset corresponding to a single input image.
-    const int input_offset =
-        dims.rows.input_size * dims.cols.input_size * dims.in_depth;
+    const int input_offset = dims.spatial_dims[0].input_size *
+                             dims.spatial_dims[1].input_size * dims.in_depth;
     // The output offset corresponding to a single output image.
-    const int output_offset =
-        dims.rows.output_size * dims.cols.output_size * dims.out_depth;
+    const int output_offset = dims.spatial_dims[0].output_size *
+                              dims.spatial_dims[1].output_size * dims.out_depth;
 
     const T* input_data = input.template flat<T>().data();
     T* col_buffer_data = col_buffer.template flat<T>().data();
@@ -288,11 +296,12 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
 
           // When we compute the gradient with respect to the filters, we need
           // to do im2col to allow gemm-type computation.
-          Im2col<T>(input_data_shard, dims.in_depth, dims.rows.input_size,
-                    dims.cols.input_size, dims.rows.filter_size,
-                    dims.cols.filter_size, pad_top, pad_left, pad_bottom,
-                    pad_right, dims.rows.stride, dims.cols.stride,
-                    col_data_shard);
+          Im2col<T>(
+              input_data_shard, dims.in_depth, dims.spatial_dims[0].input_size,
+              dims.spatial_dims[1].input_size, dims.spatial_dims[0].filter_size,
+              dims.spatial_dims[1].filter_size, pad_top, pad_left, pad_bottom,
+              pad_right, dims.spatial_dims[0].stride,
+              dims.spatial_dims[1].stride, col_data_shard);
         }
       };
       Shard(worker_threads.num_threads, worker_threads.workers, shard_limit,
@@ -389,11 +398,12 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
     OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
                                 filter_sizes.vec<int32>(), &filter_shape));
 
-    Conv2DBackpropDimensions dims;
-    OP_REQUIRES_OK(context, Conv2DBackpropComputeDimensions(
-                                "Conv2DSlowBackpropFilter", input.shape(),
-                                filter_shape, out_backprop.shape(), strides_,
-                                padding_, data_format_, &dims));
+    ConvBackpropDimensions dims;
+    OP_REQUIRES_OK(context,
+                   ConvBackpropComputeDimensions(
+                       "Conv2DSlowBackpropFilter", /*num_spatial_dims=*/2,
+                       input.shape(), filter_shape, out_backprop.shape(),
+                       strides_, padding_, data_format_, &dims));
 
     Tensor* filter_backprop = nullptr;
     OP_REQUIRES_OK(context,
@@ -402,15 +412,17 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
     const int padding_rows =
         (padding_ == VALID)
             ? 0
-            : std::max<int>(0, (dims.rows.output_size - 1) * dims.rows.stride +
-                                   dims.rows.filter_size -
-                                   dims.rows.input_size);
+            : std::max<int>(0, (dims.spatial_dims[0].output_size - 1) *
+                                       dims.spatial_dims[0].stride +
+                                   dims.spatial_dims[0].filter_size -
+                                   dims.spatial_dims[0].input_size);
     const int padding_cols =
         (padding_ == VALID)
             ? 0
-            : std::max<int>(0, (dims.cols.output_size - 1) * dims.cols.stride +
-                                   dims.cols.filter_size -
-                                   dims.cols.input_size);
+            : std::max<int>(0, (dims.spatial_dims[1].output_size - 1) *
+                                       dims.spatial_dims[1].stride +
+                                   dims.spatial_dims[1].filter_size -
+                                   dims.spatial_dims[1].input_size);
 
     // TODO(zhengxq): cuDNN only supports equal padding on both sides, so only
     // calling it when that is true. Remove this check when (if?) cuDNN starts
@@ -428,12 +440,13 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
       return;
     }
 
-    if (dims.rows.filter_size == 1 && dims.cols.filter_size == 1 &&
-        dims.rows.stride == 1 && dims.cols.stride == 1 &&
+    if (dims.spatial_dims[0].filter_size == 1 &&
+        dims.spatial_dims[1].filter_size == 1 &&
+        dims.spatial_dims[0].stride == 1 && dims.spatial_dims[1].stride == 1 &&
         data_format_ == FORMAT_NHWC) {
       const uint64 m = dims.in_depth;
-      const uint64 k =
-          dims.batch_size * dims.rows.input_size * dims.cols.input_size;
+      const uint64 k = dims.batch_size * dims.spatial_dims[0].input_size *
+                       dims.spatial_dims[1].input_size;
       const uint64 n = dims.out_depth;
 
       // The shape of output backprop is
@@ -465,13 +478,15 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
                                             ", n=", n, ", k=", k));
       }
       return;
-    } else if (dims.rows.filter_size == dims.rows.input_size &&
-               dims.cols.filter_size == dims.cols.input_size &&
+    } else if (dims.spatial_dims[0].filter_size ==
+                   dims.spatial_dims[0].input_size &&
+               dims.spatial_dims[1].filter_size ==
+                   dims.spatial_dims[1].input_size &&
                padding_ == VALID && data_format_ == FORMAT_NHWC) {
       // The input data and filter have the same height/width, so call cublas
       // directly.
-      const uint64 m =
-          dims.rows.input_size * dims.cols.input_size * dims.in_depth;
+      const uint64 m = dims.spatial_dims[0].input_size *
+                       dims.spatial_dims[1].input_size * dims.in_depth;
       const uint64 k = dims.batch_size;
       const uint64 n = dims.out_depth;
 
@@ -505,8 +520,9 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
           context->allocate_temp(
               DataTypeToEnum<T>::value,
               ShapeFromFormat(data_format_, dims.batch_size,
-                              dims.rows.input_size + rows_odd,
-                              dims.cols.input_size + cols_odd, dims.in_depth),
+                              dims.spatial_dims[0].input_size + rows_odd,
+                              dims.spatial_dims[1].input_size + cols_odd,
+                              dims.in_depth),
               &compatible_input));
 
       functor::PadInput<GPUDevice, T, int, 4>()(
@@ -528,18 +544,18 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
         .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
     perftools::gputools::dnn::BatchDescriptor output_desc;
     output_desc.set_count(dims.batch_size)
-        .set_height(dims.rows.output_size)
-        .set_width(dims.cols.output_size)
+        .set_height(dims.spatial_dims[0].output_size)
+        .set_width(dims.spatial_dims[1].output_size)
         .set_feature_map_count(dims.out_depth)
         .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
     perftools::gputools::dnn::FilterDescriptor filter_desc;
-    filter_desc.set_input_filter_height(dims.rows.filter_size)
-        .set_input_filter_width(dims.cols.filter_size)
+    filter_desc.set_input_filter_height(dims.spatial_dims[0].filter_size)
+        .set_input_filter_width(dims.spatial_dims[1].filter_size)
         .set_input_feature_map_count(dims.in_depth)
         .set_output_feature_map_count(dims.out_depth);
     perftools::gputools::dnn::ConvolutionDescriptor conv_desc;
-    conv_desc.set_vertical_filter_stride(dims.rows.stride)
-        .set_horizontal_filter_stride(dims.cols.stride)
+    conv_desc.set_vertical_filter_stride(dims.spatial_dims[0].stride)
+        .set_horizontal_filter_stride(dims.spatial_dims[1].stride)
         .set_zero_padding_height(padding_rows / 2)
         .set_zero_padding_width(padding_cols / 2);
 
@@ -561,15 +577,15 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
     OP_REQUIRES_OK(context, context->allocate_temp(
                                 DataTypeToEnum<T>::value,
                                 TensorShape({dims.out_depth, dims.in_depth,
-                                             dims.rows.filter_size,
-                                             dims.cols.filter_size}),
+                                             dims.spatial_dims[0].filter_size,
+                                             dims.spatial_dims[1].filter_size}),
                                 &pre_transformed_filter_backprop));
 
     Tensor transformed_out_backprop;
     if (data_format_ == FORMAT_NHWC) {
-      TensorShape nchw_shape =
-          ShapeFromFormat(FORMAT_NCHW, dims.batch_size, dims.rows.output_size,
-                          dims.cols.output_size, dims.out_depth);
+      TensorShape nchw_shape = ShapeFromFormat(
+          FORMAT_NCHW, dims.batch_size, dims.spatial_dims[0].output_size,
+          dims.spatial_dims[1].output_size, dims.out_depth);
       if (dims.out_depth > 1) {
         OP_REQUIRES_OK(context, context->allocate_temp(
                                     DataTypeToEnum<T>::value, nchw_shape,
@@ -623,18 +639,18 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
         );
     int device_id = stream->parent()->device_ordinal();
     ConvParameters conv_parameters = {
-        dims.batch_size,        // batch
-        dims.in_depth,          // in_depths
-        input_desc.height(),    // in_rows
-        input_desc.width(),     // in_cols
-        dims.out_depth,         // out_depths
-        dims.rows.filter_size,  // filter_rows
-        dims.cols.filter_size,  // filter_cols
-        dims.rows.stride,       // stride_rows
-        dims.cols.stride,       // stride_cols
-        padding_rows,           // padding_rows
-        padding_cols,           // padding_cols
-        device_id,              // device_id
+        dims.batch_size,                   // batch
+        dims.in_depth,                     // in_depths
+        input_desc.height(),               // in_rows
+        input_desc.width(),                // in_cols
+        dims.out_depth,                    // out_depths
+        dims.spatial_dims[0].filter_size,  // filter_rows
+        dims.spatial_dims[1].filter_size,  // filter_cols
+        dims.spatial_dims[0].stride,       // stride_rows
+        dims.spatial_dims[1].stride,       // stride_cols
+        padding_rows,                      // padding_rows
+        padding_cols,                      // padding_cols
+        device_id,                         // device_id
     };
     AlgorithmConfig algorithm_config;
     if (cudnn_use_autotune_ &&
