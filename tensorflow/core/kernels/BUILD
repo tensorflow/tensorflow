@@ -39,6 +39,10 @@ load(
     "tf_proto_library",
     "tf_kernel_tests_linkstatic",
 )
+load(
+    "//third_party/mkl:build_defs.bzl",
+    "if_mkl",
+)
 
 config_setting(
     # Add "--define tensorflow_xsmm=1" to your build command to use libxsmm for
@@ -257,6 +261,21 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "variable_ops_test",
+    size = "small",
+    srcs = ["variable_ops_test.cc"],
+    deps = [
+        "//tensorflow/core:all_kernels",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:direct_session_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 tf_kernel_library(
     name = "stage_op",
     srcs = ["stage_op.cc"],
@@ -294,25 +313,6 @@ cc_library(
         ":queue_base",
         ":queue_op",
         ":typed_queue",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-    ],
-)
-
-tf_proto_library(
-    name = "reader_base_proto",
-    srcs = ["reader_base.proto"],
-    cc_api_version = 2,
-    go_api_version = 2,
-    java_api_version = 2,
-)
-
-cc_library(
-    name = "reader_base",
-    srcs = ["reader_base.cc"],
-    hdrs = ["reader_base.h"],
-    deps = [
-        ":reader_base_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
     ],
@@ -813,7 +813,12 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-    ],
+    ] + select({
+        ":xsmm": [
+            "@libxsmm_archive//:xsmm_avx",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 tf_cc_test(
@@ -1736,12 +1741,12 @@ cc_library(
 
 IO_DEPS = [
     ":ops_util",
-    ":reader_base",
     "//tensorflow/core:framework",
     "//tensorflow/core:io_ops_op_lib",
     "//tensorflow/core:lib",
     "//tensorflow/core:lib_internal",
     "//tensorflow/core:protos_all_cc",
+    "//tensorflow/core:reader_base",
     "//tensorflow/core/util/tensor_bundle",
 ]
 
@@ -3794,7 +3799,6 @@ filegroup(
             "decode_jpeg_op.*",
             "decode_gif_op.*",
             "identity_reader_op.*",
-            "reader_base.*",
             "remote_fused_graph_execute_op.*",
             "fixed_length_record_reader_op.*",
             "whole_file_read_ops.*",
@@ -4243,7 +4247,6 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:remote_fused_graph_ops_op_lib",
-        "//tensorflow/core/kernels/hexagon:graph_transferer",
     ],
 )
 
@@ -4251,10 +4254,52 @@ cc_library(
     name = "remote_fused_graph_execute_op",
     srcs = ["remote_fused_graph_execute_op.cc"],
     deps = [
+        ":remote_fused_graph_execute_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/kernels/hexagon:graph_transferer",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+cc_library(
+    name = "remote_fused_graph_execute_utils",
+    srcs = ["remote_fused_graph_execute_utils.cc"],
+    hdrs = [
+        "i_remote_fused_graph_executor.h",
+        "remote_fused_graph_execute_utils.h",
+    ],
+    deps = [
+        "//tensorflow/core",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+tf_cc_test(
+    name = "remote_fused_graph_execute_utils_test",
+    size = "small",
+    srcs = [
+        "remote_fused_graph_execute_utils_test.cc",
+    ],
+    deps = [
+        ":remote_fused_graph_execute_utils",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:direct_session",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:ops",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:cwise_op",
     ],
 )
 
@@ -4277,6 +4322,17 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
     ],
+)
+
+if_mkl(
+    tf_kernel_library(
+        name = "mkl_ops",
+        prefix = "mkl_matmul",
+        deps = [
+            ":math",
+            "//third_party/mkl:intel_binary_blob",
+        ],
+    ),
 )
 
 # -----------------------------------------------------------------------------

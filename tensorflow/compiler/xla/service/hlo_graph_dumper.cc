@@ -135,7 +135,9 @@ string InstructionSequenceGraph(
   std::vector<HloInstruction*> param_instructions;
   for (auto& instruction : instructions) {
     if (instruction->opcode() == HloOpcode::kParameter) {
-      int64 param_number = instruction->parameter_number();
+      std::vector<HloInstruction*>::size_type param_number =
+          instruction->parameter_number();
+
       if (param_instructions.size() < param_number + 1) {
         param_instructions.resize(param_number + 1, nullptr);
       }
@@ -202,6 +204,7 @@ string InstructionSequenceGraph(
       case HloOpcode::kGe:
       case HloOpcode::kGt:
       case HloOpcode::kIndex:
+      case HloOpcode::kIsFinite:
       case HloOpcode::kLe:
       case HloOpcode::kLog:
       case HloOpcode::kLogicalAnd:
@@ -328,7 +331,7 @@ string InstructionSequenceGraph(
       auto hlo_cycles_executed =
           hlo_execution_profile->GetProfileResult(*instruction);
       auto total_cycles_executed =
-          hlo_execution_profile->total_cycles_executed();
+          hlo_execution_profile->total_cycles_executed(*instruction->parent());
       if (hlo_cycles_executed > 0 && total_cycles_executed > 0) {
         Appendf(&label, "\\n%% of cycles executed=%.2f",
                 (static_cast<double>(hlo_cycles_executed) /
@@ -404,7 +407,7 @@ string ComputationToDotGraph(const HloComputation& computation,
                              const HloExecutionProfile* hlo_execution_profile) {
   string graph_label = StrCat(label, "\\n", computation.name());
   if (hlo_execution_profile != nullptr) {
-    auto cycles = hlo_execution_profile->total_cycles_executed();
+    auto cycles = hlo_execution_profile->total_cycles_executed(computation);
     Appendf(&graph_label, "\\ntotal cycles = %lld (%s)", cycles,
             tensorflow::strings::HumanReadableNum(cycles).c_str());
   }

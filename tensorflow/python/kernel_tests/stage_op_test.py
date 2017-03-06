@@ -30,8 +30,8 @@ class StageTest(test.TestCase):
     with self.test_session(use_gpu=True) as sess:
       with ops.device('/cpu:0'):
         x = array_ops.placeholder(dtypes.float32)
-        v = 2. * (array_ops.zeros([1024, 1024]) + x)
-      with ops.device(test.gpu_device_name()):
+        v = 2. * (array_ops.zeros([128, 128]) + x)
+      with ops.device('/gpu:0'):
         stager = data_flow_ops.StagingArea([dtypes.float32])
         stage = stager.put([v])
         y = stager.get()
@@ -39,7 +39,7 @@ class StageTest(test.TestCase):
       sess.run(stage, feed_dict={x: -1})
       for i in range(10):
         _, yval = sess.run([stage, y], feed_dict={x: i})
-        self.assertAllClose(4 * (i - 1) * (i - 1) * 1024, yval, rtol=1e-4)
+        self.assertAllClose(4 * (i - 1) * (i - 1) * 128, yval, rtol=1e-4)
 
   def testMultiple(self):
     with self.test_session(use_gpu=True) as sess:
@@ -81,7 +81,7 @@ class StageTest(test.TestCase):
   def testColocation1(self):
     with ops.device('/cpu:0'):
       x = array_ops.placeholder(dtypes.float32)
-      v = 2. * (array_ops.zeros([1024, 1024]) + x)
+      v = 2. * (array_ops.zeros([128, 128]) + x)
     with ops.device('/gpu:0'):
       stager = data_flow_ops.StagingArea([dtypes.float32])
       y = stager.put([v])

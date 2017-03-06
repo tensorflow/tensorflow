@@ -1,6 +1,6 @@
 # TensorFlow for Java
 
-Java bindings for TensorFlow.
+Java bindings for TensorFlow. ([Javadoc](https://www.tensorflow.org/api_docs/java/reference/org/tensorflow/package-summary))
 
 > *WARNING*: The TensorFlow Java API is not currently covered by the TensorFlow
 > [API stability guarantees](https://www.tensorflow.org/programmers_guide/version_semantics).

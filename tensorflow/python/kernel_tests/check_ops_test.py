@@ -124,6 +124,55 @@ class AssertEqualTest(test.TestCase):
       out.eval()
 
 
+class AssertNoneEqualTest(test.TestCase):
+
+  def test_doesnt_raise_when_not_equal(self):
+    with self.test_session():
+      small = constant_op.constant([1, 2], name="small")
+      big = constant_op.constant([10, 20], name="small")
+      with ops.control_dependencies(
+          [check_ops.assert_none_equal(big, small)]):
+        out = array_ops.identity(small)
+      out.eval()
+
+  def test_raises_when_equal(self):
+    with self.test_session():
+      small = constant_op.constant([3, 1], name="small")
+      with ops.control_dependencies(
+          [check_ops.assert_none_equal(small, small)]):
+        out = array_ops.identity(small)
+      with self.assertRaisesOpError("x != y did not hold"):
+        out.eval()
+
+  def test_doesnt_raise_when_not_equal_and_broadcastable_shapes(self):
+    with self.test_session():
+      small = constant_op.constant([1, 2], name="small")
+      big = constant_op.constant([3], name="big")
+      with ops.control_dependencies(
+          [check_ops.assert_none_equal(small, big)]):
+        out = array_ops.identity(small)
+      out.eval()
+
+  def test_raises_when_not_equal_but_non_broadcastable_shapes(self):
+    with self.test_session():
+      small = constant_op.constant([1, 1, 1], name="small")
+      big = constant_op.constant([10, 10], name="big")
+      with self.assertRaisesRegexp(ValueError, "must be"):
+        with ops.control_dependencies(
+            [check_ops.assert_none_equal(small, big)]):
+          out = array_ops.identity(small)
+        out.eval()
+
+  def test_doesnt_raise_when_both_empty(self):
+    with self.test_session():
+      larry = constant_op.constant([])
+      curly = constant_op.constant([])
+      with ops.control_dependencies(
+          [check_ops.assert_none_equal(larry, curly)]):
+        out = array_ops.identity(larry)
+      out.eval()
+
+
 class AssertLessTest(test.TestCase):
 
   def test_raises_when_equal(self):

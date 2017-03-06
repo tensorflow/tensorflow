@@ -394,8 +394,9 @@ namespace register_file_system {
 template <typename Factory>
 struct Register {
   Register(Env* env, const string& scheme) {
-    env->RegisterFileSystem(scheme,
-                            []() -> FileSystem* { return new Factory; });
+    // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
+    env->RegisterFileSystem(scheme, []() -> FileSystem* { return new Factory; })
+        .IgnoreError();
   }
 };
 

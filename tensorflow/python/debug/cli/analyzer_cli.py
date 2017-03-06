@@ -27,6 +27,7 @@ import argparse
 import copy
 import re
 
+import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.debug.cli import cli_shared
@@ -34,7 +35,9 @@ from tensorflow.python.debug.cli import command_parser
 from tensorflow.python.debug.cli import debugger_cli_common
 from tensorflow.python.debug.cli import ui_factory
 from tensorflow.python.debug.lib import debug_data
+from tensorflow.python.debug.lib import source_utils
 
+RL = debugger_cli_common.RichLine
 
 # String constants for the depth-dependent hanging indent at the beginning
 # of each line.
@@ -89,7 +92,7 @@ def _add_main_menu(output,
     menu.append(
         debugger_cli_common.MenuItem(
             "node_info",
-            "node_info -a -d %s" % node_name,
+            "node_info -a -d -t %s" % node_name,
             enabled=enable_node_info))
     menu.append(
         debugger_cli_common.MenuItem(
@@ -303,7 +306,6 @@ class DebugAnalyzer(object):
         help="Numerical ranges to highlight tensor elements in. "
         "Examples: -r 0,1e-8, -r [-0.1,0.1], "
         "-r \"[[-inf, -0.1], [0.1, inf]]\"")
-
     ap.add_argument(
         "-a",
         "--all",
@@ -311,6 +313,37 @@ class DebugAnalyzer(object):
         action="store_true",
         help="Print the tensor in its entirety, i.e., do not use ellipses.")
     self._arg_parsers["print_tensor"] = ap
+
+    # Parser for print_source.
+    ap = argparse.ArgumentParser(
+        description="Print a Python source file with overlaid debug "
+        "information, including the nodes (ops) or Tensors created at the "
+        "source lines.",
+        usage=argparse.SUPPRESS)
+    ap.add_argument(
+        "source_file_path",
+        type=str,
+        help="Path to the source file.")
+    ap.add_argument(
+        "-t",
+        "--tensors",
+        dest="tensors",
+        action="store_true",
+        help="Label lines with dumped Tensors, instead of ops.")
+    ap.add_argument(
+        "-m",
+        "--max_elements_per_line",
+        type=int,
+        default=10,
+        help="Maximum number of elements (ops or Tensors) to show per source "
+             "line.")
+    ap.add_argument(
+        "-b",
+        "--line_begin",
+        type=int,
+        default=1,
+        help="Print source beginning at line number (1-based.)")
+    self._arg_parsers["print_source"] = ap
 
     # TODO(cais): Implement list_nodes.
 
@@ -709,15 +742,20 @@ class DebugAnalyzer(object):
       construction.
     """
 
-    lines = ["", "", "Traceback of node construction:"]
-    font_attr_segs = {len(lines) - 1: [(0, len(lines[-1]), "bold")]}
+    lines = [RL(""), RL(""), RL("Traceback of node construction:", "bold")]
 
     try:
       node_stack = self._debug_dump.node_traceback(node_name)
       for depth, (file_path, line, function_name, text) in enumerate(
           node_stack):
         lines.append("%d: %s" % (depth, file_path))
-        lines.append("  Line:     %d" % line)
+
+        attribute = debugger_cli_common.MenuItem(
+            "", "ps %s -b %d" % (file_path, line)) if text else None
+        line_number_line = RL("  ")
+        line_number_line += RL("Line:     %d" % line, attribute)
+        lines.append(line_number_line)
+
         lines.append("  Function: %s" % function_name)
         lines.append("  Text:     " + (("\"%s\"" % text) if text else "None"))
         lines.append("")
@@ -726,8 +764,7 @@ class DebugAnalyzer(object):
     except LookupError:
       lines.append("(Unavailable because no Python graph has been loaded)")
 
-    return debugger_cli_common.RichTextLines(lines,
-                                             font_attr_segs=font_attr_segs)
+    return debugger_cli_common.rich_text_lines_from_rich_line_list(lines)
 
   def list_inputs(self, args, screen_info=None):
     """Command handler for inputs.
@@ -940,6 +977,63 @@ class DebugAnalyzer(object):
     node_name = debug_data.get_node_name(parsed.node_name)
     _add_main_menu(output, node_name=node_name, enable_list_outputs=False)
 
+    return output
+
+  def print_source(self, args, screen_info=None):
+    """Print the content of a source file."""
+    del screen_info  # Unused.
+
+    parsed = self._arg_parsers["print_source"].parse_args(args)
+
+    source_annotation = source_utils.annotate_source(
+        self._debug_dump,
+        parsed.source_file_path,
+        do_dumped_tensors=parsed.tensors,
+        min_line=parsed.line_begin)
+
+    with open(parsed.source_file_path, "rU") as f:
+      source_text = f.read()
+
+    source_lines = source_text.split("\n")
+    num_lines = len(source_lines)
+    line_num_width = int(np.ceil(np.log10(num_lines))) + 3
+
+    labeled_source_lines = []
+    if parsed.line_begin > 1:
+      labeled_source_lines.append(
+          RL("(... Omitted %d source lines ...)" % (parsed.line_begin - 1),
+             "bold"))
+
+    for i, line in enumerate(source_lines[parsed.line_begin - 1:]):
+      annotated_line = RL("L%d" % (i + parsed.line_begin), "yellow")
+      annotated_line += " " * (line_num_width - len(annotated_line))
+      annotated_line += line
+      labeled_source_lines.append(annotated_line)
+
+      if i + parsed.line_begin in source_annotation:
+        sorted_elements = sorted(source_annotation[i + parsed.line_begin])
+        for k, element in enumerate(sorted_elements):
+          if k >= parsed.max_elements_per_line:
+            labeled_source_lines.append(
+                "    (... Omitted %d of %d %s ...)" % (
+                    len(sorted_elements) - parsed.max_elements_per_line,
+                    len(sorted_elements),
+                    "tensor(s)" if parsed.tensors else "op(s)"))
+            break
+
+          label = RL(" " * 4)
+          if self._debug_dump.debug_watch_keys(
+              debug_data.get_node_name(element)):
+            attribute = debugger_cli_common.MenuItem("", "pt %s" % element)
+          else:
+            attribute = "blue"
+
+          label += RL(element, attribute)
+          labeled_source_lines.append(label)
+
+    output = debugger_cli_common.rich_text_lines_from_rich_line_list(
+        labeled_source_lines)
+    _add_main_menu(output, node_name=None)
     return output
 
   def _list_inputs_or_outputs(self,
@@ -1292,6 +1386,11 @@ def create_analyzer_ui(debug_dump, tensor_filters=None, ui_type="curses"):
       analyzer.print_tensor,
       analyzer.get_help("print_tensor"),
       prefix_aliases=["pt"])
+  cli.register_command_handler(
+      "print_source",
+      analyzer.print_source,
+      analyzer.get_help("print_source"),
+      prefix_aliases=["ps"])
 
   dumped_tensor_names = []
   for datum in debug_dump.dumped_tensor_data:

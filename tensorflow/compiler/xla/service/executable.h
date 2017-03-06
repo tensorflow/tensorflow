@@ -19,12 +19,12 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
+#include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/session.pb.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/service/versioned_computation_handle.h"
@@ -59,7 +59,7 @@ class Executable {
   // Returns the device memory region that a successful execution would
   // populate.
   virtual StatusOr<perftools::gputools::DeviceMemoryBase> ExecuteOnStream(
-      const ExecutableRunOptions* run_options,
+      const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
           arguments,
       HloExecutionProfile* hlo_execution_profile) = 0;
@@ -67,14 +67,14 @@ class Executable {
   // Overload of ExecuteOnStream which returns and takes arguments as
   // ShapedBuffers. Used for LocalService execution.
   virtual StatusOr<std::unique_ptr<ShapedBuffer>> ExecuteOnStream(
-      const ExecutableRunOptions* run_options,
+      const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       HloExecutionProfile* hlo_execution_profile) = 0;
 
   // Overload of which writes the result into a pre-allocated buffer
   // (result_buffer).
   virtual Status ExecuteOnStream(
-      const ExecutableRunOptions* run_options,
+      const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       ShapedBuffer* result_buffer,
       HloExecutionProfile* hlo_execution_profile) = 0;
@@ -82,7 +82,7 @@ class Executable {
   // Same as ExecuteOnStream(), but this call is non-blocking and returns as
   // soon as all of the operations are enqueued for launch on the stream.
   virtual StatusOr<perftools::gputools::DeviceMemoryBase> ExecuteAsyncOnStream(
-      const ExecutableRunOptions* run_options,
+      const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
           arguments) = 0;
 
@@ -92,7 +92,8 @@ class Executable {
   // returned vector.
   virtual StatusOr<std::vector<perftools::gputools::DeviceMemoryBase>>
   ExecuteOnStreams(
-      tensorflow::gtl::ArraySlice<const ExecutableRunOptions> run_options,
+      tensorflow::gtl::ArraySlice<const ServiceExecutableRunOptions>
+          run_options,
       tensorflow::gtl::ArraySlice<
           tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>>
           arguments);

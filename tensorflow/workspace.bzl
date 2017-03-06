@@ -1,5 +1,6 @@
 # TensorFlow external dependencies that can be loaded in WORKSPACE files.
 
+load("@io_bazel_rules_closure//closure/private:java_import_external.bzl", "java_import_external")
 load("@io_bazel_rules_closure//closure:defs.bzl", "filegroup_external")
 load("@io_bazel_rules_closure//closure:defs.bzl", "webfiles_external")
 load("//third_party/gpus:cuda_configure.bzl", "cuda_configure")
@@ -73,22 +74,22 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   native.new_http_archive(
       name = "eigen_archive",
       urls = [
-          "http://bazel-mirror.storage.googleapis.com/bitbucket.org/eigen/eigen/get/290bfb42684a.tar.gz",
-          "https://bitbucket.org/eigen/eigen/get/290bfb42684a.tar.gz",
+          "http://bazel-mirror.storage.googleapis.com/bitbucket.org/eigen/eigen/get/ef6d89748176.tar.gz",
+          "https://bitbucket.org/eigen/eigen/get/ef6d89748176.tar.gz",
       ],
-      sha256 = "269c8bf20e8ac1aa8f5caf1ab2ca7be4909ec6ae085177a647aae138cd069b12",
-      strip_prefix = "eigen-eigen-290bfb42684a",
+      sha256 = "69ad6e0c2229f92c1ce1b697a6ecd6bd57357573ca0f0adc29161b3d80ddfdd8",
+      strip_prefix = "eigen-eigen-ef6d89748176",
       build_file = str(Label("//third_party:eigen.BUILD")),
   )
 
   native.new_http_archive(
       name = "libxsmm_archive",
       urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/hfp/libxsmm/archive/1.7.tar.gz",
-          "https://github.com/hfp/libxsmm/archive/1.7.tar.gz",
+          "http://bazel-mirror.storage.googleapis.com/github.com/hfp/libxsmm/archive/1.7.1.tar.gz",
+          "https://github.com/hfp/libxsmm/archive/1.7.1.tar.gz",
       ],
-      sha256 = "2eea65624a697e74b939511cd2a686b4c957e90c99be168fe134d96771e811ad",
-      strip_prefix = "libxsmm-1.7",
+      sha256 = "9d3f63ce3eed62f04e4036de6f2be2ce0ff07781ca571af6e0bf85b077edf17a",
+      strip_prefix = "libxsmm-1.7.1",
       build_file = str(Label("//third_party:libxsmm.BUILD")),
   )
 
@@ -285,6 +286,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
       ],
       strip_prefix = "curl-7.49.1",
       build_file = str(Label("//third_party:curl.BUILD")),
+      repository = tf_repo_name
   )
 
   # grpc expects //external:protobuf_clib and //external:protobuf_compiler
@@ -338,11 +340,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   temp_workaround_http_archive(
       name = "llvm",
       urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/llvm-mirror/llvm/archive/2276fd31f36aa58f39397c435a8be6632d8c8505.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/2276fd31f36aa58f39397c435a8be6632d8c8505.tar.gz",
+          "http://bazel-mirror.storage.googleapis.com/github.com/llvm-mirror/llvm/archive/94403df1ddb4cf9af6ac7dcbbd629fcc22e19db9.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/94403df1ddb4cf9af6ac7dcbbd629fcc22e19db9.tar.gz",
       ],
-      sha256 = "0e08c91752732227280466d12f330a5854569deddf28ff4a6c3898334dbb0d16",
-      strip_prefix = "llvm-2276fd31f36aa58f39397c435a8be6632d8c8505",
+      sha256 = "87ce84c0d5496eeaf92e4948e76afe6bb35094de18efb3c7ce59ab4cfccdbef0",
+      strip_prefix = "llvm-94403df1ddb4cf9af6ac7dcbbd629fcc22e19db9",
       build_file = str(Label("//third_party/llvm:llvm.BUILD")),
       repository = tf_repo_name,
   )
@@ -405,24 +407,41 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
       actual = "@zlib_archive//:zlib",
   )
 
-  native.new_http_archive(
+  temp_workaround_http_archive(
       name = "nccl_archive",
-      url = "https://github.com/nvidia/nccl/archive/024d1e267845f2ed06f3e2e42476d50f04a00ee6.tar.gz",
+      urls = [
+          "http://bazel-mirror.storage.googleapis.com/github.com/nvidia/nccl/archive/024d1e267845f2ed06f3e2e42476d50f04a00ee6.tar.gz",
+          "https://github.com/nvidia/nccl/archive/024d1e267845f2ed06f3e2e42476d50f04a00ee6.tar.gz",
+      ],
       sha256 = "6787f0eed88d52ee8e32956fa4947d92c139da469f1d8e311c307f27d641118e",
       strip_prefix = "nccl-024d1e267845f2ed06f3e2e42476d50f04a00ee6",
       build_file = str(Label("//third_party:nccl.BUILD")),
+      repository = tf_repo_name,
   )
 
-  # Make junit-4.12 available as //external:junit
-  native.http_jar(
-      name = "junit_jar",
-      url = "https://github.com/junit-team/junit4/releases/download/r4.12/junit-4.12.jar",
-      sha256 = "59721f0805e223d84b90677887d9ff567dc534d7c502ca903c0c2b17f05c116a",
-  )
-
-  native.bind(
+  java_import_external(
       name = "junit",
-      actual = "@junit_jar//jar",
+      jar_sha256 = "59721f0805e223d84b90677887d9ff567dc534d7c502ca903c0c2b17f05c116a",
+      jar_urls = [
+          "http://bazel-mirror.storage.googleapis.com/repo1.maven.org/maven2/junit/junit/4.12/junit-4.12.jar",
+          "http://repo1.maven.org/maven2/junit/junit/4.12/junit-4.12.jar",
+          "http://maven.ibiblio.org/maven2/junit/junit/4.12/junit-4.12.jar",
+      ],
+      licenses = ["reciprocal"],  # Common Public License Version 1.0
+      testonly_ = True,
+      deps = ["@org_hamcrest_core"],
+  )
+
+  java_import_external(
+      name = "org_hamcrest_core",
+      jar_sha256 = "66fdef91e9739348df7a096aa384a5685f4e875584cce89386a7a47251c4d8e9",
+      jar_urls = [
+          "http://bazel-mirror.storage.googleapis.com/repo1.maven.org/maven2/org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3.jar",
+          "http://repo1.maven.org/maven2/org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3.jar",
+          "http://maven.ibiblio.org/maven2/org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3.jar",
+      ],
+      licenses = ["notice"],  # New BSD License
+      testonly_ = True,
   )
 
   temp_workaround_http_archive(
@@ -490,13 +509,13 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
       name = "com_microsoft_typescript",
       licenses = ["notice"],  # Apache 2.0
       sha256_urls = {
-          "92ae664a574c87a60ed0dc3aa08a28e366477ae40bc7ab23b512710d5c5b51cc": [
-              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/Microsoft/TypeScript/v2.0.6/lib/tsc.js",
-              "https://raw.githubusercontent.com/Microsoft/TypeScript/v2.0.6/lib/tsc.js",
+          "e3d9e320a2cae99be4aaa37953961a48323cdf16ba9aa2557a44d69571cd9b8d": [
+              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/Microsoft/TypeScript/v2.1.6/lib/tsc.js",
+              "https://raw.githubusercontent.com/Microsoft/TypeScript/v2.1.6/lib/tsc.js",
           ],
-          "f4de46e04293569a666f2045f850d90e16dc8ba059af02b5a062942245007a71": [
-              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/Microsoft/TypeScript/v2.0.6/lib/lib.es6.d.ts",
-              "https://raw.githubusercontent.com/Microsoft/TypeScript/v2.0.6/lib/lib.es6.d.ts",
+          "f189cebe96eb76b238c6e364e72d4b0324e699f83eeae5deac23506cb3764fc6": [
+              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/Microsoft/TypeScript/v2.1.6/lib/lib.es6.d.ts",
+              "https://raw.githubusercontent.com/Microsoft/TypeScript/v2.1.6/lib/lib.es6.d.ts",
           ],
       },
       extra_build_file_content = "\n".join([

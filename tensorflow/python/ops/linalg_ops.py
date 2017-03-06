@@ -333,7 +333,7 @@ def norm(tensor, ord='euclidean', axis=None, keep_dims=False, name=None):
   Mostly equivalent to numpy.linalg.norm.
   Not supported: ord <= 0, 2-norm for matrices, nuclear norm.
   Other differences:
-    a) If axis is `None`, treats the the flattened `tensor` as a vector
+    a) If axis is `None`, treats the flattened `tensor` as a vector
      regardless of rank.
     b) Explicitly supports 'euclidean' norm as the default, including for
      higher order tensors.

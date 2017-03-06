@@ -147,6 +147,12 @@ Status DeviceTypeOfDevice(const string& device, DeviceType* device_type) {
   return Status::OK();
 }
 
+// Does `node` have a DT_RESOURCE typed argument?
+bool HasResourceArgument(const Node& node) {
+  return std::find(node.input_types().begin(), node.input_types().end(),
+                   DT_RESOURCE) != node.input_types().end();
+}
+
 Status FindCompilationCandidates(
     const Graph& graph, FunctionLibraryDefinition* flib_def, Env* env,
     const std::function<bool(const Node*, const DeviceType&)>& is_compilable_fn,
@@ -171,6 +177,11 @@ Status FindCompilationCandidates(
     if (!HasXLAKernel(*node, jit_device_type) &&
         !IsCompilableCall(node->def(), jit_device_type, 0, lib_runtime.get())) {
       VLOG(2) << "Compilation rejected node: unsupported op " << node->name()
+              << ": " << node->def().op();
+      continue;
+    }
+    if (!registration->compile_resource_ops && HasResourceArgument(*node)) {
+      VLOG(2) << "Compilation rejected node: resource argument " << node->name()
               << ": " << node->def().op();
       continue;
     }
@@ -434,6 +445,8 @@ Status MarkForCompilationPass::RunImpl(
           "Found control flow node in clustering worklist: ",
           node_from->type_string());
     }
+    string from_scope;
+    string to_scope;
     for (int to : cycles.Successors(from)) {
       if (to >= graph->num_node_ids()) {
         // Node is a "frame" node that is present only in the cycle detection
@@ -441,10 +454,27 @@ Status MarkForCompilationPass::RunImpl(
         continue;
       }
       Node* node_to = graph->FindNodeId(to);
-      if (compilation_candidates.find(node_to) == compilation_candidates.cend())
+      if (compilation_candidates.find(node_to) ==
+          compilation_candidates.cend()) {
         continue;
-      if (node_from->assigned_device_name() != node_to->assigned_device_name())
+      }
+      if (node_from->assigned_device_name() !=
+          node_to->assigned_device_name()) {
         continue;
+      }
+      // Look for an _XlaScope on both nodes.  If both nodes have a
+      // scope and the scopes do not match, do not cluster along this
+      // edge.  If even one of the nodes lacks an _XlaScope attribute,
+      // then it is treated as a "bridge" and a cluster may be created
+      // along it.  We may want to restrict this behavior to require
+      // all nodes marked with _XlaCompile=true to also have a
+      // _XlaScope property set (and raise an error otherwise); but
+      // for now we don't do this.
+      if (GetNodeAttr(node_from->def(), kXlaScopeAttr, &from_scope).ok() &&
+          GetNodeAttr(node_to->def(), kXlaScopeAttr, &to_scope).ok() &&
+          from_scope != to_scope) {
+        continue;
+      }
 
       // Ops that consume shapes cannot be the root of a cluster. This is an
       // optimization.

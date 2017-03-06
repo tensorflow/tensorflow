@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import inspect
+import os
 import shutil
 import tempfile
 
@@ -37,6 +39,10 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
+
+
+def line_number_above():
+  return inspect.stack()[1][2] - 1
 
 
 def parse_op_and_node(line):
@@ -494,6 +500,9 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
     else:
       cls._main_device = "/job:localhost/replica:0/task:0/cpu:0"
 
+    cls._curr_file_path = os.path.abspath(
+        inspect.getfile(inspect.currentframe()))
+
     cls._sess = session.Session()
     with cls._sess as sess:
       u_init_val = np.array([[5.0, 3.0], [-1.0, 0.0]])
@@ -502,14 +511,19 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
       u_name = "simple_mul_add/u"
       v_name = "simple_mul_add/v"
 
-      u_init = constant_op.constant(u_init_val, shape=[2, 2])
+      u_init = constant_op.constant(u_init_val, shape=[2, 2], name="u_init")
       u = variables.Variable(u_init, name=u_name)
-      v_init = constant_op.constant(v_init_val, shape=[2, 1])
+      cls._u_line_number = line_number_above()
+
+      v_init = constant_op.constant(v_init_val, shape=[2, 1], name="v_init")
       v = variables.Variable(v_init, name=v_name)
+      cls._v_line_number = line_number_above()
 
       w = math_ops.matmul(u, v, name="simple_mul_add/matmul")
+      cls._w_line_number = line_number_above()
 
       x = math_ops.add(w, w, name="simple_mul_add/add")
+      cls._x_line_number = line_number_above()
 
       u.initializer.run()
       v.initializer.run()
@@ -550,6 +564,11 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         cls._analyzer.print_tensor,
         cls._analyzer.get_help("print_tensor"),
         prefix_aliases=["pt"])
+    cls._registry.register_command_handler(
+        "print_source",
+        cls._analyzer.print_source,
+        cls._analyzer.get_help("print_source"),
+        prefix_aliases=["ps"])
 
   @classmethod
   def tearDownClass(cls):
@@ -1115,6 +1134,142 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(ValueError,
                                  "There is no tensor filter named \"bar\""):
       analyzer.get_tensor_filter("bar")
+
+  def _findSourceLine(self, annotated_source, line_number):
+    """Find line of given line number in annotated source.
+
+    Args:
+      annotated_source: (debugger_cli_common.RichTextLines) the annotated source
+      line_number: (int) 1-based line number
+
+    Returns:
+      (int) If line_number is found, 0-based line index in
+        annotated_source.lines. Otherwise, None.
+    """
+
+    index = None
+    for i, line in enumerate(annotated_source.lines):
+      if line.startswith("L%d " % line_number):
+        index = i
+        break
+    return index
+
+  def testPrintSourceForOpNamesWholeFileWorks(self):
+    self._debug_dump.set_python_graph(self._sess.graph)
+    out = self._registry.dispatch_command(
+        "print_source", [self._curr_file_path], screen_info={"cols": 80})
+
+    # Verify the annotation of the line that creates u.
+    index = self._findSourceLine(out, self._u_line_number)
+    self.assertEqual(
+        ["L%d         u = variables.Variable(u_init, name=u_name)" %
+         self._u_line_number,
+         "    simple_mul_add/u",
+         "    simple_mul_add/u/Assign",
+         "    simple_mul_add/u/read"],
+        out.lines[index : index + 4])
+    self.assertEqual("pt simple_mul_add/u",
+                     out.font_attr_segs[index + 1][0][2].content)
+    # simple_mul_add/u/Assign is not used in this run because the Variable has
+    # already been initialized.
+    self.assertEqual("blue", out.font_attr_segs[index + 2][0][2])
+    self.assertEqual("pt simple_mul_add/u/read",
+                     out.font_attr_segs[index + 3][0][2].content)
+
+    # Verify the annotation of the line that creates v.
+    index = self._findSourceLine(out, self._v_line_number)
+    self.assertEqual(
+        ["L%d         v = variables.Variable(v_init, name=v_name)" %
+         self._v_line_number,
+         "    simple_mul_add/v"],
+        out.lines[index : index + 2])
+    self.assertEqual("pt simple_mul_add/v",
+                     out.font_attr_segs[index + 1][0][2].content)
+
+    # Verify the annotation of the line that creates w.
+    index = self._findSourceLine(out, self._w_line_number)
+    self.assertEqual(
+        ["L%d         " % self._w_line_number +
+         "w = math_ops.matmul(u, v, name=\"simple_mul_add/matmul\")",
+         "    simple_mul_add/matmul"],
+        out.lines[index : index + 2])
+    self.assertEqual("pt simple_mul_add/matmul",
+                     out.font_attr_segs[index + 1][0][2].content)
+
+    # Verify the annotation of the line that creates x.
+    index = self._findSourceLine(out, self._x_line_number)
+    self.assertEqual(
+        ["L%d         " % self._x_line_number +
+         "x = math_ops.add(w, w, name=\"simple_mul_add/add\")",
+         "    simple_mul_add/add"],
+        out.lines[index : index + 2])
+    self.assertEqual("pt simple_mul_add/add",
+                     out.font_attr_segs[index + 1][0][2].content)
+
+  def testPrintSourceForTensorNamesWholeFileWorks(self):
+    self._debug_dump.set_python_graph(self._sess.graph)
+    out = self._registry.dispatch_command(
+        "print_source",
+        [self._curr_file_path, "--tensors"],
+        screen_info={"cols": 80})
+
+    # Verify the annotation of the line that creates u.
+    index = self._findSourceLine(out, self._u_line_number)
+    self.assertEqual(
+        ["L%d         u = variables.Variable(u_init, name=u_name)" %
+         self._u_line_number,
+         "    simple_mul_add/u/read:0",
+         "    simple_mul_add/u:0"],
+        out.lines[index : index + 3])
+    self.assertEqual("pt simple_mul_add/u/read:0",
+                     out.font_attr_segs[index + 1][0][2].content)
+    self.assertEqual("pt simple_mul_add/u:0",
+                     out.font_attr_segs[index + 2][0][2].content)
+
+  def testPrintSourceForOpNamesStartingAtSpecifiedLineWorks(self):
+    self._debug_dump.set_python_graph(self._sess.graph)
+    out = self._registry.dispatch_command(
+        "print_source",
+        [self._curr_file_path, "-b", "3"],
+        screen_info={"cols": 80})
+
+    self.assertIn("Omitted 2 source lines", out.lines[0])
+    self.assertIsNone(self._findSourceLine(out, 1))
+    self.assertIsNone(self._findSourceLine(out, 2))
+    self.assertIsNotNone(self._findSourceLine(out, 3))
+
+    index = self._findSourceLine(out, self._u_line_number)
+    self.assertEqual(
+        ["L%d         u = variables.Variable(u_init, name=u_name)" %
+         self._u_line_number,
+         "    simple_mul_add/u",
+         "    simple_mul_add/u/Assign",
+         "    simple_mul_add/u/read"],
+        out.lines[index : index + 4])
+    self.assertEqual("pt simple_mul_add/u",
+                     out.font_attr_segs[index + 1][0][2].content)
+    # simple_mul_add/u/Assign is not used in this run because the Variable has
+    # already been initialized.
+    self.assertEqual("blue", out.font_attr_segs[index + 2][0][2])
+    self.assertEqual("pt simple_mul_add/u/read",
+                     out.font_attr_segs[index + 3][0][2].content)
+
+  def testPrintSourceForOpNameSettingMaximumElementCountWorks(self):
+    self._debug_dump.set_python_graph(self._sess.graph)
+    out = self._registry.dispatch_command(
+        "print_source",
+        [self._curr_file_path, "-m", "1"],
+        screen_info={"cols": 80})
+
+    index = self._findSourceLine(out, self._u_line_number)
+    self.assertEqual(
+        ["L%d         u = variables.Variable(u_init, name=u_name)" %
+         self._u_line_number,
+         "    simple_mul_add/u",
+         "    (... Omitted 2 of 3 op(s) ...)"],
+        out.lines[index : index + 3])
+    self.assertEqual("pt simple_mul_add/u",
+                     out.font_attr_segs[index + 1][0][2].content)
 
 
 class AnalyzerCLIPrintLargeTensorTest(test_util.TensorFlowTestCase):

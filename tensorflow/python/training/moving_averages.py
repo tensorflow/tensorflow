@@ -57,7 +57,7 @@ def assign_moving_average(variable, value, decay, zero_debias=True, name=None):
     name: Optional name of the returned operation.
 
   Returns:
-    An Operation that updates 'variable' with the newly computed
+    A reference to the input 'variable' tensor with the newly computed
     moving average.
   """
   with ops.name_scope(name, "AssignMovingAvg",

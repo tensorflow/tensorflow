@@ -681,7 +681,7 @@ class ProfileResult {
   float elapsed_time_in_ms_ = std::numeric_limits<float>::max();
 };
 
-// Describe the configuration for the algorithms that will used.
+// Describes the configuration for the algorithms that will used.
 //
 // Arguments:
 //  algorithm: the primary algorithm that should be used.

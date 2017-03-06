@@ -45,7 +45,11 @@ type SavedModel struct {
 // https://www.tensorflow.org/code/tensorflow/python/saved_model/
 func LoadSavedModel(exportDir string, tags []string, options *SessionOptions) (*SavedModel, error) {
 	status := newStatus()
-	cOpt := options.c()
+	cOpt, doneOpt, err := options.c()
+	defer doneOpt()
+	if err != nil {
+		return nil, err
+	}
 	cExportDir := C.CString(exportDir)
 	cTags := make([]*C.char, len(tags))
 	for i := range tags {
@@ -58,7 +62,6 @@ func LoadSavedModel(exportDir string, tags []string, options *SessionOptions) (*
 		C.free(unsafe.Pointer(cTags[i]))
 	}
 	C.free(unsafe.Pointer(cExportDir))
-	C.TF_DeleteSessionOptions(cOpt)
 
 	if err := status.Err(); err != nil {
 		return nil, err

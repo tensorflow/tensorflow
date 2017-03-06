@@ -32,7 +32,6 @@ from tensorflow.contrib import framework as contrib_framework
 from tensorflow.contrib import layers
 from tensorflow.contrib import metrics as metrics_lib
 from tensorflow.contrib.framework import deprecated
-from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.framework import deprecated_args
 from tensorflow.contrib.framework import list_variables
 from tensorflow.contrib.framework import load_variable
@@ -350,16 +349,10 @@ class BaseEstimator(
     Args:
       model_dir: Directory to save model parameters, graph and etc. This can
         also be used to load checkpoints from the directory into a estimator to
-        continue training a previously saved model.
+        continue training a previously saved model. If `None`, the model_dir in
+        `config` will be used if set. If both are set, they must be same.
       config: A RunConfig instance.
     """
-    # Model directory.
-    self._model_dir = model_dir
-    if self._model_dir is None:
-      self._model_dir = tempfile.mkdtemp()
-      logging.warning('Using temporary folder as model directory: %s',
-                      self._model_dir)
-
     # Create a run configuration.
     if config is None:
       self._config = BaseEstimator._Config()
@@ -367,6 +360,23 @@ class BaseEstimator(
     else:
       self._config = config
     logging.info('Using config: %s', str(vars(self._config)))
+
+    # Model directory.
+    if (model_dir is not None) and (self._config.model_dir is not None):
+      if model_dir != self._config.model_dir:
+        # TODO(b/9965722): remove this suppression after it is no longer
+        #                  necessary.
+        # pylint: disable=g-doc-exception
+        raise ValueError(
+            "model_dir are set both in constructor and RunConfig, but with "
+            "different values. In constructor: '{}', in RunConfig: "
+            "'{}' ".format(model_dir, self._config.model_dir))
+
+    self._model_dir = model_dir or self._config.model_dir
+    if self._model_dir is None:
+      self._model_dir = tempfile.mkdtemp()
+      logging.warning('Using temporary folder as model directory: %s',
+                      self._model_dir)
 
     # Set device function depending if there are replicas or not.
     self._device_fn = _get_replica_device_setter(self._config)
@@ -576,15 +586,7 @@ class BaseEstimator(
   def model_dir(self):
     return self._model_dir
 
-  @deprecated_arg_values(
-      '2016-09-23',
-      'The signature of the input_fn accepted by export is changing to be '
-      'consistent with what\'s used by tf.Learn Estimator\'s train/evaluate. '
-      'input_fn (and in most cases, input_feature_key) will become required '
-      'args, and use_deprecated_input_fn will default to False and be removed '
-      'altogether.',
-      use_deprecated_input_fn=True,
-      input_fn=None)
+  @deprecated('2017-03-25', 'Please use Estimator.export_savedmodel() instead.')
   def export(self,
              export_dir,
              input_fn=export._default_input_fn,  # pylint: disable=protected-access

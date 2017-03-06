@@ -179,7 +179,7 @@ bazel-bin/tensorflow/tools/graph_transforms/transform_graph \
 --outputs='softmax:0' \
 --transforms='\
 strip_unused_nodes(type=float, shape="1,299,299,3") \
-fold_constants \
+fold_constants(ignore_errors=true) \
 fold_batch_norms \
 fold_old_batch_norms\
 '
@@ -280,14 +280,15 @@ bazel-bin/tensorflow/tools/graph_transforms/transform_graph \
 --out_graph=optimized_inception_graph.pb \
 --inputs='Mul:0' \
 --outputs='softmax:0' \
---transforms='\
-strip_unused_nodes(type=float, shape="1,299,299,3") \
-remove_nodes(op=Identity, op=CheckNumerics) \
-fold_old_batch_norms \
-quantize_weights \
-quantize_nodes \
-strip_unused_nodes \
-'
+--transforms='
+ add_default_attributes
+ strip_unused_nodes(type=float, shape="1,299,299,3")
+ remove_nodes(op=Identity, op=CheckNumerics)
+ fold_old_batch_norms
+ quantize_weights
+ quantize_nodes
+ strip_unused_nodes
+ sort_by_execution_order'
 ```
 
 This process converts all the operations in the graph that have eight-bit
@@ -340,12 +341,13 @@ Args: None \
 Prerequisites: [fold_constants](#fold_constants)
 
 This transform tries to optimize away the Mul that's introduced after a Conv2D
-when batch normalization has been used during training. It scans the graph for
-any channel-wise multiplies immediately after convolutions, and multiplies the
-convolution's weights with the Mul instead so this can be omitted at inference
-time. You'll need to make sure you run [fold_constants](#fold_constants) first,
-since the pattern can only be spotted if the normal complex expression that's
-produced by training for the Mul input is collapsed down into a simple constant.
+(or a MatMul) when batch normalization has been used during training. It scans
+the graph for any channel-wise multiplies immediately after convolutions, and
+multiplies the convolution's (or matrix multiplication's) weights with the Mul
+instead so this can be omitted at inference time. You'll need to make sure you
+run [fold_constants](#fold_constants) first, since the pattern can only be
+spotted if the normal complex expression that's produced by training for the Mul
+input is collapsed down into a simple constant.
 
 ### fold_constants
 
@@ -713,7 +715,7 @@ shape arguments let you control the attributes of any new Placeholders that are
 created. Plain `type` and `shape` set global defaults, but if you have different
 inputs with varying characteristics, you'll need to pass in a list of arguments
 where the preceding name specifies what layer each applies to. For example, if
-you had two inputs in1 and in2, you could call `strip_unused_node(name=in1,
+you had two inputs in1 and in2, you could call `strip_unused_nodes(name=in1,
 type_for_name=int32, shape_for_name="2,3", name=in2, type_for_name=float,
 shape_for_name="1,10,10,3")`.
 

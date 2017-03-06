@@ -57,17 +57,33 @@ def load_tensor_from_event_file(event_file_path):
   event = event_pb2.Event()
   with gfile.Open(event_file_path, "rb") as f:
     event.ParseFromString(f.read())
+    return load_tensor_from_event(event)
 
-    if (event.summary.value[0].tensor.tensor_content or
-        event.summary.value[0].tensor.string_val):
-      # Initialized tensor.
-      try:
-        tensor_value = tensor_util.MakeNdarray(event.summary.value[0].tensor)
-      except KeyError:
-        tensor_value = None
-    else:
-      # Uninitialized tensor or tensor of unconvertible data type.
+
+def load_tensor_from_event(event):
+  """Load a tensor from an Event proto.
+
+  Args:
+    event: The Event proto, assumed to hold a tensor value in its
+        summary.value[0] field.
+
+  Returns:
+    The tensor value loaded from the event file, as a `numpy.ndarray`. For
+    uninitialized Tensors, returns `None`. For Tensors of data types that
+    cannot be converted to `numpy.ndarray` (e.g., `tf.resource`), return
+    `None`.
+  """
+
+  if (event.summary.value[0].tensor.tensor_content or
+      event.summary.value[0].tensor.string_val):
+    # Initialized tensor.
+    try:
+      tensor_value = tensor_util.MakeNdarray(event.summary.value[0].tensor)
+    except KeyError:
       tensor_value = None
+  else:
+    # Uninitialized tensor or tensor of unconvertible data type.
+    tensor_value = None
 
   return tensor_value
 
@@ -616,6 +632,17 @@ class DebugDumpDir(object):
     if self._python_graph:
       for op in self._python_graph.get_operations():
         self._node_traceback[op.name] = op.traceback
+
+  @property
+  def python_graph(self):
+    """Get the Python graph.
+
+    Returns:
+      If the Python graph has been set, returns a `tf.Graph` object. Otherwise,
+      returns None.
+    """
+
+    return self._python_graph
 
   @property
   def core_metadata(self):

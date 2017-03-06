@@ -75,6 +75,8 @@ out-hierarchy-params="{{_hierarchyParams}}"
         graph="[[_graph]]"
         hierarchy-params="[[_hierarchyParams]]"
         progress="[[_progress]]"
+        node-names-to-health-pills="[[_nodeNamesToHealthPills]]"
+        health-pill-step-index="[[_healthPillStepIndex]]"
         render-hierarchy="{{_renderHierarchy}}"
         stats="[[_stats]]"
     ></tf-graph-board>
@@ -110,6 +112,12 @@ Polymer({
     backend: {type: Object, observer: '_backendChanged'},
     debuggerDataEnabled: Boolean,
     healthPillsToggledOn: {type: Boolean, value: true, observer: '_healthPillsToggledOnChanged'},
+    // Maps the names of nodes to an array of health pills (HealthPillDatums).
+    _nodeNamesToHealthPills: {
+      type: Object,
+      value: {},
+    },
+    _healthPillStepIndex: Number,
     runs: Array
   },
   listeners: {
@@ -158,13 +166,16 @@ Polymer({
         // The user has opted to hide health pills via the toggle button.
         return;
       }
-      // For now, show the latest health pill for each node.
-      // TODO(chizeng): Let the user select which step to show.
-      var mapping = {};
+
+      // Set the index for which step to show for the health pills. By default, show the last step.
+      // A precondition we assume (that Tensorboard's reservoir sampling guarantees) is that all
+      // node names should be mapped to the same number of steps.
       for (let nodeName in result) {
-        mapping[nodeName] = result[nodeName].pop();
+        this.set('_healthPillStepIndex', result[nodeName].length - 1);
+        break;
       }
-      this.$$('#graphboard').set('nodeNamesToHealthPill', mapping);
+
+      this.set('_nodeNamesToHealthPills', result);
     }.bind(this));
   },
   _datasetsEmpty: function(datasets) {
@@ -185,7 +196,7 @@ Polymer({
       this.reload();
     } else {
       // Remove all health pills by setting an empty mapping.
-      this.$$('#graphboard').set('nodeNamesToHealthPill', {});
+      this.set('_nodeNamesToHealthPills', {});
     }
   },
 });

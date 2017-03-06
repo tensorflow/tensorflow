@@ -63,6 +63,8 @@ download_and_push() {
     LOCAL_DEST="$2"
     ANDROID_DEST="$3"
     curl -Ls "${URL}" -o "${LOCAL_DEST}"
-    adb shell mkdir -p "${ANDROID_DEST}"
-    adb push "${LOCAL_DEST}" "${ANDROID_DEST}"
+    if [[ ! -z "${ANDROID_DEST}" ]]; then
+        adb shell mkdir -p "${ANDROID_DEST}"
+        adb push "${LOCAL_DEST}" "${ANDROID_DEST}"
+    fi
 }

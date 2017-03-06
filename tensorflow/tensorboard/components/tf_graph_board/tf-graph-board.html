@@ -142,7 +142,8 @@ paper-progress {
               color-by="[[colorBy]]"
               color-by-params="{{colorByParams}}"
               progress="{{progress}}"
-              node-names-to-health-pill="[[nodeNamesToHealthPill]]"
+              node-names-to-health-pills="[[nodeNamesToHealthPills]]"
+              health-pill-step-index="[[healthPillStepIndex]]"
     ></tf-graph>
   </div>
   <div id="info">
@@ -156,6 +157,8 @@ paper-progress {
               highlighted-node="{{_highlightedNode}}"
               color-by="[[colorBy]]"
               color-by-params="[[colorByParams]]"
+              node-names-to-health-pills="[[nodeNamesToHealthPills]]"
+              health-pill-step-index="{{healthPillStepIndex}}"
     ></tf-graph-info>
   </div>
   <div class="context-menu"></div>
@@ -188,7 +191,9 @@ Polymer({
       notify: true
     },
     // A mapping between node name to the tf.graph.scene.HealthPill to render.
-    nodeNamesToHealthPill: Object,
+    nodeNamesToHealthPills: Object,
+    // The step of health pills to show throughout the graph.
+    healthPillStepIndex: Number,
     // Private API: Data routing between child components.
     _selectedNode: String,
     // The enum value of the include property of the selected node.

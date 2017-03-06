@@ -179,6 +179,11 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
                                    HloInstruction* operand, HloInstruction* max,
                                    HloInstruction* max_operand);
 
+  // A Reshape or Broadcast that feeds an element-wise operation with a unique
+  // non-scalar operand can sink to after the operation.
+  StatusOr<bool> TryToSinkReshapeOrBroadcastAfterOpWithUniqueNonScalarOperand(
+      HloInstruction* reshape_or_broadcast);
+
   // Current HloComputation instance the AlgebraicSimplifierVisitor is
   // traversing.
   HloComputation* computation_;
@@ -460,6 +465,15 @@ Status AlgebraicSimplifierVisitor::HandleBroadcast(HloInstruction* broadcast) {
     }
   }
 
+  // A Broadcast that feeds a unary element-wise operation can sink the
+  // broadcast after the unary element-wise operation.
+  TF_ASSIGN_OR_RETURN(
+      changed_,
+      TryToSinkReshapeOrBroadcastAfterOpWithUniqueNonScalarOperand(broadcast));
+  if (changed_) {
+    return Status::OK();
+  }
+
   // A scalar broadcast feeding an instruction which only permutes (reshape,
   // transpose, sort, reverse) or selects a subset of operand elements (slice,
   // dynamic slice) can be replaced with a broadcast directly to the output
@@ -672,7 +686,6 @@ Status AlgebraicSimplifierVisitor::HandlePower(HloInstruction* power,
     }
     changed_ = true;
     return computation_->ReplaceWithNewInstruction(power, std::move(ones));
-    return Status::OK();
   }
 
   VLOG(10) << "trying transform [pow(A, 1) => A]: " << power->ToString();
@@ -699,6 +712,74 @@ Status AlgebraicSimplifierVisitor::HandlePower(HloInstruction* power,
                                             one, lhs));
   }
   return Status::OK();
+}
+
+StatusOr<bool> AlgebraicSimplifierVisitor::
+    TryToSinkReshapeOrBroadcastAfterOpWithUniqueNonScalarOperand(
+        HloInstruction* reshape_or_broadcast) {
+  bool changed = false;
+  HloInstruction* operand = reshape_or_broadcast->mutable_operand(0);
+  for (HloInstruction* user : reshape_or_broadcast->users()) {
+    if (user->user_count() == 0 && user != computation_->root_instruction()) {
+      continue;
+    }
+    // Do not move reshapes or broadcasts past copies since the shape the copy
+    // will operate on will change.
+    if (user->opcode() == HloOpcode::kCopy) {
+      continue;
+    }
+    // Do not change the shape of fusion nodes in case there a multiple shapes
+    // inside the fusion node already.
+    if (user->opcode() == HloOpcode::kFusion) {
+      continue;
+    }
+    if (!user->IsElementwise()) {
+      continue;
+    }
+
+    int64 reshape_or_broadcast_operand_index = -1;
+    // Find the unique non-scalar operand or continue if there isn't one.
+    int64 scalar_count = 0;
+    for (int64 i = 0; i < user->operand_count(); ++i) {
+      if (ShapeUtil::IsScalar(user->operand(i)->shape())) {
+        ++scalar_count;
+      } else {
+        reshape_or_broadcast_operand_index = i;
+      }
+    }
+    if (scalar_count != user->operand_count() - 1) {
+      continue;
+    }
+    CHECK_EQ(user->operand(reshape_or_broadcast_operand_index),
+             reshape_or_broadcast);
+    std::vector<HloInstruction*> new_user_operands = user->operands();
+    new_user_operands[reshape_or_broadcast_operand_index] = operand;
+    auto new_user = computation_->AddInstruction(user->CloneWithNewOperands(
+        ShapeUtil::MakeShape(user->shape().element_type(),
+                             AsInt64Slice(operand->shape().dimensions())),
+        new_user_operands));
+    HloInstruction* new_reshape_or_broadcast = nullptr;
+    if (reshape_or_broadcast->opcode() == HloOpcode::kReshape) {
+      new_reshape_or_broadcast =
+          computation_->AddInstruction(HloInstruction::CreateReshape(
+              ShapeUtil::MakeShape(
+                  user->shape().element_type(),
+                  AsInt64Slice(reshape_or_broadcast->shape().dimensions())),
+              new_user));
+    } else {
+      TF_RET_CHECK(reshape_or_broadcast->opcode() == HloOpcode::kBroadcast);
+      new_reshape_or_broadcast =
+          computation_->AddInstruction(HloInstruction::CreateBroadcast(
+              ShapeUtil::MakeShape(
+                  user->shape().element_type(),
+                  AsInt64Slice(reshape_or_broadcast->shape().dimensions())),
+              new_user, reshape_or_broadcast->dimensions()));
+    }
+    TF_RETURN_IF_ERROR(
+        computation_->ReplaceUsesOfInstruction(user, new_reshape_or_broadcast));
+    changed = true;
+  }
+  return changed;
 }
 
 Status AlgebraicSimplifierVisitor::HandleReshape(HloInstruction* reshape) {
@@ -730,6 +811,15 @@ Status AlgebraicSimplifierVisitor::HandleReshape(HloInstruction* reshape) {
               reshape->shape(), reshape->mutable_operand(0)->mutable_operand(0),
               opt_dims.second));
     }
+  }
+
+  // A Reshape that feeds a unary element-wise operation can sink the
+  // reshape after the unary element-wise operation.
+  TF_ASSIGN_OR_RETURN(
+      changed_,
+      TryToSinkReshapeOrBroadcastAfterOpWithUniqueNonScalarOperand(reshape));
+  if (changed_) {
+    return Status::OK();
   }
 
   // Make this a bitcast if possible.

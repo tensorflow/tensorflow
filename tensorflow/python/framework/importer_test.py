@@ -27,10 +27,12 @@ from tensorflow.core.framework import op_def_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import function
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_ops  # pylint: disable=unused-import
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
@@ -42,29 +44,29 @@ import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
 
-def _unknown_shape(op):
+def _UnknownShape(op):
   return [tensor_shape.unknown_shape() for _ in op.outputs]
 
 
 # NOTE(cwhipkey): Dummy shape registration for ops used in the tests, since they
 # don't have C++ op registrations on which to attach C++ shape fns.
-ops.RegisterShape("If")(_unknown_shape)
-ops.RegisterShape("Iff")(_unknown_shape)
-ops.RegisterShape("Ii")(_unknown_shape)
-ops.RegisterShape("Iif")(_unknown_shape)
-ops.RegisterShape("Iii")(_unknown_shape)
-ops.RegisterShape("In")(_unknown_shape)
-ops.RegisterShape("Iri")(_unknown_shape)
-ops.RegisterShape("None")(_unknown_shape)
-ops.RegisterShape("Of")(_unknown_shape)
-ops.RegisterShape("Oi")(_unknown_shape)
-ops.RegisterShape("Oif")(_unknown_shape)
-ops.RegisterShape("Oii")(_unknown_shape)
-ops.RegisterShape("OpWithDefaultAttr")(_unknown_shape)
-ops.RegisterShape("OpWithFutureDefaultAttr")(_unknown_shape)
-ops.RegisterShape("Or")(_unknown_shape)
-ops.RegisterShape("Otl")(_unknown_shape)
-ops.RegisterShape("Unary")(_unknown_shape)
+ops.RegisterShape("If")(_UnknownShape)
+ops.RegisterShape("Iff")(_UnknownShape)
+ops.RegisterShape("Ii")(_UnknownShape)
+ops.RegisterShape("Iif")(_UnknownShape)
+ops.RegisterShape("Iii")(_UnknownShape)
+ops.RegisterShape("In")(_UnknownShape)
+ops.RegisterShape("Iri")(_UnknownShape)
+ops.RegisterShape("None")(_UnknownShape)
+ops.RegisterShape("Of")(_UnknownShape)
+ops.RegisterShape("Oi")(_UnknownShape)
+ops.RegisterShape("Oif")(_UnknownShape)
+ops.RegisterShape("Oii")(_UnknownShape)
+ops.RegisterShape("OpWithDefaultAttr")(_UnknownShape)
+ops.RegisterShape("OpWithFutureDefaultAttr")(_UnknownShape)
+ops.RegisterShape("Or")(_UnknownShape)
+ops.RegisterShape("Otl")(_UnknownShape)
+ops.RegisterShape("Unary")(_UnknownShape)
 
 _op_list = op_def_pb2.OpList()
 text_format.Merge("""
@@ -653,13 +655,28 @@ class ImportGraphDefTest(test.TestCase):
             self._MakeGraphDef(""), input_map=[constant_op.constant(5.0)])
       self.assertEqual("input_map must be a dictionary mapping strings to "
                        "Tensor objects.", str(e.exception))
+    graph_def = self._MakeGraphDef("""
+         node { name: 'a' op: 'Placeholder'
+                attr { key: 'dtype' value { type: DT_FLOAT } }}
+         node { name: 'id' op: 'Identity' input: 'a:0'
+                attr { key: 'T' value { type: DT_FLOAT } }}""")
+    with ops.Graph().as_default():
       with self.assertRaises(ValueError) as e:
         importer.import_graph_def(
-            self._MakeGraphDef(""),
-            input_map={"a:0": constant_op.constant(5.0)},
+            graph_def,
+            input_map={"a:0": variables.Variable(5.0)},
             name="")
-      self.assertEqual("tf.import_graph_def() requires a non-empty `name` "
-                       "if `input_map` is used.", str(e.exception))
+      self.assertStartsWith(str(e.exception),
+                            "tf.import_graph_def() requires a non-empty `name` "
+                            "if `input_map` contains non-Tensor values.")
+    with ops.Graph().as_default():
+      t, = importer.import_graph_def(
+          graph_def,
+          input_map={"a:0": constant_op.constant(5.0)},
+          name="",
+          return_elements=["id:0"])
+      with self.test_session():
+        self.assertEqual(5.0, t.eval())
 
   def testInvalidInputForReturnOperations(self):
     with ops.Graph().as_default():
@@ -733,13 +750,13 @@ class ImportGraphDefTest(test.TestCase):
     # We'll use the following device function to observe ops with two inputs.
     ops_with_two_inputs = []
 
-    def input_counter(op):
+    def InputCounter(op):
       if any(in_t.dtype._is_ref_dtype for in_t in op.inputs):  # pylint: disable=protected-access
         ops_with_two_inputs.append(op)
       return ""
 
     with ops.Graph().as_default() as g:
-      with ops.device(input_counter):
+      with ops.device(InputCounter):
         importer.import_graph_def(gdef)
 
     # We expect to see the initializer, two assign operations, and the add op.
@@ -829,6 +846,24 @@ class ImportGraphDefTest(test.TestCase):
         with self.assertRaisesRegexp(Exception, pat):
           sess.run(x)
 
+  def testVersionAppliesToOpConstruction(self):
+    """These tests rely on shape fns in test_ops.cc."""
+    with ops.Graph().as_default():
+      importer.import_graph_def(
+          self._MakeGraphDef(
+              "node { name: 'A' op: 'RequiresOlderGraphVersion' }",
+              producer=versions.GRAPH_DEF_VERSION - 1),
+          return_elements=["A"])
+
+    with ops.Graph().as_default():
+      with self.assertRaisesWithPredicateMatch(ValueError,
+                                               "Wrong graph version.*"):
+        importer.import_graph_def(
+            self._MakeGraphDef(
+                "node { name: 'A' op: 'RequiresOlderGraphVersion' }",
+                producer=versions.GRAPH_DEF_VERSION),
+            return_elements=["A"])
+
   def testDefaultAttrsAdded(self):
     with ops.Graph().as_default():
       a = importer.import_graph_def(
@@ -868,6 +903,83 @@ class ImportGraphDefTest(test.TestCase):
           return_elements=["A"],
           producer_op_list=producer_op_list)
       self.assertEqual(987, a[0].get_attr("default_int"))
+
+  def testFunctions(self):
+    dtype = dtypes.float32
+    @function.Defun(dtype, dtype, dtype, dtype)
+    def Grad(x, y, dout1, dout2):  # pylint: disable=unused-argument
+      # Return the inputs for simplicity of testing. The correct return value
+      # would be (dout1 + dout2, dout1 - dout2)
+      return x, y
+
+    @function.Defun(dtype, dtype, grad_func=Grad)
+    def FuncWithGrad(x, y):
+      return x + y, x - y
+
+    @function.Defun(dtypes.int32)
+    def ExternalTensorFunc(x):
+      # c must be defined in the containing graph
+      return x + c
+
+    @function.Defun(dtypes.int32, dtypes.int32)
+    def OuterFunc(x, y):
+
+      @function.Defun(dtypes.int32)
+      def InnerFunc(x):
+        return x + x
+
+      return InnerFunc(x) + y
+
+    # Create graph with function calls and export to GraphDef
+    with ops.Graph().as_default() as g1:
+      p1 = array_ops.placeholder(dtype, name="p1")
+      p2 = array_ops.placeholder(dtype, name="p2")
+      # pylint: disable=unexpected-keyword-arg
+      a, b = FuncWithGrad(p1, p2, name="f")
+
+      c = constant_op.constant(10, dtype=dtypes.int32)
+      ExternalTensorFunc(1, name="external")
+
+      OuterFunc(10, 1, name="outer")
+      # pylint: enable=unexpected-keyword-arg
+
+    gdef = g1.as_graph_def()
+
+    # Import GraphDef into new graph, add imported gradients, and test that
+    # imported functions can be run
+    with ops.Graph().as_default() as g2:
+      p1, p2, a, b = importer.import_graph_def(
+          gdef, return_elements=["p1:0", "p2:0", "f:0", "f:1"], name="")
+      grad = gradients_impl.gradients([a], [p1, p2])
+
+      with self.test_session(graph=g2) as sess:
+        feed_dict = {p1: 1, p2: 2}
+        a_val, b_val, grad_val = sess.run([a, b, grad], feed_dict=feed_dict)
+        self.assertEqual(a_val, 3.0)
+        self.assertEqual(b_val, -1.0)
+        # Grad function returns inputs values for testing
+        self.assertEqual(grad_val, [1.0, 2.0])
+        self.assertEqual(sess.run("external:0"), 11)
+        self.assertEqual(sess.run("outer:0"), 21)
+
+    # Export the new graph and reimport to test that imported functions can be
+    # successfully exported/imported again
+    gdef = g2.as_graph_def()
+    with ops.Graph().as_default() as g3:
+      p1, p2, a, b = importer.import_graph_def(
+          gdef, return_elements=["p1:0", "p2:0", "f:0", "f:1"], name="")
+      # Create new gradient functions (in additional to the imported gradient
+      # functions created in g2).
+      grad = gradients_impl.gradients([a], [p1, p2])
+
+      with self.test_session(graph=g3) as sess:
+        feed_dict = {p1: 1, p2: 2}
+        a_val, b_val, grad_val = sess.run([a, b, grad], feed_dict=feed_dict)
+        self.assertEqual(a_val, 3.0)
+        self.assertEqual(b_val, -1.0)
+        self.assertEqual(grad_val, [1.0, 2.0])
+        self.assertEqual(sess.run("external:0"), 11)
+        self.assertEqual(sess.run("outer:0"), 21)
 
 
 if __name__ == "__main__":

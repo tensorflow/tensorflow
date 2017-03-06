@@ -22,16 +22,7 @@ import functools
 import itertools
 import json
 import os
-import sys
 import tempfile
-
-# pylint: disable=g-bad-todo
-# TODO(#6568): Remove this hack that makes dlopen() not crash.
-# pylint: enable=g-bad-todo
-# pylint: disable=g-import-not-at-top
-if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 import numpy as np
 import six
@@ -401,6 +392,24 @@ class EstimatorTest(test.TestCase):
     est.fit(input_fn=test_input.config_test_input_fn, steps=1)
     # If input_fn ran, it will have given us the random seed set on the graph.
     self.assertEquals(test_random_seed, test_input.random_seed)
+
+  def testRunConfigModelDir(self):
+    config = run_config.RunConfig(model_dir='test_dir')
+    est = estimator.Estimator(model_fn=linear_model_fn,
+                              config=config)
+    self.assertEqual('test_dir', est.config.model_dir)
+
+  def testModelDirAndRunConfigModelDir(self):
+    config = run_config.RunConfig(model_dir='test_dir')
+    est = estimator.Estimator(model_fn=linear_model_fn,
+                              config=config,
+                              model_dir='test_dir')
+    self.assertEqual('test_dir', est.config.model_dir)
+
+    with self.assertRaises(ValueError):
+      estimator.Estimator(model_fn=linear_model_fn,
+                          config=config,
+                          model_dir='different_dir')
 
   def testCheckInputs(self):
     est = estimator.SKCompat(estimator.Estimator(model_fn=linear_model_fn))

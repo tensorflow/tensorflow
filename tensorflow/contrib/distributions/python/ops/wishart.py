@@ -110,7 +110,7 @@ class _WishartOperatorPD(distribution.Distribution):
     """
     parameters = locals()
     self._cholesky_input_output_matrices = cholesky_input_output_matrices
-    with ops.name_scope(name) as ns:
+    with ops.name_scope(name):
       with ops.name_scope("init", values=[df, scale_operator_pd]):
         if not scale_operator_pd.dtype.is_floating:
           raise TypeError(
@@ -156,12 +156,11 @@ class _WishartOperatorPD(distribution.Distribution):
         dtype=self._scale_operator_pd.dtype,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
-        is_continuous=True,
         reparameterization_type=distribution.FULLY_REPARAMETERIZED,
         parameters=parameters,
         graph_parents=([self._df, self._dimension] +
                        self._scale_operator_pd.inputs),
-        name=ns)
+        name=name)
 
   @property
   def df(self):

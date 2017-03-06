@@ -27,6 +27,16 @@ message NodeOutput {
   TensorDescription tensor_description = 3;
 };
 
+// For memory tracking.
+message MemoryStats {
+  int64 host_temp_memory_size = 1;
+  int64 device_temp_memory_size = 2;
+  int64 host_persistent_memory_size = 3;
+  int64 device_persistent_memory_size = 4;
+  repeated int64 host_persistent_tensor_alloc_ids = 5;
+  repeated int64 device_persistent_tensor_alloc_ids = 6;
+}
+
 // Time/size stats recorded for a single execution of a graph node.
 message NodeExecStats {
   // TODO(tucker): Use some more compact form of node identity than
@@ -44,6 +54,7 @@ message NodeExecStats {
   int64 scheduled_micros = 9;
   uint32 thread_id = 10;
   repeated AllocationDescription referenced_tensor = 11;
+  MemoryStats memory_stats = 12;
 };
 
 message DeviceStepStats {

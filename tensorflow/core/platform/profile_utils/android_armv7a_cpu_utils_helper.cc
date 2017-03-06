@@ -113,36 +113,15 @@ int64 AndroidArmV7ACpuUtilsHelper::ReadCpuFrequencyFile(
   if (fp == nullptr) {
     return INVALID_CPU_FREQUENCY;
   }
-  int64 freq = INVALID_CPU_FREQUENCY;
-  const int retval = fscanf(fp, "%lld", &freq);
+  int64 freq_in_khz = INVALID_CPU_FREQUENCY;
+  const int retval = fscanf(fp, "%lld", &freq_in_khz);
   if (retval < 0) {
     LOG(WARNING) << "Failed to \"" << file_path << "\"";
     return INVALID_CPU_FREQUENCY;
   }
   pclose(fp);
-  return freq;
+  return freq_in_khz * 1000;  // The file contains cpu frequency in khz
 }
-
-}  // namespace profile_utils
-}  // namespace tensorflow
-
-// defined(__ANDROID__) && defined(__ARM_ARCH_7A__) && (__ANDROID_API__ >= 21)
-#else
-
-// Dummy implementations to avoid link error.
-
-namespace tensorflow {
-namespace profile_utils {
-
-void AndroidArmV7ACpuUtilsHelper::ResetClockCycle() {}
-uint64 AndroidArmV7ACpuUtilsHelper::GetCurrentClockCycle() { return 1; }
-void AndroidArmV7ACpuUtilsHelper::EnableClockCycleProfiling(bool) {}
-int AndroidArmV7ACpuUtilsHelper::OpenPerfEvent(perf_event_attr *const,
-                                               const pid_t, const int,
-                                               const int, const unsigned long) {
-  return 0;
-}
-int64 AndroidArmV7ACpuUtilsHelper::CalculateCpuFrequency() { return 0; }
 
 }  // namespace profile_utils
 }  // namespace tensorflow

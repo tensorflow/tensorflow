@@ -18,7 +18,7 @@ This script contains various functions for training models. These include
 manipulating gradients, creating a `train_op` (an operation that computes the
 loss and applies the gradients) and a training loop function. The training loop
 allows the user to pass in the `train_op` and runs the optimization according
-to user-specified arguments. Note that the training loop uses the tf.Supervisor
+to user-specified arguments. Note that the training loop uses the tf.train.Supervisor
 and its managed_session in its implementation to ensure the ability of worker
 processes to recover from failures.
 
@@ -329,13 +329,15 @@ def multiply_gradients(grads_and_vars, gradient_multipliers):
       if grad is None:
         raise ValueError('Requested multiple of `None` gradient.')
 
+      multiplier = gradient_multipliers[key]
+      if not isinstance(multiplier, ops.Tensor):
+        multiplier = constant_op.constant(multiplier, dtype=grad.dtype)
+
       if isinstance(grad, ops.IndexedSlices):
-        tmp = grad.values * constant_op.constant(
-            gradient_multipliers[key], dtype=grad.dtype)
+        tmp = grad.values * multiplier
         grad = ops.IndexedSlices(tmp, grad.indices, grad.dense_shape)
       else:
-        grad *= constant_op.constant(
-            gradient_multipliers[key], dtype=grad.dtype)
+        grad *= multiplier
     multiplied_grads_and_vars.append((grad, var))
   return multiplied_grads_and_vars
 

@@ -452,7 +452,7 @@ void Image<T>::DownsampleSmoothed5x5(const Image<T>& original) {
                                        4, 16, 24, 16, 4,   // 64 +
                                        1,  4,  6,  4, 1};  // 16 = 256
 
-  // We'll multiply and sum with the the whole numbers first, then divide by
+  // We'll multiply and sum with the whole numbers first, then divide by
   // the total weight to normalize at the last moment.
   for (int y = 0; y < height_; ++y) {
     for (int x = 0; x < width_; ++x) {

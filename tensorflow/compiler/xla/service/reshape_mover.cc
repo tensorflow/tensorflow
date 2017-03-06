@@ -69,6 +69,16 @@ bool TrySinkReshapeOrTranspose(HloComputation* computation,
     for (size_t i = 0; i < operands.size(); ++i) {
       operands[i] = operands[i]->mutable_operand(0);
     }
+    if (HloOpcode::kFusion == instruction->opcode()) {
+      // Here we already know `instruction` is elementwise, and no operand is
+      // implicit broadcast as if it were the operands would not be equivalent
+      // reshapes, so all the fused instructions have the same dimensions.
+      for (const auto& fused_instruction : instruction->fused_instructions()) {
+        Shape* shape = fused_instruction->mutable_shape();
+        *shape->mutable_dimensions() = operands[0]->shape().dimensions();
+        *shape->mutable_layout() = operands[0]->shape().layout();
+      }
+    }
     auto new_elementwise =
         computation->AddInstruction(instruction->CloneWithNewOperands(
             // `instruction` may change the element type, e.g., from

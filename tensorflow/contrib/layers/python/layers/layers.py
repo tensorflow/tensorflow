@@ -525,7 +525,8 @@ def batch_norm(
       if layer.beta:
         _add_variable_to_collections(layer.beta, variables_collections, 'beta')
       if layer.gamma:
-        _add_variable_to_collections(layer.beta, variables_collections, 'gamma')
+        _add_variable_to_collections(
+            layer.gamma, variables_collections, 'gamma')
 
       if activation_fn is not None:
         outputs = activation_fn(outputs)
@@ -1300,7 +1301,8 @@ def _inner_flatten(inputs, new_rank, output_collections=None, scope=None):
 def _model_variable_getter(getter, name, shape=None, dtype=None,
                            initializer=None, regularizer=None, trainable=True,
                            collections=None, caching_device=None,
-                           partitioner=None, rename=None, **_):
+                           partitioner=None, rename=None, use_resource=None,
+                           **_):
   """Getter that uses model_variable for compatibility with core layers."""
   short_name = name.split('/')[-1]
   if rename and short_name in rename:
@@ -1311,16 +1313,13 @@ def _model_variable_getter(getter, name, shape=None, dtype=None,
       name, shape=shape, dtype=dtype, initializer=initializer,
       regularizer=regularizer, collections=collections, trainable=trainable,
       caching_device=caching_device, partitioner=partitioner,
-      custom_getter=getter)
+      custom_getter=getter, use_resource=use_resource)
 
 
 def _build_variable_getter(rename=None):
   """Build a model variable getter that respects scope getter and renames."""
-  # Respect current getter, if one is set.
-  current_custom_getter = variable_scope.get_variable_scope().custom_getter
+  # VariableScope will nest the getters
   def layer_variable_getter(getter, *args, **kwargs):
-    if current_custom_getter is not None:
-      getter = functools.partial(current_custom_getter, getter)
     kwargs['rename'] = rename
     return _model_variable_getter(getter, *args, **kwargs)
   return layer_variable_getter
@@ -1796,7 +1795,7 @@ def separable_convolution2d(
     reuse: Whether or not the layer and its variables should be reused. To be
       able to reuse the layer scope must be given.
     variables_collections: Optional list of collections for all the variables or
-      a dictionay containing a different list of collection per variable.
+      a dictionary containing a different list of collection per variable.
     outputs_collections: Collection to add the outputs.
     trainable: Whether or not the variables should be trainable or not.
     scope: Optional scope for variable_scope.

@@ -91,6 +91,11 @@ tensorflow::Status Backend::PoolStreams(int n, se::StreamExecutor* executor) {
   return tensorflow::Status::OK();
 }
 
+StatusOr<Backend::StreamPtr> Backend::BorrowStream(int device_ordinal) {
+  TF_ASSIGN_OR_RETURN(auto exec, stream_executor(device_ordinal));
+  return BorrowStream(exec);
+}
+
 StatusOr<Backend::StreamPtr> Backend::BorrowStream(
     se::StreamExecutor* executor) {
   if (0 == stream_pools_.count(executor)) {

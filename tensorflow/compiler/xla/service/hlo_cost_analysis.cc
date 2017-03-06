@@ -369,7 +369,13 @@ Status HloCostAnalysis::HandleFusion(HloInstruction* fusion) {
 Status HloCostAnalysis::HandleCall(
     HloInstruction* call, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
     HloComputation* computation) {
-  return Unimplemented("call");
+  HloCostAnalysis computation_visitor(shape_size_);
+  TF_RETURN_IF_ERROR(computation->Accept(&computation_visitor));
+
+  current_flop_count_ = computation_visitor.flop_count();
+  current_transcendental_count_ = computation_visitor.transcendental_count();
+  current_bytes_accessed_ = computation_visitor.bytes_accessed();
+  return Status::OK();
 }
 
 Status HloCostAnalysis::HandleCustomCall(

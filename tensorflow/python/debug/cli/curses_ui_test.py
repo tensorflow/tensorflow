@@ -963,7 +963,11 @@ class CursesTest(test_util.TensorFlowTestCase):
     self.assertEqual([0], ui.output_pad_rows)
 
     # Invalid regex should have led to a toast error message.
-    self.assertEqual(["ERROR: Invalid regular expression: \"[\""], ui.toasts)
+    self.assertEqual(
+        [MockCursesUI._UI_WAIT_MESSAGE,
+         "ERROR: Invalid regular expression: \"[\"",
+         MockCursesUI._UI_WAIT_MESSAGE],
+        ui.toasts)
 
   def testRegexSearchFromCommandHistory(self):
     """Test regex search commands are recorded in command history."""
@@ -1193,10 +1197,10 @@ class CursesTest(test_util.TensorFlowTestCase):
     self.assertEqual(1, len(ui.output_array_pointer_indices))
 
     # Check error messages.
-    self.assertEqual("ERROR: Indices exceed tensor dimensions.", ui.toasts[1])
+    self.assertEqual("ERROR: Indices exceed tensor dimensions.", ui.toasts[2])
     self.assertEqual("ERROR: invalid literal for int() with base 10: ''",
-                     ui.toasts[2])
-    self.assertEqual("ERROR: Empty indices.", ui.toasts[3])
+                     ui.toasts[4])
+    self.assertEqual("ERROR: Empty indices.", ui.toasts[6])
 
   def testWriteScreenOutputToFileWorks(self):
     output_path = tempfile.mktemp()
@@ -1291,6 +1295,23 @@ class CursesTest(test_util.TensorFlowTestCase):
         80,
         command_sequence=[
             string_to_codes("babble -n 10 -k\n"),
+            [curses.KEY_MOUSE, 1, 4],  # A click on a hyperlink.
+            self._EXIT
+        ])
+    ui.register_command_handler("babble", self._babble, "")
+    ui.run_ui()
+
+    self.assertEqual(2, len(ui.unwrapped_outputs))
+    self.assertEqual(["bar"] * 10, ui.unwrapped_outputs[0].lines)
+    self.assertEqual(["bar"] * 60, ui.unwrapped_outputs[1].lines)
+
+  def testMouseClickOnLinkWithExistingTextTriggersCommand(self):
+    ui = MockCursesUI(
+        40,
+        80,
+        command_sequence=[
+            string_to_codes("babble -n 10 -k\n"),
+            string_to_codes("foo"),  # Enter some existing code in the textbox.
             [curses.KEY_MOUSE, 1, 4],  # A click on a hyperlink.
             self._EXIT
         ])

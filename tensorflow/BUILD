@@ -147,7 +147,9 @@ filegroup(
         "//tensorflow/compiler/aot/tests:all_files",
         "//tensorflow/compiler/jit:all_files",
         "//tensorflow/compiler/jit/graphcycles:all_files",
+        "//tensorflow/compiler/jit/kernels:all_files",
         "//tensorflow/compiler/jit/legacy_flags:all_files",
+        "//tensorflow/compiler/jit/ops:all_files",
         "//tensorflow/compiler/tests:all_files",
         "//tensorflow/compiler/tf2xla:all_files",
         "//tensorflow/compiler/tf2xla/kernels:all_files",
@@ -243,6 +245,7 @@ filegroup(
         "//tensorflow/java/src/main/native:all_files",
         "//tensorflow/python:all_files",
         "//tensorflow/python/debug:all_files",
+        "//tensorflow/python/estimator:all_files",
         "//tensorflow/python/kernel_tests:all_files",
         "//tensorflow/python/saved_model:all_files",
         "//tensorflow/python/tools:all_files",
@@ -298,15 +301,6 @@ filegroup(
 # -------------------------------------------
 cc_binary(
     name = "libtensorflow.so",
-    linkshared = 1,
-    deps = [
-        "//tensorflow/c:c_api",
-        "//tensorflow/core:tensorflow",
-    ],
-)
-
-cc_binary(
-    name = "libtensorflow_c.so",
     linkshared = 1,
     deps = [
         "//tensorflow/c:c_api",

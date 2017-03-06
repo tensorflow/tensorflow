@@ -46,30 +46,9 @@ import traceback
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import,g-bad-import-order,g-import-not-at-top
 
-# On UNIX-based platforms, pywrap_tensorflow is a SWIG-generated
-# python library that dynamically loads _pywrap_tensorflow.so. The
-# default mode for loading keeps all the symbol private and not
-# visible to other libraries that may be loaded. Setting the mode to
-# RTLD_GLOBAL to make the symbols visible, so that custom op libraries
-# imported using `tf.load_op_library()` can access symbols defined in
-# _pywrap_tensorflow.so.
 import numpy as np
-try:
-  if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
-    _default_dlopen_flags = sys.getdlopenflags()
-    sys.setdlopenflags(_default_dlopen_flags | ctypes.RTLD_GLOBAL)
-    from tensorflow.python import pywrap_tensorflow
-    sys.setdlopenflags(_default_dlopen_flags)
-  else:
-    # TODO(keveman,mrry): Support dynamic op loading on platforms that do not
-    # use `dlopen()` for dynamic loading.
-    from tensorflow.python import pywrap_tensorflow
-except ImportError:
-  msg = """%s\n\nFailed to load the native TensorFlow runtime.\n
-See https://github.com/tensorflow/tensorflow/blob/master/tensorflow/g3doc/get_started/os_setup.md#import_error\n
-for some common reasons and solutions.  Include the entire stack trace
-above this error message when asking for help.""" % traceback.format_exc()
-  raise ImportError(msg)
+
+from tensorflow.python import pywrap_tensorflow
 
 # Protocol buffers
 from tensorflow.core.framework.graph_pb2 import *
@@ -181,7 +160,6 @@ _allowed_symbols.extend([
     'neg',  # use tf.negative instead.
     'sub',  # use tf.subtract instead.
     'create_partitioned_variables',
-    'concat_v2',  # use tf.concat instead
     'deserialize_many_sparse',
     'lin_space',
     'list_diff',  # Use tf.listdiff instead.

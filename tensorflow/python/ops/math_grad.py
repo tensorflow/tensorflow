@@ -772,24 +772,25 @@ def _SelectGrad(op, grad):
 
 @ops.RegisterGradient("MatMul")
 def _MatMulGrad(op, grad):
+  """Gradient for MatMul."""
+
   t_a = op.get_attr("transpose_a")
   t_b = op.get_attr("transpose_b")
+  a = math_ops.conj(op.inputs[0])
+  b = math_ops.conj(op.inputs[1])
   if not t_a and not t_b:
-    return (math_ops.matmul(
-        grad, op.inputs[1], transpose_b=True), math_ops.matmul(
-            op.inputs[0], grad, transpose_a=True))
+    grad_a = math_ops.matmul(grad, b, transpose_b=True)
+    grad_b = math_ops.matmul(a, grad, transpose_a=True)
   elif not t_a and t_b:
-    return (math_ops.matmul(grad, op.inputs[1]), math_ops.matmul(
-        grad, op.inputs[0], transpose_a=True))
+    grad_a = math_ops.matmul(grad, b)
+    grad_b = math_ops.matmul(grad, a, transpose_a=True)
   elif t_a and not t_b:
-    return (math_ops.matmul(
-        op.inputs[1], grad, transpose_b=True),
-            math_ops.matmul(op.inputs[0], grad))
+    grad_a = math_ops.matmul(b, grad, transpose_b=True)
+    grad_b = math_ops.matmul(a, grad)
   elif t_a and t_b:
-    return (math_ops.matmul(
-        op.inputs[1], grad, transpose_a=True, transpose_b=True),
-            math_ops.matmul(
-                grad, op.inputs[0], transpose_a=True, transpose_b=True))
+    grad_a = math_ops.matmul(b, grad, transpose_a=True, transpose_b=True)
+    grad_b = math_ops.matmul(grad, a, transpose_a=True, transpose_b=True)
+  return grad_a, grad_b
 
 
 @ops.RegisterGradient("SparseMatMul")

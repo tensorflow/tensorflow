@@ -1466,6 +1466,36 @@ TEST_F(OpTest, NotEqual) {
   });
 }
 
+TEST_F(OpTest, OneHot) {
+  Repeatedly([this]() {
+    DataType type = Choose<DataType>(kAllXlaTypes);
+
+    std::vector<int64> dims = RandomDims();
+    int num_dims = dims.size();
+
+    int32 depth = RandomDim();
+
+    Tensor indices(DT_INT32, TensorShape(dims));
+    std::uniform_int_distribution<int32> distribution(-depth * 2, depth * 2);
+    test::FillFn<int32>(&indices, [this, &distribution](int i) -> int32 {
+      return distribution(generator());
+    });
+
+    int axis = std::uniform_int_distribution<int32>(-num_dims - 5,
+                                                    num_dims + 5)(generator());
+
+    OpTestBuilder builder("OneHot");
+    builder.Attr("T", type);
+    builder.Attr("TI", DT_INT32);
+    builder.Attr("axis", axis);
+    builder.Input(indices);
+    builder.Input(test::AsScalar<int32>(depth));
+    builder.Input(RandomTensor(type, {}));
+    builder.Input(RandomTensor(type, {}));
+    ExpectTfAndXlaOutputsAreClose(builder);
+  });
+}
+
 TEST_F(OpTest, Pack) {
   Repeatedly([this]() {
     DataType type = Choose<DataType>(kAllXlaTypes);
@@ -1743,22 +1773,13 @@ TEST_F(OpTest, Softmax) {
   });
 }
 
-TEST_F(OpTest, Split) {
+TEST_F(OpTest, SoftmaxCrossEntropyWithLogits) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>(kAllXlaTypes);
-    std::vector<int64> dims = RandomDims(1);
-    std::uniform_int_distribution<int> ud;
-    int32 dim = std::uniform_int_distribution<int32>(
-        0, static_cast<int32>(dims.size()) - 1)(generator());
-    int n = std::uniform_int_distribution<int>(1, 5)(generator());
-    // Ensure 'dim' is evenly divisible by 'n'.
-    dims[dim] /= n;
-    dims[dim] *= n;
-    ExpectTfAndXlaOutputsAreClose(OpTestBuilder("Split")
-                                      .Input(test::AsScalar<int32>(dim))
-                                      .Input(RandomTensor(type, dims))
-                                      .Attr("T", type)
-                                      .Attr("num_split", n));
+    std::vector<int64> dims = RandomDims(2, 2, 1);
+    ExpectTfAndXlaOutputsAreClose(OpTestBuilder("SoftmaxCrossEntropyWithLogits")
+                                      .Input(RandomTensor(DT_FLOAT, dims))
+                                      .Input(RandomTensor(DT_FLOAT, dims))
+                                      .Attr("T", DT_FLOAT));
   });
 }
 
@@ -1813,6 +1834,46 @@ TEST_F(OpTest, SparseMatMul) {
                                       .Attr("Tb", DT_FLOAT)
                                       .Attr("transpose_a", true)
                                       .Attr("transpose_b", true));
+  });
+}
+
+TEST_F(OpTest, SparseSoftmaxCrossEntropyWithLogits) {
+  Repeatedly([this]() {
+    std::vector<int64> dims = RandomDims(2, 2, 1);
+    int64 batch_size = dims[0];
+    int64 num_classes = dims[1];
+
+    std::vector<int32> indices(batch_size);
+    for (int64 i = 0; i < batch_size; ++i) {
+      indices[i] =
+          std::uniform_int_distribution<int32>(0, num_classes - 1)(generator());
+    }
+
+    ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("SparseSoftmaxCrossEntropyWithLogits")
+            .Input(RandomTensor(DT_FLOAT, dims))
+            .Input(test::AsTensor<int32>(indices))
+            .Attr("T", DT_FLOAT)
+            .Attr("Tlabels", DT_INT32));
+  });
+}
+
+TEST_F(OpTest, Split) {
+  Repeatedly([this]() {
+    DataType type = Choose<DataType>(kAllXlaTypes);
+    std::vector<int64> dims = RandomDims(1);
+    std::uniform_int_distribution<int> ud;
+    int32 dim = std::uniform_int_distribution<int32>(
+        0, static_cast<int32>(dims.size()) - 1)(generator());
+    int n = std::uniform_int_distribution<int>(1, 5)(generator());
+    // Ensure 'dim' is evenly divisible by 'n'.
+    dims[dim] /= n;
+    dims[dim] *= n;
+    ExpectTfAndXlaOutputsAreClose(OpTestBuilder("Split")
+                                      .Input(test::AsScalar<int32>(dim))
+                                      .Input(RandomTensor(type, dims))
+                                      .Attr("T", type)
+                                      .Attr("num_split", n));
   });
 }
 

@@ -77,6 +77,9 @@ class ResourceBase : public core::RefCounted {
  public:
   // Returns a debug string for *this.
   virtual string DebugString() = 0;
+
+  // Returns memory used by this resource.
+  virtual int64 MemoryUsed() const { return 0; };
 };
 
 // Container used for per-step resources.

@@ -67,10 +67,6 @@ contains vz-line-charts embedded inside tf-panes-helper's.
           selected-runs="{{_selectedRuns}}"
           >
           <div class="extend-first-section">
-            <paper-checkbox
-              id="download-option"
-              checked="{{_showDownloadLinks}}"
-              >Data download links</paper-checkbox>
             <div id="tooltip-sorting">
               <div id="tooltip-sorting-label">Tooltip sorting method:</div>
               <paper-dropdown-menu
@@ -115,8 +111,6 @@ contains vz-line-charts embedded inside tf-panes-helper's.
           data-provider="[[dataProvider]]"
           run2tag="[[run2tag]]"
           selected-runs="[[_selectedRuns]]"
-          show-download-links="[[_showDownloadLinks]]"
-          download-link-url-function="[[scalarUrl]]"
           >
           <template>
             <vz-line-chart
@@ -189,17 +183,6 @@ contains vz-line-charts embedded inside tf-panes-helper's.
           value: "scalar"
         },
         router: Object,
-        scalarUrl: {
-          type: Function,
-          computed: "_getScalarUrl(router)"
-        },
-        _showDownloadLinks: {
-          type: Boolean,
-          notify: true,
-          value: TF.URIStorage.getBooleanInitializer('_showDownloadLinks',
-              false),
-          observer: '_showDownloadLinksObserver'
-        },
         _smoothingWeight: {
           type: Number,
           notify: true,
@@ -219,9 +202,6 @@ contains vz-line-charts embedded inside tf-panes-helper's.
         this.async(function() {
           this.fire("rendered");
         });
-      },
-      _getScalarUrl: function() {
-        return this.router.scalars;
       },
       _showDownloadLinksObserver: TF.URIStorage.getBooleanObserver(
           '_showDownloadLinks', false),

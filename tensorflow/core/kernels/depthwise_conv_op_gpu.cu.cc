@@ -134,7 +134,7 @@ template struct DepthwiseConv2dGPULaunch<float>;
 template struct DepthwiseConv2dGPULaunch<double>;
 
 // A Cuda kernel to compute the depthwise convolution backprop w.r.t. input.
-template <typename T>
+template <typename T, int KNOWN_DEPTH_MULTIPLIER>
 __global__ void DepthwiseConv2dBackpropInputGPUKernel(const DepthwiseArgs args,
                                                       const T* out_backprop,
                                                       const T* filter,
@@ -145,7 +145,9 @@ __global__ void DepthwiseConv2dBackpropInputGPUKernel(const DepthwiseArgs args,
   const int in_depth = args.in_depth;
   const int filter_rows = args.filter_rows;
   const int filter_cols = args.filter_cols;
-  const int depth_multiplier = args.depth_multiplier;
+  const int depth_multiplier = KNOWN_DEPTH_MULTIPLIER == -1
+                                   ? args.depth_multiplier
+                                   : KNOWN_DEPTH_MULTIPLIER;
   const int stride = args.stride;
   const int pad_rows = args.pad_rows;
   const int pad_cols = args.pad_cols;
@@ -161,8 +163,6 @@ __global__ void DepthwiseConv2dBackpropInputGPUKernel(const DepthwiseArgs args,
     const int b = thread_id / in_depth / in_cols / in_rows;
 
     T sum = 0;
-    const int out_d_start = in_d * depth_multiplier;
-    const int out_d_end = out_d_start + depth_multiplier;
 
     const int out_r_start =
         tf_max<int>(0, (in_r - filter_rows + pad_rows + stride) / stride);
@@ -171,22 +171,24 @@ __global__ void DepthwiseConv2dBackpropInputGPUKernel(const DepthwiseArgs args,
         tf_max(0, (in_c - filter_cols + pad_cols + stride) / stride);
     const int out_c_end = tf_min(out_cols - 1, (in_c + pad_cols) / stride);
 
-    UNROLL for (int out_d = out_d_start; out_d < out_d_end; ++out_d) {
-      UNROLL for (int out_r = out_r_start; out_r <= out_r_end; ++out_r) {
-        const int f_r = in_r + pad_rows - out_r * stride;
-        const int filter_dm = out_d - out_d_start;
-        const int temp_out_backprop_offset = out_cols * (out_r + out_rows * b);
-        const int temp_filter_offset = filter_cols * f_r;
-        for (int out_c = out_c_start; out_c <= out_c_end; ++out_c) {
-          const int f_c = in_c + pad_cols - out_c * stride;
-          const int filter_offset =
-              filter_dm +
-              args.depth_multiplier *
-                  (in_d + in_depth * (f_c + temp_filter_offset));
-          const int out_backprop_offset =
-              out_d + out_depth * (out_c + temp_out_backprop_offset);
-          sum += ldg(out_backprop + out_backprop_offset) *
-                 ldg(filter + filter_offset);
+#pragma nounroll
+    for (int out_r = out_r_start; out_r <= out_r_end; ++out_r) {
+      const int f_r = in_r + pad_rows - out_r * stride;
+      const int temp_out_backprop_offset =
+          out_depth * out_cols * (out_r + out_rows * b);
+      const int temp_filter_offset = filter_cols * f_r;
+#pragma nounroll
+      for (int out_c = out_c_start; out_c <= out_c_end; ++out_c) {
+        const int f_c = in_c + pad_cols - out_c * stride;
+        int filter_offset =
+            depth_multiplier * (in_d + in_depth * (f_c + temp_filter_offset));
+        const int out_backprop_offset =
+            out_depth * out_c + temp_out_backprop_offset;
+#pragma unroll 8
+        for (int i = 0; i < depth_multiplier; ++i) {
+          sum += ldg(out_backprop + out_backprop_offset +
+                     in_d * depth_multiplier + i) *
+                 ldg(filter + filter_offset + i);
         }
       }
     }
@@ -203,11 +205,19 @@ struct DepthwiseConv2dBackpropInputGPULaunch {
                   const T* out_backprop, const T* filter, T* in_backprop) {
     const int num_in_backprop =
         args.batch * args.in_rows * args.in_cols * args.in_depth;
-    CudaLaunchConfig config = GetCudaLaunchConfig(num_in_backprop, d);
 
-    DepthwiseConv2dBackpropInputGPUKernel<
-        T><<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-        args, out_backprop, filter, in_backprop, num_in_backprop);
+    CudaLaunchConfig config = GetCudaLaunchConfig(num_in_backprop, d);
+    // Increase block count for when there are more warps/SM than threads/SM.
+    config.block_count *= 4;
+    if (args.depth_multiplier == 1) {
+      DepthwiseConv2dBackpropInputGPUKernel<T, 1>
+          <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+              args, out_backprop, filter, in_backprop, num_in_backprop);
+    } else {
+      DepthwiseConv2dBackpropInputGPUKernel<T, -1>
+          <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+              args, out_backprop, filter, in_backprop, num_in_backprop);
+    }
   }
 };
 

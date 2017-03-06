@@ -199,29 +199,37 @@ struct LaunchDepthwiseConvOp<CPUDevice, T> {
                                   &input_buffer));
       T* input_buffer_data = input_buffer.template flat<T>().data();
 
-      for (int64 b = start; b < limit; ++b) {
+      for (int64 i = start; i < limit; ++i) {
+        const int64 b = i / args.out_rows;
         const int64 in_base = b * input_image_size;
         const int64 out_base = b * output_image_size;
 
-        for (int64 out_r = 0; out_r < args.out_rows; ++out_r) {
-          for (int64 out_c = 0; out_c < args.out_cols; ++out_c) {
-            // Populate 'input_buffer_data' with data from local input region.
-            functor::DepthwiseInputCopyOp<T>()(
-                args, padded_filter_inner_dim_size, out_r, out_c,
-                input + in_base, input_buffer_data);
+        const int64 out_r = i % args.out_rows;
 
-            // Process buffered input across all filters and store to output.
-            DepthwiseConv2DKernel<T>::Run(args, padded_filter_inner_dim_size,
-                                          out_r, out_c, filter_data,
-                                          input_buffer_data, output + out_base);
-          }
+        for (int64 out_c = 0; out_c < args.out_cols; ++out_c) {
+          // Populate 'input_buffer_data' with data from local input region.
+          functor::DepthwiseInputCopyOp<T>()(args, padded_filter_inner_dim_size,
+                                             out_r, out_c, input + in_base,
+                                             input_buffer_data);
+
+          // Process buffered input across all filters and store to output.
+          DepthwiseConv2DKernel<T>::Run(args, padded_filter_inner_dim_size,
+                                        out_r, out_c, filter_data,
+                                        input_buffer_data, output + out_base);
         }
       }
     };
 
-    // TODO(andydavis) Shard over batch X out_rows (instead of just batch).
-    const int64 total_shards = args.batch;
-    const int64 shard_cost = args.out_rows * args.out_cols * args.out_depth;
+    const int64 total_shards = args.batch * args.out_rows;
+
+    // Empirically tested to give reasonable performance boosts at batch size 1
+    // without reducing throughput at batch size 32.
+    const float kCostMultiplier = 2.5f;
+
+    // TODO(andydavis): Estimate shard cost (in cycles) based on the number of
+    // flops/loads/stores required to compute one shard.
+    const int64 shard_cost = kCostMultiplier * args.out_cols * args.out_depth;
+
     auto worker_threads = *(ctx->device()->tensorflow_cpu_worker_threads());
     Shard(worker_threads.num_threads, worker_threads.workers, total_shards,
           shard_cost, shard);

@@ -1719,8 +1719,7 @@ def sparse_softmax_cross_entropy_with_logits(_sentinel=None,  # pylint: disable=
         return cost
 
     # Reshape logits to 2 dim, labels to 1 dim.
-    num_classes = array_ops.gather(array_ops.shape(logits),
-                                   array_ops.rank(logits) - 1)
+    num_classes = array_ops.shape(logits)[array_ops.rank(logits) - 1]
     precise_logits = array_ops.reshape(precise_logits, [-1, num_classes])
     labels = array_ops.reshape(labels, [-1])
     # The second output tensor contains the gradients.  We use it in
