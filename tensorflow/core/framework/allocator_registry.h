@@ -17,6 +17,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_ALLOCATOR_REGISTRY_H_
 #define TENSORFLOW_CORE_FRAMEWORK_ALLOCATOR_REGISTRY_H_
 
+#include <string>
 #include <vector>
 
 #include "tensorflow/core/framework/allocator.h"
@@ -26,34 +27,35 @@ namespace tensorflow {
 // A global AllocatorRegistry is used to hold all allocators.
 class AllocatorRegistry {
  public:
-
   // Add an allocator to the registry.
-  void Register(const string& name, uint8_t priority,
-                Allocator* allocator);
+  void Register(const string& name, int priority, Allocator* allocator);
 
   // Return allocator with highest priority
+  // If multiple allocators have the same high priority, return one of them
   Allocator* GetAllocator();
 
   // Returns the global registry of allocators.
   static AllocatorRegistry* Global();
 
  private:
- typedef struct {
-   string          name;
-   uint8_t         priority;
-   Allocator*      allocator;
- } AllocatorRegistryEntry;
+  typedef struct {
+    string name;
+    int priority;
+    Allocator* allocator;
+  } AllocatorRegistryEntry;
 
- std::vector<AllocatorRegistryEntry> allocators_; 
- Allocator* m_curr_allocator_;
+  bool CheckForDuplicates(const string& name, int priority);
+
+  std::vector<AllocatorRegistryEntry> allocators_;
+  Allocator* m_curr_allocator_;
 };
 
 namespace allocator_registration {
 
 class AllocatorRegistration {
  public:
-  AllocatorRegistration(const string& name, uint8_t priority,
-                               Allocator* allocator) {
+  AllocatorRegistration(const string& name, int priority,
+                        Allocator* allocator) {
     AllocatorRegistry::Global()->Register(name, priority, allocator);
   }
 };
@@ -67,10 +69,8 @@ class AllocatorRegistration {
   REGISTER_MEM_ALLOCATOR_UNIQ(ctr, name, priority, allocator)
 
 #define REGISTER_MEM_ALLOCATOR_UNIQ(ctr, name, priority, allocator) \
-  static allocator_registration::AllocatorRegistration       \
-      register_allocator_##ctr(                                     \
-          name, (uint8_t) priority,                                             \
-          new allocator)
+  static allocator_registration::AllocatorRegistration              \
+      register_allocator_##ctr(name, priority, new allocator)
 
 }  // namespace tensorflow
 

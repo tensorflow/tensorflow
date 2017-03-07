@@ -43,21 +43,6 @@ class MklSubAllocator : public SubAllocator {
 /// CPU allocator for MKL that wraps BFC allocator and intercepts
 /// and redirects memory allocation calls from MKL.
 class MklCPUAllocator : public Allocator {
- private:
-  // NOTE: We should ideally move this into CPUOptions in config.proto.
-  /// Memory limit - 64GB
-  static const size_t kMaxMemSize =
-      static_cast<size_t>(64) * 1024 * 1024 * 1024;
-
-  /// Do we allow growth in BFC Allocator
-  static const bool kAllowGrowth = true;
-
-  /// Name
-  static constexpr const char* kName = "mklcpu";
-
-  /// The alignment that we need for the allocations
-  static const size_t kAlignment = 64;
-
  public:
   // Hooks provided by this allocator for memory allocation routines from MKL
 
@@ -111,6 +96,20 @@ class MklCPUAllocator : public Allocator {
   }
 
  private:
+  // TODO(jbobba): We should ideally move this into CPUOptions in config.proto.
+  /// Memory limit - 64GB
+  static const size_t kMaxMemSize =
+      static_cast<size_t>(64) * 1024 * 1024 * 1024;
+
+  /// Do we allow growth in BFC Allocator
+  static const bool kAllowGrowth = true;
+
+  /// Name
+  static constexpr const char* kName = "mklcpu";
+
+  /// The alignment that we need for the allocations
+  static const size_t kAlignment = 64;
+
   Allocator* allocator_;
 };
 

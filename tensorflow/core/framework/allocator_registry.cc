@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/core/platform/default/logging.h"
+
 namespace tensorflow {
 
 // static
@@ -25,12 +27,27 @@ AllocatorRegistry* AllocatorRegistry::Global() {
   return global_allocator_registry;
 }
 
-void AllocatorRegistry::Register(const string& name, uint8_t priority,
+bool AllocatorRegistry::CheckForDuplicates(const string& name, int priority) {
+  for (std::vector<AllocatorRegistryEntry>::iterator it = allocators_.begin();
+       it != allocators_.end(); ++it) {
+    if (!name.compare(it->name) && it->priority == priority) return true;
+  }
+  return false;
+}
+
+void AllocatorRegistry::Register(const string& name, int priority,
                                  Allocator* allocator) {
+  CHECK(!name.empty()) << "Need a valid name for Allocator";
+  CHECK_GE(priority, 0) << "Priority needs to be non-negative";
+  CHECK(!CheckForDuplicates(name, priority)) << "Allocator with name: [" << name
+                                             << "] and priority: [" << priority
+                                             << "] already registered";
+
   AllocatorRegistryEntry tmp_entry;
   tmp_entry.name = name;
   tmp_entry.priority = priority;
   tmp_entry.allocator = allocator;
+
   allocators_.push_back(tmp_entry);
   int high_pri = -1;
   for (std::vector<AllocatorRegistryEntry>::iterator it = allocators_.begin();
@@ -43,7 +60,7 @@ void AllocatorRegistry::Register(const string& name, uint8_t priority,
 }
 
 Allocator* AllocatorRegistry::GetAllocator() {
-  assert(m_curr_allocator_ != nullptr);
+  CHECK_NOTNULL(m_curr_allocator_);
   return m_curr_allocator_;
 }
 
