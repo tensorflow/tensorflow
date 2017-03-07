@@ -55,6 +55,19 @@ java_test(
 )
 
 java_test(
+    name = "SavedModelBundleTest",
+    size = "small",
+    srcs = ["src/test/java/org/tensorflow/SavedModelBundleTest.java"],
+    data = ["//tensorflow/cc/saved_model:saved_model_half_plus_two"],
+    test_class = "org.tensorflow.SavedModelBundleTest",
+    deps = [
+        ":tensorflow",
+        ":testutil",
+        "@junit",
+    ],
+)
+
+java_test(
     name = "SessionTest",
     size = "small",
     srcs = ["src/test/java/org/tensorflow/SessionTest.java"],
