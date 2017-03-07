@@ -188,8 +188,6 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       "${tensorflow_source_dir}/tensorflow/python/debug/wrappers/dumping_wrapper_test.py"
       "${tensorflow_source_dir}/tensorflow/python/debug/wrappers/local_cli_wrapper_test.py"
       "${tensorflow_source_dir}/tensorflow/python/debug/wrappers/framework_test.py"
-      # Needs debug
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/matmul_op_test.py"
 
     )
   endif()
@@ -296,7 +294,7 @@ if (tensorflow_BUILD_CC_TESTS)
       "${tensorflow_source_dir}/tensorflow/contrib/rnn/ops/gru_ops_test.cc" # status 5
       "${tensorflow_source_dir}/tensorflow/contrib/rnn/ops/lstm_ops_test.cc" # status 5
 
-      # TODO: not compiling 
+      # TODO: not compiling
       "${tensorflow_source_dir}/tensorflow/core/kernels/quantization_utils_test.cc"
       "${tensorflow_source_dir}/tensorflow/core/kernels/quantize_and_dequantize_op_test.cc"
       "${tensorflow_source_dir}/tensorflow/core/kernels/quantize_down_and_shrink_range_op_test.cc"
