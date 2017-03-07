@@ -323,6 +323,9 @@ for TensorFlow 1.0.0 on Linux:
 $ <b>sudo pip install /tmp/tensorflow_pkg/tensorflow-1.0.0-py2-none-any.whl</b>
 </pre>
 
+**NOTE on gcc version 5:** the binary pip packages
+available on the TensorFlow website are built with gcc4 that uses the older ABI.
+To make the library compatible with the older abi you have to add `-cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0"`
 
 <a name="#ValidateYourInstallation"></a>
 ## Validate your installation
