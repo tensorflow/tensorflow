@@ -43,13 +43,6 @@ class PredictionType(object):
   MULTIPLE_VALUE = 2
 
 
-# TODO(jtbates): Remove RNNKeys once all targets that reference it are updated
-# to depend on its implementation in rnn_common.
-class RNNKeys(object):
-  SEQUENCE_LENGTH_KEY = 'sequence_length'
-  STATE_PREFIX = 'rnn_cell_state'
-
-
 def _get_state_name(i):
   """Constructs the name string for state component `i`."""
   return '{}_{}'.format(rnn_common.RNNKeys.STATE_PREFIX, i)
