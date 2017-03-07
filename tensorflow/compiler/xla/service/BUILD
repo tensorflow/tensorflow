@@ -728,6 +728,7 @@ cc_library(
     hdrs = ["reshape_mover.h"],
     deps = [
         ":hlo_pass",
+        "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
     ],
@@ -1245,6 +1246,22 @@ cc_test(
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/core:lib",
         "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "hlo_constant_folding",
+    srcs = ["hlo_constant_folding.cc"],
+    hdrs = ["hlo_constant_folding.h"],
+    deps = [
+        ":hlo",
+        ":hlo_pass",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/core:lib",
     ],
 )
 
