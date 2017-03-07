@@ -1,3 +1,9 @@
+# Release 1.0.1
+
+## Bug Fixes and Other Changes
+* Change GraphConstructor to not increase the version when importing, but instead take the min of all versions.
+* Google Cloud Storage fixes
+
 # Release 1.0.0
 
 ## Major Features and Improvements
