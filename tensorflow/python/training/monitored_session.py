@@ -67,7 +67,7 @@ class Scaffold(object):
   The following pieces are directly accessible as attributes of the `Scaffold`
   object:
 
-  * `saver`: A `tf.Saver` object taking care of saving the variables.  Picked
+  * `saver`: A `tf.train.Saver` object taking care of saving the variables.  Picked
     from and stored into the `SAVERS` collection in the graph by default.
   * `init_op`: An op to run to initialize the variables.  Picked from and
     stored into the `INIT_OP` collection in the graph by default.
@@ -124,7 +124,7 @@ class Scaffold(object):
       local_init_op: Optional op to initialize local variables.
       summary_op: Optional op to gather all summaries.  Must return a scalar
         string tensor containing a serialized `Summary` proto.
-      saver: Optional `tf.Saver` object to use to save and restore variables.
+      saver: Optional `tf.train.Saver` object to use to save and restore variables.
     """
 
     # NOTE(touts): modifying the init function to be passed the scaffold is a
