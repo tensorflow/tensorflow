@@ -322,6 +322,7 @@ tf_cuda_library(
     hdrs = [
         "example/feature_util.h",
         "framework/allocator.h",
+        "framework/allocator_registry.h",
         "framework/attr_value_util.h",
         "framework/bfloat16.h",
         "framework/cancellation.h",
@@ -1344,7 +1345,7 @@ tf_cuda_library(
         ":version_lib",
         "//tensorflow/core/kernels:bounds_check",
         "//third_party/eigen3",
-    ],
+    ] + if_mkl(["//third_party/mkl:intel_binary_blob"]),
     alwayslink = 1,
 )
 
