@@ -448,7 +448,7 @@ Status PoplarBaseVisitor::HandleSelectAndScatter(HloInstruction* inst) {
   LOG(INFO) << inst->ToString();
   bool simple_selection;
   TF_ASSIGN_OR_RETURN(simple_selection,
-                      IsComputationSimpleSelection(inst->scatter()));
+                      IsComputationSimpleSelection(inst->select()));
   bool simple_reduction;
   TF_ASSIGN_OR_RETURN(simple_reduction,
                       IsComputationReducableArtithmetic(inst->scatter()));

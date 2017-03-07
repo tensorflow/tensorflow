@@ -20,7 +20,7 @@ public: \
   Output<Vector<T>> out; \
 \
   bool compute() { \
-    for (unsigned i = 0; i != a.size(); ++i) { \
+    for (unsigned i = 0; i < a.size(); ++i) { \
       out[i] = (EXP); \
     } \
     return true; \
@@ -53,7 +53,7 @@ public: \
   Output<Vector<bool>> out; \
 \
   bool compute() { \
-    for (unsigned i = 0; i != a.size(); ++i) { \
+    for (unsigned i = 0; i < a.size(); ++i) { \
       out[i] = (EXP); \
     } \
     return true; \
@@ -85,7 +85,7 @@ public: \
   Output<Vector<bool>> out; \
 \
   bool compute() { \
-    for (unsigned i = 0; i != a.size(); ++i) { \
+    for (unsigned i = 0; i < a.size(); ++i) { \
       out[i] = (EXP); \
     } \
     return true; \
@@ -108,7 +108,7 @@ public:
   Output<Vector<Tout>> out;
 
   bool compute() {
-    for (unsigned i = 0; i != a.size(); ++i) {
+    for (unsigned i = 0; i < a.size(); ++i) {
       out[i] = (Tout)(a[i]);
     }
     return true;
@@ -194,7 +194,7 @@ public:
   std::uniform_real_distribution<float> uniform_real_distribution;
 
   bool compute() {
-    for (unsigned i = 0; i != out.size(); ++i) {
+    for (unsigned i = 0; i < out.size(); ++i) {
       T val = (T)uniform_real_distribution(random_engine);
       out[i] = (val > mean) ? (T)0 : (T)1;
     }
@@ -222,7 +222,7 @@ public:
     T u = upper;
     float range = (float)(u - l);
 
-    for (unsigned i = 0; i != out.size(); ++i) {
+    for (unsigned i = 0; i < out.size(); ++i) {
       T val = (T)(uniform_real_distribution(random_engine) * range);
       out[i] = val + l;
     }
@@ -250,7 +250,7 @@ public:
   bool compute() {
     T m = mean;
     T s = sd;
-    for (unsigned i = 0; i != out.size(); ++i) {
+    for (unsigned i = 0; i < out.size(); ++i) {
       T val = (T)normal_distribution(random_engine);
       out[i] = val * s + m;
     }
@@ -273,7 +273,7 @@ public: \
   Output<Vector<T>> out; \
 \
   bool compute() { \
-    for (unsigned i = 0; i != a.size(); ++i) { \
+    for (unsigned i = 0; i < a.size(); ++i) { \
       out[i] = (EXP); \
     } \
     return true; \
@@ -304,7 +304,7 @@ public: \
   Output<Vector<bool>> out; \
 \
   bool compute() { \
-    for (unsigned i = 0; i != a.size(); ++i) { \
+    for (unsigned i = 0; i < a.size(); ++i) { \
       out[i] = (EXP); \
     } \
     return true; \
@@ -327,7 +327,7 @@ public:
   Output<Vector<T>> out;
 
   bool compute() {
-    for (unsigned i = 0; i != a.size(); ++i) {
+    for (unsigned i = 0; i < a.size(); ++i) {
       out[i] = pred ? a[i] : b[i];
     }
     return true;
@@ -350,7 +350,7 @@ public:
   Output<Vector<T>> out;
 
   bool compute() {
-    for (unsigned i = 0; i != a.size(); ++i) {
+    for (unsigned i = 0; i < a.size(); ++i) {
       out[i] = pred[i] ? a[i] : b[i];
     }
     return true;
@@ -377,7 +377,7 @@ public: \
   bool compute() { \
     T v = (INIT); \
 \
-    for (unsigned i = 0; i != a.size(); ++i) { \
+    for (unsigned i = 0; i < a.size(); ++i) { \
       v = (EXP); \
     } \
 \
@@ -409,7 +409,7 @@ public: \
   bool compute() { \
     T v = (INIT); \
 \
-    for (unsigned i = 0; i != a.size(); ++i) { \
+    for (unsigned i = 0; i < a.size(); ++i) { \
       v = (EXP); \
     } \
 \
@@ -425,4 +425,33 @@ template class NAME<bool>;
 LOGICAL_REDUCTION_ELEMENTWISE(ReductionAnd, true,  v && a[i])
 LOGICAL_REDUCTION_ELEMENTWISE(ReductionOr,  false, v || a[i])
 
+#define WINDOWED_SELECTION(NAME, OP) \
+template<typename T> \
+class NAME : public Vertex { \
+public: \
+  Input<Vector<T>> a; \
+  Input<Vector<T>> b; \
+  InOut<Vector<T>> out; \
+\
+  bool compute() { \
+    unsigned selected = 0; \
+    for (unsigned i = 1; i < a.size(); ++i) { \
+      if (a[i] OP a[selected]) { \
+        selected = i; \
+      }; \
+    } \
+    out[selected] = b[0]; \
+    return true; \
+  } \
+\
+  int getCycleEstimate() const { return 1; } \
+}; \
+\
+template class NAME<float>; \
+template class NAME<half>; \
+template class NAME<int>;
 
+WINDOWED_SELECTION(SelectionGe, >=)
+WINDOWED_SELECTION(SelectionGt, >)
+WINDOWED_SELECTION(SelectionLe, <=)
+WINDOWED_SELECTION(SelectionLt, <)
