@@ -322,11 +322,11 @@ def _write_dict_to_summary(output_dir,
     value = summary_proto.value.add()
     value.tag = key
     if (isinstance(dictionary[key], np.float32) or 
-            isinstance(dictionary[key], float)):
+        isinstance(dictionary[key], float)):
       value.simple_value = float(dictionary[key])
     elif (isinstance(dictionary[key], np.int64) or
-              isinstance(dictionary[key], np.int32) or
-              isinstance(dictionary[key], int)):
+          isinstance(dictionary[key], np.int32) or
+          isinstance(dictionary[key], int)):
       value.simple_value = int(dictionary[key])
     else:
       logging.warn('Skipping summary for %s, must be a float, np.float32, np.int64, np.int32 or int.',
