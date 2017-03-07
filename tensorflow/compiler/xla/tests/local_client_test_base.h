@@ -111,16 +111,6 @@ class LocalClientTestBase : public ::testing::Test {
   // as the allocator.
   LocalExecuteOptions DefaultLocalExecuteOptions() const;
 
-  // Overloads which write result into the given buffer.
-  void ExecuteLocally(
-      const Computation& computation,
-      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-      ShapedBuffer* result);
-  void ExecuteLocally(
-      const Computation& computation,
-      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-      const LocalExecuteOptions& options, ShapedBuffer* result);
-
   // Convert a ShapedBuffer into a ScopedShaped buffer so that all buffers are
   // deallocated when the object is destructed.
   std::unique_ptr<ScopedShapedBuffer> ShapedBufferToScopedShapedBuffer(

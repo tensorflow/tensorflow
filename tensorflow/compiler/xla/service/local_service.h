@@ -120,25 +120,6 @@ class LocalService : public Service {
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       const LocalExecuteOptions& options);
 
-  // Overload which writes the result into the given ShapedBuffer "result".
-  // Due to aliasing, not all buffers which comprise "result" may be utilized
-  // in the computation and thus be uninitialized.  The |ShapedBuffer::buffer|
-  // or |ShapedBuffer::mutable_buffer| methods should be used to map an index to
-  // the initialized buffer.
-  //
-  // For example:
-  //  Let 'result' be a ShapedBuffer holding a tuple with the same element,
-  //  'x', twice: (x, x).  It is incorrect to assume that the second buffer
-  //  which comprises 'result' is initialized.  Instead, a mapping has been
-  //  added to 'result' which can be used to recover the correct buffer.
-  //  In this case, result->buffer({0}) should be used to extract the address of
-  //  the first tuple element while result->buffer({1}) should be used for the
-  //  second.
-  tensorflow::Status ExecuteLocally(
-      const ComputationHandle& computation,
-      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-      const LocalExecuteOptions& options, ShapedBuffer* result_buffer);
-
   // A description of a computation to compile using CompileAheadOfTime.
   struct AheadOfTimeComputationInstance {
     ComputationHandle computation;
@@ -169,23 +150,12 @@ class LocalService : public Service {
   LocalService(const LocalService&) = delete;
   void operator=(const LocalService&) = delete;
 
-  // Internal helper for executing a computation. If result_buffer is null then
-  // the result is returned as a ShapedBuffer. If result_buffer is non-null then
-  // the result is written into result_buffer and a null ShapedBuffer pointer is
-  // returned.
-  StatusOr<std::unique_ptr<ShapedBuffer>> ExecuteLocallyInternal(
-      const ComputationHandle& computation,
-      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-      const LocalExecuteOptions& options,
-      ShapedBuffer* preallocated_result_buffer);
-
   // Validates the given options and argument layouts and returns an appropriate
   // error code.
   tensorflow::Status ValidateExecuteOptions(
       const ProgramShape& program_shape,
       tensorflow::gtl::ArraySlice<const Shape*> arguments,
-      const LocalExecuteOptions& options,
-      const ShapedBuffer* preallocated_result_buffer);
+      const LocalExecuteOptions& options);
 };
 
 }  // namespace xla
