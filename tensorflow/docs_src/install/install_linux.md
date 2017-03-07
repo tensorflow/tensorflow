@@ -162,8 +162,8 @@ Take the following steps to install TensorFlow with Virtualenv:
      issue the following command to install TensorFlow in the active
      virtualenv environment:
 
-     <pre> (tensorflow)$ <b>pip3 install --upgrade \\
-     https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.0.0-cp27-none-linux_x86_64.whl</pre> 
+     <pre>(tensorflow)$ <b>pip3 install --upgrade \
+     https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.0.0-cp34-cp34m-linux_x86_64.whl</b></pre>
 
 If you encounter installation problems, see
 [Common Installation Problems](#CommonInstallationProblems).
@@ -254,20 +254,22 @@ take the following steps:
   2. (Optional.) If Step 1 failed, install the latest version of TensorFlow
      by issuing a command of the following format:
 
-     <pre> $ <b>sudo pip  install --upgrade</b> <i>TF_BINARY_URL</i>   # Python 2.7
-     $ <b>sudo pip3 install --upgrade</b> <i>TF_BINARY_URL</i>   # Python 3.N </pre>
+     <pre>$ <b>sudo pip  install --upgrade</b> <i>TF_PYTHON_URL</i>   # Python 2.7
+     $ <b>sudo pip3 install --upgrade</b> <i>TF_PYTHON_URL</i>   # Python 3.N </pre>
 
-     where <code></em>TF_BINARY_URL</em></code> identifies the URL of the
+     where <code><em>TF_PYTHON_URL</em></code> identifies the URL of the
      TensorFlow Python package. The appropriate value of
-     <code><em>TF_BINARY_URL</em></code> depends on the operating system, 
+     <code><em>TF_PYTHON_URL</em></code>depends on the operating system,
      Python version, and GPU support. Find the appropriate value for
-     <code><em>TF_BINARY_URL</em></code>
-     [here](#the_url_of_the_tensorflow_python_package).  For example, to 
-     install TensorFlow for Linux, Python 3.4, and CPU-only support, issue
-     the following command:
+     <code><em>TF_PYTHON_URL</em></code> for your system
+     [here](#TF_PYTHON_URL).  For example, if you are installing TensorFlow
+     for Linux, Python version 3.4, and CPU-only support, issue the following
+     command:
 
-     <pre> $ <b>sudo pip3 install --upgrade \
-     https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.0.0-cp34-cp34m-linux_x86_64.whl</b> </pre>
+     <pre>
+     $ <b>sudo pip3 install --upgrade \
+     https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.0.0-cp34-cp34m-linux_x86_64.whl</b>
+     </pre>
 
      If this step fails, see
      [Common Installation Problems](#CommonInstallationProblems).
