@@ -169,7 +169,7 @@ the new model from the pre-trained checkpoint.
 ```python
   ...create graph...
   # Create a saver that restores only the pre-trained variables.
-  pre_train_saver = tf.Saver([pre_train_var1, pre_train_var2])
+  pre_train_saver = tf.train.Saver([pre_train_var1, pre_train_var2])
 
   # Define an init function that loads the pretrained checkpoint.
   def load_pretrain(sess):
@@ -277,7 +277,7 @@ constructor:
    for checkpointing.
 
    If you do not pass one, the supervisor creates one for you by calling
-   `tf.Saver()`, which add ops to save and restore all variables in your model.
+   `tf.train.Saver()`, which add ops to save and restore all variables in your model.
    This is usually what you need.
 
 Example: Use a custom Saver and checkpoint every 30 seconds.
