@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for tensorflow.ops.math_ops."""
 from __future__ import absolute_import
 from __future__ import division
@@ -183,7 +182,7 @@ class SquaredDifferenceTest(test_util.TensorFlowTestCase):
     for dtype in [np.int32, np.float16]:
       x = np.array([[1, 2, 3], [4, 5, 6]], dtype=dtype)
       y = np.array([-3, -2, -1], dtype=dtype)
-      z = (x - y)*(x - y)
+      z = (x - y) * (x - y)
       with self.test_session(use_gpu=True):
         z_tf = math_ops.squared_difference(x, y).eval()
         self.assertAllClose(z, z_tf)
@@ -271,6 +270,44 @@ class AccumulateNTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(x[0] * 6, math_ops.accumulate_n([tf_x[0]] * 6).eval())
 
 
+class AddNTest(test_util.TensorFlowTestCase):
+
+  def testPartials(self):
+    """Test that previously revealed a bug in buffer forwarding for AddN."""
+    partials = []
+    for _ in range(98):
+      partials.append(math_ops.add_n([constant_op.constant(1)]))
+    partials.append(
+        math_ops.add_n([constant_op.constant(1), constant_op.constant(1)]))
+
+    res = math_ops.add_n(partials) + constant_op.constant(0)
+    with self.test_session(use_gpu=True):
+      self.assertAllEqual(res.eval(), 100)
+
+  def testFloat(self):
+    np.random.seed(12345)
+    for num_inputs in range(1, 10):
+      x = [np.random.random((1, 2, 3, 4, 5)) - 0.5 for _ in range(num_inputs)]
+      tf_x = ops.convert_n_to_tensor(x)
+      with self.test_session(use_gpu=True):
+        self.assertAllClose(sum(x), math_ops.add_n(tf_x).eval())
+        self.assertAllClose(x[0] * num_inputs,
+                            math_ops.add_n([tf_x[0]] * num_inputs).eval())
+
+  def testInt(self):
+    np.random.seed(54321)
+    for num_inputs in range(1, 10):
+      x = [
+          np.random.randint(-128, 128, (5, 4, 3, 2, 1))
+          for _ in range(num_inputs)
+      ]
+      tf_x = ops.convert_n_to_tensor(x)
+      with self.test_session(use_gpu=True):
+        self.assertAllEqual(sum(x), math_ops.add_n(tf_x).eval())
+        self.assertAllEqual(x[0] * num_inputs,
+                            math_ops.add_n([tf_x[0]] * num_inputs).eval())
+
+
 class DivAndModTest(test_util.TensorFlowTestCase):
   # TODO(aselle): Test more types before exposing new division operators.
 
@@ -331,8 +368,8 @@ class DivAndModTest(test_util.TensorFlowTestCase):
 
   def testDivideName(self):
     with self.test_session():
-      op = math_ops.divide(array_ops.constant(3),
-                           array_ops.constant(4), name="my_cool_divide")
+      op = math_ops.divide(
+          array_ops.constant(3), array_ops.constant(4), name="my_cool_divide")
       self.assertEqual(op.name, "my_cool_divide:0")
 
   def testRealDiv(self):
@@ -343,7 +380,7 @@ class DivAndModTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(tf_result, np_result)
 
   def testComplexDiv(self):
-    foo = array_ops.constant([1.+3.j])
+    foo = array_ops.constant([1. + 3.j])
     with self.test_session():
       _ = math_ops.divide(foo, 1.).eval()
       _ = math_ops.div(foo, 2.).eval()
@@ -359,15 +396,14 @@ class DivAndModTest(test_util.TensorFlowTestCase):
         c_grad = gradients.gradients(math_ops.div(a, b), [a, b])
         self.assertAllEqual([x.eval() for x in c_grad], [.25, -.125])
         c_grad = gradients.gradients(math_ops.floordiv(a, b), [a, b])
-        self.assertAllEqual([None if x is None else x.eval() for x in c_grad],
-                            [None, None])
+        self.assertAllEqual([None if x is None else x.eval()
+                             for x in c_grad], [None, None])
 
   def testConsistent(self):
     nums, divs = self.intTestData()
     with self.test_session():
-      tf_result = (
-          math_ops.floor_div(nums, divs) * divs + math_ops.floormod(nums, divs)
-      ).eval()
+      tf_result = (math_ops.floor_div(nums, divs) * divs + math_ops.floormod(
+          nums, divs)).eval()
       tf_nums = array_ops.constant(nums)
       tf_divs = array_ops.constant(divs)
       tf2_result = (tf_nums // tf_divs * tf_divs + tf_nums % tf_divs).eval()
@@ -377,12 +413,10 @@ class DivAndModTest(test_util.TensorFlowTestCase):
       # consistentcy with two forms of divide
       self.assertAllEqual(tf_result, tf2_result)
       # consistency for truncation form
-      tf3_result = (
-          math_ops.truncatediv(nums, divs) * divs
-          + math_ops.truncatemod(nums, divs)
-      ).eval()
-      expanded_nums = np.reshape(np.tile(nums, divs.shape[1]),
-                                 (nums.shape[0], divs.shape[1]))
+      tf3_result = (math_ops.truncatediv(nums, divs) * divs +
+                    math_ops.truncatemod(nums, divs)).eval()
+      expanded_nums = np.reshape(
+          np.tile(nums, divs.shape[1]), (nums.shape[0], divs.shape[1]))
       # Consistent with desire to get numerator
       self.assertAllEqual(tf3_result, expanded_nums)
       # Consistent with desire to get numerator
