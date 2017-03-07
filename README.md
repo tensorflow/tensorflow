@@ -29,7 +29,7 @@ tracking requests and bugs, but please see
 and discussion.**
 
 ## Installation
-*See [Download and Setup](tensorflow/g3doc/get_started/os_setup.md) for instructions on how to install our release binaries or how to build from source.*
+*See [Installing TensorFlow](https://www.tensorflow.org/install/) for instructions on how to install our release binaries or how to build from source.*
 
 People who are a little more adventurous can also try our nightly binaries:
 
