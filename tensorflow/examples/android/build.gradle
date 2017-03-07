@@ -14,14 +14,12 @@ project.buildDir = 'gradleBuild'
 getProject().setBuildDir('gradleBuild')
 
 buildscript {
-    System.properties['com.android.build.gradle.overrideVersionCheck'] = 'true'
-
     repositories {
         jcenter()
     }
 
     dependencies {
-        classpath 'com.android.tools.build:gradle:2.1.3'
+        classpath 'com.android.tools.build:gradle:2.2.0'
     }
 }
 
@@ -37,8 +35,23 @@ android {
 
     sourceSets {
         main {
+            // TensorFlow Java API sources.
+            java {
+                srcDir '../../java/src/main/java'
+                exclude '**/examples/**'
+            }
+
+            // Android TensorFlow wrappers, etc.
+            java {
+                srcDir '../../contrib/android/java'
+            }
+
+            // Android demo app sources.
+            java {
+                srcDir 'src'
+            }
+
             manifest.srcFile 'AndroidManifest.xml'
-            java.srcDirs = ['src', '../../contrib/android/java']
             resources.srcDirs = ['src']
             aidl.srcDirs = ['src']
             renderscript.srcDirs = ['src']
@@ -65,8 +78,10 @@ task copyNativeLibs(type: Copy) {
     from('../../../bazel-bin/tensorflow/examples/android') { include '**/*.so' }
     into nativeDir
     duplicatesStrategy = 'include'
+    dependsOn 'buildNative'
 }
 
-copyNativeLibs.dependsOn buildNative
 assemble.dependsOn copyNativeLibs
-assembleDebug.dependsOn copyNativeLibs
+afterEvaluate {
+    assembleDebug.dependsOn copyNativeLibs
+}
