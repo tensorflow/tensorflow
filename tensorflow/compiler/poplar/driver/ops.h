@@ -35,9 +35,6 @@ To convert_array(const From& from) {
   return out;
 };
 
-port::StatusOr<std::string>
-LookupPoplarVertexName(HloOpcode opcode);
-
 port::Status
 AddOutputTensor(TensorMap& map,
                 const HloInstruction* inst,
