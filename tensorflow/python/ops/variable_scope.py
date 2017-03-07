@@ -685,7 +685,7 @@ class _VariableStore(object):
       else:
         # Instantiate initializer if provided initializer is a type object.
         if isinstance(initializer, type(init_ops.Initializer)):
-          initializer=initializer(dtype)
+          initializer=initializer(dtype=dtype)
         init_val = lambda: initializer(  # pylint: disable=g-long-lambda
             shape.as_list(), dtype=dtype, partition_info=partition_info)
         variable_dtype = dtype.base_dtype
