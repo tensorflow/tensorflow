@@ -466,7 +466,7 @@ except AttributeError:
     return r
 
 
-class MatMulInfixOperatorTest(test.TestCase):
+class MatMulInfixOperatorTest(test_lib.TestCase):
 
   def testMismatchedShape(self):
     with self.assertRaisesWithPredicateMatch(
