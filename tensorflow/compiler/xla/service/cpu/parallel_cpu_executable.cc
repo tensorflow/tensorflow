@@ -349,14 +349,6 @@ StatusOr<std::unique_ptr<ShapedBuffer>> ParallelCpuExecutable::ExecuteOnStream(
       "ParallelCpuExecutable not supported yet with LocalService execution");
 }
 
-Status ParallelCpuExecutable::ExecuteOnStream(
-    const ServiceExecutableRunOptions* run_options,
-    tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-    ShapedBuffer* result_buffer, HloExecutionProfile* hlo_execution_profile) {
-  return Unimplemented(
-      "preallocated result buffer not supported with ParallelCpuExecutable");
-}
-
 StatusOr<perftools::gputools::DeviceMemoryBase>
 ParallelCpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,

@@ -858,6 +858,18 @@ Returns the truth value of (x != y) element-wise.
 
 #undef EQUALITY_COMPARISON
 
+REGISTER_OP("ApproximateEqual")
+    .Input("x: T")
+    .Input("y: T")
+    .Output("z: bool")
+    .SetIsCommutative()
+    .Attr("T: numbertype")
+    .Attr("tolerance: float = 0.00001")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Returns the truth value of abs(x-y) < tolerance element-wise.
+)doc");
+
 // --------------------------------------------------------------------------
 
 REGISTER_OP("LogicalNot")

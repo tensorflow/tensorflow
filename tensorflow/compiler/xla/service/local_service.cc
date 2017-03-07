@@ -186,27 +186,6 @@ StatusOr<GlobalDataHandle> LocalService::AllocateBufferOnDevice(
                                   allocation_size));
 }
 
-StatusOr<std::unique_ptr<ShapedBuffer>> LocalService::ExecuteLocally(
-    const ComputationHandle& computation,
-    tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-    const LocalExecuteOptions& options) {
-  return ExecuteLocallyInternal(computation, arguments, options,
-                                /*preallocated_result_buffer=*/nullptr);
-}
-
-tensorflow::Status LocalService::ExecuteLocally(
-    const ComputationHandle& computation,
-    tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-    const LocalExecuteOptions& options, ShapedBuffer* result_buffer) {
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<ShapedBuffer> null_buffer,
-      ExecuteLocallyInternal(computation, arguments, options, result_buffer));
-  // Because the result is written into result_buffer, a null ShapedBuffer
-  // pointer should have been returned.
-  CHECK_EQ(nullptr, null_buffer.get());
-  return tensorflow::Status::OK();
-}
-
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 LocalService::CompileAheadOfTime(
     const tensorflow::gtl::ArraySlice<AheadOfTimeComputationInstance>
@@ -256,8 +235,7 @@ LocalService::CompileAheadOfTime(
 tensorflow::Status LocalService::ValidateExecuteOptions(
     const ProgramShape& program_shape,
     tensorflow::gtl::ArraySlice<const Shape*> argument_layouts,
-    const LocalExecuteOptions& options,
-    const ShapedBuffer* preallocated_result_buffer) {
+    const LocalExecuteOptions& options) {
   if (argument_layouts.size() != program_shape.parameters_size()) {
     return InvalidArgument(
         "invalid number of arguments for computation: expected %d, got %zu",
@@ -314,46 +292,13 @@ tensorflow::Status LocalService::ValidateExecuteOptions(
         execute_backend_->platform()->Name().c_str());
   }
 
-  if (preallocated_result_buffer != nullptr) {
-    if (options.result_layout()) {
-      return InvalidArgument(
-          "cannot set both result ShapedBuffer and result layout; the result "
-          "ShapedBuffer determines the result layout");
-    }
-    if (!ShapeUtil::Compatible(preallocated_result_buffer->shape(),
-                               program_shape.result())) {
-      return InvalidArgument(
-          "result ShapedBuffer of shape %s not compatible with computation "
-          "result shape %s",
-          ShapeUtil::HumanString(preallocated_result_buffer->shape()).c_str(),
-          ShapeUtil::HumanString(program_shape.result()).c_str());
-    }
-  }
-  if (options.result_layout()) {
-    TF_RETURN_IF_ERROR(ValidateResultShapeWithLayout(*options.result_layout(),
-                                                     program_shape.result()));
-  }
-
-  // Check that all argument layouts are valid and the right shape.
-  for (int i = 0; i < argument_layouts.size(); ++i) {
-    const Shape& argument_shape = *argument_layouts[i];
-    TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(argument_shape));
-    if (!ShapeUtil::Compatible(argument_shape, program_shape.parameters(i))) {
-      return InvalidArgument(
-          "invalid argument shape for argument %d, expected %s, got %s", i,
-          ShapeUtil::HumanString(program_shape.parameters(i)).c_str(),
-          ShapeUtil::HumanString(argument_shape).c_str());
-    }
-  }
-
   return tensorflow::Status::OK();
 }
 
-StatusOr<std::unique_ptr<ShapedBuffer>> LocalService::ExecuteLocallyInternal(
+StatusOr<std::unique_ptr<ShapedBuffer>> LocalService::ExecuteLocally(
     const ComputationHandle& computation,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-    const LocalExecuteOptions& options,
-    ShapedBuffer* preallocated_result_buffer) {
+    const LocalExecuteOptions& options) {
   TF_ASSIGN_OR_RETURN(UserComputation * user_computation,
                       computation_tracker_.Resolve(computation));
   VersionedComputationHandle versioned_handle =
@@ -388,8 +333,8 @@ StatusOr<std::unique_ptr<ShapedBuffer>> LocalService::ExecuteLocallyInternal(
     argument_layouts[i] = &argument->shape();
   }
 
-  TF_RETURN_IF_ERROR(ValidateExecuteOptions(
-      *program_shape, argument_layouts, options, preallocated_result_buffer));
+  TF_RETURN_IF_ERROR(
+      ValidateExecuteOptions(*program_shape, argument_layouts, options));
 
   // Construct computation layout from the argument layouts.
   auto module_config = MakeUnique<HloModuleConfig>(*program_shape);
@@ -411,10 +356,6 @@ StatusOr<std::unique_ptr<ShapedBuffer>> LocalService::ExecuteLocallyInternal(
     TF_RETURN_IF_ERROR(
         computation_layout->mutable_result_layout()->CopyLayoutFromShape(
             *options.result_layout()));
-  } else if (preallocated_result_buffer != nullptr) {
-    TF_RETURN_IF_ERROR(
-        computation_layout->mutable_result_layout()->CopyLayoutFromShape(
-            preallocated_result_buffer->shape()));
   } else {
     computation_layout->mutable_result_layout()->SetToDefaultLayout();
   }
@@ -454,30 +395,15 @@ StatusOr<std::unique_ptr<ShapedBuffer>> LocalService::ExecuteLocallyInternal(
                               argument_buffers, execute_backend_.get(),
                               service_run_options.stream()->parent(), profile));
 
-  if (preallocated_result_buffer == nullptr) {
-    return Service::ExecuteOnStreamWrapper<
-        StatusOr<std::unique_ptr<ShapedBuffer>>>(
-        executable.get(), &service_run_options, profile,
-        [&arguments](Executable* executable,
-                     const ServiceExecutableRunOptions* run_options,
-                     HloExecutionProfile* hlo_execution_profile) {
-          return executable->ExecuteOnStream(run_options, arguments,
-                                             hlo_execution_profile);
-        });
-  } else {
-    TF_RETURN_IF_ERROR(Service::ExecuteOnStreamWrapper<tensorflow::Status>(
-        executable.get(), &service_run_options, profile,
-        [&arguments, preallocated_result_buffer](
-            Executable* executable,
-            const ServiceExecutableRunOptions* run_options,
-            HloExecutionProfile* hlo_execution_profile) {
-          return executable->ExecuteOnStream(run_options, arguments,
-                                             preallocated_result_buffer,
-                                             hlo_execution_profile);
-        }));
-    // To satisfy the return value type, Return a null ShapedBuffer pointer.
-    return std::unique_ptr<ShapedBuffer>();
-  }
+  return Service::ExecuteOnStreamWrapper<
+      StatusOr<std::unique_ptr<ShapedBuffer>>>(
+      executable.get(), &service_run_options, profile,
+      [&arguments](Executable* executable,
+                   const ServiceExecutableRunOptions* run_options,
+                   HloExecutionProfile* hlo_execution_profile) {
+        return executable->ExecuteOnStream(run_options, arguments,
+                                           hlo_execution_profile);
+      });
 }
 
 StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(

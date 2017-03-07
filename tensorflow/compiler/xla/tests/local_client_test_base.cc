@@ -202,19 +202,4 @@ std::unique_ptr<ScopedShapedBuffer> LocalClientTestBase::ExecuteLocally(
       options.allocator());
 }
 
-void LocalClientTestBase::ExecuteLocally(
-    const Computation& computation,
-    tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-    ShapedBuffer* result) {
-  ExecuteLocally(computation, arguments, DefaultLocalExecuteOptions(), result);
-}
-
-void LocalClientTestBase::ExecuteLocally(
-    const Computation& computation,
-    tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-    const LocalExecuteOptions& options, ShapedBuffer* result) {
-  ASSERT_IS_OK(
-      local_client_->ExecuteLocally(computation, arguments, options, result));
-}
-
 }  // namespace xla

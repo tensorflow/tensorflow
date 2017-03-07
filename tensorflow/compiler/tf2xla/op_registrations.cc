@@ -84,6 +84,14 @@ REGISTER_XLA_KERNEL(
 REGISTER_XLA_KERNEL(
     DEVICE_CPU_XLA_JIT,
     Name("Conv2DBackpropInput").TypeConstraint("T", kCpuFloatTypes));
+REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
+                    Name("Conv3D").TypeConstraint("T", kCpuFloatTypes));
+REGISTER_XLA_KERNEL(
+    DEVICE_CPU_XLA_JIT,
+    Name("Conv3DBackpropFilterV2").TypeConstraint("T", kCpuFloatTypes));
+REGISTER_XLA_KERNEL(
+    DEVICE_CPU_XLA_JIT,
+    Name("Conv3DBackpropInputV2").TypeConstraint("T", kCpuFloatTypes));
 REGISTER_XLA_KERNEL(
     DEVICE_CPU_XLA_JIT,
     Name("DepthwiseConv2dNative").TypeConstraint("T", kCpuFloatTypes));
@@ -354,6 +362,14 @@ REGISTER_XLA_KERNEL(
 REGISTER_XLA_KERNEL(
     DEVICE_GPU_XLA_JIT,
     Name("Conv2DBackpropInput").TypeConstraint("T", kGpuFloatTypes));
+REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT,
+                    Name("Conv3D").TypeConstraint("T", kGpuFloatTypes));
+REGISTER_XLA_KERNEL(
+    DEVICE_GPU_XLA_JIT,
+    Name("Conv3DBackpropFilterV2").TypeConstraint("T", kGpuFloatTypes));
+REGISTER_XLA_KERNEL(
+    DEVICE_GPU_XLA_JIT,
+    Name("Conv3DBackpropInputV2").TypeConstraint("T", kGpuFloatTypes));
 REGISTER_XLA_KERNEL(
     DEVICE_GPU_XLA_JIT,
     Name("DepthwiseConv2dNative").TypeConstraint("T", kGpuFloatTypes));

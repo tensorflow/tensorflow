@@ -27,6 +27,7 @@ endif(tensorflow_BUILD_ALL_KERNELS)
 if(tensorflow_BUILD_CONTRIB_KERNELS)
   set(tf_contrib_kernels_srcs
       "${tensorflow_source_dir}/tensorflow/contrib/factorization/kernels/clustering_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/factorization/kernels/masked_matmul_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/factorization/kernels/wals_solver_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/factorization/ops/clustering_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/factorization/ops/factorization_ops.cc"

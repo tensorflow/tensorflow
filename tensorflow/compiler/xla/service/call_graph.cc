@@ -234,6 +234,43 @@ StatusOr<CallGraph> CallGraph::Build(const HloModule* module) {
   return std::move(call_graph);
 }
 
+Status CallGraph::VisitNodesInternal(
+    const VisitorFunction& visitor_func, const CallGraphNode* node,
+    std::unordered_set<const CallGraphNode*>* visited) const {
+  auto pair = visited->insert(node);
+  if (!pair.second) {
+    // Node was not inserted. Node has already been visited.
+    return Status::OK();
+  }
+
+  for (const HloComputation* computation : node->callees()) {
+    TF_ASSIGN_OR_RETURN(const CallGraphNode* callee_node, GetNode(computation));
+    TF_RETURN_IF_ERROR(VisitNodesInternal(visitor_func, callee_node, visited));
+  }
+
+  return visitor_func(*node);
+}
+
+Status CallGraph::VisitNodes(const VisitorFunction& visitor_func,
+                             bool visit_unreachable_nodes) const {
+  std::unordered_set<const CallGraphNode*> visited;
+  if (visit_unreachable_nodes) {
+    // Traverse from all roots in the call graph.
+    for (const CallGraphNode& node : nodes()) {
+      if (node.callers().empty()) {
+        TF_RETURN_IF_ERROR(VisitNodesInternal(visitor_func, &node, &visited));
+      }
+    }
+  } else {
+    // Traverse only from the entry computation.
+    TF_ASSIGN_OR_RETURN(const CallGraphNode* entry_node,
+                        GetNode(module_->entry_computation()));
+    TF_RETURN_IF_ERROR(VisitNodesInternal(visitor_func, entry_node, &visited));
+  }
+
+  return Status::OK();
+}
+
 string CallGraph::ToString() const {
   string out;
   Appendf(&out, "Call graph for module %s:\n", module_->name().c_str());

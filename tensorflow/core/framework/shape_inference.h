@@ -355,6 +355,13 @@ class InferenceContext {
   Status MakeShapeFromShapeProto(const TensorShapeProto& proto,
                                  ShapeHandle* out);
 
+  // Returns in <out> a new shape corresponding to <partial_shape>.
+  Status MakeShapeFromPartialTensorShape(
+      const PartialTensorShape& partial_shape, ShapeHandle* out);
+
+  // Returns in <out> a new shape corresponding to <shape>.
+  Status MakeShapeFromTensorShape(const TensorShape& shape, ShapeHandle* out);
+
   // Returns a new dimension of the given size.  The returned value is owned by
   // this context.
   inline DimensionHandle MakeDim(DimensionOrConstant d) {

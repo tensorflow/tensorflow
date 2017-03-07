@@ -59,6 +59,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/simple_orc_jit.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -226,6 +227,7 @@ Status CpuCompiler::RunHloPasses(HloModule* hlo_module,
         /*is_layout_sensitive=*/false,
         [](const Shape&, const Shape&) { return false; });
     pass.AddPass<ReshapeMover>();
+    pass.AddPass<HloConstantFolding>();
   }
   pipeline.AddPass<TransposeFolding>(PotentiallyImplementedAsEigenDot);
   pipeline.AddPass<HloSubcomputationUnification>();

@@ -402,17 +402,6 @@ Status OpKernelContext::forward_input_to_output_with_shape(
 std::unique_ptr<Tensor> OpKernelContext::forward_input(
     int input_index, DataType output_dtype, const TensorShape& output_shape,
     MemoryType output_memory_type, const AllocatorAttributes& output_attr) {
-  // TODO(rmlarsen,zhengxq): Re-enable for GPU memory once kernels have been
-  // made forwarding aware or decorated to expose which inputs they rely on
-  // to access via the read-only texture cache.
-  // TODO(rmlarsen): Short term, move disabling logic into the kernels
-  // themselves for fine-grained control.
-  DCHECK(params_->device != nullptr);
-  if (output_memory_type == DEVICE_MEMORY &&
-      params_->device->attributes().device_type() == DEVICE_GPU) {
-    return nullptr;
-  }
-
   DCHECK_GE(input_index, 0);
   DCHECK_LT(input_index, num_inputs());
   const TensorValue& input = (*params_->inputs)[input_index];
