@@ -189,6 +189,36 @@ class SquaredDifferenceTest(test_util.TensorFlowTestCase):
         self.assertAllClose(z, z_tf)
 
 
+class ApproximateEqualTest(test_util.TensorFlowTestCase):
+
+  def testApproximateEqual(self):
+    for dtype in [np.float32, np.double]:
+      x = dtype(1)
+      y = dtype(1.00009)
+      z = False
+      with self.test_session(use_gpu=True):
+        # Default tolerance is 0.00001
+        z_tf = math_ops.approximate_equal(x, y).eval()
+        self.assertAllEqual(z, z_tf)
+
+    for dtype in [np.float32, np.double]:
+      x = dtype(1)
+      y = dtype(1.000009)
+      z = True
+      with self.test_session(use_gpu=True):
+        # Default tolerance is 0.00001
+        z_tf = math_ops.approximate_equal(x, y).eval()
+        self.assertAllEqual(z, z_tf)
+
+    for dtype in [np.float32, np.double]:
+      x = np.array([[[[-1, 2.00009999], [-3, 4.01]]]], dtype=dtype)
+      y = np.array([[[[-1.001, 2], [-3.00009, 4]]]], dtype=dtype)
+      z = np.array([[[[False, True], [True, False]]]], dtype=np.bool)
+      with self.test_session(use_gpu=True):
+        z_tf = math_ops.approximate_equal(x, y, tolerance=0.0001).eval()
+        self.assertAllEqual(z, z_tf)
+
+
 class ScalarMulTest(test_util.TensorFlowTestCase):
 
   def testAcceptsRefs(self):
