@@ -52,7 +52,8 @@ class _EventGenerator(object):
   Has additional convenience methods for adding test events.
   """
 
-  def __init__(self, zero_out_timestamps=False):
+  def __init__(self, testcase, zero_out_timestamps=False):
+    self._testcase = testcase
     self.items = []
     self.zero_out_timestamps = zero_out_timestamps
 
@@ -155,6 +156,10 @@ class _EventGenerator(object):
     """Match the EventWriter API."""
     self.AddEvent(event)
 
+  def get_logdir(self):  # pylint: disable=invalid-name
+    """Return a temp directory for asset writing."""
+    return self._testcase.get_temp_dir()
+
 
 class EventAccumulatorTest(test.TestCase):
 
@@ -215,13 +220,13 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     ea._GeneratorFromPath = self._real_generator
 
   def testEmptyAccumulator(self):
-    gen = _EventGenerator()
+    gen = _EventGenerator(self)
     x = ea.EventAccumulator(gen)
     x.Reload()
     self.assertTagsEqual(x.Tags(), {})
 
   def testTags(self):
-    gen = _EventGenerator()
+    gen = _EventGenerator(self)
     gen.AddScalar('s1')
     gen.AddScalar('s2')
     gen.AddHistogram('hst1')
@@ -241,7 +246,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     })
 
   def testReload(self):
-    gen = _EventGenerator()
+    gen = _EventGenerator(self)
     acc = ea.EventAccumulator(gen)
     acc.Reload()
     self.assertTagsEqual(acc.Tags(), {})
@@ -263,7 +268,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     })
 
   def testScalars(self):
-    gen = _EventGenerator()
+    gen = _EventGenerator(self)
     acc = ea.EventAccumulator(gen)
     s1 = ea.ScalarEvent(wall_time=1, step=10, value=32)
     s2 = ea.ScalarEvent(wall_time=2, step=12, value=64)
@@ -289,7 +294,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
       self.assertEqual(expected_value, gotten_event.value[i])
 
   def testHealthPills(self):
-    gen = _EventGenerator()
+    gen = _EventGenerator(self)
     acc = ea.EventAccumulator(gen)
     gen.AddHealthPill(13371337, 41, 'Add', 0, range(1, 13))
     gen.AddHealthPill(13381338, 42, 'Add', 1, range(42, 54))
@@ -318,7 +323,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
         gotten_events[1])
 
   def testHistograms(self):
-    gen = _EventGenerator()
+    gen = _EventGenerator(self)
     acc = ea.EventAccumulator(gen)
 
     val1 = ea.HistogramValue(
@@ -367,7 +372,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     self.assertEqual(acc.Histograms('hst2'), [hst2])
 
   def testCompressedHistograms(self):
-    gen = _EventGenerator()
+    gen = _EventGenerator(self)
     acc = ea.EventAccumulator(gen, compression_bps=(0, 2500, 5000, 7500, 10000))
 
     gen.AddHistogram(
@@ -418,7 +423,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     self.assertEqual(acc.CompressedHistograms('hst2'), [expected_cmphst2])
 
   def testCompressedHistogramsWithEmptyHistogram(self):
-    gen = _EventGenerator()
+    gen = _EventGenerator(self)
     acc = ea.EventAccumulator(gen, compression_bps=(0, 2500, 5000, 7500, 10000))
 
     gen.AddHistogram(
@@ -471,7 +476,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     self.assertAlmostEqual(vals[8].value, 1.0)
 
   def testImages(self):
-    gen = _EventGenerator()
+    gen = _EventGenerator(self)
     acc = ea.EventAccumulator(gen)
     im1 = ea.ImageEvent(
         wall_time=1,
@@ -504,7 +509,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     self.assertEqual(acc.Images('im2'), [im2])
 
   def testAudio(self):
-    gen = _EventGenerator()
+    gen = _EventGenerator(self)
     acc = ea.EventAccumulator(gen)
     snd1 = ea.AudioEvent(
         wall_time=1,
@@ -541,7 +546,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     self.assertEqual(acc.Audio('snd2'), [snd2])
 
   def testKeyError(self):
-    gen = _EventGenerator()
+    gen = _EventGenerator(self)
     acc = ea.EventAccumulator(gen)
     acc.Reload()
     with self.assertRaises(KeyError):
@@ -565,7 +570,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
 
   def testNonValueEvents(self):
     """Tests that non-value events in the generator don't cause early exits."""
-    gen = _EventGenerator()
+    gen = _EventGenerator(self)
     acc = ea.EventAccumulator(gen)
     gen.AddScalar('s1', wall_time=1, step=10, value=20)
     gen.AddEvent(event_pb2.Event(wall_time=2, step=20, file_version='nots2'))
@@ -596,7 +601,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     warnings = []
     self.stubs.Set(logging, 'warn', warnings.append)
 
-    gen = _EventGenerator()
+    gen = _EventGenerator(self)
     acc = ea.EventAccumulator(gen)
 
     gen.AddEvent(
@@ -619,7 +624,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
   def testOrphanedDataNotDiscardedIfFlagUnset(self):
     """Tests that events are not discarded if purge_orphaned_data is false.
     """
-    gen = _EventGenerator()
+    gen = _EventGenerator(self)
     acc = ea.EventAccumulator(gen, purge_orphaned_data=False)
 
     gen.AddEvent(
@@ -653,7 +658,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     warnings = []
     self.stubs.Set(logging, 'warn', warnings.append)
 
-    gen = _EventGenerator()
+    gen = _EventGenerator(self)
     acc = ea.EventAccumulator(gen)
 
     gen.AddEvent(
@@ -680,7 +685,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
 
   def testOnlySummaryEventsTriggerDiscards(self):
     """Test that file version event does not trigger data purge."""
-    gen = _EventGenerator()
+    gen = _EventGenerator(self)
     acc = ea.EventAccumulator(gen)
     gen.AddScalar('s1', wall_time=1, step=100, value=20)
     ev1 = event_pb2.Event(wall_time=2, step=0, file_version='brain.Event:1')
@@ -698,7 +703,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     but this logic can only be used for event protos which have the SessionLog
     enum, which was introduced to event.proto for file_version >= brain.Event:2.
     """
-    gen = _EventGenerator()
+    gen = _EventGenerator(self)
     acc = ea.EventAccumulator(gen)
     gen.AddEvent(
         event_pb2.Event(
@@ -720,7 +725,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
 
   def testFirstEventTimestamp(self):
     """Test that FirstEventTimestamp() returns wall_time of the first event."""
-    gen = _EventGenerator()
+    gen = _EventGenerator(self)
     acc = ea.EventAccumulator(gen)
     gen.AddEvent(
         event_pb2.Event(
@@ -730,7 +735,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
 
   def testReloadPopulatesFirstEventTimestamp(self):
     """Test that Reload() means FirstEventTimestamp() won't load events."""
-    gen = _EventGenerator()
+    gen = _EventGenerator(self)
     acc = ea.EventAccumulator(gen)
     gen.AddEvent(
         event_pb2.Event(
@@ -746,7 +751,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
 
   def testFirstEventTimestampLoadsEvent(self):
     """Test that FirstEventTimestamp() doesn't discard the loaded event."""
-    gen = _EventGenerator()
+    gen = _EventGenerator(self)
     acc = ea.EventAccumulator(gen)
     gen.AddEvent(
         event_pb2.Event(
@@ -758,7 +763,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
 
   def testTFSummaryScalar(self):
     """Verify processing of tf.summary.scalar."""
-    event_sink = _EventGenerator(zero_out_timestamps=True)
+    event_sink = _EventGenerator(self, zero_out_timestamps=True)
     writer = SummaryToEventTransformer(event_sink)
     with self.test_session() as sess:
       ipt = array_ops.placeholder(dtypes.float32)
@@ -792,7 +797,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
 
   def testTFSummaryImage(self):
     """Verify processing of tf.summary.image."""
-    event_sink = _EventGenerator(zero_out_timestamps=True)
+    event_sink = _EventGenerator(self, zero_out_timestamps=True)
     writer = SummaryToEventTransformer(event_sink)
     with self.test_session() as sess:
       ipt = array_ops.ones([10, 4, 4, 3], dtypes.uint8)
@@ -828,7 +833,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
 
   def testTFSummaryTensor(self):
     """Verify processing of tf.summary.tensor."""
-    event_sink = _EventGenerator(zero_out_timestamps=True)
+    event_sink = _EventGenerator(self, zero_out_timestamps=True)
     writer = SummaryToEventTransformer(event_sink)
     with self.test_session() as sess:
       summary_lib.tensor_summary('scalar', constant_op.constant(1.0))

@@ -313,11 +313,11 @@ class AvgPoolGradOp : public XlaOpKernel {
         {ksize_[height_dim], ksize_[width_dim], depth, depth});
 
     // Reuse the logic from Conv2DBackpropInput to compute padding.
-    Conv2DBackpropDimensions dims;
-    OP_REQUIRES_OK(
-        ctx, Conv2DBackpropComputeDimensions(
-                 "AvgPoolGrad", gradients_shape, filter_shape,
-                 out_backprop_shape, stride_, padding_, data_format_, &dims));
+    ConvBackpropDimensions dims;
+    OP_REQUIRES_OK(ctx, ConvBackpropComputeDimensions(
+                            type_string(), /*num_spatial_dims=*/2,
+                            gradients_shape, filter_shape, out_backprop_shape,
+                            stride_, padding_, data_format_, &dims));
 
     auto out_backprop = ctx->Input(1);
 
@@ -340,14 +340,14 @@ class AvgPoolGradOp : public XlaOpKernel {
     // as Conv2DBackpropInput.
     xla::PaddingConfig padding_config = xla::MakeNoPaddingConfig(4);
     auto* row_padding = padding_config.mutable_dimensions(height_dim);
-    row_padding->set_edge_padding_low(dims.rows.pad_before);
-    row_padding->set_edge_padding_high(dims.rows.pad_after);
-    row_padding->set_interior_padding(dims.rows.stride - 1);
+    row_padding->set_edge_padding_low(dims.spatial_dims[0].pad_before);
+    row_padding->set_edge_padding_high(dims.spatial_dims[0].pad_after);
+    row_padding->set_interior_padding(dims.spatial_dims[0].stride - 1);
 
     auto* col_padding = padding_config.mutable_dimensions(width_dim);
-    col_padding->set_edge_padding_low(dims.cols.pad_before);
-    col_padding->set_edge_padding_high(dims.cols.pad_after);
-    col_padding->set_interior_padding(dims.cols.stride - 1);
+    col_padding->set_edge_padding_low(dims.spatial_dims[1].pad_before);
+    col_padding->set_edge_padding_high(dims.spatial_dims[1].pad_after);
+    col_padding->set_interior_padding(dims.spatial_dims[1].stride - 1);
 
     auto zero = XlaHelpers::Zero(ctx->builder(), dtype);
     auto padded_gradients =

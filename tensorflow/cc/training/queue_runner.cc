@@ -82,6 +82,12 @@ QueueRunner::~QueueRunner() {
 
 Status QueueRunner::Start(Session* sess) { return Start(sess, 0); }
 
+Status QueueRunner::Start(Session* sess, RunMetadata* metadata, mutex* rm_mu,
+                          const RunOptions* run_options) {
+  SetRunArguments(run_options, metadata, rm_mu);
+  return Start(sess, 0);
+}
+
 Status QueueRunner::Start(Session* sess, int wait_for) {
   counter_.reset(new BlockingCounter(runs_));
   for (const string& enqueue_op : enqueue_op_names_) {
@@ -109,12 +115,19 @@ Status QueueRunner::Start(Session* sess, int wait_for) {
   return Status::OK();
 }
 
+Status QueueRunner::Start(Session* session, int wait_for_ms,
+                          RunMetadata* metadata, mutex* rm_mu,
+                          const RunOptions* run_options) {
+  SetRunArguments(run_options, metadata, rm_mu);
+  return Start(session, wait_for_ms);
+}
+
 void QueueRunner::Stop(Session* sess) {
   if (coord_ != nullptr) {
     coord_->WaitForStop();
   }
   if (!cancel_op_name_.empty()) {
-    UpdateStatus(sess->Run({}, {}, {cancel_op_name_}, nullptr));
+    UpdateStatus(RealRun(sess, cancel_op_name_));
   }
   stopped_ = true;
 }
@@ -149,7 +162,7 @@ void QueueRunner::Run(Session* sess, const string& enqueue_op) {
     if (coord_ && coord_->ShouldStop()) {
       break;
     }
-    status = sess->Run({}, {}, {enqueue_op}, nullptr);
+    status = RealRun(sess, enqueue_op);
     if (first_iteration) {
       if (!status.ok()) {
         mutex_lock l(mu_);
@@ -170,7 +183,7 @@ void QueueRunner::Run(Session* sess, const string& enqueue_op) {
   // will be run anway in this case.
   if (IsQueueClosed(status) && (!coord_ || !coord_->ShouldStop())) {
     if (last_run && !close_op_name_.empty()) {
-      UpdateStatus(sess->Run({}, {}, {close_op_name_}, nullptr));
+      UpdateStatus(RealRun(sess, close_op_name_));
     }
   } else if (!status.ok()) {
     UpdateStatus(status);
@@ -183,6 +196,33 @@ void QueueRunner::Run(Session* sess, const string& enqueue_op) {
 Status QueueRunner::GetStatus() {
   mutex_lock l(mu_);
   return status_;
+}
+
+void QueueRunner::SetRunArguments(const RunOptions* run_options,
+                                  RunMetadata* metadata, mutex* rm_mu) {
+  DCHECK(metadata != nullptr);
+  DCHECK(rm_mu != nullptr);
+  rm_mu_ = rm_mu;
+  {
+    mutex_lock l(*rm_mu_);
+    run_metadata_ = metadata;
+  }
+  if (run_options) {
+    run_options_ = *run_options;
+  }
+}
+
+Status QueueRunner::RealRun(Session* sess, const string& op) {
+  Status s;
+  if (rm_mu_) {
+    RunMetadata metadata;
+    s = sess->Run(run_options_, {}, {}, {op}, nullptr, &metadata);
+    mutex_lock l(*rm_mu_);
+    run_metadata_->MergeFrom(metadata);
+  } else {
+    s = sess->Run({}, {}, {op}, nullptr);
+  }
+  return s;
 }
 
 }  // namespace tensorflow

@@ -570,9 +570,13 @@ def _MirrorPadGradGrad(op, grad):
 
 
 @ops.RegisterGradient("QuantizeAndDequantize")
-@ops.RegisterGradient("QuantizeAndDequantizeV2")
 def _QuantizeAndDequantizeGrad(_, grad):
   return grad
+
+
+@ops.RegisterGradient("QuantizeAndDequantizeV2")
+def _QuantizeAndDequantizeV2Grad(_, grad):
+  return [grad, None, None]
 
 
 @ops.RegisterGradient("ExtractImagePatches")

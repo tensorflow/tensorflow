@@ -3146,6 +3146,7 @@ py_tests(
         "summary/impl/directory_watcher_test.py",
         "summary/impl/event_file_loader_test.py",
         "summary/impl/reservoir_test.py",
+        "summary/plugin_asset_test.py",
         "summary/summary_test.py",
         "summary/writer/writer_test.py",
     ],

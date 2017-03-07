@@ -409,7 +409,7 @@ StatusOr<bool> CopyInsertion::Run(HloModule* module) {
       // operand copy insertion above (which will share an allocation).
       TF_RETURN_IF_ERROR(root_copier.RecordIndicesToCopyForColocatingBuffers(
           liveness.get(), computation->parameter_instruction(0)));
-    } else {
+    } else if (copy_param_and_const_) {
       // Record root indices to copy for general computations.
       TF_RETURN_IF_ERROR(root_copier.RecordIndicesWhichPointToParamOrConstant(
           liveness->points_to_analysis()));
