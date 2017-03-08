@@ -1642,6 +1642,7 @@ inline void LibxsmmSparseMatMul<TL, TR>::Compute(
                             actual_num_threads);
                       }
                     });
+
   // Do matrix-matrix multiplication
   std::atomic<int> cur_mult_block_number;
   cur_mult_block_number.store(0);
