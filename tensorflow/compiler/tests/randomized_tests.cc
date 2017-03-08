@@ -68,6 +68,7 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
 namespace {
@@ -252,17 +253,23 @@ class OpTest : public ::testing::Test {
   // for use as reduction indices.
   Tensor RandomReductionIndices(int rank);
 
-  struct WindowedDims {
+  struct WindowedSpatialDims {
     Padding padding;
-    std::vector<int> kernel_dims;
-    std::vector<int> stride_dims;
-    std::vector<int> input_dims;
+    std::vector<int64> kernel_dims;
+    std::vector<int64> stride_dims;
+    std::vector<int64> input_dims;
     std::vector<int64> output_dims;
   };
-  // Choose dimensions for a windowed op such as pooling or convolution.
-  // TODO(phawkins): currently this only produces spatial windows, in NHWC
-  // format.
-  WindowedDims ChooseWindowedDims(int num_spatial_dims);
+  // Choose spatial dimensions for a windowed op such as pooling or convolution.
+  WindowedSpatialDims ChooseWindowedSpatialDims(int num_spatial_dims);
+
+  // Builds dimensions for a windowed op such as pooling or convolution,
+  // including a batch and feature dimension.
+  std::vector<int64> ImageDims(TensorFormat format, int batch, int feature,
+                               const std::vector<int64>& spatial_dims);
+
+  // Converts an int64 vector to an int32 vector.
+  std::vector<int32> AsInt32s(const std::vector<int64>& int64s);
 
   std::mt19937& generator() { return *generator_; }
 
@@ -473,8 +480,9 @@ Tensor OpTest::RandomReductionIndices(int rank) {
   return test::AsTensor<int32>(indices);
 }
 
-OpTest::WindowedDims OpTest::ChooseWindowedDims(int num_spatial_dims) {
-  WindowedDims d;
+OpTest::WindowedSpatialDims OpTest::ChooseWindowedSpatialDims(
+    int num_spatial_dims) {
+  WindowedSpatialDims d;
   d.padding = Choose<Padding>({SAME, VALID});
   std::uniform_int_distribution<int> random_int(1, 5);
   d.kernel_dims.resize(num_spatial_dims);
@@ -498,6 +506,33 @@ OpTest::WindowedDims OpTest::ChooseWindowedDims(int num_spatial_dims) {
     } while (!s.ok());
   }
   return d;
+}
+
+std::vector<int64> OpTest::ImageDims(TensorFormat format, int batch,
+                                     int feature,
+                                     const std::vector<int64>& spatial_dims) {
+  std::vector<int64> dims;
+  switch (format) {
+    case FORMAT_NHWC:
+      dims.push_back(batch);
+      for (int dim : spatial_dims) {
+        dims.push_back(dim);
+      }
+      dims.push_back(feature);
+      break;
+    case FORMAT_NCHW:
+      dims.push_back(batch);
+      dims.push_back(feature);
+      for (int dim : spatial_dims) {
+        dims.push_back(dim);
+      }
+      break;
+  }
+  return dims;
+}
+
+std::vector<int32> OpTest::AsInt32s(const std::vector<int64>& int64s) {
+  return std::vector<int32>(int64s.begin(), int64s.end());
 }
 
 // Functions for comparing tensors.
@@ -718,7 +753,9 @@ TEST_F(OpTest, Any) {
 
 TEST_F(OpTest, AvgPool) {
   Repeatedly([this]() {
+    WindowedSpatialDims d = ChooseWindowedSpatialDims(2);
     std::uniform_int_distribution<int> random_int(1, 5);
+
     int kernel_rows = random_int(generator()),
         kernel_cols = random_int(generator());
     int stride_rows = random_int(generator()),
@@ -739,19 +776,65 @@ TEST_F(OpTest, AvgPool) {
   // for batch pooling when supported.
 }
 
+TEST_F(OpTest, AvgPool3D) {
+  Repeatedly([this]() {
+    std::uniform_int_distribution<int> random_int(1, 5);
+    std::vector<int64> input_dims, kernel_dims, stride_dims;
+    for (int i = 0; i < 3; ++i) {
+      kernel_dims.push_back(random_int(generator()));
+      input_dims.push_back(RandomDim(kernel_dims.back()));
+      stride_dims.push_back(random_int(generator()));
+    }
+
+    string padding = Choose<string>({"SAME", "VALID"});
+    ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("AvgPool3D")
+            .Input(RandomTensor(DT_FLOAT, ImageDims(FORMAT_NHWC, RandomDim(1),
+                                                    RandomDim(1), input_dims)))
+            .Attr("T", DT_FLOAT)
+            .Attr("ksize", ImageDims(FORMAT_NHWC, 1, 1, kernel_dims))
+            .Attr("strides", ImageDims(FORMAT_NHWC, 1, 1, stride_dims))
+            .Attr("padding", padding)
+            .Attr("data_format", "NHWC"));
+  });
+  // TODO(phawkins): test NCHW format (not supported by CPU)
+}
+
 TEST_F(OpTest, AvgPoolGrad) {
   Repeatedly([this]() {
     int batch = RandomDim(1), features = RandomDim(1);
-    WindowedDims d = ChooseWindowedDims(2);
+    WindowedSpatialDims d = ChooseWindowedSpatialDims(2);
+    std::vector<int32> input_dims =
+        AsInt32s(ImageDims(FORMAT_NHWC, batch, features, d.input_dims));
+    std::vector<int64> output_dims =
+        ImageDims(FORMAT_NHWC, batch, features, d.output_dims);
     ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("AvgPoolGrad")
-            .Input(test::AsTensor<int32>(
-                {batch, d.input_dims[0], d.input_dims[1], features}))
-            .Input(RandomTensor(DT_FLOAT, {batch, d.output_dims[0],
-                                           d.output_dims[1], features}))
+            .Input(test::AsTensor<int32>(input_dims))
+            .Input(RandomTensor(DT_FLOAT, output_dims))
             .Attr("T", DT_FLOAT)
-            .Attr("ksize", {1, d.kernel_dims[0], d.kernel_dims[1], 1})
-            .Attr("strides", {1, d.stride_dims[0], d.stride_dims[1], 1})
+            .Attr("ksize", ImageDims(FORMAT_NHWC, 1, 1, d.kernel_dims))
+            .Attr("strides", ImageDims(FORMAT_NHWC, 1, 1, d.stride_dims))
+            .Attr("padding", d.padding == SAME ? "SAME" : "VALID")
+            .Attr("data_format", "NHWC"));
+  });
+}
+
+TEST_F(OpTest, AvgPool3DGrad) {
+  Repeatedly([this]() {
+    int batch = RandomDim(1), features = RandomDim(1);
+    WindowedSpatialDims d = ChooseWindowedSpatialDims(3);
+    std::vector<int32> input_dims =
+        AsInt32s(ImageDims(FORMAT_NHWC, batch, features, d.input_dims));
+    std::vector<int64> output_dims =
+        ImageDims(FORMAT_NHWC, batch, features, d.output_dims);
+    ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("AvgPool3DGrad")
+            .Input(test::AsTensor<int32>(input_dims))
+            .Input(RandomTensor(DT_FLOAT, output_dims))
+            .Attr("T", DT_FLOAT)
+            .Attr("ksize", ImageDims(FORMAT_NHWC, 1, 1, d.kernel_dims))
+            .Attr("strides", ImageDims(FORMAT_NHWC, 1, 1, d.stride_dims))
             .Attr("padding", d.padding == SAME ? "SAME" : "VALID")
             .Attr("data_format", "NHWC"));
   });
@@ -899,12 +982,15 @@ TEST_F(OpTest, ConcatOffset) {
 
 TEST_F(OpTest, Conv2D) {
   Repeatedly([this]() {
-    WindowedDims d = ChooseWindowedDims(2);
+    WindowedSpatialDims d = ChooseWindowedSpatialDims(2);
     std::uniform_int_distribution<int> random_int(1, 5);
     int features_in = random_int(generator());
     int features_out = random_int(generator());
+
+    int64 batch = RandomDim();
+
     Tensor data = RandomTensor(
-        DT_FLOAT, {RandomDim(), d.input_dims[0], d.input_dims[1], features_in});
+        DT_FLOAT, ImageDims(FORMAT_NHWC, batch, features_in, d.input_dims));
 
     Tensor kernel = RandomTensor(DT_FLOAT, {d.kernel_dims[0], d.kernel_dims[1],
                                             features_in, features_out});
@@ -913,7 +999,7 @@ TEST_F(OpTest, Conv2D) {
             .Input(data)
             .Input(kernel)
             .Attr("T", DT_FLOAT)
-            .Attr("strides", {1, d.stride_dims[0], d.stride_dims[1], 1})
+            .Attr("strides", ImageDims(FORMAT_NHWC, 1, 1, d.stride_dims))
             .Attr("padding", d.padding == SAME ? "SAME" : "VALID")
             .Attr("data_format", "NHWC"));
   });
@@ -921,24 +1007,24 @@ TEST_F(OpTest, Conv2D) {
 
 TEST_F(OpTest, Conv2DBackpropFilter) {
   Repeatedly([this]() {
-    WindowedDims d = ChooseWindowedDims(2);
+    WindowedSpatialDims d = ChooseWindowedSpatialDims(2);
     std::uniform_int_distribution<int> random_int(1, 5);
     int features_in = random_int(generator());
     int features_out = random_int(generator());
     int32 batch = RandomDim();
     Tensor activations = RandomTensor(
-        DT_FLOAT, {batch, d.input_dims[0], d.input_dims[1], features_in});
+        DT_FLOAT, ImageDims(FORMAT_NHWC, batch, features_in, d.input_dims));
     Tensor backprop = RandomTensor(
-        DT_FLOAT, {batch, d.output_dims[0], d.output_dims[1], features_out});
-    Tensor kernel_shape = test::AsTensor<int32>(
-        {d.kernel_dims[0], d.kernel_dims[1], features_in, features_out});
+        DT_FLOAT, ImageDims(FORMAT_NHWC, batch, features_out, d.output_dims));
+    Tensor kernel_shape = test::AsTensor<int32>(AsInt32s(
+        {d.kernel_dims[0], d.kernel_dims[1], features_in, features_out}));
     ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("Conv2DBackpropFilter")
             .Input(activations)
             .Input(kernel_shape)
             .Input(backprop)
             .Attr("T", DT_FLOAT)
-            .Attr("strides", {1, d.stride_dims[0], d.stride_dims[1], 1})
+            .Attr("strides", ImageDims(FORMAT_NHWC, 1, 1, d.stride_dims))
             .Attr("padding", d.padding == SAME ? "SAME" : "VALID")
             .Attr("data_format", "NHWC"));
   });
@@ -946,15 +1032,15 @@ TEST_F(OpTest, Conv2DBackpropFilter) {
 
 TEST_F(OpTest, Conv2DBackpropInput) {
   Repeatedly([this]() {
-    WindowedDims d = ChooseWindowedDims(2);
+    WindowedSpatialDims d = ChooseWindowedSpatialDims(2);
     std::uniform_int_distribution<int> random_int(1, 5);
     int features_in = random_int(generator());
     int features_out = random_int(generator());
     int32 batch = RandomDim();
     Tensor in_shape = test::AsTensor<int32>(
-        {batch, d.input_dims[0], d.input_dims[1], features_in});
+        AsInt32s(ImageDims(FORMAT_NHWC, batch, features_in, d.input_dims)));
     Tensor backprop = RandomTensor(
-        DT_FLOAT, {batch, d.output_dims[0], d.output_dims[1], features_out});
+        DT_FLOAT, ImageDims(FORMAT_NHWC, batch, features_out, d.output_dims));
     Tensor kernel = RandomTensor(DT_FLOAT, {d.kernel_dims[0], d.kernel_dims[1],
                                             features_in, features_out});
     ExpectTfAndXlaOutputsAreClose(
@@ -963,7 +1049,7 @@ TEST_F(OpTest, Conv2DBackpropInput) {
             .Input(kernel)
             .Input(backprop)
             .Attr("T", DT_FLOAT)
-            .Attr("strides", {1, d.stride_dims[0], d.stride_dims[1], 1})
+            .Attr("strides", ImageDims(FORMAT_NHWC, 1, 1, d.stride_dims))
             .Attr("padding", d.padding == SAME ? "SAME" : "VALID")
             .Attr("data_format", "NHWC"));
   });
@@ -971,7 +1057,7 @@ TEST_F(OpTest, Conv2DBackpropInput) {
 
 TEST_F(OpTest, Conv3D) {
   Repeatedly([this]() {
-    WindowedDims d = ChooseWindowedDims(3);
+    WindowedSpatialDims d = ChooseWindowedSpatialDims(3);
     std::uniform_int_distribution<int> random_int(1, 5);
     int features_in = random_int(generator());
     int features_out = random_int(generator());
@@ -987,53 +1073,47 @@ TEST_F(OpTest, Conv3D) {
             .Input(data)
             .Input(kernel)
             .Attr("T", DT_FLOAT)
-            .Attr("strides",
-                  {1, d.stride_dims[0], d.stride_dims[1], d.stride_dims[2], 1})
+            .Attr("strides", ImageDims(FORMAT_NHWC, 1, 1, d.stride_dims))
             .Attr("padding", d.padding == SAME ? "SAME" : "VALID"));
   });
 }
 
 TEST_F(OpTest, Conv3DBackpropFilter) {
   Repeatedly([this]() {
-    WindowedDims d = ChooseWindowedDims(3);
+    WindowedSpatialDims d = ChooseWindowedSpatialDims(3);
     std::uniform_int_distribution<int> random_int(1, 5);
     int features_in = random_int(generator());
     int features_out = random_int(generator());
     int32 batch = RandomDim(1);
-    Tensor activations =
-        RandomTensor(DT_FLOAT, {batch, d.input_dims[0], d.input_dims[1],
-                                d.input_dims[2], features_in});
-    Tensor backprop =
-        RandomTensor(DT_FLOAT, {batch, d.output_dims[0], d.output_dims[1],
-                                d.output_dims[2], features_out});
-    Tensor kernel_shape =
-        test::AsTensor<int32>({d.kernel_dims[0], d.kernel_dims[1],
-                               d.kernel_dims[2], features_in, features_out});
+    Tensor activations = RandomTensor(
+        DT_FLOAT, ImageDims(FORMAT_NHWC, batch, features_in, d.input_dims));
+    Tensor backprop = RandomTensor(
+        DT_FLOAT, ImageDims(FORMAT_NHWC, batch, features_out, d.output_dims));
+    Tensor kernel_shape = test::AsTensor<int32>(
+        AsInt32s({d.kernel_dims[0], d.kernel_dims[1], d.kernel_dims[2],
+                  features_in, features_out}));
     ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("Conv3DBackpropFilterV2")
             .Input(activations)
             .Input(kernel_shape)
             .Input(backprop)
             .Attr("T", DT_FLOAT)
-            .Attr("strides",
-                  {1, d.stride_dims[0], d.stride_dims[1], d.stride_dims[2], 1})
+            .Attr("strides", ImageDims(FORMAT_NHWC, 1, 1, d.stride_dims))
             .Attr("padding", d.padding == SAME ? "SAME" : "VALID"));
   });
 }
 
 TEST_F(OpTest, Conv3DBackpropInput) {
   Repeatedly([this]() {
-    WindowedDims d = ChooseWindowedDims(3);
+    WindowedSpatialDims d = ChooseWindowedSpatialDims(3);
     std::uniform_int_distribution<int> random_int(1, 5);
     int features_in = random_int(generator());
     int features_out = random_int(generator());
     int32 batch = RandomDim(1);
-    Tensor in_shape =
-        test::AsTensor<int32>({batch, d.input_dims[0], d.input_dims[1],
-                               d.input_dims[2], features_in});
-    Tensor backprop =
-        RandomTensor(DT_FLOAT, {batch, d.output_dims[0], d.output_dims[1],
-                                d.output_dims[2], features_out});
+    Tensor in_shape = test::AsTensor<int32>(
+        AsInt32s(ImageDims(FORMAT_NHWC, batch, features_in, d.input_dims)));
+    Tensor backprop = RandomTensor(
+        DT_FLOAT, ImageDims(FORMAT_NHWC, batch, features_out, d.output_dims));
     Tensor kernel =
         RandomTensor(DT_FLOAT, {d.kernel_dims[0], d.kernel_dims[1],
                                 d.kernel_dims[2], features_in, features_out});
@@ -1043,8 +1123,7 @@ TEST_F(OpTest, Conv3DBackpropInput) {
             .Input(kernel)
             .Input(backprop)
             .Attr("T", DT_FLOAT)
-            .Attr("strides",
-                  {1, d.stride_dims[0], d.stride_dims[1], d.stride_dims[2], 1})
+            .Attr("strides", ImageDims(FORMAT_NHWC, 1, 1, d.stride_dims))
             .Attr("padding", d.padding == SAME ? "SAME" : "VALID"));
   });
 }
@@ -1462,6 +1541,35 @@ TEST_F(OpTest, MaxPool) {
             .Attr("strides", {1, stride_rows, stride_cols, 1})
             .Attr("padding", padding)
             .Attr("data_format", "NHWC"));
+  });
+  // TODO(phawkins): test NCHW format (not supported by CPU)
+}
+
+TEST_F(OpTest, MaxPool3D) {
+  Repeatedly([this]() {
+    std::uniform_int_distribution<int> random_int(1, 5);
+    std::vector<int64> input_dims;
+    std::vector<int32> kernel_dims, stride_dims;
+    input_dims.push_back(RandomDim(1));
+    kernel_dims.push_back(1);
+    stride_dims.push_back(1);
+    for (int i = 0; i < 3; ++i) {
+      kernel_dims.push_back(random_int(generator()));
+      input_dims.push_back(RandomDim(kernel_dims.back()));
+      stride_dims.push_back(random_int(generator()));
+    }
+    input_dims.push_back(RandomDim(1));
+    kernel_dims.push_back(1);
+    stride_dims.push_back(1);
+
+    string padding = Choose<string>({"SAME", "VALID"});
+    ExpectTfAndXlaOutputsAreClose(OpTestBuilder("MaxPool3D")
+                                      .Input(RandomTensor(DT_FLOAT, input_dims))
+                                      .Attr("T", DT_FLOAT)
+                                      .Attr("ksize", kernel_dims)
+                                      .Attr("strides", stride_dims)
+                                      .Attr("padding", padding)
+                                      .Attr("data_format", "NHWC"));
   });
   // TODO(phawkins): test NCHW format (not supported by CPU)
 }
