@@ -934,6 +934,7 @@ REGISTER_KERNEL(int64, float);
 REGISTER_KERNEL(int64, double);
 REGISTER_KERNEL(string, float);
 REGISTER_KERNEL(string, bool);
+REGISTER_KERNEL(int64, bool);
 
 #undef REGISTER_KERNEL
 

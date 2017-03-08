@@ -39,6 +39,8 @@ namespace gpu = perftools::gputools;
 namespace tensorflow {
 
 // Adapter class that wraps a Tensorflow allocator as an XLA allocator.
+// Assumes that the Tensorflow allocator permits asynchronous deallocation:
+// see comment on `AllowsAsynchronousDeallocation()`.
 class XlaAllocator : public xla::DeviceMemoryAllocator {
  public:
   XlaAllocator(const perftools::gputools::Platform* platform,
@@ -53,6 +55,15 @@ class XlaAllocator : public xla::DeviceMemoryAllocator {
   // interpreted as having data type 'dtype' and shape 'shape'.
   Status MakeTensorFromBuffer(gpu::DeviceMemoryBase buffer, DataType dtype,
                               const TensorShape& shape, Tensor* tensor) const;
+
+  // The Tensorflow BFC allocator used on GPU allows host-side deallocation
+  // before GPU execution takes place. Tensorflow uses the ordering of the main
+  // compute stream to enforce a happens-before relationship between a memory
+  // allocation and code that reuses the same memory. If Tensorflow adds
+  // support for multiple GPU streams or allocators with different ordering
+  // requirements, this code may need to change.
+  // (This attribute has no effect on CPU.)
+  bool AllowsAsynchronousDeallocation() const override { return true; }
 
  private:
   OpKernelContext* const op_context_;

@@ -1222,8 +1222,14 @@ class SeparableConv2DTest(test.TestCase):
     x = [f * 0.5 for f in range(1, total_size + 1)]
     return constant_op.constant(x, shape=sizes)
 
-  def _VerifyValues(self, tensor_in_sizes, depthwise_filter_in_sizes,
-                    pointwise_filter_in_sizes, stride, padding, expected):
+  def _VerifyValues(self,
+                    tensor_in_sizes,
+                    depthwise_filter_in_sizes,
+                    pointwise_filter_in_sizes,
+                    stride,
+                    padding,
+                    expected,
+                    data_format="NHWC"):
     """Verifies the output values of the separable convolution function.
 
     Args:
@@ -1233,20 +1239,37 @@ class SeparableConv2DTest(test.TestCase):
       stride: Stride.
       padding: Padding type.
       expected: An array containing the expected operation outputs.
+      data_format: string data format for input tensor.
     """
-    with self.test_session() as sess:
+    with self.test_session(use_gpu=True) as sess:
       t1 = self._InitValues(tensor_in_sizes)
       f1 = self._InitValues(depthwise_filter_in_sizes)
       f1.set_shape(depthwise_filter_in_sizes)
       f2 = self._InitValues(pointwise_filter_in_sizes)
+
+      real_t1 = t1
+      strides = [1, stride, stride, 1]
+      if data_format == "NCHW":
+        real_t1 = array_ops.transpose(t1, [0, 3, 1, 2])
+        strides = [1, 1, stride, stride]
+
       conv = nn_impl.separable_conv2d(
-          t1, f1, f2, strides=[1, stride, stride, 1], padding=padding)
+          real_t1,
+          f1,
+          f2,
+          strides=strides,
+          padding=padding,
+          data_format=data_format)
+
+      if data_format == "NCHW":
+        conv = array_ops.transpose(conv, [0, 2, 3, 1])
+
       value = sess.run(conv)
     print("value = ", value)
     self.assertArrayNear(expected, np.ravel(value), 1e-5)
     self.assertShapeEqual(value, conv)
 
-  def testSeparableConv2D(self):
+  def _testSeparableConv2D(self, data_format):
     # The output is the result of two convolutions:
     # First with tensor_in[1, 4, 4, 2] * filter1[2, 2, 2, 3].
     # Second with intermediate_out[1, 4, 4, 6] * filter2[1, 1, 6, 7].
@@ -1274,9 +1297,18 @@ class SeparableConv2DTest(test.TestCase):
         pointwise_filter_in_sizes=[1, 1, 6, 7],
         stride=1,
         padding="SAME",
-        expected=expected_output)
+        expected=expected_output,
+        data_format=data_format)
 
-  def testSeparableConv2DEqualInputOutputDepth(self):
+  def testSeparableConv2D(self):
+    self._testSeparableConv2D("NHWC")
+
+  def testSeparableConv2DNCHW(self):
+    if not test.is_gpu_available():
+      return
+    self._testSeparableConv2D("NCHW")
+
+  def _testSeparableConv2DEqualInputOutputDepth(self, data_format):
     # The output is the result of two convolutions:
     # First with tensor_in[1, 4, 4, 2] * filter1[2, 2, 3, 3].
     # Second with intermediate_out[1, 4, 4, 6] * filter2[1, 1, 6, 6].
@@ -1302,7 +1334,16 @@ class SeparableConv2DTest(test.TestCase):
         pointwise_filter_in_sizes=[1, 1, 6, 6],
         stride=1,
         padding="SAME",
-        expected=expected_output)
+        expected=expected_output,
+        data_format=data_format)
+
+  def testSeparableConv2DEqualInputOutputDepth(self):
+    self._testSeparableConv2DEqualInputOutputDepth("NHWC")
+
+  def testSeparableConv2DEqualInputOutputDepthNCHW(self):
+    if not test.is_gpu_available():
+      return
+    self._testSeparableConv2DEqualInputOutputDepth("NCHW")
 
   def testSeparableConv2DIllegalCases(self):
     # Output depth less then input depth.

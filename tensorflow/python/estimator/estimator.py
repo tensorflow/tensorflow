@@ -416,8 +416,8 @@ class Estimator(object):
       all_hooks.extend(hooks)
       all_hooks.extend(estimator_spec.training_hooks)
 
-      scaffold = estimator_spec.scaffold or training.Scaffold()
-      if not (scaffold.saver or ops.get_collection(ops.GraphKeys.SAVERS)):
+      if not (estimator_spec.scaffold.saver or
+              ops.get_collection(ops.GraphKeys.SAVERS)):
         ops.add_to_collection(ops.GraphKeys.SAVERS,
                               training.Saver(
                                   sharded=True,
@@ -438,13 +438,13 @@ class Estimator(object):
                   self._model_dir,
                   save_secs=self._config.save_checkpoints_secs,
                   save_steps=self._config.save_checkpoints_steps,
-                  scaffold=scaffold)
+                  scaffold=estimator_spec.scaffold)
           ]
       with training.MonitoredTrainingSession(
           master=self._config.master,
           is_chief=self._config.is_chief,
           checkpoint_dir=self._model_dir,
-          scaffold=scaffold,
+          scaffold=estimator_spec.scaffold,
           hooks=all_hooks,
           chief_only_hooks=chief_hooks + estimator_spec.training_chief_hooks,
           save_checkpoint_secs=0,  # Saving is handled by a hook.

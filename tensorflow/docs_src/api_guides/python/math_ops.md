@@ -119,17 +119,6 @@ functions to your graph.
 *   @{tf.imag}
 *   @{tf.real}
 
-## Fourier Transform Functions
-
-TensorFlow provides several operations that you can use to add discrete
-Fourier transform functions to your graph.
-
-*   @{tf.fft}
-*   @{tf.ifft}
-*   @{tf.fft2d}
-*   @{tf.ifft2d}
-*   @{tf.fft3d}
-*   @{tf.ifft3d}
 
 ## Reduction
 

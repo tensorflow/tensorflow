@@ -15,6 +15,7 @@ limitations under the License.
 
 package org.tensorflow;
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -39,7 +40,7 @@ public class SessionTest {
               new AutoCloseableList<Tensor>(s.runner().feed("X", x).fetch("Y").run())) {
         assertEquals(1, outputs.size());
         final int[][] expected = {{31}};
-        assertEquals(expected, outputs.get(0).copyTo(new int[1][1]));
+        assertArrayEquals(expected, outputs.get(0).copyTo(new int[1][1]));
       }
     }
   }
@@ -60,7 +61,7 @@ public class SessionTest {
         AutoCloseableList<Tensor> outputs = new AutoCloseableList<Tensor>(result.outputs);
         assertEquals(1, outputs.size());
         final int[][] expected = {{31}};
-        assertEquals(expected, outputs.get(0).copyTo(new int[1][1]));
+        assertArrayEquals(expected, outputs.get(0).copyTo(new int[1][1]));
         // Sanity check on metadatar
         // See comments in fullTraceRunOptions() for an explanation about
         // why this check is really silly. Ideally, this would be:

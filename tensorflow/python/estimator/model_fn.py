@@ -244,9 +244,9 @@ class EstimatorSpec(
             'All hooks must be SessionRunHook instances, given: {}'.format(
                 hook))
 
+    scaffold = scaffold or monitored_session.Scaffold()
     # Validate scaffold.
-    if (scaffold is not None and
-        not isinstance(scaffold, monitored_session.Scaffold)):
+    if not isinstance(scaffold, monitored_session.Scaffold):
       raise TypeError(
           'scaffold must be tf.train.Scaffold. Given: {}'.format(scaffold))
 

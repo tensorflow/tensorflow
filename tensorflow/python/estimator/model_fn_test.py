@@ -182,6 +182,14 @@ class EstimatorSpecTrainTest(test.TestCase):
             train_op=control_flow_ops.no_op(),
             scaffold=_InvalidScaffold())
 
+  def testReturnDefaultScaffold(self):
+    with ops.Graph().as_default(), self.test_session():
+      estimator_spec = model_fn.EstimatorSpec(
+          mode=model_fn.ModeKeys.FIT,
+          loss=constant_op.constant(1.),
+          train_op=control_flow_ops.no_op())
+      self.assertIsNotNone(estimator_spec.scaffold)
+
 
 class EstimatorSpecEvalTest(test.TestCase):
   """Tests EstimatorSpec in eval mode."""
