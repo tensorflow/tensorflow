@@ -128,6 +128,21 @@ class FakeHttpRequest : public HttpRequest {
     return response_status_;
   }
 
+  // This function just does a simple replacing of "/" with "%2F" instead of
+  // full url encoding.
+  virtual string EscapeString(const string& str) override {
+    const string victim = "/";
+    const string encoded = "%2F";
+
+    string copy_str = str;
+    std::string::size_type n = 0;
+    while ((n = copy_str.find(victim, n)) != std::string::npos) {
+      copy_str.replace(n, victim.size(), encoded);
+      n += encoded.size();
+    }
+    return copy_str;
+  }
+
  private:
   char* scratch_ = nullptr;
   size_t size_ = 0;

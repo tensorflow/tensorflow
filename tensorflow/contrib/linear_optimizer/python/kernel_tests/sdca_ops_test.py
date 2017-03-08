@@ -24,6 +24,7 @@ import uuid
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 import tensorflow as tf
+from tensorflow.contrib.linear_optimizer.python.ops.sdca_ops import _sdca_ops
 from tensorflow.contrib.linear_optimizer.python.ops.sdca_ops import SdcaModel
 from tensorflow.python.framework.test_util import TensorFlowTestCase
 from tensorflow.python.platform import googletest
@@ -122,12 +123,6 @@ def get_binary_predictions_for_hinge(predictions):
 CONTAINER = uuid.uuid4().hex
 
 
-# Clear the shared container.
-def tearDown():
-  # TODO(sibyl-Mooth6ku): Proper cleanup of Containers when possible.
-  pass
-
-
 # TODO(sibyl-Mooth6ku): Add tests that exercise L1 and Shrinking.
 # TODO(sibyl-vie3Poto): Refactor tests to avoid repetition of boilerplate code.
 class SdcaOptimizerTest(TensorFlowTestCase):
@@ -137,37 +132,6 @@ class SdcaOptimizerTest(TensorFlowTestCase):
     config = tf.ConfigProto(inter_op_parallelism_threads=1,
                             intra_op_parallelism_threads=1)
     return self.test_session(use_gpu=False, config=config)
-
-  # The following tests, check that operations raise errors when certain
-  # preconditions on the input data are not satisfied. These errors are raised
-  # regardless of the loss type.
-  def testNoWeightedExamples(self):
-    # Setup test data with 1 positive, and 1 negative example.
-    example_protos = [
-        make_example_proto(
-            {'age': [0],
-             'gender': [0]}, 0),
-        make_example_proto(
-            {'age': [1],
-             'gender': [1]}, 1),
-    ]
-    # Zeroed out example weights.
-    example_weights = [0.0, 0.0]
-    with self._single_threaded_test_session():
-      examples = make_example_dict(example_protos, example_weights)
-      variables = make_variable_dict(1, 1)
-      options = dict(symmetric_l2_regularization=1,
-                     symmetric_l1_regularization=0,
-                     loss_type='logistic_loss')
-
-      lr = SdcaModel(CONTAINER, examples, variables, options)
-      tf.initialize_all_variables().run()
-      self.assertAllClose([0.5, 0.5], lr.predictions(examples).eval())
-      lr.minimize().run()
-      self.assertAllClose([0.5, 0.5], lr.predictions(examples).eval())
-      with self.assertRaisesOpError(
-          'No examples found or all examples have zero weight.'):
-        lr.approximate_duality_gap().eval()
 
 
 class SdcaWithLogisticLossTest(SdcaOptimizerTest):
@@ -814,6 +778,26 @@ class SdcaWithHingeLossTest(SdcaOptimizerTest):
       regularized_loss = model.regularized_loss(examples)
       self.assertAllClose(0.2, unregularized_loss.eval(), atol=0.02)
       self.assertAllClose(0.4, regularized_loss.eval(), atol=0.02)
+
+
+class SdcaFprintTest(TensorFlowTestCase):
+  """Tests for the SdcaFprint op.
+
+  This is one way of enforcing the platform-agnostic nature of SdcaFprint.
+  Basically we are checking against exact values and this test could be running
+  across different platforms. Note that it is fine for expected values to change
+  in the future, if the implementation of SdcaFprint changes (ie this is *not* a
+  frozen test).
+  """
+
+  def testFprint(self):
+    with self.test_session():
+      in_data = tf.constant(['abc', 'very looooooong string', 'def'])
+      out_data = _sdca_ops.sdca_fprint(in_data)
+      self.assertAllEqual([b'a085f09013029e45-3980b2afd2126c04',
+                           b'bc5a254df959f26c-512e479a50910f9f',
+                           b'79999cd817a03f12-085f182230e03022'],
+                          out_data.eval())
 
 if __name__ == '__main__':
   googletest.main()

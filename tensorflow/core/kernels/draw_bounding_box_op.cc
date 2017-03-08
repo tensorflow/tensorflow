@@ -61,22 +61,23 @@ class DrawBoundingBoxesOp : public OpKernel {
 
     for (int64 b = 0; b < batch_size; ++b) {
       const int64 num_boxes = boxes.dim_size(1);
+      const auto tboxes = boxes.tensor<T, 3>();
 
       for (int64 bb = 0; bb < num_boxes; ++bb) {
         const int64 min_box_row =
-            (height - 1) * boxes.tensor<float, 3>()(b, bb, 0);
+            static_cast<float>(tboxes(b, bb, 0)) * (height - 1);
         const int64 min_box_row_clamp =
             std::max<int64>(min_box_row, 0);
         const int64 max_box_row =
-            (height - 1) * boxes.tensor<float, 3>()(b, bb, 2);
+            static_cast<float>(tboxes(b, bb, 2)) * (height - 1);
         const int64 max_box_row_clamp =
             std::min<int64>(max_box_row, height - 1);
         const int64 min_box_col =
-            (width - 1) * boxes.tensor<float, 3>()(b, bb, 1);
+            static_cast<float>(tboxes(b, bb, 1)) * (width - 1);
         const int64 min_box_col_clamp =
             std::max<int64>(min_box_col, 0);
         const int64 max_box_col =
-            (width - 1) * boxes.tensor<float, 3>()(b, bb, 3);
+            static_cast<float>(tboxes(b, bb, 3)) * (width - 1);
         const int64 max_box_col_clamp =
             std::min<int64>(max_box_col, width - 1);
 
@@ -121,22 +122,22 @@ class DrawBoundingBoxesOp : public OpKernel {
         // Draw top line.
         if (min_box_row >= 0) {
           for (int64 j = min_box_col_clamp; j <= max_box_col_clamp; ++j)
-            canvas(b, min_box_row, j, 0) = T(nanf(""));
+            canvas(b, min_box_row, j, 0) = Eigen::NumTraits<T>::quiet_NaN();
         }
         // Draw bottom line.
         if (max_box_row < height) {
           for (int64 j = min_box_col_clamp; j <= max_box_col_clamp; ++j)
-            canvas(b, max_box_row, j, 0) = T(nanf(""));
+            canvas(b, max_box_row, j, 0) = Eigen::NumTraits<T>::quiet_NaN();
         }
         // Draw left line.
         if (min_box_col >= 0) {
           for (int64 i = min_box_row_clamp; i <= max_box_row_clamp; ++i)
-            canvas(b, i, min_box_col, 0) = T(nanf(""));
+            canvas(b, i, min_box_col, 0) = Eigen::NumTraits<T>::quiet_NaN();
         }
         // Draw right line.
         if (max_box_col < width) {
           for (int64 i = min_box_row_clamp; i <= max_box_row_clamp; ++i)
-            canvas(b, i, max_box_col, 0) = T(nanf(""));
+            canvas(b, i, max_box_col, 0) = Eigen::NumTraits<T>::quiet_NaN();
         }
       }
     }

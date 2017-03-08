@@ -184,27 +184,27 @@ class SimpleRendezvous : public Rendezvous {
  public:
   explicit SimpleRendezvous() {}
 
-  Status Send(const string& key, const Args& send_args, const Tensor& val,
+  Status Send(const ParsedKey& parsed, const Args& send_args, const Tensor& val,
               const bool is_dead) override {
     if (is_dead) {
       return errors::Internal("Send of a dead tensor");
     }
-    ParsedKey parsed;
-    TF_RETURN_IF_ERROR(ParseKey(key, &parsed));
 
     mutex_lock l(mu_);
-    if (table_.count(parsed.edge_name) > 0) {
+    string edge_name = parsed.edge_name.ToString();
+    if (table_.count(edge_name) > 0) {
       return errors::Internal("Send of an already sent tensor");
     }
-    table_[parsed.edge_name] = val;
+    table_[edge_name] = val;
     return Status::OK();
   }
 
-  void RecvAsync(const string& key, const Args& recv_args,
+  void RecvAsync(const ParsedKey& parsed, const Args& recv_args,
                  DoneCallback done) override {
     Tensor tensor;
     Status status = Status::OK();
     {
+      string key = parsed.edge_name.ToString();
       mutex_lock l(mu_);
       if (table_.count(key) <= 0) {
         status = errors::Internal("Did not find key ", key);
@@ -417,7 +417,14 @@ bool DoConstantFolding(const ConstantFoldingOptions& opts,
       // this node. Don't bother processing the rest of the nodes.
       return c > 0;
     }
-    Status s = rendez->Recv(tensor_name, Rendezvous::Args(), &output, &is_dead);
+
+    string full_key = Rendezvous::CreateKey("/cpu:0", 1, "/cpu:1", tensor_name,
+                                            FrameAndIter(0, 0));
+    Rendezvous::ParsedKey parsed;
+    Status s = Rendezvous::ParseKey(full_key, &parsed);
+    if (s.ok()) {
+      s = rendez->Recv(parsed, Rendezvous::Args(), &output, &is_dead);
+    }
     if (!s.ok() || is_dead) {
       return c > 0;
     }

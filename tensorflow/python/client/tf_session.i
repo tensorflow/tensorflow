@@ -243,15 +243,11 @@ tensorflow::ImportNumpy();
 
 %insert("python") %{
   def TF_NewSessionOptions(target=None, config=None):
+    # NOTE: target and config are validated in the session constructor.
     opts = _TF_NewSessionOptions()
     if target is not None:
-      from tensorflow.python.util import compat
-      _TF_SetTarget(opts, compat.as_bytes(target))
+      _TF_SetTarget(opts, target)
     if config is not None:
-      from tensorflow.core.protobuf import config_pb2
-      if not isinstance(config, config_pb2.ConfigProto):
-        raise TypeError("Expected config_pb2.ConfigProto, "
-                        "but got %s" % type(config))
       from tensorflow.python.framework import errors
       with errors.raise_exception_on_not_ok_status() as status:
         config_str = config.SerializeToString()
@@ -289,6 +285,18 @@ tensorflow::ImportNumpy();
 %rename(TF_PRun) tensorflow::TF_PRun_wrapper;
 %unignore tensorflow;
 %unignore TF_PRun;
+
+%unignore tensorflow::TF_Reset_wrapper;
+%insert("python") %{
+def TF_Reset(target, containers=None, config=None):
+  from tensorflow.python.framework import errors
+  opts = TF_NewSessionOptions(target=target, config=config)
+  try:
+    with errors.raise_exception_on_not_ok_status() as status:
+      TF_Reset_wrapper(opts, containers, status)
+  finally:
+    TF_DeleteSessionOptions(opts)
+%}
 
 %include "tensorflow/python/client/tf_session_helper.h"
 

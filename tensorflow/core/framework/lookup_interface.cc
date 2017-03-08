@@ -30,28 +30,30 @@ Status LookupInterface::CheckKeyAndValueTensors(const Tensor& key,
     return errors::InvalidArgument("Value must be type ", value_dtype(),
                                    " but got ", value.dtype());
   }
-  if (key.NumElements() != value.NumElements()) {
-    return errors::InvalidArgument("Number of elements of key(",
-                                   key.NumElements(), ") and value(",
-                                   value.NumElements(), ") are different.");
-  }
-  if (!key.shape().IsSameSize(value.shape())) {
-    return errors::InvalidArgument("key and value have different shapes.");
+  TensorShape expected_value_shape = key.shape();
+  expected_value_shape.AppendShape(value_shape());
+  if (value.shape() != expected_value_shape) {
+    return errors::InvalidArgument(
+        "Expected shape ", expected_value_shape.DebugString(),
+        " for value, got ", value.shape().DebugString());
   }
   return Status::OK();
 }
 
 Status LookupInterface::CheckFindArguments(const Tensor& key,
-                                           const Tensor& value,
                                            const Tensor& default_value) {
-  TF_RETURN_IF_ERROR(CheckKeyAndValueTensors(key, value));
-
+  if (key.dtype() != key_dtype()) {
+    return errors::InvalidArgument("Key must be type ", key_dtype(),
+                                   " but got ", key.dtype());
+  }
   if (default_value.dtype() != value_dtype()) {
     return errors::InvalidArgument("Default value must be type ", value_dtype(),
                                    " but got ", default_value.dtype());
   }
-  if (!TensorShapeUtils::IsScalar(default_value.shape())) {
-    return errors::InvalidArgument("Default values must be scalar.");
+  if (default_value.shape() != value_shape()) {
+    return errors::InvalidArgument(
+        "Expected shape ", value_shape().DebugString(),
+        " for default value, got ", default_value.shape().DebugString());
   }
   return Status::OK();
 }

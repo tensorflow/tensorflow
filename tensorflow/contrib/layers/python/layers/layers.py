@@ -53,6 +53,7 @@ __all__ = ['avg_pool2d',
            'one_hot_encoding',
            'relu',
            'relu6',
+           'repeat',
            'stack',
            'legacy_fully_connected',
            'legacy_linear',
@@ -402,11 +403,18 @@ def dropout(inputs,
     a tensor representing the output of the operation.
   """
   with ops.op_scope([inputs], scope, 'Dropout') as sc:
-    is_training = ops.convert_to_tensor(is_training)
-    outputs = control_flow_ops.cond(
-        is_training,
-        lambda: nn.dropout(inputs, keep_prob, noise_shape),
-        lambda: inputs)
+    is_training_value = utils.constant_value(is_training, dtypes.bool)
+    if is_training_value is not None:
+      if is_training_value:
+        outputs = nn.dropout(inputs, keep_prob, noise_shape)
+      else:
+        outputs = inputs
+    else:
+      def _dropout():
+        return nn.dropout(inputs, keep_prob, noise_shape)
+      outputs = control_flow_ops.cond(is_training,
+                                      _dropout,
+                                      lambda: inputs)
     return utils.collect_named_outputs(outputs_collections, sc, outputs)
 
 
@@ -494,7 +502,7 @@ def fully_connected(inputs,
     ValueError: if x has rank less than 2 or if its last dimension is not set.
   """
   if not isinstance(num_outputs, int):
-    raise ValueError("num_outputs should be integer, got %s", num_outputs)
+    raise ValueError('num_outputs should be integer, got %s.', num_outputs)
   with variable_scope.variable_op_scope([inputs],
                                         scope,
                                         'fully_connected',
@@ -537,12 +545,12 @@ def fully_connected(inputs,
                                           collections=biases_collections,
                                           trainable=trainable)
         outputs = nn.bias_add(outputs, biases)
+    if activation_fn:
+      outputs = activation_fn(outputs)
     if len(static_shape) > 2:
       # Reshape back outputs
       outputs = array_ops.reshape(outputs, array_ops.pack(out_shape))
       outputs.set_shape(static_shape)
-    if activation_fn:
-      outputs = activation_fn(outputs)
     return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
 
 
@@ -623,6 +631,51 @@ def _apply_activation(y, activation_fn, output_collections):
   return y
 
 
+def repeat(inputs, repetitions, layer, *args, **kwargs):
+  """Applies the same layer with the same arguments repeatedly.
+
+  ```python
+    y = repeat(x, 3, conv2d, 64, [3, 3], scope='conv1')
+    # It is equivalent to:
+
+    x = conv2d(x, 64, [3, 3], scope='conv1/conv1_1')
+    x = conv2d(x, 64, [3, 3], scope='conv1/conv1_2')
+    y = conv2d(x, 64, [3, 3], scope='conv1/conv1_3')
+  ```
+
+  If the `scope` argument is not given in `kwargs`, it is set to
+  `layer.__name__`, or `layer.func.__name__` (for `functools.partial`
+  objects). If neither `__name__` nor `func.__name__` is available, the
+  layers are called with `scope='stack'`.
+
+  Args:
+    inputs: A `Tensor` suitable for layer.
+    repetitions: Int, number of repetitions.
+    layer: A layer with arguments `(inputs, *args, **kwargs)`
+    *args: Extra args for the layer.
+    **kwargs: Extra kwargs for the layer.
+
+  Returns:
+    a tensor result of applying the layer, repetitions times.
+  Raises:
+    ValueError: if the op is unknown or wrong.
+  """
+  scope = kwargs.pop('scope', None)
+  with variable_scope.variable_op_scope([inputs], scope, 'Repeat'):
+    outputs = inputs
+    if scope is None:
+      if hasattr(layer, '__name__'):
+        scope = layer.__name__
+      elif hasattr(layer, 'func') and hasattr(layer.func, '__name__'):
+        scope = layer.func.__name__  # In case layer is a functools.partial.
+      else:
+        scope = 'repeat'
+    for i in range(repetitions):
+      kwargs['scope'] = scope + '_' + str(i+1)
+      outputs = layer(outputs, *args, **kwargs)
+    return outputs
+
+
 def stack(inputs, layer, stack_args, **kwargs):
   """Builds a stack of layers by applying layer repeatedly using stack_args.
 
@@ -631,17 +684,22 @@ def stack(inputs, layer, stack_args, **kwargs):
   a new scope appended with an increasing number. For example:
 
   ```python
-    stack(x, fully_connected, [32, 64, 128], scope='fc')
+    y = stack(x, fully_connected, [32, 64, 128], scope='fc')
     # It is equivalent to:
 
     x = fully_connected(x, 32, scope='fc/fc_1')
     x = fully_connected(x, 64, scope='fc/fc_2')
-    x = fully_connected(x, 128, scope='fc/fc_3')
+    y = fully_connected(x, 128, scope='fc/fc_3')
   ```
+
+  If the `scope` argument is not given in `kwargs`, it is set to
+  `layer.__name__`, or `layer.func.__name__` (for `functools.partial`
+  objects). If neither `__name__` nor `func.__name__` is available, the
+  layers are called with `scope='stack'`.
 
   Args:
     inputs: A `Tensor` suitable for layer.
-    layer: A layer(inputs, *args, **kwargs)
+    layer: A layer with arguments `(inputs, *args, **kwargs)`
     stack_args: A list/tuple of parameters for each call of layer.
     **kwargs: Extra kwargs for the layer.
 
@@ -656,7 +714,13 @@ def stack(inputs, layer, stack_args, **kwargs):
     raise ValueError('stack_args need to be a list or tuple')
   with variable_scope.variable_op_scope([inputs], scope, 'Stack'):
     outputs = inputs
-    scope = scope or layer.__name__
+    if scope is None:
+      if hasattr(layer, '__name__'):
+        scope = layer.__name__
+      elif hasattr(layer, 'func') and hasattr(layer.func, '__name__'):
+        scope = layer.func.__name__  # In case layer is a functools.partial.
+      else:
+        scope = 'stack'
     for i in range(len(stack_args)):
       kwargs['scope'] = scope + '_' + str(i+1)
       layer_args = stack_args[i]

@@ -95,6 +95,36 @@ cum_prob_per_dist = u.cdf([[4.0, 5.0],
 # INVALID as the `value` argument is not broadcastable to the distribution's
 # shape.
 cum_prob_invalid = u.cdf([4.0, 5.0, 6.0])
+
+### Parameter values leading to undefined statistics or distributions.
+
+Some distributions do not have well-defined statistics for all initialization
+parameter values.  For example, the beta distribution is parameterized by
+positive real numbers `a` and `b`, and does not have well-defined mode if
+`a < 1` or `b < 1`.
+
+The user is given the option of raising an exception or returning `NaN`.
+
+```python
+a = tf.exp(tf.matmul(logits, weights_a))
+b = tf.exp(tf.matmul(logits, weights_b))
+
+# Will raise exception if ANY batch member has a < 1 or b < 1.
+dist = distributions.beta(a, b, strict_statistics=True)  # default is True
+mode = dist.mode().eval()
+
+# Will return NaN for batch members with either a < 1 or b < 1.
+dist = distributions.beta(a, b, strict_statistics=False)
+mode = dist.mode().eval()
+```
+
+In all cases, an exception is raised if *invalid* parameters are passed, e.g.
+
+```python
+# Will raise an exception if any Op is run.
+negative_a = -1.0 * a  # beta distribution by definition has a > 0.
+dist = distributions.beta(negative_a, b, strict_statistics=False)
+dist.mean().eval()
 ```
 - - -
 
@@ -223,6 +253,20 @@ Generate `n` samples.
 #### `tf.contrib.distributions.BaseDistribution.std(name='std')` {#BaseDistribution.std}
 
 Standard deviation of the distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.BaseDistribution.strict` {#BaseDistribution.strict}
+
+Boolean describing behavior on invalid input.
+
+
+- - -
+
+#### `tf.contrib.distributions.BaseDistribution.strict_statistics` {#BaseDistribution.strict_statistics}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -413,6 +457,20 @@ Standard deviation of the distribution.
 
 - - -
 
+#### `tf.contrib.distributions.ContinuousDistribution.strict` {#ContinuousDistribution.strict}
+
+Boolean describing behavior on invalid input.
+
+
+- - -
+
+#### `tf.contrib.distributions.ContinuousDistribution.strict_statistics` {#ContinuousDistribution.strict_statistics}
+
+Boolean describing behavior when a stat is undefined for batch member.
+
+
+- - -
+
 #### `tf.contrib.distributions.ContinuousDistribution.variance(name='variance')` {#ContinuousDistribution.variance}
 
 Variance of the distribution.
@@ -585,6 +643,20 @@ Standard deviation of the distribution.
 
 - - -
 
+#### `tf.contrib.distributions.DiscreteDistribution.strict` {#DiscreteDistribution.strict}
+
+Boolean describing behavior on invalid input.
+
+
+- - -
+
+#### `tf.contrib.distributions.DiscreteDistribution.strict_statistics` {#DiscreteDistribution.strict_statistics}
+
+Boolean describing behavior when a stat is undefined for batch member.
+
+
+- - -
+
 #### `tf.contrib.distributions.DiscreteDistribution.variance(name='variance')` {#DiscreteDistribution.variance}
 
 Variance of the distribution.
@@ -596,21 +668,530 @@ Variance of the distribution.
 
 - - -
 
+### `class tf.contrib.distributions.Bernoulli` {#Bernoulli}
+
+Bernoulli distribution.
+
+The Bernoulli distribution is parameterized by p, the probability of a
+positive event.
+
+Note, the following methods of the base class aren't implemented:
+  * cdf
+  * log_cdf
+- - -
+
+#### `tf.contrib.distributions.Bernoulli.__init__(p, dtype=tf.int32, strict=True, strict_statistics=True, name='Bernoulli')` {#Bernoulli.__init__}
+
+Construct Bernoulli distributions.
+
+##### Args:
+
+
+*  <b>`p`</b>: An N-D `Tensor` representing the probability of a positive
+      event. Each entry in the `Tensor` parameterizes an independent
+      Bernoulli distribution.
+*  <b>`dtype`</b>: dtype for samples. Note that other values will take the dtype of p.
+*  <b>`strict`</b>: Whether to assert that `0 <= p <= 1`. If not strict, `log_pmf` may
+    return nans.
+*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
+    If False, batch members with valid parameters leading to undefined
+    statistics will return NaN for this statistic.
+*  <b>`name`</b>: A name for this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.Bernoulli.batch_shape(name='batch_shape')` {#Bernoulli.batch_shape}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.Bernoulli.cdf(value, name='cdf')` {#Bernoulli.cdf}
+
+Cumulative distribution function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Bernoulli.dtype` {#Bernoulli.dtype}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.Bernoulli.entropy(name='entropy')` {#Bernoulli.entropy}
+
+Entropy of the distribution.
+
+##### Args:
+
+
+*  <b>`name`</b>: Name for the op.
+
+##### Returns:
+
+
+*  <b>`entropy`</b>: `Tensor` of the same type and shape as `p`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Bernoulli.event_shape(name='event_shape')` {#Bernoulli.event_shape}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.Bernoulli.get_batch_shape()` {#Bernoulli.get_batch_shape}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.Bernoulli.get_event_shape()` {#Bernoulli.get_event_shape}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.Bernoulli.is_reparameterized` {#Bernoulli.is_reparameterized}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.Bernoulli.log_cdf(value, name='log_cdf')` {#Bernoulli.log_cdf}
+
+Log CDF.
+
+
+- - -
+
+#### `tf.contrib.distributions.Bernoulli.log_likelihood(value, name='log_likelihood')` {#Bernoulli.log_likelihood}
+
+Log likelihood of this distribution (same as log_pmf).
+
+
+- - -
+
+#### `tf.contrib.distributions.Bernoulli.log_pmf(event, name='log_pmf')` {#Bernoulli.log_pmf}
+
+Log of the probability mass function.
+
+##### Args:
+
+
+*  <b>`event`</b>: `int32` or `int64` binary Tensor.
+*  <b>`name`</b>: A name for this operation (optional).
+
+##### Returns:
+
+  The log-probabilities of the events.
+
+
+- - -
+
+#### `tf.contrib.distributions.Bernoulli.mean(name='mean')` {#Bernoulli.mean}
+
+Mean of the distribution.
+
+##### Args:
+
+
+*  <b>`name`</b>: Name for the op.
+
+##### Returns:
+
+
+*  <b>`mean`</b>: `Tensor` of the same type and shape as `p`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Bernoulli.mode(name='mode')` {#Bernoulli.mode}
+
+Mode of the distribution.
+
+1 if p > 1-p. 0 otherwise.
+
+##### Args:
+
+
+*  <b>`name`</b>: Name for the op.
+
+##### Returns:
+
+
+*  <b>`mode`</b>: binary `Tensor` of type self.dtype.
+
+
+- - -
+
+#### `tf.contrib.distributions.Bernoulli.name` {#Bernoulli.name}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.Bernoulli.p` {#Bernoulli.p}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.Bernoulli.pmf(event, name='pmf')` {#Bernoulli.pmf}
+
+Probability mass function.
+
+##### Args:
+
+
+*  <b>`event`</b>: `int32` or `int64` binary Tensor; must be broadcastable with `p`.
+*  <b>`name`</b>: A name for this operation.
+
+##### Returns:
+
+  The probabilities of the events.
+
+
+- - -
+
+#### `tf.contrib.distributions.Bernoulli.q` {#Bernoulli.q}
+
+1-p.
+
+
+- - -
+
+#### `tf.contrib.distributions.Bernoulli.sample(n, seed=None, name='sample')` {#Bernoulli.sample}
+
+Generate `n` samples.
+
+##### Args:
+
+
+*  <b>`n`</b>: scalar.  Number of samples to draw from each distribution.
+*  <b>`seed`</b>: Python integer seed for RNG.
+*  <b>`name`</b>: name to give to the op.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: a `Tensor` of shape `(n,) + self.batch_shape` with values of type
+      `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Bernoulli.std(name='std')` {#Bernoulli.std}
+
+Standard deviation of the distribution.
+
+##### Args:
+
+
+*  <b>`name`</b>: Name for the op.
+
+##### Returns:
+
+
+*  <b>`std`</b>: `Tensor` of the same type and shape as `p`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Bernoulli.strict` {#Bernoulli.strict}
+
+Boolean describing behavior on invalid input.
+
+
+- - -
+
+#### `tf.contrib.distributions.Bernoulli.strict_statistics` {#Bernoulli.strict_statistics}
+
+Boolean describing behavior when a stat is undefined for batch member.
+
+
+- - -
+
+#### `tf.contrib.distributions.Bernoulli.variance(name='variance')` {#Bernoulli.variance}
+
+Variance of the distribution.
+
+##### Args:
+
+
+*  <b>`name`</b>: Name for the op.
+
+##### Returns:
+
+
+*  <b>`variance`</b>: `Tensor` of the same type and shape as `p`.
+
+
+
+- - -
+
+### `class tf.contrib.distributions.Categorical` {#Categorical}
+
+Categorical distribution.
+
+The categorical distribution is parameterized by the log-probabilities
+of a set of classes.
+
+Note, the following methods of the base class aren't implemented:
+  * mean
+  * cdf
+  * log_cdf
+- - -
+
+#### `tf.contrib.distributions.Categorical.__init__(logits, dtype=tf.int32, strict=True, strict_statistics=True, name='Categorical')` {#Categorical.__init__}
+
+Initialize Categorical distributions using class log-probabilities.
+
+##### Args:
+
+
+*  <b>`logits`</b>: An N-D `Tensor`, `N >= 1`, representing the log probabilities
+      of a set of Categorical distributions. The first `N - 1` dimensions
+      index into a batch of independent distributions and the last dimension
+      indexes into the classes.
+*  <b>`dtype`</b>: The type of the event samples (default: int32).
+*  <b>`strict`</b>: Unused in this distribution.
+*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
+    If False, batch members with valid parameters leading to undefined
+    statistics will return NaN for this statistic.
+*  <b>`name`</b>: A name for this distribution (optional).
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.batch_shape(name='batch_shape')` {#Categorical.batch_shape}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.cdf(value, name='cdf')` {#Categorical.cdf}
+
+Cumulative distribution function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.dtype` {#Categorical.dtype}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.entropy(name='sample')` {#Categorical.entropy}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.event_shape(name='event_shape')` {#Categorical.event_shape}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.get_batch_shape()` {#Categorical.get_batch_shape}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.get_event_shape()` {#Categorical.get_event_shape}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.is_reparameterized` {#Categorical.is_reparameterized}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.log_cdf(value, name='log_cdf')` {#Categorical.log_cdf}
+
+Log CDF.
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.log_likelihood(value, name='log_likelihood')` {#Categorical.log_likelihood}
+
+Log likelihood of this distribution (same as log_pmf).
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.log_pmf(k, name='log_pmf')` {#Categorical.log_pmf}
+
+Log-probability of class `k`.
+
+##### Args:
+
+
+*  <b>`k`</b>: `int32` or `int64` Tensor with shape = `self.batch_shape()`.
+*  <b>`name`</b>: A name for this operation (optional).
+
+##### Returns:
+
+  The log-probabilities of the classes indexed by `k`
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.logits` {#Categorical.logits}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.mean(name='mean')` {#Categorical.mean}
+
+Mean of the distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.mode(name='mode')` {#Categorical.mode}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.name` {#Categorical.name}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.num_classes` {#Categorical.num_classes}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.pmf(k, name='pmf')` {#Categorical.pmf}
+
+Probability of class `k`.
+
+##### Args:
+
+
+*  <b>`k`</b>: `int32` or `int64` Tensor with shape = `self.batch_shape()`.
+*  <b>`name`</b>: A name for this operation (optional).
+
+##### Returns:
+
+  The probabilities of the classes indexed by `k`
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.sample(n, seed=None, name='sample')` {#Categorical.sample}
+
+Sample `n` observations from the Categorical distribution.
+
+##### Args:
+
+
+*  <b>`n`</b>: 0-D.  Number of independent samples to draw for each distribution.
+*  <b>`seed`</b>: Random seed (optional).
+*  <b>`name`</b>: A name for this operation (optional).
+
+##### Returns:
+
+  An `int64` `Tensor` with shape `[n, batch_shape, event_shape]`
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.std(name='std')` {#Categorical.std}
+
+Standard deviation of the distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.strict` {#Categorical.strict}
+
+Boolean describing behavior on invalid input.
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.strict_statistics` {#Categorical.strict_statistics}
+
+Boolean describing behavior when a stat is undefined for batch member.
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.variance(name='variance')` {#Categorical.variance}
+
+Variance of the distribution.
+
+
+
+- - -
+
 ### `class tf.contrib.distributions.Chi2` {#Chi2}
 
 The Chi2 distribution with degrees of freedom df.
 
 The PDF of this distribution is:
 
-```pdf(x) = (x^(df/2 - 1)e^(-x/2))/(2^(k/2)Gamma(k/2)), x > 0```
+```pdf(x) = (x^(df/2 - 1)e^(-x/2))/(2^(df/2)Gamma(df/2)), x > 0```
 
 Note that the Chi2 distribution is a special case of the Gamma distribution,
 with Chi2(df) = Gamma(df/2, 1/2).
 - - -
 
-#### `tf.contrib.distributions.Chi2.__init__(df, name='Chi2')` {#Chi2.__init__}
+#### `tf.contrib.distributions.Chi2.__init__(df, strict=True, strict_statistics=True, name='Chi2')` {#Chi2.__init__}
+
+Construct Chi2 distributions with parameter `df`.
+
+##### Args:
 
 
+*  <b>`df`</b>: `float` or `double` tensor, the degrees of freedom of the
+    distribution(s).  `df` must contain only positive values.
+*  <b>`strict`</b>: Whether to assert that `df > 0`, and that `x > 0` in the
+    methods `pdf(x)` and `log_pdf(x)`. If `strict` is False
+    and the inputs are invalid, correct behavior is not guaranteed.
+*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
+    If False, batch members with valid parameters leading to undefined
+    statistics will return NaN for this statistic.
+*  <b>`name`</b>: The name to prepend to all ops created by this distribution.
 
 
 - - -
@@ -812,7 +1393,20 @@ Mean of each batch member.
 
 #### `tf.contrib.distributions.Chi2.mode(name='mode')` {#Chi2.mode}
 
-Mode of each batch member.  Defined only if alpha >= 1.
+Mode of each batch member.
+
+The mode of a gamma distribution is `(alpha - 1) / beta` when `alpha > 1`,
+and `NaN` otherwise.  If `self.strict_statistics` is `True`, an exception
+will be raised rather than returning `NaN`.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name to give this op.
+
+##### Returns:
+
+  The mode for every batch member, a `Tensor` with same `dtype` as self.
 
 
 - - -
@@ -849,14 +1443,17 @@ Pdf of observations in `x` under these Gamma distribution(s).
 
 #### `tf.contrib.distributions.Chi2.sample(n, seed=None, name='sample')` {#Chi2.sample}
 
-Generate `n` samples.
+Draws `n` samples from the Gamma distribution(s).
+
+See the doc for tf.random_gamma for further detail.
 
 ##### Args:
 
 
-*  <b>`n`</b>: scalar. Number of samples to draw from each distribution.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
+*  <b>`n`</b>: Python integer, the number of observations to sample from each
+    distribution.
+*  <b>`seed`</b>: Python integer, the random seed for this operation.
+*  <b>`name`</b>: Optional name for the operation.
 
 ##### Returns:
 
@@ -870,6 +1467,20 @@ Generate `n` samples.
 #### `tf.contrib.distributions.Chi2.std(name='std')` {#Chi2.std}
 
 Standard deviation of this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.Chi2.strict` {#Chi2.strict}
+
+Boolean describing behavior on invalid input.
+
+
+- - -
+
+#### `tf.contrib.distributions.Chi2.strict_statistics` {#Chi2.strict_statistics}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -894,9 +1505,23 @@ Note that the Exponential distribution is a special case of the Gamma
 distribution, with Exponential(lam) = Gamma(1, lam).
 - - -
 
-#### `tf.contrib.distributions.Exponential.__init__(lam, name='Exponential')` {#Exponential.__init__}
+#### `tf.contrib.distributions.Exponential.__init__(lam, strict=True, strict_statistics=True, name='Exponential')` {#Exponential.__init__}
+
+Construct Exponential distribution with parameter `lam`.
+
+##### Args:
 
 
+*  <b>`lam`</b>: `float` or `double` tensor, the rate of the distribution(s).
+    `lam` must contain only positive values.
+*  <b>`strict`</b>: Whether to assert that `lam > 0`, and that `x > 0` in the
+    methods `pdf(x)` and `log_pdf(x)`.  If `strict` is False
+    and the inputs are invalid, correct behavior is not guaranteed.
+*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
+    If False, batch members with valid parameters leading to undefined
+    statistics will return NaN for this statistic.
+*  <b>`name`</b>: The name to prepend to all ops created by this distribution.
 
 
 - - -
@@ -1098,7 +1723,20 @@ Mean of each batch member.
 
 #### `tf.contrib.distributions.Exponential.mode(name='mode')` {#Exponential.mode}
 
-Mode of each batch member.  Defined only if alpha >= 1.
+Mode of each batch member.
+
+The mode of a gamma distribution is `(alpha - 1) / beta` when `alpha > 1`,
+and `NaN` otherwise.  If `self.strict_statistics` is `True`, an exception
+will be raised rather than returning `NaN`.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name to give this op.
+
+##### Returns:
+
+  The mode for every batch member, a `Tensor` with same `dtype` as self.
 
 
 - - -
@@ -1160,6 +1798,20 @@ Standard deviation of this distribution.
 
 - - -
 
+#### `tf.contrib.distributions.Exponential.strict` {#Exponential.strict}
+
+Boolean describing behavior on invalid input.
+
+
+- - -
+
+#### `tf.contrib.distributions.Exponential.strict_statistics` {#Exponential.strict_statistics}
+
+Boolean describing behavior when a stat is undefined for batch member.
+
+
+- - -
+
 #### `tf.contrib.distributions.Exponential.variance(name='variance')` {#Exponential.variance}
 
 Variance of each batch member.
@@ -1192,7 +1844,7 @@ dist2 = Gamma(alpha=[3.0, 4.0], beta=[2.0, 3.0])
 ```
 - - -
 
-#### `tf.contrib.distributions.Gamma.__init__(alpha, beta, name='Gamma')` {#Gamma.__init__}
+#### `tf.contrib.distributions.Gamma.__init__(alpha, beta, strict=True, strict_statistics=True, name='Gamma')` {#Gamma.__init__}
 
 Construct Gamma distributions with parameters `alpha` and `beta`.
 
@@ -1208,6 +1860,13 @@ broadcasting (e.g. `alpha + beta` is a valid operation).
 *  <b>`beta`</b>: `float` or `double` tensor, the inverse scale params of the
     distribution(s).
     beta must contain only positive values.
+*  <b>`strict`</b>: Whether to assert that `a > 0, b > 0`, and that `x > 0` in the
+    methods `pdf(x)` and `log_pdf(x)`.  If `strict` is False
+    and the inputs are invalid, correct behavior is not guaranteed.
+*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
+    If False, batch members with valid parameters leading to undefined
+    statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to prepend to all ops created by this distribution.
 
 ##### Raises:
@@ -1408,7 +2067,20 @@ Mean of each batch member.
 
 #### `tf.contrib.distributions.Gamma.mode(name='mode')` {#Gamma.mode}
 
-Mode of each batch member.  Defined only if alpha >= 1.
+Mode of each batch member.
+
+The mode of a gamma distribution is `(alpha - 1) / beta` when `alpha > 1`,
+and `NaN` otherwise.  If `self.strict_statistics` is `True`, an exception
+will be raised rather than returning `NaN`.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name to give this op.
+
+##### Returns:
+
+  The mode for every batch member, a `Tensor` with same `dtype` as self.
 
 
 - - -
@@ -1445,14 +2117,17 @@ Pdf of observations in `x` under these Gamma distribution(s).
 
 #### `tf.contrib.distributions.Gamma.sample(n, seed=None, name='sample')` {#Gamma.sample}
 
-Generate `n` samples.
+Draws `n` samples from the Gamma distribution(s).
+
+See the doc for tf.random_gamma for further detail.
 
 ##### Args:
 
 
-*  <b>`n`</b>: scalar. Number of samples to draw from each distribution.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
+*  <b>`n`</b>: Python integer, the number of observations to sample from each
+    distribution.
+*  <b>`seed`</b>: Python integer, the random seed for this operation.
+*  <b>`name`</b>: Optional name for the operation.
 
 ##### Returns:
 
@@ -1466,6 +2141,20 @@ Generate `n` samples.
 #### `tf.contrib.distributions.Gamma.std(name='std')` {#Gamma.std}
 
 Standard deviation of this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.Gamma.strict` {#Gamma.strict}
+
+Boolean describing behavior on invalid input.
+
+
+- - -
+
+#### `tf.contrib.distributions.Gamma.strict_statistics` {#Gamma.strict_statistics}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -1524,7 +2213,7 @@ dist.pdf(3.0)
 ```
 - - -
 
-#### `tf.contrib.distributions.Normal.__init__(mu, sigma, name='Normal')` {#Normal.__init__}
+#### `tf.contrib.distributions.Normal.__init__(mu, sigma, strict=True, strict_statistics=True, name='Normal')` {#Normal.__init__}
 
 Construct Normal distributions with mean and stddev `mu` and `sigma`.
 
@@ -1537,6 +2226,12 @@ broadcasting (e.g. `mu + sigma` is a valid operation).
 *  <b>`mu`</b>: `float` or `double` tensor, the means of the distribution(s).
 *  <b>`sigma`</b>: `float` or `double` tensor, the stddevs of the distribution(s).
     sigma must contain only positive values.
+*  <b>`strict`</b>: Whether to assert that `sigma > 0`. If `strict` is False,
+    correct output is not guaranteed when input is invalid.
+*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
+    If False, batch members with valid parameters leading to undefined
+    statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to give Ops created by the initializer.
 
 ##### Raises:
@@ -1780,6 +2475,20 @@ Standard deviation of this distribution.
 
 - - -
 
+#### `tf.contrib.distributions.Normal.strict` {#Normal.strict}
+
+Boolean describing behavior on invalid input.
+
+
+- - -
+
+#### `tf.contrib.distributions.Normal.strict_statistics` {#Normal.strict_statistics}
+
+Boolean describing behavior when a stat is undefined for batch member.
+
+
+- - -
+
 #### `tf.contrib.distributions.Normal.variance(name='variance')` {#Normal.variance}
 
 Variance of this distribution.
@@ -1837,7 +2546,7 @@ dist.pdf(3.0)
 ```
 - - -
 
-#### `tf.contrib.distributions.StudentT.__init__(df, mu, sigma, name='StudentT')` {#StudentT.__init__}
+#### `tf.contrib.distributions.StudentT.__init__(df, mu, sigma, strict=True, strict_statistics=True, name='StudentT')` {#StudentT.__init__}
 
 Construct Student's t distributions.
 
@@ -1855,6 +2564,12 @@ broadcasting (e.g. `df + mu + sigma` is a valid operation).
 *  <b>`sigma`</b>: `float` or `double` tensor, the scaling factor for the
     distribution(s). `sigma` must contain only positive values.
     Note that `sigma` is not the standard deviation of this distribution.
+*  <b>`strict`</b>: Whether to assert that `df > 0, sigma > 0`. If `strict` is False
+    and inputs are invalid, correct behavior is not guaranteed.
+*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
+    If False, batch members with valid parameters leading to undefined
+    statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to give Ops created by the initializer.
 
 ##### Raises:
@@ -1972,7 +2687,20 @@ Log pdf of observations in `x` under these Student's t-distribution(s).
 
 #### `tf.contrib.distributions.StudentT.mean(name='mean')` {#StudentT.mean}
 
+Mean of the distribution.
 
+The mean of Student's T equals `mu` if `df > 1`, otherwise it is `NaN`.  If
+`self.strict_statistics=True`, then an exception will be raised rather than
+returning `NaN`.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name to give this op.
+
+##### Returns:
+
+  The mean for every batch member, a `Tensor` with same `dtype` as self.
 
 
 - - -
@@ -2051,9 +2779,44 @@ Scaling factors of these Student's t distribution(s).
 
 - - -
 
+#### `tf.contrib.distributions.StudentT.strict` {#StudentT.strict}
+
+Boolean describing behavior on invalid input.
+
+
+- - -
+
+#### `tf.contrib.distributions.StudentT.strict_statistics` {#StudentT.strict_statistics}
+
+Boolean describing behavior when a stat is undefined for batch member.
+
+
+- - -
+
 #### `tf.contrib.distributions.StudentT.variance(name='variance')` {#StudentT.variance}
 
+Variance of the distribution.
 
+Variance for Student's T equals
+
+```
+df / (df - 2), when df > 2
+infinity, when 1 < df <= 2
+NaN, when df <= 1
+```
+
+The NaN state occurs because mean is undefined for `df <= 1`, and if
+`self.strict_statistics` is `True`, an exception will be raised if any batch
+members fall into this state.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name for this op.
+
+##### Returns:
+
+  The variance for every batch member, a `Tensor` with same `dtype` as self.
 
 
 
@@ -2066,7 +2829,7 @@ Uniform distribution with `a` and `b` parameters.
 The PDF of this distribution is constant between [`a`, `b`], and 0 elsewhere.
 - - -
 
-#### `tf.contrib.distributions.Uniform.__init__(a=0.0, b=1.0, name='Uniform')` {#Uniform.__init__}
+#### `tf.contrib.distributions.Uniform.__init__(a=0.0, b=1.0, strict=True, strict_statistics=True, name='Uniform')` {#Uniform.__init__}
 
 Construct Uniform distributions with `a` and `b`.
 
@@ -2096,12 +2859,18 @@ u1 = Uniform(3.0, [5.0, 6.0, 7.0])  # 3 distributions
 
 *  <b>`a`</b>: `float` or `double` tensor, the minimum endpoint.
 *  <b>`b`</b>: `float` or `double` tensor, the maximum endpoint. Must be > `a`.
+*  <b>`strict`</b>: Whether to assert that `a > b`. If `strict` is False and inputs
+    are invalid, correct behavior is not guaranteed.
+*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
+    If False, batch members with valid parameters leading to undefined
+    statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to prefix Ops created by this distribution class.
 
 ##### Raises:
 
 
-*  <b>`InvalidArgumentError`</b>: if `a >= b`.
+*  <b>`InvalidArgumentError`</b>: if `a >= b` and `strict=True`.
 
 
 - - -
@@ -2293,6 +3062,20 @@ Sample `n` observations from the Uniform Distributions.
 
 - - -
 
+#### `tf.contrib.distributions.Uniform.strict` {#Uniform.strict}
+
+Boolean describing behavior on invalid input.
+
+
+- - -
+
+#### `tf.contrib.distributions.Uniform.strict_statistics` {#Uniform.strict_statistics}
+
+Boolean describing behavior when a stat is undefined for batch member.
+
+
+- - -
+
 #### `tf.contrib.distributions.Uniform.variance(name='variance')` {#Uniform.variance}
 
 
@@ -2302,15 +3085,16 @@ Sample `n` observations from the Uniform Distributions.
 
 ### Multivariate distributions
 
+#### Multivariate normal
+
 - - -
 
-### `class tf.contrib.distributions.MultivariateNormal` {#MultivariateNormal}
+### `class tf.contrib.distributions.MultivariateNormalFull` {#MultivariateNormalFull}
 
-The Multivariate Normal distribution on `R^k`.
+The multivariate normal distribution on `R^k`.
 
-The distribution has mean and covariance parameters mu (1-D), sigma (2-D),
-or alternatively mean `mu` and factored covariance (cholesky decomposed
-`sigma`) called `sigma_chol`.
+This distribution is defined by a 1-D mean `mu` and covariance matrix `sigma`.
+Evaluation of the pdf, determinant, and sampling are all `O(k^3)` operations.
 
 #### Mathematical details
 
@@ -2322,21 +3106,6 @@ f(x) = (2*pi)^(-k/2) |det(sigma)|^(-1/2) exp(-1/2*(x-mu)^*.sigma^{-1}.(x-mu))
 
 where `.` denotes the inner product on `R^k` and `^*` denotes transpose.
 
-Alternatively, if `sigma` is positive definite, it can be represented in terms
-of its lower triangular cholesky factorization
-
-```sigma = sigma_chol . sigma_chol^*```
-
-and the pdf above allows simpler computation:
-
-```
-|det(sigma)| = reduce_prod(diag(sigma_chol))^2
-x_whitened = sigma^{-1/2} . (x - mu) = tri_solve(sigma_chol, x - mu)
-(x-mu)^* .sigma^{-1} . (x-mu) = x_whitened^* . x_whitened
-```
-
-where `tri_solve()` solves a triangular system of equations.
-
 #### Examples
 
 A single multi-variate Gaussian distribution is defined by a vector of means
@@ -2346,79 +3115,76 @@ Extra leading dimensions, if provided, allow for batches.
 
 ```python
 # Initialize a single 3-variate Gaussian with diagonal covariance.
-mu = [1, 2, 3]
-sigma = [[1, 0, 0], [0, 3, 0], [0, 0, 2]]
-dist = tf.contrib.distributions.MultivariateNormal(mu=mu, sigma=sigma)
+mu = [1, 2, 3.]
+sigma = [[1, 0, 0], [0, 3, 0], [0, 0, 2.]]
+dist = tf.contrib.distributions.MultivariateNormalFull(mu, chol)
 
 # Evaluate this on an observation in R^3, returning a scalar.
 dist.pdf([-1, 0, 1])
 
 # Initialize a batch of two 3-variate Gaussians.
-mu = [[1, 2, 3], [11, 22, 33]]
-sigma = ...  # shape 2 x 3 x 3
-dist = tf.contrib.distributions.MultivariateNormal(mu=mu, sigma=sigma)
+mu = [[1, 2, 3], [11, 22, 33.]]
+sigma = ...  # shape 2 x 3 x 3, positive definite.
+dist = tf.contrib.distributions.MultivariateNormalFull(mu, sigma)
 
 # Evaluate this on a two observations, each in R^3, returning a length two
 # tensor.
-x = [[-1, 0, 1], [-11, 0, 11]]  # Shape 2 x 3.
+x = [[-1, 0, 1], [-11, 0, 11.]]  # Shape 2 x 3.
 dist.pdf(x)
 ```
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormal.__init__(mu, sigma=None, sigma_chol=None, name=None)` {#MultivariateNormal.__init__}
+#### `tf.contrib.distributions.MultivariateNormalFull.__init__(mu, sigma, strict=True, strict_statistics=True, name='MultivariateNormalFull')` {#MultivariateNormalFull.__init__}
 
 Multivariate Normal distributions on `R^k`.
 
-User must provide means `mu`, which are tensors of rank `N+1` (`N >= 0`)
-with the last dimension having length `k`.
-
-User must provide exactly one of `sigma` (the covariance matrices) or
-`sigma_chol` (the cholesky decompositions of the covariance matrices).
-`sigma` or `sigma_chol` must be of rank `N+2`.  The last two dimensions
-must both have length `k`.  The first `N` dimensions correspond to batch
-indices.
-
-If `sigma_chol` is not provided, the batch cholesky factorization of `sigma`
-is calculated for you.
-
-The shapes of `mu` and `sigma` must match for the first `N` dimensions.
-
-Regardless of which parameter is provided, the covariance matrices must all
-be **positive definite** (an error is raised if one of them is not).
+User must provide means `mu` and `sigma`, the mean and covariance.
 
 ##### Args:
 
 
-*  <b>`mu`</b>: (N+1)-D.  `float` or `double` tensor, the means of the distributions.
-*  <b>`sigma`</b>: (N+2)-D.  (optional) `float` or `double` tensor, the covariances
-    of the distribution(s).  The first `N+1` dimensions must match
-    those of `mu`.  Must be batch-positive-definite.
-*  <b>`sigma_chol`</b>: (N+2)-D.  (optional) `float` or `double` tensor, a
-    lower-triangular factorization of `sigma`
-    (`sigma = sigma_chol . sigma_chol^*`).  The first `N+1` dimensions
-    must match those of `mu`.  The tensor itself need not be batch
-    lower triangular: we ignore the upper triangular part.  However,
-    the batch diagonals must be positive (i.e., sigma_chol must be
-    batch-positive-definite).
+*  <b>`mu`</b>: `(N+1)-D`  `float` or `double` tensor with shape `[N1,...,Nb, k]`,
+    `b >= 0`.
+*  <b>`sigma`</b>: `(N+2)-D` `Tensor` with same `dtype` as `mu` and shape
+    `[N1,...,Nb, k, k]`.
+*  <b>`strict`</b>: Whether to validate input with asserts.  If `strict` is `False`,
+    and the inputs are invalid, correct behavior is not guaranteed.
+*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
+    If False, batch members with valid parameters leading to undefined
+    statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to give Ops created by the initializer.
 
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if neither sigma nor sigma_chol is provided.
-*  <b>`TypeError`</b>: if mu and sigma (resp. sigma_chol) are different dtypes.
+*  <b>`TypeError`</b>: If `mu` and `sigma` are different dtypes.
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormal.dtype` {#MultivariateNormal.dtype}
+#### `tf.contrib.distributions.MultivariateNormalFull.batch_shape(name='batch_shape')` {#MultivariateNormalFull.batch_shape}
+
+Batch dimensions of this instance as a 1-D int32 `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalFull.cdf(value, name='cdf')` {#MultivariateNormalFull.cdf}
+
+Cumulative distribution function.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalFull.dtype` {#MultivariateNormalFull.dtype}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormal.entropy(name=None)` {#MultivariateNormal.entropy}
+#### `tf.contrib.distributions.MultivariateNormalFull.entropy(name='entropy')` {#MultivariateNormalFull.entropy}
 
 The entropies of these Multivariate Normals.
 
@@ -2435,14 +3201,49 @@ The entropies of these Multivariate Normals.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormal.is_reparameterized` {#MultivariateNormal.is_reparameterized}
+#### `tf.contrib.distributions.MultivariateNormalFull.event_shape(name='event_shape')` {#MultivariateNormalFull.event_shape}
+
+Shape of a sample from a single distribution as a 1-D int32 `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalFull.get_batch_shape()` {#MultivariateNormalFull.get_batch_shape}
+
+`TensorShape` available at graph construction time.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalFull.get_event_shape()` {#MultivariateNormalFull.get_event_shape}
+
+`TensorShape` available at graph construction time.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalFull.is_reparameterized` {#MultivariateNormalFull.is_reparameterized}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormal.log_pdf(x, name=None)` {#MultivariateNormal.log_pdf}
+#### `tf.contrib.distributions.MultivariateNormalFull.log_cdf(value, name='log_cdf')` {#MultivariateNormalFull.log_cdf}
+
+Log CDF.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalFull.log_likelihood(value, name='log_likelihood')` {#MultivariateNormalFull.log_likelihood}
+
+Log likelihood of this distribution (same as log_pdf).
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalFull.log_pdf(x, name='log_pdf')` {#MultivariateNormalFull.log_pdf}
 
 Log pdf of observations `x` given these Multivariate Normals.
 
@@ -2460,21 +3261,42 @@ Log pdf of observations `x` given these Multivariate Normals.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormal.mean` {#MultivariateNormal.mean}
+#### `tf.contrib.distributions.MultivariateNormalFull.log_sigma_det(name='log_sigma_det')` {#MultivariateNormalFull.log_sigma_det}
+
+Log of determinant of covariance matrix.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalFull.mean(name='mean')` {#MultivariateNormalFull.mean}
+
+Mean of each batch member.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalFull.mode(name='mode')` {#MultivariateNormalFull.mode}
+
+Mode of each batch member.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalFull.mu` {#MultivariateNormalFull.mu}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormal.mu` {#MultivariateNormal.mu}
+#### `tf.contrib.distributions.MultivariateNormalFull.name` {#MultivariateNormalFull.name}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormal.pdf(x, name=None)` {#MultivariateNormal.pdf}
+#### `tf.contrib.distributions.MultivariateNormalFull.pdf(x, name='pdf')` {#MultivariateNormalFull.pdf}
 
 The PDF of observations `x` under these Multivariate Normals.
 
@@ -2492,7 +3314,7 @@ The PDF of observations `x` under these Multivariate Normals.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormal.sample(n, seed=None, name=None)` {#MultivariateNormal.sample}
+#### `tf.contrib.distributions.MultivariateNormalFull.sample(n, seed=None, name='sample')` {#MultivariateNormalFull.sample}
 
 Sample `n` observations from the Multivariate Normal Distributions.
 
@@ -2512,18 +3334,342 @@ Sample `n` observations from the Multivariate Normal Distributions.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormal.sigma` {#MultivariateNormal.sigma}
+#### `tf.contrib.distributions.MultivariateNormalFull.sigma` {#MultivariateNormalFull.sigma}
+
+Dense (batch) covariance matrix, if available.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalFull.sigma_det(name='sigma_det')` {#MultivariateNormalFull.sigma_det}
+
+Determinant of covariance matrix.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalFull.std(name='std')` {#MultivariateNormalFull.std}
+
+Standard deviation of the distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalFull.strict` {#MultivariateNormalFull.strict}
+
+Boolean describing behavior on invalid input.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalFull.strict_statistics` {#MultivariateNormalFull.strict_statistics}
+
+Boolean describing behavior when a stat is undefined for batch member.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalFull.variance(name='variance')` {#MultivariateNormalFull.variance}
+
+Variance of each batch member.
+
+
+
+- - -
+
+### `class tf.contrib.distributions.MultivariateNormalCholesky` {#MultivariateNormalCholesky}
+
+The multivariate normal distribution on `R^k`.
+
+This distribution is defined by a 1-D mean `mu` and a Cholesky factor `chol`.
+Providing the Cholesky factor allows for `O(k^2)` pdf evaluation and sampling,
+and requires `O(k^2)` storage.
+
+#### Mathematical details
+
+The PDF of this distribution is:
+
+```
+f(x) = (2*pi)^(-k/2) |det(sigma)|^(-1/2) exp(-1/2*(x-mu)^*.sigma^{-1}.(x-mu))
+```
+
+where `.` denotes the inner product on `R^k` and `^*` denotes transpose.
+
+#### Examples
+
+A single multi-variate Gaussian distribution is defined by a vector of means
+of length `k`, and a covariance matrix of shape `k x k`.
+
+Extra leading dimensions, if provided, allow for batches.
+
+```python
+# Initialize a single 3-variate Gaussian with diagonal covariance.
+mu = [1, 2, 3.]
+chol = [[1, 0, 0], [0, 3, 0], [0, 0, 2]]
+dist = tf.contrib.distributions.MultivariateNormalCholesky(mu, chol)
+
+# Evaluate this on an observation in R^3, returning a scalar.
+dist.pdf([-1, 0, 1])
+
+# Initialize a batch of two 3-variate Gaussians.
+mu = [[1, 2, 3], [11, 22, 33]]
+chol = ...  # shape 2 x 3 x 3, lower triangular, positive diagonal.
+dist = tf.contrib.distributions.MultivariateNormalCholesky(mu, chol)
+
+# Evaluate this on a two observations, each in R^3, returning a length two
+# tensor.
+x = [[-1, 0, 1], [-11, 0, 11]]  # Shape 2 x 3.
+dist.pdf(x)
+```
+
+Trainable (batch) Choesky matrices can be created with
+`tf.contrib.distributions.batch_matrix_diag_transform()`
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.__init__(mu, chol, strict=True, strict_statistics=True, name='MultivariateNormalCholesky')` {#MultivariateNormalCholesky.__init__}
+
+Multivariate Normal distributions on `R^k`.
+
+User must provide means `mu` and `chol` which holds the (batch) Cholesky
+factors `S`, such that the covariance of each batch member is `S S^*`.
+
+##### Args:
+
+
+*  <b>`mu`</b>: `(N+1)-D`  `float` or `double` tensor with shape `[N1,...,Nb, k]`,
+    `b >= 0`.
+*  <b>`chol`</b>: `(N+2)-D` `Tensor` with same `dtype` as `mu` and shape
+    `[N1,...,Nb, k, k]`.
+*  <b>`strict`</b>: Whether to validate input with asserts.  If `strict` is `False`,
+    and the inputs are invalid, correct behavior is not guaranteed.
+*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
+    If False, batch members with valid parameters leading to undefined
+    statistics will return NaN for this statistic.
+*  <b>`name`</b>: The name to give Ops created by the initializer.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If `mu` and `chol` are different dtypes.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.batch_shape(name='batch_shape')` {#MultivariateNormalCholesky.batch_shape}
+
+Batch dimensions of this instance as a 1-D int32 `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.cdf(value, name='cdf')` {#MultivariateNormalCholesky.cdf}
+
+Cumulative distribution function.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.dtype` {#MultivariateNormalCholesky.dtype}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormal.sigma_det` {#MultivariateNormal.sigma_det}
+#### `tf.contrib.distributions.MultivariateNormalCholesky.entropy(name='entropy')` {#MultivariateNormalCholesky.entropy}
+
+The entropies of these Multivariate Normals.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`entropy`</b>: tensor of dtype `dtype`, the entropies.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.event_shape(name='event_shape')` {#MultivariateNormalCholesky.event_shape}
+
+Shape of a sample from a single distribution as a 1-D int32 `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.get_batch_shape()` {#MultivariateNormalCholesky.get_batch_shape}
+
+`TensorShape` available at graph construction time.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.get_event_shape()` {#MultivariateNormalCholesky.get_event_shape}
+
+`TensorShape` available at graph construction time.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.is_reparameterized` {#MultivariateNormalCholesky.is_reparameterized}
 
 
 
 
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.log_cdf(value, name='log_cdf')` {#MultivariateNormalCholesky.log_cdf}
+
+Log CDF.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.log_likelihood(value, name='log_likelihood')` {#MultivariateNormalCholesky.log_likelihood}
+
+Log likelihood of this distribution (same as log_pdf).
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.log_pdf(x, name='log_pdf')` {#MultivariateNormalCholesky.log_pdf}
+
+Log pdf of observations `x` given these Multivariate Normals.
+
+##### Args:
+
+
+*  <b>`x`</b>: tensor of dtype `dtype`, must be broadcastable with `mu`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`log_pdf`</b>: tensor of dtype `dtype`, the log-PDFs of `x`.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.log_sigma_det(name='log_sigma_det')` {#MultivariateNormalCholesky.log_sigma_det}
+
+Log of determinant of covariance matrix.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.mean(name='mean')` {#MultivariateNormalCholesky.mean}
+
+Mean of each batch member.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.mode(name='mode')` {#MultivariateNormalCholesky.mode}
+
+Mode of each batch member.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.mu` {#MultivariateNormalCholesky.mu}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.name` {#MultivariateNormalCholesky.name}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.pdf(x, name='pdf')` {#MultivariateNormalCholesky.pdf}
+
+The PDF of observations `x` under these Multivariate Normals.
+
+##### Args:
+
+
+*  <b>`x`</b>: tensor of dtype `dtype`, must be broadcastable with `mu` and `sigma`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`pdf`</b>: tensor of dtype `dtype`, the pdf values of `x`.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.sample(n, seed=None, name='sample')` {#MultivariateNormalCholesky.sample}
+
+Sample `n` observations from the Multivariate Normal Distributions.
+
+##### Args:
+
+
+*  <b>`n`</b>: `Scalar`, type int32, the number of observations to sample.
+*  <b>`seed`</b>: Python integer, the random seed.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: `[n, ...]`, a `Tensor` of `n` samples for each
+    of the distributions determined by broadcasting the hyperparameters.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.sigma` {#MultivariateNormalCholesky.sigma}
+
+Dense (batch) covariance matrix, if available.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.sigma_det(name='sigma_det')` {#MultivariateNormalCholesky.sigma_det}
+
+Determinant of covariance matrix.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.std(name='std')` {#MultivariateNormalCholesky.std}
+
+Standard deviation of the distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.strict` {#MultivariateNormalCholesky.strict}
+
+Boolean describing behavior on invalid input.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.strict_statistics` {#MultivariateNormalCholesky.strict_statistics}
+
+Boolean describing behavior when a stat is undefined for batch member.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.variance(name='variance')` {#MultivariateNormalCholesky.variance}
+
+Variance of each batch member.
+
+
+
+
+#### Other multivariate distributions
 
 - - -
 
@@ -2598,7 +3744,7 @@ dist.pmf(counts)  # Shape [2]
 ```
 - - -
 
-#### `tf.contrib.distributions.DirichletMultinomial.__init__(n, alpha, name='DirichletMultinomial', allow_arbitrary_counts=False)` {#DirichletMultinomial.__init__}
+#### `tf.contrib.distributions.DirichletMultinomial.__init__(n, alpha, allow_arbitrary_counts=False, strict=True, strict_statistics=True, name='DirichletMultinomial')` {#DirichletMultinomial.__init__}
 
 Initialize a batch of DirichletMultinomial distributions.
 
@@ -2612,11 +3758,19 @@ Initialize a batch of DirichletMultinomial distributions.
 *  <b>`alpha`</b>: Positive `float` or `double` tensor with shape broadcastable to
     `[N1,..., Nm, k]` `m >= 0`.  Defines this as a batch of `N1 x ... x Nm`
      different `k` class Dirichlet multinomial distributions.
-*  <b>`name`</b>: The name to prefix Ops created by this distribution class.
 *  <b>`allow_arbitrary_counts`</b>: Boolean. This represents whether the pmf/cdf
     allows for the `counts` tensor to be non-integral values.
     The pmf/cdf are functions that can be evaluated at non-integral values,
-    but are only a distribution over non-negative integers.
+    but are only a distribution over non-negative integers.  If `strict` is
+    `False`, this assertion is turned off.
+*  <b>`strict`</b>: Whether to assert valid values for parameters `alpha` and `n`, and
+    `x` in `pmf` and `log_pmf`.  If False, correct behavior is not
+    guaranteed.
+*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
+    If False, batch members with valid parameters leading to undefined
+    statistics will return NaN for this statistic.
+*  <b>`name`</b>: The name to prefix Ops created by this distribution class.
 
 
 *  <b>`Examples`</b>: 
@@ -2847,10 +4001,1250 @@ Standard deviation of the distribution.
 
 - - -
 
+#### `tf.contrib.distributions.DirichletMultinomial.strict` {#DirichletMultinomial.strict}
+
+Boolean describing behavior on invalid input.
+
+
+- - -
+
+#### `tf.contrib.distributions.DirichletMultinomial.strict_statistics` {#DirichletMultinomial.strict_statistics}
+
+Boolean describing behavior when a stat is undefined for batch member.
+
+
+- - -
+
 #### `tf.contrib.distributions.DirichletMultinomial.variance(name='variance')` {#DirichletMultinomial.variance}
 
 Variance of the distribution.
 
+
+
+
+### Transformed distributions
+
+- - -
+
+### `class tf.contrib.distributions.ContinuousTransformedDistribution` {#ContinuousTransformedDistribution}
+
+A Transformed Distribution.
+
+A Transformed Distribution models `p(y)` given a base distribution `p(x)`,
+an invertible transform, `y = f(x)`, and the determinant of the Jacobian of
+`f(x)`.
+
+Shapes, type, and reparameterization are taken from the base distribution.
+
+#### Mathematical details
+
+* `p(x)` - probability distribution for random variable X
+* `p(y)` - probability distribution for random variable Y
+* `f` - transform
+* `g` - inverse transform, `f(g(x)) = x`
+* `J(x)` - Jacobian of f(x)
+
+A Transformed Distribution exposes `sample` and `pdf`:
+
+  * `sample`: `y = f(x)`, after drawing a sample of X.
+  * `pdf`: `p(y) = p(x) / det|J(x)| = p(g(y)) / det|J(g(y))|`
+
+A simple example constructing a Log-Normal distribution from a Normal
+distribution:
+
+```
+logit_normal = ContinuousTransformedDistribution(
+  base_dist=Normal(mu, sigma),
+  transform=lambda x: tf.sigmoid(x),
+  inverse=lambda y: tf.log(y) - tf.log(1. - y),
+  log_det_jacobian=(lambda x:
+      tf.reduce_sum(tf.log(tf.sigmoid(x)) + tf.log(1. - tf.sigmoid(x)),
+                    reduction_indices=[-1])))
+  name="LogitNormalTransformedDistribution"
+)
+```
+- - -
+
+#### `tf.contrib.distributions.ContinuousTransformedDistribution.__init__(base_dist_cls, transform, inverse, log_det_jacobian, name='ContinuousTransformedDistribution', **base_dist_args)` {#ContinuousTransformedDistribution.__init__}
+
+Construct a Transformed Distribution.
+
+##### Args:
+
+
+*  <b>`base_dist_cls`</b>: the base distribution class to transform. Must be a
+      subclass of `ContinuousDistribution`.
+*  <b>`transform`</b>: a callable that takes a `Tensor` sample from `base_dist` and
+      returns a `Tensor` of the same shape and type. `x => y`.
+*  <b>`inverse`</b>: a callable that computes the inverse of transform. `y => x`. If
+      None, users can only call `log_pdf` on values returned by `sample`.
+*  <b>`log_det_jacobian`</b>: a callable that takes a `Tensor` sample from `base_dist`
+      and returns the log of the determinant of the Jacobian of `transform`.
+*  <b>`name`</b>: The name for the distribution.
+*  <b>`**base_dist_args`</b>: kwargs to pass on to dist_cls on construction.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if `base_dist_cls` is not a subclass of
+      `ContinuousDistribution`.
+
+
+- - -
+
+#### `tf.contrib.distributions.ContinuousTransformedDistribution.base_distribution` {#ContinuousTransformedDistribution.base_distribution}
+
+Base distribution, p(x).
+
+
+- - -
+
+#### `tf.contrib.distributions.ContinuousTransformedDistribution.batch_shape(name='batch_shape')` {#ContinuousTransformedDistribution.batch_shape}
+
+Batch dimensions of this instance as a 1-D int32 `Tensor`.
+
+The product of the dimensions of the `batch_shape` is the number of
+independent distributions of this kind the instance represents.
+
+##### Args:
+
+
+*  <b>`name`</b>: name to give to the op.
+
+##### Returns:
+
+  `Tensor` `batch_shape`
+
+
+- - -
+
+#### `tf.contrib.distributions.ContinuousTransformedDistribution.cdf(value, name='cdf')` {#ContinuousTransformedDistribution.cdf}
+
+Cumulative distribution function.
+
+
+- - -
+
+#### `tf.contrib.distributions.ContinuousTransformedDistribution.dtype` {#ContinuousTransformedDistribution.dtype}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.ContinuousTransformedDistribution.entropy(name='entropy')` {#ContinuousTransformedDistribution.entropy}
+
+Entropy of the distribution in nats.
+
+
+- - -
+
+#### `tf.contrib.distributions.ContinuousTransformedDistribution.event_shape(name='event_shape')` {#ContinuousTransformedDistribution.event_shape}
+
+Shape of a sample from a single distribution as a 1-D int32 `Tensor`.
+
+##### Args:
+
+
+*  <b>`name`</b>: name to give to the op.
+
+##### Returns:
+
+  `Tensor` `event_shape`
+
+
+- - -
+
+#### `tf.contrib.distributions.ContinuousTransformedDistribution.get_batch_shape()` {#ContinuousTransformedDistribution.get_batch_shape}
+
+`TensorShape` available at graph construction time.
+
+Same meaning as `batch_shape`. May be only partially defined.
+
+##### Returns:
+
+  batch shape
+
+
+- - -
+
+#### `tf.contrib.distributions.ContinuousTransformedDistribution.get_event_shape()` {#ContinuousTransformedDistribution.get_event_shape}
+
+`TensorShape` available at graph construction time.
+
+Same meaning as `event_shape`. May be only partially defined.
+
+##### Returns:
+
+  event shape
+
+
+- - -
+
+#### `tf.contrib.distributions.ContinuousTransformedDistribution.inverse` {#ContinuousTransformedDistribution.inverse}
+
+Inverse function of transform, y => x.
+
+
+- - -
+
+#### `tf.contrib.distributions.ContinuousTransformedDistribution.is_reparameterized` {#ContinuousTransformedDistribution.is_reparameterized}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.ContinuousTransformedDistribution.log_cdf(value, name='log_cdf')` {#ContinuousTransformedDistribution.log_cdf}
+
+Log CDF.
+
+
+- - -
+
+#### `tf.contrib.distributions.ContinuousTransformedDistribution.log_det_jacobian` {#ContinuousTransformedDistribution.log_det_jacobian}
+
+Function computing the log determinant of the Jacobian of transform.
+
+
+- - -
+
+#### `tf.contrib.distributions.ContinuousTransformedDistribution.log_likelihood(value, name='log_likelihood')` {#ContinuousTransformedDistribution.log_likelihood}
+
+Log likelihood of this distribution (same as log_pdf).
+
+
+- - -
+
+#### `tf.contrib.distributions.ContinuousTransformedDistribution.log_pdf(y, name='log_pdf')` {#ContinuousTransformedDistribution.log_pdf}
+
+Log pdf of observations in `y`.
+
+`log ( p(g(y)) / det|J(g(y))| )`, where `g` is the inverse of `transform`.
+
+##### Args:
+
+
+*  <b>`y`</b>: tensor of dtype `dtype`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`log_pdf`</b>: tensor of dtype `dtype`, the log-PDFs of `y`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `inverse` was not provided to the distribution and `y` was
+      not returned from `sample`.
+
+
+- - -
+
+#### `tf.contrib.distributions.ContinuousTransformedDistribution.mean(name='mean')` {#ContinuousTransformedDistribution.mean}
+
+Mean of the distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.ContinuousTransformedDistribution.mode(name='mode')` {#ContinuousTransformedDistribution.mode}
+
+Mode of the distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.ContinuousTransformedDistribution.name` {#ContinuousTransformedDistribution.name}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.ContinuousTransformedDistribution.pdf(y, name='pdf')` {#ContinuousTransformedDistribution.pdf}
+
+The PDF of observations in `y`.
+
+`p(g(y)) / det|J(g(y))|`, where `g` is the inverse of `transform`.
+
+##### Args:
+
+
+*  <b>`y`</b>: `Tensor` of dtype `dtype`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`pdf`</b>: `Tensor` of dtype `dtype`, the pdf values of `y`.
+
+
+- - -
+
+#### `tf.contrib.distributions.ContinuousTransformedDistribution.sample(n, seed=None, name='sample')` {#ContinuousTransformedDistribution.sample}
+
+Sample `n` observations.
+
+Samples from the base distribution and then passes through the transform.
+
+##### Args:
+
+
+*  <b>`n`</b>: scalar, type int32, the number of observations to sample.
+*  <b>`seed`</b>: Python integer, the random seed.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: `[n, ...]`, a `Tensor` of `n` samples.
+
+
+- - -
+
+#### `tf.contrib.distributions.ContinuousTransformedDistribution.std(name='std')` {#ContinuousTransformedDistribution.std}
+
+Standard deviation of the distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.ContinuousTransformedDistribution.strict` {#ContinuousTransformedDistribution.strict}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.ContinuousTransformedDistribution.strict_statistics` {#ContinuousTransformedDistribution.strict_statistics}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.ContinuousTransformedDistribution.transform` {#ContinuousTransformedDistribution.transform}
+
+Function transforming x => y.
+
+
+- - -
+
+#### `tf.contrib.distributions.ContinuousTransformedDistribution.variance(name='variance')` {#ContinuousTransformedDistribution.variance}
+
+Variance of the distribution.
+
+
+
+
+## Operators allowing for matrix-free methods
+
+### Positive definite operators
+
+A matrix is positive definite if it is symmetric with all positive eigenvalues.
+
+- - -
+
+### `class tf.contrib.distributions.OperatorPDBase` {#OperatorPDBase}
+
+Class representing a (batch) of positive definite matrices `A`.
+
+This class provides access to functions of a (batch) symmetric positive
+definite (PD) matrix, without the need to materialize them.  In other words,
+this provides means to do "matrix free" computations.
+
+For example, `my_operator.matmul(x)` computes the result of matrix
+multiplication, and this class is free to do this computation with or without
+ever materializing a matrix.
+
+In practice, this operator represents a (batch) matrix `A` with shape
+`[N1,...,Nb, k, k]` for some `b >= 0`.  The first `b` indices index a
+batch member.  For every batch index `(n1,...,nb)`, `A[n1,...,nb, : :]` is
+a `k x k` matrix.  Again, this matrix `A` may not be materialized, but for
+purposes of broadcasting this shape will be relevant.
+
+Since `A` is (batch) positive definite, it has a (or several) square roots `S`
+such that `A = SS^T`.
+
+For example, if `MyOperator` inherits from `OperatorPDBase`, the user can do
+
+```python
+operator = MyOperator(...)  # Initialize with some tensors.
+operator.log_det()
+
+# Compute the quadratic form x^T A^{-1} x for vector x.
+x = ... # some shape [..., k] tensor
+operator.inv_quadratic_form(x)
+
+# Matrix multiplication by the square root, S w.
+# If w is iid normal, S w has covariance A.
+w = ... # some shape [..., k, L] tensor, L >= 1
+operator.sqrt_matmul(w)
+```
+
+The above three methods, `log_det`, `inv_quadratic_form`, and
+`sqrt_matmul` provide "all" that is necessary to use a covariance matrix
+in a multi-variate normal distribution.  See the class `MVNOperatorPD`.
+- - -
+
+#### `tf.contrib.distributions.OperatorPDBase.batch_shape(name='batch_shape')` {#OperatorPDBase.batch_shape}
+
+Shape of batches associated with this operator.
+
+If this operator represents the batch matrix `A` with
+`A.shape = [N1,...,Nb, k, k]`, the `batch_shape` is `[N1,...,Nb]`.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  `int32` `Tensor`
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDBase.det(name='det')` {#OperatorPDBase.det}
+
+Determinant for every batch member.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  Determinant for every batch member.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDBase.dtype` {#OperatorPDBase.dtype}
+
+Data type of matrix elements of `A`.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDBase.get_batch_shape()` {#OperatorPDBase.get_batch_shape}
+
+`TensorShape` with batch shape.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDBase.get_shape()` {#OperatorPDBase.get_shape}
+
+`TensorShape` giving static shape.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDBase.get_vector_shape()` {#OperatorPDBase.get_vector_shape}
+
+`TensorShape` of vectors this operator will work with.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDBase.inputs` {#OperatorPDBase.inputs}
+
+List of tensors that were provided as initialization inputs.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDBase.inv_quadratic_form(x, name='inv_quadratic_form')` {#OperatorPDBase.inv_quadratic_form}
+
+Compute the quadratic form: x^T A^{-1} x.
+
+##### Args:
+
+
+*  <b>`x`</b>: `Tensor` with shape broadcastable to `[N1,...,Nb, k]` and same `dtype`
+    as self.
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  `Tensor` holding the square of the norm induced by inverse of `A`.  For
+  every broadcast batch member.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDBase.log_det(name='log_det')` {#OperatorPDBase.log_det}
+
+Log of the determinant for every batch member.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  Logarithm of determinant for every batch member.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDBase.matmul(x, name='matmul')` {#OperatorPDBase.matmul}
+
+Left multiply `x` by this operator.
+
+##### Args:
+
+
+*  <b>`x`</b>: Shape `[N1,...,Nb, k, L]` `Tensor` with same `dtype` as this operator
+*  <b>`name`</b>: A name to give this `Op`.
+
+##### Returns:
+
+  A result equivalent to `tf.batch_matmul(self.to_dense(), x)`.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDBase.name` {#OperatorPDBase.name}
+
+String name identifying this `Operator`.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDBase.rank(name='rank')` {#OperatorPDBase.rank}
+
+Tensor rank.  Equivalent to `tf.rank(A)`.  Will equal `b + 2`.
+
+If this operator represents the batch matrix `A` with
+`A.shape = [N1,...,Nb, k, k]`, the `rank` is `b + 2`.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  `int32` `Tensor`
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDBase.shape(name='shape')` {#OperatorPDBase.shape}
+
+Equivalent to `tf.shape(A).`  Equal to `[N1,...,Nb, k, k]`, `b >= 0`.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  `int32` `Tensor`
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDBase.sqrt_matmul(x, name='sqrt_matmul')` {#OperatorPDBase.sqrt_matmul}
+
+Left (batch) matmul `x` by a sqrt of this matrix:  `Sx` where `A = S S^T.
+
+##### Args:
+
+
+*  <b>`x`</b>: `Tensor` with shape broadcastable to `[N1,...,Nb, k]` and same `dtype`
+    as self.
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  Shape `[N1,...,Nb, k]` `Tensor` holding the product `S x`.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDBase.to_dense(name='to_dense')` {#OperatorPDBase.to_dense}
+
+Return a dense (batch) matrix representing this operator.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDBase.to_dense_sqrt(name='to_dense_sqrt')` {#OperatorPDBase.to_dense_sqrt}
+
+Return a dense (batch) matrix representing sqrt of this operator.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDBase.vector_shape(name='vector_shape')` {#OperatorPDBase.vector_shape}
+
+Shape of (batch) vectors that this (batch) matrix will multiply.
+
+If this operator represents the batch matrix `A` with
+`A.shape = [N1,...,Nb, k, k]`, the `vector_shape` is `[N1,...,Nb, k]`.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  `int32` `Tensor`
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDBase.vector_space_dimension(name='vector_space_dimension')` {#OperatorPDBase.vector_space_dimension}
+
+Dimension of vector space on which this acts.  The `k` in `R^k`.
+
+If this operator represents the batch matrix `A` with
+`A.shape = [N1,...,Nb, k, k]`, the `vector_space_dimension` is `k`.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  `int32` `Tensor`
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDBase.verify_pd` {#OperatorPDBase.verify_pd}
+
+Whether to verify that this `Operator` is positive definite.
+
+
+
+- - -
+
+### `class tf.contrib.distributions.OperatorPDFull` {#OperatorPDFull}
+
+Class representing a (batch) of positive definite matrices `A`.
+
+This class provides access to functions of a batch of symmetric positive
+definite (PD) matrices `A` in `R^{k x k}` defined by dense matrices.
+Determinants and solves are `O(k^3)`.
+
+In practice, this operator represents a (batch) matrix `A` with shape
+`[N1,...,Nb, k, k]` for some `b >= 0`.  The first `b` indices designate a
+batch member.  For every batch member `(n1,...,nb)`, `A[n1,...,nb, : :]` is
+a `k x k` matrix.
+
+Since `A` is (batch) positive definite, it has a (or several) square roots `S`
+such that `A = SS^T`.
+
+For example,
+
+```python
+distributions = tf.contrib.distributions
+matrix = [[1.0, 0.5], [1.0, 2.0]]
+operator = OperatorPDFull(matrix)
+operator.log_det()
+
+# Compute the quadratic form x^T A^{-1} x for vector x.
+x = [1.0, 2.0]
+operator.inv_quadratic_form(x)
+
+# Matrix multiplication by the square root, S w.
+# If w is iid normal, S w has covariance A.
+w = [[1.0], [2.0]]
+operator.sqrt_matmul(w)
+```
+
+The above three methods, `log_det`, `inv_quadratic_form`, and
+`sqrt_matmul` provide "all" that is necessary to use a covariance matrix
+in a multi-variate normal distribution.  See the class `MVNOperatorPD`.
+- - -
+
+#### `tf.contrib.distributions.OperatorPDFull.__init__(matrix, verify_pd=True, name='OperatorPDFull')` {#OperatorPDFull.__init__}
+
+Initialize an OperatorPDFull.
+
+##### Args:
+
+
+*  <b>`matrix`</b>: Shape `[N1,...,Nb, k, k]` tensor with `b >= 0`, `k >= 1`.  The
+    last two dimensions should be `k x k` symmetric positive definite
+    matrices.
+*  <b>`verify_pd`</b>: Whether to check that `matrix` is symmetric positive definite.
+    If `verify_pd` is `False`, correct behavior is not guaranteed.
+*  <b>`name`</b>: A name to prepend to all ops created by this class.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDFull.batch_shape(name='batch_shape')` {#OperatorPDFull.batch_shape}
+
+Shape of batches associated with this operator.
+
+If this operator represents the batch matrix `A` with
+`A.shape = [N1,...,Nb, k, k]`, the `batch_shape` is `[N1,...,Nb]`.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  `int32` `Tensor`
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDFull.det(name='det')` {#OperatorPDFull.det}
+
+Determinant for every batch member.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  Determinant for every batch member.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDFull.dtype` {#OperatorPDFull.dtype}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDFull.get_batch_shape()` {#OperatorPDFull.get_batch_shape}
+
+`TensorShape` with batch shape.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDFull.get_shape()` {#OperatorPDFull.get_shape}
+
+`TensorShape` giving static shape.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDFull.get_vector_shape()` {#OperatorPDFull.get_vector_shape}
+
+`TensorShape` of vectors this operator will work with.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDFull.inputs` {#OperatorPDFull.inputs}
+
+List of tensors that were provided as initialization inputs.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDFull.inv_quadratic_form(x, name='inv_quadratic_form')` {#OperatorPDFull.inv_quadratic_form}
+
+Compute the induced vector norm (squared): ||x||^2 := x^T A^{-1} x.
+
+For every batch member, this is done in `O(k^2)` complexity.  The efficiency
+depends on the shape of `x`.
+* If `x.shape = [M1,...,Mm, N1,...,Nb, k]`, `m >= 0`, and
+  `self.shape = [N1,...,Nb, k, k]`, `x` will be reshaped and the
+  initialization matrix `chol` does not need to be copied.
+* Otherwise, data will be broadcast and copied.
+
+##### Args:
+
+
+*  <b>`x`</b>: `Tensor` with shape broadcastable to `[N1,...,Nb, k]` and same `dtype`
+    as self.  If the batch dimensions of `x` do not match exactly with those
+    of self, `x` and/or self's Cholesky factor will broadcast to match, and
+    the resultant set of linear systems are solved independently.  This may
+    result in inefficient operation.
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  `Tensor` holding the square of the norm induced by inverse of `A`.  For
+  every broadcast batch member.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDFull.log_det(name='log_det')` {#OperatorPDFull.log_det}
+
+Log determinant of every batch member.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDFull.matmul(x, name='matmul')` {#OperatorPDFull.matmul}
+
+Left (batch) matrix multiplication of `x` by this operator.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDFull.name` {#OperatorPDFull.name}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDFull.rank(name='rank')` {#OperatorPDFull.rank}
+
+Tensor rank.  Equivalent to `tf.rank(A)`.  Will equal `b + 2`.
+
+If this operator represents the batch matrix `A` with
+`A.shape = [N1,...,Nb, k, k]`, the `rank` is `b + 2`.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  `int32` `Tensor`
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDFull.shape(name='shape')` {#OperatorPDFull.shape}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDFull.sqrt_matmul(x, name='sqrt_matmul')` {#OperatorPDFull.sqrt_matmul}
+
+Left (batch) matmul `x` by a sqrt of this matrix:  `Sx` where `A = S S^T.
+
+##### Args:
+
+
+*  <b>`x`</b>: `Tensor` with shape broadcastable to `[N1,...,Nb, k]` and same `dtype`
+    as self.
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  Shape `[N1,...,Nb, k]` `Tensor` holding the product `S x`.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDFull.to_dense(name='to_dense')` {#OperatorPDFull.to_dense}
+
+Return a dense (batch) matrix representing this covariance.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDFull.to_dense_sqrt(name='to_dense_sqrt')` {#OperatorPDFull.to_dense_sqrt}
+
+Return a dense (batch) matrix representing sqrt of this covariance.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDFull.vector_shape(name='vector_shape')` {#OperatorPDFull.vector_shape}
+
+Shape of (batch) vectors that this (batch) matrix will multiply.
+
+If this operator represents the batch matrix `A` with
+`A.shape = [N1,...,Nb, k, k]`, the `vector_shape` is `[N1,...,Nb, k]`.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  `int32` `Tensor`
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDFull.vector_space_dimension(name='vector_space_dimension')` {#OperatorPDFull.vector_space_dimension}
+
+Dimension of vector space on which this acts.  The `k` in `R^k`.
+
+If this operator represents the batch matrix `A` with
+`A.shape = [N1,...,Nb, k, k]`, the `vector_space_dimension` is `k`.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  `int32` `Tensor`
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDFull.verify_pd` {#OperatorPDFull.verify_pd}
+
+Whether to verify that this `Operator` is positive definite.
+
+
+
+- - -
+
+### `class tf.contrib.distributions.OperatorPDCholesky` {#OperatorPDCholesky}
+
+Class representing a (batch) of positive definite matrices `A`.
+
+This class provides access to functions of a batch of symmetric positive
+definite (PD) matrices `A` in `R^{k x k}` defined by Cholesky factor(s).
+Determinants and solves are `O(k^2)`.
+
+In practice, this operator represents a (batch) matrix `A` with shape
+`[N1,...,Nb, k, k]` for some `b >= 0`.  The first `b` indices designate a
+batch member.  For every batch member `(n1,...,nb)`, `A[n1,...,nb, : :]` is
+a `k x k` matrix.
+
+Since `A` is (batch) positive definite, it has a (or several) square roots `S`
+such that `A = SS^T`.
+
+For example,
+
+```python
+distributions = tf.contrib.distributions
+chol = [[1.0, 0.0], [1.0, 2.0]]
+operator = OperatorPDCholesky(chol)
+operator.log_det()
+
+# Compute the quadratic form x^T A^{-1} x for vector x.
+x = [1.0, 2.0]
+operator.inv_quadratic_form(x)
+
+# Matrix multiplication by the square root, S w.
+# If w is iid normal, S w has covariance A.
+w = [[1.0], [2.0]]
+operator.sqrt_matmul(w)
+```
+
+The above three methods, `log_det`, `inv_quadratic_form`, and
+`sqrt_matmul` provide "all" that is necessary to use a covariance matrix
+in a multi-variate normal distribution.  See the class `MVNOperatorPD`.
+- - -
+
+#### `tf.contrib.distributions.OperatorPDCholesky.__init__(chol, verify_pd=True, name='OperatorPDCholesky')` {#OperatorPDCholesky.__init__}
+
+Initialize an OperatorPDCholesky.
+
+##### Args:
+
+
+*  <b>`chol`</b>: Shape `[N1,...,Nb, k, k]` tensor with `b >= 0`, `k >= 1`, and
+    positive diagonal elements.  The strict upper triangle of `chol` is
+    never used, and the user may set these elements to zero, or ignore them.
+*  <b>`verify_pd`</b>: Whether to check that `chol` has positive diagonal (this is
+    equivalent to it being a Cholesky factor of a symmetric positive
+    definite matrix.  If `verify_pd` is `False`, correct behavior is not
+    guaranteed.
+*  <b>`name`</b>: A name to prepend to all ops created by this class.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDCholesky.batch_shape(name='batch_shape')` {#OperatorPDCholesky.batch_shape}
+
+Shape of batches associated with this operator.
+
+If this operator represents the batch matrix `A` with
+`A.shape = [N1,...,Nb, k, k]`, the `batch_shape` is `[N1,...,Nb]`.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  `int32` `Tensor`
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDCholesky.det(name='det')` {#OperatorPDCholesky.det}
+
+Determinant for every batch member.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  Determinant for every batch member.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDCholesky.dtype` {#OperatorPDCholesky.dtype}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDCholesky.get_batch_shape()` {#OperatorPDCholesky.get_batch_shape}
+
+`TensorShape` with batch shape.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDCholesky.get_shape()` {#OperatorPDCholesky.get_shape}
+
+`TensorShape` giving static shape.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDCholesky.get_vector_shape()` {#OperatorPDCholesky.get_vector_shape}
+
+`TensorShape` of vectors this operator will work with.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDCholesky.inputs` {#OperatorPDCholesky.inputs}
+
+List of tensors that were provided as initialization inputs.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDCholesky.inv_quadratic_form(x, name='inv_quadratic_form')` {#OperatorPDCholesky.inv_quadratic_form}
+
+Compute the induced vector norm (squared): ||x||^2 := x^T A^{-1} x.
+
+For every batch member, this is done in `O(k^2)` complexity.  The efficiency
+depends on the shape of `x`.
+* If `x.shape = [M1,...,Mm, N1,...,Nb, k]`, `m >= 0`, and
+  `self.shape = [N1,...,Nb, k, k]`, `x` will be reshaped and the
+  initialization matrix `chol` does not need to be copied.
+* Otherwise, data will be broadcast and copied.
+
+##### Args:
+
+
+*  <b>`x`</b>: `Tensor` with shape broadcastable to `[N1,...,Nb, k]` and same `dtype`
+    as self.  If the batch dimensions of `x` do not match exactly with those
+    of self, `x` and/or self's Cholesky factor will broadcast to match, and
+    the resultant set of linear systems are solved independently.  This may
+    result in inefficient operation.
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  `Tensor` holding the square of the norm induced by inverse of `A`.  For
+  every broadcast batch member.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDCholesky.log_det(name='log_det')` {#OperatorPDCholesky.log_det}
+
+Log determinant of every batch member.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDCholesky.matmul(x, name='matmul')` {#OperatorPDCholesky.matmul}
+
+Left (batch) matrix multiplication of `x` by this operator.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDCholesky.name` {#OperatorPDCholesky.name}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDCholesky.rank(name='rank')` {#OperatorPDCholesky.rank}
+
+Tensor rank.  Equivalent to `tf.rank(A)`.  Will equal `b + 2`.
+
+If this operator represents the batch matrix `A` with
+`A.shape = [N1,...,Nb, k, k]`, the `rank` is `b + 2`.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  `int32` `Tensor`
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDCholesky.shape(name='shape')` {#OperatorPDCholesky.shape}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDCholesky.sqrt_matmul(x, name='sqrt_matmul')` {#OperatorPDCholesky.sqrt_matmul}
+
+Left (batch) matmul `x` by a sqrt of this matrix:  `Sx` where `A = S S^T.
+
+##### Args:
+
+
+*  <b>`x`</b>: `Tensor` with shape broadcastable to `[N1,...,Nb, k]` and same `dtype`
+    as self.
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  Shape `[N1,...,Nb, k]` `Tensor` holding the product `S x`.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDCholesky.to_dense(name='to_dense')` {#OperatorPDCholesky.to_dense}
+
+Return a dense (batch) matrix representing this covariance.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDCholesky.to_dense_sqrt(name='to_dense_sqrt')` {#OperatorPDCholesky.to_dense_sqrt}
+
+Return a dense (batch) matrix representing sqrt of this covariance.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDCholesky.vector_shape(name='vector_shape')` {#OperatorPDCholesky.vector_shape}
+
+Shape of (batch) vectors that this (batch) matrix will multiply.
+
+If this operator represents the batch matrix `A` with
+`A.shape = [N1,...,Nb, k, k]`, the `vector_shape` is `[N1,...,Nb, k]`.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  `int32` `Tensor`
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDCholesky.vector_space_dimension(name='vector_space_dimension')` {#OperatorPDCholesky.vector_space_dimension}
+
+Dimension of vector space on which this acts.  The `k` in `R^k`.
+
+If this operator represents the batch matrix `A` with
+`A.shape = [N1,...,Nb, k, k]`, the `vector_space_dimension` is `k`.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  `int32` `Tensor`
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDCholesky.verify_pd` {#OperatorPDCholesky.verify_pd}
+
+Whether to verify that this `Operator` is positive definite.
+
+
+
+- - -
+
+### `tf.contrib.distributions.batch_matrix_diag_transform(matrix, transform=None, name=None)` {#batch_matrix_diag_transform}
+
+Transform diagonal of [batch-]matrix, leave rest of matrix unchanged.
+
+Create a trainable covariance defined by a Cholesky factor:
+
+```python
+# Transform network layer into 2 x 2 array.
+matrix_values = tf.contrib.layers.fully_connected(activations, 4)
+matrix = tf.reshape(matrix_values, (batch_size, 2, 2))
+
+# Make the diagonal positive.  If the upper triangle was zero, this would be a
+# valid Cholesky factor.
+chol = batch_matrix_diag_transform(matrix, transform=tf.nn.softplus)
+
+# OperatorPDCholesky ignores the upper triangle.
+operator = OperatorPDCholesky(chol)
+```
+
+Example of heteroskedastic 2-D linear regression.
+
+```python
+# Get a trainable Cholesky factor.
+matrix_values = tf.contrib.layers.fully_connected(activations, 4)
+matrix = tf.reshape(matrix_values, (batch_size, 2, 2))
+chol = batch_matrix_diag_transform(matrix, transform=tf.nn.softplus)
+
+# Get a trainable mean.
+mu = tf.contrib.layers.fully_connected(activations, 2)
+
+# This is a fully trainable multivariate normal!
+dist = tf.contrib.distributions.MVNCholesky(mu, chol)
+
+# Standard log loss.  Minimizing this will "train" mu and chol, and then dist
+# will be a distribution predicting labels as multivariate Gaussians.
+loss = -1 * tf.reduce_mean(dist.log_pdf(labels))
+```
+
+##### Args:
+
+
+*  <b>`matrix`</b>: Rank `R` `Tensor`, `R >= 2`, where the last two dimensions are
+    equal.
+*  <b>`transform`</b>: Element-wise function mapping `Tensors` to `Tensors`.  To
+    be applied to the diagonal of `matrix`.  If `None`, `matrix` is returned
+    unchanged.  Defaults to `None`.
+*  <b>`name`</b>: A name to give created ops.
+    Defaults to "batch_matrix_diag_transform".
+
+##### Returns:
+
+  A `Tensor` with same shape and `dtype` as `matrix`.
 
 
 
@@ -2968,5 +5362,67 @@ will broadcast in the case of multidimensional sets of parameters.
 
 *  <b>`TypeError`</b>: if dtype of `s` does not match `dtype`, or `prior` is not a
     Normal object.
+
+
+
+## Kullback Leibler Divergence
+
+- - -
+
+### `tf.contrib.distributions.kl(dist_a, dist_b, allow_nan=False, name=None)` {#kl}
+
+Get the KL-divergence KL(dist_a || dist_b).
+
+##### Args:
+
+
+*  <b>`dist_a`</b>: instance of distributions.BaseDistribution.
+*  <b>`dist_b`</b>: instance of distributions.BaseDistribution.
+*  <b>`allow_nan`</b>: If False (default), a runtime error is raised
+    if the KL returns NaN values for any batch entry of the given
+    distributions.  If True, the KL may return a NaN for the given entry.
+*  <b>`name`</b>: (optional) Name scope to use for created operations.
+
+##### Returns:
+
+  A Tensor with the batchwise KL-divergence between dist_a and dist_b.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If dist_a or dist_b is not an instance of BaseDistribution.
+*  <b>`NotImplementedError`</b>: If no KL method is defined for distribution types
+    of dist_a and dist_b.
+
+
+- - -
+
+### `class tf.contrib.distributions.RegisterKL` {#RegisterKL}
+
+Decorator to register a KL divergence implementation function.
+
+Usage:
+
+@distributions.RegisterKL(distributions.Normal, distributions.Normal)
+def _kl_normal_mvn(norm_a, norm_b):
+  # Return KL(norm_a || norm_b)
+- - -
+
+#### `tf.contrib.distributions.RegisterKL.__init__(dist_cls_a, dist_cls_b)` {#RegisterKL.__init__}
+
+Initialize the KL registrar.
+
+##### Args:
+
+
+*  <b>`dist_cls_a`</b>: the class of the first argument of the KL divergence.
+*  <b>`dist_cls_b`</b>: the class of the second argument of the KL divergence.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if dist_cls_a or dist_cls_b are not subclasses of
+    BaseDistribution.
+
 
 

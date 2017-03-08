@@ -28,9 +28,9 @@ namespace tensorflow {
 namespace {
 
 OpDef ToOpDef(const OpDefBuilder& builder) {
-  OpDef op_def;
-  TF_EXPECT_OK(builder.Finalize(&op_def));
-  return op_def;
+  OpRegistrationData op_reg_data;
+  TF_EXPECT_OK(builder.Finalize(&op_reg_data));
+  return op_reg_data.op_def;
 }
 
 NodeDef ToNodeDef(const string& text) {

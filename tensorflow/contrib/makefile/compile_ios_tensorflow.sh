@@ -16,9 +16,29 @@
 # Builds the TensorFlow core library with ARM and x86 architectures for iOS, and
 # packs them into a fat file.
 
+ACTUAL_XCODE_VERSION=`xcodebuild -version | head -n 1 | sed 's/Xcode //'`
+REQUIRED_XCODE_VERSION=7.3.0
+if [ ${ACTUAL_XCODE_VERSION//.} -lt ${REQUIRED_XCODE_VERSION//.} ]
+then
+    echo "error: Xcode ${REQUIRED_XCODE_VERSION} or later is required."
+    exit 1
+fi
+
 GENDIR=tensorflow/contrib/makefile/gen/
 LIBDIR=${GENDIR}lib
 LIB_PREFIX=libtensorflow-core
+
+# TODO(petewarden) - Some new code in Eigen triggers a clang bug, so work
+# around it by patching the source.
+sed -e 's#static uint32x4_t p4ui_CONJ_XOR = vld1q_u32( conj_XOR_DATA );#static uint32x4_t p4ui_CONJ_XOR; // = vld1q_u32( conj_XOR_DATA ); - Removed by script#' \
+-i '' \
+tensorflow/contrib/makefile/downloads/eigen-latest/eigen/src/Core/arch/NEON/Complex.h
+sed -e 's#static uint32x2_t p2ui_CONJ_XOR = vld1_u32( conj_XOR_DATA );#static uint32x2_t p2ui_CONJ_XOR;// = vld1_u32( conj_XOR_DATA ); - Removed by scripts#' \
+-i '' \
+tensorflow/contrib/makefile/downloads/eigen-latest/eigen/src/Core/arch/NEON/Complex.h
+sed -e 's#static uint64x2_t p2ul_CONJ_XOR = vld1q_u64( p2ul_conj_XOR_DATA );#static uint64x2_t p2ul_CONJ_XOR;// = vld1q_u64( p2ul_conj_XOR_DATA ); - Removed by script#' \
+-i '' \
+tensorflow/contrib/makefile/downloads/eigen-latest/eigen/src/Core/arch/NEON/Complex.h
 
 make -f tensorflow/contrib/makefile/Makefile cleantarget
 make -f tensorflow/contrib/makefile/Makefile \

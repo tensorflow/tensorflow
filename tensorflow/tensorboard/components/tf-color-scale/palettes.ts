@@ -30,13 +30,15 @@ module TF {
       '#f4b400'   // google yellow 700
     ],
     googleColorBlindAssist: [
-      '#c53929',  // google red 700
-      '#ff7043',  // deep orange 400
-      '#f7cb4d',  // google yellow 300
-      '#0b8043',  // google green 700
-      '#80deea',  // cyan 200
-      '#4285f4',  // google blue 500
-      '#5e35b1'   // deep purple 600
+      '#ff7043',  // orange
+      '#00ACC1',  // dark cyan
+      '#AB47BC',  // bright purple
+      '#2A56C6',  // dark blue
+      '#0b8043',  // green
+      '#F7CB4D',  // yellow
+      '#c0ca33',  // lime
+      '#5e35b1',  // purple
+      '#A52714',  // red
     ],
     // These palettes try to be better for color differentiation.
     // https://personal.sron.nl/~pault/
@@ -58,11 +60,6 @@ module TF {
     mldash: [
       '#E47EAD', '#F4640D', '#FAA300', '#F5E636', '#00A077', '#0077B8',
       '#00B7ED'
-    ],
-    // This rainbow palette attempts to keep a constant brightness across hues.
-    constantValue: [
-      '#f44336', '#ffa216', '#c2d22d', '#51b455', '#1ca091', '#505ec4',
-      '#a633ba'
     ]
   };
 }

@@ -226,6 +226,7 @@ Returns up to num_records (key, value pairs) produced by a reader.
 Will dequeue a work unit from queue if necessary (e.g., when the
 Reader needs to start reading from a new file since it has
 finished with the previous file).
+It may return less than num_records even before the last batch.
 
 ##### Args:
 
@@ -405,6 +406,7 @@ Returns up to num_records (key, value pairs) produced by a reader.
 Will dequeue a work unit from queue if necessary (e.g., when the
 Reader needs to start reading from a new file since it has
 finished with the previous file).
+It may return less than num_records even before the last batch.
 
 ##### Args:
 
@@ -584,6 +586,7 @@ Returns up to num_records (key, value pairs) produced by a reader.
 Will dequeue a work unit from queue if necessary (e.g., when the
 Reader needs to start reading from a new file since it has
 finished with the previous file).
+It may return less than num_records even before the last batch.
 
 ##### Args:
 
@@ -763,6 +766,7 @@ Returns up to num_records (key, value pairs) produced by a reader.
 Will dequeue a work unit from queue if necessary (e.g., when the
 Reader needs to start reading from a new file since it has
 finished with the previous file).
+It may return less than num_records even before the last batch.
 
 ##### Args:
 
@@ -860,7 +864,7 @@ A Reader that outputs the records from a TFRecords file.
 See ReaderBase for supported methods.
 - - -
 
-#### `tf.TFRecordReader.__init__(name=None)` {#TFRecordReader.__init__}
+#### `tf.TFRecordReader.__init__(name=None, options=None)` {#TFRecordReader.__init__}
 
 Create a TFRecordReader.
 
@@ -868,6 +872,7 @@ Create a TFRecordReader.
 
 
 *  <b>`name`</b>: A name for the operation (optional).
+*  <b>`options`</b>: A TFRecordOptions object (optional).
 
 
 - - -
@@ -939,6 +944,7 @@ Returns up to num_records (key, value pairs) produced by a reader.
 Will dequeue a work unit from queue if necessary (e.g., when the
 Reader needs to start reading from a new file since it has
 finished with the previous file).
+It may return less than num_records even before the last batch.
 
 ##### Args:
 
@@ -1118,6 +1124,7 @@ Returns up to num_records (key, value pairs) produced by a reader.
 Will dequeue a work unit from queue if necessary (e.g., when the
 Reader needs to start reading from a new file since it has
 finished with the previous file).
+It may return less than num_records even before the last batch.
 
 ##### Args:
 
@@ -1838,7 +1845,7 @@ will have size `n` in the 0th dimension.
 If the queue is closed and there are more than `0` but fewer than
 `n` elements remaining, then instead of raising a
 `tf.errors.OutOfRangeError` like [`dequeue_many`](#QueueBase.dequeue_many),
-the remaining elements are returned immediately.  If the queue is
+less than `n` elements are returned immediately.  If the queue is
 closed and there are `0` elements left in the queue, then a
 `tf.errors.OutOfRangeError` is raised just like in `dequeue_many`.
 Otherwise the behavior is identical to `dequeue_many`.

@@ -43,17 +43,17 @@ class FileSystem {
 
   /// The following functions are the implementations used by the corresponding
   /// functions in the Env class.
-  virtual Status NewRandomAccessFile(const string& fname,
-                                     RandomAccessFile** result) = 0;
+  virtual Status NewRandomAccessFile(
+      const string& fname, std::unique_ptr<RandomAccessFile>* result) = 0;
 
   virtual Status NewWritableFile(const string& fname,
-                                 WritableFile** result) = 0;
+                                 std::unique_ptr<WritableFile>* result) = 0;
 
   virtual Status NewAppendableFile(const string& fname,
-                                   WritableFile** result) = 0;
+                                   std::unique_ptr<WritableFile>* result) = 0;
 
   virtual Status NewReadOnlyMemoryRegionFromFile(
-      const string& fname, ReadOnlyMemoryRegion** result) = 0;
+      const string& fname, std::unique_ptr<ReadOnlyMemoryRegion>* result) = 0;
 
   virtual bool FileExists(const string& fname) = 0;
 
@@ -82,22 +82,24 @@ class NullFileSystem : public FileSystem {
 
   ~NullFileSystem() override = default;
 
-  Status NewRandomAccessFile(const string& fname,
-                             RandomAccessFile** result) override {
+  Status NewRandomAccessFile(
+      const string& fname, std::unique_ptr<RandomAccessFile>* result) override {
     return errors::Unimplemented("NewRandomAccessFile unimplemented");
   }
 
-  Status NewWritableFile(const string& fname, WritableFile** result) override {
+  Status NewWritableFile(const string& fname,
+                         std::unique_ptr<WritableFile>* result) override {
     return errors::Unimplemented("NewWritableFile unimplemented");
   }
 
   Status NewAppendableFile(const string& fname,
-                           WritableFile** result) override {
+                           std::unique_ptr<WritableFile>* result) override {
     return errors::Unimplemented("NewAppendableFile unimplemented");
   }
 
   Status NewReadOnlyMemoryRegionFromFile(
-      const string& fname, ReadOnlyMemoryRegion** result) override {
+      const string& fname,
+      std::unique_ptr<ReadOnlyMemoryRegion>* result) override {
     return errors::Unimplemented(
         "NewReadOnlyMemoryRegionFromFile unimplemented");
   }

@@ -77,7 +77,8 @@ tracker for that. Instead, direct your questions to
 
 TensorFlow uses [Semantic Versioning 2.0](http://semver.org).  For details on
 the versioning of our public API and binary compatibility, see the [versioning
-document](versions.md).
+document](versions.md).  Additional details for developers are in [TensorFlow
+Data Versioning](data_versions.md).
 
 ## Roadmap
 

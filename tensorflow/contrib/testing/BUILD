@@ -11,6 +11,7 @@ py_library(
     name = "testing_py",
     srcs = [
         "__init__.py",
+        "python/framework/fake_summary_writer.py",
         "python/framework/util_test.py",
     ],
     srcs_version = "PY2AND3",

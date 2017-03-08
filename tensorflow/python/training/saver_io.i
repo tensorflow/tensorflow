@@ -74,7 +74,7 @@ std::vector<string> GetMatchingFiles(const string& filename,
 
 void CreateDir(const string& dirname, TF_Status* out_status) {
   tensorflow::Status status = tensorflow::Env::Default()->CreateDir(dirname);
-  if (!status.ok()) {
+  if (!status.ok() && status.code() != tensorflow::error::ALREADY_EXISTS) {
     Set_TF_Status_from_Status(out_status, status);
   }
 }

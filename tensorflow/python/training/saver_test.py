@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# ==============================================================================
+# =============================================================================
 
 """Tests for tensorflow.python.training.saver.py."""
 from __future__ import absolute_import
@@ -231,7 +231,7 @@ class SaverTest(tf.test.TestCase):
     self._SaveAndLoad("var1", 1.1, 2.2, save_path)
 
   def testGPU(self):
-    if not tf.test.is_built_with_cuda():
+    if not tf.test.is_gpu_available():
       return
     save_path = os.path.join(self.get_temp_dir(), "gpu")
     with tf.Session("", graph=tf.Graph()) as sess:
@@ -289,17 +289,6 @@ class SaverTest(tf.test.TestCase):
 
   def testLargeVariable(self):
     save_path = os.path.join(self.get_temp_dir(), "large_variable")
-    with tf.Session("", graph=tf.Graph()) as sess:
-      # Declare a variable larger than 2GB.
-      with tf.device("/cpu:0"):
-        var = tf.Variable(tf.constant(-1, shape=[300, 1000000], dtype=tf.int8))
-      save = tf.train.Saver({var.op.name: var})
-      var.initializer.run()
-      with self.assertRaisesRegexp(
-          tf.errors.InvalidArgumentError,
-          "Tensor slice is too large to serialize"):
-        save.save(sess, save_path)
-
     with tf.Session("", graph=tf.Graph()) as sess:
       # Declare a variable that is exactly 2GB. This should fail,
       # because a serialized checkpoint includes other header

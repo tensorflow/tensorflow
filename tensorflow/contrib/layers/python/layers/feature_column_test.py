@@ -52,6 +52,14 @@ class FeatureColumnTest(tf.test.TestCase):
     self.assertEqual(b.dimension, 10)
     self.assertTrue(b.default_value is None)
 
+    # dimension is an integer
+    with self.assertRaises(TypeError):
+      tf.contrib.layers.real_valued_column("d3", dimension=1.0)
+
+    # dimension is a positive integer
+    with self.assertRaises(ValueError):
+      tf.contrib.layers.real_valued_column("d3", dimension=0)
+
     # default_value is an integer.
     c1 = tf.contrib.layers.real_valued_column("c1", default_value=2)
     self.assertListEqual(list(c1.default_value), [2.])

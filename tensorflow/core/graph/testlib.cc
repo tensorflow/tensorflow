@@ -188,6 +188,16 @@ Node* TruncatedNormal(Graph* g, Node* input, DataType dtype) {
   return RandomNumberGenerator("TruncatedNormal", g, input, dtype);
 }
 
+Node* RandomGamma(Graph* g, Node* shape, Node* alpha) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "RandomGamma")
+                  .Input(shape)
+                  .Input(alpha)
+                  .Attr("seed", 0)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
 Node* Unary(Graph* g, const string& func, Node* input, int index) {
   Node* ret;
   TF_CHECK_OK(NodeBuilder(g->NewName("n"), func, g->op_registry())
@@ -380,6 +390,34 @@ Node* GetSessionTensor(Graph* g, Node* in) {
   TF_CHECK_OK(NodeBuilder(g->NewName("n"), "GetSessionTensor")
                   .Input(in, 0)
                   .Attr("dtype", DT_FLOAT)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
+Node* Relu(Graph* g, Node* in) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "Relu")
+                  .Input(in, 0)
+                  .Attr("T", DT_FLOAT)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
+Node* Relu6(Graph* g, Node* in) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "Relu6")
+                  .Input(in, 0)
+                  .Attr("T", DT_FLOAT)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
+Node* BiasAdd(Graph* g, Node* value, Node* bias) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "BiasAdd")
+                  .Input(value)
+                  .Input(bias)
+                  .Attr("T", DT_FLOAT)
                   .Finalize(g, &ret));
   return ret;
 }

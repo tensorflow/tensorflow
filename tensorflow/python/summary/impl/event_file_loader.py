@@ -35,7 +35,7 @@ class EventFileLoader(object):
     file_path = resource_loader.readahead_file_path(file_path)
     logging.debug('Opening a record reader pointing at %s', file_path)
     self._reader = pywrap_tensorflow.PyRecordReader_New(
-        compat.as_bytes(file_path), 0)
+        compat.as_bytes(file_path), 0, compat.as_bytes(''))
     # Store it for logging purposes.
     self._file_path = file_path
     if not self._reader:

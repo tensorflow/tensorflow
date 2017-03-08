@@ -33,21 +33,26 @@ Session* NewSession() {
 }
 
 std::vector<Tensor> PackGrad(const Tensor& x0, const Tensor& x1,
-                             const Tensor& dy) {
+                             const Tensor& dy, int axis) {
   auto T = DT_FLOAT;
   auto gdef = test::function::GDef(
       {f::NDef("x0", "Placeholder", {}, {{"dtype", T}}),
        f::NDef("x1", "Placeholder", {}, {{"dtype", T}}),
+       f::NDef("axis", "Placeholder", {}, {{"dtype", DT_INT32}}),
        f::NDef("dy", "Placeholder", {}, {{"dtype", T}}),
        f::NDef("dx", "SymbolicGradient", {"x0", "x1", "dy"},
-               {{"f", FDH::FunctionRef("Pack", {{"N", 2}, {"T", T}})},
+               {{"f", FDH::FunctionRef("Pack",
+                                       {{"N", 2}, {"T", T}, {"axis", axis}})},
                 {"Tin", DataTypeSlice{T, T, T}},
                 {"Tout", DataTypeSlice{T, T}}})});
   VLOG(1) << DebugStringWhole(gdef);
   auto sess = NewSession();
   TF_CHECK_OK(sess->Create(gdef));
   std::vector<Tensor> out;
-  TF_CHECK_OK(sess->Run({{"x0:0", x0}, {"x1:0", x1}, {"dy:0", dy}},
+  TF_CHECK_OK(sess->Run({{"x0:0", x0},
+                         {"x1:0", x1},
+                         {"axis:0", test::AsScalar(axis)},
+                         {"dy:0", dy}},
                         {"dx:0", "dx:1"}, {}, &out));
   CHECK_EQ(out.size(), 2);
   TF_CHECK_OK(sess->Close());
@@ -62,7 +67,7 @@ TEST_F(ArrayGradTest, PackGrad) {
   x1.flat<float>().setZero();
   Tensor dy(DT_FLOAT, {2, 2, 3});
   test::FillIota<float>(&dy, 0);
-  auto dx = PackGrad(x0, x1, dy);
+  auto dx = PackGrad(x0, x1, dy, 0);
   test::ExpectClose(dx[0],
                     test::AsTensor<float>({0., 1., 2., 3., 4., 5.}, {2, 3}));
   test::ExpectClose(dx[1],
@@ -70,22 +75,27 @@ TEST_F(ArrayGradTest, PackGrad) {
 }
 
 std::vector<Tensor> UnpackGrad(const Tensor& x, const Tensor& dy0,
-                               const Tensor& dy1) {
+                               const Tensor& dy1, int axis) {
   auto T = DT_FLOAT;
   auto gdef = test::function::GDef(
       {f::NDef("x", "Placeholder", {}, {{"dtype", T}}),
+       f::NDef("axis", "Placeholder", {}, {{"dtype", DT_INT32}}),
        f::NDef("dy0", "Placeholder", {}, {{"dtype", T}}),
        f::NDef("dy1", "Placeholder", {}, {{"dtype", T}}),
        f::NDef("dx", "SymbolicGradient", {"x", "dy0", "dy1"},
-               {{"f", FDH::FunctionRef("Unpack", {{"num", 2}, {"T", T}})},
+               {{"f", FDH::FunctionRef("Unpack",
+                                       {{"num", 2}, {"T", T}, {"axis", axis}})},
                 {"Tin", DataTypeSlice{T, T, T}},
                 {"Tout", DataTypeSlice{T}}})});
   VLOG(1) << DebugStringWhole(gdef);
   auto sess = NewSession();
   TF_CHECK_OK(sess->Create(gdef));
   std::vector<Tensor> out;
-  TF_CHECK_OK(sess->Run({{"x:0", x}, {"dy0:0", dy0}, {"dy1:0", dy1}}, {"dx:0"},
-                        {}, &out));
+  TF_CHECK_OK(sess->Run({{"x:0", x},
+                         {"axis:0", test::AsScalar(axis)},
+                         {"dy0:0", dy0},
+                         {"dy1:0", dy1}},
+                        {"dx:0"}, {}, &out));
   CHECK_EQ(out.size(), 1);
   TF_CHECK_OK(sess->Close());
   delete sess;
@@ -99,7 +109,7 @@ TEST_F(ArrayGradTest, UnpackGrad) {
   Tensor dy1(DT_FLOAT, {2, 3});
   test::FillIota<float>(&dy0, 0);
   test::FillIota<float>(&dy1, 100);
-  auto dx = UnpackGrad(x, dy0, dy1);
+  auto dx = UnpackGrad(x, dy0, dy1, 0);
   test::ExpectClose(dx[0], test::AsTensor<float>({0., 1., 2., 3., 4., 5., 100.,
                                                   101., 102., 103., 104., 105.},
                                                  {2, 2, 3}));

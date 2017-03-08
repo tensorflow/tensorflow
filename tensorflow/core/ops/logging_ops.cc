@@ -155,7 +155,7 @@ REGISTER_OP("AudioSummary")
     .Input("tag: string")
     .Input("tensor: float")
     .Output("summary: string")
-    .Attr("sample_rate: float > 0.0")
+    .Attr("sample_rate: float")
     .Attr("max_outputs: int >= 1 = 3")
     .Doc(R"doc(
 Outputs a `Summary` protocol buffer with audio.

@@ -25,13 +25,15 @@ import os
 import re
 import six
 
-import tensorflow as tf
 from google.protobuf.any_pb2 import Any
 
 from tensorflow.contrib.session_bundle import gc
 from tensorflow.contrib.session_bundle import manifest_pb2
+from tensorflow.core.framework import graph_pb2
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import gfile
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import training_util
 from tensorflow.python.util import compat
 
@@ -62,20 +64,20 @@ def gfile_copy_callback(files_to_copy, export_dir_path):
       basename in the export directory.
     export_dir_path: Directory to copy the files to.
   """
-  tf.logging.info("Write assest into: %s using gfile_copy.", export_dir_path)
+  logging.info("Write assest into: %s using gfile_copy.", export_dir_path)
   gfile.MakeDirs(export_dir_path)
   for source_filepath, basename in files_to_copy.items():
     new_path = os.path.join(
         compat.as_bytes(export_dir_path), compat.as_bytes(basename))
-    tf.logging.info("Copying asset %s to path %s.", source_filepath, new_path)
+    logging.info("Copying asset %s to path %s.", source_filepath, new_path)
 
     if gfile.Exists(new_path):
       # Guard against being restarted while copying assets, and the file
       # existing and being in an unknown state.
       # TODO(b/28676216): Do some file checks before deleting.
-      tf.logging.info("Removing file %s.", new_path)
+      logging.info("Removing file %s.", new_path)
       gfile.Remove(new_path)
-    tf.gfile.Copy(source_filepath, new_path)
+    gfile.Copy(source_filepath, new_path)
 
 
 def regression_signature(input_tensor, output_tensor):
@@ -188,22 +190,22 @@ class Exporter(object):
     self._has_init = True
 
     if graph_def or clear_devices:
-      copy = tf.GraphDef()
+      copy = graph_pb2.GraphDef()
       if graph_def:
         copy.CopyFrom(graph_def)
       else:
-        copy.CopyFrom(tf.get_default_graph().as_graph_def())
+        copy.CopyFrom(ops.get_default_graph().as_graph_def())
       if clear_devices:
         for node in copy.node:
           node.device = ""
       graph_any_buf = Any()
       graph_any_buf.Pack(copy)
-      tf.add_to_collection(GRAPH_KEY, graph_any_buf)
+      ops.add_to_collection(GRAPH_KEY, graph_any_buf)
 
     if init_op:
       if not isinstance(init_op, ops.Operation):
         raise TypeError("init_op needs to be an Operation: %s" % init_op)
-      tf.add_to_collection(INIT_OP_KEY, init_op)
+      ops.add_to_collection(INIT_OP_KEY, init_op)
 
     signatures_proto = manifest_pb2.Signatures()
     if default_graph_signature:
@@ -212,7 +214,7 @@ class Exporter(object):
       signatures_proto.named_signatures[signature_name].CopyFrom(signature)
     signatures_any_buf = Any()
     signatures_any_buf.Pack(signatures_proto)
-    tf.add_to_collection(SIGNATURES_KEY, signatures_any_buf)
+    ops.add_to_collection(SIGNATURES_KEY, signatures_any_buf)
 
     for filename, tensor in assets:
       asset = manifest_pb2.AssetFile()
@@ -220,7 +222,7 @@ class Exporter(object):
       asset.tensor_binding.tensor_name = tensor.name
       asset_any_buf = Any()
       asset_any_buf.Pack(asset)
-      tf.add_to_collection(ASSETS_KEY, asset_any_buf)
+      ops.add_to_collection(ASSETS_KEY, asset_any_buf)
 
     self._assets_callback = assets_callback
 
@@ -249,6 +251,10 @@ class Exporter(object):
     """
     if not self._has_init:
       raise RuntimeError("init must be called first")
+
+    # Export dir must not end with / or it will break exports to keep. Strip /.
+    if export_dir_base.endswith("/"):
+      export_dir_base = export_dir_base[:-1]
 
     global_step = training_util.global_step(sess, global_step_tensor)
     export_dir = os.path.join(
@@ -299,11 +305,11 @@ class Exporter(object):
 
   def _file_path_value(self, path_tensor):
     """Returns the filepath value stored in constant `path_tensor`."""
-    if not isinstance(path_tensor, tf.Tensor):
+    if not isinstance(path_tensor, ops.Tensor):
       raise TypeError("tensor is not a Tensor")
     if path_tensor.op.type != "Const":
       raise TypeError("Only constants tensor are supported")
-    if path_tensor.dtype != tf.string:
+    if path_tensor.dtype != dtypes.string:
       raise TypeError("File paths should be string")
     str_value = path_tensor.op.get_attr("value").string_val
     if len(str_value) != 1:

@@ -2,15 +2,29 @@ The Chi2 distribution with degrees of freedom df.
 
 The PDF of this distribution is:
 
-```pdf(x) = (x^(df/2 - 1)e^(-x/2))/(2^(k/2)Gamma(k/2)), x > 0```
+```pdf(x) = (x^(df/2 - 1)e^(-x/2))/(2^(df/2)Gamma(df/2)), x > 0```
 
 Note that the Chi2 distribution is a special case of the Gamma distribution,
 with Chi2(df) = Gamma(df/2, 1/2).
 - - -
 
-#### `tf.contrib.distributions.Chi2.__init__(df, name='Chi2')` {#Chi2.__init__}
+#### `tf.contrib.distributions.Chi2.__init__(df, strict=True, strict_statistics=True, name='Chi2')` {#Chi2.__init__}
+
+Construct Chi2 distributions with parameter `df`.
+
+##### Args:
 
 
+*  <b>`df`</b>: `float` or `double` tensor, the degrees of freedom of the
+    distribution(s).  `df` must contain only positive values.
+*  <b>`strict`</b>: Whether to assert that `df > 0`, and that `x > 0` in the
+    methods `pdf(x)` and `log_pdf(x)`. If `strict` is False
+    and the inputs are invalid, correct behavior is not guaranteed.
+*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
+    If False, batch members with valid parameters leading to undefined
+    statistics will return NaN for this statistic.
+*  <b>`name`</b>: The name to prepend to all ops created by this distribution.
 
 
 - - -
@@ -212,7 +226,20 @@ Mean of each batch member.
 
 #### `tf.contrib.distributions.Chi2.mode(name='mode')` {#Chi2.mode}
 
-Mode of each batch member.  Defined only if alpha >= 1.
+Mode of each batch member.
+
+The mode of a gamma distribution is `(alpha - 1) / beta` when `alpha > 1`,
+and `NaN` otherwise.  If `self.strict_statistics` is `True`, an exception
+will be raised rather than returning `NaN`.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name to give this op.
+
+##### Returns:
+
+  The mode for every batch member, a `Tensor` with same `dtype` as self.
 
 
 - - -
@@ -249,14 +276,17 @@ Pdf of observations in `x` under these Gamma distribution(s).
 
 #### `tf.contrib.distributions.Chi2.sample(n, seed=None, name='sample')` {#Chi2.sample}
 
-Generate `n` samples.
+Draws `n` samples from the Gamma distribution(s).
+
+See the doc for tf.random_gamma for further detail.
 
 ##### Args:
 
 
-*  <b>`n`</b>: scalar. Number of samples to draw from each distribution.
-*  <b>`seed`</b>: Python integer seed for RNG
-*  <b>`name`</b>: name to give to the op.
+*  <b>`n`</b>: Python integer, the number of observations to sample from each
+    distribution.
+*  <b>`seed`</b>: Python integer, the random seed for this operation.
+*  <b>`name`</b>: Optional name for the operation.
 
 ##### Returns:
 
@@ -270,6 +300,20 @@ Generate `n` samples.
 #### `tf.contrib.distributions.Chi2.std(name='std')` {#Chi2.std}
 
 Standard deviation of this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.Chi2.strict` {#Chi2.strict}
+
+Boolean describing behavior on invalid input.
+
+
+- - -
+
+#### `tf.contrib.distributions.Chi2.strict_statistics` {#Chi2.strict_statistics}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -

@@ -133,10 +133,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.ops import common_shapes
+from tensorflow.python.lib.io import python_io
 from tensorflow.python.ops import gen_io_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
@@ -339,6 +340,7 @@ class ReaderBase(object):
     Will dequeue a work unit from queue if necessary (e.g., when the
     Reader needs to start reading from a new file since it has
     finished with the previous file).
+    It may return less than num_records even before the last batch.
 
     Args:
       queue: A Queue or a mutable string Tensor representing a handle
@@ -522,13 +524,20 @@ class TFRecordReader(ReaderBase):
   """
   # TODO(josh11b): Support serializing and restoring state.
 
-  def __init__(self, name=None):
+  def __init__(self, name=None, options=None):
     """Create a TFRecordReader.
 
     Args:
       name: A name for the operation (optional).
+      options: A TFRecordOptions object (optional).
     """
-    rr = gen_io_ops._tf_record_reader(name=name)
+    compression_type_string = ""
+    if (options and
+        options.compression_type == python_io.TFRecordCompressionType.ZLIB):
+      compression_type_string = "ZLIB"
+
+    rr = gen_io_ops._tf_record_reader(name=name,
+                                      compression_type=compression_type_string)
     super(TFRecordReader, self).__init__(rr)
 
 

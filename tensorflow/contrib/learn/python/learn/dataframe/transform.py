@@ -47,7 +47,7 @@ def _make_list_of_series(x):
     return []
   elif isinstance(x, Series):
     return [x]
-  elif isinstance(x, (list, tuple)):
+  elif isinstance(x, collections.Iterable):
     for i, y in enumerate(x):
       if not isinstance(y, Series):
         raise TypeError(
@@ -75,7 +75,7 @@ def _make_tuple_of_string(x):
     return ()
   elif isinstance(x, str):
     return (x,)
-  elif isinstance(x, (list, tuple)):
+  elif isinstance(x, collections.Iterable):
     for i, y in enumerate(x):
       if not isinstance(y, str):
         raise TypeError(

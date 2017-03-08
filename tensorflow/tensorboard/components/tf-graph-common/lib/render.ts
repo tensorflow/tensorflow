@@ -161,6 +161,7 @@ export class RenderGraphInfo {
   // node.
   private hasSubhierarchy: {[nodeName: string]: boolean};
   root: RenderGroupNodeInfo;
+  traceInputs: Boolean;
 
   constructor(hierarchy: hierarchy.Hierarchy, displayingStats: boolean) {
     this.hierarchy = hierarchy;
@@ -175,6 +176,7 @@ export class RenderGraphInfo {
     this.index[hierarchy.root.name] = this.root;
     this.buildSubhierarchy(hierarchy.root.name);
     this.root.expanded = true;
+    this.traceInputs = false;
   }
 
   computeScales() {

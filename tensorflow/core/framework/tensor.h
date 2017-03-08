@@ -120,7 +120,10 @@ class Tensor {
   // underlying refcounted storage
   size_t BufferHash() const;
 
-  /// Has this Tensor been initialized?
+  /// \brief If necessary, has this Tensor been initialized?
+  ///
+  /// Zero-element Tensors are always considered initialized, even if they
+  /// have never been assigned to and do not have any memory allocated.
   bool IsInitialized() const;
 
   /// Returns the estimated memory usage of this tensor.

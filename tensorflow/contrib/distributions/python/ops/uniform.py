@@ -21,12 +21,12 @@ from __future__ import print_function
 from tensorflow.contrib.distributions.python.ops import distribution  # pylint: disable=line-too-long
 from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util  # pylint: disable=line-too-long
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 
@@ -37,7 +37,8 @@ class Uniform(distribution.ContinuousDistribution):
   The PDF of this distribution is constant between [`a`, `b`], and 0 elsewhere.
   """
 
-  def __init__(self, a=0.0, b=1.0, name="Uniform"):
+  def __init__(
+      self, a=0.0, b=1.0, strict=True, strict_statistics=True, name="Uniform"):
     """Construct Uniform distributions with `a` and `b`.
 
     The parameters `a` and `b` must be shaped in a way that supports
@@ -64,13 +65,22 @@ class Uniform(distribution.ContinuousDistribution):
     Args:
       a: `float` or `double` tensor, the minimum endpoint.
       b: `float` or `double` tensor, the maximum endpoint. Must be > `a`.
+      strict: Whether to assert that `a > b`. If `strict` is False and inputs
+        are invalid, correct behavior is not guaranteed.
+      strict_statistics:  Boolean, default True.  If True, raise an exception if
+        a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
+        If False, batch members with valid parameters leading to undefined
+        statistics will return NaN for this statistic.
       name: The name to prefix Ops created by this distribution class.
 
     Raises:
-      InvalidArgumentError: if `a >= b`.
+      InvalidArgumentError: if `a >= b` and `strict=True`.
     """
+    self._strict_statistics = strict_statistics
+    self._strict = strict
     with ops.op_scope([a, b], name):
-      with ops.control_dependencies([check_ops.assert_less(a, b)]):
+      with ops.control_dependencies(
+          [check_ops.assert_less(a, b)] if strict else []):
         a = array_ops.identity(a, name="a")
         b = array_ops.identity(b, name="b")
 
@@ -81,6 +91,16 @@ class Uniform(distribution.ContinuousDistribution):
     self._event_shape = tensor_shape.TensorShape([])
 
     contrib_tensor_util.assert_same_float_dtype((a, b))
+
+  @property
+  def strict_statistics(self):
+    """Boolean describing behavior when a stat is undefined for batch member."""
+    return self._strict_statistics
+
+  @property
+  def strict(self):
+    """Boolean describing behavior on invalid input."""
+    return self._strict
 
   @property
   def name(self):

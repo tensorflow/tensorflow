@@ -29,8 +29,29 @@ from tensorflow.python.platform import resource_loader
 
 class EncodeAudioOpTest(tf.test.TestCase):
 
+  def _compareWavFiles(self, original, encoded):
+    """Compares the important bits of two WAV files.
+
+    Some encoders will create a slightly different header to the WAV file.
+    This compares only the important bits of the header as well as the contents.
+
+    Args:
+      original: Contents of the original .wav file.
+      encoded: Contents of the new, encoded .wav file.
+    """
+    self.assertLess(44, len(original))
+    self.assertLess(44, len(encoded))
+    self.assertEqual(original[:4], encoded[:4])
+    # Skip file size
+    self.assertEqual(original[8:16], encoded[8:16])
+    # Skip header size
+    self.assertEqual(original[20:36], encoded[20:36])
+    # Skip extra bits inserted by ffmpeg.
+    self.assertEqual(original[original.find(b'data'):],
+                     encoded[encoded.find(b'data'):])
+
   def testRoundTrip(self):
-    """Fabricates some audio, creates a wav file, reverses it, and compares."""
+    """Reads a wav file, writes it, and compares them."""
     with self.test_session():
       path = os.path.join(
           resource_loader.get_data_files_path(), 'testdata/mono_10khz.wav')
@@ -43,7 +64,7 @@ class EncodeAudioOpTest(tf.test.TestCase):
       encode_op = ffmpeg.encode_audio(
           audio_op, file_format='wav', samples_per_second=10000)
       encoded_contents = encode_op.eval()
-      self.assertEqual(original_contents, encoded_contents)
+      self._compareWavFiles(original_contents, encoded_contents)
 
 
 if __name__ == '__main__':

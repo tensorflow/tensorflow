@@ -28,7 +28,6 @@ InputBuffer::InputBuffer(RandomAccessFile* file, size_t buffer_bytes)
       limit_(buf_) {}
 
 InputBuffer::~InputBuffer() {
-  delete file_;
   delete[] buf_;
 }
 

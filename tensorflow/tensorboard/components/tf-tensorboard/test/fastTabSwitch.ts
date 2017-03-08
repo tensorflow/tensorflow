@@ -9,9 +9,9 @@ describe('fast tab switch', () => {
     // the images tab wihout waiting for the graph tab to finish
     // rendering. Finally, it finishes when the images tab
     // has rendered and no errors were thrown.
-    let eventsTabIndex = TF.TensorBoard.TABS.indexOf('events');
-    let imagesTabIndex = TF.TensorBoard.TABS.indexOf('images');
-    let graphTabIndex = TF.TensorBoard.TABS.indexOf('graphs');
+    let eventsTabIndex = TF.Globals.TABS.indexOf('events');
+    let imagesTabIndex = TF.Globals.TABS.indexOf('images');
+    let graphTabIndex = TF.Globals.TABS.indexOf('graphs');
 
     // Listen for when the events tab rendered.
     tb.on('rendered', () => {

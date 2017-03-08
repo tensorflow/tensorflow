@@ -14,11 +14,13 @@ py_library(
     srcs = [
         "__init__.py",
         "python/framework/__init__.py",
+        "python/framework/deprecation.py",
         "python/framework/tensor_util.py",
         "python/ops/__init__.py",
         "python/ops/arg_scope.py",
         "python/ops/embedding_ops.py",
         "python/ops/ops.py",
+        "python/ops/sampling_ops.py",
         "python/ops/variables.py",
     ],
     srcs_version = "PY2AND3",
@@ -76,13 +78,14 @@ py_test(
 )
 
 cuda_py_test(
-    name = "embedding_ops_test",
+    name = "sampling_ops_test",
     size = "small",
-    srcs = ["python/ops/embedding_ops_test.py"],
+    srcs = ["python/ops/sampling_ops_test.py"],
     additional_deps = [
         ":framework_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
     ],
 )
 

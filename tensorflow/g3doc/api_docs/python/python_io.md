@@ -20,7 +20,7 @@ in `with` blocks like a normal file.
 
 - - -
 
-#### `tf.python_io.TFRecordWriter.__init__(path)` {#TFRecordWriter.__init__}
+#### `tf.python_io.TFRecordWriter.__init__(path, options=None)` {#TFRecordWriter.__init__}
 
 Opens file `path` and creates a `TFRecordWriter` writing to it.
 
@@ -28,6 +28,7 @@ Opens file `path` and creates a `TFRecordWriter` writing to it.
 
 
 *  <b>`path`</b>: The path to the TFRecords file.
+*  <b>`options`</b>: (optional) A TFRecordOptions object.
 
 ##### Raises:
 
@@ -57,7 +58,7 @@ Close the file.
 
 - - -
 
-### `tf.python_io.tf_record_iterator(path)` {#tf_record_iterator}
+### `tf.python_io.tf_record_iterator(path, options=None)` {#tf_record_iterator}
 
 An iterator that read the records from a TFRecords file.
 
@@ -65,6 +66,7 @@ An iterator that read the records from a TFRecords file.
 
 
 *  <b>`path`</b>: The path to the TFRecords file.
+*  <b>`options`</b>: (optional) A TFRecordOptions object.
 
 ##### Yields:
 

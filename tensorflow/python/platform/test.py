@@ -59,6 +59,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.client import device_lib
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
 from tensorflow.python.util.all_util import make_all
@@ -67,8 +68,8 @@ from tensorflow.python.util.all_util import make_all
 from tensorflow.python.framework.test_util import TensorFlowTestCase as TestCase
 from tensorflow.python.framework.test_util import assert_equal_graph_def
 
-from tensorflow.python.kernel_tests.gradient_checker import compute_gradient_error
-from tensorflow.python.kernel_tests.gradient_checker import compute_gradient
+from tensorflow.python.ops.gradient_checker import compute_gradient_error
+from tensorflow.python.ops.gradient_checker import compute_gradient
 # pylint: enable=unused-import
 
 
@@ -95,6 +96,11 @@ def get_temp_dir():
 def is_built_with_cuda():
   """Returns whether TensorFlow was built with CUDA (GPU) support."""
   return test_util.IsGoogleCudaEnabled()
+
+
+def is_gpu_available():
+  """Returns whether TensorFlow can access a GPU."""
+  return any(x.device_type == 'GPU' for x in device_lib.list_local_devices())
 
 
 __all__ = make_all(__name__)

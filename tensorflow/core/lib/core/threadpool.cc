@@ -74,15 +74,14 @@ struct ThreadPool::Impl : Eigen::ThreadPoolTempl<EigenEnvironment> {
   Impl(Env* env, const ThreadOptions& thread_options, const string& name,
        int num_threads)
       : Eigen::ThreadPoolTempl<EigenEnvironment>(
-            num_threads, EigenEnvironment(env, thread_options, name)),
-        num_threads_(num_threads) {}
+            num_threads, EigenEnvironment(env, thread_options, name)) {}
 
   void ParallelFor(int64 total, int64 cost_per_unit,
                    std::function<void(int64, int64)> fn) {
 #ifdef EIGEN_USE_NONBLOCKING_THREAD_POOL
     CHECK_GE(total, 0);
     CHECK_EQ(total, (int64)(Eigen::Index)total);
-    Eigen::ThreadPoolDevice device(this, num_threads_);
+    Eigen::ThreadPoolDevice device(this, this->NumThreads());
     device.parallelFor(
         total, Eigen::TensorOpCost(0, 0, cost_per_unit),
         [&fn](Eigen::Index first, Eigen::Index last) { fn(first, last); });
@@ -90,10 +89,6 @@ struct ThreadPool::Impl : Eigen::ThreadPoolTempl<EigenEnvironment> {
     CHECK(0);  // should not be used with the old thread pool
 #endif
   }
-
-  int NumThreads() const { return num_threads_; };
-
-  const int num_threads_;
 };
 
 ThreadPool::ThreadPool(Env* env, const string& name, int num_threads)
@@ -119,6 +114,8 @@ void ThreadPool::ParallelFor(int64 total, int64 cost_per_unit,
 }
 
 int ThreadPool::NumThreads() const { return impl_->NumThreads(); }
+
+int ThreadPool::CurrentThreadId() const { return impl_->CurrentThreadId(); }
 
 }  // namespace thread
 }  // namespace tensorflow

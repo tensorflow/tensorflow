@@ -266,8 +266,10 @@ class ExponentialMovingAverage(object):
     if var_list is None:
       var_list = variables.trainable_variables()
     for var in var_list:
-      if var.dtype.base_dtype not in [dtypes.float32, dtypes.float64]:
-        raise TypeError("The variables must be float or double: %s" % var.name)
+      if var.dtype.base_dtype not in [dtypes.float16, dtypes.float32,
+                                      dtypes.float64]:
+        raise TypeError("The variables must be half, float, or double: %s" %
+                        var.name)
       if var in self._averages:
         raise ValueError("Moving average already computed for: %s" % var.name)
 
@@ -337,7 +339,10 @@ class ExponentialMovingAverage(object):
       by the `ExponentialMovingAverage class` to hold the moving average of
       `var`.
     """
-    return var.op.name + "/" + self._name
+    if var in self._averages:
+      return self._averages[var].op.name
+    return ops.get_default_graph().unique_name(
+        var.op.name + "/" + self._name, mark_as_used=False)
 
   def variables_to_restore(self, moving_avg_variables=None):
     """Returns a map of names to `Variables` to restore.

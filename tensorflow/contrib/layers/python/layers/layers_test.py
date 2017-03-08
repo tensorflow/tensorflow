@@ -327,6 +327,24 @@ class DropoutTest(tf.test.TestCase):
     with self.test_session():
       images = tf.random_uniform((5, height, width, 3), seed=1)
       output = tf.contrib.layers.dropout(images)
+      self.assertEquals(output.op.name, 'Dropout/dropout/mul_1')
+      output.get_shape().assert_is_compatible_with(images.get_shape())
+
+  def testCreateDropoutWithConstant(self):
+    height, width = 3, 3
+    with self.test_session():
+      is_training = tf.constant(False)
+      images = tf.random_uniform((5, height, width, 3), seed=1)
+      output = tf.contrib.layers.dropout(images, is_training=is_training)
+      self.assertEquals(output.op.name, 'Dropout/dropout/mul_1')
+      output.get_shape().assert_is_compatible_with(images.get_shape())
+
+  def testCreateDropoutWithPlaceholder(self):
+    height, width = 3, 3
+    with self.test_session():
+      is_training = tf.placeholder(dtype=tf.bool, shape=[])
+      images = tf.random_uniform((5, height, width, 3), seed=1)
+      output = tf.contrib.layers.dropout(images, is_training=is_training)
       self.assertEquals(output.op.name, 'Dropout/cond/Merge')
       output.get_shape().assert_is_compatible_with(images.get_shape())
 
@@ -879,6 +897,28 @@ class OneHotEncodingTest(tf.test.TestCase):
       self.assertAllClose(output.eval(), one_hot_labels.eval())
 
 
+class RepeatTests(tf.test.TestCase):
+
+  def testRepeat(self):
+    height, width = 3, 3
+    with self.test_session():
+      images = tf.random_uniform((5, height, width, 3), seed=1, name='images')
+      output = tf.contrib.layers.repeat(images, 3,
+                                        tf.contrib.layers.conv2d, 32, [3, 3])
+      self.assertEquals(output.op.name, 'Repeat/convolution2d_3/Relu')
+      self.assertListEqual(output.get_shape().as_list(), [5, 3, 3, 32])
+
+  def testRepeatWithScope(self):
+    height, width = 3, 3
+    with self.test_session():
+      images = tf.random_uniform((5, height, width, 3), seed=1, name='images')
+      output = tf.contrib.layers.repeat(images, 3,
+                                        tf.contrib.layers.conv2d, 32, [3, 3],
+                                        scope='conv1')
+      self.assertEquals(output.op.name, 'conv1/conv1_3/Relu')
+      self.assertListEqual(output.get_shape().as_list(), [5, 3, 3, 32])
+
+
 class StackTests(tf.test.TestCase):
 
   def testStackFullyConnected(self):
@@ -887,6 +927,16 @@ class StackTests(tf.test.TestCase):
       images = tf.random_uniform((5, height * width * 3), seed=1, name='images')
       output = tf.contrib.layers.stack(images,
                                        tf.contrib.layers.fully_connected,
+                                       [10, 20, 30])
+      self.assertEquals(output.op.name, 'Stack/fully_connected_3/Relu')
+      self.assertListEqual(output.get_shape().as_list(), [5, 30])
+
+  def testStackRelu(self):
+    height, width = 3, 3
+    with self.test_session():
+      images = tf.random_uniform((5, height * width * 3), seed=1, name='images')
+      output = tf.contrib.layers.stack(images,
+                                       tf.contrib.layers.relu,
                                        [10, 20, 30])
       self.assertEquals(output.op.name, 'Stack/fully_connected_3/Relu')
       self.assertListEqual(output.get_shape().as_list(), [5, 30])

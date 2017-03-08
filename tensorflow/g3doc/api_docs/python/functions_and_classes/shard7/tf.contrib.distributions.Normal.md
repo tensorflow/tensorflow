@@ -42,7 +42,7 @@ dist.pdf(3.0)
 ```
 - - -
 
-#### `tf.contrib.distributions.Normal.__init__(mu, sigma, name='Normal')` {#Normal.__init__}
+#### `tf.contrib.distributions.Normal.__init__(mu, sigma, strict=True, strict_statistics=True, name='Normal')` {#Normal.__init__}
 
 Construct Normal distributions with mean and stddev `mu` and `sigma`.
 
@@ -55,6 +55,12 @@ broadcasting (e.g. `mu + sigma` is a valid operation).
 *  <b>`mu`</b>: `float` or `double` tensor, the means of the distribution(s).
 *  <b>`sigma`</b>: `float` or `double` tensor, the stddevs of the distribution(s).
     sigma must contain only positive values.
+*  <b>`strict`</b>: Whether to assert that `sigma > 0`. If `strict` is False,
+    correct output is not guaranteed when input is invalid.
+*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
+    If False, batch members with valid parameters leading to undefined
+    statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to give Ops created by the initializer.
 
 ##### Raises:
@@ -294,6 +300,20 @@ Distribution parameter for standard deviation.
 #### `tf.contrib.distributions.Normal.std(name='std')` {#Normal.std}
 
 Standard deviation of this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.Normal.strict` {#Normal.strict}
+
+Boolean describing behavior on invalid input.
+
+
+- - -
+
+#### `tf.contrib.distributions.Normal.strict_statistics` {#Normal.strict_statistics}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -

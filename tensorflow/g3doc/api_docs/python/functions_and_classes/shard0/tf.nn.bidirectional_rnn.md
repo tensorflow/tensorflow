@@ -17,7 +17,7 @@ length(s) of the sequence(s) or completely unrolled if length(s) is not given.
 *  <b>`cell_fw`</b>: An instance of RNNCell, to be used for forward direction.
 *  <b>`cell_bw`</b>: An instance of RNNCell, to be used for backward direction.
 *  <b>`inputs`</b>: A length T list of inputs, each a tensor of shape
-    [batch_size, input_size].
+    [batch_size, input_size], or a nested tuple of such elements.
 *  <b>`initial_state_fw`</b>: (optional) An initial state for the forward RNN.
     This must be a tensor of appropriate type and shape
     `[batch_size x cell_fw.state_size]`.

@@ -310,7 +310,8 @@ Status GetSparseTensorShapes(const VarLenFeature& var_len_feature,
 }
 
 Status BatchExampleProtoToTensors(
-    const std::vector<Example>& examples, const std::vector<string>& names,
+    const std::vector<const Example*>& examples,
+    const std::vector<string>& names,
     const std::vector<FixedLenFeature>& fixed_len_features,
     const std::vector<VarLenFeature>& var_len_features, Allocator* allocator,
     std::vector<Tensor>* output_dense_values_tensor,
@@ -353,7 +354,7 @@ Status BatchExampleProtoToTensors(
   }
 
   for (int b = 0; b < examples.size(); ++b) {
-    const Example& ex = examples[b];
+    const Example& ex = *(examples[b]);
     const string& example_name = (has_names) ? names[b] : "<unknown>";
     SingleExampleProtoToTensors(
         ex, example_name, b, fixed_len_features, var_len_features,

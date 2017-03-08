@@ -41,8 +41,7 @@ class RpcRemoteRendezvous : public BaseRemoteRendezvous {
       : BaseRemoteRendezvous(env, step_id, false) {}
 
  protected:
-  void RecvFromRemoteAsync(const string& key,
-                           const Rendezvous::ParsedKey& parsed,
+  void RecvFromRemoteAsync(const Rendezvous::ParsedKey& parsed,
                            const Rendezvous::Args& args,
                            DoneCallback done) override;
 
@@ -55,23 +54,49 @@ class RpcRemoteRendezvous : public BaseRemoteRendezvous {
 // Used only to retrieve tensors from remote processes.
 class RpcRecvTensorCall : public BaseRecvTensorCall {
  public:
-  RpcRecvTensorCall(WorkerCacheInterface* wc, WorkerInterface* wi,
-                       int64 step_id, const string& key,
-                       const string& remote_dev, Allocator* allocator,
-                       Device* dst_device)
-      : wi_(wi),
-        wc_(wc),
-        remote_dev_(remote_dev),
-        allocator_(allocator),
-        dst_(dst_device) {
+  RpcRecvTensorCall()
+      : wi_(nullptr), wc_(nullptr), allocator_(nullptr), dst_device_(nullptr) {}
+
+  void Init(WorkerCacheInterface* wc, WorkerInterface* wi, int64 step_id,
+            StringPiece key, Allocator* allocator, Device* dst_device,
+            const Rendezvous::Args& recv_args, Rendezvous::DoneCallback done) {
+    wi_ = wi;
+    wc_ = wc;
+    allocator_ = allocator;
+    dst_device_ = dst_device;
+    recv_args_ = recv_args;
+    done_ = std::move(done);
     req_.set_step_id(step_id);
-    req_.set_rendezvous_key(key);
+    req_.set_rendezvous_key(key.data(), key.size());
+  }
+
+  void Reset() {
+    delete wi_;
+    wi_ = nullptr;
+    wc_ = nullptr;
+    allocator_ = nullptr;
+    dst_device_ = nullptr;
+    // We don't clear opts_ and assume that Init will set up the state for
+    // opts_ appropriately.
+    req_.Clear();
+    if (resp_.ByteSize() > 128) {
+      // Clear memory from resp_ if it is too large
+      RecvTensorResponse empty;
+      resp_.Swap(&empty);
+    } else {
+      resp_.Clear();
+    }
+    {
+      mutex_lock l(mu_);
+      status_ = Status::OK();
+    }
+    done_ = nullptr;
   }
 
   ~RpcRecvTensorCall() override { delete wi_; }
 
   void Start(std::function<void()> recv_done) override {
-    StartRTCall(recv_done);
+    StartRTCall(std::move(recv_done));
   }
 
   void StartAbort(const Status& s) override {
@@ -93,6 +118,10 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
 
   bool is_dead() const { return resp_.is_dead(); }
 
+  Device* dst_device() const { return dst_device_; }
+  const Rendezvous::Args& recv_args() const { return recv_args_; }
+  const Rendezvous::DoneCallback& done() const { return done_; }
+
  private:
   // Start the main RecvTensor call, checking for an async abort.
   void StartRTCall(std::function<void()> recv_done) {
@@ -100,7 +129,7 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
                          nullptr /* TensorBufAllocator */,
                          // done callback
                          [this, recv_done](const Status& s) {
-                           {
+                           if (!s.ok()) {
                              mutex_lock l(mu_);
                              status_.Update(s);
                            }
@@ -110,12 +139,13 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
 
   WorkerInterface* wi_;       // Owned.
   WorkerCacheInterface* wc_;  // Not owned.
-  string remote_dev_;
   Allocator* allocator_;
-  Device* dst_;
+  Device* dst_device_;
   CallOptions opts_;
   RecvTensorRequest req_;
   RecvTensorResponse resp_;
+  Rendezvous::Args recv_args_;
+  Rendezvous::DoneCallback done_;
 
   mutable mutex mu_;
   Status status_ GUARDED_BY(mu_);
@@ -123,10 +153,53 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
   TF_DISALLOW_COPY_AND_ASSIGN(RpcRecvTensorCall);
 };
 
+namespace {
+class RpcRecvTensorFreeList {
+ public:
+  RpcRecvTensorFreeList() {}
+  ~RpcRecvTensorFreeList() {
+    for (int i = 0; i < objects_.size(); i++) {
+      delete objects_[i];
+    }
+  }
+
+  RpcRecvTensorCall* New() {
+    {
+      mutex_lock l(mu_);
+      if (!objects_.empty()) {
+        RpcRecvTensorCall* result = objects_.back();
+        objects_.pop_back();
+        return result;
+      }
+    }
+    return new RpcRecvTensorCall;
+  }
+
+  void Release(RpcRecvTensorCall* obj) {
+    obj->Reset();
+    {
+      mutex_lock l(mu_);
+      if (objects_.size() < kMaxObjects) {
+        objects_.push_back(obj);
+        return;
+      }
+    }
+    delete obj;
+  }
+
+ private:
+  static const int kMaxObjects = 1000;
+
+  mutex mu_;
+  std::vector<RpcRecvTensorCall*> objects_ GUARDED_BY(mu_);
+};
+
+static RpcRecvTensorFreeList call_freelist_;
+}
 
 void RpcRemoteRendezvous::RecvFromRemoteAsync(
-    const string& key, const Rendezvous::ParsedKey& parsed,
-    const Rendezvous::Args& recv_args, DoneCallback done) {
+    const Rendezvous::ParsedKey& parsed, const Rendezvous::Args& recv_args,
+    DoneCallback done) {
   Status s;
 
   // key.src_device identifies a remote device.
@@ -137,11 +210,15 @@ void RpcRemoteRendezvous::RecvFromRemoteAsync(
     s = errors::Internal(parsed.src_device,
                          " is invalid remote source device.");
   }
+  // TODO(jeff): Consider checking for a valid worker_cache during the
+  // constructor of RpcRemoteRendezvous, rather than here, to simplify
+  // the twisty logic below.
   WorkerCacheInterface* worker_cache = env_->worker_cache;
   if (s.ok() && worker_cache == nullptr) {
     s = errors::Internal("No remote worker cache available.");
   }
-  WorkerInterface* rwi = env_->worker_cache->CreateWorker(src_worker);
+  WorkerInterface* rwi =
+      (worker_cache ? worker_cache->CreateWorker(src_worker) : nullptr);
   if (s.ok() && rwi == nullptr) {
     s = errors::Internal("No worker known as ", src_worker);
   }
@@ -157,15 +234,16 @@ void RpcRemoteRendezvous::RecvFromRemoteAsync(
   Allocator* allocator = dst_device->GetAllocator(recv_args.alloc_attrs);
 
   // Prepare a RecvTensor call that can handle being aborted.
-  RpcRecvTensorCall* call =
-      new RpcRecvTensorCall(worker_cache, rwi, step_id_, key,
-                               parsed.src_device, allocator, dst_device);
+  RpcRecvTensorCall* call = call_freelist_.New();
+
+  call->Init(worker_cache, rwi, step_id_, parsed.FullKey(), allocator,
+             dst_device, recv_args, std::move(done));
 
   // Record "call" in active_ so that it can be aborted cleanly.
   RegisterCall(call);
 
   // Start "call".
-  call->Start([this, call, parsed, recv_args, done]() {
+  call->Start([this, call]() {
     // Removes "call" from active_. Prevent StartAbort().
     DeregisterCall(call);
     // If StartAbort was called prior to DeregisterCall, then the
@@ -173,24 +251,19 @@ void RpcRemoteRendezvous::RecvFromRemoteAsync(
     Status s = call->status();
     Tensor val;
     if (s.ok()) {
-      Device* dst_device;
-      s = env_->device_mgr->LookupDevice(parsed.dst_device, &dst_device);
-      if (s.ok()) {
-        s = dst_device->MakeTensorFromProto(call->tensor_proto(),
-                                            recv_args.alloc_attrs, &val);
-      }
+      s = call->dst_device()->MakeTensorFromProto(
+          call->tensor_proto(), call->recv_args().alloc_attrs, &val);
     }
-    done(s, Args(), recv_args, val, call->is_dead());
-    delete call;
+    call->done()(s, Args(), call->recv_args(), val, call->is_dead());
+    call_freelist_.Release(call);
   });
 }
 
 }  // namespace
 
 BaseRemoteRendezvous* RpcRendezvousMgr::Create(int64 step_id,
-                                                  const WorkerEnv* worker_env) {
+                                               const WorkerEnv* worker_env) {
   return new RpcRemoteRendezvous(worker_env, step_id);
 }
-
 
 }  // end namespace tensorflow

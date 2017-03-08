@@ -157,6 +157,9 @@ class VariablesTest(tf.test.TestCase):
         a = tf.contrib.framework.variable('a', [5])
         self.assertEquals(a.op.name, 'A/a')
         self.assertListEqual(a.get_shape().as_list(), [5])
+        self.assertTrue(a in tf.get_collection(tf.GraphKeys.VARIABLES))
+        self.assertFalse(a in tf.get_collection(tf.GraphKeys.MODEL_VARIABLES))
+        self.assertFalse(a in tf.local_variables())
 
   def testGetVariables(self):
     with self.test_session():
@@ -437,6 +440,7 @@ class ModelVariablesTest(tf.test.TestCase):
       with tf.variable_scope('A'):
         a = tf.contrib.framework.model_variable('a', [5])
         self.assertTrue(a in tf.all_variables())
+        self.assertTrue(a in tf.get_collection(tf.GraphKeys.MODEL_VARIABLES))
         self.assertFalse(a in tf.local_variables())
 
   def testGetVariablesReturns(self):

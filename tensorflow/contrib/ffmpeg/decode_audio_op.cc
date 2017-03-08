@@ -38,9 +38,8 @@ const char* kValidFileFormats[] = {"mp3", "ogg", "wav"};
 // Writes binary data to a file.
 Status WriteFile(const string& filename, tensorflow::StringPiece contents) {
   Env& env = *Env::Default();
-  WritableFile* file = nullptr;
+  std::unique_ptr<WritableFile> file;
   TF_RETURN_IF_ERROR(env.NewWritableFile(filename, &file));
-  std::unique_ptr<WritableFile> file_deleter(file);
   TF_RETURN_IF_ERROR(file->Append(contents));
   TF_RETURN_IF_ERROR(file->Close());
   return Status::OK();

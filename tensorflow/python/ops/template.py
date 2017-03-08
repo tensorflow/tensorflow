@@ -253,3 +253,8 @@ class Template(object):
       with variable_scope.variable_op_scope([], None, self._name) as vs:
         self._var_scope = vs
         return self._call_func(args, kwargs, check_for_new_variables=False)
+
+  @property
+  def var_scope(self):
+    """Returns the variable scope object created by this Template."""
+    return self._var_scope

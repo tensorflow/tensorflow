@@ -155,7 +155,7 @@ def GetTestConfigs():
     all the valid test configs as tuples of data_format and use_gpu.
   """
   test_configs = [("NHWC", False), ("NHWC", True)]
-  if test_util.IsGoogleCudaEnabled():
+  if tf.test.is_gpu_available():
     # "NCHW" format is not currently supported on CPU.
     test_configs += [("NCHW", True)]
   return test_configs

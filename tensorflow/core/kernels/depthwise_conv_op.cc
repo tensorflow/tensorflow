@@ -320,11 +320,13 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
     // batch or depth dimension).
     const int32 stride = strides_[1];
 
-    int32 out_rows = 0, out_cols = 0, pad_rows = 0, pad_cols = 0;
+    int64 out_rows = 0, out_cols = 0, pad_rows = 0, pad_cols = 0;
     OP_REQUIRES_OK(context,
-                   Get2dOutputSize(input_rows, input_cols, filter_rows,
-                                   filter_cols, stride, stride, padding_,
-                                   &out_rows, &out_cols, &pad_rows, &pad_cols));
+                   GetWindowedOutputSize(input_rows, filter_rows, stride,
+                                         padding_, &out_rows, &pad_rows));
+    OP_REQUIRES_OK(context,
+                   GetWindowedOutputSize(input_cols, filter_cols, stride,
+                                         padding_, &out_cols, &pad_cols));
     TensorShape out_shape({batch, out_rows, out_cols, out_depth});
     OP_REQUIRES(
         context, out_shape.num_elements() <= 2147483647,

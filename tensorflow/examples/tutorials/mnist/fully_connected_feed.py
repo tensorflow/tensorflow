@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os.path
 import time
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
@@ -198,7 +199,8 @@ def run_training():
 
       # Save a checkpoint and evaluate the model periodically.
       if (step + 1) % 1000 == 0 or (step + 1) == FLAGS.max_steps:
-        saver.save(sess, FLAGS.train_dir, global_step=step)
+        checkpoint_file = os.path.join(FLAGS.train_dir, 'checkpoint')
+        saver.save(sess, checkpoint_file, global_step=step)
         # Evaluate against the training set.
         print('Training Data Eval:')
         do_eval(sess,

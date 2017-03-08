@@ -78,7 +78,7 @@ x = [[[[1, 2, 3, 4],
 
 
 *  <b>`input`</b>: A `Tensor`.
-*  <b>`block_size`</b>: An `int`. The size of the spatial block.
+*  <b>`block_size`</b>: An `int` that is `>= 2`. The size of the spatial block.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:

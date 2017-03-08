@@ -305,8 +305,8 @@ string ToGuard(const std::string& path) {
 void WriteCCOps(const OpList& ops, const std::string& dot_h_fname,
                 const std::string& dot_cc_fname) {
   Env* env = Env::Default();
-  WritableFile* h = nullptr;
-  WritableFile* cc = nullptr;
+  std::unique_ptr<WritableFile> h;
+  std::unique_ptr<WritableFile> cc;
   TF_CHECK_OK(env->NewWritableFile(dot_h_fname, &h));
   TF_CHECK_OK(env->NewWritableFile(dot_cc_fname, &cc));
 
@@ -356,7 +356,7 @@ namespace ops {
   TF_CHECK_OK(s);
 
   for (const auto& op_def : ops.op()) {
-    WriteCCOp(op_def, h, cc);
+    WriteCCOp(op_def, h.get(), cc.get());
   }
 
   // .h Footer

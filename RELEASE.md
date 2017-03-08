@@ -1,5 +1,13 @@
 # Changes Since Last Release
 
+## Features and Improvements
+* Connectionist Temporal Classification ops are now "official" (see, e.g.,
+  `tf.nn.ctc_loss`)
+
+## Breaking Changes to the API
+* `env.h` replaces use of `New*File()` functions to use `std::unique_ptr`
+  return arguments, removing the old raw pointer returns.
+
 # Release 0.9.0
 
 ## Major Features and Improvements
@@ -47,7 +55,6 @@ Aaron Schumacher, Aidan Dang, Akihiko ITOH, Aki Sukegawa, Arbit Chen, Aziz Alto,
 
 We are also grateful to all who filed issues or helped resolve them, asked and 
 answered questions, and were part of inspiring discussions. 
-
 
 # Release 0.8.0
 

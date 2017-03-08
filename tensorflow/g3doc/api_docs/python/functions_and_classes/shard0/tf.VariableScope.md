@@ -49,6 +49,13 @@ Gets an existing variable with this name or create a new one.
 
 - - -
 
+#### `tf.VariableScope.original_name_scope` {#VariableScope.original_name_scope}
+
+
+
+
+- - -
+
 #### `tf.VariableScope.partitioner` {#VariableScope.partitioner}
 
 

@@ -15,6 +15,9 @@
 
 # Find where we're running from, so we can store generated files here.
 MAKEFILE_DIR := $(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
+HAS_GEN_HOST_PROTOC := \
+$(shell test -f $(MAKEFILE_DIR)/gen/protobuf-host/bin/protoc && echo "true" ||\
+echo "false")
 
 # Try to figure out the host system
 HOST_OS :=
@@ -39,20 +42,32 @@ HOST_GENDIR := $(MAKEFILE_DIR)/gen/host_obj/
 EIGEN_HASH := $(shell cat eigen.BUILD | grep archive_dir | head -1 | cut -f3 -d- | cut -f1 -d\")
 
 # Settings for the host compiler.
-HOST_CXX := gcc
+HOST_CXX := $(CC_PREFIX) gcc
 HOST_CXXFLAGS := --std=c++11
 HOST_LDOPTS := \
 -L/usr/local/lib
+
+ifeq ($(HAS_GEN_HOST_PROTOC),true)
+	HOST_LDOPTS += -L$(MAKEFILE_DIR)/gen/protobuf-host/lib
+endif
+
 HOST_INCLUDES := \
 -I/usr/local/include \
 -I. \
 -I$(MAKEFILE_DIR)/downloads/ \
 -I$(MAKEFILE_DIR)/downloads/eigen-eigen-$(EIGEN_HASH) \
 -I$(HOST_GENDIR)
+
+ifeq ($(HAS_GEN_HOST_PROTOC),true)
+	HOST_INCLUDES += -I$(MAKEFILE_DIR)/gen/protobuf-host/include
+endif
+
 HOST_LIBS := \
 -lstdc++ \
 -lprotobuf \
--lm
+-lpthread \
+-lm \
+-lz
 
 # If we're on Linux, also link in the dl library.
 ifeq ($(HOST_OS),LINUX)
@@ -99,11 +114,16 @@ PBTGENDIR := $(GENDIR)proto_text/
 PROTOGENDIR := $(GENDIR)proto/
 
 # Settings for the target compiler.
-CXX := gcc
+CXX := $(CC_PREFIX) gcc
 OPTFLAGS := -O0
-CXXFLAGS := --std=c++11 $(OPTFLAGS)
+CXXFLAGS := --std=c++11 -DIS_SLIM_BUILD $(OPTFLAGS)
 LDFLAGS := \
 -L/usr/local/lib
+
+ifeq ($(HAS_GEN_HOST_PROTOC),true)
+	HOST_LDOPTS += -L$(MAKEFILE_DIR)/gen/protobuf-host/lib
+endif
+
 INCLUDES := \
 -I/usr/local/include \
 -I. \
@@ -111,11 +131,26 @@ INCLUDES := \
 -I$(MAKEFILE_DIR)/downloads/eigen-eigen-$(EIGEN_HASH) \
 -I$(PROTOGENDIR) \
 -I$(PBTGENDIR)
+
+ifeq ($(HAS_GEN_HOST_PROTOC),true)
+	INCLUDES += -I$(MAKEFILE_DIR)/gen/protobuf-host/include
+endif
+
 LIBS := \
 -lstdc++ \
 -lprotobuf \
+-lz \
 -lm
-PROTOC := protoc
+
+ifeq ($(HAS_GEN_HOST_PROTOC),true)
+	PROTOC := $(MAKEFILE_DIR)/gen/protobuf-host/bin/protoc
+else
+	PROTOC := protoc
+endif
+
+$(info PROTOC = "$(PROTOC)")
+$(info CC_PREFIX = "$(CC_PREFIX)")
+
 PROTOCFLAGS :=
 AR := ar
 ARFLAGS := -r
@@ -143,18 +178,65 @@ endif
 
 # Set up Android building
 ifeq ($(TARGET),ANDROID)
-# Override ANDROID_NDK_DIR on the command line with your own NDK location, e.g.
+# Override NDK_ROOT on the command line with your own NDK location, e.g.
 # make -f tensorflow/contrib/makefile/Makefile TARGET=ANDROID \
-# ANDROID_NDK_DIR=/path/to/your/ndk
-	ANDROID_NDK_DIR := $(HOME)/toolchains/clang-21-stl-gnu
-	CXX := $(ANDROID_NDK_DIR)/bin/arm-linux-androideabi-g++
-	CXXFLAGS += --sysroot=$(ANDROID_NDK_DIR)/sysroot
-	INCLUDES += -I$(ANDROID_NDK_DIR)/sysroot/usr/include
-	LIBS += -llog
+# NDK_ROOT=/path/to/your/ndk
 # You need to have an Android version of the protobuf libraries compiled to link
 # in. The compile_android_protobuf.sh script may help.
-	LDFLAGS += -L$(GENDIR)protobuf/lib/
-endif
+
+	OS_PATH :=
+	ifeq ($(HOST_OS),LINUX)
+		OS_PATH=linux
+	endif
+	ifeq ($(HOST_OS),OSX)
+		OS_PATH=darwin
+	endif
+	ifeq ($(HOST_OS),WINDOWS)
+		$(error "windows is not supported.")
+	endif
+
+	ifndef NDK_ROOT
+		$(error "NDK_ROOT is not defined.")
+	endif
+	CXX := $(CC_PREFIX) $(NDK_ROOT)/toolchains/arm-linux-androideabi-4.9/prebuilt/$(OS_PATH)-x86_64/bin/arm-linux-androideabi-g++
+	CXXFLAGS +=\
+--sysroot $(NDK_ROOT)/platforms/android-21/arch-arm \
+-Wno-c++11-narrowing \
+-march=armv7-a \
+-fPIE
+
+	INCLUDES = \
+-I$(NDK_ROOT)/sources/android/support/include \
+-I$(NDK_ROOT)/sources/cxx-stl/gnu-libstdc++/4.9/include \
+-I$(NDK_ROOT)/sources/cxx-stl/gnu-libstdc++/4.9/libs/armeabi/include \
+-I. \
+-I$(MAKEFILE_DIR)/downloads/ \
+-I$(MAKEFILE_DIR)/downloads/eigen-eigen-$(EIGEN_HASH) \
+-I$(MAKEFILE_DIR)/gen/protobuf/include \
+-I$(PROTOGENDIR) \
+-I$(PBTGENDIR)
+
+	LIBS := \
+-lgnustl_static \
+-lprotobuf \
+-llog \
+-lz \
+-lm
+
+	LD := $(NDK_ROOT)/toolchains/arm-linux-androideabi-4.9/prebuilt/$(OS_PATH)-x86_64/arm-linux-androideabi/bin/ld
+	LDFLAGS := \
+-march=armv7-a \
+-L$(MAKEFILE_DIR)/gen/protobuf/lib \
+-L$(NDK_ROOT)/sources/cxx-stl/gnu-libstdc++/4.9/libs/armeabi-v7a \
+-fPIE \
+-pie \
+-v
+
+	AR := $(NDK_ROOT)/toolchains/arm-linux-androideabi-4.9/prebuilt/$(OS_PATH)-x86_64/bin/arm-linux-androideabi-ar
+	ARFLAGS := r
+	LIBFLAGS += -Wl,--allow-multiple-definition -Wl,--whole-archive
+
+endif  # ANDROID
 
 # Settings for iOS.
 ifeq ($(TARGET),IOS)
@@ -286,6 +368,7 @@ TF_CC_SRCS := $(shell cat $(MAKEFILE_DIR)/tf_cc_files.txt)
 PBT_CC_SRCS := $(shell cat $(MAKEFILE_DIR)/tf_pb_text_files.txt)
 PROTO_SRCS := $(shell cat $(MAKEFILE_DIR)/tf_proto_files.txt)
 BENCHMARK_SRCS := \
+tensorflow/core/util/reporter.cc \
 tensorflow/tools/benchmark/benchmark_model.cc \
 tensorflow/tools/benchmark/benchmark_model_main.cc
 
@@ -317,7 +400,7 @@ $(BENCHMARK_NAME): $(BENCHMARK_OBJS) $(LIB_PATH)
 	$(LIBFLAGS) $(LIB_PATH) $(LDFLAGS) $(LIBS)
 
 # Matches on the normal hand-written TensorFlow C++ source files.
-$(OBJDIR)%.o: %.cc 
+$(OBJDIR)%.o: %.cc | $(PBT_GEN_FILES)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 

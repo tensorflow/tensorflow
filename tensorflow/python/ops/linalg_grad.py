@@ -28,7 +28,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 

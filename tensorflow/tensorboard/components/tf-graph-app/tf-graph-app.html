@@ -52,6 +52,7 @@ Example
           color-by-params="[[colorByParams]]"
           stats="[[stats]]"
           color-by="{{colorBy}}"
+          render-hierarchy="[[_renderHierarchy]]"
       ></tf-graph-controls>
       <tf-graph-loader id="loader"
           out-graph-hierarchy="{{graphHierarchy}}"
@@ -68,6 +69,7 @@ Example
           progress="[[_progress]]"
           color-by="[[colorBy]]"
           color-by-params="{{colorByParams}}"
+          render-hierarchy="{{_renderHierarchy}}"
       ></tf-graph-board>
     </div>
   </div>
@@ -86,6 +88,7 @@ Polymer({
       type: String,
       observer: '_updateGraph',
     },
+    _renderHierarchy: Object,
     _progress: Object
   },
   _updateGraph: function() {

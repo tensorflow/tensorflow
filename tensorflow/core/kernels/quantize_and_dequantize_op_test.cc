@@ -36,7 +36,7 @@ class QuantizeAndDequantizeTest : public OpsTestBase {};
 // Convert a simple scalar tensor.
 TEST_F(QuantizeAndDequantizeTest, Convert_scalar_tensor) {
   TF_ASSERT_OK(
-      NodeDefBuilder("quantize_and_dequantize_Op", "_QuantizeAndDequantize")
+      NodeDefBuilder("quantize_and_dequantize_Op", "QuantizeAndDequantize")
           .Input(FakeInput(DT_FLOAT))
           .Attr("signed_input", true)
           .Attr("num_bits", 8)
@@ -56,7 +56,7 @@ TEST_F(QuantizeAndDequantizeTest, Convert_scalar_tensor) {
 // Convert a 1D tensor with signed 8 bits.
 TEST_F(QuantizeAndDequantizeTest, Convert_1D_tensor_with_int8) {
   TF_ASSERT_OK(
-      NodeDefBuilder("quantize_and_dequantize_Op", "_QuantizeAndDequantize")
+      NodeDefBuilder("quantize_and_dequantize_Op", "QuantizeAndDequantize")
           .Input(FakeInput(DT_FLOAT))
           .Attr("signed_input", true)
           .Attr("num_bits", 8)
@@ -80,7 +80,7 @@ TEST_F(QuantizeAndDequantizeTest, Convert_1D_tensor_with_int8) {
 // Convert a 1D tensor with signed 4 bits.
 TEST_F(QuantizeAndDequantizeTest, Convert_1D_tensor_with_int4) {
   TF_ASSERT_OK(
-      NodeDefBuilder("quantize_and_dequantize_Op", "_QuantizeAndDequantize")
+      NodeDefBuilder("quantize_and_dequantize_Op", "QuantizeAndDequantize")
           .Input(FakeInput(DT_FLOAT))
           .Attr("signed_input", true)
           .Attr("num_bits", 4)
@@ -103,7 +103,7 @@ TEST_F(QuantizeAndDequantizeTest, Convert_1D_tensor_with_int4) {
 // Convert a 2D tensor with signed 8 bits with given range.
 TEST_F(QuantizeAndDequantizeTest, Convert_2D_tensor_with_int8_range_given) {
   TF_ASSERT_OK(
-      NodeDefBuilder("quantize_and_dequantize_Op", "_QuantizeAndDequantize")
+      NodeDefBuilder("quantize_and_dequantize_Op", "QuantizeAndDequantize")
           .Input(FakeInput(DT_FLOAT))
           .Attr("signed_input", true)
           .Attr("num_bits", 8)
@@ -130,7 +130,7 @@ TEST_F(QuantizeAndDequantizeTest, Convert_2D_tensor_with_int8_range_given) {
 // Convert a 4D tensor with unsigned 8 bits with given range.
 TEST_F(QuantizeAndDequantizeTest, Convert_4D_tensor_with_uint8_range_given) {
   TF_ASSERT_OK(
-      NodeDefBuilder("quantize_and_dequantize_Op", "_QuantizeAndDequantize")
+      NodeDefBuilder("quantize_and_dequantize_Op", "QuantizeAndDequantize")
           .Input(FakeInput(DT_FLOAT))
           .Attr("signed_input", false)
           .Attr("num_bits", 8)
@@ -153,7 +153,7 @@ TEST_F(QuantizeAndDequantizeTest, Convert_4D_tensor_with_uint8_range_given) {
 // Convert a tensor with all 0.
 TEST_F(QuantizeAndDequantizeTest, Convert_tensor_with_all_0) {
   TF_ASSERT_OK(
-      NodeDefBuilder("quantize_and_dequantize_Op", "_QuantizeAndDequantize")
+      NodeDefBuilder("quantize_and_dequantize_Op", "QuantizeAndDequantize")
           .Input(FakeInput(DT_FLOAT))
           .Attr("signed_input", false)
           .Attr("num_bits", 8)
@@ -173,7 +173,7 @@ TEST_F(QuantizeAndDequantizeTest, Convert_tensor_with_all_0) {
 // Range is invalid
 TEST_F(QuantizeAndDequantizeTest, Invalid_range_given) {
   TF_ASSERT_OK(
-      NodeDefBuilder("quantize_and_dequantize_Op", "_QuantizeAndDequantize")
+      NodeDefBuilder("quantize_and_dequantize_Op", "QuantizeAndDequantize")
           .Input(FakeInput(DT_FLOAT))
           .Attr("num_bits", 8)
           .Attr("range_given", true)

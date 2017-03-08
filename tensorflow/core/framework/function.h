@@ -277,14 +277,25 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   //
   // If "op" is defined in the library, returns its signature.
   // Otherwise, assume "op" is a primitive op and returns its op
-  // signature.
-  const OpDef* LookUp(const string& op, Status* status) const override;
+  // signature and shape inference function.
+  Status LookUp(const string& op_type_name,
+                const OpRegistrationData** op_reg_data) const override;
 
   // Returns a proto representation of the state of this function library.
   FunctionDefLibrary ToProto() const;
 
  private:
-  std::unordered_map<string, FunctionDef> function_defs_;
+  // TODO(cwhipkey): support shape functions in FunctionDefLibrary.
+  struct FunctionDefAndOpRegistration {
+    FunctionDefAndOpRegistration(const FunctionDef& fdef_in)
+        : fdef(fdef_in), op_registration_data(fdef.signature()) {}
+
+    FunctionDef fdef;
+    OpRegistrationData op_registration_data;
+  };
+
+  std::unordered_map<string, std::unique_ptr<FunctionDefAndOpRegistration>>
+      function_defs_;
   std::unordered_map<string, string> func_grad_;
 };
 

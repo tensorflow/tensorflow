@@ -45,6 +45,7 @@ REGISTER_OP("RefSwitch")
     .Output("output_false: Ref(T)")
     .Output("output_true: Ref(T)")
     .Attr("T: type")
+    .SetAllowsUninitializedInput()
     .Doc(R"doc(
 Forwards the ref tensor `data` to the output port determined by `pred`.
 

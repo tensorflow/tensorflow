@@ -38,21 +38,6 @@ def _assert_integer_form(x):
       math_ops.round(casted_x), x.dtype))
 
 
-def _check_alpha(alpha):
-  """Check alpha for proper shape, values, then return tensor version."""
-  alpha = ops.convert_to_tensor(alpha, name='alpha_before_deps')
-  return control_flow_ops.with_dependencies(
-      [check_ops.assert_rank_at_least(alpha, 1),
-       check_ops.assert_positive(alpha)], alpha)
-
-
-def _check_n(n):
-  """Check n for proper shape, values, then return tensor version."""
-  n = ops.convert_to_tensor(n, name='n_before_deps')
-  return control_flow_ops.with_dependencies(
-      [check_ops.assert_non_negative(n), _assert_integer_form(n)], n)
-
-
 def _log_combinations(n, counts, name='log_combinations'):
   """Log number of ways counts could have come in."""
   # First a bit about the number of ways counts could have come in:
@@ -147,8 +132,10 @@ class DirichletMultinomial(distribution.DiscreteDistribution):
   def __init__(self,
                n,
                alpha,
-               name='DirichletMultinomial',
-               allow_arbitrary_counts=False):
+               allow_arbitrary_counts=False,
+               strict=True,
+               strict_statistics=True,
+               name='DirichletMultinomial'):
     """Initialize a batch of DirichletMultinomial distributions.
 
     Args:
@@ -159,11 +146,19 @@ class DirichletMultinomial(distribution.DiscreteDistribution):
       alpha:  Positive `float` or `double` tensor with shape broadcastable to
         `[N1,..., Nm, k]` `m >= 0`.  Defines this as a batch of `N1 x ... x Nm`
          different `k` class Dirichlet multinomial distributions.
-      name: The name to prefix Ops created by this distribution class.
       allow_arbitrary_counts: Boolean. This represents whether the pmf/cdf
         allows for the `counts` tensor to be non-integral values.
         The pmf/cdf are functions that can be evaluated at non-integral values,
-        but are only a distribution over non-negative integers.
+        but are only a distribution over non-negative integers.  If `strict` is
+        `False`, this assertion is turned off.
+      strict: Whether to assert valid values for parameters `alpha` and `n`, and
+        `x` in `pmf` and `log_pmf`.  If False, correct behavior is not
+        guaranteed.
+      strict_statistics:  Boolean, default True.  If True, raise an exception if
+        a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
+        If False, batch members with valid parameters leading to undefined
+        statistics will return NaN for this statistic.
+      name: The name to prefix Ops created by this distribution class.
 
     Examples:
 
@@ -176,6 +171,10 @@ class DirichletMultinomial(distribution.DiscreteDistribution):
     dist = DirichletMultinomial([3., 4], [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
     ```
     """
+    self._strict_statistics = strict_statistics
+    self._strict = strict
+    self._name = name
+    self._allow_arbitrary_counts = allow_arbitrary_counts
     with ops.op_scope([n, alpha], name):
       # Broadcasting works because:
       # * The broadcasting convention is to prepend dimensions of size [1], and
@@ -186,14 +185,9 @@ class DirichletMultinomial(distribution.DiscreteDistribution):
       #   explicitivity.
       #   * All calls involving `counts` eventually require a broadcast between
       #   `counts` and alpha.
-      self._alpha = _check_alpha(alpha)
-      self._name = name
-
-      n = _check_n(n)
-      n = math_ops.cast(n, self._alpha.dtype)
-      self._n = n
-
-      self._allow_arbitrary_counts = allow_arbitrary_counts
+      self._alpha = self._check_alpha(alpha)
+      n = self._check_n(n)
+      self._n = math_ops.cast(n, self._alpha.dtype)
 
       self._alpha_sum = math_ops.reduce_sum(
           self._alpha, reduction_indices=[-1], keep_dims=False)
@@ -212,6 +206,16 @@ class DirichletMultinomial(distribution.DiscreteDistribution):
   def alpha(self):
     """Parameter defining this distribution."""
     return self._alpha
+
+  @property
+  def strict_statistics(self):
+    """Boolean describing behavior when a stat is undefined for batch member."""
+    return self._strict_statistics
+
+  @property
+  def strict(self):
+    """Boolean describing behavior on invalid input."""
+    return self._strict
 
   @property
   def name(self):
@@ -359,7 +363,9 @@ class DirichletMultinomial(distribution.DiscreteDistribution):
 
   def _check_counts(self, counts):
     """Check counts for proper shape, values, then return tensor version."""
-    counts = ops.convert_to_tensor(counts, name='counts_before_deps')
+    counts = ops.convert_to_tensor(counts, name='counts')
+    if not self.strict:
+      return counts
     candidate_n = math_ops.reduce_sum(counts, reduction_indices=[-1])
     dependencies = [check_ops.assert_non_negative(counts),
                     check_ops.assert_equal(self._n,
@@ -369,3 +375,18 @@ class DirichletMultinomial(distribution.DiscreteDistribution):
       dependencies += [_assert_integer_form(counts)]
 
     return control_flow_ops.with_dependencies(dependencies, counts)
+
+  def _check_alpha(self, alpha):
+    alpha = ops.convert_to_tensor(alpha, name='alpha')
+    if not self.strict:
+      return alpha
+    return control_flow_ops.with_dependencies(
+        [check_ops.assert_rank_at_least(alpha, 1),
+         check_ops.assert_positive(alpha)], alpha)
+
+  def _check_n(self, n):
+    n = ops.convert_to_tensor(n, name='n')
+    if not self.strict:
+      return n
+    return control_flow_ops.with_dependencies(
+        [check_ops.assert_non_negative(n), _assert_integer_form(n)], n)

@@ -14,26 +14,93 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/util/mirror_pad_mode.h"
 #include "tensorflow/core/util/padding.h"
 
 namespace tensorflow {
+
+typedef shape_inference::Dimension Dimension;
+typedef shape_inference::InferenceContext InferenceContext;
+typedef shape_inference::Shape Shape;
+
+namespace {
+
+Status GetAxisForPackAndUnpack(InferenceContext* c, int32 rank_after_pack,
+                               int32* axis) {
+  TF_RETURN_IF_ERROR(c->GetAttr("axis", axis));
+  if (*axis < -1 * rank_after_pack || *axis >= rank_after_pack) {
+    return errors::InvalidArgument("Invalid axis: ", *axis, "; must be in [",
+                                   -1 * rank_after_pack, ",", rank_after_pack,
+                                   ")");
+  }
+  if (*axis < 0) *axis = (rank_after_pack + *axis);
+  return Status::OK();
+}
+
+}  // namespace
 
 REGISTER_OP("Pack")
     .Input("values: N * T")
     .Output("output: T")
     .Attr("N: int >= 1")
     .Attr("T: type")
+    .Attr("axis: int = 0")
+    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+      // Validate shapes of all inputs are compatible
+      const Shape* cur = c->input(c->num_inputs() - 1);
+      for (int i = c->num_inputs() - 2; i >= 0; --i) {
+        TF_RETURN_WITH_CONTEXT_IF_ERROR(c->Merge(c->input(i), cur, &cur),
+                                        "From merging shape ", i,
+                                        " with other shapes.");
+      }
+      if (!c->RankKnown(cur)) {
+        c->set_output(0, c->CreateUnknownShape());
+        return Status::OK();
+      }
+      // Determine the axis that will be added, converting from negative
+      // axes to a positive point per negative indexing rules.
+      int32 rank = c->Rank(cur);
+      int32 axis;
+      TF_RETURN_IF_ERROR(GetAxisForPackAndUnpack(c, rank + 1, &axis));
+
+      // Copy all dimensions over, inserting a dimension of value #inputs
+      // at <axis>.
+      std::vector<const Dimension*> dims;
+      int index = 0;
+      while (index < axis) dims.push_back(c->Dim(cur, index++));
+      dims.push_back(c->CreateDim(c->num_inputs()));
+      while (index < rank) dims.push_back(c->Dim(cur, index++));
+
+      c->set_output(0, c->CreateShape(dims));
+      return Status::OK();
+    }))
     .Doc(R"doc(
 Packs a list of `N` rank-`R` tensors into one rank-`(R+1)` tensor.
 
 Packs the `N` tensors in `values` into a tensor with rank one higher than each
-tensor in `values` and shape `[N] + values[0].shape`. The output satisfies
-`output[i, ...] = values[i][...]`.
+tensor in `values`, by packing them along the `axis` dimension.
+Given a list tensors of shape (A, B, C);
+
+if `axis` == 0 then the `output` tensor will have the shape (`N`, A, B, C).
+if `axis` == 1 then the `output` tensor will have the shape (A, `N`, B, C).
+Etc.
+
+For example:
+
+```prettyprint
+# 'x' is [1, 4]
+# 'y' is [2, 5]
+# 'z' is [3, 6]
+pack([x, y, z]) => [[1, 4], [2, 5], [3, 6]]  # Pack along first dim.
+pack([x, y, z], axis=1) => [[1, 2, 3], [4, 5, 6]]
+```
 
 This is the opposite of `unpack`.
 
 values: Must be of same shape and type.
+axis: Dimension along which to pack.  Negative values wrap around, so the
+  valid range is `[-(R+1), R+1)`.
 output: The packed tensor.
 )doc");
 
@@ -43,16 +110,49 @@ REGISTER_OP("Unpack")
     .Output("output: num * T")
     .Attr("num: int >= 0")
     .Attr("T: type")
-    .Doc(R"doc(
-Unpacks the outer dimension of a rank-`R` tensor into `num` rank-`(R-1)` tensors.
+    .Attr("axis: int = 0")
+    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+      const Shape* s = c->input(0);
+      const Shape* out;
+      if (c->RankKnown(s)) {
+        // Determine the axis that will be removed, converting from negative
+        // axes to a positive point per negative indexing rules.
+        int32 rank = c->Rank(s);
+        int32 axis;
+        TF_RETURN_IF_ERROR(GetAxisForPackAndUnpack(c, rank, &axis));
 
-Unpacks `num` tensors from `value` by chipping it along the first dimension.
-The i'th tensor in `output` is the slice `value[i, ...]`. Each tensor in
-`output` has shape `value.shape[1:]`.
+        // Copy all dimensions, removing the <axis> dimension.
+        std::vector<const Dimension*> dims;
+        for (int i = 0; i < rank; ++i) {
+          if (i != axis) dims.push_back(c->Dim(s, i));
+        }
+        out = c->CreateShape(dims);
+      } else {
+        // All outputs are the same shape, but it's not known.
+        out = c->CreateUnknownShape();
+      }
+      for (int i = 0; i < c->num_outputs(); ++i) c->set_output(i, out);
+      return Status::OK();
+    }))
+    .Doc(R"doc(
+Unpacks a given dimension of a rank-`R` tensor into `num` rank-`(R-1)` tensors.
+
+Unpacks `num` tensors from `value` by chipping it along the `axis` dimension.
+For example, given a tensor of shape (A, B, C ,D);
+
+If `axis` == 0 then the i'th tensor in `output` is the slice `value[i, :, :, :]`
+  and each tensor in `output` will have shape `(B, C, D)`. (Note that the
+  dimension unpacked along is gone, unlike `split`).
+
+If `axis` == 1 then the i'th tensor in `output` is the slice `value[:, i, :, :]`
+  and each tensor in `output` will have shape `(A, C, D)`.
+Etc.
 
 This is the opposite of `pack`.
 
-value: 1-D or higher, with first dimension `num`.
+value: 1-D or higher, with `axis` dimension size equal to `num`.
+axis: Dimension along which to unpack.  Negative values wrap around, so the
+  valid range is `[-R, R)`.
 output: The list of tensors unpacked from `value`.
 )doc");
 
@@ -96,7 +196,7 @@ concat_offset(2, [x, y, z]) => [0, 0, 0], [0, 2, 0], [0, 5, 0]
 
 concat_dim: The dimension along which to concatenate.
 shape: The `N` int32 vectors representing shape of tensors being concatenated.
-output: The `N` int32 vectors representing the starting offset
+offset: The `N` int32 vectors representing the starting offset
         of input tensors within the concatenated output.
 
 This is typically used by gradient computations for a concat operation.
@@ -127,6 +227,18 @@ REGISTER_OP("Const")
     .Output("output: dtype")
     .Attr("value: tensor")
     .Attr("dtype: type")
+    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+      const TensorProto* proto = nullptr;
+      TF_RETURN_IF_ERROR(c->GetAttr("value", &proto));
+      TF_RETURN_IF_ERROR(TensorShape::IsValidShape(proto->tensor_shape()));
+      TensorShape shape(proto->tensor_shape());
+      std::vector<const Dimension*> dims;
+      for (int i = 0; i < shape.dims(); ++i) {
+        dims.push_back(c->CreateDim(shape.dim_size(i)));
+      }
+      c->set_output(0, c->CreateShape(dims));
+      return Status::OK();
+    }))
     .Doc(R"doc(
 Returns a constant tensor.
 
@@ -824,7 +936,7 @@ shape(t) ==> [2, 2, 3]
 REGISTER_OP("ShapeN")
     .Input("input: N * T")
     .Output("output: N * int32")
-    .Attr("N: int32")
+    .Attr("N: int")
     .Attr("T: type")
     .Doc(R"doc(
 Returns shape of tensors.
@@ -973,6 +1085,76 @@ size: size[i] specifies the number of elements of the 'i'th dimension
   of 'input' to slice. If size[i] is -1, all remaining elements in dimension
   i are included in the slice (i.e. this is equivalent to setting
   size[i] = input.dim_size(i) - begin[i]).
+)doc");
+
+REGISTER_OP("StridedSlice")
+    .Input("input: T")
+    .Input("begin: Index")
+    .Input("end: Index")
+    .Input("strides: Index")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("Index: {int32, int64}")
+    .Attr("begin_mask: int = 0")
+    .Attr("end_mask: int = 0")
+    .Attr("ellipse_mask: int = 0")
+    .Attr("new_axis_mask: int = 0")
+    .Attr("shrink_axis_mask: int = 0")
+    .Doc(R"doc(
+Return a strided slice from `input`.
+
+The output tensor is a tensor with dimensions implied by `begin`,
+`end`, and `strides`, whose values are extracted from `begin`.
+
+Specifically, the result tensor at index `(i[0], i[1], ..., i[n-1])`
+will obtain the value `input[begin[0] + i[0] * stride[0], ..., `
+                            `begin[n-1] + i[n-1] * stride[n-1])]`.
+
+*Requirements*:
+  `0 != strides[i] for i in [0, n)`
+
+begin: `begin[i]` specifies the offset into the `i`th dimension of
+  `input` to slice from.
+end: `end[i]` specifies the first offset into the `i`th dimension of
+  `input` that will not be extracted. Out or range values are
+  clamped to `[0,dim[i]) if slice[i] > 0` or `[-1,dim[i]-1]`
+  `if slice[i] < 0`
+strides: `strides[i]` specifies the increment in the `i`th dimension
+  after extracting a given element. Negative indices will reverse
+  the original order. Out or range values are
+  clamped to `[0,dim[i]) if slice[i]>0` or `[-1,dim[i]-1] if slice[i] < 0`
+begin_mask: a bitmask where a bit i being 1 means to ignore the begin
+  value and instead use the largest interval possible. At runtime
+  begin[i] will be replaced with `[0, n-1) if `stride[i] > 0` or
+  `[-1, n-1]` if `stride[i] < 0`
+end_mask: analogous to `begin_mask`
+)doc");
+
+REGISTER_OP("StridedSliceGrad")
+    .Input("shape: Index")
+    .Input("begin: Index")
+    .Input("end: Index")
+    .Input("strides: Index")
+    .Input("dy: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("Index: {int32, int64}")
+    .Attr("begin_mask: int = 0")
+    .Attr("end_mask: int = 0")
+    .Attr("ellipse_mask: int = 0")
+    .Attr("new_axis_mask: int = 0")
+    .Attr("shrink_axis_mask: int = 0")
+    .Doc(R"doc(
+Returns the gradient of `StridedSlice`.
+
+Since `StridedSlice` cuts out pieces of its `input` which is size
+`shape`, its gradient will have the same shape (which is passed here
+as `shape`). The gradient will be zero in any element that the slice
+does not select.
+
+Arguments are the same as StridedSliceGrad with the exception that
+`dy` is the input gradient to be propagated and `shape` is the 
+shape of `StridedSlice`'s `input`.
 )doc");
 
 // --------------------------------------------------------------------------
@@ -1334,7 +1516,7 @@ REGISTER_OP("SpaceToBatch")
     .Input("paddings: int32")
     .Output("output: T")
     .Attr("T: type")
-    .Attr("block_size: int32 > 1")
+    .Attr("block_size: int >= 2")
     .Doc(R"doc(
 SpaceToBatch for 4-D tensors of type T.
 
@@ -1368,7 +1550,7 @@ The shape of the output will be:
     [batch*block_size*block_size, height_pad/block_size, width_pad/block_size,
      depth]
 
-Examples:
+Some examples:
 
 (1) For the following input of shape `[1, 2, 2, 1]` and block_size of 2:
 
@@ -1439,7 +1621,7 @@ REGISTER_OP("BatchToSpace")
     .Input("crops: int32")
     .Output("output: T")
     .Attr("T: type")
-    .Attr("block_size: int32 > 1")
+    .Attr("block_size: int >= 2")
     .Doc(R"doc(
 BatchToSpace for 4-D tensors of type T.
 
@@ -1467,7 +1649,7 @@ output: 4-D with shape `[batch, height, width, depth]`, where:
 
 The attr `block_size` must be greater than one. It indicates the block size.
 
-Examples:
+Some examples:
 
 (1) For the following input of shape `[4, 1, 1, 1]` and block_size of 2:
 
@@ -1534,7 +1716,7 @@ REGISTER_OP("SpaceToDepth")
     .Input("input: T")
     .Output("output: T")
     .Attr("T: type")
-    .Attr("block_size: int32 >= 1")
+    .Attr("block_size: int >= 2")
     .Doc(R"doc(
 SpaceToDepth for tensors of type T.
 
@@ -1618,7 +1800,7 @@ REGISTER_OP("DepthToSpace")
     .Input("input: T")
     .Output("output: T")
     .Attr("T: type")
-    .Attr("block_size: int32 >= 1")
+    .Attr("block_size: int >= 2")
     .Doc(R"doc(
 DepthToSpace for tensors of type T.
 
@@ -1709,13 +1891,13 @@ block_size: The size of the spatial block, same as in Space2Depth.
 REGISTER_OP("ExtractImagePatches")
     .Input("images: T")
     .Output("patches: T")
-    .Attr("ksizes: list(int) == 4")
-    .Attr("strides: list(int) == 4")
-    .Attr("rates: list(int) == 4")
+    .Attr("ksizes: list(int) >= 4")
+    .Attr("strides: list(int) >= 4")
+    .Attr("rates: list(int) >= 4")
     .Attr("T: realnumbertype")
     .Attr(GetPaddingAttrString())
     .Doc(R"doc(
-Extract `patches` from `images` and puth them in the "depth" output dimension.
+Extract `patches` from `images` and put them in the "depth" output dimension.
 
 images: 4-D Tensor with shape `[batch, in_rows, in_cols, depth]`.
 patches: 4-D Tensor with shape `[batch, out_rows, out_cols, ksize_rows *
@@ -1758,7 +1940,7 @@ If `T` is smaller than `type`, the operator requires that the rightmost
 dimension be equal to sizeof(`type`)/sizeof(`T`). The shape then goes from
 [..., sizeof(`type`)/sizeof(`T`)] to [...].
 
-NOTE: Bitcast is implemented as a low-level cast, so machines with different
+*NOTE*: Bitcast is implemented as a low-level cast, so machines with different
 endian orderings will give different results.
 )doc");
 
@@ -1872,10 +2054,10 @@ output: The one-hot tensor.
 )doc");
 
 // EXPERIMENTAL. DO NOT USE OR DEPEND ON THIS YET.
-REGISTER_OP("_QuantizeAndDequantize")
+REGISTER_OP("QuantizeAndDequantize")
     .Input("input: T")
     .Attr("signed_input: bool = true")
-    .Attr("num_bits: int32 = 8")
+    .Attr("num_bits: int = 8")
     .Attr("range_given: bool = false")
     .Attr("input_min: float = 0")
     .Attr("input_max: float = 0")

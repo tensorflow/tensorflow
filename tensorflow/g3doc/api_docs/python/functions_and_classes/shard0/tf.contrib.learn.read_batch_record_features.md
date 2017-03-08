@@ -16,7 +16,7 @@ See more detailed description in `read_examples`.
 *  <b>`num_epochs`</b>: Integer specifying the number of times to read through the
     dataset. If None, cycles through the dataset forever. NOTE - If specified,
     creates a variable that must be initialized, so call
-    tf.initialize_all_variables() as shown in the tests.
+    tf.initialize_local_variables() as shown in the tests.
 *  <b>`queue_capacity`</b>: Capacity for input queue.
 *  <b>`reader_num_threads`</b>: The number of threads to read examples.
 *  <b>`parser_num_threads`</b>: The number of threads to parse examples.

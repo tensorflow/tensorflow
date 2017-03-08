@@ -17,8 +17,6 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include <stdio.h>
-
 #include "tensorflow/core/kernels/slice_op.h"
 
 #include "tensorflow/core/framework/register_types.h"

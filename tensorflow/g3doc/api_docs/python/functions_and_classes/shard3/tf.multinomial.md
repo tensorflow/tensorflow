@@ -4,11 +4,11 @@ Draws samples from a multinomial distribution.
 
 Example:
 
-  samples = tf.multinomial(tf.log([[0.5, 0.5]]), 10)
-  # samples has shape [1, 10], where each value is either 0 or 1.
-
-  samples = tf.multinomial([[1, -1, -1]], 10)
-  # samples is equivalent to tf.zeros([1, 10], dtype=tf.int64).
+```python
+# samples has shape [1, 5], where each value is either 0 or 1 with equal
+# probability.
+samples = tf.multinomial(tf.log([[10., 10.]]), 5)
+```
 
 ##### Args:
 

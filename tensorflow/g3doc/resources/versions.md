@@ -134,6 +134,10 @@ Finally, when support for a `GraphDef` version is dropped, we will attempt to
 provide tools for automatically converting graphs to a newer supported
 `GraphDef` version.
 
+For developer-level details about `GraphDef` versioning, including how to evolve
+the versions to account for changes, see [TensorFlow Data
+Versioning](data_versions.md).
+
 
 ## C++ API Compatibility
 

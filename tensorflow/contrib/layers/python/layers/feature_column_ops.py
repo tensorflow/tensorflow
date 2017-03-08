@@ -88,7 +88,7 @@ def input_from_feature_columns(columns_to_tensors,
   Raises:
     ValueError: if FeatureColumn cannot be consumed by a neural network.
   """
-
+  check_feature_columns(feature_columns)
   with variable_scope.variable_op_scope(columns_to_tensors.values(), name,
                                         'input_from_feature_columns'):
     output_tensors = []
@@ -96,10 +96,15 @@ def input_from_feature_columns(columns_to_tensors,
     if weight_collections:
       weight_collections = list(set(list(weight_collections) +
                                     [ops.GraphKeys.VARIABLES]))
+
     for column in sorted(set(feature_columns), key=lambda x: x.key):
-      transformed_tensor = transformer.transform(column)
-      output_tensors.append(column.to_dnn_input_layer(
-          transformed_tensor, weight_collections, trainable))
+      try:
+        transformed_tensor = transformer.transform(column)
+        output_tensors.append(column.to_dnn_input_layer(
+            transformed_tensor, weight_collections, trainable))
+      except ValueError as e:
+        raise ValueError('Error creating input layer for column: {}.\n'
+                         '{}'.format(column.name, e))
     return array_ops.concat(1, output_tensors)
 
 
@@ -166,17 +171,22 @@ def weighted_sum_from_feature_columns(columns_to_tensors,
   Raises:
     ValueError: if FeatureColumn cannot be used for linear predictions.
   """
+  check_feature_columns(feature_columns)
   with variable_scope.variable_op_scope(columns_to_tensors.values(), name,
                                         'weighted_sum_from_feature_columns'):
     output_tensors = []
     column_to_variable = dict()
     transformer = _Transformer(columns_to_tensors)
     for column in sorted(set(feature_columns), key=lambda x: x.key):
-      transformed_tensor = transformer.transform(column)
-      predictions, variable = column.to_weighted_sum(transformed_tensor,
-                                                     num_outputs,
-                                                     weight_collections,
-                                                     trainable)
+      try:
+        transformed_tensor = transformer.transform(column)
+        predictions, variable = column.to_weighted_sum(transformed_tensor,
+                                                       num_outputs,
+                                                       weight_collections,
+                                                       trainable)
+      except ValueError as e:
+        raise ValueError('Error creating weighted sum for column: {}.\n'
+                         '{}'.format(column.name, e))
       output_tensors.append(predictions)
       column_to_variable[column] = variable
       _log_variable(variable)
@@ -237,7 +247,7 @@ def parse_feature_columns_from_examples(serialized,
   Returns:
     A `dict` mapping FeatureColumn to `Tensor` and `SparseTensor` values.
   """
-
+  check_feature_columns(feature_columns)
   columns_to_tensors = parsing_ops.parse_example(
       serialized=serialized,
       features=fc.create_feature_spec_for_parsing(feature_columns),
@@ -288,6 +298,26 @@ def infer_real_valued_columns(features):
     feature_columns.append(_infer_real_valued_column_for_tensor(key, value))
 
   return feature_columns
+
+
+def check_feature_columns(feature_columns):
+  """Checks the validity of the set of FeatureColumns.
+
+  Args:
+    feature_columns: A set of instances or subclasses of FeatureColumn.
+
+  Raises:
+    ValueError: If there are duplicate feature column keys.
+  """
+  seen_keys = set()
+  for f in feature_columns:
+    key = f.key
+    if key in seen_keys:
+      raise ValueError('Duplicate feature column key found for column: {}. '
+                       'This usually means that the column is almost identical '
+                       'to another column, and one must be discarded.'.format(
+                           f.name))
+    seen_keys.add(key)
 
 
 class _Transformer(object):

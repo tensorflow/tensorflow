@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# ==============================================================================
+# =============================================================================
 
 # pylint: disable=unused-import,g-bad-import-order
 """## Activation Functions
@@ -220,6 +220,12 @@ Neural Networks.  Most accept an `RNNCell`-subclassed object
 @@state_saving_rnn
 @@bidirectional_rnn
 
+## Conectionist Temporal Classification (CTC)
+
+@@ctc_loss
+@@ctc_greedy_decoder
+@@ctc_beam_search_decoder
+
 ## Evaluation
 
 The evaluation ops are useful for measuring the performance of a network.
@@ -269,12 +275,12 @@ from __future__ import print_function
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import candidate_sampling_ops
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import init_ops
@@ -294,6 +300,7 @@ from tensorflow.python.util.all_util import make_all
 # Bring more nn-associated functionality into this package.
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
+from tensorflow.python.ops.ctc_ops import *
 from tensorflow.python.ops.nn_ops import *
 from tensorflow.python.ops.candidate_sampling_ops import *
 from tensorflow.python.ops.embedding_ops import *
@@ -765,12 +772,22 @@ def moments(x, axes, shift=None, name=None, keep_dims=False):
     Two `Tensor` objects: `mean` and `variance`.
   """
   with ops.op_scope([x, axes, shift], name, "moments"):
-    counts, m_ss, v_ss, shift = sufficient_statistics(x,
+    # The dynamic range of fp16 is too limited to support the collection of
+    # sufficient statistics. As a workaround we simply perform the operations
+    # on 32-bit floats before converting the mean and variance back to fp16
+    y = math_ops.cast(x, dtypes.float32) if x.dtype == dtypes.float16 else x
+    counts, m_ss, v_ss, shift = sufficient_statistics(y,
                                                       axes,
                                                       shift=shift,
                                                       keep_dims=keep_dims,
                                                       name=name)
-    return normalize_moments(counts, m_ss, v_ss, shift, name=name)
+    with ops.control_dependencies([counts, m_ss, v_ss]):
+      mean, variance = normalize_moments(counts, m_ss, v_ss, shift, name=name)
+      if x.dtype == dtypes.float16:
+        return (math_ops.cast(mean, dtypes.float16), math_ops.cast(
+            variance, dtypes.float16))
+      else:
+        return (mean, variance)
 
 
 def batch_normalization(x,
@@ -1186,14 +1203,10 @@ __all__.extend([
     "all_candidate_sampler",
     "batch_norm_with_global_normalization",
     "batch_normalization",
-    "bidirectional_rnn",
     "conv2d_backprop_filter",
     "conv2d_backprop_input",
     "depthwise_conv2d_native",
-    "dynamic_rnn",
     "lrn",
     "relu_layer",
-    "rnn",
-    "state_saving_rnn",
     "xw_plus_b",
 ])

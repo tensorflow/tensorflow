@@ -38,9 +38,7 @@ namespace tensorflow {
 typedef FunctionDefHelper FDH;
 
 Status GetOpSig(const string& op, const OpDef** sig) {
-  Status s;
-  *sig = OpRegistry::Global()->LookUp(op, &s);
-  return s;
+  return OpRegistry::Global()->LookUpOpDef(op, sig);
 }
 
 void FunctionTestSchedClosure(std::function<void()> fn) {

@@ -35,6 +35,7 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import versions_pb2
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import versions
@@ -1937,6 +1938,7 @@ class Graph(object):
     self._nodes_by_id = dict()  # GUARDED_BY(self._lock)
     self._next_id_counter = 0  # GUARDED_BY(self._lock)
     self._nodes_by_name = dict()  # GUARDED_BY(self._lock)
+    self._version = 0  # GUARDED_BY(self._lock)
     # Current name stack: uniquified names
     self._name_stack = ""
     # Maps a name used in the graph to the next id to use for that name.
@@ -1983,6 +1985,9 @@ class Graph(object):
     self._handle_movers = {}
     # A map from tensor handle to its delete op.
     self._handle_deleters = {}
+    # Resource container.
+    self._container = ""
+    self._registered_ops = op_def_registry.get_registered_ops()
 
   def _check_not_finalized(self):
     """Check if the graph is finalized.
@@ -2007,6 +2012,7 @@ class Graph(object):
     if not isinstance(op, (Tensor, Operation)):
       raise TypeError("op must be a Tensor or Operation: %s" % op)
     with self._lock:
+      # pylint: disable=protected-access
       if op._id in self._nodes_by_id:
         raise ValueError("cannot add an op with id %d as it already "
                          "exists in the graph" % op._id)
@@ -2015,6 +2021,8 @@ class Graph(object):
                          "is already used" % op.name)
       self._nodes_by_id[op._id] = op
       self._nodes_by_name[op.name] = op
+      self._version = max(self._version, op._id)
+      # pylint: enable=protected-access
 
   @property
   def version(self):
@@ -2023,7 +2031,8 @@ class Graph(object):
     Note that this is unrelated to the
     [GraphDef version](#Graph.graph_def_version).
     """
-    return self._next_id_counter
+    with self._lock:
+      return self._version
 
   @property
   def graph_def_versions(self):
@@ -2077,7 +2086,7 @@ class Graph(object):
     """
     self._control_flow_context = context
 
-  def as_graph_def(self, from_version=None, add_shapes=False):
+  def _as_graph_def(self, from_version=None, add_shapes=False):
     """Returns a serialized `GraphDef` representation of this graph.
 
     The serialized `GraphDef` can be imported into another `Graph`
@@ -2094,11 +2103,14 @@ class Graph(object):
         node with the inferred shapes of each of its outputs.
 
     Returns:
-      A [`GraphDef`](https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto)
-      protocol buffer.
+      A tuple containing a
+      [`GraphDef`](https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto)
+      protocol buffer, and the version of the graph to which that
+      `GraphDef` corresponds.
 
     Raises:
       ValueError: If the `graph_def` would be too large.
+
     """
     with self._lock:
       graph = graph_pb2.GraphDef()
@@ -2126,8 +2138,33 @@ class Graph(object):
           grad_def.function_name = func
           grad_def.gradient_func = self._function_gradient[func]
           graph.library.gradient.extend([grad_def])
+      return graph, self._version
 
-    return graph
+  def as_graph_def(self, from_version=None, add_shapes=False):
+    """Returns a serialized `GraphDef` representation of this graph.
+
+    The serialized `GraphDef` can be imported into another `Graph`
+    (using [`import_graph_def()`](#import_graph_def)) or used with the
+    [C++ Session API](../../api_docs/cc/index.md).
+
+    This method is thread-safe.
+
+    Args:
+      from_version: Optional.  If this is set, returns a `GraphDef`
+        containing only the nodes that were added to this graph since
+        its `version` property had the given value.
+      add_shapes: If true, adds an "_output_shapes" list attr to each
+        node with the inferred shapes of each of its outputs.
+
+    Returns:
+      A [`GraphDef`](https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto)
+      protocol buffer.
+
+    Raises:
+      ValueError: If the `graph_def` would be too large.
+    """
+    result, _ = self._as_graph_def(from_version, add_shapes)
+    return result
 
   def _is_function(self, name):
     """Tests whether 'name' is registered in this graph's function library.
@@ -2286,6 +2323,19 @@ class Graph(object):
       all_colocation_groups = sorted(set(all_colocation_groups))
       ret.node_def.attr["_class"].CopyFrom(attr_value_pb2.AttrValue(
           list=attr_value_pb2.AttrValue.ListValue(s=all_colocation_groups)))
+
+    # Sets "container" attribute if
+    # (1) self._container is not None
+    # (2) "is_stateful" is set in OpDef
+    # (3) "container" attribute is in OpDef
+    # (4) "container" attribute is None
+    if (self._container and
+        op_type in self._registered_ops and
+        self._registered_ops[op_type].is_stateful and
+        "container" in ret.node_def.attr and
+        not ret.node_def.attr["container"].s):
+      ret.node_def.attr["container"].CopyFrom(
+          attr_value_pb2.AttrValue(s=compat.as_bytes(self._container)))
 
     return ret
 
@@ -2925,6 +2975,60 @@ class Graph(object):
         break
       op._set_device(device_function(op))
 
+  # pylint: disable=g-doc-return-or-yield
+  @contextlib.contextmanager
+  def container(self, container_name):
+    """Returns a context manager that specifies the resource container to use.
+
+    Stateful operations, such as variables and queues, can maintain their
+    states on devices so that they can be shared by multiple processes.
+    A resource container is a string name under which these stateful
+    operations are tracked. These resources can be released or cleared
+    with `tf.Session.reset()`.
+
+    For example:
+
+    ```python
+    with g.container('experiment0'):
+      # All stateful Operations constructed in this context will be placed
+      # in resource container "experiment0".
+      v1 = tf.Variable([1.0])
+      v2 = tf.Variable([2.0])
+      with g.container("experiment1"):
+        # All stateful Operations constructed in this context will be
+        # placed in resource container "experiment1".
+        v3 = tf.Variable([3.0])
+        q1 = tf.FIFOQueue(10, tf.float32)
+      # All stateful Operations constructed in this context will be
+      # be created in the "experiment0".
+      v4 = tf.Variable([4.0])
+      q1 = tf.FIFOQueue(20, tf.float32)
+      with g.container(""):
+        # All stateful Operations constructed in this context will be
+        # be placed in the default resource container.
+        v5 = tf.Variable([5.0])
+        q3 = tf.FIFOQueue(30, tf.float32)
+
+    # Resets container "experiment0", after which the state of v1, v2, v4, q1
+    # will become undefined (such as unitialized).
+    tf.Session.reset(target, ["experiment0"])
+    ```
+
+    Args:
+      container_name: container name string.
+
+    Returns:
+      A context manager for defining resource containers for stateful ops,
+        yields the container name.
+    """
+    original_container = self._container
+    try:
+      self._container = container_name
+      yield self._container
+    finally:
+      self._container = original_container
+  # pylint: enable=g-doc-return-or-yield
+
   class _ControlDependenciesController(object):
     """Context manager for `control_dependencies()`."""
 
@@ -3300,6 +3404,19 @@ def device(device_name_or_function):
     created ops.
   """
   return get_default_graph().device(device_name_or_function)
+
+
+def container(container_name):
+  """Wrapper for `Graph.container()` using the default graph.
+
+  Args:
+    container_name: The container string to use in the context.
+
+  Returns:
+    A context manager that specifies the default container to use for newly
+    created stateful ops.
+  """
+  return get_default_graph().container(container_name)
 
 
 def colocate_with(op, ignore_existing=False):
@@ -3716,6 +3833,8 @@ class GraphKeys(object):
   TRAINABLE_VARIABLES = "trainable_variables"
   # Key to collect local variables that are not saved/restored.
   LOCAL_VARIABLES = "local_variables"
+  # Key to collect model variables defined by layers.
+  MODEL_VARIABLES = "model_variables"
   # Key to collect summaries.
   SUMMARIES = "summaries"
   # Key to collect QueueRunners.

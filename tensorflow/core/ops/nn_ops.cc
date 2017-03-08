@@ -28,7 +28,7 @@ REGISTER_OP("AvgPool")
     .Attr("strides: list(int) >= 4")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
-    .Attr("T: {float, double}")
+    .Attr("T: {float, half, double}")
     .Doc(R"doc(
 Performs average pooling on the input.
 
@@ -55,7 +55,7 @@ REGISTER_OP("AvgPoolGrad")
     .Attr("strides: list(int) >= 4")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
-    .Attr("T: {float, double}")
+    .Attr("T: {float, half, double}")
     .Doc(R"doc(
 Computes gradients of the average pooling function.
 
@@ -433,8 +433,8 @@ is also known as a sliding dot product or sliding inner-product.
 Our Conv3D implements a form of cross-correlation.
 
 input: Shape `[batch, in_depth, in_height, in_width, in_channels]`.
-filter: Shape `[filter_depth, filter_height, filter_width, in_channels, out_channels]`.
-  `in_channels` must match between `input` and `filter`.
+filter: Shape `[filter_depth, filter_height, filter_width, in_channels,
+  out_channels]`. `in_channels` must match between `input` and `filter`.
 strides: 1-D tensor of length 5. The stride of the sliding window for each
   dimension of `input`. Must have `strides[0] = strides[4] = 1`.
 padding: The type of padding algorithm to use.
@@ -449,13 +449,15 @@ REGISTER_OP("Conv3DBackpropInput")
     .Attr("T: numbertype")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
+    .Deprecated(10, "Use Conv3DBackpropInputV2")
     .Doc(R"doc(
-Computes the gradients of 3D convolution with respect to the input.
+Computes the gradients of 3-D convolution with respect to the input.
 
 input: Shape `[batch, depth, rows, cols, in_channels]`.
 filter: Shape `[depth, rows, cols, in_channels, out_channels]`.
   `in_channels` must match between `input` and `filter`.
-out_backprop: Backprop signal of shape `[batch, out_depth, out_rows, out_cols, out_channels]`.
+out_backprop: Backprop signal of shape `[batch, out_depth, out_rows, out_cols,
+  out_channels]`.
 strides: 1-D tensor of length 5. The stride of the sliding window for each
   dimension of `input`. Must have `strides[0] = strides[4] = 1`.
 padding: The type of padding algorithm to use.
@@ -470,13 +472,63 @@ REGISTER_OP("Conv3DBackpropFilter")
     .Attr("T: numbertype")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
+    .Deprecated(10, "Use Conv3DBackpropFilterV2")
     .Doc(R"doc(
-Computes the gradients of 3D convolution with respect to the filter.
+Computes the gradients of 3-D convolution with respect to the filter.
 
 input: Shape `[batch, depth, rows, cols, in_channels]`.
 filter: Shape `[depth, rows, cols, in_channels, out_channels]`.
   `in_channels` must match between `input` and `filter`.
-out_backprop: Backprop signal of shape `[batch, out_depth, out_rows, out_cols, out_channels]`.
+out_backprop: Backprop signal of shape `[batch, out_depth, out_rows, out_cols,
+  out_channels]`.
+strides: 1-D tensor of length 5. The stride of the sliding window for each
+  dimension of `input`. Must have `strides[0] = strides[4] = 1`.
+padding: The type of padding algorithm to use.
+
+)doc");
+
+REGISTER_OP("Conv3DBackpropInputV2")
+    .Input("input_sizes: int32")
+    .Input("filter: T")
+    .Input("out_backprop: T")
+    .Output("output: T")
+    .Attr("T: numbertype")
+    .Attr("strides: list(int) >= 5")
+    .Attr(GetPaddingAttrString())
+    .Doc(R"doc(
+Computes the gradients of 3-D convolution with respect to the input.
+
+input_sizes: An integer vector representing the tensor shape of `input`,
+   where `input` is a 5-D
+   `[batch, depth, rows, cols, in_channels]` tensor.
+filter: Shape `[depth, rows, cols, in_channels, out_channels]`.
+  `in_channels` must match between `input` and `filter`.
+out_backprop: Backprop signal of shape `[batch, out_depth, out_rows, out_cols,
+  out_channels]`.
+strides: 1-D tensor of length 5. The stride of the sliding window for each
+  dimension of `input`. Must have `strides[0] = strides[4] = 1`.
+padding: The type of padding algorithm to use.
+
+)doc");
+
+REGISTER_OP("Conv3DBackpropFilterV2")
+    .Input("input: T")
+    .Input("filter_sizes: int32")
+    .Input("out_backprop: T")
+    .Output("output: T")
+    .Attr("T: numbertype")
+    .Attr("strides: list(int) >= 5")
+    .Attr(GetPaddingAttrString())
+    .Doc(R"doc(
+Computes the gradients of 3-D convolution with respect to the filter.
+
+input: Shape `[batch, depth, rows, cols, in_channels]`.
+filter_sizes: An integer vector representing the tensor shape of `filter`,
+  where `filter` is a 5-D
+  `[filter_depth, filter_height, filter_width, in_channels, out_channels]`
+  tensor.
+out_backprop: Backprop signal of shape `[batch, out_depth, out_rows, out_cols,
+  out_channels]`.
 strides: 1-D tensor of length 5. The stride of the sliding window for each
   dimension of `input`. Must have `strides[0] = strides[4] = 1`.
 padding: The type of padding algorithm to use.
@@ -496,7 +548,7 @@ REGISTER_OP("AvgPool3D")
 Performs 3D average pooling on the input.
 
 ksize: 1-D tensor of length 5. The size of the window for each dimension of
-  the input tensor. Must have `ksize[0] = ksize[1] = 1`.
+  the input tensor. Must have `ksize[0] = ksize[4] = 1`.
 strides: 1-D tensor of length 5. The stride of the sliding window for each
   dimension of `input`. Must have `strides[0] = strides[4] = 1`.
 padding: The type of padding algorithm to use.
@@ -516,7 +568,7 @@ REGISTER_OP("AvgPool3DGrad")
 Computes gradients of average pooling function.
 
 ksize: 1-D tensor of length 5. The size of the window for each dimension of
-  the input tensor. Must have `ksize[0] = ksize[1] = 1`.
+  the input tensor. Must have `ksize[0] = ksize[4] = 1`.
 strides: 1-D tensor of length 5. The stride of the sliding window for each
   dimension of `input`. Must have `strides[0] = strides[4] = 1`.
 padding: The type of padding algorithm to use.
@@ -538,7 +590,7 @@ REGISTER_OP("MaxPool3D")
 Performs 3D max pooling on the input.
 
 ksize: 1-D tensor of length 5. The size of the window for each dimension of
-  the input tensor. Must have `ksize[0] = ksize[1] = 1`.
+  the input tensor. Must have `ksize[0] = ksize[4] = 1`.
 strides: 1-D tensor of length 5. The stride of the sliding window for each
   dimension of `input`. Must have `strides[0] = strides[4] = 1`.
 padding: The type of padding algorithm to use.
@@ -559,7 +611,7 @@ REGISTER_OP("MaxPool3DGrad")
 Computes gradients of max pooling function.
 
 ksize: 1-D tensor of length 5. The size of the window for each dimension of
-  the input tensor. Must have `ksize[0] = ksize[1] = 1`.
+  the input tensor. Must have `ksize[0] = ksize[4] = 1`.
 strides: 1-D tensor of length 5. The stride of the sliding window for each
   dimension of `input`. Must have `strides[0] = strides[4] = 1`.
 padding: The type of padding algorithm to use.
@@ -588,12 +640,13 @@ output: 0-D.
 // --------------------------------------------------------------------------
 
 REGISTER_OP("LRN")
-    .Input("input: float")
-    .Output("output: float")
+    .Input("input: T")
+    .Output("output: T")
     .Attr("depth_radius: int = 5")
     .Attr("bias: float = 1.0")
     .Attr("alpha: float = 1.0")
     .Attr("beta: float = 0.5")
+    .Attr("T: {float, half} = DT_FLOAT")
     .Doc(R"doc(
 Local Response Normalization.
 
@@ -618,14 +671,15 @@ beta: An exponent.
 )doc");
 
 REGISTER_OP("LRNGrad")
-    .Input("input_grads: float")
-    .Input("input_image: float")
-    .Input("output_image: float")
-    .Output("output: float")
+    .Input("input_grads: T")
+    .Input("input_image: T")
+    .Input("output_image: T")
+    .Output("output: T")
     .Attr("depth_radius: int = 5")
     .Attr("bias: float = 1.0")
     .Attr("alpha: float = 1.0")
     .Attr("beta: float = 0.5")
+    .Attr("T: {float, half} = DT_FLOAT")
     .Doc(R"doc(
 Gradients for Local Response Normalization.
 
@@ -642,12 +696,13 @@ output: The gradients for LRN.
 // --------------------------------------------------------------------------
 
 REGISTER_OP("MaxPool")
+    .Attr("T: {float, half} = DT_FLOAT")
     .Attr("ksize: list(int) >= 4")
     .Attr("strides: list(int) >= 4")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
-    .Input("input: float")
-    .Output("output: float")
+    .Input("input: T")
+    .Output("output: T")
     .Doc(R"doc(
 Performs max pooling on the input.
 
@@ -669,10 +724,11 @@ REGISTER_OP("MaxPoolGrad")
     .Attr("strides: list(int) >= 4")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
-    .Input("orig_input: float")
-    .Input("orig_output: float")
-    .Input("grad: float")
-    .Output("output: float")
+    .Input("orig_input: T")
+    .Input("orig_output: T")
+    .Input("grad: T")
+    .Output("output: T")
+    .Attr("T: {float, half} = DT_FLOAT")
     .Doc(R"doc(
 Computes gradients of the maxpooling function.
 
@@ -696,9 +752,10 @@ REGISTER_OP("MaxPoolWithArgmax")
     .Attr("strides: list(int) >= 4")
     .Attr("Targmax: {int32, int64} = DT_INT64")
     .Attr(GetPaddingAttrString())
-    .Input("input: float")
-    .Output("output: float")
+    .Input("input: T")
+    .Output("output: T")
     .Output("argmax: Targmax")
+    .Attr("T: {float, half} = DT_FLOAT")
     .Doc(R"doc(
 Performs max pooling on the input and outputs both max values and indices.
 
@@ -720,10 +777,11 @@ REGISTER_OP("MaxPoolGradWithArgmax")
     .Attr("strides: list(int) >= 4")
     .Attr(GetPaddingAttrString())
     .Attr("Targmax: {int32, int64}")
-    .Input("input: float")
-    .Input("grad: float")
+    .Input("input: T")
+    .Input("grad: T")
     .Input("argmax: Targmax")
-    .Output("output: float")
+    .Output("output: T")
+    .Attr("T: {float, half} = DT_FLOAT")
     .Doc(R"doc(
 Computes gradients of the maxpooling function.
 
@@ -772,8 +830,8 @@ In detail, the grayscale morphological 2-D dilation is the max-sum correlation
 Max-pooling is a special case when the filter has size equal to the pooling
 kernel size and contains all zeros.
 
-Duality: The dilation of `input` by the `filter` is equal to the negation of
-the erosion of `-input` by the reflected `filter`.
+Note on duality: The dilation of `input` by the `filter` is equal to the
+negation of the erosion of `-input` by the reflected `filter`.
 
 input: 4-D with shape `[batch, in_height, in_width, depth]`.
 filter: 3-D with shape `[filter_height, filter_width, depth]`.
@@ -955,7 +1013,7 @@ Computes softmax activations.
 
 For each batch `i` and class `j` we have
 
-    softmax[i, j] = exp(logits[i, j]) / sum(exp(logits[i]))
+    softmax[i, j] = exp(logits[i, j]) / sum_j(exp(logits[i, j]))
 
 logits: 2-D with shape `[batch_size, num_classes]`.
 softmax: Same shape as `logits`.

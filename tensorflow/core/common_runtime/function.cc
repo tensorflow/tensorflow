@@ -301,9 +301,7 @@ FunctionLibraryRuntimeImpl::FunctionLibraryRuntimeImpl(
       lib_def_(lib_def),
       optimizer_(optimizer_options) {
   get_func_sig_ = [this](const string& op, const OpDef** sig) {
-    Status s;
-    *sig = lib_def_->LookUp(op, &s);
-    return s;
+    return lib_def_->LookUpOpDef(op, sig);
   };
   create_kernel_ = [this](const NodeDef& ndef, OpKernel** kernel) {
     return CreateKernel(ndef, kernel);
@@ -689,9 +687,9 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
 }
 
 bool FunctionLibraryRuntimeImpl::IsStateful(const string& func) {
-  Status s;
-  auto sig = lib_def_->LookUp(func, &s);
-  return s.ok() && sig->is_stateful();
+  const OpDef* op_def;
+  const Status s = lib_def_->LookUpOpDef(func, &op_def);
+  return s.ok() && op_def->is_stateful();
 }
 
 FunctionLibraryRuntime* NewFunctionLibraryRuntime(

@@ -135,7 +135,6 @@ namespace functor {
   DECLARE_GPU_SPEC_FOR_OP(T, DenseUpdateType::ADD); \
   DECLARE_GPU_SPEC_FOR_OP(T, DenseUpdateType::SUB)
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
-DECLARE_GPU_SPEC(Eigen::half);
 #undef DECLARE_GPU_SPEC
 #undef DECLARE_GPU_SPEC_FOR_OP
 }  // namespace functor

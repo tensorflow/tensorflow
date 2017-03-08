@@ -75,12 +75,12 @@ import collections
 import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.framework import common_shapes
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import common_shapes
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
@@ -92,6 +92,7 @@ from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops.gen_control_flow_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import nest
 
 
 # We override the 'tuple' for a control flow op, so we keep python's
@@ -772,13 +773,13 @@ class GradLoopState(object):
           # Record the history of this value in forward_ctxt.
           # TODO(yuanbyu): Avoid recording constants.
           self._grad_context.Exit()
-          h_value = cur_grad_state.AddForwardAccumulator(cur_value)
+          history_value = cur_grad_state.AddForwardAccumulator(cur_value)
           self._grad_context.Enter()
           break
 
       if real_value is None:
         # Add the stack pop op in the grad context.
-        real_value = self.AddBackPropAccumulatedValue(h_value, value)
+        real_value = self.AddBackPropAccumulatedValue(history_value, value)
       self._history_map[value.name] = real_value
     return real_value
 
@@ -839,6 +840,8 @@ class ControlFlowState(object):
     Note that this method modifies `between_op_list` and `between_ops`.
     """
     forward_ctxt = _GetWhileContext(op)
+    if forward_ctxt.grad_state:
+      raise TypeError("Second-order gradient for while loops not supported.")
     grad_state = self._map.get(forward_ctxt)
     if grad_state is None:
       # This is a new while loop so create a grad state for it.
@@ -891,7 +894,7 @@ class ControlFlowState(object):
       else:
         # Only the shape of value is needed for backprop.
         forward_ctxt.outer_context.Enter()
-        shape = array_ops.shape(value)
+        shape = array_ops.shape(val)
         forward_ctxt.outer_context.Exit()
         # Save the shape to a stack.
         history_shape = outer_grad_state.AddForwardAccumulator(shape)
@@ -900,7 +903,7 @@ class ControlFlowState(object):
         outer_grad_ctxt.Enter()
         real_shape = outer_grad_state.AddBackPropAccumulatedValue(
             history_shape, shape)
-        result = array_ops.zeros(real_shape, value.dtype)
+        result = array_ops.zeros(real_shape, val.dtype)
         outer_grad_ctxt.Exit()
     else:
       # This is not a nested loop.
@@ -963,13 +966,13 @@ class ControlFlowState(object):
 
       # Add forward accumulator for shape.
       grad_state.grad_context.Exit()
-      h_shape = grad_state.AddForwardAccumulator(
+      history_zeros_shape = grad_state.AddForwardAccumulator(
           zeros_shape, dead_branch=dead_branch)
       grad_state.grad_context.Enter()
 
       # Create a zero tensor with the right shape.
       shape = grad_state.AddBackPropAccumulatedValue(
-          h_shape, zeros_shape, dead_branch)
+          history_zeros_shape, zeros_shape, dead_branch)
       result = array_ops.zeros(shape, val.dtype)
     return result
 
@@ -1593,36 +1596,56 @@ class WhileContext(ControlFlowContext):
     self.Exit()
     return next_count
 
-  def AddBackPropAccumulator(self, value):
+  def AddBackPropAccumulator(self, op, grad):
     """Add an accumulation loop for every loop invariant.
 
-    This is added to the backprop loop. It is used to accumulate
-    partial gradients within each loop iteration. Called when in the
-    gradient while context.
+    This is added to the backprop loop. It is used to accumulate partial
+    gradients within each loop iteration. Called when in the gradient while
+    context.
 
     The pseudocode is:
       ```
       acc = 0.0;
       while (_pivot) {
-        acc += value;
+        acc += grad;
       }
       ```
 
     Args:
-      value: The partial gradient of an iteration for a loop invariant.
+      op: The Enter op for a loop invariant.
+      grad: The partial gradient of an iteration for a loop invariant.
 
     Returns:
       The gradient for a loop invariant.
     """
     self.Exit()
-    shape = value.get_shape()
-    if not shape.is_fully_defined():
-      shape = None
-    if self.outer_context: self.outer_context.Enter()
-    acc = constant_op.constant(0, value.dtype, shape=shape, name="b_acc")
-    if not shape:
-      acc._shape = value.get_shape()  # pylint: disable=protected-access
-    if self.outer_context: self.outer_context.Exit()
+    # Create a zeros tensor with the right shape for acc. If we don't
+    # know the full shape statically, we will have to get the shape
+    # dynamically from the forward inference. Getting the shape right
+    # for the zeros is only needed for the base case when the loop exits
+    # without running any iterations.
+    shape = grad.get_shape()
+    if shape.is_fully_defined():
+      if self.outer_context: self.outer_context.Enter()
+      acc = constant_op.constant(0, grad.dtype, shape=shape, name="b_acc")
+      if self.outer_context: self.outer_context.Exit()
+    else:
+      value = op.inputs[0]
+      if self.outer_context:
+        forward_ctxt = self.grad_state.forward_ctxt
+        forward_ctxt.outer_context.Enter()
+        zeros_shape = array_ops.shape(value)
+        forward_ctxt.outer_context.Exit()
+        history_zeros_shape = grad_state.AddForwardAccumulator(zeros_shape)
+        self.outer_context.Enter()
+        real_shape = outer_grad_state.AddBackPropAccumulatedValue(
+            history_zeros_shape, zeros_shape)
+        acc = array_ops.zeros(real_shape, grad.dtype)
+        self.outer_context.Exit()
+      else:
+        zeros_shape = array_ops.shape(value)
+        acc = array_ops.zeros(zeros_shape, grad.dtype)
+      acc._shape = grad.get_shape()  # pylint: disable=protected-access
 
     self.Enter()
     self.AddName(acc.name)
@@ -1630,30 +1653,30 @@ class WhileContext(ControlFlowContext):
                        parallel_iterations=self._parallel_iterations,
                        name="b_acc")
     merge_acc = merge([enter_acc, enter_acc], name="b_acc")[0]
-    switch_acc = switch(merge_acc, self._pivot)
+    switch_acc_false, switch_acc_true = switch(merge_acc, self._pivot)
 
-    add_acc = math_ops.add(switch_acc[1], value)
+    add_acc = math_ops.add(switch_acc_true, grad)
     next_acc = _NextIteration(add_acc)
     merge_acc.op._update_input(1, next_acc)  # pylint: disable=protected-access
 
-    acc_result = exit(switch_acc[0], name="b_acc")
+    acc_result = exit(switch_acc_false, name="b_acc")
     self.ExitResult([acc_result])
     return acc_result
 
-  def AddBackPropIndexedSlicesAccumulator(self, value):
+  def AddBackPropIndexedSlicesAccumulator(self, grad):
     """This is used for accumulating gradients that are IndexedSlices.
 
     This is essentially the equavalent of AddBackPropAccumulator but optimized
     for things like updating embeddings from within a while loop.
 
     Args:
-      value: The partial gradients represented as an IndexedSlices.
+      grad: The partial gradients represented as an IndexedSlices.
 
     Returns:
       The accumulated IndexedSlices gradient of the loop invariant.
     """
-    values = value.values
-    indices = value.indices
+    values = grad.values
+    indices = grad.indices
 
     self.Exit()
     shape = tensor_shape.TensorShape([tensor_shape.Dimension(1)] +
@@ -1667,6 +1690,7 @@ class WhileContext(ControlFlowContext):
       values_acc._shape = shape  # pylint: disable=protected-access
     indices_acc = constant_op.constant([0], indices.dtype)
     if self.outer_context: self.outer_context.Exit()
+
     self.Enter()
     self.AddName(values_acc.name)
     self.AddName(indices_acc.name)
@@ -1684,10 +1708,10 @@ class WhileContext(ControlFlowContext):
     for xm, xn in zip(merge_acc, next_acc):
       xm.op._update_input(1, xn)  # pylint: disable=protected-access
 
-    acc_result = [exit(x[0], name="b_acc") for x in switch_acc]
-    self.ExitResult(acc_result)
-    return ops.IndexedSlices(values=acc_result[1], indices=acc_result[0],
-                             dense_shape=self.ExitResult(value.dense_shape))
+    acc_exits = [exit(x[0], name="b_acc") for x in switch_acc]
+    self.ExitResult(acc_exits)
+    return ops.IndexedSlices(values=acc_exits[1], indices=acc_exits[0],
+                             dense_shape=grad.dense_shape)
 
   def _InitializeValues(self, values):
     self._values = set()
@@ -1711,8 +1735,9 @@ class WhileContext(ControlFlowContext):
 
     # Keep original_loop_vars to identify which are TensorArrays
     original_loop_vars = loop_vars
+    flat_loop_vars = nest.flatten(loop_vars)
     # Convert TensorArrays to their flow variables
-    loop_vars = _convert_tensorarrays_to_flows(loop_vars)
+    loop_vars = _convert_tensorarrays_to_flows(flat_loop_vars)
     loop_vars = ops.convert_n_to_tensor_or_indexed_slices(loop_vars)
     # Let the context know the loop variabes so the loop variables
     # would be added in the outer contexts properly.
@@ -1733,8 +1758,11 @@ class WhileContext(ControlFlowContext):
 
     # Build the graph for pred.
     merge_vars_with_tensor_arrays = (
-        _convert_flows_to_tensorarrays(original_loop_vars, merge_vars))
-    c = ops.convert_to_tensor(pred(*merge_vars_with_tensor_arrays))
+        _convert_flows_to_tensorarrays(flat_loop_vars, merge_vars))
+    packed_vars = nest.pack_sequence_as(
+        structure=original_loop_vars,
+        flat_sequence=merge_vars_with_tensor_arrays)
+    c = ops.convert_to_tensor(pred(*packed_vars))
     self._pivot = loop_cond(c, name="LoopCond")
     switch_vars = [_SwitchRefOrTensor(x, self._pivot) for x in merge_vars]
 
@@ -1744,15 +1772,24 @@ class WhileContext(ControlFlowContext):
     # Convert TensorArray flow variables inside the context back into
     # their associated TensorArrays for calling the body.
     vars_for_body_with_tensor_arrays = (
-        _convert_flows_to_tensorarrays(original_loop_vars, vars_for_body))
-
-    body_result = body(*vars_for_body_with_tensor_arrays)
-    if not isinstance(body_result, collections.Sequence):
+        _convert_flows_to_tensorarrays(flat_loop_vars, vars_for_body))
+    packed_vars_for_body = nest.pack_sequence_as(
+        structure=original_loop_vars,
+        flat_sequence=vars_for_body_with_tensor_arrays)
+    body_result = body(*packed_vars_for_body)
+    if not nest.is_sequence(body_result):
       body_result = [body_result]
+    # Compare the structure types of input and output of body.
+    # For backwards compatibility, the first layer is forced to a list
+    # during this comparison, because inputs are typically lists and
+    # outputs of the body are typically tuples.
+    nest.assert_same_structure(list(packed_vars_for_body), list(body_result))
+
     # Store body_result to keep track of TensorArrays returned by body
     original_body_result = body_result
     # Convert TensorArrays returned by body into their flow variables
-    result = _convert_tensorarrays_to_flows(body_result)
+    flat_result = nest.flatten(body_result)
+    result = _convert_tensorarrays_to_flows(flat_result)
     result = ops.convert_n_to_tensor_or_indexed_slices(result)
 
     # Add NextIteration and the back edges to complete the loop.
@@ -1778,10 +1815,12 @@ class WhileContext(ControlFlowContext):
     # Convert TensorArray flow variables outside the context back into
     # their associated TensorArrays for returning to caller.
     exit_vars_with_tensor_arrays = (
-        _convert_flows_to_tensorarrays(original_body_result, exit_vars))
-    return (exit_vars_with_tensor_arrays[0]
-            if len(exit_vars) == 1
-            else exit_vars_with_tensor_arrays)
+        _convert_flows_to_tensorarrays(flat_result, exit_vars))
+    packed_exit_vars = nest.pack_sequence_as(
+        structure=original_body_result,
+        flat_sequence=exit_vars_with_tensor_arrays)
+    return (packed_exit_vars[0] if len(exit_vars) == 1
+            else packed_exit_vars)
 
   def _FixControlInputsAndContext(self, enters):
     graph = ops.get_default_graph()
@@ -1810,8 +1849,9 @@ def while_loop(cond, body, loop_vars, parallel_iterations=10, back_prop=True,
   """Repeat `body` while the condition `cond` is true.
 
   `cond` is a callable returning a boolean scalar tensor. `body` is a callable
-  returning a list of tensors of the same length and with the same types as
-  `loop_vars`. `loop_vars` is a list of tensors that is passed to both `cond`
+  returning a (possibly nested) tuple or list of tensors of the same
+  arity (length and structure) and types as `loop_vars`. `loop_vars` is a
+  (possibly nested) tuple or list of tensors that is passed to both `cond`
   and `body`. `cond` and `body` both take as many arguments as there are
   `loop_vars`.
 
@@ -1837,7 +1877,7 @@ def while_loop(cond, body, loop_vars, parallel_iterations=10, back_prop=True,
   Args:
     cond: A callable that represents the termination condition of the loop.
     body: A callable that represents the loop body.
-    loop_vars: The list of variable input tensors.
+    loop_vars: A (possibly nested) tuple or list of variable input tensors.
     parallel_iterations: The number of iterations allowed to run in parallel.
     back_prop: Whether backprop is enabled for this while loop.
     swap_memory: Whether GPU-CPU memory swap is enabled for this loop.
@@ -1859,6 +1899,14 @@ def while_loop(cond, body, loop_vars, parallel_iterations=10, back_prop=True,
     r = tf.while_loop(c, b, [i])
     ```
 
+  Example with nesting:
+
+    ```python
+    ijk_0 = (tf.constant(0), (tf.constant(1), tf.constant(2)))
+    c = lambda i, (j, k): i < 10
+    b = lambda i, (j, k): (i + 1, ((j + k), (j - k)))
+    ijk_final = tf.while_loop(c, b, ijk_0)
+    ```
   """
   with ops.op_scope(loop_vars, name, "while") as name:
     if not loop_vars:

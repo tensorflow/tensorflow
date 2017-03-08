@@ -48,6 +48,15 @@ class ShapeOpsTest(tf.test.TestCase):
     self.assertAllEqual(np_ans, result)
     self.assertShapeEqual(np_ans, tf_ans)
 
+  def _compareShapeSparse(self, x_np, use_gpu=False):
+    np_ans = np.array(np.shape(x_np))
+    x_tf, unused_nnz = _sparsify(x_np)
+    with self.test_session(use_gpu=use_gpu):
+      tf_ans = tf.shape(x_tf)
+      result = tf_ans.eval()
+    self.assertAllEqual(np_ans, result)
+    self.assertShapeEqual(np_ans, tf_ans)
+
   def _compareShapeN(self, x, use_gpu=False):
     np_ans = np.array(np.shape(x))
     with self.test_session(use_gpu=use_gpu) as sess:
@@ -67,7 +76,7 @@ class ShapeOpsTest(tf.test.TestCase):
 
   def _compareRankSparse(self, x_np, use_gpu=False):
     np_ans = np.asarray(np.ndim(x_np))
-    x_tf, nnz = _sparsify(x_np)
+    x_tf, unused_nnz = _sparsify(x_np)
     with self.test_session(use_gpu=use_gpu):
       tf_ans = tf.rank(x_tf)
       result = tf_ans.eval()
@@ -82,19 +91,32 @@ class ShapeOpsTest(tf.test.TestCase):
     self.assertAllEqual(np_ans, result)
     self.assertShapeEqual(np_ans, tf_ans)
 
+  def _compareSizeSparse(self, x_np, use_gpu=False):
+    np_ans = np.asarray(np.size(x_np))
+    x_tf, unused_nnz = _sparsify(x_np)
+    with self.test_session(use_gpu=use_gpu):
+      tf_ans = tf.size(x_tf)
+      result = tf_ans.eval()
+    self.assertAllEqual(np_ans, result)
+    self.assertShapeEqual(np_ans, tf_ans)
+
   def _testCpu(self, x):
     self._compareShape(x, use_gpu=False)
     self._compareShapeN(x, use_gpu=False)
     self._compareRank(x, use_gpu=False)
     self._compareSize(x, use_gpu=False)
+    self._compareShapeSparse(x, use_gpu=False)
     self._compareRankSparse(x, use_gpu=False)
+    self._compareSizeSparse(x, use_gpu=False)
 
   def _testGpu(self, x):
     self._compareShape(x, use_gpu=True)
     self._compareShapeN(x, use_gpu=True)
     self._compareRank(x, use_gpu=True)
     self._compareSize(x, use_gpu=True)
+    self._compareShapeSparse(x, use_gpu=True)
     self._compareRankSparse(x, use_gpu=True)
+    self._compareSizeSparse(x, use_gpu=True)
 
   def _testAll(self, x):
     self._testCpu(x)

@@ -20,3 +20,4 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.learn.python.learn.utils import checkpoints
+from tensorflow.contrib.learn.python.learn.utils.export import export_estimator

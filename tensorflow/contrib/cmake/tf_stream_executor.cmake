@@ -58,6 +58,7 @@ add_library(tf_stream_executor OBJECT ${tf_stream_executor_srcs})
 
 target_include_directories(tf_stream_executor PRIVATE
     ${tensorflow_source_dir}
+    ${eigen_INCLUDE_DIRS}
 )
 add_dependencies(tf_stream_executor
     tf_core_lib

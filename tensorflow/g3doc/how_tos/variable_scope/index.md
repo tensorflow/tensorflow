@@ -40,12 +40,12 @@ The problem arises when you want to reuse this model. Assume you want to
 apply your image filter to 2 different images, `image1` and `image2`.
 You want both images processed by the same filter with the same parameters.
 You can call `my_image_filter()` twice, but this will create two sets
-of variables:
+of variables, 4 variables in each one, for a total of 8 variables.
 
 ```python
-# First call creates one set of variables.
+# First call creates one set of 4 variables.
 result1 = my_image_filter(image1)
-# Another set is created in the second call.
+# Another set of 4 variables is created in the second call.
 result2 = my_image_filter(image2)
 ```
 

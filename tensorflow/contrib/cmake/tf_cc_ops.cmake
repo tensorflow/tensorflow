@@ -123,6 +123,8 @@ foreach(tf_cc_op_lib_name ${tf_cc_op_lib_names})
         ${jpeg_STATIC_LIBRARIES}
         ${png_STATIC_LIBRARIES}
         ${ZLIB_LIBRARIES}
+        ${jsoncpp_STATIC_LIBRARIES}
+        ${boringssl_STATIC_LIBRARIES}
         ${CMAKE_DL_LIBS}
     )
 

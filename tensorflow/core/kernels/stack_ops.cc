@@ -172,7 +172,7 @@ class StackPushOp : public AsyncOpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("swap_memory", &swap_memory_));
   }
 
-  void ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
+  void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
     // Get the stack from the handle.
     Stack* stack = nullptr;
     OP_REQUIRES_OK(ctx, GetStack(ctx, &stack));
@@ -272,7 +272,7 @@ class StackPopOp : public AsyncOpKernel {
  public:
   explicit StackPopOp(OpKernelConstruction* context) : AsyncOpKernel(context) {}
 
-  void ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
+  void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
     // Get the stack from the handle.
     Stack* stack = nullptr;
     OP_REQUIRES_OK(ctx, GetStack(ctx, &stack));

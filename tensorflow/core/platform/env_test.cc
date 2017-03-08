@@ -61,9 +61,8 @@ TEST(EnvTest, FileToReadonlyMemoryRegion) {
     const string input = CreateTestFile(env, filename, length);
 
     // Create the region.
-    ReadOnlyMemoryRegion* region;
+    std::unique_ptr<ReadOnlyMemoryRegion> region;
     TF_CHECK_OK(env->NewReadOnlyMemoryRegionFromFile(filename, &region));
-    std::unique_ptr<ReadOnlyMemoryRegion> region_uptr(region);
     ASSERT_NE(region, nullptr);
     EXPECT_EQ(length, region->length());
     EXPECT_EQ(input, string(reinterpret_cast<const char*>(region->data()),

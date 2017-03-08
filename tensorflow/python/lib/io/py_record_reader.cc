@@ -28,17 +28,22 @@ namespace io {
 
 PyRecordReader::PyRecordReader() {}
 
-PyRecordReader* PyRecordReader::New(const string& filename,
-                                    uint64 start_offset) {
-  RandomAccessFile* file;
+PyRecordReader* PyRecordReader::New(const string& filename, uint64 start_offset,
+                                    const string& compression_type_string) {
+  std::unique_ptr<RandomAccessFile> file;
   Status s = Env::Default()->NewRandomAccessFile(filename, &file);
   if (!s.ok()) {
     return nullptr;
   }
   PyRecordReader* reader = new PyRecordReader;
   reader->offset_ = start_offset;
-  reader->file_ = file;
-  reader->reader_ = new RecordReader(reader->file_);
+  reader->file_ = file.release();
+
+  RecordReaderOptions options;
+  if (compression_type_string == "ZLIB") {
+    options.compression_type = RecordReaderOptions::ZLIB_COMPRESSION;
+  }
+  reader->reader_ = new RecordReader(reader->file_, options);
   return reader;
 }
 

@@ -49,6 +49,7 @@ using tensorflow::SessionOptions;
 using tensorflow::RunOptions;
 using tensorflow::RunMetadata;
 using tensorflow::TensorShape;
+using tensorflow::Reset;
 
 extern "C" {
 
@@ -254,6 +255,34 @@ static void DeleteArray(void* data, size_t size, void* arg) {
 
 namespace tensorflow {
 
+namespace {
+
+// Reset helper for converting character arrays to string vectors.
+void TF_Reset_Helper(const TF_SessionOptions* opt, const char** containers,
+                     int ncontainers, TF_Status* status) {
+  std::vector<tensorflow::string> container_names(ncontainers);
+  for (int i = 0; i < ncontainers; i++) {
+    container_names[i] = containers[i];
+  }
+
+  status->status = Reset(opt->options, container_names);
+}
+
+}  // namespace
+
+}  // namespace tensorflow
+
+extern "C" {
+
+void TF_Reset(const TF_SessionOptions* opt, const char** containers,
+              int ncontainers, TF_Status* status) {
+  tensorflow::TF_Reset_Helper(opt, containers, ncontainers, status);
+}
+
+}  // end extern "C"
+
+namespace tensorflow {
+
 // Non-static for testing.
 bool TF_Tensor_DecodeStrings(TF_Tensor* src, Tensor* dst, TF_Status* status) {
   const tensorflow::int64 num_elements = src->shape.num_elements();
@@ -446,7 +475,7 @@ void TF_Run_Helper(TF_Session* s, const char* handle,
   // Store results in c_outputs[]
   for (int i = 0; i < noutputs; i++) {
     const Tensor& src = outputs[i];
-    if (!src.IsInitialized()) {
+    if (!src.IsInitialized() || src.NumElements() == 0) {
       c_outputs[i] = tensorflow::EmptyTensor(
           static_cast<TF_DataType>(src.dtype()), src.shape());
       continue;

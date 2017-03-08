@@ -75,15 +75,5 @@ module.exports = function(overwrite) {
         .pipe(header(HEADER_STR))
         .pipe(rename('tf-tensorboard.html' + suffix))
         .pipe(gulp.dest('./dist'));
-
-
-    gulp.src('components/tf-tensorboard/tf-tensorboard-demo.html')
-        .pipe(vulcanize({
-          inlineScripts: true,
-          inlineCss: true,
-          stripComments: true,
-        }))
-        .pipe(header(HEADER_STR))
-        .pipe(gulp.dest('./dist'));
   }
 }

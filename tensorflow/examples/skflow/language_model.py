@@ -1,6 +1,6 @@
 # encoding: utf-8
 
-#  Copyright 2015-present The Scikit Flow Authors. All Rights Reserved.
+#  Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
 #  you may not use this file except in compliance with the License.
@@ -30,9 +30,9 @@ CORPUS_FILENAME = "europarl-v6.fr-en.en"
 MAX_DOC_LENGTH = 10
 
 def training_data(filename):
-    f = open(filename)
-    for line in f:
-        yield line
+  f = open(filename)
+  for line in f:
+    yield line
 
 
 def iter_docs(docs):
@@ -67,34 +67,34 @@ HIDDEN_SIZE = 10
 
 
 def seq_autoencoder(X, y):
-    """Sequence auto-encoder with RNN."""
-    inputs = learn.ops.one_hot_matrix(X, 256)
-    in_X, in_y, out_y = learn.ops.seq2seq_inputs(inputs, y, MAX_DOC_LENGTH, MAX_DOC_LENGTH)
-    encoder_cell = tf.nn.rnn_cell.GRUCell(HIDDEN_SIZE)
-    decoder_cell = tf.nn.rnn_cell.OutputProjectionWrapper(tf.nn.rnn_cell.GRUCell(HIDDEN_SIZE), 256)
-    decoding, _, sampling_decoding, _ = learn.ops.rnn_seq2seq(in_X, in_y, encoder_cell, decoder_cell)
-    return learn.ops.sequence_classifier(decoding, out_y, sampling_decoding)
+  """Sequence auto-encoder with RNN."""
+  inputs = learn.ops.one_hot_matrix(X, 256)
+  in_X, in_y, out_y = learn.ops.seq2seq_inputs(inputs, y, MAX_DOC_LENGTH, MAX_DOC_LENGTH)
+  encoder_cell = tf.nn.rnn_cell.GRUCell(HIDDEN_SIZE)
+  decoder_cell = tf.nn.rnn_cell.OutputProjectionWrapper(tf.nn.rnn_cell.GRUCell(HIDDEN_SIZE), 256)
+  decoding, _, sampling_decoding, _ = learn.ops.rnn_seq2seq(in_X, in_y, encoder_cell, decoder_cell)
+  return learn.ops.sequence_classifier(decoding, out_y, sampling_decoding)
 
 
 def get_language_model(hidden_size):
-    """Returns a language model with given hidden size."""
+  """Returns a language model with given hidden size."""
 
-    def language_model(X, y):
-        inputs = learn.ops.one_hot_matrix(X, 256)
-        inputs = learn.ops.split_squeeze(1, MAX_DOC_LENGTH, inputs)
-        target = learn.ops.split_squeeze(1, MAX_DOC_LENGTH, y)
-        encoder_cell = tf.nn.rnn_cell.OutputProjectionWrapper(tf.nn.rnn_cell.GRUCell(hidden_size),256)
-        output, _ = tf.nn.rnn(encoder_cell, inputs, dtype=tf.float32)
-        return learn.ops.sequence_classifier(output, target)
-  
-    return language_model
+  def language_model(X, y):
+    inputs = learn.ops.one_hot_matrix(X, 256)
+    inputs = tf.unpack(inputs, axis=1)
+    target = tf.unpack(y, axis=1)
+    encoder_cell = tf.nn.rnn_cell.OutputProjectionWrapper(tf.nn.rnn_cell.GRUCell(hidden_size),256)
+    output, _ = tf.nn.rnn(encoder_cell, inputs, dtype=tf.float32)
+    return learn.ops.sequence_classifier(output, target)
+
+  return language_model
 
 
 ### Training model.
 
-estimator = learn.TensorFlowEstimator(model_fn=get_language_model(HIDDEN_SIZE), 
-                                       n_classes=256, 
-                                       optimizer='Adam', learning_rate=0.01, 
-                                       steps=1000, batch_size=64, continue_training=True)
+estimator = learn.TensorFlowEstimator(model_fn=get_language_model(HIDDEN_SIZE),
+                                      n_classes=256, optimizer='Adam',
+                                      learning_rate=0.01, steps=1000,
+                                      batch_size=64, continue_training=True)
 
 estimator.fit(X, y)

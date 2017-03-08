@@ -43,12 +43,11 @@ ImmutableConstantOp::ReadOnlyMemoryRegionAllocator::
 
 Status ImmutableConstantOp::ReadOnlyMemoryRegionAllocator::InitWithMemoryRegion(
     const string& name, Env* env) {
-  ReadOnlyMemoryRegion* region_ptr;
-  const auto status = env->NewReadOnlyMemoryRegionFromFile(name, &region_ptr);
+  const auto status =
+      env->NewReadOnlyMemoryRegionFromFile(name, &memory_region_);
   if (!status.ok()) {
     return status;
   }
-  memory_region_.reset(region_ptr);
   return Status::OK();
 }
 

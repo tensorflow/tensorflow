@@ -83,13 +83,12 @@ Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
                           MemoryTypeVector* inp_mtypes,
                           MemoryTypeVector* out_mtypes) {
   // Look up the Op registered for this op name.
-  Status status;
-  const OpDef* op_def = op_registry->LookUp(ndef.op(), &status);
-  if (op_def == nullptr) return status;
+  const OpDef* op_def;
+  TF_RETURN_IF_ERROR(op_registry->LookUpOpDef(ndef.op(), &op_def));
 
   // Look up the Kernel registered for this node def.
   const KernelDef* kdef = nullptr;
-  status =
+  Status status =
       FindKernelDef(device_type, ndef, &kdef, nullptr /* kernel_class_name */);
 
   if (!status.ok() || HasTypeList(*op_def)) {
