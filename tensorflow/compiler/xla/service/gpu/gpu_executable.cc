@@ -119,7 +119,7 @@ GpuExecutable::GpuExecutable(tensorflow::StringPiece ptx,
 
 Status GpuExecutable::ExecuteThunks(
     const ServiceExecutableRunOptions* run_options,
-    const BufferAllocations& buffer_allocations,
+    const BufferAllocations& buffer_allocations, bool block_host_until_done,
     HloExecutionProfile* hlo_execution_profile) {
   se::Stream* main_stream = run_options->stream();
 
@@ -168,7 +168,7 @@ Status GpuExecutable::ExecuteThunks(
   // Make sure kernels are completed before deallocating temporary buffers.
   // TODO(b/30100571): we could potentially postpone deallocating the temp
   // buffers until a different computation is executed.
-  if (!main_stream->BlockHostUntilDone()) {
+  if (block_host_until_done && !main_stream->BlockHostUntilDone()) {
     return InternalError("Failed to complete all kernels launched on stream %p",
                          main_stream);
   }
@@ -201,8 +201,11 @@ StatusOr<se::DeviceMemoryBase> GpuExecutable::ExecuteOnStream(
       buffer_allocations_builder.Build(*assignment_, executor->device_ordinal(),
                                        memory_allocator));
 
-  TF_RETURN_IF_ERROR(
-      ExecuteThunks(run_options, *buffer_allocations, hlo_execution_profile));
+  bool block_host_until_done =
+      !memory_allocator->AllowsAsynchronousDeallocation();
+  TF_RETURN_IF_ERROR(ExecuteThunks(run_options, *buffer_allocations,
+                                   block_host_until_done,
+                                   hlo_execution_profile));
 
   HloInstruction* root = hlo_module_->entry_computation()->root_instruction();
   TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice output_slice,
@@ -286,8 +289,11 @@ StatusOr<std::unique_ptr<ShapedBuffer>> GpuExecutable::ExecuteOnStream(
       buffer_allocations_builder.Build(*assignment_, executor->device_ordinal(),
                                        memory_allocator));
 
-  TF_RETURN_IF_ERROR(
-      ExecuteThunks(run_options, *buffer_allocations, hlo_execution_profile));
+  bool block_host_until_done =
+      !memory_allocator->AllowsAsynchronousDeallocation();
+  TF_RETURN_IF_ERROR(ExecuteThunks(run_options, *buffer_allocations,
+                                   block_host_until_done,
+                                   hlo_execution_profile));
 
   HloInstruction* root = hlo_module_->entry_computation()->root_instruction();
   auto device_ordinal = executor->device_ordinal();
