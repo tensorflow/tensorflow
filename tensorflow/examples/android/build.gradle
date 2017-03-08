@@ -33,6 +33,8 @@ android {
         abortOnError false
     }
 
+    aaptOptions { noCompress 'pb' }
+
     sourceSets {
         main {
             // TensorFlow Java API sources.
