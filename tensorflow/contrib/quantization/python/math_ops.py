@@ -19,10 +19,8 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-import,wildcard-import
-from tensorflow.contrib.quantization.ops import gen_math_ops
-from tensorflow.contrib.quantization.ops.gen_math_ops import *
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import ops
-
-
-ops.RegisterShape("QuantizedMatMul")(common_shapes.call_cpp_shape_fn)
+from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.ops.gen_math_ops import *
+# pylint: enable=unused-import,wildcard-import

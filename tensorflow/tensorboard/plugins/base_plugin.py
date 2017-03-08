@@ -30,17 +30,8 @@ class TBPlugin(object):
   """TensorBoard plugin interface. Every plugin must extend from this class."""
   __metaclass__ = ABCMeta
 
-  def initialize(self, handler):
-    """Initializes the plugin.
-
-    Args:
-      handler: The tensorboard http handler that has methods that are used
-               by plugins such as serving json or gzip response.
-    """
-    self.handler = handler
-
   @abstractmethod
-  def get_plugin_handlers(self, run_paths):
+  def get_plugin_handlers(self, run_paths, logdir):
     """Returns a set of http handlers that the plugin implements.
 
     Each handler gets registered with the tensorboard handler and is served
@@ -48,6 +39,7 @@ class TBPlugin(object):
 
     Args:
       run_paths: A dict mapping a run name to an event file path.
+      logdir: The logging directory TensorBoard was started with.
 
     Returns:
       A dict mapping route paths to http handler methods.

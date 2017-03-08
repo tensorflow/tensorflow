@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for our flags implementation."""
 from __future__ import absolute_import
 from __future__ import division
@@ -23,7 +22,6 @@ import unittest
 
 from tensorflow.python.platform import app
 from tensorflow.python.platform import flags
-
 
 flags.DEFINE_string("string_foo", "default_val", "HelpString")
 flags.DEFINE_integer("int_foo", 42, "HelpString")
@@ -38,6 +36,7 @@ flags.DEFINE_boolean("bool_d", True, "HelpString")
 flags.DEFINE_bool("bool_e", True, "HelpString")
 
 FLAGS = flags.FLAGS
+
 
 class FlagsTest(unittest.TestCase):
 
@@ -91,8 +90,9 @@ def main(_):
 
 if __name__ == "__main__":
   # Test command lines
-  sys.argv.extend(["--bool_a", "--nobool_negation",
-                   "--bool_c=True", "--bool_d=False",
-                   "--unknown_flag", "and_argument"])
+  sys.argv.extend([
+      "--bool_a", "--nobool_negation", "--bool_c=True", "--bool_d=False",
+      "and_argument"
+  ])
 
   app.run()

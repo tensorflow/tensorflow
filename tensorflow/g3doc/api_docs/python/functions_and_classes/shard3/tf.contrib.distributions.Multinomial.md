@@ -73,12 +73,13 @@ Initialize a batch of Multinomial distributions.
 *  <b>`logits`</b>: Floating point tensor representing the log-odds of a
     positive event with shape broadcastable to `[N1,..., Nm, k], m >= 0`,
     and the same dtype as `n`. Defines this as a batch of `N1 x ... x Nm`
-    different `k` class Multinomial distributions.
+    different `k` class Multinomial distributions. Only one of `logits` or
+    `p` should be passed in.
 *  <b>`p`</b>: Positive floating point tensor with shape broadcastable to
     `[N1,..., Nm, k]` `m >= 0` and same dtype as `n`.  Defines this as
     a batch of `N1 x ... x Nm` different `k` class Multinomial
     distributions. `p`'s components in the last portion of its shape should
-    sum up to 1.
+    sum up to 1. Only one of `logits` or `p` should be passed in.
 *  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to assert valid
     values for parameters `n` and `p`, and `x` in `prob` and `log_prob`.
     If `False`, correct behavior is not guaranteed.
@@ -144,7 +145,7 @@ independent distributions of this kind the instance represents.
 
 - - -
 
-#### `tf.contrib.distributions.Multinomial.cdf(value, name='cdf')` {#Multinomial.cdf}
+#### `tf.contrib.distributions.Multinomial.cdf(value, name='cdf', **condition_kwargs)` {#Multinomial.cdf}
 
 Cumulative distribution function.
 
@@ -159,12 +160,36 @@ cdf(x) := P[X <= x]
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
 
 *  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Multinomial.copy(**override_parameters_kwargs)` {#Multinomial.copy}
+
+Creates a deep copy of the distribution.
+
+Note: the copy distribution may continue to depend on the original
+intialization arguments.
+
+##### Args:
+
+
+*  <b>`**override_parameters_kwargs`</b>: String/value dictionary of initialization
+    arguments to override with new values.
+
+##### Returns:
+
+
+*  <b>`distribution`</b>: A new instance of `type(self)` intitialized from the union
+    of self.parameters and override_parameters_kwargs, i.e.,
+    `dict(self.parameters, **override_parameters_kwargs)`.
 
 
 - - -
@@ -178,7 +203,7 @@ The `DType` of `Tensor`s handled by this `Distribution`.
 
 #### `tf.contrib.distributions.Multinomial.entropy(name='entropy')` {#Multinomial.entropy}
 
-Shanon entropy in nats.
+Shannon entropy in nats.
 
 
 - - -
@@ -242,7 +267,7 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.Multinomial.log_cdf(value, name='log_cdf')` {#Multinomial.log_cdf}
+#### `tf.contrib.distributions.Multinomial.log_cdf(value, name='log_cdf', **condition_kwargs)` {#Multinomial.log_cdf}
 
 Log cumulative distribution function.
 
@@ -261,6 +286,7 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -271,7 +297,7 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 - - -
 
-#### `tf.contrib.distributions.Multinomial.log_pdf(value, name='log_pdf')` {#Multinomial.log_pdf}
+#### `tf.contrib.distributions.Multinomial.log_pdf(value, name='log_pdf', **condition_kwargs)` {#Multinomial.log_pdf}
 
 Log probability density function.
 
@@ -280,6 +306,7 @@ Log probability density function.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -290,12 +317,12 @@ Log probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
 
-#### `tf.contrib.distributions.Multinomial.log_pmf(value, name='log_pmf')` {#Multinomial.log_pmf}
+#### `tf.contrib.distributions.Multinomial.log_pmf(value, name='log_pmf', **condition_kwargs)` {#Multinomial.log_pmf}
 
 Log probability mass function.
 
@@ -304,6 +331,7 @@ Log probability mass function.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -314,20 +342,36 @@ Log probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
 
-#### `tf.contrib.distributions.Multinomial.log_prob(value, name='log_prob')` {#Multinomial.log_prob}
+#### `tf.contrib.distributions.Multinomial.log_prob(value, name='log_prob', **condition_kwargs)` {#Multinomial.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
+
+
+Additional documentation from `Multinomial`:
+
+For each batch of counts `[n_1,...,n_k]`, `P[counts]` is the probability
+that after sampling `n` draws from this Multinomial distribution, the
+number of draws falling in class `j` is `n_j`.  Note that different
+sequences of draws can result in the same counts, thus the probability
+includes a combinatorial coefficient.
+
+Note that input "counts" must be a non-negative tensor with dtype `dtype`
+and whose shape can be broadcast with `self.p` and `self.n`.  For fixed
+leading dimensions, the last dimension represents counts for the
+corresponding Multinomial distribution in `self.p`. `counts` is only legal
+if it sums up to `n` and its components are equal to integer values.
 
 ##### Args:
 
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -338,7 +382,7 @@ Log probability density/mass function (depending on `is_continuous`).
 
 - - -
 
-#### `tf.contrib.distributions.Multinomial.log_survival_function(value, name='log_survival_function')` {#Multinomial.log_survival_function}
+#### `tf.contrib.distributions.Multinomial.log_survival_function(value, name='log_survival_function', **condition_kwargs)` {#Multinomial.log_survival_function}
 
 Log survival function.
 
@@ -358,6 +402,7 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -369,7 +414,7 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 #### `tf.contrib.distributions.Multinomial.logits` {#Multinomial.logits}
 
-Log-odds.
+Vector of coordinatewise logits.
 
 
 - - -
@@ -404,7 +449,9 @@ Name prepended to all ops created by this `Distribution`.
 
 #### `tf.contrib.distributions.Multinomial.p` {#Multinomial.p}
 
-Event probabilities.
+Vector of probabilities summing to one.
+
+Each element is the probability of drawing that coordinate.
 
 
 - - -
@@ -453,12 +500,12 @@ param_shapes with static (i.e. TensorShape) shapes.
 
 #### `tf.contrib.distributions.Multinomial.parameters` {#Multinomial.parameters}
 
-Dictionary of parameters used by this `Distribution`.
+Dictionary of parameters used to instantiate this `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.Multinomial.pdf(value, name='pdf')` {#Multinomial.pdf}
+#### `tf.contrib.distributions.Multinomial.pdf(value, name='pdf', **condition_kwargs)` {#Multinomial.pdf}
 
 Probability density function.
 
@@ -467,6 +514,7 @@ Probability density function.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -477,12 +525,12 @@ Probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
 
-#### `tf.contrib.distributions.Multinomial.pmf(value, name='pmf')` {#Multinomial.pmf}
+#### `tf.contrib.distributions.Multinomial.pmf(value, name='pmf', **condition_kwargs)` {#Multinomial.pmf}
 
 Probability mass function.
 
@@ -491,6 +539,7 @@ Probability mass function.
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -501,20 +550,36 @@ Probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
 
-#### `tf.contrib.distributions.Multinomial.prob(value, name='prob')` {#Multinomial.prob}
+#### `tf.contrib.distributions.Multinomial.prob(value, name='prob', **condition_kwargs)` {#Multinomial.prob}
 
 Probability density/mass function (depending on `is_continuous`).
+
+
+Additional documentation from `Multinomial`:
+
+For each batch of counts `[n_1,...,n_k]`, `P[counts]` is the probability
+that after sampling `n` draws from this Multinomial distribution, the
+number of draws falling in class `j` is `n_j`.  Note that different
+sequences of draws can result in the same counts, thus the probability
+includes a combinatorial coefficient.
+
+Note that input "counts" must be a non-negative tensor with dtype `dtype`
+and whose shape can be broadcast with `self.p` and `self.n`.  For fixed
+leading dimensions, the last dimension represents counts for the
+corresponding Multinomial distribution in `self.p`. `counts` is only legal
+if it sums up to `n` and its components are equal to integer values.
 
 ##### Args:
 
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -525,7 +590,7 @@ Probability density/mass function (depending on `is_continuous`).
 
 - - -
 
-#### `tf.contrib.distributions.Multinomial.sample(sample_shape=(), seed=None, name='sample')` {#Multinomial.sample}
+#### `tf.contrib.distributions.Multinomial.sample(sample_shape=(), seed=None, name='sample', **condition_kwargs)` {#Multinomial.sample}
 
 Generate samples of the specified shape.
 
@@ -538,6 +603,7 @@ sample.
 *  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -547,7 +613,7 @@ sample.
 
 - - -
 
-#### `tf.contrib.distributions.Multinomial.sample_n(n, seed=None, name='sample_n')` {#Multinomial.sample_n}
+#### `tf.contrib.distributions.Multinomial.sample_n(n, seed=None, name='sample_n', **condition_kwargs)` {#Multinomial.sample_n}
 
 Generate `n` samples.
 
@@ -558,6 +624,7 @@ Generate `n` samples.
     observations to sample.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 
@@ -579,7 +646,7 @@ Standard deviation.
 
 - - -
 
-#### `tf.contrib.distributions.Multinomial.survival_function(value, name='survival_function')` {#Multinomial.survival_function}
+#### `tf.contrib.distributions.Multinomial.survival_function(value, name='survival_function', **condition_kwargs)` {#Multinomial.survival_function}
 
 Survival function.
 
@@ -596,6 +663,7 @@ survival_function(x) = P[X > x]
 
 *  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
+*  <b>`**condition_kwargs`</b>: Named arguments forwarded to subclass implementation.
 
 ##### Returns:
 

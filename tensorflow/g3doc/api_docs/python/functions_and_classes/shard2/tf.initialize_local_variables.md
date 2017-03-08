@@ -1,10 +1,8 @@
-### `tf.initialize_local_variables()` {#initialize_local_variables}
+### `tf.initialize_local_variables(*args, **kwargs)` {#initialize_local_variables}
 
-Returns an Op that initializes all local variables.
+See `tf.local_variables_initializer`. (deprecated)
 
-This is just a shortcut for `initialize_variables(local_variables())`
-
-##### Returns:
-
-  An Op that initializes all local variables in the graph.
+THIS FUNCTION IS DEPRECATED. It will be removed after 2017-03-02.
+Instructions for updating:
+Use `tf.local_variables_initializer` instead.
 

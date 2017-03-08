@@ -114,6 +114,7 @@ class LinearAlgebraOp : public OpKernel {
   using MatrixMap = Eigen::Map<Matrix>;
   using ConstMatrixMaps = gtl::InlinedVector<ConstMatrixMap, 4>;
   using MatrixMaps = gtl::InlinedVector<MatrixMap, 4>;
+  using RealScalar = typename Eigen::NumTraits<Scalar>::Real;
 
   // Performs a single matrix computation given input matrices, and
   // stores the result in outputs. For batch operations, this will be called

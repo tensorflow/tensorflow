@@ -15,7 +15,7 @@
 """TensorFlow Graph Editor.
 
 The TensorFlow Graph Editor library allows for modification of an existing
-tf.Graph instance in-place.
+`tf.Graph` instance in-place.
 
 The author's github username is [purpledog](https://github.com/purpledog).
 
@@ -91,8 +91,8 @@ my_sgv = ge.sgv("foo/.*/.*read$", graph=tf.get_default_graph())
 Note that the Graph Editor is meant to manipulate several graphs at the same
 time, typically during transform or copy operation. For that reason,
 to avoid any confusion, the default graph is never used and the graph on
-which to operate must always be explicitely given. This is the reason why
-*graph=tf.get_default_graph()* is used in the code snippets above.
+which to operate must always be given explicitly. This is the reason why
+*`graph=tf.get_default_graph()`* is used in the code snippets above.
 
 ## Modules overview
 
@@ -103,7 +103,7 @@ which to operate must always be explicitely given. This is the reason why
 * reroute: various ways of rerouting tensors to different consuming ops like
   *swap* or *reroute_a2b*.
 * subgraph: the SubGraphView class, which enables subgraph manipulations in a
-  TensorFlow tf.Graph.
+  TensorFlow `tf.Graph`.
 * edit: various editing functions operating on subgraphs like *detach*,
   *connect* or *bypass*.
 * transform: the Transformer class, which enables transforming

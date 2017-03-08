@@ -209,7 +209,7 @@ class MatMulOp : public OpKernel {
 
     OP_REQUIRES(ctx,
                 a.dim_size(dim_pair[0].first) == b.dim_size(dim_pair[0].second),
-                errors::InvalidArgument("Matrix size-compatible: In[0]: ",
+                errors::InvalidArgument("Matrix size-incompatible: In[0]: ",
                                         a.shape().DebugString(), ", In[1]: ",
                                         b.shape().DebugString()));
     int a_dim_remaining = 1 - dim_pair[0].first;

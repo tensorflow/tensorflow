@@ -63,15 +63,18 @@ def module_names():
       "tf.contrib.copy_graph",
       "tf.contrib.crf",
       "tf.contrib.distributions",
+      "tf.contrib.distributions.bijector",
       "tf.contrib.ffmpeg",
       "tf.contrib.framework",
       "tf.contrib.graph_editor",
+      "tf.contrib.integrate",
       "tf.contrib.layers",
       "tf.contrib.learn",
       "tf.contrib.learn.monitors",
       "tf.contrib.losses",
-      "tf.contrib.rnn",
       "tf.contrib.metrics",
+      "tf.contrib.rnn",
+      "tf.contrib.solvers",
       "tf.contrib.training",
       "tf.contrib.util",
   ]
@@ -212,10 +215,14 @@ def all_libraries(module_to_name, members, documented):
       library("contrib.crf", "CRF (contrib)", tf.contrib.crf),
       library("contrib.distributions", "Statistical distributions (contrib)",
               tf.contrib.distributions),
+      library("contrib.distributions.bijector",
+              "Random variable transformations (contrib)",
+              tf.contrib.distributions.bijector),
       library("contrib.ffmpeg", "FFmpeg (contrib)", ffmpeg),
       library("contrib.framework", "Framework (contrib)", tf.contrib.framework),
       library("contrib.graph_editor", "Graph Editor (contrib)",
               tf.contrib.graph_editor),
+      library("contrib.integrate", "Integrate (contrib)", tf.contrib.integrate),
       library("contrib.layers", "Layers (contrib)", tf.contrib.layers),
       library("contrib.learn", "Learn (contrib)", tf.contrib.learn),
       library("contrib.learn.monitors", "Monitors (contrib)",
@@ -245,8 +252,11 @@ _hidden_symbols = ["Event", "LogMessage", "Summary", "SessionLog", "xrange",
 # TODO(wicke): Remove contrib.layers.relu* after shortnames are
 # disabled.  These conflict with tf.nn.relu*
 EXCLUDE = frozenset(["tf.contrib.learn.monitors.NanLossDuringTrainingError",
-                     "tf.contrib.layers.relu",
-                     "tf.contrib.layers.relu6"])
+                     "tf.contrib.layers.relu", "tf.contrib.layers.relu6",
+                     "tf.contrib.framework.assert_global_step",
+                     "tf.contrib.framework.get_global_step",
+                     "tf.contrib.learn.NanLossDuringTrainingError",
+                     "tf.contrib.layers.stack"])
 
 
 def main(unused_argv):

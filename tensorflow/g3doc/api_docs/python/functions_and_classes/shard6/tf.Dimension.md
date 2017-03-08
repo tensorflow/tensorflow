@@ -221,10 +221,12 @@ Returns the product of `self` and `other`.
 
 Dimensions are summed as follows:
 
+```
   Dimension(m)    * Dimension(n)    == Dimension(m * n)
   Dimension(m)    * Dimension(None) == Dimension(None)
   Dimension(None) * Dimension(n)    == Dimension(None)
   Dimension(None) * Dimension(None) == Dimension(None)
+```
 
 ##### Args:
 
@@ -325,11 +327,13 @@ Returns a Dimension that combines the information in `self` and `other`.
 
 Dimensions are combined as follows:
 
+```python
     Dimension(n)   .merge_with(Dimension(n))    == Dimension(n)
     Dimension(n)   .merge_with(Dimension(None)) == Dimension(n)
     Dimension(None).merge_with(Dimension(n))    == Dimension(n)
     Dimension(None).merge_with(Dimension(None)) == Dimension(None)
     Dimension(n)   .merge_with(Dimension(m)) raises ValueError for n != m
+```
 
 ##### Args:
 

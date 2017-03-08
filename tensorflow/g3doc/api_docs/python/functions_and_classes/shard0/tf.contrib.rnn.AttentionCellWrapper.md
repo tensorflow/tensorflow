@@ -1,6 +1,6 @@
 Basic attention cell wrapper.
 
-Implementation based on https://arxiv.org/pdf/1601.06733.pdf.
+Implementation based on https://arxiv.org/abs/1409.0473.
 - - -
 
 #### `tf.contrib.rnn.AttentionCellWrapper.__call__(inputs, state, scope=None)` {#AttentionCellWrapper.__call__}

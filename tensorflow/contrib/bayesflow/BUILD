@@ -30,6 +30,18 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "stochastic_variables_test",
+    size = "medium",
+    srcs = ["python/kernel_tests/stochastic_variables_test.py"],
+    additional_deps = [
+        ":bayesflow_py",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_test(
     name = "monte_carlo_test",
     size = "small",
     srcs = ["python/kernel_tests/monte_carlo_test.py"],

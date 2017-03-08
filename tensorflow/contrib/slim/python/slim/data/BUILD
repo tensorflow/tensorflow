@@ -50,7 +50,6 @@ py_test(
     name = "dataset_data_provider_test",
     srcs = ["dataset_data_provider_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["manual"],  # Disabled due to http://b/29190340
     deps = [
         ":test_utils",
         "//tensorflow:tensorflow_py",

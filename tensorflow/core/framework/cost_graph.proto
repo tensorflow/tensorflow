@@ -6,6 +6,9 @@ option java_outer_classname = "CostGraphProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
 
+import "tensorflow/core/framework/tensor_shape.proto";
+import "tensorflow/core/framework/types.proto";
+
 message CostGraphDef {
   message Node {
     // The name of the node. Names are globally unique.
@@ -34,6 +37,8 @@ message CostGraphDef {
       // may itself be an alias. The algorithm will therefore need to follow
       // those pointers.
       int64 alias_input_port = 2;
+      TensorShapeProto shape = 3;
+      DataType dtype = 4;
     }
     repeated OutputInfo output_info = 5;
 

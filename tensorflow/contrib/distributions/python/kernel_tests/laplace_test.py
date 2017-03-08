@@ -161,7 +161,7 @@ class LaplaceTest(tf.test.TestCase):
       scale = tf.constant(scale_v)
       n = 100000
       laplace = tf.contrib.distributions.Laplace(loc=loc, scale=scale)
-      samples = laplace.sample_n(n, seed=137)
+      samples = laplace.sample(n, seed=137)
       sample_values = samples.eval()
       self.assertEqual(samples.get_shape(), (n,))
       self.assertEqual(sample_values.shape, (n,))
@@ -179,7 +179,7 @@ class LaplaceTest(tf.test.TestCase):
       scale_v = np.array([np.arange(1, 11, dtype=np.float32)]).T  # 10 x 1
       laplace = tf.contrib.distributions.Laplace(loc=loc_v, scale=scale_v)
       n = 10000
-      samples = laplace.sample_n(n, seed=137)
+      samples = laplace.sample(n, seed=137)
       sample_values = samples.eval()
       self.assertEqual(samples.get_shape(), (n, 10, 100))
       self.assertEqual(sample_values.shape, (n, 10, 100))
@@ -214,7 +214,7 @@ class LaplaceTest(tf.test.TestCase):
       laplace = tf.contrib.distributions.Laplace(
           loc=[7., 11.], scale=[[5.], [6.]])
       num = 50000
-      samples = laplace.sample_n(num, seed=137)
+      samples = laplace.sample(num, seed=137)
       pdfs = laplace.pdf(samples)
       sample_vals, pdf_vals = sess.run([samples, pdfs])
       self.assertEqual(samples.get_shape(), (num, 2, 2))

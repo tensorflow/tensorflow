@@ -21,6 +21,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include <algorithm>
+#include <numeric>
 // TODO(ptucker): Consider switching back to hash_set - I had trouble getting it
 // to work with string values.
 #include <set>
@@ -610,7 +611,7 @@ void SetOperationOp<T>::ComputeSparseToSparse(OpKernelContext* ctx) const {
 
     int64 compare_groups;
     CompareGroups(ctx, set1_group_indices, set2_group_indices, &compare_groups);
-    const std::vector<int64>* group_indices;
+    const std::vector<int64>* group_indices = nullptr;
 
     // Get values from set1, if applicable.
     set1_group_set.clear();

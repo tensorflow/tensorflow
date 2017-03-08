@@ -75,7 +75,7 @@ class MatrixDiagGpuTest(MatrixDiagTest):
 class MatrixSetDiagTest(tf.test.TestCase):
   _use_gpu = False
 
-  def testVector(self):
+  def testSquare(self):
     with self.test_session(use_gpu=self._use_gpu):
       v = np.array([1.0, 2.0, 3.0])
       mat = np.array([[0.0, 1.0, 0.0],
@@ -88,7 +88,23 @@ class MatrixSetDiagTest(tf.test.TestCase):
       self.assertEqual((3, 3), output.get_shape())
       self.assertAllEqual(mat_set_diag, output.eval())
 
-  def testBatchVector(self):
+  def testRectangular(self):
+    with self.test_session(use_gpu=self._use_gpu):
+      v = np.array([3.0, 4.0])
+      mat = np.array([[0.0, 1.0, 0.0], [1.0, 0.0, 1.0]])
+      expected = np.array([[3.0, 1.0, 0.0], [1.0, 4.0, 1.0]])
+      output = tf.matrix_set_diag(mat, v)
+      self.assertEqual((2, 3), output.get_shape())
+      self.assertAllEqual(expected, output.eval())
+
+      v = np.array([3.0, 4.0])
+      mat = np.array([[0.0, 1.0], [1.0, 0.0], [1.0, 1.0]])
+      expected = np.array([[3.0, 1.0], [1.0, 4.0], [1.0, 1.0]])
+      output = tf.matrix_set_diag(mat, v)
+      self.assertEqual((3, 2), output.get_shape())
+      self.assertAllEqual(expected, output.eval())
+
+  def testSquareBatch(self):
     with self.test_session(use_gpu=self._use_gpu):
       v_batch = np.array([[-1.0, -2.0, -3.0],
                           [-4.0, -5.0, -6.0]])
@@ -111,6 +127,25 @@ class MatrixSetDiagTest(tf.test.TestCase):
       self.assertEqual((2, 3, 3), output.get_shape())
       self.assertAllEqual(mat_set_diag_batch, output.eval())
 
+  def testRectangularBatch(self):
+    with self.test_session(use_gpu=self._use_gpu):
+      v_batch = np.array([[-1.0, -2.0],
+                          [-4.0, -5.0]])
+      mat_batch = np.array(
+          [[[1.0, 0.0, 3.0],
+            [0.0, 2.0, 0.0]],
+           [[4.0, 0.0, 4.0],
+            [0.0, 5.0, 0.0]]])
+
+      mat_set_diag_batch = np.array(
+          [[[-1.0, 0.0, 3.0],
+            [0.0, -2.0, 0.0]],
+           [[-4.0, 0.0, 4.0],
+            [0.0, -5.0, 0.0]]])
+      output = tf.matrix_set_diag(mat_batch, v_batch)
+      self.assertEqual((2, 2, 3), output.get_shape())
+      self.assertAllEqual(mat_set_diag_batch, output.eval())
+
   def testInvalidShape(self):
     with self.assertRaisesRegexp(ValueError, "must be at least rank 2"):
       tf.matrix_set_diag(0, [0])
@@ -127,11 +162,12 @@ class MatrixSetDiagTest(tf.test.TestCase):
         tf.matrix_set_diag([[v]], v).eval(feed_dict={v: 0.0})
 
   def testGrad(self):
-    shapes = ((3, 4, 4), (7, 4, 8, 8))
+    shapes = ((3, 4, 4), (3, 3, 4), (3, 4, 3), (7, 4, 8, 8))
     with self.test_session(use_gpu=self._use_gpu):
       for shape in shapes:
         x = tf.constant(np.random.rand(*shape), dtype=tf.float32)
-        x_diag = tf.constant(np.random.rand(*shape[:-1]), dtype=tf.float32)
+        diag_shape = shape[:-2] + (min(shape[-2:]),)
+        x_diag = tf.constant(np.random.rand(*diag_shape), dtype=tf.float32)
         y = tf.matrix_set_diag(x, x_diag)
         error_x = tf.test.compute_gradient_error(x, x.get_shape().as_list(),
                                                  y, y.get_shape().as_list())
@@ -164,7 +200,7 @@ class MatrixSetDiagGpuTest(MatrixSetDiagTest):
 class MatrixDiagPartTest(tf.test.TestCase):
   _use_gpu = False
 
-  def testMatrix(self):
+  def testSquare(self):
     with self.test_session(use_gpu=self._use_gpu):
       v = np.array([1.0, 2.0, 3.0])
       mat = np.diag(v)
@@ -172,7 +208,16 @@ class MatrixDiagPartTest(tf.test.TestCase):
       self.assertEqual((3,), mat_diag.get_shape())
       self.assertAllEqual(mat_diag.eval(), v)
 
-  def testBatchMatrix(self):
+  def testRectangular(self):
+    with self.test_session(use_gpu=self._use_gpu):
+      mat = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+      mat_diag = tf.matrix_diag_part(mat)
+      self.assertAllEqual(mat_diag.eval(), np.array([1.0, 5.0]))
+      mat = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
+      mat_diag = tf.matrix_diag_part(mat)
+      self.assertAllEqual(mat_diag.eval(), np.array([1.0, 4.0]))
+
+  def testSquareBatch(self):
     with self.test_session(use_gpu=self._use_gpu):
       v_batch = np.array([[1.0, 2.0, 3.0],
                           [4.0, 5.0, 6.0]])
@@ -188,22 +233,32 @@ class MatrixDiagPartTest(tf.test.TestCase):
       self.assertEqual((2, 3), mat_batch_diag.get_shape())
       self.assertAllEqual(mat_batch_diag.eval(), v_batch)
 
+  def testRectangularBatch(self):
+    with self.test_session(use_gpu=self._use_gpu):
+      v_batch = np.array([[1.0, 2.0],
+                          [4.0, 5.0]])
+      mat_batch = np.array(
+          [[[1.0, 0.0, 0.0],
+            [0.0, 2.0, 0.0]],
+           [[4.0, 0.0, 0.0],
+            [0.0, 5.0, 0.0]]])
+      self.assertEqual(mat_batch.shape, (2, 2, 3))
+      mat_batch_diag = tf.matrix_diag_part(mat_batch)
+      self.assertEqual((2, 2), mat_batch_diag.get_shape())
+      self.assertAllEqual(mat_batch_diag.eval(), v_batch)
+
   def testInvalidShape(self):
     with self.assertRaisesRegexp(ValueError, "must be at least rank 2"):
       tf.matrix_diag_part(0)
-    with self.assertRaisesRegexp(ValueError, r"Dimensions must be equal"):
-      tf.matrix_diag_part([[0, 1], [1, 0], [0, 0]])
 
   def testInvalidShapeAtEval(self):
     with self.test_session(use_gpu=self._use_gpu):
       v = tf.placeholder(dtype=tf.float32)
       with self.assertRaisesOpError("input must be at least 2-dim"):
         tf.matrix_diag_part(v).eval(feed_dict={v: 0.0})
-      with self.assertRaisesOpError("last two dimensions must be equal"):
-        tf.matrix_diag_part(v).eval(feed_dict={v: [[0, 1], [1, 0], [0, 0]]})
 
   def testGrad(self):
-    shapes = ((3, 3), (5, 3, 3))
+    shapes = ((3, 3), (2, 3), (3, 2), (5, 3, 3))
     with self.test_session(use_gpu=self._use_gpu):
       for shape in shapes:
         x = tf.constant(np.random.rand(*shape), dtype=np.float32)

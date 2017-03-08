@@ -19,6 +19,10 @@ limitations under the License.
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/platform/types.h"
 
+#if defined(PLATFORM_WINDOWS)
+#include "tensorflow/core/platform/windows/intrinsics_port.h"
+#endif
+
 namespace Eigen {
 namespace internal {
 

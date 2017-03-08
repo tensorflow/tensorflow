@@ -192,7 +192,7 @@ bool TensorResponse::ParseTensorSubmessage(
         TensorShape shape(tensor_meta->tensor_shape());
         Tensor t(allocator_, tensor_meta->dtype(), shape);
         StringPiece buf = t.tensor_data();
-        if (num_bytes != buf.size()) return false;
+        if (static_cast<size_t>(num_bytes) != buf.size()) return false;
         // TODO(jeff,sanjay): Figure out a way to avoid this copy if
         // the underlying ZeroCopyInputStream data is properly aligned
         // and compatible with what allocator_ wants.

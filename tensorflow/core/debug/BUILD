@@ -23,10 +23,20 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
 load(
     "//tensorflow/core:platform/default/build_config.bzl",
     "tf_kernel_tests_linkstatic",
+    "tf_proto_library_cc",
 )
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
     "tf_cuda_tests_tags",
+)
+
+tf_proto_library_cc(
+    name = "debug_service_proto",
+    srcs = ["debug_service.proto"],
+    has_services = 1,
+    cc_api_version = 2,
+    cc_grpc_version = 1,
+    cc_libs = ["//tensorflow/core:protos_all_cc"],
 )
 
 tf_cuda_library(
@@ -72,6 +82,7 @@ tf_cuda_library(
     copts = tf_copts(),
     linkstatic = 1,
     deps = [
+        ":debug_service_proto_cc",  # TODO(cais): Confirm safe.
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

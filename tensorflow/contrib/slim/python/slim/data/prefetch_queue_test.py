@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -48,7 +48,7 @@ class PrefetchQueueTest(tf.test.TestCase):
       batches = slim.prefetch_queue.prefetch_queue(
           batches).dequeue()
 
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       threads = tf.train.start_queue_runners()
 
       for i in range(num_batches):
@@ -87,7 +87,7 @@ class PrefetchQueueTest(tf.test.TestCase):
       batches = slim.prefetch_queue.prefetch_queue(
           batches).dequeue()
 
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       threads = tf.train.start_queue_runners()
 
       value_counter = []
@@ -128,7 +128,7 @@ class PrefetchQueueTest(tf.test.TestCase):
       batcher = slim.prefetch_queue.prefetch_queue(batches)
       batches_list = [batcher.dequeue() for _ in range(2)]
 
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       threads = tf.train.start_queue_runners()
 
       value_counter = []

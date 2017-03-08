@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,18 +18,26 @@ limitations under the License.
 
 namespace tensorflow {
 
+// SavedModel assets directory.
+constexpr char kSavedModelAssetsDirectory[] = "assets";
+
+// SavedModel assets key for graph collection-def.
+constexpr char kSavedModelAssetsKey[] = "saved_model_assets";
+
 // SavedModel proto filename.
 constexpr char kSavedModelFilenamePb[] = "saved_model.pb";
 
 // SavedModel text format proto filename.
 constexpr char kSavedModelFilenamePbTxt[] = "saved_model.pbtxt";
 
-// SavedModel variables filename.
-constexpr char kSavedModelVariablesFilename[] = "saved_model_variables";
+// SavedModel legacy init op key.
+constexpr char kSavedModelLegacyInitOpKey[] = "legacy_init_op";
 
-// Commonly used tags.
-constexpr char kSavedModelTagServe[] = "serve";
-constexpr char kSavedModelTagTrain[] = "train";
+// Directory in which to save the SavedModel variables.
+constexpr char kSavedModelVariablesDirectory[] = "variables";
+
+// SavedModel variables filename.
+constexpr char kSavedModelVariablesFilename[] = "variables";
 
 }  // namespace tensorflow
 

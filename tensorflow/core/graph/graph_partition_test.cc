@@ -70,7 +70,6 @@ void Partition(const GraphDef& graph_def,
   popts.get_incarnation = [](const string& name) {
     return (name[0] - 'A') + 100;
   };
-  popts.control_flow_added = false;
   Status s = Partition(popts, &g, partitions);
   CHECK(s.ok()) << s;
 
@@ -370,6 +369,33 @@ TEST_F(GraphPartitionTest, CrossDeviceLoop1) {
       }
     }
   }
+}
+
+TEST_F(GraphPartitionTest, PartitionIncompleteGraph) {
+  NodeDef ndef;
+  Graph g(OpRegistry::Global());
+  // Invalid graph since the Combine node requires an input.
+  bool parsed = protobuf::TextFormat::ParseFromString(
+      R"EOF(
+      name: "N"
+      op: "Combine"
+      )EOF",
+      &ndef);
+  ASSERT_TRUE(parsed);
+  Status status;
+  g.AddNode(ndef, &status);
+  TF_ASSERT_OK(status);
+
+  PartitionOptions popts;
+  popts.node_to_loc = SplitByDevice;
+  popts.new_name = [&g](const string& prefix) { return g.NewName(prefix); };
+  popts.get_incarnation = [](const string&) { return 1; };
+
+  std::unordered_map<string, GraphDef> partitions;
+  status = Partition(popts, &g, &partitions);
+  // Partitioning should fail, but not crash like it did before the
+  // changes that accompanied the addition of this test.
+  EXPECT_EQ(error::INVALID_ARGUMENT, status.code()) << status;
 }
 
 }  // namespace

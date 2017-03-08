@@ -1259,7 +1259,7 @@ Reinterpret the bytes of a string as a vector of numbers.
 
 *  <b>`bytes`</b>: A `Tensor` of type `string`.
     All the elements must have the same length.
-*  <b>`out_type`</b>: A `tf.DType` from: `tf.float32, tf.float64, tf.int32, tf.uint8, tf.int16, tf.int8, tf.int64`.
+*  <b>`out_type`</b>: A `tf.DType` from: `tf.half, tf.float32, tf.float64, tf.int32, tf.uint8, tf.int16, tf.int8, tf.int64`.
 *  <b>`little_endian`</b>: An optional `bool`. Defaults to `True`.
     Whether the input `bytes` are in little-endian order.
     Ignored for `out_type` values that are stored in a single byte like
@@ -1464,8 +1464,7 @@ Alias for field number 0
 
 Parses `Example` protos into a `dict` of tensors.
 
-Parses a number of serialized [`Example`]
-(https://www.tensorflow.org/code/tensorflow/core/example/example.proto)
+Parses a number of serialized [`Example`](https://www.tensorflow.org/code/tensorflow/core/example/example.proto)
 protos given in `serialized`.
 
 `example_names` may contain descriptive names for the corresponding serialized
@@ -1808,7 +1807,7 @@ until there is an element to dequeue.
 At runtime, this operation may raise an error if the queue is
 [closed](#QueueBase.close) before or during its execution. If the
 queue is closed, the queue is empty, and there are no pending
-enqueue operations that can fulfil this request,
+enqueue operations that can fulfill this request,
 `tf.errors.OutOfRangeError` will be raised. If the session is
 [closed](../../api_docs/python/client.md#Session.close),
 `tf.errors.CancelledError` will be raised.
@@ -1839,7 +1838,7 @@ If the queue is closed and there are less than `n` elements left, then an
 At runtime, this operation may raise an error if the queue is
 [closed](#QueueBase.close) before or during its execution. If the
 queue is closed, the queue contains fewer than `n` elements, and
-there are no pending enqueue operations that can fulfil this
+there are no pending enqueue operations that can fulfill this
 request, `tf.errors.OutOfRangeError` will be raised. If the
 session is [closed](../../api_docs/python/client.md#Session.close),
 `tf.errors.CancelledError` will be raised.
@@ -2244,6 +2243,448 @@ an int64 scalar (for `enqueue`) or an int64 vector (for `enqueue_many`).
 
 
 
+## Conditional Accumulators
+
+- - -
+
+### `class tf.ConditionalAccumulatorBase` {#ConditionalAccumulatorBase}
+
+A conditional accumulator for aggregating gradients.
+
+Up-to-date gradients (i.e., time step at which gradient was computed is
+equal to the accumulator's time step) are added to the accumulator.
+
+Extraction of the average gradient is blocked until the required number of
+gradients has been accumulated.
+- - -
+
+#### `tf.ConditionalAccumulatorBase.__init__(dtype, shape, accumulator_ref)` {#ConditionalAccumulatorBase.__init__}
+
+Creates a new ConditionalAccumulator.
+
+##### Args:
+
+
+*  <b>`dtype`</b>: Datatype of the accumulated gradients.
+*  <b>`shape`</b>: Shape of the accumulated gradients.
+*  <b>`accumulator_ref`</b>: A handle to the conditional accumulator, created by sub-
+    classes
+
+
+- - -
+
+#### `tf.ConditionalAccumulatorBase.accumulator_ref` {#ConditionalAccumulatorBase.accumulator_ref}
+
+The underlying accumulator reference.
+
+
+- - -
+
+#### `tf.ConditionalAccumulatorBase.dtype` {#ConditionalAccumulatorBase.dtype}
+
+The datatype of the gradients accumulated by this accumulator.
+
+
+- - -
+
+#### `tf.ConditionalAccumulatorBase.name` {#ConditionalAccumulatorBase.name}
+
+The name of the underlying accumulator.
+
+
+- - -
+
+#### `tf.ConditionalAccumulatorBase.num_accumulated(name=None)` {#ConditionalAccumulatorBase.num_accumulated}
+
+Number of gradients that have currently been aggregated in accumulator.
+
+##### Args:
+
+
+*  <b>`name`</b>: Optional name for the operation.
+
+##### Returns:
+
+  Number of accumulated gradients currently in accumulator.
+
+
+- - -
+
+#### `tf.ConditionalAccumulatorBase.set_global_step(new_global_step, name=None)` {#ConditionalAccumulatorBase.set_global_step}
+
+Sets the global time step of the accumulator.
+
+The operation logs a warning if we attempt to set to a time step that is
+lower than the accumulator's own time step.
+
+##### Args:
+
+
+*  <b>`new_global_step`</b>: Value of new time step. Can be a variable or a constant
+*  <b>`name`</b>: Optional name for the operation.
+
+##### Returns:
+
+  Operation that sets the accumulator's time step.
+
+
+
+- - -
+
+### `class tf.ConditionalAccumulator` {#ConditionalAccumulator}
+
+A conditional accumulator for aggregating gradients.
+
+Up-to-date gradients (i.e., time step at which gradient was computed is
+equal to the accumulator's time step) are added to the accumulator.
+
+Extraction of the average gradient is blocked until the required number of
+gradients has been accumulated.
+- - -
+
+#### `tf.ConditionalAccumulator.__init__(dtype, shape=None, shared_name=None, name='conditional_accumulator')` {#ConditionalAccumulator.__init__}
+
+Creates a new ConditionalAccumulator.
+
+##### Args:
+
+
+*  <b>`dtype`</b>: Datatype of the accumulated gradients.
+*  <b>`shape`</b>: Shape of the accumulated gradients.
+*  <b>`shared_name`</b>: Optional. If non-empty, this accumulator will be shared under
+    the given name across multiple sessions.
+*  <b>`name`</b>: Optional name for the accumulator.
+
+
+- - -
+
+#### `tf.ConditionalAccumulator.accumulator_ref` {#ConditionalAccumulator.accumulator_ref}
+
+The underlying accumulator reference.
+
+
+- - -
+
+#### `tf.ConditionalAccumulator.apply_grad(grad, local_step=0, name=None)` {#ConditionalAccumulator.apply_grad}
+
+Attempts to apply a gradient to the accumulator.
+
+The attempt is silently dropped if the gradient is stale, i.e., local_step
+is less than the accumulator's global time step.
+
+##### Args:
+
+
+*  <b>`grad`</b>: The gradient tensor to be applied.
+*  <b>`local_step`</b>: Time step at which the gradient was computed.
+*  <b>`name`</b>: Optional name for the operation.
+
+##### Returns:
+
+  The operation that (conditionally) applies a gradient to the accumulator.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If grad is of the wrong shape
+
+
+- - -
+
+#### `tf.ConditionalAccumulator.dtype` {#ConditionalAccumulator.dtype}
+
+The datatype of the gradients accumulated by this accumulator.
+
+
+- - -
+
+#### `tf.ConditionalAccumulator.name` {#ConditionalAccumulator.name}
+
+The name of the underlying accumulator.
+
+
+- - -
+
+#### `tf.ConditionalAccumulator.num_accumulated(name=None)` {#ConditionalAccumulator.num_accumulated}
+
+Number of gradients that have currently been aggregated in accumulator.
+
+##### Args:
+
+
+*  <b>`name`</b>: Optional name for the operation.
+
+##### Returns:
+
+  Number of accumulated gradients currently in accumulator.
+
+
+- - -
+
+#### `tf.ConditionalAccumulator.set_global_step(new_global_step, name=None)` {#ConditionalAccumulator.set_global_step}
+
+Sets the global time step of the accumulator.
+
+The operation logs a warning if we attempt to set to a time step that is
+lower than the accumulator's own time step.
+
+##### Args:
+
+
+*  <b>`new_global_step`</b>: Value of new time step. Can be a variable or a constant
+*  <b>`name`</b>: Optional name for the operation.
+
+##### Returns:
+
+  Operation that sets the accumulator's time step.
+
+
+- - -
+
+#### `tf.ConditionalAccumulator.take_grad(num_required, name=None)` {#ConditionalAccumulator.take_grad}
+
+Attempts to extract the average gradient from the accumulator.
+
+The operation blocks until sufficient number of gradients have been
+successfully applied to the accumulator.
+
+Once successful, the following actions are also triggered:
+- Counter of accumulated gradients is reset to 0.
+- Aggregated gradient is reset to 0 tensor.
+- Accumulator's internal time step is incremented by 1.
+
+##### Args:
+
+
+*  <b>`num_required`</b>: Number of gradients that needs to have been aggregated
+*  <b>`name`</b>: Optional name for the operation
+
+##### Returns:
+
+  A tensor holding the value of the average gradient.
+
+##### Raises:
+
+
+*  <b>`InvalidArgumentError`</b>: If num_required < 1
+
+
+
+- - -
+
+### `class tf.SparseConditionalAccumulator` {#SparseConditionalAccumulator}
+
+A conditional accumulator for aggregating sparse gradients.
+
+Sparse gradients are represented by IndexedSlices.
+
+Up-to-date gradients (i.e., time step at which gradient was computed is
+equal to the accumulator's time step) are added to the accumulator.
+
+Extraction of the average gradient is blocked until the required number of
+gradients has been accumulated.
+
+Args:
+  dtype: Datatype of the accumulated gradients.
+  shape: Shape of the accumulated gradients.
+  shared_name: Optional. If non-empty, this accumulator will be shared under
+    the given name across multiple sessions.
+  name: Optional name for the accumulator.
+- - -
+
+#### `tf.SparseConditionalAccumulator.__init__(dtype, shape=None, shared_name=None, name='sparse_conditional_accumulator')` {#SparseConditionalAccumulator.__init__}
+
+
+
+
+- - -
+
+#### `tf.SparseConditionalAccumulator.accumulator_ref` {#SparseConditionalAccumulator.accumulator_ref}
+
+The underlying accumulator reference.
+
+
+- - -
+
+#### `tf.SparseConditionalAccumulator.apply_grad(grad_indices, grad_values, grad_shape=None, local_step=0, name=None)` {#SparseConditionalAccumulator.apply_grad}
+
+Attempts to apply a sparse gradient to the accumulator.
+
+The attempt is silently dropped if the gradient is stale, i.e., local_step
+is less than the accumulator's global time step.
+
+A sparse gradient is represented by its indices, values and possibly empty
+or None shape. Indices must be a vector representing the locations of
+non-zero entries in the tensor. Values are the non-zero slices of the
+gradient, and must have the same first dimension as indices, i.e., the nnz
+represented by indices and values must be consistent. Shape, if not empty or
+None, must be consistent with the accumulator's shape (if also provided).
+
+##### Example:
+
+  A tensor [[0, 0], [0. 1], [2, 3]] can be represented
+
+*  <b>`indices`</b>: [1,2]
+*  <b>`values`</b>: [[0,1],[2,3]]
+*  <b>`shape`</b>: [3, 2]
+
+##### Args:
+
+
+*  <b>`grad_indices`</b>: Indices of the sparse gradient to be applied.
+*  <b>`grad_values`</b>: Values of the sparse gradient to be applied.
+*  <b>`grad_shape`</b>: Shape of the sparse gradient to be applied.
+*  <b>`local_step`</b>: Time step at which the gradient was computed.
+*  <b>`name`</b>: Optional name for the operation.
+
+##### Returns:
+
+  The operation that (conditionally) applies a gradient to the accumulator.
+
+##### Raises:
+
+
+*  <b>`InvalidArgumentError`</b>: If grad is of the wrong shape
+
+
+- - -
+
+#### `tf.SparseConditionalAccumulator.apply_indexed_slices_grad(grad, local_step=0, name=None)` {#SparseConditionalAccumulator.apply_indexed_slices_grad}
+
+Attempts to apply a gradient to the accumulator.
+
+The attempt is silently dropped if the gradient is stale, i.e., local_step
+is less than the accumulator's global time step.
+
+##### Args:
+
+
+*  <b>`grad`</b>: The gradient IndexedSlices to be applied.
+*  <b>`local_step`</b>: Time step at which the gradient was computed.
+*  <b>`name`</b>: Optional name for the operation.
+
+##### Returns:
+
+  The operation that (conditionally) applies a gradient to the accumulator.
+
+##### Raises:
+
+
+*  <b>`InvalidArgumentError`</b>: If grad is of the wrong shape
+
+
+- - -
+
+#### `tf.SparseConditionalAccumulator.dtype` {#SparseConditionalAccumulator.dtype}
+
+The datatype of the gradients accumulated by this accumulator.
+
+
+- - -
+
+#### `tf.SparseConditionalAccumulator.name` {#SparseConditionalAccumulator.name}
+
+The name of the underlying accumulator.
+
+
+- - -
+
+#### `tf.SparseConditionalAccumulator.num_accumulated(name=None)` {#SparseConditionalAccumulator.num_accumulated}
+
+Number of gradients that have currently been aggregated in accumulator.
+
+##### Args:
+
+
+*  <b>`name`</b>: Optional name for the operation.
+
+##### Returns:
+
+  Number of accumulated gradients currently in accumulator.
+
+
+- - -
+
+#### `tf.SparseConditionalAccumulator.set_global_step(new_global_step, name=None)` {#SparseConditionalAccumulator.set_global_step}
+
+Sets the global time step of the accumulator.
+
+The operation logs a warning if we attempt to set to a time step that is
+lower than the accumulator's own time step.
+
+##### Args:
+
+
+*  <b>`new_global_step`</b>: Value of new time step. Can be a variable or a constant
+*  <b>`name`</b>: Optional name for the operation.
+
+##### Returns:
+
+  Operation that sets the accumulator's time step.
+
+
+- - -
+
+#### `tf.SparseConditionalAccumulator.take_grad(num_required, name=None)` {#SparseConditionalAccumulator.take_grad}
+
+Attempts to extract the average gradient from the accumulator.
+
+The operation blocks until sufficient number of gradients have been
+successfully applied to the accumulator.
+
+Once successful, the following actions are also triggered:
+- Counter of accumulated gradients is reset to 0.
+- Aggregated gradient is reset to 0 tensor.
+- Accumulator's internal time step is incremented by 1.
+
+##### Args:
+
+
+*  <b>`num_required`</b>: Number of gradients that needs to have been aggregated
+*  <b>`name`</b>: Optional name for the operation
+
+##### Returns:
+
+  A tuple of indices, values, and shape representing the average gradient.
+
+##### Raises:
+
+
+*  <b>`InvalidArgumentError`</b>: If num_required < 1
+
+
+- - -
+
+#### `tf.SparseConditionalAccumulator.take_indexed_slices_grad(num_required, name=None)` {#SparseConditionalAccumulator.take_indexed_slices_grad}
+
+Attempts to extract the average gradient from the accumulator.
+
+The operation blocks until sufficient number of gradients have been
+successfully applied to the accumulator.
+
+Once successful, the following actions are also triggered:
+- Counter of accumulated gradients is reset to 0.
+- Aggregated gradient is reset to 0 tensor.
+- Accumulator's internal time step is incremented by 1.
+
+##### Args:
+
+
+*  <b>`num_required`</b>: Number of gradients that needs to have been aggregated
+*  <b>`name`</b>: Optional name for the operation
+
+##### Returns:
+
+  An IndexedSlices holding the value of the average gradient.
+
+##### Raises:
+
+
+*  <b>`InvalidArgumentError`</b>: If num_required < 1
+
+
+
+
 ## Dealing with the filesystem
 
 - - -
@@ -2283,6 +2724,26 @@ Reads and outputs the entire contents of the input filename.
   A `Tensor` of type `string`.
 
 
+- - -
+
+### `tf.write_file(filename, contents, name=None)` {#write_file}
+
+Writes contents to the file at input filename. Creates file if not existing.
+
+##### Args:
+
+
+*  <b>`filename`</b>: A `Tensor` of type `string`.
+    scalar. The name of the file to which we write the contents.
+*  <b>`contents`</b>: A `Tensor` of type `string`.
+    scalar. The content to be written to the output file.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  The created Operation.
+
+
 
 ## Input pipeline
 
@@ -2318,6 +2779,9 @@ Save the list of files matching pattern, so it is only computed once.
 
 Returns tensor `num_epochs` times and then raises an `OutOfRange` error.
 
+Note: creates local counter `epochs`. Use `local_variable_initializer()` to
+initialize local variables.
+
 ##### Args:
 
 
@@ -2338,9 +2802,12 @@ Returns tensor `num_epochs` times and then raises an `OutOfRange` error.
 
 - - -
 
-### `tf.train.input_producer(input_tensor, element_shape=None, num_epochs=None, shuffle=True, seed=None, capacity=32, shared_name=None, summary_name=None, name=None)` {#input_producer}
+### `tf.train.input_producer(input_tensor, element_shape=None, num_epochs=None, shuffle=True, seed=None, capacity=32, shared_name=None, summary_name=None, name=None, cancel_op=None)` {#input_producer}
 
 Output the rows of `input_tensor` to a queue for an input pipeline.
+
+Note: if `num_epochs` is not `None`, this function creates local counter
+`epochs`. Use `local_variable_initializer()` to initialize local variables.
 
 ##### Args:
 
@@ -2364,6 +2831,7 @@ Output the rows of `input_tensor` to a queue for an input pipeline.
 *  <b>`summary_name`</b>: (Optional.) If set, a scalar summary for the current queue
     size will be generated, using this name as part of the tag.
 *  <b>`name`</b>: (Optional.) A name for queue.
+*  <b>`cancel_op`</b>: (Optional.) Cancel op for the queue
 
 ##### Returns:
 
@@ -2382,6 +2850,9 @@ Output the rows of `input_tensor` to a queue for an input pipeline.
 ### `tf.train.range_input_producer(limit, num_epochs=None, shuffle=True, seed=None, capacity=32, shared_name=None, name=None)` {#range_input_producer}
 
 Produces the integers from 0 to limit-1 in a queue.
+
+Note: if `num_epochs` is not `None`, this function creates local counter
+`epochs`. Use `local_variable_initializer()` to initialize local variables.
 
 ##### Args:
 
@@ -2445,9 +2916,12 @@ is added to the current `Graph`'s `QUEUE_RUNNER` collection.
 
 - - -
 
-### `tf.train.string_input_producer(string_tensor, num_epochs=None, shuffle=True, seed=None, capacity=32, shared_name=None, name=None)` {#string_input_producer}
+### `tf.train.string_input_producer(string_tensor, num_epochs=None, shuffle=True, seed=None, capacity=32, shared_name=None, name=None, cancel_op=None)` {#string_input_producer}
 
 Output strings (e.g. filenames) to a queue for an input pipeline.
+
+Note: if `num_epochs` is not `None`, this function creates local counter
+`epochs`. Use `local_variable_initializer()` to initialize local variables.
 
 ##### Args:
 
@@ -2465,6 +2939,7 @@ Output strings (e.g. filenames) to a queue for an input pipeline.
 *  <b>`shared_name`</b>: (optional). If set, this queue will be shared under the given
     name across multiple sessions.
 *  <b>`name`</b>: A name for the operations (optional).
+*  <b>`cancel_op`</b>: Cancel op for the queue (optional).
 
 ##### Returns:
 
@@ -2548,6 +3023,9 @@ elements to fill the batch, otherwise the pending elements are discarded.
 In addition, all output tensors' static shapes, as accessed via the
 `get_shape` method will have a first `Dimension` value of `None`, and
 operations that depend on fixed batch_size would fail.
+
+Note: if `num_epochs` is not `None`, this function creates local counter
+`epochs`. Use `local_variable_initializer()` to initialize local variables.
 
 ##### Args:
 
@@ -2725,6 +3203,9 @@ elements to fill the batch, otherwise the pending elements are discarded.
 In addition, all output tensors' static shapes, as accessed via the
 `get_shape` method will have a first `Dimension` value of `None`, and
 operations that depend on fixed batch_size would fail.
+
+Note: if `num_epochs` is not `None`, this function creates local counter
+`epochs`. Use `local_variable_initializer()` to initialize local variables.
 
 ##### Args:
 

@@ -126,7 +126,7 @@ class MixtureTest(tf.test.TestCase):
           [distributions_py.Normal(mu=1.0, sigma=2.0),  # scalar dist
            distributions_py.Normal(mu=[1.0, 1.0], sigma=[2.0, 2.0])])
     with self.assertRaisesWithPredicateMatch(ValueError, r"Could not infer"):
-      cat_logits = tf.placeholder(shape=[1, None], dtype=tf.int32)
+      cat_logits = tf.placeholder(shape=[1, None], dtype=tf.float32)
       distributions_py.Mixture(
           distributions_py.Categorical(cat_logits),
           [distributions_py.Normal(mu=[1.0], sigma=[2.0])])
@@ -334,6 +334,32 @@ class MixtureTest(tf.test.TestCase):
         which_dist_samples = dist_sample_values[c][:size_c]
         self.assertAllClose(which_dist_samples, sample_values[which_c])
 
+  # Test that sampling with the same seed twice gives the same results.
+  def testSampleMultipleTimes(self):
+    # 5 component mixture.
+    logits = [-10.0, -5.0, 0.0, 5.0, 10.0]
+    mus = [-5.0, 0.0, 5.0, 4.0, 20.0]
+    sigmas = [0.1, 5.0, 3.0, 0.2, 4.0]
+
+    with self.test_session():
+      n = 100
+
+      tf.set_random_seed(654321)
+      components = [distributions_py.Normal(
+          mu=mu, sigma=sigma) for mu, sigma in zip(mus, sigmas)]
+      cat = distributions_py.Categorical(logits, dtype=tf.int32, name="cat1")
+      dist1 = distributions_py.Mixture(cat, components, name="mixture1")
+      samples1 = dist1.sample_n(n, seed=123456).eval()
+
+      tf.set_random_seed(654321)
+      components2 = [distributions_py.Normal(
+          mu=mu, sigma=sigma) for mu, sigma in zip(mus, sigmas)]
+      cat2 = distributions_py.Categorical(logits, dtype=tf.int32, name="cat2")
+      dist2 = distributions_py.Mixture(cat2, components2, name="mixture2")
+      samples2 = dist2.sample_n(n, seed=123456).eval()
+
+      self.assertAllClose(samples1, samples2)
+
   def testSampleScalarBatchMultivariate(self):
     with self.test_session() as sess:
       num_components = 3
@@ -443,7 +469,7 @@ class MixtureBenchmark(tf.test.Benchmark):
             batch_size=batch_size,
             num_features=num_features)
         sample_op = mixture.sample(sample_size).op
-        sess.run(tf.initialize_all_variables())
+        sess.run(tf.global_variables_initializer())
         reported = self.run_op_benchmark(
             sess, sample_op,
             min_iters=10,

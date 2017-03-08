@@ -515,9 +515,15 @@ class ColocationGraph {
 
       // If no kernels are registered for this op type, fail with an error.
       if (member->supported_device_types.empty()) {
+        std::set<string> registered_device_types;
+        for (Device* d : device_set_->devices()) {
+          registered_device_types.insert(d->device_type());
+        }
         return errors::InvalidArgument(
             "No OpKernel was registered to support Op '", node.def().op(),
-            "' with these attrs.  Registered kernels:\n",
+            "' with these attrs.  Registered devices: [",
+            str_util::Join(registered_device_types, ","),
+            "], Registered kernels:\n",
             KernelsRegisteredForOp(node.def().op()));
       }
 
@@ -645,7 +651,8 @@ Status SimplePlacer::Run() {
     // edge from the source of that edge to `node`.
     for (const auto& edge : node->in_edges()) {
       if (!edge->IsControlEdge() &&
-          IsRefType(node->input_type(edge->dst_input()))) {
+          (IsRefType(node->input_type(edge->dst_input())) ||
+           node->input_type(edge->dst_input()) == DT_RESOURCE)) {
         // If both the source node and this node have paritally
         // specified a device, then 'node's device should be
         // cleared: the reference edge forces 'node' to be on the
@@ -814,9 +821,11 @@ void SimplePlacer::AssignAndLog(const string& assigned_device,
   node->set_assigned_device_name(assigned_device);
   // Log placement if log_device_placement is set.
   if (options_ && options_->config.log_device_placement()) {
-    printf("%s: %s\n", node->name().c_str(),
+    printf("%s: (%s): %s\n", node->name().c_str(),
+           node->type_string().c_str(),
            node->assigned_device_name().c_str());
-    LOG(INFO) << node->name() << ": " << node->assigned_device_name();
+    LOG(INFO) << node->name() << ": " << "(" << node->type_string() << ")" 
+              << node->assigned_device_name();
   }
 }
 

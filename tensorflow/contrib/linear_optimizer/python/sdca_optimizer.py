@@ -1,5 +1,5 @@
 """Linear Estimators."""
-#  Copyright 2015-present The Scikit Flow Authors. All Rights Reserved.
+#  Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
 #  you may not use this file except in compliance with the License.
@@ -49,7 +49,7 @@ class SDCAOptimizer(object):
   as `key` whose value is a `Tensor` of shape [batch_size] and dtype string.
   num_loss_partitions defines the number of partitions of the global loss
   function and should be set to (#concurrent train ops/per worker) x (#workers).
-  Convergence of (global) loss is guranteed if num_loss_partitions is larger or
+  Convergence of (global) loss is guaranteed if num_loss_partitions is larger or
   equal to the above product. Larger values for num_loss_partitions lead to
   slower convergence. The recommended value for num_loss_partitions in tf.learn
   (where currently there is one process per worker) is the number of workers
@@ -123,7 +123,8 @@ class SDCAOptimizer(object):
           # bucketized feature is "sparsified" for SDCA by converting it to a
           # SparseFeatureColumn respresenting the one-hot encoding of the
           # bucketized feature.
-          dense_bucket_tensor = column.to_dnn_input_layer(transformed_tensor)
+          dense_bucket_tensor = layers.input_from_feature_columns(
+              {column: transformed_tensor}, [column])
           sparse_feature_column = _tensor_to_sparse_feature_column(
               dense_bucket_tensor)
           sparse_feature_with_values.append(sparse_feature_column)
@@ -180,4 +181,5 @@ class SDCAOptimizer(object):
             num_loss_partitions=self._num_loss_partitions,
             num_table_shards=self._num_table_shards,
             loss_type=loss_type))
-    return sdca_model.minimize(global_step=global_step)
+    train_op = sdca_model.minimize(global_step=global_step)
+    return sdca_model, train_op

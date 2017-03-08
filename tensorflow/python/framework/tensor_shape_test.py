@@ -52,6 +52,7 @@ class DimensionTest(test_util.TensorFlowTestCase):
                             tensor_shape.Dimension(12))
     self.assertGreaterEqual(tensor_shape.Dimension(13),
                             tensor_shape.Dimension(12))
+    self.assertNotEqual(dim, (12,))
     with self.assertRaises(ValueError):
       dim.merge_with(tensor_shape.Dimension(13))
 

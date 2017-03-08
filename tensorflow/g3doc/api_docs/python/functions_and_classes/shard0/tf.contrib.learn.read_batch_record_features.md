@@ -1,4 +1,4 @@
-### `tf.contrib.learn.read_batch_record_features(file_pattern, batch_size, features, randomize_input=True, num_epochs=None, queue_capacity=10000, reader_num_threads=1, parser_num_threads=1, name='dequeue_record_examples')` {#read_batch_record_features}
+### `tf.contrib.learn.read_batch_record_features(file_pattern, batch_size, features, randomize_input=True, num_epochs=None, queue_capacity=10000, reader_num_threads=1, name='dequeue_record_examples')` {#read_batch_record_features}
 
 Reads TFRecord, queues, batches and parses `Example` proto.
 
@@ -16,10 +16,9 @@ See more detailed description in `read_examples`.
 *  <b>`num_epochs`</b>: Integer specifying the number of times to read through the
     dataset. If None, cycles through the dataset forever. NOTE - If specified,
     creates a variable that must be initialized, so call
-    tf.initialize_local_variables() as shown in the tests.
+    tf.local_variables_initializer() as shown in the tests.
 *  <b>`queue_capacity`</b>: Capacity for input queue.
 *  <b>`reader_num_threads`</b>: The number of threads to read examples.
-*  <b>`parser_num_threads`</b>: The number of threads to parse examples.
 *  <b>`name`</b>: Name of resulting op.
 
 ##### Returns:

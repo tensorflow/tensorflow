@@ -46,7 +46,7 @@ class AdadeltaOptimizerTest(tf.test.TestCase):
             adadelta_update = adadelta_opt.apply_gradients(zip(
               [grads, grads], [var0, var1]))
 
-            tf.initialize_all_variables().run()
+            tf.global_variables_initializer().run()
 
             # Assign slots
             slot = [None] * 2

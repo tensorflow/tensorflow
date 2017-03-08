@@ -3,6 +3,7 @@
 Return a mask tensor representing the first N positions of each row.
 
 Example:
+
 ```python
 tf.sequence_mask([1, 3, 2], 5) =
   [[True, False, False, False, False],

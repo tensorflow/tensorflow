@@ -708,6 +708,22 @@ static Status ApplyRMSPropShapeFn(InferenceContext* c, bool sparse) {
   return Status::OK();
 }
 
+static Status ApplyCenteredRMSPropShapeFn(InferenceContext* c, bool sparse) {
+  ShapeHandle unused;
+  ShapeHandle s = c->input(0);                               // var
+  TF_RETURN_IF_ERROR(c->Merge(s, c->input(1), &s));          // ms
+  TF_RETURN_IF_ERROR(c->Merge(s, c->input(2), &s));          // mg
+  TF_RETURN_IF_ERROR(c->Merge(s, c->input(3), &s));          // mom
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));  // lr
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));  // rho
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));  // momentum
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));  // epsilon
+  TF_RETURN_IF_ERROR(
+      HandleGradAndIndicesInputs(c, sparse, 8 /* grad_idx */, &s));
+  c->set_output(0, s);
+  return Status::OK();
+}
+
 REGISTER_OP("ApplyRMSProp")
     .Input("var: Ref(T)")
     .Input("ms: Ref(T)")
@@ -725,9 +741,9 @@ REGISTER_OP("ApplyRMSProp")
     })
     .Doc(R"doc(
 Update '*var' according to the RMSProp algorithm.
-Note that in dense implement of this algorithm, ms and mom will 
-update even if the grad is zero, but in this sparse implement, ms 
-and mom will not update in iterations the grad is zero.
+Note that in dense implementation of this algorithm, ms and mom will
+update even if the grad is zero, but in this sparse implementation, ms
+and mom will not update in iterations during which the grad is zero.
 
 mean_square = decay * mean_square + (1-decay) * gradient ** 2
 Delta = learning_rate * gradient / sqrt(mean_square + epsilon)
@@ -744,8 +760,59 @@ epsilon: Ridge term. Must be a scalar.
 rho: Decay rate. Must be a scalar.
 grad: The gradient.
 out: Same as "var".
-use_locking: If `True`, updating of the var, m, and v tensors will be protected
+use_locking: If `True`, updating of the var, ms, and mom tensors is protected
   by a lock; otherwise the behavior is undefined, but may exhibit less
+  contention.
+)doc");
+
+REGISTER_OP("ApplyCenteredRMSProp")
+    .Input("var: Ref(T)")
+    .Input("mg: Ref(T)")
+    .Input("ms: Ref(T)")
+    .Input("mom: Ref(T)")
+    .Input("lr: T")
+    .Input("rho: T")
+    .Input("momentum: T")
+    .Input("epsilon: T")
+    .Input("grad: T")
+    .Output("out: Ref(T)")
+    .Attr("T: numbertype")
+    .Attr("use_locking: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      return ApplyCenteredRMSPropShapeFn(c, false /* sparse */);
+    })
+    .Doc(R"doc(
+Update '*var' according to the centered RMSProp algorithm.
+The centered RMSProp algorithm uses an estimate of the centered second moment
+(i.e., the variance) for normalization, as opposed to regular RMSProp, which
+uses the (uncentered) second moment. This often helps with training, but is
+slightly more expensive in terms of computation and memory.
+
+Note that in dense implementation of this algorithm, mg, ms, and mom will
+update even if the grad is zero, but in this sparse implementation, mg, ms,
+and mom will not update in iterations during which the grad is zero.
+
+mean_square = decay * mean_square + (1-decay) * gradient ** 2
+mean_grad = decay * mean_grad + (1-decay) * gradient
+
+Delta = learning_rate * gradient / sqrt(mean_square + epsilon - mean_grad ** 2)
+
+mg <- rho * mg_{t-1} + (1-rho) * grad
+ms <- rho * ms_{t-1} + (1-rho) * grad * grad
+mom <- momentum * mom_{t-1} + lr * grad / sqrt(ms - mg * mg + epsilon)
+var <- var - mom
+
+var: Should be from a Variable().
+mg: Should be from a Variable().
+ms: Should be from a Variable().
+mom: Should be from a Variable().
+lr: Scaling factor. Must be a scalar.
+epsilon: Ridge term. Must be a scalar.
+rho: Decay rate. Must be a scalar.
+grad: The gradient.
+out: Same as "var".
+use_locking: If `True`, updating of the var, mg, ms, and mom tensors is
+  protected by a lock; otherwise the behavior is undefined, but may exhibit less
   contention.
 )doc");
 
@@ -768,9 +835,9 @@ REGISTER_OP("SparseApplyRMSProp")
     })
     .Doc(R"doc(
 Update '*var' according to the RMSProp algorithm.
-Note that in dense implement of this algorithm, ms and mom will 
-update even if the grad is zero, but in this sparse implement, ms 
-and mom will not update in iterations the grad is zero.
+Note that in dense implementation of this algorithm, ms and mom will
+update even if the grad is zero, but in this sparse implementation, ms
+and mom will not update in iterations during which the grad is zero.
 
 mean_square = decay * mean_square + (1-decay) * gradient ** 2
 Delta = learning_rate * gradient / sqrt(mean_square + epsilon)
@@ -788,8 +855,60 @@ rho: Decay rate. Must be a scalar.
 grad: The gradient.
 indices: A vector of indices into the first dimension of var, ms and mom.
 out: Same as "var".
-use_locking: If `True`, updating of the var, m, and v tensors will be protected
+use_locking: If `True`, updating of the var, ms, and mom tensors is protected
   by a lock; otherwise the behavior is undefined, but may exhibit less
+  contention.
+)doc");
+
+REGISTER_OP("SparseApplyCenteredRMSProp")
+    .Input("var: Ref(T)")
+    .Input("mg: Ref(T)")
+    .Input("ms: Ref(T)")
+    .Input("mom: Ref(T)")
+    .Input("lr: T")
+    .Input("rho: T")
+    .Input("momentum: T")
+    .Input("epsilon: T")
+    .Input("grad: T")
+    .Input("indices: Tindices")
+    .Output("out: Ref(T)")
+    .Attr("T: numbertype")
+    .Attr("Tindices: {int32, int64}")
+    .Attr("use_locking: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      return ApplyCenteredRMSPropShapeFn(c, true /* sparse */);
+    })
+    .Doc(R"doc(
+Update '*var' according to the centered RMSProp algorithm.
+The centered RMSProp algorithm uses an estimate of the centered second moment
+(i.e., the variance) for normalization, as opposed to regular RMSProp, which
+uses the (uncentered) second moment. This often helps with training, but is
+slightly more expensive in terms of computation and memory.
+
+Note that in dense implementation of this algorithm, mg, ms, and mom will
+update even if the grad is zero, but in this sparse implementation, mg, ms,
+and mom will not update in iterations during which the grad is zero.
+
+mean_square = decay * mean_square + (1-decay) * gradient ** 2
+mean_grad = decay * mean_grad + (1-decay) * gradient
+Delta = learning_rate * gradient / sqrt(mean_square + epsilon - mean_grad ** 2)
+
+ms <- rho * ms_{t-1} + (1-rho) * grad * grad
+mom <- momentum * mom_{t-1} + lr * grad / sqrt(ms + epsilon)
+var <- var - mom
+
+var: Should be from a Variable().
+mg: Should be from a Variable().
+ms: Should be from a Variable().
+mom: Should be from a Variable().
+lr: Scaling factor. Must be a scalar.
+epsilon: Ridge term. Must be a scalar.
+rho: Decay rate. Must be a scalar.
+grad: The gradient.
+indices: A vector of indices into the first dimension of var, ms and mom.
+out: Same as "var".
+use_locking: If `True`, updating of the var, mg, ms, and mom tensors is
+  protected by a lock; otherwise the behavior is undefined, but may exhibit less
   contention.
 )doc");
 

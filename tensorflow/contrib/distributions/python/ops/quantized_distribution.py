@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.distributions.python.ops import distribution
+from tensorflow.contrib.distributions.python.ops import distribution as distributions
 from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
 from tensorflow.python.framework import ops
@@ -48,7 +48,84 @@ def _logsum_expbig_minus_expsmall(big, small):
     return math_ops.log(1. - math_ops.exp(small - big)) + big
 
 
-class QuantizedDistribution(distribution.Distribution):
+_prob_base_note = """
+For whole numbers `y`,
+
+```
+P[Y = y] := P[X <= lower_cutoff],  if y == lower_cutoff,
+         := P[X > upper_cutoff - 1],  y == upper_cutoff,
+         := 0, if j < lower_cutoff or y > upper_cutoff,
+         := P[y - 1 < X <= y],  all other y.
+```
+
+"""
+
+_prob_note = _prob_base_note + """
+The base distribution's `cdf` method must be defined on `y - 1`.  If the
+base distribution has a `survival_function` method, results will be more
+accurate for large values of `y`, and in this case the `survival_function` must
+also be defined on `y - 1`.
+"""
+
+_log_prob_note = _prob_base_note + """
+The base distribution's `log_cdf` method must be defined on `y - 1`.  If the
+base distribution has a `log_survival_function` method results will be more
+accurate for large values of `y`, and in this case the `log_survival_function`
+must also be defined on `y - 1`.
+"""
+
+
+_cdf_base_note = """
+
+For whole numbers `y`,
+
+```
+cdf(y) := P[Y <= y]
+        = 1, if y >= upper_cutoff,
+        = 0, if y < lower_cutoff,
+        = P[X <= y], otherwise.
+```
+
+Since `Y` only has mass at whole numbers, `P[Y <= y] = P[Y <= floor(y)]`.
+This dictates that fractional `y` are first floored to a whole number, and
+then above definition applies.
+"""
+
+_cdf_note = _cdf_base_note + """
+The base distribution's `cdf` method must be defined on `y - 1`.
+"""
+
+_log_cdf_note = _cdf_base_note + """
+The base distribution's `log_cdf` method must be defined on `y - 1`.
+"""
+
+
+_sf_base_note = """
+
+For whole numbers `y`,
+
+```
+survival_function(y) := P[Y > y]
+                      = 0, if y >= upper_cutoff,
+                      = 1, if y < lower_cutoff,
+                      = P[X <= y], otherwise.
+```
+
+Since `Y` only has mass at whole numbers, `P[Y <= y] = P[Y <= floor(y)]`.
+This dictates that fractional `y` are first floored to a whole number, and
+then above definition applies.
+"""
+
+_sf_note = _sf_base_note + """
+The base distribution's `cdf` method must be defined on `y - 1`.
+"""
+
+_log_sf_note = _sf_base_note + """
+The base distribution's `log_cdf` method must be defined on `y - 1`.
+"""
+
+
+class QuantizedDistribution(distributions.Distribution):
   """Distribution representing the quantization `Y = ceiling(X)`.
 
   #### Definition in terms of sampling.
@@ -102,21 +179,20 @@ class QuantizedDistribution(distribution.Distribution):
   """
 
   def __init__(self,
-               base_dist_cls,
+               distribution,
                lower_cutoff=None,
                upper_cutoff=None,
-               name="QuantizedDistribution",
-               **base_dist_args):
-    """Construct a Quantized Distribution.
+               validate_args=False,
+               name="QuantizedDistribution"):
+    """Construct a Quantized Distribution representing `Y = ceiling(X)`.
 
-    Some properties are inherited from the distribution defining `X`.
-    In particular, `validate_args` and `allow_nan_stats` are determined for this
-    `QuantizedDistribution` by reading the additional kwargs passed as
-    `base_dist_args`.
+    Some properties are inherited from the distribution defining `X`. Example:
+    `allow_nan_stats` is determined for this `QuantizedDistribution` by reading
+    the `distribution`.
 
     Args:
-      base_dist_cls: the base distribution class to transform. Must be a
-          subclass of `Distribution` implementing `cdf`.
+      distribution:  The base distribution class to transform. Typically an
+        instance of `Distribution`.
       lower_cutoff:  `Tensor` with same `dtype` as this distribution and shape
         able to be added to samples.  Should be a whole number.  Default `None`.
         If provided, base distribution's pdf/pmf should be defined at
@@ -126,39 +202,34 @@ class QuantizedDistribution(distribution.Distribution):
         If provided, base distribution's pdf/pmf should be defined at
         `upper_cutoff - 1`.
         `upper_cutoff` must be strictly greater than `lower_cutoff`.
+      validate_args: Python boolean.  Whether to validate input with asserts.
+        If `validate_args` is `False`, and the inputs are invalid,
+        correct behavior is not guaranteed.
       name: The name for the distribution.
-      **base_dist_args: kwargs to pass on to dist_cls on construction.
-        These determine the shape and dtype of this distribution.
 
     Raises:
-      TypeError: If `base_dist_cls` is not a subclass of
+      TypeError: If `dist_cls` is not a subclass of
           `Distribution` or continuous.
-      AttributeError:  If the base distribution does not implement `cdf`.
+      NotImplementedError:  If the base distribution does not implement `cdf`.
     """
-    if not issubclass(base_dist_cls, distribution.Distribution):
-      raise TypeError("base_dist_cls must be a subclass of Distribution.")
-    with ops.name_scope(name, values=base_dist_args.values()):
-      self._base_dist = base_dist_cls(**base_dist_args)
-      super(QuantizedDistribution, self).__init__(
-          dtype=self._base_dist.dtype,
-          parameters={
-              "base_dist_cls": base_dist_cls,
-              "lower_cutoff": lower_cutoff,
-              "upper_cutoff": upper_cutoff,
-              "base_dist_args": base_dist_args,
-          },
-          is_continuous=False,
-          is_reparameterized=False,
-          validate_args=self._base_dist.validate_args,
-          allow_nan_stats=self._base_dist.allow_nan_stats,
-          name=name)
+    parameters = locals()
+    parameters.pop("self")
+    values = (
+        list(distribution.parameters.values()) +
+        [lower_cutoff, upper_cutoff])
+    with ops.name_scope(name, values=values) as ns:
+      self._dist = distribution
 
       if lower_cutoff is not None:
         lower_cutoff = ops.convert_to_tensor(lower_cutoff, name="lower_cutoff")
       if upper_cutoff is not None:
         upper_cutoff = ops.convert_to_tensor(upper_cutoff, name="upper_cutoff")
       contrib_tensor_util.assert_same_float_dtype(
-          tensors=[self.base_distribution, lower_cutoff, upper_cutoff])
+          tensors=[self.distribution, lower_cutoff, upper_cutoff])
+
+      # We let QuantizedDistribution access _graph_parents since this class is
+      # more like a baseclass.
+      graph_parents = self._dist._graph_parents  # pylint: disable=protected-access
 
       checks = []
       if lower_cutoff is not None and upper_cutoff is not None:
@@ -166,35 +237,47 @@ class QuantizedDistribution(distribution.Distribution):
         checks.append(
             check_ops.assert_less(
                 lower_cutoff, upper_cutoff, message=message))
-
-      with ops.control_dependencies(checks if self.validate_args else []):
+      self._validate_args = validate_args  # self._check_integer uses this.
+      with ops.control_dependencies(checks if validate_args else []):
         if lower_cutoff is not None:
           self._lower_cutoff = self._check_integer(lower_cutoff)
+          graph_parents += [self._lower_cutoff]
         else:
           self._lower_cutoff = None
         if upper_cutoff is not None:
           self._upper_cutoff = self._check_integer(upper_cutoff)
+          graph_parents += [self._upper_cutoff]
         else:
           self._upper_cutoff = None
 
+    super(QuantizedDistribution, self).__init__(
+        dtype=self._dist.dtype,
+        is_continuous=False,
+        is_reparameterized=False,
+        validate_args=validate_args,
+        allow_nan_stats=self._dist.allow_nan_stats,
+        parameters=parameters,
+        graph_parents=graph_parents,
+        name=ns)
+
   def _batch_shape(self):
-    return self.base_distribution.batch_shape()
+    return self.distribution.batch_shape()
 
   def _get_batch_shape(self):
-    return self.base_distribution.get_batch_shape()
+    return self.distribution.get_batch_shape()
 
   def _event_shape(self):
-    return self.base_distribution.event_shape()
+    return self.distribution.event_shape()
 
   def _get_event_shape(self):
-    return self.base_distribution.get_event_shape()
+    return self.distribution.get_event_shape()
 
   def _sample_n(self, n, seed=None):
     lower_cutoff = self._lower_cutoff
     upper_cutoff = self._upper_cutoff
     with ops.name_scope("transform"):
       n = ops.convert_to_tensor(n, name="n")
-      x_samps = self.base_distribution.sample_n(n=n, seed=seed)
+      x_samps = self.distribution.sample_n(n=n, seed=seed)
       ones = array_ops.ones_like(x_samps)
 
       # Snap values to the intervals (j - 1, j].
@@ -210,21 +293,23 @@ class QuantizedDistribution(distribution.Distribution):
 
       return result_so_far
 
+  @distribution_util.AppendDocstring(_log_prob_note)
   def _log_prob(self, y):
-    if not hasattr(self.base_distribution, "_log_cdf"):
-      raise AttributeError(
+    if not hasattr(self.distribution, "_log_cdf"):
+      raise NotImplementedError(
           "'log_prob' not implemented unless the base distribution implements "
           "'log_cdf'")
     y = self._check_integer(y)
-    if hasattr(self.base_distribution, "_log_survival_function"):
+    try:
       return self._log_prob_with_logsf_and_logcdf(y)
-    else:
+    except NotImplementedError:
       return self._log_prob_with_logcdf(y)
 
   def _log_prob_with_logcdf(self, y):
     return _logsum_expbig_minus_expsmall(self.log_cdf(y), self.log_cdf(y - 1))
 
   def _log_prob_with_logsf_and_logcdf(self, y):
+    """Compute log_prob(y) using log survival_function and cdf together."""
     # There are two options that would be equal if we had infinite precision:
     # Log[ sf(y - 1) - sf(y) ]
     #   = Log[ exp{logsf(y - 1)} - exp{logsf(y)} ]
@@ -247,15 +332,16 @@ class QuantizedDistribution(distribution.Distribution):
 
     return _logsum_expbig_minus_expsmall(big, small)
 
+  @distribution_util.AppendDocstring(_prob_note)
   def _prob(self, y):
-    if not hasattr(self.base_distribution, "_cdf"):
-      raise AttributeError(
+    if not hasattr(self.distribution, "_cdf"):
+      raise NotImplementedError(
           "'prob' not implemented unless the base distribution implements "
           "'cdf'")
     y = self._check_integer(y)
-    if hasattr(self.base_distribution, "_survival_function"):
+    try:
       return self._prob_with_sf_and_cdf(y)
-    else:
+    except NotImplementedError:
       return self._prob_with_cdf(y)
 
   def _prob_with_cdf(self, y):
@@ -276,6 +362,7 @@ class QuantizedDistribution(distribution.Distribution):
         sf_y_minus_1 - sf_y,
         cdf_y - cdf_y_minus_1)
 
+  @distribution_util.AppendDocstring(_log_cdf_note)
   def _log_cdf(self, y):
     lower_cutoff = self._lower_cutoff
     upper_cutoff = self._upper_cutoff
@@ -290,7 +377,7 @@ class QuantizedDistribution(distribution.Distribution):
     # between.
     j = math_ops.floor(y)
 
-    result_so_far = self.base_distribution.log_cdf(j)
+    result_so_far = self.distribution.log_cdf(j)
 
     # Broadcast, because it's possible that this is a single distribution being
     # evaluated on a number of samples, or something like that.
@@ -307,6 +394,7 @@ class QuantizedDistribution(distribution.Distribution):
 
     return result_so_far
 
+  @distribution_util.AppendDocstring(_cdf_note)
   def _cdf(self, y):
     lower_cutoff = self._lower_cutoff
     upper_cutoff = self._upper_cutoff
@@ -322,7 +410,7 @@ class QuantizedDistribution(distribution.Distribution):
     j = math_ops.floor(y)
 
     # P[X <= j], used when lower_cutoff < X < upper_cutoff.
-    result_so_far = self.base_distribution.cdf(j)
+    result_so_far = self.distribution.cdf(j)
 
     # Broadcast, because it's possible that this is a single distribution being
     # evaluated on a number of samples, or something like that.
@@ -340,6 +428,7 @@ class QuantizedDistribution(distribution.Distribution):
 
     return result_so_far
 
+  @distribution_util.AppendDocstring(_log_sf_note)
   def _log_survival_function(self, y):
     lower_cutoff = self._lower_cutoff
     upper_cutoff = self._upper_cutoff
@@ -355,7 +444,7 @@ class QuantizedDistribution(distribution.Distribution):
     j = math_ops.ceil(y)
 
     # P[X > j], used when lower_cutoff < X < upper_cutoff.
-    result_so_far = self.base_distribution.log_survival_function(j)
+    result_so_far = self.distribution.log_survival_function(j)
 
     # Broadcast, because it's possible that this is a single distribution being
     # evaluated on a number of samples, or something like that.
@@ -372,6 +461,7 @@ class QuantizedDistribution(distribution.Distribution):
 
     return result_so_far
 
+  @distribution_util.AppendDocstring(_sf_note)
   def _survival_function(self, y):
     lower_cutoff = self._lower_cutoff
     upper_cutoff = self._upper_cutoff
@@ -387,7 +477,7 @@ class QuantizedDistribution(distribution.Distribution):
     j = math_ops.ceil(y)
 
     # P[X > j], used when lower_cutoff < X < upper_cutoff.
-    result_so_far = self.base_distribution.survival_function(j)
+    result_so_far = self.distribution.survival_function(j)
 
     # Broadcast, because it's possible that this is a single distribution being
     # evaluated on a number of samples, or something like that.
@@ -415,100 +505,6 @@ class QuantizedDistribution(distribution.Distribution):
       return control_flow_ops.with_dependencies(dependencies, value)
 
   @property
-  def base_distribution(self):
+  def distribution(self):
     """Base distribution, p(x)."""
-    return self._base_dist
-
-
-_prob_base_note = """
-
-For whole numbers `y`,
-
-```
-P[Y = y] := P[X <= lower_cutoff],  if y == lower_cutoff,
-         := P[X > upper_cutoff - 1],  y == upper_cutoff,
-         := 0, if j < lower_cutoff or y > upper_cutoff,
-         := P[y - 1 < X <= y],  all other y.
-```
-
-"""
-
-_prob_note = _prob_base_note + """
-The base distribution's `cdf` method must be defined on `y - 1`.  If the
-base distribution has a `survival_function` method, results will be more
-accurate for large values of `y`, and in this case the `survival_function` must
-also be defined on `y - 1`.
-"""
-
-_log_prob_note = _prob_base_note + """
-The base distribution's `log_cdf` method must be defined on `y - 1`.  If the
-base distribution has a `log_survival_function` method results will be more
-accurate for large values of `y`, and in this case the `log_survival_function`
-must also be defined on `y - 1`.
-"""
-
-distribution_util.append_class_fun_doc(
-    QuantizedDistribution.prob, doc_str=_prob_note)
-
-distribution_util.append_class_fun_doc(
-    QuantizedDistribution.log_prob, doc_str=_log_prob_note)
-
-_cdf_base_note = """
-
-For whole numbers `y`,
-
-```
-cdf(y) := P[Y <= y]
-        = 1, if y >= upper_cutoff,
-        = 0, if y < lower_cutoff,
-        = P[X <= y], otherwise.
-```
-
-Since `Y` only has mass at whole numbers, `P[Y <= y] = P[Y <= floor(y)]`.
-This dictates that fractional `y` are first floored to a whole number, and
-then above definition applies.
-"""
-
-_cdf_note = _cdf_base_note + """
-The base distribution's `cdf` method must be defined on `y - 1`.
-"""
-
-_log_cdf_note = _cdf_base_note + """
-The base distribution's `log_cdf` method must be defined on `y - 1`.
-"""
-
-distribution_util.append_class_fun_doc(
-    QuantizedDistribution.cdf, doc_str=_cdf_note)
-
-distribution_util.append_class_fun_doc(
-    QuantizedDistribution.log_cdf, doc_str=_log_cdf_note)
-
-_sf_base_note = """
-
-For whole numbers `y`,
-
-```
-survival_function(y) := P[Y > y]
-                      = 0, if y >= upper_cutoff,
-                      = 1, if y < lower_cutoff,
-                      = P[X <= y], otherwise.
-```
-
-Since `Y` only has mass at whole numbers, `P[Y <= y] = P[Y <= floor(y)]`.
-This dictates that fractional `y` are first floored to a whole number, and
-then above definition applies.
-"""
-
-_sf_note = """
-The base distribution's `cdf` method must be defined on `y - 1`.
-"""
-
-_log_sf_note = """
-The base distribution's `log_cdf` method must be defined on `y - 1`.
-"""
-
-distribution_util.append_class_fun_doc(
-    QuantizedDistribution.survival_function, doc_str=_sf_note)
-
-distribution_util.append_class_fun_doc(
-    QuantizedDistribution.log_survival_function, doc_str=_log_sf_note)
+    return self._dist

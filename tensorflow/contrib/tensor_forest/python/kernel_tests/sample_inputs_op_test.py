@@ -38,7 +38,7 @@ class SampleInputsTest(test_util.TensorFlowTestCase):
 
   def testSimple(self):
     with self.test_session():
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       indices, feature_updates, threshold_updates = (self.ops.sample_inputs(
           self.input_data, [], [], [], [],
           self.node_map,
@@ -65,7 +65,7 @@ class SampleInputsTest(test_util.TensorFlowTestCase):
                      -0.5, 2.0]
 
     with self.test_session():
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       indices, feature_updates, threshold_updates = (self.ops.sample_inputs(
           [],
           sparse_indices,
@@ -85,7 +85,7 @@ class SampleInputsTest(test_util.TensorFlowTestCase):
 
   def testWeights(self):
     with self.test_session():
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       indices, feature_updates, threshold_updates = (self.ops.sample_inputs(
           self.input_data, [], [], [], [0.5, 0.1, 0.8, 0.7],
           self.node_map,
@@ -101,7 +101,7 @@ class SampleInputsTest(test_util.TensorFlowTestCase):
 
   def testNoAccumulators(self):
     with self.test_session():
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       indices, feature_updates, threshold_updates = (self.ops.sample_inputs(
           self.input_data, [], [], [], [], [-1] * 3,
           self.leaves,
@@ -116,7 +116,7 @@ class SampleInputsTest(test_util.TensorFlowTestCase):
   def testBadInput(self):
     del self.split_features[1]
     with self.test_session():
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       with self.assertRaisesOpError(
           'split_features and split_thresholds should be the same shape.'):
         indices, _, _ = self.ops.sample_inputs(

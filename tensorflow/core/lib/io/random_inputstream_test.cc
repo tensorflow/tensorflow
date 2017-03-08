@@ -83,6 +83,32 @@ TEST(RandomInputStream, SkipNBytes) {
   EXPECT_EQ(10, in.Tell());
 }
 
+TEST(RandomInputStream, Seek) {
+  Env* env = Env::Default();
+  string fname = testing::TmpDir() + "/random_inputbuffer_seek_test";
+  WriteStringToFile(env, fname, "0123456789");
+
+  std::unique_ptr<RandomAccessFile> file;
+  TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
+  string read;
+  RandomAccessInputStream in(file.get());
+
+  // Seek forward
+  TF_ASSERT_OK(in.Seek(3));
+  EXPECT_EQ(3, in.Tell());
+
+  // Read 4 bytes
+  TF_ASSERT_OK(in.ReadNBytes(4, &read));
+  EXPECT_EQ(read, "3456");
+  EXPECT_EQ(7, in.Tell());
+
+  // Seek backwards
+  TF_ASSERT_OK(in.Seek(1));
+  TF_ASSERT_OK(in.ReadNBytes(4, &read));
+  EXPECT_EQ(read, "1234");
+  EXPECT_EQ(5, in.Tell());
+}
+
 }  // anonymous namespace
 }  // namespace io
 }  // namespace tensorflow

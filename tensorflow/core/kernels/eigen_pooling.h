@@ -325,7 +325,7 @@ struct AvgPoolMeanReducer {
 
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T finalize(const T accum) const {
     eigen_assert(scalarCount_ > 0);
-    return accum / scalarCount_;
+    return accum / T(scalarCount_);
   }
 
 #if (EIGEN_ARCH_i386 || EIGEN_ARCH_x86_64) && !defined(__CUDACC__)

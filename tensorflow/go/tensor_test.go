@@ -24,17 +24,17 @@ func TestNewTensor(t *testing.T) {
 		shape []int64
 		value interface{}
 	}{
-		{[]int64{}, int8(5)},
-		{[]int64{}, int16(5)},
-		{[]int64{}, int32(5)},
-		{[]int64{}, int64(5)},
-		{[]int64{}, int64(5)},
-		{[]int64{}, uint8(5)},
-		{[]int64{}, uint16(5)},
-		{[]int64{}, float32(5)},
-		{[]int64{}, float64(5)},
-		{[]int64{}, complex(float32(5), float32(6))},
-		{[]int64{}, complex(float64(5), float64(6))},
+		{nil, int8(5)},
+		{nil, int16(5)},
+		{nil, int32(5)},
+		{nil, int64(5)},
+		{nil, int64(5)},
+		{nil, uint8(5)},
+		{nil, uint16(5)},
+		{nil, float32(5)},
+		{nil, float64(5)},
+		{nil, complex(float32(5), float32(6))},
+		{nil, complex(float64(5), float64(6))},
 		{[]int64{1}, []float64{1}},
 		{[]int64{1}, [1]float64{1}},
 		{[]int64{3, 2}, [][]float64{{1, 2}, {3, 4}, {5, 6}}},
@@ -60,6 +60,8 @@ func TestNewTensor(t *testing.T) {
 		[]uint32{5},
 		uint64(5),
 		[]uint64{5},
+		// Mismatched dimensions
+		[][]float32{{1, 2, 3}, {4}},
 	}
 
 	for _, test := range tests {
@@ -75,10 +77,7 @@ func TestNewTensor(t *testing.T) {
 		// Test that encode and decode gives the same value. We skip arrays because
 		// they're returned as slices.
 		if reflect.TypeOf(test.value).Kind() != reflect.Array {
-			cTensor := tensor.c()
-			gotTensor := newTensorFromC(cTensor)
-			deleteCTensor(cTensor)
-			got := gotTensor.Value()
+			got := tensor.Value()
 			if !reflect.DeepEqual(test.value, got) {
 				t.Errorf("encode/decode: got %v, want %v", got, test.value)
 			}
@@ -94,4 +93,22 @@ func TestNewTensor(t *testing.T) {
 			t.Errorf("NewTensor(%v) = %v, want nil", test, tensor)
 		}
 	}
+}
+
+func benchmarkNewTensor(b *testing.B, v interface{}) {
+	for i := 0; i < b.N; i++ {
+		if t, err := NewTensor(v); err != nil || t == nil {
+			b.Fatalf("(%v, %v)", t, err)
+		}
+	}
+}
+
+func BenchmarkNewTensor(b *testing.B) {
+	var (
+		// Some sample sizes from the Inception image labeling model.
+		// Where input tensors correspond to a 224x224 RGB image
+		// flattened into a vector.
+		vector [224 * 224 * 3]int32
+	)
+	b.Run("[150528]", func(b *testing.B) { benchmarkNewTensor(b, vector) })
 }

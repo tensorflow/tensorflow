@@ -19,6 +19,7 @@ limitations under the License.
 
 %include "tensorflow/python/util/port.i"
 %include "tensorflow/python/util/py_checkpoint_reader.i"
+%include "tensorflow/python/util/stat_summarizer.i"
 
 %include "tensorflow/python/lib/core/py_func.i"
 
@@ -37,3 +38,4 @@ limitations under the License.
 %include "tensorflow/python/framework/python_op_gen.i"
 
 %include "tensorflow/python/framework/cpp_shape_inference.i"
+%include "tensorflow/python/util/kernel_registry.i"

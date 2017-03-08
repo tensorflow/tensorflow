@@ -54,34 +54,38 @@ class ConfusionMatrixTest(tf.test.TestCase):
   def testInt64Basic(self):
     self._testBasic(dtype=np.int64)
 
-def _testConfMatrixOnTensors(self, tf_dtype, np_dtype):
-  with self.test_session() as sess:
-    m_neg = tf.placeholder(dtype=tf.float32)
-    m_pos = tf.placeholder(dtype=tf.float32)
-    s = tf.placeholder(dtype=tf.float32)
+  def _testConfMatrixOnTensors(self, tf_dtype, np_dtype):
+    with self.test_session() as sess:
+      m_neg = tf.placeholder(dtype=tf.float32)
+      m_pos = tf.placeholder(dtype=tf.float32)
+      s = tf.placeholder(dtype=tf.float32)
 
-    neg = tf.random_normal([20], mean=m_neg, stddev=s, dtype=tf.float32)
-    pos = tf.random_normal([20], mean=m_pos, stddev=s, dtype=tf.float32)
+      neg = tf.random_normal([20], mean=m_neg, stddev=s, dtype=tf.float32)
+      pos = tf.random_normal([20], mean=m_pos, stddev=s, dtype=tf.float32)
 
-    data = tf.concat(0, [neg, pos])
-    data = tf.cast(tf.round(data), tf_dtype)
-    data = tf.minimum(tf.maximum(data, 0), 1)
-    lab = tf.concat(0, [tf.zeros([20], dtype=tf_dtype),
-                        tf.ones([20], dtype=tf_dtype)])
+      data = tf.concat(0, [neg, pos])
+      data = tf.cast(tf.round(data), tf_dtype)
+      data = tf.minimum(tf.maximum(data, 0), 1)
+      lab = tf.concat(0, [tf.zeros([20], dtype=tf_dtype),
+                          tf.ones([20], dtype=tf_dtype)])
 
-    cm = tf.contrib.metrics.confusion_matrix(
-        data, lab, dtype=tf_dtype, num_classes=2)
+      cm = tf.contrib.metrics.confusion_matrix(
+          data, lab, dtype=tf_dtype, num_classes=2)
 
-    d, l, cm_out = sess.run([data, lab, cm], {m_neg: 0.0,
-                                              m_pos: 1.0,
-                                              s: 1.0})
+      d, l, cm_out = sess.run([data, lab, cm], {m_neg: 0.0,
+                                                m_pos: 1.0,
+                                                s: 1.0})
 
-    truth = np.zeros([2, 2], dtype=np_dtype)
-    for i in xrange(len(d)):
-      truth[d[i], l[i]] = truth[d[i], l[i]] + 1
+      truth = np.zeros([2, 2], dtype=np_dtype)
+      try:
+        range_builder = xrange
+      except NameError:  # In Python 3.
+        range_builder = range
+      for i in range_builder(len(d)):
+        truth[d[i], l[i]] += 1
 
-    self.assertEqual(cm_out.dtype, np_dtype)
-    self.assertAllClose(cm_out, truth, atol=1e-10)
+      self.assertEqual(cm_out.dtype, np_dtype)
+      self.assertAllClose(cm_out, truth, atol=1e-10)
 
   def _testOnTensors_int32(self):
     self._testConfMatrixOnTensors(tf.int32, np.int32)
@@ -89,7 +93,7 @@ def _testConfMatrixOnTensors(self, tf_dtype, np_dtype):
   def testOnTensors_int64(self):
     self._testConfMatrixOnTensors(tf.int64, np.int64)
 
-  def _testDiffentLabelsInPredictionAndTarget(self, dtype):
+  def _testDifferentLabelsInPredictionAndTarget(self, dtype):
     predictions = np.asarray([1, 2, 3], dtype=dtype)
     labels = np.asarray([4, 5, 6], dtype=dtype)
 
@@ -106,10 +110,10 @@ def _testConfMatrixOnTensors(self, tf_dtype, np_dtype):
     self._testConfMatrix(predictions=predictions, labels=labels, truth=truth)
 
   def testInt32DifferentLabels(self, dtype=np.int32):
-    self._testDiffentLabelsInPredictionAndTarget(dtype)
+    self._testDifferentLabelsInPredictionAndTarget(dtype)
 
   def testInt64DifferentLabels(self, dtype=np.int64):
-    self._testDiffentLabelsInPredictionAndTarget(dtype)
+    self._testDifferentLabelsInPredictionAndTarget(dtype)
 
   def _testMultipleLabels(self, dtype):
     predictions = np.asarray([1, 1, 2, 3, 5, 6, 1, 2, 3, 4], dtype=dtype)

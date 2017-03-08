@@ -29,6 +29,11 @@ ops.NotDifferentiable("TensorArrayGrad")
 ops.NotDifferentiable("TensorArraySize")
 ops.NotDifferentiable("TensorArrayClose")
 
+ops.NotDifferentiable("TensorArrayV2")
+ops.NotDifferentiable("TensorArrayGradV2")
+ops.NotDifferentiable("TensorArraySizeV2")
+ops.NotDifferentiable("TensorArrayCloseV2")
+
 
 def _GetGradSource(op_or_tensor):
   """Identify which call to tf.gradients created this gradient op or tensor.
@@ -68,6 +73,7 @@ def _GetGradSource(op_or_tensor):
 
 
 @ops.RegisterGradient("TensorArrayRead")
+@ops.RegisterGradient("TensorArrayReadV2")
 def _TensorArrayReadGrad(op, grad):
   """Gradient for TensorArrayRead.
 
@@ -96,6 +102,7 @@ def _TensorArrayReadGrad(op, grad):
 
 
 @ops.RegisterGradient("TensorArrayWrite")
+@ops.RegisterGradient("TensorArrayWriteV2")
 def _TensorArrayWriteGrad(op, flow):
   """Gradient for TensorArrayWrite.
 
@@ -118,54 +125,8 @@ def _TensorArrayWriteGrad(op, flow):
   return [None, None, grad, flow]
 
 
-@ops.RegisterGradient("TensorArrayPack")
-def _TensorArrayPackGrad(op, grad):
-  """Gradient for TensorArrayPack (legacy).
-
-  Args:
-    op: Forward TensorArrayPack op.
-    grad: Gradient `Tensor` to TensorArrayPack.
-
-  Returns:
-    A flow `Tensor`, which can be used in control dependencies to
-    force the write of `grad` to the gradient `TensorArray`.
-  """
-  # Note: the forward flow dependency in the call to grad() is necessary for
-  # the case of dynamic sized TensorArrays.  When creating the gradient
-  # TensorArray, the final size of the forward array must be known.
-  # For this we need to wait until it has been created by depending on
-  # the input flow of the original op.
-  handle = op.inputs[0]
-  flow = op.inputs[1]
-  dtype = op.get_attr("dtype")
-  grad_source = _GetGradSource(grad)
-  g = tensor_array_ops.TensorArray(dtype=dtype, handle=handle).grad(
-      source=grad_source, flow=flow)
-  u_g = g._legacy_unpack(grad)  # pylint: disable=protected-access
-  return [None, u_g.flow]
-
-
-@ops.RegisterGradient("TensorArrayUnpack")
-def _TensorArrayUnpackGrad(op, flow):
-  """Gradient for TensorArrayUnpack (legacy).
-
-  Args:
-    op: Forward TensorArrayUnpack op.
-    flow: Gradient `Tensor` flow to TensorArrayUnpack.
-
-  Returns:
-    A grad `Tensor`, the gradient created in upstream ReadGrads or PackGrad.
-  """
-  handle = op.inputs[0]
-  dtype = op.get_attr("T")
-  grad_source = _GetGradSource(flow)
-  g = tensor_array_ops.TensorArray(dtype=dtype, handle=handle).grad(
-      source=grad_source, flow=flow)
-  grad = g._legacy_pack()  # pylint: disable=protected-access
-  return [None, grad, flow]
-
-
 @ops.RegisterGradient("TensorArrayGather")
+@ops.RegisterGradient("TensorArrayGatherV2")
 def _TensorArrayGatherGrad(op, grad):
   """Gradient for TensorArrayGather.
 
@@ -194,6 +155,7 @@ def _TensorArrayGatherGrad(op, grad):
 
 
 @ops.RegisterGradient("TensorArrayScatter")
+@ops.RegisterGradient("TensorArrayScatterV2")
 def _TensorArrayScatterGrad(op, flow):
   """Gradient for TensorArrayScatter.
 
@@ -215,6 +177,7 @@ def _TensorArrayScatterGrad(op, flow):
 
 
 @ops.RegisterGradient("TensorArrayConcat")
+@ops.RegisterGradient("TensorArrayConcatV2")
 def _TensorArrayConcatGrad(op, grad, unused_lengths_grad):
   """Gradient for TensorArrayConcat.
 
@@ -244,6 +207,7 @@ def _TensorArrayConcatGrad(op, grad, unused_lengths_grad):
 
 
 @ops.RegisterGradient("TensorArraySplit")
+@ops.RegisterGradient("TensorArraySplitV2")
 def _TensorArraySplitGrad(op, flow):
   """Gradient for TensorArraySplit.
 

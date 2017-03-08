@@ -14,9 +14,6 @@
 # ==============================================================================
 """Functions for copying elements from one graph to another.
 
-@@copy_op_to_graph
-@@copy_variable_to_graph
-@@get_copied_op
 """
 
 from __future__ import absolute_import

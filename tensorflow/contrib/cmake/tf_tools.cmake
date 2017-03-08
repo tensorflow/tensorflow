@@ -13,37 +13,12 @@ add_executable(${proto_text}
     $<TARGET_OBJECTS:tf_core_lib>
 )
 
-target_include_directories(${proto_text} PUBLIC
-    ${tensorflow_source_dir}
-)
-
-# TODO(mrry): Cut down the dependencies of this tool.
 target_link_libraries(${proto_text} PUBLIC
-    ${CMAKE_THREAD_LIBS_INIT}
-    ${PROTOBUF_LIBRARIES}
-    ${gif_STATIC_LIBRARIES}
-    ${jpeg_STATIC_LIBRARIES}
-    ${png_STATIC_LIBRARIES}
-    ${ZLIB_LIBRARIES}
-    ${jsoncpp_STATIC_LIBRARIES}
-    ${CMAKE_DL_LIBS}
-    )
-if(tensorflow_ENABLE_SSL_SUPPORT)
-  target_link_libraries(${proto_text} PUBLIC ${boringssl_STATIC_LIBRARIES})
-endif()
-
+  ${tensorflow_EXTERNAL_LIBRARIES}
+  tf_protos_cc
+)
 
 add_dependencies(${proto_text}
     tf_core_lib
-    protobuf
-)
-
-target_compile_options(${proto_text} PRIVATE
-    -fno-exceptions
-    -DEIGEN_AVOID_STL_ARRAY
-)
-
-# C++11
-target_compile_features(${proto_text} PRIVATE
-    cxx_rvalue_references
+    grpc
 )

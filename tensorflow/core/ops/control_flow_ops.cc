@@ -122,7 +122,7 @@ Status MergeShape(InferenceContext* c) {
     int32 rank = c->Rank(out);
     for (int i = 1; i < c->num_inputs(); ++i) {
       ShapeHandle input = c->input(i);
-      if (c->Rank(input) != rank) {
+      if (!c->RankKnown(input) || c->Rank(input) != rank) {
         out = c->UnknownShape();
         break;
       }

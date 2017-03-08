@@ -32,7 +32,6 @@ class FIFOQueueTest(tf.test.TestCase):
     with tf.Graph().as_default():
       q = tf.FIFOQueue(10, tf.float32, name="Q")
     self.assertTrue(isinstance(q.queue_ref, tf.Tensor))
-    self.assertEquals(tf.string_ref, q.queue_ref.dtype)
     self.assertProtoEquals("""
       name:'Q' op:'FIFOQueue'
       attr { key: 'component_types' value { list { type: DT_FLOAT } } }
@@ -46,7 +45,6 @@ class FIFOQueueTest(tf.test.TestCase):
     with tf.Graph().as_default():
       q = tf.FIFOQueue(5, (tf.int32, tf.float32), shared_name="foo", name="Q")
     self.assertTrue(isinstance(q.queue_ref, tf.Tensor))
-    self.assertEquals(tf.string_ref, q.queue_ref.dtype)
     self.assertProtoEquals("""
       name:'Q' op:'FIFOQueue'
       attr { key: 'component_types' value { list {
@@ -64,7 +62,6 @@ class FIFOQueueTest(tf.test.TestCase):
                        shapes=(tf.TensorShape([1, 1, 2, 3]),
                                tf.TensorShape([5, 8])), name="Q")
     self.assertTrue(isinstance(q.queue_ref, tf.Tensor))
-    self.assertEquals(tf.string_ref, q.queue_ref.dtype)
     self.assertProtoEquals("""
       name:'Q' op:'FIFOQueue'
       attr { key: 'component_types' value { list {
@@ -1203,19 +1200,19 @@ class FIFOQueueTest(tf.test.TestCase):
         enq_q.dequeue().eval()
 
   def _blockingDequeue(self, sess, dequeue_op):
-    with self.assertRaisesOpError("Dequeue operation was cancelled"):
+    with self.assertRaisesOpError("was cancelled"):
       sess.run(dequeue_op)
 
   def _blockingDequeueMany(self, sess, dequeue_many_op):
-    with self.assertRaisesOpError("Dequeue operation was cancelled"):
+    with self.assertRaisesOpError("was cancelled"):
       sess.run(dequeue_many_op)
 
   def _blockingEnqueue(self, sess, enqueue_op):
-    with self.assertRaisesOpError("Enqueue operation was cancelled"):
+    with self.assertRaisesOpError("was cancelled"):
       sess.run(enqueue_op)
 
   def _blockingEnqueueMany(self, sess, enqueue_many_op):
-    with self.assertRaisesOpError("Enqueue operation was cancelled"):
+    with self.assertRaisesOpError("was cancelled"):
       sess.run(enqueue_many_op)
 
   def testResetOfBlockingOperation(self):
@@ -1355,7 +1352,6 @@ class FIFOQueueDictTest(tf.test.TestCase):
       q = tf.FIFOQueue(5, (tf.int32, tf.float32), names=("i", "j"),
                        shared_name="foo", name="Q")
     self.assertTrue(isinstance(q.queue_ref, tf.Tensor))
-    self.assertEquals(tf.string_ref, q.queue_ref.dtype)
     self.assertProtoEquals("""
       name:'Q' op:'FIFOQueue'
       attr { key: 'component_types' value { list {
@@ -1374,7 +1370,6 @@ class FIFOQueueDictTest(tf.test.TestCase):
                        shapes=(tf.TensorShape([1, 1, 2, 3]),
                                tf.TensorShape([5, 8])), name="Q")
     self.assertTrue(isinstance(q.queue_ref, tf.Tensor))
-    self.assertEquals(tf.string_ref, q.queue_ref.dtype)
     self.assertProtoEquals("""
       name:'Q' op:'FIFOQueue'
       attr { key: 'component_types' value { list {
@@ -1511,6 +1506,23 @@ class FIFOQueueWithTimeoutTest(tf.test.TestCase):
       with self.assertRaisesRegexp(tf.errors.DeadlineExceededError,
                                    "Timed out waiting for notification"):
         sess.run(dequeued_t)
+
+  def testReusableAfterTimeout(self):
+    with self.test_session() as sess:
+      q = tf.FIFOQueue(10, tf.float32)
+      dequeued_t = q.dequeue()
+      enqueue_op = q.enqueue(37)
+
+      with self.assertRaisesRegexp(tf.errors.DeadlineExceededError,
+                                   "Timed out waiting for notification"):
+        sess.run(dequeued_t, options=tf.RunOptions(timeout_in_ms=10))
+
+      with self.assertRaisesRegexp(tf.errors.DeadlineExceededError,
+                                   "Timed out waiting for notification"):
+        sess.run(dequeued_t, options=tf.RunOptions(timeout_in_ms=10))
+
+      sess.run(enqueue_op)
+      self.assertEqual(37, sess.run(dequeued_t))
 
 
 class QueueContainerTest(tf.test.TestCase):

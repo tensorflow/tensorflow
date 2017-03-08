@@ -162,6 +162,13 @@ that `RuntimeError`.
 
 - - -
 
+#### `tf.train.Coordinator.raise_requested_exception()` {#Coordinator.raise_requested_exception}
+
+If an exception has been passed to `request_stop`, this raises it.
+
+
+- - -
+
 #### `tf.train.Coordinator.register_thread(thread)` {#Coordinator.register_thread}
 
 Register a thread to join.

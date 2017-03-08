@@ -15,5 +15,5 @@ This should only be used at test time.
 
 *  <b>`viterbi`</b>: A [seq_len] list of integers containing the highest scoring tag
       indicies.
-*  <b>`viterbi_score`</b>: A float containing the score for the viterbi sequence.
+*  <b>`viterbi_score`</b>: A float containing the score for the Viterbi sequence.
 

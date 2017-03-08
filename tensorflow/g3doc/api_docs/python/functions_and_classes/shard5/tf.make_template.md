@@ -13,7 +13,7 @@ have the following properties:
    that are intended to be locals can be created by specifying
    `tf.Variable(..., trainable=false)`.
 * The function may use variable scopes and other templates internally to
-    create and reuse variables, but it shouldn't use `tf.get_variables` to
+    create and reuse variables, but it shouldn't use `tf.all_variables` to
     capture variables that are defined outside of the scope of the function.
 * Internal scopes and variable names should not depend on any arguments that
     are not supplied to `make_template`. In general you will get a ValueError

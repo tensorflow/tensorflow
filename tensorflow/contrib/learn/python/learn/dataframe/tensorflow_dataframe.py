@@ -115,9 +115,9 @@ class TensorFlowDataFrame(df.DataFrame):
       cols = list(self_built.values())
       if initialize_variables:
         if variables.local_variables():
-          session.run(variables.initialize_local_variables())
-        if variables.all_variables():
-          session.run(variables.initialize_all_variables())
+          session.run(variables.local_variables_initializer())
+        if variables.global_variables():
+          session.run(variables.global_variables_initializer())
       if start_queues:
         coord = coordinator.Coordinator()
         threads = qr.start_queue_runners(sess=session, coord=coord)

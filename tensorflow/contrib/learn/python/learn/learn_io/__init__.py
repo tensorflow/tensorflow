@@ -22,6 +22,8 @@ from __future__ import print_function
 from tensorflow.contrib.learn.python.learn.learn_io.dask_io import extract_dask_data
 from tensorflow.contrib.learn.python.learn.learn_io.dask_io import extract_dask_labels
 from tensorflow.contrib.learn.python.learn.learn_io.dask_io import HAS_DASK
+from tensorflow.contrib.learn.python.learn.learn_io.graph_io import _read_keyed_batch_examples_shared_queue
+from tensorflow.contrib.learn.python.learn.learn_io.graph_io import _read_keyed_batch_features_shared_queue
 from tensorflow.contrib.learn.python.learn.learn_io.graph_io import queue_parsed_features
 from tensorflow.contrib.learn.python.learn.learn_io.graph_io import read_batch_examples
 from tensorflow.contrib.learn.python.learn.learn_io.graph_io import read_batch_features
@@ -32,3 +34,4 @@ from tensorflow.contrib.learn.python.learn.learn_io.pandas_io import extract_pan
 from tensorflow.contrib.learn.python.learn.learn_io.pandas_io import extract_pandas_labels
 from tensorflow.contrib.learn.python.learn.learn_io.pandas_io import extract_pandas_matrix
 from tensorflow.contrib.learn.python.learn.learn_io.pandas_io import HAS_PANDAS
+from tensorflow.contrib.learn.python.learn.learn_io.pandas_io import pandas_input_fn

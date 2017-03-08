@@ -70,7 +70,7 @@ class ReverseSequenceTest(tf.test.TestCase):
     batch_dim = 2
     self._testBothReverseSequence(x, batch_dim, seq_dim, seq_lengths, truth)
 
-  def testSeqLenghtInt32(self):
+  def testSeqLengthInt32(self):
     self._testBasic(np.float32, np.int32)
 
   def testFloatBasic(self):

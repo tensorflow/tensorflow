@@ -58,10 +58,8 @@ cc_library(
     linkopts = [
         "-ldl",
         "-lpthread",
-    ] + select({
-        "@//tensorflow:darwin": [],
-        "//conditions:default": ["-lrt"],
-    }),
+        %{cudart_static_linkopt}
+    ],
     visibility = ["//visibility:public"],
 )
 

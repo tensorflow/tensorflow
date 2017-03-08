@@ -70,7 +70,7 @@ class SerializeSparseTest(tf.test.TestCase):
       sp_input1 = self._SparseTensorValue_3x4(np.arange(6))
       serialized0 = tf.serialize_sparse(sp_input0)
       serialized1 = tf.serialize_sparse(sp_input1)
-      serialized_concat = tf.pack([serialized0, serialized1])
+      serialized_concat = tf.stack([serialized0, serialized1])
 
       sp_deserialized = tf.deserialize_many_sparse(
           serialized_concat, dtype=tf.int32)
@@ -94,7 +94,7 @@ class SerializeSparseTest(tf.test.TestCase):
       input1_val = self._SparseTensorValue_3x4(np.arange(6))
       serialized0 = tf.serialize_sparse(sp_input0)
       serialized1 = tf.serialize_sparse(sp_input1)
-      serialized_concat = tf.pack([serialized0, serialized1])
+      serialized_concat = tf.stack([serialized0, serialized1])
 
       sp_deserialized = tf.deserialize_many_sparse(
           serialized_concat, dtype=tf.int32)
@@ -137,7 +137,7 @@ class SerializeSparseTest(tf.test.TestCase):
       input1_val = self._SparseTensorValue_3x4(np.arange(6))
       serialized0 = tf.serialize_sparse(sp_input0)
       serialized1 = tf.serialize_sparse(sp_input1)
-      serialized_concat = tf.pack([serialized0, serialized1])
+      serialized_concat = tf.stack([serialized0, serialized1])
 
       sp_deserialized = tf.deserialize_many_sparse(
           serialized_concat, dtype=tf.int64)
@@ -156,7 +156,7 @@ class SerializeSparseTest(tf.test.TestCase):
       input1_val = self._SparseTensorValue_1x1x1()
       serialized0 = tf.serialize_sparse(sp_input0)
       serialized1 = tf.serialize_sparse(sp_input1)
-      serialized_concat = tf.pack([serialized0, serialized1])
+      serialized_concat = tf.stack([serialized0, serialized1])
 
       sp_deserialized = tf.deserialize_many_sparse(
           serialized_concat, dtype=tf.int32)
@@ -173,7 +173,7 @@ class SerializeSparseTest(tf.test.TestCase):
       input0_val = self._SparseTensorValue_5x6(np.arange(6))
       serialized0 = tf.serialize_sparse(sp_input0)
       serialized1 = ["a", "b", "c"]
-      serialized_concat = tf.pack([serialized0, serialized1])
+      serialized_concat = tf.stack([serialized0, serialized1])
 
       sp_deserialized = tf.deserialize_many_sparse(
           serialized_concat, dtype=tf.int32)

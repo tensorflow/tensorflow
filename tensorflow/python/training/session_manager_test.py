@@ -32,7 +32,7 @@ class SessionManagerTest(tf.test.TestCase):
     with tf.Graph().as_default():
       v = tf.Variable([1.0, 2.0, 3.0], name="v")
       sm = tf.train.SessionManager(ready_op=tf.report_uninitialized_variables())
-      sess = sm.prepare_session("", init_op=tf.initialize_all_variables())
+      sess = sm.prepare_session("", init_op=tf.global_variables_initializer())
       self.assertAllClose([1.0, 2.0, 3.0], sess.run(v))
 
   def testPrepareSessionSucceedsWithInitFeedDict(self):
@@ -41,7 +41,7 @@ class SessionManagerTest(tf.test.TestCase):
       v = tf.Variable(p, name="v")
       sm = tf.train.SessionManager(ready_op=tf.report_uninitialized_variables())
       sess = sm.prepare_session("",
-                                init_op=tf.initialize_all_variables(),
+                                init_op=tf.global_variables_initializer(),
                                 init_feed_dict={p: [1.0, 2.0, 3.0]})
       self.assertAllClose([1.0, 2.0, 3.0], sess.run(v))
 
@@ -67,7 +67,7 @@ class SessionManagerTest(tf.test.TestCase):
       v = tf.Variable([1.0, 2.0, 3.0], name="v")
       sm = tf.train.SessionManager(ready_op=tf.report_uninitialized_variables())
       saver = tf.train.Saver({"v": v})
-      sess = sm.prepare_session("", init_op=tf.initialize_all_variables(),
+      sess = sm.prepare_session("", init_op=tf.global_variables_initializer(),
                                 saver=saver, checkpoint_dir=checkpoint_dir)
       self.assertAllClose([1.0, 2.0, 3.0], sess.run(v))
       checkpoint_filename = os.path.join(checkpoint_dir,
@@ -495,7 +495,7 @@ class ObsoleteSessionManagerTest(tf.test.TestCase):
     with tf.Graph().as_default():
       v = tf.Variable([1.0, 2.0, 3.0], name="v")
       sm = tf.train.SessionManager(ready_op=tf.assert_variables_initialized())
-      sess = sm.prepare_session("", init_op=tf.initialize_all_variables())
+      sess = sm.prepare_session("", init_op=tf.global_variables_initializer())
       self.assertAllClose([1.0, 2.0, 3.0], sess.run(v))
 
   def testPrepareSessionSucceedsWithInitFeedDict(self):
@@ -504,7 +504,7 @@ class ObsoleteSessionManagerTest(tf.test.TestCase):
       v = tf.Variable(p, name="v")
       sm = tf.train.SessionManager(ready_op=tf.assert_variables_initialized())
       sess = sm.prepare_session("",
-                                init_op=tf.initialize_all_variables(),
+                                init_op=tf.global_variables_initializer(),
                                 init_feed_dict={p: [1.0, 2.0, 3.0]})
       self.assertAllClose([1.0, 2.0, 3.0], sess.run(v))
 
@@ -530,7 +530,7 @@ class ObsoleteSessionManagerTest(tf.test.TestCase):
       v = tf.Variable([1.0, 2.0, 3.0], name="v")
       sm = tf.train.SessionManager(ready_op=tf.assert_variables_initialized())
       saver = tf.train.Saver({"v": v})
-      sess = sm.prepare_session("", init_op=tf.initialize_all_variables(),
+      sess = sm.prepare_session("", init_op=tf.global_variables_initializer(),
                                 saver=saver, checkpoint_dir=checkpoint_dir)
       self.assertAllClose([1.0, 2.0, 3.0], sess.run(v))
       checkpoint_filename = os.path.join(checkpoint_dir,

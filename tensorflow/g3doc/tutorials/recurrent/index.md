@@ -2,8 +2,7 @@
 
 ## Introduction
 
-Take a look at [this great article]
-(http://colah.github.io/posts/2015-08-Understanding-LSTMs/)
+Take a look at [this great article](http://colah.github.io/posts/2015-08-Understanding-LSTMs/)
 for an introduction to recurrent neural networks and LSTMs in particular.
 
 ## Language Modeling
@@ -18,10 +17,10 @@ models, whilst being small and relatively fast to train.
 
 Language modeling is key to many interesting problems such as speech
 recognition, machine translation, or image captioning. It is also fun, too --
-take a look [here] (http://karpathy.github.io/2015/05/21/rnn-effectiveness/).
+take a look [here](http://karpathy.github.io/2015/05/21/rnn-effectiveness/).
 
 For the purpose of this tutorial, we will reproduce the results from
-[Zaremba et al., 2014] (http://arxiv.org/abs/1409.2329)
+[Zaremba et al., 2014](http://arxiv.org/abs/1409.2329)
 ([pdf](http://arxiv.org/pdf/1409.2329.pdf)), which achieves very good results
 on the PTB dataset.
 

@@ -21,15 +21,14 @@ from __future__ import print_function
 import time
 
 import numpy as np
+import portpicker
 import tensorflow as tf
-
-from tensorflow.python.util import net_lib
 
 
 def create_local_cluster(num_workers, num_ps, protocol="grpc"):
   """Create local GRPC servers and return their servers."""
-  worker_ports = [net_lib.pick_unused_port_or_die() for _ in range(num_workers)]
-  ps_ports = [net_lib.pick_unused_port_or_die() for _ in range(num_ps)]
+  worker_ports = [portpicker.pick_unused_port() for _ in range(num_workers)]
+  ps_ports = [portpicker.pick_unused_port() for _ in range(num_ps)]
   cluster_dict = {
       "worker": ["localhost:%s" % port for port in worker_ports],
       "ps": ["localhost:%s" % port for port in ps_ports]}
@@ -117,7 +116,7 @@ class PartitionedVariablesBenchmark(tf.test.Benchmark):
         # Concatenates along axis 0
         partitioned.append(tf.convert_to_tensor(partitioned_ix))
 
-    tf.initialize_all_variables().run(session=worker)
+    tf.global_variables_initializer().run(session=worker)
 
     for ix, partition_size in enumerate(partition_sizes):
       print("Running benchmark having partitions with %d floats"

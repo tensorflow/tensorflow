@@ -1,14 +1,14 @@
 StochasticTensor is a BaseStochasticTensor backed by a distribution.
 - - -
 
-#### `tf.contrib.bayesflow.stochastic_tensor.StochasticTensor.__init__(dist_cls, name=None, dist_value_type=None, loss_fn=score_function, **dist_args)` {#StochasticTensor.__init__}
+#### `tf.contrib.bayesflow.stochastic_tensor.StochasticTensor.__init__(dist, name='StochasticTensor', dist_value_type=None, loss_fn=score_function)` {#StochasticTensor.__init__}
 
 Construct a `StochasticTensor`.
 
-`StochasticTensor` will instantiate a distribution from `dist_cls` and
-`dist_args` and its `value` method will return the same value each time
-it is called. What `value` is returned is controlled by the
-`dist_value_type` (defaults to `SampleAndReshapeValue`).
+`StochasticTensor` is backed by the `dist` distribution and its `value`
+method will return the same value each time it is called. What `value` is
+returned is controlled by the `dist_value_type` (defaults to
+`SampleValue`).
 
 Some distributions' sample functions are not differentiable (e.g. a sample
 from a discrete distribution like a Bernoulli) and so to differentiate
@@ -26,32 +26,24 @@ reparameterized distributions; it will also return None if the value type is
 ##### Args:
 
 
-*  <b>`dist_cls`</b>: a `Distribution` class.
+*  <b>`dist`</b>: an instance of `Distribution`.
 *  <b>`name`</b>: a name for this `StochasticTensor` and its ops.
 *  <b>`dist_value_type`</b>: a `_StochasticValueType`, which will determine what the
       `value` of this `StochasticTensor` will be. If not provided, the
       value type set with the `value_type` context manager will be used.
-*  <b>`loss_fn`</b>: callable that takes `(dt, dt.value(), influenced_loss)`, where
-      `dt` is this `StochasticTensor`, and returns a `Tensor` loss. By
+*  <b>`loss_fn`</b>: callable that takes
+      `(st, st.value(), influenced_loss)`, where
+      `st` is this `StochasticTensor`, and returns a `Tensor` loss. By
       default, `loss_fn` is the `score_function`, or more precisely, the
       integral of the score function, such that when the gradient is taken,
       the score function results. See the `stochastic_gradient_estimators`
       module for additional loss functions and baselines.
-*  <b>`**dist_args`</b>: keyword arguments to be passed through to `dist_cls` on
-      construction.
 
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if `dist_cls` is not a `Distribution`.
+*  <b>`TypeError`</b>: if `dist` is not an instance of `Distribution`.
 *  <b>`TypeError`</b>: if `loss_fn` is not `callable`.
-
-
-- - -
-
-#### `tf.contrib.bayesflow.stochastic_tensor.StochasticTensor.clone(name=None, **dist_args)` {#StochasticTensor.clone}
-
-
 
 
 - - -
@@ -78,13 +70,6 @@ reparameterized distributions; it will also return None if the value type is
 - - -
 
 #### `tf.contrib.bayesflow.stochastic_tensor.StochasticTensor.graph` {#StochasticTensor.graph}
-
-
-
-
-- - -
-
-#### `tf.contrib.bayesflow.stochastic_tensor.StochasticTensor.input_dict` {#StochasticTensor.input_dict}
 
 
 

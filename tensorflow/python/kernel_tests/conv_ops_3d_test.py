@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import math
 import tensorflow as tf
 
@@ -32,6 +33,11 @@ class Conv3DTest(tf.test.TestCase):
     for s in filter_in_sizes:
       total_size_2 *= s
 
+    if isinstance(stride, collections.Iterable):
+      strides = [1] + list(stride) + [1]
+    else:
+      strides = [1, stride, stride, stride, 1]
+
     # Initializes the input tensor with array containing incrementing
     # numbers from 1.
     x1 = [f * 1.0 for f in range(1, total_size_1 + 1)]
@@ -39,9 +45,7 @@ class Conv3DTest(tf.test.TestCase):
     with self.test_session(use_gpu=True) as sess:
       t1 = tf.constant(x1, shape=tensor_in_sizes)
       t2 = tf.constant(x2, shape=filter_in_sizes)
-      conv = tf.nn.conv3d(t1,
-                          t2, [1, stride, stride, stride, 1],
-                          padding=padding)
+      conv = tf.nn.conv3d(t1, t2, strides, padding=padding)
       value = sess.run(conv)
     print("expected = ", expected)
     print("actual = ", value)
@@ -79,6 +83,22 @@ class Conv3DTest(tf.test.TestCase):
                        filter_in_sizes=[2, 2, 2, 3, 3],  # z, y, x, fin, fout
                        stride=1, padding="VALID",
                        expected=expected_output)
+
+  def testConv3DStrides(self):
+    expected_output = [
+        102., 151., 172., 193., 214., 235., 142., 438., 592., 613., 634., 655.,
+        676., 394., 774., 1033., 1054., 1075., 1096., 1117., 646., 1894., 2503.,
+        2524., 2545., 2566., 2587., 1486., 2230., 2944., 2965., 2986., 3007.,
+        3028., 1738., 2566., 3385., 3406., 3427., 3448., 3469., 1990., 3686.,
+        4855., 4876., 4897., 4918., 4939., 2830., 4022., 5296., 5317., 5338.,
+        5359., 5380., 3082., 4358., 5737., 5758., 5779., 5800., 5821., 3334.,
+    ]
+    self._VerifyValues(
+        tensor_in_sizes=[1, 5, 8, 7, 1],
+        filter_in_sizes=[1, 2, 3, 1, 1],
+        stride=[2, 3, 1],  # different stride for each spatial dimension
+        padding="SAME",
+        expected=expected_output)
 
   def testConv3D2x2x2FilterStride2(self):
     expected_output = [19554., 19962., 20370., 50226., 51498., 52770.]
@@ -161,15 +181,23 @@ class Conv3DTest(tf.test.TestCase):
     input_shape = [batch, input_planes, input_rows, input_cols, in_depth]
     filter_shape = [filter_planes, filter_rows, filter_cols, in_depth,
                     out_depth]
+
+    if isinstance(stride, collections.Iterable):
+      strides = [1] + list(stride) + [1]
+    else:
+      strides = [1, stride, stride, stride, 1]
+
     if padding == "VALID":
       output_planes = int(math.ceil((input_planes - filter_planes + 1.0) /
-                                    stride))
-      output_rows = int(math.ceil((input_rows - filter_rows + 1.0) / stride))
-      output_cols = int(math.ceil((input_cols - filter_cols + 1.0) / stride))
+                                    strides[1]))
+      output_rows = int(math.ceil((input_rows - filter_rows + 1.0) /
+                                  strides[2]))
+      output_cols = int(math.ceil((input_cols - filter_cols + 1.0) /
+                                  strides[3]))
     else:
-      output_planes = int(math.ceil(float(input_planes) / stride))
-      output_rows = int(math.ceil(float(input_rows) / stride))
-      output_cols = int(math.ceil(float(input_cols) / stride))
+      output_planes = int(math.ceil(float(input_planes) / strides[1]))
+      output_rows = int(math.ceil(float(input_rows) / strides[2]))
+      output_cols = int(math.ceil(float(input_cols) / strides[3]))
     output_shape = [batch, output_planes, output_rows, output_cols, out_depth]
     input_size = 1
     for x in input_shape:
@@ -201,7 +229,8 @@ class Conv3DTest(tf.test.TestCase):
                                   dtype=data_type,
                                   name="filter")
       conv = tf.nn.conv3d(input_tensor,
-                          filter_tensor, [1, stride, stride, stride, 1],
+                          filter_tensor,
+                          strides,
                           padding,
                           name="conv")
 
@@ -379,6 +408,34 @@ class Conv3DTest(tf.test.TestCase):
                                   in_depth=2,
                                   out_depth=3,
                                   stride=3,
+                                  padding="SAME",
+                                  test_input=False)
+
+  def testInputGradientSamePaddingDifferentStrides(self):
+    self.ConstructAndTestGradient(batch=1,
+                                  input_planes=5,
+                                  input_rows=8,
+                                  input_cols=7,
+                                  filter_planes=1,
+                                  filter_rows=2,
+                                  filter_cols=3,
+                                  in_depth=2,
+                                  out_depth=3,
+                                  stride=[2, 3, 1],
+                                  padding="SAME",
+                                  test_input=True)
+
+  def disabledtestFilterGradientSamePaddingDifferentStrides(self):
+    self.ConstructAndTestGradient(batch=1,
+                                  input_planes=5,
+                                  input_rows=8,
+                                  input_cols=7,
+                                  filter_planes=1,
+                                  filter_rows=2,
+                                  filter_cols=3,
+                                  in_depth=2,
+                                  out_depth=3,
+                                  stride=[2, 3, 1],
                                   padding="SAME",
                                   test_input=False)
 

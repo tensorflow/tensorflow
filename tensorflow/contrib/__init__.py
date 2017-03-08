@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -28,6 +28,8 @@ from tensorflow.contrib import factorization
 from tensorflow.contrib import framework
 from tensorflow.contrib import graph_editor
 from tensorflow.contrib import grid_rnn
+from tensorflow.contrib import integrate
+from tensorflow.contrib import labeled_tensor
 from tensorflow.contrib import layers
 from tensorflow.contrib import learn
 from tensorflow.contrib import linear_optimizer
@@ -37,9 +39,15 @@ from tensorflow.contrib import metrics
 from tensorflow.contrib import opt
 from tensorflow.contrib import quantization
 from tensorflow.contrib import rnn
+from tensorflow.contrib import seq2seq
 from tensorflow.contrib import slim
+from tensorflow.contrib import solvers
+from tensorflow.contrib import stat_summarizer
 from tensorflow.contrib import tensor_forest
 from tensorflow.contrib import tensorboard
 from tensorflow.contrib import testing
+from tensorflow.contrib import tfprof
 from tensorflow.contrib import training
 from tensorflow.contrib import util
+from tensorflow.contrib.ndlstm import python as ndlstm
+from tensorflow.contrib.specs import python as specs

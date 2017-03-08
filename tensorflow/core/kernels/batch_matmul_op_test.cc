@@ -107,10 +107,28 @@ BM_BatchMatmul(32, 2048, 2048, 2048, false, false);
 BM_BatchMatmul(1, 10000, 200, 1, false, false);
 BM_BatchMatmul(8, 10000, 200, 1, false, false);
 BM_BatchMatmul(32, 10000, 200, 1, false, false);
+BM_BatchMatmul(1, 10000, 200, 1, true, false);
+BM_BatchMatmul(8, 10000, 200, 1, true, false);
+BM_BatchMatmul(32, 10000, 200, 1, true, false);
+BM_BatchMatmul(1, 10000, 200, 1, false, true);
+BM_BatchMatmul(8, 10000, 200, 1, false, true);
+BM_BatchMatmul(32, 10000, 200, 1, false, true);
+BM_BatchMatmul(1, 10000, 200, 1, true, true);
+BM_BatchMatmul(8, 10000, 200, 1, true, true);
+BM_BatchMatmul(32, 10000, 200, 1, true, true);
 
 // Vector-matrix multiplies.
 BM_BatchMatmul(1, 1, 200, 10000, false, false);
 BM_BatchMatmul(8, 1, 200, 10000, false, false);
 BM_BatchMatmul(32, 1, 200, 10000, false, false);
+BM_BatchMatmul(1, 1, 200, 10000, true, false);
+BM_BatchMatmul(8, 1, 200, 10000, true, false);
+BM_BatchMatmul(32, 1, 200, 10000, true, false);
+BM_BatchMatmul(1, 1, 200, 10000, false, true);
+BM_BatchMatmul(8, 1, 200, 10000, false, true);
+BM_BatchMatmul(32, 1, 200, 10000, false, true);
+BM_BatchMatmul(1, 1, 200, 10000, true, true);
+BM_BatchMatmul(8, 1, 200, 10000, true, true);
+BM_BatchMatmul(32, 1, 200, 10000, true, true);
 
 }  // end namespace tensorflow

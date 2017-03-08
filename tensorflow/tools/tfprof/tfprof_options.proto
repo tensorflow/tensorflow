@@ -1,0 +1,24 @@
+syntax = "proto2";
+
+package tensorflow.tfprof;
+
+// Refers to tfprof_options.h/cc for documentation.
+// Only used to pass tfprof options from Python to C++.
+message OptionsProto {
+  optional int64 max_depth = 1;
+  optional int64 min_bytes = 2;
+  optional int64 min_micros = 3;
+  optional int64 min_params = 4;
+  optional int64 min_float_ops = 5;
+  repeated string device_regexes = 6;
+  optional string order_by = 7;
+  repeated string account_type_regexes = 8;
+  repeated string start_name_regexes = 9;
+  repeated string trim_name_regexes = 10;
+  repeated string show_name_regexes = 11;
+  repeated string hide_name_regexes = 12;
+  optional bool account_displayed_op_only = 13;
+  repeated string select = 14;
+  optional bool viz = 15;
+  optional string dump_to_file = 16;
+}

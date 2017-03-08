@@ -80,25 +80,22 @@ T locale_independent_strtonum(const char* str, const char** endptr) {
   // Set to result to what strto{f,d} functions would have returned. If the
   // number was outside the range, the stringstream sets the fail flag, but
   // returns the +/-max() value, whereas strto{f,d} functions return +/-INF.
-  bool real_fail = false;
   if (s.fail()) {
-    real_fail = true;
     if (result == std::numeric_limits<T>::max()) {
       result = std::numeric_limits<T>::infinity();
-      real_fail = false;
+      s.clear(s.rdstate() & ~std::ios::failbit);
     } else if (result == -std::numeric_limits<T>::max()) {
       result = -std::numeric_limits<T>::infinity();
-      real_fail = false;
+      s.clear(s.rdstate() & ~std::ios::failbit);
     }
   }
 
   if (endptr) {
     *endptr =
         str +
-        (real_fail
-             ? static_cast<std::iostream::pos_type>(0)
-             : (s.eof() ? static_cast<std::iostream::pos_type>(strlen(str))
-                        : s.tellg()));
+        (s.fail() ? static_cast<std::iostream::pos_type>(0)
+                  : (s.eof() ? static_cast<std::iostream::pos_type>(strlen(str))
+                             : s.tellg()));
   }
   return result;
 }

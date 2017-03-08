@@ -40,6 +40,7 @@ void Split<Eigen::ThreadPoolDevice, T>::operator()(
 #define DEFINE_CPU_KERNELS(T) template struct Split<Eigen::ThreadPoolDevice, T>;
 
 TF_CALL_ALL_TYPES(DEFINE_CPU_KERNELS)
+DEFINE_CPU_KERNELS(quint8)
 
 }  // namespace functor
 }  // namespace tensorflow

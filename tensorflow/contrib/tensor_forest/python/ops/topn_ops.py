@@ -21,7 +21,6 @@ import threading
 
 import tensorflow as tf
 
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import ops
 
 TOPN_OPS_FILE = '_topn_ops.so'
@@ -31,10 +30,6 @@ _ops_lock = threading.Lock()
 
 ops.NotDifferentiable('TopNInsert')
 ops.NotDifferentiable('TopNRemove')
-
-
-ops.RegisterShape('TopNInsert')(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape('TopNRemove')(common_shapes.call_cpp_shape_fn)
 
 
 # Workaround for the fact that importing tensorflow imports contrib

@@ -1,10 +1,5 @@
 # TensorFlow for Googlers
 
-This site has TensorFlow documentation for Google engineers. The menu at the
-left lists those parts of the public TensorFlow documentation that pertain to
-Google engineers, along with some internal-only resources written specifically
-for Google engineers.
-
 TensorFlow™ is an open source software library for numerical computation using
 data flow graphs. Nodes in the graph represent mathematical operations, while
 the graph edges represent the multidimensional data arrays (tensors) that flow

@@ -97,6 +97,10 @@ message GraphOptions {
   // no cost model.
   int64 build_cost_model = 4;
 
+  // The number of steps to skip before collecting statistics for the
+  // cost model.
+  int64 build_cost_model_after = 9;
+
   // Annotate each Node with Op output shape data, to the extent it can
   // be statically inferred.
   bool infer_shapes = 5;

@@ -106,23 +106,23 @@ class WishartCholeskyTest(tf.test.TestCase):
       chol_w = distributions.WishartCholesky(
           df, chol(scale), cholesky_input_output_matrices=False)
 
-      x = chol_w.sample_n(1, seed=42).eval()
+      x = chol_w.sample(1, seed=42).eval()
       chol_x = [chol(x[0])]
 
       full_w = distributions.WishartFull(
           df, scale, cholesky_input_output_matrices=False)
-      self.assertAllClose(x, full_w.sample_n(1, seed=42).eval())
+      self.assertAllClose(x, full_w.sample(1, seed=42).eval())
 
       chol_w_chol = distributions.WishartCholesky(
           df, chol(scale), cholesky_input_output_matrices=True)
-      self.assertAllClose(chol_x, chol_w_chol.sample_n(1, seed=42).eval())
-      eigen_values = tf.matrix_diag_part(chol_w_chol.sample_n(1000, seed=42))
+      self.assertAllClose(chol_x, chol_w_chol.sample(1, seed=42).eval())
+      eigen_values = tf.matrix_diag_part(chol_w_chol.sample(1000, seed=42))
       np.testing.assert_array_less(0., eigen_values.eval())
 
       full_w_chol = distributions.WishartFull(
           df, scale, cholesky_input_output_matrices=True)
-      self.assertAllClose(chol_x, full_w_chol.sample_n(1, seed=42).eval())
-      eigen_values = tf.matrix_diag_part(full_w_chol.sample_n(1000, seed=42))
+      self.assertAllClose(chol_x, full_w_chol.sample(1, seed=42).eval())
+      eigen_values = tf.matrix_diag_part(full_w_chol.sample(1000, seed=42))
       np.testing.assert_array_less(0., eigen_values.eval())
 
       # Check first and second moments.
@@ -131,7 +131,7 @@ class WishartCholeskyTest(tf.test.TestCase):
           df=df,
           scale=chol(make_pd(1., 3)),
           cholesky_input_output_matrices=False)
-      x = chol_w.sample_n(10000, seed=42)
+      x = chol_w.sample(10000, seed=42)
       self.assertAllEqual((10000, 3, 3), x.get_shape())
 
       moment1_estimate = tf.reduce_mean(x, reduction_indices=[0]).eval()
@@ -148,6 +148,30 @@ class WishartCholeskyTest(tf.test.TestCase):
       self.assertAllClose(chol_w.variance().eval(),
                           variance_estimate,
                           rtol=0.05)
+
+  # Test that sampling with the same seed twice gives the same results.
+  def testSampleMultipleTimes(self):
+    with self.test_session():
+      df = 4.
+      n_val = 100
+
+      tf.set_random_seed(654321)
+      chol_w1 = distributions.WishartCholesky(
+          df=df,
+          scale=chol(make_pd(1., 3)),
+          cholesky_input_output_matrices=False,
+          name="wishart1")
+      samples1 = chol_w1.sample(n_val, seed=123456).eval()
+
+      tf.set_random_seed(654321)
+      chol_w2 = distributions.WishartCholesky(
+          df=df,
+          scale=chol(make_pd(1., 3)),
+          cholesky_input_output_matrices=False,
+          name="wishart2")
+      samples2 = chol_w2.sample(n_val, seed=123456).eval()
+
+      self.assertAllClose(samples1, samples2)
 
   def testProb(self):
     with self.test_session():

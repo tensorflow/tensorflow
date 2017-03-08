@@ -28,7 +28,7 @@ class SlotCreatorTest(tf.test.TestCase):
       v = tf.Variable([1.0, 2.5], name="var")
       slot = slot_creator.create_slot(v, v.initialized_value(), name="slot")
 
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
 
       self.assertEqual(slot.op.name, "var/slot")
       self.assertEqual(slot.get_shape().as_list(), [2])
@@ -40,7 +40,7 @@ class SlotCreatorTest(tf.test.TestCase):
       v = tf.constant([1.0, 2.5], name="const")
       slot = slot_creator.create_slot(v, v * 2, name="slot")
 
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
 
       self.assertEqual(slot.op.name, "const/slot")
       self.assertEqual(slot.get_shape().as_list(), [2])
@@ -53,7 +53,7 @@ class SlotCreatorTest(tf.test.TestCase):
       with tf.control_dependencies(None):
         slot = slot_creator.create_zeros_slot(v, name="slot", dtype=tf.float64)
 
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
 
       self.assertEqual(slot.op.name, "var/slot")
       self.assertEqual(slot.get_shape().as_list(), [2])
@@ -66,7 +66,7 @@ class SlotCreatorTest(tf.test.TestCase):
       with tf.control_dependencies(None):
         slot = slot_creator.create_zeros_slot(v, name="slot")
 
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
 
       self.assertEqual(slot.op.name, "const/slot")
       self.assertEqual(slot.get_shape().as_list(), [2])

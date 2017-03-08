@@ -1165,23 +1165,23 @@ class RandomShuffleQueueTest(tf.test.TestCase):
         enq_q.dequeue().eval()
 
   def _blockingDequeue(self, sess, dequeue_op):
-    with self.assertRaisesOpError("Dequeue operation was cancelled"):
+    with self.assertRaisesOpError("was cancelled"):
       sess.run(dequeue_op)
 
   def _blockingDequeueMany(self, sess, dequeue_many_op):
-    with self.assertRaisesOpError("Dequeue operation was cancelled"):
+    with self.assertRaisesOpError("was cancelled"):
       sess.run(dequeue_many_op)
 
   def _blockingDequeueUpTo(self, sess, dequeue_up_to_op):
-    with self.assertRaisesOpError("Dequeue operation was cancelled"):
+    with self.assertRaisesOpError("was cancelled"):
       sess.run(dequeue_up_to_op)
 
   def _blockingEnqueue(self, sess, enqueue_op):
-    with self.assertRaisesOpError("Enqueue operation was cancelled"):
+    with self.assertRaisesOpError("was cancelled"):
       sess.run(enqueue_op)
 
   def _blockingEnqueueMany(self, sess, enqueue_many_op):
-    with self.assertRaisesOpError("Enqueue operation was cancelled"):
+    with self.assertRaisesOpError("was cancelled"):
       sess.run(enqueue_many_op)
 
   def testResetOfBlockingOperation(self):

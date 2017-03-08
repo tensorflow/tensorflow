@@ -16,10 +16,10 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_mgr.h"
 
 #include "tensorflow/core/framework/node_def_util.h"
-#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/scanner.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/demangle.h"
 
@@ -196,6 +196,10 @@ string ContainerInfo::DebugString() const {
   return strings::StrCat("[", container(), ",", name(), ",",
                          resource_is_private_to_kernel() ? "private" : "public",
                          "]");
+}
+
+ResourceHandle HandleFromInput(OpKernelContext* ctx, int input) {
+  return ctx->input(input).flat<ResourceHandle>()(0);
 }
 
 }  //  end namespace tensorflow

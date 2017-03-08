@@ -15,4 +15,10 @@
 // Package tensorflow is a Go binding to TensorFlow.
 //
 // The API is subject to change and may break at any time.
+//
+// TensorFlow (www.tensorflow.org) is an open source software library for
+// numerical computation using data flow graphs. This package provides
+// functionality to build and execute such graphs and depends on
+// TensorFlow being available. For installation instructions see
+// https://www.tensorflow.org/code/tensorflow/go/README.md
 package tensorflow

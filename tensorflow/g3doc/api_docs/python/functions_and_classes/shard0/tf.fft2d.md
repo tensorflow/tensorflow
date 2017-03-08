@@ -14,5 +14,9 @@ Compute the 2-dimensional discrete Fourier Transform over the inner-most
 
   A `Tensor` of type `complex64`.
   A complex64 tensor of the same shape as `input`. The inner-most 2
-  dimensions of `input` are replaced with their 2D Fourier Transform.
+    dimensions of `input` are replaced with their 2D Fourier Transform.
+
+  @compatibility(numpy)
+  Equivalent to np.fft2
+  @end_compatibility
 

@@ -40,7 +40,7 @@ class OperatorPDIdentityTest(operator_test_util.OperatorPDDerivedClassTest):
     operator = operator_pd_identity.OperatorPDIdentity(matrix_shape, dtype)
     return operator, identity_matrix.eval()
 
-  def test_bad_dtype_args_raise(self):
+  def testBadDtypeArgsRaise(self):
     dtype = np.float32
     batch_shape = [2, 3]
     k = 4
@@ -62,7 +62,7 @@ class OperatorPDIdentityTest(operator_test_util.OperatorPDDerivedClassTest):
       with self.assertRaisesRegexp(TypeError, "dtype"):
         operator.sqrt_solve(x_bad)
 
-  def test_bad_rank_args_raise(self):
+  def testBadRankArgsRaise(self):
     # Prepend a singleton dimension, changing the rank of "x", but not the size.
     dtype = np.float32
     batch_shape = [2, 3]
@@ -85,7 +85,7 @@ class OperatorPDIdentityTest(operator_test_util.OperatorPDDerivedClassTest):
       with self.assertRaisesRegexp(ValueError, "tensor rank"):
         operator.sqrt_solve(x_bad)
 
-  def test_incompatible_shape_args_raise(self):
+  def testIncompatibleShapeArgsRaise(self):
     # Test shapes that are the same rank but incompatible for matrix
     # multiplication.
     dtype = np.float32

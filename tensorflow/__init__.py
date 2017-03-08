@@ -15,13 +15,14 @@
 
 # Bring in all of the public TensorFlow interface into this
 # module.
-# pylint: disable=wildcard-import
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+# pylint: disable=wildcard-import
 from tensorflow.python import *
-
+# pylint: enable=wildcard-import
 
 # Lazily import the `tf.contrib` module. This avoids loading all of the
 # dependencies of `tf.contrib` at `import tensorflow` time.

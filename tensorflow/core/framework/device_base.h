@@ -30,6 +30,9 @@ limitations under the License.
 
 namespace Eigen {
 struct ThreadPoolDevice;
+#ifdef TENSORFLOW_USE_SYCL
+struct SyclDevice;
+#endif
 }  // end namespace Eigen
 
 namespace perftools {
@@ -145,10 +148,15 @@ class DeviceBase {
     eigen_cpu_device_ = d;
   }
 
+#ifdef TENSORFLOW_USE_SYCL
+  void set_eigen_sycl_device(Eigen::SyclDevice* d) { eigen_sycl_device_ = d; }
+#endif
+
   // Return the Allocator implementation to use based on the allocator
   // attributes requested.  See allocator.h for more details.
   virtual Allocator* GetAllocator(AllocatorAttributes /*attr*/) {
     LOG(FATAL) << "GetAllocator() is not implemented.";
+    return nullptr;
   }
 
   // Return the Allocator implementation to use based on the allocator
@@ -166,6 +174,13 @@ class DeviceBase {
     return eigen_cpu_device_;
   }
 
+#ifdef TENSORFLOW_USE_SYCL
+  const Eigen::SyclDevice* eigen_sycl_device() const {
+    CHECK(eigen_sycl_device_ != nullptr);
+    return eigen_sycl_device_;
+  }
+#endif
+
   // Caller owns the return value. The OpKernelContext calls this even
   // for devices that do not implement an eigen_gpu_device. Overridden
   // by GPU devices to return a derived type.
@@ -180,6 +195,8 @@ class DeviceBase {
 
   virtual const DeviceAttributes& attributes() const {
     LOG(FATAL) << "Device does not implement attributes()";
+    static DeviceAttributes dummy;
+    return dummy;
   }
 
   // Materializes the given TensorProto into 'tensor' stored in Device
@@ -200,6 +217,9 @@ class DeviceBase {
   CpuWorkerThreads* cpu_worker_threads_ = nullptr;
   GpuDeviceInfo* gpu_device_info_ = nullptr;
   Eigen::ThreadPoolDevice* eigen_cpu_device_ = nullptr;
+#ifdef TENSORFLOW_USE_SYCL
+  Eigen::SyclDevice* eigen_sycl_device_ = nullptr;
+#endif
 };
 
 }  // namespace tensorflow

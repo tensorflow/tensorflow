@@ -16,3 +16,7 @@ Specifically, `y = 1 / (1 + exp(-x))`.
   A Tensor with the same type as `x` if `x.dtype != qint32`
     otherwise the return type is `quint8`.
 
+@compatibility(numpy)
+Equivalent to np.scipy.special.expit
+@end_compatibility
+

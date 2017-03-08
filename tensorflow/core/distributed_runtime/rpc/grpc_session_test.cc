@@ -179,10 +179,8 @@ TEST(GrpcSessionTest, NonLocalWithFilters) {
   {
     GraphDef graph_copy(graph);
     graph::SetDefaultDevice(cluster->devices()[1].name(), &graph_copy);
-    TF_CHECK_OK(session->Create(graph_copy));
-    auto status = session->Run({}, {}, {node_names[2]}, nullptr);
+    auto status = session->Create(graph_copy);
     EXPECT_EQ(tensorflow::error::INVALID_ARGUMENT, status.code());
-    TF_CHECK_OK(session->Close());
   }
 }
 
@@ -415,25 +413,23 @@ TEST(GrpcSessionTest, MultiDevices_String) {
       SetDevice(&def, a->name(), a_dev.name());
       SetDevice(&def, b->name(), b_dev.name());
 
-      TF_CHECK_OK(session->Create(def));
-      {
+      Status s = session->Create(def);
+      if (s.ok()) {
         std::vector<Tensor> outputs;
-        Status s = session->Run({}, {b->name()}, {}, &outputs);
-        if (s.ok()) {
-          ASSERT_EQ(1, outputs.size());
-          ASSERT_EQ(outputs[0].dtype(), DT_STRING);
-          ASSERT_EQ(outputs[0].NumElements(), 4);
-          for (int i = 0; i < outputs[0].NumElements(); ++i) {
-            EXPECT_EQ(outputs[0].flat<string>()(i), "hello, world");
-          }
-        } else {
-          LOG(ERROR) << "Error: " << s;
-          ASSERT_TRUE((a_dev.device_type() == DEVICE_GPU) ||
-                      (b_dev.device_type() == DEVICE_GPU));
-          ASSERT_FALSE(s.ok());
+        TF_CHECK_OK(session->Run({}, {b->name()}, {}, &outputs));
+        ASSERT_EQ(1, outputs.size());
+        ASSERT_EQ(outputs[0].dtype(), DT_STRING);
+        ASSERT_EQ(outputs[0].NumElements(), 4);
+        for (int i = 0; i < outputs[0].NumElements(); ++i) {
+          EXPECT_EQ(outputs[0].flat<string>()(i), "hello, world");
         }
+        TF_CHECK_OK(session->Close());
+      } else {
+        LOG(ERROR) << "Error: " << s;
+        ASSERT_TRUE((a_dev.device_type() == DEVICE_GPU) ||
+                    (b_dev.device_type() == DEVICE_GPU));
+        ASSERT_FALSE(s.ok());
       }
-      TF_CHECK_OK(session->Close());
     }
   }
 }

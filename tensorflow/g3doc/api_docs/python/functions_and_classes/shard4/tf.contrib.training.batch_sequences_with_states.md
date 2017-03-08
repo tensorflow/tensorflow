@@ -27,7 +27,7 @@ many non-padded time steps there are.
 
 Static features of an example that do not vary across time can be part of the
 `input_context`, a dict with Tensor values. This method copies the context for
-each segment and makes it availabe in the `context` of the output.
+each segment and makes it available in the `context` of the output.
 
 This method can maintain and update a state for each example. It accepts some
 initial_states as a dict with Tensor values. The first mini-batch an example
@@ -128,7 +128,8 @@ while True:
 *  <b>`batch_size`</b>: int or int32 scalar `Tensor`, how large minibatches should
     be when accessing the `state()` method and `context`, `sequences`, etc,
     properties.
-*  <b>`num_threads`</b>: The int number of threads enquing input examples into a queue.
+*  <b>`num_threads`</b>: The int number of threads enqueuing input examples into a
+    queue.
 *  <b>`capacity`</b>: The max capacity of the queue in number of examples. Needs to be
     at least `batch_size`. Defaults to 1000. When iterating over the same
     input example multiple times reusing their keys the `capacity` must be

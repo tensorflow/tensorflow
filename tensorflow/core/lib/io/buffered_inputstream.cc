@@ -133,6 +133,30 @@ int64 BufferedInputStream::Tell() const {
   return input_stream_->Tell() - (limit_ - pos_);
 }
 
+Status BufferedInputStream::Seek(int64 position) {
+  if (position < 0) {
+    return errors::InvalidArgument("Seeking to a negative position: ",
+                                   position);
+  }
+
+  // Position of the buffer within file.
+  const int64 bufpos = Tell();
+  if (position < bufpos) {
+    // Reset input stream and skip 'position' bytes.
+    TF_RETURN_IF_ERROR(Reset());
+    return SkipNBytes(position);
+  }
+
+  return SkipNBytes(position - bufpos);
+}
+
+Status BufferedInputStream::Reset() {
+  TF_RETURN_IF_ERROR(input_stream_->Reset());
+  pos_ = 0;
+  limit_ = 0;
+  return Status::OK();
+}
+
 Status BufferedInputStream::ReadLine(string* result) {
   return ReadLineHelper(result, false);
 }

@@ -168,7 +168,7 @@ class TFExampleDecoderTest(tf.test.TestCase):
       self.assertEqual(tf_decoded_image.get_shape().ndims, 3)
 
   def testDecodeExampleWithPngEncoding(self):
-    test_image_channels = [1, 3]
+    test_image_channels = [1, 3, 4]
     for channels in test_image_channels:
       image_shape = (2, 3, channels)
       image, serialized_example = self.GenerateImage(
@@ -183,7 +183,7 @@ class TFExampleDecoderTest(tf.test.TestCase):
       self.assertAllClose(image, decoded_image, atol=0)
 
   def testDecodeExampleWithPNGEncoding(self):
-    test_image_channels = [1, 3]
+    test_image_channels = [1, 3, 4]
     for channels in test_image_channels:
       image_shape = (2, 3, channels)
       image, serialized_example = self.GenerateImage(

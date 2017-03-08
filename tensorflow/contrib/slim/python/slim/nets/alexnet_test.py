@@ -137,7 +137,7 @@ class AlexnetV2Test(tf.test.TestCase):
     with self.test_session() as sess:
       inputs = tf.random_uniform((batch_size, height, width, 3))
       logits, _ = alexnet.alexnet_v2(inputs)
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       output = sess.run(logits)
       self.assertTrue(output.any())
 

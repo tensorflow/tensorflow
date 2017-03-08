@@ -19,46 +19,37 @@ from __future__ import print_function
 
 import collections
 
-from six.moves import range  # pylint: disable=redefined-builtin
 
-from tensorflow.contrib.linear_optimizer.ops import gen_sdca_ops
+from six.moves import range
+
 from tensorflow.contrib.lookup import lookup_ops
+from tensorflow.python import summary
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework.load_library import load_op_library
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework.ops import convert_to_tensor
 from tensorflow.python.framework.ops import name_scope
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
-from tensorflow.python.ops import logging_ops
+from tensorflow.python.ops import gen_sdca_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import state_ops
-from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables as var_ops
 from tensorflow.python.ops.nn import sigmoid_cross_entropy_with_logits
-from tensorflow.python.platform import resource_loader
 
 __all__ = ['SdcaModel']
 
-_sdca_ops = load_op_library(resource_loader.get_path_to_datafile(
-    '_sdca_ops.so'))
-assert _sdca_ops, 'Could not load _sdca_ops.so'
-
-
-class _ShardedMutableHashTable(lookup_ops.LookupInterface):
-  """A sharded version of MutableHashTable.
+class _ShardedMutableDenseHashTable(lookup_ops.LookupInterface):
+  """A sharded version of MutableDenseHashTable.
 
   It is designed to be interface compatible with LookupInterface and
-  MutableHashTable, with the exception of the export method, which is replaced
-  by a custom values_reduce_sum method for SDCA needs. The class is not part of
-  lookup ops because it is unclear how to make the device placement general
-  enough to be useful.
+  MutableDenseHashTable, with the exception of the export method, which is
+  replaced by an export_sharded method.
 
-  The _ShardedHashTable keeps `num_shards` MutableHashTables internally. If keys
-  are integers, the shard is computed via the modulo operation. If keys are
-  strings, the shard is computed via string_to_hash_bucket_fast.
+  The _ShardedMutableDenseHashTable keeps `num_shards` MutableDenseHashTable
+  internally. The shard is computed via the modulo operation on the key.
   """
 
   # TODO(andreasst): consider moving this to lookup_ops
@@ -67,18 +58,21 @@ class _ShardedMutableHashTable(lookup_ops.LookupInterface):
                key_dtype,
                value_dtype,
                default_value,
+               empty_key,
                num_shards=1,
                name='ShardedMutableHashTable'):
     with ops.name_scope(name, 'sharded_mutable_hash_table') as scope:
-      super(_ShardedMutableHashTable, self).__init__(key_dtype, value_dtype,
-                                                     scope)
+      super(_ShardedMutableDenseHashTable, self).__init__(key_dtype,
+                                                          value_dtype, scope)
       table_shards = []
       for i in range(num_shards):
-        table_shards.append(lookup_ops.MutableHashTable(
-            key_dtype=key_dtype,
-            value_dtype=value_dtype,
-            default_value=default_value,
-            name='%s-%d-of-%d' % (name, i + 1, num_shards)))
+        table_shards.append(
+            lookup_ops.MutableDenseHashTable(
+                key_dtype=key_dtype,
+                value_dtype=value_dtype,
+                default_value=default_value,
+                empty_key=empty_key,
+                name='%s-%d-of-%d' % (name, i + 1, num_shards)))
       self._table_shards = table_shards
       # TODO(andreasst): add a value_shape() method to LookupInterface
       # pylint: disable=protected-access
@@ -101,16 +95,28 @@ class _ShardedMutableHashTable(lookup_ops.LookupInterface):
       return math_ops.add_n(sizes)
 
   def _shard_indices(self, keys):
-    if self._key_dtype == dtypes.string:
-      indices = string_ops.string_to_hash_bucket_fast(keys, self._num_shards)
-    else:
-      indices = math_ops.mod(keys, self._num_shards)
+    key_shape = keys.get_shape()
+    if key_shape.ndims > 1:
+      # If keys are a matrix (i.e. a single key is a vector), we use the first
+      # element of each key vector to determine the shard.
+      keys = array_ops.slice(keys, [0, 0], [key_shape[0].value, 1])
+      keys = array_ops.reshape(keys, [-1])
+    indices = math_ops.mod(math_ops.abs(keys), self._num_shards)
     return math_ops.cast(indices, dtypes.int32)
+
+  def _check_keys(self, keys):
+    if not keys.get_shape().is_fully_defined():
+      raise ValueError('Key shape must be fully defined, got %s.' %
+                       keys.get_shape())
+    if keys.get_shape().ndims != 1 and keys.get_shape().ndims != 2:
+      raise ValueError('Expected a vector or matrix for keys, got %s.' %
+                       keys.get_shape())
 
   def lookup(self, keys, name=None):
     if keys.dtype != self._key_dtype:
       raise TypeError('Signature mismatch. Keys must be dtype %s, got %s.' %
                       (self._key_dtype, keys.dtype))
+    self._check_keys(keys)
     num_shards = self._num_shards
     if num_shards == 1:
       return self._table_shards[0].lookup(keys, name=name)
@@ -124,15 +130,18 @@ class _ShardedMutableHashTable(lookup_ops.LookupInterface):
         for i in range(num_shards)
     ]
 
-    original_indices = math_ops.range(array_ops.size(keys))
+    num_keys = keys.get_shape().dims[0]
+    original_indices = math_ops.range(num_keys)
     partitioned_indices = data_flow_ops.dynamic_partition(original_indices,
                                                           shard_indices,
                                                           num_shards)
     result = data_flow_ops.dynamic_stitch(partitioned_indices, value_shards)
-    result.set_shape(keys.get_shape().concatenate(self._value_shape))
+    result.set_shape(
+        tensor_shape.TensorShape([num_keys]).concatenate(self._value_shape))
     return result
 
   def insert(self, keys, values, name=None):
+    self._check_keys(keys)
     num_shards = self._num_shards
     if num_shards == 1:
       return self._table_shards[0].insert(keys, values, name=name)
@@ -268,6 +277,7 @@ class SdcaModel(object):
     implementation. We expect the weights and duals to fit in a single machine.
 
     Loss functions supported:
+
      * Binary logistic loss
      * Squared loss
      * Hinge loss
@@ -280,7 +290,8 @@ class SdcaModel(object):
     ```python
     # Create a solver with the desired parameters.
     lr = tf.contrib.linear_optimizer.SdcaModel(examples, variables, options)
-    opt_op = lr.minimize()
+    min_op = lr.minimize()
+    opt_op = lr.update_weights(min_op)
 
     predictions = lr.predictions(examples)
     # Primal loss + L1 loss + L2 loss.
@@ -361,15 +372,17 @@ class SdcaModel(object):
     self._variables = variables
     self._options = options
     self._create_slots()
-    self._hashtable = _ShardedMutableHashTable(
-        key_dtype=dtypes.string,
+    self._hashtable = _ShardedMutableDenseHashTable(
+        key_dtype=dtypes.int64,
         value_dtype=dtypes.float32,
         num_shards=self._num_table_shards(),
-        default_value=[0.0, 0.0, 0.0, 0.0])
+        default_value=[0.0, 0.0, 0.0, 0.0],
+        # SdcaFprint never returns 0 or 1 for the low64 bits, so this a safe
+        # empty_key (that will never collide with actual payloads).
+        empty_key=[0, 0])
 
-    logging_ops.scalar_summary('approximate_duality_gap',
-                               self.approximate_duality_gap())
-    logging_ops.scalar_summary('examples_seen', self._hashtable.size())
+    summary.scalar('approximate_duality_gap', self.approximate_duality_gap())
+    summary.scalar('examples_seen', self._hashtable.size())
 
   def _symmetric_l1_regularization(self):
     return self._options['symmetric_l1_regularization']
@@ -521,20 +534,37 @@ class SdcaModel(object):
         if sf.feature_values is not None:
           sparse_features_values.append(sf.feature_values)
 
-      example_ids_hashed = _sdca_ops.sdca_fprint(convert_to_tensor(
-          self._examples['example_ids']))
+      # pylint: disable=protected-access
+      example_ids_hashed = gen_sdca_ops._sdca_fprint(
+          convert_to_tensor(self._examples['example_ids']))
+      # pylint: enable=protected-access
       example_state_data = self._hashtable.lookup(example_ids_hashed)
       # Solver returns example_state_update, new delta sparse_feature_weights
       # and delta dense_feature_weights.
-      esu, sfw, dfw = _sdca_ops.distributed_sdca_large_batch_solver(
+
+      weights_tensor = self._convert_n_to_tensor(self._slots[
+          'unshrinked_sparse_features_weights'])
+      sparse_weights = []
+      sparse_indices = []
+      for w, i in zip(weights_tensor, sparse_feature_indices):
+        # Find the feature ids to lookup in the variables.
+        with ops.device(w.device):
+          sparse_indices.append(
+              math_ops.cast(
+                  array_ops.unique(math_ops.cast(i, dtypes.int32))[0],
+                  dtypes.int64))
+          sparse_weights.append(array_ops.gather(w, sparse_indices[-1]))
+
+      # pylint: disable=protected-access
+      esu, sfw, dfw = gen_sdca_ops._sdca_optimizer(
           sparse_example_indices,
           sparse_feature_indices,
           sparse_features_values,
           self._convert_n_to_tensor(self._examples['dense_features']),
           convert_to_tensor(self._examples['example_weights']),
           convert_to_tensor(self._examples['example_labels']),
-          self._convert_n_to_tensor(self._slots[
-              'unshrinked_sparse_features_weights']),
+          sparse_indices,
+          sparse_weights,
           self._convert_n_to_tensor(self._slots[
               'unshrinked_dense_features_weights']),
           example_state_data,
@@ -542,52 +572,58 @@ class SdcaModel(object):
           l1=self._options['symmetric_l1_regularization'],
           l2=self._symmetric_l2_regularization(),
           num_loss_partitions=self._num_loss_partitions(),
-          # TODO(sibyl-Aix6ihai): Provide empirical evidence for this. It is better
-          # to run more than one iteration on single mini-batch as we want to
-          # spend more time in compute. SDCA works better with larger
-          # mini-batches and there is also recent work that shows its better to
-          # reuse old samples than train on new samples.
-          # See: http://arxiv.org/abs/1602.02136.
-          num_inner_iterations=2)
+          num_inner_iterations=1)
+      # pylint: enable=protected-access
 
-      out_fws = [sfw, dfw]
       with ops.control_dependencies([esu]):
         update_ops = [self._hashtable.insert(example_ids_hashed, esu)]
         # Update the weights before the proximal step.
-        for i, name in enumerate(
-            ['sparse_features_weights', 'dense_features_weights']):
-          for slot_var, out_fw in zip(self._slots['unshrinked_' + name],
-                                      out_fws[i]):
-            update_ops.append(slot_var.assign_add(out_fw))
+        for w, i, u in zip(self._slots['unshrinked_sparse_features_weights'],
+                           sparse_indices, sfw):
+          update_ops.append(state_ops.scatter_add(w, i, u))
+        for w, u in zip(self._slots['unshrinked_dense_features_weights'], dfw):
+          update_ops.append(w.assign_add(u))
 
-        with ops.control_dependencies(update_ops):
-          update_ops = []
-          # Copy over unshrinked weights to user provided variables.
-          for i, name in enumerate(
-              ['sparse_features_weights', 'dense_features_weights']):
-            for var, slot_var in zip(self._variables[name],
-                                     self._slots['unshrinked_' + name]):
-              update_ops.append(var.assign(slot_var))
-
-          update_group = control_flow_ops.group(*update_ops)
-
-          # Apply proximal step.
-          with ops.control_dependencies([update_group]):
-            shrink_ops = []
-            for name in ['sparse_features_weights', 'dense_features_weights']:
-              for var in self._variables[name]:
-                with ops.device(var.device):
-                  shrink_ops.append(
-                      _sdca_ops.sdca_shrink_l1(
-                          self._convert_n_to_tensor(
-                              [var], as_ref=True),
-                          l1=self._symmetric_l1_regularization(),
-                          l2=self._symmetric_l2_regularization()))
-            shrink_l1 = control_flow_ops.group(*shrink_ops)
       if not global_step:
-        return shrink_l1
-      with ops.control_dependencies([shrink_l1]):
+        return control_flow_ops.group(*update_ops)
+      with ops.control_dependencies(update_ops):
         return state_ops.assign_add(global_step, 1, name=name).op
+
+  def update_weights(self, train_op):
+    """Updates the model weights.
+
+    This function must be called on at least one worker after `minimize`.
+    In distributed training this call can be omitted on non-chief workers to
+    speed up training.
+
+    Args:
+      train_op: The operation returned by the `minimize` call.
+
+    Returns:
+      An Operation that updates the model weights.
+    """
+    with ops.control_dependencies([train_op]):
+      update_ops = []
+      # Copy over unshrinked weights to user provided variables.
+      for name in ['sparse_features_weights', 'dense_features_weights']:
+        for var, slot_var in zip(self._variables[name],
+                                 self._slots['unshrinked_' + name]):
+          update_ops.append(var.assign(slot_var))
+
+    # Apply proximal step.
+    with ops.control_dependencies(update_ops):
+      update_ops = []
+      for name in ['sparse_features_weights', 'dense_features_weights']:
+        for var in self._variables[name]:
+          with ops.device(var.device):
+            # pylint: disable=protected-access
+            update_ops.append(
+                gen_sdca_ops._sdca_shrink_l1(
+                    self._convert_n_to_tensor(
+                        [var], as_ref=True),
+                    l1=self._symmetric_l1_regularization(),
+                    l2=self._symmetric_l2_regularization()))
+      return control_flow_ops.group(*update_ops)
 
   def approximate_duality_gap(self):
     """Add operations to compute the approximate duality gap.
@@ -601,8 +637,14 @@ class SdcaModel(object):
       shard_sums = []
       for values in values_list:
         with ops.device(values.device):
-          shard_sums.append(
-              math_ops.reduce_sum(math_ops.cast(values, dtypes.float64), 0))
+          # For large tables to_double() below allocates a large temporary
+          # tensor that is freed once the sum operation completes. To reduce
+          # peak memory usage in cases where we have multiple large tables on a
+          # single device, we serialize these operations.
+          # Note that we need double precision to get accurate results.
+          with ops.control_dependencies(shard_sums):
+            shard_sums.append(
+                math_ops.reduce_sum(math_ops.to_double(values), 0))
       summed_values = math_ops.add_n(shard_sums)
 
       primal_loss = summed_values[1]

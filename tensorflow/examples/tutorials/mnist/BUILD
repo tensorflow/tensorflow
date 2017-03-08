@@ -84,7 +84,6 @@ py_test(
     args = [
         "--fake_data",
         "--max_steps=10",
-        "--train_dir=/tmp/mnist",
     ],
     main = "fully_connected_feed.py",
     srcs_version = "PY2AND3",

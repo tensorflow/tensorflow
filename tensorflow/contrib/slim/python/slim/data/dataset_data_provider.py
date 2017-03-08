@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -51,7 +51,7 @@ from tensorflow.contrib.slim.python.slim.data import parallel_reader
 class DatasetDataProvider(data_provider.DataProvider):
 
   def __init__(self, dataset, num_readers=1, shuffle=True, num_epochs=None,
-               common_queue_capacity=256, common_queue_min=128):
+               common_queue_capacity=256, common_queue_min=128, seed=None):
     """Creates a DatasetDataProvider.
 
     Args:
@@ -64,6 +64,7 @@ class DatasetDataProvider(data_provider.DataProvider):
       common_queue_capacity: The capacity of the common queue.
       common_queue_min: The minimum number of elements in the common queue after
         a dequeue.
+      seed: The seed to use if shuffling.
     """
     _, data = parallel_reader.parallel_read(
         dataset.data_sources,
@@ -72,7 +73,8 @@ class DatasetDataProvider(data_provider.DataProvider):
         num_readers=num_readers,
         shuffle=shuffle,
         capacity=common_queue_capacity,
-        min_after_dequeue=common_queue_min)
+        min_after_dequeue=common_queue_min,
+        seed=seed)
 
     items = dataset.decoder.list_items()
     tensors = dataset.decoder.decode(data, items)

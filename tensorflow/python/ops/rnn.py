@@ -72,6 +72,7 @@ def rnn(cell, inputs, initial_state=None, dtype=None,
   """Creates a recurrent neural network specified by RNNCell `cell`.
 
   The simplest form of RNN network generated is:
+
   ```python
     state = cell.zero_state(...)
     outputs = []
@@ -90,6 +91,7 @@ def rnn(cell, inputs, initial_state=None, dtype=None,
   to the final state output.
 
   The dynamic calculation performed is, at time `t` for batch row `b`,
+
   ```python
     (output, state)(b, t) =
       (t >= sequence_length(b))
@@ -115,9 +117,10 @@ def rnn(cell, inputs, initial_state=None, dtype=None,
 
   Returns:
     A pair (outputs, state) where:
-      - outputs is a length T list of outputs (one for each input), or a nested
-        tuple of such elements.
-      - state is the final state
+
+    - outputs is a length T list of outputs (one for each input), or a nested
+      tuple of such elements.
+    - state is the final state
 
   Raises:
     TypeError: If `cell` is not an instance of RNNCell.
@@ -178,6 +181,11 @@ def rnn(cell, inputs, initial_state=None, dtype=None,
       state = cell.zero_state(batch_size, dtype)
 
     if sequence_length is not None:  # Prepare variables
+      sequence_length = ops.convert_to_tensor(
+          sequence_length, name="sequence_length")
+      if sequence_length.get_shape().ndims not in (None, 1):
+        raise ValueError(
+            "sequence_length must be a vector of length batch_size")
       def _create_zero_output(output_size):
         # convert int to TensorShape if necessary
         size = _state_size_with_prefix(output_size, prefix=[batch_size])
@@ -601,9 +609,6 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
       most TensorFlow data is batch-major, so by default this function
       accepts input and emits output in batch-major form.
     dtype: (optional) The data type for the initial state.  Required if
-      initial_state is not provided.
-    sequence_length: An int32/int64 vector, size `[batch_size]`,
-      containing the actual lengths for each of the sequences.
       either of the initial states are not provided.
     scope: VariableScope for the created subgraph; defaults to "BiRNN"
 
@@ -786,6 +791,10 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
   parallel_iterations = parallel_iterations or 32
   if sequence_length is not None:
     sequence_length = math_ops.to_int32(sequence_length)
+    if sequence_length.get_shape().ndims not in (None, 1):
+      raise ValueError(
+          "sequence_length must be a vector of length batch_size, "
+          "but saw shape: %s" % sequence_length.get_shape())
     sequence_length = array_ops.identity(  # Just to find it in the graph.
         sequence_length, name="sequence_length")
 
@@ -909,8 +918,8 @@ def _dynamic_rnn_loop(cell,
       raise ValueError(
           "Input size (depth of inputs) must be accessible via shape inference,"
           " but saw value None.")
-    got_time_steps = shape[0]
-    got_batch_size = shape[1]
+    got_time_steps = shape[0].value
+    got_batch_size = shape[1].value
     if const_time_steps != got_time_steps:
       raise ValueError(
           "Time steps is not the same for all the elements in the input in a "
@@ -1036,7 +1045,7 @@ def raw_rnn(cell, loop_fn,
 
   The operation of `raw_rnn`, in pseudo-code, is basically the following:
 
-  ```
+  ```python
   time = tf.constant(0, dtype=tf.int32)
   (finished, next_input, initial_state, _, loop_state) = loop_fn(
       time=time, cell_output=None, cell_state=None, loop_state=None)
@@ -1048,10 +1057,10 @@ def raw_rnn(cell, loop_fn,
         time=time + 1, cell_output=output, cell_state=cell_state,
         loop_state=loop_state)
     # Emit zeros and copy forward state for minibatch entries that are finished.
-    state = tf.select(finished, state, next_state)
-    emit = tf.select(finished, tf.zeros_like(emit), emit)
+    state = tf.where(finished, state, next_state)
+    emit = tf.where(finished, tf.zeros_like(emit), emit)
     emit_ta = emit_ta.write(time, emit)
-    # If any new minibatch entries are marked as finished, mark these
+    # If any new minibatch entries are marked as finished, mark these.
     finished = tf.logical_or(finished, next_finished)
     time += 1
   return (emit_ta, state, loop_state)

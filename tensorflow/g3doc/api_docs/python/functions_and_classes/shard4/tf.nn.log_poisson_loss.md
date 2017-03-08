@@ -1,16 +1,16 @@
 ### `tf.nn.log_poisson_loss(log_input, targets, compute_full_loss=False, name=None)` {#log_poisson_loss}
 
-Computes log poisson loss given `log_input`.
+Computes log Poisson loss given `log_input`.
 
 Gives the log-likelihood loss between the prediction and the target under the
-assumption that the target has a poisson distribution.
+assumption that the target has a Poisson distribution.
 Caveat: By default, this is not the exact loss, but the loss minus a
   constant term [log(z!)]. That has no effect for optimization, but
   does not play well with relative loss comparisons. To compute an
   approximation of the log factorial term, specify
   compute_full_loss=True to enable Stirling's Approximation.
 
-For brevity, let `c = log(x) = log_input`, `z = targets`.  The log poisson
+For brevity, let `c = log(x) = log_input`, `z = targets`.  The log Poisson
 loss is
 
       -log(exp(-x) * (x^z) / z!)

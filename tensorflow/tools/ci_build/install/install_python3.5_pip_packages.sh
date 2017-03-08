@@ -85,3 +85,5 @@ pip3.5 install --upgrade scikit-learn
 pip3.5 install wheel==0.29.0
 
 pip3.5 install --upgrade pandas==0.18.1
+
+pip3.5 install portpicker

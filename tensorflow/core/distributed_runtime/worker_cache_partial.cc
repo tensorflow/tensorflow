@@ -26,33 +26,32 @@ limitations under the License.
 
 namespace tensorflow {
 
-bool WorkerCachePartial::GetDeviceBusNonBlocking(const string& device_name,
-                                                 BusAdjacency* ba) {
+bool WorkerCachePartial::GetDeviceLocalityNonBlocking(
+    const string& device_name, DeviceLocality* locality) {
   mutex_lock lock(mu_);  // could use reader lock
   const auto& iter = device_status_cache_.find(device_name);
   if (iter != device_status_cache_.end()) {
-    *ba = iter->second.bus_adjacency();
+    *locality = iter->second.locality();
     return true;
   }
   return false;
 }
 
-void WorkerCachePartial::GetDeviceBusAsync(const string& device_name,
-                                           BusAdjacency* ba,
-                                           StatusCallback done) {
-  if (!GetDeviceBusNonBlocking(device_name, ba)) {
+void WorkerCachePartial::GetDeviceLocalityAsync(const string& device_name,
+                                                DeviceLocality* locality,
+                                                StatusCallback done) {
+  if (!GetDeviceLocalityNonBlocking(device_name, locality)) {
     // If cache entry was empty, make one try to fill it by RPC.
-    SchedClosure([this, &device_name, ba, done]() {
+    SchedClosure([this, &device_name, locality, done]() {
       Status s = RefreshDeviceStatus(device_name);
       if (s.ok()) {
-        if (!GetDeviceBusNonBlocking(device_name, ba)) {
+        if (!GetDeviceLocalityNonBlocking(device_name, locality)) {
           mutex_lock lock(mu_);
           const auto& iter = device_status_cache_.find(device_name);
           if (iter == device_status_cache_.end()) {
             s = errors::Unavailable("No known remote device: ", device_name);
           } else {
-            s = errors::Internal("Failed to find bus_adjacency for ",
-                                 device_name);
+            s = errors::Internal("Failed to find locality for ", device_name);
           }
         }
       }

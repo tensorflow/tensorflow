@@ -32,11 +32,22 @@ def make_categorical(batch_shape, num_classes, dtype=tf.int32):
 
 class CategoricalTest(tf.test.TestCase):
 
-  def testLogits(self):
-    logits = np.log([0.2, 0.8]) - 50.
-    dist = tf.contrib.distributions.Categorical(logits)
+  def testP(self):
+    p = [0.2, 0.8]
+    dist = tf.contrib.distributions.Categorical(p=p)
     with self.test_session():
-      self.assertAllClose(logits, dist.logits.eval())
+      self.assertAllClose(p, dist.p.eval())
+      self.assertAllEqual([2], dist.logits.get_shape())
+
+  def testLogits(self):
+    p = np.array([0.2, 0.8], dtype=np.float32)
+    logits = np.log(p) - 50.
+    dist = tf.contrib.distributions.Categorical(logits=logits)
+    with self.test_session():
+      self.assertAllEqual([2], dist.p.get_shape())
+      self.assertAllEqual([2], dist.logits.get_shape())
+      self.assertAllClose(dist.p.eval(), p)
+      self.assertAllClose(dist.logits.eval(), logits)
 
   def testShapes(self):
     with self.test_session():
@@ -62,12 +73,13 @@ class CategoricalTest(tf.test.TestCase):
   def testDtype(self):
     dist = make_categorical([], 5, dtype=tf.int32)
     self.assertEqual(dist.dtype, tf.int32)
-    self.assertEqual(dist.dtype, dist.sample_n(5).dtype)
+    self.assertEqual(dist.dtype, dist.sample(5).dtype)
     self.assertEqual(dist.dtype, dist.mode().dtype)
     dist = make_categorical([], 5, dtype=tf.int64)
     self.assertEqual(dist.dtype, tf.int64)
-    self.assertEqual(dist.dtype, dist.sample_n(5).dtype)
+    self.assertEqual(dist.dtype, dist.sample(5).dtype)
     self.assertEqual(dist.dtype, dist.mode().dtype)
+    self.assertEqual(dist.p.dtype, tf.float32)
     self.assertEqual(dist.logits.dtype, tf.float32)
     self.assertEqual(dist.logits.dtype, dist.entropy().dtype)
     self.assertEqual(dist.logits.dtype, dist.pmf(
@@ -128,7 +140,7 @@ class CategoricalTest(tf.test.TestCase):
       histograms = [[[0.2, 0.8], [0.4, 0.6]]]
       dist = tf.contrib.distributions.Categorical(tf.log(histograms) - 50.)
       n = 10000
-      samples = dist.sample_n(n, seed=123)
+      samples = dist.sample(n, seed=123)
       samples.set_shape([n, 1, 2])
       self.assertEqual(samples.dtype, tf.int32)
       sample_values = samples.eval()
@@ -209,6 +221,35 @@ class CategoricalTest(tf.test.TestCase):
       histograms = [[[0.2, 0.8], [0.6, 0.4]]]
       dist = tf.contrib.distributions.Categorical(tf.log(histograms) - 50.)
       self.assertAllEqual(dist.mode().eval(), [[1, 0]])
+
+  def testCategoricalCategoricalKL(self):
+    def np_softmax(logits):
+      exp_logits = np.exp(logits)
+      return exp_logits / exp_logits.sum(axis=-1, keepdims=True)
+
+    with self.test_session() as sess:
+      for categories in [2, 4]:
+        for batch_size in [1, 10]:
+          a_logits = np.random.randn(batch_size, categories)
+          b_logits = np.random.randn(batch_size, categories)
+
+          a = tf.contrib.distributions.Categorical(logits=a_logits)
+          b = tf.contrib.distributions.Categorical(logits=b_logits)
+
+          kl = tf.contrib.distributions.kl(a, b)
+          kl_val = sess.run(kl)
+          # Make sure KL(a||a) is 0
+          kl_same = sess.run(tf.contrib.distributions.kl(a, a))
+
+          prob_a = np_softmax(a_logits)
+          prob_b = np_softmax(b_logits)
+          kl_expected = np.sum(
+              prob_a * (np.log(prob_a) - np.log(prob_b)), axis=-1)
+
+          self.assertEqual(kl.get_shape(), (batch_size,))
+          self.assertAllClose(kl_val, kl_expected)
+          self.assertAllClose(kl_same, np.zeros_like(kl_expected))
+
 
 if __name__ == "__main__":
   tf.test.main()

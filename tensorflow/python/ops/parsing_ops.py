@@ -21,9 +21,9 @@ from __future__ import print_function
 import collections
 import re
 
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -153,8 +153,7 @@ def parse_example(serialized, features, name=None, example_names=None):
   # pylint: disable=line-too-long
   """Parses `Example` protos into a `dict` of tensors.
 
-  Parses a number of serialized [`Example`]
-  (https://www.tensorflow.org/code/tensorflow/core/example/example.proto)
+  Parses a number of serialized [`Example`](https://www.tensorflow.org/code/tensorflow/core/example/example.proto)
   protos given in `serialized`.
 
   `example_names` may contain descriptive names for the corresponding serialized
@@ -407,8 +406,9 @@ def _parse_example_raw(serialized,
 
     (sparse_indices, sparse_values, sparse_shapes, dense_values) = outputs
 
-    sparse_tensors = [ops.SparseTensor(ix, val, shape) for (ix, val, shape)
-                      in zip(sparse_indices, sparse_values, sparse_shapes)]
+    sparse_tensors = [
+        sparse_tensor.SparseTensor(ix, val, shape) for (ix, val, shape)
+        in zip(sparse_indices, sparse_values, sparse_shapes)]
 
     return dict(
         zip(sparse_keys + dense_keys, sparse_tensors + dense_values))
@@ -531,7 +531,7 @@ def _parse_single_example_raw(serialized,
     if sparse_keys is not None:
       for s in sparse_keys:
         s_name = re.sub("[^A-Za-z0-9_.\\-/]", "_", s)
-        outputs[s] = ops.SparseTensor(
+        outputs[s] = sparse_tensor.SparseTensor(
             array_ops.slice(outputs[s].indices,
                             [0, 1], [-1, -1], name="Slice_Indices_%s" % s_name),
             outputs[s].values,
@@ -540,17 +540,13 @@ def _parse_single_example_raw(serialized,
     return outputs
 
 
-ops.RegisterShape("ParseExample")(common_shapes.call_cpp_shape_fn)
-
-
 def parse_single_sequence_example(
     serialized, context_features=None, sequence_features=None,
     example_name=None, name=None):
   # pylint: disable=line-too-long
   """Parses a single `SequenceExample` proto.
 
-  Parses a single serialized [`SequenceExample`]
-  (https://www.tensorflow.org/code/tensorflow/core/example/example.proto)
+  Parses a single serialized [`SequenceExample`](https://www.tensorflow.org/code/tensorflow/core/example/example.proto)
   proto given in `serialized`.
 
   This op parses a serialize sequence example into a tuple of dictionaries
@@ -843,13 +839,13 @@ def _parse_single_sequence_example_raw(serialized,
      feature_list_sparse_shapes, feature_list_dense_values) = outputs
 
     context_sparse_tensors = [
-        ops.SparseTensor(ix, val, shape) for (ix, val, shape)
+        sparse_tensor.SparseTensor(ix, val, shape) for (ix, val, shape)
         in zip(context_sparse_indices,
                context_sparse_values,
                context_sparse_shapes)]
 
     feature_list_sparse_tensors = [
-        ops.SparseTensor(ix, val, shape) for (ix, val, shape)
+        sparse_tensor.SparseTensor(ix, val, shape) for (ix, val, shape)
         in zip(feature_list_sparse_indices,
                feature_list_sparse_values,
                feature_list_sparse_shapes)]
@@ -862,11 +858,3 @@ def _parse_single_sequence_example_raw(serialized,
             feature_list_sparse_tensors + feature_list_dense_values))
 
     return (context_output, feature_list_output)
-
-
-ops.RegisterShape("ParseSingleSequenceExample")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("ParseTensor")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("DecodeJSONExample")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("StringToNumber")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("DecodeRaw")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("DecodeCSV")(common_shapes.call_cpp_shape_fn)

@@ -36,7 +36,7 @@ class AdagradOptimizerTest(tf.test.TestCase):
                                             use_locking=use_locking)
         ada_update = ada_opt.apply_gradients(zip(
             [grads0, grads1], [var0, var1]))
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         # Fetch params to validate initial values
         self.assertAllClose([1.0, 2.0], var0.eval())
         self.assertAllClose([3.0, 4.0], var1.eval())
@@ -67,7 +67,7 @@ class AdagradOptimizerTest(tf.test.TestCase):
             initial_accumulator_value=0.1)
         ada_update = ada_opt.apply_gradients(zip(
             [grads0, grads1], [var0, var1]))
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         # Fetch params to validate initial values
         self.assertAllClose([1.0, 2.0], var0.eval())
         self.assertAllClose([3.0, 4.0], var1.eval())
@@ -96,7 +96,7 @@ class AdagradOptimizerTest(tf.test.TestCase):
         ada_opt = tf.train.AdagradOptimizer(3.0, initial_accumulator_value=0.1)
         ada_update = ada_opt.apply_gradients(zip(
             [grads0, grads1], [var0, var1]))
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         # Fetch params to validate initial values
         self.assertAllClose([[1.0], [2.0]], var0.eval())
         self.assertAllClose([[3.0], [4.0]], var1.eval())
@@ -129,7 +129,7 @@ class AdagradOptimizerTest(tf.test.TestCase):
         ada_update = ada_opt.apply_gradients(zip([grads0], [var0]))
         self.assertEqual(["accumulator"], ada_opt.get_slot_names())
         slot0 = ada_opt.get_slot(var0, "accumulator")
-        init = tf.initialize_all_variables()
+        init = tf.global_variables_initializer()
         for _ in range(100):
           init.run()
           ada_update.run()
@@ -158,7 +158,7 @@ class AdagradOptimizerTest(tf.test.TestCase):
         self.assertEquals(slot0.get_shape(), var0.get_shape())
         slot1 = ada_opt.get_slot(var1, "accumulator")
         self.assertEquals(slot1.get_shape(), var1.get_shape())
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
 
         # Fetch params to validate initial values.
         self.assertAllClose([1.0, 2.0], var0.eval())

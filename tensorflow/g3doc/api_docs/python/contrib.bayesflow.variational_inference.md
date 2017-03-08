@@ -5,6 +5,8 @@
 
 Variational inference.
 
+## Ops
+
 - - -
 
 ### `tf.contrib.bayesflow.variational_inference.elbo(log_likelihood, variational_with_prior=None, keep_batch_dim=True, form=None, name='ELBO')` {#elbo}
@@ -14,12 +16,12 @@ Evidence Lower BOund. `log p(x) >= ELBO`.
 Optimization objective for inference of hidden variables by variational
 inference.
 
-This function is meant to be used in conjunction with `DistributionTensor`.
-The user should build out the inference network, using `DistributionTensor`s
+This function is meant to be used in conjunction with `StochasticTensor`.
+The user should build out the inference network, using `StochasticTensor`s
 as latent variables, and the generative network. `elbo` at minimum needs
-`p(x|Z)` and assumes that all `DistributionTensor`s upstream of `p(x|Z)` are
+`p(x|Z)` and assumes that all `StochasticTensor`s upstream of `p(x|Z)` are
 the variational distributions. Use `register_prior` to register `Distribution`
-priors for each `DistributionTensor`. Alternatively, pass in
+priors for each `StochasticTensor`. Alternatively, pass in
 `variational_with_prior` specifying all variational distributions and their
 priors.
 
@@ -53,8 +55,8 @@ e.g. `q(Z) = q(z1)q(z2)q(z3)`.
 
 
 *  <b>`log_likelihood`</b>: `Tensor` log p(x|Z).
-*  <b>`variational_with_prior`</b>: dict from `DistributionTensor` q(Z) to
-    `Distribution` p(Z). If `None`, defaults to all `DistributionTensor`
+*  <b>`variational_with_prior`</b>: dict from `StochasticTensor` q(Z) to
+    `Distribution` p(Z). If `None`, defaults to all `StochasticTensor`
     objects upstream of `log_likelihood` with priors registered with
     `register_prior`.
 *  <b>`keep_batch_dim`</b>: bool. Whether to keep the batch dimension when summing
@@ -72,10 +74,10 @@ e.g. `q(Z) = q(z1)q(z2)q(z3)`.
 
 
 *  <b>`TypeError`</b>: if variationals in `variational_with_prior` are not
-    `DistributionTensor`s or if priors are not `BaseDistribution`s.
+    `StochasticTensor`s or if priors are not `Distribution`s.
 *  <b>`TypeError`</b>: if form is not a valid ELBOForms constant.
 *  <b>`ValueError`</b>: if `variational_with_prior` is None and there are no
-    `DistributionTensor`s upstream of `log_likelihood`.
+    `StochasticTensor`s upstream of `log_likelihood`.
 *  <b>`ValueError`</b>: if any variational does not have a prior passed or registered.
 
 
@@ -94,8 +96,8 @@ Because only the joint is specified, analytic KL is not available.
 
 
 *  <b>`log_joint`</b>: `Tensor` log p(x, Z).
-*  <b>`variational`</b>: list of `DistributionTensor` q(Z). If `None`, defaults to all
-    `DistributionTensor` objects upstream of `log_joint`.
+*  <b>`variational`</b>: list of `StochasticTensor` q(Z). If `None`, defaults to all
+    `StochasticTensor` objects upstream of `log_joint`.
 *  <b>`keep_batch_dim`</b>: bool. Whether to keep the batch dimension when summing
     entropy term. When the sample is per data point, this should be True;
     otherwise (e.g. in a Bayesian NN), this should be False.
@@ -110,9 +112,9 @@ Because only the joint is specified, analytic KL is not available.
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if variationals in `variational` are not `DistributionTensor`s.
+*  <b>`TypeError`</b>: if variationals in `variational` are not `StochasticTensor`s.
 *  <b>`TypeError`</b>: if form is not a valid ELBOForms constant.
-*  <b>`ValueError`</b>: if `variational` is None and there are no `DistributionTensor`s
+*  <b>`ValueError`</b>: if `variational` is None and there are no `StochasticTensor`s
     upstream of `log_joint`.
 *  <b>`ValueError`</b>: if form is ELBOForms.analytic_kl.
 
@@ -140,13 +142,11 @@ See `elbo` for what is used with `default`.
 
 
 
-
-## Other Functions and Classes
 - - -
 
 ### `tf.contrib.bayesflow.variational_inference.register_prior(variational, prior)` {#register_prior}
 
-Associate a variational `DistributionTensor` with a `Distribution` prior.
+Associate a variational `StochasticTensor` with a `Distribution` prior.
 
 This is a helper function used in conjunction with `elbo` that allows users
 to specify the mapping between variational distributions and their priors
@@ -155,7 +155,7 @@ without having to pass in `variational_with_prior` explicitly.
 ##### Args:
 
 
-*  <b>`variational`</b>: `DistributionTensor` q(Z). Approximating distribution.
+*  <b>`variational`</b>: `StochasticTensor` q(Z). Approximating distribution.
 *  <b>`prior`</b>: `Distribution` p(Z). Prior distribution.
 
 ##### Returns:
@@ -165,7 +165,7 @@ without having to pass in `variational_with_prior` explicitly.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if variational is not a `DistributionTensor` or `prior` is not
+*  <b>`ValueError`</b>: if variational is not a `StochasticTensor` or `prior` is not
     a `Distribution`.
 
 

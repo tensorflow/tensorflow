@@ -65,7 +65,7 @@ class VariableClippingOptimizerTest(tf.test.TestCase):
 
       update_op = clip_opt.apply_gradients(
           list(zip([grads0, grads1], [var0, var1])))
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
     return var0, var1, update_op
 
   def _assertDenseCorrect(self, var0, var1, update_op):
@@ -102,7 +102,7 @@ class VariableClippingOptimizerTest(tf.test.TestCase):
           sgd, {var0: [1], var1: [0]}, 2.0)
       update_op = clip_opt.apply_gradients(
           list(zip([grads, grads], [var0, var1])))
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
     return var0, var1, update_op
 
   def _assertSparseCorrect(self, var0, var1, update_op):

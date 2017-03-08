@@ -36,7 +36,7 @@ class RNNCellTest(tf.test.TestCase):
       with tf.variable_scope("root", initializer=tf.constant_initializer(1.0)):
         x = tf.zeros([1, 2])
         l = linear([x], 2, False)
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run([l], {x.name: np.array([[1., 2.]])})
         self.assertAllClose(res[0], [[3.0, 3.0]])
 
@@ -57,7 +57,7 @@ class RNNCellTest(tf.test.TestCase):
         x = tf.zeros([1, 2])
         m = tf.zeros([1, 2])
         g, _ = tf.nn.rnn_cell.BasicRNNCell(2)(x, m)
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run([g], {x.name: np.array([[1., 1.]]),
                              m.name: np.array([[0.1, 0.1]])})
         self.assertEqual(res[0].shape, (1, 2))
@@ -68,7 +68,7 @@ class RNNCellTest(tf.test.TestCase):
         x = tf.zeros([1, 2])
         m = tf.zeros([1, 2])
         g, _ = tf.nn.rnn_cell.GRUCell(2)(x, m)
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run([g], {x.name: np.array([[1., 1.]]),
                              m.name: np.array([[0.1, 0.1]])})
         # Smoke test
@@ -77,7 +77,7 @@ class RNNCellTest(tf.test.TestCase):
         x = tf.zeros([1, 3])  # Test GRUCell with input_size != num_units.
         m = tf.zeros([1, 2])
         g, _ = tf.nn.rnn_cell.GRUCell(2)(x, m)
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run([g], {x.name: np.array([[1., 1., 1.]]),
                              m.name: np.array([[0.1, 0.1]])})
         # Smoke test
@@ -91,7 +91,7 @@ class RNNCellTest(tf.test.TestCase):
         g, out_m = tf.nn.rnn_cell.MultiRNNCell(
             [tf.nn.rnn_cell.BasicLSTMCell(2, state_is_tuple=False)] * 2,
             state_is_tuple=False)(x, m)
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run([g, out_m], {x.name: np.array([[1., 1.]]),
                                     m.name: 0.1 * np.ones([1, 8])})
         self.assertEqual(len(res), 2)
@@ -106,7 +106,7 @@ class RNNCellTest(tf.test.TestCase):
         x = tf.zeros([1, 3])  # Test BasicLSTMCell with input_size != num_units.
         m = tf.zeros([1, 4])
         g, out_m = tf.nn.rnn_cell.BasicLSTMCell(2, state_is_tuple=False)(x, m)
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run([g, out_m], {x.name: np.array([[1., 1., 1.]]),
                                     m.name: 0.1 * np.ones([1, 4])})
         self.assertEqual(len(res), 2)
@@ -157,7 +157,7 @@ class RNNCellTest(tf.test.TestCase):
             [tf.nn.rnn_cell.BasicLSTMCell(2, state_is_tuple=False)] * 2,
             state_is_tuple=True)
         g, (out_m0, out_m1) = cell(x, (m0, m1))
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run([g, out_m0, out_m1],
                        {x.name: np.array([[1., 1.]]),
                         m0.name: 0.1 * np.ones([1, 4]),
@@ -188,7 +188,7 @@ class RNNCellTest(tf.test.TestCase):
             num_units=num_units, num_proj=num_proj, forget_bias=1.0,
             state_is_tuple=False)
         output, state = cell(x, m)
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run([output, state],
                        {x.name: np.array([[1., 1.], [2., 2.], [3., 3.]]),
                         m.name: 0.1 * np.ones((batch_size, state_size))})
@@ -212,7 +212,7 @@ class RNNCellTest(tf.test.TestCase):
         cell = tf.nn.rnn_cell.OutputProjectionWrapper(
             tf.nn.rnn_cell.GRUCell(3), 2)
         g, new_m = cell(x, m)
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run([g, new_m], {x.name: np.array([[1., 1., 1.]]),
                                     m.name: np.array([[0.1, 0.1, 0.1]])})
         self.assertEqual(res[1].shape, (1, 3))
@@ -227,7 +227,7 @@ class RNNCellTest(tf.test.TestCase):
         cell = tf.nn.rnn_cell.InputProjectionWrapper(
             tf.nn.rnn_cell.GRUCell(3), num_proj=3)
         g, new_m = cell(x, m)
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run([g, new_m], {x.name: np.array([[1., 1.]]),
                                     m.name: np.array([[0.1, 0.1, 0.1]])})
         self.assertEqual(res[1].shape, (1, 3))
@@ -242,7 +242,7 @@ class RNNCellTest(tf.test.TestCase):
         keep = tf.zeros([]) + 1
         g, new_m = tf.nn.rnn_cell.DropoutWrapper(tf.nn.rnn_cell.GRUCell(3),
                                                  keep, keep)(x, m)
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run([g, new_m], {x.name: np.array([[1., 1., 1.]]),
                                     m.name: np.array([[0.1, 0.1, 0.1]])})
         self.assertEqual(res[1].shape, (1, 3))
@@ -259,7 +259,7 @@ class RNNCellTest(tf.test.TestCase):
             embedding_classes=3, embedding_size=2)
         self.assertEqual(embedding_cell.output_size, 2)
         g, new_m = embedding_cell(x, m)
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run([g, new_m], {x.name: np.array([[1]]),
                                     m.name: np.array([[0.1, 0.1]])})
         self.assertEqual(res[1].shape, (1, 2))
@@ -279,7 +279,7 @@ class RNNCellTest(tf.test.TestCase):
                                        inputs=inputs,
                                        sequence_length=input_lengths,
                                        dtype=tf.float32)
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         # This will fail if output's dtype is inferred from input's.
         sess.run(outputs)
 
@@ -290,7 +290,7 @@ class RNNCellTest(tf.test.TestCase):
         m = tf.zeros([1, 4])
         _, ml = tf.nn.rnn_cell.MultiRNNCell(
             [tf.nn.rnn_cell.GRUCell(2)] * 2, state_is_tuple=False)(x, m)
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run(ml, {x.name: np.array([[1., 1.]]),
                             m.name: np.array([[0.1, 0.1, 0.1, 0.1]])})
         # The numbers in results were not calculated, this is just a smoke test.
@@ -312,7 +312,7 @@ class RNNCellTest(tf.test.TestCase):
         _, ml = tf.nn.rnn_cell.MultiRNNCell(
             [tf.nn.rnn_cell.GRUCell(2)] * 2, state_is_tuple=True)(x, m_good)
 
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run(ml, {x.name: np.array([[1., 1.]]),
                             m_good[0].name: np.array([[0.1, 0.1]]),
                             m_good[1].name: np.array([[0.1, 0.1]])})
@@ -335,7 +335,7 @@ class SlimRNNCellTest(tf.test.TestCase):
         # pylint: disable=protected-access
         g, _ = tf.nn.rnn_cell._SlimRNNCell(my_cell)(x, m)
         # pylint: enable=protected-access
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run([g], {x.name: np.array([[1., 1.]]),
                              m.name: np.array([[0.1, 0.1]])})
         self.assertEqual(res[0].shape, (1, 2))
@@ -357,7 +357,7 @@ class SlimRNNCellTest(tf.test.TestCase):
         outputs, state = rnn_cell(inputs, initial_state)
         self.assertEqual(slim_outputs.get_shape(), outputs.get_shape())
         self.assertEqual(slim_state.get_shape(), state.get_shape())
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run([slim_outputs, slim_state, outputs, state])
         self.assertAllClose(res[0], res[2])
         self.assertAllClose(res[1], res[3])
@@ -371,8 +371,8 @@ def basic_rnn_cell(inputs, state, num_units, scope=None):
     else:
       batch_size = 0
       dtype = tf.float32
-    init_output = tf.zeros(tf.pack([batch_size, num_units]), dtype=dtype)
-    init_state = tf.zeros(tf.pack([batch_size, num_units]), dtype=dtype)
+    init_output = tf.zeros(tf.stack([batch_size, num_units]), dtype=dtype)
+    init_state = tf.zeros(tf.stack([batch_size, num_units]), dtype=dtype)
     init_output.set_shape([batch_size, num_units])
     init_state.set_shape([batch_size, num_units])
     return init_output, init_state

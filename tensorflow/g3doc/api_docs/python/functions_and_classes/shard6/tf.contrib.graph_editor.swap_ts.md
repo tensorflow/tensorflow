@@ -9,8 +9,8 @@ A0 A1     A0 A1
 ##### Args:
 
 
-*  <b>`ts0`</b>: an object convertible to a list of tf.Tensor.
-*  <b>`ts1`</b>: an object convertible to a list of tf.Tensor.
+*  <b>`ts0`</b>: an object convertible to a list of `tf.Tensor`.
+*  <b>`ts1`</b>: an object convertible to a list of `tf.Tensor`.
 *  <b>`can_modify`</b>: iterable of operations which can be modified. Any operation
     outside within_ops will be left untouched by this function.
 *  <b>`cannot_modify`</b>: iterable of operations which cannot be modified.

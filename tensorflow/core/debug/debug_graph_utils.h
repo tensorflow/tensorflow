@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_DEBUG_NODE_INSERTER_H_
 
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "tensorflow/core/common_runtime/device.h"
@@ -26,6 +27,25 @@ limitations under the License.
 #include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
+
+class DebuggerState {
+ public:
+  DebuggerState(
+      const protobuf::RepeatedPtrField<DebugTensorWatch>& debug_tensor_watches);
+  virtual ~DebuggerState();
+
+  // Returns a summary string for RepeatedPtrFields of DebugTensorWatches.
+  const string SummarizeDebugTensorWatches();
+
+  // Insert special-purpose debug nodes to graph. See the documentation of
+  // DebugNodeInserter::InsertNodes() for details.
+  Status InsertNodes(Graph* graph, Device* device);
+
+  const protobuf::RepeatedPtrField<DebugTensorWatch>& watches;
+
+ private:
+  std::unordered_set<string> debug_urls_;
+};
 
 class DebugNodeInserter {
  public:

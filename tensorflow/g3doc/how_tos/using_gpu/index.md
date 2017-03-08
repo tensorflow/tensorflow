@@ -3,18 +3,17 @@
 ## Supported devices
 
 On a typical system, there are multiple computing devices. In TensorFlow, the
-supported device types are `CPU` and `GPU`.  They are represented as
-`strings`. For example:
+supported device types are `CPU` and `GPU`. They are represented as `strings`.
+For example:
 
-*  `"/cpu:0"`: The CPU of your machine.
-*  `"/gpu:0"`: The GPU of your machine, if you have one.
-*  `"/gpu:1"`: The second GPU of your machine, etc.
+*   `"/cpu:0"`: The CPU of your machine.
+*   `"/gpu:0"`: The GPU of your machine, if you have one.
+*   `"/gpu:1"`: The second GPU of your machine, etc.
 
-If a TensorFlow operation has both CPU and GPU implementations, the
-GPU devices will be given priority when the operation is assigned to
-a device. For example, `matmul` has both CPU and GPU kernels.  On a
-system with devices `cpu:0` and `gpu:0`, `gpu:0` will be selected to run
-`matmul`.
+If a TensorFlow operation has both CPU and GPU implementations, the GPU devices
+will be given priority when the operation is assigned to a device. For example,
+`matmul` has both CPU and GPU kernels. On a system with devices `cpu:0` and
+`gpu:0`, `gpu:0` will be selected to run `matmul`.
 
 ## Logging Device placement
 
@@ -48,10 +47,10 @@ MatMul: /job:localhost/replica:0/task:0/gpu:0
 
 ## Manual device placement
 
-If you would like a particular operation to run on a device of your
-choice instead of what's automatically selected for you, you can use
-`with tf.device` to create a device context such that all the operations
-within that context will have the same device assignment.
+If you would like a particular operation to run on a device of your choice
+instead of what's automatically selected for you, you can use `with tf.device`
+to create a device context such that all the operations within that context will
+have the same device assignment.
 
 ```python
 # Creates a graph.
@@ -80,10 +79,11 @@ MatMul: /job:localhost/replica:0/task:0/gpu:0
 
 ## Allowing GPU memory growth
 
-By default, TensorFlow maps nearly all of the GPU memory of all GPUs visible to
-the process.  This is done to more efficiently use the relatively precious GPU
-memory resources on the devices by reducing
-[memory fragmentation](https://en.wikipedia.org/wiki/Fragmentation_(computing)).
+By default, TensorFlow maps nearly all of the GPU memory of all GPUs (subject to
+[`CUDA_VISIBLE_DEVICES`](http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#env-vars))
+visible to the process. This is done to more efficiently use the relatively
+precious GPU memory resources on the devices by reducing [memory
+fragmentation](https://en.wikipedia.org/wiki/Fragmentation_\(computing\)).
 
 In some cases it is desirable for the process to only allocate a subset of the
 available memory, or to only grow the memory usage as is needed by the process.
@@ -92,8 +92,8 @@ TensorFlow provides two Config options on the Session to control this.
 The first is the `allow_growth` option, which attempts to allocate only as much
 GPU memory based on runtime allocations: it starts out allocating very little
 memory, and as Sessions get run and more GPU memory is needed, we extend the GPU
-memory region needed by the TensorFlow process.  Note that we do not release
-memory, since that can lead to even worse memory fragmentation.  To turn this
+memory region needed by the TensorFlow process. Note that we do not release
+memory, since that can lead to even worse memory fragmentation. To turn this
 option on, set the option in the ConfigProto by:
 
 ```python
@@ -104,7 +104,7 @@ session = tf.Session(config=config, ...)
 
 The second method is the `per_process_gpu_memory_fraction` option, which
 determines the fraction of the overall amount of memory that each visible GPU
-should be allocated.  For example, you can tell TensorFlow to only allocate 40%
+should be allocated. For example, you can tell TensorFlow to only allocate 40%
 of the total memory of each GPU by:
 
 ```python
@@ -144,10 +144,10 @@ Could not satisfy explicit device specification '/gpu:2'
    values: 1 2 3...>, _device="/gpu:2"]()]]
 ```
 
-If you would like TensorFlow to automatically choose an existing and
-supported device to run the operations in case the specified one doesn't
-exist, you can set `allow_soft_placement` to `True` in the configuration
-option when creating the session.
+If you would like TensorFlow to automatically choose an existing and supported
+device to run the operations in case the specified one doesn't exist, you can
+set `allow_soft_placement` to `True` in the configuration option when creating
+the session.
 
 ```python
 # Creates a graph.

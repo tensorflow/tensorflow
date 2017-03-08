@@ -102,8 +102,9 @@ TEST(MemmappedFileSystemTest, SimpleTest) {
           .code());
 
   // Check FileExists.
-  EXPECT_TRUE(memmapped_env.FileExists(kTensor2FileName));
-  EXPECT_FALSE(memmapped_env.FileExists("bla-bla-bla"));
+  TF_EXPECT_OK(memmapped_env.FileExists(kTensor2FileName));
+  EXPECT_EQ(error::Code::NOT_FOUND,
+            memmapped_env.FileExists("bla-bla-bla").code());
 }
 
 TEST(MemmappedFileSystemTest, NotInitalized) {

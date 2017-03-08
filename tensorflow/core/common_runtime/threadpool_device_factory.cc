@@ -37,8 +37,8 @@ class ThreadPoolDeviceFactory : public DeviceFactory {
     }
     for (int i = 0; i < n; i++) {
       string name = strings::StrCat(name_prefix, "/cpu:", i);
-      devices->push_back(new ThreadPoolDevice(options, name, Bytes(256 << 20),
-                                              BUS_ANY, cpu_allocator()));
+      devices->push_back(new ThreadPoolDevice(
+          options, name, Bytes(256 << 20), DeviceLocality(), cpu_allocator()));
     }
 
     return Status::OK();

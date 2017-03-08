@@ -391,6 +391,43 @@ TEST_F(ArrayGradTest, ReverseGrad) {
   test::ExpectTensorEqual<bool>(dx[1], test::AsTensor<bool>({false, false}));
 }
 
+std::vector<Tensor> ReverseV2Grad(const Tensor& x, const Tensor& axis,
+                                  const Tensor& dy) {
+  auto T = DT_FLOAT;
+  auto Tidx = DT_INT32;
+  auto gdef = test::function::GDef(
+      {f::NDef("x", "Placeholder", {}, {{"dtype", T}}),
+       f::NDef("axis", "Placeholder", {}, {{"dtype", DT_INT32}}),
+       f::NDef("dy", "Placeholder", {}, {{"dtype", T}}),
+       f::NDef(
+           "dx", "SymbolicGradient", {"x", "axis", "dy"},
+           {{"f", FDH::FunctionRef("ReverseV2", {{"T", T}, {"Tidx", Tidx}})},
+            {"Tin", DataTypeSlice{T, DT_INT32, T}},
+            {"Tout", DataTypeSlice{T, DT_INT32}}})});
+  VLOG(1) << DebugStringWhole(gdef);
+  auto sess = NewSession();
+  TF_CHECK_OK(sess->Create(gdef));
+  std::vector<Tensor> out;
+  TF_CHECK_OK(sess->Run({{"x:0", x}, {"axis:0", axis}, {"dy:0", dy}},
+                        {"dx:0", "dx:1"}, {}, &out));
+  CHECK_EQ(out.size(), 2);
+  TF_CHECK_OK(sess->Close());
+  delete sess;
+  return out;
+}
+
+TEST_F(ArrayGradTest, ReverseV2Grad) {
+  Tensor x(DT_FLOAT, {2, 3});
+  x.flat<float>().setZero();
+  auto axis = test::AsTensor<int32>({1});
+  Tensor dy(DT_FLOAT, {2, 3});
+  test::FillIota<float>(&dy, 1);
+  auto dx = ReverseV2Grad(x, axis, dy);
+  test::ExpectTensorEqual<float>(
+      dx[0], test::AsTensor<float>({3., 2., 1., 6., 5., 4.}, {2, 3}));
+  test::ExpectTensorEqual<int32>(dx[1], test::AsTensor<int32>({0}));
+}
+
 std::vector<Tensor> SliceGrad(const Tensor& x, const Tensor& b, const Tensor& s,
                               const Tensor& dy) {
   auto T = DT_FLOAT;

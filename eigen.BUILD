@@ -62,8 +62,6 @@ cc_library(
         # This define (mostly) guarantees we don't link any problematic
         # code. We use it, but we do not rely on it, as evidenced above.
         "EIGEN_MPL2_ONLY",
-        # TODO(jart): Use EIGEN_USE_NONBLOCKING_THREAD_POOL but first add an
-        #             eigen_initialize.cc file and alwayslink=1.
     ],
     includes = ["."],
     visibility = ["//visibility:public"],

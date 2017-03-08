@@ -331,6 +331,12 @@ int64 GetCudnnWorkspaceLimit(const string& envvar_in_mb,
   return default_value_in_bytes;
 }
 
+// A dummy type to group forward convolution autotune results together.
+struct ConvAutoTuneGroup {};
+typedef AutoTuneSingleton<ConvAutoTuneGroup, ConvParameters,
+                          perftools::gputools::dnn::AlgorithmConfig>
+    AutoTuneConv;
+
 template <typename T>
 void LaunchConv2DOp<GPUDevice, T>::launch(
     OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
@@ -521,7 +527,7 @@ void LaunchConv2DOp<GPUDevice, T>::launch(
   };
   AlgorithmConfig algorithm_config;
   if (cudnn_use_autotune &&
-      !autotune_results_.Find(conv_parameters, &algorithm_config)) {
+      !AutoTuneConv::GetInstance()->Find(conv_parameters, &algorithm_config)) {
     std::vector<AlgorithmType> algorithms;
     CHECK(stream->parent()->GetConvolveAlgorithms(&algorithms));
     ProfileResult best_result;
@@ -562,7 +568,7 @@ void LaunchConv2DOp<GPUDevice, T>::launch(
     algorithm_config.set_algorithm(best_result.algorithm());
     algorithm_config.set_algorithm_no_scratch(
         best_result_no_scratch.algorithm());
-    autotune_results_.Insert(conv_parameters, algorithm_config);
+    AutoTuneConv::GetInstance()->Insert(conv_parameters, algorithm_config);
   }
 
   CudnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);

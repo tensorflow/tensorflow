@@ -24,6 +24,14 @@ namespace tensorflow {
 namespace functor {
 
 template <typename Device, typename T>
+struct SplitCustom {
+  void operator()(const Device& d, typename TTypes<T, 2>::Tensor output,
+                  typename TTypes<T, 2>::ConstTensor input,
+                  const Eigen::DSizes<Eigen::DenseIndex, 2>& slice_indices,
+                  const Eigen::DSizes<Eigen::DenseIndex, 2>& slice_sizes);
+};
+
+template <typename Device, typename T>
 struct Split {
   void operator()(const Device& d, typename TTypes<T, 3>::Tensor output,
                   typename TTypes<T, 3>::ConstTensor input,

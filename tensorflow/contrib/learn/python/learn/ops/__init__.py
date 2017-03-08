@@ -24,3 +24,4 @@ from tensorflow.contrib.learn.python.learn.ops.array_ops import *
 from tensorflow.contrib.learn.python.learn.ops.embeddings_ops import *
 from tensorflow.contrib.learn.python.learn.ops.losses_ops import *
 from tensorflow.contrib.learn.python.learn.ops.seq2seq_ops import *
+# pylint: enable=wildcard-import

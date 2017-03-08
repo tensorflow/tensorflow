@@ -69,7 +69,7 @@ Status ValidateHostPortPair(const string& host_port) {
 Status GrpcChannelSpec::AddHostPortsJob(const string& job_id,
                                         const std::vector<string>& host_ports) {
   std::map<int, string> host_ports_map;
-  for (int i = 0; i < host_ports.size(); ++i) {
+  for (size_t i = 0; i < host_ports.size(); ++i) {
     host_ports_map[i] = host_ports[i];
   }
   return AddHostPortsJob(job_id, host_ports_map);

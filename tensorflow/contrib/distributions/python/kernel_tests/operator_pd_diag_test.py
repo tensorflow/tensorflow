@@ -59,7 +59,7 @@ class OperatorPDDiagBaseTest(object):
 
     return operator, mat
 
-  def test_non_positive_definite_matrix_raises(self):
+  def testNonPositiveDefiniteMatrixRaises(self):
     # Singlular matrix with one positive eigenvalue and one zero eigenvalue.
     with self.test_session():
       diag = [1.0, 0.0]
@@ -67,7 +67,7 @@ class OperatorPDDiagBaseTest(object):
       with self.assertRaisesOpError("assert_positive"):
         operator.to_dense().eval()
 
-  def test_non_positive_definite_matrix_does_not_raise_if_not_verify_pd(self):
+  def testNonPositiveDefiniteMatrixDoesNotRaiseIfNotVerifyPd(self):
     # Singlular matrix with one positive eigenvalue and one zero eigenvalue.
     with self.test_session():
       diag = [1.0, 0.0]

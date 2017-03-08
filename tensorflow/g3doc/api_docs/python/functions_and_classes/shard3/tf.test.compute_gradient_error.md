@@ -1,4 +1,4 @@
-### `tf.test.compute_gradient_error(x, x_shape, y, y_shape, x_init_value=None, delta=0.001, init_targets=None)` {#compute_gradient_error}
+### `tf.test.compute_gradient_error(x, x_shape, y, y_shape, x_init_value=None, delta=0.001, init_targets=None, extra_feed_dict=None)` {#compute_gradient_error}
 
 Computes the gradient error.
 
@@ -29,6 +29,8 @@ function in the session constructor).
 *  <b>`delta`</b>: (optional) the amount of perturbation.
 *  <b>`init_targets`</b>: list of targets to run to initialize model params.
     TODO(mrry): Remove this argument.
+*  <b>`extra_feed_dict`</b>: dict that allows fixing specified tensor values
+    during the Jacobian calculation.
 
 ##### Returns:
 

@@ -117,6 +117,8 @@ std::vector<string> Split(StringPiece text, char delim, Predicate p);
 // to "*result" and returns true.  Otherwise returns false.
 bool SplitAndParseAsInts(StringPiece text, char delim,
                          std::vector<int32>* result);
+bool SplitAndParseAsInts(StringPiece text, char delim,
+                         std::vector<int64>* result);
 
 // ------------------------------------------------------------------
 // Implementation details below

@@ -8,18 +8,18 @@ Create a dictionary of control-output dependencies.
 ##### Args:
 
 
-*  <b>`graph`</b>: a tf.Graph.
+*  <b>`graph`</b>: a `tf.Graph`.
 
 ##### Returns:
 
-  A dictionary where a key is a tf.Operation instance and the corresponding
-    value is a list of all the ops which have the key as one of their
-    control-input dependencies.
+  A dictionary where a key is a `tf.Operation` instance and the
+     corresponding value is a list of all the ops which have the key
+     as one of their control-input dependencies.
 
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: graph is not a tf.Graph.
+*  <b>`TypeError`</b>: graph is not a `tf.Graph`.
 
 
 - - -

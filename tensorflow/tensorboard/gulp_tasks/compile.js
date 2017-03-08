@@ -32,7 +32,7 @@ var tsProject = ts.createProject('./tsconfig.json', {
 
 /** List of components (and their external deps) that are using es6 modules. */
 var ES6_COMPONENTS = [{
-  name: 'vz-projector',
+  name: 'vz_projector',
   deps: [
     'd3/d3.min.js', 'weblas/dist/weblas.js', 'three.js/build/three.min.js',
     'three.js/examples/js/controls/OrbitControls.js',
@@ -80,7 +80,7 @@ module.exports = function(includeDeps) {
     // Compile components that are using global namespaces producing 1 js file
     // for each ts file.
     var isComponent = filter([
-      'components/tf-*/**/*.ts', 'components/vz-*/**/*.ts', 'typings/**/*.ts',
+      'components/tf_*/**/*.ts', 'components/vz_*/**/*.ts', 'typings/**/*.ts',
       'components/plottable/plottable.d.ts'
       // Ignore components that use es6 modules.
     ].concat(ES6_COMPONENTS.map(function(component) {

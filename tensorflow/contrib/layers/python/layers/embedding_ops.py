@@ -22,15 +22,17 @@ from tensorflow.contrib.layers.python.ops import sparse_feature_cross_op
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 
 __all__ = ["safe_embedding_lookup_sparse", "hashed_embedding_lookup",
-           "hashed_embedding_lookup_sparse"]
+           "hashed_embedding_lookup_sparse", "embedding_lookup_unique"]
 
 
 def safe_embedding_lookup_sparse(embedding_weights,
@@ -39,12 +41,15 @@ def safe_embedding_lookup_sparse(embedding_weights,
                                  combiner=None,
                                  default_id=None,
                                  name=None,
-                                 partition_strategy="div"):
+                                 partition_strategy="div",
+                                 max_norm=None):
   """Lookup embedding results, accounting for invalid IDs and empty features.
 
   The partitioned embedding in `embedding_weights` must all be the same shape
   except for the first dimension. The first dimension is allowed to vary as the
-  vocabulary size is not necessarily a multiple of `P`.
+  vocabulary size is not necessarily a multiple of `P`.  `embedding_weights`
+  may be a `PartitionedVariable` as returned by using `tf.get_variable()` with a
+  partitioner.
 
   Invalid IDs (< 0) are pruned from input IDs and weights, as well as any IDs
   with non-positive weight. For an entry with no features, the embedding vector
@@ -55,9 +60,10 @@ def safe_embedding_lookup_sparse(embedding_weights,
 
   Args:
     embedding_weights:  A list of `P` float tensors or values representing
-        partitioned embedding tensors.  The total unpartitioned shape should be
-        `[e_0, e_1, ..., e_m]`, where `e_0` represents the vocab size and
-        `e_1, ..., e_m` are the embedding dimensions.
+        partitioned embedding tensors.  Alternatively, a `PartitionedVariable`,
+        created by partitioning along dimension 0.  The total unpartitioned
+        shape should be `[e_0, e_1, ..., e_m]`, where `e_0` represents the
+        vocab size and `e_1, ..., e_m` are the embedding dimensions.
     sparse_ids: `SparseTensor` of shape `[d_0, d_1, ..., d_n]` containing the
         ids. `d_0` is typically batch size.
     sparse_weights: `SparseTensor` of same shape as `sparse_ids`, containing
@@ -70,6 +76,8 @@ def safe_embedding_lookup_sparse(embedding_weights,
     name: A name for this operation (optional).
     partition_strategy: A string specifying the partitioning strategy.
         Currently `"div"` and `"mod"` are supported. Default is `"div"`.
+    max_norm: If not None, all embeddings are l2-normalized to max_norm before
+        combining.
 
 
   Returns:
@@ -86,6 +94,8 @@ def safe_embedding_lookup_sparse(embedding_weights,
     raise ValueError("Missing embedding_weights %s." % embedding_weights)
 
   dtype = sparse_weights.dtype if sparse_weights is not None else None
+  if isinstance(embedding_weights, variables.PartitionedVariable):
+    embedding_weights = list(embedding_weights)
   embedding_weights = [
       ops.convert_to_tensor(w, dtype=dtype) for w in embedding_weights
   ]
@@ -108,8 +118,9 @@ def safe_embedding_lookup_sparse(embedding_weights,
             array_ops.slice(original_shape, [0], [original_rank - 1])),
         array_ops.gather(original_shape, original_rank - 1)])
     if sparse_weights is not None:
-      sparse_weights = ops.SparseTensor(sparse_ids.indices,
-                                        sparse_weights.values, sparse_ids.shape)
+      sparse_weights = sparse_tensor.SparseTensor(
+          sparse_ids.indices,
+          sparse_weights.values, sparse_ids.shape)
 
     # Prune invalid ids and weights.
     sparse_ids, sparse_weights = _prune_invalid_ids(sparse_ids, sparse_weights)
@@ -127,7 +138,8 @@ def safe_embedding_lookup_sparse(embedding_weights,
         sparse_weights,
         combiner=combiner,
         partition_strategy=partition_strategy,
-        name=None if default_id is None else scope)
+        name=None if default_id is None else scope,
+        max_norm=max_norm)
 
     if default_id is None:
       # Broadcast is_row_empty to the same shape as embedding_lookup_result,
@@ -164,7 +176,8 @@ def _prune_invalid_ids(sparse_ids, sparse_weights):
   return sparse_ids, sparse_weights
 
 
-def hashed_embedding_lookup(params, values, dimension, name=None):
+def hashed_embedding_lookup(params, values, dimension, name=None,
+                            hash_key=None):
   """Looks up embeddings using parameter hashing for each value in `values`.
 
   The i-th embedding component of a value v in `values` is found by retrieving
@@ -189,11 +202,14 @@ def hashed_embedding_lookup(params, values, dimension, name=None):
   partitioned in 4 tensors with length `[3, 3, 2, 2]`.
 
   Args:
-    params: A `Tensor` or `list` of `Tensors`.
+    params: A `Tensor`, `list` of `Tensors`, or `PartitionedVariable`.
       Each tensor must be of rank 1 with fully-defined shape.
     values: `Tensor` of values to be embedded.
     dimension: Embedding dimension
     name: An optional name for this op.
+    hash_key: Specify the hash_key that will be used by the `FingerprintCat64`
+      function to combine the crosses fingerprints on SparseFeatureCrossOp
+      (optional).
 
   Returns:
     A tensor with shape [d0, ..., dn, dimension]
@@ -202,6 +218,8 @@ def hashed_embedding_lookup(params, values, dimension, name=None):
   Raises:
     ValueError: if dimension is not positive or the partition size is invalid.
   """
+  if isinstance(params, variables.PartitionedVariable):
+    params = list(params)
   if not isinstance(params, list):
     params = [params]
 
@@ -235,7 +253,8 @@ def hashed_embedding_lookup(params, values, dimension, name=None):
     tensors_to_cross = [array_ops.tile(array_ops.expand_dims(
         math_ops.range(0, dimension), 0), array_ops.shape(values)), values]
     ids = sparse_feature_cross_op.sparse_feature_cross(
-        tensors_to_cross, hashed_output=True, num_buckets=num_params)
+        tensors_to_cross, hashed_output=True, num_buckets=num_params,
+        hash_key=hash_key)
     ids = sparse_ops.sparse_tensor_to_dense(ids)
 
     # No need to validate the indices since we have checked the params
@@ -252,13 +271,14 @@ def hashed_embedding_lookup_sparse(params,
                                    dimension,
                                    combiner=None,
                                    default_value=None,
-                                   name=None):
+                                   name=None,
+                                   hash_key=None):
   """Looks up embeddings of a sparse feature using parameter hashing.
 
   See `tf.contrib.layers.hashed_embedding_lookup` for embedding with hashing.
 
   Args:
-    params: A `Tensor` or `list` of `Tensors`.
+    params: A `Tensor`, `list` of `Tensors`, or `PartitionedVariable`.
       Each tensor must be of rank 1 with fully-defined shape.
     sparse_values: A 2-D `SparseTensor` containing the values to be embedded.
       Some rows may be empty.
@@ -268,6 +288,9 @@ def hashed_embedding_lookup_sparse(params,
         the default.
     default_value: The value to use for an entry with no features.
     name: An optional name for this op.
+    hash_key: Specify the hash_key that will be used by the `FingerprintCat64`
+      function to combine the crosses fingerprints on SparseFeatureCrossOp
+      (optional).
 
   Returns:
      Dense tensor with shape [N, dimension] with N the number of rows in
@@ -281,9 +304,11 @@ def hashed_embedding_lookup_sparse(params,
     logging.warn("The default value of combiner will change from \"mean\" "
                  "to \"sqrtn\" after 2016/11/01.")
     combiner = "mean"
+  if isinstance(params, variables.PartitionedVariable):
+    params = list(params)
   if not isinstance(params, list):
     params = [params]
-  if not isinstance(sparse_values, ops.SparseTensor):
+  if not isinstance(sparse_values, sparse_tensor.SparseTensor):
     raise TypeError("sparse_values must be SparseTensor")
 
   with ops.name_scope(name, "hashed_sparse_embedding_lookup",
@@ -305,7 +330,8 @@ def hashed_embedding_lookup_sparse(params,
     values = sparse_values.values
     values, idx = array_ops.unique(values)
 
-    embeddings = hashed_embedding_lookup(params, values, dimension)
+    embeddings = hashed_embedding_lookup(params, values, dimension,
+                                         hash_key=hash_key)
 
     if combiner == "sum":
       embeddings = math_ops.sparse_segment_sum(embeddings, idx, segment_ids,
@@ -320,3 +346,40 @@ def hashed_embedding_lookup_sparse(params,
       raise ValueError("Combiner must be one of 'mean', 'sqrtn' or 'sum'.")
 
     return embeddings
+
+
+def embedding_lookup_unique(params, ids, name=None):
+  """Version of embedding_lookup that avoids duplicate lookups.
+
+  This can save communication in the case of repeated ids.
+  Same interface as embedding_lookup. Except it supports multi-dimensional `ids`
+  which allows to not reshape input/output to fit gather.
+
+  Args:
+    params: A list of tensors with the same shape and type, or a
+      `PartitionedVariable`. Shape `[index, d1, d2, ...]`.
+    ids: A one-dimensional `Tensor` with type `int32` or `int64` containing
+      the ids to be looked up in `params`. Shape `[ids1, ids2, ...]`.
+    name: A name for this operation (optional).
+
+  Returns:
+    A `Tensor` with the same type as the tensors in `params` and dimension of
+    `[ids1, ids2, d1, d2, ...]`.
+
+  Raises:
+    ValueError: If `params` is empty.
+  """
+  with ops.name_scope(name, "EmbeddingLookupUnique", [params, ids]):
+    ids = ops.convert_to_tensor(ids)
+    shape = array_ops.shape(ids)
+    ids_flat = array_ops.reshape(
+        ids, math_ops.reduce_prod(shape, keep_dims=True))
+    unique_ids, idx = array_ops.unique(ids_flat)
+    unique_embeddings = embedding_ops.embedding_lookup(params, unique_ids)
+    embeds_flat = array_ops.gather(unique_embeddings, idx)
+    embed_shape = array_ops.concat(
+        0, [shape, array_ops.shape(unique_embeddings)[1:]])
+    embeds = array_ops.reshape(embeds_flat, embed_shape)
+    embeds.set_shape(ids.get_shape().concatenate(
+        unique_embeddings.get_shape()[1:]))
+    return embeds

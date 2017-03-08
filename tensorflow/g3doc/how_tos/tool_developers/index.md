@@ -11,11 +11,11 @@ those kind of tools.
 
 ## Protocol Buffers
 
-All of TensorFlow's file formats are based on [Protocol Buffers]
-(https://developers.google.com/protocol-buffers/?hl=en), so to start
-it's worth getting familiar with how they work. The summary is that you define
-data structures in text files, and the protobuf tools generate classes in C,
-Python, and other languages that can load, save, and access the data in a
+All of TensorFlow's file formats are based on
+[Protocol Buffers](https://developers.google.com/protocol-buffers/?hl=en), so to
+start it's worth getting familiar with how they work. The summary is that you
+define data structures in text files, and the protobuf tools generate classes in
+C, Python, and other languages that can load, save, and access the data in a
 friendly way. We often refer to Protocol Buffers as protobufs, and I'll use
 that convention in this guide.
 
@@ -67,7 +67,7 @@ There are actually two different formats that a ProtoBuf can be saved in.
 TextFormat is a human-readable form, which makes it nice for debugging and
 editing, but can get large when there's numerical data like weights stored in
 it. You can see a small example of that in
-[graph_run_run2.pbtxt](https://github.com/tensorflow/tensorflow/blob/ae3c8479f88da1cd5636b974f653f27755cb0034/tensorflow/tensorboard/components/tf-tensorboard/test/data/graph_run_run2.pbtxt).
+[graph_run_run2.pbtxt](https://github.com/tensorflow/tensorflow/blob/ae3c8479f88da1cd5636b974f653f27755cb0034/tensorflow/tensorboard/components/tf_tensorboard/test/data/graph_run_run2.pbtxt).
 
 Binary format files are a lot smaller than their text equivalents, even though
 they're not as readable for us. In this script, we ask the user to supply a

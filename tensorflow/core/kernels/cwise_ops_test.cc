@@ -59,6 +59,11 @@ BM_UNARY(gpu, Conj, std::complex<float>, DT_COMPLEX64);
 BM_UNARY(cpu, Conj, std::complex<double>, DT_COMPLEX128);
 BM_UNARY(gpu, Conj, std::complex<double>, DT_COMPLEX128);
 
+BM_UNARY(cpu, Rint, double, DT_DOUBLE);
+BM_UNARY(gpu, Rint, double, DT_DOUBLE);
+BM_UNARY(cpu, Rint, float, DT_FLOAT);
+BM_UNARY(gpu, Rint, float, DT_FLOAT);
+
 // data func scalar.
 static Graph* BinaryScalar(int num, const string& func) {
   Graph* g = new Graph(OpRegistry::Global());

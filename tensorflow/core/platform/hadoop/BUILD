@@ -43,12 +43,18 @@ cc_library(
 #    http://hadoop.apache.org/releases.html
 # 3. Extract the Hadoop distribution and run:
 #    source libexec/hadoop-config.sh
-# 4. bazel test \
+# 4. Optionally set up HDFS cluster configurations (optionally Kerberos) within
+#    $HADOOP_HDFS_HOME/etc/hadoop if you want to test against real
+#    distributed HDFS cluster
+# 5. bazel test \
 #      --test_env=LD_LIBRARY_PATH=$JAVA_HOME/jre/lib/amd64/server \
 #      --test_env=HADOOP_HDFS_HOME=$HADOOP_HDFS_HOME \
 #      --test_env=CLASSPATH=$($HADOOP_HDFS_HOME/bin/hadoop classpath --glob) \
 #      --test_strategy=local \
 #      :hadoop_file_system_test
+#    To test against the real distributed cluster, add the following option for
+#    bazel test:
+#      --test_env=HADOOP_TEST_TMPDIR=hdfs://cluster/test/tmp/dir
 tf_cc_test(
     name = "hadoop_file_system_test",
     size = "small",

@@ -85,7 +85,7 @@ class Index(Document):
     print("# TensorFlow Python reference documentation", file=f)
     print("", file=f)
     fullname_f = lambda name: self._members[name][0]
-    anchor_f = lambda name: _get_anchor(self._module_to_name, fullname_f(name))
+    anchor_f = lambda name: get_anchor(self._module_to_name, fullname_f(name))
 
     for filename, library in self._filename_to_library_map:
       sorted_names = sorted(library.mentioned, key=lambda x: (str.lower(x), x))
@@ -142,7 +142,7 @@ def collect_members(module_to_name, exclude=()):
   return members
 
 
-def _get_anchor(module_to_name, fullname):
+def get_anchor(module_to_name, fullname):
   """Turn a full member name into an anchor.
 
   Args:
@@ -416,7 +416,7 @@ class Library(Document):
     heading = prefix + " `" + fullname
     if not isinstance(func, property):
       heading += self._generate_signature_for_function(func)
-    heading += "` {#%s}" % _get_anchor(self._module_to_name, fullname)
+    heading += "` {#%s}" % get_anchor(self._module_to_name, fullname)
     print(heading, file=f)
     print("", file=f)
     self._print_formatted_docstring(inspect.getdoc(func), f)
@@ -444,7 +444,7 @@ class Library(Document):
       print("- - -", file=f)
       print("", file=f)
       print("%s `class %s` {#%s}" % (prefix, name,
-                                     _get_anchor(self._module_to_name, name)),
+                                     get_anchor(self._module_to_name, name)),
             file=f)
       print("", file=f)
       self._write_class_markdown_to_file(f, name, member)

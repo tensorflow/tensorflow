@@ -17,6 +17,8 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "tensorflow/cc/ops/array_ops.h"
+#include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -28,8 +30,10 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 
 namespace tensorflow {
+namespace {
 
 class QuantizeAndDequantizeTest : public OpsTestBase {};
 
@@ -186,4 +190,20 @@ TEST_F(QuantizeAndDequantizeTest, Invalid_range_given) {
 
       << s;
 }
+
+#define BM_SIMPLE_QUAN_DEQUAN(DEVICE)                     \
+  static void BM_SIMPLE_QUAN_DEQUAN_##DEVICE(int iters) { \
+    auto root = Scope::NewRootScope().ExitOnError();      \
+    ops::QuantizeAndDequantize(root, {-3.5} /* input */); \
+    TF_CHECK_OK(root.status());                           \
+    Graph* g = new Graph(OpRegistry::Global());           \
+    root.ToGraph(g);                                      \
+    test::Benchmark(#DEVICE, g).Run(iters);               \
+  }                                                       \
+  BENCHMARK(BM_SIMPLE_QUAN_DEQUAN_##DEVICE);
+
+BM_SIMPLE_QUAN_DEQUAN(cpu);
+BM_SIMPLE_QUAN_DEQUAN(gpu);
+
+}  // namespace
 }  // namespace tensorflow

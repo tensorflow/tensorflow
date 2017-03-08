@@ -1,6 +1,6 @@
 # `struct tensorflow::TensorShapeDim`
 
-
+Represents the value of one dimension in a TensorShape .
 
 
 

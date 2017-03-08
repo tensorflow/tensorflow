@@ -243,6 +243,7 @@ class KMeansClustering(estimator.Estimator,
      ).training_graph()
     incr_step = tf.assign_add(tf.contrib.framework.get_global_step(), 1)
     self._loss = tf.reduce_sum(losses)
+    tf.scalar_summary('loss/raw', self._loss)
     training_op = with_dependencies([training_op, incr_step], self._loss)
     return training_op, self._loss
 

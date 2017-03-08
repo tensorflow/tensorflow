@@ -355,33 +355,19 @@ Status GraphConstructor::ValidateShape(Node* node) {
       // functions that are not critical to correct execution but
       // would cause graphs to fail if imported after correcting.
       //
-      // This can be removed after 2017/03/08.
       const string& op = node->def().op();
-      const std::vector<string> whitelist = {"RandomShuffleQueue",
-                                             "PaddingFIFOQueue",
-                                             "FIFOQueue",
-                                             "PriorityQueue",
-                                             "QueueSize",
-                                             "Stack",
-                                             "Barrier",
-                                             "BarrierReadySize",
-                                             "BarrierIncompleteSize",
-                                             "HashTable",
-                                             "MutableHashTable",
-                                             "MutableHashTableOfTensors",
-                                             "Mutex",
-                                             "CuckooTable",
-                                             "IndexTable",
-                                             "WholeFileReader",
-                                             "TextLineReader",
-                                             "FixedLengthRecordReader",
-                                             "TFRecordReader",
-                                             "IdentityReader",
-                                             "RefSwitch",
-                                             "RefEnter",
-                                             "RefNextIteration",
-                                             "RefMerge",
-                                             "RefIdentity"};
+      const std::vector<string> whitelist = {
+          // To be removed after 2017/03/08.
+          "RandomShuffleQueue", "PaddingFIFOQueue", "FIFOQueue",
+          "PriorityQueue", "QueueSize", "Stack", "Barrier", "BarrierReadySize",
+          "BarrierIncompleteSize", "HashTable", "MutableHashTable",
+          "MutableHashTableOfTensors", "Mutex", "CuckooTable", "IndexTable",
+          "WholeFileReader", "TextLineReader", "FixedLengthRecordReader",
+          "TFRecordReader", "IdentityReader", "RefSwitch", "RefEnter",
+          "RefNextIteration", "RefMerge", "RefIdentity",
+          // To be removed after 2017/04/24.
+          "ConditionalAccumulator", "SparseConditionalAccumulator", "Table",
+      };
       if (std::find(whitelist.begin(), whitelist.end(), op) ==
           whitelist.end()) {
         return errors::InvalidArgument(

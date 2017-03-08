@@ -85,7 +85,7 @@ User supplies either `Tensor` of samples `z`, or number of samples to draw `n`
 *  <b>`log_p`</b>: Callable mapping samples from `q` to `Tensors` with
     shape broadcastable to `q.batch_shape`.
     For example, `log_p` works "just like" `q.log_prob`.
-*  <b>`q`</b>: `tf.contrib.distributions.BaseDistribution`.
+*  <b>`q`</b>: `tf.contrib.distributions.Distribution`.
      `float64` `dtype` recommended.
      `log_p` and `q` should be supported on the same set.
 *  <b>`alpha`</b>: `Tensor` with shape `q.batch_shape` and values not equal to 1.

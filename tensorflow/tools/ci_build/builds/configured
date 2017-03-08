@@ -49,8 +49,7 @@ else
 fi
 
 pushd "${CI_TENSORFLOW_SUBMODULE_PATH:-.}"
-echo '' > test_input.txt
-./configure < test_input.txt
+yes "" | ./configure
 popd
 
 # Gather and print build information

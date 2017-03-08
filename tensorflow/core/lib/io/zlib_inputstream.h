@@ -60,7 +60,11 @@ class ZlibInputStream : public InputStreamInterface {
 
   int64 Tell() const override;
 
+  Status Reset() override;
+
  private:
+  void InitZlibBuffer();
+
   InputStreamInterface* input_stream_;  // Not owned
   size_t input_buffer_capacity_;        // Size of z_stream_input_
   size_t output_buffer_capacity_;       // Size of z_stream_output_

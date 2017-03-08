@@ -30,7 +30,6 @@ C and C++ APIs for:
 
 ### Platforms
 * OpenCL support ([#22](https://github.com/tensorflow/tensorflow/issues/22))
-* Windows support ([#17](https://github.com/tensorflow/tensorflow/issues/17))
 
 ### Community
 * More educational resources

@@ -22,7 +22,8 @@ build the `tag` of the summary values:
     of the summary values.
 *  <b>`tensor`</b>: A 3-D `float32` `Tensor` of shape `[batch_size, frames, channels]`
     or a 2-D `float32` `Tensor` of shape `[batch_size, frames]`.
-*  <b>`sample_rate`</b>: The sample rate of the signal in hertz.
+*  <b>`sample_rate`</b>: A Scalar `float32` `Tensor` indicating the sample rate of the
+    signal in hertz.
 *  <b>`max_outputs`</b>: Max number of batch elements to generate audio for.
 *  <b>`collections`</b>: Optional list of ops.GraphKeys.  The collections to add the
     summary to.  Defaults to [ops.GraphKeys.SUMMARIES]

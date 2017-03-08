@@ -37,7 +37,7 @@ class Seq2SeqTest(tf.test.TestCase):
         cell = tf.nn.rnn_cell.OutputProjectionWrapper(
             tf.nn.rnn_cell.GRUCell(2), 4)
         dec, mem = tf.nn.seq2seq.rnn_decoder(dec_inp, enc_state, cell)
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run(dec)
         self.assertEqual(3, len(res))
         self.assertEqual((2, 4), res[0].shape)
@@ -53,7 +53,7 @@ class Seq2SeqTest(tf.test.TestCase):
         cell = tf.nn.rnn_cell.OutputProjectionWrapper(
             tf.nn.rnn_cell.GRUCell(2), 4)
         dec, mem = tf.nn.seq2seq.basic_rnn_seq2seq(inp, dec_inp, cell)
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run(dec)
         self.assertEqual(3, len(res))
         self.assertEqual((2, 4), res[0].shape)
@@ -69,7 +69,7 @@ class Seq2SeqTest(tf.test.TestCase):
         cell = tf.nn.rnn_cell.OutputProjectionWrapper(
             tf.nn.rnn_cell.GRUCell(2), 4)
         dec, mem = tf.nn.seq2seq.tied_rnn_seq2seq(inp, dec_inp, cell)
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run(dec)
         self.assertEqual(3, len(res))
         self.assertEqual((2, 4), res[0].shape)
@@ -87,7 +87,7 @@ class Seq2SeqTest(tf.test.TestCase):
         dec_inp = [tf.constant(i, tf.int32, shape=[2]) for i in range(3)]
         dec, mem = tf.nn.seq2seq.embedding_rnn_decoder(
             dec_inp, enc_state, cell, num_symbols=4, embedding_size=2)
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run(dec)
         self.assertEqual(3, len(res))
         self.assertEqual((2, 2), res[0].shape)
@@ -106,7 +106,7 @@ class Seq2SeqTest(tf.test.TestCase):
         dec, mem = tf.nn.seq2seq.embedding_rnn_seq2seq(
             enc_inp, dec_inp, cell, num_encoder_symbols=2,
             num_decoder_symbols=5, embedding_size=2)
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run(dec)
         self.assertEqual(3, len(res))
         self.assertEqual((2, 5), res[0].shape)
@@ -121,7 +121,7 @@ class Seq2SeqTest(tf.test.TestCase):
           dec, mem = tf.nn.seq2seq.embedding_rnn_seq2seq(
               enc_inp, dec_inp, cell1, num_encoder_symbols=2,
               num_decoder_symbols=5, embedding_size=2)
-          sess.run([tf.initialize_all_variables()])
+          sess.run([tf.global_variables_initializer()])
           res = sess.run(dec)
           self.assertEqual(3, len(res))
           self.assertEqual((2, 5), res[0].shape)
@@ -136,7 +136,7 @@ class Seq2SeqTest(tf.test.TestCase):
           dec, _ = tf.nn.seq2seq.embedding_rnn_seq2seq(
               enc_inp, dec_inp, cell, num_encoder_symbols=2,
               num_decoder_symbols=5, embedding_size=2, output_projection=(w, b))
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run(dec)
         self.assertEqual(3, len(res))
         self.assertEqual((2, 2), res[0].shape)
@@ -148,7 +148,7 @@ class Seq2SeqTest(tf.test.TestCase):
               enc_inp, dec_inp2, cell, num_encoder_symbols=2,
               num_decoder_symbols=5, embedding_size=2,
               feed_previous=tf.constant(True))
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         tf.get_variable_scope().reuse_variables()
         d1, _ = tf.nn.seq2seq.embedding_rnn_seq2seq(
             enc_inp, dec_inp, cell, num_encoder_symbols=2,
@@ -170,7 +170,7 @@ class Seq2SeqTest(tf.test.TestCase):
         cell = tf.nn.rnn_cell.BasicLSTMCell(2, state_is_tuple=True)
         dec, mem = tf.nn.seq2seq.embedding_tied_rnn_seq2seq(
             enc_inp, dec_inp, cell, num_symbols=5, embedding_size=2)
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run(dec)
         self.assertEqual(3, len(res))
         self.assertEqual((2, 5), res[0].shape)
@@ -185,7 +185,7 @@ class Seq2SeqTest(tf.test.TestCase):
           dec, mem = tf.nn.seq2seq.embedding_tied_rnn_seq2seq(
               enc_inp, dec_inp, cell, num_symbols=5, num_decoder_symbols=3,
               embedding_size=2)
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run(dec)
         self.assertEqual(3, len(res))
         self.assertEqual((2, 3), res[0].shape)
@@ -197,7 +197,7 @@ class Seq2SeqTest(tf.test.TestCase):
           dec, _ = tf.nn.seq2seq.embedding_tied_rnn_seq2seq(
               enc_inp, dec_inp, cell, num_symbols=5, embedding_size=2,
               output_projection=(w, b))
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run(dec)
         self.assertEqual(3, len(res))
         self.assertEqual((2, 2), res[0].shape)
@@ -208,7 +208,7 @@ class Seq2SeqTest(tf.test.TestCase):
           d3, _ = tf.nn.seq2seq.embedding_tied_rnn_seq2seq(
               enc_inp, dec_inp2, cell, num_symbols=5, embedding_size=2,
               feed_previous=tf.constant(True))
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         tf.get_variable_scope().reuse_variables()
         d1, _ = tf.nn.seq2seq.embedding_tied_rnn_seq2seq(
             enc_inp, dec_inp, cell, num_symbols=5, embedding_size=2,
@@ -234,7 +234,7 @@ class Seq2SeqTest(tf.test.TestCase):
         dec, mem = tf.nn.seq2seq.attention_decoder(
             dec_inp, enc_state,
             attn_states, cell, output_size=4)
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run(dec)
         self.assertEqual(3, len(res))
         self.assertEqual((2, 4), res[0].shape)
@@ -255,7 +255,7 @@ class Seq2SeqTest(tf.test.TestCase):
             dec_inp, enc_state,
             attn_states, cell, output_size=4,
             num_heads=2)
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run(dec)
         self.assertEqual(3, len(res))
         self.assertEqual((2, 4), res[0].shape)
@@ -274,7 +274,7 @@ class Seq2SeqTest(tf.test.TestCase):
         dec, mem = tf.nn.seq2seq.attention_decoder(
             dec_inp, enc_state,
             attn_states, cell, output_size=4)
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run(dec)
         self.assertEqual(3, len(res))
         self.assertEqual((2, 4), res[0].shape)
@@ -294,7 +294,7 @@ class Seq2SeqTest(tf.test.TestCase):
             dec_inp, enc_state,
             attn_states, cell, output_size=4,
             num_heads=2)
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run(dec)
         self.assertEqual(3, len(res))
         self.assertEqual((2, 4), res[0].shape)
@@ -316,7 +316,7 @@ class Seq2SeqTest(tf.test.TestCase):
         dec, mem = tf.nn.seq2seq.attention_decoder(
             dec_inp, enc_state,
             attn_states, cell, output_size=4)
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run(dec)
         self.assertEqual(3, len(res))
         self.assertEqual((2, 4), res[0].shape)
@@ -342,7 +342,7 @@ class Seq2SeqTest(tf.test.TestCase):
           dec, mem = tf.nn.seq2seq.attention_decoder(
               dec_inp, enc_state,
               attn_states, cell, output_size=4)
-          sess.run([tf.initialize_all_variables()])
+          sess.run([tf.global_variables_initializer()])
           res = sess.run(dec)
           self.assertEqual(3, len(res))
           self.assertEqual((2, 4), res[0].shape)
@@ -366,7 +366,7 @@ class Seq2SeqTest(tf.test.TestCase):
         dec, mem = tf.nn.seq2seq.embedding_attention_decoder(
             dec_inp, enc_state, attn_states, cell, num_symbols=4,
             embedding_size=2, output_size=3)
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run(dec)
         self.assertEqual(3, len(res))
         self.assertEqual((2, 3), res[0].shape)
@@ -383,7 +383,7 @@ class Seq2SeqTest(tf.test.TestCase):
         dec, mem = tf.nn.seq2seq.embedding_attention_seq2seq(
             enc_inp, dec_inp, cell, num_encoder_symbols=2,
             num_decoder_symbols=5, embedding_size=2)
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run(dec)
         self.assertEqual(3, len(res))
         self.assertEqual((2, 5), res[0].shape)
@@ -398,7 +398,7 @@ class Seq2SeqTest(tf.test.TestCase):
           dec, mem = tf.nn.seq2seq.embedding_attention_seq2seq(
               enc_inp, dec_inp, cell, num_encoder_symbols=2,
               num_decoder_symbols=5, embedding_size=2)
-          sess.run([tf.initialize_all_variables()])
+          sess.run([tf.global_variables_initializer()])
           res = sess.run(dec)
           self.assertEqual(3, len(res))
           self.assertEqual((2, 5), res[0].shape)
@@ -413,7 +413,7 @@ class Seq2SeqTest(tf.test.TestCase):
           dec, _ = tf.nn.seq2seq.embedding_attention_seq2seq(
               enc_inp, dec_inp, cell, num_encoder_symbols=2,
               num_decoder_symbols=5, embedding_size=2, output_projection=(w, b))
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run(dec)
         self.assertEqual(3, len(res))
         self.assertEqual((2, 2), res[0].shape)
@@ -425,7 +425,7 @@ class Seq2SeqTest(tf.test.TestCase):
               enc_inp, dec_inp2, cell, num_encoder_symbols=2,
               num_decoder_symbols=5, embedding_size=2,
               feed_previous=tf.constant(True))
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         tf.get_variable_scope().reuse_variables()
         d1, _ = tf.nn.seq2seq.embedding_attention_seq2seq(
             enc_inp, dec_inp, cell, num_encoder_symbols=2,
@@ -453,7 +453,7 @@ class Seq2SeqTest(tf.test.TestCase):
         outputs_dict, state_dict = tf.nn.seq2seq.one2many_rnn_seq2seq(
             enc_inp, dec_inp_dict, cell, 2, dec_symbols_dict, embedding_size=2)
 
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         res = sess.run(outputs_dict["0"])
         self.assertEqual(3, len(res))
         self.assertEqual((2, 5), res[0].shape)
@@ -479,7 +479,7 @@ class Seq2SeqTest(tf.test.TestCase):
           outputs_dict3, _ = tf.nn.seq2seq.one2many_rnn_seq2seq(
               enc_inp, dec_inp_dict2, cell, 2, dec_symbols_dict,
               embedding_size=2, feed_previous=tf.constant(True))
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
         tf.get_variable_scope().reuse_variables()
         outputs_dict1, _ = tf.nn.seq2seq.one2many_rnn_seq2seq(
             enc_inp, dec_inp_dict, cell, 2, dec_symbols_dict,
@@ -623,7 +623,7 @@ class Seq2SeqTest(tf.test.TestCase):
           grads, _ = tf.clip_by_global_norm(full_grads, 30.0)
           update = optimizer.apply_gradients(zip(grads, params))
           updates.append(update)
-        sess.run([tf.initialize_all_variables()])
+        sess.run([tf.global_variables_initializer()])
       steps = 6
       for _ in range(steps):
         bucket = random.choice(np.arange(len(buckets)))
@@ -683,7 +683,7 @@ class Seq2SeqTest(tf.test.TestCase):
           scope_name = "fp_{}".format(feed_previous)
           with tf.variable_scope(scope_name):
             dec_op, _ = seq2seq(enc_inp, dec_inp, feed_previous=feed_previous)
-            net_variables = tf.get_collection(tf.GraphKeys.VARIABLES,
+            net_variables = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES,
                                               scope_name)
           optimizer = tf.train.AdamOptimizer(0.03, epsilon=1e-5)
           update_op = optimizer.minimize(
@@ -696,7 +696,7 @@ class Seq2SeqTest(tf.test.TestCase):
         dec_op_fp_false, update_fp_false, variables_fp_false = ForwardBackward(
             enc_inp, dec_inp_holder_fp_false, feed_previous=False)
 
-        sess.run(tf.initialize_all_variables())
+        sess.run(tf.global_variables_initializer())
 
         # We only check consistencies between the variables existing in both
         # the models with True and False feed_previous. Variables created by

@@ -71,4 +71,30 @@ TEST(StateOpsTest, TemporaryVariable_ShapeFn) {
   INFER_OK(op, "", "[1,2,3]");
 }
 
+TEST(StateOpsTest, Variable_ShapeFn) {
+  ShapeInferenceTestOp op("Variable");
+  TensorShapeProto shape_proto;
+
+  // Unknown rank.
+  PartialTensorShape().AsProto(&shape_proto);
+  TF_ASSERT_OK(NodeDefBuilder("test", "Variable")
+                   .Attr("shape", shape_proto)
+                   .Finalize(&op.node_def));
+  INFER_OK(op, "", "?");
+
+  // For historical reasons an empty TensorShapeProto can be either an unknown
+  // rank or a scalar, so the shape function conservatively says "unknown"
+  shape_proto.Clear();
+  TF_ASSERT_OK(NodeDefBuilder("test", "Variable")
+                   .Attr("shape", shape_proto)
+                   .Finalize(&op.node_def));
+  INFER_OK(op, "", "?");
+
+  // Specified shape.
+  TensorShape({1, 2, 3}).AsProto(&shape_proto);
+  TF_ASSERT_OK(NodeDefBuilder("test", "Variable")
+                   .Attr("shape", shape_proto)
+                   .Finalize(&op.node_def));
+  INFER_OK(op, "", "[1,2,3]");
+}
 }  // end namespace tensorflow

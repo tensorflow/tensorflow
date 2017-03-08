@@ -39,6 +39,7 @@ The TensorFlow community has created many great projects around TensorFlow, incl
 * [Caffe to TensorFlow model converter](https://github.com/ethereon/caffe-tensorflow)
 * [Bitfusion's` GPU-enabled AWS EC2 TensorFlow AMI](https://github.com/bitfusionio/amis/tree/master/awsmrkt-bfboost-ubuntu14-cuda75-tensorflow) ([Launch AMI](https://aws.amazon.com/marketplace/pp/B01EYKBEQ0))
 * [Rust language bindings](https://github.com/google/tensorflow-rust)
+* [Operator Vectorization Library](https://github.com/opveclib/opveclib)
 
 ### Development
 

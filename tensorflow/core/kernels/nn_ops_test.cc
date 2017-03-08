@@ -95,7 +95,8 @@ namespace {
 enum CONV_OP {
   CONV_OP_FORWARD = 0,
   CONV_OP_BACKPROP_INPUT = 1,
-  CONV_OP_BACKPROP_FILTER = 2
+  CONV_OP_BACKPROP_FILTER = 2,
+  CONV_OP_FUSED = 3,
 };
 
 }  // namespace
@@ -156,6 +157,18 @@ static void BM_ConvFloat(int iters, int batch, int rows, int cols, int in_depth,
   SetConstSizesOp("filter_sizes", std::vector<int32>({filter_rows, filter_cols,
                                                       in_depth, out_depth}),
                   graph.add_node());
+  SetConstSizesOp("resize_size", std::vector<int32>({rows, cols}),
+                  graph.add_node());
+
+  TensorShape paddings_shape({4, 2});
+  Tensor paddings_tensor(DT_INT32, paddings_shape);
+  for (int64 i = 0; i < paddings_tensor.NumElements(); ++i) {
+    paddings_tensor.flat<int32>()(i) = 0;
+  }
+  TF_CHECK_OK(NodeDefBuilder("paddings", "Const")
+                  .Attr("dtype", DT_INT32)
+                  .Attr("value", paddings_tensor)
+                  .Finalize(graph.add_node()));
 
   // Now add the convolution op
   NodeDef* conv = graph.add_node();
@@ -186,12 +199,25 @@ static void BM_ConvFloat(int iters, int batch, int rows, int cols, int in_depth,
                       .Attr("padding", padding == VALID ? "VALID" : "SAME")
                       .Finalize(conv));
       break;
+    case CONV_OP_FUSED:
+      TF_CHECK_OK(NodeDefBuilder("conv2d", "FusedResizeAndPadConv2D")
+                      .Input("input", 0, data_type)
+                      .Input("resize_size", 0, DT_INT32)
+                      .Input("paddings", 0, DT_INT32)
+                      .Input("filter", 0, data_type)
+                      .Attr("mode", "REFLECT")
+                      .Attr("strides", {1, stride, stride, 1})
+                      .Attr("padding", padding == VALID ? "VALID" : "SAME")
+                      .Attr("resize_align_corners", false)
+                      .Finalize(conv));
+      break;
   }
   Graph* g = new Graph(OpRegistry::Global());
   GraphConstructorOptions opts;
   TF_CHECK_OK(ConvertGraphDefToGraph(opts, graph, g));
 
   string device = use_gpu ? "gpu" : "cpu";
+  testing::UseRealTime();
   test::Benchmark(device, g, &options).Run(iters);
   testing::ItemsProcessed(num_ops * iters);
 }
@@ -216,6 +242,18 @@ static void BM_ConvFloat(int iters, int batch, int rows, int cols, int in_depth,
                  strings::StrCat(BS, "_", R, "_", C, "_", ID, "_", OD, "_",    \
                                  KR, "_", KC, "_", STR, "_", PAD, "_f_cpu4")); \
   }                                                                            \
+  static void BM_ConvFloatFusedCPU1_##LABEL(int iters) {                       \
+    BM_ConvFloat(iters, BS, R, C, ID, OD, KR, KC, CONV_OP_FUSED, 1, STR, PAD,  \
+                 false, DT_FLOAT,                                              \
+                 strings::StrCat(BS, "_", R, "_", C, "_", ID, "_", OD, "_",    \
+                                 KR, "_", KC, "_", STR, "_", PAD, "_f_cpu1")); \
+  }                                                                            \
+  static void BM_ConvFloatFusedCPU4_##LABEL(int iters) {                       \
+    BM_ConvFloat(iters, BS, R, C, ID, OD, KR, KC, CONV_OP_FUSED, 4, STR, PAD,  \
+                 false, DT_FLOAT,                                              \
+                 strings::StrCat(BS, "_", R, "_", C, "_", ID, "_", OD, "_",    \
+                                 KR, "_", KC, "_", STR, "_", PAD, "_f_cpu4")); \
+  }                                                                            \
   static void BM_ConvFloatFwdGPU_##LABEL(int iters) {                          \
     BM_ConvFloat(iters, BS, R, C, ID, OD, KR, KC, CONV_OP_FORWARD, 1, STR,     \
                  PAD, true, DT_FLOAT,                                          \
@@ -230,6 +268,8 @@ static void BM_ConvFloat(int iters, int batch, int rows, int cols, int in_depth,
   }                                                                            \
   BENCHMARK(BM_ConvFloatFwdCPU1_##LABEL);                                      \
   BENCHMARK(BM_ConvFloatFwdCPU4_##LABEL);                                      \
+  BENCHMARK(BM_ConvFloatFusedCPU1_##LABEL);                                    \
+  BENCHMARK(BM_ConvFloatFusedCPU4_##LABEL);                                    \
   BENCHMARK(BM_ConvFloatFwdGPU_##LABEL);                                       \
   BENCHMARK(BM_ConvHalfFwdGPU_##LABEL)
 
@@ -557,6 +597,7 @@ static void BM_ConvFloatDepthwise(int iters, int batch, int rows, int cols,
   TF_CHECK_OK(ConvertGraphDefToGraph(opts, graph, g));
 
   string device = use_gpu ? "gpu" : "cpu";
+  testing::UseRealTime();
   test::Benchmark(device, g, &options).Run(iters);
   testing::ItemsProcessed(num_ops * iters);
 }
@@ -1072,10 +1113,11 @@ static void BM_MaxPoolBk(int iters, int batch_size, int rows, int cols,
                    {1, stride, stride, 1} /* stride */,
                    padding == VALID ? "VALID" : "SAME");
   TF_CHECK_OK(root.status());
-  Graph g(OpRegistry::Global());
-  root.ToGraph(&g);
+  Graph* g = new Graph(OpRegistry::Global());
+  TF_CHECK_OK(root.ToGraph(g));
   string device = use_gpu ? "gpu" : "cpu";
-  test::Benchmark(device, &g).Run(iters);
+  testing::UseRealTime();
+  test::Benchmark(device, g).Run(iters);
 
   testing::ItemsProcessed(batch_size * rows * cols * depth * iters);
   testing::SetLabel(label);

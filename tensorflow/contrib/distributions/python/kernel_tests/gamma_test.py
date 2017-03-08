@@ -185,7 +185,7 @@ class GammaTest(tf.test.TestCase):
       beta = tf.constant(beta_v)
       n = 100000
       gamma = tf.contrib.distributions.Gamma(alpha=alpha, beta=beta)
-      samples = gamma.sample_n(n, seed=137)
+      samples = gamma.sample(n, seed=137)
       sample_values = samples.eval()
       self.assertEqual(samples.get_shape(), (n,))
       self.assertEqual(sample_values.shape, (n,))
@@ -208,7 +208,7 @@ class GammaTest(tf.test.TestCase):
       beta = tf.constant(beta_v)
       n = 100000
       gamma = tf.contrib.distributions.Gamma(alpha=alpha, beta=beta)
-      samples = gamma.sample_n(n, seed=137)
+      samples = gamma.sample(n, seed=137)
       sample_values = samples.eval()
       self.assertEqual(samples.get_shape(), (n,))
       self.assertEqual(sample_values.shape, (n,))
@@ -228,7 +228,7 @@ class GammaTest(tf.test.TestCase):
       beta_v = np.array([np.arange(1, 11, dtype=np.float32)]).T  # 10 x 1
       gamma = tf.contrib.distributions.Gamma(alpha=alpha_v, beta=beta_v)
       n = 10000
-      samples = gamma.sample_n(n, seed=137)
+      samples = gamma.sample(n, seed=137)
       sample_values = samples.eval()
       self.assertEqual(samples.get_shape(), (n, 10, 100))
       self.assertEqual(sample_values.shape, (n, 10, 100))
@@ -257,14 +257,13 @@ class GammaTest(tf.test.TestCase):
     # Uses the Kolmogorov-Smirnov test for goodness of fit.
     ks, _ = stats.kstest(samples, stats.gamma(alpha, scale=1 / beta).cdf)
     # Return True when the test passes.
-    print(ks)
     return ks < 0.02
 
   def testGammaPdfOfSampleMultiDims(self):
     with tf.Session() as sess:
       gamma = tf.contrib.distributions.Gamma(alpha=[7., 11.], beta=[[5.], [6.]])
       num = 50000
-      samples = gamma.sample_n(num, seed=137)
+      samples = gamma.sample(num, seed=137)
       pdfs = gamma.pdf(samples)
       sample_vals, pdf_vals = sess.run([samples, pdfs])
       self.assertEqual(samples.get_shape(), (num, 2, 2))

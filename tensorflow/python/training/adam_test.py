@@ -57,7 +57,7 @@ class AdamOptimizerTest(tf.test.TestCase):
                                   tf.constant([2]))
         opt = tf.train.AdamOptimizer()
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
 
         # Fetch params to validate initial values
         self.assertAllClose([1.0, 2.0], var0.eval())
@@ -94,7 +94,7 @@ class AdamOptimizerTest(tf.test.TestCase):
         grads1 = tf.constant(grads1_np)
         opt = tf.train.AdamOptimizer()
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
 
         # Fetch params to validate initial values
         self.assertAllClose([1.0, 2.0], var0.eval())
@@ -131,7 +131,7 @@ class AdamOptimizerTest(tf.test.TestCase):
         grads1 = tf.constant(grads1_np)
         opt = tf.train.AdamOptimizer(tf.constant(0.001))
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
 
         # Fetch params to validate initial values
         self.assertAllClose([1.0, 2.0], var0.eval())
@@ -169,7 +169,7 @@ class AdamOptimizerTest(tf.test.TestCase):
         opt = tf.train.AdamOptimizer()
         update1 = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
         update2 = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
 
         beta1_power, beta2_power = opt._get_beta_accumulators()
 

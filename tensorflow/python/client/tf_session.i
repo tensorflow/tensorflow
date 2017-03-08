@@ -47,21 +47,6 @@ tensorflow::ImportNumpy();
   Py_END_ALLOW_THREADS;
 }
 
-// Proto input arguments to C API functions are passed as a (const
-// void*, size_t) pair. In Python, typemap these to a single string
-// argument.  This typemap does *not* make a copy of the input.
-%typemap(in) (const void* proto, size_t proto_len) {
-  char* c_string;
-  Py_ssize_t py_size;
-  // PyBytes_AsStringAndSize() does not copy but simply interprets the input
-  if (PyBytes_AsStringAndSize($input, &c_string, &py_size) == -1) {
-    // Python has raised an error (likely TypeError or UnicodeEncodeError).
-    SWIG_fail;
-  }
-  $1 = static_cast<void*>(c_string);
-  $2 = static_cast<size_t>(py_size);
-}
-
 // The target input to TF_SetTarget() is passed as a null-terminated
 // const char*.
 %typemap(in) (const char* target) {
@@ -185,9 +170,9 @@ tensorflow::ImportNumpy();
 %rename("_TF_SetConfig") TF_SetConfig;
 %rename("_TF_NewSessionOptions") TF_NewSessionOptions;
 %unignore TF_DeleteSessionOptions;
-%unignore TF_NewSession;
-%unignore TF_CloseSession;
-%unignore TF_DeleteSession;
+%unignore TF_NewDeprecatedSession;
+%unignore TF_CloseDeprecatedSession;
+%unignore TF_DeleteDeprecatedSession;
 %unignore TF_ExtendGraph;
 %unignore TF_NewLibrary;
 %unignore TF_LoadLibrary;

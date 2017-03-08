@@ -1,6 +1,6 @@
 ### `tf.contrib.bayesflow.variational_inference.register_prior(variational, prior)` {#register_prior}
 
-Associate a variational `DistributionTensor` with a `Distribution` prior.
+Associate a variational `StochasticTensor` with a `Distribution` prior.
 
 This is a helper function used in conjunction with `elbo` that allows users
 to specify the mapping between variational distributions and their priors
@@ -9,7 +9,7 @@ without having to pass in `variational_with_prior` explicitly.
 ##### Args:
 
 
-*  <b>`variational`</b>: `DistributionTensor` q(Z). Approximating distribution.
+*  <b>`variational`</b>: `StochasticTensor` q(Z). Approximating distribution.
 *  <b>`prior`</b>: `Distribution` p(Z). Prior distribution.
 
 ##### Returns:
@@ -19,6 +19,6 @@ without having to pass in `variational_with_prior` explicitly.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if variational is not a `DistributionTensor` or `prior` is not
+*  <b>`ValueError`</b>: if variational is not a `StochasticTensor` or `prior` is not
     a `Distribution`.
 

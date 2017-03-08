@@ -23,6 +23,7 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import sys
 
 # Import data
 from tensorflow.examples.tutorials.mnist import input_data
@@ -46,7 +47,7 @@ def main(_):
 
   # The raw formulation of cross-entropy,
   #
-  #   tf.reduce_mean(-tf.reduce_sum(y_ * tf.log(tf.softmax(y)),
+  #   tf.reduce_mean(-tf.reduce_sum(y_ * tf.log(tf.nn.softmax(y)),
   #                                 reduction_indices=[1]))
   #
   # can be numerically unstable.
@@ -58,7 +59,7 @@ def main(_):
 
   sess = tf.InteractiveSession()
   # Train
-  tf.initialize_all_variables().run()
+  tf.global_variables_initializer().run()
   for _ in range(1000):
     batch_xs, batch_ys = mnist.train.next_batch(100)
     sess.run(train_step, feed_dict={x: batch_xs, y_: batch_ys})
@@ -71,7 +72,7 @@ def main(_):
 
 if __name__ == '__main__':
   parser = argparse.ArgumentParser()
-  parser.add_argument('--data_dir', type=str, default='/tmp/data',
-                      help='Directory for storing data')
-  FLAGS = parser.parse_args()
-  tf.app.run()
+  parser.add_argument('--data_dir', type=str, default='/tmp/tensorflow/mnist/input_data',
+                      help='Directory for storing input data')
+  FLAGS, unparsed = parser.parse_known_args()
+  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

@@ -22,11 +22,12 @@ from __future__ import print_function
 from tensorflow.contrib.layers import feature_column
 from tensorflow.contrib.learn.python.learn.dataframe import series as ss
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import parsing_ops
 
 
 def _to_feature_spec(tensor, default_value=None):
-  if isinstance(tensor, ops.SparseTensor):
+  if isinstance(tensor, sparse_tensor.SparseTensor):
     return parsing_ops.VarLenFeature(dtype=tensor.dtype)
   else:
     return parsing_ops.FixedLenFeature(shape=tensor.get_shape(),
@@ -91,7 +92,7 @@ def _build_alternate_universe(
 def to_feature_columns_and_input_fn(dataframe,
                                     base_input_keys_with_defaults,
                                     feature_keys,
-                                    target_keys=None,
+                                    label_keys=None,
                                     **kwargs):
   """Build a list of FeatureColumns and an input_fn for use with Estimator.
 
@@ -102,7 +103,7 @@ def to_feature_columns_and_input_fn(dataframe,
       fed via input_fn.
     feature_keys: the names of columns from which to generate FeatureColumns.
       These may include base features and/or derived features.
-    target_keys: the names of columns to be used as targets.  None is
+    label_keys: the names of columns to be used as labels.  None is
       acceptable for unsupervised learning.
     **kwargs: Additional keyword arguments, unused here.
 
@@ -110,26 +111,26 @@ def to_feature_columns_and_input_fn(dataframe,
     A tuple of two elements:
     * A list of `FeatureColumn`s to be used when constructing an Estimator
     * An input_fn, i.e. a function that returns a pair of dicts
-      (features, targets), each mapping string names to Tensors.
+      (features, labels), each mapping string names to Tensors.
       the feature dict provides mappings for all the base columns required
       by the FeatureColumns.
 
   Raises:
-    ValueError: when the feature and target key sets are non-disjoint, or the
-      base_input and target sets are non-disjoint.
+    ValueError: when the feature and label key sets are non-disjoint, or the
+      base_input and label sets are non-disjoint.
   """
   if feature_keys is None or not feature_keys:
     raise ValueError("feature_keys must be specified.")
 
-  if target_keys is None:
-    target_keys = []
+  if label_keys is None:
+    label_keys = []
 
   base_input_keys = base_input_keys_with_defaults.keys()
 
-  in_two = (set(feature_keys) & set(target_keys)) or (set(base_input_keys) &
-                                                      set(target_keys))
+  in_two = (set(feature_keys) & set(label_keys)) or (set(base_input_keys) &
+                                                     set(label_keys))
   if in_two:
-    raise ValueError("Columns cannot be used for both features and targets: %s"
+    raise ValueError("Columns cannot be used for both features and labels: %s"
                      % ", ".join(in_two))
 
   # Obtain the feature series in the alternate universe
@@ -153,7 +154,7 @@ def to_feature_columns_and_input_fn(dataframe,
   # Make a new DataFrame with only the Series needed for input_fn.
   # This is important to avoid starting queue feeders that won't be used.
   limited_dataframe = dataframe.select_columns(
-      list(base_input_keys) + list(target_keys))
+      list(base_input_keys) + list(label_keys))
 
   # Build an input_fn suitable for use with Estimator.
   def input_fn():
@@ -164,12 +165,12 @@ def to_feature_columns_and_input_fn(dataframe,
     tensors = limited_dataframe.build(**kwargs)
 
     base_input_features = {key: tensors[key] for key in base_input_keys}
-    targets = {key: tensors[key] for key in target_keys}
+    labels = {key: tensors[key] for key in label_keys}
 
     # TODO(soergel): Remove this special case when b/30367437 is fixed.
-    if len(targets) == 1:
-      targets = list(targets.values())[0]
+    if len(labels) == 1:
+      labels = list(labels.values())[0]
 
-    return base_input_features, targets
+    return base_input_features, labels
 
   return feature_columns, input_fn

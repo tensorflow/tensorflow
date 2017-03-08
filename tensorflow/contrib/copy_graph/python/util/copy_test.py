@@ -36,7 +36,7 @@ class CopyVariablesTest(tf.test.TestCase):
       #Initialize session
       sess1 = tf.Session()
       #Initialize the Variable
-      tf.initialize_all_variables().run(session=sess1)
+      tf.global_variables_initializer().run(session=sess1)
 
     #Make a copy of some_var in the defsult scope in graph2
     copy1 = tf.contrib.copy_graph.copy_variable_to_graph(
@@ -51,7 +51,7 @@ class CopyVariablesTest(tf.test.TestCase):
       #Initialize Session
       sess2 = tf.Session()
       #Initialize the Variables
-      tf.initialize_all_variables().run(session=sess2)
+      tf.global_variables_initializer().run(session=sess2)
 
     #Ensure values in all three variables are the same
     v1 = some_var.eval(session=sess1)
@@ -77,7 +77,7 @@ class CopyOpsTest(tf.test.TestCase):
       #Initialize session
       sess1 = tf.Session()
       #Initialize the Variable
-      tf.initialize_all_variables().run(session=sess1)
+      tf.global_variables_initializer().run(session=sess1)
 
     #First, initialize a as a Variable in graph2
     a1 = tf.contrib.copy_graph.copy_variable_to_graph(
@@ -88,7 +88,7 @@ class CopyOpsTest(tf.test.TestCase):
       #Initialize session
       sess2 = tf.Session()
       #Initialize the Variable
-      tf.initialize_all_variables().run(session=sess2)
+      tf.global_variables_initializer().run(session=sess2)
 
     #Initialize a copy of y in graph2
     y1 = tf.contrib.copy_graph.copy_op_to_graph(

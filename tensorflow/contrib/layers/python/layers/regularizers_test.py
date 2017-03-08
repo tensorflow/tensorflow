@@ -117,6 +117,15 @@ class RegularizerTest(tf.test.TestCase):
                                                       tensor_weights_list)
       self.assertAllClose(expected, result.eval())
 
+  def test_apply_zero_regularization(self):
+    regularizer = tf.contrib.layers.l2_regularizer(0.0)
+    array_weights_list = [[1.5], [2, 3, 4.2], [10, 42, 666.6]]
+    tensor_weights_list = [tf.constant(x) for x in array_weights_list]
+    with self.test_session():
+      result = tf.contrib.layers.apply_regularization(regularizer,
+                                                      tensor_weights_list)
+      self.assertAllClose(0.0, result.eval())
+
   def test_apply_regularization_invalid_regularizer(self):
     non_scalar_regularizer = lambda x: tf.tile(x, [2])
     tensor_weights_list = [tf.constant(x)

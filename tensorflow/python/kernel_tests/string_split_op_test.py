@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
 import tensorflow as tf
 
 
@@ -33,16 +34,19 @@ class StringSplitOpTest(tf.test.TestCase):
       self.assertAllEqual(shape, [2, 4])
 
   def testStringSplitEmptyDelimiter(self):
-    strings = ["hello", "hola"]
+    strings = ["hello", "hola", b"\xF0\x9F\x98\x8E"]  # Last string is U+1F60E
 
     with self.test_session() as sess:
       tokens = tf.string_split(strings, delimiter="")
       indices, values, shape = sess.run(tokens)
       self.assertAllEqual(indices, [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4],
-                                    [1, 0], [1, 1], [1, 2], [1, 3]])
-      self.assertAllEqual(values, [b"h", b"e", b"l", b"l", b"o", b"h", b"o",
-                                   b"l", b"a"])
-      self.assertAllEqual(shape, [2, 5])
+                                    [1, 0], [1, 1], [1, 2], [1, 3],
+                                    [2, 0], [2, 1], [2, 2], [2, 3]])
+      expected = np.array(
+          ['h', 'e', 'l', 'l', 'o', 'h', 'o', 'l',
+           'a', b'\xf0', b'\x9f', b'\x98', b'\x8e'], dtype='|S1')
+      self.assertAllEqual(values.tolist(), expected)
+      self.assertAllEqual(shape, [3, 5])
 
   def testStringSplitEmptyToken(self):
     strings = [" hello ", "", "world "]

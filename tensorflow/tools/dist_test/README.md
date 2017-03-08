@@ -112,5 +112,5 @@ servers. For example:
 
     kubectl create -f tf-k8s-with-lb.yaml
 
-See [Kubernetes kubectl documentation]
-(http://kubernetes.io/docs/user-guide/kubectl-overview/) for more details.
+See [Kubernetes kubectl documentation](http://kubernetes.io/docs/user-guide/kubectl-overview/)
+for more details.

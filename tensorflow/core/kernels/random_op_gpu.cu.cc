@@ -39,6 +39,89 @@ typedef Eigen::GpuDevice GPUDevice;
 template <class Distribution, bool VariableSamplesPerOutput>
 struct FillPhiloxRandomKernel;
 
+template <typename T, int ElementCount>
+class SampleCopier {
+ public:
+  inline __device__ void operator()(
+      T* buf, const tensorflow::random::Array<T, ElementCount>& array) const {
+#pragma unroll
+    for (int i = 0; i < ElementCount; i++) {
+      buf[i] = array[i];
+    }
+  }
+};
+
+template <>
+class SampleCopier<float, 4> {
+ public:
+  // Copies the elements from the array to buf. buf must be 128-bit aligned,
+  // which is true for tensor data, and all offsets that are a multiple of the
+  // vector size (because the vectors are 128 bits long).
+  inline __device__ void operator()(
+      float* buf, const tensorflow::random::Array<float, 4>& array) const {
+    // NOTE(ringwalt): It's not safe to cast &array[0] to a float4, because they
+    // have 32-bit alignment vs 128-bit alignment. There seems to be no
+    // performance loss when assigning each element to a vector.
+    float4 vec;
+    vec.x = array[0];
+    vec.y = array[1];
+    vec.z = array[2];
+    vec.w = array[3];
+    float4* buf_vector = reinterpret_cast<float4*>(buf);
+    *buf_vector = vec;
+  }
+};
+
+template <>
+class SampleCopier<int32, 4> {
+ public:
+  // Copies the elements from the array to buf. buf must be 128-bit aligned,
+  // which is true for tensor data, and all offsets that are a multiple of the
+  // vector size (because the vectors are 128 bits long).
+  inline __device__ void operator()(
+      int32* buf, const tensorflow::random::Array<int32, 4>& array) const {
+    int4 vec;
+    vec.x = array[0];
+    vec.y = array[1];
+    vec.z = array[2];
+    vec.w = array[3];
+    int4* buf_vector = reinterpret_cast<int4*>(buf);
+    *buf_vector = vec;
+  }
+};
+
+template <>
+class SampleCopier<double, 2> {
+ public:
+  // Copies the elements from the array to buf. buf must be 128-bit aligned,
+  // which is true for tensor data, and all offsets that are a multiple of the
+  // vector size (because the vectors are 128 bits long).
+  inline __device__ void operator()(
+      double* buf, const tensorflow::random::Array<double, 2>& array) const {
+    double2 vec;
+    vec.x = array[0];
+    vec.y = array[1];
+    double2* buf_vector = reinterpret_cast<double2*>(buf);
+    *buf_vector = vec;
+  }
+};
+
+template <>
+class SampleCopier<int64, 2> {
+ public:
+  // Copies the elements from the array to buf. buf must be 128-bit aligned,
+  // which is true for tensor data, and all offsets that are a multiple of the
+  // vector size (because the vectors are 128 bits long).
+  inline __device__ void operator()(
+      int64* buf, const tensorflow::random::Array<int64, 2>& array) const {
+    longlong2 vec;
+    vec.x = array[0];
+    vec.y = array[1];
+    longlong2* buf_vector = reinterpret_cast<longlong2*>(buf);
+    *buf_vector = vec;
+  }
+};
+
 // A cuda kernel to fill the data with random numbers from the specified
 // distribution. Each output takes a fixed number of samples.
 template <class Distribution>
@@ -53,19 +136,22 @@ struct FillPhiloxRandomKernel<Distribution, false> {
     int32 offset = thread_id * kGroupSize;
     gen.Skip(thread_id);
 
-    while (offset < size) {
-      typename Distribution::ResultType samples = dist(&gen);
-
-      for (int i = 0; i < kGroupSize; ++i) {
-        if (offset >= size) {
-          return;
-        }
-        data[offset] = samples[i];
-        ++offset;
-      }
+    const SampleCopier<T, kGroupSize> copier;
+    while (offset + kGroupSize <= size) {
+      const typename Distribution::ResultType samples = dist(&gen);
+      copier(&data[offset], samples);
 
       offset += (total_thread_count - 1) * kGroupSize;
       gen.Skip(total_thread_count - 1);
+    }
+
+    typename Distribution::ResultType samples = dist(&gen);
+    for (int i = 0; i < kGroupSize; ++i) {
+      if (offset >= size) {
+        return;
+      }
+      data[offset] = samples[i];
+      ++offset;
     }
   }
 };

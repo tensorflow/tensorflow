@@ -102,7 +102,7 @@ class GmmOpsTest(tf.test.TestCase):
       op_diag = gmm_ops._covariance(
           tf.constant(data.T, dtype=tf.float32),
           True)
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       tf_cov = sess.run(op)
       np.testing.assert_array_almost_equal(np_cov, tf_cov)
       logging.info('Tensorflow took %f', time.time() - start_time)
@@ -121,7 +121,7 @@ class GmmOpsTest(tf.test.TestCase):
         _, assignments, _, training_op = tf.contrib.factorization.gmm(
             data, 'random', num_classes, random_seed=self.seed)
 
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         for _ in xrange(self.iterations):
           sess.run(training_op)
         assignments = sess.run(assignments)
@@ -140,7 +140,7 @@ class GmmOpsTest(tf.test.TestCase):
                                                        [[3.0, 3.0], [0.0, 0.0]],
                                                        'w')
       training_ops = gmm_tool.training_ops()
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       for _ in xrange(self.iterations):
         sess.run(training_ops)
 
@@ -158,7 +158,7 @@ class GmmOpsTest(tf.test.TestCase):
                                                        [[3.0, 3.0], [0.0, 0.0]],
                                                        'mc')
       training_ops = gmm_tool.training_ops()
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       for _ in xrange(self.iterations):
         sess.run(training_ops)
       alphas = sess.run(gmm_tool.alphas())
@@ -178,7 +178,7 @@ class GmmOpsTest(tf.test.TestCase):
       gmm_tool = tf.contrib.factorization.GmmAlgorithm(
           [data], num_classes, [[-1.0, -1.0], [1.0, 1.0]], 'c')
       training_ops = gmm_tool.training_ops()
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       for _ in xrange(self.iterations):
         sess.run(training_ops)
       alphas = sess.run(gmm_tool.alphas())

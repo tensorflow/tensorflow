@@ -24,3 +24,4 @@ from tensorflow.contrib.factorization.python.ops.factorization_ops import *
 from tensorflow.contrib.factorization.python.ops.gmm import *
 from tensorflow.contrib.factorization.python.ops.gmm_ops import *
 from tensorflow.contrib.factorization.python.ops.kmeans import *
+# pylint: enable=wildcard-import

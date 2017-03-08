@@ -20,6 +20,7 @@ https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Computing_shif
 ##### Returns:
 
   Four `Tensor` objects of the same type as `x`:
+
   * the count (number of elements to average over).
   * the (possibly shifted) sum of the elements in the array.
   * the (possibly shifted) sum of squares of the elements in the array.

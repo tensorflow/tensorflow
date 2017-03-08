@@ -54,7 +54,7 @@ NOTE: `begin` and `end` are zero-indexed`.
 `strides` entries must be non-zero.
 
 
-```
+```python
 # 'input' is [[[1, 1, 1], [2, 2, 2]],
 #             [[3, 3, 3], [4, 4, 4]],
 #             [[5, 5, 5], [6, 6, 6]]]
@@ -77,7 +77,7 @@ tf.slice(input, [1, 1, 0], [2, -1, 3], [1, -1, 1]) ==>[[[4, 4, 4],
 *  <b>`ellipsis_mask`</b>: An `int32` mask.
 *  <b>`new_axis_mask`</b>: An `int32` mask.
 *  <b>`shrink_axis_mask`</b>: An `int32` mask.
-*  <b>`var`</b>: The variable coresponding to `input_` or None
+*  <b>`var`</b>: The variable corresponding to `input_` or None
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:

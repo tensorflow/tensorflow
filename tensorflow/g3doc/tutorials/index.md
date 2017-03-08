@@ -78,6 +78,14 @@ for predicting median house values.
 
 [View Tutorial](../tutorials/input_fn/index.md)
 
+### Creating Estimators in tf.contrib.learn
+
+This tutorial covers how to create your own `Estimator` using the building blocks
+provided in tf.contrib.learn. You'll build a model to predict the ages of abalones
+based on their physical measurements.
+
+[View Tutorial](../tutorials/estimators/index.md)
+
 ## TensorFlow Serving
 
 ### TensorFlow Serving
@@ -112,7 +120,7 @@ Building on the Inception recognition model, we will release a TensorFlow
 version of the [Deep Dream](https://github.com/google/deepdream) neural network
 visual hallucination software.
 
-[View Tutorial](https://www.tensorflow.org/code/tensorflow/examples/tutorials/deepdream/deepdream.ipynb)
+[View Tutorial](https://nbviewer.jupyter.org/github/tensorflow/tensorflow/blob/master/tensorflow/examples/tutorials/deepdream/deepdream.ipynb)
 
 
 ## Language and Sequence Processing

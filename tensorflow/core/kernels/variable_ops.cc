@@ -31,6 +31,17 @@ REGISTER_KERNEL_BUILDER(Name("DestroyTemporaryVariable").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("IsVariableInitialized").Device(DEVICE_CPU),
                         IsVariableInitializedOp);
 
+#if TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNEL(TYPE)                                    \
+  REGISTER_KERNEL_BUILDER(                                            \
+                          Name("Variable")                            \
+                          .Device(DEVICE_SYCL)                        \
+                          .TypeConstraint<TYPE>("dtype"),             \
+                          VariableOp);
+TF_CALL_NUMBER_TYPES(REGISTER_SYCL_KERNEL);
+#undef REGISTER_SYCL_KERNEL
+#endif
+
 #if GOOGLE_CUDA
 // Only register 'Variable' on GPU for the subset of types also supported by
 // 'Assign' (see dense_update_ops.cc.)

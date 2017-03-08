@@ -21,3 +21,4 @@ from __future__ import print_function
 from tensorflow.contrib.tensor_forest.client import *
 from tensorflow.contrib.tensor_forest.data import *
 from tensorflow.contrib.tensor_forest.python import *
+# pylint: enable=unused-import,wildcard-import

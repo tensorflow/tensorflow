@@ -2,11 +2,13 @@
 
 Selects elements from `t` or `e`, depending on `condition`.
 
-The `t`, and `e` tensors must all have the same shape,
-and the output will also have that shape.  The `condition` tensor
-must be a scalar if `t` and `e` are scalars.  If `t` and `e` are vectors
-or higher rank, then `condition` must be either a vector with size
-matching the first dimension of `t`, or must have the same shape as `t`.
+The `t`, and `e` tensors must all have the same shape, and the
+output will also have that shape.
+
+The `condition` tensor must be a scalar if `t` and `e` are scalars.
+If `t` and `e` are vectors or higher rank, then `condition` must be either a
+scalar, a vector with size matching the first dimension of `t`, or must have
+the same shape as `t`.
 
 The `condition` tensor acts as a mask that chooses, based on the value at each
 element, whether the corresponding element / row in the output should be

@@ -33,6 +33,22 @@ ZlibInputStream::ZlibInputStream(
       z_stream_output_(new Bytef[output_buffer_capacity_]),
       zlib_options_(zlib_options),
       z_stream_(new z_stream) {
+  InitZlibBuffer();
+}
+
+ZlibInputStream::~ZlibInputStream() {
+  if (z_stream_.get()) {
+    inflateEnd(z_stream_.get());
+  }
+}
+
+Status ZlibInputStream::Reset() {
+  TF_RETURN_IF_ERROR(input_stream_->Reset());
+  InitZlibBuffer();
+  return Status::OK();
+}
+
+void ZlibInputStream::InitZlibBuffer() {
   memset(z_stream_.get(), 0, sizeof(z_stream));
 
   z_stream_->zalloc = Z_NULL;
@@ -51,12 +67,6 @@ ZlibInputStream::ZlibInputStream(
     next_unread_byte_ = reinterpret_cast<char*>(z_stream_output_.get());
     z_stream_->avail_in = 0;
     z_stream_->avail_out = output_buffer_capacity_;
-  }
-}
-
-ZlibInputStream::~ZlibInputStream() {
-  if (z_stream_.get()) {
-    inflateEnd(z_stream_.get());
   }
 }
 

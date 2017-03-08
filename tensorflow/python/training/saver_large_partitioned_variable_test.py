@@ -38,7 +38,7 @@ class SaverLargePartitionedVariableTest(tf.test.TestCase):
             True, dtype, shape)
         partitioned_var = tf.create_partitioned_variables(
             [1 << 31], [4], init, dtype=tf.bool, name=var_name)
-        tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
         save = tf.train.Saver(partitioned_var)
         val = save.save(sess, save_path)
         self.assertEqual(save_path, val)

@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.contrib.distributions.python.ops import categorical
 from tensorflow.contrib.distributions.python.ops import distribution
+from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -87,6 +88,8 @@ class Mixture(distribution.Distribution):
         matching static batch shapes, or all components do not
         have matching static event shapes.
     """
+    parameters = locals()
+    parameters.pop("self")
     if not isinstance(cat, categorical.Categorical):
       raise TypeError("cat must be a Categorical distribution, but saw: %s" %
                       cat)
@@ -120,7 +123,7 @@ class Mixture(distribution.Distribution):
           "none of the components provide a static number of ndims")
 
     # Ensure that all batch and event ndims are consistent.
-    with ops.name_scope(name, values=[cat.logits]):
+    with ops.name_scope(name, values=[cat.logits]) as ns:
       num_components = cat.num_classes
       static_num_components = tensor_util.constant_value(num_components)
       if static_num_components is None:
@@ -159,15 +162,21 @@ class Mixture(distribution.Distribution):
       self._static_event_shape = static_event_shape
       self._static_batch_shape = static_batch_shape
 
-      super(Mixture, self).__init__(
-          dtype=dtype,
-          parameters={"cat": self._cat, "components": self._components,
-                      "num_components": self._num_components},
-          is_reparameterized=False,
-          is_continuous=is_continuous,
-          validate_args=validate_args,
-          allow_nan_stats=allow_nan_stats,
-          name=name)
+    # We let the Mixture distribution access _graph_parents since its arguably
+    # more like a baseclass.
+    graph_parents = self._cat._graph_parents  # pylint: disable=protected-access
+    for c in self._components:
+      graph_parents += c._graph_parents  # pylint: disable=protected-access
+
+    super(Mixture, self).__init__(
+        dtype=dtype,
+        is_reparameterized=False,
+        is_continuous=is_continuous,
+        validate_args=validate_args,
+        allow_nan_stats=allow_nan_stats,
+        parameters=parameters,
+        graph_parents=graph_parents,
+        name=ns)
 
   @property
   def cat(self):
@@ -295,8 +304,10 @@ class Mixture(distribution.Distribution):
           partitions=cat_samples,
           num_partitions=self.num_components)
       samples_class = [None for _ in range(self.num_components)]
+
       for c in range(self.num_components):
         n_class = array_ops.size(partitioned_samples_indices[c])
+        seed = distribution_util.gen_new_seed(seed, "mixture")
         samples_class_c = self.components[c].sample_n(n_class, seed=seed)
 
         # Pull out the correct batch entries from each index.
@@ -350,7 +361,7 @@ class Mixture(distribution.Distribution):
     \log p(x) >= ELBO = \int q(z) \log p(x, z) dz + H[q]
     \\)
 
-    where \\( p \\) is the prior disribution, \\( q \\) is the variational,
+    where \\( p \\) is the prior distribution, \\( q \\) is the variational,
     and \\( H[q] \\) is the entropy of \\( q \\).  If there is a lower bound
     \\( G[q] \\) such that \\( H[q] \geq G[q] \\) then it can be used in
     place of \\( H[q] \\).

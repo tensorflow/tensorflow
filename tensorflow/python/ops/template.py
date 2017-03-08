@@ -44,7 +44,7 @@ def make_template(name_, func_, create_scope_now_=False, unique_name_=None,
      that are intended to be locals can be created by specifying
      `tf.Variable(..., trainable=false)`.
   * The function may use variable scopes and other templates internally to
-      create and reuse variables, but it shouldn't use `tf.get_variables` to
+      create and reuse variables, but it shouldn't use `tf.all_variables` to
       capture variables that are defined outside of the scope of the function.
   * Internal scopes and variable names should not depend on any arguments that
       are not supplied to `make_template`. In general you will get a ValueError
@@ -201,7 +201,7 @@ class Template(object):
 
   def _call_func(self, args, kwargs, check_for_new_variables):
     try:
-      vars_at_start = len(ops.get_collection(ops.GraphKeys.VARIABLES))
+      vars_at_start = len(ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES))
       trainable_at_start = len(
           ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES))
 
@@ -220,7 +220,7 @@ class Template(object):
         # Non-trainable tracking variables are a legitimate reason why a new
         # variable would be created, but it is a relatively advanced use-case,
         # so log it.
-        variables = ops.get_collection(ops.GraphKeys.VARIABLES)
+        variables = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
         if vars_at_start != len(variables):
           logging.info("New variables created when calling a template after "
                        "the first time, perhaps you used tf.Variable when you "

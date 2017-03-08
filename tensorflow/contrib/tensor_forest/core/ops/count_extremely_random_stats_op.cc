@@ -216,7 +216,7 @@ are updated in `pcw_candidate_sums_delta` and `pcw_totals_sums_delta`.
 For `regression` = true, outputs contain the sum of the input_labels
 for the appropriate nodes.  In adddition, the *_squares outputs are filled
 in with the sums of the squares of the input_labels. Since outputs are
-all updated at once, the *_indicies outputs don't specify the output
+all updated at once, the *_indices outputs don't specify the output
 dimension to update, rather the *_delta output contains updates for all the
 outputs.  For example, `pcw_totals_indices` specifies the accumulators to
 update, and `pcw_total_splits_sums_delta` contains the complete output

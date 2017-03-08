@@ -2,8 +2,7 @@
 
 Parses `Example` protos into a `dict` of tensors.
 
-Parses a number of serialized [`Example`]
-(https://www.tensorflow.org/code/tensorflow/core/example/example.proto)
+Parses a number of serialized [`Example`](https://www.tensorflow.org/code/tensorflow/core/example/example.proto)
 protos given in `serialized`.
 
 `example_names` may contain descriptive names for the corresponding serialized

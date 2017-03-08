@@ -46,7 +46,7 @@ User supplies either `Tensor` of samples `z`, or number of samples to draw `n`
 *  <b>`log_p`</b>: Callable mapping samples from `q` to `Tensors` with
     shape broadcastable to `q.batch_shape`.
     For example, `log_p` works "just like" `q.log_prob`.
-*  <b>`q`</b>: `tf.contrib.distributions.BaseDistribution`.
+*  <b>`q`</b>: `tf.contrib.distributions.Distribution`.
 *  <b>`z`</b>: `Tensor` of samples from `q`, produced by `q.sample_n`.
 *  <b>`n`</b>: Integer `Tensor`.  Number of samples to generate if `z` is not provided.
 *  <b>`seed`</b>: Python integer to seed the random number generator.

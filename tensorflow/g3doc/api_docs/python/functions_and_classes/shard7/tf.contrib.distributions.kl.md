@@ -2,6 +2,19 @@
 
 Get the KL-divergence KL(dist_a || dist_b).
 
+If there is no KL method registered specifically for `type(dist_a)` and
+`type(dist_b)`, then the class hierarchies of these types are searched.
+
+If one KL method is registered between any pairs of classes in these two
+parent hierarchies, it is used.
+
+If more than one such registered method exists, the method whose registered
+classes have the shortest sum MRO paths to the input types is used.
+
+If more than one such shortest path exists, the first method
+identified in the search is used (favoring a shorter MRO distance to
+`type(dist_a)`).
+
 ##### Args:
 
 

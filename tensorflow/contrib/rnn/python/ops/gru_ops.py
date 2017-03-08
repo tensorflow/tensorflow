@@ -17,8 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import common_shapes
-from tensorflow.python.framework import load_library
+from tensorflow.contrib.util import loader
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
@@ -28,12 +27,8 @@ from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import resource_loader
 
-_gru_ops_so = load_library.load_op_library(
+_gru_ops_so = loader.load_op_library(
     resource_loader.get_path_to_datafile("_gru_ops.so"))
-assert _gru_ops_so, "Could not load _gru_ops.so."
-
-
-ops.RegisterShape("GRUBlockCellGrad")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterGradient("GRUBlockCell")
@@ -98,9 +93,6 @@ def _GRUBlockCellGrad(op, *grad):
   return d_x, d_h_prev, d_w_ru, d_w_c, d_b_ru, d_b_c
 
 
-ops.RegisterShape("GRUBlockCell")(common_shapes.call_cpp_shape_fn)
-
-
 class GRUBlockCell(rnn_cell.RNNCell):
   r"""Block GRU cell implementation.
 
@@ -109,9 +101,11 @@ class GRUBlockCell(rnn_cell.RNNCell):
 
   This kernel op implements the following mathematical equations:
 
-  Baises are initialized with :
-  `b_ru` - constant_initializer(1.0)
-  `b_c` - constant_initializer(0.0)
+  Biases are initialized with:
+
+  * `b_ru` - constant_initializer(1.0)
+  * `b_c` - constant_initializer(0.0)
+
   ```
   x_h_prev = [x, h_prev]
 

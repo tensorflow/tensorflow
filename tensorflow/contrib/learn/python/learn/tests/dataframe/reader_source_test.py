@@ -42,7 +42,7 @@ class ReaderSourceTestCase(tf.test.TestCase):
     self.assertEqual([1], index_tensor.get_shape().as_list())
     self.assertEqual([1], value_tensor.get_shape().as_list())
     with self.test_session() as sess:
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       coord = tf.train.Coordinator()
       threads = tf.train.start_queue_runners(sess=sess, coord=coord)
       for i in range(50):
@@ -67,7 +67,7 @@ class ReaderSourceTestCase(tf.test.TestCase):
     self.assertEqual([1], value_tensor.get_shape().as_list())
     seen = set([])
     with self.test_session() as sess:
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       coord = tf.train.Coordinator()
       threads = tf.train.start_queue_runners(sess=sess, coord=coord)
       for _ in range(500):

@@ -72,15 +72,21 @@ error::Code ErrnoToCode(int err_number) {
     case EBUSY:       // Device or resource busy
     case ECHILD:      // No child processes
     case EISCONN:     // Socket is connected
+#if !defined(_WIN32)
     case ENOTBLK:     // Block device required
+#endif
     case ENOTCONN:    // The socket is not connected
     case EPIPE:       // Broken pipe
+#if !defined(_WIN32)
     case ESHUTDOWN:   // Cannot send after transport endpoint shutdown
+#endif
     case ETXTBSY:     // Text file busy
       code = error::FAILED_PRECONDITION;
       break;
     case ENOSPC:   // No space left on device
+#if !defined(_WIN32)
     case EDQUOT:   // Disk quota exceeded
+#endif
     case EMFILE:   // Too many open files
     case EMLINK:   // Too many links
     case ENFILE:   // Too many open files in system
@@ -88,7 +94,9 @@ error::Code ErrnoToCode(int err_number) {
     case ENODATA:  // No message is available on the STREAM read queue
     case ENOMEM:   // Not enough space
     case ENOSR:    // No STREAM resources
+#if !defined(_WIN32)
     case EUSERS:   // Too many users
+#endif
       code = error::RESOURCE_EXHAUSTED;
       break;
     case EFBIG:      // File too large
@@ -99,9 +107,13 @@ error::Code ErrnoToCode(int err_number) {
     case ENOSYS:           // Function not implemented
     case ENOTSUP:          // Operation not supported
     case EAFNOSUPPORT:     // Address family not supported
+#if !defined(_WIN32)
     case EPFNOSUPPORT:     // Protocol family not supported
+#endif
     case EPROTONOSUPPORT:  // Protocol not supported
+#if !defined(_WIN32)
     case ESOCKTNOSUPPORT:  // Socket type not supported
+#endif
     case EXDEV:            // Improper link
       code = error::UNIMPLEMENTED;
       break;
@@ -110,20 +122,24 @@ error::Code ErrnoToCode(int err_number) {
     case ECONNABORTED:  // Connection aborted
     case ECONNRESET:    // Connection reset
     case EINTR:         // Interrupted function call
+#if !defined(_WIN32)
     case EHOSTDOWN:     // Host is down
+#endif
     case EHOSTUNREACH:  // Host is unreachable
     case ENETDOWN:      // Network is down
     case ENETRESET:     // Connection aborted by network
     case ENETUNREACH:   // Network unreachable
     case ENOLCK:        // No locks available
     case ENOLINK:       // Link has been severed
-#if !defined(__APPLE__)
+#if !(defined(__APPLE__) || defined(_WIN32))
     case ENONET:  // Machine is not on the network
 #endif
       code = error::UNAVAILABLE;
       break;
     case EDEADLK:  // Resource deadlock avoided
+#if !defined(_WIN32)
     case ESTALE:   // Stale file handle
+#endif
       code = error::ABORTED;
       break;
     case ECANCELED:  // Operation cancelled
@@ -140,7 +156,9 @@ error::Code ErrnoToCode(int err_number) {
     case ENOEXEC:      // Exec format error
     case ENOMSG:       // No message of the desired type
     case EPROTO:       // Protocol error
+#if !defined(_WIN32)
     case EREMOTE:      // Object is remote
+#endif
       code = error::UNKNOWN;
       break;
     default: {

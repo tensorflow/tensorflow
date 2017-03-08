@@ -62,7 +62,8 @@ from tensorflow.python.training import saver
 class MovingAverageOptimizer(optimizer.Optimizer):
   """Optimizer wrapper that maintains a moving average of parameters."""
 
-  def __init__(self, opt, average_decay=0.9999, sequential_update=True):
+  def __init__(self, opt, average_decay=0.9999, num_updates=None,
+               sequential_update=True):
     """Construct a new MovingAverageOptimizer.
 
     Args:
@@ -70,6 +71,8 @@ class MovingAverageOptimizer(optimizer.Optimizer):
       average_decay: Float.  Decay to use to maintain the moving averages
                      of trained variables.
                      See tf.train.ExponentialMovingAverage for details.
+      num_updates: Optional count of number of updates applied to variables.
+                   See tf.train.ExponentialMovingAverage for details.
       sequential_update: Bool. If False, will compute the moving average at the
                          same time as the model is updated, potentially doing
                          benign data races.
@@ -77,7 +80,8 @@ class MovingAverageOptimizer(optimizer.Optimizer):
                          updates.
     """
     self._optimizer = opt
-    self._ema = moving_averages.ExponentialMovingAverage(average_decay)
+    self._ema = moving_averages.ExponentialMovingAverage(
+        average_decay, num_updates=num_updates)
     self._variable_map = None
     self._sequential_update = sequential_update
 
@@ -127,7 +131,7 @@ class MovingAverageOptimizer(optimizer.Optimizer):
       raise RuntimeError('Must call apply_gradients or minimize before '
                          'creating the swapping_saver')
     if var_list is None:
-      var_list = variables.all_variables()
+      var_list = variables.global_variables()
     if not isinstance(var_list, dict):
       var_list = saver.BaseSaverBuilder.OpListToDict(var_list)
     # Now swap variables and moving averages

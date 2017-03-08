@@ -1,6 +1,6 @@
 ### `tf.contrib.graph_editor.detach_outputs(sgv, control_outputs=None)` {#detach_outputs}
 
-Detach the outputa of a subgraph view.
+Detach the output of a subgraph view.
 
 ##### Args:
 

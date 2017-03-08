@@ -661,11 +661,13 @@ import collections
 from google.protobuf import text_format
 
 from tensorflow.core.framework import op_def_pb2
+
+# Needed to trigger the call to _set_call_cpp_shape_fn.
+from tensorflow.python.framework import common_shapes
+
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import op_def_library
-
-
 )");
 
   // We'll make a copy of ops that filters out descriptions.

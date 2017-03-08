@@ -251,6 +251,7 @@ class SplitOpGPU : public SplitOpBase<GPUDevice, T> {
                           SplitOpCPU<type>)
 
 TF_CALL_ALL_TYPES(REGISTER_SPLIT);
+REGISTER_SPLIT(quint8);
 
 #undef REGISTER_SPLIT
 

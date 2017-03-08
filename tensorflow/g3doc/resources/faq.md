@@ -261,8 +261,8 @@ these summaries to a log directory.  Then, start TensorBoard using
 
     python tensorflow/tensorboard/tensorboard.py --logdir=path/to/log-directory
 
-For more details, see the [Summaries and TensorBoard tutorial]
-(../how_tos/summaries_and_tensorboard/index.md).
+For more details, see the
+[Summaries and TensorBoard tutorial](../how_tos/summaries_and_tensorboard/index.md).
 
 #### Every time I launch TensorBoard, I get a network security popup!
 
@@ -279,9 +279,9 @@ See also the how-to documentation for
 There are two main options for dealing with data in a custom format.
 
 The easier option is to write parsing code in Python that transforms the data
-into a numpy array, then feed a [`tf.placeholder()`]
-(../api_docs/python/io_ops.md#placeholder) a tensor with that data. See the
-documentation on
+into a numpy array, then feed a
+[`tf.placeholder()`](../api_docs/python/io_ops.md#placeholder) a tensor with
+that data. See the documentation on
 [using placeholders for input](../how_tos/reading_data/index.md#feeding) for
 more details. This approach is easy to get up and running, but the parsing can
 be a performance bottleneck.

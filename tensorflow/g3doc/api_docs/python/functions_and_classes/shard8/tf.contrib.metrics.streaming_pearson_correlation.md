@@ -1,12 +1,13 @@
 ### `tf.contrib.metrics.streaming_pearson_correlation(predictions, labels, weights=None, metrics_collections=None, updates_collections=None, name=None)` {#streaming_pearson_correlation}
 
-Computes pearson correlation coefficient between `predictions`, `labels`.
+Computes Pearson correlation coefficient between `predictions`, `labels`.
 
 The `streaming_pearson_correlation` function delegates to
 `streaming_covariance` the tracking of three [co]variances:
-- streaming_covariance(predictions, labels), i.e. covariance
-- streaming_covariance(predictions, predictions), i.e. variance
-- streaming_covariance(labels, labels), i.e. variance
+
+- `streaming_covariance(predictions, labels)`, i.e. covariance
+- `streaming_covariance(predictions, predictions)`, i.e. variance
+- `streaming_covariance(labels, labels)`, i.e. variance
 
 The product-moment correlation ultimately returned is an idempotent operation
 `cov(predictions, labels) / sqrt(var(predictions) * var(labels))`. To
@@ -35,7 +36,7 @@ https://wikipedia.org/wiki/Weighted_arithmetic_mean#Weighted_sample_variance
 ##### Returns:
 
 
-*  <b>`pearson_r`</b>: A tensor representing the current pearson product-moment
+*  <b>`pearson_r`</b>: A tensor representing the current Pearson product-moment
     correlation coefficient, the value of
     `cov(predictions, labels) / sqrt(var(predictions) * var(labels))`.
 *  <b>`update_op`</b>: An operation that updates the underlying variables appropriately.

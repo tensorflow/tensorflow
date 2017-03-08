@@ -293,6 +293,56 @@ class ParseExampleTest(tf.test.TestCase):
         },
         expected_output)
 
+  # This test is identical as the previous one except
+  # for the creation of 'serialized'.
+  def testSerializedContainingDenseWithConcat(self):
+    aname = "a"
+    bname = "b*has+a:tricky_name"
+    # TODO(lew): Feature appearing twice should be an error in future.
+    original = [
+        (
+            example(features=features({
+                aname: float_feature([10, 10]),
+            })),
+            example(features=features({
+                aname: float_feature([1, 1]),
+                bname: bytes_feature([b"b0_str"]),
+            }))
+        ),
+        (
+            example(features=features({
+                bname: bytes_feature([b"b100"]),
+            })),
+            example(features=features({
+                aname: float_feature([-1, -1]),
+                bname: bytes_feature([b"b1"]),
+            })),
+        ),
+    ]
+
+    serialized = [
+        m.SerializeToString() + n.SerializeToString() for (m, n) in original]
+
+    expected_output = {
+        aname: np.array(
+            [[1, 1], [-1, -1]], dtype=np.float32).reshape(2, 1, 2, 1),
+        bname: np.array(
+            ["b0_str", "b1"], dtype=bytes).reshape(2, 1, 1, 1, 1),
+    }
+
+    # No defaults, values required
+    self._test(
+        {
+            "serialized": tf.convert_to_tensor(serialized),
+            "features": {
+                aname: tf.FixedLenFeature(
+                    (1, 2, 1), dtype=tf.float32),
+                bname: tf.FixedLenFeature(
+                    (1, 1, 1, 1), dtype=tf.string),
+            }
+        },
+        expected_output)
+
   def testSerializedContainingDenseScalar(self):
     original = [
         example(features=features({

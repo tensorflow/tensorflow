@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import time
 
 import numpy as np
 import tensorflow as tf
@@ -1209,6 +1210,39 @@ class DeepConv2DTest(tf.test.TestCase):
 
   def testConv2D3x3FilterStride1x1Same(self):
     self._RunTestCases([1, 1], "SAME")
+
+
+class Conv2DBenchmark(tf.test.Benchmark):
+
+  def benchmarkGPUConvStackFirst(self):
+    # Benchmark the first iteration of a conv-net with many identical conv
+    # operations.
+    if not tf.test.is_gpu_available():
+      return
+
+    with tf.Graph().as_default(), tf.Session() as session:
+      batch_size = 1
+      timesteps = 600
+      features = 1
+
+      inputs = tf.random_uniform(
+          [batch_size, 1, timesteps, features], seed=1234)
+      num_outputs_list = [512] * 40 + [1]
+      kernel_w = 3
+      x = inputs
+      for num_outputs in num_outputs_list:
+        x = tf.contrib.layers.convolution2d(x, num_outputs, [1, kernel_w])
+      outputs = x
+
+      tf.global_variables_initializer().run()
+      num_iterations = 4
+      for iter_index in xrange(num_iterations):
+        start = time.time()
+        session.run(outputs)
+        wall_time = time.time() - start
+        self.report_benchmark(
+            name="conv_stack_iter_%d" % iter_index, wall_time=wall_time)
+        print("conv_stack_iter_%d: %.4f" % (iter_index, wall_time))
 
 
 def GetInceptionFwdTest(input_size, filter_size, stride, padding):

@@ -41,7 +41,7 @@ class GrowTreeTest(test_util.TensorFlowTestCase):
 
   def testSimple(self):
     with self.test_session():
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       update_list, tree_updates, threshold_updates, new_eot = (
           self.ops.grow_tree(self.eot, self.node_map, self.finished,
                              self.best_splits, self.split_features,
@@ -57,7 +57,7 @@ class GrowTreeTest(test_util.TensorFlowTestCase):
 
   def testNoRoomToGrow(self):
     with self.test_session():
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       # Even though there's one free node, there needs to be 2 to grow.
       tf.assign(self.eot, [6]).eval()
 
@@ -73,7 +73,7 @@ class GrowTreeTest(test_util.TensorFlowTestCase):
 
   def testNoFinished(self):
     with self.test_session():
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
 
       update_list, tree_updates, threshold_updates, new_eot = (
           self.ops.grow_tree(self.eot, self.node_map, [], [],
@@ -86,7 +86,7 @@ class GrowTreeTest(test_util.TensorFlowTestCase):
 
   def testBadInput(self):
     with self.test_session():
-      tf.initialize_all_variables().run()
+      tf.global_variables_initializer().run()
       with self.assertRaisesOpError(
           'Number of finished nodes should be the same in finished and '
           'best_splits.'):

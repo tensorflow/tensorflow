@@ -63,7 +63,7 @@ class CudnnRNNBenchmark(tf.test.Benchmark):
     burn_in_steps = 10
     benchmark_steps = 40
     with tf.Session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       for i in xrange(burn_in_steps + benchmark_steps):
         if i == burn_in_steps:
           start_time = time.time()

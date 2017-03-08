@@ -21,7 +21,7 @@ If `E_p[|f(Z)|] < infinity`, then `S_n --> E_p[f(Z)]` by the strong law of large
 numbers.  If `E_p[f(Z)^2] < infinity`, then `S_n` is asymptotically normal with
 variance `Var[f(Z)] / n`.
 
-Practicioners of Bayesian statistics often find themselves wanting to estimate
+Practitioners of Bayesian statistics often find themselves wanting to estimate
 `E_p[f(Z)]` when the distribution `p` is known only up to a constant.  For
 example, the joint distribution `p(z, x)` may be known, but the evidence
 `p(x) = \int p(z, x) dz` may be intractable.  In that case, a parameterized
@@ -70,7 +70,7 @@ User supplies either `Tensor` of samples `z`, or number of samples to draw `n`
 
 
 *  <b>`f`</b>: Callable mapping samples from `p` to `Tensors`.
-*  <b>`p`</b>: `tf.contrib.distributions.BaseDistribution`.
+*  <b>`p`</b>: `tf.contrib.distributions.Distribution`.
 *  <b>`z`</b>: `Tensor` of samples from `p`, produced by `p.sample_n`.
 *  <b>`n`</b>: Integer `Tensor`.  Number of samples to generate if `z` is not provided.
 *  <b>`seed`</b>: Python integer to seed the random number generator.
@@ -142,7 +142,7 @@ User supplies either `Tensor` of samples `z`, or number of samples to draw `n`
     shape broadcastable to `q.batch_shape`.
     For example, `log_p` works "just like" `sampling_dist_q.log_prob`.
 *  <b>`sampling_dist_q`</b>: The sampling distribution.
-    `tf.contrib.distributions.BaseDistribution`.
+    `tf.contrib.distributions.Distribution`.
     `float64` `dtype` recommended.
     `log_p` and `q` should be supported on the same set.
 *  <b>`z`</b>: `Tensor` of samples from `q`, produced by `q.sample_n`.
@@ -190,7 +190,7 @@ User supplies either `Tensor` of samples `z`, or number of samples to draw `n`
     shape broadcastable to `q.batch_shape`.
     For example, `log_p` works "just like" `q.log_prob`.
 *  <b>`sampling_dist_q`</b>: The sampling distribution.
-    `tf.contrib.distributions.BaseDistribution`.
+    `tf.contrib.distributions.Distribution`.
     `float64` `dtype` recommended.
     `log_p` and `q` should be supported on the same set.
 *  <b>`z`</b>: `Tensor` of samples from `q`, produced by `q.sample_n`.

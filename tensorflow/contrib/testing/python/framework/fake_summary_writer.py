@@ -17,7 +17,9 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
 from tensorflow.core.framework import summary_pb2
+from tensorflow.python.summary.writer import writer_cache
 from tensorflow.python.training import summary_io
 
 
@@ -33,12 +35,14 @@ class FakeSummaryWriter(object):
       raise ValueError('FakeSummaryWriter already installed.')
     cls._replaced_summary_writer = summary_io.SummaryWriter
     summary_io.SummaryWriter = FakeSummaryWriter
+    writer_cache.SummaryWriter = FakeSummaryWriter
 
   @classmethod
   def uninstall(cls):
     if not cls._replaced_summary_writer:
       raise ValueError('FakeSummaryWriter not installed.')
     summary_io.SummaryWriter = cls._replaced_summary_writer
+    writer_cache.SummaryWriter = cls._replaced_summary_writer
     cls._replaced_summary_writer = None
 
   def __init__(self, logdir, graph=None):
@@ -46,6 +50,7 @@ class FakeSummaryWriter(object):
     self._graph = graph
     self._summaries = {}
     self._added_graphs = []
+    self._added_meta_graphs = []
     self._added_session_logs = []
 
   @property
@@ -55,7 +60,7 @@ class FakeSummaryWriter(object):
   def assert_summaries(
       self, test_case, expected_logdir=None, expected_graph=None,
       expected_summaries=None, expected_added_graphs=None,
-      expected_session_logs=None):
+      expected_added_meta_graphs=None, expected_session_logs=None):
     """Assert expected items have been added to summary writer."""
     if expected_logdir is not None:
       test_case.assertEqual(expected_logdir, self._logdir)
@@ -76,6 +81,8 @@ class FakeSummaryWriter(object):
       test_case.assertEqual(expected_summaries[step], actual_simple_values)
     if expected_added_graphs is not None:
       test_case.assertEqual(expected_added_graphs, self._added_graphs)
+    if expected_added_meta_graphs is not None:
+      test_case.assertEqual(expected_added_meta_graphs, self._added_meta_graphs)
     if expected_session_logs is not None:
       test_case.assertEqual(expected_session_logs, self._added_session_logs)
 
@@ -100,6 +107,12 @@ class FakeSummaryWriter(object):
     if graph_def is not None:
       raise ValueError('Unexpected graph_def %s.' % graph_def)
     self._added_graphs.append(graph)
+
+  def add_meta_graph(self, meta_graph_def, global_step=None):
+    """Add metagraph."""
+    if (global_step is not None) and (global_step < 0):
+      raise ValueError('Invalid global_step %s.' % global_step)
+    self._added_meta_graphs.append(meta_graph_def)
 
   # NOTE: Ignore global_step since its value is non-deterministic.
   def add_session_log(self, session_log, global_step=None):

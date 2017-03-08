@@ -15,7 +15,7 @@ system result in the same boxes being selected by the algorithm.
 The output of this operation is a set of integers indexing into the input
 collection of bounding boxes representing the selected boxes.  The bounding
 box coordinates corresponding to the selected indices can then be obtained
-using the tf.gather operation.  For example:
+using the `tf.gather operation`.  For example:
 
   selected_indices = tf.image.non_max_suppression(
       boxes, scores, max_output_size, iou_threshold)

@@ -148,7 +148,7 @@ given variable.
 
 
 *  <b>`loss`</b>: A Tensor containing the value to minimize.
-*  <b>`var_list`</b>: Optional list of tf.Variable to update to minimize
+*  <b>`var_list`</b>: Optional list of `tf.Variable` to update to minimize
     `loss`.  Defaults to the list of variables collected in the graph
     under the key `GraphKey.TRAINABLE_VARIABLES`.
 *  <b>`gate_gradients`</b>: How to gate the computation of gradients.  Can be
@@ -161,7 +161,8 @@ given variable.
 
 ##### Returns:
 
-  A list of (gradient, variable) pairs.
+  A list of (gradient, variable) pairs. Variable is always present, but
+  gradient can be `None`.
 
 ##### Raises:
 
@@ -532,16 +533,79 @@ Construct a new FTRL optimizer.
 
 - - -
 
+### `class tf.train.ProximalGradientDescentOptimizer` {#ProximalGradientDescentOptimizer}
+
+Optimizer that implements the proximal gradient descent algorithm.
+
+See this [paper](http://papers.nips.cc/paper/3793-efficient-learning-using-forward-backward-splitting.pdf).
+
+- - -
+
+#### `tf.train.ProximalGradientDescentOptimizer.__init__(learning_rate, l1_regularization_strength=0.0, l2_regularization_strength=0.0, use_locking=False, name='ProximalGradientDescent')` {#ProximalGradientDescentOptimizer.__init__}
+
+Construct a new proximal gradient descent optimizer.
+
+##### Args:
+
+
+*  <b>`learning_rate`</b>: A Tensor or a floating point value.  The learning
+    rate to use.
+*  <b>`l1_regularization_strength`</b>: A float value, must be greater than or
+    equal to zero.
+*  <b>`l2_regularization_strength`</b>: A float value, must be greater than or
+    equal to zero.
+*  <b>`use_locking`</b>: If True use locks for update operations.
+*  <b>`name`</b>: Optional name prefix for the operations created when applying
+    gradients. Defaults to "GradientDescent".
+
+
+
+- - -
+
+### `class tf.train.ProximalAdagradOptimizer` {#ProximalAdagradOptimizer}
+
+Optimizer that implements the Proximal Adagrad algorithm.
+
+See this [paper](http://papers.nips.cc/paper/3793-efficient-learning-using-forward-backward-splitting.pdf).
+
+- - -
+
+#### `tf.train.ProximalAdagradOptimizer.__init__(learning_rate, initial_accumulator_value=0.1, l1_regularization_strength=0.0, l2_regularization_strength=0.0, use_locking=False, name='ProximalAdagrad')` {#ProximalAdagradOptimizer.__init__}
+
+Construct a new ProximalAdagrad optimizer.
+
+##### Args:
+
+
+*  <b>`learning_rate`</b>: A `Tensor` or a floating point value.  The learning rate.
+*  <b>`initial_accumulator_value`</b>: A floating point value.
+    Starting value for the accumulators, must be positive.
+*  <b>`l1_regularization_strength`</b>: A float value, must be greater than or
+    equal to zero.
+*  <b>`l2_regularization_strength`</b>: A float value, must be greater than or
+    equal to zero.
+*  <b>`use_locking`</b>: If `True` use locks for update operations.
+*  <b>`name`</b>: Optional name prefix for the operations created when applying
+    gradients.  Defaults to "Adagrad".
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If the `initial_accumulator_value` is invalid.
+
+
+
+- - -
+
 ### `class tf.train.RMSPropOptimizer` {#RMSPropOptimizer}
 
 Optimizer that implements the RMSProp algorithm.
 
-See the [paper]
-(http://www.cs.toronto.edu/~tijmen/csc321/slides/lecture_slides_lec6.pdf).
+See the [paper](http://www.cs.toronto.edu/~tijmen/csc321/slides/lecture_slides_lec6.pdf).
 
 - - -
 
-#### `tf.train.RMSPropOptimizer.__init__(learning_rate, decay=0.9, momentum=0.0, epsilon=1e-10, use_locking=False, name='RMSProp')` {#RMSPropOptimizer.__init__}
+#### `tf.train.RMSPropOptimizer.__init__(learning_rate, decay=0.9, momentum=0.0, epsilon=1e-10, use_locking=False, centered=False, name='RMSProp')` {#RMSPropOptimizer.__init__}
 
 Construct a new RMSProp optimizer.
 
@@ -557,6 +621,10 @@ will not update in iterations g is zero.
 *  <b>`momentum`</b>: A scalar tensor.
 *  <b>`epsilon`</b>: Small value to avoid zero denominator.
 *  <b>`use_locking`</b>: If True use locks for update operation.
+*  <b>`centered`</b>: If True, gradients are normalized by the estimated variance of
+    the gradient; if False, by the uncentered second moment. Setting this to
+    True may help with training, but is slightly more expensive in terms of
+    computation and memory. Defaults to False.
 *  <b>`name`</b>: Optional name prefix for the operations created when applying
     gradients. Defaults to "RMSProp".
 
@@ -673,6 +741,46 @@ to pretend that the value was a constant. Some examples include:
 ##### Returns:
 
   A `Tensor`. Has the same type as `input`.
+
+
+
+- - -
+
+### `tf.hessians(ys, xs, name='hessians', colocate_gradients_with_ops=False, gate_gradients=False, aggregation_method=None)` {#hessians}
+
+Constructs the Hessian of sum of `ys` with respect to `x` in `xs`.
+
+`hessians()` adds ops to the graph to output the Hessian matrix of `ys`
+with respect to `xs`.  It returns a list of `Tensor` of length `len(xs)`
+where each tensor is the Hessian of `sum(ys)`. This function currently
+only supports evaluating the Hessian with respect to (a list of) one-
+dimensional tensors.
+
+The Hessian is a matrix of second-order partial derivatives of a scalar
+tensor (see https://en.wikipedia.org/wiki/Hessian_matrix for more details).
+
+##### Args:
+
+
+*  <b>`ys`</b>: A `Tensor` or list of tensors to be differentiated.
+*  <b>`xs`</b>: A `Tensor` or list of tensors to be used for differentiation.
+*  <b>`name`</b>: Optional name to use for grouping all the gradient ops together.
+    defaults to 'hessians'.
+*  <b>`colocate_gradients_with_ops`</b>: See `gradients()` documentation for details.
+*  <b>`gate_gradients`</b>: See `gradients()` documentation for details.
+*  <b>`aggregation_method`</b>: See `gradients()` documentation for details.
+
+##### Returns:
+
+  A list of Hessian matrices of `sum(y)` for each `x` in `xs`.
+
+##### Raises:
+
+
+*  <b>`LookupError`</b>: if one of the operations between `xs` and `ys` does not
+    have a registered gradient function.
+*  <b>`ValueError`</b>: if the arguments are invalid or not supported. Currently,
+    this function only supports one-dimensional `x` in `xs`.
 
 
 
@@ -913,14 +1021,262 @@ learning_step = (
     Must be positive.  See the decay computation above.
 *  <b>`decay_rate`</b>: A scalar `float32` or `float64` `Tensor` or a
     Python number.  The decay rate.
-*  <b>`staircase`</b>: Boolean.  It `True` decay the learning rate at discrete intervals
+*  <b>`staircase`</b>: Boolean.  If `True` decay the learning rate at discrete intervals
 *  <b>`name`</b>: String.  Optional name of the operation.  Defaults to
-    'ExponentialDecay'
+    'ExponentialDecay'.
 
 ##### Returns:
 
   A scalar `Tensor` of the same type as `learning_rate`.  The decayed
   learning rate.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `global_step` is not supplied.
+
+
+- - -
+
+### `tf.train.inverse_time_decay(learning_rate, global_step, decay_steps, decay_rate, staircase=False, name=None)` {#inverse_time_decay}
+
+Applies inverse time decay to the initial learning rate.
+
+When training a model, it is often recommended to lower the learning rate as
+the training progresses.  This function applies an inverse decay function
+to a provided initial learning rate.  It requires an `global_step` value to
+compute the decayed learning rate.  You can just pass a TensorFlow variable
+that you increment at each training step.
+
+The function returns the decayed learning rate.  It is computed as:
+
+```python
+decayed_learning_rate = learning_rate / (1 + decay_rate * t)
+```
+
+Example: decay 1/t with a rate of 0.5:
+
+```python
+...
+global_step = tf.Variable(0, trainable=False)
+learning_rate = 0.1
+k = 0.5
+learning_rate = tf.train.inverse_time_decay(learning_rate, global_step, k)
+
+# Passing global_step to minimize() will increment it at each step.
+learning_step = (
+    tf.train.GradientDescentOptimizer(learning_rate)
+    .minimize(...my loss..., global_step=global_step)
+)
+```
+
+##### Args:
+
+
+*  <b>`learning_rate`</b>: A scalar `float32` or `float64` `Tensor` or a
+    Python number.  The initial learning rate.
+*  <b>`global_step`</b>: A Python number.
+    Global step to use for the decay computation.  Must not be negative.
+*  <b>`decay_steps`</b>: How often to apply decay.
+*  <b>`decay_rate`</b>: A Python number.  The decay rate.
+*  <b>`staircase`</b>: Whether to apply decay in a discrete staircase, as opposed to
+    continuous, fashion.
+*  <b>`name`</b>: String.  Optional name of the operation.  Defaults to
+    'InverseTimeDecay'.
+
+##### Returns:
+
+  A scalar `Tensor` of the same type as `learning_rate`.  The decayed
+  learning rate.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `global_step` is not supplied.
+
+
+- - -
+
+### `tf.train.natural_exp_decay(learning_rate, global_step, decay_steps, decay_rate, staircase=False, name=None)` {#natural_exp_decay}
+
+Applies natural exponential decay to the initial learning rate.
+
+When training a model, it is often recommended to lower the learning rate as
+the training progresses.  This function applies an exponential decay function
+to a provided initial learning rate.  It requires an `global_step` value to
+compute the decayed learning rate.  You can just pass a TensorFlow variable
+that you increment at each training step.
+
+The function returns the decayed learning rate.  It is computed as:
+
+```python
+decayed_learning_rate = learning_rate * exp(-decay_rate * global_step)
+```
+
+Example: decay exponentially with a base of 0.96:
+
+```python
+...
+global_step = tf.Variable(0, trainable=False)
+learning_rate = 0.1
+k = 0.5
+learning_rate = tf.train.exponential_time_decay(learning_rate, global_step, k)
+
+# Passing global_step to minimize() will increment it at each step.
+learning_step = (
+    tf.train.GradientDescentOptimizer(learning_rate)
+    .minimize(...my loss..., global_step=global_step)
+)
+```
+
+##### Args:
+
+
+*  <b>`learning_rate`</b>: A scalar `float32` or `float64` `Tensor` or a
+    Python number.  The initial learning rate.
+*  <b>`global_step`</b>: A Python number.
+    Global step to use for the decay computation.  Must not be negative.
+*  <b>`decay_steps`</b>: How often to apply decay.
+*  <b>`decay_rate`</b>: A Python number.  The decay rate.
+*  <b>`staircase`</b>: Whether to apply decay in a discrete staircase, as opposed to
+    continuous, fashion.
+*  <b>`name`</b>: String.  Optional name of the operation.  Defaults to
+    'ExponentialTimeDecay'.
+
+##### Returns:
+
+  A scalar `Tensor` of the same type as `learning_rate`.  The decayed
+  learning rate.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `global_step` is not supplied.
+
+
+- - -
+
+### `tf.train.piecewise_constant(x, boundaries, values, name=None)` {#piecewise_constant}
+
+Piecewise constant from boundaries and interval values.
+
+Example: use a learning rate that's 1.0 for the first 100000 steps, 0.5
+  for steps 100001 to 110000, and 0.1 for any additional steps.
+
+```python
+global_step = tf.Variable(0, trainable=False)
+boundaries = [100000, 110000]
+values = [1.0, 0.5, 0.1]
+learning_rate = tf.train.piecewise_constant(global_step, boundaries, values)
+
+# Later, whenever we perform an optimization step, we increment global_step.
+```
+
+##### Args:
+
+
+*  <b>`x`</b>: A 0-D scalar `Tensor`. Must be one of the following types: `float32`,
+    `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`.
+*  <b>`boundaries`</b>: A list of `Tensor`s or `int`s or `float`s with strictly
+    increasing entries, and with all elements having the same type as `x`.
+*  <b>`values`</b>: A list of `Tensor`s or float`s or `int`s that specifies the values
+    for the intervals defined by `boundaries`. It should have one more element
+    than `boundaries`, and all elements should have the same type.
+*  <b>`name`</b>: A string. Optional name of the operation. Defaults to
+    'PiecewiseConstant'.
+
+##### Returns:
+
+  A 0-D Tensor. Its value is `values[0]` when `x <= boundaries[0]`,
+  `values[1]` when `x > boundaries[0]` and `x <= boundaries[1]`, ...,
+  and values[-1] when `x > boundaries[-1]`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if types of `x` and `buondaries` do not match, or types of all
+      `values` do not match.
+
+
+- - -
+
+### `tf.train.polynomial_decay(learning_rate, global_step, decay_steps, end_learning_rate=0.0001, power=1.0, cycle=False, name=None)` {#polynomial_decay}
+
+Applies a polynomial decay to the learning rate.
+
+It is commonly observed that a monotonically decreasing learning rate, whose
+degree of change is carefully chosen, results in a better performing model.
+This function applies a polynomial decay function to a provided initial
+`learning_rate` to reach an `end_learning_rate` in the given `decay_steps`.
+
+It requires a `global_step` value to compute the decayed learning rate.  You
+can just pass a TensorFlow variable that you increment at each training step.
+
+The function returns the decayed learning rate.  It is computed as:
+
+```python
+global_step = min(global_step, decay_steps)
+decayed_learning_rate = (learning_rate - end_learning_rate) *
+                        (1 - global_step / decay_steps) ^ (power) +
+                        end_learning_rate
+
+```
+
+If `cycle` is True then a multiple of `decay_steps` is used, the first one
+that is bigger than `global_steps`.
+
+```python
+decay_steps = decay_steps * ceil(global_step / decay_steps)
+decayed_learning_rate = (learning_rate - end_learning_rate) *
+                        (1 - global_step / decay_steps) ^ (power) +
+                        end_learning_rate
+
+```
+
+Example: decay from 0.1 to 0.01 in 10000 steps using sqrt (i.e. power=0.5):
+
+```python
+...
+global_step = tf.Variable(0, trainable=False)
+starter_learning_rate = 0.1
+end_learning_rate = 0.01
+decay_steps = 10000
+learning_rate = tf.train.polynomial_decay(starter_learning_rate, global_step,
+                                          decay_steps, end_learning_rate,
+                                          power=0.5)
+# Passing global_step to minimize() will increment it at each step.
+learning_step = (
+    tf.train.GradientDescentOptimizer(learning_rate)
+    .minimize(...my loss..., global_step=global_step)
+)
+```
+
+##### Args:
+
+
+*  <b>`learning_rate`</b>: A scalar `float32` or `float64` `Tensor` or a
+    Python number.  The initial learning rate.
+*  <b>`global_step`</b>: A scalar `int32` or `int64` `Tensor` or a Python number.
+    Global step to use for the decay computation.  Must not be negative.
+*  <b>`decay_steps`</b>: A scalar `int32` or `int64` `Tensor` or a Python number.
+    Must be positive.  See the decay computation above.
+*  <b>`end_learning_rate`</b>: A scalar `float32` or `float64` `Tensor` or a
+    Python number.  The minimal end learning rate.
+*  <b>`power`</b>: A scalar `float32` or `float64` `Tensor` or a
+    Python number.  The power of the polynomial. Defaults to sqrt, i.e. 0.5.
+*  <b>`cycle`</b>: A boolean, whether or not it should cycle beyond decay_steps.
+*  <b>`name`</b>: String.  Optional name of the operation. Defaults to
+    'PolynomialDecay'.
+
+##### Returns:
+
+  A scalar `Tensor` of the same type as `learning_rate`.  The decayed
+  learning rate.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `global_step` is not supplied.
 
 
 
@@ -1024,7 +1380,7 @@ The `apply()` method has to be called to create shadow variables and add
 ops to maintain moving averages.
 
 The optional `num_updates` parameter allows one to tweak the decay rate
-dynamically. .  It is typical to pass the count of training steps, usually
+dynamically. It is typical to pass the count of training steps, usually
 kept in a variable that is incremented at each step, in which case the
 decay rate is lower at the start of training.  This makes moving averages
 move faster.  If passed, the actual decay rate used is:
@@ -1050,7 +1406,8 @@ Maintains moving averages of variables.
 creates shadow variables for all elements of `var_list`.  Shadow variables
 for `Variable` objects are initialized to the variable's initial value.
 They will be added to the `GraphKeys.MOVING_AVERAGE_VARIABLES` collection.
-For `Tensor` objects, the shadow variables are initialized to 0.
+For `Tensor` objects, the shadow variables are initialized to 0 and zero
+debiased (see docstring in `assign_moving_average` for more details).
 
 shadow variables are created with `trainable=False` and added to the
 `GraphKeys.ALL_VARIABLES` collection.  They will be returned by calls to
@@ -1122,7 +1479,7 @@ Returns the `Variable` holding the average of `var`.
 ##### Returns:
 
   A `Variable` object or `None` if the moving average of `var`
-  is not maintained..
+  is not maintained.
 
 
 - - -
@@ -1339,6 +1696,13 @@ that `RuntimeError`.
 
 - - -
 
+#### `tf.train.Coordinator.raise_requested_exception()` {#Coordinator.raise_requested_exception}
+
+If an exception has been passed to `request_stop`, this raises it.
+
+
+- - -
+
 #### `tf.train.Coordinator.register_thread(thread)` {#Coordinator.register_thread}
 
 Register a thread to join.
@@ -1453,7 +1817,7 @@ and reporting exceptions, etc.
 The `QueueRunner`, combined with the `Coordinator`, helps handle these issues.
 - - -
 
-#### `tf.train.QueueRunner.__init__(queue=None, enqueue_ops=None, close_op=None, cancel_op=None, queue_closed_exception_types=None, queue_runner_def=None)` {#QueueRunner.__init__}
+#### `tf.train.QueueRunner.__init__(queue=None, enqueue_ops=None, close_op=None, cancel_op=None, queue_closed_exception_types=None, queue_runner_def=None, import_scope=None)` {#QueueRunner.__init__}
 
 Create a QueueRunner.
 
@@ -1481,6 +1845,8 @@ to all be the same op, but it is expected that they all enqueue tensors in
 *  <b>`queue_runner_def`</b>: Optional `QueueRunnerDef` protocol buffer. If specified,
     recreates the QueueRunner from its contents. `queue_runner_def` and the
     other arguments are mutually exclusive.
+*  <b>`import_scope`</b>: Optional `string`. Name scope to add. Only used when
+    initializing from protocol buffer.
 
 ##### Raises:
 
@@ -1508,19 +1874,19 @@ to all be the same op, but it is expected that they all enqueue tensors in
 
 #### `tf.train.QueueRunner.create_threads(sess, coord=None, daemon=False, start=False)` {#QueueRunner.create_threads}
 
-Create threads to run the enqueue ops.
+Create threads to run the enqueue ops for the given session.
 
 This method requires a session in which the graph was launched.  It creates
 a list of threads, optionally starting them.  There is one thread for each
 op passed in `enqueue_ops`.
 
-The `coord` argument is an optional coordinator, that the threads will use
+The `coord` argument is an optional coordinator that the threads will use
 to terminate together and report exceptions.  If a coordinator is given,
 this method starts an additional thread to close the queue when the
 coordinator requests a stop.
 
-This method may be called again as long as all threads from a previous call
-have stopped.
+If previously created threads for the given session are still running, no
+new threads will be created.
 
 ##### Args:
 
@@ -1535,12 +1901,6 @@ have stopped.
 ##### Returns:
 
   A list of threads.
-
-##### Raises:
-
-
-*  <b>`RuntimeError`</b>: If threads from a previous call to `create_threads()` are
-  still running.
 
 
 - - -
@@ -1573,7 +1933,7 @@ depending on whether or not a `Coordinator` was passed to
 
 - - -
 
-#### `tf.train.QueueRunner.from_proto(queue_runner_def)` {#QueueRunner.from_proto}
+#### `tf.train.QueueRunner.from_proto(queue_runner_def, import_scope=None)` {#QueueRunner.from_proto}
 
 Returns a `QueueRunner` object created from `queue_runner_def`.
 
@@ -1601,13 +1961,19 @@ The string name of the underlying Queue.
 
 - - -
 
-#### `tf.train.QueueRunner.to_proto()` {#QueueRunner.to_proto}
+#### `tf.train.QueueRunner.to_proto(export_scope=None)` {#QueueRunner.to_proto}
 
 Converts this `QueueRunner` to a `QueueRunnerDef` protocol buffer.
 
+##### Args:
+
+
+*  <b>`export_scope`</b>: Optional `string`. Name scope to remove.
+
 ##### Returns:
 
-  A `QueueRunnerDef` protocol buffer.
+  A `QueueRunnerDef` protocol buffer, or `None` if the `Variable` is not in
+  the specified name scope.
 
 
 
@@ -2000,7 +2366,7 @@ Create a `Supervisor`.
     The directory will be created if it does not exist.
 *  <b>`summary_op`</b>: An `Operation` that returns a Summary for the event logs.
     Used by chief supervisors if a `logdir` was specified.  Defaults to the
-    operation returned from merge_all_summaries().  If `None`, summaries are
+    operation returned from summary.merge_all().  If `None`, summaries are
     not computed automatically.
 *  <b>`saver`</b>: A Saver object.  Used by chief supervisors if a `logdir` was
     specified.  Defaults to the saved returned by Saver().
@@ -2008,7 +2374,7 @@ Create a `Supervisor`.
 *  <b>`global_step`</b>: An integer Tensor of size 1 that counts steps.  The value
     from 'global_step' is used in summaries and checkpoint filenames.
     Default to the op named 'global_step' in the graph if it exists, is of
-    rank 1, size 1, and of type tf.int32 ot tf.int64.  If `None` the global
+    rank 1, size 1, and of type tf.int32 or tf.int64.  If `None` the global
     step is not recorded in summaries and checkpoint files.  Used by chief
     supervisors if a `logdir` was specified.
 *  <b>`save_summaries_secs`</b>: Number of seconds between the computation of
@@ -2874,7 +3240,7 @@ To create a cluster with two jobs and five tasks, you specify the
 mapping from job names to lists of network addresses (typically
 hostname-port pairs).
 
-```
+```python
 cluster = tf.train.ClusterSpec({"worker": ["worker0.example.com:2222",
                                            "worker1.example.com:2222",
                                            "worker2.example.com:2222"],
@@ -2887,7 +3253,7 @@ to network addresses. This enables a server to be configured without
 needing to know the identity of (for example) all other worker
 tasks:
 
-```
+```python
 cluster = tf.train.ClusterSpec({"worker": {1: "worker1.example.com:2222"},
                                 "ps": ["ps0.example.com:2222",
                                        "ps1.example.com:2222"]})
@@ -3077,7 +3443,7 @@ Returns a list of valid task indices in the given job.
 
 - - -
 
-### `tf.train.replica_device_setter(ps_tasks=0, ps_device='/job:ps', worker_device='/job:worker', merge_devices=True, cluster=None, ps_ops=None)` {#replica_device_setter}
+### `tf.train.replica_device_setter(ps_tasks=0, ps_device='/job:ps', worker_device='/job:worker', merge_devices=True, cluster=None, ps_ops=None, ps_strategy=None)` {#replica_device_setter}
 
 Return a `device function` to use when building a Graph for replicas.
 
@@ -3088,6 +3454,12 @@ outwards. The merging behavior adds constraints to fields that are yet unset
 by a more inner context. Currently the fields are (job, task, cpu/gpu).
 
 If `cluster` is `None`, and `ps_tasks` is 0, the returned function is a no-op.
+Otherwise, the value of `ps_tasks` is derived from `cluster`.
+
+By default, only Variable ops are placed on ps tasks, and the placement
+strategy is round-robin over all ps tasks. A custom `ps_strategy` may be used
+to do more intelligent placement, such as
+`tf.contrib.training.GreedyLoadBalancingStrategy`.
 
 For example,
 
@@ -3108,7 +3480,8 @@ with tf.device(tf.replica_device_setter(cluster=cluster_spec)):
 ##### Args:
 
 
-*  <b>`ps_tasks`</b>: Number of tasks in the `ps` job.
+*  <b>`ps_tasks`</b>: Number of tasks in the `ps` job.  Ignored if `cluster` is
+    provided.
 *  <b>`ps_device`</b>: String.  Device of the `ps` job.  If empty no `ps` job is used.
     Defaults to `ps`.
 *  <b>`worker_device`</b>: String.  Device of the `worker` job.  If empty no `worker`
@@ -3117,7 +3490,12 @@ with tf.device(tf.replica_device_setter(cluster=cluster_spec)):
     device constraint is completely unset. merges device specification rather
     than overriding them.
 *  <b>`cluster`</b>: `ClusterDef` proto or `ClusterSpec`.
-*  <b>`ps_ops`</b>: List of `Operation` objects that need to be placed on `ps` devices.
+*  <b>`ps_ops`</b>: List of strings representing `Operation` types that need to be
+    placed on `ps` devices.  If `None`, defaults to `["Variable"]`.
+*  <b>`ps_strategy`</b>: A callable invoked for every ps `Operation` (i.e. matched by
+    `ps_ops`), that takes the `Operation` and returns the ps task index to
+    use.  If `None`, defaults to a round-robin strategy across all `ps`
+    devices.
 
 ##### Returns:
 
@@ -3125,7 +3503,378 @@ with tf.device(tf.replica_device_setter(cluster=cluster_spec)):
 
 ##### Raises:
 
-  TypeError if `cluster` is not a dictionary or `ClusterDef` protocol buffer.
+  TypeError if `cluster` is not a dictionary or `ClusterDef` protocol buffer,
+  or if `ps_strategy` is provided but not a callable.
+
+
+- - -
+
+### `class tf.train.Scaffold` {#Scaffold}
+
+Structure to create or gather pieces commonly needed to train a model.
+
+When you build a model for training you usually need ops to initialize
+variables, a `Saver` to checkpoint them, an op to collect summaries for
+the visualizer, and so on.
+
+Various libraries built on top of the core TensorFlow library take care of
+creating some or all of these pieces and storing them in well known
+collections in the graph.  The `Scaffold` class helps pick these pieces from
+the graph collections, creating and adding them to the collections if needed.
+
+If you call the scaffold constructor without any arguments, it will pick
+pieces from the collections, creating default ones if needed when
+`scaffold.finalize()` is called.  You can pass arguments to the constructor to
+provide your own pieces.  Pieces that you pass to the constructor are not
+added to the graph collections.
+
+The following pieces are directly accessible as attributes of the `Scaffold`
+object:
+
+* `saver`: A `tf.Saver` object taking care of saving the variables.  Picked
+  from and stored into the `SAVERS` collection in the graph.
+* `init_op`: An op to run to initialize the variables.  Picked from and
+  stored into the `INIT_OP` collection in the graph.
+* `ready_op`: An op to verify that the variables are initialized.  Picked
+  from and stored into the `READY_OP` collection in the graph.
+* `local_init_op`: An op to initialize the local variables.  Picked
+  from and stored into the `LOCAL_INIT_OP` collection in the graph.
+* `summary_op`: An op to run and merge the summaries in the graph.  Picked
+  from and stored into the `SUMMARY_OP` collection in the graph.
+* `global_step`: A tensor containing the global step counter.  Picked
+  from and stored into the `GLOBAL_STEP` collection in the graph.
+
+You can also pass the following additional pieces to the constructor:
+
+* `init_feed_dict`: A sessionn feed dictionary that should be used when
+   running the init op.
+* `init_fn`: A callable to run run after the init op to perform additional
+  initializations.  The callable will be called as
+  `init_fn(scaffold, session)`.
+- - -
+
+#### `tf.train.Scaffold.__init__(init_op=None, init_feed_dict=None, init_fn=None, ready_op=None, local_init_op=None, summary_op=None, saver=None)` {#Scaffold.__init__}
+
+Create a scaffold.
+
+##### Args:
+
+
+*  <b>`init_op`</b>: Optional op for initializing variables.
+*  <b>`init_feed_dict`</b>: Optional session feed dictionary to use when running the
+    init_op.
+*  <b>`init_fn`</b>: Optional function to use to initialize the model after running
+    the init_op.  Will be called as `init_fn(scaffold, session)`.
+*  <b>`ready_op`</b>: Optional op to verify that the variables are initialized.  Must
+    return an empty scalar string tensor when the variables are
+    initialized, or a non-empty one listing the names of the
+    non-initialized variables.
+*  <b>`local_init_op`</b>: Optional op to initialize local variables.
+*  <b>`summary_op`</b>: Optional op to gather all summaries.  Must return a scalar
+    string tensor containing a serialized `Summary` proto.
+*  <b>`saver`</b>: Optional `tf.Saver` object to use to save and restore variables.
+
+
+- - -
+
+#### `tf.train.Scaffold.finalize()` {#Scaffold.finalize}
+
+Creates operations if needed and finalizes the graph.
+
+
+- - -
+
+#### `tf.train.Scaffold.get_or_default(arg_name, collection_key, default_constructor)` {#Scaffold.get_or_default}
+
+Get from cache or create a default operation.
+
+
+- - -
+
+#### `tf.train.Scaffold.init_feed_dict` {#Scaffold.init_feed_dict}
+
+
+
+
+- - -
+
+#### `tf.train.Scaffold.init_fn` {#Scaffold.init_fn}
+
+
+
+
+- - -
+
+#### `tf.train.Scaffold.init_op` {#Scaffold.init_op}
+
+
+
+
+- - -
+
+#### `tf.train.Scaffold.local_init_op` {#Scaffold.local_init_op}
+
+
+
+
+- - -
+
+#### `tf.train.Scaffold.ready_op` {#Scaffold.ready_op}
+
+
+
+
+- - -
+
+#### `tf.train.Scaffold.saver` {#Scaffold.saver}
+
+
+
+
+- - -
+
+#### `tf.train.Scaffold.summary_op` {#Scaffold.summary_op}
+
+
+
+
+
+- - -
+
+### `tf.train.MonitoredTrainingSession(master='', is_chief=True, checkpoint_dir=None, scaffold=None, hooks=None, chief_only_hooks=None, save_checkpoint_secs=600, save_summaries_steps=100, config=None)` {#MonitoredTrainingSession}
+
+Creates a `MonitoredSession` for training.
+
+For a chief, this utility sets proper session initializer/restorer. It also
+creates hooks related to checkpoint and summary saving. For workers, this
+utility sets proper session creator which waits for the chief to
+inialize/restore.
+
+
+##### Args:
+
+
+*  <b>`master`</b>: `String` the TensorFlow master to use.
+*  <b>`is_chief`</b>: If `True`, it will take care of initialization and recovery the
+    underlying TensorFlow session. If `False`, it will wait on a chief to
+    initialize or recover the TensorFlow session.
+*  <b>`checkpoint_dir`</b>: A string.  Optional path to a directory where to restore
+    variables.
+*  <b>`scaffold`</b>: A `Scaffold` used for gathering or building supportive ops. If
+    not specified, a default one is created. It's used to finalize the graph.
+*  <b>`hooks`</b>: Optional list of `SessionRunHook` objects.
+*  <b>`chief_only_hooks`</b>: list of `SessionRunHook` objects. Activate these hooks if
+    `is_chief==True`, ignore otherwise.
+*  <b>`save_checkpoint_secs`</b>: The frequency, in seconds, that a checkpoint is saved
+    using a default checkpoint saver. If `save_checkpoint_secs` is set to
+    `None`, then the default checkpoint saver isn't used.
+*  <b>`save_summaries_steps`</b>: The frequency, in number of global steps, that the
+    summaries are written to disk using a default summary saver. If
+    `save_summaries_steps` is set to `None`, then the default summary saver
+    isn't used.
+*  <b>`config`</b>: an instance of `tf.ConfigProto` proto used to configure the session.
+    It's the `config` argument of constructor of `tf.Session`.
+
+##### Returns:
+
+  A `MonitoredSession` object.
+
+
+- - -
+
+### `class tf.train.SessionCreator` {#SessionCreator}
+
+A factory for tf.Session.
+- - -
+
+#### `tf.train.SessionCreator.create_session()` {#SessionCreator.create_session}
+
+
+
+
+
+- - -
+
+### `class tf.train.ChiefSessionCreator` {#ChiefSessionCreator}
+
+Creates a tf.Session  for a chief.
+- - -
+
+#### `tf.train.ChiefSessionCreator.__init__(scaffold=None, master='', config=None, checkpoint_dir=None)` {#ChiefSessionCreator.__init__}
+
+Initializes a chief session creator.
+
+##### Args:
+
+
+*  <b>`scaffold`</b>: A `Scaffold` used for gathering or building supportive ops. If
+    not specified a default one is created. It's used to finalize the graph.
+*  <b>`master`</b>: `String` representation of the TensorFlow master to use.
+*  <b>`config`</b>: `ConfigProto` proto used to configure the session.
+*  <b>`checkpoint_dir`</b>: A string.  Optional path to a directory where to restore
+    variables.
+
+
+- - -
+
+#### `tf.train.ChiefSessionCreator.create_session()` {#ChiefSessionCreator.create_session}
+
+
+
+
+
+- - -
+
+### `class tf.train.WorkerSessionCreator` {#WorkerSessionCreator}
+
+Creates a tf.Session for a worker.
+- - -
+
+#### `tf.train.WorkerSessionCreator.__init__(scaffold=None, master='', config=None)` {#WorkerSessionCreator.__init__}
+
+Initializes a worker session creator.
+
+##### Args:
+
+
+*  <b>`scaffold`</b>: A `Scaffold` used for gathering or building supportive ops. If
+    not specified a default one is created. It's used to finalize the graph.
+*  <b>`master`</b>: `String` representation of the TensorFlow master to use.
+*  <b>`config`</b>: `ConfigProto` proto used to configure the session.
+
+
+- - -
+
+#### `tf.train.WorkerSessionCreator.create_session()` {#WorkerSessionCreator.create_session}
+
+
+
+
+
+- - -
+
+### `class tf.train.MonitoredSession` {#MonitoredSession}
+
+Session-like object that handles initialization, recovery and hooks.
+
+Example usage:
+```python
+saver_hook = CheckpointSaverHook(...)
+summary_hook = SummaryHook(...)
+with MonitoredSession(session_creator=ChiefSessionCreator(...),
+                      hooks=[saver_hook, summary_hook]) as sess:
+  while not sess.should_stop():
+    sess.run(train_op)
+```
+
+Initialization: At creation time the monitored session does following things
+in given order:
+
+* calls `hook.begin()`
+* finalizes the graph via `scaffold.finalize()`
+* create session
+* initializes the model via initialization ops provided by `Scaffold`
+* restores variables if a checkpoint exists
+* launches queue runners
+
+Run: When `run()` is called, the monitored session does following things:
+
+* calls `hook.before_run()`
+* calls TensorFlow `session.run()` with merged fetches and feed_dict
+* calls `hook.after_run()`
+* returns result of `session.run()` asked by user
+* if `AbortedError` occurs, it recovers or reinitializes the session before
+  executing the run() call again
+
+
+Exit: At the `close()`, the monitored session does following things in order:
+
+* calls `hook.end()`
+* closes the queue runners and the session
+* surpresses `OutOfRange` error which indicates that all inputs have been
+  processed if the monitored_session is used as a context.
+
+How to set `tf.Session` arguments:
+* In most cases you can set session arguments as follows:
+  ```python
+  MonitoredSession(
+    session_creator=ChiefSessionCreator(master=..., config=...))
+  ```
+* In distributed setting for a non-chief worker, you can use following:
+  ```python
+  MonitoredSession(
+    session_creator=WorkerSessionCreator(master=..., config=...))
+  ```
+See `MonitoredTrainingSession` for an example usage based on chief or worker.
+- - -
+
+#### `tf.train.MonitoredSession.__enter__()` {#MonitoredSession.__enter__}
+
+
+
+
+- - -
+
+#### `tf.train.MonitoredSession.__exit__(exception_type, exception_value, traceback)` {#MonitoredSession.__exit__}
+
+
+
+
+- - -
+
+#### `tf.train.MonitoredSession.__init__(session_creator=None, hooks=None)` {#MonitoredSession.__init__}
+
+Creates a MonitoredSession.
+
+##### Args:
+
+
+*  <b>`session_creator`</b>: A factory object to create session. Typically a
+    `ChiefSessionCreator` which is the default one.
+*  <b>`hooks`</b>: An iterable of `SessionRunHook' objects.
+
+
+- - -
+
+#### `tf.train.MonitoredSession.close()` {#MonitoredSession.close}
+
+
+
+
+- - -
+
+#### `tf.train.MonitoredSession.graph` {#MonitoredSession.graph}
+
+The graph that was launched in this session.
+
+
+- - -
+
+#### `tf.train.MonitoredSession.run(fetches, feed_dict=None, options=None, run_metadata=None)` {#MonitoredSession.run}
+
+Run ops in the monitored session.
+
+This method is completely compatible with the `tf.Session.run()` method.
+
+##### Args:
+
+
+*  <b>`fetches`</b>: Same as `tf.Session.run()`.
+*  <b>`feed_dict`</b>: Same as `tf.Session.run()`.
+*  <b>`options`</b>: Same as `tf.Session.run()`.
+*  <b>`run_metadata`</b>: Same as `tf.Session.run()`.
+
+##### Returns:
+
+  Same as `tf.Session.run()`.
+
+
+- - -
+
+#### `tf.train.MonitoredSession.should_stop()` {#MonitoredSession.should_stop}
+
+
+
 
 
 
@@ -3246,7 +3995,8 @@ build the `tag` of the summary values:
     of the summary values.
 *  <b>`tensor`</b>: A 3-D `float32` `Tensor` of shape `[batch_size, frames, channels]`
     or a 2-D `float32` `Tensor` of shape `[batch_size, frames]`.
-*  <b>`sample_rate`</b>: The sample rate of the signal in hertz.
+*  <b>`sample_rate`</b>: A Scalar `float32` `Tensor` indicating the sample rate of the
+    signal in hertz.
 *  <b>`max_outputs`</b>: Max number of batch elements to generate audio for.
 *  <b>`collections`</b>: Optional list of ops.GraphKeys.  The collections to add the
     summary to.  Defaults to [ops.GraphKeys.SUMMARIES]
@@ -3296,8 +4046,10 @@ If `value` is empty, the result is `nan`.
 
 This is useful in summaries to measure and report sparsity.  For example,
 
+```python
     z = tf.Relu(...)
     summ = tf.scalar_summary('sparsity', tf.nn.zero_fraction(z))
+```
 
 ##### Args:
 
@@ -3372,7 +4124,7 @@ overview of summaries, event files, and visualization in TensorBoard.
 
 Writes `Summary` protocol buffers to event files.
 
-The `SummaryWriter` class provides a mechanism to create an event file in a
+The `FileWriter` class provides a mechanism to create an event file in a
 given directory and add summaries and events to it. The class updates the
 file contents asynchronously. This allows a training program to call methods
 to add data to the file directly from the training loop, without slowing down
@@ -3382,7 +4134,7 @@ training.
 
 #### `tf.train.SummaryWriter.__init__(logdir, graph=None, max_queue=10, flush_secs=120, graph_def=None)` {#SummaryWriter.__init__}
 
-Creates a `SummaryWriter` and an event file.
+Creates a `FileWriter` and an event file.
 
 On construction the summary writer creates a new event file in `logdir`.
 This event file will contain `Event` protocol buffers constructed when you
@@ -3454,7 +4206,7 @@ commonly done to report evaluation results in event files.
 
 Adds a `SessionLog` protocol buffer to the event file.
 
-This method wraps the provided session in an `Event` procotol buffer
+This method wraps the provided session in an `Event` protocol buffer
 and adds it to the event file.
 
 ##### Args:
@@ -3553,12 +4305,43 @@ Call this method when you do not need the summary writer anymore.
 
 #### `tf.train.SummaryWriter.reopen()` {#SummaryWriter.reopen}
 
-Reopens the summary writer.
+Reopens the EventFileWriter.
 
 Can be called after `close()` to add more events in the same directory.
 The events will go into a new events file.
 
-Does nothing if the summary writer was not closed.
+Does nothing if the EventFileWriter was not closed.
+
+
+
+- - -
+
+### `class tf.train.SummaryWriterCache` {#SummaryWriterCache}
+
+Cache for summary writers.
+
+This class caches summary writers, one per directory.
+- - -
+
+#### `tf.train.SummaryWriterCache.clear()` {#SummaryWriterCache.clear}
+
+Clear cached summary writers. Currently only used for unit tests.
+
+
+- - -
+
+#### `tf.train.SummaryWriterCache.get(logdir)` {#SummaryWriterCache.get}
+
+Returns the SummaryWriter for the specified directory.
+
+##### Args:
+
+
+*  <b>`logdir`</b>: str, name of the directory.
+
+##### Returns:
+
+  A `SummaryWriter`.
 
 
 
@@ -3622,7 +4405,6 @@ global_step_tensor = tf.Variable(10, trainable=False, name='global_step')
 # Creates a session.
 sess = tf.Session()
 # Initializes the variable.
-sess.run(global_step_tensor.initializer)
 print('global_step: %s' % tf.train.global_step(sess, global_step_tensor))
 
 global_step: 10
@@ -3642,7 +4424,71 @@ global_step: 10
 
 - - -
 
-### `tf.train.write_graph(graph_def, logdir, name, as_text=True)` {#write_graph}
+### `tf.train.basic_train_loop(supervisor, train_step_fn, args=None, kwargs=None, master='')` {#basic_train_loop}
+
+Basic loop to train a model.
+
+Calls `train_step_fn` in a loop to train a model.  The function is called as:
+
+```python
+train_step_fn(session, *args, **kwargs)
+```
+
+It is passed a `tf.Session` in addition to `args` and `kwargs`.  The function
+typically runs one training step in the session.
+
+##### Args:
+
+
+*  <b>`supervisor`</b>: `tf.Supervisor` to run the training services.
+*  <b>`train_step_fn`</b>: Callable to execute one training step.  Called
+    repeatedly as `train_step_fn(session, *args **kwargs)`.
+*  <b>`args`</b>: Optional positional arguments passed to `train_step_fn`.
+*  <b>`kwargs`</b>: Optional keyword arguments passed to `train_step_fn`.
+*  <b>`master`</b>: Master to use to create the training session.  Defaults to
+    `""` which causes the session to be created in the local process.
+
+
+- - -
+
+### `tf.train.get_global_step(graph=None)` {#get_global_step}
+
+Get the global step tensor.
+
+The global step tensor must be an integer variable. We first try to find it
+in the collection `GLOBAL_STEP`, or by name `global_step:0`.
+
+##### Args:
+
+
+*  <b>`graph`</b>: The graph to find the global step in. If missing, use default graph.
+
+##### Returns:
+
+  The global step variable, or `None` if none was found.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If the global step tensor has a non-integer type, or if it is not
+    a `Variable`.
+
+
+- - -
+
+### `tf.train.assert_global_step(global_step_tensor)` {#assert_global_step}
+
+Asserts `global_step_tensor` is a scalar int `Variable` or `Tensor`.
+
+##### Args:
+
+
+*  <b>`global_step_tensor`</b>: `Tensor` to test.
+
+
+- - -
+
+### `tf.train.write_graph(graph_or_graph_def, logdir, name, as_text=True)` {#write_graph}
 
 Writes a graph proto to a file.
 
@@ -3654,18 +4500,694 @@ sess = tf.Session()
 tf.train.write_graph(sess.graph_def, '/tmp/my-model', 'train.pbtxt')
 ```
 
+or
+
+```python
+v = tf.Variable(0, name='my_variable')
+sess = tf.Session()
+tf.train.write_graph(sess.graph, '/tmp/my-model', 'train.pbtxt')
+```
+
 ##### Args:
 
 
-*  <b>`graph_def`</b>: A `GraphDef` protocol buffer.
+*  <b>`graph_or_graph_def`</b>: A `Graph` or a `GraphDef` protocol buffer.
 *  <b>`logdir`</b>: Directory where to write the graph. This can refer to remote
     filesystems, such as Google Cloud Storage (GCS).
 *  <b>`name`</b>: Filename for the graph.
 *  <b>`as_text`</b>: If `True`, writes the graph as an ASCII proto.
 
 
+- - -
 
-## Other Functions and Classes
+### `class tf.train.SessionRunHook` {#SessionRunHook}
+
+Hook to extend calls to MonitoredSession.run().
+- - -
+
+#### `tf.train.SessionRunHook.after_run(run_context, run_values)` {#SessionRunHook.after_run}
+
+Called after each call to run().
+
+The `run_values` argument contains results of requested ops/tensors by
+`before_run()`.
+
+The `run_context` argument is the same one send to `before_run` call.
+`run_context.request_stop()` can be called to stop the iteration.
+
+##### Args:
+
+
+*  <b>`run_context`</b>: A `SessionRunContext` object.
+*  <b>`run_values`</b>: A SessionRunValues object.
+
+
+- - -
+
+#### `tf.train.SessionRunHook.before_run(run_context)` {#SessionRunHook.before_run}
+
+Called before each call to run().
+
+You can return from this call a `SessionRunArgs` object indicating ops or
+tensors to add to the upcoming `run()` call.  These ops/tensors will be run
+together with the ops/tensors originally passed to the original run() call.
+The run args you return can also contain feeds to be added to the run()
+call.
+
+The `run_context` argument is a `SessionRunContext` that provides
+information about the upcoming `run()` call: the originally requested
+op/tensors, the TensorFlow Session.
+
+At this point graph is finalized and you can not add ops.
+
+##### Args:
+
+
+*  <b>`run_context`</b>: A `SessionRunContext` object.
+
+##### Returns:
+
+  None or a `SessionRunArgs` object.
+
+
+- - -
+
+#### `tf.train.SessionRunHook.begin()` {#SessionRunHook.begin}
+
+Called once before using the session.
+
+When called, the default graph is the one that will be launched in the
+session.  The hook can modify the graph by adding new operations to it.
+After the `begin()` call the graph will be finalized and the other callbacks
+can not modify the graph anymore. Second call of `begin()` on the same
+graph, should not change the graph.
+
+
+- - -
+
+#### `tf.train.SessionRunHook.end(session)` {#SessionRunHook.end}
+
+Called at the end of session.
+
+The `session` argument can be used in case the hook wants to run final ops,
+such as saving a last checkpoint.
+
+##### Args:
+
+
+*  <b>`session`</b>: A TensorFlow Session that will be soon closed.
+
+
+
+- - -
+
+### `class tf.train.LoggingTensorHook` {#LoggingTensorHook}
+
+Prints the given tensors once every N local steps or once every N seconds.
+
+The tensors will be printed to the log, with `INFO` severity.
+- - -
+
+#### `tf.train.LoggingTensorHook.__init__(tensors, every_n_iter=None, every_n_secs=None)` {#LoggingTensorHook.__init__}
+
+Initializes a LoggingHook monitor.
+
+##### Args:
+
+
+*  <b>`tensors`</b>: `dict` that maps string-valued tags to tensors/tensor names,
+      or `iterable` of tensors/tensor names.
+*  <b>`every_n_iter`</b>: `int`, print the values of `tensors` once every N local
+      steps taken on the current worker.
+*  <b>`every_n_secs`</b>: `int` or `float`, print the values of `tensors` once every N
+      seconds. Exactly one of `every_n_iter` and `every_n_secs` should be
+      provided.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `every_n_iter` is non-positive.
+
+
+- - -
+
+#### `tf.train.LoggingTensorHook.after_run(run_context, run_values)` {#LoggingTensorHook.after_run}
+
+
+
+
+- - -
+
+#### `tf.train.LoggingTensorHook.before_run(run_context)` {#LoggingTensorHook.before_run}
+
+
+
+
+- - -
+
+#### `tf.train.LoggingTensorHook.begin()` {#LoggingTensorHook.begin}
+
+
+
+
+- - -
+
+#### `tf.train.LoggingTensorHook.end(session)` {#LoggingTensorHook.end}
+
+Called at the end of session.
+
+The `session` argument can be used in case the hook wants to run final ops,
+such as saving a last checkpoint.
+
+##### Args:
+
+
+*  <b>`session`</b>: A TensorFlow Session that will be soon closed.
+
+
+
+- - -
+
+### `class tf.train.StopAtStepHook` {#StopAtStepHook}
+
+Monitor to request stop at a specified step.
+- - -
+
+#### `tf.train.StopAtStepHook.__init__(num_steps=None, last_step=None)` {#StopAtStepHook.__init__}
+
+Create a StopAtStep Hook.
+
+This hook requests stop after either a number of steps have been
+executed or a last step has been reached.  Only of the two options can be
+specified.
+
+if `num_steps` is specified, it indicates the number of steps to execute
+after `begin()` is called.  If instead `last_step` is specified, it
+indicates the last step we want to execute, as passed to the `after_run()`
+call.
+
+##### Args:
+
+
+*  <b>`num_steps`</b>: Number of steps to execute.
+*  <b>`last_step`</b>: Step after which to stop.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If one of the arguments is invalid.
+
+
+- - -
+
+#### `tf.train.StopAtStepHook.after_run(run_context, run_values)` {#StopAtStepHook.after_run}
+
+
+
+
+- - -
+
+#### `tf.train.StopAtStepHook.before_run(run_context)` {#StopAtStepHook.before_run}
+
+
+
+
+- - -
+
+#### `tf.train.StopAtStepHook.begin()` {#StopAtStepHook.begin}
+
+
+
+
+- - -
+
+#### `tf.train.StopAtStepHook.end(session)` {#StopAtStepHook.end}
+
+Called at the end of session.
+
+The `session` argument can be used in case the hook wants to run final ops,
+such as saving a last checkpoint.
+
+##### Args:
+
+
+*  <b>`session`</b>: A TensorFlow Session that will be soon closed.
+
+
+
+- - -
+
+### `class tf.train.CheckpointSaverHook` {#CheckpointSaverHook}
+
+Saves checkpoints every N steps or seconds.
+- - -
+
+#### `tf.train.CheckpointSaverHook.__init__(checkpoint_dir, save_secs=None, save_steps=None, saver=None, checkpoint_basename='model.ckpt', scaffold=None)` {#CheckpointSaverHook.__init__}
+
+Initialize CheckpointSaverHook monitor.
+
+##### Args:
+
+
+*  <b>`checkpoint_dir`</b>: `str`, base directory for the checkpoint files.
+*  <b>`save_secs`</b>: `int`, save every N secs.
+*  <b>`save_steps`</b>: `int`, save every N steps.
+*  <b>`saver`</b>: `Saver` object, used for saving.
+*  <b>`checkpoint_basename`</b>: `str`, base name for the checkpoint files.
+*  <b>`scaffold`</b>: `Scaffold`, use to get saver object.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: One of `save_steps` or `save_secs` should be set.
+*  <b>`ValueError`</b>: Exactly one of saver or scaffold should be set.
+
+
+- - -
+
+#### `tf.train.CheckpointSaverHook.after_run(run_context, run_values)` {#CheckpointSaverHook.after_run}
+
+
+
+
+- - -
+
+#### `tf.train.CheckpointSaverHook.before_run(run_context)` {#CheckpointSaverHook.before_run}
+
+
+
+
+- - -
+
+#### `tf.train.CheckpointSaverHook.begin()` {#CheckpointSaverHook.begin}
+
+
+
+
+- - -
+
+#### `tf.train.CheckpointSaverHook.end(session)` {#CheckpointSaverHook.end}
+
+
+
+
+
+- - -
+
+### `tf.train.NewCheckpointReader(filepattern)` {#NewCheckpointReader}
+
+
+
+
+- - -
+
+### `class tf.train.StepCounterHook` {#StepCounterHook}
+
+Steps per second monitor.
+- - -
+
+#### `tf.train.StepCounterHook.__init__(every_n_steps=100, every_n_secs=None, output_dir=None, summary_writer=None)` {#StepCounterHook.__init__}
+
+
+
+
+- - -
+
+#### `tf.train.StepCounterHook.after_run(run_context, run_values)` {#StepCounterHook.after_run}
+
+
+
+
+- - -
+
+#### `tf.train.StepCounterHook.before_run(run_context)` {#StepCounterHook.before_run}
+
+
+
+
+- - -
+
+#### `tf.train.StepCounterHook.begin()` {#StepCounterHook.begin}
+
+
+
+
+- - -
+
+#### `tf.train.StepCounterHook.end(session)` {#StepCounterHook.end}
+
+Called at the end of session.
+
+The `session` argument can be used in case the hook wants to run final ops,
+such as saving a last checkpoint.
+
+##### Args:
+
+
+*  <b>`session`</b>: A TensorFlow Session that will be soon closed.
+
+
+
+- - -
+
+### `class tf.train.NanLossDuringTrainingError` {#NanLossDuringTrainingError}
+
+
+- - -
+
+#### `tf.train.NanLossDuringTrainingError.__str__()` {#NanLossDuringTrainingError.__str__}
+
+
+
+
+
+- - -
+
+### `class tf.train.NanTensorHook` {#NanTensorHook}
+
+NaN Loss monitor.
+
+Monitors loss and stops training if loss is NaN.
+Can either fail with exception or just stop training.
+- - -
+
+#### `tf.train.NanTensorHook.__init__(loss_tensor, fail_on_nan_loss=True)` {#NanTensorHook.__init__}
+
+Initializes NanLoss monitor.
+
+##### Args:
+
+
+*  <b>`loss_tensor`</b>: `Tensor`, the loss tensor.
+*  <b>`fail_on_nan_loss`</b>: `bool`, whether to raise exception when loss is NaN.
+
+
+- - -
+
+#### `tf.train.NanTensorHook.after_run(run_context, run_values)` {#NanTensorHook.after_run}
+
+
+
+
+- - -
+
+#### `tf.train.NanTensorHook.before_run(run_context)` {#NanTensorHook.before_run}
+
+
+
+
+- - -
+
+#### `tf.train.NanTensorHook.begin()` {#NanTensorHook.begin}
+
+Called once before using the session.
+
+When called, the default graph is the one that will be launched in the
+session.  The hook can modify the graph by adding new operations to it.
+After the `begin()` call the graph will be finalized and the other callbacks
+can not modify the graph anymore. Second call of `begin()` on the same
+graph, should not change the graph.
+
+
+- - -
+
+#### `tf.train.NanTensorHook.end(session)` {#NanTensorHook.end}
+
+Called at the end of session.
+
+The `session` argument can be used in case the hook wants to run final ops,
+such as saving a last checkpoint.
+
+##### Args:
+
+
+*  <b>`session`</b>: A TensorFlow Session that will be soon closed.
+
+
+
+- - -
+
+### `class tf.train.SummarySaverHook` {#SummarySaverHook}
+
+Saves summaries every N steps.
+- - -
+
+#### `tf.train.SummarySaverHook.__init__(save_steps=None, save_secs=None, output_dir=None, summary_writer=None, scaffold=None, summary_op=None)` {#SummarySaverHook.__init__}
+
+Initializes a `SummarySaver` monitor.
+
+##### Args:
+
+
+*  <b>`save_steps`</b>: `int`, save summaries every N steps. Exactly one of
+      `save_secs` and `save_steps` should be set.
+*  <b>`save_secs`</b>: `int`, save summaries every N seconds.
+*  <b>`output_dir`</b>: `string`, the directory to save the summaries to. Only used
+      if no `summary_writer` is supplied.
+*  <b>`summary_writer`</b>: `SummaryWriter`. If `None` and an `output_dir` was passed,
+      one will be created accordingly.
+*  <b>`scaffold`</b>: `Scaffold` to get summary_op if it's not provided.
+*  <b>`summary_op`</b>: `Tensor` of type `string`. A serialized `Summary` protocol
+      buffer, as output by TF summary methods like `tf.summary.scalar` or
+      `tf.summary.merge_all`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: Exactly one of scaffold or summary_op should be set.
+
+
+- - -
+
+#### `tf.train.SummarySaverHook.after_run(run_context, run_values)` {#SummarySaverHook.after_run}
+
+
+
+
+- - -
+
+#### `tf.train.SummarySaverHook.before_run(run_context)` {#SummarySaverHook.before_run}
+
+
+
+
+- - -
+
+#### `tf.train.SummarySaverHook.begin()` {#SummarySaverHook.begin}
+
+
+
+
+- - -
+
+#### `tf.train.SummarySaverHook.end(session=None)` {#SummarySaverHook.end}
+
+
+
+
+
+- - -
+
+### `class tf.train.SessionRunArgs` {#SessionRunArgs}
+
+Represents arguments to be added to a `Session.run()` call.
+
+Args:
+  fetches: Exactly like the 'fetches' argument to Session.Run().
+    Can be a single tensor or op, a list of 'fetches' or a dictionary
+    of fetches.  For example:
+      fetches = global_step_tensor
+      fetches = [train_op, summary_op, global_step_tensor]
+      fetches = {'step': global_step_tensor, 'summ': summary_op}
+    Note that this can recurse as expected:
+      fetches = {'step': global_step_tensor,
+                 'ops': [train_op, check_nan_op]}
+  feed_dict: Exactly like the `feed_dict` argument to `Session.Run()`
+  options: Exactly like the `options` argument to `Session.run()`, i.e., a
+    config_pb2.RunOptions proto.
+- - -
+
+#### `tf.train.SessionRunArgs.__getnewargs__()` {#SessionRunArgs.__getnewargs__}
+
+Return self as a plain tuple.  Used by copy and pickle.
+
+
+- - -
+
+#### `tf.train.SessionRunArgs.__getstate__()` {#SessionRunArgs.__getstate__}
+
+Exclude the OrderedDict from pickling
+
+
+- - -
+
+#### `tf.train.SessionRunArgs.__new__(cls, fetches, feed_dict=None, options=None)` {#SessionRunArgs.__new__}
+
+
+
+
+- - -
+
+#### `tf.train.SessionRunArgs.__repr__()` {#SessionRunArgs.__repr__}
+
+Return a nicely formatted representation string
+
+
+- - -
+
+#### `tf.train.SessionRunArgs.feed_dict` {#SessionRunArgs.feed_dict}
+
+Alias for field number 1
+
+
+- - -
+
+#### `tf.train.SessionRunArgs.fetches` {#SessionRunArgs.fetches}
+
+Alias for field number 0
+
+
+- - -
+
+#### `tf.train.SessionRunArgs.options` {#SessionRunArgs.options}
+
+Alias for field number 2
+
+
+
+- - -
+
+### `class tf.train.SessionRunContext` {#SessionRunContext}
+
+Provides information about the `session.run()` call being made.
+
+Provides information about original request to `Session.Run()` function.
+SessionRunHook objects can stop the loop by calling `request_stop()` of
+`run_context`. In the future we may use this object to add more information
+about run without changing the Hook API.
+- - -
+
+#### `tf.train.SessionRunContext.__init__(original_args, session)` {#SessionRunContext.__init__}
+
+Initializes SessionRunContext.
+
+
+- - -
+
+#### `tf.train.SessionRunContext.original_args` {#SessionRunContext.original_args}
+
+A `SessionRunArgs` object holding the original arguments of `run()`.
+
+If user called `MonitoredSession.run(fetches=a, feed_dict=b)`, then this
+field is equal to SessionRunArgs(a, b).
+
+##### Returns:
+
+ A `SessionRunArgs` object
+
+
+- - -
+
+#### `tf.train.SessionRunContext.request_stop()` {#SessionRunContext.request_stop}
+
+Sets stop requested field.
+
+Hooks can use this function to request stop of iterations.
+`MonitoredSession` checks whether this is called or not.
+
+
+- - -
+
+#### `tf.train.SessionRunContext.session` {#SessionRunContext.session}
+
+A TensorFlow session object which will execute the `run`.
+
+
+- - -
+
+#### `tf.train.SessionRunContext.stop_requested` {#SessionRunContext.stop_requested}
+
+Returns whether a stop is requested or not.
+
+If true, `MonitoredSession` stops iterations.
+
+##### Returns:
+
+  A `bool`
+
+
+
+- - -
+
+### `class tf.train.SessionRunValues` {#SessionRunValues}
+
+Contains the results of `Session.run()`.
+
+In the future we may use this object to add more information about result of
+run without changing the Hook API.
+
+Args:
+  results: The return values from `Session.run()` corresponding to the fetches
+    attribute returned in the RunArgs. Note that this has the same shape as
+    the RunArgs fetches.  For example:
+      fetches = global_step_tensor
+      => results = nparray(int)
+      fetches = [train_op, summary_op, global_step_tensor]
+      => results = [None, nparray(string), nparray(int)]
+      fetches = {'step': global_step_tensor, 'summ': summary_op}
+      => results = {'step': nparray(int), 'summ': nparray(string)}
+  options: `RunOptions` from the `Session.run()` call.
+  run_metadata: `RunMetadata` from the `Session.run()` call.
+- - -
+
+#### `tf.train.SessionRunValues.__getnewargs__()` {#SessionRunValues.__getnewargs__}
+
+Return self as a plain tuple.  Used by copy and pickle.
+
+
+- - -
+
+#### `tf.train.SessionRunValues.__getstate__()` {#SessionRunValues.__getstate__}
+
+Exclude the OrderedDict from pickling
+
+
+- - -
+
+#### `tf.train.SessionRunValues.__new__(_cls, results, options, run_metadata)` {#SessionRunValues.__new__}
+
+Create new instance of SessionRunValues(results, options, run_metadata)
+
+
+- - -
+
+#### `tf.train.SessionRunValues.__repr__()` {#SessionRunValues.__repr__}
+
+Return a nicely formatted representation string
+
+
+- - -
+
+#### `tf.train.SessionRunValues.options` {#SessionRunValues.options}
+
+Alias for field number 1
+
+
+- - -
+
+#### `tf.train.SessionRunValues.results` {#SessionRunValues.results}
+
+Alias for field number 0
+
+
+- - -
+
+#### `tf.train.SessionRunValues.run_metadata` {#SessionRunValues.run_metadata}
+
+Alias for field number 2
+
+
+
 - - -
 
 ### `class tf.train.LooperThread` {#LooperThread}
@@ -3893,6 +5415,616 @@ Called when the thread stops.
 
 
 
+
+## Other Functions and Classes
+- - -
+
+### `class tf.train.SyncReplicasOptimizer` {#SyncReplicasOptimizer}
+
+Class to synchronize, aggregate gradients and pass them to the optimizer.
+
+In a typical asynchronous training environment, it's common to have some
+stale gradients. For example, with a N-replica asynchronous training,
+gradients will be applied to the variables N times independently. Depending
+on each replica's training speed, some gradients might be calculated from
+copies of the variable from several steps back (N-1 steps on average). This
+optimizer avoids stale gradients by collecting gradients from all replicas,
+summing them, then applying them to the variables in one shot, after
+which replicas can fetch the new variables and continue.
+
+The following queues are created:
+<empty line>
+* N `gradient` queues, one per variable to train. Gradients are pushed to
+  these queues and the chief worker will dequeue_many and then sum them
+  before applying to variables.
+* 1 `token` queue where the optimizer pushes the new global_step value after
+  all gradients have been applied.
+
+The following variables are created:
+* N `local_step`, one per replica. Compared against global step to check for
+  staleness of the gradients.
+
+This adds nodes to the graph to collect gradients and pause the trainers until
+variables are updated.
+For the PS:
+<empty line>
+1. A queue is created for each variable, and each replica now pushes the
+  gradients into the queue instead of directly applying them to the
+  variables.
+2. For each gradient_queue, pop and sum the gradients once enough
+  replicas (replicas_to_aggregate) have pushed gradients to the queue.
+3. Apply the aggregated gradients to the variables.
+4. Only after all variables have been updated, increment the global step.
+5. Only after step 4, clear all the gradients in the queues as they are
+  stale now (could happen when replicas are restarted and push to the queues
+  multiple times, or from the backup replicas).
+6. Only after step 5, pushes `global_step` in the `token_queue`, once for
+  each worker replica. The workers can now fetch it to its local_step variable
+  and start the next batch.
+
+For the replicas:
+<empty line>
+1. Start a step: fetch variables and compute gradients.
+2. Once the gradients have been computed, push them into `gradient_queue` only
+  if local_step equals global_step, otherwise the gradients are just dropped.
+  This avoids stale gradients.
+3. After pushing all the gradients, dequeue an updated value of global_step
+  from the token queue and record that step to its local_step variable. Note
+  that this is effectively a barrier.
+4. Start the next batch.
+
+### Usage
+
+```python
+# Create any optimizer to update the variables, say a simple SGD:
+opt = GradientDescentOptimizer(learning_rate=0.1)
+
+# Wrap the optimizer with sync_replicas_optimizer with 50 replicas: at each
+# step the optimizer collects 50 gradients before applying to variables.
+opt = tf.SyncReplicasOptimizer(opt, replicas_to_aggregate=50,
+          replica_id=task_id, total_num_replicas=50)
+# Note that if you want to have 2 backup replicas, you can change
+# total_num_replicas=52 and make sure this number matches how many physical
+# replicas you started in your job.
+
+# Some models have startup_delays to help stabilize the model but when using
+# sync_replicas training, set it to 0.
+
+# Now you can call `minimize()` or `compute_gradients()` and
+# `apply_gradients()` normally
+grads = opt.minimize(total_loss, global_step=self.global_step)
+
+
+# You can now call get_init_tokens_op() and get_chief_queue_runner().
+# Note that get_init_tokens_op() must be called before creating session
+# because it modifies the graph.
+init_token_op = opt.get_init_tokens_op()
+chief_queue_runner = opt.get_chief_queue_runner()
+```
+
+In the training program, every worker will run the train_op as if not
+synchronized. But one worker (usually the chief) will need to execute the
+chief_queue_runner and get_init_tokens_op generated from this optimizer.
+
+```python
+# After the session is created by the Supervisor and before the main while
+# loop:
+if is_chief and FLAGS.sync_replicas:
+  sv.start_queue_runners(sess, [chief_queue_runner])
+  # Insert initial tokens to the queue.
+  sess.run(init_token_op)
+```
+
+- - -
+
+#### `tf.train.SyncReplicasOptimizer.__init__(opt, replicas_to_aggregate, variable_averages=None, variables_to_average=None, replica_id=None, total_num_replicas=0, use_locking=False, name='sync_replicas')` {#SyncReplicasOptimizer.__init__}
+
+Construct a sync_replicas optimizer.
+
+##### Args:
+
+
+*  <b>`opt`</b>: The actual optimizer that will be used to compute and apply the
+    gradients. Must be one of the Optimizer classes.
+*  <b>`replicas_to_aggregate`</b>: number of replicas to aggregate for each variable
+    update.
+*  <b>`variable_averages`</b>: Optional `ExponentialMovingAverage` object, used to
+    maintain moving averages for the variables passed in
+    `variables_to_average`.
+*  <b>`variables_to_average`</b>: a list of variables that need to be averaged. Only
+    needed if variable_averages is passed in.
+*  <b>`replica_id`</b>: This is the task/worker/replica ID. Needed as index to access
+    local_steps to check staleness. Must be in the interval:
+    [0, total_num_replicas)
+*  <b>`total_num_replicas`</b>: Total number of tasks/workers/replicas, could be
+    different from replicas_to_aggregate.
+    If total_num_replicas > replicas_to_aggregate: it is backup_replicas +
+    replicas_to_aggregate.
+    If total_num_replicas < replicas_to_aggregate: Replicas compute
+    multiple batches per update to variables.
+*  <b>`use_locking`</b>: If True use locks for update operation.
+*  <b>`name`</b>: string. Optional name of the returned operation.
+
+
+- - -
+
+#### `tf.train.SyncReplicasOptimizer.compute_gradients(*args, **kwargs)` {#SyncReplicasOptimizer.compute_gradients}
+
+Compute gradients of "loss" for the variables in "var_list".
+
+This simply wraps the compute_gradients() from the real optimizer. The
+gradients will be aggregated in the apply_gradients() so that user can
+modify the gradients like clipping with per replica global norm if needed.
+The global norm with aggregated gradients can be bad as one replica's huge
+gradients can hurt the gradients from other replicas.
+
+##### Args:
+
+
+*  <b>`*args`</b>: Arguments for compute_gradients().
+*  <b>`**kwargs`</b>: Keyword arguments for compute_gradients().
+
+##### Returns:
+
+  A list of (gradient, variable) pairs.
+
+
+- - -
+
+#### `tf.train.SyncReplicasOptimizer.apply_gradients(grads_and_vars, global_step=None, name=None)` {#SyncReplicasOptimizer.apply_gradients}
+
+Apply gradients to variables.
+
+This contains most of the synchronization implementation and also wraps the
+apply_gradients() from the real optimizer.
+
+##### Args:
+
+
+*  <b>`grads_and_vars`</b>: List of (gradient, variable) pairs as returned by
+    compute_gradients().
+*  <b>`global_step`</b>: Optional Variable to increment by one after the
+    variables have been updated.
+*  <b>`name`</b>: Optional name for the returned operation.  Default to the
+    name passed to the Optimizer constructor.
+
+##### Returns:
+
+
+*  <b>`train_op`</b>: The op to dequeue a token so the replicas can exit this batch
+  and start the next one. This is executed by each replica.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If the grads_and_vars is empty.
+*  <b>`ValueError`</b>: If global step is not provided, the staleness cannot be
+    checked.
+
+
+- - -
+
+#### `tf.train.SyncReplicasOptimizer.get_chief_queue_runner()` {#SyncReplicasOptimizer.get_chief_queue_runner}
+
+Returns the QueueRunner for the chief to execute.
+
+This includes the operations to synchronize replicas: aggregate gradients,
+apply to variables, increment global step, insert tokens to token queue.
+
+Note that this can only be called after calling apply_gradients() which
+actually generates this queuerunner.
+
+##### Returns:
+
+  A `QueueRunner` for chief to execute.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If this is called before apply_gradients().
+
+
+- - -
+
+#### `tf.train.SyncReplicasOptimizer.get_init_tokens_op(num_tokens=-1)` {#SyncReplicasOptimizer.get_init_tokens_op}
+
+Returns the op to fill the sync_token_queue with the tokens.
+
+This is supposed to be executed in the beginning of the chief/sync thread
+so that even if the total_num_replicas is less than replicas_to_aggregate,
+the model can still proceed as the replicas can compute multiple steps per
+variable update. Make sure:
+`num_tokens >= replicas_to_aggregate - total_num_replicas`.
+
+##### Args:
+
+
+*  <b>`num_tokens`</b>: Number of tokens to add to the queue.
+
+##### Returns:
+
+  An op for the chief/sync replica to fill the token queue.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If this is called before apply_gradients().
+*  <b>`ValueError`</b>: If num_tokens are smaller than replicas_to_aggregate -
+    total_num_replicas.
+
+
+
+#### Other Methods
+- - -
+
+#### `tf.train.SyncReplicasOptimizer.get_clean_up_op()` {#SyncReplicasOptimizer.get_clean_up_op}
+
+Returns the clean up op for the chief to execute before exit.
+
+This includes the operation to abort the device with the token queue so all
+other replicas can also restart. This can avoid potential hang when chief
+restarts.
+
+Note that this can only be called after calling apply_gradients().
+
+##### Returns:
+
+  A clean_up_op for chief to execute before exits.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If this is called before apply_gradients().
+
+
+- - -
+
+#### `tf.train.SyncReplicasOptimizer.get_slot(*args, **kwargs)` {#SyncReplicasOptimizer.get_slot}
+
+Return a slot named "name" created for "var" by the Optimizer.
+
+This simply wraps the get_slot() from the actual optimizer.
+
+##### Args:
+
+
+*  <b>`*args`</b>: Arguments for get_slot().
+*  <b>`**kwargs`</b>: Keyword arguments for get_slot().
+
+##### Returns:
+
+  The `Variable` for the slot if it was created, `None` otherwise.
+
+
+- - -
+
+#### `tf.train.SyncReplicasOptimizer.get_slot_names(*args, **kwargs)` {#SyncReplicasOptimizer.get_slot_names}
+
+Return a list of the names of slots created by the `Optimizer`.
+
+This simply wraps the get_slot_names() from the actual optimizer.
+
+##### Args:
+
+
+*  <b>`*args`</b>: Arguments for get_slot().
+*  <b>`**kwargs`</b>: Keyword arguments for get_slot().
+
+##### Returns:
+
+  A list of strings.
+
+
+
+- - -
+
+### `class tf.train.SyncReplicasOptimizerV2` {#SyncReplicasOptimizerV2}
+
+Class to synchronize, aggregate gradients and pass them to the optimizer.
+
+In a typical asynchronous training environment, it's common to have some
+stale gradients. For example, with a N-replica asynchronous training,
+gradients will be applied to the variables N times independently. Depending
+on each replica's training speed, some gradients might be calculated from
+copies of the variable from several steps back (N-1 steps on average). This
+optimizer avoids stale gradients by collecting gradients from all replicas,
+averaging them, then applying them to the variables in one shot, after
+which replicas can fetch the new variables and continue.
+
+The following accumulators/queue are created:
+<empty line>
+* N `gradient accumulators`, one per variable to train. Gradients are pushed
+  to them and the chief worker will wait until enough gradients are collected
+  and then average them before applying to variables. The accumulator will
+  drop all stale gradients (more details in the accumulator op).
+* 1 `token` queue where the optimizer pushes the new global_step value after
+  all variables are updated.
+
+The following local variable is created:
+* `sync_rep_local_step`, one per replica. Compared against the global_step in
+  each accumulator to check for staleness of the gradients.
+
+The optimizer adds nodes to the graph to collect gradients and pause the
+trainers until variables are updated.
+For the Parameter Server job:
+<empty line>
+1. An accumulator is created for each variable, and each replica pushes the
+   gradients into the accumulators instead of directly applying them to the
+   variables.
+2. Each accumulator averages once enough gradients (replicas_to_aggregate)
+   have been accumulated.
+3. Apply the averaged gradients to the variables.
+4. Only after all variables have been updated, increment the global step.
+5. Only after step 4, pushes `global_step` in the `token_queue`, once for
+   each worker replica. The workers can now fetch the global step, use it to
+   update its local_step variable and start the next batch.
+
+For the replicas:
+<empty line>
+1. Start a step: fetch variables and compute gradients.
+2. Once the gradients have been computed, push them into gradient
+   accumulators. Each accumulator will check the staleness and drop the stale.
+3. After pushing all the gradients, dequeue an updated value of global_step
+   from the token queue and record that step to its local_step variable. Note
+   that this is effectively a barrier.
+4. Start the next batch.
+
+### Usage
+
+```python
+# Create any optimizer to update the variables, say a simple SGD:
+opt = GradientDescentOptimizer(learning_rate=0.1)
+
+# Wrap the optimizer with sync_replicas_optimizer with 50 replicas: at each
+# step the optimizer collects 50 gradients before applying to variables.
+# Note that if you want to have 2 backup replicas, you can change
+# total_num_replicas=52 and make sure this number matches how many physical
+# replicas you started in your job.
+opt = tf.SyncReplicasOptimizerV2(opt, replicas_to_aggregate=50,
+                                 total_num_replicas=50)
+
+# Some models have startup_delays to help stabilize the model but when using
+# sync_replicas training, set it to 0.
+
+# Now you can call `minimize()` or `compute_gradients()` and
+# `apply_gradients()` normally
+grads = opt.minimize(total_loss, global_step=self.global_step)
+
+
+# You can now call get_init_tokens_op() and get_chief_queue_runner().
+# Note that get_init_tokens_op() must be called before creating session
+# because it modifies the graph by adding new nodes.
+init_token_op = opt.get_init_tokens_op()
+chief_queue_runner = opt.get_chief_queue_runner()
+```
+
+In the training program, every worker will run the train_op as if not
+synchronized. But one worker (usually the chief) will need to execute the
+chief_queue_runner and get_init_tokens_op from this optimizer.
+
+```python
+# When you create the supervisor, you need to add the local_init_op and
+# ready_for_local_init_op to make sure the local_step is initialized to the
+# global_step. Here is an example:
+if is_chief:
+  local_init_op = opt.chief_init_op
+else:
+  local_init_op = opt.local_step_init_op
+ready_for_local_init_op = opt.ready_for_local_init_op
+sv = tf.Supervisor(graph=g,
+                   is_chief=is_chief,
+                   # This initialize local step.
+                   local_init_op=local_init_op,
+                   # This makes sure global step is initialized before using.
+                   ready_for_local_init_op=ready_for_local_init_op,
+                   saver=model.saver)
+
+# After the session is created by the Supervisor and before the main while
+# loop:
+if is_chief and FLAGS.sync_replicas:
+  sv.start_queue_runners(sess, [chief_queue_runner])
+  # Insert initial tokens to the queue.
+  sess.run(init_token_op)
+```
+
+- - -
+
+#### `tf.train.SyncReplicasOptimizerV2.__init__(opt, replicas_to_aggregate, total_num_replicas=None, variable_averages=None, variables_to_average=None, use_locking=False, name='sync_replicas')` {#SyncReplicasOptimizerV2.__init__}
+
+Construct a sync_replicas optimizer.
+
+##### Args:
+
+
+*  <b>`opt`</b>: The actual optimizer that will be used to compute and apply the
+    gradients. Must be one of the Optimizer classes.
+*  <b>`replicas_to_aggregate`</b>: number of replicas to aggregate for each variable
+    update.
+*  <b>`total_num_replicas`</b>: Total number of tasks/workers/replicas, could be
+    different from replicas_to_aggregate.
+    If total_num_replicas > replicas_to_aggregate: it is backup_replicas +
+    replicas_to_aggregate.
+    If total_num_replicas < replicas_to_aggregate: Replicas compute
+    multiple batches per update to variables.
+*  <b>`variable_averages`</b>: Optional `ExponentialMovingAverage` object, used to
+    maintain moving averages for the variables passed in
+    `variables_to_average`.
+*  <b>`variables_to_average`</b>: a list of variables that need to be averaged. Only
+    needed if variable_averages is passed in.
+*  <b>`use_locking`</b>: If True use locks for update operation.
+*  <b>`name`</b>: string. Optional name of the returned operation.
+
+
+- - -
+
+#### `tf.train.SyncReplicasOptimizerV2.compute_gradients(*args, **kwargs)` {#SyncReplicasOptimizerV2.compute_gradients}
+
+Compute gradients of "loss" for the variables in "var_list".
+
+This simply wraps the compute_gradients() from the real optimizer. The
+gradients will be aggregated in the apply_gradients() so that user can
+modify the gradients like clipping with per replica global norm if needed.
+The global norm with aggregated gradients can be bad as one replica's huge
+gradients can hurt the gradients from other replicas.
+
+##### Args:
+
+
+*  <b>`*args`</b>: Arguments for compute_gradients().
+*  <b>`**kwargs`</b>: Keyword arguments for compute_gradients().
+
+##### Returns:
+
+  A list of (gradient, variable) pairs.
+
+
+- - -
+
+#### `tf.train.SyncReplicasOptimizerV2.apply_gradients(grads_and_vars, global_step=None, name=None)` {#SyncReplicasOptimizerV2.apply_gradients}
+
+Apply gradients to variables.
+
+This contains most of the synchronization implementation and also wraps the
+apply_gradients() from the real optimizer.
+
+##### Args:
+
+
+*  <b>`grads_and_vars`</b>: List of (gradient, variable) pairs as returned by
+    compute_gradients().
+*  <b>`global_step`</b>: Optional Variable to increment by one after the
+    variables have been updated.
+*  <b>`name`</b>: Optional name for the returned operation.  Default to the
+    name passed to the Optimizer constructor.
+
+##### Returns:
+
+
+*  <b>`train_op`</b>: The op to dequeue a token so the replicas can exit this batch
+  and start the next one. This is executed by each replica.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If the grads_and_vars is empty.
+*  <b>`ValueError`</b>: If global step is not provided, the staleness cannot be
+    checked.
+
+
+- - -
+
+#### `tf.train.SyncReplicasOptimizerV2.get_chief_queue_runner()` {#SyncReplicasOptimizerV2.get_chief_queue_runner}
+
+Returns the QueueRunner for the chief to execute.
+
+This includes the operations to synchronize replicas: aggregate gradients,
+apply to variables, increment global step, insert tokens to token queue.
+
+Note that this can only be called after calling apply_gradients() which
+actually generates this queuerunner.
+
+##### Returns:
+
+  A `QueueRunner` for chief to execute.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If this is called before apply_gradients().
+
+
+- - -
+
+#### `tf.train.SyncReplicasOptimizerV2.get_init_tokens_op(num_tokens=-1)` {#SyncReplicasOptimizerV2.get_init_tokens_op}
+
+Returns the op to fill the sync_token_queue with the tokens.
+
+This is supposed to be executed in the beginning of the chief/sync thread
+so that even if the total_num_replicas is less than replicas_to_aggregate,
+the model can still proceed as the replicas can compute multiple steps per
+variable update. Make sure:
+`num_tokens >= replicas_to_aggregate - total_num_replicas`.
+
+##### Args:
+
+
+*  <b>`num_tokens`</b>: Number of tokens to add to the queue.
+
+##### Returns:
+
+  An op for the chief/sync replica to fill the token queue.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If this is called before apply_gradients().
+*  <b>`ValueError`</b>: If num_tokens are smaller than replicas_to_aggregate -
+    total_num_replicas.
+
+
+
+#### Other Methods
+- - -
+
+#### `tf.train.SyncReplicasOptimizerV2.get_slot(*args, **kwargs)` {#SyncReplicasOptimizerV2.get_slot}
+
+Return a slot named "name" created for "var" by the Optimizer.
+
+This simply wraps the get_slot() from the actual optimizer.
+
+##### Args:
+
+
+*  <b>`*args`</b>: Arguments for get_slot().
+*  <b>`**kwargs`</b>: Keyword arguments for get_slot().
+
+##### Returns:
+
+  The `Variable` for the slot if it was created, `None` otherwise.
+
+
+- - -
+
+#### `tf.train.SyncReplicasOptimizerV2.get_slot_names(*args, **kwargs)` {#SyncReplicasOptimizerV2.get_slot_names}
+
+Return a list of the names of slots created by the `Optimizer`.
+
+This simply wraps the get_slot_names() from the actual optimizer.
+
+##### Args:
+
+
+*  <b>`*args`</b>: Arguments for get_slot().
+*  <b>`**kwargs`</b>: Keyword arguments for get_slot().
+
+##### Returns:
+
+  A list of strings.
+
+
+
+- - -
+
+### `tf.train.checkpoint_exists(checkpoint_prefix)` {#checkpoint_exists}
+
+Checks whether a V1 or V2 checkpoint exists with the specified prefix.
+
+This is the recommended way to check if a checkpoint exists, since it takes
+into account the naming difference between V1 and V2 formats.
+
+##### Args:
+
+
+*  <b>`checkpoint_prefix`</b>: the prefix of a V1 or V2 checkpoint, with V2 taking
+    priority.  Typically the result of `Saver.save()` or that of
+    `tf.train.latest_checkpoint()`, regardless of sharded/non-sharded or
+    V1/V2.
+
+##### Returns:
+
+  A bool, true iff a checkpoint referred to by `checkpoint_prefix` exists.
+
+
 - - -
 
 ### `tf.train.do_quantize_training_on_graphdef(input_graph, num_bits)` {#do_quantize_training_on_graphdef}
@@ -3921,5 +6053,30 @@ Generates a checkpoint state proto.
   CheckpointState proto with model_checkpoint_path and
   all_model_checkpoint_paths updated to either absolute paths or
   relative paths to the current save_dir.
+
+
+- - -
+
+### `tf.train.get_checkpoint_mtimes(checkpoint_prefixes)` {#get_checkpoint_mtimes}
+
+Returns the mtimes (modification timestamps) of the checkpoints.
+
+Globs for the checkpoints pointed to by `checkpoint_prefixes`.  If the files
+exist, collect their mtime.  Both V2 and V1 checkpoints are considered, in
+that priority.
+
+This is the recommended way to get the mtimes, since it takes into account
+the naming difference between V1 and V2 formats.
+
+##### Args:
+
+
+*  <b>`checkpoint_prefixes`</b>: a list of checkpoint paths, typically the results of
+    `Saver.save()` or those of `tf.train.latest_checkpoint()`, regardless of
+    sharded/non-sharded or V1/V2.
+
+##### Returns:
+
+  A list of mtimes (in microseconds) of the found checkpoints.
 
 

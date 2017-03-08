@@ -51,6 +51,7 @@ tf_cuda_library(
         ":tf_status_helper",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/util/tensor_bundle",
     ],
 )
 

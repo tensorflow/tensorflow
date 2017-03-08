@@ -334,15 +334,19 @@ class ExpandDimsOp : public OpKernel {
 
   bool IsExpensive() override { return false; }
 };
-REGISTER_KERNEL_BUILDER(Name("ExpandDims").Device(DEVICE_CPU).HostMemory("dim"),
+REGISTER_KERNEL_BUILDER(Name("ExpandDims")
+                            .Device(DEVICE_CPU)
+                            .HostMemory("dim")
+                            .TypeConstraint<int32>("Tdim"),
                         ExpandDimsOp);
 
 #if GOOGLE_CUDA
-#define REGISTER_GPU_KERNEL(type)                        \
-  REGISTER_KERNEL_BUILDER(Name("ExpandDims")             \
-                              .Device(DEVICE_GPU)        \
-                              .TypeConstraint<type>("T") \
-                              .HostMemory("dim"),        \
+#define REGISTER_GPU_KERNEL(type)                            \
+  REGISTER_KERNEL_BUILDER(Name("ExpandDims")                 \
+                              .Device(DEVICE_GPU)            \
+                              .TypeConstraint<type>("T")     \
+                              .TypeConstraint<int32>("Tdim") \
+                              .HostMemory("dim"),            \
                           ExpandDimsOp);
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
@@ -350,6 +354,7 @@ TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
 REGISTER_KERNEL_BUILDER(Name("ExpandDims")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32>("Tdim")
                             .HostMemory("input")
                             .HostMemory("dim")
                             .HostMemory("output"),

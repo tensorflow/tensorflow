@@ -103,16 +103,64 @@ class FinishedNodesTest(test_util.TensorFlowTestCase):
         self.assertAllEqual([], finished.eval())
         self.assertAllEqual([], stale.eval())
 
-  def testEarlyDominates(self):
+  def testEarlyDominatesHoeffding(self):
     with self.test_session():
       finished, stale = self.ops.finished_nodes(
-          self.leaves, self.node_map, self.split_sums,
-          self.split_squares, self.accumulator_sums, self.accumulator_squares,
-          self.birth_epochs, self.current_epoch,
-          regression=False, num_split_after_samples=10, min_split_samples=5)
+          self.leaves,
+          self.node_map,
+          self.split_sums,
+          self.split_squares,
+          self.accumulator_sums,
+          self.accumulator_squares,
+          self.birth_epochs,
+          self.current_epoch,
+          dominate_method='hoeffding',
+          regression=False,
+          num_split_after_samples=10,
+          min_split_samples=5)
 
       self.assertAllEqual([4], finished.eval())
       self.assertAllEqual([], stale.eval())
+
+  def testEarlyDominatesBootstrap(self):
+    with self.test_session():
+      finished, stale = self.ops.finished_nodes(
+          self.leaves,
+          self.node_map,
+          self.split_sums,
+          self.split_squares,
+          self.accumulator_sums,
+          self.accumulator_squares,
+          self.birth_epochs,
+          self.current_epoch,
+          dominate_method='bootstrap',
+          regression=False,
+          num_split_after_samples=10,
+          min_split_samples=5,
+          random_seed=1)
+
+      self.assertAllEqual([4], finished.eval())
+      self.assertAllEqual([], stale.eval())
+
+  def testEarlyDominatesChebyshev(self):
+    with self.test_session():
+      finished, stale = self.ops.finished_nodes(
+          self.leaves,
+          self.node_map,
+          self.split_sums,
+          self.split_squares,
+          self.accumulator_sums,
+          self.accumulator_squares,
+          self.birth_epochs,
+          self.current_epoch,
+          dominate_method='chebyshev',
+          regression=False,
+          num_split_after_samples=10,
+          min_split_samples=5)
+
+      self.assertAllEqual([4], finished.eval())
+      self.assertAllEqual([], stale.eval())
+
 
 if __name__ == '__main__':
   googletest.main()

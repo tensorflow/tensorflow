@@ -35,6 +35,13 @@ class WhereOpTest(tf.test.TestCase):
         with self.assertRaisesOpError(expected_err_re):
           ans.eval()
 
+  def testWrongNumbers(self):
+    with self.test_session():
+      with self.assertRaises(ValueError):
+        tf.where([False, True], [1, 2], None)
+      with self.assertRaises(ValueError):
+        tf.where([False, True], None, [1, 2])
+
   def testBasicMat(self):
     x = np.asarray([[True, False], [True, False]])
 
@@ -55,6 +62,12 @@ class WhereOpTest(tf.test.TestCase):
 
     self._testWhere(x, truth)
 
+  def testThreeArgument(self):
+    x = np.array([[-2, 3, -1], [1, -3, -3]])
+    np_val = np.where(x > 0, x*x, -x)
+    with self.test_session():
+      tf_val = tf.where(tf.constant(x) > 0, x*x, -x).eval()
+    self.assertAllEqual(tf_val, np_val)
 
 if __name__ == "__main__":
   tf.test.main()

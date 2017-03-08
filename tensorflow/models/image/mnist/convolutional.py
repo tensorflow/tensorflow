@@ -23,6 +23,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
 import gzip
 import os
 import sys
@@ -47,10 +48,7 @@ EVAL_BATCH_SIZE = 64
 EVAL_FREQUENCY = 100  # Number of steps between evaluations.
 
 
-tf.app.flags.DEFINE_boolean("self_test", False, "True if running a self test.")
-tf.app.flags.DEFINE_boolean('use_fp16', False,
-                            "Use half floats instead of full floats if True.")
-FLAGS = tf.app.flags.FLAGS
+FLAGS = None
 
 
 def data_type():
@@ -120,7 +118,7 @@ def error_rate(predictions, labels):
       predictions.shape[0])
 
 
-def main(argv=None):  # pylint: disable=unused-argument
+def main(_):
   if FLAGS.self_test:
     print('Running self-test.')
     train_data, train_labels = fake_data(256)
@@ -161,7 +159,7 @@ def main(argv=None):  # pylint: disable=unused-argument
 
   # The variables below hold all the trainable weights. They are passed an
   # initial value which will be assigned when we call:
-  # {tf.initialize_all_variables().run()}
+  # {tf.global_variables_initializer().run()}
   conv1_weights = tf.Variable(
       tf.truncated_normal([5, 5, NUM_CHANNELS, 32],  # 5x5 filter, depth 32.
                           stddev=0.1,
@@ -285,7 +283,7 @@ def main(argv=None):  # pylint: disable=unused-argument
   start_time = time.time()
   with tf.Session() as sess:
     # Run all the initializers to prepare the trainable parameters.
-    tf.initialize_all_variables().run()
+    tf.global_variables_initializer().run()
     print('Initialized!')
     # Loop through training steps.
     for step in xrange(int(num_epochs * train_size) // BATCH_SIZE):
@@ -298,11 +296,13 @@ def main(argv=None):  # pylint: disable=unused-argument
       # node in the graph it should be fed to.
       feed_dict = {train_data_node: batch_data,
                    train_labels_node: batch_labels}
-      # Run the graph and fetch some of the nodes.
-      _, l, lr, predictions = sess.run(
-          [optimizer, loss, learning_rate, train_prediction],
-          feed_dict=feed_dict)
+      # Run the optimizer to update weights.
+      sess.run(optimizer, feed_dict=feed_dict)
+      # print some extra information once reach the evaluation frequency
       if step % EVAL_FREQUENCY == 0:
+        # fetch some extra nodes' data
+        l, lr, predictions = sess.run([loss, learning_rate, train_prediction],
+                                      feed_dict=feed_dict)
         elapsed_time = time.time() - start_time
         start_time = time.time()
         print('Step %d (epoch %.2f), %.1f ms' %
@@ -323,4 +323,17 @@ def main(argv=None):  # pylint: disable=unused-argument
 
 
 if __name__ == '__main__':
-  tf.app.run()
+  parser = argparse.ArgumentParser()
+  parser.add_argument(
+      '--use_fp16',
+      default=False,
+      help='Use half floats instead of full floats if True.',
+      action='store_true')
+  parser.add_argument(
+      '--self_test',
+      default=False,
+      action='store_true',
+      help='True if running a self test.')
+
+  FLAGS, unparsed = parser.parse_known_args()
+  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

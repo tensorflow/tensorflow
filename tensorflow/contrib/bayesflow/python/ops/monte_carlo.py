@@ -30,7 +30,7 @@ If `E_p[|f(Z)|] < infinity`, then `S_n --> E_p[f(Z)]` by the strong law of large
 numbers.  If `E_p[f(Z)^2] < infinity`, then `S_n` is asymptotically normal with
 variance `Var[f(Z)] / n`.
 
-Practicioners of Bayesian statistics often find themselves wanting to estimate
+Practitioners of Bayesian statistics often find themselves wanting to estimate
 `E_p[f(Z)]` when the distribution `p` is known only up to a constant.  For
 example, the joint distribution `p(z, x)` may be known, but the evidence
 `p(x) = \int p(z, x) dz` may be intractable.  In that case, a parameterized
@@ -115,7 +115,7 @@ def expectation_importance_sampler(f,
       shape broadcastable to `q.batch_shape`.
       For example, `log_p` works "just like" `sampling_dist_q.log_prob`.
     sampling_dist_q:  The sampling distribution.
-      `tf.contrib.distributions.BaseDistribution`.
+      `tf.contrib.distributions.Distribution`.
       `float64` `dtype` recommended.
       `log_p` and `q` should be supported on the same set.
     z:  `Tensor` of samples from `q`, produced by `q.sample_n`.
@@ -192,7 +192,7 @@ def expectation_importance_sampler_logspace(
       shape broadcastable to `q.batch_shape`.
       For example, `log_p` works "just like" `q.log_prob`.
     sampling_dist_q:  The sampling distribution.
-      `tf.contrib.distributions.BaseDistribution`.
+      `tf.contrib.distributions.Distribution`.
       `float64` `dtype` recommended.
       `log_p` and `q` should be supported on the same set.
     z:  `Tensor` of samples from `q`, produced by `q.sample_n`.
@@ -253,7 +253,7 @@ def expectation(f, p, z=None, n=None, seed=None, name='expectation'):
 
   Args:
     f: Callable mapping samples from `p` to `Tensors`.
-    p:  `tf.contrib.distributions.BaseDistribution`.
+    p:  `tf.contrib.distributions.Distribution`.
     z:  `Tensor` of samples from `p`, produced by `p.sample_n`.
     n:  Integer `Tensor`.  Number of samples to generate if `z` is not provided.
     seed:  Python integer to seed the random number generator.

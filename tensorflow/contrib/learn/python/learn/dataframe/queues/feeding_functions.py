@@ -23,12 +23,12 @@ import random
 import numpy as np
 
 from tensorflow.contrib.learn.python.learn.dataframe.queues import feeding_queue_runner as fqr
+from tensorflow.python import summary
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import queue_runner
@@ -305,5 +305,5 @@ def enqueue_data(data,
     summary_name = ("queue/%sfraction_over_%d_of_%d_full" %
                     (queue.name, min_after_dequeue,
                      capacity - min_after_dequeue))
-    logging_ops.scalar_summary(summary_name, full)
+    summary.scalar(summary_name, full)
     return queue

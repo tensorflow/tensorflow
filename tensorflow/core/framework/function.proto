@@ -27,6 +27,9 @@ message FunctionDef {
   // attrs etc.
   OpDef signature = 1;
 
+  // Attributes specific to this function definition.
+  map<string, AttrValue> attr = 5;
+
   // TO BE REPLACED
 
   // The body of the function.

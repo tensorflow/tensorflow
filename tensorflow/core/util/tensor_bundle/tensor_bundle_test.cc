@@ -50,9 +50,13 @@ Tensor Constant_2x3(T v) {
 template <typename T>
 void Expect(BundleReader* reader, const string& key,
             const Tensor& expected_val) {
-  // Tests for LookupTensorShape().
+  // Tests for Contains().
+  EXPECT_TRUE(reader->Contains(key));
+  // Tests for LookupDtypeAndShape().
+  DataType dtype;
   TensorShape shape;
-  TF_ASSERT_OK(reader->LookupTensorShape(key, &shape));
+  TF_ASSERT_OK(reader->LookupDtypeAndShape(key, &dtype, &shape));
+  EXPECT_EQ(expected_val.dtype(), dtype);
   EXPECT_EQ(expected_val.shape(), shape);
   // Tests for Lookup(), checking tensor contents.
   Tensor val(expected_val.dtype(), shape);
@@ -360,7 +364,7 @@ TEST(TensorBundleTest, DirectoryStructure) {
                              gtl::ArraySlice<string> expected_files) {
     StringPiece dir = io::Dirname(bundle_prefix);
     for (const string& expected_file : expected_files) {
-      EXPECT_TRUE(env->FileExists(io::JoinPath(dir, expected_file)));
+      TF_EXPECT_OK(env->FileExists(io::JoinPath(dir, expected_file)));
     }
   };
 

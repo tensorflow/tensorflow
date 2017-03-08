@@ -116,7 +116,7 @@ class TopNTest(test_util.TensorFlowTestCase):
     t.remove([4, 5])
     ids, vals = t.get_best(2)
     with session.Session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       ids_v, vals_v = sess.run([ids, vals])
       self.assertItemsEqual([2, 3], list(ids_v))
       self.assertItemsEqual([2.0, 3.0], list(vals_v))
@@ -126,7 +126,7 @@ class TopNTest(test_util.TensorFlowTestCase):
     t.insert([1], [33.0])
     ids, vals = t.get_best(1)
     with session.Session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       ids_v, vals_v = sess.run([ids, vals])
       self.assertListEqual([1], list(ids_v))
       self.assertListEqual([33.0], list(vals_v))
@@ -137,7 +137,7 @@ class TopNTest(test_util.TensorFlowTestCase):
       t.insert([i], [float(i)])
     ids, vals = t.get_best(5)
     with session.Session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       ids_v, vals_v = sess.run([ids, vals])
       self.assertItemsEqual([95, 96, 97, 98, 99], list(ids_v))
       self.assertItemsEqual([95.0, 96.0, 97.0, 98.0, 99.0], list(vals_v))
@@ -148,7 +148,7 @@ class TopNTest(test_util.TensorFlowTestCase):
       t.insert([i], [float(i)])
     ids, vals = t.get_best(5)
     with session.Session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       ids_v, vals_v = sess.run([ids, vals])
       self.assertItemsEqual([95, 96, 97, 98, 99], list(ids_v))
       self.assertItemsEqual([95.0, 96.0, 97.0, 98.0, 99.0], list(vals_v))
@@ -160,7 +160,7 @@ class TopNTest(test_util.TensorFlowTestCase):
     t.remove([4, 5])
     ids, vals = t.get_best(2)
     with session.Session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       ids_v, vals_v = sess.run([ids, vals])
       self.assertItemsEqual([18.0, 19.0], list(vals_v))
       self.assertItemsEqual([18, 19], list(ids_v))
@@ -173,7 +173,7 @@ class TopNTest(test_util.TensorFlowTestCase):
     t.remove([11, 12, 13, 14, 15, 16, 17, 18, 19])
     ids, vals = t.get_best(2)
     with session.Session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(tf.global_variables_initializer())
       ids_v, vals_v = sess.run([ids, vals])
       self.assertItemsEqual([9, 10], list(ids_v))
       self.assertItemsEqual([9.0, 10.0], list(vals_v))

@@ -175,13 +175,13 @@ Status DebugFileIO::DumpTensorToEventFile(
 
 // static
 Status DebugFileIO::RecursiveCreateDir(Env* env, const string& dir) {
-  if (env->FileExists(dir) && env->IsDirectory(dir).ok()) {
+  if (env->FileExists(dir).ok() && env->IsDirectory(dir).ok()) {
     // The path already exists as a directory. Return OK right away.
     return Status::OK();
   }
 
   string parent_dir = io::Dirname(dir).ToString();
-  if (!env->FileExists(parent_dir)) {
+  if (!env->FileExists(parent_dir).ok()) {
     // The parent path does not exist yet, create it first.
     Status s = RecursiveCreateDir(env, parent_dir);  // Recursive call
     if (!s.ok()) {
@@ -189,7 +189,7 @@ Status DebugFileIO::RecursiveCreateDir(Env* env, const string& dir) {
           error::FAILED_PRECONDITION,
           strings::StrCat("Failed to create directory  ", parent_dir));
     }
-  } else if (env->FileExists(parent_dir) &&
+  } else if (env->FileExists(parent_dir).ok() &&
              !env->IsDirectory(parent_dir).ok()) {
     // The path exists, but it is a file.
     return Status(error::FAILED_PRECONDITION,
@@ -200,7 +200,7 @@ Status DebugFileIO::RecursiveCreateDir(Env* env, const string& dir) {
   env->CreateDir(dir);
   // Guard against potential race in creating directories by doing a check
   // after the CreateDir call.
-  if (env->FileExists(dir) && env->IsDirectory(dir).ok()) {
+  if (env->FileExists(dir).ok() && env->IsDirectory(dir).ok()) {
     return Status::OK();
   } else {
     return Status(error::ABORTED,
