@@ -31,8 +31,9 @@ namespace tensorflow {
 // Once all inputs are present, and their shapes are known, the op can
 // use a 'XlaCompilationCache' to compile and execute code which is specific
 // to the shapes of input Tensors.
-// XlaLocalLaunchOp uses xla::LocalClient::ExecuteLocally and passes
-// arguments into/out of XLA in device memory.
+// XlaLocalLaunchOp uses xla::LocalClient::Compile() and
+// xla::LocalExecutable::Run(), and passes arguments into/out of XLA in device
+// memory.
 class XlaLocalLaunchOp : public OpKernel {
  public:
   explicit XlaLocalLaunchOp(OpKernelConstruction* ctx);

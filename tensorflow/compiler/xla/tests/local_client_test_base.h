@@ -99,17 +99,30 @@ class LocalClientTestBase : public ::testing::Test {
 
   // Execute the given computation on the local client. With and without
   // options.
-  std::unique_ptr<ScopedShapedBuffer> ExecuteLocally(
+  StatusOr<std::unique_ptr<ScopedShapedBuffer>> ExecuteLocally(
       const Computation& computation,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments);
-  std::unique_ptr<ScopedShapedBuffer> ExecuteLocally(
+  StatusOr<std::unique_ptr<ScopedShapedBuffer>> ExecuteLocally(
       const Computation& computation,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-      const LocalExecuteOptions& options);
+      const ExecutableBuildOptions& build_options,
+      const ExecutableRunOptions& run_options);
+
+  std::unique_ptr<ScopedShapedBuffer> ExecuteLocallyOrDie(
+      const Computation& computation,
+      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments);
+  std::unique_ptr<ScopedShapedBuffer> ExecuteLocallyOrDie(
+      const Computation& computation,
+      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
+      const ExecutableBuildOptions& build_options,
+      const ExecutableRunOptions& run_options);
+
+  // Returns a default set of execute options.
+  ExecutableBuildOptions DefaultExecutableBuildOptions() const;
 
   // Returns a default set of execute options, configured to use allocator_
   // as the allocator.
-  LocalExecuteOptions DefaultLocalExecuteOptions() const;
+  ExecutableRunOptions DefaultExecutableRunOptions() const;
 
   // Convert a ShapedBuffer into a ScopedShaped buffer so that all buffers are
   // deallocated when the object is destructed.

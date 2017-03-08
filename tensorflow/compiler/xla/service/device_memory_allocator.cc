@@ -74,4 +74,8 @@ StreamExecutorMemoryAllocator::GetStreamExecutor(int device_ordinal) {
   return stream_executors_[device_ordinal];
 }
 
+bool StreamExecutorMemoryAllocator::AllowsAsynchronousDeallocation() const {
+  return false;
+}
+
 }  // namespace xla

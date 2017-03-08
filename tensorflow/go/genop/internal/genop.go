@@ -162,6 +162,7 @@ func makeOutputList(op *tf.Operation, start int, output string) ([]tf.Output, in
 		"Identifier":  identifier,
 		"IsListArg":   isListArg,
 		"IsListAttr":  isListAttr,
+		"StripLeadingColon": stripLeadingColon,
 	}).Parse(`
 {{if .OptionalAttrs -}}
 {{/* Type for specifying all optional attributes. */ -}}
@@ -174,7 +175,7 @@ type {{.Op.Name}}Attr func(optionalAttr)
 //
 // value: {{MakeComment .Description}}
 {{- end}}
-// If not specified, defaults to {{.DefaultValue}}
+// If not specified, defaults to {{StripLeadingColon .DefaultValue}}
 {{- if .HasMinimum}}
 //
 // {{if IsListAttr .}}REQUIRES: len(value) >= {{.Minimum}}{{else}}REQUIRES: value >= {{.Minimum}}{{end}}
@@ -450,6 +451,23 @@ func isListArg(argdef *pb.OpDef_ArgDef) bool {
 func isListAttr(attrdef *pb.OpDef_AttrDef) bool {
 	list, _ := parseTFType(attrdef.Type)
 	return list
+}
+
+// stripLeadingColon removes the prefix of the string up to the first colon.
+//
+// This is useful when 's' corresponds to a "oneof" protocol buffer message.
+// For example, consider the protocol buffer message:
+//   oneof value { bool b = 1;  int64 i = 2; }
+// String() on a Go corresponding object (using proto.CompactTextString) will
+// print "b:true", or "i:7" etc. This function strips out the leading "b:" or
+// "i:".
+func stripLeadingColon(s fmt.Stringer) string {
+	x := s.String()
+	y := strings.SplitN(x, ":", 2)
+	if len(y) < 2 {
+		return x
+	}
+	return y[1]
 }
 
 func parseTFType(tfType string) (list bool, typ string) {
