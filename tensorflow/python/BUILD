@@ -65,6 +65,7 @@ py_library(
         ":session_ops",
         ":sets",
         ":sparse_ops",
+        ":spectral_ops",
         ":standard_ops",
         ":state_ops",
         ":string_ops",
@@ -1152,6 +1153,11 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
+    name = "spectral_ops_gen",
+    require_shape_functions = True,
+)
+
+tf_gen_op_wrapper_private_py(
     name = "string_ops_gen",
     require_shape_functions = True,
 )
@@ -1371,6 +1377,7 @@ py_library(
         ":math_grad",
         ":math_ops",
         ":platform",
+        ":spectral_grad",
         ":util",
         "//third_party/py/numpy",
         "@six_archive//:six",
@@ -1519,6 +1526,7 @@ py_library(
         ":math_ops_gen",
         ":sparse_ops_gen",
         ":sparse_tensor",
+        ":spectral_ops_gen",
         ":state_ops",
         ":state_ops_gen",
         ":tensor_shape",
@@ -1756,6 +1764,33 @@ py_library(
 )
 
 py_library(
+    name = "spectral_grad",
+    srcs = ["ops/spectral_grad.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":framework",
+        ":framework_for_generated_wrappers",
+        ":math_ops",
+        ":spectral_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "spectral_ops",
+    srcs = ["ops/spectral_ops.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":dtypes",
+        ":framework_ops",
+        ":math_ops",
+        ":spectral_ops_gen",
+    ],
+)
+
+py_library(
     name = "confusion_matrix",
     srcs = ["ops/confusion_matrix.py"],
     srcs_version = "PY2AND3",
@@ -1856,6 +1891,7 @@ py_library(
         ":sparse_grad",
         ":sparse_ops",
         ":special_math_ops",
+        ":spectral_grad",
         ":state_grad",
         ":state_ops",
         ":string_ops",

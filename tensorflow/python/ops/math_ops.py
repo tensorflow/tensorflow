@@ -151,6 +151,7 @@ from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_sparse_ops
+from tensorflow.python.ops import gen_spectral_ops
 from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import state_ops
 # go/tf-wildcard-import
@@ -2316,3 +2317,13 @@ def tensordot(a, b, axes, name=None):
       b_free_dims = ops.convert_to_tensor(b_free_dims)
       return array_ops.reshape(
           ab_matmul, array_ops.concat([a_free_dims, b_free_dims], 0), name=name)
+
+
+# FFT ops were moved to tf.spectral. tf.fft symbols were part of the TensorFlow
+# 1.0 API so we leave these here for backwards compatibility.
+fft = gen_spectral_ops.fft
+ifft = gen_spectral_ops.ifft
+fft2d = gen_spectral_ops.fft2d
+ifft2d = gen_spectral_ops.ifft2d
+fft3d = gen_spectral_ops.fft3d
+ifft3d = gen_spectral_ops.ifft3d
