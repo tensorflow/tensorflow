@@ -30,7 +30,9 @@ AllocatorRegistry* AllocatorRegistry::Global() {
 bool AllocatorRegistry::CheckForDuplicates(const string& name, int priority) {
   for (std::vector<AllocatorRegistryEntry>::iterator it = allocators_.begin();
        it != allocators_.end(); ++it) {
-    if (!name.compare(it->name) && it->priority == priority) return true;
+    if (!name.compare(it->name) && it->priority == priority) {
+      return true;
+    }
   }
   return false;
 }
@@ -60,8 +62,7 @@ void AllocatorRegistry::Register(const string& name, int priority,
 }
 
 Allocator* AllocatorRegistry::GetAllocator() {
-  CHECK_NOTNULL(m_curr_allocator_);
-  return m_curr_allocator_;
+  return CHECK_NOTNULL(m_curr_allocator_);
 }
 
 }  // namespace tensorflow
