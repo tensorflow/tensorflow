@@ -16,7 +16,7 @@ limitations under the License.
 #ifdef INTEL_MKL
 
 #include "tensorflow/core/graph/mkl_layout_pass.h"
-#include "tensorflow/core/common_runtime/mkl_layer_registry.h"
+#include "tensorflow/core/util/mkl_util.h"
 
 #include <vector>
 #include "tensorflow/core/framework/op.h"
@@ -107,9 +107,6 @@ class MklLayoutPassTest : public ::testing::Test {
 };
 
 REGISTER_OP("Input").Output("o: float").SetIsStateful();
-
-// Register MklConv2D as Mkl layer for test purpose.
-REGISTER_MKL_LAYER_float("MklConv2D");
 
 // Single Conv2D Op; No Mkl layer on the input and on the output.
 // We will generate dummy Mkl tensor as 2nd input of Conv2D.

@@ -1476,7 +1476,8 @@ tf_cuda_library(
         ":protos_all_cc",
         "//third_party/eigen3",
         "//tensorflow/core/kernels:required",
-    ] + tf_additional_core_deps(),
+    ] + if_mkl(["//third_party/mkl:intel_binary_blob"])
+      + tf_additional_core_deps(),
     alwayslink = 1,
 )
 
@@ -1946,7 +1947,6 @@ if_mkl(
         name = "mkl_related_tests",
         size = "small",
         srcs = [
-            "common_runtime/mkl_layer_registry_test.cc",
             "graph/mkl_layout_pass_test.cc",
             "graph/mkl_optimizer_merge_test.cc",
             "graph/mkl_tfconversion_pass_test.cc",
@@ -1969,6 +1969,9 @@ if_mkl(
             "//tensorflow/cc:cc_ops",
             "//tensorflow/cc:scope",
             "//tensorflow/cc:sendrecv_ops",
+            "//tensorflow/core/kernels:mkl_ops",
+            "//tensorflow/core/kernels:mkl_conv_op",
+            "//tensorflow/core/kernels:mkl_tfconv_op",
             "//tensorflow/core/kernels:ops_util",
             "//third_party/eigen3",
         ],

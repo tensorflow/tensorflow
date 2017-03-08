@@ -35,7 +35,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 
 #include "tensorflow/core/graph/mkl_layout_pass.h"
-#include "tensorflow/core/common_runtime/mkl_layer_registry.h"
+#include "tensorflow/core/util/mkl_util.h"
 
 namespace tensorflow {
 
@@ -355,7 +355,7 @@ Status MklLayoutRewritePass::SetUpInputs(std::unique_ptr<Graph>* g,
       TF_CHECK_OK(GetNodeAttr(n->def(), "T", &T));
       // If this op has been rewritten, then its name must have been same as
       // Mkl op.
-      CHECK_EQ(IS_MKL_LAYER(n->type_string(), T), true);
+      CHECK_EQ(mkl_layer_registry::IsMklLayer(n->type_string()), true);
       // src slot number for Mkl tensor would be the one next to TF tensor
       // slot number.
       new_inputs.push_back(NodeBuilder::NodeOut(n, inputs[i].second+1));
@@ -449,6 +449,8 @@ Status MklLayoutRewritePass::RewriteNode(
   }
   // Copy attributes from original node to new node.
   ni.copyattrs(orign, &nb);
+  // Set the Mkl layer label for this op.
+  nb.Attr("_kernel", mkl_layer_registry::kMklLayerLabel);
   Node* newn = nullptr;
 
   // Finalize graph and get new node.
@@ -492,7 +494,7 @@ bool MklLayoutRewritePass::RunPass(
       // An op needs to have data type (T) attribute and its corresponding
       // Mkl op name must be supported.
       if (GetNodeAttr(n->def(), "T", &dtype) == Status::OK() &&
-          IS_MKL_LAYER(GetMklOpName(n->type_string()), dtype) &&
+          mkl_layer_registry::IsMklLayer(GetMklOpName(n->type_string())) &&
           n->type_string().compare(ni.name) == 0) {
         string node_name = n->name();
         string op_name = n->type_string();
