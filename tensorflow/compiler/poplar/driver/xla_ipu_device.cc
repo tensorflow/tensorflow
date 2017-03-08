@@ -243,6 +243,8 @@ REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("ReadVariableOp").TypeConstraint("dtype", kIpuAllTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
+        Name("_UnsafeReadVariable").TypeConstraint("dtype", kIpuAllTypes));
+REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("Relu").TypeConstraint("T", kIpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("Relu6").TypeConstraint("T", kIpuFloatTypes));
