@@ -727,6 +727,7 @@ class CoreUnaryOpsTest(Base, DocStringCheckMixin, UnaryOpsTestsMixin):
         ('digamma', None, math_ops.digamma, core.digamma),
         ('erf', None, math_ops.erf, core.erf),
         ('erfc', None, math_ops.erfc, core.erfc),
+        ('erfc', None, math_ops.erfcinv, core.erfcinv),
         ('lgamma', None, math_ops.lgamma, core.lgamma),
     ]
     total_size = np.prod([v.size for v in self.original_lt.axes.values()])

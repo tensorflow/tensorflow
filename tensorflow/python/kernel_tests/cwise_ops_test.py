@@ -211,6 +211,7 @@ class UnaryOpTest(test.TestCase):
         math_ops.lgamma)
     self._compareBoth(x, np.vectorize(math.erf), math_ops.erf)
     self._compareBoth(x, np.vectorize(math.erfc), math_ops.erfc)
+    self._compareBoth(x, np.vectorize(math.erfcinv), math_ops.erfcinv)
 
     self._compareBothSparse(x, np.abs, math_ops.abs)
     self._compareBothSparse(x, np.negative, math_ops.negative)
@@ -249,6 +250,7 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(x, np.sign, math_ops.lgamma)
     self._compareBoth(x, np.sign, math_ops.erf)
     self._compareBoth(x, np.sign, math_ops.erfc)
+    self._compareBoth(x, np.sign, math_ops.erfcinv)
     self._compareBoth(x, np.tan, math_ops.tan)
     self._compareBoth(x, np.arcsin, math_ops.asin)
     self._compareBoth(x, np.arccos, math_ops.acos)
@@ -291,6 +293,7 @@ class UnaryOpTest(test.TestCase):
         math_ops.lgamma)
     self._compareBoth(x, np.vectorize(math.erf), math_ops.erf)
     self._compareBoth(x, np.vectorize(math.erfc), math_ops.erfc)
+    self._compareBoth(x, np.vectorize(math.erfcinv), math_ops.erfcinv)
     self._compareBoth(x, np.arctan, math_ops.atan)
     self._compareBoth(k, np.arcsin, math_ops.asin)
     self._compareBoth(k, np.arccos, math_ops.acos)
@@ -331,6 +334,7 @@ class UnaryOpTest(test.TestCase):
         math_ops.lgamma)
     self._compareBoth(x, np.vectorize(math.erf), math_ops.erf)
     self._compareBoth(x, np.vectorize(math.erfc), math_ops.erfc)
+    self._compareBoth(x, np.vectorize(math.erfcinv), math_ops.erfcinv)
 
     self._compareBothSparse(x, np.abs, math_ops.abs)
     self._compareBothSparse(x, np.negative, math_ops.negative)

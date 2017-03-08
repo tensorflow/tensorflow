@@ -60,6 +60,7 @@ See the @{$python/math_ops} guide.
 @@digamma
 @@erf
 @@erfc
+@@erfcinv
 @@squared_difference
 @@igamma
 @@igammac
