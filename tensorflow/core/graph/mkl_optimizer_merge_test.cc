@@ -106,6 +106,8 @@ class OptimizerMergeTest : public ::testing::Test {
 
 REGISTER_OP("Input").Output("o: float").SetIsStateful();
 REGISTER_OP("MklInput").Output("o: uint8").SetIsStateful();
+REGISTER_OP("MklInput2").Output("o: uint8")
+                        .Output("o1: uint8").SetIsStateful();
 
 TEST_F(OptimizerMergeTest, Basic) {
   InitGraph(
@@ -149,6 +151,36 @@ TEST_F(OptimizerMergeTest, Conv2DWithBias_Positive) {
             "A(Input);B(Input);D(Input);DMT/_0(Const);E(MklConv2DWithBias);"
             "M(MklInput);N(MklInput);Y(Input);Z(Sub)|A->E;B->E:2;D->E:4;"
             "DMT/_0->E:5;E->Z;M->E:1;N->E:3;Y->Z:1");
+}
+
+// C=MklConv2D(A,M:1,B,N:1); E=BiasAdd(C,D); Z=Sub(E,Y)
+// Test for correct output slots selected
+TEST_F(OptimizerMergeTest, Conv2DWithBias_Positive1) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'M' op: 'MklInput2'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'N' op: 'MklInput2'}"
+      "node { name: 'C' op: 'MklConv2D'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'data_format'      value { s: 'NCHW' } }"
+      " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
+      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
+      " attr { key: 'padding'          value { s: 'SAME' } }"
+      " input: ['A', 'M:1', 'B', 'N:1']}"
+      "node { name: 'D' op: 'Input'}"
+      "node { name: 'E' op: 'BiasAdd'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'data_format'      value { s: 'NCHW' } }"
+      " input: ['C', 'D'] }"
+      "node { name: 'Y' op: 'Input'}"
+      "node { name: 'Z' op: 'Sub'"
+      " attr {key: 'T'                 value { type: DT_FLOAT } }"
+      " input: ['E', 'Y']}");
+  EXPECT_EQ(DoNodeMerge(),
+            "A(Input);B(Input);D(Input);DMT/_0(Const);E(MklConv2DWithBias);"
+            "M(MklInput2);N(MklInput2);Y(Input);Z(Sub)|A->E;B->E:2;D->E:4;"
+            "DMT/_0->E:5;E->Z;M:1->E:1;N:1->E:3;Y->Z:1");
 }
 
 // C=Conv2D(A,B); E=BiasAdd(C,D); Z=Sub(E,Y);
@@ -278,12 +310,7 @@ TEST_F(OptimizerMergeTest, Conv2DWithBias_Negative_AttrMismatch) {
             "N(MklInput)|A->C;B->C:2;C->E;D->E:1;M->C:1;N->C:3");
 }
 
-#if 0
-// This test set is disabled temporarily as we do not enable node rewrite.
-// This test set will be enabled when we support Mkl-specific kernels for
-// backward bias.
-//
-// Test set 2: MklConv2D..BiasAddGrad -> Conv2DWithBiasBackpropBias
+// Test set 2: MklConv2D..BiasAddGrad -> MklConv2DWithBiasBackpropBias
 // rewrite tests
 
 // C=MklConv2D(A,M,B,N); D=Sub(C,A); E=BiasAddGrad(D)
@@ -308,8 +335,9 @@ TEST_F(OptimizerMergeTest, Conv2DBackprop_Positive) {
       " attr { key: 'data_format'      value { s: 'NCHW' } }"
       " input: ['D'] }");
   EXPECT_EQ(DoNodeMerge(),
-            "A(Input);B(Input);C(MklConv2D);D(Sub);E(Conv2DWithBiasBackpropBias);"
-            "M(MklInput);N(MklInput)|A->C;A->D:1;B->C:2;C->D;D->E;M->C:1;N->C:3");
+            "A(Input);B(Input);C(MklConv2D);D(Sub);DMT/_0(Const);"
+            "E(MklConv2DWithBiasBackpropBias);M(MklInput);N(MklInput)|"
+            "A->C;A->D:1;B->C:2;C->D;D->E;DMT/_0->E:1;M->C:1;N->C:3");
 }
 
 // No MklConv2D in context, but Conv2D in context. No rewrite should happen.
@@ -425,7 +453,6 @@ TEST_F(OptimizerMergeTest, MatMulBiasAddGrad_Negative_NoMatMul) {
             "A(Input);B(Input);C(Add);D(Sub);E(BiasAddGrad)|"
              "A->C;A->D:1;B->C:1;C->D;D->E");
 }
-#endif
 
 static void BM_NodeMerge(int iters, int op_nodes) {
   testing::StopTiming();

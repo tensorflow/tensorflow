@@ -2321,6 +2321,7 @@ tf_cc_test(
         ":array",
         ":immutable_constant_op",
         ":matmul_op",
+        ":mkl_ops",
         ":ops_testutil",
         ":ops_util",
         ":random_shuffle_op",
@@ -4293,6 +4294,57 @@ if_mkl(
     tf_kernel_library(
         name = "mkl_conv_op",
         prefix = "mkl_conv",
+        deps = [
+            ":bounds_check",
+            ":ops_util",
+            "//tensorflow/core:core_cpu",
+            "//tensorflow/core:framework",
+            "//tensorflow/core:lib",
+            "//tensorflow/core:lib_internal",
+            "//tensorflow/core:nn_ops_op_lib",
+            "//third_party/mkl:intel_binary_blob",
+        ],
+    ),
+)
+
+if_mkl(
+    tf_kernel_library(
+        name = "mkl_conv_grad_filter_ops",
+        prefix = "mkl_conv_grad_filter_ops",
+        deps = [
+            ":bounds_check",
+            ":ops_util",
+            "//tensorflow/core:core_cpu",
+            "//tensorflow/core:framework",
+            "//tensorflow/core:lib",
+            "//tensorflow/core:lib_internal",
+            "//tensorflow/core:nn_ops_op_lib",
+            "//third_party/mkl:intel_binary_blob",
+        ],
+    ),
+)
+
+if_mkl(
+    tf_kernel_library(
+        name = "mkl_conv_grad_bias_ops",
+        prefix = "mkl_conv_grad_bias_ops",
+        deps = [
+            ":bounds_check",
+            ":ops_util",
+            "//tensorflow/core:core_cpu",
+            "//tensorflow/core:framework",
+            "//tensorflow/core:lib",
+            "//tensorflow/core:lib_internal",
+            "//tensorflow/core:nn_ops_op_lib",
+            "//third_party/mkl:intel_binary_blob",
+        ],
+    ),
+)
+
+if_mkl(
+    tf_kernel_library(
+        name = "mkl_conv_grad_input_ops",
+        prefix = "mkl_conv_grad_input_ops",
         deps = [
             ":bounds_check",
             ":ops_util",

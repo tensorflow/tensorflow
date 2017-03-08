@@ -16,7 +16,6 @@ limitations under the License.
 #ifdef INTEL_MKL
 
 #include "tensorflow/core/graph/mkl_tfconversion_pass.h"
-#include "tensorflow/core/common_runtime/mkl_layer_registry.h"
 
 #include <vector>
 #include "tensorflow/core/framework/op.h"
@@ -109,9 +108,6 @@ REGISTER_OP("Input").Output("o: float").SetIsStateful();
 REGISTER_OP("HalfInput").Output("o: half").SetIsStateful();
 REGISTER_OP("MklInput").Output("o: uint8").SetIsStateful();
 
-// Register MklConv2D with float type as Mkl layer for test purpose.
-REGISTER_MKL_LAYER_float("MklConv2D");
-
 TEST_F(MklToTfConversionPass, Basic) {
   InitGraph(
       "node { name: 'A' op: 'Input'}"
@@ -150,10 +146,10 @@ TEST_F(MklToTfConversionPass, Positive) {
             "C:1->Mkl2Tf/_0:1;D->E:1;M->C:1;Mkl2Tf/_0->E;N->C:3");
 }
 
-// MklConv2D followed by Non-Mkl layer, but MklConv2D uses half type
+// MklConv2D followed by Non-Mkl layer, and MklConv2D uses half type
 // C=MklConv2D(A,M,B,N); E=Sub(C,D)
-// No MklToTf node should be inserted.
-TEST_F(MklToTfConversionPass, Negative_Type) {
+// MklToTf node should be inserted.
+TEST_F(MklToTfConversionPass, Positive_Type) {
   InitGraph(
       "node { name: 'A' op: 'HalfInput'}"
       "node { name: 'M' op: 'MklInput'}"
@@ -172,8 +168,9 @@ TEST_F(MklToTfConversionPass, Negative_Type) {
       " input: ['C', 'D']}");
   EXPECT_EQ(DoRunMklToTfConversionPass(),
             "A(HalfInput);B(HalfInput);C(MklConv2D);D(HalfInput);"
-            "E(Sub);M(MklInput);N(MklInput)|A->C;B->C:2;C->E;D->E:1;"
-            "M->C:1;N->C:3");
+            "E(Sub);M(MklInput);Mkl2Tf/_0(MklToTf);N(MklInput)|"
+            "A->C;B->C:2;C->Mkl2Tf/_0;C:1->Mkl2Tf/_0:1;D->E:1;"
+            "M->C:1;Mkl2Tf/_0->E;N->C:3");
 }
 
 // C=Conv2D(A,B); E=BiasAdd(C,D); Z=Sub(E,Y);

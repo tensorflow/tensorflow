@@ -32,9 +32,9 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
-#include "tensorflow/core/common_runtime/mkl_layer_registry.h"
 
 #include "tensorflow/core/graph/mkl_tfconversion_pass.h"
+#include "tensorflow/core/util/mkl_util.h"
 
 namespace tensorflow {
 
@@ -82,10 +82,9 @@ class MklToTfConversionPass : public GraphOptimizationPass {
   // Is the input Op supported by Mkl-specific layout?
   //
   // @input op_name string of the op
-  // @input type of the op
   // @return true if op is Mkl supported; false, otherwise.
-  inline bool IsMklSupportedOp(const string& op_name, DataType T) const {
-    return IS_MKL_LAYER(op_name, T);
+  inline bool IsMklSupportedOp(const string& op_name) const {
+    return mkl_layer_registry::IsMklLayer(op_name);
   }
 
   // Insert layout conversion node on the edge pointed by 'e' from graph 'g'.
@@ -149,6 +148,9 @@ Status MklToTfConversionPass::InsertConversionNodeOnEdge(
   // We want conversion node to be on the same device as the source node.
   conversion_node->set_assigned_device_name(src->assigned_device_name());
 
+  // Set the Mkl layer label for this op.
+  conversion_node->AddAttr("_kernel", mkl_layer_registry::kMklLayerLabel);
+
   // Now that we have added edge from src->conversion_node, let's add edge from
   // output of conversion_node to the dest node. Since conversion_node
   // has only 1 output, the src_output of conversion_node is 0.
@@ -199,10 +201,9 @@ bool MklToTfConversionPass::RunPass(std::unique_ptr<Graph>* g) {
     DataType dst_datatype = DT_INVALID;
     GetNodeAttr(dst->def(), "T", &dst_datatype);
 
-    // Check if src with its type is Mkl-compliant, while dst with it's type
-    // is not Mkl-compliant.
-    if (IsMklSupportedOp(src->type_string(), src_datatype) &&
-       !IsMklSupportedOp(dst->type_string(), dst_datatype)) {
+    // Check if src with is Mkl-compliant, while dst is not Mkl-compliant.
+    if (IsMklSupportedOp(src->type_string()) &&
+       !IsMklSupportedOp(dst->type_string())) {
       VLOG(1) << "MklToTfConversionPass: Scheduled nodes " << src->name()
               << " and " << dst->name() << " for inserting conversion nodes";
       candidate_edges.push_back(const_cast<Edge*>(e));

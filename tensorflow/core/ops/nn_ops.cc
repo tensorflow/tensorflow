@@ -2460,6 +2460,61 @@ REGISTER_OP("MklConv2DWithBias")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString());
 
+REGISTER_OP("MklConv2DBackpropFilter")
+    .Input("input: T")
+    .Input("mkl_input: uint8")
+    .Input("filter_sizes: int32")
+    .Input("mkl_filter_size: uint8")
+    .Input("out_backprop: T")
+    .Input("mkl_out_backprop: uint8")
+    .Output("output: T")
+    .Output("mkl_output: uint8")
+    .Attr("T: {half, float, double}")
+    .Attr("strides: list(int)")
+    .Attr("use_cudnn_on_gpu: bool = true")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .SetShapeFn([](InferenceContext* c) {
+      // NOTE(mrry): We could in principle work out the shape from the
+      // gradients and the attrs, but if we do not know orig_input_shape
+      // statically, then we are unlikely to know the shape of the
+      // gradients either.
+      return InputTensorShapeOrUnknown(c, 2 /* input_idx */, 4 /* ndims */);
+    })
+    .Doc(R"doc(
+MKL version of Conv2DBackpropFilter
+)doc");
+
+REGISTER_OP("MklConv2DWithBiasBackpropBias")
+    .Input("out_backprop: T")
+    .Input("mkl_out_backprop: uint8")
+    .Output("output: T")
+    .Output("mkl_output: uint8")
+    .Attr("T: {half, float, double}")
+    .Attr("strides: list(int)")
+    .Attr(GetConvnetDataFormatAttrString());
+
+REGISTER_OP("MklConv2DBackpropInput")
+    .Input("input_sizes: int32")
+    .Input("mkl_input_sizes: uint8")
+    .Input("filter: T")
+    .Input("mkl_filter: uint8")
+    .Input("out_backprop: T")
+    .Input("mkl_out_backprop: uint8")
+    .Output("output: T")
+    .Output("mkl_output: uint8")
+    .Attr("T: {half, float, double}")
+    .Attr("strides: list(int)")
+    .Attr("use_cudnn_on_gpu: bool = true")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .SetShapeFn([](InferenceContext* c) {
+      return InputTensorShapeOrUnknown(c, 0 /* input_idx */, 4 /* ndims */);
+    })
+    .Doc(R"doc(
+MKL version of conv 2d backward input
+)doc");
+
 REGISTER_OP("MklToTf")
     .Input("input: T")
     .Input("mkl_input: uint8")

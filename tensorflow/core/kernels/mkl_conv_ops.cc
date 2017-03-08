@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 
-#include "tensorflow/core/common_runtime/mkl_layer_registry.h"
 #include "tensorflow/core/util/mkl_util.h"
 #include "third_party/mkl/include/mkl_dnn.h"
 #include "third_party/mkl/include/mkl_dnn_types.h"
@@ -426,7 +425,7 @@ class MklConv2DOp : public OpKernel {
     dnnLayoutDelete_F32(mkl_lt_filter_);
     if (biasEnabled) dnnLayoutDelete_F32(mkl_lt_bias_);
   }
-  
+
   std::vector<int32> strides_;
   Padding padding_;
   TensorFormat data_format_;
@@ -436,22 +435,20 @@ class MklConv2DOp : public OpKernel {
   void* mkl_conv_res_[dnnResourceNumber];
   dnnLayout_t mkl_lt_filter_ = nullptr, mkl_lt_bias_ = nullptr,
               mkl_lt_input_ = nullptr;
-  
-
 };
 
 #define REGISTER_MKL_CPU(T)                                                \
   REGISTER_KERNEL_BUILDER(                                                 \
-      Name("MklConv2D").Device(DEVICE_CPU).TypeConstraint<T>("T"),         \
+      Name("MklConv2D").Device(DEVICE_CPU)                                 \
+      .TypeConstraint<T>("T")                                              \
+      .Label(mkl_layer_registry::kMklLayerLabel),                          \
       MklConv2DOp<CPUDevice, T, false>);                                   \
   REGISTER_KERNEL_BUILDER(                                                 \
-      Name("MklConv2DWithBias").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      Name("MklConv2DWithBias").Device(DEVICE_CPU)                         \
+      .TypeConstraint<T>("T")                                              \
+      .Label(mkl_layer_registry::kMklLayerLabel),                          \
       MklConv2DOp<CPUDevice, T, true>);
 
 TF_CALL_float(REGISTER_MKL_CPU);
-
-REGISTER_MKL_LAYER_float("MklConv2D");
-REGISTER_MKL_LAYER_float("MklConv2DWithBias");
-
 }  // namespace tensorflow
 #endif  // INTEL_MKL
