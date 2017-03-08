@@ -67,9 +67,9 @@ cc_library(
         "core/ops/utils.h",
     ],
     deps = [
-        "//:protobuf_headers",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
+        "@protobuf//:protobuf_headers",
     ],
 )
 

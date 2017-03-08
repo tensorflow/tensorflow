@@ -140,8 +140,14 @@ def _non_atrous_convolution(input, filter, padding, data_format=None,  # pylint:
           name=name)
 
 
-def with_space_to_batch(input, dilation_rate, padding, op, filter_shape=None,  # pylint: disable=redefined-builtin
-                        spatial_dims=None):
+def with_space_to_batch(
+    input,  # pylint: disable=redefined-builtin
+    dilation_rate,
+    padding,
+    op,
+    filter_shape=None,
+    spatial_dims=None,
+    data_format=None):
   """Performs `op` on the space-to-batch representation of `input`.
 
   This has the effect of transforming sliding window operations into the
@@ -260,6 +266,12 @@ def with_space_to_batch(input, dilation_rate, padding, op, filter_shape=None,  #
     spatial_dims: Monotonically increasing sequence of `num_spatial_dims`
       integers (which are >= 1) specifying the spatial dimensions of `input`
       and output.  Defaults to: `range(1, num_spatial_dims+1)`.
+    data_format: A string or None.  Specifies whether the channel dimension of
+      the `input` and output is the last dimension (default, or if `data_format`
+      does not start with "NC"), or the second dimension (if `data_format`
+      starts with "NC").  For N=1, the valid values are "NWC" (default) and
+      "NCW".  For N=2, the valid values are "NHWC" (default) and "NCHW".  For
+      N=3, the valid value is "NDHWC".
 
   Returns:
     The output Tensor as described above.
@@ -283,20 +295,31 @@ def with_space_to_batch(input, dilation_rate, padding, op, filter_shape=None,  #
 
   num_spatial_dims = rate_shape[0].value
 
+  if data_format is not None and data_format.startswith("NC"):
+    starting_spatial_dim = 2
+  else:
+    starting_spatial_dim = 1
+
   if spatial_dims is None:
-    spatial_dims = range(1, num_spatial_dims + 1)
+    spatial_dims = range(starting_spatial_dim,
+                         num_spatial_dims + starting_spatial_dim)
   orig_spatial_dims = list(spatial_dims)
   spatial_dims = sorted(set(int(x) for x in orig_spatial_dims))
   if spatial_dims != orig_spatial_dims or any(x < 1 for x in spatial_dims):
     raise ValueError(
-        "spatial_dims must be a montonically increasing sequence of positive integers")  # pylint: disable=line-too-long
-  last_spatial_dim = spatial_dims[-1]
+        "spatial_dims must be a montonically increasing sequence of positive "
+        "integers")  # pylint: disable=line-too-long
+
+  if data_format is not None and data_format.startswith("NC"):
+    expected_input_rank = spatial_dims[-1]
+  else:
+    expected_input_rank = spatial_dims[-1] + 1
 
   try:
-    input.get_shape().with_rank_at_least(last_spatial_dim + 1)
+    input.get_shape().with_rank_at_least(expected_input_rank)
   except ValueError:
     ValueError("input tensor must have rank %d at least" %
-               (last_spatial_dim + 1))
+               (expected_input_rank))
 
   const_rate = tensor_util.constant_value(dilation_rate)
   rate_or_const_rate = dilation_rate

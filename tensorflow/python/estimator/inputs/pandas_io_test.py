@@ -26,15 +26,30 @@ from tensorflow.python.platform import test
 from tensorflow.python.training import coordinator
 from tensorflow.python.training import queue_runner_impl
 
+
+def print_debug_info(module_pd, has_pandas, msg):
+  if module_pd is None:
+    print('HAS_PANDAS {} and module pd is None. Msg {}'.format(has_pandas, msg))
+  else:
+    has_data_frame = hasattr(module_pd, 'DataFrame')
+    print('HAS_PANDAS {} and hasattr(pd, "DataFrame") {}. Msg {}'.format(
+        has_pandas, has_data_frame, msg))
+    if not has_data_frame:
+      print('symbols in pd {}'.format(dir(module_pd)))
+
+
 try:
   # pylint: disable=g-import-not-at-top
   import pandas as pd
   HAS_PANDAS = True
+  print_debug_info(pd, HAS_PANDAS, 'import statement')
 except IOError:
   # Pandas writes a temporary file during import. If it fails, don't use pandas.
   HAS_PANDAS = False
+  print_debug_info(None, HAS_PANDAS, 'import statement')
 except ImportError:
   HAS_PANDAS = False
+  print_debug_info(None, HAS_PANDAS, 'import statement')
 
 
 class PandasIoTest(test.TestCase):
@@ -43,6 +58,7 @@ class PandasIoTest(test.TestCase):
     index = np.arange(100, 104)
     a = np.arange(4)
     b = np.arange(32, 36)
+    print_debug_info(pd, HAS_PANDAS, 'in test case')
     x = pd.DataFrame({'a': a, 'b': b}, index=index)
     y = pd.Series(np.arange(-32, -28), index=index)
     return x, y

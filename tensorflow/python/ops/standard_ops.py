@@ -27,6 +27,7 @@ from tensorflow.python.ops import array_grad
 from tensorflow.python.ops import data_flow_grad
 from tensorflow.python.ops import math_grad
 from tensorflow.python.ops import sparse_grad
+from tensorflow.python.ops import spectral_grad
 from tensorflow.python.ops import state_grad
 from tensorflow.python.ops import tensor_array_grad
 from tensorflow.python.util.all_util import remove_undocumented

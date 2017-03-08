@@ -27,6 +27,8 @@ toc:
     path: /TARGET_DOC_ROOT/api_guides/python/client
   - title: "Sparse Tensors"
     path: /TARGET_DOC_ROOT/api_guides/python/sparse_ops
+  - title: "Spectral Functions"
+    path: /TARGET_DOC_ROOT/api_guides/python/spectral_ops
   - title: "Strings"
     path: /TARGET_DOC_ROOT/api_guides/python/string_ops
   - title: "Summary Operations"

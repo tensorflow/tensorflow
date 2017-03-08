@@ -196,6 +196,21 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "pooling_ops_3d_test",
+    size = "medium",
+    srcs = ["pooling_ops_3d_test.py"],
+    shard_count = 10,
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:nn_ops_gen",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
     name = "random_ops_test",
     size = "small",
     srcs = ["random_ops_test.py"],
@@ -221,6 +236,17 @@ tf_xla_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
+    name = "reverse_ops_test",
+    size = "small",
+    srcs = ["reverse_ops_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
     ],
 )
 

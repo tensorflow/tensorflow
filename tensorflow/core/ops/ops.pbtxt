@@ -5696,6 +5696,20 @@ op {
       }
     }
   }
+  attr {
+    name: "data_format"
+    type: "string"
+    default_value {
+      s: "NHWC"
+    }
+    description: "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, height, width, channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, channels, height, width]."
+    allowed_values {
+      list {
+        s: "NHWC"
+        s: "NCHW"
+      }
+    }
+  }
   summary: "Computes a 2-D depthwise convolution given 4-D `input` and `filter` tensors."
   description: "Given an input tensor of shape `[batch, in_height, in_width, in_channels]`\nand a filter / kernel tensor of shape\n`[filter_height, filter_width, in_channels, channel_multiplier]`, containing\n`in_channels` convolutional filters of depth 1, `depthwise_conv2d` applies\na different filter to each input channel (expanding from 1 channel to\n`channel_multiplier` channels for each), then concatenates the results\ntogether. Thus, the output has `in_channels * channel_multiplier` channels.\n\nfor k in 0..in_channels-1\n  for q in 0..channel_multiplier-1\n    output[b, i, j, k * channel_multiplier + q] =\n      sum_{di, dj} input[b, strides[1] * i + di, strides[2] * j + dj, k] *\n                        filter[di, dj, k, q]\n\nMust have `strides[0] = strides[3] = 1`.  For the most common case of the same\nhorizontal and vertices strides, `strides = [1, stride, stride, 1]`."
 }
@@ -5703,7 +5717,7 @@ op {
   name: "DepthwiseConv2dNativeBackpropFilter"
   input_arg {
     name: "input"
-    description: "4-D with shape `[batch, in_height, in_width, in_channels]`."
+    description: "4-D with shape based on `data_format`.  For example, if\n`data_format` is \'NHWC\' then `input` is a 4-D `[batch, in_height,\nin_width, in_channels]` tensor."
     type_attr: "T"
   }
   input_arg {
@@ -5713,7 +5727,7 @@ op {
   }
   input_arg {
     name: "out_backprop"
-    description: "4-D with shape `[batch, out_height, out_width, out_channels]`.\nGradients w.r.t. the output of the convolution."
+    description: "4-D with shape  based on `data_format`.\nFor example, if `data_format` is \'NHWC\' then\nout_backprop shape is `[batch, out_height, out_width, out_channels]`.\nGradients w.r.t. the output of the convolution."
     type_attr: "T"
   }
   output_arg {
@@ -5747,13 +5761,27 @@ op {
       }
     }
   }
+  attr {
+    name: "data_format"
+    type: "string"
+    default_value {
+      s: "NHWC"
+    }
+    description: "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, height, width, channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, channels, height, width]."
+    allowed_values {
+      list {
+        s: "NHWC"
+        s: "NCHW"
+      }
+    }
+  }
   summary: "Computes the gradients of depthwise convolution with respect to the filter."
 }
 op {
   name: "DepthwiseConv2dNativeBackpropInput"
   input_arg {
     name: "input_sizes"
-    description: "An integer vector representing the shape of `input`,\nwhere `input` is a 4-D `[batch, height, width, channels]` tensor."
+    description: "An integer vector representing the shape of `input`, based\non `data_format`.  For example, if `data_format` is \'NHWC\' then\n `input` is a 4-D `[batch, height, width, channels]` tensor."
     type: DT_INT32
   }
   input_arg {
@@ -5763,12 +5791,12 @@ op {
   }
   input_arg {
     name: "out_backprop"
-    description: "4-D with shape `[batch, out_height, out_width, out_channels]`.\nGradients w.r.t. the output of the convolution."
+    description: "4-D with shape  based on `data_format`.\nFor example, if `data_format` is \'NHWC\' then\nout_backprop shape is `[batch, out_height, out_width, out_channels]`.\nGradients w.r.t. the output of the convolution."
     type_attr: "T"
   }
   output_arg {
     name: "output"
-    description: "4-D with shape `[batch, in_height, in_width, in_channels]`.  Gradient\nw.r.t. the input of the convolution."
+    description: "4-D with shape according to `data_format`.  For example, if\n`data_format` is \'NHWC\', output shape is `[batch, in_height,\nin_width, in_channels]`.  Gradient w.r.t. the input of the\nconvolution."
     type_attr: "T"
   }
   attr {
@@ -5794,6 +5822,20 @@ op {
       list {
         s: "SAME"
         s: "VALID"
+      }
+    }
+  }
+  attr {
+    name: "data_format"
+    type: "string"
+    default_value {
+      s: "NHWC"
+    }
+    description: "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, height, width, channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, channels, height, width]."
+    allowed_values {
+      list {
+        s: "NHWC"
+        s: "NCHW"
       }
     }
   }
@@ -6933,7 +6975,7 @@ op {
   }
   output_arg {
     name: "output"
-    description: "A complex64 tensor of the same shape as `input`. The inner-most\ndimension of `input` is replaced with its 1D Fourier Transform."
+    description: "A complex64 tensor of the same shape as `input`. The inner-most\n  dimension of `input` is replaced with its 1D Fourier Transform.\n\n@compatibility(numpy)\nEquivalent to np.fft.fft\n@end_compatibility"
     type: DT_COMPLEX64
   }
   summary: "Compute the 1-dimensional discrete Fourier Transform over the inner-most"
@@ -6948,7 +6990,7 @@ op {
   }
   output_arg {
     name: "output"
-    description: "A complex64 tensor of the same shape as `input`. The inner-most 2\n  dimensions of `input` are replaced with their 2D Fourier Transform.\n\n@compatibility(numpy)\nEquivalent to np.fft2\n@end_compatibility"
+    description: "A complex64 tensor of the same shape as `input`. The inner-most 2\n  dimensions of `input` are replaced with their 2D Fourier Transform.\n\n@compatibility(numpy)\nEquivalent to np.fft.fft2\n@end_compatibility"
     type: DT_COMPLEX64
   }
   summary: "Compute the 2-dimensional discrete Fourier Transform over the inner-most"
@@ -6963,7 +7005,7 @@ op {
   }
   output_arg {
     name: "output"
-    description: "A complex64 tensor of the same shape as `input`. The inner-most 3\n  dimensions of `input` are replaced with their 3D Fourier Transform.\n\n@compatibility(numpy)\nEquivalent to np.fft3\n@end_compatibility"
+    description: "A complex64 tensor of the same shape as `input`. The inner-most 3\n  dimensions of `input` are replaced with their 3D Fourier Transform.\n\n@compatibility(numpy)\nEquivalent to np.fft.fftn with 3 dimensions.\n@end_compatibility"
     type: DT_COMPLEX64
   }
   summary: "Compute the 3-dimensional discrete Fourier Transform over the inner-most 3"
@@ -8500,7 +8542,7 @@ op {
   }
   output_arg {
     name: "output"
-    description: "A complex64 tensor of the same shape as `input`. The inner-most\ndimension of `input` is replaced with its inverse 1D Fourier Transform."
+    description: "A complex64 tensor of the same shape as `input`. The inner-most\n  dimension of `input` is replaced with its inverse 1D Fourier Transform.\n\n@compatibility(numpy)\nEquivalent to np.fft.ifft\n@end_compatibility"
     type: DT_COMPLEX64
   }
   summary: "Compute the inverse 1-dimensional discrete Fourier Transform over the inner-most"
@@ -8515,7 +8557,7 @@ op {
   }
   output_arg {
     name: "output"
-    description: "A complex64 tensor of the same shape as `input`. The inner-most 2\n  dimensions of `input` are replaced with their inverse 2D Fourier Transform.\n\n@compatibility(numpy)\nEquivalent to np.ifft2\n@end_compatibility"
+    description: "A complex64 tensor of the same shape as `input`. The inner-most 2\n  dimensions of `input` are replaced with their inverse 2D Fourier Transform.\n\n@compatibility(numpy)\nEquivalent to np.fft.ifft2\n@end_compatibility"
     type: DT_COMPLEX64
   }
   summary: "Compute the inverse 2-dimensional discrete Fourier Transform over the inner-most"
@@ -8530,11 +8572,71 @@ op {
   }
   output_arg {
     name: "output"
-    description: "A complex64 tensor of the same shape as `input`. The inner-most 3\n  dimensions of `input` are replaced with their inverse 3D Fourier Transform.\n\n@compatibility(numpy)\nEquivalent to np.fft3\n@end_compatibility"
+    description: "A complex64 tensor of the same shape as `input`. The inner-most 3\n  dimensions of `input` are replaced with their inverse 3D Fourier Transform.\n\n@compatibility(numpy)\nEquivalent to np.fft.ifftn with 3 dimensions.\n@end_compatibility"
     type: DT_COMPLEX64
   }
   summary: "Compute the inverse 3-dimensional discrete Fourier Transform over the inner-most"
   description: "3 dimensions of `input`."
+}
+op {
+  name: "IRFFT"
+  input_arg {
+    name: "input"
+    description: "A complex64 tensor."
+    type: DT_COMPLEX64
+  }
+  input_arg {
+    name: "fft_length"
+    description: "An int32 tensor of shape [1]. The FFT length."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    description: "A float32 tensor of the same rank as `input`. The inner-most\n  dimension of `input` is replaced with the `fft_length` samples of its inverse\n  1D Fourier Transform.\n\n@compatibility(numpy)\nEquivalent to np.fft.irfft\n@end_compatibility"
+    type: DT_FLOAT
+  }
+  summary: "Compute the inverse 1-dimensional discrete Fourier Transform of a real-valued"
+  description: "signal over the inner-most dimension of `input`.\n\nThe inner-most dimension of `input` is assumed to be the result of `RFFT`: the\n`fft_length / 2 + 1` unique components of the DFT of a real-valued signal. If\n`fft_length` is not provided, it is computed from the size of the inner-most\ndimension of `input` (`fft_length = 2 * (inner - 1)`). If the FFT length used to\ncompute `input` is odd, it should be provided since it cannot be inferred\nproperly."
+}
+op {
+  name: "IRFFT2D"
+  input_arg {
+    name: "input"
+    description: "A complex64 tensor."
+    type: DT_COMPLEX64
+  }
+  input_arg {
+    name: "fft_length"
+    description: "An int32 tensor of shape [2]. The FFT length for each dimension."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    description: "A float32 tensor of the same rank as `input`. The inner-most 2\n  dimensions of `input` are replaced with the `fft_length` samples of their\n  inverse 2D Fourier Transform.\n\n@compatibility(numpy)\nEquivalent to np.fft.irfft2\n@end_compatibility"
+    type: DT_FLOAT
+  }
+  summary: "Compute the inverse 2-dimensional discrete Fourier Transform of a real-valued"
+  description: "signal over the inner-most 2 dimensions of `input`.\n\nThe inner-most 2 dimensions of `input` are assumed to be the result of `RFFT2D`:\nThe inner-most dimension contains the `fft_length / 2 + 1` unique components of\nthe DFT of a real-valued signal. If `fft_length` is not provided, it is computed\nfrom the size of the inner-most 2 dimensions of `input`. If the FFT length used\nto compute `input` is odd, it should be provided since it cannot be inferred\nproperly."
+}
+op {
+  name: "IRFFT3D"
+  input_arg {
+    name: "input"
+    description: "A complex64 tensor."
+    type: DT_COMPLEX64
+  }
+  input_arg {
+    name: "fft_length"
+    description: "An int32 tensor of shape [3]. The FFT length for each dimension."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    description: "A float32 tensor of the same rank as `input`. The inner-most 3\n  dimensions of `input` are replaced with the `fft_length` samples of their\n  inverse 3D real Fourier Transform.\n\n@compatibility(numpy)\nEquivalent to np.irfftn with 3 dimensions.\n@end_compatibility"
+    type: DT_FLOAT
+  }
+  summary: "Compute the inverse 3-dimensional discrete Fourier Transform of a real-valued"
+  description: "signal over the inner-most 3 dimensions of `input`.\n\nThe inner-most 3 dimensions of `input` are assumed to be the result of `RFFT3D`:\nThe inner-most dimension contains the `fft_length / 2 + 1` unique components of\nthe DFT of a real-valued signal. If `fft_length` is not provided, it is computed\nfrom the size of the inner-most 3 dimensions of `input`. If the FFT length used\nto compute `input` is odd, it should be provided since it cannot be inferred\nproperly."
 }
 op {
   name: "Identity"
@@ -14286,6 +14388,66 @@ op {
   }
   summary: "Computes the number of elements in the given queue."
   is_stateful: true
+}
+op {
+  name: "RFFT"
+  input_arg {
+    name: "input"
+    description: "A float32 tensor."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "fft_length"
+    description: "An int32 tensor of shape [1]. The FFT length."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    description: "A complex64 tensor of the same rank as `input`. The inner-most\n  dimension of `input` is replaced with the `fft_length / 2 + 1` unique\n  frequency components of its 1D Fourier Transform.\n\n@compatibility(numpy)\nEquivalent to np.fft.rfft\n@end_compatibility"
+    type: DT_COMPLEX64
+  }
+  summary: "Compute the 1-dimensional discrete Fourier Transform of a real-valued signal"
+  description: "over the inner-most dimension of `input`.\n\nSince the DFT of a real signal is Hermitian-symmetric, `RFFT` only returns the\n`fft_length / 2 + 1` unique components of the FFT: the zero-frequency term,\nfollowed by the `fft_length / 2` positive-frequency terms."
+}
+op {
+  name: "RFFT2D"
+  input_arg {
+    name: "input"
+    description: "A float32 tensor."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "fft_length"
+    description: "An int32 tensor of shape [2]. The FFT length for each dimension."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    description: "A complex64 tensor of the same rank as `input`. The inner-most 2\n  dimensions of `input` are replaced with their 2D Fourier Transform. The\n  inner-most dimension contains `fft_length / 2 + 1` unique frequency\n  components.\n\n@compatibility(numpy)\nEquivalent to np.fft.rfft2\n@end_compatibility"
+    type: DT_COMPLEX64
+  }
+  summary: "Compute the 2-dimensional discrete Fourier Transform of a real-valued signal"
+  description: "over the inner-most 2 dimensions of `input`.\n\nSince the DFT of a real signal is Hermitian-symmetric, `RFFT2D` only returns the\n`fft_length / 2 + 1` unique components of the FFT for the inner-most dimension\nof `output`: the zero-frequency term, followed by the `fft_length / 2`\npositive-frequency terms."
+}
+op {
+  name: "RFFT3D"
+  input_arg {
+    name: "input"
+    description: "A float32 tensor."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "fft_length"
+    description: "An int32 tensor of shape [3]. The FFT length for each dimension."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    description: "A complex64 tensor of the same rank as `input`. The inner-most 3\n  dimensions of `input` are replaced with the their 3D Fourier Transform. The\n  inner-most dimension contains `fft_length / 2 + 1` unique frequency\n  components.\n\n@compatibility(numpy)\nEquivalent to np.fft.rfftn with 3 dimensions.\n@end_compatibility"
+    type: DT_COMPLEX64
+  }
+  summary: "Compute the 3-dimensional discrete Fourier Transform of a real-valued signal"
+  description: "over the inner-most 3 dimensions of `input`.\n\nSince the DFT of a real signal is Hermitian-symmetric, `RFFT3D` only returns the\n`fft_length / 2 + 1` unique components of the FFT for the inner-most dimension\nof `output`: the zero-frequency term, followed by the `fft_length / 2`\npositive-frequency terms."
 }
 op {
   name: "RGBToHSV"

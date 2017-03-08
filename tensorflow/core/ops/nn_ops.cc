@@ -818,6 +818,7 @@ REGISTER_OP("DepthwiseConv2dNative")
     .Attr("T: {float, double}")
     .Attr("strides: list(int)")
     .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
     .SetShapeFn(shape_inference::DepthwiseConv2DNativeShape)
     .Doc(R"doc(
 Computes a 2-D depthwise convolution given 4-D `input` and `filter` tensors.
@@ -842,6 +843,11 @@ horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
 strides: 1-D of length 4.  The stride of the sliding window for each dimension
   of `input`.
 padding: The type of padding algorithm to use.
+data_format: Specify the data format of the input and output data. With the
+    default format "NHWC", the data is stored in the order of:
+        [batch, height, width, channels].
+    Alternatively, the format could be "NCHW", the data storage order of:
+        [batch, channels, height, width].
 )doc");
 
 REGISTER_OP("DepthwiseConv2dNativeBackpropInput")
@@ -852,6 +858,7 @@ REGISTER_OP("DepthwiseConv2dNativeBackpropInput")
     .Attr("T: {float, double}")
     .Attr("strides: list(int)")
     .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
     .SetShapeFn([](InferenceContext* c) {
       // NOTE(mrry): We could in principle work out the shape from the
       // gradients and the attrs, but if we do not know orig_input_shape
@@ -862,17 +869,27 @@ REGISTER_OP("DepthwiseConv2dNativeBackpropInput")
     .Doc(R"doc(
 Computes the gradients of depthwise convolution with respect to the input.
 
-input_sizes: An integer vector representing the shape of `input`,
-  where `input` is a 4-D `[batch, height, width, channels]` tensor.
+input_sizes: An integer vector representing the shape of `input`, based
+  on `data_format`.  For example, if `data_format` is 'NHWC' then
+   `input` is a 4-D `[batch, height, width, channels]` tensor.
 filter: 4-D with shape
   `[filter_height, filter_width, in_channels, depthwise_multiplier]`.
-out_backprop: 4-D with shape `[batch, out_height, out_width, out_channels]`.
+out_backprop: 4-D with shape  based on `data_format`.
+  For example, if `data_format` is 'NHWC' then
+  out_backprop shape is `[batch, out_height, out_width, out_channels]`.
   Gradients w.r.t. the output of the convolution.
 strides: The stride of the sliding window for each dimension of the input
   of the convolution.
 padding: The type of padding algorithm to use.
-output: 4-D with shape `[batch, in_height, in_width, in_channels]`.  Gradient
-  w.r.t. the input of the convolution.
+data_format: Specify the data format of the input and output data. With the
+    default format "NHWC", the data is stored in the order of:
+        [batch, height, width, channels].
+    Alternatively, the format could be "NCHW", the data storage order of:
+        [batch, channels, height, width].
+output: 4-D with shape according to `data_format`.  For example, if
+  `data_format` is 'NHWC', output shape is `[batch, in_height,
+  in_width, in_channels]`.  Gradient w.r.t. the input of the
+  convolution.
 )doc");
 
 REGISTER_OP("DepthwiseConv2dNativeBackpropFilter")
@@ -883,6 +900,7 @@ REGISTER_OP("DepthwiseConv2dNativeBackpropFilter")
     .Attr("T: {float, double}")
     .Attr("strides: list(int)")
     .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
     .SetShapeFn([](InferenceContext* c) {
       // NOTE(mrry): We could in principle work out the shape from the
       // gradients and the attrs, but if we do not know orig_input_shape
@@ -893,15 +911,24 @@ REGISTER_OP("DepthwiseConv2dNativeBackpropFilter")
     .Doc(R"doc(
 Computes the gradients of depthwise convolution with respect to the filter.
 
-input: 4-D with shape `[batch, in_height, in_width, in_channels]`.
+input: 4-D with shape based on `data_format`.  For example, if
+  `data_format` is 'NHWC' then `input` is a 4-D `[batch, in_height,
+  in_width, in_channels]` tensor.
 filter_sizes: An integer vector representing the tensor shape of `filter`,
   where `filter` is a 4-D
   `[filter_height, filter_width, in_channels, depthwise_multiplier]` tensor.
-out_backprop: 4-D with shape `[batch, out_height, out_width, out_channels]`.
+out_backprop: 4-D with shape  based on `data_format`.
+  For example, if `data_format` is 'NHWC' then
+  out_backprop shape is `[batch, out_height, out_width, out_channels]`.
   Gradients w.r.t. the output of the convolution.
 strides: The stride of the sliding window for each dimension of the input
   of the convolution.
 padding: The type of padding algorithm to use.
+data_format: Specify the data format of the input and output data. With the
+    default format "NHWC", the data is stored in the order of:
+        [batch, height, width, channels].
+    Alternatively, the format could be "NCHW", the data storage order of:
+        [batch, channels, height, width].
 output: 4-D with shape
   `[filter_height, filter_width, in_channels, out_channels]`.  Gradient w.r.t.
   the `filter` input of the convolution.

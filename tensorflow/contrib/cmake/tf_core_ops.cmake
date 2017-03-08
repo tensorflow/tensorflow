@@ -21,6 +21,7 @@ set(tf_op_lib_names
     "set_ops"  
     "sendrecv_ops"
     "sparse_ops"
+    "spectral_ops"
     "state_ops"
     "string_ops"
     "training_ops"
