@@ -576,6 +576,7 @@ StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
     TF_ASSIGN_OR_RETURN(
         result, ExecuteOnStreamWrapper<StatusOr<se::DeviceMemoryBase>>(
                     executable, &run_options[0], profile,
+                    execute_backend_.get(),
                     [&arguments](Executable* executable,
                                  const ServiceExecutableRunOptions* run_options,
                                  HloExecutionProfile* hlo_execution_profile) {
