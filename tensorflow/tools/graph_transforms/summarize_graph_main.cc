@@ -109,7 +109,7 @@ Status SummarizeGraph(const GraphDef& graph, const string& graph_path) {
     if (node.op() == "Placeholder") {
       placeholders.push_back(&node);
     }
-    if (node.op() == "Variable") {
+    if (node.op() == "Variable" || node.op() == "VariableV2") {
       variables.push_back(&node);
     }
   }
@@ -168,7 +168,8 @@ Status SummarizeGraph(const GraphDef& graph, const string& graph_path) {
     if (node.device() != "") {
       ++device_counts[node.device()];
     }
-    if ((node.op() == "Const") || (node.op() == "Variable")) {
+    if ((node.op() == "Const") || (node.op() == "Variable") ||
+        (node.op() == "VariableV2")) {
       Tensor tensor;
       if (node.attr().count("value") &&
           tensor.FromProto(node.attr().at("value").tensor())) {
