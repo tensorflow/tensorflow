@@ -181,7 +181,7 @@ type VarHandleOpAttr func(optionalAttr)
 // VarHandleOpContainer sets the optional container attribute to value.
 //
 // value: the container this variable is placed in.
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func VarHandleOpContainer(value string) VarHandleOpAttr {
 	return func(m optionalAttr) {
 		m["container"] = value
@@ -191,7 +191,7 @@ func VarHandleOpContainer(value string) VarHandleOpAttr {
 // VarHandleOpSharedName sets the optional shared_name attribute to value.
 //
 // value: the name by which this variable is referred to.
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func VarHandleOpSharedName(value string) VarHandleOpAttr {
 	return func(m optionalAttr) {
 		m["shared_name"] = value
@@ -259,7 +259,7 @@ type QuantizedInstanceNormAttr func(optionalAttr)
 // value: If True, `given_y_min` and `given_y_min`
 // and `given_y_max` are used as the output range. Otherwise,
 // the implementation computes the output range.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func QuantizedInstanceNormOutputRangeGiven(value bool) QuantizedInstanceNormAttr {
 	return func(m optionalAttr) {
 		m["output_range_given"] = value
@@ -269,7 +269,7 @@ func QuantizedInstanceNormOutputRangeGiven(value bool) QuantizedInstanceNormAttr
 // QuantizedInstanceNormGivenYMin sets the optional given_y_min attribute to value.
 //
 // value: Output in `y_min` if `output_range_given` is True.
-// If not specified, defaults to f:0
+// If not specified, defaults to 0
 func QuantizedInstanceNormGivenYMin(value float32) QuantizedInstanceNormAttr {
 	return func(m optionalAttr) {
 		m["given_y_min"] = value
@@ -279,7 +279,7 @@ func QuantizedInstanceNormGivenYMin(value float32) QuantizedInstanceNormAttr {
 // QuantizedInstanceNormGivenYMax sets the optional given_y_max attribute to value.
 //
 // value: Output in `y_max` if `output_range_given` is True.
-// If not specified, defaults to f:0
+// If not specified, defaults to 0
 func QuantizedInstanceNormGivenYMax(value float32) QuantizedInstanceNormAttr {
 	return func(m optionalAttr) {
 		m["given_y_max"] = value
@@ -289,7 +289,7 @@ func QuantizedInstanceNormGivenYMax(value float32) QuantizedInstanceNormAttr {
 // QuantizedInstanceNormVarianceEpsilon sets the optional variance_epsilon attribute to value.
 //
 // value: A small float number to avoid dividing by 0.
-// If not specified, defaults to f:1e-05
+// If not specified, defaults to 1e-05
 func QuantizedInstanceNormVarianceEpsilon(value float32) QuantizedInstanceNormAttr {
 	return func(m optionalAttr) {
 		m["variance_epsilon"] = value
@@ -299,7 +299,7 @@ func QuantizedInstanceNormVarianceEpsilon(value float32) QuantizedInstanceNormAt
 // QuantizedInstanceNormMinSeparation sets the optional min_separation attribute to value.
 //
 // value: Minimum value of `y_max - y_min`
-// If not specified, defaults to f:0.001
+// If not specified, defaults to 0.001
 func QuantizedInstanceNormMinSeparation(value float32) QuantizedInstanceNormAttr {
 	return func(m optionalAttr) {
 		m["min_separation"] = value
@@ -366,7 +366,7 @@ type DebugNumericSummaryAttr func(optionalAttr)
 // DebugNumericSummaryTensorName sets the optional tensor_name attribute to value.
 //
 // value: Name of the input tensor.
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func DebugNumericSummaryTensorName(value string) DebugNumericSummaryAttr {
 	return func(m optionalAttr) {
 		m["tensor_name"] = value
@@ -377,7 +377,7 @@ func DebugNumericSummaryTensorName(value string) DebugNumericSummaryAttr {
 //
 // value: List of URLs to debug targets, e.g.,
 // file:///foo/tfdbg_dump, grpc:://localhost:11011
-// If not specified, defaults to list:<>
+// If not specified, defaults to <>
 func DebugNumericSummaryDebugUrls(value []string) DebugNumericSummaryAttr {
 	return func(m optionalAttr) {
 		m["debug_urls"] = value
@@ -457,7 +457,7 @@ type DebugNanCountAttr func(optionalAttr)
 // DebugNanCountTensorName sets the optional tensor_name attribute to value.
 //
 // value: Name of the input tensor.
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func DebugNanCountTensorName(value string) DebugNanCountAttr {
 	return func(m optionalAttr) {
 		m["tensor_name"] = value
@@ -468,7 +468,7 @@ func DebugNanCountTensorName(value string) DebugNanCountAttr {
 //
 // value: List of URLs to debug targets, e.g.,
 // file:///foo/tfdbg_dump, grpc:://localhost:11011
-// If not specified, defaults to list:<>
+// If not specified, defaults to <>
 func DebugNanCountDebugUrls(value []string) DebugNanCountAttr {
 	return func(m optionalAttr) {
 		m["debug_urls"] = value
@@ -508,7 +508,7 @@ type DebugIdentityAttr func(optionalAttr)
 // DebugIdentityTensorName sets the optional tensor_name attribute to value.
 //
 // value: Name of the input tensor.
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func DebugIdentityTensorName(value string) DebugIdentityAttr {
 	return func(m optionalAttr) {
 		m["tensor_name"] = value
@@ -519,7 +519,7 @@ func DebugIdentityTensorName(value string) DebugIdentityAttr {
 //
 // value: List of URLs to debug targets, e.g.,
 // file:///foo/tfdbg_dump, grpc:://localhost:11011
-// If not specified, defaults to list:<>
+// If not specified, defaults to <>
 func DebugIdentityDebugUrls(value []string) DebugIdentityAttr {
 	return func(m optionalAttr) {
 		m["debug_urls"] = value
@@ -559,7 +559,7 @@ type CopyAttr func(optionalAttr)
 // CopyTensorName sets the optional tensor_name attribute to value.
 //
 // value: The name of the input tensor.
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func CopyTensorName(value string) CopyAttr {
 	return func(m optionalAttr) {
 		m["tensor_name"] = value
@@ -601,7 +601,7 @@ func Copy(scope *Scope, input tf.Output, optional ...CopyAttr) (output tf.Output
 type QuantizeAndDequantizeAttr func(optionalAttr)
 
 // QuantizeAndDequantizeSignedInput sets the optional signed_input attribute to value.
-// If not specified, defaults to b:true
+// If not specified, defaults to true
 func QuantizeAndDequantizeSignedInput(value bool) QuantizeAndDequantizeAttr {
 	return func(m optionalAttr) {
 		m["signed_input"] = value
@@ -609,7 +609,7 @@ func QuantizeAndDequantizeSignedInput(value bool) QuantizeAndDequantizeAttr {
 }
 
 // QuantizeAndDequantizeNumBits sets the optional num_bits attribute to value.
-// If not specified, defaults to i:8
+// If not specified, defaults to 8
 func QuantizeAndDequantizeNumBits(value int64) QuantizeAndDequantizeAttr {
 	return func(m optionalAttr) {
 		m["num_bits"] = value
@@ -617,7 +617,7 @@ func QuantizeAndDequantizeNumBits(value int64) QuantizeAndDequantizeAttr {
 }
 
 // QuantizeAndDequantizeRangeGiven sets the optional range_given attribute to value.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func QuantizeAndDequantizeRangeGiven(value bool) QuantizeAndDequantizeAttr {
 	return func(m optionalAttr) {
 		m["range_given"] = value
@@ -625,7 +625,7 @@ func QuantizeAndDequantizeRangeGiven(value bool) QuantizeAndDequantizeAttr {
 }
 
 // QuantizeAndDequantizeInputMin sets the optional input_min attribute to value.
-// If not specified, defaults to f:0
+// If not specified, defaults to 0
 func QuantizeAndDequantizeInputMin(value float32) QuantizeAndDequantizeAttr {
 	return func(m optionalAttr) {
 		m["input_min"] = value
@@ -633,7 +633,7 @@ func QuantizeAndDequantizeInputMin(value float32) QuantizeAndDequantizeAttr {
 }
 
 // QuantizeAndDequantizeInputMax sets the optional input_max attribute to value.
-// If not specified, defaults to f:0
+// If not specified, defaults to 0
 func QuantizeAndDequantizeInputMax(value float32) QuantizeAndDequantizeAttr {
 	return func(m optionalAttr) {
 		m["input_max"] = value
@@ -668,7 +668,7 @@ type OneHotAttr func(optionalAttr)
 // OneHotAxis sets the optional axis attribute to value.
 //
 // value: The axis to fill (default: -1, a new inner-most axis).
-// If not specified, defaults to i:-1
+// If not specified, defaults to -1
 func OneHotAxis(value int64) OneHotAttr {
 	return func(m optionalAttr) {
 		m["axis"] = value
@@ -1219,7 +1219,7 @@ type QuantizeAndDequantizeV2Attr func(optionalAttr)
 // QuantizeAndDequantizeV2SignedInput sets the optional signed_input attribute to value.
 //
 // value: If the quantization is signed or unsigned.
-// If not specified, defaults to b:true
+// If not specified, defaults to true
 func QuantizeAndDequantizeV2SignedInput(value bool) QuantizeAndDequantizeV2Attr {
 	return func(m optionalAttr) {
 		m["signed_input"] = value
@@ -1229,7 +1229,7 @@ func QuantizeAndDequantizeV2SignedInput(value bool) QuantizeAndDequantizeV2Attr 
 // QuantizeAndDequantizeV2NumBits sets the optional num_bits attribute to value.
 //
 // value: The bitwidth of the quantization.
-// If not specified, defaults to i:8
+// If not specified, defaults to 8
 func QuantizeAndDequantizeV2NumBits(value int64) QuantizeAndDequantizeV2Attr {
 	return func(m optionalAttr) {
 		m["num_bits"] = value
@@ -1239,7 +1239,7 @@ func QuantizeAndDequantizeV2NumBits(value int64) QuantizeAndDequantizeV2Attr {
 // QuantizeAndDequantizeV2RangeGiven sets the optional range_given attribute to value.
 //
 // value: If the range is given or should be computed from the tensor.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func QuantizeAndDequantizeV2RangeGiven(value bool) QuantizeAndDequantizeV2Attr {
 	return func(m optionalAttr) {
 		m["range_given"] = value
@@ -1464,7 +1464,7 @@ func SpaceToBatchND(scope *Scope, input tf.Output, block_shape tf.Output, paddin
 type ListDiffAttr func(optionalAttr)
 
 // ListDiffOutIdx sets the optional out_idx attribute to value.
-// If not specified, defaults to type:DT_INT32
+// If not specified, defaults to DT_INT32
 func ListDiffOutIdx(value tf.DataType) ListDiffAttr {
 	return func(m optionalAttr) {
 		m["out_idx"] = value
@@ -1526,7 +1526,7 @@ type SqueezeAttr func(optionalAttr)
 //
 // value: If specified, only squeezes the dimensions listed. The dimension
 // index starts at 0. It is an error to squeeze a dimension that is not 1.
-// If not specified, defaults to list:<>
+// If not specified, defaults to <>
 //
 // REQUIRES: len(value) >= 0
 func SqueezeSqueezeDims(value []int64) SqueezeAttr {
@@ -1613,7 +1613,7 @@ type PlaceholderAttr func(optionalAttr)
 //
 // value: (Optional) The shape of the tensor. If the shape has 0 dimensions, the
 // shape is unconstrained.
-// If not specified, defaults to shape:<>
+// If not specified, defaults to <>
 func PlaceholderShape(value tf.Shape) PlaceholderAttr {
 	return func(m optionalAttr) {
 		m["shape"] = value
@@ -1809,7 +1809,7 @@ func TileGrad(scope *Scope, input tf.Output, multiples tf.Output) (output tf.Out
 type StridedSliceGradAttr func(optionalAttr)
 
 // StridedSliceGradBeginMask sets the optional begin_mask attribute to value.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func StridedSliceGradBeginMask(value int64) StridedSliceGradAttr {
 	return func(m optionalAttr) {
 		m["begin_mask"] = value
@@ -1817,7 +1817,7 @@ func StridedSliceGradBeginMask(value int64) StridedSliceGradAttr {
 }
 
 // StridedSliceGradEndMask sets the optional end_mask attribute to value.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func StridedSliceGradEndMask(value int64) StridedSliceGradAttr {
 	return func(m optionalAttr) {
 		m["end_mask"] = value
@@ -1825,7 +1825,7 @@ func StridedSliceGradEndMask(value int64) StridedSliceGradAttr {
 }
 
 // StridedSliceGradEllipsisMask sets the optional ellipsis_mask attribute to value.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func StridedSliceGradEllipsisMask(value int64) StridedSliceGradAttr {
 	return func(m optionalAttr) {
 		m["ellipsis_mask"] = value
@@ -1833,7 +1833,7 @@ func StridedSliceGradEllipsisMask(value int64) StridedSliceGradAttr {
 }
 
 // StridedSliceGradNewAxisMask sets the optional new_axis_mask attribute to value.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func StridedSliceGradNewAxisMask(value int64) StridedSliceGradAttr {
 	return func(m optionalAttr) {
 		m["new_axis_mask"] = value
@@ -1841,7 +1841,7 @@ func StridedSliceGradNewAxisMask(value int64) StridedSliceGradAttr {
 }
 
 // StridedSliceGradShrinkAxisMask sets the optional shrink_axis_mask attribute to value.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func StridedSliceGradShrinkAxisMask(value int64) StridedSliceGradAttr {
 	return func(m optionalAttr) {
 		m["shrink_axis_mask"] = value
@@ -1912,7 +1912,7 @@ func Slice(scope *Scope, input tf.Output, begin tf.Output, size tf.Output) (outp
 type ShapeNAttr func(optionalAttr)
 
 // ShapeNOutType sets the optional out_type attribute to value.
-// If not specified, defaults to type:DT_INT32
+// If not specified, defaults to DT_INT32
 func ShapeNOutType(value tf.DataType) ShapeNAttr {
 	return func(m optionalAttr) {
 		m["out_type"] = value
@@ -1954,7 +1954,7 @@ func ShapeN(scope *Scope, input []tf.Output, optional ...ShapeNAttr) (output []t
 type UniqueAttr func(optionalAttr)
 
 // UniqueOutIdx sets the optional out_idx attribute to value.
-// If not specified, defaults to type:DT_INT32
+// If not specified, defaults to DT_INT32
 func UniqueOutIdx(value tf.DataType) UniqueAttr {
 	return func(m optionalAttr) {
 		m["out_idx"] = value
@@ -2109,7 +2109,7 @@ type PreventGradientAttr func(optionalAttr)
 //
 // value: Will be printed in the error when anyone tries to differentiate
 // this operation.
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func PreventGradientMessage(value string) PreventGradientAttr {
 	return func(m optionalAttr) {
 		m["message"] = value
@@ -2321,7 +2321,7 @@ type EditDistanceAttr func(optionalAttr)
 // value: boolean (if true, edit distances are normalized by length of truth).
 //
 // The output is:
-// If not specified, defaults to b:true
+// If not specified, defaults to true
 func EditDistanceNormalize(value bool) EditDistanceAttr {
 	return func(m optionalAttr) {
 		m["normalize"] = value
@@ -2476,7 +2476,7 @@ func DiagPart(scope *Scope, input tf.Output) (diagonal tf.Output) {
 type DequantizeAttr func(optionalAttr)
 
 // DequantizeMode sets the optional mode attribute to value.
-// If not specified, defaults to s:"MIN_COMBINED"
+// If not specified, defaults to "MIN_COMBINED"
 func DequantizeMode(value string) DequantizeAttr {
 	return func(m optionalAttr) {
 		m["mode"] = value
@@ -2754,7 +2754,7 @@ type AllCandidateSamplerAttr func(optionalAttr)
 // value: If either seed or seed2 are set to be non-zero, the random number
 // generator is seeded by the given seed.  Otherwise, it is seeded by a
 // random seed.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func AllCandidateSamplerSeed(value int64) AllCandidateSamplerAttr {
 	return func(m optionalAttr) {
 		m["seed"] = value
@@ -2764,7 +2764,7 @@ func AllCandidateSamplerSeed(value int64) AllCandidateSamplerAttr {
 // AllCandidateSamplerSeed2 sets the optional seed2 attribute to value.
 //
 // value: An second seed to avoid seed collision.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func AllCandidateSamplerSeed2(value int64) AllCandidateSamplerAttr {
 	return func(m optionalAttr) {
 		m["seed2"] = value
@@ -2828,7 +2828,7 @@ type FixedUnigramCandidateSamplerAttr func(optionalAttr)
 // num_reserved_ids. The last entry in each line is expected to be a value
 // corresponding to the count or relative probability. Exactly one of vocab_file
 // and unigrams needs to be passed to this op.
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func FixedUnigramCandidateSamplerVocabFile(value string) FixedUnigramCandidateSamplerAttr {
 	return func(m optionalAttr) {
 		m["vocab_file"] = value
@@ -2842,7 +2842,7 @@ func FixedUnigramCandidateSamplerVocabFile(value string) FixedUnigramCandidateSa
 // internal unigram distribution. As a result, distortion = 1.0 gives regular
 // unigram sampling (as defined by the vocab file), and distortion = 0.0 gives
 // a uniform distribution.
-// If not specified, defaults to f:1
+// If not specified, defaults to 1
 func FixedUnigramCandidateSamplerDistortion(value float32) FixedUnigramCandidateSamplerAttr {
 	return func(m optionalAttr) {
 		m["distortion"] = value
@@ -2854,7 +2854,7 @@ func FixedUnigramCandidateSamplerDistortion(value float32) FixedUnigramCandidate
 // value: Optionally some reserved IDs can be added in the range [0,
 // ..., num_reserved_ids) by the users. One use case is that a special unknown
 // word token is used as ID 0. These IDs will have a sampling probability of 0.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func FixedUnigramCandidateSamplerNumReservedIds(value int64) FixedUnigramCandidateSamplerAttr {
 	return func(m optionalAttr) {
 		m["num_reserved_ids"] = value
@@ -2867,7 +2867,7 @@ func FixedUnigramCandidateSamplerNumReservedIds(value int64) FixedUnigramCandida
 // in order to speed up the whole computation through parallelism. This parameter
 // (together with 'shard') indicates the number of partitions that are being
 // used in the overall computation.
-// If not specified, defaults to i:1
+// If not specified, defaults to 1
 //
 // REQUIRES: value >= 1
 func FixedUnigramCandidateSamplerNumShards(value int64) FixedUnigramCandidateSamplerAttr {
@@ -2882,7 +2882,7 @@ func FixedUnigramCandidateSamplerNumShards(value int64) FixedUnigramCandidateSam
 // in order to speed up the whole computation through parallelism. This parameter
 // (together with 'num_shards') indicates the particular partition number of a
 // sampler op, when partitioning is being used.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 //
 // REQUIRES: value >= 0
 func FixedUnigramCandidateSamplerShard(value int64) FixedUnigramCandidateSamplerAttr {
@@ -2895,7 +2895,7 @@ func FixedUnigramCandidateSamplerShard(value int64) FixedUnigramCandidateSampler
 //
 // value: A list of unigram counts or probabilities, one per ID in sequential
 // order. Exactly one of vocab_file and unigrams should be passed to this op.
-// If not specified, defaults to list:<>
+// If not specified, defaults to <>
 func FixedUnigramCandidateSamplerUnigrams(value []float32) FixedUnigramCandidateSamplerAttr {
 	return func(m optionalAttr) {
 		m["unigrams"] = value
@@ -2907,7 +2907,7 @@ func FixedUnigramCandidateSamplerUnigrams(value []float32) FixedUnigramCandidate
 // value: If either seed or seed2 are set to be non-zero, the random number
 // generator is seeded by the given seed.  Otherwise, it is seeded by a
 // random seed.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func FixedUnigramCandidateSamplerSeed(value int64) FixedUnigramCandidateSamplerAttr {
 	return func(m optionalAttr) {
 		m["seed"] = value
@@ -2917,7 +2917,7 @@ func FixedUnigramCandidateSamplerSeed(value int64) FixedUnigramCandidateSamplerA
 // FixedUnigramCandidateSamplerSeed2 sets the optional seed2 attribute to value.
 //
 // value: An second seed to avoid seed collision.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func FixedUnigramCandidateSamplerSeed2(value int64) FixedUnigramCandidateSamplerAttr {
 	return func(m optionalAttr) {
 		m["seed2"] = value
@@ -2985,7 +2985,7 @@ type UniformCandidateSamplerAttr func(optionalAttr)
 // value: If either seed or seed2 are set to be non-zero, the random number
 // generator is seeded by the given seed.  Otherwise, it is seeded by a
 // random seed.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func UniformCandidateSamplerSeed(value int64) UniformCandidateSamplerAttr {
 	return func(m optionalAttr) {
 		m["seed"] = value
@@ -2995,7 +2995,7 @@ func UniformCandidateSamplerSeed(value int64) UniformCandidateSamplerAttr {
 // UniformCandidateSamplerSeed2 sets the optional seed2 attribute to value.
 //
 // value: An second seed to avoid seed collision.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func UniformCandidateSamplerSeed2(value int64) UniformCandidateSamplerAttr {
 	return func(m optionalAttr) {
 		m["seed2"] = value
@@ -3056,7 +3056,7 @@ type AbortAttr func(optionalAttr)
 // AbortErrorMsg sets the optional error_msg attribute to value.
 //
 // value: A string which is the message associated with the exception.
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func AbortErrorMsg(value string) AbortAttr {
 	return func(m optionalAttr) {
 		m["error_msg"] = value
@@ -3064,7 +3064,7 @@ func AbortErrorMsg(value string) AbortAttr {
 }
 
 // AbortExitWithoutError sets the optional exit_without_error attribute to value.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func AbortExitWithoutError(value bool) AbortAttr {
 	return func(m optionalAttr) {
 		m["exit_without_error"] = value
@@ -3324,7 +3324,7 @@ type EnterAttr func(optionalAttr)
 // EnterIsConstant sets the optional is_constant attribute to value.
 //
 // value: If true, the output is constant within the child frame.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func EnterIsConstant(value bool) EnterAttr {
 	return func(m optionalAttr) {
 		m["is_constant"] = value
@@ -3334,7 +3334,7 @@ func EnterIsConstant(value bool) EnterAttr {
 // EnterParallelIterations sets the optional parallel_iterations attribute to value.
 //
 // value: The number of iterations allowed to run in parallel.
-// If not specified, defaults to i:10
+// If not specified, defaults to 10
 func EnterParallelIterations(value int64) EnterAttr {
 	return func(m optionalAttr) {
 		m["parallel_iterations"] = value
@@ -3431,7 +3431,7 @@ type CTCGreedyDecoderAttr func(optionalAttr)
 // CTCGreedyDecoderMergeRepeated sets the optional merge_repeated attribute to value.
 //
 // value: If True, merge repeated classes in output.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func CTCGreedyDecoderMergeRepeated(value bool) CTCGreedyDecoderAttr {
 	return func(m optionalAttr) {
 		m["merge_repeated"] = value
@@ -3485,7 +3485,7 @@ type CTCLossAttr func(optionalAttr)
 //
 // value: Scalar, if true then repeated labels are
 // collapsed prior to the CTC calculation.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func CTCLossPreprocessCollapseRepeated(value bool) CTCLossAttr {
 	return func(m optionalAttr) {
 		m["preprocess_collapse_repeated"] = value
@@ -3497,7 +3497,7 @@ func CTCLossPreprocessCollapseRepeated(value bool) CTCLossAttr {
 // value: Scalar.  If set to false, *during* CTC calculation
 // repeated non-blank labels will not be merged and are interpreted as
 // individual labels.  This is a simplified version of CTC.
-// If not specified, defaults to b:true
+// If not specified, defaults to true
 func CTCLossCtcMergeRepeated(value bool) CTCLossAttr {
 	return func(m optionalAttr) {
 		m["ctc_merge_repeated"] = value
@@ -3545,7 +3545,7 @@ type StageAttr func(optionalAttr)
 //
 // value: If non-empty, this queue is placed in the given container. Otherwise,
 // a default container is used.
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func StageContainer(value string) StageAttr {
 	return func(m optionalAttr) {
 		m["container"] = value
@@ -3555,7 +3555,7 @@ func StageContainer(value string) StageAttr {
 // StageSharedName sets the optional shared_name attribute to value.
 //
 // value: It is necessary to match this name to the matching Unstage Op.
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func StageSharedName(value string) StageAttr {
 	return func(m optionalAttr) {
 		m["shared_name"] = value
@@ -3593,7 +3593,7 @@ func Stage(scope *Scope, values []tf.Output, optional ...StageAttr) (o *tf.Opera
 type FakeQuantWithMinMaxArgsAttr func(optionalAttr)
 
 // FakeQuantWithMinMaxArgsMin sets the optional min attribute to value.
-// If not specified, defaults to f:-6
+// If not specified, defaults to -6
 func FakeQuantWithMinMaxArgsMin(value float32) FakeQuantWithMinMaxArgsAttr {
 	return func(m optionalAttr) {
 		m["min"] = value
@@ -3601,7 +3601,7 @@ func FakeQuantWithMinMaxArgsMin(value float32) FakeQuantWithMinMaxArgsAttr {
 }
 
 // FakeQuantWithMinMaxArgsMax sets the optional max attribute to value.
-// If not specified, defaults to f:6
+// If not specified, defaults to 6
 func FakeQuantWithMinMaxArgsMax(value float32) FakeQuantWithMinMaxArgsAttr {
 	return func(m optionalAttr) {
 		m["max"] = value
@@ -3700,7 +3700,7 @@ func TensorArrayGradV2(scope *Scope, handle tf.Output, flow_in tf.Output, source
 type ResourceGatherAttr func(optionalAttr)
 
 // ResourceGatherValidateIndices sets the optional validate_indices attribute to value.
-// If not specified, defaults to b:true
+// If not specified, defaults to true
 func ResourceGatherValidateIndices(value bool) ResourceGatherAttr {
 	return func(m optionalAttr) {
 		m["validate_indices"] = value
@@ -3791,7 +3791,7 @@ type LearnedUnigramCandidateSamplerAttr func(optionalAttr)
 // value: If either seed or seed2 are set to be non-zero, the random number
 // generator is seeded by the given seed.  Otherwise, it is seeded by a
 // random seed.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func LearnedUnigramCandidateSamplerSeed(value int64) LearnedUnigramCandidateSamplerAttr {
 	return func(m optionalAttr) {
 		m["seed"] = value
@@ -3801,7 +3801,7 @@ func LearnedUnigramCandidateSamplerSeed(value int64) LearnedUnigramCandidateSamp
 // LearnedUnigramCandidateSamplerSeed2 sets the optional seed2 attribute to value.
 //
 // value: An second seed to avoid seed collision.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func LearnedUnigramCandidateSamplerSeed2(value int64) LearnedUnigramCandidateSamplerAttr {
 	return func(m optionalAttr) {
 		m["seed2"] = value
@@ -3943,7 +3943,7 @@ type TensorArrayConcatV3Attr func(optionalAttr)
 // excluding the first dimension. Used to validate the shapes of
 // TensorArray elements. If this shape is not fully specified, concatenating
 // zero-size TensorArrays is an error.
-// If not specified, defaults to shape:<unknown_rank:true >
+// If not specified, defaults to <unknown_rank:true >
 func TensorArrayConcatV3ElementShapeExcept0(value tf.Shape) TensorArrayConcatV3Attr {
 	return func(m optionalAttr) {
 		m["element_shape_except0"] = value
@@ -4104,7 +4104,7 @@ func TensorArrayGradV3(scope *Scope, handle tf.Output, flow_in tf.Output, source
 type TensorArrayConcatV2Attr func(optionalAttr)
 
 // TensorArrayConcatV2ElementShapeExcept0 sets the optional element_shape_except0 attribute to value.
-// If not specified, defaults to shape:<unknown_rank:true >
+// If not specified, defaults to <unknown_rank:true >
 func TensorArrayConcatV2ElementShapeExcept0(value tf.Shape) TensorArrayConcatV2Attr {
 	return func(m optionalAttr) {
 		m["element_shape_except0"] = value
@@ -4188,7 +4188,7 @@ type QueueCloseV2Attr func(optionalAttr)
 //
 // value: If true, all pending enqueue requests that are
 // blocked on the given queue will be cancelled.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func QueueCloseV2CancelPendingEnqueues(value bool) QueueCloseV2Attr {
 	return func(m optionalAttr) {
 		m["cancel_pending_enqueues"] = value
@@ -4258,7 +4258,7 @@ type QueueDequeueUpToV2Attr func(optionalAttr)
 // value: If the queue has fewer than n elements, this operation
 // will block for up to timeout_ms milliseconds.
 // Note: This option is not supported yet.
-// If not specified, defaults to i:-1
+// If not specified, defaults to -1
 func QueueDequeueUpToV2TimeoutMs(value int64) QueueDequeueUpToV2Attr {
 	return func(m optionalAttr) {
 		m["timeout_ms"] = value
@@ -4343,7 +4343,7 @@ type QueueDequeueManyV2Attr func(optionalAttr)
 // value: If the queue has fewer than n elements, this operation
 // will block for up to timeout_ms milliseconds.
 // Note: This option is not supported yet.
-// If not specified, defaults to i:-1
+// If not specified, defaults to -1
 func QueueDequeueManyV2TimeoutMs(value int64) QueueDequeueManyV2Attr {
 	return func(m optionalAttr) {
 		m["timeout_ms"] = value
@@ -4408,7 +4408,7 @@ type QueueEnqueueV2Attr func(optionalAttr)
 // value: If the queue is full, this operation will block for up to
 // timeout_ms milliseconds.
 // Note: This option is not supported yet.
-// If not specified, defaults to i:-1
+// If not specified, defaults to -1
 func QueueEnqueueV2TimeoutMs(value int64) QueueEnqueueV2Attr {
 	return func(m optionalAttr) {
 		m["timeout_ms"] = value
@@ -4450,7 +4450,7 @@ func QueueEnqueueV2(scope *Scope, handle tf.Output, components []tf.Output, opti
 type UnstageAttr func(optionalAttr)
 
 // UnstageContainer sets the optional container attribute to value.
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func UnstageContainer(value string) UnstageAttr {
 	return func(m optionalAttr) {
 		m["container"] = value
@@ -4458,7 +4458,7 @@ func UnstageContainer(value string) UnstageAttr {
 }
 
 // UnstageSharedName sets the optional shared_name attribute to value.
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func UnstageSharedName(value string) UnstageAttr {
 	return func(m optionalAttr) {
 		m["shared_name"] = value
@@ -4501,7 +4501,7 @@ type PriorityQueueV2Attr func(optionalAttr)
 // PriorityQueueV2ComponentTypes sets the optional component_types attribute to value.
 //
 // value: The type of each component in a value.
-// If not specified, defaults to list:<>
+// If not specified, defaults to <>
 //
 // REQUIRES: len(value) >= 0
 func PriorityQueueV2ComponentTypes(value []tf.DataType) PriorityQueueV2Attr {
@@ -4514,7 +4514,7 @@ func PriorityQueueV2ComponentTypes(value []tf.DataType) PriorityQueueV2Attr {
 //
 // value: The upper bound on the number of elements in this queue.
 // Negative numbers mean no limit.
-// If not specified, defaults to i:-1
+// If not specified, defaults to -1
 func PriorityQueueV2Capacity(value int64) PriorityQueueV2Attr {
 	return func(m optionalAttr) {
 		m["capacity"] = value
@@ -4525,7 +4525,7 @@ func PriorityQueueV2Capacity(value int64) PriorityQueueV2Attr {
 //
 // value: If non-empty, this queue is placed in the given container.
 // Otherwise, a default container is used.
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func PriorityQueueV2Container(value string) PriorityQueueV2Attr {
 	return func(m optionalAttr) {
 		m["container"] = value
@@ -4536,7 +4536,7 @@ func PriorityQueueV2Container(value string) PriorityQueueV2Attr {
 //
 // value: If non-empty, this queue will be shared under the given name
 // across multiple sessions.
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func PriorityQueueV2SharedName(value string) PriorityQueueV2Attr {
 	return func(m optionalAttr) {
 		m["shared_name"] = value
@@ -4588,7 +4588,7 @@ type PaddingFIFOQueueV2Attr func(optionalAttr)
 // zeros up to the maximum shape of all elements in the given batch.
 // If the length of this attr is 0, different queue elements may have
 // different ranks and shapes, but only one element may be dequeued at a time.
-// If not specified, defaults to list:<>
+// If not specified, defaults to <>
 //
 // REQUIRES: len(value) >= 0
 func PaddingFIFOQueueV2Shapes(value []tf.Shape) PaddingFIFOQueueV2Attr {
@@ -4601,7 +4601,7 @@ func PaddingFIFOQueueV2Shapes(value []tf.Shape) PaddingFIFOQueueV2Attr {
 //
 // value: The upper bound on the number of elements in this queue.
 // Negative numbers mean no limit.
-// If not specified, defaults to i:-1
+// If not specified, defaults to -1
 func PaddingFIFOQueueV2Capacity(value int64) PaddingFIFOQueueV2Attr {
 	return func(m optionalAttr) {
 		m["capacity"] = value
@@ -4612,7 +4612,7 @@ func PaddingFIFOQueueV2Capacity(value int64) PaddingFIFOQueueV2Attr {
 //
 // value: If non-empty, this queue is placed in the given container.
 // Otherwise, a default container is used.
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func PaddingFIFOQueueV2Container(value string) PaddingFIFOQueueV2Attr {
 	return func(m optionalAttr) {
 		m["container"] = value
@@ -4623,7 +4623,7 @@ func PaddingFIFOQueueV2Container(value string) PaddingFIFOQueueV2Attr {
 //
 // value: If non-empty, this queue will be shared under the given name
 // across multiple sessions.
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func PaddingFIFOQueueV2SharedName(value string) PaddingFIFOQueueV2Attr {
 	return func(m optionalAttr) {
 		m["shared_name"] = value
@@ -4666,7 +4666,7 @@ type FIFOQueueV2Attr func(optionalAttr)
 // be either 0 or the same as the length of component_types. If the length of
 // this attr is 0, the shapes of queue elements are not constrained, and
 // only one element may be dequeued at a time.
-// If not specified, defaults to list:<>
+// If not specified, defaults to <>
 //
 // REQUIRES: len(value) >= 0
 func FIFOQueueV2Shapes(value []tf.Shape) FIFOQueueV2Attr {
@@ -4679,7 +4679,7 @@ func FIFOQueueV2Shapes(value []tf.Shape) FIFOQueueV2Attr {
 //
 // value: The upper bound on the number of elements in this queue.
 // Negative numbers mean no limit.
-// If not specified, defaults to i:-1
+// If not specified, defaults to -1
 func FIFOQueueV2Capacity(value int64) FIFOQueueV2Attr {
 	return func(m optionalAttr) {
 		m["capacity"] = value
@@ -4690,7 +4690,7 @@ func FIFOQueueV2Capacity(value int64) FIFOQueueV2Attr {
 //
 // value: If non-empty, this queue is placed in the given container.
 // Otherwise, a default container is used.
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func FIFOQueueV2Container(value string) FIFOQueueV2Attr {
 	return func(m optionalAttr) {
 		m["container"] = value
@@ -4701,7 +4701,7 @@ func FIFOQueueV2Container(value string) FIFOQueueV2Attr {
 //
 // value: If non-empty, this queue will be shared under the given name
 // across multiple sessions.
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func FIFOQueueV2SharedName(value string) FIFOQueueV2Attr {
 	return func(m optionalAttr) {
 		m["shared_name"] = value
@@ -4735,7 +4735,7 @@ func FIFOQueueV2(scope *Scope, component_types []tf.DataType, optional ...FIFOQu
 type CumsumAttr func(optionalAttr)
 
 // CumsumExclusive sets the optional exclusive attribute to value.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func CumsumExclusive(value bool) CumsumAttr {
 	return func(m optionalAttr) {
 		m["exclusive"] = value
@@ -4743,7 +4743,7 @@ func CumsumExclusive(value bool) CumsumAttr {
 }
 
 // CumsumReverse sets the optional reverse attribute to value.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func CumsumReverse(value bool) CumsumAttr {
 	return func(m optionalAttr) {
 		m["reverse"] = value
@@ -4854,7 +4854,7 @@ func AvgPool3D(scope *Scope, input tf.Output, ksize []int64, strides []int64, pa
 type QuantizedConv2DAttr func(optionalAttr)
 
 // QuantizedConv2DOutType sets the optional out_type attribute to value.
-// If not specified, defaults to type:DT_QINT32
+// If not specified, defaults to DT_QINT32
 func QuantizedConv2DOutType(value tf.DataType) QuantizedConv2DAttr {
 	return func(m optionalAttr) {
 		m["out_type"] = value
@@ -4963,7 +4963,7 @@ type TensorSummaryAttr func(optionalAttr)
 // TensorSummaryDescription sets the optional description attribute to value.
 //
 // value: A json-encoded SummaryDescription proto.
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func TensorSummaryDescription(value string) TensorSummaryAttr {
 	return func(m optionalAttr) {
 		m["description"] = value
@@ -4973,7 +4973,7 @@ func TensorSummaryDescription(value string) TensorSummaryAttr {
 // TensorSummaryLabels sets the optional labels attribute to value.
 //
 // value: An unused list of strings.
-// If not specified, defaults to list:<>
+// If not specified, defaults to <>
 func TensorSummaryLabels(value []string) TensorSummaryAttr {
 	return func(m optionalAttr) {
 		m["labels"] = value
@@ -4983,7 +4983,7 @@ func TensorSummaryLabels(value []string) TensorSummaryAttr {
 // TensorSummaryDisplayName sets the optional display_name attribute to value.
 //
 // value: An unused string.
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func TensorSummaryDisplayName(value string) TensorSummaryAttr {
 	return func(m optionalAttr) {
 		m["display_name"] = value
@@ -5055,7 +5055,7 @@ type BatchMatMulAttr func(optionalAttr)
 // BatchMatMulAdjX sets the optional adj_x attribute to value.
 //
 // value: If `True`, adjoint the slices of `x`. Defaults to `False`.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func BatchMatMulAdjX(value bool) BatchMatMulAttr {
 	return func(m optionalAttr) {
 		m["adj_x"] = value
@@ -5065,7 +5065,7 @@ func BatchMatMulAdjX(value bool) BatchMatMulAttr {
 // BatchMatMulAdjY sets the optional adj_y attribute to value.
 //
 // value: If `True`, adjoint the slices of `y`. Defaults to `False`.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func BatchMatMulAdjY(value bool) BatchMatMulAttr {
 	return func(m optionalAttr) {
 		m["adj_y"] = value
@@ -5124,7 +5124,7 @@ type SparseTensorDenseMatMulAttr func(optionalAttr)
 //
 // value: Use the adjoint of A in the matrix multiply.  If A is complex, this
 // is transpose(conj(A)).  Otherwise it's transpose(A).
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func SparseTensorDenseMatMulAdjointA(value bool) SparseTensorDenseMatMulAttr {
 	return func(m optionalAttr) {
 		m["adjoint_a"] = value
@@ -5135,7 +5135,7 @@ func SparseTensorDenseMatMulAdjointA(value bool) SparseTensorDenseMatMulAttr {
 //
 // value: Use the adjoint of B in the matrix multiply.  If B is complex, this
 // is transpose(conj(B)).  Otherwise it's transpose(B).
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func SparseTensorDenseMatMulAdjointB(value bool) SparseTensorDenseMatMulAttr {
 	return func(m optionalAttr) {
 		m["adjoint_b"] = value
@@ -5228,7 +5228,7 @@ type FusedBatchNormGradAttr func(optionalAttr)
 // FusedBatchNormGradEpsilon sets the optional epsilon attribute to value.
 //
 // value: A small float number added to the variance of x.
-// If not specified, defaults to f:0.0001
+// If not specified, defaults to 0.0001
 func FusedBatchNormGradEpsilon(value float32) FusedBatchNormGradAttr {
 	return func(m optionalAttr) {
 		m["epsilon"] = value
@@ -5239,7 +5239,7 @@ func FusedBatchNormGradEpsilon(value float32) FusedBatchNormGradAttr {
 //
 // value: The data format for y_backprop, x, x_backprop.
 // Either "NHWC" (default) or "NCHW".
-// If not specified, defaults to s:"NHWC"
+// If not specified, defaults to "NHWC"
 func FusedBatchNormGradDataFormat(value string) FusedBatchNormGradAttr {
 	return func(m optionalAttr) {
 		m["data_format"] = value
@@ -5250,7 +5250,7 @@ func FusedBatchNormGradDataFormat(value string) FusedBatchNormGradAttr {
 //
 // value: A bool value to indicate the operation is for training (default)
 // or inference.
-// If not specified, defaults to b:true
+// If not specified, defaults to true
 func FusedBatchNormGradIsTraining(value bool) FusedBatchNormGradAttr {
 	return func(m optionalAttr) {
 		m["is_training"] = value
@@ -5316,7 +5316,7 @@ type MaxAttr func(optionalAttr)
 // MaxKeepDims sets the optional keep_dims attribute to value.
 //
 // value: If true, retain reduced dimensions with length 1.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func MaxKeepDims(value bool) MaxAttr {
 	return func(m optionalAttr) {
 		m["keep_dims"] = value
@@ -5358,7 +5358,7 @@ func Max(scope *Scope, input tf.Output, reduction_indices tf.Output, optional ..
 type FakeQuantWithMinMaxArgsGradientAttr func(optionalAttr)
 
 // FakeQuantWithMinMaxArgsGradientMin sets the optional min attribute to value.
-// If not specified, defaults to f:-6
+// If not specified, defaults to -6
 func FakeQuantWithMinMaxArgsGradientMin(value float32) FakeQuantWithMinMaxArgsGradientAttr {
 	return func(m optionalAttr) {
 		m["min"] = value
@@ -5366,7 +5366,7 @@ func FakeQuantWithMinMaxArgsGradientMin(value float32) FakeQuantWithMinMaxArgsGr
 }
 
 // FakeQuantWithMinMaxArgsGradientMax sets the optional max attribute to value.
-// If not specified, defaults to f:6
+// If not specified, defaults to 6
 func FakeQuantWithMinMaxArgsGradientMax(value float32) FakeQuantWithMinMaxArgsGradientAttr {
 	return func(m optionalAttr) {
 		m["max"] = value
@@ -5587,7 +5587,7 @@ type ReverseSequenceAttr func(optionalAttr)
 // ReverseSequenceBatchDim sets the optional batch_dim attribute to value.
 //
 // value: The dimension along which reversal is performed.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func ReverseSequenceBatchDim(value int64) ReverseSequenceAttr {
 	return func(m optionalAttr) {
 		m["batch_dim"] = value
@@ -5758,7 +5758,7 @@ func Conv3DBackpropFilterV2(scope *Scope, input tf.Output, filter_sizes tf.Outpu
 type TensorArrayV2Attr func(optionalAttr)
 
 // TensorArrayV2ElementShape sets the optional element_shape attribute to value.
-// If not specified, defaults to shape:<unknown_rank:true >
+// If not specified, defaults to <unknown_rank:true >
 func TensorArrayV2ElementShape(value tf.Shape) TensorArrayV2Attr {
 	return func(m optionalAttr) {
 		m["element_shape"] = value
@@ -5766,7 +5766,7 @@ func TensorArrayV2ElementShape(value tf.Shape) TensorArrayV2Attr {
 }
 
 // TensorArrayV2DynamicSize sets the optional dynamic_size attribute to value.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func TensorArrayV2DynamicSize(value bool) TensorArrayV2Attr {
 	return func(m optionalAttr) {
 		m["dynamic_size"] = value
@@ -5774,7 +5774,7 @@ func TensorArrayV2DynamicSize(value bool) TensorArrayV2Attr {
 }
 
 // TensorArrayV2ClearAfterRead sets the optional clear_after_read attribute to value.
-// If not specified, defaults to b:true
+// If not specified, defaults to true
 func TensorArrayV2ClearAfterRead(value bool) TensorArrayV2Attr {
 	return func(m optionalAttr) {
 		m["clear_after_read"] = value
@@ -5782,7 +5782,7 @@ func TensorArrayV2ClearAfterRead(value bool) TensorArrayV2Attr {
 }
 
 // TensorArrayV2TensorArrayName sets the optional tensor_array_name attribute to value.
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func TensorArrayV2TensorArrayName(value string) TensorArrayV2Attr {
 	return func(m optionalAttr) {
 		m["tensor_array_name"] = value
@@ -5934,7 +5934,7 @@ type FusedResizeAndPadConv2DAttr func(optionalAttr)
 // value: If true, rescale input by (new_height - 1) / (height - 1),
 // which exactly aligns the 4 corners of images and resized images. If false, rescale
 // by new_height / height. Treat similarly the width dimension.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func FusedResizeAndPadConv2DResizeAlignCorners(value bool) FusedResizeAndPadConv2DAttr {
 	return func(m optionalAttr) {
 		m["resize_align_corners"] = value
@@ -6025,7 +6025,7 @@ type FractionalAvgPoolGradAttr func(optionalAttr)
 //
 // If the pooling sequence is [0, 2, 4], then 16, at index 2 will be used twice.
 // The result would be [41/3, 26/3] for fractional avg pooling.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func FractionalAvgPoolGradOverlapping(value bool) FractionalAvgPoolGradAttr {
 	return func(m optionalAttr) {
 		m["overlapping"] = value
@@ -6073,7 +6073,7 @@ func FractionalAvgPoolGrad(scope *Scope, orig_input_tensor_shape tf.Output, out_
 type Conv2DBackpropInputAttr func(optionalAttr)
 
 // Conv2DBackpropInputUseCudnnOnGpu sets the optional use_cudnn_on_gpu attribute to value.
-// If not specified, defaults to b:true
+// If not specified, defaults to true
 func Conv2DBackpropInputUseCudnnOnGpu(value bool) Conv2DBackpropInputAttr {
 	return func(m optionalAttr) {
 		m["use_cudnn_on_gpu"] = value
@@ -6087,7 +6087,7 @@ func Conv2DBackpropInputUseCudnnOnGpu(value bool) Conv2DBackpropInputAttr {
 //     [batch, in_height, in_width, in_channels].
 // Alternatively, the format could be "NCHW", the data storage order of:
 //     [batch, in_channels, in_height, in_width].
-// If not specified, defaults to s:"NHWC"
+// If not specified, defaults to "NHWC"
 func Conv2DBackpropInputDataFormat(value string) Conv2DBackpropInputAttr {
 	return func(m optionalAttr) {
 		m["data_format"] = value
@@ -6135,7 +6135,7 @@ type FusedBatchNormAttr func(optionalAttr)
 // FusedBatchNormEpsilon sets the optional epsilon attribute to value.
 //
 // value: A small float number added to the variance of x.
-// If not specified, defaults to f:0.0001
+// If not specified, defaults to 0.0001
 func FusedBatchNormEpsilon(value float32) FusedBatchNormAttr {
 	return func(m optionalAttr) {
 		m["epsilon"] = value
@@ -6145,7 +6145,7 @@ func FusedBatchNormEpsilon(value float32) FusedBatchNormAttr {
 // FusedBatchNormDataFormat sets the optional data_format attribute to value.
 //
 // value: The data format for x and y. Either "NHWC" (default) or "NCHW".
-// If not specified, defaults to s:"NHWC"
+// If not specified, defaults to "NHWC"
 func FusedBatchNormDataFormat(value string) FusedBatchNormAttr {
 	return func(m optionalAttr) {
 		m["data_format"] = value
@@ -6156,7 +6156,7 @@ func FusedBatchNormDataFormat(value string) FusedBatchNormAttr {
 //
 // value: A bool value to indicate the operation is for training (default)
 // or inference.
-// If not specified, defaults to b:true
+// If not specified, defaults to true
 func FusedBatchNormIsTraining(value bool) FusedBatchNormAttr {
 	return func(m optionalAttr) {
 		m["is_training"] = value
@@ -6209,7 +6209,7 @@ type RandomStandardNormalAttr func(optionalAttr)
 // value: If either `seed` or `seed2` are set to be non-zero, the random number
 // generator is seeded by the given seed.  Otherwise, it is seeded by a
 // random seed.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func RandomStandardNormalSeed(value int64) RandomStandardNormalAttr {
 	return func(m optionalAttr) {
 		m["seed"] = value
@@ -6219,7 +6219,7 @@ func RandomStandardNormalSeed(value int64) RandomStandardNormalAttr {
 // RandomStandardNormalSeed2 sets the optional seed2 attribute to value.
 //
 // value: A second seed to avoid seed collision.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func RandomStandardNormalSeed2(value int64) RandomStandardNormalAttr {
 	return func(m optionalAttr) {
 		m["seed2"] = value
@@ -6285,7 +6285,7 @@ type FractionalMaxPoolGradAttr func(optionalAttr)
 //
 // If the pooling sequence is [0, 2, 4], then 16, at index 2 will be used twice.
 // The result would be [20, 16] for fractional max pooling.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func FractionalMaxPoolGradOverlapping(value bool) FractionalMaxPoolGradAttr {
 	return func(m optionalAttr) {
 		m["overlapping"] = value
@@ -6331,7 +6331,7 @@ type ResourceApplyAdagradDAAttr func(optionalAttr)
 //
 // value: If True, updating of the var and accum tensors will be protected by
 // a lock; otherwise the behavior is undefined, but may exhibit less contention.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func ResourceApplyAdagradDAUseLocking(value bool) ResourceApplyAdagradDAAttr {
 	return func(m optionalAttr) {
 		m["use_locking"] = value
@@ -6377,7 +6377,7 @@ type ComputeAccidentalHitsAttr func(optionalAttr)
 // value: If either seed or seed2 are set to be non-zero, the random number
 // generator is seeded by the given seed.  Otherwise, it is seeded by a
 // random seed.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func ComputeAccidentalHitsSeed(value int64) ComputeAccidentalHitsAttr {
 	return func(m optionalAttr) {
 		m["seed"] = value
@@ -6387,7 +6387,7 @@ func ComputeAccidentalHitsSeed(value int64) ComputeAccidentalHitsAttr {
 // ComputeAccidentalHitsSeed2 sets the optional seed2 attribute to value.
 //
 // value: An second seed to avoid seed collision.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func ComputeAccidentalHitsSeed2(value int64) ComputeAccidentalHitsAttr {
 	return func(m optionalAttr) {
 		m["seed2"] = value
@@ -6438,7 +6438,7 @@ type AvgPoolGradAttr func(optionalAttr)
 //     [batch, in_height, in_width, in_channels].
 // Alternatively, the format could be "NCHW", the data storage order of:
 //     [batch, in_channels, in_height, in_width].
-// If not specified, defaults to s:"NHWC"
+// If not specified, defaults to "NHWC"
 func AvgPoolGradDataFormat(value string) AvgPoolGradAttr {
 	return func(m optionalAttr) {
 		m["data_format"] = value
@@ -6561,7 +6561,7 @@ func SaveSlices(scope *Scope, filename tf.Output, tensor_names tf.Output, shapes
 type TensorArrayGatherV2Attr func(optionalAttr)
 
 // TensorArrayGatherV2ElementShape sets the optional element_shape attribute to value.
-// If not specified, defaults to shape:<unknown_rank:true >
+// If not specified, defaults to <unknown_rank:true >
 func TensorArrayGatherV2ElementShape(value tf.Shape) TensorArrayGatherV2Attr {
 	return func(m optionalAttr) {
 		m["element_shape"] = value
@@ -6682,7 +6682,7 @@ type DecodeCSVAttr func(optionalAttr)
 // DecodeCSVFieldDelim sets the optional field_delim attribute to value.
 //
 // value: delimiter to separate fields in a record.
-// If not specified, defaults to s:","
+// If not specified, defaults to ","
 func DecodeCSVFieldDelim(value string) DecodeCSVAttr {
 	return func(m optionalAttr) {
 		m["field_delim"] = value
@@ -6742,7 +6742,7 @@ type BiasAddGradAttr func(optionalAttr)
 //     [batch, in_channels, in_height, in_width].
 // The tensor will be added to "in_channels", the third-to-the-last
 //     dimension.
-// If not specified, defaults to s:"NHWC"
+// If not specified, defaults to "NHWC"
 func BiasAddGradDataFormat(value string) BiasAddGradAttr {
 	return func(m optionalAttr) {
 		m["data_format"] = value
@@ -6918,7 +6918,7 @@ type DecodeRawAttr func(optionalAttr)
 // value: Whether the input `bytes` are in little-endian order.
 // Ignored for `out_type` values that are stored in a single byte like
 // `uint8`.
-// If not specified, defaults to b:true
+// If not specified, defaults to true
 func DecodeRawLittleEndian(value bool) DecodeRawAttr {
 	return func(m optionalAttr) {
 		m["little_endian"] = value
@@ -6961,7 +6961,7 @@ type QueueDequeueV2Attr func(optionalAttr)
 // value: If the queue is empty, this operation will block for up to
 // timeout_ms milliseconds.
 // Note: This option is not supported yet.
-// If not specified, defaults to i:-1
+// If not specified, defaults to -1
 func QueueDequeueV2TimeoutMs(value int64) QueueDequeueV2Attr {
 	return func(m optionalAttr) {
 		m["timeout_ms"] = value
@@ -7019,7 +7019,7 @@ type ParseSingleSequenceExampleAttr func(optionalAttr)
 // each context Feature given in context_sparse_keys.
 // Currently the ParseSingleSequenceExample supports DT_FLOAT (FloatList),
 // DT_INT64 (Int64List), and DT_STRING (BytesList).
-// If not specified, defaults to list:<>
+// If not specified, defaults to <>
 //
 // REQUIRES: len(value) >= 0
 func ParseSingleSequenceExampleContextSparseTypes(value []tf.DataType) ParseSingleSequenceExampleAttr {
@@ -7029,7 +7029,7 @@ func ParseSingleSequenceExampleContextSparseTypes(value []tf.DataType) ParseSing
 }
 
 // ParseSingleSequenceExampleFeatureListDenseTypes sets the optional feature_list_dense_types attribute to value.
-// If not specified, defaults to list:<>
+// If not specified, defaults to <>
 //
 // REQUIRES: len(value) >= 0
 func ParseSingleSequenceExampleFeatureListDenseTypes(value []tf.DataType) ParseSingleSequenceExampleAttr {
@@ -7045,7 +7045,7 @@ func ParseSingleSequenceExampleFeatureListDenseTypes(value []tf.DataType) ParseS
 // The number of elements in the Feature corresponding to context_dense_key[j]
 // must always equal context_dense_shapes[j].NumEntries().
 // The shape of context_dense_values[j] will match context_dense_shapes[j].
-// If not specified, defaults to list:<>
+// If not specified, defaults to <>
 //
 // REQUIRES: len(value) >= 0
 func ParseSingleSequenceExampleContextDenseShapes(value []tf.Shape) ParseSingleSequenceExampleAttr {
@@ -7060,7 +7060,7 @@ func ParseSingleSequenceExampleContextDenseShapes(value []tf.Shape) ParseSingleS
 // of data in each FeatureList given in feature_list_sparse_keys.
 // Currently the ParseSingleSequenceExample supports DT_FLOAT (FloatList),
 // DT_INT64 (Int64List), and DT_STRING (BytesList).
-// If not specified, defaults to list:<>
+// If not specified, defaults to <>
 //
 // REQUIRES: len(value) >= 0
 func ParseSingleSequenceExampleFeatureListSparseTypes(value []tf.DataType) ParseSingleSequenceExampleAttr {
@@ -7076,7 +7076,7 @@ func ParseSingleSequenceExampleFeatureListSparseTypes(value []tf.DataType) Parse
 // The shape of each Feature in the FeatureList corresponding to
 // feature_list_dense_key[j] must always equal
 // feature_list_dense_shapes[j].NumEntries().
-// If not specified, defaults to list:<>
+// If not specified, defaults to <>
 //
 // REQUIRES: len(value) >= 0
 func ParseSingleSequenceExampleFeatureListDenseShapes(value []tf.Shape) ParseSingleSequenceExampleAttr {
@@ -7182,7 +7182,7 @@ type RandomGammaAttr func(optionalAttr)
 // value: If either `seed` or `seed2` are set to be non-zero, the random number
 // generator is seeded by the given seed.  Otherwise, it is seeded by a
 // random seed.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func RandomGammaSeed(value int64) RandomGammaAttr {
 	return func(m optionalAttr) {
 		m["seed"] = value
@@ -7192,7 +7192,7 @@ func RandomGammaSeed(value int64) RandomGammaAttr {
 // RandomGammaSeed2 sets the optional seed2 attribute to value.
 //
 // value: A second seed to avoid seed collision.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func RandomGammaSeed2(value int64) RandomGammaAttr {
 	return func(m optionalAttr) {
 		m["seed2"] = value
@@ -7298,7 +7298,7 @@ type RandomShuffleAttr func(optionalAttr)
 // value: If either `seed` or `seed2` are set to be non-zero, the random number
 // generator is seeded by the given seed.  Otherwise, it is seeded by a
 // random seed.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func RandomShuffleSeed(value int64) RandomShuffleAttr {
 	return func(m optionalAttr) {
 		m["seed"] = value
@@ -7308,7 +7308,7 @@ func RandomShuffleSeed(value int64) RandomShuffleAttr {
 // RandomShuffleSeed2 sets the optional seed2 attribute to value.
 //
 // value: A second seed to avoid seed collision.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func RandomShuffleSeed2(value int64) RandomShuffleAttr {
 	return func(m optionalAttr) {
 		m["seed2"] = value
@@ -7383,7 +7383,7 @@ type TruncatedNormalAttr func(optionalAttr)
 // value: If either `seed` or `seed2` are set to be non-zero, the random number
 // generator is seeded by the given seed.  Otherwise, it is seeded by a
 // random seed.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func TruncatedNormalSeed(value int64) TruncatedNormalAttr {
 	return func(m optionalAttr) {
 		m["seed"] = value
@@ -7393,7 +7393,7 @@ func TruncatedNormalSeed(value int64) TruncatedNormalAttr {
 // TruncatedNormalSeed2 sets the optional seed2 attribute to value.
 //
 // value: A second seed to avoid seed collision.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func TruncatedNormalSeed2(value int64) TruncatedNormalAttr {
 	return func(m optionalAttr) {
 		m["seed2"] = value
@@ -7437,7 +7437,7 @@ type SkipgramAttr func(optionalAttr)
 // SkipgramWindowSize sets the optional window_size attribute to value.
 //
 // value: The number of words to predict to the left and right of the target.
-// If not specified, defaults to i:5
+// If not specified, defaults to 5
 func SkipgramWindowSize(value int64) SkipgramAttr {
 	return func(m optionalAttr) {
 		m["window_size"] = value
@@ -7448,7 +7448,7 @@ func SkipgramWindowSize(value int64) SkipgramAttr {
 //
 // value: The minimum number of word occurrences for it to be included in the
 // vocabulary.
-// If not specified, defaults to i:5
+// If not specified, defaults to 5
 func SkipgramMinCount(value int64) SkipgramAttr {
 	return func(m optionalAttr) {
 		m["min_count"] = value
@@ -7459,7 +7459,7 @@ func SkipgramMinCount(value int64) SkipgramAttr {
 //
 // value: Threshold for word occurrence. Words that appear with higher
 // frequency will be randomly down-sampled. Set to 0 to disable.
-// If not specified, defaults to f:0.001
+// If not specified, defaults to 0.001
 func SkipgramSubsample(value float32) SkipgramAttr {
 	return func(m optionalAttr) {
 		m["subsample"] = value
@@ -7500,7 +7500,7 @@ type ParameterizedTruncatedNormalAttr func(optionalAttr)
 // value: If either `seed` or `seed2` are set to be non-zero, the random number
 // generator is seeded by the given seed.  Otherwise, it is seeded by a
 // random seed.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func ParameterizedTruncatedNormalSeed(value int64) ParameterizedTruncatedNormalAttr {
 	return func(m optionalAttr) {
 		m["seed"] = value
@@ -7510,7 +7510,7 @@ func ParameterizedTruncatedNormalSeed(value int64) ParameterizedTruncatedNormalA
 // ParameterizedTruncatedNormalSeed2 sets the optional seed2 attribute to value.
 //
 // value: A second seed to avoid seed collision.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func ParameterizedTruncatedNormalSeed2(value int64) ParameterizedTruncatedNormalAttr {
 	return func(m optionalAttr) {
 		m["seed2"] = value
@@ -7585,7 +7585,7 @@ type RandomUniformIntAttr func(optionalAttr)
 // value: If either `seed` or `seed2` are set to be non-zero, the random number
 // generator is seeded by the given seed.  Otherwise, it is seeded by a
 // random seed.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func RandomUniformIntSeed(value int64) RandomUniformIntAttr {
 	return func(m optionalAttr) {
 		m["seed"] = value
@@ -7595,7 +7595,7 @@ func RandomUniformIntSeed(value int64) RandomUniformIntAttr {
 // RandomUniformIntSeed2 sets the optional seed2 attribute to value.
 //
 // value: A second seed to avoid seed collision.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func RandomUniformIntSeed2(value int64) RandomUniformIntAttr {
 	return func(m optionalAttr) {
 		m["seed2"] = value
@@ -7644,7 +7644,7 @@ type PackAttr func(optionalAttr)
 //
 // value: Dimension along which to pack.  Negative values wrap around, so the
 // valid range is `[-(R+1), R+1)`.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func PackAxis(value int64) PackAttr {
 	return func(m optionalAttr) {
 		m["axis"] = value
@@ -7715,7 +7715,7 @@ func TensorArraySplitV2(scope *Scope, handle tf.Output, value tf.Output, lengths
 type QuantizedReluAttr func(optionalAttr)
 
 // QuantizedReluOutType sets the optional out_type attribute to value.
-// If not specified, defaults to type:DT_QUINT8
+// If not specified, defaults to DT_QUINT8
 func QuantizedReluOutType(value tf.DataType) QuantizedReluAttr {
 	return func(m optionalAttr) {
 		m["out_type"] = value
@@ -7786,7 +7786,7 @@ func SparseReorder(scope *Scope, input_indices tf.Output, input_values tf.Output
 type SparseMatMulAttr func(optionalAttr)
 
 // SparseMatMulTransposeA sets the optional transpose_a attribute to value.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func SparseMatMulTransposeA(value bool) SparseMatMulAttr {
 	return func(m optionalAttr) {
 		m["transpose_a"] = value
@@ -7794,7 +7794,7 @@ func SparseMatMulTransposeA(value bool) SparseMatMulAttr {
 }
 
 // SparseMatMulTransposeB sets the optional transpose_b attribute to value.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func SparseMatMulTransposeB(value bool) SparseMatMulAttr {
 	return func(m optionalAttr) {
 		m["transpose_b"] = value
@@ -7802,7 +7802,7 @@ func SparseMatMulTransposeB(value bool) SparseMatMulAttr {
 }
 
 // SparseMatMulAIsSparse sets the optional a_is_sparse attribute to value.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func SparseMatMulAIsSparse(value bool) SparseMatMulAttr {
 	return func(m optionalAttr) {
 		m["a_is_sparse"] = value
@@ -7810,7 +7810,7 @@ func SparseMatMulAIsSparse(value bool) SparseMatMulAttr {
 }
 
 // SparseMatMulBIsSparse sets the optional b_is_sparse attribute to value.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func SparseMatMulBIsSparse(value bool) SparseMatMulAttr {
 	return func(m optionalAttr) {
 		m["b_is_sparse"] = value
@@ -7848,7 +7848,7 @@ type SdcaOptimizerAttr func(optionalAttr)
 // SdcaOptimizerAdaptative sets the optional adaptative attribute to value.
 //
 // value: Whether to use Adapative SDCA for the inner loop.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func SdcaOptimizerAdaptative(value bool) SdcaOptimizerAttr {
 	return func(m optionalAttr) {
 		m["adaptative"] = value
@@ -7981,7 +7981,7 @@ type RestoreAttr func(optionalAttr)
 //
 // value: Index of file to open first if multiple files match
 // `file_pattern`.
-// If not specified, defaults to i:-1
+// If not specified, defaults to -1
 func RestorePreferredShard(value int64) RestoreAttr {
 	return func(m optionalAttr) {
 		m["preferred_shard"] = value
@@ -8082,7 +8082,7 @@ type MaxPoolAttr func(optionalAttr)
 //     [batch, in_height, in_width, in_channels].
 // Alternatively, the format could be "NCHW", the data storage order of:
 //     [batch, in_channels, in_height, in_width].
-// If not specified, defaults to s:"NHWC"
+// If not specified, defaults to "NHWC"
 func MaxPoolDataFormat(value string) MaxPoolAttr {
 	return func(m optionalAttr) {
 		m["data_format"] = value
@@ -8239,7 +8239,7 @@ type DestroyResourceOpAttr func(optionalAttr)
 //
 // value: whether to ignore the error when the resource
 // doesn't exist.
-// If not specified, defaults to b:true
+// If not specified, defaults to true
 func DestroyResourceOpIgnoreLookupError(value bool) DestroyResourceOpAttr {
 	return func(m optionalAttr) {
 		m["ignore_lookup_error"] = value
@@ -8281,7 +8281,7 @@ type ResourceApplyMomentumAttr func(optionalAttr)
 // value: If `True`, updating of the var and accum tensors will be protected
 // by a lock; otherwise the behavior is undefined, but may exhibit less
 // contention.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func ResourceApplyMomentumUseLocking(value bool) ResourceApplyMomentumAttr {
 	return func(m optionalAttr) {
 		m["use_locking"] = value
@@ -8293,7 +8293,7 @@ func ResourceApplyMomentumUseLocking(value bool) ResourceApplyMomentumAttr {
 // value: If `True`, the tensor passed to compute grad will be
 // var - lr * momentum * accum, so in the end, the var you get is actually
 // var - lr * momentum * accum.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func ResourceApplyMomentumUseNesterov(value bool) ResourceApplyMomentumAttr {
 	return func(m optionalAttr) {
 		m["use_nesterov"] = value
@@ -8468,7 +8468,7 @@ func FFT(scope *Scope, input tf.Output) (output tf.Output) {
 type MaxPoolWithArgmaxAttr func(optionalAttr)
 
 // MaxPoolWithArgmaxTargmax sets the optional Targmax attribute to value.
-// If not specified, defaults to type:DT_INT64
+// If not specified, defaults to DT_INT64
 func MaxPoolWithArgmaxTargmax(value tf.DataType) MaxPoolWithArgmaxAttr {
 	return func(m optionalAttr) {
 		m["Targmax"] = value
@@ -8562,7 +8562,7 @@ type TopKAttr func(optionalAttr)
 //
 // value: If true the resulting `k` elements will be sorted by the values in
 // descending order.
-// If not specified, defaults to b:true
+// If not specified, defaults to true
 func TopKSorted(value bool) TopKAttr {
 	return func(m optionalAttr) {
 		m["sorted"] = value
@@ -8694,7 +8694,7 @@ type FractionalMaxPoolAttr func(optionalAttr)
 // pseudorandom fashion, otherwise, in a random fashion. Check paper [Benjamin
 // Graham, Fractional Max-Pooling](http://arxiv.org/abs/1412.6071) for
 // difference between pseudorandom and random.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func FractionalMaxPoolPseudoRandom(value bool) FractionalMaxPoolAttr {
 	return func(m optionalAttr) {
 		m["pseudo_random"] = value
@@ -8712,7 +8712,7 @@ func FractionalMaxPoolPseudoRandom(value bool) FractionalMaxPoolAttr {
 //
 // If the pooling sequence is [0, 2, 4], then 16, at index 2 will be used twice.
 // The result would be [20, 16] for fractional max pooling.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func FractionalMaxPoolOverlapping(value bool) FractionalMaxPoolAttr {
 	return func(m optionalAttr) {
 		m["overlapping"] = value
@@ -8724,7 +8724,7 @@ func FractionalMaxPoolOverlapping(value bool) FractionalMaxPoolAttr {
 // value: When set to True, a fixed pooling region will be used when
 // iterating over a FractionalMaxPool node in the computation graph. Mainly used
 // in unit test to make FractionalMaxPool deterministic.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func FractionalMaxPoolDeterministic(value bool) FractionalMaxPoolAttr {
 	return func(m optionalAttr) {
 		m["deterministic"] = value
@@ -8736,7 +8736,7 @@ func FractionalMaxPoolDeterministic(value bool) FractionalMaxPoolAttr {
 // value: If either seed or seed2 are set to be non-zero, the random number
 // generator is seeded by the given seed.  Otherwise, it is seeded by a
 // random seed.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func FractionalMaxPoolSeed(value int64) FractionalMaxPoolAttr {
 	return func(m optionalAttr) {
 		m["seed"] = value
@@ -8746,7 +8746,7 @@ func FractionalMaxPoolSeed(value int64) FractionalMaxPoolAttr {
 // FractionalMaxPoolSeed2 sets the optional seed2 attribute to value.
 //
 // value: An second seed to avoid seed collision.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func FractionalMaxPoolSeed2(value int64) FractionalMaxPoolAttr {
 	return func(m optionalAttr) {
 		m["seed2"] = value
@@ -8974,7 +8974,7 @@ type ResourceApplyCenteredRMSPropAttr func(optionalAttr)
 // value: If `True`, updating of the var, mg, ms, and mom tensors is
 // protected by a lock; otherwise the behavior is undefined, but may exhibit less
 // contention.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func ResourceApplyCenteredRMSPropUseLocking(value bool) ResourceApplyCenteredRMSPropAttr {
 	return func(m optionalAttr) {
 		m["use_locking"] = value
@@ -9171,7 +9171,7 @@ type ResourceApplyProximalGradientDescentAttr func(optionalAttr)
 //
 // value: If True, the subtraction will be protected by a lock;
 // otherwise the behavior is undefined, but may exhibit less contention.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func ResourceApplyProximalGradientDescentUseLocking(value bool) ResourceApplyProximalGradientDescentAttr {
 	return func(m optionalAttr) {
 		m["use_locking"] = value
@@ -9216,7 +9216,7 @@ type ResourceApplyProximalAdagradAttr func(optionalAttr)
 //
 // value: If True, updating of the var and accum tensors will be protected by
 // a lock; otherwise the behavior is undefined, but may exhibit less contention.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func ResourceApplyProximalAdagradUseLocking(value bool) ResourceApplyProximalAdagradAttr {
 	return func(m optionalAttr) {
 		m["use_locking"] = value
@@ -9294,7 +9294,7 @@ type TensorArrayV3Attr func(optionalAttr)
 // value: The expected shape of an element, if known. Used to
 // validate the shapes of TensorArray elements. If this shape is not
 // fully specified, gathering zero-size TensorArrays is an error.
-// If not specified, defaults to shape:<unknown_rank:true >
+// If not specified, defaults to <unknown_rank:true >
 func TensorArrayV3ElementShape(value tf.Shape) TensorArrayV3Attr {
 	return func(m optionalAttr) {
 		m["element_shape"] = value
@@ -9305,7 +9305,7 @@ func TensorArrayV3ElementShape(value tf.Shape) TensorArrayV3Attr {
 //
 // value: A boolean that determines whether writes to the TensorArray
 // are allowed to grow the size.  By default, this is not allowed.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func TensorArrayV3DynamicSize(value bool) TensorArrayV3Attr {
 	return func(m optionalAttr) {
 		m["dynamic_size"] = value
@@ -9317,7 +9317,7 @@ func TensorArrayV3DynamicSize(value bool) TensorArrayV3Attr {
 // value: If true (default), Tensors in the TensorArray are cleared
 // after being read.  This disables multiple read semantics but allows early
 // release of memory.
-// If not specified, defaults to b:true
+// If not specified, defaults to true
 func TensorArrayV3ClearAfterRead(value bool) TensorArrayV3Attr {
 	return func(m optionalAttr) {
 		m["clear_after_read"] = value
@@ -9329,7 +9329,7 @@ func TensorArrayV3ClearAfterRead(value bool) TensorArrayV3Attr {
 // value: Overrides the name used for the temporary tensor_array
 // resource. Default value is the name of the 'TensorArray' op (which
 // is guaranteed unique).
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func TensorArrayV3TensorArrayName(value string) TensorArrayV3Attr {
 	return func(m optionalAttr) {
 		m["tensor_array_name"] = value
@@ -9371,7 +9371,7 @@ type ResourceApplyGradientDescentAttr func(optionalAttr)
 //
 // value: If `True`, the subtraction will be protected by a lock;
 // otherwise the behavior is undefined, but may exhibit less contention.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func ResourceApplyGradientDescentUseLocking(value bool) ResourceApplyGradientDescentAttr {
 	return func(m optionalAttr) {
 		m["use_locking"] = value
@@ -9411,7 +9411,7 @@ type MultinomialAttr func(optionalAttr)
 //
 // value: If either seed or seed2 is set to be non-zero, the internal random number
 // generator is seeded by the given seed.  Otherwise, a random seed is used.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func MultinomialSeed(value int64) MultinomialAttr {
 	return func(m optionalAttr) {
 		m["seed"] = value
@@ -9421,7 +9421,7 @@ func MultinomialSeed(value int64) MultinomialAttr {
 // MultinomialSeed2 sets the optional seed2 attribute to value.
 //
 // value: A second seed to avoid seed collision.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func MultinomialSeed2(value int64) MultinomialAttr {
 	return func(m optionalAttr) {
 		m["seed2"] = value
@@ -9463,7 +9463,7 @@ type ResourceSparseApplyAdagradDAAttr func(optionalAttr)
 //
 // value: If True, updating of the var and accum tensors will be protected by
 // a lock; otherwise the behavior is undefined, but may exhibit less contention.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func ResourceSparseApplyAdagradDAUseLocking(value bool) ResourceSparseApplyAdagradDAAttr {
 	return func(m optionalAttr) {
 		m["use_locking"] = value
@@ -9506,7 +9506,7 @@ func ResourceSparseApplyAdagradDA(scope *Scope, var_ tf.Output, gradient_accumul
 type SparseToSparseSetOperationAttr func(optionalAttr)
 
 // SparseToSparseSetOperationValidateIndices sets the optional validate_indices attribute to value.
-// If not specified, defaults to b:true
+// If not specified, defaults to true
 func SparseToSparseSetOperationValidateIndices(value bool) SparseToSparseSetOperationAttr {
 	return func(m optionalAttr) {
 		m["validate_indices"] = value
@@ -9610,7 +9610,7 @@ func AvgPool3DGrad(scope *Scope, orig_input_shape tf.Output, grad tf.Output, ksi
 type QuantizedRelu6Attr func(optionalAttr)
 
 // QuantizedRelu6OutType sets the optional out_type attribute to value.
-// If not specified, defaults to type:DT_QUINT8
+// If not specified, defaults to DT_QUINT8
 func QuantizedRelu6OutType(value tf.DataType) QuantizedRelu6Attr {
 	return func(m optionalAttr) {
 		m["out_type"] = value
@@ -9648,7 +9648,7 @@ func QuantizedRelu6(scope *Scope, features tf.Output, min_features tf.Output, ma
 type FixedLengthRecordReaderV2Attr func(optionalAttr)
 
 // FixedLengthRecordReaderV2HeaderBytes sets the optional header_bytes attribute to value.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func FixedLengthRecordReaderV2HeaderBytes(value int64) FixedLengthRecordReaderV2Attr {
 	return func(m optionalAttr) {
 		m["header_bytes"] = value
@@ -9656,7 +9656,7 @@ func FixedLengthRecordReaderV2HeaderBytes(value int64) FixedLengthRecordReaderV2
 }
 
 // FixedLengthRecordReaderV2FooterBytes sets the optional footer_bytes attribute to value.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func FixedLengthRecordReaderV2FooterBytes(value int64) FixedLengthRecordReaderV2Attr {
 	return func(m optionalAttr) {
 		m["footer_bytes"] = value
@@ -9667,7 +9667,7 @@ func FixedLengthRecordReaderV2FooterBytes(value int64) FixedLengthRecordReaderV2
 //
 // value: If non-empty, this reader is placed in the given container.
 // Otherwise, a default container is used.
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func FixedLengthRecordReaderV2Container(value string) FixedLengthRecordReaderV2Attr {
 	return func(m optionalAttr) {
 		m["container"] = value
@@ -9678,7 +9678,7 @@ func FixedLengthRecordReaderV2Container(value string) FixedLengthRecordReaderV2A
 //
 // value: If non-empty, this reader is named in the given bucket
 // with this shared_name. Otherwise, the node name is used instead.
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func FixedLengthRecordReaderV2SharedName(value string) FixedLengthRecordReaderV2Attr {
 	return func(m optionalAttr) {
 		m["shared_name"] = value
@@ -9713,7 +9713,7 @@ type ResourceSparseApplyCenteredRMSPropAttr func(optionalAttr)
 // value: If `True`, updating of the var, mg, ms, and mom tensors is
 // protected by a lock; otherwise the behavior is undefined, but may exhibit less
 // contention.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func ResourceSparseApplyCenteredRMSPropUseLocking(value bool) ResourceSparseApplyCenteredRMSPropAttr {
 	return func(m optionalAttr) {
 		m["use_locking"] = value
@@ -9812,7 +9812,7 @@ func SegmentMean(scope *Scope, data tf.Output, segment_ids tf.Output) (output tf
 type CumprodAttr func(optionalAttr)
 
 // CumprodExclusive sets the optional exclusive attribute to value.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func CumprodExclusive(value bool) CumprodAttr {
 	return func(m optionalAttr) {
 		m["exclusive"] = value
@@ -9820,7 +9820,7 @@ func CumprodExclusive(value bool) CumprodAttr {
 }
 
 // CumprodReverse sets the optional reverse attribute to value.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func CumprodReverse(value bool) CumprodAttr {
 	return func(m optionalAttr) {
 		m["reverse"] = value
@@ -9914,7 +9914,7 @@ func SparseAdd(scope *Scope, a_indices tf.Output, a_values tf.Output, a_shape tf
 type DenseToSparseSetOperationAttr func(optionalAttr)
 
 // DenseToSparseSetOperationValidateIndices sets the optional validate_indices attribute to value.
-// If not specified, defaults to b:true
+// If not specified, defaults to true
 func DenseToSparseSetOperationValidateIndices(value bool) DenseToSparseSetOperationAttr {
 	return func(m optionalAttr) {
 		m["validate_indices"] = value
@@ -10123,7 +10123,7 @@ func Reverse(scope *Scope, tensor tf.Output, dims tf.Output) (output tf.Output) 
 type Conv2DAttr func(optionalAttr)
 
 // Conv2DUseCudnnOnGpu sets the optional use_cudnn_on_gpu attribute to value.
-// If not specified, defaults to b:true
+// If not specified, defaults to true
 func Conv2DUseCudnnOnGpu(value bool) Conv2DAttr {
 	return func(m optionalAttr) {
 		m["use_cudnn_on_gpu"] = value
@@ -10137,7 +10137,7 @@ func Conv2DUseCudnnOnGpu(value bool) Conv2DAttr {
 //     [batch, height, width, channels].
 // Alternatively, the format could be "NCHW", the data storage order of:
 //     [batch, channels, height, width].
-// If not specified, defaults to s:"NHWC"
+// If not specified, defaults to "NHWC"
 func Conv2DDataFormat(value string) Conv2DAttr {
 	return func(m optionalAttr) {
 		m["data_format"] = value
@@ -10205,7 +10205,7 @@ type StringJoinAttr func(optionalAttr)
 // StringJoinSeparator sets the optional separator attribute to value.
 //
 // value: string, an optional join separator.
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func StringJoinSeparator(value string) StringJoinAttr {
 	return func(m optionalAttr) {
 		m["separator"] = value
@@ -10351,7 +10351,7 @@ type ResourceApplyAdagradAttr func(optionalAttr)
 // value: If `True`, updating of the var and accum tensors will be protected
 // by a lock; otherwise the behavior is undefined, but may exhibit less
 // contention.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func ResourceApplyAdagradUseLocking(value bool) ResourceApplyAdagradAttr {
 	return func(m optionalAttr) {
 		m["use_locking"] = value
@@ -10424,7 +10424,7 @@ type AddManySparseToTensorsMapAttr func(optionalAttr)
 // AddManySparseToTensorsMapContainer sets the optional container attribute to value.
 //
 // value: The container name for the `SparseTensorsMap` created by this op.
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func AddManySparseToTensorsMapContainer(value string) AddManySparseToTensorsMapAttr {
 	return func(m optionalAttr) {
 		m["container"] = value
@@ -10435,7 +10435,7 @@ func AddManySparseToTensorsMapContainer(value string) AddManySparseToTensorsMapA
 //
 // value: The shared name for the `SparseTensorsMap` created by this op.
 // If blank, the new Operation's unique name is used.
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func AddManySparseToTensorsMapSharedName(value string) AddManySparseToTensorsMapAttr {
 	return func(m optionalAttr) {
 		m["shared_name"] = value
@@ -10503,7 +10503,7 @@ type SampleDistortedBoundingBoxAttr func(optionalAttr)
 // value: If either `seed` or `seed2` are set to non-zero, the random number
 // generator is seeded by the given `seed`.  Otherwise, it is seeded by a random
 // seed.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func SampleDistortedBoundingBoxSeed(value int64) SampleDistortedBoundingBoxAttr {
 	return func(m optionalAttr) {
 		m["seed"] = value
@@ -10513,7 +10513,7 @@ func SampleDistortedBoundingBoxSeed(value int64) SampleDistortedBoundingBoxAttr 
 // SampleDistortedBoundingBoxSeed2 sets the optional seed2 attribute to value.
 //
 // value: A second seed to avoid seed collision.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func SampleDistortedBoundingBoxSeed2(value int64) SampleDistortedBoundingBoxAttr {
 	return func(m optionalAttr) {
 		m["seed2"] = value
@@ -10526,7 +10526,7 @@ func SampleDistortedBoundingBoxSeed2(value int64) SampleDistortedBoundingBoxAttr
 // fraction of any bounding box supplied. The value of this parameter should be
 // non-negative. In the case of 0, the cropped area does not need to overlap
 // any of the bounding boxes supplied.
-// If not specified, defaults to f:0.1
+// If not specified, defaults to 0.1
 func SampleDistortedBoundingBoxMinObjectCovered(value float32) SampleDistortedBoundingBoxAttr {
 	return func(m optionalAttr) {
 		m["min_object_covered"] = value
@@ -10537,7 +10537,7 @@ func SampleDistortedBoundingBoxMinObjectCovered(value float32) SampleDistortedBo
 //
 // value: The cropped area of the image must have an aspect ratio =
 // width / height within this range.
-// If not specified, defaults to list:<f:0.75 f:1.33 >
+// If not specified, defaults to <f:0.75 f:1.33 >
 func SampleDistortedBoundingBoxAspectRatioRange(value []float32) SampleDistortedBoundingBoxAttr {
 	return func(m optionalAttr) {
 		m["aspect_ratio_range"] = value
@@ -10548,7 +10548,7 @@ func SampleDistortedBoundingBoxAspectRatioRange(value []float32) SampleDistorted
 //
 // value: The cropped area of the image must contain a fraction of the
 // supplied image within in this range.
-// If not specified, defaults to list:<f:0.05 f:1 >
+// If not specified, defaults to <f:0.05 f:1 >
 func SampleDistortedBoundingBoxAreaRange(value []float32) SampleDistortedBoundingBoxAttr {
 	return func(m optionalAttr) {
 		m["area_range"] = value
@@ -10560,7 +10560,7 @@ func SampleDistortedBoundingBoxAreaRange(value []float32) SampleDistortedBoundin
 // value: Number of attempts at generating a cropped region of the image
 // of the specified constraints. After `max_attempts` failures, return the entire
 // image.
-// If not specified, defaults to i:100
+// If not specified, defaults to 100
 func SampleDistortedBoundingBoxMaxAttempts(value int64) SampleDistortedBoundingBoxAttr {
 	return func(m optionalAttr) {
 		m["max_attempts"] = value
@@ -10572,7 +10572,7 @@ func SampleDistortedBoundingBoxMaxAttempts(value int64) SampleDistortedBoundingB
 // value: Controls behavior if no bounding boxes supplied.
 // If true, assume an implicit bounding box covering the whole input. If false,
 // raise an error.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func SampleDistortedBoundingBoxUseImageIfNoBoundingBoxes(value bool) SampleDistortedBoundingBoxAttr {
 	return func(m optionalAttr) {
 		m["use_image_if_no_bounding_boxes"] = value
@@ -10674,7 +10674,7 @@ type ResourceSparseApplyRMSPropAttr func(optionalAttr)
 // value: If `True`, updating of the var, ms, and mom tensors is protected
 // by a lock; otherwise the behavior is undefined, but may exhibit less
 // contention.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func ResourceSparseApplyRMSPropUseLocking(value bool) ResourceSparseApplyRMSPropAttr {
 	return func(m optionalAttr) {
 		m["use_locking"] = value
@@ -10728,7 +10728,7 @@ func ResourceSparseApplyRMSProp(scope *Scope, var_ tf.Output, ms tf.Output, mom 
 type QuantizeV2Attr func(optionalAttr)
 
 // QuantizeV2Mode sets the optional mode attribute to value.
-// If not specified, defaults to s:"MIN_COMBINED"
+// If not specified, defaults to "MIN_COMBINED"
 func QuantizeV2Mode(value string) QuantizeV2Attr {
 	return func(m optionalAttr) {
 		m["mode"] = value
@@ -10872,7 +10872,7 @@ type ResourceSparseApplyFtrlAttr func(optionalAttr)
 // value: If `True`, updating of the var and accum tensors will be protected
 // by a lock; otherwise the behavior is undefined, but may exhibit less
 // contention.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func ResourceSparseApplyFtrlUseLocking(value bool) ResourceSparseApplyFtrlAttr {
 	return func(m optionalAttr) {
 		m["use_locking"] = value
@@ -11072,7 +11072,7 @@ type ResizeAreaAttr func(optionalAttr)
 // value: If true, rescale input by (new_height - 1) / (height - 1), which
 // exactly aligns the 4 corners of images and resized images. If false, rescale
 // by new_height / height. Treat similarly the width dimension.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func ResizeAreaAlignCorners(value bool) ResizeAreaAttr {
 	return func(m optionalAttr) {
 		m["align_corners"] = value
@@ -11113,7 +11113,7 @@ func ResizeArea(scope *Scope, images tf.Output, size tf.Output, optional ...Resi
 type RealAttr func(optionalAttr)
 
 // RealTout sets the optional Tout attribute to value.
-// If not specified, defaults to type:DT_FLOAT
+// If not specified, defaults to DT_FLOAT
 func RealTout(value tf.DataType) RealAttr {
 	return func(m optionalAttr) {
 		m["Tout"] = value
@@ -11160,7 +11160,7 @@ type ThreadUnsafeUnigramCandidateSamplerAttr func(optionalAttr)
 // value: If either seed or seed2 are set to be non-zero, the random number
 // generator is seeded by the given seed.  Otherwise, it is seeded by a
 // random seed.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func ThreadUnsafeUnigramCandidateSamplerSeed(value int64) ThreadUnsafeUnigramCandidateSamplerAttr {
 	return func(m optionalAttr) {
 		m["seed"] = value
@@ -11170,7 +11170,7 @@ func ThreadUnsafeUnigramCandidateSamplerSeed(value int64) ThreadUnsafeUnigramCan
 // ThreadUnsafeUnigramCandidateSamplerSeed2 sets the optional seed2 attribute to value.
 //
 // value: An second seed to avoid seed collision.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func ThreadUnsafeUnigramCandidateSamplerSeed2(value int64) ThreadUnsafeUnigramCandidateSamplerAttr {
 	return func(m optionalAttr) {
 		m["seed2"] = value
@@ -11232,7 +11232,7 @@ type ResourceSparseApplyProximalAdagradAttr func(optionalAttr)
 //
 // value: If True, updating of the var and accum tensors will be protected by
 // a lock; otherwise the behavior is undefined, but may exhibit less contention.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func ResourceSparseApplyProximalAdagradUseLocking(value bool) ResourceSparseApplyProximalAdagradAttr {
 	return func(m optionalAttr) {
 		m["use_locking"] = value
@@ -11339,7 +11339,7 @@ type TextLineReaderV2Attr func(optionalAttr)
 // TextLineReaderV2SkipHeaderLines sets the optional skip_header_lines attribute to value.
 //
 // value: Number of lines to skip from the beginning of every file.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func TextLineReaderV2SkipHeaderLines(value int64) TextLineReaderV2Attr {
 	return func(m optionalAttr) {
 		m["skip_header_lines"] = value
@@ -11350,7 +11350,7 @@ func TextLineReaderV2SkipHeaderLines(value int64) TextLineReaderV2Attr {
 //
 // value: If non-empty, this reader is placed in the given container.
 // Otherwise, a default container is used.
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func TextLineReaderV2Container(value string) TextLineReaderV2Attr {
 	return func(m optionalAttr) {
 		m["container"] = value
@@ -11361,7 +11361,7 @@ func TextLineReaderV2Container(value string) TextLineReaderV2Attr {
 //
 // value: If non-empty, this reader is named in the given bucket
 // with this shared_name. Otherwise, the node name is used instead.
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func TextLineReaderV2SharedName(value string) TextLineReaderV2Attr {
 	return func(m optionalAttr) {
 		m["shared_name"] = value
@@ -11394,7 +11394,7 @@ type SparseReduceSumAttr func(optionalAttr)
 // SparseReduceSumKeepDims sets the optional keep_dims attribute to value.
 //
 // value: If true, retain reduced dimensions with length 1.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func SparseReduceSumKeepDims(value bool) SparseReduceSumAttr {
 	return func(m optionalAttr) {
 		m["keep_dims"] = value
@@ -11474,7 +11474,7 @@ func MaxPool3DGrad(scope *Scope, orig_input tf.Output, orig_output tf.Output, gr
 type SetSizeAttr func(optionalAttr)
 
 // SetSizeValidateIndices sets the optional validate_indices attribute to value.
-// If not specified, defaults to b:true
+// If not specified, defaults to true
 func SetSizeValidateIndices(value bool) SetSizeAttr {
 	return func(m optionalAttr) {
 		m["validate_indices"] = value
@@ -11521,7 +11521,7 @@ func SetSize(scope *Scope, set_indices tf.Output, set_values tf.Output, set_shap
 type SizeAttr func(optionalAttr)
 
 // SizeOutType sets the optional out_type attribute to value.
-// If not specified, defaults to type:DT_INT32
+// If not specified, defaults to DT_INT32
 func SizeOutType(value tf.DataType) SizeAttr {
 	return func(m optionalAttr) {
 		m["out_type"] = value
@@ -11566,7 +11566,7 @@ type ResourceApplyRMSPropAttr func(optionalAttr)
 // value: If `True`, updating of the var, ms, and mom tensors is protected
 // by a lock; otherwise the behavior is undefined, but may exhibit less
 // contention.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func ResourceApplyRMSPropUseLocking(value bool) ResourceApplyRMSPropAttr {
 	return func(m optionalAttr) {
 		m["use_locking"] = value
@@ -11633,7 +11633,7 @@ type PrintAttr func(optionalAttr)
 // PrintMessage sets the optional message attribute to value.
 //
 // value: A string, prefix of the error message.
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func PrintMessage(value string) PrintAttr {
 	return func(m optionalAttr) {
 		m["message"] = value
@@ -11643,7 +11643,7 @@ func PrintMessage(value string) PrintAttr {
 // PrintFirstN sets the optional first_n attribute to value.
 //
 // value: Only log `first_n` number of times. -1 disables logging.
-// If not specified, defaults to i:-1
+// If not specified, defaults to -1
 func PrintFirstN(value int64) PrintAttr {
 	return func(m optionalAttr) {
 		m["first_n"] = value
@@ -11653,7 +11653,7 @@ func PrintFirstN(value int64) PrintAttr {
 // PrintSummarize sets the optional summarize attribute to value.
 //
 // value: Only print this many entries of each tensor.
-// If not specified, defaults to i:3
+// If not specified, defaults to 3
 func PrintSummarize(value int64) PrintAttr {
 	return func(m optionalAttr) {
 		m["summarize"] = value
@@ -11694,7 +11694,7 @@ type LRNAttr func(optionalAttr)
 // LRNDepthRadius sets the optional depth_radius attribute to value.
 //
 // value: 0-D.  Half-width of the 1-D normalization window.
-// If not specified, defaults to i:5
+// If not specified, defaults to 5
 func LRNDepthRadius(value int64) LRNAttr {
 	return func(m optionalAttr) {
 		m["depth_radius"] = value
@@ -11704,7 +11704,7 @@ func LRNDepthRadius(value int64) LRNAttr {
 // LRNBias sets the optional bias attribute to value.
 //
 // value: An offset (usually positive to avoid dividing by 0).
-// If not specified, defaults to f:1
+// If not specified, defaults to 1
 func LRNBias(value float32) LRNAttr {
 	return func(m optionalAttr) {
 		m["bias"] = value
@@ -11714,7 +11714,7 @@ func LRNBias(value float32) LRNAttr {
 // LRNAlpha sets the optional alpha attribute to value.
 //
 // value: A scale factor, usually positive.
-// If not specified, defaults to f:1
+// If not specified, defaults to 1
 func LRNAlpha(value float32) LRNAttr {
 	return func(m optionalAttr) {
 		m["alpha"] = value
@@ -11724,7 +11724,7 @@ func LRNAlpha(value float32) LRNAttr {
 // LRNBeta sets the optional beta attribute to value.
 //
 // value: An exponent.
-// If not specified, defaults to f:0.5
+// If not specified, defaults to 0.5
 func LRNBeta(value float32) LRNAttr {
 	return func(m optionalAttr) {
 		m["beta"] = value
@@ -11774,7 +11774,7 @@ type ResourceSparseApplyAdagradAttr func(optionalAttr)
 // value: If `True`, updating of the var and accum tensors will be protected
 // by a lock; otherwise the behavior is undefined, but may exhibit less
 // contention.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func ResourceSparseApplyAdagradUseLocking(value bool) ResourceSparseApplyAdagradAttr {
 	return func(m optionalAttr) {
 		m["use_locking"] = value
@@ -11819,7 +11819,7 @@ type LRNGradAttr func(optionalAttr)
 // LRNGradDepthRadius sets the optional depth_radius attribute to value.
 //
 // value: A depth radius.
-// If not specified, defaults to i:5
+// If not specified, defaults to 5
 func LRNGradDepthRadius(value int64) LRNGradAttr {
 	return func(m optionalAttr) {
 		m["depth_radius"] = value
@@ -11829,7 +11829,7 @@ func LRNGradDepthRadius(value int64) LRNGradAttr {
 // LRNGradBias sets the optional bias attribute to value.
 //
 // value: An offset (usually > 0 to avoid dividing by 0).
-// If not specified, defaults to f:1
+// If not specified, defaults to 1
 func LRNGradBias(value float32) LRNGradAttr {
 	return func(m optionalAttr) {
 		m["bias"] = value
@@ -11839,7 +11839,7 @@ func LRNGradBias(value float32) LRNGradAttr {
 // LRNGradAlpha sets the optional alpha attribute to value.
 //
 // value: A scale factor, usually positive.
-// If not specified, defaults to f:1
+// If not specified, defaults to 1
 func LRNGradAlpha(value float32) LRNGradAttr {
 	return func(m optionalAttr) {
 		m["alpha"] = value
@@ -11849,7 +11849,7 @@ func LRNGradAlpha(value float32) LRNGradAttr {
 // LRNGradBeta sets the optional beta attribute to value.
 //
 // value: An exponent.
-// If not specified, defaults to f:0.5
+// If not specified, defaults to 0.5
 func LRNGradBeta(value float32) LRNGradAttr {
 	return func(m optionalAttr) {
 		m["beta"] = value
@@ -11889,7 +11889,7 @@ type StringToNumberAttr func(optionalAttr)
 // StringToNumberOutType sets the optional out_type attribute to value.
 //
 // value: The numeric type to interpret each string in `string_tensor` as.
-// If not specified, defaults to type:DT_FLOAT
+// If not specified, defaults to DT_FLOAT
 func StringToNumberOutType(value tf.DataType) StringToNumberAttr {
 	return func(m optionalAttr) {
 		m["out_type"] = value
@@ -11943,7 +11943,7 @@ type AsStringAttr func(optionalAttr)
 //
 // value: The post-decimal precision to use for floating point numbers.
 // Only used if precision > -1.
-// If not specified, defaults to i:-1
+// If not specified, defaults to -1
 func AsStringPrecision(value int64) AsStringAttr {
 	return func(m optionalAttr) {
 		m["precision"] = value
@@ -11953,7 +11953,7 @@ func AsStringPrecision(value int64) AsStringAttr {
 // AsStringScientific sets the optional scientific attribute to value.
 //
 // value: Use scientific notation for floating point numbers.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func AsStringScientific(value bool) AsStringAttr {
 	return func(m optionalAttr) {
 		m["scientific"] = value
@@ -11964,7 +11964,7 @@ func AsStringScientific(value bool) AsStringAttr {
 //
 // value: Use shortest representation (either scientific or standard) for
 // floating point numbers.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func AsStringShortest(value bool) AsStringAttr {
 	return func(m optionalAttr) {
 		m["shortest"] = value
@@ -11976,7 +11976,7 @@ func AsStringShortest(value bool) AsStringAttr {
 // value: Pad pre-decimal numbers to this width.
 // Applies to both floating point and integer numbers.
 // Only used if width > -1.
-// If not specified, defaults to i:-1
+// If not specified, defaults to -1
 func AsStringWidth(value int64) AsStringAttr {
 	return func(m optionalAttr) {
 		m["width"] = value
@@ -11987,7 +11987,7 @@ func AsStringWidth(value int64) AsStringAttr {
 //
 // value: The value to pad if width > -1.  If empty, pads with spaces.
 // Another typical value is '0'.  String cannot be longer than 1 character.
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func AsStringFill(value string) AsStringAttr {
 	return func(m optionalAttr) {
 		m["fill"] = value
@@ -12059,7 +12059,7 @@ func InTopK(scope *Scope, predictions tf.Output, targets tf.Output, k int64) (pr
 type GatherAttr func(optionalAttr)
 
 // GatherValidateIndices sets the optional validate_indices attribute to value.
-// If not specified, defaults to b:true
+// If not specified, defaults to true
 func GatherValidateIndices(value bool) GatherAttr {
 	return func(m optionalAttr) {
 		m["validate_indices"] = value
@@ -12264,7 +12264,7 @@ type EncodeBase64Attr func(optionalAttr)
 // EncodeBase64Pad sets the optional pad attribute to value.
 //
 // value: Bool whether padding is applied at the ends.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func EncodeBase64Pad(value bool) EncodeBase64Attr {
 	return func(m optionalAttr) {
 		m["pad"] = value
@@ -12426,7 +12426,7 @@ type CopyHostAttr func(optionalAttr)
 // CopyHostTensorName sets the optional tensor_name attribute to value.
 //
 // value: The name of the input tensor.
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func CopyHostTensorName(value string) CopyHostAttr {
 	return func(m optionalAttr) {
 		m["tensor_name"] = value
@@ -12495,7 +12495,7 @@ func SparseSegmentSqrtN(scope *Scope, data tf.Output, indices tf.Output, segment
 type QuantizedReluXAttr func(optionalAttr)
 
 // QuantizedReluXOutType sets the optional out_type attribute to value.
-// If not specified, defaults to type:DT_QUINT8
+// If not specified, defaults to DT_QUINT8
 func QuantizedReluXOutType(value tf.DataType) QuantizedReluXAttr {
 	return func(m optionalAttr) {
 		m["out_type"] = value
@@ -12536,7 +12536,7 @@ type MergeV2CheckpointsAttr func(optionalAttr)
 // MergeV2CheckpointsDeleteOldDirs sets the optional delete_old_dirs attribute to value.
 //
 // value: see above.
-// If not specified, defaults to b:true
+// If not specified, defaults to true
 func MergeV2CheckpointsDeleteOldDirs(value bool) MergeV2CheckpointsAttr {
 	return func(m optionalAttr) {
 		m["delete_old_dirs"] = value
@@ -12612,7 +12612,7 @@ type ProdAttr func(optionalAttr)
 // ProdKeepDims sets the optional keep_dims attribute to value.
 //
 // value: If true, retain reduced dimensions with length 1.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func ProdKeepDims(value bool) ProdAttr {
 	return func(m optionalAttr) {
 		m["keep_dims"] = value
@@ -12658,7 +12658,7 @@ type ResizeBilinearAttr func(optionalAttr)
 // value: If true, rescale input by (new_height - 1) / (height - 1), which
 // exactly aligns the 4 corners of images and resized images. If false, rescale
 // by new_height / height. Treat similarly the width dimension.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func ResizeBilinearAlignCorners(value bool) ResizeBilinearAttr {
 	return func(m optionalAttr) {
 		m["align_corners"] = value
@@ -12807,7 +12807,7 @@ type ResourceSparseApplyProximalGradientDescentAttr func(optionalAttr)
 //
 // value: If True, the subtraction will be protected by a lock;
 // otherwise the behavior is undefined, but may exhibit less contention.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func ResourceSparseApplyProximalGradientDescentUseLocking(value bool) ResourceSparseApplyProximalGradientDescentAttr {
 	return func(m optionalAttr) {
 		m["use_locking"] = value
@@ -12854,7 +12854,7 @@ type UnpackAttr func(optionalAttr)
 //
 // value: Dimension along which to unpack.  Negative values wrap around, so the
 // valid range is `[-R, R)`.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func UnpackAxis(value int64) UnpackAttr {
 	return func(m optionalAttr) {
 		m["axis"] = value
@@ -12981,7 +12981,7 @@ type ReduceJoinAttr func(optionalAttr)
 // ReduceJoinKeepDims sets the optional keep_dims attribute to value.
 //
 // value: If `True`, retain reduced dimensions with length `1`.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func ReduceJoinKeepDims(value bool) ReduceJoinAttr {
 	return func(m optionalAttr) {
 		m["keep_dims"] = value
@@ -12991,7 +12991,7 @@ func ReduceJoinKeepDims(value bool) ReduceJoinAttr {
 // ReduceJoinSeparator sets the optional separator attribute to value.
 //
 // value: The separator to use when joining.
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func ReduceJoinSeparator(value string) ReduceJoinAttr {
 	return func(m optionalAttr) {
 		m["separator"] = value
@@ -13056,7 +13056,7 @@ type SvdAttr func(optionalAttr)
 // value: If true, left and right singular vectors will be
 // computed and returned in `u` and `v`, respectively.
 // If false, `u` and `v` are not set and should never referenced.
-// If not specified, defaults to b:true
+// If not specified, defaults to true
 func SvdComputeUv(value bool) SvdAttr {
 	return func(m optionalAttr) {
 		m["compute_uv"] = value
@@ -13068,7 +13068,7 @@ func SvdComputeUv(value bool) SvdAttr {
 // value: If true, compute full-sized `u` and `v`. If false
 // (the default), compute only the leading `P` singular vectors.
 // Ignored if `compute_uv` is `False`.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func SvdFullMatrices(value bool) SvdAttr {
 	return func(m optionalAttr) {
 		m["full_matrices"] = value
@@ -13125,7 +13125,7 @@ type RandomUniformAttr func(optionalAttr)
 // value: If either `seed` or `seed2` are set to be non-zero, the random number
 // generator is seeded by the given seed.  Otherwise, it is seeded by a
 // random seed.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func RandomUniformSeed(value int64) RandomUniformAttr {
 	return func(m optionalAttr) {
 		m["seed"] = value
@@ -13135,7 +13135,7 @@ func RandomUniformSeed(value int64) RandomUniformAttr {
 // RandomUniformSeed2 sets the optional seed2 attribute to value.
 //
 // value: A second seed to avoid seed collision.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func RandomUniformSeed2(value int64) RandomUniformAttr {
 	return func(m optionalAttr) {
 		m["seed2"] = value
@@ -13179,7 +13179,7 @@ type ResourceApplyFtrlAttr func(optionalAttr)
 // value: If `True`, updating of the var and accum tensors will be protected
 // by a lock; otherwise the behavior is undefined, but may exhibit less
 // contention.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func ResourceApplyFtrlUseLocking(value bool) ResourceApplyFtrlAttr {
 	return func(m optionalAttr) {
 		m["use_locking"] = value
@@ -13229,7 +13229,7 @@ type AnyAttr func(optionalAttr)
 // AnyKeepDims sets the optional keep_dims attribute to value.
 //
 // value: If true, retain reduced dimensions with length 1.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func AnyKeepDims(value bool) AnyAttr {
 	return func(m optionalAttr) {
 		m["keep_dims"] = value
@@ -13357,7 +13357,7 @@ type TopKV2Attr func(optionalAttr)
 //
 // value: If true the resulting `k` elements will be sorted by the values in
 // descending order.
-// If not specified, defaults to b:true
+// If not specified, defaults to true
 func TopKV2Sorted(value bool) TopKV2Attr {
 	return func(m optionalAttr) {
 		m["sorted"] = value
@@ -13425,7 +13425,7 @@ func DeleteSessionTensor(scope *Scope, handle tf.Output) (o *tf.Operation) {
 type DenseToDenseSetOperationAttr func(optionalAttr)
 
 // DenseToDenseSetOperationValidateIndices sets the optional validate_indices attribute to value.
-// If not specified, defaults to b:true
+// If not specified, defaults to true
 func DenseToDenseSetOperationValidateIndices(value bool) DenseToDenseSetOperationAttr {
 	return func(m optionalAttr) {
 		m["validate_indices"] = value
@@ -13566,7 +13566,7 @@ type RandomPoissonAttr func(optionalAttr)
 // value: If either `seed` or `seed2` are set to be non-zero, the random number
 // generator is seeded by the given seed.  Otherwise, it is seeded by a
 // random seed.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func RandomPoissonSeed(value int64) RandomPoissonAttr {
 	return func(m optionalAttr) {
 		m["seed"] = value
@@ -13576,7 +13576,7 @@ func RandomPoissonSeed(value int64) RandomPoissonAttr {
 // RandomPoissonSeed2 sets the optional seed2 attribute to value.
 //
 // value: A second seed to avoid seed collision.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func RandomPoissonSeed2(value int64) RandomPoissonAttr {
 	return func(m optionalAttr) {
 		m["seed2"] = value
@@ -13790,7 +13790,7 @@ type IdentityReaderV2Attr func(optionalAttr)
 //
 // value: If non-empty, this reader is placed in the given container.
 // Otherwise, a default container is used.
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func IdentityReaderV2Container(value string) IdentityReaderV2Attr {
 	return func(m optionalAttr) {
 		m["container"] = value
@@ -13801,7 +13801,7 @@ func IdentityReaderV2Container(value string) IdentityReaderV2Attr {
 //
 // value: If non-empty, this reader is named in the given bucket
 // with this shared_name. Otherwise, the node name is used instead.
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func IdentityReaderV2SharedName(value string) IdentityReaderV2Attr {
 	return func(m optionalAttr) {
 		m["shared_name"] = value
@@ -13838,7 +13838,7 @@ type NonMaxSuppressionAttr func(optionalAttr)
 //
 // value: A float representing the threshold for deciding whether boxes
 // overlap too much with respect to IOU.
-// If not specified, defaults to f:0.5
+// If not specified, defaults to 0.5
 func NonMaxSuppressionIouThreshold(value float32) NonMaxSuppressionAttr {
 	return func(m optionalAttr) {
 		m["iou_threshold"] = value
@@ -13901,7 +13901,7 @@ type ResourceApplyAdadeltaAttr func(optionalAttr)
 //
 // value: If True, updating of the var, accum and update_accum tensors will be protected by
 // a lock; otherwise the behavior is undefined, but may exhibit less contention.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func ResourceApplyAdadeltaUseLocking(value bool) ResourceApplyAdadeltaAttr {
 	return func(m optionalAttr) {
 		m["use_locking"] = value
@@ -14036,7 +14036,7 @@ type AddSparseToTensorsMapAttr func(optionalAttr)
 // AddSparseToTensorsMapContainer sets the optional container attribute to value.
 //
 // value: The container name for the `SparseTensorsMap` created by this op.
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func AddSparseToTensorsMapContainer(value string) AddSparseToTensorsMapAttr {
 	return func(m optionalAttr) {
 		m["container"] = value
@@ -14047,7 +14047,7 @@ func AddSparseToTensorsMapContainer(value string) AddSparseToTensorsMapAttr {
 //
 // value: The shared name for the `SparseTensorsMap` created by this op.
 // If blank, the new Operation's unique name is used.
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func AddSparseToTensorsMapSharedName(value string) AddSparseToTensorsMapAttr {
 	return func(m optionalAttr) {
 		m["shared_name"] = value
@@ -14220,7 +14220,7 @@ type RandomShuffleQueueV2Attr func(optionalAttr)
 // be either 0 or the same as the length of component_types. If the length of
 // this attr is 0, the shapes of queue elements are not constrained, and
 // only one element may be dequeued at a time.
-// If not specified, defaults to list:<>
+// If not specified, defaults to <>
 //
 // REQUIRES: len(value) >= 0
 func RandomShuffleQueueV2Shapes(value []tf.Shape) RandomShuffleQueueV2Attr {
@@ -14233,7 +14233,7 @@ func RandomShuffleQueueV2Shapes(value []tf.Shape) RandomShuffleQueueV2Attr {
 //
 // value: The upper bound on the number of elements in this queue.
 // Negative numbers mean no limit.
-// If not specified, defaults to i:-1
+// If not specified, defaults to -1
 func RandomShuffleQueueV2Capacity(value int64) RandomShuffleQueueV2Attr {
 	return func(m optionalAttr) {
 		m["capacity"] = value
@@ -14245,7 +14245,7 @@ func RandomShuffleQueueV2Capacity(value int64) RandomShuffleQueueV2Attr {
 // value: Dequeue will block unless there would be this
 // many elements after the dequeue or the queue is closed. This
 // ensures a minimum level of mixing of elements.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func RandomShuffleQueueV2MinAfterDequeue(value int64) RandomShuffleQueueV2Attr {
 	return func(m optionalAttr) {
 		m["min_after_dequeue"] = value
@@ -14256,7 +14256,7 @@ func RandomShuffleQueueV2MinAfterDequeue(value int64) RandomShuffleQueueV2Attr {
 //
 // value: If either seed or seed2 is set to be non-zero, the random number
 // generator is seeded by the given seed.  Otherwise, a random seed is used.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func RandomShuffleQueueV2Seed(value int64) RandomShuffleQueueV2Attr {
 	return func(m optionalAttr) {
 		m["seed"] = value
@@ -14266,7 +14266,7 @@ func RandomShuffleQueueV2Seed(value int64) RandomShuffleQueueV2Attr {
 // RandomShuffleQueueV2Seed2 sets the optional seed2 attribute to value.
 //
 // value: A second seed to avoid seed collision.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func RandomShuffleQueueV2Seed2(value int64) RandomShuffleQueueV2Attr {
 	return func(m optionalAttr) {
 		m["seed2"] = value
@@ -14277,7 +14277,7 @@ func RandomShuffleQueueV2Seed2(value int64) RandomShuffleQueueV2Attr {
 //
 // value: If non-empty, this queue is placed in the given container.
 // Otherwise, a default container is used.
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func RandomShuffleQueueV2Container(value string) RandomShuffleQueueV2Attr {
 	return func(m optionalAttr) {
 		m["container"] = value
@@ -14288,7 +14288,7 @@ func RandomShuffleQueueV2Container(value string) RandomShuffleQueueV2Attr {
 //
 // value: If non-empty, this queue will be shared under the given name
 // across multiple sessions.
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func RandomShuffleQueueV2SharedName(value string) RandomShuffleQueueV2Attr {
 	return func(m optionalAttr) {
 		m["shared_name"] = value
@@ -14377,7 +14377,7 @@ type ResourceApplyAdamAttr func(optionalAttr)
 // value: If `True`, updating of the var, m, and v tensors will be protected
 // by a lock; otherwise the behavior is undefined, but may exhibit less
 // contention.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func ResourceApplyAdamUseLocking(value bool) ResourceApplyAdamAttr {
 	return func(m optionalAttr) {
 		m["use_locking"] = value
@@ -14504,7 +14504,7 @@ type TakeManySparseFromTensorsMapAttr func(optionalAttr)
 // TakeManySparseFromTensorsMapContainer sets the optional container attribute to value.
 //
 // value: The container name for the `SparseTensorsMap` read by this op.
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func TakeManySparseFromTensorsMapContainer(value string) TakeManySparseFromTensorsMapAttr {
 	return func(m optionalAttr) {
 		m["container"] = value
@@ -14516,7 +14516,7 @@ func TakeManySparseFromTensorsMapContainer(value string) TakeManySparseFromTenso
 // value: The shared name for the `SparseTensorsMap` read by this op.
 // It should not be blank; rather the `shared_name` or unique Operation name
 // of the Op that created the original `SparseTensorsMap` should be used.
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func TakeManySparseFromTensorsMapSharedName(value string) TakeManySparseFromTensorsMapAttr {
 	return func(m optionalAttr) {
 		m["shared_name"] = value
@@ -14733,7 +14733,7 @@ type AllAttr func(optionalAttr)
 // AllKeepDims sets the optional keep_dims attribute to value.
 //
 // value: If true, retain reduced dimensions with length 1.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func AllKeepDims(value bool) AllAttr {
 	return func(m optionalAttr) {
 		m["keep_dims"] = value
@@ -14794,7 +14794,7 @@ type CTCBeamSearchDecoderAttr func(optionalAttr)
 // CTCBeamSearchDecoderMergeRepeated sets the optional merge_repeated attribute to value.
 //
 // value: If true, merge repeated classes in output.
-// If not specified, defaults to b:true
+// If not specified, defaults to true
 func CTCBeamSearchDecoderMergeRepeated(value bool) CTCBeamSearchDecoderAttr {
 	return func(m optionalAttr) {
 		m["merge_repeated"] = value
@@ -14883,7 +14883,7 @@ type RecordInputAttr func(optionalAttr)
 // RecordInputFileRandomSeed sets the optional file_random_seed attribute to value.
 //
 // value: Random seeds used to produce randomized records.
-// If not specified, defaults to i:301
+// If not specified, defaults to 301
 func RecordInputFileRandomSeed(value int64) RecordInputAttr {
 	return func(m optionalAttr) {
 		m["file_random_seed"] = value
@@ -14894,7 +14894,7 @@ func RecordInputFileRandomSeed(value int64) RecordInputAttr {
 //
 // value: Shifts the list of files after the list is randomly
 // shuffled.
-// If not specified, defaults to f:0
+// If not specified, defaults to 0
 func RecordInputFileShuffleShiftRatio(value float32) RecordInputAttr {
 	return func(m optionalAttr) {
 		m["file_shuffle_shift_ratio"] = value
@@ -14904,7 +14904,7 @@ func RecordInputFileShuffleShiftRatio(value float32) RecordInputAttr {
 // RecordInputFileBufferSize sets the optional file_buffer_size attribute to value.
 //
 // value: The randomization shuffling buffer.
-// If not specified, defaults to i:10000
+// If not specified, defaults to 10000
 func RecordInputFileBufferSize(value int64) RecordInputAttr {
 	return func(m optionalAttr) {
 		m["file_buffer_size"] = value
@@ -14914,7 +14914,7 @@ func RecordInputFileBufferSize(value int64) RecordInputAttr {
 // RecordInputFileParallelism sets the optional file_parallelism attribute to value.
 //
 // value: How many sstables are opened and concurrently iterated over.
-// If not specified, defaults to i:16
+// If not specified, defaults to 16
 func RecordInputFileParallelism(value int64) RecordInputAttr {
 	return func(m optionalAttr) {
 		m["file_parallelism"] = value
@@ -14924,7 +14924,7 @@ func RecordInputFileParallelism(value int64) RecordInputAttr {
 // RecordInputBatchSize sets the optional batch_size attribute to value.
 //
 // value: The batch size.
-// If not specified, defaults to i:32
+// If not specified, defaults to 32
 func RecordInputBatchSize(value int64) RecordInputAttr {
 	return func(m optionalAttr) {
 		m["batch_size"] = value
@@ -15107,7 +15107,7 @@ type ResizeBicubicAttr func(optionalAttr)
 // value: If true, rescale input by (new_height - 1) / (height - 1), which
 // exactly aligns the 4 corners of images and resized images. If false, rescale
 // by new_height / height. Treat similarly the width dimension.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func ResizeBicubicAlignCorners(value bool) ResizeBicubicAttr {
 	return func(m optionalAttr) {
 		m["align_corners"] = value
@@ -15284,7 +15284,7 @@ type EncodeJpegAttr func(optionalAttr)
 // EncodeJpegFormat sets the optional format attribute to value.
 //
 // value: Per pixel image format.
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func EncodeJpegFormat(value string) EncodeJpegAttr {
 	return func(m optionalAttr) {
 		m["format"] = value
@@ -15294,7 +15294,7 @@ func EncodeJpegFormat(value string) EncodeJpegAttr {
 // EncodeJpegQuality sets the optional quality attribute to value.
 //
 // value: Quality of the compression from 0 to 100 (higher is better and slower).
-// If not specified, defaults to i:95
+// If not specified, defaults to 95
 func EncodeJpegQuality(value int64) EncodeJpegAttr {
 	return func(m optionalAttr) {
 		m["quality"] = value
@@ -15304,7 +15304,7 @@ func EncodeJpegQuality(value int64) EncodeJpegAttr {
 // EncodeJpegProgressive sets the optional progressive attribute to value.
 //
 // value: If True, create a JPEG that loads progressively (coarse to fine).
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func EncodeJpegProgressive(value bool) EncodeJpegAttr {
 	return func(m optionalAttr) {
 		m["progressive"] = value
@@ -15314,7 +15314,7 @@ func EncodeJpegProgressive(value bool) EncodeJpegAttr {
 // EncodeJpegOptimizeSize sets the optional optimize_size attribute to value.
 //
 // value: If True, spend CPU/RAM to reduce size with no quality change.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func EncodeJpegOptimizeSize(value bool) EncodeJpegAttr {
 	return func(m optionalAttr) {
 		m["optimize_size"] = value
@@ -15324,7 +15324,7 @@ func EncodeJpegOptimizeSize(value bool) EncodeJpegAttr {
 // EncodeJpegChromaDownsampling sets the optional chroma_downsampling attribute to value.
 //
 // value: See http://en.wikipedia.org/wiki/Chroma_subsampling.
-// If not specified, defaults to b:true
+// If not specified, defaults to true
 func EncodeJpegChromaDownsampling(value bool) EncodeJpegAttr {
 	return func(m optionalAttr) {
 		m["chroma_downsampling"] = value
@@ -15335,7 +15335,7 @@ func EncodeJpegChromaDownsampling(value bool) EncodeJpegAttr {
 //
 // value: Unit used to specify `x_density` and `y_density`:
 // pixels per inch (`'in'`) or centimeter (`'cm'`).
-// If not specified, defaults to s:"in"
+// If not specified, defaults to "in"
 func EncodeJpegDensityUnit(value string) EncodeJpegAttr {
 	return func(m optionalAttr) {
 		m["density_unit"] = value
@@ -15345,7 +15345,7 @@ func EncodeJpegDensityUnit(value string) EncodeJpegAttr {
 // EncodeJpegXDensity sets the optional x_density attribute to value.
 //
 // value: Horizontal pixels per density unit.
-// If not specified, defaults to i:300
+// If not specified, defaults to 300
 func EncodeJpegXDensity(value int64) EncodeJpegAttr {
 	return func(m optionalAttr) {
 		m["x_density"] = value
@@ -15355,7 +15355,7 @@ func EncodeJpegXDensity(value int64) EncodeJpegAttr {
 // EncodeJpegYDensity sets the optional y_density attribute to value.
 //
 // value: Vertical pixels per density unit.
-// If not specified, defaults to i:300
+// If not specified, defaults to 300
 func EncodeJpegYDensity(value int64) EncodeJpegAttr {
 	return func(m optionalAttr) {
 		m["y_density"] = value
@@ -15365,7 +15365,7 @@ func EncodeJpegYDensity(value int64) EncodeJpegAttr {
 // EncodeJpegXmpMetadata sets the optional xmp_metadata attribute to value.
 //
 // value: If not empty, embed this XMP metadata in the image header.
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func EncodeJpegXmpMetadata(value string) EncodeJpegAttr {
 	return func(m optionalAttr) {
 		m["xmp_metadata"] = value
@@ -15595,7 +15595,7 @@ type SparseToDenseAttr func(optionalAttr)
 //
 // value: If true, indices are checked to make sure they are sorted in
 // lexicographic order and that there are no repeats.
-// If not specified, defaults to b:true
+// If not specified, defaults to true
 func SparseToDenseValidateIndices(value bool) SparseToDenseAttr {
 	return func(m optionalAttr) {
 		m["validate_indices"] = value
@@ -15744,7 +15744,7 @@ type ResourceSparseApplyAdadeltaAttr func(optionalAttr)
 //
 // value: If True, updating of the var and accum tensors will be protected by
 // a lock; otherwise the behavior is undefined, but may exhibit less contention.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func ResourceSparseApplyAdadeltaUseLocking(value bool) ResourceSparseApplyAdadeltaAttr {
 	return func(m optionalAttr) {
 		m["use_locking"] = value
@@ -15922,7 +15922,7 @@ type BiasAddAttr func(optionalAttr)
 //     [batch, in_channels, in_height, in_width].
 // The tensor will be added to "in_channels", the third-to-the-last
 //     dimension.
-// If not specified, defaults to s:"NHWC"
+// If not specified, defaults to "NHWC"
 func BiasAddDataFormat(value string) BiasAddAttr {
 	return func(m optionalAttr) {
 		m["data_format"] = value
@@ -15964,7 +15964,7 @@ type SparseReduceSumSparseAttr func(optionalAttr)
 // SparseReduceSumSparseKeepDims sets the optional keep_dims attribute to value.
 //
 // value: If true, retain reduced dimensions with length 1.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func SparseReduceSumSparseKeepDims(value bool) SparseReduceSumSparseAttr {
 	return func(m optionalAttr) {
 		m["keep_dims"] = value
@@ -16051,7 +16051,7 @@ func Div(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 type ApproximateEqualAttr func(optionalAttr)
 
 // ApproximateEqualTolerance sets the optional tolerance attribute to value.
-// If not specified, defaults to f:1e-05
+// If not specified, defaults to 1e-05
 func ApproximateEqualTolerance(value float32) ApproximateEqualAttr {
 	return func(m optionalAttr) {
 		m["tolerance"] = value
@@ -16104,7 +16104,7 @@ type LogUniformCandidateSamplerAttr func(optionalAttr)
 // value: If either seed or seed2 are set to be non-zero, the random number
 // generator is seeded by the given seed.  Otherwise, it is seeded by a
 // random seed.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func LogUniformCandidateSamplerSeed(value int64) LogUniformCandidateSamplerAttr {
 	return func(m optionalAttr) {
 		m["seed"] = value
@@ -16114,7 +16114,7 @@ func LogUniformCandidateSamplerSeed(value int64) LogUniformCandidateSamplerAttr 
 // LogUniformCandidateSamplerSeed2 sets the optional seed2 attribute to value.
 //
 // value: An second seed to avoid seed collision.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func LogUniformCandidateSamplerSeed2(value int64) LogUniformCandidateSamplerAttr {
 	return func(m optionalAttr) {
 		m["seed2"] = value
@@ -16259,7 +16259,7 @@ type AssertAttr func(optionalAttr)
 // AssertSummarize sets the optional summarize attribute to value.
 //
 // value: Print this many entries of each tensor.
-// If not specified, defaults to i:3
+// If not specified, defaults to 3
 func AssertSummarize(value int64) AssertAttr {
 	return func(m optionalAttr) {
 		m["summarize"] = value
@@ -16456,7 +16456,7 @@ type StridedSliceAttr func(optionalAttr)
 // value and instead use the largest interval possible. At runtime
 // begin[i] will be replaced with `[0, n-1) if `stride[i] > 0` or
 // `[-1, n-1]` if `stride[i] < 0`
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func StridedSliceBeginMask(value int64) StridedSliceAttr {
 	return func(m optionalAttr) {
 		m["begin_mask"] = value
@@ -16466,7 +16466,7 @@ func StridedSliceBeginMask(value int64) StridedSliceAttr {
 // StridedSliceEndMask sets the optional end_mask attribute to value.
 //
 // value: analogous to `begin_mask`
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func StridedSliceEndMask(value int64) StridedSliceAttr {
 	return func(m optionalAttr) {
 		m["end_mask"] = value
@@ -16482,7 +16482,7 @@ func StridedSliceEndMask(value int64) StridedSliceAttr {
 // implicitly creates as many range specifications as necessary to fully
 // specify the sliced range for every dimension. For example for a 4-dimensional
 // tensor `foo` the slice `foo[2, ..., 5:8]` implies `foo[2, :, :, 5:8]`.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func StridedSliceEllipsisMask(value int64) StridedSliceAttr {
 	return func(m optionalAttr) {
 		m["ellipsis_mask"] = value
@@ -16494,7 +16494,7 @@ func StridedSliceEllipsisMask(value int64) StridedSliceAttr {
 // value: a bitmask where bit `i` being 1 means the `i`th
 // specification creates a new shape 1 dimension. For example
 // `foo[:4, tf.newaxis, :2]` would produce a shape `(4, 1, 2)` tensor.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func StridedSliceNewAxisMask(value int64) StridedSliceAttr {
 	return func(m optionalAttr) {
 		m["new_axis_mask"] = value
@@ -16508,7 +16508,7 @@ func StridedSliceNewAxisMask(value int64) StridedSliceAttr {
 // must imply a slice of size 1 in the dimension. For example in
 // python one might do `foo[:, 3, :]` which would result in
 // `shrink_axis_mask` being 2.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func StridedSliceShrinkAxisMask(value int64) StridedSliceAttr {
 	return func(m optionalAttr) {
 		m["shrink_axis_mask"] = value
@@ -16644,7 +16644,7 @@ func StridedSlice(scope *Scope, input tf.Output, begin tf.Output, end tf.Output,
 type ComplexAbsAttr func(optionalAttr)
 
 // ComplexAbsTout sets the optional Tout attribute to value.
-// If not specified, defaults to type:DT_FLOAT
+// If not specified, defaults to DT_FLOAT
 func ComplexAbsTout(value tf.DataType) ComplexAbsAttr {
 	return func(m optionalAttr) {
 		m["Tout"] = value
@@ -16782,7 +16782,7 @@ type MatMulAttr func(optionalAttr)
 // MatMulTransposeA sets the optional transpose_a attribute to value.
 //
 // value: If true, "a" is transposed before multiplication.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func MatMulTransposeA(value bool) MatMulAttr {
 	return func(m optionalAttr) {
 		m["transpose_a"] = value
@@ -16792,7 +16792,7 @@ func MatMulTransposeA(value bool) MatMulAttr {
 // MatMulTransposeB sets the optional transpose_b attribute to value.
 //
 // value: If true, "b" is transposed before multiplication.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func MatMulTransposeB(value bool) MatMulAttr {
 	return func(m optionalAttr) {
 		m["transpose_b"] = value
@@ -16833,7 +16833,7 @@ type MeanAttr func(optionalAttr)
 // MeanKeepDims sets the optional keep_dims attribute to value.
 //
 // value: If true, retain reduced dimensions with length 1.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func MeanKeepDims(value bool) MeanAttr {
 	return func(m optionalAttr) {
 		m["keep_dims"] = value
@@ -16952,7 +16952,7 @@ type ImageSummaryAttr func(optionalAttr)
 // ImageSummaryMaxImages sets the optional max_images attribute to value.
 //
 // value: Max number of batch elements to generate images for.
-// If not specified, defaults to i:3
+// If not specified, defaults to 3
 //
 // REQUIRES: value >= 1
 func ImageSummaryMaxImages(value int64) ImageSummaryAttr {
@@ -16964,7 +16964,7 @@ func ImageSummaryMaxImages(value int64) ImageSummaryAttr {
 // ImageSummaryBadColor sets the optional bad_color attribute to value.
 //
 // value: Color to use for pixels with non-finite values.
-// If not specified, defaults to tensor:<dtype:DT_UINT8 tensor_shape:<dim:<size:4 > > int_val:255 int_val:0 int_val:0 int_val:255 >
+// If not specified, defaults to <dtype:DT_UINT8 tensor_shape:<dim:<size:4 > > int_val:255 int_val:0 int_val:0 int_val:255 >
 func ImageSummaryBadColor(value tf.Tensor) ImageSummaryAttr {
 	return func(m optionalAttr) {
 		m["bad_color"] = value
@@ -17213,7 +17213,7 @@ type CropAndResizeGradBoxesAttr func(optionalAttr)
 //
 // value: A string specifying the interpolation method. Only 'bilinear' is
 // supported for now.
-// If not specified, defaults to s:"bilinear"
+// If not specified, defaults to "bilinear"
 func CropAndResizeGradBoxesMethod(value string) CropAndResizeGradBoxesAttr {
 	return func(m optionalAttr) {
 		m["method"] = value
@@ -17346,7 +17346,7 @@ func Range(scope *Scope, start tf.Output, limit tf.Output, delta tf.Output) (out
 type ComplexAttr func(optionalAttr)
 
 // ComplexTout sets the optional Tout attribute to value.
-// If not specified, defaults to type:DT_COMPLEX64
+// If not specified, defaults to DT_COMPLEX64
 func ComplexTout(value tf.DataType) ComplexAttr {
 	return func(m optionalAttr) {
 		m["Tout"] = value
@@ -17392,7 +17392,7 @@ func Complex(scope *Scope, real tf.Output, imag tf.Output, optional ...ComplexAt
 type ImagAttr func(optionalAttr)
 
 // ImagTout sets the optional Tout attribute to value.
-// If not specified, defaults to type:DT_FLOAT
+// If not specified, defaults to DT_FLOAT
 func ImagTout(value tf.DataType) ImagAttr {
 	return func(m optionalAttr) {
 		m["Tout"] = value
@@ -17435,7 +17435,7 @@ func Imag(scope *Scope, input tf.Output, optional ...ImagAttr) (output tf.Output
 type UniqueWithCountsAttr func(optionalAttr)
 
 // UniqueWithCountsOutIdx sets the optional out_idx attribute to value.
-// If not specified, defaults to type:DT_INT32
+// If not specified, defaults to DT_INT32
 func UniqueWithCountsOutIdx(value tf.DataType) UniqueWithCountsAttr {
 	return func(m optionalAttr) {
 		m["out_idx"] = value
@@ -17514,7 +17514,7 @@ type ResourceSparseApplyMomentumAttr func(optionalAttr)
 // value: If `True`, updating of the var and accum tensors will be protected
 // by a lock; otherwise the behavior is undefined, but may exhibit less
 // contention.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func ResourceSparseApplyMomentumUseLocking(value bool) ResourceSparseApplyMomentumAttr {
 	return func(m optionalAttr) {
 		m["use_locking"] = value
@@ -17526,7 +17526,7 @@ func ResourceSparseApplyMomentumUseLocking(value bool) ResourceSparseApplyMoment
 // value: If `True`, the tensor passed to compute grad will be
 // var - lr * momentum * accum, so in the end, the var you get is actually
 // var - lr * momentum * accum.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func ResourceSparseApplyMomentumUseNesterov(value bool) ResourceSparseApplyMomentumAttr {
 	return func(m optionalAttr) {
 		m["use_nesterov"] = value
@@ -17605,7 +17605,7 @@ type RestoreSliceAttr func(optionalAttr)
 //
 // value: Index of file to open first if multiple files match
 // `file_pattern`. See the documentation for `Restore`.
-// If not specified, defaults to i:-1
+// If not specified, defaults to -1
 func RestoreSlicePreferredShard(value int64) RestoreSliceAttr {
 	return func(m optionalAttr) {
 		m["preferred_shard"] = value
@@ -17831,7 +17831,7 @@ func TensorArrayReadV2(scope *Scope, handle tf.Output, index tf.Output, flow_in 
 type QuantizedMatMulAttr func(optionalAttr)
 
 // QuantizedMatMulToutput sets the optional Toutput attribute to value.
-// If not specified, defaults to type:DT_QINT32
+// If not specified, defaults to DT_QINT32
 func QuantizedMatMulToutput(value tf.DataType) QuantizedMatMulAttr {
 	return func(m optionalAttr) {
 		m["Toutput"] = value
@@ -17841,7 +17841,7 @@ func QuantizedMatMulToutput(value tf.DataType) QuantizedMatMulAttr {
 // QuantizedMatMulTransposeA sets the optional transpose_a attribute to value.
 //
 // value: If true, `a` is transposed before multiplication.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func QuantizedMatMulTransposeA(value bool) QuantizedMatMulAttr {
 	return func(m optionalAttr) {
 		m["transpose_a"] = value
@@ -17851,7 +17851,7 @@ func QuantizedMatMulTransposeA(value bool) QuantizedMatMulAttr {
 // QuantizedMatMulTransposeB sets the optional transpose_b attribute to value.
 //
 // value: If true, `b` is transposed before multiplication.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func QuantizedMatMulTransposeB(value bool) QuantizedMatMulAttr {
 	return func(m optionalAttr) {
 		m["transpose_b"] = value
@@ -17862,7 +17862,7 @@ func QuantizedMatMulTransposeB(value bool) QuantizedMatMulAttr {
 //
 // value: The type of output produced by activation function
 // following this operation.
-// If not specified, defaults to type:DT_QUINT8
+// If not specified, defaults to DT_QUINT8
 func QuantizedMatMulTactivation(value tf.DataType) QuantizedMatMulAttr {
 	return func(m optionalAttr) {
 		m["Tactivation"] = value
@@ -17908,7 +17908,7 @@ func QuantizedMatMul(scope *Scope, a tf.Output, b tf.Output, min_a tf.Output, ma
 type QuantizedMulAttr func(optionalAttr)
 
 // QuantizedMulToutput sets the optional Toutput attribute to value.
-// If not specified, defaults to type:DT_QINT32
+// If not specified, defaults to DT_QINT32
 func QuantizedMulToutput(value tf.DataType) QuantizedMulAttr {
 	return func(m optionalAttr) {
 		m["Toutput"] = value
@@ -17956,7 +17956,7 @@ type QueueEnqueueManyV2Attr func(optionalAttr)
 // value: If the queue is too full, this operation will block for up
 // to timeout_ms milliseconds.
 // Note: This option is not supported yet.
-// If not specified, defaults to i:-1
+// If not specified, defaults to -1
 func QueueEnqueueManyV2TimeoutMs(value int64) QueueEnqueueManyV2Attr {
 	return func(m optionalAttr) {
 		m["timeout_ms"] = value
@@ -18094,7 +18094,7 @@ type DecodePngAttr func(optionalAttr)
 // DecodePngChannels sets the optional channels attribute to value.
 //
 // value: Number of color channels for the decoded image.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func DecodePngChannels(value int64) DecodePngAttr {
 	return func(m optionalAttr) {
 		m["channels"] = value
@@ -18102,7 +18102,7 @@ func DecodePngChannels(value int64) DecodePngAttr {
 }
 
 // DecodePngDtype sets the optional dtype attribute to value.
-// If not specified, defaults to type:DT_UINT8
+// If not specified, defaults to DT_UINT8
 func DecodePngDtype(value tf.DataType) DecodePngAttr {
 	return func(m optionalAttr) {
 		m["dtype"] = value
@@ -18238,7 +18238,7 @@ type AudioSummaryV2Attr func(optionalAttr)
 // AudioSummaryV2MaxOutputs sets the optional max_outputs attribute to value.
 //
 // value: Max number of batch elements to generate audio for.
-// If not specified, defaults to i:3
+// If not specified, defaults to 3
 //
 // REQUIRES: value >= 1
 func AudioSummaryV2MaxOutputs(value int64) AudioSummaryV2Attr {
@@ -18293,7 +18293,7 @@ type QrAttr func(optionalAttr)
 //
 // value: If true, compute full-sized `q` and `r`. If false
 // (the default), compute only the leading `P` columns of `q`.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func QrFullMatrices(value bool) QrAttr {
 	return func(m optionalAttr) {
 		m["full_matrices"] = value
@@ -18346,7 +18346,7 @@ type AudioSummaryAttr func(optionalAttr)
 // AudioSummaryMaxOutputs sets the optional max_outputs attribute to value.
 //
 // value: Max number of batch elements to generate audio for.
-// If not specified, defaults to i:3
+// If not specified, defaults to 3
 //
 // REQUIRES: value >= 1
 func AudioSummaryMaxOutputs(value int64) AudioSummaryAttr {
@@ -18404,7 +18404,7 @@ type ResizeNearestNeighborAttr func(optionalAttr)
 // value: If true, rescale input by (new_height - 1) / (height - 1), which
 // exactly aligns the 4 corners of images and resized images. If false, rescale
 // by new_height / height. Treat similarly the width dimension.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func ResizeNearestNeighborAlignCorners(value bool) ResizeNearestNeighborAttr {
 	return func(m optionalAttr) {
 		m["align_corners"] = value
@@ -18461,7 +18461,7 @@ func SqrtGrad(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 type MatrixInverseAttr func(optionalAttr)
 
 // MatrixInverseAdjoint sets the optional adjoint attribute to value.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func MatrixInverseAdjoint(value bool) MatrixInverseAttr {
 	return func(m optionalAttr) {
 		m["adjoint"] = value
@@ -18516,7 +18516,7 @@ type TFRecordReaderV2Attr func(optionalAttr)
 //
 // value: If non-empty, this reader is placed in the given container.
 // Otherwise, a default container is used.
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func TFRecordReaderV2Container(value string) TFRecordReaderV2Attr {
 	return func(m optionalAttr) {
 		m["container"] = value
@@ -18527,7 +18527,7 @@ func TFRecordReaderV2Container(value string) TFRecordReaderV2Attr {
 //
 // value: If non-empty, this reader is named in the given bucket
 // with this shared_name. Otherwise, the node name is used instead.
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func TFRecordReaderV2SharedName(value string) TFRecordReaderV2Attr {
 	return func(m optionalAttr) {
 		m["shared_name"] = value
@@ -18535,7 +18535,7 @@ func TFRecordReaderV2SharedName(value string) TFRecordReaderV2Attr {
 }
 
 // TFRecordReaderV2CompressionType sets the optional compression_type attribute to value.
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func TFRecordReaderV2CompressionType(value string) TFRecordReaderV2Attr {
 	return func(m optionalAttr) {
 		m["compression_type"] = value
@@ -18569,7 +18569,7 @@ type MatrixSolveAttr func(optionalAttr)
 //
 // value: Boolean indicating whether to solve with `matrix` or its (block-wise)
 // adjoint.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func MatrixSolveAdjoint(value bool) MatrixSolveAttr {
 	return func(m optionalAttr) {
 		m["adjoint"] = value
@@ -18644,7 +18644,7 @@ type MatrixTriangularSolveAttr func(optionalAttr)
 //
 // value: Boolean indicating whether the innermost matrices in `matrix` are
 // lower or upper triangular.
-// If not specified, defaults to b:true
+// If not specified, defaults to true
 func MatrixTriangularSolveLower(value bool) MatrixTriangularSolveAttr {
 	return func(m optionalAttr) {
 		m["lower"] = value
@@ -18659,7 +18659,7 @@ func MatrixTriangularSolveLower(value bool) MatrixTriangularSolveAttr {
 // @compatibility(numpy)
 // Equivalent to np.linalg.triangular_solve
 // @end_compatibility
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func MatrixTriangularSolveAdjoint(value bool) MatrixTriangularSolveAttr {
 	return func(m optionalAttr) {
 		m["adjoint"] = value
@@ -18717,7 +18717,7 @@ type FractionalAvgPoolAttr func(optionalAttr)
 // pseudorandom fashion, otherwise, in a random fashion. Check paper [Benjamin
 // Graham, Fractional Max-Pooling](http://arxiv.org/abs/1412.6071) for
 // difference between pseudorandom and random.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func FractionalAvgPoolPseudoRandom(value bool) FractionalAvgPoolAttr {
 	return func(m optionalAttr) {
 		m["pseudo_random"] = value
@@ -18735,7 +18735,7 @@ func FractionalAvgPoolPseudoRandom(value bool) FractionalAvgPoolAttr {
 //
 // If the pooling sequence is [0, 2, 4], then 16, at index 2 will be used twice.
 // The result would be [41/3, 26/3] for fractional avg pooling.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func FractionalAvgPoolOverlapping(value bool) FractionalAvgPoolAttr {
 	return func(m optionalAttr) {
 		m["overlapping"] = value
@@ -18747,7 +18747,7 @@ func FractionalAvgPoolOverlapping(value bool) FractionalAvgPoolAttr {
 // value: When set to True, a fixed pooling region will be used when
 // iterating over a FractionalAvgPool node in the computation graph. Mainly used
 // in unit test to make FractionalAvgPool deterministic.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func FractionalAvgPoolDeterministic(value bool) FractionalAvgPoolAttr {
 	return func(m optionalAttr) {
 		m["deterministic"] = value
@@ -18759,7 +18759,7 @@ func FractionalAvgPoolDeterministic(value bool) FractionalAvgPoolAttr {
 // value: If either seed or seed2 are set to be non-zero, the random number
 // generator is seeded by the given seed.  Otherwise, it is seeded by a
 // random seed.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func FractionalAvgPoolSeed(value int64) FractionalAvgPoolAttr {
 	return func(m optionalAttr) {
 		m["seed"] = value
@@ -18769,7 +18769,7 @@ func FractionalAvgPoolSeed(value int64) FractionalAvgPoolAttr {
 // FractionalAvgPoolSeed2 sets the optional seed2 attribute to value.
 //
 // value: An second seed to avoid seed collision.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func FractionalAvgPoolSeed2(value int64) FractionalAvgPoolAttr {
 	return func(m optionalAttr) {
 		m["seed2"] = value
@@ -18820,7 +18820,7 @@ type RandomCropAttr func(optionalAttr)
 // value: If either seed or seed2 are set to be non-zero, the random number
 // generator is seeded by the given seed.  Otherwise, it is seeded by a
 // random seed.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func RandomCropSeed(value int64) RandomCropAttr {
 	return func(m optionalAttr) {
 		m["seed"] = value
@@ -18830,7 +18830,7 @@ func RandomCropSeed(value int64) RandomCropAttr {
 // RandomCropSeed2 sets the optional seed2 attribute to value.
 //
 // value: An second seed to avoid seed collision.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func RandomCropSeed2(value int64) RandomCropAttr {
 	return func(m optionalAttr) {
 		m["seed2"] = value
@@ -18878,7 +18878,7 @@ type SumAttr func(optionalAttr)
 // SumKeepDims sets the optional keep_dims attribute to value.
 //
 // value: If true, retain reduced dimensions with length 1.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func SumKeepDims(value bool) SumAttr {
 	return func(m optionalAttr) {
 		m["keep_dims"] = value
@@ -19032,7 +19032,7 @@ type AvgPoolAttr func(optionalAttr)
 //     [batch, in_height, in_width, in_channels].
 // Alternatively, the format could be "NCHW", the data storage order of:
 //     [batch, in_channels, in_height, in_width].
-// If not specified, defaults to s:"NHWC"
+// If not specified, defaults to "NHWC"
 func AvgPoolDataFormat(value string) AvgPoolAttr {
 	return func(m optionalAttr) {
 		m["data_format"] = value
@@ -19107,7 +19107,7 @@ type WholeFileReaderV2Attr func(optionalAttr)
 //
 // value: If non-empty, this reader is placed in the given container.
 // Otherwise, a default container is used.
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func WholeFileReaderV2Container(value string) WholeFileReaderV2Attr {
 	return func(m optionalAttr) {
 		m["container"] = value
@@ -19118,7 +19118,7 @@ func WholeFileReaderV2Container(value string) WholeFileReaderV2Attr {
 //
 // value: If non-empty, this reader is named in the given bucket
 // with this shared_name. Otherwise, the node name is used instead.
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func WholeFileReaderV2SharedName(value string) WholeFileReaderV2Attr {
 	return func(m optionalAttr) {
 		m["shared_name"] = value
@@ -19204,7 +19204,7 @@ func ReaderReadUpToV2(scope *Scope, reader_handle tf.Output, queue_handle tf.Out
 type Conv2DBackpropFilterAttr func(optionalAttr)
 
 // Conv2DBackpropFilterUseCudnnOnGpu sets the optional use_cudnn_on_gpu attribute to value.
-// If not specified, defaults to b:true
+// If not specified, defaults to true
 func Conv2DBackpropFilterUseCudnnOnGpu(value bool) Conv2DBackpropFilterAttr {
 	return func(m optionalAttr) {
 		m["use_cudnn_on_gpu"] = value
@@ -19218,7 +19218,7 @@ func Conv2DBackpropFilterUseCudnnOnGpu(value bool) Conv2DBackpropFilterAttr {
 //     [batch, in_height, in_width, in_channels].
 // Alternatively, the format could be "NCHW", the data storage order of:
 //     [batch, in_channels, in_height, in_width].
-// If not specified, defaults to s:"NHWC"
+// If not specified, defaults to "NHWC"
 func Conv2DBackpropFilterDataFormat(value string) Conv2DBackpropFilterAttr {
 	return func(m optionalAttr) {
 		m["data_format"] = value
@@ -19284,7 +19284,7 @@ type MinAttr func(optionalAttr)
 // MinKeepDims sets the optional keep_dims attribute to value.
 //
 // value: If true, retain reduced dimensions with length 1.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func MinKeepDims(value bool) MinAttr {
 	return func(m optionalAttr) {
 		m["keep_dims"] = value
@@ -19367,7 +19367,7 @@ type CropAndResizeGradImageAttr func(optionalAttr)
 //
 // value: A string specifying the interpolation method. Only 'bilinear' is
 // supported for now.
-// If not specified, defaults to s:"bilinear"
+// If not specified, defaults to "bilinear"
 func CropAndResizeGradImageMethod(value string) CropAndResizeGradImageAttr {
 	return func(m optionalAttr) {
 		m["method"] = value
@@ -19419,7 +19419,7 @@ func CropAndResizeGradImage(scope *Scope, grads tf.Output, boxes tf.Output, box_
 type ShapeAttr func(optionalAttr)
 
 // ShapeOutType sets the optional out_type attribute to value.
-// If not specified, defaults to type:DT_INT32
+// If not specified, defaults to DT_INT32
 func ShapeOutType(value tf.DataType) ShapeAttr {
 	return func(m optionalAttr) {
 		m["out_type"] = value
@@ -19488,7 +19488,7 @@ type ResizeBilinearGradAttr func(optionalAttr)
 // value: If true, rescale grads by (orig_height - 1) / (height - 1), which
 // exactly aligns the 4 corners of grads and original_image. If false, rescale by
 // orig_height / height. Treat similarly the width dimension.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func ResizeBilinearGradAlignCorners(value bool) ResizeBilinearGradAttr {
 	return func(m optionalAttr) {
 		m["align_corners"] = value
@@ -19532,7 +19532,7 @@ type ResizeNearestNeighborGradAttr func(optionalAttr)
 // value: If true, rescale grads by (orig_height - 1) / (height - 1), which
 // exactly aligns the 4 corners of grads and original_image. If false, rescale by
 // orig_height / height. Treat similarly the width dimension.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func ResizeNearestNeighborGradAlignCorners(value bool) ResizeNearestNeighborGradAttr {
 	return func(m optionalAttr) {
 		m["align_corners"] = value
@@ -19573,7 +19573,7 @@ type DecodeJpegAttr func(optionalAttr)
 // DecodeJpegChannels sets the optional channels attribute to value.
 //
 // value: Number of color channels for the decoded image.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func DecodeJpegChannels(value int64) DecodeJpegAttr {
 	return func(m optionalAttr) {
 		m["channels"] = value
@@ -19583,7 +19583,7 @@ func DecodeJpegChannels(value int64) DecodeJpegAttr {
 // DecodeJpegRatio sets the optional ratio attribute to value.
 //
 // value: Downscaling ratio.
-// If not specified, defaults to i:1
+// If not specified, defaults to 1
 func DecodeJpegRatio(value int64) DecodeJpegAttr {
 	return func(m optionalAttr) {
 		m["ratio"] = value
@@ -19594,7 +19594,7 @@ func DecodeJpegRatio(value int64) DecodeJpegAttr {
 //
 // value: If true use a slower but nicer upscaling of the
 // chroma planes (yuv420/422 only).
-// If not specified, defaults to b:true
+// If not specified, defaults to true
 func DecodeJpegFancyUpscaling(value bool) DecodeJpegAttr {
 	return func(m optionalAttr) {
 		m["fancy_upscaling"] = value
@@ -19604,7 +19604,7 @@ func DecodeJpegFancyUpscaling(value bool) DecodeJpegAttr {
 // DecodeJpegTryRecoverTruncated sets the optional try_recover_truncated attribute to value.
 //
 // value: If true try to recover an image from truncated input.
-// If not specified, defaults to b:false
+// If not specified, defaults to false
 func DecodeJpegTryRecoverTruncated(value bool) DecodeJpegAttr {
 	return func(m optionalAttr) {
 		m["try_recover_truncated"] = value
@@ -19615,7 +19615,7 @@ func DecodeJpegTryRecoverTruncated(value bool) DecodeJpegAttr {
 //
 // value: The minimum required fraction of lines before a truncated
 // input is accepted.
-// If not specified, defaults to f:1
+// If not specified, defaults to 1
 func DecodeJpegAcceptableFraction(value float32) DecodeJpegAttr {
 	return func(m optionalAttr) {
 		m["acceptable_fraction"] = value
@@ -19630,7 +19630,7 @@ func DecodeJpegAcceptableFraction(value float32) DecodeJpegAttr {
 // "INTEGER_ACCURATE"].  The hint may be ignored (e.g., the internal
 // jpeg library changes to a version that does not have that specific
 // option.)
-// If not specified, defaults to s:""
+// If not specified, defaults to ""
 func DecodeJpegDctMethod(value string) DecodeJpegAttr {
 	return func(m optionalAttr) {
 		m["dct_method"] = value
@@ -19686,7 +19686,7 @@ type TensorArrayGatherV3Attr func(optionalAttr)
 // value: The expected shape of an element, if known. Used to
 // validate the shapes of TensorArray elements. If this shape is not
 // fully specified, gathering zero-size TensorArrays is an error.
-// If not specified, defaults to shape:<unknown_rank:true >
+// If not specified, defaults to <unknown_rank:true >
 func TensorArrayGatherV3ElementShape(value tf.Shape) TensorArrayGatherV3Attr {
 	return func(m optionalAttr) {
 		m["element_shape"] = value
@@ -19795,7 +19795,7 @@ type SelfAdjointEigV2Attr func(optionalAttr)
 //
 // value: If `True` then eigenvectors will be computed and returned in `v`.
 // Otherwise, only the eigenvalues will be computed.
-// If not specified, defaults to b:true
+// If not specified, defaults to true
 func SelfAdjointEigV2ComputeV(value bool) SelfAdjointEigV2Attr {
 	return func(m optionalAttr) {
 		m["compute_v"] = value
@@ -19872,7 +19872,7 @@ type EncodePngAttr func(optionalAttr)
 // EncodePngCompression sets the optional compression attribute to value.
 //
 // value: Compression level.
-// If not specified, defaults to i:-1
+// If not specified, defaults to -1
 func EncodePngCompression(value int64) EncodePngAttr {
 	return func(m optionalAttr) {
 		m["compression"] = value
@@ -19920,7 +19920,7 @@ func EncodePng(scope *Scope, image tf.Output, optional ...EncodePngAttr) (conten
 type MatrixSolveLsAttr func(optionalAttr)
 
 // MatrixSolveLsFast sets the optional fast attribute to value.
-// If not specified, defaults to b:true
+// If not specified, defaults to true
 func MatrixSolveLsFast(value bool) MatrixSolveLsAttr {
 	return func(m optionalAttr) {
 		m["fast"] = value
@@ -20027,7 +20027,7 @@ type ExtractGlimpseAttr func(optionalAttr)
 // the image, in which case the (0, 0) offset is relative to the center
 // of the input images. If false, the (0,0) offset corresponds to the
 // upper left corner of the input images.
-// If not specified, defaults to b:true
+// If not specified, defaults to true
 func ExtractGlimpseCentered(value bool) ExtractGlimpseAttr {
 	return func(m optionalAttr) {
 		m["centered"] = value
@@ -20037,7 +20037,7 @@ func ExtractGlimpseCentered(value bool) ExtractGlimpseAttr {
 // ExtractGlimpseNormalized sets the optional normalized attribute to value.
 //
 // value: indicates if the offset coordinates are normalized.
-// If not specified, defaults to b:true
+// If not specified, defaults to true
 func ExtractGlimpseNormalized(value bool) ExtractGlimpseAttr {
 	return func(m optionalAttr) {
 		m["normalized"] = value
@@ -20048,7 +20048,7 @@ func ExtractGlimpseNormalized(value bool) ExtractGlimpseAttr {
 //
 // value: indicates if the noise should be generated using a
 // uniform distribution or a Gaussian distribution.
-// If not specified, defaults to b:true
+// If not specified, defaults to true
 func ExtractGlimpseUniformNoise(value bool) ExtractGlimpseAttr {
 	return func(m optionalAttr) {
 		m["uniform_noise"] = value
@@ -20118,7 +20118,7 @@ type MaxPoolGradAttr func(optionalAttr)
 //     [batch, in_height, in_width, in_channels].
 // Alternatively, the format could be "NCHW", the data storage order of:
 //     [batch, in_channels, in_height, in_width].
-// If not specified, defaults to s:"NHWC"
+// If not specified, defaults to "NHWC"
 func MaxPoolGradDataFormat(value string) MaxPoolGradAttr {
 	return func(m optionalAttr) {
 		m["data_format"] = value
@@ -20163,7 +20163,7 @@ type CropAndResizeAttr func(optionalAttr)
 //
 // value: A string specifying the interpolation method. Only 'bilinear' is
 // supported for now.
-// If not specified, defaults to s:"bilinear"
+// If not specified, defaults to "bilinear"
 func CropAndResizeMethod(value string) CropAndResizeAttr {
 	return func(m optionalAttr) {
 		m["method"] = value
@@ -20173,7 +20173,7 @@ func CropAndResizeMethod(value string) CropAndResizeAttr {
 // CropAndResizeExtrapolationValue sets the optional extrapolation_value attribute to value.
 //
 // value: Value used for extrapolation, when applicable.
-// If not specified, defaults to f:0
+// If not specified, defaults to 0
 func CropAndResizeExtrapolationValue(value float32) CropAndResizeAttr {
 	return func(m optionalAttr) {
 		m["extrapolation_value"] = value
