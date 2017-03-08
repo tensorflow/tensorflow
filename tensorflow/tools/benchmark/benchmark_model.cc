@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/util/command_line_flags.h"
@@ -272,7 +273,11 @@ Status TimeMultipleRuns(double sleep_seconds, int num_runs,
     // This can be helpful to determine the effect of mobile processor
     // scaling and thermal throttling.
     if (sleep_seconds > 0.0) {
+#ifdef PLATFORM_WINDOWS
+      Sleep(sleep_seconds * 1000);
+#else
       nanosleep(&req, nullptr);
+#endif
     }
   }
   std::stringstream stream;
