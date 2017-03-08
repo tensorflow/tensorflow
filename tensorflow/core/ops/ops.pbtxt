@@ -5696,6 +5696,20 @@ op {
       }
     }
   }
+  attr {
+    name: "data_format"
+    type: "string"
+    default_value {
+      s: "NHWC"
+    }
+    description: "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, height, width, channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, channels, height, width]."
+    allowed_values {
+      list {
+        s: "NHWC"
+        s: "NCHW"
+      }
+    }
+  }
   summary: "Computes a 2-D depthwise convolution given 4-D `input` and `filter` tensors."
   description: "Given an input tensor of shape `[batch, in_height, in_width, in_channels]`\nand a filter / kernel tensor of shape\n`[filter_height, filter_width, in_channels, channel_multiplier]`, containing\n`in_channels` convolutional filters of depth 1, `depthwise_conv2d` applies\na different filter to each input channel (expanding from 1 channel to\n`channel_multiplier` channels for each), then concatenates the results\ntogether. Thus, the output has `in_channels * channel_multiplier` channels.\n\nfor k in 0..in_channels-1\n  for q in 0..channel_multiplier-1\n    output[b, i, j, k * channel_multiplier + q] =\n      sum_{di, dj} input[b, strides[1] * i + di, strides[2] * j + dj, k] *\n                        filter[di, dj, k, q]\n\nMust have `strides[0] = strides[3] = 1`.  For the most common case of the same\nhorizontal and vertices strides, `strides = [1, stride, stride, 1]`."
 }
@@ -5703,7 +5717,7 @@ op {
   name: "DepthwiseConv2dNativeBackpropFilter"
   input_arg {
     name: "input"
-    description: "4-D with shape `[batch, in_height, in_width, in_channels]`."
+    description: "4-D with shape based on `data_format`.  For example, if\n`data_format` is \'NHWC\' then `input` is a 4-D `[batch, in_height,\nin_width, in_channels]` tensor."
     type_attr: "T"
   }
   input_arg {
@@ -5713,7 +5727,7 @@ op {
   }
   input_arg {
     name: "out_backprop"
-    description: "4-D with shape `[batch, out_height, out_width, out_channels]`.\nGradients w.r.t. the output of the convolution."
+    description: "4-D with shape  based on `data_format`.\nFor example, if `data_format` is \'NHWC\' then\nout_backprop shape is `[batch, out_height, out_width, out_channels]`.\nGradients w.r.t. the output of the convolution."
     type_attr: "T"
   }
   output_arg {
@@ -5747,13 +5761,27 @@ op {
       }
     }
   }
+  attr {
+    name: "data_format"
+    type: "string"
+    default_value {
+      s: "NHWC"
+    }
+    description: "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, height, width, channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, channels, height, width]."
+    allowed_values {
+      list {
+        s: "NHWC"
+        s: "NCHW"
+      }
+    }
+  }
   summary: "Computes the gradients of depthwise convolution with respect to the filter."
 }
 op {
   name: "DepthwiseConv2dNativeBackpropInput"
   input_arg {
     name: "input_sizes"
-    description: "An integer vector representing the shape of `input`,\nwhere `input` is a 4-D `[batch, height, width, channels]` tensor."
+    description: "An integer vector representing the shape of `input`, based\non `data_format`.  For example, if `data_format` is \'NHWC\' then\n `input` is a 4-D `[batch, height, width, channels]` tensor."
     type: DT_INT32
   }
   input_arg {
@@ -5763,12 +5791,12 @@ op {
   }
   input_arg {
     name: "out_backprop"
-    description: "4-D with shape `[batch, out_height, out_width, out_channels]`.\nGradients w.r.t. the output of the convolution."
+    description: "4-D with shape  based on `data_format`.\nFor example, if `data_format` is \'NHWC\' then\nout_backprop shape is `[batch, out_height, out_width, out_channels]`.\nGradients w.r.t. the output of the convolution."
     type_attr: "T"
   }
   output_arg {
     name: "output"
-    description: "4-D with shape `[batch, in_height, in_width, in_channels]`.  Gradient\nw.r.t. the input of the convolution."
+    description: "4-D with shape according to `data_format`.  For example, if\n`data_format` is \'NHWC\', output shape is `[batch, in_height,\nin_width, in_channels]`.  Gradient w.r.t. the input of the\nconvolution."
     type_attr: "T"
   }
   attr {
@@ -5794,6 +5822,20 @@ op {
       list {
         s: "SAME"
         s: "VALID"
+      }
+    }
+  }
+  attr {
+    name: "data_format"
+    type: "string"
+    default_value {
+      s: "NHWC"
+    }
+    description: "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, height, width, channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, channels, height, width]."
+    allowed_values {
+      list {
+        s: "NHWC"
+        s: "NCHW"
       }
     }
   }
