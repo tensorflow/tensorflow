@@ -125,7 +125,8 @@ class MklToTfOp : public OpKernel {
 
 #define REGISTER_CPU(T) \
   REGISTER_KERNEL_BUILDER( \
-    Name("MklToTf").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+    Name("MklToTf").Device(DEVICE_CPU).TypeConstraint<T>("T") \
+    .Label(mkl_layer_registry::kMklLayerLabel), \
     MklToTfOp<CPUDevice, T>);
 
 TF_CALL_float(REGISTER_CPU);
