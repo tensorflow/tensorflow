@@ -305,7 +305,7 @@ b_conv1 = bias_variable([32])
 ```
 
 To apply the layer, we first reshape `x` to a 4d tensor, with the second and
-third dimensions corresponding to image width and height, and the final
+third dimensions corresponding to image height and width, and the final
 dimension corresponding to the number of color channels.
 
 ```python
