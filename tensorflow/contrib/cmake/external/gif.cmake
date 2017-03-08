@@ -19,7 +19,7 @@ if(WIN32)
       PREFIX gif
       URL ${gif_URL}
       URL_HASH ${gif_HASH}
-      PATCH_COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/patches/gif/CMakeLists.txt ${gif_BUILD}
+      PATCH_COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/patches/gif/CMakeLists.txt ${gif_BUILD}
       INSTALL_DIR ${gif_INSTALL}
       DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
       CMAKE_CACHE_ARGS
@@ -29,7 +29,7 @@ if(WIN32)
   )
 
   ExternalProject_Add_Step(gif copy_unistd
-      COMMAND ${CMAKE_COMMAND} -E copy
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
           ${CMAKE_SOURCE_DIR}/patches/gif/unistd.h ${gif_BUILD}/lib/unistd.h
       DEPENDEES patch
       DEPENDERS build
@@ -67,5 +67,5 @@ add_custom_target(gif_copy_headers_to_destination
 
 foreach(header_file ${gif_HEADERS})
     add_custom_command(TARGET gif_copy_headers_to_destination PRE_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy ${header_file} ${gif_INCLUDE_DIR}/)
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${header_file} ${gif_INCLUDE_DIR}/)
 endforeach()

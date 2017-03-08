@@ -20,7 +20,7 @@ function(tb_new_http_archive)
   foreach(src_file ${_TB_FILES})
     add_custom_command(
       TARGET tensorboard_copy_dependencies PRE_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy ${src_dir}/${src_file} ${dst_dir}/${src_file}
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different ${src_dir}/${src_file} ${dst_dir}/${src_file}
     )
   endforeach()
   
@@ -37,7 +37,7 @@ function(tb_http_file)
   
   add_custom_command(
     TARGET tensorboard_copy_dependencies PRE_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy ${src_dir}/${src_file} ${dst_dir}/${src_file}
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${src_dir}/${src_file} ${dst_dir}/${src_file}
   )
   
   add_custom_target(${_TB_NAME} DEPENDS ${src_dir}/${src_file})
