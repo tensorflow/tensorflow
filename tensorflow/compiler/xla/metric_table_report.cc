@@ -76,10 +76,10 @@ void MetricTableReport::WriteReportToInfoLog(double expected_metric_sum) {
   // Write something to the log normally to get the date-time and file prefix.
   LOG(INFO) << "Writing report to log.";
 
-  int64 pos = 0;
+  string::size_type pos = 0;
   const string report = MakeReport(expected_metric_sum);
   while (pos < report.size()) {
-    int64 end_of_line = report.find('\n', pos);
+    size_t end_of_line = report.find('\n', pos);
     if (end_of_line == string::npos) {
       end_of_line = report.size();
     }
@@ -247,7 +247,7 @@ string MetricTableReport::MetricString(double metric) {
     sp1.remove_prefix(1);
   }
   // Copy rest of input characters.
-  for (int64 i = 0; i < sp1.size(); ++i) {
+  for (tensorflow::StringPiece::size_type i = 0; i < sp1.size(); ++i) {
     if (i > 0 && (sp1.size() - i) % 3 == 0) {
       output.push_back(',');
     }

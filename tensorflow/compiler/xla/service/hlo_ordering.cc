@@ -90,7 +90,8 @@ SequentialHloOrdering::SequentialHloOrdering(
   // Create a map from instruction to its order position.
   for (auto computation_order : module_sequence_) {
     const std::vector<const HloInstruction*>& order = computation_order.second;
-    for (int i = 0; i < order.size(); ++i) {
+    for (std::vector<const HloInstruction*>::size_type i = 0; i < order.size();
+         ++i) {
       DCHECK_EQ(0, order_position_.count(order[i]));
       order_position_.emplace(order[i], i);
     }

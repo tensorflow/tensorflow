@@ -348,7 +348,8 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
   const string& directory_path = flags->xla_dump_computations_to;
   const string& other_directory_path = flags->xla_dump_executions_to;
   if ((!directory_path.empty() || !other_directory_path.empty())) {
-    for (int64 i = 0; i < versioned_handles.size(); ++i) {
+    for (std::vector<VersionedComputationHandle>::size_type i = 0;
+         i < versioned_handles.size(); ++i) {
       TF_ASSIGN_OR_RETURN(std::unique_ptr<SessionModule> session_module,
                           computation_tracker_.SnapshotComputation(
                               versioned_handles[i].handle));
@@ -537,7 +538,8 @@ Service::ExecuteParallelAndRegisterResult(
   }
 
   // Wait for all executions to complete.
-  for (int64 i = 0; i < result_handles.size(); ++i) {
+  for (std::vector<GlobalDataHandle>::size_type i = 0;
+       i < result_handles.size(); ++i) {
     if (!streams[i]->BlockHostUntilDone()) {
       return InternalError("failed to complete execution for stream %lld", i);
     }

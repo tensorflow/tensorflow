@@ -548,7 +548,8 @@ HloInstruction* HloInstruction::CloneAndFuseInternal(
     // See if this operand is already an operand of the fusion node.
     CHECK_EQ(operands_.size(), fused_parameters_.size());
     HloInstruction* fused_param = nullptr;
-    for (int64 i = 0; i < operands_.size(); ++i) {
+    for (std::vector<HloInstruction*>::size_type i = 0;
+         i < operands_.size(); ++i) {
       if (operands_[i] == operand) {
         fused_param = fused_parameters_[i];
         break;
@@ -639,7 +640,8 @@ void HloInstruction::CheckFusionInstruction() const {
       CHECK(!root_owned);
       root_owned = true;
     }
-    for (int i = 0; i < fused_parameters_.size(); ++i) {
+    for (std::vector<HloInstruction*>::size_type i = 0;
+         i < fused_parameters_.size(); ++i) {
       if (fused_parameters_[i] == instruction.get()) {
         CHECK(!parameter_owned[i]);
         parameter_owned[i] = true;
@@ -648,7 +650,7 @@ void HloInstruction::CheckFusionInstruction() const {
   }
   CHECK(root_owned);
   // Make sure all the parameter_owned entries are set
-  for (int i = 0; i < parameter_owned.size(); i++) {
+  for (std::vector<bool>::size_type i = 0; i < parameter_owned.size(); i++) {
     CHECK(parameter_owned[i]);
   }
 
@@ -681,7 +683,7 @@ void HloInstruction::CheckFusionInstruction() const {
                                 operands_[param_no]->shape()));
   }
   // Make sure all the parameter_numbers entries were seen
-  for (int i = 0; i < parameter_numbers.size(); i++) {
+  for (std::vector<bool>::size_type i = 0; i < parameter_numbers.size(); i++) {
     CHECK(parameter_numbers[i]);
   }
 
@@ -1384,7 +1386,7 @@ string HloInstruction::ToString(bool compact_operands) const {
   }
   if (!slice_starts_.empty() && !slice_limits_.empty()) {
     std::vector<string> bounds;
-    for (int i = 0; i < slice_starts_.size(); ++i) {
+    for (std::vector<int64>::size_type i = 0; i < slice_starts_.size(); ++i) {
       bounds.push_back(tensorflow::strings::StrCat("[", slice_starts_[i], ":",
                                                    slice_limits_[i], "]"));
     }
@@ -1399,7 +1401,8 @@ string HloInstruction::ToString(bool compact_operands) const {
     const auto append_dims = [&](const std::vector<string>& dims,
                                  const Shape& shape) {
       CHECK_EQ(dims.size(), ShapeUtil::Rank(shape));
-      for (int64 logical = 0; logical < dims.size(); ++logical) {
+      for (std::vector<string>::size_type logical = 0; logical < dims.size();
+           ++logical) {
         int64 physical = logical;
         if (!shape.layout().minor_to_major().empty()) {
           physical = LayoutUtil::Major(shape.layout(), logical);
@@ -1812,7 +1815,8 @@ namespace {
 bool OrderIsTopologicalSort(const std::vector<const HloInstruction*>& order) {
   // Create a map from instruction to its position in 'order'.
   std::unordered_map<const HloInstruction*, int> order_position;
-  for (int i = 0; i < order.size(); i++) {
+  for (std::vector<const HloInstruction*>::size_type i = 0; i < order.size();
+       i++) {
     if (!order_position.insert({order[i], i}).second) {
       // Instruction order[i] is duplicated in the order.
       return false;
@@ -2059,7 +2063,8 @@ HloInstruction::UseKind HloInstruction::OperandElementUse(int64 i) const {
               return UseKind::kUse;
             }
             if (cache.count(&hlo) == 0) {
-              for (int64 j = 0; j < hlo.operands_.size(); ++j) {
+              for (std::vector<HloInstruction*>::size_type j = 0;
+                   j < hlo.operands_.size(); ++j) {
                 UseKind old = cache[&hlo];
                 UseKind updated = plus(
                     old, std::min(hlo.OperandElementUse(j),
