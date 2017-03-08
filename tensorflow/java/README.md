@@ -121,7 +121,7 @@ libraries will need to be built from source.
     ```
 
 The JAR (`libtensorflow.jar`) and native library (`libtensorflow_jni.so`) will 
-be in `bazel-genfiles/tensorflow/tensorflow/java`.
+be in `bazel-bin/tensorflow/java`.
 
 ### Maven
 
