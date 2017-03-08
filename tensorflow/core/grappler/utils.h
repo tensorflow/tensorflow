@@ -35,6 +35,9 @@ string NodeName(const string& name);
 // Get the trailing position number ":{digits}" (if any) of a node name.
 int NodePosition(const string& name);
 
+// Add a prefix to a node name
+string AddPrefixToNodeName(const string& name, const string& prefix);
+
 }  // end namespace grappler
 }  // end namespace tensorflow
 
