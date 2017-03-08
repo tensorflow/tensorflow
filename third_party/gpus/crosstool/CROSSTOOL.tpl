@@ -121,6 +121,7 @@ toolchain {
 
   # Include directory for cuda headers.
   cxx_builtin_include_directory: "%{cuda_include_path}"
+  cxx_builtin_include_directory: "/usr/local/cuda/include"
 
   compilation_mode_flags {
     mode: DBG

@@ -32,6 +32,7 @@ py_library(
         "//tensorflow/contrib/opt:opt_py",
         "//tensorflow/contrib/quantization:quantization_py",
         "//tensorflow/contrib/rnn:rnn_py",
+        "//tensorflow/contrib/naturali:naturali_py",
         "//tensorflow/contrib/slim",
         "//tensorflow/contrib/slim:nets",
         "//tensorflow/contrib/tensor_forest:tensor_forest_py",
