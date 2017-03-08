@@ -275,6 +275,22 @@ inline void GetStridesFromSizes(TensorFormat data_format, size_t* strides,
   }
 }
 
+namespace mkl_layer_registry {
+
+static const char* kMklLayerLabel = "MklLayer";
+static const string kMklLayerLabelPattern = "label='MklLayer'";
+
+// Check whether opname is registered as MKL-compliant in the registry.
+//
+// @input: name of the op
+// @return: true if opname is registered as Mkl layer op
+static inline bool IsMklLayer(const std::string& op_name) {
+  string kernel = KernelsRegisteredForOp(op_name);
+  return kernel.find(kMklLayerLabelPattern) != string::npos;
+}
+
+} // namespace mkl_layer_registry
+
 }  // namespace tensorflow
 #endif  // INTEL_MKL
 #endif  // TENSORFLOW_CORE_UTIL_MKL_UTIL_H_
