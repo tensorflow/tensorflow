@@ -20,7 +20,7 @@ cc_library(
     includes = [
         "googletest",
         "googletest/include",
-	"googlemock",
+        "googlemock",
         "googlemock/include",
     ],
     linkopts = ["-pthread"],
