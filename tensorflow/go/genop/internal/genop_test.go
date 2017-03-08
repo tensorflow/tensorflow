@@ -189,7 +189,7 @@ type DecodeJpegAttr func(optionalAttr)
 // DecodeJpegChannels sets the optional channels attribute to value.
 //
 // value: Number of color channels for the decoded image.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func DecodeJpegChannels(value int64) DecodeJpegAttr {
 	return func(m optionalAttr) {
 		m["channels"] = value
@@ -200,7 +200,7 @@ func DecodeJpegChannels(value int64) DecodeJpegAttr {
 //
 // value: If true use a slower but nicer upscaling of the
 // chroma planes (yuv420/422 only).
-// If not specified, defaults to b:true
+// If not specified, defaults to true
 func DecodeJpegFancyUpscaling(value bool) DecodeJpegAttr {
 	return func(m optionalAttr) {
 		m["fancy_upscaling"] = value
@@ -211,7 +211,7 @@ func DecodeJpegFancyUpscaling(value bool) DecodeJpegAttr {
 //
 // value: The minimum required fraction of lines before a truncated
 // input is accepted.
-// If not specified, defaults to f:1
+// If not specified, defaults to 1
 func DecodeJpegAcceptableFraction(value float32) DecodeJpegAttr {
 	return func(m optionalAttr) {
 		m["acceptable_fraction"] = value
@@ -332,7 +332,7 @@ description: "Some description here."
 type ShapeNAttr func(optionalAttr)
 
 // ShapeNOutType sets the optional out_type attribute to value.
-// If not specified, defaults to type:DT_INT32
+// If not specified, defaults to DT_INT32
 func ShapeNOutType(value tf.DataType) ShapeNAttr {
 	return func(m optionalAttr) {
 		m["out_type"] = value
