@@ -225,6 +225,17 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "reverse_ops_test",
+    size = "small",
+    srcs = ["reverse_ops_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+    ],
+)
+
+tf_xla_py_test(
     name = "ternary_ops_test",
     size = "small",
     srcs = ["ternary_ops_test.py"],

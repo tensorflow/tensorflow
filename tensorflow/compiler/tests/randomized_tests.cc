@@ -1747,6 +1747,30 @@ TEST_F(OpTest, Reshape) {
   });
 }
 
+TEST_F(OpTest, Reverse) {
+  Repeatedly([this]() {
+    std::vector<int64> dims = RandomDims(1);
+    DataType type = Choose<DataType>({DT_INT32, DT_FLOAT});
+    int64 rank = dims.size();
+    ExpectTfAndXlaOutputsAreClose(OpTestBuilder("Reverse")
+                                      .Input(RandomTensor(type, dims))
+                                      .Input(RandomTensor(DT_BOOL, {rank}))
+                                      .Attr("T", DT_FLOAT));
+  });
+}
+
+TEST_F(OpTest, ReverseV2) {
+  Repeatedly([this]() {
+    DataType type = Choose<DataType>({DT_INT32, DT_FLOAT});
+    Tensor data = RandomTensor(type);
+    Tensor indices = RandomReductionIndices(data.dims());
+    ExpectTfAndXlaOutputsAreClose(OpTestBuilder("ReverseV2")
+                                      .Input(data)
+                                      .Input(indices)
+                                      .Attr("T", DT_FLOAT));
+  });
+}
+
 TEST_F(OpTest, Rsqrt) {
   Repeatedly([this]() {
     ExpectTfAndXlaOutputsAreClose(OpTestBuilder("Rsqrt")
