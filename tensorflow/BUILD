@@ -249,6 +249,7 @@ filegroup(
         "//tensorflow/tensorboard:all_files",
         "//tensorflow/tensorboard/app:all_files",
         "//tensorflow/tensorboard/backend:all_files",
+        "//tensorflow/tensorboard/backend/event_processing:all_files",
         "//tensorflow/tensorboard/components:all_files",
         "//tensorflow/tensorboard/components/vz_data_summary:all_files",
         "//tensorflow/tensorboard/components/vz_line_chart:all_files",

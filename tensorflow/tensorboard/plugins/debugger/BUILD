@@ -30,6 +30,6 @@ py_test(
     deps = [
         ":debugger_plugin",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:summary",
+        "//tensorflow/tensorboard/backend/event_processing:event_accumulator",
     ],
 )
