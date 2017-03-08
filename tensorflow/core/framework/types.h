@@ -68,9 +68,17 @@ class DeviceType {
 std::ostream& operator<<(std::ostream& os, const DeviceType& d);
 
 // Convenient constants that can be passed to a DeviceType constructor
-extern const char* const DEVICE_CPU;   // "CPU"
-extern const char* const DEVICE_GPU;   // "GPU"
-extern const char* const DEVICE_SYCL;  // "SYCL"
+#if !defined(TF_EXTERN)
+// workaround for windows: when building user_ops as dll we have issues
+// to import const char * const from the tensorflow.dll correctly if we
+// dont use __declspec(dllimport). As workaround we'll pass
+// -DTF_EXTERN="extern __declspec(dllimport)" during build
+#define TF_EXTERN extern
+#endif
+
+TF_EXTERN const char* const DEVICE_CPU;   // "CPU"
+TF_EXTERN const char* const DEVICE_GPU;   // "GPU"
+TF_EXTERN const char* const DEVICE_SYCL;  // "SYCL"
 
 typedef gtl::InlinedVector<MemoryType, 4> MemoryTypeVector;
 typedef gtl::ArraySlice<MemoryType> MemoryTypeSlice;

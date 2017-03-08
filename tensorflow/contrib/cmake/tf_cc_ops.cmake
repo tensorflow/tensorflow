@@ -120,3 +120,41 @@ list(REMOVE_ITEM tf_cc_srcs ${tf_cc_test_srcs})
 
 add_library(tf_cc OBJECT ${tf_cc_srcs})
 add_dependencies(tf_cc tf_cc_framework tf_cc_ops)
+
+set (pywrap_tensorflow_lib "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/pywrap_tensorflow_internal.lib")
+add_custom_target(tf_extension_ops)
+
+function(AddUserOps)
+  cmake_parse_arguments(_AT "" "" "TARGET;SOURCES;GPUSOURCES;DEPENDS;DISTCOPY" ${ARGN})
+  if (tensorflow_ENABLE_GPU AND _AT_GPUSOURCES)
+    # if gpu build is enabled and we have gpu specific code,
+    # hint to cmake that this needs to go to nvcc
+    set (gpu_source ${_AT_GPUSOURCES})
+    set (gpu_lib "${_AT_TARGET}_gpu")
+    set_source_files_properties(${gpu_source} PROPERTIES CUDA_SOURCE_PROPERTY_FORMAT OBJ)
+    cuda_compile(gpu_lib ${gpu_source})
+  endif()
+  # create shared library from source and cuda obj
+  add_library(${_AT_TARGET} SHARED ${_AT_SOURCES} ${gpu_lib})
+  target_link_libraries(${_AT_TARGET} ${pywrap_tensorflow_lib})
+  if(WIN32)
+    if (tensorflow_ENABLE_GPU AND _AT_GPUSOURCES)
+        # some ops call out to cuda directly; need to link libs for the cuda dlls
+        target_link_libraries(${_AT_TARGET} ${CUDA_LIBRARIES})
+    endif()
+    # on windows copy .dll to .so so the python code does not need to deal with it
+    add_custom_command(TARGET ${_AT_TARGET} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:${_AT_TARGET}>
+            ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/${_AT_TARGET}.so)
+    if (_AT_DISTCOPY)
+        add_custom_command(TARGET ${_AT_TARGET} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:${_AT_TARGET}>
+                ${_AT_DISTCOPY}/${_AT_TARGET}.so)
+    endif()
+  endif()
+  if (_AT_DEPENDS)
+    add_dependencies(${_AT_TARGET} ${_AT_DEPENDS})
+  endif()
+  add_dependencies(tf_extension_ops ${_AT_TARGET})
+  target_compile_definitions(${_AT_TARGET} PRIVATE TF_EXTERN=extern\ __declspec\(dllimport\))
+endfunction(AddUserOps)

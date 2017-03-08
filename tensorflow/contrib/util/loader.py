@@ -29,9 +29,9 @@ from tensorflow.python.platform import resource_loader
 def load_op_library(path):
   """Loads a contrib op library from the given path.
 
-  NOTE(mrry): On Windows, we currently assume that contrib op
+  NOTE(mrry): On Windows, we currently assume that some contrib op
   libraries are statically linked into the main TensorFlow Python
-  extension DLL.
+  extension DLL - use dynamically linked ops if the .so is present.
 
   Args:
     path: An absolute path to a shared object file.
@@ -40,7 +40,7 @@ def load_op_library(path):
     A Python module containing the Python wrappers for Ops defined in the
     plugin.
   """
-  if os.name != 'nt':
+  if os.name != 'nt' or os.path.exists(path):
     path = resource_loader.get_path_to_datafile(path)
     ret = load_library.load_op_library(path)
     assert ret, 'Could not load %s' % path
