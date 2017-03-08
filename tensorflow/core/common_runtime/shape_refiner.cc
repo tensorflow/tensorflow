@@ -35,6 +35,8 @@ ShapeRefiner::ShapeRefiner(int graph_def_version,
                            const OpRegistryInterface* ops)
     : graph_def_version_(graph_def_version), ops_registry_(ops) {}
 
+ShapeRefiner::~ShapeRefiner() { gtl::STLDeleteValues(&node_to_context_); }
+
 Status ShapeRefiner::AddNode(const Node* node) {
   // For each 'input' of this node, fetch the corresponding shape
   // from 'input's InferenceContext, and store into a vector

@@ -821,12 +821,11 @@ Status GraphConstructor::MakeEdge(Node* src, int output_index, Node* dst,
 Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
                               const GraphDef& gdef, Graph* g) {
   ShapeRefiner refiner(gdef.versions().producer(), g->op_registry());
-  return GraphConstructor::Construct(opts, &gdef, g, &refiner, nullptr);
+  return GraphConstructor::Construct(opts, &gdef, g, &refiner);
 }
 
 Status ImportGraphDef(const ImportGraphDefOptions& opts, const GraphDef& gdef,
-                      Graph* g, ShapeRefiner* refiner,
-                      std::vector<std::pair<Node*, int>>* return_tensors) {
+                      Graph* g, ShapeRefiner* refiner) {
   ShapeRefiner default_refiner(gdef.versions().producer(), g->op_registry());
   if (refiner == nullptr) {
     refiner = &default_refiner;

@@ -32,6 +32,7 @@ namespace tensorflow {
 class ShapeRefiner {
  public:
   ShapeRefiner(int graph_def_version, const OpRegistryInterface* ops);
+  ~ShapeRefiner();
 
   // Performs validation of 'node' and runs 'node's shape function,
   // storing its shape outputs.
