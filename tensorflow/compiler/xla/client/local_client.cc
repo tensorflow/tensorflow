@@ -184,43 +184,6 @@ StatusOr<std::unique_ptr<ShapedBuffer>> LocalExecutable::Run(
                                       /*hlo_execution_profile=*/nullptr);
 }
 
-tensorflow::Status LocalExecutable::Run(
-    const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-    const ExecutableRunOptions& options, ShapedBuffer* result) {
-  const ComputationLayout& computation_layout =
-      executable_->module_config().entry_computation_layout();
-  TF_RETURN_IF_ERROR(ValidateExecutionOptions(arguments, options));
-
-  if (!computation_layout.result_layout().MatchesLayoutInShape(
-          result->shape())) {
-    return InvalidArgument(
-        "result buffer does not match shape or layout of computation result: "
-        "expected %s, got %s",
-        ShapeUtil::HumanString(computation_layout.result_layout().shape())
-            .c_str(),
-        ShapeUtil::HumanString(result->shape()).c_str());
-  }
-
-  ExecutableRunOptions actual_options = options;
-  Backend::StreamPtr stream;
-  if (options.stream() == nullptr) {
-    TF_ASSIGN_OR_RETURN(
-        stream, BorrowStreamForDevice(options.device_ordinal(), backend_));
-    actual_options.set_stream(stream.get());
-  }
-  if (options.allocator() == nullptr) {
-    actual_options.set_allocator(backend_->memory_allocator());
-  }
-  ServiceExecutableRunOptions service_options(actual_options,
-                                              backend_->StreamBorrower());
-
-  if (executable_->dumping()) {
-    return Unimplemented("dumping execution not supported on this path");
-  }
-  return executable_->ExecuteOnStream(&service_options, arguments, result,
-                                      /*hlo_execution_profile=*/nullptr);
-}
-
 StatusOr<std::unique_ptr<ShapedBuffer>> LocalExecutable::ExecuteAndDump(
     const ServiceExecutableRunOptions* run_options,
     const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) {
@@ -285,14 +248,6 @@ StatusOr<std::unique_ptr<ShapedBuffer>> LocalClient::ExecuteLocally(
     const LocalExecuteOptions& options) {
   return local_service_->ExecuteLocally(computation.handle(), arguments,
                                         options);
-}
-
-tensorflow::Status LocalClient::ExecuteLocally(
-    const Computation& computation,
-    const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-    const LocalExecuteOptions& options, ShapedBuffer* result) {
-  return local_service_->ExecuteLocally(computation.handle(), arguments,
-                                        options, result);
 }
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>

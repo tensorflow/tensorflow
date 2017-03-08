@@ -83,12 +83,6 @@ class LocalExecutable {
       const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       const ExecutableRunOptions& options);
 
-  // Overload which places the computation result in the given preallocated
-  // buffer.
-  tensorflow::Status Run(
-      const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-      const ExecutableRunOptions& options, ShapedBuffer* result);
-
   // Return the layout (contained in a shape) of the result produced by the
   // computation.
   const Shape& result_layout() const {
@@ -199,18 +193,6 @@ class LocalClient : public Client {
       const Computation& computation,
       const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       const LocalExecuteOptions& options);
-
-  // Overload of ExecuteLocally which writes the result into the given
-  // ShapedBuffer "result". Result is const because the ShapedBuffer data
-  // structure itself is not modified, only the buffers in device memory to
-  // which it refers.
-  //
-  // TODO(b/31220873): Remove ExecuteLocally methods. The path forward is to use
-  // Compile and run the returned LocalExecutable.
-  tensorflow::Status ExecuteLocally(
-      const Computation& computation,
-      const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-      const LocalExecuteOptions& options, ShapedBuffer* result);
 
   // Build and return a LocalExecutable object. The executable is compiled using
   // the given argument layouts and options.

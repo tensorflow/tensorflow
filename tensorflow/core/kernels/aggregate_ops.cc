@@ -51,14 +51,29 @@ class AddNOp : public OpKernel {
       return;
     }
 
-    Tensor* output = nullptr;
+    // Try to forward and accumulate the result in one of the input buffers.
+    int reused_input = -1;
     gtl::InlinedVector<int, 8> input_indices(num);
     std::iota(input_indices.begin(), input_indices.end(), 0);
-    OP_REQUIRES_OK(ctx, ctx->forward_input_or_allocate_output(
-                            input_indices, 0, input0.shape(), &output));
+    Tensor* output = nullptr;
+    for (int input_idx = 0; input_idx < num; ++input_idx) {
+      if (ctx->forward_input_to_output_with_shape(input_idx, 0, input0.shape(),
+                                                  &output)) {
+        reused_input = input_idx;
+        break;
+      }
+    }
+    if (reused_input == -1) {
+      OP_REQUIRES_OK(ctx, ctx->allocate_output(0, input0.shape(), &output));
+    } else if (reused_input > 0) {
+      // Move the forwarded buffer to the front so we don't double count
+      // anything if there are more than 8 inputs.
+      input_indices[0] = reused_input;
+      input_indices[reused_input] = 0;
+    }
     auto To = output->flat<T>();
 
-#define I(IDX) ctx->input(IDX).flat<T>()
+#define I(IDX) ctx->input(input_indices[IDX]).flat<T>()
 
 #if defined(__ANDROID_TYPES_SLIM__)
     // On Android by default,we only support additions of two arguments, so we

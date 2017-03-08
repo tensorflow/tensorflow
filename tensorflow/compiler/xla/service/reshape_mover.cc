@@ -16,12 +16,52 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 
 #include <algorithm>
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
 
 namespace {
+
+// Finds the first operand of an instruction that is a reshape or transpose and
+// returns the operand if it is found or nullptr if not found.
+HloInstruction* FirstReshapeOrTransposeOperand(const HloInstruction* hlo) {
+  for (HloInstruction* op : hlo->operands()) {
+    if (op->opcode() == HloOpcode::kReshape ||
+        op->opcode() == HloOpcode::kTranspose) {
+      return op;
+    }
+  }
+  return nullptr;
+}
+
+// Check if an operand of an instruction can change its shape simply by
+// adjusting metadata. This is the case if an operand does not have any
+// producers like Constants or Rng instruction, or is a scalar.
+bool OperandCanTrivallyChangeShape(const HloInstruction* instruction,
+                                   const HloInstruction* operand) {
+  // Scalars can operate with any shape.
+  if (ShapeUtil::IsScalar(operand->shape())) {
+    return true;
+  }
+
+  // A constant can trivially reshape the literal it holds.
+  if (operand->opcode() == HloOpcode::kConstant &&
+      ShapeUtil::SameDimensions(operand->shape(), instruction->shape())) {
+    return true;
+  }
+
+  // An Rng instruction can be any shape as long as it has one user. Two copies
+  // of the same Rng would be problematic if an Rng of a different shape would
+  // produce random numbers in a different order.
+  if (operand->opcode() == HloOpcode::kRng &&
+      ShapeUtil::SameDimensions(operand->shape(), instruction->shape()) &&
+      operand->user_count() == 1) {
+    return true;
+  }
+  return false;
+}
 
 // Returns whether `a` and `b` are equivalent for the purposes of this pass.
 bool AreEquivalentReshapes(const HloInstruction* a, const HloInstruction* b) {
@@ -40,22 +80,37 @@ bool AreEquivalentReshapes(const HloInstruction* a, const HloInstruction* b) {
   }
 }
 
+// Returns true if an elementwise operation has all operands that can easily
+// change shape. Operands can easily change shape if they are all
+// reshapes/transposes to and from the same shape. Additionally, operands like
+// constant, rng, and any scalar change shape with only an adjustment of
+// metadata.
 bool IsElementwiseOfEquivalentReshapesOrTransposes(
     const HloInstruction* instruction) {
   const std::vector<HloInstruction*>& operands = instruction->operands();
-  return instruction->IsElementwise() && instruction->operand_count() > 0 &&
-         std::all_of(operands.begin(), operands.end(),
-                     [](const HloInstruction* instruction) {
-                       // We require operand have no other users as otherwise
-                       // this is not a clear win.
-                       return 1 == instruction->users().size();
-                     }) &&
-         // Check whether each operand beyond the first is equivalent to the
-         // first.
-         std::all_of(operands.begin(), operands.end(),
-                     [&operands](const HloInstruction* operand) {
-                       return AreEquivalentReshapes(operands[0], operand);
-                     });
+  HloInstruction* first_reshape_or_transpose =
+      FirstReshapeOrTransposeOperand(instruction);
+  // If there are no reshapes or transposes, then there is nothing to sink below
+  // the elemntwise operation.
+  if (!first_reshape_or_transpose) {
+    return false;
+  }
+  return (instruction->user_count() > 0 ||
+          instruction == instruction->parent()->root_instruction()) &&
+         instruction->IsElementwise() && !operands.empty() &&
+         // Check whether all operands:
+         //    1. are a reshapes or transposes that has the same input and
+         //    output shapes as all other reshaped or transposed operands.
+         //      or
+         //    2. can be any shape like kConstant, kRng, and scalars.
+         std::all_of(
+             operands.begin(), operands.end(),
+             [instruction,
+              first_reshape_or_transpose](const HloInstruction* operand) {
+               return AreEquivalentReshapes(first_reshape_or_transpose,
+                                            operand) ||
+                      OperandCanTrivallyChangeShape(instruction, operand);
+             });
 }
 
 // Try to sink any reshape or transpose operands of `instruction` across it. We
@@ -65,9 +120,53 @@ bool TrySinkReshapeOrTranspose(HloComputation* computation,
                                HloInstruction* instruction) {
   if (IsElementwiseOfEquivalentReshapesOrTransposes(instruction)) {
     std::vector<HloInstruction*> operands = instruction->operands();
-    auto old_reshape = operands[0];
+    HloInstruction* old_reshape = FirstReshapeOrTransposeOperand(instruction);
+    CHECK(old_reshape != nullptr);
+    Shape new_elementwise_shape = old_reshape->operand(0)->shape();
     for (size_t i = 0; i < operands.size(); ++i) {
-      operands[i] = operands[i]->mutable_operand(0);
+      if (ShapeUtil::IsScalar(operands[i]->shape()) &&
+          operands[i]->opcode() != HloOpcode::kReshape &&
+          operands[i]->opcode() != HloOpcode::kTranspose) {
+        continue;
+      }
+      auto element_type = operands[i]->shape().element_type();
+      switch (operands[i]->opcode()) {
+        case HloOpcode::kConstant: {
+          if (old_reshape->opcode() == HloOpcode::kReshape) {
+            operands[i] = instruction->parent()->AddInstruction(
+                HloInstruction::CreateReshape(
+                    ShapeUtil::ChangeElementType(new_elementwise_shape,
+                                                 element_type),
+                    operands[i]));
+          } else {
+            CHECK_EQ(old_reshape->opcode(), HloOpcode::kTranspose);
+            std::vector<int64> inverse_permutation =
+                InversePermutation(old_reshape->dimensions());
+            operands[i] = instruction->parent()->AddInstruction(
+                HloInstruction::CreateTranspose(
+                    ShapeUtil::ChangeElementType(new_elementwise_shape,
+                                                 element_type),
+                    operands[i], inverse_permutation));
+          }
+          break;
+        }
+        case HloOpcode::kRng: {
+          CHECK_EQ(operands[i]->user_count(), 1);
+          operands[i] = instruction->parent()->AddInstruction(
+              operands[i]->CloneWithNewOperands(
+                  ShapeUtil::ChangeElementType(new_elementwise_shape,
+                                               element_type),
+                  operands[i]->operands()));
+          break;
+        }
+        case HloOpcode::kReshape:
+        case HloOpcode::kTranspose:
+          operands[i] = operands[i]->mutable_operand(0);
+          break;
+        default:
+          LOG(FATAL) << "Unexpected opcode while trying to sink reshapes or "
+                        "transposes.";
+      }
     }
     if (HloOpcode::kFusion == instruction->opcode()) {
       // Here we already know `instruction` is elementwise, and no operand is
@@ -75,8 +174,8 @@ bool TrySinkReshapeOrTranspose(HloComputation* computation,
       // reshapes, so all the fused instructions have the same dimensions.
       for (const auto& fused_instruction : instruction->fused_instructions()) {
         Shape* shape = fused_instruction->mutable_shape();
-        *shape->mutable_dimensions() = operands[0]->shape().dimensions();
-        *shape->mutable_layout() = operands[0]->shape().layout();
+        *shape->mutable_dimensions() = new_elementwise_shape.dimensions();
+        *shape->mutable_layout() = new_elementwise_shape.layout();
       }
     }
     auto new_elementwise =
@@ -88,9 +187,8 @@ bool TrySinkReshapeOrTranspose(HloComputation* computation,
             //
             // In this case, convert' should have the same element type as
             // `convert` and the same dimensions as operands[0].
-            ShapeUtil::MakeShape(
-                instruction->shape().element_type(),
-                AsInt64Slice(operands[0]->shape().dimensions())),
+            ShapeUtil::ChangeElementType(new_elementwise_shape,
+                                         instruction->shape().element_type()),
             operands));
     std::unique_ptr<HloInstruction> new_reshape;
     switch (old_reshape->opcode()) {

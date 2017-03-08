@@ -33,6 +33,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.util import compat
 
@@ -324,6 +325,12 @@ class _FuncGraph(ops.Graph):
           collections=collections,
           use_resource=use_resource)
       self.extra_vars.append(var)
+      if isinstance(var, resource_variable_ops.ResourceVariable):
+        # For resource-based variables read the variable outside the function
+        # and pass in the value. This ensures that the function is pure and
+        # differentiable. TODO(apassos) this may have performance problems if
+        # the function will only do embedding lookups on the variable.
+        return var.value()
       return var
 
   def create_op(self, op_type, inputs, data_types, **kwargs):

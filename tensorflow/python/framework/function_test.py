@@ -1178,9 +1178,7 @@ class VariableHoistingTest(test.TestCase):
     self._testSimpleModel(True)
     self._testSimpleModel(False)
 
-  # TODO(b/35668241): disabled because resource variable handling inside
-  # functions does not work.
-  def DISABLED_testBasicResource(self):
+  def testBasicResource(self):
     self._testSimpleModel(True, use_resource=True)
     self._testSimpleModel(False, use_resource=True)
 

@@ -138,6 +138,8 @@ class CallGraphNode {
 // computation in the module.
 class CallGraph {
  public:
+  using VisitorFunction = std::function<Status(const CallGraphNode&)>;
+
   // Build and return a call graph for the given HLO module.
   static StatusOr<CallGraph> Build(const HloModule* module);
 
@@ -152,6 +154,13 @@ class CallGraph {
   // Return the vector of all nodes in the call graph.
   const std::vector<CallGraphNode>& nodes() const { return nodes_; }
 
+  // Call the given function on each node in the call graph. Nodes are visited
+  // in post order (callees before callers). If visit_unreachable_nodes is true
+  // then all nodes in the call graph are visited. Otherwise only those nodes
+  // reachable from the entry computation are visited.
+  Status VisitNodes(const VisitorFunction& visitor_func,
+                    bool visit_unreachable_nodes = true) const;
+
   string ToString() const;
 
  private:
@@ -160,6 +169,15 @@ class CallGraph {
   // Sets the call contexts for every node in the graph.
   Status SetCallContexts();
 
+  // Helper method for VisitNodes(). Traverses the call graph from 'node' in DFS
+  // post order (callee before caller) calling visitor_func on each node. Adds
+  // nodes to 'visited' as each node is visited. Skips nodes already in
+  // 'visited'.
+  Status VisitNodesInternal(
+      const VisitorFunction& visitor_func, const CallGraphNode* node,
+      std::unordered_set<const CallGraphNode*>* visited) const;
+
+  // The HLO module represented by this call graph.
   const HloModule* module_ = nullptr;
 
   // Vector of all nodes in the call graph.

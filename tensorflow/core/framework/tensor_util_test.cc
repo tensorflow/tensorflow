@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -162,7 +163,8 @@ TEST(TensorUtil, Concat) {
     offset += size;
   }
 
-  Tensor concated = tensor::Concat(to_concat);
+  Tensor concated;
+  TF_ASSERT_OK(tensor::TryConcat(to_concat, &concated));
   ASSERT_EQ(TensorShape({total_size, 2}), concated.shape());
   for (int i = 0; i < total_size; ++i) {
     for (int j = 0; j < 2; ++j) {
@@ -180,7 +182,8 @@ TEST(TensorUtil, Split) {
   }
 
   std::vector<int64> sizes = {1, 4, 5};
-  std::vector<Tensor> splits = tensor::Split(to_split, sizes);
+  std::vector<Tensor> splits;
+  TF_ASSERT_OK(tensor::TrySplit(to_split, sizes, &splits));
   ASSERT_EQ(sizes.size(), splits.size());
 
   int offset = 0;

@@ -267,6 +267,24 @@ namespace xla {
   return std::move(output);
 }
 
+namespace {
+
+template <class T>
+void TransposeLiteralInternal(const Literal& original,
+                              tensorflow::gtl::ArraySlice<int64> permutation,
+                              Literal* result) {
+  std::vector<int64> new_indices(ShapeUtil::Rank(original.shape()));
+  LiteralUtil::EachCell<T>(
+      original, [&](tensorflow::gtl::ArraySlice<int64> indices, T value) {
+        for (int64 i = 0; i < indices.size(); ++i) {
+          new_indices[i] = indices[permutation[i]];
+        }
+        LiteralUtil::Set<T>(
+            result, Permute(InversePermutation(permutation), indices), value);
+      });
+}
+}  // namespace
+
 /* static */ std::unique_ptr<Literal> LiteralUtil::Transpose(
     const Literal& original, tensorflow::gtl::ArraySlice<int64> permutation) {
   CHECK(!ShapeUtil::IsTuple(original.shape()))
@@ -285,17 +303,33 @@ namespace xla {
   std::unique_ptr<Literal> result = CloneToUnique(original);
   *result->mutable_shape() = result_shape;
   const PrimitiveType primitive_type = original.shape().element_type();
-  std::vector<int64> new_indices(ShapeUtil::Rank(original.shape()));
   switch (primitive_type) {
     case F32:
-      LiteralUtil::EachCell<float>(
-          original,
-          [&](tensorflow::gtl::ArraySlice<int64> indices, float value) {
-            for (int64 i = 0; i < permutation.size(); ++i) {
-              new_indices[i] = indices[permutation[i]];
-            }
-            LiteralUtil::Set<float>(result.get(), new_indices, value);
-          });
+      TransposeLiteralInternal<float>(original, permutation, result.get());
+      return result;
+    case F64:
+      TransposeLiteralInternal<double>(original, permutation, result.get());
+      return result;
+    case PRED:
+      TransposeLiteralInternal<bool>(original, permutation, result.get());
+      return result;
+    case S8:
+      TransposeLiteralInternal<int8>(original, permutation, result.get());
+      return result;
+    case U8:
+      TransposeLiteralInternal<uint8>(original, permutation, result.get());
+      return result;
+    case S32:
+      TransposeLiteralInternal<int32>(original, permutation, result.get());
+      return result;
+    case U32:
+      TransposeLiteralInternal<uint32>(original, permutation, result.get());
+      return result;
+    case S64:
+      TransposeLiteralInternal<int64>(original, permutation, result.get());
+      return result;
+    case U64:
+      TransposeLiteralInternal<uint64>(original, permutation, result.get());
       return result;
     default:
       LOG(FATAL) << "not yet implemented: "
