@@ -2039,6 +2039,7 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:nn",
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
