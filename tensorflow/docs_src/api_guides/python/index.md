@@ -13,6 +13,7 @@
 *   [Neural Network](nn.md)
 *   [Running Graphs](client.md)
 *   [Sparse Tensors](sparse_ops.md)
+*   [Spectral Functions](spectral_ops.md)
 *   [Strings](string_ops.md)
 *   [Summary Operations](summary.md)
 *   [TensorFlow Debugger](tfdbg.md)

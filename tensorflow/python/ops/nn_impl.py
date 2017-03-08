@@ -320,10 +320,16 @@ def zero_fraction(value, name=None):
 
 
 # pylint: disable=redefined-builtin
-def depthwise_conv2d(input, filter, strides, padding, rate=None, name=None):
+def depthwise_conv2d(input,
+                     filter,
+                     strides,
+                     padding,
+                     rate=None,
+                     name=None,
+                     data_format=None):
   """Depthwise 2-D convolution.
 
-  Given an input tensor of shape `[batch, in_height, in_width, in_channels]`
+  Given a 4D input tensor ('NHWC' or 'NCHW' data formats)
   and a filter tensor of shape
   `[filter_height, filter_width, in_channels, channel_multiplier]`
   containing `in_channels` convolutional filters of depth 1, `depthwise_conv2d`
@@ -344,7 +350,7 @@ def depthwise_conv2d(input, filter, strides, padding, rate=None, name=None):
   to 1.
 
   Args:
-    input: 4-D with shape `[batch, in_height, in_width, in_channels]`.
+    input: 4-D with shape according to `data_format`.
     filter: 4-D with shape
       `[filter_height, filter_width, in_channels, channel_multiplier]`.
     strides: 1-D of size 4.  The stride of the sliding window for each
@@ -355,9 +361,11 @@ def depthwise_conv2d(input, filter, strides, padding, rate=None, name=None):
       across the `height` and `width` dimensions in atrous convolution. If it is
       greater than 1, then all values of strides must be 1.
     name: A name for this operation (optional).
+    data_format: The data format for input. Either "NHWC" (default) or "NCHW".
 
   Returns:
-    A 4-D `Tensor` of shape
+    A 4-D `Tensor` with shape according to `data_format`.  E.g., for
+    "NHWC" format, shape is
     `[batch, out_height, out_width, in_channels * channel_multiplier].`
   """
   with ops.name_scope(name, "depthwise", [input, filter]) as name:
@@ -372,6 +380,7 @@ def depthwise_conv2d(input, filter, strides, padding, rate=None, name=None):
           filter=filter,
           strides=strides,
           padding=padding,
+          data_format=data_format,
           name=name)
 
     return nn_ops.with_space_to_batch(
@@ -379,6 +388,7 @@ def depthwise_conv2d(input, filter, strides, padding, rate=None, name=None):
         filter_shape=array_ops.shape(filter),
         dilation_rate=rate,
         padding=padding,
+        data_format=data_format,
         op=op)
 
 
@@ -392,7 +402,8 @@ def separable_conv2d(input,
                      strides,
                      padding,
                      rate=None,
-                     name=None):
+                     name=None,
+                     data_format=None):
   """2-D convolution with separable filters.
 
   Performs a depthwise convolution that acts separately on channels followed by
@@ -416,7 +427,7 @@ def separable_conv2d(input,
   to 1.
 
   Args:
-    input: 4-D `Tensor` with shape `[batch, in_height, in_width, in_channels]`.
+    input: 4-D `Tensor` with shape according to `data_format`.
     depthwise_filter: 4-D `Tensor` with shape
       `[filter_height, filter_width, in_channels, channel_multiplier]`.
       Contains `in_channels` convolutional filters of depth 1.
@@ -431,9 +442,12 @@ def separable_conv2d(input,
       across the `height` and `width` dimensions in atrous convolution. If it is
       greater than 1, then all values of strides must be 1.
     name: A name for this operation (optional).
+    data_format: The data format for input. Either "NHWC" (default) or "NCHW".
 
   Returns:
-    A 4-D `Tensor` of shape `[batch, out_height, out_width, out_channels]`.
+    A 4-D `Tensor` with shape according to 'data_format'. For
+      example, with data_format="NHWC", shape is [batch, out_height,
+      out_width, out_channels].
 
   Raises:
     ValueError: If channel_multiplier * in_channels > out_channels,
@@ -452,7 +466,11 @@ def separable_conv2d(input,
     pointwise_filter_shape[1].assert_is_compatible_with(1)
 
     channel_multiplier = depthwise_filter.get_shape().with_rank(4)[3]
-    in_channels = input.get_shape().with_rank(4)[3]
+    if data_format and data_format == "NCHW":
+      in_channels = input.get_shape().with_rank(4)[1]
+    else:
+      in_channels = input.get_shape().with_rank(4)[3]
+
     out_channels = pointwise_filter_shape[3]
 
     if rate is None:
@@ -477,6 +495,7 @@ def separable_conv2d(input,
           filter=depthwise_filter,
           strides=strides,
           padding=padding,
+          data_format=data_format,
           name="depthwise")
 
     depthwise = nn_ops.with_space_to_batch(
@@ -484,10 +503,15 @@ def separable_conv2d(input,
         filter_shape=array_ops.shape(depthwise_filter),
         dilation_rate=rate,
         padding=padding,
+        data_format=data_format,
         op=op)
 
     return nn_ops.conv2d(
-        depthwise, pointwise_filter, [1, 1, 1, 1], padding="VALID", name=name)
+        depthwise,
+        pointwise_filter, [1, 1, 1, 1],
+        padding="VALID",
+        data_format=data_format,
+        name=name)
 
 
 # pylint: enable=redefined-builtin,line-too-long

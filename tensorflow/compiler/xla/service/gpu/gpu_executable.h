@@ -82,8 +82,14 @@ class GpuExecutable : public Executable {
           arguments) override;
 
  private:
+  // If `block_host_until_done` is false, execution will not block the host
+  // until the kernels have completed. This is used as an optimization for
+  // clients, such as Tensorflow, that use a single stream of execution for
+  // computations, and allow host-side deallocation from the allocator before
+  // GPU execution completes.
   Status ExecuteThunks(const ServiceExecutableRunOptions* run_options,
                        const BufferAllocations& buffer_allocations,
+                       bool block_host_until_done,
                        HloExecutionProfile* hlo_execution_profile);
 
   // Returns the points-to set of the root instruction of the entry

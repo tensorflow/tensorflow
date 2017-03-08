@@ -43,6 +43,7 @@ tf_kernel_library(
         "relu_op.cc",
         "reshape_op.cc",
         "retval_op.cc",
+        "reverse_op.cc",
         "select_op.cc",
         "sequence_ops.cc",
         "shape_op.cc",
