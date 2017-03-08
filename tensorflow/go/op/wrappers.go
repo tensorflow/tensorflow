@@ -5939,6 +5939,23 @@ func Softsign(scope *Scope, features tf.Output) (activations tf.Output) {
 	return op.Output(0)
 }
 
+// DepthwiseConv2dNativeAttr is an optional argument to DepthwiseConv2dNative.
+type DepthwiseConv2dNativeAttr func(optionalAttr)
+
+// DepthwiseConv2dNativeDataFormat sets the optional data_format attribute to value.
+//
+// value: Specify the data format of the input and output data. With the
+// default format "NHWC", the data is stored in the order of:
+//     [batch, height, width, channels].
+// Alternatively, the format could be "NCHW", the data storage order of:
+//     [batch, channels, height, width].
+// If not specified, defaults to "NHWC"
+func DepthwiseConv2dNativeDataFormat(value string) DepthwiseConv2dNativeAttr {
+	return func(m optionalAttr) {
+		m["data_format"] = value
+	}
+}
+
 // Computes a 2-D depthwise convolution given 4-D `input` and `filter` tensors.
 //
 // Given an input tensor of shape `[batch, in_height, in_width, in_channels]`
@@ -5964,11 +5981,14 @@ func Softsign(scope *Scope, features tf.Output) (activations tf.Output) {
 //	strides: 1-D of length 4.  The stride of the sliding window for each dimension
 // of `input`.
 //	padding: The type of padding algorithm to use.
-func DepthwiseConv2dNative(scope *Scope, input tf.Output, filter tf.Output, strides []int64, padding string) (output tf.Output) {
+func DepthwiseConv2dNative(scope *Scope, input tf.Output, filter tf.Output, strides []int64, padding string, optional ...DepthwiseConv2dNativeAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"strides": strides, "padding": padding}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "DepthwiseConv2dNative",
 		Input: []tf.Input{
@@ -9765,26 +9785,51 @@ func RequantizationRange(scope *Scope, input tf.Output, input_min tf.Output, inp
 	return op.Output(0), op.Output(1)
 }
 
+// DepthwiseConv2dNativeBackpropInputAttr is an optional argument to DepthwiseConv2dNativeBackpropInput.
+type DepthwiseConv2dNativeBackpropInputAttr func(optionalAttr)
+
+// DepthwiseConv2dNativeBackpropInputDataFormat sets the optional data_format attribute to value.
+//
+// value: Specify the data format of the input and output data. With the
+// default format "NHWC", the data is stored in the order of:
+//     [batch, height, width, channels].
+// Alternatively, the format could be "NCHW", the data storage order of:
+//     [batch, channels, height, width].
+// If not specified, defaults to "NHWC"
+func DepthwiseConv2dNativeBackpropInputDataFormat(value string) DepthwiseConv2dNativeBackpropInputAttr {
+	return func(m optionalAttr) {
+		m["data_format"] = value
+	}
+}
+
 // Computes the gradients of depthwise convolution with respect to the input.
 //
 // Arguments:
-//	input_sizes: An integer vector representing the shape of `input`,
-// where `input` is a 4-D `[batch, height, width, channels]` tensor.
+//	input_sizes: An integer vector representing the shape of `input`, based
+// on `data_format`.  For example, if `data_format` is 'NHWC' then
+//  `input` is a 4-D `[batch, height, width, channels]` tensor.
 //	filter: 4-D with shape
 // `[filter_height, filter_width, in_channels, depthwise_multiplier]`.
-//	out_backprop: 4-D with shape `[batch, out_height, out_width, out_channels]`.
+//	out_backprop: 4-D with shape  based on `data_format`.
+// For example, if `data_format` is 'NHWC' then
+// out_backprop shape is `[batch, out_height, out_width, out_channels]`.
 // Gradients w.r.t. the output of the convolution.
 //	strides: The stride of the sliding window for each dimension of the input
 // of the convolution.
 //	padding: The type of padding algorithm to use.
 //
-// Returns 4-D with shape `[batch, in_height, in_width, in_channels]`.  Gradient
-// w.r.t. the input of the convolution.
-func DepthwiseConv2dNativeBackpropInput(scope *Scope, input_sizes tf.Output, filter tf.Output, out_backprop tf.Output, strides []int64, padding string) (output tf.Output) {
+// Returns 4-D with shape according to `data_format`.  For example, if
+// `data_format` is 'NHWC', output shape is `[batch, in_height,
+// in_width, in_channels]`.  Gradient w.r.t. the input of the
+// convolution.
+func DepthwiseConv2dNativeBackpropInput(scope *Scope, input_sizes tf.Output, filter tf.Output, out_backprop tf.Output, strides []int64, padding string, optional ...DepthwiseConv2dNativeBackpropInputAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"strides": strides, "padding": padding}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "DepthwiseConv2dNativeBackpropInput",
 		Input: []tf.Input{
@@ -11947,14 +11992,35 @@ func QuantizeV2(scope *Scope, input tf.Output, min_range tf.Output, max_range tf
 	return op.Output(0), op.Output(1), op.Output(2)
 }
 
+// DepthwiseConv2dNativeBackpropFilterAttr is an optional argument to DepthwiseConv2dNativeBackpropFilter.
+type DepthwiseConv2dNativeBackpropFilterAttr func(optionalAttr)
+
+// DepthwiseConv2dNativeBackpropFilterDataFormat sets the optional data_format attribute to value.
+//
+// value: Specify the data format of the input and output data. With the
+// default format "NHWC", the data is stored in the order of:
+//     [batch, height, width, channels].
+// Alternatively, the format could be "NCHW", the data storage order of:
+//     [batch, channels, height, width].
+// If not specified, defaults to "NHWC"
+func DepthwiseConv2dNativeBackpropFilterDataFormat(value string) DepthwiseConv2dNativeBackpropFilterAttr {
+	return func(m optionalAttr) {
+		m["data_format"] = value
+	}
+}
+
 // Computes the gradients of depthwise convolution with respect to the filter.
 //
 // Arguments:
-//	input: 4-D with shape `[batch, in_height, in_width, in_channels]`.
+//	input: 4-D with shape based on `data_format`.  For example, if
+// `data_format` is 'NHWC' then `input` is a 4-D `[batch, in_height,
+// in_width, in_channels]` tensor.
 //	filter_sizes: An integer vector representing the tensor shape of `filter`,
 // where `filter` is a 4-D
 // `[filter_height, filter_width, in_channels, depthwise_multiplier]` tensor.
-//	out_backprop: 4-D with shape `[batch, out_height, out_width, out_channels]`.
+//	out_backprop: 4-D with shape  based on `data_format`.
+// For example, if `data_format` is 'NHWC' then
+// out_backprop shape is `[batch, out_height, out_width, out_channels]`.
 // Gradients w.r.t. the output of the convolution.
 //	strides: The stride of the sliding window for each dimension of the input
 // of the convolution.
@@ -11963,11 +12029,14 @@ func QuantizeV2(scope *Scope, input tf.Output, min_range tf.Output, max_range tf
 // Returns 4-D with shape
 // `[filter_height, filter_width, in_channels, out_channels]`.  Gradient w.r.t.
 // the `filter` input of the convolution.
-func DepthwiseConv2dNativeBackpropFilter(scope *Scope, input tf.Output, filter_sizes tf.Output, out_backprop tf.Output, strides []int64, padding string) (output tf.Output) {
+func DepthwiseConv2dNativeBackpropFilter(scope *Scope, input tf.Output, filter_sizes tf.Output, out_backprop tf.Output, strides []int64, padding string, optional ...DepthwiseConv2dNativeBackpropFilterAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"strides": strides, "padding": padding}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "DepthwiseConv2dNativeBackpropFilter",
 		Input: []tf.Input{
