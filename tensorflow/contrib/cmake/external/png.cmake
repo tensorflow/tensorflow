@@ -42,5 +42,5 @@ add_custom_target(png_copy_headers_to_destination
 
 foreach(header_file ${png_HEADERS})
   add_custom_command(TARGET png_copy_headers_to_destination PRE_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy ${header_file} ${png_INCLUDE_DIR}/)
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different ${header_file} ${png_INCLUDE_DIR}/)
 endforeach()
