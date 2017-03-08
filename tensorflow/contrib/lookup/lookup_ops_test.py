@@ -695,6 +695,24 @@ class MutableDenseHashTableOpTest(test.TestCase):
       result = output.eval()
       self.assertAllEqual([0, 1, -1], result)
 
+  def testBasicBool(self):
+    with self.test_session():
+      keys = constant_op.constant([11, 12, 13], dtypes.int64)
+      values = constant_op.constant([True, True, True], dtypes.bool)
+      table = lookup.MutableDenseHashTable(
+          dtypes.int64, dtypes.bool, default_value=False, empty_key=0)
+      self.assertAllEqual(0, table.size().eval())
+
+      table.insert(keys, values).run()
+      self.assertAllEqual(3, table.size().eval())
+
+      input_string = constant_op.constant([11, 12, 15], dtypes.int64)
+      output = table.lookup(input_string)
+      self.assertAllEqual([3], output.get_shape())
+
+      result = output.eval()
+      self.assertAllEqual([True, True, False], result)
+
   def testLookupUnknownShape(self):
     with self.test_session():
       keys = constant_op.constant([11, 12, 13], dtypes.int64)
