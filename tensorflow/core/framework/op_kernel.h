@@ -696,6 +696,9 @@ class OpKernelContext {
   //     memory_type, and attr,
   //   * refcount on the underlying buffer is one.
   // Otherwise returns nullptr.
+  // NOTE: For Cuda kernels that read inputs using the __ldg() intrinsic,
+  // forwarding is only safe if there are no reads via __ldg() after writes
+  // to the same address.
   std::unique_ptr<Tensor> forward_input(
       int input_index, DataType dtype, const TensorShape& shape,
       MemoryType memory_type,
@@ -1007,6 +1010,7 @@ class OpKernelContext {
   TensorValue release_output(int index);
 
   bool track_allocations() const { return params_->track_allocations; }
+  bool allocate_on_host(AllocatorAttributes alloc_attr) const;
 
   // Records temporary memory sizes.
   void record_host_temp_memory_size(int64 size) {
@@ -1060,8 +1064,6 @@ class OpKernelContext {
   Status allocate_tensor(DataType type, const TensorShape& shape,
                          Tensor* out_tensor, AllocatorAttributes allocator_attr,
                          const AllocationAttributes& allocation_attr);
-
-  bool allocate_on_host(AllocatorAttributes alloc_attr) const;
 
   // This is called by PersistentTensor::AccessTensor whenever the
   // wrapped tensor is retrieved, to ensure the runtime knows that the

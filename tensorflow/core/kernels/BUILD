@@ -318,7 +318,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_kernel_library(
     name = "record_input_op",
     srcs = [
         "record_input_op.cc",

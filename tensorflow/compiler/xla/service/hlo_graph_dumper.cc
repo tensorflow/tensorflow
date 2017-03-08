@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 
+#include <unistd.h>
 #include <string>
 
 #include "tensorflow/compiler/xla/layout_util.h"
@@ -472,9 +473,19 @@ class FileGraphRenderer : public GraphRendererInterface {
     legacy_flags::HloGraphDumperFlags* flags =
         legacy_flags::GetHloGraphDumperFlags();
     string path = StrCat(flags->xla_hlo_dump_graph_path, "hlo_graph_",
-                         output_num++, ".dot");
-    tensorflow::Status status =
-        tensorflow::WriteStringToFile(tensorflow::Env::Default(), path, graph);
+                         output_num++, ".XXXXXX.dot");
+    auto status = Status::OK();
+    int fd = mkstemps(&path[0], 4);
+    if (fd < 0) {
+      status =
+          Status(tensorflow::error::Code::UNKNOWN,
+                 StrCat("Failed to create temporary file to dump HLO graph: ",
+                        strerror(errno)));
+    } else {
+      status = tensorflow::WriteStringToFile(tensorflow::Env::Default(), path,
+                                             graph);
+      close(fd);
+    }
     if (!status.ok()) {
       LOG(WARNING) << "Saving HLO graph failed: " << status;
     }

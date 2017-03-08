@@ -33,7 +33,9 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
+from tensorflow.python.summary import plugin_asset
 from tensorflow.python.summary import summary_iterator
 from tensorflow.python.summary.writer import writer
 from tensorflow.python.summary.writer import writer_cache
@@ -352,6 +354,38 @@ class SummaryWriterCacheTest(test.TestCase):
       writer_cache.FileWriterCache.clear()
       sw2 = writer_cache.FileWriterCache.get(dir1)
       self.assertFalse(sw1 == sw2)
+
+
+class ExamplePluginAsset(plugin_asset.PluginAsset):
+  plugin_name = "example"
+
+  def serialize_to_directory(self, directory):
+    foo = os.path.join(directory, "foo.txt")
+    bar = os.path.join(directory, "bar.txt")
+    with gfile.Open(foo, "w") as f:
+      f.write("foo!")
+    with gfile.Open(bar, "w") as f:
+      f.write("bar!")
+
+
+class PluginAssetsTest(test.TestCase):
+
+  def testPluginAssetSerialized(self):
+    with ops.Graph().as_default() as g:
+      plugin_asset.get_plugin_asset(ExamplePluginAsset)
+
+      logdir = self.get_temp_dir()
+      fw = writer.FileWriter(logdir)
+      fw.add_graph(g)
+    plugin_dir = os.path.join(logdir, writer._PLUGINS_DIR, "example")
+
+    with gfile.Open(os.path.join(plugin_dir, "foo.txt"), "r") as f:
+      content = f.read()
+    self.assertEqual(content, "foo!")
+
+    with gfile.Open(os.path.join(plugin_dir, "bar.txt"), "r") as f:
+      content = f.read()
+    self.assertEqual(content, "bar!")
 
 
 if __name__ == "__main__":

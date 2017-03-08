@@ -154,6 +154,37 @@ class BinaryOp : public BinaryOpShared {
   }
 };
 
+template <typename Device, typename T>
+class ApproximateEqualOp : public OpKernel {
+ public:
+  explicit ApproximateEqualOp(OpKernelConstruction* context)
+      : OpKernel(context) {
+    float tolerance;
+    OP_REQUIRES_OK(context, context->GetAttr("tolerance", &tolerance));
+    tolerance_ = T(tolerance);
+  }
+  void Compute(OpKernelContext* context) override {
+    const Tensor& x_input = context->input(0);
+    const Tensor& y_input = context->input(1);
+    OP_REQUIRES(
+        context, x_input.shape() == y_input.shape(),
+        errors::InvalidArgument("x and y must be of the same shape. ",
+                                "x shape: ", x_input.shape().DebugString(),
+                                ". y shape: ", y_input.shape().DebugString()));
+    Tensor* z_output = nullptr;
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(0, x_input.shape(), &z_output));
+    const Device& d = context->eigen_device<Device>();
+    typename TTypes<T>::ConstFlat x(x_input.flat<T>());
+    typename TTypes<T>::ConstFlat y(y_input.flat<T>());
+    typename TTypes<bool>::Flat z(z_output->flat<bool>());
+    functor::ApproximateEqual<Device, T>()(d, x, y, tolerance_, z);
+  }
+
+ private:
+  T tolerance_;
+};
+
 // Basic coefficient-wise binary operations that are known to not require
 // any broadcasting. This is the case for example of the gradients of
 // unary operations.
@@ -415,6 +446,17 @@ struct UnaryFunctor<CPUDevice, Functor> {
   void operator()(const CPUDevice& d, typename Functor::tout_type out,
                   typename Functor::tin_type in) {
     Assign(d, out, in.unaryExpr(typename Functor::func()));
+  }
+};
+
+// Partial specialization of ApproximateEqual<Device=CPUDevice, T>.
+template <typename T>
+struct ApproximateEqual<CPUDevice, T> {
+  void operator()(const CPUDevice& d, typename TTypes<T>::ConstFlat x,
+                  typename TTypes<T>::ConstFlat y, T tolerance,
+                  typename TTypes<bool>::Flat z) {
+    auto diff = x - y;
+    z.device(d) = diff.abs() <= tolerance;
   }
 };
 

@@ -33,6 +33,7 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.losses import losses as losses_lib
 from tensorflow.python.platform import test
 # pylint: enable=g-bad-todo,g-import-not-at-top
 
@@ -507,6 +508,26 @@ class MultiLabelHeadTest(test.TestCase):
       _assert_metrics(self, .089985214,
                       self._expected_eval_metrics(2.69956), model_fn_ops)
 
+  def testMultiLabelWithCustomLoss(self):
+    n_classes = 3
+    head = head_lib._multi_label_head(
+        n_classes=n_classes,
+        weight_column_name="label_weight",
+        metric_class_ids=range(n_classes),
+        loss_fn=_sigmoid_cross_entropy)
+    with ops.Graph().as_default(), session.Session():
+      model_fn_ops = head.create_model_fn_ops(
+          features={"label_weight": .1},
+          labels=self._labels,
+          mode=model_fn.ModeKeys.TRAIN,
+          train_op_fn=head_lib.no_op_train_fn,
+          logits=self._logits)
+      self._assert_output_alternatives(model_fn_ops)
+      _assert_no_variables(self)
+      _assert_summary_tags(self, ["loss"])
+      _assert_metrics(self, 0.089985214,
+                      self._expected_eval_metrics(0.089985214), model_fn_ops)
+
   def testMultiLabelWithCenteredBias(self):
     n_classes = 3
     head = head_lib._multi_label_head(
@@ -779,8 +800,44 @@ class BinaryClassificationHeadTest(test.TestCase):
               "auc": 0. / 1,
               "labels/actual_label_mean": 1. / 1,
               "labels/prediction_mean": .731059,  # softmax
-              # TODO(ptucker): Is this the correct eval loss, sum not average?
+              # eval loss is weighted loss divided by sum of weights.
               "loss": expected_total_loss,
+              "precision/positive_threshold_0.500000_mean": 1. / 1,
+              "recall/positive_threshold_0.500000_mean": 1. / 1,
+          },
+          model_fn_ops)
+
+  def testBinaryClassificationWithCustomLoss(self):
+    head = head_lib._multi_class_head(
+        n_classes=2, weight_column_name="label_weight",
+        loss_fn=_sigmoid_cross_entropy)
+    with ops.Graph().as_default(), session.Session():
+      weights = ((.2,), (0.,))
+      model_fn_ops = head.create_model_fn_ops(
+          features={"label_weight": weights},
+          labels=self._labels,
+          mode=model_fn.ModeKeys.TRAIN,
+          train_op_fn=head_lib.no_op_train_fn,
+          logits=self._logits)
+      self._assert_output_alternatives(model_fn_ops)
+      _assert_no_variables(self)
+      _assert_summary_tags(self, ["loss"])
+      # logloss: z:label, x:logit
+      # z * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
+      # expected_loss is (total_weighted_loss)/1 since htere is 1 nonzero
+      # weight.
+      expected_loss = 0.062652342
+      _assert_metrics(
+          self,
+          expected_loss,
+          {
+              "accuracy": 1. / 1,
+              "accuracy/baseline_label_mean": 1. / 1,
+              "accuracy/threshold_0.500000_mean": 1. / 1,
+              "auc": 0. / 1,
+              "labels/actual_label_mean": 1. / 1,
+              "labels/prediction_mean": .731059,  # softmax
+              "loss": expected_loss,
               "precision/positive_threshold_0.500000_mean": 1. / 1,
               "recall/positive_threshold_0.500000_mean": 1. / 1,
           },
@@ -1008,6 +1065,30 @@ class MultiClassHeadTest(test.TestCase):
       _assert_summary_tags(self, ["loss"])
       expected_loss = 1.5514446
       _assert_metrics(self, expected_loss * weight,
+                      self._expected_eval_metrics(expected_loss), model_fn_ops)
+
+  def testMultiClassWithCustomLoss(self):
+    n_classes = 3
+    head = head_lib._multi_class_head(
+        n_classes=n_classes,
+        weight_column_name="label_weight",
+        metric_class_ids=range(n_classes),
+        loss_fn=losses_lib.sparse_softmax_cross_entropy)
+    with ops.Graph().as_default(), session.Session():
+      weight = .1
+      # logloss: z:label, x:logit
+      # z * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
+      model_fn_ops = head.create_model_fn_ops(
+          features={"label_weight": weight},
+          labels=self._labels,
+          mode=model_fn.ModeKeys.TRAIN,
+          train_op_fn=head_lib.no_op_train_fn,
+          logits=self._logits)
+      self._assert_output_alternatives(model_fn_ops)
+      _assert_no_variables(self)
+      _assert_summary_tags(self, ["loss"])
+      expected_loss = 1.5514446 * weight
+      _assert_metrics(self, expected_loss,
                       self._expected_eval_metrics(expected_loss), model_fn_ops)
 
   def testInvalidNClasses(self):
@@ -1368,6 +1449,10 @@ class MultiHeadTest(test.TestCase):
     # Tests eval keys.
     self.assertIn("accuracy/head1", metric_ops.keys())
     self.assertIn("accuracy/head2", metric_ops.keys())
+
+
+def _sigmoid_cross_entropy(labels, logits, weights):
+  return losses_lib.sigmoid_cross_entropy(labels, logits, weights)
 
 
 if __name__ == "__main__":

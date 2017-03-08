@@ -4,7 +4,7 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 
@@ -248,7 +249,7 @@ TEST_F(CallGraphTest, ComplexGraph) {
   HloComputation* b_computation = module.AddEmbeddedComputation(
       MakeMappingComputation(c_computation, /*callsites=*/1));
 
-  HloComputation* computation_a;
+  HloComputation* a_computation;
   {
     HloComputation::Builder builder(TestName() + ".a");
     HloInstruction* param0 = builder.AddInstruction(
@@ -257,7 +258,7 @@ TEST_F(CallGraphTest, ComplexGraph) {
         HloInstruction::CreateCall(kScalarShape, {param0}, c_computation));
     builder.AddInstruction(HloInstruction::CreateWhile(
         kScalarShape, cond_computation, b_computation, call));
-    computation_a = module.AddEmbeddedComputation(builder.Build());
+    a_computation = module.AddEmbeddedComputation(builder.Build());
   }
 
   HloComputation* entry_computation;
@@ -266,7 +267,7 @@ TEST_F(CallGraphTest, ComplexGraph) {
     HloInstruction* param0 = builder.AddInstruction(
         HloInstruction::CreateParameter(0, kScalarShape, "param0"));
     builder.AddInstruction(HloInstruction::CreateWhile(
-        kScalarShape, cond_computation, computation_a, param0));
+        kScalarShape, cond_computation, a_computation, param0));
     entry_computation = module.AddEntryComputation(builder.Build());
   }
 
@@ -284,6 +285,101 @@ TEST_F(CallGraphTest, ComplexGraph) {
   EXPECT_TRUE(c_node->callsites().empty());
   EXPECT_EQ(2, c_node->callers().size());
   EXPECT_EQ(CallContext::kBoth, c_node->context());
+
+  // Visit the graph and verify nodes were visited in callee-before-caller
+  // order.
+  std::vector<const HloComputation*> visited;
+  TF_ASSERT_OK(call_graph.VisitNodes([&visited](const CallGraphNode& node) {
+    visited.push_back(node.computation());
+    return Status::OK();
+  }));
+  EXPECT_EQ(visited.size(), 5);
+  // All values in visited should be unique.
+  EXPECT_EQ(
+      std::unordered_set<const HloComputation*>(visited.begin(), visited.end())
+          .size(),
+      5);
+
+  // Verify visitation order of some computations in the graph.
+  auto index_of = [&visited](const HloComputation* comp) {
+    auto it = std::find(visited.begin(), visited.end(), comp);
+    EXPECT_NE(it, visited.end());
+    return std::distance(visited.begin(), it);
+  };
+  EXPECT_EQ(4, index_of(entry_computation));
+  EXPECT_LT(index_of(cond_computation), index_of(a_computation));
+  EXPECT_LT(index_of(c_computation), index_of(b_computation));
+  EXPECT_LT(index_of(b_computation), index_of(a_computation));
+}
+
+TEST_F(CallGraphTest, VisitSingletonComputation) {
+  // Test the call graph visitor with a call graph with a single node.
+  HloModule module(TestName());
+  HloComputation* computation =
+      module.AddEntryComputation(MakeScalarComputation());
+  TF_ASSIGN_OR_ASSERT_OK(const CallGraph call_graph, CallGraph::Build(&module));
+
+  std::vector<const HloComputation*> visited;
+  TF_ASSERT_OK(call_graph.VisitNodes([&visited](const CallGraphNode& node) {
+    visited.push_back(node.computation());
+    return Status::OK();
+  }));
+  EXPECT_EQ(visited.size(), 1);
+  EXPECT_EQ(visited[0], computation);
+}
+
+TEST_F(CallGraphTest, VisitUnreachableComputation) {
+  // Test the call graph visitor with a call graph with an unreachable node.
+  HloModule module(TestName());
+  HloComputation* entry_computation =
+      module.AddEntryComputation(MakeScalarComputation());
+  HloComputation* unreachable_computation =
+      module.AddEmbeddedComputation(MakeScalarComputation());
+  TF_ASSIGN_OR_ASSERT_OK(const CallGraph call_graph, CallGraph::Build(&module));
+
+  // Test visitation of only reachable nodes.
+  {
+    std::vector<const HloComputation*> visited;
+    TF_ASSERT_OK(call_graph.VisitNodes(
+        [&visited](const CallGraphNode& node) {
+          visited.push_back(node.computation());
+          return Status::OK();
+        },
+        /*visit_unreachable_nodes=*/false));
+    EXPECT_EQ(visited.size(), 1);
+    EXPECT_EQ(visited[0], entry_computation);
+  }
+
+  // Test visitation of all nodes (reachable and unreachable).
+  {
+    std::vector<const HloComputation*> visited;
+    TF_ASSERT_OK(call_graph.VisitNodes(
+        [&visited](const CallGraphNode& node) {
+          visited.push_back(node.computation());
+          return Status::OK();
+        },
+        /*visit_unreachable_nodes=*/true));
+    EXPECT_EQ(visited.size(), 2);
+    EXPECT_NE(std::find(visited.begin(), visited.end(), entry_computation),
+              visited.end());
+    EXPECT_NE(
+        std::find(visited.begin(), visited.end(), unreachable_computation),
+        visited.end());
+  }
+}
+
+TEST_F(CallGraphTest, VisitWithError) {
+  // Test that the call graph visitor properly propagates errors.
+  HloModule module(TestName());
+  module.AddEntryComputation(MakeScalarComputation());
+  TF_ASSIGN_OR_ASSERT_OK(const CallGraph call_graph, CallGraph::Build(&module));
+
+  Status status = call_graph.VisitNodes(
+      [](const CallGraphNode&) { return InternalError("Visitation failed"); });
+
+  ASSERT_FALSE(status.ok());
+  ASSERT_EQ(status.code(), tensorflow::error::INTERNAL);
+  ASSERT_MATCH(status.error_message(), testing::HasSubstr("Visitation failed"));
 }
 
 }  // namespace

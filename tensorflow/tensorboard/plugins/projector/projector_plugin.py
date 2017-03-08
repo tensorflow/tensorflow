@@ -440,7 +440,7 @@ class ProjectorPlugin(TBPlugin):
           'No sprite image file found for tensor %s in the config file %s' %
           (name, self.config_fpaths[run]), 'text/plain', 400)
 
-    fpath = embedding_info.sprite.image_path
+    fpath = os.path.expanduser(embedding_info.sprite.image_path)
     if not file_io.file_exists(fpath) or file_io.is_directory(fpath):
       return Respond(request, '%s does not exist or is directory' % fpath,
                      'text/plain', 400)
