@@ -84,7 +84,7 @@ REGISTER_OP("SaveV2")
 Saves tensors in V2 checkpoint format.
 
 By default, saves the named tensors in full.  If the caller wishes to save
-specific slices of full tensors, "shape_and_slices" should be non-empty strings
+specific slices of full tensors, 'shape_and_slices' should be non-empty strings
 and correspondingly well-formed.
 
 prefix: Must have a single element. The prefix of the V2 checkpoint to which we
@@ -115,14 +115,14 @@ Restores tensors from a V2 checkpoint.
 
 For backward compatibility with the V1 format, this Op currently allows
 restoring from a V1 checkpoint as well:
-  - This Op first attempts to find the V2 index file pointed to by "prefix", and
+  - This Op first attempts to find the V2 index file pointed to by 'prefix', and
     if found proceed to read it as a V2 checkpoint;
   - Otherwise the V1 read path is invoked.
 Relying on this behavior is not recommended, as the ability to fall back to read
 V1 might be deprecated and eventually removed.
 
 By default, restores the named tensors in full.  If the caller wishes to restore
-specific slices of stored tensors, "shape_and_slices" should be non-empty
+specific slices of stored tensors, 'shape_and_slices' should be non-empty
 strings and correspondingly well-formed.
 
 Callers must ensure all the named tensors are indeed stored in the checkpoint.
@@ -152,7 +152,7 @@ V2 format specific: merges the metadata files of sharded checkpoints.  The
 result is one logical checkpoint, with one physical metadata file and renamed
 data files.
 
-Intended for "grouping" multiple checkpoints in a sharded checkpoint setup.
+Intended for 'grouping' multiple checkpoints in a sharded checkpoint setup.
 
 If delete_old_dirs is true, attempts to delete recursively the dirname of each
 path in the input checkpoint_prefixes.  This is useful when those paths are non

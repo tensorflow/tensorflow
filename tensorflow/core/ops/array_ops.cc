@@ -1151,23 +1151,23 @@ output: A dense float tensor with rank R - 1.
 For the example input:
 
     // hypothesis represents a 2x1 matrix with variable-length values:
-    //   (0,0) = ["a"]
-    //   (1,0) = ["b"]
+    //   (0,0) = ['a']
+    //   (1,0) = ['b']
     hypothesis_indices = [[0, 0, 0],
                           [1, 0, 0]]
-    hypothesis_values = ["a", "b"]
+    hypothesis_values = ['a', 'b']
     hypothesis_shape = [2, 1, 1]
 
     // truth represents a 2x2 matrix with variable-length values:
     //   (0,0) = []
-    //   (0,1) = ["a"]
-    //   (1,0) = ["b", "c"]
-    //   (1,1) = ["a"]
+    //   (0,1) = ['a']
+    //   (1,0) = ['b', 'c']
+    //   (1,1) = ['a']
     truth_indices = [[0, 1, 0],
                      [1, 0, 0],
                      [1, 0, 1],
                      [1, 1, 0]]
-    truth_values = ["a", "b", "c", "a"]
+    truth_values = ['a', 'b', 'c', 'a']
     truth_shape = [2, 2, 2]
     normalize = true
 
@@ -1310,8 +1310,8 @@ Produces an output tensor with shape `indices.shape + params.shape[1:]` where:
 If `indices` is a permutation and `len(indices) == params.shape[0]` then
 this operation will permute `params` accordingly.
 
-<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/Gather.png" alt>
+<div style='width:70%; margin:auto; margin-bottom:10px; margin-top:20px;'>
+<img style='width:100%' src='../../images/Gather.png' alt>
 </div>
 )doc");
 
@@ -1984,7 +1984,7 @@ rank(t) ==> 3
 
 **Note**: The rank of a tensor is not the same as the rank of a matrix. The rank
 of a tensor is the number of indices required to uniquely select each element
-of the tensor. Rank is also known as "order", "degree", or "ndims."
+of the tensor. Rank is also known as 'order', 'degree', or 'ndims.'
 )doc");
 
 // --------------------------------------------------------------------------
@@ -3233,9 +3233,9 @@ REGISTER_OP("SpaceToBatchND")
     .Doc(R"doc(
 SpaceToBatch for N-D tensors of type T.
 
-This operation divides "spatial" dimensions `[1, ..., M]` of the input into a
+This operation divides 'spatial' dimensions `[1, ..., M]` of the input into a
 grid of blocks of shape `block_shape`, and interleaves these blocks with the
-"batch" dimension (0) such that in the output, the spatial dimensions
+'batch' dimension (0) such that in the output, the spatial dimensions
 `[1, ..., M]` correspond to the position within the grid, and the batch
 dimension combines both the position within a spatial block and the original
 batch position.  Prior to division into blocks, the spatial dimensions of the
@@ -3498,7 +3498,7 @@ REGISTER_OP("BatchToSpaceND")
     .Doc(R"doc(
 BatchToSpace for N-D tensors of type T.
 
-This operation reshapes the "batch" dimension 0 into `M + 1` dimensions of shape
+This operation reshapes the 'batch' dimension 0 into `M + 1` dimensions of shape
 `block_shape + [batch]`, interleaves these blocks back into the grid defined by
 the spatial dimensions `[1, ..., M]`, to obtain a result with the same rank as
 the input.  The spatial dimensions of this intermediate result are then
@@ -4045,12 +4045,12 @@ REGISTER_OP("ExtractImagePatches")
       return Status::OK();
     })
     .Doc(R"doc(
-Extract `patches` from `images` and put them in the "depth" output dimension.
+Extract `patches` from `images` and put them in the 'depth' output dimension.
 
 images: 4-D Tensor with shape `[batch, in_rows, in_cols, depth]`.
 patches: 4-D Tensor with shape `[batch, out_rows, out_cols, ksize_rows *
   ksize_cols * depth]` containing image patches with size
-  `ksize_rows x ksize_cols x depth` vectorized in the "depth" dimension.
+  `ksize_rows x ksize_cols x depth` vectorized in the 'depth' dimension.
 ksizes: The size of the sliding window for each dimension of `images`.
 strides: 1-D of length 4. How far the centers of two consecutive patches are in
   the images. Must be: `[1, stride_rows, stride_cols, 1]`.
@@ -4836,8 +4836,8 @@ The simplest form of scatter is to insert individual elements in a tensor by
 index. For example, say we want to insert 4 scattered elements in a rank-1
 tensor with 8 elements.
 
-<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/ScatterNd1.png" alt>
+<div style='width:70%; margin:auto; margin-bottom:10px; margin-top:20px;'>
+<img style='width:100%' src='../../images/ScatterNd1.png' alt>
 </div>
 
 In Python, this scatter operation would look like this:
@@ -4857,8 +4857,8 @@ We can also, insert entire slices of a higher rank tensor all at once. For
 example, if we wanted to insert two slices in the first dimension of a
 rank-3 tensor with two matrices of new values.
 
-<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/ScatterNd2.png" alt>
+<div style='width:70%; margin:auto; margin-bottom:10px; margin-top:20px;'>
+<img style='width:100%' src='../../images/ScatterNd2.png' alt>
 </div>
 
 In Python, this scatter operation would look like this:

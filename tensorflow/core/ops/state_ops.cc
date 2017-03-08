@@ -178,7 +178,7 @@ REGISTER_OP("Assign")
     .Doc(R"doc(
 Update 'ref' by assigning 'value' to it.
 
-This operation outputs "ref" after the assignment is done.
+This operation outputs 'ref' after the assignment is done.
 This makes it easier to chain operations that need to use the reset value.
 
 ref: Should be from a `Variable` node. May be uninitialized.
@@ -188,7 +188,7 @@ validate_shape: If true, the operation will validate that the shape
   'ref' will take on the shape of 'value'.
 use_locking: If True, the assignment will be protected by a lock;
   otherwise the behavior is undefined, but may exhibit less contention.
-output_ref:= Same as "ref".  Returned as a convenience for operations that want
+output_ref:= Same as 'ref'.  Returned as a convenience for operations that want
   to use the new value after the variable has been reset.
 )doc");
 
@@ -202,14 +202,14 @@ REGISTER_OP("AssignAdd")
     .Doc(R"doc(
 Update 'ref' by adding 'value' to it.
 
-This operation outputs "ref" after the update is done.
+This operation outputs 'ref' after the update is done.
 This makes it easier to chain operations that need to use the reset value.
 
 ref: Should be from a `Variable` node.
 value: The value to be added to the variable.
 use_locking: If True, the addition will be protected by a lock;
   otherwise the behavior is undefined, but may exhibit less contention.
-output_ref:= Same as "ref".  Returned as a convenience for operations that want
+output_ref:= Same as 'ref'.  Returned as a convenience for operations that want
   to use the new value after the variable has been updated.
 )doc");
 
@@ -223,14 +223,14 @@ REGISTER_OP("AssignSub")
     .Doc(R"doc(
 Update 'ref' by subtracting 'value' from it.
 
-This operation outputs "ref" after the update is done.
+This operation outputs 'ref' after the update is done.
 This makes it easier to chain operations that need to use the reset value.
 
 ref: Should be from a `Variable` node.
 value: The value to be subtracted to the variable.
 use_locking: If True, the subtraction will be protected by a lock;
   otherwise the behavior is undefined, but may exhibit less contention.
-output_ref:= Same as "ref".  Returned as a convenience for operations that want
+output_ref:= Same as 'ref'.  Returned as a convenience for operations that want
   to use the new value after the variable has been updated.
 )doc");
 
@@ -285,8 +285,8 @@ for each value is undefined.
 
 Requires `updates.shape = indices.shape + ref.shape[1:]`.
 
-<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/ScatterUpdate.png" alt>
+<div style='width:70%; margin:auto; margin-bottom:10px; margin-top:20px;'>
+<img style='width:100%' src='../../images/ScatterUpdate.png' alt>
 </div>
 
 ref: Should be from a `Variable` node.
@@ -329,8 +329,8 @@ the same location, their contributions add.
 
 Requires `updates.shape = indices.shape + ref.shape[1:]`.
 
-<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/ScatterAdd.png" alt>
+<div style='width:70%; margin:auto; margin-bottom:10px; margin-top:20px;'>
+<img style='width:100%' src='../../images/ScatterAdd.png' alt>
 </div>
 
 ref: Should be from a `Variable` node.
@@ -371,8 +371,8 @@ the same location, their (negated) contributions add.
 
 Requires `updates.shape = indices.shape + ref.shape[1:]`.
 
-<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/ScatterSub.png" alt>
+<div style='width:70%; margin:auto; margin-bottom:10px; margin-top:20px;'>
+<img style='width:100%' src='../../images/ScatterSub.png' alt>
 </div>
 
 ref: Should be from a `Variable` node.

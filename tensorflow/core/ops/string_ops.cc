@@ -107,17 +107,17 @@ counted backwards from the end, with `-1` being equivalent to `n - 1`.
 For example:
 
 ```
-# tensor `a` is [["a", "b"], ["c", "d"]]
-tf.reduce_join(a, 0) ==> ["ac", "bd"]
-tf.reduce_join(a, 1) ==> ["ab", "cd"]
-tf.reduce_join(a, -2) = tf.reduce_join(a, 0) ==> ["ac", "bd"]
-tf.reduce_join(a, -1) = tf.reduce_join(a, 1) ==> ["ab", "cd"]
-tf.reduce_join(a, 0, keep_dims=True) ==> [["ac", "bd"]]
-tf.reduce_join(a, 1, keep_dims=True) ==> [["ab"], ["cd"]]
-tf.reduce_join(a, 0, separator=".") ==> ["a.c", "b.d"]
-tf.reduce_join(a, [0, 1]) ==> ["acbd"]
-tf.reduce_join(a, [1, 0]) ==> ["abcd"]
-tf.reduce_join(a, []) ==> ["abcd"]
+# tensor `a` is [['a', 'b'], ['c', 'd']]
+tf.reduce_join(a, 0) ==> ['ac', 'bd']
+tf.reduce_join(a, 1) ==> ['ab', 'cd']
+tf.reduce_join(a, -2) = tf.reduce_join(a, 0) ==> ['ac', 'bd']
+tf.reduce_join(a, -1) = tf.reduce_join(a, 1) ==> ['ab', 'cd']
+tf.reduce_join(a, 0, keep_dims=True) ==> [['ac', 'bd']]
+tf.reduce_join(a, 1, keep_dims=True) ==> [['ab'], ['cd']]
+tf.reduce_join(a, 0, separator='.') ==> ['a.c', 'b.d']
+tf.reduce_join(a, [0, 1]) ==> ['acbd']
+tf.reduce_join(a, [1, 0]) ==> ['abcd']
+tf.reduce_join(a, []) ==> ['abcd']
 ```
 
 inputs: The input to be joined.  All reduced indices must have non-zero size.
@@ -379,7 +379,7 @@ input = b'thirteen'
 position = [1, 5, 7]
 length =   [3, 2, 1]
 
-output = [b'hir', b'ee', b'n"]
+output = [b'hir', b'ee', b'n']
 ```
 
 input: Tensor of strings

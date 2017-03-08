@@ -294,8 +294,8 @@ the same location, their contributions add.
 
 Requires `updates.shape = indices.shape + ref.shape[1:]`.
 
-<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/ScatterAdd.png" alt>
+<div style='width:70%; margin:auto; margin-bottom:10px; margin-top:20px;'>
+<img style='width:100%' src='../../images/ScatterAdd.png' alt>
 </div>
 
 resource: Should be from a `Variable` node.
