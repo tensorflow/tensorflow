@@ -32,6 +32,7 @@ from tensorflow.core.framework import summary_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.losses import losses as losses_lib
 from tensorflow.python.platform import test
@@ -1083,6 +1084,49 @@ class MultiClassHeadTest(test.TestCase):
     for n_classes in (None, -1, 0, 1):
       with self.assertRaisesRegexp(ValueError, "n_classes must be > 1"):
         head_lib.multi_class_head(n_classes=n_classes)
+
+  def testMultiClassWithLabelKeysInvalidShape(self):
+    with self.assertRaisesRegexp(
+        ValueError, "Length of label_keys must equal n_classes"):
+      head_lib._multi_class_head(
+          n_classes=3, label_keys=("key0", "key1"))
+
+  def testMultiClassWithLabelKeysTwoClasses(self):
+    with self.assertRaisesRegexp(
+        ValueError, "label_keys is not supported for n_classes=2"):
+      head_lib._multi_class_head(
+          n_classes=2, label_keys=("key0", "key1"))
+
+  def testMultiClassWithLabelKeys(self):
+    n_classes = 3
+    label_keys = ("key0", "key1", "key2")
+    head = head_lib._multi_class_head(
+        n_classes=n_classes, label_keys=label_keys,
+        metric_class_ids=range(n_classes),
+        head_name="head_name")
+    # Tests infer mode.
+    with ops.Graph().as_default():
+      model_fn_ops = head.create_model_fn_ops(
+          features={},
+          mode=model_fn.ModeKeys.INFER,
+          train_op_fn=head_lib.no_op_train_fn,
+          logits=((1., 0., 0.),))
+      with session.Session():
+        data_flow_ops.tables_initializer().run()
+        self.assertListEqual(
+            [b"key0"], list(model_fn_ops.predictions["classes"].eval()))
+        self.assertItemsEqual(
+            ["head_name"], six.iterkeys(model_fn_ops.output_alternatives))
+        self.assertEqual(
+            constants.ProblemType.CLASSIFICATION,
+            model_fn_ops.output_alternatives["head_name"][0])
+        predictions_for_serving = (
+            model_fn_ops.output_alternatives["head_name"][1])
+        self.assertIn("classes", six.iterkeys(predictions_for_serving))
+        self.assertListEqual(
+            [b"key0", b"key1", b"key2"],
+            list(predictions_for_serving["classes"].eval()))
+        self.assertIn("probabilities", six.iterkeys(predictions_for_serving))
 
 
 class BinarySvmHeadTest(test.TestCase):

@@ -25,6 +25,7 @@ import six
 
 from tensorflow.contrib import framework as framework_lib
 from tensorflow.contrib import layers as layers_lib
+from tensorflow.contrib import lookup as lookup_lib
 # TODO(ptucker): Use tf.losses and tf.metrics.
 from tensorflow.contrib import losses as losses_lib
 from tensorflow.contrib import metrics as metrics_lib
@@ -256,10 +257,16 @@ def multi_class_head(n_classes,
                      head_name=None,
                      thresholds=None,
                      metric_class_ids=None,
-                     loss_fn=None):
+                     loss_fn=None,
+                     label_keys=None):
   """Creates a `Head` for multi class single label classification.
 
   The Head uses softmax cross entropy loss.
+
+  This head expects to be fed integer labels specifying the class index. But
+  if `label_keys` is specified, then labels must be strings from this
+  vocabulary, and the predicted classes will be strings from the same
+  vocabulary.
 
   Args:
     n_classes: Integer, number of classes, must be >= 2
@@ -281,14 +288,16 @@ def multi_class_head(n_classes,
     loss_fn: Optional function that takes (`labels`, `logits`, `weights`) as
       parameter and returns a weighted scalar loss. `weights` should be
       optional. See `tf.losses`
+    label_keys: Optional list of strings with size `[n_classes]` defining the
+      label vocabulary. Only supported for `n_classes` > 2.
 
   Returns:
     An instance of `Head` for multi class classification.
 
   Raises:
-    ValueError: If `n_classes` is < 2, or `metric_class_ids` is provided when
-          `n_classes` is 2.
-    ValueError: If loss_fn does not have expected signature.
+    ValueError: if `n_classes` is < 2.
+    ValueError: If `metric_class_ids` is provided when `n_classes` is 2.
+    ValueError: If `len(label_keys) != n_classes`.
   """
   if (n_classes is None) or (n_classes < 2):
     raise ValueError("n_classes must be > 1 for classification: %s." %
@@ -300,6 +309,8 @@ def multi_class_head(n_classes,
   if n_classes == 2:
     if metric_class_ids:
       raise ValueError("metric_class_ids invalid for n_classes==2.")
+    if label_keys:
+      raise ValueError("label_keys is not supported for n_classes=2.")
     return _BinaryLogisticHead(
         label_name=label_name,
         weight_column_name=weight_column_name,
@@ -316,7 +327,8 @@ def multi_class_head(n_classes,
       head_name=head_name,
       thresholds=thresholds,
       metric_class_ids=metric_class_ids,
-      loss_fn=loss_fn)
+      loss_fn=loss_fn,
+      label_keys=label_keys)
 
 
 def binary_svm_head(
@@ -922,8 +934,14 @@ class _MultiClassHead(_SingleHead):
                head_name=None,
                loss_fn=None,
                thresholds=None,
-               metric_class_ids=None):
+               metric_class_ids=None,
+               label_keys=None):
     """'Head' for multi class classification.
+
+    This head expects to be fed integer labels specifying the class index. But
+    if `label_keys` is specified, then labels must be strings from this
+    vocabulary, and the predicted classes will be strings from the same
+    vocabulary.
 
     Args:
       n_classes: Number of classes, must be greater than 2 (for 2 classes, use
@@ -939,13 +957,15 @@ class _MultiClassHead(_SingleHead):
       head_name: name of the head. If provided, predictions, summary, metrics
         keys will be suffixed by `"/" + head_name` and the default variable
         scope will be `head_name`.
-      loss_fn: Loss function.
+      loss_fn: Loss function. Defaults to softmax cross entropy loss.
       thresholds: thresholds for eval.
       metric_class_ids: List of class IDs for which we should report per-class
         metrics. Must all be in the range `[0, n_classes)`.
+      label_keys: Optional list of strings with size `[n_classes]` defining the
+        label vocabulary.
 
     Raises:
-      ValueError: if `n_classes` or `metric_class_ids` is invalid.
+      ValueError: if `n_classes`, `metric_class_ids` or `label_keys` is invalid.
     """
     super(_MultiClassHead, self).__init__(
         problem_type=constants.ProblemType.CLASSIFICATION,
@@ -964,6 +984,9 @@ class _MultiClassHead(_SingleHead):
     for class_id in self._metric_class_ids:
       if (class_id < 0) or (class_id >= n_classes):
         raise ValueError("Class ID %s not in [0, %s)." % (class_id, n_classes))
+    if label_keys and len(label_keys) != n_classes:
+      raise ValueError("Length of label_keys must equal n_classes.")
+    self._label_keys = label_keys
 
   def create_model_fn_ops(self,
                           features,
@@ -996,6 +1019,11 @@ class _MultiClassHead(_SingleHead):
     """Applies transformations to labels tensor."""
     labels_tensor = _to_labels_tensor(labels, self._label_name)
     _check_no_sparse_tensor(labels_tensor)
+    if self._label_keys:
+      table = lookup_lib.string_to_index_table_from_tensor(
+          mapping=self._label_keys,
+          name="label_id_lookup")
+      labels_tensor = table.lookup(labels_tensor)
     return labels_tensor
 
   def _logits_to_predictions(self, logits):
@@ -1008,37 +1036,35 @@ class _MultiClassHead(_SingleHead):
       Dict of prediction `Tensor` keyed by `PredictionKey`.
     """
     with ops.name_scope(None, "predictions", (logits,)):
+      class_ids = math_ops.argmax(
+          logits, 1, name=prediction_key.PredictionKey.CLASSES)
+      if self._label_keys:
+        table = lookup_lib.index_to_string_table_from_tensor(
+            mapping=self._label_keys,
+            name="class_string_lookup")
+        classes = table.lookup(class_ids)
+      else:
+        classes = class_ids
       return {
-          prediction_key.PredictionKey.LOGITS:
-              logits,
+          prediction_key.PredictionKey.LOGITS: logits,
           prediction_key.PredictionKey.PROBABILITIES:
               nn.softmax(
                   logits, name=prediction_key.PredictionKey.PROBABILITIES),
-          prediction_key.PredictionKey.CLASSES:
-              math_ops.argmax(
-                  logits, 1, name=prediction_key.PredictionKey.CLASSES)
+          prediction_key.PredictionKey.CLASSES: classes
       }
 
   def _metrics(self, eval_loss, predictions, labels, weights):
     """Returns a dict of metrics keyed by name."""
     with ops.name_scope("metrics", values=(
         [eval_loss, labels, weights] + list(six.itervalues(predictions)))):
-      classes = predictions[prediction_key.PredictionKey.CLASSES]
-      probabilities = predictions[prediction_key.PredictionKey.PROBABILITIES]
       logits = predictions[prediction_key.PredictionKey.LOGITS]
+      probabilities = predictions[prediction_key.PredictionKey.PROBABILITIES]
 
       metrics = {_summary_key(self.head_name, mkey.LOSS):
                  metrics_lib.streaming_mean(eval_loss)}
-      # TODO(b/29366811): This currently results in both an "accuracy" and an
-      # "accuracy/threshold_0.500000_mean" metric for binary classification.
-      metrics[_summary_key(self.head_name, mkey.ACCURACY)] = (
-          metrics_lib.streaming_accuracy(classes, labels, weights))
 
       for class_id in self._metric_class_ids:
         # TODO(ptucker): Add per-class accuracy, precision, recall.
-        metrics[_summary_key(
-            self.head_name, mkey.CLASS_PREDICTION_MEAN % class_id)] = (
-                _class_predictions_streaming_mean(classes, weights, class_id))
         metrics[_summary_key(
             self.head_name, mkey.CLASS_LABEL_MEAN % class_id)] = (
                 _class_labels_streaming_mean(labels, weights, class_id))
@@ -1049,7 +1075,31 @@ class _MultiClassHead(_SingleHead):
             self.head_name, mkey.CLASS_LOGITS_MEAN % class_id)] = (
                 _predictions_streaming_mean(logits, weights, class_id))
 
+      if not self._label_keys:
+        # classes are IDs. Add some more metrics.
+        classes = predictions[prediction_key.PredictionKey.CLASSES]
+        # TODO(b/29366811): This currently results in both an "accuracy" and an
+        # "accuracy/threshold_0.500000_mean" metric for binary classification.
+        metrics[_summary_key(self.head_name, mkey.ACCURACY)] = (
+            metrics_lib.streaming_accuracy(classes, labels, weights))
+        for class_id in self._metric_class_ids:
+          metrics[_summary_key(
+              self.head_name, mkey.CLASS_PREDICTION_MEAN % class_id)] = (
+                  _class_predictions_streaming_mean(classes, weights, class_id))
+
     return metrics
+
+  def _create_output_alternatives(self, predictions):
+    """See superclass."""
+    if self._label_keys:
+      predictions_for_serving = {
+          prediction_key.PredictionKey.CLASSES: ops.convert_to_tensor(
+              self._label_keys),
+          prediction_key.PredictionKey.PROBABILITIES: (
+              predictions[prediction_key.PredictionKey.PROBABILITIES])
+          }
+      return {self._head_name: (self._problem_type, predictions_for_serving)}
+    return super(_MultiClassHead, self)._create_output_alternatives(predictions)
 
 
 def _to_labels_tensor(labels, label_name):
@@ -1083,7 +1133,7 @@ def _sparse_labels_to_indicator(labels, num_classes):
     Dense label `Tensor`.
 
   Raises:
-    ValueError: If labels is `SparseTensot` and `num_classes` < 2.
+    ValueError: If labels is `SparseTensor` and `num_classes` < 2.
   """
   if isinstance(labels, sparse_tensor.SparseTensor):
     if num_classes < 2:
