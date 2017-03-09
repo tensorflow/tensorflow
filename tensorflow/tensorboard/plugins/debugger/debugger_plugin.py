@@ -77,21 +77,6 @@ class DebuggerPlugin(base_plugin.TBPlugin):
   def _serve_health_pills_handler(self, request):
     """A (wrapped) werkzeug handler for serving health pills.
 
-    We defer to another method for actually performing the main logic because
-    the @wrappers.Request.application decorator makes this logic hard to access
-    in tests.
-
-    Args:
-      request: The request issued by the client for health pills.
-
-    Returns:
-      A werkzeug BaseResponse object.
-    """
-    return self._serve_health_pills_helper(request)
-
-  def _serve_health_pills_helper(self, request):
-    """Responds with health pills.
-
     Accepts POST requests and responds with health pills. Specifically, the
     handler expects a required "node_names" and an optional "run" POST data key.
     The value of the "node_names" key should be a JSON-ified list of node names
