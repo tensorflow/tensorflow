@@ -61,7 +61,7 @@ limitations under the License.
 #  define TF_EXPORT __declspec(dllimport)
 # endif   // TF_COMPILE_LIBRARY
 #else
-# define TF_EXPORT __attribute__((visibility(default))
+# define TF_EXPORT __attribute__((visibility(default)))
 #endif  // PLATFORM_WINDOWS
 
 // GCC can be told that a certain branch is not likely to be taken (for
