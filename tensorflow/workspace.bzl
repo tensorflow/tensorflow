@@ -500,8 +500,6 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
           "node",
           "node.exe",
       ],
-      # POSTED: Email jart@google.com before changing this whitelist.
-      visibility = ["@com_microsoft_typescript//:__pkg__"],
   )
 
   filegroup_external(
