@@ -23,7 +23,7 @@ import uuid
 
 # Google-internal import(s).
 from tensorflow.core.util import event_pb2
-from tensorflow.python.debug import debug_data
+from tensorflow.python.debug.lib import debug_data
 from tensorflow.python.debug.wrappers import framework
 from tensorflow.python.platform import gfile
 
@@ -39,7 +39,7 @@ class DumpingDebugWrapperSession(framework.NonInteractiveDebugWrapperSession):
       session_root: (`str`) Path to the session root directory. Must be a
         directory that does not exist or an empty directory. If the directory
         does not exist, it will be created by the debugger core during debug
-        [`Session.run()`](../../../g3doc/api_docs/python/client.md#session.run)
+        @{tf.Session.run}
         calls.
         As the `run()` calls occur, subdirectories will be added to
         `session_root`. The subdirectories' names has the following pattern:

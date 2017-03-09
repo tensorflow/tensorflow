@@ -96,7 +96,6 @@ cc_library(
     hdrs = ["hlo_to_ir_bindings.h"],
     deps = [
         ":ir_emission_utils",
-        ":temp_buffer_offsets",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:hlo",
@@ -127,7 +126,6 @@ cc_library(
         ":ir_emission_utils",
         ":parallel_loop_emitter",
         ":partition_assignment",
-        ":temp_buffer_offsets",
         ":while_transformer",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
@@ -176,6 +174,7 @@ cc_library(
     srcs = ["elemental_ir_emitter.cc"],
     hdrs = ["elemental_ir_emitter.h"],
     deps = [
+        "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
@@ -197,22 +196,10 @@ cc_library(
 )
 
 cc_library(
-    name = "temp_buffer_offsets",
-    srcs = ["temp_buffer_offsets.cc"],
-    hdrs = ["temp_buffer_offsets.h"],
-    deps = [
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla/service:buffer_assignment",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
     name = "buffer_allocations",
     srcs = ["buffer_allocations.cc"],
     hdrs = ["buffer_allocations.h"],
     deps = [
-        ":temp_buffer_offsets",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
@@ -255,7 +242,6 @@ cc_library(
         ":buffer_allocations",
         ":partition_assignment",
         ":stream_assignment",
-        ":temp_buffer_offsets",
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:shape_tree",
         "//tensorflow/compiler/xla:shape_util",
@@ -272,6 +258,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_execution_profile",
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service:logical_buffer",
+        "//tensorflow/compiler/xla/service:pool",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:transfer_manager",
         "//tensorflow/compiler/xla/service:tuple_points_to_analysis",
@@ -429,7 +416,6 @@ cc_library(
         ":pad_insertion",
         ":partition_assignment",
         ":stream_assignment",
-        ":temp_buffer_offsets",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
@@ -441,6 +427,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_constant_folding",
         "//tensorflow/compiler/xla/service:hlo_cse",
         "//tensorflow/compiler/xla/service:hlo_dce",
         "//tensorflow/compiler/xla/service:hlo_module_config",
@@ -540,10 +527,12 @@ cc_test(
     name = "while_transformer_test",
     srcs = ["while_transformer_test.cc"],
     deps = [
+        ":instruction_fusion",
         ":while_transformer",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla/service:copy_insertion",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/core:lib",

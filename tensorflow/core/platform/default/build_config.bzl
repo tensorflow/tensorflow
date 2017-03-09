@@ -168,10 +168,10 @@ def tf_additional_cupti_wrapper_deps():
   return ["//tensorflow/core/platform/default/gpu:cupti_wrapper"]
 
 def tf_additional_libdevice_data():
-  return ["@local_config_cuda//cuda:libdevice_root"]
+  return []
 
 def tf_additional_libdevice_deps():
-  return []
+  return ["@local_config_cuda//cuda:cuda_headers"]
 
 def tf_additional_libdevice_srcs():
   return ["platform/default/cuda_libdevice_path.cc"]
@@ -241,3 +241,9 @@ def tf_additional_cloud_kernel_deps():
   #if WITH_GCP_SUPPORT:
   #  deps = if_not_mobile(["//tensorflow/core:cloud_ops_op_lib"])
   return deps
+
+def tf_lib_proto_parsing_deps():
+  return [
+      ":protos_all_cc",
+      "//tensorflow/core/platform/default/build_config:proto_parsing",
+  ]

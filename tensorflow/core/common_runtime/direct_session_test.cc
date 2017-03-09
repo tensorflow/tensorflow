@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/costmodel.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/testlib.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -762,7 +764,7 @@ TEST(DirectSessionTest, TimeoutSession) {
   // Verifies that the error code is DEADLINE_EXCEEDED.
   Status s = session->Run({}, {}, {"fifo_queue_Dequeue"}, nullptr);
   ASSERT_EQ(error::DEADLINE_EXCEEDED, s.code());
-  session->Close();
+  TF_ASSERT_OK(session->Close());
 
   // Creates a session with no operation_timeout_in_ms.
   session.reset(CreateSession());
@@ -774,7 +776,7 @@ TEST(DirectSessionTest, TimeoutSession) {
   Status s2 = session->Run(run_options, {}, {}, {"fifo_queue_Dequeue"}, nullptr,
                            nullptr);
   ASSERT_EQ(error::DEADLINE_EXCEEDED, s2.code());
-  session->Close();
+  TF_ASSERT_OK(session->Close());
 }
 
 // Accesses the cancellation manager for the step after the step has been
@@ -827,7 +829,7 @@ TEST(DirectSessionTest, TestTimeoutCleanShutdown) {
   // Verify that the op ran to completion.
   ASSERT_TRUE(CancellationMgrPollingOp::notification.HasBeenNotified());
 
-  session->Close();
+  TF_ASSERT_OK(session->Close());
 }
 
 class BlockingOpState {
@@ -1058,7 +1060,7 @@ TEST(DirectSessionTest, TestDirectSessionRunClose) {
   outputs.clear();
 
   // Close the session.
-  session->Close();
+  TF_ASSERT_OK(session->Close());
 
   // Run the read on the variable to get an error.
   Status s = session->Run({} /* inputs */, {},
@@ -1105,7 +1107,7 @@ TEST(DirectSessionTest, TestDirectSessionPRunClose) {
   value_22.scalar<float>()() = 22.0;
 
   // Close the session.
-  session->Close();
+  TF_ASSERT_OK(session->Close());
 
   // Feed first_const, fetch first_identity
   s = session->PRun(handle, {{first_const->name(), value_11}},
@@ -1142,7 +1144,7 @@ TEST(DirectSessionTest, TestDirectSessionReset) {
   outputs.clear();
 
   // Reset the containers.
-  Reset(options, {});
+  TF_EXPECT_OK(Reset(options, {}));
 
   // Run the read on the variable to get an error.
   // TODO(suharshs): This test only works because we close the Session in Reset.
@@ -1152,6 +1154,68 @@ TEST(DirectSessionTest, TestDirectSessionReset) {
                           {var_assign->name()} /* target_nodes */, nullptr);
   EXPECT_EQ("Cancelled: Session has been closed.", s.ToString());
 }
+
+// A simple benchmark for the overhead of `DirectSession::Run()` calls
+// with varying numbers of feeds/fetches.
+void FeedFetchBenchmarkHelper(int num_feeds, int iters) {
+  testing::StopTiming();
+
+  Tensor value(DT_FLOAT, TensorShape());
+  value.flat<float>()(0) = 37.0;
+
+  std::vector<std::pair<string, Tensor>> inputs;
+  inputs.reserve(num_feeds);
+  std::vector<string> outputs;
+
+  Graph g(OpRegistry::Global());
+  for (int i = 0; i < num_feeds; ++i) {
+    // NOTE(mrry): We pin nodes to the "/cpu:0" device, so as not to
+    // measure CPU<->GPU copying overhead. We should also optimize and
+    // monitor this overhead where possible, but that is not the
+    // object of study in this benchmark.
+    Node* placeholder;
+    TF_CHECK_OK(NodeBuilder(g.NewName("Placeholder"), "PlaceholderV2")
+                    .Attr("shape", TensorShape())
+                    .Attr("dtype", DT_FLOAT)
+                    .Device("/cpu:0")
+                    .Finalize(&g, &placeholder));
+    Node* identity;
+    TF_CHECK_OK(NodeBuilder(g.NewName("Identity"), "Identity")
+                    .Input(placeholder)
+                    .Attr("T", DT_FLOAT)
+                    .Device("/cpu:0")
+                    .Finalize(&g, &identity));
+    inputs.push_back({placeholder->name() + ":0", value});
+    outputs.push_back(identity->name() + ":0");
+  }
+  GraphDef gd;
+  g.ToGraphDef(&gd);
+  SessionOptions opts;
+  std::unique_ptr<Session> sess(NewSession(opts));
+  TF_CHECK_OK(sess->Create(gd));
+  {
+    // NOTE(mrry): Ignore the first run, which will incur the graph
+    // partitioning/pruning overhead and skew the results.
+    //
+    // Note that we should also optimize and monitor the overhead on
+    // the first run, which will impact application startup times, but
+    // that is not the object of study in this benchmark.
+    std::vector<Tensor> output_values;
+    TF_CHECK_OK(sess->Run(inputs, outputs, {}, &output_values));
+  }
+  testing::StartTiming();
+  for (int i = 0; i < iters; ++i) {
+    std::vector<Tensor> output_values;
+    TF_CHECK_OK(sess->Run(inputs, outputs, {}, &output_values));
+  }
+  testing::StopTiming();
+}
+
+void BM_FeedFetch(int iters, int num_feeds) {
+  FeedFetchBenchmarkHelper(iters, num_feeds);
+}
+
+BENCHMARK(BM_FeedFetch)->Arg(1)->Arg(2)->Arg(5)->Arg(10);
 
 }  // namespace
 }  // namespace tensorflow

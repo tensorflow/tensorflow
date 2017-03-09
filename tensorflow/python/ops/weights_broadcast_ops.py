@@ -34,7 +34,7 @@ def _has_valid_dims(weights_shape, values_shape):
   with ops.name_scope(
       None, "has_invalid_dims", (weights_shape, values_shape)) as scope:
     values_shape_2d = array_ops.expand_dims(values_shape, -1)
-    valid_dims = array_ops.concat_v2(
+    valid_dims = array_ops.concat(
         (values_shape_2d, array_ops.ones_like(values_shape_2d)), axis=1)
     weights_shape_2d = array_ops.expand_dims(weights_shape, -1)
     invalid_dims = sets.set_difference(weights_shape_2d, valid_dims)

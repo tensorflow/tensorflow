@@ -53,41 +53,41 @@ class ArrayGradTest : public ::testing::Test {
   Scope scope_;
 };
 
-TEST_F(ArrayGradTest, PackGrad_Axis0) {
+TEST_F(ArrayGradTest, StackGrad_Axis0) {
   TensorShape x_shape({1, 2, 3});
   std::vector<Output> xs;
   xs.push_back(Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape)));
   xs.push_back(Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape)));
-  auto y = Pack(scope_, xs, Pack::Axis(0));
+  auto y = Stack(scope_, xs, Stack::Axis(0));
   TensorShape y_shape({2, 1, 2, 3});
   RunTest(xs, {x_shape, x_shape}, {y}, {y_shape});
 }
 
-TEST_F(ArrayGradTest, PackGrad_Axis1) {
+TEST_F(ArrayGradTest, StackGrad_Axis1) {
   TensorShape x_shape({1, 2, 3});
   std::vector<Output> xs;
   xs.push_back(Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape)));
   xs.push_back(Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape)));
-  auto y = Pack(scope_, xs, Pack::Axis(1));
+  auto y = Stack(scope_, xs, Stack::Axis(1));
   TensorShape y_shape({1, 2, 2, 3});
   RunTest(xs, {x_shape, x_shape}, {y}, {y_shape});
 }
 
-TEST_F(ArrayGradTest, UnpackGrad_Axis0) {
+TEST_F(ArrayGradTest, UnstackGrad_Axis0) {
   TensorShape x_shape({4, 2, 3});
   auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
-  // Unpacking the first dimension results in 4 outputs.
+  // Unstacking the first dimension results in 4 outputs.
   std::vector<TensorShape> y_shapes(4, TensorShape({2, 3}));
-  auto y = Unpack(scope_, x, 4, Unpack::Axis(0));
+  auto y = Unstack(scope_, x, 4, Unstack::Axis(0));
   RunTest({x}, {x_shape}, y.output, y_shapes);
 }
 
-TEST_F(ArrayGradTest, UnpackGrad_Axis1) {
+TEST_F(ArrayGradTest, UnstackGrad_Axis1) {
   TensorShape x_shape({4, 2, 3});
   auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
-  // Unpacking the second dimension results in 2 outputs.
+  // Unstacking the second dimension results in 2 outputs.
   std::vector<TensorShape> y_shapes(2, TensorShape({4, 3}));
-  auto y = Unpack(scope_, x, 2, Unpack::Axis(1));
+  auto y = Unstack(scope_, x, 2, Unstack::Axis(1));
   RunTest({x}, {x_shape}, y.output, y_shapes);
 }
 

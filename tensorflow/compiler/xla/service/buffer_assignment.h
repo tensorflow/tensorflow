@@ -20,8 +20,6 @@ limitations under the License.
 #include <iosfwd>
 #include <memory>
 #include <string>
-#include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
@@ -33,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -41,12 +40,15 @@ limitations under the License.
 namespace xla {
 
 // This class abstracts an allocation of contiguous memory which can hold the
-// values described by LogicalBuffers. A BufferAllocation may hold different
-// LogicalBuffers at different times, but currently never more than one
-// LogicalBuffer simultaneously. The abstraction includes information required
-// by the backends for allocation, use, and deallocation of the buffer. This
-// includes the LogicalBuffers which are held in this allocation through the
-// execution of the computation.
+// values described by LogicalBuffers. Each LogicalBuffer occupies a sub-range
+// of the allocation, represented by a Slice. A single BufferAllocation may hold
+// LogicalBuffers with disjoint liveness, which may have overlapping Slices. A
+// single BufferAllocation may also hold LogicalBuffers with overlapping
+// liveness, which must have disjoint Slices.
+//
+// The abstraction includes information required by the backends for allocation,
+// use, and deallocation of the buffer. This includes the LogicalBuffers which
+// are held in this allocation through the execution of the computation.
 class BufferAllocation {
  public:
   // Holds a unique identifier for each allocation. Values are assigned
@@ -61,8 +63,8 @@ class BufferAllocation {
         is_reusable_(is_reusable) {}
   ~BufferAllocation() {}
 
-  // Adds a LogicalBuffer to the set assigned to this buffer.
-  void AddAssignment(const LogicalBuffer& buffer);
+  // Returns the index of this allocation.
+  Index index() const { return index_; }
 
   // Whether this allocation is used in a parallel calling context such as
   // inside of a map or reduce computation. Such allocations need to be thread
@@ -84,28 +86,76 @@ class BufferAllocation {
     CHECK(is_entry_computation_parameter_);
     return parameter_number_;
   }
-  // Sets that this allocation holds a LogicalBuffer from a parameter of the
-  // entry computation.
-  void set_entry_computation_parameter(int64 parameter_number) {
-    is_entry_computation_parameter_ = true;
-    parameter_number_ = parameter_number;
-  }
 
-  // Returns/sets whether this allocation is assigned a LogicalBuffer which may
+  // Returns whether this allocation is assigned a LogicalBuffer which may
   // be live out of the entry computation.
   bool maybe_live_out() const { return maybe_live_out_; }
-  void set_maybe_live_out(bool value) { maybe_live_out_ = value; }
 
   // Returns the size of the allocation. Necessarily this must be at least as
   // large as any LogicalBuffer assigned to this allocation.
   int64 size() const { return size_; }
 
-  // Access to the logical buffers assigned to this allocation.
-  const std::vector<const LogicalBuffer*>& assigned_buffers() const {
+  struct OffsetSize {
+    int64 offset = 0;
+    int64 size = 0;
+  };
+
+  // Access to the logical buffers assigned to this allocation, and their
+  // associated logical offsets and sizes.
+  const tensorflow::gtl::FlatMap<const LogicalBuffer*, OffsetSize>&
+  assigned_buffers() const {
     return assigned_buffers_;
   }
 
-  Index index() const { return index_; }
+  // A Slice represents a contiguous portion of a memory allocation. It is used
+  // to identify the memory range that a LogicalBuffer corresponds to.
+  class Slice {
+   public:
+    Slice() {}
+    Slice(const BufferAllocation* allocation, int64 offset, int64 size)
+        : allocation_(allocation), offset_(offset), size_(size) {}
+
+    const BufferAllocation* allocation() const { return allocation_; }
+    Index index() const { return allocation_->index(); }
+    int64 offset() const { return offset_; }
+    int64 size() const { return size_; }
+
+    bool operator==(const Slice& other) const {
+      return index() == other.index() && offset_ == other.offset_ &&
+             size_ == other.size_;
+    }
+    bool operator!=(const Slice& other) const { return !(*this == other); }
+    bool operator<(const Slice& other) const {
+      if (index() != other.index()) return index() < other.index();
+      if (offset_ != other.offset_) return offset_ < other.offset_;
+      return size_ < other.size_;
+    }
+
+    // Returns true iff this slice's memory range has a non-empty intersection
+    // with the other slice's memory range.
+    bool OverlapsWith(const Slice& other) const {
+      const int64 end = offset_ + size_;
+      const int64 other_end = other.offset_ + other.size_;
+      return index() == other.index() && offset_ < other_end &&
+             end > other.offset_;
+    }
+
+    struct Hasher {
+      size_t operator()(Slice s) const;
+    };
+
+    string ToString() const;
+
+   private:
+    const BufferAllocation* allocation_ = nullptr;
+    int64 offset_ = 0;
+    int64 size_ = 0;
+  };
+
+  // GetSlice returns the Slice of contiguous memory that holds the value
+  // described by the given 'buffer'.
+  // REQUIRES: 'buffer' must be assigned to this allocation.
+  Slice GetSlice(const LogicalBuffer& buffer) const;
 
   string ToString() const;
 
@@ -137,6 +187,21 @@ class BufferAllocation {
   }
 
  private:
+  // Only BufferAssigner and BufferAssignment can modify BufferAllocation.
+  friend class BufferAssigner;
+  friend class BufferAssignment;
+
+  // Adds a LogicalBuffer to the set assigned to this buffer.
+  void AddAssignment(const LogicalBuffer& buffer, int64 offset, int64 size);
+
+  void set_entry_computation_parameter(int64 parameter_number) {
+    is_entry_computation_parameter_ = true;
+    parameter_number_ = parameter_number;
+  }
+  void set_maybe_live_out(bool value) { maybe_live_out_ = value; }
+  void set_index(Index index) { index_ = index; }
+  void set_size(int64 size) { size_ = size; }
+
   // The index of the allocation in the BufferAssignment.
   Index index_;
 
@@ -164,12 +229,14 @@ class BufferAllocation {
   // might not actually escape.
   bool maybe_live_out_ = false;
 
-  // The set of buffers assigned to this allocation.
-  std::vector<const LogicalBuffer*> assigned_buffers_;
+  // Mapping from the set of buffers assigned to this allocation to their
+  // logical offsets and sizes.
+  tensorflow::gtl::FlatMap<const LogicalBuffer*, OffsetSize> assigned_buffers_;
 };
 
-// Add stream operator for nicer output of CHECK/RET_CHECK failures.
+// Add stream operators for nicer output of CHECK/RET_CHECK failures.
 std::ostream& operator<<(std::ostream& out, const BufferAllocation& s);
+std::ostream& operator<<(std::ostream& out, const BufferAllocation::Slice& s);
 
 // This class encapsulates an assignment of the LogicalBuffers in an XLA
 // module to a set of BufferAllocations.
@@ -179,6 +246,11 @@ class BufferAssignment {
   const std::vector<BufferAllocation>& Allocations() const {
     return allocations_;
   }
+
+  // Returns the single allocation holding all temporary buffers.  Returns
+  // nullptr if there are no temporary buffers, or if the assignment uses more
+  // than one allocation to hold temporary buffers.
+  const BufferAllocation* GetTempAllocation() const { return temp_allocation_; }
 
   // Returns whether the given buffer has been assigned an allocation.
   bool HasAllocation(const LogicalBuffer& buffer) const;
@@ -192,29 +264,28 @@ class BufferAssignment {
   // with the given index.
   const BufferAllocation& GetAllocation(BufferAllocation::Index index) const;
 
-  // Builds and returns a vector containing the allocations which might contain
-  // the subvalue at the given index of given instruction.
-  std::set<BufferAllocation> GetAllocations(const HloInstruction* instruction,
-                                            const ShapeIndex& index) const;
+  // Builds and returns a vector containing the slices which might contain the
+  // subvalue at the given index of given instruction.
+  std::set<BufferAllocation::Slice> GetAllSlices(
+      const HloInstruction* instruction, const ShapeIndex& index) const;
 
   // Convenience function which returns whether the top-level buffer of the
   // instruction (index == {}) is assigned an allocation.
   bool HasTopLevelAllocation(const HloInstruction* instruction) const;
 
-  // Convenience function which returns the unique buffer allocation containing
-  // the buffer at the given index of the given instruction. If an allocation is
-  // not assigned or the allocation cannot be determined at compile time then an
-  // error is returned.
-  StatusOr<const BufferAllocation*> GetUniqueAllocation(
+  // Convenience function which returns the unique slice containing the buffer
+  // at the given index of the given instruction. If a slice is not assigned or
+  // the slice cannot be determined at compile time then an error is returned.
+  StatusOr<BufferAllocation::Slice> GetUniqueSlice(
       const HloInstruction* instruction, const ShapeIndex& index) const;
-  // Like GetUniqueAllocation but fixes the index to the top-level of the shape
+  // Like GetUniqueSlice but fixes the index to the top-level of the shape
   // (index = {}).
-  StatusOr<const BufferAllocation*> GetUniqueTopLevelAllocation(
+  StatusOr<BufferAllocation::Slice> GetUniqueTopLevelSlice(
       const HloInstruction* instruction) const;
-  // Like GetUniqueTopLevelAllocation but returns the allocation for the output
-  // of the entry computation of the HLO module (ie, the result of the XLA
+  // Like GetUniqueTopLevelSlice but returns the slice for the output of the
+  // entry computation of the HLO module (ie, the result of the XLA
   // computation).
-  StatusOr<const BufferAllocation*> GetUniqueTopLevelOutputAllocation() const;
+  StatusOr<BufferAllocation::Slice> GetUniqueTopLevelOutputSlice() const;
 
   // Returns the set LogicalBuffers which may be the source of the value at the
   // given index and instruction.
@@ -230,26 +301,49 @@ class BufferAssignment {
 
   string ToString() const;
 
+  // Statistics for the assignment.  Values initialized to -1 are not always
+  // collected; fragmentation is only collected for instructions that have a
+  // sequential total ordering.
+  struct Stats {
+    int64 parameter_allocation_count = 0;
+    int64 parameter_allocation_bytes = 0;
+    int64 maybe_live_out_allocation_count = 0;
+    int64 maybe_live_out_allocation_bytes = 0;
+    int64 preallocated_temp_allocation_count = 0;
+    int64 preallocated_temp_allocation_bytes = 0;
+    int64 preallocated_temp_fragmentation_bytes = -1;
+    int64 total_allocation_count = 0;
+    int64 total_allocation_bytes = 0;
+    int64 total_fragmentation_bytes = -1;
+
+    string ToString() const;
+  };
+  const Stats& GetStats() const { return stats_; }
+
  private:
   // Only BufferAssigner can build or modify BufferAssignments.
   friend class BufferAssigner;
 
   explicit BufferAssignment(const HloModule* module,
-                            std::unique_ptr<BufferLiveness> liveness)
-      : module_(module), liveness_(std::move(liveness)) {}
+                            std::unique_ptr<BufferLiveness> liveness,
+                            int64 alignment)
+      : module_(module),
+        liveness_(std::move(liveness)),
+        alignment_(alignment) {}
 
-  // Creates and returns a new BufferAllocation. Ownership is maintained
-  // internally. The allocation initially has only the given LogicalBuffer
-  // assigned to it. `is_thread_local` indicates whether this buffer needs to be
-  // thread-local.
+  // Creates and returns a new BufferAllocation, with no assigned
+  // LogicalBuffers. Ownership is maintained internally.
+  BufferAllocation* NewEmptyAllocation(int64 size, bool is_thread_local,
+                                       bool is_reusable);
+
+  // Helper that calls NewEmptyAllocation and AddAssignment in one call,
+  // creating an allocation containing a single LogicalBuffer.
   BufferAllocation* NewAllocation(const LogicalBuffer& buffer, int64 size,
                                   bool is_thread_local, bool is_reusable);
 
-  // Adds a LogicalBuffer to the set assigned to the given allocation. If
-  // colocated_buffer is true, then the logical buffer is an alias of another
-  // buffer assigned to this allocation.
-  void AddAssignment(const LogicalBuffer& buffer, BufferAllocation* allocation,
-                     bool colocated_buffer);
+  // Adds a LogicalBuffer to the set assigned to the given allocation.
+  void AddAssignment(BufferAllocation* allocation, const LogicalBuffer& buffer,
+                     int64 offset, int64 size);
 
   // Returns the BufferLiveness object used to construct this assignment.
   const BufferLiveness& liveness() { return *liveness_; }
@@ -262,15 +356,27 @@ class BufferAssignment {
   BufferAllocation* GetMutableAssignedAllocation(const LogicalBuffer& buffer);
   BufferAllocation* GetMutableAllocation(BufferAllocation::Index index);
 
+  // Combines allocations of temporary buffers into one big BufferAllocation.
+  void CombineTempAllocations();
+
+  // Computes stats for the assignment, to be retrieved by GetStats.
+  Status ComputeSummaryStats(const LogicalBuffer::SizeFunction& buffer_size);
+
   // The vector of buffer allocations. Indexed by BufferAllocation::Index.
   std::vector<BufferAllocation> allocations_;
 
+  // The single allocation holding all temporary buffers.
+  BufferAllocation* temp_allocation_ = nullptr;
+
   // Maps Buffers to the index of the BufferAllocation which holds the buffer.
-  std::map<const LogicalBuffer*, BufferAllocation::Index>
+  tensorflow::gtl::FlatMap<const LogicalBuffer*, BufferAllocation::Index>
       allocation_index_for_buffer_;
 
   const HloModule* module_;
-  std::unique_ptr<BufferLiveness> liveness_;
+  const std::unique_ptr<BufferLiveness> liveness_;
+  const int64 alignment_;
+
+  Stats stats_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(BufferAssignment);
 };
@@ -280,28 +386,31 @@ class BufferAssigner {
  public:
   // Build and return a BufferAssignment for the given module. The given
   // HloOrdering is used to determine buffer liveness. buffer_size is a function
-  // which returns the size of a LogicalBuffer. If hlos_to_allocate is not null
-  // then only instructions in this vector are considered for buffer
-  // assignment. If hlos_to_allocate is null then all instructions are
-  // considered. If 'colocate_related_buffers' is true, related LogicalBuffers
-  // will be colocated in the same allocation (i.e buffers for while result
-  // will share an allocation with buffers related to that same while
-  // instruction: init operand, condition/body parameter and body result).
+  // which returns the size of a LogicalBuffer. Alignment is the the minimum
+  // alignment of any buffer. If hlos_to_allocate is not null then only
+  // instructions in this vector are considered for buffer assignment. If
+  // hlos_to_allocate is null then all instructions are considered. If
+  // 'colocate_related_buffers' is true, related LogicalBuffers will be
+  // colocated in the same allocation (i.e buffers for while result will share
+  // an allocation with buffers related to that same while instruction: init
+  // operand, condition/body parameter and body result).
   static StatusOr<std::unique_ptr<BufferAssignment>> Run(
       const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
-      LogicalBuffer::SizeFunction buffer_size, bool colocate_related_buffers,
+      LogicalBuffer::SizeFunction buffer_size, int64 alignment,
+      bool colocate_related_buffers,
       const std::vector<const HloInstruction*>* hlos_to_allocate = nullptr);
 
   // Overload of Run which uses ShapeUtil::ByteSizeOf to determine buffer size
   // and assigns buffers to all HLO instructions in the module.
   static StatusOr<std::unique_ptr<BufferAssignment>> Run(
       const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
-      int64 pointer_size);
+      LogicalBuffer::SizeFunction buffer_size, int64 alignment);
 
  private:
   explicit BufferAssigner(LogicalBuffer::SizeFunction buffer_size,
-                          bool colocate_related_buffers)
+                          int64 alignment, bool colocate_related_buffers)
       : buffer_size_(std::move(buffer_size)),
+        alignment_(alignment),
         colocate_related_buffers_(colocate_related_buffers) {}
   virtual ~BufferAssigner() = default;
 
@@ -316,13 +425,20 @@ class BufferAssigner {
   // true. If hlos_to_allocate is not null it indicates which HLOs to include in
   // buffer assignment. If null, all instructions in the computation are
   // included.
-  tensorflow::Status AssignBuffersForComputation(
+  Status AssignBuffersForComputation(
       const HloComputation* computation, bool is_thread_local,
       const tensorflow::gtl::FlatSet<const HloInstruction*>* hlos_to_allocate,
       const tensorflow::gtl::FlatSet<const LogicalBuffer*>& colocated_buffers,
       const tensorflow::gtl::FlatSet<BufferAllocation::Index>&
           colocated_allocations,
       BufferAssignment* assignment);
+
+  // Assigns 'buffers_to_assign' assuming the HLO instructions will be executed
+  // in the given 'sequential_order'.
+  Status AssignBuffersWithSequentialOrdering(
+      const std::vector<const HloInstruction*>& sequential_order,
+      const tensorflow::gtl::FlatSet<const LogicalBuffer*>& buffers_to_assign,
+      const HloComputation& computation, BufferAssignment* assignment);
 
   // Tries to assign the given instruction to the given buffer. Returns if the
   // assignment was successful.
@@ -359,8 +475,11 @@ class BufferAssigner {
 
   const HloModule* module_;
 
-  // Function which returns the buffer size for a given shape.
+  // Function which returns the buffer size for a given logical buffer (shape).
   LogicalBuffer::SizeFunction buffer_size_;
+
+  // Minimum alignment of any buffer.
+  int64 alignment_;
 
   // Indicates whether related buffers should share the same buffer allocation.
   const bool colocate_related_buffers_;

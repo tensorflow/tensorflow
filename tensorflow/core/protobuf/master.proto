@@ -197,6 +197,11 @@ message ResetRequest {
   // If 'container' is empty, releases resources in the default
   // container in all devices.
   repeated string container = 1;
+
+  // When any filters are present, only devices that match the filters
+  // will be reset. Each filter can be partially specified,
+  // e.g. "/job:ps" "/job:worker/replica:3", etc.
+  repeated string device_filters = 2;
 }
 
 message ResetResponse {

@@ -106,7 +106,9 @@ bool ComputationBuilder::MakeWindow(
     tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
     tensorflow::gtl::ArraySlice<int64> lhs_dilation,
     tensorflow::gtl::ArraySlice<int64> rhs_dilation, Window* window) {
-  const auto verify_size = [&](const int64 x, const char* x_name) {
+  const auto verify_size = [&](
+      const tensorflow::gtl::ArraySlice<int64>::size_type x,
+      const char* x_name) {
     if (x == 0 || x == window_dimensions.size()) {
       return true;
     } else {
@@ -440,7 +442,8 @@ ComputationDataHandle ComputationBuilder::Collapse(
 
   // Don't support out-of-order collapse here.
   // Checks that the collapsed dimensions are in order and consecutive.
-  for (int i = 1; i < dims_to_collapse.size(); ++i) {
+  for (tensorflow::gtl::ArraySlice<int64>::size_type i = 1;
+       i < dims_to_collapse.size(); ++i) {
     if (dims_to_collapse[i] - 1 != dims_to_collapse[i - 1]) {
       NoteError(InvalidArgument(
           "Collapsed dimensions are not in order and consecutive."));
@@ -681,14 +684,15 @@ ComputationDataHandle ComputationBuilder::ConvWithGeneralDimensions(
 
   std::vector<int64> base_area_dimensions(
       dimension_numbers.spatial_dimensions_size());
-  for (int i = 0; i < base_area_dimensions.size(); ++i) {
+  for (std::vector<int64>::size_type i = 0; i < base_area_dimensions.size() ;
+       ++i) {
     base_area_dimensions[i] =
         lhs_shape->dimensions(dimension_numbers.spatial_dimensions(i));
   }
 
   std::vector<int64> window_dimensions(
       dimension_numbers.kernel_spatial_dimensions_size());
-  for (int i = 0; i < window_dimensions.size(); ++i) {
+  for (std::vector<int64>::size_type i = 0; i < window_dimensions.size(); ++i) {
     window_dimensions[i] =
         rhs_shape->dimensions(dimension_numbers.kernel_spatial_dimensions(i));
   }
@@ -740,7 +744,7 @@ ComputationDataHandle ComputationBuilder::ConvGeneralDilated(
 
   std::vector<int64> window_dimensions(
       dimension_numbers.kernel_spatial_dimensions_size());
-  for (int i = 0; i < window_dimensions.size(); ++i) {
+  for (std::vector<int64>::size_type i = 0; i < window_dimensions.size(); ++i) {
     window_dimensions[i] =
         rhs_shape->dimensions(dimension_numbers.kernel_spatial_dimensions(i));
   }
@@ -786,6 +790,7 @@ ComputationDataHandle ComputationBuilder::Infeed(const Shape& shape,
 }
 
 void ComputationBuilder::Outfeed(const ComputationDataHandle& operand,
+                                 const Shape& shape,
                                  const string& outfeed_config) {
   if (!first_error_.ok() || !PrepareComputation().ok()) {
     return;
@@ -794,6 +799,7 @@ void ComputationBuilder::Outfeed(const ComputationDataHandle& operand,
   OutfeedRequest request;
   request.set_outfeed_config(outfeed_config);
   *request.mutable_operand() = operand;
+  *request.mutable_shape() = shape;
   OpRequest op_request;
   *op_request.mutable_outfeed_request() = request;
   *op_request.mutable_computation() = computation_.handle();
@@ -950,6 +956,11 @@ ComputationDataHandle ComputationBuilder::Tanh(
   return UnaryOp(UNOP_TANH, operand);
 }
 
+ComputationDataHandle ComputationBuilder::IsFinite(
+    const ComputationDataHandle& operand) {
+  return UnaryOp(UNOP_IS_FINITE, operand);
+}
+
 ComputationDataHandle ComputationBuilder::Transpose(
     const ComputationDataHandle& operand,
     tensorflow::gtl::ArraySlice<int64> permutation) {
@@ -1003,8 +1014,9 @@ ComputationDataHandle ComputationBuilder::SqrtF32(
 }
 
 ComputationDataHandle ComputationBuilder::Pow(
-    const ComputationDataHandle& lhs, const ComputationDataHandle& rhs) {
-  return BinaryOp(BINOP_POW, lhs, rhs, /*broadcast_dimensions=*/{});
+    const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
+    tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return BinaryOp(BINOP_POW, lhs, rhs, broadcast_dimensions);
 }
 
 ComputationDataHandle ComputationBuilder::ConvertElementType(

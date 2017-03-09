@@ -139,19 +139,18 @@ class Beta(distribution.Distribution):
       concentration0: Positive floating-point `Tensor` indicating mean
         number of failures; aka "beta". Otherwise has same semantics as
         `concentration1`.
-      validate_args: Python `Boolean`, default `False`. When `True` distribution
+      validate_args: Python `bool`, default `False`. When `True` distribution
         parameters are checked for validity despite possibly degrading runtime
         performance. When `False` invalid inputs may silently render incorrect
         outputs.
-      allow_nan_stats: Python `Boolean`, default `True`. When `True`, statistics
+      allow_nan_stats: Python `bool`, default `True`. When `True`, statistics
         (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
-        result is undefined.  When `False`, an exception is raised if one or
+        result is undefined. When `False`, an exception is raised if one or
         more of the statistic's batch members are undefined.
-      name: `String` name prefixed to Ops created by this class.
+      name: Python `str` name prefixed to Ops created by this class.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[concentration1,
-                                      concentration0]) as ns:
+    with ops.name_scope(name, values=[concentration1, concentration0]):
       self._concentration1 = self._maybe_assert_valid_concentration(
           ops.convert_to_tensor(concentration1, name="concentration1"),
           validate_args)
@@ -165,13 +164,12 @@ class Beta(distribution.Distribution):
         dtype=self._total_concentration.dtype,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
-        is_continuous=True,
         reparameterization_type=distribution.NOT_REPARAMETERIZED,
         parameters=parameters,
         graph_parents=[self._concentration1,
                        self._concentration0,
                        self._total_concentration],
-        name=ns)
+        name=name)
 
   @staticmethod
   def _param_shapes(sample_shape):
@@ -267,7 +265,7 @@ class Beta(distribution.Distribution):
   @distribution_util.AppendDocstring(
       """Note: The mode is undefined when `concentration1 <= 1` or
       `concentration0 <= 1`. If `self.allow_nan_stats` is `True`, `NaN`
-      is used for undefined modes.  If `self.allow_nan_stats` is `False` an
+      is used for undefined modes. If `self.allow_nan_stats` is `False` an
       exception is raised when one or more modes are undefined.""")
   def _mode(self):
     mode = (self.concentration1 - 1.) / (self.total_concentration - 2.)

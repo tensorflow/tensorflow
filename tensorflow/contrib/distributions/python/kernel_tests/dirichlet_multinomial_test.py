@@ -222,9 +222,10 @@ class DirichletMultinomialTest(test.TestCase):
       dist = ds.DirichletMultinomial(n, alpha)
       x = dist.sample(int(250e3), seed=1)
       sample_mean = math_ops.reduce_mean(x, 0)
-      x_centered = x - sample_mean[None, ...]
+      x_centered = x - sample_mean[array_ops.newaxis, ...]
       sample_cov = math_ops.reduce_mean(math_ops.matmul(
-          x_centered[..., None], x_centered[..., None, :]), 0)
+          x_centered[..., array_ops.newaxis],
+          x_centered[..., array_ops.newaxis, :]), 0)
       sample_var = array_ops.matrix_diag_part(sample_cov)
       sample_stddev = math_ops.sqrt(sample_var)
       [
@@ -317,7 +318,7 @@ class DirichletMultinomialTest(test.TestCase):
       dist = ds.DirichletMultinomial(ns, alpha)
       covariance = dist.covariance()
       expected_covariance = shared_matrix * (
-          ns * (ns + alpha_0) / (1 + alpha_0))[..., None]
+          ns * (ns + alpha_0) / (1 + alpha_0))[..., array_ops.newaxis]
 
       self.assertEqual([4, 3, 3], covariance.get_shape())
       self.assertAllClose(expected_covariance, covariance.eval())

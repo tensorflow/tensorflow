@@ -66,13 +66,13 @@ class Mixture(distribution.Distribution):
       components: A list or tuple of `Distribution` instances.
         Each instance must have the same type, be defined on the same domain,
         and have matching `event_shape` and `batch_shape`.
-      validate_args: `Boolean`, default `False`.  If `True`, raise a runtime
+      validate_args: Python `bool`, default `False`. If `True`, raise a runtime
         error if batch or event ranks are inconsistent between cat and any of
-        the distributions.  This is only checked if the ranks cannot be
+        the distributions. This is only checked if the ranks cannot be
         determined statically at graph construction time.
-      allow_nan_stats: Boolean, default `True`.  If `False`, raise an
+      allow_nan_stats: Boolean, default `True`. If `False`, raise an
        exception if a statistic (e.g. mean/mode/etc...) is undefined for any
-        batch member.  If `True`, batch members with valid parameters leading to
+        batch member. If `True`, batch members with valid parameters leading to
         undefined statistics will return NaN for this statistic.
       name: A name for this distribution (optional).
 
@@ -106,11 +106,6 @@ class Mixture(distribution.Distribution):
     if not all(d.dtype == dtype for d in components):
       raise TypeError("All components must have the same dtype, but saw "
                       "dtypes: %s" % [(d.name, d.dtype) for d in components])
-    is_continuous = components[0].is_continuous
-    if not all(d.is_continuous == is_continuous for d in components):
-      raise TypeError(
-          "All components must either be continuous or not, but continuity "
-          "values are: %s" % [(d.name, d.is_continuous) for d in components])
     static_event_shape = components[0].event_shape
     static_batch_shape = cat.batch_shape
     for d in components:
@@ -122,7 +117,7 @@ class Mixture(distribution.Distribution):
           "none of the components provide a static number of ndims")
 
     # Ensure that all batch and event ndims are consistent.
-    with ops.name_scope(name, values=[cat.logits]) as ns:
+    with ops.name_scope(name, values=[cat.logits]):
       num_components = cat.event_size
       static_num_components = tensor_util.constant_value(num_components)
       if static_num_components is None:
@@ -170,12 +165,11 @@ class Mixture(distribution.Distribution):
     super(Mixture, self).__init__(
         dtype=dtype,
         reparameterization_type=distribution.NOT_REPARAMETERIZED,
-        is_continuous=is_continuous,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
         parameters=parameters,
         graph_parents=graph_parents,
-        name=ns)
+        name=name)
 
   @property
   def cat(self):
@@ -258,14 +252,14 @@ class Mixture(distribution.Distribution):
         batch_size = static_batch_shape.num_elements()
       else:
         batch_shape = self.batch_shape_tensor()
-        batch_size = array_ops.reduce_prod(batch_shape)
+        batch_size = math_ops.reduce_prod(batch_shape)
       static_event_shape = self.event_shape
       if static_event_shape.is_fully_defined():
         event_shape = np.array(static_event_shape.as_list(), dtype=np.int32)
       else:
         event_shape = self.event_shape_tensor()
 
-      # Get indices into the raw cat sampling tensor.  We will
+      # Get indices into the raw cat sampling tensor. We will
       # need these to stitch sample values back out after sampling
       # within the component partitions.
       samples_raw_indices = array_ops.reshape(
@@ -315,7 +309,7 @@ class Mixture(distribution.Distribution):
         # For sample s, batch element b of component c, we get the
         # partitioned batch indices from
         # partitioned_batch_indices[c]; and shift each element by
-        # the sample index.  The final lookup can be thought of as
+        # the sample index. The final lookup can be thought of as
         # a matrix gather along locations (s, b) in
         # samples_class_c where the n_class rows correspond to
         # samples within this component and the batch_size columns
@@ -329,7 +323,7 @@ class Mixture(distribution.Distribution):
             partitioned_batch_indices[c])
         samples_class_c = array_ops.reshape(
             samples_class_c,
-            array_ops.concat(([n_class * batch_size], event_shape), 0))
+            array_ops.concat([[n_class * batch_size], event_shape], 0))
         samples_class_c = array_ops.gather(
             samples_class_c, lookup_partitioned_batch_indices,
             name="samples_class_c_gather")
@@ -340,8 +334,8 @@ class Mixture(distribution.Distribution):
           indices=partitioned_samples_indices, data=samples_class)
       # Reshape back to proper sample, batch, and event shape.
       ret = array_ops.reshape(lhs_flat_ret,
-                              array_ops.concat((samples_shape,
-                                                self.event_shape_tensor()), 0))
+                              array_ops.concat([samples_shape,
+                                                self.event_shape_tensor()], 0))
       ret.set_shape(
           tensor_shape.TensorShape(static_samples_shape).concatenate(
               self.event_shape))
@@ -361,7 +355,7 @@ class Mixture(distribution.Distribution):
     \\)
 
     where \\( p \\) is the prior distribution, \\( q \\) is the variational,
-    and \\( H[q] \\) is the entropy of \\( q \\).  If there is a lower bound
+    and \\( H[q] \\) is the entropy of \\( q \\). If there is a lower bound
     \\( G[q] \\) such that \\( H[q] \geq G[q] \\) then it can be used in
     place of \\( H[q] \\).
 

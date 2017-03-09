@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/cc/ops/array_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 
 #include "tensorflow/cc/framework/grad_op_registry.h"
 #include "tensorflow/cc/framework/gradients.h"
@@ -47,7 +48,7 @@ Status PackGrad(const Scope& scope, const Operation& op,
   TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->def(), "axis", &axis));
 
   grad_outputs->reserve(N);
-  auto grad_op = Unpack(scope, grad_inputs[0], N, Unpack::Axis(axis));
+  auto grad_op = Unstack(scope, grad_inputs[0], N, Unstack::Axis(axis));
   for (const Output& o : grad_op.output) {
     grad_outputs->emplace_back(o);
   }
@@ -60,7 +61,7 @@ Status UnpackGrad(const Scope& scope, const Operation& op,
                   std::vector<Output>* grad_outputs) {
   int axis;
   TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->def(), "axis", &axis));
-  grad_outputs->push_back(Pack(scope, grad_inputs, Pack::Axis(axis)));
+  grad_outputs->push_back(Stack(scope, grad_inputs, Stack::Axis(axis)));
   return scope.status();
 }
 REGISTER_GRADIENT_OP("Unpack", UnpackGrad);
@@ -88,6 +89,16 @@ Status QuantizeAndDequantizeGrad(const Scope& scope, const Operation& op,
   return scope.status();
 }
 REGISTER_GRADIENT_OP("QuantizeAndDequantize", QuantizeAndDequantizeGrad);
+
+Status QuantizeAndDequantizeV2Grad(const Scope& scope, const Operation& op,
+                                   const std::vector<Output>& grad_inputs,
+                                   std::vector<Output>* grad_outputs) {
+  grad_outputs->push_back(Identity(scope, grad_inputs[0]));
+  grad_outputs->push_back(NoGradient());
+  grad_outputs->push_back(NoGradient());
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("QuantizeAndDequantizeV2", QuantizeAndDequantizeV2Grad);
 
 Status SplitGrad(const Scope& scope, const Operation& op,
                  const std::vector<Output>& grad_inputs,
@@ -150,9 +161,12 @@ REGISTER_GRADIENT_OP("GatherNd", GatherNdGrad);
 Status CheckNumericsGrad(const Scope& scope, const Operation& op,
                          const std::vector<Output>& grad_inputs,
                          std::vector<Output>* grad_outputs) {
-  grad_outputs->push_back(CheckNumerics(
-      scope, grad_inputs[0],
-      "Not a number (NaN) or infinity (Inf) values detected in gradient."));
+  string message;
+  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->def(), "message", &message));
+  string err_msg = strings::StrCat(
+      "Not a number (NaN) or infinity (Inf) values detected in gradient. ",
+      message);
+  grad_outputs->push_back(CheckNumerics(scope, grad_inputs[0], err_msg));
   return scope.status();
 }
 REGISTER_GRADIENT_OP("CheckNumerics", CheckNumericsGrad);
@@ -239,7 +253,7 @@ Status PadGrad(const Scope& scope, const Operation& op,
   auto x = op.input(0);
   auto a = op.input(1);  // [Rank(x), 2]
   // Takes a slice of a. The 1st column. [Rank(x), 1].
-  auto size = Pack(scope, {Rank(scope, x), 1});
+  auto size = Stack(scope, {Rank(scope, x), 1});
   auto pad_before = Slice(scope, a, {0, 0}, size);
   // Make it a 1-D tensor.
   auto begin = Reshape(scope, pad_before, {-1});

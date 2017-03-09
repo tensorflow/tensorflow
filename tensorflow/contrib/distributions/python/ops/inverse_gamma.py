@@ -111,22 +111,22 @@ class InverseGamma(distribution.Distribution):
         distribution(s). Must contain only positive values.
       rate: Floating point tensor, the inverse scale params of the
         distribution(s). Must contain only positive values.
-      validate_args: Python `Boolean`, default `False`. When `True` distribution
+      validate_args: Python `bool`, default `False`. When `True` distribution
         parameters are checked for validity despite possibly degrading runtime
         performance. When `False` invalid inputs may silently render incorrect
         outputs.
-      allow_nan_stats: Python `Boolean`, default `True`. When `True`, statistics
+      allow_nan_stats: Python `bool`, default `True`. When `True`, statistics
         (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
-        result is undefined.  When `False`, an exception is raised if one or
+        result is undefined. When `False`, an exception is raised if one or
         more of the statistic's batch members are undefined.
-      name: `String` name prefixed to Ops created by this class.
+      name: Python `str` name prefixed to Ops created by this class.
 
 
     Raises:
       TypeError: if `concentration` and `rate` are different dtypes.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[concentration, rate]) as ns:
+    with ops.name_scope(name, values=[concentration, rate]):
       with ops.control_dependencies([
           check_ops.assert_positive(concentration),
           check_ops.assert_positive(rate),
@@ -140,12 +140,11 @@ class InverseGamma(distribution.Distribution):
         dtype=self._concentration.dtype,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
-        is_continuous=True,
         reparameterization_type=distribution.NOT_REPARAMETERIZED,
         parameters=parameters,
         graph_parents=[self._concentration,
                        self._rate],
-        name=ns)
+        name=name)
 
   @staticmethod
   def _param_shapes(sample_shape):
@@ -223,7 +222,7 @@ class InverseGamma(distribution.Distribution):
   @distribution_util.AppendDocstring(
       """The mean of an inverse gamma distribution is
       `rate / (concentration - 1)`, when `concentration > 1`, and `NaN`
-      otherwise.  If `self.allow_nan_stats` is `False`, an exception will be
+      otherwise. If `self.allow_nan_stats` is `False`, an exception will be
       raised rather than returning `NaN`""")
   def _mean(self):
     mean = self.rate / (self.concentration - 1.)

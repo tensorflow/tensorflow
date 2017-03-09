@@ -144,7 +144,8 @@ class InferenceContext {
   // Values of <input_tensors_as_shapes> do not need to outlive the context.
   //
   // REQUIRES: <node_def> is not NULL, and must outlive the InferenceContext.
-  InferenceContext(const NodeDef* node_def, const OpDef& op_def,
+  InferenceContext(int graph_def_version, const NodeDef* node_def,
+                   const OpDef& op_def,
                    const std::vector<ShapeHandle>& input_shapes,
                    const std::vector<const Tensor*>& input_tensors,
                    const std::vector<ShapeHandle>& input_tensors_as_shapes,
@@ -161,7 +162,8 @@ class InferenceContext {
   // Values of <input_tensors_as_shapes> do not need to outlive the context.
   //
   // REQUIRES: <node_def> is not NULL, and must outlive the InferenceContext.
-  InferenceContext(const NodeDef* node_def, const OpDef& op_def,
+  InferenceContext(int graph_def_version, const NodeDef* node_def,
+                   const OpDef& op_def,
                    const std::vector<TensorShapeProto>& input_shapes,
                    const std::vector<const Tensor*>& input_tensors,
                    const std::vector<TensorShapeProto>& input_tensors_as_shapes,
@@ -353,6 +355,13 @@ class InferenceContext {
   Status MakeShapeFromShapeProto(const TensorShapeProto& proto,
                                  ShapeHandle* out);
 
+  // Returns in <out> a new shape corresponding to <partial_shape>.
+  Status MakeShapeFromPartialTensorShape(
+      const PartialTensorShape& partial_shape, ShapeHandle* out);
+
+  // Returns in <out> a new shape corresponding to <shape>.
+  Status MakeShapeFromTensorShape(const TensorShape& shape, ShapeHandle* out);
+
   // Returns a new dimension of the given size.  The returned value is owned by
   // this context.
   inline DimensionHandle MakeDim(DimensionOrConstant d) {
@@ -365,6 +374,11 @@ class InferenceContext {
   // The input tensor must be in host memory, since it is dereferenced to get
   // the value.
   Status MakeDimForScalarInput(int idx, DimensionHandle* out);
+
+  // Returns the NodeDef. The returned reference does not outlive the
+  // InferenceContext, and it should not be used after InferenceContext is
+  // destroyed.
+  const NodeDef& node_def() { return node_def_; }
 
   // Look up the attr for the NodeDef being evaluated with name attr_name and
   // set *value to its value.  If no attr with attr_name is found in def(), or
@@ -435,6 +449,8 @@ class InferenceContext {
   // then an unknown shape is returned.
   Status MakeShapeFromTensor(const Tensor* t, ShapeHandle tensor_shape,
                              ShapeHandle* out);
+
+  int graph_def_version() const { return graph_def_version_; }
 
  private:
   // Creates and stores shapes for use in InferenceContext.
@@ -508,6 +524,7 @@ class InferenceContext {
   std::vector<ShapeHandle> output_handle_shape_;
   std::vector<DataType> output_handle_dtype_;
 
+  const int graph_def_version_;
   const NodeDef& node_def_;
   NameRangeMap input_name_map_;
   NameRangeMap output_name_map_;

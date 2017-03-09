@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import json
+import os
 import re
 import threading
 
@@ -175,6 +176,9 @@ class BigQueryReaderOpsTest(test.TestCase):
     self.server.start()
     logging.info("server address is %s:%s", self.server.httpd.server_address[0],
                  self.server.httpd.server_address[1])
+    # An override to bypass the GCP auth token retrieval logic
+    # in google_auth_provider.cc.
+    os.environ["GOOGLE_AUTH_TOKEN_FOR_TESTING"] = "not-used"
 
   def tearDown(self):
     self.server.shutdown()

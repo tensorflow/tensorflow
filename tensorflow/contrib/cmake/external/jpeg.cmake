@@ -32,7 +32,7 @@ if (WIN32)
         PREFIX jpeg
         URL ${jpeg_URL}
         URL_HASH ${jpeg_HASH}
-        PATCH_COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/patches/jpeg/CMakeLists.txt ${jpeg_BUILD}
+        PATCH_COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/patches/jpeg/CMakeLists.txt ${jpeg_BUILD}
         INSTALL_DIR ${jpeg_INSTALL}
         DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
         CMAKE_CACHE_ARGS
@@ -42,7 +42,7 @@ if (WIN32)
     )
 
     ExternalProject_Add_Step(jpeg copy_jconfig
-        COMMAND ${CMAKE_COMMAND} -E copy
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
             ${jpeg_BUILD}/jconfig.vc ${jpeg_BUILD}/jconfig.h
         DEPENDEES patch
         DEPENDERS build
@@ -76,5 +76,5 @@ add_custom_target(jpeg_copy_headers_to_destination
 
 foreach(header_file ${jpeg_HEADERS})
     add_custom_command(TARGET jpeg_copy_headers_to_destination PRE_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy ${header_file} ${jpeg_INCLUDE_DIR})
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${header_file} ${jpeg_INCLUDE_DIR})
 endforeach()

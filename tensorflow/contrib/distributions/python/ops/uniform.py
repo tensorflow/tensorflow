@@ -35,7 +35,7 @@ from tensorflow.python.ops import random_ops
 class Uniform(distribution.Distribution):
   """Uniform distribution with `low` and `high` parameters.
 
-  ### Mathematical Details
+  #### Mathematical Details
 
   The probability density function (pdf) is,
 
@@ -54,7 +54,7 @@ class Uniform(distribution.Distribution):
   The parameters `low` and `high` must be shaped in a way that supports
   broadcasting (e.g., `high - low` is a valid operation).
 
-  ### Examples
+  #### Examples
 
   ```python
   # Without broadcasting:
@@ -87,21 +87,21 @@ class Uniform(distribution.Distribution):
         have `low < high`.
       high: Floating point tensor, upper boundary of the output interval. Must
         have `low < high`.
-      validate_args: Python `Boolean`, default `False`. When `True` distribution
+      validate_args: Python `bool`, default `False`. When `True` distribution
         parameters are checked for validity despite possibly degrading runtime
         performance. When `False` invalid inputs may silently render incorrect
         outputs.
-      allow_nan_stats: Python `Boolean`, default `True`. When `True`, statistics
+      allow_nan_stats: Python `bool`, default `True`. When `True`, statistics
         (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
-        result is undefined.  When `False`, an exception is raised if one or
+        result is undefined. When `False`, an exception is raised if one or
         more of the statistic's batch members are undefined.
-      name: `String` name prefixed to Ops created by this class.
+      name: Python `str` name prefixed to Ops created by this class.
 
     Raises:
       InvalidArgumentError: if `low >= high` and `validate_args=False`.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[low, high]) as ns:
+    with ops.name_scope(name, values=[low, high]):
       with ops.control_dependencies([
           check_ops.assert_less(
               low, high, message="uniform not defined when low >= high.")
@@ -112,13 +112,12 @@ class Uniform(distribution.Distribution):
     super(Uniform, self).__init__(
         dtype=self._low.dtype,
         reparameterization_type=distribution.FULLY_REPARAMETERIZED,
-        is_continuous=True,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
         parameters=parameters,
         graph_parents=[self._low,
                        self._high],
-        name=ns)
+        name=name)
 
   @staticmethod
   def _param_shapes(sample_shape):
@@ -158,7 +157,7 @@ class Uniform(distribution.Distribution):
     return tensor_shape.scalar()
 
   def _sample_n(self, n, seed=None):
-    shape = array_ops.concat(([n], self.batch_shape_tensor()), 0)
+    shape = array_ops.concat([[n], self.batch_shape_tensor()], 0)
     samples = random_ops.random_uniform(shape=shape,
                                         dtype=self.dtype,
                                         seed=seed)

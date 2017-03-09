@@ -439,7 +439,8 @@ void GraphMgr::BuildCostModel(Item* item, StepStatsCollector* collector,
 
     if (cost_graph != nullptr) {
       for (const auto& unit : item->units) {
-        cost_model_manager_.AddToCostGraphDef(unit.graph, cost_graph);
+        cost_model_manager_.AddToCostGraphDef(unit.graph, cost_graph)
+            .IgnoreError();
       }
     }
   }

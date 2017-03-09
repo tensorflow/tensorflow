@@ -1,0 +1,13 @@
+{
+   "run1":{
+      "images":[
+         "im1/image/0",
+         "im2/image/0"
+      ]
+   },
+   "run2":{
+      "images":[
+         "im1/image/0"
+      ]
+   }
+}

@@ -74,7 +74,7 @@ class StudentT(distribution.Distribution):
   ```
 
   Notice that `scale` has semantics more similar to standard deviation than
-  variance.  However it is not actually the std. deviation; the Student's
+  variance. However it is not actually the std. deviation; the Student's
   t-distribution std. dev. is `scale sqrt(df / (df - 2))` when `df > 2`.
 
   #### Examples
@@ -134,28 +134,28 @@ class StudentT(distribution.Distribution):
     supports broadcasting (e.g. `df + loc + scale` is a valid operation).
 
     Args:
-      df: Numeric `Tensor`. The degrees of freedom of the distribution(s).
-        `df` must contain only positive values.
-      loc: Numeric `Tensor`. The mean(s) of the distribution(s).
-      scale: Numeric `Tensor`. The scaling factor(s) for the distribution(s).
-        Note that `scale` is not technically the standard deviation of this
-        distribution but has semantics more similar to standard deviation than
-        variance.
-      validate_args: Python `Boolean`, default `False`. When `True` distribution
+      df: Floating-point `Tensor`. The degrees of freedom of the
+        distribution(s). `df` must contain only positive values.
+      loc: Floating-point `Tensor`. The mean(s) of the distribution(s).
+      scale: Floating-point `Tensor`. The scaling factor(s) for the
+        distribution(s). Note that `scale` is not technically the standard
+        deviation of this distribution but has semantics more similar to
+        standard deviation than variance.
+      validate_args: Python `bool`, default `False`. When `True` distribution
         parameters are checked for validity despite possibly degrading runtime
         performance. When `False` invalid inputs may silently render incorrect
         outputs.
-      allow_nan_stats: Python `Boolean`, default `True`. When `True`,
+      allow_nan_stats: Python `bool`, default `True`. When `True`,
         statistics (e.g., mean, mode, variance) use the value "`NaN`" to
-        indicate the result is undefined.  When `False`, an exception is raised
+        indicate the result is undefined. When `False`, an exception is raised
         if one or more of the statistic's batch members are undefined.
-      name: `String` name prefixed to Ops created by this class.
+      name: Python `str` name prefixed to Ops created by this class.
 
     Raises:
       TypeError: if loc and scale are different dtypes.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[df, loc, scale]) as ns:
+    with ops.name_scope(name, values=[df, loc, scale]):
       with ops.control_dependencies([check_ops.assert_positive(df)]
                                     if validate_args else []):
         self._df = array_ops.identity(df, name="df")
@@ -165,13 +165,12 @@ class StudentT(distribution.Distribution):
             (self._df, self._loc, self._scale))
     super(StudentT, self).__init__(
         dtype=self._scale.dtype,
-        is_continuous=True,
         reparameterization_type=distribution.NOT_REPARAMETERIZED,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
         parameters=parameters,
         graph_parents=[self._df, self._loc, self._scale],
-        name=ns)
+        name=name)
 
   @staticmethod
   def _param_shapes(sample_shape):
@@ -257,8 +256,9 @@ class StudentT(distribution.Distribution):
     return array_ops.where(math_ops.less(y, 0.), neg_cdf, 1. - neg_cdf)
 
   def _entropy(self):
-    v = array_ops.ones(self.batch_shape_tensor(), dtype=self.dtype)[..., None]
-    u = v * self.df[..., None]
+    v = array_ops.ones(self.batch_shape_tensor(),
+                       dtype=self.dtype)[..., array_ops.newaxis]
+    u = v * self.df[..., array_ops.newaxis]
     beta_arg = array_ops.concat([u, v], -1) / 2.
     return (math_ops.log(math_ops.abs(self.scale)) +
             0.5 * math_ops.log(self.df) +
@@ -269,7 +269,7 @@ class StudentT(distribution.Distribution):
 
   @distribution_util.AppendDocstring(
       """The mean of Student's T equals `loc` if `df > 1`, otherwise it is
-      `NaN`.  If `self.allow_nan_stats=True`, then an exception will be raised
+      `NaN`. If `self.allow_nan_stats=True`, then an exception will be raised
       rather than returning `NaN`.""")
   def _mean(self):
     mean = self.loc * array_ops.ones(self.batch_shape_tensor(),
@@ -286,7 +286,7 @@ class StudentT(distribution.Distribution):
       return control_flow_ops.with_dependencies(
           [
               check_ops.assert_less(
-                  array_ops.ones((), dtype=self.dtype),
+                  array_ops.ones([], dtype=self.dtype),
                   self.df,
                   message="mean not defined for components of df <= 1"),
           ],
@@ -329,7 +329,7 @@ class StudentT(distribution.Distribution):
       return control_flow_ops.with_dependencies(
           [
               check_ops.assert_less(
-                  array_ops.ones((), dtype=self.dtype),
+                  array_ops.ones([], dtype=self.dtype),
                   self.df,
                   message="variance not defined for components of df <= 1"),
           ],

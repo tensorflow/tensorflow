@@ -204,13 +204,13 @@ cc_library(
         "lib/wildcard.h",
         "lib/x509asn1.h",
     ] + select({
-        ":darwin": [
+        "@%ws%//tensorflow:darwin": [
             "lib/vtls/darwinssl.c",
         ],
-        ":ios": [
+        "@%ws%//tensorflow:ios": [
             "lib/vtls/darwinssl.c",
         ],
-        ":windows": [
+        "@%ws%//tensorflow:windows": [
             "lib/asyn-thread.c",
             "lib/inet_ntop.c",
             "lib/system_win32.c",
@@ -231,8 +231,8 @@ cc_library(
         "include/curl/typecheck-gcc.h",
     ],
     copts = select({
-        ":windows": [
-            "/Iexternal/curl/lib",
+        "@%ws%//tensorflow:windows": [
+            "/I%prefix%/curl/lib",
             "/DHAVE_CONFIG_H",
             "/DCURL_DISABLE_FTP",
             "/DCURL_DISABLE_NTLM",
@@ -245,7 +245,7 @@ cc_library(
             "/D_USING_V110_SDK71_",
         ],
         "//conditions:default": [
-            "-Iexternal/curl/lib",
+            "-I%prefix%/curl/lib",
             "-D_GNU_SOURCE",
             "-DHAVE_CONFIG_H",
             "-DCURL_DISABLE_FTP",
@@ -255,10 +255,10 @@ cc_library(
             "-Wno-string-plus-int",
         ],
     }) + select({
-        ":darwin": [
+        "@%ws%//tensorflow:darwin": [
             "-fno-constant-cfstrings",
         ],
-        ":windows": [
+        "@%ws%//tensorflow:windows": [
             # See curl.h for discussion of write size and Windows
             "/DCURL_MAX_WRITE_SIZE=16384",
         ],
@@ -268,17 +268,17 @@ cc_library(
     }),
     includes = ["include"],
     linkopts = select({
-        ":android": [
+        "@%ws%//tensorflow:android": [
             "-pie",
         ],
-        ":darwin": [
+        "@%ws%//tensorflow:darwin": [
             "-Wl,-framework",
             "-Wl,CoreFoundation",
             "-Wl,-framework",
             "-Wl,Security",
         ],
-        ":ios": [],
-        ":windows": [
+        "@%ws%//tensorflow:ios": [],
+        "@%ws%//tensorflow:windows": [
             "ws2_32.lib",
         ],
         "//conditions:default": [
@@ -289,8 +289,8 @@ cc_library(
     deps = [
         "@zlib_archive//:zlib",
     ] + select({
-        ":ios": [],
-        ":windows": [],
+        "@%ws%//tensorflow:ios": [],
+        "@%ws%//tensorflow:windows": [],
         "//conditions:default": [
             "@boringssl//:ssl",
         ],
@@ -386,13 +386,13 @@ cc_binary(
         "src/tool_xattr.h",
     ],
     copts = select({
-        ":windows": [
-            "/Iexternal/curl/lib",
+        "@%ws%//tensorflow:windows": [
+            "/I%prefix%/curl/lib",
             "/DHAVE_CONFIG_H",
             "/DCURL_DISABLE_LIBCURL_OPTION",
         ],
         "//conditions:default": [
-            "-Iexternal/curl/lib",
+            "-I%prefix%/curl/lib",
             "-D_GNU_SOURCE",
             "-DHAVE_CONFIG_H",
             "-DCURL_DISABLE_LIBCURL_OPTION",
@@ -656,24 +656,4 @@ genrule(
         "#endif  // EXTERNAL_CURL_INCLUDE_CURL_CONFIG_H_",
         "EOF",
     ]),
-)
-
-config_setting(
-    name = "ios",
-    values = {"crosstool_top": "//tools/osx/crosstool:crosstool"},
-)
-
-config_setting(
-    name = "darwin",
-    values = {"cpu": "darwin"},
-)
-
-config_setting(
-    name = "windows",
-    values = {"cpu": "x64_windows_msvc"},
-)
-
-config_setting(
-    name = "android",
-    values = {"crosstool_top": "//external:android/crosstool"},
 )

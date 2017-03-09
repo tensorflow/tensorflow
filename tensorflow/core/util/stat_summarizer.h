@@ -154,11 +154,6 @@ class StatSummarizer {
   // GraphDef is not needed by the StatSummarizer.
   explicit StatSummarizer(const tensorflow::GraphDef& tensorflow_graph);
 
-  // Deprecated: Use StatSummarizer(const StatSummarizerOptions&) instead.  The
-  // GraphDef is not needed by the StatSummarizer.
-  StatSummarizer(const tensorflow::GraphDef& tensorflow_graph,
-                 const StatSummarizerOptions& options);
-
   // Adds another run's StepStats output to the aggregate counts.
   void ProcessStepStats(const StepStats& step_stats);
 

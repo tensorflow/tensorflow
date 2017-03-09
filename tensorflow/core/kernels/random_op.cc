@@ -541,7 +541,7 @@ TF_CALL_int64(REGISTER_INT);
       PhiloxRandomOp<                                               \
           GPUDevice,                                                \
           random::TruncatedNormalDistribution<                      \
-              random::SingleSampleAdapter<random::PhiloxRandom>, TYPE> >)
+              random::SingleSampleAdapter<random::PhiloxRandom>, TYPE> >);
 
 #define REGISTER_INT(IntType)                                   \
   REGISTER_KERNEL_BUILDER(Name("RandomUniformInt")              \

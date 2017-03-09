@@ -526,6 +526,14 @@ void Tensor::UnsafeCopyFromInternal(const Tensor& other, DataType dtype,
   }
 }
 
+// Notice that buf_ either points to a regular TensorBuffer or a SubBuffer.
+// For the latter case, we have to make sure that the refcount is
+// one both for the SubBuffer _and_ the underlying TensorBuffer.
+bool Tensor::RefCountIsOne() const {
+  return buf_ != nullptr && buf_->RefCountIsOne() &&
+         buf_->root_buffer()->RefCountIsOne();
+}
+
 // The macro CASES() expands to a switch statement conditioned on
 // TYPE_ENUM. Each case expands the STMTS after a typedef for T.
 #define SINGLE_ARG(...) __VA_ARGS__

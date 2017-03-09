@@ -92,13 +92,14 @@ ncclDataType_t ToNcclType(DataType t) {
 struct NcclManager::Participant {
   Participant(const Tensor* in_t, Tensor* out_t, EventMgr* event_mgr,
               perftools::gputools::Stream* tensor_stream,
-              perftools::gputools::StreamExecutor* executor,
+              perftools::gputools::StreamExecutor* executor, int gpu_device_id,
               NcclManager::DoneCallback done_callback)
       : in_t(in_t),
         out_t(out_t),
         event_mgr(event_mgr),
         tensor_stream(tensor_stream),
         executor(executor),
+        gpu_device_id(gpu_device_id),
         done_callback(std::move(done_callback)) {
     DCHECK(executor != nullptr);
     DCHECK(event_mgr != nullptr);
@@ -120,7 +121,9 @@ struct NcclManager::Participant {
 
   // Matches the executor in CommunicatorMember::stream. Expected to be live for
   // process lifetime.
-  perftools::gputools::StreamExecutor* executor = nullptr;
+  perftools::gputools::StreamExecutor* const executor = nullptr;
+
+  const int gpu_device_id;
 
   NcclManager::DoneCallback done_callback;
 
@@ -222,6 +225,7 @@ NcclManager::Communicator* NcclManager::GetCommunicator(
   // Note that this is done under the lock; performance is not expected to
   // matter as this happens a very small number of times.
   std::vector<CommunicatorMember> members(num_devices);
+  std::vector<int> devices(num_devices);
   for (int i = 0; i < num_devices; ++i) {
     auto* executor = collective->participants[i]->executor;
 
@@ -249,30 +253,14 @@ NcclManager::Communicator* NcclManager::GetCommunicator(
     }
 
     members[i].nccl_stream = nccl_stream;
+    devices[i] = collective->participants[i]->gpu_device_id;
   }
 
-  // Call ncclCommInitRank for each member.
-  ncclUniqueId id;
-  CHECK_EQ(ncclSuccess, ncclGetUniqueId(&id));
-  std::unique_ptr<thread::ThreadPool> pool(
-      new thread::ThreadPool(env, "ncclCommInitRank", num_devices));
-  std::vector<ncclResult_t> results(num_devices);
+  std::vector<ncclComm_t> nccl_comms(num_devices);
+  auto result = ncclCommInitAll(nccl_comms.data(), num_devices, devices.data());
+  CHECK_EQ(result, ncclSuccess);
   for (int rank = 0; rank < num_devices; ++rank) {
-    CommunicatorMember* member = &members[rank];
-    ncclResult_t* result = &results[rank];
-    pool->Schedule([member, num_devices, result, rank, &id]() {
-      ScopedActivateExecutorContext scoped_context(
-          member->nccl_stream->executor);
-      LOG(INFO) << "Calling ncclCommInitRank for rank " << rank;
-      *result = ncclCommInitRank(&member->nccl_comm, num_devices, id, rank);
-      LOG(INFO) << "Done calling ncclCommInitRank for rank " << rank << " : "
-                << *result;
-    });
-  }
-
-  pool.reset();  // wait for completion.
-  for (int i = 0; i < num_devices; ++i) {
-    CHECK_EQ(results[i], ncclSuccess);
+    members[rank].nccl_comm = nccl_comms[rank];
   }
   communicators_.emplace_back(new Communicator(std::move(members)));
   return communicators_.back().get();
@@ -281,24 +269,25 @@ NcclManager::Communicator* NcclManager::GetCommunicator(
 void NcclManager::AddToAllReduce(int num_devices, const string& key,
                                  ncclRedOp_t reduction_op,
                                  perftools::gputools::StreamExecutor* executor,
-                                 EventMgr* event_mgr,
+                                 int gpu_device_id, EventMgr* event_mgr,
                                  perftools::gputools::Stream* tensor_stream,
                                  const Tensor* in_t, Tensor* out_t,
                                  const DoneCallback& done_callback) {
-  std::unique_ptr<Participant> participant(new Participant(
-      in_t, out_t, event_mgr, tensor_stream, executor, done_callback));
+  std::unique_ptr<Participant> participant(
+      new Participant(in_t, out_t, event_mgr, tensor_stream, executor,
+                      gpu_device_id, done_callback));
   AddParticipant(num_devices, key, std::move(participant), in_t->dtype(),
                  kAllReduce, reduction_op);
 }
 
 void NcclManager::AddBroadcastSend(
     int num_devices, const string& key,
-    perftools::gputools::StreamExecutor* executor, EventMgr* event_mgr,
-    perftools::gputools::Stream* tensor_stream, const Tensor* in_t,
-    DoneCallback done_callback) {
+    perftools::gputools::StreamExecutor* executor, int gpu_device_id,
+    EventMgr* event_mgr, perftools::gputools::Stream* tensor_stream,
+    const Tensor* in_t, DoneCallback done_callback) {
   std::unique_ptr<Participant> participant(
       new Participant(in_t, nullptr /* out_t */, event_mgr, tensor_stream,
-                      executor, done_callback));
+                      executor, gpu_device_id, done_callback));
   participant->root = true;
   AddParticipant(num_devices, key, std::move(participant), in_t->dtype(),
                  kBroadcast, ncclSum /* unused */);
@@ -306,12 +295,12 @@ void NcclManager::AddBroadcastSend(
 
 void NcclManager::AddBroadcastRecv(
     int num_devices, const string& key,
-    perftools::gputools::StreamExecutor* executor, EventMgr* event_mgr,
-    perftools::gputools::Stream* tensor_stream, Tensor* out_t,
-    DoneCallback done_callback) {
+    perftools::gputools::StreamExecutor* executor, int gpu_device_id,
+    EventMgr* event_mgr, perftools::gputools::Stream* tensor_stream,
+    Tensor* out_t, DoneCallback done_callback) {
   std::unique_ptr<Participant> participant(
       new Participant(nullptr /* in_t */, out_t, event_mgr, tensor_stream,
-                      executor, done_callback));
+                      executor, gpu_device_id, done_callback));
   AddParticipant(num_devices, key, std::move(participant), out_t->dtype(),
                  kBroadcast, ncclSum /* unused */);
 }
@@ -331,7 +320,7 @@ void NcclManager::AddParticipant(int num_devices, const string& key,
     }
     Collective* collective = collective_ptr.get();
     DCHECK_EQ(collective->type, collective_type);
-    DCHECK_EQ(collective->participants.size(), num_devices);
+    DCHECK_LT(collective->participants.size(), num_devices);
     collective->participants.emplace_back(std::move(participant));
     ++collective->available_participants;
 

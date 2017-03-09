@@ -30,8 +30,6 @@ limitations under the License.
 
 namespace xla {
 
-struct HashLogicalBuffer;
-
 // Class describing a contiguous sequence of elements (ie, C array) which form
 // the components of Shaped values in XLA. XLA arrays are trivially a
 // single LogicalBuffer. Tuple values are made up of more than one
@@ -90,8 +88,9 @@ class LogicalBuffer {
   // unique value.
   using Id = int64;
 
-  // Function which returns the size of a logical buffer in bytes.
+  // Functions which return the size and alignment of a logical buffer in bytes.
   using SizeFunction = std::function<int64(const LogicalBuffer&)>;
+  using AlignmentFunction = std::function<int64(const LogicalBuffer&)>;
 
   LogicalBuffer(HloInstruction* instruction, const ShapeIndex& index, Id id)
       : instruction_(instruction), index_(index), id_(id) {}
@@ -128,7 +127,6 @@ class LogicalBuffer {
   string ToString() const;
 
  private:
-  friend struct HashLogicalBuffer;
   HloInstruction* instruction_;
   ShapeIndex index_;
   Id id_;
@@ -136,17 +134,6 @@ class LogicalBuffer {
   // Similar to HLO constructs (HloInstruction, etc), pointers are used for
   // comparison to equality, so disable all copying.
   TF_DISALLOW_COPY_AND_ASSIGN(LogicalBuffer);
-};
-
-struct HashLogicalBuffer {
-  size_t operator()(const LogicalBuffer& b) const {
-    std::hash<const HloInstruction*> hasher;
-    size_t h = hasher(b.instruction_);
-    for (int i = 0; i < b.index_.size(); i++) {
-      h += static_cast<size_t>(b.index_[i] << i);
-    }
-    return h;
-  }
 };
 
 std::ostream& operator<<(std::ostream& out, const LogicalBuffer& buffer);

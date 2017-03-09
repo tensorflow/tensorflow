@@ -189,11 +189,15 @@ class TreePredictions : public OpKernel {
                    context->allocate_output(0, output_shape,
                                             &output_predictions));
 
-    auto decide = [&input_data, &sparse_input_values, &sparse_input_indices,
-                   &sparse_input_shape,
-                   this](int example, int32 feature, float threshold) {
-      return tensorforest::DecideNode(input_data, sparse_input_indices,
-                                      sparse_input_values, example, feature,
+    // Lambdas to capture the eigen-tensors so we don't the conversion overhead
+    // on each call to DecideNode.
+    const auto get_dense = tensorforest::GetDenseFunctor(input_data);
+    const auto get_sparse = tensorforest::GetSparseFunctor(sparse_input_indices,
+                                                           sparse_input_values);
+
+    auto decide = [&get_dense, &get_sparse, this](int example, int32 feature,
+                                                  float threshold) {
+      return tensorforest::DecideNode(get_dense, get_sparse, example, feature,
                                       threshold, input_spec_);
     };
 

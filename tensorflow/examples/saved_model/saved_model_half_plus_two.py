@@ -72,13 +72,11 @@ def _write_assets(assets_directory, assets_filename):
 
 def _build_regression_signature(input_tensor, output_tensor):
   """Helper function for building a regression SignatureDef."""
-  input_tensor_info = tf.TensorInfo()
-  input_tensor_info.name = input_tensor.name
+  input_tensor_info = tf.saved_model.utils.build_tensor_info(input_tensor)
   signature_inputs = {
       tf.saved_model.signature_constants.REGRESS_INPUTS: input_tensor_info
   }
-  output_tensor_info = tf.TensorInfo()
-  output_tensor_info.name = tf.identity(output_tensor).name
+  output_tensor_info = tf.saved_model.utils.build_tensor_info(output_tensor)
   signature_outputs = {
       tf.saved_model.signature_constants.REGRESS_OUTPUTS: output_tensor_info
   }
@@ -91,13 +89,11 @@ def _build_regression_signature(input_tensor, output_tensor):
 # sufficient for testing purposes.
 def _build_classification_signature(input_tensor, scores_tensor):
   """Helper function for building a classification SignatureDef."""
-  input_tensor_info = tf.TensorInfo()
-  input_tensor_info.name = input_tensor.name
+  input_tensor_info = tf.saved_model.utils.build_tensor_info(input_tensor)
   signature_inputs = {
       tf.saved_model.signature_constants.CLASSIFY_INPUTS: input_tensor_info
   }
-  output_tensor_info = tf.TensorInfo()
-  output_tensor_info.name = tf.identity(scores_tensor).name
+  output_tensor_info = tf.saved_model.utils.build_tensor_info(scores_tensor)
   signature_outputs = {
       tf.saved_model.signature_constants.CLASSIFY_OUTPUT_SCORES:
           output_tensor_info
@@ -162,12 +158,10 @@ def _generate_saved_model_for_half_plus_two(export_dir, as_text=False):
 
     # Set up the signature for Predict with input and output tensor
     # specification.
-    predict_input_tensor = tf.TensorInfo()
-    predict_input_tensor.name = x.name
+    predict_input_tensor = tf.saved_model.utils.build_tensor_info(x)
     predict_signature_inputs = {"x": predict_input_tensor}
 
-    predict_output_tensor = tf.TensorInfo()
-    predict_output_tensor.name = y.name
+    predict_output_tensor = tf.saved_model.utils.build_tensor_info(y)
     predict_signature_outputs = {"y": predict_output_tensor}
     predict_signature_def = (
         tf.saved_model.signature_def_utils.build_signature_def(

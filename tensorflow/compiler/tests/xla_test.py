@@ -19,7 +19,10 @@ from __future__ import division
 from __future__ import print_function
 
 import contextlib
+import random
 import re
+
+import numpy as np
 
 from tensorflow.contrib.compiler import jit
 from tensorflow.core.framework import types_pb2
@@ -27,6 +30,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import flags
@@ -80,6 +84,9 @@ class XLATestCase(test.TestCase):
       self.skipTest('{} is disabled by manifest.'.format(name))
       return
     logging.info('Start test case: %s', name)
+
+    random.seed(random_seed.DEFAULT_GRAPH_SEED)
+    np.random.seed(random_seed.DEFAULT_GRAPH_SEED)
 
   def tearDown(self):
     logging.info('End test case: %s', self._testMethodName)

@@ -111,9 +111,12 @@ StatusOr<se::DeviceMemoryBase> HloTestBase::Execute(
       backend_->eigen_intra_op_thread_pool_device());
 
   HloExecutionProfile hlo_execution_profile;
-  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase result,
-                      executable->ExecuteOnStream(&run_options, arguments,
-                                                  &hlo_execution_profile));
+  ServiceExecutableRunOptions service_run_options(run_options,
+                                                  backend_->StreamBorrower());
+  TF_ASSIGN_OR_RETURN(
+      se::DeviceMemoryBase result,
+      executable->ExecuteOnStream(&service_run_options, arguments,
+                                  &hlo_execution_profile));
   TF_RET_CHECK(stream.BlockHostUntilDone());
 
   allocations_.push_back(result);

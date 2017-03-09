@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/common_runtime/shape_refiner.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/types.h"
@@ -744,8 +745,8 @@ Status GraphConstructor::UpdateVersionDef() {
     return Status::OK();
   }
   VersionDef versions = g_->versions();
-  // This new graph is being "produced" by the binary invoking ImportGraphDef.
-  versions.set_producer(TF_GRAPH_DEF_VERSION);
+  versions.set_producer(
+      std::min(versions.producer(), gdef_->versions().producer()));
   versions.set_min_consumer(
       std::max(versions.min_consumer(), gdef_->versions().min_consumer()));
   if (gdef_->versions().bad_consumers_size() > 0) {
@@ -819,14 +820,14 @@ Status GraphConstructor::MakeEdge(Node* src, int output_index, Node* dst,
 
 Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
                               const GraphDef& gdef, Graph* g) {
-  ShapeRefiner refiner(g->op_registry());
+  ShapeRefiner refiner(gdef.versions().producer(), g->op_registry());
   return GraphConstructor::Construct(opts, &gdef, g, &refiner, nullptr);
 }
 
 Status ImportGraphDef(const ImportGraphDefOptions& opts, const GraphDef& gdef,
                       Graph* g, ShapeRefiner* refiner,
                       std::vector<std::pair<Node*, int>>* return_tensors) {
-  ShapeRefiner default_refiner(g->op_registry());
+  ShapeRefiner default_refiner(gdef.versions().producer(), g->op_registry());
   if (refiner == nullptr) {
     refiner = &default_refiner;
   }
@@ -842,6 +843,10 @@ Status ImportGraphDef(const ImportGraphDefOptions& opts, const GraphDef& gdef,
           "return_tensors argument to ImportNodeDef() should be empty (has "
           "size ", return_tensors->size(), ")");
     }
+  }
+  if (gdef.library().function_size() != 0) {
+    return errors::Unimplemented(
+        "Importing GraphDefs containing functions not yet implemented");
   }
   return GraphConstructor::Construct(opts, &gdef, g, refiner, return_tensors);
 }

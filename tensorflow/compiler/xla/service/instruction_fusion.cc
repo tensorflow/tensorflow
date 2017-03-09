@@ -50,7 +50,7 @@ bool IsExpensive(const HloInstruction& instruction) {
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kGt:
     case HloOpcode::kInfeed:
-    case HloOpcode::kOutfeed:
+    case HloOpcode::kIsFinite:
     case HloOpcode::kLe:
     case HloOpcode::kLogicalAnd:
     case HloOpcode::kLogicalNot:
@@ -61,6 +61,7 @@ bool IsExpensive(const HloInstruction& instruction) {
     case HloOpcode::kMultiply:
     case HloOpcode::kNe:
     case HloOpcode::kNegate:
+    case HloOpcode::kOutfeed:
     case HloOpcode::kPad:
     case HloOpcode::kReshape:
     case HloOpcode::kReverse:
@@ -100,6 +101,8 @@ bool IsExpensive(const HloInstruction& instruction) {
     case HloOpcode::kRecv:
       return true;
   }
+
+  return false;
 }
 
 bool FusionWouldDuplicate(HloInstruction* producer, HloInstruction* consumer) {
@@ -123,7 +126,8 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
     std::vector<HloInstruction*> post_order(post_order_list.begin(),
                                             post_order_list.end());
     tensorflow::gtl::FlatMap<HloInstruction*, int> post_order_index;
-    for (int i = 0; i < post_order.size(); ++i) {
+    for (std::vector<HloInstruction*>::size_type i = 0; i < post_order.size();
+         ++i) {
       InsertOrDie(&post_order_index, post_order[i], i);
     }
 

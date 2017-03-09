@@ -42,6 +42,7 @@ from tensorflow.contrib import linalg
 from tensorflow.contrib import linear_optimizer
 from tensorflow.contrib import lookup
 from tensorflow.contrib import losses
+from tensorflow.contrib import memory_stats
 from tensorflow.contrib import metrics
 from tensorflow.contrib import nn
 from tensorflow.contrib import opt
@@ -50,6 +51,7 @@ from tensorflow.contrib import rnn
 from tensorflow.contrib import seq2seq
 from tensorflow.contrib import slim
 from tensorflow.contrib import solvers
+from tensorflow.contrib import sparsemax
 from tensorflow.contrib import stat_summarizer
 from tensorflow.contrib import tensor_forest
 from tensorflow.contrib import tensorboard

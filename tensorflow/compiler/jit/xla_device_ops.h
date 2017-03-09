@@ -18,8 +18,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_XLA_DEVICE_OPS_H_
 #define TENSORFLOW_COMPILER_JIT_XLA_DEVICE_OPS_H_
 
-#include "tensorflow/compiler/jit/xla_device_launch_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/kernels/assign_op.h"
 #include "tensorflow/core/kernels/constant_op.h"
 #include "tensorflow/core/kernels/control_flow_ops.h"
@@ -49,8 +49,11 @@ class XlaDeviceDummyOp : public OpKernel {
 };
 
 #define REGISTER_XLA_LAUNCH_KERNEL(DEVICE, KERNEL, TYPES) \
-  REGISTER_KERNEL_BUILDER(                                \
-      Name("_XlaLaunch").Device(DEVICE).HostMemory("constants"), KERNEL);
+  REGISTER_KERNEL_BUILDER(Name("_XlaLaunch")              \
+                              .Device(DEVICE)             \
+                              .HostMemory("constants")    \
+                              .HostMemory("resources"),   \
+                          KERNEL);
 
 #define REGISTER_XLA_DEVICE_KERNELS(DEVICE, TYPES)                             \
   REGISTER_KERNEL_BUILDER(Name("_Send").Device(DEVICE), SendOp);               \
@@ -65,8 +68,9 @@ class XlaDeviceDummyOp : public OpKernel {
       ConstantOp);                                                             \
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("Identity").Device(DEVICE).TypeConstraint("T", TYPES), IdentityOp); \
-  REGISTER_KERNEL_BUILDER(Name("Placeholder").Device(DEVICE),                  \
-                          XlaDeviceDummyOp);                                   \
+  REGISTER_KERNEL_BUILDER(Name("Placeholder").Device(DEVICE), PlaceholderOp);  \
+  REGISTER_KERNEL_BUILDER(Name("PlaceholderV2").Device(DEVICE),                \
+                          PlaceholderOp);                                      \
                                                                                \
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("Variable").Device(DEVICE).TypeConstraint("dtype", TYPES),          \
@@ -104,10 +108,11 @@ class XlaDeviceDummyOp : public OpKernel {
                               .Device(DEVICE)                                  \
                               .HostMemory("input")                             \
                               .HostMemory("output"),                           \
-                          IdentityOp);
-
-// TODO(phawkins): do we really need Placeholder? Should it be a real
-// implementation of Placeholder?
+                          IdentityOp);                                         \
+                                                                               \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("VarHandleOp").Device(DEVICE).HostMemory("resource"),               \
+      ResourceHandleOp<Var>);
 
 // TODO(b/32507444): the registrations for the control flow operators are
 // temporary and exist primarily to work around a bug in the graph partitioning

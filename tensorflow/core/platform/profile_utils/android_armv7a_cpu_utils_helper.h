@@ -16,9 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_PLATFORM_PROFILEUTILS_ANDROID_ARMV7A_CPU_UTILS_HELPER_H__
 #define TENSORFLOW_PLATFORM_PROFILEUTILS_ANDROID_ARMV7A_CPU_UTILS_HELPER_H__
 
+#include <sys/types.h>
+
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/profile_utils/i_cpu_utils_helper.h"
 #include "tensorflow/core/platform/types.h"
+
+#if defined(__ANDROID__) && defined(__ARM_ARCH_7A__) && (__ANDROID_API__ >= 21)
 
 struct perf_event_attr;
 
@@ -55,5 +59,8 @@ class AndroidArmV7ACpuUtilsHelper : public ICpuUtilsHelper {
 
 }  // profile_utils
 }  // tensorflow
+
+// defined(__ANDROID__) && defined(__ARM_ARCH_7A__) && (__ANDROID_API__ >= 21)
+#endif
 
 #endif  // TENSORFLOW_PLATFORM_PROFILEUTILS_ANDROID_ARMV7A_CPU_UTILS_HELPER_H__

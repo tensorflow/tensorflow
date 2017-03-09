@@ -20,6 +20,7 @@
 #include "tensorflow/contrib/tensor_forest/kernels/data_spec.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -28,6 +29,10 @@
 
 namespace tensorflow {
 namespace tensorforest {
+
+// We hide Eigen's hideous types behind a function that returns the (i, j)-th
+// entry of a two dimensional tensor; this is that function's type.
+using GetFeatureFnType = std::function<float(int32, int32)>;
 
 // TODO(gilberth): Put these in protos so they can be shared by C++ and python.
 // Indexes in the tree representation's 2nd dimension for children and features.
@@ -138,26 +143,24 @@ void Initialize(Tensor counts, T val = 0) {
   std::fill(flat.data(), flat.data() + flat.size(), val);
 }
 
+// Returns a function that accesses the (i,j)-th element of the specified two
+// dimensional tensor.
+GetFeatureFnType GetDenseFunctor(const Tensor& dense);
+
+// Returns a function that looks for the j-th feature of the i-th example
+// in the sparse data, or the default value if not found.  See FindSparseValue.
+GetFeatureFnType GetSparseFunctor(const Tensor& sparse_indices,
+                                  const Tensor& sparse_values);
+
 // Returns true if the point falls to the right (i.e., the selected feature
 // of the input point is greater than the bias threshold), and false if it
 // falls to the left.
 // Even though our input data is forced into float Tensors, it could have
 // originally been something else (e.g. categorical string data) which
 // we treat differently.
-bool DecideNode(const Tensor& dense_features,
-                const Tensor& sparse_input_indices,
-                const Tensor& sparse_input_values, int32 i, int32 feature,
+bool DecideNode(const GetFeatureFnType& get_dense,
+                const GetFeatureFnType& get_sparse, int32 i, int32 feature,
                 float bias, const tensorforest::TensorForestDataSpec& spec);
-
-// Returns input_data(i, feature) > bias.
-template <typename T>
-bool DecideDenseNode(const T& input_data, int32 i, int32 feature, float bias,
-                     const tensorforest::TensorForestDataSpec& spec) {
-  CHECK_LT(i, input_data.dimensions()[0]);
-  CHECK_LT(feature, input_data.dimensions()[1]);
-  return Decide(input_data(i, feature), bias,
-                FindDenseFeatureSpec(feature, spec));
-}
 
 // If T is a sparse float matrix represented by sparse_input_indices and
 // sparse_input_values, FindSparseValue returns T(i,j), or 0.0 if (i,j)
@@ -199,23 +202,16 @@ float FindSparseValue(
 // categorical data, it is value != bias.
 bool Decide(float value, float bias, DataColumnTypes type = kDataFloat);
 
-// Returns t(i, feature) > bias, where t is the sparse tensor represented by
-// sparse_input_indices and sparse_input_values.
-template <typename T1, typename T2>
-bool DecideSparseNode(const T1& sparse_input_indices,
-                      const T2& sparse_input_values, int32 i, int32 feature,
-                      float bias,
-                      const tensorforest::TensorForestDataSpec& spec) {
-  const float val =
-      FindSparseValue(sparse_input_indices, sparse_input_values, i, feature);
-  return Decide(val, bias, FindSparseFeatureSpec(feature, spec));
-}
 
 // Returns true if all the splits are initialized. Since they get initialized
 // in order, we can simply infer this from the last split.
 // This should only be called for a single allocator's candidate features
 // (i.e. candidate_split_features.Slice(accumulator, accumulator + 1) ).
-bool IsAllInitialized(const Tensor& features);
+template <typename EigenType>
+bool IsAllInitialized(const EigenType& features, int32 accumulator,
+                      int32 num_splits) {
+  return features(accumulator, num_splits - 1) >= 0;
+}
 
 // Tensorforest currently only allows tensors up to 2^31 elements.  Return false
 // if any dimension is greater than that, true otherwise.

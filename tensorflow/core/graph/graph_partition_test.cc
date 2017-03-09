@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/control_flow_ops.h"
+#include "tensorflow/cc/ops/control_flow_ops_internal.h"
 #include "tensorflow/cc/ops/random_ops.h"
 #include "tensorflow/cc/ops/sendrecv_ops.h"
 #include "tensorflow/core/framework/op.h"
@@ -169,20 +170,20 @@ class GraphPartitionTest : public ::testing::Test {
             "/job:a/replica:0/task:0/cpu:1")) {}
 
   const GraphDef& ToGraphDef() {
-    in_.ToGraphDef(&in_graph_def_);
+    TF_EXPECT_OK(in_.ToGraphDef(&in_graph_def_));
     return in_graph_def_;
   }
 
   void ExpectMatchA() {
     GraphDef graph_def;
-    scope_a_.ToGraphDef(&graph_def);
+    TF_EXPECT_OK(scope_a_.ToGraphDef(&graph_def));
     string a = "/job:a/replica:0/task:0/cpu:0";
     TF_EXPECT_GRAPH_EQ(graph_def, partitions_[a]);
   }
 
   void ExpectMatchB() {
     GraphDef graph_def;
-    scope_b_.ToGraphDef(&graph_def);
+    TF_EXPECT_OK(scope_b_.ToGraphDef(&graph_def));
     string b = "/job:a/replica:0/task:0/cpu:1";
     TF_EXPECT_GRAPH_EQ(graph_def, partitions_[b]);
   }
@@ -337,8 +338,10 @@ TEST_F(GraphPartitionTest, CrossDevice_DataControl) {
 TEST_F(GraphPartitionTest, CrossDeviceLoop) {
   using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
   auto a1 = BoolInput(in_.WithOpName("A1"));
-  auto a2 = Enter(in_.WithOpName("A2"), a1, "foo");
-  auto a3 = Merge(in_.WithOpName("A3"), {a2, Input("A5", 0, DT_BOOL)}).output;
+  auto a2 = ::tensorflow::ops::internal::Enter(in_.WithOpName("A2"), a1, "foo");
+  auto a3 = ::tensorflow::ops::Merge(in_.WithOpName("A3"),
+                                     {a2, Input("A5", 0, DT_BOOL)})
+                .output;
   LoopCond(in_.WithOpName("A4"), a3);
   auto b1 = Identity(in_.WithOpName("B1"), a3);
   NextIteration(in_.WithOpName("A5"), b1);
@@ -349,8 +352,10 @@ TEST_F(GraphPartitionTest, CrossDeviceLoop) {
 TEST_F(GraphPartitionTest, CrossDeviceLoop1) {
   using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
   auto a1 = BoolInput(in_.WithOpName("A1"));
-  auto a2 = Enter(in_.WithOpName("B2"), a1, "foo");
-  auto a3 = Merge(in_.WithOpName("A3"), {a2, Input("B5", 0, DT_BOOL)}).output;
+  auto a2 = ::tensorflow::ops::internal::Enter(in_.WithOpName("B2"), a1, "foo");
+  auto a3 = ::tensorflow::ops::Merge(in_.WithOpName("A3"),
+                                     {a2, Input("B5", 0, DT_BOOL)})
+                .output;
   LoopCond(in_.WithOpName("A4"), a3);
   auto b1 = Identity(in_.WithOpName("B1"), a3);
   NextIteration(in_.WithOpName("B5"), b1);

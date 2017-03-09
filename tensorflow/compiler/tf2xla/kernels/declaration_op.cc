@@ -14,10 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 
 namespace tensorflow {
@@ -81,7 +81,6 @@ class ArgOp : public XlaOpKernel {
   explicit ArgOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("index", &index_));
-    OP_REQUIRES_OK(ctx, DataTypeToPrimitiveType(dtype_, &type_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -101,22 +100,24 @@ class ArgOp : public XlaOpKernel {
     }
 
     XlaContext& tc = XlaContext::Get(ctx);
-
-    OP_REQUIRES(ctx, 0 <= index_ && index_ < tc.args().size(),
-                errors::InvalidArgument("Invalid argument index ", index_));
-    const XlaCompiler::Argument& arg = tc.args()[index_];
-
-    if (arg.parameter < 0) {
-      ctx->SetConstantOutput(0, arg.constant_value);
+    const XlaContext::Argument& arg = tc.args()[index_];
+    if (arg.is_variable) {
+      // We use the argument position of the variable input as a unique ID.
+      // TODO(phawkins): this code assumes that variables do not alias.
+      // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
+      tc.CreateVariable(index_, arg.name, arg.value.type, arg.value.handle)
+          .IgnoreError();
+      ctx->SetVariableOutput(0, index_);
+    } else if (arg.value.is_constant) {
+      ctx->SetConstantOutput(0, arg.value.constant_value);
     } else {
-      ctx->SetOutput(0, tc.parameter(arg.parameter));
+      ctx->SetOutput(0, arg.value.handle);
     }
   }
 
  private:
   int index_;
   DataType dtype_;
-  xla::PrimitiveType type_;  // Corresponding XLA type.
 
   TF_DISALLOW_COPY_AND_ASSIGN(ArgOp);
 };

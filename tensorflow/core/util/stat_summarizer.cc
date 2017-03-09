@@ -34,10 +34,6 @@ StatSummarizer::StatSummarizer(const StatSummarizerOptions& options)
 StatSummarizer::StatSummarizer(const tensorflow::GraphDef& tensorflow_graph)
     : StatSummarizer(StatSummarizerOptions()) {}
 
-StatSummarizer::StatSummarizer(const tensorflow::GraphDef& tensorflow_graph,
-                               const StatSummarizerOptions& options)
-    : StatSummarizer(StatSummarizerOptions()) {}
-
 void StatSummarizer::Validate(const Detail* detail,
                               const NodeExecStats& ns) const {
   if (detail->outputs.size() != ns.output_size()) {

@@ -28,16 +28,16 @@ They support regression and classification problems.
     * `LinearRegressor`: Uses linear model.
     * `DNNRegressor`: Uses DNN.
     * `DNNLinearCombinedRegressor`: Uses Wide & Deep.
-    * `TensorForestEstimator`: Uses RandomForest. Use `.predict()` for
-       regression problems.
+    * `TensorForestEstimator`: Uses RandomForest.
+      See tf.contrib.tensor_forest.client.random_forest.TensorForestEstimator.
     * `Estimator`: Use when you need a custom model.
 
 * For **Classification** problems use one of the following:
     * `LinearClassifier`: Multiclass classifier using Linear model.
     * `DNNClassifier`: Multiclass classifier using DNN.
     * `DNNLinearCombinedClassifier`: Multiclass classifier using Wide & Deep.
-    * `TensorForestEstimator`: Uses RandomForest. Use `.predict_proba()` when
-      using for binary classification problems.
+    * `TensorForestEstimator`: Uses RandomForest.
+      See tf.contrib.tensor_forest.client.random_forest.TensorForestEstimator.
     * `SVM`: Binary classifier using linear SVMs.
     * `LogisticRegressor`: Use when you need custom model for binary
        classification.
@@ -206,30 +206,17 @@ estimator = SVM(
     l2_regularization=10.0)
 ```
 
-#### TensorForestEstimator
+#### DynamicRnnEstimator
 
-Supports regression and binary classification.
+An `Estimator` that uses a recurrent neural network with dynamic unrolling.
 
 ```python
-params = tf.contrib.tensor_forest.python.tensor_forest.ForestHParams(
-    num_classes=2, num_features=40, num_trees=10, max_nodes=1000)
+problem_type = ProblemType.CLASSIFICATION  # or REGRESSION
+prediction_type = PredictionType.SINGLE_VALUE  # or MULTIPLE_VALUE
 
-# Estimator using the default graph builder.
-estimator = TensorForestEstimator(params, model_dir=model_dir)
-
-# Or estimator using TrainingLossForest as the graph builder.
-estimator = TensorForestEstimator(
-    params, graph_builder_class=tensor_forest.TrainingLossForest,
-    model_dir=model_dir)
-
-# Input builders
-def input_fn_train: # returns x, y
-  ...
-def input_fn_eval: # returns x, y
-  ...
-estimator.fit(input_fn=input_fn_train)
-estimator.evaluate(input_fn=input_fn_eval)
-estimator.predict(x=x)
+estimator = DynamicRnnEstimator(problem_type,
+                                prediction_type,
+                                my_feature_columns)
 ```
 
 ### Use the estimator
@@ -311,6 +298,7 @@ from tensorflow.contrib.learn.python.learn.estimators.dnn import DNNClassifier
 from tensorflow.contrib.learn.python.learn.estimators.dnn import DNNRegressor
 from tensorflow.contrib.learn.python.learn.estimators.dnn_linear_combined import DNNLinearCombinedClassifier
 from tensorflow.contrib.learn.python.learn.estimators.dnn_linear_combined import DNNLinearCombinedRegressor
+from tensorflow.contrib.learn.python.learn.estimators.dynamic_rnn_estimator import DynamicRnnEstimator
 from tensorflow.contrib.learn.python.learn.estimators.estimator import BaseEstimator
 from tensorflow.contrib.learn.python.learn.estimators.estimator import Estimator
 from tensorflow.contrib.learn.python.learn.estimators.estimator import infer_real_valued_columns_from_input

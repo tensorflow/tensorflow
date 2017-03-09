@@ -275,8 +275,10 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
       If time_major == True, this must be a tensor of shape:
         `[max_time, batch_size, input_size]`.
       [batch_size, input_size].
-    sequence_length: An int32/int64 vector, size `[batch_size]`,
-      containing the actual lengths for each of the sequences.
+    sequence_length: (optional) An int32/int64 vector, size `[batch_size]`,
+      containing the actual lengths for each of the sequences in the batch.
+      If not provided, all batch entries are assumed to be full sequences; and
+      time reversal is applied from time `0` to `max_time` for each sequence.
     initial_state_fw: (optional) An initial state for the forward RNN.
       This must be a tensor of appropriate type and shape
       `[batch_size, cell_fw.state_size]`.
@@ -357,9 +359,17 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
       time_dim = 0
       batch_dim = 1
 
+    def _reverse(input_, seq_lengths, seq_dim, batch_dim):
+      if seq_lengths is not None:
+        return array_ops.reverse_sequence(
+            input=input_, seq_lengths=seq_lengths,
+            seq_dim=seq_dim, batch_dim=batch_dim)
+      else:
+        return array_ops.reverse(input_, axis=[seq_dim])
+
     with vs.variable_scope("bw") as bw_scope:
-      inputs_reverse = array_ops.reverse_sequence(
-          input=inputs, seq_lengths=sequence_length,
+      inputs_reverse = _reverse(
+          inputs, seq_lengths=sequence_length,
           seq_dim=time_dim, batch_dim=batch_dim)
       tmp, output_state_bw = dynamic_rnn(
           cell=cell_bw, inputs=inputs_reverse, sequence_length=sequence_length,
@@ -367,8 +377,8 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
           parallel_iterations=parallel_iterations, swap_memory=swap_memory,
           time_major=time_major, scope=bw_scope)
 
-  output_bw = array_ops.reverse_sequence(
-      input=tmp, seq_lengths=sequence_length,
+  output_bw = _reverse(
+      tmp, seq_lengths=sequence_length,
       seq_dim=time_dim, batch_dim=batch_dim)
 
   outputs = (output_fw, output_bw)
@@ -515,7 +525,7 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
       state = initial_state
     else:
       if not dtype:
-        raise ValueError("If no initial_state is provided, dtype must be.")
+        raise ValueError("If there is no initial_state, you must give a dtype.")
       state = cell.zero_state(batch_size, dtype)
 
     def _assert_has_shape(x, shape):

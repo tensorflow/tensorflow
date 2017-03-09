@@ -174,6 +174,30 @@ class AdagradOptimizerTest(test.TestCase):
           self.assertAllClose(aggregated_update_var.eval(),
                               repeated_index_update_var.eval())
 
+  def testSparseRepeatedIndicesResourceVariable(self):
+    for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
+      with self.test_session():
+        var_repeated = resource_variable_ops.ResourceVariable(
+            [1.0, 2.0], dtype=dtype)
+        loss_repeated = math_ops.reduce_sum(
+            embedding_ops.embedding_lookup(var_repeated, [0, 0]))
+        var_aggregated = resource_variable_ops.ResourceVariable(
+            [1.0, 2.0], dtype=dtype)
+        loss_aggregated = 2 * math_ops.reduce_sum(
+            embedding_ops.embedding_lookup(var_aggregated, [0]))
+        update_op_repeated = adagrad.AdagradOptimizer(
+            2.0).minimize(loss_repeated)
+        update_op_aggregated = adagrad.AdagradOptimizer(
+            2.0).minimize(loss_aggregated)
+        variables.global_variables_initializer().run()
+        self.assertAllCloseAccordingToType(
+            var_repeated.eval(), var_aggregated.eval())
+        for _ in range(3):
+          update_op_repeated.run()
+          update_op_aggregated.run()
+          self.assertAllCloseAccordingToType(
+              var_repeated.eval(), var_aggregated.eval())
+
   def testSparseStability(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.test_session():

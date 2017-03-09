@@ -64,6 +64,12 @@ class TransferManager {
       perftools::gputools::StreamExecutor* executor,
       const Literal& literal) = 0;
 
+  // Transfers the given literal from the Outfeed interface of the device,
+  // using the given executor.
+  virtual Status TransferLiteralFromOutfeed(
+      perftools::gputools::StreamExecutor* executor, const Shape& literal_shape,
+      Literal* literal) = 0;
+
   // Resets the devices associated with this transfer manager.
   virtual Status ResetDevices(
       tensorflow::gtl::ArraySlice<perftools::gputools::StreamExecutor*>

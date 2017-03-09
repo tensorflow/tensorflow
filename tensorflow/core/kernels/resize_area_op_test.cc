@@ -162,7 +162,7 @@ class ResizeAreaOpTest : public OpsTestBase {
       for (int in_h : {1, 3, 5, 8, 100, 233}) {
         for (int target_height : {1, 2, 3, 50, 113}) {
           for (int target_width : {target_height, target_height / 2 + 1}) {
-            RunRandomTest(in_w, in_h, target_height, target_width, channels);
+            RunRandomTest(in_h, in_w, target_height, target_width, channels);
           }
         }
       }

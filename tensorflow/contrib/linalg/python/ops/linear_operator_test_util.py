@@ -134,12 +134,22 @@ class LinearOperatorDerivedClassTest(test.TestCase):
     # To skip "test_foo", add "foo" to this list.
     return []
 
-  def _maybe_skip(self, test_name):
+  def _skip_if_tests_to_skip_contains(self, test_name):
+    """If self._tests_to_skip contains test_name, raise SkipTest exception.
+
+    See tests below for usage.
+
+    Args:
+      test_name:  String name corresponding to a test.
+
+    Raises:
+      SkipTest Exception, if test_name is in self._tests_to_skip.
+    """
     if test_name in self._tests_to_skip:
       self.skipTest("%s skipped because it was added to self._tests_to_skip.")
 
   def test_to_dense(self):
-    self._maybe_skip("to_dense")
+    self._skip_if_tests_to_skip_contains("to_dense")
     for use_placeholder in False, True:
       for shape in self._shapes_to_test:
         for dtype in self._dtypes_to_test:
@@ -154,7 +164,7 @@ class LinearOperatorDerivedClassTest(test.TestCase):
             self.assertAC(op_dense_v, mat_v)
 
   def test_det(self):
-    self._maybe_skip("det")
+    self._skip_if_tests_to_skip_contains("det")
     for use_placeholder in False, True:
       for shape in self._shapes_to_test:
         for dtype in self._dtypes_to_test:
@@ -175,7 +185,7 @@ class LinearOperatorDerivedClassTest(test.TestCase):
             self.assertAC(op_det_v, mat_det_v)
 
   def test_log_abs_det(self):
-    self._maybe_skip("log_abs_det")
+    self._skip_if_tests_to_skip_contains("log_abs_det")
     for use_placeholder in False, True:
       for shape in self._shapes_to_test:
         for dtype in self._dtypes_to_test:
@@ -198,7 +208,7 @@ class LinearOperatorDerivedClassTest(test.TestCase):
             self.assertAC(op_log_abs_det_v, mat_log_abs_det_v)
 
   def test_apply(self):
-    self._maybe_skip("apply")
+    self._skip_if_tests_to_skip_contains("apply")
     for use_placeholder in False, True:
       for shape in self._shapes_to_test:
         for dtype in self._dtypes_to_test:
@@ -217,7 +227,7 @@ class LinearOperatorDerivedClassTest(test.TestCase):
               self.assertAC(op_apply_v, mat_apply_v)
 
   def test_solve(self):
-    self._maybe_skip("solve")
+    self._skip_if_tests_to_skip_contains("solve")
     for use_placeholder in False, True:
       for shape in self._shapes_to_test:
         for dtype in self._dtypes_to_test:
@@ -236,7 +246,7 @@ class LinearOperatorDerivedClassTest(test.TestCase):
               self.assertAC(op_solve_v, mat_solve_v)
 
   def test_add_to_tensor(self):
-    self._maybe_skip("add_to_tensor")
+    self._skip_if_tests_to_skip_contains("add_to_tensor")
     for use_placeholder in False, True:
       for shape in self._shapes_to_test:
         for dtype in self._dtypes_to_test:
@@ -253,6 +263,27 @@ class LinearOperatorDerivedClassTest(test.TestCase):
                                              feed_dict=feed_dict)
 
             self.assertAC(op_plus_2mat_v, 3 * mat_v)
+
+  def test_diag_part(self):
+    self._skip_if_tests_to_skip_contains("diag_part")
+    for use_placeholder in False, True:
+      for shape in self._shapes_to_test:
+        for dtype in self._dtypes_to_test:
+          with self.test_session(graph=ops.Graph()) as sess:
+            sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
+            operator, mat, feed_dict = self._operator_and_mat_and_feed_dict(
+                shape, dtype, use_placeholder=use_placeholder)
+            op_diag_part = operator.diag_part()
+            mat_diag_part = array_ops.matrix_diag_part(mat)
+
+            if not use_placeholder:
+              self.assertAllEqual(
+                  mat_diag_part.get_shape(), op_diag_part.get_shape())
+
+            op_diag_part_, mat_diag_part_ = sess.run(
+                [op_diag_part, mat_diag_part], feed_dict=feed_dict)
+
+            self.assertAC(op_diag_part_, mat_diag_part_)
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -305,7 +336,7 @@ class NonSquareLinearOperatorDerivedClassTest(LinearOperatorDerivedClassTest):
 
   Square shapes are never tested by this class, so if you want to test your
   operator with a square shape, create two test classes, the other subclassing
-  SquareLinearOperatorMatrixTest.
+  SquareLinearOperatorFullMatrixTest.
 
   Sub-classes must still define all abstractmethods from
   LinearOperatorDerivedClassTest that are not defined here.

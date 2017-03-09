@@ -179,6 +179,26 @@ class _Layer(object):
     """
     raise NotImplementedError
 
+  def _compute_output_shape(self, input_shape):
+    """Computes the output shape of the layer given the input shape.
+
+    Assumes that the layer will be built to match that input shape.
+
+    Args:
+      input_shape: A (possibly nested tuple of) `TensorShape`.  It need not
+        be fully defined (e.g. the batch size may be unknown).
+
+    Returns:
+      A (possibly nested tuple of) `TensorShape`.
+
+    Raises:
+      TypeError: if `input_shape` is not a (possibly nested tuple of)
+        `TensorShape`.
+      ValueError: if `input_shape` is incomplete or is incompatible with the
+        the layer.
+    """
+    raise NotImplementedError
+
   def _add_variable(self, name, shape, dtype=None,
                     initializer=None, regularizer=None, trainable=True,
                     variable_getter=vs.get_variable):
@@ -246,12 +266,9 @@ class _Layer(object):
       Output tensor(s).
     """
     # Define a custom getter to override tf.get_variable when creating layer
-    # variables. We respect current custom getter, if one is set.
-    current_custom_getter = vs.get_variable_scope().custom_getter
+    # variables. The current custom getter is nested by the variable scope.
     def variable_getter(getter, name, shape, dtype=None, initializer=None,
                         regularizer=None, trainable=True, **kwargs):
-      if current_custom_getter is not None:
-        getter = functools.partial(current_custom_getter, getter)
       return self._add_variable(
           name, shape, initializer=initializer, regularizer=regularizer,
           dtype=dtype, trainable=trainable,

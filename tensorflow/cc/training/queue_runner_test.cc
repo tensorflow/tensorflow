@@ -293,7 +293,7 @@ TEST(QueueRunnerTest, StartTimeout) {
   // This will timeout since queue0 is not fed and queue1 is fetching data from
   // queue0.
   EXPECT_EQ(qr->Start(session.get(), 1).code(), Code::DEADLINE_EXCEEDED);
-  session->Close();
+  TF_EXPECT_OK(session->Close());
 }
 
 TEST(QueueRunnerTest, TestCoordinatorStop) {
@@ -317,8 +317,8 @@ TEST(QueueRunnerTest, TestCoordinatorStop) {
   TF_EXPECT_OK(QueueRunner::New(queue_runner1, &coord, &qr1));
   TF_CHECK_OK(qr1->Start(session.get()));
 
-  coord.RegisterRunner(std::move(qr0));
-  coord.RegisterRunner(std::move(qr1));
+  TF_EXPECT_OK(coord.RegisterRunner(std::move(qr0)));
+  TF_EXPECT_OK(coord.RegisterRunner(std::move(qr1)));
 
   std::vector<Tensor> dq;
   TF_EXPECT_OK(session->Run({}, {kDequeueOp1}, {}, &dq));
@@ -340,8 +340,32 @@ TEST(QueueRunnerTest, CallbackCalledOnError) {
   bool error_caught = false;
   qr->AddErrorCallback([&error_caught](const Status&) { error_caught = true; });
   TF_EXPECT_OK(qr->Start(session.get()));
-  qr->Join();
+  EXPECT_FALSE(qr->Join().ok());
   EXPECT_TRUE(error_caught);
+}
+
+TEST(QueueRunnerTest, RunMetaDataTest) {
+  SessionOptions sess_options;
+  sess_options.config.mutable_graph_options()->set_build_cost_model(1);
+  std::unique_ptr<Session> session(NewSession(sess_options));
+
+  GraphDef graph_def = BuildSimpleGraph();
+  TF_CHECK_OK(session->Create(graph_def));
+  TF_CHECK_OK(session->Run({}, {}, {kAssignOpName}, nullptr));
+
+  RunOptions run_options;
+  run_options.set_trace_level(RunOptions::HARDWARE_TRACE);
+  RunMetadata run_metadata;
+  mutex mu;
+
+  QueueRunnerDef queue_runner_def = BuildQueueRunnerDef(
+      kQueueName, {kCountUpToOpName}, kSquareOpName, "", {});
+  std::unique_ptr<QueueRunner> qr;
+  TF_EXPECT_OK(QueueRunner::New(queue_runner_def, &qr));
+  TF_CHECK_OK(qr->Start(session.get(), &run_metadata, &mu, &run_options));
+  TF_EXPECT_OK(qr->Join());
+
+  EXPECT_TRUE(run_metadata.has_cost_graph());
 }
 
 }  // namespace

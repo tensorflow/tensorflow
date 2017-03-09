@@ -98,7 +98,7 @@ TODO(xpan): Provide graph.pbtxt, model.ckpt, tfprof_log and run_meta download.
 
 ```shell
 # Build the tool.
-bazel build -c opt tensorflow/tools/tfprof/...
+bazel build --config opt tensorflow/tools/tfprof/...
 
 # Help information, including detail 'option' instructions.
 bazel-bin/tensorflow/tools/tfprof/tfprof help

@@ -32,7 +32,7 @@ normalized from 0-1 in left top right bottom order.
 To build it, run this command:
 
 ```bash
-$ bazel build -c opt tensorflow/examples/multibox_detector/...
+$ bazel build --config opt tensorflow/examples/multibox_detector/...
 ```
 
 That should build a binary executable that you can then run like this:

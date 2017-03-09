@@ -12,8 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+"""Utilities for creating input_fns.
 
-"""Utilities for creating input_fns."""
+Contents of this file are moved to tensorflow/python/estimator/export.py.
+InputFnOps is renamed to ServingInputReceiver.
+build_parsing_serving_input_fn is renamed to
+  build_parsing_serving_input_receiver_fn.
+build_default_serving_input_fn is renamed to
+  build_raw_serving_input_receiver_fn.
+"""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -26,19 +34,26 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import parsing_ops
 
 
-# A return type allowing input_fns to return multiple values in a well-
-# defined way (analogous to ModelFnOps).
-# The expected return values are:
-#  features: a dict of string to `Tensor` or `SparseTensor`, giving the features
-#            to be passed to the model.
-#  labels: a dict of string to `Tensor` or `SparseTensor`, giving labels (aka
-#            targets) for training.
-#  default_inputs: a dict of string to `Tensor` or `SparseTensor`, giving the
-#            input placeholders (if any) that this input_fn expects to be fed.
-InputFnOps = collections.namedtuple('InputFnOps',
-                                    ['features',
-                                     'labels',
-                                     'default_inputs'])
+class InputFnOps(collections.namedtuple('InputFnOps',
+                                        ['features',
+                                         'labels',
+                                         'default_inputs'])):
+  """A return type for an input_fn.
+
+  This return type is currently only supported for serving input_fn.
+  Training and eval input_fn should return a `(features, labels)` tuple.
+
+  The expected return values are:
+    features: A dict of string to `Tensor` or `SparseTensor`, specifying the
+      features to be passed to the model.
+    labels: A `Tensor`, `SparseTensor`, or a dict of string to `Tensor` or
+      `SparseTensor`, specifying labels for training or eval. For serving, set
+      `labels` to `None`.
+    default_inputs: a dict of string to `Tensor` or `SparseTensor`, specifying
+      the input placeholders (if any) that this input_fn expects to be fed.
+      Typically, this is used by a serving input_fn, which expects to be fed
+      serialized `tf.Example` protos.
+  """
 
 
 def build_parsing_serving_input_fn(feature_spec, default_batch_size=None):

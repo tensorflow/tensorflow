@@ -30,7 +30,6 @@ import shutil
 import tempfile
 import threading
 
-import numpy as np
 from six import BytesIO
 from six.moves import http_client
 from six.moves import xrange  # pylint: disable=redefined-builtin
@@ -38,26 +37,15 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from werkzeug import serving
 from google.protobuf import text_format
 
-from tensorflow.contrib.tensorboard.plugins.projector.projector_config_pb2 import ProjectorConfig
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import summary_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
-from tensorflow.core.protobuf import saver_pb2
 from tensorflow.core.util import event_pb2
-from tensorflow.python.client import session
-from tensorflow.python.framework import ops
-from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops import variables
-from tensorflow.python.platform import gfile
-from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
 from tensorflow.python.summary import event_multiplexer
 from tensorflow.python.summary.writer import writer as writer_lib
-from tensorflow.python.training import saver as saver_lib
 from tensorflow.tensorboard.backend import application
-from tensorflow.tensorboard.plugins.projector import plugin as projector_plugin
 
 
 class TensorboardServerTest(test.TestCase):
@@ -71,7 +59,7 @@ class TensorboardServerTest(test.TestCase):
     multiplexer = event_multiplexer.EventMultiplexer(
         size_guidance=application.DEFAULT_SIZE_GUIDANCE,
         purge_orphaned_data=True)
-    plugins = {'projector': projector_plugin.ProjectorPlugin()}
+    plugins = {}
     app = application.TensorBoardWSGIApp(
         self.temp_dir, plugins, multiplexer, reload_interval=0)
     self._server = serving.BaseWSGIServer('localhost', 0, app)
@@ -148,7 +136,8 @@ class TensorboardServerTest(test.TestCase):
                 # if only_use_meta_graph, the graph is from the metagraph
                 'graph': True,
                 'meta_graph': self._only_use_meta_graph,
-                'run_metadata': ['test run']
+                'run_metadata': ['test run'],
+                'tensors': [],
             }
         })
 
@@ -236,33 +225,6 @@ class TensorboardServerTest(test.TestCase):
     self.assertEqual(list(graph.node[1].attr.keys()), ['_very_large_attrs'])
     self.assertEqual(graph.node[1].attr['_very_large_attrs'].list.s,
                      [b'very_large_attr'])
-
-  def testProjectorRunsWithEmbeddings(self):
-    """Test the format of /runs endpoint of the projector plugin."""
-    run_json = self._getJson('/data/plugin/projector/runs')
-    self.assertEqual(run_json, ['run1'])
-
-  def testProjectorInfo(self):
-    """Test the format of /info endpoint of the projector plugin."""
-    info_json = self._getJson('/data/plugin/projector/info?run=run1')
-    self.assertItemsEqual(info_json['embeddings'], [{
-        'tensorShape': [1, 2],
-        'tensorName': 'var1'
-    }, {
-        'tensorShape': [10, 10],
-        'tensorName': 'var2'
-    }, {
-        'tensorShape': [100, 100],
-        'tensorName': 'var3'
-    }])
-
-  def testProjectorTensor(self):
-    """Test the format of /tensor endpoint of the projector plugin."""
-    url = '/data/plugin/projector/tensor?run=run1&name=var1'
-    tensor_bytes = self._get(url).read()
-    tensor = np.reshape(np.fromstring(tensor_bytes, dtype='float32'), [1, 2])
-    expected_tensor = np.array([[6, 6]], dtype='float32')
-    self.assertTrue(np.array_equal(tensor, expected_tensor))
 
   def testAcceptGzip_compressesResponse(self):
     response = self._get('/data/graph?run=run1&limit_attr_size=1024'
@@ -397,33 +359,7 @@ class TensorboardServerTest(test.TestCase):
     writer.flush()
     writer.close()
 
-    # We assume that the projector is a registered plugin.
-    self._GenerateProjectorTestData(run1_path)
-
     return temp_dir
-
-  def _GenerateProjectorTestData(self, run_path):
-    # Write a projector config file in run1.
-    config_path = os.path.join(run_path, 'projector_config.pbtxt')
-    config = ProjectorConfig()
-    embedding = config.embeddings.add()
-    # Add an embedding by its canonical tensor name.
-    embedding.tensor_name = 'var1:0'
-    config_pbtxt = text_format.MessageToString(config)
-    with gfile.GFile(config_path, 'w') as f:
-      f.write(config_pbtxt)
-
-    # Write a checkpoint with some dummy variables.
-    with ops.Graph().as_default():
-      sess = session.Session()
-      checkpoint_path = os.path.join(run_path, 'model')
-      variable_scope.get_variable(
-          'var1', [1, 2], initializer=init_ops.constant_initializer(6.0))
-      variable_scope.get_variable('var2', [10, 10])
-      variable_scope.get_variable('var3', [100, 100])
-      sess.run(variables.global_variables_initializer())
-      saver = saver_lib.Saver(write_version=saver_pb2.SaverDef.V1)
-      saver.save(sess, checkpoint_path)
 
 
 class TensorboardServerUsingMetagraphOnlyTest(TensorboardServerTest):
@@ -487,8 +423,10 @@ class ParseEventFilesSpecTest(test.TestCase):
 class TensorBoardAssetsTest(test.TestCase):
 
   def testTagFound(self):
-    tag = resource_loader.load_resource('tensorboard/TAG')
+    tag = application.get_tensorboard_tag()
     self.assertTrue(tag)
+    app = application.standard_tensorboard_wsgi('', True, 60)
+    self.assertEqual(app.tag, tag)
 
 
 if __name__ == '__main__':

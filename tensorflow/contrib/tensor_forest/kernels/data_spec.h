@@ -85,7 +85,7 @@ class TensorForestDataSpec {
     int total = 0;
     for (const DataColumn& col : dense_) {
       for (int i = 0; i < col.size(); ++i) {
-        feature_to_type_[total] = col.original_type();
+        feature_to_type_.push_back(col.original_type());
         ++total;
       }
     }
@@ -111,7 +111,7 @@ class TensorForestDataSpec {
   }
 
   int GetDenseFeatureType(int feature) const {
-    return feature_to_type_.at(feature);
+    return feature_to_type_[feature];
   }
 
  private:
@@ -132,7 +132,7 @@ class TensorForestDataSpec {
 
   // This map tracks features in the total dense feature space to their
   // original type for fast lookup.
-  std::unordered_map<int, int> feature_to_type_;
+  std::vector<int> feature_to_type_;
 };
 
 }  // namespace tensorforest

@@ -86,35 +86,34 @@ class Laplace(distribution.Distribution):
         of the distribution.
       scale: Positive floating point tensor which characterizes the spread of
         the distribution.
-      validate_args: Python `Boolean`, default `False`. When `True` distribution
+      validate_args: Python `bool`, default `False`. When `True` distribution
         parameters are checked for validity despite possibly degrading runtime
         performance. When `False` invalid inputs may silently render incorrect
         outputs.
-      allow_nan_stats: Python `Boolean`, default `True`. When `True`,
+      allow_nan_stats: Python `bool`, default `True`. When `True`,
         statistics (e.g., mean, mode, variance) use the value "`NaN`" to
-        indicate the result is undefined.  When `False`, an exception is raised
+        indicate the result is undefined. When `False`, an exception is raised
         if one or more of the statistic's batch members are undefined.
-      name: `String` name prefixed to Ops created by this class.
+      name: Python `str` name prefixed to Ops created by this class.
 
     Raises:
       TypeError: if `loc` and `scale` are of different dtype.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[loc, scale]) as ns:
+    with ops.name_scope(name, values=[loc, scale]):
       with ops.control_dependencies([check_ops.assert_positive(scale)] if
                                     validate_args else []):
         self._loc = array_ops.identity(loc, name="loc")
         self._scale = array_ops.identity(scale, name="scale")
-        contrib_tensor_util.assert_same_float_dtype((self._loc, self._scale))
+        contrib_tensor_util.assert_same_float_dtype([self._loc, self._scale])
       super(Laplace, self).__init__(
           dtype=self._loc.dtype,
-          is_continuous=True,
           reparameterization_type=distribution.FULLY_REPARAMETERIZED,
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
           parameters=parameters,
           graph_parents=[self._loc, self._scale],
-          name=ns)
+          name=name)
 
   @staticmethod
   def _param_shapes(sample_shape):
@@ -147,8 +146,13 @@ class Laplace(distribution.Distribution):
     return tensor_shape.scalar()
 
   def _sample_n(self, n, seed=None):
-    shape = array_ops.concat(([n], self.batch_shape_tensor()), 0)
-    # Sample uniformly-at-random from the open-interval (-1, 1).
+    shape = array_ops.concat([[n], self.batch_shape_tensor()], 0)
+    # Uniform variates must be sampled from the open-interval `(-1, 1)` rather
+    # than `[-1, 1)`. In the case of `(0, 1)` we'd use
+    # `np.finfo(self.dtype.as_numpy_dtype).tiny` because it is the smallest,
+    # positive, "normal" number. However, the concept of subnormality exists
+    # only at zero; here we need the smallest usable number larger than -1,
+    # i.e., `-1 + eps/2`.
     uniform_samples = random_ops.random_uniform(
         shape=shape,
         minval=np.nextafter(self.dtype.as_numpy_dtype(-1.),
@@ -157,7 +161,7 @@ class Laplace(distribution.Distribution):
         dtype=self.dtype,
         seed=seed)
     return (self.loc - self.scale * math_ops.sign(uniform_samples) *
-            math_ops.log(1. - math_ops.abs(uniform_samples)))
+            math_ops.log1p(-math_ops.abs(uniform_samples)))
 
   def _log_prob(self, x):
     return self._log_unnormalized_prob(x) - self._log_normalization()

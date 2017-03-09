@@ -35,7 +35,7 @@ from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.util import nest
 
-__all__ = ["Decoder", "dynamic_decode_rnn"]
+__all__ = ["Decoder", "dynamic_decode"]
 
 
 def _transpose_batch_time(x):
@@ -59,7 +59,7 @@ def _transpose_batch_time(x):
         (x, x_static_shape))
   x_rank = array_ops.rank(x)
   x_t = array_ops.transpose(
-      x, array_ops.concat_v2(
+      x, array_ops.concat(
           ([1, 0], math_ops.range(2, x_rank)), axis=0))
   x_t.set_shape(
       tensor_shape.TensorShape([
@@ -131,13 +131,13 @@ def _create_zero_outputs(size, dtype, batch_size):
   return nest.map_structure(_create, size, dtype)
 
 
-def dynamic_decode_rnn(decoder,
-                       output_time_major=False,
-                       impute_finished=False,
-                       maximum_iterations=None,
-                       parallel_iterations=32,
-                       swap_memory=False,
-                       scope=None):
+def dynamic_decode(decoder,
+                   output_time_major=False,
+                   impute_finished=False,
+                   maximum_iterations=None,
+                   parallel_iterations=32,
+                   swap_memory=False,
+                   scope=None):
   """Perform dynamic decoding with `decoder`.
 
   Args:

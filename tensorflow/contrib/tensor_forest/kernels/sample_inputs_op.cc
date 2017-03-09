@@ -249,8 +249,7 @@ class SampleInputs : public OpKernel {
       // Check for non-fertile node or fertile node that is already
       // initialized.
       if (accumulator >= 0 &&
-          !IsAllInitialized(
-              split_features.Slice(accumulator, accumulator + 1))) {
+          !IsAllInitialized(features, accumulator, num_splits)) {
         accumulator_to_leaves[accumulator].insert(i);
       }
     }
