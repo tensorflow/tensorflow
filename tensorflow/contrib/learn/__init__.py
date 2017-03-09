@@ -35,6 +35,7 @@ See the @{$python/contrib.learn} guide.
 @@LinearRegressor
 @@LogisticRegressor
 @@SVM
+@@SKCompat
 
 @@Experiment
 @@ExportStrategy
