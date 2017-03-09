@@ -883,11 +883,7 @@ class MultiClassHeadTest(test.TestCase):
   def _expected_eval_metrics(self, expected_loss):
     return {
         "accuracy": 0.,
-        "auc": 1. / 4,
         "loss": expected_loss,
-        "auc/class0": 1.,
-        "auc/class1": 1.,
-        "auc/class2": 0.,
         "labels/actual_label_mean/class0": 0. / 1,
         "labels/actual_label_mean/class1": 0. / 1,
         "labels/actual_label_mean/class2": 1. / 1,
@@ -957,11 +953,7 @@ class MultiClassHeadTest(test.TestCase):
       expected_loss = 1.0986123
       _assert_metrics(self, expected_loss, {
           "accuracy": 0.,
-          "auc": 2. / 4,
           "loss": expected_loss,
-          "auc/class0": 1.,
-          "auc/class1": 1.,
-          "auc/class2": 0.,
           "labels/actual_label_mean/class0": 0. / 1,
           "labels/actual_label_mean/class1": 0. / 1,
           "labels/actual_label_mean/class2": 1. / 1,
@@ -1023,11 +1015,7 @@ class MultiClassHeadTest(test.TestCase):
       expected_loss = 3.1698461
       expected_eval_metrics = {
           "accuracy": 0.,
-          "auc": 9.99999e-07,
           "loss": expected_loss,
-          "auc/class0": 1.,
-          "auc/class1": 1.,
-          "auc/class2": 0.,
           "labels/actual_label_mean/class0": 0. / 1,
           "labels/actual_label_mean/class1": 0. / 1,
           "labels/actual_label_mean/class2": 1. / 1,

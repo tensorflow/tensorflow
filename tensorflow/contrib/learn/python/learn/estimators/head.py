@@ -1033,9 +1033,6 @@ class _MultiClassHead(_SingleHead):
       # "accuracy/threshold_0.500000_mean" metric for binary classification.
       metrics[_summary_key(self.head_name, mkey.ACCURACY)] = (
           metrics_lib.streaming_accuracy(classes, labels, weights))
-      metrics[_summary_key(self.head_name, mkey.AUC)] = (
-          _streaming_auc_with_class_id_label(
-              probabilities, labels, weights, self.logits_dimension))
 
       for class_id in self._metric_class_ids:
         # TODO(ptucker): Add per-class accuracy, precision, recall.
@@ -1051,9 +1048,6 @@ class _MultiClassHead(_SingleHead):
         metrics[_summary_key(
             self.head_name, mkey.CLASS_LOGITS_MEAN % class_id)] = (
                 _predictions_streaming_mean(logits, weights, class_id))
-        metrics[_summary_key(self.head_name, mkey.CLASS_AUC % class_id)] = (
-            _class_streaming_auc(probabilities, labels, weights, class_id,
-                                 self.logits_dimension))
 
     return metrics
 
@@ -1771,20 +1765,6 @@ def _class_labels_streaming_mean(labels, weights, class_id):
               math_ops.to_int32(class_id), math_ops.to_int32(labels)),
           array_ops.ones_like(labels), array_ops.zeros_like(labels)),
       weights=weights)
-
-
-def _class_streaming_auc(predictions, labels, weights, class_id,
-                         num_classes):
-  indicator_labels = _class_id_labels_to_indicator(
-      labels, num_classes=num_classes)
-  return _streaming_auc(predictions, indicator_labels, weights, class_id)
-
-
-def _streaming_auc_with_class_id_label(predictions, labels, weights,
-                                       num_classes):
-  indicator_labels = _class_id_labels_to_indicator(
-      labels, num_classes=num_classes)
-  return _streaming_auc(predictions, indicator_labels, weights)
 
 
 def _streaming_auc(predictions, labels, weights=None, class_id=None):
