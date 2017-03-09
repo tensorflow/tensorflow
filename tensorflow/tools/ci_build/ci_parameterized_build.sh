@@ -313,12 +313,6 @@ else
     MAVX2_FMA_DBG)
       OPT_FLAG="${OPT_FLAG} -c opt --copt=-g --copt=-mavx2 --copt=-mfma"
       ;;
-    MAVX2_FMA)
-      OPT_FLAG="${OPT_FLAG} -c opt --copt=-mavx2 --copt=-mfma"
-      ;;
-    MAVX2_FMA_DBG)
-      OPT_FLAG="${OPT_FLAG} -c opt --copt=-g --copt=-mavx2 --copt=-mfma"
-      ;;
   esac
 fi
 

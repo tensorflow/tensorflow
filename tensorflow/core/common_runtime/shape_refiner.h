@@ -32,6 +32,7 @@ namespace tensorflow {
 class ShapeRefiner {
  public:
   ShapeRefiner(int graph_def_version, const OpRegistryInterface* ops);
+  ~ShapeRefiner();
 
   // Performs validation of 'node' and runs 'node's shape function,
   // storing its shape outputs.
@@ -59,7 +60,7 @@ class ShapeRefiner {
     if (it == node_to_context_.end()) {
       return nullptr;
     }
-    return it->second.get();
+    return it->second;
   }
 
  private:
@@ -104,8 +105,7 @@ class ShapeRefiner {
   // Stores a map from a node to its InferenceContext.
   //
   // Owns values.
-  std::unordered_map<const Node*,
-                     std::unique_ptr<shape_inference::InferenceContext>>
+  std::unordered_map<const Node*, shape_inference::InferenceContext*>
       node_to_context_;
 
   // Holds a cache from 'tensor name' to the tensor that is

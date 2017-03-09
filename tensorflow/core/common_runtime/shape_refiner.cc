@@ -35,6 +35,8 @@ ShapeRefiner::ShapeRefiner(int graph_def_version,
                            const OpRegistryInterface* ops)
     : graph_def_version_(graph_def_version), ops_registry_(ops) {}
 
+ShapeRefiner::~ShapeRefiner() { gtl::STLDeleteValues(&node_to_context_); }
+
 Status ShapeRefiner::AddNode(const Node* node) {
   // For each 'input' of this node, fetch the corresponding shape
   // from 'input's InferenceContext, and store into a vector
@@ -54,7 +56,7 @@ Status ShapeRefiner::AddNode(const Node* node) {
           node->name(), "' was not previously added to ShapeRefiner.");
     }
 
-    InferenceContext* c = it->second.get();
+    InferenceContext* c = it->second;
     DCHECK_GE(e->dst_input(), 0);
     input_nodes[e->dst_input()] = input;
     input_shapes[e->dst_input()] = c->output(e->src_output());
@@ -161,7 +163,7 @@ Status ShapeRefiner::AddNode(const Node* node) {
   } while (rerun_shape_fn);
 
   // Store the resulting InferenceContext object in the map.
-  node_to_context_[node].swap(c);
+  node_to_context_[node] = c.release();
 
   return Status::OK();
 }
@@ -279,13 +281,6 @@ Status ShapeRefiner::ExtractConstantSubgraph(
 
     // If the node is stateful, assume the graph is not constant.
     if (current_node->op_def().is_stateful()) {
-      *is_constant_graph = false;
-      return Status::OK();
-    }
-
-    // During construction or import from GraphConstructor, back edges may not
-    // be filled in.  Don't constant fold through merges at all for now.
-    if (IsMerge(current_node)) {
       *is_constant_graph = false;
       return Status::OK();
     }
