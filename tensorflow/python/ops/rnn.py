@@ -305,8 +305,6 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
       transposes at the beginning and end of the RNN calculation.  However,
       most TensorFlow data is batch-major, so by default this function
       accepts input and emits output in batch-major form.
-    dtype: (optional) The data type for the initial state.  Required if
-      either of the initial states are not provided.
     scope: VariableScope for the created subgraph; defaults to
       "bidirectional_rnn"
 
