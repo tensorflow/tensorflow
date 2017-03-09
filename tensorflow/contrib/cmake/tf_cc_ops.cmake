@@ -142,19 +142,21 @@ function(AddUserOps)
         # some ops call out to cuda directly; need to link libs for the cuda dlls
         target_link_libraries(${_AT_TARGET} ${CUDA_LIBRARIES})
     endif()
-    # on windows copy .dll to .so so the python code does not need to deal with it
-    add_custom_command(TARGET ${_AT_TARGET} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:${_AT_TARGET}>
-            ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/${_AT_TARGET}.so)
     if (_AT_DISTCOPY)
         add_custom_command(TARGET ${_AT_TARGET} POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:${_AT_TARGET}>
-                ${_AT_DISTCOPY}/${_AT_TARGET}.so)
+            COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:${_AT_TARGET}> ${_AT_DISTCOPY}/)
     endif()
   endif()
   if (_AT_DEPENDS)
     add_dependencies(${_AT_TARGET} ${_AT_DEPENDS})
   endif()
+  # make sure TF_COMPILE_LIBRARY is not defined for this target
+  get_target_property(target_compile_flags  ${_AT_TARGET} COMPILE_FLAGS)
+  if(target_compile_flags STREQUAL "target_compile_flags-NOTFOUND")
+    set(target_compile_flags "/UTF_COMPILE_LIBRARY")
+  else()
+    set(target_compile_flags "${target_compile_flags} /UTF_COMPILE_LIBRARY")
+  endif()
+  set_target_properties(${_AT_TARGET} PROPERTIES COMPILE_FLAGS ${target_compile_flags})
   add_dependencies(tf_extension_ops ${_AT_TARGET})
-  target_compile_definitions(${_AT_TARGET} PRIVATE TF_EXTERN=extern\ __declspec\(dllimport\))
 endfunction(AddUserOps)
