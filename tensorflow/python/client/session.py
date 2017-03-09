@@ -422,7 +422,9 @@ class _FetchHandler(object):
         self._fetches.append(fetch_name)
         self._ops.append(False)
       # Remember the fetch if it is for a tensor handle.
-      if isinstance(fetch, ops.Tensor) and fetch.op.type == 'GetSessionHandle':
+      if (isinstance(fetch, ops.Tensor) and
+          (fetch.op.type == 'GetSessionHandle' or
+           fetch.op.type == 'GetSessionHandleV2')):
         self._fetch_handles[fetch_name] = fetch.op.inputs[0].dtype
     self._final_fetches = [x for x in self._fetches if x not in feeds]
 
@@ -926,7 +928,7 @@ class BaseSession(SessionInterface):
           if isinstance(subfeed_val, ops.Tensor):
             raise TypeError('The value of a feed cannot be a tf.Tensor object. '
                             'Acceptable feed values include Python scalars, '
-                            'strings, lists, or numpy ndarrays.')
+                            'strings, lists, numpy ndarrays, or TensorHandles.')
 
           subfeed_dtype = subfeed_t.dtype.as_numpy_dtype
           if isinstance(subfeed_val,
@@ -937,9 +939,15 @@ class BaseSession(SessionInterface):
                 ' Try explicitly setting the type of the feed tensor'
                 ' to a larger type (e.g. int64).')
 
-          np_val = np.asarray(subfeed_val, dtype=subfeed_dtype)
+          is_tensor_handle_feed = isinstance(subfeed_val,
+                                             session_ops.TensorHandle)
+          if is_tensor_handle_feed:
+            np_val = subfeed_val.to_numpy_array()
+          else:
+            np_val = np.asarray(subfeed_val, dtype=subfeed_dtype)
 
-          if not subfeed_t.get_shape().is_compatible_with(np_val.shape):
+          if (not is_tensor_handle_feed and
+              not subfeed_t.get_shape().is_compatible_with(np_val.shape)):
             raise ValueError(
                 'Cannot feed value of shape %r for Tensor %r, '
                 'which has shape %r'

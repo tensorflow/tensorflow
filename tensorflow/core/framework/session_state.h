@@ -41,6 +41,8 @@ class SessionState {
 
   int64 GetNewId();
 
+  static const char* kTensorHandleResourceTypeName;
+
  private:
   mutex state_lock_;
 
