@@ -11,8 +11,15 @@ LD_LIBRARY_PATH=${HOME_CLEAN}/DeepSpeech/CUDA/lib64/:$LD_LIBRARY_PATH
 export LD_LIBRARY_PATH
 
 build_gpu=no
+build_arm=no
+
 if [ "$1" = "--gpu" ]; then
     build_gpu=yes
+fi
+
+if [ "$1" = "--arm" ]; then
+    build_gpu=no
+    build_arm=yes
 fi
 
 mkdir -p /tmp/artifacts/
@@ -50,9 +57,18 @@ pushd ~/DeepSpeech/tf/
     export GCC_HOST_COMPILER_PATH
     export CC_OPT_FLAGS
 
-    if [ "${build_gpu}" = "no" ]; then
+    # Pure amd64 CPU-only build
+    if [ "${build_gpu}" = "no" -a "${build_arm}" = "no" ]; then
         echo "" | TF_NEED_CUDA=0 ./configure && bazel build -c opt ${BAZEL_OPT_FLAGS} ${BUILD_TARGET_PIP} ${BUILD_TARGET_LIB} && ./tensorflow/tools/pip_package/build_pip_package.sh /tmp/artifacts/
-    else
+    fi
+
+    # Cross RPi3 CPU-only build
+    if [ "${build_gpu}" = "no" -a "${build_arm}" = "yes" ]; then
+        echo "" | TF_NEED_CUDA=0 ./configure && bazel build -c opt --host_crosstool_top=@bazel_tools//tools/cpp:toolchain --crosstool_top=//tools/arm_compiler:toolchain --cpu=rpi-armeabi ${BUILD_TARGET_LIB}
+    fi
+
+    # Pure amd64 GPU-enabled build
+    if [ "${build_gpu}" = "yes" -a "${build_arm}" = "no" ]; then
         echo "" | TF_NEED_CUDA=1 TF_CUDA_VERSION=8.0 TF_CUDNN_VERSION=5 CUDA_TOOLKIT_PATH=${HOME_CLEAN}/DeepSpeech/CUDA CUDNN_INSTALL_PATH=${HOME_CLEAN}/DeepSpeech/CUDA TF_CUDA_COMPUTE_CAPABILITIES="3.0,3.5,3.7,5.2,6.0,6.1" ./configure && bazel build -c opt --config=cuda ${BAZEL_OPT_FLAGS} ${BUILD_TARGET_PIP} ${BUILD_TARGET_LIB} && ./tensorflow/tools/pip_package/build_pip_package.sh /tmp/artifacts/ --gpu
     fi
 
@@ -60,6 +76,7 @@ pushd ~/DeepSpeech/tf/
         cp bazel-bin/tensorflow/libtensorflow.so /tmp/artifacts/
     else
         # There was a failure, just account for it.
+        echo "Build failure, please check the output above. Exit code was: $?"
         return 1
     fi
 popd

@@ -1,0 +1,5 @@
+#!/bin/bash --norc
+
+exec -a arm-linux-gnueabihf-objcopy \
+    external/GccArmRpi/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian/bin/arm-linux-gnueabihf-objcopy \
+    "$@"

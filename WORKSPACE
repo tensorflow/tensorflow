@@ -49,6 +49,15 @@ new_http_archive(
 )
 
 new_http_archive(
+  name = "GccArmRpi",
+  build_file = "compilers/gcc_arm_rpi.BUILD",
+  strip_prefix = "tools-0e906ebc527eab1cdbf7adabff5b474da9562e9f/",
+  # Prefer tar over ZIP, bazel complains about "Zip entries cannot refer to files outside of their directory: raspberry-tools-master.zip has a symlink to ../../lib/libBrokenLocale.so.1"
+  url = "https://github.com/raspberrypi/tools/archive/0e906ebc527eab1cdbf7adabff5b474da9562e9f.tar.gz",
+  sha256 = "970285762565c7890c6c087d262b0a18286e7d0384f13a37786d8521773bc969"
+)
+
+new_http_archive(
     name = "mobile_multibox",
     build_file = "models.BUILD",
     sha256 = "859edcddf84dddb974c36c36cfc1f74555148e9c9213dedacf1d6b613ad52b96",

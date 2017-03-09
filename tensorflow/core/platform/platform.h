@@ -45,7 +45,17 @@ limitations under the License.
 
 // Since there's no macro for the Raspberry Pi, assume we're on a mobile
 // platform if we're compiling for the ARM CPU.
+
+// TODO: Disable this define because it breaks (at least) in:
+//  ./tensorflow/core/platform/gif.h
+//  ./tensorflow/core/platform/jpeg.h
+//  ./tensorflow/core/platform/png.h
+//
+// It also makes DTINT64 unavailable (required by SparseToDense op)
+
+#if !defined(__ARM_RPI__)
 #define IS_MOBILE_PLATFORM
+#endif
 
 #else
 // If no platform specified, use:
