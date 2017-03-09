@@ -59,10 +59,6 @@ bool CanUseXsmmConv2D(const libxsmm_dnn_conv_desc& desc,
     VLOG(1) << "Cannot use XSMM convolutions: unsupported format!";
     return false;
   }
-  if (desc.pad_h_in != 0 || desc.pad_w_in != 0) {
-    VLOG(1) << "Cannot use XSMM convolutions: unsupported padding!";
-    return false;
-  }
   if (desc.K % VECTOR_SIZE != 0) {
     VLOG(1) << "Cannot use XSMM convolutions: output features count not"
                " divisible by vector size!";
@@ -127,8 +123,8 @@ class libxsmm_dnn_conv_desc_wrap{
               d.S == w.d.S &&
               d.u == w.d.u &&
               d.v == w.d.v &&
-              d.pad_h_in == w.d.pad_h_in &&
-              d.pad_w_in == w.d.pad_w_in
+              d.pad_h == w.d.pad_h &&
+              d.pad_w == w.d.pad_w
             );
     }
 };
@@ -292,10 +288,9 @@ static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
       libxsmm_handle, LIBXSMM_DNN_FILTER, native_filter, LIBXSMM_DNN_TENSOR_FORMAT_LIBXSMM_PTR, &status);
   chk_libxsmm_err(status, "Link filter");
 
-  chk_libxsmm_err(libxsmm_dnn_zero_buffer(libxsmm_output), "Zero output");
-
-
   if (kind == LIBXSMM_DNN_COMPUTE_KIND_FWD) {
+    chk_libxsmm_err(libxsmm_dnn_zero_buffer(libxsmm_output), "Zero output");
+
     chk_libxsmm_err(libxsmm_dnn_bind_buffer(libxsmm_handle, libxsmm_input, LIBXSMM_DNN_REGULAR_INPUT),
                     "Bind input forward");
     chk_libxsmm_err(
@@ -303,7 +298,9 @@ static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
         "Bind output forward");
     chk_libxsmm_err(libxsmm_dnn_bind_filter(libxsmm_handle, libxsmm_filter, LIBXSMM_DNN_REGULAR_FILTER),
                     "Bind filter forward");
-  } else {
+  } else if (kind == LIBXSMM_DNN_COMPUTE_KIND_BWD) {
+    chk_libxsmm_err(libxsmm_dnn_zero_buffer(libxsmm_input), "Zero input");
+
     chk_libxsmm_err(libxsmm_dnn_bind_buffer(libxsmm_handle, libxsmm_input, LIBXSMM_DNN_GRADIENT_INPUT),
                     "Bind input backward");
     chk_libxsmm_err(
@@ -311,6 +308,18 @@ static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
         "Bind output backward");
     chk_libxsmm_err(libxsmm_dnn_bind_filter(libxsmm_handle, libxsmm_filter, LIBXSMM_DNN_REGULAR_FILTER),
                     "Bind filter backward");
+  } else if (kind == LIBXSMM_DNN_COMPUTE_KIND_UPD) {
+    chk_libxsmm_err(libxsmm_dnn_zero_filter(libxsmm_filter), "Zero filter");
+
+    chk_libxsmm_err(libxsmm_dnn_bind_buffer(libxsmm_handle, libxsmm_input, LIBXSMM_DNN_REGULAR_INPUT),
+                    "Bind input weight udpate");
+    chk_libxsmm_err(
+        libxsmm_dnn_bind_buffer(libxsmm_handle, libxsmm_output, LIBXSMM_DNN_GRADIENT_OUTPUT),
+        "Bind output weight update");
+    chk_libxsmm_err(libxsmm_dnn_bind_filter(libxsmm_handle, libxsmm_filter, LIBXSMM_DNN_GRADIENT_FILTER),
+                    "Bind filter weight update");
+  } else {
+    /* shouldn't happen */
   }
 
   /* bind scratch */
@@ -333,16 +342,26 @@ static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
   }
   counter.Wait();
 
+  if (kind == LIBXSMM_DNN_COMPUTE_KIND_UPD) {
+    libxsmm_dnn_reduce_wu_filters( libxsmm_handle, LIBXSMM_DNN_GRADIENT_FILTER );
+  }
+
   /* clean up */
   chk_libxsmm_err( libxsmm_dnn_release_scratch( libxsmm_handle, LIBXSMM_DNN_COMPUTE_KIND_ALL ), "release scratch" );
   if (kind == LIBXSMM_DNN_COMPUTE_KIND_FWD) {
     chk_libxsmm_err( libxsmm_dnn_release_buffer( libxsmm_handle, LIBXSMM_DNN_REGULAR_INPUT ), "release input" );
     chk_libxsmm_err( libxsmm_dnn_release_buffer( libxsmm_handle, LIBXSMM_DNN_REGULAR_OUTPUT ), "release output" );
     chk_libxsmm_err( libxsmm_dnn_release_filter( libxsmm_handle, LIBXSMM_DNN_REGULAR_FILTER ), "release filter" );
-  } else {
+  } else if (kind == LIBXSMM_DNN_COMPUTE_KIND_BWD) {
     chk_libxsmm_err( libxsmm_dnn_release_buffer( libxsmm_handle, LIBXSMM_DNN_GRADIENT_INPUT ), "release input" );
     chk_libxsmm_err( libxsmm_dnn_release_buffer( libxsmm_handle, LIBXSMM_DNN_GRADIENT_OUTPUT ), "release output" );
     chk_libxsmm_err( libxsmm_dnn_release_filter( libxsmm_handle, LIBXSMM_DNN_REGULAR_FILTER ), "release filter" );
+  } else if (kind == LIBXSMM_DNN_COMPUTE_KIND_UPD) {
+    chk_libxsmm_err( libxsmm_dnn_release_buffer( libxsmm_handle, LIBXSMM_DNN_REGULAR_INPUT ), "release input" );
+    chk_libxsmm_err( libxsmm_dnn_release_buffer( libxsmm_handle, LIBXSMM_DNN_GRADIENT_OUTPUT ), "release output" );
+    chk_libxsmm_err( libxsmm_dnn_release_filter( libxsmm_handle, LIBXSMM_DNN_GRADIENT_FILTER ), "release filter" );
+  } else {
+    /* shouldn't happen */
   }
   chk_libxsmm_err(libxsmm_dnn_destroy_buffer(libxsmm_input), "Destroy input");
   chk_libxsmm_err(libxsmm_dnn_destroy_buffer(libxsmm_output), "Destroy output");

@@ -131,7 +131,7 @@ struct LaunchXsmmBackwardInputConvolution {
                   typename TTypes<T, 4>::ConstTensor kernel,
                   typename TTypes<T, 4>::ConstTensor output_backward,
                   int input_rows, int input_cols, int row_stride,
-                  int col_stride, TensorFormat data_format) const {
+                  int col_stride, int pad_h, int pad_w, TensorFormat data_format) const {
     return false;
   }
 };
@@ -143,7 +143,7 @@ struct LaunchXsmmBackwardInputConvolution<CPUDevice, float> {
                   typename TTypes<float, 4>::ConstTensor kernel,
                   typename TTypes<float, 4>::ConstTensor output_backward,
                   int input_rows, int input_cols, int row_stride,
-                  int col_stride, TensorFormat data_format) const {
+                  int col_stride, int pad_h, int pad_w, TensorFormat data_format) const {
     auto batch = input_backward.dimension(0);
     auto in_depth = input_backward.dimension(3);
     auto out_depth = output_backward.dimension(3);
@@ -162,10 +162,10 @@ struct LaunchXsmmBackwardInputConvolution<CPUDevice, float> {
     desc.S = filter_cols;
     desc.u = row_stride;
     desc.v = col_stride;
-    desc.pad_h = 0;
-    desc.pad_w = 0;
-    desc.pad_h_in = 0;  // pad_rows;  // ignored by libxsmm for now.
-    desc.pad_w_in = 0;  // pad_cols;  // ignored by libxsmm for now.
+    desc.pad_h = pad_h;
+    desc.pad_w = pad_w;
+    desc.pad_h_in = 0;
+    desc.pad_w_in = 0;
     desc.pad_h_out = 0;
     desc.pad_w_out = 0;
     desc.threads = num_threads;
@@ -174,7 +174,7 @@ struct LaunchXsmmBackwardInputConvolution<CPUDevice, float> {
     desc.filter_format =
         LIBXSMM_DNN_TENSOR_FORMAT_LIBXSMM;  // LIBXSMM_DNN_TENSOR_FORMAT_RSCK;
     desc.fuse_ops = LIBXSMM_DNN_CONV_FUSE_NONE;
-    desc.options = LIBXSMM_DNN_CONV_OPTION_NONE;
+    desc.options = LIBXSMM_DNN_CONV_OPTION_WU_EXT_FILTER_REDUCE;
     desc.datatype = LIBXSMM_DNN_DATATYPE_F32;
 
     auto input_ptr = input_backward.data();
@@ -236,6 +236,15 @@ class Conv2DFastBackpropInputOp : public OpKernel {
                    context->allocate_output(0, input_shape, &in_backprop));
 
 #if defined TENSORFLOW_USE_LIBXSMM && defined TENSORFLOW_USE_LIBXSMM_BACKWARD
+/*
+    int64 out_rows = 0, out_cols = 0, pad_rows = 0, pad_cols = 0;
+    OP_REQUIRES_OK(context,
+                   GetWindowedOutputSize(input_rows, filter_rows, stride_rows,
+                                         padding_, &out_rows, &pad_rows));
+    OP_REQUIRES_OK(context,
+                   GetWindowedOutputSize(input_cols, filter_cols, stride_cols,
+                                         padding_, &out_cols, &pad_cols));
+*/
     if (LaunchXsmmBackwardInputConvolution<Device, T>()(
             context, context->eigen_device<Device>(),
             in_backprop->tensor<T, 4>(), filter.tensor<T, 4>(),
