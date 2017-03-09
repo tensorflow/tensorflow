@@ -149,8 +149,9 @@ def _linear_model_fn(features, labels, mode, params, config=None):
       values=tuple(six.itervalues(features)),
       partitioner=partitioner) as scope:
     
-    layer_fn = layers.joint_weighted_sum_from_feature_columns if joint_weights \
-      else layers.weighted_sum_from_feature_columns
+    layer_fn = layers.weighted_sum_from_feature_columns
+    if joint_weights:
+      layer_fn = layers.joint_weighted_sum_from_feature_columns
         
     logits, _, _ = layer_fn(
             columns_to_tensors=features,
