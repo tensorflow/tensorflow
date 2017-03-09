@@ -29,7 +29,7 @@ namespace graph_transforms {
 
 // Renames all nodes not uses as graph inputs or outputs to short numerical
 // forms.
-Status ObsfucateNames(const GraphDef& input_graph_def,
+Status ObfuscateNames(const GraphDef& input_graph_def,
                       const TransformFuncContext& context,
                       GraphDef* output_graph_def) {
   std::unordered_set<string> required_nodes;
@@ -73,7 +73,7 @@ Status ObsfucateNames(const GraphDef& input_graph_def,
   output_graph_def->Clear();
   for (const NodeDef& input_node : input_graph_def.node()) {
     NodeDef* node = output_graph_def->mutable_node()->Add();
-    node->CopyFrom(input_node);
+    *node = input_node;
     const string& old_name = input_node.name();
     node->set_name(new_names[old_name]);
     node->mutable_input()->Clear();
@@ -94,7 +94,7 @@ Status ObsfucateNames(const GraphDef& input_graph_def,
   return Status::OK();
 }
 
-REGISTER_GRAPH_TRANSFORM("obsfucate_names", ObsfucateNames);
+REGISTER_GRAPH_TRANSFORM("obfuscate_names", ObfuscateNames);
 
 }  // namespace graph_transforms
 }  // namespace tensorflow
