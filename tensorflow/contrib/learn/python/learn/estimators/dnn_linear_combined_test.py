@@ -171,13 +171,13 @@ class DNNLinearCombinedEstimatorTest(test.TestCase):
 
   def testEstimatorContract(self):
     estimator_test_utils.assert_estimator_contract(
-        self, dnn_linear_combined._DNNLinearCombinedEstimator)
+        self, dnn_linear_combined.DNNLinearCombinedEstimator)
 
   def testNoFeatureColumns(self):
     with self.assertRaisesRegexp(
         ValueError,
         'Either linear_feature_columns or dnn_feature_columns must be defined'):
-      dnn_linear_combined._DNNLinearCombinedEstimator(
+      dnn_linear_combined.DNNLinearCombinedEstimator(
           head=_CheckCallsHead(),
           linear_feature_columns=None,
           dnn_feature_columns=None,
@@ -192,7 +192,7 @@ class DNNLinearCombinedEstimatorTest(test.TestCase):
     bucketized_feature = [feature_column.bucketized_column(
         cont_features[0], test_data.get_quantile_based_buckets(iris.data, 10))]
 
-    estimator = dnn_linear_combined._DNNLinearCombinedEstimator(
+    estimator = dnn_linear_combined.DNNLinearCombinedEstimator(
         head,
         linear_feature_columns=bucketized_feature,
         dnn_feature_columns=cont_features,

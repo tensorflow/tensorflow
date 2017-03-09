@@ -298,6 +298,7 @@ from tensorflow.contrib.learn.python.learn.estimators.dnn import DNNClassifier
 from tensorflow.contrib.learn.python.learn.estimators.dnn import DNNEstimator
 from tensorflow.contrib.learn.python.learn.estimators.dnn import DNNRegressor
 from tensorflow.contrib.learn.python.learn.estimators.dnn_linear_combined import DNNLinearCombinedClassifier
+from tensorflow.contrib.learn.python.learn.estimators.dnn_linear_combined import DNNLinearCombinedEstimator
 from tensorflow.contrib.learn.python.learn.estimators.dnn_linear_combined import DNNLinearCombinedRegressor
 from tensorflow.contrib.learn.python.learn.estimators.dynamic_rnn_estimator import DynamicRnnEstimator
 from tensorflow.contrib.learn.python.learn.estimators.estimator import BaseEstimator

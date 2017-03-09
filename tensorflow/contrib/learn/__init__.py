@@ -31,6 +31,7 @@ See the @{$python/contrib.learn} guide.
 @@DNNEstimator
 @@DNNRegressor
 @@DNNLinearCombinedRegressor
+@@DNNLinearCombinedEstimator
 @@DNNLinearCombinedClassifier
 @@LinearClassifier
 @@LinearEstimator
