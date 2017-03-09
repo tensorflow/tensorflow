@@ -1472,19 +1472,19 @@ tf_cuda_library(
     ),
     copts = tf_copts(),
     deps = [
-        ":framework",
-        ":framework_internal",
-        ":function_ops_op_lib",
-        ":functional_grad",
-        ":functional_ops_op_lib",
-        ":lib",
-        ":lib_internal",
-        ":proto_text",
-        ":protos_all_cc",
-        "//third_party/eigen3",
-        "//tensorflow/core/kernels:required",
-    ] + if_mkl(["//third_party/mkl:intel_binary_blob"])
-      + tf_additional_core_deps(),
+               ":framework",
+               ":framework_internal",
+               ":function_ops_op_lib",
+               ":functional_grad",
+               ":functional_ops_op_lib",
+               ":lib",
+               ":lib_internal",
+               ":proto_text",
+               ":protos_all_cc",
+               "//third_party/eigen3",
+               "//tensorflow/core/kernels:required",
+           ] + if_mkl(["//third_party/mkl:intel_binary_blob"]) +
+           tf_additional_core_deps(),
     alwayslink = 1,
 )
 
