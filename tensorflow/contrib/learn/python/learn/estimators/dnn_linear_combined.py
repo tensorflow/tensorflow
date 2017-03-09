@@ -550,7 +550,7 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
     if not self._feature_columns:
       raise ValueError("Either linear_feature_columns or dnn_feature_columns "
                        "must be defined.")
-    head = head_lib._multi_class_head(  # pylint: disable=protected-access
+    head = head_lib.multi_class_head(
         n_classes=n_classes,
         weight_column_name=weight_column_name,
         enable_centered_bias=enable_centered_bias)
@@ -841,7 +841,7 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
     if not self._feature_columns:
       raise ValueError("Either linear_feature_columns or dnn_feature_columns "
                        "must be defined.")
-    head = head_lib._regression_head(  # pylint: disable=protected-access
+    head = head_lib.regression_head(
         weight_column_name=weight_column_name,
         label_dimension=label_dimension,
         enable_centered_bias=enable_centered_bias)

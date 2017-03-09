@@ -60,7 +60,7 @@ def _assert_metrics_in_range(keys, metrics):
                                          metrics)
 
 
-class _CheckCallsHead(head_lib._Head):  # pylint: disable=protected-access
+class _CheckCallsHead(head_lib.Head):
   """Head that checks whether head_ops is called."""
 
   def __init__(self):
@@ -97,7 +97,7 @@ class EmbeddingMultiplierTest(test.TestCase):
 
     params = {
         'dnn_feature_columns': [one_hot_language],
-        'head': head_lib._multi_class_head(2),
+        'head': head_lib.multi_class_head(2),
         'dnn_hidden_units': [1],
         # Set lr mult to 0. to keep embeddings constant.
         'embedding_lr_multipliers': {
@@ -131,7 +131,7 @@ class EmbeddingMultiplierTest(test.TestCase):
 
     params = {
         'dnn_feature_columns': [embedding_language, embedding_wire],
-        'head': head_lib._multi_class_head(2),
+        'head': head_lib.multi_class_head(2),
         'dnn_hidden_units': [1],
         # Set lr mult to 0. to keep embeddings constant.
         'embedding_lr_multipliers': {

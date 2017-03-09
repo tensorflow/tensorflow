@@ -28,12 +28,23 @@ See the @{$python/contrib.learn} guide.
 @@MetricSpec
 @@PredictionKey
 @@DNNClassifier
+@@DNNEstimator
 @@DNNRegressor
 @@DNNLinearCombinedRegressor
 @@DNNLinearCombinedClassifier
 @@LinearClassifier
+@@LinearEstimator
 @@LinearRegressor
 @@LogisticRegressor
+
+@@Head
+@@multi_class_head
+@@multi_label_head
+@@binary_svm_head
+@@regression_head
+@@poisson_regression_head
+@@multi_head
+@@no_op_train_fn
 
 @@Experiment
 @@ExportStrategy
