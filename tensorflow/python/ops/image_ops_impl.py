@@ -143,16 +143,18 @@ def _Check3DImage(image, require_static=True):
     return []
 
 
-def _CheckAtLeast3DImage(image):
+def _CheckAtLeast3DImage(image, require_static=True):
   """Assert that we are working with properly shaped image.
 
   Args:
     image: >= 3-D Tensor of size [*, height, width, depth]
+    require_static: If `True`, requires that all dimensions of `image` are
+      known and non-zero.
 
   Raises:
     ValueError: if image.shape is not a [>= 3] vector.
   """
-  if not image.get_shape().is_fully_defined():
+  if require_static and not image.get_shape().is_fully_defined():
     raise ValueError('\'image\' must be fully defined.')
   if image.get_shape().ndims < 3:
     raise ValueError('\'image\' must be at least three-dimensional.')
