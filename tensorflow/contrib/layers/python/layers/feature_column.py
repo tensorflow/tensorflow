@@ -1604,8 +1604,9 @@ class _BucketizedColumn(_FeatureColumn, collections.namedtuple(
 
   Attributes:
     source_column: A _RealValuedColumn defining dense column.
-    boundaries: A list of floats specifying the boundaries. It has to be sorted.
-      [a, b, c] defines following buckets: (-inf., a), [a, b), [b, c), [c, inf.)
+    boundaries: A list or tuple of floats specifying the boundaries. It has to
+      be sorted. [a, b, c] defines following buckets: (-inf., a), [a, b),
+      [b, c), [c, inf.)
   Raises:
     ValueError: if 'boundaries' is empty or not sorted.
   """
@@ -1619,8 +1620,9 @@ class _BucketizedColumn(_FeatureColumn, collections.namedtuple(
       raise ValueError("source_column must have a defined dimension. "
                        "source_column: {}".format(source_column))
 
-    if not isinstance(boundaries, list) or not boundaries:
-      raise ValueError("boundaries must be a non-empty list. "
+    if (not isinstance(boundaries, list) and
+        not isinstance(boundaries, tuple)) or not boundaries:
+      raise ValueError("boundaries must be a non-empty list or tuple. "
                        "boundaries: {}".format(boundaries))
 
     # We allow bucket boundaries to be monotonically increasing
@@ -1730,7 +1732,8 @@ def bucketized_column(source_column, boundaries):
 
   Args:
     source_column: A _RealValuedColumn defining dense column.
-    boundaries: A list of floats specifying the boundaries. It has to be sorted.
+    boundaries: A list or tuple of floats specifying the boundaries. It has to
+      be sorted.
 
   Returns:
     A _BucketizedColumn.

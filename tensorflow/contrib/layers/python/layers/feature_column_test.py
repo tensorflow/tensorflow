@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
 import itertools
 import os
 import sys
@@ -410,6 +411,20 @@ class FeatureColumnTest(test.TestCase):
         fc.real_valued_column("a"), [1., 2., 2., 3., 3.])
     self.assertEqual(a_bucketized.name, "a_bucketized")
     self.assertTupleEqual(a_bucketized.boundaries, (1., 2., 3.))
+
+  def testBucketizedColumnDeepCopy(self):
+    """Tests that we can do a deepcopy of a bucketized column.
+
+    This test requires that the bucketized column also accept boundaries
+    as tuples.
+    """
+    bucketized = fc.bucketized_column(
+        fc.real_valued_column("a"), [1., 2., 2., 3., 3.])
+    self.assertEqual(bucketized.name, "a_bucketized")
+    self.assertTupleEqual(bucketized.boundaries, (1., 2., 3.))
+    bucketized_copy = copy.deepcopy(bucketized)
+    self.assertEqual(bucketized_copy.name, "a_bucketized")
+    self.assertTupleEqual(bucketized_copy.boundaries, (1., 2., 3.))
 
   def testCrossedColumnNameCreatesSortedNames(self):
     a = fc.sparse_column_with_hash_bucket("aaa", hash_bucket_size=100)
