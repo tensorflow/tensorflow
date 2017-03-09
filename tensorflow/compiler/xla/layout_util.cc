@@ -287,7 +287,8 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
 /* static */ std::vector<int64> LayoutUtil::MakeLogicalToPhysical(
     const Layout& layout) {
   std::vector<int64> logical_to_physical(layout.minor_to_major_size());
-  for (int64 physical = 0; physical < logical_to_physical.size(); ++physical) {
+  for (std::vector<int64>::size_type physical = 0;
+       physical < logical_to_physical.size(); ++physical) {
     const int64 logical = Major(layout, physical);
     logical_to_physical[logical] = physical;
   }

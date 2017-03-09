@@ -80,7 +80,7 @@ class DumpIrPass : public llvm::FunctionPass {
 char DumpIrPass::id_ = 0;
 
 void IrDumpingPassManager::run(llvm::Module &module) {
-  for (int i = 0; i < passes_.size(); ++i) {
+  for (std::vector<llvm::Pass*>::size_type i = 0; i < passes_.size(); ++i) {
     llvm::Pass *P = passes_[i];
     if (dump_ir_) {
       const llvm::PassInfo *PI =
