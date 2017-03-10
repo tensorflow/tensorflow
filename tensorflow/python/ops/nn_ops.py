@@ -525,17 +525,16 @@ def convolution(input, filter,  # pylint: disable=redefined-builtin
   of N `strides` (defaulting [1]*N), this computes for each N-D spatial output
   position (x[0], ..., x[N-1]):
 
+  ```
     output[b, x[0], ..., x[N-1], k] =
-
         sum_{z[0], ..., z[N-1], q}
-
             filter[z[0], ..., z[N-1], q, k] *
             padded_input[b,
                          x[0]*strides[0] + dilation_rate[0]*z[0],
                          ...,
                          x[N-1]*strides[N-1] + dilation_rate[N-1]*z[N-1],
                          q]
-
+  ```
   where `padded_input` is obtained by zero padding the input using an effective
   spatial filter shape of `(spatial_filter_shape-1) * dilation_rate + 1` and
   output striding `strides` as described in the
@@ -678,6 +677,7 @@ def pool(input,  # pylint: disable=redefined-builtin
       0 <= x[i] < output_spatial_shape[i],
       0 <= c < num_channels:
 
+  ```
     output[b, x[0], ..., x[N-1], c] =
       REDUCE_{z[0], ..., z[N-1]}
         input[b,
@@ -685,6 +685,7 @@ def pool(input,  # pylint: disable=redefined-builtin
               ...
               x[N-1]*strides[N-1] - pad_before[N-1] + dilation_rate[N-1]*z[N-1],
               c],
+  ```
 
   where the reduction function REDUCE depends on the value of `pooling_type`,
   and pad_before is defined based on the value of `padding` as described in the
@@ -694,10 +695,12 @@ def pool(input,  # pylint: disable=redefined-builtin
   In the case that `data_format` starts with `"NC"`, the `input` and output are
   simply transposed as follows:
 
+  ```
     pool(input, data_format, **kwargs) =
       tf.transpose(pool(tf.transpose(input, [0] + range(2,N+2) + [1]),
                         **kwargs),
                    [0, N+1] + range(1, N+1))
+  ```
 
   Args:
     input: Tensor of rank N+2, of shape
@@ -736,6 +739,7 @@ def pool(input,  # pylint: disable=redefined-builtin
 
     If padding = "SAME":
       output_spatial_shape[i] = ceil(input_spatial_shape[i] / strides[i])
+
     If padding = "VALID":
       output_spatial_shape[i] =
         ceil((input_spatial_shape[i] - (window_shape[i] - 1) * dilation_rate[i])
