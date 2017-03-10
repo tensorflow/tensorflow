@@ -585,16 +585,13 @@ def _logits(logits_input, logits, logits_dimension):
 
 def _create_model_fn_ops(features,
                          mode,
-                         transform_labels_fn,
                          loss_fn,
                          logits_to_predictions_fn,
                          metrics_fn,
                          create_output_alternatives_fn,
-                         default_variable_scope_name,
                          labels=None,
                          train_op_fn=None,
                          logits=None,
-                         logits_input=None,
                          logits_dimension=None,
                          head_name=None,
                          weight_column_name=None,
@@ -602,46 +599,36 @@ def _create_model_fn_ops(features,
   """Returns a `ModelFnOps` object."""
   _check_mode_valid(mode)
 
-  with variable_scope.variable_scope(
-      None,
-      default_name=head_name or default_variable_scope_name,
-      values=(tuple(six.itervalues(features)) +
-              (labels, logits, logits_input))):
-    if (mode != model_fn.ModeKeys.INFER) and (labels is not None):
-      labels = transform_labels_fn(labels)
-    else:
-      labels = None
+  centered_bias = None
+  if enable_centered_bias:
+    centered_bias = _centered_bias(logits_dimension, head_name)
+    logits = nn.bias_add(logits, centered_bias)
 
-    logits = _logits(logits_input, logits, logits_dimension)
-    centered_bias = None
-    if enable_centered_bias:
-      centered_bias = _centered_bias(logits_dimension, head_name)
-      logits = nn.bias_add(logits, centered_bias)
+  predictions = logits_to_predictions_fn(logits)
+  loss = None
+  train_op = None
+  eval_metric_ops = None
+  if (mode != model_fn.ModeKeys.INFER) and (labels is not None):
+    weight_tensor = _weight_tensor(features, weight_column_name)
+    loss, weighted_average_loss = loss_fn(labels, logits, weight_tensor)
+    logging_ops.scalar_summary(
+        _summary_key(head_name, mkey.LOSS), weighted_average_loss)
 
-    predictions = logits_to_predictions_fn(logits)
-    loss = None
-    train_op = None
-    eval_metric_ops = None
-    if (mode != model_fn.ModeKeys.INFER) and (labels is not None):
-      weight_tensor = _weight_tensor(features, weight_column_name)
-      loss, weighted_average_loss = loss_fn(labels, logits, weight_tensor)
-      logging_ops.scalar_summary(
-          _summary_key(head_name, mkey.LOSS), weighted_average_loss)
-
-      if mode == model_fn.ModeKeys.TRAIN:
-        if train_op_fn is None:
-          raise ValueError("train_op_fn can not be None in TRAIN mode")
-        train_op = _train_op(loss, labels, train_op_fn, centered_bias,
-                             logits_dimension, loss_fn, weight_tensor)
-      eval_metric_ops = metrics_fn(
-          weighted_average_loss, predictions, labels, weight_tensor)
-    return model_fn.ModelFnOps(
-        mode=mode,
-        predictions=predictions,
-        loss=loss,
-        train_op=train_op,
-        eval_metric_ops=eval_metric_ops,
-        output_alternatives=create_output_alternatives_fn(predictions))
+    if mode == model_fn.ModeKeys.TRAIN:
+      if train_op_fn is None:
+        raise ValueError("train_op_fn can not be None in TRAIN mode")
+      batch_size = array_ops.shape(logits)[0]
+      train_op = _train_op(loss, labels, train_op_fn, centered_bias,
+                           batch_size, loss_fn, weight_tensor)
+    eval_metric_ops = metrics_fn(
+        weighted_average_loss, predictions, labels, weight_tensor)
+  return model_fn.ModelFnOps(
+      mode=mode,
+      predictions=predictions,
+      loss=loss,
+      train_op=train_op,
+      eval_metric_ops=eval_metric_ops,
+      output_alternatives=create_output_alternatives_fn(predictions))
 
 
 class _RegressionHead(_SingleHead):
@@ -695,26 +682,32 @@ class _RegressionHead(_SingleHead):
                           logits_input=None,
                           scope=None):
     """See `Head`."""
-    return _create_model_fn_ops(
-        features=features,
-        mode=mode,
-        transform_labels_fn=self._transform_labels,
-        loss_fn=self._loss_fn,
-        logits_to_predictions_fn=self._logits_to_predictions,
-        metrics_fn=self._metrics,
-        create_output_alternatives_fn=self._create_output_alternatives,
-        default_variable_scope_name="regression_head",
-        labels=labels,
-        train_op_fn=train_op_fn,
-        logits=logits,
-        logits_input=logits_input,
-        logits_dimension=self.logits_dimension,
-        head_name=self.head_name,
-        weight_column_name=self.weight_column_name,
-        enable_centered_bias=self._enable_centered_bias)
+    with variable_scope.variable_scope(
+        scope,
+        default_name=self.head_name or "regression_head",
+        values=(tuple(six.itervalues(features)) +
+                (labels, logits, logits_input))):
+      labels = self._transform_labels(mode=mode, labels=labels)
+      logits = _logits(logits_input, logits, self.logits_dimension)
+      return _create_model_fn_ops(
+          features=features,
+          mode=mode,
+          loss_fn=self._loss_fn,
+          logits_to_predictions_fn=self._logits_to_predictions,
+          metrics_fn=self._metrics,
+          create_output_alternatives_fn=self._create_output_alternatives,
+          labels=labels,
+          train_op_fn=train_op_fn,
+          logits=logits,
+          logits_dimension=self.logits_dimension,
+          head_name=self.head_name,
+          weight_column_name=self.weight_column_name,
+          enable_centered_bias=self._enable_centered_bias)
 
-  def _transform_labels(self, labels):
+  def _transform_labels(self, mode, labels):
     """Applies transformations to labels tensor."""
+    if (mode == model_fn.ModeKeys.INFER) or (labels is None):
+      return None
     labels_tensor = _to_labels_tensor(labels, self._label_name)
     _check_no_sparse_tensor(labels_tensor)
     return labels_tensor
@@ -810,26 +803,32 @@ class _BinaryLogisticHead(_SingleHead):
                           logits_input=None,
                           scope=None):
     """See `Head`."""
-    return _create_model_fn_ops(
-        features=features,
-        mode=mode,
-        transform_labels_fn=self._transform_labels,
-        loss_fn=self._loss_fn,
-        logits_to_predictions_fn=self._logits_to_predictions,
-        metrics_fn=self._metrics,
-        create_output_alternatives_fn=self._create_output_alternatives,
-        default_variable_scope_name="binary_logistic_head",
-        labels=labels,
-        train_op_fn=train_op_fn,
-        logits=logits,
-        logits_input=logits_input,
-        logits_dimension=self.logits_dimension,
-        head_name=self.head_name,
-        weight_column_name=self.weight_column_name,
-        enable_centered_bias=self._enable_centered_bias)
+    with variable_scope.variable_scope(
+        scope,
+        default_name=self.head_name or "binary_logistic_head",
+        values=(tuple(six.itervalues(features)) +
+                (labels, logits, logits_input))):
+      labels = self._transform_labels(mode=mode, labels=labels)
+      logits = _logits(logits_input, logits, self.logits_dimension)
+      return _create_model_fn_ops(
+          features=features,
+          mode=mode,
+          loss_fn=self._loss_fn,
+          logits_to_predictions_fn=self._logits_to_predictions,
+          metrics_fn=self._metrics,
+          create_output_alternatives_fn=self._create_output_alternatives,
+          labels=labels,
+          train_op_fn=train_op_fn,
+          logits=logits,
+          logits_dimension=self.logits_dimension,
+          head_name=self.head_name,
+          weight_column_name=self.weight_column_name,
+          enable_centered_bias=self._enable_centered_bias)
 
-  def _transform_labels(self, labels):
+  def _transform_labels(self, mode, labels):
     """Applies transformations to labels tensor."""
+    if (mode == model_fn.ModeKeys.INFER) or (labels is None):
+      return None
     labels_tensor = _to_labels_tensor(labels, self._label_name)
     _check_no_sparse_tensor(labels_tensor)
     return labels_tensor
@@ -997,34 +996,57 @@ class _MultiClassHead(_SingleHead):
                           logits_input=None,
                           scope=None):
     """See `Head`."""
-    return _create_model_fn_ops(
-        features=features,
-        mode=mode,
-        transform_labels_fn=self._transform_labels,
-        loss_fn=self._loss_fn,
-        logits_to_predictions_fn=self._logits_to_predictions,
-        metrics_fn=self._metrics,
-        create_output_alternatives_fn=self._create_output_alternatives,
-        default_variable_scope_name="multi_class_head",
-        labels=labels,
-        train_op_fn=train_op_fn,
-        logits=logits,
-        logits_input=logits_input,
-        logits_dimension=self.logits_dimension,
-        head_name=self.head_name,
-        weight_column_name=self.weight_column_name,
-        enable_centered_bias=self._enable_centered_bias)
+    with variable_scope.variable_scope(
+        scope,
+        default_name=self.head_name or "multi_class_head",
+        values=(tuple(six.itervalues(features)) +
+                (labels, logits, logits_input))):
+      labels = self._transform_labels(mode=mode, labels=labels)
+      logits = _logits(logits_input, logits, self.logits_dimension)
+      return _create_model_fn_ops(
+          features=features,
+          mode=mode,
+          loss_fn=self._wrapped_loss_fn,
+          logits_to_predictions_fn=self._logits_to_predictions,
+          metrics_fn=self._metrics,
+          create_output_alternatives_fn=self._create_output_alternatives,
+          labels=labels,
+          train_op_fn=train_op_fn,
+          logits=logits,
+          logits_dimension=self.logits_dimension,
+          head_name=self.head_name,
+          weight_column_name=self.weight_column_name,
+          enable_centered_bias=self._enable_centered_bias)
 
-  def _transform_labels(self, labels):
-    """Applies transformations to labels tensor."""
+  def _transform_labels(self, mode, labels):
+    """Returns a dict that contains both the original labels and label IDs."""
+    if (mode == model_fn.ModeKeys.INFER) or (labels is None):
+      return None
     labels_tensor = _to_labels_tensor(labels, self._label_name)
     _check_no_sparse_tensor(labels_tensor)
     if self._label_keys:
       table = lookup_lib.string_to_index_table_from_tensor(
           mapping=self._label_keys,
           name="label_id_lookup")
-      labels_tensor = table.lookup(labels_tensor)
-    return labels_tensor
+      return {
+          "labels": labels_tensor,
+          "label_ids": table.lookup(labels_tensor),
+      }
+    return {
+        "labels": labels_tensor,
+        "label_ids": labels_tensor,
+    }
+
+  def _labels(self, labels_dict):
+    """Returns labels `Tensor` of the same type as classes."""
+    return labels_dict["labels"]
+
+  def _label_ids(self, labels_dict):
+    """Returns integer label ID `Tensor`."""
+    return labels_dict["label_ids"]
+
+  def _wrapped_loss_fn(self, labels, logits, weights=None):
+    return self._loss_fn(self._label_ids(labels), logits, weights=weights)
 
   def _logits_to_predictions(self, logits):
     """Returns a dict of predictions.
@@ -1055,37 +1077,39 @@ class _MultiClassHead(_SingleHead):
 
   def _metrics(self, eval_loss, predictions, labels, weights):
     """Returns a dict of metrics keyed by name."""
-    with ops.name_scope("metrics", values=(
-        [eval_loss, labels, weights] + list(six.itervalues(predictions)))):
+    with ops.name_scope(
+        "metrics",
+        values=((eval_loss, self._labels(labels), self._label_ids(labels),
+                 weights) + tuple(six.itervalues(predictions)))):
       logits = predictions[prediction_key.PredictionKey.LOGITS]
       probabilities = predictions[prediction_key.PredictionKey.PROBABILITIES]
+      classes = predictions[prediction_key.PredictionKey.CLASSES]
 
       metrics = {_summary_key(self.head_name, mkey.LOSS):
                  metrics_lib.streaming_mean(eval_loss)}
-
-      for class_id in self._metric_class_ids:
-        # TODO(ptucker): Add per-class accuracy, precision, recall.
-        metrics[_summary_key(
-            self.head_name, mkey.CLASS_LABEL_MEAN % class_id)] = (
-                _class_labels_streaming_mean(labels, weights, class_id))
-        metrics[_summary_key(
-            self.head_name, mkey.CLASS_PROBABILITY_MEAN % class_id)] = (
-                _predictions_streaming_mean(probabilities, weights, class_id))
-        metrics[_summary_key(
-            self.head_name, mkey.CLASS_LOGITS_MEAN % class_id)] = (
-                _predictions_streaming_mean(logits, weights, class_id))
+      # TODO(b/29366811): This currently results in both an "accuracy" and an
+      # "accuracy/threshold_0.500000_mean" metric for binary classification.
+      metrics[_summary_key(self.head_name, mkey.ACCURACY)] = (
+          metrics_lib.streaming_accuracy(
+              classes, self._labels(labels), weights))
 
       if not self._label_keys:
-        # classes are IDs. Add some more metrics.
-        classes = predictions[prediction_key.PredictionKey.CLASSES]
-        # TODO(b/29366811): This currently results in both an "accuracy" and an
-        # "accuracy/threshold_0.500000_mean" metric for binary classification.
-        metrics[_summary_key(self.head_name, mkey.ACCURACY)] = (
-            metrics_lib.streaming_accuracy(classes, labels, weights))
+        # Classes are IDs. Add some metrics.
         for class_id in self._metric_class_ids:
           metrics[_summary_key(
               self.head_name, mkey.CLASS_PREDICTION_MEAN % class_id)] = (
                   _class_predictions_streaming_mean(classes, weights, class_id))
+          # TODO(ptucker): Add per-class accuracy, precision, recall.
+          metrics[_summary_key(
+              self.head_name, mkey.CLASS_LABEL_MEAN % class_id)] = (
+                  _class_labels_streaming_mean(
+                      self._label_ids(labels), weights, class_id))
+          metrics[_summary_key(
+              self.head_name, mkey.CLASS_PROBABILITY_MEAN % class_id)] = (
+                  _predictions_streaming_mean(probabilities, weights, class_id))
+          metrics[_summary_key(
+              self.head_name, mkey.CLASS_LOGITS_MEAN % class_id)] = (
+                  _predictions_streaming_mean(logits, weights, class_id))
 
     return metrics
 
@@ -1182,26 +1206,32 @@ class _BinarySvmHead(_SingleHead):
                           logits_input=None,
                           scope=None):
     """See `Head`."""
-    return _create_model_fn_ops(
-        features=features,
-        mode=mode,
-        transform_labels_fn=self._transform_labels,
-        loss_fn=self._loss_fn,
-        logits_to_predictions_fn=self._logits_to_predictions,
-        metrics_fn=self._metrics,
-        create_output_alternatives_fn=self._create_output_alternatives,
-        default_variable_scope_name="binary_svm_head",
-        labels=labels,
-        train_op_fn=train_op_fn,
-        logits=logits,
-        logits_input=logits_input,
-        logits_dimension=self.logits_dimension,
-        head_name=self.head_name,
-        weight_column_name=self.weight_column_name,
-        enable_centered_bias=self._enable_centered_bias)
+    with variable_scope.variable_scope(
+        scope,
+        default_name=self.head_name or "binary_svm_head",
+        values=(tuple(six.itervalues(features)) +
+                (labels, logits, logits_input))):
+      labels = self._transform_labels(mode=mode, labels=labels)
+      logits = _logits(logits_input, logits, self.logits_dimension)
+      return _create_model_fn_ops(
+          features=features,
+          mode=mode,
+          loss_fn=self._loss_fn,
+          logits_to_predictions_fn=self._logits_to_predictions,
+          metrics_fn=self._metrics,
+          create_output_alternatives_fn=self._create_output_alternatives,
+          labels=labels,
+          train_op_fn=train_op_fn,
+          logits=logits,
+          logits_dimension=self.logits_dimension,
+          head_name=self.head_name,
+          weight_column_name=self.weight_column_name,
+          enable_centered_bias=self._enable_centered_bias)
 
-  def _transform_labels(self, labels):
+  def _transform_labels(self, mode, labels):
     """Applies transformations to labels tensor."""
+    if (mode == model_fn.ModeKeys.INFER) or (labels is None):
+      return None
     labels_tensor = _to_labels_tensor(labels, self._label_name)
     _check_no_sparse_tensor(labels_tensor)
     return labels_tensor
@@ -1275,26 +1305,32 @@ class _MultiLabelHead(_SingleHead):
                           logits_input=None,
                           scope=None):
     """See `Head`."""
-    return _create_model_fn_ops(
-        features=features,
-        mode=mode,
-        transform_labels_fn=self._transform_labels,
-        loss_fn=self._loss_fn,
-        logits_to_predictions_fn=self._logits_to_predictions,
-        metrics_fn=self._metrics,
-        create_output_alternatives_fn=self._create_output_alternatives,
-        default_variable_scope_name="multi_label_head",
-        labels=labels,
-        train_op_fn=train_op_fn,
-        logits=logits,
-        logits_input=logits_input,
-        logits_dimension=self.logits_dimension,
-        head_name=self.head_name,
-        weight_column_name=self.weight_column_name,
-        enable_centered_bias=self._enable_centered_bias)
+    with variable_scope.variable_scope(
+        scope,
+        default_name=self.head_name or "multi_label_head",
+        values=(tuple(six.itervalues(features)) +
+                (labels, logits, logits_input))):
+      labels = self._transform_labels(mode=mode, labels=labels)
+      logits = _logits(logits_input, logits, self.logits_dimension)
+      return _create_model_fn_ops(
+          features=features,
+          mode=mode,
+          loss_fn=self._loss_fn,
+          logits_to_predictions_fn=self._logits_to_predictions,
+          metrics_fn=self._metrics,
+          create_output_alternatives_fn=self._create_output_alternatives,
+          labels=labels,
+          train_op_fn=train_op_fn,
+          logits=logits,
+          logits_dimension=self.logits_dimension,
+          head_name=self.head_name,
+          weight_column_name=self.weight_column_name,
+          enable_centered_bias=self._enable_centered_bias)
 
-  def _transform_labels(self, labels):
+  def _transform_labels(self, mode, labels):
     """Applies transformations to labels tensor."""
+    if (mode == model_fn.ModeKeys.INFER) or (labels is None):
+      return None
     labels_tensor = _to_labels_tensor(labels, self._label_name)
     labels_tensor = _sparse_labels_to_indicator(labels_tensor,
                                                 self._logits_dimension)
@@ -1686,14 +1722,14 @@ def _verify_loss_fn_args(loss_fn):
 
 
 def _centered_bias(logits_dimension, head_name=None):
-  """Returns `logits`, optionally with centered bias applied.
+  """Returns centered_bias `Variable`.
 
   Args:
     logits_dimension: Last dimension of `logits`. Must be >= 1.
     head_name: Optional name of the head.
 
   Returns:
-    Centered bias `Variable`.
+    `Variable` with shape `[logits_dimension]`.
 
   Raises:
     ValueError: if `logits_dimension` is invalid.
@@ -1716,13 +1752,10 @@ def _centered_bias(logits_dimension, head_name=None):
   return centered_bias
 
 
-def _centered_bias_step(centered_bias, logits_dimension, labels,
-                        loss_fn, weights):
+def _centered_bias_step(centered_bias, batch_size, labels, loss_fn, weights):
   """Creates and returns training op for centered bias."""
-  if (logits_dimension is None) or (logits_dimension < 1):
-    raise ValueError("Invalid logits_dimension %s." % logits_dimension)
   with ops.name_scope(None, "centered_bias_step", (labels,)) as name:
-    batch_size = array_ops.shape(labels)[0]
+    logits_dimension = array_ops.shape(centered_bias)[0]
     logits = array_ops.reshape(
         array_ops.tile(centered_bias, (batch_size,)),
         (batch_size, logits_dimension))
@@ -1739,12 +1772,16 @@ def _summary_key(head_name, val):
   return "%s/%s" % (val, head_name) if head_name else val
 
 
-def _train_op(loss, labels, train_op_fn, centered_bias, logits_dimension,
-              loss_fn, weights):
+def _train_op(loss, labels, train_op_fn, centered_bias, batch_size, loss_fn,
+              weights):
   """Returns op for the training step."""
   if centered_bias is not None:
-    centered_bias_step = _centered_bias_step(centered_bias, logits_dimension,
-                                             labels, loss_fn, weights)
+    centered_bias_step = _centered_bias_step(
+        centered_bias=centered_bias,
+        batch_size=batch_size,
+        labels=labels,
+        loss_fn=loss_fn,
+        weights=weights)
   else:
     centered_bias_step = None
   with ops.name_scope(None, "train_op", (loss, labels)):
