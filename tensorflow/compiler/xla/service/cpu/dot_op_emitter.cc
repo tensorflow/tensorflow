@@ -191,12 +191,12 @@ tensorflow::Status DotOpEmitter::Emit() {
   // from the rhs index are the lower dimensions in the index so we add them
   // first.
   llvm_ir::IrArray::Index target_index;
-  for (size_t dimension = 0; dimension < lhs_index.size(); ++dimension) {
+  for (int dimension = 0; dimension < lhs_index.size(); ++dimension) {
     if (dimension != lhs_reduction_dimension) {
       target_index.push_back(lhs_index[dimension]);
     }
   }
-  for (size_t dimension = 0; dimension < rhs_index.size(); ++dimension) {
+  for (int dimension = 0; dimension < rhs_index.size(); ++dimension) {
     if (dimension != rhs_reduction_dimension) {
       target_index.push_back(rhs_index[dimension]);
     }
@@ -332,7 +332,7 @@ llvm_ir::IrArray::Index DotOpEmitter::EmitOperandArrayLoopNest(
   llvm_ir::IrArray::Index index =
       loop_nest->AddLoopsForShapeOnDimensions(shape, dimensions, name_suffix);
   // Verify every dimension except the reduction dimension was set in the index.
-  for (size_t dimension = 0; dimension < index.size(); ++dimension) {
+  for (int dimension = 0; dimension < index.size(); ++dimension) {
     if (dimension == reduction_dimension) {
       DCHECK_EQ(nullptr, index[dimension]);
     } else {
