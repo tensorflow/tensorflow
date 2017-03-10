@@ -492,7 +492,7 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
         x_rank = array_ops.rank(x)
         indices = array_ops.concat([[1, 0], math_ops.range(2, x_rank)], 0)
       else:
-        indices = [1, 0] + range(2, x_rank)
+        indices = [1, 0] + list(range(2, x_rank))
       return indices
     # (B, T, ...) => (T, B, ...)
     flat_input = tuple(array_ops.transpose(input_, _transpose_indices(input_))
