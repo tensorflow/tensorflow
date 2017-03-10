@@ -141,7 +141,7 @@ class CallGraph {
   using VisitorFunction = std::function<Status(const CallGraphNode&)>;
 
   // Build and return a call graph for the given HLO module.
-  static StatusOr<CallGraph> Build(const HloModule* module);
+  static StatusOr<std::unique_ptr<CallGraph>> Build(const HloModule* module);
 
   // Public default constructor required for StatusOr<CallGraph>.
   CallGraph() = default;
