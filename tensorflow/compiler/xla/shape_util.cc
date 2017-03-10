@@ -643,7 +643,7 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
   // The dimensions in minor_to_major need to be renumbered to account for the
   // degenerate dimensions which have removed. Decrement each dimension number
   // once for each degenerate dimension which has a smaller number.
-  for (std::vector<int64>::size_type i = 0; i < minor_to_major.size(); ++i) {
+  for (int i = 0; i < minor_to_major.size(); ++i) {
     int adjustment = 0;
     for (int64 dim : degenerate_dimensions) {
       if (minor_to_major[i] > dim) {

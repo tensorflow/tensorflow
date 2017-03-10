@@ -200,7 +200,7 @@ llvm::Value* IrArray::EmitArrayElementAddress(
   // We perform broadcasting when the operand shape has dimension(s) of size
   // 1. In this case we fix the index value for that dimension to zero. This
   // effectively broadcasts along this dimension.
-  for (size_t i = 0; i < index.size(); ++i) {
+  for (int64 i = 0; i < index.size(); ++i) {
     auto dim = shape_->dimensions(i);
     actual_index.push_back(dim == 1 ? ir_builder->getInt64(0) : index[i]);
     is_implicit_broadcast |= dim == 1;

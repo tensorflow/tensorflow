@@ -280,8 +280,7 @@ Status TuplePointsToAnalysis::HandleTuple(
 
   // A tuple contains references to all input operands and transitively any
   // references in those operands.
-  for (tensorflow::gtl::ArraySlice<HloInstruction*>::size_type i = 0;
-       i < operands.size(); ++i) {
+  for (int64 i = 0; i < operands.size(); ++i) {
     const PointsToSet& operand_points_to_set =
         *FindOrDie(points_to_, operands[i]);
 
