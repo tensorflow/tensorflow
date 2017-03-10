@@ -26,6 +26,10 @@ void dummy_xsmm_conv2d_ensure_file_is_not_empty(void);
 #include "tensorflow/core/kernels/xsmm_conv2d.h"
 
 #include <stdlib.h>
+#include <cstring>
+#if 0
+#include <omp.h>
+#endif
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
@@ -195,11 +199,17 @@ class handles{
 
 static handles libxsmm_handles;
 
+//#define LIBXSMM_DETAILED_TIMING
+
 template <typename InputPtr, typename FilterPtr, typename OutputPtr>
 static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
                                    const libxsmm_dnn_conv_desc& desc,
                                    libxsmm_dnn_compute_kind kind, InputPtr input,
                                    FilterPtr filter, OutputPtr output) {
+#if defined(LIBXSMM_DETAILED_TIMING)
+  unsigned long long l_tick1, l_tick2, l_tick3, l_tick4, l_tick5, l_tick6, l_tick7, l_tick8, l_tick9, l_tick10;
+  l_tick1 = libxsmm_timer_tick();
+#endif
   // setup scoped allocator, which adopts the allocator from the context
   const libxsmm_tf_allocator<libxsmm_scratch_allocator> tf_allocator(*ctx);
   libxsmm_dnn_err_t status;
@@ -225,13 +235,10 @@ static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
   libxsmm_dnn_buffer* libxsmm_input;
   libxsmm_dnn_buffer* libxsmm_output;
   libxsmm_dnn_filter* libxsmm_filter;
-  
- /* 
-  const DeviceBase::CpuWorkerThreads* worker_threads =
-      ctx->device()->tensorflow_cpu_worker_threads();
- 
-  int num_threads = worker_threads->num_threads;
-*/
+
+#if defined(LIBXSMM_DETAILED_TIMING)
+  l_tick2 = libxsmm_timer_tick();
+#endif
 
   int ifmblock = (libxsmm_handle->ifmblock);
   int ofmblock = (libxsmm_handle->ofmblock); 
@@ -241,13 +248,12 @@ static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
   float *native_filter = (float*)libxsmm_aligned_scratch( blocksofm*blocksifm*desc.R*desc.S*ifmblock*ofmblock*sizeof(float), 2097152);
  
 
-  
   const DeviceBase::CpuWorkerThreads* worker_threads =
       ctx->device()->tensorflow_cpu_worker_threads();
 
   int num_threads = worker_threads->num_threads;
 
-
+#if 1  
   if(blocksofm > num_threads){
     int work = blocksofm;
     BlockingCounter count(num_threads);
@@ -277,6 +283,13 @@ static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
     }
     count.Wait();
   }
+#else
+  memset( native_filter, 0, blocksofm*blocksifm*desc.R*desc.S*ifmblock*ofmblock*sizeof(float));
+#endif
+
+#if defined(LIBXSMM_DETAILED_TIMING)
+  l_tick3 = libxsmm_timer_tick();
+#endif
 
   libxsmm_input = libxsmm_dnn_link_buffer(
       libxsmm_handle, LIBXSMM_DNN_INPUT, input, LIBXSMM_DNN_TENSOR_FORMAT_NHWC_PTR, &status);
@@ -322,15 +335,28 @@ static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
     /* shouldn't happen */
   }
 
+#if defined(LIBXSMM_DETAILED_TIMING)
+  l_tick4 = libxsmm_timer_tick();
+#endif
+
   /* bind scratch */
   scratch = (void*)libxsmm_aligned_scratch( libxsmm_dnn_get_scratch_size( libxsmm_handle, LIBXSMM_DNN_COMPUTE_KIND_ALL, &status ), 2097152);
   chk_libxsmm_err( status, "scratch allocation" );
   chk_libxsmm_err( libxsmm_dnn_bind_scratch( libxsmm_handle, LIBXSMM_DNN_COMPUTE_KIND_ALL, scratch ), "binding scratch" );
 
+#if defined(LIBXSMM_DETAILED_TIMING)
+  l_tick5 = libxsmm_timer_tick();
+#endif
+
   if (kind == LIBXSMM_DNN_COMPUTE_KIND_BWD) {
     libxsmm_dnn_transpose_filter(libxsmm_handle, LIBXSMM_DNN_FILTER);
   }
 
+#if defined(LIBXSMM_DETAILED_TIMING)
+  l_tick6 = libxsmm_timer_tick();
+#endif
+
+#if 1
   BlockingCounter counter(num_threads);
   
   for (int i = 0; i < num_threads; ++i) {
@@ -341,6 +367,24 @@ static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
     });
   }
   counter.Wait();
+#else
+  #pragma omp parallel
+  {
+    chk_libxsmm_err(libxsmm_dnn_execute_st(libxsmm_handle, kind, 0, omp_get_thread_num()), "Worker");
+  }
+#endif
+
+#if defined(LIBXSMM_DETAILED_TIMING)
+  l_tick7 = libxsmm_timer_tick();
+#endif
+
+  if (kind == LIBXSMM_DNN_COMPUTE_KIND_UPD) {
+    libxsmm_dnn_reduce_wu_filters( libxsmm_handle, LIBXSMM_DNN_GRADIENT_FILTER );
+  }
+
+#if defined(LIBXSMM_DETAILED_TIMING)
+  l_tick8 = libxsmm_timer_tick();
+#endif
 
   if (kind == LIBXSMM_DNN_COMPUTE_KIND_UPD) {
     libxsmm_dnn_reduce_wu_filters( libxsmm_handle, LIBXSMM_DNN_GRADIENT_FILTER );
@@ -366,6 +410,10 @@ static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
   chk_libxsmm_err(libxsmm_dnn_destroy_buffer(libxsmm_input), "Destroy input");
   chk_libxsmm_err(libxsmm_dnn_destroy_buffer(libxsmm_output), "Destroy output");
   chk_libxsmm_err(libxsmm_dnn_destroy_filter(libxsmm_filter), "Destroy filter");
+
+#if defined(LIBXSMM_DETAILED_TIMING)
+  l_tick9 = libxsmm_timer_tick();
+#endif
   
   //if(kind != LIBXSMM_DNN_COMPUTE_KIND_FWD)
   //chk_libxsmm_err(libxsmm_dnn_destroy_conv_layer(libxsmm_handle),
@@ -373,6 +421,22 @@ static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
 
   libxsmm_free(native_filter);
   libxsmm_free(scratch);
+
+#if defined(LIBXSMM_DETAILED_TIMING)
+  l_tick10 = libxsmm_timer_tick();
+  printf("time for convolution (%i, %i, %i, %i, %i): %f, %f, %f, %f, %f, %f, %f, %f, %f, %f\n", desc.N, desc.C, desc.K, desc.R, desc.S, 
+                                                                                      libxsmm_timer_duration(l_tick1, l_tick2),
+                                                                                      libxsmm_timer_duration(l_tick2, l_tick3),
+                                                                                      libxsmm_timer_duration(l_tick3, l_tick4),
+                                                                                      libxsmm_timer_duration(l_tick4, l_tick5),
+                                                                                      libxsmm_timer_duration(l_tick5, l_tick6),
+                                                                                      libxsmm_timer_duration(l_tick6, l_tick7),
+                                                                                      libxsmm_timer_duration(l_tick7, l_tick8),
+                                                                                      libxsmm_timer_duration(l_tick8, l_tick9),
+                                                                                      libxsmm_timer_duration(l_tick9, l_tick10),
+                                                                                      libxsmm_timer_duration(l_tick1, l_tick10)  );
+#endif
+
   return true;  // Succeeded
 }
 
