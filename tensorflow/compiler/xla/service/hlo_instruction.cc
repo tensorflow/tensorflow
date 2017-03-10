@@ -1443,6 +1443,11 @@ string HloInstruction::ToString(bool compact_operands) const {
   if (opcode() == HloOpcode::kGetTupleElement) {
     tensorflow::strings::StrAppend(&extra, ", index=", tuple_index());
   }
+  if (!metadata_.op_type().empty() || !metadata_.op_name().empty() ||
+      !metadata_.source_file().empty()) {
+    tensorflow::strings::StrAppend(
+        &extra, " # metadata=", metadata_.ShortDebugString());
+  }
   return tensorflow::strings::Printf(
       "%s = %s %s(%s)%s", name().c_str(),
       ShapeUtil::HumanStringWithLayout(shape()).c_str(),

@@ -14,7 +14,6 @@ py_library(
     srcs = [
         "__init__.py",
         "edit.py",
-        "match.py",
         "reroute.py",
         "select.py",
         "subgraph.py",
@@ -72,7 +71,10 @@ py_test(
 
 py_test(
     name = "match_test",
-    srcs = ["tests/match_test.py"],
+    srcs = [
+        "tests/match.py",
+        "tests/match_test.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":graph_editor_py",
@@ -100,7 +102,10 @@ py_test(
 
 py_test(
     name = "reroute_test",
-    srcs = ["tests/reroute_test.py"],
+    srcs = [
+        "tests/match.py",
+        "tests/reroute_test.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":graph_editor_py",
@@ -114,7 +119,10 @@ py_test(
 
 py_test(
     name = "edit_test",
-    srcs = ["tests/edit_test.py"],
+    srcs = [
+        "tests/edit_test.py",
+        "tests/match.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":graph_editor_py",
@@ -128,7 +136,10 @@ py_test(
 
 py_test(
     name = "transform_test",
-    srcs = ["tests/transform_test.py"],
+    srcs = [
+        "tests/match.py",
+        "tests/transform_test.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":graph_editor_py",

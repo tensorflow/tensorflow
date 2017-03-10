@@ -304,7 +304,7 @@ class DNNClassifier(estimator.Estimator):
         config=config,
         params={
             "head":
-                head_lib._multi_class_head(  # pylint: disable=protected-access
+                head_lib.multi_class_head(
                     n_classes,
                     weight_column_name=weight_column_name,
                     enable_centered_bias=enable_centered_bias),
@@ -579,7 +579,7 @@ class DNNRegressor(estimator.Estimator):
         config=config,
         params={
             "head":
-                head_lib._regression_head(  # pylint: disable=protected-access
+                head_lib.regression_head(
                     label_dimension=label_dimension,
                     weight_column_name=weight_column_name,
                     enable_centered_bias=enable_centered_bias),
@@ -731,8 +731,7 @@ class DNNRegressor(estimator.Estimator):
         exports_to_keep=exports_to_keep)
 
 
-# TODO(zakaria): Make it public when b/34751732 is fixed.
-class _DNNEstimator(estimator.Estimator):
+class DNNEstimator(estimator.Estimator):
   """A Estimator for TensorFlow DNN models with user specified _Head.
 
   Example:
@@ -745,20 +744,20 @@ class _DNNEstimator(estimator.Estimator):
                                           ...)
   sparse_feature_b_emb = embedding_column(sparse_id_column=sparse_feature_b,
                                           ...)
-  To create a _DNNEstimator for binary classification, where
-  estimator = _DNNEstimator(
+  To create a DNNEstimator for binary classification, where
+  estimator = DNNEstimator(
       feature_columns=[sparse_feature_a_emb, sparse_feature_b_emb],
-      head=head_lib._multi_class__head(n_classes=2),
+      head=tf.contrib.learn.multi_class_head(n_classes=2),
       hidden_units=[1024, 512, 256])
 
   If your label is keyed with "y" in your labels dict, and weights are keyed
   with "w" in features dict, and you want to enable centered bias,
-  head = head_lib._multi_class__head(
+  head = tf.contrib.learn.multi_class_head(
       n_classes=2,
       label_name="x",
       weight_column_name="w",
       enable_centered_bias=True)
-  estimator = _DNNEstimator(
+  estimator = DNNEstimator(
       feature_columns=[sparse_feature_a_emb, sparse_feature_b_emb],
       head=head,
       hidden_units=[1024, 512, 256])
@@ -802,10 +801,10 @@ class _DNNEstimator(estimator.Estimator):
                feature_engineering_fn=None,
                embedding_lr_multipliers=None,
                input_layer_min_slice_size=None):
-    """Initializes a _DNNEstimator instance.
+    """Initializes a `DNNEstimator` instance.
 
     Args:
-      head: _Head instance.
+      head: `Head` instance.
       hidden_units: List of hidden units per layer. All layers are fully
         connected. Ex. `[64, 32]` means first layer has 64 nodes and second one
         has 32.
@@ -836,9 +835,9 @@ class _DNNEstimator(estimator.Estimator):
           partitions. If not provided, will use the default of 64M.
 
     Returns:
-      A `_DNNEstimator` estimator.
+      A `DNNEstimator` estimator.
     """
-    super(_DNNEstimator, self).__init__(
+    super(DNNEstimator, self).__init__(
         model_fn=_dnn_model_fn,
         model_dir=model_dir,
         config=config,
@@ -854,4 +853,3 @@ class _DNNEstimator(estimator.Estimator):
             "input_layer_min_slice_size": input_layer_min_slice_size,
         },
         feature_engineering_fn=feature_engineering_fn)
-

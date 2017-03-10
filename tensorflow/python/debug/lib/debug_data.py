@@ -26,6 +26,7 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import graph_pb2
+from tensorflow.core.framework import types_pb2
 from tensorflow.core.util import event_pb2
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.platform import gfile
@@ -77,10 +78,14 @@ def load_tensor_from_event(event):
   if (event.summary.value[0].tensor.tensor_content or
       event.summary.value[0].tensor.string_val):
     # Initialized tensor.
-    try:
-      tensor_value = tensor_util.MakeNdarray(event.summary.value[0].tensor)
-    except KeyError:
-      tensor_value = None
+    tensor_proto = event.summary.value[0].tensor
+    if tensor_proto.dtype == types_pb2.DT_RESOURCE:
+      return None
+    else:
+      try:
+        tensor_value = tensor_util.MakeNdarray(tensor_proto)
+      except KeyError:
+        tensor_value = None
   else:
     # Uninitialized tensor or tensor of unconvertible data type.
     tensor_value = None
