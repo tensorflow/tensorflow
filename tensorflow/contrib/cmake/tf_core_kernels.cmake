@@ -93,6 +93,12 @@ if(WIN32)
       "${tensorflow_source_dir}/tensorflow/core/kernels/meta_support.*"
       "${tensorflow_source_dir}/tensorflow/core/kernels/*quantiz*.h"
       "${tensorflow_source_dir}/tensorflow/core/kernels/*quantiz*.cc"
+      # no in tensorflow.dll - comes from .so
+      "${tensorflow_source_dir}/tensorflow/contrib/rnn/kernels/blas_gemm.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/rnn/kernels/gru_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/rnn/kernels/lstm_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/rnn/ops/gru_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/rnn/ops/lstm_ops.cc"
   )
   list(REMOVE_ITEM tf_core_kernels_srcs ${tf_core_kernels_windows_exclude_srcs})
 endif(WIN32)
