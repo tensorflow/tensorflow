@@ -12,7 +12,7 @@ py_library(
     srcs = [
         "__init__.py",
         "python/framework/fake_summary_writer.py",
-        "python/framework/util_test.py",
+        "python/framework/test_util.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
