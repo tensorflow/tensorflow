@@ -36,12 +36,12 @@ class ModeKeys(object):
 
   The following standard keys are defined:
 
-  * `FIT`: training mode.
+  * `TRAIN`: training mode.
   * `EVAL`: evaluation mode.
   * `PREDICT`: inference mode.
   """
 
-  FIT = 'train'
+  TRAIN = 'train'
   EVAL = 'eval'
   PREDICT = 'infer'
 
@@ -70,7 +70,7 @@ class EstimatorSpec(
     """Creates a validated `EstimatorSpec` instance.
 
     Depending on the value of `mode`, different arguments are required. Namely
-    * For `mode == ModeKeys.FIT`: required fields are `loss` and `train_op`.
+    * For `mode == ModeKeys.TRAIN`: required fields are `loss` and `train_op`.
     * For `mode == ModeKeys.EVAL`: required field is`loss`.
     * For `mode == ModeKeys.PREDICT`: required fields are `predictions`.
 
@@ -95,12 +95,12 @@ class EstimatorSpec(
 
     ```python
     def my_model_fn(mode, features, labels):
-      if (mode == tf.estimator.ModeKeys.FIT or
+      if (mode == tf.estimator.ModeKeys.TRAIN or
           mode == tf.estimator.ModeKeys.EVAL):
         loss = ...
       else:
         loss = None
-      if mode == tf.estimator.ModeKeys.FIT:
+      if mode == tf.estimator.ModeKeys.TRAIN:
         train_op = ...
       else:
         train_op = None
@@ -152,14 +152,14 @@ class EstimatorSpec(
     """
     # Validate train_op.
     if train_op is None:
-      if mode == ModeKeys.FIT:
+      if mode == ModeKeys.TRAIN:
         raise ValueError('Missing train_op.')
     else:
       _check_is_tensor_or_operation(train_op, 'train_op')
 
     # Validate loss.
     if loss is None:
-      if mode in (ModeKeys.FIT, ModeKeys.EVAL):
+      if mode in (ModeKeys.TRAIN, ModeKeys.EVAL):
         raise ValueError('Missing loss.')
     else:
       loss = _check_is_tensor(loss, 'loss')
