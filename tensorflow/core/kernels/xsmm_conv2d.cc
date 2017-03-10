@@ -386,10 +386,6 @@ static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
   l_tick8 = libxsmm_timer_tick();
 #endif
 
-  if (kind == LIBXSMM_DNN_COMPUTE_KIND_UPD) {
-    libxsmm_dnn_reduce_wu_filters( libxsmm_handle, LIBXSMM_DNN_GRADIENT_FILTER );
-  }
-
   /* clean up */
   chk_libxsmm_err( libxsmm_dnn_release_scratch( libxsmm_handle, LIBXSMM_DNN_COMPUTE_KIND_ALL ), "release scratch" );
   if (kind == LIBXSMM_DNN_COMPUTE_KIND_FWD) {
