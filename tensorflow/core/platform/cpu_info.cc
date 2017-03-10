@@ -21,6 +21,11 @@ limitations under the License.
 #include <mutex>  // NOLINT
 #endif
 
+#ifdef PLATFORM_WINDOWS
+#include <immintrin.h>
+#include <intrin.h>
+#endif
+
 // SIMD extension querying is only available on x86.
 #ifdef PLATFORM_IS_X86
 #ifdef PLATFORM_WINDOWS
