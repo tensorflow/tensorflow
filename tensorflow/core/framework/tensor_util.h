@@ -38,12 +38,12 @@ Tensor DeepCopy(const Tensor& other);
 // REQUIRES: Each member of 'tensors' must point to data stored in CPU memory.
 // REQUIRES: Each member of 'tensors' must be a Tensor of a copy-able type if it
 //           is not appropriately memory-aligned.
-Tensor Concat(const gtl::ArraySlice<Tensor>& tensors);
+Status Concat(const gtl::ArraySlice<Tensor>& tensors,
+              Tensor* result) TF_MUST_USE_RESULT;
 
-// Version of Concat() that returns an error Status instead of crashing, upon
-// encountering an error.
-Status TryConcat(const gtl::ArraySlice<Tensor>& tensors,
-                 Tensor* result) TF_MUST_USE_RESULT;
+// Version of Concat() that crashes upon hitting an error.
+// DEPRECATED. DO NOT USE.
+Tensor Concat(const gtl::ArraySlice<Tensor>& tensors);
 
 // Splits 'tensor' into 'sizes.size()' individual tensors, along the 0th
 // dimension. The ith output tensor has 0th-dimension size 'sizes[i]'.
@@ -55,13 +55,13 @@ Status TryConcat(const gtl::ArraySlice<Tensor>& tensors,
 //           appropriately memory-aligned.
 //
 // Split() and Concat() are inverse operations.
+Status Split(const Tensor& tensor, const gtl::ArraySlice<int64>& sizes,
+             std::vector<Tensor>* result) TF_MUST_USE_RESULT;
+
+// Version of Split() that crashes upon hitting an error.
+// DEPRECATED. DO NOT USE.
 std::vector<Tensor> Split(const Tensor& tensor,
                           const gtl::ArraySlice<int64>& sizes);
-
-// Version of Split() that returns an error Status instead of crashing, upon
-// encountering an error.
-Status TrySplit(const Tensor& tensor, const gtl::ArraySlice<int64>& sizes,
-                std::vector<Tensor>* result) TF_MUST_USE_RESULT;
 
 }  // namespace tensor
 }  // namespace tensorflow
