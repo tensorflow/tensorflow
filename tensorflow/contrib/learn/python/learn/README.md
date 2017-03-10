@@ -20,18 +20,17 @@ Optionally you can install [scikit-learn](http://scikit-learn.org/stable/) and [
 
 ### Tutorials
 
--   [TF Learn Quickstart](../../../../g3doc/tutorials/tflearn/index.md). Build,
+-   [TF Learn Quickstart](https://www.tensorflow.org/get_started/tflearn). Build,
     train, and evaluate a neural network with just a few lines of code.
--   [Input Functions](../../../../g3doc/tutorials/input_fn/index.md). Learn how
+-   [Input Functions](https://www.tensorflow.org/get_started/input_fn). Learn how
     to create input functions to feed data into your models.
--   [Linear Model](../../../../g3doc/tutorials/wide/index.md). Learn the basics
+-   [Linear Model](https://www.tensorflow.org/tutorials/wide). Learn the basics
     of building linear models.
--   [Wide and Deep
-    Learning](../../../../g3doc/tutorials/wide_and_deep/index.md). Jointly train
-    a linear model and a deep neural network.
--   [Logging and Monitoring](../../../../g3doc/tutorials/monitors/index.md). Use
-    the Monitor API to audit training of a neural network.
--   [Custom Estimators](../../../../g3doc/tutorials/estimators/index.md). Learn
+-   [Wide and Deep Learning](https://www.tensorflow.org/tutorials/wide_and_deep).
+    Jointly train a linear model and a deep neural network.
+-   [Logging and Monitoring](https://www.tensorflow.org/get_started/monitors).
+    Use the Monitor API to audit training of a neural network.
+-   [Custom Estimators](https://www.tensorflow.org/extend/estimators). Learn
     how to create a custom estimator.
 -   More coming soon.
 
