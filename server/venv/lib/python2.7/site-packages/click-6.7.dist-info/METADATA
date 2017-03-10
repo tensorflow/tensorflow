@@ -1,0 +1,16 @@
+Metadata-Version: 2.0
+Name: click
+Version: 6.7
+Summary: A simple wrapper around optparse for powerful command line utilities.
+Home-page: http://github.com/mitsuhiko/click
+Author: Armin Ronacher
+Author-email: armin.ronacher@active-4.com
+License: UNKNOWN
+Platform: UNKNOWN
+Classifier: License :: OSI Approved :: BSD License
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 3
+
+UNKNOWN
+
+

@@ -1,0 +1,69 @@
+Metadata-Version: 2.0
+Name: pip
+Version: 9.0.1
+Summary: The PyPA recommended tool for installing Python packages.
+Home-page: https://pip.pypa.io/
+Author: The pip developers
+Author-email: python-virtualenv@groups.google.com
+License: MIT
+Keywords: easy_install distutils setuptools egg virtualenv
+Platform: UNKNOWN
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Topic :: Software Development :: Build Tools
+Classifier: Programming Language :: Python :: 2
+Classifier: Programming Language :: Python :: 2.6
+Classifier: Programming Language :: Python :: 2.7
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.3
+Classifier: Programming Language :: Python :: 3.4
+Classifier: Programming Language :: Python :: 3.5
+Classifier: Programming Language :: Python :: Implementation :: PyPy
+Requires-Python: >=2.6,!=3.0.*,!=3.1.*,!=3.2.*
+Provides-Extra: testing
+Requires-Dist: mock; extra == 'testing'
+Requires-Dist: pretend; extra == 'testing'
+Requires-Dist: pytest; extra == 'testing'
+Requires-Dist: scripttest (>=1.3); extra == 'testing'
+Requires-Dist: virtualenv (>=1.10); extra == 'testing'
+
+pip
+===
+
+The `PyPA recommended
+<https://packaging.python.org/en/latest/current/>`_
+tool for installing Python packages.
+
+* `Installation <https://pip.pypa.io/en/stable/installing.html>`_
+* `Documentation <https://pip.pypa.io/>`_
+* `Changelog <https://pip.pypa.io/en/stable/news.html>`_
+* `Github Page <https://github.com/pypa/pip>`_
+* `Issue Tracking <https://github.com/pypa/pip/issues>`_
+* `User mailing list <http://groups.google.com/group/python-virtualenv>`_
+* `Dev mailing list <http://groups.google.com/group/pypa-dev>`_
+* User IRC: #pypa on Freenode.
+* Dev IRC: #pypa-dev on Freenode.
+
+
+.. image:: https://img.shields.io/pypi/v/pip.svg
+   :target: https://pypi.python.org/pypi/pip
+
+.. image:: https://img.shields.io/travis/pypa/pip/master.svg
+   :target: http://travis-ci.org/pypa/pip
+
+.. image:: https://img.shields.io/appveyor/ci/pypa/pip.svg
+   :target: https://ci.appveyor.com/project/pypa/pip/history
+
+.. image:: https://readthedocs.org/projects/pip/badge/?version=stable
+   :target: https://pip.pypa.io/en/stable
+
+Code of Conduct
+---------------
+
+Everyone interacting in the pip project's codebases, issue trackers, chat
+rooms, and mailing lists is expected to follow the `PyPA Code of Conduct`_.
+
+.. _PyPA Code of Conduct: https://www.pypa.io/en/latest/code-of-conduct/
+
+

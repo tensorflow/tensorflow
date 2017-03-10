@@ -1,0 +1,5 @@
+# EASY-INSTALL-DEV-SCRIPT: %(spec)r,%(script_name)r
+__requires__ = %(spec)r
+__import__('pkg_resources').require(%(spec)r)
+__file__ = %(dev_path)r
+exec(compile(open(__file__).read(), __file__, 'exec'))
