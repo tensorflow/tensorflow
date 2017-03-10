@@ -24,7 +24,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-// A global AllocatorRegistry is used to hold all allocators.
+// A global AllocatorRegistry is used to hold allocators for CPU backends
 class AllocatorRegistry {
  public:
   // Add an allocator to the registry.
@@ -41,13 +41,13 @@ class AllocatorRegistry {
   typedef struct {
     string name;
     int priority;
-    Allocator* allocator;
+    Allocator* allocator;  // not owned
   } AllocatorRegistryEntry;
 
   bool CheckForDuplicates(const string& name, int priority);
 
   std::vector<AllocatorRegistryEntry> allocators_;
-  Allocator* m_curr_allocator_;
+  Allocator* m_curr_allocator_;  // not owned
 };
 
 namespace allocator_registration {

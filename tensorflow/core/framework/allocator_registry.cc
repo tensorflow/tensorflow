@@ -28,9 +28,8 @@ AllocatorRegistry* AllocatorRegistry::Global() {
 }
 
 bool AllocatorRegistry::CheckForDuplicates(const string& name, int priority) {
-  for (std::vector<AllocatorRegistryEntry>::iterator it = allocators_.begin();
-       it != allocators_.end(); ++it) {
-    if (!name.compare(it->name) && it->priority == priority) {
+  for (auto entry : allocators_) {
+    if (!name.compare(entry.name) && priority == entry.priority) {
       return true;
     }
   }
@@ -52,11 +51,10 @@ void AllocatorRegistry::Register(const string& name, int priority,
 
   allocators_.push_back(tmp_entry);
   int high_pri = -1;
-  for (std::vector<AllocatorRegistryEntry>::iterator it = allocators_.begin();
-       it != allocators_.end(); ++it) {
-    if (high_pri < it->priority) {
-      m_curr_allocator_ = it->allocator;
-      high_pri = it->priority;
+  for (auto entry : allocators_) {
+    if (high_pri < entry.priority) {
+      m_curr_allocator_ = entry.allocator;
+      high_pri = entry.priority;
     }
   }
 }

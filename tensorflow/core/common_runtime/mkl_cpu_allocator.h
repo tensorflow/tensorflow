@@ -44,30 +44,6 @@ class MklSubAllocator : public SubAllocator {
 /// and redirects memory allocation calls from MKL.
 class MklCPUAllocator : public Allocator {
  public:
-  // Hooks provided by this allocator for memory allocation routines from MKL
-
-  static inline void* MallocHook(size_t size) {
-    VLOG(2) << "MklCPUAllocator: In MallocHook";
-    return cpu_allocator()->AllocateRaw(kAlignment, size);
-  }
-
-  static inline void FreeHook(void* ptr) {
-    VLOG(2) << "MklCPUAllocator: In FreeHook";
-    cpu_allocator()->DeallocateRaw(ptr);
-  }
-
-  static inline void* CallocHook(size_t num, size_t size) {
-    Status s = Status(error::Code::UNIMPLEMENTED,
-                      "Unimplemented case for hooking MKL function.");
-    TF_CHECK_OK(s);  // way to assert with an error message
-  }
-
-  static inline void* ReallocHook(void* ptr, size_t size) {
-    Status s = Status(error::Code::UNIMPLEMENTED,
-                      "Unimplemented case for hooking MKL function.");
-    TF_CHECK_OK(s);  // way to assert with an error message
-  }
-
   // Constructor and other standard functions
 
   MklCPUAllocator() {
@@ -96,6 +72,30 @@ class MklCPUAllocator : public Allocator {
   }
 
  private:
+  // Hooks provided by this allocator for memory allocation routines from MKL
+
+  static inline void* MallocHook(size_t size) {
+    VLOG(2) << "MklCPUAllocator: In MallocHook";
+    return cpu_allocator()->AllocateRaw(kAlignment, size);
+  }
+
+  static inline void FreeHook(void* ptr) {
+    VLOG(2) << "MklCPUAllocator: In FreeHook";
+    cpu_allocator()->DeallocateRaw(ptr);
+  }
+
+  static inline void* CallocHook(size_t num, size_t size) {
+    Status s = Status(error::Code::UNIMPLEMENTED,
+                      "Unimplemented case for hooking MKL function.");
+    TF_CHECK_OK(s);  // way to assert with an error message
+  }
+
+  static inline void* ReallocHook(void* ptr, size_t size) {
+    Status s = Status(error::Code::UNIMPLEMENTED,
+                      "Unimplemented case for hooking MKL function.");
+    TF_CHECK_OK(s);  // way to assert with an error message
+  }
+
   // TODO(jbobba): We should ideally move this into CPUOptions in config.proto.
   /// Memory limit - 64GB
   static const size_t kMaxMemSize =
@@ -110,7 +110,7 @@ class MklCPUAllocator : public Allocator {
   /// The alignment that we need for the allocations
   static const size_t kAlignment = 64;
 
-  Allocator* allocator_;
+  Allocator* allocator_;  // owned by this class
 };
 
 }  // namespace tensorflow
