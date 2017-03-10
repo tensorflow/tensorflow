@@ -134,6 +134,7 @@ public class OperationBuilderTest {
               .build()
               .output(0);
       assertEquals(-1, n.shape().numDimensions());
+      assertEquals(DataType.FLOAT, n.dataType());
 
       n =
           g.opBuilder("Placeholder", "batch_of_vectors")
@@ -144,6 +145,7 @@ public class OperationBuilderTest {
       assertEquals(2, n.shape().numDimensions());
       assertEquals(-1, n.shape().size(0));
       assertEquals(784, n.shape().size(1));
+      assertEquals(DataType.FLOAT, n.dataType());
     }
   }
 
