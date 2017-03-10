@@ -154,7 +154,7 @@ class FeatureColumnTest(test.TestCase):
     # a3 is a completely different sparse column with a1 and a2, but since the
     # same shared_embedding_name is passed in, a3 will have the same embedding
     # as a1 and a2
-    a3 = fc.sparse_column_with_keys("a3", ["cathy", "tom", "anderson"])
+    a3 = fc.sparse_column_with_keys("a3", [42, 1, -1000], dtype=dtypes.int32)
     e = fc.shared_embedding_columns(
         [a3],
         dimension=4,
@@ -446,7 +446,15 @@ class FeatureColumnTest(test.TestCase):
       fc.crossed_column(
           set([b, fc.real_valued_column("real")]), hash_bucket_size=10000)
 
-  def testWeightedSparseColumnDtypes(self):
+  def testFloat32WeightedSparseInt32ColumnDtypes(self):
+    ids = fc.sparse_column_with_keys("ids", [42, 1, -1000], dtype=dtypes.int32)
+    weighted_ids = fc.weighted_sparse_column(ids, "weights")
+    self.assertDictEqual({
+        "ids": parsing_ops.VarLenFeature(dtypes.int32),
+        "weights": parsing_ops.VarLenFeature(dtypes.float32)
+    }, weighted_ids.config)
+
+  def testFloat32WeightedSparseStringColumnDtypes(self):
     ids = fc.sparse_column_with_keys("ids", ["marlo", "omar", "stringer"])
     weighted_ids = fc.weighted_sparse_column(ids, "weights")
     self.assertDictEqual({
@@ -454,9 +462,24 @@ class FeatureColumnTest(test.TestCase):
         "weights": parsing_ops.VarLenFeature(dtypes.float32)
     }, weighted_ids.config)
 
+  def testInt32WeightedSparseStringColumnDtypes(self):
+    ids = fc.sparse_column_with_keys("ids", ["marlo", "omar", "stringer"])
     weighted_ids = fc.weighted_sparse_column(ids, "weights", dtype=dtypes.int32)
     self.assertDictEqual({
         "ids": parsing_ops.VarLenFeature(dtypes.string),
+        "weights": parsing_ops.VarLenFeature(dtypes.int32)
+    }, weighted_ids.config)
+
+    with self.assertRaisesRegexp(ValueError,
+                                 "dtype is not convertible to float"):
+      weighted_ids = fc.weighted_sparse_column(
+          ids, "weights", dtype=dtypes.string)
+
+  def testInt32WeightedSparseInt64ColumnDtypes(self):
+    ids = fc.sparse_column_with_keys("ids", [42, 1, -1000], dtype=dtypes.int64)
+    weighted_ids = fc.weighted_sparse_column(ids, "weights", dtype=dtypes.int32)
+    self.assertDictEqual({
+        "ids": parsing_ops.VarLenFeature(dtypes.int64),
         "weights": parsing_ops.VarLenFeature(dtypes.int32)
     }, weighted_ids.config)
 
@@ -547,10 +570,14 @@ class FeatureColumnTest(test.TestCase):
         fc.sparse_column_with_hash_bucket(
             "sparse_column_for_embedding", hash_bucket_size=10),
         dimension=4)
-    sparse_id_col = fc.sparse_column_with_keys("id_column",
-                                               ["marlo", "omar", "stringer"])
-    weighted_id_col = fc.weighted_sparse_column(sparse_id_col,
-                                                "id_weights_column")
+    str_sparse_id_col = fc.sparse_column_with_keys(
+        "str_id_column", ["marlo", "omar", "stringer"])
+    int32_sparse_id_col = fc.sparse_column_with_keys(
+        "int32_id_column", [42, 1, -1000], dtype=dtypes.int32)
+    int64_sparse_id_col = fc.sparse_column_with_keys(
+        "int64_id_column", [42, 1, -1000], dtype=dtypes.int64)
+    weighted_id_col = fc.weighted_sparse_column(str_sparse_id_col,
+                                                "str_id_weights_column")
     real_valued_col1 = fc.real_valued_column("real_valued_column1")
     real_valued_col2 = fc.real_valued_column("real_valued_column2", 5)
     real_valued_col3 = fc.real_valued_column(
@@ -564,18 +591,22 @@ class FeatureColumnTest(test.TestCase):
     b = fc.sparse_column_with_hash_bucket("cross_bbb", hash_bucket_size=100)
     cross_col = fc.crossed_column(set([a, b]), hash_bucket_size=10000)
     feature_columns = set([
-        sparse_col, embedding_col, weighted_id_col, real_valued_col1,
-        real_valued_col2, real_valued_col3, bucketized_col1, bucketized_col2,
-        cross_col
+        sparse_col, embedding_col, weighted_id_col, int32_sparse_id_col,
+        int64_sparse_id_col, real_valued_col1, real_valued_col2,
+        real_valued_col3, bucketized_col1, bucketized_col2, cross_col
     ])
     expected_config = {
         "sparse_column":
             parsing_ops.VarLenFeature(dtypes.string),
         "sparse_column_for_embedding":
             parsing_ops.VarLenFeature(dtypes.string),
-        "id_column":
+        "str_id_column":
             parsing_ops.VarLenFeature(dtypes.string),
-        "id_weights_column":
+        "int32_id_column":
+            parsing_ops.VarLenFeature(dtypes.int32),
+        "int64_id_column":
+            parsing_ops.VarLenFeature(dtypes.int64),
+        "str_id_weights_column":
             parsing_ops.VarLenFeature(dtypes.float32),
         "real_valued_column1":
             parsing_ops.FixedLenFeature(
@@ -784,11 +815,13 @@ class FeatureColumnTest(test.TestCase):
   def testInitCrossedColumnWeightsFromCkpt(self):
     sparse_col_1 = fc.sparse_column_with_hash_bucket(
         column_name="col_1", hash_bucket_size=4)
-    sparse_col_2 = fc.sparse_column_with_hash_bucket(
-        column_name="col_2", hash_bucket_size=4)
+    sparse_col_2 = fc.sparse_column_with_keys(
+        column_name="col_2", keys=("foo", "bar", "baz"))
+    sparse_col_3 = fc.sparse_column_with_keys(
+        column_name="col_3", keys=(42, 1, -1000), dtype=dtypes.int64)
 
     crossed_col = fc.crossed_column(
-        columns=[sparse_col_1, sparse_col_2], hash_bucket_size=4)
+        columns=[sparse_col_1, sparse_col_2, sparse_col_3], hash_bucket_size=4)
 
     input_tensor = sparse_tensor_lib.SparseTensor(
         indices=[[0, 0], [1, 1], [2, 2], [3, 3]],
@@ -804,7 +837,8 @@ class FeatureColumnTest(test.TestCase):
         _, col_weights, _ = (
             feature_column_ops.weighted_sum_from_feature_columns({
                 sparse_col_1.name: input_tensor,
-                sparse_col_2.name: input_tensor
+                sparse_col_2.name: input_tensor,
+                sparse_col_3.name: input_tensor
             }, [crossed_col], 1))
         # Update the weights since default initializer initializes all weights
         # to 0.0.
@@ -827,9 +861,9 @@ class FeatureColumnTest(test.TestCase):
         columns=[sparse_col_1, sparse_col_2],
         hash_bucket_size=4,
         ckpt_to_load_from=checkpoint_path,
-        tensor_name_in_ckpt=("run_1/col_1_X_col_2/"
+        tensor_name_in_ckpt=("run_1/col_1_X_col_2_X_col_3/"
                              "weighted_sum_from_feature_columns/"
-                             "col_1_X_col_2/weights"))
+                             "col_1_X_col_2_X_col_3/weights"))
 
     with variable_scope.variable_scope("run_2"):
       # This will initialize the crossed column weights from provided checkpoint
