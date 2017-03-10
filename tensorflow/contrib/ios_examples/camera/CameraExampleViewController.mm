@@ -43,8 +43,8 @@ const float input_std = 1.0f;
 const std::string input_layer_name = "input";
 const std::string output_layer_name = "softmax1";
 
-static const NSString *AVCaptureStillImageIsCapturingStillImageContext =
-    @"AVCaptureStillImageIsCapturingStillImageContext";
+static void *AVCaptureStillImageIsCapturingStillImageContext =
+    &AVCaptureStillImageIsCapturingStillImageContext;
 
 @interface CameraExampleViewController (InternalMethods)
 - (void)setupAVCapture;
@@ -105,28 +105,23 @@ static const NSString *AVCaptureStillImageIsCapturingStillImageContext =
   [rootLayer addSublayer:previewLayer];
   [session startRunning];
 
-  [session release];
   if (error) {
-    UIAlertView *alertView = [[UIAlertView alloc]
-            initWithTitle:[NSString stringWithFormat:@"Failed with error %d",
-                                                     (int)[error code]]
-                  message:[error localizedDescription]
-                 delegate:nil
-        cancelButtonTitle:@"Dismiss"
-        otherButtonTitles:nil];
-    [alertView show];
-    [alertView release];
+    NSString *title = [NSString stringWithFormat:@"Failed with error %d", (int)[error code]];
+    UIAlertController *alertController =
+        [UIAlertController alertControllerWithTitle:title
+                                            message:[error localizedDescription]
+                                     preferredStyle:UIAlertControllerStyleAlert];
+    UIAlertAction *dismiss =
+        [UIAlertAction actionWithTitle:@"Dismiss" style:UIAlertActionStyleDefault handler:nil];
+    [alertController addAction:dismiss];
+    [self presentViewController:alertController animated:YES completion:nil];
     [self teardownAVCapture];
   }
 }
 
 - (void)teardownAVCapture {
-  [videoDataOutput release];
-  if (videoDataOutputQueue) dispatch_release(videoDataOutputQueue);
   [stillImageOutput removeObserver:self forKeyPath:@"isCapturingStillImage"];
-  [stillImageOutput release];
   [previewLayer removeFromSuperlayer];
-  [previewLayer release];
 }
 
 - (void)observeValueForKeyPath:(NSString *)keyPath
@@ -155,7 +150,6 @@ static const NSString *AVCaptureStillImageIsCapturingStillImageContext =
           }
           completion:^(BOOL finished) {
             [flashView removeFromSuperview];
-            [flashView release];
             flashView = nil;
           }];
     }
@@ -194,7 +188,6 @@ static const NSString *AVCaptureStillImageIsCapturingStillImageContext =
               }
               completion:^(BOOL finished) {
                 [flashView removeFromSuperview];
-                [flashView release];
                 flashView = nil;
               }];
         }];
@@ -256,7 +249,9 @@ static const NSString *AVCaptureStillImageIsCapturingStillImageContext =
 didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
        fromConnection:(AVCaptureConnection *)connection {
   CVPixelBufferRef pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
+  CFRetain(pixelBuffer);
   [self runCNNOnFrame:pixelBuffer];
+  CFRelease(pixelBuffer);
 }
 
 - (void)runCNNOnFrame:(CVPixelBufferRef)pixelBuffer {
@@ -275,7 +270,10 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
   const int sourceRowBytes = (int)CVPixelBufferGetBytesPerRow(pixelBuffer);
   const int image_width = (int)CVPixelBufferGetWidth(pixelBuffer);
   const int fullHeight = (int)CVPixelBufferGetHeight(pixelBuffer);
-  CVPixelBufferLockBaseAddress(pixelBuffer, 0);
+
+  CVPixelBufferLockFlags unlockFlags = kNilOptions;
+  CVPixelBufferLockBaseAddress(pixelBuffer, unlockFlags);
+
   unsigned char *sourceBaseAddr =
       (unsigned char *)(CVPixelBufferGetBaseAddress(pixelBuffer));
   int image_height;
@@ -312,6 +310,8 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
     }
   }
 
+  CVPixelBufferUnlockBaseAddress(pixelBuffer, unlockFlags);
+
   if (tf_session.get()) {
     std::vector<tensorflow::Tensor> outputs;
     tensorflow::Status run_status = tf_session->Run(
@@ -327,7 +327,7 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
         const float predictionValue = predictions(index);
         if (predictionValue > 0.05f) {
           std::string label = labels[index % predictions.size()];
-          NSString *labelObject = [NSString stringWithCString:label.c_str()];
+          NSString *labelObject = [NSString stringWithUTF8String:label.c_str()];
           NSNumber *valueObject = [NSNumber numberWithFloat:predictionValue];
           [newValues setObject:valueObject forKey:labelObject];
         }
@@ -337,12 +337,11 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
       });
     }
   }
+  CVPixelBufferUnlockBaseAddress(pixelBuffer, 0);
 }
 
 - (void)dealloc {
   [self teardownAVCapture];
-  [square release];
-  [super dealloc];
 }
 
 // use front/back camera
@@ -376,7 +375,7 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
 
 - (void)viewDidLoad {
   [super viewDidLoad];
-  square = [[UIImage imageNamed:@"squarePNG"] retain];
+  square = [UIImage imageNamed:@"squarePNG"];
   synth = [[AVSpeechSynthesizer alloc] init];
   labelLayers = [[NSMutableArray alloc] init];
   oldPredictionValues = [[NSMutableDictionary alloc] init];
@@ -402,7 +401,6 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
 
 - (void)viewDidUnload {
   [super viewDidUnload];
-  [oldPredictionValues release];
 }
 
 - (void)viewWillAppear:(BOOL)animated {
@@ -449,7 +447,6 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
                                   forKey:label];
     }
   }
-  [oldPredictionValues release];
   oldPredictionValues = decayedPredictionValues;
 
   for (NSString *label in newValues) {
@@ -553,7 +550,7 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
                         width:(float)width
                        height:(float)height
                     alignment:(NSString *)alignment {
-  NSString *const font = @"Menlo-Regular";
+  CFTypeRef font = (CFTypeRef) @"Menlo-Regular";
   const float fontSize = 20.0f;
 
   const float marginSizeX = 5.0f;

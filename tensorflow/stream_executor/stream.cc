@@ -163,6 +163,7 @@ string ToVlogString(dnn::DepthToSpaceLayout depth_to_space_layout) {
     case dnn::DepthToSpaceLayout::DepthHeightWidth:
       return "DepthToSpaceLayout::DepthHeightWidth";
   }
+  return "unknown DepthToSpaceLayout";
 }
 
 // Used together with PARAM to VLOG calls made to the stream. Intended

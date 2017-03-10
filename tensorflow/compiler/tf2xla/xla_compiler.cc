@@ -225,7 +225,8 @@ Status BuildArguments(const std::vector<XlaCompiler::Argument>& args,
   parameters.reserve(args.size());
   variables.reserve(args.size());
 
-  for (int i = 0; i < args.size(); ++i) {
+  for (std::vector<XlaCompiler::Argument>::size_type i = 0; i < args.size();
+       ++i) {
     XlaContext::Argument& context_arg = (*context_args)[i];
     context_arg.name = args[i].name;
     context_arg.value.constant_value = args[i].constant_value;
@@ -262,7 +263,7 @@ Status BuildArguments(const std::vector<XlaCompiler::Argument>& args,
 
   input_shapes->resize(parameters.size());
   input_mapping->resize(parameters.size());
-  for (int i = 0; i < input_shapes->size(); ++i) {
+  for (std::vector<int>::size_type i = 0; i < input_shapes->size(); ++i) {
     const XlaCompiler::Argument& arg = args[parameters[i]];
     // Computes the shapes of non-constant arguments.
     xla::PrimitiveType type;
@@ -276,12 +277,12 @@ Status BuildArguments(const std::vector<XlaCompiler::Argument>& args,
     xla::Shape tuple_shape = xla::ShapeUtil::MakeTupleShape(*input_shapes);
     xla::ComputationDataHandle tuple =
         builder->Parameter(0, tuple_shape, "arg_tuple");
-    for (int i = 0; i < input_shapes->size(); ++i) {
+    for (std::vector<int>::size_type i = 0; i < input_shapes->size(); ++i) {
       (*context_args)[parameters[i]].value.handle =
           builder->GetTupleElement(tuple, i);
     }
   } else {
-    for (int i = 0; i < input_shapes->size(); ++i) {
+    for (std::vector<int>::size_type i = 0; i < input_shapes->size(); ++i) {
       (*context_args)[parameters[i]].value.handle =
           builder->Parameter(i, (*input_shapes)[i], strings::StrCat("arg", i));
     }
@@ -413,7 +414,8 @@ Status XlaCompiler::CompileGraph(string const& name,
   VLOG(2) << "Outputs: total: " << context->retvals().size()
           << " nonconstant: " << num_nonconst_outputs;
   result->outputs.resize(context->retvals().size());
-  for (int i = 0; i < context->retvals().size(); ++i) {
+  for (std::vector<XlaContext::HandleOrConstant>::size_type i = 0;
+       i < context->retvals().size(); ++i) {
     const XlaContext::HandleOrConstant& retval = context->retvals()[i];
     if (retval.is_constant) {
       OutputDescription& output = result->outputs[i];
@@ -457,7 +459,8 @@ Status XlaCompiler::CompileGraph(string const& name,
 
   // Converts the output shapes to TensorShapes.
   int computation_output = 0;
-  for (int i = 0; i < context->retvals().size(); ++i) {
+  for (std::vector<XlaContext::HandleOrConstant>::size_type i = 0;
+       i < context->retvals().size(); ++i) {
     const XlaContext::HandleOrConstant& retval = context->retvals()[i];
     if (!retval.is_constant) {
       CHECK_LT(computation_output, num_nonconst_outputs);
@@ -474,7 +477,8 @@ Status XlaCompiler::CompileGraph(string const& name,
     }
   }
 
-  for (int i = 0; i < result->variable_updates.size(); ++i) {
+  for (std::vector<VariableUpdate>::size_type i = 0;
+       i < result->variable_updates.size(); ++i) {
     if (num_computation_outputs > 1) {
       result->variable_updates[i].shape =
           XLAShapeToTensorShape(xla::ShapeUtil::GetTupleElementShape(

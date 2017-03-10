@@ -1693,7 +1693,7 @@ def cond(pred, fn1, fn2, name=None):
   Args:
     pred: A scalar determining whether to return the result of `fn1` or `fn2`.
     fn1: The callable to be performed if pred is true.
-    fn2: The callable to be performed if pref is false.
+    fn2: The callable to be performed if pred is false.
     name: Optional name prefix for the returned tensors.
 
   Returns:

@@ -54,7 +54,6 @@ def gpu_device_name():
       return x.name
   return ""
 
-
 def assert_ops_in_graph(expected_ops, graph):
   """Assert all expected operations are found.
 

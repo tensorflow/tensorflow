@@ -117,8 +117,7 @@ DOCKER_MAIN_CMD="${CI_BUILD_DIR}/ci_build.sh"
 NO_DOCKER_MAIN_CMD="${CI_BUILD_DIR}/builds/configured"
 
 # Additional option flags to apply when Docker is unavailable (e.g., on Mac)
-NO_DOCKER_OPT_FLAG="--linkopt=-headerpad_max_install_names "\
-"--genrule_strategy=standalone"
+NO_DOCKER_OPT_FLAG="--genrule_strategy=standalone"
 
 DO_DOCKER=1
 

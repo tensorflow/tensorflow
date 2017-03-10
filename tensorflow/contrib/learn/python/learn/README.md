@@ -14,7 +14,7 @@ TF Learn is a simplified interface for TensorFlow, to get people started on pred
 
 ## Installation
 
-[Install TensorFlow](../../../../g3doc/get_started/os_setup.md), and then simply import `learn` via `from tensorflow.contrib.learn` or use `tf.contrib.learn`.
+[Install TensorFlow](https://www.tensorflow.org/install/), and then simply import `learn` via `from tensorflow.contrib.learn` or use `tf.contrib.learn`.
 
 Optionally you can install [scikit-learn](http://scikit-learn.org/stable/) and [pandas](http://pandas.pydata.org/) for additional functionality.
 

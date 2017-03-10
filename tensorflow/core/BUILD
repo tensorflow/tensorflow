@@ -756,13 +756,12 @@ cc_library(
         ":proto_text",
         ":protos_all_cc",
         ":shape_inference_testutil",
-        ":sycl_runtime",
         ":tensor_testutil",
         ":test",
         "//tensorflow/core/kernels:constant_op",
         "//tensorflow/core/kernels:ops_testutil",
         "//tensorflow/core/kernels:ops_util",
-        "//tensorflow/core/platform/default/build_config:gtest",
+        "//tensorflow/core/platform/default/build_config:gtest",  # + if_sycl([":sycl_runtime"]),
     ],
 )
 

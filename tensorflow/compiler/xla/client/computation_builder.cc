@@ -106,7 +106,9 @@ bool ComputationBuilder::MakeWindow(
     tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
     tensorflow::gtl::ArraySlice<int64> lhs_dilation,
     tensorflow::gtl::ArraySlice<int64> rhs_dilation, Window* window) {
-  const auto verify_size = [&](const int64 x, const char* x_name) {
+  const auto verify_size = [&](const tensorflow::gtl::ArraySlice<
+                                   int64>::size_type x,
+                               const char* x_name) {
     if (x == 0 || x == window_dimensions.size()) {
       return true;
     } else {
@@ -449,7 +451,8 @@ ComputationDataHandle ComputationBuilder::Collapse(
 
   // Don't support out-of-order collapse here.
   // Checks that the collapsed dimensions are in order and consecutive.
-  for (int i = 1; i < dims_to_collapse.size(); ++i) {
+  for (tensorflow::gtl::ArraySlice<int64>::size_type i = 1;
+       i < dims_to_collapse.size(); ++i) {
     if (dims_to_collapse[i] - 1 != dims_to_collapse[i - 1]) {
       NoteError(InvalidArgument(
           "Collapsed dimensions are not in order and consecutive."));
@@ -693,14 +696,15 @@ ComputationDataHandle ComputationBuilder::ConvWithGeneralDimensions(
 
   std::vector<int64> base_area_dimensions(
       dimension_numbers.spatial_dimensions_size());
-  for (int i = 0; i < base_area_dimensions.size(); ++i) {
+  for (std::vector<int64>::size_type i = 0; i < base_area_dimensions.size();
+       ++i) {
     base_area_dimensions[i] =
         lhs_shape->dimensions(dimension_numbers.spatial_dimensions(i));
   }
 
   std::vector<int64> window_dimensions(
       dimension_numbers.kernel_spatial_dimensions_size());
-  for (int i = 0; i < window_dimensions.size(); ++i) {
+  for (std::vector<int64>::size_type i = 0; i < window_dimensions.size(); ++i) {
     window_dimensions[i] =
         rhs_shape->dimensions(dimension_numbers.kernel_spatial_dimensions(i));
   }
@@ -752,7 +756,7 @@ ComputationDataHandle ComputationBuilder::ConvGeneralDilated(
 
   std::vector<int64> window_dimensions(
       dimension_numbers.kernel_spatial_dimensions_size());
-  for (int i = 0; i < window_dimensions.size(); ++i) {
+  for (std::vector<int64>::size_type i = 0; i < window_dimensions.size(); ++i) {
     window_dimensions[i] =
         rhs_shape->dimensions(dimension_numbers.kernel_spatial_dimensions(i));
   }

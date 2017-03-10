@@ -280,17 +280,17 @@ metrics to log during model evaluation:
 ```python
 validation_metrics = {
     "accuracy":
-        tf.contrib.learn.metric_spec.MetricSpec(
+        tf.contrib.learn.MetricSpec(
             metric_fn=tf.contrib.metrics.streaming_accuracy,
             prediction_key=tf.contrib.learn.prediction_key.PredictionKey.
             CLASSES),
     "precision":
-        tf.contrib.learn.metric_spec.MetricSpec(
+        tf.contrib.learn.MetricSpec(
             metric_fn=tf.contrib.metrics.streaming_precision,
             prediction_key=tf.contrib.learn.prediction_key.PredictionKey.
             CLASSES),
     "recall":
-        tf.contrib.learn.metric_spec.MetricSpec(
+        tf.contrib.learn.MetricSpec(
             metric_fn=tf.contrib.metrics.streaming_recall,
             prediction_key=tf.contrib.learn.prediction_key.PredictionKey.
             CLASSES)
@@ -300,7 +300,7 @@ validation_metrics = {
 Add the above code before the `ValidationMonitor` constructor. Then revise the
 `ValidationMonitor` constructor as follows to add a `metrics` parameter to log
 the accuracy, precision, and recall metrics specified in `validation_metrics`
-(loss is always logged, and doesn't need to be explicity specified):
+(loss is always logged, and doesn't need to be explicitly specified):
 
 ```python
 validation_monitor = tf.contrib.learn.monitors.ValidationMonitor(

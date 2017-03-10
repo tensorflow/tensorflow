@@ -276,7 +276,7 @@ llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
         auto index = padded_index;
         llvm::Value* in_bounds =
             llvm::ConstantInt::get(ir_builder_->getInt1Ty(), 1);
-        for (int i = 0; i < index.size(); ++i) {
+        for (auto i = 0; i < index.size(); ++i) {
           auto index_typed_const = [=](int64 n) {
             return llvm::ConstantInt::get(index[i]->getType(), n);
           };

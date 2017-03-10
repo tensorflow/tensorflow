@@ -233,7 +233,7 @@ def input_fn(df):
   categorical_cols = {k: tf.SparseTensor(
       indices=[[i, 0] for i in range(df[k].size)],
       values=df[k].values,
-      shape=[df[k].size, 1])
+      dense_shape=[df[k].size, 1])
                       for k in CATEGORICAL_COLUMNS}
   # Merges the two dictionaries into one.
   feature_cols = dict(continuous_cols.items() + categorical_cols.items())
@@ -269,4 +269,4 @@ familiar with the API. Wide & Deep Learning will be even more powerful if you
 try it on a large dataset with many sparse feature columns that have a large
 number of possible feature values. Again, feel free to take a look at our
 [research paper](http://arxiv.org/abs/1606.07792) for more ideas about how to
-apply Wide & Deep Learning in real-world large-scale maching learning problems.
+apply Wide & Deep Learning in real-world large-scale machine learning problems.

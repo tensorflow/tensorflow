@@ -162,8 +162,8 @@ Take the following steps to install TensorFlow with Virtualenv:
      issue the following command to install TensorFlow in the active
      virtualenv environment:
 
-     <pre> (tensorflow)$ <b>pip3 install --upgrade \\
-     https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.0.0-cp27-none-linux_x86_64.whl</pre> 
+     <pre>(tensorflow)$ <b>pip3 install --upgrade \
+     https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.0.1-cp34-cp34m-linux_x86_64.whl</b></pre>
 
 If you encounter installation problems, see
 [Common Installation Problems](#CommonInstallationProblems).
@@ -254,20 +254,22 @@ take the following steps:
   2. (Optional.) If Step 1 failed, install the latest version of TensorFlow
      by issuing a command of the following format:
 
-     <pre> $ <b>sudo pip  install --upgrade</b> <i>TF_BINARY_URL</i>   # Python 2.7
-     $ <b>sudo pip3 install --upgrade</b> <i>TF_BINARY_URL</i>   # Python 3.N </pre>
+     <pre>$ <b>sudo pip  install --upgrade</b> <i>TF_PYTHON_URL</i>   # Python 2.7
+     $ <b>sudo pip3 install --upgrade</b> <i>TF_PYTHON_URL</i>   # Python 3.N </pre>
 
-     where <code></em>TF_BINARY_URL</em></code> identifies the URL of the
+     where <code><em>TF_PYTHON_URL</em></code> identifies the URL of the
      TensorFlow Python package. The appropriate value of
-     <code><em>TF_BINARY_URL</em></code> depends on the operating system, 
+     <code><em>TF_PYTHON_URL</em></code>depends on the operating system,
      Python version, and GPU support. Find the appropriate value for
-     <code><em>TF_BINARY_URL</em></code>
-     [here](#the_url_of_the_tensorflow_python_package).  For example, to 
-     install TensorFlow for Linux, Python 3.4, and CPU-only support, issue
-     the following command:
+     <code><em>TF_PYTHON_URL</em></code> for your system
+     [here](#TF_PYTHON_URL).  For example, if you are installing TensorFlow
+     for Linux, Python version 3.4, and CPU-only support, issue the following
+     command:
 
-     <pre> $ <b>sudo pip3 install --upgrade \
-     https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.0.0-cp34-cp34m-linux_x86_64.whl</b> </pre>
+     <pre>
+     $ <b>sudo pip3 install --upgrade \
+     https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.0.1-cp34-cp34m-linux_x86_64.whl</b>
+     </pre>
 
      If this step fails, see
      [Common Installation Problems](#CommonInstallationProblems).
@@ -333,9 +335,9 @@ where:
     * <tt>gcr.io/tensorflow/tensorflow:latest-devel</tt>, which is the latest
       TensorFlow CPU Binary image plus source code.
     * <tt>gcr.io/tensorflow/tensorflow:<i>version</i></tt>, which is the
-      specified version (for example, 1.0.0) of TensorFlow CPU binary image.
+      specified version (for example, 1.0.1) of TensorFlow CPU binary image.
     * <tt>gcr.io/tensorflow/tensorflow:<i>version</i>-devel</tt>, which is
-      the specified version (for example, 1.0.0) of the TensorFlow GPU
+      the specified version (for example, 1.0.1) of the TensorFlow GPU
       binary image plus source code.
 
     <tt>gcr.io</tt> is the Google Container Registry. Note that some
@@ -453,7 +455,7 @@ Take the following steps to install TensorFlow in an Anaconda environment:
 
      <pre>
      (tensorflow)$ <b>pip install --ignore-installed --upgrade \
-     https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.0.0-cp34-cp34m-linux_x86_64.whl</b></pre>
+     https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.0.1-cp34-cp34m-linux_x86_64.whl</b></pre>
 
 
 <a name="ValidateYourInstallation"></a>
@@ -624,14 +626,14 @@ This section documents the relevant values for Linux installations.
 CPU only:
 
 <pre>
-https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.0.0-cp27-none-linux_x86_64.whl
+https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.0.1-cp27-none-linux_x86_64.whl
 </pre>
 
 
 GPU support:
 
 <pre>
-https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-1.0.0-cp27-none-linux_x86_64.whl
+https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-1.0.1-cp27-none-linux_x86_64.whl
 </pre>
 
 Note that GPU support requires the NVIDIA hardware and software described in
@@ -643,14 +645,14 @@ Note that GPU support requires the NVIDIA hardware and software described in
 CPU only:
 
 <pre>
-https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.0.0-cp34-cp34m-linux_x86_64.whl
+https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.0.1-cp34-cp34m-linux_x86_64.whl
 </pre>
 
 
 GPU support:
 
 <pre>
-https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-1.0.0-cp34-cp34m-linux_x86_64.whl
+https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-1.0.1-cp34-cp34m-linux_x86_64.whl
 </pre>
 
 Note that GPU support requires the NVIDIA hardware and software described in
@@ -662,14 +664,14 @@ Note that GPU support requires the NVIDIA hardware and software described in
 CPU only:
 
 <pre>
-https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.0.0-cp35-cp35m-linux_x86_64.whl
+https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.0.1-cp35-cp35m-linux_x86_64.whl
 </pre>
 
 
 GPU support:
 
 <pre>
-https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-1.0.0-cp35-cp35m-linux_x86_64.whl
+https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-1.0.1-cp35-cp35m-linux_x86_64.whl
 </pre>
 
 
@@ -681,14 +683,14 @@ Note that GPU support requires the NVIDIA hardware and software described in
 CPU only:
 
 <pre>
-https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.0.0-cp36-cp36m-linux_x86_64.whl
+https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.0.1-cp36-cp36m-linux_x86_64.whl
 </pre>
 
 
 GPU support:
 
 <pre>
-https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-1.0.0-cp36-cp36m-linux_x86_64.whl
+https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-1.0.1-cp36-cp36m-linux_x86_64.whl
 </pre>
 
 

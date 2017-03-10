@@ -1702,6 +1702,12 @@ def matmul(a,
                            [229 244]],
                           [[508 532]
                            [697 730]]]
+
+  # Since python >= 3.5 the @ operator is supported (see PEP 465).
+  # In TensorFlow, it simply calls the `tf.matmul()` function, so the
+  # following lines are equivalent:
+  d = a @ b @ [[10.], [11.]]
+  d = tf.matmul(tf.matmul(a, b), [[10.], [11.]])
   ```
 
   Args:
@@ -1787,6 +1793,8 @@ def matmul(a,
       return gen_math_ops._mat_mul(
           a, b, transpose_a=transpose_a, transpose_b=transpose_b, name=name)
 
+
+_OverrideBinaryOperatorHelper(matmul, "matmul")
 
 sparse_matmul = gen_math_ops._sparse_mat_mul
 

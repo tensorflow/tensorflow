@@ -115,7 +115,7 @@ void RecordYielder::MainLoop() {
     std::shuffle(filenames.begin(), filenames.end(), shuffle_rnd);
 
     // Left-shift the filename list.
-    const int64 num = filenames.size();
+    const std::vector<string>::size_type num = filenames.size();
     int64 shift;
     if (0 <= opts_.file_shuffle_shift_ratio &&
         opts_.file_shuffle_shift_ratio < 1) {
@@ -130,7 +130,7 @@ void RecordYielder::MainLoop() {
     for (int i = 0; i < N; ++i) {
       Shard* shard = &shards[i];
       shard->index = i;
-      for (int j = i; j < filenames.size(); j += N) {
+      for (std::vector<string>::size_type j = i; j < filenames.size(); j += N) {
         shard->filenames.push_back(filenames[j]);
       }
       thread_->Schedule([this, shard]() { ShardLoop(shard); });

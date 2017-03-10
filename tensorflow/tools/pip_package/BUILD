@@ -3,7 +3,11 @@
 
 package(default_visibility = ["//visibility:private"])
 
-load("//tensorflow:tensorflow.bzl", "transitive_hdrs")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "if_not_windows",
+    "transitive_hdrs",
+)
 load("//third_party/mkl:build_defs.bzl", "if_mkl")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_license_deps")
 
@@ -93,13 +97,14 @@ filegroup(
         "@libxsmm_archive//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
         "@nanopb_git//:LICENSE.txt",
-        "@nccl_archive//:LICENSE.txt",
         "@png_archive//:LICENSE",
         "@protobuf//:LICENSE",
         "@six_archive//:LICENSE",
         "@org_pocoo_werkzeug//:LICENSE",
         "@zlib_archive//:zlib.h",
-    ] + tf_additional_license_deps(),
+    ] + if_not_windows([
+        "@nccl_archive//:LICENSE.txt",
+    ]) + tf_additional_license_deps(),
 )
 
 sh_binary(
