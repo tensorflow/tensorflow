@@ -21,7 +21,11 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import embedding_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import adagrad
@@ -30,7 +34,7 @@ from tensorflow.python.training import proximal_adagrad
 
 class ProximalAdagradOptimizerTest(test.TestCase):
 
-  def testProximalAdagradwithoutRegularization(self):
+  def doTestProximalAdagradwithoutRegularization(self, use_resource=False):
     with self.test_session() as sess:
       var0 = variables.Variable([0.0, 0.0])
       var1 = variables.Variable([0.0, 0.0])
@@ -55,6 +59,12 @@ class ProximalAdagradOptimizerTest(test.TestCase):
       v0_val, v1_val = sess.run([var0, var1])
       self.assertAllClose(np.array([-2.60260963, -4.29698515]), v0_val)
       self.assertAllClose(np.array([-0.28432083, -0.56694895]), v1_val)
+
+  def testProximalAdagradwithoutRegularization(self):
+    self.doTestProximalAdagradwithoutRegularization(use_resource=False)
+
+  def testResourceProximalAdagradwithoutRegularization(self):
+    self.doTestProximalAdagradwithoutRegularization(use_resource=True)
 
   def testProximalAdagradwithoutRegularization2(self):
     with self.test_session() as sess:
@@ -81,6 +91,23 @@ class ProximalAdagradOptimizerTest(test.TestCase):
       v0_val, v1_val = sess.run([var0, var1])
       self.assertAllClose(np.array([-1.60261, -2.296985]), v0_val)
       self.assertAllClose(np.array([3.715679, 2.433051]), v1_val)
+
+  def testMinimizeSparseResourceVariable(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      with self.test_session():
+        var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
+        x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
+        pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)
+        loss = pred * pred
+        sgd_op = proximal_adagrad.ProximalAdagradOptimizer(1.0).minimize(loss)
+        variables.global_variables_initializer().run()
+        # Fetch params to validate initial values
+        self.assertAllCloseAccordingToType([[1.0, 2.0]], var0.eval())
+        # Run 1 step of sgd
+        sgd_op.run()
+        # Validate updated params
+        self.assertAllCloseAccordingToType(
+            [[0, 1]], var0.eval(), atol=0.01)
 
   def testProximalAdagradWithL1(self):
     with self.test_session() as sess:

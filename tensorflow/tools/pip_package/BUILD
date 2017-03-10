@@ -3,8 +3,13 @@
 
 package(default_visibility = ["//visibility:private"])
 
-load("//tensorflow:tensorflow.bzl", "transitive_hdrs")
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_license_deps")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "if_not_windows",
+    "transitive_hdrs",
+)
+load("//third_party/mkl:build_defs.bzl", "if_mkl")
+load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_license_deps")
 
 # This returns a list of headers of all public header libraries (e.g.,
 # framework, lib), and all of the transitive dependencies of those
@@ -95,8 +100,11 @@ filegroup(
         "@png_archive//:LICENSE",
         "@protobuf//:LICENSE",
         "@six_archive//:LICENSE",
+        "@org_pocoo_werkzeug//:LICENSE",
         "@zlib_archive//:zlib.h",
-    ] + tf_additional_license_deps(),
+    ] + if_not_windows([
+        "@nccl_archive//:LICENSE.txt",
+    ]) + tf_additional_license_deps(),
 )
 
 sh_binary(
@@ -129,5 +137,5 @@ sh_binary(
             "//tensorflow/python/tools:all_files",
             "//tensorflow/tensorboard",
         ],
-    }),
+    }) + if_mkl(["//third_party/mkl:intel_binary_blob"]),
 )

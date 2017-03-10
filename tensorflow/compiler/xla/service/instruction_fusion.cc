@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -49,6 +50,7 @@ bool IsExpensive(const HloInstruction& instruction) {
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kGt:
     case HloOpcode::kInfeed:
+    case HloOpcode::kIsFinite:
     case HloOpcode::kLe:
     case HloOpcode::kLogicalAnd:
     case HloOpcode::kLogicalNot:
@@ -59,6 +61,7 @@ bool IsExpensive(const HloInstruction& instruction) {
     case HloOpcode::kMultiply:
     case HloOpcode::kNe:
     case HloOpcode::kNegate:
+    case HloOpcode::kOutfeed:
     case HloOpcode::kPad:
     case HloOpcode::kReshape:
     case HloOpcode::kReverse:
@@ -98,6 +101,8 @@ bool IsExpensive(const HloInstruction& instruction) {
     case HloOpcode::kRecv:
       return true;
   }
+
+  return false;
 }
 
 bool FusionWouldDuplicate(HloInstruction* producer, HloInstruction* consumer) {
@@ -121,7 +126,8 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
     std::vector<HloInstruction*> post_order(post_order_list.begin(),
                                             post_order_list.end());
     tensorflow::gtl::FlatMap<HloInstruction*, int> post_order_index;
-    for (int i = 0; i < post_order.size(); ++i) {
+    for (std::vector<HloInstruction*>::size_type i = 0; i < post_order.size();
+         ++i) {
       InsertOrDie(&post_order_index, post_order[i], i);
     }
 
@@ -225,7 +231,7 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
             post_order_index.erase(operand);
 
             // Remove from computation.
-            computation_->RemoveInstruction(operand);
+            TF_RETURN_IF_ERROR(computation_->RemoveInstruction(operand));
           }
           break;
         }
@@ -247,7 +253,7 @@ HloInstruction* InstructionFusion::Fuse(HloInstruction* producer,
     fusion_instruction =
         computation_->AddInstruction(HloInstruction::CreateFusion(
             consumer->shape(), ChooseKind(producer, consumer), consumer));
-    computation_->ReplaceInstruction(consumer, fusion_instruction);
+    TF_CHECK_OK(computation_->ReplaceInstruction(consumer, fusion_instruction));
   }
   fusion_instruction->FuseInstruction(producer);
 

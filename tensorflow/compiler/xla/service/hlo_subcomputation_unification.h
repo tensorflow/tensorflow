@@ -16,15 +16,17 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_SUBCOMPUTATION_UNIFICATION_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_SUBCOMPUTATION_UNIFICATION_H_
 
-#include "tensorflow/compiler/xla/service/hlo_pass.h"
+#include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 namespace xla {
 
 // Unify subcomputations of a `HloModule`: if any computations are equal, choose
 // one arbitrarily to use and delete the others.
-class HloSubcomputationUnification : public HloPass {
+class HloSubcomputationUnification : public HloPassInterface {
  public:
-  HloSubcomputationUnification() : HloPass("subcomputation unification") {}
+  tensorflow::StringPiece name() const override {
+    return "subcomputation-unification";
+  }
 
   StatusOr<bool> Run(HloModule* module) override;
 };

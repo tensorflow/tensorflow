@@ -64,4 +64,22 @@ Computation CreateScalarMinComputation(PrimitiveType type,
   return b->BuildAndNoteError();
 }
 
+Computation CreateScalarLogicalAndComputation(ComputationBuilder* builder) {
+  const Shape scalar = ShapeUtil::MakeShape(PRED, {});
+  auto b = builder->CreateSubBuilder("logical_and");
+  auto lhs = b->Parameter(0, scalar, "lhs");
+  auto rhs = b->Parameter(1, scalar, "rhs");
+  b->LogicalAnd(lhs, rhs);
+  return b->BuildAndNoteError();
+}
+
+Computation CreateScalarLogicalOrComputation(ComputationBuilder* builder) {
+  const Shape scalar = ShapeUtil::MakeShape(PRED, {});
+  auto b = builder->CreateSubBuilder("logical_or");
+  auto lhs = b->Parameter(0, scalar, "lhs");
+  auto rhs = b->Parameter(1, scalar, "rhs");
+  b->LogicalOr(lhs, rhs);
+  return b->BuildAndNoteError();
+}
+
 }  // namespace xla

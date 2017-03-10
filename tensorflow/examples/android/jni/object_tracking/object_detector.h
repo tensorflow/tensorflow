@@ -162,12 +162,10 @@ class ObjectDetectorBase {
   // Will return null in the case that there's no room for a descriptor to be
   // created in the example area, or the example area is not completely
   // contained within the frame.
-  virtual void UpdateModel(
-      const Image<uint8>& base_image,
-      const IntegralImage& integral_image,
-      const BoundingBox& bounding_box,
-      const bool locked,
-      ObjectModelBase* model) const = 0;
+  virtual void UpdateModel(const Image<uint8_t>& base_image,
+                           const IntegralImage& integral_image,
+                           const BoundingBox& bounding_box, const bool locked,
+                           ObjectModelBase* model) const = 0;
 
   virtual void Draw() const = 0;
 

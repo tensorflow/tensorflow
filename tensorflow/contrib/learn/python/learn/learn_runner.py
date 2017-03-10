@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.contrib.learn.python.learn.estimators import run_config
 from tensorflow.contrib.learn.python.learn.experiment import Experiment
 from tensorflow.python.platform import tf_logging as logging
@@ -88,22 +89,56 @@ def run(experiment_fn, output_dir, schedule=None):
   # Execute the schedule
   if not hasattr(experiment, schedule):
     logging.error('Schedule references non-existent task %s', schedule)
-    valid_tasks = [x for x in experiment.__dict__
-                   if callable(getattr(experiment, x))]
+    valid_tasks = [x for x in dir(experiment)
+                   if not x.startswith('_')
+                   and callable(getattr(experiment, x))]
     logging.error('Allowed values for this experiment are: %s', valid_tasks)
-    raise ValueError('Schedule references non-existent task %s', schedule)
+    raise ValueError('Schedule references non-existent task %s' % schedule)
 
   task = getattr(experiment, schedule)
   if not callable(task):
     logging.error('Schedule references non-callable member %s', schedule)
-    valid_tasks = [
-        x for x in experiment.__dict__
-        if callable(getattr(experiment, x)) and not x.startswith('_')
-    ]
+    valid_tasks = [x for x in dir(experiment)
+                   if not x.startswith('_')
+                   and callable(getattr(experiment, x))]
     logging.error('Allowed values for this experiment are: %s', valid_tasks)
-    raise TypeError('Schedule references non-callable member %s', schedule)
+    raise TypeError('Schedule references non-callable member %s' % schedule)
 
   return task()
+
+
+@experimental
+def tune(experiment_fn, tuner):
+  """Tune an experiment with hyper-parameters.
+
+  It iterates trials by running the Experiment for each trial with the
+  corresponding hyper-parameters. For each trial, it retrieves the
+  hyper-parameters from `tuner`, creates an Experiment by calling experiment_fn,
+  and then reports the measure back to `tuner`.
+
+  Example:
+  ```
+    def _create_my_experiment(config, hparams):
+      hidden_units = [hparams.unit_per_layer] * hparams.num_hidden_layers
+
+      return tf.contrib.learn.Experiment(
+          estimator=DNNClassifier(config=config, hidden_units=hidden_units),
+          train_input_fn=my_train_input,
+          eval_input_fn=my_eval_input)
+
+    tuner = create_tuner(study_configuration, objective_key)
+
+    learn_runner.tune(experiment_fn=_create_my_experiment, tuner)
+  ```
+  Args:
+    experiment_fn: A function that creates an `Experiment`. It should accept an
+      argument `config` which should be used to create the `Estimator` (passed
+      as `config` to its constructor), and an argument `hparams`, which should
+      be used for hyper-parameters tuning. It must return an `Experiment`.
+    tuner: A `Tuner` instance.
+  """
+  while tuner.next_trial():
+    tuner.run_experiment(experiment_fn)
 
 
 def _is_distributed(config):

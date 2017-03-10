@@ -92,14 +92,16 @@ Status InlinerVisitor::HandleMap(
     if (root.opcode() != HloOpcode::kConstant) {
       HloInstruction* placed_instruction = computation_->AddInstruction(
           root.CloneWithNewOperands(map->shape(), operands));
-      computation_->ReplaceInstruction(map, placed_instruction);
+      TF_RETURN_IF_ERROR(
+          computation_->ReplaceInstruction(map, placed_instruction));
     } else {
       // The constant is in an embedded computation and needs to be recreated
       // as part of the computation that the broadcast is inserted into.
       HloInstruction* constant = computation_->AddInstruction(root.Clone());
       HloInstruction* placed_instruction = computation_->AddInstruction(
           HloInstruction::CreateBroadcast(map->shape(), constant, {}));
-      computation_->ReplaceInstruction(map, placed_instruction);
+      TF_RETURN_IF_ERROR(
+          computation_->ReplaceInstruction(map, placed_instruction));
     }
     changed_ = true;
     return Status::OK();

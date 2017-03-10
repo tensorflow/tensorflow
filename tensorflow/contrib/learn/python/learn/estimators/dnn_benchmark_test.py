@@ -51,6 +51,7 @@ class DNNClassifierBenchmark(test.Benchmark):
                 for k, v in metrics.items() if k in _METRIC_KEYS})
 
   def _report_predictions(self,
+                          benchmark_name_override,
                           classifier,
                           input_fn,
                           iters,
@@ -58,29 +59,26 @@ class DNNClassifierBenchmark(test.Benchmark):
                           n_classes,
                           expected_probabilities=None,
                           expected_classes=None):
-    base_name = self._get_name()
-
     probabilities = classifier.predict_proba(
         input_fn=input_fn, as_iterable=False)
-    self.report_benchmark(
-        iters=iters,
-        extras={
-            'example%d_class%d_probability' % (i, j): probabilities[i][j]
-            for j in range(n_classes) for i in range(n_examples)
-        },
-        name='%s.inference.probabilities' % base_name)
     if expected_probabilities is not None:
       np.testing.assert_allclose(
           expected_probabilities, tuple(probabilities), atol=0.2)
 
     classes = classifier.predict(input_fn=input_fn, as_iterable=False)
-    self.report_benchmark(
-        iters=iters,
-        extras={'example%d_class' % i: classes[i]
-                for i in range(n_examples)},
-        name='%s.inference.classes' % base_name)
     if expected_classes is not None:
       np.testing.assert_array_equal(expected_classes, classes)
+
+    self.report_benchmark(
+        iters=iters,
+        extras={
+            'inference.example%d_class%d_prob' % (i, j): probabilities[i][j]
+            for j in range(n_classes) for i in range(n_examples)
+        }.update({
+            'inference.example%d_class' % i: classes[i]
+            for i in range(n_examples)
+        }),
+        name=benchmark_name_override)
 
   def benchmarkLogisticMatrixData(self):
     classifier = dnn.DNNClassifier(
@@ -178,12 +176,13 @@ class DNNClassifierBenchmark(test.Benchmark):
     self._report_metrics(metrics)
     self._report_predictions(
         classifier=classifier,
-        input_fn=functools.partial(
-            _input_fn, num_epochs=1),
+        input_fn=functools.partial(_input_fn, num_epochs=1),
         iters=metrics['global_step'],
         n_examples=3,
         n_classes=2,
-        expected_classes=(1, 0, 0))
+        expected_classes=(1, 0, 0),
+        benchmark_name_override=(
+            'DNNClassifierBenchmark.benchmarkLogisticTensorData_predictions'))
 
   def benchmarkLogisticFloatLabel(self):
 
@@ -224,13 +223,14 @@ class DNNClassifierBenchmark(test.Benchmark):
     self._report_metrics(metrics)
     self._report_predictions(
         classifier=classifier,
-        input_fn=functools.partial(
-            _input_fn, num_epochs=1),
+        input_fn=functools.partial(_input_fn, num_epochs=1),
         iters=metrics['global_step'],
         n_examples=3,
         n_classes=n_classes,
         expected_probabilities=((0.2, 0.8), (1., 0.), (0.8, 0.2)),
-        expected_classes=(1, 0, 0))
+        expected_classes=(1, 0, 0),
+        benchmark_name_override=(
+            'DNNClassifierBenchmark.benchmarkLogisticFloatLabel_predictions'))
 
   def benchmarkMultiClassMatrixData(self):
     """Tests multi-class classification using matrix data as input."""

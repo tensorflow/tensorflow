@@ -43,6 +43,8 @@ from tensorflow.python.ops import linalg_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import logging_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import math_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import spectral_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import tf_logging as logging
 
 
@@ -212,7 +214,8 @@ def _DefaultGradYs(grad_ys, ys, colocate_gradients_with_ops):
     A list of gradients to use, without None.
 
   Raises:
-    ValueError: If one of the grad_ys is invalid.
+    ValueError: If sizes of gradients and inputs don't match
+    TypeError: If type of any gradient is not valid for its input.
   """
   if len(grad_ys) != len(ys):
     raise ValueError("Passed %d grad_ys for %d ys" % (len(grad_ys), len(ys)))
@@ -221,16 +224,32 @@ def _DefaultGradYs(grad_ys, ys, colocate_gradients_with_ops):
     grad_y = grad_ys[i]
     y = ys[i]
     if grad_y is None:
+      if y.dtype.is_complex:
+        raise TypeError(
+            "Gradients of complex tensors must set grad_ys (y.dtype = %r)" %
+            y.dtype)
       with _maybe_colocate_with(y.op, colocate_gradients_with_ops):
         grad_ys[i] = array_ops.fill(
             array_ops.shape(y), constant_op.constant(
                 1, dtype=y.dtype))
+      continue
+    if y.dtype.is_floating or y.dtype.is_integer:
+      if not grad_y.dtype.is_floating and not grad_y.dtype.is_integer:
+        raise TypeError("Gradient type %s generated for real or "
+                         "integer-valued tensor %s with type %s must be "
+                         "real or integer" %
+                         (dtypes.as_dtype(grad_y.dtype).name, y,
+                          dtypes.as_dtype(y.dtype).name))
+    elif y.dtype.is_complex:
+      if not grad_y.dtype.is_complex:
+        raise TypeError("Gradient type %s generated for complex-valued "
+                         "tensor %s with type %s must be real" %
+                         (dtypes.as_dtype(grad_y.dtype).name, y,
+                          dtypes.as_dtype(y.dtype).name))
     else:
-      if grad_y.dtype != y.dtype:
-        raise ValueError("Y and ys_grad must be of the same type, "
-                         "not y: %s, ys_grad: %s " %
-                         (dtypes.as_dtype(y.dtype).name,
-                          dtypes.as_dtype(grad_y.dtype).name))
+      raise TypeError("Tensor %s with type %s must be numeric "
+                      "to obtain a default gradient" %
+                      (y, dtypes.as_dtype(y.dtype).name))
   return grad_ys
 
 
@@ -248,18 +267,32 @@ def _VerifyGeneratedGradients(grads, op):
     op: Operation for which the gradients where generated.
 
   Raises:
-    ValueError: if the gradients are invalid.
+    ValueError: if sizes of gradients and inputs don't match.
+    TypeError: if type of any gradient is not valid for its input.
   """
   if len(grads) != len(op.inputs):
     raise ValueError("Num gradients %d generated for op %s do not match num "
                      "inputs %d" % (len(grads), op.node_def, len(op.inputs)))
-  for i in xrange(len(grads)):
-    grad = grads[i]
-    inp = op.inputs[i]
-    if grad is not None:
-      if not grad.dtype.is_compatible_with(inp.dtype):
-        raise ValueError("Gradient type %s generated for op %s does "
-                         "not match input type %s" %
+    for i in xrange(len(grads)):
+      grad = grads[i]
+      inp = op.inputs[i]
+      if grad is None:
+        continue
+      if grad.dtype.is_floating:
+        if not inp.dtype.is_floating:
+          raise TypeError("Gradient type %s generated for real-valued op %s "
+                           "with type %s must be real" %
+                           (dtypes.as_dtype(grad.dtype).name, op.node_def,
+                            dtypes.as_dtype(inp.dtype).name))
+      elif grad.dtype.is_complex:
+        if not inp.dtype.is_complex:
+          raise TypeError("Gradient type %s generated for complex-valued op %s"
+                           " with type %s must be complex" %
+                           (dtypes.as_dtype(grad.dtype).name, op.node_def,
+                            dtypes.as_dtype(inp.dtype).name))
+      else:
+        raise TypeError("Gradient type %s generated for op %s "
+                         "with type %s must be either real or complex" %
                          (dtypes.as_dtype(grad.dtype).name, op.node_def,
                           dtypes.as_dtype(inp.dtype).name))
 
@@ -315,6 +348,29 @@ def _SymGrad(op, out_grads):
   in_grads = functional_ops._symbolic_gradient(input=f_in, Tout=f_types, f=f)
   # pylint: enable=protected-access
   return in_grads
+
+
+def _MaybeCompile(scope, op, func, grad_fn):
+  """Compile the calculation in grad_fn if op was marked as compiled."""
+  scope = scope.rstrip("/").replace("/", "_")
+  if func is not None:
+    xla_compile = func.definition.attr["_XlaCompile"].b
+    xla_scope = func.definition.attr["_XlaScope"].s.decode()
+  else:
+    try:
+      xla_compile = op.get_attr("_XlaCompile")
+      xla_scope = op.get_attr("_XlaScope").decode()
+    except ValueError:
+      return grad_fn()  # Exit early
+
+  if not xla_compile:
+    return grad_fn()  # Exit early
+
+  attrs = {"_XlaCompile": attr_value_pb2.AttrValue(b=xla_compile),
+           "_XlaScope": attr_value_pb2.AttrValue(
+               s=("%s_grad_%s" % (xla_scope, scope)).encode())}
+  with ops.get_default_graph()._attr_scope(attrs):  # pylint: disable=protected-access
+    return grad_fn()
 
 
 def gradients(ys,
@@ -373,9 +429,13 @@ def gradients(ys,
   else:
     grad_ys = _AsList(grad_ys)
 
-  with ops.name_scope(name, "gradients", ys + xs + grad_ys):
+  with ops.name_scope(name, "gradients", ys + xs + grad_ys) as grad_scope:
     ys = ops.convert_n_to_tensor_or_indexed_slices(ys, name="y")
-    xs = ops.convert_n_to_tensor_or_indexed_slices(xs, name="x")
+    xs = [x.handle if isinstance(x, resource_variable_ops.ResourceVariable)
+          else x
+          for x in xs]
+    xs = ops.internal_convert_n_to_tensor_or_indexed_slices(xs, name="x",
+                                                            as_ref=True)
     grad_ys = _DefaultGradYs(grad_ys, ys, colocate_gradients_with_ops)
 
     # The approach we take here is as follows: Create a list of all ops in the
@@ -441,12 +501,13 @@ def gradients(ys,
 
         grad_fn = None
         # pylint: disable=protected-access
+        func_call = None
         is_func_call = ops.get_default_graph()._is_function(op.type)
         has_out_grads = any(isinstance(g, ops.Tensor) or g for g in out_grads)
         if has_out_grads and (op._id not in stop_ops):
           if is_func_call:
-            grad_fn = ops.get_default_graph()._get_function(
-                op.type).python_grad_func
+            func_call = ops.get_default_graph()._get_function(op.type)
+            grad_fn = func_call.python_grad_func
             # pylint: enable=protected-access
           else:
             # A grad_fn must be defined, either as a function or as None
@@ -468,6 +529,8 @@ def gradients(ys,
                 not out_grad) and _IsTrainable(op.outputs[i]):
               # Only floating-point outputs get a zero gradient. Gradient
               # functions should ignore the gradient for other outputs.
+              # TODO(apassos) gradients of resource handles might be an
+              # issue here because of zeros.
               if loop_state:
                 out_grads[i] = loop_state.ZerosLike(op, i)
               else:
@@ -479,11 +542,13 @@ def gradients(ys,
               if grad_fn:
                 # If grad_fn was found, do not use SymbolicGradient even for
                 # functions.
-                in_grads = grad_fn(op, *out_grads)
+                in_grads = _MaybeCompile(
+                    grad_scope, op, func_call, lambda: grad_fn(op, *out_grads))
               else:
                 # For function call ops, we add a 'SymbolicGradient'
                 # node to the graph to compute gradients.
-                in_grads = _SymGrad(op, out_grads)
+                in_grads = _MaybeCompile(
+                    grad_scope, op, func_call, lambda: _SymGrad(op, out_grads))
               in_grads = _AsList(in_grads)
               _VerifyGeneratedGradients(in_grads, op)
               if gate_gradients and len(
@@ -496,7 +561,8 @@ def gradients(ys,
           in_grads = [None] * len(op.inputs)
         for t_in, in_grad in zip(op.inputs, in_grads):
           if in_grad is not None:
-            if isinstance(in_grad, ops.Tensor):
+            if (isinstance(in_grad, ops.Tensor) and
+                t_in.dtype != dtypes.resource):
               in_grad.set_shape(t_in.get_shape())
             _SetGrad(grads, t_in, in_grad)
         if loop_state:

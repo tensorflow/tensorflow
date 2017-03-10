@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
-
 namespace {
 
 constexpr char kTestProject[] = "test-project";
@@ -69,10 +68,10 @@ class BigQueryTableAccessorTest : public ::testing::Test {
   Status CreateTableAccessor(const string& project_id, const string& dataset_id,
                              const string& table_id, int64 timestamp_millis,
                              int64 row_buffer_size,
-                             const std::set<string>& columns,
+                             const std::vector<string>& columns,
                              const BigQueryTablePartition& partition) {
     return BigQueryTableAccessor::New(
-        project_id, dataset_id, table_id, timestamp_millis, row_buffer_size,
+        project_id, dataset_id, table_id, timestamp_millis, row_buffer_size, "",
         columns, partition, std::unique_ptr<AuthProvider>(new FakeAuthProvider),
         std::unique_ptr<HttpRequest::Factory>(
             new FakeHttpRequestFactory(&requests_)),
@@ -197,7 +196,7 @@ TEST_F(BigQueryTableAccessorTest, ReadOneRowTest) {
       kTestRow));
   BigQueryTablePartition partition;
   partition.set_start_index(2);
-  partition.set_end_index(3);
+  partition.set_end_index(2);
   TF_EXPECT_OK(CreateTableAccessor(kTestProject, kTestDataset, kTestTable, 1, 1,
                                    {}, partition));
   int64 row_id;
@@ -227,7 +226,7 @@ TEST_F(BigQueryTableAccessorTest, ReadOneRowPartialTest) {
       kTestRow));
   BigQueryTablePartition partition;
   partition.set_start_index(2);
-  partition.set_end_index(3);
+  partition.set_end_index(2);
   TF_EXPECT_OK(CreateTableAccessor(kTestProject, kTestDataset, kTestTable, 1, 1,
                                    {"bool_field", "rec_field.float_field"},
                                    partition));
@@ -258,7 +257,7 @@ TEST_F(BigQueryTableAccessorTest, ReadOneRowWithNullsTest) {
       kTestRowWithNulls));
   BigQueryTablePartition partition;
   partition.set_start_index(2);
-  partition.set_end_index(3);
+  partition.set_end_index(2);
   TF_EXPECT_OK(CreateTableAccessor(kTestProject, kTestDataset, kTestTable, 1, 1,
                                    {}, partition));
   int64 row_id;
@@ -288,7 +287,7 @@ TEST_F(BigQueryTableAccessorTest, BrokenRowTest) {
       kBrokenTestRow));
   BigQueryTablePartition partition;
   partition.set_start_index(2);
-  partition.set_end_index(3);
+  partition.set_end_index(2);
   TF_EXPECT_OK(CreateTableAccessor(kTestProject, kTestDataset, kTestTable, 1, 1,
                                    {}, partition));
   int64 row_id;
@@ -357,7 +356,7 @@ TEST_F(BigQueryTableAccessorTest, SwitchingPartitionsTest) {
       kSampleSchema));
   requests_.emplace_back(new FakeHttpRequest(
       "Uri: https://www.googleapis.com/bigquery/v2/projects/test-project/"
-      "datasets/test-dataset/tables/test-table/data?maxResults=2&startIndex=0\n"
+      "datasets/test-dataset/tables/test-table/data?maxResults=1&startIndex=0\n"
       "Auth Token: fake_token\n",
       kTestTwoRows));
   requests_.emplace_back(new FakeHttpRequest(
@@ -374,7 +373,7 @@ TEST_F(BigQueryTableAccessorTest, SwitchingPartitionsTest) {
 
   BigQueryTablePartition partition;
   partition.set_start_index(0);
-  partition.set_end_index(1);
+  partition.set_end_index(0);
   TF_EXPECT_OK(CreateTableAccessor(kTestProject, kTestDataset, kTestTable, 1, 2,
                                    {}, partition));
 
@@ -388,7 +387,7 @@ TEST_F(BigQueryTableAccessorTest, SwitchingPartitionsTest) {
 
   partition.set_start_index(3);
   partition.set_end_index(-1);
-  accessor_->SetPartition(partition);
+  TF_EXPECT_OK(accessor_->SetPartition(partition));
   TF_EXPECT_OK(accessor_->ReadRow(&row_id, &example));
   EXPECT_EQ(3, row_id);
   EXPECT_TRUE(accessor_->Done());
@@ -396,8 +395,8 @@ TEST_F(BigQueryTableAccessorTest, SwitchingPartitionsTest) {
             1234);
 
   partition.set_start_index(0);
-  partition.set_end_index(2);
-  accessor_->SetPartition(partition);
+  partition.set_end_index(1);
+  TF_EXPECT_OK(accessor_->SetPartition(partition));
   TF_EXPECT_OK(accessor_->ReadRow(&row_id, &example));
   EXPECT_EQ(0, row_id);
   EXPECT_FALSE(accessor_->Done());
@@ -408,6 +407,25 @@ TEST_F(BigQueryTableAccessorTest, SwitchingPartitionsTest) {
   EXPECT_TRUE(accessor_->Done());
   EXPECT_EQ(example.features().feature().at("int_field").int64_list().value(0),
             2222);
+}
+
+TEST_F(BigQueryTableAccessorTest, EmptyPartitionTest) {
+  requests_.emplace_back(new FakeHttpRequest(
+      "Uri: https://www.googleapis.com/bigquery/v2/projects/test-project/"
+      "datasets/test-dataset/tables/test-table/\n"
+      "Auth Token: fake_token\n",
+      kSampleSchema));
+
+  BigQueryTablePartition partition;
+  partition.set_start_index(3);
+  partition.set_end_index(2);
+  TF_EXPECT_OK(CreateTableAccessor(kTestProject, kTestDataset, kTestTable, 1, 1,
+                                   {}, partition));
+  EXPECT_TRUE(accessor_->Done());
+
+  int64 row_id;
+  Example example;
+  EXPECT_TRUE(errors::IsOutOfRange(accessor_->ReadRow(&row_id, &example)));
 }
 
 }  // namespace tensorflow

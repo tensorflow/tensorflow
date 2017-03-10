@@ -321,6 +321,7 @@ class UniformUnitScalingInitializationTest(test.TestCase):
           "x",
           shape=shape,
           initializer=init_ops.uniform_unit_scaling_initializer())
+      variables.global_variables_initializer().run()
       self.assertAllEqual(shape, x.eval().shape)
 
   def testDuplicatedInitializer(self):

@@ -18,48 +18,48 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Key in the signature def map for `default` serving signatures. The default
-// signature is used in inference requests where a specific signature was not
-// specified.
+/// Key in the signature def map for `default` serving signatures. The default
+/// signature is used in inference requests where a specific signature was not
+/// specified.
 static constexpr char kDefaultServingSignatureDefKey[] = "serving_default";
 
 ////////////////////////////////////////////////////////////////////////////////
-// Classification API constants.
+/// Classification API constants.
 
-// Classification inputs.
+/// Classification inputs.
 static constexpr char kClassifyInputs[] = "inputs";
 
-// Classification method name used in a SignatureDef.
+/// Classification method name used in a SignatureDef.
 static constexpr char kClassifyMethodName[] = "tensorflow/serving/classify";
 
-// Classification classes output.
+/// Classification classes output.
 static constexpr char kClassifyOutputClasses[] = "classes";
 
-// Classification scores output.
+/// Classification scores output.
 static constexpr char kClassifyOutputScores[] = "scores";
 
 ////////////////////////////////////////////////////////////////////////////////
-// Predict API constants.
+/// Predict API constants.
 
-// Predict inputs.
+/// Predict inputs.
 static constexpr char kPredictInputs[] = "inputs";
 
-// Predict method name used in a SignatureDef.
+/// Predict method name used in a SignatureDef.
 static constexpr char kPredictMethodName[] = "tensorflow/serving/predict";
 
-// Predict outputs.
+/// Predict outputs.
 static constexpr char kPredictOutputs[] = "outputs";
 
 ////////////////////////////////////////////////////////////////////////////////
-// Regression API constants.
+/// Regression API constants.
 
-// Regression inputs.
+/// Regression inputs.
 static constexpr char kRegressInputs[] = "inputs";
 
-// Regression method name used in a SignatureDef.
+/// Regression method name used in a SignatureDef.
 static constexpr char kRegressMethodName[] = "tensorflow/serving/regress";
 
-// Regression outputs.
+/// Regression outputs.
 static constexpr char kRegressOutputs[] = "outputs";
 
 ////////////////////////////////////////////////////////////////////////////////

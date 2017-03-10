@@ -86,14 +86,13 @@ int main(int argc, char** argv) {
       client->CompileAheadOfTime({instance}, options).ConsumeValueOrDie();
   auto result = xla::unique_ptr_static_cast<xla::cpu::CpuAotCompilationResult>(
       std::move(results.front()));
-  // We should have two buffers, one for the result and one temporary buffer,
-  // and both should be float-sized.  It's lame to hard-code this, but we need
+  // It's lame to hard-code the buffer assignments, but we need
   // local_client_aot_test.cc to be able to easily invoke the function.
   CHECK_EQ(result->result_buffer_index(), 0);
   CHECK_EQ(result->buffer_sizes().size(), 3);
   CHECK_EQ(result->buffer_sizes()[0], sizeof(float));  // result buffer
-  CHECK_EQ(result->buffer_sizes()[1], sizeof(float));  // temp buffer
-  CHECK_EQ(result->buffer_sizes()[2], -1);
+  CHECK_EQ(result->buffer_sizes()[1], -1);             // param buffer
+  CHECK_EQ(result->buffer_sizes()[2], 20);             // temp buffer
   if (triple.isOSBinFormatELF()) {
     // Check the ELF magic.
     CHECK_EQ(result->object_file_data()[0], 0x7F);

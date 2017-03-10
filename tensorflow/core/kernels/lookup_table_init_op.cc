@@ -389,7 +389,16 @@ class InitializeTableOp : public OpKernel {
                     keys.NumElements(), " vs ", values.NumElements()));
 
     lookup::KeyValueTensorIterator iter(&keys, &values);
+
+    int memory_used_before = 0;
+    if (ctx->track_allocations()) {
+      memory_used_before = table->MemoryUsed();
+    }
     OP_REQUIRES_OK(ctx, table->Initialize(iter));
+    if (ctx->track_allocations()) {
+      ctx->record_host_persistent_memory_allocation(table->MemoryUsed() -
+                                                    memory_used_before);
+    }
   }
 
  private:
@@ -430,16 +439,24 @@ class InitializeTableFromTextFileOp : public OpKernel {
     const Tensor& vocab_filename_tensor = ctx->input(1);
     OP_REQUIRES(
         ctx, TensorShapeUtils::IsScalar(vocab_filename_tensor.shape()),
-        errors::InvalidArgument("filename should be a single string, but got",
+        errors::InvalidArgument("filename should be a single string, but got ",
                                 vocab_filename_tensor.shape().DebugString()));
 
     string vocab_filename = vocab_filename_tensor.scalar<string>()();
     OP_REQUIRES(ctx, !vocab_filename.empty(),
                 errors::InvalidArgument("filename cannot be empty."));
 
+    int64 memory_used_before = 0;
+    if (ctx->track_allocations()) {
+      memory_used_before = table->MemoryUsed();
+    }
     OP_REQUIRES_OK(ctx, lookup::InitializeTableFromTextFile(
                             vocab_filename, vocab_size_, delimiter_, key_index_,
                             value_index_, ctx->env(), table));
+    if (ctx->track_allocations()) {
+      ctx->record_host_persistent_memory_allocation(table->MemoryUsed() -
+                                                    memory_used_before);
+    }
   }
 
  private:

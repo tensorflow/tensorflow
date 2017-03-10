@@ -22,6 +22,7 @@ import shutil
 import tempfile
 
 from tensorflow.python.client import session
+from tensorflow.python.debug.cli import cli_shared
 from tensorflow.python.debug.cli import debugger_cli_common
 from tensorflow.python.debug.wrappers import local_cli_wrapper
 from tensorflow.python.framework import constant_op
@@ -74,8 +75,8 @@ class LocalCLIDebuggerWrapperSessionForTest(
     self.observers["debug_dumps"].append(debug_dump)
     self.observers["tf_errors"].append(tf_error)
 
-  def _launch_cli(self, is_run_start=False):
-    if is_run_start:
+  def _launch_cli(self):
+    if self._is_run_start:
       self.observers["run_start_cli_run_numbers"].append(self._run_call_count)
     else:
       self.observers["run_end_cli_run_numbers"].append(self._run_call_count)
@@ -170,6 +171,30 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     # Verify that the TensorFlow runtime errors are picked up and in this case,
     # they should be both None.
     self.assertEqual([None, None], wrapped_sess.observers["tf_errors"])
+
+  def testRunInfoOutputAtRunEndIsCorrect(self):
+    wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
+        [[], [], []], self.sess, dump_root=self._tmp_dir)
+
+    wrapped_sess.run(self.inc_v)
+    run_info_output = wrapped_sess._run_info_handler([])
+
+    tfdbg_logo = cli_shared.get_tfdbg_logo()
+
+    # The run_info output in the first run() call should contain the tfdbg logo.
+    self.assertEqual(tfdbg_logo.lines,
+                     run_info_output.lines[:len(tfdbg_logo.lines)])
+    menu = run_info_output.annotations[debugger_cli_common.MAIN_MENU_KEY]
+    self.assertIn("list_tensors", menu.captions())
+
+    wrapped_sess.run(self.inc_v)
+    run_info_output = wrapped_sess._run_info_handler([])
+
+    # The run_info output in the second run() call should NOT contain the logo.
+    self.assertNotEqual(tfdbg_logo.lines,
+                        run_info_output.lines[:len(tfdbg_logo.lines)])
+    menu = run_info_output.annotations[debugger_cli_common.MAIN_MENU_KEY]
+    self.assertIn("list_tensors", menu.captions())
 
   def testRunsUnderNonDebugMode(self):
     # Test command sequence: run -n; run -n; run -n;

@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_pass.h"
+#include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/macros.h"
@@ -32,11 +32,12 @@ limitations under the License.
 namespace xla {
 
 // Pipeline of HLO passes.
-class HloPassPipeline : public HloPass {
+class HloPassPipeline : public HloPassInterface {
  public:
   explicit HloPassPipeline(const string& name,
                            const Compiler::HloDumper& dumper)
-      : HloPass(name), dumper_(dumper) {}
+      : name_(name), dumper_(dumper) {}
+  tensorflow::StringPiece name() const override { return name_; }
 
   // Add a pass to the pipeline. It should be called with the arguments for the
   // pass constructor:
@@ -55,8 +56,9 @@ class HloPassPipeline : public HloPass {
   StatusOr<bool> Run(HloModule* module) override;
 
  private:
+  const string name_;
   Compiler::HloDumper dumper_;
-  std::vector<std::unique_ptr<HloPass>> passes_;
+  std::vector<std::unique_ptr<HloPassInterface>> passes_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(HloPassPipeline);
 };

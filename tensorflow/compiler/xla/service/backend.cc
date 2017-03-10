@@ -83,40 +83,31 @@ Backend::CreateDefaultBackend() {
 }
 
 tensorflow::Status Backend::PoolStreams(int n, se::StreamExecutor* executor) {
-  std::vector<std::unique_ptr<se::Stream>> primed;
+  std::vector<StreamPtr> primed;
   for (int i = 0; i < n; ++i) {
-    TF_ASSIGN_OR_RETURN(auto stream, AcquireStream(executor));
+    TF_ASSIGN_OR_RETURN(auto stream, BorrowStream(executor));
     primed.emplace_back(std::move(stream));
-  }
-  for (int i = 0; i < n; ++i) {
-    ReleaseStream(std::move(primed.back()));
-    primed.pop_back();
   }
   return tensorflow::Status::OK();
 }
 
-StatusOr<std::unique_ptr<perftools::gputools::Stream>> Backend::AcquireStream(
-    perftools::gputools::StreamExecutor* executor) {
-  tensorflow::mutex_lock lock(mutex_);
-  auto& cached_streams = cached_streams_[executor];
-  if (!cached_streams.empty()) {
-    auto result = std::move(cached_streams.back());
-    cached_streams.pop_back();
-    return std::move(result);
-  }
-
-  auto stream = MakeUnique<se::Stream>(executor);
-  if (!stream->Init().ok()) {
-    return InternalError("failed to initialize stream");
-  }
-  return std::move(stream);
+StatusOr<Backend::StreamPtr> Backend::BorrowStream(int device_ordinal) {
+  TF_ASSIGN_OR_RETURN(auto exec, stream_executor(device_ordinal));
+  return BorrowStream(exec);
 }
 
-void Backend::ReleaseStream(
-    std::unique_ptr<perftools::gputools::Stream> stream) {
-  tensorflow::mutex_lock lock(mutex_);
-  auto& streams = cached_streams_[stream->parent()];
-  streams.emplace_back(std::move(stream));
+StatusOr<Backend::StreamPtr> Backend::BorrowStream(
+    se::StreamExecutor* executor) {
+  if (0 == stream_pools_.count(executor)) {
+    stream_pools_.emplace(std::piecewise_construct,
+                          std::forward_as_tuple(executor),
+                          std::forward_as_tuple([executor]() {
+                            auto stream = MakeUnique<se::Stream>(executor);
+                            stream->Init();
+                            return stream;
+                          }));
+  }
+  return stream_pools_.at(executor).Allocate();
 }
 
 Backend::Backend(

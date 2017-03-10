@@ -17,7 +17,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core:framework_headers_lib",
-        "@protobuf//:protobuf",
+        "@protobuf//:protobuf_headers",
     ],
 )
 

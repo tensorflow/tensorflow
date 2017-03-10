@@ -63,7 +63,7 @@ StatusOr<std::unique_ptr<GlobalData>> ClientLibraryTestBase::Execute(
     tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
   // Build the computation, as a convenience.
   TF_ASSIGN_OR_RETURN(auto computation, builder->Build());
-  return client_->Execute(computation, arguments);
+  return client_->Execute(computation, arguments, &execution_options_);
 }
 
 StatusOr<std::unique_ptr<Literal>> ClientLibraryTestBase::ExecuteAndTransfer(
@@ -72,8 +72,14 @@ StatusOr<std::unique_ptr<Literal>> ClientLibraryTestBase::ExecuteAndTransfer(
     const Shape* shape_with_output_layout) {
   // Build the computation, as a convenience.
   TF_ASSIGN_OR_RETURN(auto computation, builder->Build());
+
+  ExecutionOptions execution_options = execution_options_;
+  if (shape_with_output_layout != nullptr) {
+    *execution_options.mutable_shape_with_output_layout() =
+        *shape_with_output_layout;
+  }
   return client_->ExecuteAndTransfer(computation, arguments,
-                                     shape_with_output_layout);
+                                     &execution_options);
 }
 
 std::unique_ptr<GlobalData> ClientLibraryTestBase::ExecuteOrDie(
@@ -97,7 +103,8 @@ string ClientLibraryTestBase::ExecuteToString(
   }
   Computation computation = computation_status.ConsumeValueOrDie();
 
-  auto result = client_->ExecuteAndTransfer(computation, arguments);
+  auto result =
+      client_->ExecuteAndTransfer(computation, arguments, &execution_options_);
   if (!result.ok()) {
     return result.status().ToString();
   } else {

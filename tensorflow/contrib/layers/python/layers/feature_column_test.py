@@ -23,15 +23,18 @@ import os
 import sys
 import tempfile
 
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
+# pylint: disable=g-bad-todo
+# TODO(#6568): Remove this hack that makes dlopen() not crash.
+# pylint: enable=g-bad-todo
+# pylint: disable=g-import-not-at-top
 if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
   import ctypes
   sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 import numpy as np
 
+from tensorflow.contrib.layers.python.layers import feature_column as fc
 from tensorflow.contrib.layers.python.layers import feature_column_ops
-import tensorflow.contrib.layers.python.layers.feature_column as fc
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
@@ -507,6 +510,20 @@ class FeatureColumnTest(test.TestCase):
             "sc": parsing_ops.VarLenFeature(dtype=dtypes.int64)
         }, sc.config)
     self.assertEqual(1, sc._wide_embedding_lookup_arguments(None).vocab_size)
+
+  def testSparseColumnAcceptsDenseScalar(self):
+    """Tests that `SparseColumn`s accept dense scalar inputs."""
+    batch_size = 4
+    dense_scalar_input = [1, 2, 3, 4]
+    sparse_column = fc.sparse_column_with_integerized_feature("values", 10)
+    features = {"values":
+                constant_op.constant(dense_scalar_input, dtype=dtypes.int64)}
+    sparse_column.insert_transformed_feature(features)
+    sparse_output = features[sparse_column]
+    expected_shape = [batch_size, 1]
+    with self.test_session() as sess:
+      sparse_result = sess.run(sparse_output)
+    self.assertEquals(expected_shape, list(sparse_result.dense_shape))
 
   def testCreateFeatureSpec(self):
     sparse_col = fc.sparse_column_with_hash_bucket(

@@ -73,6 +73,15 @@ class ReferenceUtil {
       std::pair<int64, int64> lhs_dilation,
       std::pair<int64, int64> rhs_dilation, ConvolutionDimensionNumbers dnums);
 
+  // Returns the result of a separable  convolution with the given parameters.
+  // kernel_stride and padding applies to the depthwise convolution during
+  // the separable convolution. pointwise_weights.depth() must be equal to
+  // input.depth() * depthwise_weights.planes().
+  static std::unique_ptr<Array4D<float>> SeparableConvArray4D(
+      const Array4D<float>& input, const Array4D<float>& depthwise_weights,
+      const Array4D<float>& pointwise_weights,
+      std::pair<int64, int64> kernel_stride, Padding padding);
+
   // Returns the result of reducing a matrix to a column vector. init is the
   // initial value for the reduce operation, and reduce_function is the function
   // to apply for each reduction step.
@@ -135,9 +144,22 @@ class ReferenceUtil {
   static int64 WindowCount(int64 unpadded_width, int64 window_len, int64 stride,
                            Padding padding);
 
+  // Performs a 2D window reduction with Add as the function to apply.
+  static std::unique_ptr<Array2D<float>> ReduceWindow2DAdd(
+      const Array2D<float>& operand, float init,
+      const tensorflow::gtl::ArraySlice<int64>& window,
+      const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding);
+
   // Performs a 4D window reduction with Add as the function to apply.
   static std::unique_ptr<Array4D<float>> ReduceWindow4DAdd(
       const Array4D<float>& operand, float init,
+      const tensorflow::gtl::ArraySlice<int64>& window,
+      const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding);
+
+  // Performs a 4D window reduction with a generic reduce function.
+  static std::unique_ptr<Array4D<float>> ReduceWindow4DGeneric(
+      const Array4D<float>& operand, float init,
+      const std::function<float(float, float)>& reduce_func,
       const tensorflow::gtl::ArraySlice<int64>& window,
       const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding);
 

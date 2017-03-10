@@ -20,7 +20,6 @@ from __future__ import division
 from __future__ import print_function
 
 import math
-import re
 import six
 
 from tensorflow.contrib import layers
@@ -42,8 +41,6 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import variable_scope
 
-
-_CENTERED_BIAS_WEIGHT = "centered_bias_weight"
 
 # The default learning rates are a historical artifact of the initial
 # implementation, but seem a reasonable choice.
@@ -149,7 +146,6 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
           DNN coordinate.
       * gradient_clip_norm: A float > 0. If provided, gradients are
           clipped to their global norm with this clipping ratio.
-      * num_ps_replicas: The number of parameter server replicas.
       * embedding_lr_multipliers: Optional. A dictionary from
           `EmbeddingColumn` to a `float` multiplier. Multiplier will be used to
           multiply with learning rate for the embedding variables.
@@ -171,7 +167,7 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
   dnn_feature_columns = params.get("dnn_feature_columns")
   dnn_optimizer = params.get("dnn_optimizer") or "Adagrad"
   dnn_hidden_units = params.get("dnn_hidden_units")
-  dnn_activation_fn = params.get("dnn_activation_fn")
+  dnn_activation_fn = params.get("dnn_activation_fn") or nn.relu
   dnn_dropout = params.get("dnn_dropout")
   gradient_clip_norm = params.get("gradient_clip_norm")
   input_layer_min_slice_size = (
@@ -191,53 +187,58 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
   if not dnn_feature_columns:
     dnn_logits = None
   else:
-    input_layer_partitioner = (
-        partitioned_variables.min_max_variable_partitioner(
-            max_partitions=num_ps_replicas,
-            min_slice_size=input_layer_min_slice_size))
-    input_layer_scope = dnn_parent_scope + "/input_from_feature_columns"
-    with variable_scope.variable_scope(
-        input_layer_scope,
-        values=features.values(),
-        partitioner=input_layer_partitioner) as scope:
-      net = layers.input_from_feature_columns(
-          columns_to_tensors=features,
-          feature_columns=dnn_feature_columns,
-          weight_collections=[dnn_parent_scope],
-          scope=scope)
-
-    hidden_layer_partitioner = (
+    if not dnn_hidden_units:
+      raise ValueError(
+          "dnn_hidden_units must be defined when dnn_feature_columns is "
+          "specified.")
+    dnn_partitioner = (
         partitioned_variables.min_max_variable_partitioner(
             max_partitions=num_ps_replicas))
-    for layer_id, num_hidden_units in enumerate(dnn_hidden_units):
-      with variable_scope.variable_scope(
-          dnn_parent_scope + "/hiddenlayer_%d" % layer_id,
-          values=[net],
-          partitioner=hidden_layer_partitioner) as scope:
-        net = layers.fully_connected(
-            net,
-            num_hidden_units,
-            activation_fn=dnn_activation_fn,
-            variables_collections=[dnn_parent_scope],
-            scope=scope)
-        if dnn_dropout is not None and mode == model_fn.ModeKeys.TRAIN:
-          net = layers.dropout(
-              net,
-              keep_prob=(1.0 - dnn_dropout))
-      # TODO(b/31209633): Consider adding summary before dropout.
-      _add_hidden_layer_summary(net, scope.name)
-
     with variable_scope.variable_scope(
-        dnn_parent_scope + "/logits",
-        values=[net],
-        partitioner=hidden_layer_partitioner) as scope:
-      dnn_logits = layers.fully_connected(
-          net,
-          head.logits_dimension,
-          activation_fn=None,
-          variables_collections=[dnn_parent_scope],
-          scope=scope)
-    _add_hidden_layer_summary(dnn_logits, scope.name)
+        dnn_parent_scope,
+        values=tuple(six.itervalues(features)),
+        partitioner=dnn_partitioner):
+      input_layer_partitioner = (
+          partitioned_variables.min_max_variable_partitioner(
+              max_partitions=num_ps_replicas,
+              min_slice_size=input_layer_min_slice_size))
+      with variable_scope.variable_scope(
+          "input_from_feature_columns",
+          values=tuple(six.itervalues(features)),
+          partitioner=input_layer_partitioner) as dnn_input_scope:
+        net = layers.input_from_feature_columns(
+            columns_to_tensors=features,
+            feature_columns=dnn_feature_columns,
+            weight_collections=[dnn_parent_scope],
+            scope=dnn_input_scope)
+
+      for layer_id, num_hidden_units in enumerate(dnn_hidden_units):
+        with variable_scope.variable_scope(
+            "hiddenlayer_%d" % layer_id,
+            values=(net,)) as dnn_hidden_layer_scope:
+          net = layers.fully_connected(
+              net,
+              num_hidden_units,
+              activation_fn=dnn_activation_fn,
+              variables_collections=[dnn_parent_scope],
+              scope=dnn_hidden_layer_scope)
+          if dnn_dropout is not None and mode == model_fn.ModeKeys.TRAIN:
+            net = layers.dropout(
+                net,
+                keep_prob=(1.0 - dnn_dropout))
+        # TODO(b/31209633): Consider adding summary before dropout.
+        _add_hidden_layer_summary(net, dnn_hidden_layer_scope.name)
+
+      with variable_scope.variable_scope(
+          "logits",
+          values=(net,)) as dnn_logits_scope:
+        dnn_logits = layers.fully_connected(
+            net,
+            head.logits_dimension,
+            activation_fn=None,
+            variables_collections=[dnn_parent_scope],
+            scope=dnn_logits_scope)
+      _add_hidden_layer_summary(dnn_logits, dnn_logits_scope.name)
 
   # Build Linear logits.
   linear_parent_scope = "linear"
@@ -250,7 +251,7 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
         min_slice_size=64 << 20)
     with variable_scope.variable_scope(
         linear_parent_scope,
-        values=features.values(),
+        values=tuple(six.itervalues(features)),
         partitioner=linear_partitioner) as scope:
       if joint_linear_weights:
         linear_logits, _, _ = layers.joint_weighted_sum_from_feature_columns(
@@ -287,7 +288,7 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
               optimizer=_get_optimizer(dnn_optimizer),
               gradient_multipliers=_extract_embedding_lr_multipliers(  # pylint: disable=protected-access
                   embedding_lr_multipliers, dnn_parent_scope,
-                  input_layer_scope),
+                  dnn_input_scope.name),
               clip_gradients=gradient_clip_norm,
               variables=ops.get_collection(dnn_parent_scope),
               name=dnn_parent_scope,
@@ -308,8 +309,12 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
 
     return control_flow_ops.group(*train_ops)
 
-  return head.head_ops(
-      features, labels, mode, _make_training_op, logits=logits)
+  return head.create_model_fn_ops(
+      features=features,
+      mode=mode,
+      labels=labels,
+      train_op_fn=_make_training_op,
+      logits=logits)
 
 
 class _DNNLinearCombinedEstimator(estimator.Estimator):
@@ -338,7 +343,7 @@ class _DNNLinearCombinedEstimator(estimator.Estimator):
                dnn_feature_columns=None,
                dnn_optimizer=None,
                dnn_hidden_units=None,
-               dnn_activation_fn=nn.relu,
+               dnn_activation_fn=None,
                dnn_dropout=None,
                gradient_clip_norm=None,
                config=None,
@@ -539,15 +544,12 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
     if n_classes < 2:
       raise ValueError("n_classes should be greater than 1. Given: {}".format(
           n_classes))
-    self._linear_optimizer = linear_optimizer or "Ftrl"
     linear_feature_columns = tuple(linear_feature_columns or [])
     dnn_feature_columns = tuple(dnn_feature_columns or [])
     self._feature_columns = linear_feature_columns + dnn_feature_columns
     if not self._feature_columns:
       raise ValueError("Either linear_feature_columns or dnn_feature_columns "
                        "must be defined.")
-    self._dnn_hidden_units = dnn_hidden_units
-    self._enable_centered_bias = enable_centered_bias
     head = head_lib._multi_class_head(  # pylint: disable=protected-access
         n_classes=n_classes,
         weight_column_name=weight_column_name,
@@ -559,7 +561,7 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
         params={
             "head": head,
             "linear_feature_columns": linear_feature_columns,
-            "linear_optimizer": self._linear_optimizer,
+            "linear_optimizer": linear_optimizer,
             "joint_linear_weights": _joint_linear_weights,
             "dnn_feature_columns": dnn_feature_columns,
             "dnn_optimizer": dnn_optimizer,
@@ -575,13 +577,23 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
   @deprecated_arg_values(
       estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
       as_iterable=False)
-  def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=True):
-    """Returns predicted classes for given features.
+  @deprecated_arg_values(
+      "2017-03-01",
+      "Please switch to predict_classes, or set `outputs` argument.",
+      outputs=None)
+  def predict(self, x=None, input_fn=None, batch_size=None, outputs=None,
+              as_iterable=True):
+    """Returns predictions for given features.
+
+    By default, returns predicted classes. But this default will be dropped
+    soon. Users should either pass `outputs`, or call `predict_classes` method.
 
     Args:
       x: features.
       input_fn: Input function. If set, x must be None.
       batch_size: Override default batch size.
+      outputs: list of `str`, name of the output to predict.
+        If `None`, returns classes.
       as_iterable: If True, return an iterable which keeps yielding predictions
         for each example until inputs are exhausted. Note: The inputs must
         terminate if you want the iterable to terminate (e.g. be sure to pass
@@ -591,11 +603,19 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
       Numpy array of predicted classes with shape [batch_size] (or an iterable
       of predicted classes if as_iterable is True). Each predicted class is
       represented by its class index (i.e. integer from 0 to n_classes-1).
+      If `outputs` is set, returns a dict of predictions.
     """
-    return self.predict_classes(
+    if not outputs:
+      return self.predict_classes(
+          x=x,
+          input_fn=input_fn,
+          batch_size=batch_size,
+          as_iterable=as_iterable)
+    return super(DNNLinearCombinedClassifier, self).predict(
         x=x,
         input_fn=input_fn,
         batch_size=batch_size,
+        outputs=outputs,
         as_iterable=as_iterable)
 
   @deprecated_arg_values(
@@ -661,6 +681,7 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
       return _as_iterable(preds, output=key)
     return preds[key]
 
+  @deprecated("2017-03-25", "Please use Estimator.export_savedmodel() instead.")
   def export(self,
              export_dir,
              input_fn=None,
@@ -683,67 +704,6 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
         prediction_key=prediction_key.PredictionKey.PROBABILITIES,
         default_batch_size=default_batch_size,
         exports_to_keep=exports_to_keep)
-
-  @property
-  @deprecated("2016-10-30",
-              "This method will be removed after the deprecation date. "
-              "To inspect variables, use get_variable_names() and "
-              "get_variable_value().")
-  def dnn_weights_(self):
-    hiddenlayer_weights = [
-        self.get_variable_value("dnn/hiddenlayer_%d/weights" % i)
-        for i, _ in enumerate(self._dnn_hidden_units)
-    ]
-    logits_weights = [self.get_variable_value("dnn/logits/weights")]
-    return hiddenlayer_weights + logits_weights
-
-  @property
-  @deprecated("2016-10-30",
-              "This method will be removed after the deprecation date. "
-              "To inspect variables, use get_variable_names() and "
-              "get_variable_value().")
-  def linear_weights_(self):
-    values = {}
-    if isinstance(self._linear_optimizer, str):
-      optimizer_name = self._linear_optimizer
-    else:
-      optimizer_name = self._linear_optimizer.get_name()
-    optimizer_regex = r".*/"+optimizer_name + r"(_\d)?$"
-    for name in self.get_variable_names():
-      if (name.startswith("linear/") and
-          name != "linear/bias_weight" and
-          name != "linear/learning_rate" and
-          not re.match(optimizer_regex, name)):
-        values[name] = self.get_variable_value(name)
-    if len(values) == 1:
-      return values[list(values.keys())[0]]
-    return values
-
-  @property
-  @deprecated("2016-10-30",
-              "This method will be removed after the deprecation date. "
-              "To inspect variables, use get_variable_names() and "
-              "get_variable_value().")
-  def dnn_bias_(self):
-    hiddenlayer_bias = [self.get_variable_value("dnn/hiddenlayer_%d/biases" % i)
-                        for i, _ in enumerate(self._dnn_hidden_units)]
-    logits_bias = [self.get_variable_value("dnn/logits/biases")]
-    if not self._enable_centered_bias:
-      return hiddenlayer_bias + logits_bias
-    centered_bias = [self.get_variable_value(_CENTERED_BIAS_WEIGHT)]
-    return hiddenlayer_bias + logits_bias  + centered_bias
-
-  @property
-  @deprecated("2016-10-30",
-              "This method will be removed after the deprecation date. "
-              "To inspect variables, use get_variable_names() and "
-              "get_variable_value().")
-  def linear_bias_(self):
-    linear_bias = self.get_variable_value("linear/bias_weight")
-    if not self._enable_centered_bias:
-      return linear_bias
-    centered_bias = [self.get_variable_value(_CENTERED_BIAS_WEIGHT)]
-    return linear_bias  + centered_bias
 
 
 class DNNLinearCombinedRegressor(estimator.Estimator):
@@ -856,7 +816,9 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
       enable_centered_bias: A bool. If True, estimator will learn a centered
         bias variable for each class. Rest of the model structure learns the
         residual after centered bias.
-      label_dimension: TODO(zakaria): dimension of the label for multilabels.
+      label_dimension: Number of regression targets per example. This is the
+        size of the last dimension of the labels and logits `Tensor` objects
+        (typically, these have shape `[batch_size, label_dimension]`).
       config: RunConfig object to configure the runtime settings.
       feature_engineering_fn: Feature engineering function. Takes features and
                         labels which are the output of `input_fn` and
@@ -940,13 +902,23 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
   @deprecated_arg_values(
       estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
       as_iterable=False)
-  def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=True):
-    """Returns predicted scores for given features.
+  @deprecated_arg_values(
+      "2017-03-01",
+      "Please switch to predict_scores, or set `outputs` argument.",
+      outputs=None)
+  def predict(self, x=None, input_fn=None, batch_size=None, outputs=None,
+              as_iterable=True):
+    """Returns predictions for given features.
+
+    By default, returns predicted scores. But this default will be dropped
+    soon. Users should either pass `outputs`, or call `predict_scores` method.
 
     Args:
       x: features.
       input_fn: Input function. If set, x must be None.
       batch_size: Override default batch size.
+      outputs: list of `str`, name of the output to predict.
+        If `None`, returns scores.
       as_iterable: If True, return an iterable which keeps yielding predictions
         for each example until inputs are exhausted. Note: The inputs must
         terminate if you want the iterable to terminate (e.g. be sure to pass
@@ -956,11 +928,19 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
       Numpy array of predicted scores (or an iterable of predicted scores if
       as_iterable is True). If `label_dimension == 1`, the shape of the output
       is `[batch_size]`, otherwise the shape is `[batch_size, label_dimension]`.
+      If `outputs` is set, returns a dict of predictions.
     """
-    return self.predict_scores(
+    if not outputs:
+      return self.predict_scores(
+          x=x,
+          input_fn=input_fn,
+          batch_size=batch_size,
+          as_iterable=as_iterable)
+    return super(DNNLinearCombinedRegressor, self).predict(
         x=x,
         input_fn=input_fn,
         batch_size=batch_size,
+        outputs=outputs,
         as_iterable=as_iterable)
 
   @deprecated_arg_values(
@@ -995,6 +975,7 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
       return (pred[key] for pred in preds)
     return preds[key]
 
+  @deprecated("2017-03-25", "Please use Estimator.export_savedmodel() instead.")
   def export(self,
              export_dir,
              input_fn=None,

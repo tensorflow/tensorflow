@@ -53,9 +53,11 @@ class LocalMaster : public MasterInterface {
                          PartialRunSetupResponse* response) override;
 
   Status RunStep(CallOptions* call_options, RunStepRequestWrapper* request,
-                 RunStepResponse* response) override;
+                 MutableRunStepResponseWrapper* response) override;
 
   MutableRunStepRequestWrapper* CreateRunStepRequest() override;
+
+  MutableRunStepResponseWrapper* CreateRunStepResponse() override;
 
   Status CloseSession(CallOptions* call_options,
                       const CloseSessionRequest* request,

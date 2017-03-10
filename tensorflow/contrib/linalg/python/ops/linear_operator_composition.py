@@ -52,8 +52,8 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
 
   ```python
   # Create a 2 x 2 linear operator composed of two 2 x 2 operators.
-  operator_1 = LinearOperatorMatrix([[1., 2.], [3., 4.]])
-  operator_2 = LinearOperatorMatrix([[1., 0.], [0., 1.]])
+  operator_1 = LinearOperatorFullMatrix([[1., 2.], [3., 4.]])
+  operator_2 = LinearOperatorFullMatrix([[1., 0.], [0., 1.]])
   operator = LinearOperatorComposition([operator_1, operator_2])
 
   operator.to_dense()
@@ -72,11 +72,11 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
 
   # Create a [2, 3] batch of 4 x 5 linear operators.
   matrix_45 = tf.random_normal(shape=[2, 3, 4, 5])
-  operator_45 = LinearOperatorMatrix(matrix)
+  operator_45 = LinearOperatorFullMatrix(matrix)
 
   # Create a [2, 3] batch of 5 x 6 linear operators.
   matrix_56 = tf.random_normal(shape=[2, 3, 5, 6])
-  operator_56 = LinearOperatorMatrix(matrix_56)
+  operator_56 = LinearOperatorFullMatrix(matrix_56)
 
   # Compose to create a [2, 3] batch of 4 x 6 operators.
   opeartor_46 = LinearOperatorComposition([operator_45, operator_56])
@@ -122,7 +122,7 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
 
     Args:
       operators:  Iterable of `LinearOperator` objects, each with
-        the same `dtype` and composible shape.
+        the same `dtype` and composable shape.
       is_non_singular:  Expect that this operator is non-singular.
       is_self_adjoint:  Expect that this operator is equal to its hermitian
         transpose.
@@ -202,7 +202,7 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
 
     return batch_shape.concatenate(matrix_shape)
 
-  def _shape_dynamic(self):
+  def _shape_tensor(self):
     # Avoid messy broadcasting if possible.
     if self.shape.is_fully_defined():
       return ops.convert_to_tensor(
@@ -212,14 +212,14 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
     # the graph.  Things will fail at runtime naturally if shapes are
     # incompatible.
     matrix_shape = array_ops.stack([
-        self.operators[0].range_dimension_dynamic(),
-        self.operators[-1].domain_dimension_dynamic()
+        self.operators[0].range_dimension_tensor(),
+        self.operators[-1].domain_dimension_tensor()
     ])
 
     # Dummy Tensor of zeros.  Will never be materialized.
-    zeros = array_ops.zeros(shape=self.operators[0].batch_shape_dynamic())
+    zeros = array_ops.zeros(shape=self.operators[0].batch_shape_tensor())
     for operator in self.operators[1:]:
-      zeros += array_ops.zeros(shape=operator.batch_shape_dynamic())
+      zeros += array_ops.zeros(shape=operator.batch_shape_tensor())
     batch_shape = array_ops.shape(zeros)
 
     return array_ops.concat((batch_shape, matrix_shape), 0)

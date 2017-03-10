@@ -319,7 +319,8 @@ class Coordinator(object):
     with self._lock:
       self._registered_threads.add(thread)
 
-  def join(self, threads=None, stop_grace_period_secs=120):
+  def join(self, threads=None, stop_grace_period_secs=120,
+           ignore_live_threads=False):
     """Wait for threads to terminate.
 
     This call blocks until a set of threads have terminated.  The set of thread
@@ -341,6 +342,8 @@ class Coordinator(object):
         addition to the registered threads.
       stop_grace_period_secs: Number of seconds given to threads to stop after
         `request_stop()` has been called.
+      ignore_live_threads: If `False`, raises an error if any of the threads are
+        still alive after `stop_grace_period_secs`.
 
     Raises:
       RuntimeError: If any thread is still alive after `request_stop()`
@@ -385,9 +388,13 @@ class Coordinator(object):
       if self._exc_info_to_raise:
         six.reraise(*self._exc_info_to_raise)
       elif stragglers:
-        raise RuntimeError(
-            "Coordinator stopped with threads still running: %s" %
-            " ".join(stragglers))
+        if ignore_live_threads:
+          logging.info("Coordinator stopped with threads still running: %s",
+                       " ".join(stragglers))
+        else:
+          raise RuntimeError(
+              "Coordinator stopped with threads still running: %s" %
+              " ".join(stragglers))
 
   @property
   def joined(self):

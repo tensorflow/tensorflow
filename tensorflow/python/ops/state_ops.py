@@ -13,46 +13,27 @@
 # limitations under the License.
 # ==============================================================================
 
-"""## Variables
+"""Variables. See the @{python/state_ops} guide.
 
 @@Variable
-
-## Variable helper functions
-
-TensorFlow provides a set of functions to help manage the set of variables
-collected in the graph.
-
 @@global_variables
 @@local_variables
 @@model_variables
 @@trainable_variables
 @@moving_average_variables
-
 @@global_variables_initializer
 @@local_variables_initializer
 @@variables_initializer
 @@is_variable_initialized
 @@report_uninitialized_variables
 @@assert_variables_initialized
-
 @@assign
 @@assign_add
 @@assign_sub
-
-## Saving and Restoring Variables
-
 @@Saver
-
 @@latest_checkpoint
-
 @@get_checkpoint_state
 @@update_checkpoint_state
-
-## Sharing Variables
-
-TensorFlow provides several classes and operations that you can use to
-create variables contingent on certain conditions.
-
 @@get_variable
 @@get_local_variable
 @@VariableScope
@@ -60,9 +41,7 @@ create variables contingent on certain conditions.
 @@variable_op_scope
 @@get_variable_scope
 @@make_template
-
 @@no_regularizer
-
 @@constant_initializer
 @@random_normal_initializer
 @@truncated_normal_initializer
@@ -71,27 +50,9 @@ create variables contingent on certain conditions.
 @@zeros_initializer
 @@ones_initializer
 @@orthogonal_initializer
-
-## Variable Partitioners for Sharding
-
 @@fixed_size_partitioner
 @@variable_axis_size_partitioner
 @@min_max_variable_partitioner
-
-## Sparse Variable Updates
-
-The sparse update ops modify a subset of the entries in a dense `Variable`,
-either overwriting the entries or adding / subtracting a delta.  These are
-useful for training embedding models and similar lookup-based networks, since
-only a small subset of embedding vectors change in any given step.
-
-Since a sparse update of a large tensor may be generated automatically during
-gradient computation (as in the gradient of
-[`tf.gather`](../../api_docs/python/array_ops.md#gather)),
-an [`IndexedSlices`](#IndexedSlices) class is provided that encapsulates a set
-of sparse indices and values.  `IndexedSlices` objects are detected and handled
-automatically by the optimizers in most cases.
-
 @@scatter_update
 @@scatter_add
 @@scatter_sub
@@ -102,24 +63,14 @@ automatically by the optimizers in most cases.
 @@scatter_nd_sub
 @@sparse_mask
 @@IndexedSlices
-
-### Read-only Lookup Tables
-
 @@initialize_all_tables
-
-
-## Exporting and Importing Meta Graphs
-
+@@tables_initializer
 @@export_meta_graph
 @@import_meta_graph
-
-# Deprecated functions (removed after 2017-03-02). Please don't use them.
-
 @@all_variables
 @@initialize_all_variables
 @@initialize_local_variables
 @@initialize_variables
-
 """
 
 from __future__ import absolute_import
@@ -231,3 +182,90 @@ def is_variable_initialized(ref, name=None):
   if ref.op.type == "VarHandleOp":
     return gen_resource_variable_ops.var_is_initialized_op(ref.handle,
                                                            name=name)
+
+
+def assign_sub(ref, value, use_locking=None, name=None):
+  """Update 'ref' by subtracting 'value' from it.
+
+  This operation outputs "ref" after the update is done.
+  This makes it easier to chain operations that need to use the reset value.
+
+  Args:
+    ref: A mutable `Tensor`. Must be one of the following types:
+      `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`,
+      `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+      Should be from a `Variable` node.
+    value: A `Tensor`. Must have the same type as `ref`.
+      The value to be subtracted to the variable.
+    use_locking: An optional `bool`. Defaults to `False`.
+      If True, the subtraction will be protected by a lock;
+      otherwise the behavior is undefined, but may exhibit less contention.
+    name: A name for the operation (optional).
+
+  Returns:
+    Same as "ref".  Returned as a convenience for operations that want
+    to use the new value after the variable has been updated.
+  """
+  if ref.dtype._is_ref_dtype:
+    return gen_state_ops.assign_sub(
+        ref, value, use_locking=use_locking, name=name)
+  return ref.assign_sub(value, name=name)
+
+
+def assign_add(ref, value, use_locking=None, name=None):
+  """Update 'ref' by adding 'value' to it.
+
+  This operation outputs "ref" after the update is done.
+  This makes it easier to chain operations that need to use the reset value.
+
+  Args:
+    ref: A mutable `Tensor`. Must be one of the following types:
+      `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`,
+      `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+      Should be from a `Variable` node.
+    value: A `Tensor`. Must have the same type as `ref`.
+      The value to be added to the variable.
+    use_locking: An optional `bool`. Defaults to `False`.
+      If True, the addition will be protected by a lock;
+      otherwise the behavior is undefined, but may exhibit less contention.
+    name: A name for the operation (optional).
+
+  Returns:
+    Same as "ref".  Returned as a convenience for operations that want
+    to use the new value after the variable has been updated.
+  """
+  if ref.dtype._is_ref_dtype:
+    return gen_state_ops.assign_add(
+        ref, value, use_locking=use_locking, name=name)
+  return ref.assign_add(value, name=name)
+
+
+def assign(ref, value, validate_shape=None, use_locking=None, name=None):
+  """Update 'ref' by assigning 'value' to it.
+
+  This operation outputs "ref" after the assignment is done.
+  This makes it easier to chain operations that need to use the reset value.
+
+  Args:
+    ref: A mutable `Tensor`.
+      Should be from a `Variable` node. May be uninitialized.
+    value: A `Tensor`. Must have the same type as `ref`.
+      The value to be assigned to the variable.
+    validate_shape: An optional `bool`. Defaults to `True`.
+      If true, the operation will validate that the shape
+      of 'value' matches the shape of the Tensor being assigned to.  If false,
+      'ref' will take on the shape of 'value'.
+    use_locking: An optional `bool`. Defaults to `True`.
+      If True, the assignment will be protected by a lock;
+      otherwise the behavior is undefined, but may exhibit less contention.
+    name: A name for the operation (optional).
+
+  Returns:
+    Same as "ref".  Returned as a convenience for operations that want
+    to use the new value after the variable has been reset.
+  """
+  if ref.dtype._is_ref_dtype:
+    return gen_state_ops.assign(
+        ref, value, use_locking=use_locking, name=name,
+        validate_shape=validate_shape)
+  return ref.assign(value, name=name)

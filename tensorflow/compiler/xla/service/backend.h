@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
+#include "tensorflow/compiler/xla/service/pool.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -33,7 +34,7 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 
 namespace Eigen {
-class ThreadPoolDevice;
+struct ThreadPoolDevice;
 }
 
 namespace xla {
@@ -43,12 +44,11 @@ namespace xla {
 //
 // It also offers a pooling API for creation/use of initialized streams:
 //
-//    std::unique_ptr<se::Stream> stream =
-//        backend->AcquireStream().ConsumeValueOrDie();
-//    // ... use stream ...
-//    backend->ReleaseStream(std::move(stream));
+//    StreamPtr stream = backend->BorrowStream().ConsumeValueOrDie();
 class Backend {
  public:
+  using StreamPtr = Pool<perftools::gputools::Stream>::SmartPtr;
+
   // The number of streams we create for the pool at initialization time.
   static constexpr int kInitialStreamsToPool = 8;
 
@@ -108,22 +108,24 @@ class Backend {
     return stream_executors_[0];
   }
 
-  // Primes the internal pool of streams for AcquireStream/ReleaseStream with n
-  // initialized stream instances.
+  // Primes the internal pool of streams for BorrowStream with n initialized
+  // stream instances.
   tensorflow::Status PoolStreams(int n,
                                  perftools::gputools::StreamExecutor* executor);
 
-  // Acquires a stream for use by the caller, either by grabbing it from an
+  // Borrows a stream for use by the caller, either by grabbing it from an
   // internal pool, or by constructing/initializating it, and returns the result
   // to the caller.
-  //
-  // TODO(b/32989582): Return std::unique_ptr with custom deleter.
-  StatusOr<std::unique_ptr<perftools::gputools::Stream>> AcquireStream(
+  StatusOr<StreamPtr> BorrowStream(int device_ordinal);
+  StatusOr<StreamPtr> BorrowStream(
       perftools::gputools::StreamExecutor* executor);
 
-  // Releases a stream from the caller to the internal pool, for use with the
-  // paired AcquireStream above.
-  void ReleaseStream(std::unique_ptr<perftools::gputools::Stream> stream);
+  // Returns a function to borrow a stream, as `BorrowStream` above does.
+  // Purely for convenience, the caller could rather make this anonymous
+  // function itself.
+  std::function<StatusOr<StreamPtr>(int)> StreamBorrower() {
+    return [this](int device_ordinal) { return BorrowStream(device_ordinal); };
+  }
 
   // Returns whether the given device ordinal of the backend is supported.
   bool device_ordinal_supported(int device_ordinal) const {
@@ -170,14 +172,10 @@ class Backend {
   // Vector of stream executors. stream_executors_[0] is the default executor.
   std::vector<perftools::gputools::StreamExecutor*> stream_executors_;
 
-  // Guards the mutable state in the backend object.
-  tensorflow::mutex mutex_;
-
-  // Mapping from stream executor to cached streams, used by
-  // AcquireStream/ReleaseStream above.
+  // Mapping from stream executor to stream pools, used by `BorrowStream` above.
   std::map<perftools::gputools::StreamExecutor*,
-           std::vector<std::unique_ptr<perftools::gputools::Stream>>>
-      cached_streams_ GUARDED_BY(mutex_);
+           Pool<perftools::gputools::Stream>>
+      stream_pools_;
 
   // The default memory allocator to use.
   std::unique_ptr<StreamExecutorMemoryAllocator> memory_allocator_;

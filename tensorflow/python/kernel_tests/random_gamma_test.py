@@ -27,6 +27,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
@@ -251,6 +252,14 @@ class RandomGammaTest(test.TestCase):
     self.assertIs(None, rnd.get_shape().ndims)
     rnd = random_ops.random_gamma([50], array_ops.placeholder(dtypes.float32))
     self.assertIs(None, rnd.get_shape().ndims)
+
+  def testPositive(self):
+    n = int(10e3)
+    for dt in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      with self.test_session():
+        x = random_ops.random_gamma(shape=[n], alpha=0.001, dtype=dt, seed=0)
+        self.assertEqual(0, math_ops.reduce_sum(math_ops.cast(
+            math_ops.less_equal(x, 0.), dtype=dtypes.int64)).eval())
 
 
 if __name__ == "__main__":

@@ -56,6 +56,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
+
 # We disable pylint because we need python3 compatibility.
 from six.moves import xrange  # pylint: disable=redefined-builtin
 from six.moves import zip  # pylint: disable=redefined-builtin
@@ -180,7 +182,8 @@ def basic_rnn_seq2seq(encoder_inputs,
         It is a 2D Tensor of shape [batch_size x cell.state_size].
   """
   with variable_scope.variable_scope(scope or "basic_rnn_seq2seq"):
-    _, enc_state = core_rnn.static_rnn(cell, encoder_inputs, dtype=dtype)
+    enc_cell = copy.deepcopy(cell)
+    _, enc_state = core_rnn.static_rnn(enc_cell, encoder_inputs, dtype=dtype)
     return rnn_decoder(decoder_inputs, enc_state, cell)
 
 
@@ -352,8 +355,9 @@ def embedding_rnn_seq2seq(encoder_inputs,
       dtype = scope.dtype
 
     # Encoder.
+    encoder_cell = copy.deepcopy(cell)
     encoder_cell = core_rnn_cell.EmbeddingWrapper(
-        cell,
+        encoder_cell,
         embedding_classes=num_encoder_symbols,
         embedding_size=embedding_size)
     _, encoder_state = core_rnn.static_rnn(
@@ -842,8 +846,9 @@ def embedding_attention_seq2seq(encoder_inputs,
       scope or "embedding_attention_seq2seq", dtype=dtype) as scope:
     dtype = scope.dtype
     # Encoder.
+    encoder_cell = copy.deepcopy(cell)
     encoder_cell = core_rnn_cell.EmbeddingWrapper(
-        cell,
+        encoder_cell,
         embedding_classes=num_encoder_symbols,
         embedding_size=embedding_size)
     encoder_outputs, encoder_state = core_rnn.static_rnn(
@@ -912,7 +917,8 @@ def embedding_attention_seq2seq(encoder_inputs,
 
 def one2many_rnn_seq2seq(encoder_inputs,
                          decoder_inputs_dict,
-                         cell,
+                         enc_cell,
+                         dec_cells_dict,
                          num_encoder_symbols,
                          num_decoder_symbols_dict,
                          embedding_size,
@@ -927,11 +933,13 @@ def one2many_rnn_seq2seq(encoder_inputs,
 
   Args:
     encoder_inputs: A list of 1D int32 Tensors of shape [batch_size].
-    decoder_inputs_dict: A dictionany mapping decoder name (string) to
+    decoder_inputs_dict: A dictionary mapping decoder name (string) to
       the corresponding decoder_inputs; each decoder_inputs is a list of 1D
       Tensors of shape [batch_size]; num_decoders is defined as
       len(decoder_inputs_dict).
-    cell: core_rnn_cell.RNNCell defining the cell function and size.
+    enc_cell: core_rnn_cell.RNNCell defining the encoder cell function and size.
+    dec_cells_dict: A dictionary mapping encoder name (string) to an
+      instance of core_rnn_cell.RNNCell.
     num_encoder_symbols: Integer; number of symbols on the encoder side.
     num_decoder_symbols_dict: A dictionary mapping decoder name (string) to an
       integer specifying number of symbols for the corresponding decoder;
@@ -955,35 +963,48 @@ def one2many_rnn_seq2seq(encoder_inputs,
       state_dict: A mapping from decoder name (string) to the final state of the
         corresponding decoder RNN; it is a 2D Tensor of shape
         [batch_size x cell.state_size].
+
+  Raises:
+    TypeError: if enc_cell or any of the dec_cells are not instances of RNNCell.
+    ValueError: if len(dec_cells) != len(decoder_inputs_dict).
   """
   outputs_dict = {}
   state_dict = {}
+
+  if not isinstance(enc_cell, core_rnn_cell.RNNCell):
+    raise TypeError("enc_cell is not an RNNCell: %s" % type(enc_cell))
+  if set(dec_cells_dict) != set(decoder_inputs_dict):
+    raise ValueError("keys of dec_cells_dict != keys of decodre_inputs_dict")
+  for dec_cell in dec_cells_dict.values():
+    if not isinstance(dec_cell, core_rnn_cell.RNNCell):
+      raise TypeError("dec_cell is not an RNNCell: %s" % type(dec_cell))
 
   with variable_scope.variable_scope(
       scope or "one2many_rnn_seq2seq", dtype=dtype) as scope:
     dtype = scope.dtype
 
     # Encoder.
-    encoder_cell = core_rnn_cell.EmbeddingWrapper(
-        cell,
+    enc_cell = core_rnn_cell.EmbeddingWrapper(
+        enc_cell,
         embedding_classes=num_encoder_symbols,
         embedding_size=embedding_size)
     _, encoder_state = core_rnn.static_rnn(
-        encoder_cell, encoder_inputs, dtype=dtype)
+        enc_cell, encoder_inputs, dtype=dtype)
 
     # Decoder.
     for name, decoder_inputs in decoder_inputs_dict.items():
       num_decoder_symbols = num_decoder_symbols_dict[name]
+      dec_cell = dec_cells_dict[name]
 
       with variable_scope.variable_scope("one2many_decoder_" + str(
           name)) as scope:
-        decoder_cell = core_rnn_cell.OutputProjectionWrapper(
-            cell, num_decoder_symbols)
+        dec_cell = core_rnn_cell.OutputProjectionWrapper(
+            dec_cell, num_decoder_symbols)
         if isinstance(feed_previous, bool):
           outputs, state = embedding_rnn_decoder(
               decoder_inputs,
               encoder_state,
-              decoder_cell,
+              dec_cell,
               num_decoder_symbols,
               embedding_size,
               feed_previous=feed_previous)
@@ -998,7 +1019,7 @@ def one2many_rnn_seq2seq(encoder_inputs,
               outputs, state = embedding_rnn_decoder(
                   decoder_inputs,
                   encoder_state,
-                  decoder_cell,
+                  dec_cell,
                   num_decoder_symbols,
                   embedding_size,
                   feed_previous=feed_previous)
@@ -1090,7 +1111,7 @@ def sequence_loss(logits,
     average_across_timesteps: If set, divide the returned cost by the total
       label weight.
     average_across_batch: If set, divide the returned cost by the batch size.
-    softmax_loss_function: Function (inputs-batch, labels-batch) -> loss-batch
+    softmax_loss_function: Function (labels-batch, inputs-batch) -> loss-batch
       to be used instead of the standard softmax (the default if this is None).
     name: Optional name for this operation, defaults to "sequence_loss".
 
@@ -1139,7 +1160,7 @@ def model_with_buckets(encoder_inputs,
     seq2seq: A sequence-to-sequence model function; it takes 2 input that
       agree with encoder_inputs and decoder_inputs, and returns a pair
       consisting of outputs and states (as, e.g., basic_rnn_seq2seq).
-    softmax_loss_function: Function (inputs-batch, labels-batch) -> loss-batch
+    softmax_loss_function: Function (labels-batch, inputs-batch) -> loss-batch
       to be used instead of the standard softmax (the default if this is None).
     per_example_loss: Boolean. If set, the returned loss will be a batch-sized
       tensor of losses for each sequence in the batch. If unset, it will be
@@ -1156,7 +1177,7 @@ def model_with_buckets(encoder_inputs,
         if per_example_loss is set, a list of 1D batch-sized float Tensors.
 
   Raises:
-    ValueError: If length of encoder_inputsut, targets, or weights is smaller
+    ValueError: If length of encoder_inputs, targets, or weights is smaller
       than the largest (last) bucket.
   """
   if len(encoder_inputs) < buckets[-1][0]:

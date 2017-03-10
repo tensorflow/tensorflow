@@ -108,6 +108,10 @@ class LinearAlgebraOp : public OpKernel {
                                                   : static_cast<int64>(cost);
   }
 
+  // Returns true if it is safe to forward (alias) input to output buffer
+  // and expect the kernel to perform the computation inplace.
+  virtual bool EnableInputForwarding() const { return true; }
+
   using Matrix =
       Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
   using ConstMatrixMap = Eigen::Map<const Matrix>;
@@ -127,7 +131,7 @@ class LinearAlgebraOp : public OpKernel {
                              MatrixMaps* outputs) = 0;
 
  private:
-  using TensorInputs = gtl::InlinedVector<Tensor, 4>;
+  using TensorInputs = gtl::InlinedVector<const Tensor*, 4>;
   using TensorOutputs = gtl::InlinedVector<Tensor*, 4>;
 
   // This function maps slices (matrices) of the input and output tensors using

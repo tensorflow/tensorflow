@@ -336,14 +336,11 @@ void OptimizeControlFlowColocation(Graph* graph) {
         const Edge* data_edge = nullptr;
         for (const Edge* out_edge : node->out_edges()) {
           if (!out_edge->IsControlEdge()) {
-            if (data_edge) {
-              data_edge = nullptr;
-              return;
-            }
             data_edge = out_edge;
+            break;
           }
         }
-        // Colocate if there is only one downstream data node.
+        // Colocate with the first downstream data node.
         if (data_edge) {
           node->set_assigned_device_name(
               data_edge->dst()->assigned_device_name());

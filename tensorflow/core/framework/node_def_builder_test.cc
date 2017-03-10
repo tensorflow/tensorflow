@@ -155,7 +155,8 @@ TEST_F(NodeDefBuilderTest, Simple) {
 
   {  // Finalize() twice.
     NodeDefBuilder& builder = Builder();
-    builder.Input(FakeInput()).Finalize(nullptr);  // First call to Finalize()
+    // First call to Finalize()
+    TF_EXPECT_OK(builder.Input(FakeInput()).Finalize(nullptr));
     // ExpectSuccess() also calls Finalize().
     ExpectSuccess(builder, {DT_INT32}, {DT_FLOAT}, R"proto(
         op: "Simple" input: "a" )proto");

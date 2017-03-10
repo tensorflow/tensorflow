@@ -68,29 +68,64 @@ namespace {
 // Default inline threshold value to use in llvm.
 const int kDefaultInlineThreshold = 1100;
 
-// Information about a GPU architecture for the backend.
-struct GpuBackendInfo {
-  string libdevice_name;
-  string sm_name;
-};
-
-// Maps supported CUDA compute capability to a libdevice file to link for this
-// capability.
-std::map<string, GpuBackendInfo> gpu_info_map = {
-    {"compute_20", {"libdevice.compute_20.10.bc", "sm_20"}},
-    {"compute_30", {"libdevice.compute_30.10.bc", "sm_30"}},
-    {"compute_35", {"libdevice.compute_35.10.bc", "sm_35"}},
-
-    // NVIDIA does not provide a separate libdevice for CC 3.7, but we can use
-    // the one for 3.5.
-    {"compute_37", {"libdevice.compute_35.10.bc", "sm_37"}},
-};
-
-// Validate the --gpu_architecture command-line flag.
-static void ValidateGPUArchitecture(const string& value) {
-  if (!gpu_info_map.count(value)) {
-    LOG(FATAL) << "value for --gpu_architecture must be compute_{20,30,35,37}";
+// Gets the libdevice filename for a particular compute capability.  When
+// presented with a GPU we don't recognize, we just return the libdevice from
+// compute_20.
+static string GetLibdeviceFilename(std::pair<int, int> compute_capability) {
+  // There are only four libdevice files: compute_{20,30,35,50}.  Each GPU
+  // version gets mapped to one of these.  Note in particular that sm_60 and
+  // sm_61 map to libdevice.compute_30.
+  static auto* m = new std::map<std::pair<int, int>, int>({{{2, 0}, 20},
+                                                           {{2, 1}, 20},
+                                                           {{3, 0}, 30},
+                                                           {{3, 2}, 30},
+                                                           {{3, 5}, 35},
+                                                           {{3, 7}, 35},
+                                                           {{5, 0}, 50},
+                                                           {{5, 2}, 50},
+                                                           {{5, 3}, 50},
+                                                           {{6, 0}, 30},
+                                                           {{6, 1}, 30},
+                                                           {{6, 2}, 30}});
+  int libdevice_version = 20;
+  auto it = m->find(compute_capability);
+  if (it != m->end()) {
+    libdevice_version = it->second;
+  } else {
+    LOG(WARNING) << "Unknown compute capability (" << compute_capability.first
+                 << ", " << compute_capability.second << ") ."
+                 << "Defaulting to libdevice for compute_" << libdevice_version;
   }
+  return tensorflow::strings::StrCat("libdevice.compute_", libdevice_version,
+                                     ".10.bc");
+}
+
+// Gets the GPU name as it's known to LLVM for a given compute capability.  If
+// we see an unrecognized compute capability, we return "sm_20".
+static string GetSmName(std::pair<int, int> compute_capability) {
+  static auto* m = new std::map<std::pair<int, int>, int>({{{2, 0}, 20},
+                                                           {{2, 1}, 21},
+                                                           {{3, 0}, 30},
+                                                           {{3, 2}, 32},
+                                                           {{3, 5}, 35},
+                                                           {{3, 7}, 37},
+                                                           {{5, 0}, 50},
+                                                           {{5, 2}, 52},
+                                                           {{5, 3}, 53},
+                                                           {{6, 0}, 60},
+                                                           {{6, 1}, 61},
+                                                           {{6, 2}, 62}});
+  int sm_version = 20;
+  auto it = m->find(compute_capability);
+  if (it != m->end()) {
+    sm_version = it->second;
+  } else {
+    LOG(WARNING) << "Unknown compute capability (" << compute_capability.first
+                 << ", " << compute_capability.second << ") ."
+                 << "Defaulting to telling LLVM that we're compiling for sm_"
+                 << sm_version;
+  }
+  return tensorflow::strings::StrCat("sm_", sm_version);
 }
 
 // Convenience function for producing a name of a temporary compilation product
@@ -124,7 +159,8 @@ void InitializePasses(llvm::PassRegistry* pass_registry) {
 
 // Returns the TargetMachine, given a triple.
 std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
-    llvm::Triple triple, tensorflow::StringPiece cpu_name) {
+    llvm::Triple triple, tensorflow::StringPiece cpu_name,
+    const HloModuleConfig& hlo_module_config) {
   std::string error;
   const llvm::Target* target = TargetRegistry::lookupTarget("", triple, error);
   if (target == nullptr) {
@@ -134,15 +170,15 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
   }
 
   TargetOptions target_options = InitTargetOptionsFromCodeGenFlags();
+  // Set options from hlo_module_config (specifically, fast-math flags).
+  llvm_ir::SetTargetOptions(hlo_module_config, &target_options);
+
   // Enable FMA synthesis if desired.
   legacy_flags::GpuBackendLibFlags* flags =
       legacy_flags::GetGpuBackendLibFlags();
   if (flags->fma) {
     target_options.AllowFPOpFusion = FPOpFusion::Fast;
   }
-
-  // Set options from LlvmBackendFlags (specifically, fast-math flags).
-  llvm_ir::SetTargetOptions(&target_options);
 
   // Set the verbose assembly options.
   target_options.MCOptions.AsmVerbose = flags->verbose_ptx_asm;
@@ -193,11 +229,7 @@ void AddOptimizationPasses(unsigned opt_level, unsigned size_level,
   builder.SLPVectorize = opt_level > 1 && size_level < 2;
 
   // NVPTX's early-as-possible passes include NVVM reflect.
-  builder.addExtension(
-      llvm::PassManagerBuilder::EP_EarlyAsPossible,
-      [&](const PassManagerBuilder&, legacy::PassManagerBase& pass_manager) {
-        target_machine->addEarlyAsPossiblePasses(pass_manager);
-      });
+  target_machine->adjustPassManager(builder);
 
   builder.populateFunctionPassManager(*function_passes);
   builder.populateModulePassManager(*module_passes);
@@ -258,7 +290,6 @@ void FeedLLVMWithFlags(const std::vector<string>& cl_opts) {
   llvm::cl::ParseCommandLineOptions(fake_argv.size(), &fake_argv[0]);
 }
 
-namespace {
 // Returns whether the module could use any libdevice functions. This function
 // may have false positives -- the module might not use libdevice even if this
 // function returns true.
@@ -274,40 +305,37 @@ bool CouldNeedLibdevice(const llvm::Module& module) {
 }
 
 // Links libdevice into the given module if the module needs libdevice.
-tensorflow::Status LinkLibdeviceIfNecessary(const string& libdevice_dir_path,
-                                            llvm::Module* module) {
+tensorflow::Status LinkLibdeviceIfNecessary(
+    llvm::Module* module, std::pair<int, int> compute_capability,
+    const string& libdevice_dir_path) {
   if (!CouldNeedLibdevice(*module)) {
     return tensorflow::Status::OK();
   }
 
   llvm::Linker linker(*module);
-  legacy_flags::GpuBackendLibFlags* flags =
-      legacy_flags::GetGpuBackendLibFlags();
-  ValidateGPUArchitecture(flags->gpu_architecture);
-  string libdevice_bc_filename =
-      gpu_info_map[flags->gpu_architecture].libdevice_name;
-  string libdevice_bc_fullpath =
-      tensorflow::io::JoinPath(libdevice_dir_path, libdevice_bc_filename);
-  TF_RETURN_IF_ERROR(
-      tensorflow::Env::Default()->FileExists(libdevice_bc_fullpath));
+  string libdevice_path = tensorflow::io::JoinPath(
+      libdevice_dir_path, GetLibdeviceFilename(compute_capability));
+  TF_RETURN_IF_ERROR(tensorflow::Env::Default()->FileExists(libdevice_path));
+  VLOG(1) << "Linking with libdevice from: " << libdevice_path;
   std::unique_ptr<llvm::Module> libdevice_module =
-      LoadIRModule(libdevice_bc_fullpath, &module->getContext());
-  VLOG(1) << "Linking with libdevice from: " << libdevice_bc_fullpath;
+      LoadIRModule(libdevice_path, &module->getContext());
   if (linker.linkInModule(std::move(libdevice_module),
                           llvm::Linker::Flags::InternalizeLinkedSymbols |
                               llvm::Linker::Flags::LinkOnlyNeeded)) {
-    LOG(FATAL) << "Error linking libdevice from " << libdevice_bc_fullpath;
+    return tensorflow::errors::Internal(tensorflow::strings::StrCat(
+        "Error linking libdevice from ", libdevice_path));
   }
   return tensorflow::Status::OK();
 }
 
-}  // namespace
-
 StatusOr<string> CompileModuleToPtx(llvm::Module* module,
+                                    std::pair<int, int> compute_capability,
+                                    const HloModuleConfig& hlo_module_config,
                                     const string& libdevice_dir_path) {
   // Link the input module with libdevice, to pull in implementations of some
   // builtins.
-  TF_RETURN_IF_ERROR(LinkLibdeviceIfNecessary(libdevice_dir_path, module));
+  TF_RETURN_IF_ERROR(
+      LinkLibdeviceIfNecessary(module, compute_capability, libdevice_dir_path));
 
   legacy_flags::GpuBackendLibFlags* flags =
       legacy_flags::GetGpuBackendLibFlags();
@@ -356,11 +384,8 @@ StatusOr<string> CompileModuleToPtx(llvm::Module* module,
 
   // Figure out the exact name of the processor as known to the NVPTX backend
   // from the gpu_architecture flag.
-  ValidateGPUArchitecture(flags->gpu_architecture);
-  string cpu_name = gpu_info_map[flags->gpu_architecture].sm_name;
-
-  std::unique_ptr<llvm::TargetMachine> target_machine =
-      GetTargetMachine(target_triple, cpu_name);
+  std::unique_ptr<llvm::TargetMachine> target_machine = GetTargetMachine(
+      target_triple, GetSmName(compute_capability), hlo_module_config);
   module_passes.add(llvm::createTargetTransformInfoWrapperPass(
       target_machine->getTargetIRAnalysis()));
 
@@ -471,6 +496,8 @@ void GPUBackendInit() {
 }  // namespace
 
 StatusOr<string> CompileToPtx(llvm::Module* module,
+                              std::pair<int, int> compute_capability,
+                              const HloModuleConfig& hlo_module_config,
                               const string& libdevice_dir_path) {
   static std::once_flag backend_init_flag;
   std::call_once(backend_init_flag, GPUBackendInit);
@@ -480,7 +507,9 @@ StatusOr<string> CompileToPtx(llvm::Module* module,
     ScopedLoggingTimer compilation_timer(
         "Compile module " + llvm_ir::AsString(module->getName()),
         /*vlog_level=*/2);
-    TF_ASSIGN_OR_RETURN(ptx, CompileModuleToPtx(module, libdevice_dir_path));
+    TF_ASSIGN_OR_RETURN(
+        ptx, CompileModuleToPtx(module, compute_capability, hlo_module_config,
+                                libdevice_dir_path));
   }
   return ptx;
 }

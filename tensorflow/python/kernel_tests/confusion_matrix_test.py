@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import confusion_matrix
 from tensorflow.python.ops import math_ops
@@ -213,6 +214,240 @@ class ConfusionMatrixTest(test.TestCase):
           labels, predictions, dtype=dtypes.int64)
       tf_cm = cm.eval()
     self.assertEqual(tf_cm.dtype, np.int64)
+
+
+class RemoveSqueezableDimensionsTest(test.TestCase):
+
+  def testBothScalarShape(self):
+    label_values = 1.0
+    prediction_values = 0.0
+    static_labels, static_predictions = (
+        confusion_matrix.remove_squeezable_dimensions(
+            label_values, prediction_values))
+
+    labels_placeholder = array_ops.placeholder(dtype=dtypes.float32)
+    predictions_placeholder = array_ops.placeholder(dtype=dtypes.float32)
+    dynamic_labels, dynamic_predictions = (
+        confusion_matrix.remove_squeezable_dimensions(
+            labels_placeholder, predictions_placeholder))
+
+    with self.test_session():
+      self.assertAllEqual(label_values, static_labels.eval())
+      self.assertAllEqual(prediction_values, static_predictions.eval())
+      feed_dict = {
+          labels_placeholder: label_values,
+          predictions_placeholder: prediction_values
+      }
+      self.assertAllEqual(
+          label_values, dynamic_labels.eval(feed_dict=feed_dict))
+      self.assertAllEqual(
+          prediction_values, dynamic_predictions.eval(feed_dict=feed_dict))
+
+  def testSameShape(self):
+    label_values = np.ones(shape=(2, 3, 1))
+    prediction_values = np.zeros_like(label_values)
+    static_labels, static_predictions = (
+        confusion_matrix.remove_squeezable_dimensions(
+            label_values, prediction_values))
+
+    labels_placeholder = array_ops.placeholder(dtype=dtypes.int32)
+    predictions_placeholder = array_ops.placeholder(dtype=dtypes.int32)
+    dynamic_labels, dynamic_predictions = (
+        confusion_matrix.remove_squeezable_dimensions(
+            labels_placeholder, predictions_placeholder))
+
+    with self.test_session():
+      self.assertAllEqual(label_values, static_labels.eval())
+      self.assertAllEqual(prediction_values, static_predictions.eval())
+      feed_dict = {
+          labels_placeholder: label_values,
+          predictions_placeholder: prediction_values
+      }
+      self.assertAllEqual(
+          label_values, dynamic_labels.eval(feed_dict=feed_dict))
+      self.assertAllEqual(
+          prediction_values, dynamic_predictions.eval(feed_dict=feed_dict))
+
+  def testSameShapeExpectedRankDiff0(self):
+    label_values = np.ones(shape=(2, 3, 1))
+    prediction_values = np.zeros_like(label_values)
+    static_labels, static_predictions = (
+        confusion_matrix.remove_squeezable_dimensions(
+            label_values, prediction_values, expected_rank_diff=0))
+
+    labels_placeholder = array_ops.placeholder(dtype=dtypes.int32)
+    predictions_placeholder = array_ops.placeholder(dtype=dtypes.int32)
+    dynamic_labels, dynamic_predictions = (
+        confusion_matrix.remove_squeezable_dimensions(
+            labels_placeholder, predictions_placeholder, expected_rank_diff=0))
+
+    with self.test_session():
+      self.assertAllEqual(label_values, static_labels.eval())
+      self.assertAllEqual(prediction_values, static_predictions.eval())
+      feed_dict = {
+          labels_placeholder: label_values,
+          predictions_placeholder: prediction_values
+      }
+      self.assertAllEqual(
+          label_values, dynamic_labels.eval(feed_dict=feed_dict))
+      self.assertAllEqual(
+          prediction_values, dynamic_predictions.eval(feed_dict=feed_dict))
+
+  def testSqueezableLabels(self):
+    label_values = np.ones(shape=(2, 3, 1))
+    prediction_values = np.zeros(shape=(2, 3))
+    static_labels, static_predictions = (
+        confusion_matrix.remove_squeezable_dimensions(
+            label_values, prediction_values))
+
+    labels_placeholder = array_ops.placeholder(dtype=dtypes.int32)
+    predictions_placeholder = array_ops.placeholder(dtype=dtypes.int32)
+    dynamic_labels, dynamic_predictions = (
+        confusion_matrix.remove_squeezable_dimensions(
+            labels_placeholder, predictions_placeholder))
+
+    expected_label_values = np.reshape(label_values, newshape=(2, 3))
+    with self.test_session():
+      self.assertAllEqual(expected_label_values, static_labels.eval())
+      self.assertAllEqual(prediction_values, static_predictions.eval())
+      feed_dict = {
+          labels_placeholder: label_values,
+          predictions_placeholder: prediction_values
+      }
+      self.assertAllEqual(
+          expected_label_values, dynamic_labels.eval(feed_dict=feed_dict))
+      self.assertAllEqual(
+          prediction_values, dynamic_predictions.eval(feed_dict=feed_dict))
+
+  def testSqueezableLabelsExpectedRankDiffPlus1(self):
+    label_values = np.ones(shape=(2, 3, 1))
+    prediction_values = np.zeros(shape=(2, 3, 5))
+    static_labels, static_predictions = (
+        confusion_matrix.remove_squeezable_dimensions(
+            label_values, prediction_values, expected_rank_diff=1))
+
+    labels_placeholder = array_ops.placeholder(dtype=dtypes.int32)
+    predictions_placeholder = array_ops.placeholder(dtype=dtypes.int32)
+    dynamic_labels, dynamic_predictions = (
+        confusion_matrix.remove_squeezable_dimensions(
+            labels_placeholder, predictions_placeholder, expected_rank_diff=1))
+
+    expected_label_values = np.reshape(label_values, newshape=(2, 3))
+    with self.test_session():
+      self.assertAllEqual(expected_label_values, static_labels.eval())
+      self.assertAllEqual(prediction_values, static_predictions.eval())
+      feed_dict = {
+          labels_placeholder: label_values,
+          predictions_placeholder: prediction_values
+      }
+      self.assertAllEqual(
+          expected_label_values, dynamic_labels.eval(feed_dict=feed_dict))
+      self.assertAllEqual(
+          prediction_values, dynamic_predictions.eval(feed_dict=feed_dict))
+
+  def testSqueezablePredictions(self):
+    label_values = np.ones(shape=(2, 3))
+    prediction_values = np.zeros(shape=(2, 3, 1))
+    static_labels, static_predictions = (
+        confusion_matrix.remove_squeezable_dimensions(
+            label_values, prediction_values))
+
+    labels_placeholder = array_ops.placeholder(dtype=dtypes.int32)
+    predictions_placeholder = array_ops.placeholder(dtype=dtypes.int32)
+    dynamic_labels, dynamic_predictions = (
+        confusion_matrix.remove_squeezable_dimensions(
+            labels_placeholder, predictions_placeholder))
+
+    expected_prediction_values = np.reshape(prediction_values, newshape=(2, 3))
+    with self.test_session():
+      self.assertAllEqual(label_values, static_labels.eval())
+      self.assertAllEqual(expected_prediction_values, static_predictions.eval())
+      feed_dict = {
+          labels_placeholder: label_values,
+          predictions_placeholder: prediction_values
+      }
+      self.assertAllEqual(
+          label_values, dynamic_labels.eval(feed_dict=feed_dict))
+      self.assertAllEqual(
+          expected_prediction_values,
+          dynamic_predictions.eval(feed_dict=feed_dict))
+
+  def testSqueezablePredictionsExpectedRankDiffMinus1(self):
+    label_values = np.ones(shape=(2, 3, 5))
+    prediction_values = np.zeros(shape=(2, 3, 1))
+    static_labels, static_predictions = (
+        confusion_matrix.remove_squeezable_dimensions(
+            label_values, prediction_values, expected_rank_diff=-1))
+
+    labels_placeholder = array_ops.placeholder(dtype=dtypes.int32)
+    predictions_placeholder = array_ops.placeholder(dtype=dtypes.int32)
+    dynamic_labels, dynamic_predictions = (
+        confusion_matrix.remove_squeezable_dimensions(
+            labels_placeholder, predictions_placeholder, expected_rank_diff=-1))
+
+    expected_prediction_values = np.reshape(prediction_values, newshape=(2, 3))
+    with self.test_session():
+      self.assertAllEqual(label_values, static_labels.eval())
+      self.assertAllEqual(expected_prediction_values, static_predictions.eval())
+      feed_dict = {
+          labels_placeholder: label_values,
+          predictions_placeholder: prediction_values
+      }
+      self.assertAllEqual(
+          label_values, dynamic_labels.eval(feed_dict=feed_dict))
+      self.assertAllEqual(
+          expected_prediction_values,
+          dynamic_predictions.eval(feed_dict=feed_dict))
+
+  def testUnsqueezableLabels(self):
+    label_values = np.ones(shape=(2, 3, 2))
+    prediction_values = np.zeros(shape=(2, 3))
+    with self.assertRaisesRegexp(ValueError, r"Can not squeeze dim\[2\]"):
+      confusion_matrix.remove_squeezable_dimensions(
+          label_values, prediction_values)
+
+    labels_placeholder = array_ops.placeholder(dtype=dtypes.int32)
+    predictions_placeholder = array_ops.placeholder(dtype=dtypes.int32)
+    dynamic_labels, dynamic_predictions = (
+        confusion_matrix.remove_squeezable_dimensions(
+            labels_placeholder, predictions_placeholder))
+
+    with self.test_session():
+      feed_dict = {
+          labels_placeholder: label_values,
+          predictions_placeholder: prediction_values
+      }
+      with self.assertRaisesRegexp(
+          errors_impl.InvalidArgumentError,
+          "Tried to explicitly squeeze dimension 2"):
+        dynamic_labels.eval(feed_dict=feed_dict)
+      self.assertAllEqual(
+          prediction_values, dynamic_predictions.eval(feed_dict=feed_dict))
+
+  def testUnsqueezablePredictions(self):
+    label_values = np.ones(shape=(2, 3))
+    prediction_values = np.zeros(shape=(2, 3, 2))
+    with self.assertRaisesRegexp(ValueError, r"Can not squeeze dim\[2\]"):
+      confusion_matrix.remove_squeezable_dimensions(
+          label_values, prediction_values)
+
+    labels_placeholder = array_ops.placeholder(dtype=dtypes.int32)
+    predictions_placeholder = array_ops.placeholder(dtype=dtypes.int32)
+    dynamic_labels, dynamic_predictions = (
+        confusion_matrix.remove_squeezable_dimensions(
+            labels_placeholder, predictions_placeholder))
+
+    with self.test_session():
+      feed_dict = {
+          labels_placeholder: label_values,
+          predictions_placeholder: prediction_values
+      }
+      self.assertAllEqual(
+          label_values, dynamic_labels.eval(feed_dict=feed_dict))
+      with self.assertRaisesRegexp(
+          errors_impl.InvalidArgumentError,
+          "Tried to explicitly squeeze dimension 2"):
+        dynamic_predictions.eval(feed_dict=feed_dict)
 
 
 if __name__ == "__main__":

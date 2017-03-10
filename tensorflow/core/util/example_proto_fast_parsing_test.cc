@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/util/example_proto_fast_parsing_test.pb.h"
 
 namespace tensorflow {
 namespace example {
@@ -42,7 +43,8 @@ string SerializedToReadable(string serialized) {
   return result;
 }
 
-string Serialize(const Example& example) {
+template <class T>
+string Serialize(const T& example) {
   string serialized;
   example.SerializeToString(&serialized);
   return serialized;
@@ -66,6 +68,54 @@ void TestCorrectness(const string& serialized) {
 //   Example example;
 //   TestCorrectness(example);
 // }
+
+TEST(FastParse, IgnoresPrecedingUnknownTopLevelFields) {
+  ExampleWithExtras example;
+  (*example.mutable_features()->mutable_feature())["age"]
+      .mutable_int64_list()
+      ->add_value(13);
+  example.set_extra1("some_str");
+  example.set_extra2(123);
+  example.set_extra3(234);
+  example.set_extra4(345);
+  example.set_extra5(4.56);
+  example.add_extra6(5.67);
+  example.add_extra6(6.78);
+  (*example.mutable_extra7()->mutable_feature())["extra7"]
+      .mutable_int64_list()
+      ->add_value(1337);
+
+  Example context;
+  (*context.mutable_features()->mutable_feature())["zipcode"]
+      .mutable_int64_list()
+      ->add_value(94043);
+
+  TestCorrectness(strings::StrCat(Serialize(example), Serialize(context)));
+}
+
+TEST(FastParse, IgnoresTrailingUnknownTopLevelFields) {
+  Example example;
+  (*example.mutable_features()->mutable_feature())["age"]
+      .mutable_int64_list()
+      ->add_value(13);
+
+  ExampleWithExtras context;
+  (*context.mutable_features()->mutable_feature())["zipcode"]
+      .mutable_int64_list()
+      ->add_value(94043);
+  context.set_extra1("some_str");
+  context.set_extra2(123);
+  context.set_extra3(234);
+  context.set_extra4(345);
+  context.set_extra5(4.56);
+  context.add_extra6(5.67);
+  context.add_extra6(6.78);
+  (*context.mutable_extra7()->mutable_feature())["extra7"]
+      .mutable_int64_list()
+      ->add_value(1337);
+
+  TestCorrectness(strings::StrCat(Serialize(example), Serialize(context)));
+}
 
 TEST(FastParse, SingleInt64WithContext) {
   Example example;

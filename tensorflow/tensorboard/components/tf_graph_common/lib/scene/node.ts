@@ -269,7 +269,9 @@ function addInteraction(selection, d: render.RenderNodeInfo,
  */
 export function getContextMenu(node: Node, sceneElement) {
   let menu = [{
-    title: d => { return getIncludeNodeButtonString(node.include); },
+    title: (d): string => {
+      return getIncludeNodeButtonString(node.include);
+    },
     action: (elm, d, i) => {
       sceneElement.fire('node-toggle-extract', {name: node.name});
     }
@@ -1037,7 +1039,7 @@ function _markParentsOfNodes(visibleNodes: {[nodeName: string]: Node}) {
 /**
  * Find the parent of the passed in op node which is expanded. This is done
  * by going through all parents until the parent's parent is expanded, thus
- * finding the the first unexpanded parent which is rendered on the screen.
+ * finding the first unexpanded parent which is rendered on the screen.
  * @param renderGraphInfo The graph info object used to gain access to the
  * render info of the parents.
  * @param currentNode The node whose parent is to be found.

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <string>
+#include <unordered_map>
 #include <vector>
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/test.h"
@@ -335,6 +336,28 @@ TEST(FlatMap, InitFromIter) {
   }
 }
 
+TEST(FlatMap, InitializerList) {
+  NumMap a{{1, 10}, {2, 20}, {3, 30}};
+  NumMap b({{1, 10}, {2, 20}, {3, 30}});
+  NumMap c = {{1, 10}, {2, 20}, {3, 30}};
+
+  typedef std::unordered_map<int64, int32> StdNumMap;
+  StdNumMap std({{1, 10}, {2, 20}, {3, 30}});
+  StdNumMap::value_type std_r1 = *std.find(1);
+  StdNumMap::value_type std_r2 = *std.find(2);
+  StdNumMap::value_type std_r3 = *std.find(3);
+  NumMap d{std_r1, std_r2, std_r3};
+  NumMap e({std_r1, std_r2, std_r3});
+  NumMap f = {std_r1, std_r2, std_r3};
+
+  for (NumMap* map : std::vector<NumMap*>({&a, &b, &c, &d, &e, &f})) {
+    EXPECT_EQ(Get(*map, 1), 10);
+    EXPECT_EQ(Get(*map, 2), 20);
+    EXPECT_EQ(Get(*map, 3), 30);
+    EXPECT_EQ(Contents(*map), NumMapContents({{1, 10}, {2, 20}, {3, 30}}));
+  }
+}
+
 TEST(FlatMap, InsertIter) {
   NumMap a, b;
   Fill(&a, 1, 10);
@@ -438,33 +461,127 @@ TEST(FlatMap, Prefetch) {
   }
 }
 
-// Non-copyable values should work.
-struct NC {
+// Non-assignable values should work.
+struct NA {
   int64 value;
-  NC() : value(-1) {}
-  NC(int64 v) : value(v) {}
-  NC(const NC& x) : value(x.value) {}
-  bool operator==(const NC& x) const { return value == x.value; }
+  NA() : value(-1) {}
+  explicit NA(int64 v) : value(v) {}
+  NA(const NA& x) : value(x.value) {}
+  bool operator==(const NA& x) const { return value == x.value; }
 };
-struct HashNC {
-  size_t operator()(NC x) const { return x.value; }
+struct HashNA {
+  size_t operator()(NA x) const { return x.value; }
 };
 
-TEST(FlatMap, NonCopyable) {
-  FlatMap<NC, NC, HashNC> map;
+TEST(FlatMap, NonAssignable) {
+  FlatMap<NA, NA, HashNA> map;
   for (int i = 0; i < 100; i++) {
-    map[NC(i)] = NC(i * 100);
+    map[NA(i)] = NA(i * 100);
   }
   for (int i = 0; i < 100; i++) {
-    EXPECT_EQ(map.count(NC(i)), 1);
-    auto iter = map.find(NC(i));
+    EXPECT_EQ(map.count(NA(i)), 1);
+    auto iter = map.find(NA(i));
     EXPECT_NE(iter, map.end());
-    EXPECT_EQ(iter->first, NC(i));
-    EXPECT_EQ(iter->second, NC(i * 100));
-    EXPECT_EQ(map[NC(i)], NC(i * 100));
+    EXPECT_EQ(iter->first, NA(i));
+    EXPECT_EQ(iter->second, NA(i * 100));
+    EXPECT_EQ(map[NA(i)], NA(i * 100));
   }
-  map.erase(NC(10));
-  EXPECT_EQ(map.count(NC(10)), 0);
+  map.erase(NA(10));
+  EXPECT_EQ(map.count(NA(10)), 0);
+}
+
+TEST(FlatMap, ForwardIterator) {
+  // Test the requirements of forward iterators
+  typedef FlatMap<NA, NA, HashNA> NAMap;
+  NAMap map({{NA(1), NA(10)}, {NA(2), NA(20)}});
+  NAMap::iterator it1 = map.find(NA(1));
+  NAMap::iterator it2 = map.find(NA(2));
+
+  // Test operator != and ==
+  EXPECT_TRUE(it1 != map.end());
+  EXPECT_TRUE(it2 != map.end());
+  EXPECT_FALSE(it1 == map.end());
+  EXPECT_FALSE(it2 == map.end());
+  EXPECT_TRUE(it1 != it2);
+  EXPECT_FALSE(it1 == it2);
+
+  // Test operator * and ->
+  EXPECT_EQ((*it1).first, NA(1));
+  EXPECT_EQ((*it1).second, NA(10));
+  EXPECT_EQ((*it2).first, NA(2));
+  EXPECT_EQ((*it2).second, NA(20));
+  EXPECT_EQ(it1->first, NA(1));
+  EXPECT_EQ(it1->second, NA(10));
+  EXPECT_EQ(it2->first, NA(2));
+  EXPECT_EQ(it2->second, NA(20));
+
+  // Test prefix ++
+  NAMap::iterator copy_it1 = it1;
+  NAMap::iterator copy_it2 = it2;
+  EXPECT_EQ(copy_it1->first, NA(1));
+  EXPECT_EQ(copy_it1->second, NA(10));
+  EXPECT_EQ(copy_it2->first, NA(2));
+  EXPECT_EQ(copy_it2->second, NA(20));
+  NAMap::iterator& pp_copy_it1 = ++copy_it1;
+  NAMap::iterator& pp_copy_it2 = ++copy_it2;
+  EXPECT_TRUE(pp_copy_it1 == copy_it1);
+  EXPECT_TRUE(pp_copy_it2 == copy_it2);
+  // Check either possible ordering of the two items
+  EXPECT_TRUE(copy_it1 != it1);
+  EXPECT_TRUE(copy_it2 != it2);
+  if (copy_it1 == map.end()) {
+    EXPECT_TRUE(copy_it2 != map.end());
+    EXPECT_EQ(copy_it2->first, NA(1));
+    EXPECT_EQ(copy_it2->second, NA(10));
+    EXPECT_EQ(pp_copy_it2->first, NA(1));
+    EXPECT_EQ(pp_copy_it2->second, NA(10));
+  } else {
+    EXPECT_TRUE(copy_it2 == map.end());
+    EXPECT_EQ(copy_it1->first, NA(2));
+    EXPECT_EQ(copy_it1->second, NA(20));
+    EXPECT_EQ(pp_copy_it1->first, NA(2));
+    EXPECT_EQ(pp_copy_it1->second, NA(20));
+  }
+  // Ensure it{1,2} haven't moved
+  EXPECT_EQ(it1->first, NA(1));
+  EXPECT_EQ(it1->second, NA(10));
+  EXPECT_EQ(it2->first, NA(2));
+  EXPECT_EQ(it2->second, NA(20));
+
+  // Test postfix ++
+  copy_it1 = it1;
+  copy_it2 = it2;
+  EXPECT_EQ(copy_it1->first, NA(1));
+  EXPECT_EQ(copy_it1->second, NA(10));
+  EXPECT_EQ(copy_it2->first, NA(2));
+  EXPECT_EQ(copy_it2->second, NA(20));
+  NAMap::iterator copy_it1_pp = copy_it1++;
+  NAMap::iterator copy_it2_pp = copy_it2++;
+  EXPECT_TRUE(copy_it1_pp != copy_it1);
+  EXPECT_TRUE(copy_it2_pp != copy_it2);
+  EXPECT_TRUE(copy_it1_pp == it1);
+  EXPECT_TRUE(copy_it2_pp == it2);
+  EXPECT_EQ(copy_it1_pp->first, NA(1));
+  EXPECT_EQ(copy_it1_pp->second, NA(10));
+  EXPECT_EQ(copy_it2_pp->first, NA(2));
+  EXPECT_EQ(copy_it2_pp->second, NA(20));
+  // Check either possible ordering of the two items
+  EXPECT_TRUE(copy_it1 != it1);
+  EXPECT_TRUE(copy_it2 != it2);
+  if (copy_it1 == map.end()) {
+    EXPECT_TRUE(copy_it2 != map.end());
+    EXPECT_EQ(copy_it2->first, NA(1));
+    EXPECT_EQ(copy_it2->second, NA(10));
+  } else {
+    EXPECT_TRUE(copy_it2 == map.end());
+    EXPECT_EQ(copy_it1->first, NA(2));
+    EXPECT_EQ(copy_it1->second, NA(20));
+  }
+  // Ensure it{1,2} haven't moved
+  EXPECT_EQ(it1->first, NA(1));
+  EXPECT_EQ(it1->second, NA(10));
+  EXPECT_EQ(it2->first, NA(2));
+  EXPECT_EQ(it2->second, NA(20));
 }
 
 // Test with heap-allocated objects so that mismanaged constructions

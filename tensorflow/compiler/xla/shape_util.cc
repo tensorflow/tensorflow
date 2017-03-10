@@ -37,10 +37,24 @@ limitations under the License.
 
 namespace xla {
 
-/* static */ bool ShapeUtil::CompareShapes(const Shape& lhs, const Shape& rhs,
-                                           bool compare_layouts) {
-  if (IsTuple(lhs)) {
-    return IsTuple(rhs) &&
+string ShapeIndex::ToString() const {
+  return tensorflow::strings::StrCat(
+      "{", tensorflow::str_util::Join(indices_, ","), "}");
+}
+
+std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index) {
+  out << shape_index.ToString();
+  return out;
+}
+
+namespace {
+
+// Recursive helper for comparing the equality of two shapes. Returns true if
+// the shapes are the same. If compare_layouts is true, then layouts must also
+// match.
+bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
+  if (ShapeUtil::IsTuple(lhs)) {
+    return ShapeUtil::IsTuple(rhs) &&
            ContainersEqual(lhs.tuple_shapes(), rhs.tuple_shapes(),
                            [=](const Shape& l, const Shape& r) {
                              return CompareShapes(l, r, compare_layouts);
@@ -48,21 +62,40 @@ namespace xla {
   }
   // Explicitly compare the fields rather than using MessageDifferencer because
   // we want empty layouts to be treated identically to missing layouts.
-  if (compare_layouts &&
-      (!ContainersEqual(lhs.layout().minor_to_major(),
-                        rhs.layout().minor_to_major()) ||
-       !ContainersEqual(lhs.layout().padded_dimensions(),
-                        rhs.layout().padded_dimensions()) ||
-       lhs.layout().padding_value() != rhs.layout().padding_value())) {
+  if (compare_layouts) {
+    if (!ContainersEqual(lhs.layout().minor_to_major(),
+                         rhs.layout().minor_to_major())) {
+      VLOG(3) << "CompareShapes: lhs layout != rhs layout";
+      return false;
+    }
+    if (!ContainersEqual(lhs.layout().padded_dimensions(),
+                         rhs.layout().padded_dimensions())) {
+      VLOG(3)
+          << "CompareShapes: lhs padded_dimensions != rhs padded_dimensions";
+      return false;
+    }
+    if (lhs.layout().padding_value() != rhs.layout().padding_value()) {
+      VLOG(3) << "CompareShapes: lhs padding value != rhs padding_value";
+      return false;
+    }
+  }
+
+  if (!ShapeUtil::SameDimensions(lhs, rhs)) {
+    VLOG(3) << "CompareShapes: lhs dimensions != rhs dimensions";
     return false;
   }
-  return SameDimensions(lhs, rhs) && SameElementType(lhs, rhs);
+  if (!ShapeUtil::SameElementType(lhs, rhs)) {
+    VLOG(3) << "CompareShapes: lhs element type != rhs element type";
+    return false;
+  }
+  return true;
 }
+
+}  // namespace
 
 /* static */ bool ShapeUtil::Equal(const Shape& lhs, const Shape& rhs) {
   bool equal = CompareShapes(lhs, rhs, /*compare_layouts=*/true);
   if (!equal && VLOG_IS_ON(3)) {
-    // TODO(jeff): Maybe print more info about where lhs and rhs differ
     VLOG(3) << "ShapeUtil::Equal differ: lhs = " << lhs.ShortDebugString()
             << ", rhs = " << rhs.ShortDebugString();
   }
@@ -335,10 +368,9 @@ namespace xla {
     string layout;
     if (!IsScalar(shape) && !IsOpaque(shape)) {
       if (LayoutUtil::HasLayout(shape)) {
-        layout = tensorflow::strings::StrCat(
-            " ", LayoutUtil::HumanString(shape.layout()));
+        layout = LayoutUtil::HumanString(shape.layout());
       } else {
-        layout = " (no layout)";
+        layout = "{no layout}";
       }
     }
     return tensorflow::strings::StrCat(
@@ -481,6 +513,7 @@ namespace xla {
   TF_DCHECK_OK(ValidateShape(shape));
   DCHECK_NE(OPAQUE, shape.element_type());
   if (shape.element_type() == TUPLE) {
+    CHECK_GT(pointer_size, 0);
     return pointer_size * shape.tuple_shapes_size();
   }
   int64 allocated_element_count;
@@ -495,10 +528,6 @@ namespace xla {
   }
   return allocated_element_count *
          ByteSizeOfPrimitiveType(shape.element_type());
-}
-
-/* static */ int64 ShapeUtil::ByteSizeOf(const Shape& shape) {
-  return ShapeUtil::ByteSizeOf(shape, /*pointer_size=*/sizeof(void*));
 }
 
 /* static */ Status ShapeUtil::ValidateShapeWithOptionalLayoutInternal(
@@ -614,7 +643,7 @@ namespace xla {
   // The dimensions in minor_to_major need to be renumbered to account for the
   // degenerate dimensions which have removed. Decrement each dimension number
   // once for each degenerate dimension which has a smaller number.
-  for (int i = 0; i < minor_to_major.size(); ++i) {
+  for (std::vector<int64>::size_type i = 0; i < minor_to_major.size(); ++i) {
     int adjustment = 0;
     for (int64 dim : degenerate_dimensions) {
       if (minor_to_major[i] > dim) {

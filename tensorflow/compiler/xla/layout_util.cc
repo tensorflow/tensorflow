@@ -287,7 +287,8 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
 /* static */ std::vector<int64> LayoutUtil::MakeLogicalToPhysical(
     const Layout& layout) {
   std::vector<int64> logical_to_physical(layout.minor_to_major_size());
-  for (int64 physical = 0; physical < logical_to_physical.size(); ++physical) {
+  for (std::vector<int64>::size_type physical = 0;
+       physical < logical_to_physical.size(); ++physical) {
     const int64 logical = Major(layout, physical);
     logical_to_physical[logical] = physical;
   }
@@ -303,16 +304,25 @@ namespace {
 
 // Internal helper for recursively copying layouts.
 tensorflow::Status CopyLayoutInternal(const Shape& src, Shape* dst) {
+  if (ShapeUtil::IsTuple(src) != ShapeUtil::IsTuple(*dst)) {
+    return InvalidArgument(
+        "cannot copy layout from shape: shape structure differs");
+  }
   if (ShapeUtil::IsTuple(src)) {
-    DCHECK(ShapeUtil::IsTuple(*dst));
-    DCHECK_EQ(ShapeUtil::TupleElementCount(src),
-              ShapeUtil::TupleElementCount(*dst));
+    if (ShapeUtil::TupleElementCount(src) !=
+        ShapeUtil::TupleElementCount(*dst)) {
+      return InvalidArgument(
+          "cannot copy layout from shape: tuple element count differs");
+    }
     for (int64 i = 0; i < ShapeUtil::TupleElementCount(src); ++i) {
       TF_RETURN_IF_ERROR(CopyLayoutInternal(src.tuple_shapes(i),
                                             dst->mutable_tuple_shapes(i)));
     }
   } else {
     if (src.has_layout()) {
+      if (ShapeUtil::Rank(src) != ShapeUtil::Rank(*dst)) {
+        return InvalidArgument("cannot copy layout from shape: ranks differs");
+      }
       TF_RETURN_IF_ERROR(
           LayoutUtil::ValidateLayoutForShape(src.layout(), *dst));
       *dst->mutable_layout() = src.layout();
@@ -328,13 +338,6 @@ tensorflow::Status CopyLayoutInternal(const Shape& src, Shape* dst) {
 /* static */
 tensorflow::Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src,
                                                        Shape* dst) {
-  if (!ShapeUtil::Compatible(src, *dst)) {
-    return InvalidArgument(
-        "cannot copy layout from shape %s to shape %s: "
-        "shapes are not compatible",
-        ShapeUtil::HumanString(src).c_str(),
-        ShapeUtil::HumanString(*dst).c_str());
-  }
   return CopyLayoutInternal(src, dst);
 }
 
@@ -355,7 +358,7 @@ tensorflow::Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src,
     }
     return true;
   } else {
-    return ShapeUtil::SameDimensions(lhs, rhs) &&
+    return ShapeUtil::Rank(lhs) == ShapeUtil::Rank(rhs) &&
            LayoutUtil::Equal(lhs.layout(), rhs.layout());
   }
 }

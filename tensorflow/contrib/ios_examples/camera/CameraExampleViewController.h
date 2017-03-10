@@ -39,7 +39,7 @@
   std::unique_ptr<tensorflow::MemmappedEnv> tf_memmapped_env;
   std::vector<std::string> labels;
 }
-@property(retain, nonatomic) CATextLayer *predictionTextLayer;
+@property(strong, nonatomic) CATextLayer *predictionTextLayer;
 
 - (IBAction)takePicture:(id)sender;
 - (IBAction)switchCameras:(id)sender;

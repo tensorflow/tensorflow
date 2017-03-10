@@ -78,35 +78,6 @@ TEST(MathOpsTest, UnchangedShape_ShapeFn) {
   INFER_OK(op, "[1,?,3,4]", "in0");
 }
 
-TEST(MathOpsTest, FFT_ShapeFn) {
-  for (const auto* op_name : {"FFT", "IFFT"}) {
-    ShapeInferenceTestOp op(op_name);
-    INFER_OK(op, "?", "?");
-    INFER_ERROR("Shape must be at least rank 1 but is rank 0", op, "[]");
-    INFER_OK(op, "[?]", "in0");
-    INFER_OK(op, "[1]", "in0");
-    INFER_OK(op, "[1,2,3,4,5,6,7]", "in0");
-  }
-
-  for (const auto* op_name : {"FFT2D", "IFFT2D"}) {
-    ShapeInferenceTestOp op(op_name);
-    INFER_OK(op, "?", "?");
-    INFER_ERROR("Shape must be at least rank 2 but is rank 1", op, "[1]");
-    INFER_OK(op, "[?,1]", "in0");
-    INFER_OK(op, "[1,2]", "in0");
-    INFER_OK(op, "[1,2,3,4,5,6,7]", "in0");
-  }
-
-  for (const auto* op_name : {"FFT3D", "IFFT3D"}) {
-    ShapeInferenceTestOp op(op_name);
-    INFER_OK(op, "?", "?");
-    INFER_ERROR("Shape must be at least rank 3 but is rank 2", op, "[1,2]");
-    INFER_OK(op, "[?,1,?]", "in0");
-    INFER_OK(op, "[1,2,3]", "in0");
-    INFER_OK(op, "[1,2,3,4,5,6,7]", "in0");
-  }
-}
-
 TEST(MathOpsTest, Segment_ShapeFn) {
   // Tests SegmentReductionShapeFn.
   for (const auto* op_name : {"SegmentMax", "SegmentMean", "SegmentMin",
@@ -229,7 +200,7 @@ TEST(MathOpsTest, Select_ShapeFn) {
 
   ASSERT_TRUE(op_reg_data->shape_inference_fn != nullptr);
   shape_inference::InferenceContext c(
-      &op.node_def, op_reg_data->op_def,
+      TF_GRAPH_DEF_VERSION, &op.node_def, op_reg_data->op_def,
       {TensorShapeProto(), TensorShapeProto(), TensorShapeProto()}, {}, {},
       {TensorShapeProto(), i0, i1}, {});
   TF_ASSERT_OK(c.construction_status());
@@ -242,7 +213,7 @@ TEST(MathOpsTest, Select_ShapeFn) {
   i1.add_dim()->set_size(2);
   i1.add_dim()->set_size(2);
   shape_inference::InferenceContext c2(
-      &op.node_def, op_reg_data->op_def,
+      TF_GRAPH_DEF_VERSION, &op.node_def, op_reg_data->op_def,
       {TensorShapeProto(), TensorShapeProto(), TensorShapeProto()}, {}, {},
       {TensorShapeProto(), i0, i2}, {});
   TF_ASSERT_OK(c.construction_status());

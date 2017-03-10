@@ -90,7 +90,7 @@ TEST_F(GradientsTest, OneMatMul) {
     } else {
       // Call AddSymbolicGradients.
       auto dz = Const(scope, {{1.0, 1.0}, {1.0, 1.0}});
-      std::vector<ops::Output> grad_outputs;
+      std::vector<Output> grad_outputs;
       TF_ASSERT_OK(
           AddSymbolicGradients(scope, {z}, {x, y}, {dz}, &grad_outputs));
     }
@@ -123,7 +123,7 @@ TEST_F(GradientsTest, TwoMatMuls_Chained) {
     } else {
       // Call AddSymbolicGradients.
       auto dz = Const(scope, {{1.0, 1.0}, {1.0, 1.0}});
-      std::vector<ops::Output> grad_outputs;
+      std::vector<Output> grad_outputs;
       TF_ASSERT_OK(
           AddSymbolicGradients(scope, {z}, {u, v}, {dz}, &grad_outputs));
     }
@@ -160,7 +160,7 @@ TEST_F(GradientsTest, TwoMatMuls_Independent) {
       // Call AddSymbolicGradients.
       auto dv = Const(scope, {{1.0, 1.0}, {1.0, 1.0}});
       auto dz = Const(scope, {{1.0, 1.0}, {1.0, 1.0}});
-      std::vector<ops::Output> grad_outputs;
+      std::vector<Output> grad_outputs;
       TF_ASSERT_OK(AddSymbolicGradients(scope, {v, z}, {t, u, x, y}, {dv, dz},
                                         &grad_outputs));
     }
@@ -168,7 +168,7 @@ TEST_F(GradientsTest, TwoMatMuls_Independent) {
   CompareTestAndExpectedGraphs();
 }
 
-TEST_F(GradientsTest, PackUnpack_Chained) {
+TEST_F(GradientsTest, StackUnstack_Chained) {
   for (const bool expected : {false, true}) {
     const Scope& scope = expected ? scope_expected_ : scope_test_;
     // Construct forward graph.
@@ -176,8 +176,8 @@ TEST_F(GradientsTest, PackUnpack_Chained) {
     auto b = Const(scope, 2, {4, 2});
     auto c = Const(scope, 3, {4, 2});
 
-    auto pack = Pack(scope, {a, b, c});
-    auto unpack = Unpack(scope, pack.output, 3);
+    auto pack = Stack(scope, {a, b, c});
+    auto unpack = Unstack(scope, pack.output, 3);
     TF_ASSERT_OK(scope.status());
 
     // Construct grad inputs.
@@ -187,11 +187,11 @@ TEST_F(GradientsTest, PackUnpack_Chained) {
 
     if (expected) {
       // Construct backward graph.
-      auto unpack_grad = Pack(scope, {dx, dy, dz});
-      auto pack_grad = Unpack(scope, unpack_grad.output, 3);
+      auto unpack_grad = Stack(scope, {dx, dy, dz});
+      auto pack_grad = Unstack(scope, unpack_grad.output, 3);
     } else {
       // Call AddSymbolicGradients.
-      std::vector<ops::Output> grad_outputs;
+      std::vector<Output> grad_outputs;
       TF_ASSERT_OK(AddSymbolicGradients(scope, unpack.output, {a, b, c},
                                         {dx, dy, dz}, &grad_outputs));
     }
@@ -199,9 +199,9 @@ TEST_F(GradientsTest, PackUnpack_Chained) {
   CompareTestAndExpectedGraphs();
 }
 
-TEST_F(GradientsTest, PackUnpack_StopBackprop) {
-  // Tests that backprop stops before calculating gradients for Pack (because
-  // only gradients w.r.t the output of Pack are requested).
+TEST_F(GradientsTest, StackUnstack_StopBackprop) {
+  // Tests that backprop stops before calculating gradients for Stack (because
+  // only gradients w.r.t the output of Stack are requested).
   for (const bool expected : {false, true}) {
     const Scope& scope = expected ? scope_expected_ : scope_test_;
     // Construct forward graph.
@@ -209,8 +209,8 @@ TEST_F(GradientsTest, PackUnpack_StopBackprop) {
     auto b = Const(scope, 2, {4, 2});
     auto c = Const(scope, 3, {4, 2});
 
-    auto pack = Pack(scope, {a, b, c});
-    auto unpack = Unpack(scope, pack.output, 3);
+    auto pack = Stack(scope, {a, b, c});
+    auto unpack = Unstack(scope, pack.output, 3);
     TF_ASSERT_OK(scope.status());
 
     // Construct grad inputs.
@@ -222,10 +222,10 @@ TEST_F(GradientsTest, PackUnpack_StopBackprop) {
       // Construct backward graph.
       // NOTE: We should only expect the grad function for unpack in the
       // gradients graph, based on the requested grad outputs.
-      auto unpack_grad = Pack(scope, {dx, dy, dz});
+      auto unpack_grad = Stack(scope, {dx, dy, dz});
     } else {
       // Call AddSymbolicGradients.
-      std::vector<ops::Output> grad_outputs;
+      std::vector<Output> grad_outputs;
       TF_ASSERT_OK(AddSymbolicGradients(scope, unpack.output, {pack},
                                         {dx, dy, dz}, &grad_outputs));
     }
@@ -252,7 +252,7 @@ TEST_F(GradientsTest, DependentGradOutputs) {
   // The gradient w.r.t to 'v' (returned in grad_outputs[0]) is dependent on
   // the gradient w.r.t. to 'x' (returned in grad_outputs[1]).
   auto dz = Const(scope_test_, {{5}});
-  std::vector<ops::Output> grad_outputs;
+  std::vector<Output> grad_outputs;
   TF_ASSERT_OK(
       AddSymbolicGradients(scope_test_, {z}, {v, x}, {dz}, &grad_outputs));
 
@@ -271,8 +271,8 @@ TEST_F(GradientsTest, DependentGradOutputs) {
 TEST_F(GradientsTest, MultipleNodeOutputGrads) {
   // Tests that gradients for multiple outputs of the same node are returned.
   auto x = Const(scope_test_, 1, {3, 4, 2});
-  auto unpack = Unpack(scope_test_, x, 3);
-  auto pack = Pack(scope_test_, unpack.output);
+  auto unpack = Unstack(scope_test_, x, 3);
+  auto pack = Stack(scope_test_, unpack.output);
 
   // clang-format off
   auto dx = Const(scope_test_, {40, 41, 42, 43, 44, 45, 46, 47,
@@ -281,7 +281,7 @@ TEST_F(GradientsTest, MultipleNodeOutputGrads) {
                                {3, 4, 2});
   // clang-format on
 
-  std::vector<ops::Output> grad_outputs;
+  std::vector<Output> grad_outputs;
   TF_ASSERT_OK(AddSymbolicGradients(scope_test_, {pack}, unpack.output, {dx},
                                     &grad_outputs));
 
@@ -333,7 +333,7 @@ class StopGradientSingleOutputMultiEdgeTest : public ::testing::Test {
     auto g2 = Const(scope_, {{9, 10}, {11, 12}});
 
     // Call AddSymbolicGradients and compare against 'expected_grad'.
-    std::vector<ops::Output> grad_outputs;
+    std::vector<Output> grad_outputs;
     TF_EXPECT_OK(AddSymbolicGradients(scope_, {out0, out1, out2}, {z},
                                       {g0, g1, g2}, &grad_outputs));
 
@@ -394,7 +394,7 @@ class StopGradientMultiOutputTest : public ::testing::Test {
                  const Tensor& expected_grad) {
     CHECK_EQ(3, stop_outputs.size());
     auto x = ops::Const(scope_, 1, {3, 2, 4});
-    auto y = Unpack(scope_, x, 3);
+    auto y = Unstack(scope_, x, 3);
     TF_ASSERT_OK(scope_.status());
 
     // Add StopGradients according to 'stop_outputs'.
@@ -410,7 +410,7 @@ class StopGradientMultiOutputTest : public ::testing::Test {
     auto g2 = Const(scope_, {17, 18, 19, 20, 21, 22, 23, 24}, {2, 4});
 
     // Call AddSymbolicGradients and compare against 'expected_grad'.
-    std::vector<ops::Output> grad_outputs;
+    std::vector<Output> grad_outputs;
     TF_EXPECT_OK(AddSymbolicGradients(scope_, {out0, out1, out2}, {x},
                                       {g0, g1, g2}, &grad_outputs));
 

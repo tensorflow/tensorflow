@@ -17,6 +17,7 @@ load(
     "if_ios",
     "if_mobile",
     "if_not_mobile",
+    "py_test",
 )
 
 filegroup(
@@ -68,7 +69,7 @@ py_test(
     ],
     main = "bundle_shim_test.py",
     srcs_version = "PY2AND3",
-    tags = ["manual"],
+    tags = ["no_pip"],
     deps = [
         ":bundle_shim_py",
         ":constants",
@@ -84,15 +85,19 @@ py_test(
     ],
 )
 
+# DEPRECATED: Use SavedModel instead.
 py_library(
     name = "constants",
     srcs = ["constants.py"],
+    deprecation = "Use SavedModel constants instead.",
     srcs_version = "PY2AND3",
 )
 
+# DEPRECATED: Use SavedModel instead.
 py_library(
     name = "exporter",
     srcs = ["exporter.py"],
+    deprecation = "Use SavedModel Builder instead.",
     srcs_version = "PY2AND3",
     deps = [
         ":constants",
@@ -133,9 +138,11 @@ py_test(
     ],
 )
 
+# DEPRECATED: Use SavedModel instead.
 py_library(
     name = "gc",
     srcs = ["gc.py"],
+    deprecation = "Use SavedModel instead.",
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:framework",
@@ -174,9 +181,11 @@ filegroup(
     ],
 )
 
+# DEPRECATED: Use SavedModel instead.
 cc_library(
     name = "session_bundle",
     hdrs = ["session_bundle.h"],
+    deprecation = "Use SavedModel Loader instead.",
     visibility = ["//visibility:public"],
     deps = [
         ":session_bundle_lite",
@@ -184,6 +193,7 @@ cc_library(
     ],
 )
 
+# DEPRECATED: Use SavedModel instead.
 # This is a lite version of the session_bundle target that does not link in any
 # Tensorflow ops in order to minimize its size. Clients using this should link
 # any required ops manually.
@@ -192,6 +202,7 @@ cc_library(
     srcs = ["session_bundle.cc"],
     hdrs = ["session_bundle.h"],
     copts = if_ios(["-DGOOGLE_LOGGING"]),
+    deprecation = "Use SavedModel Loader instead.",
     visibility = ["//visibility:public"],
     deps = [
         ":signature_lite",
@@ -213,7 +224,6 @@ cc_test(
     data = [":session_bundle_half_plus_two"],
     # Link in all registered kernels.
     linkstatic = 1,
-    tags = ["manual"],
     visibility = ["//visibility:private"],
     deps = [
         ":session_bundle",
@@ -227,9 +237,11 @@ cc_test(
     ],
 )
 
+# DEPRECATED: Use SavedModel instead.
 py_library(
     name = "session_bundle_py",
     srcs = ["session_bundle.py"],
+    deprecation = "Use SavedModel Loader instead.",
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
@@ -250,7 +262,7 @@ py_test(
     data = [":session_bundle_half_plus_two"],
     main = "session_bundle_test.py",
     srcs_version = "PY2AND3",
-    tags = ["manual"],
+    tags = ["no_pip"],
     deps = [
         ":constants",
         ":manifest_proto_py",
@@ -269,6 +281,7 @@ py_test(
     ],
 )
 
+# DEPRECATED: Use SavedModel instead.
 # This is a lite version of the signature target that does not link in any
 # Tensorflow ops in order to minimize its size. Clients using this should
 # link any required ops manually.
@@ -276,6 +289,7 @@ cc_library(
     name = "signature_lite",
     srcs = ["signature.cc"],
     hdrs = ["signature.h"],
+    deprecation = "Use SavedModel instead.",
     visibility = ["//visibility:public"],
     deps = if_not_mobile([
         ":manifest_proto_cc",
@@ -286,9 +300,11 @@ cc_library(
     ]),
 )
 
+# DEPRECATED: Use SavedModel instead.
 cc_library(
     name = "signature",
     hdrs = ["signature.h"],
+    deprecation = "Use SavedModel instead.",
     visibility = ["//visibility:public"],
     deps = [
         ":signature_lite",
@@ -317,11 +333,13 @@ cc_test(
     ],
 )
 
+# DEPRECATED: Use SavedModel instead.
 cc_library(
     name = "test_util",
     testonly = 1,
     srcs = ["test_util.cc"],
     hdrs = ["test_util.h"],
+    deprecation = "Use SavedModel instead.",
     visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/core",
@@ -363,7 +381,6 @@ cc_test(
     ],
     # Link in all registered kernels.
     linkstatic = 1,
-    tags = ["manual"],
     deps = [
         ":bundle_shim",
         ":test_util",
@@ -379,6 +396,7 @@ cc_test(
     ],
 )
 
+# DEPRECATED: Use SavedModel instead.
 tf_proto_library(
     name = "manifest_proto",
     srcs = ["manifest.proto"],

@@ -41,13 +41,13 @@ class NormalTest(test.TestCase):
       x = constant_op.constant([-2.5, 2.5, 4.0, 0.0, -1.0, 2.0])
       s = math_ops.reduce_sum(x)
       n = array_ops.size(x)
-      prior = distributions.Normal(mu=mu0, sigma=sigma0)
-      posterior = distributions.normal_conjugates_known_sigma_posterior(
-          prior=prior, sigma=sigma, s=s, n=n)
+      prior = distributions.Normal(loc=mu0, scale=sigma0)
+      posterior = distributions.normal_conjugates_known_scale_posterior(
+          prior=prior, scale=sigma, s=s, n=n)
 
       # Smoke test
       self.assertTrue(isinstance(posterior, distributions.Normal))
-      posterior_log_pdf = posterior.log_pdf(x).eval()
+      posterior_log_pdf = posterior.log_prob(x).eval()
       self.assertEqual(posterior_log_pdf.shape, (6,))
 
   def testNormalConjugateKnownSigmaPosteriorND(self):
@@ -62,13 +62,13 @@ class NormalTest(test.TestCase):
               [[-2.5, 2.5, 4.0, 0.0, -1.0, 2.0]], dtype=dtypes.float32))
       s = math_ops.reduce_sum(x)
       n = array_ops.size(x)
-      prior = distributions.Normal(mu=mu0, sigma=sigma0)
-      posterior = distributions.normal_conjugates_known_sigma_posterior(
-          prior=prior, sigma=sigma, s=s, n=n)
+      prior = distributions.Normal(loc=mu0, scale=sigma0)
+      posterior = distributions.normal_conjugates_known_scale_posterior(
+          prior=prior, scale=sigma, s=s, n=n)
 
       # Smoke test
       self.assertTrue(isinstance(posterior, distributions.Normal))
-      posterior_log_pdf = posterior.log_pdf(x).eval()
+      posterior_log_pdf = posterior.log_prob(x).eval()
       self.assertEqual(posterior_log_pdf.shape, (6, 2))
 
   def testNormalConjugateKnownSigmaNDPosteriorND(self):
@@ -85,15 +85,15 @@ class NormalTest(test.TestCase):
       s = math_ops.reduce_sum(x, reduction_indices=[1])
       x = array_ops.transpose(x)  # Reshape to shape (6, 2)
       n = constant_op.constant([6] * 2)
-      prior = distributions.Normal(mu=mu0, sigma=sigma0)
-      posterior = distributions.normal_conjugates_known_sigma_posterior(
-          prior=prior, sigma=sigma, s=s, n=n)
+      prior = distributions.Normal(loc=mu0, scale=sigma0)
+      posterior = distributions.normal_conjugates_known_scale_posterior(
+          prior=prior, scale=sigma, s=s, n=n)
 
       # Smoke test
       self.assertTrue(isinstance(posterior, distributions.Normal))
 
       # Calculate log_pdf under the 2 models
-      posterior_log_pdf = posterior.log_pdf(x)
+      posterior_log_pdf = posterior.log_prob(x)
       self.assertEqual(posterior_log_pdf.get_shape(), (6, 2))
       self.assertEqual(posterior_log_pdf.eval().shape, (6, 2))
 
@@ -106,13 +106,13 @@ class NormalTest(test.TestCase):
       x = constant_op.constant([-2.5, 2.5, 4.0, 0.0, -1.0, 2.0])
       s = math_ops.reduce_sum(x)
       n = array_ops.size(x)
-      prior = distributions.Normal(mu=mu0, sigma=sigma0)
-      predictive = distributions.normal_conjugates_known_sigma_predictive(
-          prior=prior, sigma=sigma, s=s, n=n)
+      prior = distributions.Normal(loc=mu0, scale=sigma0)
+      predictive = distributions.normal_conjugates_known_scale_predictive(
+          prior=prior, scale=sigma, s=s, n=n)
 
       # Smoke test
       self.assertTrue(isinstance(predictive, distributions.Normal))
-      predictive_log_pdf = predictive.log_pdf(x).eval()
+      predictive_log_pdf = predictive.log_prob(x).eval()
       self.assertEqual(predictive_log_pdf.shape, (6,))
 
 

@@ -27,6 +27,9 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import embedding_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import rmsprop
@@ -34,13 +37,15 @@ from tensorflow.python.training import rmsprop
 _DATA_TYPES = [dtypes.half, dtypes.float32]
 
 _TEST_PARAM_VALUES = [
-    # learning_rate, decay, momentum, epsilon, centered
-    [0.5, 0.9, 0.0, 1e-3, True],
-    [0.5, 0.9, 0.0, 1e-3, False],
-    [0.1, 0.9, 0.0, 1e-3, True],
-    [0.5, 0.95, 0.0, 1e-3, False],
-    [0.5, 0.95, 0.0, 1e-5, True],
-    [0.5, 0.95, 0.9, 1e-5, True],
+    # learning_rate, decay, momentum, epsilon, centered, use_resource
+    [0.5, 0.9, 0.0, 1e-3, True, False],
+    [0.5, 0.9, 0.0, 1e-3, False, False],
+    [0.5, 0.9, 0.0, 1e-3, True, True],
+    [0.5, 0.9, 0.0, 1e-3, False, True],
+    [0.1, 0.9, 0.0, 1e-3, True, False],
+    [0.5, 0.95, 0.0, 1e-3, False, False],
+    [0.5, 0.95, 0.0, 1e-5, True, False],
+    [0.5, 0.95, 0.9, 1e-5, True, False],
 ]
 
 _TESTPARAMS = [
@@ -84,7 +89,8 @@ class RMSPropOptimizerTest(test.TestCase):
 
   def testDense(self):
     # TODO(yori): Use ParameterizedTest when available
-    for dtype, learning_rate, decay, momentum, epsilon, centered in _TESTPARAMS:
+    for (dtype, learning_rate, decay, momentum,
+         epsilon, centered, use_resource) in _TESTPARAMS:
       with self.test_session(use_gpu=True):
         # Initialize variables for numpy implementation.
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
@@ -92,9 +98,13 @@ class RMSPropOptimizerTest(test.TestCase):
         var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
         grads1_np = np.array([0.01, 0.2], dtype=dtype.as_numpy_dtype)
 
-        var0 = variables.Variable(var0_np)
+        if use_resource:
+          var0 = resource_variable_ops.ResourceVariable(var0_np)
+          var1 = resource_variable_ops.ResourceVariable(var1_np)
+        else:
+          var0 = variables.Variable(var0_np)
+          var1 = variables.Variable(var1_np)
         grads0 = constant_op.constant(grads0_np)
-        var1 = variables.Variable(var1_np)
         grads1 = constant_op.constant(grads1_np)
         opt = rmsprop.RMSPropOptimizer(
             learning_rate=learning_rate,
@@ -152,9 +162,54 @@ class RMSPropOptimizerTest(test.TestCase):
           self.assertAllCloseAccordingToType(var0_np, var0.eval())
           self.assertAllCloseAccordingToType(var1_np, var1.eval())
 
+  def testMinimizeSparseResourceVariable(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      with self.test_session():
+        var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
+        x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
+        pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)
+        loss = pred * pred
+        sgd_op = rmsprop.RMSPropOptimizer(
+            learning_rate=1.0,
+            decay=0.0,
+            momentum=0.0,
+            epsilon=0.0,
+            centered=False).minimize(loss)
+        variables.global_variables_initializer().run()
+        # Fetch params to validate initial values
+        self.assertAllCloseAccordingToType([[1.0, 2.0]], var0.eval())
+        # Run 1 step of sgd
+        sgd_op.run()
+        # Validate updated params
+        self.assertAllCloseAccordingToType(
+            [[0., 1.]], var0.eval(), atol=0.01)
+
+  def testMinimizeSparseResourceVariableCentered(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      with self.test_session():
+        var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
+        x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
+        pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)
+        loss = pred * pred
+        sgd_op = rmsprop.RMSPropOptimizer(
+            learning_rate=1.0,
+            decay=0.0,
+            momentum=0.0,
+            epsilon=1.0,
+            centered=True).minimize(loss)
+        variables.global_variables_initializer().run()
+        # Fetch params to validate initial values
+        self.assertAllCloseAccordingToType([[1.0, 2.0]], var0.eval())
+        # Run 1 step of sgd
+        sgd_op.run()
+        # Validate updated params
+        self.assertAllCloseAccordingToType(
+            [[-111, -138]], var0.eval(), atol=0.01)
+
   def testSparse(self):
     # TODO(yori): Use ParameterizedTest when available
-    for dtype, learning_rate, decay, momentum, epsilon, centered in _TESTPARAMS:
+    for (dtype, learning_rate, decay,
+         momentum, epsilon, centered, _) in _TESTPARAMS:
       with self.test_session(use_gpu=True):
         # Initialize variables for numpy implementation.
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)

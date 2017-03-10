@@ -114,6 +114,66 @@ XLA_TEST_F(BroadcastSimpleTest, InDimensionAndDegenerateBroadcasting) {
   ComputeAndCompareLiteral(&b, *expected, {}, ErrorSpec(0.0001));
 }
 
+XLA_TEST_F(BroadcastSimpleTest, Add1DTo3DInDim0) {
+  ComputationBuilder b(client_, TestName());
+  auto r1 = b.ConstantR1<float>({10, 20});
+  auto r3 = b.ConstantLiteral(
+      *LiteralUtil::CreateR3<float>({{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}}));
+  b.Add(r3, r1, {0});
+
+  auto expected = LiteralUtil::CreateR3<float>(
+      {{{11, 12}, {13, 14}}, {{25, 26}, {27, 28}}});
+
+  ComputeAndCompareLiteral(&b, *expected, {}, ErrorSpec(0.0001));
+}
+
+XLA_TEST_F(BroadcastSimpleTest, Add1DTo3DInDim1) {
+  ComputationBuilder b(client_, TestName());
+  auto r1 = b.ConstantR1<float>({10, 20});
+  auto r3 = b.ConstantLiteral(
+      *LiteralUtil::CreateR3<float>({{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}}));
+  b.Add(r1, r3, {1});
+
+  auto expected = LiteralUtil::CreateR3<float>(
+      {{{11, 12}, {23, 24}}, {{15, 16}, {27, 28}}});
+
+  ComputeAndCompareLiteral(&b, *expected, {}, ErrorSpec(0.0001));
+}
+
+XLA_TEST_F(BroadcastSimpleTest, Add1DTo3DInDim2) {
+  ComputationBuilder b(client_, TestName());
+  auto r1 = b.ConstantR1<float>({10, 20});
+  auto r3 = b.ConstantLiteral(
+      *LiteralUtil::CreateR3<float>({{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}}));
+  b.Add(r1, r3, {2});
+
+  auto expected = LiteralUtil::CreateR3<float>(
+      {{{11, 22}, {13, 24}}, {{15, 26}, {17, 28}}});
+
+  ComputeAndCompareLiteral(&b, *expected, {}, ErrorSpec(0.0001));
+}
+
+XLA_TEST_F(BroadcastSimpleTest, Add1DTo3DInDimAll) {
+  ComputationBuilder b(client_, TestName());
+  auto r1_0 = b.ConstantR1<float>({1000, 2000});
+  auto r1_1 = b.ConstantR1<float>({100, 200});
+  auto r1_2 = b.ConstantR1<float>({10, 20});
+  auto r3 = b.ConstantLiteral(
+      *LiteralUtil::CreateR3<float>({{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}}));
+  for (int i = 0; i < 3; ++i) {
+    r3 = b.Add(r1_0, r3, {0});
+    r3 = b.Add(r3, r1_1, {1});
+    r3 = b.Add(r1_2, r3, {2});
+  }
+  r3 = b.Mul(r3, b.ConstantR0<float>(-2));
+
+  auto expected = LiteralUtil::CreateR3<float>(
+      {{{-6 * 1110 - 2, -6 * 1120 - 4}, {-6 * 1210 - 6, -6 * 1220 - 8}},
+       {{-6 * 2110 - 10, -6 * 2120 - 12}, {-6 * 2210 - 14, -6 * 2220 - 16}}});
+
+  ComputeAndCompareLiteral(&b, *expected, {}, ErrorSpec(0.0001));
+}
+
 XLA_TEST_F(BroadcastSimpleTest, InvalidBinaryAndDegenerateBroadcasting) {
   // Binary dimension broadcasting of the smaller lhs ([2, 2] up to [2, 2, 2])
   // results in a shape incompatible with the lhs [2, 3, 1].

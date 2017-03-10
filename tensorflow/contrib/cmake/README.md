@@ -18,7 +18,7 @@ for instructions on how to install a pre-built TensorFlow package on Windows.
 
 ### Current known limitations
 * It is not possible to load a custom Op library.
-* GCS and HDFS file systems are not supported.
+* GCS file system is not supported.
 * The following Ops are not currently implemented:
  - Dequantize
  - QuantizeAndDequantize

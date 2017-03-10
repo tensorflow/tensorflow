@@ -82,8 +82,7 @@ bool FoldTransposeIntoDot(HloInstruction* dot, HloComputation* computation) {
 }  // namespace
 
 TransposeFolding::TransposeFolding(IsTransposableGemmFn is_transposable_gemm)
-    : HloPass("transpose-folding"),
-      is_transposable_gemm_(std::move(is_transposable_gemm)) {}
+    : is_transposable_gemm_(std::move(is_transposable_gemm)) {}
 
 StatusOr<bool> TransposeFolding::Run(HloModule* module) {
   // Modifying the graph while traversing is dangerous, so we find all folding

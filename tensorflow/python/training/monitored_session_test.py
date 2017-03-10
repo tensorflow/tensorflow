@@ -215,15 +215,37 @@ class MonitoredTrainingSessionTest(test.TestCase):
           is_chief=True, checkpoint_dir=logdir) as session:
         self.assertEqual(2, session.run(gstep))
 
-  def test_summaries(self):
-    logdir = _test_dir(self.get_temp_dir(), 'test_summaries')
+  def test_summaries_steps(self):
+    logdir = _test_dir(self.get_temp_dir(), 'test_summaries_steps')
     with ops.Graph().as_default():
       gstep = variables_lib.get_or_create_global_step()
       new_gstep = state_ops.assign_add(gstep, 1)
       summary.scalar('my_summary_tag', new_gstep * 2)
       with monitored_session.MonitoredTrainingSession(
-          is_chief=True, checkpoint_dir=logdir) as session:
-        for _ in range(101):  # 100 is default summary writing steps
+          is_chief=True,
+          checkpoint_dir=logdir,
+          save_summaries_steps=100) as session:
+        for _ in range(101):
+          session.run(new_gstep)
+    summaries = util_test.latest_summaries(logdir)
+    tags = [s.summary.value[0].tag for s in summaries]
+    self.assertIn('my_summary_tag', tags)
+    self.assertIn('global_step/sec', tags)
+
+  def test_summaries_secs(self):
+    logdir = _test_dir(self.get_temp_dir(), 'test_summaries_secs')
+    with ops.Graph().as_default():
+      gstep = variables_lib.get_or_create_global_step()
+      new_gstep = state_ops.assign_add(gstep, 1)
+      summary.scalar('my_summary_tag', new_gstep * 2)
+      with monitored_session.MonitoredTrainingSession(
+          is_chief=True,
+          checkpoint_dir=logdir,
+          save_summaries_steps=None,
+          save_summaries_secs=0.1) as session:
+        session.run(new_gstep)
+        time.sleep(0.2)
+        for _ in range(101):
           session.run(new_gstep)
     summaries = util_test.latest_summaries(logdir)
     tags = [s.summary.value[0].tag for s in summaries]
@@ -857,13 +879,13 @@ class MonitoredSessionTest(test.TestCase):
         self.assertEqual(0, session.run(gstep))
       self.assertTrue(self.init_raised_aborted_error)
 
-  def test_retry_on_aborted_error(self):
-    # Tests that we silently retry on abort.  Note that this does not test
+  def _retry_test(self, ex):
+    # Tests that we silently retry on error.  Note that this does not test
     # recovery as we do not use a CheckpointSaver in this test.
     with ops.Graph().as_default():
       gstep = variables_lib.get_or_create_global_step()
       do_step = state_ops.assign_add(gstep, 1)
-      hook = RaiseOnceAtCountN(4, errors_impl.AbortedError(None, None, 'Abort'))
+      hook = RaiseOnceAtCountN(4, ex)
       with monitored_session.MonitoredSession(hooks=[hook]) as session:
         self.assertEqual(0, session.run(gstep))
         self.assertEqual(1, session.run(do_step))
@@ -878,6 +900,12 @@ class MonitoredSessionTest(test.TestCase):
         self.assertTrue(hook.raised)
         self.assertEqual(2, session.run(do_step))
         self.assertFalse(session.should_stop())
+
+  def test_retry_on_aborted_error(self):
+    self._retry_test(errors_impl.AbortedError(None, None, 'Abort'))
+
+  def test_retry_on_unavailable_error(self):
+    self._retry_test(errors_impl.UnavailableError(None, None, 'Unavailable'))
 
   def test_recover_and_retry_on_aborted_error(self):
     # Tests that we silently retry and recover on abort.  This test uses

@@ -80,13 +80,19 @@ class MasterSession : public core::RefCounted {
 
   // Run one step.
   Status Run(CallOptions* opts, const RunStepRequestWrapper& req,
-             RunStepResponse* resp);
+             MutableRunStepResponseWrapper* resp);
 
   // Close this session and delete "*this". Returns OK if all known
   // states are cleanup successfully.
   //
   // Close() may block the caller thread for a long time.
   Status Close();
+
+  // Close this session and release a reference on "*this".
+  //
+  // Note that, unlike Close(), this method does not block on the
+  // completion of all work.
+  void GarbageCollect();
 
  private:
   SessionOptions session_opts_;
@@ -158,6 +164,7 @@ class MasterSession : public core::RefCounted {
   int32 num_running_ GUARDED_BY(mu_) = 0;
 
   bool closed_ GUARDED_BY(mu_) = false;
+  bool garbage_collected_ GUARDED_BY(mu_) = false;
 
   std::unordered_map<uint64, int64> subgraph_execution_counts_ GUARDED_BY(mu_);
 
@@ -177,9 +184,9 @@ class MasterSession : public core::RefCounted {
                       RCGMap* rcg_map) EXCLUSIVE_LOCKS_REQUIRED(mu_);
   Status DoRunWithLocalExecution(CallOptions* opts,
                                  const RunStepRequestWrapper& req,
-                                 RunStepResponse* resp);
+                                 MutableRunStepResponseWrapper* resp);
   Status DoPartialRun(CallOptions* opts, const RunStepRequestWrapper& req,
-                      RunStepResponse* resp);
+                      MutableRunStepResponseWrapper* resp);
   void UpdateLastAccessTime();
 
   Status BuildAndRegisterPartitions(ReffedClientGraph* rcg);

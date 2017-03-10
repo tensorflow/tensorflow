@@ -19,14 +19,19 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/util/tensor_format.h"
 
-#include "libxsmm/include/libxsmm.h"
-#include "libxsmm/include/libxsmm_dnn.h"
+#include "include/libxsmm.h"
+#include "include/libxsmm_dnn.h"
 
 namespace tensorflow {
 
 class OpKernelContext;
 
 // XsmmConv2D is a wrapper for libxsmm direct convolutions.
+
+// Returns true if convolution operation specified by function arguments
+// can use XsmmConv2D implementation, and false otherwise.
+bool CanUseXsmmConv2D(const libxsmm_dnn_conv_desc& desc,
+                      TensorFormat data_format);
 
 namespace functor {
 

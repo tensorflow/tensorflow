@@ -289,6 +289,38 @@ meta_graphs {
         }
       }
       op {
+        name: "Reshape"
+        input_arg {
+          name: "tensor"
+          type_attr: "T"
+        }
+        input_arg {
+          name: "shape"
+          type_attr: "Tshape"
+        }
+        output_arg {
+          name: "output"
+          type_attr: "T"
+        }
+        attr {
+          name: "T"
+          type: "type"
+        }
+        attr {
+          name: "Tshape"
+          type: "type"
+          default_value {
+            type: DT_INT32
+          }
+          allowed_values {
+            list {
+              type: DT_INT32
+              type: DT_INT64
+            }
+          }
+        }
+      }
+      op {
         name: "RestoreV2"
         input_arg {
           name: "prefix"
@@ -383,7 +415,7 @@ meta_graphs {
         }
       }
       op {
-        name: "Variable"
+        name: "VariableV2"
         output_arg {
           name: "ref"
           type_attr: "dtype"
@@ -451,7 +483,7 @@ meta_graphs {
     }
     node {
       name: "a"
-      op: "Variable"
+      op: "VariableV2"
       attr {
         key: "_output_shapes"
         value {
@@ -588,7 +620,7 @@ meta_graphs {
     }
     node {
       name: "b"
-      op: "Variable"
+      op: "VariableV2"
       attr {
         key: "_output_shapes"
         value {
@@ -725,7 +757,7 @@ meta_graphs {
     }
     node {
       name: "c"
-      op: "Variable"
+      op: "VariableV2"
       attr {
         key: "_output_shapes"
         value {
@@ -891,6 +923,108 @@ meta_graphs {
       }
     }
     node {
+      name: "ParseExample/key_x2"
+      op: "Const"
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+              dim {
+                size: 1
+              }
+            }
+          }
+        }
+      }
+      attr {
+        key: "dtype"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_FLOAT
+            tensor_shape {
+              dim {
+                size: 1
+              }
+            }
+            float_val: 0.0
+          }
+        }
+      }
+    }
+    node {
+      name: "ParseExample/Reshape/shape"
+      op: "Const"
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+              dim {
+                size: 1
+              }
+            }
+          }
+        }
+      }
+      attr {
+        key: "dtype"
+        value {
+          type: DT_INT32
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_INT32
+            tensor_shape {
+              dim {
+                size: 1
+              }
+            }
+            int_val: 1
+          }
+        }
+      }
+    }
+    node {
+      name: "ParseExample/Reshape"
+      op: "Reshape"
+      input: "ParseExample/key_x2"
+      input: "ParseExample/Reshape/shape"
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      attr {
+        key: "Tshape"
+        value {
+          type: DT_INT32
+        }
+      }
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+              dim {
+                size: 1
+              }
+            }
+          }
+        }
+      }
+    }
+    node {
       name: "ParseExample/ParseExample/names"
       op: "Const"
       attr {
@@ -954,16 +1088,48 @@ meta_graphs {
       }
     }
     node {
+      name: "ParseExample/ParseExample/dense_keys_1"
+      op: "Const"
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+            }
+          }
+        }
+      }
+      attr {
+        key: "dtype"
+        value {
+          type: DT_STRING
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_STRING
+            tensor_shape {
+            }
+            string_val: "x2"
+          }
+        }
+      }
+    }
+    node {
       name: "ParseExample/ParseExample"
       op: "ParseExample"
       input: "tf_example"
       input: "ParseExample/ParseExample/names"
       input: "ParseExample/ParseExample/dense_keys_0"
+      input: "ParseExample/ParseExample/dense_keys_1"
       input: "ParseExample/Const"
+      input: "ParseExample/Reshape"
       attr {
         key: "Ndense"
         value {
-          i: 1
+          i: 2
         }
       }
       attr {
@@ -976,6 +1142,7 @@ meta_graphs {
         key: "Tdense"
         value {
           list {
+            type: DT_FLOAT
             type: DT_FLOAT
           }
         }
@@ -992,6 +1159,14 @@ meta_graphs {
                 size: 1
               }
             }
+            shape {
+              dim {
+                size: -1
+              }
+              dim {
+                size: 1
+              }
+            }
           }
         }
       }
@@ -999,6 +1174,11 @@ meta_graphs {
         key: "dense_shapes"
         value {
           list {
+            shape {
+              dim {
+                size: 1
+              }
+            }
             shape {
               dim {
                 size: 1
@@ -1096,37 +1276,10 @@ meta_graphs {
       }
     }
     node {
-      name: "x2"
-      op: "Placeholder"
-      attr {
-        key: "_output_shapes"
-        value {
-          list {
-            shape {
-              unknown_rank: true
-            }
-          }
-        }
-      }
-      attr {
-        key: "dtype"
-        value {
-          type: DT_FLOAT
-        }
-      }
-      attr {
-        key: "shape"
-        value {
-          shape {
-          }
-        }
-      }
-    }
-    node {
       name: "Mul_1"
       op: "Mul"
       input: "a/read"
-      input: "x2"
+      input: "x"
       attr {
         key: "T"
         value {
@@ -1138,7 +1291,12 @@ meta_graphs {
         value {
           list {
             shape {
-              unknown_rank: true
+              dim {
+                size: -1
+              }
+              dim {
+                size: 1
+              }
             }
           }
         }
@@ -1160,7 +1318,92 @@ meta_graphs {
         value {
           list {
             shape {
-              unknown_rank: true
+              dim {
+                size: -1
+              }
+              dim {
+                size: 1
+              }
+            }
+          }
+        }
+      }
+    }
+    node {
+      name: "x2"
+      op: "Identity"
+      input: "ParseExample/ParseExample:1"
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+              dim {
+                size: -1
+              }
+              dim {
+                size: 1
+              }
+            }
+          }
+        }
+      }
+    }
+    node {
+      name: "Mul_2"
+      op: "Mul"
+      input: "a/read"
+      input: "x2"
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+              dim {
+                size: -1
+              }
+              dim {
+                size: 1
+              }
+            }
+          }
+        }
+      }
+    }
+    node {
+      name: "y3"
+      op: "Add"
+      input: "Mul_2"
+      input: "c/read"
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+              dim {
+                size: -1
+              }
+              dim {
+                size: 1
+              }
             }
           }
         }
@@ -1228,7 +1471,7 @@ meta_graphs {
     }
     node {
       name: "filename_tensor"
-      op: "Variable"
+      op: "VariableV2"
       attr {
         key: "_output_shapes"
         value {
@@ -1405,32 +1648,6 @@ meta_graphs {
       }
     }
     node {
-      name: "Identity"
-      op: "Identity"
-      input: "y"
-      attr {
-        key: "T"
-        value {
-          type: DT_FLOAT
-        }
-      }
-      attr {
-        key: "_output_shapes"
-        value {
-          list {
-            shape {
-              dim {
-                size: -1
-              }
-              dim {
-                size: 1
-              }
-            }
-          }
-        }
-      }
-    }
-    node {
       name: "init"
       op: "NoOp"
       input: "^a/Assign"
@@ -1497,7 +1714,7 @@ meta_graphs {
             dtype: DT_STRING
             tensor_shape {
             }
-            string_val: "_temp_1a28a38846ca4725a95f6197642f9def/part"
+            string_val: "_temp_aeab824a1fc94305a10a2504f5995de2/part"
           }
         }
       }
@@ -2227,7 +2444,7 @@ meta_graphs {
       input: "^save/restore_shard"
     }
     versions {
-      producer: 19
+      producer: 21
     }
   }
   saver_def {
@@ -2287,39 +2504,168 @@ meta_graphs {
     }
   }
   signature_def {
+    key: "classify_x_to_y"
+    value {
+      inputs {
+        key: "inputs"
+        value {
+          name: "tf_example:0"
+          dtype: DT_STRING
+          tensor_shape {
+            unknown_rank: true
+          }
+        }
+      }
+      outputs {
+        key: "scores"
+        value {
+          name: "y:0"
+          dtype: DT_FLOAT
+          tensor_shape {
+            dim {
+              size: -1
+            }
+            dim {
+              size: 1
+            }
+          }
+        }
+      }
+      method_name: "tensorflow/serving/classify"
+    }
+  }
+  signature_def {
+    key: "regress_x2_to_y3"
+    value {
+      inputs {
+        key: "inputs"
+        value {
+          name: "x2:0"
+          dtype: DT_FLOAT
+          tensor_shape {
+            dim {
+              size: -1
+            }
+            dim {
+              size: 1
+            }
+          }
+        }
+      }
+      outputs {
+        key: "outputs"
+        value {
+          name: "y3:0"
+          dtype: DT_FLOAT
+          tensor_shape {
+            dim {
+              size: -1
+            }
+            dim {
+              size: 1
+            }
+          }
+        }
+      }
+      method_name: "tensorflow/serving/regress"
+    }
+  }
+  signature_def {
+    key: "regress_x_to_y"
+    value {
+      inputs {
+        key: "inputs"
+        value {
+          name: "tf_example:0"
+          dtype: DT_STRING
+          tensor_shape {
+            unknown_rank: true
+          }
+        }
+      }
+      outputs {
+        key: "outputs"
+        value {
+          name: "y:0"
+          dtype: DT_FLOAT
+          tensor_shape {
+            dim {
+              size: -1
+            }
+            dim {
+              size: 1
+            }
+          }
+        }
+      }
+      method_name: "tensorflow/serving/regress"
+    }
+  }
+  signature_def {
+    key: "regress_x_to_y2"
+    value {
+      inputs {
+        key: "inputs"
+        value {
+          name: "tf_example:0"
+          dtype: DT_STRING
+          tensor_shape {
+            unknown_rank: true
+          }
+        }
+      }
+      outputs {
+        key: "outputs"
+        value {
+          name: "y2:0"
+          dtype: DT_FLOAT
+          tensor_shape {
+            dim {
+              size: -1
+            }
+            dim {
+              size: 1
+            }
+          }
+        }
+      }
+      method_name: "tensorflow/serving/regress"
+    }
+  }
+  signature_def {
     key: "serving_default"
     value {
       inputs {
         key: "x"
         value {
           name: "x:0"
+          dtype: DT_FLOAT
+          tensor_shape {
+            dim {
+              size: -1
+            }
+            dim {
+              size: 1
+            }
+          }
         }
       }
       outputs {
         key: "y"
         value {
           name: "y:0"
+          dtype: DT_FLOAT
+          tensor_shape {
+            dim {
+              size: -1
+            }
+            dim {
+              size: 1
+            }
+          }
         }
       }
       method_name: "tensorflow/serving/predict"
-    }
-  }
-  signature_def {
-    key: "tensorflow/serving/regress"
-    value {
-      inputs {
-        key: "inputs"
-        value {
-          name: "tf_example:0"
-        }
-      }
-      outputs {
-        key: "outputs"
-        value {
-          name: "Identity:0"
-        }
-      }
-      method_name: "tensorflow/serving/regress"
     }
   }
 }

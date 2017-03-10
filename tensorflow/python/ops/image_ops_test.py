@@ -449,6 +449,53 @@ class AdjustSaturationBenchmark(test.Benchmark):
     self._benchmarkAdjustSaturation(test.gpu_device_name(), None)
 
 
+class ResizeBilinearBenchmark(test.Benchmark):
+
+  def _benchmarkResize(self, image_size, num_channels):
+    batch_size = 1
+    num_ops = 1000
+    img = variables.Variable(
+        random_ops.random_normal(
+            [batch_size, image_size[0], image_size[1], num_channels]),
+        name='img')
+
+    deps = []
+    for _ in xrange(num_ops):
+      with ops.control_dependencies(deps):
+        resize_op = image_ops.resize_bilinear(
+            img, [299, 299], align_corners=False)
+        deps = [resize_op]
+      benchmark_op = control_flow_ops.group(*deps)
+
+    with session.Session() as sess:
+      sess.run(variables.global_variables_initializer())
+      results = self.run_op_benchmark(
+          sess,
+          benchmark_op,
+          name=('resize_bilinear_%s_%s_%s' %
+                (image_size[0], image_size[1], num_channels)))
+      print('%s   : %.2f ms/img' % (results['name'], 1000 * results['wall_time']
+                                    / (batch_size * num_ops)))
+
+  def benchmarkSimilar3Channel(self):
+    self._benchmarkResize((183, 229), 3)
+
+  def benchmarkScaleUp3Channel(self):
+    self._benchmarkResize((141, 186), 3)
+
+  def benchmarkScaleDown3Channel(self):
+    self._benchmarkResize((749, 603), 3)
+
+  def benchmarkSimilar1Channel(self):
+    self._benchmarkResize((183, 229), 1)
+
+  def benchmarkScaleUp1Channel(self):
+    self._benchmarkResize((141, 186), 1)
+
+  def benchmarkScaleDown1Channel(self):
+    self._benchmarkResize((749, 603), 1)
+
+
 class ResizeBicubicBenchmark(test.Benchmark):
 
   def _benchmarkResize(self, image_size):
@@ -470,9 +517,7 @@ class ResizeBicubicBenchmark(test.Benchmark):
       print('Variables initalized for resize_bicubic image size: %s.' %
             (image_size,))
       benchmark_values = self.run_op_benchmark(
-          sess,
-          benchmark_op,
-          name=('bicubic_%s_%s' % image_size),)
+          sess, benchmark_op, name=('bicubic_%s_%s' % image_size))
       print('Benchmark values:\n%s' % benchmark_values)
 
   def benchmarkSimilar(self):
@@ -483,6 +528,52 @@ class ResizeBicubicBenchmark(test.Benchmark):
 
   def benchmarkScaleDown(self):
     self._benchmarkResize((749, 603))
+
+
+class ResizeAreaBenchmark(test.Benchmark):
+
+  def _benchmarkResize(self, image_size, num_channels):
+    batch_size = 1
+    num_ops = 1000
+    img = variables.Variable(
+        random_ops.random_normal([batch_size, image_size[0],
+                                  image_size[1], num_channels]),
+        name='img')
+
+    deps = []
+    for _ in xrange(num_ops):
+      with ops.control_dependencies(deps):
+        resize_op = image_ops.resize_area(img, [299, 299], align_corners=False)
+        deps = [resize_op]
+      benchmark_op = control_flow_ops.group(*deps)
+
+    with session.Session() as sess:
+      sess.run(variables.global_variables_initializer())
+      results = self.run_op_benchmark(
+          sess, benchmark_op,
+          name=('resize_area_%s_%s_%s' %
+                (image_size[0], image_size[1], num_channels)))
+      print('%s   : %.2f ms/img' % (
+          results['name'],
+          1000*results['wall_time'] / (batch_size * num_ops)))
+
+  def benchmarkSimilar3Channel(self):
+    self._benchmarkResize((183, 229), 3)
+
+  def benchmarkScaleUp3Channel(self):
+    self._benchmarkResize((141, 186), 3)
+
+  def benchmarkScaleDown3Channel(self):
+    self._benchmarkResize((749, 603), 3)
+
+  def benchmarkSimilar1Channel(self):
+    self._benchmarkResize((183, 229), 1)
+
+  def benchmarkScaleUp1Channel(self):
+    self._benchmarkResize((141, 186), 1)
+
+  def benchmarkScaleDown1Channel(self):
+    self._benchmarkResize((749, 603), 1)
 
 
 class AdjustSaturationTest(test_util.TensorFlowTestCase):
@@ -632,6 +723,27 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
       y_tf = y.eval()
       self.assertAllEqual(y_tf, y_np)
 
+  def testRandomFlipLeftRight(self):
+    x_np = np.array([[1, 2, 3], [1, 2, 3]], dtype=np.uint8).reshape([2, 3, 1])
+    y_np = np.array([[3, 2, 1], [3, 2, 1]], dtype=np.uint8).reshape([2, 3, 1])
+
+    with self.test_session(use_gpu=True):
+      x_tf = constant_op.constant(x_np, shape=x_np.shape)
+      y = image_ops.random_flip_left_right(x_tf)
+
+      count_flipped = 0
+      count_unflipped = 0
+      for _ in range(50):
+        y_tf = y.eval()
+        if y_tf[0][0] == 1:
+          self.assertAllEqual(y_tf, x_np)
+          count_unflipped += 1
+        else:
+          self.assertAllEqual(y_tf, y_np)
+          count_flipped += 1
+      self.assertGreaterEqual(count_flipped, 1)
+      self.assertGreaterEqual(count_unflipped, 1)
+
   def testIdempotentUpDown(self):
     x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.uint8).reshape([2, 3, 1])
 
@@ -650,6 +762,26 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
       y = image_ops.flip_up_down(x_tf)
       y_tf = y.eval()
       self.assertAllEqual(y_tf, y_np)
+
+  def testRandomFlipUpDown(self):
+    x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.uint8).reshape([2, 3, 1])
+    y_np = np.array([[4, 5, 6], [1, 2, 3]], dtype=np.uint8).reshape([2, 3, 1])
+
+    with self.test_session(use_gpu=True):
+      x_tf = constant_op.constant(x_np, shape=x_np.shape)
+      y = image_ops.random_flip_up_down(x_tf)
+      count_flipped = 0
+      count_unflipped = 0
+      for _ in range(50):
+        y_tf = y.eval()
+        if y_tf[0][0] == 1:
+          self.assertAllEqual(y_tf, x_np)
+          count_unflipped += 1
+        else:
+          self.assertAllEqual(y_tf, y_np)
+          count_flipped += 1
+      self.assertGreaterEqual(count_flipped, 1)
+      self.assertGreaterEqual(count_unflipped, 1)
 
   def testIdempotentTranspose(self):
     x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.uint8).reshape([2, 3, 1])
@@ -850,13 +982,23 @@ class AdjustBrightnessTest(test_util.TensorFlowTestCase):
 
   def testPositiveDeltaFloat(self):
     x_shape = [2, 2, 3]
-    x_data = [0, 5, 13, 54, 135, 226, 37, 8, 234, 90, 255, 1]
+    x_data = [0, 5, 13, 54, 135, 226, 37, 8, 245, 90, 255, 1]
     x_np = np.array(x_data, dtype=np.float32).reshape(x_shape) / 255.
 
-    y_data = [10, 15, 23, 64, 145, 236, 47, 18, 244, 100, 265, 11]
+    y_data = [10, 15, 23, 64, 145, 236, 47, 18, 255, 100, 255, 11]
     y_np = np.array(y_data, dtype=np.float32).reshape(x_shape) / 255.
 
     self._testBrightness(x_np, y_np, delta=10. / 255.)
+
+  def testNegativeDeltaFloat(self):
+    x_shape = [2, 2, 3]
+    x_data = [0, 5, 13, 10, 135, 226, 37, 8, 245, 90, 255, 1]
+    x_np = np.array(x_data, dtype=np.float32).reshape(x_shape) / 255.
+
+    y_data = [0, 0, 3, 0, 125, 216, 27, 0, 235, 80, 245, 0]
+    y_np = np.array(y_data, dtype=np.float32).reshape(x_shape) / 255.
+
+    self._testBrightness(x_np, y_np, delta=-10. / 255.)
 
   def testNegativeDelta(self):
     x_shape = [2, 2, 3]

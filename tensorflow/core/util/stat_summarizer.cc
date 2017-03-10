@@ -21,7 +21,6 @@ limitations under the License.
 #include <sstream>
 #include <string>
 
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
@@ -29,19 +28,11 @@ limitations under the License.
 
 namespace tensorflow {
 
-StatSummarizer::StatSummarizer(const tensorflow::GraphDef& tensorflow_graph)
-    : StatSummarizer(tensorflow_graph, StatSummarizerOptions()) {}
+StatSummarizer::StatSummarizer(const StatSummarizerOptions& options)
+    : options_(options) {}
 
-StatSummarizer::StatSummarizer(const tensorflow::GraphDef& tensorflow_graph,
-                               const StatSummarizerOptions& options)
-    : options_(options) {
-  LOG(INFO) << "StatSummarizer found " << tensorflow_graph.node_size()
-            << " nodes";
-  for (const auto& node : tensorflow_graph.node()) {
-    nodes_in_def_order_.push_back(node.name());
-    node_types_[node.name()] = node.op();
-  }
-}
+StatSummarizer::StatSummarizer(const tensorflow::GraphDef& tensorflow_graph)
+    : StatSummarizer(StatSummarizerOptions()) {}
 
 void StatSummarizer::Validate(const Detail* detail,
                               const NodeExecStats& ns) const {
@@ -78,6 +69,47 @@ void StatSummarizer::Validate(const Detail* detail,
   }
 }
 
+namespace {
+std::string OpType(const DeviceStepStats& ds, const NodeExecStats& ns) {
+  // There is no published specification of how DeviceStats and NodeStats
+  // are filled in. Thus, we live with the fragility of this implementation.
+  //
+  // Note that NodeStats.node_name may NOT refer to a node in the Graph.
+  // This can happen if, either:
+  // (1) The DeviceStats corresponds to statistics from the GPUTracer
+  //     logging (which adds devices whose name contains either "/stream"
+  //     or "/memcpy" to the StepStats), OR
+  // (2) The graph was partitioned, and thus the NodeStats refers to
+  //     the SendTensor or RecvTensor operations added.
+  // For these cases, return "<>" as the "type" of the operation.
+  //
+  // The StatSummarizer was initially aimed at CPU execution on mobile, where
+  // there was no GPUTracing and no graph partitioning, so the conditions above
+  // do not occur.
+  //
+  // It would be nice to have a clearer spec for StepStats so utilities such as
+  // this class can handle nodes that do not appear in the original graph
+  // gracefully. Till then, duplicate what is done by:
+  // https://www.tensorflow.org/code/tensorflow/python/client/timeline.py
+  // and rely on the unittest.
+  if (ds.device().find("/stream") != std::string::npos ||
+      ds.device().find("/memcpy") != std::string::npos) {
+    // Stats from the GPUTracer, does not correspond to TensorFlow ops.
+    return "<>";
+  }
+  // timeline_label should be of the format: <node_name> = <op_type>(<args>)
+  // Extract <op_type>.
+  const std::string sep(" = ");
+  const std::string& label = ns.timeline_label();
+  std::string::size_type start = label.find(sep);
+  if (start == std::string::npos) return "<>";
+  start += sep.size();
+  std::string::size_type end = label.find("(", start);
+  if (end == std::string::npos) return "<>";
+  return label.substr(start, end - start);
+}
+}  // namespace
+
 void StatSummarizer::ProcessStepStats(const StepStats& step_stats) {
   int64 curr_total_us = 0;
   int64 mem_total = 0;
@@ -100,11 +132,7 @@ void StatSummarizer::ProcessStepStats(const StepStats& step_stats) {
       // If this is the first pass, initialize some values.
       if (result.second) {
         detail->name = ns.node_name();
-
-        auto node_type_it = node_types_.find(detail->name);
-        if (node_type_it != node_types_.end()) {
-          detail->type = node_type_it->second;
-        }
+        detail->type = OpType(ds, ns);
 
         detail->run_order = node_num;
 
@@ -146,8 +174,7 @@ std::string StatSummarizer::ShortSummary() const {
   memory_.OutputToStream(&stream);
   stream << std::endl;
 
-  stream << node_types_.size() << " nodes defined " << details_.size()
-         << " nodes observed" << std::endl;
+  stream << details_.size() << " nodes observed" << std::endl;
   return stream.str();
 }
 
@@ -200,7 +227,7 @@ std::string StatSummarizer::ColumnString(const Detail& detail,
 void StatSummarizer::OrderNodesByMetric(
     SortingMetric metric, std::vector<const Detail*>* details) const {
   std::priority_queue<std::pair<string, const Detail*>> sorted_list;
-  const int num_nodes = nodes_in_def_order_.size();
+  const int num_nodes = details_.size();
 
   for (const auto& det : details_) {
     const Detail* detail = &(det.second);
@@ -208,19 +235,9 @@ void StatSummarizer::OrderNodesByMetric(
     stream << std::setw(20) << std::right << std::setprecision(10)
            << std::fixed;
 
-    int definition_index = 0;
-    auto it = std::find(nodes_in_def_order_.begin(), nodes_in_def_order_.end(),
-                        detail->name);
-    if (it != nodes_in_def_order_.end()) {
-      definition_index = std::distance(nodes_in_def_order_.begin(), it);
-    }
-
     switch (metric) {
       case BY_NAME:
         stream << detail->name;
-        break;
-      case BY_DEFINITION_ORDER:
-        stream << num_nodes - definition_index;
         break;
       case BY_RUN_ORDER:
         stream << num_nodes - detail->run_order;
@@ -264,8 +281,7 @@ std::string StatSummarizer::GetStatsByNodeType() const {
 
   int64 num_processed = 0;
 
-  LOG(INFO) << "nodes_in_def_order_ size: " << nodes_in_def_order_.size();
-  LOG(INFO) << "timing_details_ size: " << details_.size();
+  LOG(INFO) << "Number of nodes executed: " << details_.size();
   for (const auto& det : details_) {
     const string node_name = det.first;
     const Detail& detail = det.second;
@@ -277,12 +293,7 @@ std::string StatSummarizer::GetStatsByNodeType() const {
     int64 curr_memory_val = detail.mem_used.newest();
     accumulated_bytes += curr_memory_val;
 
-    string node_type = "<>";
-
-    auto node_type_it = node_types_.find(node_name);
-    if (node_type_it != node_types_.end()) {
-      node_type = node_type_it->second;
-    }
+    const string& node_type = detail.type;
 
     node_type_map_count[node_type] += 1;
     node_type_map_time[node_type] += curr_time_val;

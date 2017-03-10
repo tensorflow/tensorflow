@@ -17,17 +17,17 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_INLINER_H_
 
 #include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_pass.h"
+#include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 namespace xla {
 
 // A pass which performs inlining. Which can result, for example, in functions
 // that were previously being mapped by Map instead directly applied to the
 // forwarded operands (i.e., map({X, Y}, max) -> max(X, Y)).
-class Inliner : public HloPass {
+class Inliner : public HloPassInterface {
  public:
-  Inliner() : HloPass("inline") {}
   ~Inliner() override = default;
+  tensorflow::StringPiece name() const override { return "inline"; }
 
   // Run inlining on the given computation. Returns whether the computation was
   // changed.
