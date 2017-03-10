@@ -63,6 +63,7 @@ vocabulary_size = 50000
 
 
 def build_dataset(words):
+  global vocabulary_size
   count = [['UNK', -1]]
   count.extend(collections.Counter(words).most_common(vocabulary_size - 1))
   dictionary = dict()
@@ -181,7 +182,7 @@ with graph.as_default():
       valid_embeddings, normalized_embeddings, transpose_b=True)
 
   # Add variable initializer.
-  init = tf.initialize_all_variables()
+  init = tf.global_variables_initializer()
 
 # Step 5: Begin training.
 num_steps = 100001
