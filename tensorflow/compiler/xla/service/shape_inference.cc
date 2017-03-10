@@ -1037,8 +1037,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   }
 
   std::vector<int64> sizes;
-  for (tensorflow::gtl::ArraySlice<int64>::size_type dimension = 0;
-       dimension < starts.size(); ++dimension) {
+  for (int64 dimension = 0; dimension < starts.size(); ++dimension) {
     int64 start_index = starts[dimension];
     int64 limit_index = limits[dimension];
     if (start_index < 0) {
@@ -1111,8 +1110,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
         slice_sizes.size(), ShapeUtil::Rank(operand_shape));
   }
 
-  for (tensorflow::gtl::ArraySlice<int64>::size_type dim = 0;
-       dim < slice_sizes.size(); ++dim) {
+  for (int64 dim = 0; dim < slice_sizes.size(); ++dim) {
     const int64 input_dim_size = operand_shape.dimensions(dim);
     const int64 slice_dim_size = slice_sizes[dim];
     if (slice_dim_size <= 0) {
@@ -1372,8 +1370,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   }
 
   // All arguments must be compatible with the program shape.
-  for (tensorflow::gtl::ArraySlice<const Shape*>::size_type i = 0;
-       i < arg_shapes.size(); ++i) {
+  for (int i = 0; i < arg_shapes.size(); ++i) {
     const Shape& arg_shape = *arg_shapes[i];
     const Shape& param_shape = to_apply.parameters(i);
     if (!ShapeUtil::Compatible(arg_shape, param_shape)) {
