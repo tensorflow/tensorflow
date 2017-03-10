@@ -38,6 +38,7 @@ py_binary(
     deps = [
         "//tensorflow/python:platform",
         "//tensorflow/tensorboard/backend:application",
+        "//tensorflow/tensorboard/backend/event_processing:event_file_inspector",
         "@org_pocoo_werkzeug//:werkzeug",
     ],
 )

@@ -627,7 +627,7 @@ TEST(DirectSessionTest, RunHandleTest) {
   value1.scalar<float>()() = 2.0;
   Node* const1 = test::graph::Constant(&g, value1);
   Node* node3 = test::graph::Add(&g, identity0, const1);
-  Node* node4 = test::graph::Unary(&g, "GetSessionHandle", node3);
+  Node* node4 = test::graph::Unary(&g, "GetSessionHandleV2", node3);
 
   Tensor value2(DT_STRING, TensorShape({}));
   Node* const2 = test::graph::Constant(&g, value2);
@@ -648,17 +648,21 @@ TEST(DirectSessionTest, RunHandleTest) {
   ASSERT_TRUE(s.ok());
   ASSERT_EQ(1, outputs.size());
 
+  ResourceHandle resource_handle = outputs[0].scalar<ResourceHandle>()();
+  Tensor string_handle(DT_STRING, {});
+  string_handle.flat<string>().setConstant(resource_handle.name());
+
   // Second run call: Use a handle.
   std::vector<Tensor> outputs1;
-  s = session->Run({{const2->name(), outputs[0]}}, {node6->name() + ":0"}, {},
-                   &outputs1);
+  s = session->Run({{const2->name(), string_handle}}, {node6->name() + ":0"},
+                   {}, &outputs1);
   ASSERT_TRUE(s.ok());
   ASSERT_EQ(1, outputs1.size());
   ASSERT_EQ(5.0, outputs1[0].flat<float>()(0));
 
   // Third run call: Delete a handle.
   std::vector<Tensor> outputs2;
-  s = session->Run({{const2->name(), outputs[0]}}, {}, {node7->name()},
+  s = session->Run({{const2->name(), string_handle}}, {}, {node7->name()},
                    &outputs2);
   ASSERT_TRUE(s.ok());
 }

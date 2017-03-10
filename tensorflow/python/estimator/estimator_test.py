@@ -161,7 +161,7 @@ def model_fn_global_step_incrementer(features, labels, mode):
       train_op=state_ops.assign_add(global_step, 1))
 
 
-class EstimatorFitTest(test.TestCase):
+class EstimatorTrainTest(test.TestCase):
 
   def test_model_fn_must_return_estimator_spec(self):
 
@@ -171,29 +171,29 @@ class EstimatorFitTest(test.TestCase):
 
     est = estimator.Estimator(model_fn=model_fn)
     with self.assertRaisesRegexp(ValueError, 'EstimatorSpec'):
-      est.fit(dummy_input_fn, steps=1)
+      est.train(dummy_input_fn, steps=1)
 
   def test_run_train_op_and_saves_at_the_end(self):
     est = estimator.Estimator(model_fn=model_fn_global_step_incrementer)
-    est.fit(dummy_input_fn, steps=5)
+    est.train(dummy_input_fn, steps=5)
     self.assertEqual(
         5, estimator._load_global_step_from_checkpoint_dir(est.model_dir))
 
   def test_steps_and_saves_reloads(self):
     est = estimator.Estimator(model_fn=model_fn_global_step_incrementer)
-    est.fit(dummy_input_fn, steps=5)
+    est.train(dummy_input_fn, steps=5)
     self.assertEqual(
         5, estimator._load_global_step_from_checkpoint_dir(est.model_dir))
-    est.fit(dummy_input_fn, steps=5)
+    est.train(dummy_input_fn, steps=5)
     self.assertEqual(
         10, estimator._load_global_step_from_checkpoint_dir(est.model_dir))
 
   def test_max_step(self):
     est = estimator.Estimator(model_fn=model_fn_global_step_incrementer)
-    est.fit(dummy_input_fn, max_steps=5)
+    est.train(dummy_input_fn, max_steps=5)
     self.assertEqual(
         5, estimator._load_global_step_from_checkpoint_dir(est.model_dir))
-    est.fit(dummy_input_fn, max_steps=5)
+    est.train(dummy_input_fn, max_steps=5)
     self.assertEqual(
         5, estimator._load_global_step_from_checkpoint_dir(est.model_dir))
 
@@ -201,25 +201,25 @@ class EstimatorFitTest(test.TestCase):
     est = estimator.Estimator(
         model_fn=_model_fn_with_eval_metric_ops)
     with self.assertRaisesRegexp(ValueError, 'Must specify steps >= 0'):
-      est.fit(dummy_input_fn, steps=0)
+      est.train(dummy_input_fn, steps=0)
 
   def test_steps_negative_raises_error(self):
     est = estimator.Estimator(
         model_fn=_model_fn_with_eval_metric_ops)
     with self.assertRaisesRegexp(ValueError, 'Must specify steps >= 0'):
-      est.fit(dummy_input_fn, steps=-1)
+      est.train(dummy_input_fn, steps=-1)
 
   def test_max_steps0_raises_error(self):
     est = estimator.Estimator(
         model_fn=_model_fn_with_eval_metric_ops)
     with self.assertRaisesRegexp(ValueError, 'Must specify max_steps >= 0'):
-      est.fit(dummy_input_fn, max_steps=0)
+      est.train(dummy_input_fn, max_steps=0)
 
   def test_max_steps_negative_raises_error(self):
     est = estimator.Estimator(
         model_fn=_model_fn_with_eval_metric_ops)
     with self.assertRaisesRegexp(ValueError, 'Must specify max_steps >= 0'):
-      est.fit(dummy_input_fn, max_steps=-1)
+      est.train(dummy_input_fn, max_steps=-1)
 
   def test_scaffold_is_used(self):
     self.is_init_fn_called = False
@@ -237,7 +237,7 @@ class EstimatorFitTest(test.TestCase):
           scaffold=training.Scaffold(init_fn=_init_fn))
 
     est = estimator.Estimator(model_fn=_model_fn_scaffold)
-    est.fit(dummy_input_fn, steps=1)
+    est.train(dummy_input_fn, steps=1)
     self.assertTrue(self.is_init_fn_called)
 
   def test_training_hooks_are_used(self):
@@ -258,7 +258,7 @@ class EstimatorFitTest(test.TestCase):
     est = estimator.Estimator(model_fn=_model_fn_hooks)
     self.assertFalse(chief_hook.begin.called)
     self.assertFalse(hook.begin.called)
-    est.fit(dummy_input_fn, steps=1)
+    est.train(dummy_input_fn, steps=1)
     self.assertTrue(chief_hook.begin.called)
     self.assertTrue(hook.begin.called)
 
@@ -298,9 +298,30 @@ class EstimatorFitTest(test.TestCase):
           model_fn=_model_fn_hooks, config=NonChiefRunConfig())
       self.assertFalse(chief_hook.begin.called)
       self.assertFalse(hook.begin.called)
-      est.fit(dummy_input_fn, steps=1)
+      est.train(dummy_input_fn, steps=1)
       self.assertFalse(chief_hook.begin.called)
       self.assertTrue(hook.begin.called)
+
+  def test_features_labels_mode(self):
+    given_features = {'test-features': [[1], [1]]}
+    given_labels = {'test-labels': [[1], [1]]}
+
+    def _input_fn():
+      return given_features, given_labels
+
+    def _model_fn(features, labels, mode):
+      self.features, self.labels, self.mode = features, labels, mode
+      return model_fn_lib.EstimatorSpec(
+          mode=mode,
+          loss=constant_op.constant(0.),
+          train_op=constant_op.constant(0.),
+          predictions=constant_op.constant(0.))
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.train(_input_fn, steps=1)
+    self.assertEqual(given_features, self.features)
+    self.assertEqual(given_labels, self.labels)
+    self.assertEqual(model_fn_lib.ModeKeys.TRAIN, self.mode)
 
 
 def _model_fn_with_eval_metric_ops(features, labels, mode, params):
@@ -348,7 +369,7 @@ class EstimatorEvaluateTest(test.TestCase):
           train_op=control_flow_ops.no_op())
 
     est = estimator.Estimator(model_fn=_model_fn)
-    est.fit(dummy_input_fn, steps=1)
+    est.train(dummy_input_fn, steps=1)
     with self.assertRaisesRegexp(
         ValueError, 'model_fn should return an EstimatorSpec'):
       est.evaluate(dummy_input_fn, steps=1)
@@ -365,7 +386,7 @@ class EstimatorEvaluateTest(test.TestCase):
         params={
             'metric_name': 'metric',
             'metric_value': 2.})
-    est.fit(dummy_input_fn, steps=5)
+    est.train(dummy_input_fn, steps=5)
     scores = est.evaluate(dummy_input_fn, steps=1)
     self.assertDictEqual(
         {'metric': 2.,
@@ -375,14 +396,14 @@ class EstimatorEvaluateTest(test.TestCase):
   def test_steps0_raises_error(self):
     est = estimator.Estimator(
         model_fn=_model_fn_with_eval_metric_ops)
-    est.fit(dummy_input_fn, steps=5)
+    est.train(dummy_input_fn, steps=5)
     with self.assertRaisesRegexp(ValueError, 'Must specify steps >= 0'):
       est.evaluate(dummy_input_fn, steps=0)
 
   def test_steps_negative_raises_error(self):
     est = estimator.Estimator(
         model_fn=_model_fn_with_eval_metric_ops)
-    est.fit(dummy_input_fn, steps=5)
+    est.train(dummy_input_fn, steps=5)
     with self.assertRaisesRegexp(ValueError, 'Must specify steps >= 0'):
       est.evaluate(dummy_input_fn, steps=-1)
 
@@ -392,7 +413,7 @@ class EstimatorEvaluateTest(test.TestCase):
         params={
             'metric_name': 'global_step',
             'metric_value': 2.})
-    est.fit(dummy_input_fn, steps=5)
+    est.train(dummy_input_fn, steps=5)
     with self.assertRaisesRegexp(
         ValueError, 'Metric with name `global_step` is not allowed'):
       est.evaluate(dummy_input_fn, steps=1)
@@ -401,7 +422,7 @@ class EstimatorEvaluateTest(test.TestCase):
     step_counter_hook = _StepCounterHook()
 
     est = estimator.Estimator(model_fn=_model_fn_with_eval_metric_ops)
-    est.fit(dummy_input_fn, steps=1)
+    est.train(dummy_input_fn, steps=1)
     est.evaluate(dummy_input_fn, steps=5, hooks=[step_counter_hook])
     self.assertEqual(5, step_counter_hook.steps)
 
@@ -412,7 +433,7 @@ class EstimatorEvaluateTest(test.TestCase):
     est1 = estimator.Estimator(
         model_fn=_model_fn_with_eval_metric_ops,
         params=params)
-    est1.fit(dummy_input_fn, steps=5)
+    est1.train(dummy_input_fn, steps=5)
     est2 = estimator.Estimator(
         model_fn=_model_fn_with_eval_metric_ops,
         params=params)
@@ -441,9 +462,31 @@ class EstimatorEvaluateTest(test.TestCase):
           scaffold=training.Scaffold(saver=self.mock_saver))
 
     est = estimator.Estimator(model_fn=_model_fn_scaffold)
-    est.fit(dummy_input_fn, steps=1)
+    est.train(dummy_input_fn, steps=1)
     est.evaluate(dummy_input_fn, steps=1)
     self.assertTrue(self.mock_saver.restore.called)
+
+  def test_features_labels_mode(self):
+    given_features = {'test-features': [[1], [1]]}
+    given_labels = {'test-labels': [[1], [1]]}
+
+    def _input_fn():
+      return given_features, given_labels
+
+    def _model_fn(features, labels, mode):
+      self.features, self.labels, self.mode = features, labels, mode
+      return model_fn_lib.EstimatorSpec(
+          mode=mode,
+          loss=constant_op.constant(0.),
+          train_op=constant_op.constant(0.),
+          predictions=constant_op.constant(0.))
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.train(_input_fn, steps=1)
+    est.evaluate(_input_fn, steps=1)
+    self.assertEqual(given_features, self.features)
+    self.assertEqual(given_labels, self.labels)
+    self.assertEqual(model_fn_lib.ModeKeys.EVAL, self.mode)
 
 
 class EstimatorPredictTest(test.TestCase):
@@ -465,7 +508,7 @@ class EstimatorPredictTest(test.TestCase):
           predictions=constant_op.constant([[10.]]))
 
     est = estimator.Estimator(model_fn=_model_fn)
-    est.fit(dummy_input_fn, steps=1)
+    est.train(dummy_input_fn, steps=1)
     self.assertEqual(10., next(est.predict(dummy_input_fn)))
 
   def test_warn_if_no_queue_runner(self):
@@ -479,7 +522,7 @@ class EstimatorPredictTest(test.TestCase):
           predictions=constant_op.constant([[10.]]))
 
     est = estimator.Estimator(model_fn=_model_fn)
-    est.fit(dummy_input_fn, steps=1)
+    est.train(dummy_input_fn, steps=1)
     with test.mock.patch.object(logging, 'warning') as mock_log:
       next(est.predict(dummy_input_fn))
       self.assertRegexpMatches(
@@ -497,7 +540,7 @@ class EstimatorPredictTest(test.TestCase):
           predictions=constant_op.constant([[10.]]))
 
     est = estimator.Estimator(model_fn=_model_fn)
-    est.fit(dummy_input_fn, steps=1)
+    est.train(dummy_input_fn, steps=1)
 
     def _only_features():
       return {'x': constant_op.constant([[0.]])}
@@ -518,7 +561,7 @@ class EstimatorPredictTest(test.TestCase):
           })
 
     est = estimator.Estimator(model_fn=_model_fn)
-    est.fit(dummy_input_fn, steps=1)
+    est.train(dummy_input_fn, steps=1)
     with self.assertRaisesRegexp(ValueError,
                                  'Batch length of predictions should be same'):
       next(est.predict(dummy_input_fn))
@@ -534,7 +577,7 @@ class EstimatorPredictTest(test.TestCase):
           predictions=constant_op.constant([[10.]]))
 
     est = estimator.Estimator(model_fn=_model_fn)
-    est.fit(dummy_input_fn, steps=1)
+    est.train(dummy_input_fn, steps=1)
     with self.assertRaisesRegexp(
         ValueError,
         'predict_keys argument is not valid in case of non-dict predictions'):
@@ -554,7 +597,7 @@ class EstimatorPredictTest(test.TestCase):
           })
 
     est = estimator.Estimator(model_fn=_model_fn)
-    est.fit(dummy_input_fn, steps=1)
+    est.train(dummy_input_fn, steps=1)
     with self.assertRaisesRegexp(ValueError,
                                  'Expected to run at least one output from'):
       next(est.predict(dummy_input_fn, predict_keys=['y3']))
@@ -573,7 +616,7 @@ class EstimatorPredictTest(test.TestCase):
           })
 
     est = estimator.Estimator(model_fn=_model_fn)
-    est.fit(dummy_input_fn, steps=1)
+    est.train(dummy_input_fn, steps=1)
     results = next(est.predict(dummy_input_fn, predict_keys=['y1']))
     self.assertIn('y1', results)
     self.assertNotIn('y2', results)
@@ -589,7 +632,7 @@ class EstimatorPredictTest(test.TestCase):
           predictions=constant_op.constant([[10.], [12.]]))
 
     est = estimator.Estimator(model_fn=_model_fn)
-    est.fit(dummy_input_fn, steps=1)
+    est.train(dummy_input_fn, steps=1)
     results = est.predict(dummy_input_fn)
     self.assertEqual([10.], next(results))
     self.assertEqual([12.], next(results))
@@ -608,7 +651,7 @@ class EstimatorPredictTest(test.TestCase):
           })
 
     est = estimator.Estimator(model_fn=_model_fn)
-    est.fit(dummy_input_fn, steps=1)
+    est.train(dummy_input_fn, steps=1)
     results = est.predict(dummy_input_fn)
     self.assertDictEqual({'y1': [10.], 'y2': [0.]}, next(results))
     self.assertDictEqual({'y1': [12.], 'y2': [2.]}, next(results))
@@ -625,7 +668,7 @@ class EstimatorPredictTest(test.TestCase):
 
     step_counter_hook = _StepCounterHook()
     est = estimator.Estimator(model_fn=_model_fn)
-    est.fit(dummy_input_fn, steps=1)
+    est.train(dummy_input_fn, steps=1)
     results = est.predict(dummy_input_fn, hooks=[step_counter_hook])
     self.assertEqual(0, step_counter_hook.steps)  # not called yet
     next(results)
@@ -648,7 +691,7 @@ class EstimatorPredictTest(test.TestCase):
           predictions=prediction)
 
     est1 = estimator.Estimator(model_fn=_model_fn)
-    est1.fit(dummy_input_fn, steps=1)
+    est1.train(dummy_input_fn, steps=1)
     est2 = estimator.Estimator(model_fn=_model_fn, model_dir=est1.model_dir)
     self.assertEqual([32.], next(est2.predict(dummy_input_fn)))
 
@@ -668,9 +711,31 @@ class EstimatorPredictTest(test.TestCase):
           scaffold=training.Scaffold(saver=self.mock_saver))
 
     est = estimator.Estimator(model_fn=_model_fn_scaffold)
-    est.fit(dummy_input_fn, steps=1)
+    est.train(dummy_input_fn, steps=1)
     next(est.predict(dummy_input_fn))
     self.assertTrue(self.mock_saver.restore.called)
+
+  def test_features_labels_mode(self):
+    given_features = {'test-features': [[1], [1]]}
+    given_labels = {'test-labels': [[1], [1]]}
+
+    def _input_fn():
+      return given_features, given_labels
+
+    def _model_fn(features, labels, mode):
+      self.features, self.labels, self.mode = features, labels, mode
+      return model_fn_lib.EstimatorSpec(
+          mode=mode,
+          loss=constant_op.constant(0.),
+          train_op=constant_op.constant(0.),
+          predictions=constant_op.constant([[0.]]))
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.train(_input_fn, steps=1)
+    next(est.predict(_input_fn))
+    self.assertEqual(given_features, self.features)
+    self.assertIsNone(self.labels)
+    self.assertEqual(model_fn_lib.ModeKeys.PREDICT, self.mode)
 
 
 if __name__ == '__main__':

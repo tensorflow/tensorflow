@@ -116,20 +116,16 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
     borderedText = new BorderedText(textSizePx);
     borderedText.setTypeface(Typeface.MONOSPACE);
 
-    try {
-      classifier =
-          TensorFlowImageClassifier.create(
-              getAssets(),
-              MODEL_FILE,
-              LABEL_FILE,
-              INPUT_SIZE,
-              IMAGE_MEAN,
-              IMAGE_STD,
-              INPUT_NAME,
-              OUTPUT_NAME);
-    } catch (final Exception e) {
-      throw new RuntimeException("Error initializing TensorFlow!", e);
-    }
+    classifier =
+        TensorFlowImageClassifier.create(
+            getAssets(),
+            MODEL_FILE,
+            LABEL_FILE,
+            INPUT_SIZE,
+            IMAGE_MEAN,
+            IMAGE_STD,
+            INPUT_NAME,
+            OUTPUT_NAME);
 
     resultsView = (ResultsView) findViewById(R.id.results);
     previewWidth = size.getWidth();

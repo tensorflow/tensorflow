@@ -59,7 +59,7 @@ class EmbeddingMultiplierTest(test.TestCase):
 
     params = {
         'feature_columns': [one_hot_language],
-        'head': head_lib._multi_class_head(2),
+        'head': head_lib.multi_class_head(2),
         'hidden_units': [1],
         # Set lr mult to 0. to keep embeddings constant.
         'embedding_lr_multipliers': {
@@ -90,7 +90,7 @@ class EmbeddingMultiplierTest(test.TestCase):
 
     params = {
         'feature_columns': [embedding_language, embedding_wire],
-        'head': head_lib._multi_class_head(2),
+        'head': head_lib.multi_class_head(2),
         'hidden_units': [1],
         # Set lr mult to 0. to keep embeddings constant.
         'embedding_lr_multipliers': {
@@ -145,7 +145,7 @@ class DNNEstimatorTest(test.TestCase):
     exp.test()
 
   def testEstimatorContract(self):
-    estimator_test_utils.assert_estimator_contract(self, dnn._DNNEstimator)
+    estimator_test_utils.assert_estimator_contract(self, dnn.DNNEstimator)
 
   def testTrainWithWeights(self):
     """Tests training with given weight column."""
@@ -172,8 +172,8 @@ class DNNEstimatorTest(test.TestCase):
       }
       return features, labels
 
-    dnn_estimator = dnn._DNNEstimator(
-        head=head_lib._multi_class_head(2, weight_column_name='w'),
+    dnn_estimator = dnn.DNNEstimator(
+        head=head_lib.multi_class_head(2, weight_column_name='w'),
         feature_columns=[feature_column.real_valued_column('x')],
         hidden_units=[3, 3],
         config=run_config.RunConfig(tf_random_seed=1))

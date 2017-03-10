@@ -54,6 +54,12 @@ TEST_F(UtilsTest, NodePosition) {
   EXPECT_EQ(0, NodePosition(""));
 }
 
+TEST_F(UtilsTest, AddNodeNamePrefix) {
+  EXPECT_EQ("OPTIMIZED-abc", AddPrefixToNodeName("abc", "OPTIMIZED"));
+  EXPECT_EQ("^OPTIMIZED-abc", AddPrefixToNodeName("^abc", "OPTIMIZED"));
+  EXPECT_EQ("OPTIMIZED-", AddPrefixToNodeName("", "OPTIMIZED"));
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

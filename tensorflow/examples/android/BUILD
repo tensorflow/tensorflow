@@ -69,9 +69,7 @@ android_binary(
     # (and corresponding Activities in source) to reduce APK size.
     assets = [
         "//tensorflow/examples/android/assets:asset_files",
-        "@inception5h//:model_files",
-        "@mobile_multibox//:model_files",
-        "@stylize//:model_files",
+        ":external_assets",
     ],
     assets_dir = "",
     custom_package = "org.tensorflow.demo",
@@ -85,6 +83,15 @@ android_binary(
     deps = [
         ":tensorflow_native_libs",
         "//tensorflow/contrib/android:android_tensorflow_inference_java",
+    ],
+)
+
+filegroup(
+    name = "external_assets",
+    srcs = [
+        "@inception5h//:model_files",
+        "@mobile_multibox//:model_files",
+        "@stylize//:model_files",
     ],
 )
 

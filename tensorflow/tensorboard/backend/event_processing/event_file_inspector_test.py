@@ -25,8 +25,8 @@ from tensorflow.core.framework.summary_pb2 import Summary
 from tensorflow.core.util.event_pb2 import SessionLog
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
-from tensorflow.python.summary import event_file_inspector as efi
 from tensorflow.python.training.summary_io import SummaryWriter
+from tensorflow.tensorboard.backend.event_processing import event_file_inspector as efi
 
 
 class EventFileInspectorTest(test_util.TensorFlowTestCase):

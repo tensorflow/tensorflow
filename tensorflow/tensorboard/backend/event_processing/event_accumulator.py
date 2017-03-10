@@ -29,10 +29,10 @@ from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf.config_pb2 import RunMetadata
 from tensorflow.core.util.event_pb2 import SessionLog
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.summary.impl import directory_watcher
-from tensorflow.python.summary.impl import event_file_loader
-from tensorflow.python.summary.impl import reservoir
 from tensorflow.python.util import compat
+from tensorflow.tensorboard.backend.event_processing import directory_watcher
+from tensorflow.tensorboard.backend.event_processing import event_file_loader
+from tensorflow.tensorboard.backend.event_processing import reservoir
 
 namedtuple = collections.namedtuple
 ScalarEvent = namedtuple('ScalarEvent', ['wall_time', 'step', 'value'])

@@ -16,6 +16,7 @@ limitations under the License.
 
 namespace tensorflow {
 
+REGISTER_OP("BytesLimit").Output("out: int64").SetIsStateful();
 REGISTER_OP("MaxBytesInUse").Output("out: int64").SetIsStateful();
 
 }  // namespace tensorflow

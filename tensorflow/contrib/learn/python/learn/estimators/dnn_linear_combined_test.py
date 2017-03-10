@@ -60,7 +60,7 @@ def _assert_metrics_in_range(keys, metrics):
                                          metrics)
 
 
-class _CheckCallsHead(head_lib._Head):  # pylint: disable=protected-access
+class _CheckCallsHead(head_lib.Head):
   """Head that checks whether head_ops is called."""
 
   def __init__(self):
@@ -97,7 +97,7 @@ class EmbeddingMultiplierTest(test.TestCase):
 
     params = {
         'dnn_feature_columns': [one_hot_language],
-        'head': head_lib._multi_class_head(2),
+        'head': head_lib.multi_class_head(2),
         'dnn_hidden_units': [1],
         # Set lr mult to 0. to keep embeddings constant.
         'embedding_lr_multipliers': {
@@ -131,7 +131,7 @@ class EmbeddingMultiplierTest(test.TestCase):
 
     params = {
         'dnn_feature_columns': [embedding_language, embedding_wire],
-        'head': head_lib._multi_class_head(2),
+        'head': head_lib.multi_class_head(2),
         'dnn_hidden_units': [1],
         # Set lr mult to 0. to keep embeddings constant.
         'embedding_lr_multipliers': {
@@ -171,13 +171,13 @@ class DNNLinearCombinedEstimatorTest(test.TestCase):
 
   def testEstimatorContract(self):
     estimator_test_utils.assert_estimator_contract(
-        self, dnn_linear_combined._DNNLinearCombinedEstimator)
+        self, dnn_linear_combined.DNNLinearCombinedEstimator)
 
   def testNoFeatureColumns(self):
     with self.assertRaisesRegexp(
         ValueError,
         'Either linear_feature_columns or dnn_feature_columns must be defined'):
-      dnn_linear_combined._DNNLinearCombinedEstimator(
+      dnn_linear_combined.DNNLinearCombinedEstimator(
           head=_CheckCallsHead(),
           linear_feature_columns=None,
           dnn_feature_columns=None,
@@ -192,7 +192,7 @@ class DNNLinearCombinedEstimatorTest(test.TestCase):
     bucketized_feature = [feature_column.bucketized_column(
         cont_features[0], test_data.get_quantile_based_buckets(iris.data, 10))]
 
-    estimator = dnn_linear_combined._DNNLinearCombinedEstimator(
+    estimator = dnn_linear_combined.DNNLinearCombinedEstimator(
         head,
         linear_feature_columns=bucketized_feature,
         dnn_feature_columns=cont_features,

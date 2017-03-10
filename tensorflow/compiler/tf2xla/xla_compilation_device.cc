@@ -18,6 +18,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
+#include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/platform/mem.h"
@@ -83,6 +84,20 @@ XlaCompilationDevice::~XlaCompilationDevice() {}
 
 Allocator* XlaCompilationDevice::GetAllocator(AllocatorAttributes attr) {
   return allocator_.get();
+}
+
+void XlaCompilationDevice::Compute(OpKernel* op_kernel,
+                                   OpKernelContext* context) {
+  VLOG(1) << "XlaCompilationDevice::Compute "
+          << SummarizeNodeDef(op_kernel->def());
+  auto* b = XlaContext::Get(context).builder();
+  xla::OpMetadata metadata;
+  metadata.set_op_type(op_kernel->type_string());
+  metadata.set_op_name(op_kernel->name());
+  b->SetOpMetadata(metadata);
+  op_kernel->Compute(context);
+  b->ClearOpMetadata();
+  VLOG(2) << "Done";
 }
 
 Status XlaCompilationDevice::Sync() { return Status::OK(); }

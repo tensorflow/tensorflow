@@ -317,7 +317,7 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
       logits=logits)
 
 
-class _DNNLinearCombinedEstimator(estimator.Estimator):
+class DNNLinearCombinedEstimator(estimator.Estimator):
   """An estimator for TensorFlow Linear and DNN joined training models.
 
     Input of `fit`, `train`, and `evaluate` should have following features,
@@ -349,7 +349,7 @@ class _DNNLinearCombinedEstimator(estimator.Estimator):
                config=None,
                feature_engineering_fn=None,
                embedding_lr_multipliers=None):
-    """Initializes a _DNNLinearCombinedEstimator instance.
+    """Initializes a DNNLinearCombinedEstimator instance.
 
     Args:
       head: A _Head object.
@@ -397,7 +397,7 @@ class _DNNLinearCombinedEstimator(estimator.Estimator):
     if not linear_feature_columns + dnn_feature_columns:
       raise ValueError("Either linear_feature_columns or dnn_feature_columns "
                        "must be defined.")
-    super(_DNNLinearCombinedEstimator, self).__init__(
+    super(DNNLinearCombinedEstimator, self).__init__(
         model_fn=_dnn_linear_combined_model_fn,
         model_dir=model_dir,
         config=config,
@@ -550,7 +550,7 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
     if not self._feature_columns:
       raise ValueError("Either linear_feature_columns or dnn_feature_columns "
                        "must be defined.")
-    head = head_lib._multi_class_head(  # pylint: disable=protected-access
+    head = head_lib.multi_class_head(
         n_classes=n_classes,
         weight_column_name=weight_column_name,
         enable_centered_bias=enable_centered_bias)
@@ -841,7 +841,7 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
     if not self._feature_columns:
       raise ValueError("Either linear_feature_columns or dnn_feature_columns "
                        "must be defined.")
-    head = head_lib._regression_head(  # pylint: disable=protected-access
+    head = head_lib.regression_head(
         weight_column_name=weight_column_name,
         label_dimension=label_dimension,
         enable_centered_bias=enable_centered_bias)
@@ -997,3 +997,7 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
         prediction_key=prediction_key.PredictionKey.SCORES,
         default_batch_size=default_batch_size,
         exports_to_keep=exports_to_keep)
+
+# Aliases
+# TODO(zakaria): Remove these aliases, See b/34751732
+_DNNLinearCombinedEstimator = DNNLinearCombinedEstimator

@@ -29,6 +29,16 @@ from tensorflow.python.platform import test
 
 class MemoryStatsOpsTest(test_util.TensorFlowTestCase):
 
+  def testBytesLimit(self):
+    # AllocatorStats.bytes_limit is set to zero for CPU allocators, so we skip
+    # the check.
+    if not test.is_gpu_available():
+      return
+
+    with self.test_session(use_gpu=True) as sess:
+      bytes_limit = sess.run(memory_stats_ops.BytesLimit())
+      self.assertLess(0, bytes_limit)
+
   # Tests the peak memory usage of the following computation.
   #   a   b
   #   | / |

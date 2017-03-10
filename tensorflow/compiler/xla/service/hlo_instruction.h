@@ -683,6 +683,10 @@ class HloInstruction {
   // Sets the string identifier for this instruction.
   void set_name(const string& name) { name_ = name; }
 
+  // Sets the debug metadata for this instruction.
+  void set_metadata(const OpMetadata& metadata) { metadata_ = metadata; }
+  const OpMetadata& metadata() const { return metadata_; }
+
   // Set/get the computation containing this instruction. set_parent should only
   // be called by HloComputation methods which add/remove instructions to
   // computations.
@@ -856,6 +860,9 @@ class HloInstruction {
 
   // The computation in which this instruction is contained.
   HloComputation* parent_ = nullptr;
+
+  // Metadata for debugging.
+  OpMetadata metadata_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(HloInstruction);
 };

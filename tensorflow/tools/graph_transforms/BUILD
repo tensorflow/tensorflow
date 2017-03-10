@@ -65,7 +65,7 @@ cc_library(
         "freeze_requantization_ranges.cc",
         "fuse_convolutions.cc",
         "insert_logging.cc",
-        "obsfucate_names.cc",
+        "obfuscate_names.cc",
         "remove_attribute.cc",
         "remove_device.cc",
         "remove_nodes.cc",
@@ -73,6 +73,7 @@ cc_library(
         "rename_op.cc",
         "set_device.cc",
         "sort_by_execution_order.cc",
+        "sparsify_gather.cc",
         "strip_unused_nodes.cc",
     ] + if_not_windows([
         "quantize_nodes.cc",
@@ -111,7 +112,7 @@ tf_cc_test(
         "freeze_requantization_ranges_test.cc",
         "fuse_convolutions_test.cc",
         "insert_logging_test.cc",
-        "obsfucate_names_test.cc",
+        "obfuscate_names_test.cc",
         "quantize_nodes_test.cc",
         "quantize_weights_test.cc",
         "remove_attribute_test.cc",
@@ -122,6 +123,7 @@ tf_cc_test(
         "round_weights_test.cc",
         "set_device_test.cc",
         "sort_by_execution_order_test.cc",
+        "sparsify_gather_test.cc",
         "strip_unused_nodes_test.cc",
     ],
     deps = [
