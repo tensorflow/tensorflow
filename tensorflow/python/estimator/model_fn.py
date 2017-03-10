@@ -71,7 +71,7 @@ class EstimatorSpec(
 
     Depending on the value of `mode`, different arguments are required. Namely
     * For `mode == ModeKeys.FIT`: required fields are `loss` and `train_op`.
-    * For `mode == ModeKeys.EVAL`: required fields are `loss` and `predictions`.
+    * For `mode == ModeKeys.EVAL`: required field is`loss`.
     * For `mode == ModeKeys.PREDICT`: required fields are `predictions`.
 
     model_fn can populate all arguments independent of mode. In this case, some
@@ -104,8 +104,7 @@ class EstimatorSpec(
         train_op = ...
       else:
         train_op = None
-      if (mode == tf.estimator.ModeKeys.EVAL or
-          mode == tf.estimator.ModeKeys.PREDICT):
+      if mode == tf.estimator.ModeKeys.PREDICT:
         predictions = ...
       else:
         predictions = None
@@ -172,8 +171,9 @@ class EstimatorSpec(
 
     # Validate predictions.
     if predictions is None:
-      if mode == ModeKeys.PREDICT or mode == ModeKeys.EVAL:
+      if mode == ModeKeys.PREDICT:
         raise ValueError('Missing predictions.')
+      predictions = {}
     else:
       if isinstance(predictions, dict):
         predictions = {

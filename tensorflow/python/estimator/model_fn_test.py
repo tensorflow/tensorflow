@@ -280,12 +280,10 @@ class EstimatorSpecEvalTest(test.TestCase):
             predictions={'prediction': constant_op.constant(1.)},
             loss=loss)
 
-  def testPredictionsMissing(self):
+  def testPredictionsMissingIsOkay(self):
     with ops.Graph().as_default(), self.test_session():
-      with self.assertRaisesRegexp(ValueError, 'Missing predictions'):
-        model_fn.EstimatorSpec(
-            mode=model_fn.ModeKeys.EVAL,
-            loss=constant_op.constant(1.))
+      model_fn.EstimatorSpec(
+          mode=model_fn.ModeKeys.EVAL, loss=constant_op.constant(1.))
 
   def testPredictionsTensor(self):
     """Tests that no error is raised when predictions is Tensor (not dict)."""
