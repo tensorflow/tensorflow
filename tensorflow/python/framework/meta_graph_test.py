@@ -565,7 +565,7 @@ class TestGetBackwardTensors(test.TestCase):
     a = array_ops.placeholder(dtypes.float32)
     b = math_ops.exp(a)
     c = math_ops.log(b)
-    d = math_ops.neg(b)
+    d = math_ops.negative(b)
     self.assertEqual(meta_graph._get_backward_ops([d]), [a.op, b.op, d.op])
     self.assertEqual(meta_graph._get_backward_ops([c]), [a.op, b.op, c.op])
     self.assertEqual(
@@ -684,7 +684,7 @@ class TestClone(test.TestCase):
       a = array_ops.constant(1., name="a")
       b = math_ops.exp(a, name="b")
       c = math_ops.log(b, name="c")
-      d = math_ops.neg(b, name="d")
+      d = math_ops.negative(b, name="d")
 
       b_new = array_ops.constant(math.e ** 2, name="b_new")
       d_new = array_ops.constant(-math.e ** 2, name="d_new")
@@ -762,7 +762,7 @@ class TestClone(test.TestCase):
     with g.as_default():
       a = array_ops.constant([2], dtype=dtypes.int32, name='a')
       b = array_ops.identity(a, name='b')
-      c = math_ops.neg(b, name='c')
+      c = math_ops.negative(b, name='c')
       d = array_ops.tile(c, b, name='d')
       e = math_ops.square(d, name='e')
 
@@ -916,7 +916,7 @@ class TestClone(test.TestCase):
                                from_scope="dense",
                                replace={x: x_new})
       self.assertEqual(y_out.op.inputs[0].op.inputs[1].name,
-                       "dense/weights/read:0")
+                       "dense/kernel/read:0")
       with self.test_session(use_gpu=True) as sess:
         sess.run(variables.global_variables_initializer())
         y_out_ = sess.run(y_out)
