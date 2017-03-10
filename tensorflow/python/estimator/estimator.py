@@ -295,7 +295,7 @@ class Estimator(object):
       training.create_global_step(g)
       features = self._get_features_from_input_fn(input_fn)
       estimator_spec = self._call_model_fn(features, None,
-                                           model_fn_lib.ModeKeys.TRAIN)
+                                           model_fn_lib.ModeKeys.PREDICT)
       predictions = self._extract_keys(estimator_spec.predictions, predict_keys)
       with training.MonitoredSession(
           session_creator=training.ChiefSessionCreator(

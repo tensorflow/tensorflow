@@ -302,6 +302,27 @@ class EstimatorTrainTest(test.TestCase):
       self.assertFalse(chief_hook.begin.called)
       self.assertTrue(hook.begin.called)
 
+  def test_features_labels_mode(self):
+    given_features = {'test-features': [[1], [1]]}
+    given_labels = {'test-labels': [[1], [1]]}
+
+    def _input_fn():
+      return given_features, given_labels
+
+    def _model_fn(features, labels, mode):
+      self.features, self.labels, self.mode = features, labels, mode
+      return model_fn_lib.EstimatorSpec(
+          mode=mode,
+          loss=constant_op.constant(0.),
+          train_op=constant_op.constant(0.),
+          predictions=constant_op.constant(0.))
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.train(_input_fn, steps=1)
+    self.assertEqual(given_features, self.features)
+    self.assertEqual(given_labels, self.labels)
+    self.assertEqual(model_fn_lib.ModeKeys.TRAIN, self.mode)
+
 
 def _model_fn_with_eval_metric_ops(features, labels, mode, params):
   _, _ = features, labels
@@ -444,6 +465,28 @@ class EstimatorEvaluateTest(test.TestCase):
     est.train(dummy_input_fn, steps=1)
     est.evaluate(dummy_input_fn, steps=1)
     self.assertTrue(self.mock_saver.restore.called)
+
+  def test_features_labels_mode(self):
+    given_features = {'test-features': [[1], [1]]}
+    given_labels = {'test-labels': [[1], [1]]}
+
+    def _input_fn():
+      return given_features, given_labels
+
+    def _model_fn(features, labels, mode):
+      self.features, self.labels, self.mode = features, labels, mode
+      return model_fn_lib.EstimatorSpec(
+          mode=mode,
+          loss=constant_op.constant(0.),
+          train_op=constant_op.constant(0.),
+          predictions=constant_op.constant(0.))
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.train(_input_fn, steps=1)
+    est.evaluate(_input_fn, steps=1)
+    self.assertEqual(given_features, self.features)
+    self.assertEqual(given_labels, self.labels)
+    self.assertEqual(model_fn_lib.ModeKeys.EVAL, self.mode)
 
 
 class EstimatorPredictTest(test.TestCase):
@@ -671,6 +714,28 @@ class EstimatorPredictTest(test.TestCase):
     est.train(dummy_input_fn, steps=1)
     next(est.predict(dummy_input_fn))
     self.assertTrue(self.mock_saver.restore.called)
+
+  def test_features_labels_mode(self):
+    given_features = {'test-features': [[1], [1]]}
+    given_labels = {'test-labels': [[1], [1]]}
+
+    def _input_fn():
+      return given_features, given_labels
+
+    def _model_fn(features, labels, mode):
+      self.features, self.labels, self.mode = features, labels, mode
+      return model_fn_lib.EstimatorSpec(
+          mode=mode,
+          loss=constant_op.constant(0.),
+          train_op=constant_op.constant(0.),
+          predictions=constant_op.constant([[0.]]))
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.train(_input_fn, steps=1)
+    next(est.predict(_input_fn))
+    self.assertEqual(given_features, self.features)
+    self.assertIsNone(self.labels)
+    self.assertEqual(model_fn_lib.ModeKeys.PREDICT, self.mode)
 
 
 if __name__ == '__main__':
