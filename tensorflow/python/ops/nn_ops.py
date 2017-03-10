@@ -27,6 +27,7 @@ from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
@@ -1970,10 +1971,14 @@ def top_k(input, k=1, sorted=True, name=None):
   """
   return gen_nn_ops._top_kv2(input, k=k, sorted=sorted, name=name)
 
-
+@deprecated_args(
+  "next major release",
+  "filters will be deprecated use filter instead", 
+  ('filters', None)
+)
 def conv1d(value, filter, stride, padding,
            use_cudnn_on_gpu=None, data_format=None,
-           name=None):
+           name=None, filters=None):
   """Computes a 1-D convolution given 3-D input and filter tensors.
 
   Given an input tensor of shape
@@ -2017,6 +2022,11 @@ def conv1d(value, filter, stride, padding,
   Raises:
     ValueError: if `data_format` is invalid.
   """
+
+  # Backwards compatability
+  if filters is not None:
+    filter = filters 
+
   with ops.name_scope(name, "conv1d", [value, filter]) as name:
     # Reshape the input tensor to [batch, 1, in_width, in_channels]
     if data_format is None or data_format == "NHWC":
