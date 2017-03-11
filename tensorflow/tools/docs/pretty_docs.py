@@ -114,7 +114,14 @@ def _build_class_page(page_info):
 
   if page_info.methods:
     parts.append('## Methods\n\n')
-    for method_info in sorted(page_info.methods):
+    # Sort the methods list, but make sure constructors come first.
+    constructors = ['__init__', '__new__']
+    inits = [method for method in page_info.methods
+             if method.short_name in constructors]
+    others = [method for method in page_info.methods
+              if method.short_name not in constructors]
+
+    for method_info in sorted(inits) + sorted(others):
       h3 = ('<h3 id="{short_name}">'
             '<code>{short_name}{signature}</code>'
             '</h3>\n\n')
