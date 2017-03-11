@@ -504,6 +504,19 @@ tf_gen_op_libs(
     ],
 )
 
+cc_library(
+    name = "debug_ops_op_lib",
+    srcs = ["ops/debug_ops.cc"],
+    copts = tf_copts(),
+    linkstatic = 1,
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":framework",
+        "//tensorflow/core/kernels:debug_ops",
+    ],
+    alwayslink = 1,
+)
+
 # And one for all user ops
 cc_library(
     name = "user_ops_op_lib",
@@ -666,7 +679,6 @@ cc_library(
         "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:ctc_ops",
         "//tensorflow/core/kernels:data_flow",
-        "//tensorflow/core/kernels:debug_ops",
         "//tensorflow/core/kernels:fake_quant_ops",
         "//tensorflow/core/kernels:function_ops",
         "//tensorflow/core/kernels:image",
