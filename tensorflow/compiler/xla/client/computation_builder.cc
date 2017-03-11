@@ -106,15 +106,9 @@ bool ComputationBuilder::MakeWindow(
     tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
     tensorflow::gtl::ArraySlice<int64> lhs_dilation,
     tensorflow::gtl::ArraySlice<int64> rhs_dilation, Window* window) {
-<<<<<<< HEAD
-  const auto verify_size = [&](
-      const tensorflow::gtl::ArraySlice<int64>::size_type x,
-      const char* x_name) {
-=======
   const auto verify_size = [&](const tensorflow::gtl::ArraySlice<
                                    int64>::size_type x,
                                const char* x_name) {
->>>>>>> eb8bb9e461f669f299aa031634530995bc43f92b
     if (x == 0 || x == window_dimensions.size()) {
       return true;
     } else {
@@ -702,11 +696,7 @@ ComputationDataHandle ComputationBuilder::ConvWithGeneralDimensions(
 
   std::vector<int64> base_area_dimensions(
       dimension_numbers.spatial_dimensions_size());
-<<<<<<< HEAD
-  for (std::vector<int64>::size_type i = 0; i < base_area_dimensions.size() ;
-=======
   for (std::vector<int64>::size_type i = 0; i < base_area_dimensions.size();
->>>>>>> eb8bb9e461f669f299aa031634530995bc43f92b
        ++i) {
     base_area_dimensions[i] =
         lhs_shape->dimensions(dimension_numbers.spatial_dimensions(i));

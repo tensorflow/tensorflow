@@ -761,13 +761,8 @@ cc_library(
         "//tensorflow/core/kernels:constant_op",
         "//tensorflow/core/kernels:ops_testutil",
         "//tensorflow/core/kernels:ops_util",
-<<<<<<< HEAD
         "//tensorflow/core/platform/default/build_config:gtest",
     ] + if_sycl([":sycl_runtime"]),
-=======
-        "//tensorflow/core/platform/default/build_config:gtest",  # + if_sycl([":sycl_runtime"]),
-    ],
->>>>>>> eb8bb9e461f669f299aa031634530995bc43f92b
 )
 
 # This is a link-only library to provide a DirectSession

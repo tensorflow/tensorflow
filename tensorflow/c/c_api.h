@@ -815,12 +815,7 @@ extern void TF_ImportGraphDefOptionsAddInputMapping(
 // `dst` references an operation already existing in the graph being imported
 // into.
 extern void TF_GraphImportGraphDefOptionsRemapControlDependency(
-<<<<<<< HEAD
-    TF_ImportGraphDefOptions* opts, const char* src_name,
-    TF_Operation* dst);
-=======
     TF_ImportGraphDefOptions* opts, const char* src_name, TF_Operation* dst);
->>>>>>> eb8bb9e461f669f299aa031634530995bc43f92b
 
 // Cause the imported graph to have a control dependency on `oper`. `oper`
 // should exist in the graph being imported into.

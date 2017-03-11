@@ -359,28 +359,6 @@ def _fused_batch_norm(
 
 
 @add_arg_scope
-<<<<<<< HEAD
-def batch_norm(
-    inputs,
-    decay=0.999,
-    center=True,
-    scale=False,
-    epsilon=0.001,
-    activation_fn=None,
-    param_initializers=None,
-    param_regularizers=None,
-    updates_collections=ops.GraphKeys.UPDATE_OPS,
-    is_training=True,
-    reuse=None,
-    variables_collections=None,
-    outputs_collections=None,
-    trainable=True,
-    batch_weights=None,
-    fused=False,
-    data_format=DATA_FORMAT_NHWC,
-    zero_debias_moving_mean=False,
-    scope=None):
-=======
 def batch_norm(inputs,
                decay=0.999,
                center=True,
@@ -400,7 +378,6 @@ def batch_norm(inputs,
                data_format=DATA_FORMAT_NHWC,
                zero_debias_moving_mean=False,
                scope=None):
->>>>>>> eb8bb9e461f669f299aa031634530995bc43f92b
   """Adds a Batch Normalization layer from http://arxiv.org/abs/1502.03167.
 
     "Batch Normalization: Accelerating Deep Network Training by Reducing

@@ -9,13 +9,8 @@ exports_files(["LICENSE"])
 cc_library(
     name = "gtest",
     srcs = [
-<<<<<<< HEAD
-        "googletest/src/gtest-all.cc",
-        "googlemock/src/gmock-all.cc",
-=======
         "googlemock/src/gmock-all.cc",
         "googletest/src/gtest-all.cc",
->>>>>>> eb8bb9e461f669f299aa031634530995bc43f92b
     ],
     hdrs = glob([
         "**/*.h",
@@ -23,17 +18,10 @@ cc_library(
         "googlemock/src/*.cc",
     ]),
     includes = [
-<<<<<<< HEAD
-        "googletest",
-        "googletest/include",
-        "googlemock",
-        "googlemock/include",
-=======
         "googlemock",
         "googlemock/include",
         "googletest",
         "googletest/include",
->>>>>>> eb8bb9e461f669f299aa031634530995bc43f92b
     ],
     linkopts = ["-pthread"],
     visibility = ["//visibility:public"],
