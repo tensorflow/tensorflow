@@ -23,6 +23,7 @@ from __future__ import print_function
 
 # pylint: disable=wildcard-import
 from tensorflow.contrib.graph_editor.edit import *
+from tensorflow.contrib.graph_editor.match import *
 from tensorflow.contrib.graph_editor.reroute import *
 from tensorflow.contrib.graph_editor.select import *
 from tensorflow.contrib.graph_editor.subgraph import *

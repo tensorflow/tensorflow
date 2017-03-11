@@ -14,6 +14,7 @@ py_library(
     srcs = [
         "__init__.py",
         "edit.py",
+        "match.py",
         "reroute.py",
         "select.py",
         "subgraph.py",
