@@ -56,21 +56,27 @@ class ResizeNearestNeighborOp : public OpKernel {
 
     typename TTypes<T, 4>::ConstTensor input_data = input.tensor<T, 4>();
     typename TTypes<T, 4>::Tensor output_data = st.output->tensor<T, 4>();
+    
+    const int64 in_row_size = st.in_width * st.channels;
+    const int64 in_batch_num_values = st.in_height * in_row_size;
 
+    const T* input_b_ptr = input_data.data();
+    T* output_data_ptr = output_data.data();
     for (int b = 0; b < st.batch_size; ++b) {
       for (int y = 0; y < st.out_height; ++y) {
         const int64 in_y =
             std::min(static_cast<int64>(floorf(y * st.height_scale)),
                      (st.in_height - 1));
+        const T* input_y_ptr = input_b_ptr + in_y * in_row_size;
         for (int x = 0; x < st.out_width; ++x) {
           const int64 in_x =
               std::min(static_cast<int64>(floorf(x * st.width_scale)),
                        (st.in_width - 1));
-          for (int c = 0; c < st.channels; ++c) {
-            output_data(b, y, x, c) = input_data(b, in_y, in_x, c);
-          }
+          const T* input_yx_ptr = input_y_ptr + in_x * st.channels;
+          output_data_ptr = std::copy_n(input_yx_ptr, st.channels, output_data_ptr);
         }
       }
+      input_b_ptr += in_batch_num_values;
     }
   }
 
