@@ -8318,19 +8318,39 @@ op {
   name: "GetSessionHandle"
   input_arg {
     name: "value"
-    description: "The tensor to be stored."
     type_attr: "T"
   }
   output_arg {
     name: "handle"
-    description: "The handle for the tensor stored in the session state."
     type: DT_STRING
   }
   attr {
     name: "T"
     type: "type"
   }
+  deprecation {
+    version: 23
+    explanation: "Use GetSessionHandleV2"
+  }
+}
+op {
+  name: "GetSessionHandleV2"
+  input_arg {
+    name: "value"
+    description: "The tensor to be stored."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "handle"
+    description: "The handle for the tensor stored in the session state, represented\nas a ResourceHandle object."
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
   summary: "Store the input tensor in the state of the current session."
+  is_stateful: true
 }
 op {
   name: "GetSessionTensor"

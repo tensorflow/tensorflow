@@ -205,12 +205,12 @@ class TextFileLineIterator
         return;
       }
     }
-    status_ = SetValue(line, tokens, key_index_, key_.dtype(), &key_);
+    status_ = SetValue(line, tokens, key_index_, &key_);
     if (!status_.ok()) {
       valid_ = false;
       return;
     }
-    status_ = SetValue(line, tokens, value_index_, value_.dtype(), &value_);
+    status_ = SetValue(line, tokens, value_index_, &value_);
     if (!status_.ok()) {
       valid_ = false;
       return;
@@ -247,17 +247,14 @@ class TextFileLineIterator
   // Set the corresponding value from line or tokens based on 'index' into the
   // tensor 't'. The value is transformed to the given data type 'dtype'.
   Status SetValue(const string& line, const std::vector<string>& tokens,
-                  int64 index, DataType dtype, Tensor* tensor) {
+                  int64 index, Tensor* tensor) {
     if (index == kLineNumber) {
       tensor->flat<int64>()(0) = next_id_;
       return Status::OK();
     }
-    if (index == kWholeLine) {
-      tensor->flat<string>()(0) = line;
-      return Status::OK();
-    }
-    const string& token = tokens[index];
-    switch (tensor->dtype()) {
+    const string& token = (index == kWholeLine) ? line : tokens[index];
+    const DataType& dtype = tensor->dtype();
+    switch (dtype) {
       case DT_INT32: {
         int32 value;
         if (!strings::safe_strto32(token.c_str(), &value)) {
@@ -317,26 +314,28 @@ Status InitializeTableFromTextFile(const string& filename, int64 vocab_size,
         "Key index for line number requires table key dtype of int64, got ",
         table->key_dtype());
   }
-  if (key_index == kWholeLine && table->key_dtype() != DT_STRING) {
+  const DataType& key_dtype = table->key_dtype();
+  const DataType& value_dtype = table->value_dtype();
+  if (key_index == kWholeLine && !DataTypeIsInteger(key_dtype) &&
+      key_dtype != DT_STRING) {
     return errors::InvalidArgument(
-        "Key index for whole line requires table key dtype of string, got ",
+        "Key index for whole line requires string or integer table key, got ",
         table->key_dtype());
   }
-  if (value_index == kLineNumber && table->value_dtype() != DT_INT64) {
+  if (value_index == kLineNumber && value_dtype != DT_INT64) {
     return errors::InvalidArgument(
         "Value index for line number requires table value dtype of int64, got ",
         table->value_dtype());
   }
-  if (value_index == kWholeLine && table->value_dtype() != DT_STRING) {
+  if (value_index == kWholeLine && value_dtype != DT_STRING) {
     return errors::InvalidArgument(
         "Value index for whole line requires table value dtype of string, got ",
         table->value_dtype());
   }
 
   TextFileLineIterator iter;
-  TF_RETURN_IF_ERROR(iter.Init(filename, vocab_size, delimiter,
-                               table->key_dtype(), key_index,
-                               table->value_dtype(), value_index, env));
+  TF_RETURN_IF_ERROR(iter.Init(filename, vocab_size, delimiter, key_dtype,
+                               key_index, value_dtype, value_index, env));
   // For initialization from files, ignore if the table is already
   // initialized. The table shared name should contain the filename to
   // avoid trying to initialize the same table from the same file at the same

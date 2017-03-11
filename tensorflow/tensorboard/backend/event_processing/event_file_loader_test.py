@@ -24,7 +24,7 @@ import tempfile
 
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
-from tensorflow.python.summary.impl import event_file_loader
+from tensorflow.tensorboard.backend.event_processing import event_file_loader
 
 
 class EventFileLoaderTest(test_util.TensorFlowTestCase):

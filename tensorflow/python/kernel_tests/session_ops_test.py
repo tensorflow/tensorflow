@@ -22,6 +22,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import session_ops
+from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
@@ -228,6 +230,45 @@ class SessionOpsTest(test.TestCase):
           feed_dict={a_p: a_handle.handle,
                      b_p: b_handle.handle})
       self.assertEqual(3.0, c_handle.eval())
+
+  def testFeedOneHandleDirectly(self):
+    with self.test_session() as sess:
+      a = constant_op.constant(10.0)
+      b = constant_op.constant(5.0)
+      c = math_ops.multiply(a, b)
+      d = math_ops.multiply(c, c)
+
+      h_c = sess.run(session_ops.get_session_handle(c))
+
+      self.assertAllClose(2500.0, sess.run(d, feed_dict={c: h_c}))
+
+  def testFeedTwoHandlesDirectly(self):
+    with self.test_session() as sess:
+      a = constant_op.constant(10.0)
+      b = constant_op.constant(5.0)
+      c = math_ops.multiply(a, b)
+      d = math_ops.div(a, b)
+      e = math_ops.subtract(c, d)
+
+      h_c = sess.run(session_ops.get_session_handle(c))
+      h_d = sess.run(session_ops.get_session_handle(d))
+
+      self.assertAllClose(48.0, sess.run(e, feed_dict={c: h_c, d: h_d}))
+      self.assertAllClose(-48.0, sess.run(e, feed_dict={c: h_d, d: h_c}))
+
+  def testFeedHandleToVariableDirectly(self):
+    with self.test_session() as sess:
+      a = variables.Variable(12.0)
+      inc_a = state_ops.assign_add(a, 2.0)
+      b = math_ops.add(a, 5.0)
+      sess.run(a.initializer)
+
+      h_a_read = sess.run(session_ops.get_session_handle(a.read_value()))
+      self.assertAllClose(12.0, sess.run(a))
+
+      self.assertAllClose(17.0, sess.run(b, feed_dict={a: h_a_read}))
+      sess.run(inc_a)
+      self.assertAllClose(19.0, sess.run(b, feed_dict={a: h_a_read}))
 
 
 if __name__ == "__main__":

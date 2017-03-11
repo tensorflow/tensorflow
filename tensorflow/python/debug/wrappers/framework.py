@@ -238,7 +238,9 @@ class OnRunStartResponse(object):
                debug_urls,
                debug_ops="DebugIdentity",
                node_name_regex_whitelist=None,
-               op_type_regex_whitelist=None):
+               op_type_regex_whitelist=None,
+               tensor_dtype_regex_whitelist=None,
+               tolerate_debug_op_creation_failures=False):
     """Constructor of `OnRunStartResponse`.
 
     Args:
@@ -251,6 +253,10 @@ class OnRunStartResponse(object):
       node_name_regex_whitelist: Regular-expression whitelist for node
         name.
       op_type_regex_whitelist: Regular-expression whitelist for op type.
+      tensor_dtype_regex_whitelist: Regular-expression whitelist for tensor
+        dtype.
+      tolerate_debug_op_creation_failures: Whether debug op creation failures
+        are to be tolerated.
     """
 
     _check_type(action, str)
@@ -263,6 +269,9 @@ class OnRunStartResponse(object):
 
     self.node_name_regex_whitelist = node_name_regex_whitelist
     self.op_type_regex_whitelist = op_type_regex_whitelist
+    self.tensor_dtype_regex_whitelist = tensor_dtype_regex_whitelist
+    self.tolerate_debug_op_creation_failures = (
+        tolerate_debug_op_creation_failures)
 
 
 class OnRunEndRequest(object):
@@ -412,7 +421,11 @@ class BaseDebugWrapperSession(session.SessionInterface):
           run_start_resp.debug_urls,
           debug_ops=run_start_resp.debug_ops,
           node_name_regex_whitelist=run_start_resp.node_name_regex_whitelist,
-          op_type_regex_whitelist=run_start_resp.op_type_regex_whitelist)
+          op_type_regex_whitelist=run_start_resp.op_type_regex_whitelist,
+          tensor_dtype_regex_whitelist=(
+              run_start_resp.tensor_dtype_regex_whitelist),
+          tolerate_debug_op_creation_failures=(
+              run_start_resp.tolerate_debug_op_creation_failures))
 
       # Invoke the run() method of the wrapped Session. Catch any TensorFlow
       # runtime errors.
@@ -474,7 +487,9 @@ class BaseDebugWrapperSession(session.SessionInterface):
                             debug_urls,
                             debug_ops="DebugIdentity",
                             node_name_regex_whitelist=None,
-                            op_type_regex_whitelist=None):
+                            op_type_regex_whitelist=None,
+                            tensor_dtype_regex_whitelist=None,
+                            tolerate_debug_op_creation_failures=False):
     """Modify a RunOptions object for debug tensor watching.
 
     Specifies request for outputting partition graphs. Adds
@@ -488,6 +503,10 @@ class BaseDebugWrapperSession(session.SessionInterface):
       node_name_regex_whitelist: Regular-expression whitelist for node
         name.
       op_type_regex_whitelist: Regular-expression whitelist for op type.
+      tensor_dtype_regex_whitelist: Regular-expression whitelist for tensor
+        dtype.
+      tolerate_debug_op_creation_failures: Whether debug op creation failures
+        are to be tolerated.
     """
 
     run_options.output_partition_graphs = True
@@ -497,7 +516,9 @@ class BaseDebugWrapperSession(session.SessionInterface):
         debug_urls=debug_urls,
         debug_ops=debug_ops,
         node_name_regex_whitelist=node_name_regex_whitelist,
-        op_type_regex_whitelist=op_type_regex_whitelist)
+        op_type_regex_whitelist=op_type_regex_whitelist,
+        tensor_dtype_regex_whitelist=tensor_dtype_regex_whitelist,
+        tolerate_debug_op_creation_failures=tolerate_debug_op_creation_failures)
 
   @abc.abstractmethod
   def on_session_init(self, request):
@@ -582,6 +603,56 @@ class BaseDebugWrapperSession(session.SessionInterface):
     """
 
 
+class WatchOptions(object):
+  """Type for return values of watch_fn."""
+
+  def __init__(self,
+               debug_ops=None,
+               node_name_regex_whitelist=None,
+               op_type_regex_whitelist=None,
+               tensor_dtype_regex_whitelist=None,
+               tolerate_debug_op_creation_failures=False):
+    """Constructor of WatchOptions: Debug watch options.
+
+    Used as return values of `watch_fn`s.
+
+    Args:
+      debug_ops: (`str` or `list of str`) Debug ops to be used.
+      node_name_regex_whitelist: Regular-expression whitelist for node_name,
+        e.g., `"(weight_[0-9]+|bias_.*)"`
+      op_type_regex_whitelist: Regular-expression whitelist for the op type of
+        nodes, e.g., `"(Variable|Add)"`.
+        If both `node_name_regex_whitelist` and `op_type_regex_whitelist`
+        are set, the two filtering operations will occur in a logical `AND`
+        relation. In other words, a node will be included if and only if it
+        hits both whitelists.
+      tensor_dtype_regex_whitelist: Regular-experssion whitelist for Tensor
+        data type, e.g., `"^int.*"`.
+        This whitelist operates in logical `AND` relations to the two whitelists
+        above.
+      tolerate_debug_op_creation_failures: (`bool`) whether debug op creation
+        failures (e.g., due to dtype incompatibility) are to be tolerated by not
+        throwing exceptions.
+    """
+    if debug_ops:
+      self.debug_ops = debug_ops
+    else:
+      self.debug_ops = ["DebugIdentity"]
+    self.node_name_regex_whitelist = node_name_regex_whitelist
+    self.op_type_regex_whitelist = op_type_regex_whitelist
+    self.tensor_dtype_regex_whitelist = tensor_dtype_regex_whitelist
+    self.tolerate_debug_op_creation_failures = (
+        tolerate_debug_op_creation_failures)
+
+  def __repr__(self):
+    return ("WatchOptions(debug_ops=%r, node_name_regex_whitelist=%r, "
+            "op_type_regex_whitelist=%r, tensor_dtype_regex_whitelist=%r, "
+            "tolerate_debug_op_creation_failures=%r)" % (
+                self.debug_ops, self.node_name_regex_whitelist,
+                self.op_type_regex_whitelist, self.tensor_dtype_regex_whitelist,
+                self.tolerate_debug_op_creation_failures))
+
+
 class NonInteractiveDebugWrapperSession(BaseDebugWrapperSession):
   """Base class for non-interactive (i.e., non-CLI) debug wrapper sessions."""
 
@@ -645,16 +716,18 @@ class NonInteractiveDebugWrapperSession(BaseDebugWrapperSession):
   def on_run_start(self, request):
     """See doc of BaseDebugWrapperSession.on_run_start."""
 
-    (debug_urls, debug_ops, node_name_regex_whitelist,
-     op_type_regex_whitelist) = self._prepare_run_watch_config(
-         request.fetches, request.feed_dict)
+    debug_urls, watch_opts = self._prepare_run_watch_config(
+        request.fetches, request.feed_dict)
 
     return OnRunStartResponse(
         OnRunStartAction.DEBUG_RUN,
         debug_urls,
-        debug_ops=debug_ops,
-        node_name_regex_whitelist=node_name_regex_whitelist,
-        op_type_regex_whitelist=op_type_regex_whitelist)
+        debug_ops=watch_opts.debug_ops,
+        node_name_regex_whitelist=watch_opts.node_name_regex_whitelist,
+        op_type_regex_whitelist=watch_opts.op_type_regex_whitelist,
+        tensor_dtype_regex_whitelist=watch_opts.tensor_dtype_regex_whitelist,
+        tolerate_debug_op_creation_failures=(
+            watch_opts.tolerate_debug_op_creation_failures))
 
   def _prepare_run_watch_config(self, fetches, feed_dict):
     """Get the debug_urls, and node/op whitelists for the current run() call.
@@ -666,24 +739,20 @@ class NonInteractiveDebugWrapperSession(BaseDebugWrapperSession):
     Returns:
       debug_urls: (str or list of str) Debug URLs for the current run() call.
         Currently, the list consists of only one URL that is a file:// URL.
-      debug_ops: (str or list of str) Debug op(s) to be used by the
-        debugger.
-      node_name_regex_whitelist: (str or regex) Regular-expression whitelist for
-        node name. Same as the same-name argument to debug_utils.watch_graph.
-      op_type_regex_whitelist: (str or regex) Regular-expression whitelist for
-        op type. Same as the same-name argument to debug_utils.watch_graph.
+      watch_options: (WatchOptions) The return value of a watch_fn, containing
+        options including debug_ops, and whitelists.
     """
 
     debug_urls = self._prepare_run_debug_urls(fetches, feed_dict)
-    debug_ops = "DebugIdentity"
-    node_name_regex_whitelist = None
-    op_type_regex_whitelist = None
-    if self._watch_fn is not None:
-      debug_ops, node_name_regex_whitelist, op_type_regex_whitelist = (
-          self._watch_fn(fetches, feed_dict))
+    if self._watch_fn is None:
+      watch_options = WatchOptions()
+    else:
+      watch_options = self._watch_fn(fetches, feed_dict)
+      if isinstance(watch_options, tuple):
+        # For legacy return type (tuples).
+        watch_options = WatchOptions(*watch_options)
 
-    return (debug_urls, debug_ops, node_name_regex_whitelist,
-            op_type_regex_whitelist)
+    return debug_urls, watch_options
 
   def on_run_end(self, request):
     """See doc of BaseDebugWrapperSession.on_run_end."""

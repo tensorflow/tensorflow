@@ -250,6 +250,7 @@ cc_library(
         "lib/gtl/flatmap.h",
         "lib/gtl/flatset.h",
         "lib/gtl/inlined_vector.h",
+        "lib/gtl/optional.h",
         "lib/gtl/priority_queue_util.h",
         "lib/hash/crc32c.h",
         "lib/histogram/histogram.h",
@@ -760,8 +761,13 @@ cc_library(
         "//tensorflow/core/kernels:constant_op",
         "//tensorflow/core/kernels:ops_testutil",
         "//tensorflow/core/kernels:ops_util",
+<<<<<<< HEAD
         "//tensorflow/core/platform/default/build_config:gtest",
     ] + if_sycl([":sycl_runtime"]),
+=======
+        "//tensorflow/core/platform/default/build_config:gtest",  # + if_sycl([":sycl_runtime"]),
+    ],
+>>>>>>> eb8bb9e461f669f299aa031634530995bc43f92b
 )
 
 # This is a link-only library to provide a DirectSession
@@ -1709,6 +1715,7 @@ tf_cc_tests(
         "lib/gtl/iterator_range_test.cc",
         "lib/gtl/manual_constructor_test.cc",
         "lib/gtl/map_util_test.cc",
+        "lib/gtl/optional_test.cc",
         "lib/gtl/top_n_test.cc",
         "lib/hash/crc32c_test.cc",
         "lib/hash/hash_test.cc",

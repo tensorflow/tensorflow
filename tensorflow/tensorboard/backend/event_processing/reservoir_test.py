@@ -20,7 +20,7 @@ from __future__ import print_function
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.platform import test
-from tensorflow.python.summary.impl import reservoir
+from tensorflow.tensorboard.backend.event_processing import reservoir
 
 
 class ReservoirTest(test.TestCase):

@@ -20,12 +20,18 @@ limitations under the License.
 #include "tensorflow/java/src/main/native/exception_jni.h"
 #include "tensorflow/java/src/main/native/saved_model_bundle_jni.h"
 
+<<<<<<< HEAD
 JNIEXPORT jobject JNICALL Java_org_tensorflow_SavedModelBundle_load(JNIEnv * env,
                                                                     jclass clazz,
                                                                     jstring export_dir,
                                                                     jobjectArray tags,
                                                                     jbyteArray run_options) {
 
+=======
+JNIEXPORT jobject JNICALL Java_org_tensorflow_SavedModelBundle_load(
+    JNIEnv* env, jclass clazz, jstring export_dir, jobjectArray tags,
+    jbyteArray run_options) {
+>>>>>>> eb8bb9e461f669f299aa031634530995bc43f92b
   TF_Status* status = TF_NewStatus();
   jobject bundle = nullptr;
 
@@ -36,7 +42,12 @@ JNIEXPORT jobject JNICALL Java_org_tensorflow_SavedModelBundle_load(JNIEnv * env
     size_t sz = env->GetArrayLength(run_options);
     if (sz > 0) {
       jbyte* run_options_data = env->GetByteArrayElements(run_options, nullptr);
+<<<<<<< HEAD
       crun_options = TF_NewBufferFromString(static_cast<void*>(run_options_data), sz);
+=======
+      crun_options =
+          TF_NewBufferFromString(static_cast<void*>(run_options_data), sz);
+>>>>>>> eb8bb9e461f669f299aa031634530995bc43f92b
       env->ReleaseByteArrayElements(run_options, run_options_data, JNI_ABORT);
     }
   }
@@ -53,6 +64,7 @@ JNIEXPORT jobject JNICALL Java_org_tensorflow_SavedModelBundle_load(JNIEnv * env
   // load the session
   TF_Graph* graph = TF_NewGraph();
   TF_Buffer* metagraph_def = TF_NewBuffer();
+<<<<<<< HEAD
   TF_Session* session = TF_LoadSessionFromSavedModel(opts, crun_options, cexport_dir,
                                                      tags_ptrs.get(), tags_len, graph,
                                                      metagraph_def, status);
@@ -60,6 +72,15 @@ JNIEXPORT jobject JNICALL Java_org_tensorflow_SavedModelBundle_load(JNIEnv * env
   // release the parameters
   TF_DeleteSessionOptions(opts);
   if(crun_options != nullptr) {
+=======
+  TF_Session* session = TF_LoadSessionFromSavedModel(
+      opts, crun_options, cexport_dir, tags_ptrs.get(), tags_len, graph,
+      metagraph_def, status);
+
+  // release the parameters
+  TF_DeleteSessionOptions(opts);
+  if (crun_options != nullptr) {
+>>>>>>> eb8bb9e461f669f299aa031634530995bc43f92b
     TF_DeleteBuffer(crun_options);
   }
   env->ReleaseStringUTFChars(export_dir, cexport_dir);
@@ -73,6 +94,7 @@ JNIEXPORT jobject JNICALL Java_org_tensorflow_SavedModelBundle_load(JNIEnv * env
   if (throwExceptionIfNotOK(env, status)) {
     // sizeof(jsize) is less than sizeof(size_t) on some platforms.
     if (metagraph_def->length > std::numeric_limits<jint>::max()) {
+<<<<<<< HEAD
       throwException(env, kIndexOutOfBoundsException,
                      "MetaGraphDef is too large to serialize into a byte[] array");
     } else {
@@ -94,11 +116,39 @@ JNIEXPORT jobject JNICALL Java_org_tensorflow_SavedModelBundle_load(JNIEnv * env
   }
 
   if(session != nullptr) {
+=======
+      throwException(
+          env, kIndexOutOfBoundsException,
+          "MetaGraphDef is too large to serialize into a byte[] array");
+    } else {
+      static_assert(sizeof(jbyte) == 1, "unexpected size of the jbyte type");
+      jint jmetagraph_len = static_cast<jint>(metagraph_def->length);
+      jbyteArray jmetagraph_def = env->NewByteArray(jmetagraph_len);
+      env->SetByteArrayRegion(jmetagraph_def, 0, jmetagraph_len,
+                              static_cast<const jbyte*>(metagraph_def->data));
+
+      jmethodID method = env->GetStaticMethodID(
+          clazz, "fromHandle", "(JJ[B)Lorg/tensorflow/SavedModelBundle;");
+      bundle = env->CallStaticObjectMethod(
+          clazz, method, reinterpret_cast<jlong>(graph),
+          reinterpret_cast<jlong>(session), jmetagraph_def);
+      graph = nullptr;
+      session = nullptr;
+      env->DeleteLocalRef(jmetagraph_def);
+    }
+  }
+
+  if (session != nullptr) {
+>>>>>>> eb8bb9e461f669f299aa031634530995bc43f92b
     TF_CloseSession(session, status);
     // Result of close is ignored, delete anyway.
     TF_DeleteSession(session, status);
   }
+<<<<<<< HEAD
   if(graph != nullptr) {
+=======
+  if (graph != nullptr) {
+>>>>>>> eb8bb9e461f669f299aa031634530995bc43f92b
     TF_DeleteGraph(graph);
   }
   TF_DeleteBuffer(metagraph_def);
