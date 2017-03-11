@@ -29,7 +29,13 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":debugger_plugin",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:summary",
+        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:util",
+        "//tensorflow/tensorboard/backend:application",
+        "//tensorflow/tensorboard/backend/event_processing:event_multiplexer",
+        "//third_party/py/numpy",
+        "@org_pocoo_werkzeug//:werkzeug",
     ],
 )

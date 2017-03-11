@@ -176,17 +176,19 @@ class DumpingDebugHook(session_run_hook.SessionRunHook,
 
     self._run_call_count += 1
 
-    (debug_urls, debug_ops, node_name_regex_whitelist,
-     op_type_regex_whitelist) = self._prepare_run_watch_config(
-         run_context.original_args.fetches, run_context.original_args.feed_dict)
+    debug_urls, watch_options = self._prepare_run_watch_config(
+        run_context.original_args.fetches, run_context.original_args.feed_dict)
     run_options = config_pb2.RunOptions()
     debug_utils.watch_graph(
         run_options,
         run_context.session.graph,
         debug_urls=debug_urls,
-        debug_ops=debug_ops,
-        node_name_regex_whitelist=node_name_regex_whitelist,
-        op_type_regex_whitelist=op_type_regex_whitelist)
+        debug_ops=watch_options.debug_ops,
+        node_name_regex_whitelist=watch_options.node_name_regex_whitelist,
+        op_type_regex_whitelist=watch_options.op_type_regex_whitelist,
+        tensor_dtype_regex_whitelist=watch_options.tensor_dtype_regex_whitelist,
+        tolerate_debug_op_creation_failures=(
+            watch_options.tolerate_debug_op_creation_failures))
 
     run_args = session_run_hook.SessionRunArgs(
         None, feed_dict=None, options=run_options)

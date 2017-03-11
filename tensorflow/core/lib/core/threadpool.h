@@ -27,24 +27,36 @@ namespace thread {
 
 class ThreadPool {
  public:
-  // Construct a pool that contains "num_threads" threads with specified "name".
-  // env->StartThread() is used to create individual threads.
+  // Constructs a pool that contains "num_threads" threads with specified
+  // "name". env->StartThread() is used to create individual threads with the
+  // given ThreadOptions. If "low_latency_hint" is true the thread pool
+  // implementation may use it as a hint that lower latency if preferred at the
+  // cost of higher CPU usage, e.g. by letting one or more idle threads spin
+  // wait. Conversely, if the threadpool is used to schedule high-latency
+  // operations like I/O the hint should be set to false.
   //
+  // REQUIRES: num_threads > 0
+  ThreadPool(Env* env, const ThreadOptions& thread_options, const string& name,
+             int num_threads, bool low_latency_hint);
+
+  // Constructs a pool for low-latency ops that contains "num_threads" threads
+  // with specified "name". env->StartThread() is used to create individual
+  // threads.
   // REQUIRES: num_threads > 0
   ThreadPool(Env* env, const string& name, int num_threads);
 
-  // Construct a pool that contains "num_threads" threads with specified "name".
-  // env->StartThread() is used to create individual threads.
-  //
+  // Constructs a pool for low-latency ops that contains "num_threads" threads
+  // with specified "name". env->StartThread() is used to create individual
+  // threads with the given ThreadOptions.
   // REQUIRES: num_threads > 0
   ThreadPool(Env* env, const ThreadOptions& thread_options, const string& name,
              int num_threads);
 
-  // Wait until all scheduled work has finished and then destroy the
+  // Waits until all scheduled work has finished and then destroy the
   // set of threads.
   ~ThreadPool();
 
-  // Schedule fn() for execution in the pool of threads.
+  // Schedules fn() for execution in the pool of threads.
   void Schedule(std::function<void()> fn);
 
   // ParallelFor shards the "total" units of work assuming each unit of work
@@ -60,7 +72,7 @@ class ThreadPool {
   void ParallelFor(int64 total, int64 cost_per_unit,
                    std::function<void(int64, int64)> fn);
 
-  // Shard the "total" units of work. For more details, see "ParallelFor".
+  // Shards the "total" units of work. For more details, see "ParallelFor".
   //
   // The function is passed a thread_id between 0 and NumThreads() *inclusive*.
   // This is because some work can happen on the caller thread while the threads

@@ -37,9 +37,9 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
-from tensorflow.python.summary import event_multiplexer
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.tensorboard.backend import application
+from tensorflow.tensorboard.backend.event_processing import event_multiplexer
 from tensorflow.tensorboard.plugins.projector import projector_plugin
 
 

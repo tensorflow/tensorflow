@@ -236,6 +236,10 @@ class UserComputation {
   // Returns the output shape of the operation indicated by the given handle.
   StatusOr<Shape> GetShape(const ComputationDataHandle& handle);
 
+  // Sets metadata on the Hlo instruction referenced by the given handle.
+  Status SetOpMetadata(const ComputationDataHandle& handle,
+                       const OpMetadata& metadata);
+
   // Builds a HLO computation from the UserComputation. The parameter "resolver"
   // is a function which returns a pointer to the HloComputation corresponding
   // to the given ComputationHandle at the given version. The resolver is used

@@ -106,20 +106,15 @@ static void *AVCaptureStillImageIsCapturingStillImageContext =
   [session startRunning];
 
   if (error) {
-    NSString *title = \
-      [NSString stringWithFormat:@"Failed with error %d", (int)[error code]];
-    UIAlertController *alertController = \
-      [UIAlertController alertControllerWithTitle:title
-                                          message:[error localizedDescription]
-                                   preferredStyle:UIAlertControllerStyleAlert];
-    UIAlertAction *dismiss = \
-      [UIAlertAction actionWithTitle:@"Dismiss"
-                               style:UIAlertActionStyleDefault
-                             handler:nil];
+    NSString *title = [NSString stringWithFormat:@"Failed with error %d", (int)[error code]];
+    UIAlertController *alertController =
+        [UIAlertController alertControllerWithTitle:title
+                                            message:[error localizedDescription]
+                                     preferredStyle:UIAlertControllerStyleAlert];
+    UIAlertAction *dismiss =
+        [UIAlertAction actionWithTitle:@"Dismiss" style:UIAlertActionStyleDefault handler:nil];
     [alertController addAction:dismiss];
-    [self presentViewController:alertController
-                       animated:YES
-                     completion:nil];
+    [self presentViewController:alertController animated:YES completion:nil];
     [self teardownAVCapture];
   }
 }

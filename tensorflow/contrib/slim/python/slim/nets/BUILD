@@ -14,6 +14,19 @@ package(
     ],
 )
 
+# Transitive dependencies of this target will be included in the pip package.
+py_library(
+    name = "nets_pip",
+    deps = [
+        ":alexnet",
+        ":inception",
+        ":overfeat",
+        ":resnet_v1",
+        ":resnet_v2",
+        ":vgg",
+    ],
+)
+
 py_library(
     name = "alexnet",
     srcs = ["alexnet.py"],

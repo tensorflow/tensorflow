@@ -893,7 +893,7 @@ def main(_):
     print('=== MISCLASSIFIED TEST IMAGES ===')
     for i, test_filename in enumerate(test_filenames):
       if predictions[i] != test_ground_truth[i].argmax():
-        print('%70s  %s' % (test_filename, 
+        print('%70s  %s' % (test_filename,
                             list(image_lists.keys())[predictions[i]]))
 
   # Write out the trained graph and labels with the weights stored as constants.

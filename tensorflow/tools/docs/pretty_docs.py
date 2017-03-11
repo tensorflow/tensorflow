@@ -58,14 +58,14 @@ def _build_function_page(page_info):
                  for name in page_info.aliases)
     parts.append('\n')
 
+  if page_info.defined_in:
+    parts.append('\n\n')
+    parts.append(str(page_info.defined_in))
+
   parts.append(page_info.guides)
   parts.append(page_info.doc.docstring)
   parts.append(_build_function_details(page_info.doc.function_details))
   parts.append(_build_compatibility(page_info.doc.compatibility))
-
-  if page_info.defined_in:
-    parts.append('\n\n')
-    parts.append(str(page_info.defined_in))
 
   return ''.join(parts)
 
@@ -77,6 +77,10 @@ def _build_class_page(page_info):
   if page_info.aliases:
     parts.extend('### `class %s`\n' % name for name in page_info.aliases)
     parts.append('\n')
+
+  if page_info.defined_in is not None:
+    parts.append('\n\n')
+    parts.append(str(page_info.defined_in))
 
   parts.append(page_info.guides)
   parts.append(page_info.doc.docstring)
@@ -133,10 +137,6 @@ def _build_class_page(page_info):
                               for info in sorted(page_info.other_members))
     parts.extend(others_member_headings)
 
-  if page_info.defined_in is not None:
-    parts.append('\n\n')
-    parts.append(str(page_info.defined_in))
-
   return ''.join(parts)
 
 
@@ -148,6 +148,10 @@ def _build_module_page(page_info):
   if page_info.aliases:
     parts.extend('### Module `%s`\n' % name for name in page_info.aliases)
     parts.append('\n')
+
+  if page_info.defined_in is not None:
+    parts.append('\n\n')
+    parts.append(str(page_info.defined_in))
 
   parts.append(page_info.doc.docstring)
   parts.append('\n\n')
@@ -178,10 +182,6 @@ def _build_module_page(page_info):
 
   if page_info.members:
     parts.pop()
-
-  if page_info.defined_in is not None:
-    parts.append('\n\n')
-    parts.append(str(page_info.defined_in))
 
   return ''.join(parts)
 

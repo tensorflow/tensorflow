@@ -170,34 +170,32 @@ except AttributeError:
       except AttributeError:
         r = NotImplemented
     if r is NotImplemented:
-      raise TypeError(
-        "unsupported operand type(s) for @: '{}' and '{}'"
-        .format(type(x).__name__, type(y).__name__)
-        )
+      raise TypeError("unsupported operand type(s) for @: '{}' and '{}'"
+                      .format(type(x).__name__, type(y).__name__))
     return r
 
 
 class MatMulInfixOperatorTest(test_lib.TestCase):
 
   def testMismatchedShape(self):
-    with self.assertRaisesWithPredicateMatch(
-        ValueError, lambda e: "Shape must" in str(e)):
+    with self.assertRaisesWithPredicateMatch(ValueError,
+                                             lambda e: "Shape must" in str(e)):
       infix_matmul(
-        ops.convert_to_tensor([10.0, 20.0, 30.0]),
-        ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0]]))
+          ops.convert_to_tensor([10.0, 20.0, 30.0]),
+          ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0]]))
 
   def testMismatchedDimensions(self):
     with self.assertRaisesWithPredicateMatch(
         ValueError, lambda e: "Dimensions must" in str(e)):
       infix_matmul(
-        ops.convert_to_tensor([[10.0, 20.0, 30.0]]),
-        ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0]]))
+          ops.convert_to_tensor([[10.0, 20.0, 30.0]]),
+          ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0]]))
 
   def testInfixMatmulIsTfMatmul(self):
     a = ops.convert_to_tensor([[10.0, 20.0, 30.0]])
     b = ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0], [80.0, 90.0]])
     c = infix_matmul(a, b)
-    self.assertEqual(c.op.type, 'MatMul')
+    self.assertEqual(c.op.type, "MatMul")
 
   def testInfixMatmulDoesDotProduct(self):
     a = ops.convert_to_tensor([[10.0, 20.0, 30.0]])

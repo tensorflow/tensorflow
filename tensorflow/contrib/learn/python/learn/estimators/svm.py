@@ -139,7 +139,7 @@ class SVM(estimator.Estimator):
         model_dir=model_dir,
         config=config,
         params={
-            "head": head_lib._binary_svm_head(  # pylint: disable=protected-access
+            "head": head_lib.binary_svm_head(
                 weight_column_name=weight_column_name,
                 enable_centered_bias=False),
             "feature_columns": feature_columns,
