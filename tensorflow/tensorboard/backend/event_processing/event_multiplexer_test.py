@@ -24,8 +24,8 @@ import shutil
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import googletest
-from tensorflow.python.summary import event_accumulator
-from tensorflow.python.summary import event_multiplexer
+from tensorflow.tensorboard.backend.event_processing import event_accumulator
+from tensorflow.tensorboard.backend.event_processing import event_multiplexer
 
 
 def _AddEvents(path):

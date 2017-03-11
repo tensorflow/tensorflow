@@ -181,6 +181,18 @@ string InstructionSequenceGraph(
               WindowToString(instruction->window());
     }
     name += "\\n" + instruction->name();
+    if (!instruction->metadata().op_type().empty()) {
+      StrAppend(&name, "\\n", instruction->metadata().op_type());
+    }
+    if (!instruction->metadata().op_name().empty()) {
+      StrAppend(&name, "\\n", instruction->metadata().op_name());
+    }
+    if (!instruction->metadata().source_file().empty() &&
+        instruction->metadata().source_line() != 0) {
+      StrAppend(&name, "\\n", instruction->metadata().source_file(), ":",
+                instruction->metadata().source_line());
+    }
+
     std::vector<HloComputation*> called_computations;
 
     // Pick different colors or shapes for instructions which are particularly

@@ -170,34 +170,56 @@ except AttributeError:
       except AttributeError:
         r = NotImplemented
     if r is NotImplemented:
+<<<<<<< HEAD
       raise TypeError(
         "unsupported operand type(s) for @: '{}' and '{}'"
         .format(type(x).__name__, type(y).__name__)
         )
+=======
+      raise TypeError("unsupported operand type(s) for @: '{}' and '{}'"
+                      .format(type(x).__name__, type(y).__name__))
+>>>>>>> eb8bb9e461f669f299aa031634530995bc43f92b
     return r
 
 
 class MatMulInfixOperatorTest(test_lib.TestCase):
 
   def testMismatchedShape(self):
+<<<<<<< HEAD
     with self.assertRaisesWithPredicateMatch(
         ValueError, lambda e: "Shape must" in str(e)):
       infix_matmul(
         ops.convert_to_tensor([10.0, 20.0, 30.0]),
         ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0]]))
+=======
+    with self.assertRaisesWithPredicateMatch(ValueError,
+                                             lambda e: "Shape must" in str(e)):
+      infix_matmul(
+          ops.convert_to_tensor([10.0, 20.0, 30.0]),
+          ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0]]))
+>>>>>>> eb8bb9e461f669f299aa031634530995bc43f92b
 
   def testMismatchedDimensions(self):
     with self.assertRaisesWithPredicateMatch(
         ValueError, lambda e: "Dimensions must" in str(e)):
       infix_matmul(
+<<<<<<< HEAD
         ops.convert_to_tensor([[10.0, 20.0, 30.0]]),
         ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0]]))
+=======
+          ops.convert_to_tensor([[10.0, 20.0, 30.0]]),
+          ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0]]))
+>>>>>>> eb8bb9e461f669f299aa031634530995bc43f92b
 
   def testInfixMatmulIsTfMatmul(self):
     a = ops.convert_to_tensor([[10.0, 20.0, 30.0]])
     b = ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0], [80.0, 90.0]])
     c = infix_matmul(a, b)
+<<<<<<< HEAD
     self.assertEqual(c.op.type, 'MatMul')
+=======
+    self.assertEqual(c.op.type, "MatMul")
+>>>>>>> eb8bb9e461f669f299aa031634530995bc43f92b
 
   def testInfixMatmulDoesDotProduct(self):
     a = ops.convert_to_tensor([[10.0, 20.0, 30.0]])

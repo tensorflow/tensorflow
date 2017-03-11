@@ -25,9 +25,9 @@ import six
 
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.summary import event_accumulator
-from tensorflow.python.summary.impl import directory_watcher
-from tensorflow.python.summary.impl import io_wrapper
+from tensorflow.tensorboard.backend.event_processing import directory_watcher
+from tensorflow.tensorboard.backend.event_processing import event_accumulator
+from tensorflow.tensorboard.backend.event_processing import io_wrapper
 
 
 class EventMultiplexer(object):

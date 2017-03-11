@@ -41,6 +41,16 @@ filegroup(
     ]),
 )
 
+# Transitive dependencies of this target will be included in the pip package.
+py_library(
+    name = "session_bundle_pip",
+    deps = [
+        ":bundle_shim_py",
+        ":exporter",
+        ":gc",
+    ],
+)
+
 py_library(
     name = "bundle_shim_py",
     srcs = ["bundle_shim.py"],

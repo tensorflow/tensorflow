@@ -728,6 +728,7 @@ class VariableScopeTest(test.TestCase):
       with variable_scope.variable_scope("foo_") as scope1:
         a = variable_scope.get_variable("a", [])
         b = variable_scope.get_variable("b", [], trainable=False)
+<<<<<<< HEAD
         self.assertEqual(
             [v.name for v in scope1.get_collection(
               ops.GraphKeys.TRAINABLE_VARIABLES)],
@@ -756,6 +757,35 @@ class VariableScopeTest(test.TestCase):
           [v.name for v in scope.get_collection(
             ops.GraphKeys.TRAINABLE_VARIABLES)],
           ["a:0", "foo_/a:0", "foo/a:0"])
+=======
+        self.assertEqual([
+            v.name
+            for v in scope1.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
+        ], ["foo_/a:0"])
+        self.assertEqual([
+            v.name
+            for v in scope1.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
+        ], ["foo_/a:0", "foo_/b:0"])
+      with variable_scope.variable_scope("foo") as scope2:
+        a = variable_scope.get_variable("a", [])
+        b = variable_scope.get_variable("b", [], trainable=False)
+        self.assertEqual([
+            v.name
+            for v in scope2.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
+        ], ["foo/a:0"])
+        self.assertEqual([
+            v.name
+            for v in scope2.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
+        ], ["foo/a:0", "foo/b:0"])
+      scope = variable_scope.get_variable_scope()
+      self.assertEqual([
+          v.name for v in scope.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
+      ], ["a:0", "b:0", "foo_/a:0", "foo_/b:0", "foo/a:0", "foo/b:0"])
+      self.assertEqual([
+          v.name
+          for v in scope.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
+      ], ["a:0", "foo_/a:0", "foo/a:0"])
+>>>>>>> eb8bb9e461f669f299aa031634530995bc43f92b
 
   def testGetTrainableVariables(self):
     with self.test_session():
@@ -763,16 +793,26 @@ class VariableScopeTest(test.TestCase):
       with variable_scope.variable_scope("foo") as scope:
         b = variable_scope.get_variable("b", [])
         c = variable_scope.get_variable("c", [], trainable=False)
+<<<<<<< HEAD
         self.assertEqual([v.name for v in scope.trainable_variables()],
                          ["foo/b:0"])
+=======
+        self.assertEqual([v.name
+                          for v in scope.trainable_variables()], ["foo/b:0"])
+>>>>>>> eb8bb9e461f669f299aa031634530995bc43f92b
 
   def testGetGlobalVariables(self):
     with self.test_session():
       a = variable_scope.get_variable("a", [])
       with variable_scope.variable_scope("foo") as scope:
         b = variable_scope.get_variable("b", [])
+<<<<<<< HEAD
         self.assertEqual([v.name for v in scope.global_variables()],
           ["foo/b:0"])
+=======
+        self.assertEqual([v.name
+                          for v in scope.global_variables()], ["foo/b:0"])
+>>>>>>> eb8bb9e461f669f299aa031634530995bc43f92b
 
 def axis0_into1_partitioner(shape=None, **unused_kwargs):
   part = [1] * len(shape)

@@ -3176,12 +3176,6 @@ py_tests(
     name = "summary_tests",
     size = "small",
     srcs = [
-        "summary/event_accumulator_test.py",
-        "summary/event_file_inspector_test.py",
-        "summary/event_multiplexer_test.py",
-        "summary/impl/directory_watcher_test.py",
-        "summary/impl/event_file_loader_test.py",
-        "summary/impl/reservoir_test.py",
         "summary/plugin_asset_test.py",
         "summary/summary_test.py",
         "summary/writer/writer_test.py",

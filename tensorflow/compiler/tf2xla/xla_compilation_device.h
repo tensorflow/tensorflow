@@ -52,6 +52,8 @@ class XlaCompilationDevice : public LocalDevice {
 
   Allocator* GetAllocator(AllocatorAttributes attr) override;
 
+  void Compute(OpKernel* op_kernel, OpKernelContext* context) override;
+
   Status Sync() override;
 
   Status MakeTensorFromProto(const TensorProto& tensor_proto,

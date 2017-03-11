@@ -120,9 +120,9 @@ from tensorflow.core.util.event_pb2 import SessionLog
 from tensorflow.python.platform import app
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import gfile
-from tensorflow.python.summary import event_accumulator
-from tensorflow.python.summary import event_multiplexer
-from tensorflow.python.summary.impl import event_file_loader
+from tensorflow.tensorboard.backend.event_processing import event_accumulator
+from tensorflow.tensorboard.backend.event_processing import event_file_loader
+from tensorflow.tensorboard.backend.event_processing import event_multiplexer
 
 FLAGS = flags.FLAGS
 

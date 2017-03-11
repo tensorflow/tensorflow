@@ -24,6 +24,28 @@ from tensorflow.contrib.learn.python.learn.experiment import Experiment
 from tensorflow.python.platform import tf_logging as logging
 
 
+# TODO(xiejw): Refactor the learn_runner to make code reusable.
+def _execute_schedule(experiment, schedule):
+  """Execute the method named `schedule` of `experiment`."""
+  if not hasattr(experiment, schedule):
+    logging.error('Schedule references non-existent task %s', schedule)
+    valid_tasks = [x for x in dir(experiment)
+                   if not x.startswith('_')
+                   and callable(getattr(experiment, x))]
+    logging.error('Allowed values for this experiment are: %s', valid_tasks)
+    raise ValueError('Schedule references non-existent task %s' % schedule)
+
+  task = getattr(experiment, schedule)
+  if not callable(task):
+    logging.error('Schedule references non-callable member %s', schedule)
+    valid_tasks = [x for x in dir(experiment)
+                   if not x.startswith('_')
+                   and callable(getattr(experiment, x))]
+    logging.error('Allowed values for this experiment are: %s', valid_tasks)
+    raise TypeError('Schedule references non-callable member %s' % schedule)
+  return task()
+
+
 def run(experiment_fn, output_dir, schedule=None):
   """Make and run an experiment.
 
@@ -86,25 +108,7 @@ def run(experiment_fn, output_dir, schedule=None):
   config = experiment.estimator.config
   schedule = schedule or _get_default_schedule(config)
 
-  # Execute the schedule
-  if not hasattr(experiment, schedule):
-    logging.error('Schedule references non-existent task %s', schedule)
-    valid_tasks = [x for x in dir(experiment)
-                   if not x.startswith('_')
-                   and callable(getattr(experiment, x))]
-    logging.error('Allowed values for this experiment are: %s', valid_tasks)
-    raise ValueError('Schedule references non-existent task %s' % schedule)
-
-  task = getattr(experiment, schedule)
-  if not callable(task):
-    logging.error('Schedule references non-callable member %s', schedule)
-    valid_tasks = [x for x in dir(experiment)
-                   if not x.startswith('_')
-                   and callable(getattr(experiment, x))]
-    logging.error('Allowed values for this experiment are: %s', valid_tasks)
-    raise TypeError('Schedule references non-callable member %s' % schedule)
-
-  return task()
+  return _execute_schedule(experiment, schedule)
 
 
 @experimental
