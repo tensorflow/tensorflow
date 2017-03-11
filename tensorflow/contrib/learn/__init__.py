@@ -39,8 +39,6 @@ See the @{$python/contrib.learn} guide.
 @@LogisticRegressor
 @@SVM
 @@SKCompat
-<<<<<<< HEAD
-=======
 
 @@Head
 @@multi_class_head
@@ -50,7 +48,6 @@ See the @{$python/contrib.learn} guide.
 @@poisson_regression_head
 @@multi_head
 @@no_op_train_fn
->>>>>>> eb8bb9e461f669f299aa031634530995bc43f92b
 
 @@Experiment
 @@ExportStrategy
