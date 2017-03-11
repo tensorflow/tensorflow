@@ -579,28 +579,34 @@ def sparse_column_with_hash_bucket(column_name,
 class _SparseColumnKeys(_SparseColumn):
   """See `sparse_column_with_keys`."""
 
-  def __new__(cls, column_name, keys, default_value=-1, combiner="sum"):
+  def __new__(
+      cls, column_name, keys, default_value=-1, combiner="sum",
+      dtype=dtypes.string):
+    if (not dtype.is_integer) and (dtype != dtypes.string):
+      raise TypeError("Only integer and string are currently supported.")
+
     return super(_SparseColumnKeys, cls).__new__(
         cls,
         column_name,
         combiner=combiner,
         lookup_config=_SparseIdLookupConfig(
             keys=keys, vocab_size=len(keys), default_value=default_value),
-        dtype=dtypes.string)
+        dtype=dtype)
 
   def insert_transformed_feature(self, columns_to_tensors):
     """Handles sparse column to id conversion."""
     input_tensor = self._get_input_sparse_tensor(columns_to_tensors)
 
-    table = lookup.string_to_index_table_from_tensor(
-        mapping=list(self.lookup_config.keys),
+    table = lookup.index_table_from_tensor(
+        mapping=tuple(self.lookup_config.keys),
         default_value=self.lookup_config.default_value,
+        dtype=self.dtype,
         name="lookup")
     columns_to_tensors[self] = table.lookup(input_tensor)
 
 
 def sparse_column_with_keys(
-    column_name, keys, default_value=-1, combiner="sum"):
+    column_name, keys, default_value=-1, combiner="sum", dtype=dtypes.string):
   """Creates a _SparseColumn with keys.
 
   Look up logic is as follows:
@@ -608,7 +614,7 @@ def sparse_column_with_keys(
 
   Args:
     column_name: A string defining sparse column name.
-    keys: a string list defining vocabulary.
+    keys: A list defining vocabulary. Must be castable to `dtype`.
     default_value: The value to use for out-of-vocabulary feature values.
       Default is -1.
     combiner: A string specifying how to reduce if the sparse column is
@@ -619,12 +625,14 @@ def sparse_column_with_keys(
         * "mean": do l1 normalization on features in the column
         * "sqrtn": do l2 normalization on features in the column
       For more information: `tf.embedding_lookup_sparse`.
+    dtype: Type of features. Only integer and string are supported.
 
   Returns:
     A _SparseColumnKeys with keys configuration.
   """
   return _SparseColumnKeys(
-      column_name, tuple(keys), default_value=default_value, combiner=combiner)
+      column_name, tuple(keys), default_value=default_value, combiner=combiner,
+      dtype=dtype)
 
 
 class _SparseColumnVocabulary(_SparseColumn):
@@ -1604,8 +1612,9 @@ class _BucketizedColumn(_FeatureColumn, collections.namedtuple(
 
   Attributes:
     source_column: A _RealValuedColumn defining dense column.
-    boundaries: A list of floats specifying the boundaries. It has to be sorted.
-      [a, b, c] defines following buckets: (-inf., a), [a, b), [b, c), [c, inf.)
+    boundaries: A list or tuple of floats specifying the boundaries. It has to
+      be sorted. [a, b, c] defines following buckets: (-inf., a), [a, b),
+      [b, c), [c, inf.)
   Raises:
     ValueError: if 'boundaries' is empty or not sorted.
   """
@@ -1619,8 +1628,9 @@ class _BucketizedColumn(_FeatureColumn, collections.namedtuple(
       raise ValueError("source_column must have a defined dimension. "
                        "source_column: {}".format(source_column))
 
-    if not isinstance(boundaries, list) or not boundaries:
-      raise ValueError("boundaries must be a non-empty list. "
+    if (not isinstance(boundaries, list) and
+        not isinstance(boundaries, tuple)) or not boundaries:
+      raise ValueError("boundaries must be a non-empty list or tuple. "
                        "boundaries: {}".format(boundaries))
 
     # We allow bucket boundaries to be monotonically increasing
@@ -1730,7 +1740,8 @@ def bucketized_column(source_column, boundaries):
 
   Args:
     source_column: A _RealValuedColumn defining dense column.
-    boundaries: A list of floats specifying the boundaries. It has to be sorted.
+    boundaries: A list or tuple of floats specifying the boundaries. It has to
+      be sorted.
 
   Returns:
     A _BucketizedColumn.

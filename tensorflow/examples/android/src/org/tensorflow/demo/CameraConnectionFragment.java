@@ -42,6 +42,7 @@ import android.media.ImageReader.OnImageAvailableListener;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.text.TextUtils;
 import android.util.Size;
 import android.util.SparseIntArray;
 import android.view.LayoutInflater;
@@ -269,20 +270,21 @@ public class CameraConnectionFragment extends Fragment {
    */
   private static Size chooseOptimalSize(
       final Size[] choices, final int width, final int height, final Size aspectRatio) {
-    // Collect the supported resolutions that are at least as big as the preview Surface
-    final List<Size> bigEnough = new ArrayList<Size>();
-
     final int minWidth = Math.max(width, MINIMUM_PREVIEW_SIZE);
     final int minHeight = Math.max(height, MINIMUM_PREVIEW_SIZE);
 
+    // Collect the supported resolutions that are at least as big as the preview Surface
+    final List<Size> bigEnough = new ArrayList<Size>();
+    final List<Size> tooSmall = new ArrayList<Size>();
     for (final Size option : choices) {
       if (option.getHeight() >= minHeight && option.getWidth() >= minWidth) {
-        LOGGER.i("Adding size: " + option.getWidth() + "x" + option.getHeight());
         bigEnough.add(option);
       } else {
-        LOGGER.i("Not adding size: " + option.getWidth() + "x" + option.getHeight());
+        tooSmall.add(option);
       }
     }
+    LOGGER.i("Valid preview sizes: [" + TextUtils.join(", ", bigEnough) + "]");
+    LOGGER.i("Rejected preview sizes: [" + TextUtils.join(", ", tooSmall) + "]");
 
     // Pick the smallest of those, assuming we found any
     if (bigEnough.size() > 0) {
@@ -390,18 +392,20 @@ public class CameraConnectionFragment extends Fragment {
         }
 
         CameraConnectionFragment.this.cameraId = cameraId;
-
-        cameraConnectionCallback.onPreviewSizeChosen(previewSize, sensorOrientation);
-        return;
       }
     } catch (final CameraAccessException e) {
       LOGGER.e(e, "Exception!");
     } catch (final NullPointerException e) {
       // Currently an NPE is thrown when the Camera2API is used but not supported on the
       // device this code runs.
+      // TODO(andrewharp): abstract ErrorDialog/RuntimeException handling out into new method and
+      // reuse throughout app.
       ErrorDialog.newInstance(getString(R.string.camera_error))
           .show(getChildFragmentManager(), FRAGMENT_DIALOG);
+      throw new RuntimeException(getString(R.string.camera_error));
     }
+
+    cameraConnectionCallback.onPreviewSizeChosen(previewSize, sensorOrientation);
   }
 
   /**

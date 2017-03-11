@@ -25,8 +25,8 @@ import shutil
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import googletest
-from tensorflow.python.summary.impl import directory_watcher
-from tensorflow.python.summary.impl import io_wrapper
+from tensorflow.tensorboard.backend.event_processing import directory_watcher
+from tensorflow.tensorboard.backend.event_processing import io_wrapper
 
 
 class _ByteLoader(object):

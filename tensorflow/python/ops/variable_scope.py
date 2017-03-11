@@ -685,7 +685,7 @@ class _VariableStore(object):
       else:
         # Instantiate initializer if provided initializer is a type object.
         if isinstance(initializer, type(init_ops.Initializer)):
-          initializer=initializer(dtype=dtype)
+          initializer = initializer(dtype=dtype)
         init_val = lambda: initializer(  # pylint: disable=g-long-lambda
             shape.as_list(), dtype=dtype, partition_info=partition_info)
         variable_dtype = dtype.base_dtype
@@ -886,7 +886,7 @@ class VariableScope(object):
 
   def get_collection(self, name):
     """Get this scope's variables."""
-    scope = self._name + '/' if self._name else ""
+    scope = self._name + "/" if self._name else ""
     return ops.get_collection(name, scope)
 
   def trainable_variables(self):

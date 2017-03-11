@@ -36,11 +36,11 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.summary import event_accumulator as ea
 from tensorflow.python.summary import summary as summary_lib
 from tensorflow.python.summary.writer import writer as writer_lib
 from tensorflow.python.summary.writer.writer import SummaryToEventTransformer
 from tensorflow.python.training import saver
+from tensorflow.tensorboard.backend.event_processing import event_accumulator as ea
 
 
 class _EventGenerator(object):

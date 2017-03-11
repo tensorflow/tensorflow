@@ -394,3 +394,18 @@ py_library(
         "//tensorflow/contrib/tensor_forest:tensor_forest_py",
     ],
 )
+
+# Transitive dependencies of this target will be included in the pip package.
+py_library(
+    name = "hybrid_pip",
+    deps = [
+        ":all_layers",
+        ":decisions_to_data_then_nn",
+        ":forest_to_data_then_nn",
+        ":hard_decisions_to_data_then_nn",
+        ":k_feature_decisions_to_data_then_nn",
+        ":nn",
+        ":stochastic_hard_decisions_to_data_then_nn",
+        ":stochastic_soft_decisions_to_data_then_nn",
+    ],
+)

@@ -29,11 +29,11 @@ namespace tensorflow {
 namespace graph_transforms {
 
 // Declare here, so we don't need a public header.
-Status ObsfucateNames(const GraphDef& input_graph_def,
+Status ObfuscateNames(const GraphDef& input_graph_def,
                       const TransformFuncContext& context,
                       GraphDef* output_graph_def);
 
-class ObsfucateNamesTest : public ::testing::Test {
+class ObfuscateNamesTest : public ::testing::Test {
  protected:
   void TestSimpleTree() {
     GraphDef graph_def;
@@ -74,7 +74,7 @@ class ObsfucateNamesTest : public ::testing::Test {
 
     GraphDef result;
     TF_ASSERT_OK(
-        ObsfucateNames(graph_def, {{"const_node1"}, {"add_node1"}}, &result));
+        ObfuscateNames(graph_def, {{"const_node1"}, {"add_node1"}}, &result));
 
     std::map<string, const NodeDef*> node_lookup;
     MapNamesToNodes(result, &node_lookup);
@@ -97,7 +97,7 @@ class ObsfucateNamesTest : public ::testing::Test {
     }
 
     GraphDef result;
-    TF_ASSERT_OK(ObsfucateNames(graph_def, {{"const_node0"}, {"const_node999"}},
+    TF_ASSERT_OK(ObfuscateNames(graph_def, {{"const_node0"}, {"const_node999"}},
                                 &result));
 
     std::map<string, const NodeDef*> node_lookup;
@@ -116,7 +116,7 @@ class ObsfucateNamesTest : public ::testing::Test {
     }
 
     GraphDef result;
-    TF_ASSERT_OK(ObsfucateNames(graph_def, {{"10"}, {"19"}}, &result));
+    TF_ASSERT_OK(ObfuscateNames(graph_def, {{"10"}, {"19"}}, &result));
 
     std::map<string, const NodeDef*> node_lookup;
     MapNamesToNodes(result, &node_lookup);
@@ -132,11 +132,11 @@ class ObsfucateNamesTest : public ::testing::Test {
   }
 };
 
-TEST_F(ObsfucateNamesTest, TestSimpleTree) { TestSimpleTree(); }
+TEST_F(ObfuscateNamesTest, TestSimpleTree) { TestSimpleTree(); }
 
-TEST_F(ObsfucateNamesTest, TestManyNodes) { TestManyNodes(); }
+TEST_F(ObfuscateNamesTest, TestManyNodes) { TestManyNodes(); }
 
-TEST_F(ObsfucateNamesTest, TestNameClashes) { TestNameClashes(); }
+TEST_F(ObfuscateNamesTest, TestNameClashes) { TestNameClashes(); }
 
 }  // namespace graph_transforms
 }  // namespace tensorflow

@@ -24,8 +24,9 @@ namespace tensorflow {
 RecordYielder::RecordYielder(OpKernelConstruction* context,
                              const RecordYielder::Options& opts)
     : opts_(opts),
-      thread_(new thread::ThreadPool(context->env(), "record_yielder",
-                                     1 + opts.parallelism)),
+      thread_(new thread::ThreadPool(context->env(), ThreadOptions(),
+                                     "record_yielder", 1 + opts.parallelism,
+                                     /* low_latency_hint */ false)),
       epoch_(0),
       rnd_(opts.seed) {
   thread_->Schedule([this]() { MainLoop(); });

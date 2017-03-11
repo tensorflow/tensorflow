@@ -74,11 +74,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   native.new_http_archive(
       name = "eigen_archive",
       urls = [
-          "http://bazel-mirror.storage.googleapis.com/bitbucket.org/eigen/eigen/get/ef6d89748176.tar.gz",
-          "https://bitbucket.org/eigen/eigen/get/ef6d89748176.tar.gz",
+          "http://bazel-mirror.storage.googleapis.com/bitbucket.org/eigen/eigen/get/174e09eed96c.tar.gz",
+          "https://bitbucket.org/eigen/eigen/get/174e09eed96c.tar.gz",
       ],
-      sha256 = "69ad6e0c2229f92c1ce1b697a6ecd6bd57357573ca0f0adc29161b3d80ddfdd8",
-      strip_prefix = "eigen-eigen-ef6d89748176",
+      sha256 = "38d4bda36435cd40e5235887cca8f108f8125d5a28eac471555efdf9d259020f",
+      strip_prefix = "eigen-eigen-174e09eed96c",
       build_file = str(Label("//third_party:eigen.BUILD")),
   )
 
@@ -501,8 +501,6 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
           "node",
           "node.exe",
       ],
-      # POSTED: Email jart@google.com before changing this whitelist.
-      visibility = ["@com_microsoft_typescript//:__pkg__"],
   )
 
   filegroup_external(
