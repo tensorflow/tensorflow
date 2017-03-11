@@ -144,6 +144,45 @@ output: 4-D.  Gradients w.r.t. the input of `avg_pool`.
 
 // --------------------------------------------------------------------------
 
+#ifdef INTEL_MKL
+
+REGISTER_OP("MklAvgPool")
+    .Input("value: T")
+    .Input("mkl_input: uint8")
+    .Output("output: T")
+    .Output("mkl_output: uint8")
+    .Attr("ksize: list(int) >= 4")
+    .Attr("strides: list(int) >= 4")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("T: {float, half, double}")
+    .SetShapeFn(shape_inference::AvgPoolShape)
+    .Doc(R"doc(
+MKL version of AvgPool
+)doc");
+
+REGISTER_OP("MklAvgPoolGrad")
+    .Input("orig_input_shape: int32")
+    .Input("mkl_orig_input: uint8")
+    .Input("grad: T")
+    .Input("mkl_grad: uint8")
+    .Output("output: T")
+    .Output("mkl_output: uint8")
+    .Attr("ksize: list(int) >= 4")
+    .Attr("strides: list(int) >= 4")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("T: {float, half, double}")
+    .SetShapeFn([](InferenceContext* c) {
+      return InputTensorShapeOrUnknown(c, 0 /* input_idx */, 4 /* ndims */);
+    })
+    .Doc(R"doc(
+MKL version of AvgPoolGrad
+)doc");
+
+#endif  // INTEL_MKL
+// --------------------------------------------------------------------------
+
 REGISTER_OP("BatchNormWithGlobalNormalization")
     .Input("t: T")
     .Input("m: T")
@@ -1259,6 +1298,26 @@ input: 4-D input to pool over.
 output: The max pooled output tensor.
 )doc");
 
+#ifdef INTEL_MKL
+REGISTER_OP("MklMaxPool")
+    .Attr("T: {float, half} = DT_FLOAT")
+    .Attr("ksize: list(int) >= 4")
+    .Attr("strides: list(int) >= 4")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("workspace_enabled: bool = false")
+    .Input("input: T")
+    .Input("mkl_input: uint8")
+    .Output("output: T")
+    .Output("mkl_output: uint8")
+    .Output("workspace: T")
+    .Output("mkl_workspace: uint8")
+    .SetShapeFn(shape_inference::MaxPoolShape)
+    .Doc(R"doc(
+MKL version of MaxPool
+)doc");
+#endif
+
 REGISTER_OP("MaxPoolGrad")
     .Attr("ksize: list(int) >= 4")
     .Attr("strides: list(int) >= 4")
@@ -1289,6 +1348,32 @@ orig_output: The original output tensor.
 grad: 4-D.  Gradients w.r.t. the output of `max_pool`.
 output: Gradients w.r.t. the input to `max_pool`.
 )doc");
+
+#ifdef INTEL_MKL
+REGISTER_OP("MklMaxPoolGrad")
+    .Attr("T: {float, half} = DT_FLOAT")
+    .Attr("ksize: list(int) >= 4")
+    .Attr("strides: list(int) >= 4")
+    .Attr("workspace_enabled: bool = false")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Input("orig_input: T")
+    .Input("mkl_orig_input: uint8")
+    .Input("orig_output: T")
+    .Input("mkl_orig_output: uint8")
+    .Input("grad: T")
+    .Input("mkl_grad: uint8")
+    .Input("workspace: T")
+    .Input("mkl_workspace: uint8")
+    .Output("output: T")
+    .Output("mkl_output: uint8")
+    .SetShapeFn([](InferenceContext* c) {
+      return UnchangedShapeWithRank(c, 4);
+    })
+    .Doc(R"doc(
+MKL version of MaxPoolGrad
+)doc");
+#endif
 
 REGISTER_OP("MaxPoolWithArgmax")
     .Attr("ksize: list(int) >= 4")
@@ -1529,6 +1614,19 @@ REGISTER_OP("Relu")
 Computes rectified linear: `max(features, 0)`.
 )doc");
 
+#ifdef INTEL_MKL
+REGISTER_OP("MklRelu")
+    .Input("features: T")
+    .Input("mkl_features: uint8")
+    .Output("activations: T")
+    .Output("mkl_activations: uint8")
+    .Attr("T: realnumbertype")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Computes rectified linear: `max(features, 0)`.
+)doc");
+#endif
+
 REGISTER_OP("ReluGrad")
     .Input("gradients: T")
     .Input("features: T")
@@ -1543,6 +1641,26 @@ features: The features passed as input to the corresponding Relu operation, OR
   the outputs of that operation (both work equivalently).
 backprops: `gradients * (features > 0)`.
 )doc");
+
+#ifdef INTEL_MKL
+REGISTER_OP("MklReluGrad")
+    .Input("gradients: T")
+    .Input("mkl_gradients: uint8")
+    .Input("features: T")
+    .Input("mkl_features: uint8")
+    .Output("backprops: T")
+    .Output("mkl_backprops: uint8")
+    .Attr("T: realnumbertype")
+    .SetShapeFn(shape_inference::MergeBothInputsShapeFn)
+    .Doc(R"doc(
+Computes rectified linear gradients for a Relu operation.
+
+gradients: The backpropagated gradients to the corresponding Relu operation.
+features: The features passed as input to the corresponding Relu operation, OR
+  the outputs of that operation (both work equivalently).
+backprops: `gradients * (features > 0)`.
+)doc");
+#endif
 
 REGISTER_OP("Relu6")
     .Input("features: T")

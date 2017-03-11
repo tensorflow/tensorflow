@@ -2643,14 +2643,20 @@ tf_kernel_library(
         "maxpooling_op.cc",
         "pooling_ops_3d.cc",
         "pooling_ops_common.cc",
-    ],
+    ] + if_mkl([
+    		"mkl_avgpooling_op.cc",
+    		"mkl_maxpooling_op.cc",
+    		"mkl_pooling_ops_common.cc",
+    ]),
     hdrs = [
         "avgpooling_op.h",
         "cudnn_pooling_gpu.h",
         "fractional_pool_common.h",
         "maxpooling_op.h",
         "pooling_ops_common.h",
-    ],
+    ] + if_mkl([
+		"mkl_pooling_ops_common.h",
+    ]),
     gpu_srcs = [
         "avgpooling_op.h",
         "avgpooling_op_gpu.cu.cc",
@@ -2671,7 +2677,9 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:nn_ops_op_lib",
         "//third_party/eigen3",
-    ],
+    ] + if_mkl([
+        "//third_party/mkl:intel_binary_blob",
+    ]),
 )
 
 tf_kernel_library(
@@ -4356,6 +4364,59 @@ if_mkl(
     tf_kernel_library(
         name = "mkl_tfconv_op",
         prefix = "mkl_tfconv",
+        deps = [
+            ":bounds_check",
+            ":ops_util",
+            "//tensorflow/core:core_cpu",
+            "//tensorflow/core:framework",
+            "//tensorflow/core:lib",
+            "//tensorflow/core:lib_internal",
+            "//tensorflow/core:nn_ops_op_lib",
+            "//third_party/mkl:intel_binary_blob",
+        ],
+    ),
+)
+
+if_mkl(
+    tf_kernel_library(
+        name = "mkl_maxpooling_op",
+        prefix = "mkl_maxpooling",
+        hdrs = ["mkl_pooling_ops_common.h"],
+        deps = [
+            ":bounds_check",
+            ":ops_util",
+            "//tensorflow/core:core_cpu",
+            "//tensorflow/core:framework",
+            "//tensorflow/core:lib",
+            "//tensorflow/core:lib_internal",
+            "//tensorflow/core:nn_ops_op_lib",
+            "//third_party/mkl:intel_binary_blob",
+        ],
+    ),
+)
+
+if_mkl(
+    tf_kernel_library(
+        name = "mkl_avgpooling_op",
+        prefix = "mkl_avgpooling",
+        hdrs = ["mkl_pooling_ops_common.h"],
+        deps = [
+            ":bounds_check",
+            ":ops_util",
+            "//tensorflow/core:core_cpu",
+            "//tensorflow/core:framework",
+            "//tensorflow/core:lib",
+            "//tensorflow/core:lib_internal",
+            "//tensorflow/core:nn_ops_op_lib",
+            "//third_party/mkl:intel_binary_blob",
+        ],
+    ),
+)
+
+if_mkl(
+    tf_kernel_library(
+        name = "mkl_relu_op",
+        prefix = "mkl_relu",
         deps = [
             ":bounds_check",
             ":ops_util",
