@@ -108,18 +108,18 @@ BAZEL_PARALLEL_TEST_FLAGS=""
 if [[ $IS_GPU == 1 ]]; then
   # Number of test threads is the number of GPU cards available.
   if [[ $IS_MAC == 1 ]]; then
-    BAZEL_PARALLEL_TEST_FLAGS="--local_test-jobs=1"
+    BAZEL_PARALLEL_TEST_FLAGS="--local_test_jobs=1"
   else
     PAR_TEST_JOBS=$TF_GPU_COUNT
-    BAZEL_PARALLEL_TEST_FLAGS="--local_test-jobs=${TF_GPU_COUNT} \
+    BAZEL_PARALLEL_TEST_FLAGS="--local_test_jobs=${TF_GPU_COUNT} \
         --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute"
   fi
 else
   # Number of test threads is the number of physical CPUs.
   if [[ $IS_MAC == 1 ]]; then
-    BAZEL_PARALLEL_TEST_FLAGS="--local_test-jobs=$(sysctl -n hw.ncpu)"
+    BAZEL_PARALLEL_TEST_FLAGS="--local_test_jobs=$(sysctl -n hw.ncpu)"
   else
-    BAZEL_PARALLEL_TEST_FLAGS="--local_test-jobs=$(grep -c ^processor /proc/cpuinfo)"
+    BAZEL_PARALLEL_TEST_FLAGS="--local_test_jobs=$(grep -c ^processor /proc/cpuinfo)"
   fi
 fi
 
