@@ -96,7 +96,8 @@ Status GraphTransferer::LoadGraphFromProto(
           shape_inference::ShapeHandle handle;
           status = context->MakeShapeFromTensorShape(
               input_node_info.second.shape(), &handle);
-          shape_refiner.SetShape(node, 0, handle);
+          // TODO(b/32704451): Don't just ignore this status!
+          shape_refiner.SetShape(node, 0, handle).IgnoreError();
           is_input_node = true;
         }
         if (!status.ok()) {
@@ -395,9 +396,11 @@ void GraphTransferer::RegisterConstantNode(
   const_node_info.add_shape(shape[2]);
   const_node_info.add_shape(shape[3]);
   const TensorProto* proto = nullptr;
-  GetNodeAttr(node.def(), "value", &proto);
+  // TODO(b/32704451): Don't just ignore this status!
+  GetNodeAttr(node.def(), "value", &proto).IgnoreError();
   Tensor const_tensor;
-  MakeTensorFromProto(*proto, &const_tensor);
+  // TODO(b/32704451): Don't just ignore this status!
+  MakeTensorFromProto(*proto, &const_tensor).IgnoreError();
 
   const_node_info.set_dtype(const_tensor.dtype());
   // TODO(satok): Remove. Determine constant value without dryrun
