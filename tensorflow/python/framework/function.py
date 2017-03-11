@@ -68,12 +68,7 @@ def _get_node_def(op):
 
 
 def _get_op_def(op):
-  # pylint: disable=protected-access
-  if hasattr(op, "_sig"):
-    return getattr(op, "_sig")
-  else:
-    return op_def_registry.get_registered_ops()[op.type]
-  # pylint: enable=protected-access
+  return op.op_def or op_def_registry.get_registered_ops()[op.type]
 
 
 def _is_in_placeholders(op, func_arg_placeholders):
@@ -248,8 +243,8 @@ def _call(sig, *inputs, **kwargs):
         output_types,
         name=name,
         attrs=attrs,
+        op_def=sig,
         compute_shapes=False)
-  setattr(op, "_sig", sig)  # Remember the signature.
   if op.outputs:
     if len(op.outputs) == 1:
       ret = op.outputs[0]
@@ -452,6 +447,7 @@ class _DefinedFunction(object):
     self._shape_func = shape_func
     self._extra_kwargs = kwargs
     self._definition = None  # Constructed lazily.
+    self._sub_functions = dict()  # Constructed with definition.
 
     self._args = []
     assert isinstance(input_types, (list, tuple))

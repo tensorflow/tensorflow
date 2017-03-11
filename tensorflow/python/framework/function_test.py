@@ -526,6 +526,48 @@ class FunctionTest(test.TestCase):
       self.assertAllClose(vals[0], vals[1])
       self.assertAllClose(vals[2], vals[3])
 
+  def testDeclare(self):
+    foo = function.Declare("Foo", [("x", dtypes.float32)],
+                           [("y", dtypes.float32)])
+
+    @function.Defun(dtypes.float32, func_name="Foo", out_names=["y"])
+    def FooImpl(x):
+      return x * x + 1
+
+    x = array_ops.placeholder(dtypes.float32)
+    y = foo(x)
+
+    g = ops.get_default_graph()
+    FooImpl.add_to_graph(g)
+
+    with self.test_session():
+      rand = np.random.uniform(size=(3, 3))
+      expected = rand * rand + 1.0
+      self.assertAllClose(expected, y.eval(feed_dict={x: rand}))
+
+  def testDeclareUsedInDefun(self):
+    foo = function.Declare("Foo", [("x", dtypes.float32)],
+                           [("y", dtypes.float32)])
+
+    @function.Defun()
+    def Bar(x):
+      return foo(x)
+
+    @function.Defun(dtypes.float32, func_name="Foo", out_names=["y"])
+    def FooImpl(x):
+      return x * x + 1
+
+    x = array_ops.placeholder(dtypes.float32)
+    y = Bar(x)
+
+    g = ops.get_default_graph()
+    FooImpl.add_to_graph(g)
+
+    with self.test_session():
+      rand = np.random.uniform(size=(3, 3))
+      expected = rand * rand + 1.0
+      self.assertAllClose(expected, y.eval(feed_dict={x: rand}))
+
   def testDeclareTypeMistake(self):
     foo = function.Declare("Foo", [("x", dtypes.float32)],
                            [("y", dtypes.float32)])
