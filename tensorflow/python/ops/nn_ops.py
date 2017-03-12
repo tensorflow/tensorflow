@@ -848,7 +848,9 @@ def atrous_conv1d(input, filter, rate, padding, strides=None, name=None):
       padding is other than `'VALID'` or `'SAME'`.
 
   """
-  return convolution(input=input, filter=filter, padding=padding, dilation_rate=np.broadcast_to(rate, (1, )), strides=strides, name=name)
+  return convolution(input=input, filter=filter, padding=padding,
+                     dilation_rate=np.broadcast_to(rate, (1, )),
+                     strides=strides, name=name)
 
 def atrous_conv2d(value, filters, rate, padding, strides=None, name=None):
   """Atrous convolution (a.k.a. convolution with holes or dilated convolution).
@@ -948,7 +950,8 @@ def atrous_conv2d(value, filters, rate, padding, strides=None, name=None):
       the `height` and `width` dimensions. Equivalently, the rate by which we
       upsample the filter values by inserting zeros across the `height` and
       `width` dimensions. In the literature, the same parameter is sometimes
-      called `input stride` or `dilation`. Altrenatively it could be 3 element sequence denoting dilation rate in each dimension.
+      called `input stride` or `dilation`. Alternatively it could be 3 element
+      sequence denoting dilation rate in each dimension.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
     name: Optional name for the returned tensor.
 
@@ -959,7 +962,10 @@ def atrous_conv2d(value, filters, rate, padding, strides=None, name=None):
     ValueError: If input/output depth does not match `filters`' shape, or if
       padding is other than `'VALID'` or `'SAME'`.
   """
-  return convolution(input=value, filter=filters, padding=padding, dilation_rate=np.broadcast_to(rate, (2, )), strides=strides, name=name)
+  return convolution(input=value, filter=filters, padding=padding,
+                     dilation_rate=np.broadcast_to(rate, (2, )),
+                     strides=strides, name=name)
+
 
 def atrous_conv3d(input, filter, rate, padding, strides=None, name=None):
   """Atrous convolution (a.k.a. convolution with holes or dilated convolution).
@@ -971,30 +977,33 @@ def atrous_conv3d(input, filter, rate, padding, strides=None, name=None):
   the input values every `rate` points.
   This is equivalent to convolving the input with a set of upsampled filters,
   produced by inserting `rate - 1` zeros between two consecutive values of the
-  filters along the `height`, `width` and `depth` dimensions, hence the name atrous convolution or convolution with holes (the French word trous means holes in
-  English).
+  filters along the `height`, `width` and `depth` dimensions, hence the name
+  atrous convolution or convolution with holes (the French word trous means
+  holes in English).
 
   See @{tf.nn.atrous_conv2d}
 
   Args:
     input: A 5-D `Tensor` of type `float`. It needs to be in the default "NHWC"
-      format. Its shape is `[batch, in_height, in_width, in_depth, in_channels]`.
+      format. Its shape is
+      `[batch, in_height, in_width, in_depth, in_channels]`.
     filter: A 5-D `Tensor` with the same type as `input` and shape
-      `[filter_height, filter_width, filter_depth, in_channels, out_channels]`. `filter`'
-      `in_channels` dimension must match that of `input`. Atrous convolution is
-      equivalent to standard convolution with upsampled filters with effective
-      height `filter_height + (filter_height - 1) * (rate - 1)`, produced by
-      inserting `rate - 1` zeros along consecutive elements across the
-      `filter`' spatial dimensions.
+      `[filter_height, filter_width, filter_depth, in_channels, out_channels]`.
+      `filter`' `in_channels` dimension must match that of `input`. Atrous
+      convolution is equivalent to standard convolution with upsampled filters
+      with effective height `filter_height + (filter_height - 1) * (rate - 1)`,
+      produced by inserting `rate - 1` zeros along consecutive elements across
+      the `filter`' spatial dimensions.
     rate: A positive int32. The stride with which we sample input values across
       the `height` and `width` dimensions. Equivalently, the rate by which we
       upsample the filter values by inserting zeros across the `height` and
       `width` dimensions. In the literature, the same parameter is sometimes
-      called `input stride` or `dilation`. Altrenatively it could be 3 element sequence denoting dilation rate in each dimension.
-    padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
-    strides: Optional.  Sequence of 3 ints >= 1.  Specifies the output stride.
-      Defaults to [1]*3.  If any value of strides is > 1, then all values of
-      dilation_rate must be 1.
+      called `input stride` or `dilation`. Altrenatively it could be 3 element
+      sequence denoting dilation rate in each dimension. padding: A string,
+      either `'VALID'` or `'SAME'`. The padding algorithm. strides: Optional.
+        Sequence of 3 ints >= 1.  Specifies the output stride. Defaults to
+        [1]*3.  If any value of strides is > 1, then all values of
+        dilation_rate must be 1.
     name: Optional name for the returned tensor.
 
   Returns:
@@ -1005,7 +1014,9 @@ def atrous_conv3d(input, filter, rate, padding, strides=None, name=None):
       padding is other than `'VALID'` or `'SAME'`.
 
   """
-  return convolution(input=input, filter=filter, padding=padding, dilation_rate=np.broadcast_to(rate, (3, )), strides=strides, name=name)
+  return convolution(input=input, filter=filter, padding=padding,
+                     dilation_rate=np.broadcast_to(rate, (3, )),
+                     strides=strides, name=name)
 
 def conv2d_transpose(value,
                      filter,
