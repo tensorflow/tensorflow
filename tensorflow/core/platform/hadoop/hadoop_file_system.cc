@@ -58,6 +58,7 @@ class LibHDFS {
   std::function<hdfsFS(hdfsBuilder*)> hdfsBuilderConnect;
   std::function<hdfsBuilder*()> hdfsNewBuilder;
   std::function<void(hdfsBuilder*, const char*)> hdfsBuilderSetNameNode;
+  std::function<int(const char*, char**)> hdfsConfGetStr;
   std::function<void(hdfsBuilder*, const char* kerbTicketCachePath)>
       hdfsBuilderSetKerbTicketCachePath;
   std::function<int(hdfsFS, hdfsFile)> hdfsCloseFile;
@@ -85,6 +86,7 @@ class LibHDFS {
       BIND_HDFS_FUNC(hdfsBuilderConnect);
       BIND_HDFS_FUNC(hdfsNewBuilder);
       BIND_HDFS_FUNC(hdfsBuilderSetNameNode);
+      BIND_HDFS_FUNC(hdfsConfGetStr);
       BIND_HDFS_FUNC(hdfsBuilderSetKerbTicketCachePath);
       BIND_HDFS_FUNC(hdfsCloseFile);
       BIND_HDFS_FUNC(hdfsPread);
@@ -148,6 +150,14 @@ Status HadoopFileSystem::Connect(StringPiece fname, hdfsFS* fs) {
   if (scheme == "file") {
     hdfs_->hdfsBuilderSetNameNode(builder, nullptr);
   } else if (scheme == "viewfs") {
+    char *defaultFS = NULL;
+    hdfs_->hdfsConfGetStr("fs.defaultFS", &defaultFS);
+    StringPiece defaultScheme, defaultCluster, defaultPath;
+    io::ParseURI(defaultFS, &defaultScheme, &defaultCluster, &defaultPath);
+
+    if (scheme != defaultScheme || namenode != defaultCluster) {
+      return errors::Unimplemented("viewfs is only supported as a fs.defaultFS.");
+    }
     // The default NameNode configuration will be used (from the XML configuration files). See:
     // https://github.com/tensorflow/tensorflow/blob/v1.0.0/third_party/hadoop/hdfs.h#L259
     hdfs_->hdfsBuilderSetNameNode(builder, "default");
