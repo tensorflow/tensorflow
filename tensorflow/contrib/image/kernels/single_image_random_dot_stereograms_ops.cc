@@ -63,7 +63,7 @@ class SingleImageRandomDotStereogramsOp : public OpKernel {
    int indexMode=0;	// 0 - truncate XY, 1 - round XY, 2 - Interpolate XY (not implemented yet, keep default of 0)
    int interp_x,interp_y;	// 1 - yes, 0 - no  interpolation directions (not implemented yet)
 
-   bool debugging = true;
+   bool debugging = false;
 
    int round(double x) { return((int)(x+.5)); }
    int separation(double z)
