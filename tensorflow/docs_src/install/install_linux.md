@@ -489,31 +489,27 @@ $ <b>docker run -it gcr.io/tensorflow/tensorflow bash</b>
 
 Invoke python from your shell as follows:
 
-<pre>
-$ <b>python</b>
-</pre>
+<pre>$ <b>python</b></pre>
 
-Then, enter the following short program inside the python interactive shell:
+Enter the following short program inside the python interactive shell:
 
-<pre>
->>> <b>import tensorflow as tf</b>
->>> <b>hello = tf.constant('Hello, TensorFlow!')</b>
->>> <b>sess = tf.Session()</b>
->>> <b>print(sess.run(hello))</b>
-</pre>
+```python
+>>> import tensorflow as tf
+>>> hello = tf.constant('Hello, TensorFlow!')
+>>> sess = tf.Session()
+>>> print(sess.run(hello))
+```
 
-If the system outputs the following, then you are ready to begin
-running TensorFlow programs:
+If the system outputs the following, then you are ready to begin writing
+TensorFlow programs:
 
 <pre>Hello, TensorFlow!</pre>
 
 If you are new to TensorFlow, see @{$get_started$Getting Started with TensorFlow}.
 
-If the system outputs an error message instead of a greeting, see
-[Common installation problems](#CommonInstallationProblems).
+If the system outputs an error message instead of a greeting, see [Common
+installation problems](#common_installation_problems).
 
-
-<a name="CommonInstallationProblems"></a>
 ## Common installation problems
 
 We are relying on Stack Overflow to document TensorFlow installation problems

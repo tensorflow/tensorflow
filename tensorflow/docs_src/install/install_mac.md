@@ -451,10 +451,8 @@ If you are new to TensorFlow, see
 @{$get_started$Getting Started with TensorFlow}.
 
 If the system outputs an error message instead of a greeting, see
-[Common installation problems](#CommonInstallationProblems).
+[Common installation problems](#common_installation_problems).
 
-
-<a name="CommonInstallationProblems"></a>
 ## Common installation problems
 
 We are relying on Stack Overflow to document TensorFlow installation problems
