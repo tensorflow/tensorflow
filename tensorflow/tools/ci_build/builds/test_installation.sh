@@ -82,6 +82,7 @@ PY_TEST_BLACKLIST="${PY_TEST_BLACKLIST}:"\
 "tensorflow/python/framework/device_test.py:"\
 "tensorflow/python/framework/file_system_test.py"\
 "tensorflow/python/framework/file_system_test.py:"\
+"tensorflow/contrib/session_bundle/exporter_test.py:"\
 "tensorflow/contrib/quantization/python/dequantize_op_test.py:"\
 "tensorflow/contrib/quantization/python/quantized_conv_ops_test.py:"\
 "tensorflow/contrib/quantization/tools/quantize_graph_test.py:"\
