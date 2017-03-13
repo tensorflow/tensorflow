@@ -675,6 +675,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core/kernels:array",
+        "//tensorflow/core/kernels:bincount_op",
         "//tensorflow/core/kernels:candidate_sampler_ops",
         "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:ctc_ops",
