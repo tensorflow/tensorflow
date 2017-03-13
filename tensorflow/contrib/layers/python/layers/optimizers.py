@@ -66,7 +66,7 @@ def optimize_loss(loss,
                   variables=None,
                   name=None,
                   summaries=None,
-                  colocate_gradients_with_ops=False):
+                  colocate_gradients_with_ops=True):
   """Given loss and parameters for optimizer, returns a training op.
 
   Various ways of passing optimizers, include:
