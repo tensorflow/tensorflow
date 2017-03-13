@@ -348,7 +348,7 @@ CreateSimpleSelectAndScatter(poplar::Graph &graph,
   poplar::Tensor init;
   TF_ASSIGN_OR_RETURN(init, BroadcastTensor(init_val, partial_shape));
 
-  program_seq.add(poplar::program::Copy(partial, init));
+  program_seq.add(poplar::program::Copy(init, partial));
 
   // Find the number of windows in each dimension
   std::vector<unsigned> window_count(ShapeUtil::Rank(output_shape));

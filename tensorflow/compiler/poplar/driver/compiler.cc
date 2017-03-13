@@ -80,7 +80,7 @@ public:
     // TODO (remove when possible) allocate temporary copy buffer
     char* input_buffer = new char[ShapeUtil::ByteSizeOf(inst->shape())];
     input_copy_buffers[inst->parameter_number()] = input_buffer;
-    copy_in.add(poplar::program::Copy(out, input_buffer));
+    copy_in.add(poplar::program::Copy(input_buffer, out));
     return Status::OK();
   }
 
@@ -113,7 +113,7 @@ public:
         // TODO (remove when possible) allocate temporary copy buffer
         char* output_buffer = new char[ShapeUtil::ByteSizeOf(shape)];
         output_copy_buffers[i] = output_buffer;
-        copy_out.add(poplar::program::Copy(output_buffer, out));
+        copy_out.add(poplar::program::Copy(out, output_buffer));
       }
     } else {
       output_copy_buffers.resize(1);
@@ -124,7 +124,7 @@ public:
       // TODO (remove when possible) allocate temporary copy buffer
       char* output_buffer = new char[ShapeUtil::ByteSizeOf(inst->shape())];
       output_copy_buffers[0] = output_buffer;
-      copy_out.add(poplar::program::Copy(output_buffer, out));
+      copy_out.add(poplar::program::Copy(out, output_buffer));
     }
 
     return Status::OK();
