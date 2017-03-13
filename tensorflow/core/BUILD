@@ -1481,6 +1481,7 @@ tf_cuda_library(
         ":protos_all_cc",
         "//third_party/eigen3",
         "//tensorflow/core/kernels:required",
+        "//third_party/mpi",
     ] + tf_additional_core_deps(),
     alwayslink = 1,
 )

@@ -25,6 +25,23 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
 
+#if USE_MPI
+
+#include "third_party/mpi/mpi.h"
+
+#define MPICheck(cmd)                                                 \
+  do {                                                                \
+    int mpi_errno = cmd;                                              \
+    if (MPI_SUCCESS != mpi_errno) {                                   \
+      fprintf(stderr, "[%s:%d] MPI call failed with %d \n", __FILE__, \
+              __LINE__, mpi_errno);                                   \
+      exit(EXIT_FAILURE);                                             \
+    }                                                                 \
+    assert(MPI_SUCCESS == mpi_errno);                                 \
+  } while (false)
+
+#endif
+
 namespace tensorflow {
 
 /* static */
@@ -64,6 +81,28 @@ LocalDevice::LocalDevice(const SessionOptions& options,
                          Allocator* device_allocator)
     : Device(options.env, attributes, device_allocator),
       owned_tp_info_(nullptr) {
+
+#if USE_MPI          
+  // Initialize the MPI environment before code execution is split in threads.
+  // This ensures the environment is setup before the other gRPC threads
+  // are launched.
+  int flag = 0;
+  MPICheck(MPI_Initialized(&flag));
+  if (!flag) {
+    MPICheck(MPI_Init_thread(0, 0, MPI_THREAD_MULTIPLE, &flag));
+    assert(flag == MPI_THREAD_MULTIPLE);
+    int procId, nProcs, len = -1;
+    char procName[128];
+    MPICheck(MPI_Comm_rank(MPI_COMM_WORLD, &procId));
+    MPICheck(MPI_Comm_size(MPI_COMM_WORLD, &nProcs));
+    MPICheck(MPI_Get_processor_name(procName, &len));
+    fprintf(stderr,
+            "MPI Environment initialised. Process id: %d Total processes: %d "
+            "|| Hostname: %s \n",
+            procId, nProcs, procName);
+  }
+#endif
+
   // If we're running on the CPU, log warnings if we're not compiled using the
   // best flags for performance.
   port::WarnAboutUnusedCPUFeatures();

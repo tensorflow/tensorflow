@@ -5,6 +5,7 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
+
 filegroup(
     name = "all_files",
     srcs = glob(
@@ -32,6 +33,7 @@ load(
 )
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
+load("//tensorflow:tensorflow.bzl", "tf_mpi_opts")
 
 # For platform specific build config
 load(
@@ -84,6 +86,7 @@ cc_library(
         "//tensorflow/core/distributed_runtime:worker_interface",
         "@grpc//:grpc++_unsecure",
     ],
+    copts = tf_mpi_opts(),
 )
 
 cc_library(
@@ -277,6 +280,7 @@ cc_library(
         "@grpc//:grpc++_unsecure",
         "@grpc//:grpc_unsecure",
     ],
+    copts = tf_mpi_opts(),
     alwayslink = 1,
 )
 

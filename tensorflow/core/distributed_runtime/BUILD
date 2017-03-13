@@ -29,6 +29,7 @@ filegroup(
 
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
+load("//tensorflow:tensorflow.bzl", "tf_mpi_opts")
 
 # For platform specific build config
 load(
@@ -84,6 +85,7 @@ cc_library(
     ],
     deps = [
         ":call_options",
+        ":worker_env",
         ":message_wrappers",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -260,6 +262,7 @@ cc_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
     ],
+   copts = tf_mpi_opts(),  
 )
 
 cc_library(
