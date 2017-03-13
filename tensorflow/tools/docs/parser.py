@@ -526,10 +526,10 @@ def _remove_first_line_indent(string):
 
 
 def _generate_signature(func, reverse_index):
-  """Given a function, returns a string representing its args.
+  """Given a function, returns a list of strings representing its args.
 
-  This function produces a string representing the arguments to a python
-  function, including surrounding parentheses. It uses inspect.getargspec, which
+  This function produces a list of strings representing the arguments to a
+  python function. It uses inspect.getargspec, which
   does not generalize well to Python 3.x, which is more flexible in how *args
   and **kwargs are handled. This is not a problem in TF, since we have to remain
   compatible to Python 2.7 anyway.
@@ -545,7 +545,8 @@ def _generate_signature(func, reverse_index):
     reverse_index: A map from object ids to canonical full names to use.
 
   Returns:
-    A string representing the signature of `func` as python code.
+    A list of strings representing the argument signature of `func` as python
+    code.
   """
 
   # This produces poor signatures for decorated functions.
@@ -618,7 +619,7 @@ def _generate_signature(func, reverse_index):
   if argspec.keywords:
     args_list.append('**' + argspec.keywords)
 
-  return '(%s)' % ', '.join(args_list)
+  return args_list
 
 
 def _get_guides_markdown(duplicate_names, guide_index, relative_path):
@@ -691,6 +692,10 @@ class _FunctionPageInfo(object):
   @property
   def full_name(self):
     return self._full_name
+
+  @property
+  def short_name(self):
+    return self._full_name.split('.')[-1]
 
   @property
   def defined_in(self):
@@ -767,6 +772,10 @@ class _ClassPageInfo(object):
   @property
   def full_name(self):
     return self._full_name
+
+  @property
+  def short_name(self):
+    return self._full_name.split('.')[-1]
 
   @property
   def defined_in(self):
@@ -948,6 +957,10 @@ class _ModulePageInfo(object):
   @property
   def full_name(self):
     return self._full_name
+
+  @property
+  def short_name(self):
+    return self._full_name.split('.')[-1]
 
   @property
   def defined_in(self):
@@ -1271,6 +1284,7 @@ def _get_defined_in(py_object, parser_config):
     return _PythonFile(path, parser_config)
 
 
+# TODO(markdaoust): This should just parse, pretty_docs should generate the md.
 def generate_global_index(library_name, index, reference_resolver):
   """Given a dict of full names to python objects, generate an index page.
 
