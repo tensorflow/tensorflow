@@ -188,6 +188,8 @@ building the `.so` file.
 >   the older ABI. If you compile your op library with gcc5, add
 >   `-D_GLIBCXX_USE_CXX11_ABI=0` to the command line to make the library
 >   compatible with the older abi.
+>   Furthermore if you are using TensorFlow package created from source remember to add `-cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0"`
+>   as bazel command to compile the Python package.
 
 ### Compile the op using bazel (TensorFlow source installation)
 
@@ -530,6 +532,7 @@ REGISTER_OP("AttrDefaultExampleForAllTypes")
 Note in particular that the values of type `type` use @{$dims_types#data-types$the `DT_*` names for the types}.
 
 #### Polymorphism {#polymorphism}
+
 ##### Type Polymorphism
 
 For ops that can take different types as input or produce different output
@@ -871,11 +874,11 @@ expressions:
   ```c++
   REGISTER_OP("PolymorphicSingleInput")
       .Attr("T: type")
-      .Input("in: T);
+      .Input("in: T");
 
   REGISTER_OP("RestrictedPolymorphicSingleInput")
       .Attr("T: {int32, int64}")
-      .Input("in: T);
+      .Input("in: T");
   ```
 
   Referencing an attr of type `list(type)` allows you to accept a sequence of

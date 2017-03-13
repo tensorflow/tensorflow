@@ -586,7 +586,7 @@ def _generate_signature(func, reverse_index):
               '_ops.GraphKeys': 'tf.GraphKeys',
               'init_ops.zeros_initializer': 'tf.zeros_initializer',
               'init_ops.ones_initializer': 'tf.ones_initializer',
-              'saver_pb2.SaverDef': 'tf.SaverDef',
+              'saver_pb2.SaverDef': 'tf.train.SaverDef',
           }
           full_name_re = '^%s(.%s)+' % (IDENTIFIER_RE, IDENTIFIER_RE)
           match = re.match(full_name_re, default_text)

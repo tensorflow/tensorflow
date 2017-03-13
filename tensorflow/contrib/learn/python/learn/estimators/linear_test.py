@@ -1665,15 +1665,15 @@ class LinearEstimatorTest(test.TestCase):
             'feature', dimension=4)
     ]
     exp = experiment.Experiment(
-        estimator=linear._LinearEstimator(feature_columns=cont_features,
-                                          head=head_lib._regression_head()),
+        estimator=linear.LinearEstimator(feature_columns=cont_features,
+                                         head=head_lib.regression_head()),
         train_input_fn=test_data.iris_input_logistic_fn,
         eval_input_fn=test_data.iris_input_logistic_fn)
     exp.test()
 
   def testEstimatorContract(self):
     estimator_test_utils.assert_estimator_contract(self,
-                                                   linear._LinearEstimator)
+                                                   linear.LinearEstimator)
 
   def testLinearRegression(self):
     """Tests that loss goes down with training."""
@@ -1691,8 +1691,8 @@ class LinearEstimatorTest(test.TestCase):
                                                                  100)
     age = feature_column_lib.real_valued_column('age')
 
-    linear_estimator = linear._LinearEstimator(feature_columns=[age, language],
-                                               head=head_lib._regression_head())
+    linear_estimator = linear.LinearEstimator(feature_columns=[age, language],
+                                              head=head_lib.regression_head())
     linear_estimator.fit(input_fn=input_fn, steps=100)
     loss1 = linear_estimator.evaluate(input_fn=input_fn, steps=1)['loss']
     linear_estimator.fit(input_fn=input_fn, steps=400)
@@ -1717,9 +1717,9 @@ class LinearEstimatorTest(test.TestCase):
                                                                  100)
     age = feature_column_lib.real_valued_column('age')
 
-    linear_estimator = linear._LinearEstimator(
+    linear_estimator = linear.LinearEstimator(
         feature_columns=[age, language],
-        head=head_lib._poisson_regression_head())
+        head=head_lib.poisson_regression_head())
     linear_estimator.fit(input_fn=input_fn, steps=10)
     loss1 = linear_estimator.evaluate(input_fn=input_fn, steps=1)['loss']
     linear_estimator.fit(input_fn=input_fn, steps=100)
@@ -1736,8 +1736,8 @@ class LinearEstimatorTest(test.TestCase):
     sdca_optimizer = sdca_optimizer_lib.SDCAOptimizer(
         example_id_column='example_id')
     with self.assertRaises(ValueError):
-      linear._LinearEstimator(
-          head=head_lib._regression_head(label_dimension=1),
+      linear.LinearEstimator(
+          head=head_lib.regression_head(label_dimension=1),
           feature_columns=[maintenance_cost, sq_footage],
           optimizer=sdca_optimizer,
           _joint_weights=True)

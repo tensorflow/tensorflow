@@ -613,6 +613,7 @@ TEST(CommonShapeFnsTest, DepthwiseConv2DShapeTest) {
                   .Input("filter", 0, DT_FLOAT)
                   .Attr("strides", strides)
                   .Attr("padding", "VALID")
+                  .Attr("data_format", "NHWC")
                   .Finalize(&op.node_def));
 
   // Most of DepthwiseConv2D is implicitly tested by Conv2D, so
@@ -634,6 +635,18 @@ TEST(CommonShapeFnsTest, DepthwiseConv2DShapeTest) {
   INFER_OK(op, "[1,2,2,3];[1,1,?,4]", "[d0_0,2,2,12]");
   INFER_OK(op, "[1,2,2,?];[1,1,?,4]", "[d0_0,2,2,?]");
   INFER_OK(op, "[1,2,2,3];[1,1,3,?]", "[d0_0,2,2,?]");
+
+  // Test for NCHW format.
+  TF_CHECK_OK(NodeDefBuilder("test", "DepthwiseConv2dNative")
+                  .Input("input", 0, DT_FLOAT)
+                  .Input("filter", 0, DT_FLOAT)
+                  .Attr("strides", strides)
+                  .Attr("padding", "VALID")
+                  .Attr("data_format", "NCHW")
+                  .Finalize(&op.node_def));
+
+  // 1x1 filter, depth multiplication
+  INFER_OK(op, "[1,3,2,2];[1,1,3,4]", "[d0_0,12,2,2]");
 }
 
 TEST(CommonShapeFnsTest, AvgPool2DShapeTest) {

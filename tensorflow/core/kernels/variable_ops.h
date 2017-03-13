@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_KERNELS_VARIABLE_OPS_H_
 #define TENSORFLOW_KERNELS_VARIABLE_OPS_H_
 
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -154,6 +155,14 @@ class DestroyTemporaryVariableOp : public OpKernel {
     OP_REQUIRES(context, rm, errors::Internal("No per-step resource manager."));
     OP_REQUIRES_OK(context, rm->Delete<TemporaryVariableOp::TmpVar>(
                                 context->step_container()->name(), var_name_));
+    if (context->track_allocations()) {
+      if (context->allocate_on_host(AllocatorAttributes())) {
+        context->record_host_persistent_memory_allocation(-tmpvar.TotalBytes());
+      } else {
+        context->record_device_persistent_memory_allocation(
+            -tmpvar.TotalBytes());
+      }
+    }
   }
 
  private:

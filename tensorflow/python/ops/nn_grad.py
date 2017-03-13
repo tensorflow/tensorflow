@@ -378,11 +378,19 @@ def _Conv2DGrad(op, grad):
 def _DepthwiseConv2dNativeGrad(op, grad):
   return [
       nn_ops.depthwise_conv2d_native_backprop_input(
-          array_ops.shape(op.inputs[0]), op.inputs[1], grad,
-          op.get_attr("strides"), op.get_attr("padding")),
+          array_ops.shape(op.inputs[0]),
+          op.inputs[1],
+          grad,
+          op.get_attr("strides"),
+          op.get_attr("padding"),
+          data_format=op.get_attr("data_format")),
       nn_ops.depthwise_conv2d_native_backprop_filter(
-          op.inputs[0], array_ops.shape(op.inputs[1]), grad,
-          op.get_attr("strides"), op.get_attr("padding"))
+          op.inputs[0],
+          array_ops.shape(op.inputs[1]),
+          grad,
+          op.get_attr("strides"),
+          op.get_attr("padding"),
+          data_format=op.get_attr("data_format"))
   ]
 
 

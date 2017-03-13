@@ -77,7 +77,7 @@ class Estimator(object):
       model_fn: Model function. Follows the signature:
         * Args:
           * `features`: single `Tensor` or `dict` of `Tensor`s
-                 (depending on data passed to `fit`),
+                 (depending on data passed to `train`),
           * `labels`: `Tensor` or `dict` of `Tensor`s (for multi-head
                  models). If mode is `ModeKeys.INFER`, `labels=None` will be
                  passed. If the `model_fn`'s signature does not accept
@@ -152,7 +152,7 @@ class Estimator(object):
   def params(self):
     return copy.deepcopy(self._params)
 
-  def fit(self, input_fn, hooks=None, steps=None, max_steps=None):
+  def train(self, input_fn, hooks=None, steps=None, max_steps=None):
     """Trains a model given training data input_fn.
 
     Args:
@@ -163,9 +163,9 @@ class Estimator(object):
         inside the training loop.
       steps: Number of steps for which to train model. If `None`, train forever
         or train until input_fn generates the `OutOfRange` or `StopIteration`
-        error. 'steps' works incrementally. If you call two times fit(steps=10)
-        then training occurs in total 20 steps. If `OutOfRange` or
-        `StopIteration` error occurs in the middle, training stops before 20
+        error. 'steps' works incrementally. If you call two times
+        train(steps=10) then training occurs in total 20 steps. If `OutOfRange`
+        or `StopIteration` error occurs in the middle, training stops before 20
         steps. If you don't want to have incremental behaviour please set
         `max_steps` instead. If set, `max_steps` must be `None`.
       max_steps: Number of total steps for which to train model. If `None`,
@@ -174,8 +174,8 @@ class Estimator(object):
         or `StopIteration` error occurs in the middle, training stops before
         `max_steps` steps.
 
-        Two calls to `fit(steps=100)` means 200 training
-        iterations. On the other hand, two calls to `fit(max_steps=100)` means
+        Two calls to `train(steps=100)` means 200 training
+        iterations. On the other hand, two calls to `train(max_steps=100)` means
         that the second call will not do any iteration since first call did
         all 100 steps.
 
@@ -295,7 +295,7 @@ class Estimator(object):
       training.create_global_step(g)
       features = self._get_features_from_input_fn(input_fn)
       estimator_spec = self._call_model_fn(features, None,
-                                           model_fn_lib.ModeKeys.FIT)
+                                           model_fn_lib.ModeKeys.PREDICT)
       predictions = self._extract_keys(estimator_spec.predictions, predict_keys)
       with training.MonitoredSession(
           session_creator=training.ChiefSessionCreator(
@@ -402,7 +402,7 @@ class Estimator(object):
       with ops.device('/cpu:0'):
         features, labels = input_fn()
       estimator_spec = self._call_model_fn(features, labels,
-                                           model_fn_lib.ModeKeys.FIT)
+                                           model_fn_lib.ModeKeys.TRAIN)
       ops.add_to_collection(ops.GraphKeys.LOSSES, estimator_spec.loss)
       all_hooks.extend([
           training.NanTensorHook(estimator_spec.loss),
@@ -416,8 +416,8 @@ class Estimator(object):
       all_hooks.extend(hooks)
       all_hooks.extend(estimator_spec.training_hooks)
 
-      scaffold = estimator_spec.scaffold or training.Scaffold()
-      if not (scaffold.saver or ops.get_collection(ops.GraphKeys.SAVERS)):
+      if not (estimator_spec.scaffold.saver or
+              ops.get_collection(ops.GraphKeys.SAVERS)):
         ops.add_to_collection(ops.GraphKeys.SAVERS,
                               training.Saver(
                                   sharded=True,
@@ -438,13 +438,13 @@ class Estimator(object):
                   self._model_dir,
                   save_secs=self._config.save_checkpoints_secs,
                   save_steps=self._config.save_checkpoints_steps,
-                  scaffold=scaffold)
+                  scaffold=estimator_spec.scaffold)
           ]
       with training.MonitoredTrainingSession(
           master=self._config.master,
           is_chief=self._config.is_chief,
           checkpoint_dir=self._model_dir,
-          scaffold=scaffold,
+          scaffold=estimator_spec.scaffold,
           hooks=all_hooks,
           chief_only_hooks=chief_hooks + estimator_spec.training_chief_hooks,
           save_checkpoint_secs=0,  # Saving is handled by a hook.

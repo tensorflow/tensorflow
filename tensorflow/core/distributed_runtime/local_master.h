@@ -67,6 +67,7 @@ class LocalMaster : public MasterInterface {
                      const ListDevicesRequest* request,
                      ListDevicesResponse* response) override;
 
+  // See tensorflow::Reset() and the comment on ResetRequest.
   Status Reset(CallOptions* call_options, const ResetRequest* request,
                ResetResponse* response) override;
 

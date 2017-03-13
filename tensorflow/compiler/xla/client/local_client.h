@@ -83,12 +83,6 @@ class LocalExecutable {
       const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       const ExecutableRunOptions& options);
 
-  // Overload which places the computation result in the given preallocated
-  // buffer.
-  tensorflow::Status Run(
-      const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-      const ExecutableRunOptions& options, ShapedBuffer* result);
-
   // Return the layout (contained in a shape) of the result produced by the
   // computation.
   const Shape& result_layout() const {
@@ -117,7 +111,7 @@ class LocalExecutable {
   // of the computation.
   tensorflow::Status ValidateExecutionOptions(
       const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-      const ExecutableRunOptions& options);
+      const ExecutableRunOptions& options, const Backend& backend);
 
   // Records the computation in a SessionModule proto with the arguments used to
   // invoke it, and the result. Enabled by flag: --tla_dump_executions_to.
@@ -180,37 +174,6 @@ class LocalClient : public Client {
   StatusOr<std::unique_ptr<GlobalData>> AllocateBufferOnDevice(
       const Shape& shape, int device_ordinal,
       bool allocate_space_for_deep_copy);
-
-  // Executes the given computation with the given arguments and
-  // options. Arguments and result are "zero-copy", and are passed as pointers
-  // to device memory. See LocalExecuteOptions class comments for description of
-  // available options. The returned ShapedBuffer includes pointer(s) to device
-  // memory (DeviceMemoryBase) which are the caller's responsibility to
-  // deallocate. The layout of the result is chosen by the XLA service and
-  // should not be relied upon to be a specific value. If a specific result
-  // layout is needed, then the layout should be set in options.
-  //
-  // The arrays of arguments with different shapes or layouts are assumed not to
-  // alias.
-  //
-  // TODO(b/31220873): Remove ExecuteLocally methods. The path forward is to use
-  // Compile and run the returned LocalExecutable.
-  StatusOr<std::unique_ptr<ShapedBuffer>> ExecuteLocally(
-      const Computation& computation,
-      const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-      const LocalExecuteOptions& options);
-
-  // Overload of ExecuteLocally which writes the result into the given
-  // ShapedBuffer "result". Result is const because the ShapedBuffer data
-  // structure itself is not modified, only the buffers in device memory to
-  // which it refers.
-  //
-  // TODO(b/31220873): Remove ExecuteLocally methods. The path forward is to use
-  // Compile and run the returned LocalExecutable.
-  tensorflow::Status ExecuteLocally(
-      const Computation& computation,
-      const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-      const LocalExecuteOptions& options, ShapedBuffer* result);
 
   // Build and return a LocalExecutable object. The executable is compiled using
   // the given argument layouts and options.

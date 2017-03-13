@@ -27,6 +27,7 @@ See the @{$python/tfdbg} guide.
 @@DumpingDebugWrapperSession
 @@LocalCLIDebugHook
 @@LocalCLIDebugWrapperSession
+@@WatchOptions
 """
 
 from __future__ import absolute_import
@@ -44,6 +45,7 @@ from tensorflow.python.debug.lib.debug_utils import watch_graph
 from tensorflow.python.debug.lib.debug_utils import watch_graph_with_blacklists
 
 from tensorflow.python.debug.wrappers.dumping_wrapper import DumpingDebugWrapperSession
+from tensorflow.python.debug.wrappers.framework import WatchOptions
 from tensorflow.python.debug.wrappers.hooks import DumpingDebugHook
 from tensorflow.python.debug.wrappers.hooks import LocalCLIDebugHook
 from tensorflow.python.debug.wrappers.local_cli_wrapper import LocalCLIDebugWrapperSession

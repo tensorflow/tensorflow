@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import operator
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
@@ -54,11 +55,6 @@ class MatMulTest(test_lib.TestCase):
 def _GetMatMulTest(a_np_, b_np_, use_static_shape_, **kwargs_):
 
   def Test(self):
-    # TODO(rmlarsen): Re-enable this test when we have fixed the failure on
-    # Windows.
-    if not use_static_shape_ and a_np_.dtype is np.int32:
-      self.skipTest("Skipping test to avoid failure on Windows.")
-
     np_val = np.matrix(a_np_) * np.matrix(b_np_)
 
     use_gpu = True
@@ -157,31 +153,87 @@ class MatMulStatsTest(test_lib.TestCase):
           self.assertEqual(7200, flops)
 
 
+try:
+  # @ operator supported since python 3.5.
+  infix_matmul = operator.matmul
+except AttributeError:
+  # For earlier versions of python, emulate regular behavior.
+  # Useful to build and test for 3.5+ on earlier versions.
+  def infix_matmul(x, y):
+    try:
+      r = type(x).__matmul__(x, y)
+    except AttributeError:
+      r = NotImplemented
+    if r is NotImplemented and type(x) is not type(y):
+      try:
+        r = type(y).__rmatmul__(y, x)
+      except AttributeError:
+        r = NotImplemented
+    if r is NotImplemented:
+      raise TypeError("unsupported operand type(s) for @: '{}' and '{}'"
+                      .format(type(x).__name__, type(y).__name__))
+    return r
+
+
+class MatMulInfixOperatorTest(test_lib.TestCase):
+
+  def testMismatchedShape(self):
+    with self.assertRaisesWithPredicateMatch(ValueError,
+                                             lambda e: "Shape must" in str(e)):
+      infix_matmul(
+          ops.convert_to_tensor([10.0, 20.0, 30.0]),
+          ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0]]))
+
+  def testMismatchedDimensions(self):
+    with self.assertRaisesWithPredicateMatch(
+        ValueError, lambda e: "Dimensions must" in str(e)):
+      infix_matmul(
+          ops.convert_to_tensor([[10.0, 20.0, 30.0]]),
+          ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0]]))
+
+  def testInfixMatmulIsTfMatmul(self):
+    a = ops.convert_to_tensor([[10.0, 20.0, 30.0]])
+    b = ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0], [80.0, 90.0]])
+    c = infix_matmul(a, b)
+    self.assertEqual(c.op.type, "MatMul")
+
+  def testInfixMatmulDoesDotProduct(self):
+    a = ops.convert_to_tensor([[10.0, 20.0, 30.0]])
+    b = ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0], [80.0, 90.0]])
+    c = infix_matmul(a, b)
+    d = math_ops.matmul(a, b)
+    with self.test_session():
+      self.assertAllEqual(c.eval(), d.eval())
+
+
 if __name__ == "__main__":
   sizes = [1, 3, 5]
   trans_options = [[False, False], [True, False], [False, True]]
-  for dtype in (np.int32, np.float16, np.float32, np.float64, np.complex64,
-                np.complex128):
-    for m in sizes:
-      for n in sizes:
-        for k in sizes:
-          # Construct compatible random matrices a_np of size [m, k] and b_np
-          # of size [k, n].
-          a_np = np.random.normal(-5, 5, m * k).astype(dtype).reshape([m, k])
-          if dtype in (np.complex64, np.complex128):
-            a_np.imag = np.random.normal(-5, 5,
-                                         m * k).astype(dtype).reshape([m, k])
-
-          b_np = np.random.normal(-5, 5, k * n).astype(dtype).reshape([k, n])
-          if dtype in (np.complex64, np.complex128):
-            b_np.imag = np.random.normal(-5, 5,
-                                         k * n).astype(dtype).reshape([k, n])
-          for adjoint_a, transpose_a in trans_options:
-            for adjoint_b, transpose_b in trans_options:
-              for use_static_shape in [False, True]:
+  for use_static_shape in [False, True]:
+    for dtype in (np.int32, np.float16, np.float32, np.float64, np.complex64,
+                  np.complex128):
+      if not use_static_shape and dtype == np.int32:
+        # TODO(rmlarsen): Re-enable this test when we have fixed the underlying
+        # bug in Windows (b/35935459).
+        continue
+      for m in sizes:
+        for n in sizes:
+          for k in sizes:
+            # Construct compatible random matrices a_np of size [m, k] and b_np
+            # of size [k, n].
+            a_np = np.random.normal(-5, 5, m * k).astype(dtype).reshape([m, k])
+            if dtype in (np.complex64, np.complex128):
+              a_np.imag = np.random.normal(-5, 5,
+                                           m * k).astype(dtype).reshape([m, k])
+            b_np = np.random.normal(-5, 5, k * n).astype(dtype).reshape([k, n])
+            if dtype in (np.complex64, np.complex128):
+              b_np.imag = np.random.normal(-5, 5,
+                                           k * n).astype(dtype).reshape([k, n])
+            for adjoint_a, transpose_a in trans_options:
+              for adjoint_b, transpose_b in trans_options:
                 name = "%s_%s_%s_%s_%s_%s_%s_%s_%s" % (
-                    dtype.__name__, m, n, k, adjoint_a, transpose_a, adjoint_b,
-                    transpose_b, use_static_shape)
+                    use_static_shape, dtype.__name__, m, n, k, adjoint_a,
+                    transpose_a, adjoint_b, transpose_b)
                 _AddTest(MatMulTest, "MatMulTest", name,
                          _GetMatMulTest(
                              a_np,

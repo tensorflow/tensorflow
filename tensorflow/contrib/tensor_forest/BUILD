@@ -51,9 +51,9 @@ cc_library(
     srcs = [":custom_op_sources"],
     hdrs = [":custom_op_headers"],
     deps = [
-        "//:protobuf_headers",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
+        "@protobuf//:protobuf_headers",
     ],
     alwayslink = 1,
 )
@@ -191,9 +191,9 @@ cc_library(
         "kernels/tree_utils.h",
     ],
     deps = [
-        "//:protobuf_headers",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
+        "@protobuf//:protobuf_headers",
     ],
 )
 

@@ -25,6 +25,7 @@ PROTOC="${TF_DIR}/bazel-out/host/bin/external/protobuf/protoc"
 
 if [ ! -x "${PROTOC}" ]
 then
+  set +e
   PATH_PROTOC=$(which protoc)
   if [ ! -x "${PATH_PROTOC}" ]
   then
@@ -34,6 +35,7 @@ then
     exit 1
   fi
   PROTOC=$PATH_PROTOC
+  set -e
 fi
 
 # Ensure that protoc-gen-go is available in $PATH

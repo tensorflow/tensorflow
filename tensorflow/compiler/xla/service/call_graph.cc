@@ -194,23 +194,23 @@ Status CallGraph::SetCallContexts() {
 }
 
 /* static */
-StatusOr<CallGraph> CallGraph::Build(const HloModule* module) {
-  CallGraph call_graph(module);
+StatusOr<std::unique_ptr<CallGraph>> CallGraph::Build(const HloModule* module) {
+  std::unique_ptr<CallGraph> call_graph(new CallGraph(module));
 
   // Construct nodes of the call graph and populate the callsites.
   for (const std::unique_ptr<HloComputation>& computation :
        module->computations()) {
-    auto it_added = call_graph.node_indices_.insert(
-        {computation.get(), call_graph.nodes_.size()});
+    auto it_added = call_graph->node_indices_.insert(
+        {computation.get(), call_graph->nodes_.size()});
     // All computation should be unique, so the computation should not already
     // exist in the map.
     TF_RET_CHECK(it_added.second);
-    call_graph.nodes_.emplace_back(computation.get());
+    call_graph->nodes_.emplace_back(computation.get());
 
     // Add all callsites in this computation.
     for (const std::unique_ptr<HloInstruction>& instruction :
          computation->instructions()) {
-      call_graph.nodes_.back().AddCallSitesInInstruction(instruction.get());
+      call_graph->nodes_.back().AddCallSitesInInstruction(instruction.get());
     }
   }
 
@@ -218,20 +218,57 @@ StatusOr<CallGraph> CallGraph::Build(const HloModule* module) {
   for (const std::unique_ptr<HloComputation>& computation :
        module->computations()) {
     TF_ASSIGN_OR_RETURN(CallGraphNode * caller_node,
-                        call_graph.GetNode(computation.get()));
+                        call_graph->GetNode(computation.get()));
     for (const CallSite& callsite : caller_node->callsites()) {
       // Add caller callsites.
       TF_ASSIGN_OR_RETURN(CallGraphNode * callee_node,
-                          call_graph.GetNode(callsite.called_computation));
+                          call_graph->GetNode(callsite.called_computation));
       callee_node->AddCallerCallSite(callsite);
     }
   }
 
-  TF_RETURN_IF_ERROR(call_graph.SetCallContexts());
+  TF_RETURN_IF_ERROR(call_graph->SetCallContexts());
 
-  XLA_VLOG_LINES(1, call_graph.ToString());
+  XLA_VLOG_LINES(1, call_graph->ToString());
 
   return std::move(call_graph);
+}
+
+Status CallGraph::VisitNodesInternal(
+    const VisitorFunction& visitor_func, const CallGraphNode* node,
+    std::unordered_set<const CallGraphNode*>* visited) const {
+  auto pair = visited->insert(node);
+  if (!pair.second) {
+    // Node was not inserted. Node has already been visited.
+    return Status::OK();
+  }
+
+  for (const HloComputation* computation : node->callees()) {
+    TF_ASSIGN_OR_RETURN(const CallGraphNode* callee_node, GetNode(computation));
+    TF_RETURN_IF_ERROR(VisitNodesInternal(visitor_func, callee_node, visited));
+  }
+
+  return visitor_func(*node);
+}
+
+Status CallGraph::VisitNodes(const VisitorFunction& visitor_func,
+                             bool visit_unreachable_nodes) const {
+  std::unordered_set<const CallGraphNode*> visited;
+  if (visit_unreachable_nodes) {
+    // Traverse from all roots in the call graph.
+    for (const CallGraphNode& node : nodes()) {
+      if (node.callers().empty()) {
+        TF_RETURN_IF_ERROR(VisitNodesInternal(visitor_func, &node, &visited));
+      }
+    }
+  } else {
+    // Traverse only from the entry computation.
+    TF_ASSIGN_OR_RETURN(const CallGraphNode* entry_node,
+                        GetNode(module_->entry_computation()));
+    TF_RETURN_IF_ERROR(VisitNodesInternal(visitor_func, entry_node, &visited));
+  }
+
+  return Status::OK();
 }
 
 string CallGraph::ToString() const {

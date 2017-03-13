@@ -18,6 +18,8 @@ limitations under the License.
 
 namespace tensorflow {
 
+const char* SessionState::kTensorHandleResourceTypeName = "TensorHandle";
+
 Status SessionState::GetTensor(const string& handle, Tensor* tensor) {
   mutex_lock l(state_lock_);
   auto it = tensors_.find(handle);

@@ -225,8 +225,8 @@ Status BuildArguments(const std::vector<XlaCompiler::Argument>& args,
   parameters.reserve(args.size());
   variables.reserve(args.size());
 
-  for (std::vector<XlaCompiler::Argument>::size_type i = 0;
-       i < args.size(); ++i) {
+  for (std::vector<XlaCompiler::Argument>::size_type i = 0; i < args.size();
+       ++i) {
     XlaContext::Argument& context_arg = (*context_args)[i];
     context_arg.name = args[i].name;
     context_arg.value.constant_value = args[i].constant_value;

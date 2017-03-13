@@ -192,6 +192,9 @@ class DirectSession : public Session {
   ::tensorflow::Status ExtendLocked(const GraphDef& graph)
       EXCLUSIVE_LOCKS_REQUIRED(graph_def_lock_);
 
+  ::tensorflow::Status ResourceHandleToInputTensor(
+      const Tensor& resource_tensor, Tensor* retrieved_tensor);
+
   // Feeds more inputs to the executors, triggering further execution.
   ::tensorflow::Status SendInputs(
       const std::vector<std::pair<string, Tensor>>& inputs,

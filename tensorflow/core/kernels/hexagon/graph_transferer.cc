@@ -80,6 +80,10 @@ Status GraphTransferer::LoadGraphFromProto(
 
   if (shape_inference_for_unknown_shape && !input_node_info_list.empty()) {
     auto visit = [&shape_refiner, &input_node_info_list, &status](Node* node) {
+      if (!status.ok()) {
+        return;
+      }
+
       CHECK_NE(node, nullptr);
       // If we visit an input node, we use the shape provided and set the
       // shape accordingly.
@@ -89,16 +93,18 @@ Status GraphTransferer::LoadGraphFromProto(
         if (node->name() == input_node_info.first) {
           shape_inference::InferenceContext* context =
               shape_refiner.GetContext(node);
-          TensorShapeProto proto;
-          input_node_info.second.shape().AsProto(&proto);
           shape_inference::ShapeHandle handle;
-          context->MakeShapeFromShapeProto(proto, &handle);
+          status = context->MakeShapeFromTensorShape(
+              input_node_info.second.shape(), &handle);
           shape_refiner.SetShape(node, 0, handle);
           is_input_node = true;
         }
+        if (!status.ok()) {
+          break;
+        }
       }
       // If not an input node call AddNode() that recomputes the shape.
-      if (!is_input_node) {
+      if (!is_input_node && status.ok()) {
         status = shape_refiner.AddNode(node);
         if (!status.ok()) {
           VLOG(1) << "Shape inference failed for node: " << node->name();
