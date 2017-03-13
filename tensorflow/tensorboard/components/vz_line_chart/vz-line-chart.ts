@@ -430,28 +430,25 @@ module VZ {
     }
 
     private resmoothDataset(dataset: Plottable.Dataset) {
-      // When increasing the smoothing window, it smoothes a lot with the first
-      // few points and then starts to gradually smooth slower, so using an
-      // exponential function makes the slider more consistent. 1000^x has a
-      // range of [1, 1000], so subtracting 1 and dividing by 999 results in a
-      // range of [0, 1], which can be used as the percentage of the data, so
-      // that the kernel size can be specified as a percentage instead of a
-      // hardcoded number, what would be bad with multiple series.
-      let factor = (Math.pow(1000, this.smoothingWeight) - 1) / 999;
-      let data = dataset.data();
-      let kernelRadius = Math.floor(data.length * factor / 2);
+      var data = dataset.data();
+      var smoothingWeight = this.smoothingWeight;
       data.forEach(function (d, i) {
-        var actualKernelRadius = Math.min(kernelRadius, i);
-        var start = i - actualKernelRadius;
-        var end = Math.min(data.length - 1, i + actualKernelRadius);
-        // Only smooth finite numbers.
         if (!_.isFinite(d.scalar)) {
-          d.smoothed = d.scalar;
-        } else {
-          d.smoothed = d3.mean(data.slice(start, end).filter(function (d) { return _.isFinite(d.scalar); }), function (d) { return d.scalar; });
+            d.smoothed = d.scalar;
+        }
+        else if (i == 0) {
+            d.smoothed = d.scalar;
+        }
+        else {
+          var prev_index = i > 0 ? i - 1 : 0;
+          if (!_.isFinite(data[prev_index].smoothed)) {
+              d.smoothed = d.scalar
+          }
+          else {
+            d.smoothed = data[prev_index].smoothed * smoothingWeight + (1.0 - smoothingWeight) * d.scalar;
+          }
         }
       });
-
     }
 
     private getDataset(name: string) {
