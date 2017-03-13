@@ -17,6 +17,7 @@ package org.tensorflow.contrib.android;
 
 import android.content.res.AssetManager;
 import android.os.Trace;
+import android.text.TextUtils;
 import android.util.Log;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -45,18 +46,21 @@ public class TensorFlowInferenceInterface {
   private static final String ASSET_FILE_PREFIX = "file:///android_asset/";
 
   public TensorFlowInferenceInterface() {
+    Log.i(TAG, "Checking to see if TensorFlow native methods are already loaded");
     try {
       // Hack to see if the native libraries have been loaded.
       new RunStats();
-      Log.i(TAG, "Native methods already loaded.");
+      Log.i(TAG, "TensorFlow native methods already loaded");
     } catch (UnsatisfiedLinkError e1) {
-      Log.i(TAG, "Loading tensorflow_inference.");
+      Log.i(
+          TAG, "TensorFlow native methods not found, attempting to load via tensorflow_inference");
       try {
         System.loadLibrary("tensorflow_inference");
+        Log.i(TAG, "Successfully loaded TensorFlow native methods (RunStats error may be ignored)");
       } catch (UnsatisfiedLinkError e2) {
         throw new RuntimeException(
             "Native TF methods not found; check that the correct native"
-                + " libraries are present and loaded.");
+                + " libraries are present in the APK.");
       }
     }
   }
@@ -76,23 +80,24 @@ public class TensorFlowInferenceInterface {
       is = assetManager.open(aname);
     } catch (IOException e) {
       if (hasAssetPrefix) {
-        Log.e(TAG, "Failed to initialize: " + e.toString());
+        Log.e(TAG, "Failed to load model from '" + model + "': " + e.toString());
         return 1;
       }
       // Perhaps the model file is not an asset but is on disk.
       try {
         is = new FileInputStream(model);
       } catch (IOException e2) {
-        Log.e(TAG, "Failed to open " + model + ": " + e2.toString());
+        Log.e(TAG, "Failed to load model from '" + model + "': " + e2.toString());
         return 1;
       }
     }
     try {
       load(is);
       is.close();
+      Log.i(TAG, "Successfully loaded model from '" + model + "'");
       return 0;
     } catch (IOException e) {
-      Log.e(TAG, "Failed to initialize: " + e.toString());
+      Log.e(TAG, "Failed to load model from '" + model + "': " + e.toString());
       return 1;
     }
   }
@@ -127,7 +132,14 @@ public class TensorFlowInferenceInterface {
     } catch (RuntimeException e) {
       // Ideally the exception would have been let through, but since this interface predates the
       // TensorFlow Java API, must return -1.
-      Log.e(TAG, "Failed to run TensorFlow session: " + e.toString());
+      Log.e(
+          TAG,
+          "Failed to run TensorFlow inference with inputs:["
+              + TextUtils.join(", ", feedNames)
+              + "], outputs:["
+              + TextUtils.join(", ", fetchNames)
+              + "]");
+      Log.e(TAG, "Inference exception: " + e.toString());
       return -1;
     } finally {
       // Always release the feeds (to save resources) and reset the runner, this runInference is
@@ -410,7 +422,7 @@ public class TensorFlowInferenceInterface {
     final long endMs = System.currentTimeMillis();
     Log.i(
         TAG,
-        "Model load took " + (startMs - endMs) + "ms, TensorFlow version: " + TensorFlow.version());
+        "Model load took " + (endMs - startMs) + "ms, TensorFlow version: " + TensorFlow.version());
   }
 
   // The TensorFlowInferenceInterface API used int[] for dims, but the underlying TensorFlow runtime
@@ -437,6 +449,7 @@ public class TensorFlowInferenceInterface {
     // The string format accepted by TensorFlowInferenceInterface is node_name[:output_index].
     TensorId tid = TensorId.parse(inputName);
     runner.feed(tid.name, tid.outputIndex, t);
+    feedNames.add(inputName);
     feedTensors.add(t);
   }
 
@@ -482,6 +495,7 @@ public class TensorFlowInferenceInterface {
       t.close();
     }
     feedTensors.clear();
+    feedNames.clear();
   }
 
   private void closeFetches() {
@@ -498,6 +512,7 @@ public class TensorFlowInferenceInterface {
 
   // State reset on every call to runInference.
   private Session.Runner runner;
+  private List<String> feedNames = new ArrayList<String>();
   private List<Tensor> feedTensors = new ArrayList<Tensor>();
   private List<String> fetchNames = new ArrayList<String>();
   private List<Tensor> fetchTensors = new ArrayList<Tensor>();

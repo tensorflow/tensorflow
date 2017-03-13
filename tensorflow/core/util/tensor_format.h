@@ -35,6 +35,39 @@ bool FormatFromString(const string& format_str, TensorFormat* format);
 // Convert a tensor format into string.
 string ToString(TensorFormat format);
 
+// Returns the index of the batch dimension.
+inline int GetTensorBatchDimIndex(int num_dims, TensorFormat format) {
+  if (format == FORMAT_NHWC || format == FORMAT_NCHW) {
+    return 0;
+  } else {
+    LOG(FATAL) << "Unknown format " << format;
+  }
+}
+
+// Returns the index of the feature dimension.
+inline int GetTensorFeatureDimIndex(int num_dims, TensorFormat format) {
+  if (format == FORMAT_NHWC) {
+    return num_dims - 1;
+  } else if (format == FORMAT_NCHW) {
+    return 1;
+  } else {
+    LOG(FATAL) << "Unknown format " << format;
+  }
+}
+
+// Returns the index of the `dim`-th spatial dimension.
+inline int GetTensorSpatialDimIndex(int num_dims, TensorFormat format,
+                                    int dim) {
+  CHECK(dim >= 0 && dim < num_dims - 2) << dim << " " << num_dims;
+  if (format == FORMAT_NHWC) {
+    return dim + 1;
+  } else if (format == FORMAT_NCHW) {
+    return dim + 2;
+  } else {
+    LOG(FATAL) << "Unknown format " << format;
+  }
+}
+
 // Return the position index from a format given a dimension specification with
 // a char. The chars can be N (batch), C (channels), H (y), W (x), or
 // 0 .. (NDIMS-1).
@@ -58,7 +91,7 @@ inline int32 GetTensorDimIndex(TensorFormat format, char dimension) {
         return 1 + NDIMS;
       default:
         LOG(FATAL) << "Invalid dimension: " << dimension;
-        return -1; // Avoid compiler warning about missing return value
+        return -1;  // Avoid compiler warning about missing return value
     }
   } else if (format == FORMAT_NCHW) {
     switch (dimension) {
@@ -78,11 +111,11 @@ inline int32 GetTensorDimIndex(TensorFormat format, char dimension) {
         return NDIMS + 1;
       default:
         LOG(FATAL) << "Invalid dimension: " << dimension;
-        return -1; // Avoid compiler warning about missing return value
+        return -1;  // Avoid compiler warning about missing return value
     }
   } else {
     LOG(FATAL) << "Invalid format: " << static_cast<int>(format);
-    return -1; // Avoid compiler warning about missing return value
+    return -1;  // Avoid compiler warning about missing return value
   }
 }
 

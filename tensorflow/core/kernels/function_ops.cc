@@ -215,8 +215,7 @@ REGISTER_KERNEL_BUILDER(Name("_ArrayToList")
 
 class SymbolicGradientOp : public AsyncOpKernel {
  public:
-  SymbolicGradientOp(OpKernelConstruction* ctx)
-      : AsyncOpKernel(ctx), handle_(-1) {}
+  explicit SymbolicGradientOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {}
 
   ~SymbolicGradientOp() override {}
 
@@ -226,8 +225,9 @@ class SymbolicGradientOp : public AsyncOpKernel {
                       errors::Internal("No function library is provided."),
                       done);
 
+    FunctionLibraryRuntime::Handle handle;
     OP_REQUIRES_OK_ASYNC(
-        ctx, lib->Instantiate(kGradientOp, def().attr(), &handle_), done);
+        ctx, lib->Instantiate(kGradientOp, def().attr(), &handle), done);
 
     FunctionLibraryRuntime::Options opts;
     opts.step_id = ctx->step_id();
@@ -239,7 +239,7 @@ class SymbolicGradientOp : public AsyncOpKernel {
     }
     std::vector<Tensor>* rets = new std::vector<Tensor>;
     lib->Run(
-        opts, handle_, args, rets, [ctx, done, rets](const Status& status) {
+        opts, handle, args, rets, [ctx, done, rets](const Status& status) {
           if (!status.ok()) {
             ctx->SetStatus(status);
           } else if (rets->size() != ctx->num_outputs()) {
@@ -257,8 +257,6 @@ class SymbolicGradientOp : public AsyncOpKernel {
   }
 
  private:
-  FunctionLibraryRuntime::Handle handle_;
-
   TF_DISALLOW_COPY_AND_ASSIGN(SymbolicGradientOp);
 };
 

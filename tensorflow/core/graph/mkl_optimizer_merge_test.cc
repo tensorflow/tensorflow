@@ -105,6 +105,7 @@ class OptimizerMergeTest : public ::testing::Test {
 };
 
 REGISTER_OP("Input").Output("o: float").SetIsStateful();
+REGISTER_OP("MklInput").Output("o: uint8").SetIsStateful();
 
 TEST_F(OptimizerMergeTest, Basic) {
   InitGraph(
@@ -121,8 +122,38 @@ TEST_F(OptimizerMergeTest, Basic) {
 
 // Test set 1: Conv2D + AddBias
 
-// C=Conv2D(A,B); E=BiasAdd(C,D); Z=Sub(E,Y)
+// C=MklConv2D(A,M,B,N); E=BiasAdd(C,D); Z=Sub(E,Y)
 TEST_F(OptimizerMergeTest, Conv2DWithBias_Positive) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'M' op: 'MklInput'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'N' op: 'MklInput'}"
+      "node { name: 'C' op: 'MklConv2D'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'data_format'      value { s: 'NCHW' } }"
+      " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
+      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
+      " attr { key: 'padding'          value { s: 'SAME' } }"
+      " input: ['A', 'M', 'B', 'N']}"
+      "node { name: 'D' op: 'Input'}"
+      "node { name: 'E' op: 'BiasAdd'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'data_format'      value { s: 'NCHW' } }"
+      " input: ['C', 'D'] }"
+      "node { name: 'Y' op: 'Input'}"
+      "node { name: 'Z' op: 'Sub'"
+      " attr {key: 'T'                 value { type: DT_FLOAT } }"
+      " input: ['E', 'Y']}");
+  EXPECT_EQ(DoNodeMerge(),
+            "A(Input);B(Input);D(Input);DMT/_0(Const);E(MklConv2DWithBias);"
+            "M(MklInput);N(MklInput);Y(Input);Z(Sub)|A->E;B->E:2;D->E:4;"
+            "DMT/_0->E:5;E->Z;M->E:1;N->E:3;Y->Z:1");
+}
+
+// C=Conv2D(A,B); E=BiasAdd(C,D); Z=Sub(E,Y);
+// We do not merge in this case as op is Conv2D and not MklConv2D.
+TEST_F(OptimizerMergeTest, Conv2DWithBias_Negative_NoMklConv2D) {
   InitGraph(
       "node { name: 'A' op: 'Input'}"
       "node { name: 'B' op: 'Input'}"
@@ -143,63 +174,69 @@ TEST_F(OptimizerMergeTest, Conv2DWithBias_Positive) {
       " attr {key: 'T'                 value { type: DT_FLOAT } }"
       " input: ['E', 'Y']}");
   EXPECT_EQ(DoNodeMerge(),
-            "A(Input);B(Input);D(Input);E(Conv2DWithBias);Y(Input);Z(Sub)|"
-             "A->E;B->E:1;D->E:2;E->Z;Y->Z:1");
+            "A(Input);B(Input);C(Conv2D);D(Input);E(BiasAdd);Y(Input);Z(Sub)|"
+             "A->C;B->C:1;C->E;D->E:1;E->Z;Y->Z:1");
 }
 
-// Graph contains only Conv2D, no AddBias.
+// Graph contains only MklConv2D, no AddBias.
 TEST_F(OptimizerMergeTest, Conv2DWithBias_Negative_NoAddBias) {
   InitGraph(
       "node { name: 'A' op: 'Input'}"
+      "node { name: 'M' op: 'MklInput'}"
       "node { name: 'B' op: 'Input'}"
-      "node { name: 'C' op: 'Conv2D'"
+      "node { name: 'N' op: 'MklInput'}"
+      "node { name: 'C' op: 'MklConv2D'"
       " attr { key: 'T'                value { type: DT_FLOAT } }"
       " attr { key: 'data_format'      value { s: 'NCHW' } }"
       " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
       " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
       " attr { key: 'padding'          value { s: 'SAME' } }"
-      " input: ['A', 'B']}");
+      " input: ['A', 'M', 'B', 'N']}");
   EXPECT_EQ(DoNodeMerge(),
-            "A(Input);B(Input);C(Conv2D)|"
-             "A->C;B->C:1");
+            "A(Input);B(Input);C(MklConv2D);M(MklInput);N(MklInput)|"
+             "A->C;B->C:2;M->C:1;N->C:3");
 }
 
-// Conv2D output does not go to BiasAdd.
+// MklConv2D output does not go to BiasAdd.
 TEST_F(OptimizerMergeTest, Conv2DWithBias_Negative_Dataflow1) {
   InitGraph(
       "node { name: 'A' op: 'Input'}"
+      "node { name: 'M' op: 'MklInput'}"
       "node { name: 'B' op: 'Input'}"
-      "node { name: 'C' op: 'Conv2D'"
+      "node { name: 'N' op: 'MklInput'}"
+      "node { name: 'C' op: 'MklConv2D'"
       " attr { key: 'T'                value { type: DT_FLOAT } }"
       " attr { key: 'data_format'      value { s: 'NCHW' } }"
       " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
       " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
       " attr { key: 'padding'          value { s: 'SAME' } }"
-      " input: ['A', 'B']}"
+      " input: ['A', 'M', 'B', 'N']}"
       "node { name: 'D' op: 'Input'}"
       "node { name: 'E' op: 'Input'}"
       "node { name: 'F' op: 'BiasAdd'"
       " attr { key: 'T'                value { type: DT_FLOAT } }"
       " attr { key: 'data_format'      value { s: 'NCHW' } }"
-      " input: ['D', 'E'] }");  // Output of Conv2D does not go to BiasAdd.
+      " input: ['D', 'E'] }");  // Output of MklConv2D does not go to BiasAdd.
   EXPECT_EQ(DoNodeMerge(),
-            "A(Input);B(Input);C(Conv2D);D(Input);E(Input);F(BiasAdd)|"
-             "A->C;B->C:1;D->F;E->F:1");
+            "A(Input);B(Input);C(MklConv2D);D(Input);E(Input);F(BiasAdd);"
+            "M(MklInput);N(MklInput)|A->C;B->C:2;D->F;E->F:1;M->C:1;N->C:3");
 }
 
-// Conv2D has two outgoing edges: BiasAdd and some other dummy node (Add).
+// MklConv2D has two outgoing edges: BiasAdd and some other dummy node (Add).
 // Merge should not be done in such case.
 TEST_F(OptimizerMergeTest, Conv2DWithBias_Negative_Dataflow2) {
   InitGraph(
       "node { name: 'A' op: 'Input'}"
+      "node { name: 'M' op: 'MklInput'}"
       "node { name: 'B' op: 'Input'}"
-      "node { name: 'C' op: 'Conv2D'"
+      "node { name: 'N' op: 'MklInput'}"
+      "node { name: 'C' op: 'MklConv2D'"
       " attr { key: 'T'                value { type: DT_FLOAT } }"
       " attr { key: 'data_format'      value { s: 'NCHW' } }"
       " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
       " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
       " attr { key: 'padding'          value { s: 'SAME' } }"
-      " input: ['A', 'B']}"
+      " input: ['A', 'M', 'B', 'N']}"
       "node { name: 'D' op: 'Input'}"
       "node { name: 'E' op: 'Input'}"
       "node { name: 'F' op: 'BiasAdd'"
@@ -211,8 +248,9 @@ TEST_F(OptimizerMergeTest, Conv2DWithBias_Negative_Dataflow2) {
       " attr { key: 'T'                value { type: DT_FLOAT } }"
       " input: ['C', 'E'] }");
   EXPECT_EQ(DoNodeMerge(),
-            "A(Input);B(Input);C(Conv2D);D(Input);E(Input);F(BiasAdd);G(Add)|"
-             "A->C;B->C:1;C->G;D->F;E->F:1;E->G:1");
+            "A(Input);B(Input);C(MklConv2D);D(Input);E(Input);F(BiasAdd);"
+            "G(Add);M(MklInput);N(MklInput)|A->C;B->C:2;C->G;D->F;"
+            "E->F:1;E->G:1;M->C:1;N->C:3");
 }
 
 // data_format attribute value mismatch. Merge should not be done
@@ -220,28 +258,63 @@ TEST_F(OptimizerMergeTest, Conv2DWithBias_Negative_Dataflow2) {
 TEST_F(OptimizerMergeTest, Conv2DWithBias_Negative_AttrMismatch) {
   InitGraph(
       "node { name: 'A' op: 'Input'}"
+      "node { name: 'M' op: 'MklInput'}"
       "node { name: 'B' op: 'Input'}"
-      "node { name: 'C' op: 'Conv2D'"
+      "node { name: 'N' op: 'MklInput'}"
+      "node { name: 'C' op: 'MklConv2D'"
       " attr { key: 'T'                value { type: DT_FLOAT } }"
       " attr { key: 'data_format'      value { s: 'NCHW' } }"
       " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
       " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
       " attr { key: 'padding'          value { s: 'SAME' } }"
-      " input: ['A', 'B']}"
+      " input: ['A', 'M', 'B', 'N']}"
       "node { name: 'D' op: 'Input'}"
       "node { name: 'E' op: 'BiasAdd'"
       " attr { key: 'T'                value { type: DT_FLOAT } }"
       " attr { key: 'data_format'      value { s: 'NHCW' } }"
       " input: ['C', 'D'] }");
   EXPECT_EQ(DoNodeMerge(),
-            "A(Input);B(Input);C(Conv2D);D(Input);E(BiasAdd)|"
-            "A->C;B->C:1;C->E;D->E:1");
+            "A(Input);B(Input);C(MklConv2D);D(Input);E(BiasAdd);M(MklInput);"
+            "N(MklInput)|A->C;B->C:2;C->E;D->E:1;M->C:1;N->C:3");
 }
 
-// Test set 2: Conv2D..BiasAddGrad -> Conv2DWithBiasBackpropBias rewrite tests
+#if 0
+// This test set is disabled temporarily as we do not enable node rewrite.
+// This test set will be enabled when we support Mkl-specific kernels for
+// backward bias.
+//
+// Test set 2: MklConv2D..BiasAddGrad -> Conv2DWithBiasBackpropBias
+// rewrite tests
 
-// C=Conv2D(A,B); D=Sub(C,A); F=BiasAddGrad(D)
+// C=MklConv2D(A,M,B,N); D=Sub(C,A); E=BiasAddGrad(D)
 TEST_F(OptimizerMergeTest, Conv2DBackprop_Positive) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'M' op: 'MklInput'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'N' op: 'MklInput'}"
+      "node { name: 'C' op: 'MklConv2D'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'data_format'      value { s: 'NCHW' } }"
+      " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
+      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
+      " attr { key: 'padding'          value { s: 'SAME' } }"
+      " input: ['A', 'M', 'B', 'N']}"
+      "node { name: 'D' op: 'Sub'"
+      " attr {key: 'T'                 value { type: DT_FLOAT } }"
+      " input: ['C', 'A']}"
+      "node { name: 'E' op: 'BiasAddGrad'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'data_format'      value { s: 'NCHW' } }"
+      " input: ['D'] }");
+  EXPECT_EQ(DoNodeMerge(),
+            "A(Input);B(Input);C(MklConv2D);D(Sub);E(Conv2DWithBiasBackpropBias);"
+            "M(MklInput);N(MklInput)|A->C;A->D:1;B->C:2;C->D;D->E;M->C:1;N->C:3");
+}
+
+// No MklConv2D in context, but Conv2D in context. No rewrite should happen.
+// C=Conv2D(A,B); D=Sub(C,A); E=BiasAddGrad(D)
+TEST_F(OptimizerMergeTest, Conv2DBackprop_Negative_NoMklConv2D) {
   InitGraph(
       "node { name: 'A' op: 'Input'}"
       "node { name: 'B' op: 'Input'}"
@@ -260,12 +333,12 @@ TEST_F(OptimizerMergeTest, Conv2DBackprop_Positive) {
       " attr { key: 'data_format'      value { s: 'NCHW' } }"
       " input: ['D'] }");
   EXPECT_EQ(DoNodeMerge(),
-            "A(Input);B(Input);C(Conv2D);D(Sub);E(Conv2DWithBiasBackpropBias)|"
+            "A(Input);B(Input);C(Conv2D);D(Sub);E(BiasAddGrad)|"
              "A->C;A->D:1;B->C:1;C->D;D->E");
 }
 
 // No Conv2D in the context for BiasAddGrad. No rewrite should happen.
-// C=Add(A,B); D=Sub(C,A); F=BiasAddGrad(D,E)
+// C=Add(A,B); D=Sub(C,A); E=BiasAddGrad(D)
 TEST_F(OptimizerMergeTest, Conv2DBackprop_Negative_NoConv2D) {
   InitGraph(
       "node { name: 'A' op: 'Input'}"
@@ -287,7 +360,7 @@ TEST_F(OptimizerMergeTest, Conv2DBackprop_Negative_NoConv2D) {
 
 // No Conv2D in the context for BiasAddGrad, but MatMul in context.
 // Rewrite should happen, but name of BiasAddGrad does not change.
-// C=MatMul(A,B); D=Sub(C,A); F=BiasAddGrad(D,E)
+// C=MatMul(A,B); D=Sub(C,A); E=BiasAddGrad(D)
 TEST_F(OptimizerMergeTest, Conv2DBackprop_Negative_NoConv2D_MatMul) {
   InitGraph(
       "node { name: 'A' op: 'Input'}"
@@ -310,7 +383,7 @@ TEST_F(OptimizerMergeTest, Conv2DBackprop_Negative_NoConv2D_MatMul) {
 }
 
 // Test set 3: MatMul..BiasAddGrad -> BiasAddGrad rewrite tests
-// C=MatMul(A,B); D=Sub(C,A); F=BiasAddGrad(D,E)
+// C=MatMul(A,B); D=Sub(C,A); E=BiasAddGrad(D)
 TEST_F(OptimizerMergeTest, MatMulBiasAddGrad_Positive) {
   InitGraph(
       "node { name: 'A' op: 'Input'}"
@@ -333,7 +406,7 @@ TEST_F(OptimizerMergeTest, MatMulBiasAddGrad_Positive) {
 }
 
 // No MatMul in the context for BiasAddGrad. No rewrite should happen.
-// C=Add(A,B); D=Sub(C,A); F=BiasAddGrad(D,E)
+// C=Add(A,B); D=Sub(C,A); E=BiasAddGrad(D)
 TEST_F(OptimizerMergeTest, MatMulBiasAddGrad_Negative_NoMatMul) {
   InitGraph(
       "node { name: 'A' op: 'Input'}"
@@ -352,7 +425,7 @@ TEST_F(OptimizerMergeTest, MatMulBiasAddGrad_Negative_NoMatMul) {
             "A(Input);B(Input);C(Add);D(Sub);E(BiasAddGrad)|"
              "A->C;A->D:1;B->C:1;C->D;D->E");
 }
-
+#endif
 
 static void BM_NodeMerge(int iters, int op_nodes) {
   testing::StopTiming();

@@ -27,6 +27,7 @@ endif(tensorflow_BUILD_ALL_KERNELS)
 if(tensorflow_BUILD_CONTRIB_KERNELS)
   set(tf_contrib_kernels_srcs
       "${tensorflow_source_dir}/tensorflow/contrib/factorization/kernels/clustering_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/factorization/kernels/masked_matmul_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/factorization/kernels/wals_solver_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/factorization/ops/clustering_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/factorization/ops/factorization_ops.cc"
@@ -92,6 +93,12 @@ if(WIN32)
       "${tensorflow_source_dir}/tensorflow/core/kernels/meta_support.*"
       "${tensorflow_source_dir}/tensorflow/core/kernels/*quantiz*.h"
       "${tensorflow_source_dir}/tensorflow/core/kernels/*quantiz*.cc"
+      # no in tensorflow.dll - comes from .so
+      "${tensorflow_source_dir}/tensorflow/contrib/rnn/kernels/blas_gemm.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/rnn/kernels/gru_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/rnn/kernels/lstm_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/rnn/ops/gru_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/rnn/ops/lstm_ops.cc"
   )
   list(REMOVE_ITEM tf_core_kernels_srcs ${tf_core_kernels_windows_exclude_srcs})
 endif(WIN32)

@@ -16,10 +16,10 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Op that measures the peak memory in bytes.
-class MaxBytesInUseOp : public OpKernel {
+// Base class of ops that collects statistics of the allocator of a device.
+class MemoryStatsOp : public OpKernel {
  public:
-  explicit MaxBytesInUseOp(OpKernelConstruction* context) : OpKernel(context) {}
+  explicit MemoryStatsOp(OpKernelConstruction* context) : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
     Allocator* allocator =
@@ -30,7 +30,43 @@ class MaxBytesInUseOp : public OpKernel {
     Tensor* output_tensor = nullptr;
     OP_REQUIRES_OK(
         context, context->allocate_output(0, TensorShape({}), &output_tensor));
-    output_tensor->scalar<int64>()() = allocator_stats.max_bytes_in_use;
+    output_tensor->scalar<int64>()() = ExtractAllocatorStats(allocator_stats);
+  }
+
+ protected:
+  // Extracts a certain field (determined by subclasses) from an allocator
+  // stats.
+  virtual int64 ExtractAllocatorStats(
+      const AllocatorStats& allocator_stats) const = 0;
+};
+
+// Op that measures the total memory (in bytes) of a device.
+class BytesLimitOp : public MemoryStatsOp {
+ public:
+  explicit BytesLimitOp(OpKernelConstruction* context)
+      : MemoryStatsOp(context) {}
+
+ private:
+  int64 ExtractAllocatorStats(
+      const AllocatorStats& allocator_stats) const override {
+    return allocator_stats.bytes_limit;
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("BytesLimit").Device(DEVICE_CPU), BytesLimitOp);
+REGISTER_KERNEL_BUILDER(Name("BytesLimit").Device(DEVICE_GPU).HostMemory("out"),
+                        BytesLimitOp);
+
+// Op that measures the peak memory in bytes.
+class MaxBytesInUseOp : public MemoryStatsOp {
+ public:
+  explicit MaxBytesInUseOp(OpKernelConstruction* context)
+      : MemoryStatsOp(context) {}
+
+ private:
+  int64 ExtractAllocatorStats(
+      const AllocatorStats& allocator_stats) const override {
+    return allocator_stats.max_bytes_in_use;
   }
 };
 

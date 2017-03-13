@@ -302,6 +302,7 @@ cc_binary(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/distributed_runtime:server_lib",
+        "//tensorflow/core/kernels:data_flow",
         "@grpc//:grpc++_unsecure",
     ],
 )

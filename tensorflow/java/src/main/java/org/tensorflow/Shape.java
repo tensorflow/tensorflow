@@ -77,7 +77,8 @@ public final class Shape {
   }
 
   /** Succint description of the shape meant for debugging. */
-  @Override public String toString() {
+  @Override
+  public String toString() {
     if (shape == null) {
       return "<unknown>";
     }

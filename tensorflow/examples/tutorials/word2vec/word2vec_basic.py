@@ -62,7 +62,7 @@ print('Data size', len(words))
 vocabulary_size = 50000
 
 
-def build_dataset(words):
+def build_dataset(words, vocabulary_size):
   count = [['UNK', -1]]
   count.extend(collections.Counter(words).most_common(vocabulary_size - 1))
   dictionary = dict()
@@ -81,7 +81,7 @@ def build_dataset(words):
   reverse_dictionary = dict(zip(dictionary.values(), dictionary.keys()))
   return data, count, dictionary, reverse_dictionary
 
-data, count, dictionary, reverse_dictionary = build_dataset(words)
+data, count, dictionary, reverse_dictionary = build_dataset(words, vocabulary_size)
 del words  # Hint to reduce memory.
 print('Most common words (+UNK)', count[:5])
 print('Sample data', data[:10], [reverse_dictionary[i] for i in data[:10]])
@@ -181,7 +181,7 @@ with graph.as_default():
       valid_embeddings, normalized_embeddings, transpose_b=True)
 
   # Add variable initializer.
-  init = tf.initialize_all_variables()
+  init = tf.global_variables_initializer()
 
 # Step 5: Begin training.
 num_steps = 100001

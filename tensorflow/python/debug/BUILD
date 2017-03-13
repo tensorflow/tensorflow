@@ -29,6 +29,15 @@ py_library(
     ],
 )
 
+# Transitive dependencies of this target will be included in the pip package.
+py_library(
+    name = "debug_pip",
+    deps = [
+        ":debug_py",
+        ":session_debug_testlib",
+    ],
+)
+
 py_library(
     name = "debug_data",
     srcs = ["lib/debug_data.py"],

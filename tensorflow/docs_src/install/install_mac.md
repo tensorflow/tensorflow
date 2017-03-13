@@ -174,7 +174,7 @@ Take the following steps to install TensorFlow with Virtualenv:
 
      <pre>
      $ <b>pip3 install --upgrade \
-     https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.0.0-py3-none-any.whl</b>
+     https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.0.1-py3-none-any.whl</b>
      </pre>
 
 If you encounter installation problems, see
@@ -311,7 +311,7 @@ take the following steps:
      support, issue the following command:
 
      <pre>
-     $ <b>sudo pip3 install --upgrade https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.0.0-py3-none-any.whl</b>
+     $ <b>sudo pip3 install --upgrade https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.0.1-py3-none-any.whl</b>
      </pre>
 
      If the preceding command fails, see
@@ -426,7 +426,7 @@ Take the following steps to install TensorFlow in an Anaconda environment:
      TensorFlow for Python 3.4:
 
      <pre>
-     (tensorflow)$ <b>pip install --ignore-installed --upgrade https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.0.0-py3-none-any.whl</b>
+     (tensorflow)$ <b>pip install --ignore-installed --upgrade https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.0.1-py3-none-any.whl</b>
      </pre>
 
 
@@ -623,13 +623,13 @@ This section documents the relevant values for Mac OS installations.
 CPU only:
 
 <pre>
-https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.0.0-py2-none-any.whl
+https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.0.1-py2-none-any.whl
 </pre>
 
 GPU support:
 
 <pre>
-https://storage.googleapis.com/tensorflow/mac/gpu/tensorflow_gpu-1.0.0-py2-none-any.whl
+https://storage.googleapis.com/tensorflow/mac/gpu/tensorflow_gpu-1.0.1-py2-none-any.whl
 </pre>
 
 Requires CUDA toolkit 8.0 and CuDNN v5. For other versions, see
@@ -641,13 +641,13 @@ Requires CUDA toolkit 8.0 and CuDNN v5. For other versions, see
 CPU only:
 
 <pre>
-https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.0.0-py3-none-any.whl
+https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.0.1-py3-none-any.whl
 </pre>
 
 GPU support:
 
 <pre>
-https://storage.googleapis.com/tensorflow/mac/gpu/tensorflow_gpu-1.0.0-py3-none-any.whl
+https://storage.googleapis.com/tensorflow/mac/gpu/tensorflow_gpu-1.0.1-py3-none-any.whl
 </pre>
 
 Requires CUDA toolkit 8.0 and CuDNN v5. For other versions, see

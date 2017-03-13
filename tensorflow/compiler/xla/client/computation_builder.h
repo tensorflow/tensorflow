@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stacktrace.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -60,6 +61,23 @@ class ComputationBuilder {
 
   // Returns the computation name.
   const string& name() { return name_; }
+
+  // Sets OpMetadata that will be added to all instructions until cleared.
+  //
+  // OpMetadata is often applied to a series of XLA HLO instructions. As a
+  // result, OpMetadata is set on the Computation Builder. All subsequent
+  // instructions generated via this Computation Builder will have the same
+  // OpMetadata attached until a call to ClearOpMetdata.
+  void SetOpMetadata(const OpMetadata& metadata) {
+    tensorflow::mutex_lock lock(mutex_);
+    metadata_ = metadata;
+  }
+
+  // Clears the HloMetdata state.
+  void ClearOpMetadata() {
+    tensorflow::mutex_lock lock(mutex_);
+    metadata_.Clear();
+  }
 
   // Sets the builder to a mode where it will die immediately when an error is
   // encountered, rather than producing it in a deferred fashion when Build() is
@@ -717,6 +735,8 @@ class ComputationBuilder {
   // * dying if die_immediately_on_error_ is true
   void NoteError(const Status& error);
 
+  void AddOpMetadata(OpRequest* request) const;
+
   string name_;  // Name to use for the built computation.
 
   // The first error encountered while building the computation.
@@ -734,6 +754,14 @@ class ComputationBuilder {
 
   // Mode bit that indicates whether to die when a first error is encountered.
   bool die_immediately_on_error_{false};
+
+  // Mutex to guard against concurrent access to metadata_.
+  mutable tensorflow::mutex mutex_;
+
+  // The metadata to attach to each op. This is structured as a "modal"-like
+  // operation, in order to simplify client code (and not sprinkle this metadata
+  // throughout the TensorFlow op kernel implementations).
+  OpMetadata metadata_ GUARDED_BY(mutex_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(ComputationBuilder);
 };

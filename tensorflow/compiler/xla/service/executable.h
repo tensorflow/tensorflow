@@ -71,14 +71,6 @@ class Executable {
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       HloExecutionProfile* hlo_execution_profile) = 0;
 
-  // Overload of which writes the result into a pre-allocated buffer
-  // (result_buffer).
-  virtual Status ExecuteOnStream(
-      const ServiceExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-      ShapedBuffer* result_buffer,
-      HloExecutionProfile* hlo_execution_profile) = 0;
-
   // Same as ExecuteOnStream(), but this call is non-blocking and returns as
   // soon as all of the operations are enqueued for launch on the stream.
   virtual StatusOr<perftools::gputools::DeviceMemoryBase> ExecuteAsyncOnStream(

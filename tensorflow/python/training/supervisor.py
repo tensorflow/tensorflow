@@ -241,7 +241,7 @@ class Supervisor(object):
         on a chief supervisor for inits and restore.
       init_op: `Operation`.  Used by chief supervisors to initialize the model
         when it can not be recovered.  Defaults to an `Operation` that
-        initializes all variables.  If `None`, no initialization is done
+        initializes all global variables.  If `None`, no initialization is done
         automatically unless you pass a value for `init_fn`, see below.
       init_feed_dict: A dictionary that maps `Tensor` objects to feed values.
         This feed dictionary will be used when `init_op` is evaluated.
