@@ -2644,9 +2644,9 @@ tf_kernel_library(
         "pooling_ops_3d.cc",
         "pooling_ops_common.cc",
     ] + if_mkl([
-    		"mkl_avgpooling_op.cc",
-    		"mkl_maxpooling_op.cc",
-    		"mkl_pooling_ops_common.cc",
+        "mkl_avgpooling_op.cc",
+        "mkl_maxpooling_op.cc",
+        "mkl_pooling_ops_common.cc",
     ]),
     hdrs = [
         "avgpooling_op.h",
@@ -2655,7 +2655,7 @@ tf_kernel_library(
         "maxpooling_op.h",
         "pooling_ops_common.h",
     ] + if_mkl([
-		"mkl_pooling_ops_common.h",
+        "mkl_pooling_ops_common.h",
     ]),
     gpu_srcs = [
         "avgpooling_op.h",
@@ -4380,8 +4380,8 @@ if_mkl(
 if_mkl(
     tf_kernel_library(
         name = "mkl_maxpooling_op",
-        prefix = "mkl_maxpooling",
         hdrs = ["mkl_pooling_ops_common.h"],
+        prefix = "mkl_maxpooling",
         deps = [
             ":bounds_check",
             ":ops_util",
@@ -4398,8 +4398,8 @@ if_mkl(
 if_mkl(
     tf_kernel_library(
         name = "mkl_avgpooling_op",
-        prefix = "mkl_avgpooling",
         hdrs = ["mkl_pooling_ops_common.h"],
+        prefix = "mkl_avgpooling",
         deps = [
             ":bounds_check",
             ":ops_util",
