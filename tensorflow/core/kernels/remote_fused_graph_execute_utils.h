@@ -20,6 +20,8 @@ limitations under the License.
 
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/remote_fused_graph_execute_info.pb.h"
+#include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/kernels/i_remote_fused_graph_executor.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/macros.h"
@@ -88,6 +90,15 @@ class RemoteFusedGraphExecuteUtils {
   static bool AddOutputTensorShapeType(const std::vector<DataType>& data_types,
                                        const std::vector<TensorShape>& shapes,
                                        NodeDef* node_def);
+
+  static Status PropagateShapeInference(
+      const GraphDef& graph_def,
+      const std::vector<std::pair<string, Tensor>>& input_node_info_list,
+      Graph* graph, ShapeRefiner* shape_refiner);
+
+  static Status BuildTensorShapeMapFromGraph(const Graph& graph,
+                                             const ShapeRefiner& shape_refiner,
+                                             TensorShapeMap* tensor_shape_map);
 
  private:
   static ExecutorBuildRegistry* GetExecutorBuildRegistry();

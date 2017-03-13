@@ -15,9 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/remote_fused_graph_execute_utils.h"
 
+#include <algorithm>
 #include <utility>
 
+#include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
 
@@ -220,6 +223,80 @@ RemoteFusedGraphExecuteUtils::GetExecutorBuildRegistry() {
   AddNodeAttr(ATTR_OUTPUT_DATA_TYPES, data_types, node_def);
   AddNodeAttr(ATTR_OUTPUT_SHAPES, shapes, node_def);
   return true;
+}
+
+/* static */ Status RemoteFusedGraphExecuteUtils::PropagateShapeInference(
+    const GraphDef& graph_def,
+    const std::vector<std::pair<string, Tensor>>& input_node_info_list,
+    Graph* graph, ShapeRefiner* shape_refiner) {
+  Status status;
+  auto visit = [&shape_refiner, &input_node_info_list, &status](Node* node) {
+    if (!status.ok()) {
+      return;
+    }
+    CHECK_NE(node, nullptr);
+    // If we visit an input node, we use the shape provided and set the
+    // shape accordingly.
+    bool is_input_node = false;
+    for (const std::pair<string, Tensor>& input_node_info :
+         input_node_info_list) {
+      if (node->name() == input_node_info.first) {
+        shape_inference::InferenceContext* context =
+            shape_refiner->GetContext(node);
+        shape_inference::ShapeHandle handle;
+        status = context->MakeShapeFromTensorShape(
+            input_node_info.second.shape(), &handle);
+        shape_refiner->SetShape(node, 0, handle);
+        is_input_node = true;
+      }
+      if (!status.ok()) {
+        break;
+      }
+    }
+    // If not an input node call AddNode() that recomputes the shape.
+    if (!is_input_node && status.ok()) {
+      status = shape_refiner->AddNode(node);
+      if (!status.ok()) {
+        VLOG(1) << "Shape inference failed for node: " << node->name();
+      }
+    }
+  };
+
+  ReverseDFS(*graph, {}, visit);
+
+  return status;
+}
+
+/* static */ Status RemoteFusedGraphExecuteUtils::BuildTensorShapeMapFromGraph(
+    const Graph& graph, const ShapeRefiner& shape_refiner,
+    TensorShapeMap* tensor_shape_map) {
+  for (int i = 0; i < graph.num_node_ids(); ++i) {
+    const Node* node = graph.FindNodeId(i);
+    CHECK_NE(node, nullptr);
+    for (int j = 0; j < node->num_outputs(); ++j) {
+      const int output_index = j;
+      const DataType dt = node->output_type(output_index);
+      shape_inference::InferenceContext* context =
+          shape_refiner.GetContext(node);
+      CHECK_NE(context, nullptr);
+      shape_inference::ShapeHandle shape_handle = context->output(output_index);
+      if (context->RankKnown(shape_handle)) {
+        TensorShape ts;
+        for (int k = 0; k < context->Rank(shape_handle); ++k) {
+          shape_inference::DimensionHandle dh = context->Dim(shape_handle, k);
+          CHECK(context->ValueKnown(dh));
+          ts.AddDim(context->Value(dh));
+        }
+        const string& node_name = node->name();
+        CHECK(tensor_shape_map->count(node_name) == 0);
+        tensor_shape_map->emplace(node_name, std::make_pair(dt, ts));
+      } else {
+        return errors::InvalidArgument("Graph contains unknow shapes");
+      }
+    }
+  }
+
+  return Status::OK();
 }
 
 }  // namespace tensorflow

@@ -56,6 +56,7 @@ constexpr const char* const FUSED_MODEL_FILENAME =
     "tensorflow_inception_v3_stripped_optimized_quantized_fused_hexagon.pb";
 constexpr const char* const REMOTE_FUSED_GRAPH_EXECUTE_NODE_NAME =
     "remote_fused_graph_execute_node";
+constexpr bool USE_SHAPE_INFERENCE = false;
 
 const bool DBG_DUMP_FLOAT_DATA = false;
 const int WIDTH = 299;
@@ -282,11 +283,18 @@ TEST(GraphTransferer,
   RemoteFusedGraphExecuteUtils::TensorShapeMap output_tensor_info;
   GraphTransferer gt;
   gt.EnableStrictCheckMode(false);
+  profile_utils::CpuUtils::EnableClockCycleProfiling(true);
+  ClockCycleProfiler prof;
+  prof.Start();
   Status status = gt.LoadGraphFromProtoFile(
       *ops_definitions, MODEL_FILENAME, inputs, output_node_names,
-      false /* is_text_proto */, false /* shape_inference_for_unknown_shape */,
-      true /* dry_run_for_unknown_shape */, &output_tensor_info);
+      false,                 // is_text_proto
+      USE_SHAPE_INFERENCE,   // shape_inference_for_unknown_shape
+      !USE_SHAPE_INFERENCE,  // dry_run_for_unknown_shape
+      &output_tensor_info);
   ASSERT_TRUE(status.ok()) << status;
+  prof.Stop();
+  prof.DumpStatistics("LoadGraphFromProtoFile");
 
   std::vector<float> img_floats;
   LoadImage(&img_floats);

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/remote_fused_graph_execute_utils.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/const_op.h"
+#include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/kernels/remote_fused_graph_execute_op_test_utils.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/test.h"
@@ -100,27 +101,66 @@ TEST(RemoteFusedGraphExecuteUtils, DryRunAddGraphForAllNodes) {
 
   // Setup dryrun arguments
   const std::vector<std::pair<string, Tensor>> inputs{input_node_info_a};
-  RemoteFusedGraphExecuteUtils::TensorShapeMap output_tensor_info;
+  RemoteFusedGraphExecuteUtils::TensorShapeMap tensor_shape_map;
 
   GraphDef def = RemoteFusedGraphExecuteOpTestUtils::BuildAddGraph(
       NAME_A, NODE_A_VAL, NAME_B, NODE_B_VAL, NAME_A_PLUS_B);
 
   // dryrun
   const Status status = RemoteFusedGraphExecuteUtils::DryRunInferenceForAllNode(
-      def, inputs, false /* initialize_by_zero */, &output_tensor_info);
+      def, inputs, false /* initialize_by_zero */, &tensor_shape_map);
 
   ASSERT_TRUE(status.ok()) << status;
 
   // Assert output node count
-  ASSERT_EQ(3, output_tensor_info.size());
-  ASSERT_EQ(1, output_tensor_info.count(NAME_A));
-  ASSERT_EQ(1, output_tensor_info.count(NAME_B));
-  ASSERT_EQ(1, output_tensor_info.count(NAME_A_PLUS_B));
+  ASSERT_EQ(3, tensor_shape_map.size());
+  ASSERT_EQ(1, tensor_shape_map.count(NAME_A));
+  ASSERT_EQ(1, tensor_shape_map.count(NAME_B));
+  ASSERT_EQ(1, tensor_shape_map.count(NAME_A_PLUS_B));
 
-  EXPECT_EQ(DT_FLOAT, output_tensor_info.at(NAME_B).first);
-  EXPECT_EQ(DT_FLOAT, output_tensor_info.at(NAME_A_PLUS_B).first);
-  const TensorShape& shape_b = output_tensor_info.at(NAME_B).second;
-  const TensorShape& shape_a_b = output_tensor_info.at(NAME_A_PLUS_B).second;
+  EXPECT_EQ(DT_FLOAT, tensor_shape_map.at(NAME_B).first);
+  EXPECT_EQ(DT_FLOAT, tensor_shape_map.at(NAME_A_PLUS_B).first);
+  const TensorShape& shape_b = tensor_shape_map.at(NAME_B).second;
+  const TensorShape& shape_a_b = tensor_shape_map.at(NAME_A_PLUS_B).second;
+  EXPECT_EQ(0, shape_b.dims());
+  EXPECT_EQ(0, shape_a_b.dims());
+}
+
+TEST(RemoteFusedGraphExecuteUtils, PropagateAndBuildTensorShapeMap) {
+  std::pair<string, Tensor> input_node_info_a;
+  input_node_info_a.first = NAME_A;
+  input_node_info_a.second = Tensor(DT_FLOAT, {});
+  input_node_info_a.second.scalar<float>()() = NODE_A_VAL;
+  std::pair<string, Tensor> input_node_info_b;
+  input_node_info_b.first = NAME_B;
+  input_node_info_b.second = Tensor(DT_FLOAT, {});
+  input_node_info_b.second.scalar<float>()() = NODE_B_VAL;
+  const std::vector<std::pair<string, Tensor>> inputs{input_node_info_a,
+                                                      input_node_info_b};
+
+  RemoteFusedGraphExecuteUtils::TensorShapeMap tensor_shape_map;
+  GraphDef def = RemoteFusedGraphExecuteOpTestUtils::BuildAddGraph(
+      NAME_A, NODE_A_VAL, NAME_B, NODE_B_VAL, NAME_A_PLUS_B);
+  ImportGraphDefOptions opts;
+  Graph graph(OpRegistry::Global());
+  ShapeRefiner shape_refiner(graph.versions().producer(), graph.op_registry());
+  Status status = ImportGraphDef(opts, def, &graph, &shape_refiner);
+  ASSERT_TRUE(RemoteFusedGraphExecuteUtils::PropagateShapeInference(
+                  def, inputs, &graph, &shape_refiner)
+                  .ok());
+  ASSERT_TRUE(RemoteFusedGraphExecuteUtils::BuildTensorShapeMapFromGraph(
+                  graph, shape_refiner, &tensor_shape_map)
+                  .ok());
+
+  ASSERT_EQ(3, tensor_shape_map.size());
+  ASSERT_EQ(1, tensor_shape_map.count(NAME_A));
+  ASSERT_EQ(1, tensor_shape_map.count(NAME_B));
+  ASSERT_EQ(1, tensor_shape_map.count(NAME_A_PLUS_B));
+
+  EXPECT_EQ(DT_FLOAT, tensor_shape_map.at(NAME_B).first);
+  EXPECT_EQ(DT_FLOAT, tensor_shape_map.at(NAME_A_PLUS_B).first);
+  const TensorShape& shape_b = tensor_shape_map.at(NAME_B).second;
+  const TensorShape& shape_a_b = tensor_shape_map.at(NAME_A_PLUS_B).second;
   EXPECT_EQ(0, shape_b.dims());
   EXPECT_EQ(0, shape_a_b.dims());
 }

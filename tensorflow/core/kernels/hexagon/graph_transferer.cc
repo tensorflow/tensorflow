@@ -57,7 +57,7 @@ static string ToString(T val) {
 /**
  * graph loading functions
  * - LoadGraphFromProto
- * - LoadGraphFromProtoFile
+ * - LoadGraphFromProptoFile
  * These functions read a graph definition and store parameters
  * of node to transfer the graph to SOC.
  */
@@ -67,60 +67,19 @@ Status GraphTransferer::LoadGraphFromProto(
     const std::vector<std::pair<string, Tensor>>& input_node_info_list,
     const std::vector<string>& output_node_names,
     const bool shape_inference_for_unknown_shape,
-    const OutputTensorMap& output_tensor_map) {
+    const TensorShapeMap& output_tensor_map) {
   ImportGraphDefOptions opts;
   Graph graph(OpRegistry::Global());
   ShapeRefiner shape_refiner(graph.versions().producer(), graph.op_registry());
-  VLOG(1) << "Start import graph";
   Status status = ImportGraphDef(opts, graph_def, &graph, &shape_refiner);
   if (!status.ok()) {
-    VLOG(1) << "Failed to import graph " << status.ToString();
     return status;
   }
 
-  if (shape_inference_for_unknown_shape && !input_node_info_list.empty()) {
-    auto visit = [&shape_refiner, &input_node_info_list, &status](Node* node) {
-      if (!status.ok()) {
-        return;
-      }
-
-      CHECK_NE(node, nullptr);
-      // If we visit an input node, we use the shape provided and set the
-      // shape accordingly.
-      bool is_input_node = false;
-      for (const std::pair<string, Tensor>& input_node_info :
-           input_node_info_list) {
-        if (node->name() == input_node_info.first) {
-          shape_inference::InferenceContext* context =
-              shape_refiner.GetContext(node);
-          shape_inference::ShapeHandle handle;
-          status = context->MakeShapeFromTensorShape(
-              input_node_info.second.shape(), &handle);
-          // TODO(b/32704451): Don't just ignore this status!
-          shape_refiner.SetShape(node, 0, handle).IgnoreError();
-          is_input_node = true;
-        }
-        if (!status.ok()) {
-          break;
-        }
-      }
-      // If not an input node call AddNode() that recomputes the shape.
-      if (!is_input_node && status.ok()) {
-        status = shape_refiner.AddNode(node);
-        if (!status.ok()) {
-          VLOG(1) << "Shape inference failed for node: " << node->name();
-        }
-      }
-    };
-
-    // Runs a reverse DFS over the entire graph setting the shape for the input
-    // nodes provided and then recomputing the shape of all the nodes downstream
-    // from them. The "visit" function is executed for each node after all its
-    // parents have been visited.
-    ReverseDFS(graph, {}, visit);
-
+  if (shape_inference_for_unknown_shape) {
+    status = RemoteFusedGraphExecuteUtils::PropagateShapeInference(
+        graph_def, input_node_info_list, &graph, &shape_refiner);
     if (!status.ok()) {
-      VLOG(1) << "Failed to run shape inference: " << status.ToString();
       return status;
     }
   }
@@ -149,6 +108,7 @@ Status GraphTransferer::LoadGraphFromProto(
       return status;
     }
   }
+
   SortParams(output_node_names);
 
   for (const std::pair<string, Tensor>& input_node_info :
@@ -319,7 +279,7 @@ bool GraphTransferer::AreAllInputsCached(const Node& node) const {
 
 Status GraphTransferer::RegisterNode(
     const IGraphTransferOpsDefinitions& ops_definitions,
-    const ShapeRefiner& shape_refiner, const OutputTensorMap& output_tensor_map,
+    const ShapeRefiner& shape_refiner, const TensorShapeMap& output_tensor_map,
     const Node& node,
     const std::vector<std::pair<string, Tensor>>& input_node_info_list,
     const std::vector<string>& output_node_names) {
@@ -352,7 +312,7 @@ Status GraphTransferer::RegisterNode(
 
 void GraphTransferer::RegisterConstantNode(
     const ShapeRefiner& shape_refiner, const Node& node,
-    const OutputTensorMap& output_tensor_map) {
+    const TensorShapeMap& output_tensor_map) {
   VLOG(1) << "Register constant node: " << node.name();
   CHECK_EQ(node_name_to_id_cache_map_.count(node.name()), 1);
   const int id = node_name_to_id_cache_map_[node.name()];
@@ -439,7 +399,7 @@ bool GraphTransferer::HasPaddingAndStrides(const Node& node) {
 }
 
 bool GraphTransferer::IsNodeFlattenReshape(
-    const Node& node, const OutputTensorMap& output_tensor_map,
+    const Node& node, const TensorShapeMap& output_tensor_map,
     const ShapeRefiner& shape_refiner) {
   // Check if node is reshape op
   if (node.type_string() != RESHAPE_NODE_TYPE_STRING) {
@@ -477,7 +437,7 @@ bool GraphTransferer::IsNodeFlattenReshape(
 
 void GraphTransferer::RegisterNodeWithPaddingAndStrides(
     const IGraphTransferOpsDefinitions& ops_definitions,
-    const ShapeRefiner& shape_refiner, const OutputTensorMap& output_tensor_map,
+    const ShapeRefiner& shape_refiner, const TensorShapeMap& output_tensor_map,
     const Node& node) {
   CHECK_EQ(node_name_to_id_cache_map_.count(node.name()), 1);
   const int id = node_name_to_id_cache_map_[node.name()];
@@ -512,7 +472,7 @@ void GraphTransferer::RegisterNodeWithPaddingAndStrides(
 
 void GraphTransferer::RegisterInputNode(
     const IGraphTransferOpsDefinitions& ops_definitions,
-    const ShapeRefiner& shape_refiner, const OutputTensorMap& output_tensor_map,
+    const ShapeRefiner& shape_refiner, const TensorShapeMap& output_tensor_map,
     const Node& node) {
   VLOG(1) << "Register input node: " << node.name();
   CHECK_EQ(node_name_to_id_cache_map_.count(node.name()), 1);
@@ -530,7 +490,7 @@ void GraphTransferer::RegisterInputNode(
 
 void GraphTransferer::RegisterFlattenNode(
     const IGraphTransferOpsDefinitions& ops_definitions,
-    const ShapeRefiner& shape_refiner, const OutputTensorMap& output_tensor_map,
+    const ShapeRefiner& shape_refiner, const TensorShapeMap& output_tensor_map,
     const Node& node) {
   VLOG(1) << "Register flatten node: " << node.name();
   CHECK_EQ(node_name_to_id_cache_map_.count(node.name()), 1);
@@ -547,7 +507,7 @@ void GraphTransferer::RegisterFlattenNode(
 
 void GraphTransferer::RegisterGenericNode(
     const IGraphTransferOpsDefinitions& ops_definitions,
-    const ShapeRefiner& shape_refiner, const OutputTensorMap& output_tensor_map,
+    const ShapeRefiner& shape_refiner, const TensorShapeMap& output_tensor_map,
     const Node& node) {
   VLOG(1) << "Register generic node: " << node.name();
   CHECK_EQ(node_name_to_id_cache_map_.count(node.name()), 1);
@@ -569,7 +529,7 @@ Status GraphTransferer::RegisterNodeIfAllInputsAreCached(
     const bool only_register_const_node,
     const std::vector<std::pair<string, Tensor>>& input_node_info_list,
     const std::vector<string>& output_node_names,
-    const OutputTensorMap& output_tensor_map) {
+    const TensorShapeMap& output_tensor_map) {
   if (only_register_const_node && !node.IsConstant()) {
     return Status();
   }
@@ -627,7 +587,7 @@ void GraphTransferer::AppendNodeInputParams(
 }
 
 void GraphTransferer::AppendNodeOutputParams(
-    const ShapeRefiner& shape_refiner, const OutputTensorMap& output_tensor_map,
+    const ShapeRefiner& shape_refiner, const TensorShapeMap& output_tensor_map,
     const int id, const Node& node) {
   VLOG(1) << "Append output params: " << node.name() << ", "
           << node.num_outputs();
@@ -670,7 +630,7 @@ void GraphTransferer::AppendNodeOutputParams(
 }
 
 void GraphTransferer::AppendNodeParamsWithIoParams(
-    const ShapeRefiner& shape_refiner, const OutputTensorMap& output_tensor_map,
+    const ShapeRefiner& shape_refiner, const TensorShapeMap& output_tensor_map,
     const Node& node, const string& name, const int id, const string& type,
     const int type_id, const int padding, const int inputs_size,
     const std::vector<int>& extra_inputs, const int outputs_size,
@@ -757,7 +717,7 @@ GraphTransferer::ToTensorShapeArray(const TensorShape& shape) {
 }
 
 /* static */ void GraphTransferer::CheckShape(
-    const OutputTensorMap& output_tensor_map, const string& node_name,
+    const TensorShapeMap& output_tensor_map, const string& node_name,
     const std::array<int64, SHAPE_ARRAY_SIZE>& expected) {
   if (output_tensor_map.empty()) {
     // As output_tensor_map is empty, skip checking tensor shape.
