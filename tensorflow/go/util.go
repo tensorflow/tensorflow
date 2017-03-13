@@ -14,6 +14,7 @@
 
 package tensorflow
 
+// Inserts a placeholder for a tensor that will be always fed.
 func Placeholder(g *Graph, name string, dt DataType) (Output, error) {
 	op, err := g.AddOperation(OpSpec{
 		Type: "Placeholder",
@@ -25,6 +26,8 @@ func Placeholder(g *Graph, name string, dt DataType) (Output, error) {
 	return op.Output(0), err
 }
 
+// Creates a constant tensor. The resulting tensor is populated
+// with values of type dtype, as specified by arguments value.
 func Const(g *Graph, name string, value interface{}) (Output, error) {
 	t, ok := value.(*Tensor)
 	if !ok {
@@ -44,6 +47,7 @@ func Const(g *Graph, name string, value interface{}) (Output, error) {
 	return op.Output(0), err
 }
 
+// Computes numerical negative value element-wise.
 func Neg(g *Graph, name string, port Output) (Output, error) {
 	op, err := g.AddOperation(OpSpec{
 		Type:  "Neg",
@@ -53,6 +57,7 @@ func Neg(g *Graph, name string, port Output) (Output, error) {
 	return op.Output(0), err
 }
 
+// Returns x + y element-wise.
 func Add(g *Graph, name string, x, y Output) (Output, error) {
 	op, err := g.AddOperation(OpSpec{
 		Type:  "Add",
