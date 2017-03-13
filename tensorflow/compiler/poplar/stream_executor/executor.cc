@@ -37,18 +37,6 @@ struct TensorControl {
   char data[0];
 };
 
-std::string GetPathToGraphProgFile() {
-  Dl_info dlInfo;
-  static const void* dummy;
-  if (dladdr(&dummy, &dlInfo)) {
-    std::string path(dlInfo.dli_fname);
-    path = path.substr(0, path.find_last_of( '/' ) + 1);
-    path = path + "tf.gp";
-    return path;
-  }
-  return "";
-}
-
 PoplarStream *AsPoplarStream(Stream *stream) {
   DCHECK(stream != nullptr);
   return dynamic_cast<PoplarStream *>(stream->implementation());
@@ -284,6 +272,20 @@ PoplarExecutor::CopyDataFromPoplar(const xla::Shape& shape,
     memcpy(tc->data, bufs[0], xla::ShapeUtil::ByteSizeOf(shape));
   }
 }
+
+std::string PoplarExecutor::GetPathToGraphProgFile() {
+  Dl_info dlInfo;
+  static const void* dummy;
+  if (dladdr(&dummy, &dlInfo)) {
+    std::string path(dlInfo.dli_fname);
+    path = path.substr(0, path.find_last_of( '/' ) + 1);
+    path = path + "tf.gp";
+    return path;
+  }
+  return "";
+}
+
+
 
 }  // namespace poplarplugin
 }  // namespace gputools
