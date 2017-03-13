@@ -165,11 +165,20 @@ static void LoadImage(std::vector<float>* img_floats_ptr) {
   }
 }
 
+static Tensor BuildImageTensor(const std::vector<float>& img_floats) {
+  LOG(INFO) << "Ioading image finished.";
+  Tensor img_tensor(DT_FLOAT, {1, WIDTH, HEIGHT, DEPTH});
+  CHECK_EQ(WIDTH * HEIGHT * DEPTH, img_floats.size());
+  CHECK_EQ(img_tensor.TotalBytes(), img_floats.size() * sizeof(float));
+  LOG(INFO) << "Copy data to tensor.";
+  std::memcpy(img_tensor.flat<float>().data(), img_floats.data(),
+              img_tensor.TotalBytes());
+  return img_tensor;
+}
+
 static void RunInferenceByHexagonControlWrapper(
     const GraphTransferer& gt, const std::vector<float>& img_floats) {
-  const ConstByteArray ba =
-      std::make_tuple(reinterpret_cast<const uint8*>(img_floats.data()),
-                      img_floats.size() * sizeof(float), DT_FLOAT);
+  const Tensor img_tensor = BuildImageTensor(img_floats);
 
   const RemoteFusedGraphExecuteInfo execute_info =
       GraphTransferUtils::BuildRemoteFusedGraphExecuteInfo(
@@ -183,7 +192,7 @@ static void RunInferenceByHexagonControlWrapper(
   hexagon_control_wrapper.SetupGraph();
 
   // 3. Fill input node's output
-  hexagon_control_wrapper.FillInputNode("Mul", ba);
+  hexagon_control_wrapper.FillInputNode("Mul", img_tensor);
 
   // 4. Execute graph
   profile_utils::CpuUtils::EnableClockCycleProfiling(true);
@@ -216,13 +225,7 @@ static void RunFusedGraph(const GraphDef& fused_graph_def) {
   LoadImage(&img_floats);
 
   LOG(INFO) << "Ioading image finished.";
-  Tensor img_tensor(DT_FLOAT, {1, WIDTH, HEIGHT, DEPTH});
-  ASSERT_EQ(WIDTH * HEIGHT * DEPTH, img_floats.size());
-  ASSERT_EQ(img_tensor.TotalBytes(), img_floats.size() * sizeof(float));
-
-  LOG(INFO) << "Copy data to tensor.";
-  std::memcpy(img_tensor.flat<float>().data(), img_floats.data(),
-              img_tensor.TotalBytes());
+  const Tensor img_tensor = BuildImageTensor(img_floats);
 
   // Setup session
   std::vector<Tensor> output_tensors;

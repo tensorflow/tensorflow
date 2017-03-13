@@ -30,6 +30,10 @@ namespace tensorflow {
 // functions for IRemoteFusedGraphExecutor.
 class RemoteFusedGraphExecuteUtils {
  public:
+  static constexpr const char* const ATTR_OUTPUT_DATA_TYPES =
+      "_output_data_types";
+  static constexpr const char* const ATTR_OUTPUT_SHAPES = "_output_shapes";
+
   using ExecutorBuildFunc = std::function<Status(
       std::unique_ptr<IRemoteFusedGraphExecutor>* executor)>;
   // Registrar class for IRemoteFusedGraphExecutor.
@@ -77,6 +81,13 @@ class RemoteFusedGraphExecuteUtils {
       const std::vector<string>& output_node_names,
       const std::vector<tensorflow::Tensor>& output_tensors,
       TensorShapeMap* tensor_shape_map);
+
+  static Status MakeTensorFromProto(const TensorProto& tensor_proto,
+                                    Tensor* tensor);
+
+  static bool AddOutputTensorShapeType(const std::vector<DataType>& data_types,
+                                       const std::vector<TensorShape>& shapes,
+                                       NodeDef* node_def);
 
  private:
   static ExecutorBuildRegistry* GetExecutorBuildRegistry();

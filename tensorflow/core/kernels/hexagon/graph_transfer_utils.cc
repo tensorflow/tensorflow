@@ -96,6 +96,8 @@ GraphTransferUtils::BuildRemoteFusedGraphExecuteInfo(
   CHECK(status.ok());
   status = gt->LoadGraphFromProto(ops_definitions, def, inputs, outputs, false,
                                   tensor_shape_map);
+  const DataType input_data_type =
+      inputs.empty() ? DT_FLOAT : inputs.at(0).second.dtype();
 
   Scope root = Scope::NewRootScope();
   std::vector<Output> output_list;
@@ -103,6 +105,9 @@ GraphTransferUtils::BuildRemoteFusedGraphExecuteInfo(
     const Scope& scope = root.WithOpName(input_node_info.first);
     Node* ret;
     const auto unique_name = scope.GetUniqueNameForOp("PlaceholderV2");
+    const DataType dt = input_node_info.second.dtype();
+    // DataType of input arguments should be same.
+    CHECK_EQ(input_data_type, dt);
     auto builder = NodeBuilder(unique_name, "PlaceholderV2")
                        .Attr("dtype", input_node_info.second.dtype())
                        .Attr("shape", input_node_info.second.shape());
@@ -115,6 +120,13 @@ GraphTransferUtils::BuildRemoteFusedGraphExecuteInfo(
   const RemoteFusedGraphExecuteInfo execute_info =
       BuildRemoteFusedGraphExecuteInfo(gt->GetGraphTransferInfo());
 
+  const DataType output_data_type =
+      outputs.empty() ? DT_FLOAT : tensor_shape_map.at(outputs.at(0)).first;
+  for (const string& output_node_name : outputs) {
+    const DataType dt = tensor_shape_map.at(output_node_name).first;
+    CHECK_EQ(output_data_type, dt);
+  }
+
   const Scope& scope = root.WithOpName(remote_graph_execute_name);
   CHECK(scope.ok());
   auto node_out_list = ops::AsNodeOutList(scope, InputList(output_list));
@@ -122,7 +134,10 @@ GraphTransferUtils::BuildRemoteFusedGraphExecuteInfo(
   const auto unique_name = scope.GetUniqueNameForOp("RemoteFusedGraphExecute");
   auto builder = NodeBuilder(unique_name, "RemoteFusedGraphExecute")
                      .Input(node_out_list)
+                     .Attr("M", static_cast<int64>(output_list.size()))
                      .Attr("N", static_cast<int64>(outputs.size()))
+                     .Attr("T", input_data_type)
+                     .Attr("U", output_data_type)
                      .Attr("serialized_graph_transfer_info",
                            StringPiece(execute_info.SerializeAsString()));
   CHECK(scope.ok());

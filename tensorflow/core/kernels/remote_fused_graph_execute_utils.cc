@@ -17,10 +17,16 @@ limitations under the License.
 
 #include <utility>
 
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
+
+/* static */ constexpr const char* const
+    RemoteFusedGraphExecuteUtils::ATTR_OUTPUT_DATA_TYPES;
+/* static */ constexpr const char* const
+    RemoteFusedGraphExecuteUtils::ATTR_OUTPUT_SHAPES;
 
 RemoteFusedGraphExecuteUtils::ExecutorBuildRegistrar::ExecutorBuildRegistrar(
     const string& name, ExecutorBuildFunc executor_build_func) {
@@ -193,6 +199,27 @@ RemoteFusedGraphExecuteUtils::GetExecutorBuildRegistry() {
     tensor_shape_map->emplace(node_name,
                               std::make_pair(tensor.dtype(), tensor.shape()));
   }
+}
+
+/* static */ Status RemoteFusedGraphExecuteUtils::MakeTensorFromProto(
+    const TensorProto& tensor_proto, Tensor* tensor) {
+  if (tensor_proto.dtype() > 0 && tensor_proto.dtype() <= DataType_MAX) {
+    Tensor parsed(tensor_proto.dtype());
+    if (parsed.FromProto(cpu_allocator(), tensor_proto)) {
+      *tensor = parsed;
+      return Status::OK();
+    }
+  }
+  return errors::InvalidArgument("Cannot parse tensor from proto");
+}
+
+/* static */ bool RemoteFusedGraphExecuteUtils::AddOutputTensorShapeType(
+    const std::vector<DataType>& data_types,
+    const std::vector<TensorShape>& shapes, NodeDef* node_def) {
+  // const gtl::ArraySlice<DataType> data_types_array(data_types);
+  AddNodeAttr(ATTR_OUTPUT_DATA_TYPES, data_types, node_def);
+  AddNodeAttr(ATTR_OUTPUT_SHAPES, shapes, node_def);
+  return true;
 }
 
 }  // namespace tensorflow

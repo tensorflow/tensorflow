@@ -3782,6 +3782,7 @@ filegroup(
         ],
         exclude = [
             "*test.cc",
+            "*test_util*",
             "*testutil*",
             "*testlib*",
             "*main.cc",
@@ -4286,6 +4287,20 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "remote_fused_graph_execute_op_test_utils",
+    srcs = ["remote_fused_graph_execute_op_test_utils.cc"],
+    hdrs = ["remote_fused_graph_execute_op_test_utils.h"],
+    deps = [
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/kernels:cwise_op",
+    ],
+)
+
 tf_cc_test(
     name = "remote_fused_graph_execute_utils_test",
     size = "small",
@@ -4293,6 +4308,7 @@ tf_cc_test(
         "remote_fused_graph_execute_utils_test.cc",
     ],
     deps = [
+        ":remote_fused_graph_execute_op_test_utils",
         ":remote_fused_graph_execute_utils",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:scope",
@@ -4320,7 +4336,13 @@ tf_cc_test(
         ":ops_testutil",
         ":ops_util",
         ":remote_fused_graph_execute_op",
+        ":remote_fused_graph_execute_op_test_utils",
+        ":remote_fused_graph_execute_utils",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:scope",
         "//tensorflow/core:core_cpu",
+        "//tensorflow/core:direct_session",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
