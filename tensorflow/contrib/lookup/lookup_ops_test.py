@@ -1341,6 +1341,17 @@ class IndexTableFromTensor(test.TestCase):
       data_flow_ops.tables_initializer().run()
       self.assertAllEqual((1, 2, 3), ids.eval())
 
+  def test_int32_index_table_from_tensor_with_no_buckets(self):
+    with self.test_session():
+      table = lookup.index_table_from_tensor(
+          mapping=(42, 1, -1000), dtype=dtypes.int32)
+      ids = table.lookup(
+          constant_op.constant((1, -1000, 11), dtype=dtypes.int32))
+
+      self.assertRaises(errors_impl.OpError, ids.eval)
+      data_flow_ops.tables_initializer().run()
+      self.assertAllEqual((1, 2, -1), ids.eval())
+
   def test_int64_index_table_from_tensor_with_tensor_init(self):
     with self.test_session():
       table = lookup.index_table_from_tensor(
