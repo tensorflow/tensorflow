@@ -434,15 +434,15 @@ module VZ {
       var smoothingWeight = this.smoothingWeight;
       data.forEach(function (d, i) {
         if (!_.isFinite(d.scalar)) {
-            d.smoothed = d.scalar;
+          d.smoothed = d.scalar;
         }
         else if (i == 0) {
-            d.smoothed = d.scalar;
+          d.smoothed = d.scalar;
         }
         else {
-          var prev_index = i > 0 ? i - 1 : 0;
+          var prev_index = i - 1;
           if (!_.isFinite(data[prev_index].smoothed)) {
-              d.smoothed = d.scalar
+            d.smoothed = d.scalar
           }
           else {
             d.smoothed = data[prev_index].smoothed * smoothingWeight + (1.0 - smoothingWeight) * d.scalar;
