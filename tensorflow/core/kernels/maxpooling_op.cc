@@ -275,9 +275,9 @@ class MaxPoolingGradOp : public OpKernel {
     const TensorShape& output_shape = tensor_in.shape();
 
     Tensor tensor_out_dup;
-    OP_REQUIRES_OK(context,
-                   context->allocate_temp(DataTypeToEnum<T>::v(),
-                                          tensor_out.shape(), &tensor_out_dup));
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_temp(
+                                {1}, DataTypeToEnum<T>::v(), tensor_out.shape(),
+                                &tensor_out_dup));
     Tensor tensor_out_arg_max;
     OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<int64>::v(),
                                                    tensor_out.shape(),
@@ -552,7 +552,8 @@ class MaxPoolingGradWithArgmaxOp : public OpKernel {
     TensorShape out_shape({params.tensor_in_batch, params.tensor_in_rows,
                            params.tensor_in_cols, params.depth});
     Tensor* grad_out = nullptr;
-    OP_REQUIRES_OK(context, context->allocate_output(0, out_shape, &grad_out));
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                {1}, 0, out_shape, &grad_out));
 
     LaunchMaxPoolingGradWithArgmax<Device, T>::launch(context, params, grad_in,
                                                       argmax, grad_out);
