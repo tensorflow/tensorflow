@@ -173,9 +173,13 @@ class TensorFlowTestCase(googletest.TestCase):
   def get_temp_dir(self):
     """Returns a unique temporary directory for the test to use.
 
-    Across different test runs, this method will return a different folder.
-    This will ensure that across different runs tests will not be able to
-    pollute each others environment.
+    If you call this method multiple times during in a test, it will return the
+    same folder. However, accross different runs the directories will be
+    different. This will ensure that across different runs tests will not be
+    able to pollute each others environment.
+    If you need multiple unique directories within a single test, you should
+    use tempfile.mkdtemp as follows:
+      tempfile.mkdtemp(dir=self.get_temp_dir()):
 
     Returns:
       string, the path to the unique temporary directory created for this test.
