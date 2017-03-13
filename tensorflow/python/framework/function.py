@@ -188,8 +188,11 @@ def _parse_kwargs_as_attrs(func_name, **kwargs):
     attrs["_noinline"] = attr_value_pb2.AttrValue(b=bool(noinline))
 
   compiled = kwargs.pop("compiled", None)
+  separate_compiled_gradients = kwargs.pop("separate_compiled_gradients", None)
   if compiled is not None:
     attrs["_XlaCompile"] = attr_value_pb2.AttrValue(b=bool(compiled))
+    attrs["_XlaSeparateCompiledGradients"] = attr_value_pb2.AttrValue(
+        b=bool(separate_compiled_gradients))
     attrs["_XlaScope"] = attr_value_pb2.AttrValue(
         s=("function_%s" % func_name).encode())
 
@@ -991,7 +994,7 @@ class Declare(object):
 
   For example,
     # Declares  a function Foo, which takes a tf.int32 named "n" and a
-    # tf.float32 named "n" as inputs and returns a tf.float32 named "z"
+    # tf.float32 named "x" as inputs and returns a tf.float32 named "z"
     # as its output.
     foo = Declare("Foo", [("n", tf.int32), ("x", tf.float32)],
                   [("z", tf.float32)])
