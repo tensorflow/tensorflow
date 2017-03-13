@@ -225,6 +225,29 @@ func FakeQuantWithMinMaxVarsPerChannelGradient(scope *Scope, gradients tf.Output
 	return op.Output(0), op.Output(1), op.Output(2)
 }
 
+// Fake-quantize the 'inputs' tensor of type float via global float scalars `min`
+//
+// and `max` to 'outputs' tensor of same shape as `inputs`.
+//
+// [min; max] is the clamping range for the 'inputs' data.  Op divides this range
+// into 255 steps (total of 256 values), then replaces each 'inputs' value with the
+// closest of the quantized step values.
+//
+// This operation has a gradient and thus allows for training `min` and `max` values.
+func FakeQuantWithMinMaxVars(scope *Scope, inputs tf.Output, min tf.Output, max tf.Output) (outputs tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "FakeQuantWithMinMaxVars",
+		Input: []tf.Input{
+			inputs, min, max,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // QuantizedInstanceNormAttr is an optional argument to QuantizedInstanceNorm.
 type QuantizedInstanceNormAttr func(optionalAttr)
 
@@ -332,243 +355,6 @@ func QuantizedConcat(scope *Scope, concat_dim tf.Output, values []tf.Output, inp
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1), op.Output(2)
-}
-
-// DebugNumericSummaryAttr is an optional argument to DebugNumericSummary.
-type DebugNumericSummaryAttr func(optionalAttr)
-
-// DebugNumericSummaryTensorName sets the optional tensor_name attribute to value.
-//
-// value: Name of the input tensor.
-// If not specified, defaults to ""
-func DebugNumericSummaryTensorName(value string) DebugNumericSummaryAttr {
-	return func(m optionalAttr) {
-		m["tensor_name"] = value
-	}
-}
-
-// DebugNumericSummaryDebugUrls sets the optional debug_urls attribute to value.
-//
-// value: List of URLs to debug targets, e.g.,
-// file:///foo/tfdbg_dump, grpc:://localhost:11011
-// If not specified, defaults to <>
-func DebugNumericSummaryDebugUrls(value []string) DebugNumericSummaryAttr {
-	return func(m optionalAttr) {
-		m["debug_urls"] = value
-	}
-}
-
-// Debug Numeric Summary Op.
-//
-// Provide a basic summary of numeric value types, range and distribution.
-//
-// Arguments:
-//	input: Input tensor, non-Reference type, float or double.
-//
-// Returns A double tensor of shape [12], the elements of which are:
-//   [0]: is initialized (1.0) or not (0.0).
-//   [1]: total number of elements
-//   [2]: -inf count
-//   [3]: negative element count (excluding -inf)
-//   [4]: zero element count
-//   [5]: positive element count (excluding +inf)
-//   [6]: +inf element count
-//   [7]: NaN element count
-// Output elements [1:8] are all zero, if the tensor is uninitialized.
-//   [8]: minimum of all non-inf and non-NaN elements.
-//        If uninitialized or no such element exists: +inf.
-//   [9]: maximum of all non-inf and non-NaN elements.
-//        If uninitialized or no such element exists: -inf.
-//   [10]: mean of all non-inf and non-NaN elements.
-//         If uninitialized or no such element exists: NaN.
-//   [11]: variance of all non-inf and non-NaN elements.
-//         If uninitialized or no such element exists: NaN.
-func DebugNumericSummary(scope *Scope, input tf.Output, optional ...DebugNumericSummaryAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "DebugNumericSummary",
-		Input: []tf.Input{
-			input,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Fake-quantize the 'inputs' tensor of type float via global float scalars `min`
-//
-// and `max` to 'outputs' tensor of same shape as `inputs`.
-//
-// [min; max] is the clamping range for the 'inputs' data.  Op divides this range
-// into 255 steps (total of 256 values), then replaces each 'inputs' value with the
-// closest of the quantized step values.
-//
-// This operation has a gradient and thus allows for training `min` and `max` values.
-func FakeQuantWithMinMaxVars(scope *Scope, inputs tf.Output, min tf.Output, max tf.Output) (outputs tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "FakeQuantWithMinMaxVars",
-		Input: []tf.Input{
-			inputs, min, max,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// DebugNanCountAttr is an optional argument to DebugNanCount.
-type DebugNanCountAttr func(optionalAttr)
-
-// DebugNanCountTensorName sets the optional tensor_name attribute to value.
-//
-// value: Name of the input tensor.
-// If not specified, defaults to ""
-func DebugNanCountTensorName(value string) DebugNanCountAttr {
-	return func(m optionalAttr) {
-		m["tensor_name"] = value
-	}
-}
-
-// DebugNanCountDebugUrls sets the optional debug_urls attribute to value.
-//
-// value: List of URLs to debug targets, e.g.,
-// file:///foo/tfdbg_dump, grpc:://localhost:11011
-// If not specified, defaults to <>
-func DebugNanCountDebugUrls(value []string) DebugNanCountAttr {
-	return func(m optionalAttr) {
-		m["debug_urls"] = value
-	}
-}
-
-// Debug NaN Value Counter Op
-//
-// Counts number of NaNs in the input tensor, for debugging.
-//
-// Arguments:
-//	input: Input tensor, non-Reference type.
-//
-// Returns An integer output tensor that is the number of NaNs in the input.
-func DebugNanCount(scope *Scope, input tf.Output, optional ...DebugNanCountAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "DebugNanCount",
-		Input: []tf.Input{
-			input,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// DebugIdentityAttr is an optional argument to DebugIdentity.
-type DebugIdentityAttr func(optionalAttr)
-
-// DebugIdentityTensorName sets the optional tensor_name attribute to value.
-//
-// value: Name of the input tensor.
-// If not specified, defaults to ""
-func DebugIdentityTensorName(value string) DebugIdentityAttr {
-	return func(m optionalAttr) {
-		m["tensor_name"] = value
-	}
-}
-
-// DebugIdentityDebugUrls sets the optional debug_urls attribute to value.
-//
-// value: List of URLs to debug targets, e.g.,
-// file:///foo/tfdbg_dump, grpc:://localhost:11011
-// If not specified, defaults to <>
-func DebugIdentityDebugUrls(value []string) DebugIdentityAttr {
-	return func(m optionalAttr) {
-		m["debug_urls"] = value
-	}
-}
-
-// Debug Identity Op.
-//
-// Provides an identity mapping of the non-Ref type input tensor for debugging.
-//
-// Arguments:
-//	input: Input tensor, non-Reference type.
-//
-// Returns Output tensor that equals the input tensor.
-func DebugIdentity(scope *Scope, input tf.Output, optional ...DebugIdentityAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "DebugIdentity",
-		Input: []tf.Input{
-			input,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// CopyAttr is an optional argument to Copy.
-type CopyAttr func(optionalAttr)
-
-// CopyTensorName sets the optional tensor_name attribute to value.
-//
-// value: The name of the input tensor.
-// If not specified, defaults to ""
-func CopyTensorName(value string) CopyAttr {
-	return func(m optionalAttr) {
-		m["tensor_name"] = value
-	}
-}
-
-// Copy Op.
-//
-// Performs CPU-to-CPU or GPU-to-GPU deep-copying of tensor, depending on the
-// device on which the tensor is allocated.
-//
-// Unlike the CopyHost Op, this op does not have HostMemory constraint on its
-// input or output.
-//
-// Arguments:
-//	input: Input tensor.
-//
-// Returns Output tensor, deep-copied from input.
-func Copy(scope *Scope, input tf.Output, optional ...CopyAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "Copy",
-		Input: []tf.Input{
-			input,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
 }
 
 // QuantizeAndDequantizeAttr is an optional argument to QuantizeAndDequantize.
@@ -5754,11 +5540,11 @@ func RsqrtGrad(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 // The graph specifications are serialized by protobuf as graph_transfer_info.
 // The implementation / limitations may differ for each platform
 // and each available peripheral.
-func RemoteFusedGraphExecute(scope *Scope, values []tf.Output, N int64, serialized_graph_transfer_info string) (output []tf.Output) {
+func RemoteFusedGraphExecute(scope *Scope, values []tf.Output, N int64, U tf.DataType, serialized_graph_transfer_info string) (output []tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
-	attrs := map[string]interface{}{"N": N, "serialized_graph_transfer_info": serialized_graph_transfer_info}
+	attrs := map[string]interface{}{"N": N, "U": U, "serialized_graph_transfer_info": serialized_graph_transfer_info}
 	opspec := tf.OpSpec{
 		Type: "RemoteFusedGraphExecute",
 		Input: []tf.Input{
@@ -11561,26 +11347,6 @@ func ResourceSparseApplyProximalAdagrad(scope *Scope, var_ tf.Output, accum tf.O
 	return scope.AddOperation(opspec)
 }
 
-// Store the input tensor in the state of the current session.
-//
-// Arguments:
-//	value: The tensor to be stored.
-//
-// Returns The handle for the tensor stored in the session state.
-func GetSessionHandle(scope *Scope, value tf.Output) (handle tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "GetSessionHandle",
-		Input: []tf.Input{
-			value,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Decode web-safe base64-encoded strings.
 //
 // Input may or may not have padding at the end. See EncodeBase64 for padding.
@@ -13183,48 +12949,6 @@ func Substr(scope *Scope, input tf.Output, pos tf.Output, len tf.Output) (output
 		Input: []tf.Input{
 			input, pos, len,
 		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// CopyHostAttr is an optional argument to CopyHost.
-type CopyHostAttr func(optionalAttr)
-
-// CopyHostTensorName sets the optional tensor_name attribute to value.
-//
-// value: The name of the input tensor.
-// If not specified, defaults to ""
-func CopyHostTensorName(value string) CopyHostAttr {
-	return func(m optionalAttr) {
-		m["tensor_name"] = value
-	}
-}
-
-// Copy Host Op.
-//
-// Performs CPU-to-CPU deep-copying of tensor.
-//
-// Unlike the Copy Op, this op has HostMemory constraint on its input or output.
-//
-// Arguments:
-//	input: Input tensor.
-//
-// Returns Output tensor, deep-copied from input.
-func CopyHost(scope *Scope, input tf.Output, optional ...CopyHostAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "CopyHost",
-		Input: []tf.Input{
-			input,
-		},
-		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -20023,6 +19747,27 @@ func AdjustContrast(scope *Scope, images tf.Output, contrast_factor tf.Output, m
 		Type: "AdjustContrast",
 		Input: []tf.Input{
 			images, contrast_factor, min_value, max_value,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Store the input tensor in the state of the current session.
+//
+// Arguments:
+//	value: The tensor to be stored.
+//
+// Returns The handle for the tensor stored in the session state, represented
+// as a ResourceHandle object.
+func GetSessionHandleV2(scope *Scope, value tf.Output) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "GetSessionHandleV2",
+		Input: []tf.Input{
+			value,
 		},
 	}
 	op := scope.AddOperation(opspec)
