@@ -24,8 +24,8 @@ import six
 
 from tensorflow.contrib.linalg.python.ops import linear_operator
 from tensorflow.contrib.linalg.python.ops import linear_operator_diag
+from tensorflow.contrib.linalg.python.ops import linear_operator_full_matrix
 from tensorflow.contrib.linalg.python.ops import linear_operator_identity
-from tensorflow.contrib.linalg.python.ops import linear_operator_matrix
 from tensorflow.contrib.linalg.python.ops import linear_operator_tril
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -356,7 +356,7 @@ class _AddAndReturnTriL(_Adder):
 
 
 class _AddAndReturnMatrix(_Adder):
-  """"Handles additions resulting in a `LinearOperatorMatrix`."""
+  """"Handles additions resulting in a `LinearOperatorFullMatrix`."""
 
   def can_add(self, op1, op2):  # pylint: disable=unused-argument
     return isinstance(op1, linear_operator.LinearOperator) and isinstance(
@@ -367,7 +367,7 @@ class _AddAndReturnMatrix(_Adder):
       op_add_to_tensor, op_other = op1, op2
     else:
       op_add_to_tensor, op_other = op2, op1
-    return linear_operator_matrix.LinearOperatorMatrix(
+    return linear_operator_full_matrix.LinearOperatorFullMatrix(
         matrix=op_add_to_tensor.add_to_tensor(op_other.to_dense()),
         is_non_singular=hints.is_non_singular,
         is_self_adjoint=hints.is_self_adjoint,
@@ -399,7 +399,7 @@ def _type(operator):
     return _DIAG
   if isinstance(operator, linear_operator_tril.LinearOperatorTriL):
     return _TRIL
-  if isinstance(operator, linear_operator_matrix.LinearOperatorMatrix):
+  if isinstance(operator, linear_operator_full_matrix.LinearOperatorFullMatrix):
     return _MATRIX
   if isinstance(operator, linear_operator_identity.LinearOperatorIdentity):
     return _IDENTITY

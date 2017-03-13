@@ -126,7 +126,7 @@ class Gamma(distribution.Distribution):
       TypeError: if `concentration` and `rate` are different dtypes.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[concentration, rate]) as ns:
+    with ops.name_scope(name, values=[concentration, rate]):
       with ops.control_dependencies([
           check_ops.assert_positive(concentration),
           check_ops.assert_positive(rate),
@@ -140,12 +140,11 @@ class Gamma(distribution.Distribution):
         dtype=self._concentration.dtype,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
-        is_continuous=True,
         reparameterization_type=distribution.NOT_REPARAMETERIZED,
         parameters=parameters,
         graph_parents=[self._concentration,
                        self._rate],
-        name=ns)
+        name=name)
 
   @staticmethod
   def _param_shapes(sample_shape):

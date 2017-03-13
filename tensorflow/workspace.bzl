@@ -1,5 +1,6 @@
 # TensorFlow external dependencies that can be loaded in WORKSPACE files.
 
+load("@io_bazel_rules_closure//closure/private:java_import_external.bzl", "java_import_external")
 load("@io_bazel_rules_closure//closure:defs.bzl", "filegroup_external")
 load("@io_bazel_rules_closure//closure:defs.bzl", "webfiles_external")
 load("//third_party/gpus:cuda_configure.bzl", "cuda_configure")
@@ -73,22 +74,22 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   native.new_http_archive(
       name = "eigen_archive",
       urls = [
-          "http://bazel-mirror.storage.googleapis.com/bitbucket.org/eigen/eigen/get/290bfb42684a.tar.gz",
-          "https://bitbucket.org/eigen/eigen/get/290bfb42684a.tar.gz",
+          "http://bazel-mirror.storage.googleapis.com/bitbucket.org/eigen/eigen/get/174e09eed96c.tar.gz",
+          "https://bitbucket.org/eigen/eigen/get/174e09eed96c.tar.gz",
       ],
-      sha256 = "269c8bf20e8ac1aa8f5caf1ab2ca7be4909ec6ae085177a647aae138cd069b12",
-      strip_prefix = "eigen-eigen-290bfb42684a",
+      sha256 = "38d4bda36435cd40e5235887cca8f108f8125d5a28eac471555efdf9d259020f",
+      strip_prefix = "eigen-eigen-174e09eed96c",
       build_file = str(Label("//third_party:eigen.BUILD")),
   )
 
   native.new_http_archive(
       name = "libxsmm_archive",
       urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/hfp/libxsmm/archive/1.7.tar.gz",
-          "https://github.com/hfp/libxsmm/archive/1.7.tar.gz",
+          "http://bazel-mirror.storage.googleapis.com/github.com/hfp/libxsmm/archive/1.7.1.tar.gz",
+          "https://github.com/hfp/libxsmm/archive/1.7.1.tar.gz",
       ],
-      sha256 = "2eea65624a697e74b939511cd2a686b4c957e90c99be168fe134d96771e811ad",
-      strip_prefix = "libxsmm-1.7",
+      sha256 = "9d3f63ce3eed62f04e4036de6f2be2ce0ff07781ca571af6e0bf85b077edf17a",
+      strip_prefix = "libxsmm-1.7.1",
       build_file = str(Label("//third_party:libxsmm.BUILD")),
   )
 
@@ -220,21 +221,21 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   native.http_archive(
       name = "protobuf",
       urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/google/protobuf/archive/ef927cc428db7bf41d3a593a16a8f1a0fe6306c5.tar.gz",
-          "https://github.com/google/protobuf/archive/ef927cc428db7bf41d3a593a16a8f1a0fe6306c5.tar.gz",
+          "http://bazel-mirror.storage.googleapis.com/github.com/google/protobuf/archive/2b7430d96aeff2bb624c8d52182ff5e4b9f7f18a.tar.gz",
+          "https://github.com/google/protobuf/archive/2b7430d96aeff2bb624c8d52182ff5e4b9f7f18a.tar.gz",
       ],
-      sha256 = "8813a4ab27f7c61565d0db17d69236b4ec0b1404371efc728f15079b85e457ca",
-      strip_prefix = "protobuf-ef927cc428db7bf41d3a593a16a8f1a0fe6306c5",
+      sha256 = "e5d3d4e227a0f7afb8745df049bbd4d55474b158ca5aaa2a0e31099af24be1d0",
+      strip_prefix = "protobuf-2b7430d96aeff2bb624c8d52182ff5e4b9f7f18a",
   )
 
   native.new_http_archive(
       name = "gmock_archive",
       urls = [
-          "http://bazel-mirror.storage.googleapis.com/pkgs.fedoraproject.org/repo/pkgs/gmock/gmock-1.7.0.zip/073b984d8798ea1594f5e44d85b20d66/gmock-1.7.0.zip",
-          "http://pkgs.fedoraproject.org/repo/pkgs/gmock/gmock-1.7.0.zip/073b984d8798ea1594f5e44d85b20d66/gmock-1.7.0.zip",
+          "http://bazel-mirror.storage.googleapis.com/github.com/google/googletest/archive/release-1.8.0.zip",
+          "https://github.com/google/googletest/archive/release-1.8.0.zip",
       ],
-      sha256 = "26fcbb5925b74ad5fc8c26b0495dfc96353f4d553492eb97e85a8a6d2f43095b",
-      strip_prefix = "gmock-1.7.0",
+      sha256 = "f3ed3b58511efd272eb074a3a6d6fb79d7c2e6a0e374323d1e6bcbcc1ef141bf",
+      strip_prefix = "googletest-release-1.8.0",
       build_file = str(Label("//third_party:gmock.BUILD")),
   )
 
@@ -285,6 +286,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
       ],
       strip_prefix = "curl-7.49.1",
       build_file = str(Label("//third_party:curl.BUILD")),
+      repository = tf_repo_name
   )
 
   # grpc expects //external:protobuf_clib and //external:protobuf_compiler
@@ -417,16 +419,29 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
       repository = tf_repo_name,
   )
 
-  # Make junit-4.12 available as //external:junit
-  native.http_jar(
-      name = "junit_jar",
-      url = "https://github.com/junit-team/junit4/releases/download/r4.12/junit-4.12.jar",
-      sha256 = "59721f0805e223d84b90677887d9ff567dc534d7c502ca903c0c2b17f05c116a",
+  java_import_external(
+      name = "junit",
+      jar_sha256 = "59721f0805e223d84b90677887d9ff567dc534d7c502ca903c0c2b17f05c116a",
+      jar_urls = [
+          "http://bazel-mirror.storage.googleapis.com/repo1.maven.org/maven2/junit/junit/4.12/junit-4.12.jar",
+          "http://repo1.maven.org/maven2/junit/junit/4.12/junit-4.12.jar",
+          "http://maven.ibiblio.org/maven2/junit/junit/4.12/junit-4.12.jar",
+      ],
+      licenses = ["reciprocal"],  # Common Public License Version 1.0
+      testonly_ = True,
+      deps = ["@org_hamcrest_core"],
   )
 
-  native.bind(
-      name = "junit",
-      actual = "@junit_jar//jar",
+  java_import_external(
+      name = "org_hamcrest_core",
+      jar_sha256 = "66fdef91e9739348df7a096aa384a5685f4e875584cce89386a7a47251c4d8e9",
+      jar_urls = [
+          "http://bazel-mirror.storage.googleapis.com/repo1.maven.org/maven2/org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3.jar",
+          "http://repo1.maven.org/maven2/org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3.jar",
+          "http://maven.ibiblio.org/maven2/org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3.jar",
+      ],
+      licenses = ["notice"],  # New BSD License
+      testonly_ = True,
   )
 
   temp_workaround_http_archive(
@@ -486,8 +501,6 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
           "node",
           "node.exe",
       ],
-      # POSTED: Email jart@google.com before changing this whitelist.
-      visibility = ["@com_microsoft_typescript//:__pkg__"],
   )
 
   filegroup_external(

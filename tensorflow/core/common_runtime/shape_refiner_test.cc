@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
 namespace {
@@ -38,14 +39,14 @@ TEST(ShapeRefinerTest, Constant) {
   // and that its shape is correct.
   Scope root = Scope::NewRootScope();
   auto c = ops::Const(root, 42.0f);
-  ShapeRefiner m(OpRegistry::Global());
+  ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
   TF_ASSERT_OK(m.AddNode(c.node()));
 
   EXPECT_SHAPE("[]", m, c, 0);
 }
 
 TEST(ShapeRefinerTest, MatMul) {
-  ShapeRefiner m(OpRegistry::Global());
+  ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
 
   Scope root = Scope::NewRootScope();
   auto a = ops::Const(root, {{1.0f}, {2.0f}});
@@ -62,7 +63,7 @@ TEST(ShapeRefinerTest, MatMul) {
 }
 
 TEST(ShapeRefinerTest, InvalidOrder) {
-  ShapeRefiner m(OpRegistry::Global());
+  ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
   Scope root = Scope::NewRootScope();
   auto a = ops::Const(root, {{1.0f}, {2.0f}});
   auto b = ops::Const(root, {{1.0f, 2.0f}});
@@ -77,7 +78,7 @@ TEST(ShapeRefinerTest, InvalidOrder) {
 }
 
 TEST(ShapeRefinerTest, BadShapes) {
-  ShapeRefiner m(OpRegistry::Global());
+  ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
   Scope root = Scope::NewRootScope();
   auto a = ops::Const(root, {{1.0f}, {2.0f}});
   auto b = ops::Const(root, {{1.0f}, {2.0f}});
@@ -94,7 +95,7 @@ TEST(ShapeRefinerTest, BadShapes) {
 }
 
 TEST(ShapeRefinerTest, SetShape) {
-  ShapeRefiner m(OpRegistry::Global());
+  ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
 
   Scope root = Scope::NewRootScope();
   auto a = ops::Placeholder(root, DT_FLOAT);
@@ -136,7 +137,7 @@ TEST(ShapeRefinerTest, PropagateConstants) {
     auto dim = ops::Variable(root, {}, DT_INT32);
 
     auto am = ops::ArgMax(root, input, dim);
-    ShapeRefiner m(OpRegistry::Global());
+    ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
     TF_ASSERT_OK(m.AddNode(input.node()));
     TF_ASSERT_OK(m.AddNode(dim.node()));
     TF_ASSERT_OK(m.AddNode(am.node()));
@@ -153,7 +154,7 @@ TEST(ShapeRefinerTest, PropagateConstants) {
     auto dim = ops::Const(root, 1);
 
     auto am = ops::ArgMax(root, input, dim);
-    ShapeRefiner m(OpRegistry::Global());
+    ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
     TF_ASSERT_OK(m.AddNode(input.node()));
     TF_ASSERT_OK(m.AddNode(dim.node()));
     TF_ASSERT_OK(m.AddNode(am.node()));
@@ -169,7 +170,7 @@ TEST(ShapeRefinerTest, PropagateConstants) {
     auto dim = ops::Const(root, 0);
 
     auto am = ops::ArgMax(root, input, dim);
-    ShapeRefiner m(OpRegistry::Global());
+    ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
     TF_ASSERT_OK(m.AddNode(input.node()));
     TF_ASSERT_OK(m.AddNode(dim.node()));
     TF_ASSERT_OK(m.AddNode(am.node()));
@@ -199,7 +200,7 @@ REGISTER_OP("TestOp")
 }  // namespace
 
 TEST(ShapeRefinerTest, InputTensorDependencies) {
-  ShapeRefiner m(OpRegistry::Global());
+  ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
   Graph graph(OpRegistry::Global());
   Node* node;
 
@@ -260,7 +261,7 @@ TEST(ShapeRefinerTest, PropagateShape) {
                    .Input(shape.node())
                    .Finalize(root.graph(), &shape_data));
 
-  ShapeRefiner m(OpRegistry::Global());
+  ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
   TF_ASSERT_OK(m.AddNode(input.node()));
   TF_ASSERT_OK(m.AddNode(shape.node()));
   TF_ASSERT_OK(m.AddNode(shape_data));
@@ -281,7 +282,7 @@ TEST(ShapeRefinerTest, PropagateSize) {
                    .Input(size.node())
                    .Finalize(root.graph(), &shape_data));
 
-  ShapeRefiner m(OpRegistry::Global());
+  ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
   TF_ASSERT_OK(m.AddNode(input.node()));
   TF_ASSERT_OK(m.AddNode(size.node()));
   TF_ASSERT_OK(m.AddNode(shape_data));
@@ -302,7 +303,7 @@ TEST(ShapeRefinerTest, PropagateRank) {
                    .Input(rank.node())
                    .Finalize(root.graph(), &shape_data));
 
-  ShapeRefiner m(OpRegistry::Global());
+  ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
   TF_ASSERT_OK(m.AddNode(input.node()));
   TF_ASSERT_OK(m.AddNode(rank.node()));
   TF_ASSERT_OK(m.AddNode(shape_data));
@@ -323,7 +324,7 @@ TEST(ShapeRefinerTest, PropagateRange) {
                    .Input(range.node())
                    .Finalize(root.graph(), &shape_data));
 
-  ShapeRefiner m(OpRegistry::Global());
+  ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
   TF_ASSERT_OK(m.AddNode(begin.node()));
   TF_ASSERT_OK(m.AddNode(limit.node()));
   TF_ASSERT_OK(m.AddNode(delta.node()));
@@ -346,7 +347,7 @@ TEST(ShapeRefinerTest, ConstantValueTwoInputsToSameNode) {
                    .Input(range.node())
                    .Finalize(root.graph(), &shape_data));
 
-  ShapeRefiner m(OpRegistry::Global());
+  ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
   TF_ASSERT_OK(m.AddNode(begin_and_delta.node()));
   TF_ASSERT_OK(m.AddNode(limit.node()));
   TF_ASSERT_OK(m.AddNode(range.node()));
@@ -381,7 +382,7 @@ TEST(ShapeRefinerTest, ConstantValueVisitNodeTwice) {
                    .Input(range.node())
                    .Finalize(root.graph(), &shape_data));
 
-  ShapeRefiner m(OpRegistry::Global());
+  ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
   TF_ASSERT_OK(m.AddNode(begin.node()));
   TF_ASSERT_OK(m.AddNode(limit.node()));
   TF_ASSERT_OK(m.AddNode(delta.node()));
@@ -477,7 +478,7 @@ TEST(ShapeRefinerTest, ConstantValueAsShape_EmptyVector) {
                    .Input(input)
                    .Finalize(root.graph(), &result));
 
-  ShapeRefiner m(OpRegistry::Global());
+  ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
   TF_ASSERT_OK(m.AddNode(input));
   TF_ASSERT_OK(m.AddNode(result));
 
@@ -498,7 +499,7 @@ TEST(ShapeRefinerTest, ConstantValueAsShape_Shape) {
                      .Input(shape.node())
                      .Finalize(root.graph(), &result));
 
-    ShapeRefiner m(OpRegistry::Global());
+    ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
     TF_ASSERT_OK(m.AddNode(input));
     TF_ASSERT_OK(m.AddNode(shape.node()));
     TF_ASSERT_OK(m.AddNode(result));
@@ -533,7 +534,7 @@ TEST(ShapeRefinerTest, ConstantValueAsShape_PackInt32) {
                    .Input(pack.node())
                    .Finalize(root.graph(), &result));
 
-  ShapeRefiner m(OpRegistry::Global());
+  ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
   for (auto input : inputs) {
     TF_ASSERT_OK(m.AddNode(input.node()));
   }
@@ -565,7 +566,7 @@ TEST(ShapeRefinerTest, ConstantValueAsShape_PackInt64) {
                    .Input(pack.node())
                    .Finalize(root.graph(), &result));
 
-  ShapeRefiner m(OpRegistry::Global());
+  ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
   for (const auto& input : inputs) {
     TF_ASSERT_OK(m.AddNode(input.node()));
   }
@@ -591,7 +592,7 @@ TEST(ShapeRefinerTest, ConstantValueAsShape_PackUnknownDim) {
                    .Input(pack.node())
                    .Finalize(root.graph(), &result));
 
-  ShapeRefiner m(OpRegistry::Global());
+  ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
   for (const auto& input : inputs) {
     TF_ASSERT_OK(m.AddNode(input.node()));
   }
@@ -618,7 +619,7 @@ TEST(ShapeRefinerTest, ConstantValueAsShape_PackInvalidInput) {
                    .Input(pack.node())
                    .Finalize(root.graph(), &result));
 
-  ShapeRefiner m(OpRegistry::Global());
+  ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
   for (const auto& input : inputs) {
     TF_ASSERT_OK(m.AddNode(input.node()));
   }
@@ -650,7 +651,7 @@ TEST(ShapeRefinerTest, ConstantValueAsShape_Concat) {
                    .Input(concat.node())
                    .Finalize(g, &result));
 
-  ShapeRefiner m(OpRegistry::Global());
+  ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
   TF_ASSERT_OK(m.AddNode(partial_1));
   TF_ASSERT_OK(m.AddNode(partial_2));
   for (const auto& o : concat_inputs) {
@@ -692,7 +693,7 @@ TEST(ShapeRefinerTest, ConstantValueAsShape_ConcatWithUnknown) {
                    .Input(concat.node())
                    .Finalize(g, &result));
 
-  ShapeRefiner m(OpRegistry::Global());
+  ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
   TF_ASSERT_OK(m.AddNode(partial_1));
   TF_ASSERT_OK(m.AddNode(partial_2));
   TF_ASSERT_OK(m.AddNode(unknown));
@@ -734,7 +735,7 @@ TEST(ShapeRefinerTest, ConstantValueAsShape_ConcatInvalidDimValue) {
                    .Input(concat.node())
                    .Finalize(g, &result));
 
-  ShapeRefiner m(OpRegistry::Global());
+  ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
   TF_ASSERT_OK(m.AddNode(partial_1));
   TF_ASSERT_OK(m.AddNode(partial_2));
   for (const auto& o : concat_inputs) {

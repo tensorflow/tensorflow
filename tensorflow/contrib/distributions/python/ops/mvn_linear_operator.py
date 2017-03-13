@@ -229,13 +229,23 @@ class MultivariateNormalLinearOperator(
     return super(MultivariateNormalLinearOperator, self)._prob(x)
 
   def _mean(self):
-    if self.loc is None:
+    shape = self.batch_shape.concatenate(self.event_shape)
+    has_static_shape = shape.is_fully_defined()
+    if not has_static_shape:
       shape = array_ops.concat([
           self.batch_shape_tensor(),
           self.event_shape_tensor(),
       ], 0)
+
+    if self.loc is None:
       return array_ops.zeros(shape, self.dtype)
-    return array_ops.identity(self.loc)
+
+    if has_static_shape and shape == self.loc.get_shape():
+      return array_ops.identity(self.loc)
+
+    # Add dummy tensor of zeros to broadcast.  This is only necessary if shape
+    # != self.loc.shape, but we could not determine if this is the case.
+    return array_ops.identity(self.loc) + array_ops.zeros(shape, self.dtype)
 
   def _covariance(self):
     if (isinstance(self.scale, linalg.LinearOperatorIdentity) or

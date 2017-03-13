@@ -100,7 +100,7 @@ class Laplace(distribution.Distribution):
       TypeError: if `loc` and `scale` are of different dtype.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[loc, scale]) as ns:
+    with ops.name_scope(name, values=[loc, scale]):
       with ops.control_dependencies([check_ops.assert_positive(scale)] if
                                     validate_args else []):
         self._loc = array_ops.identity(loc, name="loc")
@@ -108,13 +108,12 @@ class Laplace(distribution.Distribution):
         contrib_tensor_util.assert_same_float_dtype([self._loc, self._scale])
       super(Laplace, self).__init__(
           dtype=self._loc.dtype,
-          is_continuous=True,
           reparameterization_type=distribution.FULLY_REPARAMETERIZED,
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
           parameters=parameters,
           graph_parents=[self._loc, self._scale],
-          name=ns)
+          name=name)
 
   @staticmethod
   def _param_shapes(sample_shape):

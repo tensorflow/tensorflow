@@ -24,7 +24,7 @@ namespace tensorflow {
 namespace {
 
 // In case of failure, every call will be retried kMaxRetries times.
-constexpr int kMaxRetries = 5;
+constexpr int kMaxRetries = 10;
 // Maximum backoff time in microseconds.
 constexpr int64 kMaximumBackoffMicroseconds = 32000000;  // 32 seconds.
 
@@ -40,16 +40,25 @@ bool IsRetriable(Status status) {
   }
 }
 
-void WaitBeforeRetry(const int64 delay_micros) {
+void WaitBeforeRetry(const int64 delay_micros,
+                     const std::function<void(int64)>& sleep_usec) {
   const int64 random_micros = random::New64() % 1000000;
-  Env::Default()->SleepForMicroseconds(std::min(delay_micros + random_micros,
-                                                kMaximumBackoffMicroseconds));
+  sleep_usec(std::min(delay_micros, kMaximumBackoffMicroseconds) +
+             random_micros);
 }
 
 }  // namespace
 
 Status RetryingUtils::CallWithRetries(const std::function<Status()>& f,
                                       const int64 initial_delay_microseconds) {
+  return CallWithRetries(f, initial_delay_microseconds,
+                         std::bind(&Env::SleepForMicroseconds, Env::Default(),
+                                   std::placeholders::_1));
+}
+
+Status RetryingUtils::CallWithRetries(
+    const std::function<Status()>& f, const int64 initial_delay_microseconds,
+    const std::function<void(int64)>& sleep_usec) {
   int retries = 0;
   while (true) {
     auto status = f();
@@ -58,10 +67,9 @@ Status RetryingUtils::CallWithRetries(const std::function<Status()>& f,
     }
     const int64 delay_micros = initial_delay_microseconds << retries;
     if (delay_micros > 0) {
-      WaitBeforeRetry(delay_micros);
+      WaitBeforeRetry(delay_micros, sleep_usec);
     }
     retries++;
   }
 }
-
 }  // namespace tensorflow

@@ -26,6 +26,7 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import graph_pb2
+from tensorflow.core.framework import types_pb2
 from tensorflow.core.util import event_pb2
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.platform import gfile
@@ -77,10 +78,14 @@ def load_tensor_from_event(event):
   if (event.summary.value[0].tensor.tensor_content or
       event.summary.value[0].tensor.string_val):
     # Initialized tensor.
-    try:
-      tensor_value = tensor_util.MakeNdarray(event.summary.value[0].tensor)
-    except KeyError:
-      tensor_value = None
+    tensor_proto = event.summary.value[0].tensor
+    if tensor_proto.dtype == types_pb2.DT_RESOURCE:
+      return None
+    else:
+      try:
+        tensor_value = tensor_util.MakeNdarray(tensor_proto)
+      except KeyError:
+        tensor_value = None
   else:
     # Uninitialized tensor or tensor of unconvertible data type.
     tensor_value = None
@@ -632,6 +637,17 @@ class DebugDumpDir(object):
     if self._python_graph:
       for op in self._python_graph.get_operations():
         self._node_traceback[op.name] = op.traceback
+
+  @property
+  def python_graph(self):
+    """Get the Python graph.
+
+    Returns:
+      If the Python graph has been set, returns a `tf.Graph` object. Otherwise,
+      returns None.
+    """
+
+    return self._python_graph
 
   @property
   def core_metadata(self):

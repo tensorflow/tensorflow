@@ -7,6 +7,8 @@ exports_files(["LICENSE"])
 
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
+load("//tensorflow:tensorflow.bzl", "if_not_windows")
+
 py_library(
     name = "contrib_py",
     srcs = glob(["**/*.py"]),
@@ -38,13 +40,14 @@ py_library(
         "//tensorflow/contrib/linear_optimizer:sdca_ops_py",
         "//tensorflow/contrib/lookup:lookup_py",
         "//tensorflow/contrib/losses:losses_py",
+        "//tensorflow/contrib/memory_stats:memory_stats_py",
         "//tensorflow/contrib/metrics:metrics_py",
-        "//tensorflow/contrib/nccl:nccl_py",
         "//tensorflow/contrib/ndlstm",
         "//tensorflow/contrib/nn:nn_py",
         "//tensorflow/contrib/opt:opt_py",
         "//tensorflow/contrib/quantization:quantization_py",
         "//tensorflow/contrib/rnn:rnn_py",
+        "//tensorflow/contrib/saved_model:saved_model_py",
         "//tensorflow/contrib/seq2seq:seq2seq_py",
         "//tensorflow/contrib/slim",
         "//tensorflow/contrib/slim:nets",
@@ -53,13 +56,14 @@ py_library(
         "//tensorflow/contrib/specs",
         "//tensorflow/contrib/stat_summarizer:stat_summarizer_py",
         "//tensorflow/contrib/tensor_forest:init_py",
-        "//tensorflow/contrib/tensor_forest/hybrid:ops_lib",  # XXX: no ref but need for pip
         "//tensorflow/contrib/tensorboard",
         "//tensorflow/contrib/testing:testing_py",
         "//tensorflow/contrib/tfprof",
         "//tensorflow/contrib/training:training_py",
         "//tensorflow/contrib/util:util_py",
-    ],
+    ] + if_not_windows([
+        "//tensorflow/contrib/nccl:nccl_py",
+    ]),
 )
 
 cc_library(

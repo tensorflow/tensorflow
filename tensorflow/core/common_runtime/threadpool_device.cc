@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/allocator_registry.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.pb_text.h"
@@ -26,6 +27,10 @@ limitations under the License.
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
+
+#ifdef INTEL_MKL
+#include "tensorflow/core/common_runtime/mkl_cpu_allocator.h"
+#endif
 
 namespace tensorflow {
 
@@ -69,5 +74,9 @@ Status ThreadPoolDevice::MakeTensorFromProto(
   return errors::InvalidArgument("Cannot parse tensor from proto: ",
                                  ProtoDebugString(tensor_proto));
 }
+
+#ifdef INTEL_MKL
+REGISTER_MEM_ALLOCATOR("MklCPUAllocator", 200, MklCPUAllocator);
+#endif
 
 }  // namespace tensorflow

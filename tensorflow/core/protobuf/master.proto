@@ -188,6 +188,20 @@ message CloseSessionRequest {
 message CloseSessionResponse {
 }
 
+// Reset() allows misbehaving or slow sessions to be aborted and closed, and
+// causes their resources eventually to be released.  Reset() does not wait
+// for the computations in old sessions to cease; it merely starts the
+// process of tearing them down.  However, if a new session is started after
+// a Reset(), the new session is isolated from changes that old sessions
+// (started prior to the Reset()) may continue to make to resources, provided
+// all those resources are in containers listed in "containers".
+//
+// Old sessions may continue to have side-effects on resources not in
+// containers listed in "containers", and thus may affect future
+// sessions' results in ways that are hard to predict.  Thus, if well-defined
+// behaviour is desired, is it recommended that all containers be listed in
+// "containers".  Similarly, if a device_filter is specified, results may be
+// hard to predict.
 message ResetRequest {
   // A list of container names, which may be empty.
   //

@@ -42,5 +42,5 @@ add_custom_target(zlib_copy_headers_to_destination
 
 foreach(header_file ${ZLIB_HEADERS})
     add_custom_command(TARGET zlib_copy_headers_to_destination PRE_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy ${header_file} ${zlib_INCLUDE_DIR})
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${header_file} ${zlib_INCLUDE_DIR})
 endforeach()

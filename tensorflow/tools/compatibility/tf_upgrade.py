@@ -140,6 +140,7 @@ class APIChangeSpec(object):
         "tf.batch_svd": "tf.svd",
         "tf.batch_fft": "tf.fft",
         "tf.batch_ifft": "tf.ifft",
+        "tf.batch_fft2d": "tf.fft2d",
         "tf.batch_ifft2d": "tf.ifft2d",
         "tf.batch_fft3d": "tf.fft3d",
         "tf.batch_ifft3d": "tf.ifft3d",

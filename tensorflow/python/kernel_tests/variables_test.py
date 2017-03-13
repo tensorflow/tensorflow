@@ -318,6 +318,10 @@ class VariablesTestCase(test.TestCase):
       var_t = variables.Variable(rnd)
       slice_v = var_t[2, 0:0]
 
+      var_m = variables.Variable([[2.0, 3.0]])
+      matmul = var_m.__matmul__([[10.0], [20.0]])
+      rmatmul = var_m.__rmatmul__([[10.0], [20.0]])
+
       variables.global_variables_initializer().run()
       self.assertAllClose([2.0], add.eval())
       self.assertAllClose([3.0], radd.eval())
@@ -347,6 +351,9 @@ class VariablesTestCase(test.TestCase):
       self.assertAllClose([False, True], invert_v.eval())
 
       self.assertAllClose(rnd[2, 0:0], slice_v.eval())
+
+      self.assertAllClose([[80.0]], matmul.eval())
+      self.assertAllClose([[20.0, 30.0], [40.0, 60.0]], rmatmul.eval())
 
   def testSession(self):
     with self.test_session() as sess:

@@ -45,6 +45,14 @@ function bazel_clean_and_fetch() {
       -//tensorflow/examples/android/..."
 }
 
+function sed_hyphen_i() {
+  if is_macos; then
+    sed -i '' "$@"
+  else
+    sed -i "$@"
+  fi
+}
+
 # Delete any leftover BUILD files from the Makefile build, which would interfere
 # with Bazel parsing.
 MAKEFILE_DOWNLOAD_DIR=tensorflow/contrib/makefile/downloads
@@ -173,9 +181,9 @@ else
 fi
 
 if [ "$TF_NEED_JEMALLOC" == "1" ]; then
-  sed -i -e "s/WITH_JEMALLOC = False/WITH_JEMALLOC = True/" tensorflow/core/platform/default/build_config.bzl
+  sed_hyphen_i -e "s/WITH_JEMALLOC = False/WITH_JEMALLOC = True/" tensorflow/core/platform/default/build_config.bzl
 else
-  sed -i -e "s/WITH_JEMALLOC = True/WITH_JEMALLOC = False/" tensorflow/core/platform/default/build_config.bzl
+  sed_hyphen_i -e "s/WITH_JEMALLOC = True/WITH_JEMALLOC = False/" tensorflow/core/platform/default/build_config.bzl
 fi
 
 while [ "$TF_NEED_GCP" == "" ]; do
@@ -202,10 +210,10 @@ if [ "$TF_NEED_GCP" == "1" ]; then
   fi
 
   # Update Bazel build configuration.
-  sed -i -e "s/WITH_GCP_SUPPORT = False/WITH_GCP_SUPPORT = True/" tensorflow/core/platform/default/build_config.bzl
+  sed_hyphen_i -e "s/WITH_GCP_SUPPORT = False/WITH_GCP_SUPPORT = True/" tensorflow/core/platform/default/build_config.bzl
 else
   # Update Bazel build configuration.
-  sed -i -e "s/WITH_GCP_SUPPORT = True/WITH_GCP_SUPPORT = False/" tensorflow/core/platform/default/build_config.bzl
+  sed_hyphen_i -e "s/WITH_GCP_SUPPORT = True/WITH_GCP_SUPPORT = False/" tensorflow/core/platform/default/build_config.bzl
 fi
 
 while [ "$TF_NEED_HDFS" == "" ]; do
@@ -224,10 +232,10 @@ done
 
 if [ "$TF_NEED_HDFS" == "1" ]; then
   # Update Bazel build configuration.
-  sed -i -e "s/WITH_HDFS_SUPPORT = False/WITH_HDFS_SUPPORT = True/" tensorflow/core/platform/default/build_config.bzl
+  sed_hyphen_i -e "s/WITH_HDFS_SUPPORT = False/WITH_HDFS_SUPPORT = True/" tensorflow/core/platform/default/build_config.bzl
 else
   # Update Bazel build configuration.
-  sed -i -e "s/WITH_HDFS_SUPPORT = True/WITH_HDFS_SUPPORT = False/" tensorflow/core/platform/default/build_config.bzl
+  sed_hyphen_i -e "s/WITH_HDFS_SUPPORT = True/WITH_HDFS_SUPPORT = False/" tensorflow/core/platform/default/build_config.bzl
 fi
 
 ## Enable XLA.
@@ -243,10 +251,10 @@ done
 
 if [ "$TF_ENABLE_XLA" == "1" ]; then
   # Update Bazel build configuration.
-  sed -i -e "s/^WITH_XLA_SUPPORT = [FT].*/WITH_XLA_SUPPORT = True/" tensorflow/core/platform/default/build_config_root.bzl
+  sed_hyphen_i -e "s/^WITH_XLA_SUPPORT = [FT].*/WITH_XLA_SUPPORT = True/" tensorflow/core/platform/default/build_config_root.bzl
 else
   # Update Bazel build configuration.
-  sed -i -e "s/^WITH_XLA_SUPPORT = [FT].*/WITH_XLA_SUPPORT = False/" tensorflow/core/platform/default/build_config_root.bzl
+  sed_hyphen_i -e "s/^WITH_XLA_SUPPORT = [FT].*/WITH_XLA_SUPPORT = False/" tensorflow/core/platform/default/build_config_root.bzl
 fi
 
 

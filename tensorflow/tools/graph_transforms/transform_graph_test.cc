@@ -201,7 +201,7 @@ class TransformGraphTest : public ::testing::Test {
     // is responsible for the hang mentioned in
     // https://github.com/tensorflow/tensorflow/issues/7150
     TransformParameters params_list;
-    ParseTransformParameters("\\\n", &params_list);
+    ParseTransformParameters("\\\n", &params_list).IgnoreError();
     EXPECT_EQ(0, params_list.size());
   }
 

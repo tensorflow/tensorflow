@@ -933,7 +933,7 @@ def one2many_rnn_seq2seq(encoder_inputs,
 
   Args:
     encoder_inputs: A list of 1D int32 Tensors of shape [batch_size].
-    decoder_inputs_dict: A dictionany mapping decoder name (string) to
+    decoder_inputs_dict: A dictionary mapping decoder name (string) to
       the corresponding decoder_inputs; each decoder_inputs is a list of 1D
       Tensors of shape [batch_size]; num_decoders is defined as
       len(decoder_inputs_dict).
@@ -1111,7 +1111,7 @@ def sequence_loss(logits,
     average_across_timesteps: If set, divide the returned cost by the total
       label weight.
     average_across_batch: If set, divide the returned cost by the batch size.
-    softmax_loss_function: Function (inputs-batch, labels-batch) -> loss-batch
+    softmax_loss_function: Function (labels-batch, inputs-batch) -> loss-batch
       to be used instead of the standard softmax (the default if this is None).
     name: Optional name for this operation, defaults to "sequence_loss".
 
@@ -1160,7 +1160,7 @@ def model_with_buckets(encoder_inputs,
     seq2seq: A sequence-to-sequence model function; it takes 2 input that
       agree with encoder_inputs and decoder_inputs, and returns a pair
       consisting of outputs and states (as, e.g., basic_rnn_seq2seq).
-    softmax_loss_function: Function (inputs-batch, labels-batch) -> loss-batch
+    softmax_loss_function: Function (labels-batch, inputs-batch) -> loss-batch
       to be used instead of the standard softmax (the default if this is None).
     per_example_loss: Boolean. If set, the returned loss will be a batch-sized
       tensor of losses for each sequence in the batch. If unset, it will be
@@ -1177,7 +1177,7 @@ def model_with_buckets(encoder_inputs,
         if per_example_loss is set, a list of 1D batch-sized float Tensors.
 
   Raises:
-    ValueError: If length of encoder_inputsut, targets, or weights is smaller
+    ValueError: If length of encoder_inputs, targets, or weights is smaller
       than the largest (last) bucket.
   """
   if len(encoder_inputs) < buckets[-1][0]:

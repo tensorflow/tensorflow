@@ -166,6 +166,18 @@ void SetMemory(NodeExecStats* nt, OpKernelContext* ctx) {
       memory->set_live_bytes(std::get<2>(sizes));
     }
   }
+  auto* ms = nt->mutable_memory_stats();
+  ms->set_host_temp_memory_size(ctx->host_temp_memory_size());
+  ms->set_device_temp_memory_size(ctx->device_temp_memory_size());
+  for (const auto& alloc_id : ctx->host_persistent_alloc_ids()) {
+    ms->mutable_host_persistent_tensor_alloc_ids()->Add(alloc_id);
+  }
+  for (const auto& alloc_id : ctx->device_persistent_alloc_ids()) {
+    ms->mutable_device_persistent_tensor_alloc_ids()->Add(alloc_id);
+  }
+  ms->set_host_persistent_memory_size(ctx->host_persistent_memory_allocated());
+  ms->set_device_persistent_memory_size(
+      ctx->device_persistent_memory_allocated());
 }
 
 void SetReferencedTensors(NodeExecStats* nt,
@@ -421,9 +433,9 @@ class ExecutorImpl : public Executor {
 // connected to n by a single edge, but might be a downstream
 // consumer of n's output by reference.  *attr is updated with any
 // necessary attributes.
-static Status InferAllocAttr(const Node* n, const Node* dst,
-                             const DeviceNameUtils::ParsedName& local_dev_name,
-                             AllocatorAttributes* attr);
+Status InferAllocAttr(const Node* n, const Node* dst,
+                      const DeviceNameUtils::ParsedName& local_dev_name,
+                      AllocatorAttributes* attr);
 
 GraphView::~GraphView() {
   static_assert(std::is_trivially_destructible<AllocatorAttributes>::value,
@@ -478,7 +490,7 @@ char* GraphView::InitializeNode(char* ptr, const Node* n) {
   CHECK(node_offsets_[id] == kuint32max);  // Initial value in constructor
 
   const size_t bytes = NodeItemBytes(n);
-  static constexpr size_t kItemAlignment = sizeof(NodeItem*);
+  constexpr size_t kItemAlignment = sizeof(NodeItem*);
   CHECK_EQ(reinterpret_cast<uintptr_t>(ptr) % kItemAlignment, 0);
   NodeItem* item = reinterpret_cast<NodeItem*>(ptr);
 
@@ -568,8 +580,7 @@ void GraphView::Initialize(const Graph* g) {
   CHECK_EQ(ptr, space_ + total_bytes);
 }
 
-static void GetMaxPendingCounts(const Node* n, int* max_pending,
-                                int* max_dead_count) {
+void GetMaxPendingCounts(const Node* n, int* max_pending, int* max_dead_count) {
   const int num_in_edges = n->in_edges().size();
   int initial_count;
   if (IsMerge(n)) {
@@ -680,31 +691,33 @@ Status GraphView::SetAllocAttrs(const Graph* g, const Device* device) {
     // Examine the out edges of each node looking for special use
     // cases that may affect memory allocation attributes.
     for (auto e : n->out_edges()) {
-      AllocatorAttributes attr;
-      s = InferAllocAttr(n, e->dst(), local_dev_name, &attr);
-      if (!s.ok()) return s;
-      if (attr.value != 0) {
-        if (!e->IsControlEdge()) {
+      if (!e->IsControlEdge()) {
+        AllocatorAttributes attr;
+        s = InferAllocAttr(n, e->dst(), local_dev_name, &attr);
+        if (!s.ok()) return s;
+        if (attr.value != 0) {
           attrs[e->src_output()].Merge(attr);
         }
       }
     }
 
     for (int out = 0; out < n->num_outputs(); out++) {
-      OpKernel* op_kernel = item->kernel;
+      const OpKernel* op_kernel = item->kernel;
       DCHECK_LT(out, op_kernel->output_memory_types().size());
       bool on_host = op_kernel->output_memory_types()[out] == HOST_MEMORY;
-      AllocatorAttributes h;
-      h.set_on_host(on_host);
-      attrs[out].Merge(h);
+      if (on_host) {
+        AllocatorAttributes h;
+        h.set_on_host(on_host);
+        attrs[out].Merge(h);
+      }
     }
   }
   return s;
 }
 
-static Status InferAllocAttr(const Node* n, const Node* dst,
-                             const DeviceNameUtils::ParsedName& local_dev_name,
-                             AllocatorAttributes* attr) {
+Status InferAllocAttr(const Node* n, const Node* dst,
+                      const DeviceNameUtils::ParsedName& local_dev_name,
+                      AllocatorAttributes* attr) {
   Status s;
   // Note that it's possible for *n to be a Recv and *dst to be a Send,
   // so these two cases are not mutually exclusive.
@@ -758,11 +771,6 @@ static Status InferAllocAttr(const Node* n, const Node* dst,
     } else {
       VLOG(2) << "default alloc case local type " << local_dev_name.type
               << " remote type " << parsed_dst_name.type;
-    }
-  } else if (dst->type_string() == "ToFloat") {
-    for (auto e : dst->out_edges()) {
-      s = InferAllocAttr(n, e->dst(), local_dev_name, attr);
-      if (!s.ok()) return s;
     }
   }
   return s;
@@ -1545,7 +1553,8 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
 
     if (vlog_) {
       VLOG(1) << "Process node: " << id << " step " << params.step_id << " "
-              << SummarizeNodeDef(node->def());
+              << SummarizeNodeDef(node->def())
+              << " is dead: " << tagged_node.is_dead;
     }
 
     Entry* input_tensors = GetInputTensors(input_frame, input_iter);

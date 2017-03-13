@@ -891,6 +891,14 @@ Status UserComputation::AddOutfeedInstruction(
     const OutfeedRequest& outfeed_request) {
   tensorflow::mutex_lock lock(mutex_);
 
+  const Shape& shape = outfeed_request.shape();
+  if (ShapeUtil::IsNestedTuple(shape)) {
+    return InvalidArgument("Outfeed does not support nested tuple shapes");
+  }
+  if (!LayoutUtil::HasLayout(shape)) {
+    return InvalidArgument("Given shape to Outfeed must have a layout");
+  }
+
   // Verify that operand is valid.
   TF_RETURN_IF_ERROR(LookUpRequest(outfeed_request.operand()).status());
 
@@ -900,7 +908,7 @@ Status UserComputation::AddOutfeedInstruction(
   OperationRequest& request =
       (*session_computation_.mutable_requests())[handle.handle()];
   *request.mutable_output_handle() = handle;
-  *request.mutable_output_shape() = ShapeUtil::MakeNil();
+  *request.mutable_output_shape() = shape;
   *request.mutable_request()->mutable_outfeed_request() = outfeed_request;
 
   VLOG(1) << "AddOutfeedInstruction (" << GetVersionedHandleInternal()
@@ -1081,6 +1089,22 @@ StatusOr<Shape> UserComputation::GetShape(const ComputationDataHandle& handle) {
 
   TF_ASSIGN_OR_RETURN(const OperationRequest* operand, LookUpRequest(handle));
   return operand->output_shape();
+}
+
+Status UserComputation::SetOpMetadata(const ComputationDataHandle& handle,
+                                      const OpMetadata& metadata) {
+  tensorflow::mutex_lock lock(mutex_);
+
+  int64 handle_value = handle.handle();
+  if (session_computation_.requests().count(handle_value) == 0) {
+    return InvalidArgument("Invalid handle in SetDebugMetadata (%lld)",
+                           handle_value);
+  }
+  *session_computation_.mutable_requests()
+       ->at(handle_value)
+       .mutable_request()
+       ->mutable_metadata() = metadata;
+  return Status::OK();
 }
 
 Status UserComputation::SetReturnValue(const ComputationDataHandle& handle) {
@@ -1991,9 +2015,9 @@ HloInstruction* ComputationLowerer::Visit(
       const OutfeedRequest& outfeed_request =
           request.request().outfeed_request();
       HloInstruction* operand = Visit(outfeed_request.operand(), visited);
-      hlo_instruction =
-          hlo_builder_.AddInstruction(HloInstruction::CreateOutfeed(
-              operand, outfeed_request.outfeed_config()));
+      hlo_instruction = hlo_builder_.AddInstruction(
+          HloInstruction::CreateOutfeed(outfeed_request.shape(), operand,
+                                        outfeed_request.outfeed_config()));
       break;
     }
 
@@ -2306,6 +2330,7 @@ HloInstruction* ComputationLowerer::Visit(
     default:
       LOG(FATAL) << "Unexpected request type: " << request.request().op_case();
   }
+  hlo_instruction->set_metadata(request.request().metadata());
   (*visited)[handle.handle()] = hlo_instruction;
   return hlo_instruction;
 }

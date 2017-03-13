@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk_schedule.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -127,6 +128,7 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
           /*is_layout_sensitive=*/false,
           [](const Shape&, const Shape&) { return false; });
       pass.AddPass<ReshapeMover>();
+      pass.AddPass<HloConstantFolding>();
     }
     pipeline.AddPass<ConvolutionFolding>();
     pipeline.AddPass<TransposeFolding>(ImplementedAsGemm);
@@ -248,8 +250,9 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
   // must also be used to determine the thunk launch schedule.
   std::unique_ptr<StreamAssignment> stream_assignment =
       AssignStreams(*hlo_module);
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloSchedule> hlo_schedule,
-                      HloSchedule::Build(*hlo_module, *stream_assignment));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloSchedule> hlo_schedule,
+      HloSchedule::Build(*hlo_module, *stream_assignment, pointer_size_));
 
   // Run buffer analysis on the HLO graph. This analysis figures out which
   // temporary buffers are required to run the computation.

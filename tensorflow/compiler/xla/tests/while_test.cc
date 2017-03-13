@@ -415,19 +415,23 @@ void BM_WhileLoop(int num_iters) {
   builder.While(condition, body, init);
   auto computation = builder.Build().ConsumeValueOrDie();
 
+  std::unique_ptr<LocalExecutable> executable =
+      client->Compile(computation, {}, ExecutableBuildOptions())
+          .ConsumeValueOrDie();
+
   // Run some warm-up executions.
-  LocalExecuteOptions options;
+  ExecutableRunOptions options;
   options.set_allocator(&allocator);
   const int kWarmups = 2;
   for (int i = 0; i < kWarmups; ++i) {
-    auto result = client->ExecuteLocally(computation, {}, options);
+    auto result = executable->Run({}, options);
     ASSERT_TRUE(result.ok());
   }
 
   // Run benchmark.
   tensorflow::testing::StartTiming();
   for (int i = 0; i < num_iters; ++i) {
-    auto result = client->ExecuteLocally(computation, {}, options);
+    auto result = executable->Run({}, options);
     ASSERT_TRUE(result.ok());
   }
 }

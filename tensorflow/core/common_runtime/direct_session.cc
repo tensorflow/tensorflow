@@ -475,7 +475,8 @@ Status DirectSession::Run(const RunOptions& run_options,
   if (run_options.trace_level() >= RunOptions::HARDWARE_TRACE) {
     tracer.reset(CreateGPUTracer());
     // tracer will be NULL on non-GPU platforms.
-    if (tracer) tracer->Start();
+    // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
+    if (tracer) tracer->Start().IgnoreError();
   }
 #endif  // GOOGLE_CUDA
 
@@ -514,8 +515,9 @@ Status DirectSession::Run(const RunOptions& run_options,
 
 #if GOOGLE_CUDA
   if (tracer) {
-    tracer->Stop();
-    tracer->Collect(args.stats_collector);
+    // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
+    tracer->Stop().IgnoreError();
+    tracer->Collect(args.stats_collector).IgnoreError();
   }
 #endif  // GOOGLE_CUDA
 
@@ -737,6 +739,26 @@ Status DirectSession::PRun(const string& handle, const NamedTensorList& inputs,
   return s;
 }
 
+Status DirectSession::ResourceHandleToInputTensor(const Tensor& resource_tensor,
+                                                  Tensor* retrieved_tensor) {
+  if (resource_tensor.dtype() != DT_RESOURCE) {
+    return errors::InvalidArgument(strings::StrCat(
+        "ResourceHandleToInputTensor() received non-DT_RESOURCE Tensor: ",
+        resource_tensor.dtype()));
+  }
+
+  ResourceHandle resource_handle = resource_tensor.scalar<ResourceHandle>()();
+
+  if (resource_handle.hash_code() == MakeTypeIndex<Tensor>().hash_code()) {
+    return session_state_.GetTensor(resource_handle.name(), retrieved_tensor);
+  } else {
+    return errors::InvalidArgument(strings::StrCat(
+        "Invalid resource type hash code: ", resource_handle.hash_code(),
+        "(name: ", resource_handle.name(),
+        " type: ", resource_handle.maybe_type_name(), ")"));
+  }
+}
+
 Status DirectSession::SendInputs(const NamedTensorList& inputs,
                                  const ExecutorsAndKeys* executors_and_keys,
                                  IntraProcessRendezvous* rendez) {
@@ -757,7 +779,16 @@ Status DirectSession::SendInputs(const NamedTensorList& inputs,
       return s;
     }
 
-    s = rendez->Send(parsed, Rendezvous::Args(), input.second, false);
+    if (input.second.dtype() == DT_RESOURCE) {
+      Tensor tensor_from_handle;
+      s = ResourceHandleToInputTensor(input.second, &tensor_from_handle);
+      if (s.ok()) {
+        s = rendez->Send(parsed, Rendezvous::Args(), tensor_from_handle, false);
+      }
+    } else {
+      s = rendez->Send(parsed, Rendezvous::Args(), input.second, false);
+    }
+
     if (!s.ok()) {
       rendez->StartAbort(s);
       return s;

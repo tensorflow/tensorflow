@@ -450,5 +450,6 @@ class MklConv2DOp : public OpKernel {
       MklConv2DOp<CPUDevice, T, true>);
 
 TF_CALL_float(REGISTER_MKL_CPU);
+
 }  // namespace tensorflow
 #endif  // INTEL_MKL

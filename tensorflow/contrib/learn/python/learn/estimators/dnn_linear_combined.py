@@ -20,7 +20,6 @@ from __future__ import division
 from __future__ import print_function
 
 import math
-import re
 import six
 
 from tensorflow.contrib import layers
@@ -42,8 +41,6 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import variable_scope
 
-
-_CENTERED_BIAS_WEIGHT = "centered_bias_weight"
 
 # The default learning rates are a historical artifact of the initial
 # implementation, but seem a reasonable choice.
@@ -192,7 +189,8 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
   else:
     if not dnn_hidden_units:
       raise ValueError(
-          "dnn_hidden_units must be defined when dnn_feature_columns is specified.")
+          "dnn_hidden_units must be defined when dnn_feature_columns is "
+          "specified.")
     dnn_partitioner = (
         partitioned_variables.min_max_variable_partitioner(
             max_partitions=num_ps_replicas))
@@ -319,7 +317,7 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
       logits=logits)
 
 
-class _DNNLinearCombinedEstimator(estimator.Estimator):
+class DNNLinearCombinedEstimator(estimator.Estimator):
   """An estimator for TensorFlow Linear and DNN joined training models.
 
     Input of `fit`, `train`, and `evaluate` should have following features,
@@ -351,7 +349,7 @@ class _DNNLinearCombinedEstimator(estimator.Estimator):
                config=None,
                feature_engineering_fn=None,
                embedding_lr_multipliers=None):
-    """Initializes a _DNNLinearCombinedEstimator instance.
+    """Initializes a DNNLinearCombinedEstimator instance.
 
     Args:
       head: A _Head object.
@@ -399,7 +397,7 @@ class _DNNLinearCombinedEstimator(estimator.Estimator):
     if not linear_feature_columns + dnn_feature_columns:
       raise ValueError("Either linear_feature_columns or dnn_feature_columns "
                        "must be defined.")
-    super(_DNNLinearCombinedEstimator, self).__init__(
+    super(DNNLinearCombinedEstimator, self).__init__(
         model_fn=_dnn_linear_combined_model_fn,
         model_dir=model_dir,
         config=config,
@@ -546,16 +544,13 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
     if n_classes < 2:
       raise ValueError("n_classes should be greater than 1. Given: {}".format(
           n_classes))
-    self._linear_optimizer = linear_optimizer or "Ftrl"
     linear_feature_columns = tuple(linear_feature_columns or [])
     dnn_feature_columns = tuple(dnn_feature_columns or [])
     self._feature_columns = linear_feature_columns + dnn_feature_columns
     if not self._feature_columns:
       raise ValueError("Either linear_feature_columns or dnn_feature_columns "
                        "must be defined.")
-    self._dnn_hidden_units = dnn_hidden_units
-    self._enable_centered_bias = enable_centered_bias
-    head = head_lib._multi_class_head(  # pylint: disable=protected-access
+    head = head_lib.multi_class_head(
         n_classes=n_classes,
         weight_column_name=weight_column_name,
         enable_centered_bias=enable_centered_bias)
@@ -566,7 +561,7 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
         params={
             "head": head,
             "linear_feature_columns": linear_feature_columns,
-            "linear_optimizer": self._linear_optimizer,
+            "linear_optimizer": linear_optimizer,
             "joint_linear_weights": _joint_linear_weights,
             "dnn_feature_columns": dnn_feature_columns,
             "dnn_optimizer": dnn_optimizer,
@@ -710,67 +705,6 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
         default_batch_size=default_batch_size,
         exports_to_keep=exports_to_keep)
 
-  @property
-  @deprecated("2016-10-30",
-              "This method will be removed after the deprecation date. "
-              "To inspect variables, use get_variable_names() and "
-              "get_variable_value().")
-  def dnn_weights_(self):
-    hiddenlayer_weights = [
-        self.get_variable_value("dnn/hiddenlayer_%d/weights" % i)
-        for i, _ in enumerate(self._dnn_hidden_units)
-    ]
-    logits_weights = [self.get_variable_value("dnn/logits/weights")]
-    return hiddenlayer_weights + logits_weights
-
-  @property
-  @deprecated("2016-10-30",
-              "This method will be removed after the deprecation date. "
-              "To inspect variables, use get_variable_names() and "
-              "get_variable_value().")
-  def linear_weights_(self):
-    values = {}
-    if isinstance(self._linear_optimizer, str):
-      optimizer_name = self._linear_optimizer
-    else:
-      optimizer_name = self._linear_optimizer.get_name()
-    optimizer_regex = r".*/"+optimizer_name + r"(_\d)?$"
-    for name in self.get_variable_names():
-      if (name.startswith("linear/") and
-          name != "linear/bias_weight" and
-          name != "linear/learning_rate" and
-          not re.match(optimizer_regex, name)):
-        values[name] = self.get_variable_value(name)
-    if len(values) == 1:
-      return values[list(values.keys())[0]]
-    return values
-
-  @property
-  @deprecated("2016-10-30",
-              "This method will be removed after the deprecation date. "
-              "To inspect variables, use get_variable_names() and "
-              "get_variable_value().")
-  def dnn_bias_(self):
-    hiddenlayer_bias = [self.get_variable_value("dnn/hiddenlayer_%d/biases" % i)
-                        for i, _ in enumerate(self._dnn_hidden_units)]
-    logits_bias = [self.get_variable_value("dnn/logits/biases")]
-    if not self._enable_centered_bias:
-      return hiddenlayer_bias + logits_bias
-    centered_bias = [self.get_variable_value(_CENTERED_BIAS_WEIGHT)]
-    return hiddenlayer_bias + logits_bias  + centered_bias
-
-  @property
-  @deprecated("2016-10-30",
-              "This method will be removed after the deprecation date. "
-              "To inspect variables, use get_variable_names() and "
-              "get_variable_value().")
-  def linear_bias_(self):
-    linear_bias = self.get_variable_value("linear/bias_weight")
-    if not self._enable_centered_bias:
-      return linear_bias
-    centered_bias = [self.get_variable_value(_CENTERED_BIAS_WEIGHT)]
-    return linear_bias  + centered_bias
-
 
 class DNNLinearCombinedRegressor(estimator.Estimator):
   """A regressor for TensorFlow Linear and DNN joined training models.
@@ -907,7 +841,7 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
     if not self._feature_columns:
       raise ValueError("Either linear_feature_columns or dnn_feature_columns "
                        "must be defined.")
-    head = head_lib._regression_head(  # pylint: disable=protected-access
+    head = head_lib.regression_head(
         weight_column_name=weight_column_name,
         label_dimension=label_dimension,
         enable_centered_bias=enable_centered_bias)
@@ -1063,3 +997,7 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
         prediction_key=prediction_key.PredictionKey.SCORES,
         default_batch_size=default_batch_size,
         exports_to_keep=exports_to_keep)
+
+# Aliases
+# TODO(zakaria): Remove these aliases, See b/34751732
+_DNNLinearCombinedEstimator = DNNLinearCombinedEstimator

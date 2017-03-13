@@ -430,12 +430,12 @@ Status IrEmitter::HandleDot(HloInstruction* dot,
   // and lhs indexes with the reduction dimensions removed. The terms from the
   // rhs index are the lower dimensions in the index so we add them first.
   llvm_ir::IrArray::Index target_index;
-  for (int dimension = 0; dimension < lhs_index.size(); ++dimension) {
+  for (size_t dimension = 0; dimension < lhs_index.size(); ++dimension) {
     if (dimension != lhs_reduction_dimension) {
       target_index.push_back(lhs_index[dimension]);
     }
   }
-  for (int dimension = 0; dimension < rhs_index.size(); ++dimension) {
+  for (size_t dimension = 0; dimension < rhs_index.size(); ++dimension) {
     if (dimension != rhs_reduction_dimension) {
       target_index.push_back(rhs_index[dimension]);
     }
@@ -513,7 +513,7 @@ Status IrEmitter::HandleReduce(HloInstruction* reduce, HloInstruction* arg,
         llvm_ir::IrArray::Index input_index = reduced_dims_index;
         llvm_ir::IrArray::Index::const_iterator it = index.begin();
 
-        for (int64 i = 0; i < input_index.size(); ++i) {
+        for (auto i = 0; i < input_index.size(); ++i) {
           if (input_index[i] == nullptr) {
             input_index[i] = *it++;
           }
@@ -614,7 +614,7 @@ llvm_ir::IrArray::Index IrEmitter::EmitOperandArrayLoopNest(
   llvm_ir::IrArray::Index index =
       loop_nest->AddLoopsForShapeOnDimensions(shape, dimensions, name_suffix);
   // Verify every dimension except the reduction dimension was set in the index.
-  for (int dimension = 0; dimension < index.size(); ++dimension) {
+  for (auto dimension = 0; dimension < index.size(); ++dimension) {
     if (dimension == reduction_dimension) {
       DCHECK_EQ(nullptr, index[dimension]);
     } else {

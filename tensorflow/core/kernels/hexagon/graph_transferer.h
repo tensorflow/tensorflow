@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/kernels/hexagon/i_graph_transfer_ops_definitions.h"
+#include "tensorflow/core/kernels/remote_fused_graph_execute_utils.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/util/padding.h"
@@ -44,55 +45,32 @@ class GraphTransferer {
   static constexpr int MAX_SUPPORTED_RANK = 4;
   // TODO(satok): Remove. Use proto definition instead.
   static constexpr int SHAPE_ARRAY_SIZE = MAX_SUPPORTED_RANK;
-  using OutputTensorMap = std::unordered_map<string, Tensor*>;
-
-  struct InputNodeInfo {
-    string name;
-    Tensor tensor;
-  };
-
-  struct OutputTensorInfo {
-    std::vector<Tensor> output_tensors;
-    OutputTensorMap output_tensor_map;
-  };
+  using OutputTensorMap = RemoteFusedGraphExecuteUtils::TensorShapeMap;
 
   GraphTransferer() = default;
 
   // Load graph structure into GraphTransferer
+  // TODO(satok): Pass a pair of TensorShape and DataType instead of
+  // Tensor as input_node_info_list.
   Status LoadGraphFromProto(
       const IGraphTransferOpsDefinitions& ops_definitions,
       const GraphDef& graph_def,
-      const std::vector<InputNodeInfo>& input_node_info_list,
+      const std::vector<std::pair<string, Tensor>>& input_node_info_list,
       const std::vector<string>& output_node_names,
       const bool shape_inference_for_unkown_shape,
       const OutputTensorMap& output_tensor_map);
 
   // Load graph structure into GraphTransferer from protobuf file
+  // TODO(satok): Pass a pair of TensorShape and DataType instead of
+  // Tensor as input_node_info_list.
   Status LoadGraphFromProtoFile(
       const IGraphTransferOpsDefinitions& ops_definitions,
       const string& graph_def_path,
-      const std::vector<InputNodeInfo>& input_node_info_list,
+      const std::vector<std::pair<string, Tensor>>& input_node_info_list,
       const std::vector<string>& output_node_names, const bool is_text_proto,
       const bool shape_inference_for_unknown_shape,
       const bool dry_run_for_unknown_shape,
-      OutputTensorInfo* output_tensor_info);
-
-  // Dry run inference and cache the result to get memory mapping
-  static Status DryRunInference(
-      const GraphDef& graph_def,
-      const std::vector<InputNodeInfo>& input_node_info_list,
-      const std::vector<string>& output_node_names,
-      const bool initialize_by_zero,
-      std::vector<tensorflow::Tensor>* output_tensors);
-
-  // Dry run inference and fill output tensors to output tensor info
-  // CAVEAT: Do not add or modify output_tensors in output_tensor_info
-  // otherwise, address map may be broken by re-allocation inside
-  // std::vector
-  static Status DryRunInferenceForAllNode(
-      const GraphDef& graph_def,
-      const std::vector<InputNodeInfo>& input_node_info_list,
-      const bool initialize_by_zero, OutputTensorInfo* output_tensor_info);
+      RemoteFusedGraphExecuteUtils::TensorShapeMap* tensor_shape_map);
 
   // Sort params so that all input nodes appear before consumer nodes.
   // CAVEAT: This may be slow if the number of nodes are too large
@@ -124,18 +102,14 @@ class GraphTransferer {
 
   int CacheNode(const Node& node);
 
-  static bool IsInputNode(
-      const std::vector<InputNodeInfo>& input_node_info_list,
-      const string& node_name);
-
   bool AreAllInputsCached(const Node& node) const;
 
-  Status RegisterNode(const IGraphTransferOpsDefinitions& ops_definitions,
-                      const ShapeRefiner& shape_refiner,
-                      const OutputTensorMap& output_tensor_map,
-                      const Node& node,
-                      const std::vector<InputNodeInfo>& input_node_info_list,
-                      const std::vector<string>& output_node_names);
+  Status RegisterNode(
+      const IGraphTransferOpsDefinitions& ops_definitions,
+      const ShapeRefiner& shape_refiner,
+      const OutputTensorMap& output_tensor_map, const Node& node,
+      const std::vector<std::pair<string, Tensor>>& input_node_info_list,
+      const std::vector<string>& output_node_names);
 
   void RegisterConstantNode(const ShapeRefiner& shape_refiner, const Node& node,
                             const OutputTensorMap& output_tensor_map);
@@ -175,7 +149,7 @@ class GraphTransferer {
       const IGraphTransferOpsDefinitions& ops_definitions,
       const ShapeRefiner& shape_refiner, const Node& node,
       const bool only_register_const_node,
-      const std::vector<InputNodeInfo>& input_node_info_list,
+      const std::vector<std::pair<string, Tensor>>& input_node_info_list,
       const std::vector<string>& output_node_names,
       const OutputTensorMap& output_tensor_map);
 
@@ -217,6 +191,10 @@ class GraphTransferer {
   static void FillDependencyRec(
       int node_id, std::unordered_map<int, std::unordered_set<int>>& dep_map,
       std::unordered_set<int>& completed);
+
+  // Build tensor from proto
+  static Status MakeTensorFromProto(const TensorProto& tensor_proto,
+                                    Tensor* tensor);
 
   void ClearCache();
 

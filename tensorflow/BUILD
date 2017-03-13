@@ -147,7 +147,9 @@ filegroup(
         "//tensorflow/compiler/aot/tests:all_files",
         "//tensorflow/compiler/jit:all_files",
         "//tensorflow/compiler/jit/graphcycles:all_files",
+        "//tensorflow/compiler/jit/kernels:all_files",
         "//tensorflow/compiler/jit/legacy_flags:all_files",
+        "//tensorflow/compiler/jit/ops:all_files",
         "//tensorflow/compiler/tests:all_files",
         "//tensorflow/compiler/tf2xla:all_files",
         "//tensorflow/compiler/tf2xla/kernels:all_files",
@@ -198,6 +200,7 @@ filegroup(
         "//tensorflow/contrib/nn:all_files",
         "//tensorflow/contrib/opt:all_files",
         "//tensorflow/contrib/rnn:all_files",
+        "//tensorflow/contrib/saved_model:all_files",
         "//tensorflow/contrib/seq2seq:all_files",
         "//tensorflow/contrib/session_bundle:all_files",
         "//tensorflow/contrib/session_bundle/example:all_files",
@@ -219,6 +222,11 @@ filegroup(
         "//tensorflow/core/debug:all_files",
         "//tensorflow/core/distributed_runtime:all_files",
         "//tensorflow/core/distributed_runtime/rpc:all_files",
+        "//tensorflow/core/grappler:all_files",
+        "//tensorflow/core/grappler/clusters:all_files",
+        "//tensorflow/core/grappler/costs:all_files",
+        "//tensorflow/core/grappler/inputs:all_files",
+        "//tensorflow/core/grappler/optimizers:all_files",
         "//tensorflow/core/kernels:all_files",
         "//tensorflow/core/kernels/cloud:all_files",
         "//tensorflow/core/kernels/hexagon:all_files",
@@ -243,12 +251,14 @@ filegroup(
         "//tensorflow/java/src/main/native:all_files",
         "//tensorflow/python:all_files",
         "//tensorflow/python/debug:all_files",
+        "//tensorflow/python/estimator:all_files",
         "//tensorflow/python/kernel_tests:all_files",
         "//tensorflow/python/saved_model:all_files",
         "//tensorflow/python/tools:all_files",
         "//tensorflow/tensorboard:all_files",
         "//tensorflow/tensorboard/app:all_files",
         "//tensorflow/tensorboard/backend:all_files",
+        "//tensorflow/tensorboard/backend/event_processing:all_files",
         "//tensorflow/tensorboard/components:all_files",
         "//tensorflow/tensorboard/components/vz_data_summary:all_files",
         "//tensorflow/tensorboard/components/vz_line_chart:all_files",
@@ -298,15 +308,6 @@ filegroup(
 # -------------------------------------------
 cc_binary(
     name = "libtensorflow.so",
-    linkshared = 1,
-    deps = [
-        "//tensorflow/c:c_api",
-        "//tensorflow/core:tensorflow",
-    ],
-)
-
-cc_binary(
-    name = "libtensorflow_c.so",
     linkshared = 1,
     deps = [
         "//tensorflow/c:c_api",

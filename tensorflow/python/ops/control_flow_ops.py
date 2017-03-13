@@ -1693,7 +1693,7 @@ def cond(pred, fn1, fn2, name=None):
   Args:
     pred: A scalar determining whether to return the result of `fn1` or `fn2`.
     fn1: The callable to be performed if pred is true.
-    fn2: The callable to be performed if pref is false.
+    fn2: The callable to be performed if pred is false.
     name: Optional name prefix for the returned tensors.
 
   Returns:
@@ -1754,7 +1754,7 @@ def cond(pred, fn1, fn2, name=None):
       raise ValueError("fn1 and fn2 must return the same number of results.")
     if not res_t:
       raise ValueError("fn1 and fn2 must return at least one result.")
-    for x, y in zip(res_f, res_t):
+    for x, y in zip(res_t, res_f):
       assert ((isinstance(x, ops.IndexedSlices) and
                isinstance(y, ops.IndexedSlices)) or
               (isinstance(x, sparse_tensor.SparseTensor) and

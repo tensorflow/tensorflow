@@ -21,14 +21,23 @@ from __future__ import print_function
 
 import copy
 import inspect
+import os
 import tempfile
 
+import numpy as np
+import six
+
+from tensorflow.core.framework import summary_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator import run_config
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.summary.writer import writer_cache
+from tensorflow.python.training import evaluation
+from tensorflow.python.training import saver
 from tensorflow.python.training import training
 
 _VALID_MODEL_FN_ARGS = set(
@@ -61,14 +70,14 @@ class Estimator(object):
   inspect it. The structure of params is therefore entirely up to the developer.
   """
 
-  def __init__(self, model_fn=None, model_dir=None, config=None, params=None):
+  def __init__(self, model_fn, model_dir=None, config=None, params=None):
     """Constructs an `Estimator` instance.
 
     Args:
       model_fn: Model function. Follows the signature:
         * Args:
           * `features`: single `Tensor` or `dict` of `Tensor`s
-                 (depending on data passed to `fit`),
+                 (depending on data passed to `train`),
           * `labels`: `Tensor` or `dict` of `Tensor`s (for multi-head
                  models). If mode is `ModeKeys.INFER`, `labels=None` will be
                  passed. If the `model_fn`'s signature does not accept
@@ -100,7 +109,10 @@ class Estimator(object):
 
     Raises:
       ValueError: parameters of `model_fn` don't match `params`.
+      ValueError: if this is called via a subclass and if that class overrides
+        a member of `Estimator`.
     """
+    self._assert_members_are_not_overridden()
     # Model directory.
     self._model_dir = model_dir
     if self._model_dir is None:
@@ -126,7 +138,7 @@ class Estimator(object):
       raise ValueError('model_fn must be provided to Estimator.')
     _verify_model_fn_args(model_fn, params)
     self._model_fn = model_fn
-    self._params = params
+    self._params = params or {}
 
   @property
   def model_dir(self):
@@ -140,7 +152,7 @@ class Estimator(object):
   def params(self):
     return copy.deepcopy(self._params)
 
-  def fit(self, input_fn, hooks=None, steps=None, max_steps=None):
+  def train(self, input_fn, hooks=None, steps=None, max_steps=None):
     """Trains a model given training data input_fn.
 
     Args:
@@ -151,9 +163,9 @@ class Estimator(object):
         inside the training loop.
       steps: Number of steps for which to train model. If `None`, train forever
         or train until input_fn generates the `OutOfRange` or `StopIteration`
-        error. 'steps' works incrementally. If you call two times fit(steps=10)
-        then training occurs in total 20 steps. If `OutOfRange` or
-        `StopIteration` error occurs in the middle, training stops before 20
+        error. 'steps' works incrementally. If you call two times
+        train(steps=10) then training occurs in total 20 steps. If `OutOfRange`
+        or `StopIteration` error occurs in the middle, training stops before 20
         steps. If you don't want to have incremental behaviour please set
         `max_steps` instead. If set, `max_steps` must be `None`.
       max_steps: Number of total steps for which to train model. If `None`,
@@ -162,8 +174,8 @@ class Estimator(object):
         or `StopIteration` error occurs in the middle, training stops before
         `max_steps` steps.
 
-        Two calls to `fit(steps=100)` means 200 training
-        iterations. On the other hand, two calls to `fit(max_steps=100)` means
+        Two calls to `train(steps=100)` means 200 training
+        iterations. On the other hand, two calls to `train(max_steps=100)` means
         that the second call will not do any iteration since first call did
         all 100 steps.
 
@@ -172,9 +184,15 @@ class Estimator(object):
 
     Raises:
       ValueError: If both `steps` and `max_steps` are not `None`.
+      ValueError: If either `steps` or `max_steps` is <= 0.
     """
     if (steps is not None) and (max_steps is not None):
       raise ValueError('Can not provide both steps and max_steps.')
+    if steps is not None and steps <= 0:
+      raise ValueError('Must specify steps >= 0, given: {}'.format(steps))
+    if max_steps is not None and max_steps <= 0:
+      raise ValueError(
+          'Must specify max_steps >= 0, given: {}'.format(max_steps))
 
     if max_steps is not None:
       start_step = _load_global_step_from_checkpoint_dir(self._model_dir)
@@ -182,13 +200,169 @@ class Estimator(object):
         logging.info('Skipping training since max_steps has already saved.')
         return self
 
-    hooks = hooks[:] if hooks else []
+    hooks = list(hooks or [])
     if steps is not None or max_steps is not None:
       hooks.append(training.StopAtStepHook(steps, max_steps))
 
     loss = self._train_model(input_fn=input_fn, hooks=hooks)
     logging.info('Loss for final step: %s.', loss)
     return self
+
+  def evaluate(self, input_fn, steps=None, hooks=None, checkpoint_path=None,
+               name=None):
+    """Evaluates the model given evaluation data input_fn.
+
+    For each step, calls `input_fn`, which returns one batch of data.
+    Evaluates until:
+    - `steps` batches are processed, or
+    - `input_fn` raises an end-of-input exception (`OutOfRangeError` or
+    `StopIteration`).
+
+    Args:
+      input_fn: Input function returning a tuple of:
+          features - Dictionary of string feature name to `Tensor` or
+            `SparseTensor`.
+          labels - `Tensor` or dictionary of `Tensor` with labels.
+      steps: Number of steps for which to evaluate model. If `None`, evaluates
+        until `input_fn` raises an end-of-input exception.
+      hooks: List of `SessionRunHook` subclass instances. Used for callbacks
+        inside the evaluation call.
+      checkpoint_path: Path of a specific checkpoint to evaluate. If `None`, the
+        latest checkpoint in `model_dir` is used.
+      name: Name of the evaluation if user needs to run multiple evaluations on
+        different data sets, such as on training data vs test data. Metrics for
+        different evaluations are saved in separate folders, and appear
+        separately in tensorboard.
+
+    Returns:
+      A dict containing the evaluation metrics specified in `model_fn` keyed by
+      name, as well as an entry `global_step` which contains the value of the
+      global step for which this evaluation was performed.
+
+    Raises:
+      ValueError: If `steps <= 0`.
+      ValueError: If no model has been trained, namely `model_dir`, or the
+        given `checkpoint_path` is empty.
+    """
+    hooks = list(hooks or [])
+    if steps is not None:
+      if steps <= 0:
+        raise ValueError('Must specify steps >= 0, given: {}'.format(steps))
+      hooks.append(evaluation._StopAfterNEvalsHook(  # pylint: disable=protected-access
+          num_evals=steps))
+
+    return self._evaluate_model(
+        input_fn=input_fn,
+        hooks=hooks,
+        checkpoint_path=checkpoint_path,
+        name=name)
+
+  def predict(self, input_fn, predict_keys=None, hooks=None):
+    """Returns predictions for given features.
+
+    Args:
+      input_fn: Input function returning features which is a dictionary of
+        string feature name to `Tensor` or `SparseTensor`. If it returns a
+        tuple, first item is extracted as features. Prediction continues until
+        `input_fn` raises an end-of-input exception (`OutOfRangeError` or
+        `StopIteration`).
+      predict_keys: list of `str`, name of the keys to predict. It is used if
+        the `EstimatorSpec.predictions` is a `dict`. If `predict_keys` is used
+        then rest of the predictions will be filtered from the dictionary. If
+        `None`, returns all.
+      hooks: List of `SessionRunHook` subclass instances. Used for callbacks
+        inside the prediction call.
+
+    Yields:
+      Evaluated values of `predictions` tensors.
+
+    Raises:
+      ValueError: Could not find a trained model in model_dir.
+      ValueError: if batch length of predictions are not same.
+      ValueError: If there is a conflict between `predict_keys` and
+        `predictions`. For example if `predict_keys` is not `None` but
+        `EstimatorSpec.predictions` is not a `dict`.
+    """
+    hooks = list(hooks or [])
+    # Check that model has been trained.
+    checkpoint_path = saver.latest_checkpoint(self._model_dir)
+    if not checkpoint_path:
+      raise ValueError('Could not find trained model in model_dir: {}.'.format(
+          self._model_dir))
+
+    with ops.Graph().as_default() as g:
+      random_seed.set_random_seed(self._config.tf_random_seed)
+      training.create_global_step(g)
+      features = self._get_features_from_input_fn(input_fn)
+      estimator_spec = self._call_model_fn(features, None,
+                                           model_fn_lib.ModeKeys.PREDICT)
+      predictions = self._extract_keys(estimator_spec.predictions, predict_keys)
+      with training.MonitoredSession(
+          session_creator=training.ChiefSessionCreator(
+              checkpoint_filename_with_path=checkpoint_path,
+              scaffold=estimator_spec.scaffold,
+              config=config_pb2.ConfigProto(allow_soft_placement=True)),
+          hooks=hooks) as mon_sess:
+        while not mon_sess.should_stop():
+          preds_evaluated = mon_sess.run(predictions)
+          if not isinstance(predictions, dict):
+            for pred in preds_evaluated:
+              yield pred
+          else:
+            for i in range(self._extract_batch_length(preds_evaluated)):
+              yield {
+                  key: value[i]
+                  for key, value in six.iteritems(preds_evaluated)
+              }
+
+  def _assert_members_are_not_overridden(self):
+    estimator_members = set([m for m in Estimator.__dict__.keys()
+                             if not m.startswith('__')])
+    subclass_members = set(self.__class__.__dict__.keys())
+    common_members = estimator_members & subclass_members
+    overriden_members = [m for m in common_members
+                         if Estimator.__dict__[m] != self.__class__.__dict__[m]]
+    if overriden_members:
+      raise ValueError(
+          'Subclasses of Estimator cannot override members of Estimator. '
+          '{} does override {}'.format(self.__class__, overriden_members))
+
+  def _get_features_from_input_fn(self, input_fn):
+    result = input_fn()
+    if not ops.get_default_graph().get_collection(ops.GraphKeys.QUEUE_RUNNERS):
+      logging.warning('Input graph does not contain a QueueRunner. '
+                      'That means predict yields forever. '
+                      'This is probably a mistake.')
+    if isinstance(result, (list, tuple)):
+      return result[0]
+    return result
+
+  def _extract_batch_length(self, preds_evaluated):
+    """Extracts batch length of predictions."""
+    batch_length = None
+    for key, value in six.iteritems(preds_evaluated):
+      batch_length = batch_length or value.shape[0]
+      if value.shape[0] != batch_length:
+        raise ValueError('Batch length of predictions should be same. %s has '
+                         'different batch length then others.' % key)
+    return batch_length
+
+  def _extract_keys(self, predictions, predict_keys):
+    """Extracts `predict_keys` from `predictions`."""
+    if not predict_keys:
+      return predictions
+    if not isinstance(predictions, dict):
+      raise ValueError(
+          'predict_keys argument is not valid in case of non-dict predictions.')
+    existing_keys = predictions.keys()
+    predictions = {
+        key: value
+        for key, value in six.iteritems(predictions) if key in predict_keys
+    }
+    if not predictions:
+      raise ValueError('Expected to run at least one output from %s, '
+                       'provided %s.' % (existing_keys, predict_keys))
+    return predictions
 
   def _call_model_fn(self, features, labels, mode):
     """Calls model function.
@@ -228,7 +402,7 @@ class Estimator(object):
       with ops.device('/cpu:0'):
         features, labels = input_fn()
       estimator_spec = self._call_model_fn(features, labels,
-                                           model_fn_lib.ModeKeys.FIT)
+                                           model_fn_lib.ModeKeys.TRAIN)
       ops.add_to_collection(ops.GraphKeys.LOSSES, estimator_spec.loss)
       all_hooks.extend([
           training.NanTensorHook(estimator_spec.loss),
@@ -242,8 +416,8 @@ class Estimator(object):
       all_hooks.extend(hooks)
       all_hooks.extend(estimator_spec.training_hooks)
 
-      scaffold = estimator_spec.scaffold or training.Scaffold()
-      if not (scaffold.saver or ops.get_collection(ops.GraphKeys.SAVERS)):
+      if not (estimator_spec.scaffold.saver or
+              ops.get_collection(ops.GraphKeys.SAVERS)):
         ops.add_to_collection(ops.GraphKeys.SAVERS,
                               training.Saver(
                                   sharded=True,
@@ -264,13 +438,13 @@ class Estimator(object):
                   self._model_dir,
                   save_secs=self._config.save_checkpoints_secs,
                   save_steps=self._config.save_checkpoints_steps,
-                  scaffold=scaffold)
+                  scaffold=estimator_spec.scaffold)
           ]
       with training.MonitoredTrainingSession(
           master=self._config.master,
           is_chief=self._config.is_chief,
           checkpoint_dir=self._model_dir,
-          scaffold=scaffold,
+          scaffold=estimator_spec.scaffold,
           hooks=all_hooks,
           chief_only_hooks=chief_hooks + estimator_spec.training_chief_hooks,
           save_checkpoint_secs=0,  # Saving is handled by a hook.
@@ -280,6 +454,56 @@ class Estimator(object):
         while not mon_sess.should_stop():
           _, loss = mon_sess.run([estimator_spec.train_op, estimator_spec.loss])
       return loss
+
+  def _evaluate_model(self,
+                      input_fn,
+                      hooks=None,
+                      checkpoint_path=None,
+                      name=''):
+    """Evaluates the model using the training.evaluation library."""
+    # Check that model has been trained (if nothing has been set explicitly).
+    if not checkpoint_path:
+      latest_path = saver.latest_checkpoint(self._model_dir)
+      if not latest_path:
+        raise ValueError('Could not find trained model in model_dir: {}.'.
+                         format(self._model_dir))
+      checkpoint_path = latest_path
+
+    # Setup output directory.
+    eval_dir = os.path.join(self._model_dir, 'eval' if not name else
+                            'eval_' + name)
+
+    with ops.Graph().as_default() as g:
+      random_seed.set_random_seed(self._config.tf_random_seed)
+      global_step_tensor = training.create_global_step(g)
+      features, labels = input_fn()
+      estimator_spec = self._call_model_fn(
+          features, labels, model_fn_lib.ModeKeys.EVAL)
+
+      update_op, eval_dict = _extract_metric_update_ops(
+          estimator_spec.eval_metric_ops)
+
+      if ops.GraphKeys.GLOBAL_STEP in six.iterkeys(eval_dict):
+        raise ValueError(
+            'Metric with name `global_step` is not allowed, because Estimator '
+            'already defines a default metric with the same name.')
+      eval_dict[ops.GraphKeys.GLOBAL_STEP] = global_step_tensor
+
+      eval_results = evaluation._evaluate_once(  # pylint: disable=protected-access
+          checkpoint_path=checkpoint_path,
+          master=self._config.evaluation_master,
+          scaffold=estimator_spec.scaffold,
+          eval_ops=update_op,
+          final_ops=eval_dict,
+          hooks=hooks,
+          config=config_pb2.ConfigProto(allow_soft_placement=True))
+
+      _write_dict_to_summary(
+          output_dir=eval_dir,
+          dictionary=eval_results,
+          current_global_step=eval_results[ops.GraphKeys.GLOBAL_STEP])
+
+    return eval_results
 
 
 def _get_replica_device_setter(config):
@@ -357,3 +581,62 @@ def _load_global_step_from_checkpoint_dir(checkpoint_dir):
     return checkpoint_reader.get_tensor(ops.GraphKeys.GLOBAL_STEP)
   except:  # pylint: disable=bare-except
     return 0
+
+
+def _extract_metric_update_ops(eval_dict):
+  """Separate update operations from metric value operations."""
+  update_ops = []
+  value_ops = {}
+  # Sort metrics lexicographically so graph is identical every time.
+  for name, metric_ops in sorted(six.iteritems(eval_dict)):
+    value_ops[name] = metric_ops[0]
+    update_ops.append(metric_ops[1])
+
+  if update_ops:
+    update_op = control_flow_ops.group(*update_ops)
+  else:
+    update_op = None
+
+  return update_op, value_ops
+
+
+def _dict_to_str(dictionary):
+  """Get a `str` representation of a `dict`.
+
+  Args:
+    dictionary: The `dict` to be represented as `str`.
+
+  Returns:
+    A `str` representing the `dictionary`.
+  """
+  return ', '.join('%s = %s' % (k, v)
+                   for k, v in sorted(six.iteritems(dictionary)))
+
+
+def _write_dict_to_summary(output_dir,
+                           dictionary,
+                           current_global_step):
+  """Writes a `dict` into summary file in given output directory.
+
+  Args:
+    output_dir: `str`, directory to write the summary file in.
+    dictionary: the `dict` to be written to summary file.
+    current_global_step: `int`, the current global step.
+  """
+  logging.info('Saving dict for global step %d: %s', current_global_step,
+               _dict_to_str(dictionary))
+  summary_writer = writer_cache.FileWriterCache.get(output_dir)
+  summary_proto = summary_pb2.Summary()
+  for key in dictionary:
+    if dictionary[key] is None:
+      continue
+    value = summary_proto.value.add()
+    value.tag = key
+    if (isinstance(dictionary[key], np.float32) or
+        isinstance(dictionary[key], float)):
+      value.simple_value = float(dictionary[key])
+    else:
+      logging.warn('Skipping summary for %s, must be a float or np.float32.',
+                   key)
+  summary_writer.add_summary(summary_proto, current_global_step)
+  summary_writer.flush()

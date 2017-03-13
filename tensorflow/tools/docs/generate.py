@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import argparse
 import inspect
 import os
 import sys
@@ -30,22 +29,9 @@ from tensorflow.tools.docs import generate_lib
 
 
 if __name__ == '__main__':
-  argument_parser = argparse.ArgumentParser()
-  argument_parser.add_argument(
-      '--output_dir',
-      type=str,
-      default=None,
-      required=True,
-      help='Directory to write docs to.'
-  )
-
-  argument_parser.add_argument(
-      '--src_dir',
-      type=str,
-      default=None,
-      required=True,
-      help='Directory with the source docs.'
-  )
+  doc_generator = generate_lib.DocGenerator()
+  doc_generator.add_output_dir_argument()
+  doc_generator.add_src_dir_argument()
 
   # This doc generator works on the TensorFlow codebase. Since this script lives
   # at tensorflow/tools/docs, and all code is defined somewhere inside
@@ -54,23 +40,12 @@ if __name__ == '__main__':
   # moving the script around.
   script_dir = os.path.dirname(inspect.getfile(inspect.currentframe()))
   default_base_dir = os.path.join(script_dir, '..', '..')
+  doc_generator.add_base_dir_argument(default_base_dir)
 
-  argument_parser.add_argument(
-      '--base_dir',
-      type=str,
-      default=default_base_dir,
-      help=('Base directory to to strip from file names referenced in docs. '
-            'Defaults to two directories up from the location of this file.')
-  )
-
-  flags, _ = argument_parser.parse_known_args()
+  flags = doc_generator.parse_known_args()
 
   # tf_debug is not imported with tf, it's a separate module altogether
-  modules = [('tf', tf), ('tfdbg', tf_debug)]
+  doc_generator.set_py_modules([('tf', tf), ('tfdbg', tf_debug)])
+  doc_generator.load_contrib()
 
-  # Access something in contrib so tf.contrib is properly loaded (it's hidden
-  # behind lazy loading)
-  _ = tf.contrib.__name__
-
-  sys.exit(generate_lib.main(
-      flags.src_dir, flags.output_dir, flags.base_dir, modules))
+  sys.exit(doc_generator.build(flags))

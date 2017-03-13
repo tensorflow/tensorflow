@@ -75,6 +75,9 @@ class OneHotOp : public OpKernel {
 
     // The one-hot dimension.
     const int32 depth_v = depth.scalar<int32>()();
+    OP_REQUIRES(
+        ctx, depth_v >= 0,
+        errors::InvalidArgument("depth must be non-negative, got: ", depth_v));
 
     TensorShape output_shape = indices_shape;
     output_shape.InsertDim(axis, depth_v);

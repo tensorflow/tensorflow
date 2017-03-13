@@ -104,7 +104,9 @@ class ArgOp : public XlaOpKernel {
     if (arg.is_variable) {
       // We use the argument position of the variable input as a unique ID.
       // TODO(phawkins): this code assumes that variables do not alias.
-      tc.CreateVariable(index_, arg.name, arg.value.type, arg.value.handle);
+      // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
+      tc.CreateVariable(index_, arg.name, arg.value.type, arg.value.handle)
+          .IgnoreError();
       ctx->SetVariableOutput(0, index_);
     } else if (arg.value.is_constant) {
       ctx->SetConstantOutput(0, arg.value.constant_value);

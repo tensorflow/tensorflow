@@ -66,6 +66,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/estimator:inputs",
         "//tensorflow/python/saved_model:builder",
         "//tensorflow/python/saved_model:loader",
         "//tensorflow/python/saved_model:signature_constants",
@@ -74,6 +75,16 @@ py_library(
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
+)
+
+# Exposes constants without having to build the entire :learn target.
+py_library(
+    name = "estimator_constants_py",
+    srcs = [
+        "python/learn/estimators/constants.py",
+        "python/learn/estimators/prediction_key.py",
+    ],
+    srcs_version = "PY2AND3",
 )
 
 py_test(
@@ -591,6 +602,7 @@ py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:variables",
+        "//tensorflow/python/ops/losses",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -861,6 +873,22 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "rnn_common_test",
+    size = "medium",
+    srcs = ["python/learn/estimators/rnn_common_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
     ],
 )
 

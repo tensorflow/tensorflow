@@ -261,6 +261,21 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "variable_ops_test",
+    size = "small",
+    srcs = ["variable_ops_test.cc"],
+    deps = [
+        "//tensorflow/core:all_kernels",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:direct_session_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 tf_kernel_library(
     name = "stage_op",
     srcs = ["stage_op.cc"],
@@ -303,7 +318,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_kernel_library(
     name = "record_input_op",
     srcs = [
         "record_input_op.cc",
@@ -798,7 +813,12 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-    ],
+    ] + select({
+        ":xsmm": [
+            "@libxsmm_archive//:xsmm_avx",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 tf_cc_test(
@@ -2108,7 +2128,9 @@ tf_kernel_library(
 tf_kernel_library(
     name = "fft_ops",
     prefix = "fft_ops",
-    deps = MATH_DEPS,
+    deps = MATH_DEPS + [
+        "//tensorflow/core:spectral_ops_op_lib",
+    ],
 )
 
 tf_kernel_library(
@@ -2413,6 +2435,7 @@ tf_kernel_library(
     name = "depthwise_conv_op",
     prefix = "depthwise_conv_op",
     deps = [
+        ":bounds_check",
         ":conv_ops",
         ":ops_util",
         "//tensorflow/core:core_cpu",
@@ -2429,6 +2452,7 @@ tf_kernel_library(
     ],
     prefix = "depthwise_conv_grad_op",
     deps = [
+        ":bounds_check",
         ":ops_util",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
@@ -4251,10 +4275,36 @@ cc_library(
         "remote_fused_graph_execute_utils.h",
     ],
     deps = [
+        "//tensorflow/core",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+tf_cc_test(
+    name = "remote_fused_graph_execute_utils_test",
+    size = "small",
+    srcs = [
+        "remote_fused_graph_execute_utils_test.cc",
+    ],
+    deps = [
+        ":remote_fused_graph_execute_utils",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:direct_session",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:ops",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:cwise_op",
     ],
 )
 

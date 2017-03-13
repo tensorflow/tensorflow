@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -65,7 +66,7 @@ class PointsToSet : public ShapeTree<std::vector<const LogicalBuffer*>> {
 
   // Creates a set containing the union of all LogicalBuffers contained in the
   // PointsToSet.
-  std::set<const LogicalBuffer*> CreateFlattenedSet() const;
+  tensorflow::gtl::FlatSet<const LogicalBuffer*> CreateFlattenedSet() const;
 
   // Returns true if the given buffer is in the points-to set at the given
   // index.

@@ -128,7 +128,7 @@ class WALSModel(object):
 
       # model_init_op is passed to Supervisor. Chief trainer runs it. Other
       # trainers wait.
-      sv = tf.Supervisor(is_chief=is_chief,
+      sv = tf.train.Supervisor(is_chief=is_chief,
                          ...,
                          init_op=tf.group(..., model_init_op, ...), ...)
       ...

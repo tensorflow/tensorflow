@@ -25,7 +25,7 @@ check_version("0.4.2")
 #android_sdk_repository(
 #    name = "androidsdk",
 #    api_level = 23,
-#    build_tools_version = "23.0.1",
+#    build_tools_version = "25.0.1",
 #    # Replace with path to Android SDK on your system
 #    path = "<PATH_TO_SDK>",
 #)

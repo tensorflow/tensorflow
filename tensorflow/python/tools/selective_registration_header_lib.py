@@ -106,13 +106,42 @@ def get_header_from_ops_and_kernels(ops_and_kernels,
     append('#define SHOULD_REGISTER_OP(op) ShouldRegisterOp(op)')
     append('')
 
-    line = 'const char kNecessaryOpKernelClasses[] = ","\n'
+    line = '''
+    namespace {
+      constexpr const char* skip(const char* x) {
+        return (*x) ? (*x == ' ' ? skip(x + 1) : x) : x;
+      }
+
+      constexpr bool isequal(const char* x, const char* y) {
+        return (*skip(x) && *skip(y))
+                   ? (*skip(x) == *skip(y) && isequal(skip(x) + 1, skip(y) + 1))
+                   : (!*skip(x) && !*skip(y));
+      }
+
+      template<int N>
+      struct find_in {
+        static constexpr bool f(const char* x, const char* const y[N]) {
+          return isequal(x, y[0]) || find_in<N - 1>::f(x, y + 1);
+        }
+      };
+
+      template<>
+      struct find_in<0> {
+        static constexpr bool f(const char* x, const char* const y[]) {
+          return false;
+        }
+      };
+    }  // end namespace
+    '''
+    line += 'constexpr const char* kNecessaryOpKernelClasses[] = {\n'
     for _, kernel_class in ops_and_kernels:
-      line += '"%s,"\n' % kernel_class
-    line += ';'
+      line += '"%s",\n' % kernel_class
+    line += '};'
     append(line)
     append('#define SHOULD_REGISTER_OP_KERNEL(clz) '
-           '(strstr(kNecessaryOpKernelClasses, "," clz ",") != nullptr)')
+           '(find_in<sizeof(kNecessaryOpKernelClasses) '
+           '/ sizeof(*kNecessaryOpKernelClasses)>::f(clz, '
+           'kNecessaryOpKernelClasses))')
     append('')
 
     append('#define SHOULD_REGISTER_OP_GRADIENT ' + (

@@ -474,19 +474,23 @@ void BM_DynamicSlice(int num_iters) {
       executors[device_ordinal], *start_indices_literal,
       buffer->mutable_buffer({})));
 
+  std::unique_ptr<LocalExecutable> executable =
+      client->Compile(computation, {&buffer->shape()}, ExecutableBuildOptions())
+          .ConsumeValueOrDie();
+
   // Run some warm-up executions.
-  LocalExecuteOptions options;
+  ExecutableRunOptions options;
   options.set_allocator(&allocator);
   const int kWarmups = 2;
   for (int i = 0; i < kWarmups; ++i) {
-    auto result = client->ExecuteLocally(computation, {buffer.get()}, options);
+    auto result = executable->Run({buffer.get()}, options);
     ASSERT_TRUE(result.ok());
   }
 
   // Run benchmark.
   tensorflow::testing::StartTiming();
   for (int i = 0; i < num_iters; ++i) {
-    auto result = client->ExecuteLocally(computation, {buffer.get()}, options);
+    auto result = executable->Run({buffer.get()}, options);
     ASSERT_TRUE(result.ok());
   }
 }

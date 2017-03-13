@@ -19,7 +19,6 @@ limitations under the License.
 #include <unordered_set>
 
 #include "tensorflow/compiler/jit/defs.h"
-#include "tensorflow/compiler/jit/xla_compilation_cache.h"
 #include "tensorflow/compiler/jit/xla_device_context.h"
 #include "tensorflow/compiler/jit/xla_device_ops.h"
 #include "tensorflow/compiler/tf2xla/dump_graph.h"

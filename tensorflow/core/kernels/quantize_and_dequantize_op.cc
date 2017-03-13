@@ -57,14 +57,21 @@ class QuantizeAndDequantizeV2Op : public OpKernel {
     Tensor* output = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, input.shape(), &output));
 
-    Tensor input_min_tensor = ctx->input(1);
-    Tensor input_max_tensor = ctx->input(2);
+    Tensor input_min_tensor;
+    Tensor input_max_tensor;
     if (range_given_) {
+      input_min_tensor = ctx->input(1);
+      input_max_tensor = ctx->input(2);
       auto min_val = input_min_tensor.scalar<T>()();
       auto max_val = input_max_tensor.scalar<T>()();
       OP_REQUIRES(ctx, min_val <= max_val,
                   errors::InvalidArgument("Invalid range: input_min ", min_val,
                                           " > input_max ", max_val));
+    } else {
+      OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
+                                             TensorShape(), &input_min_tensor));
+      OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
+                                             TensorShape(), &input_max_tensor));
     }
 
     functor::QuantizeAndDequantizeOneScaleFunctor<Device, T> f;

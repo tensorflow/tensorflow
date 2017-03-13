@@ -107,6 +107,7 @@ load(
     "tf_kernel_tests_linkstatic",
     "tf_additional_cloud_op_deps",
     "tf_additional_cloud_kernel_deps",
+    "tf_lib_proto_parsing_deps",
 )
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
@@ -196,6 +197,10 @@ tf_proto_library(
     visibility = ["//visibility:public"],
 )
 
+exports_files([
+    "framework/types.proto",
+])
+
 tf_proto_library(
     name = "protos_test",
     srcs = ["util/example_proto_fast_parsing_test.proto"],
@@ -223,10 +228,7 @@ cc_library(
         "platform/types.h",
     ] + glob(tf_additional_proto_hdrs()) + glob(tf_env_time_hdrs()),
     copts = tf_copts(),
-    deps = [
-        ":protos_all_cc",
-        "//tensorflow/core/platform/default/build_config:proto_parsing",
-    ],
+    deps = tf_lib_proto_parsing_deps(),
 )
 
 cc_library(
@@ -248,6 +250,7 @@ cc_library(
         "lib/gtl/flatmap.h",
         "lib/gtl/flatset.h",
         "lib/gtl/inlined_vector.h",
+        "lib/gtl/optional.h",
         "lib/gtl/priority_queue_util.h",
         "lib/hash/crc32c.h",
         "lib/histogram/histogram.h",
@@ -334,6 +337,7 @@ tf_cuda_library(
     hdrs = [
         "example/feature_util.h",
         "framework/allocator.h",
+        "framework/allocator_registry.h",
         "framework/attr_value_util.h",
         "framework/bfloat16.h",
         "framework/cancellation.h",
@@ -450,7 +454,9 @@ cc_library(
         "framework/type_traits.h",
         "platform/default/dynamic_annotations.h",
         "platform/default/integral_types.h",
+        "platform/default/logging.h",
         "platform/default/mutex.h",
+        "platform/default/protobuf.h",
         "platform/default/thread_annotations.h",
         "platform/dynamic_annotations.h",
         "platform/macros.h",
@@ -494,6 +500,7 @@ tf_gen_op_libs(
         "script_ops",
         "sendrecv_ops",
         "sparse_ops",
+        "spectral_ops",
         "state_ops",
         "string_ops",
         "training_ops",
@@ -555,6 +562,7 @@ cc_library(
         ":sendrecv_ops_op_lib",
         ":set_ops_op_lib",
         ":sparse_ops_op_lib",
+        ":spectral_ops_op_lib",
         ":state_ops_op_lib",
         ":string_ops_op_lib",
         ":training_ops_op_lib",
@@ -1139,6 +1147,8 @@ cc_library(
                 "lib/**/*.cc",
                 "platform/*.h",
                 "platform/*.cc",
+                "platform/profile_utils/**/*.h",
+                "platform/profile_utils/**/*.cc",
             ],
             exclude = [
                 "**/*test*",
@@ -1379,7 +1389,7 @@ tf_cuda_library(
         ":version_lib",
         "//tensorflow/core/kernels:bounds_check",
         "//third_party/eigen3",
-    ],
+    ] + if_mkl(["//third_party/mkl:intel_binary_blob"]),
     alwayslink = 1,
 )
 
@@ -1710,6 +1720,7 @@ tf_cc_tests(
         "lib/gtl/iterator_range_test.cc",
         "lib/gtl/manual_constructor_test.cc",
         "lib/gtl/map_util_test.cc",
+        "lib/gtl/optional_test.cc",
         "lib/gtl/top_n_test.cc",
         "lib/hash/crc32c_test.cc",
         "lib/hash/hash_test.cc",
@@ -1888,7 +1899,6 @@ tf_cc_tests(
         "graph/algorithm_test.cc",
         "graph/edgeset_test.cc",
         "graph/equal_graph_def_test.cc",
-        "graph/graph_constructor_test.cc",
         "graph/graph_def_builder_test.cc",
         "graph/graph_partition_test.cc",
         "graph/graph_test.cc",
@@ -1923,6 +1933,42 @@ tf_cc_tests(
     }),
     linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session_internal",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":ops",
+        ":protos_all_cc",
+        ":protos_test_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/cc:scope",
+        "//tensorflow/cc:sendrecv_ops",
+        "//tensorflow/core/kernels:ops_util",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_cc_tests(
+    name = "higher_level_tests_needing_kernels",
+    size = "small",
+    srcs = [
+        "graph/graph_constructor_test.cc",
+    ],
+    linkopts = select({
+        "//tensorflow:darwin": ["-headerpad_max_install_names"],
+        "//conditions:default": [],
+    }),
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":all_kernels",
         ":core",
         ":core_cpu",
         ":core_cpu_internal",
@@ -2190,6 +2236,7 @@ tf_cc_test(
     srcs = ["common_runtime/direct_session_with_tracking_alloc_test.cc"],
     args = ["--heap_check=local"],  # The GPU tracer leaks memory
     linkstatic = tf_kernel_tests_linkstatic(),
+    tags = ["no_gpu"],
     deps = [
         ":core",
         ":core_cpu",
@@ -2405,6 +2452,7 @@ tf_cc_test(
     size = "small",
     srcs = ["ops/math_grad_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
+    tags = ["no_gpu"],
     deps = [
         ":core",
         ":core_cpu",
@@ -2469,6 +2517,7 @@ tf_cc_tests(
         "ops/random_ops_test.cc",
         "ops/set_ops_test.cc",
         "ops/sparse_ops_test.cc",
+        "ops/spectral_ops_test.cc",
         "ops/state_ops_test.cc",
         "ops/string_ops_test.cc",
         "ops/training_ops_test.cc",

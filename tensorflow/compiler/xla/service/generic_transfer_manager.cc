@@ -118,7 +118,7 @@ GenericTransferManager::ShallowCopyTupleFromDevice(
 
   // Create a DeviceMemoryBase from each void* pointer.
   std::vector<se::DeviceMemoryBase> destination;
-  for (int i = 0; i < element_pointers.size(); ++i) {
+  for (std::vector<void*>::size_type i = 0; i < element_pointers.size(); ++i) {
     if (element_pointers[i] == nullptr &&
         !ShapeUtil::HasZeroElements(shape.tuple_shapes(i))) {
       return FailedPrecondition("tuple contains nullptr at element %d", i);
@@ -160,6 +160,12 @@ Status GenericTransferManager::TransferLiteralToDevice(
 Status GenericTransferManager::TransferLiteralToInfeed(
     se::StreamExecutor* executor, const Literal& literal) {
   return Unimplemented("Infeed is not supported on GPU (b/30467474)");
+}
+
+Status GenericTransferManager::TransferLiteralFromOutfeed(
+    perftools::gputools::StreamExecutor* executor, const Shape& literal_shape,
+    Literal* literal) {
+  return Unimplemented("Outfeed is not supported on CPU/GPU (b/30467474)");
 }
 
 Status GenericTransferManager::ResetDevices(

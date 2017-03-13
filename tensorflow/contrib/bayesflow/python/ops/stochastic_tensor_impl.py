@@ -361,9 +361,7 @@ class StochasticTensor(BaseStochasticTensor):
 
     if isinstance(self._value_type, MeanValue):
       return value_tensor  # Using pathwise-derivative for this one.
-    if self._dist.is_continuous and (
-        self._dist.reparameterization_type
-        is distribution.FULLY_REPARAMETERIZED):
+    if self._dist.reparameterization_type == distribution.FULLY_REPARAMETERIZED:
       return value_tensor  # Using pathwise-derivative for this one.
     else:
       # Will have to perform some variant of score function
@@ -399,8 +397,7 @@ class StochasticTensor(BaseStochasticTensor):
     if self._loss_fn is None:
       return None
 
-    if (self._dist.is_continuous and
-        self._dist.reparameterization_type is distribution.FULLY_REPARAMETERIZED
+    if (self._dist.reparameterization_type == distribution.FULLY_REPARAMETERIZED
         and not self._value_type.stop_gradient):
       # Can perform pathwise-derivative on this one; no additional loss needed.
       return None
