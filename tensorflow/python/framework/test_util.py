@@ -34,6 +34,7 @@ from google.protobuf import text_format
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.client import device_lib
 from tensorflow.python.client import session
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import errors
@@ -44,7 +45,6 @@ from tensorflow.python.platform import googletest
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util.protobuf import compare
-from tensorflow.python.client import device_lib
 
 
 def gpu_device_name():
@@ -53,6 +53,7 @@ def gpu_device_name():
     if x.device_type == "GPU" or x.device_type == "SYCL":
       return x.name
   return ""
+
 
 def assert_ops_in_graph(expected_ops, graph):
   """Assert all expected operations are found.
