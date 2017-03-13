@@ -432,7 +432,7 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
         // Everything else is 0, so just pick a suitable slider to push up when the
         // selected one goes down.
         if (adapter.items[lastOtherStyle] == slider) {
-          lastOtherStyle = lastOtherStyle + 1 % NUM_STYLES;
+          lastOtherStyle = (lastOtherStyle + 1) % NUM_STYLES;
         }
         adapter.items[lastOtherStyle].setValue(1.0f - value);
       }
