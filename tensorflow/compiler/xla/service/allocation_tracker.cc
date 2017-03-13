@@ -174,7 +174,7 @@ StatusOr<std::vector<GlobalDataHandle>> AllocationTracker::DeconstructTuple(
   for (int i = 0; i < element_bases.size(); ++i) {
     element_handles.push_back(RegisterInternal(
         allocation->backend(), allocation->device_ordinal(), element_bases[i],
-        ShapeUtil::GetSubshape(allocation->shape(), {i}),
+        ShapeUtil::GetSubshape(allocation->shape(), {static_cast<long long>(i)}),
         tensorflow::strings::StrCat(allocation->tag(), ".element_", i),
         /*initial_ref_count=*/2));
   }
