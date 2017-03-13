@@ -14,3 +14,5 @@ node_modules
 __pycache__
 *.swp
 .vscode/
+build_config.bzl-e
+build_config_root.bzl-e
