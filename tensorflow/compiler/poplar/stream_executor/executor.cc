@@ -23,8 +23,6 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/poplar/poplar_platform_id.h"
 
-#include <poplar/Engine.hpp>
-#include <popnn/Net.hpp>
 #include <poplar/Tensor.hpp>
 
 namespace se = ::perftools::gputools;
@@ -39,7 +37,7 @@ struct TensorControl {
   char data[0];
 };
 
-static std::string GetPathToGraphProgFile() {
+std::string GetPathToGraphProgFile() {
   Dl_info dlInfo;
   static const void* dummy;
   if (dladdr(&dummy, &dlInfo)) {
@@ -58,14 +56,6 @@ PoplarStream *AsPoplarStream(Stream *stream) {
 
 PoplarExecutor::PoplarExecutor(const PluginConfig &plugin_config)
     : plugin_config_(plugin_config) {
-
-  std::vector<std::string> object_files;
-
-  object_files.push_back(GetPathToGraphProgFile());
-  object_files.push_back(popnn::findGraphProg());
-
-  poplar_graph_prog_env_ = new poplar::GraphProgEnv(object_files);
-  VLOG(1) << "Poplar GraphProgEnv created";
 }
 
 PoplarExecutor::~PoplarExecutor() {}

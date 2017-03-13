@@ -35,10 +35,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream_executor.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
-namespace poplar {
-class GraphProgEnv;
-}
-
 namespace perftools {
 namespace gputools {
 namespace poplarplugin {
@@ -192,10 +188,6 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
     return std::unique_ptr<internal::TimerInterface>(new PoplarTimer());
   }
 
-  poplar::GraphProgEnv* GetPoplarGraphProgEnv() const {
-    return poplar_graph_prog_env_;
-  }
-
   port::StatusOr<DeviceMemoryBase> AllocateOutputBuffer(const xla::Shape& shape);
 
   // TODO replace this when the poplar Copy interface is better
@@ -204,12 +196,10 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
                           const std::vector<char*>& bufs,
                           DeviceMemoryBase* mem) const;
 
+  std::string GetPathToGraphProgFile();
+
  private:
   const PluginConfig plugin_config_;
-
-  // Poplar top level device / program environment
-  poplar::GraphProgEnv* poplar_graph_prog_env_;
-
 };
 
 }  // namespace poplarplugin

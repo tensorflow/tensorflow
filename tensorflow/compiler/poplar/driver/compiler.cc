@@ -41,6 +41,7 @@ limitations under the License.
 #include <poplar/exceptions.hpp>
 #include <xgraph_core/exceptions.hpp>
 #include <popnn/exceptions.hpp>
+#include <popnn/codelets.hpp>
 
 namespace se = ::perftools::gputools;
 namespace sep = ::perftools::gputools::poplarplugin;
@@ -168,13 +169,13 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
   sep::PoplarExecutor* poplarExecutor(
           static_cast<sep::PoplarExecutor*>(stream_exec->implementation()));
 
-  poplar::GraphProgEnv* env(poplarExecutor->GetPoplarGraphProgEnv());
-
   poplar::DeviceOptions opts;
   opts.convertFloat16 = true;
   poplar::Device dev(poplar::createCPUDevice(opts));
 
-  poplar::Graph* graph = new poplar::Graph(*env, dev);
+  poplar::Graph* graph = new poplar::Graph(dev);
+  graph->addCodelets(poplarExecutor->GetPathToGraphProgFile());
+  popnn::addCodelets(*graph);
 
   // Visit the graph, building up a poplar equivalent
   HloComputation* entry = hlo_module->entry_computation();
