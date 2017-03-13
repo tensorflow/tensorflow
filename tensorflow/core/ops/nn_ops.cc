@@ -1263,11 +1263,12 @@ output: The gradients for LRN.
 
 REGISTER_OP("MaxPool")
     .Attr("T: {float, half} = DT_FLOAT")
-    .Attr("ksize: list(int) >= 4")
+//    .Attr("ksize: list(int) >= 4")
     .Attr("strides: list(int) >= 4")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .Input("input: T")
+    .Input("ksize: int32")
     .Output("output: T")
     .SetShapeFn(shape_inference::MaxPoolShape)
     .Doc(R"doc(

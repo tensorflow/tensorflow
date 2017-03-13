@@ -25,6 +25,7 @@ import numpy as np
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import ops
+from tensorflow.python.framework.ops import *
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
@@ -1813,7 +1814,18 @@ def max_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
   """
   with ops.name_scope(name, "MaxPool", [value]) as name:
     value = ops.convert_to_tensor(value, name="input")
-    return gen_nn_ops._max_pool(value,
+    if not isinstance(ksize, Tensor):
+      ksize0 = np.reshape(ksize,[4])
+      ksize1 = np.reshape(ksize0,[1,2,2,1])
+      ksize2 = ops.convert_to_tensor(ksize1, dtype=np.int32, name="ksize")
+      return gen_nn_ops._max_pool(value,
+                                ksize=ksize2,
+                                strides=strides,
+                                padding=padding,
+                                data_format=data_format,
+                                name=name)
+    else:
+      return gen_nn_ops._max_pool(value,
                                 ksize=ksize,
                                 strides=strides,
                                 padding=padding,

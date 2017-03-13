@@ -465,7 +465,10 @@ Status AvgPoolShape(shape_inference::InferenceContext* c) {
 
 Status MaxPoolShape(shape_inference::InferenceContext* c) {
   ShapeHandle input_shape;
+  ShapeHandle kernel_sizes
+    
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input_shape));
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 4, &kernel_sizes));
 
   string data_format;
   Status s = c->GetAttr("data_format", &data_format);
@@ -479,17 +482,18 @@ Status MaxPoolShape(shape_inference::InferenceContext* c) {
         strides.size());
   }
 
-  std::vector<int32> kernel_sizes;
-  TF_RETURN_IF_ERROR(c->GetAttr("ksize", &kernel_sizes));
-  if (kernel_sizes.size() != 4) {
-    return errors::InvalidArgument(
-        "MaxPool requires the ksize attribute to contain 4 values, but got: ",
-        kernel_sizes.size());
-  }
+//  std::vector<int32> kernel_sizes;
+//  TF_RETURN_IF_ERROR(c->GetAttr("ksize", &kernel_sizes));
+//  if (kernel_sizes.size() != 4) {
+//    return errors::InvalidArgument(
+//        "MaxPool requires the ksize attribute to contain 4 values, but got: ",
+//        kernel_sizes.size());
+//  }
 
   int32 stride_rows, stride_cols, stride_depth;
-  int32 kernel_rows, kernel_cols, kernel_depth;
-
+//  int32 kernel_rows, kernel_cols, kernel_depth;
+  DimensionHandle kernel_rows, kernel_cols, kernel_depth;
+    
   if (s.ok() && data_format == "NCHW") {
     // Convert input shape to default NHWC for inference
     input_shape =
@@ -498,16 +502,22 @@ Status MaxPoolShape(shape_inference::InferenceContext* c) {
     stride_depth = strides[1];
     stride_rows = strides[2];
     stride_cols = strides[3];
-    kernel_depth = kernel_sizes[1];
-    kernel_rows = kernel_sizes[2];
-    kernel_cols = kernel_sizes[3];
+    kernel_rows = c->Dim(kernel_sizes, 1);
+    kernel_cols = c->Dim(kernel_sizes, 2);
+    kernel_depth = c->Dim(kernel_sizes, 3);
+//    kernel_depth = kernel_sizes[1];
+//    kernel_rows = kernel_sizes[2];
+//    kernel_cols = kernel_sizes[3];
   } else {
     stride_rows = strides[1];
     stride_cols = strides[2];
     stride_depth = strides[3];
-    kernel_rows = kernel_sizes[1];
-    kernel_cols = kernel_sizes[2];
-    kernel_depth = kernel_sizes[3];
+    kernel_rows = c->Dim(kernel_sizes, 1);
+    kernel_cols = c->Dim(kernel_sizes, 2);
+    kernel_depth = c->Dim(kernel_sizes, 3);
+//    kernel_rows = kernel_sizes[1];
+//    kernel_cols = kernel_sizes[2];
+//    kernel_depth = kernel_sizes[3];
   }
 
   DimensionHandle batch_size_dim = c->Dim(input_shape, 0);
