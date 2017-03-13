@@ -72,7 +72,10 @@ LINKER_SCRIPT = "//tensorflow/contrib/android:jni/version_script.lds"
 cc_binary(
     name = "libtensorflow_inference.so",
     srcs = [],
-    copts = tf_copts() + ["-ffunction-sections", "-fdata-sections"],
+    copts = tf_copts() + [
+        "-ffunction-sections",
+        "-fdata-sections",
+    ],
     linkopts = if_android([
         "-landroid",
         "-llog",
