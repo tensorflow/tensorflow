@@ -4339,6 +4339,40 @@ if_mkl(
     ),
 )
 
+if_mkl(
+    tf_kernel_library(
+        name = "mkl_conv_op",
+        prefix = "mkl_conv",
+        deps = [
+            ":bounds_check",
+            ":ops_util",
+            "//tensorflow/core:core_cpu",
+            "//tensorflow/core:framework",
+            "//tensorflow/core:lib",
+            "//tensorflow/core:lib_internal",
+            "//tensorflow/core:nn_ops_op_lib",
+            "//third_party/mkl:intel_binary_blob",
+        ],
+    ),
+)
+
+if_mkl(
+    tf_kernel_library(
+        name = "mkl_tfconv_op",
+        prefix = "mkl_tfconv",
+        deps = [
+            ":bounds_check",
+            ":ops_util",
+            "//tensorflow/core:core_cpu",
+            "//tensorflow/core:framework",
+            "//tensorflow/core:lib",
+            "//tensorflow/core:lib_internal",
+            "//tensorflow/core:nn_ops_op_lib",
+            "//third_party/mkl:intel_binary_blob",
+        ],
+    ),
+)
+
 # -----------------------------------------------------------------------------
 # Google-internal targets.  These must be at the end for syncrepo.
 

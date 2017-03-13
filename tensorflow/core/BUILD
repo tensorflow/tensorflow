@@ -406,7 +406,9 @@ tf_cuda_library(
             "util/memmapped_file_system.h",
             "util/memmapped_file_system_writer.h",
         ],
-    }),
+    }) + if_mkl([
+        "util/mkl_util.h",
+    ]),
     visibility = ["//visibility:public"],
     deps = [":framework_internal"],
 )
@@ -697,6 +699,8 @@ cc_library(
         "//tensorflow/core/kernels:quantized_ops",
     ]) + if_mkl([
         "//tensorflow/core/kernels:mkl_ops",
+        "//tensorflow/core/kernels:mkl_conv_op",
+        "//tensorflow/core/kernels:mkl_tfconv_op",
     ]),
 )
 
@@ -1470,18 +1474,19 @@ tf_cuda_library(
     ),
     copts = tf_copts(),
     deps = [
-        ":framework",
-        ":framework_internal",
-        ":function_ops_op_lib",
-        ":functional_grad",
-        ":functional_ops_op_lib",
-        ":lib",
-        ":lib_internal",
-        ":proto_text",
-        ":protos_all_cc",
-        "//third_party/eigen3",
-        "//tensorflow/core/kernels:required",
-    ] + tf_additional_core_deps(),
+               ":framework",
+               ":framework_internal",
+               ":function_ops_op_lib",
+               ":functional_grad",
+               ":functional_ops_op_lib",
+               ":lib",
+               ":lib_internal",
+               ":proto_text",
+               ":protos_all_cc",
+               "//third_party/eigen3",
+               "//tensorflow/core/kernels:required",
+           ] + if_mkl(["//third_party/mkl:intel_binary_blob"]) +
+           tf_additional_core_deps(),
     alwayslink = 1,
 )
 
@@ -1986,7 +1991,11 @@ if_mkl(
     tf_cc_test_mkl(
         name = "mkl_related_tests",
         size = "small",
-        srcs = ["graph/mkl_optimizer_merge_test.cc"],
+        srcs = [
+            "graph/mkl_layout_pass_test.cc",
+            "graph/mkl_optimizer_merge_test.cc",
+            "graph/mkl_tfconversion_pass_test.cc",
+        ],
         linkstatic = tf_kernel_tests_linkstatic(),
         deps = [
             ":core",
@@ -2005,6 +2014,9 @@ if_mkl(
             "//tensorflow/cc:cc_ops",
             "//tensorflow/cc:scope",
             "//tensorflow/cc:sendrecv_ops",
+            "//tensorflow/core/kernels:mkl_conv_op",
+            "//tensorflow/core/kernels:mkl_ops",
+            "//tensorflow/core/kernels:mkl_tfconv_op",
             "//tensorflow/core/kernels:ops_util",
             "//third_party/eigen3",
         ],
