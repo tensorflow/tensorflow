@@ -25,8 +25,9 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import resource_loader
 
-_sirds_ops = loader.load_op_library(
-    resource_loader.get_path_to_datafile("_single_image_random_dot_stereograms.so"))
+file =   resource_loader.get_path_to_datafile("_single_image_random_dot_stereograms.so")
+
+_sirds_ops = loader.load_op_library(file)
 
 def single_image_random_dot_stereograms(depth_values,
                                         hidden_surface_removal=None,

@@ -143,28 +143,28 @@ class SingleImageRandomDotStereogramsOp : public OpKernel {
     data_box_width=data_Xwindow;                // width of scan line
     data_box_height=data_Ywindow;               // hight of image    
  
-    if (debugging)
-    {
-        LOG(INFO)<<"input_Xvalue "<<input_Xvalue;
-        LOG(INFO)<<"input_Yvalue "<<input_Yvalue;
-        LOG(INFO)<<"output_Ximage "<<output_Ximage;
-        LOG(INFO)<<"output_Yimage "<<output_Yimage;
-        LOG(INFO)<<"output_Cimage "<<output_Cimage;
-        LOG(INFO)<<"data_Xwindow "<<data_Xwindow;
-        LOG(INFO)<<"data_Ywindow "<<data_Ywindow;
-        LOG(INFO)<<"deltaX_boarder_image "<<deltaX_boarder_image;
-        LOG(INFO)<<"deltaY_boarder_image "<<deltaY_boarder_image;
-        LOG(INFO)<<"data_box_left "<<data_box_left;
-        LOG(INFO)<<"data_box_top "<<data_box_top;
-        LOG(INFO)<<"data_box_width "<<data_box_width;
-        LOG(INFO)<<"data_box_height "<<data_box_height;
-        LOG(INFO)<<"converge_dot_box_end "<<converge_dot_box_end;
+    // if (debugging)   // Remove as it cause a problem in python instance, but leave in code for debugging
+    // {
+    //     LOG(INFO)<<"input_Xvalue "<<input_Xvalue;
+    //     LOG(INFO)<<"input_Yvalue "<<input_Yvalue;
+    //     LOG(INFO)<<"output_Ximage "<<output_Ximage;
+    //     LOG(INFO)<<"output_Yimage "<<output_Yimage;
+    //     LOG(INFO)<<"output_Cimage "<<output_Cimage;
+    //     LOG(INFO)<<"data_Xwindow "<<data_Xwindow;
+    //     LOG(INFO)<<"data_Ywindow "<<data_Ywindow;
+    //     LOG(INFO)<<"deltaX_boarder_image "<<deltaX_boarder_image;
+    //     LOG(INFO)<<"deltaY_boarder_image "<<deltaY_boarder_image;
+    //     LOG(INFO)<<"data_box_left "<<data_box_left;
+    //     LOG(INFO)<<"data_box_top "<<data_box_top;
+    //     LOG(INFO)<<"data_box_width "<<data_box_width;
+    //     LOG(INFO)<<"data_box_height "<<data_box_height;
+    //     LOG(INFO)<<"converge_dot_box_end "<<converge_dot_box_end;
 
-        LOG(INFO)<<"=@@======================================================= ";
-        LOG(INFO)<<"SingleImageRandomDotStereogramsOp output_data_window "<<output_data_window.DebugString();
-        LOG(INFO)<<"SingleImageRandomDotStereogramsOp output_image_shape "<<output_image_shape.DebugString();
-        LOG(INFO)<<"SingleImageRandomDotStereogramsOp Compute "<<input_tensor.DebugString();
-    }
+    //     LOG(INFO)<<"=@@======================================================= ";
+    //     // LOG(INFO)<<"SingleImageRandomDotStereogramsOp output_data_window "<<output_data_window.DebugString();
+    //     // LOG(INFO)<<"SingleImageRandomDotStereogramsOp output_image_shape "<<output_image_shape.DebugString();
+    //     // LOG(INFO)<<"SingleImageRandomDotStereogramsOp Compute "<<input_tensor.DebugString();
+    // }
 
     const T* inputZ = input_tensor.flat<T>().data();  // Flatten input Z buffer
 
@@ -175,8 +175,8 @@ class SingleImageRandomDotStereogramsOp : public OpKernel {
     OP_REQUIRES_OK(context,context->allocate_output(0, TensorShape({output_Yimage,output_Ximage,output_Cimage}), &output_tensor));
     
     outputImage = output_tensor->flat<uint8>().data();
-    if (debugging)
-        LOG(INFO)<<"output_tensor->flat<uint8>().data(); "<<output_tensor->DebugString();//<<output_image_shape.DebugString();
+    // if (debugging)
+    //     LOG(INFO)<<"output_tensor->flat<uint8>().data(); "<<output_tensor->DebugString();//<<output_image_shape.DebugString();
 
     generate_stereogram();
 
