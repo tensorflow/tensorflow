@@ -438,6 +438,16 @@ def _MaxPoolGrad(op, grad):
                                    data_format=op.get_attr("data_format"))
 
 
+@ops.RegisterGradient("MaxPoolWithArgmax")
+def _MaxPoolGradWithArgmax(op, grad, unused_argmax_grad):
+  return gen_nn_ops._max_pool_grad_with_argmax(op.inputs[0],
+                                               grad,
+                                               op.outputs[1],
+                                               op.get_attr("ksize"),
+                                               op.get_attr("strides"),
+                                               padding=op.get_attr("padding"))
+
+
 @ops.RegisterGradient("FractionalMaxPool")
 def _FractionalMaxPoolGrad(op, grad_0, unused_grad_1, unused_grad_2):
   """Returns gradient for FractionalMaxPool.
