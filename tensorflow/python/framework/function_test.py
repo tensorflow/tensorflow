@@ -1070,9 +1070,9 @@ class UnrollLSTMTest(test.TestCase):
       d1 = RunForwardBackward("cell", cfg)
       d2 = RunForwardBackward("loop", cfg)
       d3 = RunForwardBackward("loop10", cfg)
-      self.assertAllClose(d0, d1, rtol=1e-4)
-      self.assertAllClose(d0, d2, rtol=1e-4)
-      self.assertAllClose(d0, d3, rtol=1e-4)
+      self.assertAllClose(d0, d1, rtol=1e-4, atol=1e-4)
+      self.assertAllClose(d0, d2, rtol=1e-4, atol=1e-4)
+      self.assertAllClose(d0, d3, rtol=1e-4, atol=1e-4)
 
 
 class FunctionInlineControlTest(test.TestCase):
