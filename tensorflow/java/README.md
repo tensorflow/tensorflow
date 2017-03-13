@@ -120,8 +120,8 @@ libraries will need to be built from source.
       //tensorflow/java:libtensorflow_jni
     ```
 
-The JAR (`libtensorflow.jar`) and native library (`libtensorflow_jni.so`) will 
-be in `bazel-bin/tensorflow/java`.
+The JAR (`libtensorflow.jar`) and native library (`libtensorflow_jni.so` on Linux or `libtensorflow_jni.dylib` on OS X) will 
+be in `bazel-bin/tensorflow/java`. Using these artifacts follow both steps 3 and 4 in the [quickstart](#quickstart) section in order to get your application up and running.
 
 ### Maven
 
