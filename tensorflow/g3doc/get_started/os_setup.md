@@ -568,9 +568,9 @@ binary path.
 
 ```bash
 # For Python 2.7:
-$ sudo apt-get install python-numpy swig python-dev python-wheel
+$ sudo apt-get install python-numpy python-dev python-wheel
 # For Python 3.x:
-$ sudo apt-get install python3-numpy swig python3-dev python3-wheel
+$ sudo apt-get install python3-numpy python3-dev python3-wheel
 ```
 
 #### Optional: Install CUDA (GPUs on Linux)
@@ -617,20 +617,16 @@ sudo chmod a+r /usr/local/cuda/include/cudnn.h /usr/local/cuda/lib64/libcudnn*
 
 ### Prepare environment for Mac OS X
 
-We recommend using [homebrew](http://brew.sh) to install the bazel and SWIG
-dependencies, and installing python dependencies using easy_install or pip.
-
-Of course you can also install Swig from source without using homebrew. In that
-case, be sure to install its dependency [PCRE](http://www.pcre.org) and not
-PCRE2.
+We recommend using [homebrew](http://brew.sh) to install the bazel dependency,
+and installing python dependencies using easy_install or pip.
 
 #### Dependencies
 
 Follow instructions [here](http://bazel.io/docs/install.html) to install the
-dependencies for bazel. You can then use homebrew to install bazel and SWIG:
+dependencies for bazel. You can then use homebrew to install bazel:
 
 ```bash
-$ brew install bazel swig
+$ brew install bazel
 ```
 
 You can install the python dependencies using easy_install or pip. Using
