@@ -1849,6 +1849,28 @@ cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "quantize_training_test",
+    srcs = ["graph/quantize_training_test.cc"],
+    deps = [
+        ":all_kernels",
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session_internal",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":ops",
+        ":protos_all_cc",
+        ":protos_test_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+    ],
+)
+
 tf_cc_tests(
     name = "higher_level_tests",
     size = "small",
@@ -1897,7 +1919,6 @@ tf_cc_tests(
         "graph/graph_test.cc",
         "graph/node_builder_test.cc",
         "graph/optimizer_cse_test.cc",
-        "graph/quantize_training_test.cc",
         "graph/subgraph_test.cc",
         "graph/tensor_id_test.cc",
         "graph/validate_test.cc",

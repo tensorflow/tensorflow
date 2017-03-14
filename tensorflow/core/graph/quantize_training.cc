@@ -35,6 +35,11 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
+
+// TODO(suharshs): If desired, make these values configurable.
+const uint32 kAllowedInputs = 2;
+const float kEMADecay = 0.999;
+
 // Node types to rewrite. Insert quantize_and_dequantize op for their inputs.
 const std::unordered_set<string, StringPiece::Hasher> nodes_to_rewrite{
     "MatMul", "Conv2D"};
@@ -50,14 +55,13 @@ struct EdgeToConvert {
   float input_max;
 
   EdgeToConvert(const Edge* e, int32 bits, bool sign, bool range, float min,
-                float max) {
-    edge = e;
-    num_bits = bits;
-    signed_input = sign;
-    range_given = range;
-    input_min = min;
-    input_max = max;
-  }
+                float max)
+      : edge(e),
+        num_bits(bits),
+        signed_input(sign),
+        range_given(range),
+        input_min(min),
+        input_max(max) {}
 };
 
 // Decide if a node is in backward pass by checking if its name is led by
@@ -83,6 +87,9 @@ bool FindType(const Graph* graph, const Node* node, bool* signed_input,
     *signed_input = false;
     *range_given = false;
   } else if (src_op == "Relu6") {
+    // TODO(suharshs): Also the theoretical min and max is 0 and 6, if the
+    // actual activations are somewhere in within this range, we can quantize
+    // this even further. This is true for other activations like Sigmoid6 too.
     *signed_input = false;
     *range_given = true;
     *input_min = 0;
@@ -117,13 +124,208 @@ bool FindType(const Graph* graph, const Node* node, bool* signed_input,
     }
   } else {
     // Unknown type, could be the model input examples.
-    // TODO: Set the params for input with user's hint.
+    // TODO(jmchen): Set the params for input with user's hint.
     *signed_input = true;
     *range_given = false;
     return false;
   }
 
   return true;
+}
+
+// Sets output to the Node that computes reduction axes corresponding to all
+// dimensions of input and return.
+Status MakeReductionAxes(Graph* graph, string name_prefix, Node* input,
+                         Node** output) {
+  name_prefix = strings::StrCat(name_prefix, "/ReductionAxes");
+  Node* start;
+  Tensor zero_tensor(DT_INT32, TensorShape());
+  zero_tensor.flat<int32>()(0) = 0;
+  TF_RETURN_IF_ERROR(
+      NodeBuilder(strings::StrCat(name_prefix, "/RangeStart"), "Const")
+          .Attr("dtype", DT_INT32)
+          .Attr("value", zero_tensor)
+          .Finalize(graph, &start));
+  Node* delta;
+  Tensor one_tensor(DT_INT32, TensorShape());
+  one_tensor.flat<int32>()(0) = 1;
+  TF_RETURN_IF_ERROR(
+      NodeBuilder(strings::StrCat(name_prefix, "/RangeDelta"), "Const")
+          .Attr("dtype", DT_INT32)
+          .Attr("value", one_tensor)
+          .Finalize(graph, &delta));
+  Node* rank;
+  TF_RETURN_IF_ERROR(
+      NodeBuilder(strings::StrCat(name_prefix, "/InputRank"), "Rank")
+          .Input(input)
+          .Finalize(graph, &rank));
+  TF_RETURN_IF_ERROR(
+      NodeBuilder(strings::StrCat(name_prefix, "/ReductionAxes"), "Range")
+          .Input(start)
+          .Input(rank)
+          .Input(delta)
+          .Finalize(graph, output));
+  return Status::OK();
+}
+
+// Computes the exponential moving average of input, updated in update_variable.
+Status MakeExponentialMovingAverage(Graph* graph, string name_prefix,
+                                    const NodeBuilder::NodeOut& input,
+                                    Node* decay, Node* update_variable,
+                                    Node** assign_value) {
+  // variable_t+1 = variable_t - [(variable_t - value) * (1 - decay)]
+  name_prefix = strings::StrCat(name_prefix, "/EMA");
+  Node* one;
+  Tensor one_tensor(DT_FLOAT, TensorShape());
+  one_tensor.flat<float>()(0) = 1.0;
+  TF_RETURN_IF_ERROR(
+      NodeBuilder(strings::StrCat(name_prefix, "/OneConst"), "Const")
+          .Attr("dtype", DT_FLOAT)
+          .Attr("value", one_tensor)
+          .Finalize(graph, &one));
+  Node* decay_complement;
+  TF_RETURN_IF_ERROR(
+      NodeBuilder(strings::StrCat(name_prefix, "/DecayComplement"), "Sub")
+          .Input(one)
+          .Input(decay)
+          .Finalize(graph, &decay_complement));
+
+  Node* value_diff;
+  TF_RETURN_IF_ERROR(
+      NodeBuilder(strings::StrCat(name_prefix, "/ValueDiff"), "Sub")
+          .Input(update_variable)
+          .Input(input)
+          .Finalize(graph, &value_diff));
+  Node* update_value;
+  TF_RETURN_IF_ERROR(
+      NodeBuilder(strings::StrCat(name_prefix, "/UpdateValue"), "Mul")
+          .Input(value_diff)
+          .Input(decay_complement)
+          .Finalize(graph, &update_value));
+
+  TF_RETURN_IF_ERROR(
+      NodeBuilder(strings::StrCat(name_prefix, "/EMAValue"), "Sub")
+          .Input(update_variable)
+          .Input(update_value)
+          .Finalize(graph, assign_value));
+  return Status::OK();
+}
+
+// Creates an automatically initialized exponential moving average variable.
+// This uses a switch op to assign a value to the variable on the first run,
+// and update with the moving average for all other runs:
+//                   init_val
+//                      |
+//      var--is_init--switch
+//       |      true /      \ false
+//       |          |        |
+//       |         EMA    init_val
+//       |           \      /
+//       +----------- assign
+Status MakeInitializedEMAVariable(Graph* graph, const string& name, Node* decay,
+                                  Node* init_val, Node** var) {
+  TF_RETURN_IF_ERROR(
+      NodeBuilder(strings::StrCat(name, "/Variable"), "VariableV2")
+          .Attr("shape", TensorShape())
+          .Attr("dtype", DT_FLOAT)
+          .Finalize(graph, var));
+
+  Node* is_initialized;
+  TF_RETURN_IF_ERROR(NodeBuilder(strings::StrCat(name, "/IsInitialized"),
+                                 "IsVariableInitialized")
+                         .Input(*var)
+                         .Finalize(graph, &is_initialized));
+  Node* switch_node;
+  TF_RETURN_IF_ERROR(NodeBuilder(strings::StrCat(name, "/Switch"), "Switch")
+                         .Input(init_val)
+                         .Input(is_initialized)
+                         .Finalize(graph, &switch_node));
+  NodeBuilder::NodeOut output_false = NodeBuilder::NodeOut(switch_node, 0);
+  NodeBuilder::NodeOut output_true = NodeBuilder::NodeOut(switch_node, 1);
+
+  Node* ema_value;
+  TF_RETURN_IF_ERROR(MakeExponentialMovingAverage(graph, name, output_true,
+                                                  decay, *var, &ema_value));
+
+  Node* assign_value;
+  TF_RETURN_IF_ERROR(NodeBuilder(strings::StrCat(name, "/Merge"), "Merge")
+                         .Input({output_false, ema_value})
+                         .Finalize(graph, &assign_value));
+
+  TF_RETURN_IF_ERROR(
+      NodeBuilder(strings::StrCat(name, "/AssignValue"), "Assign")
+          .Input(*var)
+          .Input(assign_value)
+          .Finalize(graph, var));
+  return Status::OK();
+}
+
+// Computes the min and max EMA of input and stores them in min_var and max_var.
+Status MakeEMAMinMaxVars(Graph* graph, const string& name_prefix, Node* input,
+                         Node** min_var, Node** max_var) {
+  // TODO(suharshs): The decay will be constant, so we could make only one for
+  // all quantize_and_dequantize ops to share, this would have to live outside
+  // this function.
+  Tensor decay_tensor(DT_FLOAT, TensorShape());
+  decay_tensor.flat<float>()(0) = kEMADecay;
+  Node* decay;
+  TF_RETURN_IF_ERROR(
+      NodeBuilder(strings::StrCat(name_prefix, "/Decay"), "Const")
+          .Attr("dtype", DT_FLOAT)
+          .Attr("value", decay_tensor)
+          .Finalize(graph, &decay));
+
+  Node* reduction_axes;
+  TF_RETURN_IF_ERROR(
+      MakeReductionAxes(graph, name_prefix, input, &reduction_axes));
+  Node* min;
+  string min_name = strings::StrCat(name_prefix, "/Min");
+  TF_RETURN_IF_ERROR(NodeBuilder(min_name, "Min")
+                         .Input(input)
+                         .Input(reduction_axes)
+                         .Finalize(graph, &min));
+  Node* max;
+  string max_name = strings::StrCat(name_prefix, "/Max");
+  TF_RETURN_IF_ERROR(NodeBuilder(max_name, "Max")
+                         .Input(input)
+                         .Input(reduction_axes)
+                         .Finalize(graph, &max));
+  TF_RETURN_IF_ERROR(
+      MakeInitializedEMAVariable(graph, min_name, decay, min, min_var));
+  TF_RETURN_IF_ERROR(
+      MakeInitializedEMAVariable(graph, max_name, decay, max, max_var));
+  return Status::OK();
+}
+
+// Makes an input min and max constant if the range is given. Otherwise, makes
+// min and max variables that are updated by an EMA.
+Status MakeInputMinMax(Graph* graph, const string& name_prefix,
+                       const EdgeToConvert& edge, Node** input_min,
+                       Node** input_max) {
+  if (edge.range_given) {
+    // Make constant nodes for the input_min and input_max if the range is
+    // provided.
+    Tensor input_min_tensor(DT_FLOAT, TensorShape());
+    input_min_tensor.flat<float>()(0) = edge.input_min;
+    TF_RETURN_IF_ERROR(
+        NodeBuilder(strings::StrCat(name_prefix, "/InputMin"), "Const")
+            .Attr("dtype", DT_FLOAT)
+            .Attr("value", input_min_tensor)
+            .Finalize(graph, input_min));
+    Tensor input_max_tensor(DT_FLOAT, TensorShape());
+    input_max_tensor.flat<float>()(0) = edge.input_max;
+    TF_RETURN_IF_ERROR(
+        NodeBuilder(strings::StrCat(name_prefix, "/InputMax"), "Const")
+            .Attr("dtype", DT_FLOAT)
+            .Attr("value", input_max_tensor)
+            .Finalize(graph, input_max));
+  } else {
+    // If the range is not given, estimate the range with EMA variables.
+    TF_RETURN_IF_ERROR(MakeEMAMinMaxVars(graph, name_prefix, edge.edge->src(),
+                                         input_min, input_max));
+  }
+
+  return Status::OK();
 }
 
 // Adds a QuantizeAndDequantizeV2Op (and required input nodes) based on edge.
@@ -133,22 +335,8 @@ Status MakeQuantizeAndDequantizeV2(Graph* graph, const string& name_prefix,
                                    Node** convert_node) {
   Node* input_min;
   Node* input_max;
-  // Make constant nodes for the input_min and input_max if the range is
-  // provided.
-  Tensor input_min_tensor(DT_FLOAT, TensorShape());
-  input_min_tensor.flat<float>()(0) = edge.input_min;
-  string min_name = strings::StrCat(name_prefix, "/InputMin");
-  TF_RETURN_IF_ERROR(NodeBuilder(min_name, "Const")
-                         .Attr("dtype", DT_FLOAT)
-                         .Attr("value", input_min_tensor)
-                         .Finalize(graph, &input_min));
-  Tensor input_max_tensor(DT_FLOAT, TensorShape());
-  input_max_tensor.flat<float>()(0) = edge.input_max;
-  string max_name = strings::StrCat(name_prefix, "/InputMax");
-  TF_RETURN_IF_ERROR(NodeBuilder(max_name, "Const")
-                         .Attr("dtype", DT_FLOAT)
-                         .Attr("value", input_max_tensor)
-                         .Finalize(graph, &input_max));
+  TF_RETURN_IF_ERROR(
+      MakeInputMinMax(graph, name_prefix, edge, &input_min, &input_max));
 
   string quant_name = strings::StrCat(name_prefix, "/QuantizeAndDequantizeV2");
   TF_RETURN_IF_ERROR(NodeBuilder(quant_name, "QuantizeAndDequantizeV2")
@@ -157,7 +345,7 @@ Status MakeQuantizeAndDequantizeV2(Graph* graph, const string& name_prefix,
                          .Input(input_max)
                          .Attr("signed_input", edge.signed_input)
                          .Attr("num_bits", edge.num_bits)
-                         .Attr("range_given", edge.range_given)
+                         .Attr("range_given", true)
                          .Finalize(graph, convert_node));
   return Status::OK();
 }
@@ -165,8 +353,8 @@ Status MakeQuantizeAndDequantizeV2(Graph* graph, const string& name_prefix,
 // Insert conversion op, connect it to the graph and remove the old edge.
 Status ProcessTargetEdges(Graph* graph,
                           const std::vector<EdgeToConvert>& target_edges) {
-  // Remember previous convert ops to avoid duplicated conversion on the same
-  // input.
+  // Remember previously converted ops to avoid duplicated conversion on the
+  // same input.
   std::unordered_map<string, Node*, StringPiece::Hasher> name_index;
   for (const EdgeToConvert edge : target_edges) {
     Node* convert_node;
@@ -230,17 +418,15 @@ Status DoQuantizeTraining(int32 num_bits, Graph* graph) {
                                    &range_given, &input_min, &input_max);
           if (!known_op) {
             // Unknown op is considered as input.
-            // Only support one input for now.
-            // TODO: Make this configurable if this is the desirable way to find
-            // input.
-            if (potential_input > 0) {
+            potential_input++;
+            if (potential_input > kAllowedInputs) {
               return errors::Unimplemented(
-                  "Find a second unknown op: ", edge->src()->name(),
+                  "Found an unknown op: ", edge->src()->name(),
                   " with type: ", edge->src()->type_string(),
                   "; Unknown ops are considered as model input for now and "
-                  "only 1 input is supported currently.");
+                  "only ",
+                  kAllowedInputs, " inputs are supported currently.");
             }
-            potential_input++;
           }
 
           target_edges.emplace_back(EdgeToConvert(
