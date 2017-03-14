@@ -15,10 +15,14 @@ limitations under the License.
 
 package org.tensorflow;
 
+import static org.hamcrest.core.Is.is;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertThat;
 import static org.junit.Assert.fail;
+import static org.tensorflow.TensorMatcher.hasDataType;
+import static org.tensorflow.TensorMatcher.scalar;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -26,15 +30,22 @@ import java.nio.DoubleBuffer;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.nio.LongBuffer;
-import org.junit.Test;
+import org.hamcrest.TypeSafeMatcher;
+import org.hamcrest.Description;
+import org.junit.Rule;
+import org.junit.rules.ExpectedException;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
+import org.junit.Test;
 
 /** Unit tests for {@link org.tensorflow.Tensor}. */
 @RunWith(JUnit4.class)
 public class TensorTest {
   private static final double EPSILON = 1e-7;
   private static final float EPSILON_F = 1e-7f;
+
+  @Rule
+  public ExpectedException expectedException = ExpectedException.none();
 
   @Test
   public void createWithByteBuffer() {
@@ -105,55 +116,90 @@ public class TensorTest {
   }
 
   @Test
-  public void createWithTypedBuffer() {
-    int[] ints = {1, 2, 3, 4};
-    float[] floats = {1f, 2f, 3f, 4f};
-    double[] doubles = {1d, 2d, 3d, 4d};
-    long[] longs = {1L, 2L, 3L, 4L};
-    long[] shape = {4};
+  public void whenCreateUsingDoubleBufferThenExpectedMatrixIsStoredInTensor() {
+    final double[] expected = {1d, 2d, 3d, 4d};
+    final long[] shape = {4};
 
-    // validate creating a tensor using a typed buffer
-    {
-      try (Tensor t = Tensor.create(shape, DoubleBuffer.wrap(doubles))) {
-        double[] actual = new double[doubles.length];
-        assertArrayEquals(doubles, t.copyTo(actual), EPSILON);
-      }
-      try (Tensor t = Tensor.create(shape, FloatBuffer.wrap(floats))) {
-        float[] actual = new float[floats.length];
-        assertArrayEquals(floats, t.copyTo(actual), EPSILON_F);
-      }
-      try (Tensor t = Tensor.create(shape, IntBuffer.wrap(ints))) {
-        int[] actual = new int[ints.length];
-        assertArrayEquals(ints, t.copyTo(actual));
-      }
-      try (Tensor t = Tensor.create(shape, LongBuffer.wrap(longs))) {
-        long[] actual = new long[longs.length];
-        assertArrayEquals(longs, t.copyTo(actual));
-      }
+    try (final Tensor t = Tensor.create(shape, DoubleBuffer.wrap(expected))) {
+      final double[] actual = new double[expected.length];
+      t.copyTo(actual);
+      assertArrayEquals(expected, actual, EPSILON);
     }
+  }
 
-    // validate shape-checking
-    {
-      try (Tensor t = Tensor.create(new long[doubles.length + 1], DoubleBuffer.wrap(doubles))) {
-        fail("should have failed on incompatible buffer");
-      } catch (IllegalArgumentException e) {
-        // expected
-      }
-      try (Tensor t = Tensor.create(new long[floats.length + 1], FloatBuffer.wrap(floats))) {
-        fail("should have failed on incompatible buffer");
-      } catch (IllegalArgumentException e) {
-        // expected
-      }
-      try (Tensor t = Tensor.create(new long[ints.length + 1], IntBuffer.wrap(ints))) {
-        fail("should have failed on incompatible buffer");
-      } catch (IllegalArgumentException e) {
-        // expected
-      }
-      try (Tensor t = Tensor.create(new long[longs.length + 1], LongBuffer.wrap(longs))) {
-        fail("should have failed on incompatible buffer");
-      } catch (IllegalArgumentException e) {
-        // expected
-      }
+  @Test
+  public void whenCreateUsingFloatBufferThenExpectedMatrixIsStoredInTensor() {
+    final float[] expected = {1f, 2f, 3f, 4f};
+    final long[] shape = {4};
+
+    try (Tensor t = Tensor.create(shape, FloatBuffer.wrap(expected))) {
+      final float[] actual = new float[expected.length];
+      t.copyTo(actual);
+      assertArrayEquals(expected, actual, EPSILON_F);
+    }
+  }
+  
+  @Test
+  public void whenCreateUsingIntBufferThenExpectedMatrixIsStoredInTensor() {
+    final int[] expected = {1, 2, 3, 4};
+    final long[] shape = {4};
+
+    try (Tensor t = Tensor.create(shape, IntBuffer.wrap(expected))) {
+      final int[] actual = new int[expected.length];
+      t.copyTo(actual);
+      assertArrayEquals(expected, actual);
+    }
+  }
+
+  @Test
+  public void whenCreateUsingLongBufferThenExpectedMatrixIsStoredInTensor() {
+    final long[] expected = {1L, 2L, 3L, 4L};
+    final long[] shape = {4};
+
+    try (Tensor t = Tensor.create(shape, LongBuffer.wrap(expected))) {
+      final long[] actual = new long[expected.length];
+      t.copyTo(actual);
+      assertArrayEquals(expected, actual);
+    }
+  }
+
+  @Test
+  public void whenCreateUsingDoubleBufferWithIncorrectShapeThenThrowExpectedException() {
+    expectedException.expect(IllegalArgumentException.class);
+    expectedException.expectMessage("buffer with 4 elements is not compatible with a Tensor with shape [0, 0, 0, 0, 0]");
+    final double[] expected = {1D, 2D, 3D, 4D};
+
+    try(Tensor t = Tensor.create(new long[expected.length + 1], DoubleBuffer.wrap(expected))) {
+    }
+  }
+
+  @Test
+  public void whenCreateUsingFloatBufferWithIncorrectShapeThenThrowExpectedException() {
+    expectedException.expect(IllegalArgumentException.class);
+    expectedException.expectMessage("buffer with 4 elements is not compatible with a Tensor with shape [0, 0, 0, 0, 0]");
+    final float[] expected = {1F, 2F, 3F, 4F};
+
+    try(Tensor t = Tensor.create(new long[expected.length + 1], FloatBuffer.wrap(expected))) {
+    }
+  }
+
+  @Test
+  public void whenCreateUsingIntBufferWithIncorrectShapeThenThrowExpectedException() {
+    expectedException.expect(IllegalArgumentException.class);
+    expectedException.expectMessage("buffer with 4 elements is not compatible with a Tensor with shape [0, 0, 0, 0, 0]");
+    final int[] expected = {1, 2, 3, 4};
+
+    try(Tensor t = Tensor.create(new long[expected.length + 1], IntBuffer.wrap(expected))) {
+    }
+  }
+
+  @Test
+  public void whenCreateUsingLongBufferWithIncorrectShapeThenThrowExpectedException() {
+    expectedException.expect(IllegalArgumentException.class);
+    expectedException.expectMessage("buffer with 4 elements is not compatible with a Tensor with shape [0, 0, 0, 0, 0]");
+    final long[] expected = {1L, 2L, 3L, 4L};
+
+    try(Tensor t = Tensor.create(new long[expected.length + 1], LongBuffer.wrap(expected))) {
     }
   }
 
@@ -256,82 +302,114 @@ public class TensorTest {
         assertArrayEquals(doubles, actual, EPSILON);
       }
 
-      // validate that incompatible buffers are rejected
-      {
-        IntBuffer badbuf1 = IntBuffer.allocate(128);
-        try {
-          tbools.writeTo(badbuf1);
-          fail("should have failed on incompatible buffer");
-        } catch (IllegalArgumentException e) {
-          // expected
-        }
-        FloatBuffer badbuf2 = FloatBuffer.allocate(128);
-        try {
-          tbools.writeTo(badbuf2);
-          fail("should have failed on incompatible buffer");
-        } catch (IllegalArgumentException e) {
-          // expected
-        }
-        DoubleBuffer badbuf3 = DoubleBuffer.allocate(128);
-        try {
-          tbools.writeTo(badbuf3);
-          fail("should have failed on incompatible buffer");
-        } catch (IllegalArgumentException e) {
-          // expected
-        }
-        LongBuffer badbuf4 = LongBuffer.allocate(128);
-        try {
-          tbools.writeTo(badbuf4);
-          fail("should have failed on incompatible buffer");
-        } catch (IllegalArgumentException e) {
-          // expected
-        }
-      }
     }
   }
 
   @Test
-  public void scalars() {
-    try (Tensor t = Tensor.create(2.718f)) {
-      assertEquals(DataType.FLOAT, t.dataType());
-      assertEquals(0, t.numDimensions());
-      assertEquals(0, t.shape().length);
-      assertEquals(2.718f, t.floatValue(), EPSILON_F);
-    }
+  public void whenWriteToIncompatibleDoubleBufferThenThrowExpectedException() {
+    expectedException.expect(IllegalArgumentException.class);
+    expectedException.expectMessage("cannot use java.nio.HeapDoubleBuffer with Tensor of type BOOL");
+    final boolean[] bools = {true, false, true};
 
-    try (Tensor t = Tensor.create(3.1415)) {
-      assertEquals(DataType.DOUBLE, t.dataType());
-      assertEquals(0, t.numDimensions());
-      assertEquals(0, t.shape().length);
-      assertEquals(3.1415, t.doubleValue(), EPSILON);
+    try (Tensor tensor = Tensor.create(bools)) {
+      final DoubleBuffer badBuffer = DoubleBuffer.allocate(128);
+      tensor.writeTo(badBuffer);
     }
+  }
 
-    try (Tensor t = Tensor.create(-33)) {
-      assertEquals(DataType.INT32, t.dataType());
-      assertEquals(0, t.numDimensions());
-      assertEquals(0, t.shape().length);
-      assertEquals(-33, t.intValue());
+  @Test
+  public void whenWriteToIncompatibleFloatBufferThenThrowExpectedException() {
+    expectedException.expect(IllegalArgumentException.class);
+    expectedException.expectMessage("cannot use java.nio.HeapFloatBuffer with Tensor of type BOOL");
+    final boolean[] bools = {true, false, true};
+
+    try (Tensor tensor = Tensor.create(bools)) {
+      final FloatBuffer badBuffer = FloatBuffer.allocate(128);
+      tensor.writeTo(badBuffer);
     }
+  }
 
-    try (Tensor t = Tensor.create(8589934592L)) {
-      assertEquals(DataType.INT64, t.dataType());
-      assertEquals(0, t.numDimensions());
-      assertEquals(0, t.shape().length);
-      assertEquals(8589934592L, t.longValue());
+  @Test
+  public void whenWriteToIncompatibleIntBufferThenThrowExpectedException() {
+    expectedException.expect(IllegalArgumentException.class);
+    expectedException.expectMessage("cannot use java.nio.HeapIntBuffer with Tensor of type BOOL");
+    final boolean[] bools = {true, false, true};
+
+    try (Tensor tensor = Tensor.create(bools)) {
+      final IntBuffer badBuffer = IntBuffer.allocate(128);
+      tensor.writeTo(badBuffer);
+    } 
+  }
+
+  @Test
+  public void whenWriteToIncompatibleLongBufferThenThrowExpectedException() {
+    expectedException.expect(IllegalArgumentException.class);
+    expectedException.expectMessage("cannot use java.nio.HeapLongBuffer with Tensor of type BOOL");
+    final boolean[] bools = {true, false, true};
+
+    try (Tensor tensor = Tensor.create(bools)) {
+      final LongBuffer badBuffer = LongBuffer.allocate(128);
+      tensor.writeTo(badBuffer);
     }
+  }
 
-    try (Tensor t = Tensor.create(true)) {
-      assertEquals(DataType.BOOL, t.dataType());
-      assertEquals(0, t.numDimensions());
-      assertEquals(0, t.shape().length);
-      assertTrue(t.booleanValue());
+  @Test
+  public void whenCreateUsingDoubleThenReturnDoubleScalarWithExpectedValue() {
+    final double expected = 3.1415D;
+    try (Tensor t = Tensor.create(expected)) {
+      assertThat(t, hasDataType(DataType.DOUBLE));
+      assertThat(t, is(scalar()));
+      assertEquals(expected, t.doubleValue(), EPSILON);
     }
+  }
 
+  @Test
+  public void whenCreateUsingFloatThenReturnFloatScalarWithExpectedValue() {
+    final float expected = 2.718F;
+    try (Tensor t = Tensor.create(expected)) {
+      assertThat(t, hasDataType(DataType.FLOAT));
+      assertThat(t, is(scalar()));
+      assertEquals(expected, t.floatValue(), EPSILON_F);
+    }
+  }
+
+  @Test
+  public void whenCreateUsingIntegerThenReturnIntegerScalarWithExpectedValue() {
+    final int expected = -33;
+    try (Tensor t = Tensor.create(expected)) {
+      assertThat(t, hasDataType(DataType.INT32));
+      assertThat(t, is(scalar()));
+      assertThat(t.intValue(), is(expected));
+    }
+  }
+
+  @Test
+  public void whenCreateUsingLongThenReturnLongScalarWithExpectedValue() {
+    final long expected = 8589934592L;
+    try (Tensor t = Tensor.create(expected)) {
+      assertThat(t, hasDataType(DataType.INT64));
+      assertThat(t, is(scalar()));
+      assertThat(t.longValue(), is(expected));
+    } 
+  }
+
+  @Test
+  public void whenCreateUsingBooleanThenReturnBooleanScalarWithExpectedValue() {
+    final boolean expected = true;
+    try (Tensor t = Tensor.create(expected)) {
+      assertThat(t, hasDataType(DataType.BOOL));
+      assertThat(t, is(scalar()));
+      assertThat(t.booleanValue(), is(true));
+    }
+  }
+
+
+  @Test
+  public void whenCreateUsingByteArrayThenReturnStringScalarWithExpectedValue() {
     final byte[] bytes = {1, 2, 3, 4};
     try (Tensor t = Tensor.create(bytes)) {
-      assertEquals(DataType.STRING, t.dataType());
-      assertEquals(0, t.numDimensions());
-      assertEquals(0, t.shape().length);
+      assertThat(t, hasDataType(DataType.STRING));
+      assertThat(t, is(scalar()));
       assertArrayEquals(bytes, t.bytesValue());
     }
   }
@@ -340,7 +418,7 @@ public class TensorTest {
   public void nDimensional() {
     double[] vector = {1.414, 2.718, 3.1415};
     try (Tensor t = Tensor.create(vector)) {
-      assertEquals(DataType.DOUBLE, t.dataType());
+      assertThat(t, hasDataType(DataType.DOUBLE));
       assertEquals(1, t.numDimensions());
       assertArrayEquals(new long[] {3}, t.shape());
 
@@ -350,7 +428,7 @@ public class TensorTest {
 
     int[][] matrix = {{1, 2, 3}, {4, 5, 6}};
     try (Tensor t = Tensor.create(matrix)) {
-      assertEquals(DataType.INT32, t.dataType());
+      assertThat(t, hasDataType(DataType.INT32));
       assertEquals(2, t.numDimensions());
       assertArrayEquals(new long[] {2, 3}, t.shape());
 
@@ -362,7 +440,7 @@ public class TensorTest {
       {{1}, {3}, {5}, {7}, {9}}, {{2}, {4}, {6}, {8}, {0}},
     };
     try (Tensor t = Tensor.create(threeD)) {
-      assertEquals(DataType.INT64, t.dataType());
+      assertThat(t, hasDataType(DataType.INT64));
       assertEquals(3, t.numDimensions());
       assertArrayEquals(new long[] {2, 5, 1}, t.shape());
 
@@ -376,7 +454,7 @@ public class TensorTest {
       {{{false, true, false, true}, {false, true, true, false}}},
     };
     try (Tensor t = Tensor.create(fourD)) {
-      assertEquals(DataType.BOOL, t.dataType());
+      assertThat(t, hasDataType(DataType.BOOL));
       assertEquals(4, t.numDimensions());
       assertArrayEquals(new long[] {3, 1, 2, 4}, t.shape());
 
@@ -401,71 +479,74 @@ public class TensorTest {
   }
 
   @Test
-  public void failCopyToOnIncompatibleDestination() {
+  public void whenCopyToWithDimensionMismatchThenThrowExpectedException() {
+    expectedException.expect(IllegalArgumentException.class);
+    expectedException.expectMessage("cannot copy Tensor with 2 dimensions into an object with 1");
+
     try (final Tensor matrix = Tensor.create(new int[][] {{1, 2}, {3, 4}})) {
-      try {
-        matrix.copyTo(new int[2]);
-        fail("should have failed on dimension mismatch");
-      } catch (IllegalArgumentException e) {
-        // The expected exception.
-      }
-
-      try {
-        matrix.copyTo(new float[2][2]);
-        fail("should have failed on DataType mismatch");
-      } catch (IllegalArgumentException e) {
-        // The expected exception.
-      }
-
-      try {
-        matrix.copyTo(new int[2][3]);
-        fail("should have failed on shape mismatch");
-      } catch (IllegalArgumentException e) {
-        // The expected exception.
-      }
+      matrix.copyTo(new int[2]);
     }
   }
 
   @Test
-  public void failCopyToOnScalar() {
+  public void whenCopyToDifferentDataTypePrimitiveThenThrowExpectedException() {
+    expectedException.expect(IllegalArgumentException.class);
+    expectedException.expectMessage("cannot copy Tensor with DataType INT32 into an object of type float[][]");
+
+    try (final Tensor matrix = Tensor.create(new int[][] {{1, 2}, {3, 4}})) {
+      matrix.copyTo(new float[2][2]);
+    }
+  }
+
+  @Test
+  public void whenCopyToMatrixWithDifferentShapeThenThrowExpectedException() {
+    expectedException.expect(IllegalArgumentException.class);
+    expectedException.expectMessage("cannot copy Tensor with shape [2, 2] into object with shape [2, 3]");
+
+    try (final Tensor matrix = Tensor.create(new int[][] {{1, 2}, {3, 4}})) {
+      matrix.copyTo(new int[2][3]);
+    }
+  }
+
+  @Test
+  public void whenCopyToOnScalarThenThrowExpectedException() {
+    expectedException.expect(IllegalArgumentException.class);
+    expectedException.expectMessage("copyTo() is not meant for scalar Tensors, use the scalar " +
+        "accessor (floatValue(), intValue() etc.) instead");
+
     try (final Tensor scalar = Tensor.create(3)) {
-      try {
         scalar.copyTo(3);
-        fail("copyTo should fail on scalar tensors, suggesting use of primitive accessors instead");
-      } catch (IllegalArgumentException e) {
-        // The expected exception.
-      }
     }
   }
 
   @Test
-  public void failOnArbitraryObject() {
-    try (Tensor t = Tensor.create(new Object())) {
-      fail("should fail on creating a Tensor with a Java object that has not equivalent DataType");
-    } catch (IllegalArgumentException e) {
-      // The expected exception.
+  public void whenCreateTensorForObjectWithoutEquivalentDataTypeThenThrowExpectedException() {
+    expectedException.expect(IllegalArgumentException.class);
+    expectedException.expectMessage("cannot create Tensors of java.lang.Object");
+
+    try(final Tensor t = Tensor.create(new Object())) {
     }
   }
 
   @Test
-  public void failOnZeroDimension() {
-    try (Tensor t = Tensor.create(new int[3][0][1])) {
-      fail("should fail on creating a Tensor where one of the dimensions is 0");
-    } catch (IllegalArgumentException e) {
-      // The expected exception.
+  public void whenCreatingTensorWithZeroDimensionThenThrowExpectedException() {
+    expectedException.expect(IllegalArgumentException.class);
+    expectedException.expectMessage("cannot create Tensors with a 0 dimension");
+
+    try(final Tensor t = Tensor.create(new int[3][0][1])) {
     }
   }
 
   @Test
-  public void useAfterClose() {
+  public void whenUseTensorAfterCloseThenThrowExpectedException() {
+    expectedException.expect(NullPointerException.class);
+    // TODO change this message to make more sense to someone debugging code
+    expectedException.expectMessage("close() was called on the Tensor");
     int n = 4;
     Tensor t = Tensor.create(n);
     t.close();
-    try {
-      t.intValue();
-    } catch (NullPointerException e) {
-      // The expected exception.
-    }
+
+    t.intValue();
   }
 
   @Test

@@ -26,8 +26,14 @@ filegroup(
 java_library(
     name = "testutil",
     testonly = 1,
-    srcs = ["src/test/java/org/tensorflow/TestUtil.java"],
-    deps = [":tensorflow"],
+    srcs = [
+        "src/test/java/org/tensorflow/TestUtil.java",
+        "src/test/java/org/tensorflow/TensorMatcher.java",
+    ],
+    deps = [
+        ":tensorflow",
+        "@org_hamcrest_core",
+    ],
 )
 
 java_test(
@@ -111,6 +117,7 @@ java_test(
         ":tensorflow",
         ":testutil",
         "@junit",
+        "@org_hamcrest_core",
     ],
 )
 
