@@ -216,29 +216,27 @@ def tf_additional_core_deps():
 
 # TODO(jart, jhseu): Delete when GCP is default on.
 def tf_additional_cloud_op_deps():
-  deps = []
-  if WITH_GCP_SUPPORT:
-    deps = select({
+  return select({
       "//tensorflow:windows": [],
       "//tensorflow:android": [],
       "//tensorflow:ios": [],
-      "//conditions:default":
-        ["//tensorflow/contrib/cloud:bigquery_reader_ops_op_lib"],
-    })
-  return deps
+      "//tensorflow:with_gcp_support": [
+        "//tensorflow/contrib/cloud:bigquery_reader_ops_op_lib",
+      ],
+      "//conditions:default": [],
+  })
 
 # TODO(jart, jhseu): Delete when GCP is default on.
 def tf_additional_cloud_kernel_deps():
-  deps = []
-  if WITH_GCP_SUPPORT:
-    deps = select({
+  return select({
       "//tensorflow:windows": [],
       "//tensorflow:android": [],
       "//tensorflow:ios": [],
-      "//conditions:default":
-        ["//tensorflow/contrib/cloud/kernels:bigquery_reader_ops"],
-    })
-  return deps
+      "//tensorflow:with_gcp_support": [
+        "//tensorflow/contrib/cloud/kernels:bigquery_reader_ops",
+      ],
+      "//conditions:default": [],
+  })
 
 def tf_lib_proto_parsing_deps():
   return [
