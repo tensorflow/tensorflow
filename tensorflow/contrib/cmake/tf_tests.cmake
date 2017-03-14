@@ -188,6 +188,7 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/python/kernel_tests/sample_inputs_op_test.py"  # Results in wrong order.
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/python/kernel_tests/scatter_add_ndim_op_test.py"  # Bad placement.
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/python/topn_test.py"  # Results inaccurate
+      "${tensorflow_source_dir}/tensorflow/python/ops/cloud/bigquery_reader_ops_test.py"  # No libcurl support 
       # Failing on some CI.
       "${tensorflow_source_dir}/tensorflow/python/debug/cli/analyzer_cli_test.py"
       "${tensorflow_source_dir}/tensorflow/python/debug/lib/session_debug_file_test.py"

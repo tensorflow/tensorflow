@@ -20,8 +20,13 @@ go get github.com/golang/protobuf/proto
 go get github.com/golang/protobuf/protoc-gen-go
 
 cd $(dirname $0)
-TF_DIR=${GOPATH}/src/github.com/tensorflow/tensorflow
-PROTOC="${TF_DIR}/bazel-out/host/bin/external/protobuf/protoc"
+for g in $(echo $GOPATH | sed "s/:/ /g"); do
+    TF_DIR="${g}/src/github.com/tensorflow/tensorflow"
+    PROTOC="${TF_DIR}/bazel-out/host/bin/external/protobuf/protoc"
+    if [ -x "${PROTOC}" ]; then
+        break
+    fi
+done
 
 if [ ! -x "${PROTOC}" ]
 then

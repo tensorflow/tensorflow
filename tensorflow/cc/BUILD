@@ -376,6 +376,16 @@ tf_gen_op_wrappers_cc(
 )
 
 tf_gen_op_wrappers_cc(
+    name = "resource_variable_ops",
+    include_internal_ops = 1,
+    op_lib_names = [
+        "resource_variable_ops",
+    ],
+    pkg = "//tensorflow/core",
+    visibility = ["//tensorflow:internal"],
+)
+
+tf_gen_op_wrappers_cc(
     name = "remote_fused_graph_ops",
     op_lib_names = [
         "remote_fused_graph_ops",

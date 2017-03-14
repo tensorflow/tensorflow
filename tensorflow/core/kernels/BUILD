@@ -978,6 +978,7 @@ tf_cc_test(
         ":ops_testutil",
         ":ops_util",
         "//tensorflow/core:core_cpu",
+        "//tensorflow/core:debug_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -2071,6 +2072,7 @@ cc_library(
         ":argmax_op",
         ":batch_matmul_op",
         ":betainc_op",
+        ":bincount_op",
         ":cast_op",
         ":check_numerics_op",
         ":cross_op",
@@ -2567,6 +2569,17 @@ tf_kernel_library(
     name = "xent_op",
     prefix = "xent_op",
     deps = NN_DEPS,
+)
+
+tf_kernel_library(
+    name = "bincount_op",
+    prefix = "bincount_op",
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//third_party/eigen3",
+    ],
 )
 
 tf_kernel_library(
@@ -3601,6 +3614,7 @@ filegroup(
         "softplus_op.h",
         "softsign_op.h",
         "spacetobatch_functor.h",
+        "spacetodepth_op.h",
         "tensor_array.h",
         "tile_ops_cpu_impl.h",
         "tile_ops_impl.h",
@@ -3723,6 +3737,7 @@ filegroup(
         "softsign_op.cc",
         "spacetobatch_functor.cc",
         "spacetobatch_op.cc",
+        "spacetodepth_op.cc",
         "sparse_to_dense_op.cc",
         "stack_ops.cc",
         "summary_op.cc",
@@ -3786,6 +3801,7 @@ filegroup(
         ],
         exclude = [
             "*test.cc",
+            "*test_util*",
             "*testutil*",
             "*testlib*",
             "*main.cc",
@@ -3818,8 +3834,6 @@ filegroup(
             # Excluded due to experimental status:
             "debug_ops.*",
             "scatter_nd_op*",
-            # Lib CURL is not supported on Android.
-            "bigquery*",
         ],
     ),
     visibility = ["//visibility:public"],
@@ -4290,6 +4304,20 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "remote_fused_graph_execute_op_test_utils",
+    srcs = ["remote_fused_graph_execute_op_test_utils.cc"],
+    hdrs = ["remote_fused_graph_execute_op_test_utils.h"],
+    deps = [
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/kernels:cwise_op",
+    ],
+)
+
 tf_cc_test(
     name = "remote_fused_graph_execute_utils_test",
     size = "small",
@@ -4297,6 +4325,7 @@ tf_cc_test(
         "remote_fused_graph_execute_utils_test.cc",
     ],
     deps = [
+        ":remote_fused_graph_execute_op_test_utils",
         ":remote_fused_graph_execute_utils",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:scope",
@@ -4324,7 +4353,13 @@ tf_cc_test(
         ":ops_testutil",
         ":ops_util",
         ":remote_fused_graph_execute_op",
+        ":remote_fused_graph_execute_op_test_utils",
+        ":remote_fused_graph_execute_utils",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:scope",
         "//tensorflow/core:core_cpu",
+        "//tensorflow/core:direct_session",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",

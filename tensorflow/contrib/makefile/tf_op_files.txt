@@ -107,6 +107,7 @@ tensorflow/core/kernels/example_parsing_ops.cc
 tensorflow/core/kernels/dynamic_stitch_op.cc
 tensorflow/core/kernels/dynamic_partition_op.cc
 tensorflow/core/kernels/depthtospace_op.cc
+tensorflow/core/kernels/spacetodepth_op.cc
 tensorflow/core/kernels/dense_update_ops.cc
 tensorflow/core/kernels/deep_conv2d.cc
 tensorflow/core/kernels/xsmm_conv2d.cc

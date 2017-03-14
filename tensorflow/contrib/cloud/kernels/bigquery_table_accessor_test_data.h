@@ -73,6 +73,43 @@ const string kSampleSchema = R"({
   "numRows": "4"
 })";
 
+const string kSampleSchemaTwoRecords = R"({
+  "kind": "bigquery#table",
+  "etag": "\"4zcX32ezvFoFzxHoG04qJqKZk6c/MTQ1Nzk3NTgwNzE4Mw\"",
+  "id": "test-project:test-dataset.test-table",
+  "schema": {
+    "fields": [
+    {
+      "name": "rec_field1",
+      "type": "RECORD",
+      "fields": [
+      {
+        "name": "int_field",
+        "type": "INTEGER",
+        "mode": "NULLABLE"
+      }, {
+        "name": "float_field",
+        "type": "FLOAT",
+        "mode": "NULLABLE"
+      }]
+    },{
+      "name": "rec_field2",
+      "type": "RECORD",
+      "fields": [
+      {
+         "name": "bool_field",
+         "type": "BOOLEAN",
+         "mode": "NULLABLE"
+      },{
+         "name": "bytes_field",
+         "type": "BYTES",
+         "mode": "NULLABLE"
+      }]
+    }]
+  },
+  "numRows": "4"
+})";
+
 const string kTestRow = R"({
   "kind": "bigquery#table",
   "etag": "\"4zcX32ezvFoFzxHoG04qJqKZk6c/MTQ1Nzk3NTgwNzE4Mw\"",
@@ -309,6 +346,26 @@ const string kTestPartialExampleProto = R"(features {
 }
 )";
 
+const string kTestExampleProtoWithTwoRecords = R"(features {
+  feature {
+    key: "rec_field1.float_field"
+    value {
+      float_list {
+        value: 1.23456
+      }
+    }
+  }
+  feature {
+    key: "rec_field2.bool_field"
+    value {
+      int64_list {
+        value: 1
+      }
+    }
+  }
+}
+)";
+
 const string kTestTwoRows = R"({
   "kind": "bigquery#table",
   "etag": "\"4zcX32ezvFoFzxHoG04qJqKZk6c/MTQ1Nzk3NTgwNzE4Mw\"",
@@ -318,6 +375,28 @@ const string kTestTwoRows = R"({
     {"f": [{"v": "1111"},{},{},{},{},{},{},{},{}]},
     {"f": [{"v": "2222"},{},{},{},{},{},{},{},{}]}
   ]})";
+
+const string kTestRowWithTwoRecords = R"({
+  "kind": "bigquery#table",
+  "etag": "\"4zcX32ezvFoFzxHoG04qJqKZk6c/MTQ1Nzk3NTgwNzE4Mw\"",
+  "id": "test-project:test-dataset.test-table",
+  "rows": [
+  {
+    "f": [
+    {"v": {"f": [{}, {"v": "1.23456"}]}},
+    {"v": {"f": [{"v": "true"}, {}]}
+    }]}]})";
+
+const string kTestEmptyRow = R"({
+  "kind": "bigquery#table",
+  "etag": "\"4zcX32ezvFoFzxHoG04qJqKZk6c/MTQ1Nzk3NTgwNzE4Mw\"",
+  "id": "test-project:test-dataset.test-table",
+  "rows": [
+  {
+    "f": [
+    {"v": {"f": [{}, {}]}},
+    {"v": {"f": [{"v": null}, {}]}
+    }]}]})";
 
 }  // namespace
 }  // namepsace tensorflow

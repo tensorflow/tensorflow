@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.estimator import export_output
 from tensorflow.python.estimator import model_fn
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
@@ -58,6 +59,7 @@ class EstimatorSpecTrainTest(test.TestCase):
     with ops.Graph().as_default(), self.test_session():
       loss = constant_op.constant(1.)
       predictions = {'loss': loss}
+      classes = constant_op.constant('hello')
       model_fn.EstimatorSpec(
           mode=model_fn.ModeKeys.TRAIN,
           predictions=predictions,
@@ -65,8 +67,7 @@ class EstimatorSpecTrainTest(test.TestCase):
           train_op=control_flow_ops.no_op(),
           eval_metric_ops={'loss': (control_flow_ops.no_op(), loss)},
           export_outputs={
-              'head_name': (signature_constants.CLASSIFY_METHOD_NAME,
-                            predictions)
+              'head_name': export_output.ClassificationOutput(classes=classes)
           },
           training_chief_hooks=[_FakeHook()],
           training_hooks=[_FakeHook()],
@@ -208,6 +209,7 @@ class EstimatorSpecEvalTest(test.TestCase):
     with ops.Graph().as_default(), self.test_session():
       loss = constant_op.constant(1.)
       predictions = {'loss': loss}
+      classes = constant_op.constant('hello')
       model_fn.EstimatorSpec(
           mode=model_fn.ModeKeys.EVAL,
           predictions=predictions,
@@ -215,8 +217,7 @@ class EstimatorSpecEvalTest(test.TestCase):
           train_op=control_flow_ops.no_op(),
           eval_metric_ops={'loss': (control_flow_ops.no_op(), loss)},
           export_outputs={
-              'head_name': (signature_constants.CLASSIFY_METHOD_NAME,
-                            predictions)
+              'head_name': export_output.ClassificationOutput(classes=classes)
           },
           training_chief_hooks=[_FakeHook()],
           training_hooks=[_FakeHook()],
@@ -392,6 +393,7 @@ class EstimatorSpecInferTest(test.TestCase):
     with ops.Graph().as_default(), self.test_session():
       loss = constant_op.constant(1.)
       predictions = {'loss': loss}
+      classes = constant_op.constant('hello')
       model_fn.EstimatorSpec(
           mode=model_fn.ModeKeys.PREDICT,
           predictions=predictions,
@@ -399,8 +401,7 @@ class EstimatorSpecInferTest(test.TestCase):
           train_op=control_flow_ops.no_op(),
           eval_metric_ops={'loss': (control_flow_ops.no_op(), loss)},
           export_outputs={
-              'head_name': (signature_constants.CLASSIFY_METHOD_NAME,
-                            predictions)
+              'head_name': export_output.ClassificationOutput(classes=classes)
           },
           training_chief_hooks=[_FakeHook()],
           training_hooks=[_FakeHook()],
@@ -439,43 +440,86 @@ class EstimatorSpecInferTest(test.TestCase):
   def testExportOutputsNoDict(self):
     with ops.Graph().as_default(), self.test_session():
       predictions = {'loss': constant_op.constant(1.)}
+      classes = constant_op.constant('hello')
       with self.assertRaisesRegexp(
           TypeError, 'export_outputs must be dict'):
         model_fn.EstimatorSpec(
             mode=model_fn.ModeKeys.PREDICT,
             predictions=predictions,
-            export_outputs=(signature_constants.CLASSIFY_METHOD_NAME,
-                            predictions))
+            export_outputs=export_output.ClassificationOutput(classes=classes))
 
-  def testExportOutputsValueNotTuple(self):
+  def testExportOutputsValueNotExportOutput(self):
     with ops.Graph().as_default(), self.test_session():
       predictions = {'loss': constant_op.constant(1.)}
       with self.assertRaisesRegexp(
-          TypeError, 'Values in export_outputs must be 2-tuple'):
+          TypeError,
+          r"Values in export_outputs must be ExportOutput objects. "
+          r"Given: {'head_name': {'loss': <tf.Tensor 'Const:0' shape=\(\) "
+          r"dtype=float32>}}"):
         model_fn.EstimatorSpec(
             mode=model_fn.ModeKeys.PREDICT,
             predictions=predictions,
             export_outputs={'head_name': predictions})
 
-  def testExportOutputsValue1Tuple(self):
+  def testExportOutputsSingleheadMissingDefault(self):
     with ops.Graph().as_default(), self.test_session():
       predictions = {'loss': constant_op.constant(1.)}
-      with self.assertRaisesRegexp(
-          TypeError, 'Values in export_outputs must be 2-tuple'):
-        model_fn.EstimatorSpec(
-            mode=model_fn.ModeKeys.PREDICT,
-            predictions=predictions,
-            export_outputs={'head_name': (predictions,)})
+      output_1 = constant_op.constant([1.])
+      regression_output = export_output.RegressionOutput(value=output_1)
+      export_outputs = {
+          'head-1': regression_output,
+          }
+      estimator_spec = model_fn.EstimatorSpec(
+          mode=model_fn.ModeKeys.PREDICT,
+          predictions=predictions,
+          export_outputs=export_outputs)
+      expected_export_outputs = {
+          signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY:
+          regression_output,
+          'head-1': regression_output,
+      }
+      self.assertEqual(expected_export_outputs, estimator_spec.export_outputs)
 
-  def testExportOutputsInvalidMethodName(self):
+  def testExportOutputsMultiheadWithDefault(self):
     with ops.Graph().as_default(), self.test_session():
       predictions = {'loss': constant_op.constant(1.)}
+      output_1 = constant_op.constant([1.])
+      output_2 = constant_op.constant(['2'])
+      output_3 = constant_op.constant(['3'])
+      export_outputs = {
+          signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY:
+          export_output.RegressionOutput(value=output_1),
+          'head-2': export_output.ClassificationOutput(classes=output_2),
+          'head-3': export_output.PredictOutput(outputs={
+              'some_output_3': output_3
+          })}
+      estimator_spec = model_fn.EstimatorSpec(
+          mode=model_fn.ModeKeys.PREDICT,
+          predictions=predictions,
+          export_outputs=export_outputs)
+      self.assertEqual(export_outputs, estimator_spec.export_outputs)
+
+  def testExportOutputsMultiheadMissingDefault(self):
+    with ops.Graph().as_default(), self.test_session():
+      predictions = {'loss': constant_op.constant(1.)}
+      output_1 = constant_op.constant([1.])
+      output_2 = constant_op.constant(['2'])
+      output_3 = constant_op.constant(['3'])
+      export_outputs = {
+          'head-1': export_output.RegressionOutput(value=output_1),
+          'head-2': export_output.ClassificationOutput(classes=output_2),
+          'head-3': export_output.PredictOutput(outputs={
+              'some_output_3': output_3
+          })}
       with self.assertRaisesRegexp(
-          ValueError, 'Invalid signature_method_name in export_outputs'):
+          ValueError,
+          'Multiple export_outputs were provided, but none of them is '
+          'specified as the default.  Do this by naming one of them with '
+          'signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY.'):
         model_fn.EstimatorSpec(
             mode=model_fn.ModeKeys.PREDICT,
             predictions=predictions,
-            export_outputs={'head_name': ('invalid/method/name', predictions)})
+            export_outputs=export_outputs)
 
 
 if __name__ == '__main__':

@@ -34,6 +34,7 @@ from google.protobuf import text_format
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.client import device_lib
 from tensorflow.python.client import session
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import errors
@@ -44,7 +45,6 @@ from tensorflow.python.platform import googletest
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util.protobuf import compare
-from tensorflow.python.client import device_lib
 
 
 def gpu_device_name():
@@ -53,6 +53,7 @@ def gpu_device_name():
     if x.device_type == "GPU" or x.device_type == "SYCL":
       return x.name
   return ""
+
 
 def assert_ops_in_graph(expected_ops, graph):
   """Assert all expected operations are found.
@@ -172,9 +173,13 @@ class TensorFlowTestCase(googletest.TestCase):
   def get_temp_dir(self):
     """Returns a unique temporary directory for the test to use.
 
-    Across different test runs, this method will return a different folder.
-    This will ensure that across different runs tests will not be able to
-    pollute each others environment.
+    If you call this method multiple times during in a test, it will return the
+    same folder. However, accross different runs the directories will be
+    different. This will ensure that across different runs tests will not be
+    able to pollute each others environment.
+    If you need multiple unique directories within a single test, you should
+    use tempfile.mkdtemp as follows:
+      tempfile.mkdtemp(dir=self.get_temp_dir()):
 
     Returns:
       string, the path to the unique temporary directory created for this test.

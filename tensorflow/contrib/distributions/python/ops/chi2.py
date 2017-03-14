@@ -114,12 +114,12 @@ class Chi2WithAbsDf(Chi2):
                allow_nan_stats=True,
                name="Chi2WithAbsDf"):
     parameters = locals()
-    with ops.name_scope(name, values=[df]) as ns:
+    with ops.name_scope(name, values=[df]):
       super(Chi2WithAbsDf, self).__init__(
           df=math_ops.floor(
               math_ops.abs(df, name="abs_df"),
               name="floor_abs_df"),
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
-          name=ns)
+          name=name)
     self._parameters = parameters

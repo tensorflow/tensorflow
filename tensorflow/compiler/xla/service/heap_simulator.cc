@@ -85,7 +85,8 @@ StatusOr<HeapSimulator::Result> HeapSimulator::Run(
       }
       for (const BufferAlias& alias :
            points_to_analysis.GetBufferAliases(*buffer)) {
-        const std::set<HloInstruction*>& users = alias.instruction()->users();
+        const std::vector<HloInstruction*>& users =
+            alias.instruction()->users();
         if (!users.empty()) {
           live_buffers[buffer].insert(users.begin(), users.end());
         }

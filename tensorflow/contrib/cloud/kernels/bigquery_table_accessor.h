@@ -19,8 +19,9 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <vector>
+
+#include "tensorflow/contrib/cloud/kernels/bigquery_table_partition.pb.h"
 #include "tensorflow/core/example/example.pb.h"
-#include "tensorflow/core/kernels/cloud/bigquery_table_partition.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/cloud/google_auth_provider.h"
 #include "tensorflow/core/platform/cloud/http_request.h"

@@ -393,7 +393,8 @@ class CheckpointSaverHookTest(test.TestCase):
                          checkpoint_utils.load_variable(self.model_dir,
                                                         self.global_step.name))
 
-  def test_save_secs_calls_listeners_periodically(self):
+  # Flaky because of time.sleep()
+  def DISABLED_test_save_secs_calls_listeners_periodically(self):
     with self.graph.as_default():
       listener = MockCheckpointSaverListener()
       hook = basic_session_run_hooks.CheckpointSaverHook(
