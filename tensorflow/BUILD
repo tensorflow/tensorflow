@@ -350,6 +350,8 @@ cc_binary(
     deps = [
         "//tensorflow/c:c_api",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:client_session",
+        "//tensorflow/cc:scope",
         "//tensorflow/core:tensorflow",
     ],
 )
