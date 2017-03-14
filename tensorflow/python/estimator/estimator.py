@@ -100,12 +100,7 @@ class Estimator(object):
           * `config`: Optional configuration object. Will receive what is passed
                  to Estimator in `config` parameter, or the default `config`.
                  Allows updating things in your model_fn based on configuration
-                 such as `num_ps_replicas`.
-          * `model_dir`: Optional directory where model parameters, graph etc
-                 are saved. Will receive what is passed to Estimator in
-                 `model_dir` parameter, or the default `model_dir`. Allows
-                 updating things in your model_fn that expect model_dir, such as
-                 training hooks.
+                 such as `num_ps_replicas`, or `model_dir`.
 
         * Returns:
           `EstimatorSpec`
