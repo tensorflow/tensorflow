@@ -227,6 +227,11 @@ add_python_module("tensorflow/contrib/bayesflow/examples/reinforce_simple")
 add_python_module("tensorflow/contrib/bayesflow/python")
 add_python_module("tensorflow/contrib/bayesflow/python/kernel_tests")
 add_python_module("tensorflow/contrib/bayesflow/python/ops")
+add_python_module("tensorflow/contrib/cloud")
+add_python_module("tensorflow/contrib/cloud/kernels")
+add_python_module("tensorflow/contrib/cloud/ops")
+add_python_module("tensorflow/contrib/cloud/python")
+add_python_module("tensorflow/contrib/cloud/python/ops")
 add_python_module("tensorflow/contrib/compiler")
 add_python_module("tensorflow/contrib/copy_graph")
 add_python_module("tensorflow/contrib/copy_graph/python")
@@ -541,6 +546,9 @@ GENERATE_PYTHON_OP_LIB("contrib_memory_stats_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/memory_stats/ops/gen_memory_stats_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_tensor_forest_ops"
 	  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/tensor_forest/python/ops/gen_tensor_forest_ops.py)
+
+GENERATE_PYTHON_OP_LIB("contrib_bigquery_reader_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/cloud/python/ops/gen_bigquery_reader_ops.py)
 
 add_custom_target(tf_python_ops SOURCES ${tf_python_ops_generated_files} ${PYTHON_PROTO_GENFILES})
 add_dependencies(tf_python_ops tf_python_op_gen_main)

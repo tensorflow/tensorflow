@@ -26,13 +26,13 @@ import threading
 from six.moves import SimpleHTTPServer
 from six.moves import socketserver
 
+from tensorflow.contrib.cloud.python.ops import bigquery_reader_ops as cloud
 from tensorflow.core.example import example_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import parsing_ops
-from tensorflow.python.ops.cloud import cloud
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
@@ -176,6 +176,7 @@ class BigQueryReaderOpsTest(test.TestCase):
     self.server.start()
     logging.info("server address is %s:%s", self.server.httpd.server_address[0],
                  self.server.httpd.server_address[1])
+
     # An override to bypass the GCP auth token retrieval logic
     # in google_auth_provider.cc.
     os.environ["GOOGLE_AUTH_TOKEN_FOR_TESTING"] = "not-used"

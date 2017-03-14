@@ -538,16 +538,6 @@ cc_library(
 )
 
 cc_library(
-    name = "cloud_ops_op_lib",
-    srcs = ["ops/cloud_ops.cc"],
-    copts = tf_copts(),
-    linkstatic = 1,
-    visibility = ["//visibility:public"],
-    deps = [":framework"],
-    alwayslink = 1,
-)
-
-cc_library(
     name = "ops",
     visibility = ["//visibility:public"],
     deps = [
