@@ -411,22 +411,14 @@ class GcsWritableFile : public WritableFile {
           return UploadToSession(session_uri, already_uploaded);
         },
         initial_retry_delay_usec_);
-    switch (upload_status.code()) {
-      case errors::Code::OK:
-        return Status::OK();
-      case errors::Code::NOT_FOUND:
-        // GCS docs recommend retrying the whole upload. We're relying on the
-        // RetryingFileSystem to retry the Sync() call.
-        return errors::Unavailable("Could not upload gs://", bucket_, "/",
-                                   object_);
-      case errors::Code::UNAVAILABLE:
-        // Return ABORTED so that RetryingFileSystem doesn't retry again.
-        return errors::Aborted("Upload gs://", bucket_, "/", object_,
-                               " failed.");
-      default:
-        // Something unexpected happen, fail.
-        return upload_status;
+    if (upload_status.code() == errors::Code::NOT_FOUND) {
+      // GCS docs recommend retrying the whole upload. We're relying on the
+      // RetryingFileSystem to retry the Sync() call.
+      return errors::Unavailable(
+          strings::StrCat("Upload to gs://", bucket_, "/", object_,
+                          " failed, caused by: ", upload_status.ToString()));
     }
+    return upload_status;
   }
 
   Status CheckWritable() const {

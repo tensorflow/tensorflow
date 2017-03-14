@@ -332,18 +332,19 @@ TEST(GcsFileSystemTest, NewWritableFile_ResumeUploadAllAttemptsFail) {
                            "Put body: content1,content2\n",
                            "", errors::Unavailable("503"), 503)});
   for (int i = 0; i < 10; i++) {
-    requests.emplace_back(new FakeHttpRequest(
-        "Uri: https://custom/upload/location\n"
-        "Auth Token: fake_token\n"
-        "Header Content-Range: bytes */17\n"
-        "Put: yes\n",
-        "", errors::Unavailable("308"), nullptr, {{"Range", "0-10"}}, 308));
     requests.emplace_back(
         new FakeHttpRequest("Uri: https://custom/upload/location\n"
                             "Auth Token: fake_token\n"
-                            "Header Content-Range: bytes 11-16/17\n"
-                            "Put body: ntent2\n",
-                            "", errors::Unavailable("503"), 503));
+                            "Header Content-Range: bytes */17\n"
+                            "Put: yes\n",
+                            "", errors::Unavailable("important HTTP error 308"),
+                            nullptr, {{"Range", "0-10"}}, 308));
+    requests.emplace_back(new FakeHttpRequest(
+        "Uri: https://custom/upload/location\n"
+        "Auth Token: fake_token\n"
+        "Header Content-Range: bytes 11-16/17\n"
+        "Put body: ntent2\n",
+        "", errors::Unavailable("important HTTP error 503"), 503));
   }
   // These calls will be made in the Close() attempt from the destructor.
   // Letting the destructor succeed.
@@ -370,7 +371,12 @@ TEST(GcsFileSystemTest, NewWritableFile_ResumeUploadAllAttemptsFail) {
 
   TF_EXPECT_OK(file->Append("content1,"));
   TF_EXPECT_OK(file->Append("content2"));
-  EXPECT_EQ(errors::Code::ABORTED, file->Close().code());
+  const auto& status = file->Close();
+  EXPECT_EQ(errors::Code::ABORTED, status.code());
+  EXPECT_TRUE(StringPiece(status.error_message())
+                  .contains("All 10 retry attempts failed. The last failure: "
+                            "Unavailable: important HTTP error 503"))
+      << status;
 }
 
 TEST(GcsFileSystemTest, NewWritableFile_UploadReturns404) {
@@ -386,7 +392,8 @@ TEST(GcsFileSystemTest, NewWritableFile_UploadReturns404) {
                            "Auth Token: fake_token\n"
                            "Header Content-Range: bytes 0-16/17\n"
                            "Put body: content1,content2\n",
-                           "", errors::NotFound("404"), 404),
+                           "", errors::NotFound("important HTTP error 404"),
+                           404),
        // These calls will be made in the Close() attempt from the destructor.
        // Letting the destructor succeed.
        new FakeHttpRequest(
@@ -411,7 +418,14 @@ TEST(GcsFileSystemTest, NewWritableFile_UploadReturns404) {
 
   TF_EXPECT_OK(file->Append("content1,"));
   TF_EXPECT_OK(file->Append("content2"));
-  EXPECT_EQ(errors::Code::UNAVAILABLE, file->Close().code());
+  const auto& status = file->Close();
+  EXPECT_EQ(errors::Code::UNAVAILABLE, status.code());
+  EXPECT_TRUE(
+      StringPiece(status.error_message())
+          .contains(
+              "Upload to gs://bucket/path/writeable.txt failed, caused by: "
+              "Not found: important HTTP error 404"))
+      << status;
 }
 
 TEST(GcsFileSystemTest, NewWritableFile_NoObjectName) {
