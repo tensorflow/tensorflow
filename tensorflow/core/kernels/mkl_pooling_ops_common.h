@@ -53,16 +53,16 @@ struct MklPoolParameters {
   TensorFormat data_format;
 
   // Updates context->status if there is an invalid input.
-  void init(OpKernelContext* context, const std::vector<int32>& ksize,
+  void Init(OpKernelContext* context, const std::vector<int32>& ksize,
             const std::vector<int32>& stride, Padding padding,
             TensorFormat data_format, const TensorShape& tensor_in_shape);
-  void init(OpKernelContext* context, const std::vector<int32>& ksize,
+  void Init(OpKernelContext* context, const std::vector<int32>& ksize,
             const std::vector<int32>& stride, Padding padding,
             TensorFormat data_format, const MklShape* mkl_in_shape);
 
  private:
   // Common initialization for TensorFlow and MKL formats
-  void init(OpKernelContext* context, const std::vector<int32>& ksize,
+  void Init(OpKernelContext* context, const std::vector<int32>& ksize,
             const std::vector<int32>& stride, Padding padding,
             TensorFormat data_format);
 };
