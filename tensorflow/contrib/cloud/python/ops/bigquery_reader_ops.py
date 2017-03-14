@@ -18,20 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.cloud.python.ops import gen_bigquery_reader_ops
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import gen_cloud_ops
 from tensorflow.python.ops import io_ops
 
 
 class BigQueryReader(io_ops.ReaderBase):
   """A Reader that outputs keys and tf.Example values from a BigQuery table.
-
-  Note(1): This op is currently not linked into the binary. It will be linked
-  by default after more perf testing.
-
-  Note(2): This op currently returns example proto as its output. This is not
-  final and we are experimenting with adding support for returning csv. Support
-  for example proto may be deprecated after that.
 
   Example use:
     ```python
@@ -121,7 +114,7 @@ class BigQueryReader(io_ops.ReaderBase):
     self._num_partitions = num_partitions
     self._test_end_point = test_end_point
 
-    reader = gen_cloud_ops.big_query_reader(
+    reader = gen_bigquery_reader_ops.big_query_reader(
         name=name,
         project_id=self._project_id,
         dataset_id=self._dataset_id,
@@ -143,7 +136,7 @@ class BigQueryReader(io_ops.ReaderBase):
     Returns:
       `1-D` string `Tensor` of serialized `BigQueryTablePartition` messages.
     """
-    return gen_cloud_ops.generate_big_query_reader_partitions(
+    return gen_bigquery_reader_ops.generate_big_query_reader_partitions(
         name=name,
         project_id=self._project_id,
         dataset_id=self._dataset_id,

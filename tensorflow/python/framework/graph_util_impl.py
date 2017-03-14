@@ -307,10 +307,10 @@ def remove_training_nodes(input_graph):
     del new_node.input[:]
     for full_input_name in input_before_removal:
       input_name = re.sub(r"^\^", "", full_input_name)
-      if input_name in names_to_splice:
-        new_node.input.append(names_to_splice[input_name])
-      else:
-        new_node.input.append(full_input_name)
+      while input_name in names_to_splice:
+        full_input_name = names_to_splice[input_name]
+        input_name = re.sub(r"^\^", "", full_input_name)
+      new_node.input.append(full_input_name)
     nodes_after_splicing.append(new_node)
 
   output_graph = graph_pb2.GraphDef()

@@ -232,7 +232,8 @@ std::list<HloComputation*> HloModule::MakeComputationPostOrder() const {
   std::set<HloComputation*> nonroot_computations;
   for (auto& computation : computations_) {
     for (auto& instruction : computation->instructions()) {
-      for (auto called_computation : instruction->MakeCalledComputationsSet()) {
+      for (HloComputation* called_computation :
+           instruction->called_computations()) {
         nonroot_computations.insert(called_computation);
       }
     }

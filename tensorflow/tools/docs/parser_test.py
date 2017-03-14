@@ -136,7 +136,7 @@ class ParserTest(googletest.TestCase):
     self.assertEqual(TestClass.a_method, page_info.methods[0].obj)
 
     # Make sure that the signature is extracted properly and omits self.
-    self.assertEqual('(arg=\'default\')', page_info.methods[0].signature)
+    self.assertEqual(["arg='default'"], page_info.methods[0].signature)
 
     # Make sure the property is present
     self.assertIs(TestClass.a_property, page_info.properties[0].obj)
@@ -208,7 +208,7 @@ class ParserTest(googletest.TestCase):
         inspect.getdoc(test_function).split('\n')[0], page_info.doc.brief)
 
     # Make sure the extracted signature is good.
-    self.assertEqual('(unused_arg, unused_kwarg=\'default\')',
+    self.assertEqual(['unused_arg', "unused_kwarg='default'"],
                      page_info.signature)
 
     # Make sure this file is contained as the definition location.
@@ -239,7 +239,7 @@ class ParserTest(googletest.TestCase):
         page_info.doc.brief)
 
     # Make sure the extracted signature is good.
-    self.assertEqual('(unused_arg, *unused_args, **unused_kwargs)',
+    self.assertEqual(['unused_arg', '*unused_args', '**unused_kwargs'],
                      page_info.signature)
 
   def test_parse_md_docstring(self):

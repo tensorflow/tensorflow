@@ -18,8 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
 import operator
+import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
@@ -157,9 +157,10 @@ try:
   # @ operator supported since python 3.5.
   infix_matmul = operator.matmul
 except AttributeError:
+
   # For earlier versions of python, emulate regular behavior.
   # Useful to build and test for 3.5+ on earlier versions.
-  def infix_matmul(x, y):
+  def infix_matmul(x, y):  # pylint: disable=invalid-name
     try:
       r = type(x).__matmul__(x, y)
     except AttributeError:

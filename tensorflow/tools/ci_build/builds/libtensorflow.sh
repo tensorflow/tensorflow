@@ -72,6 +72,7 @@ function build_libtensorflow_tarball() {
     //tensorflow/java:libtensorflow-src.jar
 
   DIR=lib_package
+  rm -rf ${DIR}
   mkdir -p ${DIR}
   cp bazel-bin/tensorflow/tools/lib_package/libtensorflow.tar.gz ${DIR}/libtensorflow${TARBALL_SUFFIX}.tar.gz
   cp bazel-bin/tensorflow/tools/lib_package/libtensorflow_jni.tar.gz ${DIR}/libtensorflow_jni${TARBALL_SUFFIX}.tar.gz
