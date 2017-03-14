@@ -23,6 +23,8 @@ create a `LocalCLIDebugHook` and supply it as the `monitors` argument. For examp
 
 ```python
 # First, let your BUILD target depend on "//tensorflow/python/debug:debug_py"
+# (You don't need to worry about the BUILD dependency if you are using a pip
+#  install of open-source TensorFlow.)
 from tensorflow.python import debug as tf_debug
 
 hooks = [tf_debug.LocalCLIDebugHook()]
@@ -62,6 +64,8 @@ calling its constructor. For example:
 
 ```python
 # First, let your BUILD target depend on "//tensorflow/python/debug:debug_py"
+# (You don't need to worry about the BUILD dependency if you are using a pip
+#  install of open-source TensorFlow.)
 from tensorflow.python import debug as tf_debug
 
 hooks = [tf_debug.LocalCLIDebugHook()]
@@ -94,6 +98,8 @@ non-interactive `DumpingDebugHook`. For example:
 
 ```python
 # Let your BUILD target depend on "//tensorflow/python/debug:debug_py
+# (You don't need to worry about the BUILD dependency if you are using a pip
+#  install of open-source TensorFlow.)
 from tensorflow.python import debug as tf_debug
 
 hooks = [tf_debug.DumpingDebugHook("/shared/storage/location/tfdbg_dumps_1")]
