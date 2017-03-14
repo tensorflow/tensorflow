@@ -1098,8 +1098,7 @@ Status ValidateKernelRegistrations(const OpRegistryInterface& op_registry) {
     const OpRegistrationData* op_reg_data;
     const Status status = op_registry.LookUp(kernel_def.op(), &op_reg_data);
     if (!status.ok()) {
-      // TODO(josh11b): Make this a hard error.
-      LOG(ERROR) << "OpKernel ('" << ProtoShortDebugString(kernel_def)
+      LOG(FATAL) << "OpKernel ('" << ProtoShortDebugString(kernel_def)
                  << "') for unknown op: " << kernel_def.op();
       continue;
     }
