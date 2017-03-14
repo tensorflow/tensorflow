@@ -57,6 +57,7 @@ bool HexagonControlWrapper::Init(const RemoteFusedGraphExecuteInfo& info) {
   }
   graph_transferer_.SetSerializedGraphTransferInfo(
       info.serialized_executor_parameters());
+  execute_info_ = &info;
   return soc_interface_Init();
 }
 
@@ -274,7 +275,30 @@ bool HexagonControlWrapper::FillInputNode(const string& node_name,
 }
 
 bool HexagonControlWrapper::ReadOutputNode(
-    const string node_name, std::vector<ByteArray> *const outputs) {
+    const string& node_name, TensorAllocatorFunc tensor_allocator) {
+  CHECK_NE(execute_info_, nullptr);
+  TensorShape output_shape;
+  // TODO(satok): Switch shape corresponding to input shape
+  for (int i = 0; i < execute_info_->graph_output_node_name_size(); ++i) {
+    if (execute_info_->graph_output_node_name(i) == node_name) {
+      for (const TensorShapeProto::Dim& dim :
+           execute_info_->default_graph_output_tensor_shape(i).shape().dim()) {
+        output_shape.AddDim(dim.size());
+      }
+      break;
+    }
+  }
+  std::vector<IRemoteFusedGraphExecutor::ByteArray> outputs;
+  ReadOutputNode(node_name, &outputs);
+  Tensor* output = tensor_allocator(output_shape);
+  CHECK(output->TotalBytes() >= std::get<1>(outputs[0]));
+  // TODO(satok): Avoid specifying float
+  std::memcpy(output->flat<float>().data(), std::get<0>(outputs[0]),
+              std::get<1>(outputs[0]));
+}
+
+bool HexagonControlWrapper::ReadOutputNode(
+    const string& node_name, std::vector<ByteArray>* const outputs) {
   CHECK(outputs != nullptr);
   ByteArray output;
   soc_interface_ReadOutputNodeFloat(node_name.c_str(), &std::get<0>(output),
@@ -323,7 +347,11 @@ bool HexagonControlWrapper::FillInputNode(const string&, const ConstByteArray) {
 bool HexagonControlWrapper::FillInputNode(const string&, const Tensor&) {
   return false;
 }
-bool HexagonControlWrapper::ReadOutputNode(const string,
+bool HexagonControlWrapper::ReadOutputNode(
+    const string& node_name, TensorAllocatorFunc tensor_allocator) {
+  return false;
+}
+bool HexagonControlWrapper::ReadOutputNode(const string&,
                                            std::vector<ByteArray>* const) {
   return false;
 }

@@ -13,13 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/kernels/cloud/bigquery_table_accessor.h"
+#include "tensorflow/contrib/cloud/kernels/bigquery_table_accessor.h"
+#include "tensorflow/contrib/cloud/kernels/bigquery_table_accessor_test_data.h"
 #include "tensorflow/core/example/feature.pb.h"
-#include "tensorflow/core/kernels/cloud/bigquery_table_accessor_test_data.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/platform/cloud/http_request_fake.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -274,6 +273,88 @@ TEST_F(BigQueryTableAccessorTest, ReadOneRowWithNullsTest) {
   EXPECT_TRUE(accessor_->Done());
 }
 
+TEST_F(BigQueryTableAccessorTest, ReadOneRowTwoRecords) {
+  requests_.emplace_back(new FakeHttpRequest(
+      "Uri: https://www.googleapis.com/bigquery/v2/projects/test-project/"
+      "datasets/test-dataset/tables/test-table/\n"
+      "Auth Token: fake_token\n",
+      kSampleSchemaTwoRecords));
+  requests_.emplace_back(new FakeHttpRequest(
+      "Uri: https://www.googleapis.com/bigquery/v2/projects/test-project/"
+      "datasets/test-dataset/tables/test-table/data?maxResults=1&startIndex=2\n"
+      "Auth Token: fake_token\n",
+      kTestRowWithTwoRecords));
+  BigQueryTablePartition partition;
+  partition.set_start_index(2);
+  partition.set_end_index(2);
+  TF_EXPECT_OK(CreateTableAccessor(
+      kTestProject, kTestDataset, kTestTable, 1, 1,
+      {"rec_field2.bool_field", "rec_field1.float_field"}, partition));
+
+  int64 row_id;
+  Example example;
+  TF_EXPECT_OK(accessor_->ReadRow(&row_id, &example));
+
+  // Validate returned result.
+  Example expected_example;
+  ASSERT_TRUE(protobuf::TextFormat::ParseFromString(
+      kTestExampleProtoWithTwoRecords, &expected_example));
+  EXPECT_EQ(DeterministicSerialization(expected_example),
+            DeterministicSerialization(example));
+  EXPECT_EQ(row_id, 2);
+  EXPECT_TRUE(accessor_->Done());
+}
+
+TEST_F(BigQueryTableAccessorTest, NonExistentColumns) {
+  requests_.emplace_back(new FakeHttpRequest(
+      "Uri: https://www.googleapis.com/bigquery/v2/projects/test-project/"
+      "datasets/test-dataset/tables/test-table/\n"
+      "Auth Token: fake_token\n",
+      kSampleSchemaTwoRecords));
+  requests_.emplace_back(new FakeHttpRequest(
+      "Uri: https://www.googleapis.com/bigquery/v2/projects/test-project/"
+      "datasets/test-dataset/tables/test-table/data?maxResults=1&startIndex=2\n"
+      "Auth Token: fake_token\n",
+      kTestRowWithTwoRecords));
+  BigQueryTablePartition partition;
+  partition.set_start_index(2);
+  partition.set_end_index(2);
+  TF_EXPECT_OK(CreateTableAccessor(kTestProject, kTestDataset, kTestTable, 1, 1,
+                                   {"bool_field", "float_field"}, partition));
+  int64 row_id;
+  Example example;
+  TF_EXPECT_OK(accessor_->ReadRow(&row_id, &example));
+
+  // Validate returned result.
+  EXPECT_EQ(row_id, 2);
+  EXPECT_TRUE(accessor_->Done());
+}
+
+TEST_F(BigQueryTableAccessorTest, EmptyRow) {
+  requests_.emplace_back(new FakeHttpRequest(
+      "Uri: https://www.googleapis.com/bigquery/v2/projects/test-project/"
+      "datasets/test-dataset/tables/test-table/\n"
+      "Auth Token: fake_token\n",
+      kSampleSchemaTwoRecords));
+  requests_.emplace_back(new FakeHttpRequest(
+      "Uri: https://www.googleapis.com/bigquery/v2/projects/test-project/"
+      "datasets/test-dataset/tables/test-table/data?maxResults=1&startIndex=2\n"
+      "Auth Token: fake_token\n",
+      kTestEmptyRow));
+  BigQueryTablePartition partition;
+  partition.set_start_index(2);
+  partition.set_end_index(2);
+  TF_EXPECT_OK(CreateTableAccessor(kTestProject, kTestDataset, kTestTable, 1, 1,
+                                   {}, partition));
+  int64 row_id;
+  Example example;
+  TF_EXPECT_OK(accessor_->ReadRow(&row_id, &example));
+
+  // Validate returned result.
+  EXPECT_EQ(row_id, 2);
+  EXPECT_TRUE(accessor_->Done());
+}
+
 TEST_F(BigQueryTableAccessorTest, BrokenRowTest) {
   requests_.emplace_back(new FakeHttpRequest(
       "Uri: https://www.googleapis.com/bigquery/v2/projects/test-project/"
@@ -340,6 +421,7 @@ TEST_F(BigQueryTableAccessorTest, MultiplePagesTest) {
   TF_EXPECT_OK(accessor_->ReadRow(&row_id, &example));
   EXPECT_EQ(3, row_id);
   EXPECT_TRUE(accessor_->Done());
+  
   Example expected_example;
   ASSERT_TRUE(protobuf::TextFormat::ParseFromString(kTestExampleProtoWithNulls,
                                                     &expected_example));

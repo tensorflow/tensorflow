@@ -96,6 +96,17 @@ cuda_py_test(
 )
 
 tf_py_test(
+    name = "bincount_op_test",
+    size = "small",
+    srcs = ["bincount_op_test.py"],
+    additional_deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+    ],
+)
+
+tf_py_test(
     name = "candidate_sampler_ops_test",
     size = "small",
     srcs = ["candidate_sampler_ops_test.py"],

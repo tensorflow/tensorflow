@@ -292,11 +292,24 @@ class ListScheduler {
   std::vector<const HloInstruction*> CreateSchedule() {
     std::vector<const HloInstruction*> schedule;
 
-    // Populate the ready list with instructions which have no operands.
+    // Populate the ready list with instructions which have no operands or
+    // control predecessors.
+    std::unordered_map<const HloInstruction*, int64> unscheduled_pred_count;
     std::list<const HloInstruction*> ready_list;
     for (auto& instruction : computation_.instructions()) {
-      if (instruction->operand_count() == 0 &&
-          instruction->control_predecessors().empty()) {
+      // TODO(b/34466113): Replace this and above with successors() or
+      // predecessors() when these methods are added to HloInstruction.
+      for (const HloInstruction* user : instruction->users()) {
+        unscheduled_pred_count[user]++;
+      }
+      for (const HloInstruction* succ : instruction->control_successors()) {
+        unscheduled_pred_count[succ]++;
+      }
+    }
+    for (auto& instruction : computation_.instructions()) {
+      // Instruction with no operands or control predecessors will
+      // not be in the map.
+      if (unscheduled_pred_count.count(instruction.get()) == 0) {
         ready_list.push_back(instruction.get());
       }
     }
@@ -328,28 +341,21 @@ class ListScheduler {
       }
 
       // Add new instructions to ready list.
-      // TODO(b/34466113): Replace this with successors()/predecessors() when
-      // predecessor/successor methods are added to HloInstruction. This also
-      // will resolve the nondeterminism of using a set here assuming
-      // predecessors/successors is a vector.
-      std::set<HloInstruction*> successors = best->users();
-      successors.insert(best->control_successors().begin(),
-                        best->control_successors().end());
-      for (auto* successor : successors) {
-        std::set<HloInstruction*> predecessors(successor->operands().begin(),
-                                               successor->operands().end());
-        predecessors.insert(successor->control_predecessors().begin(),
-                            successor->control_predecessors().end());
-        bool is_ready = true;
-        for (auto* predecessor : predecessors) {
-          if (scheduled_instructions_.count(predecessor) == 0) {
-            is_ready = false;
-            break;
-          }
+      auto update_pred_count = [&unscheduled_pred_count,
+                                &ready_list](HloInstruction* inst) {
+        int64 pred_count = --unscheduled_pred_count.at(inst);
+        CHECK_GE(pred_count, 0);
+        if (pred_count == 0) {
+          ready_list.push_back(inst);
         }
-        if (is_ready) {
-          ready_list.push_back(successor);
-        }
+      };
+      // TODO(b/34466113): Replace this and above with successors() or
+      // predecessors() when these methods are added to HloInstruction.
+      for (HloInstruction* user : best->users()) {
+        update_pred_count(user);
+      }
+      for (HloInstruction* succ : best->control_successors()) {
+        update_pred_count(succ);
       }
     }
     CHECK_EQ(schedule.size(), computation_.instructions().size());

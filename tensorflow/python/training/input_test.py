@@ -996,10 +996,10 @@ class BatchJoinTest(test_lib.TestCase):
       for thread in threads:
         thread.join()
 
-  def testTwoThreads(self):
+  def DISABLED_testTwoThreads(self):
     self._testTwoThreadsHelper(use_dict=False)
 
-  def testTwoThreadsDict(self):
+  def DISABLED_testTwoThreadsDict(self):
     self._testTwoThreadsHelper(use_dict=True)
 
   def testMismatchedDictKeys(self):

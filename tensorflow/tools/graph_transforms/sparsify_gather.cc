@@ -146,7 +146,7 @@ Status SparsifyGather(const GraphDef& input_graph_def,
           const NodeDef& const_node = match.inputs[0].inputs[0].node;
 
           DataType data_type;
-          GetNodeAttr(const_node, "dtype", &data_type);
+          TF_RETURN_IF_ERROR(GetNodeAttr(const_node, "dtype", &data_type));
           if (data_type != DT_FLOAT) {
             return tensorflow::errors::FailedPrecondition(
                 "Transform only applicable to subgraph with 'Const' of dtype "

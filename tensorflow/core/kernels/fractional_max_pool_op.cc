@@ -256,9 +256,9 @@ class FractionalMaxPoolGradOp : public OpKernel {
     // Step 1
     // ---------
     Tensor tensor_out_dup;
-    OP_REQUIRES_OK(context,
-                   context->allocate_temp(DataTypeToEnum<T>::v(),
-                                          tensor_out.shape(), &tensor_out_dup));
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_temp(
+                                {1}, DataTypeToEnum<T>::v(), tensor_out.shape(),
+                                &tensor_out_dup));
     Tensor tensor_out_arg_max;
     OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<int64>::v(),
                                                    tensor_out.shape(),

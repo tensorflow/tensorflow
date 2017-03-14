@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 
 namespace tensorflow {
@@ -22,6 +23,7 @@ REGISTER_OP("Bucketize")
     .Output("output: int32")
     .Attr("T: {int32, int64, float, double}")
     .Attr("boundaries: list(float)")
+    .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Bucketizes 'input' based on 'boundaries'.
 

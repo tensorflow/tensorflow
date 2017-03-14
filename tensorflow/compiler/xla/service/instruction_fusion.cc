@@ -106,8 +106,7 @@ bool IsExpensive(const HloInstruction& instruction) {
 }
 
 bool FusionWouldDuplicate(HloInstruction* producer, HloInstruction* consumer) {
-  return !(producer->users().size() == 1 &&
-           producer->users().count(consumer) == 1);
+  return !(producer->users().size() == 1 && consumer->IsUserOf(producer));
 }
 
 StatusOr<bool> InstructionFusion::Run(HloModule* module) {

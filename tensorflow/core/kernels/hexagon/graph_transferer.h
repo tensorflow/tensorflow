@@ -45,7 +45,7 @@ class GraphTransferer {
   static constexpr int MAX_SUPPORTED_RANK = 4;
   // TODO(satok): Remove. Use proto definition instead.
   static constexpr int SHAPE_ARRAY_SIZE = MAX_SUPPORTED_RANK;
-  using OutputTensorMap = RemoteFusedGraphExecuteUtils::TensorShapeMap;
+  using TensorShapeMap = RemoteFusedGraphExecuteUtils::TensorShapeMap;
 
   GraphTransferer() = default;
 
@@ -58,7 +58,7 @@ class GraphTransferer {
       const std::vector<std::pair<string, Tensor>>& input_node_info_list,
       const std::vector<string>& output_node_names,
       const bool shape_inference_for_unkown_shape,
-      const OutputTensorMap& output_tensor_map);
+      const TensorShapeMap& output_tensor_map);
 
   // Load graph structure into GraphTransferer from protobuf file
   // TODO(satok): Pass a pair of TensorShape and DataType instead of
@@ -107,12 +107,12 @@ class GraphTransferer {
   Status RegisterNode(
       const IGraphTransferOpsDefinitions& ops_definitions,
       const ShapeRefiner& shape_refiner,
-      const OutputTensorMap& output_tensor_map, const Node& node,
+      const TensorShapeMap& output_tensor_map, const Node& node,
       const std::vector<std::pair<string, Tensor>>& input_node_info_list,
       const std::vector<string>& output_node_names);
 
   void RegisterConstantNode(const ShapeRefiner& shape_refiner, const Node& node,
-                            const OutputTensorMap& output_tensor_map);
+                            const TensorShapeMap& output_tensor_map);
 
   int RegisterConstantShape(const std::vector<int>& shape);
 
@@ -122,27 +122,27 @@ class GraphTransferer {
   // TODO(satok): Remove this method once generic reshape op is implemented in
   // SOC
   bool IsNodeFlattenReshape(const Node& node,
-                            const OutputTensorMap& output_tensor_map,
+                            const TensorShapeMap& output_tensor_map,
                             const ShapeRefiner& shape_refiner);
 
   void RegisterNodeWithPaddingAndStrides(
       const IGraphTransferOpsDefinitions& ops_definitions,
       const ShapeRefiner& shape_refiner,
-      const OutputTensorMap& output_tensor_map, const Node& node);
+      const TensorShapeMap& output_tensor_map, const Node& node);
 
   void RegisterInputNode(const IGraphTransferOpsDefinitions& ops_definitions,
                          const ShapeRefiner& shape_refiner,
-                         const OutputTensorMap& output_tensor_map,
+                         const TensorShapeMap& output_tensor_map,
                          const Node& node);
 
   void RegisterFlattenNode(const IGraphTransferOpsDefinitions& ops_definitions,
                            const ShapeRefiner& shape_refiner,
-                           const OutputTensorMap& output_tensor_map,
+                           const TensorShapeMap& output_tensor_map,
                            const Node& node);
 
   void RegisterGenericNode(const IGraphTransferOpsDefinitions& ops_definitions,
                            const ShapeRefiner& shape_refiner,
-                           const OutputTensorMap& output_tensor_map,
+                           const TensorShapeMap& output_tensor_map,
                            const Node& node);
 
   Status RegisterNodeIfAllInputsAreCached(
@@ -151,7 +151,7 @@ class GraphTransferer {
       const bool only_register_const_node,
       const std::vector<std::pair<string, Tensor>>& input_node_info_list,
       const std::vector<string>& output_node_names,
-      const OutputTensorMap& output_tensor_map);
+      const TensorShapeMap& output_tensor_map);
 
   void AppendNodeParams(const string& name, const int id, const string& type,
                         const int type_id, const int padding,
@@ -163,7 +163,7 @@ class GraphTransferer {
                              const std::vector<int>& extra_inputs);
 
   void AppendNodeOutputParams(const ShapeRefiner& shape_refiner,
-                              const OutputTensorMap& output_tensor_map,
+                              const TensorShapeMap& output_tensor_map,
                               const int id, const Node& node);
 
   static std::array<int64, SHAPE_ARRAY_SIZE> BuildShapeArray(
@@ -172,7 +172,7 @@ class GraphTransferer {
 
   void AppendNodeParamsWithIoParams(
       const ShapeRefiner& shape_refiner,
-      const OutputTensorMap& output_tensor_map, const Node& node,
+      const TensorShapeMap& output_tensor_map, const Node& node,
       const string& name, const int id, const string& type, const int type_id,
       const int padding, const int inputs_size,
       const std::vector<int>& extra_inputs, const int outputs_size,
@@ -183,7 +183,7 @@ class GraphTransferer {
 
   static string ToPaddingDebugString(int padding);
 
-  static void CheckShape(const OutputTensorMap& output_tensor_map,
+  static void CheckShape(const TensorShapeMap& output_tensor_map,
                          const string& node_name,
                          const std::array<int64, SHAPE_ARRAY_SIZE>& actual);
 
@@ -195,6 +195,14 @@ class GraphTransferer {
   // Build tensor from proto
   static Status MakeTensorFromProto(const TensorProto& tensor_proto,
                                     Tensor* tensor);
+
+  static bool FindShapeType(const TensorShapeMap& tensor_shape_map,
+                            const string& name, const int port,
+                            const DataType** dt, const TensorShape** shape);
+
+  static bool FindShapeType(const TensorShapeMap& tensor_shape_map,
+                            const string& name, const DataType** dt,
+                            const TensorShape** shape);
 
   void ClearCache();
 

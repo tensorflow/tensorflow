@@ -135,29 +135,41 @@ class FixedLenFeature(collections.namedtuple(
     shape: Shape of input data.
     dtype: Data type of input.
     default_value: Value to be used if an example is missing this feature. It
-        must be compatible with `dtype`.
+        must be compatible with `dtype` and of the specified `shape`.
   """
   pass
 FixedLenFeature.__new__.__defaults__ = (None,)
 
 
-# NOTE: If we ever support a default_value for sequence dense features, we can
-# remove this class and use FixedLenFeature in its place.
 class FixedLenSequenceFeature(collections.namedtuple(
-    "FixedLenSequenceFeature", ["shape", "dtype", "allow_missing"])):
-  """Configuration for a dense input feature in a sequence item.
+    "FixedLenSequenceFeature",
+    ["shape", "dtype", "allow_missing", "default_value"])):
+  """Configuration for parsing a variable-length input feature into a `Tensor`.
+
+  The resulting `Tensor` of parsing a single `SequenceExample` or `Example` has
+  a static `shape` of `[None] + shape` and the specified `dtype`.
+  The resulting `Tensor` of parsing a `batch_size` many `Example`s has
+  a static `shape` of `[batch_size, None] + shape` and the specified `dtype`.
+  The entries in the `batch` from different `Examples` will be padded with
+  `default_value` to the maximum length present in the `batch`.
 
   To treat a sparse input as dense, provide `allow_missing=True`; otherwise,
   the parse functions will fail on any examples missing this feature.
 
   Fields:
-    shape: Shape of input data.
+    shape: Shape of input data for dimension 2 and higher. First dimension is
+      of variable length `None`.
     dtype: Data type of input.
     allow_missing: Whether to allow this feature to be missing from a feature
-      list item.
+      list item. Is available only for parsing `SequenceExample` not for
+      parsing `Examples`.
+    default_value: Scalar value to be used to pad multiple `Example`s to their
+      maximum length. Irrelevant for parsing a single `Example` or
+      `SequenceExample`. Defaults to "" for dtype string and 0 otherwise
+      (optional).
   """
   pass
-FixedLenSequenceFeature.__new__.__defaults__ = (False,)
+FixedLenSequenceFeature.__new__.__defaults__ = (False, None)
 
 
 def _features_to_raw_params(features, types):
@@ -236,6 +248,15 @@ def _features_to_raw_params(features, types):
           raise ValueError("Missing type for feature %s." % key)
         if feature.shape is None:
           raise ValueError("Missing shape for feature %s." % key)
+        feature_tensor_shape = tensor_shape.as_shape(feature.shape)
+        if (feature.shape and feature_tensor_shape.ndims and
+            feature_tensor_shape.dims[0].value is None):
+          raise ValueError("First dimension of shape for feature %s unknown. "
+                           "Consider using FixedLenSequenceFeature." % key)
+        if (feature.shape is not None and
+            not feature_tensor_shape.is_fully_defined()):
+          raise ValueError("All dimensions of shape for feature %s need to be "
+                           "known but received %s." % (key, str(feature.shape)))
         dense_keys.append(key)
         dense_shapes.append(feature.shape)
         dense_types.append(feature.dtype)
@@ -253,6 +274,8 @@ def _features_to_raw_params(features, types):
         dense_types.append(feature.dtype)
         if feature.allow_missing:
           dense_defaults[key] = None
+        if feature.default_value is not None:
+          dense_defaults[key] = feature.default_value
       else:
         raise ValueError("Invalid feature %s:%s." % (key, feature))
   return (
@@ -346,9 +369,15 @@ def parse_example(serialized, features, name=None, example_names=None):
   value, we will fail if that `Feature` is missing from any example in
   `serialized`.
 
+  Each `FixedLenSequenceFeature` `df` maps to a `Tensor` of the specified type
+  (or `tf.float32` if not specified) and shape
+  `(serialized.size(), None) + df.shape`.
+  All examples in `serialized` will be padded with `default_value` along the
+  second dimension.
+
   Examples:
 
-  For example, if one expects a `tf.float32` VarlenFeature `ft` and three
+  For example, if one expects a `tf.float32` `VarLenFeature` `ft` and three
   serialized `Example`s are provided:
 
   ```
@@ -368,6 +397,13 @@ def parse_example(serialized, features, name=None, example_names=None):
   {"ft": SparseTensor(indices=[[0, 0], [0, 1], [2, 0]],
                       values=[1.0, 2.0, 3.0],
                       dense_shape=(3, 2)) }
+  ```
+
+  If instead a `FixedLenSequenceFeature` with `default_value = -1.0` and
+  `shape=[]` is used then the output will look like:
+
+  ```
+  {"ft": [[1.0, 2.0], [3.0, -1.0]]}
   ```
 
   Given two `Example` input protos in `serialized`:
@@ -505,9 +541,23 @@ def parse_example(serialized, features, name=None, example_names=None):
   """
   if not features:
     raise ValueError("Missing: features was %s." % features)
+  if features:
+    modified_features = dict(features)  # Create a copy to modify
+    for key, feature in features.items():
+      if isinstance(feature, FixedLenSequenceFeature):
+        if not feature.allow_missing:
+          raise ValueError("Unsupported: FixedLenSequenceFeature requires "
+                           "allow_missing to be True.")
+        modified_features[key] = FixedLenSequenceFeature(
+            [None] + list(feature.shape),
+            feature.dtype,
+            feature.allow_missing,
+            feature.default_value)
+    features = modified_features
   (sparse_keys, sparse_types, dense_keys, dense_types, dense_defaults,
    dense_shapes) = _features_to_raw_params(
-       features, [VarLenFeature, SparseFeature, FixedLenFeature])
+       features,
+       [VarLenFeature, SparseFeature, FixedLenFeature, FixedLenSequenceFeature])
   outputs = _parse_example_raw(
       serialized, example_names, sparse_keys, sparse_types, dense_keys,
       dense_types, dense_defaults, dense_shapes, name)

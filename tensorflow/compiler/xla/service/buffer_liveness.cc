@@ -244,7 +244,7 @@ bool BufferLiveness::live_range_strictly_before(const LogicalBuffer& a,
   // *) Is a loop fusion instruction (with DynamicUpdateSlice fused root) where
   //    the singleton use of 'a' at 'a.index' is the fused root at operand 0.
   for (const BufferAlias& alias : points_to_analysis_->GetBufferAliases(a)) {
-    if (alias.instruction()->users().count(b.instruction()) > 0 &&
+    if (b.instruction()->IsUserOf(alias.instruction()) &&
         !CanShareOperandBufferWithUser(alias.instruction(), alias.index(),
                                        b.instruction(), b.index(),
                                        points_to_analysis())) {

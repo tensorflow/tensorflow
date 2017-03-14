@@ -28,6 +28,7 @@ import re
 import codegen
 import six
 
+from google.protobuf.message import Message as ProtoMessage
 
 # A regular expression capturing a python indentifier.
 IDENTIFIER_RE = '[a-zA-Z_][a-zA-Z0-9_]*'
@@ -525,10 +526,10 @@ def _remove_first_line_indent(string):
 
 
 def _generate_signature(func, reverse_index):
-  """Given a function, returns a string representing its args.
+  """Given a function, returns a list of strings representing its args.
 
-  This function produces a string representing the arguments to a python
-  function, including surrounding parentheses. It uses inspect.getargspec, which
+  This function produces a list of strings representing the arguments to a
+  python function. It uses inspect.getargspec, which
   does not generalize well to Python 3.x, which is more flexible in how *args
   and **kwargs are handled. This is not a problem in TF, since we have to remain
   compatible to Python 2.7 anyway.
@@ -544,7 +545,8 @@ def _generate_signature(func, reverse_index):
     reverse_index: A map from object ids to canonical full names to use.
 
   Returns:
-    A string representing the signature of `func` as python code.
+    A list of strings representing the argument signature of `func` as python
+    code.
   """
 
   # This produces poor signatures for decorated functions.
@@ -567,15 +569,20 @@ def _generate_signature(func, reverse_index):
 
   # Add all args with defaults.
   if argspec.defaults:
-    source = _remove_first_line_indent(inspect.getsource(func))
-    func_ast = ast.parse(source)
-    ast_defaults = func_ast.body[0].args.defaults
+    try:
+      source = _remove_first_line_indent(inspect.getsource(func))
+      func_ast = ast.parse(source)
+      ast_defaults = func_ast.body[0].args.defaults
+    except IOError:  # If this is a builtin, getsource fails with IOError
+      # If we cannot get the source, assume the AST would be equal to the repr
+      # of the defaults.
+      ast_defaults = [None] * len(argspec.defaults)
 
     for arg, default, ast_default in zip(
         argspec.args[first_arg_with_default:], argspec.defaults, ast_defaults):
       if id(default) in reverse_index:
         default_text = reverse_index[id(default)]
-      else:
+      elif ast_default is not None:
         default_text = codegen.to_source(ast_default)
         if default_text != repr(default):
           # This may be an internal name. If so, handle the ones we know about.
@@ -601,6 +608,8 @@ def _generate_signature(func, reverse_index):
                     (default_text, default))
             else:
               default_text = lookup_text
+      else:
+        default_text = repr(default)
 
       args_list.append('%s=%s' % (arg, default_text))
 
@@ -610,7 +619,7 @@ def _generate_signature(func, reverse_index):
   if argspec.keywords:
     args_list.append('**' + argspec.keywords)
 
-  return '(%s)' % ', '.join(args_list)
+  return args_list
 
 
 def _get_guides_markdown(duplicate_names, guide_index, relative_path):
@@ -623,6 +632,13 @@ def _get_guides_markdown(duplicate_names, guide_index, relative_path):
                       for guide_ref in all_guides]))
   return 'See the guide%s: %s\n\n' % (
       's' if len(links) > 1 else '', ', '.join(links))
+
+
+def _get_defining_class(py_class, name):
+  for cls in inspect.getmro(py_class):
+    if name in cls.__dict__:
+      return cls
+  return None
 
 
 class _LinkInfo(
@@ -676,6 +692,10 @@ class _FunctionPageInfo(object):
   @property
   def full_name(self):
     return self._full_name
+
+  @property
+  def short_name(self):
+    return self._full_name.split('.')[-1]
 
   @property
   def defined_in(self):
@@ -754,6 +774,10 @@ class _ClassPageInfo(object):
     return self._full_name
 
   @property
+  def short_name(self):
+    return self._full_name.split('.')[-1]
+
+  @property
   def defined_in(self):
     return self._defined_in
 
@@ -799,7 +823,6 @@ class _ClassPageInfo(object):
 
   def _add_method(self, short_name, full_name, obj, doc, signature):
     method_info = _MethodInfo(short_name, full_name, obj, doc, signature)
-
     self._methods.append(method_info)
 
   @property
@@ -819,12 +842,14 @@ class _ClassPageInfo(object):
     other_member_info = _OtherMemberInfo(short_name, full_name, obj, doc)
     self._other_members.append(other_member_info)
 
-  def collect_docs_for_class(self, reference_resolver, tree, reverse_index):
+  def collect_docs_for_class(self, py_class,
+                             reference_resolver, tree, reverse_index):
     """Collect information necessary specifically for a class's doc page.
 
     Mainly, this is details about information about the class's members.
 
     Args:
+      py_class: The class object to collect docs for.
       reference_resolver: An instance of ReferenceResolver.
       tree: A map from full names to the names of all documentable child
         objects.
@@ -835,8 +860,25 @@ class _ClassPageInfo(object):
         path='.', start=os.path.dirname(doc_path) or '.')
 
     for short_name in tree[self.full_name]:
+      # Remove builtin members that we never want to document.
+      if short_name in ['__class__', '__base__', '__weakref__', '__doc__',
+                        '__module__', '__dict__', '__abstractmethods__',
+                        '__slots__', '__getnewargs__']:
+        continue
+
       child_name = '.'.join([self.full_name, short_name])
       child = reference_resolver.py_name_to_object(child_name)
+
+      # Don't document anything that is defined in object or by protobuf.
+      defining_class = _get_defining_class(py_class, short_name)
+      if (defining_class is object or
+          defining_class is type or defining_class is tuple or
+          defining_class is BaseException or defining_class is Exception or
+          # The following condition excludes most protobuf-defined symbols.
+          defining_class and defining_class.__name__ in ['CMessage', 'Message',
+                                                         'MessageMeta']):
+        continue
+      # TODO(markdaoust): Add a note in child docs showing the defining class.
 
       child_doc = _parse_md_docstring(child, relative_path, reference_resolver)
 
@@ -844,16 +886,49 @@ class _ClassPageInfo(object):
         self._add_property(short_name, child_name, child, child_doc)
 
       elif inspect.isclass(child):
+        if defining_class is None:
+          continue
         url = reference_resolver.reference_to_url(
             child_name, relative_path)
         self._add_class(short_name, child_name, child, child_doc, url)
 
-      elif inspect.ismethod(child) or inspect.isfunction(child):
-        child_signature = _generate_signature(child, reverse_index)
+      elif (inspect.ismethod(child) or inspect.isfunction(child) or
+            inspect.isroutine(child)):
+        if defining_class is None:
+          continue
+
+        # Omit methods defined by namedtuple.
+        original_method = defining_class.__dict__[short_name]
+        if (hasattr(original_method, '__module__') and
+            (original_method.__module__ or '').startswith('namedtuple')):
+          continue
+
+        # Some methods are often overridden without documentation. Because it's
+        # obvious what they do, don't include them in the docs if there's no
+        # docstring.
+        if not child_doc.brief.strip() and short_name in [
+            '__str__', '__repr__', '__hash__', '__del__', '__copy__']:
+          print('Skipping %s, defined in %s, no docstring.' % (child_name,
+                                                               defining_class))
+          continue
+
+        try:
+          child_signature = _generate_signature(child, reverse_index)
+        except TypeError:
+          # If this is a (dynamically created) slot wrapper, inspect will
+          # raise typeerror when trying to get to the code. Ignore such
+          # functions.
+          continue
+
         self._add_method(short_name, child_name, child, child_doc,
                          child_signature)
-
       else:
+        # Exclude members defined by protobuf that are useless
+        if issubclass(py_class, ProtoMessage):
+          if (short_name.endswith('_FIELD_NUMBER') or
+              short_name in ['__slots__', 'DESCRIPTOR']):
+            continue
+
         # TODO(wicke): We may want to also remember the object itself.
         self._add_other_member(short_name, child_name, child, child_doc)
 
@@ -882,6 +957,10 @@ class _ModulePageInfo(object):
   @property
   def full_name(self):
     return self._full_name
+
+  @property
+  def short_name(self):
+    return self._full_name.split('.')[-1]
 
   @property
   def defined_in(self):
@@ -943,6 +1022,11 @@ class _ModulePageInfo(object):
 
     member_names = tree.get(self.full_name, [])
     for name in member_names:
+
+      if name in ['__builtins__', '__doc__', '__file__', '__name__', '__path__',
+                  '__package__']:
+        continue
+
       member_full_name = self.full_name + '.' + name if self.full_name else name
       member = reference_resolver.py_name_to_object(member_full_name)
 
@@ -1033,7 +1117,8 @@ def docs_for_object(full_name, py_object, parser_config):
 
   elif inspect.isclass(py_object):
     page_info = _ClassPageInfo(master_name)
-    page_info.collect_docs_for_class(parser_config.reference_resolver,
+    page_info.collect_docs_for_class(py_object,
+                                     parser_config.reference_resolver,
                                      parser_config.tree,
                                      parser_config.reverse_index)
 
@@ -1065,7 +1150,7 @@ def docs_for_object(full_name, py_object, parser_config):
 class _PythonBuiltin(object):
   """This class indicated that the object in question is a python builtin.
 
-  This can be used for the `defined_in` slot of the `PageInfo` obejcts.
+  This can be used for the `defined_in` slot of the `PageInfo` objects.
   """
 
   def is_builtin(self):
@@ -1107,12 +1192,38 @@ class _PythonFile(object):
         code_prefix=self.code_url_prefix)
 
 
+class _ProtoFile(object):
+  """This class indicates that the object is defined in a .proto file.
+
+  This can be used for the `defined_in` slot of the `PageInfo` objects.
+  """
+
+  def __init__(self, path, parser_config):
+    self.path = path
+    self.path_prefix = parser_config.defined_in_prefix
+    self.code_url_prefix = parser_config.code_url_prefix
+
+  def is_builtin(self):
+    return False
+
+  def is_python_file(self):
+    return False
+
+  def is_generated_file(self):
+    return False
+
+  def __str__(self):
+    return 'Defined in [`{prefix}{path}`]({code_prefix}{path}).\n\n'.format(
+        path=self.path, prefix=self.path_prefix,
+        code_prefix=self.code_url_prefix)
+
+
 class _GeneratedFile(object):
   """This class indicates that the object is defined in a generated python file.
 
   Generated files should not be linked to directly.
 
-  This can be used for the `defined_in` slot of the `PageInfo` obejcts.
+  This can be used for the `defined_in` slot of the `PageInfo` objects.
   """
 
   def __init__(self, path, parser_config):
@@ -1166,11 +1277,14 @@ def _get_defined_in(py_object, parser_config):
 
   if re.match(r'.*/gen_[^/]*\.py$', path):
     return _GeneratedFile(path, parser_config)
-
+  elif re.match(r'.*_pb2\.py$', path):
+    # The _pb2.py files all appear right next to their defining .proto file.
+    return _ProtoFile(path[:-7] + '.proto', parser_config)
   else:
     return _PythonFile(path, parser_config)
 
 
+# TODO(markdaoust): This should just parse, pretty_docs should generate the md.
 def generate_global_index(library_name, index, reference_resolver):
   """Given a dict of full names to python objects, generate an index page.
 
