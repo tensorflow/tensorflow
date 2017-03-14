@@ -2,7 +2,7 @@
 # The functions in this file might be referred by tensorflow.bzl. They have to
 # be separate to avoid cyclic references.
 
-WITH_XLA_SUPPORT = False
+WITH_XLA_SUPPORT = True
 
 def tf_cuda_tests_tags():
   return ["local"]
