@@ -1029,12 +1029,13 @@ def index_table_from_tensor(mapping,
           name="table_init")
       table = HashTable(
           init, default_value, shared_name=shared_name, name=hash_table_scope)
-    table = IdTableWithHashBuckets(
-        table,
-        num_oov_buckets=num_oov_buckets,
-        hasher_spec=hasher_spec,
-        name=feat_to_id_scope,
-        key_dtype=dtype)
+    if num_oov_buckets:
+      table = IdTableWithHashBuckets(
+          table,
+          num_oov_buckets=num_oov_buckets,
+          hasher_spec=hasher_spec,
+          name=feat_to_id_scope,
+          key_dtype=dtype)
 
     return table
 

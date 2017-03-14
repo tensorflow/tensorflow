@@ -136,19 +136,6 @@ def _embeddings_from_arguments(column,
       max_norm=args.max_norm)
 
 
-def _convert_to_tensors(values):
-  """Modifies `values`, if necessary, to convert all to `Tensor` objects.
-
-  Args:
-    values: Dict mapping a key to tensor-like values.
-  """
-  for k in sorted(
-      # pylint: disable=protected-access
-      values.keys(),
-      key=lambda k: k.key if isinstance(k, fc._FeatureColumn) else k):
-    values[k] = sparse_tensor_py.convert_to_tensor_or_sparse_tensor(values[k])
-
-
 def _input_from_feature_columns(columns_to_tensors,
                                 feature_columns,
                                 weight_collections,
@@ -161,7 +148,6 @@ def _input_from_feature_columns(columns_to_tensors,
   with variable_scope.variable_scope(scope,
                                      default_name=default_name,
                                      values=columns_to_tensors.values()):
-    _convert_to_tensors(columns_to_tensors)
     output_tensors = []
     transformer = _Transformer(columns_to_tensors)
     if weight_collections:
@@ -240,8 +226,7 @@ def input_from_feature_columns(columns_to_tensors,
     columns_to_tensors: A mapping from feature column to tensors. 'string' key
       means a base feature (not-transformed). It can have FeatureColumn as a
       key too. That means that FeatureColumn is already transformed by input
-      pipeline. For example, `inflow` may have handled transformations. This
-      dictionary will be modified by this function.
+      pipeline. For example, `inflow` may have handled transformations.
     feature_columns: A set containing all the feature columns. All items in the
       set should be instances of classes derived by FeatureColumn.
     weight_collections: List of graph collections to which weights are added.
@@ -250,7 +235,7 @@ def input_from_feature_columns(columns_to_tensors,
     scope: Optional scope for variable_scope.
 
   Returns:
-    `Tensor` which can be consumed by hidden layers in the neural network.
+    A Tensor which can be consumed by hidden layers in the neural network.
 
   Raises:
     ValueError: if FeatureColumn cannot be consumed by a neural network.
@@ -283,8 +268,7 @@ def sequence_input_from_feature_columns(columns_to_tensors,
     columns_to_tensors: A mapping from feature column to tensors. 'string' key
       means a base feature (not-transformed). It can have FeatureColumn as a
       key too. That means that FeatureColumn is already transformed by input
-      pipeline. For example, `inflow` may have handled transformations. This
-      dictionary will be modified by this function.
+      pipeline. For example, `inflow` may have handled transformations.
     feature_columns: A set containing all the feature columns. All items in the
       set should be instances of classes derived by FeatureColumn.
     weight_collections: List of graph collections to which weights are added.
@@ -426,8 +410,7 @@ def joint_weighted_sum_from_feature_columns(columns_to_tensors,
     columns_to_tensors: A mapping from feature column to tensors. 'string' key
       means a base feature (not-transformed). It can have FeatureColumn as a
       key too. That means that FeatureColumn is already transformed by input
-      pipeline. For example, `inflow` may have handled transformations. This
-      dictionary will be modified by this function.
+      pipeline. For example, `inflow` may have handled transformations.
     feature_columns: A set containing all the feature columns. All items in the
       set should be instances of classes derived from FeatureColumn.
     num_outputs: An integer specifying number of outputs. Default value is 1.
@@ -452,7 +435,6 @@ def joint_weighted_sum_from_feature_columns(columns_to_tensors,
       scope,
       default_name='joint_weighted_sum_from_feature_columns',
       values=columns_to_tensors.values()):
-    _convert_to_tensors(columns_to_tensors)
     transformer = _Transformer(columns_to_tensors)
     embedding_lookup_arguments = []
     for column in sorted(set(feature_columns), key=lambda x: x.key):
@@ -517,8 +499,7 @@ def weighted_sum_from_feature_columns(columns_to_tensors,
     columns_to_tensors: A mapping from feature column to tensors. 'string' key
       means a base feature (not-transformed). It can have FeatureColumn as a
       key too. That means that FeatureColumn is already transformed by input
-      pipeline. For example, `inflow` may have handled transformations. This
-      dictionary will be modified by this function.
+      pipeline. For example, `inflow` may have handled transformations.
     feature_columns: A set containing all the feature columns. All items in the
       set should be instances of classes derived from FeatureColumn.
     num_outputs: An integer specifying number of outputs. Default value is 1.
@@ -542,7 +523,6 @@ def weighted_sum_from_feature_columns(columns_to_tensors,
       scope,
       default_name='weighted_sum_from_feature_columns',
       values=columns_to_tensors.values()):
-    _convert_to_tensors(columns_to_tensors)
     output_tensors = []
     column_to_variable = dict()
     transformer = _Transformer(columns_to_tensors)
@@ -697,8 +677,7 @@ def transform_features(features, feature_columns):
   ```
 
   Args:
-    features: A dictionary mapping string names to `Tensor` or `SparseTensor`
-      feature values. This dictionary will not be modified by this function.
+    features: A dictionary of features.
     feature_columns: An iterable containing all the feature columns. All items
       should be instances of classes derived from _FeatureColumn.
 
@@ -706,15 +685,15 @@ def transform_features(features, feature_columns):
     A `dict` mapping FeatureColumn to `Tensor` and `SparseTensor` values.
   """
   check_feature_columns(feature_columns)
-  columns_to_tensors = features.copy()
-  _convert_to_tensors(columns_to_tensors)
-  transformer = _Transformer(columns_to_tensors)
+  columns_to_tensor = features.copy()
+  transformer = _Transformer(columns_to_tensor)
   for column in sorted(set(feature_columns), key=lambda x: x.key):
     transformer.transform(column)
-  for k in list(columns_to_tensors.keys()):
+  keys = list(columns_to_tensor.keys())
+  for k in keys:
     if k not in feature_columns:
-      columns_to_tensors.pop(k)
-  return columns_to_tensors
+      columns_to_tensor.pop(k)
+  return columns_to_tensor
 
 
 def parse_feature_columns_from_sequence_examples(
@@ -786,7 +765,6 @@ def _log_variable(variable):
 
 def _infer_real_valued_column_for_tensor(name, tensor):
   """Creates a real_valued_column for given tensor and name."""
-  tensor = sparse_tensor_py.convert_to_tensor_or_sparse_tensor(tensor)
   if isinstance(tensor, sparse_tensor_py.SparseTensor):
     raise ValueError(
         'SparseTensor is not supported for auto detection. Please define '
@@ -837,13 +815,6 @@ def check_feature_columns(feature_columns):
                        'to another column, and one must be discarded.'.format(
                            f.name))
     seen_keys.add(key)
-
-
-def _sort_columns(columns_or_strings):
-  return sorted(
-      # pylint: disable=protected-access
-      columns_or_strings,
-      key=lambda k: k.key if isinstance(k, fc._FeatureColumn) else k)
 
 
 class _Transformer(object):
@@ -903,7 +874,7 @@ class _Transformer(object):
     Raises:
       ValueError: if FeatureColumn cannot be handled by this Transformer.
     """
-    logging.debug('Transforming feature_column %s.', feature_column)
+    logging.debug('Transforming feature_column %s', feature_column)
     if feature_column in self._columns_to_tensors:
       # Feature_column is already transformed.
       return self._columns_to_tensors[feature_column]
