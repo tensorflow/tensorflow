@@ -39,6 +39,20 @@ cc_library(
 )
 
 tf_xla_py_test(
+    name = "adagrad_test",
+    size = "small",
+    srcs = ["adagrad_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+    ],
+)
+
+tf_xla_py_test(
     name = "binary_ops_test",
     size = "small",
     srcs = ["binary_ops_test.py"],
