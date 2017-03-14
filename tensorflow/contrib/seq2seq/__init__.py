@@ -28,6 +28,7 @@
 @@CustomHelper
 @@GreedyEmbeddingHelper
 @@ScheduledEmbeddingTrainingHelper
+@@ScheduledOutputTrainingHelper
 @@TrainingHelper
 """
 
