@@ -476,10 +476,13 @@ class DocGenerator(object):
         guide_index=guide_index,
         base_dir=base_dir)
 
+  def run_extraction(self):
+    return extract(self._py_modules, self._do_not_descend_map)
+
   def build(self, flags):
     """Actually build the docs."""
     doc_index = build_doc_index(flags.src_dir)
-    visitor = extract(self._py_modules, self._do_not_descend_map)
+    visitor = self.run_extraction()
     reference_resolver = self.make_reference_resolver(visitor, doc_index)
     guide_index = _build_guide_index(
         os.path.join(flags.src_dir, 'api_guides/python'))
