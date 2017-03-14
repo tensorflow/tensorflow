@@ -102,15 +102,6 @@ StatusOr<std::unique_ptr<ShapedBuffer>> PoplarExecutable::ExecuteOnStream(
           "ExecuteOnStream is not yet supported on Poplar.");
 }
 
-Status PoplarExecutable::ExecuteOnStream(
-    const ServiceExecutableRunOptions* run_options,
-    tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-    ShapedBuffer* result_buffer,
-    HloExecutionProfile* hlo_execution_profile) {
-  return tensorflow::errors::Unimplemented(
-          "ExecuteOnStream is not yet supported on Poplar.");
-}
-
 StatusOr<se::DeviceMemoryBase>
 PoplarExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
