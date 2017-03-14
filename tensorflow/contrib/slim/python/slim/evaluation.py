@@ -199,7 +199,7 @@ def evaluate_once(master,
       master=master,
       scaffold=monitored_session.Scaffold(
           init_op=initial_op, init_feed_dict=initial_op_feed_dict, saver=saver),
-      eval_ops=eval_op,
+      eval_ops=list(eval_op),
       feed_dict=eval_op_feed_dict,
       final_ops=final_op,
       final_ops_feed_dict=final_op_feed_dict,
@@ -274,7 +274,8 @@ def evaluation_loop(master,
       master=master,
       scaffold=monitored_session.Scaffold(
           init_op=initial_op, init_feed_dict=initial_op_feed_dict, saver=saver),
-      eval_ops=eval_op,
+      eval_ops=list(eval_op),
+
       feed_dict=eval_op_feed_dict,
       final_ops=final_op,
       final_ops_feed_dict=final_op_feed_dict,
