@@ -116,6 +116,11 @@ Status SingleMachine::Run(const GraphDef& graph_def,
   return RunWithTimeout(feed, fetch, metadata);
 }
 
+Status SingleMachine::AllowSoftPlacement(bool soft_placement_state) {
+  options_.config.set_allow_soft_placement(soft_placement_state);
+  return Status::OK();
+}
+
 Status SingleMachine::RunWithTimeout(
     const std::vector<std::pair<string, Tensor>>& feed,
     const std::vector<string>& fetch, RunMetadata* run_metadata) {
