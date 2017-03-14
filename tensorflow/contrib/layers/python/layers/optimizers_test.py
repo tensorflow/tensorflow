@@ -358,6 +358,30 @@ class OptimizersTest(test.TestCase):
         self.assertEqual(20, update_var.eval())
         self.assertEqual(1, global_step.eval())
 
+  def testUpdateOpNoIncrementGlobalStep(self):
+    optimizers = [
+        "SGD", gradient_descent.GradientDescentOptimizer,
+        gradient_descent.GradientDescentOptimizer(learning_rate=0.1)
+    ]
+    for optimizer in optimizers:
+      with ops.Graph().as_default() as g, self.test_session(graph=g) as session:
+        x, var, loss, global_step = _setup_model()
+        update_var = variable_scope.get_variable(
+            "update", [], initializer=init_ops.constant_initializer(10))
+        update_op = state_ops.assign(update_var, 20)
+        train = optimizers_lib.optimize_loss(
+            loss,
+            global_step,
+            learning_rate=0.1,
+            optimizer=optimizer,
+            update_ops=[update_op],
+            increment_global_step=False)
+        variables.global_variables_initializer().run()
+        session.run(train, feed_dict={x: 5})
+        self.assertEqual(9.5, var.eval())
+        self.assertEqual(20, update_var.eval())
+        self.assertEqual(0, global_step.eval())
+
   def testUpdateOpWithNoOpDecay(self):
     optimizers = [
         "SGD", gradient_descent.GradientDescentOptimizer,

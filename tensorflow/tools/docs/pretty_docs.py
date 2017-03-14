@@ -48,15 +48,15 @@ def build_md_page(page_info):
 
 def _build_function_page(page_info):
   """Given a FunctionPageInfo object Return the page as an md string."""
-  parts = [
-      '# {page_info.full_name}{page_info.signature}\n\n'.format(
-          page_info=page_info)
-  ]
+  parts = ['# %s\n\n' % page_info.full_name]
 
   if page_info.aliases:
-    parts.extend('### `%s%s`\n' % (name, page_info.signature)
+    parts.extend('### `%s`\n' % name
                  for name in page_info.aliases)
     parts.append('\n')
+
+  if page_info.signature is not None:
+    parts.append(_build_signature(page_info))
 
   if page_info.defined_in:
     parts.append('\n\n')
@@ -114,11 +114,21 @@ def _build_class_page(page_info):
 
   if page_info.methods:
     parts.append('## Methods\n\n')
-    for method_info in sorted(page_info.methods):
+    # Sort the methods list, but make sure constructors come first.
+    constructors = ['__init__', '__new__']
+    inits = [method for method in page_info.methods
+             if method.short_name in constructors]
+    others = [method for method in page_info.methods
+              if method.short_name not in constructors]
+
+    for method_info in sorted(inits) + sorted(others):
       h3 = ('<h3 id="{short_name}">'
-            '<code>{short_name}{signature}</code>'
+            '<code>{short_name}</code>'
             '</h3>\n\n')
       parts.append(h3.format(**method_info.__dict__))
+
+      if method_info.signature is not None:
+        parts.append(_build_signature(method_info))
 
       parts.append(method_info.doc.docstring)
       parts.append(_build_function_details(method_info.doc.function_details))
@@ -184,6 +194,24 @@ def _build_module_page(page_info):
     parts.pop()
 
   return ''.join(parts)
+
+
+def _build_signature(obj_info):
+  """Returns a md code block showing the function signature."""
+  signature_template = '\n'.join([
+      '``` python',
+      '{name}({sig})',
+      '```\n\n'])
+
+  if not obj_info.signature:
+    sig = ''
+  elif len(obj_info.signature) == 1:
+    sig = obj_info.signature[0]
+  else:
+    sig = ',\n'.join('    %s' % sig_item for sig_item in obj_info.signature)
+    sig = '\n'+sig+'\n'
+
+  return signature_template.format(name=obj_info.short_name, sig=sig)
 
 
 def _build_compatibility(compatibility):

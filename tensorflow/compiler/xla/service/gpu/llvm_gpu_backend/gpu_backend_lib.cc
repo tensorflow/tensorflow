@@ -53,6 +53,7 @@ limitations under the License.
 #include "external/llvm/include/llvm/Transforms/IPO/AlwaysInliner.h"
 #include "external/llvm/include/llvm/Transforms/IPO/PassManagerBuilder.h"
 
+#include "external/llvm/include/llvm/Transforms/IPO/Internalize.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -319,9 +320,13 @@ tensorflow::Status LinkLibdeviceIfNecessary(
   VLOG(1) << "Linking with libdevice from: " << libdevice_path;
   std::unique_ptr<llvm::Module> libdevice_module =
       LoadIRModule(libdevice_path, &module->getContext());
-  if (linker.linkInModule(std::move(libdevice_module),
-                          llvm::Linker::Flags::InternalizeLinkedSymbols |
-                              llvm::Linker::Flags::LinkOnlyNeeded)) {
+  if (linker.linkInModule(
+          std::move(libdevice_module), llvm::Linker::Flags::LinkOnlyNeeded,
+          [](Module& M, const StringSet<>& GVS) {
+            internalizeModule(M, [&M, &GVS](const GlobalValue& GV) {
+              return !GV.hasName() || (GVS.count(GV.getName()) == 0);
+            });
+          })) {
     return tensorflow::errors::Internal(tensorflow::strings::StrCat(
         "Error linking libdevice from ", libdevice_path));
   }

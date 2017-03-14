@@ -408,8 +408,10 @@ llvm_target_list = [
             ("-gen-asm-matcher", "lib/Target/X86/X86GenAsmMatcher.inc"),
             ("-gen-dag-isel", "lib/Target/X86/X86GenDAGISel.inc"),
             ("-gen-fast-isel", "lib/Target/X86/X86GenFastISel.inc"),
+            ("-gen-global-isel", "lib/Target/X86/X86GenGlobalISel.inc"),
             ("-gen-callingconv", "lib/Target/X86/X86GenCallingConv.inc"),
             ("-gen-subtarget", "lib/Target/X86/X86GenSubtargetInfo.inc"),
+            ("-gen-x86-EVEX2VEX-tables", "lib/Target/X86/X86GenEVEX2VEXTables.inc"),
         ],
     },
 ]

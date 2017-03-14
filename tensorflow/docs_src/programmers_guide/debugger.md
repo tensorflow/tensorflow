@@ -41,6 +41,8 @@ the `--debug` flag is provided:
 
 ```python
 # Let your BUILD target depend on "//tensorflow/python/debug:debug_py"
+# (You don't need to worry about the BUILD dependency if you are using a pip
+#  install of open-source TensorFlow.)
 from tensorflow.python import debug as tf_debug
 
 sess = tf_debug.LocalCLIDebugWrapperSession(sess)
@@ -314,7 +316,7 @@ inspect the data in the dump directory on the shared storage by using the
 
 ```none
 python -m tensorflow.python.debug.cli.offline_analyzer \
-    --dump_dir=/cns/is-d/home/somebody/tfdbg_dumps_1
+    --dump_dir=/shared/storage/location/tfdbg_dumps_1
 ```
 
 The `Session` wrapper `DumpingDebugWrapperSession` offers an easier and more
@@ -323,10 +325,12 @@ To use it, simply do:
 
 ```python
 # Let your BUILD target depend on "//tensorflow/python/debug:debug_py
+# (You don't need to worry about the BUILD dependency if you are using a pip
+#  install of open-source TensorFlow.)
 from tensorflow.python.debug import debug_utils
 
 sess = tf_debug.DumpingDebugWrapperSession(
-    sess, "/cns/is-d/home/somebody/tfdbg_dumps_1/", watch_fn=my_watch_fn)
+    sess, "/shared/storage/location/tfdbg_dumps_1/", watch_fn=my_watch_fn)
 ```
 
 `watch_fn=my_watch_fn` is a `Callable` that allows you to configure what
@@ -403,3 +407,10 @@ python -m tensorflow.python.debug.examples.debug_errors \
        overrides default terminal interactions, including text selection. You
        can re-enable text selection by using the command `mouse off` or
        `m off`.
+
+**Q**: _What are the platform-specific system requirements of **tfdbg** CLI in open-source TensorFlow_?
+
+**A**: On Mac OS X, the `ncurses` library is required. It can be installed with
+`brew install homebrew/dupes/ncurses`. On Windows, the `pyreadline` library is
+required. If you are using Anaconda3, you can install it with a command such as
+`"C:\Program Files\Anaconda3\Scripts\pip.exe" install pyreadline`.

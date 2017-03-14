@@ -65,7 +65,7 @@ REGISTER_OP("ReadVariableOp")
         return errors::InvalidArgument(
             "Trying to read variable with wrong dtype. "
             "Expected ",
-            handle_dtype, " got ", value_dtype);
+            DataTypeString(handle_dtype), " got ", DataTypeString(value_dtype));
       }
       c->set_output(0, c->input_handle_shape(0));
       return Status::OK();
@@ -91,12 +91,12 @@ REGISTER_OP("_UnsafeReadVariable")
     .SetShapeFn([](InferenceContext* c) {
       DataType handle_dtype = c->input_handle_dtype(0);
       DataType value_dtype;
-      c->GetAttr("dtype", &value_dtype);
+      TF_RETURN_IF_ERROR(c->GetAttr("dtype", &value_dtype));
       if (handle_dtype != value_dtype) {
         return errors::InvalidArgument(
             "Trying to read variable with wrong dtype. "
             "Expected ",
-            handle_dtype, " got ", value_dtype);
+            DataTypeString(handle_dtype), " got ", DataTypeString(value_dtype));
       }
       c->set_output(0, c->input_handle_shape(0));
       return Status::OK();
@@ -137,7 +137,7 @@ Status CreateAssignShapeFn(InferenceContext* c) {
     return errors::InvalidArgument(
         "Trying to initialize handle for variable with wrong dtype. "
         "Expected ",
-        handle_dtype, " got ", value_dtype);
+        DataTypeString(handle_dtype), " got ", DataTypeString(value_dtype));
   }
   ShapeHandle s = c->input_handle_shape(0);
   ShapeHandle value_shape = c->input(1);

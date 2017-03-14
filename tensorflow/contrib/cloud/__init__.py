@@ -1,4 +1,4 @@
-# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,20 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Import cloud ops."""
+"""Module for cloud ops."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
-
-# go/tf-wildcard-import
-# pylint: disable=wildcard-import
-from tensorflow.python.ops.cloud.bigquery_reader_ops import *
-# pylint: enable=wildcard-import
+# pylint: disable=line-too-long,wildcard-import
+from tensorflow.contrib.cloud.python.ops.bigquery_reader_ops import *
+# pylint: enable=line-too-long,wildcard-import
 
 from tensorflow.python.util.all_util import remove_undocumented
 
 _allowed_symbols = ['BigQueryReader']
-remove_undocumented(__name__, _allowed_symbols, [sys.modules[__name__]])
+remove_undocumented(__name__, _allowed_symbols)

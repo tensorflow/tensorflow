@@ -297,7 +297,7 @@ TEST_F(HloComputationTest, CycleDetection) {
   auto computation = builder.Build();
 
   // Add a control dependency to create a cycle.
-  ASSERT_IS_OK(computation->AddControlDependency(add, negate));
+  ASSERT_IS_OK(add->AddControlDependencyTo(negate));
 
   const auto visitor = [](HloInstruction* instruction) { return Status::OK(); };
   auto visit_status = computation->Accept(visitor);
