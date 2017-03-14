@@ -188,7 +188,7 @@ def input_fn(df):
   categorical_cols = {k: tf.SparseTensor(
       indices=[[i, 0] for i in range(df[k].size)],
       values=df[k].values,
-      shape=[df[k].size, 1])
+      dense_shape=[df[k].size, 1])
                       for k in CATEGORICAL_COLUMNS}
   # Merges the two dictionaries into one.
   feature_cols = dict(continuous_cols.items() + categorical_cols.items())
@@ -261,6 +261,8 @@ learned through the model training process we'll go through later.
 We'll do the similar trick to define the other categorical features:
 
 ```python
+race = tf.contrib.layers.sparse_column_with_hash_bucket("race", hash_bucket_size=100)
+marital_status = tf.contrib.layers.sparse_column_with_hash_bucket("marital_status", hash_bucket_size=100)
 relationship = tf.contrib.layers.sparse_column_with_hash_bucket("relationship", hash_bucket_size=100)
 workclass = tf.contrib.layers.sparse_column_with_hash_bucket("workclass", hash_bucket_size=100)
 occupation = tf.contrib.layers.sparse_column_with_hash_bucket("occupation", hash_bucket_size=1000)

@@ -26,6 +26,7 @@ from tensorflow.python.client import session
 from tensorflow.python.debug.lib import debug_data
 from tensorflow.python.debug.lib import stepper
 from tensorflow.python.debug.wrappers import dumping_wrapper
+from tensorflow.python.debug.wrappers import framework
 from tensorflow.python.debug.wrappers import hooks
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -144,7 +145,7 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
           watch_fn=bad_watch_fn,
           log_usage=False)
 
-  def testDumpingWithWatchFnOnFetchesWorks(self):
+  def testDumpingWithLegacyWatchFnOnFetchesWorks(self):
     """Use a watch_fn that returns different whitelists for different runs."""
 
     def watch_fn(fetches, feeds):
@@ -186,8 +187,8 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
         self.assertEqual(repr(self.dec_v), dump.run_fetches_info)
         self.assertEqual(repr(None), dump.run_feed_keys_info)
 
-  def testDumpingWithWatchFnWithNonDefaultDebugOpsWorks(self):
-    """Use a watch_fn tha specifies non-default debug ops."""
+  def testDumpingWithLegacyWatchFnWithNonDefaultDebugOpsWorks(self):
+    """Use a watch_fn that specifies non-default debug ops."""
 
     def watch_fn(fetches, feeds):
       del fetches, feeds
@@ -209,6 +210,37 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     self.assertEqual(12,
                      len(dump.get_tensors("v", 0, "DebugNumericSummary")[0]))
 
+  def testDumpingWithWatchFnWithNonDefaultDebugOpsWorks(self):
+    """Use a watch_fn that specifies non-default debug ops."""
+
+    def watch_fn(fetches, feeds):
+      del fetches, feeds
+      return framework.WatchOptions(
+          debug_ops=["DebugIdentity", "DebugNumericSummary"],
+          node_name_regex_whitelist=r"^v.*",
+          op_type_regex_whitelist=r".*",
+          tensor_dtype_regex_whitelist=".*_ref")
+
+    sess = dumping_wrapper.DumpingDebugWrapperSession(
+        self.sess,
+        session_root=self.session_root,
+        watch_fn=watch_fn,
+        log_usage=False)
+
+    sess.run(self.inc_v)
+
+    dump_dirs = glob.glob(os.path.join(self.session_root, "run_*"))
+    self.assertEqual(1, len(dump_dirs))
+    dump = debug_data.DebugDumpDir(dump_dirs[0])
+
+    self.assertAllClose([10.0], dump.get_tensors("v", 0, "DebugIdentity"))
+    self.assertEqual(12,
+                     len(dump.get_tensors("v", 0, "DebugNumericSummary")[0]))
+
+    dumped_nodes = [dump.node_name for dump in dump.dumped_tensor_data]
+    self.assertNotIn("inc_v", dumped_nodes)
+    self.assertNotIn("delta", dumped_nodes)
+
   def testDumpingDebugHookWithoutWatchFnWorks(self):
     dumping_hook = hooks.DumpingDebugHook(self.session_root, log_usage=False)
     mon_sess = monitored_session._HookedSession(self.sess, [dumping_hook])
@@ -225,6 +257,49 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     self.assertEqual(repr(None), dump.run_feed_keys_info)
 
   def testDumpingDebugHookWithStatefulWatchFnWorks(self):
+    watch_fn_state = {"run_counter": 0}
+
+    def counting_watch_fn(fetches, feed_dict):
+      del fetches, feed_dict
+      watch_fn_state["run_counter"] += 1
+      if watch_fn_state["run_counter"] % 2 == 1:
+        # If odd-index run (1-based), watch every ref-type tensor.
+        return framework.WatchOptions(
+            debug_ops="DebugIdentity",
+            tensor_dtype_regex_whitelist=".*_ref")
+      else:
+        # If even-index run, watch nothing.
+        return framework.WatchOptions(
+            debug_ops="DebugIdentity",
+            node_name_regex_whitelist=r"^$",
+            op_type_regex_whitelist=r"^$")
+
+    dumping_hook = hooks.DumpingDebugHook(
+        self.session_root, watch_fn=counting_watch_fn, log_usage=False)
+    mon_sess = monitored_session._HookedSession(self.sess, [dumping_hook])
+    for _ in range(4):
+      mon_sess.run(self.inc_v)
+
+    dump_dirs = glob.glob(os.path.join(self.session_root, "run_*"))
+    dump_dirs = sorted(
+        dump_dirs, key=lambda x: int(os.path.basename(x).split("_")[1]))
+    self.assertEqual(4, len(dump_dirs))
+
+    for i, dump_dir in enumerate(dump_dirs):
+      self._assert_correct_run_subdir_naming(os.path.basename(dump_dir))
+      dump = debug_data.DebugDumpDir(dump_dir)
+      if i % 2 == 0:
+        self.assertAllClose([10.0 + 1.0 * i],
+                            dump.get_tensors("v", 0, "DebugIdentity"))
+        self.assertNotIn("delta",
+                         [datum.node_name for datum in dump.dumped_tensor_data])
+      else:
+        self.assertEqual(0, dump.size)
+
+      self.assertEqual(repr(self.inc_v), dump.run_fetches_info)
+      self.assertEqual(repr(None), dump.run_feed_keys_info)
+
+  def testDumpingDebugHookWithStatefulLegacyWatchFnWorks(self):
     watch_fn_state = {"run_counter": 0}
 
     def counting_watch_fn(fetches, feed_dict):

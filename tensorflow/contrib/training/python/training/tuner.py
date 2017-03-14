@@ -24,7 +24,6 @@ import abc
 from tensorflow.contrib.framework.python.framework import experimental
 
 
-@experimental
 class Tuner(object):
   """Tuner class is the interface for Experiment hyper-parameters tuning.
 
@@ -45,6 +44,7 @@ class Tuner(object):
 
   __metaclass__ = abc.ABCMeta
 
+  @experimental
   @abc.abstractmethod
   def next_trial(self):
     """Switch to the next trial.
@@ -59,6 +59,7 @@ class Tuner(object):
     """
     raise NotImplementedError("Calling an abstract method.")
 
+  @experimental
   @abc.abstractmethod
   def run_experiment(self, experiment_fn):
     """Creates an Experiment by calling `experiment_fn` and executes it.

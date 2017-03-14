@@ -319,8 +319,8 @@ class VariablesTestCase(test.TestCase):
       slice_v = var_t[2, 0:0]
 
       var_m = variables.Variable([[2.0, 3.0]])
-      matmul = var_m.__matmul__([[10.0],[20.0]])
-      rmatmul = var_m.__rmatmul__([[10.0],[20.0]])
+      matmul = var_m.__matmul__([[10.0], [20.0]])
+      rmatmul = var_m.__rmatmul__([[10.0], [20.0]])
 
       variables.global_variables_initializer().run()
       self.assertAllClose([2.0], add.eval())

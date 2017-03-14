@@ -181,6 +181,8 @@ def _generate_saved_model_for_half_plus_two(export_dir, as_text=False):
                 _build_regression_signature(x2, y3),
             "classify_x_to_y":
                 _build_classification_signature(serialized_tf_example, y),
+            "classify_x2_to_y3":
+                _build_classification_signature(x2, y3),
             tf.saved_model.signature_constants.
             DEFAULT_SERVING_SIGNATURE_DEF_KEY:
                 predict_signature_def

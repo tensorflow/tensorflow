@@ -9,6 +9,18 @@ exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
 
+# Transitive dependencies of this target will be included in the pip package.
+py_library(
+    name = "tools_pip",
+    deps = [
+        ":freeze_graph",
+        ":inspect_checkpoint",
+        ":optimize_for_inference",
+        ":print_selective_registration_header",
+        ":strip_unused",
+    ],
+)
+
 py_library(
     name = "freeze_graph_lib",
     srcs = ["freeze_graph.py"],

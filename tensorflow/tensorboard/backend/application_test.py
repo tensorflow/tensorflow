@@ -43,9 +43,9 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.util import event_pb2
 from tensorflow.python.platform import test
-from tensorflow.python.summary import event_multiplexer
 from tensorflow.python.summary.writer import writer as writer_lib
 from tensorflow.tensorboard.backend import application
+from tensorflow.tensorboard.backend.event_processing import event_multiplexer
 
 
 class TensorboardServerTest(test.TestCase):

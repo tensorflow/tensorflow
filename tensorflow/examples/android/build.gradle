@@ -41,6 +41,9 @@ if (buildWithMake) {
 // automatically.
 def makeNdkRoot = System.getenv('NDK_ROOT')
 
+// Location of model files required as assets
+def externalModelData = '../../../bazel-tensorflow/external'
+
 // If building with Bazel, this is the location of the bazel binary.
 // NOTE: Bazel does not yet support building for Android on Windows,
 // so in this case the Makefile build must be used as described above.
@@ -124,6 +127,11 @@ task buildNativeMake(type: Exec) {
          //, '-T'  // Uncomment to skip protobuf and speed up subsequent builds.
 }
 
+task buildExternalAssets(type: Exec) {
+    commandLine bazelLocation, 'build',  '//tensorflow/examples/android:external_assets'
+    outputs.files(externalModelData)
+}
+
 task copyNativeLibs(type: Copy) {
     from demoLibPath
     from inferenceLibPath
@@ -133,7 +141,22 @@ task copyNativeLibs(type: Copy) {
     fileMode 0644
 }
 
-assemble.dependsOn copyNativeLibs
+task copyExternalAssets(type: Copy) {
+    from file(externalModelData).listFiles()
+    include '*.pb'
+    include '*.txt'
+    include 'thumbnails/*.jpg'
+    into 'assets'
+    fileMode 0644
+    dependsOn buildExternalAssets
+}
+
+def copyTasks = [copyNativeLibs]
+if (!buildWithMake) {
+    // copyExternalAssets uses bazel, so only run it when requested.
+    copyTasks.add(copyExternalAssets)
+}
+assemble.dependsOn copyTasks
 afterEvaluate {
-    assembleDebug.dependsOn copyNativeLibs
+    assembleDebug.dependsOn copyTasks
 }

@@ -30,8 +30,8 @@ from werkzeug import serving
 from tensorflow.python.platform import app
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.summary import event_file_inspector as efi
 from tensorflow.tensorboard.backend import application
+from tensorflow.tensorboard.backend.event_processing import event_file_inspector as efi
 
 
 # TensorBoard flags

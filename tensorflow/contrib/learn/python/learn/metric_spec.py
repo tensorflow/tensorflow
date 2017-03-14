@@ -426,6 +426,6 @@ class MetricSpec(object):
           labels=label,
           predictions=prediction,
           weights=inputs[self.weight_key] if self.weight_key else None)
-    except:  # pylint: disable=bare-except
-      logging.error('Could not create metric ops for %s.' % self)
+    except Exception as ex:
+      logging.error('Could not create metric ops for %s, %s.' % (self, ex))
       raise

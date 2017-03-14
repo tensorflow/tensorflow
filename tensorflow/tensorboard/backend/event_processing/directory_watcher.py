@@ -23,7 +23,7 @@ import bisect
 from tensorflow.python.framework import errors
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.summary.impl import io_wrapper
+from tensorflow.tensorboard.backend.event_processing import io_wrapper
 
 
 class DirectoryWatcher(object):

@@ -330,18 +330,19 @@ struct AvgPoolMeanReducer {
 
 #if (EIGEN_ARCH_i386 || EIGEN_ARCH_x86_64) && !defined(__CUDACC__)
 #ifdef EIGEN_VECTORIZE_AVX512
-#define pequal(a, b) \
-  _mm512_castsi512_ps(_mm512_maskz_set1_epi32(_mm512_cmp_ps_mask(a, b, _CMP_EQ_UQ), -1))
- 
+#define pequal(a, b)   \
+  _mm512_castsi512_ps( \
+      _mm512_maskz_set1_epi32(_mm512_cmp_ps_mask(a, b, _CMP_EQ_UQ), -1))
+
 // The ternarylogic function immediate determines the values in the result
 // In the case below, 0xd8 implies (false_mask) ? (b) : (a)
 // For details, refer to the vpternlogd instruction table at
 // http://www.intel.com/content/dam/www/public/us/en/documents/manuals/64-ia-32-architectures-software-developer-vol-2c-manual.pdf
-#define psel(a, b, false_mask) \
-  _mm512_castsi512_ps(_mm512_ternarylogic_epi32(_mm512_castps_si512(a), \
-                                                _mm512_castps_si512(b), \
-                                                _mm512_castps_si512(false_mask), \
-                                                0xd8))
+
+#define psel(a, b, false_mask)                        \
+  _mm512_castsi512_ps(_mm512_ternarylogic_epi32(      \
+      _mm512_castps_si512(a), _mm512_castps_si512(b), \
+      _mm512_castps_si512(false_mask), 0xd8))
 #elif defined EIGEN_VECTORIZE_AVX
 #define pequal(a, b) _mm256_cmp_ps(a, b, _CMP_EQ_UQ)
 #define psel(a, b, false_mask) _mm256_blendv_ps(a, b, false_mask)

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/core/lib/strings/scanner.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/stream_executor.h"
 
@@ -84,6 +85,15 @@ int NodePosition(const string& name) {
   int position;
   ParseNodeName(name, &position);
   return position;
+}
+
+string AddPrefixToNodeName(const string& name, const string& prefix) {
+  if (!name.empty()) {
+    if (name[0] == '^') {
+      return strings::StrCat("^", prefix, "-", name.substr(1));
+    }
+  }
+  return strings::StrCat(prefix, "-", name);
 }
 
 }  // end namespace grappler
