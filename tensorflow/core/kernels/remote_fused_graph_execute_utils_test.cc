@@ -30,6 +30,16 @@ constexpr float NODE_A_VAL = 2.0f;
 constexpr float NODE_B_VAL = 3.0f;
 constexpr float VALUE_TOLERANCE_FLOAT = 1e-8f;
 
+static NodeDef* GetNodeDef(const string& name, GraphDef* def) {
+  CHECK_NE(def, nullptr);
+  for (NodeDef& node_def : *def->mutable_node()) {
+    if (node_def.name() == name) {
+      return &node_def;
+    }
+  }
+  return nullptr;
+}
+
 TEST(RemoteFusedGraphExecuteUtils, DryRunAddGraphA) {
   GraphDef def = RemoteFusedGraphExecuteOpTestUtils::BuildAddGraph(
       NAME_A, NODE_A_VAL, NAME_B, NODE_B_VAL, NAME_A_PLUS_B);
@@ -118,12 +128,18 @@ TEST(RemoteFusedGraphExecuteUtils, DryRunAddGraphForAllNodes) {
   ASSERT_EQ(1, tensor_shape_map.count(NAME_B));
   ASSERT_EQ(1, tensor_shape_map.count(NAME_A_PLUS_B));
 
-  EXPECT_EQ(DT_FLOAT, tensor_shape_map.at(NAME_B).first);
-  EXPECT_EQ(DT_FLOAT, tensor_shape_map.at(NAME_A_PLUS_B).first);
-  const TensorShape& shape_b = tensor_shape_map.at(NAME_B).second;
-  const TensorShape& shape_a_b = tensor_shape_map.at(NAME_A_PLUS_B).second;
-  EXPECT_EQ(0, shape_b.dims());
-  EXPECT_EQ(0, shape_a_b.dims());
+  const RemoteFusedGraphExecuteUtils::TensorShapeType* tst =
+      RemoteFusedGraphExecuteUtils::GetTensorShapeType(tensor_shape_map,
+                                                       NAME_B);
+  EXPECT_NE(tst, nullptr);
+  EXPECT_EQ(DT_FLOAT, tst->first);
+  EXPECT_EQ(0, tst->second.dims());
+
+  tst = RemoteFusedGraphExecuteUtils::GetTensorShapeType(tensor_shape_map,
+                                                         NAME_A_PLUS_B);
+  EXPECT_NE(tst, nullptr);
+  EXPECT_EQ(DT_FLOAT, tst->first);
+  EXPECT_EQ(0, tst->second.dims());
 }
 
 TEST(RemoteFusedGraphExecuteUtils, PropagateAndBuildTensorShapeMap) {
@@ -157,12 +173,52 @@ TEST(RemoteFusedGraphExecuteUtils, PropagateAndBuildTensorShapeMap) {
   ASSERT_EQ(1, tensor_shape_map.count(NAME_B));
   ASSERT_EQ(1, tensor_shape_map.count(NAME_A_PLUS_B));
 
-  EXPECT_EQ(DT_FLOAT, tensor_shape_map.at(NAME_B).first);
-  EXPECT_EQ(DT_FLOAT, tensor_shape_map.at(NAME_A_PLUS_B).first);
-  const TensorShape& shape_b = tensor_shape_map.at(NAME_B).second;
-  const TensorShape& shape_a_b = tensor_shape_map.at(NAME_A_PLUS_B).second;
-  EXPECT_EQ(0, shape_b.dims());
-  EXPECT_EQ(0, shape_a_b.dims());
+  const RemoteFusedGraphExecuteUtils::TensorShapeType* tst =
+      RemoteFusedGraphExecuteUtils::GetTensorShapeType(tensor_shape_map,
+                                                       NAME_B);
+  EXPECT_NE(tst, nullptr);
+  EXPECT_EQ(DT_FLOAT, tst->first);
+  EXPECT_EQ(0, tst->second.dims());
+
+  tst = RemoteFusedGraphExecuteUtils::GetTensorShapeType(tensor_shape_map,
+                                                         NAME_A_PLUS_B);
+  EXPECT_NE(tst, nullptr);
+  EXPECT_EQ(DT_FLOAT, tst->first);
+  EXPECT_EQ(0, tst->second.dims());
+
+  {
+    NodeDef* node_def = GetNodeDef(NAME_B, &def);
+    RemoteFusedGraphExecuteUtils::AddOutputTensorShapeTypeByTensorShapeMap(
+        tensor_shape_map, node_def);
+    std::vector<DataType> data_types;
+    GetNodeAttr(*node_def, RemoteFusedGraphExecuteUtils::ATTR_OUTPUT_DATA_TYPES,
+                &data_types);
+    ASSERT_EQ(1, data_types.size());
+    EXPECT_EQ(DT_FLOAT, data_types.at(0));
+
+    std::vector<TensorShape> shapes;
+    GetNodeAttr(*node_def, RemoteFusedGraphExecuteUtils::ATTR_OUTPUT_SHAPES,
+                &shapes);
+    ASSERT_EQ(1, shapes.size());
+    EXPECT_EQ(0, shapes.at(0).dims());
+  }
+
+  {
+    NodeDef* node_def = GetNodeDef(NAME_A_PLUS_B, &def);
+    RemoteFusedGraphExecuteUtils::AddOutputTensorShapeTypeByTensorShapeMap(
+        tensor_shape_map, node_def);
+    std::vector<DataType> data_types;
+    GetNodeAttr(*node_def, RemoteFusedGraphExecuteUtils::ATTR_OUTPUT_DATA_TYPES,
+                &data_types);
+    ASSERT_EQ(1, data_types.size());
+    EXPECT_EQ(DT_FLOAT, data_types.at(0));
+
+    std::vector<TensorShape> shapes;
+    GetNodeAttr(*node_def, RemoteFusedGraphExecuteUtils::ATTR_OUTPUT_SHAPES,
+                &shapes);
+    ASSERT_EQ(1, shapes.size());
+    EXPECT_EQ(0, shapes.at(0).dims());
+  }
 }
 
 }  // namespace tensorflow

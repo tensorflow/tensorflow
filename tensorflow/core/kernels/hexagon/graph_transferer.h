@@ -196,6 +196,14 @@ class GraphTransferer {
   static Status MakeTensorFromProto(const TensorProto& tensor_proto,
                                     Tensor* tensor);
 
+  static bool FindShapeType(const TensorShapeMap& tensor_shape_map,
+                            const string& name, const int port,
+                            const DataType** dt, const TensorShape** shape);
+
+  static bool FindShapeType(const TensorShapeMap& tensor_shape_map,
+                            const string& name, const DataType** dt,
+                            const TensorShape** shape);
+
   void ClearCache();
 
   // Dump pretty print of parameters

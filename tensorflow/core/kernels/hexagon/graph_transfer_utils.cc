@@ -19,7 +19,6 @@ limitations under the License.
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/platform/logging.h"
-
 namespace tensorflow {
 
 /* static */ std::priority_queue<std::tuple<float, int, string>>
@@ -120,10 +119,18 @@ GraphTransferUtils::BuildRemoteFusedGraphExecuteInfo(
   const RemoteFusedGraphExecuteInfo execute_info =
       BuildRemoteFusedGraphExecuteInfo(gt->GetGraphTransferInfo());
 
-  const DataType output_data_type =
-      outputs.empty() ? DT_FLOAT : tensor_shape_map.at(outputs.at(0)).first;
+  const std::pair<DataType, TensorShape>* tensor_shape_type =
+      RemoteFusedGraphExecuteUtils::GetTensorShapeType(tensor_shape_map,
+                                                       outputs.at(0));
+  CHECK_NE(tensor_shape_type, nullptr);
+  const DataType output_data_type = tensor_shape_type->first;
+  // Sanity-check to confirm all output data types are same.
   for (const string& output_node_name : outputs) {
-    const DataType dt = tensor_shape_map.at(output_node_name).first;
+    const std::pair<DataType, TensorShape>* tst =
+        RemoteFusedGraphExecuteUtils::GetTensorShapeType(tensor_shape_map,
+                                                         output_node_name);
+    CHECK_NE(tst, nullptr);
+    const DataType dt = tensor_shape_type->first;
     CHECK_EQ(output_data_type, dt);
   }
 

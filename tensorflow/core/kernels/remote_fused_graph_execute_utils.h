@@ -48,8 +48,10 @@ class RemoteFusedGraphExecuteUtils {
   };
   using ExecutorBuildRegistry = std::map<string, ExecutorBuildFunc>;
 
+  using TensorShapeType = std::pair<DataType, TensorShape>;
   using TensorShapeMap =
-      std::unordered_map<string, std::pair<DataType, TensorShape>>;
+      std::unordered_multimap<string /* node name */,
+                              std::pair<int /* port */, TensorShapeType>>;
 
   // Return registered ExecutorBuildFunc for given name.
   static const ExecutorBuildFunc* GetExecutorBuildFunc(const string& name);
@@ -91,6 +93,9 @@ class RemoteFusedGraphExecuteUtils {
                                        const std::vector<TensorShape>& shapes,
                                        NodeDef* node_def);
 
+  static Status AddOutputTensorShapeTypeByTensorShapeMap(
+      const TensorShapeMap& tensor_shape_map, NodeDef* node_def);
+
   static Status PropagateShapeInference(
       const GraphDef& graph_def,
       const std::vector<std::pair<string, Tensor>>& input_node_info_list,
@@ -100,7 +105,17 @@ class RemoteFusedGraphExecuteUtils {
                                              const ShapeRefiner& shape_refiner,
                                              TensorShapeMap* tensor_shape_map);
 
+  static const TensorShapeType* GetTensorShapeType(
+      const TensorShapeMap& tensor_shape_map, const string& node_name);
+
+  static const TensorShapeType* GetTensorShapeType(
+      const TensorShapeMap& tensor_shape_map, const string& node_name,
+      const int port);
+
  private:
+  static void EmplaceTensorShapeType(const string& name, const Tensor& tensor,
+                                     TensorShapeMap* tensor_shape_map);
+
   static ExecutorBuildRegistry* GetExecutorBuildRegistry();
 
   TF_DISALLOW_COPY_AND_ASSIGN(RemoteFusedGraphExecuteUtils);
