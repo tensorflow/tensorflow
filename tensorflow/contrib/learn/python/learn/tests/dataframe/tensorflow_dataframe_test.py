@@ -231,7 +231,7 @@ class TensorFlowDataFrameTestCase(test.TestCase):
     num_batches = 100
     batch_size = 8
 
-    data_path = self.self._make_test_csv_sparse()
+    data_path = self._make_test_csv_sparse()
     feature_spec = {
         "int": parsing_ops.FixedLenFeature(None, dtypes.int16, np.nan),
         "float": parsing_ops.VarLenFeature(dtypes.float16),
