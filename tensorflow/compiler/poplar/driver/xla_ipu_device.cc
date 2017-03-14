@@ -67,7 +67,7 @@ REGISTER_XLA_LAUNCH_KERNEL(DEVICE_XLA_IPU, XlaDeviceLaunchOp, kIpuAllTypes);
 REGISTER_XLA_DEVICE_KERNELS(DEVICE_XLA_IPU, kIpuAllTypes);
 
 // Register JIT kernels for IPU device
-// synced @ eaa668e7e5d28072964ce8b78c155720aed951d3
+// synced @ 60ef131d2b7820367d8aa097fb4d2b7a2a3109fe
 
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("_Arg").TypeConstraint("T", kIpuAllTypes));
@@ -99,6 +99,10 @@ REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("AvgPool").TypeConstraint("T", kIpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
+        Name("AvgPool3D").TypeConstraint("T", kIpuFloatTypes));
+REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
+        Name("AvgPool3DGrad").TypeConstraint("T", kIpuFloatTypes));
+REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("AvgPoolGrad").TypeConstraint("T", kIpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("BatchMatMul").TypeConstraint("T", kIpuFloatTypes));
@@ -128,6 +132,12 @@ REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("Conv2DBackpropFilter").TypeConstraint("T", kIpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("Conv2DBackpropInput").TypeConstraint("T", kIpuFloatTypes));
+REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
+        Name("Conv3D").TypeConstraint("T", kIpuFloatTypes));
+REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
+        Name("Conv3DBackpropFilterV2").TypeConstraint("T", kIpuFloatTypes));
+REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
+        Name("Conv3DBackpropInputV2").TypeConstraint("T", kIpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("DepthwiseConv2dNative").TypeConstraint("T", kIpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
@@ -199,6 +209,10 @@ REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("MaxPool").TypeConstraint("T", kIpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
+        Name("MaxPool3D").TypeConstraint("T", kIpuFloatTypes));
+REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
+        Name("MaxPool3DGrad").TypeConstraint("T", kIpuFloatTypes));
+REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("MaxPoolGrad").TypeConstraint("T", kIpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("Mean").TypeConstraint("T", kIpuNumericTypes));
@@ -256,6 +270,10 @@ REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("Reshape").TypeConstraint("T", kIpuAllTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("ResourceApplyGradientDescent").TypeConstraint("T", kIpuAllTypes));
+REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
+        Name("Reverse").TypeConstraint("T", kIpuAllTypes));
+REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
+        Name("ReverseV2").TypeConstraint("T", kIpuAllTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("Rsqrt").TypeConstraint("T", kIpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
