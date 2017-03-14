@@ -22,7 +22,7 @@ limitations under the License.
 namespace tensorflow {
 
   // Initialization for TensorFlow format
-  void MklPoolParameters::init(OpKernelContext* context,
+  void MklPoolParameters::Init(OpKernelContext* context,
                                const std::vector<int32>& ksize,
                                const std::vector<int32>& stride,
                                Padding padding,
@@ -37,11 +37,11 @@ namespace tensorflow {
     tensor_in_rows = GetTensorDim(tensor_in_shape, data_format, 'H');
     tensor_in_batch = GetTensorDim(tensor_in_shape, data_format, 'N');
 
-    init(context, ksize, stride, padding, data_format);
+    Init(context, ksize, stride, padding, data_format);
   }
 
   // Initialization for MKL format
-  void MklPoolParameters::init(OpKernelContext* context,
+  void MklPoolParameters::Init(OpKernelContext* context,
                                const std::vector<int32>& ksize,
                                const std::vector<int32>& stride,
                                Padding padding,
@@ -53,11 +53,11 @@ namespace tensorflow {
     tensor_in_rows = mklInputShape->GetSizes()[1];
     tensor_in_batch = mklInputShape->GetSizes()[3];
 
-    init(context, ksize, stride, padding, data_format);
+    Init(context, ksize, stride, padding, data_format);
   }
 
-  // Common initialization for TensorFlow and MKL formats
-  void MklPoolParameters::init(OpKernelContext* context,
+  // Common Initialization for TensorFlow and MKL formats
+  void MklPoolParameters::Init(OpKernelContext* context,
                                const std::vector<int32>& ksize,
                                const std::vector<int32>& stride,
                                Padding padding,

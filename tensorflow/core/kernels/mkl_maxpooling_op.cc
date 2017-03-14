@@ -73,14 +73,14 @@ class MklMaxPoolingOp : public OpKernel {
 
     MklPoolParameters params;
     if (input_in_mkl_format_ == false) {
-      params.init(context, ksize_, stride_, padding_, data_format_,
+      params.Init(context, ksize_, stride_, padding_, data_format_,
                   tensor_in.shape());
       OP_REQUIRES(context, (params.depth_window == 1),
                   errors::Unimplemented(
                     "Depthwise max pooling not supported by MKL"));
 
     } else {
-      params.init(context, ksize_, stride_, padding_, data_format_,
+      params.Init(context, ksize_, stride_, padding_, data_format_,
                    &mkl_input_shape);
     }
 
@@ -277,14 +277,14 @@ class MklMaxPoolingGradOp : public OpKernel {
 
     MklPoolParameters params;
     if (input_in_mkl_format_ == false) {
-      params.init(context, ksize_, stride_, padding_, data_format_,
+      params.Init(context, ksize_, stride_, padding_, data_format_,
                   tensor_in.shape());
       OP_REQUIRES(context, (params.depth_window == 1),
                   errors::Unimplemented(
                     "Depthwise max pooling not supported by MKL"));
 
     } else {
-      params.init(context, ksize_, stride_, padding_, data_format_,
+      params.Init(context, ksize_, stride_, padding_, data_format_,
                    &mkl_input_shape);
     }
 
@@ -315,7 +315,7 @@ class MklMaxPoolingGradOp : public OpKernel {
                               mkl_input_backprop,
                               mklOutputShape);
     pooling_res_[dnnResourceDiffSrc] =
-      const_cast<void*>(static_cast<const void*>(output_tensor->flat<T>().data()));
+      static_cast<void*>(const_cast<float*>(output_tensor->flat<T>().data()));
 
     int64 output_size = output_tensor->NumElements();
     for (int64 i = 0; i < output_size; ++i) {

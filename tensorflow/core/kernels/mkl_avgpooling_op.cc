@@ -16,8 +16,8 @@
 #ifdef INTEL_MKL
 #define EIGEN_USE_THREADS
 
+#include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/common_runtime/mkl_layer_registry.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -73,10 +73,10 @@ class MklAvgPoolingOp : public UnaryOp<T> {
 
     MklPoolParameters params;
     if (!input_in_mkl_format) {
-      params.init(context, ksize_, stride_, padding_, data_format_,
+      params.Init(context, ksize_, stride_, padding_, data_format_,
                   tensor_in.shape());
     } else {
-      params.init(context, ksize_, stride_, padding_, data_format_,
+      params.Init(context, ksize_, stride_, padding_, data_format_,
                   &mkl_input_shape_);
     }
 
@@ -401,7 +401,7 @@ class MklAvgPoolingGradOp : public OpKernel {
     }
 
     MklPoolParameters params;
-    params.init(context, ksize_, stride_, padding_, data_format_, output_shape);
+    params.Init(context, ksize_, stride_, padding_, data_format_, output_shape);
 
     // Extract the parameters for the op from the pooling specs
     ExtractMklOpParams(context, data_format_, params, &mkl_params_);
@@ -473,9 +473,9 @@ class MklAvgPoolingGradOp : public OpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(
-  Name("MklAvgPool").Device(DEVICE_CPU).TypeConstraint<float>("T"),
+  Name("MklAvgPool").Device(DEVICE_CPU).TypeConstraint<float>("T")
+  .Label(mkl_layer_registry::kMklLayerLabel),
   MklAvgPoolingOp<CPUDevice, float>);
-REGISTER_MKL_LAYER_float("MklAvgPool");
 
 REGISTER_KERNEL_BUILDER(
   Name("MklAvgPoolGrad").Device(DEVICE_CPU).TypeConstraint<float>("T")
