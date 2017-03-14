@@ -603,15 +603,20 @@ class Estimator(object):
       estimator_spec = self._call_model_fn(
           features, labels, model_fn_lib.ModeKeys.EVAL)
 
-      self._verify_default_metric_key(model_fn_lib.MetricKeys.LOSS,
-                                      estimator_spec.eval_metric_ops)
+      if model_fn_lib.MetricKeys.LOSS in estimator_spec.eval_metric_ops:
+        raise ValueError(
+            'Metric with name `loss` is not allowed, because Estimator '
+            'already defines a default metric with the same name.')
       estimator_spec.eval_metric_ops[
           model_fn_lib.MetricKeys.LOSS] = metrics_lib.mean(estimator_spec.loss)
 
       update_op, eval_dict = _extract_metric_update_ops(
           estimator_spec.eval_metric_ops)
 
-      self._verify_default_metric_key(ops.GraphKeys.GLOBAL_STEP, eval_dict)
+      if ops.GraphKeys.GLOBAL_STEP in eval_dict:
+        raise ValueError(
+            'Metric with name `global_step` is not allowed, because Estimator '
+            'already defines a default metric with the same name.')
       eval_dict[ops.GraphKeys.GLOBAL_STEP] = global_step_tensor
 
       eval_results = evaluation._evaluate_once(  # pylint: disable=protected-access

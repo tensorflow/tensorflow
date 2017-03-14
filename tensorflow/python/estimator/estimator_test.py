@@ -21,20 +21,27 @@ from __future__ import print_function
 import os
 import tempfile
 
+import numpy as np
+
 from tensorflow.python.client import session
 from tensorflow.python.estimator import estimator
 from tensorflow.python.estimator import export
 from tensorflow.python.estimator import export_output
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator import run_config
+from tensorflow.python.estimator.inputs import numpy_io
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.layers import layers
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import metrics as metrics_lib
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
@@ -1014,6 +1021,68 @@ class EstimatorExportTest(test.TestCase):
         my_int = graph.get_tensor_by_name('my_int:0')
         my_int_value = sess.run(my_int)
         self.assertEqual(12345, my_int_value)
+
+
+class EstimatorIntegrationTest(test.TestCase):
+
+  def test_complete_flow_with_a_simple_linear_model(self):
+
+    def _model_fn(features, labels, mode):
+      predictions = layers.dense(
+          features['x'], 1, kernel_initializer=init_ops.zeros_initializer())
+      export_outputs = {
+          'predictions': export_output.RegressionOutput(predictions)
+      }
+
+      if mode == model_fn_lib.ModeKeys.PREDICT:
+        return model_fn_lib.EstimatorSpec(
+            mode, predictions=predictions, export_outputs=export_outputs)
+
+      loss = losses.mean_squared_error(labels, predictions)
+      train_op = training.GradientDescentOptimizer(learning_rate=0.5).minimize(
+          loss, training.get_global_step())
+      eval_metric_ops = {
+          'absolute_error': metrics_lib.mean_absolute_error(
+              labels, predictions)
+      }
+
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          predictions=predictions,
+          loss=loss,
+          train_op=train_op,
+          eval_metric_ops=eval_metric_ops,
+          export_outputs=export_outputs)
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    data = np.linspace(0., 1., 100, dtype=np.float32).reshape(-1, 1)
+
+    # TRAIN
+    # learn x = y
+    train_input_fn = numpy_io.numpy_input_fn(
+        x={'x': data}, y=data, batch_size=50, num_epochs=None, shuffle=True)
+    est.train(train_input_fn, steps=200)
+
+    # EVALUTE
+    eval_input_fn = numpy_io.numpy_input_fn(
+        x={'x': data}, y=data, batch_size=50, num_epochs=1, shuffle=True)
+    scores = est.evaluate(eval_input_fn)
+    self.assertEqual(200, scores['global_step'])
+    self.assertGreater(0.1, scores['absolute_error'])
+
+    # PREDICT
+    predict_input_fn = numpy_io.numpy_input_fn(
+        x={'x': data}, y=None, batch_size=10, num_epochs=1, shuffle=False)
+    predictions = list(est.predict(predict_input_fn))
+    self.assertAllClose(data, predictions, atol=0.01)
+
+    # EXPORT
+    feature_spec = {'x': parsing_ops.FixedLenFeature([1], dtypes.float32)}
+    serving_input_receiver_fn = export.build_parsing_serving_input_receiver_fn(
+        feature_spec)
+    export_dir = est.export_savedmodel(tempfile.mkdtemp(),
+                                       serving_input_receiver_fn)
+    self.assertTrue(gfile.Exists(export_dir))
 
 if __name__ == '__main__':
   test.main()

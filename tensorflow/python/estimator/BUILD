@@ -105,6 +105,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":checkpoint_utils",
         ":export",
         ":export_output",
         ":model_fn",
@@ -129,13 +130,16 @@ py_test(
     deps = [
         ":estimator",
         ":model_fn",
+        ":numpy_io",
         ":run_config",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:layers",
         "//tensorflow/python:session",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:training",
+        "//tensorflow/python/ops/losses",
         "//tensorflow/python/saved_model:loader",
     ],
 )
