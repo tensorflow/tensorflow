@@ -99,7 +99,7 @@ def _add_bias_column(feature_columns, columns_to_tensors, bias_variable,
   columns_to_variables[bias_column] = [bias_variable]
 
 
-  def _linear_model_fn(features, labels, mode, params, config=None):
+def _linear_model_fn(features, labels, mode, params, config=None):
   """A model_fn for linear models that use a gradient-based optimizer.
 
   Args:
@@ -148,7 +148,6 @@ def _add_bias_column(feature_columns, columns_to_tensors, bias_variable,
       parent_scope,
       values=tuple(six.itervalues(features)),
       partitioner=partitioner) as scope:
-    
     
     if joint_weights:
       layer_fn = layers.joint_weighted_sum_from_feature_columns
