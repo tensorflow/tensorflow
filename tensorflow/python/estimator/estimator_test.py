@@ -401,10 +401,8 @@ class EstimatorEvaluateTest(test.TestCase):
             'metric_value': 2.})
     est.train(dummy_input_fn, steps=5)
     scores = est.evaluate(dummy_input_fn, steps=1)
-    self.assertDictEqual(
-        {'metric': 2.,
-         'global_step': 5},
-        scores)
+    self.assertIn('metric', scores)
+    self.assertAlmostEqual(2., scores['metric'])
 
   def test_steps0_raises_error(self):
     est = estimator.Estimator(
@@ -431,6 +429,36 @@ class EstimatorEvaluateTest(test.TestCase):
         ValueError, 'Metric with name `global_step` is not allowed'):
       est.evaluate(dummy_input_fn, steps=1)
 
+  def test_global_step_is_reported(self):
+    est = estimator.Estimator(
+        model_fn=_model_fn_with_eval_metric_ops,
+        params={'metric_name': 'metric',
+                'metric_value': 2.})
+    est.train(dummy_input_fn, steps=5)
+    scores = est.evaluate(dummy_input_fn, steps=1)
+    self.assertIn('global_step', scores)
+    self.assertEqual(5, scores['global_step'])
+
+  def test_loss_metric_is_reported(self):
+
+    def _model_fn_with_incremental_loss(features, labels, mode):
+      _, _ = features, labels
+      local_weight = variables.Variable(
+          0., name='local_weight', collections=[ops.GraphKeys.LOCAL_VARIABLES])
+      # Loss will be 2, 4, 6, ...
+      loss = 2 * state_ops.assign_add(local_weight, 1.)
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          loss=loss,
+          train_op=state_ops.assign_add(training.get_global_step(), 1))
+
+    est = estimator.Estimator(model_fn=_model_fn_with_incremental_loss)
+    est.train(dummy_input_fn, steps=1)
+    scores = est.evaluate(dummy_input_fn, steps=5)
+    self.assertIn(model_fn_lib.MetricKeys.LOSS, scores)
+    # Average loss will be (2 + 4 + 6 + 8 + 10)/5=6
+    self.assertAlmostEqual(6., scores[model_fn_lib.MetricKeys.LOSS])
+
   def test_hooks_are_used(self):
     step_counter_hook = _StepCounterHook()
 
@@ -454,10 +482,7 @@ class EstimatorEvaluateTest(test.TestCase):
         dummy_input_fn,
         steps=1,
         checkpoint_path=saver.latest_checkpoint(est1.model_dir))
-    self.assertDictEqual(
-        {'metric': 2.,
-         'global_step': 5},
-        scores)
+    self.assertEqual(5, scores['global_step'])
 
   def test_scaffold_is_used(self):
 

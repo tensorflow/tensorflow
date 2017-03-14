@@ -47,6 +47,13 @@ class ModeKeys(object):
   PREDICT = 'infer'
 
 
+class MetricKeys(object):
+  """Metric key strings."""
+  LOSS = 'loss'
+  AUC = 'auc'
+  ACCURACY = 'accuracy'
+
+
 class EstimatorSpec(
     collections.namedtuple('EstimatorSpec', [
         'predictions', 'loss', 'train_op', 'eval_metric_ops',

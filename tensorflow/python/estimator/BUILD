@@ -113,6 +113,7 @@ py_library(
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:metrics",
         "//tensorflow/python:platform",
         "//tensorflow/python:summary",
         "//tensorflow/python:training",

@@ -36,6 +36,7 @@ from tensorflow.python.estimator import run_config
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import metrics as metrics_lib
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
@@ -602,13 +603,15 @@ class Estimator(object):
       estimator_spec = self._call_model_fn(
           features, labels, model_fn_lib.ModeKeys.EVAL)
 
+      self._verify_default_metric_key(model_fn_lib.MetricKeys.LOSS,
+                                      estimator_spec.eval_metric_ops)
+      estimator_spec.eval_metric_ops[
+          model_fn_lib.MetricKeys.LOSS] = metrics_lib.mean(estimator_spec.loss)
+
       update_op, eval_dict = _extract_metric_update_ops(
           estimator_spec.eval_metric_ops)
 
-      if ops.GraphKeys.GLOBAL_STEP in six.iterkeys(eval_dict):
-        raise ValueError(
-            'Metric with name `global_step` is not allowed, because Estimator '
-            'already defines a default metric with the same name.')
+      self._verify_default_metric_key(ops.GraphKeys.GLOBAL_STEP, eval_dict)
       eval_dict[ops.GraphKeys.GLOBAL_STEP] = global_step_tensor
 
       eval_results = evaluation._evaluate_once(  # pylint: disable=protected-access
@@ -626,6 +629,12 @@ class Estimator(object):
           current_global_step=eval_results[ops.GraphKeys.GLOBAL_STEP])
 
     return eval_results
+
+  def _verify_default_metric_key(self, metric_key, eval_dict):
+    if metric_key in six.iterkeys(eval_dict):
+      raise ValueError(
+          'Metric with name `%s` is not allowed, because Estimator '
+          'already defines a default metric with the same name.' % metric_key)
 
 
 def _get_replica_device_setter(config):
