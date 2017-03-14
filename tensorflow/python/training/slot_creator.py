@@ -41,6 +41,7 @@ from __future__ import print_function
 
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
@@ -51,7 +52,7 @@ def _is_resource(v):
   return isinstance(v, resource_variable_ops.ResourceVariable)
 
 
-def _create_slot_var(primary, val, scope):
+def _create_slot_var(primary, val, scope, validate_shape, shape, dtype):
   """Helper function for creating a slot variable."""
 
   # TODO(lukaszkaiser): Consider allowing partitioners to be set in the current
@@ -61,7 +62,8 @@ def _create_slot_var(primary, val, scope):
   slot = variable_scope.get_variable(
       scope, initializer=val, trainable=False,
       use_resource=_is_resource(primary),
-      validate_shape=val.get_shape().is_fully_defined())
+      shape=shape, dtype=dtype,
+      validate_shape=validate_shape)
   variable_scope.get_variable_scope().set_partitioner(current_partitioner)
 
   # pylint: disable=protected-access
@@ -100,16 +102,17 @@ def create_slot(primary, val, name, colocate_with_primary=True):
     A `Variable` object.
   """
   # Scope the slot name in the namespace of the primary variable.
-  # Set "primary.op.name + '/' + name" as default name, so the scope name of 
+  # Set "primary.op.name + '/' + name" as default name, so the scope name of
   # optimizer can be shared when reuse is True. Meanwhile when reuse is False
   # and the same name has been previously used, the scope name will add '_N'
   # as suffix for unique identifications.
+  validate_shape = val.get_shape().is_fully_defined()
   with variable_scope.variable_scope(None, primary.op.name + "/" + name):
     if colocate_with_primary:
       with ops.colocate_with(primary):
-        return _create_slot_var(primary, val, "")
+        return _create_slot_var(primary, val, "", validate_shape, None, None)
     else:
-      return _create_slot_var(primary, val, "")
+      return _create_slot_var(primary, val, "", validate_shape, None, None)
 
 
 def create_zeros_slot(primary, name, dtype=None, colocate_with_primary=True):
@@ -130,6 +133,17 @@ def create_zeros_slot(primary, name, dtype=None, colocate_with_primary=True):
   slot_shape = primary.get_shape()
   slot_shape = (slot_shape if slot_shape.is_fully_defined()
                 else array_ops.shape(primary.initialized_value()))
-  val = array_ops.zeros(slot_shape, dtype=dtype)
-  return create_slot(primary, val, name,
-                     colocate_with_primary=colocate_with_primary)
+  if slot_shape.is_fully_defined():
+    val = init_ops.zeros_initializer(dtype)
+    validate_shape = True
+    shape = slot_shape
+  else:
+    val = array_ops.zeros(slot_shape, dtype=dtype)
+    validate_shape = False
+    shape = None
+  with variable_scope.variable_scope(None, primary.op.name + "/" + name):
+    if colocate_with_primary:
+      with ops.colocate_with(primary):
+        return _create_slot_var(primary, val, "", validate_shape, shape, dtype)
+    else:
+      return _create_slot_var(primary, val, "", validate_shape, shape, dtype)

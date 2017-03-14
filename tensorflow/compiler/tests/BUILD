@@ -156,6 +156,20 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "momentum_test",
+    size = "small",
+    srcs = ["momentum_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+    ],
+)
+
+tf_xla_py_test(
     name = "nary_ops_test",
     size = "small",
     srcs = ["nary_ops_test.py"],
