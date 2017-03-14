@@ -269,7 +269,8 @@ RemoteFusedGraphExecuteUtils::AddOutputTensorShapeTypeByTensorShapeMap(
         shape_inference::ShapeHandle handle;
         status = context->MakeShapeFromTensorShape(
             input_node_info.second.shape(), &handle);
-        shape_refiner->SetShape(node, 0, handle);
+        // TODO(b/32704451): Don't just ignore this status!
+        shape_refiner->SetShape(node, 0, handle).IgnoreError();
         is_input_node = true;
       }
       if (!status.ok()) {

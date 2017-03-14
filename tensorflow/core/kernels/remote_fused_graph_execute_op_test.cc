@@ -168,9 +168,10 @@ class TestRemoteFusedGraphExecutor final : public IRemoteFusedGraphExecutor {
     // TODO(satok): Read NAME_B from node_a_plus_b
     const NodeDef& node_b = *node_def_map_.at(NAME_B);
     const TensorProto* proto = nullptr;
-    GetNodeAttr(node_b, "value", &proto);
+    TF_CHECK_OK(GetNodeAttr(node_b, "value", &proto));
     Tensor const_tensor;
-    RemoteFusedGraphExecuteUtils::MakeTensorFromProto(*proto, &const_tensor);
+    TF_CHECK_OK(RemoteFusedGraphExecuteUtils::MakeTensorFromProto(
+        *proto, &const_tensor));
     const float b_val = *const_tensor.scalar<float>().data();
     Tensor output_a_plus_b(DT_FLOAT, {});
     output_a_plus_b.flat<float>().data()[0] = input_val + b_val;
@@ -258,7 +259,7 @@ TEST(RemoteFusedExecuteGraphOp, EndToEndTest) {
 
   // 5.2 Fuse graph
   GraphDef fused_graph;
-  RewriteGraphToFusedGraph(original_graph, &fused_graph);
+  TF_CHECK_OK(RewriteGraphToFusedGraph(original_graph, &fused_graph));
 
   // 5.3 Setup session
   std::vector<Tensor> output_tensors;

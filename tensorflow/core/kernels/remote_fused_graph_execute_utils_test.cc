@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/kernels/remote_fused_graph_execute_op_test_utils.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -188,34 +189,38 @@ TEST(RemoteFusedGraphExecuteUtils, PropagateAndBuildTensorShapeMap) {
 
   {
     NodeDef* node_def = GetNodeDef(NAME_B, &def);
-    RemoteFusedGraphExecuteUtils::AddOutputTensorShapeTypeByTensorShapeMap(
-        tensor_shape_map, node_def);
+    TF_ASSERT_OK(
+        RemoteFusedGraphExecuteUtils::AddOutputTensorShapeTypeByTensorShapeMap(
+            tensor_shape_map, node_def));
     std::vector<DataType> data_types;
-    GetNodeAttr(*node_def, RemoteFusedGraphExecuteUtils::ATTR_OUTPUT_DATA_TYPES,
-                &data_types);
+    TF_ASSERT_OK(GetNodeAttr(
+        *node_def, RemoteFusedGraphExecuteUtils::ATTR_OUTPUT_DATA_TYPES,
+        &data_types));
     ASSERT_EQ(1, data_types.size());
     EXPECT_EQ(DT_FLOAT, data_types.at(0));
 
     std::vector<TensorShape> shapes;
-    GetNodeAttr(*node_def, RemoteFusedGraphExecuteUtils::ATTR_OUTPUT_SHAPES,
-                &shapes);
+    TF_ASSERT_OK(GetNodeAttr(
+        *node_def, RemoteFusedGraphExecuteUtils::ATTR_OUTPUT_SHAPES, &shapes));
     ASSERT_EQ(1, shapes.size());
     EXPECT_EQ(0, shapes.at(0).dims());
   }
 
   {
     NodeDef* node_def = GetNodeDef(NAME_A_PLUS_B, &def);
-    RemoteFusedGraphExecuteUtils::AddOutputTensorShapeTypeByTensorShapeMap(
-        tensor_shape_map, node_def);
+    TF_ASSERT_OK(
+        RemoteFusedGraphExecuteUtils::AddOutputTensorShapeTypeByTensorShapeMap(
+            tensor_shape_map, node_def));
     std::vector<DataType> data_types;
-    GetNodeAttr(*node_def, RemoteFusedGraphExecuteUtils::ATTR_OUTPUT_DATA_TYPES,
-                &data_types);
+    TF_ASSERT_OK(GetNodeAttr(
+        *node_def, RemoteFusedGraphExecuteUtils::ATTR_OUTPUT_DATA_TYPES,
+        &data_types));
     ASSERT_EQ(1, data_types.size());
     EXPECT_EQ(DT_FLOAT, data_types.at(0));
 
     std::vector<TensorShape> shapes;
-    GetNodeAttr(*node_def, RemoteFusedGraphExecuteUtils::ATTR_OUTPUT_SHAPES,
-                &shapes);
+    TF_ASSERT_OK(GetNodeAttr(
+        *node_def, RemoteFusedGraphExecuteUtils::ATTR_OUTPUT_SHAPES, &shapes));
     ASSERT_EQ(1, shapes.size());
     EXPECT_EQ(0, shapes.at(0).dims());
   }
