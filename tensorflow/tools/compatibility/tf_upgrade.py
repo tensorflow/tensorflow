@@ -565,7 +565,7 @@ class TensorFlowCodeUpgrader(object):
     return 1, text, process_errors
   # pylint: enable=broad-except
 
-  def process_tree(self, root_directory, output_root_directory):
+  def process_tree(self, root_directory, output_root_directory, copy_other_files):
     """Processes upgrades on an entire tree of python files in place.
 
     Note that only Python files. If you have custom code in other languages,
@@ -595,13 +595,21 @@ class TensorFlowCodeUpgrader(object):
     # Collect list of files to process (we do this to correctly handle if the
     # user puts the output directory in some sub directory of the input dir)
     files_to_process = []
+    files_to_copy = []
     for dir_name, _, file_list in os.walk(root_directory):
       py_files = [f for f in file_list if f.endswith(".py")]
+      copy_files = [f for f in file_list if not f.endswith(".py")]
       for filename in py_files:
         fullpath = os.path.join(dir_name, filename)
         fullpath_output = os.path.join(
             output_root_directory, os.path.relpath(fullpath, root_directory))
         files_to_process.append((fullpath, fullpath_output))
+      if copy_other_files:
+        for filename in copy_files:
+          fullpath = os.path.join(dir_name, filename)
+          fullpath_output = os.path.join(
+              output_root_directory, os.path.relpath(fullpath, root_directory))
+          files_to_copy.append((fullpath, fullpath_output))
 
     file_count = 0
     tree_errors = []
@@ -618,6 +626,11 @@ class TensorFlowCodeUpgrader(object):
       _, l_report, l_errors = self.process_file(input_path, output_path)
       tree_errors += l_errors
       report += l_report
+    for input_path, output_path in files_to_copy:
+      output_directory = os.path.dirname(output_path)
+      if not os.path.isdir(output_directory):
+        os.makedirs(output_directory)
+      shutil.copy(input_path, output_path)
     return file_count, report, tree_errors
 
 
@@ -650,6 +663,13 @@ Simple usage:
       help="If converting a whole tree of files, the output "
       "directory (relative or absolute).")
   parser.add_argument(
+      "--copyotherfiles",
+      dest="copy_other_files",
+      help=("If converting a whole tree of files, whether to "
+            "copy the other files."),
+      type=bool,
+      default=False)
+  parser.add_argument(
       "--reportfile",
       dest="report_filename",
       help=("The name of the file where the report log is "
@@ -668,7 +688,7 @@ Simple usage:
     files_processed = 1
   elif args.input_tree:
     files_processed, report_text, errors = upgrade.process_tree(
-        args.input_tree, args.output_tree)
+        args.input_tree, args.output_tree, args.copy_other_files)
   else:
     parser.print_help()
   if report_text:
