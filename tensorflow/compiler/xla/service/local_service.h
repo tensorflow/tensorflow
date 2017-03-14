@@ -31,60 +31,6 @@ limitations under the License.
 
 namespace xla {
 
-// Computation execution options which may be set by the client when executing
-// locally (via LocalClient::ExecuteLocally).
-class LocalExecuteOptions {
- public:
-  // Specifies the allocator to use during execution. Execution will fail if no
-  // allocator is provided.
-  LocalExecuteOptions& set_allocator(DeviceMemoryAllocator* allocator);
-  DeviceMemoryAllocator* allocator() const;
-
-  // If set, this is the platform to run the computation on. This must match
-  // the underlying platform of the service. A value of nullptr means the
-  // platform is not set.
-  // TODO(b/28616830): Support multiple platforms.
-  LocalExecuteOptions& set_platform(perftools::gputools::Platform* platform);
-  perftools::gputools::Platform* platform() const;
-
-  // If set, this is the device to run the computation on. Valid device_ordinal
-  // values are: 0 to # of devices - 1. These values are identical to the
-  // device ordinal values used by StreamExecutor. A value of < 0 means the
-  // ordinal is not set.
-  LocalExecuteOptions& set_device_ordinal(int device_ordinal);
-  int device_ordinal() const;
-
-  // If set, this is the stream to run the computation on. The platform of the
-  // stream must match the service's platform. The device ordinal
-  // option (if set) must match the stream's device. A value of nullptr means
-  // the stream is not set.
-  LocalExecuteOptions& set_stream(perftools::gputools::Stream* stream);
-  perftools::gputools::Stream* stream() const;
-
-  // If set, collect profile information during execution and fill the given
-  // ExecutionProfile object with the profile data. A value of nullptr means
-  // the profile is not set.
-  LocalExecuteOptions& set_execution_profile(ExecutionProfile* profile);
-  ExecutionProfile* execution_profile() const;
-
-  // If set, this specifies the layout of the result of the computation. If not
-  // set, the service will chose the layout of the result. A Shape is used to
-  // store the layout to accomodate tuple result shapes. A value of nullptr
-  // means the shape is not set.
-  LocalExecuteOptions& set_result_layout(const Shape& shape_with_layout);
-  const Shape* result_layout() const;
-
- private:
-  DeviceMemoryAllocator* allocator_ = nullptr;
-  perftools::gputools::Platform* platform_ = nullptr;
-  int device_ordinal_ = -1;
-  perftools::gputools::Stream* stream_ = nullptr;
-  ExecutionProfile* profile_ = nullptr;
-
-  bool has_result_shape_with_layout_ = false;
-  Shape result_shape_with_layout_;
-};
-
 // Service implementation that extends the XLA Service to leverage running
 // in the same process as the client.
 class LocalService : public Service {
@@ -112,13 +58,6 @@ class LocalService : public Service {
   StatusOr<GlobalDataHandle> AllocateBufferOnDevice(
       const Shape& shape, int device_ordinal,
       bool allocate_space_for_deep_copy);
-
-  // Execute the given computation with the given arguments and options with
-  // zero-copy data handling of arguments and result.
-  StatusOr<std::unique_ptr<ShapedBuffer>> ExecuteLocally(
-      const ComputationHandle& computation,
-      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-      const LocalExecuteOptions& options);
 
   // A description of a computation to compile using CompileAheadOfTime.
   struct AheadOfTimeComputationInstance {
@@ -149,13 +88,6 @@ class LocalService : public Service {
                         std::unique_ptr<Backend> compute_constant_backend);
   LocalService(const LocalService&) = delete;
   void operator=(const LocalService&) = delete;
-
-  // Validates the given options and argument layouts and returns an appropriate
-  // error code.
-  tensorflow::Status ValidateExecuteOptions(
-      const ProgramShape& program_shape,
-      tensorflow::gtl::ArraySlice<const Shape*> arguments,
-      const LocalExecuteOptions& options);
 };
 
 }  // namespace xla

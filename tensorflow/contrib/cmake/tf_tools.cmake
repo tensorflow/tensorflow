@@ -106,3 +106,22 @@ target_link_libraries(${compare_graphs} PUBLIC
   ${tf_core_gpu_kernels_lib}
   ${tensorflow_EXTERNAL_LIBRARIES}
 )
+
+set(benchmark_model "benchmark_model")
+
+add_executable(${benchmark_model}
+    "${tensorflow_source_dir}/tensorflow/tools/benchmark/benchmark_model.cc"
+    "${tensorflow_source_dir}/tensorflow/tools/benchmark/benchmark_model_main.cc"
+    $<TARGET_OBJECTS:tf_core_lib>
+    $<TARGET_OBJECTS:tf_core_cpu>
+    $<TARGET_OBJECTS:tf_core_framework>
+    $<TARGET_OBJECTS:tf_core_ops>
+    $<TARGET_OBJECTS:tf_core_direct_session>
+    $<TARGET_OBJECTS:tf_core_kernels>
+)
+
+target_link_libraries(${benchmark_model} PUBLIC
+  tf_protos_cc
+  ${tf_core_gpu_kernels_lib}
+  ${tensorflow_EXTERNAL_LIBRARIES}
+)

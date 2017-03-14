@@ -40,8 +40,8 @@ class FixedLengthRecordReader : public ReaderBase {
 
   // On success:
   // * input_buffer_ != nullptr,
-  // * input_buffer_->Tell() == footer_bytes_
-  // * file_pos_limit_ == file size - header_bytes_
+  // * input_buffer_->Tell() == header_bytes_
+  // * file_pos_limit_ == file size - footer_bytes_
   Status OnWorkStartedLocked() override {
     record_number_ = 0;
     uint64 file_size = 0;

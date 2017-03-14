@@ -106,9 +106,9 @@ bool ComputationBuilder::MakeWindow(
     tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
     tensorflow::gtl::ArraySlice<int64> lhs_dilation,
     tensorflow::gtl::ArraySlice<int64> rhs_dilation, Window* window) {
-  const auto verify_size = [&](
-      const tensorflow::gtl::ArraySlice<int64>::size_type x,
-      const char* x_name) {
+  const auto verify_size = [&](const tensorflow::gtl::ArraySlice<
+                                   int64>::size_type x,
+                               const char* x_name) {
     if (x == 0 || x == window_dimensions.size()) {
       return true;
     } else {
@@ -173,6 +173,7 @@ ComputationDataHandle ComputationBuilder::ConstantOp(
   OpRequest op_request;
   *op_request.mutable_constant_request() = request;
   *op_request.mutable_computation() = computation_.handle();
+  AddOpMetadata(&op_request);
   OpResponse response;
 
   VLOG(2) << "making constant request";
@@ -200,6 +201,7 @@ ComputationDataHandle ComputationBuilder::Parameter(int64 parameter_number,
   OpRequest op_request;
   *op_request.mutable_computation() = computation_.handle();
   *op_request.mutable_parameter_request() = request;
+  AddOpMetadata(&op_request);
   OpResponse response;
 
   VLOG(2) << "making parameter request";
@@ -271,6 +273,7 @@ ComputationDataHandle ComputationBuilder::Slice(
   OpRequest op_request;
   *op_request.mutable_computation() = computation_.handle();
   *op_request.mutable_slice_request() = request;
+  AddOpMetadata(&op_request);
   OpResponse response;
 
   VLOG(2) << "making slice request";
@@ -295,6 +298,7 @@ ComputationDataHandle ComputationBuilder::DynamicSlice(
   OpRequest op_request;
   *op_request.mutable_computation() = computation_.handle();
   *op_request.mutable_dynamic_slice_request() = request;
+  AddOpMetadata(&op_request);
   OpResponse response;
 
   VLOG(2) << "making dynamic slice request";
@@ -316,6 +320,7 @@ ComputationDataHandle ComputationBuilder::DynamicUpdateSlice(
   OpRequest op_request;
   *op_request.mutable_computation() = computation_.handle();
   *op_request.mutable_dynamic_update_slice_request() = request;
+  AddOpMetadata(&op_request);
   OpResponse response;
 
   VLOG(2) << "making dynamic update slice request";
@@ -338,6 +343,7 @@ ComputationDataHandle ComputationBuilder::ConcatInDim(
   OpRequest op_request;
   *op_request.mutable_computation() = computation_.handle();
   *op_request.mutable_concatenate_request() = request;
+  AddOpMetadata(&op_request);
   OpResponse response;
 
   VLOG(2) << "making concatenate request";
@@ -360,6 +366,7 @@ ComputationDataHandle ComputationBuilder::Broadcast(
   OpRequest op_request;
   *op_request.mutable_computation() = computation_.handle();
   *op_request.mutable_broadcast_request() = request;
+  AddOpMetadata(&op_request);
   OpResponse response;
 
   VLOG(2) << "making broadcast request";
@@ -382,6 +389,7 @@ ComputationDataHandle ComputationBuilder::Pad(
   OpRequest op_request;
   *op_request.mutable_computation() = computation_.handle();
   *op_request.mutable_pad_request() = request;
+  AddOpMetadata(&op_request);
   OpResponse response;
 
   VLOG(2) << "making pad request";
@@ -408,6 +416,7 @@ ComputationDataHandle ComputationBuilder::Reshape(
   OpRequest op_request;
   *op_request.mutable_computation() = computation_.handle();
   *op_request.mutable_reshape_request() = request;
+  AddOpMetadata(&op_request);
   OpResponse response;
 
   VLOG(2) << "making reshape request";
@@ -485,6 +494,7 @@ void ComputationBuilder::Trace(const string& tag,
   OpRequest op_request;
   *op_request.mutable_computation() = computation_.handle();
   *op_request.mutable_trace_request() = request;
+  AddOpMetadata(&op_request);
   OpResponse response;
 
   VLOG(2) << "making trace request";
@@ -516,6 +526,7 @@ ComputationDataHandle ComputationBuilder::Tuple(
   OpRequest op_request;
   *op_request.mutable_computation() = computation_.handle();
   *op_request.mutable_variadic_op_request() = request;
+  AddOpMetadata(&op_request);
   OpResponse response;
 
   VLOG(2) << "making variadic op request";
@@ -535,6 +546,7 @@ ComputationDataHandle ComputationBuilder::GetTupleElement(
   OpRequest op_request;
   *op_request.mutable_computation() = computation_.handle();
   *op_request.mutable_get_tuple_element_request() = request;
+  AddOpMetadata(&op_request);
   OpResponse response;
 
   VLOG(2) << "making get tuple element op request";
@@ -684,7 +696,7 @@ ComputationDataHandle ComputationBuilder::ConvWithGeneralDimensions(
 
   std::vector<int64> base_area_dimensions(
       dimension_numbers.spatial_dimensions_size());
-  for (std::vector<int64>::size_type i = 0; i < base_area_dimensions.size() ;
+  for (std::vector<int64>::size_type i = 0; i < base_area_dimensions.size();
        ++i) {
     base_area_dimensions[i] =
         lhs_shape->dimensions(dimension_numbers.spatial_dimensions(i));
@@ -762,6 +774,7 @@ ComputationDataHandle ComputationBuilder::ConvGeneralDilated(
   OpRequest op_request;
   *op_request.mutable_computation() = computation_.handle();
   *op_request.mutable_convolve_request() = request;
+  AddOpMetadata(&op_request);
   OpResponse response;
 
   VLOG(2) << "making convolve request";
@@ -781,6 +794,7 @@ ComputationDataHandle ComputationBuilder::Infeed(const Shape& shape,
   OpRequest op_request;
   *op_request.mutable_computation() = computation_.handle();
   *op_request.mutable_infeed_request() = request;
+  AddOpMetadata(&op_request);
   OpResponse response;
 
   VLOG(2) << "making infeed op request";
@@ -803,6 +817,7 @@ void ComputationBuilder::Outfeed(const ComputationDataHandle& operand,
   OpRequest op_request;
   *op_request.mutable_outfeed_request() = request;
   *op_request.mutable_computation() = computation_.handle();
+  AddOpMetadata(&op_request);
   OpResponse response;
 
   VLOG(2) << "making outfeed op request";
@@ -829,6 +844,7 @@ ComputationDataHandle ComputationBuilder::Call(
   OpRequest op_request;
   *op_request.mutable_computation() = computation_.handle();
   *op_request.mutable_call_request() = request;
+  AddOpMetadata(&op_request);
   OpResponse response;
 
   VLOG(2) << "making call op request";
@@ -854,6 +870,7 @@ ComputationDataHandle ComputationBuilder::CustomCall(
   OpRequest op_request;
   *op_request.mutable_computation() = computation_.handle();
   *op_request.mutable_custom_call_request() = request;
+  AddOpMetadata(&op_request);
   OpResponse response;
 
   VLOG(2) << "making custom call op request";
@@ -994,6 +1011,7 @@ ComputationDataHandle ComputationBuilder::Rev(
   OpRequest op_request;
   *op_request.mutable_computation() = computation_.handle();
   *op_request.mutable_reverse_request() = request;
+  AddOpMetadata(&op_request);
   OpResponse response;
 
   VLOG(2) << "making reverse op request";
@@ -1039,6 +1057,7 @@ ComputationDataHandle ComputationBuilder::ConvertElementType(
   OpRequest op_request;
   *op_request.mutable_computation() = computation_.handle();
   *op_request.mutable_convert_request() = request;
+  AddOpMetadata(&op_request);
   OpResponse response;
 
   VLOG(2) << "making convert request";
@@ -1082,6 +1101,7 @@ ComputationDataHandle ComputationBuilder::UnaryOp(
   OpRequest op_request;
   *op_request.mutable_computation() = computation_.handle();
   *op_request.mutable_unary_op_request() = request;
+  AddOpMetadata(&op_request);
   OpResponse response;
 
   VLOG(2) << "making unop request";
@@ -1108,6 +1128,7 @@ ComputationDataHandle ComputationBuilder::BinaryOp(
   OpRequest op_request;
   *op_request.mutable_computation() = computation_.handle();
   *op_request.mutable_binary_op_request() = request;
+  AddOpMetadata(&op_request);
   OpResponse response;
 
   VLOG(2) << "making binop request";
@@ -1133,6 +1154,7 @@ ComputationDataHandle ComputationBuilder::RngOp(
   OpRequest op_request;
   *op_request.mutable_computation() = computation_.handle();
   *op_request.mutable_rng_request() = request;
+  AddOpMetadata(&op_request);
   OpResponse response;
 
   VLOG(2) << "making rngop request";
@@ -1156,6 +1178,7 @@ ComputationDataHandle ComputationBuilder::TernaryOp(
   OpRequest op_request;
   *op_request.mutable_computation() = computation_.handle();
   *op_request.mutable_ternary_op_request() = request;
+  AddOpMetadata(&op_request);
   OpResponse response;
 
   VLOG(2) << "making triop request";
@@ -1257,6 +1280,7 @@ ComputationDataHandle ComputationBuilder::Map(
   OpRequest op_request;
   *op_request.mutable_computation() = computation_.handle();
   *op_request.mutable_map_request() = request;
+  AddOpMetadata(&op_request);
   OpResponse response;
 
   VLOG(2) << "making Map request";
@@ -1295,6 +1319,7 @@ ComputationDataHandle ComputationBuilder::While(
   OpRequest op_request;
   *op_request.mutable_computation() = computation_.handle();
   *op_request.mutable_while_request() = request;
+  AddOpMetadata(&op_request);
   OpResponse response;
 
   VLOG(2) << "making while request";
@@ -1320,6 +1345,7 @@ ComputationDataHandle ComputationBuilder::Reduce(
   OpRequest op_request;
   *op_request.mutable_computation() = computation_.handle();
   *op_request.mutable_reduce_request() = request;
+  AddOpMetadata(&op_request);
   OpResponse response;
 
   VLOG(2) << "making reduce request";
@@ -1372,6 +1398,7 @@ ComputationDataHandle ComputationBuilder::ReduceWindowWithGeneralPadding(
   OpRequest op_request;
   *op_request.mutable_computation() = computation_.handle();
   *op_request.mutable_reduce_window_request() = request;
+  AddOpMetadata(&op_request);
   OpResponse response;
 
   VLOG(2) << "making reduce-window request";
@@ -1390,6 +1417,7 @@ ComputationDataHandle ComputationBuilder::CrossReplicaSum(
   OpRequest op_request;
   *op_request.mutable_cross_replica_sum_request() = request;
   *op_request.mutable_computation() = computation_.handle();
+  AddOpMetadata(&op_request);
   OpResponse response;
 
   VLOG(2) << "making cross-replica-sum request";
@@ -1446,6 +1474,7 @@ ComputationDataHandle ComputationBuilder::SelectAndScatterWithGeneralPadding(
   OpRequest op_request;
   *op_request.mutable_computation() = computation_.handle();
   *op_request.mutable_select_and_scatter_request() = request;
+  AddOpMetadata(&op_request);
   OpResponse response;
 
   VLOG(2) << "making select-and-scatter request";
@@ -1465,6 +1494,7 @@ void ComputationBuilder::Send(const ComputationDataHandle& operand,
   OpRequest op_request;
   *op_request.mutable_send_request() = request;
   *op_request.mutable_computation() = computation_.handle();
+  AddOpMetadata(&op_request);
   OpResponse response;
 
   VLOG(2) << "making send request";
@@ -1489,6 +1519,7 @@ ComputationDataHandle ComputationBuilder::Recv(const Shape& shape,
   OpRequest op_request;
   *op_request.mutable_recv_request() = request;
   *op_request.mutable_computation() = computation_.handle();
+  AddOpMetadata(&op_request);
   OpResponse response;
 
   VLOG(2) << "making recv request";
@@ -1522,6 +1553,11 @@ StatusOr<Computation> ComputationBuilder::Build() {
   }
 
   return {std::move(computation_)};
+}
+
+void ComputationBuilder::AddOpMetadata(OpRequest* request) const {
+  tensorflow::mutex_lock lock(mutex_);
+  *request->mutable_metadata() = metadata_;
 }
 
 /* static */ ConvolutionDimensionNumbers

@@ -375,6 +375,11 @@ class InferenceContext {
   // the value.
   Status MakeDimForScalarInput(int idx, DimensionHandle* out);
 
+  // Returns the NodeDef. The returned reference does not outlive the
+  // InferenceContext, and it should not be used after InferenceContext is
+  // destroyed.
+  const NodeDef& node_def() { return node_def_; }
+
   // Look up the attr for the NodeDef being evaluated with name attr_name and
   // set *value to its value.  If no attr with attr_name is found in def(), or
   // the attr does not have a matching type, a non-ok status will be returned.

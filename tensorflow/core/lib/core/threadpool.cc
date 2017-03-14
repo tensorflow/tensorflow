@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
 
-
 namespace tensorflow {
 namespace thread {
 
@@ -86,9 +85,10 @@ struct EigenEnvironment {
 
 struct ThreadPool::Impl : Eigen::ThreadPoolTempl<EigenEnvironment> {
   Impl(Env* env, const ThreadOptions& thread_options, const string& name,
-       int num_threads)
+       int num_threads, bool low_latency_hint)
       : Eigen::ThreadPoolTempl<EigenEnvironment>(
-            num_threads, EigenEnvironment(env, thread_options, name)) {}
+            num_threads, low_latency_hint,
+            EigenEnvironment(env, thread_options, name)) {}
 
   void ParallelFor(int64 total, int64 cost_per_unit,
                    std::function<void(int64, int64)> fn) {
@@ -102,13 +102,18 @@ struct ThreadPool::Impl : Eigen::ThreadPoolTempl<EigenEnvironment> {
 };
 
 ThreadPool::ThreadPool(Env* env, const string& name, int num_threads)
-    : ThreadPool(env, ThreadOptions(), name, num_threads) {}
+    : ThreadPool(env, ThreadOptions(), name, num_threads, true) {}
 
 ThreadPool::ThreadPool(Env* env, const ThreadOptions& thread_options,
-                       const string& name, int num_threads) {
+                       const string& name, int num_threads)
+    : ThreadPool(env, thread_options, name, num_threads, true) {}
+
+ThreadPool::ThreadPool(Env* env, const ThreadOptions& thread_options,
+                       const string& name, int num_threads,
+                       bool low_latency_hint) {
   CHECK_GE(num_threads, 1);
-  impl_.reset(
-      new ThreadPool::Impl(env, thread_options, "tf_" + name, num_threads));
+  impl_.reset(new ThreadPool::Impl(env, thread_options, "tf_" + name,
+                                   num_threads, low_latency_hint));
 }
 
 ThreadPool::~ThreadPool() {}

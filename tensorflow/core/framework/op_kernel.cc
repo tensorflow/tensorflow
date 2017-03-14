@@ -596,7 +596,7 @@ Status OpKernelContext::allocate_temp(
     const AllocationAttributes& allocation_attr) {
   Status s =
       allocate_tensor(type, shape, out_temp, allocator_attr, allocation_attr);
-  if (track_allocations()) {
+  if (track_allocations() && out_temp->TotalBytes() > 0) {
     Allocator* a = get_allocator(allocator_attr);
     if (a->TracksAllocationSizes()) {
       int64 alloc_size =
@@ -624,7 +624,9 @@ Status OpKernelContext::allocate_persistent(DataType type,
       *out_tensor = out_persistent->AccessTensor(this);
     }
   }
-  if (track_allocations()) {
+  if (track_allocations() && persistent.TotalBytes() > 0) {
+    // TODO(yuefengz): some allocators allocate memory even if the requested
+    // size is 0.
     Allocator* a = get_allocator(attr);
     if (a->TracksAllocationSizes()) {
       int64 alloc_size =
@@ -633,12 +635,8 @@ Status OpKernelContext::allocate_persistent(DataType type,
           a->AllocationId(const_cast<char*>(persistent.tensor_data().data()));
       if (allocate_on_host(attr)) {
         record_host_persistent_memory_allocation(alloc_size, alloc_id);
-        // This function has called allocate_temp(), so we need to deduct the
-        // recorded temp memory size.
-        record_host_temp_memory_size(-alloc_size);
       } else {
         record_device_persistent_memory_allocation(alloc_size, alloc_id);
-        record_device_temp_memory_size(-alloc_size);
       }
     }
   }

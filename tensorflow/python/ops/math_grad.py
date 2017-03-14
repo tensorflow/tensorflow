@@ -953,48 +953,6 @@ def _CastGrad(op, grad):
     return None
 
 
-def _FFTSizeForGrad(grad, rank):
-  return math_ops.reduce_prod(
-      array_ops.slice(
-          array_ops.reverse_v2(array_ops.shape(grad), [0]), (0,), (rank,)))
-
-
-@ops.RegisterGradient("FFT")
-def _FFTGrad(_, grad):
-  size = math_ops.cast(_FFTSizeForGrad(grad, 1), dtypes.float32)
-  return math_ops.ifft(grad) * math_ops.complex(size, 0.)
-
-
-@ops.RegisterGradient("IFFT")
-def _IFFTGrad(_, grad):
-  rsize = 1. / math_ops.cast(_FFTSizeForGrad(grad, 1), dtypes.float32)
-  return math_ops.fft(grad) * math_ops.complex(rsize, 0.)
-
-
-@ops.RegisterGradient("FFT2D")
-def _FFT2DGrad(_, grad):
-  size = math_ops.cast(_FFTSizeForGrad(grad, 2), dtypes.float32)
-  return math_ops.ifft2d(grad) * math_ops.complex(size, 0.)
-
-
-@ops.RegisterGradient("IFFT2D")
-def _IFFT2DGrad(_, grad):
-  rsize = 1. / math_ops.cast(_FFTSizeForGrad(grad, 2), dtypes.float32)
-  return math_ops.fft2d(grad) * math_ops.complex(rsize, 0.)
-
-
-@ops.RegisterGradient("FFT3D")
-def _FFT3DGrad(_, grad):
-  size = math_ops.cast(_FFTSizeForGrad(grad, 3), dtypes.float32)
-  return math_ops.ifft3d(grad) * math_ops.complex(size, 0.)
-
-
-@ops.RegisterGradient("IFFT3D")
-def _IFFT3DGrad(_, grad):
-  rsize = 1. / math_ops.cast(_FFTSizeForGrad(grad, 3), dtypes.float32)
-  return math_ops.fft3d(grad) * math_ops.complex(rsize, 0.)
-
-
 @ops.RegisterGradient("Cross")
 def _CrossGrad(op, grad):
   u = op.inputs[0]

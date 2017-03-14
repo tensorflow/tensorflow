@@ -1091,6 +1091,22 @@ StatusOr<Shape> UserComputation::GetShape(const ComputationDataHandle& handle) {
   return operand->output_shape();
 }
 
+Status UserComputation::SetOpMetadata(const ComputationDataHandle& handle,
+                                      const OpMetadata& metadata) {
+  tensorflow::mutex_lock lock(mutex_);
+
+  int64 handle_value = handle.handle();
+  if (session_computation_.requests().count(handle_value) == 0) {
+    return InvalidArgument("Invalid handle in SetDebugMetadata (%lld)",
+                           handle_value);
+  }
+  *session_computation_.mutable_requests()
+       ->at(handle_value)
+       .mutable_request()
+       ->mutable_metadata() = metadata;
+  return Status::OK();
+}
+
 Status UserComputation::SetReturnValue(const ComputationDataHandle& handle) {
   tensorflow::mutex_lock lock(mutex_);
 
@@ -2314,6 +2330,7 @@ HloInstruction* ComputationLowerer::Visit(
     default:
       LOG(FATAL) << "Unexpected request type: " << request.request().op_case();
   }
+  hlo_instruction->set_metadata(request.request().metadata());
   (*visited)[handle.handle()] = hlo_instruction;
   return hlo_instruction;
 }

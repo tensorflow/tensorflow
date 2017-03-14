@@ -36,9 +36,9 @@ from werkzeug import wrappers
 
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.summary import event_accumulator
-from tensorflow.python.summary import event_multiplexer
 from tensorflow.tensorboard.backend import process_graph
+from tensorflow.tensorboard.backend.event_processing import event_accumulator
+from tensorflow.tensorboard.backend.event_processing import event_multiplexer
 from tensorflow.tensorboard.lib.python import http_util
 from tensorflow.tensorboard.plugins.debugger import debugger_plugin
 from tensorflow.tensorboard.plugins.projector import projector_plugin

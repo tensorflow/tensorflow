@@ -29,6 +29,8 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.PriorityQueue;
 import java.util.StringTokenizer;
+import org.tensorflow.Graph;
+import org.tensorflow.Operation;
 import org.tensorflow.contrib.android.TensorFlowInferenceInterface;
 import org.tensorflow.demo.env.Logger;
 
@@ -92,18 +94,27 @@ public class TensorFlowMultiBoxDetector implements Classifier {
       throw new RuntimeException("TF initialization failed");
     }
 
+    final Graph g = d.inferenceInterface.graph();
+
     d.inputName = inputName;
     // The inputName node has a shape of [N, H, W, C], where
     // N is the batch size
     // H = W are the height and width
     // C is the number of channels (3 for our purposes - RGB)
-    d.inputSize = (int) d.inferenceInterface.graph().operation(inputName).output(0).shape().size(1);
+    final Operation inputOp = g.operation(inputName);
+    if (inputOp == null) {
+      throw new RuntimeException("Failed to find input Node '" + inputName + "'");
+    }
+    d.inputSize = (int) inputOp.output(0).shape().size(1);
     d.imageMean = imageMean;
     d.imageStd = imageStd;
     // The outputScoresName node has a shape of [N, NumLocations], where N
     // is the batch size.
-    d.numLocations =
-        (int) d.inferenceInterface.graph().operation(outputScoresName).output(0).shape().size(1);
+    final Operation outputOp = g.operation(outputScoresName);
+    if (outputOp == null) {
+      throw new RuntimeException("Failed to find output Node '" + outputScoresName + "'");
+    }
+    d.numLocations = (int) outputOp.output(0).shape().size(1);
 
     d.boxPriors = new float[d.numLocations * 8];
 

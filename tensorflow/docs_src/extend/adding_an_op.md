@@ -532,6 +532,7 @@ REGISTER_OP("AttrDefaultExampleForAllTypes")
 Note in particular that the values of type `type` use @{$dims_types#data-types$the `DT_*` names for the types}.
 
 #### Polymorphism {#polymorphism}
+
 ##### Type Polymorphism
 
 For ops that can take different types as input or produce different output
@@ -873,11 +874,11 @@ expressions:
   ```c++
   REGISTER_OP("PolymorphicSingleInput")
       .Attr("T: type")
-      .Input("in: T);
+      .Input("in: T");
 
   REGISTER_OP("RestrictedPolymorphicSingleInput")
       .Attr("T: {int32, int64}")
-      .Input("in: T);
+      .Input("in: T");
   ```
 
   Referencing an attr of type `list(type)` allows you to accept a sequence of
@@ -1059,7 +1060,7 @@ cuda_op_kernel.cu.o -I $TF_INC -fPIC -lcudart
 
 Note that if your CUDA libraries are not installed in `/usr/local/lib64`,
 you'll need to specify the path explicitly in the second (g++) command above.
-For example, add `-L /usr/local/cuda-8.0/lib64/` if your CUDA is installed in 
+For example, add `-L /usr/local/cuda-8.0/lib64/` if your CUDA is installed in
 `/usr/local/cuda-8.0`.
 
 ### Implement the gradient in Python {#implement-gradient}
@@ -1163,7 +1164,9 @@ for ZeroOut:
 ```
 
 `c->set_output(0, c->input(0));` declares that the first output's shape should
-be set to the first input's shape. There are a number of common shape functions
+be set to the first input's shape. If the output is selected by its index as in the above example, the second parameter of `set_output` should be a `ShapeHandle` object. You can create an empty `ShapeHandle` object by its default constructor. The `ShapeHandle` object for an input with index `idx` can be obtained by `c->input(idx)`.
+
+There are a number of common shape functions
 that apply to many ops, such as `shape_inference::UnchangedShape` which can be
 found in [common_shape_fns.h](https://www.tensorflow.org/code/tensorflow/core/framework/common_shape_fns.h) and used as follows:
 
@@ -1223,7 +1226,15 @@ particular dimension has a very specific value using `InferenceContext::Dim` and
 `InferenceContext::WithValue`; you can specify that an output dimension is the
 sum / product of two input dimensions using `InferenceContext::Add` and
 `InferenceContext::Multiply`. See the `InferenceContext` class for
-all of the various shape manipulations you can specify.
+all of the various shape manipulations you can specify. The following example sets
+shape of the first output to (n, 3), where first input has shape (n, ...)
+
+```c++
+.SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
+    c->set_output(0, c->Matrix(c->Dim(c->input(0), 0), 3));
+    return Status::OK();
+});
+```
 
 If you have a complicated shape function, you should consider adding a test for
 validating that various input shape combinations produce the expected output

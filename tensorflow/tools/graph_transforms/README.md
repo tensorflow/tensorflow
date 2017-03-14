@@ -20,7 +20,7 @@
     *   [fuse_convolutions](#fuse_convolutions)
     *   [insert_logging](#insert_logging)
     *   [merge_duplicate_nodes](#merge_duplicate_nodes)
-    *   [obsfucate_names](#obsfucate_names)
+    *   [obfuscate_names](#obfuscate_names)
     *   [quantize_nodes](#quantize_nodes)
     *   [quantize_weights](#quantize_weights)
     *   [remove_attribute](#remove_attribute)
@@ -29,6 +29,7 @@
     *   [rename_attribute](#rename_attribute)
     *   [rename_op](#rename_op)
     *   [round_weights](#round_weights)
+    *   [sparsify_gather](#sparsify_gather)
     *   [set_device](#set_device)
     *   [sort_by_execution_order](#sort_by_execution_order)
     *   [strip_unused_nodes](#strip_unused_nodes)
@@ -250,7 +251,7 @@ results are cached and so you shouldn't see the graph run any more slowly.
 So far we've been concentrating on weights because those generally take up the
 most space. If you have a graph with a lot of small nodes in it, the names of
 those nodes can start to take up a noticeable amount of space too. To shrink
-those down, you can run the [obsfucate_names](#obsfucate_names) transform, which
+those down, you can run the [obfuscate_names](#obfuscate_names) transform, which
 replaces all the names (except for inputs and outputs) with short, cryptic but
 unique ids:
 
@@ -262,7 +263,7 @@ bazel-bin/tensorflow/tools/graph_transforms/transform_graph \
 --inputs='Mul:0' \
 --outputs='softmax:0' \
 --transforms='\
-obsfucate_names \
+obfuscate_names \
 '
 ```
 
@@ -520,7 +521,7 @@ of redundancy (e.g. this transform is always run as part of
 [quantize_nodes](#quantize_nodes) since the processing there can introduce
 duplicates of constants that are used in the quantize/dequantize process).
 
-### obsfucate_names
+### obfuscate_names
 
 Args: None \
 Prerequisites: None
@@ -655,6 +656,16 @@ number of steps. The unique values are chosen per buffer by linearly allocating
 between the largest and smallest values present. This is useful when you'll be
 deploying on mobile, and you want a model that will compress effectively. See
 [shrinking file size](#shrinking-file-size) for more details.
+
+### sparsify_gather
+
+Args: None \
+Prerequisites: None
+
+Transform 'Gather' op to a sparsified version where 'params' input of 'Gather'
+is replaced from a dense 'Const' to a 'HashTable'. 'Gather' op itself is
+replaced by a hashtable lookup. This is mostly useful for reducing sparse
+TF.learn linear model memory footprint.
 
 ### set_device
 

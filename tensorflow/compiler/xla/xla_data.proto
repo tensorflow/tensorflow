@@ -178,6 +178,31 @@ message ComputationStats {
   double transcendental_count = 2;
 }
 
+// Symbolization metadata for HLO Instructions.
+//
+// This metadata is used for debugging XLA code generation, as well as
+// performance profiling of XLA-generated executables.
+message OpMetadata {
+  // The framework op name that generated this XLA op.
+  //
+  // Frameworks that build on top of XLA should mirror the names of their ops
+  // back to users by specifying the op_type. In this way, even if the
+  // framework's "ops" are implemented as multiple XLA HLO Ops, they can be
+  // grouped appropriately. (e.g. if a SoftMax layer is emitted into XLA as
+  // multiple ops, then each op should have the op_type be "SoftMax".)
+  string op_type = 1;
+  // The user-specified name of the op.
+  //
+  // This name is often unique within a computation. Note: some frameworks
+  // add auto-generated names if the user does not provide one.
+  string op_name = 2;
+  // Indicate a file and line that this op is associated to in a user's program.
+  //
+  // e.g. it could be be the file and line of user code that generated the op.
+  string source_file = 3;
+  int32 source_line = 4;
+}
+
 // Profile data from the execution of a computation.
 message ExecutionProfile {
   // Whether the executable was read from the compilation cache.
@@ -690,6 +715,7 @@ message RecvRequest {
 
 message OpRequest {
   ComputationHandle computation = 1;
+  OpMetadata metadata = 33;
 
   oneof op {
     BinaryOpRequest binary_op_request = 2;
@@ -723,7 +749,7 @@ message OpRequest {
     SendRequest send_request = 30;
     RecvRequest recv_request = 31;
     OutfeedRequest outfeed_request = 32;
-    // Next: 33
+    // Next: 34
   }
 }
 

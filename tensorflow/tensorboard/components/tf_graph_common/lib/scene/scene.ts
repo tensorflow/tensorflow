@@ -507,9 +507,15 @@ export function positionEllipse(ellipse, cx: number, cy: number,
 
 /**
  * @param {number} stat A stat for a health pill (such as mean or variance).
+ * @param {boolean} shouldRoundOnesDigit Whether to round this number to the
+ *     ones digit. Useful for say int, uint, and bool output types.
  * @return {string} A human-friendly string representation of that stat.
  */
-function _humanizeHealthPillStat(stat) {
+export function humanizeHealthPillStat(stat, shouldRoundOnesDigit) {
+  if (shouldRoundOnesDigit) {
+    return stat.toFixed(0);
+  }
+
   if (Math.abs(stat) >= 1) {
     return stat.toFixed(1);
   }
@@ -521,7 +527,7 @@ function _humanizeHealthPillStat(stat) {
  */
 function _addHealthPill(
     nodeGroupElement: SVGElement, healthPill: HealthPill,
-    nodeInfo: render.RenderGroupNodeInfo) {
+    nodeInfo: render.RenderNodeInfo) {
   // Check if text already exists at location.
   d3.select(nodeGroupElement.parentNode).selectAll('.health-pill').remove();
 
@@ -605,13 +611,33 @@ function _addHealthPill(
     healthPillY += nodeInfo.labelOffset;
   }
 
-  if (lastHealthPillOverview[4] || lastHealthPillOverview[5] ||
-      lastHealthPillOverview[6]) {
-    // At least 1 "non-Inf and non-NaN" value exists. Show stats on tensor
-    // values.
+  if (lastHealthPillOverview[2] || lastHealthPillOverview[3] ||
+      lastHealthPillOverview[4]) {
+    // At least 1 "non-Inf and non-NaN" value exists (a -, 0, or + value). Show
+    // stats on tensor values.
+
+    // Determine if we should display the output range as integers.
+    let shouldRoundOnesDigit = false;
+    let node = nodeInfo.node as OpNode;
+    let attributes = node.attr;
+    if (attributes && attributes.length) {
+      // Find the attribute for output type if there is one.
+      for (let i = 0; i < attributes.length; i++) {
+        if (attributes[i].key === 'T') {
+          // Note whether the output type is an integer.
+          let outputType = attributes[i].value['type'];
+          shouldRoundOnesDigit =
+              outputType && /^DT_(BOOL|INT|UINT)/.test(outputType);
+          break;
+        }
+      }
+    }
+
     let statsSvg = document.createElementNS(svgNamespace, 'text');
-    const minString = _humanizeHealthPillStat(lastHealthPillData[8]);
-    const maxString = _humanizeHealthPillStat(lastHealthPillData[9]);
+    const minString =
+        humanizeHealthPillStat(lastHealthPillData[8], shouldRoundOnesDigit);
+    const maxString =
+        humanizeHealthPillStat(lastHealthPillData[9], shouldRoundOnesDigit);
     statsSvg.textContent = minString + ' ~ ' + maxString;
     statsSvg.classList.add('health-pill-stats');
     statsSvg.setAttribute('x', String(healthPillWidth / 2));
@@ -641,7 +667,7 @@ export function addHealthPills(
 
   let svgRootSelection = d3.select(svgRoot);
   svgRootSelection.selectAll('g.nodeshape')
-      .each(function(nodeInfo: render.RenderGroupNodeInfo) {
+      .each(function(nodeInfo: render.RenderNodeInfo) {
         // Only show health pill data for this node if it is available.
         let healthPills = nodeNamesToHealthPills[nodeInfo.node.name];
         let healthPill = healthPills ? healthPills[healthPillStepIndex] : null;
