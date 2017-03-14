@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Framework utilities.
+"""Framework utilities. See the @{$python/contrib.framework} guide.
 
 See the @{$python/contrib.framework} guide.
 
