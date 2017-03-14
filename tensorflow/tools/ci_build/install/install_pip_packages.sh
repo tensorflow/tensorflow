@@ -31,8 +31,8 @@ pip install --upgrade werkzeug==0.11.10
 pip3 install --upgrade werkzeug==0.11.10
 
 # Install protobuf.
-pip install --upgrade protobuf==3.0.0
-pip3 install --upgrade protobuf==3.0.0
+pip install --upgrade protobuf==3.2.0
+pip3 install --upgrade protobuf==3.2.0
 
 # Remove obsolete version of six, which can sometimes confuse virtualenv.
 rm -rf /usr/lib/python3/dist-packages/six*
