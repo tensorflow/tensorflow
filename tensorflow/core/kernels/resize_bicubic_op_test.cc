@@ -34,9 +34,9 @@ class ResizeBicubicOpTest : public OpsTestBase {
     TF_EXPECT_OK(InitOp());
   }
 
-  const Tensor* AddRandomImageInput(const TensorShape& shape) {
-    CHECK_GT(input_types_.size(), inputs_.size())
-        << "Adding more inputs than types; perhaps you need to call MakeOp";
+  const Tensor* SetRandomImageInput(const TensorShape& shape) {
+    inputs_.clear();
+
     CHECK_EQ(shape.dims(), 4) << "All images must have 4 dimensions.";
     bool is_ref = IsRefType(input_types_[inputs_.size()]);
     Tensor* input = new Tensor(device_->GetAllocator(AllocatorAttributes()),
@@ -155,16 +155,22 @@ class ResizeBicubicOpTest : public OpsTestBase {
   }
 
  protected:
-  void RunRandomTest(const int64 in_height, const int64 in_width) {
-    const Tensor* input =
-        AddRandomImageInput(TensorShape({1, in_height, in_width, 1}));
-    AddInputFromArray<int32>(TensorShape({2}), {299, 299});
+  void RunRandomTest(const int batch_size, const int64 in_height,
+                     const int64 in_width, const int target_height,
+                     const int target_width, int channels) {
+    LOG(INFO) << "Running random test " << in_height << "x" << in_width << "x"
+              << channels << " to " << target_height << "x" << target_width
+              << "x" << channels;
+    const Tensor* input = SetRandomImageInput(
+        TensorShape({batch_size, in_height, in_width, channels}));
+    AddInputFromArray<int32>(TensorShape({2}), {target_height, target_width});
 
     TF_ASSERT_OK(RunOpKernel());
 
-    std::unique_ptr<Tensor> expected(
-        new Tensor(device_->GetAllocator(AllocatorAttributes()),
-                   DataTypeToEnum<float>::v(), TensorShape({1, 299, 299, 1})));
+    std::unique_ptr<Tensor> expected(new Tensor(
+        device_->GetAllocator(AllocatorAttributes()),
+        DataTypeToEnum<float>::v(),
+        TensorShape({batch_size, target_height, target_width, channels})));
 
     ResizeBicubicBaseline(input->tensor<float, 4>(),
                           expected->tensor<float, 4>());
@@ -174,6 +180,21 @@ class ResizeBicubicOpTest : public OpsTestBase {
     // some slight floating point inaccuracies. We thus ensure we're within
     // 0.00001 of the previous implementation.
     test::ExpectTensorNear<float>(*expected, *GetOutput(0), 0.00001);
+  }
+
+  void RunManyRandomTests(int channels) {
+    for (int batch_size : {1, 2, 5}) {
+      for (int in_w : {2, 4, 7, 20, 165}) {
+        for (int in_h : {1, 3, 5, 8, 100, 233}) {
+          for (int target_height : {1, 2, 3, 50, 113}) {
+            for (int target_width : {target_height, target_height / 2 + 1}) {
+              RunRandomTest(batch_size, in_h, in_w, target_height, target_width,
+                            channels);
+            }
+          }
+        }
+      }
+    }
   }
 };
 
@@ -204,15 +225,30 @@ TEST_F(ResizeBicubicOpTest, TestBicubic2x2To0x0) {
 }
 
 TEST_F(ResizeBicubicOpTest, TestBicubicRandom141x186) {
-  RunRandomTest(141, 186);
+  RunRandomTest(2, 141, 186, 299, 299, 1 /* channels */);
+  RunRandomTest(2, 141, 186, 299, 299, 3 /* channels */);
 }
 
 TEST_F(ResizeBicubicOpTest, TestBicubicRandom183x229) {
-  RunRandomTest(183, 229);
+  RunRandomTest(2, 183, 229, 299, 299, 1 /* channels */);
+  RunRandomTest(2, 183, 229, 299, 299, 3 /* channels */);
 }
 
 TEST_F(ResizeBicubicOpTest, TestBicubicRandom749x603) {
-  RunRandomTest(749, 603);
+  RunRandomTest(2, 749, 603, 299, 299, 1 /* channels */);
+  RunRandomTest(2, 749, 603, 299, 299, 3 /* channels */);
+}
+
+TEST_F(ResizeBicubicOpTest, TestAreaRandomDataSeveralInputsSizes1Channel) {
+  RunManyRandomTests(1);
+}
+
+TEST_F(ResizeBicubicOpTest, TestAreaRandomDataSeveralInputsSizes3Channels) {
+  RunManyRandomTests(3);
+}
+
+TEST_F(ResizeBicubicOpTest, TestAreaRandomDataSeveralInputsSizes4Channels) {
+  RunManyRandomTests(4);
 }
 
 static Graph* ResizeBicubic(int batch_size, int size, int channels) {
