@@ -193,8 +193,6 @@ string InstructionSequenceGraph(
                 instruction->metadata().source_line());
     }
 
-    std::vector<HloComputation*> called_computations;
-
     // Pick different colors or shapes for instructions which are particularly
     // expensive (eg, dot) and those which are unusual in some way or unique
     // (eg, parameter).
@@ -401,7 +399,8 @@ string InstructionSequenceGraph(
     } else {
       // Add a dotted edge between the instruction and any computations that the
       // instruction calls.
-      for (auto* computation : instruction->MakeCalledComputationsSet()) {
+      for (const HloComputation* computation :
+           instruction->called_computations()) {
         string cluster_name = StrCat("cluster_", ComputationId(computation));
         string call_edge = Printf(
             "%s -> %s [ style=dashed; ltail=%s ];\n",

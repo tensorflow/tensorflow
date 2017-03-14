@@ -121,35 +121,35 @@ Take the following steps to install TensorFlow in an Anaconda environment:
 
      <pre>(tensorflow)C:\> <b>pip install --ignore-installed --upgrade https://storage.googleapis.com/tensorflow/windows/gpu/tensorflow_gpu-1.0.1-cp35-cp35m-win_amd64.whl</b> </pre>
 
-<a name="#ValidateYourInstallation"></a>
 ## Validate your installation
 
-Validate your TensorFlow installation by doing the following:
+Start a terminal.
 
-  1. Start a terminal.
-  2. If you installed through Anaconda, activate your Anaconda environment.
-  3. Inside that terminal, invoke python:
+If you installed through Anaconda, activate your Anaconda environment.
 
-     <pre>C:\> <b>python</b> </pre>
+Invoke python from your shell as follows:
 
-  4. Enter the following short program inside the python interactive shell:
+<pre>$ <b>python</b></pre>
 
-     <pre>>>> <b>import tensorflow as tf</b>
-     >>> <b>hello = tf.constant('Hello, TensorFlow!')</b>
-     >>> <b>sess = tf.Session()</b>
-     >>> <b>print(sess.run(hello))</b>
-     </pre>
+Enter the following short program inside the python interactive shell:
 
-     If the Python program outputs the following, then the installation
-     is successful and you can begin writing TensorFlow programs. (If you
-     are new to TensorFlow, see
-     @{$get_started$Getting Started with TensorFlow}.)
+```python
+>>> import tensorflow as tf
+>>> hello = tf.constant('Hello, TensorFlow!')
+>>> sess = tf.Session()
+>>> print(sess.run(hello))
+```
 
-     <pre>Hello, TensorFlow!</pre>
+If the system outputs the following, then you are ready to begin writing
+TensorFlow programs:
 
-     If the system generates an error message instead of a greeting,
-     see the next section.
+<pre>Hello, TensorFlow!</pre>
 
+If you are new to TensorFlow, see @{$get_started$Getting Started with
+TensorFlow}.
+
+If the system outputs an error message instead of a greeting, see [Common
+installation problems](#common_installation_problems).
 
 ## Common installation problems
 

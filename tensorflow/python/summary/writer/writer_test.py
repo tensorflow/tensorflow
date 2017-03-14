@@ -359,13 +359,8 @@ class SummaryWriterCacheTest(test.TestCase):
 class ExamplePluginAsset(plugin_asset.PluginAsset):
   plugin_name = "example"
 
-  def serialize_to_directory(self, directory):
-    foo = os.path.join(directory, "foo.txt")
-    bar = os.path.join(directory, "bar.txt")
-    with gfile.Open(foo, "w") as f:
-      f.write("foo!")
-    with gfile.Open(bar, "w") as f:
-      f.write("bar!")
+  def assets(self):
+    return {"foo.txt": "foo!", "bar.txt": "bar!"}
 
 
 class PluginAssetsTest(test.TestCase):

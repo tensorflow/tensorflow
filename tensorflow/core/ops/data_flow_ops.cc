@@ -1091,6 +1091,7 @@ REGISTER_OP("TensorArrayV3")
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
       c->set_output(0, c->Vector(2));
+      c->set_output(1, c->Scalar());
       return Status::OK();
     })
     .Doc(R"doc(
@@ -1127,6 +1128,7 @@ REGISTER_OP("TensorArrayGradV3")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &handle));
       TF_RETURN_IF_ERROR(c->WithValue(c->Dim(handle, 0), 2, &unused_dim));
       c->set_output(0, c->Vector(2));
+      c->set_output(1, c->Scalar());
       return Status::OK();
     })
     .Doc(R"doc(

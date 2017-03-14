@@ -22,8 +22,14 @@ limitations under the License.
 #include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
+
+#if defined(__clang__)
+// Only clang supports warn_unused_result as a type annotation.
+class TF_MUST_USE_RESULT Status;
+#endif
 
 /// @ingroup core
 /// Denotes success or failure of a call in Tensorflow.

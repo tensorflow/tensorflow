@@ -12,13 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Configuration describing how inputs will be received at serving time."""
+"""Configuration and utilities for receiving inputs at serving time."""
+
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import collections
+import os
+import time
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -26,6 +29,8 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import parsing_ops
+from tensorflow.python.util import compat
+
 
 _SINGLE_FEATURE_DEFAULT_NAME = 'feature'
 _SINGLE_RECEIVER_DEFAULT_NAME = 'input'
@@ -136,3 +141,44 @@ def build_raw_serving_input_receiver_fn(features, default_batch_size=None):
     return ServingInputReceiver(receiver_tensors, receiver_tensors.copy())
 
   return serving_input_receiver_fn
+
+
+### Below utilities are specific to SavedModel exports.
+
+
+def build_all_signature_defs(receiver_tensors, export_outputs):
+  """Build `SignatureDef`s for all export outputs."""
+  if not isinstance(receiver_tensors, dict):
+    receiver_tensors = {'receiver': receiver_tensors}
+  if export_outputs is None or not isinstance(export_outputs, dict):
+    raise ValueError('export_outputs must be a dict.')
+
+  signature_def_map = {
+      '{}'.format(output_key or 'None'):
+      export_output.as_signature_def(receiver_tensors)
+      for output_key, export_output in export_outputs.items()}
+
+  return signature_def_map
+
+
+def get_timestamped_export_dir(export_dir_base):
+  """Builds a path to a new subdirectory within the base directory.
+
+  Each export is written into a new subdirectory named using the
+  current time.  This guarantees monotonically increasing version
+  numbers even across multiple runs of the pipeline.
+  The timestamp used is the number of seconds since epoch UTC.
+
+  Args:
+    export_dir_base: A string containing a directory to write the exported
+        graph and checkpoints.
+  Returns:
+    The full path of the new subdirectory (which is not actually created yet).
+  """
+  export_timestamp = int(time.time())
+
+  export_dir = os.path.join(
+      compat.as_bytes(export_dir_base),
+      compat.as_bytes(str(export_timestamp)))
+  return export_dir
+

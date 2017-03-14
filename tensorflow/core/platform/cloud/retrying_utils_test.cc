@@ -27,10 +27,15 @@ TEST(RetryingUtilsTest, RetryDelays) {
   std::function<void(int64)> sleep = [&requested_delays](int64 delay) {
     requested_delays.emplace_back(delay / 1000000.0);
   };
-  std::function<Status()> f = []() { return errors::Unavailable(""); };
+  std::function<Status()> f = []() { return errors::Unavailable("Failed."); };
 
-  EXPECT_EQ(errors::Code::UNAVAILABLE,
-            RetryingUtils::CallWithRetries(f, 500000L, sleep).code());
+  const auto& status = RetryingUtils::CallWithRetries(f, 500000L, sleep);
+  EXPECT_EQ(errors::Code::ABORTED, status.code());
+  EXPECT_TRUE(StringPiece(status.error_message())
+                  .contains("All 10 retry attempts "
+                            "failed. The last failure: "
+                            "Unavailable: Failed."))
+      << status;
 
   EXPECT_EQ(10, requested_delays.size());
   EXPECT_NEAR(0.5, requested_delays[0], 1.0);
@@ -48,7 +53,8 @@ TEST(RetryingUtilsTest, RetryDelays) {
 }
 
 TEST(RetryingUtilsTest, NotFoundIsNotRetried) {
-  std::vector<Status> results({errors::Unavailable(""), errors::NotFound("")});
+  std::vector<Status> results(
+      {errors::Unavailable("Failed."), errors::NotFound("Not found.")});
   std::function<Status()> f = [&results]() {
     auto result = results[0];
     results.erase(results.begin());
@@ -59,8 +65,9 @@ TEST(RetryingUtilsTest, NotFoundIsNotRetried) {
 }
 
 TEST(RetryingUtilsTest, EventualSuccess) {
-  std::vector<Status> results(
-      {errors::Unavailable(""), errors::Unavailable(""), Status::OK()});
+  std::vector<Status> results({errors::Unavailable("Failed."),
+                               errors::Unavailable("Failed again."),
+                               Status::OK()});
   std::function<Status()> f = [&results]() {
     auto result = results[0];
     results.erase(results.begin());

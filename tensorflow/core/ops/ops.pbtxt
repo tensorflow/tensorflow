@@ -3438,6 +3438,43 @@ op {
   description: "This is a deprecated version of BiasAdd and will be soon removed.\n\nThis is a special case of `tf.add` where `bias` is restricted to be 1-D.\nBroadcasting is supported, so `value` may have any number of dimensions."
 }
 op {
+  name: "Bincount"
+  input_arg {
+    name: "arr"
+    description: "int32 `Tensor`."
+    type: DT_INT32
+  }
+  input_arg {
+    name: "size"
+    description: "non-negative int32 scalar `Tensor`."
+    type: DT_INT32
+  }
+  input_arg {
+    name: "weights"
+    description: "is an int32, int64, float32, or float64 `Tensor` with the same\nshape as `arr`, or a length-0 `Tensor`, in which case it acts as all weights\nequal to 1."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "bins"
+    description: "1D `Tensor` with length equal to `size`. The counts or summed weights for\neach value in the range [0, size)."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  summary: "Counts the number of occurrences of each value in an integer array."
+  description: "Outputs a vector with length `size` and the same dtype as `weights`. If\n`weights` are empty, then index `i` stores the number of times the value `i` is\ncounted in `arr`. If `weights` are non-empty, then index `i` stores the sum of\nthe value in `weights` at each index where the corresponding value in `arr` is\n`i`.\n\nValues in `arr` outside of the range [0, size) are ignored."
+}
+op {
   name: "Bitcast"
   input_arg {
     name: "input"

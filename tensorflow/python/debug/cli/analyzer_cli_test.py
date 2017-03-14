@@ -1436,7 +1436,7 @@ class AnalyzerCLIControlDepTest(test_util.TensorFlowTestCase):
     # Verify the menu items (command shortcuts) in the output.
     check_menu_item(self, out, 10,
                     len(out.lines[10]) - len("control_deps/x/read"),
-                    len(out.lines[10]), "ni -a -d control_deps/x/read")
+                    len(out.lines[10]), "ni -a -d -t control_deps/x/read")
     if out.lines[13].endswith("control_deps/ctrl_dep_y"):
       y_line = 13
       z_line = 14
@@ -1445,10 +1445,12 @@ class AnalyzerCLIControlDepTest(test_util.TensorFlowTestCase):
       z_line = 13
     check_menu_item(self, out, y_line,
                     len(out.lines[y_line]) - len("control_deps/ctrl_dep_y"),
-                    len(out.lines[y_line]), "ni -a -d control_deps/ctrl_dep_y")
+                    len(out.lines[y_line]),
+                    "ni -a -d -t control_deps/ctrl_dep_y")
     check_menu_item(self, out, z_line,
                     len(out.lines[z_line]) - len("control_deps/ctrl_dep_z"),
-                    len(out.lines[z_line]), "ni -a -d control_deps/ctrl_dep_z")
+                    len(out.lines[z_line]),
+                    "ni -a -d -t control_deps/ctrl_dep_z")
 
   def testListInputsNonRecursiveNoControl(self):
     """List inputs non-recursively, without any control inputs."""

@@ -128,7 +128,8 @@ def build_estimator(model_dir, model_type):
         model_dir=model_dir,
         linear_feature_columns=wide_columns,
         dnn_feature_columns=deep_columns,
-        dnn_hidden_units=[100, 50])
+        dnn_hidden_units=[100, 50],
+        fix_global_step_increment_bug=True)
   return m
 
 

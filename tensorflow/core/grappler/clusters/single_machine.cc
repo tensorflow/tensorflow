@@ -41,7 +41,7 @@ SingleMachine::SingleMachine(int timeout_s, int num_cpu_cores, int num_gpus)
 }
 
 SingleMachine::~SingleMachine() {
-  CloseSession(false /*use_timeout*/);
+  CloseSession(false /*use_timeout*/).IgnoreError();
 
   // Prevent the destructor from deleting mu_ until CloseSession() is done.
   mutex_lock l(mu_);
@@ -164,18 +164,18 @@ Status SingleMachine::CloseSession(bool use_timeout) {
 
     thread_pool_->Schedule([this] {
       if (this->coordinator_) {
-        this->coordinator_->RequestStop();
+        this->coordinator_->RequestStop().IgnoreError();
         // Wait for all the runners to have closed their queues.
         while (!this->coordinator_->AllRunnersStopped()) {
           sleep(1);
         }
         // Now we can close the session. This should cancel any pending I/O
         // operation.
-        this->session_->Close();
+        this->session_->Close().IgnoreError();
         // Last but not least, we can delete the coordinator.
         this->coordinator_.reset();
       } else {
-        this->session_->Close();
+        this->session_->Close().IgnoreError();
       }
 
       // Wait for any previous run to finish.
