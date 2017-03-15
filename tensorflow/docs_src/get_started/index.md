@@ -3,7 +3,7 @@
 For a brief overview of TensorFlow programming fundamentals, see the following
 guide:
 
-  * @{$getting_started/get_started$Getting Started with TensorFlow}
+  * @{$get_started/get_started$Getting Started with TensorFlow}
 
 MNIST has become the canonical dataset for trying out a new machine learning
 toolkit.  We offer three guides that each demonstrate a different approach
@@ -14,7 +14,7 @@ to training an MNIST model on TensorFlow:
   * @{$mnist/pros$Deep MNIST for Experts}, which is more-in depth than 
     "MNIST for ML Beginners," and assumes some familiarity with machine 
     learning concepts.
-  * @{$tutorials/mnist$TensorFlow Mechanics 101}, which introduces MNIST through
+  * @{$mnist/mechanics$TensorFlow Mechanics 101}, which introduces MNIST through
     the low-level API.
 
 For developers new to TensorFlow, the high-level API is a good place to start. 
