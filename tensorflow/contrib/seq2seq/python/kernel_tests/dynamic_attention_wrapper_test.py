@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for contrib.seq2seq.python.ops.dynamic_attention_cell_wrapper."""
+"""Tests for contrib.seq2seq.python.ops.dynamic_attention_wrapper."""
 # pylint: disable=unused-import,g-bad-import-order
 from __future__ import absolute_import
 from __future__ import division
@@ -32,7 +32,7 @@ import numpy as np
 
 from tensorflow.contrib.rnn import core_rnn_cell
 from tensorflow.contrib.seq2seq.python.ops import decoder
-from tensorflow.contrib.seq2seq.python.ops import dynamic_attention_cell_wrapper as wrapper
+from tensorflow.contrib.seq2seq.python.ops import dynamic_attention_wrapper as wrapper
 from tensorflow.contrib.seq2seq.python.ops import helper as helper_py
 from tensorflow.contrib.seq2seq.python.ops import basic_decoder
 from tensorflow.python.framework import dtypes
@@ -45,12 +45,12 @@ from tensorflow.python.util import nest
 # pylint: enable=g-import-not-at-top
 
 
-class DynamicAttentionCellWrapperTest(test.TestCase):
+class DynamicAttentionWrapperTest(test.TestCase):
 
   def assertAllClose(self, *args, **kwargs):
     kwargs["atol"] = 1e-4  # For GPU tests
     kwargs["rtol"] = 1e-4  # For GPU tests
-    return super(DynamicAttentionCellWrapperTest, self).assertAllClose(
+    return super(DynamicAttentionWrapperTest, self).assertAllClose(
         *args, **kwargs)
 
   def _testWithAttention(self,
@@ -83,7 +83,7 @@ class DynamicAttentionCellWrapperTest(test.TestCase):
           "root",
           initializer=init_ops.random_normal_initializer(stddev=0.01, seed=3)):
         cell = core_rnn_cell.LSTMCell(cell_depth)
-        cell = wrapper.DynamicAttentionCellWrapper(
+        cell = wrapper.DynamicAttentionWrapper(
             cell, attention_mechanism, attention_size=attention_depth)
         helper = helper_py.TrainingHelper(decoder_inputs,
                                           decoder_sequence_length)
@@ -98,7 +98,7 @@ class DynamicAttentionCellWrapperTest(test.TestCase):
       self.assertTrue(
           isinstance(final_outputs, basic_decoder.BasicDecoderOutput))
       self.assertTrue(
-          isinstance(final_state, wrapper.DynamicAttentionCellWrapperState))
+          isinstance(final_state, wrapper.DynamicAttentionWrapperState))
       self.assertTrue(
           isinstance(final_state.cell_state, core_rnn_cell.LSTMStateTuple))
 
@@ -185,7 +185,7 @@ class DynamicAttentionCellWrapperTest(test.TestCase):
             [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]],
             dtype=int32))
 
-    expected_final_state = wrapper.DynamicAttentionCellWrapperState(
+    expected_final_state = wrapper.DynamicAttentionWrapperState(
         cell_state=core_rnn_cell.LSTMStateTuple(
             c=array(
                 [[
@@ -313,7 +313,7 @@ class DynamicAttentionCellWrapperTest(test.TestCase):
             [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]],
             dtype=int32))
 
-    expected_final_state = wrapper.DynamicAttentionCellWrapperState(
+    expected_final_state = wrapper.DynamicAttentionWrapperState(
         cell_state=core_rnn_cell.LSTMStateTuple(
             c=array(
                 [[
@@ -441,7 +441,7 @@ class DynamicAttentionCellWrapperTest(test.TestCase):
         sample_id=array(
             [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]],
             dtype=int32))
-    expected_final_state = wrapper.DynamicAttentionCellWrapperState(
+    expected_final_state = wrapper.DynamicAttentionWrapperState(
         cell_state=core_rnn_cell.LSTMStateTuple(
             c=array(
                 [[
@@ -573,7 +573,7 @@ class DynamicAttentionCellWrapperTest(test.TestCase):
         sample_id=array(
             [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]],
             dtype=int32))
-    expected_final_state = wrapper.DynamicAttentionCellWrapperState(
+    expected_final_state = wrapper.DynamicAttentionWrapperState(
         cell_state=core_rnn_cell.LSTMStateTuple(
             c=array(
                 [[
