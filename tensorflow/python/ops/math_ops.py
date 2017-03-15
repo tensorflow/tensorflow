@@ -2366,8 +2366,8 @@ def tensordot(a, b, axes, name=None):
     if isinstance(a_free_dims, list) and isinstance(b_free_dims, list):
       return array_ops.reshape(ab_matmul, a_free_dims + b_free_dims, name=name)
     else:
-      a_free_dims = ops.convert_to_tensor(a_free_dims)
-      b_free_dims = ops.convert_to_tensor(b_free_dims)
+      a_free_dims = ops.convert_to_tensor(a_free_dims, dtype=dtypes.int32)
+      b_free_dims = ops.convert_to_tensor(b_free_dims, dtype=dtypes.int32)
       return array_ops.reshape(
           ab_matmul, array_ops.concat([a_free_dims, b_free_dims], 0), name=name)
 
