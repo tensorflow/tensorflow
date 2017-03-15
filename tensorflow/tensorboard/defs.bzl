@@ -36,7 +36,7 @@ def tensorboard_typescript_genrule(name, srcs, typings=[], **kwargs):
   # data attribute won't be considered when --genrule_strategy=sandboxed. See
   # https://github.com/bazelbuild/bazel/issues/1147 and its linked issues.
   data = [
-      "@org_nodejs//:bin/node",
+      "@org_nodejs",
       "@com_microsoft_typescript",
   ]
   native.genrule(
