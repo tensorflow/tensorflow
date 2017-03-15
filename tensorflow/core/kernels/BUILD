@@ -1731,6 +1731,22 @@ tf_cuda_cc_test(
     ],
 )
 
+tf_cuda_cc_test(
+    name = "resize_benchmark_test",
+    srcs = ["resize_op_benchmark_test.cc"],
+    deps = [
+        ":image",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 cc_library(
     name = "io",
     deps = [
