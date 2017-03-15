@@ -124,6 +124,7 @@ if (tensorflow_BUILD_PYTHON_TESTS)
     "${tensorflow_source_dir}/tensorflow/python/training/*_test.py"
     "${tensorflow_source_dir}/tensorflow/tensorboard/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/factorization/*_test.py"
+    "${tensorflow_source_dir}/tensorflow/contrib/keras/python/keras/integration_test.py"
     # NOTE: tensor_forest tests in tensor_forest/hybrid/... still don't pass.
     "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/client/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/python/*_test.py"
@@ -138,6 +139,8 @@ if (tensorflow_BUILD_PYTHON_TESTS)
     "${tensorflow_source_dir}/tensorflow/python/kernel_tests/benchmark_test.py"
     "${tensorflow_source_dir}/tensorflow/python/kernel_tests/resource_variable_ops_test.py"
     "${tensorflow_source_dir}/tensorflow/python/saved_model/saved_model_test.py"
+    # requires scipy
+    "${tensorflow_source_dir}/tensorflow/contrib/keras/python/keras/preprocessing/*_test.py"
   )
   if (WIN32)
     set(tf_test_src_py_exclude
