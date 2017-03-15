@@ -44,8 +44,7 @@ def sequence_loss(logits, targets, weights,
       sequence. When using weights as masking set all valid timesteps to 1 and
       all padded timesteps to 0.
     average_across_timesteps: If set, sum the cost across the sequence
-      dimension and divide by the cost by the total label weight across
-      timesteps.
+      dimension and divide the cost by the total label weight across timesteps.
     average_across_batch: If set, sum the cost across the batch dimension and
       divide the returned cost by the batch size.
     softmax_loss_function: Function (inputs-batch, labels-batch) -> loss-batch
