@@ -132,8 +132,7 @@ class Executable {
   Status DumpSessionModule();
 
   // Dump session_module to directory_path/filename.
-  static Status DumpToDirectory(const string& directory_path,
-                                const string& filename,
+  static Status DumpToDirectory(const string& directory_path, string filename,
                                 const SessionModule& session_module);
 
  protected:

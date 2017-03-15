@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
@@ -139,6 +140,21 @@ LocalService::CompileAheadOfTime(
                         computation_tracker_.Resolve(instance.computation));
     VersionedComputationHandle versioned_handle =
         user_computation->GetVersionedHandle();
+
+    // Dump computation proto state if flag is set.
+    legacy_flags::ServiceFlags* flags = legacy_flags::GetServiceFlags();
+    const string& directory_path = flags->xla_dump_computations_to;
+    if (!directory_path.empty()) {
+      TF_ASSIGN_OR_RETURN(
+          std::unique_ptr<SessionModule> session_module,
+          computation_tracker_.SnapshotComputation(versioned_handle.handle));
+      string filename = tensorflow::strings::StrCat(
+          "computation_", versioned_handle.handle.handle(), "__",
+          session_module->entry().name(), "__version_",
+          versioned_handle.version);
+      TF_RETURN_IF_ERROR(Executable::DumpToDirectory(directory_path, filename,
+                                                     *session_module));
+    }
 
     TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
                         computation_tracker_.BuildHloModule(
