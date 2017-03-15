@@ -159,6 +159,21 @@ REGISTER_OP("MklAvgPool")
     .SetShapeFn(shape_inference::AvgPoolShape)
     .Doc(R"doc(
 MKL version of AvgPool
+Performs average pooling on the input.
+
+Each entry in `output` is the mean of the corresponding size `ksize`
+window in `value`.
+
+value: 4-D with shape `[batch, height, width, channels]`.
+ksize: The size of the sliding window for each dimension of `value`.
+strides: The stride of the sliding window for each dimension of `value`.
+padding: The type of padding algorithm to use.
+data_format: Specify the data format of the input and output data. With the
+    default format "NHWC", the data is stored in the order of:
+        [batch, in_height, in_width, in_channels].
+    Alternatively, the format could be "NCHW", the data storage order of:
+        [batch, in_channels, in_height, in_width].
+output: The average pooled output tensor.
 )doc");
 
 REGISTER_OP("MklAvgPoolGrad")
@@ -178,6 +193,20 @@ REGISTER_OP("MklAvgPoolGrad")
     })
     .Doc(R"doc(
 MKL version of AvgPoolGrad
+Computes gradients of the average pooling function.
+
+orig_input_shape: 1-D.  Shape of the original input to `avg_pool`.
+grad: 4-D with shape `[batch, height, width, channels]`.  Gradients w.r.t.
+  the output of `avg_pool`.
+ksize: The size of the sliding window for each dimension of the input.
+strides: The stride of the sliding window for each dimension of the input.
+padding: The type of padding algorithm to use.
+data_format: Specify the data format of the input and output data. With the
+    default format "NHWC", the data is stored in the order of:
+        [batch, in_height, in_width, in_channels].
+    Alternatively, the format could be "NCHW", the data storage order of:
+        [batch, in_channels, in_height, in_width].
+output: 4-D.  Gradients w.r.t. the input of `avg_pool`.
 )doc");
 
 #endif  // INTEL_MKL
@@ -1342,6 +1371,19 @@ REGISTER_OP("MklMaxPool")
     .SetShapeFn(shape_inference::MaxPoolShape)
     .Doc(R"doc(
 MKL version of MaxPool
+Performs max pooling on the input.
+
+ksize: The size of the window for each dimension of the input tensor.
+strides: The stride of the sliding window for each dimension of the
+  input tensor.
+padding: The type of padding algorithm to use.
+data_format: Specify the data format of the input and output data. With the
+    default format "NHWC", the data is stored in the order of:
+        [batch, in_height, in_width, in_channels].
+    Alternatively, the format could be "NCHW", the data storage order of:
+        [batch, in_channels, in_height, in_width].
+input: 4-D input to pool over.
+output: The max pooled output tensor.
 )doc");
 #endif
 
@@ -1399,6 +1441,21 @@ REGISTER_OP("MklMaxPoolGrad")
     })
     .Doc(R"doc(
 MKL version of MaxPoolGrad
+Computes gradients of the maxpooling function.
+
+ksize: The size of the window for each dimension of the input tensor.
+strides: The stride of the sliding window for each dimension of the
+  input tensor.
+padding: The type of padding algorithm to use.
+data_format: Specify the data format of the input and output data. With the
+    default format "NHWC", the data is stored in the order of:
+        [batch, in_height, in_width, in_channels].
+    Alternatively, the format could be "NCHW", the data storage order of:
+        [batch, in_channels, in_height, in_width].
+orig_input: The original input tensor.
+orig_output: The original output tensor.
+grad: 4-D.  Gradients w.r.t. the output of `max_pool`.
+output: Gradients w.r.t. the input to `max_pool`.
 )doc");
 #endif
 
