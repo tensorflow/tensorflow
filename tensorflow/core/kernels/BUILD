@@ -690,8 +690,15 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "transpose_op",
-    prefix = "transpose_op",
-    deps = ARRAY_DEPS,
+    srcs = [
+        "transpose_op.cc",
+    ] + if_mkl([
+        "mkl_transpose_op.cc",
+    ]),
+    hdrs = ["transpose_op.h"],
+    deps = ARRAY_DEPS + if_mkl([
+        "//third_party/mkl:intel_binary_blob",
+    ]),
 )
 
 tf_kernel_library(
@@ -4365,7 +4372,7 @@ tf_cc_test(
 
 if_mkl(
     tf_kernel_library(
-        name = "mkl_ops",
+        name = "mkl_matmul_op",
         prefix = "mkl_matmul",
         deps = [
             ":math",
