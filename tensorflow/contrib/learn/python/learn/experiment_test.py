@@ -475,11 +475,17 @@ class ExperimentTest(test.TestCase):
 
   def test_test(self):
     est = TestEstimator()
+    exp_strategy = saved_model_export_utils.make_export_strategy(
+        est, 'export_input', exports_to_keep=None)
     ex = experiment.Experiment(
-        est, train_input_fn='train_input', eval_input_fn='eval_input')
+        est,
+        train_input_fn='train_input',
+        eval_input_fn='eval_input',
+        export_strategies=[exp_strategy])
     ex.test()
     self.assertEqual(1, est.fit_count)
     self.assertEqual(1, est.eval_count)
+    self.assertEqual(1, est.export_count)
 
   def test_continuous_eval_evaluates_checkpoint_once(self):
     # Temporarily disabled until we figure out the threading story on Jenkins.
