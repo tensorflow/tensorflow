@@ -70,7 +70,7 @@ def _lstm_block_cell(x,
   cs = ci .* i + cs_prev .* f
   cs = clip(cs, cell_clip)
 
-  o = sigmoid(cs * wco + f)
+  o = sigmoid(cs * wco + o)
   co = tanh(cs)
   h = co .* o
   ```
