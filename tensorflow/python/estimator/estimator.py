@@ -411,7 +411,7 @@ class Estimator(object):
       with tf_session.Session() as session:
 
         saver_for_restore = estimator_spec.scaffold.saver or saver.Saver(
-            variables.global_variables(),
+            variables._all_saveable_objects(),  # pylint: disable=protected-access
             sharded=True)
         saver_for_restore.restore(session, checkpoint_path)
 

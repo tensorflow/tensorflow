@@ -136,6 +136,7 @@ py_test(
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:layers",
+        "//tensorflow/python:saver_test_utils",
         "//tensorflow/python:session",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:training",

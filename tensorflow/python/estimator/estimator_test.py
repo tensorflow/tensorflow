@@ -48,6 +48,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.training import saver
+from tensorflow.python.training import saver_test_utils
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training
 from tensorflow.python.util import compat
@@ -814,6 +815,20 @@ def _model_fn_for_export_tests(features, labels, mode):
           'test': export_output.ClassificationOutput(scores, classes)})
 
 
+def _model_fn_with_saveables_for_export_tests(features, labels, mode):
+  _, _ = features, labels
+  table = saver_test_utils.CheckpointedOp(name='v2')
+  train_op = table.insert('k1', 30.0)
+  prediction = table.lookup('k1', 0.0)
+  return model_fn_lib.EstimatorSpec(
+      mode,
+      predictions=prediction,
+      loss=constant_op.constant(1.),
+      train_op=train_op,
+      export_outputs={
+          'test': export_output.PredictOutput({'prediction': prediction})})
+
+
 _VOCAB_FILE_CONTENT = 'emerson\nlake\npalmer\n'
 _EXTRA_FILE_CONTENT = 'kermit\npiggy\nralph\n'
 
@@ -859,6 +874,50 @@ class EstimatorExportTest(test.TestCase):
         self.assertTrue('input_example_tensor' in graph_ops)
         self.assertTrue('ParseExample/ParseExample' in graph_ops)
         self.assertTrue('weight' in graph_ops)
+
+    # Clean up.
+    gfile.DeleteRecursively(tmpdir)
+
+  def test_export_savedmodel_with_saveables_proto_roundtrip(self):
+    tmpdir = tempfile.mkdtemp()
+    est = estimator.Estimator(
+        model_fn=_model_fn_with_saveables_for_export_tests)
+    est.train(input_fn=dummy_input_fn, steps=1)
+    feature_spec = {'x': parsing_ops.VarLenFeature(dtype=dtypes.int64),
+                    'y': parsing_ops.VarLenFeature(dtype=dtypes.int64)}
+    serving_input_receiver_fn = export.build_parsing_serving_input_receiver_fn(
+        feature_spec)
+
+    # Perform the export.
+    export_dir_base = os.path.join(
+        compat.as_bytes(tmpdir), compat.as_bytes('export'))
+    export_dir = est.export_savedmodel(
+        export_dir_base, serving_input_receiver_fn)
+
+    # Check that all the files are in the right places.
+    self.assertTrue(gfile.Exists(export_dir_base))
+    self.assertTrue(gfile.Exists(export_dir))
+    self.assertTrue(gfile.Exists(os.path.join(
+        compat.as_bytes(export_dir),
+        compat.as_bytes('saved_model.pb'))))
+    self.assertTrue(gfile.Exists(os.path.join(
+        compat.as_bytes(export_dir),
+        compat.as_bytes('variables'))))
+    self.assertTrue(gfile.Exists(os.path.join(
+        compat.as_bytes(export_dir),
+        compat.as_bytes('variables/variables.index'))))
+    self.assertTrue(gfile.Exists(os.path.join(
+        compat.as_bytes(export_dir),
+        compat.as_bytes('variables/variables.data-00000-of-00001'))))
+
+    # Restore, to validate that the export was well-formed.
+    with ops.Graph().as_default() as graph:
+      with session.Session(graph=graph) as sess:
+        loader.load(sess, [tag_constants.SERVING], export_dir)
+        graph_ops = [x.name for x in graph.get_operations()]
+        self.assertTrue('input_example_tensor' in graph_ops)
+        self.assertTrue('ParseExample/ParseExample' in graph_ops)
+        self.assertTrue('save/LookupTableImport' in graph_ops)
 
     # Clean up.
     gfile.DeleteRecursively(tmpdir)
