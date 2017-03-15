@@ -146,7 +146,7 @@ class TensorFlowTestCase(googletest.TestCase):
   """Base class for tests that need to test TensorFlow.
   """
 
-  def __init__(self, methodName="runTest"):
+  def __init__(self, methodName="runTest"):  # pylint: disable=invalid-name
     super(TensorFlowTestCase, self).__init__(methodName)
     self._threads = []
     self._tempdir = None
@@ -209,11 +209,11 @@ class TensorFlowTestCase(googletest.TestCase):
     then compares them using self._AssertProtoEqual().
 
     Args:
-      expected_message_maybe_ascii: proto message in original or ascii form
-      message: the message to validate
+      expected_message_maybe_ascii: proto message in original or ascii form.
+      message: the message to validate.
     """
 
-    if type(expected_message_maybe_ascii) == type(message):
+    if isinstance(expected_message_maybe_ascii, type(message)):
       expected_message = expected_message_maybe_ascii
       self._AssertProtoEquals(expected_message, message)
     elif isinstance(expected_message_maybe_ascii, str):
@@ -297,6 +297,14 @@ class TensorFlowTestCase(googletest.TestCase):
       self.skipTest("Not a test.")
 
     def prepare_config(config):
+      """Returns a config for sessions.
+
+      Args:
+        config: An optional config_pb2.ConfigProto to use to configure the
+          session.
+      Returns:
+        A config_pb2.ConfigProto object.
+      """
       if config is None:
         config = config_pb2.ConfigProto()
         config.allow_soft_placement = not force_gpu
@@ -319,7 +327,7 @@ class TensorFlowTestCase(googletest.TestCase):
           # Use the name of an actual device if one is detected, or '/gpu:0'
           # otherwise
           gpu_name = gpu_device_name()
-          if len(gpu_name) == 0:
+          if not gpu_name:
             gpu_name = "/gpu:0"
           with sess.graph.device(gpu_name):
             yield sess
@@ -334,7 +342,7 @@ class TensorFlowTestCase(googletest.TestCase):
           # Use the name of an actual device if one is detected, or '/gpu:0'
           # otherwise
           gpu_name = gpu_device_name()
-          if len(gpu_name) == 0:
+          if not gpu_name:
             gpu_name = "/gpu:0"
           with sess.graph.device(gpu_name):
             yield sess
@@ -485,8 +493,8 @@ class TensorFlowTestCase(googletest.TestCase):
     Args:
       a: a numpy ndarray or anything can be converted to one.
       b: a numpy ndarray or anything can be converted to one.
-      rtol: relative tolerance
-      atol: absolute tolerance
+      rtol: relative tolerance.
+      atol: absolute tolerance.
     """
     a = self._GetNdArray(a)
     b = self._GetNdArray(b)
@@ -534,12 +542,12 @@ class TensorFlowTestCase(googletest.TestCase):
     Args:
       a: a numpy ndarray or anything can be converted to one.
       b: a numpy ndarray or anything can be converted to one.
-      rtol: relative tolerance
-      atol: absolute tolerance
-      float_rtol: relative tolerance for float32
-      float_atol: absolute tolerance for float32
-      half_rtol: relative tolerance for float16
-      half_atol: absolute tolerance for float16
+      rtol: relative tolerance.
+      atol: absolute tolerance.
+      float_rtol: relative tolerance for float32.
+      float_atol: absolute tolerance for float32.
+      half_rtol: relative tolerance for float16.
+      half_atol: absolute tolerance for float16.
     """
     a = self._GetNdArray(a)
     b = self._GetNdArray(b)
@@ -611,7 +619,7 @@ class TensorFlowTestCase(googletest.TestCase):
         op = e.op if isinstance(e, errors.OpError) else None
         while op is not None:
           err_str += "\nCaused by: " + op.name
-          op = op._original_op
+          op = op._original_op  # pylint: disable=protected-access
         logging.info("Searching within error strings: '%s' within '%s'",
                      expected_err_re_or_predicate, err_str)
         return re.search(expected_err_re_or_predicate, err_str)
@@ -660,8 +668,12 @@ class TensorFlowTestCase(googletest.TestCase):
 
   # Fix Python 3 compatibility issues
   if six.PY3:
+    # pylint: disable=invalid-name
+
     # Silence a deprecation warning
     assertRaisesRegexp = googletest.TestCase.assertRaisesRegex
 
     # assertItemsEqual is assertCountEqual as of 3.2.
     assertItemsEqual = googletest.TestCase.assertCountEqual
+
+    # pylint: enable=invalid-name
