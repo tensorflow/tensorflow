@@ -45,9 +45,10 @@ function bazel_clean_and_fetch() {
     bazel clean --expunge
   fi
   if [ -z "$TF_BAZEL_TARGETS" ]; then
-    TF_BAZEL_TARGETS="//tensorflow/... -//tensorflow/contrib/nccl/... -//tensorflow/examples/android/..."
+    bazel fetch "//tensorflow/... -//tensorflow/contrib/nccl/... -//tensorflow/examples/android/..."
+  else
+    bazel fetch $TF_BAZEL_TARGETS
   fi
-  bazel fetch "$TF_BAZEL_TARGETS"
 }
 
 function sed_hyphen_i() {
