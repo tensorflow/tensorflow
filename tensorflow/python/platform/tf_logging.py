@@ -37,6 +37,7 @@ from tensorflow.python.util.all_util import remove_undocumented
 
 
 # Determine whether we are in an interactive environment
+_interactive = False
 try:
   # This is only defined in interactive shells
   if _sys.ps1: _interactive = True
