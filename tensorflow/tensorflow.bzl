@@ -124,6 +124,7 @@ def tf_copts():
                 "/DLANG_CXX11",
                 "/D__VERSION__=\\\"MSVC\\\"",
                 "/DPLATFORM_WINDOWS",
+                "/DTF_COMPILE_LIBRARY",
                 "/DEIGEN_HAS_C99_MATH",
                 "/DTENSORFLOW_USE_EIGEN_THREADPOOL",
               ],
