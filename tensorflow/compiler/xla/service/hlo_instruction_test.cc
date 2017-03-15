@@ -25,15 +25,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
 namespace {
 
-#define EXPECT_ISET(A, E...) EXPECT_EQ(A, (std::set<HloInstruction*>{E}))
-#define EXPECT_IVEC(A, E...) EXPECT_EQ(A, (std::vector<HloInstruction*>{E}))
-
-class HloInstructionTest : public ::testing::Test {
+class HloInstructionTest : public HloTestBase {
  protected:
   HloInstructionTest() {}
 
@@ -149,10 +147,10 @@ TEST_F(HloInstructionTest, UserWithTwoOperands) {
   auto bar = HloInstruction::CreateParameter(1, r0f32_, "bar");
   auto add = HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd, foo.get(),
                                           bar.get());
-  EXPECT_MATCH(add->operands(), testing::UnorderedMatcher<HloInstruction*>(
-                                    foo.get(), bar.get()));
-  EXPECT_ISET(foo->users(), add.get());
-  EXPECT_ISET(bar->users(), add.get());
+
+  ExpectEqOrdered(add->operands(), {foo.get(), bar.get()});
+  ExpectEqUnordered(foo->users(), {add.get()});
+  ExpectEqUnordered(bar->users(), {add.get()});
 
   OpAndUserCollectingVisitor visitor;
   ASSERT_IS_OK(add->Accept(&visitor));
@@ -385,12 +383,12 @@ TEST_F(HloInstructionTest, ReplaceUseInBinaryOps) {
   EXPECT_EQ(1, foo->user_count());
   EXPECT_EQ(2, bar->user_count());
 
-  EXPECT_ISET(foo->users(), add_foobar.get());
-  EXPECT_IVEC(add_foobar->operands(), foo.get(), bar.get());
+  ExpectEqUnordered(foo->users(), {add_foobar.get()});
+  ExpectEqOrdered(add_foobar->operands(), {foo.get(), bar.get()});
 
-  EXPECT_ISET(bar->users(), add_foobar.get(), add_foofoo.get());
-  EXPECT_IVEC(add_foobar->operands(), foo.get(), bar.get());
-  EXPECT_IVEC(add_foofoo->operands(), bar.get(), bar.get());
+  ExpectEqUnordered(bar->users(), {add_foobar.get(), add_foofoo.get()});
+  ExpectEqOrdered(add_foobar->operands(), {foo.get(), bar.get()});
+  ExpectEqOrdered(add_foofoo->operands(), {bar.get(), bar.get()});
 }
 
 TEST_F(HloInstructionTest, ReplaceUseInVariadicOp) {
@@ -406,15 +404,16 @@ TEST_F(HloInstructionTest, ReplaceUseInVariadicOp) {
                                                  foo.get(), bar.get());
 
   EXPECT_EQ(2, foo->user_count());
-  EXPECT_ISET(foo->users(), tuple.get(), add_foobar.get());
+  ExpectEqUnordered(foo->users(), {tuple.get(), add_foobar.get()});
 
   // Replace the use of foo in tuple with bar.
   ASSERT_IS_OK(foo->ReplaceUseWith(tuple.get(), bar.get()));
 
-  EXPECT_ISET(foo->users(), add_foobar.get());
+  ExpectEqUnordered(foo->users(), {add_foobar.get()});
 
   // Both uses of foo in tuple should have been replaced with bar.
-  EXPECT_IVEC(tuple->operands(), bar.get(), bar.get(), baz.get(), bar.get());
+  ExpectEqOrdered(tuple->operands(),
+                  {bar.get(), bar.get(), baz.get(), bar.get()});
 }
 
 TEST_F(HloInstructionTest, ReplaceUseInUnaryOp) {
@@ -427,7 +426,7 @@ TEST_F(HloInstructionTest, ReplaceUseInUnaryOp) {
   auto log = HloInstruction::CreateUnary(r0f32_, HloOpcode::kLog, foo.get());
 
   EXPECT_EQ(2, foo->user_count());
-  EXPECT_ISET(foo->users(), exp.get(), log.get());
+  ExpectEqUnordered(foo->users(), {exp.get(), log.get()});
   EXPECT_EQ(0, bar->user_count());
 
   // Replace the use of foo in exp with bar.
@@ -435,8 +434,8 @@ TEST_F(HloInstructionTest, ReplaceUseInUnaryOp) {
 
   // The use of foo in log should not have been affected.
   EXPECT_EQ(1, foo->user_count());
-  EXPECT_ISET(foo->users(), log.get());
-  EXPECT_IVEC(log->operands(), foo.get());
+  ExpectEqUnordered(foo->users(), {log.get()});
+  ExpectEqOrdered(log->operands(), {foo.get()});
 
   // Bar should now be used in exp.
   EXPECT_EQ(1, bar->user_count());
@@ -467,7 +466,7 @@ TEST_F(HloInstructionTest, ReplaceAllUsesWithInBinaryOps) {
   EXPECT_EQ(0, foo->user_count());
   EXPECT_EQ(2, bar->user_count());
 
-  EXPECT_ISET(bar->users(), add_foobar.get(), add_foofoo.get());
+  ExpectEqUnordered(bar->users(), {add_foobar.get(), add_foofoo.get()});
 }
 
 TEST_F(HloInstructionTest, ReplaceAllUsesInMultipleOps) {
@@ -491,7 +490,7 @@ TEST_F(HloInstructionTest, ReplaceAllUsesInMultipleOps) {
   EXPECT_EQ(0, foo->user_count());
   EXPECT_EQ(3, bar->user_count());
 
-  EXPECT_ISET(bar->users(), add_foobar.get(), exp.get(), tuple.get());
+  ExpectEqUnordered(bar->users(), {add_foobar.get(), exp.get(), tuple.get()});
 }
 
 // Simple visitor that collects and post-processes each node in the graph.
@@ -559,8 +558,8 @@ TEST_F(HloInstructionTest, SingletonFusionOp) {
   auto fusion = HloInstruction::CreateFusion(
       r0f32_, HloInstruction::FusionKind::kLoop, exp.get());
 
-  EXPECT_IVEC(fusion->operands(), constant.get());
-  EXPECT_ISET(constant->users(), fusion.get(), exp.get());
+  ExpectEqOrdered(fusion->operands(), {constant.get()});
+  ExpectEqUnordered(constant->users(), {fusion.get(), exp.get()});
 }
 
 TEST_F(HloInstructionTest, BinaryFusionOp) {
@@ -575,9 +574,9 @@ TEST_F(HloInstructionTest, BinaryFusionOp) {
   auto fusion = HloInstruction::CreateFusion(
       r0f32_, HloInstruction::FusionKind::kLoop, add.get());
 
-  EXPECT_IVEC(fusion->operands(), constant1.get(), constant2.get());
-  EXPECT_ISET(constant1->users(), fusion.get(), add.get());
-  EXPECT_ISET(constant2->users(), fusion.get(), add.get());
+  ExpectEqOrdered(fusion->operands(), {constant1.get(), constant2.get()});
+  ExpectEqUnordered(constant1->users(), {fusion.get(), add.get()});
+  ExpectEqUnordered(constant2->users(), {fusion.get(), add.get()});
 }
 
 TEST_F(HloInstructionTest, ChainFusionOp) {
@@ -594,8 +593,48 @@ TEST_F(HloInstructionTest, ChainFusionOp) {
   fusion->FuseInstruction(exp2.get());
   fusion->FuseInstruction(exp1.get());
 
-  EXPECT_IVEC(fusion->operands(), constant.get());
-  EXPECT_ISET(constant->users(), fusion.get(), exp1.get());
+  ExpectEqOrdered(fusion->operands(), {constant.get()});
+  ExpectEqUnordered(constant->users(), {fusion.get(), exp1.get()});
+}
+
+TEST_F(HloInstructionTest, FusionOpWithCalledComputations) {
+  // Create a fusion instruction containing a single unary operation.
+  const Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
+
+  auto make_map_computation = [&]() {
+    auto builder = HloComputation::Builder("FusionMap");
+    builder.AddInstruction(
+        HloInstruction::CreateParameter(0, scalar_shape, "param"));
+    return builder.Build();
+  };
+
+  std::unique_ptr<HloComputation> computation_x = make_map_computation();
+  std::unique_ptr<HloComputation> computation_y = make_map_computation();
+
+  auto constant =
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.1f));
+  auto map_1_x =
+      HloInstruction::CreateMap(scalar_shape, {constant.get()},
+                                computation_x.get(), /*static_operands=*/{});
+  auto map_2_x =
+      HloInstruction::CreateMap(scalar_shape, {map_1_x.get()},
+                                computation_x.get(), /*static_operands=*/{});
+  auto map_3_y =
+      HloInstruction::CreateMap(scalar_shape, {map_2_x.get()},
+                                computation_y.get(), /*static_operands=*/{});
+
+  auto fusion = HloInstruction::CreateFusion(
+      scalar_shape, HloInstruction::FusionKind::kLoop, map_3_y.get());
+
+  ASSERT_EQ(fusion->called_computations().size(), 1);
+  EXPECT_EQ(fusion->called_computations()[0], computation_y.get());
+
+  fusion->FuseInstruction(map_2_x.get());
+  ASSERT_EQ(fusion->called_computations().size(), 2);
+  EXPECT_EQ(fusion->called_computations()[1], computation_x.get());
+
+  fusion->FuseInstruction(map_1_x.get());
+  ASSERT_EQ(fusion->called_computations().size(), 2);
 }
 
 TEST_F(HloInstructionTest, ComplexFusionOp) {
@@ -636,8 +675,8 @@ TEST_F(HloInstructionTest, ComplexFusionOp) {
 
   // Operands in the fusion instruction's operands() vector should be in the
   // order in which their users were added fused.
-  EXPECT_IVEC(fusion->operands(), c1.get(), c3.get(), c2.get());
-  EXPECT_ISET(c1->users(), add.get(), tuple.get(), fusion.get());
+  ExpectEqOrdered(fusion->operands(), {c1.get(), c3.get(), c2.get()});
+  ExpectEqUnordered(c1->users(), {add.get(), tuple.get(), fusion.get()});
 }
 
 // Convenience function for comparing two HloInstructions inside of

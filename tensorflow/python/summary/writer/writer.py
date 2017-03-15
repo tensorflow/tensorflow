@@ -164,7 +164,7 @@ class SummaryToEventTransformer(object):
 
       # Serialize the graph with additional info.
       true_graph_def = graph.as_graph_def(add_shapes=True)
-      self._write_tensorboard_metadata(graph)
+      self._write_plugin_assets(graph)
     elif (isinstance(graph, graph_pb2.GraphDef) or
           isinstance(graph_def, graph_pb2.GraphDef)):
       # The user passed a `GraphDef`.
@@ -185,13 +185,18 @@ class SummaryToEventTransformer(object):
     # Finally, add the graph_def to the summary writer.
     self._add_graph_def(true_graph_def, global_step)
 
-  def _write_tensorboard_metadata(self, graph):
-    assets = plugin_asset.get_all_plugin_assets(graph)
+  def _write_plugin_assets(self, graph):
+    plugin_assets = plugin_asset.get_all_plugin_assets(graph)
     logdir = self.event_writer.get_logdir()
-    for asset in assets:
-      plugin_dir = os.path.join(logdir, _PLUGINS_DIR, asset.plugin_name)
+    for asset_container in plugin_assets:
+      plugin_name = asset_container.plugin_name
+      plugin_dir = os.path.join(logdir, _PLUGINS_DIR, plugin_name)
       gfile.MakeDirs(plugin_dir)
-      asset.serialize_to_directory(plugin_dir)
+      assets = asset_container.assets()
+      for (asset_name, content) in assets.items():
+        asset_path = os.path.join(plugin_dir, asset_name)
+        with gfile.Open(asset_path, "w") as f:
+          f.write(content)
 
   def add_meta_graph(self, meta_graph_def, global_step=None):
     """Adds a `MetaGraphDef` to the event file.

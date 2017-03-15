@@ -1709,7 +1709,7 @@ class BatchNormTest(test.TestCase):
     with self.test_session():
       reg = lambda x: 0.1 * math_ops.reduce_sum(x)
       images = np.random.uniform(size=(5, height, width, 3)).astype('f')
-      output = _layers.batch_norm(images, param_regularizers={'beta': reg})
+      _layers.batch_norm(images, param_regularizers={'beta': reg})
       self.assertEqual(
           len(ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)), 1)
       beta_decay = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)[0]
@@ -1720,7 +1720,7 @@ class BatchNormTest(test.TestCase):
     with self.test_session():
       reg = lambda x: 0.1 * math_ops.reduce_sum(x)
       images = np.random.uniform(size=(5, height, width, 3)).astype('f')
-      output = _layers.batch_norm(
+      _layers.batch_norm(
           images, param_regularizers={'gamma': reg}, scale=True)
       self.assertEqual(
           len(ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)), 1)

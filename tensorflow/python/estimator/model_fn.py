@@ -23,6 +23,7 @@ import collections
 
 import six
 
+from tensorflow.python.estimator import export_output
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -44,6 +45,13 @@ class ModeKeys(object):
   TRAIN = 'train'
   EVAL = 'eval'
   PREDICT = 'infer'
+
+
+class MetricKeys(object):
+  """Metric key strings."""
+  LOSS = 'loss'
+  AUC = 'auc'
+  ACCURACY = 'accuracy'
 
 
 class EstimatorSpec(
@@ -125,17 +133,16 @@ class EstimatorSpec(
       eval_metric_ops: Dict of metric results keyed by name. The values of the
         dict are the results of calling a metric function, namely a
         `(metric_tensor, update_op)` tuple.
-      export_outputs: Describes the output signature to be exported to
+      export_outputs: Describes the output signatures to be exported to
         `SavedModel` and used during serving.
-        A dict `{name: (signature_method_name, predictions)}` where:
+        A dict `{name: output}` where:
         * name: An arbitrary name for this output.
-        * signature_method_name: One of the *_METHOD_NAME constants defined in
-          `signature_constants`, such as
-          `tf.saved_model.signature_constants.CLASSIFY_METHOD_NAME`. Describes
-          the type of `SignatureDef` to be exported.
-        * predictions: Predictions `Tensor` of dict of `Tensor`.
+        * output: an `ExportOutput` object such as `ClassificationOutput`,
+            `RegressionOutput`, or `PredictOutput`.
         Single-headed models only need to specify one entry in this dictionary.
-        Multi-headed models should specify one entry for each head.
+        Multi-headed models should specify one entry for each head, one of
+        which must be named using
+        signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY.
       training_chief_hooks: A list of `tf.train.SessionRunHook` objects to
         run on the chief worker during training.
       training_hooks: A list of `tf.train.SessionRunHook` objects that to run on
@@ -207,17 +214,23 @@ class EstimatorSpec(
         raise TypeError('export_outputs must be dict, given: {}'.format(
             export_outputs))
       for v in six.itervalues(export_outputs):
-        if not isinstance(v, tuple) or len(v) != 2:
+        if not isinstance(v, export_output.ExportOutput):
           raise TypeError(
-              'Values in export_outputs must be 2-tuple, given: {}'.format(
-                  export_outputs))
-        if v[0] not in (
-            signature_constants.CLASSIFY_METHOD_NAME,
-            signature_constants.PREDICT_METHOD_NAME,
-            signature_constants.REGRESS_METHOD_NAME):
+              'Values in export_outputs must be ExportOutput objects. '
+              'Given: {}'.format(export_outputs))
+      # Note export_outputs is allowed to be empty.
+      if len(export_outputs) == 1:
+        (key, value), = export_outputs.items()
+        if key != signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY:
+          export_outputs[
+              signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY] = value
+      if len(export_outputs) > 1:
+        if (signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+            not in export_outputs):
           raise ValueError(
-              'Invalid signature_method_name in export_outputs, '
-              'given: {}'.format(export_outputs))
+              'Multiple export_outputs were provided, but none of them is '
+              'specified as the default.  Do this by naming one of them with '
+              'signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY.')
 
     # Validate that all tensors and ops are from the default graph.
     default_graph = ops.get_default_graph()

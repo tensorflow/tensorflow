@@ -299,7 +299,7 @@ class AdjustHueTest(test_util.TensorFlowTestCase):
     return y_v.reshape(x_np.shape)
 
   def _adjustHueTf(self, x_np, delta_h):
-    with self.test_session(use_gpu=False):
+    with self.test_session(use_gpu=True):
       x = constant_op.constant(x_np)
       y = image_ops.adjust_hue(x, delta_h)
       y_tf = y.eval()
@@ -498,14 +498,16 @@ class ResizeBilinearBenchmark(test.Benchmark):
 
 class ResizeBicubicBenchmark(test.Benchmark):
 
-  def _benchmarkResize(self, image_size):
-    # 4D float tensor (10 images per batch, 3 channels per image)
+  def _benchmarkResize(self, image_size, num_channels):
+    batch_size = 1
+    num_ops = 1000
     img = variables.Variable(
-        random_ops.random_normal([10, image_size[0], image_size[1], 3]),
+        random_ops.random_normal(
+            [batch_size, image_size[0], image_size[1], num_channels]),
         name='img')
 
     deps = []
-    for _ in xrange(100):
+    for _ in xrange(num_ops):
       with ops.control_dependencies(deps):
         resize_op = image_ops.resize_bicubic(
             img, [299, 299], align_corners=False)
@@ -514,20 +516,41 @@ class ResizeBicubicBenchmark(test.Benchmark):
 
     with session.Session() as sess:
       sess.run(variables.global_variables_initializer())
-      print('Variables initalized for resize_bicubic image size: %s.' %
-            (image_size,))
-      benchmark_values = self.run_op_benchmark(
-          sess, benchmark_op, name=('bicubic_%s_%s' % image_size))
-      print('Benchmark values:\n%s' % benchmark_values)
+      results = self.run_op_benchmark(
+          sess,
+          benchmark_op,
+          min_iters=20,
+          name=('resize_bicubic_%s_%s_%s' % (image_size[0], image_size[1],
+                                             num_channels)))
+      print('%s   : %.2f ms/img' % (results['name'], 1000 * results['wall_time']
+                                    / (batch_size * num_ops)))
 
-  def benchmarkSimilar(self):
-    self._benchmarkResize((183, 229))
+  def benchmarkSimilar3Channel(self):
+    self._benchmarkResize((183, 229), 3)
 
-  def benchmarkScaleUp(self):
-    self._benchmarkResize((141, 186))
+  def benchmarkScaleUp3Channel(self):
+    self._benchmarkResize((141, 186), 3)
 
-  def benchmarkScaleDown(self):
-    self._benchmarkResize((749, 603))
+  def benchmarkScaleDown3Channel(self):
+    self._benchmarkResize((749, 603), 3)
+
+  def benchmarkSimilar1Channel(self):
+    self._benchmarkResize((183, 229), 1)
+
+  def benchmarkScaleUp1Channel(self):
+    self._benchmarkResize((141, 186), 1)
+
+  def benchmarkScaleDown1Channel(self):
+    self._benchmarkResize((749, 603), 1)
+
+  def benchmarkSimilar4Channel(self):
+    self._benchmarkResize((183, 229), 4)
+
+  def benchmarkScaleUp4Channel(self):
+    self._benchmarkResize((141, 186), 4)
+
+  def benchmarkScaleDown4Channel(self):
+    self._benchmarkResize((749, 603), 4)
 
 
 class ResizeAreaBenchmark(test.Benchmark):

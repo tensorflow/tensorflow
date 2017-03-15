@@ -164,6 +164,8 @@ TF_CALL_double(REGISTER_CPU_KERNEL);
 #define REGISTER_GPU_KERNEL(T)                                                 \
   REGISTER_KERNEL_BUILDER(Name("QuantizeAndDequantizeV2")                      \
                               .Device(DEVICE_GPU)                              \
+                              .HostMemory("input_max")                         \
+                              .HostMemory("input_min")                         \
                               .TypeConstraint<T>("T"),                         \
                           QuantizeAndDequantizeV2Op<GPUDevice, T>);            \
   REGISTER_KERNEL_BUILDER(                                                     \

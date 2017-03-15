@@ -90,8 +90,6 @@ class CopyInsertionTest : public HloTestBase {
   };
 };
 
-#define EXPECT_INST(A, E...) EXPECT_EQ(A, (std::set<HloInstruction*>{E}))
-
 TEST_F(CopyInsertionTest, SingleParameter) {
   auto builder = HloComputation::Builder(TestName());
   HloInstruction* x = builder.AddInstruction(
@@ -99,7 +97,7 @@ TEST_F(CopyInsertionTest, SingleParameter) {
   HloInstruction* tuple =
       builder.AddInstruction(HloInstruction::CreateTuple({x}));
 
-  EXPECT_INST(x->users(), tuple);
+  ExpectEqUnordered(x->users(), {tuple});
 
   HloModule module(TestName());
   module.AddEntryComputation(builder.Build());
@@ -127,7 +125,7 @@ TEST_F(CopyInsertionTest, SingleConstant) {
   HloInstruction* tuple =
       builder.AddInstruction(HloInstruction::CreateTuple({constant}));
 
-  EXPECT_INST(constant->users(), tuple);
+  ExpectEqUnordered(constant->users(), {tuple});
 
   HloModule module(TestName());
   module.AddEntryComputation(builder.Build());
@@ -221,9 +219,9 @@ TEST_F(CopyInsertionTest, AmbiguousPointsToSet) {
   builder.AddInstruction(HloInstruction::CreateTernary(
       tuple1->shape(), HloOpcode::kSelect, pred, tuple1, tuple2));
 
-  EXPECT_INST(constant1->users(), tuple1);
-  EXPECT_INST(constant2->users(), tuple1, tuple2);
-  EXPECT_INST(constant3->users(), tuple2);
+  ExpectEqUnordered(constant1->users(), {tuple1});
+  ExpectEqUnordered(constant2->users(), {tuple1, tuple2});
+  ExpectEqUnordered(constant3->users(), {tuple2});
 
   HloModule module(TestName());
   module.AddEntryComputation(builder.Build());
@@ -261,7 +259,7 @@ TEST_F(CopyInsertionTest, BitcastParameter) {
   HloModule module(TestName());
   module.AddEntryComputation(builder.Build());
 
-  EXPECT_INST(x->users(), bitcast);
+  ExpectEqUnordered(x->users(), {bitcast});
 
   HloInstruction* old_root = module.entry_computation()->root_instruction();
   InsertCopies(&module);
@@ -289,7 +287,7 @@ TEST_F(CopyInsertionTest, BitcastConstant) {
   HloModule module(TestName());
   module.AddEntryComputation(builder.Build());
 
-  EXPECT_INST(constant->users(), bitcast);
+  ExpectEqUnordered(constant->users(), {bitcast});
 
   HloInstruction* old_root = module.entry_computation()->root_instruction();
   InsertCopies(&module);
@@ -316,8 +314,7 @@ TEST_F(CopyInsertionTest, BitcastTupleElementParameter) {
   HloModule module(TestName());
   module.AddEntryComputation(builder.Build());
 
-  EXPECT_EQ(1, x->user_count());
-  EXPECT_EQ(*x->users().begin(), bitcast);
+  ExpectEqUnordered(x->users(), {bitcast});
 
   HloInstruction* old_root = module.entry_computation()->root_instruction();
   InsertCopies(&module);

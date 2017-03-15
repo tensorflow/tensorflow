@@ -110,6 +110,34 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# TODO(jhseu): Enable on other platforms other than Linux.
+config_setting(
+    name = "with_jemalloc",
+    values = {
+        "cpu": "k8",
+        "define": "with_jemalloc=true",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "with_gcp_support",
+    values = {"define": "with_gcp_support=true"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "with_hdfs_support",
+    values = {"define": "with_hdfs_support=true"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "with_xla_support",
+    values = {"define": "with_xla_support=true"},
+    visibility = ["//visibility:public"],
+)
+
 package_group(
     name = "internal",
     packages = ["//tensorflow/..."],
@@ -168,6 +196,8 @@ filegroup(
         "//tensorflow/contrib:all_files",
         "//tensorflow/contrib/android:all_files",
         "//tensorflow/contrib/bayesflow:all_files",
+        "//tensorflow/contrib/cloud:all_files",
+        "//tensorflow/contrib/cloud/kernels:all_files",
         "//tensorflow/contrib/compiler:all_files",
         "//tensorflow/contrib/copy_graph:all_files",
         "//tensorflow/contrib/crf:all_files",
@@ -228,7 +258,6 @@ filegroup(
         "//tensorflow/core/grappler/inputs:all_files",
         "//tensorflow/core/grappler/optimizers:all_files",
         "//tensorflow/core/kernels:all_files",
-        "//tensorflow/core/kernels/cloud:all_files",
         "//tensorflow/core/kernels/hexagon:all_files",
         "//tensorflow/core/ops/compat:all_files",
         "//tensorflow/core/platform/cloud:all_files",
@@ -321,6 +350,8 @@ cc_binary(
     deps = [
         "//tensorflow/c:c_api",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:client_session",
+        "//tensorflow/cc:scope",
         "//tensorflow/core:tensorflow",
     ],
 )

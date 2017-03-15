@@ -26,8 +26,8 @@ from tensorflow.python.summary import plugin_asset
 class _UnnamedPluginAsset(plugin_asset.PluginAsset):
   """An example asset with a dummy serialize method provided, but no name."""
 
-  def serialize_to_directory(self, unused_directory):
-    pass
+  def assets(self):
+    return {}
 
 
 class _ExamplePluginAsset(_UnnamedPluginAsset):

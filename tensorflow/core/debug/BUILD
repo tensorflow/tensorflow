@@ -17,6 +17,7 @@ licenses(["notice"])  # Apache 2.0
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "check_deps",
     "tf_copts",
     "tf_cc_test",
     "tf_cuda_library",
@@ -32,6 +33,13 @@ load(
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
     "tf_cuda_tests_tags",
+)
+
+# Check that tensorflow/core:tensorflow does not depend on grpc.
+check_deps(
+    name = "core_tensorflow_check_deps",
+    disallowed_deps = ["@grpc//:grpc++_unsecure"],
+    deps = ["//tensorflow/core:tensorflow"],
 )
 
 tf_proto_library_cc(
@@ -52,6 +60,7 @@ cc_library(
     deps = [
         ":debug_graph_utils",
         "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:debug_ops_op_lib",
     ],
     alwayslink = 1,
 )

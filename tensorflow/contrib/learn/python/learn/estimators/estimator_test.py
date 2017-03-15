@@ -831,7 +831,8 @@ class InferRealValuedColumnsTest(test.TestCase):
         ValueError, 'on integer or non floating types are not supported'):
       # pylint: disable=g-long-lambda
       estimator.infer_real_valued_columns_from_input_fn(
-          lambda: (constant_op.constant(False, shape=[7, 8], dtype=dtypes.bool), None))
+          lambda: (constant_op.constant(False, shape=[7, 8], dtype=dtypes.bool),
+                   None))
 
   def testStringInput(self):
     with self.assertRaisesRegexp(
@@ -846,7 +847,9 @@ class InferRealValuedColumnsTest(test.TestCase):
       # pylint: disable=g-long-lambda
       estimator.infer_real_valued_columns_from_input_fn(
           lambda: (
-              constant_op.constant([['%d.0' % i for i in xrange(8)] for _ in xrange(7)]),
+              constant_op.constant([['%d.0' % i
+                                     for i in xrange(8)]
+                                    for _ in xrange(7)]),
               None))
 
   def testBostonInputFn(self):

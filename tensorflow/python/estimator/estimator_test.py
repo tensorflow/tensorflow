@@ -18,19 +18,32 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+import tempfile
+
 from tensorflow.python.client import session
 from tensorflow.python.estimator import estimator
+from tensorflow.python.estimator import export
+from tensorflow.python.estimator import export_output
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator import run_config
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.saved_model import loader
+from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.training import saver
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training
+from tensorflow.python.util import compat
 
 
 def dummy_model_fn(features, labels, params):
@@ -388,10 +401,8 @@ class EstimatorEvaluateTest(test.TestCase):
             'metric_value': 2.})
     est.train(dummy_input_fn, steps=5)
     scores = est.evaluate(dummy_input_fn, steps=1)
-    self.assertDictEqual(
-        {'metric': 2.,
-         'global_step': 5},
-        scores)
+    self.assertIn('metric', scores)
+    self.assertAlmostEqual(2., scores['metric'])
 
   def test_steps0_raises_error(self):
     est = estimator.Estimator(
@@ -418,6 +429,36 @@ class EstimatorEvaluateTest(test.TestCase):
         ValueError, 'Metric with name `global_step` is not allowed'):
       est.evaluate(dummy_input_fn, steps=1)
 
+  def test_global_step_is_reported(self):
+    est = estimator.Estimator(
+        model_fn=_model_fn_with_eval_metric_ops,
+        params={'metric_name': 'metric',
+                'metric_value': 2.})
+    est.train(dummy_input_fn, steps=5)
+    scores = est.evaluate(dummy_input_fn, steps=1)
+    self.assertIn('global_step', scores)
+    self.assertEqual(5, scores['global_step'])
+
+  def test_loss_metric_is_reported(self):
+
+    def _model_fn_with_incremental_loss(features, labels, mode):
+      _, _ = features, labels
+      local_weight = variables.Variable(
+          0., name='local_weight', collections=[ops.GraphKeys.LOCAL_VARIABLES])
+      # Loss will be 2, 4, 6, ...
+      loss = 2 * state_ops.assign_add(local_weight, 1.)
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          loss=loss,
+          train_op=state_ops.assign_add(training.get_global_step(), 1))
+
+    est = estimator.Estimator(model_fn=_model_fn_with_incremental_loss)
+    est.train(dummy_input_fn, steps=1)
+    scores = est.evaluate(dummy_input_fn, steps=5)
+    self.assertIn(model_fn_lib.MetricKeys.LOSS, scores)
+    # Average loss will be (2 + 4 + 6 + 8 + 10)/5=6
+    self.assertAlmostEqual(6., scores[model_fn_lib.MetricKeys.LOSS])
+
   def test_hooks_are_used(self):
     step_counter_hook = _StepCounterHook()
 
@@ -441,16 +482,13 @@ class EstimatorEvaluateTest(test.TestCase):
         dummy_input_fn,
         steps=1,
         checkpoint_path=saver.latest_checkpoint(est1.model_dir))
-    self.assertDictEqual(
-        {'metric': 2.,
-         'global_step': 5},
-        scores)
+    self.assertEqual(5, scores['global_step'])
 
   def test_scaffold_is_used(self):
 
     def _model_fn_scaffold(features, labels, mode):
       _, _ = features, labels
-      variables.Variable(1., 'weight')
+      variables.Variable(1., name='weight')
       real_saver = saver.Saver()
       self.mock_saver = test.mock.Mock(
           wraps=real_saver, saver_def=real_saver.saver_def)
@@ -682,7 +720,7 @@ class EstimatorPredictTest(test.TestCase):
 
     def _model_fn(features, labels, mode):
       _, _ = features, labels
-      v = variables.Variable([[16.]], 'weight')
+      v = variables.Variable([[16.]], name='weight')
       prediction = v * 2
       return model_fn_lib.EstimatorSpec(
           mode,
@@ -699,7 +737,7 @@ class EstimatorPredictTest(test.TestCase):
 
     def _model_fn_scaffold(features, labels, mode):
       _, _ = features, labels
-      variables.Variable(1., 'weight')
+      variables.Variable(1., name='weight')
       real_saver = saver.Saver()
       self.mock_saver = test.mock.Mock(
           wraps=real_saver, saver_def=real_saver.saver_def)
@@ -737,6 +775,245 @@ class EstimatorPredictTest(test.TestCase):
     self.assertIsNone(self.labels)
     self.assertEqual(model_fn_lib.ModeKeys.PREDICT, self.mode)
 
+
+def _model_fn_for_export_tests(features, labels, mode):
+  _, _ = features, labels
+  variables.Variable(1., name='weight')
+  scores = constant_op.constant([3.])
+  classes = constant_op.constant(['wumpus'])
+  return model_fn_lib.EstimatorSpec(
+      mode,
+      predictions=constant_op.constant(10.),
+      loss=constant_op.constant(1.),
+      train_op=constant_op.constant(2.),
+      export_outputs={
+          'test': export_output.ClassificationOutput(scores, classes)})
+
+
+_VOCAB_FILE_CONTENT = 'emerson\nlake\npalmer\n'
+_EXTRA_FILE_CONTENT = 'kermit\npiggy\nralph\n'
+
+
+class EstimatorExportTest(test.TestCase):
+
+  def test_export_savedmodel_proto_roundtrip(self):
+    tmpdir = tempfile.mkdtemp()
+    est = estimator.Estimator(model_fn=_model_fn_for_export_tests)
+    est.train(input_fn=dummy_input_fn, steps=1)
+    feature_spec = {'x': parsing_ops.VarLenFeature(dtype=dtypes.int64),
+                    'y': parsing_ops.VarLenFeature(dtype=dtypes.int64)}
+    serving_input_receiver_fn = export.build_parsing_serving_input_receiver_fn(
+        feature_spec)
+
+    # Perform the export.
+    export_dir_base = os.path.join(
+        compat.as_bytes(tmpdir), compat.as_bytes('export'))
+    export_dir = est.export_savedmodel(
+        export_dir_base, serving_input_receiver_fn)
+
+    # Check that all the files are in the right places.
+    self.assertTrue(gfile.Exists(export_dir_base))
+    self.assertTrue(gfile.Exists(export_dir))
+    self.assertTrue(gfile.Exists(os.path.join(
+        compat.as_bytes(export_dir),
+        compat.as_bytes('saved_model.pb'))))
+    self.assertTrue(gfile.Exists(os.path.join(
+        compat.as_bytes(export_dir),
+        compat.as_bytes('variables'))))
+    self.assertTrue(gfile.Exists(os.path.join(
+        compat.as_bytes(export_dir),
+        compat.as_bytes('variables/variables.index'))))
+    self.assertTrue(gfile.Exists(os.path.join(
+        compat.as_bytes(export_dir),
+        compat.as_bytes('variables/variables.data-00000-of-00001'))))
+
+    # Restore, to validate that the export was well-formed.
+    with ops.Graph().as_default() as graph:
+      with session.Session(graph=graph) as sess:
+        loader.load(sess, [tag_constants.SERVING], export_dir)
+        graph_ops = [x.name for x in graph.get_operations()]
+        self.assertTrue('input_example_tensor' in graph_ops)
+        self.assertTrue('ParseExample/ParseExample' in graph_ops)
+        self.assertTrue('weight' in graph_ops)
+
+    # Clean up.
+    gfile.DeleteRecursively(tmpdir)
+
+  def test_export_savedmodel_assets(self):
+    tmpdir = tempfile.mkdtemp()
+    est = estimator.Estimator(model_fn=_model_fn_for_export_tests)
+    est.train(input_fn=dummy_input_fn, steps=1)
+    feature_spec = {'x': parsing_ops.VarLenFeature(dtype=dtypes.int64),
+                    'y': parsing_ops.VarLenFeature(dtype=dtypes.int64)}
+    serving_input_receiver_fn = export.build_parsing_serving_input_receiver_fn(
+        feature_spec)
+
+    # Create a fake asset.
+    vocab_file_name = os.path.join(
+        compat.as_bytes(tmpdir), compat.as_bytes('my_vocab_file'))
+    vocab_file = gfile.GFile(vocab_file_name, mode='w')
+    vocab_file.write(_VOCAB_FILE_CONTENT)
+    vocab_file.close()
+
+    # hack in an op that uses the asset, in order to test asset export.
+    # this is not actually valid, of course.
+    def serving_input_receiver_with_asset_fn():
+      features, receiver_tensor = serving_input_receiver_fn()
+      filename = ops.convert_to_tensor(vocab_file_name,
+                                       dtypes.string,
+                                       name='asset_filepath')
+      ops.add_to_collection(ops.GraphKeys.ASSET_FILEPATHS, filename)
+      features['bogus_filename'] = filename
+
+      return export.ServingInputReceiver(features, receiver_tensor)
+
+    # Perform the export.
+    export_dir_base = os.path.join(
+        compat.as_bytes(tmpdir), compat.as_bytes('export'))
+    export_dir = est.export_savedmodel(
+        export_dir_base, serving_input_receiver_with_asset_fn)
+
+    # Check that the asset files are in the right places.
+    expected_vocab_file_name = os.path.join(
+        compat.as_bytes(export_dir), compat.as_bytes('assets/my_vocab_file'))
+    self.assertTrue(gfile.Exists(os.path.join(
+        compat.as_bytes(export_dir), compat.as_bytes('assets'))))
+    self.assertTrue(gfile.Exists(expected_vocab_file_name))
+    self.assertEqual(
+        compat.as_bytes(_VOCAB_FILE_CONTENT),
+        compat.as_bytes(gfile.GFile(expected_vocab_file_name).read()))
+
+    # Restore, to validate that the export was well-formed.
+    with ops.Graph().as_default() as graph:
+      with session.Session(graph=graph) as sess:
+        loader.load(sess, [tag_constants.SERVING], export_dir)
+        assets = [
+            x.eval()
+            for x in graph.get_collection(ops.GraphKeys.ASSET_FILEPATHS)
+        ]
+        self.assertItemsEqual([vocab_file_name], assets)
+        graph_ops = [x.name for x in graph.get_operations()]
+        self.assertTrue('input_example_tensor' in graph_ops)
+        self.assertTrue('ParseExample/ParseExample' in graph_ops)
+        self.assertTrue('asset_filepath' in graph_ops)
+        self.assertTrue('weight' in graph_ops)
+
+    # cleanup
+    gfile.DeleteRecursively(tmpdir)
+
+  def test_export_savedmodel_extra_assets(self):
+    tmpdir = tempfile.mkdtemp()
+    est = estimator.Estimator(model_fn=_model_fn_for_export_tests)
+    est.train(input_fn=dummy_input_fn, steps=1)
+    feature_spec = {'x': parsing_ops.VarLenFeature(dtype=dtypes.int64),
+                    'y': parsing_ops.VarLenFeature(dtype=dtypes.int64)}
+    serving_input_receiver_fn = export.build_parsing_serving_input_receiver_fn(
+        feature_spec)
+
+    # Create a fake asset.
+    extra_file_name = os.path.join(
+        compat.as_bytes(tmpdir), compat.as_bytes('my_extra_file'))
+    extra_file = gfile.GFile(extra_file_name, mode='w')
+    extra_file.write(_EXTRA_FILE_CONTENT)
+    extra_file.close()
+
+    # Perform the export.
+    assets_extra = {'some/sub/directory/my_extra_file': extra_file_name}
+    export_dir_base = os.path.join(
+        compat.as_bytes(tmpdir), compat.as_bytes('export'))
+    export_dir = est.export_savedmodel(export_dir_base,
+                                       serving_input_receiver_fn,
+                                       assets_extra=assets_extra)
+
+    # Check that the asset files are in the right places.
+    expected_extra_path = os.path.join(
+        compat.as_bytes(export_dir),
+        compat.as_bytes('assets.extra/some/sub/directory/my_extra_file'))
+    self.assertTrue(gfile.Exists(os.path.join(
+        compat.as_bytes(export_dir), compat.as_bytes('assets.extra'))))
+    self.assertTrue(gfile.Exists(expected_extra_path))
+    self.assertEqual(
+        compat.as_bytes(_EXTRA_FILE_CONTENT),
+        compat.as_bytes(gfile.GFile(expected_extra_path).read()))
+
+    # cleanup
+    gfile.DeleteRecursively(tmpdir)
+
+  def test_scaffold_is_used_for_saver(self):
+    tmpdir = tempfile.mkdtemp()
+
+    def _model_fn_scaffold(features, labels, mode):
+      _, _ = features, labels
+      variables.Variable(1., name='weight')
+      real_saver = saver.Saver()
+      self.mock_saver = test.mock.Mock(
+          wraps=real_saver, saver_def=real_saver.saver_def)
+      scores = constant_op.constant([3.])
+      return model_fn_lib.EstimatorSpec(
+          mode=mode,
+          predictions=constant_op.constant([[1.]]),
+          loss=constant_op.constant(0.),
+          train_op=constant_op.constant(0.),
+          scaffold=training.Scaffold(saver=self.mock_saver),
+          export_outputs={'test': export_output.ClassificationOutput(scores)})
+
+    est = estimator.Estimator(model_fn=_model_fn_scaffold)
+    est.train(dummy_input_fn, steps=1)
+    feature_spec = {'x': parsing_ops.VarLenFeature(dtype=dtypes.int64),
+                    'y': parsing_ops.VarLenFeature(dtype=dtypes.int64)}
+    serving_input_receiver_fn = export.build_parsing_serving_input_receiver_fn(
+        feature_spec)
+
+    # Perform the export.
+    export_dir_base = os.path.join(
+        compat.as_bytes(tmpdir), compat.as_bytes('export'))
+    est.export_savedmodel(export_dir_base, serving_input_receiver_fn)
+
+    self.assertTrue(self.mock_saver.restore.called)
+
+  def test_scaffold_is_used_for_local_init(self):
+    tmpdir = tempfile.mkdtemp()
+
+    def _model_fn_scaffold(features, labels, mode):
+      _, _ = features, labels
+      my_int = variables.Variable(1, name='my_int',
+                                  collections=[ops.GraphKeys.LOCAL_VARIABLES])
+      scores = constant_op.constant([3.])
+      with ops.control_dependencies(
+          [variables.local_variables_initializer(),
+           data_flow_ops.tables_initializer()]):
+        assign_op = state_ops.assign(my_int, 12345)
+
+      # local_initSop must be an Operation, not a Tensor.
+      custom_local_init_op = control_flow_ops.group(assign_op)
+      return model_fn_lib.EstimatorSpec(
+          mode=mode,
+          predictions=constant_op.constant([[1.]]),
+          loss=constant_op.constant(0.),
+          train_op=constant_op.constant(0.),
+          scaffold=training.Scaffold(local_init_op=custom_local_init_op),
+          export_outputs={'test': export_output.ClassificationOutput(scores)})
+
+    est = estimator.Estimator(model_fn=_model_fn_scaffold)
+    est.train(dummy_input_fn, steps=1)
+    feature_spec = {'x': parsing_ops.VarLenFeature(dtype=dtypes.int64),
+                    'y': parsing_ops.VarLenFeature(dtype=dtypes.int64)}
+    serving_input_receiver_fn = export.build_parsing_serving_input_receiver_fn(
+        feature_spec)
+
+    # Perform the export.
+    export_dir_base = os.path.join(
+        compat.as_bytes(tmpdir), compat.as_bytes('export'))
+    export_dir = est.export_savedmodel(export_dir_base,
+                                       serving_input_receiver_fn)
+
+    # Restore, to validate that the custom local_init_op runs.
+    with ops.Graph().as_default() as graph:
+      with session.Session(graph=graph) as sess:
+        loader.load(sess, [tag_constants.SERVING], export_dir)
+        my_int = graph.get_tensor_by_name('my_int:0')
+        my_int_value = sess.run(my_int)
+        self.assertEqual(12345, my_int_value)
 
 if __name__ == '__main__':
   test.main()
