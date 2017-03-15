@@ -61,12 +61,11 @@ RUN add-apt-repository -y ppa:openjdk-r/ppa && \
 # Running bazel inside a `docker build` command causes trouble, cf:
 #   https://github.com/bazelbuild/bazel/issues/134
 # The easiest solution is to set up a bazelrc file forcing --batch.
-RUN echo "startup --batch" >>/root/.bazelrc
+RUN echo "startup --batch" >>/etc/bazel.bazelrc
 # Similarly, we need to workaround sandboxing issues:
 #   https://github.com/bazelbuild/bazel/issues/418
 RUN echo "build --spawn_strategy=standalone --genrule_strategy=standalone" \
-    >>/root/.bazelrc
-ENV BAZELRC /root/.bazelrc
+    >>/etc/bazel.bazelrc
 # Install the most recent bazel release.
 ENV BAZEL_VERSION 0.4.2
 WORKDIR /
