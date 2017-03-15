@@ -260,6 +260,11 @@ class EstimatorTrainTest(test.TestCase):
     est.train(dummy_input_fn, steps=1)
     self.assertTrue(self.is_init_fn_called)
 
+  def test_hooks_should_be_session_run_hook(self):
+    est = estimator.Estimator(model_fn=model_fn_global_step_incrementer)
+    with self.assertRaisesRegexp(TypeError, 'must be a SessionRunHook'):
+      est.train(dummy_input_fn, steps=1, hooks=['NotAHook'])
+
   def test_training_hooks_are_used(self):
     chief_hook = test.mock.MagicMock(
         wraps=training.SessionRunHook(), spec=training.SessionRunHook)
@@ -465,6 +470,12 @@ class EstimatorEvaluateTest(test.TestCase):
     self.assertIn(model_fn_lib.MetricKeys.LOSS, scores)
     # Average loss will be (2 + 4 + 6 + 8 + 10)/5=6
     self.assertAlmostEqual(6., scores[model_fn_lib.MetricKeys.LOSS])
+
+  def test_hooks_should_be_session_run_hook(self):
+    est = estimator.Estimator(model_fn=model_fn_global_step_incrementer)
+    est.train(dummy_input_fn, steps=1)
+    with self.assertRaisesRegexp(TypeError, 'must be a SessionRunHook'):
+      est.evaluate(dummy_input_fn, steps=5, hooks=['NotAHook'])
 
   def test_hooks_are_used(self):
     step_counter_hook = _StepCounterHook()
@@ -700,6 +711,12 @@ class EstimatorPredictTest(test.TestCase):
     results = est.predict(dummy_input_fn)
     self.assertDictEqual({'y1': [10.], 'y2': [0.]}, next(results))
     self.assertDictEqual({'y1': [12.], 'y2': [2.]}, next(results))
+
+  def test_hooks_should_be_session_run_hook(self):
+    est = estimator.Estimator(model_fn=model_fn_global_step_incrementer)
+    est.train(dummy_input_fn, steps=1)
+    with self.assertRaisesRegexp(TypeError, 'must be a SessionRunHook'):
+      next(est.predict(dummy_input_fn, hooks=['NotAHook']))
 
   def test_hooks_are_used(self):
 

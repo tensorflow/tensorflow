@@ -204,7 +204,7 @@ class Estimator(object):
         logging.info('Skipping training since max_steps has already saved.')
         return self
 
-    hooks = list(hooks or [])
+    hooks = _check_hooks_type(hooks)
     if steps is not None or max_steps is not None:
       hooks.append(training.StopAtStepHook(steps, max_steps))
 
@@ -248,7 +248,7 @@ class Estimator(object):
       ValueError: If no model has been trained, namely `model_dir`, or the
         given `checkpoint_path` is empty.
     """
-    hooks = list(hooks or [])
+    hooks = _check_hooks_type(hooks)
     if steps is not None:
       if steps <= 0:
         raise ValueError('Must specify steps >= 0, given: {}'.format(steps))
@@ -287,7 +287,7 @@ class Estimator(object):
         `predictions`. For example if `predict_keys` is not `None` but
         `EstimatorSpec.predictions` is not a `dict`.
     """
-    hooks = list(hooks or [])
+    hooks = _check_hooks_type(hooks)
     # Check that model has been trained.
     checkpoint_path = saver.latest_checkpoint(self._model_dir)
     if not checkpoint_path:
@@ -635,6 +635,15 @@ class Estimator(object):
       raise ValueError(
           'Metric with name `%s` is not allowed, because Estimator '
           'already defines a default metric with the same name.' % metric_key)
+
+
+def _check_hooks_type(hooks):
+  """Returns hooks if all are SessionRunHook, raises TypeError otherwise."""
+  hooks = list(hooks or [])
+  for h in hooks:
+    if not isinstance(h, training.SessionRunHook):
+      raise TypeError('Hooks must be a SessionRunHook, given: {}'.format(h))
+  return hooks
 
 
 def _get_replica_device_setter(config):
