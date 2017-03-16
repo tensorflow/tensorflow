@@ -1,7 +1,7 @@
 # TF Learn Examples
 
 Learn is a high-level API for TensorFlow that allows you to create,
-train, and use deep learning models easily. See the [Quickstart tutorial](../../g3doc/tutorials/tflearn/index.md)
+train, and use deep learning models easily. See the [Quickstart tutorial](https://www.tensorflow.org/get_started/tflearn)
 for an introduction to the API.
 
 To run most of these examples, you need to install the `scikit learn` library (`sudo pip install sklearn`).
