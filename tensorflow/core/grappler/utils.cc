@@ -13,11 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/grappler/utils.h"
+#include <memory>
+
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
+#include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/stream_executor.h"
 
 namespace tensorflow {
@@ -94,6 +97,25 @@ string AddPrefixToNodeName(const string& name, const string& prefix) {
     }
   }
   return strings::StrCat(prefix, "-", name);
+}
+
+bool ExecuteWithTimeout(std::function<void()> fn, const int64 timeout_in_ms,
+                        thread::ThreadPool* const thread_pool) {
+  if (timeout_in_ms <= 0) {
+    fn();
+    return true;
+  }
+  auto done = std::make_shared<Notification>();
+  thread_pool->Schedule([done, &fn]() {
+    fn();
+    done->Notify();
+  });
+  const bool notified =
+      WaitForNotificationWithTimeout(done.get(), timeout_in_ms * 1000);
+  if (!notified) {
+    return false;
+  }
+  return true;
 }
 
 }  // end namespace grappler
