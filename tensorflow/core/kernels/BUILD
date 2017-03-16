@@ -1103,6 +1103,19 @@ tf_kernel_library(
     alwayslink = 0,
 )
 
+tf_cc_test(
+    name = "transpose_util_test",
+    size = "small",
+    srcs = ["transpose_util_test.cc"],
+    deps = [
+        ":transpose_functor",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:tensor_testutil",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 tf_kernel_library(
     name = "candidate_sampler_ops",
     prefix = "candidate_sampler_ops",
