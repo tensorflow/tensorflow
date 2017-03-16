@@ -298,6 +298,8 @@ invoke the following command:
 
 <pre>$ <b>bazel build --config=opt --config=cuda //tensorflow/tools/pip_package:build_pip_package</b> </pre>
 
+**NOTE on gcc 5 or later:** the binary pip packages available on the TensorFlow website are built with gcc 4, which uses the older ABI. To make your build compatible with the older ABI, you need to add `-cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0"` to your `bazel build` command. ABI compatibility allows custom ops built against the TensorFlow pip package to continue to work against your built package.
+
 <b>Tip:</b> By default, building TensorFlow from sources consumes
 a lot of RAM.  If RAM is an issue on your system, you may limit RAM usage
 by specifying <code>--local_resources 2048,.5,1.0</code> while
@@ -322,10 +324,6 @@ for TensorFlow 1.0.1 on Linux:
 <pre>
 $ <b>sudo pip install /tmp/tensorflow_pkg/tensorflow-1.0.1-py2-none-any.whl</b>
 </pre>
-
-**NOTE on gcc version 5:** the binary pip packages
-available on the TensorFlow website are built with gcc4 that uses the older ABI.
-To make the library compatible with the older abi you have to add `-cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0"`
 
 ## Validate your installation
 
