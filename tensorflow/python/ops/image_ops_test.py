@@ -1185,9 +1185,13 @@ class CropToBoundingBoxTest(test_util.TensorFlowTestCase):
     offset_height, offset_width = [0, 0]
     target_height, target_width = [2, 2]
 
-    for x_shape in ([1, 3, 5, 1], [3, 5]):
+    for x_shape in ([3, 5],):
       self._assertRaises(x, x_shape, offset_height, offset_width, target_height,
-                         target_width, "'image' must be three-dimensional")
+                         target_width, "'image' must be at least three-dimensional.")
+
+    for x_shape in ([1, 3, 5, 1, 1],):
+      self._assertRaises(x, x_shape, offset_height, offset_width, target_height,
+                         target_width, "'image' must have either 3 or 4 dimensions.")
 
   def testZeroLengthInput(self):
     # Input image has 0-length dimension(s).
@@ -1430,9 +1434,13 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
     offset_height, offset_width = [0, 0]
     target_height, target_width = [2, 2]
 
-    for x_shape in ([1, 3, 5, 1], [3, 5]):
+    for x_shape in ([3, 5],):
       self._assertRaises(x, x_shape, offset_height, offset_width, target_height,
-                         target_width, "'image' must be three-dimensional")
+                         target_width, "'image' must be at least three-dimensional")
+
+    for x_shape in ([1, 3, 5, 1, 1],):
+      self._assertRaises(x, x_shape, offset_height, offset_width, target_height,
+                         target_width, "'image' must have either 3 or 4 dimensions.")
 
   def testZeroLengthInput(self):
     # Input image has 0-length dimension(s).
@@ -2220,9 +2228,13 @@ class ResizeImageWithCropOrPadTest(test_util.TensorFlowTestCase):
     x = [0] * 15
     target_height, target_width = [4, 4]
 
-    for x_shape in ([1, 3, 5, 1], [3, 5]):
+    for x_shape in ([3, 5],):
       self._assertRaises(x, x_shape, target_height, target_width,
-                         "'image' must be three-dimensional")
+                         "'image' must have either 3 or 4 dimensions.")
+
+    for x_shape in ([1, 3, 5, 1, 1],):
+      self._assertRaises(x, x_shape, target_height, target_width,
+                         "'image' must have either 3 or 4 dimensions.")
 
   def testZeroLengthInput(self):
     # Input image has 0-length dimension(s).
