@@ -106,7 +106,7 @@ bool ExecuteWithTimeout(std::function<void()> fn, const int64 timeout_in_ms,
     return true;
   }
   auto done = std::make_shared<Notification>();
-  thread_pool->Schedule([done, &fn]() {
+  thread_pool->Schedule([done, fn]() {
     fn();
     done->Notify();
   });

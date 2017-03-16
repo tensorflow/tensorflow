@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/clusters/single_machine.h"
+#include <memory>
 #include "tensorflow/cc/training/queue_runner.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/kernels/ops_util.h"
@@ -142,16 +143,11 @@ Status SingleMachine::RunWithTimeout(
     CHECK(!closing_);
   }
   auto status = std::make_shared<Status>();
+  auto local_metadata = std::make_shared<RunMetadata>();
   const bool executed_in_time = ExecuteWithTimeout(
-      [status, this, &run_metadata, &feed, &fetch]() {
-        if (!run_metadata) {
-          RunMetadata unused;
-          *status =
-              session_->Run(run_options_, feed, {}, fetch, nullptr, &unused);
-        } else {
-          *status = session_->Run(run_options_, feed, {}, fetch, nullptr,
-                                  run_metadata);
-        }
+      [this, status, local_metadata, &feed, &fetch]() {
+        *status = session_->Run(run_options_, feed, {}, fetch, nullptr,
+                                local_metadata.get());
       },
       timeout_s_ * 1000, thread_pool_.get());
   if (!executed_in_time) {
@@ -159,6 +155,8 @@ Status SingleMachine::RunWithTimeout(
     last_graph_ = nullptr;
     return errors::DeadlineExceeded("Failed to run the graph after ",
                                     timeout_s_, " seconds, aborting");
+  } else if (run_metadata && status->ok()) {
+    *run_metadata = *local_metadata;
   }
   return *status;
 }
