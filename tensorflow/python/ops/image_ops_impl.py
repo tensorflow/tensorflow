@@ -153,14 +153,29 @@ def _CheckAtLeast3DImage(image, require_static=True):
 
   Raises:
     ValueError: if image.shape is not a [>= 3] vector.
+
+  Returns:
+    An empty list, if `image` has fully defined dimensions. Otherwise, a list
+    containing an assert op is returned.
   """
-  if require_static and not image.get_shape().is_fully_defined():
+  try:
+    if image.get_shape().ndims is None:
+      image_shape = image.get_shape().with_rank(3)
+    else:
+      image_shape = image.get_shape().with_rank_at_least(3)
+  except ValueError:
+    raise ValueError("'image' must be at least three-dimensional.")
+  if require_static and not image_shape.is_fully_defined():
     raise ValueError('\'image\' must be fully defined.')
-  if image.get_shape().ndims < 3:
-    raise ValueError('\'image\' must be at least three-dimensional.')
-  if not all(x > 0 for x in image.get_shape()):
+  if any(x == 0 for x in image_shape):
     raise ValueError('all dims of \'image.shape\' must be > 0: %s' %
-                     image.get_shape())
+                     image_shape)
+  if not image_shape.is_fully_defined():
+    return [check_ops.assert_positive(array_ops.shape(image),
+                                      ["all dims of 'image.shape' "
+                                       "must be > 0."])]
+  else:
+    return []
 
 
 def fix_image_flip_shape(image, result):
@@ -422,10 +437,15 @@ def pad_to_bounding_box(image, offset_height, offset_width, target_height,
   assert_ops += _CheckAtLeast3DImage(image, require_static=False)
 
   is_batch = True
-  if image.get_shape().ndims == 3:
+  image_shape = image.get_shape()
+  if image_shape.ndims == 3:
     is_batch = False
     image = array_ops.expand_dims(image, 0)
-  elif image.get_shape().ndims != 4:
+  elif image_shape.ndims is None:
+    is_batch = False
+    image = array_ops.expand_dims(image, 0)
+    image.set_shape([None] * 4)
+  elif image_shape.ndims != 4:
     raise ValueError('\'image\' must have either 3 or 4 dimensions.')
 
   batch, height, width, depth = _ImageDimensions(image, rank=4)
@@ -497,10 +517,15 @@ def crop_to_bounding_box(image, offset_height, offset_width, target_height,
   assert_ops += _CheckAtLeast3DImage(image, require_static=False)
 
   is_batch = True
-  if image.get_shape().ndims == 3:
+  image_shape = image.get_shape()
+  if image_shape.ndims == 3:
     is_batch = False
     image = array_ops.expand_dims(image, 0)
-  elif image.get_shape().ndims != 4:
+  elif image_shape.ndims is None:
+    is_batch = False
+    image = array_ops.expand_dims(image, 0)
+    image.set_shape([None] * 4)
+  elif image_shape.ndims != 4:
     raise ValueError('\'image\' must have either 3 or 4 dimensions.')
 
   batch, height, width, depth = _ImageDimensions(image, rank=4)
@@ -562,14 +587,16 @@ def resize_image_with_crop_or_pad(image, target_height, target_width):
     `[new_height, new_width, channels]`.
   """
   image = ops.convert_to_tensor(image, name='image')
-  if image.get_shape().ndims is None:
-    raise ValueError('\'image\' contains no shape.')
-  # TODO(shlens): Migrate this functionality to the underlying Op's.
+  image_shape = image.get_shape()
   is_batch = True
-  if image.get_shape().ndims == 3:
+  if image_shape.ndims == 3:
     is_batch = False
     image = array_ops.expand_dims(image, 0)
-  elif image.get_shape().ndims != 4:
+  elif image_shape.ndims is None:
+    is_batch = False
+    image = array_ops.expand_dims(image, 0)
+    image.set_shape([None] * 4)
+  elif image_shape.ndims != 4:
     raise ValueError('\'image\' must have either 3 or 4 dimensions.')
 
   assert_ops = []
