@@ -47,6 +47,12 @@ class Cluster {
   // of the requested resources are available.
   virtual Status Provision() = 0;
 
+  // Whether soft placement is allowed. If allow_soft_placement is true,
+  // an op will be placed on CPU if there's no GPU implementation for the OP
+  // or if no GPU devices are known or registered or if we need to co-locate
+  // with reftype input(s) which are from CPU.
+  void AllowSoftPlacement(bool soft_placement_state);
+
   // Set the number of steps required to warmup TensorFlow. Must be called
   // before Provision().
   void SetNumWarmupSteps(int num_steps);

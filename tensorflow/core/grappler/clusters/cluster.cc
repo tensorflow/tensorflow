@@ -39,6 +39,10 @@ Cluster::~Cluster() {
   already_created = false;
 }
 
+void Cluster::AllowSoftPlacement(bool soft_placement_state) {
+  options_.config.set_allow_soft_placement(soft_placement_state);
+}
+
 void Cluster::SetNumWarmupSteps(int num_steps) {
   options_.config.mutable_graph_options()->set_build_cost_model_after(
       num_steps);

@@ -37,7 +37,6 @@ class SingleMachine : public Cluster {
              const std::vector<std::pair<string, Tensor>>& feed,
              const std::vector<string>& fetch, RunMetadata* metadata) override;
 
-  Status AllowSoftPlacement(bool soft_placement_state);
  private:
   Status RunWithTimeout(const std::vector<std::pair<string, Tensor>>& feed,
                         const std::vector<string>& fetch,
