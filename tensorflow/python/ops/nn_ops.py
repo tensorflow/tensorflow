@@ -1293,8 +1293,7 @@ def conv3d_transpose(value,
       dimension of the input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
       See the @{tf.nn.convolution$comment here}
-    data_format: A string, either `'NDHWC'` or `'NCDHW`' specifying the layout
-      of the input and output tensors. Defaults to `'NDHWC'`.
+    data_format: A string. 'NDHWC' and 'NCDHW' are supported.
     name: Optional name for the returned tensor.
 
   Returns:
@@ -1308,9 +1307,10 @@ def conv3d_transpose(value,
                       [value, filter, output_shape]) as name:
     value = ops.convert_to_tensor(value, name="value")
     filter = ops.convert_to_tensor(filter, name="filter")
-    if not value.get_shape()[4].is_compatible_with(filter.get_shape()[4]):
+    axis = 1 if data_format == "NCDHW" else 4
+    if not value.get_shape()[axis].is_compatible_with(filter.get_shape()[4]):
       raise ValueError("input channels does not match filter's input channels, "
-                       "{} != {}".format(value.get_shape()[4], filter.get_shape(
+                       "{} != {}".format(value.get_shape()[axis], filter.get_shape(
                        )[4]))
 
     output_shape_ = ops.convert_to_tensor(output_shape, name="output_shape")
