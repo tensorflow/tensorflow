@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -66,13 +67,21 @@ TEST_F(UtilsTest, AddNodeNamePrefix) {
 TEST_F(UtilsTest, ExecuteWithTimeout) {
   std::unique_ptr<thread::ThreadPool> thread_pool(
       new thread::ThreadPool(Env::Default(), "ExecuteWithTimeout", 2));
+
+  // This should run till the end.
   ASSERT_TRUE(ExecuteWithTimeout(
       []() {  // Do nothing.
       },
-      1 /* timeout_in_ms */, thread_pool.get()));
+      1000 /* timeout_in_ms */, thread_pool.get()));
+
   // This should time out.
-  ASSERT_FALSE(ExecuteWithTimeout([]() { sleep(1); }, 1 /* timeout_in_ms */,
-                                  thread_pool.get()));
+  Notification notification;
+  ASSERT_FALSE(ExecuteWithTimeout(
+      [&notification]() { notification.WaitForNotification(); },
+      1 /* timeout_in_ms */, thread_pool.get()));
+  // Make sure to unblock the thread.
+  notification.Notify();
+
   // This should run till the end.
   ASSERT_TRUE(ExecuteWithTimeout([]() { sleep(1); }, 0 /* timeout_in_ms */,
                                  thread_pool.get()));
