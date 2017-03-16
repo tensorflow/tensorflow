@@ -2300,7 +2300,6 @@ def tensordot(a, b, axes, name=None):
       static shape of the free dimensions
       
     """
-    # TODO(b/33084409): Implement partial shape inference.
     if a.get_shape().is_fully_defined() and isinstance(axes, (list, tuple)):
       shape_a = a.get_shape().as_list()
       axes = [i if i >= 0 else i + len(shape_a) for i in axes]
