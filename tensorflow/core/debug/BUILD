@@ -161,7 +161,7 @@ tf_cc_test_gpu(
     srcs = ["debug_gateway_test.cc"],
     args = ["--heap_check=local"],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags() + ["nomac"],
+    tags = tf_cuda_tests_tags() + ["manual"],
     deps = [
         ":debug",
         ":debug_gateway_internal",
