@@ -238,6 +238,8 @@ REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
 REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
                     Name("ReverseV2").TypeConstraint("T", kCpuAllTypes));
 REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
+                    Name("Round").TypeConstraint("T", kCpuFloatTypes));
+REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
                     Name("Rsqrt").TypeConstraint("T", kCpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
                     Name("RsqrtGrad").TypeConstraint("T", kCpuFloatTypes));
@@ -531,6 +533,8 @@ REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT,
                     Name("Reverse").TypeConstraint("T", kGpuAllTypes))
 REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT,
                     Name("ReverseV2").TypeConstraint("T", kGpuAllTypes))
+REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT,
+                    Name("Round").TypeConstraint("T", kGpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT,
                     Name("Rsqrt").TypeConstraint("T", kGpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT,
