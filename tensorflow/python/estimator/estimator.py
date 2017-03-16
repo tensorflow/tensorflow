@@ -30,9 +30,10 @@ import six
 from tensorflow.core.framework import summary_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as tf_session
-from tensorflow.python.estimator import export
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator import run_config
+from tensorflow.python.estimator.export.export import build_all_signature_defs
+from tensorflow.python.estimator.export.export import get_timestamped_export_dir
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import control_flow_ops
@@ -56,9 +57,9 @@ _VALID_MODEL_FN_ARGS = set(
 class Estimator(object):
   """Estimator class to train and evaluate TensorFlow models.
 
-  The Estimator object wraps a model which is specified by a `model_fn`, which,
-  given inputs and a number of other parameters, returns the ops necessary to
-  perform training, evaluation, or predictions, respectively.
+  The `Estimator` object wraps a model which is specified by a `model_fn`,
+  which, given inputs and a number of other parameters, returns the ops
+  necessary to perform training, evaluation, or predictions.
 
   All outputs (checkpoints, event files, etc.) are written to `model_dir`, or a
   subdirectory thereof. If `model_dir` is not set, a temporary directory is
@@ -68,15 +69,20 @@ class Estimator(object):
   about the execution environment. It is passed on to the `model_fn`, if the
   `model_fn` has a parameter named "config" (and input functions in the same
   manner). If the `config` parameter is not passed, it is instantiated by the
-  Estimator. Not passing config means that defaults useful for local execution
-  are used. Estimator makes config available to the model (for instance, to
+  `Estimator`. Not passing config means that defaults useful for local execution
+  are used. `Estimator` makes config available to the model (for instance, to
   allow specialization based on the number of workers available), and also uses
   some of its fields to control internals, especially regarding checkpointing.
 
   The `params` argument contains hyperparameters. It is passed to the
   `model_fn`, if the `model_fn` has a parameter named "params", and to the input
-  functions in the same manner. Estimator only passes params along, it does not
-  inspect it. The structure of params is therefore entirely up to the developer.
+  functions in the same manner. `Estimator` only passes params along, it does
+  not inspect it. The structure of `params` is therefore entirely up to the
+  developer.
+
+  None of `Estimator`'s methods can be overridden in subclasses (its
+  constructor enforces this). Subclasses should use `model_fn` to configure
+  the base class, and may add methods implementing specialized functionality.
   """
 
   def __init__(self, model_fn, model_dir=None, config=None, params=None):
@@ -116,7 +122,7 @@ class Estimator(object):
       ValueError: if this is called via a subclass and if that class overrides
         a member of `Estimator`.
     """
-    self._assert_members_are_not_overridden()
+    Estimator._assert_members_are_not_overridden(self)
     # Model directory.
     self._model_dir = model_dir
     if self._model_dir is None:
@@ -395,7 +401,7 @@ class Estimator(object):
           mode=model_fn_lib.ModeKeys.PREDICT)
 
       # Build the SignatureDefs from receivers and all outputs
-      signature_def_map = export.build_all_signature_defs(
+      signature_def_map = build_all_signature_defs(
           serving_input_receiver.receiver_tensors,
           estimator_spec.export_outputs)
 
@@ -405,7 +411,7 @@ class Estimator(object):
       if not checkpoint_path:
         raise ValueError("Couldn't find trained model at %s." % self._model_dir)
 
-      export_dir = export.get_timestamped_export_dir(export_dir_base)
+      export_dir = get_timestamped_export_dir(export_dir_base)
 
       # TODO(soergel): Consider whether MonitoredSession makes sense here
       with tf_session.Session() as session:
@@ -600,7 +606,8 @@ class Estimator(object):
 
       if model_fn_lib.MetricKeys.LOSS in estimator_spec.eval_metric_ops:
         raise ValueError(
-            'Metric with name `loss` is not allowed, because Estimator '
+            'Metric with name "%s" is not allowed, because Estimator ' % (
+                model_fn_lib.MetricKeys.LOSS) +
             'already defines a default metric with the same name.')
       estimator_spec.eval_metric_ops[
           model_fn_lib.MetricKeys.LOSS] = metrics_lib.mean(estimator_spec.loss)

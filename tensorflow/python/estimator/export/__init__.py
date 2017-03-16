@@ -12,20 +12,31 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Utility methods to create simple input_fns."""
+"""Utility methods for exporting Estimator."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.estimator.inputs.numpy_io import numpy_input_fn
-from tensorflow.python.estimator.inputs.pandas_io import pandas_input_fn
+from tensorflow.python.estimator.export.export import build_parsing_serving_input_receiver_fn
+from tensorflow.python.estimator.export.export import build_raw_serving_input_receiver_fn
+from tensorflow.python.estimator.export.export import ServingInputReceiver
+
+from tensorflow.python.estimator.export.export_output import ClassificationOutput
+from tensorflow.python.estimator.export.export_output import ExportOutput
+from tensorflow.python.estimator.export.export_output import PredictOutput
+from tensorflow.python.estimator.export.export_output import RegressionOutput
 
 from tensorflow.python.util.all_util import remove_undocumented
 
 _allowed_symbols = [
-    'numpy_input_fn',
-    'pandas_input_fn'
+    'build_parsing_serving_input_receiver_fn',
+    'build_raw_serving_input_receiver_fn',
+    'ServingInputReceiver',
+    'ClassificationOutput',
+    'ExportOutput',
+    'PredictOutput',
+    'RegressionOutput',
 ]
 
 remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)

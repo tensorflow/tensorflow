@@ -26,7 +26,6 @@ import numpy as np
 from tensorflow.python.client import session
 from tensorflow.python.estimator import estimator
 from tensorflow.python.estimator import export
-from tensorflow.python.estimator import export_output
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator import run_config
 from tensorflow.python.estimator.inputs import numpy_io
@@ -66,6 +65,22 @@ class EstimatorInheritanceConstraintTest(test.TestCase):
 
       def __init__(self):
         super(_Estimator, self).__init__(model_fn=dummy_model_fn)
+
+      def predict(self, input_fn, predict_keys=None, hooks=None):
+        pass
+
+    with self.assertRaisesRegexp(
+        ValueError, 'cannot override members of Estimator.*predict'):
+      _Estimator()
+
+  def test_override_a_method_with_tricks(self):
+    class _Estimator(estimator.Estimator):
+
+      def __init__(self):
+        super(_Estimator, self).__init__(model_fn=dummy_model_fn)
+
+      def _assert_members_are_not_overridden(self):
+        pass  # HAHA! I tricked you!
 
       def predict(self, input_fn, predict_keys=None, hooks=None):
         pass
@@ -812,7 +827,7 @@ def _model_fn_for_export_tests(features, labels, mode):
       loss=constant_op.constant(1.),
       train_op=constant_op.constant(2.),
       export_outputs={
-          'test': export_output.ClassificationOutput(scores, classes)})
+          'test': export.ClassificationOutput(scores, classes)})
 
 
 def _model_fn_with_saveables_for_export_tests(features, labels, mode):
@@ -826,7 +841,7 @@ def _model_fn_with_saveables_for_export_tests(features, labels, mode):
       loss=constant_op.constant(1.),
       train_op=train_op,
       export_outputs={
-          'test': export_output.PredictOutput({'prediction': prediction})})
+          'test': export.PredictOutput({'prediction': prediction})})
 
 
 _VOCAB_FILE_CONTENT = 'emerson\nlake\npalmer\n'
@@ -1038,7 +1053,7 @@ class EstimatorExportTest(test.TestCase):
           loss=constant_op.constant(0.),
           train_op=constant_op.constant(0.),
           scaffold=training.Scaffold(saver=self.mock_saver),
-          export_outputs={'test': export_output.ClassificationOutput(scores)})
+          export_outputs={'test': export.ClassificationOutput(scores)})
 
     est = estimator.Estimator(model_fn=_model_fn_scaffold)
     est.train(dummy_input_fn, steps=1)
@@ -1075,7 +1090,7 @@ class EstimatorExportTest(test.TestCase):
           loss=constant_op.constant(0.),
           train_op=constant_op.constant(0.),
           scaffold=training.Scaffold(local_init_op=custom_local_init_op),
-          export_outputs={'test': export_output.ClassificationOutput(scores)})
+          export_outputs={'test': export.ClassificationOutput(scores)})
 
     est = estimator.Estimator(model_fn=_model_fn_scaffold)
     est.train(dummy_input_fn, steps=1)
@@ -1107,7 +1122,7 @@ class EstimatorIntegrationTest(test.TestCase):
       predictions = layers.dense(
           features['x'], 1, kernel_initializer=init_ops.zeros_initializer())
       export_outputs = {
-          'predictions': export_output.RegressionOutput(predictions)
+          'predictions': export.RegressionOutput(predictions)
       }
 
       if mode == model_fn_lib.ModeKeys.PREDICT:
