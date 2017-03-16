@@ -970,7 +970,7 @@ def separable_conv2d(inputs,
 
 
 class Conv2DTranspose(Conv2D):
-  """Transposed convolution layer (sometimes called Deconvolution).
+  """Transposed 2D convolution layer (sometimes called Deconvolution).
 
   The need for transposed convolutions generally arises
   from the desire to use a transformation going in the opposite direction
@@ -1149,7 +1149,8 @@ def conv2d_transpose(inputs,
                      trainable=True,
                      name=None,
                      reuse=None):
-  """Transposed convolution layer (sometimes called Deconvolution).
+  """Functional interface for transposed 2D convolution layer (sometimes
+  called 2D Deconvolution).
 
   The need for transposed convolutions generally arises
   from the desire to use a transformation going in the opposite direction
@@ -1213,6 +1214,46 @@ def conv2d_transpose(inputs,
 
 
 class Conv3DTranspose(Conv3D):
+  """Transposed 3D convolution layer (sometimes called Deconvolution).
+
+  The need for transposed convolutions generally arises
+  from the desire to use a transformation going in the opposite direction
+  of a normal convolution, i.e., from something that has the shape of the
+  output of some convolution to something that has the shape of its input
+  while maintaining a connectivity pattern that is compatible with
+  said convolution.
+
+  Arguments:
+    filters: Integer, the dimensionality of the output space (i.e. the number
+      of filters in the convolution).
+    kernel_size: An integer or tuple/list of 3 integers, specifying the
+      depth, height and width of the 3D convolution window.
+      Can be a single integer to specify the same value for all spatial
+      dimensions.
+    strides: An integer or tuple/list of 3 integers, specifying the strides
+      of the convolution along the depth, height and width.
+      Can be a single integer to specify the same value for all spatial
+      dimensions.
+    padding: One of `"valid"` or `"same"` (case-insensitive).
+    data_format: A string, one of `channels_last` (default) or `channels_first`.
+      The ordering of the dimensions in the inputs.
+      `channels_last` corresponds to inputs with shape
+      `(batch, depth, height, width, channels)` while `channels_first`
+      corresponds to inputs with shape
+      `(batch, channels, depth, height, width)`.
+    activation: Activation function. Set it to None to maintain a
+      linear activation.
+    use_bias: Boolean, whether the layer uses a bias.
+    kernel_initializer: An initializer for the convolution kernel.
+    bias_initializer: An initializer for the bias vector. If None, no bias will
+      be applied.
+    kernel_regularizer: Optional regularizer for the convolution kernel.
+    bias_regularizer: Optional regularizer for the bias vector.
+    activity_regularizer: Regularizer function for the output.
+    trainable: Boolean, if `True` also add variables to the graph collection
+      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
+    name: A string, the name of the layer.
+  """
 
   def __init__(self, filters,
                kernel_size,
@@ -1372,6 +1413,49 @@ def conv3d_transpose(inputs,
                      trainable=True,
                      name=None,
                      reuse=None):
+  """Functional interface for transposed 3D convolution layer (sometimes
+  called 3D Deconvolution).
+
+  The need for transposed convolutions generally arises from the desire to
+  use a transformation going in the opposite direction of a normal
+  convolution, i.e., from something that has the shape of the output of some
+  convolution to something that has the shape of its input while maintaining
+  a connectivity pattern that is compatible with said convolution.
+
+  Arguments:
+    inputs: Input tensor.
+    filters: Integer, the dimensionality of the output space (i.e. the number
+      of filters in the convolution).
+    kernel_size: A tuple or list of 3 positive integers specifying the spatial
+      dimensions of of the filters. Can be a single integer to specify the same
+      value for all spatial dimensions.
+    strides: A tuple or list of 3 positive integers specifying the strides
+      of the convolution. Can be a single integer to specify the same value for
+      all spatial dimensions.
+    padding: one of `"valid"` or `"same"` (case-insensitive).
+    data_format: A string, one of `channels_last` (default) or `channels_first`.
+      The ordering of the dimensions in the inputs.
+      `channels_last` corresponds to inputs with shape
+      `(batch, height, width, channels)` while `channels_first` corresponds to
+      inputs with shape `(batch, channels, height, width)`.
+    activation: Activation function. Set it to None to maintain a
+      linear activation.
+    use_bias: Boolean, whether the layer uses a bias.
+    kernel_initializer: An initializer for the convolution kernel.
+    bias_initializer: An initializer for the bias vector. If None, no bias will
+      be applied.
+    kernel_regularizer: Optional regularizer for the convolution kernel.
+    bias_regularizer: Optional regularizer for the bias vector.
+    activity_regularizer: Regularizer function for the output.
+    trainable: Boolean, if `True` also add variables to the graph collection
+      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
+    name: A string, the name of the layer.
+    reuse: Boolean, whether to reuse the weights of a previous layer
+      by the same name.
+
+  Returns:
+    Output tensor.
+  """
   layer = Conv3DTranspose(
       filters=filters,
       kernel_size=kernel_size,
@@ -1399,9 +1483,11 @@ Convolution2D = Conv2D
 Convolution3D = Conv3D
 SeparableConvolution2D = SeparableConv2D
 Convolution2DTranspose = Deconvolution2D = Deconv2D = Conv2DTranspose
+Convolution3DTranspose = Deconvolution3D = Deconv3D = Conv3DTranspose
 convolution1d = conv1d
 convolution2d = conv2d
 convolution3d = conv3d
 separable_convolution2d = separable_conv2d
 convolution2d_transpose = deconvolution2d = deconv2d = conv2d_transpose
+convolution3d_transpose = deconvolution3d = deconv3d = conv3d_transpose
 
