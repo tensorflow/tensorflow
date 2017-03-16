@@ -13,7 +13,15 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Module implementing RNN Cells."""
+"""Module implementing RNN Cells.
+
+This module provides a number of basic commonly used RNN cells, such as LSTM
+(Long Short Term Memory) or GRU (Gated Recurrent Unit), and a number of
+operators that allow adding dropouts, projections, or embeddings for inputs.
+Constructing multi-layer cells is supported by the class `MultiRNNCell`, or by
+calling the `rnn` ops several times. Every `RNNCell` must have the properties
+below and implement `__call__` with the following signature.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -61,13 +69,6 @@ class _RNNCell(object):
   state matrix with `self.state_size` columns.  If `self.state_size` is a
   tuple of integers, then it results in a tuple of `len(state_size)` state
   matrices, each with a column size corresponding to values in `state_size`.
-
-  This module provides a number of basic commonly used RNN cells, such as
-  LSTM (Long Short Term Memory) or GRU (Gated Recurrent Unit), and a number
-  of operators that allow add dropouts, projections, or embeddings for inputs.
-  Constructing multi-layer cells is supported by the class `MultiRNNCell`,
-  or by calling the `rnn` ops several times. Every `RNNCell` must have the
-  properties below and implement `__call__` with the following signature.
   """
 
   def __call__(self, inputs, state, scope=None):
@@ -117,7 +118,7 @@ class _RNNCell(object):
 
       If `state_size` is a nested list or tuple, then the return value is
       a nested list or tuple (of the same structure) of `2-D` tensors with
-    the shapes `[batch_size x s]` for each s in `state_size`.
+      the shapes `[batch_size x s]` for each s in `state_size`.
     """
     state_size = self.state_size
     if nest.is_sequence(state_size):
