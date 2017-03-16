@@ -48,7 +48,8 @@ class SingleMachine : public Cluster {
   const int num_gpus_;
   std::unique_ptr<Session> session_;
   std::vector<QueueRunnerDef> queue_runner_defs_;
-  const GraphDef* last_graph_ = nullptr;
+  const GraphDef* last_graph_ = nullptr;  // Not owned.
+  string last_graph_id_;
   std::vector<string> init_ops_;
   std::unique_ptr<Coordinator> coordinator_;
   std::unique_ptr<thread::ThreadPool> thread_pool_;

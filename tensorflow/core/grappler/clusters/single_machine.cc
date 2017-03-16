@@ -68,10 +68,11 @@ Status SingleMachine::Provision() {
 }
 
 Status SingleMachine::Initialize(const GrapplerItem& item) {
-  if (last_graph_ != &item.graph) {
+  if (last_graph_ != &item.graph || last_graph_id_ != item.id) {
     init_ops_ = item.init_ops;
     last_graph_ = nullptr;
     queue_runner_defs_ = item.queue_runners;
+    last_graph_id_ = item.id;
   }
   return Status::OK();
 }
