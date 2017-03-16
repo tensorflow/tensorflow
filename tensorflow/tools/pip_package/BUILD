@@ -43,6 +43,18 @@ py_binary(
     deps = ["//tensorflow:tensorflow_py"],
 )
 
+py_test(
+    name = "pip_smoke_test",
+    srcs = ["pip_smoke_test.py"],
+    data = [
+        "//tensorflow:all_opensource_files",
+    ],
+    tags = [
+        "manual",
+        "notap",
+    ],
+)
+
 # On Windows, python binary is a zip file of runfiles tree.
 # Add everything to its data dependency for generating a runfiles tree
 # for building the pip package on Windows.
