@@ -21,6 +21,7 @@ import json
 import os
 import tempfile
 import threading
+import time
 
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import experiment
@@ -38,27 +39,31 @@ from tensorflow.python.training import saver
 from tensorflow.python.training import server_lib
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.util import compat
-from tensorflow.python.util.all_util import reveal_undocumented
 
 
 class SheepCounter(object):
-  """To be patched in for time.sleep, in order to capture how long was slept."""
+  """To be patched in for the time module, replacing sleep() and time()."""
 
   def __init__(self):
     self._total_time = 0
     self._sleeptimes = []
+    self._time_calls = 0
 
-  def __call__(self, t):
+  def sleep(self, t):
     self._total_time += t
     self._sleeptimes += [t]
 
-  @property
-  def total_time(self):
+  def time(self):
+    self._time_calls += 1
     return self._total_time
 
   @property
   def sleep_times(self):
     return self._sleeptimes
+
+  @property
+  def time_calls(self):
+    return self._time_calls
 
 
 class TestEstimator(evaluable.Evaluable, trainable.Trainable):
@@ -146,9 +151,11 @@ class ExperimentTest(test.TestCase):
     ex = experiment.Experiment(
         est, train_input_fn='train_input', eval_input_fn='eval_input')
     for delay in [0, 1, 3]:
-      with test.mock.patch('time.sleep', SheepCounter()) as sheep:
-        ex.train(delay_secs=delay)
-        self.assertAlmostEqual(delay, sheep.total_time, delta=0.1)
+      sheep = SheepCounter()
+      with test.mock.patch.object(time, 'time', sheep.time):
+        with test.mock.patch.object(time, 'sleep', sheep.sleep):
+          ex.train(delay_secs=delay)
+          self.assertAlmostEqual(delay, sheep.time(), delta=1e-4)
 
   def test_train_default_delay(self):
     for task_id in [0, 1, 3]:
@@ -160,9 +167,11 @@ class ExperimentTest(test.TestCase):
       ex = experiment.Experiment(
           est, train_input_fn='train_input', eval_input_fn='eval_input')
 
-      with test.mock.patch('time.sleep', SheepCounter()) as sheep:
-        ex.train()
-        self.assertAlmostEqual(task_id * 5, sheep.total_time, delta=0.1)
+      sheep = SheepCounter()
+      with test.mock.patch.object(time, 'time', sheep.time):
+        with test.mock.patch.object(time, 'sleep', sheep.sleep):
+          ex.train()
+          self.assertAlmostEqual(task_id * 5, sheep.time(), delta=1e-4)
 
   @test.mock.patch.object(server_lib, 'Server')
   def test_train_starts_server(self, mock_server):
@@ -187,10 +196,12 @@ class ExperimentTest(test.TestCase):
     # Act.
     # We want to make sure we discount the time it takes to start the server
     # in our accounting of the delay, so we set a small delay here.
-    with test.mock.patch('time.sleep', SheepCounter()) as sheep:
-      ex.train(delay_secs=1)
-      # Ensure that the delay takes into account the time to start the server.
-      self.assertAlmostEqual(1, sheep.total_time, delta=0.1)
+    sheep = SheepCounter()
+    with test.mock.patch.object(time, 'time', sheep.time):
+      with test.mock.patch.object(time, 'sleep', sheep.sleep):
+        ex.train(delay_secs=1)
+        # Ensure that the delay takes into account the time to start the server.
+        self.assertAlmostEqual(1, sheep.time(), delta=1e-4)
 
     # Assert.
     expected_config_proto = config_pb2.ConfigProto()
@@ -278,9 +289,11 @@ class ExperimentTest(test.TestCase):
         eval_hooks=[noop_hook])
 
     for delay in [0, 1, 3]:
-      with test.mock.patch('time.sleep', SheepCounter()) as sheep:
-        ex.evaluate(delay_secs=delay)
-      self.assertAlmostEqual(delay, sheep.total_time, delta=0.1)
+      sheep = SheepCounter()
+      with test.mock.patch.object(time, 'time', sheep.time):
+        with test.mock.patch.object(time, 'sleep', sheep.sleep):
+          ex.evaluate(delay_secs=delay)
+      self.assertAlmostEqual(delay, sheep.time(), delta=1e-4)
       self.assertEqual([noop_hook], est.eval_hooks)
 
   def test_continuous_eval(self):
@@ -314,12 +327,14 @@ class ExperimentTest(test.TestCase):
           eval_hooks=[noop_hook],
           continuous_eval_throttle_secs=delay,
           eval_delay_secs=0)
-      with test.mock.patch('time.sleep', SheepCounter()) as sheep:
-        self.assertRaises(
-            StopIteration,
-            ex.continuous_eval,
-            evaluate_checkpoint_only_once=False)
-        self.assertAlmostEqual(5 * delay, sheep.total_time, delta=0.15)
+      sheep = SheepCounter()
+      with test.mock.patch.object(time, 'time', sheep.time):
+        with test.mock.patch.object(time, 'sleep', sheep.sleep):
+          self.assertRaises(
+              StopIteration,
+              ex.continuous_eval,
+              evaluate_checkpoint_only_once=False)
+          self.assertAlmostEqual(5 * delay, sheep.time(), delta=1e-4)
 
   def test_continuous_eval_predicate_fn(self):
     est = TestEstimator()
