@@ -14,7 +14,7 @@ load("//tensorflow:tensorflow.bzl", "py_test")
 
 py_library(
     name = "estimator_py",
-    srcs = ["__init__.py"],
+    srcs = ["estimator_lib.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":checkpoint_utils",

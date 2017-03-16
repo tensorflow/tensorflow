@@ -74,7 +74,7 @@ from tensorflow.python.ops.standard_ops import *
 # pylint: enable=wildcard-import
 
 # Bring in subpackages.
-from tensorflow.python import estimator
+from tensorflow.python.estimator import estimator_lib as estimator
 from tensorflow.python.layers import layers
 from tensorflow.python.ops import image_ops as image
 from tensorflow.python.ops import metrics
