@@ -1350,7 +1350,7 @@ var TF;
 
       .sidebar-section {
         border-top: solid 1px rgba(0, 0, 0, 0.12);
-        padding: 20px 0px 20px 30px;
+        padding: 15px 0px 15px 30px;
       }
 
       .sidebar-section:first-child {
@@ -2853,7 +2853,7 @@ var TF;
     <style>
       :host {
         display: block;
-        padding-bottom: 15px;
+        padding-bottom: 5px;
       }
       paper-checkbox {
         --paper-checkbox-checked-color: var(--paper-grey-600);
@@ -3673,6 +3673,11 @@ var Categorizer;
         stroke-width: 1px;
       }
 
+      #chartsvg line.guide-line {
+        stroke: #999;
+        stroke-width: 1.5px;
+      }
+
     </style>
   </template>
   <script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
@@ -3710,7 +3715,7 @@ var Plottable;
          * Component Group.
          * TODO(danmane) - merge this into Plottable
          */
-        function DragZoomLayer(xScale, yScale) {
+        function DragZoomLayer(xScale, yScale, unzoomMethod) {
             var _this = _super.call(this) || this;
             _this.isZoomed = false;
             _this.easeFn = d3.ease('cubic-in-out');
@@ -3722,6 +3727,7 @@ var Plottable;
             _this._doubleClickInteraction = new Plottable.Interactions.DoubleClick();
             _this._doubleClickInteraction.attachTo(_this);
             _this.setupCallbacks();
+            _this.unzoomMethod = unzoomMethod;
             return _this;
         }
         /**
@@ -3805,21 +3811,12 @@ var Plottable;
                 return;
             }
             this.isZoomed = false;
-            // Some Plottable magic follows which ensures that when we un-zoom, we
-            // un-zoom to the current extent of the data; i.e. if new data was loaded
-            // since we zoomed, we should un-zoom to the extent of the new data.
-            // this basically replicates the autoDomain logic in Plottable.
-            // it uses the internal methods to get the same boundaries that autoDomain
-            // would, but allows us to interpolate the zoom with a nice animation.
             var xScale = this.xScale();
-            var yScale = this.yScale();
             xScale._domainMin = null;
             xScale._domainMax = null;
-            yScale._domainMin = null;
-            yScale._domainMax = null;
             var xDomain = xScale._getExtent();
-            var yDomain = yScale._getExtent();
-            this.interpolateZoom(xDomain[0], xDomain[1], yDomain[0], yDomain[1]);
+            this.xScale().domain(xDomain);
+            this.unzoomMethod();
         };
         // If we are zooming, disable interactions, to avoid contention
         DragZoomLayer.prototype.isZooming = function (isZooming) {
@@ -3891,6 +3888,7 @@ var VZ;
             this.colorScale = colorScale;
             this.tooltip = tooltip;
             this.datasets = [];
+            this._ignoreYOutliers = true;
             // lastPointDataset is a dataset that contains just the last point of
             // every dataset we're currently drawing.
             this.lastPointsDataset = new Plottable.Dataset();
@@ -3914,12 +3912,15 @@ var VZ;
             var yFormatter = VZ.ChartHelpers.multiscaleFormatter(VZ.ChartHelpers.Y_AXIS_FORMATTER_PRECISION);
             this.yAxis.margin(0).tickLabelPadding(5).formatter(yFormatter);
             this.yAxis.usesTextWidthApproximation(true);
-            this.dzl = new Plottable.DragZoomLayer(this.xScale, this.yScale);
+            this.dzl = new Plottable.DragZoomLayer(this.xScale, this.yScale, this.updateSpecialDatasets.bind(this));
             var center = this.buildPlot(this.xAccessor, this.xScale, this.yScale);
             this.gridlines =
                 new Plottable.Components.Gridlines(this.xScale, this.yScale);
-            this.center =
-                new Plottable.Components.Group([this.gridlines, center, this.dzl]);
+            var xZeroLine = new Plottable.Components.GuideLineLayer('horizontal');
+            xZeroLine.scale(this.yScale).value(0);
+            var yZeroLine = new Plottable.Components.GuideLineLayer('vertical');
+            yZeroLine.scale(this.xScale).value(0);
+            this.center = new Plottable.Components.Group([this.gridlines, xZeroLine, yZeroLine, center, this.dzl]);
             this.outer = new Plottable.Components.Table([
                 [this.yAxis, this.center],
                 [null, this.xAxis]
@@ -3974,6 +3975,12 @@ var VZ;
                 this.resmoothDataset(dataset);
             }
             this.updateSpecialDatasets();
+        };
+        LineChart.prototype.ignoreYOutliers = function (ignoreYOutliers) {
+            if (ignoreYOutliers !== this._ignoreYOutliers) {
+                this._ignoreYOutliers = ignoreYOutliers;
+                this.updateSpecialDatasets();
+            }
         };
         LineChart.prototype.updateSpecialDatasets = function () {
             if (this.smoothingEnabled) {
@@ -4038,6 +4045,13 @@ var VZ;
             };
             var nanData = _.flatten(this.datasets.map(datasetToNaNData));
             this.nanDataset.data(nanData);
+            var datasetToValues = function (d) {
+                return d.data().map(function (x) { return accessor(x, -1, d); });
+            };
+            var vals = _.flatten(this.datasets.map(datasetToValues));
+            vals = vals.filter(function (x) { return x === x && x !== Infinity && x !== -Infinity; });
+            var domain = VZ.ChartHelpers.computeDomain(vals, this._ignoreYOutliers);
+            this.yScale.domain(domain);
         };
         LineChart.prototype.setupTooltips = function (plot) {
             var _this = this;
@@ -4396,6 +4410,41 @@ var VZ;
             };
         }
         ChartHelpers.multiscaleFormatter = multiscaleFormatter;
+        /* Compute an appropriate domain given an array of all the values that are
+         * going to be displayed. If ignoreOutliers is true, it will ignore the
+         * lowest 10% and highest 10% of the data when computing a domain.
+         * It has n log n performance when ignoreOutliers is true, as it needs to
+         * sort the data.
+         */
+        function computeDomain(values, ignoreOutliers) {
+            if (values.length === 0) {
+                return [-0.1, 1.1];
+            }
+            var a;
+            var b;
+            if (ignoreOutliers) {
+                var sorted = _.sortBy(values);
+                a = d3.quantile(sorted, 0.10);
+                b = d3.quantile(sorted, 0.90);
+            }
+            else {
+                a = d3.min(values);
+                b = d3.max(values);
+            }
+            // When the data all fits into the unit interval, we switch to a consistent
+            // domain for unit data. This is helpful for proportional parameters like
+            // error rates or % of queue that is full. This way, users can meaningfully
+            // compare charts and see information at a glance (if the value is always
+            // 1, it appears at top of the chart, 0 is bottom, etc.)
+            if (a >= 0 && b <= 1) {
+                return [-0.1, 1.1];
+            }
+            var padding = (b - a) * 0.20;
+            var domain = [a - padding, b + padding];
+            domain = d3.scale.linear().domain(domain).nice().domain();
+            return domain;
+        }
+        ChartHelpers.computeDomain = computeDomain;
         function accessorize(key) {
             return function (d, index, dataset) { return d[key]; };
         }
@@ -4569,6 +4618,15 @@ var VZ;
         },
 
         /**
+         * Whether to ignore outlier data when computing the yScale domain.
+         */
+
+        ignoreYOutliers: {
+          type: Boolean,
+          value: true,
+        },
+
+        /**
          * Change how the tooltip is sorted. Allows:
          * - "default" - Sort the tooltip by input order.
          * - "ascending" - Sort the tooltip by ascending value.
@@ -4610,7 +4668,8 @@ var VZ;
         "_reloadFromCache(_chart)",
         "_smoothingChanged(smoothingEnabled, smoothingWeight, _chart)",
         "_tooltipSortingMethodChanged(tooltipSortingMethod, _chart)",
-        "_tooltipPositionChanged(tooltipPosition, _chart)"
+        "_tooltipPositionChanged(tooltipPosition, _chart)",
+        "_outliersChanged(ignoreYOutliers, _chart)"
       ],
 
       /**
@@ -4698,6 +4757,12 @@ var VZ;
           this._chart.smoothingDisable();
         }
       },
+      _outliersChanged: function() {
+        if (!this._chart) {
+          return;
+        }
+        this._chart.ignoreYOutliers(this.ignoreYOutliers);
+      },
       _tooltipSortingMethodChanged: function() {
         if(this._chart) {
           this._chart.setTooltipSortingMethod(this.tooltipSortingMethod);
@@ -4722,7 +4787,12 @@ var VZ;
       <div class="sidebar">
         <tf-sidebar-helper backend="[[backend]]" categories="{{_categories}}" color-scale="[[_colorScale]]" run2tag="[[run2tag]]" runs="[[runs]]" selected-runs="{{_selectedRuns}}">
           <div class="extend-first-section">
-            <paper-checkbox id="download-option" checked="{{_showDownloadLinks}}">Data download links</paper-checkbox>
+            <div class="line-item">
+              <paper-checkbox id="download-option" checked="{{_showDownloadLinks}}">Show data download links</paper-checkbox>
+            </div>
+              <div class="line-item">
+                <paper-checkbox id="outliersCheckbox" checked="{{_ignoreYOutliers}}">Ignore outliers in chart scaling</paper-checkbox>
+              </div>
             <div id="tooltip-sorting">
               <div id="tooltip-sorting-label">Tooltip sorting method:</div>
               <paper-dropdown-menu no-label-float="" selected-item-label="{{_tooltipSortingMethod}}">
@@ -4750,7 +4820,7 @@ var VZ;
       <div class="center">
         <tf-panes-helper categories="[[_categories]]" color-scale="[[_colorScale]]" data-type="[[dataType]]" data-provider="[[dataProvider]]" run2tag="[[run2tag]]" selected-runs="[[_selectedRuns]]" show-download-links="[[_showDownloadLinks]]" download-link-url-function="[[scalarUrl]]">
           <template>
-            <vz-line-chart x-type="[[_xType]]" color-scale="[[_colorScale]]" smoothing-enabled="[[_smoothingEnabled]]" smoothing-weight="[[_smoothingWeight]]" tooltip-sorting-method="[[_tooltipSortingMethod]]"></vz-line-chart>
+            <vz-line-chart x-type="[[_xType]]" color-scale="[[_colorScale]]" smoothing-enabled="[[_smoothingEnabled]]" smoothing-weight="[[_smoothingWeight]]" tooltip-sorting-method="[[_tooltipSortingMethod]]" ignore-y-outliers="[[_ignoreYOutliers]]"></vz-line-chart>
             <paper-icon-button class="log-button" icon="line-weight" on-tap="toggleLogScale" title="Toggle y-axis log scale"></paper-icon-button>
           </template>
         </tf-panes-helper>
@@ -4791,6 +4861,10 @@ var VZ;
         --paper-input-container-focus-color: var(--tb-orange-strong);
         width: 105px;
       }
+      .line-item {
+        display: block;
+        padding-top: 5px;
+      }
     </style>
 
   </template>
@@ -4829,6 +4903,10 @@ var VZ;
         _smoothingEnabled: {
           type: Boolean,
           computed: '_computeSmoothingEnabled(_smoothingWeight)'
+        },
+        _ignoreYOutliers: {
+          type: Boolean,
+          value: true,
         },
         _xType: {
           type: String,
@@ -5061,6 +5139,41 @@ var VZ;
             };
         }
         ChartHelpers.multiscaleFormatter = multiscaleFormatter;
+        /* Compute an appropriate domain given an array of all the values that are
+         * going to be displayed. If ignoreOutliers is true, it will ignore the
+         * lowest 10% and highest 10% of the data when computing a domain.
+         * It has n log n performance when ignoreOutliers is true, as it needs to
+         * sort the data.
+         */
+        function computeDomain(values, ignoreOutliers) {
+            if (values.length === 0) {
+                return [-0.1, 1.1];
+            }
+            var a;
+            var b;
+            if (ignoreOutliers) {
+                var sorted = _.sortBy(values);
+                a = d3.quantile(sorted, 0.10);
+                b = d3.quantile(sorted, 0.90);
+            }
+            else {
+                a = d3.min(values);
+                b = d3.max(values);
+            }
+            // When the data all fits into the unit interval, we switch to a consistent
+            // domain for unit data. This is helpful for proportional parameters like
+            // error rates or % of queue that is full. This way, users can meaningfully
+            // compare charts and see information at a glance (if the value is always
+            // 1, it appears at top of the chart, 0 is bottom, etc.)
+            if (a >= 0 && b <= 1) {
+                return [-0.1, 1.1];
+            }
+            var padding = (b - a) * 0.20;
+            var domain = [a - padding, b + padding];
+            domain = d3.scale.linear().domain(domain).nice().domain();
+            return domain;
+        }
+        ChartHelpers.computeDomain = computeDomain;
         function accessorize(key) {
             return function (d, index, dataset) { return d[key]; };
         }
