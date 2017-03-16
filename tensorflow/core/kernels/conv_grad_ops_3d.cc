@@ -28,8 +28,10 @@ limitations under the License.
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
+#include "tensorflow/core/util/use_cudnn.h"
 
 #if GOOGLE_CUDA
 #include "tensorflow/core/platform/stream_executor.h"
@@ -375,6 +377,12 @@ DECLARE_GPU_SPEC(float);
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
+// A dummy type to group backward data autotune results together.
+struct Conv3dBackwardDataAutoTuneGroup {};
+typedef AutoTuneSingleton<Conv3dBackwardDataAutoTuneGroup, ConvParameters,
+                          perftools::gputools::dnn::AlgorithmConfig>
+
+    AutoTuneConv3dBwdData;
 template <typename T>
 class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
  public:
@@ -390,6 +398,7 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
         errors::InvalidArgument("Current implementation does not yet support "
                                 "strides in the batch and depth dimensions."));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
+    cudnn_use_autotune_ = CudnnUseAutotune();
   }
   void Compute(OpKernelContext* context) override {
     const Tensor& filter = context->input(1);
@@ -568,13 +577,78 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
     static int64 ConvolveBackwardDataScratchSize = GetCudnnWorkspaceLimit(
         "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32);  // 4GB by default
 
+    const int device_id = stream->parent()->device_ordinal();
+    const ConvParameters conv_parameters = {
+        batch,
+        in_depth,
+        {{input_size[0], input_size[1], input_size[2]}},
+        out_depth,
+        {{filter_size[0], filter_size[1], filter_size[2]}},
+        {{strides[0], strides[1], strides[2]}},
+        {{padding_planes, padding_rows, padding_cols}},
+        device_id,
+    };
+
+    using perftools::gputools::dnn::AlgorithmConfig;
+    using perftools::gputools::dnn::AlgorithmType;
+    using perftools::gputools::dnn::ProfileResult;
+    using perftools::gputools::dnn::kDefaultAlgorithm;
+    AlgorithmConfig algorithm_config;
+    if (cudnn_use_autotune_ && !AutoTuneConv3dBwdData::GetInstance()->Find(
+                                   conv_parameters, &algorithm_config)) {
+      std::vector<AlgorithmType> algorithms;
+      CHECK(stream->parent()->GetConvolveBackwardDataAlgorithms(&algorithms));
+      ProfileResult best_result;
+      ProfileResult best_result_no_scratch;
+      for (auto profile_algorithm : algorithms) {
+        // TODO(zhengxq): profile each algorithm multiple times to better
+        // accuracy.
+        CudnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize,
+                                                context);
+        ProfileResult profile_result;
+        bool cudnn_launch_status =
+            stream
+                ->ThenConvolveBackwardDataWithAlgorithm(
+                    filter_desc, filter_ptr, output_desc, out_backprop_ptr,
+                    conv_desc, input_desc, &in_backprop_ptr, &scratch_allocator,
+                    AlgorithmConfig(profile_algorithm), &profile_result)
+                .ok();
+        if (cudnn_launch_status) {
+          if (profile_result.is_valid()) {
+            if (profile_result.elapsed_time_in_ms() <
+                best_result.elapsed_time_in_ms()) {
+              best_result = profile_result;
+            }
+            if (scratch_allocator.TotalByteSize() == 0 &&
+                profile_result.elapsed_time_in_ms() <
+                    best_result_no_scratch.elapsed_time_in_ms()) {
+              best_result_no_scratch = profile_result;
+            }
+          }
+        }
+      }
+      OP_REQUIRES(context,
+                  best_result.is_valid() &&
+                      best_result.algorithm() != kDefaultAlgorithm,
+                  errors::NotFound("No algorithm worked!"));
+      OP_REQUIRES(context,
+                  best_result_no_scratch.is_valid() &&
+                      best_result_no_scratch.algorithm() != kDefaultAlgorithm,
+                  errors::NotFound("No algorithm without scratch worked!"));
+      algorithm_config.set_algorithm(best_result.algorithm());
+      algorithm_config.set_algorithm_no_scratch(
+          best_result_no_scratch.algorithm());
+      AutoTuneConv3dBwdData::GetInstance()->Insert(conv_parameters,
+                                                   algorithm_config);
+    }
     CudnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize,
                                             context);
     bool cudnn_launch_status =
         stream
-            ->ThenConvolveBackwardDataWithScratch(
+            ->ThenConvolveBackwardDataWithAlgorithm(
                 filter_desc, filter_ptr, output_desc, out_backprop_ptr,
-                conv_desc, input_desc, &in_backprop_ptr, &scratch_allocator)
+                conv_desc, input_desc, &in_backprop_ptr, &scratch_allocator,
+                algorithm_config, nullptr)
             .ok();
 
     if (!cudnn_launch_status) {
@@ -613,7 +687,14 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
   std::vector<int32> stride_;
   Padding padding_;
   bool takes_shape_;
+  bool cudnn_use_autotune_;
 };
+
+// A dummy type to group backward filter autotune results together.
+struct Conv3dBackwardFilterAutoTuneGroup {};
+typedef AutoTuneSingleton<Conv3dBackwardFilterAutoTuneGroup, ConvParameters,
+                          perftools::gputools::dnn::AlgorithmConfig>
+    AutoTuneConv3dBwdFilter;
 
 template <typename T>
 class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
@@ -630,6 +711,7 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
         errors::InvalidArgument("Current implementation does not yet support "
                                 "strides in the batch and depth dimensions."));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
+    cudnn_use_autotune_ = CudnnUseAutotune();
   }
 
   void Compute(OpKernelContext* context) override {
@@ -820,13 +902,81 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
 
     static int64 ConvolveBackwardFilterScratchSize = GetCudnnWorkspaceLimit(
         "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32);  // 4GB by default
+
+    const int device_id = stream->parent()->device_ordinal();
+    const ConvParameters conv_parameters = {
+        batch,
+        in_depth,
+        {{input_size[0], input_size[1], input_size[2]}},
+        out_depth,
+        {{filter_size[0], filter_size[1], filter_size[2]}},
+        {{strides[0], strides[1], strides[2]}},
+        {{padding_planes, padding_rows, padding_cols}},
+        device_id,
+    };
+
+    using perftools::gputools::dnn::AlgorithmConfig;
+    using perftools::gputools::dnn::AlgorithmType;
+    using perftools::gputools::dnn::ProfileResult;
+    using perftools::gputools::dnn::kDefaultAlgorithm;
+    AlgorithmConfig algorithm_config;
+
+    if (cudnn_use_autotune_ && !AutoTuneConv3dBwdFilter::GetInstance()->Find(
+                                   conv_parameters, &algorithm_config)) {
+      std::vector<AlgorithmType> algorithms;
+      CHECK(stream->parent()->GetConvolveBackwardFilterAlgorithms(&algorithms));
+      ProfileResult best_result;
+      ProfileResult best_result_no_scratch;
+      for (auto profile_algorithm : algorithms) {
+        // TODO(zhengxq): profile each algorithm multiple times to better
+        // accuracy.
+        CudnnScratchAllocator scratch_allocator(
+            ConvolveBackwardFilterScratchSize, context);
+        ProfileResult profile_result;
+        bool cudnn_launch_status =
+            stream
+                ->ThenConvolveBackwardFilterWithAlgorithm(
+                    input_desc, input_ptr, output_desc, out_backprop_ptr,
+                    conv_desc, filter_desc, &filter_backprop_ptr,
+                    &scratch_allocator, AlgorithmConfig(profile_algorithm),
+                    &profile_result)
+                .ok();
+        if (cudnn_launch_status) {
+          if (profile_result.is_valid()) {
+            if (profile_result.elapsed_time_in_ms() <
+                best_result.elapsed_time_in_ms()) {
+              best_result = profile_result;
+            }
+            if (scratch_allocator.TotalByteSize() == 0 &&
+                profile_result.elapsed_time_in_ms() <
+                    best_result_no_scratch.elapsed_time_in_ms()) {
+              best_result_no_scratch = profile_result;
+            }
+          }
+        }
+      }
+      OP_REQUIRES(context,
+                  best_result.is_valid() &&
+                      best_result.algorithm() != kDefaultAlgorithm,
+                  errors::NotFound("No algorithm worked!"));
+      OP_REQUIRES(context,
+                  best_result_no_scratch.is_valid() &&
+                      best_result_no_scratch.algorithm() != kDefaultAlgorithm,
+                  errors::NotFound("No algorithm without scratch worked!"));
+      algorithm_config.set_algorithm(best_result.algorithm());
+      algorithm_config.set_algorithm_no_scratch(
+          best_result_no_scratch.algorithm());
+      AutoTuneConv3dBwdFilter::GetInstance()->Insert(conv_parameters,
+                                                     algorithm_config);
+    }
     CudnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
                                             context);
     bool cudnn_launch_status =
         stream
-            ->ThenConvolveBackwardFilterWithScratch(
+            ->ThenConvolveBackwardFilterWithAlgorithm(
                 input_desc, input_ptr, output_desc, out_backprop_ptr, conv_desc,
-                filter_desc, &filter_backprop_ptr, &scratch_allocator)
+                filter_desc, &filter_backprop_ptr, &scratch_allocator,
+                algorithm_config, nullptr)
             .ok();
 
     if (!cudnn_launch_status) {
@@ -847,6 +997,7 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
   std::vector<int32> stride_;
   Padding padding_;
   bool takes_shape_;
+  bool cudnn_use_autotune_;
 };
 
 REGISTER_KERNEL_BUILDER(
