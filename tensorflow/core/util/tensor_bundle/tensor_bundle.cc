@@ -712,6 +712,18 @@ Status BundleReader::Lookup(StringPiece key, Tensor* val) {
   }
 }
 
+Status BundleReader::LookupTensorSlices(StringPiece key,
+                                        std::vector<TensorSlice>* slices) {
+  slices->clear();
+  BundleEntryProto entry;
+  TF_RETURN_IF_ERROR(GetBundleEntryProto(key, &entry));
+  slices->reserve(entry.slices_size());
+  for (const auto& slice : entry.slices()) {
+    slices->emplace_back(slice);
+  }
+  return Status::OK();
+}
+
 Status BundleReader::LookupSlice(StringPiece full_tensor_key,
                                  const TensorSlice& slice_spec, Tensor* val) {
   BundleEntryProto entry;
