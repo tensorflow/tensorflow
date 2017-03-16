@@ -217,7 +217,7 @@ results = e.evaluate(input_fn=input_fn_test, steps=1)
 
 # Print the stats for the evaluation.
 for key in sorted(results):
-    print "%s: %s" % (key, results[key])
+    print("%s: %s" % (key, results[key]))
 ```
 
 ### Wide and deep learning

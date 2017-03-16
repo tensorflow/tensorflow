@@ -92,12 +92,12 @@ two following snippets of code are equivalent:
 # Using `Session.run()`.
 sess = tf.Session()
 c = tf.constant(5.0)
-print sess.run(c)
+print(sess.run(c))
 
 # Using `Tensor.eval()`.
 c = tf.constant(5.0)
 with tf.Session():
-  print c.eval()
+  print(c.eval())
 ```
 
 In the second example, the session acts as a
