@@ -15,6 +15,5 @@ RUN /install/install_buildifier.sh
 RUN /install/install_auditwheel.sh
 RUN /install/install_golang.sh
 
-# Set up bazelrc.
-COPY install/.bazelrc /root/.bazelrc
-ENV BAZELRC /root/.bazelrc
+# Set up the master bazelrc configuration file.
+COPY install/.bazelrc /etc/bazel.bazelrc

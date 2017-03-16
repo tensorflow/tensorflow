@@ -14,6 +14,5 @@ RUN /install/install_proto3.sh
 RUN /install/install_buildifier.sh
 RUN /install/install_hadoop.sh
 
-# Set up bazelrc.
-COPY install/.bazelrc /root/.bazelrc
-ENV BAZELRC /root/.bazelrc
+# Set up the master bazelrc configuration file.
+COPY install/.bazelrc /etc/bazel.bazelrc
