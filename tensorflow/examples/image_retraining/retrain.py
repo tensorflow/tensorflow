@@ -49,6 +49,7 @@ tensorboard --logdir /tmp/retrain_logs
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import print_function
 
 import argparse
 from datetime import datetime
@@ -59,12 +60,14 @@ import re
 import struct
 import sys
 import tarfile
+from PIL import Image
+
 
 import itertools
 import numpy as np
 from six.moves import urllib
 import tensorflow as tf
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 from sklearn.metrics import confusion_matrix
 
 
@@ -81,7 +84,7 @@ FLAGS = None
 # sizes. If you want to adapt this script to work with another model, you will
 # need to update these to reflect the values in the network you're using.
 # pylint: disable=line-too-long
-DATA_URL = 'http://download.tensorflow.org/models/image/imagenet/inception-2015-12-05.tgz'
+DATA_URL = 'http://download.tensorflow.org/models/inception_v3_2016_08_28.tar.gz'
 # pylint: enable=line-too-long
 BOTTLENECK_TENSOR_NAME = 'pool_3/_reshape:0'
 BOTTLENECK_TENSOR_SIZE = 2048
@@ -161,9 +164,9 @@ def create_image_lists(image_dir, testing_percentage, validation_percentage):
           # if percentage_hash < validation_percentage:
           # print(file_name)
           validation_images.append(base_name)
-          # elif percentage_hash < (testing_percentage + validation_percentage):
-      elif ('TEST' in file_name and percentage_hash < (testing_percentage + validation_percentage)) or (
-              percentage_hash < (validation_percentage) and 'week1' in file_name):
+      elif percentage_hash < (testing_percentage + validation_percentage):
+          #elif ('TEST' in file_name and percentage_hash < (testing_percentage + validation_percentage)) or (
+          #percentage_hash < (validation_percentage) and 'week1' in file_name):
           # elif 'TEST' in file_name:
           # print(file_name)
           testing_images.append(base_name)
@@ -718,14 +721,13 @@ def add_evaluation_step(result_tensor, ground_truth_tensor):
   tf.summary.scalar('accuracy', evaluation_step)
   return evaluation_step, prediction
 
+"""
 def plot_confusion_matrix(cm, classes,
-                          normalize=False,
+                          normalize=True,
                           title='Confusion matrix',
                           cmap=plt.cm.Blues):
-    """
-    This function prints and plots the confusion matrix.
-    Normalization can be applied by setting `normalize=True`.
-    """
+    #This function prints and plots the confusion matrix.
+    #Normalization can be applied by setting `normalize=True`.
     plt.imshow(cm, interpolation='nearest', cmap=cmap)
     plt.title(title)
     plt.colorbar()
@@ -748,7 +750,7 @@ def plot_confusion_matrix(cm, classes,
     plt.tight_layout()
     plt.ylabel('True label')
     plt.xlabel('Predicted label')
-
+"""
 def main(_):
   # Setup the directory we'll write summaries to for TensorBoard
   if tf.gfile.Exists(FLAGS.summaries_dir):
@@ -871,28 +873,31 @@ def main(_):
   print('Final test accuracy = %.1f%% (N=%d)' % (
       test_accuracy * 100, len(test_bottlenecks)))
 
+  # Print accuracy to file
+  f1=open('./potato_exp/results_file', 'a')
+  f1.write('%.1f\n' % (test_accuracy*100))
+ 
   if FLAGS.print_misclassified_test_images:
     print('=== MISCLASSIFIED TEST IMAGES ===')
     for i, test_filename in enumerate(test_filenames):
       if predictions[i] != test_ground_truth[i].argmax():
+        image = Image.open(test_filename)
+        #image.show()
         print('%70s  %s' % (test_filename,
                             list(image_lists.keys())[predictions[i]]))
 
   targets = []
-  class_names = []
   for i in range(0, len(test_bottlenecks)):
       targets.append(test_ground_truth[i].argmax())
 
-  classes = [x[0] for x in gfile.Walk(FLAGS.image_dir)]
-  for class_name in classes:
-      if 'dir' not in os.path.basename(class_name):
-          class_names.append(os.path.basename(class_name))
+  """
   cnf_matrix = confusion_matrix(targets, predictions)
   np.set_printoptions(precision=2)
   plt.figure()
-  plot_confusion_matrix(cnf_matrix, classes=class_names,
+  plot_confusion_matrix(cnf_matrix, classes=image_lists.keys(),
                             title=('Confusion Matrix\n Test Accuracy = %.1f' % (test_accuracy * 100)))
-  plt.show()
+  #plt.show()
+  """
 
   # Write out the trained graph and labels with the weights stored as constants.
   output_graph_def = graph_util.convert_variables_to_constants(
@@ -908,7 +913,7 @@ if __name__ == '__main__':
   parser.add_argument(
       '--image_dir',
       type=str,
-      default='',
+      default='/Users/SneakyPT/Potato_exp/disease_recog_time/dir19-bias',
       help='Path to folders of labeled images.'
   )
   parser.add_argument(
@@ -932,25 +937,25 @@ if __name__ == '__main__':
   parser.add_argument(
       '--how_many_training_steps',
       type=int,
-      default=4000,
+      default=600,
       help='How many training steps to run before ending.'
   )
   parser.add_argument(
       '--learning_rate',
       type=float,
-      default=0.01,
+      default=0.02,
       help='How large a learning rate to use when training.'
   )
   parser.add_argument(
       '--testing_percentage',
       type=int,
-      default=30,
+      default=10,
       help='What percentage of images to use as a test set.'
   )
   parser.add_argument(
       '--validation_percentage',
       type=int,
-      default=20,
+      default=10,
       help='What percentage of images to use as a validation set.'
   )
   parser.add_argument(
@@ -962,7 +967,7 @@ if __name__ == '__main__':
   parser.add_argument(
       '--train_batch_size',
       type=int,
-      default=100,
+      default=200,
       help='How many images to train on at a time.'
   )
   parser.add_argument(
@@ -979,7 +984,7 @@ if __name__ == '__main__':
   parser.add_argument(
       '--validation_batch_size',
       type=int,
-      default=100,
+      default=200,
       help="""\
       How many images to use in an evaluation batch. This validation set is
       used much more often than the test set, and is an early indicator of how
@@ -1010,7 +1015,7 @@ if __name__ == '__main__':
   parser.add_argument(
       '--bottleneck_dir',
       type=str,
-      default='/tmp/bottleneck',
+      default='/Users/SneakyPT/Potato_exp/bottleneck',
       help='Path to cache bottleneck layer values as files.'
   )
   parser.add_argument(
