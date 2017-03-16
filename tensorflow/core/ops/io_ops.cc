@@ -397,6 +397,7 @@ shared_name: If non-empty, this reader is named in the given bucket
              with this shared_name. Otherwise, the node name is used instead.
 )doc");
 
+// TODO(cwhipkey): mark this deprecated in favor of V2.
 REGISTER_OP("TextLineReader")
     .Output("reader_handle: Ref(string)")
     .Attr("skip_header_lines: int = 0")
@@ -433,6 +434,7 @@ shared_name: If non-empty, this reader is named in the given bucket
              with this shared_name. Otherwise, the node name is used instead.
 )doc");
 
+// TODO(cwhipkey): mark this deprecated in favor of V2.
 REGISTER_OP("FixedLengthRecordReader")
     .Output("reader_handle: Ref(string)")
     .Attr("header_bytes: int = 0")
@@ -471,6 +473,7 @@ shared_name: If non-empty, this reader is named in the given bucket
              with this shared_name. Otherwise, the node name is used instead.
 )doc");
 
+// TODO(cwhipkey): mark this deprecated in favor of V2.
 REGISTER_OP("TFRecordReader")
     .Output("reader_handle: Ref(string)")
     .Attr("container: string = ''")
@@ -505,6 +508,7 @@ shared_name: If non-empty, this reader is named in the given bucket
              with this shared_name. Otherwise, the node name is used instead.
 )doc");
 
+// TODO(cwhipkey): mark this deprecated in favor of V2.
 REGISTER_OP("IdentityReader")
     .Output("reader_handle: Ref(string)")
     .Attr("container: string = ''")
@@ -810,17 +814,17 @@ REGISTER_OP("MatchingFiles")
     .Output("filenames: string")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(0), 1, &unused));
       c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
       return Status::OK();
     })
     .Doc(R"doc(
-Returns the set of files matching a pattern.
+Returns the set of files matching one or more glob patterns.
 
 Note that this routine only supports wildcard characters in the
 basename portion of the pattern, not in the directory portion.
 
-pattern: A (scalar) shell wildcard pattern.
+pattern: Shell wildcard pattern(s). Scalar or vector of type string.
 filenames: A vector of matching filenames.
 )doc");
 

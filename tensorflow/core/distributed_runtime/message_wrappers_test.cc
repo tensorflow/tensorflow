@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/message_wrappers.h"
 
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -51,9 +52,9 @@ static void CheckRunStepRequest(const RunStepRequestWrapper& request) {
   EXPECT_EQ("feed_a:0", request.feed_name(0));
   EXPECT_EQ("feed_b:0", request.feed_name(1));
   Tensor val;
-  request.FeedValue(0, &val);
+  TF_EXPECT_OK(request.FeedValue(0, &val));
   test::ExpectTensorEqual<int32>(TensorA(), val);
-  request.FeedValue(1, &val);
+  TF_EXPECT_OK(request.FeedValue(1, &val));
   test::ExpectTensorEqual<int32>(TensorB(), val);
 
   EXPECT_EQ(2, request.num_fetches());
@@ -70,8 +71,10 @@ static void BuildRunGraphRequest(
   run_graph_request->set_graph_handle("graph_handle");
   run_graph_request->set_step_id(13);
   run_graph_request->mutable_exec_opts()->set_record_timeline(true);
-  run_graph_request->AddSendFromRunStepRequest(run_step_request, 0, "send_0");
-  run_graph_request->AddSendFromRunStepRequest(run_step_request, 1, "send_1");
+  TF_EXPECT_OK(run_graph_request->AddSendFromRunStepRequest(run_step_request, 0,
+                                                            "send_0"));
+  TF_EXPECT_OK(run_graph_request->AddSendFromRunStepRequest(run_step_request, 1,
+                                                            "send_1"));
   run_graph_request->add_recv_key("recv_2");
   run_graph_request->add_recv_key("recv_3");
   run_graph_request->set_is_partial(true);
@@ -84,12 +87,61 @@ static void CheckRunGraphRequest(const RunGraphRequestWrapper& request) {
   EXPECT_TRUE(request.exec_opts().record_timeline());
   EXPECT_EQ(2, request.num_sends());
   Tensor val;
-  request.SendValue(0, &val);
+  TF_EXPECT_OK(request.SendValue(0, &val));
   test::ExpectTensorEqual<int32>(TensorA(), val);
-  request.SendValue(1, &val);
+  TF_EXPECT_OK(request.SendValue(1, &val));
   test::ExpectTensorEqual<int32>(TensorB(), val);
   EXPECT_TRUE(request.is_partial());
   EXPECT_FALSE(request.is_last_partial_run());
+}
+
+static void BuildRunGraphResponse(
+    MutableRunGraphResponseWrapper* run_graph_response) {
+  run_graph_response->AddRecv("recv_2", TensorA());
+  run_graph_response->AddRecv("recv_3", TensorB());
+  run_graph_response->mutable_step_stats()->add_dev_stats()->set_device(
+      "/cpu:0");
+  run_graph_response->mutable_cost_graph()->add_node()->set_name("cost_node");
+}
+
+static void CheckRunGraphResponse(MutableRunGraphResponseWrapper* response) {
+  EXPECT_EQ(2, response->num_recvs());
+  EXPECT_EQ("recv_2", response->recv_key(0));
+  EXPECT_EQ("recv_3", response->recv_key(1));
+  Tensor val;
+  TF_EXPECT_OK(response->RecvValue(0, &val));
+  test::ExpectTensorEqual<int32>(TensorA(), val);
+  TF_EXPECT_OK(response->RecvValue(1, &val));
+  test::ExpectTensorEqual<int32>(TensorB(), val);
+  EXPECT_EQ(1, response->mutable_step_stats()->dev_stats_size());
+  EXPECT_EQ("/cpu:0", response->mutable_step_stats()->dev_stats(0).device());
+  EXPECT_EQ(1, response->mutable_cost_graph()->node_size());
+  EXPECT_EQ("cost_node", response->mutable_cost_graph()->node(0).name());
+}
+
+static void BuildRunStepResponse(
+    MutableRunGraphResponseWrapper* run_graph_response,
+    MutableRunStepResponseWrapper* run_step_response) {
+  TF_EXPECT_OK(run_step_response->AddTensorFromRunGraphResponse(
+      "fetch_x:0", run_graph_response, 0));
+  TF_EXPECT_OK(run_step_response->AddTensorFromRunGraphResponse(
+      "fetch_y:0", run_graph_response, 1));
+  *run_step_response->mutable_metadata()->mutable_step_stats() =
+      *run_graph_response->mutable_step_stats();
+}
+
+static void CheckRunStepResponse(
+    const MutableRunStepResponseWrapper& response) {
+  EXPECT_EQ(2, response.num_tensors());
+  EXPECT_EQ("fetch_x:0", response.tensor_name(0));
+  EXPECT_EQ("fetch_y:0", response.tensor_name(1));
+  Tensor val;
+  TF_EXPECT_OK(response.TensorValue(0, &val));
+  test::ExpectTensorEqual<int32>(TensorA(), val);
+  TF_EXPECT_OK(response.TensorValue(1, &val));
+  test::ExpectTensorEqual<int32>(TensorB(), val);
+  EXPECT_EQ(1, response.metadata().step_stats().dev_stats_size());
+  EXPECT_EQ("/cpu:0", response.metadata().step_stats().dev_stats(0).device());
 }
 
 TEST(MessageWrappers, RunStepRequest_Basic) {
@@ -161,6 +213,110 @@ TEST(MessageWrappers, RunGraphRequest_Basic) {
     BuildRunGraphRequest(proto_run_step_request, &request);
     CheckRunGraphRequest(request);
     CheckRunGraphRequest(ProtoRunGraphRequest(&request.ToProto()));
+  }
+}
+
+TEST(MessageWrappers, RunGraphResponse_Basic) {
+  InMemoryRunGraphResponse in_memory_response;
+  BuildRunGraphResponse(&in_memory_response);
+  CheckRunGraphResponse(&in_memory_response);
+
+  OwnedProtoRunGraphResponse owned_proto_response;
+  BuildRunGraphResponse(&owned_proto_response);
+  CheckRunGraphResponse(&owned_proto_response);
+
+  RunGraphResponse response_proto;
+  NonOwnedProtoRunGraphResponse non_owned_proto_response(&response_proto);
+  BuildRunGraphResponse(&non_owned_proto_response);
+  CheckRunGraphResponse(&non_owned_proto_response);
+}
+
+TEST(MessageWrappers, RunStepResponse_Basic) {
+  {
+    // Worker -(in memory)-> Master -(in memory)-> Client.
+    InMemoryRunGraphResponse run_graph_response;
+    BuildRunGraphResponse(&run_graph_response);
+    InMemoryRunStepResponse response;
+    BuildRunStepResponse(&run_graph_response, &response);
+    CheckRunStepResponse(response);
+  }
+
+  {
+    // Worker -(in memory)-> Master -(owned proto)-> Client.
+    InMemoryRunGraphResponse run_graph_response;
+    BuildRunGraphResponse(&run_graph_response);
+    OwnedProtoRunStepResponse response;
+    BuildRunStepResponse(&run_graph_response, &response);
+    CheckRunStepResponse(response);
+  }
+
+  {
+    // Worker -(in memory)-> Master -(non-owned proto)-> Client.
+    InMemoryRunGraphResponse run_graph_response;
+    BuildRunGraphResponse(&run_graph_response);
+    RunStepResponse response_proto;
+    NonOwnedProtoRunStepResponse response(&response_proto);
+    BuildRunStepResponse(&run_graph_response, &response);
+    CheckRunStepResponse(response);
+  }
+
+  {
+    // Worker -(owned proto)-> Master -(in memory)-> Client.
+    OwnedProtoRunGraphResponse run_graph_response;
+    BuildRunGraphResponse(&run_graph_response);
+    InMemoryRunStepResponse response;
+    BuildRunStepResponse(&run_graph_response, &response);
+    CheckRunStepResponse(response);
+  }
+
+  {
+    // Worker -(owned proto)-> Master -(owned proto)-> Client.
+    OwnedProtoRunGraphResponse run_graph_response;
+    BuildRunGraphResponse(&run_graph_response);
+    OwnedProtoRunStepResponse response;
+    BuildRunStepResponse(&run_graph_response, &response);
+    CheckRunStepResponse(response);
+  }
+
+  {
+    // Worker -(owned proto)-> Master -(non-owned proto)-> Client.
+    OwnedProtoRunGraphResponse run_graph_response;
+    BuildRunGraphResponse(&run_graph_response);
+    RunStepResponse response_proto;
+    NonOwnedProtoRunStepResponse response(&response_proto);
+    BuildRunStepResponse(&run_graph_response, &response);
+    CheckRunStepResponse(response);
+  }
+
+  {
+    // Worker -(non-owned proto)-> Master -(in memory)-> Client.
+    RunGraphResponse run_graph_response_proto;
+    NonOwnedProtoRunGraphResponse run_graph_response(&run_graph_response_proto);
+    BuildRunGraphResponse(&run_graph_response);
+    InMemoryRunStepResponse response;
+    BuildRunStepResponse(&run_graph_response, &response);
+    CheckRunStepResponse(response);
+  }
+
+  {
+    // Worker -(non-owned proto)-> Master -(owned proto)-> Client.
+    RunGraphResponse run_graph_response_proto;
+    NonOwnedProtoRunGraphResponse run_graph_response(&run_graph_response_proto);
+    BuildRunGraphResponse(&run_graph_response);
+    OwnedProtoRunStepResponse response;
+    BuildRunStepResponse(&run_graph_response, &response);
+    CheckRunStepResponse(response);
+  }
+
+  {
+    // Worker -(non-owned proto)-> Master -(non-owned proto)-> Client.
+    RunGraphResponse run_graph_response_proto;
+    NonOwnedProtoRunGraphResponse run_graph_response(&run_graph_response_proto);
+    BuildRunGraphResponse(&run_graph_response);
+    RunStepResponse response_proto;
+    NonOwnedProtoRunStepResponse response(&response_proto);
+    BuildRunStepResponse(&run_graph_response, &response);
+    CheckRunStepResponse(response);
   }
 }
 

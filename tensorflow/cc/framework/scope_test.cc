@@ -127,11 +127,11 @@ TEST(ScopeTest, SingleUseScope) {
 
 TEST(ScopeTest, ControlDeps) {
   Scope root = Scope::NewRootScope();
-  auto c1 = ops::Operation();
-  auto c2 = ops::Operation();
+  auto c1 = Operation();
+  auto c2 = Operation();
   Scope c = root.WithControlDependencies({c1, c2});
   EXPECT_EQ(c.control_deps().size(), 2);
-  Scope c_c = c.WithControlDependencies({ops::Operation()});
+  Scope c_c = c.WithControlDependencies({Operation()});
   EXPECT_EQ(c_c.control_deps().size(), 3);
 }
 

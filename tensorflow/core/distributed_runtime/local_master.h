@@ -53,9 +53,11 @@ class LocalMaster : public MasterInterface {
                          PartialRunSetupResponse* response) override;
 
   Status RunStep(CallOptions* call_options, RunStepRequestWrapper* request,
-                 RunStepResponse* response) override;
+                 MutableRunStepResponseWrapper* response) override;
 
   MutableRunStepRequestWrapper* CreateRunStepRequest() override;
+
+  MutableRunStepResponseWrapper* CreateRunStepResponse() override;
 
   Status CloseSession(CallOptions* call_options,
                       const CloseSessionRequest* request,
@@ -65,6 +67,7 @@ class LocalMaster : public MasterInterface {
                      const ListDevicesRequest* request,
                      ListDevicesResponse* response) override;
 
+  // See tensorflow::Reset() and the comment on ResetRequest.
   Status Reset(CallOptions* call_options, const ResetRequest* request,
                ResetResponse* response) override;
 

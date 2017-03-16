@@ -47,6 +47,23 @@ JNIEXPORT jstring JNICALL Java_org_tensorflow_Operation_type(JNIEnv *, jclass,
 JNIEXPORT jint JNICALL Java_org_tensorflow_Operation_numOutputs(JNIEnv *,
                                                                 jclass, jlong);
 
+/*
+ * Class:     org_tensorflow_Operation
+ * Method:    shape
+ * Signature: (JJI)[J
+ */
+JNIEXPORT jlongArray JNICALL Java_org_tensorflow_Operation_shape(JNIEnv *,
+                                                                 jclass, jlong,
+                                                                 jlong, jint);
+
+/*
+ * Class:     org_tensorflow_Operation
+ * Method:    dtype
+ * Signature: (JJI)I
+ */
+JNIEXPORT jint JNICALL Java_org_tensorflow_Operation_dtype(JNIEnv *, jclass,
+                                                           jlong, jlong, jint);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

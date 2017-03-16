@@ -7,17 +7,14 @@ Concat
 ConcatV2
 Const
 EditDistance
-Empty
 ExpandDims
-InplaceUpdate
-InplaceAdd
-InplaceSubtract
 ListDiff
 MirrorPad
 MirrorPadGrad
 OneHot
 Pack
 Pad
+ParallelConcat
 Placeholder
 RefIdentity
 Reverse
@@ -63,6 +60,7 @@ FakeQueue
 FIFOQueue
 FIFOQueueV2
 GetSessionHandle
+GetSessionHandleV2
 GetSessionTensor
 HashTable
 InitializeTable
@@ -152,8 +150,6 @@ ScaleImageGrad
 # io_ops
 FixedLengthRecordReader
 IdentityReader
-ReaderClose
-ReaderEnqueueWork
 ReaderNumRecordsProduced
 ReaderNumWorkUnitsCompleted
 ReaderRead
@@ -164,8 +160,6 @@ ReaderSerializeState
 ReaderWorkQueueLength
 FixedLengthRecordReaderV2
 IdentityReaderV2
-ReaderCloseV2
-ReaderEnqueueWorkV2
 ReaderNumRecordsProducedV2
 ReaderNumWorkUnitsCompletedV2
 ReaderReadV2
@@ -207,7 +201,6 @@ Svd
 Assert
 AudioSummary
 AudioSummaryV2
-HistogramAccumulatorSummary
 HistogramSummary
 ImageSummary
 MergeSummary
@@ -236,6 +229,7 @@ Max
 Mean
 Min
 Mul
+Neg
 Pow
 Prod
 Range
@@ -289,6 +283,7 @@ ParseSingleSequenceExample
 
 # random_ops
 RandomGamma
+RandomPoisson
 RandomUniform
 RandomUniformInt
 RandomShuffle

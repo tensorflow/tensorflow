@@ -299,8 +299,16 @@ func byteSizeOfEncodedStrings(val interface{}) uintptr {
 
 // encodeTensor writes v to the specified buffer using the format specified in
 // c_api.h. Use stringEncoder for String tensors.
-func encodeTensor(w io.Writer, v reflect.Value) error {
+func encodeTensor(w *bytes.Buffer, v reflect.Value) error {
 	switch v.Kind() {
+	case reflect.Bool:
+		b := byte(0)
+		if v.Bool() {
+			b = 1
+		}
+		if err := w.WriteByte(b); err != nil {
+			return err
+		}
 	case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint8, reflect.Uint16, reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128:
 		if err := binary.Write(w, nativeEndian, v.Interface()); err != nil {
 			return err
@@ -333,8 +341,14 @@ func encodeTensor(w io.Writer, v reflect.Value) error {
 
 // decodeTensor decodes the Tensor from the buffer to ptr using the format
 // specified in c_api.h. Use stringDecoder for String tensors.
-func decodeTensor(r io.Reader, shape []int64, typ reflect.Type, ptr reflect.Value) error {
+func decodeTensor(r *bytes.Reader, shape []int64, typ reflect.Type, ptr reflect.Value) error {
 	switch typ.Kind() {
+	case reflect.Bool:
+		b, err := r.ReadByte()
+		if err != nil {
+			return err
+		}
+		ptr.Elem().SetBool(b == 1)
 	case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint8, reflect.Uint16, reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128:
 		if err := binary.Read(r, nativeEndian, ptr.Interface()); err != nil {
 			return err

@@ -84,16 +84,23 @@ StatusOr<bool> ParallelizationPreparation::Run(HloModule* module) {
       HloInstruction* copy =
           entry_computation->AddInstruction(HloInstruction::CreateUnary(
               head_operand->shape(), HloOpcode::kCopy, head_operand));
-      head->ReplaceOperandWith(0, copy);
+      TF_RETURN_IF_ERROR(head->ReplaceOperandWith(0, copy));
       instructions_to_outline.insert(instructions_to_outline.begin(), copy);
     }
 
     outlined.insert(instructions_to_outline.begin(),
                     instructions_to_outline.end());
 
+    // Optimization to avoid replacing a single existing kCall with another
+    // kCall that just calls the first one.
+    if (instructions_to_outline.size() == 1 &&
+        instructions_to_outline[0]->opcode() == HloOpcode::kCall) {
+      continue;
+    }
+
     module->OutlineExpressionFromComputation(
         instructions_to_outline,
-        tensorflow::strings::StrCat("computation_for_", instruction->name()),
+        tensorflow::strings::StrCat("pp_", instruction->name()),
         entry_computation);
     changed = true;
   }

@@ -29,7 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_pass.h"
+#include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/shape_layout.h"
@@ -203,12 +203,13 @@ class LayoutConstraints {
 
 // HLO pass which assigns layouts to all instructions in the HLO module while
 // satisfying all necessary invariants and minimizing cost.
-class LayoutAssignment : public HloPass {
+class LayoutAssignment : public HloPassInterface {
  public:
   // entry_computation_layout is modified to populate a layout for the result in
   // the case that no particular layout is requested.
   explicit LayoutAssignment(ComputationLayout* entry_computation_layout);
   ~LayoutAssignment() override {}
+  tensorflow::StringPiece name() const override { return "layout-assignment"; }
 
   // Assign layouts to the given module. Returns whether the module was changed
   // (any layouts were changed).

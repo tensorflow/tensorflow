@@ -343,6 +343,12 @@ def _FillGrad(_, grad):
 ops.NotDifferentiable("ZerosLike")
 
 
+@ops.RegisterGradient("PreventGradient")
+def _PreventGradientGrad(op, _):
+  raise LookupError(
+      "Gradient explicitly disabled. Reason: %s" % op.get_attr("message"))
+
+
 @ops.RegisterGradient("Gather")
 def _GatherGrad(op, grad):
   """Gradient for Gather op."""
@@ -376,6 +382,7 @@ def _CheckNumericsGrad(_, grad):
       grad, "Not a number (NaN) or infinity (Inf) values detected in gradient.")
 
 
+@ops.RegisterGradient("PlaceholderWithDefault")
 @ops.RegisterGradient("Identity")
 def _IdGrad(_, grad):
   return grad
@@ -565,6 +572,11 @@ def _MirrorPadGradGrad(op, grad):
 @ops.RegisterGradient("QuantizeAndDequantize")
 def _QuantizeAndDequantizeGrad(_, grad):
   return grad
+
+
+@ops.RegisterGradient("QuantizeAndDequantizeV2")
+def _QuantizeAndDequantizeV2Grad(_, grad):
+  return [grad, None, None]
 
 
 @ops.RegisterGradient("ExtractImagePatches")

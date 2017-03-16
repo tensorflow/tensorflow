@@ -64,8 +64,8 @@ struct LaunchGeneric {
                      TensorFormat data_format) {
     CHECK(data_format == FORMAT_NHWC) << "Generic conv implementation only "
                                          "supports NHWC tensor format for now.";
-    if (filter.dim_size(1) == filter.dim_size(0) && filter.dim_size(0) == 1 &&
-        row_stride == 1 && col_stride == 1) {
+    if (filter.dim_size(0) == 1 && filter.dim_size(1) == 1 && row_stride == 1 &&
+        col_stride == 1) {
       // For 1x1 kernel, the 2D convolution is reduced to matrix
       // multiplication.
       //
@@ -85,6 +85,21 @@ struct LaunchGeneric {
           input.shaped<T, 2>({conv_width, filter.dim_size(2)}),
           filter.shaped<T, 2>({filter.dim_size(2), filter.dim_size(3)}),
           dim_pair);
+    } else if (filter.dim_size(0) == input.dim_size(1) &&
+               filter.dim_size(1) == input.dim_size(2) &&
+               padding == Eigen::PADDING_VALID) {
+      // If the input data and filter have the same height/width,
+      // the 2D convolution is reduced to matrix multiplication.
+      const int k =  // Length of reduction dimension.
+          filter.dim_size(0) * filter.dim_size(1) * filter.dim_size(2);
+
+      Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> dim_pair;
+      dim_pair[0] = Eigen::IndexPair<Eigen::DenseIndex>(1, 0);
+      functor::MatMulConvFunctor<Device, T>()(
+          ctx->eigen_device<Device>(),
+          output->shaped<T, 2>({input.dim_size(0), filter.dim_size(3)}),
+          input.shaped<T, 2>({input.dim_size(0), k}),
+          filter.shaped<T, 2>({k, filter.dim_size(3)}), dim_pair);
     } else {
       functor::SpatialConvolution<Device, T>()(
           ctx->eigen_device<Device>(), output->tensor<T, 4>(),
@@ -196,18 +211,23 @@ class LaunchXsmmConvOp<CPUDevice, float> {
     desc.S = filter_cols;
     desc.u = stride_rows;
     desc.v = stride_cols;
-    desc.pad_h_in = pad_rows;  // ignored by libxsmm for now.
-    desc.pad_w_in = pad_cols;  // ignored by libxsmm for now.
+    desc.pad_h = pad_rows;
+    desc.pad_w = pad_cols;
+    desc.pad_h_in = pad_rows;  // libxsmm supports only physical padding for now
+    desc.pad_w_in = pad_cols;  // libxsmm supports only physical padding for now
     desc.pad_h_out = 0;
     desc.pad_w_out = 0;
     desc.threads = num_threads;
     desc.algo = LIBXSMM_DNN_CONV_ALGO_DIRECT;
-    desc.buffer_format = LIBXSMM_DNN_CONV_FORMAT_NHWC;
-    desc.filter_format = LIBXSMM_DNN_CONV_FORMAT_RSCK;
+    desc.buffer_format = LIBXSMM_DNN_TENSOR_FORMAT_NHWC;
+    desc.filter_format = LIBXSMM_DNN_TENSOR_FORMAT_LIBXSMM;
     desc.fuse_ops = LIBXSMM_DNN_CONV_FUSE_NONE;
     desc.options = LIBXSMM_DNN_CONV_OPTION_NONE;
-    desc.datatype_in = LIBXSMM_DNN_DATATYPE_F32;
-    desc.datatype_out = LIBXSMM_DNN_DATATYPE_F32;
+    desc.datatype = LIBXSMM_DNN_DATATYPE_F32;
+
+    if (!CanUseXsmmConv2D(desc, data_format)) {
+      return false;
+    }
 
     auto input_ptr = input.template flat<float>().data();
     auto filter_ptr = filter.template flat<float>().data();
@@ -430,6 +450,7 @@ void LaunchConv2DOp<GPUDevice, T>::launch(
   }
 
   Tensor input = input_param;
+
   if (filter.dim_size(0) == 1 && filter.dim_size(1) == 1 && row_stride == 1 &&
       col_stride == 1 && data_format == FORMAT_NHWC) {
     // 1x1 filter, so call cublas directly.
@@ -454,9 +475,37 @@ void LaunchConv2DOp<GPUDevice, T>::launch(
       ctx->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
                                       ", n=", n, ", k=", k));
     }
+    return;
+  } else if (filter.dim_size(0) == input.dim_size(1) &&
+             filter.dim_size(1) == input.dim_size(2) &&
+             padding == Eigen::PADDING_VALID && data_format == FORMAT_NHWC) {
+    // The input data and filter have the same height/width, so call cublas
+    // directly.
+    const uint64 m = input.dim_size(0);
+    const uint64 k =
+        filter.dim_size(0) * filter.dim_size(1) * filter.dim_size(2);
+    const uint64 n = filter.dim_size(3);
 
+    auto a_ptr = AsDeviceMemory(input.template flat<T>().data(),
+                                input.template flat<T>().size());
+    auto b_ptr = AsDeviceMemory(filter.template flat<T>().data(),
+                                filter.template flat<T>().size());
+    auto c_ptr = AsDeviceMemory(output->template flat<T>().data(),
+                                output->template flat<T>().size());
+
+    auto no_transpose = perftools::gputools::blas::Transpose::kNoTranspose;
+    bool blas_launch_status =
+        stream
+            ->ThenBlasGemm(no_transpose, no_transpose, n, m, k, 1.0f, b_ptr, n,
+                           a_ptr, k, 0.0f, &c_ptr, n)
+            .ok();
+    if (!blas_launch_status) {
+      ctx->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
+                                      ", n=", n, ", k=", k));
+    }
     return;
   }
+
   int padding_rows = 0;
   int padding_cols = 0;
   const int64 in_batch = GetTensorDim(input, data_format, 'N');

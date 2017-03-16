@@ -46,12 +46,12 @@ TEST_F(ClientTest, ExecuteWithLayout) {
       auto computation = b.Build();
       ASSERT_TRUE(computation.ok()) << computation.status();
 
-      const Shape execute_shape_with_layout = ShapeUtil::MakeShapeWithLayout(
-          S32, /*dimensions=*/{2, 2}, execute_layout);
+      ExecutionOptions execution_options;
+      *execution_options.mutable_shape_with_output_layout() =
+          ShapeUtil::MakeShapeWithLayout(S32, /*dimensions=*/{2, 2},
+                                         execute_layout);
       std::unique_ptr<GlobalData> data =
-          client_
-              ->Execute(computation.ValueOrDie(), {},
-                        &execute_shape_with_layout)
+          client_->Execute(computation.ValueOrDie(), {}, &execution_options)
               .ConsumeValueOrDie();
 
       std::unique_ptr<Literal> expected_literal =
@@ -76,18 +76,20 @@ TEST_F(ClientTest, ExecuteWithTupleLayout) {
   auto computation = b.Build();
   ASSERT_TRUE(computation.ok()) << computation.status();
 
+  ExecutionOptions execution_options;
   // Create a result shape with one element column major and the other row
   // major.
-  Shape tuple_shape_with_layout = ShapeUtil::MakeTupleShape(
-      {ShapeUtil::MakeShapeWithLayout(S32, /*dimensions=*/{2, 2},
-                                      /*minor_to_major=*/{0, 1}),
-       ShapeUtil::MakeShapeWithLayout(S32, /*dimensions=*/{2, 2},
-                                      /*minor_to_major=*/{1, 0})});
+  *execution_options.mutable_shape_with_output_layout() =
+      ShapeUtil::MakeTupleShape(
+          {ShapeUtil::MakeShapeWithLayout(S32, /*dimensions=*/{2, 2},
+                                          /*minor_to_major=*/{0, 1}),
+           ShapeUtil::MakeShapeWithLayout(S32, /*dimensions=*/{2, 2},
+                                          /*minor_to_major=*/{1, 0})});
 
-  auto result = client_
-                    ->ExecuteAndTransfer(computation.ValueOrDie(), {},
-                                         &tuple_shape_with_layout)
-                    .ConsumeValueOrDie();
+  auto result =
+      client_
+          ->ExecuteAndTransfer(computation.ValueOrDie(), {}, &execution_options)
+          .ConsumeValueOrDie();
   LiteralTestUtil::ExpectR2Equal<int32>({{1, 2}, {3, 4}},
                                         result->tuple_literals(0));
   LiteralTestUtil::ExpectR2Equal<int32>({{10, 20}, {30, 40}},

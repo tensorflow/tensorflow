@@ -18,8 +18,8 @@ limitations under the License.
 // dimension.
 // TODO(dominikg,phawkins): Use a real batched matmul instead of unrolling.
 
-#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 
 namespace tensorflow {
 namespace {

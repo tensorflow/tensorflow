@@ -51,7 +51,7 @@ class BatchNormalization(base._Layer):  # pylint: disable=protected-access
 
   Arguments:
     axis: Integer, the axis that should be normalized (typically the features
-      axis). For instance, after a `Convolution2D` layer with
+      axis). For instance, after a `Conv2D` layer with
       `data_format="channels_first"`, set `axis=1` in `BatchNormalization`.
     momentum: Momentum for the moving average.
     epsilon: Small float added to variance to avoid dividing by zero.
@@ -257,7 +257,7 @@ def batch_normalization(inputs,
                         training=False,
                         trainable=True,
                         name=None,
-                        reuse=False):
+                        reuse=None):
   """Functional interface for the batch normalization layer.
 
   Reference: http://arxiv.org/abs/1502.03167

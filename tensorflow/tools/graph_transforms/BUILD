@@ -7,8 +7,10 @@ licenses(["notice"])  # Apache 2.0
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_not_windows",
     "tf_copts",
     "tf_cc_test",
+    "tf_py_test",
 )
 
 exports_files(["LICENSE"])
@@ -63,19 +65,21 @@ cc_library(
         "freeze_requantization_ranges.cc",
         "fuse_convolutions.cc",
         "insert_logging.cc",
-        "obsfucate_names.cc",
-        "quantize_nodes.cc",
-        "quantize_weights.cc",
+        "obfuscate_names.cc",
         "remove_attribute.cc",
         "remove_device.cc",
         "remove_nodes.cc",
         "rename_attribute.cc",
         "rename_op.cc",
-        "round_weights.cc",
         "set_device.cc",
         "sort_by_execution_order.cc",
+        "sparsify_gather.cc",
         "strip_unused_nodes.cc",
-    ],
+    ] + if_not_windows([
+        "quantize_nodes.cc",
+        "quantize_weights.cc",
+        "round_weights.cc",
+    ]),
     hdrs = [
         "fold_constants_lib.h",
     ],
@@ -90,8 +94,10 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
+    ] + if_not_windows([
         "//tensorflow/core/kernels:quantized_ops",
-    ],
+        "//tensorflow/core/kernels/hexagon:hexagon_rewriter_transform",
+    ]),
     alwayslink = 1,
 )
 
@@ -106,7 +112,7 @@ tf_cc_test(
         "freeze_requantization_ranges_test.cc",
         "fuse_convolutions_test.cc",
         "insert_logging_test.cc",
-        "obsfucate_names_test.cc",
+        "obfuscate_names_test.cc",
         "quantize_nodes_test.cc",
         "quantize_weights_test.cc",
         "remove_attribute_test.cc",
@@ -117,6 +123,7 @@ tf_cc_test(
         "round_weights_test.cc",
         "set_device_test.cc",
         "sort_by_execution_order_test.cc",
+        "sparsify_gather_test.cc",
         "strip_unused_nodes_test.cc",
     ],
     deps = [
@@ -233,4 +240,26 @@ cc_binary(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
     ],
+)
+
+py_library(
+    name = "transform_graph_py",
+    srcs = ["__init__.py"],
+    srcs_version = "PY2AND3",
+    deps = ["//tensorflow/python:pywrap_tensorflow"],
+)
+
+tf_py_test(
+    name = "transform_graph_py_test",
+    size = "small",
+    srcs = ["python/transform_graph_test.py"],
+    additional_deps = [
+        ":transform_graph_py",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:variables",
+    ],
+    main = "python/transform_graph_test.py",
 )

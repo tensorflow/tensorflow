@@ -350,13 +350,20 @@ class DynamicUpdateSliceTest : public ClientLibraryTestBase {
 
     // Build dynamic slice computation.
     ComputationBuilder builder(client_, TestName());
+    // Initialize and transfer input parameter.
+    ComputationDataHandle input;
+    std::unique_ptr<GlobalData> input_data = CreateR3Parameter<float>(
+        input_values, 0, "input_values", &builder, &input);
+    // Initialize and transfer update parameter.
+    ComputationDataHandle update;
+    std::unique_ptr<GlobalData> update_data = CreateR3Parameter<float>(
+        update_values, 1, "update_values", &builder, &update);
     auto starts = builder.ConstantR1<int32>({index, 0, 0});
-    auto input = builder.ConstantR3FromArray3D<float>(input_values);
-    auto update = builder.ConstantR3FromArray3D<float>(update_values);
     builder.DynamicUpdateSlice(input, update, starts);
 
     // Run computation and compare against expected values.
-    ComputeAndCompareR3<float>(&builder, expected_values, {},
+    ComputeAndCompareR3<float>(&builder, expected_values,
+                               {input_data.get(), update_data.get()},
                                ErrorSpec(0.000001));
   }
 
@@ -467,19 +474,23 @@ void BM_DynamicSlice(int num_iters) {
       executors[device_ordinal], *start_indices_literal,
       buffer->mutable_buffer({})));
 
+  std::unique_ptr<LocalExecutable> executable =
+      client->Compile(computation, {&buffer->shape()}, ExecutableBuildOptions())
+          .ConsumeValueOrDie();
+
   // Run some warm-up executions.
-  LocalExecuteOptions options;
+  ExecutableRunOptions options;
   options.set_allocator(&allocator);
   const int kWarmups = 2;
   for (int i = 0; i < kWarmups; ++i) {
-    auto result = client->ExecuteLocally(computation, {buffer.get()}, options);
+    auto result = executable->Run({buffer.get()}, options);
     ASSERT_TRUE(result.ok());
   }
 
   // Run benchmark.
   tensorflow::testing::StartTiming();
   for (int i = 0; i < num_iters; ++i) {
-    auto result = client->ExecuteLocally(computation, {buffer.get()}, options);
+    auto result = executable->Run({buffer.get()}, options);
     ASSERT_TRUE(result.ok());
   }
 }

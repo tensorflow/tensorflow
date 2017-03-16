@@ -37,8 +37,6 @@ from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.summary import summary
 
-_CENTERED_BIAS_WEIGHT = "centered_bias_weight"
-
 # The default learning rate of 0.05 is a historical artifact of the initial
 # implementation, but seems a reasonable choice.
 _LEARNING_RATE = 0.05
@@ -113,66 +111,73 @@ def _dnn_model_fn(features, labels, mode, params, config=None):
   features = _get_feature_dict(features)
   parent_scope = "dnn"
 
-  input_layer_partitioner = (partitioned_variables.min_max_variable_partitioner(
-      max_partitions=num_ps_replicas,
-      min_slice_size=input_layer_min_slice_size))
-  input_layer_scope = parent_scope + "/input_from_feature_columns"
+  partitioner = partitioned_variables.min_max_variable_partitioner(
+      max_partitions=num_ps_replicas)
   with variable_scope.variable_scope(
-      input_layer_scope,
-      values=list(six.itervalues(features)),
-      partitioner=input_layer_partitioner) as scope:
-    net = layers.input_from_feature_columns(
-        columns_to_tensors=features,
-        feature_columns=feature_columns,
-        weight_collections=[parent_scope],
-        scope=scope)
-
-  hidden_layer_partitioner = (
-      partitioned_variables.min_max_variable_partitioner(
-          max_partitions=num_ps_replicas))
-  for layer_id, num_hidden_units in enumerate(hidden_units):
+      parent_scope,
+      values=tuple(six.itervalues(features)),
+      partitioner=partitioner):
+    input_layer_partitioner = (
+        partitioned_variables.min_max_variable_partitioner(
+            max_partitions=num_ps_replicas,
+            min_slice_size=input_layer_min_slice_size))
     with variable_scope.variable_scope(
-        parent_scope + "/hiddenlayer_%d" % layer_id,
-        values=[net],
-        partitioner=hidden_layer_partitioner) as scope:
-      net = layers.fully_connected(
+        "input_from_feature_columns",
+        values=tuple(six.itervalues(features)),
+        partitioner=input_layer_partitioner) as input_layer_scope:
+      net = layers.input_from_feature_columns(
+          columns_to_tensors=features,
+          feature_columns=feature_columns,
+          weight_collections=[parent_scope],
+          scope=input_layer_scope)
+
+    for layer_id, num_hidden_units in enumerate(hidden_units):
+      with variable_scope.variable_scope(
+          "hiddenlayer_%d" % layer_id,
+          values=(net,)) as hidden_layer_scope:
+        net = layers.fully_connected(
+            net,
+            num_hidden_units,
+            activation_fn=activation_fn,
+            variables_collections=[parent_scope],
+            scope=hidden_layer_scope)
+        if dropout is not None and mode == model_fn.ModeKeys.TRAIN:
+          net = layers.dropout(net, keep_prob=(1.0 - dropout))
+      _add_hidden_layer_summary(net, hidden_layer_scope.name)
+
+    with variable_scope.variable_scope(
+        "logits",
+        values=(net,)) as logits_scope:
+      logits = layers.fully_connected(
           net,
-          num_hidden_units,
-          activation_fn=activation_fn,
+          head.logits_dimension,
+          activation_fn=None,
           variables_collections=[parent_scope],
-          scope=scope)
-      if dropout is not None and mode == model_fn.ModeKeys.TRAIN:
-        net = layers.dropout(net, keep_prob=(1.0 - dropout))
-    _add_hidden_layer_summary(net, scope.name)
+          scope=logits_scope)
+    _add_hidden_layer_summary(logits, logits_scope.name)
 
-  with variable_scope.variable_scope(
-      parent_scope + "/logits",
-      values=[net],
-      partitioner=hidden_layer_partitioner) as scope:
-    logits = layers.fully_connected(
-        net,
-        head.logits_dimension,
-        activation_fn=None,
-        variables_collections=[parent_scope],
-        scope=scope)
-  _add_hidden_layer_summary(logits, scope.name)
+    def _train_op_fn(loss):
+      """Returns the op to optimize the loss."""
+      return optimizers.optimize_loss(
+          loss=loss,
+          global_step=contrib_variables.get_global_step(),
+          learning_rate=_LEARNING_RATE,
+          optimizer=_get_optimizer(optimizer),
+          gradient_multipliers=(
+              dnn_linear_combined._extract_embedding_lr_multipliers(  # pylint: disable=protected-access
+                  embedding_lr_multipliers, parent_scope,
+                  input_layer_scope.name)),
+          clip_gradients=gradient_clip_norm,
+          name=parent_scope,
+          # Empty summaries to prevent optimizers from logging training_loss.
+          summaries=[])
 
-  def _train_op_fn(loss):
-    """Returns the op to optimize the loss."""
-    return optimizers.optimize_loss(
-        loss=loss,
-        global_step=contrib_variables.get_global_step(),
-        learning_rate=_LEARNING_RATE,
-        optimizer=_get_optimizer(optimizer),
-        gradient_multipliers=(
-            dnn_linear_combined._extract_embedding_lr_multipliers(  # pylint: disable=protected-access
-                embedding_lr_multipliers, parent_scope, input_layer_scope)),
-        clip_gradients=gradient_clip_norm,
-        name=parent_scope,
-        # Empty summaries to prevent optimizers from logging the training_loss.
-        summaries=[])
-
-  return head.head_ops(features, labels, mode, _train_op_fn, logits)
+    return head.create_model_fn_ops(
+        features=features,
+        mode=mode,
+        labels=labels,
+        train_op_fn=_train_op_fn,
+        logits=logits)
 
 
 class DNNClassifier(estimator.Estimator):
@@ -292,16 +297,14 @@ class DNNClassifier(estimator.Estimator):
     Raises:
       ValueError: If `n_classes` < 2.
     """
-    self._hidden_units = hidden_units
     self._feature_columns = tuple(feature_columns or [])
-    self._enable_centered_bias = enable_centered_bias
     super(DNNClassifier, self).__init__(
         model_fn=_dnn_model_fn,
         model_dir=model_dir,
         config=config,
         params={
             "head":
-                head_lib._multi_class_head(  # pylint: disable=protected-access
+                head_lib.multi_class_head(
                     n_classes,
                     weight_column_name=weight_column_name,
                     enable_centered_bias=enable_centered_bias),
@@ -320,13 +323,23 @@ class DNNClassifier(estimator.Estimator):
       estimator.AS_ITERABLE_DATE,
       estimator.AS_ITERABLE_INSTRUCTIONS,
       as_iterable=False)
-  def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=True):
-    """Returns predicted classes for given features.
+  @deprecated_arg_values(
+      "2017-03-01",
+      "Please switch to predict_classes, or set `outputs` argument.",
+      outputs=None)
+  def predict(self, x=None, input_fn=None, batch_size=None, outputs=None,
+              as_iterable=True):
+    """Returns predictions for given features.
+
+    By default, returns predicted classes. But this default will be dropped
+    soon. Users should either pass `outputs`, or call `predict_classes` method.
 
     Args:
       x: features.
       input_fn: Input function. If set, x must be None.
       batch_size: Override default batch size.
+      outputs: list of `str`, name of the output to predict.
+        If `None`, returns classes.
       as_iterable: If True, return an iterable which keeps yielding predictions
         for each example until inputs are exhausted. Note: The inputs must
         terminate if you want the iterable to terminate (e.g. be sure to pass
@@ -336,11 +349,19 @@ class DNNClassifier(estimator.Estimator):
       Numpy array of predicted classes with shape [batch_size] (or an iterable
       of predicted classes if as_iterable is True). Each predicted class is
       represented by its class index (i.e. integer from 0 to n_classes-1).
+      If `outputs` is set, returns a dict of predictions.
     """
-    return self.predict_classes(
+    if not outputs:
+      return self.predict_classes(
+          x=x,
+          input_fn=input_fn,
+          batch_size=batch_size,
+          as_iterable=as_iterable)
+    return super(DNNClassifier, self).predict(
         x=x,
         input_fn=input_fn,
         batch_size=batch_size,
+        outputs=outputs,
         as_iterable=as_iterable)
 
   @deprecated_arg_values(
@@ -385,7 +406,7 @@ class DNNClassifier(estimator.Estimator):
                     input_fn=None,
                     batch_size=None,
                     as_iterable=True):
-    """Returns prediction probabilities for given features.
+    """Returns predicted probabilities for given features.
 
     Args:
       x: features.
@@ -411,6 +432,7 @@ class DNNClassifier(estimator.Estimator):
       return (pred[key] for pred in preds)
     return preds[key]
 
+  @deprecated("2017-03-25", "Please use Estimator.export_savedmodel() instead.")
   def export(self,
              export_dir,
              input_fn=None,
@@ -435,36 +457,6 @@ class DNNClassifier(estimator.Estimator):
         prediction_key=prediction_key.PredictionKey.PROBABILITIES,
         default_batch_size=default_batch_size,
         exports_to_keep=exports_to_keep)
-
-  @property
-  @deprecated("2016-10-30",
-              "This method will be removed after the deprecation date. "
-              "To inspect variables, use get_variable_names() and "
-              "get_variable_value().")
-  def weights_(self):
-    hiddenlayer_weights = [
-        self.get_variable_value("dnn/hiddenlayer_%d/weights" % i)
-        for i, _ in enumerate(self._hidden_units)
-    ]
-    logits_weights = [self.get_variable_value("dnn/logits/weights")]
-    return hiddenlayer_weights + logits_weights
-
-  @property
-  @deprecated("2016-10-30",
-              "This method will be removed after the deprecation date. "
-              "To inspect variables, use get_variable_names() and "
-              "get_variable_value().")
-  def bias_(self):
-    hiddenlayer_bias = [
-        self.get_variable_value("dnn/hiddenlayer_%d/biases" % i)
-        for i, _ in enumerate(self._hidden_units)
-    ]
-    logits_bias = [self.get_variable_value("dnn/logits/biases")]
-    if self._enable_centered_bias:
-      centered_bias = [self.get_variable_value(_CENTERED_BIAS_WEIGHT)]
-    else:
-      centered_bias = []
-    return hiddenlayer_bias + logits_bias + centered_bias
 
 
 class DNNRegressor(estimator.Estimator):
@@ -568,7 +560,9 @@ class DNNRegressor(estimator.Estimator):
                         labels which are the output of `input_fn` and
                         returns features and labels which will be fed
                         into the model.
-      label_dimension: Dimension of the label for multilabels. Defaults to 1.
+      label_dimension: Number of regression targets per example. This is the
+        size of the last dimension of the labels and logits `Tensor` objects
+        (typically, these have shape `[batch_size, label_dimension]`).
       embedding_lr_multipliers: Optional. A dictionary from `EbeddingColumn` to
           a `float` multiplier. Multiplier will be used to multiply with
           learning rate for the embedding variables.
@@ -585,7 +579,7 @@ class DNNRegressor(estimator.Estimator):
         config=config,
         params={
             "head":
-                head_lib._regression_head(  # pylint: disable=protected-access
+                head_lib.regression_head(
                     label_dimension=label_dimension,
                     weight_column_name=weight_column_name,
                     enable_centered_bias=enable_centered_bias),
@@ -638,13 +632,23 @@ class DNNRegressor(estimator.Estimator):
       estimator.AS_ITERABLE_DATE,
       estimator.AS_ITERABLE_INSTRUCTIONS,
       as_iterable=False)
-  def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=True):
-    """Returns predicted scores for given features.
+  @deprecated_arg_values(
+      "2017-03-01",
+      "Please switch to predict_scores, or set `outputs` argument.",
+      outputs=None)
+  def predict(self, x=None, input_fn=None, batch_size=None, outputs=None,
+              as_iterable=True):
+    """Returns predictions for given features.
+
+    By default, returns predicted scores. But this default will be dropped
+    soon. Users should either pass `outputs`, or call `predict_scores` method.
 
     Args:
       x: features.
       input_fn: Input function. If set, x must be None.
       batch_size: Override default batch size.
+      outputs: list of `str`, name of the output to predict.
+        If `None`, returns scores.
       as_iterable: If True, return an iterable which keeps yielding predictions
         for each example until inputs are exhausted. Note: The inputs must
         terminate if you want the iterable to terminate (e.g. be sure to pass
@@ -654,11 +658,19 @@ class DNNRegressor(estimator.Estimator):
       Numpy array of predicted scores (or an iterable of predicted scores if
       as_iterable is True). If `label_dimension == 1`, the shape of the output
       is `[batch_size]`, otherwise the shape is `[batch_size, label_dimension]`.
+      If `outputs` is set, returns a dict of predictions.
     """
-    return self.predict_scores(
+    if not outputs:
+      return self.predict_scores(
+          x=x,
+          input_fn=input_fn,
+          batch_size=batch_size,
+          as_iterable=as_iterable)
+    return super(DNNRegressor, self).predict(
         x=x,
         input_fn=input_fn,
         batch_size=batch_size,
+        outputs=outputs,
         as_iterable=as_iterable)
 
   @deprecated_arg_values(
@@ -694,6 +706,7 @@ class DNNRegressor(estimator.Estimator):
       return (pred[key] for pred in preds)
     return preds[key]
 
+  @deprecated("2017-03-25", "Please use Estimator.export_savedmodel() instead.")
   def export(self,
              export_dir,
              input_fn=None,
@@ -716,3 +729,127 @@ class DNNRegressor(estimator.Estimator):
         prediction_key=prediction_key.PredictionKey.SCORES,
         default_batch_size=default_batch_size,
         exports_to_keep=exports_to_keep)
+
+
+class DNNEstimator(estimator.Estimator):
+  """A Estimator for TensorFlow DNN models with user specified _Head.
+
+  Example:
+
+  ```python
+  sparse_feature_a = sparse_column_with_hash_bucket(...)
+  sparse_feature_b = sparse_column_with_hash_bucket(...)
+
+  sparse_feature_a_emb = embedding_column(sparse_id_column=sparse_feature_a,
+                                          ...)
+  sparse_feature_b_emb = embedding_column(sparse_id_column=sparse_feature_b,
+                                          ...)
+  To create a DNNEstimator for binary classification, where
+  estimator = DNNEstimator(
+      feature_columns=[sparse_feature_a_emb, sparse_feature_b_emb],
+      head=tf.contrib.learn.multi_class_head(n_classes=2),
+      hidden_units=[1024, 512, 256])
+
+  If your label is keyed with "y" in your labels dict, and weights are keyed
+  with "w" in features dict, and you want to enable centered bias,
+  head = tf.contrib.learn.multi_class_head(
+      n_classes=2,
+      label_name="x",
+      weight_column_name="w",
+      enable_centered_bias=True)
+  estimator = DNNEstimator(
+      feature_columns=[sparse_feature_a_emb, sparse_feature_b_emb],
+      head=head,
+      hidden_units=[1024, 512, 256])
+
+  # Input builders
+  def input_fn_train: # returns x, y (where y represents label's class index).
+    pass
+  estimator.fit(input_fn=input_fn_train)
+
+  def input_fn_eval: # returns x, y (where y represents label's class index).
+    pass
+  estimator.evaluate(input_fn=input_fn_eval)
+  estimator.predict(x=x) # returns predicted labels (i.e. label's class index).
+  ```
+
+  Input of `fit` and `evaluate` should have following features,
+    otherwise there will be a `KeyError`:
+
+  * if `weight_column_name` is not `None`, a feature with
+     `key=weight_column_name` whose value is a `Tensor`.
+  * for each `column` in `feature_columns`:
+    - if `column` is a `SparseColumn`, a feature with `key=column.name`
+      whose `value` is a `SparseTensor`.
+    - if `column` is a `WeightedSparseColumn`, two features: the first with
+      `key` the id column name, the second with `key` the weight column name.
+      Both features' `value` must be a `SparseTensor`.
+    - if `column` is a `RealValuedColumn`, a feature with `key=column.name`
+      whose `value` is a `Tensor`.
+  """
+
+  def __init__(self,
+               head,
+               hidden_units,
+               feature_columns,
+               model_dir=None,
+               optimizer=None,
+               activation_fn=nn.relu,
+               dropout=None,
+               gradient_clip_norm=None,
+               config=None,
+               feature_engineering_fn=None,
+               embedding_lr_multipliers=None,
+               input_layer_min_slice_size=None):
+    """Initializes a `DNNEstimator` instance.
+
+    Args:
+      head: `Head` instance.
+      hidden_units: List of hidden units per layer. All layers are fully
+        connected. Ex. `[64, 32]` means first layer has 64 nodes and second one
+        has 32.
+      feature_columns: An iterable containing all the feature columns used by
+        the model. All items in the set should be instances of classes derived
+        from `FeatureColumn`.
+      model_dir: Directory to save model parameters, graph and etc. This can
+        also be used to load checkpoints from the directory into a estimator to
+        continue training a previously saved model.
+      optimizer: An instance of `tf.Optimizer` used to train the model. If
+        `None`, will use an Adagrad optimizer.
+      activation_fn: Activation function applied to each layer. If `None`, will
+        use `tf.nn.relu`.
+      dropout: When not `None`, the probability we will drop out a given
+        coordinate.
+      gradient_clip_norm: A float > 0. If provided, gradients are
+        clipped to their global norm with this clipping ratio. See
+        `tf.clip_by_global_norm` for more details.
+      config: `RunConfig` object to configure the runtime settings.
+      feature_engineering_fn: Feature engineering function. Takes features and
+                        labels which are the output of `input_fn` and
+                        returns features and labels which will be fed
+                        into the model.
+      embedding_lr_multipliers: Optional. A dictionary from `EmbeddingColumn` to
+          a `float` multiplier. Multiplier will be used to multiply with
+          learning rate for the embedding variables.
+      input_layer_min_slice_size: Optional. The min slice size of input layer
+          partitions. If not provided, will use the default of 64M.
+
+    Returns:
+      A `DNNEstimator` estimator.
+    """
+    super(DNNEstimator, self).__init__(
+        model_fn=_dnn_model_fn,
+        model_dir=model_dir,
+        config=config,
+        params={
+            "head": head,
+            "hidden_units": hidden_units,
+            "feature_columns": feature_columns,
+            "optimizer": optimizer,
+            "activation_fn": activation_fn,
+            "dropout": dropout,
+            "gradient_clip_norm": gradient_clip_norm,
+            "embedding_lr_multipliers": embedding_lr_multipliers,
+            "input_layer_min_slice_size": input_layer_min_slice_size,
+        },
+        feature_engineering_fn=feature_engineering_fn)

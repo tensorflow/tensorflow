@@ -132,19 +132,11 @@ class LinearOperatorTriL(linear_operator.LinearOperator):
       TypeError:  If `diag.dtype` is not an allowed type.
     """
 
-    # TODO(langmore) Add complex types once matrix_triangular_solve works for
-    # them.
-    allowed_dtypes = [dtypes.float32, dtypes.float64]
-
     with ops.name_scope(name, values=[tril]):
+      self._tril = ops.convert_to_tensor(tril, name="tril")
+      self._check_tril(self._tril)
       self._tril = array_ops.matrix_band_part(tril, -1, 0)
       self._diag = array_ops.matrix_diag_part(self._tril)
-
-      dtype = self._tril.dtype
-      if dtype not in allowed_dtypes:
-        raise TypeError(
-            "Argument tril must have dtype in %s.  Found: %s"
-            % (allowed_dtypes, dtype))
 
       super(LinearOperatorTriL, self).__init__(
           dtype=self._tril.dtype,
@@ -154,10 +146,26 @@ class LinearOperatorTriL(linear_operator.LinearOperator):
           is_positive_definite=is_positive_definite,
           name=name)
 
+  def _check_tril(self, tril):
+    """Static check of the `tril` argument."""
+    # TODO(langmore) Add complex types once matrix_triangular_solve works for
+    # them.
+    allowed_dtypes = [dtypes.float32, dtypes.float64]
+    dtype = tril.dtype
+    if dtype not in allowed_dtypes:
+      raise TypeError(
+          "Argument tril must have dtype in %s.  Found: %s"
+          % (allowed_dtypes, dtype))
+
+    if tril.get_shape().ndims is not None and tril.get_shape().ndims < 2:
+      raise ValueError(
+          "Argument tril must have at least 2 dimensions.  Found: %s"
+          % tril)
+
   def _shape(self):
     return self._tril.get_shape()
 
-  def _shape_dynamic(self):
+  def _shape_tensor(self):
     return array_ops.shape(self._tril)
 
   def _assert_non_singular(self):

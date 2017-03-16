@@ -44,6 +44,7 @@ from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import state_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.ops.nn_ops import bias_add
 from tensorflow.python.platform import googletest
 
@@ -311,6 +312,27 @@ class GradientsTest(test_util.TensorFlowTestCase):
       grad, = gradients.gradients(target, v)
       self.assertIsNone(grad)
 
+  def testVariableReadValueGradient(self):
+    with ops.Graph().as_default():
+      init = constant_op.constant(100.0)
+      var = variables.Variable(init)
+      gradient = gradients.gradients(var.read_value(), var)
+      self.assertIsNotNone(gradient)
+
+  def testVariableAsGraphElementGradient(self):
+    with ops.Graph().as_default() as graph:
+      init = constant_op.constant(100.0)
+      var = variables.Variable(init)
+      gradient = gradients.gradients(graph.as_graph_element(var), var)
+      self.assertIsNotNone(gradient)
+
+  def testVariableRefGradient(self):
+    with ops.Graph().as_default():
+      init = constant_op.constant(100.0)
+      var = variables.Variable(init)
+      gradient = gradients.gradients(var._ref(), var)
+      self.assertIsNotNone(gradient)
+
 
 class FunctionGradientsTest(test_util.TensorFlowTestCase):
 
@@ -417,7 +439,7 @@ class PreventGradientTest(test_util.TensorFlowTestCase):
     with ops.Graph().as_default():
       inp = constant(1.0, shape=[100, 32], name="in")
       out = array_ops.prevent_gradient(inp)
-      with self.assertRaisesRegexp(LookupError, "No gradient defined"):
+      with self.assertRaisesRegexp(LookupError, "explicitly disabled"):
         _ = gradients.gradients(out, inp)
 
 
@@ -567,6 +589,18 @@ class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
     self.assertTrue(
         "of unknown shape. This may consume a large amount of memory." in
         str(w[0].message))
+
+
+class OnlyRealGradientsTest(test_util.TensorFlowTestCase):
+
+  def testRealOnly(self):
+    x = constant_op.constant(7+3j, dtype=dtypes.complex64)
+    y = math_ops.square(x)
+    with self.assertRaisesRegexp(
+        TypeError,
+        r"Gradients of complex tensors must set grad_ys "
+        r"\(y\.dtype = tf\.complex64\)"):
+      gradients.gradients(y, x)
 
 
 if __name__ == "__main__":

@@ -12,9 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""TensorArray operations.
-
-## Classes containing dynamically sized arrays of Tensors.
+"""TensorArray: a dynamically sized array of Tensors.
 
 @@TensorArray
 """
@@ -59,24 +57,6 @@ class TensorArray(object):
   This class is meant to be used with dynamic iteration primitives such as
   `while_loop` and `map_fn`.  It supports gradient back-propagation via special
   "flow" control flow dependencies.
-
-  @@handle
-  @@flow
-  @@dtype
-
-  @@read
-  @@gather
-  @@stack
-  @@concat
-
-  @@write
-  @@scatter
-  @@unstack
-  @@split
-
-  @@identity
-
-  @@grad
   """
 
   def __init__(self,
@@ -383,6 +363,7 @@ class TensorArray(object):
 
     If input value shapes have rank-`R`, then the output TensorArray will
     contain elements whose shapes are rank-`(R-1)`.
+
     Args:
       value: (N+1)-D.  Tensor of type `dtype`.  The Tensor to unstack.
       name: A name for the operation (optional).

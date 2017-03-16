@@ -281,5 +281,6 @@ def target_llvm_triple():
   return select({
       "//tensorflow:android_arm": "armv7-none-android",
       "//tensorflow:android_arm64": "aarch64-none-android",
+      "//tensorflow:android_x86": "i686-none-android",
       "//conditions:default": "x86_64-pc-linux",
   })

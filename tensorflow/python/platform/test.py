@@ -13,53 +13,22 @@
 # limitations under the License.
 # ==============================================================================
 
-# pylint: disable=g-short-docstring-punctuation
-"""## Unit tests
+"""Testing.
 
-TensorFlow provides a convenience class inheriting from `unittest.TestCase`
-which adds methods relevant to TensorFlow tests.  Here is an example:
-
-```python
-    import tensorflow as tf
-
-
-    class SquareTest(tf.test.TestCase):
-
-      def testSquare(self):
-        with self.test_session():
-          x = tf.square([2, 3])
-          self.assertAllEqual(x.eval(), [4, 9])
-
-
-    if __name__ == '__main__':
-      tf.test.main()
-```
-
-`tf.test.TestCase` inherits from `unittest.TestCase` but adds a few additional
-methods.  We will document these methods soon.
+See the @{$python/test} guide.
 
 @@main
 @@TestCase
 @@test_src_dir_path
-
-## Utilities
-
 @@assert_equal_graph_def
 @@get_temp_dir
 @@is_built_with_cuda
 @@is_gpu_available
 @@gpu_device_name
-
-## Gradient checking
-
-[`compute_gradient`](#compute_gradient) and
-[`compute_gradient_error`](#compute_gradient_error) perform numerical
-differentiation of graphs for comparison against registered analytic gradients.
-
 @@compute_gradient
 @@compute_gradient_error
-
 """
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -73,6 +42,7 @@ from tensorflow.python.util.all_util import remove_undocumented
 # pylint: disable=unused-import
 from tensorflow.python.framework.test_util import assert_equal_graph_def
 from tensorflow.python.framework.test_util import TensorFlowTestCase as TestCase
+from tensorflow.python.framework.test_util import gpu_device_name
 
 from tensorflow.python.ops.gradient_checker import compute_gradient_error
 from tensorflow.python.ops.gradient_checker import compute_gradient
@@ -137,15 +107,6 @@ def is_gpu_available(cuda_only=False):
   else:
     return any((x.device_type == 'GPU' or x.device_type == 'SYCL')
                for x in _device_lib.list_local_devices())
-
-
-def gpu_device_name():
-  """Returns the name of a GPU device if available or the empty string."""
-  for x in _device_lib.list_local_devices():
-    if x.device_type == 'GPU' or x.device_type == 'SYCL':
-      return x.name
-  return ''
-
 
 _allowed_symbols = [
     # We piggy-back googletest documentation.

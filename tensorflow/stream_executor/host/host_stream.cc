@@ -46,9 +46,9 @@ bool HostStream::EnqueueTask(std::function<void()> task) {
 
 void HostStream::BlockUntilDone() {
   mutex_lock lock(mu_);
-  completion_condition_.wait(lock, [this]() {
-    return pending_tasks_ == 0;
-  });
+  while (pending_tasks_ != 0) {
+    completion_condition_.wait(lock);
+  }
 }
 
 }  // namespace host

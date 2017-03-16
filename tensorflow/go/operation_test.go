@@ -81,19 +81,37 @@ func TestOperationOutputListSize(t *testing.T) {
 	}
 }
 
-func TestOutputShape(t *testing.T) {
+func TestOperationShapeAttribute(t *testing.T) {
+	g := NewGraph()
+	_, err := g.AddOperation(OpSpec{
+		Type: "Placeholder",
+		Attrs: map[string]interface{}{
+			"dtype": Float,
+			"shape": MakeShape(-1, 3),
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// If and when the API to get attributes is added, check that here.
+}
+
+func TestOutputDataTypeAndShape(t *testing.T) {
 	graph := NewGraph()
 	testdata := []struct {
 		Value interface{}
 		Shape []int64
+		dtype DataType
 	}{
 		{ // Scalar
 			int64(0),
 			[]int64{},
+			Int64,
 		},
 		{ // Vector
-			[]int64{1, 2, 3},
+			[]int32{1, 2, 3},
 			[]int64{3},
+			Int32,
 		},
 		{ // Matrix
 			[][]float64{
@@ -101,6 +119,7 @@ func TestOutputShape(t *testing.T) {
 				{4, 5, 6},
 			},
 			[]int64{2, 3},
+			Double,
 		},
 	}
 	for idx, test := range testdata {
@@ -109,16 +128,16 @@ func TestOutputShape(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			shape, err := c.Shape()
-			if err != nil {
-				t.Fatal(err)
+			if got, want := c.DataType(), test.dtype; got != want {
+				t.Errorf("Got DataType %v, want %v", got, want)
 			}
-			if got, want := len(shape), len(test.Shape); got != want {
+			shape := c.Shape()
+			if got, want := shape.NumDimensions(), len(test.Shape); got != want {
 				t.Fatalf("Got a shape with %d dimensions, want %d", got, want)
 			}
-			for i := 0; i < len(shape); i++ {
-				if got, want := shape[i], test.Shape[i]; got != want {
-					t.Errorf("Got %d, want %d for dimension #%d/%d", got, want, i, len(shape))
+			for i := 0; i < len(test.Shape); i++ {
+				if got, want := shape.Size(i), test.Shape[i]; got != want {
+					t.Errorf("Got %d, want %d for dimension #%d/%d", got, want, i, len(test.Shape))
 				}
 			}
 		})
@@ -132,8 +151,8 @@ func TestOutputShape(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if shape, err := placeholder.Shape(); err == nil {
-		t.Errorf("Got shape %v, wanted error", shape)
+	if shape := placeholder.Shape(); shape.NumDimensions() != -1 {
+		t.Errorf("Got shape %v, wanted an unknown number of dimensions", shape)
 	}
 }
 

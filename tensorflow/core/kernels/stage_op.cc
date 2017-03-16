@@ -99,6 +99,9 @@ REGISTER_KERNEL_BUILDER(Name("Stage").Device(DEVICE_CPU), StageOp);
 #if GOOGLE_CUDA
 REGISTER_KERNEL_BUILDER(Name("Stage").Device(DEVICE_GPU), StageOp);
 #endif
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(Name("Stage").Device(DEVICE_SYCL), StageOp);
+#endif // TENSORFLOW_USE_SYCL
 
 class UnstageOp : public OpKernel {
  public:
@@ -113,10 +116,10 @@ class UnstageOp : public OpKernel {
     Buffer::Tuple tuple;
     buf->Get(&tuple);
     OP_REQUIRES(
-        ctx, tuple.size() == ctx->num_outputs(),
+        ctx, tuple.size() == (size_t)ctx->num_outputs(),
         errors::InvalidArgument("Mismatch stage/unstage: ", tuple.size(),
                                 " vs. ", ctx->num_outputs()));
-    for (int i = 0; i < tuple.size(); ++i) {
+    for (size_t i = 0; i < tuple.size(); ++i) {
       ctx->set_output(i, tuple[i]);
     }
   }
@@ -126,5 +129,8 @@ REGISTER_KERNEL_BUILDER(Name("Unstage").Device(DEVICE_CPU), UnstageOp);
 #if GOOGLE_CUDA
 REGISTER_KERNEL_BUILDER(Name("Unstage").Device(DEVICE_GPU), UnstageOp);
 #endif
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(Name("Unstage").Device(DEVICE_SYCL), UnstageOp);
+#endif // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

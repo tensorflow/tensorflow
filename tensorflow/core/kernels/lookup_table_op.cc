@@ -779,7 +779,16 @@ class LookupTableInsertOp : public OpKernel {
     const Tensor& keys = ctx->input(1);
     const Tensor& values = ctx->input(2);
     OP_REQUIRES_OK(ctx, table->CheckKeyAndValueTensorsForInsert(keys, values));
+
+    int64 memory_used_before = 0;
+    if (ctx->track_allocations()) {
+      memory_used_before = table->MemoryUsed();
+    }
     OP_REQUIRES_OK(ctx, table->Insert(ctx, keys, values));
+    if (ctx->track_allocations()) {
+      ctx->record_host_persistent_memory_allocation(table->MemoryUsed() -
+                                                    memory_used_before);
+    }
   }
 };
 
@@ -839,7 +848,16 @@ class LookupTableImportOp : public OpKernel {
     const Tensor& keys = ctx->input(1);
     const Tensor& values = ctx->input(2);
     OP_REQUIRES_OK(ctx, table->CheckKeyAndValueTensorsForImport(keys, values));
+
+    int memory_used_before = 0;
+    if (ctx->track_allocations()) {
+      memory_used_before = table->MemoryUsed();
+    }
     OP_REQUIRES_OK(ctx, table->ImportValues(ctx, keys, values));
+    if (ctx->track_allocations()) {
+      ctx->record_host_persistent_memory_allocation(table->MemoryUsed() -
+                                                    memory_used_before);
+    }
   }
 };
 
@@ -861,7 +879,9 @@ REGISTER_KERNEL(string, float);
 REGISTER_KERNEL(string, int32);
 REGISTER_KERNEL(string, int64);
 REGISTER_KERNEL(int64, string);
+REGISTER_KERNEL(int64, int64);
 REGISTER_KERNEL(string, string);
+REGISTER_KERNEL(string, bool);
 
 #undef REGISTER_KERNEL
 
@@ -878,6 +898,7 @@ REGISTER_KERNEL(string, string);
 REGISTER_KERNEL(string, float);
 REGISTER_KERNEL(string, int64);
 REGISTER_KERNEL(int64, string);
+REGISTER_KERNEL(string, bool);
 
 #undef REGISTER_KERNEL
 
@@ -894,6 +915,7 @@ REGISTER_KERNEL(int64, string);
 REGISTER_KERNEL(string, float);
 REGISTER_KERNEL(string, int64);
 REGISTER_KERNEL(int64, string);
+REGISTER_KERNEL(string, bool);
 
 #undef REGISTER_KERNEL
 
@@ -911,6 +933,8 @@ REGISTER_KERNEL(int64, int64);
 REGISTER_KERNEL(int64, float);
 REGISTER_KERNEL(int64, double);
 REGISTER_KERNEL(string, float);
+REGISTER_KERNEL(string, bool);
+REGISTER_KERNEL(int64, bool);
 
 #undef REGISTER_KERNEL
 

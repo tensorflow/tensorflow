@@ -292,8 +292,8 @@ do_buildifier(){
 }
 
 do_external_licenses_check(){
-  echo "Running do_external_licenses_check"
-  echo ""
+  BUILD_TARGET="$1"
+  LICENSES_TARGET="$2"
 
   EXTERNAL_LICENSES_CHECK_START_TIME=$(date +'%s')
 
@@ -302,8 +302,8 @@ do_external_licenses_check(){
   MISSING_LICENSES_FILE="$(mktemp)_missing_licenses.log"
   EXTRA_LICENSES_FILE="$(mktemp)_extra_licenses.log"
 
-  echo "Getting external dependencies for //tensorflow/tools/pip_package:build_pip_package."
- bazel query 'attr("licenses", "notice", deps(//tensorflow/tools/pip_package:build_pip_package))' --no_implicit_deps --no_host_deps --keep_going \
+  echo "Getting external dependencies for ${BUILD_TARGET}"
+ bazel query "attr('licenses', 'notice', deps(${BUILD_TARGET}))" --no_implicit_deps --no_host_deps --keep_going \
   | egrep -v "^//tensorflow" \
   | sed -e 's|:.*||' \
   | sort \
@@ -311,8 +311,8 @@ do_external_licenses_check(){
   | tee ${EXTERNAL_DEPENDENCIES_FILE}
 
   echo
-  echo "Getting list of external licenses."
-  bazel query 'deps(//tensorflow/tools/pip_package:licenses)' --no_implicit_deps --no_host_deps --keep_going \
+  echo "Getting list of external licenses mentioned in ${LICENSES_TARGET}."
+  bazel query "deps(${LICENSES_TARGET})" --no_implicit_deps --no_host_deps --keep_going \
   | egrep -v "^//tensorflow" \
   | sed -e 's|:.*||' \
   | sort \
@@ -331,7 +331,7 @@ do_external_licenses_check(){
   echo
 
   if [[ -s ${MISSING_LICENSES_FILE} ]] || [[ -s ${EXTRA_LICENSES_FILE} ]] ; then
-    echo "FAIL: pip package external dependencies vs licenses mismatch."
+    echo "FAIL: mismatch in packaged licenses and external dependencies"
     if [[ -s ${MISSING_LICENSES_FILE} ]] ; then
       echo "Missing the licenses for the following external dependencies:"
       cat ${MISSING_LICENSES_FILE}
@@ -355,6 +355,29 @@ do_external_licenses_check(){
   fi
 }
 
+do_pip_package_licenses_check() {
+  echo "Running do_pip_package_licenses_check"
+  echo ""
+  do_external_licenses_check \
+    "//tensorflow/tools/pip_package:build_pip_package" \
+    "//tensorflow/tools/pip_package:licenses"
+}
+
+do_lib_package_licenses_check() {
+  echo "Running do_lib_package_licenses_check"
+  echo ""
+  do_external_licenses_check \
+    "//tensorflow:libtensorflow.so" \
+    "//tensorflow/tools/lib_package:clicenses_generate"
+}
+
+do_java_package_licenses_check() {
+  echo "Running do_java_package_licenses_check"
+  echo ""
+  do_external_licenses_check \
+    "//tensorflow/java:libtensorflow_jni.so" \
+    "//tensorflow/tools/lib_package:jnilicenses_generate"
+}
 
 # Run bazel build --nobuild to test the validity of the BUILD files
 do_bazel_nobuild() {
@@ -376,8 +399,8 @@ do_bazel_nobuild() {
 }
 
 # Supply all sanity step commands and descriptions
-SANITY_STEPS=("do_pylint PYTHON2" "do_pylint PYTHON3" "do_buildifier" "do_bazel_nobuild" "do_external_licenses_check")
-SANITY_STEPS_DESC=("Python 2 pylint" "Python 3 pylint" "buildifier check" "bazel nobuild" "external dependencies licenses check")
+SANITY_STEPS=("do_pylint PYTHON2" "do_pylint PYTHON3" "do_buildifier" "do_bazel_nobuild" "do_pip_package_licenses_check" "do_lib_package_licenses_check" "do_java_package_licenses_check")
+SANITY_STEPS_DESC=("Python 2 pylint" "Python 3 pylint" "buildifier check" "bazel nobuild" "pip: license check for external dependencies" "C library: license check for external dependencies" "Java Native Library: license check for external dependencies")
 
 INCREMENTAL_FLAG=""
 

@@ -19,10 +19,18 @@ import android.content.res.AssetManager;
 import android.graphics.Bitmap;
 import android.graphics.RectF;
 import android.os.Trace;
+import java.io.BufferedReader;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.PriorityQueue;
+import java.util.StringTokenizer;
+import org.tensorflow.Graph;
+import org.tensorflow.Operation;
 import org.tensorflow.contrib.android.TensorFlowInferenceInterface;
 import org.tensorflow.demo.env.Logger;
 
@@ -74,45 +82,96 @@ public class TensorFlowMultiBoxDetector implements Classifier {
       final AssetManager assetManager,
       final String modelFilename,
       final String locationFilename,
-      final int numLocations,
-      final int inputSize,
       final int imageMean,
       final float imageStd,
       final String inputName,
-      final String outputName) {
-    TensorFlowMultiBoxDetector d = new TensorFlowMultiBoxDetector();
-    d.inputName = inputName;
-    d.inputSize = inputSize;
-    d.imageMean = imageMean;
-    d.imageStd = imageStd;
-    d.numLocations = numLocations;
-
-    d.boxPriors = new float[numLocations * 8];
-
-    d.loadCoderOptions(assetManager, locationFilename, d.boxPriors);
-
-    // Pre-allocate buffers.
-    d.outputNames = outputName.split(",");
-    d.intValues = new int[inputSize * inputSize];
-    d.floatValues = new float[inputSize * inputSize * 3];
-    d.outputScores = new float[numLocations];
-    d.outputLocations = new float[numLocations * 4];
+      final String outputLocationsName,
+      final String outputScoresName) {
+    final TensorFlowMultiBoxDetector d = new TensorFlowMultiBoxDetector();
 
     d.inferenceInterface = new TensorFlowInferenceInterface();
-
-    final int status = d.inferenceInterface.initializeTensorFlow(assetManager, modelFilename);
-    if (status != 0) {
-      LOGGER.e("TF init status: " + status);
-      throw new RuntimeException("TF init status (" + status + ") != 0");
+    if (d.inferenceInterface.initializeTensorFlow(assetManager, modelFilename) != 0) {
+      throw new RuntimeException("TF initialization failed");
     }
+
+    final Graph g = d.inferenceInterface.graph();
+
+    d.inputName = inputName;
+    // The inputName node has a shape of [N, H, W, C], where
+    // N is the batch size
+    // H = W are the height and width
+    // C is the number of channels (3 for our purposes - RGB)
+    final Operation inputOp = g.operation(inputName);
+    if (inputOp == null) {
+      throw new RuntimeException("Failed to find input Node '" + inputName + "'");
+    }
+    d.inputSize = (int) inputOp.output(0).shape().size(1);
+    d.imageMean = imageMean;
+    d.imageStd = imageStd;
+    // The outputScoresName node has a shape of [N, NumLocations], where N
+    // is the batch size.
+    final Operation outputOp = g.operation(outputScoresName);
+    if (outputOp == null) {
+      throw new RuntimeException("Failed to find output Node '" + outputScoresName + "'");
+    }
+    d.numLocations = (int) outputOp.output(0).shape().size(1);
+
+    d.boxPriors = new float[d.numLocations * 8];
+
+    try {
+      d.loadCoderOptions(assetManager, locationFilename, d.boxPriors);
+    } catch (final IOException e) {
+      throw new RuntimeException("Error initializing box priors from " + locationFilename);
+    }
+
+    // Pre-allocate buffers.
+    d.outputNames = new String[] {outputLocationsName, outputScoresName};
+    d.intValues = new int[d.inputSize * d.inputSize];
+    d.floatValues = new float[d.inputSize * d.inputSize * 3];
+    d.outputScores = new float[d.numLocations];
+    d.outputLocations = new float[d.numLocations * 4];
+
     return d;
   }
 
   private TensorFlowMultiBoxDetector() {}
 
-  // Load BoxCoderOptions from native code.
-  private native void loadCoderOptions(
-      AssetManager assetManager, String locationFilename, float[] boxPriors);
+  private void loadCoderOptions(
+      final AssetManager assetManager, final String locationFilename, final float[] boxPriors)
+      throws IOException {
+    // Try to be intelligent about opening from assets or sdcard depending on prefix.
+    final String assetPrefix = "file:///android_asset/";
+    InputStream is;
+    if (locationFilename.startsWith(assetPrefix)) {
+      is = assetManager.open(locationFilename.split(assetPrefix)[1]);
+    } else {
+      is = new FileInputStream(locationFilename);
+    }
+
+    // Read values. Number of values per line doesn't matter, as long as they are separated
+    // by commas and/or whitespace, and there are exactly numLocations * 8 values total.
+    // Values are in the order mean, std for each consecutive corner of each box, for a total of 8
+    // per location.
+    final BufferedReader reader = new BufferedReader(new InputStreamReader(is));
+    int priorIndex = 0;
+    String line;
+    while ((line = reader.readLine()) != null) {
+      final StringTokenizer st = new StringTokenizer(line, ", ");
+      while (st.hasMoreTokens()) {
+        final String token = st.nextToken();
+        try {
+          final float number = Float.parseFloat(token);
+          boxPriors[priorIndex++] = number;
+        } catch (final NumberFormatException e) {
+          // Silently ignore.
+        }
+      }
+    }
+    if (priorIndex != boxPriors.length) {
+      throw new RuntimeException(
+          "BoxPrior length mismatch: " + priorIndex + " vs " + boxPriors.length);
+    }
+  }
 
   private float[] decodeLocationsEncoding(final float[] locationEncoding) {
     final float[] locations = new float[locationEncoding.length];
@@ -216,7 +275,7 @@ public class TensorFlowMultiBoxDetector implements Classifier {
   }
 
   @Override
-  public void enableStatLogging(boolean debug) {
+  public void enableStatLogging(final boolean debug) {
     inferenceInterface.enableStatLogging(debug);
   }
 

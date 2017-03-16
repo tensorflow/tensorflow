@@ -182,7 +182,8 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
                        int64 execution_count,
                        SimpleGraphExecutionState* execution_state,
                        PerStepState* pss, CallOptions* opts,
-                       const RunStepRequestWrapper& req, RunStepResponse* resp,
+                       const RunStepRequestWrapper& req,
+                       MutableRunStepResponseWrapper* resp,
                        CancellationManager* cm, const bool is_last_partial_run);
 
   // Calls workers to cleanup states for the step "step_id".  Calls
@@ -193,7 +194,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
   void ProcessStats(int64 step_id, PerStepState* pss,
                     SimpleGraphExecutionState* execution_state,
                     ProfileHandler* ph, const RunOptions& options,
-                    RunStepResponse* resp);
+                    RunMetadata* resp);
   void ProcessDeviceStats(ProfileHandler* ph,
                           const SimpleGraphExecutionState* execution_state,
                           const DeviceStepStats& ds, bool is_rpc);
@@ -382,7 +383,6 @@ Status MasterSession::ReffedClientGraph::DoBuildPartitions(
 
   // Partition the graph.
   Status s;
-  std::unordered_map<string, GraphDef> graph_partitions;
   return Partition(popts, &client_graph_->graph, out_partitions);
 }
 
@@ -464,7 +464,7 @@ class RunManyGraphs {
   struct Call {
     CallOptions opts;
     std::unique_ptr<MutableRunGraphRequestWrapper> req;
-    RunGraphResponse resp;
+    std::unique_ptr<MutableRunGraphResponseWrapper> resp;
   };
   Call* get(int index) { return &calls_[index]; }
 
@@ -513,7 +513,7 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
     const MasterEnv* env, int64 step_id, int64 execution_count,
     SimpleGraphExecutionState* execution_state, PerStepState* pss,
     CallOptions* call_opts, const RunStepRequestWrapper& req,
-    RunStepResponse* resp, CancellationManager* cm,
+    MutableRunStepResponseWrapper* resp, CancellationManager* cm,
     const bool is_last_partial_run) {
   VLOG(2) << "RunPartitions step_id " << step_id << " execution_count "
           << execution_count;
@@ -550,6 +550,7 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
     const Part& part = partitions_[i];
     RunManyGraphs::Call* c = calls.get(i);
     c->req.reset(part.worker->CreateRunGraphRequest());
+    c->resp.reset(part.worker->CreateRunGraphResponse());
     if (is_partial_) {
       c->req->set_is_partial(is_partial_);
       c->req->set_is_last_partial_run(is_last_partial_run);
@@ -614,7 +615,7 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
     RunManyGraphs::Call* call = calls.get(i);
     TRACEPRINTF("Partition %d %s", i, part.name.c_str());
     part.worker->RunGraphAsync(
-        &call->opts, call->req.get(), &call->resp,
+        &call->opts, call->req.get(), call->resp.get(),
         std::bind(&RunManyGraphs::WhenDone, &calls, i, std::placeholders::_1));
   }
 
@@ -639,29 +640,28 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
   if (status.ok()) {
     for (int i = 0; i < num; ++i) {
       const Part& part = partitions_[i];
-      for (auto& recv : *(calls.get(i)->resp.mutable_recv())) {
-        auto* ret = resp->add_tensor();
-        auto iter = part.key_fetch.find(recv.name());
+      for (size_t j = 0; j < calls.get(i)->resp->num_recvs(); ++j) {
+        auto iter = part.key_fetch.find(calls.get(i)->resp->recv_key(j));
         if (iter == part.key_fetch.end()) {
-          status.Update(
-              errors::Internal("Unexpected fetch key: ", recv.name()));
+          status.Update(errors::Internal("Unexpected fetch key: ",
+                                         calls.get(i)->resp->recv_key(j)));
           break;
         }
         const string& fetch = iter->second;
-        ret->set_name(fetch);
-        if (!CopyIfNeeded(recv.mutable_tensor(), ret->mutable_tensor())) {
-          status.Update(
-              errors::Internal("Unexpected unparseable tensor: ", recv.name()));
+        status.Update(resp->AddTensorFromRunGraphResponse(
+            fetch, calls.get(i)->resp.get(), j));
+        if (!status.ok()) {
           break;
         }
       }
-      if (pss->collect_timeline && calls.get(i)->resp.has_step_stats()) {
-        pss->step_stats[i].Swap(calls.get(i)->resp.mutable_step_stats());
+      if (pss->collect_timeline) {
+        pss->step_stats[i].Swap(calls.get(i)->resp->mutable_step_stats());
       }
-      if (pss->collect_costs && calls.get(i)->resp.has_cost_graph()) {
-        for (int j = 0; j < calls.get(i)->resp.cost_graph().node_size(); ++j) {
+      if (pss->collect_costs) {
+        CostGraphDef* cost_graph = calls.get(i)->resp->mutable_cost_graph();
+        for (int j = 0; j < cost_graph->node_size(); ++j) {
           resp->mutable_metadata()->mutable_cost_graph()->add_node()->Swap(
-              calls.get(i)->resp.mutable_cost_graph()->mutable_node(j));
+              cost_graph->mutable_node(j));
         }
       }
     }
@@ -739,7 +739,7 @@ void MasterSession::ReffedClientGraph::CleanupPartitionsAsync(
 void MasterSession::ReffedClientGraph::ProcessStats(
     int64 step_id, PerStepState* pss,
     SimpleGraphExecutionState* execution_state, ProfileHandler* ph,
-    const RunOptions& options, RunStepResponse* resp) {
+    const RunOptions& options, RunMetadata* resp) {
   if (!pss->collect_costs && !pss->collect_timeline) return;
 
   // Out-of-band logging data is collected now, during post-processing.
@@ -775,7 +775,7 @@ void MasterSession::ReffedClientGraph::ProcessStats(
     // Copy the stats back, but only for on-demand profiling to avoid slowing
     // down calls that trigger the automatic profiling.
     if (options.trace_level() == RunOptions::FULL_TRACE) {
-      resp->mutable_metadata()->mutable_step_stats()->Swap(&step_stats_proto);
+      resp->mutable_step_stats()->Swap(&step_stats_proto);
     }
   }
 }
@@ -1171,7 +1171,7 @@ Status MasterSession::PartialRunSetup(const PartialRunSetupRequest* req,
 }
 
 Status MasterSession::Run(CallOptions* opts, const RunStepRequestWrapper& req,
-                          RunStepResponse* resp) {
+                          MutableRunStepResponseWrapper* resp) {
   UpdateLastAccessTime();
   {
     mutex_lock l(mu_);
@@ -1239,7 +1239,7 @@ Status MasterSession::BuildAndRegisterPartitions(ReffedClientGraph* rcg) {
 
 Status MasterSession::DoPartialRun(CallOptions* opts,
                                    const RunStepRequestWrapper& req,
-                                   RunStepResponse* resp) {
+                                   MutableRunStepResponseWrapper* resp) {
   const string& prun_handle = req.partial_run_handle();
   RunState* run_state = nullptr;
   {
@@ -1328,7 +1328,7 @@ Status MasterSession::DoPartialRun(CallOptions* opts,
     rcg->Ref();
     rcg->ProcessStats(run_state->step_id, &run_state->pss,
                       execution_state_.get(), run_state->ph.get(),
-                      req.options(), resp);
+                      req.options(), resp->mutable_metadata());
     rcg->CleanupPartitionsAsync(
         run_state->step_id, [this, rcg, prun_handle](const Status& s) {
           if (!s.ok()) {
@@ -1342,9 +1342,9 @@ Status MasterSession::DoPartialRun(CallOptions* opts,
   return s;
 }
 
-Status MasterSession::DoRunWithLocalExecution(CallOptions* opts,
-                                              const RunStepRequestWrapper& req,
-                                              RunStepResponse* resp) {
+Status MasterSession::DoRunWithLocalExecution(
+    CallOptions* opts, const RunStepRequestWrapper& req,
+    MutableRunStepResponseWrapper* resp) {
   VLOG(2) << "DoRunWithLocalExecution "
           << "req: " << req.DebugString();
   PerStepState pss;
@@ -1386,26 +1386,43 @@ Status MasterSession::DoRunWithLocalExecution(CallOptions* opts,
     pss.collect_rpcs = ph->should_collect_rpcs();
   }
 
-  TF_RETURN_IF_ERROR(rcg->RunPartitions(env_, step_id, count,
-                                        execution_state_.get(), &pss, opts, req,
-                                        resp, cancellation_manager_, false));
+  Status s =
+      rcg->RunPartitions(env_, step_id, count, execution_state_.get(), &pss,
+                         opts, req, resp, cancellation_manager_, false);
+  if (s.ok()) {
+    pss.end_micros = Env::Default()->NowMicros();
 
-  pss.end_micros = Env::Default()->NowMicros();
-
-  // Schedule post-processing and cleanup to be done asynchronously.
+    // Schedule post-processing and cleanup to be done asynchronously.
+    rcg->ProcessStats(step_id, &pss, execution_state_.get(), ph.get(),
+                      req.options(), resp->mutable_metadata());
+  } else if (errors::IsCancelled(s)) {
+    mutex_lock l(mu_);
+    if (closed_) {
+      if (garbage_collected_) {
+        s = errors::Cancelled(
+            "Step was cancelled because the session was garbage collected due "
+            "to inactivity.");
+      } else {
+        s = errors::Cancelled(
+            "Step was cancelled by an explicit call to `Session::Close()`.");
+      }
+    }
+  }
   rcg->Ref();
-  rcg->ProcessStats(step_id, &pss, execution_state_.get(), ph.get(),
-                    req.options(), resp);
   rcg->CleanupPartitionsAsync(step_id, [rcg](const Status& s) {
     if (!s.ok()) {
       LOG(ERROR) << "Cleanup partition error: " << s;
     }
     rcg->Unref();
   });
-  return Status::OK();
+  return s;
 }
 
 Status MasterSession::Close() {
+  {
+    mutex_lock l(mu_);
+    closed_ = true;  // All subsequent calls to Run() or Extend() will fail.
+  }
   cancellation_manager_->StartCancel();
   std::vector<ReffedClientGraph*> to_unref;
   {
@@ -1413,12 +1430,21 @@ Status MasterSession::Close() {
     while (num_running_ != 0) {
       num_running_is_zero_.wait(l);
     }
-    closed_ = true;  // All subsequent calls to Run() or Extend() will fail.
     ClearRunsTable(&to_unref, &run_graphs_);
     ClearRunsTable(&to_unref, &partial_run_graphs_);
   }
   for (ReffedClientGraph* rcg : to_unref) rcg->Unref();
   return Status::OK();
+}
+
+void MasterSession::GarbageCollect() {
+  {
+    mutex_lock l(mu_);
+    closed_ = true;
+    garbage_collected_ = true;
+  }
+  cancellation_manager_->StartCancel();
+  Unref();
 }
 
 MasterSession::RunState::RunState(const std::vector<string>& input_names,

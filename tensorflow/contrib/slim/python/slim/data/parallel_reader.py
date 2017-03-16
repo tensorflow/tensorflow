@@ -210,7 +210,8 @@ def parallel_read(data_sources,
   data_files = get_data_files(data_sources)
   with ops.name_scope(scope, 'parallel_read'):
     filename_queue = tf_input.string_input_producer(
-        data_files, num_epochs=num_epochs, shuffle=shuffle, name='filenames')
+        data_files, num_epochs=num_epochs, shuffle=shuffle, seed=seed,
+        name='filenames')
     dtypes = dtypes or [tf_dtypes.string, tf_dtypes.string]
     if shuffle:
       common_queue = data_flow_ops.RandomShuffleQueue(

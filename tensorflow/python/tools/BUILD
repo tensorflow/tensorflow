@@ -9,6 +9,18 @@ exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
 
+# Transitive dependencies of this target will be included in the pip package.
+py_library(
+    name = "tools_pip",
+    deps = [
+        ":freeze_graph",
+        ":inspect_checkpoint",
+        ":optimize_for_inference",
+        ":print_selective_registration_header",
+        ":strip_unused",
+    ],
+)
+
 py_library(
     name = "freeze_graph_lib",
     srcs = ["freeze_graph.py"],
@@ -152,13 +164,24 @@ py_test(
     ],
 )
 
+py_library(
+    name = "selective_registration_header_lib",
+    srcs = ["selective_registration_header_lib.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/python",  # TODO(b/34059704): remove when fixed
+        "//tensorflow/python:platform",
+    ],
+)
+
 py_binary(
     name = "print_selective_registration_header",
     srcs = ["print_selective_registration_header.py"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/python",  # TODO(b/34059704): remove when fixed
+        ":selective_registration_header_lib",
         "//tensorflow/python:platform",
     ],
 )
@@ -168,7 +191,7 @@ py_test(
     srcs = ["print_selective_registration_header_test.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":print_selective_registration_header",
+        ":selective_registration_header_lib",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:platform",
     ],

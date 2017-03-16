@@ -21,18 +21,11 @@ ubuntu_version=$(cat /etc/issue | grep -i ubuntu | awk '{print $2}' | \
 # Install dependencies from ubuntu deb repository.
 apt-get update
 
-set +e
-ffmpeg_location=$(which ffmpeg)
-if [[ -z "$ffmpeg_location"  && "$ubuntu_version" == "14" ]]; then
-  set -e
+if [[ "$ubuntu_version" == "14" ]]; then
   # specifically for trusty linked from ffmpeg.org
   add-apt-repository -y ppa:mc3man/trusty-media
   apt-get update
   apt-get dist-upgrade -y
-  apt-get install -y ffmpeg libav-tools
-else
-  set -e
-  apt-get install -y ffmpeg libav-tools
 fi
 
 apt-get install -y --no-install-recommends \
@@ -41,6 +34,7 @@ apt-get install -y --no-install-recommends \
     build-essential \
     cmake \
     curl \
+    ffmpeg \
     git \
     libcurl4-openssl-dev \
     libtool \
@@ -48,10 +42,10 @@ apt-get install -y --no-install-recommends \
     openjdk-8-jre-headless \
     pkg-config \
     python-dev \
-    python-pip \
+    python-setuptools \
     python-virtualenv \
     python3-dev \
-    python3-pip \
+    python3-setuptools \
     rsync \
     sudo \
     swig \

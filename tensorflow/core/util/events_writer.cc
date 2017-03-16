@@ -97,7 +97,7 @@ void EventsWriter::WriteSerializedEvent(StringPiece event_str) {
     }
   }
   num_outstanding_events_++;
-  recordio_writer_->WriteRecord(event_str);
+  recordio_writer_->WriteRecord(event_str).IgnoreError();
 }
 
 // NOTE(touts); This is NOT the function called by the Python code.

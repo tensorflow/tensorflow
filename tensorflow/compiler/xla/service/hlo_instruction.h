@@ -24,11 +24,12 @@ limitations under the License.
 #include <functional>
 #include <list>
 #include <memory>
-#include <set>
 #include <string>
 #include <tuple>
+#include <unordered_set>
 #include <vector>
 
+#include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -78,11 +79,6 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateRng(
       const Shape& shape, RandomDistribution distribution,
       tensorflow::gtl::ArraySlice<HloInstruction*> parameters);
-
-  // Creates an n-ary elementwise operation.
-  static std::unique_ptr<HloInstruction> CreateNary(
-      const Shape& shape, HloOpcode opcode,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands);
 
   // Creates a unary instruction (one operand).
   // Precondition: opcode must be a legitimate unary operation.
@@ -137,15 +133,25 @@ class HloInstruction {
 
   // Creates an infeed instruction, which reads data of the given shape from the
   // Infeed interface of the device.
-  static std::unique_ptr<HloInstruction> CreateInfeed(const Shape& shape);
+  static std::unique_ptr<HloInstruction> CreateInfeed(const Shape& shape,
+                                                      const string& config);
 
-  // Creates a send instruction, which sends the operand data to a receive
-  // instruction in another computation.
-  static std::unique_ptr<HloInstruction> CreateSend(HloInstruction* operand);
+  // Creates an outfeed instruction, which outputs data.
+  static std::unique_ptr<HloInstruction> CreateOutfeed(
+      const Shape& shape, HloInstruction* operand,
+      tensorflow::StringPiece outfeed_config);
 
-  // Creates a receive instruction, which receives data of the given shape
-  // from a send instruction in another computation.
-  static std::unique_ptr<HloInstruction> CreateRecv(const Shape& shape);
+  // Creates a send instruction with the given channel id, which sends the
+  // operand data to a unique receive instruction in another computation that
+  // has the same channel id.
+  static std::unique_ptr<HloInstruction> CreateSend(HloInstruction* operand,
+                                                    int64 channel_id);
+
+  // Creates a receive instruction with the given channel id, which receives
+  // data of the given shape from a unique send instruction in another
+  // computation that has the same channel id.
+  static std::unique_ptr<HloInstruction> CreateRecv(const Shape& shape,
+                                                    int64 channel_id);
 
   // Creates a slice instruction, where the operand is sliced by the given
   // start/limit indices.
@@ -298,17 +304,37 @@ class HloInstruction {
   int64 user_count() const { return users_.size(); }
 
   // Returns the users of this instruction.
-  const std::set<HloInstruction*>& users() const { return users_; }
+  const std::vector<HloInstruction*>& users() const { return users_; }
 
-  // Returns the set of control predecessors of this instruction. Control
-  // predecessors are the instructions that must be scheduled before the
-  // current instruction.
-  const std::set<HloInstruction*>& control_predecessors() const {
-    return control_predecessors_;
+  // Returns true if this instruction is a user of 'instruction'.
+  bool IsUserOf(const HloInstruction* instruction) const {
+    return ContainsKey(instruction->user_set_, this);
   }
 
-  // Adds the given instruction to the set of control predecessors.
-  void AddControlPredecessor(HloInstruction* instruction);
+  // Adds a control dependency from this instruction to the given
+  // instruction. This instruction becomes a control predecessor of
+  // 'instruction', and 'instruction' becomes a control successor of this
+  // instruction. Returns an error status if either of the given instructions
+  // does not belong to the same computation.
+  //
+  // This is used to enforce an additional ordering requirement that is not
+  // captured by normal data dependencies, such as ordering among Send or Recv
+  // operations to avoid deadlock.
+  Status AddControlDependencyTo(HloInstruction* instruction);
+
+  // Removes a previously added control dependency from this instruction to
+  // 'instruction'.
+  Status RemoveControlDependencyTo(HloInstruction* instruction);
+
+  // Returns the set of control predecessors (successors) of this
+  // instruction. Control predecessors (sucessors) must execute before (after)
+  // the current instruction.
+  const std::vector<HloInstruction*>& control_predecessors() const {
+    return control_predecessors_;
+  }
+  const std::vector<HloInstruction*>& control_successors() const {
+    return control_successors_;
+  }
 
   // Returns true if "other" performs the same computation as this instruction.
   // Layout of the instructions' output array is not considered.
@@ -328,15 +354,15 @@ class HloInstruction {
   // Replaces the use of this instruction in "user" with "new_producer". Note
   // that there might be multiple uses of this instruction in "user"; all will
   // be replaced.
-  void ReplaceUseWith(HloInstruction* user, HloInstruction* new_producer);
+  Status ReplaceUseWith(HloInstruction* user, HloInstruction* new_producer);
 
   // Replaces the specified operand with new_operand.
-  void ReplaceOperandWith(int64 operand_no, HloInstruction* new_operand);
+  Status ReplaceOperandWith(int64 operand_no, HloInstruction* new_operand);
 
   // Replaces all uses of this instruction with the new producer. If
   // new_producer is a user of this instruction then new_producer remains a use
   // of this instruction to avoid introducing cycles into the graph.
-  void ReplaceAllUsesWith(HloInstruction* new_producer);
+  Status ReplaceAllUsesWith(HloInstruction* new_producer);
 
   // Detaches an instruction from its operands. That is, remove the instruction
   // from each operand's user set. This should only be called prior to
@@ -348,17 +374,31 @@ class HloInstruction {
   // complete.
   Status Accept(DfsHloVisitor* visitor, bool call_finish_visit = true);
 
+  // Same as Accept() above, but the order of operand and control predecessor
+  // visitation is determined by the given operand order; if compare(A, B) ==
+  // true, A is visited before B.
+  using CompareFunction =
+      std::function<bool(const HloInstruction*, const HloInstruction*)>;
+  Status AcceptWithOperandOrder(DfsHloVisitor* visitor,
+                                const CompareFunction& operand_order,
+                                bool call_finish_visit = true);
+
   // Performs a postorder DFS visit using this node as the root. Calls the given
   // visitor function at each instruction.
-  Status Accept(FunctionVisitor::VisitorFunction visitor_func);
+  Status Accept(const FunctionVisitor::VisitorFunction& visitor_func);
 
   // Visits all instructions rooted at this instruction using the given visitor
-  // in the given order. 'order' must contain exactly the set of instructions
+  // in the given order. 'order' must contain at least the set of instructions
   // rooted at this node (ie, those accessible from a DFS traversal from this
-  // instruction). 'order' must also be a valid topological sort of these
-  // instructions (defs appear before uses).
+  // instruction). Instructions contained in 'order' which are not in the set of
+  // instructions rooted at this node are ignored. 'order' must also be a valid
+  // topological sort of these instructions (defs appear before uses) though
+  // need not be a DFS post-order.
   Status AcceptOrdered(DfsHloVisitor* visitor,
                        const std::vector<const HloInstruction*>& order);
+
+  // Visit this instruction and only this instruction with the given visitor.
+  Status Visit(DfsHloVisitor* visitor);
 
   // Returns the literal associated with this instruction.
   //
@@ -405,6 +445,14 @@ class HloInstruction {
   // Precondition: opcode() == HloOpcode::kCustomCall
   const string& custom_call_target() const;
 
+  // Returns the config for the Outfeed instruction.
+  // Precondition: opcode() == HloOpcode::kOutfeed
+  const string& outfeed_config() const;
+
+  // Returns the shape for the Outfeed instruction.
+  // Precondition: opcode() == HloOpcode::kOutfeed
+  const Shape& outfeed_shape() const;
+
   // Gets/sets the while_condition or while_body HloComputation for While. The
   // setters should only be called by HloModule or HloComputation methods.
   //
@@ -428,10 +476,17 @@ class HloInstruction {
   string SignatureString() const;
 
   // Returns a debugging string that represents this instruction.
-  string ToString() const;
+  string ToString(bool compact_operands = false) const;
 
   // As ToString, but returns a shorter string.
   string ToShortString() const;
+
+  // Returns a category for the HLO. This could be something like "convolution"
+  // or "elementwise".
+  string ToCategory() const;
+
+  // Returns the string concatenation of parent name and this instructions name.
+  string FullyQualifiedName() const;
 
   // Returns a logging instruction, if the output of this instruction is logged.
   //
@@ -445,7 +500,12 @@ class HloInstruction {
   //
   // Precondition: opcode() == HloOpcode::kSend or HloOpcode::kRecv
   int64 channel_id() const { return channel_id_; }
-  void set_channel_id(int64 id) { channel_id_ = id; }
+
+  // Returns the infeed configuration string. The infeed configuration includes
+  // any metadata needed for the backend compiler (e.g., infeed buffer address)
+  // and is target-dependent.
+  string infeed_config() const { return infeed_config_; }
+  void set_infeed_config(const string& config) { infeed_config_ = config; }
 
   // Returns a tag to be used in tracing.
   //
@@ -487,10 +547,22 @@ class HloInstruction {
   // Precondition: opcode() == HloOpcode::kFusion
   HloInstruction* fused_parameter(int64 parameter_number) const;
 
+  // Returns the vector of fused parameters inside this fusion instruction.
+  //
+  // Precondition: opcode() == HloOpcode::kFusion
+  const std::vector<HloInstruction*>& fused_parameters() const;
+
   FusionKind fusion_kind() const {
     CHECK_EQ(HloOpcode::kFusion, opcode_);
     return fusion_kind_;
   }
+
+  // Merges the fused instructions from 'instruction_to_merge' into the
+  // fused instruction set of 'this', updating operands as necessary.
+  //
+  // Precondition: opcode() == HloOpcode::kFusion
+  // Predondition: 'instruction_to_merge' must be an operand of 'this'.
+  void MergeFusionInstruction(HloInstruction* instruction_to_merge);
 
   // Fuses the given instruction in this fusion instruction. instruction_to_fuse
   // is cloned and the clone is placed in the fusion
@@ -575,10 +647,11 @@ class HloInstruction {
       const Shape& shape,
       tensorflow::gtl::ArraySlice<HloInstruction*> operands);
 
-  // Computes and returns the computations this instruction calls (if any). This
-  // includes computations called by fused instructions inside of a fusion
-  // instruction.
-  std::set<HloComputation*> MakeCalledComputationsSet() const;
+  // Returns the computations this instruction calls (if any). This includes
+  // computations called by fused instructions inside of a fusion instruction.
+  const std::vector<HloComputation*>& called_computations() const {
+    return called_computations_;
+  }
 
   // Returns true if this instruction performs an elementwise operation on
   // `operand_idx`-th operand. An instruction is elementwise on an operand iff,
@@ -622,6 +695,10 @@ class HloInstruction {
   // Sets the string identifier for this instruction.
   void set_name(const string& name) { name_ = name; }
 
+  // Sets the debug metadata for this instruction.
+  void set_metadata(const OpMetadata& metadata) { metadata_ = metadata; }
+  const OpMetadata& metadata() const { return metadata_; }
+
   // Set/get the computation containing this instruction. set_parent should only
   // be called by HloComputation methods which add/remove instructions to
   // computations.
@@ -635,6 +712,11 @@ class HloInstruction {
 
  private:
   enum class UseKind { kNoUse, kReuse, kUsePermutingElements, kUse };
+
+  // Creates an n-ary elementwise operation.
+  static std::unique_ptr<HloInstruction> CreateNary(
+      const Shape& shape, HloOpcode opcode,
+      tensorflow::gtl::ArraySlice<HloInstruction*> operands);
 
   // Appends operand to the list of operands and adds this instruction as a user
   // of the operand.
@@ -663,10 +745,8 @@ class HloInstruction {
 
   // Inner DFS traversal function -- this function being called (rather than
   // Accept above) allows us to distinguish the root of the traversal.
-  Status AcceptInternal(DfsHloVisitor* visitor);
-
-  // Inner DFS traversal function called when visiting this HloInstruction.
-  Status AcceptInternalVisit(DfsHloVisitor* visitor);
+  Status AcceptInternal(DfsHloVisitor* visitor,
+                        const CompareFunction* operand_order);
 
   // CHECKs various invariants of a fusion instruction.
   void CheckFusionInstruction() const;
@@ -677,6 +757,9 @@ class HloInstruction {
 
   // Returns how this instruction uses elements of its `i`th operand.
   UseKind OperandElementUse(int64 i) const;
+
+  // Shape of outfeed request.
+  Shape outfeed_shape_;
 
   // Result shape of this instruction.
   Shape shape_;
@@ -735,31 +818,42 @@ class HloInstruction {
   int64 parameter_number_ = 0;
   string parameter_name_;
 
-  // Computation to apply, only present for kCall, kMap, kReduce and
-  // kReduceWindow.
-  HloComputation* to_apply_ = nullptr;
-
   // Name of a global symbol to call, only present for kCustomCall.
   string custom_call_target_;
 
-  // Computation for condition and body of kWhile, only present for kWhile.
-  HloComputation* condition_ = nullptr;
-  HloComputation* body_ = nullptr;
+  // Computations called by this instruction.
+  std::vector<HloComputation*> called_computations_;
 
-  // Computation for select and scatter, only present for
-  // kSelectAndScatter.
-  HloComputation* select_ = nullptr;
-  HloComputation* scatter_ = nullptr;
+  // Indices of computations in called_computations_ for instructions which call
+  // multiple computations.
+  enum {
+    // kWhile computations.
+    kBodyComputationIndex = 0,
+    kConditionComputationIndex = 1,
+
+    // kSelectAndScatter computations.
+    kSelectComputationIndex = 0,
+    kScatterComputationIndex = 1,
+  };
+
+  // Outfeed configuration information, only present for kOutfeed.
+  string outfeed_config_;
 
   // Instruction operands.
   std::vector<HloInstruction*> operands_;
 
   // The users of this instruction. Users are HLOs where this instruction is an
-  // operand.
-  std::set<HloInstruction*> users_;
+  // operand. The vector users_ and the set user_set_ contain identical
+  // members. The set enables fast membership testing and the vector enables
+  // fast, stable iteration.
+  std::vector<HloInstruction*> users_;
+  std::unordered_set<const HloInstruction*> user_set_;
 
   // The set of control predecessors of this instruction.
-  std::set<HloInstruction*> control_predecessors_;
+  std::vector<HloInstruction*> control_predecessors_;
+
+  // The set of control successors of this instruction.
+  std::vector<HloInstruction*> control_successors_;
 
   // A trace instruction that consumes this instruction.
   //
@@ -775,11 +869,17 @@ class HloInstruction {
   // Only present for kSend or kRecv.
   int64 channel_id_ = -1;
 
+  // The string representation of the infeed configuration.
+  string infeed_config_;
+
   // String identifier for instruction.
   string name_;
 
   // The computation in which this instruction is contained.
   HloComputation* parent_ = nullptr;
+
+  // Metadata for debugging.
+  OpMetadata metadata_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(HloInstruction);
 };

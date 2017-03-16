@@ -19,7 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from collections import namedtuple
-from six import text_type
+import functools
 
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -101,6 +101,9 @@ class GridRNNCell(rnn.RNNCell):
       output_is_tuple: If True, the output is a tuple of the outputs of the
         recurrent dimensions. If False, they are concatenated along the
         column axis. The later behavior will soon be deprecated.
+        
+    Raises:
+      TypeError: if cell_fn does not return an RNNCell instance.
     """
     if not state_is_tuple:
       logging.warn("%s: Using a concatenated state is slower and will soon be "
@@ -121,29 +124,29 @@ class GridRNNCell(rnn.RNNCell):
     self._output_is_tuple = output_is_tuple
 
     if cell_fn is None:
-      self._cell = rnn.LSTMCell(num_units=num_units)
+      my_cell_fn = functools.partial(
+          rnn.LSTMCell,
+          num_units=num_units,
+          state_is_tuple=False)
     else:
-      try:
-        self._cell = cell_fn(num_units)
-      except TypeError as ex:
-        if 'takes exactly 2 arguments' in text_type(ex):
-          logging.warn("%s: Using cell_fn with 2 arguments is deprecated."
-                       " Use cell_fn with 1 argument instead.", self)
-          cell_input_size = (self._config.num_dims - 1) * num_units
-          self._cell = cell_fn(num_units, cell_input_size)
-        else:
-          raise
-      if not isinstance(self._cell, rnn.RNNCell):
-        raise ValueError('cell_fn must return an object of type RNNCell')
+      my_cell_fn = lambda: cell_fn(num_units)
+    if tied:
+      self._cells = [my_cell_fn()] * num_dims
+    else:
+      self._cells = [my_cell_fn() for _ in range(num_dims)]
+    if not isinstance(self._cells[0], rnn.RNNCell):
+      raise TypeError(
+          'cell_fn must return an RNNCell instance, saw: %s'
+          % type(self._cells[0]))
 
     if self._output_is_tuple:
-      self._output_size = tuple(self._cell.output_size
+      self._output_size = tuple(self._cells[0].output_size
                                 for _ in self._config.outputs)
     else:
-      self._output_size = self._cell.output_size * len(self._config.outputs)
+      self._output_size = self._cells[0].output_size * len(self._config.outputs)
 
     if self._state_is_tuple:
-      self._state_size = tuple(self._cell.state_size
+      self._state_size = tuple(self._cells[0].state_size
                                for _ in self._config.recurrents)
     else:
       self._state_size = self._cell_state_size() * len(self._config.recurrents)
@@ -187,18 +190,20 @@ class GridRNNCell(rnn.RNNCell):
 
       # propagate along dimensions, first for non-priority dimensions
       # then priority dimensions
-      _propagate(conf.non_priority, conf, self._cell, c_prev, m_prev,
+      _propagate(conf.non_priority, conf, self._cells, c_prev, m_prev,
                  new_output, new_state, True)
-      _propagate(conf.priority, conf, self._cell, c_prev, m_prev, new_output,
-                 new_state, False)
+      _propagate(conf.priority, conf, self._cells,
+                 c_prev, m_prev, new_output, new_state, False)
 
       # collect outputs and states
       output_tensors = [new_output[i] for i in self._config.outputs]
       if self._output_is_tuple:
         output = tuple(output_tensors)
       else:
-        output = array_ops.zeros([0, 0], dtype) if len(output_tensors) == 0 \
-          else array_ops.concat(output_tensors, 1)
+        if len(output_tensors) == 0:
+          output = array_ops.zeros([0, 0], dtype)
+        else:
+          output = array_ops.concat(output_tensors, 1)
 
       if self._state_is_tuple:
         states = tuple(new_state[i] for i in self._config.recurrents)
@@ -206,11 +211,13 @@ class GridRNNCell(rnn.RNNCell):
         # concat each state first, then flatten the whole thing
         state_tensors = [x for i in self._config.recurrents
                          for x in new_state[i]]
-        states = array_ops.zeros([0, 0], dtype) if len(state_tensors) == 0 \
-          else array_ops.concat(state_tensors, 1)
+        if len(state_tensors) == 0:
+          states = array_ops.zeros([0, 0], dtype)
+        else:
+          states = array_ops.concat(state_tensors, 1)
 
     return output, states
-
+           
   def _extract_states(self, state):
     """Extract the cell and previous output tensors from the given state
     """
@@ -250,22 +257,22 @@ class GridRNNCell(rnn.RNNCell):
           m_prev[recurrent_dim] = array_ops.slice(state, [0, start_idx],
                                                   [-1, conf.num_units])
     return c_prev, m_prev, cell_output_size
-
+            
   def _project_input(self, inputs, c_prev, m_prev, with_c):
     """Fills in c_prev and m_prev with projected input, for input dimensions
     """
     conf = self._config
 
-    if inputs is not None and inputs.get_shape().with_rank(2)[1].value > 0 \
-        and len(conf.inputs) > 0:
+    if (inputs is not None and inputs.get_shape().with_rank(2)[1].value > 0
+        and len(conf.inputs) > 0):
       if isinstance(inputs, tuple):
         if len(conf.inputs) != len(inputs):
           raise ValueError("Expect inputs as a tuple of {} "
                            "tensors".format(len(conf.inputs)))
         input_splits = inputs
       else:
-        input_splits = array_ops.split(inputs, len(conf.inputs), 1)
-
+        input_splits = array_ops.split(
+            value=inputs, num_or_size_splits=len(conf.inputs), axis=1)
       input_sz = input_splits[0].get_shape().with_rank(2)[1].value
 
       for i, j in enumerate(conf.inputs):
@@ -283,8 +290,10 @@ class GridRNNCell(rnn.RNNCell):
   def _cell_state_size(self):
     """Total size of the state of the inner cell used in this grid
     """
-    return (sum(self._cell.state_size) if
-            isinstance(self._cell.state_size, tuple) else self._cell.state_size)
+    state_sizes = self._cells[0].state_size
+    if isinstance(state_sizes, tuple):
+      return sum(state_sizes)
+    return state_sizes
 
 """Specialized cells, for convenience
 """
@@ -511,7 +520,7 @@ def _parse_rnn_config(num_dims, ls_input_dims, ls_output_dims, ls_priority_dims,
       num_units=num_units)
 
 
-def _propagate(dim_indices, conf, cell, c_prev, m_prev, new_output, new_state,
+def _propagate(dim_indices, conf, cells, c_prev, m_prev, new_output, new_state,
                first_call):
   """Propagates through all the cells in dim_indices dimensions.
   """
@@ -562,4 +571,5 @@ def _propagate(dim_indices, conf, cell, c_prev, m_prev, new_output, new_state,
                              'recurrent/cell_{}'.format(i)):
         if conf.tied and not (first_call and i == dim_indices[0]):
           vs.get_variable_scope().reuse_variables()
+        cell = cells[i]
         new_output[d.idx], new_state[d.idx] = cell(cell_inputs, cell_state)

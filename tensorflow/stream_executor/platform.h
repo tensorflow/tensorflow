@@ -20,10 +20,10 @@ limitations under the License.
 #define TENSORFLOW_STREAM_EXECUTOR_PLATFORM_H_
 
 #include <map>
-#include "tensorflow/stream_executor/platform/port.h"
 
 #include "tensorflow/stream_executor/device_options.h"
 #include "tensorflow/stream_executor/lib/status.h"
+#include "tensorflow/stream_executor/lib/status_macros.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/plugin.h"

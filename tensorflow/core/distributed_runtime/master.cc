@@ -101,8 +101,7 @@ void Master::GC() {
                        << "Note that if you are starting multiple replicas "
                        << "on a staggered delay, session_gc_seconds may need "
                        << "to be raised.";
-          sess->Close();
-          sess->Unref();
+          sess->GarbageCollect();
         });
       }
     }
@@ -120,6 +119,13 @@ class DeviceFinder {
     TF_RETURN_IF_ERROR(finder.Wait());
     finder.GetRemoteDevices(env->local_devices, out_remote);
     return Status::OK();
+  }
+
+  static void GetRemoteWorkers(
+      const protobuf::RepeatedPtrField<string>& device_filters, MasterEnv* env,
+      std::vector<string>* workers) {
+    DeviceFinder finder(device_filters, env);
+    *workers = finder.targets_;
   }
 
  private:
@@ -297,7 +303,7 @@ void Master::CreateSession(const CreateSessionRequest* req,
           const_cast<CreateSessionRequest*>(req)->mutable_graph_def();
       Status create_status = session->Create(gdef);
       if (!create_status.ok()) {
-        session->Close();
+        session->Close().IgnoreError();
         session->Unref();
         done(create_status);
         return;
@@ -356,7 +362,7 @@ void Master::PartialRunSetup(const PartialRunSetupRequest* req,
 }
 
 void Master::RunStep(CallOptions* opts, const RunStepRequestWrapper* req,
-                     RunStepResponse* resp, MyClosure done) {
+                     MutableRunStepResponseWrapper* resp, MyClosure done) {
   mu_.lock();
   uint64 start_time = env_->env->NowMicros();
   MasterSession* session = gtl::FindPtrOrNull(sessions_, req->session_handle());
@@ -428,7 +434,7 @@ void Master::ListDevices(const ListDevicesRequest* req,
 
 void Master::CleanupWorkers(const ResetRequest& reset) {
   std::vector<string> worker_names;
-  env_->worker_cache->ListWorkers(&worker_names);
+  DeviceFinder::GetRemoteWorkers(reset.device_filters(), env_, &worker_names);
   if (!worker_names.empty()) {
     const int num_workers = worker_names.size();
     std::vector<Notification> n(num_workers);

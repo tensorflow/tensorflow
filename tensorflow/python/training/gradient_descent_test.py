@@ -111,14 +111,14 @@ class GradientDescentOptimizerTest(test.TestCase):
         var1 = resource_variable_ops.ResourceVariable([3.0], dtype=dtype)
         x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
         pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)
-        pred = math_ops.matmul(var0, x) + var1
+        pred += var1
         loss = pred * pred
         sgd_op = gradient_descent.GradientDescentOptimizer(1.0).minimize(loss)
         # TODO(apassos) calling initialize_resources on all resources here
         # doesn't work because the sessions and graph are reused across unit
         # tests and this would mean trying to reinitialize variables. Figure out
         # a long-term solution for this.
-        resources.initialize_resources([var0, var1]).run()
+        variables.global_variables_initializer().run()
         # Fetch params to validate initial values
         self.assertAllCloseAccordingToType([[1.0, 2.0]], var0.eval())
         self.assertAllCloseAccordingToType([3.0], var1.eval())

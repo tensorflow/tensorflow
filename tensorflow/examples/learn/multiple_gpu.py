@@ -60,7 +60,7 @@ def my_model(features, target):
   with tf.device('/gpu:2'):
     # Compute logits (1 per class) and compute loss.
     logits = layers.fully_connected(features, 3, activation_fn=None)
-    loss = tf.contrib.losses.softmax_cross_entropy(logits, target)
+    loss = tf.losses.softmax_cross_entropy(target, logits)
 
     # Create a tensor for training op.
     train_op = tf.contrib.layers.optimize_loss(

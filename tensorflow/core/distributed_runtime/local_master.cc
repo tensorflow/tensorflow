@@ -27,7 +27,8 @@ namespace {
 Status WaitForNotification(CallOptions* call_options, Notification* n) {
   int64 timeout_in_ms = call_options->GetTimeout();
   if (timeout_in_ms > 0) {
-    bool notified = WaitForNotificationWithTimeout(n, timeout_in_ms);
+    int64 timeout_in_us = timeout_in_ms * 1000;
+    bool notified = WaitForNotificationWithTimeout(n, timeout_in_us);
     if (!notified) {
       call_options->StartCancel();
       // The call has borrowed pointers to the request and response
@@ -85,7 +86,7 @@ Status LocalMaster::PartialRunSetup(CallOptions* call_options,
 
 Status LocalMaster::RunStep(CallOptions* call_options,
                             RunStepRequestWrapper* request,
-                            RunStepResponse* response) {
+                            MutableRunStepResponseWrapper* response) {
   Notification n;
   Status ret;
   master_impl_->RunStep(call_options, request, response,
@@ -99,6 +100,10 @@ Status LocalMaster::RunStep(CallOptions* call_options,
 
 MutableRunStepRequestWrapper* LocalMaster::CreateRunStepRequest() {
   return new InMemoryRunStepRequest;
+}
+
+MutableRunStepResponseWrapper* LocalMaster::CreateRunStepResponse() {
+  return new InMemoryRunStepResponse;
 }
 
 Status LocalMaster::CloseSession(CallOptions* call_options,

@@ -24,7 +24,9 @@ from tensorflow.contrib.training.python.training import bucket_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
@@ -62,6 +64,10 @@ class BucketTest(test.TestCase):
     self.scalar_int_feed = array_ops.placeholder(dtypes_lib.int32, ())
     self.unk_int64_feed = array_ops.placeholder(dtypes_lib.int64, (None,))
     self.vec3_str_feed = array_ops.placeholder(dtypes_lib.string, (3,))
+    self.sparse_c = sparse_tensor.SparseTensor(
+        indices=[[0]],
+        values=[1.0],
+        dense_shape=[1])
 
     self._coord = coordinator.Coordinator()
     # Make capacity very large so we can feed all the inputs in the
@@ -95,7 +101,7 @@ class BucketTest(test.TestCase):
 
   def testSingleBucket(self):
     bucketed_dynamic = bucket_ops.bucket(
-        tensors=[self.scalar_int, self.unk_int64, self.vec3_str],
+        tensors=[self.scalar_int, self.unk_int64, self.vec3_str, self.sparse_c],
         which_bucket=constant_op.constant(0),
         num_buckets=2,
         batch_size=32,
@@ -103,7 +109,7 @@ class BucketTest(test.TestCase):
         dynamic_pad=True)
     # Check shape inference on bucketing outputs
     self.assertAllEqual(
-        [[32], [32, None], [32, 3]],
+        [[32], [32, None], [32, 3], [None, None]],
         [out.get_shape().as_list() for out in bucketed_dynamic[1]])
     with self.test_session() as sess:
       for v in range(32):
@@ -121,7 +127,7 @@ class BucketTest(test.TestCase):
       self.assertEqual(2, len(bucketed_values))
 
       # Count number of bucket_tensors.
-      self.assertEqual(3, len(bucketed_values[1]))
+      self.assertEqual(4, len(bucketed_values[1]))
 
       # Ensure bucket 0 was used for all minibatch entries.
       self.assertAllEqual(0, bucketed_values[0])
@@ -139,10 +145,55 @@ class BucketTest(test.TestCase):
       self.assertAllEqual(expected_unk_int64, bucketed_values[1][1][resort])
       self.assertAllEqual(expected_vec3_str, bucketed_values[1][2][resort])
 
+  def testBatchSizePerBucket(self):
+    which_bucket = control_flow_ops.cond(self.scalar_int < 5,
+                                         lambda: constant_op.constant(0),
+                                         lambda: constant_op.constant(1))
+    batch_sizes = [5, 10]
+    bucketed_dynamic = bucket_ops.bucket(
+        tensors=[self.scalar_int, self.unk_int64, self.vec3_str, self.sparse_c],
+        which_bucket=which_bucket,
+        num_buckets=2,
+        batch_size=batch_sizes,
+        num_threads=1,
+        dynamic_pad=True)
+    # Check shape inference on bucketing outputs
+    self.assertAllEqual(
+        [[None], [None, None], [None, 3], [None, None]],
+        [out.get_shape().as_list() for out in bucketed_dynamic[1]])
+    with self.test_session() as sess:
+      for v in range(15):
+        self.enqueue_inputs(sess, {
+            self.scalar_int_feed: v,
+            self.unk_int64_feed: v * [v],
+            self.vec3_str_feed: 3 * [str(v)]
+        })
+      self.start_queue_runners(sess)
+
+      # Get two minibatches (one with small values, one with large).
+      bucketed_values_0 = sess.run(bucketed_dynamic)
+      bucketed_values_1 = sess.run(bucketed_dynamic)
+
+      # Figure out which output has the small values
+      if bucketed_values_0[0] < 5:
+        bucketed_values_large, bucketed_values_small = (bucketed_values_1,
+                                                        bucketed_values_0)
+      else:
+        bucketed_values_small, bucketed_values_large = (bucketed_values_0,
+                                                        bucketed_values_1)
+
+      # Ensure bucket 0 was used for all minibatch entries.
+      self.assertAllEqual(0, bucketed_values_small[0])
+      self.assertAllEqual(1, bucketed_values_large[0])
+
+      # Check that the batch sizes differ per bucket
+      self.assertEqual(5, len(bucketed_values_small[1][0]))
+      self.assertEqual(10, len(bucketed_values_large[1][0]))
+
   def testEvenOddBuckets(self):
     which_bucket = (self.scalar_int % 2)
     bucketed_dynamic = bucket_ops.bucket(
-        tensors=[self.scalar_int, self.unk_int64, self.vec3_str],
+        tensors=[self.scalar_int, self.unk_int64, self.vec3_str, self.sparse_c],
         which_bucket=which_bucket,
         num_buckets=2,
         batch_size=32,
@@ -150,7 +201,7 @@ class BucketTest(test.TestCase):
         dynamic_pad=True)
     # Check shape inference on bucketing outputs
     self.assertAllEqual(
-        [[32], [32, None], [32, 3]],
+        [[32], [32, None], [32, 3], [None, None]],
         [out.get_shape().as_list() for out in bucketed_dynamic[1]])
     with self.test_session() as sess:
       for v in range(64):
@@ -170,8 +221,8 @@ class BucketTest(test.TestCase):
       self.assertEqual(2, len(bucketed_values_1))
 
       # Count number of bucket_tensors.
-      self.assertEqual(3, len(bucketed_values_0[1]))
-      self.assertEqual(3, len(bucketed_values_1[1]))
+      self.assertEqual(4, len(bucketed_values_0[1]))
+      self.assertEqual(4, len(bucketed_values_1[1]))
 
       # Figure out which output has the even values (there's
       # randomness due to the multithreaded nature of bucketing)

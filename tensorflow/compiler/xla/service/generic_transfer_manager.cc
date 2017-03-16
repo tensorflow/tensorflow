@@ -105,7 +105,8 @@ GenericTransferManager::ShallowCopyTupleFromDevice(
   // a vector of void* pointers.
   std::vector<void*> element_pointers(ShapeUtil::TupleElementCount(shape),
                                       nullptr);
-  int64 tuple_size = ShapeUtil::ByteSizeOf(shape);
+  int64 tuple_size =
+      ShapeUtil::ByteSizeOf(shape, /*pointer_size=*/sizeof(void*));
   auto copy_status = executor->SynchronousMemcpyD2H(source, tuple_size,
                                                     element_pointers.data());
   if (!copy_status.ok()) {
@@ -117,12 +118,13 @@ GenericTransferManager::ShallowCopyTupleFromDevice(
 
   // Create a DeviceMemoryBase from each void* pointer.
   std::vector<se::DeviceMemoryBase> destination;
-  for (int i = 0; i < element_pointers.size(); ++i) {
+  for (std::vector<void*>::size_type i = 0; i < element_pointers.size(); ++i) {
     if (element_pointers[i] == nullptr &&
         !ShapeUtil::HasZeroElements(shape.tuple_shapes(i))) {
       return FailedPrecondition("tuple contains nullptr at element %d", i);
     }
-    int64 buffer_size = ShapeUtil::ByteSizeOf(shape.tuple_shapes(i));
+    int64 buffer_size = ShapeUtil::ByteSizeOf(shape.tuple_shapes(i),
+                                              /*pointer_size=*/sizeof(void*));
     destination.emplace_back(element_pointers[i], buffer_size);
   }
   return std::move(destination);
@@ -160,6 +162,12 @@ Status GenericTransferManager::TransferLiteralToInfeed(
   return Unimplemented("Infeed is not supported on GPU (b/30467474)");
 }
 
+Status GenericTransferManager::TransferLiteralFromOutfeed(
+    perftools::gputools::StreamExecutor* executor, const Shape& literal_shape,
+    Literal* literal) {
+  return Unimplemented("Outfeed is not supported on CPU/GPU (b/30467474)");
+}
+
 Status GenericTransferManager::ResetDevices(
     tensorflow::gtl::ArraySlice<perftools::gputools::StreamExecutor*>
         executors) {
@@ -168,7 +176,7 @@ Status GenericTransferManager::ResetDevices(
 }
 
 int64 GenericTransferManager::GetByteSizeRequirement(const Shape& shape) {
-  return ShapeUtil::ByteSizeOf(shape);
+  return ShapeUtil::ByteSizeOf(shape, /*pointer_size=*/sizeof(void*));
 }
 
 }  // namespace xla

@@ -41,11 +41,14 @@ RAND_SEED = 42
 
 def main(_):
   # Import data
-  mnist = input_data.read_data_sets(FLAGS.data_dir, one_hot=True)
+  mnist = input_data.read_data_sets(FLAGS.data_dir,
+                                    one_hot=True,
+                                    fake_data=FLAGS.fake_data)
 
   def feed_dict(train):
-    if train:
-      xs, ys = mnist.train.next_batch(FLAGS.train_batch_size, fake_data=False)
+    if train or FLAGS.fake_data:
+      xs, ys = mnist.train.next_batch(FLAGS.train_batch_size,
+                                      fake_data=FLAGS.fake_data)
     else:
       xs, ys = mnist.test.images, mnist.test.labels
 
@@ -156,6 +159,13 @@ if __name__ == "__main__":
       type=str,
       default="curses",
       help="Command-line user interface type (curses | readline)")
+  parser.add_argument(
+      "--fake_data",
+      type="bool",
+      nargs="?",
+      const=True,
+      default=False,
+      help="Use fake MNIST data for unit testing")
   parser.add_argument(
       "--debug",
       type="bool",

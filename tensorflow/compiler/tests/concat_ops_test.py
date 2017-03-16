@@ -25,7 +25,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
-from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
@@ -274,36 +273,6 @@ class ConcatTest(XLATestCase):
                 dxs = sess.run(gradients_impl.gradients(c, xs, dc))
                 self.assertAllEqual(dc, np.concatenate(dxs, axis=axis))
 
-  def testTensorConcatDim0Grad(self):
-    x_shapes = [[20, 7, 3], [10, 7, 3], [14, 7, 3]]
-    output_shape = [44, 7, 3]
-    x_vals = [
-        np.random.random_sample(x_shape).astype(np.float32)
-        for x_shape in x_shapes
-    ]
-    with self.test_session():
-      with self.test_scope():
-        xs = [constant_op.constant(x_val) for x_val in x_vals]
-        output = array_ops.concat(xs, 0)
-        err = gradient_checker.compute_gradient_error(xs, x_shapes, output,
-                                                      output_shape)
-    self.assertLess(err, 1e-4)
-
-  def testTensorConcatDim1Grad(self):
-    x_shapes = [[20, 7, 3], [20, 3, 3], [20, 1, 3]]
-    output_shape = [20, 11, 3]
-    x_vals = [
-        np.random.random_sample(x_shape).astype(np.float32)
-        for x_shape in x_shapes
-    ]
-    with self.test_session():
-      with self.test_scope():
-        xs = [constant_op.constant(x_val) for x_val in x_vals]
-        output = array_ops.concat(xs, 1)
-        err = gradient_checker.compute_gradient_error(xs, x_shapes, output,
-                                                      output_shape)
-    self.assertLess(err, 1e-4)
-
   def testConcatTuple(self):
     c1 = np.random.rand(4, 4).astype(np.float32)
     c2 = np.random.rand(4, 4).astype(np.float32)
@@ -319,7 +288,7 @@ class ConcatTest(XLATestCase):
         scalar = constant_op.constant(7)
         dim = array_ops.placeholder(dtypes.int32)
         with self.assertRaisesRegexp(
-            ValueError, r"Can't concatenate scalars \(use tf\.pack instead\)"):
+            ValueError, r"Can't concatenate scalars \(use tf\.stack instead\)"):
           array_ops.concat([scalar, scalar, scalar], dim)
 
 

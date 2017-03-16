@@ -18,13 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
-
 import numpy as np
 
 from tensorflow.contrib import layers
@@ -182,26 +175,19 @@ class ResnetUtilsTest(test.TestCase):
       _, end_points = self._resnet_plain(inputs, blocks, scope='tiny')
     expected = [
         'tiny/block1/unit_1/bottleneck_v1/shortcut',
-        'tiny/block1/unit_1/bottleneck_v1/shortcut/BatchNorm',
         'tiny/block1/unit_1/bottleneck_v1/conv1',
         'tiny/block1/unit_1/bottleneck_v1/conv2',
         'tiny/block1/unit_1/bottleneck_v1/conv3',
-        'tiny/block1/unit_1/bottleneck_v1/conv3/BatchNorm',
         'tiny/block1/unit_2/bottleneck_v1/conv1',
         'tiny/block1/unit_2/bottleneck_v1/conv2',
         'tiny/block1/unit_2/bottleneck_v1/conv3',
-        'tiny/block1/unit_2/bottleneck_v1/conv3/BatchNorm',
         'tiny/block2/unit_1/bottleneck_v1/shortcut',
-        'tiny/block2/unit_1/bottleneck_v1/shortcut/BatchNorm',
         'tiny/block2/unit_1/bottleneck_v1/conv1',
         'tiny/block2/unit_1/bottleneck_v1/conv2',
         'tiny/block2/unit_1/bottleneck_v1/conv3',
-        'tiny/block2/unit_1/bottleneck_v1/conv3/BatchNorm',
         'tiny/block2/unit_2/bottleneck_v1/conv1',
         'tiny/block2/unit_2/bottleneck_v1/conv2',
-        'tiny/block2/unit_2/bottleneck_v1/conv3',
-        'tiny/block2/unit_2/bottleneck_v1/conv3/BatchNorm'
-    ]
+        'tiny/block2/unit_2/bottleneck_v1/conv3']
     self.assertItemsEqual(expected, end_points)
 
   def _stack_blocks_nondense(self, net, blocks):

@@ -20,6 +20,7 @@ from __future__ import print_function
 
 # Add projects here, they will show up under tf.contrib.
 from tensorflow.contrib import bayesflow
+from tensorflow.contrib import cloud
 from tensorflow.contrib import compiler
 from tensorflow.contrib import copy_graph
 from tensorflow.contrib import crf
@@ -41,14 +42,17 @@ from tensorflow.contrib import linalg
 from tensorflow.contrib import linear_optimizer
 from tensorflow.contrib import lookup
 from tensorflow.contrib import losses
+from tensorflow.contrib import memory_stats
 from tensorflow.contrib import metrics
 from tensorflow.contrib import nn
 from tensorflow.contrib import opt
 from tensorflow.contrib import quantization
 from tensorflow.contrib import rnn
+from tensorflow.contrib import saved_model
 from tensorflow.contrib import seq2seq
 from tensorflow.contrib import slim
 from tensorflow.contrib import solvers
+from tensorflow.contrib import sparsemax
 from tensorflow.contrib import stat_summarizer
 from tensorflow.contrib import tensor_forest
 from tensorflow.contrib import tensorboard
@@ -58,3 +62,7 @@ from tensorflow.contrib import training
 from tensorflow.contrib import util
 from tensorflow.contrib.ndlstm import python as ndlstm
 from tensorflow.contrib.specs import python as specs
+
+del absolute_import
+del division
+del print_function

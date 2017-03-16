@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/subgraph.h"
@@ -40,8 +41,7 @@ namespace tensorflow {
 
 namespace {
 
-bool IsConstantFoldable(const FunctionLibraryDefinition* flib_def,
-                        const Node* n,
+bool IsConstantFoldable(const Node* n,
                         std::function<bool(const Node*)> consider) {
   if (n->op_def().is_stateful()) {
     return false;
@@ -63,13 +63,17 @@ bool IsConstantFoldable(const FunctionLibraryDefinition* flib_def,
   if (n->IsSink()) {
     return false;
   }
-  // For now, don't try to constant-fold functions. (They may be inlined, in
-  // which case they will become subject to constant-folding again.)
-  // TODO(phawkins): support constant-folding for functions; functions may
+  // Since constant-folding runs on the CPU, do not attempt to constant-fold
+  // operators that have no CPU kernel. Also implies that we will not
+  // constant-fold functions.
+  // TODO(phawkins): allow constant-folding for functions; functions may
   // be arbitrarily expensive to execute.
-  if (flib_def && flib_def->Find(n->type_string())) {
+  if (!FindKernelDef(DeviceType(DEVICE_CPU), n->def(), /*def=*/nullptr,
+                     /*kernel_class_name=*/nullptr)
+           .ok()) {
     return false;
   }
+
   return true;
 }
 
@@ -93,7 +97,7 @@ void FindConstantFoldableNodes(const Graph* graph,
         node_set.insert(n);
         nodes.push_back(n);
       }
-    } else if (IsConstantFoldable(flib_def, n, opts.consider)) {
+    } else if (IsConstantFoldable(n, opts.consider)) {
       // Check whether the set of this node's in_nodes is completely
       // included in the set of constant foldable nodes. If true,
       // then this node is also constant foldable.

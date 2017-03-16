@@ -16,7 +16,7 @@ Before running TensorBoard, make sure you have generated summary data in a log
 directory by creating a summary writer:
 
 ``` python
-# sess.graph_def is the graph definition; that enables the Graph Visualizer.
+# sess.graph contains the graph definition; that enables the Graph Visualizer.
 
 file_writer = tf.summary.FileWriter('/path/to/logs', sess.graph)
 ```
@@ -51,18 +51,18 @@ work, but there may be bugs or performance issues.
 
 The first step in using TensorBoard is acquiring data from your TensorFlow run.
 For this, you need [summary
-ops](https://www.tensorflow.org/versions/r0.12/api_docs/python/train.html#summary-operations).
+ops](https://www.tensorflow.org/versions/r1.0/api_docs/python/train.html#summary-operations).
 Summary ops are ops, like
-[`tf.matmul`](https://www.tensorflow.org/versions/r0.12/api_docs/python/math_ops.html#matmul)
+[`tf.matmul`](https://www.tensorflow.org/versions/r1.0/api_docs/python/math_ops.html#matmul)
 or
-[`tf.nn.relu`](https://www.tensorflow.org/versions/r0.12/api_docs/python/nn.html#relu),
+[`tf.nn.relu`](https://www.tensorflow.org/versions/r1.0/api_docs/python/nn.html#relu),
 which means they take in tensors, produce tensors, and are evaluated from within
 a TensorFlow graph. However, summary ops have a twist: the Tensors they produce
 contain serialized protobufs, which are written to disk and sent to TensorBoard.
 To visualize the summary data in TensorBoard, you should evaluate the summary
 op, retrieve the result, and then write that result to disk using a
 summary.FileWriter. A full explanation, with examples, is in [the
-tutorial](https://www.tensorflow.org/versions/r0.12/how_tos/summaries_and_tensorboard/index.html).
+tutorial](https://www.tensorflow.org/versions/r1.0/how_tos/summaries_and_tensorboard/index.html).
 
 ### Tags: Giving names to data
 
@@ -184,7 +184,7 @@ TensorFlow model. To get best use of the graph visualizer, you should use name
 scopes to hierarchically group the ops in your graph - otherwise, the graph may
 be difficult to decipher. For more information, including examples, see [the
 graph visualizer
-tutorial](https://www.tensorflow.org/versions/r0.12/how_tos/graph_viz/index.html#tensorboard-graph-visualization).
+tutorial](https://www.tensorflow.org/versions/r1.0/how_tos/graph_viz/index.html#tensorboard-graph-visualization).
 
 # Frequently Asked Questions
 

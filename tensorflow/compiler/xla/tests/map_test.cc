@@ -568,6 +568,53 @@ TEST_F(MapTestWithFullOpt, MapScalarPower) {
                              ErrorSpec(0.01f));
 }
 
+// Regression test for b/35786417, where the inliner would not notice the change
+// of parameter order inside the map.
+TEST_F(MapTestWithFullOpt, MapSubtractOppositeOrder) {
+  ComputationBuilder builder(client_, TestName());
+
+  auto sub_builder = builder.CreateSubBuilder("power");
+  auto x = sub_builder->Parameter(0, ShapeUtil::MakeShape(F32, {}), "x");
+  auto y = sub_builder->Parameter(1, ShapeUtil::MakeShape(F32, {}), "y");
+  sub_builder->Sub(y, x);  // note that this is y - x, not x - y
+  auto sub_opposite = sub_builder->BuildAndNoteError();
+
+  std::unique_ptr<Literal> param0_literal = LiteralUtil::CreateR0<float>(2.0f);
+  std::unique_ptr<Literal> param1_literal = LiteralUtil::CreateR0<float>(5.0f);
+  std::unique_ptr<GlobalData> param0_data =
+      client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
+  std::unique_ptr<GlobalData> param1_data =
+      client_->TransferToServer(*param1_literal).ConsumeValueOrDie();
+
+  auto param0 = builder.Parameter(0, param0_literal->shape(), "param0");
+  auto param1 = builder.Parameter(1, param1_literal->shape(), "param1");
+  builder.Map({param0, param1}, sub_opposite);
+
+  ComputeAndCompareR0<float>(
+      &builder, 3.0f, {param0_data.get(), param1_data.get()}, ErrorSpec(0.01f));
+}
+
+// Regression test for b/35786417, where the inliner would CHECK-fail due to the
+// mul inside the map having more parameters than the map does.
+TEST_F(MapTestWithFullOpt, MapSquare) {
+  ComputationBuilder builder(client_, TestName());
+
+  auto sub_builder = builder.CreateSubBuilder("power");
+  auto x = sub_builder->Parameter(0, ShapeUtil::MakeShape(F32, {}), "x");
+  sub_builder->Mul(x, x);
+  auto square = sub_builder->BuildAndNoteError();
+
+  std::unique_ptr<Literal> param0_literal = LiteralUtil::CreateR0<float>(10.0f);
+  std::unique_ptr<GlobalData> param0_data =
+      client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
+
+  auto param0 = builder.Parameter(0, param0_literal->shape(), "param0");
+  builder.Map({param0}, square);
+
+  ComputeAndCompareR0<float>(&builder, 100.0f, {param0_data.get()},
+                             ErrorSpec(0.01f));
+}
+
 }  // namespace
 }  // namespace xla
 

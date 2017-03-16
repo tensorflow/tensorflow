@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "tensorflow/examples/android/jni/object_tracking/geom.h"
 #include "tensorflow/examples/android/jni/object_tracking/integral_image.h"
-#include "tensorflow/examples/android/jni/object_tracking/log_streaming.h"
+#include "tensorflow/examples/android/jni/object_tracking/logging.h"
 #include "tensorflow/examples/android/jni/object_tracking/time_log.h"
 #include "tensorflow/examples/android/jni/object_tracking/utils.h"
 
@@ -57,8 +57,8 @@ class ObjectTracker {
                 ObjectDetectorBase* const detector);
   virtual ~ObjectTracker();
 
-  virtual void NextFrame(const uint8* const new_frame,
-                         const int64 timestamp,
+  virtual void NextFrame(const uint8_t* const new_frame,
+                         const int64_t timestamp,
                          const float* const alignment_matrix_2x3) {
     NextFrame(new_frame, NULL, timestamp, alignment_matrix_2x3);
   }
@@ -71,20 +71,19 @@ class ObjectTracker {
   // and the current frame.
   // Argument align_level is the pyramid level (where 0 == finest) that
   // the matrix is valid for.
-  virtual void NextFrame(const uint8* const new_frame,
-                         const uint8* const uv_frame,
-                         const int64 timestamp,
+  virtual void NextFrame(const uint8_t* const new_frame,
+                         const uint8_t* const uv_frame, const int64_t timestamp,
                          const float* const alignment_matrix_2x3);
 
-  virtual void RegisterNewObjectWithAppearance(
-      const std::string& id, const uint8* const new_frame,
-      const BoundingBox& bounding_box);
+  virtual void RegisterNewObjectWithAppearance(const std::string& id,
+                                               const uint8_t* const new_frame,
+                                               const BoundingBox& bounding_box);
 
   // Updates the position of a tracked object, given that it was known to be at
   // a certain position at some point in the past.
   virtual void SetPreviousPositionOfObject(const std::string& id,
                                            const BoundingBox& bounding_box,
-                                           const int64 timestamp);
+                                           const int64_t timestamp);
 
   // Sets the current position of the object in the most recent frame provided.
   virtual void SetCurrentPositionOfObject(const std::string& id,
@@ -96,7 +95,7 @@ class ObjectTracker {
   // Fills the given out_data buffer with the latest detected keypoint
   // correspondences, first scaled by scale_factor (to adjust for downsampling
   // that may have occurred elsewhere), then packed in a fixed-point format.
-  int GetKeypointsPacked(uint16* const out_data,
+  int GetKeypointsPacked(uint16_t* const out_data,
                          const float scale_factor) const;
 
   // Copy the keypoint arrays after computeFlow is called.
@@ -108,7 +107,7 @@ class ObjectTracker {
   // Returns the current position of a box, given that it was at a certain
   // position at the given time.
   BoundingBox TrackBox(const BoundingBox& region,
-                       const int64 timestamp) const;
+                       const int64_t timestamp) const;
 
   // Returns the number of frames that have been passed to NextFrame().
   inline int GetNumFrames() const {
@@ -153,7 +152,7 @@ class ObjectTracker {
   // object. If not, a new model may be created from the appearance at the
   // initial position and registered with the object detector.
   virtual TrackedObject* MaybeAddObject(const std::string& id,
-                                        const Image<uint8>& image,
+                                        const Image<uint8_t>& image,
                                         const BoundingBox& bounding_box,
                                         const ObjectModelBase* object_model);
 
@@ -197,7 +196,7 @@ class ObjectTracker {
   const int frame_width_;
   const int frame_height_;
 
-  int64 curr_time_;
+  int64_t curr_time_;
 
   int num_frames_;
 

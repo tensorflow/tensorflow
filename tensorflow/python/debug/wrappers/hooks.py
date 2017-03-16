@@ -19,8 +19,8 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.python.debug import debug_utils
-from tensorflow.python.debug import stepper
+from tensorflow.python.debug.lib import debug_utils
+from tensorflow.python.debug.lib import stepper
 from tensorflow.python.debug.wrappers import dumping_wrapper
 from tensorflow.python.debug.wrappers import framework
 from tensorflow.python.debug.wrappers import local_cli_wrapper
@@ -44,6 +44,28 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook,
 
     self._ui_type = ui_type
     self._wrapper_initialized = False
+    self._pending_tensor_filters = {}
+
+  def add_tensor_filter(self, filter_name, tensor_filter):
+    """Add a tensor filter.
+
+    See doc of `LocalCLIDebugWrapperSession.add_tensor_filter()` for details.
+    Override default behavior to accomodate the possibility of this method being
+    called prior to the initialization of the underlying
+    `LocalCLIDebugWrapperSession` object.
+
+    Args:
+      filter_name: See doc of `LocalCLIDebugWrapperSession.add_tensor_filter()`
+        for details.
+      tensor_filter: See doc of
+        `LocalCLIDebugWrapperSession.add_tensor_filter()` for details.
+    """
+
+    if self._wrapper_initialized:
+      local_cli_wrapper.LocalCLIDebugWrapperSession.add_tensor_filter(
+          self, filter_name, tensor_filter)
+    else:
+      self._pending_tensor_filters[filter_name] = tensor_filter
 
   def begin(self):
     pass
@@ -52,6 +74,13 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook,
     if not self._wrapper_initialized:
       local_cli_wrapper.LocalCLIDebugWrapperSession.__init__(
           self, run_context.session, ui_type=self._ui_type)
+
+      # Actually register tensor filters registered prior to the construction
+      # of the underlying LocalCLIDebugWrapperSession object.
+      for filter_name in self._pending_tensor_filters:
+        local_cli_wrapper.LocalCLIDebugWrapperSession.add_tensor_filter(
+            self, filter_name, self._pending_tensor_filters[filter_name])
+
       self._wrapper_initialized = True
 
     # Increment run call counter.
@@ -78,10 +107,13 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook,
       run_context.session.graph._finalized = False
       # pylint: enable=protected-access
 
-      self.invoke_node_stepper(
-          stepper.NodeStepper(run_context.session, run_context.original_args.
-                              fetches, run_context.original_args.feed_dict),
-          restore_variable_values_on_exit=True)
+      with stepper.NodeStepper(
+          run_context.session,
+          run_context.original_args.
+          fetches,
+          run_context.original_args.feed_dict) as node_stepper:
+        self.invoke_node_stepper(
+            node_stepper, restore_variable_values_on_exit=True)
 
     return run_args
 
@@ -144,17 +176,19 @@ class DumpingDebugHook(session_run_hook.SessionRunHook,
 
     self._run_call_count += 1
 
-    (debug_urls, debug_ops, node_name_regex_whitelist,
-     op_type_regex_whitelist) = self._prepare_run_watch_config(
-         run_context.original_args.fetches, run_context.original_args.feed_dict)
+    debug_urls, watch_options = self._prepare_run_watch_config(
+        run_context.original_args.fetches, run_context.original_args.feed_dict)
     run_options = config_pb2.RunOptions()
     debug_utils.watch_graph(
         run_options,
         run_context.session.graph,
         debug_urls=debug_urls,
-        debug_ops=debug_ops,
-        node_name_regex_whitelist=node_name_regex_whitelist,
-        op_type_regex_whitelist=op_type_regex_whitelist)
+        debug_ops=watch_options.debug_ops,
+        node_name_regex_whitelist=watch_options.node_name_regex_whitelist,
+        op_type_regex_whitelist=watch_options.op_type_regex_whitelist,
+        tensor_dtype_regex_whitelist=watch_options.tensor_dtype_regex_whitelist,
+        tolerate_debug_op_creation_failures=(
+            watch_options.tolerate_debug_op_creation_failures))
 
     run_args = session_run_hook.SessionRunArgs(
         None, feed_dict=None, options=run_options)

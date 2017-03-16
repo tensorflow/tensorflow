@@ -18,13 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
-
 import numpy as np
 
 from tensorflow.contrib.factorization.python.ops import clustering_ops
@@ -125,7 +118,7 @@ class NearestCentersLargeTest(test.TestCase):
     # Tile points and expected results to reach requested size (num_points)
     (self._points, self._expected_nearest_neighbor_indices,
      self._expected_nearest_neighbor_squared_distances) = (
-         np.tile(x, (num_points / points_per_tile, 1))
+         np.tile(x, (int(num_points / points_per_tile), 1))
          for x in (points, expected_nearest_neighbor_indices,
                    expected_nearest_neighbor_squared_distances))
 

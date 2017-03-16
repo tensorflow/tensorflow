@@ -19,12 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
-import sys
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 import numpy as np
 
@@ -43,6 +37,7 @@ from tensorflow.python.ops import rnn
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
+
 
 # pylint: enable=protected-access
 
@@ -118,7 +113,7 @@ class RNNCellTest(test.TestCase):
         m = array_ops.zeros([1, 8])
         g, out_m = core_rnn_cell_impl.MultiRNNCell(
             [core_rnn_cell_impl.BasicLSTMCell(
-                2, state_is_tuple=False)] * 2,
+                2, state_is_tuple=False) for _ in range(2)],
             state_is_tuple=False)(x, m)
         sess.run([variables_lib.global_variables_initializer()])
         res = sess.run(
@@ -165,7 +160,8 @@ class RNNCellTest(test.TestCase):
         m0 = (array_ops.zeros([1, 2]),) * 2
         m1 = (array_ops.zeros([1, 2]),) * 2
         cell = core_rnn_cell_impl.MultiRNNCell(
-            [core_rnn_cell_impl.BasicLSTMCell(2)] * 2, state_is_tuple=True)
+            [core_rnn_cell_impl.BasicLSTMCell(2) for _ in range(2)],
+            state_is_tuple=True)
         self.assertTrue(isinstance(cell.state_size, tuple))
         self.assertTrue(
             isinstance(cell.state_size[0], core_rnn_cell_impl.LSTMStateTuple))
@@ -198,7 +194,7 @@ class RNNCellTest(test.TestCase):
         m1 = array_ops.zeros([1, 4])
         cell = core_rnn_cell_impl.MultiRNNCell(
             [core_rnn_cell_impl.BasicLSTMCell(
-                2, state_is_tuple=False)] * 2,
+                2, state_is_tuple=False) for _ in range(2)],
             state_is_tuple=True)
         g, (out_m0, out_m1) = cell(x, (m0, m1))
         sess.run([variables_lib.global_variables_initializer()])
@@ -312,6 +308,59 @@ class RNNCellTest(test.TestCase):
         # The numbers in results were not calculated, this is just a smoke test.
         self.assertAllClose(res[0], [[0.154605, 0.154605, 0.154605]])
 
+  def testResidualWrapper(self):
+    with self.test_session() as sess:
+      with variable_scope.variable_scope(
+          "root", initializer=init_ops.constant_initializer(0.5)):
+        x = array_ops.zeros([1, 3])
+        m = array_ops.zeros([1, 3])
+        base_cell = core_rnn_cell_impl.GRUCell(3)
+        g, m_new = base_cell(x, m)
+        variable_scope.get_variable_scope().reuse_variables()
+        g_res, m_new_res = core_rnn_cell_impl.ResidualWrapper(base_cell)(x, m)
+        sess.run([variables_lib.global_variables_initializer()])
+        res = sess.run([g, g_res, m_new, m_new_res], {
+            x: np.array([[1., 1., 1.]]),
+            m: np.array([[0.1, 0.1, 0.1]])
+        })
+        # Residual connections
+        self.assertAllClose(res[1], res[0] + [1., 1., 1.])
+        # States are left untouched
+        self.assertAllClose(res[2], res[3])
+
+  def testDeviceWrapper(self):
+    with variable_scope.variable_scope(
+        "root", initializer=init_ops.constant_initializer(0.5)):
+      x = array_ops.zeros([1, 3])
+      m = array_ops.zeros([1, 3])
+      cell = core_rnn_cell_impl.DeviceWrapper(
+          core_rnn_cell_impl.GRUCell(3), "/cpu:14159")
+      outputs, _ = cell(x, m)
+      self.assertTrue("cpu:14159" in outputs.device.lower())
+
+  def testUsingSecondCellInScopeWithExistingVariablesFails(self):
+    # This test should go away when this behavior is no longer an
+    # error (Approx. May 2017)
+    cell1 = core_rnn_cell_impl.LSTMCell(3)
+    cell2 = core_rnn_cell_impl.LSTMCell(3)
+    x = array_ops.zeros([1, 3])
+    m = core_rnn_cell_impl.LSTMStateTuple(*[array_ops.zeros([1, 3])] * 2)
+    cell1(x, m)
+    with self.assertRaisesRegexp(ValueError, r"LSTMCell\(..., reuse=True\)"):
+      cell2(x, m)
+
+  def testUsingCellInDifferentScopeFromFirstCallFails(self):
+    # This test should go away when this behavior is no longer an
+    # error (Approx. May 2017)
+    cell = core_rnn_cell_impl.LSTMCell(3)
+    x = array_ops.zeros([1, 3])
+    m = core_rnn_cell_impl.LSTMStateTuple(*[array_ops.zeros([1, 3])] * 2)
+    with variable_scope.variable_scope("scope1"):
+      cell(x, m)
+    with variable_scope.variable_scope("scope2"):
+      with self.assertRaisesRegexp(ValueError, r"Attempt to reuse RNNCell"):
+        cell(x, m)
+
   def testDropoutWrapper(self):
     with self.test_session() as sess:
       with variable_scope.variable_scope(
@@ -377,7 +426,8 @@ class RNNCellTest(test.TestCase):
         x = array_ops.zeros([1, 2])
         m = array_ops.zeros([1, 4])
         _, ml = core_rnn_cell_impl.MultiRNNCell(
-            [core_rnn_cell_impl.GRUCell(2)] * 2, state_is_tuple=False)(x, m)
+            [core_rnn_cell_impl.GRUCell(2) for _ in range(2)],
+            state_is_tuple=False)(x, m)
         sess.run([variables_lib.global_variables_initializer()])
         res = sess.run(ml, {
             x.name: np.array([[1., 1.]]),
@@ -397,11 +447,12 @@ class RNNCellTest(test.TestCase):
         # Test incorrectness of state
         with self.assertRaisesRegexp(ValueError, "Expected state .* a tuple"):
           core_rnn_cell_impl.MultiRNNCell(
-              [core_rnn_cell_impl.GRUCell(2)] * 2,
+              [core_rnn_cell_impl.GRUCell(2) for _ in range(2)],
               state_is_tuple=True)(x, m_bad)
 
         _, ml = core_rnn_cell_impl.MultiRNNCell(
-            [core_rnn_cell_impl.GRUCell(2)] * 2, state_is_tuple=True)(x, m_good)
+            [core_rnn_cell_impl.GRUCell(2) for _ in range(2)],
+            state_is_tuple=True)(x, m_good)
 
         sess.run([variables_lib.global_variables_initializer()])
         res = sess.run(ml, {
@@ -444,14 +495,14 @@ class SlimRNNCellTest(test.TestCase):
           "root", initializer=init_ops.constant_initializer(0.5)):
         inputs = random_ops.random_uniform((batch_size, input_size))
         _, initial_state = basic_rnn_cell(inputs, None, num_units)
+        rnn_cell = core_rnn_cell_impl.BasicRNNCell(num_units)
+        outputs, state = rnn_cell(inputs, initial_state)
+        variable_scope.get_variable_scope().reuse_variables()
         my_cell = functools.partial(basic_rnn_cell, num_units=num_units)
         # pylint: disable=protected-access
         slim_cell = core_rnn_cell_impl._SlimRNNCell(my_cell)
         # pylint: enable=protected-access
         slim_outputs, slim_state = slim_cell(inputs, initial_state)
-        rnn_cell = core_rnn_cell_impl.BasicRNNCell(num_units)
-        variable_scope.get_variable_scope().reuse_variables()
-        outputs, state = rnn_cell(inputs, initial_state)
         self.assertEqual(slim_outputs.get_shape(), outputs.get_shape())
         self.assertEqual(slim_state.get_shape(), state.get_shape())
         sess.run([variables_lib.global_variables_initializer()])

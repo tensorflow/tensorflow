@@ -20,7 +20,7 @@ from __future__ import print_function
 
 from six.moves import range
 
-from tensorflow.contrib.lookup import lookup_ops
+from tensorflow.contrib import lookup
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -30,7 +30,7 @@ from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
 
 
-class ShardedMutableDenseHashTable(lookup_ops.LookupInterface):
+class ShardedMutableDenseHashTable(lookup.LookupInterface):
   """A sharded version of MutableDenseHashTable.
 
   It is designed to be interface compatible with LookupInterface and
@@ -41,7 +41,7 @@ class ShardedMutableDenseHashTable(lookup_ops.LookupInterface):
   internally. The shard is computed via the modulo operation on the key.
   """
 
-  # TODO(andreasst): consider moving this to lookup_ops
+  # TODO(andreasst): consider moving this to lookup module
 
   def __init__(self,
                key_dtype,
@@ -56,7 +56,7 @@ class ShardedMutableDenseHashTable(lookup_ops.LookupInterface):
       table_shards = []
       for i in range(num_shards):
         table_shards.append(
-            lookup_ops.MutableDenseHashTable(
+            lookup.MutableDenseHashTable(
                 key_dtype=key_dtype,
                 value_dtype=value_dtype,
                 default_value=default_value,

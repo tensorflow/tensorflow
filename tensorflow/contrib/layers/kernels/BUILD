@@ -13,7 +13,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
-        "@protobuf//:protobuf",
+        "@protobuf//:protobuf_headers",
     ],
     alwayslink = 1,
 )
@@ -25,7 +25,7 @@ cc_library(
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
         "@farmhash_archive//:farmhash",
-        "@protobuf//:protobuf",
+        "@protobuf//:protobuf_headers",
     ],
     alwayslink = 1,
 )

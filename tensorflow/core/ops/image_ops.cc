@@ -43,6 +43,14 @@ Status SetOutputToSizedImage(InferenceContext* c, DimensionHandle batch_dim,
     width = c->UnknownDim();
     height = c->UnknownDim();
   } else {
+    // TODO(petewarden) - Remove once we have constant evaluation in C++ only.
+    if (size_tensor->dtype() != DT_INT32) {
+      return errors::InvalidArgument(
+          "Bad size input type for SetOutputToSizedImage: Expected DT_INT32 "
+          "but got ",
+          DataTypeString(size_tensor->dtype()), " for input #", size_input_idx,
+          " in ", c->DebugString());
+    }
     auto vec = size_tensor->vec<int32>();
     height = c->MakeDim(vec(0));
     width = c->MakeDim(vec(1));
@@ -74,8 +82,9 @@ Status DecodeImageShapeFn(InferenceContext* c) {
     channels_dim = c->MakeDim(channels);
   }
 
-  c->set_output(0, c->MakeShape({InferenceContext::kUnknownDim,
-                                 InferenceContext::kUnknownDim, channels_dim}));
+  c->set_output(0,
+                c->MakeShape({InferenceContext::kUnknownDim,
+                              InferenceContext::kUnknownDim, channels_dim}));
   return Status::OK();
 }
 
@@ -555,9 +564,10 @@ REGISTER_OP("DecodeGif")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
-      c->set_output(0, c->MakeShape({InferenceContext::kUnknownDim,
-                                     InferenceContext::kUnknownDim,
-                                     InferenceContext::kUnknownDim, 3}));
+      c->set_output(0,
+                    c->MakeShape({InferenceContext::kUnknownDim,
+                                  InferenceContext::kUnknownDim,
+                                  InferenceContext::kUnknownDim, 3}));
       return Status::OK();
     })
     .Doc(R"doc(
@@ -797,7 +807,7 @@ size: A 1-D tensor of 2 elements containing the size of the glimpses
   to extract.  The glimpse height must be specified first, following
   by the glimpse width.
 offsets: A 2-D integer tensor of shape `[batch_size, 2]` containing
-  the x, y locations of the center of each window.
+  the y, x locations of the center of each window.
 glimpse: A tensor representing the glimpses `[batch_size,
   glimpse_height, glimpse_width, channels]`.
 centered: indicates if the offset coordinates are centered relative to

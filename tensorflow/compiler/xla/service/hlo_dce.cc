@@ -52,13 +52,14 @@ StatusOr<bool> HloDCE::Run(HloModule* module) {
     for (auto& instruction : computation->instructions()) {
       if (instruction->user_count() == 0 &&
           live_instructions.count(instruction.get()) == 0 &&
-          instruction->opcode() != HloOpcode::kParameter) {
+          HloComputation::IsRemovable(instruction->opcode())) {
         dead_roots.push_back(instruction.get());
       }
     }
 
     for (HloInstruction* dead_root : dead_roots) {
-      computation->RemoveInstructionAndUnusedOperands(dead_root);
+      TF_RETURN_IF_ERROR(
+          computation->RemoveInstructionAndUnusedOperands(dead_root));
       changed = true;
     }
   }

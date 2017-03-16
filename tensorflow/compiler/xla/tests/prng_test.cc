@@ -38,6 +38,12 @@ class PrngTest : public ClientLibraryTestBase {
   template <typename T>
   void UniformTest(T a, T b, tensorflow::gtl::ArraySlice<int64> dims);
   void BernoulliTest(float p, tensorflow::gtl::ArraySlice<int64> dims);
+
+  // Computes the χ² statistic of a sample of the discrete uniform distribution
+  // of the given range size. `expected_count` is the number of times each
+  // possible value is expected to be generated. Thus, the sample size is
+  // `range_size * expected_count`.
+  double UniformChiSquared(int32 range_size, int32 expected_count);
 };
 
 template <typename T>
@@ -52,7 +58,7 @@ void PrngTest::UniformTest(T a, T b, tensorflow::gtl::ArraySlice<int64> dims) {
   LiteralUtil::EachCell<T>(*actual,
                            [=](tensorflow::gtl::ArraySlice<int64>, T value) {
                              EXPECT_LE(a, value);
-                             EXPECT_GE(b, value);
+                             EXPECT_LT(value, b);
                            });
 }
 
@@ -62,13 +68,12 @@ void PrngTest::BernoulliTest(float p, tensorflow::gtl::ArraySlice<int64> dims) {
   builder.RngBernoulli(builder.ConstantR0<float>(p), shape);
 
   TF_ASSIGN_OR_ASSERT_OK(auto computation, builder.Build());
-  constexpr uint64 kTestSeed = 42;
+  ExecutionOptions execution_options;
+  execution_options.set_seed(42);
   TF_ASSIGN_OR_ASSERT_OK(
       auto actual,
       client_->ExecuteAndTransfer(computation, /*arguments=*/{},
-                                  /*shape_with_output_layout=*/nullptr,
-                                  /*execution_profile=*/nullptr,
-                                  /*seed=*/kTestSeed));
+                                  &execution_options));
   EXPECT_TRUE(ContainersEqual(dims, actual->shape().dimensions()));
   int32 sum = 0;
   LiteralUtil::EachCell<uint32>(
@@ -98,6 +103,56 @@ XLA_TEST_F(PrngTest, ZeroValuesR2) { UniformTest<float>(0, 1, {0, 20}); }
 XLA_TEST_F(PrngTest, LargeU01) { UniformTest<float>(0, 1, {0x100, 0x100}); }
 XLA_TEST_F(PrngTest, TwelveValuesU524) { UniformTest<int32>(5, 24, {12}); }
 
+namespace {
+template <typename T>
+T Square(T x) {
+  return x * x;
+}
+}  // namespace
+
+double PrngTest::UniformChiSquared(int32 range_size, int32 expected_count) {
+  int32 sample_size = range_size * expected_count;
+
+  ComputationBuilder builder(client_, TestName());
+  builder.RngUniform(builder.ConstantR0<int32>(0),
+                     builder.ConstantR0<int32>(range_size),
+                     ShapeUtil::MakeShape(S32, {sample_size}));
+
+  auto actual = ExecuteAndTransferOrDie(&builder, /*arguments=*/{});
+  std::vector<int32> counts(range_size, 0);
+  LiteralUtil::EachCell<int32>(
+      *actual, [&counts](tensorflow::gtl::ArraySlice<int64>, int32 value) {
+        ++counts[value];
+      });
+  int64 sum = 0;
+  for (int32 i = 0; i < range_size; ++i) {
+    sum += Square(counts[i] - expected_count);
+  }
+  return static_cast<double>(sum) / expected_count;
+}
+
+// We only test distribution of uniform discrete PRNG as other types are based
+// on it.
+// These range sizes are arbitrary but include prime numbers, powers of 2, and
+// other composite numbers.
+// The level of significance in all these cases is 1/20.
+// TODO(b/35723038): Use parametrized tests where possible.
+XLA_TEST_F(PrngTest, Uniformity7) {
+  EXPECT_LT(UniformChiSquared(7, 256), 12.5916);
+}
+XLA_TEST_F(PrngTest, Uniformity61) {
+  EXPECT_LT(UniformChiSquared(61, 256), 79.0819);
+}
+XLA_TEST_F(PrngTest, Uniformity64) {
+  EXPECT_LT(UniformChiSquared(64, 256), 82.5287);
+}
+XLA_TEST_F(PrngTest, Uniformity108) {
+  EXPECT_LT(UniformChiSquared(108, 256), 132.144);
+}
+XLA_TEST_F(PrngTest, Uniformity256) {
+  EXPECT_LT(UniformChiSquared(256, 256), 293.248);
+}
+
 XLA_TEST_F(PrngTest, MapUsingRng) {
   // Build a x -> (x + U[0,1)) computation.
   auto build_sum_rng = [this](ComputationBuilder& builder) {
@@ -120,11 +175,15 @@ XLA_TEST_F(PrngTest, MapUsingRng) {
   builder.Map({param0}, fn);
 
   TF_ASSIGN_OR_ASSERT_OK(auto computation, builder.Build());
+
+  ExecutionOptions execution_options;
+  execution_options.set_seed(125);
   TF_ASSIGN_OR_ASSERT_OK(
       auto actual,
       client_->ExecuteAndTransfer(computation,
-                                  /*arguments=*/{param0_data.get()}, nullptr,
-                                  nullptr, /*seed=*/125));
+                                  /*arguments=*/{param0_data.get()},
+                                  &execution_options));
+
   EXPECT_EQ(actual->f32s_size(), param0_literal->f32s_size());
   for (int i = 0; i < param0_literal->f32s_size(); ++i) {
     EXPECT_GE(actual->f32s(i), param0_literal->f32s(i));
@@ -146,15 +205,19 @@ XLA_TEST_F(PrngTest, PassInGlobalRngSeed) {
     return builder.Build();
   };
 
+  ExecutionOptions execution_options1;
+  execution_options1.set_seed(42);
+
+  ExecutionOptions execution_options2;
+  execution_options2.set_seed(65);
+
   std::unique_ptr<Literal> result1;
   {
     TF_ASSIGN_OR_ASSERT_OK(auto computation, build_computation());
     TF_ASSIGN_OR_ASSERT_OK(
         result1,
         client_->ExecuteAndTransfer(computation, /*arguments=*/{},
-                                    /*shape_with_output_layout=*/nullptr,
-                                    /*execution_profile=*/nullptr,
-                                    /*seed=*/42));
+                                    &execution_options1));
   }
   std::unique_ptr<Literal> result2;
   std::unique_ptr<Literal> result3;
@@ -163,15 +226,11 @@ XLA_TEST_F(PrngTest, PassInGlobalRngSeed) {
     TF_ASSIGN_OR_ASSERT_OK(
         result2,
         client_->ExecuteAndTransfer(computation, /*arguments=*/{},
-                                    /*shape_with_output_layout=*/nullptr,
-                                    /*execution_profile=*/nullptr,
-                                    /*seed=*/42));
+                                    &execution_options1));
     TF_ASSIGN_OR_ASSERT_OK(
         result3,
         client_->ExecuteAndTransfer(computation, /*arguments=*/{},
-                                    /*shape_with_output_layout=*/nullptr,
-                                    /*execution_profile=*/nullptr,
-                                    /*seed=*/42));
+                                    &execution_options1));
   }
 
   std::unique_ptr<Literal> result4;
@@ -182,19 +241,11 @@ XLA_TEST_F(PrngTest, PassInGlobalRngSeed) {
     TF_ASSIGN_OR_ASSERT_OK(
         result4,
         client_->ExecuteAndTransfer(computation, /*arguments=*/{},
-                                    /*shape_with_output_layout=*/nullptr,
-                                    /*execution_profile=*/nullptr,
-                                    /*seed=*/65));
+                                    &execution_options2));
     TF_ASSIGN_OR_ASSERT_OK(
-        result5,
-        client_->ExecuteAndTransfer(computation, /*arguments=*/{},
-                                    /*shape_with_output_layout=*/nullptr,
-                                    /*execution_profile=*/nullptr));
+        result5, client_->ExecuteAndTransfer(computation, /*arguments=*/{}));
     TF_ASSIGN_OR_ASSERT_OK(
-        result6,
-        client_->ExecuteAndTransfer(computation, /*arguments=*/{},
-                                    /*shape_with_output_layout=*/nullptr,
-                                    /*execution_profile=*/nullptr));
+        result6, client_->ExecuteAndTransfer(computation, /*arguments=*/{}));
   }
 
   LiteralTestUtil::ExpectEqual(*result1, *result2);

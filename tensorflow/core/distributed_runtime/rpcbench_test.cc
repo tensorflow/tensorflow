@@ -84,8 +84,8 @@ void MakeGRPCCluster(const SessionOptions& options, int n,
 
       std::unique_ptr<ServerInterface> svr;
       TF_CHECK_OK(NewServer(server, &svr));
-      svr->Start();
-      svr->Join();
+      TF_CHECK_OK(svr->Start());
+      TF_CHECK_OK(svr->Join());
     });
   }
 

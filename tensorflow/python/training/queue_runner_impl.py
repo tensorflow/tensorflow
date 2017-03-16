@@ -128,7 +128,7 @@ class QueueRunner(object):
                      for t in queue_closed_exception_types)):
         raise TypeError(
             "queue_closed_exception_types, when provided, "
-            "must be a non-empty list of tf.error types, but saw: %s"
+            "must be a tuple of tf.error types, but saw: %s"
             % queue_closed_exception_types)
     self._queue_closed_exception_types = queue_closed_exception_types
     # Close when no more will be produced, but pending enqueues should be
