@@ -22,7 +22,6 @@ load(
     "tf_cc_test",
     "tf_cuda_library",
 )
-load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
 
 # For platform specific build config
 load(
@@ -155,13 +154,14 @@ cc_binary(
     ],
 )
 
-tf_cc_test_gpu(
+# TODO(cais): Fix flakiness on GPU and change this back to a tf_cc_test_gpu.
+#   See b/34081273.
+tf_cc_test(
     name = "debug_gateway_test",
     size = "small",
     srcs = ["debug_gateway_test.cc"],
     args = ["--heap_check=local"],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags() + ["manual"],
     deps = [
         ":debug",
         ":debug_gateway_internal",
