@@ -236,22 +236,30 @@ class Conv2DFastBackpropInputOp : public OpKernel {
                    context->allocate_output(0, input_shape, &in_backprop));
 
 #if defined TENSORFLOW_USE_LIBXSMM && defined TENSORFLOW_USE_LIBXSMM_BACKWARD
-/*
-    int64 out_rows = 0, out_cols = 0, pad_rows = 0, pad_cols = 0;
-    OP_REQUIRES_OK(context,
-                   GetWindowedOutputSize(input_rows, filter_rows, stride_rows,
-                                         padding_, &out_rows, &pad_rows));
-    OP_REQUIRES_OK(context,
-                   GetWindowedOutputSize(input_cols, filter_cols, stride_cols,
-                                         padding_, &out_cols, &pad_cols));
-*/
-    if (LaunchXsmmBackwardInputConvolution<Device, T>()(
+    int64 pad_top, pad_bottom;
+    int64 pad_left, pad_right;
+    OP_REQUIRES_OK(
+        context,
+        GetWindowedOutputSizeVerbose(
+            dims.spatial_dims[0].input_size, dims.spatial_dims[0].filter_size,
+            dims.spatial_dims[0].stride, padding_,
+            &dims.spatial_dims[0].output_size, &pad_top, &pad_bottom));
+    OP_REQUIRES_OK(
+        context,
+        GetWindowedOutputSizeVerbose(
+            dims.spatial_dims[1].input_size, dims.spatial_dims[1].filter_size,
+            dims.spatial_dims[1].stride, padding_,
+            &dims.spatial_dims[1].output_size, &pad_left, &pad_right));
+
+    if ( pad_left == pad_right && pad_top == pad_bottom ) {
+      if (LaunchXsmmBackwardInputConvolution<Device, T>()(
             context, context->eigen_device<Device>(),
             in_backprop->tensor<T, 4>(), filter.tensor<T, 4>(),
             out_backprop.tensor<T, 4>(), dims.spatial_dims[0].input_size,
-            dims.spatial_dims[1].input_size, dims.spatial_dims[0].stride,
-            dims.spatial_dims[1].stride, data_format_)) {
-      return;
+            dims.spatial_dims[1].input_size, (int)dims.spatial_dims[0].stride,
+            (int)dims.spatial_dims[1].stride, (int)pad_top, (int)pad_left, data_format_)) {
+        return;
+      }
     }
 #endif
 
@@ -318,21 +326,38 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, input_shape, &in_backprop));
 
+    // TODO(andydavis) Consider moving code shared with
+    // Conv2DCustomBackpropFilterOp into a shared helper function.
 #if defined TENSORFLOW_USE_LIBXSMM && defined TENSORFLOW_USE_LIBXSMM_BACKWARD
-    if (LaunchXsmmBackwardInputConvolution<Device, T>()(
+    int64 pad_top, pad_bottom;
+    int64 pad_left, pad_right;
+    OP_REQUIRES_OK(
+        context,
+        GetWindowedOutputSizeVerbose(
+            dims.spatial_dims[0].input_size, dims.spatial_dims[0].filter_size,
+            dims.spatial_dims[0].stride, padding_,
+            &dims.spatial_dims[0].output_size, &pad_top, &pad_bottom));
+    OP_REQUIRES_OK(
+        context,
+        GetWindowedOutputSizeVerbose(
+            dims.spatial_dims[1].input_size, dims.spatial_dims[1].filter_size,
+            dims.spatial_dims[1].stride, padding_,
+            &dims.spatial_dims[1].output_size, &pad_left, &pad_right));
+
+    if ( pad_left == pad_right && pad_top == pad_bottom ) {
+      if (LaunchXsmmBackwardInputConvolution<Device, T>()(
             context, context->eigen_device<Device>(),
             in_backprop->tensor<T, 4>(), filter.tensor<T, 4>(),
             out_backprop.tensor<T, 4>(), dims.spatial_dims[0].input_size,
-            dims.spatial_dims[1].input_size, dims.spatial_dims[0].stride,
-            dims.spatial_dims[1].stride, data_format_)) {
-      return;
+            dims.spatial_dims[1].input_size, (int)dims.spatial_dims[0].stride,
+            (int)dims.spatial_dims[1].stride, (int)pad_top, (int)pad_left, data_format_)) {
+        return;
+      }
     }
-#endif
-
-    // TODO(andydavis) Consider moving code shared with
-    // Conv2DCustomBackpropFilterOp into a shared helper function.
+#else
     int64 pad_top, pad_bottom;
     int64 pad_left, pad_right;
+#endif
     OP_REQUIRES_OK(
         context,
         GetWindowedOutputSizeVerbose(
