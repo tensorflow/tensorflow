@@ -1431,7 +1431,7 @@ REGISTER_OP("TensorArray")
     .Attr("element_shape: shape = { unknown_rank: true }")
     .Output("handle: Ref(string)")
     .SetIsStateful()
-    .SetShapeFn([](InferenceContext* c) { return Status::OK(); })
+    .SetShapeFn(shape_inference::UnknownShape)
     .Deprecated(16, "Use TensorArrayV3");
 // TODO(cwhipkey): mark this deprecated in favor of V3.
 REGISTER_OP("TensorArrayV2")
@@ -1456,7 +1456,7 @@ REGISTER_OP("TensorArrayGrad")
     .Output("grad_handle: Ref(string)")
     .Attr("source: string")
     .SetIsStateful()
-    .SetShapeFn([](InferenceContext* c) { return Status::OK(); })
+    .SetShapeFn(shape_inference::UnknownShape)
     .Deprecated(16, "Use TensorArrayGradV3");
 // TODO(cwhipkey): mark this deprecated in favor of V3.
 REGISTER_OP("TensorArrayGradV2")
@@ -1481,7 +1481,7 @@ REGISTER_OP("TensorArrayWrite")
     .Input("flow_in: float")
     .Output("flow_out: float")
     .Attr("T: type")
-    .SetShapeFn([](InferenceContext* c) { return Status::OK(); })
+    .SetShapeFn(shape_inference::UnknownShape)
     .Deprecated(16, "Use TensorArrayWriteV3");
 // TODO(cwhipkey): mark this deprecated in favor of V3.
 REGISTER_OP("TensorArrayWriteV2")
@@ -1509,7 +1509,7 @@ REGISTER_OP("TensorArrayRead")
     .Input("flow_in: float")
     .Output("value: dtype")
     .Attr("dtype: type")
-    .SetShapeFn([](InferenceContext* c) { return Status::OK(); })
+    .SetShapeFn(shape_inference::UnknownShape)
     .Deprecated(16, "Use TensorArrayReadV3");
 // TODO(cwhipkey): mark this deprecated in favor of V3.
 REGISTER_OP("TensorArrayReadV2")
@@ -1535,7 +1535,7 @@ REGISTER_OP("TensorArrayPack")
     .Output("value: dtype")
     .Attr("dtype: type")
     .Attr("element_shape: shape = { unknown_rank: true }")
-    .SetShapeFn([](InferenceContext* c) { return Status::OK(); })
+    .SetShapeFn(shape_inference::UnknownShape)
     .Deprecated(16, "Use TensorArrayGatherV3 with RangeOp");
 REGISTER_OP("TensorArrayUnpack")
     .Input("handle: Ref(string)")
@@ -1543,7 +1543,7 @@ REGISTER_OP("TensorArrayUnpack")
     .Input("flow_in: float")
     .Output("flow_out: float")
     .Attr("T: type")
-    .SetShapeFn([](InferenceContext* c) { return Status::OK(); })
+    .SetShapeFn(shape_inference::UnknownShape)
     .Deprecated(20, "Use TensorArrayScatterV3 with RangeOp");
 REGISTER_OP("TensorArrayGather")
     .Input("handle: Ref(string)")
@@ -1552,7 +1552,7 @@ REGISTER_OP("TensorArrayGather")
     .Output("value: dtype")
     .Attr("dtype: type")
     .Attr("element_shape: shape = { unknown_rank: true }")
-    .SetShapeFn([](InferenceContext* c) { return Status::OK(); })
+    .SetShapeFn(shape_inference::UnknownShape)
     .Deprecated(16, "Use TensorArrayGatherV3");
 // TODO(cwhipkey): mark this deprecated in favor of V3.
 REGISTER_OP("TensorArrayGatherV2")
@@ -1579,7 +1579,7 @@ REGISTER_OP("TensorArrayScatter")
     .Input("flow_in: float")
     .Output("flow_out: float")
     .Attr("T: type")
-    .SetShapeFn([](InferenceContext* c) { return Status::OK(); })
+    .SetShapeFn(shape_inference::UnknownShape)
     .Deprecated(19, "Use TensorArrayGradV3");
 // TODO(cwhipkey): mark this deprecated in favor of V3.
 REGISTER_OP("TensorArrayScatterV2")
@@ -1606,7 +1606,7 @@ REGISTER_OP("TensorArrayConcat")
     .Output("lengths: int64")
     .Attr("dtype: type")
     .Attr("element_shape_except0: shape = { unknown_rank: true }")
-    .SetShapeFn([](InferenceContext* c) { return Status::OK(); })
+    .SetShapeFn(shape_inference::UnknownShape)
     .Deprecated(16, "Use TensorArrayGradV3");
 REGISTER_OP("TensorArrayConcatV2")
     .Input("handle: string")
@@ -1634,7 +1634,7 @@ REGISTER_OP("TensorArraySplit")
     .Input("flow_in: float")
     .Output("flow_out: float")
     .Attr("T: type")
-    .SetShapeFn([](InferenceContext* c) { return Status::OK(); })
+    .SetShapeFn(shape_inference::UnknownShape)
     .Deprecated(16, "Use TensorArraySplitV3");
 // TODO(cwhipkey): mark this deprecated in favor of V3.
 REGISTER_OP("TensorArraySplitV2")
@@ -1659,7 +1659,7 @@ REGISTER_OP("TensorArraySize")
     .Input("handle: Ref(string)")
     .Input("flow_in: float")
     .Output("size: int32")
-    .SetShapeFn([](InferenceContext* c) { return Status::OK(); })
+    .SetShapeFn(shape_inference::UnknownShape)
     .Deprecated(16, "Use TensorArraySizeV3");
 // TODO(cwhipkey): mark this deprecated in favor of V3.
 REGISTER_OP("TensorArraySizeV2")
