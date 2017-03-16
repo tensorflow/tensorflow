@@ -258,7 +258,7 @@ class RunConfig(ClusterConfig):
     self._tf_random_seed = tf_random_seed
     self._save_summary_steps = save_summary_steps
     self._save_checkpoints_secs = save_checkpoints_secs
-    if save_checkpoints_secs == None and save_checkpoints_steps == None : 
+    if save_checkpoints_secs is None and save_checkpoints_steps is None : 
         self._save_checkpoints_secs = 600 
     self._save_checkpoints_steps = save_checkpoints_steps
 
