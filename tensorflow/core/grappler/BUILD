@@ -30,6 +30,7 @@ cc_library(
 cc_test(
     name = "utils_test",
     srcs = ["utils_test.cc"],
+    tags = ["manual"],
     deps = [
         ":utils",
         "//tensorflow/core:lib",
