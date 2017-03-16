@@ -33,7 +33,9 @@ py_library(
 py_library(
     name = "debug_pip",
     deps = [
+        ":debug_examples",
         ":debug_py",
+        ":offline_analyzer",
         ":session_debug_testlib",
     ],
 )
@@ -264,6 +266,16 @@ py_binary(
         ":debug_data",
         "//tensorflow/python",  # TODO(b/34059704): remove when fixed
         "//tensorflow/python:platform",
+    ],
+)
+
+py_library(
+    name = "debug_examples",
+    deps = [
+        ":debug_errors",
+        ":debug_fibonacci",
+        ":debug_mnist",
+        ":debug_tflearn_iris",
     ],
 )
 
@@ -661,6 +673,7 @@ sh_test(
         ":debug_fibonacci",
         ":debug_mnist",
         ":debug_tflearn_iris",
+        ":offline_analyzer",
     ],
 )
 
