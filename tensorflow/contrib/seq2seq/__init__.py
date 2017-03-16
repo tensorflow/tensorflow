@@ -28,7 +28,21 @@
 @@CustomHelper
 @@GreedyEmbeddingHelper
 @@ScheduledEmbeddingTrainingHelper
+@@ScheduledOutputTrainingHelper
 @@TrainingHelper
+
+## Attention
+
+### Scorers
+@@BahdanauScorer
+@@LuongScorer
+
+### Helper functions
+@@hardmax
+
+### RNNCells
+@@DynamicAttentionWrapperState
+@@DynamicAttentionWrapper
 """
 
 from __future__ import absolute_import
@@ -38,6 +52,7 @@ from __future__ import print_function
 # pylint: disable=unused-import,wildcard-import,line-too-long
 from tensorflow.contrib.seq2seq.python.ops.basic_decoder import *
 from tensorflow.contrib.seq2seq.python.ops.decoder import *
+from tensorflow.contrib.seq2seq.python.ops.dynamic_attention_wrapper import *
 from tensorflow.contrib.seq2seq.python.ops.helper import *
 from tensorflow.contrib.seq2seq.python.ops.loss import *
 # pylint: enable=unused-import,widcard-import,line-too-long

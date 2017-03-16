@@ -32,6 +32,7 @@ cc_test(
     srcs = ["utils_test.cc"],
     deps = [
         ":utils",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],

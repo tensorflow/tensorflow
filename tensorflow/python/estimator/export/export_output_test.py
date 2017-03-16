@@ -21,7 +21,7 @@ from __future__ import print_function
 from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
-from tensorflow.python.estimator import export_output as export_output_lib
+from tensorflow.python.estimator.export import export_output as export_output_lib
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test

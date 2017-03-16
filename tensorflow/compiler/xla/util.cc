@@ -176,6 +176,15 @@ std::vector<int64> ComposePermutations(tensorflow::gtl::ArraySlice<int64> p1,
   return output;
 }
 
+bool IsIdentityPermutation(tensorflow::gtl::ArraySlice<int64> p) {
+  for (int64 i = 0; i < p.size(); ++i) {
+    if (p[i] != i) {
+      return false;
+    }
+  }
+  return true;
+}
+
 PaddingConfig MakeNoPaddingConfig(int64 rank) {
   PaddingConfig padding_config;
   for (int64 dnum = 0; dnum < rank; ++dnum) {

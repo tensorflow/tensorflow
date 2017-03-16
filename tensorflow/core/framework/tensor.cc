@@ -730,6 +730,18 @@ size_t Tensor::TotalBytes() const {
   return 0;  // Makes compiler happy.
 }
 
+size_t Tensor::AllocatedBytes() const {
+  TensorDescription tensor_description;
+  FillDescription(&tensor_description);
+  if (tensor_description.has_allocation_description() &&
+      tensor_description.allocation_description().allocated_bytes() > 0) {
+    return tensor_description.allocation_description().allocated_bytes();
+  } else {
+    // Fall back to TotalBytes() if the allocator doesn't have its size.
+    return TotalBytes();
+  }
+}
+
 bool Tensor::CanUseDMA() const {
   CASES(dtype(), return is_simple_type<T>::value);
   return false;  // Makes compiler happy.

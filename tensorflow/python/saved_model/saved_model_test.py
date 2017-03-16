@@ -39,6 +39,7 @@ from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import main_op
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.training import saver_test_utils
 from tensorflow.python.util import compat
 
 SAVED_MODEL_PATH = ("cc/saved_model/testdata/half_plus_two/00000123")
@@ -733,6 +734,35 @@ class SavedModelTest(test.TestCase):
       self.assertEqual(2, ops.get_collection("v")[1].eval())
       ops.get_collection("init_op")[0].run()
       self.assertEqual(3, ops.get_collection("v")[2].eval())
+
+  def testCustomSaveable(self):
+    export_dir = os.path.join(test.get_temp_dir(), "custom_saveable")
+    builder = saved_model_builder.SavedModelBuilder(export_dir)
+
+    with session.Session(
+        graph=ops.Graph(),
+        config=config_pb2.ConfigProto(device_count={"CPU": 2})) as sess:
+      # CheckpointedOp is a key-value table that can be saved across sessions.
+      # The table register itself in SAVEABLE_OBJECTS collection.
+      v1 = saver_test_utils.CheckpointedOp(name="v1")
+      variables.global_variables_initializer().run()
+      v1.insert("k1", 3.0).run()
+      # Once the table is restored, we can access it through this reference.
+      ops.add_to_collection("table_ref", v1.table_ref)
+      builder.add_meta_graph_and_variables(sess, ["foo"])
+
+    # Save the SavedModel to disk.
+    builder.save()
+
+    with session.Session(
+        graph=ops.Graph(),
+        config=config_pb2.ConfigProto(device_count={"CPU": 2})) as sess:
+      loader.load(sess, ["foo"], export_dir)
+      # Instantiate a wrapper object from the checkpointed reference.
+      v1 = saver_test_utils.CheckpointedOp(
+          name="v1", table_ref=ops.get_collection("table_ref")[0])
+      self.assertEqual(b"k1", v1.keys().eval())
+      self.assertEqual(3.0, v1.values().eval())
 
   def testClearDevices(self):
     export_dir = os.path.join(test.get_temp_dir(), "test_clear_devices")
