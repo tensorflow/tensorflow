@@ -67,6 +67,7 @@ import collections
 import six
 
 from google.protobuf import descriptor
+from google.protobuf import descriptor_pool
 from google.protobuf import message
 from google.protobuf import text_format
 
@@ -88,8 +89,9 @@ def assertProtoEqual(self, a, b, check_initialized=True,  # pylint: disable=inva
       numbers before comparison.
     msg: if specified, is used as the error message on failure.
   """
+  pool = descriptor_pool.Default()
   if isinstance(a, six.string_types):
-    a = text_format.Merge(a, b.__class__())
+    a = text_format.Merge(a, b.__class__(), descriptor_pool=pool)
 
   for pb in a, b:
     if check_initialized:
@@ -99,9 +101,10 @@ def assertProtoEqual(self, a, b, check_initialized=True,  # pylint: disable=inva
     if normalize_numbers:
       NormalizeNumberFields(pb)
 
-  self.assertMultiLineEqual(text_format.MessageToString(a),
-                            text_format.MessageToString(b),
-                            msg=msg)
+  self.assertMultiLineEqual(
+      text_format.MessageToString(a, descriptor_pool=pool),
+      text_format.MessageToString(b, descriptor_pool=pool),
+      msg=msg)
 
 
 def NormalizeNumberFields(pb):

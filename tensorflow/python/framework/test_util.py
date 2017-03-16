@@ -29,6 +29,7 @@ import threading
 import numpy as np
 import six
 
+from google.protobuf import descriptor_pool
 from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
@@ -218,7 +219,8 @@ class TensorFlowTestCase(googletest.TestCase):
       self._AssertProtoEquals(expected_message, message)
     elif isinstance(expected_message_maybe_ascii, str):
       expected_message = type(message)()
-      text_format.Merge(expected_message_maybe_ascii, expected_message)
+      text_format.Merge(expected_message_maybe_ascii, expected_message,
+                        descriptor_pool=descriptor_pool.Default())
       self._AssertProtoEquals(expected_message, message)
     else:
       assert False, ("Can't compare protos of type %s and %s" %
