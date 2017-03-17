@@ -229,7 +229,7 @@ net = ...
 net = slim.conv2d(net, 256, [3, 3], scope='conv3_1')
 net = slim.conv2d(net, 256, [3, 3], scope='conv3_2')
 net = slim.conv2d(net, 256, [3, 3], scope='conv3_3')
-net = slim.max_pool2d(net, [2, 2], scope='pool3')
+net = slim.max_pool2d(net, [2, 2], scope='pool2')
 ```
 
 One way to reduce this code duplication would be via a `for` loop:
@@ -238,14 +238,14 @@ One way to reduce this code duplication would be via a `for` loop:
 net = ...
 for i in range(3):
   net = slim.conv2d(net, 256, [3, 3], scope='conv3_' % (i+1))
-net = slim.max_pool2d(net, [2, 2], scope='pool3')
+net = slim.max_pool2d(net, [2, 2], scope='pool2')
 ```
 
 This can be made even cleaner by using TF-Slim's `repeat` operation:
 
 ```python
 net = slim.repeat(net, 3, slim.conv2d, 256, [3, 3], scope='conv3')
-net = slim.max_pool(net, [2, 2], scope='pool2')
+net = slim.max_pool2d(net, [2, 2], scope='pool2')
 ```
 
 Notice that the `slim.repeat` not only applies the same argument in-line, it
