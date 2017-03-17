@@ -13,7 +13,7 @@ from tensorflow.python.ops import math_ops
 
 from tensorflow.compiler.poplar import poplar_plugin
 
-class IpuXlaSimpleNetworkTest(test_util.TensorFlowTestCase):
+class IpuXlaMatMulTest(test_util.TensorFlowTestCase):
 
     def testMatMul2x2(self):
         with tf.device("/device:XLA_IPU:0"):

@@ -15,7 +15,7 @@ import numpy as np
 
 from tensorflow.compiler.poplar import poplar_plugin
 
-class IpuXlaSimpleNetworkTest(test_util.TensorFlowTestCase):
+class IpuXlaConvTest(test_util.TensorFlowTestCase):
 
     def testConv3x3_Pad1x1(self):
         with tf.device("/device:XLA_IPU:0"):

@@ -17,6 +17,16 @@ pkg_tar(
     ],
 )
 
+filegroup(
+    name = "poplar_release",
+    srcs = [
+        "libpoplar_plugin.so",
+        "__init__.py",
+        "poplar_plugin.py",
+        "tf.gp",
+    ],
+)
+
 # Rule for creating the vertex program pre-compiled object
 genrule(
     name = "tf_graph_program",
@@ -132,12 +142,24 @@ py_test(
     ],
 )
 
+py_test(
+    name = "variable_test",
+    size = "small",
+    srcs = ["tests/variable_test.py"],
+    deps = [
+        ":poplar_plugin_py",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
 test_suite(
     name = "all_tests",
     tests = [
         "device_test",
         "simple_network_test",
         "matmul_test",
+        "conv_test",
+        "variable_test",
     ],
 )
 

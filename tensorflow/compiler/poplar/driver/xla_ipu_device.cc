@@ -350,6 +350,7 @@ REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("VarIsInitializedOp"));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("ZerosLike").TypeConstraint("T", kIpuNumericTypes));
+
 REGISTER_XLA_JIT_ONLY_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("Const").TypeConstraint("dtype",kIpuAllTypes));
 REGISTER_XLA_JIT_ONLY_KERNEL(
