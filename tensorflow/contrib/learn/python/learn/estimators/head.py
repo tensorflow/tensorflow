@@ -1441,10 +1441,6 @@ class _MultiHead(Head):
     """
     self._logits_dimension = 0
     for head in heads:
-      # TODO(ptucker): Change this, and add head_name to MultiHead, to support
-      # nested MultiHeads.
-      if not isinstance(head, _SingleHead):
-        raise ValueError("Members of MultiHead must be SingleHead.")
       if not head.head_name:
         raise ValueError("Members of MultiHead must have names.")
       self._logits_dimension += head.logits_dimension

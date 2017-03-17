@@ -1380,8 +1380,6 @@ class MultiHeadTest(test.TestCase):
         n_classes=4, label_name="label")
     with self.assertRaisesRegexp(ValueError, "must have names"):
       head_lib.multi_head((named_head, unnamed_head))
-    with self.assertRaisesRegexp(ValueError, "must be SingleHead"):
-      head_lib.multi_head((named_head, head_lib.multi_head((named_head,))))
 
   def testTrainWithNoneTrainOpFn(self):
     head1 = head_lib.multi_class_head(
