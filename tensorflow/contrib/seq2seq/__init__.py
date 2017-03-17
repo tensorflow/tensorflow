@@ -15,15 +15,14 @@
 
 """Ops for building neural network seq2seq decoders and losses.
 
-## Decoder base class and functions
+See the @{$python/contrib.seq2seq} guide.
+
 @@Decoder
 @@dynamic_decode
 
-## Basic Decoder
 @@BasicDecoderOutput
 @@BasicDecoder
 
-## Decoder Helpers
 @@Helper
 @@CustomHelper
 @@GreedyEmbeddingHelper
@@ -31,16 +30,11 @@
 @@ScheduledOutputTrainingHelper
 @@TrainingHelper
 
-## Attention
+@@BahdanauAttention
+@@LuongAttention
 
-### Scorers
-@@BahdanauScorer
-@@LuongScorer
-
-### Helper functions
 @@hardmax
 
-### RNNCells
 @@DynamicAttentionWrapperState
 @@DynamicAttentionWrapper
 """

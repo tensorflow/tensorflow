@@ -425,8 +425,8 @@ class DynamicAttentionWrapper(core_rnn_cell.RNNCell):
       cell_input_fn: (optional) A `callable`.  The default is:
         `lambda inputs, attention: array_ops.concat([inputs, attention], -1)`.
       probability_fn: (optional) A `callable`.  Converts the score to
-        probabilities.  The default is `tf.nn.softmax`. Other options include
-        `tf.contrib.seq2seq.hardmax` and `tf.contrib.sparsemax.sparsemax`.
+        probabilities.  The default is @{tf.nn.softmax}. Other options include
+        @{tf.contrib.seq2seq.hardmax} and @{tf.contrib.sparsemax.sparsemax}.
       output_attention: Python bool.  If `True` (default), the output at each
         time step is the attention value.  This is the behavior of Luong-style
         attention mechanisms.  If `False`, the output at each time step is
