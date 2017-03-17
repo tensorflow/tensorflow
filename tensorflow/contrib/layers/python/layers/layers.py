@@ -221,6 +221,7 @@ def _fused_batch_norm(
       scope, 'BatchNorm', [inputs], reuse=reuse) as sc:
     inputs = ops.convert_to_tensor(inputs)
     original_shape = inputs.get_shape()
+    original_inputs = inputs
     original_rank = original_shape.ndims
     if original_rank is None:
       raise ValueError('Inputs %s has undefined rank' % inputs.name)
@@ -229,9 +230,7 @@ def _fused_batch_norm(
                        ' Expected 2 or 4 but got %d' % (
                            inputs.name, original_rank))
     if original_rank == 2:
-      channels = inputs.get_shape()[-1].value
-      if channels is None:
-        raise ValueError('`C` dimension must be known but is None')
+      channels = array_ops.shape(inputs)[-1]
       new_shape = [-1, 1, 1, channels]
       if data_format == DATA_FORMAT_NCHW:
         new_shape = [-1, channels, 1, 1]
@@ -351,7 +350,7 @@ def _fused_batch_norm(
 
     outputs.set_shape(inputs_shape)
     if original_shape.ndims == 2:
-      outputs = array_ops.reshape(outputs, original_shape)
+      outputs = array_ops.reshape(outputs, array_ops.shape[original_inputs])
     if activation_fn is not None:
       outputs = activation_fn(outputs)
     return utils.collect_named_outputs(outputs_collections,
