@@ -19,20 +19,18 @@
 A driver for the Graphcore IPU device, interfacing through the poplar library.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from os.path import dirname
 
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import load_library
-from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import tf_logging as logging
 
 def load_poplar():
     """Loads the Tensorflow poplar plugin
     """
+
     try:
-        filename = resource_loader.get_path_to_datafile('libpoplar_plugin.so')
+        filename = dirname(__file__) + '/libpoplar_plugin.so'
         load_library.load_op_library(filename)
     except errors.NotFoundError:
         logging.warning('%s file could not be loaded.', filename)
