@@ -700,6 +700,7 @@ Status BundleReader::GetValue(const BundleEntryProto& entry, Tensor* val) {
 }
 
 Status BundleReader::Lookup(StringPiece key, Tensor* val) {
+  CHECK(val != nullptr);
   BundleEntryProto entry;
   TF_RETURN_IF_ERROR(GetBundleEntryProto(key, &entry));
 
@@ -726,6 +727,7 @@ Status BundleReader::LookupTensorSlices(StringPiece key,
 
 Status BundleReader::LookupSlice(StringPiece full_tensor_key,
                                  const TensorSlice& slice_spec, Tensor* val) {
+  CHECK(val != nullptr);
   BundleEntryProto entry;
   TF_RETURN_IF_ERROR(GetBundleEntryProto(full_tensor_key, &entry));
   return GetSliceValue(full_tensor_key, entry, slice_spec, val);
