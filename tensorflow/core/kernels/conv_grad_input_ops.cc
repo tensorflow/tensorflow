@@ -792,6 +792,7 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
     CudnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize,
                                             context);
     int device_id = stream->parent()->device_ordinal();
+    DataType dtype = out_backprop.dtype();
     ConvParameters conv_parameters = {
         dims.batch_size,                       // batch
         dims.in_depth,                         // in_depths
@@ -804,6 +805,7 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
           dims.spatial_dims[1].stride}},       // stride_cols
         {{padding_rows,                        // padding_rows
           padding_cols}},                      // padding_cols
+        dtype,                                 // tensor data type
         device_id,                             // device_id
     };
     AlgorithmConfig algorithm_config;

@@ -638,6 +638,7 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
         "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32  // 4GB by default
         );
     int device_id = stream->parent()->device_ordinal();
+    DataType dtype = input.dtype();
     ConvParameters conv_parameters = {
         dims.batch_size,                       // batch
         dims.in_depth,                         // in_depths
@@ -650,6 +651,7 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
           dims.spatial_dims[1].stride}},       // stride_cols
         {{padding_rows,                        // padding_rows
           padding_cols}},                      // padding_cols
+        dtype,                                 // tensor datatype
         device_id,                             // device_id
     };
     AlgorithmConfig algorithm_config;

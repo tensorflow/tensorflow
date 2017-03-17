@@ -636,6 +636,7 @@ void LaunchConv2DOp<GPUDevice, T>::launch(
       );
 
   int device_id = stream->parent()->device_ordinal();
+  DataType dtype = input.dtype();
   ConvParameters conv_parameters = {
       in_batch,          // batch
       in_depths,         // in_depths
@@ -648,6 +649,7 @@ void LaunchConv2DOp<GPUDevice, T>::launch(
         col_stride}},    // stride_cols
       {{padding_rows,    // padding_rows
         padding_cols}},  // padding_cols
+      dtype,             // tensor datatype
       device_id,         // device_id
   };
   AlgorithmConfig algorithm_config;

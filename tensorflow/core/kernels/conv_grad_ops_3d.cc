@@ -578,6 +578,7 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
         "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32);  // 4GB by default
 
     const int device_id = stream->parent()->device_ordinal();
+    DataType dtype = context->input(0).dtype();
     const ConvParameters conv_parameters = {
         batch,
         in_depth,
@@ -586,6 +587,7 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
         {{filter_size[0], filter_size[1], filter_size[2]}},
         {{strides[0], strides[1], strides[2]}},
         {{padding_planes, padding_rows, padding_cols}},
+        dtype,
         device_id,
     };
 
@@ -904,6 +906,7 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
         "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32);  // 4GB by default
 
     const int device_id = stream->parent()->device_ordinal();
+    DataType dtype = input.dtype();
     const ConvParameters conv_parameters = {
         batch,
         in_depth,
@@ -912,6 +915,7 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
         {{filter_size[0], filter_size[1], filter_size[2]}},
         {{strides[0], strides[1], strides[2]}},
         {{padding_planes, padding_rows, padding_cols}},
+        dtype,
         device_id,
     };
 

@@ -99,7 +99,7 @@ class ConvParameters {
   ConvParameters(int64 batch, int64 in_depths, const SpatialArray& in,
                  int64 out_depths, const SpatialArray& filter,
                  const SpatialArray& stride, const SpatialArray& padding,
-                 int device_id)
+                 const DataType& dtype, int device_id)
       : batch_(batch),
         in_depths_(in_depths),
         in_(in),
@@ -107,6 +107,7 @@ class ConvParameters {
         filter_(filter),
         stride_(stride),
         padding_(padding),
+        dtype_(dtype),
         device_id_(device_id) {
     hash_code_ = batch;
     hash_code_ = Hash64Combine(hash_code_, in_depths);
@@ -115,6 +116,7 @@ class ConvParameters {
     for (int64 val : filter) hash_code_ = Hash64Combine(hash_code_, val);
     for (int64 val : stride) hash_code_ = Hash64Combine(hash_code_, val);
     for (int64 val : padding) hash_code_ = Hash64Combine(hash_code_, val);
+    hash_code_ = Hash64Combine(hash_code_, dtype);
     hash_code_ = Hash64Combine(hash_code_, device_id);
   }
   bool operator==(const ConvParameters& other) const {
@@ -128,12 +130,12 @@ class ConvParameters {
 
  private:
   typedef std::tuple<int64, int64, SpatialArray, int64, SpatialArray,
-                     SpatialArray, SpatialArray, int>
-      DataType;
+                     SpatialArray, SpatialArray, DataType, int>
+      ParameterDataType;
 
-  DataType get_data_as_tuple() const {
+  ParameterDataType get_data_as_tuple() const {
     return std::make_tuple(batch_, in_depths_, in_, out_depths_, filter_,
-                           stride_, padding_, device_id_);
+                           stride_, padding_, dtype_, device_id_);
   }
 
   int64 batch_;
@@ -143,6 +145,7 @@ class ConvParameters {
   SpatialArray filter_;
   SpatialArray stride_;
   SpatialArray padding_;
+  DataType dtype_;
   int device_id_;
   uint64 hash_code_;
 };

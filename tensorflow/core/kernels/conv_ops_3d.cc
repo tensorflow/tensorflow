@@ -343,6 +343,7 @@ struct LaunchConvOp<GPUDevice, T> {
         "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32);  // 4GB by default
 
     int device_id = stream->parent()->device_ordinal();
+    DataType dtype = input.dtype();
     ConvParameters conv_parameters = {
         in_batch,
         in_depth,
@@ -351,6 +352,7 @@ struct LaunchConvOp<GPUDevice, T> {
         {{filter_planes, filter_rows, filter_cols}},
         {{strides[0], strides[1], strides[2]}},
         {{pad_planes, pad_rows, pad_cols}},
+        dtype,
         device_id,
     };
 
