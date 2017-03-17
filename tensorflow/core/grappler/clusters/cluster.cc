@@ -29,9 +29,7 @@ Cluster::Cluster(int timeout_s) : timeout_s_(timeout_s) {
   CHECK(!already_created);
   already_created = true;
 
-  options_.config.mutable_graph_options()->set_build_cost_model(1);
-
-  run_options_.set_trace_level(RunOptions::HARDWARE_TRACE);
+  DisableDetailedStats(false);
 }
 
 Cluster::~Cluster() {
@@ -46,6 +44,16 @@ void Cluster::AllowSoftPlacement(bool soft_placement_state) {
 void Cluster::SetNumWarmupSteps(int num_steps) {
   options_.config.mutable_graph_options()->set_build_cost_model_after(
       num_steps);
+}
+
+void Cluster::DisableDetailedStats(bool disable) {
+  if (disable) {
+    options_.config.mutable_graph_options()->set_build_cost_model(0);
+    run_options_.set_trace_level(RunOptions::NO_TRACE);
+  } else {
+    options_.config.mutable_graph_options()->set_build_cost_model(1);
+    run_options_.set_trace_level(RunOptions::HARDWARE_TRACE);
+  }
 }
 
 }  // end namespace grappler

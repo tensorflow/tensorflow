@@ -57,6 +57,9 @@ class Cluster {
   // before Provision().
   void SetNumWarmupSteps(int num_steps);
 
+  // Disable the collection of detailed statistics.
+  void DisableDetailedStats(bool disable);
+
   // Return the list of TensorFlow devices that are available to execute a
   // graph. This is empty until provision() is called.
   const std::vector<DeviceAttributes>& GetDevices() const { return devices_; }
