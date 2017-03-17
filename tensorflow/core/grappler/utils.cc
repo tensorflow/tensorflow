@@ -15,43 +15,14 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/notification.h"
-#include "tensorflow/core/platform/stream_executor.h"
 
 namespace tensorflow {
 namespace grappler {
-
-int GetNumAvailableGPUs() {
-  int num_eligible_gpus = 0;
-  if (ValidateGPUMachineManager().ok()) {
-    perftools::gputools::Platform* gpu_manager = GPUMachineManager();
-    if (gpu_manager != nullptr) {
-      int num_gpus = gpu_manager->VisibleDeviceCount();
-      for (int i = 0; i < num_gpus; i++) {
-        auto exec_status = gpu_manager->ExecutorForDevice(i);
-        if (exec_status.ok()) {
-          perftools::gputools::StreamExecutor* se = exec_status.ValueOrDie();
-          const perftools::gputools::DeviceDescription& desc =
-              se->GetDeviceDescription();
-          int min_gpu_core_count = 8;
-          if (desc.core_count() >= min_gpu_core_count) {
-            num_eligible_gpus++;
-          }
-        }
-      }
-    }
-  }
-  LOG(INFO) << "Number of eligible GPUs (core count >= 8): "
-            << num_eligible_gpus;
-  return num_eligible_gpus;
-}
-
-int GetNumAvailableLogicalCPUCores() { return port::NumSchedulableCPUs(); }
 
 string ParseNodeName(const string& name, int* position) {
   // Strip the prefix '^' (if any), and strip the trailing ":{digits} (if any)
@@ -73,7 +44,7 @@ string ParseNodeName(const string& name, int* position) {
       *position = 0;
     } else {
       // Skip the first ':' character.
-      *position = std::stoi(remaining.substr(1).ToString());
+      CHECK(strings::safe_strto32(remaining.substr(1), position));
     }
     return capture.ToString();
   }

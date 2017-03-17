@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
 namespace grappler {

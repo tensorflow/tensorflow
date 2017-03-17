@@ -22,11 +22,9 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/variable.pb.h"
-#include "tensorflow/core/framework/versions.h"
 #include "tensorflow/core/grappler/inputs/utils.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
-#include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -56,20 +54,11 @@ void InitializeTensor(DataType type, Tensor* tensor) {
 // static
 std::unique_ptr<GrapplerItem> GrapplerItem::FromMetaGraphDef(
     const string& id, const MetaGraphDef& meta_graph, const ItemConfig& cfg) {
-  // Check if the graph is compatible with the current version of TensorFlow.
-  Status status =
-      CheckVersions(meta_graph.graph_def().versions(), TF_GRAPH_DEF_VERSION,
-                    TF_GRAPH_DEF_VERSION_MIN_PRODUCER, "GraphDef", "graph");
-  if (!status.ok()) {
-    LOG(ERROR) << "Cannot process item: " << status.error_message();
-    return nullptr;
-  }
-
-  std::unique_ptr<GrapplerItem> new_item(new GrapplerItem());
   if (id.empty()) {
     LOG(ERROR) << "id must be non-empty.";
     return nullptr;
   }
+  std::unique_ptr<GrapplerItem> new_item(new GrapplerItem());
   new_item->id = id;
   new_item->graph = meta_graph.graph_def();
 
