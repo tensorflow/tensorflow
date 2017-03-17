@@ -88,10 +88,13 @@ def _prepare_memory(memory, memory_sequence_length, check_inner_dims_defined):
     rank = m.get_shape().ndims
     rank = rank if rank is not None else array_ops.rank(m)
     extra_ones = array_ops.ones(rank - 2, dtype=dtypes.int32)
-    seq_len_mask = array_ops.reshape(
-        seq_len_mask,
-        array_ops.concat((array_ops.shape(seq_len_mask), extra_ones), 0))
-    return m * seq_len_mask if memory_sequence_length is not None else m
+    if memory_sequence_length is not None:
+      seq_len_mask = array_ops.reshape(
+          seq_len_mask,
+          array_ops.concat((array_ops.shape(seq_len_mask), extra_ones), 0))
+      return m * seq_len_mask
+    else:
+      return m
   return nest.map_structure(lambda m: _maybe_mask(m, seq_len_mask), memory)
 
 
