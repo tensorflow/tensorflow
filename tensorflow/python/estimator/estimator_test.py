@@ -33,6 +33,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.layers import layers
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import init_ops
@@ -1113,6 +1114,31 @@ class EstimatorExportTest(test.TestCase):
         my_int_value = sess.run(my_int)
         self.assertEqual(12345, my_int_value)
 
+  def test_features_labels_mode(self):
+    given_features = {'test-features': constant_op.constant([[1], [1]])}
+
+    def serving_input_receiver_fn():
+      return export.ServingInputReceiver(
+          given_features, array_ops.placeholder(dtype=dtypes.string))
+
+    def _model_fn(features, labels, mode):
+      self.features, self.labels, self.mode = features, labels, mode
+      return model_fn_lib.EstimatorSpec(
+          mode=mode,
+          loss=constant_op.constant(0.),
+          train_op=constant_op.constant(0.),
+          predictions=constant_op.constant([[0.]]),
+          export_outputs={
+              'test': export.ClassificationOutput(constant_op.constant([[0.]]))
+          })
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.train(dummy_input_fn, steps=1)
+    est.export_savedmodel(tempfile.mkdtemp(), serving_input_receiver_fn)
+    self.assertEqual(given_features, self.features)
+    self.assertIsNone(self.labels)
+    self.assertEqual(model_fn_lib.ModeKeys.PREDICT, self.mode)
+
 
 class EstimatorIntegrationTest(test.TestCase):
 
@@ -1149,7 +1175,7 @@ class EstimatorIntegrationTest(test.TestCase):
     data = np.linspace(0., 1., 100, dtype=np.float32).reshape(-1, 1)
 
     # TRAIN
-    # learn x = y
+    # learn y = x
     train_input_fn = numpy_io.numpy_input_fn(
         x={'x': data}, y=data, batch_size=50, num_epochs=None, shuffle=True)
     est.train(train_input_fn, steps=200)
