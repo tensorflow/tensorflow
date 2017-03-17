@@ -91,7 +91,7 @@ produce a consistent history of what happened.
 ### Runs: Comparing different executions of your model
 
 You may want to visually compare multiple executions of your model; for example,
-suppose you've changed the hyperparameters and want to see if its converging
+suppose you've changed the hyperparameters and want to see if it's converging
 faster. TensorBoard enables this through different "runs". When TensorBoard is
 passed a `logdir` at startup, it recursively walks the directory tree rooted at
 `logdir` looking for subdirectories that contain tfevents data. Every time it
