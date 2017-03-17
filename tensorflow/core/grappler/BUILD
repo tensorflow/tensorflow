@@ -64,9 +64,13 @@ cc_library(
 
 cc_library(
     name = "grappler_item",
+    srcs = [
+        "grappler_item.cc",
+    ],
     hdrs = ["grappler_item.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
     ],
@@ -75,8 +79,9 @@ cc_library(
 cc_library(
     name = "grappler_item_builder",
     srcs = [
-        "grappler_item.cc",
+        "grappler_item_builder.cc",
     ],
+    hdrs = ["grappler_item_builder.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":grappler_item",
