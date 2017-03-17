@@ -22,6 +22,7 @@ from __future__ import division
 from __future__ import print_function
 
 from collections import defaultdict
+import errno
 import json
 import os
 import warnings
@@ -3588,8 +3589,11 @@ _keras_dir = os.path.join(_keras_base_dir, '.keras')
 if not os.path.exists(_keras_dir):
   try:
     os.makedirs(_keras_dir)
-  except FileExistsError:  # pylint: disable=undefined-variable
-    pass
+  except OSError as e:
+    if e.errno == errno.EEXIST:
+      pass
+    else:
+      raise
 _config_path = os.path.expanduser(os.path.join(_keras_dir, 'keras.json'))
 if os.path.exists(_config_path):
   _config = json.load(open(_config_path))
