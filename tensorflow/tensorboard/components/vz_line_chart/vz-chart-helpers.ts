@@ -86,14 +86,19 @@ module VZ.ChartHelpers {
       a = d3.min(values);
       b = d3.max(values);
     }
-    // When the data all fits into the unit interval, we switch to a consistent
-    // domain for unit data. This is helpful for proportional parameters like
-    // error rates or % of queue that is full. This way, users can meaningfully
-    // compare charts and see information at a glance (if the value is always
-    // 1, it appears at top of the chart, 0 is bottom, etc.)
+
+    // If the values are in unit range, try to give them a clean [0, 1] range,
+    // but if all the values are less than 0.1 then we will construct a smaller
+    // power-of-ten window for them.
     if (a >= 0 && b <= 1) {
-      return [-0.1, 1.1];
+      if (b === 0) {
+        return [-0.1, 1.1];
+      }
+      let powerOf10 = Math.pow(10, Math.ceil(Math.log(b) / Math.log(10)));
+      let offset = powerOf10 / 10;
+      return [-offset, powerOf10 + offset];
     }
+
     let padding = (b - a) * 0.20;
     let domain = [a - padding, b + padding];
     domain = d3.scale.linear().domain(domain).nice().domain();
