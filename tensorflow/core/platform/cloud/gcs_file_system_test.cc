@@ -254,7 +254,7 @@ TEST(GcsFileSystemTest, NewWritableFile_ResumeUploadSucceeds) {
                            "Auth Token: fake_token\n"
                            "Header Content-Range: bytes */17\n"
                            "Put: yes\n",
-                           "", errors::Unavailable("308"), nullptr,
+                           "", errors::FailedPrecondition("308"), nullptr,
                            {{"Range", "0-10"}}, 308),
        new FakeHttpRequest("Uri: https://custom/upload/location\n"
                            "Auth Token: fake_token\n"
@@ -265,7 +265,7 @@ TEST(GcsFileSystemTest, NewWritableFile_ResumeUploadSucceeds) {
                            "Auth Token: fake_token\n"
                            "Header Content-Range: bytes */17\n"
                            "Put: yes\n",
-                           "", errors::Unavailable("308"), nullptr,
+                           "", errors::FailedPrecondition("308"), nullptr,
                            {{"Range", "bytes=0-12"}}, 308),
        new FakeHttpRequest("Uri: https://custom/upload/location\n"
                            "Auth Token: fake_token\n"
@@ -332,13 +332,13 @@ TEST(GcsFileSystemTest, NewWritableFile_ResumeUploadAllAttemptsFail) {
                            "Put body: content1,content2\n",
                            "", errors::Unavailable("503"), 503)});
   for (int i = 0; i < 10; i++) {
-    requests.emplace_back(
-        new FakeHttpRequest("Uri: https://custom/upload/location\n"
-                            "Auth Token: fake_token\n"
-                            "Header Content-Range: bytes */17\n"
-                            "Put: yes\n",
-                            "", errors::Unavailable("important HTTP error 308"),
-                            nullptr, {{"Range", "0-10"}}, 308));
+    requests.emplace_back(new FakeHttpRequest(
+        "Uri: https://custom/upload/location\n"
+        "Auth Token: fake_token\n"
+        "Header Content-Range: bytes */17\n"
+        "Put: yes\n",
+        "", errors::FailedPrecondition("important HTTP error 308"), nullptr,
+        {{"Range", "0-10"}}, 308));
     requests.emplace_back(new FakeHttpRequest(
         "Uri: https://custom/upload/location\n"
         "Auth Token: fake_token\n"
@@ -379,7 +379,7 @@ TEST(GcsFileSystemTest, NewWritableFile_ResumeUploadAllAttemptsFail) {
       << status;
 }
 
-TEST(GcsFileSystemTest, NewWritableFile_UploadReturns404) {
+TEST(GcsFileSystemTest, NewWritableFile_UploadReturns410) {
   std::vector<HttpRequest*> requests(
       {new FakeHttpRequest(
            "Uri: https://www.googleapis.com/upload/storage/v1/b/bucket/o?"
@@ -392,8 +392,8 @@ TEST(GcsFileSystemTest, NewWritableFile_UploadReturns404) {
                            "Auth Token: fake_token\n"
                            "Header Content-Range: bytes 0-16/17\n"
                            "Put body: content1,content2\n",
-                           "", errors::NotFound("important HTTP error 404"),
-                           404),
+                           "", errors::NotFound("important HTTP error 410"),
+                           410),
        // These calls will be made in the Close() attempt from the destructor.
        // Letting the destructor succeed.
        new FakeHttpRequest(
@@ -424,7 +424,10 @@ TEST(GcsFileSystemTest, NewWritableFile_UploadReturns404) {
       StringPiece(status.error_message())
           .contains(
               "Upload to gs://bucket/path/writeable.txt failed, caused by: "
-              "Not found: important HTTP error 404"))
+              "Not found: important HTTP error 410"))
+      << status;
+  EXPECT_TRUE(StringPiece(status.error_message())
+                  .contains("when uploading gs://bucket/path/writeable.txt"))
       << status;
 }
 
