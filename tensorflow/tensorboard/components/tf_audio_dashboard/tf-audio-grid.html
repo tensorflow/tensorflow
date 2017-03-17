@@ -54,15 +54,17 @@ is high)
     <div id="fullContainer" class="container scrollbar">
       <div id="topRow" class="container">
         <div class="noshrink" id="paddingCell"></div>
-        <template
-          is="dom-repeat"
-          items="[[runs]]"
-          as="run"
-        >
-        <div class="run-name-cell noshrink">
-          <span>[[run]]</span>
-        </div>
-      </template>
+        <template is="dom-if" if="[[_tagsExist(tags)]]">
+          <template
+            is="dom-repeat"
+            items="[[runs]]"
+            as="run"
+          >
+            <div class="run-name-cell noshrink">
+              <span>[[run]]</span>
+            </div>
+          </template>
+        </template>
       </div>
       <div id="bottomContainer" class="container">
         <template
@@ -167,6 +169,9 @@ is high)
         tags: Array,
         runs: Array,
         audioGenerator: Function,
+      },
+      _tagsExist: function(tags) {
+        return tags && tags.length > 0;
       },
       _exists: function (run, tag) {
         return this.runToAudio[run].indexOf(tag) !== -1;
