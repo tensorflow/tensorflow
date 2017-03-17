@@ -3102,6 +3102,20 @@ py_test(
     ],
 )
 
+py_test(
+    name = "training_util_test",
+    size = "small",
+    srcs = ["training/training_util_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":client_testlib",
+        ":framework",
+        ":platform",
+        ":training",
+        ":variables",
+    ],
+)
+
 tf_py_test(
     name = "input_test",
     size = "small",
