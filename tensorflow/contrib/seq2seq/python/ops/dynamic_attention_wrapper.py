@@ -31,6 +31,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.util import nest
 
@@ -42,6 +43,9 @@ __all__ = [
     "BahdanauAttention",
     "hardmax",
 ]
+
+
+_zero_state_tensors = rnn_cell_impl._zero_state_tensors  # pylint: disable=protected-access
 
 
 class AttentionMechanism(object):
@@ -477,6 +481,13 @@ class DynamicAttentionWrapper(core_rnn_cell.RNNCell):
     return DynamicAttentionWrapperState(
         cell_state=self._cell.state_size,
         attention=self._attention_size)
+
+  def zero_state(self, batch_size, dtype):
+    with ops.name_scope(type(self).__name__ + "ZeroState", values=[batch_size]):
+      return DynamicAttentionWrapperState(
+          cell_state=self._cell.zero_state(batch_size, dtype),
+          attention=_zero_state_tensors(
+              self._attention_size, batch_size, dtype))
 
   def __call__(self, inputs, state, scope=None):
     """Perform a step of attention-wrapped RNN.

@@ -489,6 +489,10 @@ class OutputProjectionWrapper(RNNCell):
   def output_size(self):
     return self._output_size
 
+  def zero_state(self, batch_size, dtype):
+    with ops.name_scope(type(self).__name__ + "ZeroState", values=[batch_size]):
+      return self._cell.zero_state(batch_size, dtype)
+
   def __call__(self, inputs, state, scope=None):
     """Run the cell and output projection on inputs, starting from state."""
     output, res_state = self._cell(inputs, state)
@@ -532,6 +536,10 @@ class InputProjectionWrapper(RNNCell):
   @property
   def output_size(self):
     return self._cell.output_size
+
+  def zero_state(self, batch_size, dtype):
+    with ops.name_scope(type(self).__name__ + "ZeroState", values=[batch_size]):
+      return self._cell.zero_state(batch_size, dtype)
 
   def __call__(self, inputs, state, scope=None):
     """Run the input projection and then the cell."""
@@ -665,6 +673,10 @@ class DropoutWrapper(RNNCell):
   def output_size(self):
     return self._cell.output_size
 
+  def zero_state(self, batch_size, dtype):
+    with ops.name_scope(type(self).__name__ + "ZeroState", values=[batch_size]):
+      return self._cell.zero_state(batch_size, dtype)
+
   def _variational_recurrent_dropout_value(
       self, index, value, noise, keep_prob):
     """Performs dropout given the pre-calculated noise tensor."""
@@ -729,6 +741,10 @@ class ResidualWrapper(RNNCell):
   def output_size(self):
     return self._cell.output_size
 
+  def zero_state(self, batch_size, dtype):
+    with ops.name_scope(type(self).__name__ + "ZeroState", values=[batch_size]):
+      return self._cell.zero_state(batch_size, dtype)
+
   def __call__(self, inputs, state, scope=None):
     """Run the cell and add its inputs to its outputs.
 
@@ -777,6 +793,10 @@ class DeviceWrapper(RNNCell):
   @property
   def output_size(self):
     return self._cell.output_size
+
+  def zero_state(self, batch_size, dtype):
+    with ops.name_scope(type(self).__name__ + "ZeroState", values=[batch_size]):
+      return self._cell.zero_state(batch_size, dtype)
 
   def __call__(self, inputs, state, scope=None):
     """Run the cell on specified device."""
@@ -829,6 +849,10 @@ class EmbeddingWrapper(RNNCell):
   @property
   def output_size(self):
     return self._cell.output_size
+
+  def zero_state(self, batch_size, dtype):
+    with ops.name_scope(type(self).__name__ + "ZeroState", values=[batch_size]):
+      return self._cell.zero_state(batch_size, dtype)
 
   def __call__(self, inputs, state, scope=None):
     """Run the cell on embedded inputs."""
@@ -898,6 +922,15 @@ class MultiRNNCell(RNNCell):
   @property
   def output_size(self):
     return self._cells[-1].output_size
+
+  def zero_state(self, batch_size, dtype):
+    with ops.name_scope(type(self).__name__ + "ZeroState", values=[batch_size]):
+      if self._state_is_tuple:
+        return tuple(cell.zero_state(batch_size, dtype) for cell in self._cells)
+      else:
+        # We know here that state_size of each cell is not a tuple and
+        # presumably does not contain TensorArrays or anything else fancy
+        return super(MultiRNNCell, self).zero_state(batch_size, dtype)
 
   def __call__(self, inputs, state, scope=None):
     """Run this multi-layer cell on inputs, starting from state."""
