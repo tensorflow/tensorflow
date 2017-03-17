@@ -1706,7 +1706,7 @@ class _BucketizedColumn(_FeatureColumn, collections.namedtuple(
                   math_ops.range(0, batch_size), 1, name="expand_dims"),
               [1, dimension],
               name="tile"), [-1],
-          name="rehsape")
+          name="reshape")
       i2 = array_ops.tile(
           math_ops.range(0, dimension), [batch_size], name="tile")
       # Flatten the bucket indices and unique them across dimensions
