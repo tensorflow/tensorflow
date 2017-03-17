@@ -1471,7 +1471,13 @@ TEST(GcsFileSystemTest, DeleteRecursively_Ok) {
                            "Auth Token: fake_token\n"
                            "Delete: yes\n",
                            ""),
-       // Delete the object.
+       // Delete the object - fails and will be retried.
+       new FakeHttpRequest("Uri: https://www.googleapis.com/storage/v1/b"
+                           "/bucket/o/path%2Ffile1.txt\n"
+                           "Auth Token: fake_token\n"
+                           "Delete: yes\n",
+                           "", errors::Unavailable("500"), 500),
+       // Delete the object again.
        new FakeHttpRequest("Uri: https://www.googleapis.com/storage/v1/b"
                            "/bucket/o/path%2Ffile1.txt\n"
                            "Auth Token: fake_token\n"

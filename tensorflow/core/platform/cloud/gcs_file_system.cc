@@ -1164,7 +1164,13 @@ Status GcsFileSystem::DeleteRecursively(const string& dirname,
   for (const string& object : all_objects) {
     const string& full_path = JoinGcsPath(dirname, object);
     // Delete all objects including directory markers for subfolders.
-    if (!DeleteFile(full_path).ok()) {
+    // Since DeleteRecursively returns OK if individual file deletions fail,
+    // and therefore RetryingFileSystem won't pay attention to the failures,
+    // we need to make sure these failures are properly retried.
+    const auto& delete_file_status = RetryingUtils::DeleteWithRetries(
+        std::bind(&GcsFileSystem::DeleteFile, this, full_path),
+        initial_retry_delay_usec_);
+    if (!delete_file_status.ok()) {
       if (IsDirectory(full_path).ok()) {
         // The object is a directory marker.
         (*undeleted_dirs)++;
