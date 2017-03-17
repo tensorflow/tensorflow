@@ -160,9 +160,8 @@ def _fused_batch_norm(
   they need to be added as a dependency to the `train_op`, example:
 
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
-    if update_ops:
-      updates = tf.group(*update_ops)
-      total_loss = control_flow_ops.with_dependencies([updates], total_loss)
+    with tf.control_dependencies(update_ops):
+      train_op = optimizer.minimize(loss)
 
   One can set updates_collections=None to force the updates in place, but that
   can have speed penalty, especially in distributed settings.
@@ -392,9 +391,8 @@ def batch_norm(inputs,
   they need to be added as a dependency to the `train_op`, example:
 
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
-    if update_ops:
-      updates = tf.group(*update_ops)
-      total_loss = control_flow_ops.with_dependencies([updates], total_loss)
+    with tf.control_dependencies(update_ops):
+      train_op = optimizer.minimize(loss)
 
   One can set updates_collections=None to force the updates in place, but that
   can have speed penalty, especially in distributed settings.
