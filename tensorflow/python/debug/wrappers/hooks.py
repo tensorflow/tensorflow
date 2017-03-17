@@ -23,8 +23,12 @@ from tensorflow.python.debug.lib import debug_utils
 from tensorflow.python.debug.lib import stepper
 from tensorflow.python.debug.wrappers import dumping_wrapper
 from tensorflow.python.debug.wrappers import framework
+from tensorflow.python.debug.wrappers import grpc_wrapper
 from tensorflow.python.debug.wrappers import local_cli_wrapper
 from tensorflow.python.training import session_run_hook
+
+# The prefix for GRPC endpoint URLs.
+_GRPC_ENDPOINT_PREFIX = "grpc://"
 
 
 class LocalCLIDebugHook(session_run_hook.SessionRunHook,
@@ -166,6 +170,8 @@ class DumpingDebugHook(session_run_hook.SessionRunHook,
 
   def before_run(self, run_context):
     if not self._wrapper_initialized:
+      # TODO(cais): Make this hook have a DumpingDebugWrapperSession property
+      # instead of subclassing DumpingDebugWrapperSession.
       dumping_wrapper.DumpingDebugWrapperSession.__init__(
           self,
           run_context.session,
@@ -196,3 +202,88 @@ class DumpingDebugHook(session_run_hook.SessionRunHook,
 
   def after_run(self, run_context, run_values):
     pass
+
+
+class GrpcDebugHook(session_run_hook.SessionRunHook):
+  """A hook that streams debugger-related events to any grpc_debug_server.
+
+  For example, the debugger data server is a grpc_debug_server. The debugger
+  data server writes debugger-related events it receives via GRPC to logdir.
+  This enables debugging features in Tensorboard such as health pills.
+
+  When the arguments of debug_utils.watch_graph changes, strongly consider
+  changing arguments here too so that features are available to tflearn users.
+
+  Can be used as a monitor/hook for `tf.train.MonitoredSession`s and
+  `tf.contrib.learn`'s `Estimator`s and `Experiment`s.
+  """
+
+  def __init__(self,
+               grpc_debug_server_addresses,
+               watch_fn=None,
+               log_usage=True):
+    """Constructs a GrpcDebugHook.
+
+    Args:
+      grpc_debug_server_addresses: (`list` of `str`) A list of the gRPC debug
+        server addresses, in the format of <host:port>, without the "grpc://"
+        prefix. For example: ["localhost:7000", "192.168.0.2:8000"]
+      watch_fn: A function that allows for customizing which ops to watch at
+        which specific steps. See doc of
+        `dumping_wrapper.DumpingDebugWrapperSession.__init__` for details.
+      log_usage: (bool) Whether usage is to be logged.
+
+    Raises:
+      ValueError: if any debugger server addresses start with grpc://.
+    """
+
+    for address in grpc_debug_server_addresses:
+      if address.startswith(_GRPC_ENDPOINT_PREFIX):
+        raise ValueError(
+            ("Debug server address %r starts with %r. It should not because "
+             "the hook already automatically adds the prefix.") % (
+                 address, _GRPC_ENDPOINT_PREFIX))
+
+    # A wrapper session responsible for GRPC communication.
+    self._grpc_debug_wrapper_session = None
+
+    self._grpc_debug_server_addresses = grpc_debug_server_addresses
+    self._watch_fn = watch_fn
+    self._log_usage = log_usage
+
+  def before_run(self, run_context):
+    """Called right before a session is run.
+
+    Args:
+      run_context: A session_run_hook.SessionRunContext. Encapsulates
+        information on the run.
+
+    Returns:
+      A session_run_hook.SessionRunArgs object.
+    """
+
+    if not self._grpc_debug_wrapper_session:
+      self._grpc_debug_wrapper_session = grpc_wrapper.GrpcDebugWrapperSession(
+          run_context.session,
+          self._grpc_debug_server_addresses,
+          watch_fn=self._watch_fn,
+          log_usage=self._log_usage)
+
+    fetches = run_context.original_args.fetches
+    feed_dict = run_context.original_args.feed_dict
+    watch_options = self._watch_fn(fetches, feed_dict)
+    run_options = config_pb2.RunOptions()
+    debug_utils.watch_graph(
+        run_options,
+        run_context.session.graph,
+        debug_urls=self._grpc_debug_wrapper_session.prepare_run_debug_urls(
+            fetches, feed_dict),
+        debug_ops=watch_options.debug_ops,
+        node_name_regex_whitelist=watch_options.node_name_regex_whitelist,
+        op_type_regex_whitelist=watch_options.op_type_regex_whitelist,
+        tensor_dtype_regex_whitelist=watch_options.tensor_dtype_regex_whitelist,
+        tolerate_debug_op_creation_failures=(
+            watch_options.tolerate_debug_op_creation_failures))
+
+    return session_run_hook.SessionRunArgs(
+        None, feed_dict=None, options=run_options)
