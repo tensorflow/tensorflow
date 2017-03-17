@@ -45,7 +45,6 @@ py_library(
         ":check_ops",
         ":client",
         ":client_testlib",
-        ":cloud_ops",
         ":confusion_matrix",
         ":control_flow_ops",
         ":errors",
@@ -122,38 +121,6 @@ py_library(
     srcs = ["platform/googletest.py"],
     srcs_version = "PY2AND3",
     deps = [":platform_benchmark"],
-)
-
-py_library(
-    name = "cloud_ops",
-    srcs = [
-        "ops/cloud/__init__.py",
-        "ops/cloud/bigquery_reader_ops.py",
-        "ops/cloud/cloud.py",
-    ],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":cloud_ops_gen",
-        ":framework_for_generated_wrappers",
-    ],
-)
-
-tf_py_test(
-    name = "bigquery_reader_ops_test",
-    size = "small",
-    srcs = ["ops/cloud/bigquery_reader_ops_test.py"],
-    additional_deps = [
-        ":array_ops",
-        ":client_testlib",
-        ":cloud_ops",
-        ":data_flow_ops",
-        ":io_ops",
-        ":parsing_ops",
-        ":util",
-        "//tensorflow/core/kernels/cloud:bigquery_reader_ops",
-        "//tensorflow/core:cloud_ops_op_lib",
-    ],
-    tags = ["manual"],
 )
 
 tf_py_test(
@@ -1016,11 +983,6 @@ tf_gen_op_wrapper_private_py(
     name = "candidate_sampling_ops_gen",
     require_shape_functions = True,
     visibility = ["//learning/brain/python/ops:__pkg__"],
-)
-
-tf_gen_op_wrapper_private_py(
-    name = "cloud_ops_gen",
-    require_shape_functions = True,
 )
 
 tf_gen_op_wrapper_private_py(

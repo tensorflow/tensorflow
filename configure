@@ -8,6 +8,9 @@ pushd `dirname $0` > /dev/null
 SOURCE_BASE_DIR=`pwd -P`
 popd > /dev/null
 
+# This file contains customized config settings.
+touch .bazelrc
+
 PLATFORM="$(uname -s | tr 'A-Z' 'a-z')"
 
 function is_linux() {
@@ -41,8 +44,11 @@ function bazel_clean_and_fetch() {
   if ! is_windows; then
     bazel clean --expunge
   fi
-  bazel fetch "//tensorflow/... -//tensorflow/contrib/nccl/... \
-      -//tensorflow/examples/android/..."
+  if [ -z "$TF_BAZEL_TARGETS" ]; then
+    bazel fetch "//tensorflow/... -//tensorflow/contrib/nccl/... -//tensorflow/examples/android/..."
+  else
+    bazel fetch $TF_BAZEL_TARGETS
+  fi
 }
 
 function sed_hyphen_i() {
@@ -180,13 +186,12 @@ else
   TF_NEED_JEMALLOC=0
 fi
 
-if [ "$TF_NEED_JEMALLOC" == "1" ]; then
-  sed_hyphen_i -e "s/WITH_JEMALLOC = False/WITH_JEMALLOC = True/" tensorflow/core/platform/default/build_config.bzl
-else
-  sed_hyphen_i -e "s/WITH_JEMALLOC = True/WITH_JEMALLOC = False/" tensorflow/core/platform/default/build_config.bzl
+sed_hyphen_i -e "/with_jemalloc/d" .bazelrc
+if [[ "$TF_NEED_JEMALLOC" == "1" ]]; then
+  echo 'build --define with_jemalloc=true' >>.bazelrc
 fi
 
-while [ "$TF_NEED_GCP" == "" ]; do
+while [[ "$TF_NEED_GCP" == "" ]]; do
   read -p "Do you wish to build TensorFlow with "\
 "Google Cloud Platform support? [y/N] " INPUT
   case $INPUT in
@@ -200,23 +205,12 @@ while [ "$TF_NEED_GCP" == "" ]; do
   esac
 done
 
-if [ "$TF_NEED_GCP" == "1" ]; then
-  ## Verify that libcurl header files are available.
-  # Only check Linux, since on MacOS the header files are installed with XCode.
-  if is_linux && [[ ! -f "/usr/include/curl/curl.h" ]]; then
-    echo "ERROR: It appears that the development version of libcurl is not "\
-"available. Please install the libcurl3-dev package."
-    exit 1
-  fi
-
-  # Update Bazel build configuration.
-  sed_hyphen_i -e "s/WITH_GCP_SUPPORT = False/WITH_GCP_SUPPORT = True/" tensorflow/core/platform/default/build_config.bzl
-else
-  # Update Bazel build configuration.
-  sed_hyphen_i -e "s/WITH_GCP_SUPPORT = True/WITH_GCP_SUPPORT = False/" tensorflow/core/platform/default/build_config.bzl
+sed_hyphen_i -e "/with_gcp_support/d" .bazelrc
+if [[ "$TF_NEED_GCP" == "1" ]]; then
+  echo 'build --define with_gcp_support=true' >>.bazelrc
 fi
 
-while [ "$TF_NEED_HDFS" == "" ]; do
+while [[ "$TF_NEED_HDFS" == "" ]]; do
   read -p "Do you wish to build TensorFlow with "\
 "Hadoop File System support? [y/N] " INPUT
   case $INPUT in
@@ -230,16 +224,13 @@ while [ "$TF_NEED_HDFS" == "" ]; do
   esac
 done
 
-if [ "$TF_NEED_HDFS" == "1" ]; then
-  # Update Bazel build configuration.
-  sed_hyphen_i -e "s/WITH_HDFS_SUPPORT = False/WITH_HDFS_SUPPORT = True/" tensorflow/core/platform/default/build_config.bzl
-else
-  # Update Bazel build configuration.
-  sed_hyphen_i -e "s/WITH_HDFS_SUPPORT = True/WITH_HDFS_SUPPORT = False/" tensorflow/core/platform/default/build_config.bzl
+sed_hyphen_i -e "/with_hdfs_support/d" .bazelrc
+if [[ "$TF_NEED_HDFS" == "1" ]]; then
+  echo 'build --define with_hdfs_support=true' >>.bazelrc
 fi
 
 ## Enable XLA.
-while [ "$TF_ENABLE_XLA" == "" ]; do
+while [[ "$TF_ENABLE_XLA" == "" ]]; do
   read -p "Do you wish to build TensorFlow with the XLA just-in-time compiler (experimental)? [y/N] " INPUT
   case $INPUT in
     [Yy]* ) echo "XLA JIT support will be enabled for TensorFlow"; TF_ENABLE_XLA=1;;
@@ -249,12 +240,9 @@ while [ "$TF_ENABLE_XLA" == "" ]; do
   esac
 done
 
-if [ "$TF_ENABLE_XLA" == "1" ]; then
-  # Update Bazel build configuration.
-  sed_hyphen_i -e "s/^WITH_XLA_SUPPORT = [FT].*/WITH_XLA_SUPPORT = True/" tensorflow/core/platform/default/build_config_root.bzl
-else
-  # Update Bazel build configuration.
-  sed_hyphen_i -e "s/^WITH_XLA_SUPPORT = [FT].*/WITH_XLA_SUPPORT = False/" tensorflow/core/platform/default/build_config_root.bzl
+sed_hyphen_i -e "/with_xla_support/d" .bazelrc
+if [[ "$TF_ENABLE_XLA" == "1" ]]; then
+  echo 'build --define with_xla_support=true' >>.bazelrc
 fi
 
 

@@ -49,7 +49,7 @@ class GraphTransfererTest : public ::testing::Test {
 
 static const std::vector<string> OP_TYPES{
     "INPUT", "OUTPUT", "Conv2D", "MaxPool", "NoOp", "Add", "Const", "Softmax"};
-const GraphTransferer::OutputTensorMap EMPTY_OUTPUT_TENSOR_MAP;
+const RemoteFusedGraphExecuteUtils::TensorShapeMap EMPTY_OUTPUT_TENSOR_MAP;
 
 class TestGraphTransferOpsDefinitions : public IGraphTransferOpsDefinitions {
  public:

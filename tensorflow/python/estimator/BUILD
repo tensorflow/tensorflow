@@ -69,10 +69,10 @@ py_library(
     srcs = ["model_fn.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":export_output",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:training",
-        "//tensorflow/python/saved_model:signature_constants",
         "@six_archive//:six",
     ],
 )
@@ -89,7 +89,6 @@ py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:training",
-        "//tensorflow/python/saved_model:signature_constants",
     ],
 )
 
@@ -106,15 +105,20 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":export",
+        ":export_output",
         ":model_fn",
         ":run_config",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:metrics",
         "//tensorflow/python:platform",
         "//tensorflow/python:summary",
         "//tensorflow/python:training",
+        "//tensorflow/python/saved_model:builder",
+        "//tensorflow/python/saved_model:tag_constants",
     ],
 )
 
@@ -132,6 +136,28 @@ py_test(
         "//tensorflow/python:session",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:training",
+        "//tensorflow/python/saved_model:loader",
+    ],
+)
+
+py_library(
+    name = "export_output",
+    srcs = ["export_output.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python/saved_model:signature_def_utils",
+    ],
+)
+
+py_test(
+    name = "export_output_test",
+    size = "small",
+    srcs = ["export_output_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":export_output",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/saved_model:signature_constants",
     ],
 )
 
@@ -140,9 +166,11 @@ py_library(
     srcs = ["export.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":export_output",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
         "//tensorflow/python:parsing_ops",
+        "//tensorflow/python/saved_model:signature_constants",
     ],
 )
 
@@ -153,6 +181,7 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":export",
+        ":export_output",
         "//tensorflow/python:client_testlib",
     ],
 )

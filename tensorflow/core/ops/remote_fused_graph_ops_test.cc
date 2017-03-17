@@ -35,6 +35,8 @@ TEST(RemoteFusedGraphOpsTest, RemoteFusedGraphExecute_ShapeFn) {
                      .Input(src_list)
                      .Attr("M", input_count)
                      .Attr("N", output_count)
+                     .Attr("T", DT_FLOAT)
+                     .Attr("U", DT_FLOAT)
                      .Finalize(&op.node_def));
   };
   set_n(4, 2);

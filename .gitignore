@@ -1,6 +1,7 @@
 .DS_Store
 .ipynb_checkpoints
 node_modules
+/.bazelrc
 /bazel-*
 /third_party/py/numpy/numpy_include
 /tools/bazel.rc

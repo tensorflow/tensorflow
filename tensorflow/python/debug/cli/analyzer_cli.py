@@ -1266,7 +1266,7 @@ class DebugAnalyzer(object):
       lines.append(line)
       font_attr_segs[len(lines) - 1] = [(
           len(line) - len(non_ctrl), len(line),
-          debugger_cli_common.MenuItem(None, "ni -a -d %s" % non_ctrl))]
+          debugger_cli_common.MenuItem(None, "ni -a -d -t %s" % non_ctrl))]
 
     if ctrls:
       lines.append("")
@@ -1276,7 +1276,7 @@ class DebugAnalyzer(object):
         lines.append(line)
         font_attr_segs[len(lines) - 1] = [(
             len(line) - len(ctrl), len(line),
-            debugger_cli_common.MenuItem(None, "ni -a -d %s" % ctrl))]
+            debugger_cli_common.MenuItem(None, "ni -a -d -t %s" % ctrl))]
 
     return debugger_cli_common.RichTextLines(
         lines, font_attr_segs=font_attr_segs)

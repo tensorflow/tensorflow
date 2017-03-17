@@ -981,6 +981,29 @@ class ImportGraphDefTest(test.TestCase):
         self.assertEqual(sess.run("external:0"), 11)
         self.assertEqual(sess.run("outer:0"), 21)
 
+  def testImportInsideDefun(self):
+    g = ops.Graph()
+    with g.as_default():
+      @function.Defun()
+      def Add2(x, y):
+        return math_ops.add(x, y)
+
+      x = constant_op.constant(3.0, dtype=dtypes.float32)
+      y = constant_op.constant(-5.0, dtype=dtypes.float32)
+      z = Add2(x, y, name="z")  # pylint: disable=unexpected-keyword-arg
+
+    gdef = g.as_graph_def()
+
+    @function.Defun()
+    def TestFunc():
+      return importer.import_graph_def(gdef, return_elements=["z:0"])[0]
+
+    z = TestFunc()
+
+    with self.test_session():
+      z_val = z.eval()
+      self.assertEqual(z_val, -2.0)
+
 
 if __name__ == "__main__":
   test.main()

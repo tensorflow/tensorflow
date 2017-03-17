@@ -48,6 +48,11 @@ cp "${JAVA_HOME}/include/win32/jni_md.h" "./tensorflow/java/src/main/native/wind
 sed -i -e "s|@bazel_tools//tools/jdk:jni_md_header-linux|windows_jni_md.h|" ./tensorflow/java/src/main/native/BUILD
 #### END HACKS TO BE RESOLVED WITH NEW BAZEL VERSIONS ####
 
+export TF_BAZEL_TARGETS="//tensorflow:libtensorflow.so"
+export TF_BAZEL_TARGETS="${TF_BAZEL_TARGETS} //tensorflow/tools/lib_package:clicenses_generate"
+export TF_BAZEL_TARGETS="${TF_BAZEL_TARGETS} //tensorflow/java:libtensorflow_jni.so"
+export TF_BAZEL_TARGETS="${TF_BAZEL_TARGETS} //tensorflow/tools/lib_package:jnilicenses_generate"
+
 clean_output_base
 run_configure_for_cpu_build
 
@@ -66,6 +71,7 @@ git checkout ./tensorflow/java/src/main/native/BUILD
 rm -f ./tensorflow/java/src/main/native/windows_jni_md.h
 
 DIR=lib_package
+rm -rf ${DIR}
 mkdir -p ${DIR}
 
 # Zip up the .dll and the LICENSE for the JNI library.

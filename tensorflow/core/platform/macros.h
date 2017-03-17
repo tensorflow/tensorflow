@@ -54,7 +54,7 @@ limitations under the License.
 #endif
 
 // Control visiblity outside .so
-#if defined(PLATFORM_WINDOWS)
+#if defined(COMPILER_MSVC)
 # ifdef TF_COMPILE_LIBRARY
 #  define TF_EXPORT __declspec(dllexport)
 # else
@@ -62,7 +62,7 @@ limitations under the License.
 # endif   // TF_COMPILE_LIBRARY
 #else
 # define TF_EXPORT __attribute__((visibility("default")))
-#endif  // PLATFORM_WINDOWS
+#endif  // COMPILER_MSVC
 
 // GCC can be told that a certain branch is not likely to be taken (for
 // instance, a CHECK failure), and use that information in static analysis.

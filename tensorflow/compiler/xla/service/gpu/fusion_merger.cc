@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
 
 #include <algorithm>
+#include <vector>
 
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/instruction_fusion.h"
@@ -249,7 +250,7 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
     return Status::OK();
   }
   // Merge fused instructions from 'fusion' into each user.
-  std::set<HloInstruction*> users = fusion->users();
+  std::vector<HloInstruction*> users = fusion->users();
   for (HloInstruction* user : users) {
     user->MergeFusionInstruction(fusion);
     changed_ = true;

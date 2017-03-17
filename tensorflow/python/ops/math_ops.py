@@ -112,6 +112,7 @@ See the @{$python/math_ops} guide.
 @@count_nonzero
 @@accumulate_n
 @@einsum
+@@bincount
 @@cumsum
 @@cumprod
 @@segment_sum
@@ -2018,6 +2019,50 @@ def tanh(x, name=None):
       return gen_math_ops._tanh(x, name=name)
 
 
+def bincount(arr,
+             minlength=None,
+             maxlength=None,
+             weights=None,
+             dtype=dtypes.int32):
+  """Counts the number of occurrences of each value in an integer array.
+
+  If `minlength` and `maxlength` are not given, returns a vector with length
+  `tf.reduce_max(arr) + 1` if `arr` is non-empty, and length 0 otherwise.
+  If `weights` are non-None, then index `i` of the output stores the sum of the
+  value in `weights` at each index where the corresponding value in `arr` is
+  `i`.
+
+  Args:
+    arr: An int32 tensor of non-negative values.
+    minlength: If given, ensures the output has length at least `minlength`,
+        padding with zeros at the end if necessary.
+    maxlength: If given, skips values in `arr` that are equal or greater than
+        `maxlength`, ensuring that the output has length at most `maxlength`.
+    weights: If non-None, must be the same shape as arr. For each value in
+        `arr`, the bin will be incremented by the corresponding weight instead
+        of 1.
+    dtype: If `weights` is None, determines the type of the output bins.
+
+  Returns:
+    A vector with the same dtype as `weights` or the given `dtype`. The bin
+    values.
+  """
+  arr = ops.convert_to_tensor(arr, name="arr", dtype=dtypes.int32)
+  array_is_nonempty = reduce_prod(array_ops.shape(arr)) > 0
+  output_size = cast(array_is_nonempty, dtypes.int32) * (reduce_max(arr) + 1)
+  if minlength is not None:
+    minlength = ops.convert_to_tensor(
+        minlength, name="minlength", dtype=dtypes.int32)
+    output_size = gen_math_ops.maximum(minlength, output_size)
+  if maxlength is not None:
+    maxlength = ops.convert_to_tensor(
+        maxlength, name="maxlength", dtype=dtypes.int32)
+    output_size = gen_math_ops.minimum(maxlength, output_size)
+  weights = (ops.convert_to_tensor(weights, name="weights")
+             if weights is not None else constant_op.constant([], dtype))
+  return gen_math_ops.bincount(arr, output_size, weights)
+
+
 def cumsum(x, axis=0, exclusive=False, reverse=False, name=None):
   """Compute the cumulative sum of the tensor `x` along `axis`.
 
@@ -2321,8 +2366,8 @@ def tensordot(a, b, axes, name=None):
     if isinstance(a_free_dims, list) and isinstance(b_free_dims, list):
       return array_ops.reshape(ab_matmul, a_free_dims + b_free_dims, name=name)
     else:
-      a_free_dims = ops.convert_to_tensor(a_free_dims)
-      b_free_dims = ops.convert_to_tensor(b_free_dims)
+      a_free_dims = ops.convert_to_tensor(a_free_dims, dtype=dtypes.int32)
+      b_free_dims = ops.convert_to_tensor(b_free_dims, dtype=dtypes.int32)
       return array_ops.reshape(
           ab_matmul, array_ops.concat([a_free_dims, b_free_dims], 0), name=name)
 

@@ -169,12 +169,20 @@ py_library(
 )
 
 py_library(
+    name = "curses_widgets",
+    srcs = ["cli/curses_widgets.py"],
+    srcs_version = "PY2AND3",
+    deps = [":debugger_cli_common"],
+)
+
+py_library(
     name = "curses_ui",
     srcs = ["cli/curses_ui.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":base_ui",
         ":command_parser",
+        ":curses_widgets",
         ":debugger_cli_common",
         ":tensor_format",
         "@six_archive//:six",
@@ -395,6 +403,17 @@ py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "curses_widgets_test",
+    size = "small",
+    srcs = ["cli/curses_widgets_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":curses_widgets",
+        "//tensorflow/python:framework_test_lib",
     ],
 )
 

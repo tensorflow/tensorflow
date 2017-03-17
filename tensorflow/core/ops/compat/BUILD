@@ -18,6 +18,7 @@ cc_library(
     hdrs = ["op_compatibility_lib.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/core:debug_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:ops",
