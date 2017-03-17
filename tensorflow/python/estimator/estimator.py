@@ -392,6 +392,7 @@ class Estimator(object):
 
     with ops.Graph().as_default() as g:
       training.create_global_step(g)
+      random_seed.set_random_seed(self._config.tf_random_seed)
       serving_input_receiver = serving_input_receiver_fn()
 
       # Call the model_fn and collect the export_outputs.

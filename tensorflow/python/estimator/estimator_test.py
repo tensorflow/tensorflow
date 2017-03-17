@@ -186,7 +186,8 @@ class EstimatorConstructorTest(test.TestCase):
 
 
 def dummy_input_fn():
-  return {'x': [[1], [1]]}, [[1], [1]]
+  return ({'x': constant_op.constant([[1], [1]])},
+          constant_op.constant([[1], [1]]))
 
 
 def model_fn_global_step_incrementer(features, labels, mode):
@@ -357,13 +358,28 @@ class EstimatorTrainTest(test.TestCase):
           mode=mode,
           loss=constant_op.constant(0.),
           train_op=constant_op.constant(0.),
-          predictions=constant_op.constant(0.))
+          predictions=constant_op.constant([[0.]]))
 
     est = estimator.Estimator(model_fn=_model_fn)
     est.train(_input_fn, steps=1)
     self.assertEqual(given_features, self.features)
     self.assertEqual(given_labels, self.labels)
     self.assertEqual(model_fn_lib.ModeKeys.TRAIN, self.mode)
+
+  def test_graph_initialization_global_step_and_random_seed(self):
+    expected_random_seed = run_config.RunConfig().tf_random_seed
+    def _model_fn(features, labels, mode):
+      _, _, _ = features, labels, mode
+      self.assertIsNotNone(training.get_global_step())
+      self.assertEqual(expected_random_seed, ops.get_default_graph().seed)
+      return model_fn_lib.EstimatorSpec(
+          mode=mode,
+          loss=constant_op.constant(0.),
+          train_op=constant_op.constant(0.),
+          predictions=constant_op.constant([[0.]]))
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.train(dummy_input_fn, steps=1)
 
 
 def _model_fn_with_eval_metric_ops(features, labels, mode, params):
@@ -552,7 +568,7 @@ class EstimatorEvaluateTest(test.TestCase):
           mode=mode,
           loss=constant_op.constant(0.),
           train_op=constant_op.constant(0.),
-          predictions=constant_op.constant(0.))
+          predictions=constant_op.constant([[0.]]))
 
     est = estimator.Estimator(model_fn=_model_fn)
     est.train(_input_fn, steps=1)
@@ -560,6 +576,22 @@ class EstimatorEvaluateTest(test.TestCase):
     self.assertEqual(given_features, self.features)
     self.assertEqual(given_labels, self.labels)
     self.assertEqual(model_fn_lib.ModeKeys.EVAL, self.mode)
+
+  def test_graph_initialization_global_step_and_random_seed(self):
+    expected_random_seed = run_config.RunConfig().tf_random_seed
+    def _model_fn(features, labels, mode):
+      _, _, _ = features, labels, mode
+      self.assertIsNotNone(training.get_global_step())
+      self.assertEqual(expected_random_seed, ops.get_default_graph().seed)
+      return model_fn_lib.EstimatorSpec(
+          mode=mode,
+          loss=constant_op.constant(0.),
+          train_op=constant_op.constant(0.),
+          predictions=constant_op.constant([[0.]]))
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.train(dummy_input_fn, steps=1)
+    est.evaluate(dummy_input_fn, steps=1)
 
 
 class EstimatorPredictTest(test.TestCase):
@@ -815,6 +847,22 @@ class EstimatorPredictTest(test.TestCase):
     self.assertEqual(given_features, self.features)
     self.assertIsNone(self.labels)
     self.assertEqual(model_fn_lib.ModeKeys.PREDICT, self.mode)
+
+  def test_graph_initialization_global_step_and_random_seed(self):
+    expected_random_seed = run_config.RunConfig().tf_random_seed
+    def _model_fn(features, labels, mode):
+      _, _, _ = features, labels, mode
+      self.assertIsNotNone(training.get_global_step())
+      self.assertEqual(expected_random_seed, ops.get_default_graph().seed)
+      return model_fn_lib.EstimatorSpec(
+          mode=mode,
+          loss=constant_op.constant(0.),
+          train_op=constant_op.constant(0.),
+          predictions=constant_op.constant([[0.]]))
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.train(dummy_input_fn, steps=1)
+    next(est.predict(dummy_input_fn))
 
 
 def _model_fn_for_export_tests(features, labels, mode):
@@ -1138,6 +1186,30 @@ class EstimatorExportTest(test.TestCase):
     self.assertEqual(given_features, self.features)
     self.assertIsNone(self.labels)
     self.assertEqual(model_fn_lib.ModeKeys.PREDICT, self.mode)
+
+  def test_graph_initialization_global_step_and_random_seed(self):
+    expected_random_seed = run_config.RunConfig().tf_random_seed
+    def _model_fn(features, labels, mode):
+      _, _, _ = features, labels, mode
+      self.assertIsNotNone(training.get_global_step())
+      self.assertEqual(expected_random_seed, ops.get_default_graph().seed)
+      return model_fn_lib.EstimatorSpec(
+          mode=mode,
+          loss=constant_op.constant(0.),
+          train_op=constant_op.constant(0.),
+          predictions=constant_op.constant([[0.]]),
+          export_outputs={
+              'test': export.ClassificationOutput(constant_op.constant([[0.]]))
+          })
+
+    def serving_input_receiver_fn():
+      return export.ServingInputReceiver(
+          {'test-features': constant_op.constant([[1], [1]])},
+          array_ops.placeholder(dtype=dtypes.string))
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.train(dummy_input_fn, steps=1)
+    est.export_savedmodel(tempfile.mkdtemp(), serving_input_receiver_fn)
 
 
 class EstimatorIntegrationTest(test.TestCase):
