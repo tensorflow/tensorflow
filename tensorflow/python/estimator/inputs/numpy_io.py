@@ -75,7 +75,9 @@ def numpy_input_fn(x,
     shuffle: Boolean, if True shuffles the queue. Avoid shuffle at prediction
       time.
     queue_capacity: Integer, size of queue to accumulate.
-    num_threads: Integer, number of threads used for reading and enqueueing.
+    num_threads: Integer, number of threads used for reading and enqueueing. In
+      order to have predicted and repeatable order of reading and enqueueing,
+      such as in prediction and evaluation mode, `num_threads` should be 1.
 
   Returns:
     Function, that has signature of ()->(dict of `features`, `target`)

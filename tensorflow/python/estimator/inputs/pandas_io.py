@@ -55,7 +55,9 @@ def pandas_input_fn(x,
     shuffle: bool, whether to read the records in random order.
     queue_capacity: int, size of the read queue. If `None`, it will be set
       roughly to the size of `x`.
-    num_threads: int, number of threads used for reading and enqueueing.
+    num_threads: Integer, number of threads used for reading and enqueueing. In
+      order to have predicted and repeatable order of reading and enqueueing,
+      such as in prediction and evaluation mode, `num_threads` should be 1.
     target_column: str, name to give the target column `y`.
 
   Returns:
