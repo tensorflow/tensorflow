@@ -793,18 +793,18 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
                                             context);
     int device_id = stream->parent()->device_ordinal();
     ConvParameters conv_parameters = {
-        dims.batch_size,                   // batch
-        dims.in_depth,                     // in_depths
-        input_desc.height(),               // in_rows
-        input_desc.width(),                // in_cols
-        dims.out_depth,                    // out_depths
-        dims.spatial_dims[0].filter_size,  // filter_rows
-        dims.spatial_dims[1].filter_size,  // filter_cols
-        dims.spatial_dims[0].stride,       // stride_rows
-        dims.spatial_dims[1].stride,       // stride_cols
-        padding_rows,                      // padding_rows
-        padding_cols,                      // padding_cols
-        device_id,                         // device_id
+        dims.batch_size,                       // batch
+        dims.in_depth,                         // in_depths
+        {{input_desc.height(),                 // in_rows
+          input_desc.width()}},                // in_cols
+        dims.out_depth,                        // out_depths
+        {{dims.spatial_dims[0].filter_size,    // filter_rows
+          dims.spatial_dims[1].filter_size}},  // filter_cols
+        {{dims.spatial_dims[0].stride,         // stride_rows
+          dims.spatial_dims[1].stride}},       // stride_cols
+        {{padding_rows,                        // padding_rows
+          padding_cols}},                      // padding_cols
+        device_id,                             // device_id
     };
     AlgorithmConfig algorithm_config;
     if (cudnn_use_autotune_ && !AutoTuneConvBwdData::GetInstance()->Find(

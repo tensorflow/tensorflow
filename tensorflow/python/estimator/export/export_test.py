@@ -25,8 +25,8 @@ import time
 from google.protobuf import text_format
 
 from tensorflow.core.example import example_pb2
-from tensorflow.python.estimator import export
-from tensorflow.python.estimator import export_output
+from tensorflow.python.estimator.export import export
+from tensorflow.python.estimator.export import export_output
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes

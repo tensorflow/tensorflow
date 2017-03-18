@@ -46,7 +46,7 @@ def numpy_input_fn(x,
                    y=None,
                    batch_size=128,
                    num_epochs=1,
-                   shuffle=True,
+                   shuffle=None,
                    queue_capacity=1000,
                    num_threads=1):
   """Returns input function that would feed dict of numpy arrays into the model.
@@ -68,7 +68,7 @@ def numpy_input_fn(x,
 
   Args:
     x: dict of numpy array object.
-    y: numpy array object.
+    y: numpy array object. `None` if absent.
     batch_size: Integer, size of batches to return.
     num_epochs: Integer, number of epochs to iterate over data. If `None` will
       run forever.
@@ -83,8 +83,12 @@ def numpy_input_fn(x,
   Raises:
     ValueError: if the shape of `y` mismatches the shape of values in `x` (i.e.,
       values in `x` have same shape).
-    TypeError: `x` is not a dict.
+    TypeError: `x` is not a dict or `shuffle` is not bool.
   """
+
+  if not isinstance(shuffle, bool):
+    raise TypeError('shuffle must be explicitly set as boolean; '
+                    'got {}'.format(shuffle))
 
   def input_fn():
     """Numpy input function."""

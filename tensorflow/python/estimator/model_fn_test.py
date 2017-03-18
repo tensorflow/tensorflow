@@ -19,7 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.estimator import export_output
+from tensorflow.python.estimator import export
 from tensorflow.python.estimator import model_fn
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
@@ -67,7 +67,7 @@ class EstimatorSpecTrainTest(test.TestCase):
           train_op=control_flow_ops.no_op(),
           eval_metric_ops={'loss': (control_flow_ops.no_op(), loss)},
           export_outputs={
-              'head_name': export_output.ClassificationOutput(classes=classes)
+              'head_name': export.ClassificationOutput(classes=classes)
           },
           training_chief_hooks=[_FakeHook()],
           training_hooks=[_FakeHook()],
@@ -217,7 +217,7 @@ class EstimatorSpecEvalTest(test.TestCase):
           train_op=control_flow_ops.no_op(),
           eval_metric_ops={'loss': (control_flow_ops.no_op(), loss)},
           export_outputs={
-              'head_name': export_output.ClassificationOutput(classes=classes)
+              'head_name': export.ClassificationOutput(classes=classes)
           },
           training_chief_hooks=[_FakeHook()],
           training_hooks=[_FakeHook()],
@@ -401,7 +401,7 @@ class EstimatorSpecInferTest(test.TestCase):
           train_op=control_flow_ops.no_op(),
           eval_metric_ops={'loss': (control_flow_ops.no_op(), loss)},
           export_outputs={
-              'head_name': export_output.ClassificationOutput(classes=classes)
+              'head_name': export.ClassificationOutput(classes=classes)
           },
           training_chief_hooks=[_FakeHook()],
           training_hooks=[_FakeHook()],
@@ -446,7 +446,7 @@ class EstimatorSpecInferTest(test.TestCase):
         model_fn.EstimatorSpec(
             mode=model_fn.ModeKeys.PREDICT,
             predictions=predictions,
-            export_outputs=export_output.ClassificationOutput(classes=classes))
+            export_outputs=export.ClassificationOutput(classes=classes))
 
   def testExportOutputsValueNotExportOutput(self):
     with ops.Graph().as_default(), self.test_session():
@@ -465,7 +465,7 @@ class EstimatorSpecInferTest(test.TestCase):
     with ops.Graph().as_default(), self.test_session():
       predictions = {'loss': constant_op.constant(1.)}
       output_1 = constant_op.constant([1.])
-      regression_output = export_output.RegressionOutput(value=output_1)
+      regression_output = export.RegressionOutput(value=output_1)
       export_outputs = {
           'head-1': regression_output,
           }
@@ -488,9 +488,9 @@ class EstimatorSpecInferTest(test.TestCase):
       output_3 = constant_op.constant(['3'])
       export_outputs = {
           signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY:
-          export_output.RegressionOutput(value=output_1),
-          'head-2': export_output.ClassificationOutput(classes=output_2),
-          'head-3': export_output.PredictOutput(outputs={
+          export.RegressionOutput(value=output_1),
+          'head-2': export.ClassificationOutput(classes=output_2),
+          'head-3': export.PredictOutput(outputs={
               'some_output_3': output_3
           })}
       estimator_spec = model_fn.EstimatorSpec(
@@ -506,9 +506,9 @@ class EstimatorSpecInferTest(test.TestCase):
       output_2 = constant_op.constant(['2'])
       output_3 = constant_op.constant(['3'])
       export_outputs = {
-          'head-1': export_output.RegressionOutput(value=output_1),
-          'head-2': export_output.ClassificationOutput(classes=output_2),
-          'head-3': export_output.PredictOutput(outputs={
+          'head-1': export.RegressionOutput(value=output_1),
+          'head-2': export.ClassificationOutput(classes=output_2),
+          'head-3': export.PredictOutput(outputs={
               'some_output_3': output_3
           })}
       with self.assertRaisesRegexp(

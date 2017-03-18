@@ -38,7 +38,7 @@ def pandas_input_fn(x,
                     y=None,
                     batch_size=128,
                     num_epochs=1,
-                    shuffle=True,
+                    shuffle=None,
                     queue_capacity=1000,
                     num_threads=1,
                     target_column='target'):
@@ -48,7 +48,7 @@ def pandas_input_fn(x,
 
   Args:
     x: pandas `DataFrame` object.
-    y: pandas `Series` object.
+    y: pandas `Series` object. `None` if absent.
     batch_size: int, size of batches to return.
     num_epochs: int, number of epochs to iterate over data. If not `None`,
       read attempts that would exceed this value will raise `OutOfRangeError`.
@@ -64,10 +64,15 @@ def pandas_input_fn(x,
   Raises:
     ValueError: if `x` already contains a column with the same name as `y`, or
       if the indexes of `x` and `y` don't match.
+    TypeError: `shuffle` is not bool.
   """
   if not HAS_PANDAS:
     raise TypeError(
         'pandas_input_fn should not be called without pandas installed')
+
+  if not isinstance(shuffle, bool):
+    raise TypeError('shuffle must be explicitly set as boolean; '
+                    'got {}'.format(shuffle))
 
   x = x.copy()
   if y is not None:

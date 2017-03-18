@@ -183,6 +183,9 @@ std::vector<int64> InversePermutation(
 std::vector<int64> ComposePermutations(tensorflow::gtl::ArraySlice<int64> p1,
                                        tensorflow::gtl::ArraySlice<int64> p2);
 
+// Returns true iff permutation == {0, 1, 2, ...}.
+bool IsIdentityPermutation(tensorflow::gtl::ArraySlice<int64> permutation);
+
 template <typename Container>
 int64 PositionInContainer(const Container& container, int64 value) {
   return std::distance(container.begin(),

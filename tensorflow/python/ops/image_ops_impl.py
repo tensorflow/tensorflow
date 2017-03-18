@@ -129,9 +129,11 @@ def _Check3DImage(image, require_static=True):
   try:
     image_shape = image.get_shape().with_rank(3)
   except ValueError:
-    raise ValueError("'image' must be three-dimensional.")
+    raise ValueError("'image' (shape %s) must be three-dimensional." %
+                     image.shape)
   if require_static and not image_shape.is_fully_defined():
-    raise ValueError("'image' must be fully defined.")
+    raise ValueError("'image' (shape %s) must be fully defined." %
+                     image_shape)
   if any(x == 0 for x in image_shape):
     raise ValueError("all dims of 'image.shape' must be > 0: %s" %
                      image_shape)

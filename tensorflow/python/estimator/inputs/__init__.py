@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Methods to create input_fn."""
+"""Utility methods to create simple input_fns."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -20,3 +20,12 @@ from __future__ import print_function
 
 from tensorflow.python.estimator.inputs.numpy_io import numpy_input_fn
 from tensorflow.python.estimator.inputs.pandas_io import pandas_input_fn
+
+from tensorflow.python.util.all_util import remove_undocumented
+
+_allowed_symbols = [
+    'numpy_input_fn',
+    'pandas_input_fn'
+]
+
+remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)

@@ -271,6 +271,23 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "deterministic_test",
+    size = "small",
+    srcs = ["python/kernel_tests/deterministic_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_test(
     name = "dirichlet_test",
     size = "small",
     srcs = ["python/kernel_tests/dirichlet_test.py"],

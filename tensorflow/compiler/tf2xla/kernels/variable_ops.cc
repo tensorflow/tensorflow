@@ -82,19 +82,5 @@ class AssignSubVariableOp : public XlaOpKernel {
 };
 REGISTER_XLA_OP("AssignSubVariableOp", AssignSubVariableOp);
 
-class ResourceApplyGradientDescent : public XlaOpKernel {
- public:
-  explicit ResourceApplyGradientDescent(OpKernelConstruction* ctx)
-      : XlaOpKernel(ctx) {}
-  void Compile(XlaOpKernelContext* ctx) override {
-    xla::ComputationDataHandle handle;
-    xla::ComputationBuilder* b = ctx->builder();
-    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, &handle));
-    handle = b->Sub(handle, b->Mul(ctx->Input(1), ctx->Input(2)));
-    OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, ctx->input_type(1), handle));
-  }
-};
-REGISTER_XLA_OP("ResourceApplyGradientDescent", ResourceApplyGradientDescent);
-
 }  // namespace
 }  // namespace tensorflow

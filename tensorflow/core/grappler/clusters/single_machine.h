@@ -37,6 +37,7 @@ class SingleMachine : public Cluster {
              const std::vector<std::pair<string, Tensor>>& feed,
              const std::vector<string>& fetch, RunMetadata* metadata) override;
 
+  Status AllowSoftPlacement(bool soft_placement_state);
  private:
   Status RunWithTimeout(const std::vector<std::pair<string, Tensor>>& feed,
                         const std::vector<string>& fetch,
@@ -47,21 +48,17 @@ class SingleMachine : public Cluster {
   const int num_gpus_;
   std::unique_ptr<Session> session_;
   std::vector<QueueRunnerDef> queue_runner_defs_;
-  const GraphDef* last_graph_ = nullptr;
+  string last_graph_id_;
+  mutex last_graph_mu_;
+  const GraphDef* last_graph_ GUARDED_BY(last_graph_mu_) = nullptr;
   std::vector<string> init_ops_;
   std::unique_ptr<Coordinator> coordinator_;
   std::unique_ptr<thread::ThreadPool> thread_pool_;
 
   Status status_;
-  RunMetadata metadata_;
-
-  mutex mu_;
-  bool running_;
-  condition_variable done_running_;
 
   mutex close_mu_;
-  bool closing_;
-  condition_variable done_closing_;
+  bool closing_ GUARDED_BY(close_mu_);
 };
 
 }  // end namespace grappler

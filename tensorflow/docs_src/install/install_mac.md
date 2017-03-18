@@ -45,7 +45,7 @@ the specified versions. If upgrading is not possible, you may still run
 TensorFlow with GPU support, but only if you do both of the following:
 
   * Install TensorFlow from sources as described
-    @{install_sources$here}.
+    @{$install_sources$here}.
   * Install or upgrade to at least the following NVIDIA versions:
     * CUDA toolkit 7.0 or greater
     * cuDNN v3 or greater

@@ -806,8 +806,8 @@ dimension 0, for example, we get a rank-2 array where all values across
 dimension 0 were folded into a scalar:
 
 ```text
-| 4  8  12 |
-| 4  8  12 |
+|  4   8  12 |
+| 16  20  24 |
 ```
 
 If we reduce dimension 2, we also get a rank-2 array where all values across

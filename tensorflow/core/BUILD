@@ -191,6 +191,7 @@ tf_proto_library(
     srcs = CORE_PROTO_SRCS + ADDITIONAL_CORE_PROTO_SRCS,
     cc_api_version = 2,
     go_api_version = 2,
+    j2objc_api_version = 1,
     java_api_version = 2,
     js_api_version = 2,
     js_codegen = "jspb",
