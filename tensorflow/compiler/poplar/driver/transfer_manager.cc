@@ -20,8 +20,6 @@ limitations under the License.
 #include "tensorflow/compiler/poplar/driver/transfer_manager.h"
 
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
-#include "tensorflow/compiler/xla/service/cpu/infeed_manager.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
