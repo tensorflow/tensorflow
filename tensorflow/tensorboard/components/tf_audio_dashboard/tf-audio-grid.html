@@ -101,6 +101,7 @@ is high)
       :host {
         display: block;
         height: 100%;
+        --audio-cell-min-height: 105px;
       }
       .container {
         display: flex;
@@ -129,14 +130,17 @@ is high)
         padding-top: 5px;
       }
       .audio-cell {
+        background: #FAFAFA;
         width: 300px;
-        height: 36px;
+        min-height: var(--audio-cell-min-height);
         border: 1px solid black;
         margin-right: 3px;
+        padding: 10px;
+        box-sizing: border-box;
       }
       .tag-name-cell {
         width: 300px;
-        height: 36px;
+        height: var(--audio-cell-min-height);
         display:flex;
         flex-direction: column;
         justify-content: center;
@@ -148,7 +152,6 @@ is high)
       }
       .run-name-cell {
         width: 300px;
-        height: 36px;
         text-align: center;
         margin-right: 5px;
       }
@@ -157,7 +160,6 @@ is high)
       }
       #paddingCell {
         width: 300px;
-        height: 36px;
       }
     </style>
   </template>
