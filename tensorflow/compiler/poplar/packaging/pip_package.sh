@@ -31,7 +31,7 @@ pushd ${TMPDIR}
 ls -lR
 
 echo $(date) : "=== Building wheel"
-"${PYTHON_BIN_PATH:-python}" setup.py bdist_wheel #>/dev/null
+"${PYTHON_BIN_PATH:-python}" setup.py bdist_wheel >/dev/null
 mkdir -p ${DEST}
 cp dist/* ${DEST}
 popd
