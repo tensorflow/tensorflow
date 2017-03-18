@@ -230,7 +230,9 @@ def _fused_batch_norm(
                        ' Expected 2 or 4 but got %d' % (
                            inputs.name, original_rank))
     if original_rank == 2:
-      channels = array_ops.shape(inputs)[-1]
+      channels = inputs.get_shape()[-1].value
+      if channels is None:
+        raise ValueError('`C` dimension must be known but is None')
       new_shape = [-1, 1, 1, channels]
       if data_format == DATA_FORMAT_NCHW:
         new_shape = [-1, channels, 1, 1]
@@ -350,7 +352,7 @@ def _fused_batch_norm(
 
     outputs.set_shape(inputs_shape)
     if original_shape.ndims == 2:
-      outputs = array_ops.reshape(outputs, array_ops.shape[original_inputs])
+      outputs = array_ops.reshape(outputs, array_ops.shape(original_inputs))
     if activation_fn is not None:
       outputs = activation_fn(outputs)
     return utils.collect_named_outputs(outputs_collections,
@@ -1230,7 +1232,7 @@ def flatten(inputs,
     batch_dim, spatial_dims = input_shape[0], input_shape[1:]
     if all(spatial_dims):
       outputs.set_shape([batch_dim,
-                        functools.reduce(lambda x, y: x * y, spatial_dims)])
+                         functools.reduce(lambda x, y: x * y, spatial_dims)])
     else:
       outputs.set_shape([batch_dim, None])
 
