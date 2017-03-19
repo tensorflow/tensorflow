@@ -135,6 +135,9 @@ def _fused_batch_norm(
     center=True,
     scale=False,
     epsilon=0.001,
+    renorm=False,
+    RMAX=None,
+    DMAX=None,
     activation_fn=None,
     param_initializers=None,
     updates_collections=ops.GraphKeys.UPDATE_OPS,
@@ -182,6 +185,7 @@ def _fused_batch_norm(
       not used. When the next layer is linear (also e.g. `nn.relu`), this can be
       disabled since the scaling can be done by the next layer.
     epsilon: Small float added to variance to avoid dividing by zero.
+    renorm: Stop Gradient on Gamma and Beta parameters 
     activation_fn: Activation function, default set to None to skip it and
       maintain a linear activation.
     param_initializers: Optional initializers for beta, gamma, moving mean and
@@ -299,8 +303,15 @@ def _fused_batch_norm(
         collections=moving_variance_collections)
 
     def _fused_batch_norm_training():
-      return nn.fused_batch_norm(
+      outputs, mean, variance = nn.fused_batch_norm(
           inputs, gamma, beta, epsilon=epsilon, data_format=data_format)
+      if renorm:
+          moving_inv = math_ops.rsqrt(moving_variance + epsilon)
+          r = tf.stop_gradient(tf.clip_by_value(tf.sqrt(variance + epsilon) * moving_inv, 1/RMAX, RMAX))
+          d = tf.stop_gradient(tf.clip_by_value((mean - moving_mean) * moving_inv, -DMAX, DMAX))
+          outputs = outputs * r + d
+      return outputs, mean, variance
+
     def _fused_batch_norm_inference():
       return nn.fused_batch_norm(
           inputs,
