@@ -36,8 +36,6 @@ genrule(
     cmd = "$(location @local_config_poplar//poplar:popc) -I . -o $@ $<",
 )
 
-# Ideally this rule would be a cc_binary.  It cannot be changed until the bulk
-# of Tensorflow is available as traditional external .h files and a .so file
 cc_library(
     name = "poplar_lib",
     srcs = glob([
@@ -52,7 +50,11 @@ cc_library(
         "stream_executor/*.h",
     ]),
     deps = [
-        "//tensorflow/compiler/jit:xla_cpu_device",
+        "//third_party/eigen3",
+        "//tensorflow/compiler/xla:xla_headers_lib",
+        "//tensorflow/compiler/jit:xla_jit_headers_lib",
+        "@protobuf//:protobuf_headers",
+        "@local_config_cuda//cuda:cuda_headers",
         "@local_config_poplar//poplar:poplar",
         "@local_config_poplar//popnn:popnn",
     ],
