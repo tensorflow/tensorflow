@@ -16,11 +16,13 @@
 
 ### API
 
-This module provides functions for image manipulation; currently, only projective
-transforms (including rotation) are supported.
+This module provides functions for image manipulation; currently, only
+projective transforms (including rotation) are supported.
 
 ## Image `Ops`
 
+@@angles_to_projective_transforms
+@@compose_transforms
 @@rotate
 @@transform
 """
@@ -29,6 +31,8 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=line-too-long
+from tensorflow.contrib.image.python.ops.image_ops import angles_to_projective_transforms
+from tensorflow.contrib.image.python.ops.image_ops import compose_transforms
 from tensorflow.contrib.image.python.ops.image_ops import rotate
 from tensorflow.contrib.image.python.ops.image_ops import transform
 
