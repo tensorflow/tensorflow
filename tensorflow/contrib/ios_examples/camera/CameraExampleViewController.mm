@@ -371,7 +371,6 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
 
 - (void)viewDidLoad {
   [super viewDidLoad];
-  square = [UIImage imageNamed:@"squarePNG"];
   synth = [[AVSpeechSynthesizer alloc] init];
   labelLayers = [[NSMutableArray alloc] init];
   oldPredictionValues = [[NSMutableDictionary alloc] init];
