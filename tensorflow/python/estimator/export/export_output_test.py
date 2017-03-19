@@ -21,7 +21,7 @@ from __future__ import print_function
 from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
-from tensorflow.python.estimator.export import export_output as export_output_lib
+from tensorflow.python.estimator import export
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
@@ -33,7 +33,7 @@ class ExportOutputTest(test.TestCase):
   def test_regress_value_must_be_float(self):
     value = array_ops.placeholder(dtypes.string, 1, name="output-tensor-1")
     with self.assertRaises(ValueError) as e:
-      export_output_lib.RegressionOutput(value)
+      export.RegressionOutput(value)
     self.assertEqual('Regression output value must be a float32 Tensor; got '
                      'Tensor("output-tensor-1:0", shape=(1,), dtype=string)',
                      str(e.exception))
@@ -41,7 +41,7 @@ class ExportOutputTest(test.TestCase):
   def test_classify_classes_must_be_strings(self):
     classes = array_ops.placeholder(dtypes.float32, 1, name="output-tensor-1")
     with self.assertRaises(ValueError) as e:
-      export_output_lib.ClassificationOutput(classes=classes)
+      export.ClassificationOutput(classes=classes)
     self.assertEqual('Classification classes must be a string Tensor; got '
                      'Tensor("output-tensor-1:0", shape=(1,), dtype=float32)',
                      str(e.exception))
@@ -49,14 +49,14 @@ class ExportOutputTest(test.TestCase):
   def test_classify_scores_must_be_float(self):
     scores = array_ops.placeholder(dtypes.string, 1, name="output-tensor-1")
     with self.assertRaises(ValueError) as e:
-      export_output_lib.ClassificationOutput(scores=scores)
+      export.ClassificationOutput(scores=scores)
     self.assertEqual('Classification scores must be a float32 Tensor; got '
                      'Tensor("output-tensor-1:0", shape=(1,), dtype=string)',
                      str(e.exception))
 
   def test_classify_requires_classes_or_scores(self):
     with self.assertRaises(ValueError) as e:
-      export_output_lib.ClassificationOutput()
+      export.ClassificationOutput()
     self.assertEqual("At least one of scores and classes must be set.",
                      str(e.exception))
 
@@ -68,7 +68,7 @@ class ExportOutputTest(test.TestCase):
     }
     value = array_ops.placeholder(dtypes.float32, 1, name="output-tensor-1")
 
-    export_output = export_output_lib.RegressionOutput(value)
+    export_output = export.RegressionOutput(value)
     actual_signature_def = export_output.as_signature_def(input_tensors)
 
     expected_signature_def = meta_graph_pb2.SignatureDef()
@@ -99,7 +99,7 @@ class ExportOutputTest(test.TestCase):
     }
     classes = array_ops.placeholder(dtypes.string, 1, name="output-tensor-1")
 
-    export_output = export_output_lib.ClassificationOutput(classes=classes)
+    export_output = export.ClassificationOutput(classes=classes)
     actual_signature_def = export_output.as_signature_def(input_tensors)
 
     expected_signature_def = meta_graph_pb2.SignatureDef()
@@ -133,7 +133,7 @@ class ExportOutputTest(test.TestCase):
     scores = array_ops.placeholder(dtypes.float32, 1,
                                    name="output-tensor-scores")
 
-    export_output = export_output_lib.ClassificationOutput(
+    export_output = export.ClassificationOutput(
         scores=scores, classes=classes)
     actual_signature_def = export_output.as_signature_def(input_tensors)
 
@@ -173,7 +173,7 @@ class ExportOutputTest(test.TestCase):
     scores = array_ops.placeholder(dtypes.float32, 1,
                                    name="output-tensor-scores")
 
-    export_output = export_output_lib.ClassificationOutput(
+    export_output = export.ClassificationOutput(
         scores=scores)
     actual_signature_def = export_output.as_signature_def(input_tensors)
 

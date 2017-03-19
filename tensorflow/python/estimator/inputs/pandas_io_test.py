@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.estimator.inputs import pandas_io
+from tensorflow.python.estimator import inputs
 from tensorflow.python.framework import errors
 from tensorflow.python.platform import test
 from tensorflow.python.training import coordinator
@@ -62,7 +62,7 @@ class PandasIoTest(test.TestCase):
     x, _ = self.makeTestDataFrame()
     y_noindex = pd.Series(np.arange(-32, -28))
     with self.assertRaises(ValueError):
-      pandas_io.pandas_input_fn(
+      inputs.pandas_input_fn(
           x, y_noindex, batch_size=2, shuffle=False, num_epochs=1)
 
   def testPandasInputFn_NonBoolShuffle(self):
@@ -73,14 +73,14 @@ class PandasIoTest(test.TestCase):
     with self.assertRaisesRegexp(TypeError,
                                  'shuffle must be explicitly set as boolean'):
       # Default shuffle is None
-      pandas_io.pandas_input_fn(x, y_noindex)
+      inputs.pandas_input_fn(x, y_noindex)
 
   def testPandasInputFn_ProducesExpectedOutputs(self):
     if not HAS_PANDAS:
       return
     with self.test_session() as session:
       x, y = self.makeTestDataFrame()
-      input_fn = pandas_io.pandas_input_fn(
+      input_fn = inputs.pandas_input_fn(
           x, y, batch_size=2, shuffle=False, num_epochs=1)
 
       features, target = self.callInputFnOnce(input_fn, session)
@@ -98,7 +98,7 @@ class PandasIoTest(test.TestCase):
       b = np.arange(32, 34)
       x = pd.DataFrame({'a': a, 'b': b}, index=index)
       y = pd.Series(np.arange(-32, -30), index=index)
-      input_fn = pandas_io.pandas_input_fn(
+      input_fn = inputs.pandas_input_fn(
           x, y, batch_size=128, shuffle=False, num_epochs=2)
 
       results = input_fn()
@@ -127,7 +127,7 @@ class PandasIoTest(test.TestCase):
       x = pd.DataFrame({'a': a, 'b': b}, index=index)
       y = pd.Series(np.arange(-32, -27), index=index)
 
-      input_fn = pandas_io.pandas_input_fn(
+      input_fn = inputs.pandas_input_fn(
           x, y, batch_size=2, shuffle=False, num_epochs=1)
 
       results = input_fn()
@@ -161,7 +161,7 @@ class PandasIoTest(test.TestCase):
       return
     with self.test_session() as session:
       x, _ = self.makeTestDataFrame()
-      input_fn = pandas_io.pandas_input_fn(
+      input_fn = inputs.pandas_input_fn(
           x, y=None, batch_size=2, shuffle=False, num_epochs=1)
 
       features = self.callInputFnOnce(input_fn, session)
@@ -174,7 +174,7 @@ class PandasIoTest(test.TestCase):
       return
     with self.test_session() as session:
       x, y = self.makeTestDataFrame()
-      input_fn = pandas_io.pandas_input_fn(
+      input_fn = inputs.pandas_input_fn(
           x, y, batch_size=2, shuffle=False, num_epochs=1)
 
       features, _ = self.callInputFnOnce(input_fn, session)
@@ -197,7 +197,7 @@ class PandasIoTest(test.TestCase):
       return
     with self.test_session() as session:
       x, y = self.makeTestDataFrame()
-      input_fn = pandas_io.pandas_input_fn(
+      input_fn = inputs.pandas_input_fn(
           x, y, batch_size=4, shuffle=False, num_epochs=1)
 
       self.assertInputsCallableNTimes(input_fn, session, 1)
@@ -207,7 +207,7 @@ class PandasIoTest(test.TestCase):
       return
     with self.test_session() as session:
       x, y = self.makeTestDataFrame()
-      input_fn = pandas_io.pandas_input_fn(
+      input_fn = inputs.pandas_input_fn(
           x, y, batch_size=4, shuffle=True, num_epochs=1)
 
       self.assertInputsCallableNTimes(input_fn, session, 1)
@@ -217,7 +217,7 @@ class PandasIoTest(test.TestCase):
       return
     with self.test_session() as session:
       x, y = self.makeTestDataFrame()
-      input_fn = pandas_io.pandas_input_fn(
+      input_fn = inputs.pandas_input_fn(
           x, y, batch_size=2, shuffle=True, queue_capacity=None, num_epochs=2)
 
       self.assertInputsCallableNTimes(input_fn, session, 4)
@@ -227,7 +227,7 @@ class PandasIoTest(test.TestCase):
       return
     x, y = self.makeTestDataFrame()
     with self.test_session() as session:
-      input_fn = pandas_io.pandas_input_fn(
+      input_fn = inputs.pandas_input_fn(
           x, y, batch_size=3, shuffle=False, num_epochs=1)
 
       # Before the last batch, only one element of the epoch should remain.
@@ -238,10 +238,10 @@ class PandasIoTest(test.TestCase):
       return
     x, y = self.makeTestDataFrame()
     for _ in range(2):
-      pandas_io.pandas_input_fn(
+      inputs.pandas_input_fn(
           x, y, batch_size=2, shuffle=False, num_epochs=1)()
     for _ in range(2):
-      pandas_io.pandas_input_fn(
+      inputs.pandas_input_fn(
           x, y, batch_size=2, shuffle=True, num_epochs=1)()
 
 

@@ -25,8 +25,7 @@ import time
 from google.protobuf import text_format
 
 from tensorflow.core.example import example_pb2
-from tensorflow.python.estimator.export import export
-from tensorflow.python.estimator.export import export_output
+from tensorflow.python.estimator import export
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -152,9 +151,9 @@ class ExportTest(test_util.TensorFlowTestCase):
     output_3 = constant_op.constant(["3"])
     export_outputs = {
         signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY:
-            export_output.RegressionOutput(value=output_1),
-        "head-2": export_output.ClassificationOutput(classes=output_2),
-        "head-3": export_output.PredictOutput(outputs={
+            export.RegressionOutput(value=output_1),
+        "head-2": export.ClassificationOutput(classes=output_2),
+        "head-3": export.PredictOutput(outputs={
             "some_output_3": output_3
         }),
     }

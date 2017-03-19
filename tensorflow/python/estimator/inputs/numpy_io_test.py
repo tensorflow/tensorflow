@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.estimator.inputs import numpy_io
+from tensorflow.python.estimator import inputs
 from tensorflow.python.framework import errors
 from tensorflow.python.platform import test
 from tensorflow.python.training import coordinator
@@ -36,7 +36,7 @@ class NumpyIoTest(test.TestCase):
     y = np.arange(-32, -28)
 
     with self.test_session() as session:
-      input_fn = numpy_io.numpy_input_fn(
+      input_fn = inputs.numpy_input_fn(
           x, y, batch_size=2, shuffle=False, num_epochs=1)
       features, target = input_fn()
 
@@ -62,7 +62,7 @@ class NumpyIoTest(test.TestCase):
     y = np.arange(-32, -30)
 
     with self.test_session() as session:
-      input_fn = numpy_io.numpy_input_fn(
+      input_fn = inputs.numpy_input_fn(
           x, y, batch_size=128, shuffle=False, num_epochs=2)
       features, target = input_fn()
 
@@ -87,7 +87,7 @@ class NumpyIoTest(test.TestCase):
     y = np.arange(-32, -28)
 
     with self.test_session() as session:
-      input_fn = numpy_io.numpy_input_fn(
+      input_fn = inputs.numpy_input_fn(
           x, y, batch_size=2, shuffle=False, num_epochs=0)
       features, target = input_fn()
 
@@ -108,7 +108,7 @@ class NumpyIoTest(test.TestCase):
     y = np.arange(-32, -27)
 
     with self.test_session() as session:
-      input_fn = numpy_io.numpy_input_fn(
+      input_fn = inputs.numpy_input_fn(
           x, y, batch_size=batch_size, shuffle=False, num_epochs=1)
       features, target = input_fn()
 
@@ -144,7 +144,7 @@ class NumpyIoTest(test.TestCase):
     y = np.arange(-32, -29)
 
     with self.test_session() as session:
-      input_fn = numpy_io.numpy_input_fn(
+      input_fn = inputs.numpy_input_fn(
           x, y, batch_size=batch_size, shuffle=False, num_epochs=3)
       features, target = input_fn()
 
@@ -190,7 +190,7 @@ class NumpyIoTest(test.TestCase):
     y = np.arange(-32, -28)
 
     with self.test_session() as session:
-      input_fn = numpy_io.numpy_input_fn(
+      input_fn = inputs.numpy_input_fn(
           x, y, batch_size=batch_size, shuffle=False, num_epochs=1)
       features, target = input_fn()
 
@@ -215,7 +215,7 @@ class NumpyIoTest(test.TestCase):
     y = np.arange(-32, -30)
 
     with self.test_session() as session:
-      input_fn = numpy_io.numpy_input_fn(
+      input_fn = inputs.numpy_input_fn(
           x, y, batch_size=2, shuffle=False, num_epochs=1)
       features, target = input_fn()
 
@@ -235,7 +235,7 @@ class NumpyIoTest(test.TestCase):
     y = np.arange(4)
     with self.test_session():
       with self.assertRaisesRegexp(TypeError, 'x must be dict'):
-        failing_input_fn = numpy_io.numpy_input_fn(
+        failing_input_fn = inputs.numpy_input_fn(
             x, y, batch_size=2, shuffle=False, num_epochs=1)
         failing_input_fn()
 
@@ -246,7 +246,7 @@ class NumpyIoTest(test.TestCase):
       with self.assertRaisesRegexp(TypeError,
                                    'shuffle must be explicitly set as boolean'):
         # Default shuffle is None.
-        numpy_io.numpy_input_fn(x, y)
+        inputs.numpy_input_fn(x, y)
 
   def testNumpyInputFnWithTargetKeyAlreadyInX(self):
     array = np.arange(32, 36)
@@ -254,7 +254,7 @@ class NumpyIoTest(test.TestCase):
     y = np.arange(4)
 
     with self.test_session():
-      input_fn = numpy_io.numpy_input_fn(
+      input_fn = inputs.numpy_input_fn(
           x, y, batch_size=2, shuffle=False, num_epochs=1)
       input_fn()
       self.assertAllEqual(x['__target_key__'], array)
@@ -270,13 +270,13 @@ class NumpyIoTest(test.TestCase):
     with self.test_session():
       with self.assertRaisesRegexp(
           ValueError, 'Length of tensors in x and y is mismatched.'):
-        failing_input_fn = numpy_io.numpy_input_fn(
+        failing_input_fn = inputs.numpy_input_fn(
             x, y_longer_length, batch_size=2, shuffle=False, num_epochs=1)
         failing_input_fn()
 
       with self.assertRaisesRegexp(
           ValueError, 'Length of tensors in x and y is mismatched.'):
-        failing_input_fn = numpy_io.numpy_input_fn(
+        failing_input_fn = inputs.numpy_input_fn(
             x=x_mismatch_length,
             y=None,
             batch_size=2,

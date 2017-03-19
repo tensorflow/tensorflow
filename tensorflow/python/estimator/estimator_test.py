@@ -26,9 +26,9 @@ import numpy as np
 from tensorflow.python.client import session
 from tensorflow.python.estimator import estimator
 from tensorflow.python.estimator import export
+from tensorflow.python.estimator import inputs
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator import run_config
-from tensorflow.python.estimator.inputs import numpy_io
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -1248,19 +1248,19 @@ class EstimatorIntegrationTest(test.TestCase):
 
     # TRAIN
     # learn y = x
-    train_input_fn = numpy_io.numpy_input_fn(
+    train_input_fn = inputs.numpy_input_fn(
         x={'x': data}, y=data, batch_size=50, num_epochs=None, shuffle=True)
     est.train(train_input_fn, steps=200)
 
     # EVALUTE
-    eval_input_fn = numpy_io.numpy_input_fn(
+    eval_input_fn = inputs.numpy_input_fn(
         x={'x': data}, y=data, batch_size=50, num_epochs=1, shuffle=True)
     scores = est.evaluate(eval_input_fn)
     self.assertEqual(200, scores['global_step'])
     self.assertGreater(0.1, scores['absolute_error'])
 
     # PREDICT
-    predict_input_fn = numpy_io.numpy_input_fn(
+    predict_input_fn = inputs.numpy_input_fn(
         x={'x': data}, y=None, batch_size=10, num_epochs=1, shuffle=False)
     predictions = list(est.predict(predict_input_fn))
     self.assertAllClose(data, predictions, atol=0.01)
