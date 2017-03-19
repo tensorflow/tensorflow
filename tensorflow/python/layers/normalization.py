@@ -162,7 +162,7 @@ class BatchNormalization(base._Layer):  # pylint: disable=protected-access
     broadcast_shape[self.axis] = input_shape[self.axis].value
 
     # Determines whether broadcasting is needed.
-    needs_broadcasting = (sorted(reduction_axes) != range(ndim)[:-1])
+    needs_broadcasting = (sorted(reduction_axes) != list(range(ndim))[:-1])
 
     # Determine a boolean value for `training`: could be True, False, or None.
     training_value = utils.constant_value(training)
