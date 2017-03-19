@@ -16,6 +16,7 @@ package_group(
     ],
 )
 
+load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library")
 
 # Filegroup used to collect source files for dependency checking.
@@ -40,6 +41,23 @@ xla_proto_library(
     deps = [
         ":xla_data_proto",
         "//tensorflow/compiler/xla/service:session_proto",
+    ],
+)
+
+cc_header_only_library(
+    name = "xla_headers_lib",
+    visibility = ["//visibility:public"],
+    deps = [
+        #":types",
+        #":service_interface",
+        #":status_macros",
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:stream_executor_headers_lib",
+        "//tensorflow/compiler/xla:xla_proto",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/legacy_flags:layout_util_flags",
+        "//tensorflow/compiler/xla/service:hlo",
     ],
 )
 
