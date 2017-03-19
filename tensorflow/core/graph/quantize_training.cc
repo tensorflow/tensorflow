@@ -104,8 +104,10 @@ bool FindType(const Graph* graph, const Node* node, bool* signed_input,
     *range_given = true;
     *input_min = -1;
     *input_max = 1;
-  } else if (src_op == "Reshape") {
+  } else if (src_op == "Reshape" || src_op == "ConcatV2") {
     // Reshape has 2 inputs and the first one is the tensor.
+    // ConcatV2 has many inputs but they should all have the same activation
+    // function (i.e. Inception). So we just recurse on the first input.
     for (const Edge* edge : node->in_edges()) {
       if (edge->src_output() != Graph::kControlSlot && edge->dst_input() == 0) {
         FindType(graph, edge->src(), signed_input, range_given, input_min,

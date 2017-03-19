@@ -1,0 +1,64 @@
+/*
+ * download-models.gradle
+ *     Downloads model files from ${MODEL_URL} into application's asset folder
+ * Input:
+ *     project.ext.TMP_DIR: absolute path to hold downloaded zip files
+ *     project.ext.ASSET_DIR: absolute path to save unzipped model files
+ * Output:
+ *     3 model files will be downloaded into given folder of ext.ASSET_DIR
+ */
+// hard coded model files
+// LINT.IfChange
+def models = ['inception5h.zip',
+              'mobile_multibox_v1a.zip',
+              'stylize_v1.zip']
+// LINT.ThenChange(//tensorflow/examples/android/BUILD)
+
+// Root URL for model archives
+def MODEL_URL = 'https://storage.googleapis.com/download.tensorflow.org/models'
+
+buildscript {
+    repositories {
+        jcenter()
+    }
+    dependencies {
+        classpath 'de.undercouch:gradle-download-task:3.2.0'
+    }
+}
+
+import de.undercouch.gradle.tasks.download.Download
+task downloadFile(type: Download){
+    for (f in models) {
+        src "${MODEL_URL}/" + f
+    }
+    dest new File(project.ext.TMP_DIR)
+    overwrite true
+}
+
+task extractModels(type: Copy) {
+    for (f in models) {
+        from zipTree(project.ext.TMP_DIR + '/' + f)
+    }
+
+    into file(project.ext.ASSET_DIR)
+    fileMode  0644
+    exclude '**/LICENSE'
+
+    dependsOn downloadFile
+}
+
+afterEvaluate {
+    // if models are not available, download & unzip them
+    def needDownload = false
+    for (f in models) {
+        if (!(new File(project.ext.TMP_DIR + '/' + f)).exists()) {
+            needDownload = true
+        }
+    }
+
+    if (needDownload) {
+        assembleDebug.dependsOn extractModels
+        assembleRelease.dependsOn extractModels
+    }
+}
+

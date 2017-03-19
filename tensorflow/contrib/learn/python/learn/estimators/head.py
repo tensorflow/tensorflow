@@ -1115,15 +1115,22 @@ class _MultiClassHead(_SingleHead):
 
   def _create_output_alternatives(self, predictions):
     """See superclass."""
+    probabilities = predictions[prediction_key.PredictionKey.PROBABILITIES]
+    batch_size = array_ops.shape(probabilities)[0]
     if self._label_keys:
-      predictions_for_serving = {
-          prediction_key.PredictionKey.CLASSES: ops.convert_to_tensor(
-              self._label_keys),
-          prediction_key.PredictionKey.PROBABILITIES: (
-              predictions[prediction_key.PredictionKey.PROBABILITIES])
-          }
-      return {self._head_name: (self._problem_type, predictions_for_serving)}
-    return super(_MultiClassHead, self)._create_output_alternatives(predictions)
+      classes = array_ops.tile(
+          input=array_ops.expand_dims(input=self._label_keys, axis=0),
+          multiples=[batch_size, 1])
+    else:
+      classes = array_ops.tile(
+          input=array_ops.expand_dims(
+              input=math_ops.range(self.logits_dimension), axis=0),
+          multiples=[batch_size, 1])
+    predictions_for_serving = {
+        prediction_key.PredictionKey.CLASSES: classes,
+        prediction_key.PredictionKey.PROBABILITIES: probabilities,
+    }
+    return {self._head_name: (self._problem_type, predictions_for_serving)}
 
 
 def _to_labels_tensor(labels, label_name):
@@ -1441,10 +1448,6 @@ class _MultiHead(Head):
     """
     self._logits_dimension = 0
     for head in heads:
-      # TODO(ptucker): Change this, and add head_name to MultiHead, to support
-      # nested MultiHeads.
-      if not isinstance(head, _SingleHead):
-        raise ValueError("Members of MultiHead must be SingleHead.")
       if not head.head_name:
         raise ValueError("Members of MultiHead must have names.")
       self._logits_dimension += head.logits_dimension

@@ -71,10 +71,10 @@ class DumpingDebugWrapperSession(framework.NonInteractiveDebugWrapperSession):
             session_root)
     self._session_root = session_root
 
-  def _prepare_run_debug_urls(self, fetches, feed_dict):
+  def prepare_run_debug_urls(self, fetches, feed_dict):
     """Implementation of abstrat method in superclass.
 
-    See doc of `NonInteractiveDebugWrapperSession.__prepare_run_debug_urls()`
+    See doc of `NonInteractiveDebugWrapperSession.prepare_run_debug_urls()`
     for details. This implentation creates a run-specific subdirectory under
     self._session_root and stores information regarding run `fetches` and
     `feed_dict.keys()` in the subdirectory.

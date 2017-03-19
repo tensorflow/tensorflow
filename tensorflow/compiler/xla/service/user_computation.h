@@ -144,6 +144,10 @@ class UserComputation {
   StatusOr<ComputationDataHandle> AddReshapeInstruction(
       const ReshapeRequest& reshape_request);
 
+  // Enqueues a transpose instruction onto this user computation.
+  StatusOr<ComputationDataHandle> AddTransposeInstruction(
+      const TransposeRequest& transpose_request);
+
   // Enqueues a slice instruction onto this user computation.
   StatusOr<ComputationDataHandle> AddSliceInstruction(
       const SliceRequest& slice_request);

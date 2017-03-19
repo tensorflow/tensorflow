@@ -293,7 +293,10 @@ string HloComputation::ToString() const {
   for (const HloInstruction* instruction : MakeInstructionPostOrder()) {
     s << "  " << instruction->ToString() << "\n";
     if (instruction->opcode() == HloOpcode::kFusion) {
-      for (const auto& fused_instruction : instruction->fused_instructions()) {
+      tensorflow::gtl::FlatSet<HloInstruction*> added_instructions;
+      auto fused_instructions = InstructionPostOrderer::GetOrder(
+          instruction->fused_expression_root(), &added_instructions);
+      for (const auto& fused_instruction : fused_instructions) {
         s << "    " << fused_instruction->ToString() << "\n";
       }
     }

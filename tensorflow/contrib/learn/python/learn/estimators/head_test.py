@@ -1106,6 +1106,39 @@ class MultiClassHeadTest(test.TestCase):
       _assert_metrics(self, expected_loss,
                       self._expected_eval_metrics(expected_loss), model_fn_ops)
 
+  def testMultiClassInfer(self):
+    n_classes = 3
+    head = head_lib._multi_class_head(
+        n_classes=n_classes,
+        head_name="head_name")
+    with ops.Graph().as_default():
+      model_fn_ops = head.create_model_fn_ops(
+          features={},
+          mode=model_fn.ModeKeys.INFER,
+          train_op_fn=head_lib.no_op_train_fn,
+          logits=((1., 0., 0.), (0., 0., 1.),))
+      with session.Session():
+        data_flow_ops.tables_initializer().run()
+        self.assertAllEqual(
+            [0, 2],
+            model_fn_ops.predictions["classes"].eval())
+        self.assertItemsEqual(
+            ["head_name"], six.iterkeys(model_fn_ops.output_alternatives))
+        self.assertEqual(
+            constants.ProblemType.CLASSIFICATION,
+            model_fn_ops.output_alternatives["head_name"][0])
+        predictions_for_serving = (
+            model_fn_ops.output_alternatives["head_name"][1])
+        self.assertIn("classes", six.iterkeys(predictions_for_serving))
+        self.assertAllEqual(
+            [[0, 1, 2], [0, 1, 2]],
+            predictions_for_serving["classes"].eval())
+        self.assertIn("probabilities", six.iterkeys(predictions_for_serving))
+        self.assertAllClose(
+            [[0.576117, 0.2119416, 0.2119416],
+             [0.2119416, 0.2119416, 0.576117]],
+            predictions_for_serving["probabilities"].eval())
+
   def testInvalidNClasses(self):
     for n_classes in (None, -1, 0, 1):
       with self.assertRaisesRegexp(ValueError, "n_classes must be > 1"):
@@ -1135,11 +1168,12 @@ class MultiClassHeadTest(test.TestCase):
           features={},
           mode=model_fn.ModeKeys.INFER,
           train_op_fn=head_lib.no_op_train_fn,
-          logits=((1., 0., 0.),))
+          logits=((1., 0., 0.), (0., 0., 1.),))
       with session.Session():
         data_flow_ops.tables_initializer().run()
-        self.assertListEqual(
-            [b"key0"], list(model_fn_ops.predictions["classes"].eval()))
+        self.assertAllEqual(
+            [b"key0", b"key2"],
+            model_fn_ops.predictions["classes"].eval())
         self.assertItemsEqual(
             ["head_name"], six.iterkeys(model_fn_ops.output_alternatives))
         self.assertEqual(
@@ -1148,10 +1182,14 @@ class MultiClassHeadTest(test.TestCase):
         predictions_for_serving = (
             model_fn_ops.output_alternatives["head_name"][1])
         self.assertIn("classes", six.iterkeys(predictions_for_serving))
-        self.assertListEqual(
-            [b"key0", b"key1", b"key2"],
-            list(predictions_for_serving["classes"].eval()))
+        self.assertAllEqual(
+            [[b"key0", b"key1", b"key2"], [b"key0", b"key1", b"key2"]],
+            predictions_for_serving["classes"].eval())
         self.assertIn("probabilities", six.iterkeys(predictions_for_serving))
+        self.assertAllClose(
+            [[0.576117, 0.2119416, 0.2119416],
+             [0.2119416, 0.2119416, 0.576117]],
+            predictions_for_serving["probabilities"].eval())
 
   def testMultiClassWithLabelKeysEvalAccuracy0(self):
     n_classes = 3
@@ -1380,8 +1418,6 @@ class MultiHeadTest(test.TestCase):
         n_classes=4, label_name="label")
     with self.assertRaisesRegexp(ValueError, "must have names"):
       head_lib.multi_head((named_head, unnamed_head))
-    with self.assertRaisesRegexp(ValueError, "must be SingleHead"):
-      head_lib.multi_head((named_head, head_lib.multi_head((named_head,))))
 
   def testTrainWithNoneTrainOpFn(self):
     head1 = head_lib.multi_class_head(
@@ -1520,12 +1556,10 @@ class MultiHeadTest(test.TestCase):
         k: v[0] for k, v in six.iteritems(model_fn_ops.output_alternatives)
     })
     self.assertItemsEqual((
-        prediction_key.PredictionKey.LOGITS,
         prediction_key.PredictionKey.PROBABILITIES,
         prediction_key.PredictionKey.CLASSES,
     ), model_fn_ops.output_alternatives["head1"][1].keys())
     self.assertItemsEqual((
-        prediction_key.PredictionKey.LOGITS,
         prediction_key.PredictionKey.PROBABILITIES,
         prediction_key.PredictionKey.CLASSES,
     ), model_fn_ops.output_alternatives["head2"][1].keys())

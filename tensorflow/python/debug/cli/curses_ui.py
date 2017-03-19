@@ -218,6 +218,11 @@ class CursesUI(base_ui.BaseUI):
   # num lock is off.
   CLI_CR_KEYS = [ord("\n"), ord("\r"), 343]
 
+  _KEY_MAP = {
+      127: 263,  # Backspace
+      330: 4,  # Delete
+  }
+
   _FOREGROUND_COLORS = {
       "white": curses.COLOR_WHITE,
       "red": curses.COLOR_RED,
@@ -797,7 +802,7 @@ class CursesUI(base_ui.BaseUI):
       # Invalidate active command history.
       self._command_pointer = 0
       self._active_command_history = []
-      return x
+      return self._KEY_MAP.get(x, x)
 
   def _screen_getmouse(self):
     return curses.getmouse()

@@ -62,8 +62,13 @@ class TensorboardServerTest(test.TestCase):
     plugins = {}
     app = application.TensorBoardWSGIApp(
         self.temp_dir, plugins, multiplexer, reload_interval=0)
-    self._server = serving.BaseWSGIServer('localhost', 0, app)
-    # 0 to pick an unused port.
+    try:
+      self._server = serving.BaseWSGIServer('localhost', 0, app)
+      # 0 to pick an unused port.
+    except IOError:
+      # BaseWSGIServer has a preference for IPv4. If that didn't work, try again
+      # with an explicit IPv6 address.
+      self._server = serving.BaseWSGIServer('::1', 0, app)
     self._server_thread = threading.Thread(target=self._server.serve_forever)
     self._server_thread.daemon = True
     self._server_thread.start()
