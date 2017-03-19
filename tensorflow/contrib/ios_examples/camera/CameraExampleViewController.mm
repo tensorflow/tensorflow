@@ -369,10 +369,6 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
   isUsingFrontFacingCamera = !isUsingFrontFacingCamera;
 }
 
-- (void)didReceiveMemoryWarning {
-  [super didReceiveMemoryWarning];
-}
-
 - (void)viewDidLoad {
   [super viewDidLoad];
   square = [UIImage imageNamed:@"squarePNG"];
@@ -397,26 +393,6 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
     LOG(FATAL) << "Couldn't load labels: " << labels_status;
   }
   [self setupAVCapture];
-}
-
-- (void)viewDidUnload {
-  [super viewDidUnload];
-}
-
-- (void)viewWillAppear:(BOOL)animated {
-  [super viewWillAppear:animated];
-}
-
-- (void)viewDidAppear:(BOOL)animated {
-  [super viewDidAppear:animated];
-}
-
-- (void)viewWillDisappear:(BOOL)animated {
-  [super viewWillDisappear:animated];
-}
-
-- (void)viewDidDisappear:(BOOL)animated {
-  [super viewDidDisappear:animated];
 }
 
 - (BOOL)shouldAutorotateToInterfaceOrientation:
