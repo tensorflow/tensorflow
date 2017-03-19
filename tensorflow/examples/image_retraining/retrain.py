@@ -49,7 +49,6 @@ tensorboard --logdir /tmp/retrain_logs
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-from __future__ import print_function
 
 import argparse
 from datetime import datetime
@@ -141,6 +140,7 @@ def create_image_lists(image_dir, testing_percentage, validation_percentage):
     training_images = []
     testing_images = []
     validation_images = []
+    
     for file_name in file_list:
       base_name = os.path.basename(file_name)
       # We want to ignore anything after '_nohash_' in the file name when
@@ -165,10 +165,10 @@ def create_image_lists(image_dir, testing_percentage, validation_percentage):
           # print(file_name)
           validation_images.append(base_name)
       elif percentage_hash < (testing_percentage + validation_percentage):
-          #elif ('TEST' in file_name and percentage_hash < (testing_percentage + validation_percentage)) or (
-          #percentage_hash < (validation_percentage) and 'week1' in file_name):
+      #elif 'TEST' in file_name:
+      #elif ('TEST' in file_name) or (percentage_hash < (validation_percentage + testing_percentage) and ('Healthy' in file_name or '7_18' in file_name or '7_15' in file_name)):
           # elif 'TEST' in file_name:
-          # print(file_name)
+          #print(label_name)
           testing_images.append(base_name)
       else:
         training_images.append(base_name)
@@ -714,8 +714,8 @@ def add_evaluation_step(result_tensor, ground_truth_tensor):
   with tf.name_scope('accuracy'):
     with tf.name_scope('correct_prediction'):
       prediction = tf.argmax(result_tensor, 1)
-      correct_prediction = tf.equal(
-          prediction, tf.argmax(ground_truth_tensor, 1))
+      correct_prediction = tf.nn.in_top_k(
+          result_tensor, tf.argmax(ground_truth_tensor, 1),1)
     with tf.name_scope('accuracy'):
       evaluation_step = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
   tf.summary.scalar('accuracy', evaluation_step)
@@ -723,7 +723,7 @@ def add_evaluation_step(result_tensor, ground_truth_tensor):
 
 """
 def plot_confusion_matrix(cm, classes,
-                          normalize=True,
+                          normalize=False,
                           title='Confusion matrix',
                           cmap=plt.cm.Blues):
     #This function prints and plots the confusion matrix.
@@ -751,6 +751,7 @@ def plot_confusion_matrix(cm, classes,
     plt.ylabel('True label')
     plt.xlabel('Predicted label')
 """
+
 def main(_):
   # Setup the directory we'll write summaries to for TensorBoard
   if tf.gfile.Exists(FLAGS.summaries_dir):
@@ -873,10 +874,7 @@ def main(_):
   print('Final test accuracy = %.1f%% (N=%d)' % (
       test_accuracy * 100, len(test_bottlenecks)))
 
-  # Print accuracy to file
-  f1=open('./potato_exp/results_file', 'a')
-  f1.write('%.1f\n' % (test_accuracy*100))
- 
+
   if FLAGS.print_misclassified_test_images:
     print('=== MISCLASSIFIED TEST IMAGES ===')
     for i, test_filename in enumerate(test_filenames):
@@ -885,6 +883,12 @@ def main(_):
         #image.show()
         print('%70s  %s' % (test_filename,
                             list(image_lists.keys())[predictions[i]]))
+
+  # Print accuracy to file
+  img_dir = FLAGS.image_dir
+  results=open(img_dir + ' results file', 'a')
+  results.write('%.1f\n' % (test_accuracy*100))
+
 
   targets = []
   for i in range(0, len(test_bottlenecks)):
@@ -896,7 +900,7 @@ def main(_):
   plt.figure()
   plot_confusion_matrix(cnf_matrix, classes=image_lists.keys(),
                             title=('Confusion Matrix\n Test Accuracy = %.1f' % (test_accuracy * 100)))
-  #plt.show()
+  plt.show()
   """
 
   # Write out the trained graph and labels with the weights stored as constants.
@@ -913,7 +917,7 @@ if __name__ == '__main__':
   parser.add_argument(
       '--image_dir',
       type=str,
-      default='/Users/SneakyPT/Potato_exp/disease_recog_time/dir19-bias',
+      default='/Users/SneakyPT/potato_exp/check_bias/28v30',
       help='Path to folders of labeled images.'
   )
   parser.add_argument(
@@ -937,13 +941,13 @@ if __name__ == '__main__':
   parser.add_argument(
       '--how_many_training_steps',
       type=int,
-      default=600,
+      default=1,
       help='How many training steps to run before ending.'
   )
   parser.add_argument(
       '--learning_rate',
       type=float,
-      default=0.02,
+      default=0.01,
       help='How large a learning rate to use when training.'
   )
   parser.add_argument(
@@ -967,7 +971,7 @@ if __name__ == '__main__':
   parser.add_argument(
       '--train_batch_size',
       type=int,
-      default=200,
+      default=300,
       help='How many images to train on at a time.'
   )
   parser.add_argument(
@@ -984,7 +988,7 @@ if __name__ == '__main__':
   parser.add_argument(
       '--validation_batch_size',
       type=int,
-      default=200,
+      default=300,
       help="""\
       How many images to use in an evaluation batch. This validation set is
       used much more often than the test set, and is an early indicator of how
@@ -1063,3 +1067,4 @@ if __name__ == '__main__':
   )
   FLAGS, unparsed = parser.parse_known_args()
   tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
+rsed)
