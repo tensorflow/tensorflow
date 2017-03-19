@@ -49,10 +49,25 @@ public final class Session implements AutoCloseable {
 
   /** Construct a new session with the associated {@link Graph}. */
   public Session(Graph g) {
+    this(g, null);
+  }
+
+  /**
+   * Construct a new session with the associated {@link Graph} and configuration options.
+   *
+   * @param g The {@link Graph} the created Session will operate on.
+   * @param config Configuration parameters for the session specified as a serialized <a
+   *     href="https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto">ConfigProto</a>
+   *     protocol buffer.
+   * @throws IllegalArgumentException if the config is not a valid serialization of the ConfigProto
+   *     protocol buffer.
+   */
+  public Session(Graph g, byte[] config) {
     graph = g;
     Graph.Reference r = g.ref();
     try {
-      nativeHandle = allocate(r.nativeHandle());
+      nativeHandle =
+          (config == null) ? allocate(r.nativeHandle()) : allocate2(r.nativeHandle(), null, config);
       graphRef = g.ref();
     } finally {
       r.close();
@@ -128,6 +143,16 @@ public final class Session implements AutoCloseable {
     }
 
     /**
+     * Use {@code t} instead of the Tensor referred to by executing the operation referred to by
+     * {@code output}.
+     */
+    public Runner feed(Output o, Tensor t) {
+      inputs.add(o);
+      inputTensors.add(t);
+      return this;
+    }
+
+    /**
      * Make {@link #run()} return the output of {@code operation}.
      *
      * <p>This method is a shorthand for {@code fetch(operation, 0)}
@@ -150,14 +175,28 @@ public final class Session implements AutoCloseable {
       return this;
     }
 
+    /** Makes {@link #run()} return the Tensor referred to by {@code output}. */
+    public Runner fetch(Output output) {
+      outputs.add(output);
+      return this;
+    }
+
     /**
-     * Make {@link #run()} execute {@code operation}, but not return the evaluated {@link Tensor}.
+     * Make {@link #run()} execute {@code operation}, but not return any evaluated {@link Tensor}s.
      */
     public Runner addTarget(String operation) {
       Operation op = operationByName(operation);
       if (op != null) {
         targets.add(op);
       }
+      return this;
+    }
+
+    /**
+     * Make {@link #run()} execute {@code operation}, but not return any evaluated {@link Tensor}s.
+     */
+    public Runner addTarget(Operation operation) {
+      targets.add(operation);
       return this;
     }
 
@@ -348,7 +387,10 @@ public final class Session implements AutoCloseable {
   private long nativeHandle;
   private int numActiveRuns;
 
+  // TODO(ashankar): Remove after TensorFlow 1.2 has been released with allocate2().
   private static native long allocate(long graphHandle);
+
+  private static native long allocate2(long graphHandle, String target, byte[] config);
 
   private static native void delete(long handle);
 

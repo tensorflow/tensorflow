@@ -36,3 +36,4 @@ tensorflow/core/framework/attr_value.proto
 tensorflow/core/framework/allocation_description.proto
 tensorflow/core/example/feature.proto
 tensorflow/core/example/example.proto
+tensorflow/core/grappler/costs/op_performance_data.proto

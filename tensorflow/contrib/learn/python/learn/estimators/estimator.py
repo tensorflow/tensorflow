@@ -58,6 +58,7 @@ from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import resources
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
@@ -1254,13 +1255,17 @@ class Estimator(BaseEstimator):
       with tf_session.Session('') as session:
         variables.initialize_local_variables()
         data_flow_ops.tables_initializer()
+        resources.initialize_resources(resources.shared_resources())
         saver_for_restore = saver.Saver(
-            variables.global_variables(),
+            # pylint: disable=protected-access
+            variables._all_saveable_objects(),
+            # pylint: enable=protected-access
             sharded=True)
         saver_for_restore.restore(session, checkpoint_path)
 
         init_op = control_flow_ops.group(
             variables.local_variables_initializer(),
+            resources.initialize_resources(resources.shared_resources()),
             data_flow_ops.tables_initializer())
 
         # Perform the export

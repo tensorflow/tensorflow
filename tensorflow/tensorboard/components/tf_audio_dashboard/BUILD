@@ -20,6 +20,8 @@ webfiles(
         "//tensorflow/tensorboard/components/tf_imports:lodash",
         "@org_polymer",
         "@org_polymer_paper_icon_button",
+        "@org_polymer_paper_slider",
+        "@org_polymer_paper_spinner",
         "@org_polymer_paper_styles",
     ],
 )

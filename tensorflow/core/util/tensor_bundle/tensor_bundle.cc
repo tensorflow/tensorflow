@@ -107,7 +107,7 @@ Status ReadStringTensor(io::InputBuffer* buffered_file, size_t num_elements,
 }
 
 char* GetBackingBuffer(const Tensor& val) {
-  CHECK(DataTypeCanUseMemcpy(val.dtype()));
+  CHECK(DataTypeCanUseMemcpy(val.dtype())) << val.dtype();
   return const_cast<char*>(val.tensor_data().data());
 }
 
@@ -433,7 +433,8 @@ static Status MergeOneBundle(Env* env, StringPiece prefix,
   // Process header.
   {
     iter->Seek(kHeaderEntryKey);
-    CHECK(iter->Valid());
+    CHECK(iter->Valid()) << "File: " << filename
+                         << ", iterator status: " << iter->status();
     BundleHeaderProto header;
     TF_CHECK_OK(ParseEntryProto(iter->key(), iter->value(), &header));
     CHECK_GE(header.num_shards(), 0);
@@ -583,7 +584,8 @@ BundleReader::BundleReader(Env* env, StringPiece prefix)
 
   // Reads "num_shards_" from the first entry.
   iter_->Seek(kHeaderEntryKey);
-  CHECK(iter_->Valid());
+  CHECK(iter_->Valid()) << "File: " << filename
+                        << ", iterator status: " << iter_->status();
   BundleHeaderProto header;
   TF_CHECK_OK(ParseEntryProto(iter_->key(), iter_->value(), &header));
   num_shards_ = header.num_shards();
@@ -698,6 +700,7 @@ Status BundleReader::GetValue(const BundleEntryProto& entry, Tensor* val) {
 }
 
 Status BundleReader::Lookup(StringPiece key, Tensor* val) {
+  CHECK(val != nullptr);
   BundleEntryProto entry;
   TF_RETURN_IF_ERROR(GetBundleEntryProto(key, &entry));
 
@@ -710,8 +713,21 @@ Status BundleReader::Lookup(StringPiece key, Tensor* val) {
   }
 }
 
+Status BundleReader::LookupTensorSlices(StringPiece key,
+                                        std::vector<TensorSlice>* slices) {
+  slices->clear();
+  BundleEntryProto entry;
+  TF_RETURN_IF_ERROR(GetBundleEntryProto(key, &entry));
+  slices->reserve(entry.slices_size());
+  for (const auto& slice : entry.slices()) {
+    slices->emplace_back(slice);
+  }
+  return Status::OK();
+}
+
 Status BundleReader::LookupSlice(StringPiece full_tensor_key,
                                  const TensorSlice& slice_spec, Tensor* val) {
+  CHECK(val != nullptr);
   BundleEntryProto entry;
   TF_RETURN_IF_ERROR(GetBundleEntryProto(full_tensor_key, &entry));
   return GetSliceValue(full_tensor_key, entry, slice_spec, val);

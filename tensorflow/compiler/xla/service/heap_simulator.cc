@@ -19,12 +19,15 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/service/liveness_util.h"
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
 
 using tensorflow::gtl::FlatMap;
 using tensorflow::gtl::FlatSet;
+
+namespace {
 
 // Returns the set of buffers that may be sources of all operands of the given
 // instruction.  The returned buffers are guaranteed to have no duplicates, and
@@ -45,6 +48,8 @@ std::vector<const LogicalBuffer*> UniqueOperandSourceBuffers(
             });
   return sorted;
 }
+
+}  // namespace
 
 /*static*/
 StatusOr<HeapSimulator::Result> HeapSimulator::Run(
@@ -145,13 +150,10 @@ StatusOr<HeapSimulator::Result> HeapSimulator::Run(
       // we must be the last user of the buffer.
       bool shared = false;
       for (const LogicalBuffer* operand_buffer : operand_buffers_to_free) {
-        // The operand buffer can be shared if we have the same shape, and we're
-        // an elementwise instruction.
-        //
-        // TODO(b/35903632): Refactor and use the CanShareOperandBufferWithUser
-        // logic from buffer_liveness.cc
-        if (ShapeUtil::Equal(buffer->shape(), operand_buffer->shape()) &&
-            instruction->IsElementwise()) {
+        if (buffer->instruction()->IsUserOf(operand_buffer->instruction()) &&
+            CanShareOperandBufferWithUser(
+                operand_buffer->instruction(), operand_buffer->index(),
+                buffer->instruction(), buffer->index(), points_to_analysis)) {
           heap.ShareBuffer(buffer, operand_buffer);
           shared = true;
           break;

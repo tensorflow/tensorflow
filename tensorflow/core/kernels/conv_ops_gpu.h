@@ -21,6 +21,7 @@ limitations under the License.
 #include <tuple>
 #include <unordered_map>
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/stream_executor.h"
 
@@ -94,33 +95,28 @@ class CudnnScratchAllocator : public perftools::gputools::ScratchAllocator {
 // backward conv operations.
 class ConvParameters {
  public:
-  ConvParameters(int64 batch, int64 in_depths, int64 in_rows, int64 in_cols,
-                 int64 out_depths, int64 filter_rows, int64 filter_cols,
-                 int64 stride_rows, int64 stride_cols, int64 padding_rows,
-                 int64 padding_cols, int device_id)
+  using SpatialArray = gtl::InlinedVector<int64, 3>;
+  ConvParameters(int64 batch, int64 in_depths, const SpatialArray& in,
+                 int64 out_depths, const SpatialArray& filter,
+                 const SpatialArray& stride, const SpatialArray& padding,
+                 const DataType& dtype, int device_id)
       : batch_(batch),
         in_depths_(in_depths),
-        in_rows_(in_rows),
-        in_cols_(in_cols),
+        in_(in),
         out_depths_(out_depths),
-        filter_rows_(filter_rows),
-        filter_cols_(filter_cols),
-        stride_rows_(stride_rows),
-        stride_cols_(stride_cols),
-        padding_rows_(padding_rows),
-        padding_cols_(padding_cols),
+        filter_(filter),
+        stride_(stride),
+        padding_(padding),
+        dtype_(dtype),
         device_id_(device_id) {
     hash_code_ = batch;
     hash_code_ = Hash64Combine(hash_code_, in_depths);
-    hash_code_ = Hash64Combine(hash_code_, in_rows);
-    hash_code_ = Hash64Combine(hash_code_, in_cols);
+    for (int64 val : in) hash_code_ = Hash64Combine(hash_code_, val);
     hash_code_ = Hash64Combine(hash_code_, out_depths);
-    hash_code_ = Hash64Combine(hash_code_, filter_rows);
-    hash_code_ = Hash64Combine(hash_code_, filter_cols);
-    hash_code_ = Hash64Combine(hash_code_, stride_rows);
-    hash_code_ = Hash64Combine(hash_code_, stride_cols);
-    hash_code_ = Hash64Combine(hash_code_, padding_rows);
-    hash_code_ = Hash64Combine(hash_code_, padding_cols);
+    for (int64 val : filter) hash_code_ = Hash64Combine(hash_code_, val);
+    for (int64 val : stride) hash_code_ = Hash64Combine(hash_code_, val);
+    for (int64 val : padding) hash_code_ = Hash64Combine(hash_code_, val);
+    hash_code_ = Hash64Combine(hash_code_, dtype);
     hash_code_ = Hash64Combine(hash_code_, device_id);
   }
   bool operator==(const ConvParameters& other) const {
@@ -133,28 +129,23 @@ class ConvParameters {
   uint64 hash() const { return hash_code_; }
 
  private:
-  typedef std::tuple<int64, int64, int64, int64, int64, int64, int64, int64,
-                     int64, int64, int64, int>
-      DataType;
+  typedef std::tuple<int64, int64, SpatialArray, int64, SpatialArray,
+                     SpatialArray, SpatialArray, DataType, int>
+      ParameterDataType;
 
-  DataType get_data_as_tuple() const {
-    return std::make_tuple(batch_, in_depths_, in_rows_, in_cols_, out_depths_,
-                           filter_rows_, filter_cols_, stride_rows_,
-                           stride_cols_, padding_rows_, padding_cols_,
-                           device_id_);
+  ParameterDataType get_data_as_tuple() const {
+    return std::make_tuple(batch_, in_depths_, in_, out_depths_, filter_,
+                           stride_, padding_, dtype_, device_id_);
   }
 
   int64 batch_;
   int64 in_depths_;
-  int64 in_rows_;
-  int64 in_cols_;
+  SpatialArray in_;
   int64 out_depths_;
-  int64 filter_rows_;
-  int64 filter_cols_;
-  int64 stride_rows_;
-  int64 stride_cols_;
-  int64 padding_rows_;
-  int64 padding_cols_;
+  SpatialArray filter_;
+  SpatialArray stride_;
+  SpatialArray padding_;
+  DataType dtype_;
   int device_id_;
   uint64 hash_code_;
 };

@@ -35,6 +35,9 @@ Status DoTranspose(const Device& device, const Tensor& in,
 // Implementation details.
 namespace internal {
 
+typedef gtl::InlinedVector<int64, 8> TransposeDimsVec;
+typedef gtl::InlinedVector<int32, 8> TransposePermsVec;
+
 // Helper to compute 'strides' given a tensor 'shape'. I.e.,
 // strides[i] = prod(shape.dim_size[(i+1):])
 template <typename Index>
@@ -44,6 +47,57 @@ void ComputeStride(const TensorShape& shape, Index* strides) {
   for (int i = ndims - 1; i >= 0; --i) {
     strides[i] = stride;
     stride *= static_cast<Index>(shape.dim_size(i));
+  }
+}
+
+// Helper function that takes a tensor shape, a permutation, combines the
+// neighboring shapes if their indices in the permutation are consecutive.
+// The function outputs the combined shape and new permutation.
+// Example: Tensor shape {2, 3, 4, 5, 120} and permutation {0, 4, 1, 2, 3} will
+// produce new shape {2, 60, 120} and new permutation {0, 2, 1}.
+inline void ReduceTransposeDimensions(const TensorShape& shape,
+                                      gtl::ArraySlice<int32> perm,
+                                      TransposePermsVec* new_perm,
+                                      TransposeDimsVec* new_dims) {
+  CHECK_EQ(shape.dims(), perm.size());
+  if (shape.dims() == 1) {
+    // If input dimension is already 1, no need to reduce dimension.
+    new_perm->resize(1);
+    (*new_perm)[0] = perm[0];
+    (*new_dims)[0] = shape.dim_size(0);
+    return;
+  }
+  TransposePermsVec new_dim_position(shape.dims(), -1);
+  TransposeDimsVec combined_dims(shape.dims(), 0);
+  int cur_head = perm[0];
+  new_dim_position[cur_head] = 0;
+  combined_dims[0] = shape.dim_size(cur_head);
+  int dim_idx = 0;
+  for (int perm_idx = 1; perm_idx < shape.dims(); ++perm_idx) {
+    // If two indices in permutation are consecutive numbers, combine their
+    // dimensions.
+    if (cur_head + 1 == perm[perm_idx]) {
+      cur_head = perm[perm_idx];
+      combined_dims[dim_idx] *= shape.dim_size(cur_head);
+    } else {
+      // Else start a new dimension.
+      cur_head = perm[perm_idx];
+      dim_idx++;
+      new_dim_position[cur_head] = dim_idx;
+      combined_dims[dim_idx] = shape.dim_size(cur_head);
+    }
+  }
+  // Compact the new permutations and dimension sizes.
+  new_perm->resize(dim_idx + 1);
+  new_dims->resize(dim_idx + 1);
+  dim_idx = 0;
+  for (int i = 0; i < new_dim_position.size(); ++i) {
+    if (new_dim_position[i] >= 0) {
+      int new_perm_idx = new_dim_position[i];
+      (*new_perm)[dim_idx] = new_perm_idx;
+      (*new_dims)[dim_idx] = combined_dims[new_perm_idx];
+      dim_idx++;
+    }
   }
 }
 

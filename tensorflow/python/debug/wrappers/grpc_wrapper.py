@@ -73,10 +73,10 @@ class GrpcDebugWrapperSession(framework.NonInteractiveDebugWrapperSession):
           "Expected type str or list in grpc_debug_server_addresses, "
           "received type %s" % type(grpc_debug_server_addresses))
 
-  def _prepare_run_debug_urls(self, fetches, feed_dict):
+  def prepare_run_debug_urls(self, fetches, feed_dict):
     """Implementation of abstract method in superclass.
 
-    See doc of `NonInteractiveDebugWrapperSession.__prepare_run_debug_urls()`
+    See doc of `NonInteractiveDebugWrapperSession.prepare_run_debug_urls()`
     for details.
 
     Args:
