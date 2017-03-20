@@ -101,6 +101,9 @@ REGISTER_OP("DebugNumericSummary")
     .Attr("T: type")
     .Attr("tensor_name: string = ''")
     .Attr("debug_urls: list(string) = []")
+    .Attr("lower_bound: float = -inf")
+    .Attr("upper_bound: float = inf")
+    .Attr("mute_if_healthy: bool = false")
     .SetAllowsUninitializedInput()
     .Doc(R"doc(
 Debug Numeric Summary Op.
@@ -111,12 +114,16 @@ input: Input tensor, non-Reference type, float or double.
 output: A double tensor of shape [12], the elements of which are:
   [0]: is initialized (1.0) or not (0.0).
   [1]: total number of elements
-  [2]: -inf count
-  [3]: negative element count (excluding -inf)
-  [4]: zero element count
-  [5]: positive element count (excluding +inf)
-  [6]: +inf element count
-  [7]: NaN element count
+  [2]: NaN element count
+  [3]: generalized -inf count: elements <= lower_bound. lower_bound is -inf by
+    default.
+  [4]: negative element count (excluding -inf), if lower_bound is the default
+    -inf. Otherwise, this is the count of elements > lower_bound and < 0.
+  [5]: zero element count
+  [6]: positive element count (excluding +inf), if upper_bound is the default
+    -inf. Otherwise, this is the count of elements < upper_bound and > 0.
+  [7]: generalized +inf count, elements >= upper_bound. upper_bound is +inf by
+    default.
 Output elements [1:8] are all zero, if the tensor is uninitialized.
   [8]: minimum of all non-inf and non-NaN elements.
        If uninitialized or no such element exists: +inf.
@@ -129,7 +136,15 @@ Output elements [1:8] are all zero, if the tensor is uninitialized.
 
 tensor_name: Name of the input tensor.
 debug_urls: List of URLs to debug targets, e.g.,
-            file:///foo/tfdbg_dump, grpc:://localhost:11011
+  file:///foo/tfdbg_dump, grpc:://localhost:11011
+lower_bound: (float) The lower bound <= which values will be included in the
+  generalized -inf count. Default: -inf.
+upper_bound: (float) The upper bound >= which values will be included in the
+  generalized +inf count. Default: +inf.
+mute_if_healthy: (bool) Do not send data to the debug URLs unless at least one
+  of elements [2], [3] and [7] (i.e., the nan count and the generalized -inf and
+  inf counts) is non-zero.
+
 )doc");
 
 }  // namespace tensorflow

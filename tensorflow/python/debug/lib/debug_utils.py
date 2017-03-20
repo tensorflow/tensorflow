@@ -42,6 +42,9 @@ def add_debug_tensor_watch(run_options,
     debug_ops: (`str` or `list` of `str`) name(s) of the debug op(s). Can be a
       `list` of `str` or a single `str`. The latter case is equivalent to a
       `list` of `str` with only one element.
+      For debug op types with customizable attributes, each debug op string can
+      optionally contain a list of attribute names, in the syntax of:
+        debug_op_name(attr_name_1=attr_value_1;attr_name_2=attr_value_2;...)
     debug_urls: (`str` or `list` of `str`) URL(s) to send debug values to,
       e.g., `file:///tmp/tfdbg_dump_1`, `grpc://localhost:12345`.
     tolerate_debug_op_creation_failures: (`bool`) Whether to tolerate debug op
@@ -97,6 +100,9 @@ def watch_graph(run_options,
       a single string, or None. The case of a single string is equivalent to
       a list consisting of a single string, e.g., `file:///tmp/tfdbg_dump_1`,
       `grpc://localhost:12345`.
+      For debug op types with customizable attributes, each debug op name string
+      can optionally contain a list of attribute names, in the syntax of:
+        debug_op_name(attr_name_1=attr_value_1;attr_name_2=attr_value_2;...)
     node_name_regex_whitelist: Regular-expression whitelist for node_name,
       e.g., `"(weight_[0-9]+|bias_.*)"`
     op_type_regex_whitelist: Regular-expression whitelist for the op type of
@@ -178,6 +184,7 @@ def watch_graph_with_blacklists(run_options,
     run_options: An instance of `config_pb2.RunOptions` to be modified.
     graph: An instance of `ops.Graph`.
     debug_ops: (`str` or `list` of `str`) name(s) of the debug op(s) to use.
+      See the documentation of `watch_graph` for more details.
     debug_urls: URL(s) to send debug values to, e.g.,
       `file:///tmp/tfdbg_dump_1`, `grpc://localhost:12345`.
     node_name_regex_blacklist: Regular-expression blacklist for node_name.
