@@ -20,7 +20,6 @@ cc_library(
         "*.h",
         "cuda/*.h",
         "host/*.h",
-        "poplar/*.h",
         "lib/*.h",
         "lib/gtl/*.h",
         "platform/**/*.h",
