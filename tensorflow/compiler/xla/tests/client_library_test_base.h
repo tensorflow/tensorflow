@@ -216,6 +216,16 @@ class ClientLibraryTestBase : public ::testing::Test {
       const int rows, const int cols, const int rows_padded,
       const int cols_padded);
 
+  // Create a parameter instruction that wraps a given value and then stores
+  // into "data_handle" the global handle for that parameter.
+  //
+  // "parameter_number" is the parameter number.
+  // "name" is the name of the parameter instruction.
+  template <typename NativeT>
+  std::unique_ptr<GlobalData> CreateR0Parameter(
+      NativeT value, int64 parameter_number, const string& name,
+      ComputationBuilder* builder, ComputationDataHandle* data_handle);
+
   // Create a parameter instruction that wraps the given values and then stores
   // into "data_handle" the global handle for that parameter.
   //
@@ -368,6 +378,17 @@ void ClientLibraryTestBase::ComputeAndCompareR4(
       LiteralUtil::CreateR4FromArray4D<NativeT>(expected);
   ClientLibraryTestBase::ComputeAndCompareLiteral(builder, *expected_literal,
                                                   arguments, error);
+}
+
+template <typename NativeT>
+std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR0Parameter(
+    NativeT value, int64 parameter_number, const string& name,
+    ComputationBuilder* builder, ComputationDataHandle* data_handle) {
+  std::unique_ptr<Literal> literal = LiteralUtil::CreateR0(value);
+  std::unique_ptr<GlobalData> data =
+      client_->TransferToServer(*literal).ConsumeValueOrDie();
+  *data_handle = builder->Parameter(parameter_number, literal->shape(), name);
+  return data;
 }
 
 template <typename NativeT>

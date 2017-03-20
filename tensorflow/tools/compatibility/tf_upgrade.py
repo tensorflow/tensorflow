@@ -149,6 +149,7 @@ class APIChangeSpec(object):
         "tf.batch_matmul": "tf.matmul",
         "tf.pack": "tf.stack",
         "tf.unpack": "tf.unstack",
+        "tf.op_scope": "tf.name_scope",
     }
 
     self.change_to_function = {
@@ -169,7 +170,8 @@ class APIChangeSpec(object):
         "tf.nn.sparse_softmax_cross_entropy_with_logits": [
             "logits", "labels", "name"],
         "tf.nn.sigmoid_cross_entropy_with_logits": [
-            "logits", "labels", "name"]
+            "logits", "labels", "name"],
+        "tf.op_scope": ["values", "name", "default_name"],
     }
 
     # Specially handled functions.

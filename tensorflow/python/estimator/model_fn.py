@@ -23,7 +23,7 @@ import collections
 
 import six
 
-from tensorflow.python.estimator import export_output
+from tensorflow.python.estimator.export.export_output import ExportOutput
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -50,8 +50,6 @@ class ModeKeys(object):
 class MetricKeys(object):
   """Metric key strings."""
   LOSS = 'loss'
-  AUC = 'auc'
-  ACCURACY = 'accuracy'
 
 
 class EstimatorSpec(
@@ -214,7 +212,7 @@ class EstimatorSpec(
         raise TypeError('export_outputs must be dict, given: {}'.format(
             export_outputs))
       for v in six.itervalues(export_outputs):
-        if not isinstance(v, export_output.ExportOutput):
+        if not isinstance(v, ExportOutput):
           raise TypeError(
               'Values in export_outputs must be ExportOutput objects. '
               'Given: {}'.format(export_outputs))

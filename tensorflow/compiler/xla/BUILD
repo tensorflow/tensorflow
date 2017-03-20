@@ -359,25 +359,6 @@ cc_library(
 )
 
 cc_library(
-    name = "differential_set",
-    hdrs = ["differential_set.h"],
-    visibility = [":internal"],
-    deps = [
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_test(
-    name = "differential_set_test",
-    srcs = ["differential_set_test.cc"],
-    deps = [
-        ":differential_set",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-    ],
-)
-
-cc_library(
     name = "packed_literal_reader",
     srcs = ["packed_literal_reader.cc"],
     hdrs = ["packed_literal_reader.h"],

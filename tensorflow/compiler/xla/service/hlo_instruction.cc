@@ -1352,6 +1352,15 @@ string HloInstruction::SignatureString() const {
                                      ShapeUtil::HumanString(shape()));
 }
 
+string HloInstruction::ExtendedOpcodeStr() const {
+  string opc_name = HloOpcodeString(opcode());
+  HloOpcode opc = opcode();
+  if (HloOpcode::kFusion == opc) {
+    opc_name += ":" + xla::ToString(fusion_kind());
+  }
+  return opc_name;
+}
+
 string HloInstruction::ToString(bool compact_operands) const {
   string operands;
   if (opcode() == HloOpcode::kConstant) {
@@ -1409,46 +1418,9 @@ string HloInstruction::ToString(bool compact_operands) const {
     }
     StrAppend(&extra, ", slice={", Join(bounds, ", "), "}");
   }
+
   if (convolution_dimension_numbers_ != nullptr) {
-    const auto& dnums = *convolution_dimension_numbers_;
-
-    // Show the given dimension labels in order of major to minor based on the
-    // shape's layout.
-    const auto append_dims = [&](const std::vector<string>& dims,
-                                 const Shape& shape) {
-      CHECK_EQ(dims.size(), ShapeUtil::Rank(shape));
-      for (int64 logical = 0; logical < dims.size(); ++logical) {
-        int64 physical = logical;
-        if (!shape.layout().minor_to_major().empty()) {
-          physical = LayoutUtil::Major(shape.layout(), logical);
-        }
-        extra += dims[physical];
-      }
-    };
-
-    // lhs_dims[i] is the symbol of the logical dimension i for the lhs
-    // operand. E.g. if batch has dimension number 2, then lhs_dims[2] == "b".
-    std::vector<string> lhs_dims(2 + dnums.spatial_dimensions().size());
-    lhs_dims[dnums.batch_dimension()] = 'b';
-    lhs_dims[dnums.feature_dimension()] = 'f';
-    for (int64 i = 0; i < dnums.spatial_dimensions().size(); ++i) {
-      lhs_dims[dnums.spatial_dimensions(i)] = tensorflow::strings::StrCat(i);
-    }
-
-    std::vector<string> rhs_dims(2 + dnums.kernel_spatial_dimensions().size());
-    rhs_dims[dnums.kernel_input_feature_dimension()] = "i";
-    rhs_dims[dnums.kernel_output_feature_dimension()] = "o";
-    for (int64 i = 0; i < dnums.spatial_dimensions().size(); ++i) {
-      rhs_dims[dnums.kernel_spatial_dimensions(i)] =
-          tensorflow::strings::StrCat(i);
-    }
-
-    extra += " dims: ";
-    append_dims(lhs_dims, operands_.at(0)->shape());
-    extra += "_";
-    append_dims(rhs_dims, operands_.at(1)->shape());
-    extra += "->";
-    append_dims(lhs_dims, shape());
+    StrAppend(&extra, ", ", ConvolutionDimensionNumbersToString());
   }
 
   if (opcode() == HloOpcode::kWhile) {
@@ -1474,8 +1446,7 @@ string HloInstruction::ToString(bool compact_operands) const {
   }
   return Printf("%s = %s %s(%s)%s", name().c_str(),
                 ShapeUtil::HumanStringWithLayout(shape()).c_str(),
-                HloOpcodeString(opcode()).c_str(), operands.c_str(),
-                extra.c_str());
+                ExtendedOpcodeStr().c_str(), operands.c_str(), extra.c_str());
 }
 
 string HloInstruction::ToShortString() const {
@@ -2114,19 +2085,65 @@ HloInstruction::ReshapeMerelyInsertsOrDeletes1SizedDimensions() const {
                                                       shape_);
 }
 
-string FusionKindString(HloInstruction::FusionKind kind) {
+string ToString(HloInstruction::FusionKind kind) {
   switch (kind) {
     case HloInstruction::FusionKind::kLoop:
-      return "Loop";
+      return "kLoop";
     case HloInstruction::FusionKind::kInput:
-      return "Input";
+      return "kInput";
     case HloInstruction::FusionKind::kTransposeDot:
-      return "TransposeDot";
+      return "kTransposeDot";
     case HloInstruction::FusionKind::kConvBackwardFilter:
-      return "ConvBackwardFilter";
+      return "kConvBackwardFilter";
     case HloInstruction::FusionKind::kConvBackwardInput:
-      return "ConvBackwardInput";
+      return "kConvBackwardInput";
   }
+}
+
+string HloInstruction::ConvolutionDimensionNumbersToString() const {
+  string result;
+  if (convolution_dimension_numbers_ == nullptr) {
+    return result;
+  }
+  const ConvolutionDimensionNumbers& dnums = *convolution_dimension_numbers_;
+  // Show the given dimension labels in order of major to minor based on the
+  // shape's layout.
+  const auto append_dims = [&](const std::vector<string>& dims,
+                               const Shape& shape) {
+    CHECK_EQ(dims.size(), ShapeUtil::Rank(shape));
+    for (int64 logical = 0; logical < dims.size(); ++logical) {
+      int64 physical = logical;
+      if (!shape.layout().minor_to_major().empty()) {
+        physical = LayoutUtil::Major(shape.layout(), logical);
+      }
+      result += dims[physical];
+    }
+  };
+
+  // lhs_dims[i] is the symbol of the logical dimension i for the lhs
+  // operand. E.g. if batch has dimension number 2, then lhs_dims[2] == "b".
+  std::vector<string> lhs_dims(2 + dnums.spatial_dimensions().size());
+  lhs_dims[dnums.batch_dimension()] = 'b';
+  lhs_dims[dnums.feature_dimension()] = 'f';
+  for (int64 i = 0; i < dnums.spatial_dimensions().size(); ++i) {
+    lhs_dims[dnums.spatial_dimensions(i)] = tensorflow::strings::StrCat(i);
+  }
+
+  std::vector<string> rhs_dims(2 + dnums.kernel_spatial_dimensions().size());
+  rhs_dims[dnums.kernel_input_feature_dimension()] = "i";
+  rhs_dims[dnums.kernel_output_feature_dimension()] = "o";
+  for (int64 i = 0; i < dnums.spatial_dimensions().size(); ++i) {
+    rhs_dims[dnums.kernel_spatial_dimensions(i)] =
+        tensorflow::strings::StrCat(i);
+  }
+
+  result += "dim_labels=";
+  append_dims(lhs_dims, operand(0)->shape());
+  result += "_";
+  append_dims(rhs_dims, operand(1)->shape());
+  result += "->";
+  append_dims(lhs_dims, shape());
+  return result;
 }
 
 bool HloInstruction::CouldBeBitcast() const {

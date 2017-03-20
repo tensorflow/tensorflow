@@ -81,6 +81,8 @@ class GraphMgr {
 
   Status SendInputs(const int64 step_id, const NamedTensors& in);
   Status RecvOutputs(const int64 step_id, NamedTensors* out);
+  void RecvOutputsAsync(const int64 step_id, NamedTensors* out,
+                        StatusCallback done);
 
   // Deregisters a graph.
   Status Deregister(const string& handle);
@@ -156,6 +158,8 @@ class GraphMgr {
 
   Status SendInputsToRendezvous(Rendezvous* rendezvous, const NamedTensors& in);
   Status RecvOutputsFromRendezvous(Rendezvous* rendezvous, NamedTensors* out);
+  void RecvOutputsFromRendezvousAsync(Rendezvous* rendezvous, NamedTensors* out,
+                                      const StatusCallback& done);
 
   Status InitItem(const string& session, const GraphDef& gdef,
                   const GraphOptions& graph_options, Item* item);

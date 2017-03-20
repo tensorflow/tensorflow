@@ -239,6 +239,15 @@ class NumpyIoTest(test.TestCase):
             x, y, batch_size=2, shuffle=False, num_epochs=1)
         failing_input_fn()
 
+  def testNumpyInputFnWithNonBoolShuffle(self):
+    x = np.arange(32, 36)
+    y = np.arange(4)
+    with self.test_session():
+      with self.assertRaisesRegexp(TypeError,
+                                   'shuffle must be explicitly set as boolean'):
+        # Default shuffle is None.
+        numpy_io.numpy_input_fn(x, y)
+
   def testNumpyInputFnWithTargetKeyAlreadyInX(self):
     array = np.arange(32, 36)
     x = {'__target_key__': array}

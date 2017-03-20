@@ -54,11 +54,10 @@ struct MasterEnv {
   //
   // The caller of the function takes ownership of the returned
   // `MasterSession`, which may not be null. Ownership of the
-  // `MasterEnv*` is retained by the caller. The callee takes
-  // ownership of the `std::vector<Device*>*` argument, but does not
-  // take ownership of the `Device*` objects in the vector.
-  std::function<MasterSession*(const SessionOptions&, MasterEnv*,
-                               std::vector<Device*>*)>
+  // `MasterEnv*` is retained by the caller.
+  std::function<MasterSession*(
+      const SessionOptions&, MasterEnv*,
+      std::unique_ptr<std::vector<std::unique_ptr<Device>>>)>
       master_session_factory;
 };
 

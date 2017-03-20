@@ -149,10 +149,13 @@ CORE_PROTO_SRCS = [
     "framework/tensor_shape.proto",
     "framework/tensor_slice.proto",
     "framework/types.proto",
+    "framework/variable.proto",
     "framework/versions.proto",
     "lib/core/error_codes.proto",
     "protobuf/config.proto",
     "protobuf/debug.proto",
+    "protobuf/queue_runner.proto",
+    "protobuf/rewriter_config.proto",
     "protobuf/tensor_bundle.proto",
     "protobuf/saver.proto",
     "util/memmapped_file_system.proto",
@@ -166,11 +169,9 @@ CORE_PROTO_SRCS = [
 # ones with individual proto_library targets.
 ADDITIONAL_CORE_PROTO_SRCS = [
     "example/example_parser_configuration.proto",
-    "framework/variable.proto",
     "protobuf/control_flow.proto",
     "protobuf/meta_graph.proto",
     "protobuf/named_tensor.proto",
-    "protobuf/queue_runner.proto",
     "protobuf/saved_model.proto",
     "protobuf/tensorflow_server.proto",
     "util/event.proto",
@@ -191,6 +192,7 @@ tf_proto_library(
     srcs = CORE_PROTO_SRCS + ADDITIONAL_CORE_PROTO_SRCS,
     cc_api_version = 2,
     go_api_version = 2,
+    j2objc_api_version = 1,
     java_api_version = 2,
     js_api_version = 2,
     js_codegen = "jspb",
@@ -443,6 +445,12 @@ cc_library(
         ":lib",
         ":op_gen_overrides_proto_cc",
     ],
+)
+
+cc_library(
+    name = "session_options",
+    hdrs = ["public/session_options.h"],
+    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -812,6 +820,7 @@ filegroup(
         "//tensorflow/core/platform/default/build_config:android_srcs",
         "//tensorflow/core/util/ctc:android_srcs",
         "//tensorflow/core/util/tensor_bundle:android_srcs",
+        "//tensorflow/core/grappler:android_srcs",
         "common_runtime/gpu/gpu_tracer.cc",
         "common_runtime/gpu/gpu_tracer.h",
     ] + glob(
@@ -1487,6 +1496,8 @@ tf_cuda_library(
                ":lib_internal",
                ":proto_text",
                ":protos_all_cc",
+               "//tensorflow/core/grappler:grappler_item",
+               "//tensorflow/core/grappler/optimizers:meta_optimizer",
                "//third_party/eigen3",
                "//tensorflow/core/kernels:required",
            ] + if_mkl(["//third_party/mkl:intel_binary_blob"]) +
