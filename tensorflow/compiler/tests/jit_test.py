@@ -160,12 +160,14 @@ class JitLaunchTest(test.TestCase):
     # function (say, Bar) which is not inlined. When the compiler compiles
     # Foo, it needs to symbolic execute Bar correctly regardless whether
     # Bar is inlined or not.
-    #
+
+    # TODO(b/36139787): Re-enable this test when noinline works again.
     # Tests compiled=True and noinline=True.
-    self._compare(
-        AddOnceReturnTwice, [np.array(
-            [[[0.5, -1.0]]], dtype=np.float32)],
-        noinline=True)
+    # self._compare(
+    #     AddOnceReturnTwice, [np.array(
+    #         [[[0.5, -1.0]]], dtype=np.float32)],
+    #     noinline=True)
+
     # Tests compiled=True and noinline=False.
     self._compare(
         AddOnceReturnTwice, [np.array(

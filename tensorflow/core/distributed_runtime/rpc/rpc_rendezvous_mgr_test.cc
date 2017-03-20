@@ -49,7 +49,7 @@ Rendezvous::ParsedKey MakeKey(const string& s) {
 namespace {
 // Fake cache implementation for WorkerEnv.
 class DummyWorkerCache : public WorkerCacheInterface {
-  void ListWorkers(std::vector<string>* workers) override {}
+  void ListWorkers(std::vector<string>* workers) const override {}
   WorkerInterface* CreateWorker(const string& target) override {
     return nullptr;
   }

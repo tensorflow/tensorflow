@@ -52,6 +52,7 @@ tf_kernel_library(
         "split_op.cc",
         "strided_slice_op.cc",
         "tile_ops.cc",
+        "training_ops.cc",
         "transpose_op.cc",
         "unary_ops.cc",
         "unpack_op.cc",

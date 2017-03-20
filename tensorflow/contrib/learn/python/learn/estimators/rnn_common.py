@@ -122,7 +122,7 @@ def apply_dropout(cells, dropout_keep_probabilities, random_seed=None):
         'number of cells. Got {} cells and {} dropout probabilities.'.format(
             len(cells), len(dropout_keep_probabilities)))
   wrapped_cells = [
-      contrib_rnn.DropoutWrapper(cell, prob, 1.0, random_seed)
+      contrib_rnn.DropoutWrapper(cell, prob, 1.0, seed=random_seed)
       for cell, prob in zip(cells[:-1], dropout_keep_probabilities[:-2])
   ]
   wrapped_cells.append(

@@ -66,6 +66,45 @@ module VZ.ChartHelpers {
     };
   }
 
+  /* Compute an appropriate domain given an array of all the values that are
+   * going to be displayed. If ignoreOutliers is true, it will ignore the
+   * lowest 10% and highest 10% of the data when computing a domain.
+   * It has n log n performance when ignoreOutliers is true, as it needs to
+   * sort the data.
+   */
+  export function computeDomain(values: number[], ignoreOutliers: boolean) {
+    if (values.length === 0) {
+      return [-0.1, 1.1];
+    }
+    let a: number;
+    let b: number;
+    if (ignoreOutliers) {
+      let sorted = _.sortBy(values);
+      a = d3.quantile(sorted, 0.10);
+      b = d3.quantile(sorted, 0.90);
+    } else {
+      a = d3.min(values);
+      b = d3.max(values);
+    }
+
+    // If the values are in unit range, try to give them a clean [0, 1] range,
+    // but if all the values are less than 0.1 then we will construct a smaller
+    // power-of-ten window for them.
+    if (a >= 0 && b <= 1) {
+      if (b === 0) {
+        return [-0.1, 1.1];
+      }
+      let powerOf10 = Math.pow(10, Math.ceil(Math.log(b) / Math.log(10)));
+      let offset = powerOf10 / 10;
+      return [-offset, powerOf10 + offset];
+    }
+
+    let padding = (b - a) * 0.20;
+    let domain = [a - padding, b + padding];
+    domain = d3.scale.linear().domain(domain).nice().domain();
+    return domain;
+  }
+
   export function accessorize(key: string): Plottable.Accessor<number> {
     return (d: any, index: number, dataset: Plottable.Dataset) => d[key];
   }

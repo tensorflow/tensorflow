@@ -203,6 +203,9 @@ Status ShapeRefiner::EvaluateConstantTensorForEdge(const Node* node,
 
   bool is_constant_graph = false;
   Graph subgraph(ops_registry_);
+  auto versions = subgraph.versions();
+  versions.set_producer(graph_def_version_);
+  subgraph.set_versions(versions);
 
   // We identify the possibly constant subgraph to evaluate by
   // recursively iterating backwards through the inputs to 'node'

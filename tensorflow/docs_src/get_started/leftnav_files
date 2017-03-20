@@ -1,10 +1,11 @@
+index.md
 get_started.md
 mnist/beginners.md
 mnist/pros.md
 mnist/mechanics.md
 tflearn.md
 input_fn.md
+monitors.md
 summaries_and_tensorboard.md
 embedding_viz.md
 graph_viz.md
-monitors.md

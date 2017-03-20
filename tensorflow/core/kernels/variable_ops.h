@@ -157,10 +157,11 @@ class DestroyTemporaryVariableOp : public OpKernel {
                                 context->step_container()->name(), var_name_));
     if (context->track_allocations()) {
       if (context->allocate_on_host(AllocatorAttributes())) {
-        context->record_host_persistent_memory_allocation(-tmpvar.TotalBytes());
+        context->record_host_persistent_memory_allocation(
+            -tmpvar.AllocatedBytes());
       } else {
         context->record_device_persistent_memory_allocation(
-            -tmpvar.TotalBytes());
+            -tmpvar.AllocatedBytes());
       }
     }
   }

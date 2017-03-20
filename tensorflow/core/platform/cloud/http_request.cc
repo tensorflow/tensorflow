@@ -369,33 +369,77 @@ Status HttpRequest::Send() {
   const auto& error_message = strings::StrCat(
       "Error executing an HTTP request (HTTP response code ", response_code_,
       ", error code ", curl_result, ", error message '", error_buffer, "')");
+
+  Status result;
   switch (response_code_) {
+    // The group of response codes indicating that the request achieved
+    // the expected goal.
     case 200:  // OK
     case 201:  // Created
     case 204:  // No Content
     case 206:  // Partial Content
       if (curl_result != CURLE_OK) {
-        // UNAVAILABLE can be retried by the caller, e.g by
-        // RetryingFileSystem.
-        return errors::Unavailable(error_message);
+        // This means the server executed the request successfully, but then
+        // something went wrong during the transmission of the response.
+        result = errors::Unavailable(error_message);
+      } else {
+        result = Status::OK();
       }
-      return Status::OK();
-    case 401:
-    case 403:
-      response_buffer_->clear();
-      return errors::PermissionDenied(error_message);
-    case 404:
-      response_buffer_->clear();
-      return errors::NotFound(error_message);
+      break;
     case 416:  // Requested Range Not Satisfiable
+      // The requested range had no overlap with the available range.
+      // This doesn't indicate an error, but this does mean an empty response
+      // body.
       response_buffer_->clear();
-      return Status::OK();
-    default:
-      // UNAVAILABLE can be retried by the caller, e.g by
-      // RetryingFileSystem.
-      response_buffer_->clear();
-      return errors::Unavailable(error_message);
+      result = Status::OK();
+      break;
+
+    // INVALID_ARGUMENT indicates a problem with how the request is constructed.
+    case 400:  // Bad Request
+    case 411:  // Length Required
+      result = errors::InvalidArgument(error_message);
+      break;
+
+    // PERMISSION_DENIED indicates an authentication or an authorization issue.
+    case 401:  // Unauthorized
+    case 403:  // Forbidden
+      result = errors::PermissionDenied(error_message);
+      break;
+
+    // NOT_FOUND indicates that the requested resource does not exist.
+    case 404:  // Not found
+    case 410:  // Gone
+      result = errors::NotFound(error_message);
+      break;
+
+    // FAILED_PRECONDITION indicates that the request failed because some
+    // of the underlying assumptions were not satisfied. The request
+    // shouldn't be retried unless the external context has changed.
+    case 302:  // Found
+    case 303:  // See Other
+    case 304:  // Not Modified
+    case 307:  // Temporary Redirect
+    case 308:  // Resume Incomplete
+    case 412:  // Precondition Failed
+    case 413:  // Payload Too Large
+      result = errors::FailedPrecondition(error_message);
+      break;
+
+    // UNAVAILABLE indicates a problem that can go away if the request
+    // is just retried without any modification.
+    case 409:  // Conflict
+    case 429:  // Too Many Requests
+    case 500:  // Internal Server Error
+    case 502:  // Bad Gateway
+    case 503:  // Service Unavailable
+    default:   // All other HTTP response codes also should be retried.
+      result = errors::Unavailable(error_message);
+      break;
   }
+  if (!result.ok()) {
+    response_buffer_->clear();
+  }
+  return result;
 }
 
 Status HttpRequest::CheckInitialized() const {

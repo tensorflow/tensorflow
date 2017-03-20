@@ -39,6 +39,7 @@ def main_op():
   return control_flow_ops.group(init, init_local, init_tables)
 
 
+# TODO(sukritiramesh): Integrate with Saver for complete restore functionality.
 def main_op_with_restore(restore_op_name):
   """Returns a main op to init variables, tables and restore the graph.
 

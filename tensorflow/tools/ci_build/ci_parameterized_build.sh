@@ -89,6 +89,9 @@
 #                     Use the specified configurations when building.
 #                     When set, overrides TF_BUILD_IS_OPT and TF_BUILD_MAVX
 #                     options, as this will replace the two.
+#   TF_SKIP_CONTRIB_TESTS:
+#                     If set to any non-empty or non-0 value, will skipp running
+#                     contrib tests.
 #
 # This script can be used by Jenkins parameterized / matrix builds.
 
@@ -145,6 +148,10 @@ if [[ -z $TF_BUILD_ENABLE_XLA ]] || [ $TF_BUILD_ENABLE_XLA == 0 ]; then
 else
   BAZEL_TARGET="//tensorflow/compiler/..."
   EXTRA_PARAMS="${EXTRA_PARAMS} -e TF_BUILD_ENABLE_XLA=1"
+fi
+
+if [[ -n "$TF_SKIP_CONTRIB_TESTS" ]]; then
+  BAZEL_TARGET="$BAZEL_TARGET -//tensorflow/contrib/..."
 fi
 
 TUT_TEST_DATA_DIR="/tmp/tf_tutorial_test_data"

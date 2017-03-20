@@ -220,6 +220,7 @@ def _fused_batch_norm(
       scope, 'BatchNorm', [inputs], reuse=reuse) as sc:
     inputs = ops.convert_to_tensor(inputs)
     original_shape = inputs.get_shape()
+    original_inputs = inputs
     original_rank = original_shape.ndims
     if original_rank is None:
       raise ValueError('Inputs %s has undefined rank' % inputs.name)
@@ -350,7 +351,7 @@ def _fused_batch_norm(
 
     outputs.set_shape(inputs_shape)
     if original_shape.ndims == 2:
-      outputs = array_ops.reshape(outputs, original_shape)
+      outputs = array_ops.reshape(outputs, array_ops.shape(original_inputs))
     if activation_fn is not None:
       outputs = activation_fn(outputs)
     return utils.collect_named_outputs(outputs_collections,
@@ -1229,7 +1230,7 @@ def flatten(inputs,
     batch_dim, spatial_dims = input_shape[0], input_shape[1:]
     if all(spatial_dims):
       outputs.set_shape([batch_dim,
-                        functools.reduce(lambda x, y: x * y, spatial_dims)])
+                         functools.reduce(lambda x, y: x * y, spatial_dims)])
     else:
       outputs.set_shape([batch_dim, None])
 

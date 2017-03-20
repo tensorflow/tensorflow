@@ -24,6 +24,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
 
 namespace xla {
 
@@ -52,21 +54,38 @@ enum class CallContext {
 string CallContextToString(CallContext context);
 std::ostream& operator<<(std::ostream& out, const CallContext& context);
 
-// Represents an instruction calling a particular computation in an HLO
-// module. Some instructions such as kWhile can call more than one computation
-// and may be represented with more than one CallSite, one for each computation
-// called.
-struct CallSite {
-  // The calling instruction.
-  HloInstruction* instruction;
+// Represents an HLO instruction which calls one or more computations.
+class CallSite {
+ public:
+  CallSite(HloInstruction* instruction,
+           const std::vector<HloComputation*>& called_computations,
+           CallContext context)
+      : instruction_(CHECK_NOTNULL(instruction)),
+        called_computations_(called_computations),
+        context_(context) {}
 
-  // The computation the instruction is calling.
-  HloComputation* called_computation;
+  // Returns the instruction associated with this call site.
+  HloInstruction* instruction() const { return instruction_; }
 
-  // The context in which the computation is called.
-  CallContext context;
+  // Returns the computations called at this call site.
+  const std::vector<HloComputation*>& called_computations() const {
+    return called_computations_;
+  }
+
+  // Returns the context in which computations are called at this call site.
+  CallContext context() const { return context_; }
 
   string ToString() const;
+
+ private:
+  // The calling instruction.
+  HloInstruction* instruction_;
+
+  // The computations called by this callsite.
+  const std::vector<HloComputation*> called_computations_;
+
+  // The context in which the computations are called.
+  const CallContext context_;
 };
 
 // A node in the call graph representing an HLO computation.
@@ -74,58 +93,70 @@ class CallGraphNode {
  public:
   CallGraphNode(HloComputation* computation);
 
-  // Return the computation represented by this call graph node.
+  // Returns the computation represented by this call graph node.
   HloComputation* computation() const { return computation_; }
 
-  // Return the call sites in this computation. These are the instructions in
+  // Returns the call sites in this computation. These are the instructions in
   // this computation which call other computations.
   const std::vector<CallSite>& callsites() const { return callsites_; }
 
-  // Return the computations called by this computation.
+  // Returns the callsite associated with the given instruction. If this
+  // instruction calls no computations nullptr is returned.
+  // Prerequisite: instruction is in the computation associated with this call
+  // graph node.
+  const CallSite* GetCallSite(const HloInstruction* instruction) const;
+
+  // Returns the computations called by this computation.
   const std::vector<HloComputation*>& callees() const { return callees_; }
 
-  // Return the call sites in other computations which call this computation.
+  // Returns the call sites in other computations which call this computation.
   const std::vector<CallSite>& caller_callsites() const {
     return caller_callsites_;
   }
 
-  // Return the computations which call this computation.
+  // Returns the computations which call this computation.
   const std::vector<HloComputation*>& callers() const { return callers_; }
 
-  // Return or set the context in which this computation is called.
+  // Returns the context in which this computation is called.
   CallContext context() const { return context_; }
-  void set_context(CallContext value) { context_ = value; }
-
-  // Add a callsite which calls this computation. Updates callers to include the
-  // calling computation.
-  void AddCallerCallSite(const CallSite& caller_callsite);
-
-  // Add a call site to this computation. Updates callees to include the called
-  // computation.
-  void AddCallSite(const CallSite& callsite);
-
-  // Add all the call sites (if any) for this instruction. Instruction must be
-  // an instruction in this node's computation.
-  void AddCallSitesInInstruction(HloInstruction* instruction);
 
   string ToString() const;
 
  private:
+  // Only CallGraph can modify CallGraphNode.
+  friend class CallGraph;
+
+  // Sets the context in which this computation is called.
+  void set_context(CallContext value) { context_ = value; }
+
+  // Adds a callsite which calls this computation. Updates callers to include
+  // the calling computation.
+  void AddCallerCallSite(const CallSite& caller_callsite);
+
+  // If instruction calls any computations adds a call site for this instruction
+  // to the call graph node. If the instruction calls no computations then no
+  // call site is added.
+  Status AddCallSiteForInstruction(HloInstruction* instruction);
+
   // Computation represented by this call graph node.
   HloComputation* computation_;
 
   // The computations called by this computation. The vector is used for a
   // stable ordering and the set enables fast membership testing.
   std::vector<HloComputation*> callees_;
-  std::unordered_set<HloComputation*> callee_set_;
+  tensorflow::gtl::FlatSet<HloComputation*> callee_set_;
 
   // The computations which call this computation. The vector is used for a
   // stable ordering and the set enables fast membership testing.
   std::vector<HloComputation*> callers_;
-  std::unordered_set<HloComputation*> caller_set_;
+  tensorflow::gtl::FlatSet<HloComputation*> caller_set_;
 
   // The call sites in this computation
   std::vector<CallSite> callsites_;
+
+  // The map from instruction to index in callsites_ for looking up the callsite
+  // (if any) associated with a particular instruction in this computation.
+  tensorflow::gtl::FlatMap<const HloInstruction*, int64> callsite_instructions_;
 
   // The call sites in other computations which call this computation.
   std::vector<CallSite> caller_callsites_;
@@ -140,21 +171,18 @@ class CallGraph {
  public:
   using VisitorFunction = std::function<Status(const CallGraphNode&)>;
 
-  // Build and return a call graph for the given HLO module.
+  // Builds and returns a call graph for the given HLO module.
   static StatusOr<std::unique_ptr<CallGraph>> Build(const HloModule* module);
 
-  // Public default constructor required for StatusOr<CallGraph>.
-  CallGraph() = default;
-
-  // Return the node associated with the given computation.
+  // Returns the node associated with the given computation.
   StatusOr<const CallGraphNode*> GetNode(
       const HloComputation* computation) const;
   StatusOr<CallGraphNode*> GetNode(const HloComputation* computation);
 
-  // Return the vector of all nodes in the call graph.
+  // Returns the vector of all nodes in the call graph.
   const std::vector<CallGraphNode>& nodes() const { return nodes_; }
 
-  // Call the given function on each node in the call graph. Nodes are visited
+  // Calls the given function on each node in the call graph. Nodes are visited
   // in post order (callees before callers). If visit_unreachable_nodes is true
   // then all nodes in the call graph are visited. Otherwise only those nodes
   // reachable from the entry computation are visited.
@@ -175,7 +203,7 @@ class CallGraph {
   // 'visited'.
   Status VisitNodesInternal(
       const VisitorFunction& visitor_func, const CallGraphNode* node,
-      std::unordered_set<const CallGraphNode*>* visited) const;
+      tensorflow::gtl::FlatSet<const CallGraphNode*>* visited) const;
 
   // The HLO module represented by this call graph.
   const HloModule* module_ = nullptr;
@@ -185,7 +213,7 @@ class CallGraph {
 
   // Map from HLO computation to the index of the corresponding call graph node
   // in nodes_.
-  std::unordered_map<const HloComputation*, int64> node_indices_;
+  tensorflow::gtl::FlatMap<const HloComputation*, int64> node_indices_;
 };
 
 }  // namespace xla

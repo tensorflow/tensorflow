@@ -1022,22 +1022,41 @@ LiteralUtil::CreateFullWithMonotonicDim0MajorLayout(
 template <typename NativeT>
 /* static */ std::unique_ptr<Literal> LiteralUtil::Replicate(
     const Literal& input, int64 times) {
-  std::vector<int64> bounds = {times};
-  bounds.insert(bounds.end(), input.shape().dimensions().begin(),
-                input.shape().dimensions().end());
+  // Ranks greater than 8 are very rare, so use InlinedVector<int64, 8> to store
+  // the bounds and indices.
+  static constexpr int kInlineRank = 8;
+  tensorflow::gtl::InlinedVector<int64, kInlineRank> bounds = {times};
+  bounds.reserve(input.shape().dimensions_size() + 1);
+  for (int64 bound : input.shape().dimensions()) {
+    bounds.push_back(bound);
+  }
   auto literal = MakeUnique<Literal>();
   *literal->mutable_shape() =
       ShapeUtil::MakeShape(input.shape().element_type(), bounds);
-  Reserve(ShapeUtil::ElementsIn(literal->shape()), literal.get());
-  for (int64 index = 0; index < ShapeUtil::ElementsIn(input.shape()); ++index) {
-    const std::vector<int64> element_indices =
-        IndexUtil::LinearIndexToMultidimensionalIndex(input.shape(), index);
-    const auto element = Get<NativeT>(input, element_indices);
-    for (int64 sample = 0; sample < times; ++sample) {
-      std::vector<int64> output_indices = {sample};
-      output_indices.insert(output_indices.end(), element_indices.begin(),
-                            element_indices.end());
-      Set<NativeT>(literal.get(), output_indices, element);
+  int64 elements = ShapeUtil::ElementsIn(literal->shape());
+  if (elements == 0) {
+    return literal;
+  }
+  Reserve(elements, literal.get());
+
+  tensorflow::gtl::InlinedVector<int64, kInlineRank> output_indices(
+      bounds.size(), 0);
+  tensorflow::gtl::ArraySlice<int64> input_indices = output_indices;
+  input_indices.remove_prefix(1);
+
+  bool done = false;
+  while (!done) {
+    const auto element = Get<NativeT>(input, input_indices);
+    Set<NativeT>(literal.get(), output_indices, element);
+
+    done = true;
+    for (int n = 0; n < output_indices.size(); ++n) {
+      ++output_indices[n];
+      if (output_indices[n] < bounds[n]) {
+        done = false;
+        break;
+      }
+      output_indices[n] = 0;
     }
   }
   return literal;

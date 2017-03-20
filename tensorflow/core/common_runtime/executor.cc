@@ -843,6 +843,7 @@ class ExecutorState {
       if (val_field_is_set) {
         val.Destroy();
         val_field_is_set = false;
+        has_value = false;
       }
     }
 

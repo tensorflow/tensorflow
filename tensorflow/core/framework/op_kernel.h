@@ -207,7 +207,7 @@ class PersistentTensor {
 
   int64 NumElements() const { return tensor_.NumElements(); }
 
-  int64 TotalBytes() const { return tensor_.TotalBytes(); }
+  int64 AllocatedBytes() const { return tensor_.AllocatedBytes(); }
 
  private:
   Tensor tensor_;

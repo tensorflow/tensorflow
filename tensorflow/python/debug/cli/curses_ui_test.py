@@ -20,8 +20,10 @@ from __future__ import print_function
 import argparse
 import curses
 import tempfile
+import threading
 
 import numpy as np
+from six.moves import queue
 
 from tensorflow.python.debug.cli import curses_ui
 from tensorflow.python.debug.cli import debugger_cli_common
@@ -306,6 +308,18 @@ class CursesTest(test_util.TensorFlowTestCase):
     self.assertEqual(0, ui._command_pointer)
     self.assertEqual([], ui._active_command_history)
     self.assertEqual("", ui._pending_command)
+
+  def testCursesUiInChildThreadStartsWithoutException(self):
+    result = queue.Queue()
+    def child_thread():
+      try:
+        MockCursesUI(40, 80)
+      except ValueError as e:
+        result.put(e)
+    t = threading.Thread(target=child_thread)
+    t.start()
+    t.join()
+    self.assertTrue(result.empty())
 
   def testRunUIExitImmediately(self):
     """Make sure that the UI can exit properly after launch."""

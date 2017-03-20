@@ -112,6 +112,7 @@ class BatchMatmulOpTest(test.TestCase):
 
     compareNonEmpty(self, [1, 2, 3], [1, 3, 5])
     compareNonEmpty(self, [1, 2, 3], [1, 3, 1])
+    compareNonEmpty(self, [1, 1, 3], [1, 3, 5])
     compareNonEmpty(self, [1, 2, 3], [1, 3, 5])
     compareNonEmpty(self, [7, 1, 3], [7, 3, 5])
     compareNonEmpty(self, [7, 2, 3], [7, 3, 1])

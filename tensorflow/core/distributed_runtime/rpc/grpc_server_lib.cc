@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
 
+#include <cstring>
 #include <limits>
 #include <memory>
 
@@ -207,12 +208,12 @@ Status GrpcServer::Init() {
   // Finish setting up master environment.
   master_env_.ops = OpRegistry::Global();
   master_env_.worker_cache = worker_env_.worker_cache;
-  master_env_.master_session_factory = [](const SessionOptions& options,
-                                          const MasterEnv* env,
-                                          std::vector<Device*>* remote_devs) {
-    return new MasterSession(options, env, remote_devs,
-                             CreateNoOpStatsPublisher);
-  };
+  master_env_.master_session_factory =
+      [](const SessionOptions& options, const MasterEnv* env,
+         std::unique_ptr<std::vector<std::unique_ptr<Device>>> remote_devs) {
+        return new MasterSession(options, env, std::move(remote_devs),
+                                 CreateNoOpStatsPublisher);
+      };
 
   // Finish setting up worker environment.
   worker_env_.graph_mgr = new GraphMgr(&worker_env_);
@@ -330,6 +331,7 @@ class GrpcServerRegistrar {
  public:
   GrpcServerRegistrar() {
     gpr_allocation_functions alloc_fns;
+    memset(&alloc_fns, 0, sizeof(alloc_fns));
     alloc_fns.malloc_fn = port::Malloc;
     alloc_fns.realloc_fn = port::Realloc;
     alloc_fns.free_fn = port::Free;

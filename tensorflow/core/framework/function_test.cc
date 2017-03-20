@@ -946,6 +946,62 @@ TEST(FunctionLibraryDefinitionTest, AddFunctionDef) {
             test::function::WXPlusB().signature().DebugString());
 }
 
+TEST(FunctionLibraryDefinitionTest, AddGradientDef) {
+  // AddGradientDef() doesn't check that functions referenced exist (yet?)
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), FunctionDefLibrary());
+
+  // Test adding a gradient (XTimesFour isn't a valid grad function for
+  // XTimesTwo but that's ok for now)
+  GradientDef grad;
+  grad.set_function_name(test::function::XTimesTwo().signature().name());
+  grad.set_gradient_func(test::function::XTimesFour().signature().name());
+  TF_EXPECT_OK(lib_def.AddGradientDef(grad));
+
+  // Test that adding a duplicate gradient fails
+  grad.set_gradient_func(test::function::XTimes16().signature().name());
+  Status s = lib_def.AddGradientDef(grad);
+  EXPECT_EQ(s.code(), error::Code::INVALID_ARGUMENT);
+  EXPECT_EQ(s.error_message(),
+            "Gradient for function 'XTimesTwo' already exists.");
+}
+
+TEST(FunctionLibraryDefinitionTest, AddLibrary) {
+  // Create lib def with single function
+  FunctionDefLibrary proto;
+  *proto.add_function() = test::function::XTimesTwo();
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), proto);
+
+  // Error if you try to add the same function twice
+  Status s = lib_def.AddLibrary(lib_def);
+  EXPECT_EQ(s.code(), error::Code::INVALID_ARGUMENT);
+  EXPECT_EQ(s.error_message(),
+            "Function with name: XTimesTwo already exists in function "
+            "library.");
+
+  // Add gradient
+  GradientDef grad;
+  grad.set_function_name(test::function::XTimesTwo().signature().name());
+  grad.set_gradient_func(test::function::XTimesFour().signature().name());
+  TF_EXPECT_OK(lib_def.AddGradientDef(grad));
+
+  // Error if you try to add the same library function twice
+  proto.Clear();
+  *proto.add_gradient() = grad;
+  FunctionLibraryDefinition lib_def2(OpRegistry::Global(), proto);
+  s = lib_def.AddLibrary(lib_def2);
+  EXPECT_EQ(s.code(), error::Code::INVALID_ARGUMENT);
+  EXPECT_EQ(s.error_message(),
+            "Gradient for function 'XTimesTwo' already exists.");
+
+  // No conflicing functions or gradients OK
+  proto.Clear();
+  *proto.add_function() = test::function::XTimesFour();
+  grad.set_function_name(test::function::XTimes16().signature().name());
+  *proto.add_gradient() = grad;
+  FunctionLibraryDefinition lib_def3(OpRegistry::Global(), proto);
+  TF_EXPECT_OK(lib_def.AddLibrary(lib_def3));
+};
+
 TEST(FunctionLibraryDefinitionTest, ToProto) {
   FunctionDefLibrary proto1;
   *proto1.add_function() = test::function::XTimesTwo();

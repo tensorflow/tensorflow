@@ -69,8 +69,8 @@ Binary format files are a lot smaller than their text equivalents, even though
 they're not as readable for us. In this script, we ask the user to supply a
 flag indicating whether the input file is binary or text, so we know the right
 function to call. You can find an example of a large binary file inside the
-[inception_dec_2015.zip
-archive](https://storage.googleapis.com/download.tensorflow.org/models/inception_dec_2015.zip), as `tensorflow_inception_graph.pb`.
+[inception_v3 archive](https://storage.googleapis.com/download.tensorflow.org/models/inception_v3_2016_08_28_frozen.pb.tar.gz),
+as `inception_v3_2016_08_28_frozen.pb`.
 
 The API itself can be a bit confusing - the binary call is actually
 `ParseFromString()`, whereas you use a utility function from the `text_format`

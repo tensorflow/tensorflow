@@ -104,6 +104,38 @@ py_test(
     ],
 )
 
+py_library(
+    name = "sdca_estimator_py",
+    srcs = ["python/sdca_estimator.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":sdca_ops_py",
+        ":sparse_feature_column_py",
+        "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/contrib/learn",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:variables",
+    ],
+)
+
+py_test(
+    name = "sdca_estimator_test",
+    srcs = ["python/sdca_estimator_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":sdca_estimator_py",
+        "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "//third_party/py/numpy",
+    ],
+)
+
 filegroup(
     name = "all_files",
     srcs = glob(

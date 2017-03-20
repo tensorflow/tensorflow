@@ -117,6 +117,11 @@ such as different X scales (linear and temporal), tooltips and smoothing.
         stroke-width: 1px;
       }
 
+      #chartsvg line.guide-line {
+        stroke: #999;
+        stroke-width: 1.5px;
+      }
+
     </style>
   </template>
   <script src="dragZoomInteraction.js"></script>
@@ -204,6 +209,15 @@ such as different X scales (linear and temporal), tooltips and smoothing.
         },
 
         /**
+         * Whether to ignore outlier data when computing the yScale domain.
+         */
+
+        ignoreYOutliers: {
+          type: Boolean,
+          value: true,
+        },
+
+        /**
          * Change how the tooltip is sorted. Allows:
          * - "default" - Sort the tooltip by input order.
          * - "ascending" - Sort the tooltip by ascending value.
@@ -245,7 +259,8 @@ such as different X scales (linear and temporal), tooltips and smoothing.
         "_reloadFromCache(_chart)",
         "_smoothingChanged(smoothingEnabled, smoothingWeight, _chart)",
         "_tooltipSortingMethodChanged(tooltipSortingMethod, _chart)",
-        "_tooltipPositionChanged(tooltipPosition, _chart)"
+        "_tooltipPositionChanged(tooltipPosition, _chart)",
+        "_outliersChanged(ignoreYOutliers, _chart)"
       ],
 
       /**
@@ -332,6 +347,12 @@ such as different X scales (linear and temporal), tooltips and smoothing.
         else {
           this._chart.smoothingDisable();
         }
+      },
+      _outliersChanged: function() {
+        if (!this._chart) {
+          return;
+        }
+        this._chart.ignoreYOutliers(this.ignoreYOutliers);
       },
       _tooltipSortingMethodChanged: function() {
         if(this._chart) {

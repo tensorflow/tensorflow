@@ -31,13 +31,30 @@ import org.junit.runners.JUnit4;
 public class SessionTest {
 
   @Test
-  public void run() {
+  public void runUsingOperationNames() {
     try (Graph g = new Graph();
         Session s = new Session(g)) {
       TestUtil.transpose_A_times_X(g, new int[][] {{2}, {3}});
       try (Tensor x = Tensor.create(new int[][] {{5}, {7}});
           AutoCloseableList<Tensor> outputs =
               new AutoCloseableList<Tensor>(s.runner().feed("X", x).fetch("Y").run())) {
+        assertEquals(1, outputs.size());
+        final int[][] expected = {{31}};
+        assertArrayEquals(expected, outputs.get(0).copyTo(new int[1][1]));
+      }
+    }
+  }
+
+  @Test
+  public void runUsingOperationHandles() {
+    try (Graph g = new Graph();
+        Session s = new Session(g)) {
+      TestUtil.transpose_A_times_X(g, new int[][] {{2}, {3}});
+      Output feed = g.operation("X").output(0);
+      Output fetch = g.operation("Y").output(0);
+      try (Tensor x = Tensor.create(new int[][] {{5}, {7}});
+          AutoCloseableList<Tensor> outputs =
+              new AutoCloseableList<Tensor>(s.runner().feed(feed, x).fetch(fetch).run())) {
         assertEquals(1, outputs.size());
         final int[][] expected = {{31}};
         assertArrayEquals(expected, outputs.get(0).copyTo(new int[1][1]));
@@ -102,6 +119,12 @@ public class SessionTest {
     }
   }
 
+  @Test
+  public void createWithConfigProto() {
+    try (Graph g = new Graph();
+        Session s = new Session(g, singleThreadConfigProto())) {}
+  }
+
   private static final class AutoCloseableList<E extends AutoCloseable> extends ArrayList<E>
       implements AutoCloseable {
     AutoCloseableList(Collection<? extends E> c) {
@@ -142,5 +165,26 @@ public class SessionTest {
         .build()
         .toByteArray();
     */
+  }
+
+  public static byte[] singleThreadConfigProto() {
+    // Ideally this would use the generated Java sources for protocol buffers
+    // and end up with something like the snippet below. However, generating
+    // the Java files for the .proto files in tensorflow/core:protos_all is
+    // a bit cumbersome in bazel until the proto_library rule is setup.
+    //
+    // See https://github.com/bazelbuild/bazel/issues/52#issuecomment-194341866
+    // https://github.com/bazelbuild/rules_go/pull/121#issuecomment-251515362
+    // https://github.com/bazelbuild/rules_go/pull/121#issuecomment-251692558
+    //
+    // For this test, for now, the use of specific bytes sufficies.
+    return new byte[] {0x10, 0x01, 0x28, 0x01};
+    /*
+    return org.tensorflow.framework.ConfigProto.newBuilder()
+        .setInterOpParallelismThreads(1)
+        .setIntraOpParallelismThreads(1)
+        .build()
+        .toByteArray();
+     */
   }
 }

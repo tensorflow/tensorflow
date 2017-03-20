@@ -39,6 +39,7 @@ cc_library(
         "xla_op_kernel.h",
         "xla_op_registry.h",
     ],
+    visibility = [":friends"],
     deps = [
         ":common",
         ":dump_graph",
