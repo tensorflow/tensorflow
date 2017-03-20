@@ -21,6 +21,7 @@ from __future__ import print_function
 import json
 import os
 import re
+import socket
 import threading
 
 from six.moves import SimpleHTTPServer
@@ -93,6 +94,10 @@ def _ConvertRowToExampleProto(row):
   return example
 
 
+class IPv6TCPServer(socketserver.TCPServer):
+  address_family = socket.AF_INET6
+
+
 class FakeBigQueryServer(threading.Thread):
   """Fake http server to return schema and data for sample table."""
 
@@ -105,7 +110,12 @@ class FakeBigQueryServer(threading.Thread):
     """
     threading.Thread.__init__(self)
     self.handler = BigQueryRequestHandler
-    self.httpd = socketserver.TCPServer((address, port), self.handler)
+    try:
+      self.httpd = socketserver.TCPServer((address, port), self.handler)
+      self.host_port = "{}:{}".format(*self.httpd.server_address)
+    except IOError:
+      self.httpd = IPv6TCPServer((address, port), self.handler)
+      self.host_port = "[{}]:{}".format(*self.httpd.server_address)
 
   def run(self):
     self.httpd.serve_forever()
@@ -172,10 +182,9 @@ class BigQueryReaderOpsTest(test.TestCase):
 
   def setUp(self):
     super(BigQueryReaderOpsTest, self).setUp()
-    self.server = FakeBigQueryServer("127.0.0.1", 0)
+    self.server = FakeBigQueryServer("localhost", 0)
     self.server.start()
-    logging.info("server address is %s:%s", self.server.httpd.server_address[0],
-                 self.server.httpd.server_address[1])
+    logging.info("server address is %s", self.server.host_port)
 
     # An override to bypass the GCP auth token retrieval logic
     # in google_auth_provider.cc.
@@ -204,8 +213,7 @@ class BigQueryReaderOpsTest(test.TestCase):
           num_partitions=4,
           features=feature_configs,
           timestamp_millis=1,
-          test_end_point=("%s:%s" % (self.server.httpd.server_address[0],
-                                     self.server.httpd.server_address[1])))
+          test_end_point=self.server.host_port)
 
       key, value = _SetUpQueue(reader)
 
@@ -254,8 +262,7 @@ class BigQueryReaderOpsTest(test.TestCase):
           num_partitions=4,
           columns=["int64_col", "float_col", "string_col"],
           timestamp_millis=1,
-          test_end_point=("%s:%s" % (self.server.httpd.server_address[0],
-                                     self.server.httpd.server_address[1])))
+          test_end_point=self.server.host_port)
       key, value = _SetUpQueue(reader)
       seen_rows = []
       for row_index in range(num_rows):
