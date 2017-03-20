@@ -526,7 +526,7 @@ Status FastParseSerializedExample(
         return example_error(strings::StrCat(
             "Data types don't match. Data type: ",
             DataTypeString(example_dtype),
-            "Expected type: ", DataTypeString(config.dense[d].dtype)));
+            " but expected type: ", DataTypeString(config.dense[d].dtype)));
       }
       if (!config.dense[d].variable_length) {
         Tensor& out = (*output_dense)[d];
