@@ -26,7 +26,6 @@ cc_header_only_library(
     visibility = ["//visibility:public"],
     deps = [
         ":jit",
-#        "//tensorflow/compiler/jit/kernels:xla_jit_kernels_headers_lib",
     ],
 )
 

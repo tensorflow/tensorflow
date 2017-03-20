@@ -20,8 +20,6 @@ package(
     default_visibility = [":internal"],
 )
 
-load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
-
 cc_library(
     name = "xla_compiler",
     srcs = [
@@ -86,15 +84,6 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-    ],
-)
-
-cc_header_only_library(
-    name = "xla_tf2xla_headers_lib",
-    visibility = ["//visibility:public"],
-    deps = [
-        #":common",
-        #":xla_compiler",
     ],
 )
 

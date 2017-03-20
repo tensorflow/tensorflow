@@ -48,9 +48,6 @@ cc_header_only_library(
     name = "xla_headers_lib",
     visibility = ["//visibility:public"],
     deps = [
-        #":types",
-        #":service_interface",
-        #":status_macros",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:stream_executor_headers_lib",
         "//tensorflow/compiler/xla:xla_proto",
