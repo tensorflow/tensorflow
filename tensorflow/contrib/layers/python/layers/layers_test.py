@@ -1676,7 +1676,7 @@ class BatchNormTest(test.TestCase):
 
   @property
   def _kw_dtype(self):
-    return {'dtype': self.dtype}
+    return {'dtype': self.dtype} if self.dtype else {}
 
   @property
   def _numpy_dtype_default(self):
@@ -1692,6 +1692,11 @@ class BatchNormTest(test.TestCase):
     correction_factor = sample_size / (sample_size - 1)
     expected_var *= correction_factor
     return expected_var, correction_factor
+
+  def assertAllClose(self, *args, **kwargs):
+    if self.dtype == dtypes.float16:
+      kwargs.setdefault('atol', 1e-3)
+    return super(BatchNormTest, self).assertAllClose(*args, **kwargs)
 
   def testUnknownShape(self):
     with ops.Graph().as_default() as g, self.test_session(g):
@@ -1721,6 +1726,8 @@ class BatchNormTest(test.TestCase):
         _layers.batch_norm(inputs, data_format='NCHW')
 
   def testWeightedMomentsFused(self):
+    if self.dtype is not None:
+      self.skipTest('Not implemented')
     with ops.Graph().as_default() as g, self.test_session(g):
       inputs = array_ops.placeholder(
         dtype=self._dtype_default, shape=(5, 3, 3, 7))
@@ -1729,6 +1736,8 @@ class BatchNormTest(test.TestCase):
         _layers.batch_norm(inputs, batch_weights=batch_weights, fused=True)
 
   def testParamRegularizersFused(self):
+    if self.dtype is not None:
+      self.skipTest('Not implemented')
     with ops.Graph().as_default() as g, self.test_session(g):
       inputs = array_ops.placeholder(
         dtype=self._dtype_default, shape=(5, 3, 3, 7))
@@ -1736,7 +1745,9 @@ class BatchNormTest(test.TestCase):
                                    'Regularizers are not currently'):
         _layers.batch_norm(inputs, param_regularizers={}, fused=True)
 
-  def _testCreateOpDefault(self, fused):
+  def _testCreateOp(self, fused):
+    if fused and self.dtype is not None:
+      self.skipTest('Not implemented')
     height, width = 3, 3
     with self.test_session():
       images = np.random.uniform(
@@ -1900,7 +1911,9 @@ class BatchNormTest(test.TestCase):
     np.random.seed(1)
     image_shape = (batch_size, height, width, channels)
     axis = (0, 1, 2)
-    image_values = np.random.rand(*image_shape, **self._kw_numpy_dtype)
+    image_values = np.random.rand(*image_shape)
+    if self.dtype:
+      image_values = image_values.astype(self._numpy_dtype_default)
     expected_mean = np.mean(image_values, axis=axis)
     expected_var = np.var(image_values, axis=axis)
 
@@ -1937,6 +1950,8 @@ class BatchNormTest(test.TestCase):
                                   fused,
                                   data_format='NHWC',
                                   zero_debias_moving_mean=False):
+    if fused and self.dtype is not None:
+      self.skipTest('Not implemented')
     height, width = 2, 2
     batch_size = 10
     channels = 3
@@ -1949,7 +1964,9 @@ class BatchNormTest(test.TestCase):
       else:
         image_shape = (batch_size, channels, height, width)
         axis = (0, 2, 3)
-      image_values = np.random.rand(*image_shape, **self._kw_numpy_dtype)
+      image_values = np.random.rand(*image_shape)
+      if self.dtype:
+        image_values = image_values.astype(self._numpy_dtype_default)
       expected_mean = np.mean(image_values, axis=axis)
       expected_var = np.var(image_values, axis=axis)
       if fused:
@@ -2021,6 +2038,8 @@ class BatchNormTest(test.TestCase):
                                    fused,
                                    data_format='NHWC',
                                    zero_debias_moving_mean=False):
+    if fused and self.dtype is not None:
+      self.skipTest('Not implemented')
     height, width = 2, 2
     batch_size = 10
     channels = 3
@@ -2033,7 +2052,9 @@ class BatchNormTest(test.TestCase):
       else:
         image_shape = (batch_size, channels, height, width)
         axis = (0, 2, 3)
-      image_values = np.random.rand(*image_shape, **self._kw_numpy_dtype)
+      image_values = np.random.rand(*image_shape)
+      if self.dtype:
+        image_values = image_values.astype(self._numpy_dtype_default)
       expected_mean = np.mean(image_values, axis=axis)
       expected_var = np.var(image_values, axis=axis)
       if fused:
@@ -2088,10 +2109,14 @@ class BatchNormTest(test.TestCase):
     self._testDelayedUpdateMovingVars(False, data_format='NCHW')
 
   def testDelayedUpdateMovingVarsFusedNCHW(self):
+    if self.dtype is not None:
+      self.skipTest('Not implemented')
     if test.is_gpu_available(cuda_only=True):
       self._testDelayedUpdateMovingVars(True, data_format='NCHW')
 
   def testDelayedUpdateMovingVarsFusedNHWC(self):
+    if self.dtype is not None:
+      self.skipTest('Not implemented')
     self._testDelayedUpdateMovingVars(True, data_format='NHWC')
 
   def testDelayedUpdateMovingVars(self):
@@ -2102,6 +2127,8 @@ class BatchNormTest(test.TestCase):
     with self.test_session() as sess:
       image_shape = (10, height, width, 3)
       image_values = np.random.rand(*image_shape)
+      if self.dtype:
+        image_values = image_values.astype(self._numpy_dtype_default)
       expected_mean = np.mean(image_values, axis=(0, 1, 2))
       expected_var = np.var(image_values, axis=(0, 1, 2))
       images = constant_op.constant(
@@ -2123,7 +2150,10 @@ class BatchNormTest(test.TestCase):
       ]
       sess.run(init_assigns)
       for _ in range(10):
-        sess.run([output], {images: np.random.rand(*image_shape)})
+        image_values = np.random.rand(*image_shape)
+      if self.dtype:
+        image_values = image_values.astype(self._numpy_dtype_default)
+      sess.run([output], {images: image_values})
       mean = moving_mean.eval()
       variance = moving_variance.eval()
       # Although we feed different images, the moving_mean and moving_variance
@@ -2147,12 +2177,16 @@ class BatchNormTest(test.TestCase):
       self.testEvalMovingVars()
 
   def _testReuseVars(self, fused, zero_debias_moving_mean=False):
+    if fused and self.dtype is not None:
+      self.skipTest('Not implemented')
     height, width = 3, 3
     batch_size = 10
     channels = 3
     with self.test_session() as sess:
       image_shape = (batch_size, height, width, channels)
-      image_values = np.random.rand(*image_shape, **self._kw_numpy_dtype)
+      image_values = np.random.rand(*image_shape)
+      if self.dtype:
+        image_values = image_values.astype(self._numpy_dtype_default)
       expected_mean = np.mean(image_values, axis=(0, 1, 2))
       expected_var = np.var(image_values, axis=(0, 1, 2))
       if fused:
@@ -2224,6 +2258,8 @@ class BatchNormTest(test.TestCase):
                               fused,
                               data_format='NHWC',
                               zero_debias_moving_mean=False):
+    if fused and self.dtype is not None:
+      self.skipTest('Not implemented')
     height, width = 2, 2
     batch_size = 10
     channels = 3
@@ -2237,7 +2273,9 @@ class BatchNormTest(test.TestCase):
       else:
         image_shape = (batch_size, channels, height, width)
         axis = (0, 2, 3)
-      image_values = np.random.rand(*image_shape, **self._kw_numpy_dtype)
+      image_values = np.random.rand(*image_shape)
+      if self.dtype:
+        image_values = image_values.astype(self._numpy_dtype_default)
       expected_mean = np.mean(image_values, axis=axis)
       expected_var = np.var(image_values, axis=axis)
       if fused:
@@ -2323,7 +2361,9 @@ class BatchNormTest(test.TestCase):
     height, width = 3, 3
     with self.test_session() as sess:
       image_shape = (10, height, width, 3)
-      image_values = np.random.rand(*image_shape, **self._kw_numpy_dtype)
+      image_values = np.random.rand(*image_shape)
+      if self.dtype:
+        image_values = image_values.astype(self._numpy_dtype_default)
       images = constant_op.constant(
           image_values, shape=image_shape, dtype=self._dtype_default)
       output = _layers.batch_norm(images, decay=0.1, is_training=False)
@@ -2348,7 +2388,9 @@ class BatchNormTest(test.TestCase):
     height, width = 3, 3
     with self.test_session() as sess:
       image_shape = (10, height, width, 3)
-      image_values = np.random.rand(*image_shape, **self._kw_numpy_dtype)
+      image_values = np.random.rand(*image_shape)
+      if self.dtype:
+        image_values = image_values.astype(self._numpy_dtype_default)
       images = constant_op.constant(
           image_values, shape=image_shape, dtype=self._dtype_default)
       output = _layers.batch_norm(
@@ -2372,6 +2414,8 @@ class BatchNormTest(test.TestCase):
   def _testNoneUpdatesCollectionIsTrainingVariable(self,
                                                    fused,
                                                    data_format='NHWC'):
+    if fused and self.dtype is not None:
+      self.skipTest('Not implemented')
     height, width = 2, 2
     batch_size = 10
     channels = 3
@@ -2384,7 +2428,9 @@ class BatchNormTest(test.TestCase):
       else:
         image_shape = (batch_size, channels, height, width)
         axis = (0, 2, 3)
-      image_values = np.random.rand(*image_shape, **self._kw_numpy_dtype)
+      image_values = np.random.rand(*image_shape)
+      if self.dtype:
+        image_values = image_values.astype(self._numpy_dtype_default)
       expected_mean = np.mean(image_values, axis=axis)
       expected_var = np.var(image_values, axis=axis)
       if fused:
@@ -2453,6 +2499,8 @@ class BatchNormTest(test.TestCase):
     self._testNoneUpdatesCollectionIsTrainingVariable(True, data_format='NHWC')
 
   def _testTrainMovingVars(self, fused, data_format='NHWC'):
+    if fused and self.dtype is not None:
+      self.skipTest('Not implemented')
     # Test that the gradients are stable while the moving_mean is updated.
     # Since the moving_mean is used as shift to compute the tf.momments, the
     # gradients could diverge, this test checks that gradients remains stable
@@ -2469,7 +2517,9 @@ class BatchNormTest(test.TestCase):
       else:
         image_shape = (batch_size, channels, height, width)
         axis = (0, 2, 3)
-      image_values = np.random.rand(*image_shape, **self._kw_numpy_dtype) + 256
+      image_values = np.random.rand(*image_shape) + 256
+      if self.dtype:
+        image_values = image_values.astype(self._numpy_dtype_default)
       expected_mean = np.mean(image_values, axis=axis)
       expected_var = np.var(image_values, axis=axis)
       if fused:
@@ -2477,7 +2527,7 @@ class BatchNormTest(test.TestCase):
         expected_var, _ = self._addBesselsCorrection(batch_size * height *
                                                      width, expected_var)
       images = constant_op.constant(
-          image_values, shape=image_shape, dtype=selt._dtype_default)
+          image_values, shape=image_shape, dtype=self._dtype_default)
       output = _layers.batch_norm(
           images,
           decay=0.2,
