@@ -412,6 +412,7 @@ class ApplyGradientDescentOp : public OpKernel {
       ApplyGradientDescentOp<D##Device, T>);                                  \
   REGISTER_KERNEL_BUILDER(Name("ResourceApplyGradientDescent")                \
                               .Device(DEVICE_##D)                             \
+                              .HostMemory("var")                              \
                               .TypeConstraint<T>("T"),                        \
                           ApplyGradientDescentOp<D##Device, T>);
 #define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T);
@@ -553,13 +554,17 @@ class ApplyAdadeltaOp : public OpKernel {
 using CPUDevice = Eigen::ThreadPoolDevice;
 using GPUDevice = Eigen::GpuDevice;
 
-#define REGISTER_KERNELS(D, T)                                                 \
-  REGISTER_KERNEL_BUILDER(                                                     \
-      Name("ApplyAdadelta").Device(DEVICE_##D).TypeConstraint<T>("T"),         \
-      ApplyAdadeltaOp<D##Device, T>);                                          \
-  REGISTER_KERNEL_BUILDER(                                                     \
-      Name("ResourceApplyAdadelta").Device(DEVICE_##D).TypeConstraint<T>("T"), \
-      ApplyAdadeltaOp<D##Device, T>);
+#define REGISTER_KERNELS(D, T)                                         \
+  REGISTER_KERNEL_BUILDER(                                             \
+      Name("ApplyAdadelta").Device(DEVICE_##D).TypeConstraint<T>("T"), \
+      ApplyAdadeltaOp<D##Device, T>);                                  \
+  REGISTER_KERNEL_BUILDER(Name("ResourceApplyAdadelta")                \
+                              .Device(DEVICE_##D)                      \
+                              .HostMemory("var")                       \
+                              .HostMemory("accum")                     \
+                              .HostMemory("accum_update")              \
+                              .TypeConstraint<T>("T"),                 \
+                          ApplyAdadeltaOp<D##Device, T>);
 #define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T);
 
 TF_CALL_half(REGISTER_CPU_KERNELS);
@@ -798,6 +803,7 @@ class ApplyProximalGradientDescentOp : public OpKernel {
                               .TypeConstraint<T>("T"),                   \
                           ApplyProximalGradientDescentOp<D##Device, T>); \
   REGISTER_KERNEL_BUILDER(Name("ResourceApplyProximalGradientDescent")   \
+                              .HostMemory("var")                         \
                               .Device(DEVICE_##D)                        \
                               .TypeConstraint<T>("T"),                   \
                           ApplyProximalGradientDescentOp<D##Device, T>);
@@ -1002,13 +1008,16 @@ class ApplyAdagradOp : public OpKernel {
 using CPUDevice = Eigen::ThreadPoolDevice;
 using GPUDevice = Eigen::GpuDevice;
 
-#define REGISTER_KERNELS(D, T)                                                \
-  REGISTER_KERNEL_BUILDER(                                                    \
-      Name("ApplyAdagrad").Device(DEVICE_##D).TypeConstraint<T>("T"),         \
-      ApplyAdagradOp<D##Device, T>);                                          \
-  REGISTER_KERNEL_BUILDER(                                                    \
-      Name("ResourceApplyAdagrad").Device(DEVICE_##D).TypeConstraint<T>("T"), \
-      ApplyAdagradOp<D##Device, T>);
+#define REGISTER_KERNELS(D, T)                                        \
+  REGISTER_KERNEL_BUILDER(                                            \
+      Name("ApplyAdagrad").Device(DEVICE_##D).TypeConstraint<T>("T"), \
+      ApplyAdagradOp<D##Device, T>);                                  \
+  REGISTER_KERNEL_BUILDER(Name("ResourceApplyAdagrad")                \
+                              .HostMemory("var")                      \
+                              .HostMemory("accum")                    \
+                              .Device(DEVICE_##D)                     \
+                              .TypeConstraint<T>("T"),                \
+                          ApplyAdagradOp<D##Device, T>);
 #define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T);
 
 TF_CALL_half(REGISTER_CPU_KERNELS);
@@ -1112,6 +1121,8 @@ using GPUDevice = Eigen::GpuDevice;
       ApplyProximalAdagradOp<D##Device, T>);                                  \
   REGISTER_KERNEL_BUILDER(Name("ResourceApplyProximalAdagrad")                \
                               .Device(DEVICE_##D)                             \
+                              .HostMemory("var")                              \
+                              .HostMemory("accum")                            \
                               .TypeConstraint<T>("T"),                        \
                           ApplyProximalAdagradOp<D##Device, T>);
 
@@ -1524,13 +1535,16 @@ class ApplyAdagradDAOp : public OpKernel {
 using CPUDevice = Eigen::ThreadPoolDevice;
 using GPUDevice = Eigen::GpuDevice;
 
-#define REGISTER_KERNELS(D, T)                                          \
-  REGISTER_KERNEL_BUILDER(                                              \
-      Name("ApplyAdagradDA").Device(DEVICE_##D).TypeConstraint<T>("T"), \
-      ApplyAdagradDAOp<D##Device, T>);                                  \
-  REGISTER_KERNEL_BUILDER(Name("ResourceApplyAdagradDA")                \
-                              .Device(DEVICE_##D)                       \
-                              .TypeConstraint<T>("T"),                  \
+#define REGISTER_KERNELS(D, T)                                            \
+  REGISTER_KERNEL_BUILDER(                                                \
+      Name("ApplyAdagradDA").Device(DEVICE_##D).TypeConstraint<T>("T"),   \
+      ApplyAdagradDAOp<D##Device, T>);                                    \
+  REGISTER_KERNEL_BUILDER(Name("ResourceApplyAdagradDA")                  \
+                              .Device(DEVICE_##D)                         \
+                              .HostMemory("var")                          \
+                              .HostMemory("gradient_accumulator")         \
+                              .HostMemory("gradient_squared_accumulator") \
+                              .TypeConstraint<T>("T"),                    \
                           ApplyAdagradDAOp<D##Device, T>);
 
 REGISTER_KERNELS(CPU, float);
@@ -1711,16 +1725,19 @@ class SparseApplyAdagradDAOp : public OpKernel {
   bool use_exclusive_lock_;
 };
 
-#define REGISTER_KERNELS(T, Tindices)                                \
-  REGISTER_KERNEL_BUILDER(Name("SparseApplyAdagradDA")               \
-                              .Device(DEVICE_CPU)                    \
-                              .TypeConstraint<T>("T")                \
-                              .TypeConstraint<Tindices>("Tindices"), \
-                          SparseApplyAdagradDAOp<T, Tindices>);      \
-  REGISTER_KERNEL_BUILDER(Name("ResourceSparseApplyAdagradDA")       \
-                              .Device(DEVICE_CPU)                    \
-                              .TypeConstraint<T>("T")                \
-                              .TypeConstraint<Tindices>("Tindices"), \
+#define REGISTER_KERNELS(T, Tindices)                                     \
+  REGISTER_KERNEL_BUILDER(Name("SparseApplyAdagradDA")                    \
+                              .Device(DEVICE_CPU)                         \
+                              .TypeConstraint<T>("T")                     \
+                              .TypeConstraint<Tindices>("Tindices"),      \
+                          SparseApplyAdagradDAOp<T, Tindices>);           \
+  REGISTER_KERNEL_BUILDER(Name("ResourceSparseApplyAdagradDA")            \
+                              .Device(DEVICE_CPU)                         \
+                              .HostMemory("var")                          \
+                              .HostMemory("gradient_accumulator")         \
+                              .HostMemory("gradient_squared_accumulator") \
+                              .TypeConstraint<T>("T")                     \
+                              .TypeConstraint<Tindices>("Tindices"),      \
                           SparseApplyAdagradDAOp<T, Tindices>);
 
 REGISTER_KERNELS(float, int32);
@@ -1819,13 +1836,17 @@ class ApplyFtrlOp : public OpKernel {
 using CPUDevice = Eigen::ThreadPoolDevice;
 using GPUDevice = Eigen::GpuDevice;
 
-#define REGISTER_KERNELS(D, T)                                             \
-  REGISTER_KERNEL_BUILDER(                                                 \
-      Name("ApplyFtrl").Device(DEVICE_##D).TypeConstraint<T>("T"),         \
-      ApplyFtrlOp<D##Device, T>);                                          \
-  REGISTER_KERNEL_BUILDER(                                                 \
-      Name("ResourceApplyFtrl").Device(DEVICE_##D).TypeConstraint<T>("T"), \
-      ApplyFtrlOp<D##Device, T>);
+#define REGISTER_KERNELS(D, T)                                     \
+  REGISTER_KERNEL_BUILDER(                                         \
+      Name("ApplyFtrl").Device(DEVICE_##D).TypeConstraint<T>("T"), \
+      ApplyFtrlOp<D##Device, T>);                                  \
+  REGISTER_KERNEL_BUILDER(Name("ResourceApplyFtrl")                \
+                              .HostMemory("var")                   \
+                              .HostMemory("accum")                 \
+                              .HostMemory("linear")                \
+                              .Device(DEVICE_##D)                  \
+                              .TypeConstraint<T>("T"),             \
+                          ApplyFtrlOp<D##Device, T>);
 #define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T);
 
 TF_CALL_half(REGISTER_CPU_KERNELS);
@@ -2100,13 +2121,16 @@ class ApplyMomentumOp : public OpKernel {
 using CPUDevice = Eigen::ThreadPoolDevice;
 using GPUDevice = Eigen::GpuDevice;
 
-#define REGISTER_KERNELS(D, T)                                                 \
-  REGISTER_KERNEL_BUILDER(                                                     \
-      Name("ApplyMomentum").Device(DEVICE_##D).TypeConstraint<T>("T"),         \
-      ApplyMomentumOp<D##Device, T>);                                          \
-  REGISTER_KERNEL_BUILDER(                                                     \
-      Name("ResourceApplyMomentum").Device(DEVICE_##D).TypeConstraint<T>("T"), \
-      ApplyMomentumOp<D##Device, T>);
+#define REGISTER_KERNELS(D, T)                                         \
+  REGISTER_KERNEL_BUILDER(                                             \
+      Name("ApplyMomentum").Device(DEVICE_##D).TypeConstraint<T>("T"), \
+      ApplyMomentumOp<D##Device, T>);                                  \
+  REGISTER_KERNEL_BUILDER(Name("ResourceApplyMomentum")                \
+                              .Device(DEVICE_##D)                      \
+                              .HostMemory("var")                       \
+                              .HostMemory("accum")                     \
+                              .TypeConstraint<T>("T"),                 \
+                          ApplyMomentumOp<D##Device, T>);
 #define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T);
 
 TF_CALL_half(REGISTER_CPU_KERNELS);
@@ -2339,13 +2363,17 @@ class ApplyAdamOp : public OpKernel {
 using CPUDevice = Eigen::ThreadPoolDevice;
 using GPUDevice = Eigen::GpuDevice;
 
-#define REGISTER_KERNELS(D, T)                                             \
-  REGISTER_KERNEL_BUILDER(                                                 \
-      Name("ApplyAdam").Device(DEVICE_##D).TypeConstraint<T>("T"),         \
-      ApplyAdamOp<D##Device, T>);                                          \
-  REGISTER_KERNEL_BUILDER(                                                 \
-      Name("ResourceApplyAdam").Device(DEVICE_##D).TypeConstraint<T>("T"), \
-      ApplyAdamOp<D##Device, T>);
+#define REGISTER_KERNELS(D, T)                                     \
+  REGISTER_KERNEL_BUILDER(                                         \
+      Name("ApplyAdam").Device(DEVICE_##D).TypeConstraint<T>("T"), \
+      ApplyAdamOp<D##Device, T>);                                  \
+  REGISTER_KERNEL_BUILDER(Name("ResourceApplyAdam")                \
+                              .HostMemory("var")                   \
+                              .HostMemory("m")                     \
+                              .HostMemory("v")                     \
+                              .Device(DEVICE_##D)                  \
+                              .TypeConstraint<T>("T"),             \
+                          ApplyAdamOp<D##Device, T>);
 #define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T);
 
 TF_CALL_half(REGISTER_CPU_KERNELS);
@@ -2565,11 +2593,19 @@ using GPUDevice = Eigen::GpuDevice;
   REGISTER_KERNEL_BUILDER(                                                    \
       Name("ApplyCenteredRMSProp").Device(DEVICE_##D).TypeConstraint<T>("T"), \
       ApplyCenteredRMSPropOp<D##Device, T>);                                  \
-  REGISTER_KERNEL_BUILDER(                                                    \
-      Name("ResourceApplyRMSProp").Device(DEVICE_##D).TypeConstraint<T>("T"), \
-      ApplyRMSPropOp<D##Device, T>);                                          \
+  REGISTER_KERNEL_BUILDER(Name("ResourceApplyRMSProp")                        \
+                              .Device(DEVICE_##D)                             \
+                              .HostMemory("var")                              \
+                              .HostMemory("ms")                               \
+                              .HostMemory("mom")                              \
+                              .TypeConstraint<T>("T"),                        \
+                          ApplyRMSPropOp<D##Device, T>);                      \
   REGISTER_KERNEL_BUILDER(Name("ResourceApplyCenteredRMSProp")                \
                               .Device(DEVICE_##D)                             \
+                              .HostMemory("var")                              \
+                              .HostMemory("mg")                               \
+                              .HostMemory("ms")                               \
+                              .HostMemory("mom")                              \
                               .TypeConstraint<T>("T"),                        \
                           ApplyCenteredRMSPropOp<D##Device, T>);
 #define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T);
