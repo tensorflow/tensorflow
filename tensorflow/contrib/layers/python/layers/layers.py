@@ -313,7 +313,7 @@ def _fused_batch_norm(
           inputs, gamma, beta, epsilon=epsilon, data_format=data_format)
       if renorm:
           moving_inv = math_ops.rsqrt(moving_variance + epsilon)
-          r = tf.stop_gradient(tf.clip_by_value(tf.sqrt(variance + epsilon) * moving_inv, 1/r_max, r_max))
+          r = tf.stop_gradient(tf.clip_by_value(tf.sqrt(variance + epsilon) * moving_inv, 1./r_max, r_max))
           d = tf.stop_gradient(tf.clip_by_value((mean - moving_mean) * moving_inv, -d_max, d_max))
           outputs = outputs * r + d
       return outputs, mean, variance
