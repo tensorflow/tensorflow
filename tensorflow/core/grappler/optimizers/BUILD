@@ -64,6 +64,7 @@ cc_library(
     deps = [
         ":layout_optimizer",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
     ],
 )

@@ -155,6 +155,7 @@ CORE_PROTO_SRCS = [
     "protobuf/config.proto",
     "protobuf/debug.proto",
     "protobuf/queue_runner.proto",
+    "protobuf/rewriter_config.proto",
     "protobuf/tensor_bundle.proto",
     "protobuf/saver.proto",
     "util/memmapped_file_system.proto",

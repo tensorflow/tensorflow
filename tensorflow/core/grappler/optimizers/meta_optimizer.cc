@@ -15,13 +15,23 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/layout_optimizer.h"
+#include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 namespace grappler {
 
-Status RunMetaOptimizer(const GrapplerItem& item, GraphDef* optimized_graph) {
-  LayoutOptimizer layout_optimizer;
-  return layout_optimizer.Optimize(nullptr, item, optimized_graph);
+bool MetaOptimizerEnabled(const RewriterConfig& cfg) {
+  // We've only open sourced a single optimizer for now.
+  return cfg.optimize_tensor_layout();
+}
+
+Status RunMetaOptimizer(const GrapplerItem& item, const RewriterConfig& cfg,
+                        GraphDef* optimized_graph) {
+  if (cfg.optimize_tensor_layout()) {
+    LayoutOptimizer layout_optimizer;
+    return layout_optimizer.Optimize(nullptr, item, optimized_graph);
+  }
+  return Status::OK();
 }
 
 }  // namespace grappler

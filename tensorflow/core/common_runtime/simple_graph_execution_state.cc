@@ -232,7 +232,9 @@ Status SimpleGraphExecutionState::InitBaseGraph(
   const GraphDef* graph_def = &original_graph_def_;
 
   GraphDef optimized_graph;
-  if (false) {
+  const RewriterConfig& rewrite_options =
+      session_options_->config.graph_options().rewrite_options();
+  if (grappler::MetaOptimizerEnabled(rewrite_options)) {
     // Adding this functionalty in steps. The first step is to make sure
     // we don't break dependencies. The second step will be to turn the
     // functionality on by default.
@@ -265,7 +267,7 @@ Status SimpleGraphExecutionState::InitBaseGraph(
     }
 
     if (s.ok()) {
-      s = grappler::RunMetaOptimizer(item, &optimized_graph);
+      s = grappler::RunMetaOptimizer(item, rewrite_options, &optimized_graph);
     }
     if (s.ok()) {
       graph_def = &optimized_graph;

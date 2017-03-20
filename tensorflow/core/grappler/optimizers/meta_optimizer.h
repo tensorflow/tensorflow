@@ -18,11 +18,15 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
 namespace grappler {
 
-Status RunMetaOptimizer(const GrapplerItem& item, GraphDef* optimized_graph);
+bool MetaOptimizerEnabled(const RewriterConfig& cfg);
+
+Status RunMetaOptimizer(const GrapplerItem& item, const RewriterConfig& cfg,
+                        GraphDef* optimized_graph);
 
 }  // namespace grappler
 }  // namespace tensorflow
