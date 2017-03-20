@@ -511,6 +511,13 @@ message ReshapeRequest {
   repeated int64 new_sizes = 4;
 }
 
+message TransposeRequest {
+  ComputationDataHandle operand = 2;
+
+  // The permutation of the operand's dimensions (in the range 0 to n-1).
+  repeated int64 dimensions = 3;
+}
+
 message ParameterRequest {
   Shape shape = 2;
   int64 parameter = 3;
@@ -743,13 +750,14 @@ message OpRequest {
     SliceRequest slice_request = 24;
     TernaryOpRequest ternary_op_request = 25;
     TraceRequest trace_request = 26;
+    TransposeRequest transpose_request = 34;
     UnaryOpRequest unary_op_request = 27;
     VariadicOpRequest variadic_op_request = 28;
     WhileRequest while_request = 29;
     SendRequest send_request = 30;
     RecvRequest recv_request = 31;
     OutfeedRequest outfeed_request = 32;
-    // Next: 34
+    // Next: 35
   }
 }
 

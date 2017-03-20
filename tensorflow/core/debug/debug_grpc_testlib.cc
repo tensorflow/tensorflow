@@ -68,7 +68,7 @@ GrpcTestServerClientPair::GrpcTestServerClientPair(const int server_port)
   }
 
   // Obtain server's gRPC url.
-  test_server_url = strings::StrCat("grpc://0.0.0.0:", server_port);
+  test_server_url = strings::StrCat("grpc://localhost:", server_port);
 
   // Obtain dump directory for the stream server.
   string tmp_dir = port::Tracing::LogDir();

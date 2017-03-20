@@ -57,7 +57,7 @@ void Worker::DeregisterGraphAsync(const DeregisterGraphRequest* request,
 
 Worker::PartialRunState* Worker::FindPartialRun(const string& graph_handle,
                                                 int step_id) {
-  std::pair<string, int> k(graph_handle, step_id);
+  const std::pair<string, int> k(graph_handle, step_id);
   Worker::PartialRunState* prun_state = nullptr;
   mutex_lock l(mu_);
   auto it = partial_runs_.find(k);
@@ -70,15 +70,57 @@ Worker::PartialRunState* Worker::FindPartialRun(const string& graph_handle,
 void Worker::InsertPartialRunLocked(const string& graph_handle, int step_id,
                                     Worker::PartialRunState* partial_run_state)
     EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  std::pair<string, int> k(graph_handle, step_id);
+  const std::pair<string, int> k(graph_handle, step_id);
   partial_runs_.emplace(std::make_pair(
       k, std::unique_ptr<Worker::PartialRunState>(partial_run_state)));
 }
 
 void Worker::RemovePartialRun(const string& graph_handle, int step_id) {
-  std::pair<string, int> k(graph_handle, step_id);
+  const std::pair<string, int> k(graph_handle, step_id);
   mutex_lock l(mu_);
   partial_runs_.erase(partial_runs_.find(k));
+}
+
+void Worker::MaybeCallFinalCallback(const string& graph_handle, int step_id,
+                                    const Status& executor_status) {
+  const std::pair<string, int> k(graph_handle, step_id);
+  StatusCallback done;
+  Status s;
+  {
+    mutex_lock l(mu_);
+    auto it = partial_runs_.find(k);
+    if (it != partial_runs_.end()) {
+      // If we found the partial_run, we call the final callback, if it
+      // exists.
+      std::swap(done, it->second->final_callback);
+      s = it->second->final_status;
+      it->second->executor_done = true;
+    }
+  }
+  if (done != nullptr) {
+    if (s.ok()) {
+      s = executor_status;
+    }
+    done(s);
+  }
+}
+
+void Worker::SetOrCallFinalCallback(const string& graph_handle, int step_id,
+                                    StatusCallback done, const Status& s) {
+  const std::pair<string, int> k(graph_handle, step_id);
+  {
+    mutex_lock l(mu_);
+    auto it = partial_runs_.find(k);
+    if (!it->second->executor_done) {
+      // If we found the partial_run, we set the final callback to call only
+      // when the executor is completely done.
+      it->second->final_callback = std::move(done);
+      it->second->final_status = s;
+      return;
+    }
+  }
+  // Otherwise we call the callback immediately.
+  done(s);
 }
 
 void Worker::AbortStep(int64 step_id) {
@@ -205,7 +247,8 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
   GraphMgr::NamedTensors in;
   GraphMgr::NamedTensors* out = new GraphMgr::NamedTensors;
   Status s = PrepareRunGraph(request, &in, out);
-  auto finish = [this, done, out](const Status& s) {
+  auto finish = [this, done, out, opts](const Status& s) {
+    opts->ClearCancelCallback();
     delete out;
     done(s);
   };
@@ -249,14 +292,13 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
     env_->graph_mgr->ExecuteAsync(
         graph_handle, step_id, request->exec_opts(), nullptr /* collector */,
         nullptr /* cost_graph */, cm, in,
-        [this, step_id, graph_handle, token, partial_run_state](Status s) {
+        [this, token, graph_handle, step_id, cm](Status s) {
           {
             mutex_lock l(mu_);
             cancellation_manager_->DeregisterCallback(token);
           }
-          partial_run_state->executor_done.Notify();
-          // TODO(suharshs): Propagate the status once we keep state for
-          // each partial run call.
+          MaybeCallFinalCallback(graph_handle, step_id, s);
+          delete cm;
         });
     } else {
       // Send the partial run's new inputs.
@@ -267,33 +309,32 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
       }
     }
 
-    // Receive the partial run's outputs.
-    s = env_->graph_mgr->RecvOutputs(step_id, out);
-    if (!s.ok()) {
-      finish(s);
-      return;
-    }
-
-    // Construct and return the resp.
-    for (const auto& p : *out) {
-      const string& key = p.first;
-      const Tensor& val = p.second;
-      response->AddRecv(key, val);
-    }
-
-    // If this is the last partial run request we must also wait for the entire
-    // graph execution to be completed.
-    if (request->is_last_partial_run()) {
-      partial_run_state->executor_done.WaitForNotification();
-      RemovePartialRun(graph_handle, step_id);
-      // Before deleting the cancellation manager on the final call, ensure
-      // that we clear the RPC cancel callback, which has a reference to the
-      // cancellation manager.
-      opts->ClearCancelCallback();
-      delete cm;
-    }
-
-    finish(s);
+    env_->graph_mgr->RecvOutputsAsync(
+        step_id, out,
+        [this, out, request, response, graph_handle, step_id,
+         finish](Status s) {
+          if (s.ok()) {
+            // Construct and return the resp.
+            for (const auto& p : *out) {
+              const string& key = p.first;
+              const Tensor& val = p.second;
+              response->AddRecv(key, val);
+            }
+          }
+          if (request->is_last_partial_run()) {
+            SetOrCallFinalCallback(
+                graph_handle, step_id,
+                [this, graph_handle, step_id, finish](const Status& s) {
+                  finish(s);
+                  // We must wait to remove the partial_run_state until both the
+                  // executor and the RecvAsync are complete.
+                  RemovePartialRun(graph_handle, step_id);
+                },
+                s);
+          } else {
+            finish(s);
+          }
+        });
 }
 
 void Worker::CleanupGraphAsync(const CleanupGraphRequest* request,

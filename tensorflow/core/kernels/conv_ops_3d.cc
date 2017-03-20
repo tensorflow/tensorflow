@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
+#include "tensorflow/core/util/use_cudnn.h"
 
 #if GOOGLE_CUDA
 #include "tensorflow/core/platform/stream_executor.h"
@@ -46,9 +47,10 @@ struct LaunchConvOp;
 
 template <typename T>
 struct LaunchConvOp<CPUDevice, T> {
-  static void launch(OpKernelContext* context, const Tensor& input,
-                     const Tensor& filter, const std::array<int64, 3>& strides,
-                     const Padding padding, Tensor* output) {
+  static void launch(OpKernelContext* context, bool cudnn_use_autotune,
+                     const Tensor& input, const Tensor& filter,
+                     const std::array<int64, 3>& strides, const Padding padding,
+                     Tensor* output) {
     functor::CuboidConvolution<CPUDevice, T>()(
         context->eigen_device<CPUDevice>(), output->tensor<T, 5>(),
         input.tensor<T, 5>(), filter.tensor<T, 5>(), strides[2], strides[1],
@@ -69,6 +71,7 @@ class Conv3DOp : public BinaryOp<T> {
         errors::InvalidArgument("Current implementation does not yet support "
                                 "strides in the batch and depth dimensions."));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
+    cudnn_use_autotune_ = CudnnUseAutotune();
   }
 
   void Compute(OpKernelContext* context) override {
@@ -113,13 +116,14 @@ class Conv3DOp : public BinaryOp<T> {
     // Return early if nothing to do.
     if (out_shape.num_elements() == 0) return;
 
-    LaunchConvOp<Device, T>::launch(context, input, filter, strides, padding_,
-                                    output);
+    LaunchConvOp<Device, T>::launch(context, cudnn_use_autotune_, input, filter,
+                                    strides, padding_, output);
   }
 
  private:
   std::vector<int32> stride_;
   Padding padding_;
+  bool cudnn_use_autotune_;
 };
 
 #define REGISTER_CPU_KERNEL(T)                                  \
@@ -132,12 +136,19 @@ TF_CALL_double(REGISTER_CPU_KERNEL);
 
 #if GOOGLE_CUDA
 
+// A dummy type to group forward convolution autotune results together.
+struct Conv3dAutoTuneGroup {};
+typedef AutoTuneSingleton<Conv3dAutoTuneGroup, ConvParameters,
+                          perftools::gputools::dnn::AlgorithmConfig>
+    AutoTuneConv3d;
+
 // TODO(mjanusz): Share logic with 2d implementation as much as possible.
 template <typename T>
 struct LaunchConvOp<GPUDevice, T> {
-  static void launch(OpKernelContext* ctx, const Tensor& input_param,
-                     const Tensor& filter, const std::array<int64, 3>& strides,
-                     const Padding padding, Tensor* output) {
+  static void launch(OpKernelContext* ctx, bool cudnn_use_autotune,
+                     const Tensor& input_param, const Tensor& filter,
+                     const std::array<int64, 3>& strides, const Padding padding,
+                     Tensor* output) {
     auto* stream = ctx->op_device_context()->stream();
     OP_REQUIRES(ctx, stream, errors::Internal("No GPU stream available."));
 
@@ -330,12 +341,81 @@ struct LaunchConvOp<GPUDevice, T> {
 
     static int64 ConvolveScratchSize = GetCudnnWorkspaceLimit(
         "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32);  // 4GB by default
+
+    int device_id = stream->parent()->device_ordinal();
+    DataType dtype = input.dtype();
+    ConvParameters conv_parameters = {
+        in_batch,
+        in_depth,
+        {{in_planes, in_rows, in_cols}},
+        out_depth,
+        {{filter_planes, filter_rows, filter_cols}},
+        {{strides[0], strides[1], strides[2]}},
+        {{pad_planes, pad_rows, pad_cols}},
+        dtype,
+        device_id,
+    };
+
+    using perftools::gputools::dnn::AlgorithmConfig;
+    using perftools::gputools::dnn::AlgorithmType;
+    using perftools::gputools::dnn::ProfileResult;
+    using perftools::gputools::dnn::kDefaultAlgorithm;
+
+    AlgorithmConfig algorithm_config;
+
+    if (cudnn_use_autotune && !AutoTuneConv3d::GetInstance()->Find(
+                                  conv_parameters, &algorithm_config)) {
+      std::vector<AlgorithmType> algorithms;
+      CHECK(stream->parent()->GetConvolveAlgorithms(&algorithms));
+      ProfileResult best_result;
+      ProfileResult best_result_no_scratch;
+      for (auto profile_algorithm : algorithms) {
+        // TODO(zhengxq): profile each algorithm multiple times to better
+        // accuracy.
+        CudnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
+        ProfileResult profile_result;
+        bool cudnn_launch_status =
+            stream
+                ->ThenConvolveWithAlgorithm(
+                    input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
+                    output_desc, &output_ptr, &scratch_allocator,
+                    AlgorithmConfig(profile_algorithm), &profile_result)
+                .ok();
+        if (cudnn_launch_status) {
+          if (profile_result.is_valid()) {
+            if (profile_result.elapsed_time_in_ms() <
+                best_result.elapsed_time_in_ms()) {
+              best_result = profile_result;
+            }
+            if (scratch_allocator.TotalByteSize() == 0 &&
+                profile_result.elapsed_time_in_ms() <
+                    best_result_no_scratch.elapsed_time_in_ms()) {
+              best_result_no_scratch = profile_result;
+            }
+          }
+        }
+      }
+      OP_REQUIRES(ctx,
+                  best_result.is_valid() &&
+                      best_result.algorithm() != kDefaultAlgorithm,
+                  errors::NotFound("No algorithm worked!"));
+      OP_REQUIRES(ctx,
+                  best_result_no_scratch.is_valid() &&
+                      best_result_no_scratch.algorithm() != kDefaultAlgorithm,
+                  errors::NotFound("No algorithm without scratch worked!"));
+      algorithm_config.set_algorithm(best_result.algorithm());
+      algorithm_config.set_algorithm_no_scratch(
+          best_result_no_scratch.algorithm());
+      AutoTuneConv3d::GetInstance()->Insert(conv_parameters, algorithm_config);
+    }
+
     CudnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
     bool cudnn_launch_status =
         stream
-            ->ThenConvolveWithScratch(input_desc, input_ptr, filter_desc,
-                                      filter_ptr, conv_desc, output_desc,
-                                      &output_ptr, &scratch_allocator)
+            ->ThenConvolveWithAlgorithm(input_desc, input_ptr, filter_desc,
+                                        filter_ptr, conv_desc, output_desc,
+                                        &output_ptr, &scratch_allocator,
+                                        algorithm_config, nullptr)
             .ok();
 
     if (!cudnn_launch_status) {

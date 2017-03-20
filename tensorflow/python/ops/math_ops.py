@@ -363,7 +363,9 @@ def _neg(x, name=None):
 def sign(x, name=None):
   """Returns an element-wise indication of the sign of a number.
 
-  `y = sign(x) = -1` if `x < 0`; 0 if `x == 0`; 1 if `x > 0`.
+  `y = sign(x) = -1` if `x < 0`; 0 if `x == 0` or `tf.is_nan(x)`; 1 if `x > 0`.
+
+  Zero is returned for NaN inputs.
 
   For complex numbers, `y = sign(x) = x / |x|` if `x != 0`, otherwise `y = 0`.
 
@@ -374,6 +376,10 @@ def sign(x, name=None):
 
   Returns:
     A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+
+  @compatibility(numpy)
+  Equivalent to numpy.sign except for the behaviour for input values of NaN.
+  @end_compatibility
   """
   with ops.name_scope(name, "Sign", [x]) as name:
     if isinstance(x, sparse_tensor.SparseTensor):

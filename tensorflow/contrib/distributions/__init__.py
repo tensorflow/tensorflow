@@ -29,6 +29,8 @@ See the @{$python/contrib.distributions} guide.
 @@Categorical
 @@Chi2
 @@Chi2WithAbsDf
+@@Deterministic
+@@VectorDeterministic
 @@Exponential
 @@ExponentialWithSoftplusRate
 @@Gamma
@@ -94,6 +96,7 @@ from tensorflow.contrib.distributions.python.ops.categorical import *
 from tensorflow.contrib.distributions.python.ops.chi2 import *
 from tensorflow.contrib.distributions.python.ops.conditional_distribution import *
 from tensorflow.contrib.distributions.python.ops.conditional_transformed_distribution import *
+from tensorflow.contrib.distributions.python.ops.deterministic import *
 from tensorflow.contrib.distributions.python.ops.dirichlet import *
 from tensorflow.contrib.distributions.python.ops.dirichlet_multinomial import *
 from tensorflow.contrib.distributions.python.ops.distribution import *

@@ -21,19 +21,24 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 
-/// The abstract interface for runners which must implement the Join function.
+/// The abstract interface for runners which must implement the Join and the
+/// IsRunning function.
 class RunnerInterface {
  public:
   virtual ~RunnerInterface() {}
   virtual Status Join() = 0;
-
+  virtual Status ExportRunMetadata(RunMetadata* metadata) const {
+    return Status(error::INVALID_ARGUMENT, "No RunMetadata to export.");
+  }
   /// Returns true iff the runner is running, i.e. if it is trying to populate
   /// its queue.
   virtual bool IsRunning() const = 0;
@@ -101,6 +106,9 @@ class Coordinator {
   /// RequestStop() is called.
   void WaitForStop();
 
+  // Returns the cost graph from stored run metadata in registered runners.
+  Status ExportCostGraph(CostGraphDef* cost_graph) const;
+
  private:
   std::unordered_set<int> clean_stop_errors_;
   condition_variable wait_for_stop_;
@@ -111,7 +119,7 @@ class Coordinator {
   mutex status_lock_;
   Status status_ GUARDED_BY(status_lock_);
 
-  mutex runners_lock_;
+  mutable mutex runners_lock_;
   std::vector<std::unique_ptr<RunnerInterface>> runners_
       GUARDED_BY(runners_lock_);
 

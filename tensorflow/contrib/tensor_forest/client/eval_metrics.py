@@ -20,14 +20,15 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib import losses
+from tensorflow.contrib.learn.python.learn.estimators import prediction_key
 from tensorflow.contrib.metrics.python.ops import metric_ops
 
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 
-INFERENCE_PROB_NAME = 'inference'
-INFERENCE_PRED_NAME = 'predictions'
+INFERENCE_PROB_NAME = prediction_key.PredictionKey.CLASSES
+INFERENCE_PRED_NAME = prediction_key.PredictionKey.PROBABILITIES
 
 
 def _top_k_generator(k):

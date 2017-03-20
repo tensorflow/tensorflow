@@ -200,8 +200,14 @@ module TF.Backend {
     /**
      * Returns a promise for requesting the health pills for a list of nodes.
      */
-    public healthPills(nodeNames: string[]): Promise<HealthPillsResponse> {
+    public healthPills(nodeNames: string[], step?: number):
+        Promise<HealthPillsResponse> {
       let postData = {'node_names': JSON.stringify(nodeNames)};
+      if (step !== undefined) {
+        // The user requested health pills for a specific step. This request
+        // might be slow since the backend reads events sequentially from disk.
+        postData['step'] = step;
+      }
       return this.requestManager.request(this.router.healthPills(), postData);
     }
 

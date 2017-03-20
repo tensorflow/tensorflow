@@ -86,6 +86,7 @@ android_binary(
     ],
 )
 
+# LINT.IfChange
 filegroup(
     name = "external_assets",
     srcs = [
@@ -94,6 +95,7 @@ filegroup(
         "@stylize//:model_files",
     ],
 )
+# LINT.ThenChange(//tensorflow/examples/android/download-models.gradle)
 
 filegroup(
     name = "all_files",

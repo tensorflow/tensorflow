@@ -14,10 +14,45 @@ filegroup(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
+filegroup(
+    name = "android_srcs",
+    srcs = [
+        "grappler_item.h",
+        "utils.cc",
+        "utils.h",
+        "//tensorflow/core/grappler/clusters:android_srcs",
+        "//tensorflow/core/grappler/inputs:android_srcs",
+        "//tensorflow/core/grappler/optimizers:android_srcs",
+    ],
+    visibility = ["//tensorflow:__subpackages__"],
+)
+
 cc_library(
     name = "utils",
     srcs = ["utils.cc"],
     hdrs = ["utils.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+cc_test(
+    name = "utils_test",
+    srcs = ["utils_test.cc"],
+    deps = [
+        ":utils",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "devices",
+    srcs = ["devices.cc"],
+    hdrs = ["devices.h"],
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:gpu_runtime",
@@ -27,29 +62,33 @@ cc_library(
     ],
 )
 
-cc_test(
-    name = "utils_test",
-    srcs = ["utils_test.cc"],
-    deps = [
-        ":utils",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-    ],
-)
-
 cc_library(
     name = "grappler_item",
-    srcs = ["grappler_item.cc"],
+    srcs = [
+        "grappler_item.cc",
+    ],
     hdrs = ["grappler_item.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":utils",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+cc_library(
+    name = "grappler_item_builder",
+    srcs = [
+        "grappler_item_builder.cc",
+    ],
+    hdrs = ["grappler_item_builder.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":grappler_item",
+        ":utils",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensorflow",
         "//tensorflow/core/grappler/inputs:utils",
     ],
 )
@@ -59,6 +98,7 @@ cc_test(
     srcs = ["grappler_item_test.cc"],
     deps = [
         ":grappler_item",
+        ":grappler_item_builder",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

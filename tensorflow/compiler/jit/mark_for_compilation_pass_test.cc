@@ -184,13 +184,20 @@ TEST(XlaCompilationTest, ConcatWithConstArg) {
 }
 
 TEST(XlaCompilationTest, FunctionCalls) {
-  FunctionDefLibrary flib;
-  *flib.add_function() = FunctionDefHelper::Define(
+  FunctionDef compilable = FunctionDefHelper::Define(
       "CompilableFn", {"n_a:float", "n_b:float"}, {"n_c:float"}, {},
       {{{"n_c"}, "Add", {"n_a", "n_b"}, {{"T", DT_FLOAT}}}});
-  *flib.add_function() =
+  FunctionDef uncompilable =
       FunctionDefHelper::Define("UncompilableFn", {"n_a:float"}, {"n_c:float"},
                                 {}, {{{"n_c"}, "UncompilableUnary", {"n_a"}}});
+  FunctionDef noinline = compilable;
+  noinline.mutable_signature()->set_name("NoInlineFn");
+  AddAttr("_noinline", bool(true), noinline.mutable_attr());
+
+  FunctionDefLibrary flib;
+  *flib.add_function() = compilable;
+  *flib.add_function() = uncompilable;
+  *flib.add_function() = noinline;
   FunctionLibraryDefinition flib_def(OpRegistry::Global(), flib);
 
   std::unique_ptr<Graph> graph(new Graph(&flib_def));
@@ -202,6 +209,7 @@ TEST(XlaCompilationTest, FunctionCalls) {
     Node* b = ops::BinaryOp("CompilableFn", a, a, builder.opts().WithName("B"));
     Node* c = ops::UnaryOp("Relu", b, builder.opts().WithName("C"));
     ops::UnaryOp("UncompilableFn", c, builder.opts().WithName("D"));
+    ops::BinaryOp("NoInlineFn", c, c, builder.opts().WithName("E"));
     TF_EXPECT_OK(builder.ToGraph(graph.get()));
   }
 
@@ -213,6 +221,7 @@ TEST(XlaCompilationTest, FunctionCalls) {
   EXPECT_EQ(clusters["B"], clusters["C"]);
   EXPECT_TRUE(clusters.find("A") == clusters.cend());
   EXPECT_TRUE(clusters.find("D") == clusters.cend());
+  EXPECT_TRUE(clusters.find("E") == clusters.cend());
 }
 
 // Metadata-only operators such as Shape/Rank/Size may not be the root of a

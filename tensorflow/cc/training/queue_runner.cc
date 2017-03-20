@@ -82,9 +82,9 @@ QueueRunner::~QueueRunner() {
 
 Status QueueRunner::Start(Session* sess) { return Start(sess, 0); }
 
-Status QueueRunner::Start(Session* sess, RunMetadata* metadata, mutex* rm_mu,
-                          const RunOptions* run_options) {
-  SetRunArguments(run_options, metadata, rm_mu);
+Status QueueRunner::StartAndCollectRunMetadata(Session* sess,
+                                               const RunOptions* run_options) {
+  SetRunArgumentsAndRunMetadata(run_options);
   return Start(sess, 0);
 }
 
@@ -115,10 +115,10 @@ Status QueueRunner::Start(Session* sess, int wait_for) {
   return Status::OK();
 }
 
-Status QueueRunner::Start(Session* session, int wait_for_ms,
-                          RunMetadata* metadata, mutex* rm_mu,
-                          const RunOptions* run_options) {
-  SetRunArguments(run_options, metadata, rm_mu);
+Status QueueRunner::StartAndCollectRunMetadata(Session* session,
+                                               int wait_for_ms,
+                                               const RunOptions* run_options) {
+  SetRunArgumentsAndRunMetadata(run_options);
   return Start(session, wait_for_ms);
 }
 
@@ -198,14 +198,21 @@ Status QueueRunner::GetStatus() {
   return status_;
 }
 
-void QueueRunner::SetRunArguments(const RunOptions* run_options,
-                                  RunMetadata* metadata, mutex* rm_mu) {
-  DCHECK(metadata != nullptr);
-  DCHECK(rm_mu != nullptr);
-  rm_mu_ = rm_mu;
+Status QueueRunner::ExportRunMetadata(RunMetadata* metadata) const {
+  if (!rm_mu_) {
+    return Status(error::FAILED_PRECONDITION,
+                  "This QueueRunner doesn't collect and store RunMetadata.");
+  }
+  mutex_lock l(*rm_mu_);
+  metadata->MergeFrom(*run_metadata_);
+  return Status::OK();
+}
+
+void QueueRunner::SetRunArgumentsAndRunMetadata(const RunOptions* run_options) {
+  rm_mu_.reset(new mutex());
   {
     mutex_lock l(*rm_mu_);
-    run_metadata_ = metadata;
+    run_metadata_.reset(new RunMetadata());
   }
   if (run_options) {
     run_options_ = *run_options;

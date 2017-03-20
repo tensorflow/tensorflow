@@ -1035,6 +1035,111 @@ TEST_F(GraphConstructorTest, ImportGraphDef_Versioning) {
   EXPECT_EQ(TF_GRAPH_DEF_VERSION - 1, graph_.versions().bad_consumers(0));
 }
 
+TEST_F(GraphConstructorTest, ImportGraphDef_DeprecatedOps) {
+  // BatchNormWithGlobalNormalization was deprecated in GraphDef version 9
+  GraphDef def;
+  bool parsed = protobuf::TextFormat::ParseFromString(
+      R"EOF(
+node {
+  name: "zeros"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+          dim {
+            size: 1
+          }
+          dim {
+            size: 149
+          }
+          dim {
+            size: 149
+          }
+          dim {
+            size: 32
+          }
+        }
+        float_val: 0.0
+      }
+    }
+  }
+}
+node {
+  name: "m_v_beta_gamma"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+          dim {
+            size: 32
+          }
+        }
+        tensor_content: "\265\374\010=S\250\t\276\206\371>;Z\306y>\217]@\276\347\206\202\275\3747\241\275+1\227=J1\352\275\353?H;`\253\000>\023Y\014\276\341\310L;\301\030\314;\032Kw\275\273fQ;\036\252\200=\257o/\273\377\241\247\275\307,\332\274L\255\247\274\023\331R=r\271\225<\016/\204<\364\340\375\272t\030J=\220\306}\276\276x\003\275\231\013}\276\212\034\224\276\257\020\216>A\223\217\276"
+      }
+    }
+  }
+}
+node {
+  name: "batchnorm"
+  op: "BatchNormWithGlobalNormalization"
+  input: "zeros"
+  input: "m_v_beta_gamma"
+  input: "m_v_beta_gamma"
+  input: "m_v_beta_gamma"
+  input: "m_v_beta_gamma"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "scale_after_normalization"
+    value {
+      b: false
+    }
+  }
+  attr {
+    key: "variance_epsilon"
+    value {
+      f: 0.0010000000475
+    }
+  }
+}
+  )EOF",
+      &def);
+  ASSERT_TRUE(parsed);
+  Status s = ImportGraphDef(ImportGraphDefOptions(), def, &graph_, nullptr);
+  EXPECT_EQ(Status::OK(), s) << s;
+
+  Graph g2(OpRegistry::Global());
+  def.mutable_versions()->set_producer(10);
+  s = ImportGraphDef(ImportGraphDefOptions(), def, &g2, nullptr);
+  EXPECT_EQ(error::UNIMPLEMENTED, s.code());
+  EXPECT_TRUE(s.error_message().find("BatchNormWithGlobalNormalization is not "
+                                     "available in GraphDef version 10") !=
+              string::npos)
+      << s;
+}
+
 TEST_F(GraphConstructorTest, ImportGraphDef_ShapeWhitelist) {
   // Barrier's shape is an output vector of 2, but the graph says it's a vector
   // of 1. This is currently whitelisted.

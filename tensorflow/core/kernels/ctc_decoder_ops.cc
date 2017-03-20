@@ -306,8 +306,10 @@ class CTCBeamSearchDecoderOp : public OpKernel {
             Eigen::Map<const Eigen::ArrayXf>(input_chip_t.data(), num_classes);
         beam_search.Step(input_bi);
       }
-      beam_search.TopPaths(decode_helper_.GetTopPaths(), &best_paths_b,
-                           &log_probs, merge_repeated_);
+      OP_REQUIRES_OK(
+          ctx, beam_search.TopPaths(decode_helper_.GetTopPaths(), &best_paths_b,
+                                    &log_probs, merge_repeated_));
+
       beam_search.Reset();
 
       for (int bp = 0; bp < decode_helper_.GetTopPaths(); ++bp) {

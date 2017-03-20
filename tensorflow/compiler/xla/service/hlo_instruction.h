@@ -632,6 +632,9 @@ class HloInstruction {
     return *convolution_dimension_numbers_;
   }
 
+  // Returns the dump string of the convolution dimension numbers.
+  string ConvolutionDimensionNumbersToString() const;
+
   // Returns the random distribution for this rng node.
   //
   // Precondition: opcode() == HloOpcode::kRng
@@ -686,6 +689,11 @@ class HloInstruction {
   // Precondition: this op must be a reshape.
   std::tuple<bool, std::vector<int64>, std::vector<int64>>
   ReshapeMerelyInsertsOrDeletes1SizedDimensions() const;
+
+  // Returns the opcode string for this instruction. Compared with
+  // HloOpcodeString method, this wrapper dumps additional information
+  // such as fusion kind.
+  string ExtendedOpcodeStr() const;
 
   // Returns a string identifier for this instruction. If no string identifier
   // has been explicitly set, then the identifier is the serialized pointer to
@@ -884,7 +892,7 @@ class HloInstruction {
   TF_DISALLOW_COPY_AND_ASSIGN(HloInstruction);
 };
 
-string FusionKindString(HloInstruction::FusionKind kind);
+string ToString(HloInstruction::FusionKind kind);
 
 }  // namespace xla
 

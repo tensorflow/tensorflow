@@ -19,13 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import sys
-
-# pylint: disable=g-import-not-at-top
-# TODO(jart): #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 import numpy as np
 
