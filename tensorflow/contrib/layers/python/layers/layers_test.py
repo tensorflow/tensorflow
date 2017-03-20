@@ -1664,6 +1664,30 @@ class FCTest(test.TestCase):
 
 class BatchNormTest(test.TestCase):
 
+  dtype = None
+
+  @property
+  def _dtype_default(self):
+    return self.dtype or dtypes.float32
+
+  @property
+  def _kw_dtype_default(self):
+    return {'dtype': self._dtype_default}
+
+  @property
+  def _kw_dtype(self):
+    return {'dtype': self.dtype}
+
+  @property
+  def _numpy_dtype_default(self):
+    if self.dtype is None:
+      return np.float32
+    return np.dtype(self.dtype.name)
+
+  @property
+  def _kw_numpy_dtype(self):
+    return {'dtype': self._numpy_dtype_default}
+
   def _addBesselsCorrection(self, sample_size, expected_var):
     correction_factor = sample_size / (sample_size - 1)
     expected_var *= correction_factor
@@ -1671,49 +1695,52 @@ class BatchNormTest(test.TestCase):
 
   def testUnknownShape(self):
     with ops.Graph().as_default() as g, self.test_session(g):
-      inputs = array_ops.placeholder(dtype=dtypes.float32)
+      inputs = array_ops.placeholder(dtype=self._dtype_default)
       with self.assertRaisesRegexp(ValueError, 'undefined rank'):
         _layers.batch_norm(inputs)
 
   def testInvalidDataFormat(self):
     with ops.Graph().as_default() as g, self.test_session(g):
-      inputs = array_ops.placeholder(dtype=dtypes.float32)
+      inputs = array_ops.placeholder(dtype=self._dtype_default)
       with self.assertRaisesRegexp(
           ValueError, 'data_format has to be either NCHW or NHWC.'):
         _layers.batch_norm(inputs, data_format='CHWN')
 
   def testUnknownChannelsDimNHWC(self):
     with ops.Graph().as_default() as g, self.test_session(g):
-      inputs = array_ops.placeholder(dtype=dtypes.float32)
+      inputs = array_ops.placeholder(dtype=self._dtype_default)
       inputs.set_shape(tensor_shape.TensorShape((5, 3, 3, None)))
       with self.assertRaisesRegexp(ValueError, 'undefined'):
         _layers.batch_norm(inputs, data_format='NHWC')
 
   def testUnknownChannelsDimNCHW(self):
     with ops.Graph().as_default() as g, self.test_session(g):
-      inputs = array_ops.placeholder(dtype=dtypes.float32)
+      inputs = array_ops.placeholder(dtype=self._dtype_default)
       inputs.set_shape(tensor_shape.TensorShape((5, None, 3, 3)))
       with self.assertRaisesRegexp(ValueError, 'undefined'):
         _layers.batch_norm(inputs, data_format='NCHW')
 
   def testWeightedMomentsFused(self):
     with ops.Graph().as_default() as g, self.test_session(g):
-      inputs = array_ops.placeholder(dtype=dtypes.float32, shape=(5, 3, 3, 7))
-      batch_weights = array_ops.placeholder(dtype=dtypes.float32)
+      inputs = array_ops.placeholder(
+        dtype=self._dtype_default, shape=(5, 3, 3, 7))
+      batch_weights = array_ops.placeholder(dtype=self._dtype_default)
       with self.assertRaisesRegexp(ValueError, 'Weighted mean and variance'):
         _layers.batch_norm(inputs, batch_weights=batch_weights, fused=True)
 
   def testParamRegularizersFused(self):
     with ops.Graph().as_default() as g, self.test_session(g):
-      inputs = array_ops.placeholder(dtype=dtypes.float32, shape=(5, 3, 3, 7))
+      inputs = array_ops.placeholder(
+        dtype=self._dtype_default, shape=(5, 3, 3, 7))
       with self.assertRaisesRegexp(ValueError,
                                    'Regularizers are not currently'):
         _layers.batch_norm(inputs, param_regularizers={}, fused=True)
 
-  def _testCreateOp(self, fused):
+  def _testCreateOpDefault(self, fused):
     height, width = 3, 3
     with self.test_session():
-      images = np.random.uniform(size=(5, height, width, 3)).astype('f')
+      images = np.random.uniform(
+        size=(5, height, width, 3)).astype(self._numpy_dtype_default)
       output = _layers.batch_norm(images, fused=fused)
       expected_name = ('BatchNorm/FusedBatchNorm' if fused else
                        'BatchNorm/batchnorm')
@@ -1732,7 +1759,8 @@ class BatchNormTest(test.TestCase):
     height, width = 3, 3
     with self.test_session():
       reg = lambda x: 0.1 * math_ops.reduce_sum(x)
-      images = np.random.uniform(size=(5, height, width, 3)).astype('f')
+      images = np.random.uniform(
+        size=(5, height, width, 3)).astype(self._numpy_dtype_default)
       _layers.batch_norm(images, param_regularizers={'beta': reg})
       self.assertEqual(
           len(ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)), 1)
@@ -1743,7 +1771,8 @@ class BatchNormTest(test.TestCase):
     height, width = 3, 3
     with self.test_session():
       reg = lambda x: 0.1 * math_ops.reduce_sum(x)
-      images = np.random.uniform(size=(5, height, width, 3)).astype('f')
+      images = np.random.uniform(
+        size=(5, height, width, 3)).astype(self._numpy_dtype_default)
       _layers.batch_norm(
           images, param_regularizers={'gamma': reg}, scale=True)
       self.assertEqual(
@@ -1754,7 +1783,8 @@ class BatchNormTest(test.TestCase):
   def testCreateVariables(self):
     height, width = 3, 3
     with self.test_session():
-      images = random_ops.random_uniform((5, height, width, 3), seed=1)
+      images = random_ops.random_uniform(
+        (5, height, width, 3), seed=1, **self._kw_dtype)
       _layers.batch_norm(images, scale=True)
       beta = variables.get_variables_by_name('beta')[0]
       gamma = variables.get_variables_by_name('gamma')[0]
@@ -1768,7 +1798,8 @@ class BatchNormTest(test.TestCase):
   def testMovingAverageVariables(self):
     height, width = 3, 3
     with self.test_session():
-      images = random_ops.random_uniform((5, height, width, 3), seed=1)
+      images = random_ops.random_uniform(
+        (5, height, width, 3), seed=1, **self._kw_dtype)
       _layers.batch_norm(images, scale=True)
       self.assertEqual(len(variables.get_model_variables()), 4)
       moving_mean = variables.get_variables_by_name('moving_mean')[0]
@@ -1779,7 +1810,8 @@ class BatchNormTest(test.TestCase):
   def testMovingAverageVariablesZeroDebias(self):
     height, width = 3, 3
     with self.test_session():
-      images = random_ops.random_uniform((5, height, width, 3), seed=1)
+      images = random_ops.random_uniform(
+        (5, height, width, 3), seed=1, **self._kw_dtype)
       _layers.batch_norm(images, scale=True, zero_debias_moving_mean=True)
       self.assertEqual(len(variables.get_model_variables()), 6)
       moving_mean = variables.get_variables_by_name('moving_mean')[0]
@@ -1795,7 +1827,8 @@ class BatchNormTest(test.TestCase):
   def testUpdatesCollection(self):
     height, width = 3, 3
     with self.test_session():
-      images = random_ops.random_uniform((5, height, width, 3), seed=1)
+      images = random_ops.random_uniform(
+        (5, height, width, 3), seed=1, **self._kw_dtype)
       _layers.batch_norm(images, updates_collections='my_update_ops')
       update_layers = ops.get_collection('my_update_ops')
       update_moving_mean = update_layers[0]
@@ -1811,7 +1844,7 @@ class BatchNormTest(test.TestCase):
         'moving_mean': ['moving_mean'],
         'moving_variance': ['moving_variance'],
     }
-    images = random_ops.random_uniform((5, 5, 5, 3), seed=1)
+    images = random_ops.random_uniform((5, 5, 5, 3), seed=1, **self._kw_dtype)
     _layers.batch_norm(
         images, scale=True, variables_collections=variables_collections)
     for var_name, collection_names in variables_collections.items():
@@ -1823,7 +1856,8 @@ class BatchNormTest(test.TestCase):
   def testReuseVariables(self):
     height, width = 3, 3
     with self.test_session():
-      images = random_ops.random_uniform((5, height, width, 3), seed=1)
+      images = random_ops.random_uniform(
+        (5, height, width, 3), seed=1, **self._kw_dtype)
       _layers.batch_norm(images, scale=True, scope='bn')
       _layers.batch_norm(images, scale=True, scope='bn', reuse=True)
       beta = variables.get_variables_by_name('beta')
@@ -1838,7 +1872,8 @@ class BatchNormTest(test.TestCase):
   def testReuseUpdateOps(self):
     height, width = 3, 3
     with self.test_session():
-      images = random_ops.random_uniform((5, height, width, 3), seed=1)
+      images = random_ops.random_uniform(
+        (5, height, width, 3), seed=1, **self._kw_dtype)
       with arg_scope([_layers.batch_norm], updates_collections='update_ops'):
         _layers.batch_norm(images, scope='bn')
         self.assertEqual(len(ops.get_collection('update_ops')), 2)
@@ -1848,7 +1883,8 @@ class BatchNormTest(test.TestCase):
   def testCreateMovingVars(self):
     height, width = 3, 3
     with self.test_session():
-      images = random_ops.random_uniform((5, height, width, 3), seed=1)
+      images = random_ops.random_uniform(
+        (5, height, width, 3), seed=1, **self._kw_dtype)
       _ = _layers.batch_norm(images)
       moving_mean = variables.get_variables('BatchNorm/moving_mean')
       self.assertEqual(len(moving_mean), 1)
@@ -1864,12 +1900,12 @@ class BatchNormTest(test.TestCase):
     np.random.seed(1)
     image_shape = (batch_size, height, width, channels)
     axis = (0, 1, 2)
-    image_values = np.random.rand(*image_shape)
+    image_values = np.random.rand(*image_shape, **self._kw_numpy_dtype)
     expected_mean = np.mean(image_values, axis=axis)
     expected_var = np.var(image_values, axis=axis)
 
     images = constant_op.constant(
-        image_values, shape=image_shape, dtype=dtypes.float32)
+        image_values, shape=image_shape, dtype=self._dtype_default)
     output = _layers.batch_norm(
         images,
         decay=0.1,
@@ -1913,7 +1949,7 @@ class BatchNormTest(test.TestCase):
       else:
         image_shape = (batch_size, channels, height, width)
         axis = (0, 2, 3)
-      image_values = np.random.rand(*image_shape)
+      image_values = np.random.rand(*image_shape, **self._kw_numpy_dtype)
       expected_mean = np.mean(image_values, axis=axis)
       expected_var = np.var(image_values, axis=axis)
       if fused:
@@ -1921,7 +1957,7 @@ class BatchNormTest(test.TestCase):
         expected_var, _ = self._addBesselsCorrection(batch_size * height *
                                                      width, expected_var)
       images = constant_op.constant(
-          image_values, shape=image_shape, dtype=dtypes.float32)
+          image_values, shape=image_shape, dtype=self._dtype_default)
       output = _layers.batch_norm(
           images,
           decay=0.1,
@@ -1997,7 +2033,7 @@ class BatchNormTest(test.TestCase):
       else:
         image_shape = (batch_size, channels, height, width)
         axis = (0, 2, 3)
-      image_values = np.random.rand(*image_shape)
+      image_values = np.random.rand(*image_shape, **self._kw_numpy_dtype)
       expected_mean = np.mean(image_values, axis=axis)
       expected_var = np.var(image_values, axis=axis)
       if fused:
@@ -2005,7 +2041,7 @@ class BatchNormTest(test.TestCase):
         expected_var, correction_factor = self._addBesselsCorrection(
             batch_size * height * width, expected_var)
       images = constant_op.constant(
-          image_values, shape=image_shape, dtype=dtypes.float32)
+          image_values, shape=image_shape, dtype=self._dtype_default)
       output = _layers.batch_norm(
           images,
           decay=0.1,
@@ -2069,7 +2105,7 @@ class BatchNormTest(test.TestCase):
       expected_mean = np.mean(image_values, axis=(0, 1, 2))
       expected_var = np.var(image_values, axis=(0, 1, 2))
       images = constant_op.constant(
-          image_values, shape=image_shape, dtype=dtypes.float32)
+          image_values, shape=image_shape, dtype=self._dtype_default)
       output = _layers.batch_norm(images, decay=0.1, is_training=False)
       self.assertEqual(ops.get_collection(ops.GraphKeys.UPDATE_OPS), [])
       # Initialize all variables
@@ -2116,7 +2152,7 @@ class BatchNormTest(test.TestCase):
     channels = 3
     with self.test_session() as sess:
       image_shape = (batch_size, height, width, channels)
-      image_values = np.random.rand(*image_shape)
+      image_values = np.random.rand(*image_shape, **self._kw_numpy_dtype)
       expected_mean = np.mean(image_values, axis=(0, 1, 2))
       expected_var = np.var(image_values, axis=(0, 1, 2))
       if fused:
@@ -2124,7 +2160,7 @@ class BatchNormTest(test.TestCase):
         expected_var, correction_factor = self._addBesselsCorrection(
             batch_size * height * width, expected_var)
       images = constant_op.constant(
-          image_values, shape=image_shape, dtype=dtypes.float32)
+          image_values, shape=image_shape, dtype=self._dtype_default)
       output_train = _layers.batch_norm(
           images,
           decay=0.1,
@@ -2201,7 +2237,7 @@ class BatchNormTest(test.TestCase):
       else:
         image_shape = (batch_size, channels, height, width)
         axis = (0, 2, 3)
-      image_values = np.random.rand(*image_shape)
+      image_values = np.random.rand(*image_shape, **self._kw_numpy_dtype)
       expected_mean = np.mean(image_values, axis=axis)
       expected_var = np.var(image_values, axis=axis)
       if fused:
@@ -2209,7 +2245,7 @@ class BatchNormTest(test.TestCase):
         expected_var, correction_factor = self._addBesselsCorrection(
             batch_size * height * width, expected_var)
       images = constant_op.constant(
-          image_values, shape=image_shape, dtype=dtypes.float32)
+          image_values, shape=image_shape, dtype=self._dtype_default)
       is_training = variables_lib.Variable(True)
       output = _layers.batch_norm(
           images,
@@ -2287,9 +2323,9 @@ class BatchNormTest(test.TestCase):
     height, width = 3, 3
     with self.test_session() as sess:
       image_shape = (10, height, width, 3)
-      image_values = np.random.rand(*image_shape)
+      image_values = np.random.rand(*image_shape, **self._kw_numpy_dtype)
       images = constant_op.constant(
-          image_values, shape=image_shape, dtype=dtypes.float32)
+          image_values, shape=image_shape, dtype=self._dtype_default)
       output = _layers.batch_norm(images, decay=0.1, is_training=False)
       update_ops = ops.get_collection(ops.GraphKeys.UPDATE_OPS)
       # updates_ops are not added to UPDATE_OPS collection.
@@ -2312,9 +2348,9 @@ class BatchNormTest(test.TestCase):
     height, width = 3, 3
     with self.test_session() as sess:
       image_shape = (10, height, width, 3)
-      image_values = np.random.rand(*image_shape)
+      image_values = np.random.rand(*image_shape, **self._kw_numpy_dtype)
       images = constant_op.constant(
-          image_values, shape=image_shape, dtype=dtypes.float32)
+          image_values, shape=image_shape, dtype=self._dtype_default)
       output = _layers.batch_norm(
           images, decay=0.1, updates_collections=None, is_training=False)
       # updates_ops are not added to UPDATE_OPS collection.
@@ -2348,7 +2384,7 @@ class BatchNormTest(test.TestCase):
       else:
         image_shape = (batch_size, channels, height, width)
         axis = (0, 2, 3)
-      image_values = np.random.rand(*image_shape)
+      image_values = np.random.rand(*image_shape, **self._kw_numpy_dtype)
       expected_mean = np.mean(image_values, axis=axis)
       expected_var = np.var(image_values, axis=axis)
       if fused:
@@ -2356,7 +2392,7 @@ class BatchNormTest(test.TestCase):
         expected_var, correction_factor = self._addBesselsCorrection(
             batch_size * height * width, expected_var)
       images = constant_op.constant(
-          image_values, shape=image_shape, dtype=dtypes.float32)
+          image_values, shape=image_shape, dtype=self._dtype_default)
       is_training = variables_lib.Variable(True)
       output = _layers.batch_norm(
           images,
@@ -2433,7 +2469,7 @@ class BatchNormTest(test.TestCase):
       else:
         image_shape = (batch_size, channels, height, width)
         axis = (0, 2, 3)
-      image_values = np.random.rand(*image_shape) + 256
+      image_values = np.random.rand(*image_shape, **self._kw_numpy_dtype) + 256
       expected_mean = np.mean(image_values, axis=axis)
       expected_var = np.var(image_values, axis=axis)
       if fused:
@@ -2441,7 +2477,7 @@ class BatchNormTest(test.TestCase):
         expected_var, _ = self._addBesselsCorrection(batch_size * height *
                                                      width, expected_var)
       images = constant_op.constant(
-          image_values, shape=image_shape, dtype=dtypes.float32)
+          image_values, shape=image_shape, dtype=selt._dtype_default)
       output = _layers.batch_norm(
           images,
           decay=0.2,
@@ -2497,15 +2533,16 @@ class BatchNormTest(test.TestCase):
     height, width = 3, 3
     channels = 3
     with self.test_session() as sess:
-      images = (np.ones((5, height, width, channels)) * 9.0).astype('f')
+      images = (np.ones((5, height, width, channels)) * 9.0).astype(
+          self._numpy_dtype_default)
       beta = init_ops.constant_initializer((np.ones(channels) * 5.0).astype(
-          'f'))
+          self._numpy_dtype_default))
       gamma = init_ops.constant_initializer((np.ones(channels) * 2.0).astype(
-          'f'))
+          self._numpy_dtype_default))
       mean = init_ops.constant_initializer((np.ones(channels) * 5.0).astype(
-          'f'))
+          self._numpy_dtype_default))
       variance = init_ops.constant_initializer((np.ones(channels) * 4.0).astype(
-          'f'))
+          self._numpy_dtype_default))
       output = _layers.batch_norm(
           images,
           is_training=False,
@@ -2524,19 +2561,20 @@ class BatchNormTest(test.TestCase):
   def _runBatchNormalizationWithFormat(self, shape, data_format, is_training):
     channels = shape[-1]
     with self.test_session() as sess:
-      images = np.arange(np.product(shape), dtype=np.float32).reshape(shape)
+      images = np.arange(
+        np.product(shape), dtype=self._numpy_dtype_default).reshape(shape)
       beta = init_ops.constant_initializer(
           np.arange(
-              2, channels + 2, dtype=np.float32))
+              2, channels + 2, dtype=self._numpy_dtype_default))
       gamma = init_ops.constant_initializer(
           np.arange(
-              10, channels + 10, dtype=np.float32) * 2.0)
+              10, channels + 10, dtype=self._numpy_dtype_default) * 2.0)
       mean = init_ops.constant_initializer(
           np.arange(
-              3, channels + 3, dtype=np.float32) * 5.0)
+              3, channels + 3, dtype=self._numpy_dtype_default) * 5.0)
       variance = init_ops.constant_initializer(
           np.arange(
-              1, channels + 1, dtype=np.float32) * 4.0)
+              1, channels + 1, dtype=self._numpy_dtype_default) * 4.0)
       if data_format == 'NCHW':
         # Reshape inputs from NHWC to NCHW format.
         images = array_ops.transpose(
@@ -2575,6 +2613,18 @@ class BatchNormTest(test.TestCase):
       nchw = self._runBatchNormalizationWithFormat(
           data_format='NCHW', shape=shape, is_training=True)
       self.assertAllClose(nhwc, nchw, atol=1e-4, rtol=1e-4)
+
+
+class BatchNormFloat16Test(BatchNormTest):
+  dtype = dtypes.float16
+
+
+class BatchNormFloat32Test(BatchNormTest):
+  dtype = dtypes.float32
+
+
+class BatchNormFloat64Test(BatchNormTest):
+  dtype = dtypes.float64
 
 
 class LayerNormTest(test.TestCase):

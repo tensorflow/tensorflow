@@ -144,6 +144,7 @@ class BatchNormalization(base._Layer):  # pylint: disable=protected-access
 
     if self.center:
       self.beta = vs.get_variable('beta',
+                                  dtype=self.dtype,
                                   shape=(param_dim,),
                                   initializer=self.beta_initializer,
                                   regularizer=self.beta_regularizer,
@@ -152,6 +153,7 @@ class BatchNormalization(base._Layer):  # pylint: disable=protected-access
       self.beta = None
     if self.scale:
       self.gamma = vs.get_variable('gamma',
+                                   dtype=self.dtype,
                                    shape=(param_dim,),
                                    initializer=self.gamma_initializer,
                                    regularizer=self.gamma_regularizer,
@@ -165,11 +167,13 @@ class BatchNormalization(base._Layer):  # pylint: disable=protected-access
       vs.get_variable_scope().set_partitioner(None)
       self.moving_mean = vs.get_variable(
           'moving_mean',
+          dtype=self.dtype,
           shape=(param_dim,),
           initializer=self.moving_mean_initializer,
           trainable=False)
       self.moving_variance = vs.get_variable(
           'moving_variance',
+          dtype=self.dtype,
           shape=(param_dim,),
           initializer=self.moving_variance_initializer,
           trainable=False)
@@ -404,7 +408,10 @@ def batch_normalization(inputs,
   Returns:
     Output tensor.
   """
+  inputs = ops.convert_to_tensor(inputs)
+  dtype = inputs.dtype.base_dtype
   layer = BatchNormalization(
+      dtype=dtype,
       axis=axis,
       momentum=momentum,
       epsilon=epsilon,
