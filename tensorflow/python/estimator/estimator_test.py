@@ -25,9 +25,10 @@ import numpy as np
 
 from tensorflow.python.client import session
 from tensorflow.python.estimator import estimator
-from tensorflow.python.estimator import export
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator import run_config
+from tensorflow.python.estimator.export import export
+from tensorflow.python.estimator.export import export_output
 from tensorflow.python.estimator.inputs import numpy_io
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -876,7 +877,7 @@ def _model_fn_for_export_tests(features, labels, mode):
       loss=constant_op.constant(1.),
       train_op=constant_op.constant(2.),
       export_outputs={
-          'test': export.ClassificationOutput(scores, classes)})
+          'test': export_output.ClassificationOutput(scores, classes)})
 
 
 def _model_fn_with_saveables_for_export_tests(features, labels, mode):
@@ -890,7 +891,7 @@ def _model_fn_with_saveables_for_export_tests(features, labels, mode):
       loss=constant_op.constant(1.),
       train_op=train_op,
       export_outputs={
-          'test': export.PredictOutput({'prediction': prediction})})
+          'test': export_output.PredictOutput({'prediction': prediction})})
 
 
 _VOCAB_FILE_CONTENT = 'emerson\nlake\npalmer\n'
@@ -1102,7 +1103,7 @@ class EstimatorExportTest(test.TestCase):
           loss=constant_op.constant(0.),
           train_op=constant_op.constant(0.),
           scaffold=training.Scaffold(saver=self.mock_saver),
-          export_outputs={'test': export.ClassificationOutput(scores)})
+          export_outputs={'test': export_output.ClassificationOutput(scores)})
 
     est = estimator.Estimator(model_fn=_model_fn_scaffold)
     est.train(dummy_input_fn, steps=1)
@@ -1139,7 +1140,7 @@ class EstimatorExportTest(test.TestCase):
           loss=constant_op.constant(0.),
           train_op=constant_op.constant(0.),
           scaffold=training.Scaffold(local_init_op=custom_local_init_op),
-          export_outputs={'test': export.ClassificationOutput(scores)})
+          export_outputs={'test': export_output.ClassificationOutput(scores)})
 
     est = estimator.Estimator(model_fn=_model_fn_scaffold)
     est.train(dummy_input_fn, steps=1)
@@ -1177,7 +1178,8 @@ class EstimatorExportTest(test.TestCase):
           train_op=constant_op.constant(0.),
           predictions=constant_op.constant([[0.]]),
           export_outputs={
-              'test': export.ClassificationOutput(constant_op.constant([[0.]]))
+              'test': export_output.ClassificationOutput(
+                  constant_op.constant([[0.]]))
           })
 
     est = estimator.Estimator(model_fn=_model_fn)
@@ -1199,7 +1201,8 @@ class EstimatorExportTest(test.TestCase):
           train_op=constant_op.constant(0.),
           predictions=constant_op.constant([[0.]]),
           export_outputs={
-              'test': export.ClassificationOutput(constant_op.constant([[0.]]))
+              'test': export_output.ClassificationOutput(
+                  constant_op.constant([[0.]]))
           })
 
     def serving_input_receiver_fn():
@@ -1220,7 +1223,7 @@ class EstimatorIntegrationTest(test.TestCase):
       predictions = layers.dense(
           features['x'], 1, kernel_initializer=init_ops.zeros_initializer())
       export_outputs = {
-          'predictions': export.RegressionOutput(predictions)
+          'predictions': export_output.RegressionOutput(predictions)
       }
 
       if mode == model_fn_lib.ModeKeys.PREDICT:

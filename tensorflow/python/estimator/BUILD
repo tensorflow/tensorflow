@@ -171,7 +171,7 @@ py_test(
 py_library(
     name = "export",
     srcs = [
-        "export/__init__.py",
+        "export/export_lib.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -209,7 +209,7 @@ py_test(
 
 py_library(
     name = "inputs",
-    srcs = ["inputs/__init__.py"],
+    srcs = ["inputs/inputs.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":numpy_io",

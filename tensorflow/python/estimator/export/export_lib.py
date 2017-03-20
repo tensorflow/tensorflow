@@ -12,30 +12,32 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Estimator: High level tools for working with models."""
+"""Utility methods for exporting Estimator."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-import,line-too-long
-from tensorflow.python.estimator.estimator import Estimator
-from tensorflow.python.estimator.export import export_lib as export
-from tensorflow.python.estimator.inputs import inputs
-from tensorflow.python.estimator.model_fn import EstimatorSpec
-from tensorflow.python.estimator.model_fn import ModeKeys
-from tensorflow.python.estimator.run_config import RunConfig
+from tensorflow.python.estimator.export.export import build_parsing_serving_input_receiver_fn
+from tensorflow.python.estimator.export.export import build_raw_serving_input_receiver_fn
+from tensorflow.python.estimator.export.export import ServingInputReceiver
+from tensorflow.python.estimator.export.export_output import ClassificationOutput
+from tensorflow.python.estimator.export.export_output import ExportOutput
+from tensorflow.python.estimator.export.export_output import PredictOutput
+from tensorflow.python.estimator.export.export_output import RegressionOutput
 
 from tensorflow.python.util.all_util import remove_undocumented
 # pylint: enable=unused-import,line-too-long
 
 _allowed_symbols = [
-    'inputs',
-    'export',
-    'Estimator',
-    'EstimatorSpec',
-    'ModeKeys',
-    'RunConfig',
+    'build_parsing_serving_input_receiver_fn',
+    'build_raw_serving_input_receiver_fn',
+    'ServingInputReceiver',
+    'ClassificationOutput',
+    'ExportOutput',
+    'PredictOutput',
+    'RegressionOutput',
 ]
 
 remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)

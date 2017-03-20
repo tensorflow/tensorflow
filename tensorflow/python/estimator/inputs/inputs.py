@@ -12,30 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Estimator: High level tools for working with models."""
+"""Utility methods to create simple input_fns."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-import,line-too-long
-from tensorflow.python.estimator.estimator import Estimator
-from tensorflow.python.estimator.export import export_lib as export
-from tensorflow.python.estimator.inputs import inputs
-from tensorflow.python.estimator.model_fn import EstimatorSpec
-from tensorflow.python.estimator.model_fn import ModeKeys
-from tensorflow.python.estimator.run_config import RunConfig
+from tensorflow.python.estimator.inputs.numpy_io import numpy_input_fn
+from tensorflow.python.estimator.inputs.pandas_io import pandas_input_fn
 
 from tensorflow.python.util.all_util import remove_undocumented
 # pylint: enable=unused-import,line-too-long
 
 _allowed_symbols = [
-    'inputs',
-    'export',
-    'Estimator',
-    'EstimatorSpec',
-    'ModeKeys',
-    'RunConfig',
+    'numpy_input_fn',
+    'pandas_input_fn'
 ]
 
 remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)
