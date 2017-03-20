@@ -142,8 +142,7 @@ class DynamicRnnEstimatorTest(test.TestCase):
                 dense_shape=[3, 2, 2]),
         'measurements':
             random_ops.random_uniform(
-                [3, 2, 2], seed=4711),
-        'sequence_length': constant_op.constant([2, 2, 1], dtype=dtypes.int32)
+                [3, 2, 2], seed=4711)
     }
 
   def GetClassificationTargetsOrNone(self, mode):
@@ -169,13 +168,11 @@ class DynamicRnnEstimatorTest(test.TestCase):
 
   def testConstructRNN(self):
     initial_state = None
-    columns_to_tensors = self.GetColumnsToTensors()
-    sequence_length = columns_to_tensors.pop('sequence_length')
     sequence_input = dynamic_rnn_estimator.build_sequence_input(
-        columns_to_tensors, self.sequence_feature_columns,
+        self.GetColumnsToTensors(), self.sequence_feature_columns,
         self.context_feature_columns)
     activations_t, final_state_t = dynamic_rnn_estimator.construct_rnn(
-        initial_state, sequence_input, sequence_length, self.rnn_cell,
+        initial_state, sequence_input, self.rnn_cell,
         self.mock_target_column.num_label_columns)
 
     # Obtain values of activations and final state.
