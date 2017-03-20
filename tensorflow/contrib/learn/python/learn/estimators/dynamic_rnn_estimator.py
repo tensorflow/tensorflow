@@ -204,7 +204,6 @@ def build_sequence_input(features,
 
 def construct_rnn(initial_state,
                   sequence_input,
-                  sequence_length,
                   cell,
                   num_label_columns,
                   dtype=dtypes.float32,
@@ -217,8 +216,6 @@ def construct_rnn(initial_state,
       default starting state for `self._cell` is used.
     sequence_input: A `Tensor` with shape `[batch_size, padded_length, d]`
       that will be passed as input to the RNN.
-    sequence_length: A `Tensor` with shape `[batch_size]` indicating the length
-      of the sequence input for each example.
     cell: An initialized `RNNCell`.
     num_label_columns: The desired output dimension.
     dtype: dtype of `cell`.
@@ -239,7 +236,6 @@ def construct_rnn(initial_state,
     rnn_outputs, final_state = rnn.dynamic_rnn(
         cell=cell,
         inputs=sequence_input,
-        sequence_length=sequence_length,
         initial_state=initial_state,
         dtype=dtype,
         parallel_iterations=parallel_iterations,
@@ -530,7 +526,6 @@ def _get_dynamic_rnn_model_fn(
       rnn_activations, final_state = construct_rnn(
           initial_state,
           sequence_input,
-          sequence_length,
           cell,
           target_column.num_label_columns,
           dtype=dtype,
