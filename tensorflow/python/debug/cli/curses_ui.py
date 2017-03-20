@@ -220,8 +220,8 @@ class CursesUI(base_ui.BaseUI):
   CLI_CR_KEYS = [ord("\n"), ord("\r"), 343]
 
   _KEY_MAP = {
-      127: 263,  # Backspace
-      330: 4,  # Delete
+      127: curses.KEY_BACKSPACE,  # Backspace
+      curses.KEY_DC: 4,  # Delete
   }
 
   _FOREGROUND_COLORS = {
