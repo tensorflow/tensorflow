@@ -1146,6 +1146,139 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       self.assertIn("n:0:DebugNumericSummary", dump.debug_watch_keys("n"))
       self.assertIn("m:0:DebugNumericSummary", dump.debug_watch_keys("m"))
 
+  def testDebugNumericSummaryInvalidAttributesStringAreCaught(self):
+    with session.Session() as sess:
+      a = variables.Variable(10.0, name="a")
+      b = variables.Variable(0.0, name="b")
+      c = variables.Variable(0.0, name="c")
+
+      x = math_ops.divide(a, b, name="x")
+      y = math_ops.multiply(x, c, name="y")
+
+      sess.run(variables.global_variables_initializer())
+
+      run_metadata = config_pb2.RunMetadata()
+      run_options = config_pb2.RunOptions(output_partition_graphs=True)
+      debug_utils.watch_graph(
+          run_options,
+          sess.graph,
+          debug_ops=["DebugNumericSummary(foo=1.0)"],
+          debug_urls=self._debug_urls())
+      with self.assertRaisesRegexp(
+          errors.FailedPreconditionError,
+          r"1 attribute key\(s\) were not valid for debug node "
+          r"__dbg_a:0_0_DebugNumericSummary: foo"):
+        sess.run(y, options=run_options, run_metadata=run_metadata)
+
+      run_options = config_pb2.RunOptions(output_partition_graphs=True)
+      debug_utils.watch_graph(
+          run_options,
+          sess.graph,
+          debug_ops=["DebugNumericSummary(foo=1.0; bar=false)"],
+          debug_urls=self._debug_urls())
+      with self.assertRaisesRegexp(
+          errors.FailedPreconditionError,
+          r"2 attribute key\(s\) were not valid for debug node "
+          r"__dbg_a:0_0_DebugNumericSummary:"):
+        sess.run(y, options=run_options, run_metadata=run_metadata)
+
+      run_options = config_pb2.RunOptions(output_partition_graphs=True)
+      debug_utils.watch_graph(
+          run_options,
+          sess.graph,
+          debug_ops=["DebugNumericSummary(foo=1.0; mute_if_healthy=true)"],
+          debug_urls=self._debug_urls())
+      with self.assertRaisesRegexp(
+          errors.FailedPreconditionError,
+          r"1 attribute key\(s\) were not valid for debug node "
+          r"__dbg_a:0_0_DebugNumericSummary: foo"):
+        sess.run(y, options=run_options, run_metadata=run_metadata)
+
+  def testDebugNumericSummaryMuteOnHealthyMutesOnlyHealthyTensorDumps(self):
+    with session.Session() as sess:
+      a = variables.Variable(10.0, name="a")
+      b = variables.Variable(0.0, name="b")
+      c = variables.Variable(0.0, name="c")
+
+      x = math_ops.divide(a, b, name="x")
+      y = math_ops.multiply(x, c, name="y")
+
+      sess.run(variables.global_variables_initializer())
+
+      run_metadata = config_pb2.RunMetadata()
+      run_options = config_pb2.RunOptions(output_partition_graphs=True)
+      debug_utils.watch_graph(
+          run_options,
+          sess.graph,
+          debug_ops=["DebugNumericSummary(mute_if_healthy=true)"],
+          debug_urls=self._debug_urls())
+      sess.run(y, options=run_options, run_metadata=run_metadata)
+
+      dump = debug_data.DebugDumpDir(
+          self._dump_root, partition_graphs=run_metadata.partition_graphs,
+          validate=False)
+      # Here, validate=False is necessary to avoid causality check error.
+      # TODO(cais): Maybe let DebugDumpDir constructor automatically ignore
+      #   debug ops with mute_if_healthy=false attribute during validation.
+
+      self.assertEqual(2, dump.size)
+      self.assertAllClose(
+          [[1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, np.inf, -np.inf, np.nan,
+            np.nan]],
+          dump.get_tensors("x", 0, "DebugNumericSummary"))
+      self.assertAllClose(
+          [[1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, np.inf, -np.inf, np.nan,
+            np.nan]],
+          dump.get_tensors("y", 0, "DebugNumericSummary"))
+
+      # Another run with the default mute_if_healthy (false) value should
+      # dump all the tensors.
+      shutil.rmtree(self._dump_root)
+      run_metadata = config_pb2.RunMetadata()
+      run_options = config_pb2.RunOptions(output_partition_graphs=True)
+      debug_utils.watch_graph(
+          run_options,
+          sess.graph,
+          debug_ops=["DebugNumericSummary()"],
+          debug_urls=self._debug_urls())
+      sess.run(y, options=run_options, run_metadata=run_metadata)
+
+      dump = debug_data.DebugDumpDir(
+          self._dump_root, partition_graphs=run_metadata.partition_graphs)
+      self.assertEqual(8, dump.size)
+
+  def testDebugNumericSummaryMuteOnHealthyAndCustomBoundsWork(self):
+    with session.Session() as sess:
+      a = variables.Variable([10.0, 10.0], name="a")
+      b = variables.Variable([10.0, 2.0], name="b")
+
+      x = math_ops.add(a, b, name="x")  # [20.0, 12.0]
+      y = math_ops.divide(x, b, name="y")  # [2.0, 6.0]
+
+      sess.run(variables.global_variables_initializer())
+
+      run_metadata = config_pb2.RunMetadata()
+      run_options = config_pb2.RunOptions(output_partition_graphs=True)
+      debug_utils.watch_graph(
+          run_options,
+          sess.graph,
+          debug_ops=[
+              "DebugNumericSummary(mute_if_healthy=true; upper_bound=11.0)"],
+          debug_urls=self._debug_urls())
+      sess.run(y, options=run_options, run_metadata=run_metadata)
+
+      dump = debug_data.DebugDumpDir(
+          self._dump_root, partition_graphs=run_metadata.partition_graphs,
+          validate=False)
+      # Here, validate=False is necessary to avoid causality check error.
+      # TODO(cais): Maybe let DebugDumpDir constructor automatically ignore
+      #   debug ops with mute_if_healthy=false attribute during validation.
+
+      self.assertEqual(1, dump.size)
+      self.assertAllClose(
+          [[1.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2.0, 12.0, 20.0, 16.0, 16.0]],
+          dump.get_tensors("x", 0, "DebugNumericSummary"))
+
   def testDebugQueueOpsDoesNotoErrorOut(self):
     with session.Session() as sess:
       q = data_flow_ops.FIFOQueue(3, "float", name="fifo_queue")

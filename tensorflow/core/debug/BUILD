@@ -207,6 +207,21 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "debug_graph_utils_test",
+    size = "small",
+    srcs = ["debug_graph_utils_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":debug_graph_utils",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 # TODO(cais): Add the following back in when tfdbg is supported on Android.
 # filegroup(
 #     name = "android_srcs",

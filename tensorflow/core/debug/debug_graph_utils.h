@@ -121,6 +121,19 @@ class DebugNodeInserter {
                                const int src_output, const DataType src_dt,
                                const string& tensor_name, Node** copy_node);
 
+  // Parse the debug_op_name string to extract proper op name and attributes.
+  // debug_op_name can be the proper op name only, e.g., "DebugNumericSummary".
+  // It can also contain customizable keys and values. Each key-value pair is
+  // connected with an equal sign ("="). Multiple key-value pairs are separated
+  // with semicolons (";"), which optional whitespace in between, e.g.,
+  // "DebugNumericSummary(mute_if_healthy=true, lower_bound=-100.0)".
+  static Status ParseDebugOpName(
+      const string& debug_op_name, string* debug_op_name_proper,
+      std::unordered_map<string, string>* attributes);
+
+  static Status SetDebugNodeAttributes(
+      Node* debug_node, const std::unordered_map<string, string>& attributes);
+
   static Status CreateDebugNode(Graph* graph, const DeviceType device_type,
                                 const string& src_copy_node_name,
                                 const DataType src_dt,
@@ -128,6 +141,8 @@ class DebugNodeInserter {
                                 const std::vector<string>& debug_urls,
                                 const int debug_op_num,
                                 const string& debug_op_name, Node** debug_node);
+
+  friend class DebugGraphUtilsTest;
 };
 }  // namespace tensorflow
 
