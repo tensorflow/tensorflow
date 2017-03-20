@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
-#include "tensorflow/stream_executor/poplar/poplar_platform_id.h"
 #include "tensorflow/stream_executor/lib/strcat.h"
 #include "tensorflow/stream_executor/lib/initialize.h"
 

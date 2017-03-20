@@ -27,8 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 
-
-#include "tensorflow/stream_executor/poplar/poplar_platform_id.h"
+#include "tensorflow/compiler/poplar/stream_executor/poplar_platform_id.h"
 
 namespace xla {
 namespace poplarplugin {

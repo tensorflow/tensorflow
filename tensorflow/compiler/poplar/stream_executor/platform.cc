@@ -18,8 +18,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/poplar/stream_executor/platform.h"
 #include "tensorflow/compiler/poplar/stream_executor/executor.h"
+#include "tensorflow/compiler/poplar/stream_executor/poplar_platform_id.h"
 
-#include "tensorflow/stream_executor/poplar/poplar_platform_id.h"
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/lib/initialize.h"
 #include "tensorflow/stream_executor/lib/ptr_util.h"

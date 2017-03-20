@@ -9,7 +9,6 @@ cc_library(
             "*.cc",
             "host/*.cc",
             "cuda/cuda_platform_id.cc",
-            "poplar/poplar_platform_id.cc",
             "lib/*.cc",
             "platform/default/*.cc",
         ],

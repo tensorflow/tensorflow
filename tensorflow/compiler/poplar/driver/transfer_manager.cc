@@ -16,7 +16,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/stream_executor/poplar/poplar_platform_id.h"
+#include "tensorflow/compiler/poplar/stream_executor/poplar_platform_id.h"
 #include "tensorflow/compiler/poplar/driver/transfer_manager.h"
 
 #include "tensorflow/compiler/xla/literal_util.h"

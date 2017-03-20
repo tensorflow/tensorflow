@@ -17,11 +17,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/poplar/stream_executor/executor.h"
+#include "tensorflow/compiler/poplar/stream_executor/poplar_platform_id.h"
 
 #include <string.h>
 #include <dlfcn.h>
-
-#include "tensorflow/stream_executor/poplar/poplar_platform_id.h"
 
 #include <poplar/Tensor.hpp>
 
