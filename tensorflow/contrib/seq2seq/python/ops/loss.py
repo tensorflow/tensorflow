@@ -47,7 +47,7 @@ def sequence_loss(logits, targets, weights,
       dimension and divide the cost by the total label weight across timesteps.
     average_across_batch: If set, sum the cost across the batch dimension and
       divide the returned cost by the batch size.
-    softmax_loss_function: Function (inputs-batch, labels-batch) -> loss-batch
+    softmax_loss_function: Function (labels-batch, inputs-batch) -> loss-batch
       to be used instead of the standard softmax (the default if this is None).
     name: Optional name for this operation, defaults to "sequence_loss".
 
@@ -75,7 +75,7 @@ def sequence_loss(logits, targets, weights,
       crossent = nn_ops.sparse_softmax_cross_entropy_with_logits(
         labels=targets, logits=probs_flat)
     else:
-      crossent = softmax_loss_function(probs_flat, targets)
+      crossent = softmax_loss_function(targets, probs_flat)
     crossent = crossent * array_ops.reshape(weights, [-1])
     if average_across_timesteps and average_across_batch:
       crossent = math_ops.reduce_sum(crossent)
