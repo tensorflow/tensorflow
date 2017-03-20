@@ -55,7 +55,7 @@ class SingleMachine : public Cluster {
   std::unique_ptr<Coordinator> coordinator_;
   std::unique_ptr<thread::ThreadPool> thread_pool_;
 
-  Status status_;
+  RunMetadata init_metadata_;
 
   mutex close_mu_;
   bool closing_ GUARDED_BY(close_mu_);

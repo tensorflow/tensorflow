@@ -14,12 +14,15 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/clusters/single_machine.h"
+
 #include <memory>
+
 #include "tensorflow/cc/training/queue_runner.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
@@ -92,41 +95,41 @@ Status SingleMachine::Run(const GraphDef& graph_def,
   {
     mutex_lock l(this->last_graph_mu_);
     if (last_graph_ != &graph_def) {
-      Status status = ResetSession();
-      if (status.ok()) {
-        status = session_->Create(graph_def);
+      TF_RETURN_IF_ERROR(ResetSession());
+      TF_RETURN_IF_ERROR(session_->Create(graph_def));
+      if (!init_ops_.empty()) {
+        init_metadata_ = RunMetadata();
+        TF_RETURN_IF_ERROR(RunWithTimeout({}, init_ops_, &init_metadata_));
+        // The compute cost for init ops is likely to be pessimistic since init
+        // ops are run only once before warmup. Therefore we only keep their
+        // memory costs.
+        for (auto node : *init_metadata_.mutable_cost_graph()->mutable_node()) {
+          node.clear_compute_cost();
+        }
+        metadata->MergeFrom(init_metadata_);
       }
-      if (!init_ops_.empty() && status.ok()) {
-        status = RunWithTimeout({}, init_ops_, nullptr);
-      }
-      for (int i = 0; i < queue_runner_defs_.size() && status.ok(); ++i) {
+      for (int i = 0; i < queue_runner_defs_.size(); ++i) {
         std::unique_ptr<QueueRunner> queue_runner;
         TF_RETURN_IF_ERROR(QueueRunner::New(queue_runner_defs_[i],
                                             coordinator_.get(), &queue_runner));
-        TF_RETURN_IF_ERROR(queue_runner->Start(session_.get()));
+        TF_RETURN_IF_ERROR(queue_runner->StartAndCollectRunMetadata(
+            session_.get(), &run_options_));
         TF_RETURN_IF_ERROR(
             coordinator_->RegisterRunner(std::move(queue_runner)));
-        status = coordinator_->GetStatus();
+        TF_RETURN_IF_ERROR(coordinator_->GetStatus());
       }
-
-      if (status.ok()) {
-        last_graph_ = &graph_def;
-      } else {
-        return status;
-      }
+      last_graph_ = &graph_def;
 
       // Warmup TensorFlow if needed
       for (int i = 0;
            i < options_.config.graph_options().build_cost_model_after(); ++i) {
-        status = RunWithTimeout(feed, fetch, nullptr);
-        if (!status.ok()) {
-          return status;
-        }
+        TF_RETURN_IF_ERROR(RunWithTimeout(feed, fetch, nullptr));
       }
     }
   }
 
-  return RunWithTimeout(feed, fetch, metadata);
+  TF_RETURN_IF_ERROR(RunWithTimeout(feed, fetch, metadata));
+  return coordinator_->ExportCostGraph(metadata->mutable_cost_graph());
 }
 
 Status SingleMachine::RunWithTimeout(
@@ -206,10 +209,7 @@ Status SingleMachine::ResetSession() {
     LOG(INFO) << "Cleaning up previous session";
 
     // Make sure the session is properly closed
-    Status status = CloseSession(true /*use_timeout*/);
-    if (!status.ok()) {
-      return status;
-    }
+    TF_RETURN_IF_ERROR(CloseSession(true /*use_timeout*/));
 
     // Flush all the pending closures (if any).
     thread_pool_.reset(new thread::ThreadPool(
@@ -219,10 +219,7 @@ Status SingleMachine::ResetSession() {
     // deleted. But first we need to delete the session since Reset()
     // deletes some of the containers referenced by the session.
     session_.reset();
-    status = Reset(options_, {});
-    if (!status.ok()) {
-      return status;
-    }
+    TF_RETURN_IF_ERROR(Reset(options_, {}));
   }
 
   LOG(INFO) << "Starting new session";
