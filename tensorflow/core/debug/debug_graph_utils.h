@@ -105,6 +105,12 @@ class DebugNodeInserter {
       const protobuf::RepeatedPtrField<DebugTensorWatch>& watches, Graph* graph,
       Device* device);
 
+  // Set the parallel_iterations attribute of TensorFlow while loops
+  // (specifically the nodes for which IsEnter() returns true) to 1 to prevent
+  // any node from being executed multiple times concurrently and
+  // generating temporally-overlapping debug Tensor dumps.
+  static void DeparallelizeWhileLoops(Graph* graph, Device* device);
+
   // Get canonical name of a copy node.
   static const string GetCopyNodeName(const string& node_name,
                                       const int output_slot);
