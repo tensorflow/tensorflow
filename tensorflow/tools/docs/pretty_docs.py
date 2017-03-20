@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import inspect
-
 
 def build_md_page(page_info):
   """Given a PageInfo object, return markdown for the page.
@@ -139,8 +137,8 @@ def _build_class_page(page_info):
   if page_info.other_members:
     parts.append('## Class Members\n\n')
 
-    # TODO(wicke): Document the value of the members,
-    #              at least for basic types.
+    # TODO(markdaoust): Document the value of the members,
+    #                   at least for basic types.
 
     h3 = '<h3 id="{short_name}"><code>{short_name}</code></h3>\n\n'
     others_member_headings = (h3.format(short_name=info.short_name)
@@ -165,33 +163,50 @@ def _build_module_page(page_info):
 
   parts.append(page_info.doc.docstring)
   parts.append('\n\n')
-  parts.append('## Members\n\n')
 
-  # TODO(deannarubin): Make this list into a table.
-  for member_info in page_info.members:
-    if not member_info.is_link():
-      parts.append('Constant ' + member_info.short_name)
+  if page_info.modules:
+    parts.append('## Modules\n\n')
+    template = '[`{short_name}`]({url}) module'
+
+    for item in page_info.modules:
+      parts.append(template.format(**item.__dict__))
+
+      if item.doc.brief:
+        parts.append(': ' + item.doc.brief)
+
       parts.append('\n\n')
-      continue
 
-    suffix = ''
-    if inspect.isclass(member_info.obj):
-      link_text = 'class ' + member_info.short_name
-    elif inspect.isfunction(member_info.obj):
-      link_text = member_info.short_name + '(...)'
-    elif inspect.ismodule(member_info.obj):
-      link_text = member_info.short_name
-      suffix = ' module'
+  if page_info.classes:
+    parts.append('## Classes\n\n')
+    template = '[`class {short_name}`]({url})'
 
-    if member_info.doc.brief:
-      suffix = '%s: %s' % (suffix, member_info.doc.brief)
+    for item in page_info.classes:
+      parts.append(template.format(**item.__dict__))
 
-    parts.append('[`{link_text}`]({url}){suffix}'.format(
-        link_text=link_text, url=member_info.url, suffix=suffix))
-    parts.append('\n\n')
+      if item.doc.brief:
+        parts.append(': ' + item.doc.brief)
 
-  if page_info.members:
-    parts.pop()
+      parts.append('\n\n')
+
+  if page_info.functions:
+    parts.append('## Functions\n\n')
+    template = '[`{short_name}(...)`]({url})'
+
+    for item in page_info.functions:
+      parts.append(template.format(**item.__dict__))
+
+      if item.doc.brief:
+        parts.append(': ' + item.doc.brief)
+
+      parts.append('\n\n')
+
+  if page_info.other_members:
+    # TODO(markdaoust): Document the value of the members,
+    #                   at least for basic types.
+    parts.append('## Other Members\n\n')
+
+    for item in page_info.other_members:
+      parts.append('`{short_name}`\n\n'.format(**item.__dict__))
 
   return ''.join(parts)
 

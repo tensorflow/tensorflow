@@ -76,28 +76,48 @@ def _remove_squeezable_dimensions(predictions, labels, weights):
         labels, predictions)
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
 
-  if weights is not None:
-    weights = ops.convert_to_tensor(weights)
-    predictions_shape = predictions.get_shape()
-    predictions_rank = predictions_shape.ndims
-    weights_shape = weights.get_shape()
-    weights_rank = weights_shape.ndims
+  if weights is None:
+    return predictions, labels, None
 
-    # TODO(ptucker): Add logic to handle weights rank 1 less than predictions &
-    # labels.
-    if (predictions_rank is not None) and (weights_rank is not None):
-      # Use static rank.
-      if weights_rank - predictions_rank == 1:
-        weights = array_ops.squeeze(weights, [-1])
-    elif ((weights_rank is None) or
-          ((weights_rank > 0) and
-           weights_shape.dims[-1].is_compatible_with(1))):
-      # Use dynamic rank.
-      weights = control_flow_ops.cond(
-          math_ops.equal(array_ops.rank(weights),
-                         math_ops.add(array_ops.rank(predictions), 1)),
-          lambda: array_ops.squeeze(weights, [-1]),
+  weights = ops.convert_to_tensor(weights)
+  weights_shape = weights.get_shape()
+  weights_rank = weights_shape.ndims
+  if weights_rank == 0:
+    return predictions, labels, weights
+
+  predictions_shape = predictions.get_shape()
+  predictions_rank = predictions_shape.ndims
+  if (predictions_rank is not None) and (weights_rank is not None):
+    # Use static rank.
+    if weights_rank - predictions_rank == 1:
+      weights = array_ops.squeeze(weights, [-1])
+    elif predictions_rank - weights_rank == 1:
+      weights = array_ops.expand_dims(weights, [-1])
+  else:
+    # Use dynamic rank.
+    weights_rank_tensor = array_ops.rank(weights)
+    rank_diff = weights_rank_tensor - array_ops.rank(predictions)
+    def _maybe_expand_weights():
+      return control_flow_ops.cond(
+          math_ops.equal(rank_diff, -1),
+          lambda: array_ops.expand_dims(weights, [-1]),
           lambda: weights)
+    # Don't attempt squeeze if it will fail based on static check.
+    if ((weights_rank is not None) and
+        (not weights_shape.dims[-1].is_compatible_with(1))):
+      maybe_squeeze_weights = lambda: weights
+    else:
+      maybe_squeeze_weights = lambda: array_ops.squeeze(weights, [-1])
+    def _maybe_adjust_weights():
+      return control_flow_ops.cond(
+          math_ops.equal(rank_diff, 1),
+          maybe_squeeze_weights,
+          _maybe_expand_weights)
+    # If weights are scalar, do nothing. Otherwise, try to add or remove a
+    # dimension to match predictions.
+    weights = control_flow_ops.cond(
+        math_ops.equal(weights_rank_tensor, 0),
+        lambda: weights, _maybe_adjust_weights)
   return predictions, labels, weights
 
 

@@ -301,7 +301,7 @@ def get_run_start_intro(run_call_count,
       _recommend_command(
           "run -t <T>",
           "Execute run() calls (T - 1) times without debugging, then "
-          "execute run() one more time and drop back to the CLI"))
+          "execute run() once more with debugging and drop back to the CLI"))
   out.extend(
       _recommend_command(
           "run -f <filter_name>",

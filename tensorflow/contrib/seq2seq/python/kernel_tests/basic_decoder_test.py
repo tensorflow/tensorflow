@@ -19,14 +19,6 @@ from __future__ import division
 from __future__ import print_function
 # pylint: enable=unused-import
 
-import sys
-
-# TODO(jart): #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
-  import ctypes  # pylint: disable=g-import-not-at-top
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
-
-# pylint: disable=g-import-not-at-top
 import numpy as np
 
 from tensorflow.contrib.rnn import core_rnn_cell
@@ -282,7 +274,8 @@ class BasicDecoderTest(test.TestCase):
           sess_results["step_next_inputs"][batch_where_not_sampling],
           np.squeeze(inputs[batch_where_not_sampling, 1]))
 
-  def _testStepWithScheduledOutputTrainingHelper(self, use_next_input_layer):
+  def _testStepWithScheduledOutputTrainingHelper(
+      self, use_next_input_layer, use_auxiliary_inputs):
     sequence_length = [3, 4, 3, 1, 0]
     batch_size = 5
     max_time = 8
@@ -290,6 +283,12 @@ class BasicDecoderTest(test.TestCase):
     cell_depth = input_depth
     if use_next_input_layer:
       cell_depth = 6
+    if use_auxiliary_inputs:
+      auxiliary_input_depth = 4
+      auxiliary_inputs = np.random.randn(
+          batch_size, max_time, auxiliary_input_depth).astype(np.float32)
+    else:
+      auxiliary_inputs = None
 
     with self.test_session() as sess:
       inputs = np.random.randn(batch_size, max_time,
@@ -306,7 +305,8 @@ class BasicDecoderTest(test.TestCase):
           sequence_length=sequence_length,
           sampling_probability=half,
           time_major=False,
-          next_input_layer=next_input_layer)
+          next_input_layer=next_input_layer,
+          auxiliary_inputs=auxiliary_inputs)
 
       my_decoder = basic_decoder.BasicDecoder(
           cell=cell,
@@ -371,24 +371,45 @@ class BasicDecoderTest(test.TestCase):
       sample_ids = sess_results["step_outputs"].sample_id
       batch_where_not_sampling = np.where(np.logical_not(sample_ids))
       batch_where_sampling = np.where(sample_ids)
-      if use_next_input_layer:
-        self.assertAllClose(
-            sess_results["step_next_inputs"][batch_where_sampling],
-            sess_results["output_after_next_input_layer"][batch_where_sampling])
-      else:
-        self.assertAllClose(
-            sess_results["step_next_inputs"][batch_where_sampling],
-            sess_results["step_outputs"].rnn_output[batch_where_sampling])
+
+      auxiliary_inputs_to_concat = (
+          auxiliary_inputs[:, 1] if use_auxiliary_inputs else
+          np.array([]).reshape(batch_size, 0).astype(np.float32))
+
+      expected_next_sampling_inputs = np.concatenate(
+          (sess_results["output_after_next_input_layer"][batch_where_sampling]
+           if use_next_input_layer else
+           sess_results["step_outputs"].rnn_output[batch_where_sampling],
+           auxiliary_inputs_to_concat[batch_where_sampling]),
+          axis=-1)
+      self.assertAllClose(
+          sess_results["step_next_inputs"][batch_where_sampling],
+          expected_next_sampling_inputs)
+
       self.assertAllClose(
           sess_results["step_next_inputs"][batch_where_not_sampling],
-          np.squeeze(inputs[batch_where_not_sampling, 1], axis=1))
+          np.concatenate(
+              (np.squeeze(inputs[batch_where_not_sampling, 1], axis=0),
+               auxiliary_inputs_to_concat[batch_where_not_sampling]),
+              axis=-1))
 
-  def testStepWithScheduledOutputTrainingHelperWithoutNextInputLayer(self):
-    self._testStepWithScheduledOutputTrainingHelper(use_next_input_layer=False)
+  def testStepWithScheduledOutputTrainingHelperWithoutNextInputLayerOrAuxInputs(
+      self):
+    self._testStepWithScheduledOutputTrainingHelper(
+        use_next_input_layer=False, use_auxiliary_inputs=False)
 
   def testStepWithScheduledOutputTrainingHelperWithNextInputLayer(self):
-    self._testStepWithScheduledOutputTrainingHelper(use_next_input_layer=True)
+    self._testStepWithScheduledOutputTrainingHelper(
+        use_next_input_layer=True, use_auxiliary_inputs=False)
 
+  def testStepWithScheduledOutputTrainingHelperWithAuxiliaryInputs(self):
+    self._testStepWithScheduledOutputTrainingHelper(
+        use_next_input_layer=False, use_auxiliary_inputs=True)
+
+  def testStepWithScheduledOutputTrainingHelperWithNextInputLayerAndAuxInputs(
+      self):
+    self._testStepWithScheduledOutputTrainingHelper(
+        use_next_input_layer=True, use_auxiliary_inputs=True)
 
 if __name__ == "__main__":
   test.main()

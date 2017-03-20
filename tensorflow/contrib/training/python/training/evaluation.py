@@ -166,6 +166,7 @@ __all__ = [
 StopAfterNEvalsHook = evaluation._StopAfterNEvalsHook
 evaluate_once = evaluation._evaluate_once
 get_or_create_eval_step = evaluation._get_or_create_eval_step
+
 # pylint: enable=invalid-name
 # pylint: enable=protected-access
 
@@ -201,7 +202,10 @@ def wait_for_new_checkpoint(checkpoint_dir,
       return checkpoint_path
 
 
-def checkpoints_iterator(checkpoint_dir, min_interval_secs=0, timeout=None):
+def checkpoints_iterator(checkpoint_dir,
+                         min_interval_secs=0,
+                         timeout=None,
+                         timeout_fn=None):
   """Continuously yield new checkpoint files as they appear.
 
   The iterator only checks for new checkpoints when control flow has been
@@ -209,25 +213,54 @@ def checkpoints_iterator(checkpoint_dir, min_interval_secs=0, timeout=None):
   to run between iterations than `min_interval_secs` or the interval at which
   new checkpoints are written.
 
+  The `timeout` argument is the maximum number of seconds to block waiting for
+  a new checkpoint.  It is used in combination with the `timeout_fn` as
+  follows:
+
+  * If the timeout expires and no `timeout_fn` was specified, the iterator
+    stops yielding.
+  * If a `timeout_fn` was specified, that function is called and if it returns
+    a true boolean value the iterator stops yielding.
+  * If the function returns a false boolean value then the iterator resumes the
+    wait for new checkpoints.  At this point the timeout logic applies again.
+
+  This behavior gives control to callers on what to do if checkpoints do not
+  come fast enough or stop being generated.  For example, if callers have a way
+  to detect that the training has stopped and know that no new new checkpoints
+  will be generated, they can provide a `timeout_fn` that returns `True` when
+  the training has stopped.  If they know that the training is still going on
+  they return `False` instead.
+
   Args:
     checkpoint_dir: The directory in which checkpoints are saved.
     min_interval_secs: The minimum number of seconds between yielding
       checkpoints.
     timeout: The maximum amount of time to wait between checkpoints. If left as
       `None`, then the process will wait indefinitely.
+    timeout_fn: Optional function to call after a timeout.  If the function
+      returns True, then it means that no new checkpoints will be generated and
+      the iterator will exit.  The function is called with no arguments.
 
   Yields:
-    String paths to latest checkpoint files as they arrive. Stops yielding only
-    if/when waiting for a checkpoint times out.
+    String paths to latest checkpoint files as they arrive.
   """
   checkpoint_path = None
   while True:
-    checkpoint_path = wait_for_new_checkpoint(
+    new_checkpoint_path = wait_for_new_checkpoint(
         checkpoint_dir, checkpoint_path, timeout=timeout)
-    if checkpoint_path is None:
-      # timed out
-      return
+    if new_checkpoint_path is None:
+      if not timeout_fn:
+        # timed out
+        logging.info('Timed-out waiting for a checkpoint.')
+        return
+      if timeout_fn():
+        # The timeout_fn indicated that we are truely done.
+        return
+      else:
+        # The timeout_fn indicated that more checkpoints may come.
+        continue
     start = time.time()
+    checkpoint_path = new_checkpoint_path
     yield checkpoint_path
     time_to_next_eval = start + min_interval_secs - time.time()
     if time_to_next_eval > 0:
@@ -237,8 +270,11 @@ def checkpoints_iterator(checkpoint_dir, min_interval_secs=0, timeout=None):
 class SummaryAtEndHook(session_run_hook.SessionRunHook):
   """A run hook that saves a summary with the results of evaluation."""
 
-  def __init__(self, log_dir=None, summary_writer=None,
-               summary_op=None, feed_dict=None):
+  def __init__(self,
+               log_dir=None,
+               summary_writer=None,
+               summary_op=None,
+               feed_dict=None):
     """Constructs the Summary Hook.
 
     Args:
@@ -315,7 +351,8 @@ def evaluate_repeatedly(checkpoint_dir,
                         hooks=None,
                         config=None,
                         max_number_of_evaluations=None,
-                        timeout=None):
+                        timeout=None,
+                        timeout_fn=None):
   """Repeatedly searches for a checkpoint in `checkpoint_dir` and evaluates it.
 
   During a single evaluation, the `eval_ops` is run until the session is
@@ -361,6 +398,9 @@ def evaluate_repeatedly(checkpoint_dir,
       as `None`, then evaluation runs indefinitely.
     timeout: The maximum amount of time to wait between checkpoints. If left as
       `None`, then the process will wait indefinitely.
+    timeout_fn: Optional function to call after a timeout.  If the function
+      returns True, then it means that no new checkpoints will be generated and
+      the iterator will exit.  The function is called with no arguments.
 
   Returns:
     The fetched values of `final_ops` or `None` if `final_ops` is `None`.
@@ -384,13 +424,16 @@ def evaluate_repeatedly(checkpoint_dir,
     else:
       eval_ops = [eval_ops, update_eval_step]
 
-  final_ops_hook = basic_session_run_hooks.FinalOpsHook(
-      final_ops, final_ops_feed_dict)
+  final_ops_hook = basic_session_run_hooks.FinalOpsHook(final_ops,
+                                                        final_ops_feed_dict)
   hooks.append(final_ops_hook)
 
   num_evaluations = 0
-  for checkpoint_path in checkpoints_iterator(checkpoint_dir,
-                                              eval_interval_secs, timeout):
+  for checkpoint_path in checkpoints_iterator(
+      checkpoint_dir,
+      min_interval_secs=eval_interval_secs,
+      timeout=timeout,
+      timeout_fn=timeout_fn):
 
     session_creator = monitored_session.ChiefSessionCreator(
         scaffold=scaffold,
@@ -413,5 +456,4 @@ def evaluate_repeatedly(checkpoint_dir,
     if max_number_of_evaluations is not None and num_evaluations >= max_number_of_evaluations:
       return final_ops_hook.final_ops_values
 
-  logging.info('Timed-out waiting for a checkpoint.')
   return final_ops_hook.final_ops_values

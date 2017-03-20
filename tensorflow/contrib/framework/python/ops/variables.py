@@ -119,6 +119,8 @@ def get_global_step(graph=None):
 def create_global_step(graph=None):
   """Create global step tensor in graph.
 
+  This API is deprecated. Use core framework training version instead.
+
   Args:
     graph: The graph in which to create the global step tensor. If missing,
       use default graph.

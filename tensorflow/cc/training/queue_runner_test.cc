@@ -355,17 +355,37 @@ TEST(QueueRunnerTest, RunMetaDataTest) {
 
   RunOptions run_options;
   run_options.set_trace_level(RunOptions::HARDWARE_TRACE);
-  RunMetadata run_metadata;
-  mutex mu;
 
   QueueRunnerDef queue_runner_def = BuildQueueRunnerDef(
       kQueueName, {kCountUpToOpName}, kSquareOpName, "", {});
   std::unique_ptr<QueueRunner> qr;
   TF_EXPECT_OK(QueueRunner::New(queue_runner_def, &qr));
-  TF_CHECK_OK(qr->Start(session.get(), &run_metadata, &mu, &run_options));
+  TF_CHECK_OK(qr->StartAndCollectRunMetadata(session.get(), &run_options));
+
   TF_EXPECT_OK(qr->Join());
+  RunMetadata run_metadata;
+  TF_CHECK_OK(qr->ExportRunMetadata(&run_metadata));
 
   EXPECT_TRUE(run_metadata.has_cost_graph());
+}
+
+TEST(QueueRunnerTest, NoRunMetaDataTest) {
+  GraphDef graph_def = BuildSimpleGraph();
+  auto session = BuildSessionAndInitVariable(graph_def);
+
+  RunOptions run_options;
+  run_options.set_trace_level(RunOptions::HARDWARE_TRACE);
+
+  QueueRunnerDef queue_runner_def = BuildQueueRunnerDef(
+      kQueueName, {kCountUpToOpName}, kSquareOpName, "", {});
+  std::unique_ptr<QueueRunner> qr;
+  TF_EXPECT_OK(QueueRunner::New(queue_runner_def, &qr));
+  TF_CHECK_OK(qr->Start(session.get()));
+
+  TF_EXPECT_OK(qr->Join());
+  RunMetadata run_metadata;
+  EXPECT_EQ(qr->ExportRunMetadata(&run_metadata).code(),
+            error::FAILED_PRECONDITION);
 }
 
 }  // namespace

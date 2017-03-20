@@ -21,16 +21,7 @@ from __future__ import print_function
 import copy
 import itertools
 import os
-import sys
 import tempfile
-
-# pylint: disable=g-bad-todo
-# TODO(#6568): Remove this hack that makes dlopen() not crash.
-# pylint: enable=g-bad-todo
-# pylint: disable=g-import-not-at-top
-if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 import numpy as np
 
@@ -562,6 +553,55 @@ class FeatureColumnTest(test.TestCase):
     with self.test_session() as sess:
       sparse_result = sess.run(sparse_output)
     self.assertEquals(expected_shape, list(sparse_result.dense_shape))
+
+  def testSparseColumnIntegerizedDeepCopy(self):
+    """Tests deepcopy of sparse_column_with_integerized_feature."""
+    column = fc.sparse_column_with_integerized_feature("a", 10)
+    self.assertEqual("a", column.name)
+    column_copy = copy.deepcopy(column)
+    self.assertEqual("a", column_copy.name)
+    self.assertEqual(10, column_copy.bucket_size)
+    self.assertTrue(column_copy.is_integerized)
+
+  def testSparseColumnHashBucketDeepCopy(self):
+    """Tests deepcopy of sparse_column_with_hash_bucket."""
+    column = fc.sparse_column_with_hash_bucket("a", 10)
+    self.assertEqual("a", column.name)
+    column_copy = copy.deepcopy(column)
+    self.assertEqual("a", column_copy.name)
+    self.assertEqual(10, column_copy.bucket_size)
+    self.assertFalse(column_copy.is_integerized)
+
+  def testSparseColumnKeysDeepCopy(self):
+    """Tests deepcopy of sparse_column_with_keys."""
+    column = fc.sparse_column_with_keys(
+        "a", keys=["key0", "key1", "key2"])
+    self.assertEqual("a", column.name)
+    column_copy = copy.deepcopy(column)
+    self.assertEqual("a", column_copy.name)
+    self.assertEqual(
+        fc._SparseIdLookupConfig(  # pylint: disable=protected-access
+            keys=("key0", "key1", "key2"),
+            vocab_size=3,
+            default_value=-1),
+        column_copy.lookup_config)
+    self.assertFalse(column_copy.is_integerized)
+
+  def testSparseColumnVocabularyDeepCopy(self):
+    """Tests deepcopy of sparse_column_with_vocabulary_file."""
+    column = fc.sparse_column_with_vocabulary_file(
+        "a", vocabulary_file="path_to_file", vocab_size=3)
+    self.assertEqual("a", column.name)
+    column_copy = copy.deepcopy(column)
+    self.assertEqual("a", column_copy.name)
+    self.assertEqual(
+        fc._SparseIdLookupConfig(  # pylint: disable=protected-access
+            vocabulary_file="path_to_file",
+            num_oov_buckets=0,
+            vocab_size=3,
+            default_value=-1),
+        column_copy.lookup_config)
+    self.assertFalse(column_copy.is_integerized)
 
   def testCreateFeatureSpec(self):
     sparse_col = fc.sparse_column_with_hash_bucket(

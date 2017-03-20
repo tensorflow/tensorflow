@@ -981,19 +981,23 @@ ComputationDataHandle ComputationBuilder::IsFinite(
 ComputationDataHandle ComputationBuilder::Transpose(
     const ComputationDataHandle& operand,
     tensorflow::gtl::ArraySlice<int64> permutation) {
-  if (!first_error_.ok()) {
+  if (!first_error_.ok() || !PrepareComputation().ok()) {
     return ComputationDataHandle();
   }
 
-  StatusOr<std::unique_ptr<Shape>> shape = GetShape(operand);
-  if (!shape.ok()) {
-    // Just early return with the existing error status.
-    first_error_ = shape.status();
-    return ComputationDataHandle();
+  OpRequest op_request;
+  *op_request.mutable_computation() = computation_.handle();
+  TransposeRequest* request = op_request.mutable_transpose_request();
+  *request->mutable_operand() = operand;
+  for (int64 dimension : permutation) {
+    request->add_dimensions(dimension);
   }
-  return Reshape(operand, permutation,
-                 Permute(InversePermutation(permutation),
-                         AsInt64Slice(shape.ValueOrDie()->dimensions())));
+  AddOpMetadata(&op_request);
+  OpResponse response;
+
+  VLOG(2) << "making transpose request";
+  Status s = client_->stub()->Op(&op_request, &response);
+  return ParseOpResponse(s, &response);
 }
 
 ComputationDataHandle ComputationBuilder::Rev(

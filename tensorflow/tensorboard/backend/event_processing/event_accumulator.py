@@ -33,6 +33,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.tensorboard.backend.event_processing import directory_watcher
 from tensorflow.tensorboard.backend.event_processing import event_file_loader
+from tensorflow.tensorboard.backend.event_processing import plugin_asset_util
 from tensorflow.tensorboard.backend.event_processing import reservoir
 
 namedtuple = collections.namedtuple
@@ -210,6 +211,7 @@ class EventAccumulator(object):
     self._tensors = reservoir.Reservoir(size=sizes[TENSORS])
 
     self._generator_mutex = threading.Lock()
+    self.path = path
     self._generator = _GeneratorFromPath(path)
 
     self._compression_bps = compression_bps
@@ -236,6 +238,33 @@ class EventAccumulator(object):
       for event in self._generator.Load():
         self._ProcessEvent(event)
     return self
+
+  def PluginAssets(self, plugin_name):
+    """Return a list of all plugin assets for the given plugin.
+
+    Args:
+      plugin_name: The string name of a plugin to retrieve assets for.
+
+    Returns:
+      A list of string plugin asset names, or empty list if none are available.
+      If the plugin was not registered, an empty list is returned.
+    """
+    return plugin_asset_util.ListAssets(self.path, plugin_name)
+
+  def RetrievePluginAsset(self, plugin_name, asset_name):
+    """Return the contents of a given plugin asset.
+
+    Args:
+      plugin_name: The string name of a plugin.
+      asset_name: The string name of an asset.
+
+    Returns:
+      The string contents of the plugin asset.
+
+    Raises:
+      KeyError: If the asset is not available.
+    """
+    return plugin_asset_util.RetrieveAsset(self.path, plugin_name, asset_name)
 
   def FirstEventTimestamp(self):
     """Returns the timestamp in seconds of the first event.

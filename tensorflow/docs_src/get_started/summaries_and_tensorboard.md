@@ -10,6 +10,11 @@ TensorBoard is fully configured, it looks like this:
 
 ![MNIST TensorBoard](../images/mnist_tensorboard.png "MNIST TensorBoard")
 
+<div class="video-wrapper">
+  <iframe class="devsite-embedded-youtube-video" data-video-id="eBbEDRsCmv4"
+          data-autohide="1" data-showinfo="0" frameborder="0" allowfullscreen>
+  </iframe>
+</div>
 
 This tutorial is intended to get you started with simple TensorBoard usage.
 There are other resources available as well! The [TensorBoard README](https://www.tensorflow.org/code/tensorflow/tensorboard/README.md)

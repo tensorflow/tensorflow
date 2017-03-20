@@ -209,6 +209,7 @@ def _get_default_do_not_descend_map():
           'select',
           'util'
       ],
+      'contrib.keras': ['api', 'python'],
       'contrib.layers': ['feature_column', 'summaries'],
       'contrib.learn': [
           'datasets',

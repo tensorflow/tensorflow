@@ -105,13 +105,13 @@ class MeanOp : public XlaReductionOp {
     builder->Add(scalar_lhs, scalar_rhs);
   }
 
-  bool BuildFinalizer(xla::ComputationBuilder* builder,
-                      const xla::ComputationDataHandle& scalar_argument,
-                      int64 num_elements_reduced) override {
+  xla::ComputationDataHandle BuildFinalizer(
+      xla::ComputationBuilder* builder,
+      const xla::ComputationDataHandle& reduce_output,
+      int64 num_elements_reduced) override {
     auto divisor = XlaHelpers::IntegerLiteral(builder, input_type(0),
                                               num_elements_reduced);
-    builder->Div(scalar_argument, divisor);
-    return true;
+    return builder->Div(reduce_output, divisor);
   }
 };
 

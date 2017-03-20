@@ -12,6 +12,10 @@ file(GLOB_RECURSE tf_core_cpu_srcs
     "${tensorflow_source_dir}/tensorflow/core/distributed_runtime/server_lib.cc"
     "${tensorflow_source_dir}/tensorflow/core/graph/*.h"
     "${tensorflow_source_dir}/tensorflow/core/graph/*.cc"
+    "${tensorflow_source_dir}/tensorflow/core/grappler/*.h"
+    "${tensorflow_source_dir}/tensorflow/core/grappler/*.cc"
+    "${tensorflow_source_dir}/tensorflow/core/grappler/*/*.h"
+    "${tensorflow_source_dir}/tensorflow/core/grappler/*/*.cc"
     "${tensorflow_source_dir}/tensorflow/core/public/*.h"
 )
 
@@ -28,8 +32,14 @@ file(GLOB_RECURSE tf_core_cpu_exclude_srcs
     "${tensorflow_source_dir}/tensorflow/core/common_runtime/session.cc"
     "${tensorflow_source_dir}/tensorflow/core/common_runtime/session_factory.cc"
     "${tensorflow_source_dir}/tensorflow/core/common_runtime/session_options.cc"
+    "${tensorflow_source_dir}/tensorflow/core/grappler/devices.h"
+    "${tensorflow_source_dir}/tensorflow/core/grappler/devices.cc"
+    "${tensorflow_source_dir}/tensorflow/core/grappler/clusters/single_machine.h"
+    "${tensorflow_source_dir}/tensorflow/core/grappler/clusters/single_machine.cc"
+    "${tensorflow_source_dir}/tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"
+    "${tensorflow_source_dir}/tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.cc"
 )
-list(REMOVE_ITEM tf_core_cpu_srcs ${tf_core_cpu_exclude_srcs}) 
+list(REMOVE_ITEM tf_core_cpu_srcs ${tf_core_cpu_exclude_srcs})
 
 # We need to include stubs for the GPU tracer, which are in the exclude glob.
 list(APPEND tf_core_cpu_srcs

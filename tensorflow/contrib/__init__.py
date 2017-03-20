@@ -34,6 +34,7 @@ from tensorflow.contrib import grid_rnn
 from tensorflow.contrib import image
 from tensorflow.contrib import input_pipeline
 from tensorflow.contrib import integrate
+from tensorflow.contrib import keras
 from tensorflow.contrib import labeled_tensor
 from tensorflow.contrib import layers
 from tensorflow.contrib import learn

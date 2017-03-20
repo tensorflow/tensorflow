@@ -48,6 +48,19 @@ XLA_TEST_F(BroadcastSimpleTest, ScalarTo2D_2x3) {
   ComputeAndCompareR2<float>(&b, expected, {}, ErrorSpec(0.0001));
 }
 
+XLA_TEST_F(BroadcastSimpleTest, ScalarParamTo2D_2x3) {
+  ComputationBuilder b(client_, TestName());
+  ComputationDataHandle src;
+  std::unique_ptr<GlobalData> param_data =
+      CreateR0Parameter<float>(2.25f, /*parameter_number=*/0, /*name=*/"src",
+                               /*builder=*/&b, /*data_handle=*/&src);
+
+  b.Broadcast(src, {2, 3});
+  Array2D<float> expected(2, 3, 2.25);
+  ComputeAndCompareR2<float>(&b, expected, {param_data.get()},
+                             ErrorSpec(0.0001));
+}
+
 XLA_TEST_F(BroadcastSimpleTest, ScalarTo2D_2x0) {
   ComputationBuilder b(client_, TestName());
   b.Broadcast(b.ConstantR0<float>(2.25), {2, 0});
