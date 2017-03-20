@@ -485,5 +485,92 @@ TEST_F(DebugNumericSummaryOpTest, BoolSuccess) {
   test::ExpectTensorNear<double>(expected, *GetOutput(0), 1e-8);
 }
 
+// Tests for DebugNumericSummaryOp
+class DebugNumericSummaryOpCustomLowerBoundTest : public OpsTestBase {
+ protected:
+  Status Init(DataType input_type) {
+    TF_CHECK_OK(NodeDefBuilder("op", "DebugNumericSummary")
+                    .Input(FakeInput(input_type))
+                    .Attr("tensor_name", "FakeTensor:0")
+                    .Attr("lower_bound", -1.2f)
+                    .Finalize(node_def()));
+    return InitOp();
+  }
+};
+
+TEST_F(DebugNumericSummaryOpCustomLowerBoundTest, Float_full_house) {
+  TF_ASSERT_OK(Init(DT_FLOAT));
+  AddInputFromArray<float>(
+      TensorShape({18}),
+      {std::numeric_limits<float>::quiet_NaN(),
+       std::numeric_limits<float>::quiet_NaN(), 0.0f, 0.0f, 0.0f, -1.0f, -3.0f,
+       3.0f, 7.0f, -std::numeric_limits<float>::infinity(),
+       -std::numeric_limits<float>::infinity(),
+       std::numeric_limits<float>::infinity(),
+       std::numeric_limits<float>::infinity(),
+       std::numeric_limits<float>::infinity(),
+       std::numeric_limits<float>::infinity(),
+       std::numeric_limits<float>::infinity(),
+       std::numeric_limits<float>::quiet_NaN(),
+       std::numeric_limits<float>::quiet_NaN()});
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected(allocator(), DT_DOUBLE, TensorShape({12}));
+  test::FillValues<double>(
+      &expected,
+      {1.0,              // Is initialized.
+       18.0,             // Total element count.
+       4.0,              // nan count.
+       3.0,              // -inf count.
+       1.0,              // negative number count (excluding -inf).
+       3.0,              // zero count.
+       2.0,              // positive number count (excluding +inf).
+       5.0,              // +inf count.
+       -3.0,             // minimum of non-inf and non-nan elements.
+       7.0,              // maximum of non-inf and non-nan elements.
+       0.85714285714,    // mean of non-inf and non-nan elements.
+       8.97959183673});  // variance of non-inf and non-nan elements.
+
+  test::ExpectTensorNear<double>(expected, *GetOutput(0), 1e-8);
+}
+
+// Tests for DebugNumericSummaryOp
+class DebugNumericSummaryOpCustomLowerUpperBoundsTest : public OpsTestBase {
+ protected:
+  Status Init(DataType input_type) {
+    TF_CHECK_OK(NodeDefBuilder("op", "DebugNumericSummary")
+                    .Input(FakeInput(input_type))
+                    .Attr("tensor_name", "FakeTensor:0")
+                    .Attr("lower_bound", -0.5f)
+                    .Attr("upper_bound", 3.6f)
+                    .Finalize(node_def()));
+    return InitOp();
+  }
+};
+
+TEST_F(DebugNumericSummaryOpCustomLowerUpperBoundsTest, Int32Success) {
+  TF_ASSERT_OK(Init(DT_INT32));
+  AddInputFromArray<int32>(TensorShape({2, 3}), {0, 0, -1, 3, 3, 7});
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected(allocator(), DT_DOUBLE, TensorShape({12}));
+  test::FillValues<double>(
+      &expected,
+      {1.0,              // Is initialized.
+       6.0,              // Total element count.
+       0.0,              // nan count.
+       1.0,              // -inf count.
+       0.0,              // negative count (excluding -inf).
+       2.0,              // zero count.
+       2.0,              // positive count (excluding +inf).
+       1.0,              // +inf count.
+       -1.0,             // minimum of non-inf and non-nan elements.
+       7.0,              // maximum of non-inf and non-nan elements.
+       2.0,              // mean of non-inf and non-nan elements.
+       7.33333333333});  // variance of non-inf and non-nan elements.
+
+  test::ExpectTensorNear<double>(expected, *GetOutput(0), 1e-8);
+}
+
 }  // namespace
 }  // namespace tensorflow
