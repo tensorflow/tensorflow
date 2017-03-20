@@ -61,5 +61,75 @@ Status BackportConcatV2Transform(const GraphDef& input_graph_def,
 
 REGISTER_GRAPH_TRANSFORM("backport_concatv2", BackportConcatV2Transform);
 
+// Switch any TensorArrayV3 nodes to the v2 version, removing the second output.
+Status BackportTensorArrayV3Transform(const GraphDef& input_graph_def,
+                                      const TransformFuncContext& context,
+                                      GraphDef* output_graph_def) {
+  std::map<string, string> inputs_to_rename;
+  GraphDef replaced_graph_def;
+  TF_RETURN_IF_ERROR(ReplaceMatchingOpTypes(
+      input_graph_def, {"TensorArrayV3|TensorArrayGradV3"},
+      [&inputs_to_rename](const NodeMatch& match,
+                          const std::set<string>& input_nodes,
+                          const std::set<string>& output_nodes,
+                          std::vector<NodeDef>* new_nodes) {
+        const NodeDef& tensor_array_v3_node = match.node;
+
+        // All we need to do here is rename the op type, since the attributes
+        // remain the same.
+        NodeDef tensor_array_v2_node = tensor_array_v3_node;
+        if (tensor_array_v3_node.op() == "TensorArrayV3") {
+          tensor_array_v2_node.set_op("TensorArrayV2");
+        } else {
+          tensor_array_v2_node.set_op("TensorArrayGradV2");
+        }
+
+        // The v3 version has a second 'flow' output that's not present in v2,
+        // so substitute a dummy constant instead in any places that use it.
+        NodeDef replacement_flow_node;
+        replacement_flow_node.set_op("Const");
+        replacement_flow_node.set_name(tensor_array_v3_node.name() +
+                                       "/replacement_flow_node");
+        Tensor replacement_flow_tensor(DT_FLOAT, {});
+        // I'm picking an arbitrary value for the gradient flow here, for lack
+        // of a better alternative.
+        replacement_flow_tensor.flat<float>()(0) = 1.0f;
+        SetNodeTensorAttr<float>("value", replacement_flow_tensor,
+                                 &replacement_flow_node);
+        inputs_to_rename[tensor_array_v3_node.name() + ":1"] =
+            replacement_flow_node.name();
+
+        new_nodes->push_back(tensor_array_v2_node);
+        new_nodes->push_back(replacement_flow_node);
+        return Status::OK();
+      },
+      {true}, &replaced_graph_def));
+  // Update the graph so that any nodes that referred to removed inputs now
+  // pull from the substitute constants we've added.
+  GraphDef renamed_graph_def;
+  TF_RETURN_IF_ERROR(RenameNodeInputs(replaced_graph_def, inputs_to_rename,
+                                      std::unordered_set<string>(),
+                                      &renamed_graph_def));
+  TF_RETURN_IF_ERROR(ReplaceMatchingOpTypes(
+      renamed_graph_def,
+      {"TensorArrayWriteV3|TensorArrayReadV3|TensorArrayGatherV3|"
+       "TensorArrayScatterV3|TensorArrayConcatV3|TensorArraySplitV3|"
+       "TensorArraySizeV3|TensorArrayCloseV3"},
+      [](const NodeMatch& match, const std::set<string>& input_nodes,
+         const std::set<string>& output_nodes,
+         std::vector<NodeDef>* new_nodes) {
+        const NodeDef& v3_node = match.node;
+        NodeDef v2_node = v3_node;
+        v2_node.set_op(v3_node.op().substr(0, v3_node.op().size() - 1) + "2");
+        new_nodes->push_back(v2_node);
+        return Status::OK();
+      },
+      {true}, output_graph_def));
+  return Status::OK();
+}
+
+REGISTER_GRAPH_TRANSFORM("backport_tensor_array_v3",
+                         BackportTensorArrayV3Transform);
+
 }  // namespace graph_transforms
 }  // namespace tensorflow
