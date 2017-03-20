@@ -119,8 +119,8 @@ class ProjectorPlugin(TBPlugin):
     self._configs = None
     self.old_num_run_paths = None
 
-  def get_plugin_apps(self, run_paths, logdir):
-    self.run_paths = run_paths
+  def get_plugin_apps(self, multiplexer, logdir):
+    self.run_paths = multiplexer.RunPaths()
     self.logdir = logdir
     self._handlers = {
         RUNS_ROUTE: self._serve_runs,

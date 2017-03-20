@@ -102,10 +102,8 @@ def standard_tensorboard_wsgi(logdir, purge_orphaned_data, reload_interval):
       purge_orphaned_data=purge_orphaned_data)
 
   plugins = {
-      debugger_plugin.PLUGIN_PREFIX_ROUTE:
-          debugger_plugin.DebuggerPlugin(multiplexer),
-      projector_plugin.PLUGIN_PREFIX_ROUTE:
-          projector_plugin.ProjectorPlugin(),
+      debugger_plugin.PLUGIN_PREFIX_ROUTE: debugger_plugin.DebuggerPlugin(),
+      projector_plugin.PLUGIN_PREFIX_ROUTE: projector_plugin.ProjectorPlugin(),
   }
 
   return TensorBoardWSGIApp(logdir, plugins, multiplexer, reload_interval)
@@ -180,8 +178,7 @@ class TensorBoardWSGIApp(object):
     for name in self._plugins:
       try:
         plugin = self._plugins[name]
-        plugin_apps = plugin.get_plugin_apps(self._multiplexer.RunPaths(),
-                                             self._logdir)
+        plugin_apps = plugin.get_plugin_apps(self._multiplexer, self._logdir)
       except Exception as e:  # pylint: disable=broad-except
         logging.warning('Plugin %s failed. Exception: %s', name, str(e))
         continue
