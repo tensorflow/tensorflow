@@ -656,7 +656,9 @@ xla_test(
     },
     shard_count = 30,
     deps = [
+        "//tensorflow/compiler/xla:array3d",
         "//tensorflow/compiler/xla:array4d",
+        "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:reference_util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:computation_builder",
@@ -748,7 +750,7 @@ xla_test(
 
 xla_test(
     name = "dynamic_ops_test",
-    timeout = "long",
+    timeout = "moderate",
     srcs = ["dynamic_ops_test.cc"],
     deps = [
         "//tensorflow/compiler/xla:array2d",
@@ -1340,6 +1342,22 @@ cc_test(
     deps = [
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_test(
+    name = "hlo_metadata_test",
+    srcs = [
+        "hlo_metadata_test.cc",
+    ],
+    deps = [
+        ":local_client_test_base",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/client:computation_builder",
+        "//tensorflow/compiler/xla/service:computation_tracker",
+        "//tensorflow/compiler/xla/service:local_service",
         "//tensorflow/core:test_main",
     ],
 )

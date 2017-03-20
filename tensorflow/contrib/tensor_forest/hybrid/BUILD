@@ -8,6 +8,7 @@ package(default_visibility = [
     "//visibility:public",
 ])
 
+load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 
 filegroup(
@@ -68,7 +69,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
-        "@protobuf//:protobuf",
+        "@protobuf//:protobuf_headers",
     ],
 )
 
@@ -391,5 +392,20 @@ py_library(
         ":ops_lib",
         "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/tensor_forest:tensor_forest_py",
+    ],
+)
+
+# Transitive dependencies of this target will be included in the pip package.
+py_library(
+    name = "hybrid_pip",
+    deps = [
+        ":all_layers",
+        ":decisions_to_data_then_nn",
+        ":forest_to_data_then_nn",
+        ":hard_decisions_to_data_then_nn",
+        ":k_feature_decisions_to_data_then_nn",
+        ":nn",
+        ":stochastic_hard_decisions_to_data_then_nn",
+        ":stochastic_soft_decisions_to_data_then_nn",
     ],
 )

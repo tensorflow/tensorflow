@@ -7,7 +7,7 @@ build:sycl --crosstool_top=@local_config_sycl//crosstool:toolchain
 build:sycl --define=using_sycl=true
 
 build:sycl_asan --crosstool_top=@local_config_sycl//crosstool:toolchain
-build:sycl_asan --define=using_sycl=true --copt -fno-omit-frame-pointer --copt -fsanitize-coverage=3 --copt -fsanitize=address --copt -DGPR_NO_DIRECT_SYSCALLS --linkopt -fPIC --linkopt -lasan
+build:sycl_asan --define=using_sycl=true --copt -fno-omit-frame-pointer --copt -fsanitize-coverage=3 --copt -DGPR_NO_DIRECT_SYSCALLS --linkopt -fPIC --linkopt -fsanitize=address
 
 build --force_python=py$PYTHON_MAJOR_VERSION
 build --host_force_python=py$PYTHON_MAJOR_VERSION

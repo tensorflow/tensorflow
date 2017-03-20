@@ -453,7 +453,14 @@ def create_train_op(total_loss,
                                           'LossTensor is inf or nan')
 
     # Ensure the train_tensor computes grad_updates.
-    return control_flow_ops.with_dependencies([grad_updates], total_loss)
+    train_op = control_flow_ops.with_dependencies([grad_updates], total_loss)
+
+  # Add the operation used for training to the 'train_op' collection
+  train_ops = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
+  if train_op not in train_ops:
+    train_ops.append(train_op)
+
+  return train_op
 
 
 def train(train_op,

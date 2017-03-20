@@ -75,6 +75,11 @@ type Output struct {
 	Index int
 }
 
+// DataType returns the type of elements in the tensor produced by p.
+func (p Output) DataType() DataType {
+	return DataType(C.TF_OperationOutputType(p.c()))
+}
+
 // Shape returns the (possibly incomplete) shape of the tensor produced p.
 func (p Output) Shape() Shape {
 	status := newStatus()

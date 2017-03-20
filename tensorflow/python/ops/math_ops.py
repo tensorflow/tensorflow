@@ -12,13 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Note: Elementwise binary operations in TensorFlow follow [numpy-style
-broadcasting](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html).
+"""Basic arithmetic operators.
 
-## Arithmetic Operators
-
-TensorFlow provides several operations that you can use to add basic arithmetic
-operators to your graph.
+See the @{$python/math_ops} guide.
 
 @@add
 @@subtract
@@ -35,12 +31,6 @@ operators to your graph.
 @@floormod
 @@mod
 @@cross
-
-## Basic Math Functions
-
-TensorFlow provides several operations that you can use to add basic
-mathematical functions to your graph.
-
 @@add_n
 @@abs
 @@negative
@@ -77,26 +67,17 @@ mathematical functions to your graph.
 @@polygamma
 @@betainc
 @@rint
-
-## Matrix Math Functions
-
-TensorFlow provides several operations that you can use to add linear algebra
-functions on matrices to your graph.
-
 @@diag
 @@diag_part
 @@trace
 @@transpose
-
 @@eye
 @@matrix_diag
 @@matrix_diag_part
 @@matrix_band_part
 @@matrix_set_diag
 @@matrix_transpose
-
 @@matmul
-
 @@norm
 @@matrix_determinant
 @@matrix_inverse
@@ -109,43 +90,17 @@ functions on matrices to your graph.
 @@self_adjoint_eig
 @@self_adjoint_eigvals
 @@svd
-
-
-## Tensor Math Function
-
-TensorFlow provides operations that you can use to add tensor functions to your
-graph.
-
 @@tensordot
-
-
-## Complex Number Functions
-
-TensorFlow provides several operations that you can use to add complex number
-functions to your graph.
-
 @@complex
 @@conj
 @@imag
 @@real
-
-## Fourier Transform Functions
-
-TensorFlow provides several operations that you can use to add discrete
-Fourier transform functions to your graph.
-
 @@fft
 @@ifft
 @@fft2d
 @@ifft2d
 @@fft3d
 @@ifft3d
-
-## Reduction
-
-TensorFlow provides several operations that you can use to perform
-common math computations that reduce various dimensions of a tensor.
-
 @@reduce_sum
 @@reduce_prod
 @@reduce_min
@@ -155,70 +110,27 @@ common math computations that reduce various dimensions of a tensor.
 @@reduce_any
 @@reduce_logsumexp
 @@count_nonzero
-
 @@accumulate_n
-
 @@einsum
-
-## Scan
-
-TensorFlow provides several operations that you can use to perform scans
-(running totals) across one axis of a tensor.
-
+@@bincount
 @@cumsum
 @@cumprod
-
-## Segmentation
-
-TensorFlow provides several operations that you can use to perform common
-math computations on tensor segments.
-Here a segmentation is a partitioning of a tensor along
-the first dimension, i.e. it  defines a mapping from the first dimension onto
-`segment_ids`. The `segment_ids` tensor should be the size of
-the first dimension, `d0`, with consecutive IDs in the range `0` to `k`,
-where `k<d0`.
-In particular, a segmentation of a matrix tensor is a mapping of rows to
-segments.
-
-For example:
-
-```python
-c = tf.constant([[1,2,3,4], [-1,-2,-3,-4], [5,6,7,8]])
-tf.segment_sum(c, tf.constant([0, 0, 1]))
-  ==>  [[0 0 0 0]
-        [5 6 7 8]]
-```
-
 @@segment_sum
 @@segment_prod
 @@segment_min
 @@segment_max
 @@segment_mean
-
 @@unsorted_segment_sum
 @@unsorted_segment_max
-
 @@sparse_segment_sum
 @@sparse_segment_mean
 @@sparse_segment_sqrt_n
-
-
-## Sequence Comparison and Indexing
-
-TensorFlow provides several operations that you can use to add sequence
-comparison and index extraction to your graph. You can use these operations to
-determine sequence differences and determine the indexes of specific values in
-a tensor.
-
 @@argmin
 @@argmax
-
 @@setdiff1d
 @@where
 @@unique
-
 @@edit_distance
-
 @@invert_permutation
 """
 from __future__ import absolute_import
@@ -240,6 +152,7 @@ from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_sparse_ops
+from tensorflow.python.ops import gen_spectral_ops
 from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import state_ops
 # go/tf-wildcard-import
@@ -248,7 +161,6 @@ from tensorflow.python.ops.gen_math_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.util import compat
 from tensorflow.python.util.deprecation import deprecated
-
 
 # Aliases for some automatically-generated names.
 linspace = gen_math_ops.lin_space
@@ -266,8 +178,9 @@ def argmax(input, axis=None, name=None, dimension=None):
   return gen_math_ops.arg_max(input, axis, name)
 
 
-argmax.__doc__ = (gen_math_ops.arg_max.__doc__.replace(
-    "dimensions", "axes").replace("dimension", "axis"))
+argmax.__doc__ = (gen_math_ops.arg_max.__doc__.replace("dimensions",
+                                                       "axes").replace(
+                                                           "dimension", "axis"))
 
 
 # TODO(aselle:deprecate arg_min)
@@ -281,8 +194,9 @@ def argmin(input, axis=None, name=None, dimension=None):
   return gen_math_ops.arg_min(input, axis, name)
 
 
-argmin.__doc__ = (gen_math_ops.arg_min.__doc__.replace(
-    "dimensions", "axes").replace("dimension", "axis"))
+argmin.__doc__ = (gen_math_ops.arg_min.__doc__.replace("dimensions",
+                                                       "axes").replace(
+                                                           "dimension", "axis"))
 
 # pylint: enable=redefined-builtin
 
@@ -321,6 +235,8 @@ def abs(x, name=None):
       if x.dtype in (dtypes.complex64, dtypes.complex128):
         return gen_math_ops._complex_abs(x, Tout=x.dtype.real_dtype, name=name)
       return gen_math_ops._abs(x, name=name)
+
+
 # pylint: enable=g-docstring-has-escape
 
 
@@ -360,6 +276,8 @@ def divide(x, y, name=None):
 
 def multiply(x, y, name=None):
   return gen_math_ops._mul(x, y, name)
+
+
 multiply.__doc__ = gen_math_ops._mul.__doc__.replace("Mul", "`tf.multiply`")
 
 
@@ -369,12 +287,16 @@ multiply.__doc__ = gen_math_ops._mul.__doc__.replace("Mul", "`tf.multiply`")
     "`tf.mul(x, y)` is deprecated, please use `tf.multiply(x, y)` or `x * y`")
 def _mul(x, y, name=None):
   return gen_math_ops._mul(x, y, name)
-_mul.__doc__ = (gen_math_ops._mul.__doc__
-                + ("" if _mul.__doc__ is None else _mul.__doc__))
+
+
+_mul.__doc__ = (gen_math_ops._mul.__doc__ +
+                ("" if _mul.__doc__ is None else _mul.__doc__))
 
 
 def subtract(x, y, name=None):
   return gen_math_ops._sub(x, y, name)
+
+
 subtract.__doc__ = gen_math_ops._sub.__doc__.replace("`Sub`", "`tf.subtract`")
 
 
@@ -384,8 +306,10 @@ subtract.__doc__ = gen_math_ops._sub.__doc__.replace("`Sub`", "`tf.subtract`")
     "`tf.sub(x, y)` is deprecated, please use `tf.subtract(x, y)` or `x - y`")
 def _sub(x, y, name=None):
   return gen_math_ops._sub(x, y, name)
-_sub.__doc__ = (gen_math_ops._sub.__doc__
-                + ("" if _sub.__doc__ is None else _sub.__doc__))
+
+
+_sub.__doc__ = (gen_math_ops._sub.__doc__ +
+                ("" if _sub.__doc__ is None else _sub.__doc__))
 
 
 # pylint: disable=g-docstring-has-escape
@@ -409,13 +333,14 @@ def negative(x, name=None):
           indices=x.indices, values=x_neg, dense_shape=x.dense_shape)
     else:
       return gen_math_ops._neg(x, name=name)
+
+
 # pylint: enable=g-docstring-has-escape
 
 
 # pylint: disable=g-docstring-has-escape
-@deprecated(
-    "2016-12-30",
-    "`tf.neg(x)` is deprecated, please use `tf.negative(x)` or `-x`")
+@deprecated("2016-12-30",
+            "`tf.neg(x)` is deprecated, please use `tf.negative(x)` or `-x`")
 def _neg(x, name=None):
   """Computes numerical negative value element-wise.
 
@@ -430,6 +355,8 @@ def _neg(x, name=None):
     A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
   """
   return negative(x, name)
+
+
 # pylint: enable=g-docstring-has-escape
 
 
@@ -614,8 +541,7 @@ def complex(real, imag, name=None):
       Tout = dtypes.complex64
     else:
       raise TypeError("real and imag have incorrect types: "
-                      "{} {}".format(real.dtype.name,
-                                     imag.dtype.name))
+                      "{} {}".format(real.dtype.name, imag.dtype.name))
     return gen_math_ops._complex(real, imag, Tout=Tout, name=name)
 
 
@@ -770,15 +696,15 @@ def saturate_cast(value, dtype, name=None):
     value = ops.convert_to_tensor(value, name="value")
     dtype = dtypes.as_dtype(dtype).base_dtype
     if value.dtype.min < dtype.min:
-      value = gen_math_ops.maximum(
-          value,
-          ops.convert_to_tensor(
-              dtype.min, dtype=value.dtype, name="min"))
+      value = gen_math_ops.maximum(value,
+                                   ops.convert_to_tensor(
+                                       dtype.min, dtype=value.dtype,
+                                       name="min"))
     if value.dtype.max > dtype.max:
-      value = gen_math_ops.minimum(
-          value,
-          ops.convert_to_tensor(
-              dtype.max, dtype=value.dtype, name="max"))
+      value = gen_math_ops.minimum(value,
+                                   ops.convert_to_tensor(
+                                       dtype.max, dtype=value.dtype,
+                                       name="max"))
     return cast(value, dtype, name=name)
 
 
@@ -891,11 +817,13 @@ def _OverrideBinaryOperatorHelper(func, op_name, clazz_object=ops.Tensor):
   def binary_op_wrapper_sparse(sp_x, y):
     with ops.name_scope(None, op_name, [sp_x, y]) as name:
       y = ops.convert_to_tensor(y, dtype=sp_x.dtype.base_dtype, name="y")
-      return sparse_tensor.SparseTensor(
-          sp_x.indices,
-          func(
-              sp_x.indices, sp_x.values, sp_x.dense_shape, y, name=name),
-          sp_x.dense_shape)
+      return sparse_tensor.SparseTensor(sp_x.indices,
+                                        func(
+                                            sp_x.indices,
+                                            sp_x.values,
+                                            sp_x.dense_shape,
+                                            y,
+                                            name=name), sp_x.dense_shape)
 
   def r_binary_op_wrapper(y, x):
     with ops.name_scope(None, op_name, [x, y]) as name:
@@ -943,8 +871,8 @@ _TRUEDIV_TABLE = {
 # to explicitly use the "/" operator to invoke either truediv or div.
 def _sparse_dense_truediv(sp_indices, sp_values, sp_shape, y, name=None):
   """Internal helper function for 'sp_t / dense_t'."""
-  with ops.name_scope(name, "truediv",
-                      [sp_indices, sp_values, sp_shape, y]) as name:
+  with ops.name_scope(name, "truediv", [sp_indices, sp_values, sp_shape,
+                                        y]) as name:
     sp_values = ops.convert_to_tensor(sp_values, name="sp_values")
     y = ops.convert_to_tensor(y, name="y")
     x_dtype = sp_values.dtype.base_dtype
@@ -1218,8 +1146,9 @@ def range(start, limit=None, delta=1, dtype=None, name="range"):
           dtypes.int32, dtypes.int64, dtypes.float32, dtypes.float64
       ]
       assert all(arg.dtype in dtype_hierarchy for arg in [start, limit, delta])
-      inferred_dtype = max([arg.dtype for arg in [start, limit, delta]],
-                           key=dtype_hierarchy.index)
+      inferred_dtype = max(
+          [arg.dtype for arg in [start, limit, delta]],
+          key=dtype_hierarchy.index)
 
       start = cast(start, inferred_dtype)
       limit = cast(limit, inferred_dtype)
@@ -1774,6 +1703,12 @@ def matmul(a,
                            [229 244]],
                           [[508 532]
                            [697 730]]]
+
+  # Since python >= 3.5 the @ operator is supported (see PEP 465).
+  # In TensorFlow, it simply calls the `tf.matmul()` function, so the
+  # following lines are equivalent:
+  d = a @ b @ [[10.], [11.]]
+  d = tf.matmul(tf.matmul(a, b), [[10.], [11.]])
   ```
 
   Args:
@@ -1859,6 +1794,8 @@ def matmul(a,
       return gen_math_ops._mat_mul(
           a, b, transpose_a=transpose_a, transpose_b=transpose_b, name=name)
 
+
+_OverrideBinaryOperatorHelper(matmul, "matmul")
 
 sparse_matmul = gen_math_ops._sparse_mat_mul
 
@@ -2030,8 +1967,8 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
       zeros.set_shape(shape)
       ref = state_ops.assign(var, zeros, validate_shape=False)
       update_ops = [
-          state_ops.assign_add(
-              ref, input_tensor, use_locking=True) for input_tensor in inputs
+          state_ops.assign_add(ref, input_tensor, use_locking=True)
+          for input_tensor in inputs
       ]
       with ops.control_dependencies(update_ops):
         return gen_state_ops._destroy_temporary_variable(
@@ -2080,6 +2017,50 @@ def tanh(x, name=None):
           indices=x.indices, values=x_tanh, dense_shape=x.dense_shape)
     else:
       return gen_math_ops._tanh(x, name=name)
+
+
+def bincount(arr,
+             minlength=None,
+             maxlength=None,
+             weights=None,
+             dtype=dtypes.int32):
+  """Counts the number of occurrences of each value in an integer array.
+
+  If `minlength` and `maxlength` are not given, returns a vector with length
+  `tf.reduce_max(arr) + 1` if `arr` is non-empty, and length 0 otherwise.
+  If `weights` are non-None, then index `i` of the output stores the sum of the
+  value in `weights` at each index where the corresponding value in `arr` is
+  `i`.
+
+  Args:
+    arr: An int32 tensor of non-negative values.
+    minlength: If given, ensures the output has length at least `minlength`,
+        padding with zeros at the end if necessary.
+    maxlength: If given, skips values in `arr` that are equal or greater than
+        `maxlength`, ensuring that the output has length at most `maxlength`.
+    weights: If non-None, must be the same shape as arr. For each value in
+        `arr`, the bin will be incremented by the corresponding weight instead
+        of 1.
+    dtype: If `weights` is None, determines the type of the output bins.
+
+  Returns:
+    A vector with the same dtype as `weights` or the given `dtype`. The bin
+    values.
+  """
+  arr = ops.convert_to_tensor(arr, name="arr", dtype=dtypes.int32)
+  array_is_nonempty = reduce_prod(array_ops.shape(arr)) > 0
+  output_size = cast(array_is_nonempty, dtypes.int32) * (reduce_max(arr) + 1)
+  if minlength is not None:
+    minlength = ops.convert_to_tensor(
+        minlength, name="minlength", dtype=dtypes.int32)
+    output_size = gen_math_ops.maximum(minlength, output_size)
+  if maxlength is not None:
+    maxlength = ops.convert_to_tensor(
+        maxlength, name="maxlength", dtype=dtypes.int32)
+    output_size = gen_math_ops.minimum(maxlength, output_size)
+  weights = (ops.convert_to_tensor(weights, name="weights")
+             if weights is not None else constant_op.constant([], dtype))
+  return gen_math_ops.bincount(arr, output_size, weights)
 
 
 def cumsum(x, axis=0, exclusive=False, reverse=False, name=None):
@@ -2359,9 +2340,8 @@ def tensordot(a, b, axes, name=None):
         return range(a_shape.ndims - axes, a_shape.ndims), range(axes)
       else:
         rank = array_ops.rank(a)
-        return (array_ops.range(
-            rank - axes, rank, dtype=dtypes.int32), array_ops.range(
-                rank, dtype=dtypes.int32))
+        return (range(rank - axes, rank, dtype=dtypes.int32), range(
+            axes, dtype=dtypes.int32))
     elif isinstance(axes, (list, tuple)):
       if len(axes) != 2:
         raise ValueError("'axes' must be an integer or have length 2.")
@@ -2386,7 +2366,17 @@ def tensordot(a, b, axes, name=None):
     if isinstance(a_free_dims, list) and isinstance(b_free_dims, list):
       return array_ops.reshape(ab_matmul, a_free_dims + b_free_dims, name=name)
     else:
-      a_free_dims = ops.convert_to_tensor(a_free_dims)
-      b_free_dims = ops.convert_to_tensor(b_free_dims)
+      a_free_dims = ops.convert_to_tensor(a_free_dims, dtype=dtypes.int32)
+      b_free_dims = ops.convert_to_tensor(b_free_dims, dtype=dtypes.int32)
       return array_ops.reshape(
           ab_matmul, array_ops.concat([a_free_dims, b_free_dims], 0), name=name)
+
+
+# FFT ops were moved to tf.spectral. tf.fft symbols were part of the TensorFlow
+# 1.0 API so we leave these here for backwards compatibility.
+fft = gen_spectral_ops.fft
+ifft = gen_spectral_ops.ifft
+fft2d = gen_spectral_ops.fft2d
+ifft2d = gen_spectral_ops.ifft2d
+fft3d = gen_spectral_ops.fft3d
+ifft3d = gen_spectral_ops.ifft3d

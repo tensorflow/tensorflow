@@ -27,6 +27,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.PriorityQueue;
 import java.util.Vector;
+import org.tensorflow.Operation;
 import org.tensorflow.contrib.android.TensorFlowInferenceInterface;
 
 /** A classifier specialized to label images using TensorFlow. */
@@ -65,7 +66,6 @@ public class TensorFlowImageClassifier implements Classifier {
    * @param assetManager The asset manager to be used to load assets.
    * @param modelFilename The filepath of the model GraphDef protocol buffer.
    * @param labelFilename The filepath of label file for classes.
-   * @param numClasses The number of classes output by the model.
    * @param inputSize The input size. A square image of inputSize x inputSize is assumed.
    * @param imageMean The assumed mean of the image values.
    * @param imageStd The assumed std of the image values.
@@ -77,13 +77,11 @@ public class TensorFlowImageClassifier implements Classifier {
       AssetManager assetManager,
       String modelFilename,
       String labelFilename,
-      int numClasses,
       int inputSize,
       int imageMean,
       float imageStd,
       String inputName,
-      String outputName)
-      throws IOException {
+      String outputName) {
     TensorFlowImageClassifier c = new TensorFlowImageClassifier();
     c.inputName = inputName;
     c.outputName = outputName;
@@ -93,15 +91,33 @@ public class TensorFlowImageClassifier implements Classifier {
     String actualFilename = labelFilename.split("file:///android_asset/")[1];
     Log.i(TAG, "Reading labels from: " + actualFilename);
     BufferedReader br = null;
-    br = new BufferedReader(new InputStreamReader(assetManager.open(actualFilename)));
-    String line;
-    while ((line = br.readLine()) != null) {
-      c.labels.add(line);
+    try {
+      br = new BufferedReader(new InputStreamReader(assetManager.open(actualFilename)));
+      String line;
+      while ((line = br.readLine()) != null) {
+        c.labels.add(line);
+      }
+      br.close();
+    } catch (IOException e) {
+      throw new RuntimeException("Problem reading label file!" , e);
     }
-    br.close();
-    Log.i(TAG, "Read " + c.labels.size() + " labels, " + numClasses +
-        " output layer size specified");
 
+    c.inferenceInterface = new TensorFlowInferenceInterface();
+    if (c.inferenceInterface.initializeTensorFlow(assetManager, modelFilename) != 0) {
+      throw new RuntimeException("TF initialization failed");
+    }
+    // The shape of the output is [N, NUM_CLASSES], where N is the batch size.
+    final Operation operation = c.inferenceInterface.graph().operation(outputName);
+    if (operation == null) {
+      throw new RuntimeException("Node '" + outputName + "' does not exist in model '"
+          + modelFilename + "'");
+    }
+    final int numClasses = (int) operation.output(0).shape().size(1);
+    Log.i(TAG, "Read " + c.labels.size() + " labels, output layer size is " + numClasses);
+
+    // Ideally, inputSize could have been retrieved from the shape of the input operation.  Alas,
+    // the placeholder node for input in the graphdef typically used does not specify a shape, so it
+    // must be passed in as a parameter.
     c.inputSize = inputSize;
     c.imageMean = imageMean;
     c.imageStd = imageStd;
@@ -112,13 +128,6 @@ public class TensorFlowImageClassifier implements Classifier {
     c.floatValues = new float[inputSize * inputSize * 3];
     c.outputs = new float[numClasses];
 
-    c.inferenceInterface = new TensorFlowInferenceInterface();
-
-    final int status = c.inferenceInterface.initializeTensorFlow(assetManager, modelFilename);
-    if (status != 0) {
-      Log.e(TAG, "TF init status: " + status);
-      throw new RuntimeException("TF init status (" + status + ") != 0");
-    }
     return c;
   }
 
@@ -168,8 +177,9 @@ public class TensorFlowImageClassifier implements Classifier {
             });
     for (int i = 0; i < outputs.length; ++i) {
       if (outputs[i] > THRESHOLD) {
-        pq.add(new Recognition("" + i,
-            labels.size() > i ? labels.get(i) : "unknown", outputs[i], null));
+        pq.add(
+            new Recognition(
+                "" + i, labels.size() > i ? labels.get(i) : "unknown", outputs[i], null));
       }
     }
     final ArrayList<Recognition> recognitions = new ArrayList<Recognition>();

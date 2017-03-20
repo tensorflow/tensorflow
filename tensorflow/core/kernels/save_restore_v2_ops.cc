@@ -126,9 +126,10 @@ class SaveV2 : public OpKernel {
                                             shape_spec, ", tensor: ",
                                             tensor.shape().DebugString()));
 
-        writer.AddSlice(tensor_name, shape, slice, tensor);
+        OP_REQUIRES_OK(context,
+                       writer.AddSlice(tensor_name, shape, slice, tensor));
       } else {
-        writer.Add(tensor_name, tensor);
+        OP_REQUIRES_OK(context, writer.Add(tensor_name, tensor));
       }
     }
     OP_REQUIRES_OK(context, writer.Finish());
@@ -186,7 +187,8 @@ class MergeV2Checkpoints : public OpKernel {
  public:
   explicit MergeV2Checkpoints(OpKernelConstruction* context)
       : OpKernel(context) {
-    context->GetAttr("delete_old_dirs", &delete_old_dirs_);
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("delete_old_dirs", &delete_old_dirs_));
   }
 
   void Compute(OpKernelContext* context) override {

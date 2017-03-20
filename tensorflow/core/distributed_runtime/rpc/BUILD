@@ -280,6 +280,15 @@ cc_library(
     alwayslink = 1,
 )
 
+cc_library(
+    name = "grpc_runtime",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":grpc_server_lib",
+        ":grpc_session",
+    ],
+)
+
 cc_binary(
     name = "grpc_tensorflow_server",
     srcs = [
@@ -293,6 +302,7 @@ cc_binary(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/distributed_runtime:server_lib",
+        "//tensorflow/core/kernels:data_flow",
         "@grpc//:grpc++_unsecure",
     ],
 )

@@ -72,7 +72,8 @@ public final class Tensor implements AutoCloseable {
    * }</pre>
    *
    * @throws IllegalArgumentException if {@code obj} is not compatible with the TensorFlow type
-   *     system.
+   *     system, or if obj does not disambiguate between multiple DataTypes. In that case, consider
+   *     using {@link #create(DataType, long[], ByteBuffer)} instead.
    */
   public static Tensor create(Object obj) {
     Tensor t = new Tensor();
@@ -171,8 +172,7 @@ public final class Tensor implements AutoCloseable {
    *
    * <p>Creates a Tensor with the provided shape of any type where the tensor's data has been
    * encoded into {@code data} as per the specification of the TensorFlow <a
-   * href="https://www.tensorflow.org/code/tensorflow/c/c_api.h">C
-   * API</a>.
+   * href="https://www.tensorflow.org/code/tensorflow/c/c_api.h">C API</a>.
    *
    * @param dataType the tensor datatype.
    * @param shape the tensor shape.
@@ -496,6 +496,8 @@ public final class Tensor implements AutoCloseable {
 
   private static int elemByteSize(DataType dataType) {
     switch (dataType) {
+      case UINT8:
+        return 1;
       case FLOAT:
       case INT32:
         return 4;

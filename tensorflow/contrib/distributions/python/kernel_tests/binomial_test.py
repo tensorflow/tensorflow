@@ -91,7 +91,7 @@ class BinomialTest(test.TestCase):
       binom.prob([3., 1, 2]).eval()
       # Both equality and integer checking fail.
       with self.assertRaisesOpError(
-          "counts cannot contain fractional components."):
+          "cannot contain fractional components."):
         binom.prob([1.0, 2.5, 1.5]).eval()
 
       binom = binomial.Binomial(total_count=n, probs=p, validate_args=False)

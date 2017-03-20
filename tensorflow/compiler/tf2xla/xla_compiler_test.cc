@@ -17,7 +17,7 @@ limitations under the License.
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/ops/function_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
-#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -38,7 +38,7 @@ class XlaCompilerTest : public ::testing::Test {
   void SetUp() override {
     client_ = xla::ClientLibrary::LocalClientOrDie();
 
-    XlaOpRegistry::RegisterJitKernels();
+    XlaOpRegistry::RegisterCompilationKernels();
 
     FunctionDefLibrary flib;
     flib_def_.reset(new FunctionLibraryDefinition(OpRegistry::Global(), flib));
@@ -71,8 +71,7 @@ TEST_F(XlaCompilerTest, EmptyReturnValues) {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
   XlaCompiler::CompilationResult result;
   TF_ASSERT_OK(compiler.CompileGraph("add", std::move(graph), flr.get(),
-                                     /*args=*/{}, /*use_tuple_arg=*/false,
-                                     &result));
+                                     /*args=*/{}, &result));
 
   // No computation should be generated.
   EXPECT_EQ(0, result.computation.handle().handle());
@@ -91,20 +90,20 @@ TEST_F(XlaCompilerTest, Simple) {
 
   // Builds a description of the arguments.
   std::vector<XlaCompiler::Argument> args(2);
+  args[0].kind = XlaCompiler::Argument::kParameter;
   args[0].type = DT_INT32;
   args[0].shape = TensorShape({2});
-  args[0].parameter = 0;
+  args[1].kind = XlaCompiler::Argument::kParameter;
   args[1].type = DT_INT32;
   args[1].shape = TensorShape({2});
-  args[1].parameter = 1;
 
   // Compiles the graph.
   XlaCompiler compiler(DefaultOptions());
   auto flr = BuildFunctionLibraryRuntime(compiler);
 
   XlaCompiler::CompilationResult result;
-  TF_ASSERT_OK(compiler.CompileGraph("add", std::move(graph), flr.get(), args,
-                                     /*use_tuple_arg=*/false, &result));
+  TF_ASSERT_OK(
+      compiler.CompileGraph("add", std::move(graph), flr.get(), args, &result));
 
   // Tests that the generated computation works.
   std::unique_ptr<xla::Literal> param0_literal =
@@ -144,9 +143,9 @@ TEST_F(XlaCompilerTest, ConstantOutputs) {
 
   // Builds a description of the arguments.
   std::vector<XlaCompiler::Argument> args(1);
+  args[0].kind = XlaCompiler::Argument::kParameter;
   args[0].type = DT_INT32;
   args[0].shape = TensorShape({2});
-  args[0].parameter = 0;
 
   {
     // Compiles the graph, with resolve_compile_time_constants enabled.
@@ -160,8 +159,7 @@ TEST_F(XlaCompilerTest, ConstantOutputs) {
 
     XlaCompiler::CompilationResult result;
     TF_ASSERT_OK(compiler.CompileGraph("constants", std::move(graph_copy),
-                                       flr.get(), args, /*use_tuple_arg=*/false,
-                                       &result));
+                                       flr.get(), args, &result));
 
     ASSERT_EQ(2, result.outputs.size());
     EXPECT_TRUE(result.outputs[0].is_constant);
@@ -198,8 +196,7 @@ TEST_F(XlaCompilerTest, ConstantOutputs) {
 
     XlaCompiler::CompilationResult result;
     TF_ASSERT_OK(compiler.CompileGraph("constants", std::move(graph_copy),
-                                       flr.get(), args, /*use_tuple_arg=*/false,
-                                       &result));
+                                       flr.get(), args, &result));
 
     ASSERT_EQ(2, result.outputs.size());
     EXPECT_FALSE(result.outputs[0].is_constant);

@@ -125,7 +125,9 @@ class DirectSession : public Session {
   // library. Consider giving each partition its own function library to enable
   // per-partition rewrites.
   struct ExecutorsAndKeys {
-    int64 step_count = 0;
+    ExecutorsAndKeys() : step_count(0) {}
+
+    std::atomic_int_fast64_t step_count;
     std::unique_ptr<Graph> graph;
     NameNodeMap name_to_node;
     std::unique_ptr<FunctionLibraryDefinition> flib_def;
@@ -189,6 +191,9 @@ class DirectSession : public Session {
 
   ::tensorflow::Status ExtendLocked(const GraphDef& graph)
       EXCLUSIVE_LOCKS_REQUIRED(graph_def_lock_);
+
+  ::tensorflow::Status ResourceHandleToInputTensor(
+      const Tensor& resource_tensor, Tensor* retrieved_tensor);
 
   // Feeds more inputs to the executors, triggering further execution.
   ::tensorflow::Status SendInputs(

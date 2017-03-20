@@ -99,7 +99,7 @@ static void MarkLiveAddressesInOutput(
 
 StatusOr<perftools::gputools::DeviceMemoryBase>
 ParallelCpuExecutable::ExecuteOnStream(
-    const ExecutableRunOptions* run_options,
+    const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> arguments,
     HloExecutionProfile* hlo_execution_profile) {
   se::Stream* stream = run_options->stream();
@@ -139,10 +139,12 @@ ParallelCpuExecutable::ExecuteOnStream(
               << " bytes for allocation #" << i << " ["
               << device_allocation.opaque() << "]";
       std::vector<string> parts;
-      for (const LogicalBuffer* buffer : allocation.assigned_buffers()) {
-        parts.push_back(buffer->ToString());
+      for (const auto& buffer_offset_size : allocation.assigned_buffers()) {
+        const LogicalBuffer& buffer = *buffer_offset_size.first;
+        parts.push_back(tensorflow::strings::StrCat(
+            buffer.instruction()->parent()->name(), "::", buffer.ToString()));
       }
-      VLOG(3) << " " << tensorflow::str_util::Join(parts, ", ");
+      VLOG(3) << "  " << tensorflow::str_util::Join(parts, ", ");
     }
 
     device_allocations.push_back(device_allocation);
@@ -154,9 +156,9 @@ ParallelCpuExecutable::ExecuteOnStream(
                                       allocation.size());
   }
 
-  TF_ASSIGN_OR_RETURN(const BufferAllocation* result_allocation,
-                      assignment_->GetUniqueTopLevelOutputAllocation());
-  BufferAllocation::Index result_index = result_allocation->index();
+  TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice result_slice,
+                      assignment_->GetUniqueTopLevelOutputSlice());
+  const BufferAllocation::Index result_index = result_slice.index();
   VLOG(3) << "result index: " << result_index;
 
   // Allocate profiling counters for each hlo instruction that we would like to
@@ -188,8 +190,8 @@ ParallelCpuExecutable::ExecuteOnStream(
   std::list<HloInstruction*> pending;
 
   // Call the function for each HLO instruction in topological order.
-  for (auto* instruction :
-       module().entry_computation()->MakeInstructionPostOrder()) {
+  const HloComputation& entry_computation = *module().entry_computation();
+  for (auto* instruction : entry_computation.MakeInstructionPostOrder()) {
     // Parameters and constants have no functions associated with them. Instead
     // just copy the existing buffer into the map containing instruction
     // results..
@@ -206,9 +208,10 @@ ParallelCpuExecutable::ExecuteOnStream(
     }
   }
 
-  auto* temps_array = buffer_pointers.data();
-  auto* profile_counters_array = profile_counters.data();
-  auto* thread_pool = CHECK_NOTNULL(run_options->inter_op_thread_pool());
+  void** temps_array = buffer_pointers.data();
+  uint64* profile_counters_array = profile_counters.data();
+  auto* thread_pool =
+      CHECK_NOTNULL(run_options->run_options().inter_op_thread_pool());
   tensorflow::mutex completion_queue_lock;
   tensorflow::condition_variable completion_queue_cv;
   std::deque<HloInstruction*> completion_queue;
@@ -227,11 +230,11 @@ ParallelCpuExecutable::ExecuteOnStream(
         continue;
       }
 
-      TF_ASSIGN_OR_RETURN(
-          const BufferAllocation* result_allocation,
-          assignment_->GetUniqueTopLevelAllocation(instruction));
-
-      void* result_buffer = buffer_pointers[result_allocation->index()];
+      TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice result_slice,
+                          assignment_->GetUniqueTopLevelSlice(instruction));
+      void* result_buffer =
+          static_cast<char*>(temps_array[result_slice.index()]) +
+          result_slice.offset();
       // We cannot use a move-only RAII type like std::unique_ptr because the
       // list of operands is allocated on the main thread and transferred to the
       // worker via the lambda passed to enqueue_function.  In order for the
@@ -279,9 +282,11 @@ ParallelCpuExecutable::ExecuteOnStream(
         break;
       }
     } while (1);
-    TF_ASSIGN_OR_RETURN(const BufferAllocation* result_allocation,
-                        assignment_->GetUniqueTopLevelAllocation(instruction));
-    void* result_buffer = buffer_pointers[result_allocation->index()];
+    TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice result_slice,
+                        assignment_->GetUniqueTopLevelSlice(instruction));
+    void* result_buffer =
+        static_cast<char*>(temps_array[result_slice.index()]) +
+        result_slice.offset();
     InsertOrDie(&results, instruction, result_buffer);
     --instructions_in_flight;
   }
@@ -295,7 +300,8 @@ ParallelCpuExecutable::ExecuteOnStream(
     execution_profile_.set_compute_cycle_count(profile_counters.back());
   }
   if (hlo_execution_profile != nullptr) {
-    hlo_execution_profile->set_total_cycles_executed(profile_counters.back());
+    hlo_execution_profile->set_total_cycles_executed(entry_computation,
+                                                     profile_counters.back());
 
     for (auto hlo_prof_idx : hlo_to_profile_idx_) {
       const HloInstruction* hlo = hlo_prof_idx.first;
@@ -336,24 +342,16 @@ ParallelCpuExecutable::ExecuteOnStream(
 }
 
 StatusOr<std::unique_ptr<ShapedBuffer>> ParallelCpuExecutable::ExecuteOnStream(
-    const ExecutableRunOptions* run_options,
+    const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
     HloExecutionProfile* hlo_execution_profile) {
   return Unimplemented(
       "ParallelCpuExecutable not supported yet with LocalService execution");
 }
 
-Status ParallelCpuExecutable::ExecuteOnStream(
-    const ExecutableRunOptions* run_options,
-    tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-    ShapedBuffer* result_buffer, HloExecutionProfile* hlo_execution_profile) {
-  return Unimplemented(
-      "preallocated result buffer not supported with ParallelCpuExecutable");
-}
-
 StatusOr<perftools::gputools::DeviceMemoryBase>
 ParallelCpuExecutable::ExecuteAsyncOnStream(
-    const ExecutableRunOptions* run_options,
+    const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> arguments) {
   // TODO(b/30671675): Implement asynchronous execution mode.
   return Unimplemented(

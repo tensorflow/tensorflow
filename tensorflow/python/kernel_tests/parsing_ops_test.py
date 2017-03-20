@@ -31,6 +31,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import parsing_ops
@@ -92,6 +93,7 @@ class ParseExampleTest(test.TestCase):
                                                  expected_err[1]):
           out = parsing_ops.parse_example(**kwargs)
           sess.run(flatten_values_tensors_or_sparse(out.values()))
+        return
       else:
         # Returns dict w/ Tensors and SparseTensors.
         out = parsing_ops.parse_example(**kwargs)
@@ -321,7 +323,8 @@ class ParseExampleTest(test.TestCase):
     self._test({
         "serialized": ops.convert_to_tensor(serialized),
         "features": {
-            "sp": parsing_ops.SparseFeature("idx", "val", dtypes.float32, 13)
+            "sp": parsing_ops.SparseFeature(
+                ["idx"], "val", dtypes.float32, [13])
         }
     }, expected_output)
 
@@ -365,6 +368,51 @@ class ParseExampleTest(test.TestCase):
             "sp2":
                 parsing_ops.SparseFeature(
                     "idx", "val2", dtypes.float32, size=7, already_sorted=True)
+        }
+    }, expected_output)
+
+  def testSerializedContaining3DSparseFeature(self):
+    original = [
+        example(features=features({
+            "val": float_feature([3, 4]),
+            "idx0": int64_feature([5, 10]),
+            "idx1": int64_feature([0, 2]),
+        })),
+        example(features=features({
+            "val": float_feature([]),  # empty float list
+            "idx0": int64_feature([]),
+            "idx1": int64_feature([]),
+        })),
+        example(features=features({
+            "val": feature(),  # feature with nothing in it
+            # missing idx feature
+        })),
+        example(features=features({
+            "val": float_feature([1, 2, -1]),
+            "idx0": int64_feature([0, 9, 3]),  # unsorted
+            "idx1": int64_feature([1, 0, 2]),
+        }))
+    ]
+
+    serialized = [m.SerializeToString() for m in original]
+
+    expected_sp = (
+        # indices
+        np.array(
+            [[0, 5, 0], [0, 10, 2], [3, 0, 1], [3, 3, 2], [3, 9, 0]],
+            dtype=np.int64),
+        # values
+        np.array([3.0, 4.0, 1.0, -1.0, 2.0], dtype=np.float32),
+        # shape batch == 4, max_elems = 13
+        np.array([4, 13, 3], dtype=np.int64))
+
+    expected_output = {"sp": expected_sp,}
+
+    self._test({
+        "serialized": ops.convert_to_tensor(serialized),
+        "features": {
+            "sp": parsing_ops.SparseFeature(
+                ["idx0", "idx1"], "val", dtypes.float32, [13, 3])
         }
     }, expected_output)
 
@@ -632,9 +680,193 @@ class ParseExampleTest(test.TestCase):
         "serialized": ops.convert_to_tensor(serialized),
         "features": {
             "idx": parsing_ops.VarLenFeature(dtypes.int64),
-            "sp": parsing_ops.SparseFeature("idx", "val", dtypes.string, 13),
+            "sp": parsing_ops.SparseFeature(
+                ["idx"], "val", dtypes.string, [13]),
         }
     }, expected_output)
+
+  def testSerializedContainingVarLenDense(self):
+    aname = "a"
+    bname = "b"
+    cname = "c"
+    dname = "d"
+    example_names = ["in1", "in2", "in3", "in4"]
+    original = [
+        example(features=features({
+            cname: int64_feature([2]),
+        })),
+        example(features=features({
+            aname: float_feature([1, 1]),
+            bname: bytes_feature([b"b0_str", b"b1_str"]),
+        })),
+        example(features=features({
+            aname: float_feature([-1, -1, 2, 2]),
+            bname: bytes_feature([b"b1"]),
+        })),
+        example(features=features({
+            aname: float_feature([]),
+            cname: int64_feature([3]),
+        })),
+    ]
+
+    serialized = [m.SerializeToString() for m in original]
+
+    expected_output = {
+        aname:
+            np.array(
+                [
+                    [0, 0, 0, 0],
+                    [1, 1, 0, 0],
+                    [-1, -1, 2, 2],
+                    [0, 0, 0, 0],
+                ],
+                dtype=np.float32).reshape(4, 2, 2, 1),
+        bname:
+            np.array(
+                [["", ""], ["b0_str", "b1_str"], ["b1", ""], ["", ""]],
+                dtype=bytes).reshape(4, 2, 1, 1, 1),
+        cname:
+            np.array([2, 0, 0, 3], dtype=np.int64).reshape(4, 1),
+        dname:
+            np.empty(shape=(4, 0), dtype=bytes),
+    }
+
+    self._test({
+        "example_names": example_names,
+        "serialized": ops.convert_to_tensor(serialized),
+        "features": {
+            aname:
+                parsing_ops.FixedLenSequenceFeature(
+                    (2, 1), dtype=dtypes.float32, allow_missing=True),
+            bname:
+                parsing_ops.FixedLenSequenceFeature(
+                    (1, 1, 1), dtype=dtypes.string, allow_missing=True),
+            cname:
+                parsing_ops.FixedLenSequenceFeature(
+                    shape=[], dtype=dtypes.int64, allow_missing=True),
+            dname:
+                parsing_ops.FixedLenSequenceFeature(
+                    shape=[], dtype=dtypes.string, allow_missing=True),
+        }
+    }, expected_output)
+
+    # Test with padding values.
+    expected_output_custom_padding = dict(expected_output)
+    expected_output_custom_padding[aname] = np.array(
+        [
+            [-2, -2, -2, -2],
+            [1, 1, -2, -2],
+            [-1, -1, 2, 2],
+            [-2, -2, -2, -2],
+        ],
+        dtype=np.float32).reshape(4, 2, 2, 1)
+    self._test({
+        "example_names": example_names,
+        "serialized": ops.convert_to_tensor(serialized),
+        "features": {
+            aname:
+                parsing_ops.FixedLenSequenceFeature(
+                    (2, 1), dtype=dtypes.float32, allow_missing=True,
+                    default_value=-2.0),
+            bname:
+                parsing_ops.FixedLenSequenceFeature(
+                    (1, 1, 1), dtype=dtypes.string, allow_missing=True),
+            cname:
+                parsing_ops.FixedLenSequenceFeature(
+                    shape=[], dtype=dtypes.int64, allow_missing=True),
+            dname:
+                parsing_ops.FixedLenSequenceFeature(
+                    shape=[], dtype=dtypes.string, allow_missing=True),
+        }
+    }, expected_output_custom_padding)
+
+    # Change number of required values so the inputs are not a
+    # multiple of this size.
+    self._test(
+        {
+            "example_names": example_names,
+            "serialized": ops.convert_to_tensor(serialized),
+            "features": {
+                aname:
+                    parsing_ops.FixedLenSequenceFeature(
+                        (2, 1), dtype=dtypes.float32, allow_missing=True),
+                bname:
+                    parsing_ops.FixedLenSequenceFeature(
+                        (2, 1, 1), dtype=dtypes.string, allow_missing=True),
+            }
+        },
+        expected_err=(
+            errors_impl.OpError, "Name: in3, Key: b, Index: 2.  "
+            "Number of bytes values is not a multiple of stride length."))
+
+    self._test(
+        {
+            "example_names": example_names,
+            "serialized": ops.convert_to_tensor(serialized),
+            "features": {
+                aname:
+                    parsing_ops.FixedLenSequenceFeature(
+                        (2, 1), dtype=dtypes.float32, allow_missing=True,
+                        default_value=[]),
+                bname:
+                    parsing_ops.FixedLenSequenceFeature(
+                        (2, 1, 1), dtype=dtypes.string, allow_missing=True),
+            }
+        },
+        expected_err=(ValueError,
+                      "Cannot reshape a tensor with 0 elements to shape"))
+
+    self._test(
+        {
+            "example_names": example_names,
+            "serialized": ops.convert_to_tensor(serialized),
+            "features": {
+                aname:
+                    parsing_ops.FixedLenFeature(
+                        (None, 2, 1), dtype=dtypes.float32),
+                bname:
+                    parsing_ops.FixedLenSequenceFeature(
+                        (2, 1, 1), dtype=dtypes.string, allow_missing=True),
+            }
+        },
+        expected_err=(ValueError,
+                      "First dimension of shape for feature a unknown. "
+                      "Consider using FixedLenSequenceFeature."))
+
+    self._test(
+        {
+            "example_names": example_names,
+            "serialized": ops.convert_to_tensor(serialized),
+            "features": {
+                cname:
+                    parsing_ops.FixedLenFeature(
+                        (1, None), dtype=dtypes.int64, default_value=[[1]]),
+            }
+        },
+        expected_err=(ValueError,
+                      "All dimensions of shape for feature c need to be known "
+                      r"but received \(1, None\)."))
+
+    self._test({
+        "example_names": example_names,
+        "serialized": ops.convert_to_tensor(serialized),
+        "features": {
+            aname:
+                parsing_ops.FixedLenSequenceFeature(
+                    (2, 1), dtype=dtypes.float32, allow_missing=True),
+            bname:
+                parsing_ops.FixedLenSequenceFeature(
+                    (1, 1, 1), dtype=dtypes.string, allow_missing=True),
+            cname:
+                parsing_ops.FixedLenSequenceFeature(
+                    shape=[], dtype=dtypes.int64, allow_missing=False),
+            dname:
+                parsing_ops.FixedLenSequenceFeature(
+                    shape=[], dtype=dtypes.string, allow_missing=True),
+        }
+    }, expected_err=(ValueError,
+                     "Unsupported: FixedLenSequenceFeature requires "
+                     "allow_missing to be True."))
 
 
 class ParseSingleExampleTest(test.TestCase):
@@ -656,7 +888,8 @@ class ParseSingleExampleTest(test.TestCase):
       # Check shapes.
       for k, f in kwargs["features"].items():
         if isinstance(f, parsing_ops.FixedLenFeature) and f.shape is not None:
-          self.assertEqual(tuple(out[k].get_shape()), f.shape)
+          self.assertEqual(tuple(out[k].get_shape()),
+                           tensor_shape.as_shape(f.shape))
         elif isinstance(f, parsing_ops.VarLenFeature):
           self.assertEqual(
               tuple(out[k].indices.get_shape().as_list()), (None, 1))
@@ -709,7 +942,8 @@ class ParseSingleExampleTest(test.TestCase):
                 "st_a":
                     parsing_ops.VarLenFeature(dtypes.float32),
                 "sp":
-                    parsing_ops.SparseFeature("idx", "val", dtypes.string, 13),
+                    parsing_ops.SparseFeature(
+                        ["idx"], "val", dtypes.string, [13]),
                 "a":
                     parsing_ops.FixedLenFeature(
                         (1, 3), dtypes.int64, default_value=a_default),
@@ -718,7 +952,7 @@ class ParseSingleExampleTest(test.TestCase):
                         (3, 3), dtypes.string, default_value=b_default),
                 # Feature "c" must be provided, since it has no default_value.
                 "c":
-                    parsing_ops.FixedLenFeature((2,), dtypes.float32),
+                    parsing_ops.FixedLenFeature(2, dtypes.float32),
             }
         },
         expected_output)
@@ -894,7 +1128,7 @@ class ParseSequenceExampleTest(test.TestCase):
                 "b":
                     parsing_ops.FixedLenSequenceFeature((2, 2), dtypes.string),
                 "c":
-                    parsing_ops.FixedLenSequenceFeature((2,), dtypes.float32),
+                    parsing_ops.FixedLenSequenceFeature(2, dtypes.float32),
                 "d":
                     parsing_ops.FixedLenSequenceFeature(
                         (5,), dtypes.float32, allow_missing=True),

@@ -175,7 +175,13 @@ class BatchMatmulGradientTest(test.TestCase):
   def _compare(self, b, n, k, m, dtype, adjoint_a, adjoint_b):
     np.random.seed(42)
     x = np.random.normal(0, 1, b * n * k).astype(dtype).reshape([b, n, k])
+    if dtype in (np.complex64, np.complex128):
+      x.imag = np.random.normal(0, 1,
+                                b * n * k).astype(dtype).reshape([b, n, k])
     y = np.random.normal(0, 1, b * k * m).astype(dtype).reshape([b, k, m])
+    if dtype in (np.complex64, np.complex128):
+      y.imag = np.random.normal(0, 1,
+                                b * k * m).astype(dtype).reshape([b, k, m])
     self._checkGrad(x, y, adjoint_a, adjoint_b)
 
 

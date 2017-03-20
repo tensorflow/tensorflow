@@ -385,7 +385,7 @@ class TFExampleDecoder(data_decoder.DataDecoder):
 
   def list_items(self):
     """See base class."""
-    return self._items_to_handlers.keys()
+    return list(self._items_to_handlers.keys())
 
   def decode(self, serialized_example, items=None):
     """Decodes the given serialized TF-example.

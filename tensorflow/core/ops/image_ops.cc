@@ -807,7 +807,7 @@ size: A 1-D tensor of 2 elements containing the size of the glimpses
   to extract.  The glimpse height must be specified first, following
   by the glimpse width.
 offsets: A 2-D integer tensor of shape `[batch_size, 2]` containing
-  the x, y locations of the center of each window.
+  the y, x locations of the center of each window.
 glimpse: A tensor representing the glimpses `[batch_size,
   glimpse_height, glimpse_width, channels]`.
 centered: indicates if the offset coordinates are centered relative to

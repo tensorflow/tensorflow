@@ -753,6 +753,13 @@ struct BinaryFunctor {
              bool* error);
 };
 
+template <typename Device, typename T>
+struct ApproximateEqual {
+  void operator()(const Device& d, typename TTypes<T>::ConstFlat x,
+                  typename TTypes<T>::ConstFlat y, T tolerance,
+                  typename TTypes<bool>::Flat z);
+};
+
 template <int NDIMS>
 bool AllOne(const typename Eigen::array<Eigen::DenseIndex, NDIMS>& a) {
   for (size_t i = 0; i < a.size(); ++i) {

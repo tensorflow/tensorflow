@@ -162,7 +162,7 @@ Status GrpcServer::Init() {
   builder.SetMaxMessageSize(std::numeric_limits<int32>::max());
   builder.SetOption(
       std::unique_ptr<::grpc::ServerBuilderOption>(new NoReusePortOption));
-  master_impl_.reset(new Master(&master_env_, 0.0));
+  master_impl_ = CreateMaster(&master_env_);
   master_service_ = NewGrpcMasterService(master_impl_.get(), &builder);
   worker_impl_.reset(NewGrpcWorker(&worker_env_));
   worker_service_ = NewGrpcWorkerService(worker_impl_.get(), &builder);
@@ -190,7 +190,7 @@ Status GrpcServer::Init() {
         host_port = task.second;
       }
     }
-    channel_spec.AddHostPortsJob(job.name(), host_ports);
+    TF_RETURN_IF_ERROR(channel_spec.AddHostPortsJob(job.name(), host_ports));
   }
 
   std::unique_ptr<GrpcChannelCache> channel_cache(NewGrpcChannelCache(
@@ -297,10 +297,15 @@ ChannelCreationFunction GrpcServer::GetChannelCreationFunction(
   return NewHostPortGrpcChannel;
 }
 
+std::unique_ptr<Master> GrpcServer::CreateMaster(MasterEnv* master_env) {
+  return std::unique_ptr<Master>(new Master(master_env, 0.0));
+}
+
 /* static */
 Status GrpcServer::Create(const ServerDef& server_def, Env* env,
                           std::unique_ptr<ServerInterface>* out_server) {
-  std::unique_ptr<GrpcServer> ret(new GrpcServer(server_def, Env::Default()));
+  std::unique_ptr<GrpcServer> ret(new GrpcServer(server_def,
+	  env == nullptr ? Env::Default() : env));
   TF_RETURN_IF_ERROR(ret->Init());
   *out_server = std::move(ret);
   return Status::OK();

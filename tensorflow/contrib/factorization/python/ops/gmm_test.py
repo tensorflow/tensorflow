@@ -18,13 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
-
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
@@ -109,6 +102,16 @@ class GMMTest(test.TestCase):
                          np.linalg.inv(covs[assignments[r]])), points[r, :] -
                   means[assignments[r]])))
     return (points, assignments, scores)
+  
+  def test_weights(self):
+    """Tests the shape of the weights."""
+    gmm = gmm_lib.GMM(self.num_centers,
+                      initial_clusters=self.initial_means,
+                      random_seed=4,
+                      config=run_config.RunConfig(tf_random_seed=2))
+    gmm.fit(input_fn=self.input_fn(), steps=0)
+    weights = gmm.weights()
+    self.assertAllEqual(list(weights.shape), [self.num_centers])
 
   def test_clusters(self):
     """Tests the shape of the clusters."""

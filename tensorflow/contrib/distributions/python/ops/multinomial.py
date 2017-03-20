@@ -136,7 +136,7 @@ class Multinomial(distribution.Distribution):
     Args:
       total_count: Non-negative floating point tensor with shape broadcastable
         to `[N1,..., Nm]` with `m >= 0`. Defines this as a batch of
-        `N1 x ... x Nm` different Multinomial distributions.  Its components
+        `N1 x ... x Nm` different Multinomial distributions. Its components
         should be equal to integer values.
       logits: Floating point tensor representing the log-odds of a
         positive event with shape broadcastable to `[N1,..., Nm, k], m >= 0`,
@@ -144,22 +144,22 @@ class Multinomial(distribution.Distribution):
         `N1 x ... x Nm` different `k` class Multinomial distributions. Only one
         of `logits` or `probs` should be passed in.
       probs: Positive floating point tensor with shape broadcastable to
-        `[N1,..., Nm, k]` `m >= 0` and same dtype as `total_count`.  Defines
+        `[N1,..., Nm, k]` `m >= 0` and same dtype as `total_count`. Defines
         this as a batch of `N1 x ... x Nm` different `k` class Multinomial
         distributions. `probs`'s components in the last portion of its shape
         should sum to `1`. Only one of `logits` or `probs` should be passed in.
-      validate_args: Python `Boolean`, default `False`. When `True` distribution
+      validate_args: Python `bool`, default `False`. When `True` distribution
         parameters are checked for validity despite possibly degrading runtime
         performance. When `False` invalid inputs may silently render incorrect
         outputs.
-      allow_nan_stats: Python `Boolean`, default `True`. When `True`, statistics
+      allow_nan_stats: Python `bool`, default `True`. When `True`, statistics
         (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
-        result is undefined.  When `False`, an exception is raised if one or
+        result is undefined. When `False`, an exception is raised if one or
         more of the statistic's batch members are undefined.
-      name: `String` name prefixed to Ops created by this class.
+      name: Python `str` name prefixed to Ops created by this class.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[total_count, logits, probs]) as ns:
+    with ops.name_scope(name, values=[total_count, logits, probs]):
       self._total_count = self._maybe_assert_valid_total_count(
           ops.convert_to_tensor(total_count, name="total_count"),
           validate_args)
@@ -169,10 +169,9 @@ class Multinomial(distribution.Distribution):
           multidimensional=True,
           validate_args=validate_args,
           name=name)
-      self._mean_val = self._total_count[..., None] * self._probs
+      self._mean_val = self._total_count[..., array_ops.newaxis] * self._probs
     super(Multinomial, self).__init__(
         dtype=self._probs.dtype,
-        is_continuous=False,
         reparameterization_type=distribution.NOT_REPARAMETERIZED,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
@@ -180,7 +179,7 @@ class Multinomial(distribution.Distribution):
         graph_parents=[self._total_count,
                        self._logits,
                        self._probs],
-        name=ns)
+        name=name)
 
   @property
   def total_count(self):
@@ -229,7 +228,7 @@ class Multinomial(distribution.Distribution):
         seed=seed)
     draws = array_ops.reshape(draws, shape=[-1, n, n_draws])
     x = math_ops.reduce_sum(array_ops.one_hot(draws, depth=k),
-                            reduction_indices=-2)  # shape: [B, n, k]
+                            axis=-2)  # shape: [B, n, k]
     x = array_ops.transpose(x, perm=[1, 0, 2])
     final_shape = array_ops.concat([[n], self.batch_shape_tensor(), [k]], 0)
     return array_ops.reshape(x, final_shape)
@@ -254,13 +253,16 @@ class Multinomial(distribution.Distribution):
     return array_ops.identity(self._mean_val)
 
   def _covariance(self):
-    p = self.probs * array_ops.ones_like(self.total_count)[..., None]
+    p = self.probs * array_ops.ones_like(
+        self.total_count)[..., array_ops.newaxis]
     return array_ops.matrix_set_diag(
-        -math_ops.matmul(self._mean_val[..., None], p[..., None, :]),
+        -math_ops.matmul(self._mean_val[..., array_ops.newaxis],
+                         p[..., array_ops.newaxis, :]),  # outer product
         self._variance())
 
   def _variance(self):
-    p = self.probs * array_ops.ones_like(self.total_count)[..., None]
+    p = self.probs * array_ops.ones_like(
+        self.total_count)[..., array_ops.newaxis]
     return self._mean_val - self._mean_val * p
 
   def _maybe_assert_valid_total_count(self, total_count, validate_args):
@@ -279,14 +281,11 @@ class Multinomial(distribution.Distribution):
     """Check counts for proper shape, values, then return tensor version."""
     if not self.validate_args:
       return counts
+
+    counts = distribution_util.embed_check_nonnegative_discrete(
+        counts, check_integer=True)
     return control_flow_ops.with_dependencies([
-        check_ops.assert_non_negative(
-            counts,
-            message="counts must be non-negative."),
         check_ops.assert_equal(
             self.total_count, math_ops.reduce_sum(counts, -1),
             message="counts must sum to `self.total_count`"),
-        distribution_util.assert_integer_form(
-            counts,
-            message="counts cannot contain fractional components."),
     ], counts)

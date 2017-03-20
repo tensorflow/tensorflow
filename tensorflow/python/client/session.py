@@ -422,7 +422,9 @@ class _FetchHandler(object):
         self._fetches.append(fetch_name)
         self._ops.append(False)
       # Remember the fetch if it is for a tensor handle.
-      if isinstance(fetch, ops.Tensor) and fetch.op.type == 'GetSessionHandle':
+      if (isinstance(fetch, ops.Tensor) and
+          (fetch.op.type == 'GetSessionHandle' or
+           fetch.op.type == 'GetSessionHandleV2')):
         self._fetch_handles[fetch_name] = fetch.op.inputs[0].dtype
     self._final_fetches = [x for x in self._fetches if x not in feeds]
 
@@ -605,9 +607,8 @@ class BaseSession(SessionInterface):
     """Returns a context manager that makes this object the default session.
 
     Use with the `with` keyword to specify that calls to
-    [`Operation.run()`](../../api_docs/python/framework.md#Operation.run) or
-    [`Tensor.eval()`](../../api_docs/python/framework.md#Tensor.eval) should be
-    executed in this session.
+    @{tf.Operation.run} or @{tf.Tensor.eval} should be executed in
+    this session.
 
     ```python
     c = tf.constant(..)
@@ -618,9 +619,7 @@ class BaseSession(SessionInterface):
       print(c.eval())
     ```
 
-    To get the current default session, use
-    [`tf.get_default_session()`](#get_default_session).
-
+    To get the current default session, use @{tf.get_default_session}.
 
     *N.B.* The `as_default` context manager *does not* close the
     session when you exit the context, and you must close the session
@@ -642,14 +641,19 @@ class BaseSession(SessionInterface):
     session that is automatically closed on exiting the context,
     including when an uncaught exception is raised.
 
-    *N.B.* The default graph is a property of the current thread. If you
+    *N.B.* The default session is a property of the current thread. If you
     create a new thread, and wish to use the default session in that
     thread, you must explicitly add a `with sess.as_default():` in that
     thread's function.
 
+    *N.B.* Entering a `with sess.as_default():` block does not affect
+    the current default graph. If you are using multiple graphs, and
+    `sess.graph` is different from the value of @{tf.get_default_graph},
+    you must explicitly enter a `with sess.graph.as_default():` block
+    to make `sess.graph` the default graph.
+
     Returns:
       A context manager using this session as the default session.
-
     """
     return ops.default_session(self)
 
@@ -665,14 +669,14 @@ class BaseSession(SessionInterface):
     nested list, tuple, namedtuple, dict, or OrderedDict containing graph
     elements at its leaves.  A graph element can be one of the following types:
 
-    * An [`Operation`](../../api_docs/python/framework.md#Operation).
+    * An @{tf.Operation}.
       The corresponding fetched value will be `None`.
-    * A [`Tensor`](../../api_docs/python/framework.md#Tensor).
+    * A @{tf.Tensor}.
       The corresponding fetched value will be a numpy ndarray containing the
       value of that tensor.
-    * A [`SparseTensor`](../../api_docs/python/sparse_ops.md#SparseTensor).
+    * A @{tf.SparseTensor}.
       The corresponding fetched value will be a
-      [`SparseTensorValue`](../../api_docs/python/sparse_ops.md#SparseTensorValue)
+      @{tf.SparseTensorValue}
       containing the value of that sparse tensor.
     * A `get_tensor_handle` op.  The corresponding fetched value will be a
       numpy ndarray containing the handle of that tensor.
@@ -708,16 +712,16 @@ class BaseSession(SessionInterface):
     the value of tensors in the graph. Each key in `feed_dict` can be
     one of the following types:
 
-    * If the key is a [`Tensor`](../../api_docs/python/framework.md#Tensor), the
+    * If the key is a @{tf.Tensor}, the
       value may be a Python scalar, string, list, or numpy ndarray
       that can be converted to the same `dtype` as that
       tensor. Additionally, if the key is a
-      [placeholder](../../api_docs/python/io_ops.md#placeholder), the shape of
+      @{tf.placeholder}, the shape of
       the value will be checked for compatibility with the placeholder.
     * If the key is a
-      [`SparseTensor`](../../api_docs/python/sparse_ops.md#SparseTensor),
+      @{tf.SparseTensor},
       the value should be a
-      [`SparseTensorValue`](../../api_docs/python/sparse_ops.md#SparseTensorValue).
+      @{tf.SparseTensorValue}.
     * If the key is a nested tuple of `Tensor`s or `SparseTensor`s, the value
       should be a nested tuple with the same structure that maps to their
       corresponding values as above.
@@ -924,7 +928,7 @@ class BaseSession(SessionInterface):
           if isinstance(subfeed_val, ops.Tensor):
             raise TypeError('The value of a feed cannot be a tf.Tensor object. '
                             'Acceptable feed values include Python scalars, '
-                            'strings, lists, or numpy ndarrays.')
+                            'strings, lists, numpy ndarrays, or TensorHandles.')
 
           subfeed_dtype = subfeed_t.dtype.as_numpy_dtype
           if isinstance(subfeed_val,
@@ -935,9 +939,15 @@ class BaseSession(SessionInterface):
                 ' Try explicitly setting the type of the feed tensor'
                 ' to a larger type (e.g. int64).')
 
-          np_val = np.asarray(subfeed_val, dtype=subfeed_dtype)
+          is_tensor_handle_feed = isinstance(subfeed_val,
+                                             session_ops.TensorHandle)
+          if is_tensor_handle_feed:
+            np_val = subfeed_val.to_numpy_array()
+          else:
+            np_val = np.asarray(subfeed_val, dtype=subfeed_dtype)
 
-          if not subfeed_t.get_shape().is_compatible_with(np_val.shape):
+          if (not is_tensor_handle_feed and
+              not subfeed_t.get_shape().is_compatible_with(np_val.shape)):
             raise ValueError(
                 'Cannot feed value of shape %r for Tensor %r, '
                 'which has shape %r'
@@ -1120,10 +1130,10 @@ class Session(BaseSession):
   ```
 
   A session may own resources, such as
-  [variables](../../api_docs/python/state_ops.md#Variable), [queues](../../api_docs/python/io_ops.md#QueueBase),
-  and [readers](../../api_docs/python/io_ops.md#ReaderBase). It is important to release
+  @{tf.Variable}, @{tf.QueueBase},
+  and @{tf.ReaderBase}. It is important to release
   these resources when they are no longer required. To do this, either
-  invoke the [`close()`](#Session.close) method on the session, or use
+  invoke the @{tf.Session.close} method on the session, or use
   the session as a context manager. The following two examples are
   equivalent:
 
@@ -1150,17 +1160,6 @@ class Session(BaseSession):
   sess = tf.Session(config=tf.ConfigProto(allow_soft_placement=True,
                                           log_device_placement=True))
   ```
-
-  @@__init__
-  @@run
-  @@close
-
-  @@graph
-
-  @@as_default
-
-  @@reset
-
   """
 
   def __init__(self, target='', graph=None, config=None):
@@ -1177,7 +1176,7 @@ class Session(BaseSession):
     Args:
       target: (Optional.) The execution engine to connect to.
         Defaults to using an in-process engine. See
-        [Distributed Tensorflow](https://www.tensorflow.org/how_tos/distributed/index.html)
+        @{$distributed$Distributed TensorFlow}
         for more examples.
       graph: (Optional.) The `Graph` to be launched (described above).
       config: (Optional.) A [`ConfigProto`](https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto)
@@ -1253,8 +1252,8 @@ class InteractiveSession(BaseSession):
 
   The only difference with a regular `Session` is that an `InteractiveSession`
   installs itself as the default session on construction.
-  The methods [`Tensor.eval()`](../../api_docs/python/framework.md#Tensor.eval)
-  and [`Operation.run()`](../../api_docs/python/framework.md#Operation.run)
+  The methods @{tf.Tensor.eval}
+  and @{tf.Operation.run}
   will use that session to run ops.
 
   This is convenient in interactive shells and [IPython
@@ -1285,9 +1284,6 @@ class InteractiveSession(BaseSession):
     # We can also use 'c.eval()' here.
     print(c.eval())
   ```
-
-  @@__init__
-  @@close
   """
 
   def __init__(self, target='', graph=None, config=None):

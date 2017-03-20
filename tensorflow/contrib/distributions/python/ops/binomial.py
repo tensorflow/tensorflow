@@ -65,7 +65,7 @@ class Binomial(distribution.Distribution):
   where:
   * `total_count = n`,
   * `probs = p`,
-  * `Z` is the normalizaing constant, and,
+  * `Z` is the normalizing constant, and,
   * `n!` is the factorial of `n`.
 
   #### Examples
@@ -120,7 +120,7 @@ class Binomial(distribution.Distribution):
     Args:
       total_count: Non-negative floating point tensor with shape broadcastable
         to `[N1,..., Nm]` with `m >= 0` and the same dtype as `probs` or
-        `logits`.  Defines this as a batch of `N1 x ... x Nm` different Binomial
+        `logits`. Defines this as a batch of `N1 x ...  x Nm` different Binomial
         distributions. Its components should be equal to integer values.
       logits: Floating point tensor representing the log-odds of a
         positive event with shape broadcastable to `[N1,..., Nm]` `m >= 0`, and
@@ -131,18 +131,18 @@ class Binomial(distribution.Distribution):
         `[N1,..., Nm]` `m >= 0`, `probs in [0, 1]`. Each entry represents the
         probability of success for independent Binomial distributions. Only one
         of `logits` or `probs` should be passed in.
-      validate_args: Python `Boolean`, default `False`. When `True` distribution
+      validate_args: Python `bool`, default `False`. When `True` distribution
         parameters are checked for validity despite possibly degrading runtime
         performance. When `False` invalid inputs may silently render incorrect
         outputs.
-      allow_nan_stats: Python `Boolean`, default `True`. When `True`, statistics
+      allow_nan_stats: Python `bool`, default `True`. When `True`, statistics
         (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
-        result is undefined.  When `False`, an exception is raised if one or
+        result is undefined. When `False`, an exception is raised if one or
         more of the statistic's batch members are undefined.
-      name: `String` name prefixed to Ops created by this class.
+      name: Python `str` name prefixed to Ops created by this class.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[total_count, logits, probs]) as ns:
+    with ops.name_scope(name, values=[total_count, logits, probs]):
       self._total_count = self._maybe_assert_valid_total_count(
           ops.convert_to_tensor(total_count, name="total_count"),
           validate_args)
@@ -153,7 +153,6 @@ class Binomial(distribution.Distribution):
           name=name)
     super(Binomial, self).__init__(
         dtype=self._probs.dtype,
-        is_continuous=False,
         reparameterization_type=distribution.NOT_REPARAMETERIZED,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
@@ -161,7 +160,7 @@ class Binomial(distribution.Distribution):
         graph_parents=[self._total_count,
                        self._logits,
                        self._probs],
-        name=ns)
+        name=name)
 
   @property
   def total_count(self):
@@ -221,7 +220,7 @@ class Binomial(distribution.Distribution):
 
   @distribution_util.AppendDocstring(
       """Note that when `(1 + total_count) * probs` is an integer, there are
-      actually two modes.  Namely, `(1 + total_count) * probs` and
+      actually two modes. Namely, `(1 + total_count) * probs` and
       `(1 + total_count) * probs - 1` are both modes. Here we return only the
       larger of the two modes.""")
   def _mode(self):
@@ -239,18 +238,15 @@ class Binomial(distribution.Distribution):
             message="total_count cannot contain fractional componentes."),
     ], total_count)
 
-  def _maybe_assert_valid_sample(self, counts):
+  def _maybe_assert_valid_sample(self, counts, check_integer=True):
     """Check counts for proper shape, values, then return tensor version."""
     if not self.validate_args:
       return counts
+
+    counts = distribution_util.embed_check_nonnegative_discrete(
+        counts, check_integer=check_integer)
     return control_flow_ops.with_dependencies([
-        check_ops.assert_non_negative(
-            counts,
-            message="counts must be non-negative."),
         check_ops.assert_less_equal(
-            counts, self._total_count,
+            counts, self.total_count,
             message="counts are not less than or equal to n."),
-        distribution_util.assert_integer_form(
-            counts,
-            message="counts cannot contain fractional components."),
     ], counts)

@@ -13,20 +13,11 @@
 # limitations under the License.
 # ==============================================================================
 
-# pylint: disable=line-too-long
-"""This library provides a set of classes and functions that helps train models.
+"""Support for training models.
 
-## Optimizers
-
-The Optimizer base class provides methods to compute gradients for a loss and
-apply gradients to variables.  A collection of subclasses implement classic
-optimization algorithms such as GradientDescent and Adagrad.
-
-You never instantiate the Optimizer class itself, but instead instantiate one
-of the subclasses.
+See the @{$python/train} guide.
 
 @@Optimizer
-
 @@GradientDescentOptimizer
 @@AdadeltaOptimizer
 @@AdagradOptimizer
@@ -37,69 +28,26 @@ of the subclasses.
 @@ProximalGradientDescentOptimizer
 @@ProximalAdagradOptimizer
 @@RMSPropOptimizer
-
-## Gradient Computation
-
-TensorFlow provides functions to compute the derivatives for a given
-TensorFlow computation graph, adding operations to the graph. The
-optimizer classes automatically compute derivatives on your graph, but
-creators of new Optimizers or expert users can call the lower-level
-functions below.
-
 @@gradients
 @@AggregationMethod
-
 @@stop_gradient
-
 @@hessians
-
-
-## Gradient Clipping
-
-TensorFlow provides several operations that you can use to add clipping
-functions to your graph. You can use these functions to perform general data
-clipping, but they're particularly useful for handling exploding or vanishing
-gradients.
-
 @@clip_by_value
 @@clip_by_norm
 @@clip_by_average_norm
 @@clip_by_global_norm
 @@global_norm
-
-## Decaying the learning rate
 @@exponential_decay
 @@inverse_time_decay
 @@natural_exp_decay
 @@piecewise_constant
 @@polynomial_decay
-
-## Moving Averages
-
-Some training algorithms, such as GradientDescent and Momentum often benefit
-from maintaining a moving average of variables during optimization.  Using the
-moving averages for evaluations often improve results significantly.
-
 @@ExponentialMovingAverage
-
-## Coordinator and QueueRunner
-
-See [Threading and Queues](../../how_tos/threading_and_queues/index.md)
-for how to use threads and queues.  For documentation on the Queue API,
-see [Queues](../../api_docs/python/io_ops.md#queues).
-
-
 @@Coordinator
 @@QueueRunner
 @@LooperThread
 @@add_queue_runner
 @@start_queue_runners
-
-## Distributed execution
-
-See [Distributed TensorFlow](../../how_tos/distributed/index.md) for
-more information about how to configure a distributed TensorFlow program.
-
 @@Server
 @@Supervisor
 @@SessionManager
@@ -112,24 +60,11 @@ more information about how to configure a distributed TensorFlow program.
 @@SessionCreator
 @@ChiefSessionCreator
 @@WorkerSessionCreator
-
-## Reading Summaries from Event Files
-
-See [Summaries and
-TensorBoard](../../how_tos/summaries_and_tensorboard/index.md) for an
-overview of summaries, event files, and visualization in TensorBoard.
-
 @@summary_iterator
-
-## Training Hooks
-
-Hooks are tools that run in the process of training/evaluation of the model.
-
 @@SessionRunHook
 @@SessionRunArgs
 @@SessionRunContext
 @@SessionRunValues
-
 @@LoggingTensorHook
 @@StopAtStepHook
 @@CheckpointSaverHook
@@ -141,16 +76,14 @@ Hooks are tools that run in the process of training/evaluation of the model.
 @@GlobalStepWaiterHook
 @@FinalOpsHook
 @@FeedFnHook
-
-## Training Utilities
-
 @@global_step
 @@basic_train_loop
 @@get_global_step
+@@get_or_create_global_step
+@@create_global_step
 @@assert_global_step
 @@write_graph
 """
-# pylint: enable=line-too-long
 
 # Optimizers.
 from __future__ import absolute_import
@@ -230,6 +163,8 @@ from tensorflow.python.training.training_util import write_graph
 from tensorflow.python.training.training_util import global_step
 from tensorflow.python.training.training_util import get_global_step
 from tensorflow.python.training.training_util import assert_global_step
+from tensorflow.python.training.training_util import create_global_step
+from tensorflow.python.training.training_util import get_or_create_global_step
 from tensorflow.python.pywrap_tensorflow import do_quantize_training_on_graphdef
 from tensorflow.python.pywrap_tensorflow import NewCheckpointReader
 

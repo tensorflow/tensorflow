@@ -127,7 +127,7 @@ class LiteralUtil {
   static std::unique_ptr<Literal> Transpose(
       const Literal& literal, tensorflow::gtl::ArraySlice<int64> permutation);
 
-  // Creates a sub-array from the the given literal by extracting the indices
+  // Creates a sub-array from the given literal by extracting the indices
   // [start_index, limit_index) of each dimension. The result literal has the
   // same rank and layout as for the given literal. The number of indices in
   // start_indices and limit_indices must be the rank of the literal, and the
@@ -355,6 +355,17 @@ class LiteralUtil {
   // true.
   static bool IsAll(const Literal& literal, int8 value);
 
+  // Like IsAll(const Literal&, int8), except we check whether the literal is
+  // equal to a particular floating-point number.
+  //
+  // If the literal is not a floating-point value, this always returns false.
+  //
+  // This casts value to the type of literal, then compares using ==.  The usual
+  // admonishments about floating-point equality checks apply.  We expect you to
+  // use this to check for values that can be expressed precisely as a float,
+  // e.g. -0.5.
+  static bool IsAllFloat(const Literal& literal, float value);
+
   // Returns whether the literal is zero at the specified index. The literal
   // must be an array.
   static bool IsZero(const Literal& literal,
@@ -437,8 +448,11 @@ LiteralUtil::GetMutableRepeatedField<tensorflow::protobuf_int64>(
     Literal* literal);
 
 template <>
-/* static */ tensorflow::gtl::ArraySlice<float>
-LiteralUtil::GetArraySlice<float>(const Literal& literal);
+/* static */ inline tensorflow::gtl::ArraySlice<float>
+LiteralUtil::GetArraySlice<float>(const Literal& literal) {
+  DCHECK(literal.shape().element_type() == F32);
+  return literal.f32s();
+}
 
 template <>
 /* static */ tensorflow::protobuf::RepeatedField<float>*
@@ -803,7 +817,7 @@ template <typename NativeT>
   *literal->mutable_shape() =
       ShapeUtil::MakeShape(PRED, {static_cast<int64>(values.bits())});
   Reserve(values.bits(), literal);
-  for (int64 i = 0; i < values.bits(); ++i) {
+  for (int64 i = 0; i < static_cast<int64>(values.bits()); ++i) {
     Set(literal, {i}, values.get(i));
   }
 }

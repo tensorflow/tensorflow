@@ -15,7 +15,7 @@
 
 """Input pipeline.
 
-Please see the [reading data how-to](../../how_tos/reading_data/index.md)
+Please see the @{$reading_data$reading data how-to}
 for context.
 """
 
@@ -930,8 +930,8 @@ def maybe_batch(tensors, keep_input, batch_size, num_threads=1, capacity=32,
       added to the queue or not.  If it is a scalar and evaluates `True`, then
       `tensors` are all added to the queue. If it is a vector and `enqueue_many`
       is `True`, then each example is added to the queue only if the
-      corresonding value in `keep_input` is `True`. This tensor essentially acts
-      as a filtering mechanism.
+      corresponding value in `keep_input` is `True`. This tensor essentially
+      acts as a filtering mechanism.
     batch_size: The new batch size pulled from the queue.
     num_threads: The number of threads enqueuing `tensors`.
     capacity: An integer. The maximum number of elements in the queue.

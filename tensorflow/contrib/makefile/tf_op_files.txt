@@ -107,6 +107,7 @@ tensorflow/core/kernels/example_parsing_ops.cc
 tensorflow/core/kernels/dynamic_stitch_op.cc
 tensorflow/core/kernels/dynamic_partition_op.cc
 tensorflow/core/kernels/depthtospace_op.cc
+tensorflow/core/kernels/spacetodepth_op.cc
 tensorflow/core/kernels/dense_update_ops.cc
 tensorflow/core/kernels/deep_conv2d.cc
 tensorflow/core/kernels/xsmm_conv2d.cc
@@ -173,6 +174,7 @@ tensorflow/core/kernels/batch_norm_op.cc
 tensorflow/core/kernels/avgpooling_op.cc
 tensorflow/core/kernels/argmax_op.cc
 tensorflow/core/kernels/aggregate_ops.cc
+tensorflow/core/kernels/depthwise_conv_op.cc
 tensorflow/core/kernels/dequantize_op.cc
 tensorflow/core/kernels/meta_support.cc
 tensorflow/core/kernels/quantization_utils.cc

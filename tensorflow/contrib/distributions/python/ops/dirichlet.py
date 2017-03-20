@@ -142,18 +142,18 @@ class Dirichlet(distribution.Distribution):
         `concentration.shape = [N1, N2, ..., Nm, k]` then
         `batch_shape = [N1, N2, ..., Nm]` and
         `event_shape = [k]`.
-      validate_args: Python `Boolean`, default `False`. When `True` distribution
+      validate_args: Python `bool`, default `False`. When `True` distribution
         parameters are checked for validity despite possibly degrading runtime
         performance. When `False` invalid inputs may silently render incorrect
         outputs.
-      allow_nan_stats: Python `Boolean`, default `True`. When `True`, statistics
+      allow_nan_stats: Python `bool`, default `True`. When `True`, statistics
         (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
-        result is undefined.  When `False`, an exception is raised if one or
+        result is undefined. When `False`, an exception is raised if one or
         more of the statistic's batch members are undefined.
-      name: `String` name prefixed to Ops created by this class.
+      name: Python `str` name prefixed to Ops created by this class.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[concentration]) as ns:
+    with ops.name_scope(name, values=[concentration]):
       self._concentration = self._maybe_assert_valid_concentration(
           ops.convert_to_tensor(concentration, name="concentration"),
           validate_args)
@@ -162,12 +162,11 @@ class Dirichlet(distribution.Distribution):
         dtype=self._concentration.dtype,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
-        is_continuous=True,
         reparameterization_type=distribution.NOT_REPARAMETERIZED,
         parameters=parameters,
         graph_parents=[self._concentration,
                        self._total_concentration],
-        name=ns)
+        name=name)
 
   @property
   def concentration(self):
@@ -225,12 +224,13 @@ class Dirichlet(distribution.Distribution):
             axis=-1))
 
   def _mean(self):
-    return self.concentration / self.total_concentration[..., None]
+    return self.concentration / self.total_concentration[..., array_ops.newaxis]
 
   def _covariance(self):
     x = self._variance_scale_term() * self._mean()
     return array_ops.matrix_set_diag(
-        -math_ops.matmul(x[..., None], x[..., None, :]),  # outer prod
+        -math_ops.matmul(x[..., array_ops.newaxis],
+                         x[..., array_ops.newaxis, :]),  # outer prod
         self._variance())
 
   def _variance(self):
@@ -240,16 +240,17 @@ class Dirichlet(distribution.Distribution):
 
   def _variance_scale_term(self):
     """Helper to `_covariance` and `_variance` which computes a shared scale."""
-    return math_ops.rsqrt(1. + self.total_concentration[..., None])
+    return math_ops.rsqrt(1. + self.total_concentration[..., array_ops.newaxis])
 
   @distribution_util.AppendDocstring(
       """Note: The mode is undefined when any `concentration <= 1`. If
-      `self.allow_nan_stats` is `True`, `NaN` is used for undefined modes.  If
+      `self.allow_nan_stats` is `True`, `NaN` is used for undefined modes. If
       `self.allow_nan_stats` is `False` an exception is raised when one or more
       modes are undefined.""")
   def _mode(self):
     k = math_ops.cast(self.event_shape_tensor()[0], self.dtype)
-    mode = (self.concentration - 1.) / (self.total_concentration[..., None] - k)
+    mode = (self.concentration - 1.) / (
+        self.total_concentration[..., array_ops.newaxis] - k)
     if self.allow_nan_stats:
       nan = array_ops.fill(
           array_ops.shape(mode),
@@ -290,7 +291,7 @@ class Dirichlet(distribution.Distribution):
             x,
             message="samples must be positive"),
         distribution_util.assert_close(
-            array_ops.ones((), dtype=self.dtype),
+            array_ops.ones([], dtype=self.dtype),
             math_ops.reduce_sum(x, -1),
             message="sample last-dimension must sum to `1`"),
     ], x)

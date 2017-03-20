@@ -5,10 +5,25 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 package(
     default_visibility = [
         "//tensorflow:__subpackages__",
         "//tensorflow_models:__subpackages__",
+    ],
+)
+
+# Transitive dependencies of this target will be included in the pip package.
+py_library(
+    name = "nets_pip",
+    deps = [
+        ":alexnet",
+        ":inception",
+        ":overfeat",
+        ":resnet_v1",
+        ":resnet_v2",
+        ":vgg",
     ],
 )
 

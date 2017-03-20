@@ -150,9 +150,9 @@ public class TensorFlowYoloDetector implements Classifier {
     bitmap.getPixels(intValues, 0, bitmap.getWidth(), 0, 0, bitmap.getWidth(), bitmap.getHeight());
 
     for (int i = 0; i < intValues.length; ++i) {
-      floatValues[i * 3 + 0] = (intValues[i] & 0xFF) / 255.0f;
+      floatValues[i * 3 + 0] = ((intValues[i] >> 16) & 0xFF) / 255.0f;
       floatValues[i * 3 + 1] = ((intValues[i] >> 8) & 0xFF) / 255.0f;
-      floatValues[i * 3 + 2] = ((intValues[i] >> 16) & 0xFF) / 255.0f;
+      floatValues[i * 3 + 2] = (intValues[i] & 0xFF) / 255.0f;
     }
     Trace.endSection(); // preprocessBitmap
 
@@ -215,7 +215,7 @@ public class TensorFlowYoloDetector implements Classifier {
                   Math.max(0, yPos - h / 2),
                   Math.min(bitmap.getWidth() - 1, xPos + w / 2),
                   Math.min(bitmap.getHeight() - 1, yPos + h / 2));
-          final float confidence = output[offset + 4];
+          final float confidence = expit(output[offset + 4]);
 
           int detectedClass = -1;
           float maxClass = 0;

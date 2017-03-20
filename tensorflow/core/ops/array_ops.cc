@@ -1511,6 +1511,7 @@ REGISTER_OP("PreventGradient")
     .Input("input: T")
     .Output("output: T")
     .Attr("T: type")
+    .Attr("message: string = ''")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"Doc(
 An identity op that triggers an error if a gradient is requested.
@@ -1522,6 +1523,11 @@ will return an error when trying to lookup the gradient of this op,
 because no gradient must ever be registered for this function.  This
 op exists to prevent subtle bugs from silently returning unimplemented
 gradients in some corner cases.
+
+input: any tensor.
+output: the same input tensor.
+message: Will be printed in the error when anyone tries to differentiate
+this operation.
 )Doc");
 
 // --------------------------------------------------------------------------
@@ -4283,6 +4289,27 @@ REGISTER_OP("QuantizeAndDequantize")
     .Output("output: T")
     .Attr("T: {float, double}")
     .SetShapeFn(shape_inference::UnchangedShape)
+    .Deprecated(22, "Replaced by QuantizeAndDequantizeV2")
+    .Doc(R"doc(
+Use QuantizeAndDequantizeV2 instead.
+)doc");
+
+REGISTER_OP("QuantizeAndDequantizeV2")
+    .Input("input: T")
+    .Input("input_min: T")
+    .Input("input_max: T")
+    .Attr("signed_input: bool = true")
+    .Attr("num_bits: int = 8")
+    .Attr("range_given: bool = false")
+    .Output("output: T")
+    .Attr("T: {float, double}")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      c->set_output(0, c->input(0));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Quantizes then dequantizes a tensor.
 
@@ -4301,7 +4328,7 @@ To perform this op, we first find the range of values in our tensor. The range
 we use is always centered on 0, so we find m such that
 
 1. m = max(abs(input_min), abs(input_max)) if range_given is true,
-2. m = max(max(abs(min_elem(input)), abs(max_elem(input))) otherwise.
+2. m = max(abs(min_elem(input)), abs(max_elem(input))) otherwise.
 
 Our input tensor range is then [-m, m].
 
@@ -4340,122 +4367,10 @@ input: Tensor to quantize and then dequantize.
 signed_input: If the quantization is signed or unsigned.
 num_bits: The bitwidth of the quantization.
 range_given: If the range is given or should be computed from the tensor.
-input_min: If range is given, this is the min of the range.
-input_max: If range is given, this is the max of the range.
-)doc");
-
-// EXPERIMENTAL: tfdbg debugger-inserted ops.
-REGISTER_OP("Copy")
-    .Input("input: T")
-    .Output("output: T")
-    .Attr("T: type")
-    .Attr("tensor_name: string = ''")
-    .SetAllowsUninitializedInput()
-    .Doc(R"doc(
-Copy Op.
-
-Performs CPU-to-CPU or GPU-to-GPU deep-copying of tensor, depending on the
-device on which the tensor is allocated.
-
-Unlike the CopyHost Op, this op does not have HostMemory constraint on its
-input or output.
-
-input: Input tensor.
-output: Output tensor, deep-copied from input.
-tensor_name: The name of the input tensor.
-)doc");
-
-REGISTER_OP("CopyHost")
-    .Input("input: T")
-    .Output("output: T")
-    .Attr("T: type")
-    .Attr("tensor_name: string = ''")
-    .SetAllowsUninitializedInput()
-    .Doc(R"doc(
-Copy Host Op.
-
-Performs CPU-to-CPU deep-copying of tensor.
-
-Unlike the Copy Op, this op has HostMemory constraint on its input or output.
-
-input: Input tensor.
-output: Output tensor, deep-copied from input.
-tensor_name: The name of the input tensor.
-)doc");
-
-REGISTER_OP("DebugIdentity")
-    .Input("input: T")
-    .Output("output: T")
-    .Attr("T: type")
-    .Attr("tensor_name: string = ''")
-    .Attr("debug_urls: list(string) = []")
-    .SetAllowsUninitializedInput()
-    .Doc(R"doc(
-Debug Identity Op.
-
-Provides an identity mapping of the non-Ref type input tensor for debugging.
-
-input: Input tensor, non-Reference type.
-output: Output tensor that equals the input tensor.
-tensor_name: Name of the input tensor.
-debug_urls: List of URLs to debug targets, e.g.,
-            file:///foo/tfdbg_dump, grpc:://localhost:11011
-)doc");
-
-REGISTER_OP("DebugNanCount")
-    .Input("input: T")
-    .Output("output: int64")  // The debug signal (nan count) is int64
-    .Attr("T: type")
-    .Attr("tensor_name: string = ''")
-    .Attr("debug_urls: list(string) = []")
-    .SetAllowsUninitializedInput()
-    .Doc(R"doc(
-Debug NaN Value Counter Op
-
-Counts number of NaNs in the input tensor, for debugging.
-
-input: Input tensor, non-Reference type.
-output: An integer output tensor that is the number of NaNs in the input.
-tensor_name: Name of the input tensor.
-debug_urls: List of URLs to debug targets, e.g.,
-            file:///foo/tfdbg_dump, grpc:://localhost:11011
-)doc");
-
-REGISTER_OP("DebugNumericSummary")
-    .Input("input: T")
-    .Output("output: double")
-    .Attr("T: type")
-    .Attr("tensor_name: string = ''")
-    .Attr("debug_urls: list(string) = []")
-    .SetAllowsUninitializedInput()
-    .Doc(R"doc(
-Debug Numeric Summary Op.
-
-Provide a basic summary of numeric value types, range and distribution.
-
-input: Input tensor, non-Reference type, float or double.
-output: A double tensor of shape [12], the elements of which are:
-  [0]: is initialized (1.0) or not (0.0).
-  [1]: total number of elements
-  [2]: -inf count
-  [3]: negative element count (excluding -inf)
-  [4]: zero element count
-  [5]: positive element count (excluding +inf)
-  [6]: +inf element count
-  [7]: NaN element count
-Output elements [1:8] are all zero, if the tensor is uninitialized.
-  [8]: minimum of all non-inf and non-NaN elements.
-       If uninitialized or no such element exists: +inf.
-  [9]: maximum of all non-inf and non-NaN elements.
-       If uninitialized or no such element exists: -inf.
-  [10]: mean of all non-inf and non-NaN elements.
-        If uninitialized or no such element exists: NaN.
-  [11]: variance of all non-inf and non-NaN elements.
-        If uninitialized or no such element exists: NaN.
-
-tensor_name: Name of the input tensor.
-debug_urls: List of URLs to debug targets, e.g.,
-            file:///foo/tfdbg_dump, grpc:://localhost:11011
+input_min: If range_given, this is the min of the range, otherwise this input
+           will be ignored.
+input_max: If range_given, this is the max of the range, otherwise this input
+           will be ignored.
 )doc");
 
 REGISTER_OP("QuantizeV2")
@@ -4905,9 +4820,8 @@ REGISTER_OP("FakeQuantWithMinMaxVars")
       return Status::OK();
     })
     .Doc(R"doc(
-Fake-quantize the 'inputs' tensor of type float and shape `[b, h, w, d]` via
-global float scalars `min` and `max` to 'outputs' tensor of same shape as
-`inputs`.
+Fake-quantize the 'inputs' tensor of type float via global float scalars `min`
+and `max` to 'outputs' tensor of same shape as `inputs`.
 
 [min; max] is the clamping range for the 'inputs' data.  Op divides this range
 into 255 steps (total of 256 values), then replaces each 'inputs' value with the

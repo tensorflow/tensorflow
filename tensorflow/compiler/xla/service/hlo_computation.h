@@ -111,7 +111,7 @@ class HloComputation {
   // Returns the parameter instruction for the given parameter number.
   HloInstruction* parameter_instruction(int64 param_no) const {
     CHECK_GE(param_no, 0);
-    CHECK_LT(param_no, param_instructions_.size());
+    CHECK_LT(param_no, static_cast<int64>(param_instructions_.size()));
     return param_instructions_[param_no];
   }
 
@@ -127,17 +127,6 @@ class HloComputation {
   const std::list<std::unique_ptr<HloInstruction>>& instructions() const {
     return instructions_;
   }
-
-  // Add a control dependency between the two instructions in this computation
-  // so that the 'predecessor' is visited before the 'successor' during the DFS
-  // traversal of the computation. Returns an error status if either of the
-  // given instructions does not belong to the current computation.
-  //
-  // This is used to enforce an additional ordering requirement that is not
-  // captured by normal data dependencies, such as ordering among Send or Recv
-  // operations to avoid deadlock.
-  Status AddControlDependency(HloInstruction* predecessor,
-                              HloInstruction* successor);
 
   // Compute and return a post-order of the instructions in the computation. In
   // this order, definitions of values always appear before their uses.
@@ -214,6 +203,13 @@ class HloComputation {
   // root instruction as the argument).
   Status Accept(DfsHloVisitor* visitor) const;
 
+  // Same as Accept() above, but the order of operand and control predecessor
+  // visitation is determined by the given operand order; if compare(A, B) ==
+  // true, A is visited before B.
+  Status AcceptWithOperandOrder(
+      DfsHloVisitor* visitor,
+      const HloInstruction::CompareFunction& operand_order) const;
+
   // Visit every node in the computation in the given order. 'order' must
   // be a topological sort of all instructions in the computation.
   Status AcceptOrdered(DfsHloVisitor* visitor,
@@ -238,11 +234,6 @@ class HloComputation {
   HloInstruction* AddInstructionInternal(
       std::unique_ptr<HloInstruction> instruction);
 
-  // Remove an instruction from the computation if found. The instruction must
-  // have no users. Instruction is deallocated with this call.
-  // Return whether instruction was found and removed.
-  StatusOr<bool> RemoveInstructionIfFound(HloInstruction* instruction);
-
   // Fuses HLOs in instructions_to_fuse into fusion_instruction.
   //
   // Pre-condition: fusion_instruction's opcode is kFusion.
@@ -253,6 +244,9 @@ class HloComputation {
   // Internal helper for copying a tuple value. Creates and returns a deep copy
   // of the given instruction. The given instruction must be tuple-shaped.
   StatusOr<HloInstruction*> DeepCopyTuple(HloInstruction* instruction);
+
+  // Internal helper to collect unreachable roots.
+  std::vector<HloInstruction*> CollectUnreachableRoots() const;
 
   const string name_;
   HloInstruction* root_instruction_;

@@ -160,9 +160,8 @@ def _fused_batch_norm(
   they need to be added as a dependency to the `train_op`, example:
 
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
-    if update_ops:
-      updates = tf.group(*update_ops)
-      total_loss = control_flow_ops.with_dependencies([updates], total_loss)
+    with tf.control_dependencies(update_ops):
+      train_op = optimizer.minimize(loss)
 
   One can set updates_collections=None to force the updates in place, but that
   can have speed penalty, especially in distributed settings.
@@ -359,25 +358,25 @@ def _fused_batch_norm(
 
 
 @add_arg_scope
-def batch_norm(
-    inputs,
-    decay=0.999,
-    center=True,
-    scale=False,
-    epsilon=0.001,
-    activation_fn=None,
-    param_initializers=None,
-    updates_collections=ops.GraphKeys.UPDATE_OPS,
-    is_training=True,
-    reuse=None,
-    variables_collections=None,
-    outputs_collections=None,
-    trainable=True,
-    batch_weights=None,
-    fused=False,
-    data_format=DATA_FORMAT_NHWC,
-    zero_debias_moving_mean=False,
-    scope=None):
+def batch_norm(inputs,
+               decay=0.999,
+               center=True,
+               scale=False,
+               epsilon=0.001,
+               activation_fn=None,
+               param_initializers=None,
+               param_regularizers=None,
+               updates_collections=ops.GraphKeys.UPDATE_OPS,
+               is_training=True,
+               reuse=None,
+               variables_collections=None,
+               outputs_collections=None,
+               trainable=True,
+               batch_weights=None,
+               fused=False,
+               data_format=DATA_FORMAT_NHWC,
+               zero_debias_moving_mean=False,
+               scope=None):
   """Adds a Batch Normalization layer from http://arxiv.org/abs/1502.03167.
 
     "Batch Normalization: Accelerating Deep Network Training by Reducing
@@ -392,9 +391,8 @@ def batch_norm(
   they need to be added as a dependency to the `train_op`, example:
 
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
-    if update_ops:
-      updates = tf.group(*update_ops)
-      total_loss = control_flow_ops.with_dependencies([updates], total_loss)
+    with tf.control_dependencies(update_ops):
+      train_op = optimizer.minimize(loss)
 
   One can set updates_collections=None to force the updates in place, but that
   can have speed penalty, especially in distributed settings.
@@ -419,6 +417,7 @@ def batch_norm(
       maintain a linear activation.
     param_initializers: Optional initializers for beta, gamma, moving mean and
       moving variance.
+    param_regularizers: Optional regularizer for beta and gamma.
     updates_collections: Collections to collect the update ops for computation.
       The updates_ops need to be executed with the train_op.
       If None, a control dependency would be added to make sure the updates are
@@ -450,6 +449,7 @@ def batch_norm(
 
   Raises:
     ValueError: If `batch_weights` is not None and `fused` is True.
+    ValueError: If `param_regularizers` is not None and `fused` is True.
     ValueError: If `data_format` is neither `NHWC` nor `NCHW`.
     ValueError: If the rank of `inputs` is undefined.
     ValueError: If rank or channels dimension of `inputs` is undefined.
@@ -457,6 +457,9 @@ def batch_norm(
   if fused:
     if batch_weights is not None:
       raise ValueError('Weighted mean and variance is not currently '
+                       'supported for fused batch norm.')
+    if param_regularizers is not None:
+      raise ValueError('Regularizers are not currently '
                        'supported for fused batch norm.')
     return _fused_batch_norm(
         inputs,
@@ -501,6 +504,10 @@ def batch_norm(
           'moving_mean', init_ops.zeros_initializer())
       moving_variance_initializer = param_initializers.get(
           'moving_variance', init_ops.ones_initializer())
+      if not param_regularizers:
+        param_regularizers = {}
+      beta_regularizer = param_regularizers.get('beta')
+      gamma_regularizer = param_regularizers.get('gamma')
       layer = normalization_layers.BatchNormalization(
           axis=axis,
           momentum=decay,
@@ -511,6 +518,8 @@ def batch_norm(
           gamma_initializer=gamma_initializer,
           moving_mean_initializer=moving_mean_initializer,
           moving_variance_initializer=moving_variance_initializer,
+          beta_regularizer=beta_regularizer,
+          gamma_regularizer=gamma_regularizer,
           trainable=trainable,
           name=sc.name,
           _scope=sc,
@@ -525,7 +534,8 @@ def batch_norm(
       if layer.beta:
         _add_variable_to_collections(layer.beta, variables_collections, 'beta')
       if layer.gamma:
-        _add_variable_to_collections(layer.beta, variables_collections, 'gamma')
+        _add_variable_to_collections(
+            layer.gamma, variables_collections, 'gamma')
 
       if activation_fn is not None:
         outputs = activation_fn(outputs)
@@ -1300,7 +1310,8 @@ def _inner_flatten(inputs, new_rank, output_collections=None, scope=None):
 def _model_variable_getter(getter, name, shape=None, dtype=None,
                            initializer=None, regularizer=None, trainable=True,
                            collections=None, caching_device=None,
-                           partitioner=None, rename=None, **_):
+                           partitioner=None, rename=None, use_resource=None,
+                           **_):
   """Getter that uses model_variable for compatibility with core layers."""
   short_name = name.split('/')[-1]
   if rename and short_name in rename:
@@ -1311,16 +1322,13 @@ def _model_variable_getter(getter, name, shape=None, dtype=None,
       name, shape=shape, dtype=dtype, initializer=initializer,
       regularizer=regularizer, collections=collections, trainable=trainable,
       caching_device=caching_device, partitioner=partitioner,
-      custom_getter=getter)
+      custom_getter=getter, use_resource=use_resource)
 
 
 def _build_variable_getter(rename=None):
   """Build a model variable getter that respects scope getter and renames."""
-  # Respect current getter, if one is set.
-  current_custom_getter = variable_scope.get_variable_scope().custom_getter
+  # VariableScope will nest the getters
   def layer_variable_getter(getter, *args, **kwargs):
-    if current_custom_getter is not None:
-      getter = functools.partial(current_custom_getter, getter)
     kwargs['rename'] = rename
     return _model_variable_getter(getter, *args, **kwargs)
   return layer_variable_getter
@@ -1796,7 +1804,7 @@ def separable_convolution2d(
     reuse: Whether or not the layer and its variables should be reused. To be
       able to reuse the layer scope must be given.
     variables_collections: Optional list of collections for all the variables or
-      a dictionay containing a different list of collection per variable.
+      a dictionary containing a different list of collection per variable.
     outputs_collections: Collection to add the outputs.
     trainable: Whether or not the variables should be trainable or not.
     scope: Optional scope for variable_scope.

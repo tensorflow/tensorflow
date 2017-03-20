@@ -73,7 +73,7 @@ def _embeddings_from_arguments(column,
         shape=[args.vocab_size],
         dtype=dtypes.float32,
         initializer=args.initializer,
-        trainable=trainable,
+        trainable=(trainable and args.trainable),
         collections=weight_collections)
 
     return embedding_ops.scattered_embedding_lookup_sparse(
@@ -108,7 +108,7 @@ def _embeddings_from_arguments(column,
           shape=shape,
           dtype=dtypes.float32,
           initializer=args.initializer,
-          trainable=trainable,
+          trainable=(trainable and args.trainable),
           collections=weight_collections)
       graph.add_to_collection(shared_embedding_collection_name, embeddings)
   else:
@@ -117,7 +117,7 @@ def _embeddings_from_arguments(column,
         shape=[args.vocab_size, args.dimension],
         dtype=dtypes.float32,
         initializer=args.initializer,
-        trainable=trainable,
+        trainable=(trainable and args.trainable),
         collections=weight_collections)
 
   if isinstance(embeddings, variables.Variable):
@@ -798,11 +798,14 @@ def check_feature_columns(feature_columns):
   """Checks the validity of the set of FeatureColumns.
 
   Args:
-    feature_columns: A set of instances or subclasses of FeatureColumn.
+    feature_columns: An iterable of instances or subclasses of FeatureColumn.
 
   Raises:
+    ValueError: If `feature_columns` is a dict.
     ValueError: If there are duplicate feature column keys.
   """
+  if isinstance(feature_columns, dict):
+    raise ValueError('Expected feature_columns to be iterable, found dict.')
   seen_keys = set()
   for f in feature_columns:
     key = f.key

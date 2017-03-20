@@ -8,7 +8,7 @@ function(RELATIVE_PROTOBUF_GENERATE_CPP SRCS HDRS ROOT_DIR)
     message(SEND_ERROR "Error: RELATIVE_PROTOBUF_GENERATE_CPP() called without any proto files")
     return()
   endif()
-  
+
   set(${SRCS})
   set(${HDRS})
   foreach(FIL ${ARGN})
@@ -93,6 +93,7 @@ set(tf_proto_text_srcs
     "tensorflow/core/framework/log_memory.proto"
     "tensorflow/core/framework/node_def.proto"
     "tensorflow/core/framework/op_def.proto"
+    "tensorflow/core/framework/remote_fused_graph_execute_info.proto"
     "tensorflow/core/framework/resource_handle.proto"
     "tensorflow/core/framework/step_stats.proto"
     "tensorflow/core/framework/summary.proto"
@@ -191,13 +192,12 @@ add_dependencies(tf_core_lib ${tensorflow_EXTERNAL_DEPENDENCIES} tf_protos_cc)
 # target.
 set(VERSION_INFO_CC ${tensorflow_source_dir}/tensorflow/core/util/version_info.cc)
 add_custom_target(force_rebuild_target ALL DEPENDS ${VERSION_INFO_CC})
-add_custom_command(OUTPUT __force_rebuild COMMAND cmake -E echo)
+add_custom_command(OUTPUT __force_rebuild COMMAND ${CMAKE_COMMAND} -E echo)
 add_custom_command(OUTPUT
     ${VERSION_INFO_CC}
     COMMAND ${PYTHON_EXECUTABLE} ${tensorflow_source_dir}/tensorflow/tools/git/gen_git_source.py
     --raw_generate ${VERSION_INFO_CC}
     DEPENDS __force_rebuild)
-
 set(tf_version_srcs ${tensorflow_source_dir}/tensorflow/core/util/version_info.cc)
 
 ########################################################
@@ -236,3 +236,9 @@ add_dependencies(tf_core_framework
     tf_core_lib
     proto_text
 )
+
+if(WIN32)
+  # Cmake > 3.6 will quote this as -D"__VERSION__=\"MSVC\"" which nvcc fails on.
+  # Instead of defining this global, limit it to tf_core_framework where its used.
+  target_compile_definitions(tf_core_framework PRIVATE __VERSION__="MSVC")
+endif()

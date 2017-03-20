@@ -20,7 +20,7 @@ into the 'distance to clusters' space. These are then fed into hidden layers to
 learn the supervised objective.
 
 To train this model on real mnist data, run this model as follows:
-  mnist --nofake_data --max_steps=2000
+  mnist --fake_data=False --max_steps=2000
 """
 
 from __future__ import absolute_import
@@ -29,6 +29,7 @@ from __future__ import print_function
 
 import argparse
 import math
+import sys
 import tempfile
 import time
 
@@ -102,13 +103,14 @@ def do_eval(sess,
   """
   # And run one epoch of eval.
   true_count = 0  # Counts the number of correct predictions.
-  steps_per_epoch = data_set.num_examples // FLAGS.batch_size
-  num_examples = steps_per_epoch * FLAGS.batch_size
-  for step in xrange(steps_per_epoch):
+  batch_size = min(FLAGS.batch_size, data_set.num_examples)
+  steps_per_epoch = data_set.num_examples // batch_size
+  num_examples = steps_per_epoch * batch_size
+  for _ in xrange(steps_per_epoch):
     feed_dict = fill_feed_dict(data_set,
                                images_placeholder,
                                labels_placeholder,
-                               FLAGS.batch_size)
+                               batch_size)
     true_count += sess.run(eval_correct, feed_dict=feed_dict)
   precision = true_count / num_examples
   print('  Num examples: %d  Num correct: %d  Precision @ 1: %0.04f' %
@@ -140,7 +142,8 @@ def inference(inp, num_clusters, hidden1_units, hidden2_units):
       # initial_clusters=tf.contrib.factorization.KMEANS_PLUS_PLUS_INIT,
       use_mini_batch=True)
 
-  all_scores, _, clustering_scores, kmeans_training_op = kmeans.training_graph()
+  (all_scores, _, clustering_scores, _, kmeans_init,
+   kmeans_training_op) = kmeans.training_graph()
   # Some heuristics to approximately whiten this output.
   all_scores = (all_scores[0] - 0.5) * 5
   # Here we avoid passing the gradients from the supervised objective back to
@@ -174,7 +177,7 @@ def inference(inp, num_clusters, hidden1_units, hidden2_units):
     biases = tf.Variable(tf.zeros([NUM_CLASSES]),
                          name='biases')
     logits = tf.matmul(hidden2, weights) + biases
-  return logits, clustering_loss, kmeans_training_op
+  return logits, clustering_loss, kmeans_init, kmeans_training_op
 
 
 def run_training():
@@ -190,10 +193,11 @@ def run_training():
     images_placeholder, labels_placeholder = placeholder_inputs()
 
     # Build a Graph that computes predictions from the inference model.
-    logits, clustering_loss, kmeans_training_op = inference(images_placeholder,
-                                                            FLAGS.num_clusters,
-                                                            FLAGS.hidden1,
-                                                            FLAGS.hidden2)
+    logits, clustering_loss, kmeans_init, kmeans_training_op = inference(
+        images_placeholder,
+        FLAGS.num_clusters,
+        FLAGS.hidden1,
+        FLAGS.hidden2)
 
     # Add to the Graph the Ops for loss calculation.
     loss = mnist.loss(logits, labels_placeholder)
@@ -211,12 +215,15 @@ def run_training():
     # Create a session for running Ops on the Graph.
     sess = tf.Session()
 
+    # Run the Op to initialize the variables.
+    sess.run(init)
+
     feed_dict = fill_feed_dict(data_sets.train,
                                images_placeholder,
                                labels_placeholder,
-                               batch_size=5000)
-    # Run the Op to initialize the variables.
-    sess.run(init, feed_dict=feed_dict)
+                               batch_size=max(FLAGS.batch_size, 5000))
+    # Run the Op to initialize the clusters.
+    sess.run(kmeans_init, feed_dict=feed_dict)
 
     # Start the training loop.
     max_test_prec = 0
@@ -279,6 +286,7 @@ if __name__ == '__main__':
   parser = argparse.ArgumentParser(
       description='Basic model parameters as external flags.'
   )
+  parser.register('type', 'bool', lambda v: v.lower() == 'true')
   parser.add_argument(
       '--learning_rate',
       type=float,
@@ -323,10 +331,10 @@ if __name__ == '__main__':
   )
   parser.add_argument(
       '--fake_data',
-      type=bool,
+      type='bool',
       default=True,
       help='Use fake input data.'
   )
   FLAGS, unparsed = parser.parse_known_args()
-
+  sys.argv = [sys.argv[0]] + unparsed
   tf.test.main()

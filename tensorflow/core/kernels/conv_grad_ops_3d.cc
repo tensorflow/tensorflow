@@ -260,6 +260,11 @@ class Conv3DBackpropFilterOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, filter_shape, &filter_backprop));
 
+    if (input_shape.num_elements() == 0) {
+      filter_backprop->template flat<T>().setZero();
+      return;
+    }
+
     // For the backprop of the filter, we need to also transpose the
     // out_backprop.
     // The shape of backprop is

@@ -69,7 +69,10 @@ bool IsBinaryInstalled(const string& binary_name) {
   for (const string& dir : str_util::Split(path, ':')) {
     const string binary_path = io::JoinPath(dir, binary_name);
     char absolute_path[PATH_MAX + 1];
-    ::realpath(binary_path.c_str(), absolute_path);
+    if (::realpath(binary_path.c_str(), absolute_path) == NULL) {
+      LOG(ERROR) << "Invalid binary path: " << binary_path;
+      return false;
+    }
     struct stat statinfo;
     int result = ::stat(absolute_path, &statinfo);
     if (result < 0) {

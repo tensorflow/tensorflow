@@ -8,8 +8,6 @@ package(
 
 licenses(["notice"])  # Apache 2.0
 
-exports_files(["LICENSE"])
-
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
@@ -231,6 +229,7 @@ cc_library(
         ":cc_ops_internal",
         ":grad_op_registry",
         ":gradients",
+        "//tensorflow/core:lib_proto_parsing",
     ],
 )
 
@@ -374,6 +373,24 @@ tf_gen_op_wrappers_cc(
     ],
     pkg = "//tensorflow/core",
     visibility = ["//tensorflow:internal"],
+)
+
+tf_gen_op_wrappers_cc(
+    name = "resource_variable_ops",
+    include_internal_ops = 1,
+    op_lib_names = [
+        "resource_variable_ops",
+    ],
+    pkg = "//tensorflow/core",
+    visibility = ["//tensorflow:internal"],
+)
+
+tf_gen_op_wrappers_cc(
+    name = "remote_fused_graph_ops",
+    op_lib_names = [
+        "remote_fused_graph_ops",
+    ],
+    pkg = "//tensorflow/core",
 )
 
 cc_library_with_android_deps(

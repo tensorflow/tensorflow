@@ -60,6 +60,7 @@ FakeQueue
 FIFOQueue
 FIFOQueueV2
 GetSessionHandle
+GetSessionHandleV2
 GetSessionTensor
 HashTable
 InitializeTable
@@ -149,8 +150,6 @@ ScaleImageGrad
 # io_ops
 FixedLengthRecordReader
 IdentityReader
-ReaderClose
-ReaderEnqueueWork
 ReaderNumRecordsProduced
 ReaderNumWorkUnitsCompleted
 ReaderRead
@@ -161,8 +160,6 @@ ReaderSerializeState
 ReaderWorkQueueLength
 FixedLengthRecordReaderV2
 IdentityReaderV2
-ReaderCloseV2
-ReaderEnqueueWorkV2
 ReaderNumRecordsProducedV2
 ReaderNumWorkUnitsCompletedV2
 ReaderReadV2
@@ -204,7 +201,6 @@ Svd
 Assert
 AudioSummary
 AudioSummaryV2
-HistogramAccumulatorSummary
 HistogramSummary
 ImageSummary
 MergeSummary
@@ -287,6 +283,7 @@ ParseSingleSequenceExample
 
 # random_ops
 RandomGamma
+RandomPoisson
 RandomUniform
 RandomUniformInt
 RandomShuffle

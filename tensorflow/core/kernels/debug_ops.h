@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_KERNELS_DEBUG_OP_H_
 #define TENSORFLOW_KERNELS_DEBUG_OP_H_
 
+#if GOOGLE_CUDA
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
+#endif
 #include "tensorflow/core/debug/debug_io_utils.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -92,9 +94,11 @@ class DebugIdentityOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     if (!debug_urls_.empty()) {
+      // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
       DebugIO::PublishDebugTensor(tensor_name_, "DebugIdentity",
                                   context->input(0),
-                                  Env::Default()->NowMicros(), debug_urls_);
+                                  Env::Default()->NowMicros(), debug_urls_)
+          .IgnoreError();
     }
 
     context->set_output(0, context->input(0));
@@ -142,8 +146,10 @@ class DebugNanCountOp : public OpKernel {
     output_tensor->vec<int64>()(0) = nan_count;
 
     if (!debug_urls_.empty()) {
+      // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
       DebugIO::PublishDebugTensor(tensor_name_, "DebugNanCount", *output_tensor,
-                                  Env::Default()->NowMicros(), debug_urls_);
+                                  Env::Default()->NowMicros(), debug_urls_)
+          .IgnoreError();
     }
   }
 
@@ -191,7 +197,7 @@ class DebugNumericSummaryOp : public OpKernel {
 
       element_count = input_shape.num_elements();
       for (int64 i = 0; i < element_count; ++i) {
-        T x = input_flat[i];
+        const double x = static_cast<double>(input_flat[i]);
         if (Eigen::numext::isnan(x)) {
           nan_count++;
         } else if (Eigen::numext::isinf(x)) {
@@ -211,7 +217,8 @@ class DebugNumericSummaryOp : public OpKernel {
 
           if (x < min) {
             min = x;
-          } else if (x > max) {
+          }
+          if (x > max) {
             max = x;
           }
 
@@ -226,7 +233,7 @@ class DebugNumericSummaryOp : public OpKernel {
         // Do a second pass to compute variance.
         variance = 0.0;
         for (int64 i = 0; i < element_count; ++i) {
-          T x = input_flat[i];
+          const double x = static_cast<double>(input_flat[i]);
           if (!Eigen::numext::isnan(x) && !Eigen::numext::isinf(x)) {
             variance += (x - mean) * (x - mean);
           }
@@ -241,21 +248,23 @@ class DebugNumericSummaryOp : public OpKernel {
     OP_REQUIRES_OK(context, context->allocate_output(0, shape, &output_tensor));
     output_tensor->vec<double>()(0) = static_cast<double>(is_initialized);
     output_tensor->vec<double>()(1) = static_cast<double>(element_count);
-    output_tensor->vec<double>()(2) = static_cast<double>(negative_inf_count);
-    output_tensor->vec<double>()(3) = static_cast<double>(negative_count);
-    output_tensor->vec<double>()(4) = static_cast<double>(zero_count);
-    output_tensor->vec<double>()(5) = static_cast<double>(positive_count);
-    output_tensor->vec<double>()(6) = static_cast<double>(positive_inf_count);
-    output_tensor->vec<double>()(7) = static_cast<double>(nan_count);
+    output_tensor->vec<double>()(2) = static_cast<double>(nan_count);
+    output_tensor->vec<double>()(3) = static_cast<double>(negative_inf_count);
+    output_tensor->vec<double>()(4) = static_cast<double>(negative_count);
+    output_tensor->vec<double>()(5) = static_cast<double>(zero_count);
+    output_tensor->vec<double>()(6) = static_cast<double>(positive_count);
+    output_tensor->vec<double>()(7) = static_cast<double>(positive_inf_count);
     output_tensor->vec<double>()(8) = min;
     output_tensor->vec<double>()(9) = max;
     output_tensor->vec<double>()(10) = mean;
     output_tensor->vec<double>()(11) = variance;
 
     if (!debug_urls_.empty()) {
+      // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
       DebugIO::PublishDebugTensor(tensor_name_, "DebugNumericSummary",
                                   *output_tensor, Env::Default()->NowMicros(),
-                                  debug_urls_);
+                                  debug_urls_)
+          .IgnoreError();
     }
   }
 

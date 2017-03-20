@@ -170,20 +170,20 @@ class GraphPartitionTest : public ::testing::Test {
             "/job:a/replica:0/task:0/cpu:1")) {}
 
   const GraphDef& ToGraphDef() {
-    in_.ToGraphDef(&in_graph_def_);
+    TF_EXPECT_OK(in_.ToGraphDef(&in_graph_def_));
     return in_graph_def_;
   }
 
   void ExpectMatchA() {
     GraphDef graph_def;
-    scope_a_.ToGraphDef(&graph_def);
+    TF_EXPECT_OK(scope_a_.ToGraphDef(&graph_def));
     string a = "/job:a/replica:0/task:0/cpu:0";
     TF_EXPECT_GRAPH_EQ(graph_def, partitions_[a]);
   }
 
   void ExpectMatchB() {
     GraphDef graph_def;
-    scope_b_.ToGraphDef(&graph_def);
+    TF_EXPECT_OK(scope_b_.ToGraphDef(&graph_def));
     string b = "/job:a/replica:0/task:0/cpu:1";
     TF_EXPECT_GRAPH_EQ(graph_def, partitions_[b]);
   }

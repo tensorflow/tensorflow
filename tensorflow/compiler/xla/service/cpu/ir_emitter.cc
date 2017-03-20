@@ -506,7 +506,7 @@ Status IrEmitter::HandleReduceWindow(HloInstruction* reduce_window,
 
         llvm_ir::IrArray::Index input_index(index.size());
         llvm::Value* in_bounds_condition = nullptr;
-        for (int64 i = 0; i < index.size(); ++i) {
+        for (size_t i = 0; i < index.size(); ++i) {
           llvm::Value* strided_index = ir_builder_.CreateNSWMul(
               index[i], ir_builder_.getInt64(window.dimensions(i).stride()));
           input_index[i] = ir_builder_.CreateNSWSub(
@@ -1111,7 +1111,7 @@ Status IrEmitter::HandleReduce(HloInstruction* reduce, HloInstruction* arg,
         llvm_ir::IrArray::Index input_index = reduced_dims_index;
         llvm_ir::IrArray::Index::const_iterator it = index.begin();
 
-        for (int64 i = 0; i < input_index.size(); ++i) {
+        for (auto i = 0; i < input_index.size(); ++i) {
           if (input_index[i] == nullptr) {
             input_index[i] = *it++;
           }
@@ -1180,7 +1180,7 @@ Status IrEmitter::HandlePad(HloInstruction* pad) {
   // output_index := edge_padding_low + operand_index * (interior_padding + 1)
   const PaddingConfig& padding_config = pad->padding_config();
   llvm_ir::IrArray::Index output_index;
-  for (int64 i = 0; i < operand_index.size(); ++i) {
+  for (auto i = 0; i < operand_index.size(); ++i) {
     llvm::Value* offset = ir_builder_.CreateMul(
         operand_index[i],
         ir_builder_.getInt64(padding_config.dimensions(i).interior_padding() +
@@ -1294,7 +1294,7 @@ Status IrEmitter::HandleCustomCall(
       llvm_ir::EmitAllocaAtFunctionEntryWithCount(
           i8_ptr_type, ir_builder_.getInt32(operands.size()),
           "cc_operands_alloca", &ir_builder_);
-  for (int i = 0; i < operands.size(); ++i) {
+  for (auto i = 0; i < operands.size(); ++i) {
     const HloInstruction* operand = operands[i];
     llvm::Value* operand_as_i8ptr =
         ir_builder_.CreatePointerCast(GetEmittedValueFor(operand), i8_ptr_type);
@@ -1328,26 +1328,23 @@ Status IrEmitter::HandleWhile(HloInstruction* xla_while, HloInstruction* init,
   TF_RET_CHECK(ShapeUtil::IsScalar(condition->root_instruction()->shape()) &&
                condition->root_instruction()->shape().element_type() == PRED)
       << "While condition computation must return bool";
-  // Check that all while-related buffers share an allocation.
+  // Check that all while-related buffers share an allocation slice.
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshape(
       xla_while->shape(),
       [this, &xla_while](const Shape& /*subshape*/,
                          const ShapeIndex& index) -> Status {
         auto check = [this](const HloInstruction* a, const HloInstruction* b,
                             const ShapeIndex& index) {
-          BufferAllocation::Index index_a =
-              assignment_.GetUniqueAllocation(a, index)
-                  .ConsumeValueOrDie()
-                  ->index();
-          BufferAllocation::Index index_b =
-              assignment_.GetUniqueAllocation(b, index)
-                  .ConsumeValueOrDie()
-                  ->index();
-          if (index_a != index_b) {
+          const BufferAllocation::Slice slice_a =
+              assignment_.GetUniqueSlice(a, index).ConsumeValueOrDie();
+          const BufferAllocation::Slice slice_b =
+              assignment_.GetUniqueSlice(b, index).ConsumeValueOrDie();
+          if (slice_a != slice_b) {
             return InternalError(
-                "instruction %s does not share allocation with "
-                "instruction %s ",
-                a->ToString().c_str(), b->ToString().c_str());
+                "instruction %s %s does not share slice with "
+                "instruction %s %s",
+                a->ToString().c_str(), slice_a.ToString().c_str(),
+                b->ToString().c_str(), slice_b.ToString().c_str());
           }
           return Status::OK();
         };
@@ -1582,44 +1579,49 @@ llvm::Value* IrEmitter::GetExecutableRunOptionsArgument() {
 }
 
 llvm::Value* IrEmitter::EmitTempBufferPointer(
-    BufferAllocation::Index temp_buf_index, const Shape& target_shape) {
+    const BufferAllocation::Slice& slice, const Shape& target_shape) {
   llvm::Type* element_type = IrShapeType(target_shape);
   // The alignment and number of bytes within the temporary buffer is determined
   // by the maximal shape as determined by buffer assignment.
-  const BufferAllocation& allocation =
-      assignment_.GetAllocation(temp_buf_index);
+  const BufferAllocation& allocation = assignment_.GetAllocation(slice.index());
   if (allocation.is_thread_local()) {
     // Thread-local allocations should only be assigned a single buffer.
-    CHECK_EQ(1, allocation.assigned_buffers().size());
-    const Shape& shape = allocation.assigned_buffers()[0]->shape();
+    const auto& assigned_buffers = allocation.assigned_buffers();
+    CHECK_EQ(1, assigned_buffers.size());
+    const Shape& shape = assigned_buffers.begin()->first->shape();
 
     llvm::AllocaInst*& tempbuf_address = thread_local_buffers_[{
-        ir_builder_.GetInsertBlock()->getParent(), temp_buf_index}];
+        ir_builder_.GetInsertBlock()->getParent(), slice}];
     if (tempbuf_address == nullptr) {
       tempbuf_address = llvm_ir::EmitAllocaAtFunctionEntry(
           IrShapeType(shape),
-          tensorflow::strings::StrCat("thread_local", temp_buf_index),
+          tensorflow::strings::StrCat("thread_local", slice.ToString()),
           &ir_builder_, MinimumAlignmentForShape(target_shape));
     }
     return ir_builder_.CreateBitCast(tempbuf_address,
                                      element_type->getPointerTo());
   }
 
-  llvm::Value* tempbuf_address_offset = llvm_ir::EmitBufferIndexingGEP(
-      GetTempBuffersArgument(), temp_buf_index, &ir_builder_);
-  llvm::LoadInst* tempbuf_address_untyped =
-      ir_builder_.CreateLoad(tempbuf_address_offset);
+  llvm::Value* tempbuf_address_ptr = llvm_ir::EmitBufferIndexingGEP(
+      GetTempBuffersArgument(), slice.index(), &ir_builder_);
+  llvm::LoadInst* tempbuf_address_base =
+      ir_builder_.CreateLoad(tempbuf_address_ptr);
   //  Loading the address of a buffer is invariant of the point at which the
   //  load is executed in the program because we never reassign buffers.
-  tempbuf_address_untyped->setMetadata(
+  tempbuf_address_base->setMetadata(
       llvm::LLVMContext::MD_invariant_load,
-      llvm::MDNode::get(tempbuf_address_untyped->getContext(), /*MDs=*/{}));
-  llvm_ir::SetTbaaForInstruction(tempbuf_address_untyped, target_shape,
+      llvm::MDNode::get(tempbuf_address_base->getContext(), /*MDs=*/{}));
+  llvm_ir::SetTbaaForInstruction(tempbuf_address_base, target_shape,
                                  /*is_pointer_to=*/true);
+  AttachAlignmentMetadataForLoad(tempbuf_address_base, allocation.size());
+  AttachDereferenceableMetadataForLoad(tempbuf_address_base, allocation.size());
 
-  AttachAlignmentMetadataForLoad(tempbuf_address_untyped, allocation.size());
-  AttachDereferenceableMetadataForLoad(tempbuf_address_untyped,
-                                       allocation.size());
+  llvm::Value* tempbuf_address_untyped = tempbuf_address_base;
+  if (slice.offset() > 0) {
+    // Adjust the address to account for the slice offset.
+    tempbuf_address_untyped = ir_builder_.CreateInBoundsGEP(
+        tempbuf_address_base, ir_builder_.getInt64(slice.offset()));
+  }
   return ir_builder_.CreateBitCast(tempbuf_address_untyped,
                                    element_type->getPointerTo());
 }
@@ -1657,7 +1659,7 @@ void IrEmitter::EmitArrayFunctionCallInto(
           ir_builder_.getInt32(parameter_addresses.size()),
           tensorflow::strings::StrCat(name, "_parameter_addresses"),
           &ir_builder_);
-  for (int i = 0; i < parameter_addresses.size(); ++i) {
+  for (auto i = 0; i < parameter_addresses.size(); ++i) {
     llvm::Value* parameter_as_i8ptr = ir_builder_.CreateBitCast(
         parameter_addresses[i], ir_builder_.getInt8PtrTy(),
         llvm_ir::AsStringRef(tensorflow::strings::StrCat(name, "_parameter_", i,
@@ -1717,9 +1719,9 @@ StatusOr<llvm::Value*> IrEmitter::EmitTargetAddressForOp(
 
   // For other nodes, we need the temporary buffer allocated for this node to
   // write the result into.
-  TF_ASSIGN_OR_RETURN(const BufferAllocation* allocation,
-                      assignment_.GetUniqueTopLevelAllocation(op));
-  return EmitTempBufferPointer(allocation->index(), target_shape);
+  TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice slice,
+                      assignment_.GetUniqueTopLevelSlice(op));
+  return EmitTempBufferPointer(slice, target_shape);
 }
 
 Status IrEmitter::EmitTargetElementLoop(

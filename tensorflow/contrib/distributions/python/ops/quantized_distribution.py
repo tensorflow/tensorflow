@@ -38,8 +38,9 @@ def _logsum_expbig_minus_expsmall(big, small):
   To work correctly, we should have the pointwise relation:  `small <= big`.
 
   Args:
-    big: Numeric `Tensor`
-    small: Numeric `Tensor` with same `dtype` as `big` and broadcastable shape.
+    big: Floating-point `Tensor`
+    small: Floating-point `Tensor` with same `dtype` as `big` and broadcastable
+      shape.
 
   Returns:
     `Tensor` of same `dtype` of `big` and broadcast shape.
@@ -61,14 +62,14 @@ P[Y = y] := P[X <= low],  if y == low,
 """
 
 _prob_note = _prob_base_note + """
-The base distribution's `cdf` method must be defined on `y - 1`.  If the
+The base distribution's `cdf` method must be defined on `y - 1`. If the
 base distribution has a `survival_function` method, results will be more
 accurate for large values of `y`, and in this case the `survival_function` must
 also be defined on `y - 1`.
 """
 
 _log_prob_note = _prob_base_note + """
-The base distribution's `log_cdf` method must be defined on `y - 1`.  If the
+The base distribution's `log_cdf` method must be defined on `y - 1`. If the
 base distribution has a `log_survival_function` method results will be more
 accurate for large values of `y`, and in this case the `log_survival_function`
 must also be defined on `y - 1`.
@@ -194,19 +195,19 @@ class QuantizedDistribution(distributions.Distribution):
       distribution:  The base distribution class to transform. Typically an
         instance of `Distribution`.
       low: `Tensor` with same `dtype` as this distribution and shape
-        able to be added to samples.  Should be a whole number.  Default `None`.
+        able to be added to samples. Should be a whole number. Default `None`.
         If provided, base distribution's `prob` should be defined at
         `low`.
       high: `Tensor` with same `dtype` as this distribution and shape
-        able to be added to samples.  Should be a whole number.  Default `None`.
+        able to be added to samples. Should be a whole number. Default `None`.
         If provided, base distribution's `prob` should be defined at
         `high - 1`.
         `high` must be strictly greater than `low`.
-      validate_args: Python `Boolean`, default `False`. When `True` distribution
+      validate_args: Python `bool`, default `False`. When `True` distribution
         parameters are checked for validity despite possibly degrading runtime
         performance. When `False` invalid inputs may silently render incorrect
         outputs.
-      name: `String` name prefixed to Ops created by this class.
+      name: Python `str` name prefixed to Ops created by this class.
 
     Raises:
       TypeError: If `dist_cls` is not a subclass of
@@ -217,7 +218,7 @@ class QuantizedDistribution(distributions.Distribution):
     values = (
         list(distribution.parameters.values()) +
         [low, high])
-    with ops.name_scope(name, values=values) as ns:
+    with ops.name_scope(name, values=values):
       self._dist = distribution
 
       if low is not None:
@@ -252,13 +253,12 @@ class QuantizedDistribution(distributions.Distribution):
 
     super(QuantizedDistribution, self).__init__(
         dtype=self._dist.dtype,
-        is_continuous=False,
         reparameterization_type=distributions.NOT_REPARAMETERIZED,
         validate_args=validate_args,
         allow_nan_stats=self._dist.allow_nan_stats,
         parameters=parameters,
         graph_parents=graph_parents,
-        name=ns)
+        name=name)
 
   def _batch_shape_tensor(self):
     return self.distribution.batch_shape_tensor()

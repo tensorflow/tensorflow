@@ -271,7 +271,7 @@ DirectSession::DirectSession(const SessionOptions& options,
 }
 
 DirectSession::~DirectSession() {
-  if (!closed_) Close();
+  if (!closed_) Close().IgnoreError();
   for (auto& it : partial_runs_) {
     it.second.reset(nullptr);
   }
@@ -397,6 +397,9 @@ Status DirectSession::Run(const RunOptions& run_options,
   ExecutorsAndKeys* executors_and_keys;
   RunStateArgs run_state_args;
 
+  Executor::Args args;
+  args.step_id = step_id_counter_.fetch_add(1);
+
   // EXPERIMENTAL: Options that allow the client to insert nodes into partition
   // graphs for debugging.
   if (!run_options.debug_options().debug_tensor_watch_opts().empty()) {
@@ -407,10 +410,15 @@ Status DirectSession::Run(const RunOptions& run_options,
   TF_RETURN_IF_ERROR(
       GetOrCreateExecutors(pool, input_tensor_names, output_names, target_nodes,
                            &executors_and_keys, &run_state_args));
+  const int64 executor_step_count = executors_and_keys->step_count.fetch_add(1);
+
+  if (run_state_args.debugger_state) {
+    TF_RETURN_IF_ERROR(run_state_args.debugger_state->PublishDebugMetadata(
+        run_options.debug_options().global_step(), args.step_id,
+        executor_step_count, input_tensor_names, output_names, target_nodes));
+  }
 
   // Create a run state and start execution.
-  Executor::Args args;
-  args.step_id = step_id_counter_.fetch_add(1);
   RunState run_state(args.step_id, &devices_);
   run_state.rendez = new IntraProcessRendezvous(device_mgr_.get());
   CancellationManager step_cancellation_manager;
@@ -450,8 +458,7 @@ Status DirectSession::Run(const RunOptions& run_options,
         options_.config.graph_options().build_cost_model();
     const int64 build_cost_model_after =
         options_.config.graph_options().build_cost_model_after();
-    int measure_step_count =
-        executors_and_keys->step_count - build_cost_model_after;
+    int measure_step_count = executor_step_count - build_cost_model_after;
     if (measure_step_count >= 0) {
       update_cost_model =
           ((measure_step_count + 1) % build_cost_model_every == 0);
@@ -468,7 +475,8 @@ Status DirectSession::Run(const RunOptions& run_options,
   if (run_options.trace_level() >= RunOptions::HARDWARE_TRACE) {
     tracer.reset(CreateGPUTracer());
     // tracer will be NULL on non-GPU platforms.
-    if (tracer) tracer->Start();
+    // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
+    if (tracer) tracer->Start().IgnoreError();
   }
 #endif  // GOOGLE_CUDA
 
@@ -507,8 +515,9 @@ Status DirectSession::Run(const RunOptions& run_options,
 
 #if GOOGLE_CUDA
   if (tracer) {
-    tracer->Stop();
-    tracer->Collect(args.stats_collector);
+    // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
+    tracer->Stop().IgnoreError();
+    tracer->Collect(args.stats_collector).IgnoreError();
   }
 #endif  // GOOGLE_CUDA
 
@@ -527,7 +536,6 @@ Status DirectSession::Run(const RunOptions& run_options,
 
   // Build and return the cost model as instructed.
   mutex_lock l(executor_lock_);
-  ++executors_and_keys->step_count;
   if (update_cost_model) {
     // Build the cost model
     std::unordered_map<string, const Graph*> device_to_graph;
@@ -731,6 +739,26 @@ Status DirectSession::PRun(const string& handle, const NamedTensorList& inputs,
   return s;
 }
 
+Status DirectSession::ResourceHandleToInputTensor(const Tensor& resource_tensor,
+                                                  Tensor* retrieved_tensor) {
+  if (resource_tensor.dtype() != DT_RESOURCE) {
+    return errors::InvalidArgument(strings::StrCat(
+        "ResourceHandleToInputTensor() received non-DT_RESOURCE Tensor: ",
+        resource_tensor.dtype()));
+  }
+
+  ResourceHandle resource_handle = resource_tensor.scalar<ResourceHandle>()();
+
+  if (resource_handle.hash_code() == MakeTypeIndex<Tensor>().hash_code()) {
+    return session_state_.GetTensor(resource_handle.name(), retrieved_tensor);
+  } else {
+    return errors::InvalidArgument(strings::StrCat(
+        "Invalid resource type hash code: ", resource_handle.hash_code(),
+        "(name: ", resource_handle.name(),
+        " type: ", resource_handle.maybe_type_name(), ")"));
+  }
+}
+
 Status DirectSession::SendInputs(const NamedTensorList& inputs,
                                  const ExecutorsAndKeys* executors_and_keys,
                                  IntraProcessRendezvous* rendez) {
@@ -751,7 +779,16 @@ Status DirectSession::SendInputs(const NamedTensorList& inputs,
       return s;
     }
 
-    s = rendez->Send(parsed, Rendezvous::Args(), input.second, false);
+    if (input.second.dtype() == DT_RESOURCE) {
+      Tensor tensor_from_handle;
+      s = ResourceHandleToInputTensor(input.second, &tensor_from_handle);
+      if (s.ok()) {
+        s = rendez->Send(parsed, Rendezvous::Args(), tensor_from_handle, false);
+      }
+    } else {
+      s = rendez->Send(parsed, Rendezvous::Args(), input.second, false);
+    }
+
     if (!s.ok()) {
       rendez->StartAbort(s);
       return s;
@@ -1267,7 +1304,8 @@ void DirectSession::WaitForNotification(RunState* run_state,
 ::tensorflow::Status DirectSession::WaitForNotification(
     Notification* notification, int64 timeout_in_ms) {
   if (timeout_in_ms > 0) {
-    bool notified = WaitForNotificationWithTimeout(notification, timeout_in_ms);
+    int64 timeout_in_us = timeout_in_ms * 1000;
+    bool notified = WaitForNotificationWithTimeout(notification, timeout_in_us);
     if (!notified) {
       return Status(error::DEADLINE_EXCEEDED,
                     "Timed out waiting for notification");

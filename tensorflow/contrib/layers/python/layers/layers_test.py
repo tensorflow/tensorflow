@@ -19,12 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import math
-import sys
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 import numpy as np
 
@@ -1685,6 +1679,13 @@ class BatchNormTest(test.TestCase):
       with self.assertRaisesRegexp(ValueError, 'Weighted mean and variance'):
         _layers.batch_norm(inputs, batch_weights=batch_weights, fused=True)
 
+  def testParamRegularizersFused(self):
+    with ops.Graph().as_default() as g, self.test_session(g):
+      inputs = array_ops.placeholder(dtype=dtypes.float32, shape=(5, 3, 3, 7))
+      with self.assertRaisesRegexp(ValueError,
+                                   'Regularizers are not currently'):
+        _layers.batch_norm(inputs, param_regularizers={}, fused=True)
+
   def _testCreateOp(self, fused):
     height, width = 3, 3
     with self.test_session():
@@ -1694,12 +1695,37 @@ class BatchNormTest(test.TestCase):
                        'BatchNorm/batchnorm')
       self.assertTrue(output.op.name.startswith(expected_name))
       self.assertListEqual(output.get_shape().as_list(), [5, height, width, 3])
+      self.assertEqual(
+          ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES), [])
 
   def testCreateOpDefault(self):
     self._testCreateOp(False)
 
   def testCreateOpFused(self):
     self._testCreateOp(True)
+
+  def testCreateOpBetaRegularizer(self):
+    height, width = 3, 3
+    with self.test_session():
+      reg = lambda x: 0.1 * math_ops.reduce_sum(x)
+      images = np.random.uniform(size=(5, height, width, 3)).astype('f')
+      _layers.batch_norm(images, param_regularizers={'beta': reg})
+      self.assertEqual(
+          len(ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)), 1)
+      beta_decay = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)[0]
+      self.assertEqual(beta_decay.op.name, 'BatchNorm/beta/Regularizer/mul')
+
+  def testCreateOpGammaRegularizer(self):
+    height, width = 3, 3
+    with self.test_session():
+      reg = lambda x: 0.1 * math_ops.reduce_sum(x)
+      images = np.random.uniform(size=(5, height, width, 3)).astype('f')
+      _layers.batch_norm(
+          images, param_regularizers={'gamma': reg}, scale=True)
+      self.assertEqual(
+          len(ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)), 1)
+      gamma_decay = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)[0]
+      self.assertEqual(gamma_decay.op.name, 'BatchNorm/gamma/Regularizer/mul')
 
   def testCreateVariables(self):
     height, width = 3, 3
@@ -1753,6 +1779,22 @@ class BatchNormTest(test.TestCase):
       self.assertEqual(update_moving_mean.op.name, 'BatchNorm/AssignMovingAvg')
       self.assertEqual(update_moving_variance.op.name,
                        'BatchNorm/AssignMovingAvg_1')
+
+  def testVariablesCollections(self):
+    variables_collections = {
+        'beta': ['beta'],
+        'gamma': ['gamma'],
+        'moving_mean': ['moving_mean'],
+        'moving_variance': ['moving_variance'],
+    }
+    images = random_ops.random_uniform((5, 5, 5, 3), seed=1)
+    _layers.batch_norm(
+        images, scale=True, variables_collections=variables_collections)
+    for var_name, collection_names in variables_collections.items():
+      collection = ops.get_collection(collection_names[0])
+      self.assertEqual(len(collection), 1)
+      var_name_in_collection = collection[0].op.name
+      self.assertEqual(var_name_in_collection, 'BatchNorm/' + var_name)
 
   def testReuseVariables(self):
     height, width = 3, 3
@@ -3003,6 +3045,14 @@ class StackTests(test.TestCase):
       output = _layers.stack(images, _layers.fully_connected, [10, 20, 30])
       self.assertEqual(output.op.name, 'Stack/fully_connected_3/Relu')
       self.assertListEqual(output.get_shape().as_list(), [5, 30])
+
+  def testStackFullyConnectedFailOnReuse(self):
+    height, width = 3, 3
+    with self.test_session():
+      with variable_scope.variable_scope('test', reuse=True):
+        images = np.random.uniform(size=(5, height * width * 3))
+        with self.assertRaises(ValueError):
+          _layers.stack(images, _layers.fully_connected, [10, 20, 30])
 
   def testStackRelu(self):
     height, width = 3, 3

@@ -101,6 +101,22 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "conv3d_test",
+    size = "medium",
+    srcs = ["conv3d_test.py"],
+    shard_count = 5,
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:nn_ops_gen",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
     name = "dynamic_stitch_test",
     size = "small",
     srcs = ["dynamic_stitch_test.py"],
@@ -180,6 +196,21 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "pooling_ops_3d_test",
+    size = "medium",
+    srcs = ["pooling_ops_3d_test.py"],
+    shard_count = 10,
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:nn_ops_gen",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
     name = "random_ops_test",
     size = "small",
     srcs = ["random_ops_test.py"],
@@ -209,6 +240,17 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "reverse_ops_test",
+    size = "small",
+    srcs = ["reverse_ops_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+    ],
+)
+
+tf_xla_py_test(
     name = "ternary_ops_test",
     size = "small",
     srcs = ["ternary_ops_test.py"],
@@ -233,6 +275,23 @@ tf_xla_py_test(
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:nn_ops_gen",
         "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
+    name = "variable_ops_test",
+    size = "small",
+    srcs = ["variable_ops_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:math_ops_gen",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:nn_ops_gen",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
     ],
 )
 
@@ -284,7 +343,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:ops_util",
     ],
@@ -295,7 +353,6 @@ tf_cuda_cc_test(
     # This test is randomized, so only run it if explicitly requested.
     tags = [
         "manual",
-        "noguitar",
         "notap",
     ],
     deps = [":randomized_tests_library"],

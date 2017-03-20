@@ -36,10 +36,10 @@ __all__ = [
 
 
 _dirichlet_multinomial_sample_note = """For each batch of counts,
-`value = [n_0, ... ,n_{k-1}]`, `P[value]` is the probability that after sampling
-`self.total_count` draws from this Dirichlet-Multinomial distribution, the
-number of draws falling in class `j` is `n_j`. Since this definition is
-[exchangeable]( https://en.wikipedia.org/wiki/Exchangeable_random_variables);
+`value = [n_0, ..., n_{k-1}]`, `P[value]` is the probability that after
+sampling `self.total_count` draws from this Dirichlet-Multinomial distribution,
+the number of draws falling in class `j` is `n_j`. Since this definition is
+[exchangeable](https://en.wikipedia.org/wiki/Exchangeable_random_variables);
 different sequences have the same counts so the probability includes a
 combinatorial coefficient.
 
@@ -153,32 +153,31 @@ class DirichletMultinomial(distribution.Distribution):
     Args:
       total_count:  Non-negative floating point tensor, whose dtype is the same
         as `concentration`. The shape is broadcastable to `[N1,..., Nm]` with
-        `m >= 0`.  Defines this as a batch of `N1 x ... x Nm` different
+        `m >= 0`. Defines this as a batch of `N1 x ... x Nm` different
         Dirichlet multinomial distributions. Its components should be equal to
         integer values.
       concentration: Positive floating point tensor, whose dtype is the
         same as `n` with shape broadcastable to `[N1,..., Nm, k]` `m >= 0`.
         Defines this as a batch of `N1 x ... x Nm` different `k` class Dirichlet
         multinomial distributions.
-      validate_args: Python `Boolean`, default `False`. When `True` distribution
+      validate_args: Python `bool`, default `False`. When `True` distribution
         parameters are checked for validity despite possibly degrading runtime
         performance. When `False` invalid inputs may silently render incorrect
         outputs.
-      allow_nan_stats: Python `Boolean`, default `True`. When `True`, statistics
+      allow_nan_stats: Python `bool`, default `True`. When `True`, statistics
         (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
-        result is undefined.  When `False`, an exception is raised if one or
+        result is undefined. When `False`, an exception is raised if one or
         more of the statistic's batch members are undefined.
-      name: `String` name prefixed to Ops created by this class.
+      name: Python `str` name prefixed to Ops created by this class.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[total_count, concentration]) as ns:
+    with ops.name_scope(name, values=[total_count, concentration]):
       # Broadcasting works because:
       # * The broadcasting convention is to prepend dimensions of size [1], and
       #   we use the last dimension for the distribution, whereas
       #   the batch dimensions are the leading dimensions, which forces the
       #   distribution dimension to be defined explicitly (i.e. it cannot be
-      #   created automatically by prepending).  This forces enough
-      #   explicitness.
+      #   created automatically by prepending). This forces enough explicitness.
       # * All calls involving `counts` eventually require a broadcast between
       #  `counts` and concentration.
       self._total_count = self._maybe_assert_valid_total_count(
@@ -193,12 +192,11 @@ class DirichletMultinomial(distribution.Distribution):
         dtype=self._concentration.dtype,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
-        is_continuous=False,
         reparameterization_type=distribution.NOT_REPARAMETERIZED,
         parameters=parameters,
         graph_parents=[self._total_count,
                        self._concentration],
-        name=ns)
+        name=name)
 
   @property
   def total_count(self):
@@ -261,7 +259,7 @@ class DirichletMultinomial(distribution.Distribution):
 
   def _mean(self):
     return self.total_count * (self.concentration /
-                               self.total_concentration[..., None])
+                               self.total_concentration[..., array_ops.newaxis])
 
   @distribution_util.AppendDocstring(
       """The covariance for each batch member is defined as the following:
@@ -284,7 +282,8 @@ class DirichletMultinomial(distribution.Distribution):
   def _covariance(self):
     x = self._variance_scale_term() * self._mean()
     return array_ops.matrix_set_diag(
-        -math_ops.matmul(x[..., None], x[..., None, :]),  # outer prod
+        -math_ops.matmul(x[..., array_ops.newaxis],
+                         x[..., array_ops.newaxis, :]),  # outer prod
         self._variance())
 
   def _variance(self):
@@ -296,7 +295,7 @@ class DirichletMultinomial(distribution.Distribution):
     """Helper to `_covariance` and `_variance` which computes a shared scale."""
     # We must take care to expand back the last dim whenever we use the
     # total_concentration.
-    c0 = self.total_concentration[..., None]
+    c0 = self.total_concentration[..., array_ops.newaxis]
     return math_ops.sqrt((1. + c0 / self.total_count) / (1. + c0))
 
   def _maybe_assert_valid_concentration(self, concentration, validate_args):

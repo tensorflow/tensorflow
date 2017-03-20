@@ -351,6 +351,7 @@ llvm_target_list = [
         "lower_name": "arm",
         "short_name": "ARM",
         "tbl_outs": [
+            ("-gen-register-bank", "lib/Target/ARM/ARMGenRegisterBank.inc"),
             ("-gen-register-info", "lib/Target/ARM/ARMGenRegisterInfo.inc"),
             ("-gen-instr-info", "lib/Target/ARM/ARMGenInstrInfo.inc"),
             ("-gen-emitter", "lib/Target/ARM/ARMGenMCCodeEmitter.inc"),
@@ -398,6 +399,7 @@ llvm_target_list = [
         "lower_name": "x86",
         "short_name": "X86",
         "tbl_outs": [
+            ("-gen-register-bank", "lib/Target/X86/X86GenRegisterBank.inc"),
             ("-gen-register-info", "lib/Target/X86/X86GenRegisterInfo.inc"),
             ("-gen-disassembler", "lib/Target/X86/X86GenDisassemblerTables.inc"),
             ("-gen-instr-info", "lib/Target/X86/X86GenInstrInfo.inc"),
@@ -406,8 +408,10 @@ llvm_target_list = [
             ("-gen-asm-matcher", "lib/Target/X86/X86GenAsmMatcher.inc"),
             ("-gen-dag-isel", "lib/Target/X86/X86GenDAGISel.inc"),
             ("-gen-fast-isel", "lib/Target/X86/X86GenFastISel.inc"),
+            ("-gen-global-isel", "lib/Target/X86/X86GenGlobalISel.inc"),
             ("-gen-callingconv", "lib/Target/X86/X86GenCallingConv.inc"),
             ("-gen-subtarget", "lib/Target/X86/X86GenSubtargetInfo.inc"),
+            ("-gen-x86-EVEX2VEX-tables", "lib/Target/X86/X86GenEVEX2VEXTables.inc"),
         ],
     },
 ]

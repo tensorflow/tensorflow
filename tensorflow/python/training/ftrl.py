@@ -30,8 +30,6 @@ class FtrlOptimizer(optimizer.Optimizer):
 
   See this [paper](
   https://www.eecs.tufts.edu/~dsculley/papers/ad-click-prediction.pdf).
-
-  @@__init__
   """
 
   def __init__(self, learning_rate,
@@ -88,10 +86,11 @@ class FtrlOptimizer(optimizer.Optimizer):
   def _create_slots(self, var_list):
     # Create the "accum" and "linear" slots.
     for v in var_list:
-      val = constant_op.constant(self._initial_accumulator_value,
-                                 dtype=v.dtype, shape=v.get_shape())
-      self._get_or_make_slot(v, val, "accum", self._name)
-      self._zeros_slot(v, "linear", self._name)
+      with ops.colocate_with(v):
+        val = constant_op.constant(self._initial_accumulator_value,
+                                   dtype=v.dtype, shape=v.get_shape())
+        self._get_or_make_slot(v, val, "accum", self._name)
+        self._zeros_slot(v, "linear", self._name)
 
   def _prepare(self):
     self._learning_rate_tensor = ops.convert_to_tensor(
@@ -124,7 +123,7 @@ class FtrlOptimizer(optimizer.Optimizer):
     accum = self.get_slot(var, "accum")
     linear = self.get_slot(var, "linear")
     return training_ops.resource_apply_ftrl(
-        var, accum.handle, linear.handle, grad,
+        var.handle, accum.handle, linear.handle, grad,
         math_ops.cast(self._learning_rate_tensor, grad.dtype.base_dtype),
         math_ops.cast(self._l1_regularization_strength_tensor,
                       grad.dtype.base_dtype),
@@ -150,7 +149,7 @@ class FtrlOptimizer(optimizer.Optimizer):
     accum = self.get_slot(var, "accum")
     linear = self.get_slot(var, "linear")
     return training_ops.resource_sparse_apply_ftrl(
-        var, accum.handle, linear.handle, grad, indices,
+        var.handle, accum.handle, linear.handle, grad, indices,
         math_ops.cast(self._learning_rate_tensor, grad.dtype),
         math_ops.cast(self._l1_regularization_strength_tensor,
                       grad.dtype),

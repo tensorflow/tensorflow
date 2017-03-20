@@ -29,13 +29,14 @@ constexpr int32 InferenceContext::kUnknownRank;
 constexpr int64 InferenceContext::kUnknownDim;
 
 InferenceContext::InferenceContext(
-    const NodeDef* node_def, const OpDef& op_def,
+    int graph_def_version, const NodeDef* node_def, const OpDef& op_def,
     const std::vector<TensorShapeProto>& input_shapes,
     const std::vector<const Tensor*>& input_tensors,
     const std::vector<TensorShapeProto>& input_tensors_as_shapes,
     const std::vector<TensorShapeProto>& input_handle_shapes,
     const std::vector<DataType>& input_handle_dtypes)
-    : node_def_(*CHECK_NOTNULL(node_def)) {
+    : graph_def_version_(graph_def_version),
+      node_def_(*CHECK_NOTNULL(node_def)) {
   std::vector<ShapeHandle> input_tensors_as_shape_handles;
   for (const TensorShapeProto& p : input_tensors_as_shapes) {
     ShapeHandle shape;
@@ -68,13 +69,14 @@ InferenceContext::InferenceContext(
 }
 
 InferenceContext::InferenceContext(
-    const NodeDef* node_def, const OpDef& op_def,
+    int graph_def_version, const NodeDef* node_def, const OpDef& op_def,
     const std::vector<ShapeHandle>& input_shapes,
     const std::vector<const Tensor*>& input_tensors,
     const std::vector<ShapeHandle>& input_tensors_as_shapes,
     const std::vector<ShapeHandle>& input_handle_shapes,
     const std::vector<DataType>& input_handle_dtypes)
-    : node_def_(*CHECK_NOTNULL(node_def)) {
+    : graph_def_version_(graph_def_version),
+      node_def_(*CHECK_NOTNULL(node_def)) {
   PreInputInit(op_def, input_tensors, input_tensors_as_shapes);
   if (!construction_status_.ok()) return;
   inputs_ = input_shapes;
@@ -92,7 +94,8 @@ Status InferenceContext::set_output(StringPiece output_name,
     const int start = result->second.first;
     const int size = result->second.second - start;
     if (size != shapes.size()) {
-      errors::InvalidArgument("Must have exactly ", shapes.size(), " shapes.");
+      return errors::InvalidArgument("Must have exactly ", shapes.size(),
+                                     " shapes.");
     }
     for (int i = 0; i < size; ++i) {
       outputs_[i + start] = shapes[i];
@@ -531,13 +534,13 @@ Status InferenceContext::MakeShapeFromShapeTensor(int input_idx,
   ShapeHandle input_shape;
   TF_RETURN_IF_ERROR(WithRank(input(input_idx), 1, &input_shape));
 
+  requested_input_tensor_as_partial_shape_[input_idx] = true;
   if (input_idx < input_tensors_as_shapes_.size() &&
       input_tensors_as_shapes_[input_idx].IsSet() &&
       RankKnown(input_tensors_as_shapes_[input_idx])) {
     *out = input_tensors_as_shapes_[input_idx];
     return Status::OK();
   }
-  requested_input_tensor_as_partial_shape_[input_idx] = true;
 
   return MakeShapeFromTensor(input_tensor(input_idx), input_shape, out);
 }
@@ -596,23 +599,34 @@ Status InferenceContext::MakeShapeFromTensor(const Tensor* t,
   return ReturnCreatedShape(dims, out);
 }
 
+Status InferenceContext::MakeShapeFromPartialTensorShape(
+    const PartialTensorShape& partial_shape, ShapeHandle* out) {
+  *out = nullptr;
+  if (partial_shape.dims() == -1) {
+    return ReturnUnknownShape(out);
+  }
+  const int num_dims = partial_shape.dims();
+  std::vector<DimensionHandle> dims(num_dims);
+  for (int i = 0; i < num_dims; ++i) {
+    // -1 is unknown in PartialTensorShape and in InferenceContext, so this size
+    // can be passed directly to MakeDim.
+    dims[i] = MakeDim(partial_shape.dim_size(i));
+  }
+  return ReturnCreatedShape(dims, out);
+}
+
+Status InferenceContext::MakeShapeFromTensorShape(const TensorShape& shape,
+                                                  ShapeHandle* out) {
+  return MakeShapeFromPartialTensorShape(PartialTensorShape(shape.dim_sizes()),
+                                         out);
+}
+
 Status InferenceContext::MakeShapeFromShapeProto(const TensorShapeProto& proto,
                                                  ShapeHandle* out) {
   *out = nullptr;
   TF_RETURN_IF_ERROR(PartialTensorShape::IsValidShape(proto));
   PartialTensorShape partial_shape(proto);
-  if (partial_shape.dims() == -1) {
-    return ReturnUnknownShape(out);
-  }
-  const int num_dims = partial_shape.dims();
-  std::vector<DimensionHandle> dims;
-  dims.reserve(partial_shape.dims());
-  for (int i = 0; i < num_dims; ++i) {
-    // -1 is unknown in proto and in InferenceContext, so this size can be
-    // passed directly to MakeDim.
-    dims.push_back(MakeDim(partial_shape.dim_size(i)));
-  }
-  return ReturnCreatedShape(dims, out);
+  return MakeShapeFromPartialTensorShape(partial_shape, out);
 }
 
 // Returns a new dimension whose value is given by a scalar input tensor.
@@ -786,9 +800,38 @@ Status InferenceContext::AttachContext(const Status& status) {
     input_shapes.emplace_back(DebugString(input_shape));
   }
 
+  // Add information about the input tensors and partial tensor shapes used.
+  std::vector<string> input_from_tensors_str;
+  std::vector<string> input_from_tensors_as_shape_str;
+  for (int i = 0; i < inputs_.size(); ++i) {
+    if (requested_input_tensor_as_partial_shape_[i] &&
+        i < input_tensors_as_shapes_.size() &&
+        input_tensors_as_shapes_[i].IsSet() &&
+        RankKnown(input_tensors_as_shapes_[i])) {
+      input_from_tensors_as_shape_str.push_back(strings::StrCat(
+          "input[", i, "] = ", DebugString(input_tensors_as_shapes_[i])));
+    } else if (requested_input_tensor_[i] && i < input_tensors_.size() &&
+               input_tensors_[i] != nullptr) {
+      input_from_tensors_str.push_back(strings::StrCat(
+          "input[", i, "] = <",
+          input_tensors_[i]->SummarizeValue(256 /* max_values */), ">"));
+    }
+  }
+
   string error_context = strings::StrCat(
       " for '", node_def_.name(), "' (op: '", node_def_.op(),
-      "') with input shapes: ", str_util::Join(input_shapes, ", "), ".");
+      "') with input shapes: ", str_util::Join(input_shapes, ", "));
+  if (!input_from_tensors_str.empty()) {
+    strings::StrAppend(&error_context, " and with computed input tensors: ",
+                       str_util::Join(input_from_tensors_str, ", "));
+  }
+  if (!input_from_tensors_as_shape_str.empty()) {
+    strings::StrAppend(&error_context,
+                       " and with input tensors computed as partial shapes: ",
+                       str_util::Join(input_from_tensors_as_shape_str, ","));
+  }
+
+  strings::StrAppend(&error_context, ".");
   return Status(status.code(),
                 strings::StrCat(status.error_message(), error_context));
 }

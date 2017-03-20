@@ -40,6 +40,11 @@ from tensorflow.python.training import session_manager as sm
 from tensorflow.python.training import session_run_hook
 
 
+# The list of exceptions that we should recover from. Exceptions not in this
+# list may terminate the job.
+_PREEMPTION_ERRORS = (errors.AbortedError, errors.UnavailableError)
+
+
 # TODO(touts): Share that with the Supervisor.
 class Scaffold(object):
   """Structure to create or gather pieces commonly needed to train a model.
@@ -62,8 +67,8 @@ class Scaffold(object):
   The following pieces are directly accessible as attributes of the `Scaffold`
   object:
 
-  * `saver`: A `tf.Saver` object taking care of saving the variables.  Picked
-    from and stored into the `SAVERS` collection in the graph by default.
+  * `saver`: A `tf.train.Saver` object taking care of saving the variables.
+    Picked from and stored into the `SAVERS` collection in the graph by default.
   * `init_op`: An op to run to initialize the variables.  Picked from and
     stored into the `INIT_OP` collection in the graph by default.
   * `ready_op`: An op to verify that the variables are initialized.  Picked
@@ -82,7 +87,7 @@ class Scaffold(object):
 
   You can also pass the following additional pieces to the constructor:
 
-  * `init_feed_dict`: A sessionn feed dictionary that should be used when
+  * `init_feed_dict`: A session feed dictionary that should be used when
      running the init op.
   * `init_fn`: A callable to run run after the init op to perform additional
     initializations.  The callable will be called as
@@ -119,7 +124,8 @@ class Scaffold(object):
       local_init_op: Optional op to initialize local variables.
       summary_op: Optional op to gather all summaries.  Must return a scalar
         string tensor containing a serialized `Summary` proto.
-      saver: Optional `tf.Saver` object to use to save and restore variables.
+      saver: Optional `tf.train.Saver` object to use to save and restore
+        variables.
     """
 
     # NOTE(touts): modifying the init function to be passed the scaffold is a
@@ -249,13 +255,14 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
                              save_checkpoint_secs=600,
                              save_summaries_steps=100,
                              save_summaries_secs=None,
-                             config=None):
+                             config=None,
+                             stop_grace_period_secs=120):
   """Creates a `MonitoredSession` for training.
 
   For a chief, this utility sets proper session initializer/restorer. It also
   creates hooks related to checkpoint and summary saving. For workers, this
   utility sets proper session creator which waits for the chief to
-  inialize/restore.
+  initialize/restore.
 
 
   Args:
@@ -283,6 +290,8 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
       isn't used.
     config: an instance of `tf.ConfigProto` proto used to configure the session.
       It's the `config` argument of constructor of `tf.Session`.
+    stop_grace_period_secs: Number of seconds given to threads to stop after
+      `close()` has been called.
 
   Returns:
     A `MonitoredSession` object.
@@ -291,7 +300,8 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
   if not is_chief:
     session_creator = WorkerSessionCreator(
         scaffold=scaffold, master=master, config=config)
-    return MonitoredSession(session_creator=session_creator, hooks=hooks or [])
+    return MonitoredSession(session_creator=session_creator, hooks=hooks or [],
+                            stop_grace_period_secs=stop_grace_period_secs)
 
   all_hooks = []
   if chief_only_hooks:
@@ -319,7 +329,8 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
 
   if hooks:
     all_hooks.extend(hooks)
-  return MonitoredSession(session_creator=session_creator, hooks=all_hooks)
+  return MonitoredSession(session_creator=session_creator, hooks=all_hooks,
+                          stop_grace_period_secs=stop_grace_period_secs)
 
 
 class SessionCreator(object):
@@ -419,7 +430,8 @@ class WorkerSessionCreator(SessionCreator):
 class _MonitoredSession(object):
   """See `MonitoredSession` or `SingularMonitoredSession`."""
 
-  def __init__(self, session_creator, hooks, should_recover):
+  def __init__(self, session_creator, hooks, should_recover,
+               stop_grace_period_secs=120):
     """Sets up a Monitored or Hooked Session.
 
     Args:
@@ -427,7 +439,9 @@ class _MonitoredSession(object):
         `ChiefSessionCreator` or a `WorkerSessionCreator`.
       hooks: An iterable of `SessionRunHook' objects.
       should_recover: A bool. Indicates whether to recover from `AbortedError`
-        or not.
+        and `UnavailableError` or not.
+      stop_grace_period_secs: Number of seconds given to threads to stop after
+        `close()` has been called.
     """
     self._graph_was_finalized = ops.get_default_graph().finalized
     self._hooks = hooks or []
@@ -436,7 +450,8 @@ class _MonitoredSession(object):
     # Create the session.
     self._coordinated_creator = self._CoordinatedSessionCreator(
         session_creator=session_creator or ChiefSessionCreator(),
-        hooks=self._hooks)
+        hooks=self._hooks,
+        stop_grace_period_secs=stop_grace_period_secs)
     if should_recover:
       self._sess = _RecoverableSession(self._coordinated_creator)
     else:
@@ -489,11 +504,12 @@ class _MonitoredSession(object):
   class _CoordinatedSessionCreator(object):
     """Factory for the _RecoverableSession."""
 
-    def __init__(self, session_creator, hooks):
+    def __init__(self, session_creator, hooks, stop_grace_period_secs):
       self._session_creator = session_creator
       self._hooks = hooks
       self.coord = None
       self.tf_sess = None
+      self._stop_grace_period_secs = stop_grace_period_secs
 
     def create_session(self):
       """Creates a coordinated session."""
@@ -506,7 +522,8 @@ class _MonitoredSession(object):
       for hook in self._hooks:
         hook.after_create_session(self.tf_sess, self.coord)
       return _CoordinatedSession(
-          _HookedSession(self.tf_sess, self._hooks), self.coord)
+          _HookedSession(self.tf_sess, self._hooks), self.coord,
+          self._stop_grace_period_secs)
 
   def _close_internal(self, exception_type=None):
     try:
@@ -565,8 +582,8 @@ class MonitoredSession(_MonitoredSession):
   * calls TensorFlow `session.run()` with merged fetches and feed_dict
   * calls `hook.after_run()`
   * returns result of `session.run()` asked by user
-  * if `AbortedError` occurs, it recovers or reinitializes the session before
-    executing the run() call again
+  * if `AbortedError` or `UnavailableError` occurs, it recovers or
+    reinitializes the session before executing the run() call again
 
 
   Exit: At the `close()`, the monitored session does following things in order:
@@ -603,9 +620,11 @@ class MonitoredSession(_MonitoredSession):
     A MonitoredSession object.
   """
 
-  def __init__(self, session_creator=None, hooks=None):
+  def __init__(self, session_creator=None, hooks=None,
+               stop_grace_period_secs=120):
     super(MonitoredSession, self).__init__(
-        session_creator, hooks, should_recover=True)
+        session_creator, hooks, should_recover=True,
+        stop_grace_period_secs=stop_grace_period_secs)
 
 
 class SingularMonitoredSession(_MonitoredSession):
@@ -614,8 +633,8 @@ class SingularMonitoredSession(_MonitoredSession):
   Please note that this utility is not recommended for distributed settings.
   For distributed settings, please use `tf.train.MonitoredSession`. The
   differences between `MonitoredSession` and `SingularMonitoredSession` are:
-  * `MonitoredSession` handles `AbortedError` for distributed settings,
-    but `SingularMonitoredSession` does not.
+  * `MonitoredSession` handles `AbortedError` and `UnavailableError` for
+    distributed settings, but `SingularMonitoredSession` does not.
   * `MonitoredSession` can be created in `chief` or `worker` modes.
     `SingularMonitoredSession` is always created as `chief`.
   * You can access the raw `tf.Session` object used by
@@ -655,7 +674,7 @@ class SingularMonitoredSession(_MonitoredSession):
 
   * calls `hook.end()`
   * closes the queue runners and the session
-  * surpresses `OutOfRange` error which indicates that all inputs have been
+  * suppresses `OutOfRange` error which indicates that all inputs have been
     processed if the `SingularMonitoredSession` is used as a context.
   """
 
@@ -664,7 +683,8 @@ class SingularMonitoredSession(_MonitoredSession):
                scaffold=None,
                master='',
                config=None,
-               checkpoint_dir=None):
+               checkpoint_dir=None,
+               stop_grace_period_secs=120):
     """Creates a SingularMonitoredSession.
 
     Args:
@@ -675,6 +695,8 @@ class SingularMonitoredSession(_MonitoredSession):
       config: `ConfigProto` proto used to configure the session.
       checkpoint_dir: A string.  Optional path to a directory where to restore
         variables.
+      stop_grace_period_secs: Number of seconds given to threads to stop after
+        `close()` has been called.
     """
     session_creator = ChiefSessionCreator(
         scaffold=scaffold,
@@ -682,7 +704,8 @@ class SingularMonitoredSession(_MonitoredSession):
         config=config,
         checkpoint_dir=checkpoint_dir)
     super(SingularMonitoredSession, self).__init__(
-        session_creator, hooks, should_recover=False)
+        session_creator, hooks, should_recover=False,
+        stop_grace_period_secs=stop_grace_period_secs)
 
   def raw_session(self):
     """Returns underlying `TensorFlow.Session` object."""
@@ -744,6 +767,8 @@ class _WrappedSession(object):
     if self._sess:
       try:
         self._sess.close()
+      except _PREEMPTION_ERRORS:
+        pass
       finally:
         self._sess = None
 
@@ -752,13 +777,14 @@ class _WrappedSession(object):
 
 
 class _RecoverableSession(_WrappedSession):
-  """A wrapped session that recreates a session on `tf.errors.AbortedError`.
+  """A wrapped session that recreates a session upon certain kinds of errors.
 
   The constructor is passed a SessionCreator object, not a session.
 
   Calls to `run()` are delegated to the wrapped session.  If a call raises the
-  exception `tf.errors.AbortedError`, the wrapped session is closed, and a new
-  one is created by calling the factory again.
+  exception `tf.errors.AbortedError` or `tf.errors.UnavailableError`, the
+  wrapped session is closed, and a new one is created by calling the factory
+  again.
   """
 
   def __init__(self, sess_creator):
@@ -777,10 +803,11 @@ class _RecoverableSession(_WrappedSession):
     while True:
       try:
         return self._sess_creator.create_session()
-      except errors.AbortedError:
-        logging.info('An AbortedError was raised during initialization. '
-                     'It\'s most likely due to a preemption in a connected '
-                     'worker/ps. A new session will be created.')
+      except _PREEMPTION_ERRORS as e:
+        logging.info('An error was raised while a session was being created. '
+                     'This may be due to a preemption of a connected worker '
+                     'or parameter server. A new session will be created. '
+                     'Error: %s', e)
 
   def run(self, fetches, feed_dict=None, options=None, run_metadata=None):
     while True:
@@ -791,11 +818,11 @@ class _RecoverableSession(_WrappedSession):
                               feed_dict=feed_dict,
                               options=options,
                               run_metadata=run_metadata)
-      except errors.AbortedError:
-        logging.info('An AbortedError was raised. Closing the current session. '
-                     'It\'s most likely due to a preemption in a connected '
-                     'worker/ps. '
-                     'A new session will be created on the next session.run().')
+      except _PREEMPTION_ERRORS as e:
+        logging.info('An error was raised. This may be due to a preemption in '
+                     'a connected worker or parameter server. The current '
+                     'session will be closed and a new session will be '
+                     'created. Error: %s', e)
         self.close()
         self._sess = None
 
@@ -814,15 +841,18 @@ class _CoordinatedSession(_WrappedSession):
   will be re-raised from the call to `run()`.
   """
 
-  def __init__(self, sess, coord):
+  def __init__(self, sess, coord, stop_grace_period_secs=120):
     """Create a new `_CoordinatedSession`.
 
     Args:
       sess: A `tf.Session` object.  The wrapped session.
       coord: A `tf.train.Coordinator` object.
+      stop_grace_period_secs: Number of seconds given to threads to stop after
+        `close()` has been called.
     """
     _WrappedSession.__init__(self, sess)
     self._coord = coord
+    self._stop_grace_period_secs = stop_grace_period_secs
 
   def _check_stop(self):
     # Check with the coordinator if we should stop.
@@ -831,7 +861,9 @@ class _CoordinatedSession(_WrappedSession):
   def close(self):
     self._coord.request_stop()
     try:
-      self._coord.join()
+      self._coord.join(
+          stop_grace_period_secs=self._stop_grace_period_secs,
+          ignore_live_threads=True)
     finally:
       try:
         _WrappedSession.close(self)
