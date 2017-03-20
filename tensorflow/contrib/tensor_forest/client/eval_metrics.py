@@ -30,6 +30,8 @@ from tensorflow.python.ops import nn
 INFERENCE_PROB_NAME = prediction_key.PredictionKey.CLASSES
 INFERENCE_PRED_NAME = prediction_key.PredictionKey.PROBABILITIES
 
+FEATURE_IMPORTANCE_NAME = 'global_feature_importance'
+
 
 def _top_k_generator(k):
   def _top_k(probabilities, targets):
