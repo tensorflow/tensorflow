@@ -32,8 +32,13 @@ def add_debug_tensor_watch(run_options,
                            global_step=-1):
   """Add watch on a `Tensor` to `RunOptions`.
 
-  N.B.: Under certain circumstances, the `Tensor` may not be actually watched
-    (e.g., if the node of the `Tensor` is constant-folded during runtime).
+  N.B.:
+    1. Under certain circumstances, the `Tensor` may not get actually watched
+      (e.g., if the node of the `Tensor` is constant-folded during runtime).
+    2. For debugging purposes, the `parallel_iteration` attribute of all
+      `tf.while_loop`s in the graph are set to 1 to prevent any node from
+      being executed multiple times concurrently. This change does not affect
+      subsequent non-debugged runs of the same `tf.while_loop`s.
 
   Args:
     run_options: An instance of `config_pb2.RunOptions` to be modified.
@@ -88,9 +93,14 @@ def watch_graph(run_options,
   To watch all `Tensor`s on the graph, let both `node_name_regex_whitelist`
   and `op_type_regex_whitelist` be the default (`None`).
 
-  N.B.: Under certain circumstances, not all specified `Tensor`s will be
-    actually watched (e.g., nodes that are constant-folded during runtime will
-    not be watched).
+  N.B.:
+    1. Under certain circumstances, the `Tensor` may not get actually watched
+      (e.g., if the node of the `Tensor` is constant-folded during runtime).
+    2. For debugging purposes, the `parallel_iteration` attribute of all
+      `tf.while_loop`s in the graph are set to 1 to prevent any node from
+      being executed multiple times concurrently. This change does not affect
+      subsequent non-debugged runs of the same `tf.while_loop`s.
+
 
   Args:
     run_options: An instance of `config_pb2.RunOptions` to be modified.
@@ -176,9 +186,13 @@ def watch_graph_with_blacklists(run_options,
   This is similar to `watch_graph()`, but the node names and op types are
   blacklisted, instead of whitelisted.
 
-  N.B.: Under certain circumstances, not all specified `Tensor`s will be
-    actually watched (e.g., nodes that are constant-folded during runtime will
-    not be watched).
+  N.B.:
+    1. Under certain circumstances, the `Tensor` may not get actually watched
+      (e.g., if the node of the `Tensor` is constant-folded during runtime).
+    2. For debugging purposes, the `parallel_iteration` attribute of all
+      `tf.while_loop`s in the graph are set to 1 to prevent any node from
+      being executed multiple times concurrently. This change does not affect
+      subsequent non-debugged runs of the same `tf.while_loop`s.
 
   Args:
     run_options: An instance of `config_pb2.RunOptions` to be modified.

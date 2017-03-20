@@ -70,6 +70,7 @@ const string DebuggerState::SummarizeDebugTensorWatches() {
 Status DebuggerState::DecorateGraphForDebug(Graph* graph, Device* device) {
   Status status;
 
+  DebugNodeInserter::DeparallelizeWhileLoops(graph, device);
   status.Update(DebugNodeInserter::InsertNodes(watches, graph, device));
   if (status.ok()) {
     status.Update(DebugIO::PublishGraph(*graph, debug_urls_));
@@ -258,6 +259,27 @@ Status DebugNodeInserter::InsertNodes(
   }
 
   return Status::OK();
+}
+
+void DebugNodeInserter::DeparallelizeWhileLoops(Graph* graph, Device* device) {
+  for (Node* node : graph->nodes()) {
+    if (node->IsEnter()) {
+      for (const auto& attr : node->def().attr()) {
+        if (attr.first == "parallel_iterations") {
+          if (attr.second.i() > 1) {
+            LOG(INFO) << "For debugging, tfdbg is changing the "
+                      << "parallel_iterations attribute of the Enter/RefEnter "
+                      << "node \"" << node->name() << "\" on device \""
+                      << device->name() << "\" from " << attr.second.i()
+                      << " to 1. (This does not affect subsequent non-debug "
+                      << "runs.)";
+            node->AddAttr<int64>("parallel_iterations", 1);
+          }
+          break;
+        }
+      }
+    }
+  }
 }
 
 // static
