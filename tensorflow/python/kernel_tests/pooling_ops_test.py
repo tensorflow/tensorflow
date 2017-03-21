@@ -704,14 +704,14 @@ class PoolingTest(test.TestCase):
       input_tensor = constant_op.constant(x, shape=input_sizes, name="input")
       if pool_func == nn_ops.avg_pool:
         func_name = "avg_pool"
-        err_margin = 1e-4
+        err_tolerance = 1e-4
       else:
         if x_init_value is None:
           x_init_value = np.asfarray(
               np.arange(1, total_size + 1),
               dtype=np.float32).reshape(input_sizes)
         func_name = "max_pool"
-        err_margin = 1e-3
+        err_tolerance = 1e-3
       if data_format == "NCHW":
         ksize = [1, 1, window_rows, window_rows]
         strides = [1, 1, row_stride, col_stride]
@@ -738,7 +738,7 @@ class PoolingTest(test.TestCase):
           x_init_value=x_init_value,
           delta=1e-2)
     print("%s gradient error = " % func_name, err)
-    self.assertLess(err, err_margin)
+    self.assertLess(err, err_tolerance)
 
   def _ConstructAndTestSecondGradient(self,
                                       pool_func,
@@ -752,7 +752,7 @@ class PoolingTest(test.TestCase):
                                       data_format,
                                       use_gpu,
                                       x_init_value=None):
-    """Verifies the gradients of gradients of the pooling function.
+    """Verifies the second-order gradients of the pooling function.
 
     Args:
       pool_func: Function to be called, co.MaxPool, co.AvgPool,
@@ -780,14 +780,14 @@ class PoolingTest(test.TestCase):
       input_tensor = constant_op.constant(x, shape=input_sizes, name="input")
       if pool_func == nn_ops.avg_pool:
         func_name = "avg_pool"
-        err_margin = 1e-3
+        err_tolerance = 1e-3
       else:
         if x_init_value is None:
           x_init_value = np.asfarray(
               np.arange(1, total_size + 1),
               dtype=np.float32).reshape(input_sizes)
         func_name = "max_pool"
-        err_margin = 1e-2
+        err_tolerance = 1e-2
       if data_format == "NCHW":
         ksize = [1, 1, window_rows, window_rows]
         strides = [1, 1, row_stride, col_stride]
@@ -815,7 +815,7 @@ class PoolingTest(test.TestCase):
           x_init_value=x_init_value,
           delta=1e-2)
     print("%s second-order gradient error = " % func_name, err)
-    self.assertLess(err, err_margin)
+    self.assertLess(err, err_tolerance)
 
   def _testMaxPoolGradValidPadding1_1(self, data_format, use_gpu):
     self._ConstructAndTestGradient(
