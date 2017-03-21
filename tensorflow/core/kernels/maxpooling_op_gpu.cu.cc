@@ -199,6 +199,20 @@ __global__ void MaxPoolBackward(const int nthreads, const dtype* top_diff,
   }
 }
 
+// The parameters to the kernels in the gradient gradient function is as
+// follows:
+//     nthreads: the number of threads, which is equal to the output size. The
+//         gradient of the MaxPooling gradient w.r.t. the output data has a
+//         dimensions of N*C*Hout*Wout
+//     bottom_data: the bottom data of N*H*W*C (or N*C*H*W) items.
+//     output_data: the output data of N*Hout*Wout*C (or N*C*Hout*Wout) items.
+//     height, width, pooled_height, pooled_width: the input and output sizes.
+//     kernel_h, kernel_w: the kernel sizes.
+//     stride_h, stride_w: the strides.
+//     pad_t, pad_l: the padding values on the top and left side.
+//     top_diff: the gradient of the gradient of the output data w.r.t. the
+//         input data, of size N*H*W*C (or N*C*H*W).
+//     bottom_diff: the gradient of the gradient w.r.t. output.
 template <typename dtype>
 __global__ void MaxPoolGradBackwardNoMaskNCHW(
     const int nthreads, const dtype* bottom_data, const dtype* output_data,
@@ -280,6 +294,27 @@ __global__ void MaxPoolGradBackwardNoMaskNHWC(
   }
 }
 
+// The parameters to the kernels in the gradient gradient function is as
+// follows:
+//     nthreads: the number of threads, which is equal to the output size. The
+//         gradient of the MaxPooling gradient w.r.t. the output data has a
+//         dimensions of N*C*Hout*Wout
+//     top_diff: the gradient of the gradient of the output data w.r.t. the
+//         input data, of size N*H*W*C (or N*C*H*W). As we have stored the
+//         flattened index of the input entries, the backward function is
+//         agnostic of the input storage order.
+//     mask: the output mask of the same size as top_data. It is stored in
+//         int form, keeping track of the flattened index of the input item that
+//         produces the max output.
+//     top_offset: the pre-computed per-image offset of the maxpool input
+//         gradient. This is equal to H*W*C. We choose to pre-compute this so we
+//         do not  need to compute it every time inside the kernel.
+//     bottom_offset: the pre-computed per-image offset of the maxpool output.
+//         This is equal to Hout*Wout*C.
+//     bottom_diff: the gradient of the gradient w.r.t. output.
+// This function relies on CudaAtomicAdd to avoid race conditions. Also, before
+// the kernel is run, you will need to make sure that bottom_diff is filled with
+// zero first.
 template <typename dtype>
 __global__ void MaxPoolGradBackward(const int nthreads, const dtype* top_diff,
                                     const int64* mask, const int top_offset,
