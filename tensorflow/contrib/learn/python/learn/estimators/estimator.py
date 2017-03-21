@@ -801,7 +801,8 @@ class BaseEstimator(
       features, labels = input_fn()
       self._check_inputs(features, labels)
 
-      eval_dict = self._get_eval_ops(features, labels, metrics).eval_metric_ops
+      model_fn_results = self._get_eval_ops(features, labels, metrics)
+      eval_dict = model_fn_results.eval_metric_ops
 
       update_op, eval_dict = self._extract_metric_update_ops(eval_dict)
 
@@ -822,6 +823,7 @@ class BaseEstimator(
       eval_results = evaluation.evaluate_once(
           checkpoint_path=checkpoint_path,
           master=self._config.evaluation_master,
+          scaffold=model_fn_results.scaffold,
           eval_ops=update_op,
           final_ops=eval_dict,
           hooks=hooks,
@@ -859,6 +861,7 @@ class BaseEstimator(
       mon_sess = monitored_session.MonitoredSession(
           session_creator=monitored_session.ChiefSessionCreator(
               checkpoint_filename_with_path=checkpoint_path,
+              scaffold=infer_ops.scaffold,
               config=config_pb2.ConfigProto(allow_soft_placement=True)))
       if not as_iterable:
         with mon_sess:
@@ -1252,17 +1255,18 @@ class Estimator(BaseEstimator):
       export_dir = saved_model_export_utils.get_timestamped_export_dir(
           export_dir_base)
 
+      if (model_fn_ops.scaffold is not None and
+          model_fn_ops.scaffold.saver is not None):
+        saver_for_restore = model_fn_ops.scaffold.saver
+      else:
+        saver_for_restore = saver.Saver(
+            variables.global_variables(),
+            sharded=True)
       with tf_session.Session('') as session:
         variables.initialize_local_variables()
         data_flow_ops.tables_initializer()
         resources.initialize_resources(resources.shared_resources())
-        saver_for_restore = saver.Saver(
-            # pylint: disable=protected-access
-            variables._all_saveable_objects(),
-            # pylint: enable=protected-access
-            sharded=True)
         saver_for_restore.restore(session, checkpoint_path)
-
         init_op = control_flow_ops.group(
             variables.local_variables_initializer(),
             resources.initialize_resources(resources.shared_resources()),
