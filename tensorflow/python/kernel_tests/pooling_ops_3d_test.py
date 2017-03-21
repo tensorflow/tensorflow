@@ -21,16 +21,30 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import nn_ops
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
 
+def GetTestConfigs():
+  """Get all the valid tests configs to run.
+
+  Returns:
+    all the valid test configs as tuples of data_format and use_gpu.
+  """
+  test_configs = [("NDHWC", False), ("NDHWC", True)]
+  if test.is_gpu_available(cuda_only=True):
+    # "NCHW" format is currently supported exclusively on CUDA GPUs.
+    test_configs += [("NCDHW", True)]
+  return test_configs
+
+
 class PoolingTest(test.TestCase):
 
-  def _VerifyValues(self, pool_func, input_sizes, window, strides, padding,
-                    expected):
+  def _VerifyOneTest(self, pool_func, input_sizes, window, strides, padding,
+                     data_format, expected, use_gpu):
     """Verifies the output values of the pooling function.
 
     Args:
@@ -39,7 +53,9 @@ class PoolingTest(test.TestCase):
       window: Tuple of kernel dims: planes, rows, cols.
       strides: Tuple of strides for dims: planes, rows, cols.
       padding: Padding type.
+      data_format: The data format we use to run the pooling operation.
       expected: An array containing the expected operation outputs.
+      use_gpu: Whether to run ops on GPU.
     """
     total_size = 1
     for s in input_sizes:
@@ -47,17 +63,32 @@ class PoolingTest(test.TestCase):
     # Initializes the input tensor with array containing incrementing
     # numbers from 1.
     x = [f * 1.0 for f in range(1, total_size + 1)]
-    with self.test_session(use_gpu=True) as sess:
+    with self.test_session(use_gpu=use_gpu) as sess:
       t = constant_op.constant(x, shape=input_sizes)
+      window = [1] + list(window) + [1]
+      strides = [1] + list(strides) + [1]
+      if data_format == "NCDHW":
+        t = test_util.NHWCToNCHW(t)
+        window = test_util.NHWCToNCHW(window)
+        strides = test_util.NHWCToNCHW(strides)
       t = pool_func(
           t,
-          ksize=[1, window[0], window[1], window[2], 1],
-          strides=[1, strides[0], strides[1], strides[2], 1],
-          padding=padding)
+          ksize=window,
+          strides=strides,
+          padding=padding,
+          data_format=data_format)
+      if data_format == "NCDHW":
+        t = test_util.NCHWToNHWC(t)
       vals = sess.run(t)
     # Verifies values.
     actual = vals.flatten()
     self.assertAllClose(expected, actual)
+
+  def _VerifyValues(self, pool_func, input_sizes, window, strides,
+                    padding, expected):
+    for data_format, use_gpu in GetTestConfigs():
+      self._VerifyOneTest(pool_func, input_sizes, window, strides, padding,
+                          data_format, expected, use_gpu)
 
   def testAvgPool3dValidPadding(self):
     expected_output = [20.5, 21.5, 22.5]
@@ -172,15 +203,16 @@ class PoolingTest(test.TestCase):
         padding="VALID",
         expected=[29.5, 32.5, 50.5, 53.5, 176.5, 179.5, 197.5, 200.5])
 
-  def _ConstructAndTestGradient(self,
-                                pool_func,
-                                input_sizes,
-                                output_sizes,
-                                window,
-                                strides,
-                                padding,
-                                x_init_value=None):
-    """Verifies the gradients of the avg pooling function.
+  def _ConstructAndTestGradientForConfig(self,
+                                         pool_func,
+                                         input_sizes,
+                                         output_sizes,
+                                         window,
+                                         strides,
+                                         padding,
+                                         data_format,
+                                         use_gpu):
+    """Verifies the gradients of a pooling function.
 
     Args:
       pool_func: Function to be called, co.MaxPool, co.AvgPool,
@@ -190,7 +222,8 @@ class PoolingTest(test.TestCase):
       window: Tuple of kernel dims: planes, rows, cols.
       strides: Tuple of strides for dims: planes, rows, cols.
       padding: Padding type.
-      x_init_value: Values to be passed to the gradient checker.
+      data_format: Data format string.
+      use_gpu: Whether to run on GPU.
     """
     total_size = 1
     for s in input_sizes:
@@ -198,24 +231,37 @@ class PoolingTest(test.TestCase):
     # Initializes the input tensor with array containing incrementing
     # numbers from 1.
     x = [f * 1.0 for f in range(1, total_size + 1)]
-    with self.test_session(use_gpu=True):
+    with self.test_session(use_gpu=use_gpu):
       input_tensor = constant_op.constant(x, shape=input_sizes, name="input")
       err_margin = 1e-3
       if pool_func == nn_ops.avg_pool3d:
         func_name = "avg_pool3d"
+        x_init_value = None
       else:
-        if x_init_value is None:
-          x_init_value = np.asfarray(
-              np.arange(1, total_size + 1),
-              dtype=np.float32).reshape(input_sizes)
-          func_name = "max_pool3d"
+        x_init_value = np.asfarray(
+            np.arange(1, total_size + 1),
+            dtype=np.float32).reshape(input_sizes)
+        func_name = "max_pool3d"
+
+      ksize = [1, window[0], window[1], window[2], 1]
+      strides = [1, strides[0], strides[1], strides[2], 1]
+      t = input_tensor
+
+      if data_format == "NCDHW":
+        ksize = test_util.NHWCToNCHW(ksize)
+        strides = test_util.NHWCToNCHW(strides)
+        t = test_util.NHWCToNCHW(t)
 
       t = pool_func(
-          input_tensor,
-          ksize=[1, window[0], window[1], window[2], 1],
-          strides=[1, strides[0], strides[1], strides[2], 1],
+          t,
+          ksize=ksize,
+          strides=strides,
           padding=padding,
+          data_format=data_format,
           name=func_name)
+
+      if data_format == "NCDHW":
+        t = test_util.NCHWToNHWC(t)
 
       err = gradient_checker.compute_gradient_error(
           input_tensor,
@@ -226,6 +272,17 @@ class PoolingTest(test.TestCase):
           delta=1e-2)
     print("%s gradient error = " % func_name, err)
     self.assertLess(err, err_margin)
+
+  def _ConstructAndTestGradient(self,
+                                pool_func,
+                                **kwargs):
+    """Runs _ConstructAndTestGradientForConfig for all tests configurations."""
+
+    for data_format, use_gpu in GetTestConfigs():
+      self._ConstructAndTestGradientForConfig(pool_func,
+                                              data_format=data_format,
+                                              use_gpu=use_gpu,
+                                              **kwargs)
 
   def testMaxPoolGradValidPadding1_1_3d(self):
     self._ConstructAndTestGradient(
