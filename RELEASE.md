@@ -61,7 +61,6 @@
 * Fixed bfloat16 integration of LIBXSMM sparse mat-mul.
 * Improved performance and reduce memory usage by allowing ops to forward input buffers to output buffers and perform computations in-place.
 * Improved the performance of CPU assignment for strings.
-* Stability improvement for writing files in the GCS file system, DeleteFile, DeleteRecursively, DeleteDir and RenameFile.
 * Speed up matrix * vector multiplication and matrix * matrix with unknown shapes.
 * C API: Graph imports now support input remapping, control dependencies, and returning imported nodes (see `TF_GraphImportGraphDefWithReturnOutputs()`)
 * Multiple C++ API updates.
