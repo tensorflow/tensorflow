@@ -414,7 +414,9 @@ DECLARE_GPU_SPEC(float);
 }  // namespace functor
 
 // A dummy type to group backward data autotune results together.
-struct Conv3dBackwardDataAutoTuneGroup {};
+struct Conv3dBackwardDataAutoTuneGroup {
+  static string name() { return "Conv3dBwdData"; }
+};
 typedef AutoTuneSingleton<Conv3dBackwardDataAutoTuneGroup, ConvParameters,
                           perftools::gputools::dnn::AlgorithmConfig>
 
@@ -754,7 +756,9 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
 };
 
 // A dummy type to group backward filter autotune results together.
-struct Conv3dBackwardFilterAutoTuneGroup {};
+struct Conv3dBackwardFilterAutoTuneGroup {
+  static string name() { return "Conv3dBwdFilter"; }
+};
 typedef AutoTuneSingleton<Conv3dBackwardFilterAutoTuneGroup, ConvParameters,
                           perftools::gputools::dnn::AlgorithmConfig>
     AutoTuneConv3dBwdFilter;

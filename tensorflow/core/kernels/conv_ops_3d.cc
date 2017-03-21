@@ -152,7 +152,9 @@ TF_CALL_double(REGISTER_CPU_KERNEL);
 #if GOOGLE_CUDA
 
 // A dummy type to group forward convolution autotune results together.
-struct Conv3dAutoTuneGroup {};
+struct Conv3dAutoTuneGroup {
+  static string name() { return "Conv3d"; }
+};
 typedef AutoTuneSingleton<Conv3dAutoTuneGroup, ConvParameters,
                           perftools::gputools::dnn::AlgorithmConfig>
     AutoTuneConv3d;
