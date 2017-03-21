@@ -2,7 +2,8 @@
 
 ## Major Features and Improvements
 * Added Java API support for Windows.
-* Added `tf.spectral` module. Moved existing FFT ops to `tf.spectral`.
+* Added `tf.spectral` module. Moved existing FFT ops to `tf.spectral` while
+  keeping an alias in the old location.
 * Added 1D, 2D and 3D Fourier transform ops for real signals to `tf.spectral`.
 * Added a `tf.bincount` function.
 * Added Keras 2 API to contrib.
@@ -17,9 +18,7 @@
 
 ## Deprecations
 
-* TensorFlow will stop supporting CUDA on MacOS due to instability of the
-  configuration, and inavailability of up-to-date high performance systems with
-  such support. 1.1.0 will be the last official release we will have for tensorflow-gpu on MacOS.
+* TensorFlow 1.1.0 will be the last time we release a binary with Mac GPU support. Going forward, we will stop testing on Mac GPU systems. We continue to welcome patches that maintain Mac GPU support, and we will try to keep the Mac GPU build working.
 
 ## Changes to contrib APIs
 * The behavior of RNNCells is now stricter due to the transition towards making RNNCells act more like Keras layers.
@@ -97,7 +96,7 @@ Jund, @polonez, Prayag Verma, Rahul Kavi, Raphael Gontijo Lopes, @rasbt, Raven
 Iqqe, Reid Pryzant, Richard Shin, Rizwan Asif, Russell Kaplan, Ryo Asakura,
 RüDiger Busche, Saisai Shao, Sam Abrahams, @sanosay, Sean Papay, @seaotterman,
 @selay01, Shaurya Sharma, Sriram Narayanamoorthy, Stefano Probst, @taknevski,
-@tbonza, @teldridge11, @terrytangyuan, Tim Anglade, Tomas Reimers, Tomer Gafner,
+@tbonza, @teldridge11, Yuan (Terry) Tang, Tim Anglade, Tomas Reimers, Tomer Gafner,
 Valentin Iovene, Vamsi Sripathi, Viktor Malyi, Vit Stepanovs, Vivek Rane, Vlad
 Firoiu, @wangg12, @will, Xiaoyu Tao, Yaroslav Bulatov, Yuan (Terry) Tang,
 @Yufeng, Yuming Wang, Yuxin Wu, Zafar Takhirov, Ziming Dong
