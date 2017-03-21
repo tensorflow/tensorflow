@@ -3,7 +3,7 @@
 ## Major Features and Improvements
 * Added Java API support for Windows.
 * Added `tf.spectral` module. Moved existing FFT ops to `tf.spectral` while
-  keeping an alias in the old location.
+  keeping an alias in the old location (`tf.*`).
 * Added 1D, 2D and 3D Fourier transform ops for real signals to `tf.spectral`.
 * Added a `tf.bincount` function.
 * Added Keras 2 API to contrib.
