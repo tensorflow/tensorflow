@@ -304,10 +304,11 @@ static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
   libxsmm_output = libxsmm_dnn_link_buffer(
       libxsmm_handle, LIBXSMM_DNN_OUTPUT, output, LIBXSMM_DNN_TENSOR_FORMAT_NHWC_PTR, &status);
   chk_libxsmm_err(status, "Link output buffer");
+  if(kind == LIBXSMM_DNN_COMPUTE_KIND_FWD || kind == LIBXSMM_DNN_COMPUTE_KIND_BWD){
   libxsmm_filter = libxsmm_dnn_link_filter(
       libxsmm_handle, LIBXSMM_DNN_FILTER, native_filter, LIBXSMM_DNN_TENSOR_FORMAT_LIBXSMM_PTR, &status);
   chk_libxsmm_err(status, "Link filter");
-
+  }
   if (kind == LIBXSMM_DNN_COMPUTE_KIND_FWD) {
     chk_libxsmm_err(libxsmm_dnn_zero_buffer(libxsmm_output), "Zero output");
 
