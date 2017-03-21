@@ -87,6 +87,7 @@ py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:summary",
         "//tensorflow/python:training",
+        "//tensorflow/tensorboard",
         "//tensorflow/tensorboard/backend/event_processing:event_multiplexer",
         "@org_pocoo_werkzeug//:werkzeug",
     ],
