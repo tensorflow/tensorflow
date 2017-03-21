@@ -33,8 +33,15 @@ def _poplar_autoconf_impl(repository_ctx):
     repository_ctx.symlink(poplar_base + "/lib", "poplar/lib")
     repository_ctx.symlink(popnn_base + "/lib", "popnn/lib")
 
-    repository_ctx.symlink(poplar_base + "/lib/libpoplar.dylib", "poplar/static_lib/libpoplar.a")
-    repository_ctx.symlink(popnn_base + "/lib/libpopnn.dylib", "popnn/static_lib/libpopnn.a")
+    if repository_ctx.path(poplar_base + "/lib/libpoplar.so").exists:
+      repository_ctx.symlink(poplar_base + "/lib/libpoplar.so", "poplar/static_lib/libpoplar.a")
+    else:
+      repository_ctx.symlink(poplar_base + "/lib/libpoplar.dylib", "poplar/static_lib/libpoplar.a")
+
+    if repository_ctx.path(popnn_base + "/lib/libpopnn.so").exists:
+      repository_ctx.symlink(popnn_base + "/lib/libpopnn.so", "popnn/static_lib/libpopnn.a")
+    else:
+      repository_ctx.symlink(popnn_base + "/lib/libpopnn.dylib", "popnn/static_lib/libpopnn.a")
 
     repository_ctx.symlink(poplar_base + "/bin", "poplar/bin")
 
