@@ -2,6 +2,8 @@
 .ipynb_checkpoints
 node_modules
 /bazel-*
+/tensorflow/compiler/tests/plugin_config.py
+/tensorflow/compiler/tests/plugin/BUILD
 /third_party/py/numpy/numpy_include
 /tools/bazel.rc
 /tools/python_bin_path.sh

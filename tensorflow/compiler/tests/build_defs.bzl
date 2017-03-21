@@ -1,14 +1,11 @@
 """Build rules for Tensorflow/XLA testing."""
 
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_is_configured")
-load("@local_config_poplar//poplar:build_defs.bzl", "poplar_available")
 
 def all_backends():
-  b = ["cpu"]
+  b = ["cpu", "plugin"]
   if cuda_is_configured():
     b += ["gpu"]
-  if poplar_available():
-    b += ["ipu"]
   return b
 
 def tf_xla_py_test(name, srcs=[], deps=[], tags=[], data=[], main=None,
@@ -42,6 +39,12 @@ def tf_xla_py_test(name, srcs=[], deps=[], tags=[], data=[], main=None,
     disabled_backends = []
 
   enabled_backends = [b for b in all_backends() if b not in disabled_backends]
+
+  load_plugin = False
+  if "xla_test" in native.existing_rules():
+    if ":plugin_config.py" in native.existing_rules()["xla_test"]["srcs"]:
+      load_plugin = True
+
   test_names = []
   for backend in enabled_backends:
     test_name = "{}_{}".format(name, backend)
@@ -56,11 +59,12 @@ def tf_xla_py_test(name, srcs=[], deps=[], tags=[], data=[], main=None,
       backend_args += ["--test_device=XLA_GPU",
                        "--types=DT_FLOAT,DT_DOUBLE,DT_INT32,DT_INT64,DT_BOOL"]
       backend_tags += ["requires-gpu-sm35"]
-    elif backend == "ipu":
-          backend_args += ["--test_device=XLA_IPU",
-                           "--types=DT_FLOAT,DT_INT32",
-                           "--plugin_loader=tensorflow.compiler.poplar.poplar_plugin"]
-          backend_deps += ["//tensorflow/compiler/poplar:poplar_plugin_py"]
+    elif backend == "plugin":
+      if load_plugin:
+        backend_args += ["--load_plugin=true"]
+        backend_deps += ["//tensorflow/compiler/tests/plugin:deps"]
+      else:
+        continue
     else:
       fail("Unknown backend {}".format(backend))
 
