@@ -209,7 +209,6 @@ add_python_module("tensorflow/python/util/protobuf")
 add_python_module("tensorflow/tensorboard")
 add_python_module("tensorflow/tensorboard/backend")
 add_python_module("tensorflow/tensorboard/backend/event_processing")
-add_python_module("tensorflow/tensorboard/lib/python")
 add_python_module("tensorflow/tensorboard/plugins")
 add_python_module("tensorflow/tensorboard/plugins/debugger")
 add_python_module("tensorflow/tensorboard/plugins/projector")
@@ -522,7 +521,7 @@ function(GENERATE_PYTHON_OP_LIB tf_python_op_lib_name)
     else()
       set(require_shape_fn 1)
     endif()
-    
+
     # Create a C++ executable that links in the appropriate op
     # registrations and generates Python wrapper code based on the
     # registered ops.
@@ -737,7 +736,7 @@ add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
 add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy ${tensorflow_source_dir}/tensorflow/contrib/learn/python/learn/datasets/data/text_train.csv
                                    ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/learn/python/learn/datasets/data/)
-					   
+
 if(${tensorflow_ENABLE_GPU})
   add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
     COMMAND ${PYTHON_EXECUTABLE} ${CMAKE_CURRENT_BINARY_DIR}/tf_python/setup.py bdist_wheel --project_name tensorflow_gpu

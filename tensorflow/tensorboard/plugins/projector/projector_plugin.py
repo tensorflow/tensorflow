@@ -33,7 +33,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.pywrap_tensorflow import NewCheckpointReader
 from tensorflow.python.training.saver import checkpoint_exists
 from tensorflow.python.training.saver import latest_checkpoint
-from tensorflow.tensorboard.lib.python.http_util import Respond
+from tensorflow.tensorboard.backend.http_util import Respond
 from tensorflow.tensorboard.plugins.base_plugin import TBPlugin
 
 # The prefix of routes provided by this plugin.

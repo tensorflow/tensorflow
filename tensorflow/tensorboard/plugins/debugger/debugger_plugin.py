@@ -28,9 +28,9 @@ from werkzeug import wrappers
 
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.tensorboard.backend import http_util
 from tensorflow.tensorboard.backend.event_processing import event_accumulator
 from tensorflow.tensorboard.backend.event_processing import event_file_loader
-from tensorflow.tensorboard.lib.python import http_util
 from tensorflow.tensorboard.plugins import base_plugin
 
 # The prefix of routes provided by this plugin.
