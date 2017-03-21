@@ -106,6 +106,7 @@ def GetTempDir():
     temp_dir = temp_dir.rstrip('.py')
     if not os.path.isdir(temp_dir):
       os.mkdir(temp_dir, 0o755)
+    temp_dir = tempfile.mkdtemp(dir=temp_dir)
 
     def delete_temp_dir(dirname=temp_dir):
       try:
