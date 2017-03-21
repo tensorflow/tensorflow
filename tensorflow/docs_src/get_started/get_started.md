@@ -185,7 +185,7 @@ To initialize all the variables in a TensorFlow program, you must explicitly
 call a special operation as follows:
 
 ```python
-init = tf.global_variables_initializer()
+init = tf.initialize_all_variables()
 sess.run(init)
 ```
 It is important to realize `init` is a handle to the TensorFlow sub-graph that
