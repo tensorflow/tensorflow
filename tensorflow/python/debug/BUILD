@@ -15,6 +15,7 @@ exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "if_not_windows")
 
 py_library(
     name = "debug_py",
@@ -33,11 +34,12 @@ py_library(
 py_library(
     name = "debug_pip",
     deps = [
-        ":debug_examples",
         ":debug_py",
         ":offline_analyzer",
         ":session_debug_testlib",
-    ],
+    ] + if_not_windows([
+        ":debug_examples",
+    ]),
 )
 
 py_library(
