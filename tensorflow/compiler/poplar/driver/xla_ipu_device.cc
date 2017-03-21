@@ -64,7 +64,7 @@ REGISTER_XLA_LAUNCH_KERNEL(DEVICE_XLA_IPU, XlaDeviceLaunchOp, kIpuAllTypes);
 REGISTER_XLA_DEVICE_KERNELS(DEVICE_XLA_IPU, kIpuAllTypes);
 
 // Register JIT kernels for IPU device
-// synced @ 60ef131d2b7820367d8aa097fb4d2b7a2a3109fe
+// synced @ 37b1cd5012d8782172c2c1279f308e449ec6da29
 
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("_Arg").TypeConstraint("T", kIpuAllTypes));
@@ -266,11 +266,17 @@ REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("Reshape").TypeConstraint("T", kIpuAllTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
-        Name("ResourceApplyGradientDescent").TypeConstraint("T", kIpuAllTypes));
+        Name("ResourceApplyAdagrad").TypeConstraint("T", kIpuFloatTypes));
+REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
+        Name("ResourceApplyGradientDescent").TypeConstraint("T", kIpuFloatTypes));
+REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
+        Name("ResourceApplyMomentum").TypeConstraint("T", kIpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("Reverse").TypeConstraint("T", kIpuAllTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("ReverseV2").TypeConstraint("T", kIpuAllTypes));
+REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
+        Name("Round").TypeConstraint("T", kIpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("Rsqrt").TypeConstraint("T", kIpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
