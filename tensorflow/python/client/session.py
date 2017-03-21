@@ -394,7 +394,7 @@ class _FetchHandler(object):
   # TODO(touts): Make this class also take care of destructuring the feed
   # dict instead of doing it in the callers.
 
-  def __init__(self, graph, fetches, feeds):
+  def __init__(self, graph, fetches, feeds, feed_handles=None):
     """Creates a fetch handler.
 
     Args:
@@ -403,12 +403,15 @@ class _FetchHandler(object):
       fetches: An arbitrary fetch structure: singleton, list, tuple,
         namedtuple, or dict.
       feeds: A feed dict where keys are fully resolved tensor names.
+      feed_handles: A dict from feed names to TensorHandle objects used as
+        direct feeds.
     """
     with graph.as_default():
       self._fetch_mapper = _FetchMapper.for_fetch(fetches)
     self._fetches = []
     self._targets = []
     self._feeds = feeds
+    self._feed_handles = feed_handles or {}
     self._ops = []
     self._fetch_handles = {}
     for fetch in self._fetch_mapper.unique_fetches():
@@ -479,7 +482,12 @@ class _FetchHandler(object):
       else:
         # If the fetch was in the feeds, use the fed value, otherwise
         # use the returned value.
-        value = self._feeds.get(self._fetches[i])
+        if self._fetches[i] in self._feed_handles:
+          # A fetch had a corresponding direct TensorHandle feed. Call eval()
+          # to obtain the Tensor value from the TensorHandle.
+          value = self._feed_handles[self._fetches[i]].eval()
+        else:
+          value = self._feeds.get(self._fetches[i])
         if value is None:
           value = tensor_values[j]
           j += 1
@@ -921,6 +929,7 @@ class BaseSession(SessionInterface):
     feed_map = {}
 
     # Validate and process feed_dict.
+    feed_handles = {}
     if feed_dict:
       feed_dict = nest.flatten_dict_items(feed_dict)
       for feed, feed_val in feed_dict.items():
@@ -948,8 +957,10 @@ class BaseSession(SessionInterface):
 
           is_tensor_handle_feed = isinstance(subfeed_val,
                                              session_ops.TensorHandle)
+          subfeed_name = compat.as_bytes(subfeed_t.name)
           if is_tensor_handle_feed:
             np_val = subfeed_val.to_numpy_array()
+            feed_handles[subfeed_name] = subfeed_val
           else:
             np_val = np.asarray(subfeed_val, dtype=subfeed_dtype)
 
@@ -961,12 +972,13 @@ class BaseSession(SessionInterface):
                 % (np_val.shape, subfeed_t.name, str(subfeed_t.get_shape())))
           if not self.graph.is_feedable(subfeed_t):
             raise ValueError('Tensor %s may not be fed.' % subfeed_t)
-          subfeed_name = compat.as_bytes(subfeed_t.name)
+
           feed_dict_string[subfeed_name] = np_val
           feed_map[subfeed_name] = (subfeed_t, subfeed_val)
 
     # Create a fetch handler to take care of the structure of fetches.
-    fetch_handler = _FetchHandler(self._graph, fetches, feed_dict_string)
+    fetch_handler = _FetchHandler(
+        self._graph, fetches, feed_dict_string, feed_handles=feed_handles)
 
     # Run request and get response.
     # We need to keep the movers alive for the following _do_run().
