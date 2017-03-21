@@ -521,7 +521,7 @@ class WishartCholesky(_WishartOperatorPD):
       name: Python `str` name prefixed to Ops created by this class.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[scale]) as ns:
+    with ops.name_scope(name, values=[scale]):
       super(WishartCholesky, self).__init__(
           df=df,
           scale_operator_pd=operator_pd_cholesky.OperatorPDCholesky(
@@ -529,7 +529,7 @@ class WishartCholesky(_WishartOperatorPD):
           cholesky_input_output_matrices=cholesky_input_output_matrices,
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
-          name=ns)
+          name=name)
     self._parameters = parameters
 
 

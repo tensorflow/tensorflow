@@ -1879,6 +1879,14 @@ TEST_F(OpTest, ReverseV2) {
   });
 }
 
+TEST_F(OpTest, Round) {
+  Repeatedly([this]() {
+    ExpectTfAndXlaOutputsAreClose(OpTestBuilder("Round")
+                                      .Input(RandomTensor(DT_FLOAT))
+                                      .Attr("T", DT_FLOAT));
+  });
+}
+
 TEST_F(OpTest, Rsqrt) {
   Repeatedly([this]() {
     ExpectTfAndXlaOutputsAreClose(OpTestBuilder("Rsqrt")

@@ -727,6 +727,28 @@ class Optimizer(object):
       named_slots[_var_key(var)] = slot_creator.create_slot(var, val, op_name)
     return named_slots[_var_key(var)]
 
+  def _get_or_make_slot_with_initializer(self, var, initializer, shape, dtype,
+                                         slot_name, op_name):
+    """Find or create a slot for a variable, using an Initializer.
+
+    Args:
+      var: A `Variable` object.
+      initializer: An `Initializer`.  The initial value of the slot.
+      shape: Shape of the initial value of the slot.
+      dtype: Type of the value of the slot.
+      slot_name: Name for the slot.
+      op_name: Name to use when scoping the Variable that
+        needs to be created for  the slot.
+
+    Returns:
+      A `Variable` object.
+    """
+    named_slots = self._slot_dict(slot_name)
+    if _var_key(var) not in named_slots:
+      named_slots[_var_key(var)] = slot_creator.create_slot_with_initializer(
+          var, initializer, shape, dtype, op_name)
+    return named_slots[_var_key(var)]
+
   def _zeros_slot(self, var, slot_name, op_name):
     """Find or create a slot initialized with 0.0.
 

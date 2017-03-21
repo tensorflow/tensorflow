@@ -45,7 +45,7 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
   // These are the settings for the original v1 Inception model. If you want to
   // use a model that's been produced from the TensorFlow for Poets codelab,
   // you'll need to set IMAGE_SIZE = 299, IMAGE_MEAN = 128, IMAGE_STD = 128,
-  // INPUT_NAME = "Mul:0", and OUTPUT_NAME = "final_result:0".
+  // INPUT_NAME = "Mul", and OUTPUT_NAME = "final_result".
   // You'll also need to update the MODEL_FILE and LABEL_FILE paths to point to
   // the ones you produced.
   //

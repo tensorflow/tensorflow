@@ -41,9 +41,6 @@ if (buildWithMake) {
 // automatically.
 def makeNdkRoot = System.getenv('NDK_ROOT')
 
-// Location of model files required as assets
-def externalModelData = '../../../bazel-tensorflow/external'
-
 // If building with Bazel, this is the location of the bazel binary.
 // NOTE: Bazel does not yet support building for Android on Windows,
 // so in this case the Makefile build must be used as described above.
@@ -51,6 +48,10 @@ def bazelLocation = '/usr/local/bin/bazel'
 
 project.buildDir = 'gradleBuild'
 getProject().setBuildDir('gradleBuild')
+
+// import DownloadModels task
+project.ext.ASSET_DIR = projectDir.toString() + '/assets'
+project.ext.TMP_DIR   = project.buildDir.toString() + '/downloads'
 
 buildscript {
     repositories {
@@ -95,7 +96,7 @@ android {
             aidl.srcDirs = ['src']
             renderscript.srcDirs = ['src']
             res.srcDirs = ['res']
-            assets.srcDirs = ['assets']
+            assets.srcDirs = [project.ext.ASSET_DIR]
             jniLibs.srcDirs = ['libs']
         }
 
@@ -127,10 +128,6 @@ task buildNativeMake(type: Exec) {
          //, '-T'  // Uncomment to skip protobuf and speed up subsequent builds.
 }
 
-task buildExternalAssets(type: Exec) {
-    commandLine bazelLocation, 'build',  '//tensorflow/examples/android:external_assets'
-    outputs.files(externalModelData)
-}
 
 task copyNativeLibs(type: Copy) {
     from demoLibPath
@@ -141,22 +138,13 @@ task copyNativeLibs(type: Copy) {
     fileMode 0644
 }
 
-task copyExternalAssets(type: Copy) {
-    from file(externalModelData).listFiles()
-    include '*.pb'
-    include '*.txt'
-    include 'thumbnails/*.jpg'
-    into 'assets'
-    fileMode 0644
-    dependsOn buildExternalAssets
+assemble.dependsOn copyNativeLibs
+afterEvaluate {
+    assembleDebug.dependsOn copyNativeLibs
+    assembleRelease.dependsOn copyNativeLibs
 }
 
-def copyTasks = [copyNativeLibs]
-if (!buildWithMake) {
-    // copyExternalAssets uses bazel, so only run it when requested.
-    copyTasks.add(copyExternalAssets)
-}
-assemble.dependsOn copyTasks
-afterEvaluate {
-    assembleDebug.dependsOn copyTasks
-}
+// Download default models; if you wish to use your own models then
+// place them in the "assets" directory and comment out this line.
+apply from: "download-models.gradle"
+

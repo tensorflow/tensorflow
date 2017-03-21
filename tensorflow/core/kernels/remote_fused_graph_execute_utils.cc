@@ -15,12 +15,22 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/remote_fused_graph_execute_utils.h"
 
+#include <algorithm>
+#include <queue>
 #include <utility>
 
+#include "tensorflow/core/common_runtime/shape_refiner.h"
+#include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
+
+/* static */ constexpr const char* const
+    RemoteFusedGraphExecuteUtils::ATTR_OUTPUT_DATA_TYPES;
+/* static */ constexpr const char* const
+    RemoteFusedGraphExecuteUtils::ATTR_OUTPUT_SHAPES;
 
 RemoteFusedGraphExecuteUtils::ExecutorBuildRegistrar::ExecutorBuildRegistrar(
     const string& name, ExecutorBuildFunc executor_build_func) {
@@ -127,7 +137,9 @@ RemoteFusedGraphExecuteUtils::GetExecutorBuildRegistry() {
   std::vector<string> output_node_names;
   for (const NodeDef& node : graph_def.node()) {
     if (!IsInputNode(input_node_info_list, node.name())) {
-      output_node_names.emplace_back(node.name());
+      // CAVEAT: We only support one output.  Use shape Inference Version
+      // if there are two or more outputs in a node.
+      output_node_names.emplace_back(strings::StrCat(node.name(), ":", 0));
     }
   }
   const Status status =
@@ -149,17 +161,13 @@ RemoteFusedGraphExecuteUtils::GetExecutorBuildRegistry() {
 
   for (int i = 0; i < output_node_names.size(); ++i) {
     const string& name = output_node_names.at(i);
-    CHECK_EQ(tensor_shape_map->count(name), 0);
     const Tensor& tensor = output_tensors.at(i);
-    tensor_shape_map->emplace(name,
-                              std::make_pair(tensor.dtype(), tensor.shape()));
+    EmplaceTensorShapeType(name, tensor, tensor_shape_map);
   }
   for (int i = 0; i < input_node_info_list.size(); ++i) {
     const string& name = input_node_info_list.at(i).first;
-    CHECK_EQ(tensor_shape_map->count(name), 0);
     const Tensor& tensor = output_tensors.at(output_node_names.size() + i);
-    tensor_shape_map->emplace(name,
-                              std::make_pair(tensor.dtype(), tensor.shape()));
+    EmplaceTensorShapeType(name, tensor, tensor_shape_map);
   }
   CHECK(graph_def.node_size() == output_tensors.size());
   return status;
@@ -190,9 +198,169 @@ RemoteFusedGraphExecuteUtils::GetExecutorBuildRegistry() {
   for (int i = 0; i < output_node_count; ++i) {
     const string& node_name = output_node_names.at(i);
     const Tensor& tensor = output_tensors.at(i);
-    tensor_shape_map->emplace(node_name,
-                              std::make_pair(tensor.dtype(), tensor.shape()));
+    EmplaceTensorShapeType(node_name, tensor, tensor_shape_map);
   }
+}
+
+/* static */ Status RemoteFusedGraphExecuteUtils::MakeTensorFromProto(
+    const TensorProto& tensor_proto, Tensor* tensor) {
+  if (tensor_proto.dtype() > 0 && tensor_proto.dtype() <= DataType_MAX) {
+    Tensor parsed(tensor_proto.dtype());
+    if (parsed.FromProto(cpu_allocator(), tensor_proto)) {
+      *tensor = parsed;
+      return Status::OK();
+    }
+  }
+  return errors::InvalidArgument("Cannot parse tensor from proto");
+}
+
+/* static */ bool RemoteFusedGraphExecuteUtils::AddOutputTensorShapeType(
+    const std::vector<DataType>& data_types,
+    const std::vector<TensorShape>& shapes, NodeDef* node_def) {
+  AddNodeAttr(ATTR_OUTPUT_DATA_TYPES, data_types, node_def);
+  AddNodeAttr(ATTR_OUTPUT_SHAPES, shapes, node_def);
+  return true;
+}
+
+/* static */ Status
+RemoteFusedGraphExecuteUtils::AddOutputTensorShapeTypeByTensorShapeMap(
+    const TensorShapeMap& tensor_shape_map, NodeDef* node_def) {
+  CHECK_NE(node_def, nullptr);
+  std::priority_queue<std::tuple<int, const TensorShapeType*>> queue;
+  auto its = tensor_shape_map.equal_range(node_def->name());
+  for (auto it = its.first; it != its.second; ++it) {
+    queue.emplace(std::make_tuple(it->second.first, &it->second.second));
+  }
+  int last_port = queue.size();
+  std::vector<DataType> data_types;
+  std::vector<TensorShape> shapes;
+  while (!queue.empty()) {
+    const int port = std::get<0>(queue.top());
+    const TensorShapeType* tst = std::get<1>(queue.top());
+    CHECK_NE(tst, nullptr);
+    data_types.emplace(data_types.begin(), tst->first);
+    shapes.emplace(shapes.begin(), tst->second);
+    CHECK_EQ(last_port - 1, port);
+    last_port = port;
+    queue.pop();
+  }
+  AddOutputTensorShapeType(data_types, shapes, node_def);
+  return Status::OK();
+}
+
+/* static */ Status RemoteFusedGraphExecuteUtils::PropagateShapeInference(
+    const GraphDef& graph_def,
+    const std::vector<std::pair<string, Tensor>>& input_node_info_list,
+    Graph* graph, ShapeRefiner* shape_refiner) {
+  Status status;
+  auto visit = [&shape_refiner, &input_node_info_list, &status](Node* node) {
+    if (!status.ok()) {
+      return;
+    }
+    CHECK_NE(node, nullptr);
+    // If we visit an input node, we use the shape provided and set the
+    // shape accordingly.
+    bool is_input_node = false;
+    for (const std::pair<string, Tensor>& input_node_info :
+         input_node_info_list) {
+      if (node->name() == input_node_info.first) {
+        shape_inference::InferenceContext* context =
+            shape_refiner->GetContext(node);
+        shape_inference::ShapeHandle handle;
+        status = context->MakeShapeFromTensorShape(
+            input_node_info.second.shape(), &handle);
+        // TODO(b/32704451): Don't just ignore this status!
+        shape_refiner->SetShape(node, 0, handle).IgnoreError();
+        is_input_node = true;
+      }
+      if (!status.ok()) {
+        break;
+      }
+    }
+    // If not an input node call AddNode() that recomputes the shape.
+    if (!is_input_node && status.ok()) {
+      status = shape_refiner->AddNode(node);
+      if (!status.ok()) {
+        VLOG(1) << "Shape inference failed for node: " << node->name();
+      }
+    }
+  };
+
+  ReverseDFS(*graph, {}, visit);
+
+  return status;
+}
+
+/* static */ Status RemoteFusedGraphExecuteUtils::BuildTensorShapeMapFromGraph(
+    const Graph& graph, const ShapeRefiner& shape_refiner,
+    TensorShapeMap* tensor_shape_map) {
+  for (int i = 0; i < graph.num_node_ids(); ++i) {
+    const Node* node = graph.FindNodeId(i);
+    CHECK_NE(node, nullptr);
+    for (int j = 0; j < node->num_outputs(); ++j) {
+      const int output_index = j;
+      const DataType dt = node->output_type(output_index);
+      shape_inference::InferenceContext* context =
+          shape_refiner.GetContext(node);
+      CHECK_NE(context, nullptr);
+      shape_inference::ShapeHandle shape_handle = context->output(output_index);
+      if (context->RankKnown(shape_handle)) {
+        TensorShape ts;
+        for (int k = 0; k < context->Rank(shape_handle); ++k) {
+          shape_inference::DimensionHandle dh = context->Dim(shape_handle, k);
+          CHECK(context->ValueKnown(dh));
+          ts.AddDim(context->Value(dh));
+        }
+        const string& node_name = node->name();
+        CHECK(tensor_shape_map->count(node_name) == 0);
+        tensor_shape_map->emplace(node_name,
+                                  std::make_pair(j, std::make_pair(dt, ts)));
+      } else {
+        return errors::InvalidArgument("Graph contains unknow shapes");
+      }
+    }
+  }
+  return Status::OK();
+}
+
+/* static */ const RemoteFusedGraphExecuteUtils::TensorShapeType*
+RemoteFusedGraphExecuteUtils::GetTensorShapeType(
+    const TensorShapeMap& tensor_shape_map, const string& node_name) {
+  if (node_name.find(':') != string::npos) {
+    const TensorId tid = ParseTensorName(node_name);
+    return GetTensorShapeType(tensor_shape_map, tid.first.ToString(),
+                              tid.second);
+  } else {
+    return GetTensorShapeType(tensor_shape_map, node_name, 0);
+  }
+}
+
+/* static */ const RemoteFusedGraphExecuteUtils::TensorShapeType*
+RemoteFusedGraphExecuteUtils::GetTensorShapeType(
+    const TensorShapeMap& tensor_shape_map, const string& node_name,
+    const int port) {
+  CHECK_EQ(node_name.find(':'), string::npos);
+  if (tensor_shape_map.count(node_name) <= 0) {
+    return nullptr;
+  }
+  auto its = tensor_shape_map.equal_range(node_name);
+  for (auto it = its.first; it != its.second; ++it) {
+    if (it->second.first == port) {
+      return &it->second.second;
+    }
+  }
+  return nullptr;
+}
+
+/* static */ void RemoteFusedGraphExecuteUtils::EmplaceTensorShapeType(
+    const string& name, const Tensor& tensor,
+    TensorShapeMap* tensor_shape_map) {
+  const TensorId tid = ParseTensorName(name);
+  CHECK_EQ(tensor_shape_map->count(name), 0);
+  tensor_shape_map->emplace(
+      tid.first.ToString(),
+      std::make_pair(tid.second,
+                     std::make_pair(tensor.dtype(), tensor.shape())));
 }
 
 }  // namespace tensorflow

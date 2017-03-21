@@ -1374,6 +1374,10 @@ tensorflow::Status Service::Op(const OpRequest* arg, OpResponse* result) {
       break;
     case OpRequest::kTraceRequest:
       return computation->AddTraceInstruction(arg->trace_request());
+    case OpRequest::kTransposeRequest:
+      handle_status =
+          computation->AddTransposeInstruction(arg->transpose_request());
+      break;
     case OpRequest::kUnaryOpRequest:
       handle_status = computation->AddUnaryInstruction(arg->unary_op_request());
       break;

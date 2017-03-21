@@ -332,7 +332,8 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
         new_i = control_flow_ops.with_dependencies([op], new_i)
         return [new_i]
 
-      loop = control_flow_ops.while_loop(cond, body, [i], parallel_iterations=1)
+      loop = control_flow_ops.while_loop(
+          cond, body, [i], parallel_iterations=10)
 
       # Create RunOptions for debug-watching tensors
       run_options = config_pb2.RunOptions(output_partition_graphs=True)
@@ -358,7 +359,6 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
                        len(run_metadata.partition_graphs))
 
       self.assertEqual(num_iter, r)
-
       u_val_final = sess.run(u)
       self.assertAllClose(u_init_val + num_iter * v_init_val, u_val_final)
 
@@ -707,24 +707,27 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
 
       # Get the dump file names and compute their timestamps.
       self.assertEqual(
-          1, len(dump.get_tensor_file_paths(u_name, 0, "DebugIdentity")))
-      u_file_path = dump.get_tensor_file_paths(u_name, 0, "DebugIdentity")[0]
-
-      self.assertEqual(
           1, len(dump.get_tensor_file_paths(v_name, 0, "DebugIdentity")))
       v_file_path = dump.get_tensor_file_paths(v_name, 0, "DebugIdentity")[0]
 
-      u_timestamp = int(u_file_path[u_file_path.rindex("_") + 1:])
+      self.assertEqual(
+          1, len(dump.get_tensor_file_paths(w_name, 0, "DebugIdentity")))
+      w_file_path = dump.get_tensor_file_paths(w_name, 0, "DebugIdentity")[0]
+
       v_timestamp = int(v_file_path[v_file_path.rindex("_") + 1:])
+      w_timestamp = int(w_file_path[w_file_path.rindex("_") + 1:])
 
-      # Swap the time stamps
-      new_u_file_path = u_file_path[:u_file_path.rindex(
-          "_")] + "_%d" % v_timestamp
-      new_v_file_path = v_file_path[:v_file_path.rindex(
-          "_")] + "_%d" % u_timestamp
+      # Swap and slightly shift the time stamps of the last two dumped tensors,
+      # to simulate "causality violation", which can happen if the dump
+      # directory contains incomplete data and/or mixes data from different
+      # Session.run() calls.
+      v_file_path_1 = v_file_path[:v_file_path.rindex(
+          "_")] + "_%d" % w_timestamp
+      w_file_path_1 = w_file_path[:w_file_path.rindex("_")] + "_%d" % (
+          v_timestamp - 1)
 
-      os.rename(u_file_path, new_u_file_path)
-      os.rename(v_file_path, new_v_file_path)
+      os.rename(v_file_path, v_file_path_1)
+      os.rename(w_file_path, w_file_path_1)
 
       # Load the dump directory again. Now a ValueError is expected to be
       # raised due to the timestamp swap.
@@ -738,6 +741,18 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
           self._dump_root,
           partition_graphs=run_metadata.partition_graphs,
           validate=False)
+
+      # Next, set the two times stamps to be the same, which should be fine.
+      v_file_path_2 = v_file_path[:v_file_path.rindex(
+          "_")] + "_%d" % w_timestamp
+      w_file_path_2 = w_file_path[:w_file_path.rindex(
+          "_")] + "_%d" % w_timestamp
+
+      os.rename(v_file_path_1, v_file_path_2)
+      os.rename(w_file_path_1, w_file_path_2)
+
+      debug_data.DebugDumpDir(
+          self._dump_root, partition_graphs=run_metadata.partition_graphs)
 
   def testWatchingOnlyOneOfTwoOutputSlotsDoesNotLeadToCausalityFailure(self):
     with session.Session() as sess:
@@ -1145,6 +1160,139 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
           self._dump_root, partition_graphs=run_metadata.partition_graphs)
       self.assertIn("n:0:DebugNumericSummary", dump.debug_watch_keys("n"))
       self.assertIn("m:0:DebugNumericSummary", dump.debug_watch_keys("m"))
+
+  def testDebugNumericSummaryInvalidAttributesStringAreCaught(self):
+    with session.Session() as sess:
+      a = variables.Variable(10.0, name="a")
+      b = variables.Variable(0.0, name="b")
+      c = variables.Variable(0.0, name="c")
+
+      x = math_ops.divide(a, b, name="x")
+      y = math_ops.multiply(x, c, name="y")
+
+      sess.run(variables.global_variables_initializer())
+
+      run_metadata = config_pb2.RunMetadata()
+      run_options = config_pb2.RunOptions(output_partition_graphs=True)
+      debug_utils.watch_graph(
+          run_options,
+          sess.graph,
+          debug_ops=["DebugNumericSummary(foo=1.0)"],
+          debug_urls=self._debug_urls())
+      with self.assertRaisesRegexp(
+          errors.FailedPreconditionError,
+          r"1 attribute key\(s\) were not valid for debug node "
+          r"__dbg_a:0_0_DebugNumericSummary: foo"):
+        sess.run(y, options=run_options, run_metadata=run_metadata)
+
+      run_options = config_pb2.RunOptions(output_partition_graphs=True)
+      debug_utils.watch_graph(
+          run_options,
+          sess.graph,
+          debug_ops=["DebugNumericSummary(foo=1.0; bar=false)"],
+          debug_urls=self._debug_urls())
+      with self.assertRaisesRegexp(
+          errors.FailedPreconditionError,
+          r"2 attribute key\(s\) were not valid for debug node "
+          r"__dbg_a:0_0_DebugNumericSummary:"):
+        sess.run(y, options=run_options, run_metadata=run_metadata)
+
+      run_options = config_pb2.RunOptions(output_partition_graphs=True)
+      debug_utils.watch_graph(
+          run_options,
+          sess.graph,
+          debug_ops=["DebugNumericSummary(foo=1.0; mute_if_healthy=true)"],
+          debug_urls=self._debug_urls())
+      with self.assertRaisesRegexp(
+          errors.FailedPreconditionError,
+          r"1 attribute key\(s\) were not valid for debug node "
+          r"__dbg_a:0_0_DebugNumericSummary: foo"):
+        sess.run(y, options=run_options, run_metadata=run_metadata)
+
+  def testDebugNumericSummaryMuteOnHealthyMutesOnlyHealthyTensorDumps(self):
+    with session.Session() as sess:
+      a = variables.Variable(10.0, name="a")
+      b = variables.Variable(0.0, name="b")
+      c = variables.Variable(0.0, name="c")
+
+      x = math_ops.divide(a, b, name="x")
+      y = math_ops.multiply(x, c, name="y")
+
+      sess.run(variables.global_variables_initializer())
+
+      run_metadata = config_pb2.RunMetadata()
+      run_options = config_pb2.RunOptions(output_partition_graphs=True)
+      debug_utils.watch_graph(
+          run_options,
+          sess.graph,
+          debug_ops=["DebugNumericSummary(mute_if_healthy=true)"],
+          debug_urls=self._debug_urls())
+      sess.run(y, options=run_options, run_metadata=run_metadata)
+
+      dump = debug_data.DebugDumpDir(
+          self._dump_root, partition_graphs=run_metadata.partition_graphs,
+          validate=False)
+      # Here, validate=False is necessary to avoid causality check error.
+      # TODO(cais): Maybe let DebugDumpDir constructor automatically ignore
+      #   debug ops with mute_if_healthy=false attribute during validation.
+
+      self.assertEqual(2, dump.size)
+      self.assertAllClose(
+          [[1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, np.inf, -np.inf, np.nan,
+            np.nan]],
+          dump.get_tensors("x", 0, "DebugNumericSummary"))
+      self.assertAllClose(
+          [[1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, np.inf, -np.inf, np.nan,
+            np.nan]],
+          dump.get_tensors("y", 0, "DebugNumericSummary"))
+
+      # Another run with the default mute_if_healthy (false) value should
+      # dump all the tensors.
+      shutil.rmtree(self._dump_root)
+      run_metadata = config_pb2.RunMetadata()
+      run_options = config_pb2.RunOptions(output_partition_graphs=True)
+      debug_utils.watch_graph(
+          run_options,
+          sess.graph,
+          debug_ops=["DebugNumericSummary()"],
+          debug_urls=self._debug_urls())
+      sess.run(y, options=run_options, run_metadata=run_metadata)
+
+      dump = debug_data.DebugDumpDir(
+          self._dump_root, partition_graphs=run_metadata.partition_graphs)
+      self.assertEqual(8, dump.size)
+
+  def testDebugNumericSummaryMuteOnHealthyAndCustomBoundsWork(self):
+    with session.Session() as sess:
+      a = variables.Variable([10.0, 10.0], name="a")
+      b = variables.Variable([10.0, 2.0], name="b")
+
+      x = math_ops.add(a, b, name="x")  # [20.0, 12.0]
+      y = math_ops.divide(x, b, name="y")  # [2.0, 6.0]
+
+      sess.run(variables.global_variables_initializer())
+
+      run_metadata = config_pb2.RunMetadata()
+      run_options = config_pb2.RunOptions(output_partition_graphs=True)
+      debug_utils.watch_graph(
+          run_options,
+          sess.graph,
+          debug_ops=[
+              "DebugNumericSummary(mute_if_healthy=true; upper_bound=11.0)"],
+          debug_urls=self._debug_urls())
+      sess.run(y, options=run_options, run_metadata=run_metadata)
+
+      dump = debug_data.DebugDumpDir(
+          self._dump_root, partition_graphs=run_metadata.partition_graphs,
+          validate=False)
+      # Here, validate=False is necessary to avoid causality check error.
+      # TODO(cais): Maybe let DebugDumpDir constructor automatically ignore
+      #   debug ops with mute_if_healthy=false attribute during validation.
+
+      self.assertEqual(1, dump.size)
+      self.assertAllClose(
+          [[1.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2.0, 12.0, 20.0, 16.0, 16.0]],
+          dump.get_tensors("x", 0, "DebugNumericSummary"))
 
   def testDebugQueueOpsDoesNotoErrorOut(self):
     with session.Session() as sess:

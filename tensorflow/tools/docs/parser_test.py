@@ -136,7 +136,7 @@ class ParserTest(googletest.TestCase):
     self.assertEqual(TestClass.a_method, page_info.methods[0].obj)
 
     # Make sure that the signature is extracted properly and omits self.
-    self.assertEqual('(arg=\'default\')', page_info.methods[0].signature)
+    self.assertEqual(["arg='default'"], page_info.methods[0].signature)
 
     # Make sure the property is present
     self.assertIs(TestClass.a_property, page_info.properties[0].obj)
@@ -176,10 +176,11 @@ class ParserTest(googletest.TestCase):
     self.assertEqual(inspect.getdoc(module).split('\n')[0], page_info.doc.brief)
 
     # Make sure that the members are there
-    members = [member_info.obj for member_info in page_info.members]
-    self.assertIn(test_function, members)
-    self.assertIn(test_function_with_args_kwargs, members)
-    self.assertIn(TestClass, members)
+    funcs = {f_info.obj for f_info in page_info.functions}
+    self.assertEqual({test_function, test_function_with_args_kwargs}, funcs)
+
+    classes = {cls_info.obj for cls_info in page_info.classes}
+    self.assertEqual({TestClass}, classes)
 
     # Make sure this file is contained as the definition location.
     self.assertEqual(os.path.relpath(__file__, '/'), page_info.defined_in.path)
@@ -208,7 +209,7 @@ class ParserTest(googletest.TestCase):
         inspect.getdoc(test_function).split('\n')[0], page_info.doc.brief)
 
     # Make sure the extracted signature is good.
-    self.assertEqual('(unused_arg, unused_kwarg=\'default\')',
+    self.assertEqual(['unused_arg', "unused_kwarg='default'"],
                      page_info.signature)
 
     # Make sure this file is contained as the definition location.
@@ -239,7 +240,7 @@ class ParserTest(googletest.TestCase):
         page_info.doc.brief)
 
     # Make sure the extracted signature is good.
-    self.assertEqual('(unused_arg, *unused_args, **unused_kwargs)',
+    self.assertEqual(['unused_arg', '*unused_args', '**unused_kwargs'],
                      page_info.signature)
 
   def test_parse_md_docstring(self):

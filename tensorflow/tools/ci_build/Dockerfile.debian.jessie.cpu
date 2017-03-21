@@ -22,6 +22,5 @@ RUN /install/install_golang.sh
 # Fix a virtualenv install issue specific to Debian Jessie.
 RUN pip install --upgrade virtualenv
 
-# Set up bazelrc.
-COPY install/.bazelrc /root/.bazelrc
-ENV BAZELRC /root/.bazelrc
+# Set up the master bazelrc configuration file.
+COPY install/.bazelrc /etc/bazel.bazelrc

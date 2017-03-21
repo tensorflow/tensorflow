@@ -29,16 +29,26 @@ import six
 
 from tensorflow.core.framework import summary_pb2
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.client import session as tf_session
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator import run_config
+from tensorflow.python.estimator.export.export import build_all_signature_defs
+from tensorflow.python.estimator.export.export import get_timestamped_export_dir
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import metrics as metrics_lib
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.saved_model import builder as saved_model_builder
+from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.summary.writer import writer_cache
 from tensorflow.python.training import evaluation
+from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver
 from tensorflow.python.training import training
+from tensorflow.python.util import compat
 
 _VALID_MODEL_FN_ARGS = set(
     ['features', 'labels', 'mode', 'params', 'config'])
@@ -47,9 +57,9 @@ _VALID_MODEL_FN_ARGS = set(
 class Estimator(object):
   """Estimator class to train and evaluate TensorFlow models.
 
-  The Estimator object wraps a model which is specified by a `model_fn`, which,
-  given inputs and a number of other parameters, returns the ops necessary to
-  perform training, evaluation, or predictions, respectively.
+  The `Estimator` object wraps a model which is specified by a `model_fn`,
+  which, given inputs and a number of other parameters, returns the ops
+  necessary to perform training, evaluation, or predictions.
 
   All outputs (checkpoints, event files, etc.) are written to `model_dir`, or a
   subdirectory thereof. If `model_dir` is not set, a temporary directory is
@@ -59,15 +69,20 @@ class Estimator(object):
   about the execution environment. It is passed on to the `model_fn`, if the
   `model_fn` has a parameter named "config" (and input functions in the same
   manner). If the `config` parameter is not passed, it is instantiated by the
-  Estimator. Not passing config means that defaults useful for local execution
-  are used. Estimator makes config available to the model (for instance, to
+  `Estimator`. Not passing config means that defaults useful for local execution
+  are used. `Estimator` makes config available to the model (for instance, to
   allow specialization based on the number of workers available), and also uses
   some of its fields to control internals, especially regarding checkpointing.
 
   The `params` argument contains hyperparameters. It is passed to the
   `model_fn`, if the `model_fn` has a parameter named "params", and to the input
-  functions in the same manner. Estimator only passes params along, it does not
-  inspect it. The structure of params is therefore entirely up to the developer.
+  functions in the same manner. `Estimator` only passes params along, it does
+  not inspect it. The structure of `params` is therefore entirely up to the
+  developer.
+
+  None of `Estimator`'s methods can be overridden in subclasses (its
+  constructor enforces this). Subclasses should use `model_fn` to configure
+  the base class, and may add methods implementing specialized functionality.
   """
 
   def __init__(self, model_fn, model_dir=None, config=None, params=None):
@@ -79,7 +94,7 @@ class Estimator(object):
           * `features`: single `Tensor` or `dict` of `Tensor`s
                  (depending on data passed to `train`),
           * `labels`: `Tensor` or `dict` of `Tensor`s (for multi-head
-                 models). If mode is `ModeKeys.INFER`, `labels=None` will be
+                 models). If mode is `ModeKeys.PREDICT`, `labels=None` will be
                  passed. If the `model_fn`'s signature does not accept
                  `mode`, the `model_fn` must still be able to handle
                  `labels=None`.
@@ -91,12 +106,7 @@ class Estimator(object):
           * `config`: Optional configuration object. Will receive what is passed
                  to Estimator in `config` parameter, or the default `config`.
                  Allows updating things in your model_fn based on configuration
-                 such as `num_ps_replicas`.
-          * `model_dir`: Optional directory where model parameters, graph etc
-                 are saved. Will receive what is passed to Estimator in
-                 `model_dir` parameter, or the default `model_dir`. Allows
-                 updating things in your model_fn that expect model_dir, such as
-                 training hooks.
+                 such as `num_ps_replicas`, or `model_dir`.
 
         * Returns:
           `EstimatorSpec`
@@ -112,7 +122,7 @@ class Estimator(object):
       ValueError: if this is called via a subclass and if that class overrides
         a member of `Estimator`.
     """
-    self._assert_members_are_not_overridden()
+    Estimator._assert_members_are_not_overridden(self)
     # Model directory.
     self._model_dir = model_dir
     if self._model_dir is None:
@@ -200,7 +210,7 @@ class Estimator(object):
         logging.info('Skipping training since max_steps has already saved.')
         return self
 
-    hooks = list(hooks or [])
+    hooks = _check_hooks_type(hooks)
     if steps is not None or max_steps is not None:
       hooks.append(training.StopAtStepHook(steps, max_steps))
 
@@ -244,7 +254,7 @@ class Estimator(object):
       ValueError: If no model has been trained, namely `model_dir`, or the
         given `checkpoint_path` is empty.
     """
-    hooks = list(hooks or [])
+    hooks = _check_hooks_type(hooks)
     if steps is not None:
       if steps <= 0:
         raise ValueError('Must specify steps >= 0, given: {}'.format(steps))
@@ -283,7 +293,7 @@ class Estimator(object):
         `predictions`. For example if `predict_keys` is not `None` but
         `EstimatorSpec.predictions` is not a `dict`.
     """
-    hooks = list(hooks or [])
+    hooks = _check_hooks_type(hooks)
     # Check that model has been trained.
     checkpoint_path = saver.latest_checkpoint(self._model_dir)
     if not checkpoint_path:
@@ -326,6 +336,121 @@ class Estimator(object):
       raise ValueError(
           'Subclasses of Estimator cannot override members of Estimator. '
           '{} does override {}'.format(self.__class__, overriden_members))
+
+  def export_savedmodel(
+      self, export_dir_base, serving_input_receiver_fn,
+      assets_extra=None,
+      as_text=False,
+      checkpoint_path=None):
+    """Exports inference graph as a SavedModel into given dir.
+
+    This method builds a new graph by first calling the
+    serving_input_receiver_fn to obtain feature `Tensor`s, and then calling
+    this `Estimator`'s model_fn to generate the model graph based on those
+    features. It restores the given checkpoint (or, lacking that, the most
+    recent checkpoint) into this graph in a fresh session.  Finally it creates
+    a timestamped export directory below the given export_dir_base, and writes
+    a `SavedModel` into it containing a single `MetaGraphDef` saved from this
+    session.
+
+    The exported `MetaGraphDef` will provide one `SignatureDef` for each
+    element of the export_outputs dict returned from the model_fn, named using
+    the same keys.  One of these keys is always
+    signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY, indicating which
+    signature will be served when a serving request does not specify one.
+    For each signature, the outputs are provided by the corresponding
+    `ExportOutput`s, and the inputs are always the input receivers provided by
+    the serving_input_receiver_fn.
+
+    Extra assets may be written into the SavedModel via the extra_assets
+    argument.  This should be a dict, where each key gives a destination path
+    (including the filename) relative to the assets.extra directory.  The
+    corresponding value gives the full path of the source file to be copied.
+    For example, the simple case of copying a single file without renaming it
+    is specified as `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
+
+    Args:
+      export_dir_base: A string containing a directory in which to create
+        timestamped subdirectories containing exported SavedModels.
+      serving_input_receiver_fn: A function that takes no argument and
+        returns a `ServingInputReceiver`.
+      assets_extra: A dict specifying how to populate the assets.extra directory
+        within the exported SavedModel, or `None` if no extra assets are needed.
+      as_text: whether to write the SavedModel proto in text format.
+      checkpoint_path: The checkpoint path to export.  If `None` (the default),
+        the most recent checkpoint found within the model directory is chosen.
+
+    Returns:
+      The string path to the exported directory.
+
+    Raises:
+      ValueError: if no serving_input_receiver_fn is provided, no export_outputs
+          are provided, or no checkpoint can be found.
+    """
+    if serving_input_receiver_fn is None:
+      raise ValueError('serving_input_receiver_fn must be defined.')
+
+    with ops.Graph().as_default() as g:
+      training.create_global_step(g)
+      random_seed.set_random_seed(self._config.tf_random_seed)
+      serving_input_receiver = serving_input_receiver_fn()
+
+      # Call the model_fn and collect the export_outputs.
+      estimator_spec = self._call_model_fn(
+          features=serving_input_receiver.features,
+          labels=None,
+          mode=model_fn_lib.ModeKeys.PREDICT)
+
+      # Build the SignatureDefs from receivers and all outputs
+      signature_def_map = build_all_signature_defs(
+          serving_input_receiver.receiver_tensors,
+          estimator_spec.export_outputs)
+
+      if not checkpoint_path:
+        # Locate the latest checkpoint
+        checkpoint_path = saver.latest_checkpoint(self._model_dir)
+      if not checkpoint_path:
+        raise ValueError("Couldn't find trained model at %s." % self._model_dir)
+
+      export_dir = get_timestamped_export_dir(export_dir_base)
+
+      # TODO(soergel): Consider whether MonitoredSession makes sense here
+      with tf_session.Session() as session:
+
+        saver_for_restore = estimator_spec.scaffold.saver or saver.Saver(
+            variables._all_saveable_objects(),  # pylint: disable=protected-access
+            sharded=True)
+        saver_for_restore.restore(session, checkpoint_path)
+
+        # TODO(b/36111876): replace legacy_init_op with main_op mechanism
+        # pylint: disable=protected-access
+        local_init_op = (
+            estimator_spec.scaffold.local_init_op or
+            monitored_session.Scaffold._default_local_init_op())
+        # pylint: enable=protected-access
+
+        # Perform the export
+        builder = saved_model_builder.SavedModelBuilder(export_dir)
+        builder.add_meta_graph_and_variables(
+            session, [tag_constants.SERVING],
+            signature_def_map=signature_def_map,
+            assets_collection=ops.get_collection(
+                ops.GraphKeys.ASSET_FILEPATHS),
+            legacy_init_op=local_init_op)
+        builder.save(as_text)
+
+      # Add the extra assets
+      if assets_extra:
+        assets_extra_path = os.path.join(compat.as_bytes(export_dir),
+                                         compat.as_bytes('assets.extra'))
+        for dest_relative, source in assets_extra.items():
+          dest_absolute = os.path.join(compat.as_bytes(assets_extra_path),
+                                       compat.as_bytes(dest_relative))
+          dest_path = os.path.dirname(dest_absolute)
+          gfile.MakeDirs(dest_path)
+          gfile.Copy(source, dest_absolute)
+
+      return export_dir
 
   def _get_features_from_input_fn(self, input_fn):
     result = input_fn()
@@ -480,10 +605,18 @@ class Estimator(object):
       estimator_spec = self._call_model_fn(
           features, labels, model_fn_lib.ModeKeys.EVAL)
 
+      if model_fn_lib.MetricKeys.LOSS in estimator_spec.eval_metric_ops:
+        raise ValueError(
+            'Metric with name "%s" is not allowed, because Estimator ' % (
+                model_fn_lib.MetricKeys.LOSS) +
+            'already defines a default metric with the same name.')
+      estimator_spec.eval_metric_ops[
+          model_fn_lib.MetricKeys.LOSS] = metrics_lib.mean(estimator_spec.loss)
+
       update_op, eval_dict = _extract_metric_update_ops(
           estimator_spec.eval_metric_ops)
 
-      if ops.GraphKeys.GLOBAL_STEP in six.iterkeys(eval_dict):
+      if ops.GraphKeys.GLOBAL_STEP in eval_dict:
         raise ValueError(
             'Metric with name `global_step` is not allowed, because Estimator '
             'already defines a default metric with the same name.')
@@ -504,6 +637,21 @@ class Estimator(object):
           current_global_step=eval_results[ops.GraphKeys.GLOBAL_STEP])
 
     return eval_results
+
+  def _verify_default_metric_key(self, metric_key, eval_dict):
+    if metric_key in six.iterkeys(eval_dict):
+      raise ValueError(
+          'Metric with name `%s` is not allowed, because Estimator '
+          'already defines a default metric with the same name.' % metric_key)
+
+
+def _check_hooks_type(hooks):
+  """Returns hooks if all are SessionRunHook, raises TypeError otherwise."""
+  hooks = list(hooks or [])
+  for h in hooks:
+    if not isinstance(h, training.SessionRunHook):
+      raise TypeError('Hooks must be a SessionRunHook, given: {}'.format(h))
+  return hooks
 
 
 def _get_replica_device_setter(config):

@@ -25,6 +25,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import summary_pb2
+from tensorflow.core.framework import types_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.util import event_pb2
 from tensorflow.python.framework import constant_op
@@ -70,15 +71,13 @@ class _EventGenerator(object):
                 tag=tag, simple_value=value)]))
     self.AddEvent(event)
 
-  def AddHealthPill(self, wall_time, step, node_name, output_slot, elements):
-    event = event_pb2.Event()
-    event.wall_time = wall_time
-    event.step = step
-    value = event.summary.value.add()
-    # The node_name property is actually a watch key.
-    value.node_name = '%s:%d:DebugNumericSummary' % (node_name, output_slot)
-    value.tag = '__health_pill__'
-    value.tensor.tensor_shape.dim.add().size = len(elements)
+  def AddHealthPill(self, wall_time, step, op_name, output_slot, elements):
+    event = event_pb2.Event(step=step, wall_time=wall_time)
+    value = event.summary.value.add(
+        tag='__health_pill__',
+        node_name='%s:%d:DebugNumericSummary' % (op_name, output_slot))
+    value.tensor.tensor_shape.dim.add(size=len(elements))
+    value.tensor.dtype = types_pb2.DT_DOUBLE
     value.tensor.tensor_content = np.array(elements, dtype=np.float64).tobytes()
     self.AddEvent(event)
 

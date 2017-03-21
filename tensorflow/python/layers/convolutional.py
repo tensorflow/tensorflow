@@ -844,7 +844,7 @@ class SeparableConv2D(Conv2D):
       # Reshape to channels first
       outputs = array_ops.transpose(outputs, (0, 3, 1, 2))
 
-    if self.bias:
+    if self.bias is not None:
       outputs = nn.bias_add(
           outputs,
           self.bias,

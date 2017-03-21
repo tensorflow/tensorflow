@@ -1,6 +1,7 @@
 .DS_Store
 .ipynb_checkpoints
 node_modules
+/.bazelrc
 /bazel-*
 /tensorflow/compiler/tests/plugin_config.py
 /tensorflow/compiler/tests/plugin/BUILD

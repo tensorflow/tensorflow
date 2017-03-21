@@ -9,6 +9,7 @@ tensorflow/core/protobuf/named_tensor.proto
 tensorflow/core/protobuf/meta_graph.proto
 tensorflow/core/protobuf/config.proto
 tensorflow/core/protobuf/debug.proto
+tensorflow/core/protobuf/rewriter_config.proto
 tensorflow/core/protobuf/tensor_bundle.proto
 tensorflow/core/lib/core/error_codes.proto
 tensorflow/core/framework/versions.proto
@@ -36,3 +37,4 @@ tensorflow/core/framework/attr_value.proto
 tensorflow/core/framework/allocation_description.proto
 tensorflow/core/example/feature.proto
 tensorflow/core/example/example.proto
+tensorflow/core/grappler/costs/op_performance_data.proto

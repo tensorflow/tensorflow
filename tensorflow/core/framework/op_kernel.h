@@ -207,7 +207,7 @@ class PersistentTensor {
 
   int64 NumElements() const { return tensor_.NumElements(); }
 
-  int64 TotalBytes() const { return tensor_.TotalBytes(); }
+  int64 AllocatedBytes() const { return tensor_.AllocatedBytes(); }
 
  private:
   Tensor tensor_;
@@ -714,6 +714,21 @@ class OpKernelContext {
       gtl::ArraySlice<StringPiece> candidate_input_names,
       StringPiece output_name, const TensorShape& output_shape,
       Tensor** output) TF_MUST_USE_RESULT;
+
+  // Tries to reuse one of of the inputs given in input_indices as a temporary.
+  // If none of the given inputs can be forwarded, calls
+  // allocate_temp() to allocate a new temporary buffer.
+  Status forward_input_or_allocate_temp(
+      gtl::ArraySlice<int> candidate_input_indices, DataType type,
+      const TensorShape& shape, const AllocatorAttributes& allocator_attr,
+      Tensor* out_temp) TF_MUST_USE_RESULT;
+
+  Status forward_input_or_allocate_temp(
+      gtl::ArraySlice<int> candidate_input_indices, DataType type,
+      const TensorShape& shape, Tensor* out_temp) TF_MUST_USE_RESULT {
+    return forward_input_or_allocate_temp(candidate_input_indices, type, shape,
+                                          AllocatorAttributes(), out_temp);
+  }
 
   // Output
 

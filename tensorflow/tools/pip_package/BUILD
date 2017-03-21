@@ -43,6 +43,18 @@ py_binary(
     deps = ["//tensorflow:tensorflow_py"],
 )
 
+py_test(
+    name = "pip_smoke_test",
+    srcs = ["pip_smoke_test.py"],
+    data = [
+        "//tensorflow:all_opensource_files",
+    ],
+    tags = [
+        "manual",
+        "notap",
+    ],
+)
+
 # On Windows, python binary is a zip file of runfiles tree.
 # Add everything to its data dependency for generating a runfiles tree
 # for building the pip package on Windows.
@@ -54,23 +66,21 @@ py_binary(
         "README",
         "setup.py",
         ":included_headers",
-        "//tensorflow/contrib/ndlstm",
         "//tensorflow/contrib/nn:nn_py",
         "//tensorflow/contrib/session_bundle:session_bundle_pip",
-        "//tensorflow/contrib/slim",
         "//tensorflow/contrib/slim/python/slim/data:data_pip",
-        "//tensorflow/contrib/slim/python/slim/nets:nets_pip",
-        "//tensorflow/contrib/specs",
-        "//tensorflow/contrib/tensor_forest:init_py",
-        "//tensorflow/contrib/tensor_forest/hybrid:hybrid_pip",
         "//tensorflow/python:util_example_parser_configuration",
         "//tensorflow/python/debug:debug_pip",
         "//tensorflow/python/saved_model",
         "//tensorflow/python/tools:tools_pip",
-        # The following target has an issue when archiving them into the python
-        # zip, exclude them for now.
-        # "//tensorflow/tensorboard",
-        # This package does not build. Exclude it in windows for now.
+        "//tensorflow/tensorboard",
+        # These targets don't build on Windows yet. Exclude them for now.
+        # "//tensorflow/contrib/ndlstm",
+        # "//tensorflow/contrib/slim",
+        # "//tensorflow/contrib/slim/python/slim/nets:nets_pip",
+        # "//tensorflow/contrib/specs",
+        # "//tensorflow/contrib/tensor_forest:init_py",
+        # "//tensorflow/contrib/tensor_forest/hybrid:hybrid_pip",
         # "//tensorflow/examples/tutorials/mnist:package",
     ],
     srcs_version = "PY2AND3",
@@ -120,6 +130,7 @@ sh_binary(
             ":simple_console",
             "//tensorflow:tensorflow_py",
             "//tensorflow/contrib/graph_editor:graph_editor_pip",
+            "//tensorflow/contrib/keras:keras",
             "//tensorflow/contrib/labeled_tensor:labeled_tensor_pip",
             "//tensorflow/contrib/ndlstm:ndlstm",
             "//tensorflow/contrib/nn:nn_py",

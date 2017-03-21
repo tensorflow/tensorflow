@@ -11,13 +11,6 @@ package(
 
 load("//tensorflow:tensorflow.bzl", "py_test")
 
-py_binary(
-    name = "gen_cc_md",
-    srcs = ["gen_cc_md.py"],
-    srcs_version = "PY2AND3",
-    deps = ["//tensorflow:tensorflow_py"],
-)
-
 py_library(
     name = "doc_generator_visitor",
     srcs = [
@@ -131,38 +124,6 @@ py_test(
     deps = [
         ":py_guide_parser",
         "//tensorflow/python:client_testlib",
-    ],
-)
-
-filegroup(
-    name = "doxy_config",
-    srcs = ["tf-doxy_for_md-config"],
-)
-
-sh_binary(
-    name = "gen_docs",
-    srcs = ["gen_docs.sh"],
-    data = [
-        ":doxy_config",
-        ":gen_cc_md",
-        "//tensorflow/python:gen_docs_combined",
-    ],
-)
-
-sh_test(
-    name = "gen_docs_test",
-    size = "small",
-    srcs = [
-        "gen_docs_test.sh",
-    ],
-    data = [
-        ":gen_docs",
-        "//tensorflow/core:all_files",
-        "//tensorflow/python:all_files",
-    ],
-    tags = [
-        "manual",
-        "notap",
     ],
 )
 

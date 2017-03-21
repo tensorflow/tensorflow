@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/util/event.pb.h"
 
 #define GRPC_OSS_UNIMPLEMENTED_ERROR \
@@ -64,6 +65,23 @@ Event WrapTensorAsEvent(const string& tensor_name, const string& debug_op,
   }
 
   return event;
+}
+
+// Append an underscore and a timestamp to a file path. If the path already
+// exists on the file system, append a hyphen and a 1-up index. Consecutive
+// values of the index will be tried until the first unused one is found.
+// TOCTOU race condition is not of concern here due to the fact that tfdbg
+// sets parallel_iterations attribute of all while_loops to 1 to prevent
+// the same node from between executed multiple times concurrently.
+string AppendTimestampToFilePath(const string& in, const uint64 timestamp) {
+  string out = strings::StrCat(in, "_", timestamp);
+
+  uint64 i = 1;
+  while (Env::Default()->FileExists(out).ok()) {
+    out = strings::StrCat(in, "_", timestamp, "-", i);
+    ++i;
+  }
+  return out;
 }
 
 }  // namespace
@@ -173,10 +191,15 @@ Status DebugIO::PublishDebugMetadata(
 #endif
     } else if (str_util::Lowercase(url).find(kFileURLScheme) == 0) {
       const string dump_root_dir = url.substr(strlen(kFileURLScheme));
-      const string file_name =
-          strings::StrCat("_tfdbg_core_metadata_", Env::Default()->NowMicros());
-      status.Update(
-          DebugFileIO::DumpEventProtoToFile(event, dump_root_dir, file_name));
+      const string core_metadata_path = AppendTimestampToFilePath(
+          io::JoinPath(
+              dump_root_dir,
+              strings::StrCat("_tfdbg_core_metadata_", "sessionrun",
+                              strings::Printf("%.14lld", session_run_count))),
+          Env::Default()->NowMicros());
+      status.Update(DebugFileIO::DumpEventProtoToFile(
+          event, io::Dirname(core_metadata_path).ToString(),
+          io::Basename(core_metadata_path).ToString()));
     }
   }
 
@@ -327,9 +350,10 @@ string DebugFileIO::GetDumpFilePath(const string& dump_root_dir,
                                     const int32 output_slot,
                                     const string& debug_op,
                                     const uint64 wall_time_us) {
-  return io::JoinPath(
-      dump_root_dir, strings::StrCat(node_name, "_", output_slot, "_", debug_op,
-                                     "_", wall_time_us));
+  return AppendTimestampToFilePath(
+      io::JoinPath(dump_root_dir,
+                   strings::StrCat(node_name, "_", output_slot, "_", debug_op)),
+      wall_time_us);
 }
 
 // static

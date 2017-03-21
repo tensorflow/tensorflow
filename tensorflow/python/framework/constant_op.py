@@ -15,7 +15,7 @@
 
 """Operations that generate constants.
 
-See the @{$python/constant} guide.
+See the @{$python/constant_op$constants guide}.
 
 @@zeros
 @@zeros_like
