@@ -205,7 +205,7 @@ class MaxPoolingGradOp : public OpKernel {
                 errors::InvalidArgument("Invalid data format"));
     OP_REQUIRES(
         context, data_format_ == FORMAT_NHWC,
-        errors::InvalidArgument("Default MaxPoolinGradOp only supports NHWC ",
+        errors::InvalidArgument("Default MaxPoolingGradOp only supports NHWC ",
                                 "on device type ",
                                 DeviceTypeString(context->device_type())));
     OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
@@ -384,7 +384,7 @@ class MaxPoolingGradGradOp : public OpKernel {
     OP_REQUIRES(
         context, data_format_ == FORMAT_NHWC,
         errors::InvalidArgument(
-            "Default MaxPoolinGradGradOp only supports NHWC ",
+            "Default MaxPoolingGradGradOp only supports NHWC ",
             "on device type ", DeviceTypeString(context->device_type())));
     OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
     OP_REQUIRES(context, ksize_.size() == 4,
