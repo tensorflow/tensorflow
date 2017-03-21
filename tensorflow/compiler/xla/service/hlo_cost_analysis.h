@@ -42,8 +42,6 @@ class HloCostAnalysis : public DfsHloVisitor {
   explicit HloCostAnalysis(const ShapeSizeFunction& shape_size)
       : shape_size_(shape_size) {}
 
-  ~HloCostAnalysis() override = default;
-
   Status HandleElementwiseUnary(HloInstruction* hlo, HloOpcode opcode,
                                 HloInstruction* operand) override;
   Status HandleElementwiseBinary(HloInstruction* hlo, HloOpcode opcode,

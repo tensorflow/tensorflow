@@ -20,6 +20,7 @@ from __future__ import print_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import session_ops
 from tensorflow.python.ops import state_ops
@@ -241,6 +242,32 @@ class SessionOpsTest(test.TestCase):
       h_c = sess.run(session_ops.get_session_handle(c))
 
       self.assertAllClose(2500.0, sess.run(d, feed_dict={c: h_c}))
+
+  def testDirectHandleFeedOverlappingWithFetches(self):
+    with self.test_session() as sess:
+      a = constant_op.constant(10.0)
+      b = constant_op.constant(5.0)
+      c = math_ops.multiply(a, b)
+      h_c = sess.run(session_ops.get_session_handle(c))
+      d = array_ops.identity(c)
+
+      c_val = sess.run(c, feed_dict={c: h_c})
+      self.assertAllClose(50.0, c_val)
+
+      d_val = sess.run(d, feed_dict={c: h_c})
+      self.assertAllClose(50.0, d_val)
+
+      c_val, d_val = sess.run([c, d], feed_dict={c: h_c, d: 60.0})
+      self.assertAllClose(50.0, c_val)
+      self.assertAllClose(60.0, d_val)
+
+      c_val, d_val = sess.run([c, d], feed_dict={c: 60.0, d: h_c})
+      self.assertAllClose(60.0, c_val)
+      self.assertAllClose(50.0, d_val)
+
+      c_val, d_val = sess.run([c, d], feed_dict={c: h_c, d: h_c})
+      self.assertAllClose(50.0, c_val)
+      self.assertAllClose(50.0, d_val)
 
   def testFeedTwoHandlesDirectly(self):
     with self.test_session() as sess:

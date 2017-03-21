@@ -1180,11 +1180,11 @@ def shared_embedding_columns(sparse_id_columns,
 
 
 class _ScatteredEmbeddingColumn(
+    _FeatureColumn,
     collections.namedtuple(
         "_ScatteredEmbeddingColumn",
         ["column_name", "size", "dimension", "hash_key", "combiner",
-         "initializer"]),
-    _EmbeddingColumn):
+         "initializer"])):
   """See `scattered_embedding_column`."""
 
   def __new__(cls,
@@ -1215,6 +1215,11 @@ class _ScatteredEmbeddingColumn(
   @property
   def config(self):
     return {self.column_name: parsing_ops.VarLenFeature(dtypes.string)}
+
+  @property
+  def key(self):
+    """Returns a string which will be used as a key when we do sorting."""
+    return self._key_without_properties(["initializer"])
 
   def insert_transformed_feature(self, columns_to_tensors):
     columns_to_tensors[self] = columns_to_tensors[self.column_name]

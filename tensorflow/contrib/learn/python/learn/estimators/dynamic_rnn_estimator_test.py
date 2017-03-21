@@ -188,7 +188,7 @@ class DynamicRnnEstimatorTest(test.TestCase):
 
   def testGetOutputAlternatives(self):
     test_cases = (
-        (dynamic_rnn_estimator.PredictionType.SINGLE_VALUE,
+        (rnn_common.PredictionType.SINGLE_VALUE,
          constants.ProblemType.CLASSIFICATION,
          {prediction_key.PredictionKey.CLASSES: True,
           prediction_key.PredictionKey.PROBABILITIES: True,
@@ -198,7 +198,7 @@ class DynamicRnnEstimatorTest(test.TestCase):
            {prediction_key.PredictionKey.CLASSES: True,
             prediction_key.PredictionKey.PROBABILITIES: True})}),
 
-        (dynamic_rnn_estimator.PredictionType.SINGLE_VALUE,
+        (rnn_common.PredictionType.SINGLE_VALUE,
          constants.ProblemType.LINEAR_REGRESSION,
          {prediction_key.PredictionKey.SCORES: True,
           dynamic_rnn_estimator._get_state_name(0): True,
@@ -207,7 +207,7 @@ class DynamicRnnEstimatorTest(test.TestCase):
           (constants.ProblemType.LINEAR_REGRESSION,
            {prediction_key.PredictionKey.SCORES: True})}),
 
-        (dynamic_rnn_estimator.PredictionType.MULTIPLE_VALUE,
+        (rnn_common.PredictionType.MULTIPLE_VALUE,
          constants.ProblemType.CLASSIFICATION,
          {prediction_key.PredictionKey.CLASSES: True,
           prediction_key.PredictionKey.PROBABILITIES: True,
@@ -253,7 +253,7 @@ class DynamicRnnEstimatorTest(test.TestCase):
         target_column=target_column_lib.multi_class_target(n_classes=2),
         # Only CLASSIFICATION yields eval metrics to test for.
         problem_type=constants.ProblemType.CLASSIFICATION,
-        prediction_type=dynamic_rnn_estimator.PredictionType.MULTIPLE_VALUE,
+        prediction_type=rnn_common.PredictionType.MULTIPLE_VALUE,
         optimizer='SGD',
         sequence_feature_columns=self.sequence_feature_columns,
         context_feature_columns=self.context_feature_columns,
@@ -284,7 +284,7 @@ class DynamicRnnEstimatorTest(test.TestCase):
     def estimator_fn():
       return dynamic_rnn_estimator.DynamicRnnEstimator(
           problem_type=constants.ProblemType.CLASSIFICATION,
-          prediction_type=dynamic_rnn_estimator.PredictionType.MULTIPLE_VALUE,
+          prediction_type=rnn_common.PredictionType.MULTIPLE_VALUE,
           num_classes=2,
           num_units=self.NUM_RNN_CELL_UNITS,
           sequence_feature_columns=self.sequence_feature_columns,
@@ -391,7 +391,7 @@ class DynamicRnnEstimatorTest(test.TestCase):
         [core_rnn_cell_impl.BasicLSTMCell(size) for size in cell_sizes])
     sequence_estimator = dynamic_rnn_estimator.DynamicRnnEstimator(
         problem_type=constants.ProblemType.CLASSIFICATION,
-        prediction_type=dynamic_rnn_estimator.PredictionType.MULTIPLE_VALUE,
+        prediction_type=rnn_common.PredictionType.MULTIPLE_VALUE,
         num_classes=2,
         sequence_feature_columns=seq_columns,
         cell_type=cell,
@@ -495,7 +495,7 @@ class DynamicRnnEstimatorTest(test.TestCase):
     model_dir = tempfile.mkdtemp()
     sequence_estimator = dynamic_rnn_estimator.DynamicRnnEstimator(
         problem_type=constants.ProblemType.CLASSIFICATION,
-        prediction_type=dynamic_rnn_estimator.PredictionType.MULTIPLE_VALUE,
+        prediction_type=rnn_common.PredictionType.MULTIPLE_VALUE,
         num_classes=2,
         sequence_feature_columns=seq_columns,
         num_units=cell_sizes,
@@ -592,7 +592,7 @@ class DynamicRNNEstimatorLearningTest(test.TestCase):
     config = run_config.RunConfig(tf_random_seed=1234)
     sequence_estimator = dynamic_rnn_estimator.DynamicRnnEstimator(
         problem_type=constants.ProblemType.LINEAR_REGRESSION,
-        prediction_type=dynamic_rnn_estimator.PredictionType.MULTIPLE_VALUE,
+        prediction_type=rnn_common.PredictionType.MULTIPLE_VALUE,
         num_units=cell_size,
         sequence_feature_columns=seq_columns,
         learning_rate=learning_rate,
@@ -651,7 +651,7 @@ class DynamicRNNEstimatorLearningTest(test.TestCase):
     config = run_config.RunConfig(tf_random_seed=21212)
     sequence_estimator = dynamic_rnn_estimator.DynamicRnnEstimator(
         problem_type=constants.ProblemType.CLASSIFICATION,
-        prediction_type=dynamic_rnn_estimator.PredictionType.MULTIPLE_VALUE,
+        prediction_type=rnn_common.PredictionType.MULTIPLE_VALUE,
         num_classes=2,
         num_units=cell_size,
         sequence_feature_columns=seq_columns,
@@ -730,7 +730,7 @@ class DynamicRNNEstimatorLearningTest(test.TestCase):
     config = run_config.RunConfig(tf_random_seed=6)
     sequence_estimator = dynamic_rnn_estimator.DynamicRnnEstimator(
         problem_type=constants.ProblemType.LINEAR_REGRESSION,
-        prediction_type=dynamic_rnn_estimator.PredictionType.SINGLE_VALUE,
+        prediction_type=rnn_common.PredictionType.SINGLE_VALUE,
         num_units=cell_size,
         sequence_feature_columns=seq_columns,
         cell_type=cell_type,
@@ -785,7 +785,7 @@ class DynamicRNNEstimatorLearningTest(test.TestCase):
     config = run_config.RunConfig(tf_random_seed=77)
     sequence_estimator = dynamic_rnn_estimator.DynamicRnnEstimator(
         problem_type=constants.ProblemType.CLASSIFICATION,
-        prediction_type=dynamic_rnn_estimator.PredictionType.SINGLE_VALUE,
+        prediction_type=rnn_common.PredictionType.SINGLE_VALUE,
         num_classes=2,
         num_units=cell_size,
         sequence_feature_columns=seq_columns,

@@ -27,7 +27,7 @@
 set -ex
 
 # Find the 'go' tool
-if [[ ! -x "go" ]]
+if [[ ! -x "go" && -z $(which go) ]]
 then
   if [[ -x "/usr/local/go/bin/go" ]]
   then

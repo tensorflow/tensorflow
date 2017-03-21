@@ -34,6 +34,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops import variable_scope as vs
+from tensorflow.python.util import nest
 
 
 class _Layer(object):
@@ -91,16 +92,21 @@ class _Layer(object):
     base_name = name
     if not name:
       base_name = _to_snake_case(self.__class__.__name__)
+    self._base_name = base_name
 
     # Determine variable scope.
     scope = kwargs.get('_scope')
     if scope:
       self._scope = next(vs.variable_scope(scope).gen)
     else:
-      self._scope = next(vs.variable_scope(None, default_name=base_name).gen)
+      self._scope = None
 
     # Unique name is borrowed from scope to match variable names.
-    self.name = self._scope.name
+    if self._scope is not None:
+      self._name = self._scope.name
+    else:
+      # No name available until we see a scope
+      self._name = None
 
   def __setattr__(self, name, value):
     if hasattr(self, name):
@@ -111,6 +117,13 @@ class _Layer(object):
       if name[0] != '_':
         raise AttributeError('Read-only property cannot be set: %s' % name)
     super(_Layer, self).__setattr__(name, value)
+
+  @property
+  def name(self):
+    if self._name is None:
+      raise ValueError(
+          'No name available for layer because it has not been used yet.')
+    return self._name
 
   @property
   def trainable_variables(self):
@@ -255,39 +268,59 @@ class _Layer(object):
       self._non_trainable_variables.append(variable)
     return variable
 
-  def __call__(self, inputs, **kwargs):
+  def __call__(self, inputs, *args, **kwargs):
     """Wraps `call`, applying pre- and post-processing steps.
 
     Arguments:
       inputs: input tensor(s).
+      *args: additional positional arguments to be passed to `self.call`.
       **kwargs: additional keyword arguments to be passed to `self.call`.
+        **Note**, the kwarg 'scope' is reserved for use by the Layer.
 
     Returns:
       Output tensor(s).
     """
+    scope = kwargs.get('scope', None)
+
     # Define a custom getter to override tf.get_variable when creating layer
     # variables. The current custom getter is nested by the variable scope.
     def variable_getter(getter, name, shape, dtype=None, initializer=None,
-                        regularizer=None, trainable=True, **kwargs):
+                        regularizer=None, trainable=True, **getter_kwargs):
       return self._add_variable(
           name, shape, initializer=initializer, regularizer=regularizer,
           dtype=dtype, trainable=trainable,
-          variable_getter=functools.partial(getter, **kwargs))
+          variable_getter=functools.partial(getter, **getter_kwargs))
 
-    # Build (if necessary) and call the layer, inside a variable scope.
+    if not self._built and self._scope is None:
+      # If constructed with _scope=None
+      if self._reuse:
+        # If reuse=True, use the scope argument (if any), or the current
+        # variable scope.
+        self._scope = scope or vs.get_variable_scope()
+      else:
+        # Otherwise, if reuse=False, create a new scope now.  We may
+        # end up using the scope passed in via the scope argument.
+        self._scope = next(vs.variable_scope(
+            scope, default_name=self._base_name).gen)
+      self._name = self._scope.name
+
+    # Build (if necessary) and call the layer, inside a variable
+    # scope.
     with vs.variable_scope(self._scope,
                            reuse=True if self._built else self._reuse,
                            custom_getter=variable_getter) as scope:
       with ops.name_scope(scope.original_name_scope):
         if not self.built:
-          input_list = _to_list(inputs)
+          input_list = [
+              ops.convert_to_tensor(x, name='input')
+              for x in nest.flatten(inputs)]
           input_shapes = [x.get_shape() for x in input_list]
           if len(input_shapes) == 1:
             self.build(input_shapes[0])
           else:
             self.build(input_shapes)
           self._built = True
-        outputs = self.call(inputs, **kwargs)
+        outputs = self.call(inputs, *args, **kwargs)
 
         # Apply activity regularization.
         # Note that it should be applied every time the layer creates a new

@@ -170,6 +170,9 @@ LocalService::CompileAheadOfTime(
     HloModuleConfig* module_config = module_configs.back().get();
     auto* computation_layout =
         module_config->mutable_entry_computation_layout();
+    if (flags->xla_hlo_profile) {
+      module_config->enable_hlo_profiling(true);
+    }
     for (int i = 0; i < instance.argument_layouts.size(); ++i) {
       const Shape& argument_layout = *instance.argument_layouts[i];
       if (ShapeUtil::IsTuple(argument_layout)) {

@@ -41,6 +41,23 @@ py_library(
 )
 
 py_test(
+    name = "reader_test",
+    size = "small",
+    srcs = ["python/saved_model/reader_test.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:private"],
+    deps = [
+        ":saved_model_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:lib",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/saved_model:builder",
+        "//tensorflow/python/saved_model:tag_constants",
+    ],
+)
+
+py_test(
     name = "signature_def_utils_test",
     size = "small",
     srcs = ["python/saved_model/signature_def_utils_test.py"],

@@ -132,6 +132,7 @@ class Dense(base._Layer):  # pylint: disable=protected-access
       self.bias = None
 
   def call(self, inputs):
+    inputs = ops.convert_to_tensor(inputs, dtype=self.dtype)
     shape = inputs.get_shape().as_list()
     output_shape = shape[:-1] + [self.units]
     if len(output_shape) > 2:
