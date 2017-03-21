@@ -3096,9 +3096,9 @@ bool CudnnSupport::DoPoolForward(
   }
 
   // Alpha is the scaling factor for input.
-  float alpha = 1.0;
+  double alpha = 1.0;
   // Beta is the scaling factor for output.
-  float beta = 0.0;
+  double beta = 0.0;
 
   ScopedTensorDescriptor src_desc{parent_, input_dimensions, CUDNN_DATA_DOUBLE};
   ScopedTensorDescriptor dest_desc{parent_, output_dimensions,
@@ -3202,9 +3202,9 @@ bool CudnnSupport::DoPoolBackward(
   }
 
   // Alpha is the scaling factor for input.
-  float alpha = 1.0;
+  double alpha = 1.0;
   // Beta is the scaling factor for output.
-  float beta = 0.0;
+  double beta = 0.0;
 
   ScopedTensorDescriptor src_desc{parent_, input_dimensions, CUDNN_DATA_DOUBLE};
   ScopedTensorDescriptor dest_desc{parent_, output_dimensions,
