@@ -1105,7 +1105,7 @@ class Estimator(BaseEstimator):
     if isinstance(model_fn_results, model_fn_lib.ModelFnOps):
       return model_fn_results
 
-    # Here model_fn_ops should be a tuple with 3 elements.
+    # Here model_fn_results should be a tuple with 3 elements.
     if len(model_fn_results) != 3:
       raise ValueError('Unrecognized value returned by model_fn, '
                        'please return ModelFnOps.')
