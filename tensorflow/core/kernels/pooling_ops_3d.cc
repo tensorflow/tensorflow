@@ -709,9 +709,6 @@ class MaxPooling3dGradGradOp : public OpKernel {
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, tensor_out.shape(), &output));
-    if (!context->status().ok()) {
-      return;
-    }
 
     LaunchMaxPooling3dGradGradOp<Device, T>::launch(
         context, params, tensor_in, tensor_out, out_grad_backprop, output);

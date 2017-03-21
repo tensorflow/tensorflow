@@ -424,9 +424,6 @@ class MaxPoolingGradGradOp : public OpKernel {
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, tensor_out.shape(), &output));
-    if (!context->status().ok()) {
-      return;
-    }
 
     SpatialMaxPoolGradGrad(context, output, tensor_in, tensor_out,
                            out_grad_backprop, params, padding_);
@@ -594,9 +591,6 @@ class MaxPoolingGradGradOp<Eigen::GpuDevice, T> : public OpKernel {
     TensorShape output_shape = tensor_out.shape();
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
-    if (!context->status().ok()) {
-      return;
-    }
 
     PoolParameters params{context,  ksize_,       stride_,
                           padding_, data_format_, input_shape};
