@@ -12,6 +12,11 @@ filegroup(
   srcs = glob(["lib/libpoplar.*"]),
 )
 
+filegroup(
+  name = "poplar_static_lib",
+  srcs = glob(["static_lib/libpoplar.a"]),
+)
+
 cc_library(
   name = "poplar_libs",
   srcs = glob(["lib/libpoplar.*"]),

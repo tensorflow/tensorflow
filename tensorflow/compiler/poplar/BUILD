@@ -36,33 +36,28 @@ genrule(
     cmd = "$(location @local_config_poplar//poplar:popc) -I . -o $@ $<",
 )
 
-cc_library(
-    name = "poplar_lib",
+cc_binary(
+    name = "libpoplar_lib.so",
     srcs = glob([
         "driver/*.cc",
         "stream_executor/*.cc",
-    ]) + [
-        "@local_config_poplar//poplar:poplar_lib",
-        "@local_config_poplar//popnn:popnn_lib",
-    ],
-    hdrs = glob([
         "driver/*.h",
         "stream_executor/*.h",
-    ]),
+    ]) + [
+       "@local_config_poplar//poplar:poplar_static_lib",
+       "@local_config_poplar//popnn:popnn_static_lib",
+    ],
     deps = [
         "//third_party/eigen3",
         "//tensorflow/compiler/xla:xla_headers_lib",
         "//tensorflow/compiler/jit:xla_jit_headers_lib",
-        "@protobuf//:protobuf_headers",
+        "@protobuf//:protobuf_lite",
         "@local_config_cuda//cuda:cuda_headers",
-        "@local_config_poplar//poplar:poplar",
-        "@local_config_poplar//popnn:popnn",
+        "@local_config_poplar//poplar:poplar_headers",
+        "@local_config_poplar//popnn:popnn_headers",
     ],
-    linkopts = [
-        "@local_config_poplar//poplar:poplar_lib",
-        "@local_config_poplar//popnn:popnn_lib",
-    ],
-    linkstatic = 0,
+    linkstatic = 1,
+    linkshared = 1,
 )
 
 # This patches up the rpaths of the .so file so that it can be loaded by
@@ -70,7 +65,7 @@ cc_library(
 genrule(
     name = "libpoplar_plugin",
     srcs = [
-        ":poplar_lib",
+        ":libpoplar_lib.so",
         "@local_config_poplar//poplar:poplar_lib",
         "@local_config_poplar//popnn:popnn_lib",
     ],

@@ -4,7 +4,12 @@ package(default_visibility = ["//visibility:public"])
 
 filegroup(
   name = "popnn_lib",
-  srcs = glob(["**/libpopnn.*"]),
+  srcs = glob(["lib/libpopnn.*"]),
+)
+
+filegroup(
+  name = "popnn_static_lib",
+  srcs = ["static_lib/libpopnn.a"],
 )
 
 cc_library(
