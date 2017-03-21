@@ -25,9 +25,6 @@
 * The behavior of RNNCells is now stricter due to the transition towards making RNNCells act more like Keras layers.
   * If an RNNCell is used twice in two different variable scopes, an error is raised describing how to avoid this behavior.
   * If an RNNCell is used in a variable scope with existing conflicting variables, an error is raised showing that the RNNCell must be constructed with argument `reuse=True`.
-  * These strict requirements will go away, and RNNCells will act like a `Layer`:
-    * An RNNCell constructed with `reuse=False` will use the scope it is given at first call time, if any, or will create a new scope for itself at first call time.  All subsequent uses of this RNNCell will use the variables created in the first call.
-    * An RNNCell constructed with `reuse=True` will use the scope it is given at first call time, if any, or will use the current variable scope at first call time.  All subsequent uses of this RNNCell will use the variables created in the first call.
 * Deprecated contrib/distributions `pmf`, `pdf`, `log_pmf`, `log_pdf`.
 * Moved `bayesflow.special_math` to distributions.
 * `tf.contrib.tensor_forest.python.tensor_forest.RandomForestDeviceAssigner` removed.
