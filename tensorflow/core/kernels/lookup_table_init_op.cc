@@ -372,14 +372,15 @@ class InitializeTableOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->MatchSignature(expected_inputs, expected_outputs));
 
     const Tensor& keys = ctx->input(1);
-    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(keys.shape()),
-                errors::InvalidArgument("Keys must be a vector, but received ",
-                                        keys.shape().DebugString()));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsVector(keys.shape()),
+        errors::InvalidArgument("Keys must be a vector, but received shape",
+                                keys.shape().DebugString()));
 
     const Tensor& values = ctx->input(2);
     OP_REQUIRES(
         ctx, TensorShapeUtils::IsVector(values.shape()),
-        errors::InvalidArgument("Values must be a vector, but received ",
+        errors::InvalidArgument("Values must be a vector, but received shape",
                                 values.shape().DebugString()));
 
     OP_REQUIRES(ctx, keys.NumElements() == values.NumElements(),

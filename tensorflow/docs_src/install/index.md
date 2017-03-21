@@ -1,10 +1,13 @@
 # Installing TensorFlow
 
-We have installation instructions for the following platform:
+We provide installation instructions for the following platforms:
 
-* [Linux](install_linux.md)
-* [Mac OS X](install_mac.md)
-* [Windows](install_windows.md)
-* [From source](install_sources.md)
+  * @{$install_linux$Installing TensorFlow on Ubuntu}
+  * @{$install_mac$Installing TensorFlow on Mac OS X}
+  * @{$install_windows$Installing TensorFlow on Windows}
+  * @{$install_sources$Installing TensorFlow from Sources}
 
-We also have help for [migrating from previous versions of TensorFlow to v1.0](migration.md).
+The following guide explains how to migrate your older TensorFlow
+applications to Version 1.0:
+
+  * @{$migration$Transitioning to TensorFlow 1.0}

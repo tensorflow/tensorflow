@@ -326,6 +326,69 @@ Status GraphMgr::RecvOutputsFromRendezvous(Rendezvous* rendezvous,
   return Status::OK();
 }
 
+void GraphMgr::RecvOutputsFromRendezvousAsync(Rendezvous* rendezvous,
+                                              NamedTensors* out,
+                                              const StatusCallback& done) {
+  if (out->empty()) {
+    done(Status::OK());
+    return;
+  }
+  // We compute the args before calling RecvAsync because we need to ensure that
+  // out isn't being iterated over after done is called, since done deletes out.
+  std::vector<std::tuple<string, Tensor*, Rendezvous::ParsedKey>> args;
+  for (auto& p : *out) {
+    Rendezvous::ParsedKey parsed;
+    Status s = Rendezvous::ParseKey(p.first, &parsed);
+    if (!s.ok()) {
+      done(s);
+      return;
+    }
+    args.push_back(std::make_tuple(p.first, &p.second, parsed));
+  }
+
+  typedef struct {
+    mutex mu;
+    int done_counter;
+    Status shared_status = Status::OK();
+  } CallState;
+  CallState* call_state = new CallState;
+  call_state->done_counter = out->size();
+  for (auto& p : args) {
+    const string& key = std::get<0>(p);
+    Tensor* val = std::get<1>(p);
+    Rendezvous::ParsedKey parsed = std::get<2>(p);
+    rendezvous->RecvAsync(
+        parsed, Rendezvous::Args(),
+        [val, done, key, call_state](const Status& s,
+                                     const Rendezvous::Args& send_args,
+                                     const Rendezvous::Args& recv_args,
+                                     const Tensor& v, const bool is_dead) {
+          Status status = s;
+          if (status.ok()) {
+            *val = v;
+            if (is_dead) {
+              status = errors::InvalidArgument("The tensor returned for ", key,
+                                               " was not valid.");
+            }
+          }
+          call_state->mu.lock();
+          if (status.ok()) {
+            call_state->shared_status = status;
+          }
+          call_state->done_counter--;
+          // If we are the last async call to return, call the done callback.
+          if (call_state->done_counter == 0) {
+            const Status& final_status = call_state->shared_status;
+            call_state->mu.unlock();
+            done(final_status);
+            delete call_state;
+            return;
+          }
+          call_state->mu.unlock();
+        });
+  }
+}
+
 Status GraphMgr::SendInputs(const int64 step_id, const NamedTensors& in) {
   Rendezvous* rendezvous = worker_env_->rendezvous_mgr->Find(step_id);
   Status s = SendInputsToRendezvous(rendezvous, in);
@@ -338,6 +401,16 @@ Status GraphMgr::RecvOutputs(const int64 step_id, NamedTensors* out) {
   Status s = RecvOutputsFromRendezvous(rendezvous, out);
   rendezvous->Unref();
   return s;
+}
+
+void GraphMgr::RecvOutputsAsync(const int64 step_id, NamedTensors* out,
+                                StatusCallback done) {
+  Rendezvous* rendezvous = worker_env_->rendezvous_mgr->Find(step_id);
+  RecvOutputsFromRendezvousAsync(rendezvous, out,
+                                 [done, rendezvous](const Status s) {
+                                   rendezvous->Unref();
+                                   done(s);
+                                 });
 }
 
 void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
@@ -395,13 +468,14 @@ void GraphMgr::StartParallelExecutors(const string& handle, int64 step_id,
         worker_env_->device_mgr->ClearContainers({name});
       });
   // NOTE: Transfer one ref of rendezvous and item.
-  ExecutorBarrier* barrier = new ExecutorBarrier(
-      num_units, rendezvous, [this, item, collector, cost_graph, step_container,
-                              done](const Status& s) {
-        BuildCostModel(item, collector, cost_graph);
-        done(s);
-        delete step_container;
-      });
+  ExecutorBarrier* barrier =
+      new ExecutorBarrier(num_units, rendezvous,
+                          [this, item, collector, cost_graph, step_container,
+                           done](const Status& s) {
+                            BuildCostModel(item, collector, cost_graph);
+                            done(s);
+                            delete step_container;
+                          });
   Executor::Args args;
   {
     mutex_lock l(mu_);
@@ -416,7 +490,7 @@ void GraphMgr::StartParallelExecutors(const string& handle, int64 step_id,
     LogMemory::RecordStep(args.step_id, handle);
   }
   thread::ThreadPool* pool = worker_env_->compute_pool;
-  using namespace std::placeholders;
+  using std::placeholders::_1;
   // Line below is equivalent to this code, but does one less indirect call:
   //  args.runner = [pool](std::function<void()> fn) { pool->Schedule(fn); };
   args.runner = std::bind(&thread::ThreadPool::Schedule, pool, _1);

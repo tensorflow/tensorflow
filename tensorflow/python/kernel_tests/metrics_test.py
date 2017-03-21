@@ -227,20 +227,28 @@ class MeanTest(test.TestCase):
       self.assertAlmostEqual(1.65, sess.run(mean), 5)
 
   def testUnweighted(self):
-    values = _test_values((3, 2, 4))
+    values = _test_values((3, 2, 4, 1))
     mean_results = (
         metrics.mean(values),
         metrics.mean(values, weights=1.0),
         metrics.mean(values, weights=np.ones((1, 1, 1))),
         metrics.mean(values, weights=np.ones((1, 1, 1, 1))),
+        metrics.mean(values, weights=np.ones((1, 1, 1, 1, 1))),
         metrics.mean(values, weights=np.ones((1, 1, 4))),
+        metrics.mean(values, weights=np.ones((1, 1, 4, 1))),
         metrics.mean(values, weights=np.ones((1, 2, 1))),
+        metrics.mean(values, weights=np.ones((1, 2, 1, 1))),
         metrics.mean(values, weights=np.ones((1, 2, 4))),
+        metrics.mean(values, weights=np.ones((1, 2, 4, 1))),
         metrics.mean(values, weights=np.ones((3, 1, 1))),
+        metrics.mean(values, weights=np.ones((3, 1, 1, 1))),
         metrics.mean(values, weights=np.ones((3, 1, 4))),
+        metrics.mean(values, weights=np.ones((3, 1, 4, 1))),
         metrics.mean(values, weights=np.ones((3, 2, 1))),
+        metrics.mean(values, weights=np.ones((3, 2, 1, 1))),
         metrics.mean(values, weights=np.ones((3, 2, 4))),
-        metrics.mean(values, weights=np.ones((3, 2, 4, 1))),)
+        metrics.mean(values, weights=np.ones((3, 2, 4, 1))),
+        metrics.mean(values, weights=np.ones((3, 2, 4, 1, 1))),)
     expected = np.mean(values)
     with self.test_session():
       variables.local_variables_initializer().run()
@@ -304,9 +312,7 @@ class MeanTest(test.TestCase):
     invalid_weights = (
         (1,),
         (1, 1),
-        (1, 1, 1),
         (3, 2),
-        (3, 2, 4),
         (2, 4, 1),
         (4, 2, 4, 1),
         (3, 3, 4, 1),

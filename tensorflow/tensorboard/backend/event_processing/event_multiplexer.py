@@ -200,6 +200,39 @@ class EventMultiplexer(object):
     logging.info('Finished with EventMultiplexer.Reload()')
     return self
 
+  def PluginAssets(self, plugin_name):
+    """Get index of runs and assets for a given plugin.
+
+    Args:
+      plugin_name: Name of the plugin we are checking for.
+
+    Returns:
+      A dictionary that maps from run_name to a list of plugin
+        assets for that run.
+    """
+    with self._accumulators_mutex:
+      # To avoid nested locks, we construct a copy of the run-accumulator map
+      items = list(six.iteritems(self._accumulators))
+
+    return {run: accum.PluginAssets(plugin_name) for run, accum in items}
+
+  def RetrievePluginAsset(self, run, plugin_name, asset_name):
+    """Return the contents for a specific plugin asset from a run.
+
+    Args:
+      run: The string name of the run.
+      plugin_name: The string name of a plugin.
+      asset_name: The string name of an asset.
+
+    Returns:
+      The string contents of the plugin asset.
+
+    Raises:
+      KeyError: If the asset is not available.
+    """
+    accumulator = self._GetAccumulator(run)
+    return accumulator.RetrievePluginAsset(plugin_name, asset_name)
+
   def FirstEventTimestamp(self, run):
     """Return the timestamp of the first event of the given run.
 

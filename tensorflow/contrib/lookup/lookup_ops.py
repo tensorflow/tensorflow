@@ -1063,7 +1063,7 @@ def string_to_index(tensor, mapping, default_value=-1, name=None):
   For example:
 
   ```python
-  mapping_strings = t.constant(["emerson", "lake", "palmer")
+  mapping_strings = tf.constant(["emerson", "lake", "palmer")
   feats = tf.constant(["emerson", "lake", "and", "palmer"])
   ids = tf.contrib.lookup.string_to_index(
       feats, mapping=mapping_strings, default_value=-1)

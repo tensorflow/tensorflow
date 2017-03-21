@@ -115,4 +115,19 @@ void Coordinator::WaitForStop() {
   }
 }
 
+Status Coordinator::ExportCostGraph(CostGraphDef* cost_graph) const {
+  RunMetadata tmp_metadata;
+  {
+    mutex_lock l(runners_lock_);
+    for (auto& t : runners_) {
+      Status s = t->ExportRunMetadata(&tmp_metadata);
+      if (!s.ok()) {
+        return s;
+      }
+    }
+  }
+  cost_graph->MergeFrom(tmp_metadata.cost_graph());
+  return Status::OK();
+}
+
 }  // namespace

@@ -131,13 +131,16 @@ if (tensorflow_BUILD_PYTHON_TESTS)
     "${tensorflow_source_dir}/tensorflow/python/training/*_test.py"
     "${tensorflow_source_dir}/tensorflow/tensorboard/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/factorization/*_test.py"
+    "${tensorflow_source_dir}/tensorflow/contrib/keras/python/keras/integration_test.py"
     # NOTE: tensor_forest tests in tensor_forest/hybrid/... still don't pass.
     "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/client/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/python/*_test.py"
   )
 
-  # exclude the onces we don't want
+  # exclude the ones we don't want
   set(tf_test_src_py_exclude
+    # Python source line inspection tests are flaky on Windows (b/36375074).
+    "${tensorflow_source_dir}/tensorflow/python/debug/cli/analyzer_cli_test.py"
     # Windows does not have the curses library and uses readline.
     "${tensorflow_source_dir}/tensorflow/python/debug/cli/curses_ui_test.py"
     # generally not working
@@ -145,6 +148,8 @@ if (tensorflow_BUILD_PYTHON_TESTS)
     "${tensorflow_source_dir}/tensorflow/python/kernel_tests/benchmark_test.py"
     "${tensorflow_source_dir}/tensorflow/python/kernel_tests/resource_variable_ops_test.py"
     "${tensorflow_source_dir}/tensorflow/python/saved_model/saved_model_test.py"
+    # requires scipy
+    "${tensorflow_source_dir}/tensorflow/contrib/keras/python/keras/preprocessing/*_test.py"
   )
   if (WIN32)
     set(tf_test_src_py_exclude
@@ -188,19 +193,10 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/python/kernel_tests/sample_inputs_op_test.py"  # Results in wrong order.
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/python/kernel_tests/scatter_add_ndim_op_test.py"  # Bad placement.
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/python/topn_test.py"  # Results inaccurate
-      "${tensorflow_source_dir}/tensorflow/python/ops/cloud/bigquery_reader_ops_test.py"  # No libcurl support 
-      # Failing on some CI.
-      "${tensorflow_source_dir}/tensorflow/python/debug/cli/analyzer_cli_test.py"
-      "${tensorflow_source_dir}/tensorflow/python/debug/lib/session_debug_file_test.py"
-      "${tensorflow_source_dir}/tensorflow/python/debug/lib/source_utils_test.py"
-      "${tensorflow_source_dir}/tensorflow/python/debug/wrappers/dumping_wrapper_test.py"
-      "${tensorflow_source_dir}/tensorflow/python/debug/wrappers/local_cli_wrapper_test.py"
-      "${tensorflow_source_dir}/tensorflow/python/debug/wrappers/framework_test.py"
+      "${tensorflow_source_dir}/tensorflow/python/ops/cloud/bigquery_reader_ops_test.py"  # No libcurl support
       # Newly running on Windows since TensorBoard backend move. Fail on Windows and need debug.
       "${tensorflow_source_dir}/tensorflow/tensorboard/backend/event_processing/directory_watcher_test.py"
       "${tensorflow_source_dir}/tensorflow/tensorboard/backend/event_processing/event_multiplexer_test.py"
-
-
     )
   endif()
   list(REMOVE_ITEM tf_test_src_py ${tf_test_src_py_exclude})

@@ -943,7 +943,10 @@ class _ModulePageInfo(object):
     self._doc = None
     self._guides = None
 
-    self._members = []
+    self._modules = []
+    self._classes = []
+    self._functions = []
+    self._other_members = []
 
   def for_function(self):
     return False
@@ -995,16 +998,33 @@ class _ModulePageInfo(object):
     self._guides = guides
 
   @property
-  def members(self):
-    return self._members
+  def modules(self):
+    return self._modules
 
-  def _add_member(self, short_name, full_name, obj, doc, url=None):
-    if url is None:
-      member = _OtherMemberInfo(short_name, full_name, obj, doc)
-    else:
-      member = _LinkInfo(short_name, full_name, obj, doc, url)
+  def _add_module(self, short_name, full_name, obj, doc, url):
+    self._modules.append(_LinkInfo(short_name, full_name, obj, doc, url))
 
-    self._members.append(member)
+  @property
+  def classes(self):
+    return self._classes
+
+  def _add_class(self, short_name, full_name, obj, doc, url):
+    self._classes.append(_LinkInfo(short_name, full_name, obj, doc, url))
+
+  @property
+  def functions(self):
+    return self._functions
+
+  def _add_function(self, short_name, full_name, obj, doc, url):
+    self._functions.append(_LinkInfo(short_name, full_name, obj, doc, url))
+
+  @property
+  def other_members(self):
+    return self._other_members
+
+  def _add_other_member(self, short_name, full_name, obj, doc):
+    self._other_members.append(
+        _OtherMemberInfo(short_name, full_name, obj, doc))
 
   def collect_docs_for_module(self, reference_resolver, tree):
     """Collect information necessary specifically for a module's doc page.
@@ -1033,15 +1053,20 @@ class _ModulePageInfo(object):
       member_doc = _parse_md_docstring(member, relative_path,
                                        reference_resolver)
 
-      if (not inspect.isclass(member) and not inspect.isfunction(member) and
-          not inspect.ismodule(member)):
-        self._add_member(name, member_full_name, member, member_doc)
-        continue
-
       url = reference_resolver.reference_to_url(
           member_full_name, relative_path)
 
-      self._add_member(name, member_full_name, member, member_doc, url)
+      if inspect.ismodule(member):
+        self._add_module(name, member_full_name, member, member_doc, url)
+
+      elif inspect.isclass(member):
+        self._add_class(name, member_full_name, member, member_doc, url)
+
+      elif inspect.isfunction(member):
+        self._add_function(name, member_full_name, member, member_doc, url)
+
+      else:
+        self._add_other_member(name, member_full_name, member, member_doc)
 
 
 class ParserConfig(object):
@@ -1319,5 +1344,5 @@ def generate_global_index(library_name, index, reference_resolver):
   for _, link in sorted(symbol_links, key=lambda x: x[0]):
     lines.append('*  %s' % link)
 
-  # TODO(deannarubin): Make this list into a table and add the brief docstring.
+  # TODO(markdaoust): use a _ModulePageInfo -> prety_docs.build_md_page()
   return '\n'.join(lines)

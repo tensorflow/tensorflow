@@ -17,10 +17,7 @@ licenses(["notice"])  # Apache 2.0
 
 package_group(
     name = "friends",
-    packages = [
-        "//learning/deepmind/...",
-        "//tensorflow/...",
-    ],
+    packages = ["//tensorflow/..."],
 )
 
 load(
@@ -368,17 +365,17 @@ cc_library(
     ],
 )
 
-# Private support libraries ---------------------------------------------------
-
 cc_library(
     name = "bounds_check",
     hdrs = ["bounds_check.h"],
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = [":friends"],
     deps = [
         "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
     ],
 )
+
+# Private support libraries ---------------------------------------------------
 
 cc_header_only_library(
     name = "bounds_check_lib",
@@ -1111,6 +1108,19 @@ tf_kernel_library(
         "//third_party/eigen3",
     ],
     alwayslink = 0,
+)
+
+tf_cc_test(
+    name = "transpose_util_test",
+    size = "small",
+    srcs = ["transpose_util_test.cc"],
+    deps = [
+        ":transpose_functor",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:tensor_testutil",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
 )
 
 tf_kernel_library(

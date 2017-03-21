@@ -16,17 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_GRAPPLER_UTILS_H_
 #define TENSORFLOW_GRAPPLER_UTILS_H_
 
+#include <functional>
+
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace grappler {
-
-// Get the number of available GPUs whose number of multiprocessors is no less
-// than 8.
-int GetNumAvailableGPUs();
-
-// Get the number of logical CPU cores (aka hyperthreads) available.
-int GetNumAvailableLogicalCPUCores();
 
 // Return the node name corresponding to 'name' if name is valid, or the empty
 // string otherwise.
@@ -37,6 +34,15 @@ int NodePosition(const string& name);
 
 // Add a prefix to a node name
 string AddPrefixToNodeName(const string& name, const string& prefix);
+
+// Executes a 'fn' in the 'thread_pool'. The method waits for the configured
+// timeout (in milliseconds) for 'fn' to complete, before returning false.
+//
+// If returning false, the 'fn' may still continue to execute in the
+// thread-pool. It is the responsibility of the caller to reset the thread-pool
+// as appropriate.
+bool ExecuteWithTimeout(std::function<void()> fn, int64 timeout_in_ms,
+                        thread::ThreadPool* thread_pool);
 
 }  // end namespace grappler
 }  // end namespace tensorflow

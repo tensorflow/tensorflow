@@ -551,7 +551,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "resource_variable_ops_test",
     size = "small",
     srcs = ["resource_variable_ops_test.py"],

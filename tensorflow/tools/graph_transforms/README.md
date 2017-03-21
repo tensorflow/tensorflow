@@ -13,6 +13,7 @@
     *   [Eight-bit Calculations](#eight-bit-calculations)
 *   [Transform Reference](#transform-reference)
     *   [add_default_attributes](#add_default_attributes)
+    *   [backport_concatv2](#backport_concatv2)
     *   [fold_batch_norms](#fold_batch_norms)
     *   [fold_constants](#fold_constants)
     *   [fold_old_batch_norms](#fold_old_batch_norms)
@@ -335,6 +336,15 @@ your model is going to be processed outside of the main TensorFlow framework it
 can be useful to run this update process as a transform. This process finds any
 op attributes that are defined in the current TensorFlow list of ops but not
 within the saved model, and sets them to the defined default for that attribute.
+
+### backport_concatv2
+
+Args: None
+
+If you have a GraphDef file that has been produced by a newer version of the
+TensorFlow framework and includes ConcatV2, and you want to run it on an older
+version that only supports Concat, this transform will take care of converting
+those newer ops to the equivalent older form.
 
 ### fold_batch_norms
 

@@ -190,13 +190,10 @@ class VariablesTestCase(test.TestCase):
         d = constant_op.constant(2.0)
         # variables do not.
         var_x = variables.Variable(2.0)
-        # initialized_value do not either.
-        inited_x = var_x.initialized_value()
       self.assertEqual([c.op], d.op.control_inputs)
       self.assertEqual([], var_x.initializer.control_inputs)
       self.assertEqual([], var_x.value().op.control_inputs)
       self.assertEqual([], var_x._ref().op.control_inputs)  # pylint: disable=protected-access
-      self.assertEqual([var_x.initializer], inited_x.op.control_inputs)
 
   def testControlFlow(self):
     with self.test_session() as sess:
@@ -264,8 +261,6 @@ class VariablesTestCase(test.TestCase):
       var_cached = variables.Variable(2.0, caching_device="/job:foo")
       self.assertFalse(var_cached.device.startswith("/job:foo"))
       self.assertTrue(var_cached.value().device.startswith("/job:foo"))
-      self.assertTrue(var_cached.initialized_value().device.startswith(
-          "/job:foo"))
 
   def testCollections(self):
     with self.test_session():
@@ -397,10 +392,6 @@ class VariablesTestCase(test.TestCase):
       self.assertEqual(v1.get_shape(), v2.get_shape())
       self.assertEqual(v1.shape, v2.shape)
       self.assertAllClose(np.negative(value), v2.initial_value.eval())
-
-      # Once v2.initial_value.eval() has been called, v1 has effectively been
-      # initialized.
-      self.assertAllClose(value, v1.eval())
 
       with self.assertRaises(errors_impl.FailedPreconditionError):
         v2.eval()

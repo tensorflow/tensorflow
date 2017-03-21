@@ -297,7 +297,8 @@ class NodeStepperCLI(object):
       element_name: (str) name of the graph element.
       handle_node_names: (list of str) Names of the nodes of which the output
         tensors' handles are available.
-      intermediate_tensor_names: (list of str) TOOD(cais): document.
+      intermediate_tensor_names: (list of str) Names of the intermediate tensor
+        dumps generated from the graph element.
       override_names: (list of str) Names of the tensors of which the values
         are overridden.
       dirty_variable_names: (list of str) Names of the dirty variables.

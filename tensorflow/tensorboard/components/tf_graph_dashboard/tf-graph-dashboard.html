@@ -75,7 +75,11 @@ out-hierarchy-params="{{_hierarchyParams}}"
         graph="[[_graph]]"
         hierarchy-params="[[_hierarchyParams]]"
         progress="[[_progress]]"
+        debugger-data-enabled="[[debuggerDataEnabled]]"
+        are-health-pills-loading="[[_areHealthPillsLoading]]"
         node-names-to-health-pills="[[_nodeNamesToHealthPills]]"
+        all-steps-mode-enabled="{{allStepsModeEnabled}}"
+        specific-health-pill-step="{{specificHealthPillStep}}"
         health-pill-step-index="[[_healthPillStepIndex]]"
         render-hierarchy="{{_renderHierarchy}}"
         stats="[[_stats]]"
@@ -111,18 +115,38 @@ Polymer({
     _renderHierarchy: {type: Object, observer: '_renderHierarchyChanged'},
     backend: {type: Object, observer: '_backendChanged'},
     debuggerDataEnabled: Boolean,
+    allStepsModeEnabled: Boolean,
+    specificHealthPillStep: {type: Number, value: 0},
     healthPillsToggledOn: {type: Boolean, value: true, observer: '_healthPillsToggledOnChanged'},
+    // Whether health pills are currently being loaded, in which case we may want to say show a
+    // spinner.
+    _areHealthPillsLoading: Boolean,
     // Maps the names of nodes to an array of health pills (HealthPillDatums).
     _nodeNamesToHealthPills: {
       type: Object,
       value: {},
     },
     _healthPillStepIndex: Number,
-    runs: Array
+    // A strictly increasing ID. Each request for health pills has a unique ID. This helps us
+    // identify stale requests.
+    _healthPillRequestId: {type: Number, value: 1},
+    // The setTimeout ID for the pending request for health pills at a specific step.
+    _healthPillStepRequestTimerId: Number,
+    // The request for health pills at a specific step (as opposed to all sampled health pills) may
+    // involve slow disk reads. Hence, we throttle to 1 of those requests every this many ms.
+    _healthPillStepRequestTimerDelay: {
+      type: Number,
+      value: 500,
+      readOnly: true,
+    },
+    runs: Array,
   },
   listeners: {
     'node-toggle-expand': '_handleNodeToggleExpand',
   },
+  observers: [
+    '_maybeFetchHealthPillsAtSpecificStep(allStepsModeEnabled, specificHealthPillStep)',
+  ],
   reload: function() {
     if (!this.debuggerDataEnabled ||
         !this.healthPillsToggledOn ||
@@ -161,9 +185,48 @@ Polymer({
       }.bind(this));
   },
   _requestHealthPills: function() {
-    this.backend.healthPills(this._renderHierarchy.getNamesOfRenderedOps()).then(function(result) {
+    this.set('_areHealthPillsLoading', true);
+    const requestId = ++this._healthPillRequestId;
+
+    if (this._healthPillStepRequestTimerId !== null) {
+      // A request for health pills is already scheduled to be initiated. Clear it, and schedule a
+      // new request.
+      window.clearTimeout(this._healthPillStepRequestTimerId);
+      this._healthPillStepRequestTimerId = null;
+    }
+
+    if (this.allStepsModeEnabled) {
+      // This path may be slow. Schedule network requests to start some time later. If another
+      // request is scheduled in the mean time, drop this current request.
+      this._healthPillStepRequestTimerId = setTimeout(function() {
+        this._healthPillStepRequestTimerId = null;
+        this._initiateNetworkRequestForHealthPills(requestId);
+      }.bind(this), this._healthPillStepRequestTimerDelay);
+    } else {
+      // The user is fetching sampled steps. This path is fast, so no need to throttle. Directly
+      // fetch the health pills across the network.
+      this._initiateNetworkRequestForHealthPills(requestId);
+    }
+  },
+  // Initiates the network request for health pills. Do not directly call this method - network
+  // requests may be throttled. Instead, call _requestHealthPills, which uses this method.
+  _initiateNetworkRequestForHealthPills: function(requestId) {
+    if (this._healthPillRequestId !== requestId) {
+      // This possibly scheduled request was outdated before it was even sent across the network. Do
+      // not bother initiating it.
+      return;
+    }
+
+    const specificStep = this.allStepsModeEnabled ? this.specificHealthPillStep : undefined;
+    this.backend.healthPills(this._renderHierarchy.getNamesOfRenderedOps(), specificStep).then(
+        function(result) {
       if (!this.healthPillsToggledOn) {
         // The user has opted to hide health pills via the toggle button.
+        return;
+      }
+
+      if (requestId !== this._healthPillRequestId) {
+        // This response is no longer relevant.
         return;
       }
 
@@ -176,6 +239,8 @@ Polymer({
       }
 
       this.set('_nodeNamesToHealthPills', result);
+      this.set('_areHealthPillsLoading', false);
+      this.set('_healthPillStepRequestTimerId', null);
     }.bind(this));
   },
   _datasetsEmpty: function(datasets) {
@@ -198,6 +263,15 @@ Polymer({
       // Remove all health pills by setting an empty mapping.
       this.set('_nodeNamesToHealthPills', {});
     }
+  },
+  // Fetch health pills for a specific step if applicable.
+  _maybeFetchHealthPillsAtSpecificStep: function(allStepsModeEnabled, specificHealthPillStep) {
+    if (!this._renderHierarchy) {
+      // The graph is not ready yet.
+      return;
+    }
+
+    this._requestHealthPills();
   },
 });
 })();

@@ -1,8 +1,11 @@
 apply plugin: 'com.android.library'
 
+// TensorFlow repo root dir on local machine
+def TF_SRC_DIR = projectDir.toString() + "/../../../.."
+
 android {
     compileSdkVersion 24
-    buildToolsVersion "24.0.2"
+    buildToolsVersion '25.0.1'
 
     // for debugging native code purpose
     publishNonDefault true
@@ -10,7 +13,7 @@ android {
     defaultConfig {
         archivesBaseName = "Tensorflow-Android-Inference"
         minSdkVersion 21
-        targetSdkVersion 21
+        targetSdkVersion 23
         versionCode 1
         versionName "1.0"
         ndk {
@@ -25,7 +28,11 @@ android {
     }
     sourceSets {
         main {
-            java.srcDirs =  ["../java"]
+            java {
+                srcDir "${TF_SRC_DIR}/tensorflow/contrib/android/java"
+                srcDir "${TF_SRC_DIR}/tensorflow/java/src/main/java"
+                exclude '**/examples/**'
+            }
         }
     }
 
@@ -86,7 +93,7 @@ if(! Os.isFamily(Os.FAMILY_WINDOWS)) {
                 //    just uncomment this line to use it:
                 //    it can take long time to build by default
                 //    it is disabled to avoid false first impression
-                // task.dependsOn buildTensorflow
+                task.dependsOn buildTensorflow
             }
         }
     }

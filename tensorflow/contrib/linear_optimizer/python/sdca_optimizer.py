@@ -74,6 +74,26 @@ class SDCAOptimizer(object):
   def get_name(self):
     return 'SDCAOptimizer'
 
+  @property
+  def example_id_column(self):
+    return self._example_id_column
+
+  @property
+  def num_loss_partitions(self):
+    return self._num_loss_partitions
+
+  @property
+  def num_table_shards(self):
+    return self._num_table_shards
+
+  @property
+  def symmetric_l1_regularization(self):
+    return self._symmetric_l1_regularization
+
+  @property
+  def symmetric_l2_regularization(self):
+    return self._symmetric_l2_regularization
+
   def get_train_step(self, columns_to_variables,
                      weight_column_name, loss_type, features, targets,
                      global_step):

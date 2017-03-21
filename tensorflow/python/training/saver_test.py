@@ -48,7 +48,6 @@ from tensorflow.python.framework import ops as ops_lib
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
-from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import partitioned_variables
@@ -65,61 +64,8 @@ from tensorflow.python.training import adam
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import queue_runner_impl
 from tensorflow.python.training import saver as saver_module
+from tensorflow.python.training import saver_test_utils
 from tensorflow.python.util import compat
-
-
-class CheckpointedOp(object):
-  """Op with a custom checkpointing implementation.
-
-  Defined as part of the test because the MutableHashTable Python code is
-  currently in contrib.
-  """
-
-  def __init__(self, name):
-    self._table_ref = gen_data_flow_ops._mutable_hash_table(
-        key_dtype=dtypes.string, value_dtype=dtypes.float32, name=name)
-    self._name = name
-    self._saveable = CheckpointedOp.CustomSaveable(self, name)
-    ops_lib.add_to_collection(ops_lib.GraphKeys.SAVEABLE_OBJECTS,
-                              self._saveable)
-
-  @property
-  def name(self):
-    return self._name
-
-  @property
-  def saveable(self):
-    return self._saveable
-
-  def insert(self, keys, values):
-    return gen_data_flow_ops._lookup_table_insert(self._table_ref, keys, values)
-
-  def keys(self):
-    return self._export()[0]
-
-  def values(self):
-    return self._export()[1]
-
-  def _export(self):
-    return gen_data_flow_ops._lookup_table_export(self._table_ref,
-                                                  dtypes.string, dtypes.float32)
-
-  class CustomSaveable(saver_module.BaseSaverBuilder.SaveableObject):
-
-    def __init__(self, table, name):
-      tensors = table._export()
-      specs = [
-          saver_module.BaseSaverBuilder.SaveSpec(tensors[0], "",
-                                                 name + "-keys"),
-          saver_module.BaseSaverBuilder.SaveSpec(tensors[1], "",
-                                                 name + "-values")
-      ]
-      super(CheckpointedOp.CustomSaveable, self).__init__(table, specs, name)
-
-    def restore(self, restore_tensors, shapes):
-      return gen_data_flow_ops._lookup_table_import(self.op._table_ref,
-                                                    restore_tensors[0],
-                                                    restore_tensors[1])
 
 
 class SaverTest(test.TestCase):
@@ -131,7 +77,7 @@ class SaverTest(test.TestCase):
     # Restore nodes for them.
     v0 = variable_op(10.0, name="v0")
     v1 = variable_op(20.0, name="v1")
-    v2 = CheckpointedOp(name="v2")
+    v2 = saver_test_utils.CheckpointedOp(name="v2")
     v2_init = v2.insert("k1", 30.0)
     save = saver_module.Saver(
         {
@@ -161,7 +107,7 @@ class SaverTest(test.TestCase):
     with self.test_session() as sess:
       v0 = variable_op(-1.0, name="v0")
       v1 = variable_op(-1.0, name="v1")
-      v2 = CheckpointedOp(name="v2")
+      v2 = saver_test_utils.CheckpointedOp(name="v2")
       save = saver_module.Saver({"v0": v0, "v1": v1, "v2": v2.saveable})
 
       # Assert that the variables are not initialized.
@@ -183,7 +129,7 @@ class SaverTest(test.TestCase):
     with self.test_session() as sess:
       v0_2 = variable_op(1000.0, name="v0")
       v1_2 = variable_op(2000.0, name="v1")
-      v2_2 = CheckpointedOp(name="v2")
+      v2_2 = saver_test_utils.CheckpointedOp(name="v2")
       save2 = saver_module.Saver({"v0": v0_2, "v1": v1_2, "v2": v2_2.saveable})
       v2_2.insert("k1000", 3000.0).run()
       variables.global_variables_initializer().run()
@@ -276,7 +222,7 @@ class SaverTest(test.TestCase):
   def testSameName(self):
     with ops_lib.Graph().as_default():
       v0 = variables.Variable([10.0], name="v0")
-      v2 = CheckpointedOp(name="v2")
+      v2 = saver_test_utils.CheckpointedOp(name="v2")
 
       # Saving one variable under two names raises an error.
       with self.assertRaisesRegexp(
@@ -299,7 +245,7 @@ class SaverTest(test.TestCase):
       # Restore nodes for them.
       v0 = variables.Variable(10.0, name="v0")
       v1 = variables.Variable(20.0, name="v1")
-      v2 = CheckpointedOp(name="v2")
+      v2 = saver_test_utils.CheckpointedOp(name="v2")
       v2_init = v2.insert("k1", 30.0)
       save = saver_module.Saver([v0, v1, v2.saveable])
       variables.global_variables_initializer().run()
@@ -321,7 +267,7 @@ class SaverTest(test.TestCase):
     with self.test_session(graph=ops_lib.Graph()) as sess:
       v0 = variables.Variable(-1.0, name="v0")
       v1 = variables.Variable(-1.0, name="v1")
-      v2 = CheckpointedOp(name="v2")
+      v2 = saver_test_utils.CheckpointedOp(name="v2")
       save = saver_module.Saver([v0, v1, v2.saveable])
 
       with self.assertRaisesWithPredicateMatch(
@@ -346,7 +292,7 @@ class SaverTest(test.TestCase):
     with self.test_session(graph=ops_lib.Graph()) as sess:
       v0_2 = variables.Variable(1000.0, name="v0")
       v1_2 = variables.Variable(2000.0, name="v1")
-      v2_2 = CheckpointedOp(name="v2")
+      v2_2 = saver_test_utils.CheckpointedOp(name="v2")
       save2 = saver_module.Saver([v0_2, v1_2, v2_2.saveable])
       v2_2.insert("k1000", 3000.0).run()
       variables.global_variables_initializer().run()
@@ -418,7 +364,7 @@ class SaverTest(test.TestCase):
     with session.Session("", graph=ops_lib.Graph()) as sess:
       one = variables.Variable(1.0)
       twos = variables.Variable([2.0, 2.0, 2.0])
-      v2 = CheckpointedOp(name="v2")
+      v2 = saver_test_utils.CheckpointedOp(name="v2")
       init = variables.global_variables_initializer()
       save = saver_module.Saver()
       init.run()
@@ -428,7 +374,7 @@ class SaverTest(test.TestCase):
     with session.Session("", graph=ops_lib.Graph()) as sess:
       one = variables.Variable(0.0)
       twos = variables.Variable([0.0, 0.0, 0.0])
-      v2 = CheckpointedOp(name="v2")
+      v2 = saver_test_utils.CheckpointedOp(name="v2")
       # Saver with no arg, defaults to 'all variables'.
       save = saver_module.Saver()
       save.restore(sess, save_path)
@@ -593,10 +539,10 @@ class SaveRestoreShardedTest(test.TestCase):
         config=config_pb2.ConfigProto(device_count={"CPU": 2})) as sess:
       with sess.graph.device("/cpu:0"):
         v0 = variables.Variable(10, name="v0")
-        t0 = CheckpointedOp(name="t0")
+        t0 = saver_test_utils.CheckpointedOp(name="t0")
       with sess.graph.device("/cpu:1"):
         v1 = variables.Variable(20, name="v1")
-        t1 = CheckpointedOp(name="t1")
+        t1 = saver_test_utils.CheckpointedOp(name="t1")
       save = saver_module.Saver(
           {
               "v0": v0,
@@ -623,7 +569,7 @@ class SaveRestoreShardedTest(test.TestCase):
           config=config_pb2.ConfigProto(device_count={"CPU": 2})) as sess:
         with sess.graph.device("/cpu:0"):
           v0 = variables.Variable(111, name="v0")
-          t0 = CheckpointedOp(name="t0")
+          t0 = saver_test_utils.CheckpointedOp(name="t0")
         save = saver_module.Saver({"v0": v0, "t0": t0.saveable}, sharded=True)
         variables.global_variables_initializer().run()
         t0.insert("k11", 33.0).run()
@@ -641,7 +587,7 @@ class SaveRestoreShardedTest(test.TestCase):
           config=config_pb2.ConfigProto(device_count={"CPU": 2})) as sess:
         with sess.graph.device("/cpu:0"):
           v1 = variables.Variable(222)
-          t1 = CheckpointedOp(name="t1")
+          t1 = saver_test_utils.CheckpointedOp(name="t1")
         save = saver_module.Saver({"v1": v1, "t1": t1.saveable}, sharded=True)
         variables.global_variables_initializer().run()
         t1.insert("k22", 44.0).run()
@@ -659,10 +605,10 @@ class SaveRestoreShardedTest(test.TestCase):
         config=config_pb2.ConfigProto(device_count={"CPU": 2})) as sess:
       with sess.graph.device("/cpu:0"):
         v0 = variables.Variable(111, name="v0")
-        t0 = CheckpointedOp(name="t0")
+        t0 = saver_test_utils.CheckpointedOp(name="t0")
       with sess.graph.device("/cpu:1"):
         v1 = variables.Variable(222, name="v1")
-        t1 = CheckpointedOp(name="t1")
+        t1 = saver_test_utils.CheckpointedOp(name="t1")
       save = saver_module.Saver(
           {
               "v0": v0,

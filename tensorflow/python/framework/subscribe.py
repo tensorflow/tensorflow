@@ -23,6 +23,8 @@ import re
 
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import tf_logging as logging
 
 
 def _recursive_apply(tensors, apply_fn):
@@ -44,6 +46,8 @@ def _recursive_apply(tensors, apply_fn):
   tensors_type = type(tensors)
   if tensors_type is ops.Tensor:
     return apply_fn(tensors)
+  elif tensors_type is variables.Variable:
+    return apply_fn(tensors.value())
   elif isinstance(tensors, (list, tuple)):
     tensors = [_recursive_apply(t, apply_fn) for t in tensors]
     if tensors_type is list:
@@ -53,7 +57,7 @@ def _recursive_apply(tensors, apply_fn):
     return tensors_type(*tensors)  # collections.namedtuple
   elif tensors_type is dict:
     return dict([(k, _recursive_apply(v, apply_fn))
-                 for k, v in tensors.iteritems()])
+                 for k, v in tensors.items()])
   else:
     raise TypeError('_recursive_apply argument %r has invalid type %r' %
                     (tensors, tensors_type))
@@ -215,6 +219,12 @@ def _subscribe(tensor, side_effects, control_cache):
     The modified replacement to the passed in tensor which triggers the side
     effects or the given tensor, if it was already been subscribed.
   """
+  # Check if the given tensor has a numpy compatible type (see dtypes.py).
+  # If not, we cannot subscribe it, so we just return the original tensor.
+  if not tensor.dtype.is_numpy_compatible:
+    logging.debug(('Tensor {} has an un-supported {} type and cannot be '
+                   'subscribed.').format(tensor.name, tensor.dtype))
+    return tensor
 
   if _is_subscribed_identity(tensor):
     return _subscribe_extend(tensor, side_effects)

@@ -645,5 +645,16 @@ TEST_F(LiteralUtilTest, PopulateWithValueR2U64) {
   EXPECT_TRUE(LiteralUtil::Equal(output, *expected));
 }
 
+TEST_F(LiteralUtilTest, ReplicateR2U32) {
+  auto input = LiteralUtil::CreateR2<uint32>(
+      {{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}});
+  auto output = LiteralUtil::Replicate<uint32>(*input, 3);
+  auto expected = LiteralUtil::CreateR3<uint32>(
+      {{{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}},
+       {{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}},
+       {{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}}});
+  EXPECT_TRUE(LiteralUtil::Equal(*output, *expected));
+}
+
 }  // namespace
 }  // namespace xla
