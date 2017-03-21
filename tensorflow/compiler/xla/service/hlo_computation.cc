@@ -142,6 +142,12 @@ Status HloComputation::RemoveInstruction(HloInstruction* instruction) {
   TF_RET_CHECK(instruction->user_count() == 0)
       << "instruction " << instruction->name()
       << " has users and cannot be removed";
+  TF_RET_CHECK(instruction->control_predecessors().empty())
+      << "instruction " << instruction->name()
+      << " has control predecessors and cannot be removed";
+  TF_RET_CHECK(instruction->control_successors().empty())
+      << "instruction " << instruction->name()
+      << " has control successors and cannot be removed";
 
   TF_RET_CHECK(instruction_iterators_.count(instruction) != 0);
   auto inst_it = instruction_iterators_.at(instruction);
@@ -227,7 +233,8 @@ void ComputeComputationPostOrder(
   }
 
   for (auto& instruction : computation->instructions()) {
-    for (auto& called_computation : instruction->MakeCalledComputationsSet()) {
+    for (HloComputation* called_computation :
+         instruction->called_computations()) {
       ComputeComputationPostOrder(called_computation, visited, post_order);
     }
   }
@@ -286,7 +293,10 @@ string HloComputation::ToString() const {
   for (const HloInstruction* instruction : MakeInstructionPostOrder()) {
     s << "  " << instruction->ToString() << "\n";
     if (instruction->opcode() == HloOpcode::kFusion) {
-      for (const auto& fused_instruction : instruction->fused_instructions()) {
+      tensorflow::gtl::FlatSet<HloInstruction*> added_instructions;
+      auto fused_instructions = InstructionPostOrderer::GetOrder(
+          instruction->fused_expression_root(), &added_instructions);
+      for (const auto& fused_instruction : fused_instructions) {
         s << "    " << fused_instruction->ToString() << "\n";
       }
     }
@@ -381,15 +391,6 @@ StatusOr<HloInstruction*> HloComputation::DeepCopyInstruction(
     return FailedPrecondition(
         "Can only copy array and tuple shaped instructions");
   }
-}
-
-Status HloComputation::AddControlDependency(HloInstruction* predecessor,
-                                            HloInstruction* successor) {
-  TF_RET_CHECK(instruction_iterators_.count(predecessor) > 0);
-  TF_RET_CHECK(instruction_iterators_.count(successor) > 0);
-  successor->AddControlPredecessor(predecessor);
-  predecessor->AddControlSuccessor(successor);
-  return Status::OK();
 }
 
 ProgramShape HloComputation::ComputeProgramShape() const {

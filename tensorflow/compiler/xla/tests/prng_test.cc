@@ -126,7 +126,7 @@ double PrngTest::UniformChiSquared(int32 range_size, int32 expected_count) {
       });
   int64 sum = 0;
   for (int32 i = 0; i < range_size; ++i) {
-    sum += Square(counts[i] - expected_count);
+    sum += Square(static_cast<int64>(counts[i] - expected_count));
   }
   return static_cast<double>(sum) / expected_count;
 }

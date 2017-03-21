@@ -271,9 +271,9 @@ class FractionalAvgPoolGradOp : public OpKernel {
 
     // Create intermediate in_backprop.
     Tensor in_backprop_tensor_temp;
-    OP_REQUIRES_OK(context,
-                   context->allocate_temp(DataTypeToEnum<double>::v(), in_shape,
-                                          &in_backprop_tensor_temp));
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_temp(
+                                {0}, DataTypeToEnum<double>::v(), in_shape,
+                                &in_backprop_tensor_temp));
     in_backprop_tensor_temp.flat<double>().setZero();
     // Transform 4D tensor to 2D matrix.
     EigenDoubleMatrixMap in_backprop_tensor_temp_mat(

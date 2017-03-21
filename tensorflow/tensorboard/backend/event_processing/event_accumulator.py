@@ -28,10 +28,12 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf.config_pb2 import RunMetadata
 from tensorflow.core.util.event_pb2 import SessionLog
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.tensorboard.backend.event_processing import directory_watcher
 from tensorflow.tensorboard.backend.event_processing import event_file_loader
+from tensorflow.tensorboard.backend.event_processing import plugin_asset_util
 from tensorflow.tensorboard.backend.event_processing import reservoir
 
 namedtuple = collections.namedtuple
@@ -116,7 +118,7 @@ STORE_EVERYTHING_SIZE_GUIDANCE = {
 # The tag that values containing health pills have. Health pill data is stored
 # in tensors. In order to distinguish health pill values from scalar values, we
 # rely on how health pill values have this special tag value.
-_HEALTH_PILL_EVENT_TAG = '__health_pill__'
+HEALTH_PILL_EVENT_TAG = '__health_pill__'
 
 
 def IsTensorFlowEventsFile(path):
@@ -209,6 +211,7 @@ class EventAccumulator(object):
     self._tensors = reservoir.Reservoir(size=sizes[TENSORS])
 
     self._generator_mutex = threading.Lock()
+    self.path = path
     self._generator = _GeneratorFromPath(path)
 
     self._compression_bps = compression_bps
@@ -235,6 +238,33 @@ class EventAccumulator(object):
       for event in self._generator.Load():
         self._ProcessEvent(event)
     return self
+
+  def PluginAssets(self, plugin_name):
+    """Return a list of all plugin assets for the given plugin.
+
+    Args:
+      plugin_name: The string name of a plugin to retrieve assets for.
+
+    Returns:
+      A list of string plugin asset names, or empty list if none are available.
+      If the plugin was not registered, an empty list is returned.
+    """
+    return plugin_asset_util.ListAssets(self.path, plugin_name)
+
+  def RetrievePluginAsset(self, plugin_name, asset_name):
+    """Return the contents of a given plugin asset.
+
+    Args:
+      plugin_name: The string name of a plugin.
+      asset_name: The string name of an asset.
+
+    Returns:
+      The string contents of the plugin asset.
+
+    Raises:
+      KeyError: If the asset is not available.
+    """
+    return plugin_asset_util.RetrieveAsset(self.path, plugin_name, asset_name)
 
   def FirstEventTimestamp(self):
     """Returns the timestamp in seconds of the first event.
@@ -318,7 +348,7 @@ class EventAccumulator(object):
       self._tagged_metadata[tag] = event.tagged_run_metadata.run_metadata
     elif event.HasField('summary'):
       for value in event.summary.value:
-        if value.HasField('tensor') and value.tag == _HEALTH_PILL_EVENT_TAG:
+        if value.HasField('tensor') and value.tag == HEALTH_PILL_EVENT_TAG:
           self._ProcessHealthPillSummary(value, event)
         else:
           for summary_type, summary_func in SUMMARY_TYPES.items():
@@ -341,7 +371,7 @@ class EventAccumulator(object):
       value: A summary_pb2.Summary.Value with a Tensor field.
       event: The event_pb2.Event containing that value.
     """
-    elements = np.fromstring(value.tensor.tensor_content, dtype=np.float64)
+    elements = tensor_util.MakeNdarray(value.tensor)
 
     # The node_name property of the value object is actually a watch key: a
     # combination of node name, output slot, and a suffix. We capture the

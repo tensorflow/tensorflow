@@ -18,8 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
 import operator
+import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
@@ -84,10 +84,10 @@ def _GetMatMulTest(a_np_, b_np_, use_static_shape_, **kwargs_):
     self.assertAllCloseAccordingToType(
         tf_val,
         np_val,
-        float_rtol=1e-5,
-        float_atol=1e-5,
-        half_rtol=0.1,
-        half_atol=0.1)
+        float_rtol=2e-5,
+        float_atol=2e-5,
+        half_rtol=0.2,
+        half_atol=0.2)
 
   return Test
 
@@ -157,9 +157,10 @@ try:
   # @ operator supported since python 3.5.
   infix_matmul = operator.matmul
 except AttributeError:
+
   # For earlier versions of python, emulate regular behavior.
   # Useful to build and test for 3.5+ on earlier versions.
-  def infix_matmul(x, y):
+  def infix_matmul(x, y):  # pylint: disable=invalid-name
     try:
       r = type(x).__matmul__(x, y)
     except AttributeError:

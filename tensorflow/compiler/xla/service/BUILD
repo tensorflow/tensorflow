@@ -125,6 +125,7 @@ cc_test(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/core:test_main",
     ],
 )
@@ -493,6 +494,36 @@ cc_library(
 )
 
 cc_library(
+    name = "liveness_util",
+    srcs = ["liveness_util.cc"],
+    hdrs = ["liveness_util.h"],
+    deps = [
+        ":hlo",
+        ":logical_buffer",
+        ":tuple_points_to_analysis",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_test(
+    name = "liveness_util_test",
+    srcs = ["liveness_util_test.cc"],
+    deps = [
+        ":hlo",
+        ":liveness_util",
+        ":tuple_points_to_analysis",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
     name = "buffer_liveness",
     srcs = [
         "buffer_liveness.cc",
@@ -503,6 +534,7 @@ cc_library(
     deps = [
         ":hlo",
         ":hlo_ordering",
+        ":liveness_util",
         ":logical_buffer",
         ":tuple_points_to_analysis",
         "//tensorflow/compiler/xla:shape_util",
@@ -585,6 +617,7 @@ cc_library(
     ],
     deps = [
         ":hlo",
+        ":liveness_util",
         ":logical_buffer",
         ":tuple_points_to_analysis",
         "//tensorflow/compiler/xla:statusor",
@@ -1364,6 +1397,7 @@ cc_library(
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:window_util",
         "//tensorflow/compiler/xla/legacy_flags:hlo_graph_dumper_flags",
         "//tensorflow/core:lib",
     ],

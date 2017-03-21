@@ -438,6 +438,21 @@ std::unique_ptr<Tensor> OpKernelContext::forward_input(
   return output_tensor;
 }
 
+Status OpKernelContext::forward_input_or_allocate_temp(
+    gtl::ArraySlice<int> candidate_input_indices, DataType type,
+    const TensorShape& shape, const AllocatorAttributes& allocator_attr,
+    Tensor* out_temp) {
+  for (int input_index : candidate_input_indices) {
+    std::unique_ptr<Tensor> new_tensor =
+        forward_input(input_index, type, shape, DEVICE_MEMORY, allocator_attr);
+    if (new_tensor != nullptr) {
+      *out_temp = std::move(*new_tensor);
+      return Status::OK();
+    }
+  }
+  return allocate_temp(type, shape, out_temp, allocator_attr);
+}
+
 void OpKernelContext::delete_ref_input(int index, bool lock_held) {
   DCHECK_GE(index, 0);
   DCHECK_LT(index, num_inputs());

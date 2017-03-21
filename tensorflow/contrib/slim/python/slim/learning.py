@@ -18,9 +18,9 @@ This script contains various functions for training models. These include
 manipulating gradients, creating a `train_op` (an operation that computes the
 loss and applies the gradients) and a training loop function. The training loop
 allows the user to pass in the `train_op` and runs the optimization according
-to user-specified arguments. Note that the training loop uses the tf.train.Supervisor
-and its managed_session in its implementation to ensure the ability of worker
-processes to recover from failures.
+to user-specified arguments. Note that the training loop uses the
+tf.train.Supervisor and its managed_session in its implementation to ensure the
+ability of worker processes to recover from failures.
 
 ************************************
 * A simple working training script *

@@ -261,7 +261,7 @@ def streaming_false_negatives(predictions, labels, weights=None,
                               metrics_collections=None,
                               updates_collections=None,
                               name=None):
-  """Computes the total number of false positives.
+  """Computes the total number of false negatives.
 
   If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 

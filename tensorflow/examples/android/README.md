@@ -112,10 +112,10 @@ The NDK API level may remain at 14.
 The TensorFlow `GraphDef`s that contain the model definitions and weights
 are not packaged in the repo because of their size. They are downloaded
 automatically and packaged with the APK by Bazel via a new_http_archive defined
-in `WORKSPACE` during the build process.
+in `WORKSPACE` during the build process, and by Gradle via download-models.gradle.
 
-**Optional**: If you wish to place the models in your assets manually (E.g. for
-non-Bazel builds), remove all of the `model_files` entries from the `assets`
+**Optional**: If you wish to place the models in your assets manually,
+remove all of the `model_files` entries from the `assets`
 list in `tensorflow_demo` found in the `[BUILD](BUILD)` file. Then download
 and extract the archives yourself to the `assets` directory in the source tree:
 
@@ -130,6 +130,10 @@ done
 
 This will extract the models and their associated metadata files to the local
 assets/ directory.
+
+If you are using Gradle, make sure to remove download-models.gradle reference
+from build.gradle after your manually download models; otherwise gradle
+might download models again and overwrite your models.
 
 ##### Build
 

@@ -3438,6 +3438,43 @@ op {
   description: "This is a deprecated version of BiasAdd and will be soon removed.\n\nThis is a special case of `tf.add` where `bias` is restricted to be 1-D.\nBroadcasting is supported, so `value` may have any number of dimensions."
 }
 op {
+  name: "Bincount"
+  input_arg {
+    name: "arr"
+    description: "int32 `Tensor`."
+    type: DT_INT32
+  }
+  input_arg {
+    name: "size"
+    description: "non-negative int32 scalar `Tensor`."
+    type: DT_INT32
+  }
+  input_arg {
+    name: "weights"
+    description: "is an int32, int64, float32, or float64 `Tensor` with the same\nshape as `arr`, or a length-0 `Tensor`, in which case it acts as all weights\nequal to 1."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "bins"
+    description: "1D `Tensor` with length equal to `size`. The counts or summed weights for\neach value in the range [0, size)."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  summary: "Counts the number of occurrences of each value in an integer array."
+  description: "Outputs a vector with length `size` and the same dtype as `weights`. If\n`weights` are empty, then index `i` stores the number of times the value `i` is\ncounted in `arr`. If `weights` are non-empty, then index `i` stores the sum of\nthe value in `weights` at each index where the corresponding value in `arr` is\n`i`.\n\nValues in `arr` outside of the range [0, size) are ignored."
+}
+op {
   name: "Bitcast"
   input_arg {
     name: "input"
@@ -5249,7 +5286,7 @@ op {
   }
   output_arg {
     name: "output"
-    description: "A double tensor of shape [12], the elements of which are:\n  [0]: is initialized (1.0) or not (0.0).\n  [1]: total number of elements\n  [2]: -inf count\n  [3]: negative element count (excluding -inf)\n  [4]: zero element count\n  [5]: positive element count (excluding +inf)\n  [6]: +inf element count\n  [7]: NaN element count\nOutput elements [1:8] are all zero, if the tensor is uninitialized.\n  [8]: minimum of all non-inf and non-NaN elements.\n       If uninitialized or no such element exists: +inf.\n  [9]: maximum of all non-inf and non-NaN elements.\n       If uninitialized or no such element exists: -inf.\n  [10]: mean of all non-inf and non-NaN elements.\n        If uninitialized or no such element exists: NaN.\n  [11]: variance of all non-inf and non-NaN elements.\n        If uninitialized or no such element exists: NaN."
+    description: "A double tensor of shape [12], the elements of which are:\n  [0]: is initialized (1.0) or not (0.0).\n  [1]: total number of elements\n  [2]: NaN element count\n  [3]: generalized -inf count: elements <= lower_bound. lower_bound is -inf by\n    default.\n  [4]: negative element count (excluding -inf), if lower_bound is the default\n    -inf. Otherwise, this is the count of elements > lower_bound and < 0.\n  [5]: zero element count\n  [6]: positive element count (excluding +inf), if upper_bound is the default\n    -inf. Otherwise, this is the count of elements < upper_bound and > 0.\n  [7]: generalized +inf count, elements >= upper_bound. upper_bound is +inf by\n    default.\nOutput elements [1:8] are all zero, if the tensor is uninitialized.\n  [8]: minimum of all non-inf and non-NaN elements.\n       If uninitialized or no such element exists: +inf.\n  [9]: maximum of all non-inf and non-NaN elements.\n       If uninitialized or no such element exists: -inf.\n  [10]: mean of all non-inf and non-NaN elements.\n        If uninitialized or no such element exists: NaN.\n  [11]: variance of all non-inf and non-NaN elements.\n        If uninitialized or no such element exists: NaN."
     type: DT_DOUBLE
   }
   attr {
@@ -5272,6 +5309,30 @@ op {
       }
     }
     description: "List of URLs to debug targets, e.g.,\nfile:///foo/tfdbg_dump, grpc:://localhost:11011"
+  }
+  attr {
+    name: "lower_bound"
+    type: "float"
+    default_value {
+      f: -inf
+    }
+    description: "(float) The lower bound <= which values will be included in the\ngeneralized -inf count. Default: -inf."
+  }
+  attr {
+    name: "upper_bound"
+    type: "float"
+    default_value {
+      f: inf
+    }
+    description: "(float) The upper bound >= which values will be included in the\ngeneralized +inf count. Default: +inf."
+  }
+  attr {
+    name: "mute_if_healthy"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "(bool) Do not send data to the debug URLs unless at least one\nof elements [2], [3] and [7] (i.e., the nan count and the generalized -inf and\ninf counts) is non-zero."
   }
   summary: "Debug Numeric Summary Op."
   description: "Provide a basic summary of numeric value types, range and distribution."

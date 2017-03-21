@@ -577,11 +577,18 @@ class BaseSession(SessionInterface):
     except Exception:  # pylint: disable=broad-except
       pass
     if self._session is not None:
+      # We create `status` outside the `try` block because at shutdown
+      # `tf_session` may have been garbage collected, and the creation
+      # of a status object may fail. In that case, we prefer to ignore
+      # the failure and silently leak the session object, since the
+      # program is about to terminate.
+      status = None
       try:
         status = tf_session.TF_NewStatus()
         tf_session.TF_DeleteDeprecatedSession(self._session, status)
       finally:
-        tf_session.TF_DeleteStatus(status)
+        if status is not None:
+          tf_session.TF_DeleteStatus(status)
       self._session = None
 
   @property

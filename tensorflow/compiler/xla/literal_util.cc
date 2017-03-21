@@ -279,8 +279,7 @@ void TransposeLiteralInternal(const Literal& original,
         for (int64 i = 0; i < indices.size(); ++i) {
           new_indices[i] = indices[permutation[i]];
         }
-        LiteralUtil::Set<T>(
-            result, Permute(InversePermutation(permutation), indices), value);
+        LiteralUtil::Set<T>(result, new_indices, value);
       });
 }
 }  // namespace

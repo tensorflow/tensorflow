@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.util import nest
@@ -44,6 +45,28 @@ def _state_size_with_prefix(state_size, prefix=None):
       raise TypeError("prefix of _state_size_with_prefix should be a list.")
     result_state_size = prefix + result_state_size
   return result_state_size
+
+
+def _zero_state_tensors(state_size, batch_size, dtype):
+  """Create tensors of zeros based on state_size, batch_size, and dtype."""
+  if nest.is_sequence(state_size):
+    state_size_flat = nest.flatten(state_size)
+    zeros_flat = [
+        array_ops.zeros(
+            array_ops.stack(_state_size_with_prefix(
+                s, prefix=[batch_size])),
+            dtype=dtype) for s in state_size_flat
+    ]
+    for s, z in zip(state_size_flat, zeros_flat):
+      z.set_shape(_state_size_with_prefix(s, prefix=[None]))
+    zeros = nest.pack_sequence_as(structure=state_size,
+                                  flat_sequence=zeros_flat)
+  else:
+    zeros_size = _state_size_with_prefix(state_size, prefix=[batch_size])
+    zeros = array_ops.zeros(array_ops.stack(zeros_size), dtype=dtype)
+    zeros.set_shape(_state_size_with_prefix(state_size, prefix=[None]))
+
+  return zeros
 
 
 class _RNNCell(object):
@@ -119,22 +142,6 @@ class _RNNCell(object):
       a nested list or tuple (of the same structure) of `2-D` tensors with
     the shapes `[batch_size x s]` for each s in `state_size`.
     """
-    state_size = self.state_size
-    if nest.is_sequence(state_size):
-      state_size_flat = nest.flatten(state_size)
-      zeros_flat = [
-          array_ops.zeros(
-              array_ops.stack(_state_size_with_prefix(
-                  s, prefix=[batch_size])),
-              dtype=dtype) for s in state_size_flat
-      ]
-      for s, z in zip(state_size_flat, zeros_flat):
-        z.set_shape(_state_size_with_prefix(s, prefix=[None]))
-      zeros = nest.pack_sequence_as(structure=state_size,
-                                    flat_sequence=zeros_flat)
-    else:
-      zeros_size = _state_size_with_prefix(state_size, prefix=[batch_size])
-      zeros = array_ops.zeros(array_ops.stack(zeros_size), dtype=dtype)
-      zeros.set_shape(_state_size_with_prefix(state_size, prefix=[None]))
-
-    return zeros
+    with ops.name_scope(type(self).__name__ + "ZeroState", values=[batch_size]):
+      state_size = self.state_size
+      return _zero_state_tensors(state_size, batch_size, dtype)

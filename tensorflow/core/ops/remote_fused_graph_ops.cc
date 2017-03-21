@@ -22,10 +22,11 @@ namespace tensorflow {
 // TODO(satok): Implement shape_inference
 REGISTER_OP("RemoteFusedGraphExecute")
     .Input("values: M * T")
-    .Output("output: N * T")
+    .Output("output: N * U")
     .Attr("M: int >= 0")
     .Attr("N: int >= 0")
     .Attr("T: type")
+    .Attr("U: type")
     .Attr("serialized_graph_transfer_info: string")
     .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(

@@ -14,15 +14,16 @@
 # ==============================================================================
 """TensorBoard Plugin asset abstract class.
 
-TensorBoard plugins may need to write arbitrary assets to disk, such as
+TensorBoard plugins may need to provide arbitrary assets, such as
 configuration information for specific outputs, or vocabulary files, or sprite
 images, etc.
 
 This module contains methods that allow plugin assets to be specified at graph
 construction time. Plugin authors define a PluginAsset which is treated as a
-singleton on a per-graph basis. The PluginAsset has a serialize_to_directory
-method which writes its assets to disk within a special plugin directory
-that the tf.summary.FileWriter creates.
+singleton on a per-graph basis. The PluginAsset has an assets method which
+returns a dictionary of asset contents. The tf.summary.FileWriter
+(or any other Summary writer) will serialize these assets in such a way that
+TensorBoard can retrieve them.
 """
 
 from __future__ import absolute_import
@@ -111,30 +112,30 @@ class PluginAsset(object):
 
   Plugin authors are expected to extend the PluginAsset class, so that it:
   - has a unique plugin_name
-  - provides a serialize_to_directory method that dumps its assets in that dir
-  - takes no constructor arguments
+  - provides an assets method that returns an {asset_name: asset_contents}
+    dictionary. For now, asset_contents are strings, although we may add
+    StringIO support later.
 
   LifeCycle of a PluginAsset instance:
   - It is constructed when get_plugin_asset is called on the class for
-  the first time.
+    the first time.
   - It is configured by code that follows the calls to get_plugin_asset
   - When the containing graph is serialized by the tf.summary.FileWriter, the
-  writer calls serialize_to_directory and the PluginAsset instance dumps its
-  contents to disk.
+    writer calls assets and the PluginAsset instance provides its contents to be
+    written to disk.
   """
   __metaclass__ = abc.ABCMeta
 
   plugin_name = None
 
   @abc.abstractmethod
-  def serialize_to_directory(self, directory):
-    """Serialize the assets in this PluginAsset to given directory.
+  def assets(self):
+    """Provide all of the assets contained by the PluginAsset instance.
 
-    The directory will be specific to this plugin (as determined by the
-    plugin_key property on the class). This method will be called when the graph
-    containing this PluginAsset is given to a tf.summary.FileWriter.
+    The assets method should return a dictionary structured as
+    {asset_name: asset_contents}. asset_contents is a string.
 
-    Args:
-      directory: The directory path (as string) that serialize should write to.
+    This method will be called by the tf.summary.FileWriter when it is time to
+    write the assets out to disk.
     """
     raise NotImplementedError()

@@ -18,8 +18,8 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import threading
 import time
-import uuid
 
 # Google-internal import(s).
 from tensorflow.core.util import event_pb2
@@ -43,7 +43,7 @@ class DumpingDebugWrapperSession(framework.NonInteractiveDebugWrapperSession):
         calls.
         As the `run()` calls occur, subdirectories will be added to
         `session_root`. The subdirectories' names has the following pattern:
-          run_<epoch_time_stamp>_<uuid>
+          run_<epoch_time_stamp>_<zero_based_run_counter>
         E.g., run_1480734393835964_ad4c953a85444900ae79fc1b652fb324
       watch_fn: (`Callable`) A Callable that can be used to define per-run
         debug ops and watched tensors. See the doc of
@@ -71,10 +71,13 @@ class DumpingDebugWrapperSession(framework.NonInteractiveDebugWrapperSession):
             session_root)
     self._session_root = session_root
 
-  def _prepare_run_debug_urls(self, fetches, feed_dict):
+    self._run_counter = 0
+    self._run_counter_lock = threading.Lock()
+
+  def prepare_run_debug_urls(self, fetches, feed_dict):
     """Implementation of abstrat method in superclass.
 
-    See doc of `NonInteractiveDebugWrapperSession.__prepare_run_debug_urls()`
+    See doc of `NonInteractiveDebugWrapperSession.prepare_run_debug_urls()`
     for details. This implentation creates a run-specific subdirectory under
     self._session_root and stores information regarding run `fetches` and
     `feed_dict.keys()` in the subdirectory.
@@ -89,8 +92,11 @@ class DumpingDebugWrapperSession(framework.NonInteractiveDebugWrapperSession):
     """
 
     # Add a UUID to accommodate the possibility of concurrent run() calls.
-    run_dir = os.path.join(self._session_root, "run_%d_%s" %
-                           (int(time.time() * 1e6), uuid.uuid4().hex))
+    self._run_counter_lock.acquire()
+    run_dir = os.path.join(self._session_root, "run_%d_%d" %
+                           (int(time.time() * 1e6), self._run_counter))
+    self._run_counter += 1
+    self._run_counter_lock.release()
     gfile.MkDir(run_dir)
 
     fetches_event = event_pb2.Event()

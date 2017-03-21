@@ -699,7 +699,7 @@ class NonInteractiveDebugWrapperSession(BaseDebugWrapperSession):
     return OnSessionInitResponse(OnSessionInitAction.PROCEED)
 
   @abc.abstractmethod
-  def _prepare_run_debug_urls(self, fetches, feed_dict):
+  def prepare_run_debug_urls(self, fetches, feed_dict):
     """Abstract method to be implemented by concrete subclasses.
 
     This method prepares the run-specific debug URL(s).
@@ -743,7 +743,7 @@ class NonInteractiveDebugWrapperSession(BaseDebugWrapperSession):
         options including debug_ops, and whitelists.
     """
 
-    debug_urls = self._prepare_run_debug_urls(fetches, feed_dict)
+    debug_urls = self.prepare_run_debug_urls(fetches, feed_dict)
     if self._watch_fn is None:
       watch_options = WatchOptions()
     else:

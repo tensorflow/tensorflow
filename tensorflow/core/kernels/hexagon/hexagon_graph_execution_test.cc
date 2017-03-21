@@ -56,6 +56,7 @@ constexpr const char* const FUSED_MODEL_FILENAME =
     "tensorflow_inception_v3_stripped_optimized_quantized_fused_hexagon.pb";
 constexpr const char* const REMOTE_FUSED_GRAPH_EXECUTE_NODE_NAME =
     "remote_fused_graph_execute_node";
+constexpr bool USE_SHAPE_INFERENCE = false;
 
 const bool DBG_DUMP_FLOAT_DATA = false;
 const int WIDTH = 299;
@@ -165,11 +166,20 @@ static void LoadImage(std::vector<float>* img_floats_ptr) {
   }
 }
 
+static Tensor BuildImageTensor(const std::vector<float>& img_floats) {
+  LOG(INFO) << "Ioading image finished.";
+  Tensor img_tensor(DT_FLOAT, {1, WIDTH, HEIGHT, DEPTH});
+  CHECK_EQ(WIDTH * HEIGHT * DEPTH, img_floats.size());
+  CHECK_EQ(img_tensor.TotalBytes(), img_floats.size() * sizeof(float));
+  LOG(INFO) << "Copy data to tensor.";
+  std::memcpy(img_tensor.flat<float>().data(), img_floats.data(),
+              img_tensor.TotalBytes());
+  return img_tensor;
+}
+
 static void RunInferenceByHexagonControlWrapper(
     const GraphTransferer& gt, const std::vector<float>& img_floats) {
-  const ConstByteArray ba =
-      std::make_tuple(reinterpret_cast<const uint8*>(img_floats.data()),
-                      img_floats.size() * sizeof(float), DT_FLOAT);
+  const Tensor img_tensor = BuildImageTensor(img_floats);
 
   const RemoteFusedGraphExecuteInfo execute_info =
       GraphTransferUtils::BuildRemoteFusedGraphExecuteInfo(
@@ -183,7 +193,7 @@ static void RunInferenceByHexagonControlWrapper(
   hexagon_control_wrapper.SetupGraph();
 
   // 3. Fill input node's output
-  hexagon_control_wrapper.FillInputNode("Mul", ba);
+  hexagon_control_wrapper.FillInputNode("Mul", img_tensor);
 
   // 4. Execute graph
   profile_utils::CpuUtils::EnableClockCycleProfiling(true);
@@ -216,13 +226,7 @@ static void RunFusedGraph(const GraphDef& fused_graph_def) {
   LoadImage(&img_floats);
 
   LOG(INFO) << "Ioading image finished.";
-  Tensor img_tensor(DT_FLOAT, {1, WIDTH, HEIGHT, DEPTH});
-  ASSERT_EQ(WIDTH * HEIGHT * DEPTH, img_floats.size());
-  ASSERT_EQ(img_tensor.TotalBytes(), img_floats.size() * sizeof(float));
-
-  LOG(INFO) << "Copy data to tensor.";
-  std::memcpy(img_tensor.flat<float>().data(), img_floats.data(),
-              img_tensor.TotalBytes());
+  const Tensor img_tensor = BuildImageTensor(img_floats);
 
   // Setup session
   std::vector<Tensor> output_tensors;
@@ -279,11 +283,18 @@ TEST(GraphTransferer,
   RemoteFusedGraphExecuteUtils::TensorShapeMap output_tensor_info;
   GraphTransferer gt;
   gt.EnableStrictCheckMode(false);
+  profile_utils::CpuUtils::EnableClockCycleProfiling(true);
+  ClockCycleProfiler prof;
+  prof.Start();
   Status status = gt.LoadGraphFromProtoFile(
       *ops_definitions, MODEL_FILENAME, inputs, output_node_names,
-      false /* is_text_proto */, false /* shape_inference_for_unknown_shape */,
-      true /* dry_run_for_unknown_shape */, &output_tensor_info);
+      false,                 // is_text_proto
+      USE_SHAPE_INFERENCE,   // shape_inference_for_unknown_shape
+      !USE_SHAPE_INFERENCE,  // dry_run_for_unknown_shape
+      &output_tensor_info);
   ASSERT_TRUE(status.ok()) << status;
+  prof.Stop();
+  prof.DumpStatistics("LoadGraphFromProtoFile");
 
   std::vector<float> img_floats;
   LoadImage(&img_floats);

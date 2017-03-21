@@ -235,6 +235,14 @@ class ReductionOp : public OpKernel {
     if (!out.CopyFrom(tmp_out, helper.out_shape())) {
       ctx->SetStatus(errors::Internal("Error during reduction copy."));
     }
+    if (ctx->track_allocations()) {
+      // The temporary memory becomes the output memory.
+      if (ctx->allocate_on_host(alloc_attr)) {
+        ctx->record_host_temp_memory_size(-out.AllocatedBytes());
+      } else {
+        ctx->record_device_temp_memory_size(-out.AllocatedBytes());
+      }
+    }
     ctx->set_output(0, out);
   }
 

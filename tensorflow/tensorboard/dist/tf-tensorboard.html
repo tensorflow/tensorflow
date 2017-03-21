@@ -32,8 +32,18 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
---><meta charset="UTF-8">
-</head><body><div hidden="" by-vulcanize=""><link rel="import" href="../polymer/polymer.html"><link rel="import" href="../iron-icons/iron-icons.html"><link rel="import" href="../paper-tabs/paper-tabs.html"><link rel="import" href="../paper-dialog/paper-dialog.html"><link rel="import" href="../paper-checkbox/paper-checkbox.html"><link rel="import" href="../paper-toolbar/paper-toolbar.html"><link rel="import" href="../paper-button/paper-button.html"><link rel="import" href="../paper-icon-button/paper-icon-button.html"><link rel="import" href="../paper-header-panel/paper-header-panel.html"><dom-module id="tf-globals" assetpath="../tf-globals/">
+--><meta charset="UTF-8"><link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../iron-icons/iron-icons.html">
+<link rel="import" href="../paper-tabs/paper-tabs.html">
+<link rel="import" href="../paper-dialog/paper-dialog.html">
+<link rel="import" href="../paper-checkbox/paper-checkbox.html">
+<link rel="import" href="../paper-toolbar/paper-toolbar.html">
+<link rel="import" href="../paper-button/paper-button.html">
+<link rel="import" href="../paper-icon-button/paper-icon-button.html">
+<link rel="import" href="../paper-header-panel/paper-header-panel.html">
+
+
+</head><body><div hidden="" by-vulcanize=""><dom-module id="tf-globals" assetpath="../tf-globals/">
   <script>/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -69,9 +79,11 @@ var TF;
 </script>
 </dom-module>
 
+<script src="../lodash/lodash.min.js"></script>
+<link rel="import" href="../paper-slider/paper-slider.html">
+<link rel="import" href="../paper-input/paper-input.html">
 
-
-<link rel="import" href="../paper-slider/paper-slider.html"><link rel="import" href="../paper-input/paper-input.html"><script src="../lodash/lodash.min.js"></script><dom-module id="tf-smoothing-input" assetpath="../tf-scalar-dashboard/">
+<dom-module id="tf-smoothing-input" assetpath="../tf-scalar-dashboard/">
   <template>
     <h3 class="title">Smoothing</h3>
     <div class="smoothing-block">
@@ -166,7 +178,8 @@ var TF;
     });
   </script>
 </dom-module>
-<script src="../d3/d3.js"></script><script>/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+<script src="../d3/d3.js"></script>
+<script>/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -290,7 +303,8 @@ var VZ;
         }
     })(Sorting = VZ.Sorting || (VZ.Sorting = {}));
 })(VZ || (VZ = {}));
-</script><script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+</script>
+<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -325,8 +339,9 @@ var TF;
         var RequestCancellationError = (function (_super) {
             __extends(RequestCancellationError, _super);
             function RequestCancellationError() {
-                _super.apply(this, arguments);
-                this.name = 'RequestCancellationError';
+                var _this = _super !== null && _super.apply(this, arguments) || this;
+                _this.name = 'RequestCancellationError';
+                return _this;
             }
             return RequestCancellationError;
         }(Error));
@@ -334,11 +349,12 @@ var TF;
         var RequestNetworkError = (function (_super) {
             __extends(RequestNetworkError, _super);
             function RequestNetworkError(req, url) {
-                _super.call(this);
-                this.message = "RequestNetworkError: " + req.status + " at " + url;
-                this.name = 'RequestNetworkError';
-                this.req = req;
-                this.url = url;
+                var _this = _super.call(this) || this;
+                _this.message = "RequestNetworkError: " + req.status + " at " + url;
+                _this.name = 'RequestNetworkError';
+                _this.req = req;
+                _this.url = url;
+                return _this;
             }
             return RequestNetworkError;
         }(Error));
@@ -352,8 +368,12 @@ var TF;
                 this._nSimultaneousRequests = nSimultaneousRequests;
                 this._maxRetries = maxRetries;
             }
-            /* Gives a promise that loads assets from given url (respects queuing) */
-            RequestManager.prototype.request = function (url) {
+            /**
+             * Gives a promise that loads assets from given url (respects queuing). If
+             * postData is provided, this request will use POST, not GET. This is an
+             * object mapping POST keys to string values.
+             */
+            RequestManager.prototype.request = function (url, postData) {
                 var _this = this;
                 var promise = new Promise(function (resolve, reject) {
                     var resolver = { resolve: resolve, reject: reject };
@@ -361,7 +381,7 @@ var TF;
                     _this.launchRequests();
                 })
                     .then(function () {
-                    return _this.promiseWithRetries(url, _this._maxRetries);
+                    return _this.promiseWithRetries(url, _this._maxRetries, postData);
                 })
                     .then(function (response) {
                     // Success - Let's free space for another active
@@ -412,24 +432,36 @@ var TF;
              * is a feature, if the request failures and retries are causing any
              * pain to users, they can see it and file issues.
              */
-            RequestManager.prototype.promiseWithRetries = function (url, maxRetries) {
+            RequestManager.prototype.promiseWithRetries = function (url, maxRetries, postData) {
                 var _this = this;
                 var success = function (x) { return x; };
                 var failure = function (x) {
                     if (maxRetries > 0) {
-                        return _this.promiseWithRetries(url, maxRetries - 1);
+                        return _this.promiseWithRetries(url, maxRetries - 1, postData);
                     }
                     else {
                         return Promise.reject(x);
                     }
                 };
-                return this._promiseFromUrl(url).then(success, failure);
+                return this._promiseFromUrl(url, postData).then(success, failure);
             };
             /* Actually get promise from url using XMLHttpRequest */
-            RequestManager.prototype._promiseFromUrl = function (url) {
+            RequestManager.prototype._promiseFromUrl = function (url, postData) {
                 return new Promise(function (resolve, reject) {
                     var req = new XMLHttpRequest();
-                    req.open('GET', url);
+                    req.open(postData ? 'POST' : 'GET', url);
+                    var formData;
+                    if (postData) {
+                        // We are to make a POST request.
+                        formData = new FormData();
+                        for (var postKey in postData) {
+                            if (postKey) {
+                                // The linter requires 'for in' loops to be filtered by an if
+                                // condition.
+                                formData.append(postKey, postData[postKey]);
+                            }
+                        }
+                    }
                     req.onload = function () {
                         if (req.status === 200) {
                             resolve(JSON.parse(req.responseText));
@@ -441,7 +473,7 @@ var TF;
                     req.onerror = function () {
                         reject(new RequestNetworkError(req, url));
                     };
-                    req.send();
+                    req.send(formData);
                 });
             };
             return RequestManager;
@@ -521,7 +553,7 @@ var TF;
          * @param demoMode {boolean} Whether to modify urls for filesystem demo usage.
          */
         function router(dataDir, demoMode) {
-            if (dataDir === void 0) { dataDir = '/data'; }
+            if (dataDir === void 0) { dataDir = 'data'; }
             if (demoMode === void 0) { demoMode = false; }
             var clean = demoMode ? Backend.demoify : function (x) { return x; };
             if (dataDir[dataDir.length - 1] === '/') {
@@ -583,6 +615,7 @@ var TF;
                 images: standardRoute('images'),
                 audio: standardRoute('audio'),
                 runMetadata: standardRoute('run_metadata', '.pbtxt'),
+                healthPills: function () { return dataDir + '/plugin/debugger/health_pills'; },
             };
         }
         Backend.router = router;
@@ -607,6 +640,8 @@ var TF;
 (function (TF) {
     var Backend;
     (function (Backend_1) {
+        ;
+        ;
         Backend_1.TYPES = [
             'scalar', 'histogram', 'compressedHistogram', 'graph', 'image', 'audio',
             'runMetadata'
@@ -701,6 +736,13 @@ var TF;
                 var url = this.router.scalars(tag, run);
                 p = this.requestManager.request(url);
                 return p.then(map(detupler(createScalar)));
+            };
+            /**
+             * Returns a promise for requesting the health pills for a list of nodes.
+             */
+            Backend.prototype.healthPills = function (nodeNames) {
+                var postData = { 'node_names': JSON.stringify(nodeNames) };
+                return this.requestManager.request(this.router.healthPills(), postData);
             };
             /**
              * Return a promise containing HistogramDatums for given run and tag.
@@ -860,6 +902,11 @@ var TF;
             if (numBins === void 0) { numBins = 30; }
             if (histogram.bucketRightEdges.length !== histogram.bucketCounts.length) {
                 throw (new Error('Edges and counts are of different lengths.'));
+            }
+            if (max === min) {
+                // Create bins even if all the data has a single value.
+                max = min * 1.1 + 1;
+                min = min / 1.1 - 1;
             }
             var binWidth = (max - min) / numBins;
             var bucketLeft = min; // Use the min as the starting point for the bins.
@@ -1032,6 +1079,11 @@ var TF;
     })(Backend = TF.Backend || (TF.Backend = {}));
 })(TF || (TF = {}));
 </script>
+
+
+
+
+
 <dom-module id="tf-color-scale" assetpath="../tf-color-scale/">
   <script>/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
@@ -1201,8 +1253,9 @@ var TF;
     })();
   </script>
 </dom-module>
+<link rel="import" href="../paper-styles/paper-styles.html">
 
-<link rel="import" href="../paper-styles/paper-styles.html"><dom-module id="scrollbar-style" assetpath="/">
+<dom-module id="scrollbar-style" assetpath="../tf-dashboard-common/">
   <template>
     <style>
       .scrollbar::-webkit-scrollbar-track
@@ -1241,6 +1294,7 @@ var TF;
   }
 
 </style>
+
 <dom-module id="tf-dashboard-layout" assetpath="../tf-dashboard-common/">
   <template>
     <div id="sidebar">
@@ -1296,7 +1350,7 @@ var TF;
 
       .sidebar-section {
         border-top: solid 1px rgba(0, 0, 0, 0.12);
-        padding: 20px 0px 20px 30px;
+        padding: 15px 0px 15px 30px;
       }
 
       .sidebar-section:first-child {
@@ -1317,7 +1371,11 @@ var TF;
     </style>
   </template>
 </dom-module>
-<link rel="import" href="../paper-dropdown-menu/paper-dropdown-menu.html"><link rel="import" href="../paper-menu/paper-menu.html"><link rel="import" href="../paper-item/paper-item.html"><dom-module id="tf-downloader" assetpath="../tf-dashboard-common/">
+<link rel="import" href="../paper-dropdown-menu/paper-dropdown-menu.html">
+<link rel="import" href="../paper-menu/paper-menu.html">
+<link rel="import" href="../paper-item/paper-item.html">
+
+<dom-module id="tf-downloader" assetpath="../tf-dashboard-common/">
   <template>
     <paper-dropdown-menu no-label-float="true" label="run to download" selected-item-label="{{_run}}">
       <paper-menu class="dropdown-content">
@@ -1537,6 +1595,7 @@ var TF;
     })(Dashboard = TF.Dashboard || (TF.Dashboard = {}));
 })(TF || (TF = {}));
 </script>
+
 <dom-module id="tf-option-selector" assetpath="../tf-dashboard-common/">
   <template>
     <div id="wrap">
@@ -1607,8 +1666,9 @@ var TF;
     });
   </script>
 </dom-module>
+<link rel="import" href="../iron-collapse/iron-collapse.html">
 
-<link rel="import" href="../iron-collapse/iron-collapse.html"><dom-module id="tf-collapsable-pane" assetpath="../tf-dashboard-common/">
+<dom-module id="tf-collapsable-pane" assetpath="../tf-dashboard-common/">
   <template>
     <button class="heading" on-tap="togglePane" open-button$="[[opened]]">
     <span class="name">[[name]]</span>
@@ -1632,7 +1692,7 @@ var TF;
       :host:first-of-type {
         margin-top: 20px;
       }
-      
+
       :host:last-of-type {
         margin-bottom: 20px;
       }
@@ -1693,8 +1753,263 @@ var TF;
   </script>
 
 </dom-module>
+<script src="../plottable/plottable.js"></script>
+<style>
+/**
+ * @license
+ * The MIT License (MIT)
+ *
+ * Copyright (c) 2014-2015 Palantir Technologies, Inc.
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ *
+ * Plottable 1.16.1 (https://github.com/palantir/plottable)
+ * Copyright 2014-2015 Palantir Technologies
+ * Licensed under MIT (https://github.com/palantir/plottable/blob/master/LICENSE)
+*/
+.plottable-colors-0 {
+  background-color: #5279c7; /* INDIGO */
+}
 
-<script src="../plottable/plottable.js"></script><link rel="stylesheet" type="text/css" href="../plottable/plottable.css"><dom-module id="tf-chart-scaffold" assetpath="../tf-dashboard-common/">
+.plottable-colors-1 {
+  background-color: #fd373e; /* CORAL_RED */
+}
+
+.plottable-colors-2 {
+  background-color: #63c261; /* FERN */
+}
+
+.plottable-colors-3 {
+  background-color: #fad419; /* BRIGHT_SUN */
+}
+
+.plottable-colors-4 {
+  background-color: #2c2b6f; /* JACARTA */
+}
+
+.plottable-colors-5 {
+  background-color: #ff7939; /* BURNING_ORANGE */
+}
+
+.plottable-colors-6 {
+  background-color: #db2e65; /* CERISE_RED */
+}
+
+.plottable-colors-7 {
+  background-color: #99ce50; /* CONIFER */
+}
+
+.plottable-colors-8 {
+  background-color: #962565; /* ROYAL_HEATH */
+}
+
+.plottable-colors-9 {
+  background-color: #06cccc; /* ROBINS_EGG_BLUE */
+}
+
+svg.plottable {
+  display : block; /* SVGs must be block elements for width/height calculations to work in Firefox. */
+  pointer-events: visibleFill;
+}
+
+.plottable .background-fill {
+  fill: none;
+  pointer-events: none;
+}
+
+.plottable .bounding-box {
+  /* Invisible pink bounding-box to allow for collision testing */
+  fill: pink;
+  visibility: hidden;
+}
+
+.plottable .label text {
+  font-family: "Helvetica Neue", sans-serif;
+  fill: #32313F;
+}
+
+.plottable .bar-label-text-area text {
+  font-family: "Helvetica Neue", sans-serif;
+  font-size: 14px;
+}
+
+.plottable .label-area text {
+  fill: #32313F;
+  font-family: "Helvetica Neue", sans-serif;
+  font-size: 14px;
+}
+
+.plottable .light-label text {
+  fill: white;
+}
+
+.plottable .dark-label text {
+  fill: #32313F;
+}
+
+.plottable .off-bar-label text {
+  fill: #32313F;
+}
+
+.plottable .stacked-bar-plot .off-bar-label {
+  /* HACKHACK #2795: correct off-bar label logic to be implemented on StackedBar */
+  visibility: hidden !important;
+}
+
+.plottable .axis-label text {
+  font-size: 10px;
+  font-weight: bold;
+  letter-spacing: 1px;
+  line-height: normal;
+  text-transform: uppercase;
+}
+
+.plottable .title-label text {
+  font-size: 20px;
+  font-weight: bold;
+}
+
+.plottable .axis line.baseline {
+  stroke: #CCC;
+  stroke-width: 1px;
+}
+
+.plottable .axis line.tick-mark {
+  stroke: #CCC;
+  stroke-width: 1px;
+}
+
+.plottable .axis text {
+  fill: #32313F;
+  font-family: "Helvetica Neue", sans-serif;
+  font-size: 12px;
+  font-weight: 200;
+  line-height: normal;
+}
+
+.plottable .axis .annotation-circle {
+  fill: white;
+  stroke-width: 1px;
+  stroke: #CCC;
+}
+
+.plottable .axis .annotation-line {
+  stroke: #CCC;
+  stroke-width: 1px;
+}
+
+.plottable .axis .annotation-rect {
+  stroke: #CCC;
+  stroke-width: 1px;
+  fill: white;
+}
+
+.plottable .bar-plot .baseline {
+  stroke: #999;
+}
+
+.plottable .gridlines line {
+  stroke: #3C3C3C; /* hackhack: gridlines should be solid; see #820 */
+  opacity: 0.25;
+  stroke-width: 1px;
+}
+
+.plottable .selection-box-layer .selection-area {
+  fill: black;
+  fill-opacity: 0.03;
+  stroke: #CCC;
+}
+/* DragBoxLayer */
+.plottable .drag-box-layer.x-resizable .drag-edge-lr {
+  cursor: ew-resize;
+}
+.plottable .drag-box-layer.y-resizable .drag-edge-tb {
+  cursor: ns-resize;
+}
+
+.plottable .drag-box-layer.x-resizable.y-resizable .drag-corner-tl {
+  cursor: nwse-resize;
+}
+.plottable .drag-box-layer.x-resizable.y-resizable .drag-corner-tr {
+  cursor: nesw-resize;
+}
+.plottable .drag-box-layer.x-resizable.y-resizable .drag-corner-bl {
+  cursor: nesw-resize;
+}
+.plottable .drag-box-layer.x-resizable.y-resizable .drag-corner-br {
+  cursor: nwse-resize;
+}
+
+.plottable .drag-box-layer.movable .selection-area {
+  cursor: move; /* IE fallback */
+  cursor: -moz-grab;
+  cursor: -webkit-grab;
+  cursor: grab;
+}
+
+.plottable .drag-box-layer.movable .selection-area:active {
+  cursor: -moz-grabbing;
+  cursor: -webkit-grabbing;
+  cursor: grabbing;
+}
+/* /DragBoxLayer */
+
+.plottable .guide-line-layer line.guide-line {
+  stroke: #CCC;
+  stroke-width: 1px;
+}
+
+.plottable .drag-line-layer.enabled.vertical line.drag-edge {
+  cursor: ew-resize;
+}
+
+.plottable .drag-line-layer.enabled.horizontal line.drag-edge {
+  cursor: ns-resize;
+}
+
+.plottable .legend text {
+  fill: #32313F;
+  font-family: "Helvetica Neue", sans-serif;
+  font-size: 12px;
+  font-weight: bold;
+  line-height: normal;
+}
+
+.plottable .interpolated-color-legend rect.swatch-bounding-box {
+  fill: none;
+  stroke: #CCC;
+  stroke-width: 1px;
+  pointer-events: none;
+}
+
+.plottable .waterfall-plot line.connector {
+  stroke: #CCC;
+  stroke-width: 1px;
+}
+
+.plottable .pie-plot .arc.outline {
+  stroke-linejoin: round;
+}
+
+</style>
+
+<dom-module id="tf-chart-scaffold" assetpath="../tf-dashboard-common/">
   <template>
     <content></content>
     <style>
@@ -1719,7 +2034,16 @@ var TF;
         _attached: {
           type: Boolean,
           value: false
-        }
+        },
+
+        // Storing the update ID of the previous request for data enables us to determine if a
+        // data response is outdated. We rely on an increasing ID instead of timestamp because
+        // successive updates often fire within the same millisecond.
+        _dataUpdateIdOfLastRequest: Number,
+        _nextAvailableDataUpdateId: {
+          type: Number,
+          value: 1,
+        },
       },
       observers: [
         "reload(tag, dataProvider)",
@@ -1746,8 +2070,23 @@ var TF;
           throw new Error('tf-chart-scaffold requires a tag.');
         }
 
+        // TODO(chizeng): At this point, notify effective children that the previous data has been
+        // invalidated. For instance, the image dashboard may want to clear its images. Today, the
+        // chart scaffold only informs children when the new image URLs response finishes loading.
+
+        const dataUpdateId = this._nextAvailableDataUpdateId++;
+        this._dataUpdateIdOfLastRequest = dataUpdateId;
+
         this.visibleSeries.forEach(function(name) {
           this.dataProvider(this.tag, name).then(function(data) {
+            if (dataUpdateId != this._dataUpdateIdOfLastRequest) {
+              // This response is outdated. Ignore it.
+              // TODO(chizeng): Explore canceling an outdated request before we even receive its
+              // response. This involves creating hooks into the request manager and might introduce
+              // some complexity that may not be worth it; Tensorboard frankly does not seem
+              // bottlenecked by the network (It is often run in fast corp networks or locally.).
+              return;
+            }
             this.chart().setSeriesData(name, data);
           }.bind(this));
         }.bind(this));
@@ -1779,9 +2118,10 @@ var TF;
     });
   </script>
 </dom-module>
+
 <dom-module id="tf-panes-helper" assetpath="../tf-dashboard-common/">
   <template>
-    <content></content> 
+    <content></content>
     <tf-no-data-warning data-type="[[dataType]]" show-warning="[[dataNotFound]]"></tf-no-data-warning>
 
     <template is="dom-repeat" items="[[categories]]" as="category">
@@ -1797,7 +2137,7 @@ var TF;
                 </div>
                 <div class="card-content">
                   <tf-chart-scaffold tag="[[item.tag]]" data-provider="[[dataProvider]]" visible-series="[[item.runs]]" on-ready="_instantiateTemplate">
-                    
+
                   </tf-chart-scaffold>
                 </div>
                 <div class="card-bottom-row">
@@ -2056,9 +2396,7 @@ var TF;
     });
   </script>
 </dom-module>
-
-
-<link rel="import" href="../paper-toggle-button/paper-toggle-button.html"><dom-module id="tf-storage" assetpath="../tf-storage/">
+<dom-module id="tf-storage" assetpath="../tf-storage/">
  <script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -2399,7 +2737,7 @@ var TF;
 </script>
 </dom-module>
 
-<dom-module id="tf-regex-group" assetpath="/">
+<dom-module id="tf-regex-group" assetpath="../tf-dashboard-common/">
   <template>
     <div class="regex-list">
       <template is="dom-repeat" items="{{rawRegexes}}">
@@ -2505,26 +2843,22 @@ var TF;
     });
   </script>
 </dom-module>
+<link rel="import" href="../paper-toggle-button/paper-toggle-button.html">
+
 <dom-module id="tf-categorizer" assetpath="../tf-dashboard-common/">
   <template>
     <div class="inputs">
       <tf-regex-group id="regexGroup" regexes="{{regexes}}"></tf-regex-group>
     </div>
-    <div id="underscore-categorization">
-      <paper-checkbox checked="{{splitOnUnderscore}}">Split on underscores</paper-checkbox>
-    </div>
     <style>
       :host {
         display: block;
-        padding-bottom: 15px;
+        padding-bottom: 5px;
       }
       paper-checkbox {
         --paper-checkbox-checked-color: var(--paper-grey-600);
         --paper-checkbox-unchecked-color: var(--paper-grey-600);
         font-size: 14px;
-      }
-      #underscore-categorization {
-        color: var(--paper-grey-700);
       }
     </style>
   </template>
@@ -2544,21 +2878,26 @@ limitations under the License.
 ==============================================================================*/
 var Categorizer;
 (function (Categorizer) {
+    /**
+     * This module contains methods that allow sorting tags into 'categories'.
+     * A category contains a name and a list of tags.
+     * The sorting strategy is defined by a 'CustomCategorization', which contains
+     * 'categoryDefinitions' which are regex rules used to construct a category.
+     * E.g. the regex rule 'xent' will create a category called 'xent' that
+     * contains values whose tags match the regex.
+     *
+     * After custom categories are evaluated, the tags are sorted by a hardcoded
+     * fallback categorizer, which may, for example, group tags into categories
+     * based on their top namespace.
+     */
     /* Canonical TensorFlow ops are namespaced using forward slashes.
      * This fallback categorizer categorizes by the top-level namespace.
      */
     Categorizer.topLevelNamespaceCategorizer = splitCategorizer(/\//);
-    // Try to produce good categorizations on legacy graphs, which often
-    // are namespaced like l1_foo/bar or l2_baz/bam.
-    // If there is no leading underscore before the first forward slash,
-    // then it behaves the same as topLevelNamespaceCategorizer
-    Categorizer.legacyUnderscoreCategorizer = splitCategorizer(/[\/_]/);
     function fallbackCategorizer(s) {
         switch (s) {
             case 'TopLevelNamespaceCategorizer':
                 return Categorizer.topLevelNamespaceCategorizer;
-            case 'LegacyUnderscoreCategorizer':
-                return Categorizer.legacyUnderscoreCategorizer;
             default:
                 throw new Error('Unrecognized categorization strategy: ' + s);
         }
@@ -2646,14 +2985,7 @@ var Categorizer;
         categoriesAreExclusive: {type: Boolean, value: true},
         fallbackCategorizer: {
           type: String,
-          computed: "chooseFallbackCategorizer(splitOnUnderscore)"
-        },
-        splitOnUnderscore: {
-          type: Boolean,
-          notify: true,
-          value: TF.URIStorage.getBooleanInitializer('splitOnUnderscore',
-              false),
-          observer: '_splitOnUnderscoreObserver'
+          value: "TopLevelNamespaceCategorizer",
         },
         categorizer: {
           type: Object,
@@ -2676,21 +3008,10 @@ var Categorizer;
           this._setCategories(categories);
         })
       },
-      chooseFallbackCategorizer: function(splitOnUnderscore) {
-        if (splitOnUnderscore) {
-          return "LegacyUnderscoreCategorizer";
-        } else {
-          return "TopLevelNamespaceCategorizer";
-        }
-      },
-      _splitOnUnderscoreObserver: TF.URIStorage.getBooleanObserver(
-          'splitOnUnderscore', false)
     });
   </script>
 </dom-module>
-
-
-<dom-module id="run-color-style" assetpath="/">
+<dom-module id="run-color-style" assetpath="../tf-dashboard-common/">
   <template>
     <style>
     [color-class="light-blue"] paper-checkbox {
@@ -2750,7 +3071,8 @@ var Categorizer;
     </style>
   </template>
 </dom-module>
-<dom-module id="tf-multi-checkbox" assetpath="/">
+
+<dom-module id="tf-multi-checkbox" assetpath="../tf-dashboard-common/">
   <style include="scrollbar-style"></style>
   <style include="run-color-style"></style>
 
@@ -2760,7 +3082,7 @@ var Categorizer;
       <template is="dom-repeat" items="[[namesMatchingRegex]]">
         <div class="run-row">
           <div class="icon-container checkbox-container vertical-align-container">
-            <paper-checkbox class="checkbox vertical-align-center" name="[[item]]" checked$="[[_isChecked(item, runsDisabled.*)]]" on-change="_checkboxChange"></paper-checkbox>
+            <paper-checkbox class="checkbox vertical-align-center" name="[[item]]" checked$="[[_isChecked(item, runSelectionState.*)]]" on-change="_checkboxChange"></paper-checkbox>
 
           </div>
           <div class="icon-container isolator-container vertical-align-container">
@@ -2873,20 +3195,27 @@ var Categorizer;
         type: Array,
         computed: "computeNamesMatchingRegex(names.*, regex)"
       }, // Runs that match the regex
-      runsDisabled: {
+      runSelectionState: {
+      // if a run is explicitly enabled, True, if explicitly disabled, False.
+      // if undefined, default value (enable for first k runs, disable after).
         type: Object,
-        value: TF.URIStorage.getObjectInitializer('runsDisabled', {}),
-      }, // Every run that is disabled is stored in the map (with value true)
+        value: TF.URIStorage.getObjectInitializer('runSelectionState', {}),
+      },
       // (Allows state to persist across regex filtering)
       outSelected: {
         type: Array,
         notify: true,
-        computed: 'computeOutSelected(namesMatchingRegex.*, runsDisabled.*)'
+        computed: 'computeOutSelected(namesMatchingRegex.*, runSelectionState.*)'
       },
       colorScale: {
         type: Object,
         observer: "synchronizeColors",
       }, // map from run name to css class
+      numRunsEnabledByDefault: {
+        // When TB first loads, first k runs are enabled, rest are disabled.
+        type: Number,
+        value: 10,
+      },
       _debouncedRegexChange: {
         type: Function,
         // Updating the regex can be slow, because it involves updating styles
@@ -2917,10 +3246,10 @@ var Categorizer;
       'dom-change': 'synchronizeColors',
     },
     observers: [
-      "_setIsolatorIcon(runsDisabled, names)",
-      "_storeRunToIsCheckedMapping(runsDisabled)",
+      "_setIsolatorIcon(runSelectionState, names)",
+      "_storeRunToIsCheckedMapping(runSelectionState)",
     ],
-    _storeRunToIsCheckedMapping: TF.URIStorage.getObjectObserver('runsDisabled', {}),
+    _storeRunToIsCheckedMapping: TF.URIStorage.getObjectObserver('runSelectionState', {}),
     _makeRegex: function(regex) {
       try {
         return new RegExp(regex)
@@ -2929,12 +3258,12 @@ var Categorizer;
       }
     },
     _setIsolatorIcon: function() {
-      var runMap = this.runsDisabled;
-      var numChecked = this.names.length - _.filter(_.values(runMap)).length;
+      var runMap = this.runSelectionState;
+      var numChecked = _.filter(_.values(runMap)).length;
       var buttons = Array.prototype.slice.call(this.querySelectorAll(".isolator"));
 
       buttons.forEach(function(b) {
-        if (numChecked === 1 && !runMap[b.name]) {
+        if (numChecked === 1 && runMap[b.name]) {
           b.icon = "radio-button-checked";
         } else {
           b.icon = "radio-button-unchecked";
@@ -2948,9 +3277,10 @@ var Categorizer;
       });
     },
     computeOutSelected: function(__, ___) {
-      var runsDisabled = this.runsDisabled;
-      return this.namesMatchingRegex.filter(function(n) {
-        return !runsDisabled[n];
+      var runSelectionState = this.runSelectionState;
+      var num = this.numRunsEnabledByDefault;
+      return this.namesMatchingRegex.filter(function(n, i) {
+        return runSelectionState[n] == null ? i<num : runSelectionState[n];
       });
     },
     synchronizeColors: function(e) {
@@ -2982,48 +3312,49 @@ var Categorizer;
       // If user clicks on the label for one run, enable it and disable all other runs.
 
       var name = Polymer.dom(e).localTarget.name;
-      var newDisabled = {};
+      var selectionState = {};
       this.names.forEach(function(n) {
-        newDisabled[n] = true;
+        selectionState[n] = n == name;
       })
-      delete newDisabled[name];
-      this.runsDisabled = newDisabled;
+      this.runSelectionState = selectionState;
     },
     _checkboxChange: function(e) {
       var target = Polymer.dom(e).localTarget;
-      if (target.checked) {
-        delete this.runsDisabled[target.name];
-      } else {
-        this.runsDisabled[target.name] = true;
-      }
+      this.runSelectionState[target.name] = target.checked;
       // n.b. notifyPath won't work because run names may have periods.
-      this.runsDisabled = _.clone(this.runsDisabled);
+      this.runSelectionState = _.clone(this.runSelectionState);
     },
     _isChecked: function(item, outSelectedChange) {
-      return this.runsDisabled[item] == undefined;
-    },
-    _initializeRuns: function(change) {
-      this.outSelected = change.base.slice();
+      return this.outSelected.indexOf(item) != -1;
     },
     _regexInputObserver: TF.URIStorage.getStringObserver("regexInput", ""),
     toggleAll: function() {
       var _this = this;
-      var allOn = this.namesMatchingRegex
-                    .filter(function(n) {return _this.runsDisabled[n]})
-                    .length === 0;
-      let newRunsDisabled = {}
-      if (allOn) {
-        this.names.forEach(function(n) {
-          newRunsDisabled[n] = true;
-        })
-      }
-      this.runsDisabled = newRunsDisabled;
+      var allToggledOn = this.namesMatchingRegex
+                    .every(function(n) {return _this.runSelectionState[n]});
+
+      var runSelectionStateIsDefault = Object.keys(this.runSelectionState).length == 0;
+
+      var numRuns = this.namesMatchingRegex.length;
+
+      var shouldDisable = allToggledOn || runSelectionStateIsDefault;
+
+      var newRunsDisabled = {};
+      this.names.forEach(function(n) {
+        newRunsDisabled[n] = !shouldDisable;
+      })
+      this.runSelectionState = newRunsDisabled;
     },
   });
   </script>
 </dom-module>
+
 <dom-module id="tf-run-selector" assetpath="../tf-dashboard-common/">
   <template>
+    <paper-dialog with-backdrop="" id="logdir-dialog">
+      <h2>logdir</h2>
+      <div inner-h-t-m-l="{{_breakString(logdir)}}"></div>
+    </paper-dialog>
     <div id="top-text">
       <h3 id="tooltip-help" class="tooltip-container">
         Runs
@@ -3034,7 +3365,10 @@ var Categorizer;
     Toggle All Runs
     </paper-button>
     <template is="dom-if" if="[[logdir]]">
-      <div id="logdir" inner-h-t-m-l="{{_breakString(logdir)}}"></div>
+      <div id="logdir">
+        <span id="clipped-logdir" inner-h-t-m-l="[[_clippedLogdir]]"></span><template is="dom-if" if="[[_shouldShowExpandLogdirButton(logdir, _logdirClipLength)]]"><a href="" on-click="_openLogdirDialog">…</a>
+        </template>
+      </div>
     </template>
     <style>
       :host {
@@ -3092,7 +3426,19 @@ var Categorizer;
         type: String,
         notify: true,
       },
+      // This is the potentially clipped portion of the logdir we show at the bottom of the sidebar.
+      _clippedLogdir: {
+        type: String,
+      },
+      _logdirClipLength: {
+        type: Number,
+        value: 250,
+        readOnly: true,
+      },
     },
+    observers: [
+      "_logdirSet(logdir)",
+    ],
     ready: function() {
       // Populate the logdir.
       this.backend.logdir().then(logdirObject => {
@@ -3107,11 +3453,35 @@ var Categorizer;
     },
     // Break the string at natural points, including commas, equals, and slashes
     _breakString: function(originalString) {
-      return originalString.replace(/([\/=-_,])/g, "$1<wbr>")
+      return originalString.replace(/([\/=\-_,])/g, "$1<wbr>");
+    },
+    _logdirSet: function(logdir) {
+      if (!logdir) {
+        // The logdir has not been set yet.
+        return;
+      }
+
+      var lineBrokenText;
+      if (logdir.length > this._logdirClipLength) {
+        // Clip the logdir to avoid blocking the runs selector. Let the user view a more full
+        // version of the logdir.
+        lineBrokenText = this._breakString(logdir.substring(0, this._logdirClipLength));
+      } else {
+        lineBrokenText = this._breakString(logdir);
+      }
+      this.set('_clippedLogdir', lineBrokenText);
+    },
+    _openLogdirDialog: function(event) {
+      event.preventDefault();
+      this.$$('#logdir-dialog').open();
+    },
+    _shouldShowExpandLogdirButton(logdir, _logdirClipLength) {
+      return logdir && logdir.length > _logdirClipLength;
     },
   });
   </script>
 </dom-module>
+
 <dom-module id="tf-sidebar-helper" assetpath="../tf-dashboard-common/">
   <template>
     <div class="sidebar-section">
@@ -3303,6 +3673,11 @@ var Categorizer;
         stroke-width: 1px;
       }
 
+      #chartsvg line.guide-line {
+        stroke: #999;
+        stroke-width: 1.5px;
+      }
+
     </style>
   </template>
   <script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
@@ -3340,18 +3715,20 @@ var Plottable;
          * Component Group.
          * TODO(danmane) - merge this into Plottable
          */
-        function DragZoomLayer(xScale, yScale) {
-            _super.call(this);
-            this.isZoomed = false;
-            this.easeFn = d3.ease('cubic-in-out');
-            this._animationTime = 750;
-            this.xScale(xScale);
-            this.yScale(yScale);
-            this._dragInteraction = new Plottable.Interactions.Drag();
-            this._dragInteraction.attachTo(this);
-            this._doubleClickInteraction = new Plottable.Interactions.DoubleClick();
-            this._doubleClickInteraction.attachTo(this);
-            this.setupCallbacks();
+        function DragZoomLayer(xScale, yScale, unzoomMethod) {
+            var _this = _super.call(this) || this;
+            _this.isZoomed = false;
+            _this.easeFn = d3.ease('cubic-in-out');
+            _this._animationTime = 750;
+            _this.xScale(xScale);
+            _this.yScale(yScale);
+            _this._dragInteraction = new Plottable.Interactions.Drag();
+            _this._dragInteraction.attachTo(_this);
+            _this._doubleClickInteraction = new Plottable.Interactions.DoubleClick();
+            _this._doubleClickInteraction.attachTo(_this);
+            _this.setupCallbacks();
+            _this.unzoomMethod = unzoomMethod;
+            return _this;
         }
         /**
          * Register a method that calls when the DragZoom interaction starts.
@@ -3434,21 +3811,12 @@ var Plottable;
                 return;
             }
             this.isZoomed = false;
-            // Some Plottable magic follows which ensures that when we un-zoom, we
-            // un-zoom to the current extent of the data; i.e. if new data was loaded
-            // since we zoomed, we should un-zoom to the extent of the new data.
-            // this basically replicates the autoDomain logic in Plottable.
-            // it uses the internal methods to get the same boundaries that autoDomain
-            // would, but allows us to interpolate the zoom with a nice animation.
             var xScale = this.xScale();
-            var yScale = this.yScale();
             xScale._domainMin = null;
             xScale._domainMax = null;
-            yScale._domainMin = null;
-            yScale._domainMax = null;
             var xDomain = xScale._getExtent();
-            var yDomain = yScale._getExtent();
-            this.interpolateZoom(xDomain[0], xDomain[1], yDomain[0], yDomain[1]);
+            this.xScale().domain(xDomain);
+            this.unzoomMethod();
         };
         // If we are zooming, disable interactions, to avoid contention
         DragZoomLayer.prototype.isZooming = function (isZooming) {
@@ -3520,6 +3888,7 @@ var VZ;
             this.colorScale = colorScale;
             this.tooltip = tooltip;
             this.datasets = [];
+            this._ignoreYOutliers = true;
             // lastPointDataset is a dataset that contains just the last point of
             // every dataset we're currently drawing.
             this.lastPointsDataset = new Plottable.Dataset();
@@ -3543,12 +3912,15 @@ var VZ;
             var yFormatter = VZ.ChartHelpers.multiscaleFormatter(VZ.ChartHelpers.Y_AXIS_FORMATTER_PRECISION);
             this.yAxis.margin(0).tickLabelPadding(5).formatter(yFormatter);
             this.yAxis.usesTextWidthApproximation(true);
-            this.dzl = new Plottable.DragZoomLayer(this.xScale, this.yScale);
+            this.dzl = new Plottable.DragZoomLayer(this.xScale, this.yScale, this.updateSpecialDatasets.bind(this));
             var center = this.buildPlot(this.xAccessor, this.xScale, this.yScale);
             this.gridlines =
                 new Plottable.Components.Gridlines(this.xScale, this.yScale);
-            this.center =
-                new Plottable.Components.Group([this.gridlines, center, this.dzl]);
+            var xZeroLine = new Plottable.Components.GuideLineLayer('horizontal');
+            xZeroLine.scale(this.yScale).value(0);
+            var yZeroLine = new Plottable.Components.GuideLineLayer('vertical');
+            yZeroLine.scale(this.xScale).value(0);
+            this.center = new Plottable.Components.Group([this.gridlines, xZeroLine, yZeroLine, center, this.dzl]);
             this.outer = new Plottable.Components.Table([
                 [this.yAxis, this.center],
                 [null, this.xAxis]
@@ -3603,6 +3975,12 @@ var VZ;
                 this.resmoothDataset(dataset);
             }
             this.updateSpecialDatasets();
+        };
+        LineChart.prototype.ignoreYOutliers = function (ignoreYOutliers) {
+            if (ignoreYOutliers !== this._ignoreYOutliers) {
+                this._ignoreYOutliers = ignoreYOutliers;
+                this.updateSpecialDatasets();
+            }
         };
         LineChart.prototype.updateSpecialDatasets = function () {
             if (this.smoothingEnabled) {
@@ -3667,6 +4045,13 @@ var VZ;
             };
             var nanData = _.flatten(this.datasets.map(datasetToNaNData));
             this.nanDataset.data(nanData);
+            var datasetToValues = function (d) {
+                return d.data().map(function (x) { return accessor(x, -1, d); });
+            };
+            var vals = _.flatten(this.datasets.map(datasetToValues));
+            vals = vals.filter(function (x) { return x === x && x !== Infinity && x !== -Infinity; });
+            var domain = VZ.ChartHelpers.computeDomain(vals, this._ignoreYOutliers);
+            this.yScale.domain(domain);
         };
         LineChart.prototype.setupTooltips = function (plot) {
             var _this = this;
@@ -3856,11 +4241,18 @@ var VZ;
             var data = dataset.data();
             var kernelRadius = Math.floor(data.length * factor / 2);
             data.forEach(function (d, i) {
-                var actualKernelRadius = Math.min(kernelRadius, i, data.length - i - 1);
+                var actualKernelRadius = Math.min(kernelRadius, i);
                 var start = i - actualKernelRadius;
                 var end = i + actualKernelRadius + 1;
-                // Only smooth finite numbers.
-                if (!_.isFinite(d.scalar)) {
+                if (end >= data.length) {
+                    // In the beginning, it's OK for the smoothing window to be small,
+                    // but this is not desirable towards the end. Rather than shrinking
+                    // the window, or extrapolating data to fill the gap, we're simply
+                    // not going to display the smoothed line towards the end.
+                    d.smoothed = Infinity;
+                }
+                else if (!_.isFinite(d.scalar)) {
+                    // Only smooth finite numbers.
                     d.smoothed = d.scalar;
                 }
                 else {
@@ -4018,6 +4410,41 @@ var VZ;
             };
         }
         ChartHelpers.multiscaleFormatter = multiscaleFormatter;
+        /* Compute an appropriate domain given an array of all the values that are
+         * going to be displayed. If ignoreOutliers is true, it will ignore the
+         * lowest 10% and highest 10% of the data when computing a domain.
+         * It has n log n performance when ignoreOutliers is true, as it needs to
+         * sort the data.
+         */
+        function computeDomain(values, ignoreOutliers) {
+            if (values.length === 0) {
+                return [-0.1, 1.1];
+            }
+            var a;
+            var b;
+            if (ignoreOutliers) {
+                var sorted = _.sortBy(values);
+                a = d3.quantile(sorted, 0.10);
+                b = d3.quantile(sorted, 0.90);
+            }
+            else {
+                a = d3.min(values);
+                b = d3.max(values);
+            }
+            // When the data all fits into the unit interval, we switch to a consistent
+            // domain for unit data. This is helpful for proportional parameters like
+            // error rates or % of queue that is full. This way, users can meaningfully
+            // compare charts and see information at a glance (if the value is always
+            // 1, it appears at top of the chart, 0 is bottom, etc.)
+            if (a >= 0 && b <= 1) {
+                return [-0.1, 1.1];
+            }
+            var padding = (b - a) * 0.20;
+            var domain = [a - padding, b + padding];
+            domain = d3.scale.linear().domain(domain).nice().domain();
+            return domain;
+        }
+        ChartHelpers.computeDomain = computeDomain;
         function accessorize(key) {
             return function (d, index, dataset) { return d[key]; };
         }
@@ -4135,12 +4562,13 @@ var VZ;
          *
          * The smoothing algorithm is a simple moving average, which, given a
          * point p and a window w, replaces p with a simple average of the
-         * points in the [p - floor(w/2), p + floor(w/2)] range.
-         * If there aren't enough points to cover the entire window to the left
-         * and to the right, the window is reduced to fit exactly the amount of
-         * elements available. This means that the smoothed line will be less
-         * smoothed at both extremities and gradually become more smooth until
-         * the desired window is reached.
+         * points in the [p - floor(w/2), p + floor(w/2)] range.  If there
+         * aren't enough points to cover the entire window to the left, the
+         * window is reduced to fit exactly the amount of elements available.
+         * This means that the smoothed line will be less in and gradually
+         * become more smooth until the desired window is reached. However when
+         * there aren't enough points on the right, the line stops being
+         * rendered at all.
          */
         smoothingEnabled: {
           type: Boolean,
@@ -4149,17 +4577,17 @@ var VZ;
 
         /**
          * Weight (between 0.0 and 1.0) of the smoothing. This weight controls
-         * the window size, and a weight of 1.0 means using the entire length of
-         * each dataset as the window, while a weight of 0.0 means using a
-         * window of 0 (and thus replacing each point with themselves).
+         * the window size, and a weight of 1.0 means using 50% of the entire
+         * dataset as the window, while a weight of 0.0 means using a window of
+         * 0 (and thus replacing each point with themselves).
          *
-         * The growth between 0.0 and 1.0 is not linear though. Because changing
-         * the window from 0% to 30% of the dataset smooths the line a lot more
-         * than changing the window from 70% to 100%, an exponential function is
-         * used instead. This function increases the size of the window slowly
-         * at the beginning and gradually speeds up the growth, but 0.0 still
-         * means a window of 0 and 1.0 still means a window of the dataset's
-         * length.
+         * The growth between 0.0 and 1.0 is not linear though. Because
+         * changing the window from 0% to 30% of the dataset smooths the line a
+         * lot more than changing the window from 70% to 100%, an exponential
+         * function is used instead: http://i.imgur.com/bDrhEZU.png. This
+         * function increases the size of the window slowly at the beginning
+         * and gradually speeds up the growth, but 0.0 still means a window of
+         * 0 and 1.0 still means a window of the dataset's length.
          */
         smoothingWeight: {
           type: Number,
@@ -4187,6 +4615,15 @@ var VZ;
         yScaleType: {
           type: String,
           value: 'linear'
+        },
+
+        /**
+         * Whether to ignore outlier data when computing the yScale domain.
+         */
+
+        ignoreYOutliers: {
+          type: Boolean,
+          value: true,
         },
 
         /**
@@ -4231,7 +4668,8 @@ var VZ;
         "_reloadFromCache(_chart)",
         "_smoothingChanged(smoothingEnabled, smoothingWeight, _chart)",
         "_tooltipSortingMethodChanged(tooltipSortingMethod, _chart)",
-        "_tooltipPositionChanged(tooltipPosition, _chart)"
+        "_tooltipPositionChanged(tooltipPosition, _chart)",
+        "_outliersChanged(ignoreYOutliers, _chart)"
       ],
 
       /**
@@ -4319,6 +4757,12 @@ var VZ;
           this._chart.smoothingDisable();
         }
       },
+      _outliersChanged: function() {
+        if (!this._chart) {
+          return;
+        }
+        this._chart.ignoreYOutliers(this.ignoreYOutliers);
+      },
       _tooltipSortingMethodChanged: function() {
         if(this._chart) {
           this._chart.setTooltipSortingMethod(this.tooltipSortingMethod);
@@ -4332,6 +4776,7 @@ var VZ;
     });
   </script>
 </dom-module>
+
 <dom-module id="tf-scalar-dashboard" assetpath="../tf-scalar-dashboard/">
   <template>
     <div id="plumbing">
@@ -4342,7 +4787,12 @@ var VZ;
       <div class="sidebar">
         <tf-sidebar-helper backend="[[backend]]" categories="{{_categories}}" color-scale="[[_colorScale]]" run2tag="[[run2tag]]" runs="[[runs]]" selected-runs="{{_selectedRuns}}">
           <div class="extend-first-section">
-            <paper-checkbox id="download-option" checked="{{_showDownloadLinks}}">Data download links</paper-checkbox>
+            <div class="line-item">
+              <paper-checkbox id="download-option" checked="{{_showDownloadLinks}}">Show data download links</paper-checkbox>
+            </div>
+              <div class="line-item">
+                <paper-checkbox id="outliersCheckbox" checked="{{_ignoreYOutliers}}">Ignore outliers in chart scaling</paper-checkbox>
+              </div>
             <div id="tooltip-sorting">
               <div id="tooltip-sorting-label">Tooltip sorting method:</div>
               <paper-dropdown-menu no-label-float="" selected-item-label="{{_tooltipSortingMethod}}">
@@ -4370,7 +4820,7 @@ var VZ;
       <div class="center">
         <tf-panes-helper categories="[[_categories]]" color-scale="[[_colorScale]]" data-type="[[dataType]]" data-provider="[[dataProvider]]" run2tag="[[run2tag]]" selected-runs="[[_selectedRuns]]" show-download-links="[[_showDownloadLinks]]" download-link-url-function="[[scalarUrl]]">
           <template>
-            <vz-line-chart x-type="[[_xType]]" color-scale="[[_colorScale]]" smoothing-enabled="[[_smoothingEnabled]]" smoothing-weight="[[_smoothingWeight]]" tooltip-sorting-method="[[_tooltipSortingMethod]]"></vz-line-chart>
+            <vz-line-chart x-type="[[_xType]]" color-scale="[[_colorScale]]" smoothing-enabled="[[_smoothingEnabled]]" smoothing-weight="[[_smoothingWeight]]" tooltip-sorting-method="[[_tooltipSortingMethod]]" ignore-y-outliers="[[_ignoreYOutliers]]"></vz-line-chart>
             <paper-icon-button class="log-button" icon="line-weight" on-tap="toggleLogScale" title="Toggle y-axis log scale"></paper-icon-button>
           </template>
         </tf-panes-helper>
@@ -4411,6 +4861,10 @@ var VZ;
         --paper-input-container-focus-color: var(--tb-orange-strong);
         width: 105px;
       }
+      .line-item {
+        display: block;
+        padding-top: 5px;
+      }
     </style>
 
   </template>
@@ -4450,6 +4904,10 @@ var VZ;
           type: Boolean,
           computed: '_computeSmoothingEnabled(_smoothingWeight)'
         },
+        _ignoreYOutliers: {
+          type: Boolean,
+          value: true,
+        },
         _xType: {
           type: String,
           value: "step"
@@ -4482,7 +4940,6 @@ var VZ;
     });
   </script>
 </dom-module>
-
 <dom-module id="vz-distribution-chart" assetpath="../vz-distribution-chart/">
   <template>
     <svg id="chartsvg"></svg>
@@ -4682,6 +5139,41 @@ var VZ;
             };
         }
         ChartHelpers.multiscaleFormatter = multiscaleFormatter;
+        /* Compute an appropriate domain given an array of all the values that are
+         * going to be displayed. If ignoreOutliers is true, it will ignore the
+         * lowest 10% and highest 10% of the data when computing a domain.
+         * It has n log n performance when ignoreOutliers is true, as it needs to
+         * sort the data.
+         */
+        function computeDomain(values, ignoreOutliers) {
+            if (values.length === 0) {
+                return [-0.1, 1.1];
+            }
+            var a;
+            var b;
+            if (ignoreOutliers) {
+                var sorted = _.sortBy(values);
+                a = d3.quantile(sorted, 0.10);
+                b = d3.quantile(sorted, 0.90);
+            }
+            else {
+                a = d3.min(values);
+                b = d3.max(values);
+            }
+            // When the data all fits into the unit interval, we switch to a consistent
+            // domain for unit data. This is helpful for proportional parameters like
+            // error rates or % of queue that is full. This way, users can meaningfully
+            // compare charts and see information at a glance (if the value is always
+            // 1, it appears at top of the chart, 0 is bottom, etc.)
+            if (a >= 0 && b <= 1) {
+                return [-0.1, 1.1];
+            }
+            var padding = (b - a) * 0.20;
+            var domain = [a - padding, b + padding];
+            domain = d3.scale.linear().domain(domain).nice().domain();
+            return domain;
+        }
+        ChartHelpers.computeDomain = computeDomain;
         function accessorize(key) {
             return function (d, index, dataset) { return d[key]; };
         }
@@ -4870,6 +5362,7 @@ var VZ;
     });
   </script>
 </dom-module>
+
 <dom-module id="tf-distribution-dashboard" assetpath="../tf-distribution-dashboard/">
   <template>
     <div id="plumbing">
@@ -4919,7 +5412,6 @@ var VZ;
     });
   </script>
 </dom-module>
-
 
 <dom-module id="vz-histogram-timeseries" assetpath="../vz-histogram-timeseries/">
     <template>
@@ -5600,6 +6092,7 @@ var VZ;
     </script>
 
   </dom-module>
+
 <dom-module id="tf-histogram-dashboard" assetpath="../tf-histogram-dashboard/">
   <template>
     <div id="plumbing">
@@ -5621,7 +6114,7 @@ var VZ;
               <paper-button id="relative">relative</paper-button>
               <paper-button id="wall_time">wall</paper-button>
             </tf-option-selector>
-          
+
        </div>
       </tf-sidebar-helper></div>
 
@@ -5680,23 +6173,35 @@ var VZ;
     });
   </script>
 </dom-module>
-
+<link rel="import" href="../paper-spinner/paper-spinner-lite.html">
 
 <dom-module id="tf-image-loader" assetpath="../tf-image-dashboard/">
   <template>
     <div id="image-annotation">
-      step [[step]]
-      <template is="dom-if" if="[[wallTime]]">
-        ([[wallTime]])
+      <template is="dom-if" if="[[_hasAtLeastOneStep]]">
+        step
+        <span class="step-value">
+          [[_stepValue]]
+        </span>
+        <template is="dom-if" if="[[_currentWallTime]]">
+          ([[_currentWallTime]])
+        </template>
+        <paper-spinner-lite active="" hidden$="[[!_isImageLoading]]"></paper-spinner-lite>
+      </template>
+      <template is="dom-if" if="[[_hasMultipleSteps]]">
+        <paper-slider id="steps" immediate-value="{{_stepIndex}}" max="[[_maxStepIndex]]" max-markers="[[_maxStepIndex]]" snaps="" step="1" value="{{_stepIndex}}"></paper-slider>
       </template>
     </div>
-    <img id="img" src="[[imageUrl]]" on-error="reload">
+
+    <div id="main-image-container"></div>
+
     <style>
       :host {
         display: block;
         width: 100%;
         height: auto;
         position: relative;
+        --step-slider-knob-color: #424242;
       }
 
       #image-annotation {
@@ -5706,7 +6211,34 @@ var VZ;
         margin: -10px 0 10px 0;
       }
 
-      img {
+      #image-annotation .step-value {
+        font-weight: bold;
+      }
+
+      #image-annotation paper-spinner-lite {
+        width: 14px;
+        height: 14px;
+        vertical-align: text-bottom;
+        --paper-spinner-color: var(--tb-orange-strong)
+      }
+
+      #steps {
+        height: 15px;
+        margin: 0 0 0 -15px;
+        /* 31 comes from adding a padding of 15px from both sides of the paper-slider, subtracting
+         * 1px so that the slider width aligns with the image (the last slider marker takes up 1px),
+         * and adding 2px to account for a border of 1px on both sides of the image. 30 - 1 + 2. */
+        width: calc(100% + 31px);
+        --paper-slider-active-color: var(--step-slider-knob-color);
+        --paper-slider-knob-color: var(--step-slider-knob-color);
+        --paper-slider-pin-color: var(--step-slider-knob-color);
+        --paper-slider-knob-start-color: var(--step-slider-knob-color);
+        --paper-slider-knob-start-border-color: var(--step-slider-knob-color);
+        --paper-slider-pin-start-color: var(--step-slider-knob-color);
+      }
+
+      #main-image-container img {
+        border: 1px solid #f5f5f5;
         image-rendering: -moz-crisp-edges;
         image-rendering: pixelated;
         display: block;
@@ -5720,36 +6252,124 @@ var VZ;
       is: "tf-image-loader",
       properties: {
         colorScale: Object,
-        imageUrl: String,
         run: String,
-        step: Number,
-        wallTime: String,
+        // This is an array of Tensorboard Image&Datum objects (See backend.ts for details). The
+        // properties of objects in this array are
+        // {
+        //   width: number,
+        //   height: number,
+        //   wall_time: Date,
+        //   step: number,
+        //   url: string,
+        // }
+        _steps: {
+          type: Array,
+          value: [],
+          notify: true,
+        },
+        _stepIndex: {
+          type: Number,
+          notify: true,
+        },
+        _hasAtLeastOneStep: {
+          type: Boolean,
+          computed: "_computeHasAtLeastOneStep(_steps)",
+        },
+        _hasMultipleSteps: {
+          type: Boolean,
+          computed: "_computeHasMultipleSteps(_steps)",
+        },
+        _stepValue: {
+          type: Number,
+          computed: "_computeStepValue(_stepIndex)",
+        },
+        _currentWallTime: {
+          type: Number,
+          computed: "_computeCurrentWallTime(_stepIndex)",
+        },
+        _maxStepIndex: {
+          type: Number,
+          computed: "_computeMaxStepIndex(_steps)",
+        },
+        // We use a strictly increasing index to make sure that we don't settle on a stale image.
+        _currentImageLoadIndex: {
+          type: Number,
+          value: 1,
+        },
+        _isImageLoading: {
+          type: Boolean,
+          value: false,
+        },
+      },
+      observers: [
+        "_updateImageUrl(_steps, _stepIndex)",
+      ],
+      redraw: function() {
+        // Other dashboards logic requires a redraw method to be defined. redraw is called at
+        // various places such as when the image is expanded.
+        this.setSeriesData(this.run, this._steps);
       },
       setVisibleSeries: function(runs) {
         // Do nothing.
       },
-      setSeriesData: function(run, data) {
-        var last = _.last(data);
-        this.redraw(last);
+      setSeriesData: function(run, steps) {
+        this.set("run", run);
+        this.set("_steps", steps);
+        this.set("_stepIndex", steps.length - 1);
 
         // Update the border color based on the run.
-        this.$$('#image-annotation').style.borderColor = this.colorScale.scale(run);
+        var color = this.colorScale.scale(run);
+        this.$$("#image-annotation").style.borderColor = color;
       },
-      redraw: function(imageData) {
-        var url = imageData.url || this.imageUrl;
-        this.imageUrl = ""; // Force redraw
-        this.imageUrl = url;
-
-        // Update the step if the value fetched is a valid number >= 0
-        // (not null, NaN, etc).
-        this.step = imageData.step >= 0 ? imageData.step : this.step;
-        if (imageData.wall_time) {
-          this.wallTime = imageData.wall_time.toString();
+      _updateImageUrl: function(steps, stepIndex) {
+        // We manually change the image URL (instead of binding to the image's src attribute)
+        // because we would like to manage what happens when the image starts to / finishes loading.
+        if (!steps.length) {
+          return;
         }
+
+        let img = new Image();
+        img.id = "img"; // '#img' used to select the image in tf-image-dashboard.
+
+        const loadIndex = ++this._currentImageLoadIndex;
+        img.onload = img.onerror = (function() {
+          if (loadIndex != this._currentImageLoadIndex) {
+            // This load is no longer relevant.
+            return;
+          }
+
+          // The new image has finished loading. Remove the old image. Add the new one.
+          let mainImageContainer = this.$$("#main-image-container");
+          mainImageContainer.innerHTML = "";
+          Polymer.dom(mainImageContainer).appendChild(img);
+
+          // The image has finished loading (or has erred and failed to load).
+          this.set("_isImageLoading", false);
+        }).bind(this);
+
+        // Load the new image.
+        this.set("_isImageLoading", true);
+        img.src = steps[stepIndex].url;
+      },
+      _computeHasAtLeastOneStep: function(steps) {
+        return !!steps && steps.length > 0;
+      },
+      _computeHasMultipleSteps: function(steps) {
+        return !!steps && steps.length > 1;
+      },
+      _computeStepValue: function(stepIndex) {
+        return this._steps[stepIndex].step;
+      },
+      _computeCurrentWallTime: function(stepIndex) {
+        return this._steps[stepIndex].wall_time.toString();
+      },
+      _computeMaxStepIndex: function(steps) {
+        return steps.length - 1;
       },
     });
   </script>
 </dom-module>
+
 <dom-module id="tf-image-dashboard" assetpath="../tf-image-dashboard/">
   <template>
     <paper-dialog with-backdrop="" id="actual-image-size-dialog"></paper-dialog>
@@ -5848,9 +6468,7 @@ var VZ;
   </script>
 </dom-module>
 
-
-
-<dom-module id="tf-audio-loader" assetpath="/">
+<dom-module id="tf-audio-loader" assetpath="../tf-audio-dashboard/">
   <style>
   :host {
     display: block;
@@ -5898,6 +6516,7 @@ var VZ;
     });
   </script>
 </dom-module>
+
 <dom-module id="tf-audio-grid" assetpath="../tf-audio-dashboard/">
   <template>
     <style include="scrollbar-style"></style>
@@ -5961,12 +6580,13 @@ var VZ;
       }
       .audio-cell {
         width: 300px;
-        height: 30px;
+        height: 36px;
         border: 1px solid black;
+        margin-right: 3px;
       }
       .tag-name-cell {
         width: 300px;
-        height: 30px;
+        height: 36px;
         display:flex;
         flex-direction: column;
         justify-content: center;
@@ -5978,15 +6598,16 @@ var VZ;
       }
       .run-name-cell {
         width: 300px;
-        height: 30px;
+        height: 36px;
         text-align: center;
+        margin-right: 5px;
       }
       .noshrink {
         flex-shrink: 0;
       }
       #paddingCell {
         width: 300px;
-        height: 30px;
+        height: 36px;
       }
     </style>
   </template>
@@ -6005,6 +6626,7 @@ var VZ;
     });
   </script>
 </dom-module>
+
 <dom-module id="tf-audio-dashboard" assetpath="../tf-audio-dashboard/">
   <template>
     <div class="center">
@@ -6050,7 +6672,6 @@ var VZ;
     });
   </script>
 </dom-module>
-
 
 <dom-module id="tf-graph-loader" assetpath="../tf-graph-loader/">
 </dom-module>
@@ -6213,8 +6834,10 @@ Polymer({
   }
 });
 </script>
-
-<link rel="import" href="../iron-flex-layout/iron-flex-layout.html"><script src="../lodash/lodash.min.js"></script><script src="../graphlib/dist/graphlib.core.js"></script><script src="../dagre/dist/dagre.core.js"></script><script src="../lodash/lodash.min.js"></script><script src="../graphlib/dist/graphlib.core.js"></script><script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+<script src="../lodash/lodash.min.js"></script>
+<script src="../graphlib/dist/graphlib.core.js"></script>
+<script src="../dagre/dist/dagre.core.js"></script>
+<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -6343,7 +6966,8 @@ var tf;
         return m;
     }, {});
 })(tf || (tf = {}));
-</script><script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+</script>
+<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -6357,7 +6981,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-</script><script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+</script>
+<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -6371,7 +6996,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-</script><script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+</script>
+<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -6401,6 +7027,7 @@ var tf;
         graph_1.LIMIT_ATTR_SIZE = 1024;
         // Separator between the source and the destination name of the edge.
         graph_1.EDGE_KEY_DELIM = '--';
+        var GraphType;
         (function (GraphType) {
             GraphType[GraphType["FULL"] = 0] = "FULL";
             GraphType[GraphType["EMBEDDED"] = 1] = "EMBEDDED";
@@ -6410,32 +7037,31 @@ var tf;
             GraphType[GraphType["SHADOW"] = 5] = "SHADOW";
             GraphType[GraphType["BRIDGE"] = 6] = "BRIDGE";
             GraphType[GraphType["EDGE"] = 7] = "EDGE";
-        })(graph_1.GraphType || (graph_1.GraphType = {}));
-        var GraphType = graph_1.GraphType;
+        })(GraphType = graph_1.GraphType || (graph_1.GraphType = {}));
         ;
+        var NodeType;
         (function (NodeType) {
             NodeType[NodeType["META"] = 0] = "META";
             NodeType[NodeType["OP"] = 1] = "OP";
             NodeType[NodeType["SERIES"] = 2] = "SERIES";
             NodeType[NodeType["BRIDGE"] = 3] = "BRIDGE";
             NodeType[NodeType["ELLIPSIS"] = 4] = "ELLIPSIS";
-        })(graph_1.NodeType || (graph_1.NodeType = {}));
-        var NodeType = graph_1.NodeType;
+        })(NodeType = graph_1.NodeType || (graph_1.NodeType = {}));
         ;
         /** Indicates if a node is to be included in the main graph when rendered. */
+        var InclusionType;
         (function (InclusionType) {
             InclusionType[InclusionType["INCLUDE"] = 0] = "INCLUDE";
             InclusionType[InclusionType["EXCLUDE"] = 1] = "EXCLUDE";
             InclusionType[InclusionType["UNSPECIFIED"] = 2] = "UNSPECIFIED";
-        })(graph_1.InclusionType || (graph_1.InclusionType = {}));
-        var InclusionType = graph_1.InclusionType;
+        })(InclusionType = graph_1.InclusionType || (graph_1.InclusionType = {}));
         ;
         /** Indicates if a series is to be grouped in the graph when rendered. */
+        var SeriesGroupingType;
         (function (SeriesGroupingType) {
             SeriesGroupingType[SeriesGroupingType["GROUP"] = 0] = "GROUP";
             SeriesGroupingType[SeriesGroupingType["UNGROUP"] = 1] = "UNGROUP";
-        })(graph_1.SeriesGroupingType || (graph_1.SeriesGroupingType = {}));
-        var SeriesGroupingType = graph_1.SeriesGroupingType;
+        })(SeriesGroupingType = graph_1.SeriesGroupingType || (graph_1.SeriesGroupingType = {}));
         ;
         /** Attribute key reserved for the shapes of the output tensors. */
         var OUTPUT_SHAPES_KEY = '_output_shapes';
@@ -6830,6 +7456,10 @@ var tf;
             for (var i = 0; i < attr.length; i++) {
                 var _a = attr[i], key = _a.key, value = _a.value;
                 if (key === OUTPUT_SHAPES_KEY) {
+                    if (!value.list.shape) {
+                        // The OUTPUT_SHAPES_KEY lacks a value. We know nothing about the shape.
+                        return null;
+                    }
                     // Map all output tensors into array of numbers denoting their shape.
                     var result_1 = value.list.shape.map(function (shape) {
                         if (shape.unknown_rank) {
@@ -7223,7 +7853,8 @@ var tf;
         ;
     })(graph = tf.graph || (tf.graph = {}));
 })(tf || (tf = {})); // close module tf.graph
-</script><script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+</script>
+<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -7904,7 +8535,8 @@ var tf;
         })(hierarchy = graph_1.hierarchy || (graph_1.hierarchy = {}));
     })(graph = tf.graph || (tf.graph = {}));
 })(tf || (tf = {})); // close module tf.graph.hierarchy
-</script><script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+</script>
+<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -8603,7 +9235,8 @@ var tf;
         })(layout = graph_1.layout || (graph_1.layout = {}));
     })(graph = tf.graph || (tf.graph = {}));
 })(tf || (tf = {})); // close module
-</script><script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+</script>
+<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -8869,7 +9502,8 @@ var tf;
         })(parser = graph.parser || (graph.parser = {}));
     })(graph = tf.graph || (tf.graph = {}));
 })(tf || (tf = {})); // Close module tf.graph.parser.
-</script><script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+</script>
+<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -8883,7 +9517,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-</script><script>var __extends = (this && this.__extends) || function (d, b) {
+</script>
+<script>var __extends = (this && this.__extends) || function (d, b) {
     for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
     function __() { this.constructor = d; }
     d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
@@ -9039,12 +9674,14 @@ var tf;
                     this.hierarchy = hierarchy;
                     this.displayingStats = displayingStats;
                     this.index = {};
+                    this.renderedOpNames = [];
                     this.computeScales();
                     // Maps node name to whether the rendering hierarchy was already
                     // constructed.
                     this.hasSubhierarchy = {};
                     this.root = new RenderGroupNodeInfo(hierarchy.root);
                     this.index[hierarchy.root.name] = this.root;
+                    this.renderedOpNames.push(hierarchy.root.name);
                     this.buildSubhierarchy(hierarchy.root.name);
                     this.root.expanded = true;
                     this.traceInputs = false;
@@ -9118,6 +9755,7 @@ var tf;
                         new RenderGroupNodeInfo(node) :
                         new RenderNodeInfo(node);
                     this.index[nodeName] = renderInfo;
+                    this.renderedOpNames.push(nodeName);
                     if (node.stats) {
                         renderInfo.memoryColor = this.memoryUsageScale(node.stats.totalBytes);
                         renderInfo.computeTimeColor =
@@ -9188,6 +9826,14 @@ var tf;
                         return node.node.name === renderNode.node.name;
                     });
                     return !!found;
+                };
+                /**
+                 * Returns a list of ops that have been rendered so far for this graph. More
+                 * ops may later be rendered if the user expands nodes for instance. The list
+                 * returned here can only stay the same size or grow on successive calls.
+                 */
+                RenderGraphInfo.prototype.getNamesOfRenderedOps = function () {
+                    return this.renderedOpNames;
                 };
                 RenderGraphInfo.prototype.buildSubhierarchy = function (nodeName) {
                     var _this = this;
@@ -9422,6 +10068,7 @@ var tf;
                                     include: graph_1.InclusionType.UNSPECIFIED,
                                     // BridgeNode properties.
                                     inbound: inbound,
+                                    nodeAttributes: {},
                                 };
                                 bridgeContainerInfo =
                                     new RenderNodeInfo(bridgeContainerNode);
@@ -9440,6 +10087,7 @@ var tf;
                                 include: graph_1.InclusionType.UNSPECIFIED,
                                 // BridgeNode properties.
                                 inbound: inbound,
+                                nodeAttributes: {},
                             };
                             bridgeNodeRenderInfo = new RenderNodeInfo(bridgeNode);
                             _this.index[bridgeNodeName] = bridgeNodeRenderInfo;
@@ -9553,6 +10201,7 @@ var tf;
                                     include: graph_1.InclusionType.UNSPECIFIED,
                                     // BridgeNode properties.
                                     inbound: inbound,
+                                    nodeAttributes: {},
                                 };
                                 structuralRenderInfo = new RenderNodeInfo(bridgeNode);
                                 structuralRenderInfo.structural = true;
@@ -9620,13 +10269,13 @@ var tf;
             }());
             render.Annotation = Annotation;
             ;
+            var AnnotationType;
             (function (AnnotationType) {
                 AnnotationType[AnnotationType["SHORTCUT"] = 0] = "SHORTCUT";
                 AnnotationType[AnnotationType["CONSTANT"] = 1] = "CONSTANT";
                 AnnotationType[AnnotationType["SUMMARY"] = 2] = "SUMMARY";
                 AnnotationType[AnnotationType["ELLIPSIS"] = 3] = "ELLIPSIS";
-            })(render.AnnotationType || (render.AnnotationType = {}));
-            var AnnotationType = render.AnnotationType;
+            })(AnnotationType = render.AnnotationType || (render.AnnotationType = {}));
             ;
             /**
              * Manages a list of annotations. Two will be used for each
@@ -9743,15 +10392,16 @@ var tf;
             var RenderGroupNodeInfo = (function (_super) {
                 __extends(RenderGroupNodeInfo, _super);
                 function RenderGroupNodeInfo(groupNode) {
-                    _super.call(this, groupNode);
+                    var _this = _super.call(this, groupNode) || this;
                     var metagraph = groupNode.metagraph;
                     var gl = metagraph.graph();
-                    this.coreGraph =
+                    _this.coreGraph =
                         graph_1.createGraph(gl.name, graph_1.GraphType.CORE, { compound: true });
-                    this.inExtractBox = { width: 0, height: 0 };
-                    this.outExtractBox = { width: 0, height: 0 };
-                    this.isolatedInExtract = [];
-                    this.isolatedOutExtract = [];
+                    _this.inExtractBox = { width: 0, height: 0 };
+                    _this.outExtractBox = { width: 0, height: 0 };
+                    _this.isolatedInExtract = [];
+                    _this.isolatedOutExtract = [];
+                    return _this;
                 }
                 return RenderGroupNodeInfo;
             }(RenderNodeInfo));
@@ -10105,7 +10755,8 @@ var tf;
         })(render = graph_1.render || (graph_1.render = {}));
     })(graph = tf.graph || (tf.graph = {}));
 })(tf || (tf = {})); // close module tf.graph.render
-</script><script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+</script>
+<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -10317,7 +10968,8 @@ var tf;
         })(scene = graph.scene || (graph.scene = {}));
     })(graph = tf.graph || (tf.graph = {}));
 })(tf || (tf = {})); // close module
-</script><script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+</script>
+<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -10381,7 +11033,8 @@ var tf;
         })(scene = graph.scene || (graph.scene = {}));
     })(graph = tf.graph || (tf.graph = {}));
 })(tf || (tf = {})); // close module
-</script><script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+</script>
+<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -10699,7 +11352,8 @@ var tf;
         })(scene = graph_1.scene || (graph_1.scene = {}));
     })(graph = tf.graph || (tf.graph = {}));
 })(tf || (tf = {})); // close module
-</script><script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+</script>
+<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -10948,7 +11602,9 @@ var tf;
                  */
                 function getContextMenu(node, sceneElement) {
                     var menu = [{
-                            title: function (d) { return graph.getIncludeNodeButtonString(node.include); },
+                            title: function (d) {
+                                return graph.getIncludeNodeButtonString(node.include);
+                            },
                             action: function (elm, d, i) {
                                 sceneElement.fire('node-toggle-extract', { name: node.name });
                             }
@@ -11253,13 +11909,13 @@ var tf;
                 }
                 ;
                 /** Enum specifying the options to color nodes by */
+                var ColorBy;
                 (function (ColorBy) {
                     ColorBy[ColorBy["STRUCTURE"] = 0] = "STRUCTURE";
                     ColorBy[ColorBy["DEVICE"] = 1] = "DEVICE";
                     ColorBy[ColorBy["COMPUTE_TIME"] = 2] = "COMPUTE_TIME";
                     ColorBy[ColorBy["MEMORY"] = 3] = "MEMORY";
-                })(node_1.ColorBy || (node_1.ColorBy = {}));
-                var ColorBy = node_1.ColorBy;
+                })(ColorBy = node_1.ColorBy || (node_1.ColorBy = {}));
                 ;
                 /**
                  * Returns the fill color for the node given its state and the 'color by'
@@ -11599,7 +12255,7 @@ var tf;
                     _.each(destinationParentPairs, function (value) {
                         var inner = value[0];
                         var outer = value[1];
-                        var edgeSelector = ("[data-edge=\"" + inner.name + "--" + startNodeTopParentName) +
+                        var edgeSelector = "[data-edge=\"" + inner.name + "--" + startNodeTopParentName +
                             ("~~" + outer.name + "~~OUT\"]");
                         d3.selectAll(edgeSelector).classed('input-edge-highlight', true);
                     });
@@ -11607,7 +12263,7 @@ var tf;
                     for (var index = 1; index < startNodeIndex; index++) {
                         var inner = indexedStartNodeParents[index - 1];
                         var outer = indexedStartNodeParents[index];
-                        var edgeSelector = ("[data-edge=\"" + targetNodeTopParentName + "~~" + outer.name) +
+                        var edgeSelector = "[data-edge=\"" + targetNodeTopParentName + "~~" + outer.name +
                             ("~~IN--" + inner.name + "\"]");
                         d3.selectAll(edgeSelector).classed('input-edge-highlight', true);
                     }
@@ -11695,7 +12351,8 @@ var tf;
         })(scene = graph.scene || (graph.scene = {}));
     })(graph = tf.graph || (tf.graph = {}));
 })(tf || (tf = {})); // Close module.
-</script><script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+</script>
+<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -11715,6 +12372,7 @@ var tf;
     (function (graph) {
         var scene;
         (function (scene) {
+            var svgNamespace = 'http://www.w3.org/2000/svg';
             /** Enums element class of objects in the scene */
             scene.Class = {
                 Node: {
@@ -11768,6 +12426,34 @@ var tf;
                 BRIDGENODE: 'bridge',
                 ELLIPSISNODE: 'ellipsis'
             };
+            ;
+            ;
+            scene.healthPillEntries = [
+                {
+                    background_color: '#CC2F2C',
+                    label: 'NaN',
+                },
+                {
+                    background_color: '#FF8D00',
+                    label: '- ∞',
+                },
+                {
+                    background_color: '#EAEAEA',
+                    label: '-',
+                },
+                {
+                    background_color: '#A5A5A5',
+                    label: '0',
+                },
+                {
+                    background_color: '#262626',
+                    label: '+',
+                },
+                {
+                    background_color: '#003ED4',
+                    label: '+ ∞',
+                },
+            ];
             /**
              * Helper method for fitting the graph in the svg view.
              *
@@ -11791,7 +12477,8 @@ var tf;
                     // detached from the dom.
                     return;
                 }
-                var scale = 0.9 * Math.min(svgRect.width / sceneSize.width, svgRect.height / sceneSize.height, 2);
+                var scale = 0.9 *
+                    Math.min(svgRect.width / sceneSize.width, svgRect.height / sceneSize.height, 2);
                 var params = graph.layout.PARAMS.graph;
                 var zoomEvent = d3zoom.scale(scale)
                     .on('zoomend.fitted', function () {
@@ -12127,10 +12814,151 @@ var tf;
             }
             scene.positionEllipse = positionEllipse;
             ;
+            /**
+             * @param {number} stat A stat for a health pill (such as mean or variance).
+             * @param {boolean} shouldRoundOnesDigit Whether to round this number to the
+             *     ones digit. Useful for say int, uint, and bool output types.
+             * @return {string} A human-friendly string representation of that stat.
+             */
+            function humanizeHealthPillStat(stat, shouldRoundOnesDigit) {
+                if (shouldRoundOnesDigit) {
+                    return stat.toFixed(0);
+                }
+                if (Math.abs(stat) >= 1) {
+                    return stat.toFixed(1);
+                }
+                return stat.toExponential(1);
+            }
+            scene.humanizeHealthPillStat = humanizeHealthPillStat;
+            /**
+             * Renders a health pill for an op atop a node.
+             */
+            function _addHealthPill(nodeGroupElement, healthPill, nodeInfo) {
+                // Check if text already exists at location.
+                d3.select(nodeGroupElement.parentNode).selectAll('.health-pill').remove();
+                if (!nodeInfo || !healthPill) {
+                    return;
+                }
+                var lastHealthPillData = healthPill.value;
+                // For now, we only visualize the 6 values that summarize counts of tensor
+                // elements of various categories: -Inf, negative, 0, positive, Inf, and NaN.
+                var lastHealthPillOverview = lastHealthPillData.slice(2, 8);
+                var totalCount = lastHealthPillData[1];
+                var healthPillWidth = 60;
+                var healthPillHeight = 10;
+                if (nodeInfo.node.type === tf.graph.NodeType.OP) {
+                    // Use a smaller health pill for op nodes (rendered as smaller ellipses).
+                    healthPillWidth /= 2;
+                    healthPillHeight /= 2;
+                }
+                var healthPillGroup = document.createElementNS(svgNamespace, 'g');
+                healthPillGroup.classList.add('health-pill');
+                // Define the gradient for the health pill.
+                var healthPillDefs = document.createElementNS(svgNamespace, 'defs');
+                healthPillGroup.appendChild(healthPillDefs);
+                var healthPillGradient = document.createElementNS(svgNamespace, 'linearGradient');
+                var healthPillGradientId = 'health-pill-gradient';
+                healthPillGradient.setAttribute('id', healthPillGradientId);
+                var titleOnHoverTextEntries = [];
+                var cumulativeCount = 0;
+                var previousOffset = '0%';
+                for (var i = 0; i < lastHealthPillOverview.length; i++) {
+                    if (!lastHealthPillOverview[i]) {
+                        // Exclude empty categories.
+                        continue;
+                    }
+                    cumulativeCount += lastHealthPillOverview[i];
+                    // Create a color interval using 2 stop elements.
+                    var stopElement0 = document.createElementNS(svgNamespace, 'stop');
+                    stopElement0.setAttribute('offset', previousOffset);
+                    stopElement0.setAttribute('stop-color', scene.healthPillEntries[i].background_color);
+                    healthPillGradient.appendChild(stopElement0);
+                    var stopElement1 = document.createElementNS(svgNamespace, 'stop');
+                    var percent = (cumulativeCount * 100 / totalCount) + '%';
+                    stopElement1.setAttribute('offset', percent);
+                    stopElement1.setAttribute('stop-color', scene.healthPillEntries[i].background_color);
+                    healthPillGradient.appendChild(stopElement1);
+                    previousOffset = percent;
+                    // Include this number in the title that appears on hover.
+                    titleOnHoverTextEntries.push(scene.healthPillEntries[i].label + ': ' + lastHealthPillOverview[i]);
+                }
+                healthPillDefs.appendChild(healthPillGradient);
+                // Create the rectangle for the health pill.
+                var rect = document.createElementNS(svgNamespace, 'rect');
+                rect.setAttribute('fill', 'url(#' + healthPillGradientId + ')');
+                rect.setAttribute('width', String(healthPillWidth));
+                rect.setAttribute('height', String(healthPillHeight));
+                healthPillGroup.appendChild(rect);
+                // Show a title with specific counts on hover.
+                var titleSvg = document.createElementNS(svgNamespace, 'title');
+                titleSvg.textContent = titleOnHoverTextEntries.join(', ');
+                healthPillGroup.appendChild(titleSvg);
+                // Center this health pill just right above the node for the op.
+                var healthPillX = nodeInfo.x - healthPillWidth / 2;
+                var healthPillY = nodeInfo.y - healthPillHeight - nodeInfo.height / 2 - 2;
+                if (nodeInfo.labelOffset < 0) {
+                    // The label is positioned above the node. Do not occlude the label.
+                    healthPillY += nodeInfo.labelOffset;
+                }
+                if (lastHealthPillOverview[2] || lastHealthPillOverview[3] ||
+                    lastHealthPillOverview[4]) {
+                    // At least 1 "non-Inf and non-NaN" value exists (a -, 0, or + value). Show
+                    // stats on tensor values.
+                    // Determine if we should display the output range as integers.
+                    var shouldRoundOnesDigit = false;
+                    var node_1 = nodeInfo.node;
+                    var attributes = node_1.attr;
+                    if (attributes && attributes.length) {
+                        // Find the attribute for output type if there is one.
+                        for (var i = 0; i < attributes.length; i++) {
+                            if (attributes[i].key === 'T') {
+                                // Note whether the output type is an integer.
+                                var outputType = attributes[i].value['type'];
+                                shouldRoundOnesDigit =
+                                    outputType && /^DT_(BOOL|INT|UINT)/.test(outputType);
+                                break;
+                            }
+                        }
+                    }
+                    var statsSvg = document.createElementNS(svgNamespace, 'text');
+                    var minString = humanizeHealthPillStat(lastHealthPillData[8], shouldRoundOnesDigit);
+                    var maxString = humanizeHealthPillStat(lastHealthPillData[9], shouldRoundOnesDigit);
+                    statsSvg.textContent = minString + ' ~ ' + maxString;
+                    statsSvg.classList.add('health-pill-stats');
+                    statsSvg.setAttribute('x', String(healthPillWidth / 2));
+                    statsSvg.setAttribute('y', '-2');
+                    healthPillGroup.appendChild(statsSvg);
+                }
+                healthPillGroup.setAttribute('transform', 'translate(' + healthPillX + ', ' + healthPillY + ')');
+                Polymer.dom(nodeGroupElement.parentNode).appendChild(healthPillGroup);
+            }
+            /**
+             * Adds health pills (which visualize tensor summaries) to a graph group.
+             * @param svgRoot The root SVG element of the graph to add heath pills to.
+             * @param nodeNamesToHealthPills An object mapping node name to health pill.
+             * @param colors A list of colors to use.
+             */
+            function addHealthPills(svgRoot, nodeNamesToHealthPills, healthPillStepIndex) {
+                if (!nodeNamesToHealthPills) {
+                    // No health pill information available.
+                    return;
+                }
+                var svgRootSelection = d3.select(svgRoot);
+                svgRootSelection.selectAll('g.nodeshape')
+                    .each(function (nodeInfo) {
+                    // Only show health pill data for this node if it is available.
+                    var healthPills = nodeNamesToHealthPills[nodeInfo.node.name];
+                    var healthPill = healthPills ? healthPills[healthPillStepIndex] : null;
+                    _addHealthPill(this, healthPill, nodeInfo);
+                });
+            }
+            scene.addHealthPills = addHealthPills;
+            ;
         })(scene = graph.scene || (graph.scene = {}));
     })(graph = tf.graph || (tf.graph = {}));
 })(tf || (tf = {})); // close module
-</script><script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+</script>
+<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -12397,7 +13225,8 @@ var tf;
         })(template = graph_1.template || (graph_1.template = {}));
     })(graph = tf.graph || (tf.graph = {}));
 })(tf || (tf = {}));
-</script><script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+</script>
+<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -12636,7 +13465,7 @@ var tf;
                 var largestIndex = 0;
                 // Find the shortest name across all strings.
                 var minLength = _.min(_.map(strings, function (str) { return str.length; }));
-                var _loop_1 = function() {
+                var _loop_1 = function () {
                     index++;
                     var prefixes = _.map(strings, function (str) { return str.substring(0, index); });
                     var allTheSame = prefixes.every(function (prefix, i) {
@@ -12644,8 +13473,6 @@ var tf;
                     });
                     if (allTheSame) {
                         if (index >= minLength) {
-                            // There is a string whose whole name is a prefix to other string.
-                            // In this case, we return the original list of string.
                             return { value: strings };
                         }
                         largestIndex = index;
@@ -12656,8 +13483,10 @@ var tf;
                 };
                 while (true) {
                     var state_1 = _loop_1();
-                    if (typeof state_1 === "object") return state_1.value;
-                    if (state_1 === "break") break;
+                    if (typeof state_1 === "object")
+                        return state_1.value;
+                    if (state_1 === "break")
+                        break;
                 }
                 return _.map(strings, function (str) { return str.substring(largestIndex); });
             }
@@ -12958,7 +13787,9 @@ var tf;
         scene.Minimap = Minimap;
     })(scene = tf.scene || (tf.scene = {}));
 })(tf || (tf = {})); // close module tf.scene
-</script><dom-module id="tf-graph-minimap" assetpath="/">
+</script>
+
+<dom-module id="tf-graph-minimap" assetpath="../tf-graph/">
 <template>
 <style>
 :host {
@@ -13026,6 +13857,7 @@ Polymer({
 });
 </script>
 </dom-module>
+
 <dom-module id="tf-graph-scene" assetpath="../tf-graph/">
 <template>
 <style>
@@ -13482,6 +14314,17 @@ Polymer({
   display: none;
 }
 
+::content .health-pill-stats {
+  font-size: 4px;
+  text-anchor: middle;
+}
+
+::content .health-pill rect {
+  filter: url("#health-pill-shadow");
+  rx: 3;
+  ry: 3;
+}
+
 .titleContainer {
   position: relative;
   top: 20px;
@@ -13508,7 +14351,7 @@ Polymer({
 <svg id="svg">
   <defs>
 
-    
+
     <path id="ref-arrowhead-path" d="M 10,0 L 0,5 L 10,10 C 7,7 7,3 10,0"></path>
     <marker class="ref-arrowhead" id="ref-arrowhead-small" viewBox="0 0 10 10" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="userSpaceOnUse">
       <use xlink:href="#ref-arrowhead-path"></use>
@@ -13523,7 +14366,7 @@ Polymer({
       <use xlink:href="#ref-arrowhead-path"></use>
     </marker>
 
-    
+
     <marker id="annotation-arrowhead" markerWidth="5" markerHeight="5" refX="5" refY="2.5" orient="auto">
       <path d="M 0,0 L 5,2.5 L 0,5 L 0,0"></path>
     </marker>
@@ -13536,23 +14379,23 @@ Polymer({
     <marker id="ref-annotation-arrowhead-faded" markerWidth="5" markerHeight="5" refX="0" refY="2.5" orient="auto">
       <path d="M 5,0 L 0,2.5 L 5,5 L 5,0"></path>
     </marker>
-    
+
     <ellipse id="op-node-stamp" rx="7.5" ry="3" stroke="inherit" fill="inherit"></ellipse>
-    
+
     <ellipse id="op-node-annotation-stamp" rx="5" ry="2" stroke="inherit" fill="inherit"></ellipse>
-    
+
     <g id="op-series-vertical-stamp">
       <use xlink:href="#op-node-stamp" x="8" y="9"></use>
       <use xlink:href="#op-node-stamp" x="8" y="6"></use>
       <use xlink:href="#op-node-stamp" x="8" y="3"></use>
     </g>
-    
+
     <g id="op-series-horizontal-stamp">
       <use xlink:href="#op-node-stamp" x="16" y="4"></use>
       <use xlink:href="#op-node-stamp" x="12" y="4"></use>
       <use xlink:href="#op-node-stamp" x="8" y="4"></use>
     </g>
-    
+
     <g id="op-series-annotation-stamp">
       <use xlink:href="#op-node-annotation-stamp" x="9" y="2"></use>
       <use xlink:href="#op-node-annotation-stamp" x="7" y="2"></use>
@@ -13561,18 +14404,30 @@ Polymer({
     <svg id="summary-icon" fill="#848484" height="12" viewBox="0 0 24 24" width="12">
       <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"></path>
     </svg>
-    
+
     <g id="linearGradients"></g>
 
-    
+
     <pattern id="rectHatch" patternTransform="rotate(45 0 0)" width="5" height="5" patternUnits="userSpaceOnUse">
       <line x1="0" y1="0" x2="0" y2="5" style="stroke-width: 1"></line>
     </pattern>
     <pattern id="ellipseHatch" patternTransform="rotate(45 0 0)" width="2" height="2" patternUnits="userSpaceOnUse">
       <line x1="0" y1="0" x2="0" y2="2" style="stroke-width: 1"></line>
     </pattern>
+
+
+    <filter id="health-pill-shadow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="0.8"></feGaussianBlur>
+      <feOffset dx="0" dy="0" result="offsetblur"></feOffset>
+      <feFlood flood-color="#000000"></feFlood>
+      <feComposite in2="offsetblur" operator="in"></feComposite>
+      <feMerge>
+        <feMergeNode></feMergeNode>
+        <feMergeNode in="SourceGraphic"></feMergeNode>
+      </feMerge>
+    </filter>
   </defs>
-  
+
   <rect fill="white" width="10000" height="10000"></rect>
   <g id="root"></g>
 </svg>
@@ -13681,11 +14536,16 @@ Polymer({
       type: Number,
       value: 18
     },
-    progress: Object
+    progress: Object,
+    // A mapping between node name to the tf.graph.scene.HealthPill to render.
+    nodeNamesToHealthPills: Object,
+    // The step of health pills to show throughout the graph.
+    healthPillStepIndex: Number,
   },
   observers: [
     '_colorByChanged(colorBy)',
-    '_buildAndFit(renderHierarchy)'
+    '_buildAndFit(renderHierarchy)',
+    '_updateHealthPills(nodeNamesToHealthPills, healthPillStepIndex)',
   ],
   getNode: function(nodeName) {
     return this.renderHierarchy.getRenderNodeByName(nodeName);
@@ -13728,6 +14588,7 @@ Polymer({
     }.bind(this));
     // Update the minimap again when the graph is done animating.
     setTimeout(function() {
+      this._updateHealthPills(this.nodeNamesToHealthPills, this.healthPillStepIndex);
       this.minimap.update();
     }.bind(this), tf.graph.layout.PARAMS.animation.duration);
   },
@@ -13877,6 +14738,10 @@ Polymer({
   getEdgeGroup: function(e) {
     return this._edgeGroupIndex[e];
   },
+  _updateHealthPills: function(nodeNamesToHealthPills, healthPillStepIndex) {
+    tf.graph.scene.addHealthPills(
+        this.$.svg, nodeNamesToHealthPills, healthPillStepIndex);
+  },
   /**
    * Update node and annotation node of the given name.
    * @param  {String} n node name
@@ -13977,6 +14842,7 @@ Polymer({
 });
 </script>
 </dom-module>
+<link rel="import" href="../iron-flex-layout/iron-flex-layout.html">
 <dom-module id="tf-graph" assetpath="../tf-graph/">
 <template>
 <style>
@@ -14011,7 +14877,7 @@ paper-button {
     <template is="dom-if" if="[[title]]">
       <h2>[[title]]</h2>
     </template>
-    <tf-graph-scene id="scene" class="auto" render-hierarchy="[[renderHierarchy]]" highlighted-node="[[_getVisible(highlightedNode)]]" selected-node="[[selectedNode]]" color-by="[[colorBy]]" progress="[[progress]]"></tf-graph-scene>
+    <tf-graph-scene id="scene" class="auto" render-hierarchy="[[renderHierarchy]]" highlighted-node="[[_getVisible(highlightedNode)]]" selected-node="{{selectedNode}}" color-by="[[colorBy]]" progress="[[progress]]" node-names-to-health-pills="[[nodeNamesToHealthPills]]" health-pill-step-index="{{healthPillStepIndex}}"></tf-graph-scene>
   </div>
 </div>
 </template>
@@ -14065,6 +14931,10 @@ Polymer({
       type: Boolean,
       value: true
     },
+    // A mapping between node name to the tf.graph.scene.HealthPill to render.
+    nodeNamesToHealthPills: Object,
+    // The step of health pills to show throughout the graph.
+    healthPillStepIndex: Number,
   },
   observers: [
     '_statsChanged(stats, devicesForStats)',
@@ -14248,7 +15118,7 @@ Polymer({
   }
 });
 </script>
-<link rel="import" href="../iron-list/iron-list.html"><link rel="import" href="../paper-item/all-imports.html"><dom-module id="tf-graph-icon" assetpath="../tf-graph/">
+<dom-module id="tf-graph-icon" assetpath="../tf-graph/">
   <style>
     .faded-rect {
       fill: url("#rectHatch");
@@ -14496,7 +15366,7 @@ Polymer({
     })();
   </script>
 </dom-module>
-<dom-module id="tf-node-list-item" assetpath="/">
+<dom-module id="tf-node-list-item" assetpath="../tf-graph-info/">
   <style>
   #list-item {
     width: 100%;
@@ -14607,6 +15477,8 @@ Polymer({
     })();
   </script>
 </dom-module>
+<link rel="import" href="../iron-list/iron-list.html">
+<link rel="import" href="../paper-item/all-imports.html">
 <dom-module id="tf-node-info" assetpath="../tf-graph-info/">
   <style>
   .sub-list-group {
@@ -15196,11 +16068,82 @@ h2 {
   text-align: center;
   margin: 0;
 }
+
+.health-pill-legend {
+  padding: 15px;
+}
+
+.health-pill-legend h2 {
+  text-align: left;
+}
+
+.health-pill-entry {
+  margin: 10px 10px 10px 0;
+}
+
+.health-pill-entry .color-preview {
+  width: 26px;
+  height: 26px;
+  border-radius: 3px;
+  display: inline-block;
+  margin: 0 10px 0 0;
+}
+
+.health-pill-entry .color-label, .health-pill-entry .tensor-count {
+  color: #777;
+  display: inline-block;
+  height: 26px;
+  font-size: 22px;
+  line-height: 26px;
+  vertical-align: top;
+}
+
+.health-pill-entry .tensor-count {
+  float: right;
+}
+
+#health-pill-step-slider {
+  width: 100%;
+  margin: 0 0 0 -15px;
+  /* 31 comes from adding a padding of 15px from both sides of the paper-slider, subtracting
+   * 1px so that the slider width aligns with the image (the last slider marker takes up 1px),
+   * and adding 2px to account for a border of 1px on both sides of the image. 30 - 1 + 2.
+   * Apparently, the paper-slider lacks a mixin for those padding values. */
+  width: calc(100% + 31px);
+}
 </style>
 <template is="dom-if" if="{{selectedNode}}">
   <paper-material elevation="1" class="card">
     <tf-node-info graph-hierarchy="[[graphHierarchy]]" render-hierarchy="[[renderHierarchy]]" flat-graph="[[graph]]" node-name="[[selectedNode]]" node-include="[[selectedNodeInclude]]" highlighted-node="{{highlightedNode}}" color-by="[[colorBy]]">
     </tf-node-info>
+  </paper-material>
+</template>
+<template is="dom-if" if="[[_healthPillsAvailable(nodeNamesToHealthPills)]]">
+  <paper-material elevation="1" class="card health-pill-legend">
+    <template is="dom-if" if="[[_maxStepIndex]]">
+      <h2>
+        Step of Health Pills: [[_currentStepDisplayValue]]
+      </h2>
+      <paper-slider id="health-pill-step-slider" immediate-value="{{healthPillStepIndex}}" max="[[_maxStepIndex]]" snaps="" step="1" value="{{healthPillStepIndex}}"></paper-slider>
+    </template>
+    <h2>
+      Health Pill
+      <template is="dom-if" if="[[healthPillValuesForSelectedNode]]">
+        Counts for Selected Node
+      </template>
+      <template is="dom-if" if="[[!healthPillValuesForSelectedNode]]">
+        Legend
+      </template>
+    </h2>
+    <template is="dom-repeat" items="[[healthPillEntries]]">
+      <div class="health-pill-entry">
+        <div class="color-preview" style="background:[[item.background_color]]"></div>
+        <div class="color-label">[[item.label]]</div>
+        <div class="tensor-count">
+          [[_computeTensorCountString(healthPillValuesForSelectedNode, index)]]
+        </div>
+      </div>
+    </template>
   </paper-material>
 </template>
 </template>
@@ -15214,6 +16157,11 @@ h2 {
       graphHierarchy: Object,
       graph: Object,
       renderHierarchy: Object,
+      nodeNamesToHealthPills: Object,
+      healthPillStepIndex: {
+        type: Number,
+        notify: true,
+      },
       colorBy: String,
       // Two-ways
       selectedNode: {
@@ -15228,7 +16176,24 @@ h2 {
       selectedNodeInclude: {
         type: Number,
         notify: true
-      }
+      },
+      healthPillEntries: {
+        type: Array,
+        value: tf.graph.scene.healthPillEntries,
+        readOnly: true,
+      },
+      healthPillValuesForSelectedNode: {
+        type: Array,
+        computed: '_computeHealthPillForNode(nodeNamesToHealthPills, healthPillStepIndex, selectedNode)',
+      },
+      _maxStepIndex: {
+        type: Number,
+        computed: '_computeMaxStepIndex(nodeNamesToHealthPills)',
+      },
+      _currentStepDisplayValue: {
+        type: String,
+        computed: '_computeCurrentStepDisplayValue(nodeNamesToHealthPills, healthPillStepIndex)',
+      },
     },
     listeners: {
       'node-list-item-click': '_nodeListItemClicked',
@@ -15243,12 +16208,73 @@ h2 {
     },
     _nodeListItemMouseout: function() {
       this.highlightedNode = null;
-    }
+    },
+    _healthPillsAvailable: function(nodeNamesToHealthPills) {
+      let count = 0;
+      for (let nodeName in nodeNamesToHealthPills) {
+        return true;
+      }
+      return false;
+    },
+    _computeTensorCountString: function(healthPillValuesForSelectedNode, valueIndex) {
+      if (!healthPillValuesForSelectedNode) {
+        // No health pill data is available.
+        return '';
+      }
+
+      return healthPillValuesForSelectedNode[valueIndex].toFixed(0);
+    },
+    _computeHealthPillForNode: function(
+        nodeNamesToHealthPills, healthPillStepIndex, selectedNode) {
+      if (!selectedNode) {
+        // No node is selected.
+        return null;
+      }
+
+      const healthPills = nodeNamesToHealthPills[selectedNode];
+      if (!healthPills) {
+        // This node lacks a health pill.
+        return null;
+      }
+
+      const healthPill = healthPills[healthPillStepIndex];
+      if (!healthPill) {
+        // This node lacks a health pill at the current step.
+        return null;
+      }
+
+      // The health pill count values start at 2. Each health pill contains 6 values.
+      return healthPill.value.slice(2, 8);
+    },
+    _computeCurrentStepDisplayValue: function(nodeNamesToHealthPills, healthPillStepIndex) {
+      for (let nodeName in nodeNamesToHealthPills) {
+        // All nodes have the same number of steps stored, so only examine 1 node. We cannot
+        // directly index into the nodeNamesToHealthPills object because we do not have a key.
+        return nodeNamesToHealthPills[nodeName][healthPillStepIndex].step.toFixed(0);
+      }
+
+      // The current step could not be computed.
+      return 0;
+    },
+    _computeMaxStepIndex: function(nodeNamesToHealthPills) {
+      for (let nodeName in nodeNamesToHealthPills) {
+        // All nodes have the same number of steps stored, so only examine 1 node.
+        // The index is 1 less than the count. Tensorboard backend logic guarantees that the length
+        // of the array will be greater than 1.
+        return nodeNamesToHealthPills[nodeName].length - 1;
+      }
+
+      // Return a falsy value. The slider should be hidden.
+      return 0;
+    },
   });
 })();
 </script>
 </dom-module>
-<link rel="import" href="../paper-progress/paper-progress.html"><dom-module id="tf-graph-board" assetpath="../tf-graph-board/">
+<link rel="import" href="../paper-progress/paper-progress.html">
+
+
+<dom-module id="tf-graph-board" assetpath="../tf-graph-board/">
 <template>
 <style>
 ::host {
@@ -15350,10 +16376,10 @@ paper-progress {
 </template>
 <div class$="[[_getContainerClass(progress)]]">
   <div id="main">
-    <tf-graph id="graph" graph-hierarchy="{{graphHierarchy}}" basic-graph="[[graph]]" hierarchy-params="[[hierarchyParams]]" render-hierarchy="{{renderHierarchy}}" devices-for-stats="[[devicesForStats]]" stats="[[stats]]" selected-node="{{_selectedNode}}" highlighted-node="{{_highlightedNode}}" color-by="[[colorBy]]" color-by-params="{{colorByParams}}" progress="{{progress}}"></tf-graph>
+    <tf-graph id="graph" graph-hierarchy="{{graphHierarchy}}" basic-graph="[[graph]]" hierarchy-params="[[hierarchyParams]]" render-hierarchy="{{renderHierarchy}}" devices-for-stats="[[devicesForStats]]" stats="[[stats]]" selected-node="{{_selectedNode}}" highlighted-node="{{_highlightedNode}}" color-by="[[colorBy]]" color-by-params="{{colorByParams}}" progress="{{progress}}" node-names-to-health-pills="[[nodeNamesToHealthPills]]" health-pill-step-index="[[healthPillStepIndex]]"></tf-graph>
   </div>
   <div id="info">
-    <tf-graph-info id="graph-info" title="selected" graph-hierarchy="[[graphHierarchy]]" render-hierarchy="[[renderHierarchy]]" graph="[[graph]]" selected-node="{{_selectedNode}}" selected-node-include="{{_selectedNodeInclude}}" highlighted-node="{{_highlightedNode}}" color-by="[[colorBy]]" color-by-params="[[colorByParams]]"></tf-graph-info>
+    <tf-graph-info id="graph-info" title="selected" graph-hierarchy="[[graphHierarchy]]" render-hierarchy="[[renderHierarchy]]" graph="[[graph]]" selected-node="{{_selectedNode}}" selected-node-include="{{_selectedNodeInclude}}" highlighted-node="{{_highlightedNode}}" color-by="[[colorBy]]" color-by-params="[[colorByParams]]" node-names-to-health-pills="[[nodeNamesToHealthPills]]" health-pill-step-index="{{healthPillStepIndex}}"></tf-graph-info>
   </div>
   <div class="context-menu"></div>
 </div>
@@ -15384,6 +16410,10 @@ Polymer({
       type: Object,
       notify: true
     },
+    // A mapping between node name to the tf.graph.scene.HealthPill to render.
+    nodeNamesToHealthPills: Object,
+    // The step of health pills to show throughout the graph.
+    healthPillStepIndex: Number,
     // Private API: Data routing between child components.
     _selectedNode: String,
     // The enum value of the include property of the selected node.
@@ -15420,7 +16450,9 @@ Polymer({
   }
 });
 </script>
-<link rel="import" href="../paper-radio-group/paper-radio-group.html"><link rel="import" href="../paper-tooltip/paper-tooltip.html"><dom-module id="tf-graph-controls" assetpath="../tf-graph/">
+<link rel="import" href="../paper-radio-group/paper-radio-group.html">
+<link rel="import" href="../paper-tooltip/paper-tooltip.html">
+<dom-module id="tf-graph-controls" assetpath="../tf-graph/">
 <template>
 <style>
 :host {
@@ -15617,6 +16649,21 @@ span.counter {
   font-size: 13px;
   color: gray;
 }
+
+.runs paper-item {
+  --paper-item: {
+    white-space: nowrap;
+  }
+}
+
+table.control-holder {
+  border: 0;
+  border-collapse: collapse;
+}
+
+table.tf-graph-controls td.input-element-table-data {
+  padding: 0 0 0 20px;
+}
 </style>
 <svg width="0" height="0">
   <defs>
@@ -15646,7 +16693,7 @@ span.counter {
     <a href="#" id="graphdownload" class="title" download="graph.png">
     </a>
   </div>
-  <div class="control-holder">
+  <div class="control-holder runs">
     <div class="title">Run <span class="counter">([[datasets.length]])</span></div>
     <paper-dropdown-menu no-label-float="" no-animations="" noink="" class="run-dropdown">
       <paper-menu id="select" class="dropdown-content" selected="{{selectedDataset}}">
@@ -15678,14 +16725,22 @@ span.counter {
       </div>
     </div>
   </template>
-  <div class="control-holder">
-    <div class="title">
-      Trace inputs
-    </div>
-    <paper-toggle-button id="trace-inputs">
-
-    </paper-toggle-button>
-  </div>
+  <table class="control-holder">
+    <tbody><tr>
+      <td class="title">Trace inputs</td>
+      <td class="input-element-table-data">
+        <paper-toggle-button id="trace-inputs"></paper-toggle-button>
+      </td>
+    </tr>
+    <template is="dom-if" if="[[healthPillsFeatureEnabled]]">
+      <tr>
+        <td class="title">Show health pills</td>
+        <td class="input-element-table-data">
+          <paper-toggle-button checked="{{healthPillsToggledOn}}"></paper-toggle-button>
+        </td>
+      </tr>
+    </template>
+  </tbody></table>
   <div class="control-holder">
     <div class="title">Color</div>
     <paper-radio-group selected="{{colorBy}}">
@@ -15785,7 +16840,7 @@ span.counter {
       </div>
     </template>
   </div>
-  
+
   <template is="dom-if" if="[[!_isGradientColoring(stats, colorBy)]]">
     <div class="legend-holder">
       <table>
@@ -15949,7 +17004,15 @@ Polymer({
     showUploadButton: {
       type: Boolean,
       value: true
-    }
+    },
+    // This stores whether the feature for showing health pills is enabled in the first place.
+    healthPillsFeatureEnabled: Boolean,
+    // This stores whether to show health pills. Only relevant if healthPillsFeatureEnabled. The
+    // user can toggle this value.
+    healthPillsToggledOn: {
+      type: Boolean,
+      notify: true,
+    },
   },
   listeners: {
     'trace-inputs.change': '_traceInputToggleChanged'
@@ -16101,17 +17164,18 @@ Polymer({
 })(); // Closing private scope.
 </script>
 </dom-module>
+
 <dom-module id="tf-graph-dashboard" assetpath="../tf-graph-dashboard/">
 <template>
 <tf-no-data-warning data-type="graph" show-warning="[[_datasetsEmpty(_datasets)]]"></tf-no-data-warning>
 <template is="dom-if" if="[[!_datasetsEmpty(_datasets)]]">
 <tf-dashboard-layout>
 <div class="sidebar">
-  <tf-graph-controls id="controls" devices-for-stats="{{_devicesForStats}}" color-by-params="[[_colorByParams]]" stats="[[_stats]]" color-by="{{_colorBy}}" datasets="[[_datasets]]" render-hierarchy="[[_renderHierarchy]]" selected-dataset="{{_selectedDataset}}" selected-file="{{_selectedFile}}" selected-metadata-tag="{{_selectedMetadataTag}}"></tf-graph-controls>
+  <tf-graph-controls id="controls" devices-for-stats="{{_devicesForStats}}" color-by-params="[[_colorByParams]]" stats="[[_stats]]" color-by="{{_colorBy}}" datasets="[[_datasets]]" render-hierarchy="[[_renderHierarchy]]" selected-dataset="{{_selectedDataset}}" selected-file="{{_selectedFile}}" selected-metadata-tag="{{_selectedMetadataTag}}" health-pills-feature-enabled="[[debuggerDataEnabled]]" health-pills-toggled-on="{{healthPillsToggledOn}}"></tf-graph-controls>
   <tf-graph-loader id="loader" datasets="[[_datasets]]" selected-dataset="[[_selectedDataset]]" selected-metadata-tag="[[_selectedMetadataTag]]" selected-file="[[_selectedFile]]" out-graph-hierarchy="{{_graphHierarchy}}" out-graph="{{_graph}}" out-stats="{{_stats}}" progress="{{_progress}}" out-hierarchy-params="{{_hierarchyParams}}"></tf-graph-loader>
 </div>
 <div class="center">
-    <tf-graph-board id="graphboard" devices-for-stats="[[_devicesForStats]]" color-by="[[_colorBy]]" color-by-params="{{_colorByParams}}" graph-hierarchy="[[_graphHierarchy]]" graph="[[_graph]]" hierarchy-params="[[_hierarchyParams]]" progress="[[_progress]]" render-hierarchy="{{_renderHierarchy}}" stats="[[_stats]]"></tf-graph-board>
+    <tf-graph-board id="graphboard" devices-for-stats="[[_devicesForStats]]" color-by="[[_colorBy]]" color-by-params="{{_colorByParams}}" graph-hierarchy="[[_graphHierarchy]]" graph="[[_graph]]" hierarchy-params="[[_hierarchyParams]]" progress="[[_progress]]" node-names-to-health-pills="[[_nodeNamesToHealthPills]]" health-pill-step-index="[[_healthPillStepIndex]]" render-hierarchy="{{_renderHierarchy}}" stats="[[_stats]]"></tf-graph-board>
 </div>
 </tf-dashboard-layout>
 </template>
@@ -16134,41 +17198,107 @@ Polymer({
 (function() {
 Polymer({
   is: 'tf-graph-dashboard',
+  behaviors: [
+    TF.Dashboard.ReloadBehavior("tf-graph-dashboard"),
+    TF.Backend.Behavior,
+  ],
   properties: {
     _datasets: Object,
-    _renderHierarchy: Object,
-    backend: {type: Object, observer: 'reload'},
+    _renderHierarchy: {type: Object, observer: '_renderHierarchyChanged'},
+    backend: {type: Object, observer: '_backendChanged'},
+    debuggerDataEnabled: Boolean,
+    healthPillsToggledOn: {type: Boolean, value: true, observer: '_healthPillsToggledOnChanged'},
+    // Maps the names of nodes to an array of health pills (HealthPillDatums).
+    _nodeNamesToHealthPills: {
+      type: Object,
+      value: {},
+    },
+    _healthPillStepIndex: Number,
     runs: Array
   },
+  listeners: {
+    'node-toggle-expand': '_handleNodeToggleExpand',
+  },
   reload: function() {
-    Promise.all([this.backend.graphRuns(), this.backend.runMetadataRuns()])
-    .then(function(result) {
-      var runsWithGraph = result[0].sort(VZ.Sorting.compareTagNames);
-      var runToMetadata = result[1];
-      var datasets = _.map(runsWithGraph, function(runName) {
-        return {
-          name: runName,
-          path: this.backend.router.graph(runName, tf.graph.LIMIT_ATTR_SIZE,
-            tf.graph.LARGE_ATTRS_KEY),
-          runMetadata: runToMetadata[runName] ? _.map(
-            runToMetadata[runName].sort(VZ.Sorting.compareTagNames), function(tag) {
-              return {
-                tag: tag,
-                path: this.backend.router.runMetadata(tag, runName)
-              };
-            }, this) : []
-        };
-      }, this);
-      this.set('_datasets', datasets);
+    if (!this.debuggerDataEnabled ||
+        !this.healthPillsToggledOn ||
+        !this._renderHierarchy ||
+        this._datasetsEmpty(this._datasets)) {
+      // Do not load debugger data if the feature is disabled, if the user toggled off the feature,
+      // or if the graph itself has not loaded yet. We need the graph to load so that we know which
+      // nodes to request health pills for.
+      return;
+    }
+
+    // Request debugger data on graph reloads, but do not re-request the graph itself. The graph
+    // would not change across reloads.
+    this._requestHealthPills();
+  },
+  _backendChanged: function(backend) {
+    Promise.all([backend.graphRuns(), backend.runMetadataRuns()])
+      .then(function(result) {
+        var runsWithGraph = result[0].sort(VZ.Sorting.compareTagNames);
+        var runToMetadata = result[1];
+        var datasets = _.map(runsWithGraph, function(runName) {
+          return {
+            name: runName,
+            path: backend.router.graph(
+                runName, tf.graph.LIMIT_ATTR_SIZE, tf.graph.LARGE_ATTRS_KEY),
+            runMetadata: runToMetadata[runName] ? _.map(
+              runToMetadata[runName].sort(VZ.Sorting.compareTagNames), function(tag) {
+                return {
+                  tag: tag,
+                  path: backend.router.runMetadata(tag, runName)
+                };
+              }, this) : []
+          };
+        }, this);
+        this.set('_datasets', datasets);
+      }.bind(this));
+  },
+  _requestHealthPills: function() {
+    this.backend.healthPills(this._renderHierarchy.getNamesOfRenderedOps()).then(function(result) {
+      if (!this.healthPillsToggledOn) {
+        // The user has opted to hide health pills via the toggle button.
+        return;
+      }
+
+      // Set the index for which step to show for the health pills. By default, show the last step.
+      // A precondition we assume (that Tensorboard's reservoir sampling guarantees) is that all
+      // node names should be mapped to the same number of steps.
+      for (let nodeName in result) {
+        this.set('_healthPillStepIndex', result[nodeName].length - 1);
+        break;
+      }
+
+      this.set('_nodeNamesToHealthPills', result);
     }.bind(this));
   },
   _datasetsEmpty: function(datasets) {
     return !datasets || !datasets.length;
-  }
+  },
+  _renderHierarchyChanged: function(renderHierarchy) {
+    // Reload any data on the graph when the render hierarchy (which determines which nodes are
+    // rendered) changes.
+    this.reload();
+  },
+  _handleNodeToggleExpand: function() {
+    // Nodes were toggled. We may need to request health pills for more nodes.
+    this._requestHealthPills();
+  },
+  _healthPillsToggledOnChanged: function(healthPillsToggledOn) {
+    if (healthPillsToggledOn) {
+      // Load health pills.
+      this.reload();
+    } else {
+      // Remove all health pills by setting an empty mapping.
+      this.set('_nodeNamesToHealthPills', {});
+    }
+  },
 });
 })();
 </script>
-<link rel="import" href="../paper-listbox/paper-listbox.html"><link rel="import" href="../iron-icons/image-icons.html"><link rel="import" href="../paper-toast/paper-toast.html"><link rel="import" href="../paper-styles/typography.html"><link rel="import" href="../paper-spinner/paper-spinner-lite.html"><link rel="import" href="../paper-dialog-scrollable/paper-dialog-scrollable.html"><link rel="import" href="../paper-input/paper-textarea.html"><dom-module id="vz-projector-styles" assetpath="/">
+<dom-module id="vz-projector-styles" assetpath="../vz-projector/">
 <template>
 <style>
 :host {
@@ -16336,7 +17466,8 @@ h4 {
 </style>
 </template>
 </dom-module>
-<dom-module id="vz-projector-bookmark-panel" assetpath="/">
+<link rel="import" href="../paper-input/paper-textarea.html">
+<dom-module id="vz-projector-bookmark-panel" assetpath="../vz-projector/">
 <template>
 <style include="vz-projector-styles"></style>
 <style>
@@ -16444,13 +17575,13 @@ paper-textarea {
       </paper-tooltip>
     </div>
     <div id="icon-container">
-      
+
       <paper-icon-button id="expand-more" icon="expand-less" on-tap="_expandMore"></paper-icon-button>
       <paper-icon-button id="expand-less" style="display: none" icon="expand-more" on-tap="_expandLess"></paper-icon-button>
     </div>
   </div>
   <iron-collapse id="panel">
-    
+
     <div id="state-section">
       <template is="dom-if" if="[[!savedStates.length]]">
         <p id="no-bookmarks">
@@ -16489,7 +17620,7 @@ paper-textarea {
 
 </template>
 </dom-module>
-<dom-module id="vz-projector-legend" assetpath="/">
+<dom-module id="vz-projector-legend" assetpath="../vz-projector/">
 <template>
 <style include="vz-projector-styles"></style>
 <style>
@@ -16544,7 +17675,7 @@ paper-textarea {
 </template>
 
 </template>
-</dom-module><dom-module id="vz-projector-data-panel" assetpath="/">
+</dom-module><dom-module id="vz-projector-data-panel" assetpath="../vz-projector/">
 <template>
 <style include="vz-projector-styles"></style>
 <style>
@@ -16701,10 +17832,13 @@ paper-dropdown-menu paper-item {
   display: none;
 }
 
+.colorby-container {
+  margin-bottom: 10px;
+}
 </style>
 <div class="title">DATA</div>
 <div class="container">
-  
+
   <template is="dom-if" if="[[_hasChoices(runNames)]]">
     <paper-dropdown-menu no-animations="" label="[[_getNumRunsLabel(runNames)]] found">
       <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{selectedRun}}">
@@ -16718,7 +17852,7 @@ paper-dropdown-menu paper-item {
   </template>
 
   <template is="dom-if" if="[[tensorNames]]">
-    
+
     <paper-dropdown-menu no-animations="" label="[[_getNumTensorsLabel(tensorNames)]] found">
       <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{selectedTensor}}">
         <template is="dom-repeat" items="[[tensorNames]]">
@@ -16732,7 +17866,7 @@ paper-dropdown-menu paper-item {
       </paper-listbox>
     </paper-dropdown-menu>
   </template>
-  
+
   <template is="dom-if" if="[[_hasChoices(labelOptions)]]">
     <paper-dropdown-menu no-animations="" label="Label by">
       <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{selectedLabelOption}}">
@@ -16745,8 +17879,8 @@ paper-dropdown-menu paper-item {
     </paper-dropdown-menu>
   </template>
 
-  
-  <template is="dom-if" if="[[_hasChoices(colorOptions)]]">
+
+  <div hidden$="[[!_hasChoices(colorOptions)]]" class="colorby-container">
     <paper-dropdown-menu id="colorby" no-animations="" label="Color by">
       <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{selectedColorOptionName}}">
         <template is="dom-repeat" items="[[colorOptions]]">
@@ -16757,8 +17891,20 @@ paper-dropdown-menu paper-item {
         </template>
       </paper-listbox>
     </paper-dropdown-menu>
-    <vz-projector-legend render-info="[[colorLegendRenderInfo]]"></vz-projector-legend>
-  </template>
+    <div hidden$="[[!showForceCategoricalColorsCheckbox]]">
+      <paper-checkbox id="force-categorical-checkbox"></paper-checkbox>
+      Use categorical coloring
+      <paper-icon-button icon="help" class="help-icon"></paper-icon-button>
+      <paper-tooltip position="bottom" animation-delay="0" fit-to-visible-bounds="">
+        For metadata fields that have many unique values we use a gradient color map
+        by default. This checkbox allows you to force categorical coloring by a given
+        metadata field.
+      </paper-tooltip>
+    </div>
+    <template dom-if="[[colorLegendRenderInfo]]">
+      <vz-projector-legend render-info="[[colorLegendRenderInfo]]"></vz-projector-legend>
+    </template>
+  </div>
   <paper-checkbox id="normalize-data-checkbox" checked="{{normalizeData}}">
     Sphereize data
     <paper-icon-button icon="help" class="help-icon"></paper-icon-button>
@@ -16815,7 +17961,7 @@ paper-dropdown-menu paper-item {
           <div class="data-step-contents">
             <div class="data-step-contents-contents">
               Example of 3 data points and 2 columns.<br>
-              <i>Note: the first row is a header.</i>
+              <i>Note: If there is more than one column, the first row will be parsed as column labels.</i>
               <div class="code">
                 <b>Pokémon<span class="delimiter">\t</span>Species</b><br>
                 Wartortle<span class="delimiter">\t</span>Turtle<br>
@@ -16895,7 +18041,7 @@ paper-dropdown-menu paper-item {
 
 </template>
 </dom-module>
-<dom-module id="vz-projector-input" assetpath="/">
+<dom-module id="vz-projector-input" assetpath="../vz-projector/">
 <template>
 <style include="vz-projector-styles"></style>
 <style>
@@ -16935,7 +18081,7 @@ paper-dropdown-menu paper-item {
 
 
 </template>
-</dom-module><dom-module id="vz-projector-inspector-panel" assetpath="/">
+</dom-module><dom-module id="vz-projector-inspector-panel" assetpath="../vz-projector/">
 <style include="vz-projector-styles"></style>
 <style>
 :host {
@@ -17152,7 +18298,7 @@ paper-dropdown-menu paper-item {
 
 </template>
 </dom-module>
-<dom-module id="vz-projector-metadata-card" assetpath="/">
+<dom-module id="vz-projector-metadata-card" assetpath="../vz-projector/">
 <template>
 <style>
 #metadata-card {
@@ -17223,7 +18369,7 @@ paper-dropdown-menu paper-item {
 </template>
 </template>
 </dom-module>
-<dom-module id="vz-projector-projections-panel" assetpath="/">
+<dom-module id="vz-projector-projections-panel" assetpath="../vz-projector/">
 <template>
 <style include="vz-projector-styles"></style>
 <style>
@@ -17365,7 +18511,7 @@ paper-dropdown-menu paper-item {
     </div>
   </div>
   <div class="container">
-    
+
     <div data-panel="tsne" class="ink-panel-content">
       <div class="slider">
         <label>Dimension</label>
@@ -17416,10 +18562,10 @@ paper-dropdown-menu paper-item {
         </a>
       </p>
     </div>
-    
+
     <div data-panel="pca" class="ink-panel-content">
       <div class="two-columns">
-        <div> 
+        <div>
           <paper-dropdown-menu class="pca-dropdown" vertical-align="bottom" no-animations="" label="X">
             <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{pcaX}}">
               <paper-item disabled="" class="dropdown-item header">
@@ -17449,7 +18595,7 @@ paper-dropdown-menu paper-item {
             </paper-listbox>
           </paper-dropdown-menu>
         </div>
-        <div> 
+        <div>
           <paper-dropdown-menu class="pca-dropdown" vertical-align="bottom" no-animations="" label="Y">
             <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{pcaY}}">
               <paper-item disabled="" class="dropdown-item header">
@@ -17476,7 +18622,7 @@ paper-dropdown-menu paper-item {
         For fast results, the data was sampled to [[getPcaSampleSizeText()]] points and randomly projected down to [[getPcaSampledDimText()]] dimensions.
       </paper-tooltip>
     </div>
-    
+
     <div data-panel="custom" class="ink-panel-content">
       <paper-dropdown-menu style="width: 100%" no-animations="" label="Search by">
         <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{customSelectedSearchByMetadataOption}}">
@@ -17500,6 +18646,12 @@ paper-dropdown-menu paper-item {
 </div>
 </template>
 </dom-module>
+<link rel="import" href="../paper-listbox/paper-listbox.html">
+<link rel="import" href="../iron-icons/image-icons.html">
+<link rel="import" href="../paper-toast/paper-toast.html">
+<link rel="import" href="../paper-styles/typography.html">
+<link rel="import" href="../paper-dialog-scrollable/paper-dialog-scrollable.html">
+
 <dom-module id="vz-projector" assetpath="../vz-projector/">
 <template>
 <style include="vz-projector-styles"></style>
@@ -17798,7 +18950,7 @@ paper-dropdown-menu paper-item {
 </div>
 <paper-toast id="toast" always-on-top=""></paper-toast>
 
-</template> 
+</template>
 </dom-module>
 <dom-module id="vz-projector-dashboard" assetpath="../vz-projector/">
 <template>
@@ -17860,10 +19012,12 @@ var TF;
                 },
                 autoReloadIntervalSecs: {
                     type: Number,
-                    value: 120,
+                    value: 30,
                 },
             },
-            detached: function () { window.clearTimeout(this._autoReloadId); },
+            detached: function () {
+                window.clearTimeout(this._autoReloadId);
+            },
             _autoReloadObserver: function (autoReload) {
                 window.localStorage.setItem(TensorBoard.AUTORELOAD_LOCALSTORAGE_KEY, autoReload);
                 if (autoReload) {
@@ -17898,11 +19052,13 @@ var TF;
           <div class="toolbar-title">TensorBoard</div>
           <paper-tabs selected="{{modeIndex}}" noink="" class="tabs" id="tabs">
             <template is="dom-repeat" items="[[tabs]]">
-              <paper-tab data-mode="[[item]]">[[item]]</paper-tab>
+              <template is="dom-if" if="[[_isTabEnabled(item)]]">
+                <paper-tab data-mode="[[item]]">[[item]]</paper-tab>
+              </template>
             </template>
           </paper-tabs>
           <div class="global-actions">
-            <paper-icon-button icon="refresh" on-tap="reload" disabled$="[[_modeIsGraphs(mode)]]" id="reload-button"></paper-icon-button>
+            <paper-icon-button icon="refresh" on-tap="reload" disabled$="[[_isReloadDisabled(mode)]]" id="reload-button"></paper-icon-button>
             <paper-icon-button icon="settings" on-tap="openSettings" id="settings-button"></paper-icon-button>
             <a href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tensorboard/README.md" tabindex="-1">
               <paper-icon-button icon="help-outline"></paper-icon-button>
@@ -17927,7 +19083,7 @@ var TF;
         </template>
 
         <template is="dom-if" if="[[_modeIsGraphs(mode)]]">
-          <tf-graph-dashboard id="graphs" backend="[[_backend]]"></tf-graph-dashboard>
+          <tf-graph-dashboard id="graphs" backend="[[_backend]]" debugger-data-enabled="[[_debuggerDataEnabled]]"></tf-graph-dashboard>
         </template>
 
         <template is="dom-if" if="[[_modeIsDistributions(mode)]]">
@@ -18024,6 +19180,15 @@ var TF;
           type: Object,
           computed: "_makeBackend(router, demoDir)",
         },
+        _debuggerDataEnabled: {
+          type: Boolean,
+          value: function() {
+            // For now, Tensorboard only shows debugger data if the debugger_data GET param is set
+            // to enabled.
+            let match = window.location.href.match(/[&\?]debugger_data=enabled/);
+            return match && match.length == 1;
+          },
+        },
         // Which tab is selected (scalars, graph, images etc).
         mode: {
           type: String,
@@ -18048,6 +19213,14 @@ var TF;
           type: Boolean,
           value: false,
         },
+        disabledTabs: String,
+      },
+      _isTabEnabled: function(tab) {
+        if (this.disabledTabs != null &&
+            this.disabledTabs.split(',').indexOf(tab) >= 0) {
+          return false;
+        }
+        return true;
       },
       _getModeFromIndex: function(modeIndex) {
         var mode = this.tabs[modeIndex];
@@ -18060,6 +19233,9 @@ var TF;
           router = TF.Backend.router(demoDir, true);
         }
         return new TF.Backend.Backend(router);
+      },
+      _isReloadDisabled: function(mode) {
+        return !this._debuggerDataEnabled && this._modeIsGraphs(mode);
       },
       _modeIsScalars: function(mode) {
         return mode === "scalars";
@@ -18109,7 +19285,10 @@ var TF;
         }
       },
       reload: function() {
-        if (this.mode === "graphs" || this.mode === "embeddings") {
+        if (this._modeIsEmbeddings(this.mode)) {
+          return;
+        }
+        if (!this._debuggerDataEnabled && this._modeIsGraphs(this.mode)) {
           return;
         }
         this.selectedDashboard().reload();
@@ -18119,7 +19298,7 @@ var TF;
       },
     });
   </script>
-  
+
   <script>(function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
 "use strict";
 var AnalyticsLogger = (function () {
@@ -18634,7 +19813,14 @@ var DemoDataProvider = (function () {
         var msgId = logging.setModalMessage('Fetching projector config...');
         d3.json(this.projectorConfigPath, function (err, projectorConfig) {
             if (err) {
-                logging.setErrorMessage(err.responseText);
+                var errorMessage = err;
+                // If the error is a valid XMLHttpResponse, it's possible this is a
+                // cross-origin error.
+                if (err.responseText != null) {
+                    errorMessage = 'Cannot fetch projector config, possibly a ' +
+                        'Cross-Origin request error.';
+                }
+                logging.setErrorMessage(errorMessage, 'fetching projector config');
                 return;
             }
             logging.setModalMessage(null, msgId);
@@ -18653,7 +19839,7 @@ var DemoDataProvider = (function () {
             logging.setModalMessage('Fetching tensors...', data_provider_1.TENSORS_MSG_ID);
             d3.text(url, function (error, dataString) {
                 if (error) {
-                    logging.setErrorMessage(error.responseText);
+                    logging.setErrorMessage(error.responseText, 'fetching tensors');
                     return;
                 }
                 dataProvider.parseTensors(dataString).then(function (points) {
@@ -18811,7 +19997,7 @@ var ServerDataProvider = (function () {
         var msgId = logging.setModalMessage('Fetching runs...');
         d3.json(this.routePrefix + "/runs", function (err, runs) {
             if (err) {
-                logging.setErrorMessage(err.responseText);
+                logging.setErrorMessage(err.responseText, 'fetching runs');
                 return;
             }
             logging.setModalMessage(null, msgId);
@@ -18827,7 +20013,7 @@ var ServerDataProvider = (function () {
         var msgId = logging.setModalMessage('Fetching projector config...');
         d3.json(this.routePrefix + "/info?run=" + run, function (err, config) {
             if (err) {
-                logging.setErrorMessage(err.responseText);
+                logging.setErrorMessage(err.responseText, 'fetching projector config');
                 return;
             }
             logging.setModalMessage(null, msgId);
@@ -18911,10 +20097,17 @@ function retrieveTensorAsBytes(dp, embedding, run, tensorName, tensorsPath, call
     xhr.onload = function () {
         if (xhr.status !== 200) {
             var msg = String.fromCharCode.apply(null, new Uint8Array(xhr.response));
-            logging.setErrorMessage(msg);
+            logging.setErrorMessage(msg, 'fetching tensors');
             return;
         }
-        var data = new Float32Array(xhr.response);
+        var data;
+        try {
+            data = new Float32Array(xhr.response);
+        }
+        catch (e) {
+            logging.setErrorMessage(e, 'parsing tensor bytes');
+            return;
+        }
         var dim = embedding.tensorShape[1];
         var N = data.length / dim;
         if (embedding.tensorShape[0] > N) {
@@ -19049,12 +20242,9 @@ function analyzeMetadata(columnNames, pointsMetadata) {
         });
     });
     columnStats.forEach(function (stats, colIndex) {
-        var map = mapOfValues[colIndex];
-        if (!stats.tooManyUniqueValues) {
-            stats.uniqueEntries = map.entries().map(function (e) {
-                return { label: e.key, count: e.value };
-            });
-        }
+        stats.uniqueEntries = mapOfValues[colIndex].entries().map(function (e) {
+            return { label: e.key, count: e.value };
+        });
     });
     return columnStats;
 }
@@ -19109,7 +20299,7 @@ function retrieveSpriteAndMetadataInfo(metadataPath, spriteImagePath, spriteMeta
             logging.setModalMessage('Fetching metadata...', exports.METADATA_MSG_ID);
             d3.text(metadataPath, function (err, rawMetadata) {
                 if (err) {
-                    logging.setErrorMessage(err.responseText);
+                    logging.setErrorMessage(err.responseText, 'fetching metadata');
                     reject(err);
                     return;
                 }
@@ -19395,15 +20585,40 @@ var DataSet = (function () {
             }).then(step);
         });
     };
+    /**
+     * Merges metadata to the dataset and returns whether it succeeded.
+     */
     DataSet.prototype.mergeMetadata = function (metadata) {
         var _this = this;
         if (metadata.pointsInfo.length !== this.points.length) {
-            logging.setWarningMessage(("Number of tensors (" + this.points.length + ") do not match") +
-                (" the number of lines in metadata (" + metadata.pointsInfo.length + ")."));
+            var errorMessage = ("Number of tensors (" + this.points.length + ") do not") +
+                " match the number of lines in metadata" +
+                (" (" + metadata.pointsInfo.length + ").");
+            if (metadata.stats.length === 1 &&
+                this.points.length + 1 === metadata.pointsInfo.length) {
+                // If there is only one column of metadata and the number of points is
+                // exactly one less than the number of metadata lines, this is due to an
+                // unnecessary header line in the metadata and we can show a meaningful
+                // error.
+                logging.setErrorMessage(errorMessage + ' Single column metadata should not have a header ' +
+                    'row.', 'merging metadata');
+                return false;
+            }
+            else if (metadata.stats.length > 1 &&
+                this.points.length - 1 === metadata.pointsInfo.length) {
+                // If there are multiple columns of metadata and the number of points is
+                // exactly one greater than the number of lines in the metadata, this
+                // means there is a missing metadata header.
+                logging.setErrorMessage(errorMessage + ' Multi-column metadata should have a header ' +
+                    'row with column labels.', 'merging metadata');
+                return false;
+            }
+            logging.setWarningMessage(errorMessage);
         }
         this.spriteAndMetadataInfo = metadata;
         metadata.pointsInfo.slice(0, this.points.length)
             .forEach(function (m, i) { return _this.points[i].metadata = m; });
+        return true;
     };
     DataSet.prototype.stopTSNE = function () {
         this.tSNEShouldStop = true;
@@ -20081,8 +21296,8 @@ function setModalMessage(msg, id, title, isErrorMsg) {
     return id;
 }
 exports.setModalMessage = setModalMessage;
-function setErrorMessage(errMsg) {
-    setModalMessage(errMsg, null, 'Error', true);
+function setErrorMessage(errMsg, task) {
+    setModalMessage(errMsg, null, 'Error ' + (task != null ? task : ''), true);
 }
 exports.setErrorMessage = setErrorMessage;
 /**
@@ -21902,6 +23117,7 @@ var ScatterPlotVisualizerSprites = (function () {
         this.texture = util.createTexture(spriteAtlas);
         this.spritesPerRow = spriteAtlas.width / spriteDimensions[0];
         this.spritesPerColumn = spriteAtlas.height / spriteDimensions[1];
+        this.spriteDimensions = spriteDimensions;
         this.spriteIndexBufferAttribute =
             new THREE.BufferAttribute(spriteIndices, INDEX_NUM_ELEMENTS);
         if (this.points != null) {
@@ -21966,7 +23182,7 @@ var ScatterPlotVisualizerSprites = (function () {
     };
     ScatterPlotVisualizerSprites.prototype.calculatePointSize = function (sceneIs3D) {
         if (this.texture != null) {
-            return IMAGE_SIZE;
+            return sceneIs3D ? IMAGE_SIZE : this.spriteDimensions[0];
         }
         var n = (this.worldSpacePointPositions != null) ?
             (this.worldSpacePointPositions.length / XYZ_NUM_ELEMENTS) :
@@ -23144,13 +24360,15 @@ exports.DataPanelPolymer = vz_projector_util_1.PolymerElement({
             observer: '_selectedColorOptionNameChanged'
         },
         selectedLabelOption: { type: String, notify: true, observer: '_selectedLabelOptionChanged' },
-        normalizeData: Boolean
+        normalizeData: Boolean,
+        showForceCategoricalColorsCheckbox: Boolean
     }
 });
 var DataPanel = (function (_super) {
     __extends(DataPanel, _super);
     function DataPanel() {
         _super.apply(this, arguments);
+        this.forceCategoricalColoring = false;
     }
     DataPanel.prototype.ready = function () {
         this.dom = d3.select(this);
@@ -23168,6 +24386,10 @@ var DataPanel = (function (_super) {
             .addEventListener('change', function () {
             _this.projector.setNormalizeData(_this.normalizeData);
         });
+        var forceCategoricalColoringCheckbox = this.querySelector('#force-categorical-checkbox');
+        forceCategoricalColoringCheckbox.addEventListener('change', function () {
+            _this.setForceCategoricalColoring(forceCategoricalColoringCheckbox.checked);
+        });
         // Get all the runs.
         this.dataProvider.retrieveRuns(function (runs) {
             _this.runNames = runs;
@@ -23177,11 +24399,24 @@ var DataPanel = (function (_super) {
             }
         });
     };
+    DataPanel.prototype.setForceCategoricalColoring = function (forceCategoricalColoring) {
+        this.forceCategoricalColoring = forceCategoricalColoring;
+        this.querySelector('#force-categorical-checkbox')
+            .checked = this.forceCategoricalColoring;
+        this.updateMetadataUI(this.spriteAndMetadata.stats, this.metadataFile);
+        // The selected color option name doesn't change when we switch to using
+        // categorical coloring for stats with too many unique values, so we
+        // manually call this polymer observer so that we update the UI.
+        this._selectedColorOptionNameChanged();
+    };
     DataPanel.prototype.getSeparatorClass = function (isSeparator) {
         return isSeparator ? 'separator' : null;
     };
     DataPanel.prototype.metadataChanged = function (spriteAndMetadata, metadataFile) {
-        this.updateMetadataUI(spriteAndMetadata.stats, metadataFile);
+        this.spriteAndMetadata = spriteAndMetadata;
+        this.metadataFile = metadataFile;
+        this.updateMetadataUI(this.spriteAndMetadata.stats, this.metadataFile);
+        this.selectedColorOptionName = this.colorOptions[0].name;
     };
     DataPanel.prototype.addWordBreaks = function (longString) {
         if (longString == null) {
@@ -23190,6 +24425,7 @@ var DataPanel = (function (_super) {
         return longString.replace(/([\/=-_,])/g, '$1<wbr>');
     };
     DataPanel.prototype.updateMetadataUI = function (columnStats, metadataFile) {
+        var _this = this;
         this.dom.select('#metadata-file')
             .html(this.addWordBreaks(metadataFile))
             .attr('title', metadataFile);
@@ -23215,7 +24451,8 @@ var DataPanel = (function (_super) {
             var map;
             var items;
             var thresholds;
-            if (!stats.tooManyUniqueValues) {
+            var isCategorical = _this.forceCategoricalColoring || !stats.tooManyUniqueValues;
+            if (isCategorical) {
                 var scale = d3.scale.category20();
                 var range_1 = scale.range();
                 // Re-order the range.
@@ -23236,12 +24473,18 @@ var DataPanel = (function (_super) {
                     .domain(thresholds.map(function (t) { return t.value; }))
                     .range(thresholds.map(function (t) { return t.color; }));
             }
-            var desc = stats.tooManyUniqueValues ?
-                'gradient' :
+            var desc = !isCategorical ? 'gradient' :
                 stats.uniqueEntries.length +
                     ((stats.uniqueEntries.length > 20) ? ' non-unique' : '') +
                     ' colors';
-            return { name: stats.name, desc: desc, map: map, items: items, thresholds: thresholds };
+            return {
+                name: stats.name,
+                desc: desc,
+                map: map,
+                items: items,
+                thresholds: thresholds,
+                tooManyUniqueValues: stats.tooManyUniqueValues
+            };
         });
         if (metadataColorOption.length > 0) {
             // Add a separator line between built-in color maps
@@ -23249,7 +24492,6 @@ var DataPanel = (function (_super) {
             standardColorOption.push({ name: 'Metadata', isSeparator: true });
         }
         this.colorOptions = standardColorOption.concat(metadataColorOption);
-        this.selectedColorOptionName = this.colorOptions[0].name;
     };
     DataPanel.prototype.setNormalizeData = function (normalizeData) {
         this.normalizeData = normalizeData;
@@ -23334,6 +24576,7 @@ var DataPanel = (function (_super) {
         if (!colorOption) {
             return;
         }
+        this.showForceCategoricalColorsCheckbox = !!colorOption.tooManyUniqueValues;
         if (colorOption.map == null) {
             this.colorLegendRenderInfo = null;
         }
@@ -24596,7 +25839,10 @@ var Projector = (function (_super) {
                 spriteAndMetadata.pointsInfo = pointsInfo;
                 spriteAndMetadata.stats = stats;
             }
-            ds.mergeMetadata(spriteAndMetadata);
+            var metadataMergeSucceeded = ds.mergeMetadata(spriteAndMetadata);
+            if (!metadataMergeSucceeded) {
+                return;
+            }
         }
         if (this.projectorScatterPlotAdapter != null) {
             if (ds == null) {
@@ -24887,6 +26133,7 @@ var Projector = (function (_super) {
         state.filteredPoints = this.dataSetFilterIndices;
         this.projectorScatterPlotAdapter.populateBookmarkFromUI(state);
         state.selectedColorOptionName = this.dataPanel.selectedColorOptionName;
+        state.forceCategoricalColoring = this.dataPanel.forceCategoricalColoring;
         state.selectedLabelOption = this.selectedLabelOption;
         this.projectionsPanel.populateBookmarkFromUI(state);
         return state;
@@ -24917,6 +26164,7 @@ var Projector = (function (_super) {
         this.projectionsPanel.restoreUIFromBookmark(state);
         this.inspectorPanel.restoreUIFromBookmark(state);
         this.dataPanel.selectedColorOptionName = state.selectedColorOptionName;
+        this.dataPanel.setForceCategoricalColoring(!!state.forceCategoricalColoring);
         this.selectedLabelOption = state.selectedLabelOption;
         this.projectorScatterPlotAdapter.restoreUIFromBookmark(state);
         {

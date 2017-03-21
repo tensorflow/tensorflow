@@ -144,6 +144,9 @@ class Tensor {
   /// Returns the estimated memory usage of this tensor.
   size_t TotalBytes() const;
 
+  // Returns the size of sallocated memory for this tensor.
+  size_t AllocatedBytes() const;
+
   /// Returns true iff this tensor is aligned.
   bool IsAligned() const {
 #if EIGEN_MAX_ALIGN_BYTES == 0
