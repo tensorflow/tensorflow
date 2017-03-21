@@ -253,35 +253,42 @@ static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
 
   int num_threads = worker_threads->num_threads;
 
-#if 1  
-  if(blocksofm > num_threads){
-    int work = blocksofm;
-    BlockingCounter count(num_threads);
-    for (int i = 0; i < num_threads; ++i) {
+#if 1
+  if(kind ==  LIBXSMM_DNN_COMPUTE_KIND_FWD || kind ==  LIBXSMM_DNN_COMPUTE_KIND_BWD){
+    if(blocksofm > num_threads){
+      int work = blocksofm;
+      BlockingCounter count(num_threads);
+      for (int i = 0; i < num_threads; ++i) {
         worker_threads->workers->Schedule([=, &count]() {
         int start = work/num_threads*i;
-        int end =  (start + work/num_threads) > work ? work: start + work/num_threads;  
+        int end =  (start + work/num_threads) > work ? work: start + work/num_threads;
         copy_RSCK_to_custom(filter, native_filter, desc.R, desc.S,desc.C, desc.K,blocksifm,blocksofm,ifmblock,ofmblock,start, end);
         count.DecrementCount();
         });
+      }
+      count.Wait();
     }
-    count.Wait();
-  }
-  else{
-
-    int work = blocksofm;
-    int num_threads = work;
-    
-    BlockingCounter count(num_threads);
-    for (int i = 0; i < num_threads; ++i) {
+    else{
+ 
+      int work = blocksofm;
+      int num_threads = work;
+ 
+      BlockingCounter count(num_threads);
+      for (int i = 0; i < num_threads; ++i) {
         worker_threads->workers->Schedule([=, &count]() {
         int start = i;
         int end =  i+1;
         copy_RSCK_to_custom(filter, native_filter, desc.R, desc.S,desc.C, desc.K,blocksifm,blocksofm,ifmblock,ofmblock, start, end);
         count.DecrementCount();
         });
+      }
+      count.Wait();
     }
-    count.Wait();
+  }
+  //Added: for weight update
+  else if (kind == LIBXSMM_DNN_COMPUTE_KIND_UPD){
+    libxsmm_filter = libxsmm_dnn_link_filter(libxsmm_handle, LIBXSMM_DNN_FILTER, filter, LIBXSMM_DNN_TENSOR_FORMAT_RSCK_PTR, &status);
+    chk_libxsmm_err(status, "Link filter");//weight update is in RSCK as filter should be returned in RSCK format
   }
 #else
   memset( native_filter, 0, blocksofm*blocksifm*desc.R*desc.S*ifmblock*ofmblock*sizeof(float));
