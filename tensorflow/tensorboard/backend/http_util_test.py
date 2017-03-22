@@ -26,7 +26,7 @@ import six
 from werkzeug import test as wtest
 from werkzeug import wrappers
 from tensorflow.python.platform import test
-from tensorflow.tensorboard.lib.python import http_util
+from tensorflow.tensorboard.backend import http_util
 
 
 class RespondTest(test.TestCase):

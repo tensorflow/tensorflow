@@ -144,8 +144,8 @@ def stack_bidirectional_dynamic_rnn(cells_fw,
       to be used for forward direction.
     cells_bw: List of instances of RNNCell, one per layer,
       to be used for backward direction.
-    inputs: A length T list of inputs, each a tensor of shape
-      [batch_size, input_size], or a nested tuple of such elements.
+    inputs: The RNN inputs. this must be a tensor of shape:
+      `[batch_size, max_time, ...]`, or a nested tuple of such elements.
     initial_states_fw: (optional) A list of the initial states (one per layer)
       for the forward RNN.
       Each tensor must has an appropriate type and shape
@@ -175,7 +175,7 @@ def stack_bidirectional_dynamic_rnn(cells_fw,
 
   Raises:
     TypeError: If `cell_fw` or `cell_bw` is not an instance of `RNNCell`.
-    ValueError: If inputs is `None`, not a list or an empty list.
+    ValueError: If inputs is `None`.
   """
   if not cells_fw:
     raise ValueError("Must specify at least one fw cell for BidirectionalRNN.")
