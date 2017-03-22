@@ -260,10 +260,10 @@ class RunConfig(ClusterConfig):
     self._save_summary_steps = save_summary_steps
     self._save_checkpoints_secs = save_checkpoints_secs
     if save_checkpoints_secs == _USE_DEFAULT:
-        if save_checkpoints_steps is None:
-            self._save_checkpoints_secs = 600
-        else:
-            self._save_checkpoints_secs = None
+      if save_checkpoints_steps is None:
+        self._save_checkpoints_secs = 600
+      else:
+        self._save_checkpoints_secs = None
     self._save_checkpoints_steps = save_checkpoints_steps
 
     # TODO(weiho): Remove these after ModelFn refactoring, when users can
