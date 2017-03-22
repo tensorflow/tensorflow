@@ -164,5 +164,104 @@ class ResourceApplyAdagrad : public XlaOpKernel {
 };
 REGISTER_XLA_OP("ResourceApplyAdagrad", ResourceApplyAdagrad);
 
+class ResourceApplyRMSProp : public XlaOpKernel {
+ public:
+  explicit ResourceApplyRMSProp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    xla::ComputationBuilder* b = ctx->builder();
+
+    DataType type = ctx->input_type(3);
+
+    DataType var_type, ms_type, mom_type;
+    TensorShape var_shape, ms_shape, mom_shape;
+    OP_REQUIRES_OK(ctx, ctx->GetVariableTypeAndShape(0, &var_type, &var_shape));
+    OP_REQUIRES_OK(ctx, ctx->GetVariableTypeAndShape(1, &ms_type, &ms_shape));
+    OP_REQUIRES_OK(ctx, ctx->GetVariableTypeAndShape(2, &mom_type, &mom_shape));
+
+    OP_REQUIRES(
+        ctx, type == var_type && type == ms_type && type == mom_type,
+        errors::InvalidArgument(
+            "Types of variable arguments to ResourceApplyRMSProp must match: ",
+            DataTypeString(type), " vs. ", DataTypeString(var_type), " vs. ",
+            DataTypeString(ms_type), " vs. ", DataTypeString(mom_type)));
+
+    TensorShape lr_shape = ctx->InputShape(3);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr_shape),
+                errors::InvalidArgument("lr is not a scalar: ",
+                                        lr_shape.DebugString()));
+    TensorShape rho_shape = ctx->InputShape(4);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(rho_shape),
+                errors::InvalidArgument("rho is not a scalar: ",
+                                        rho_shape.DebugString()));
+    TensorShape momentum_shape = ctx->InputShape(5);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(momentum_shape),
+                errors::InvalidArgument("momentum is not a scalar: ",
+                                        momentum_shape.DebugString()));
+    TensorShape epsilon_shape = ctx->InputShape(6);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(epsilon_shape),
+                errors::InvalidArgument("epsilon is not a scalar: ",
+                                        epsilon_shape.DebugString()));
+    TensorShape grad_shape = ctx->InputShape(7);
+
+    // var should be the same shape as mom and ms.
+    OP_REQUIRES(ctx, var_shape.IsSameSize(ms_shape),
+                errors::InvalidArgument(
+                    "var and grad do not have the same shape",
+                    var_shape.DebugString(), " ", grad_shape.DebugString()));
+    OP_REQUIRES(ctx, var_shape.IsSameSize(mom_shape),
+                errors::InvalidArgument(
+                    "var and mom do not have the same shape",
+                    var_shape.DebugString(), " ", mom_shape.DebugString()));
+    OP_REQUIRES(ctx, var_shape.IsSameSize(grad_shape),
+                errors::InvalidArgument(
+                    "var and grad do not have the same shape",
+                    var_shape.DebugString(), " ", grad_shape.DebugString()));
+
+    xla::ComputationDataHandle var, ms, mom;
+    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, &var));
+    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(1, &ms));
+    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(2, &mom));
+    xla::ComputationDataHandle lr = ctx->Input(3);
+    xla::ComputationDataHandle rho = ctx->Input(4);
+    xla::ComputationDataHandle momentum = ctx->Input(5);
+    xla::ComputationDataHandle epsilon = ctx->Input(6);
+    xla::ComputationDataHandle grad = ctx->Input(7);
+
+    // ms <- rho * ms_{t-1} + (1-rho) * grad * grad
+    // mom <- momentum * mom_{t-1} + lr * grad / sqrt(ms + epsilon)
+    // var <- var - mom
+    //
+    // We use an alternate formulation of the ms equation:
+    //
+    //    ms <- ms + (grad**2 - ms) * (1 - rho)
+    //
+    // Which expands to:
+    //
+    //    ms <- ms + grad**2 - rho * grad ** 2 - ms + ms * rho
+    //
+    // Which simplifies to:
+    //
+    //    ms <- grad**2 (1 - rho) + ms * rho
+    //
+    // Which is the equation listed above.
+    xla::ComputationDataHandle new_ms = b->Add(
+        ms,
+        b->Mul(b->Sub(b->Pow(grad, XlaHelpers::FloatLiteral(b, type, 2.0)), ms),
+               b->Sub(XlaHelpers::FloatLiteral(b, type, 1.0), rho)));
+    xla::ComputationDataHandle new_mom =
+        b->Add(b->Mul(mom, momentum),
+               b->Div(b->Mul(grad, lr),
+                      b->Pow(b->Add(new_ms, epsilon),
+                             XlaHelpers::FloatLiteral(b, type, 0.5))));
+    xla::ComputationDataHandle new_var = b->Sub(var, new_mom);
+
+    OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, type, new_var));
+    OP_REQUIRES_OK(ctx, ctx->AssignVariable(1, type, new_ms));
+    OP_REQUIRES_OK(ctx, ctx->AssignVariable(2, type, new_mom));
+  }
+};
+REGISTER_XLA_OP("ResourceApplyRMSProp", ResourceApplyRMSProp);
+
 }  // namespace
 }  // namespace tensorflow

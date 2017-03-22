@@ -4493,7 +4493,7 @@ each value by 128 prior to casting.
 
 If the mode is 'MIN_FIRST', then this approach is used:
 
-```
+```c++
 number_of_steps = 1 << (# of bits in T)
 range_adjust = number_of_steps / (number_of_steps - 1)
 range = (range_max - range_min) * range_adjust
@@ -4728,12 +4728,14 @@ tensor with 8 elements.
 
 In Python, this scatter operation would look like this:
 
+```python
     indices = tf.constant([[4], [3], [1], [7]])
     updates = tf.constant([9, 10, 11, 12])
     shape = tf.constant([8])
     scatter = tf.scatter_nd(indices, updates, shape)
     with tf.Session() as sess:
       print sess.run(scatter)
+```
 
 The resulting tensor would look like this:
 
@@ -4749,6 +4751,7 @@ rank-3 tensor with two matrices of new values.
 
 In Python, this scatter operation would look like this:
 
+```python
     indices = tf.constant([[0], [2]])
     updates = tf.constant([[[5, 5, 5, 5], [6, 6, 6, 6],
                             [7, 7, 7, 7], [8, 8, 8, 8]],
@@ -4758,6 +4761,7 @@ In Python, this scatter operation would look like this:
     scatter = tf.scatter_nd(indices, updates, shape)
     with tf.Session() as sess:
       print sess.run(scatter)
+```
 
 The resulting tensor would look like this:
 

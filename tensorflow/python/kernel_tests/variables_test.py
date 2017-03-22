@@ -398,6 +398,16 @@ class VariablesTestCase(test.TestCase):
       variables.global_variables_initializer().run()
       self.assertAllClose(np.negative(value), v2.eval())
 
+  def testNoRefDataRace(self):
+    with self.test_session():
+      a = variables.Variable([1, 2, 3], dtype=dtypes.float32)
+      b = variables.Variable(a.initialized_value() + 2)
+      c = variables.Variable(b.initialized_value() + 2)
+      variables.global_variables_initializer().run()
+      self.assertAllEqual(a.eval(), [1, 2, 3])
+      self.assertAllEqual(b.eval(), [3, 4, 5])
+      self.assertAllEqual(c.eval(), [5, 6, 7])
+
   def testInitializerFunctionDevicePlacement(self):
     with self.test_session():
       initializer = lambda: constant_op.constant(42.0)

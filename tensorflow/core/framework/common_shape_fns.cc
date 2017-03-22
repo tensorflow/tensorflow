@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/common_shape_fns.h"
+#include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
 
@@ -222,9 +223,10 @@ Status Conv2DShape(shape_inference::InferenceContext* c) {
 
   if (s.ok() && data_format == "NCHW") {
     // Convert input shape to default NHWC for inference
-    input_shape =
-        c->MakeShape({{c->Dim(input_shape, 0), c->Dim(input_shape, 2),
-                       c->Dim(input_shape, 3), c->Dim(input_shape, 1)}});
+    auto dim = [&](char dimension) {
+      return c->Dim(input_shape, GetTensorDimIndex<2>(FORMAT_NCHW, dimension));
+    };
+    input_shape = c->MakeShape({{dim('N'), dim('0'), dim('1'), dim('C')}});
     stride_rows = strides[2];
     stride_cols = strides[3];
   } else {
@@ -265,11 +267,15 @@ Status Conv2DShape(shape_inference::InferenceContext* c) {
   return Status::OK();
 }
 
+// TODO(mjanusz): Unify all conv/pooling shape functions.
 Status Conv3DShape(shape_inference::InferenceContext* c) {
   ShapeHandle input_shape;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 5, &input_shape));
   ShapeHandle filter_shape;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 5, &filter_shape));
+
+  string data_format;
+  Status s = c->GetAttr("data_format", &data_format);
 
   std::vector<int32> strides;
   TF_RETURN_IF_ERROR(c->GetAttr("strides", &strides));
@@ -279,9 +285,22 @@ Status Conv3DShape(shape_inference::InferenceContext* c) {
         strides.size());
   }
 
-  int32 stride_planes = strides[1];
-  int32 stride_rows = strides[2];
-  int32 stride_cols = strides[3];
+  int32 stride_planes, stride_rows, stride_cols;
+  if (s.ok() && data_format == "NCDHW") {
+    // Convert input_shape to NDHWC.
+    auto dim = [&](char dimension) {
+      return c->Dim(input_shape, GetTensorDimIndex<3>(FORMAT_NCHW, dimension));
+    };
+    input_shape =
+        c->MakeShape({{dim('N'), dim('0'), dim('1'), dim('2'), dim('C')}});
+    stride_planes = strides[2];
+    stride_cols = strides[3];
+    stride_rows = strides[4];
+  } else {
+    stride_planes = strides[1];
+    stride_rows = strides[2];
+    stride_cols = strides[3];
+  }
 
   DimensionHandle batch_size_dim = c->Dim(input_shape, 0);
   DimensionHandle in_planes_dim = c->Dim(input_shape, 1);
@@ -309,9 +328,14 @@ Status Conv3DShape(shape_inference::InferenceContext* c) {
   TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDims(
       c, in_cols_dim, filter_cols_dim, stride_cols, padding, &output_cols));
 
-  ShapeHandle output_shape =
-      c->MakeShape({batch_size_dim, output_planes, output_rows, output_cols,
-                    output_depth_dim});
+  ShapeHandle output_shape;
+  if (data_format == "NCDHW") {
+    output_shape = c->MakeShape({batch_size_dim, output_depth_dim,
+                                 output_planes, output_rows, output_cols});
+  } else {
+    output_shape = c->MakeShape({batch_size_dim, output_planes, output_rows,
+                                 output_cols, output_depth_dim});
+  }
   c->set_output(0, output_shape);
   return Status::OK();
 }
@@ -417,10 +441,11 @@ Status AvgPoolShape(shape_inference::InferenceContext* c) {
   int32 kernel_rows, kernel_cols;
 
   if (s.ok() && data_format == "NCHW") {
-    // Convert input shape to default NHWC for inference
-    input_shape =
-        c->MakeShape({{c->Dim(input_shape, 0), c->Dim(input_shape, 2),
-                       c->Dim(input_shape, 3), c->Dim(input_shape, 1)}});
+    // Convert input shape to default NHWC for inference.
+    auto dim = [&](char dimension) {
+      return c->Dim(input_shape, GetTensorDimIndex<2>(FORMAT_NCHW, dimension));
+    };
+    input_shape = c->MakeShape({{dim('N'), dim('0'), dim('1'), dim('C')}});
     stride_rows = strides[2];
     stride_cols = strides[3];
     kernel_rows = kernel_sizes[2];
@@ -491,10 +516,11 @@ Status MaxPoolShape(shape_inference::InferenceContext* c) {
   int32 kernel_rows, kernel_cols, kernel_depth;
 
   if (s.ok() && data_format == "NCHW") {
-    // Convert input shape to default NHWC for inference
-    input_shape =
-        c->MakeShape({{c->Dim(input_shape, 0), c->Dim(input_shape, 2),
-                       c->Dim(input_shape, 3), c->Dim(input_shape, 1)}});
+    // Convert input shape to default NHWC for inference.
+    auto dim = [&](char dimension) {
+      return c->Dim(input_shape, GetTensorDimIndex<2>(FORMAT_NCHW, dimension));
+    };
+    input_shape = c->MakeShape({{dim('N'), dim('0'), dim('1'), dim('C')}});
     stride_depth = strides[1];
     stride_rows = strides[2];
     stride_cols = strides[3];
@@ -531,9 +557,10 @@ Status MaxPoolShape(shape_inference::InferenceContext* c) {
       c->MakeShape({batch_size_dim, output_rows, output_cols, output_depth});
   if (data_format == "NCHW") {
     // Convert output shape back to expected NCHW data format.
-    output_shape =
-        c->MakeShape({c->Dim(output_shape, 0), c->Dim(output_shape, 3),
-                      c->Dim(output_shape, 1), c->Dim(output_shape, 2)});
+    auto dim = [&](char dimension) {
+      return c->Dim(output_shape, GetTensorDimIndex<2>(FORMAT_NHWC, dimension));
+    };
+    output_shape = c->MakeShape({{dim('N'), dim('C'), dim('0'), dim('1')}});
   }
 
   c->set_output(0, output_shape);
@@ -543,6 +570,9 @@ Status MaxPoolShape(shape_inference::InferenceContext* c) {
 Status Pool3DShape(shape_inference::InferenceContext* c) {
   ShapeHandle input_shape;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 5, &input_shape));
+
+  string data_format;
+  Status s = c->GetAttr("data_format", &data_format);
 
   std::vector<int32> strides;
   TF_RETURN_IF_ERROR(c->GetAttr("strides", &strides));
@@ -564,12 +594,27 @@ Status Pool3DShape(shape_inference::InferenceContext* c) {
   int32 stride_planes, stride_rows, stride_cols;
   int32 kernel_planes, kernel_rows, kernel_cols;
 
-  stride_planes = strides[1];
-  stride_rows = strides[2];
-  stride_cols = strides[3];
-  kernel_planes = kernel_sizes[1];
-  kernel_rows = kernel_sizes[2];
-  kernel_cols = kernel_sizes[3];
+  if (s.ok() && data_format == "NCDHW") {
+    // Convert input_shape to NDHWC.
+    auto dim = [&](char dimension) {
+      return c->Dim(input_shape, GetTensorDimIndex<3>(FORMAT_NCHW, dimension));
+    };
+    input_shape =
+        c->MakeShape({{dim('N'), dim('0'), dim('1'), dim('2'), dim('C')}});
+    stride_planes = strides[2];
+    stride_rows = strides[3];
+    stride_cols = strides[4];
+    kernel_planes = kernel_sizes[2];
+    kernel_rows = kernel_sizes[3];
+    kernel_cols = kernel_sizes[4];
+  } else {
+    stride_planes = strides[1];
+    stride_rows = strides[2];
+    stride_cols = strides[3];
+    kernel_planes = kernel_sizes[1];
+    kernel_rows = kernel_sizes[2];
+    kernel_cols = kernel_sizes[3];
+  }
 
   DimensionHandle batch_size_dim = c->Dim(input_shape, 0);
   DimensionHandle in_planes_dim = c->Dim(input_shape, 1);
@@ -591,9 +636,14 @@ Status Pool3DShape(shape_inference::InferenceContext* c) {
   TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDims(
       c, in_cols_dim, kernel_cols, stride_cols, padding, &output_cols));
 
-  ShapeHandle output_shape =
-      c->MakeShape({batch_size_dim, output_planes, output_rows, output_cols,
-                    output_depth_dim});
+  ShapeHandle output_shape;
+  if (data_format == "NCDHW") {
+    output_shape = c->MakeShape({batch_size_dim, output_depth_dim,
+                                 output_planes, output_rows, output_cols});
+  } else {
+    output_shape = c->MakeShape({batch_size_dim, output_planes, output_rows,
+                                 output_cols, output_depth_dim});
+  }
 
   c->set_output(0, output_shape);
   return Status::OK();

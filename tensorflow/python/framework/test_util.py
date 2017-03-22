@@ -42,6 +42,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import versions
+from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
@@ -141,6 +142,50 @@ def IsGoogleCudaEnabled():
 
 def CudaSupportsHalfMatMulAndConv():
   return pywrap_tensorflow.CudaSupportsHalfMatMulAndConv()
+
+
+def NHWCToNCHW(input_tensor):
+  """Converts the input from the NHWC format to NCHW.
+
+  Args:
+    input_tensor: a 4- or 5-D tensor, or an array representing shape
+
+  Returns:
+    converted tensor or shape array
+  """
+  # tensor dim -> new axis order
+  new_axes = {
+      4: [0, 3, 1, 2],
+      5: [0, 4, 1, 2, 3]
+  }
+  if isinstance(input_tensor, ops.Tensor):
+    ndims = input_tensor.shape.ndims
+    return array_ops.transpose(input_tensor, new_axes[ndims])
+  else:
+    ndims = len(input_tensor)
+    return [input_tensor[a] for a in new_axes[ndims]]
+
+
+def NCHWToNHWC(input_tensor):
+  """Converts the input from the NCHW format to NHWC.
+
+  Args:
+    input_tensor: a 4- or 5-D tensor, or an array representing shape
+
+  Returns:
+    converted tensor or shape array
+  """
+  # tensor dim -> new axis order
+  new_axes = {
+      4: [0, 2, 3, 1],
+      5: [0, 2, 3, 4, 1]
+  }
+  if isinstance(input_tensor, ops.Tensor):
+    ndims = input_tensor.shape.ndims
+    return array_ops.transpose(input_tensor, new_axes[ndims])
+  else:
+    ndims = len(input_tensor)
+    return [input_tensor[a] for a in new_axes[ndims]]
 
 
 class TensorFlowTestCase(googletest.TestCase):
