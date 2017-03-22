@@ -126,6 +126,7 @@ def einsum(equation, *inputs):
   ```
 
   This function behaves like `numpy.einsum`, but does not support:
+
   * Ellipses (subscripts like `ij...,jk...->ik...`)
   * Subscripts where an axis appears more than once for a single input
     (e.g. `ijj,k->ik`).

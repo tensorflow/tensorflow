@@ -422,9 +422,9 @@ def joint_weighted_sum_from_feature_columns(columns_to_tensors,
   Returns:
     A tuple containing:
 
-      * A Tensor which represents predictions of a linear model.
-      * A list of Variables storing the weights.
-      * A Variable which is used for bias.
+    * A Tensor which represents predictions of a linear model.
+    * A list of Variables storing the weights.
+    * A Variable which is used for bias.
 
   Raises:
     ValueError: if FeatureColumn cannot be used for linear predictions.

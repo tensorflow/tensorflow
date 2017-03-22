@@ -24,12 +24,14 @@ When using FeatureColumns with tf.learn models, the type of feature column you
 should choose depends on (1) the feature type and (2) the model type.
 
 (1) Feature type:
+
  * Continuous features can be represented by `real_valued_column`.
  * Categorical features can be represented by any `sparse_column_with_*`
  column (`sparse_column_with_keys`, `sparse_column_with_vocabulary_file`,
  `sparse_column_with_hash_bucket`, `sparse_column_with_integerized_feature`).
 
 (2) Model type:
+
  * Deep neural network models (`DNNClassifier`, `DNNRegressor`).
 
    Continuous features can be directly fed into deep neural network models.

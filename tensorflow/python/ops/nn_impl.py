@@ -182,12 +182,13 @@ def weighted_cross_entropy_with_logits(targets, logits, pos_weight, name=None):
 
   The usual cross-entropy cost is defined as:
 
-    targets * -log(sigmoid(logits)) + (1 - targets) * -log(1 - sigmoid(logits))
+      targets * -log(sigmoid(logits)) +
+          (1 - targets) * -log(1 - sigmoid(logits))
 
   The argument `pos_weight` is used as a multiplier for the positive targets:
 
-    targets * -log(sigmoid(logits)) * pos_weight +
-        (1 - targets) * -log(1 - sigmoid(logits))
+      targets * -log(sigmoid(logits)) * pos_weight +
+          (1 - targets) * -log(1 - sigmoid(logits))
 
   For brevity, let `x = logits`, `z = targets`, `q = pos_weight`.
   The loss is:

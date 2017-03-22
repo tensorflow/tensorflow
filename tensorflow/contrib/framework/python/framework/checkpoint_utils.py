@@ -156,23 +156,25 @@ def init_from_checkpoint(checkpoint_dir, assignment_map):
   redefines dtype.
 
   Assignment map supports following syntax:
-    `'checkpoint_scope_name/': 'scope_name/'` - will load all variables in
-      current `scope_name` from `checkpoint_scope_name` with matching variable
-      names.
-    `'checkpoint_scope_name/some_other_variable': 'scope_name/variable_name'` -
-      will initialize `scope_name/variable_name` variable
-      from `checkpoint_scope_name/some_other_variable`.
-    `'scope_variable_name': variable` - will initialize given `tf.Variable`
-      object with variable from the checkpoint.
-    `'scope_variable_name': list(variable)` - will initialize list of
-      partitioned variables with variable from the checkpoint.
-    `'/': 'scope_name/'` - will load all variables in current `scope_name` from
-      checkpoint's root (e.g. no scope).
+
+  * `'checkpoint_scope_name/': 'scope_name/'` - will load all variables in
+    current `scope_name` from `checkpoint_scope_name` with matching variable
+    names.
+  * `'checkpoint_scope_name/some_other_variable': 'scope_name/variable_name'` -
+    will initialize `scope_name/variable_name` variable
+    from `checkpoint_scope_name/some_other_variable`.
+  * `'scope_variable_name': variable` - will initialize given `tf.Variable`
+    object with variable from the checkpoint.
+  * `'scope_variable_name': list(variable)` - will initialize list of
+    partitioned variables with variable from the checkpoint.
+  * `'/': 'scope_name/'` - will load all variables in current `scope_name` from
+    checkpoint's root (e.g. no scope).
 
   Supports loading into partitioned variables, which are represented as
-  '<variable>/part_<part #>'.
+  `'<variable>/part_<part #>'`.
 
   Example:
+
   ```python
     # Create variables.
     with tf.variable_scope('test'):
