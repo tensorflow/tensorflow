@@ -23,6 +23,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib import metrics as metrics_lib
+from tensorflow.contrib.learn.python.learn.estimators import constants
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators import metric_key
 from tensorflow.contrib.learn.python.learn.estimators import model_fn as model_fn_lib
@@ -53,13 +54,17 @@ def _get_model_fn_with_logistic_metrics(model_fn):
           thresholds=thresholds)
     else:
       eval_metric_ops = None
-
     return model_fn_lib.ModelFnOps(
         mode=mode,
         predictions=predictions,
         loss=loss,
         train_op=train_op,
-        eval_metric_ops=eval_metric_ops)
+        eval_metric_ops=eval_metric_ops,
+        output_alternatives={
+            'head': (constants.ProblemType.LOGISTIC_REGRESSION, {
+                'predictions': predictions
+            })
+        })
 
   return _model_fn
 
