@@ -52,7 +52,8 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
       dump_root: (`str`) optional path to the dump root directory. Must be a
         directory that does not exist or an empty directory. If the directory
         does not exist, it will be created by the debugger core during debug
-        `run()` calls and removed afterwards.
+        `run()` calls and removed afterwards. If `None`, the debug dumps will
+        be at tfdbg_<random_string> under the system temp directory.
       log_usage: (`bool`) whether the usage of this class is to be logged.
       ui_type: (`str`) requested UI type. Currently supported:
         (curses | readline)
@@ -67,7 +68,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
 
     framework.BaseDebugWrapperSession.__init__(self, sess)
 
-    if dump_root is None:
+    if not dump_root:
       self._dump_root = tempfile.mktemp(prefix=_DUMP_ROOT_PREFIX)
     else:
       if os.path.isfile(dump_root):
@@ -326,7 +327,8 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
         self._title_color = "red_on_white"
 
     self._run_cli = analyzer_cli.create_analyzer_ui(
-        debug_dump, self._tensor_filters, ui_type=self._ui_type)
+        debug_dump, self._tensor_filters, ui_type=self._ui_type,
+        on_ui_exit=self._remove_dump_root)
 
     # Get names of all dumped tensors.
     dumped_tensor_names = []

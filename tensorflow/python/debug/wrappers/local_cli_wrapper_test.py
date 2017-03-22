@@ -172,6 +172,16 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     # they should be both None.
     self.assertEqual([None, None], wrapped_sess.observers["tf_errors"])
 
+  def testRunsWithEmptyStringDumpRootWorks(self):
+    # Test command sequence: run, run
+    wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
+        [[], []], self.sess, dump_root="")
+
+    # run under debug mode.
+    wrapped_sess.run(self.inc_v)
+
+    self.assertAllClose(11.0, self.sess.run(self.v))
+
   def testRunInfoOutputAtRunEndIsCorrect(self):
     wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
         [[], [], []], self.sess, dump_root=self._tmp_dir)
