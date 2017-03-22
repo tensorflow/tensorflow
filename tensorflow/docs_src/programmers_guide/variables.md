@@ -144,10 +144,10 @@ specified list, of the variables in the graph.  The saver object provides
 methods to run these ops, specifying paths for the checkpoint files to write to
 or read from.
 
-Note that to restore a model checkpoint without a graph one must first of all
-import the graph from the meta graph file (typical extension is .meta), this is
-done with the @{tf.train.import_meta_graph}, which in turn returns a `Saver`
-from which one can than perform a `restore`.
+Note that to restore a model checkpoint without a graph one must first import
+the graph from the meta graph file (typical extension is `.meta`). This is
+done with @{tf.train.import_meta_graph}, which in turn returns a `Saver` from
+which one can than perform a `restore`.
 
 ### Checkpoint Files
 
