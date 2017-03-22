@@ -560,12 +560,9 @@ class PoolingTest(test.TestCase):
                                            padding)
         cpu_val = out_op.eval()
         self.assertShapeEqual(cpu_val, out_op)
-      if dtype == np.float16:
-        # The CPU version accumulates its gradient on fp16, so it's less
-        # accurate than the GPU version that does the accumulation on fp32
-        self.assertAllClose(cpu_val, gpu_val, rtol=0.01, atol=0.01)
-      else:
-        self.assertAllClose(cpu_val, gpu_val)
+      # The CPU version accumulates its gradient on fp16, so it's less
+      # accurate than the GPU version that does the accumulation on fp32
+      self.assertAllCloseAccordingToType(cpu_val, gpu_val, half_rtol=0.01, half_atol=0.01)
 
   def _CompareMaxPoolingGradBk(self, input_shape, output_shape, ksize, strides,
                                padding):
@@ -592,12 +589,9 @@ class PoolingTest(test.TestCase):
                                                 padding)
         cpu_val = out_op.eval()
         self.assertShapeEqual(cpu_val, out_op)
-      if dtype == np.float16:
-        # The CPU version accumulates its gradient on fp16, so it's less
-        # accurate than the GPU version that does the accumulation on fp32
-        self.assertAllClose(cpu_val, gpu_val, rtol=0.01, atol=0.01)
-      else:
-        self.assertAllClose(cpu_val, gpu_val)
+      # The CPU version accumulates its gradient on fp16, so it's less
+      # accurate than the GPU version that does the accumulation on fp32
+      self.assertAllCloseAccordingToType(cpu_val, gpu_val, half_rtol=0.01, half_atol=0.01)
 
   def testMaxPoolingWithArgmax(self):
     # MaxPoolWithArgMax is implemented only on CUDA.
