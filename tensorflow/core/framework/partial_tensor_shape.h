@@ -40,7 +40,7 @@ class PartialTensorShape {
   PartialTensorShape() : is_unknown_(true) {}
 
   /// \brief Construct a `PartialTensorShape` from the provided sizes.
-  /// REQUIRES: `dim_sizes[i] >= 0`
+  /// REQUIRES: `dim_sizes[i] >= -1`; `-1` means `unknown`.
   explicit PartialTensorShape(gtl::ArraySlice<int64> dim_sizes);
   PartialTensorShape(std::initializer_list<int64> dim_sizes)
       : PartialTensorShape(gtl::ArraySlice<int64>(dim_sizes)) {}

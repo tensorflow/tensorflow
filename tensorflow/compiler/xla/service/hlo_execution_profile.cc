@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/metric_table_report.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/strings/numbers.h"
@@ -32,6 +33,7 @@ namespace xla {
 void HloExecutionProfile::AddProfileResult(const HloInstruction* hlo,
                                            uint64 cycles_taken) {
   hlo_to_cycles_taken_[hlo] = cycles_taken;
+  profiled_computations_.insert(hlo->parent());
 }
 
 uint64 HloExecutionProfile::GetProfileResult(const HloInstruction& hlo) const {
@@ -43,17 +45,30 @@ uint64 HloExecutionProfile::GetProfileResult(const HloInstruction& hlo) const {
 }
 
 string HloExecutionProfile::ToString(
+    const HloComputation& computation,
     const DeviceDescription& device_description,
-    const HloCostAnalysis& cost_analysis) const {
+    const HloCostAnalysis::ShapeSizeFunction& shape_size) const {
+  HloCostAnalysis cost_analysis(shape_size);
+  tensorflow::Status analysis_status =
+      computation.root_instruction()->Accept(&cost_analysis);
+  if (!analysis_status.ok()) {
+    return "";
+  }
+
   using Item = std::pair<const HloInstruction*, uint64>;
-  std::vector<Item> items(hlo_to_cycles_taken_.begin(),
-                          hlo_to_cycles_taken_.end());
+  std::vector<Item> items;
+  for (Item item : hlo_to_cycles_taken_) {
+    // Only include the HLOs which are part of the desired computation.
+    if (item.first->parent() == &computation) {
+      items.push_back(item);
+    }
+  }
   auto custom_less = [](const Item& lhs, const Item& rhs) {
     return lhs.second > rhs.second;
   };
   std::sort(items.begin(), items.end(), custom_less);
   string result;
-  const int64 total_cycles = total_cycles_executed();
+  const int64 total_cycles = total_cycles_executed(computation);
   double clock_rate_ghz = device_description.clock_rate_ghz();
 
   const auto cycles_to_microseconds = [&](double cycles) {
@@ -88,11 +103,13 @@ string HloExecutionProfile::ToString(
             bytes_per_sec.c_str(), bytes_per_cycle.c_str(), name.c_str()));
   };
   tensorflow::strings::StrAppend(
-      &result,
-      tensorflow::strings::Printf("HLO execution profile: (%s @ f_nom)\n\t",
-                                  tensorflow::strings::HumanReadableElapsedTime(
-                                      total_cycles / clock_rate_ghz / 1e9)
-                                      .c_str()));
+      &result, tensorflow::strings::Printf(
+                   "HLO execution profile for %s: (%s @ f_nom)\n\t",
+                   computation.name().c_str(),
+                   tensorflow::strings::HumanReadableElapsedTime(
+                       total_cycles / clock_rate_ghz / 1e9)
+                       .c_str()));
+
   append_item(total_cycles, -1, -1, "[total]");
   for (const auto& item : items) {
     const HloInstruction* hlo = item.first;

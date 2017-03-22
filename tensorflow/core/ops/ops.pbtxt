@@ -1455,6 +1455,52 @@ op {
   description: "Note that in dense implementation of this algorithm, ms and mom will\nupdate even if the grad is zero, but in this sparse implementation, ms\nand mom will not update in iterations during which the grad is zero.\n\nmean_square = decay * mean_square + (1-decay) * gradient ** 2\nDelta = learning_rate * gradient / sqrt(mean_square + epsilon)\n\nms <- rho * ms_{t-1} + (1-rho) * grad * grad\nmom <- momentum * mom_{t-1} + lr * grad / sqrt(ms + epsilon)\nvar <- var - mom"
 }
 op {
+  name: "ApproximateEqual"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type: DT_BOOL
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "tolerance"
+    type: "float"
+    default_value {
+      f: 1e-05
+    }
+  }
+  summary: "Returns the truth value of abs(x-y) < tolerance element-wise."
+  is_commutative: true
+}
+op {
   name: "ArgMax"
   input_arg {
     name: "input"
@@ -3392,6 +3438,43 @@ op {
   description: "This is a deprecated version of BiasAdd and will be soon removed.\n\nThis is a special case of `tf.add` where `bias` is restricted to be 1-D.\nBroadcasting is supported, so `value` may have any number of dimensions."
 }
 op {
+  name: "Bincount"
+  input_arg {
+    name: "arr"
+    description: "int32 `Tensor`."
+    type: DT_INT32
+  }
+  input_arg {
+    name: "size"
+    description: "non-negative int32 scalar `Tensor`."
+    type: DT_INT32
+  }
+  input_arg {
+    name: "weights"
+    description: "is an int32, int64, float32, or float64 `Tensor` with the same\nshape as `arr`, or a length-0 `Tensor`, in which case it acts as all weights\nequal to 1."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "bins"
+    description: "1D `Tensor` with length equal to `size`. The counts or summed weights for\neach value in the range [0, size)."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  summary: "Counts the number of occurrences of each value in an integer array."
+  description: "Outputs a vector with length `size` and the same dtype as `weights`. If\n`weights` are empty, then index `i` stores the number of times the value `i` is\ncounted in `arr`. If `weights` are non-empty, then index `i` stores the sum of\nthe value in `weights` at each index where the corresponding value in `arr` is\n`i`.\n\nValues in `arr` outside of the range [0, size) are ignored."
+}
+op {
   name: "Bitcast"
   input_arg {
     name: "input"
@@ -4135,14 +4218,17 @@ op {
   name: "Conv2D"
   input_arg {
     name: "input"
+    description: "A 4-D tensor. The dimension order is interpreted according to the value\nof `data_format`, see below for details."
     type_attr: "T"
   }
   input_arg {
     name: "filter"
+    description: "A 4-D tensor of shape\n`[filter_height, filter_width, in_channels, out_channels]`"
     type_attr: "T"
   }
   output_arg {
     name: "output"
+    description: "A 4-D tensor. The dimension order is determined by the value of\n`data_format`, see below for details."
     type_attr: "T"
   }
   attr {
@@ -4159,7 +4245,7 @@ op {
   attr {
     name: "strides"
     type: "list(int)"
-    description: "1-D of length 4.  The stride of the sliding window for each dimension\nof `input`. Must be in the same order as the dimension specified with format."
+    description: "1-D tensor of length 4.  The stride of the sliding window for each\ndimension of `input`. The dimension order is determined by the value of\n  `data_format`, see below for details."
   }
   attr {
     name: "use_cudnn_on_gpu"
@@ -4185,7 +4271,7 @@ op {
     default_value {
       s: "NHWC"
     }
-    description: "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, in_channels, in_height, in_width]."
+    description: "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, height, width, channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, channels, height, width]."
     allowed_values {
       list {
         s: "NHWC"
@@ -5200,7 +5286,7 @@ op {
   }
   output_arg {
     name: "output"
-    description: "A double tensor of shape [12], the elements of which are:\n  [0]: is initialized (1.0) or not (0.0).\n  [1]: total number of elements\n  [2]: -inf count\n  [3]: negative element count (excluding -inf)\n  [4]: zero element count\n  [5]: positive element count (excluding +inf)\n  [6]: +inf element count\n  [7]: NaN element count\nOutput elements [1:8] are all zero, if the tensor is uninitialized.\n  [8]: minimum of all non-inf and non-NaN elements.\n       If uninitialized or no such element exists: +inf.\n  [9]: maximum of all non-inf and non-NaN elements.\n       If uninitialized or no such element exists: -inf.\n  [10]: mean of all non-inf and non-NaN elements.\n        If uninitialized or no such element exists: NaN.\n  [11]: variance of all non-inf and non-NaN elements.\n        If uninitialized or no such element exists: NaN."
+    description: "A double tensor of shape [12], the elements of which are:\n  [0]: is initialized (1.0) or not (0.0).\n  [1]: total number of elements\n  [2]: NaN element count\n  [3]: generalized -inf count: elements <= lower_bound. lower_bound is -inf by\n    default.\n  [4]: negative element count (excluding -inf), if lower_bound is the default\n    -inf. Otherwise, this is the count of elements > lower_bound and < 0.\n  [5]: zero element count\n  [6]: positive element count (excluding +inf), if upper_bound is the default\n    -inf. Otherwise, this is the count of elements < upper_bound and > 0.\n  [7]: generalized +inf count, elements >= upper_bound. upper_bound is +inf by\n    default.\nOutput elements [1:8] are all zero, if the tensor is uninitialized.\n  [8]: minimum of all non-inf and non-NaN elements.\n       If uninitialized or no such element exists: +inf.\n  [9]: maximum of all non-inf and non-NaN elements.\n       If uninitialized or no such element exists: -inf.\n  [10]: mean of all non-inf and non-NaN elements.\n        If uninitialized or no such element exists: NaN.\n  [11]: variance of all non-inf and non-NaN elements.\n        If uninitialized or no such element exists: NaN."
     type: DT_DOUBLE
   }
   attr {
@@ -5223,6 +5309,30 @@ op {
       }
     }
     description: "List of URLs to debug targets, e.g.,\nfile:///foo/tfdbg_dump, grpc:://localhost:11011"
+  }
+  attr {
+    name: "lower_bound"
+    type: "float"
+    default_value {
+      f: -inf
+    }
+    description: "(float) The lower bound <= which values will be included in the\ngeneralized -inf count. Default: -inf."
+  }
+  attr {
+    name: "upper_bound"
+    type: "float"
+    default_value {
+      f: inf
+    }
+    description: "(float) The upper bound >= which values will be included in the\ngeneralized +inf count. Default: +inf."
+  }
+  attr {
+    name: "mute_if_healthy"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "(bool) Do not send data to the debug URLs unless at least one\nof elements [2], [3] and [7] (i.e., the nan count and the generalized -inf and\ninf counts) is non-zero."
   }
   summary: "Debug Numeric Summary Op."
   description: "Provide a basic summary of numeric value types, range and distribution."
@@ -5647,6 +5757,20 @@ op {
       }
     }
   }
+  attr {
+    name: "data_format"
+    type: "string"
+    default_value {
+      s: "NHWC"
+    }
+    description: "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, height, width, channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, channels, height, width]."
+    allowed_values {
+      list {
+        s: "NHWC"
+        s: "NCHW"
+      }
+    }
+  }
   summary: "Computes a 2-D depthwise convolution given 4-D `input` and `filter` tensors."
   description: "Given an input tensor of shape `[batch, in_height, in_width, in_channels]`\nand a filter / kernel tensor of shape\n`[filter_height, filter_width, in_channels, channel_multiplier]`, containing\n`in_channels` convolutional filters of depth 1, `depthwise_conv2d` applies\na different filter to each input channel (expanding from 1 channel to\n`channel_multiplier` channels for each), then concatenates the results\ntogether. Thus, the output has `in_channels * channel_multiplier` channels.\n\nfor k in 0..in_channels-1\n  for q in 0..channel_multiplier-1\n    output[b, i, j, k * channel_multiplier + q] =\n      sum_{di, dj} input[b, strides[1] * i + di, strides[2] * j + dj, k] *\n                        filter[di, dj, k, q]\n\nMust have `strides[0] = strides[3] = 1`.  For the most common case of the same\nhorizontal and vertices strides, `strides = [1, stride, stride, 1]`."
 }
@@ -5654,7 +5778,7 @@ op {
   name: "DepthwiseConv2dNativeBackpropFilter"
   input_arg {
     name: "input"
-    description: "4-D with shape `[batch, in_height, in_width, in_channels]`."
+    description: "4-D with shape based on `data_format`.  For example, if\n`data_format` is \'NHWC\' then `input` is a 4-D `[batch, in_height,\nin_width, in_channels]` tensor."
     type_attr: "T"
   }
   input_arg {
@@ -5664,7 +5788,7 @@ op {
   }
   input_arg {
     name: "out_backprop"
-    description: "4-D with shape `[batch, out_height, out_width, out_channels]`.\nGradients w.r.t. the output of the convolution."
+    description: "4-D with shape  based on `data_format`.\nFor example, if `data_format` is \'NHWC\' then\nout_backprop shape is `[batch, out_height, out_width, out_channels]`.\nGradients w.r.t. the output of the convolution."
     type_attr: "T"
   }
   output_arg {
@@ -5698,13 +5822,27 @@ op {
       }
     }
   }
+  attr {
+    name: "data_format"
+    type: "string"
+    default_value {
+      s: "NHWC"
+    }
+    description: "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, height, width, channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, channels, height, width]."
+    allowed_values {
+      list {
+        s: "NHWC"
+        s: "NCHW"
+      }
+    }
+  }
   summary: "Computes the gradients of depthwise convolution with respect to the filter."
 }
 op {
   name: "DepthwiseConv2dNativeBackpropInput"
   input_arg {
     name: "input_sizes"
-    description: "An integer vector representing the shape of `input`,\nwhere `input` is a 4-D `[batch, height, width, channels]` tensor."
+    description: "An integer vector representing the shape of `input`, based\non `data_format`.  For example, if `data_format` is \'NHWC\' then\n `input` is a 4-D `[batch, height, width, channels]` tensor."
     type: DT_INT32
   }
   input_arg {
@@ -5714,12 +5852,12 @@ op {
   }
   input_arg {
     name: "out_backprop"
-    description: "4-D with shape `[batch, out_height, out_width, out_channels]`.\nGradients w.r.t. the output of the convolution."
+    description: "4-D with shape  based on `data_format`.\nFor example, if `data_format` is \'NHWC\' then\nout_backprop shape is `[batch, out_height, out_width, out_channels]`.\nGradients w.r.t. the output of the convolution."
     type_attr: "T"
   }
   output_arg {
     name: "output"
-    description: "4-D with shape `[batch, in_height, in_width, in_channels]`.  Gradient\nw.r.t. the input of the convolution."
+    description: "4-D with shape according to `data_format`.  For example, if\n`data_format` is \'NHWC\', output shape is `[batch, in_height,\nin_width, in_channels]`.  Gradient w.r.t. the input of the\nconvolution."
     type_attr: "T"
   }
   attr {
@@ -5745,6 +5883,20 @@ op {
       list {
         s: "SAME"
         s: "VALID"
+      }
+    }
+  }
+  attr {
+    name: "data_format"
+    type: "string"
+    default_value {
+      s: "NHWC"
+    }
+    description: "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, height, width, channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, channels, height, width]."
+    allowed_values {
+      list {
+        s: "NHWC"
+        s: "NCHW"
       }
     }
   }
@@ -6777,7 +6929,7 @@ op {
   }
   input_arg {
     name: "offsets"
-    description: "A 2-D integer tensor of shape `[batch_size, 2]` containing\nthe x, y locations of the center of each window."
+    description: "A 2-D integer tensor of shape `[batch_size, 2]` containing\nthe y, x locations of the center of each window."
     type: DT_FLOAT
   }
   output_arg {
@@ -6884,7 +7036,7 @@ op {
   }
   output_arg {
     name: "output"
-    description: "A complex64 tensor of the same shape as `input`. The inner-most\ndimension of `input` is replaced with its 1D Fourier Transform."
+    description: "A complex64 tensor of the same shape as `input`. The inner-most\n  dimension of `input` is replaced with its 1D Fourier Transform.\n\n@compatibility(numpy)\nEquivalent to np.fft.fft\n@end_compatibility"
     type: DT_COMPLEX64
   }
   summary: "Compute the 1-dimensional discrete Fourier Transform over the inner-most"
@@ -6899,7 +7051,7 @@ op {
   }
   output_arg {
     name: "output"
-    description: "A complex64 tensor of the same shape as `input`. The inner-most 2\n  dimensions of `input` are replaced with their 2D Fourier Transform.\n\n@compatibility(numpy)\nEquivalent to np.fft2\n@end_compatibility"
+    description: "A complex64 tensor of the same shape as `input`. The inner-most 2\n  dimensions of `input` are replaced with their 2D Fourier Transform.\n\n@compatibility(numpy)\nEquivalent to np.fft.fft2\n@end_compatibility"
     type: DT_COMPLEX64
   }
   summary: "Compute the 2-dimensional discrete Fourier Transform over the inner-most"
@@ -6914,7 +7066,7 @@ op {
   }
   output_arg {
     name: "output"
-    description: "A complex64 tensor of the same shape as `input`. The inner-most 3\n  dimensions of `input` are replaced with their 3D Fourier Transform.\n\n@compatibility(numpy)\nEquivalent to np.fft3\n@end_compatibility"
+    description: "A complex64 tensor of the same shape as `input`. The inner-most 3\n  dimensions of `input` are replaced with their 3D Fourier Transform.\n\n@compatibility(numpy)\nEquivalent to np.fft.fftn with 3 dimensions.\n@end_compatibility"
     type: DT_COMPLEX64
   }
   summary: "Compute the 3-dimensional discrete Fourier Transform over the inner-most 3"
@@ -8227,19 +8379,39 @@ op {
   name: "GetSessionHandle"
   input_arg {
     name: "value"
-    description: "The tensor to be stored."
     type_attr: "T"
   }
   output_arg {
     name: "handle"
-    description: "The handle for the tensor stored in the session state."
     type: DT_STRING
   }
   attr {
     name: "T"
     type: "type"
   }
+  deprecation {
+    version: 23
+    explanation: "Use GetSessionHandleV2"
+  }
+}
+op {
+  name: "GetSessionHandleV2"
+  input_arg {
+    name: "value"
+    description: "The tensor to be stored."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "handle"
+    description: "The handle for the tensor stored in the session state, represented\nas a ResourceHandle object."
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
   summary: "Store the input tensor in the state of the current session."
+  is_stateful: true
 }
 op {
   name: "GetSessionTensor"
@@ -8451,7 +8623,7 @@ op {
   }
   output_arg {
     name: "output"
-    description: "A complex64 tensor of the same shape as `input`. The inner-most\ndimension of `input` is replaced with its inverse 1D Fourier Transform."
+    description: "A complex64 tensor of the same shape as `input`. The inner-most\n  dimension of `input` is replaced with its inverse 1D Fourier Transform.\n\n@compatibility(numpy)\nEquivalent to np.fft.ifft\n@end_compatibility"
     type: DT_COMPLEX64
   }
   summary: "Compute the inverse 1-dimensional discrete Fourier Transform over the inner-most"
@@ -8466,7 +8638,7 @@ op {
   }
   output_arg {
     name: "output"
-    description: "A complex64 tensor of the same shape as `input`. The inner-most 2\n  dimensions of `input` are replaced with their inverse 2D Fourier Transform.\n\n@compatibility(numpy)\nEquivalent to np.ifft2\n@end_compatibility"
+    description: "A complex64 tensor of the same shape as `input`. The inner-most 2\n  dimensions of `input` are replaced with their inverse 2D Fourier Transform.\n\n@compatibility(numpy)\nEquivalent to np.fft.ifft2\n@end_compatibility"
     type: DT_COMPLEX64
   }
   summary: "Compute the inverse 2-dimensional discrete Fourier Transform over the inner-most"
@@ -8481,11 +8653,71 @@ op {
   }
   output_arg {
     name: "output"
-    description: "A complex64 tensor of the same shape as `input`. The inner-most 3\n  dimensions of `input` are replaced with their inverse 3D Fourier Transform.\n\n@compatibility(numpy)\nEquivalent to np.fft3\n@end_compatibility"
+    description: "A complex64 tensor of the same shape as `input`. The inner-most 3\n  dimensions of `input` are replaced with their inverse 3D Fourier Transform.\n\n@compatibility(numpy)\nEquivalent to np.fft.ifftn with 3 dimensions.\n@end_compatibility"
     type: DT_COMPLEX64
   }
   summary: "Compute the inverse 3-dimensional discrete Fourier Transform over the inner-most"
   description: "3 dimensions of `input`."
+}
+op {
+  name: "IRFFT"
+  input_arg {
+    name: "input"
+    description: "A complex64 tensor."
+    type: DT_COMPLEX64
+  }
+  input_arg {
+    name: "fft_length"
+    description: "An int32 tensor of shape [1]. The FFT length."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    description: "A float32 tensor of the same rank as `input`. The inner-most\n  dimension of `input` is replaced with the `fft_length` samples of its inverse\n  1D Fourier Transform.\n\n@compatibility(numpy)\nEquivalent to np.fft.irfft\n@end_compatibility"
+    type: DT_FLOAT
+  }
+  summary: "Compute the inverse 1-dimensional discrete Fourier Transform of a real-valued"
+  description: "signal over the inner-most dimension of `input`.\n\nThe inner-most dimension of `input` is assumed to be the result of `RFFT`: the\n`fft_length / 2 + 1` unique components of the DFT of a real-valued signal. If\n`fft_length` is not provided, it is computed from the size of the inner-most\ndimension of `input` (`fft_length = 2 * (inner - 1)`). If the FFT length used to\ncompute `input` is odd, it should be provided since it cannot be inferred\nproperly."
+}
+op {
+  name: "IRFFT2D"
+  input_arg {
+    name: "input"
+    description: "A complex64 tensor."
+    type: DT_COMPLEX64
+  }
+  input_arg {
+    name: "fft_length"
+    description: "An int32 tensor of shape [2]. The FFT length for each dimension."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    description: "A float32 tensor of the same rank as `input`. The inner-most 2\n  dimensions of `input` are replaced with the `fft_length` samples of their\n  inverse 2D Fourier Transform.\n\n@compatibility(numpy)\nEquivalent to np.fft.irfft2\n@end_compatibility"
+    type: DT_FLOAT
+  }
+  summary: "Compute the inverse 2-dimensional discrete Fourier Transform of a real-valued"
+  description: "signal over the inner-most 2 dimensions of `input`.\n\nThe inner-most 2 dimensions of `input` are assumed to be the result of `RFFT2D`:\nThe inner-most dimension contains the `fft_length / 2 + 1` unique components of\nthe DFT of a real-valued signal. If `fft_length` is not provided, it is computed\nfrom the size of the inner-most 2 dimensions of `input`. If the FFT length used\nto compute `input` is odd, it should be provided since it cannot be inferred\nproperly."
+}
+op {
+  name: "IRFFT3D"
+  input_arg {
+    name: "input"
+    description: "A complex64 tensor."
+    type: DT_COMPLEX64
+  }
+  input_arg {
+    name: "fft_length"
+    description: "An int32 tensor of shape [3]. The FFT length for each dimension."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    description: "A float32 tensor of the same rank as `input`. The inner-most 3\n  dimensions of `input` are replaced with the `fft_length` samples of their\n  inverse 3D real Fourier Transform.\n\n@compatibility(numpy)\nEquivalent to np.irfftn with 3 dimensions.\n@end_compatibility"
+    type: DT_FLOAT
+  }
+  summary: "Compute the inverse 3-dimensional discrete Fourier Transform of a real-valued"
+  description: "signal over the inner-most 3 dimensions of `input`.\n\nThe inner-most 3 dimensions of `input` are assumed to be the result of `RFFT3D`:\nThe inner-most dimension contains the `fft_length / 2 + 1` unique components of\nthe DFT of a real-valued signal. If `fft_length` is not provided, it is computed\nfrom the size of the inner-most 3 dimensions of `input`. If the FFT length used\nto compute `input` is odd, it should be provided since it cannot be inferred\nproperly."
 }
 op {
   name: "Identity"
@@ -12556,7 +12788,6 @@ op {
   name: "QuantizeAndDequantize"
   input_arg {
     name: "input"
-    description: "Tensor to quantize and then dequantize."
     type_attr: "T"
   }
   output_arg {
@@ -12569,7 +12800,6 @@ op {
     default_value {
       b: true
     }
-    description: "If the quantization is signed or unsigned."
   }
   attr {
     name: "num_bits"
@@ -12577,7 +12807,6 @@ op {
     default_value {
       i: 8
     }
-    description: "The bitwidth of the quantization."
   }
   attr {
     name: "range_given"
@@ -12585,7 +12814,6 @@ op {
     default_value {
       b: false
     }
-    description: "If the range is given or should be computed from the tensor."
   }
   attr {
     name: "input_min"
@@ -12593,7 +12821,6 @@ op {
     default_value {
       f: 0
     }
-    description: "If range is given, this is the min of the range."
   }
   attr {
     name: "input_max"
@@ -12601,7 +12828,6 @@ op {
     default_value {
       f: 0
     }
-    description: "If range is given, this is the max of the range."
   }
   attr {
     name: "T"
@@ -12613,10 +12839,9 @@ op {
       }
     }
   }
-  summary: "Quantizes then dequantizes a tensor."
-  description: "This op simulates the precision loss from the quantized forward pass by:\n1. Quantizing the tensor to fixed point numbers, which should match the target\n   quantization method when it is used in inference.\n2. Dequantizing it back to floating point numbers for the following ops, most\n   likely matmul.\n\nThere are different ways to quantize. This version does not use the full range\nof the output type, choosing to elide the lowest possible value for symmetry\n(e.g., output range is -127 to 127, not -128 to 127 for signed 8 bit\nquantization), so that 0.0 maps to 0.\n\nTo perform this op, we first find the range of values in our tensor. The range\nwe use is always centered on 0, so we find m such that\n\n1. m = max(abs(input_min), abs(input_max)) if range_given is true,\n2. m = max(max(abs(min_elem(input)), abs(max_elem(input))) otherwise.\n\nOur input tensor range is then [-m, m].\n\nNext, we choose our fixed-point quantization buckets, [min_fixed, max_fixed].\nIf signed_input is true, this is\n\n  [min_fixed, max_fixed ] =\n      [-(1 << (num_bits - 1) - 1), (1 << (num_bits - 1)) - 1].\n\nOtherwise, if signed_input is false, the fixed-point range is\n\n  [min_fixed, max_fixed] = [0, (1 << num_bits) - 1].\n\nFrom this we compute our scaling factor, s:\n\n  s = (max_fixed - min_fixed) / (2 * m).\n\nNow we can quantize and dequantize the elements of our tensor.  An element e\nis transformed into e\':\n\n  e\' = (e * s).round_to_nearest() / s.\n\nNote that we have a different number of buckets in the signed vs. unsigned\ncases.  For example, if num_bits == 8, we get 254 buckets in the signed case\nvs. 255 in the unsigned case.\n\nFor example, suppose num_bits = 8 and m = 1.  Then\n\n  [min_fixed, max_fixed] = [-127, 127], and\n  s = (127 + 127) / 2 = 127.\n\nGiven the vector {-1, -0.5, 0, 0.3}, this is quantized to\n{-127, -63, 0, 38}, and dequantized to {-1, -63.0/127, 0, 38.0/127}."
+  summary: "Use QuantizeAndDequantizeV2 instead."
   deprecation {
-    version: 21
+    version: 22
     explanation: "Replaced by QuantizeAndDequantizeV2"
   }
 }
@@ -14244,6 +14469,66 @@ op {
   }
   summary: "Computes the number of elements in the given queue."
   is_stateful: true
+}
+op {
+  name: "RFFT"
+  input_arg {
+    name: "input"
+    description: "A float32 tensor."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "fft_length"
+    description: "An int32 tensor of shape [1]. The FFT length."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    description: "A complex64 tensor of the same rank as `input`. The inner-most\n  dimension of `input` is replaced with the `fft_length / 2 + 1` unique\n  frequency components of its 1D Fourier Transform.\n\n@compatibility(numpy)\nEquivalent to np.fft.rfft\n@end_compatibility"
+    type: DT_COMPLEX64
+  }
+  summary: "Compute the 1-dimensional discrete Fourier Transform of a real-valued signal"
+  description: "over the inner-most dimension of `input`.\n\nSince the DFT of a real signal is Hermitian-symmetric, `RFFT` only returns the\n`fft_length / 2 + 1` unique components of the FFT: the zero-frequency term,\nfollowed by the `fft_length / 2` positive-frequency terms."
+}
+op {
+  name: "RFFT2D"
+  input_arg {
+    name: "input"
+    description: "A float32 tensor."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "fft_length"
+    description: "An int32 tensor of shape [2]. The FFT length for each dimension."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    description: "A complex64 tensor of the same rank as `input`. The inner-most 2\n  dimensions of `input` are replaced with their 2D Fourier Transform. The\n  inner-most dimension contains `fft_length / 2 + 1` unique frequency\n  components.\n\n@compatibility(numpy)\nEquivalent to np.fft.rfft2\n@end_compatibility"
+    type: DT_COMPLEX64
+  }
+  summary: "Compute the 2-dimensional discrete Fourier Transform of a real-valued signal"
+  description: "over the inner-most 2 dimensions of `input`.\n\nSince the DFT of a real signal is Hermitian-symmetric, `RFFT2D` only returns the\n`fft_length / 2 + 1` unique components of the FFT for the inner-most dimension\nof `output`: the zero-frequency term, followed by the `fft_length / 2`\npositive-frequency terms."
+}
+op {
+  name: "RFFT3D"
+  input_arg {
+    name: "input"
+    description: "A float32 tensor."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "fft_length"
+    description: "An int32 tensor of shape [3]. The FFT length for each dimension."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    description: "A complex64 tensor of the same rank as `input`. The inner-most 3\n  dimensions of `input` are replaced with the their 3D Fourier Transform. The\n  inner-most dimension contains `fft_length / 2 + 1` unique frequency\n  components.\n\n@compatibility(numpy)\nEquivalent to np.fft.rfftn with 3 dimensions.\n@end_compatibility"
+    type: DT_COMPLEX64
+  }
+  summary: "Compute the 3-dimensional discrete Fourier Transform of a real-valued signal"
+  description: "over the inner-most 3 dimensions of `input`.\n\nSince the DFT of a real signal is Hermitian-symmetric, `RFFT3D` only returns the\n`fft_length / 2 + 1` unique components of the FFT for the inner-most dimension\nof `output`: the zero-frequency term, followed by the `fft_length / 2`\npositive-frequency terms."
 }
 op {
   name: "RGBToHSV"
@@ -18957,7 +19242,7 @@ op {
     }
   }
   summary: "Computes the maximum along segments of a tensor."
-  description: "Read [the section on Segmentation](../../api_docs/python/math_ops.md#segmentation)\nfor an explanation of segments.\n\nComputes a tensor such that\n\\\\(output_i = \\max_j(data_j)\\\\) where `max` is over `j` such\nthat `segment_ids[j] == i`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/SegmentMax.png\" alt>\n</div>"
+  description: "Read [the section on Segmentation](../../api_docs/python/math_ops.md#segmentation)\nfor an explanation of segments.\n\nComputes a tensor such that\n\\\\(output_i = \\max_j(data_j)\\\\) where `max` is over `j` such\nthat `segment_ids[j] == i`.\n\nIf the max is empty for a given segment ID `i`, `output[i] = 0`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/SegmentMax.png\" alt>\n</div>"
 }
 op {
   name: "SegmentMean"
@@ -19003,7 +19288,7 @@ op {
     }
   }
   summary: "Computes the mean along segments of a tensor."
-  description: "Read [the section on\nSegmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation\nof segments.\n\nComputes a tensor such that\n\\\\(output_i = \\frac{\\sum_j data_j}{N}\\\\) where `mean` is\nover `j` such that `segment_ids[j] == i` and `N` is the total number of\nvalues summed.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/SegmentMean.png\" alt>\n</div>"
+  description: "Read [the section on\nSegmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation\nof segments.\n\nComputes a tensor such that\n\\\\(output_i = \\frac{\\sum_j data_j}{N}\\\\) where `mean` is\nover `j` such that `segment_ids[j] == i` and `N` is the total number of\nvalues summed.\n\nIf the mean is empty for a given segment ID `i`, `output[i] = 0`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/SegmentMean.png\" alt>\n</div>"
 }
 op {
   name: "SegmentMin"
@@ -19049,7 +19334,7 @@ op {
     }
   }
   summary: "Computes the minimum along segments of a tensor."
-  description: "Read [the section on\nSegmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation\nof segments.\n\nComputes a tensor such that\n\\\\(output_i = \\min_j(data_j)\\\\) where `min` is over `j` such\nthat `segment_ids[j] == i`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/SegmentMin.png\" alt>\n</div>"
+  description: "Read [the section on\nSegmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation\nof segments.\n\nComputes a tensor such that\n\\\\(output_i = \\min_j(data_j)\\\\) where `min` is over `j` such\nthat `segment_ids[j] == i`.\n\nIf the min is empty for a given segment ID `i`, `output[i] = 0`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/SegmentMin.png\" alt>\n</div>"
 }
 op {
   name: "SegmentProd"
@@ -19100,7 +19385,7 @@ op {
     }
   }
   summary: "Computes the product along segments of a tensor."
-  description: "Read [the section on\nSegmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation\nof segments.\n\nComputes a tensor such that\n\\\\(output_i = \\prod_j data_j\\\\) where the product is over `j` such\nthat `segment_ids[j] == i`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/SegmentProd.png\" alt>\n</div>"
+  description: "Read [the section on\nSegmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation\nof segments.\n\nComputes a tensor such that\n\\\\(output_i = \\prod_j data_j\\\\) where the product is over `j` such\nthat `segment_ids[j] == i`.\n\nIf the product is empty for a given segment ID `i`, `output[i] = 1`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/SegmentProd.png\" alt>\n</div>"
 }
 op {
   name: "SegmentSum"
@@ -19151,7 +19436,7 @@ op {
     }
   }
   summary: "Computes the sum along segments of a tensor."
-  description: "Read [the section on Segmentation](../../api_docs/python/math_ops.md#segmentation)\nfor an explanation of segments.\n\nComputes a tensor such that\n\\\\(output_i = \\sum_j data_j\\\\) where sum is over `j` such\nthat `segment_ids[j] == i`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/SegmentSum.png\" alt>\n</div>"
+  description: "Read [the section on Segmentation](../../api_docs/python/math_ops.md#segmentation)\nfor an explanation of segments.\n\nComputes a tensor such that\n\\\\(output_i = \\sum_j data_j\\\\) where sum is over `j` such\nthat `segment_ids[j] == i`.\n\nIf the sum is empty for a given segment ID `i`, `output[i] = 0`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/SegmentSum.png\" alt>\n</div>"
 }
 op {
   name: "Select"
@@ -23123,7 +23408,7 @@ op {
     description: "The key for the keyed hash function passed as a list of two uint64\nelements."
   }
   summary: "Converts each string in the input Tensor to its hash mod by a number of buckets."
-  description: "The hash function is deterministic on the content of the string within the\nprocess. The hash function is a keyed hash function, where attribute `key`\ndefines the key of the hash function. `key` is an array of 2 elements.\n\nA strong hash is important when inputs may be malicious, e.g. URLs with\nadditional components. Adversaries could try to make their inputs hash to the\nsame bucket for a denial-of-service attack or to skew the results. A strong\nhash prevents this by making it dificult, if not infeasible, to compute inputs\nthat hash to the same bucket. This comes at a cost of roughly 4x higher compute\ntime than `tf.string_to_hash_bucket_fast`."
+  description: "The hash function is deterministic on the content of the string within the\nprocess. The hash function is a keyed hash function, where attribute `key`\ndefines the key of the hash function. `key` is an array of 2 elements.\n\nA strong hash is important when inputs may be malicious, e.g. URLs with\nadditional components. Adversaries could try to make their inputs hash to the\nsame bucket for a denial-of-service attack or to skew the results. A strong\nhash prevents this by making it difficult, if not infeasible, to compute inputs\nthat hash to the same bucket. This comes at a cost of roughly 4x higher compute\ntime than `tf.string_to_hash_bucket_fast`."
 }
 op {
   name: "StringToNumber"

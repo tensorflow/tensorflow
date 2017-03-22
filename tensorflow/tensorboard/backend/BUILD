@@ -17,8 +17,11 @@ py_library(
     deps = [
         ":process_graph",
         "//tensorflow/python:platform",
-        "//tensorflow/python:summary",
+        "//tensorflow/tensorboard/backend/event_processing:event_accumulator",
+        "//tensorflow/tensorboard/backend/event_processing:event_multiplexer",
         "//tensorflow/tensorboard/lib/python:http_util",
+        "//tensorflow/tensorboard/plugins/debugger:debugger_plugin",
+        "//tensorflow/tensorboard/plugins/projector:projector_plugin",
         "@org_pocoo_werkzeug//:werkzeug",
         "@six_archive//:six",
     ],
@@ -29,6 +32,7 @@ py_test(
     size = "medium",
     srcs = ["application_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["manual"],
     deps = [
         ":application",
         "//tensorflow/core:protos_all_py",
@@ -38,6 +42,7 @@ py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:summary",
         "//tensorflow/python:training",
+        "//tensorflow/tensorboard/backend/event_processing:event_multiplexer",
         "@org_pocoo_werkzeug//:werkzeug",
     ],
 )

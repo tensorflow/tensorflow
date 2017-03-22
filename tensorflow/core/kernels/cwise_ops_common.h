@@ -154,6 +154,37 @@ class BinaryOp : public BinaryOpShared {
   }
 };
 
+template <typename Device, typename T>
+class ApproximateEqualOp : public OpKernel {
+ public:
+  explicit ApproximateEqualOp(OpKernelConstruction* context)
+      : OpKernel(context) {
+    float tolerance;
+    OP_REQUIRES_OK(context, context->GetAttr("tolerance", &tolerance));
+    tolerance_ = T(tolerance);
+  }
+  void Compute(OpKernelContext* context) override {
+    const Tensor& x_input = context->input(0);
+    const Tensor& y_input = context->input(1);
+    OP_REQUIRES(
+        context, x_input.shape() == y_input.shape(),
+        errors::InvalidArgument("x and y must be of the same shape. ",
+                                "x shape: ", x_input.shape().DebugString(),
+                                ". y shape: ", y_input.shape().DebugString()));
+    Tensor* z_output = nullptr;
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(0, x_input.shape(), &z_output));
+    const Device& d = context->eigen_device<Device>();
+    typename TTypes<T>::ConstFlat x(x_input.flat<T>());
+    typename TTypes<T>::ConstFlat y(y_input.flat<T>());
+    typename TTypes<bool>::Flat z(z_output->flat<bool>());
+    functor::ApproximateEqual<Device, T>()(d, x, y, tolerance_, z);
+  }
+
+ private:
+  T tolerance_;
+};
+
 // Basic coefficient-wise binary operations that are known to not require
 // any broadcasting. This is the case for example of the gradients of
 // unary operations.
@@ -175,10 +206,10 @@ class SimpleBinaryOp : public OpKernel {
     const Device& eigen_device = ctx->eigen_device<Device>();
 
     Tensor* out = nullptr;
-    if (!std::is_same<Tin, Tout>::value) {
-      OP_REQUIRES_OK(ctx, ctx->allocate_output(0, in0.shape(), &out));
-    } else if (!ctx->forward_input_to_output(0, 0, &out) &&
-               !ctx->forward_input_to_output(1, 0, &out)) {
+    if (std::is_same<Tin, Tout>::value) {
+      OP_REQUIRES_OK(ctx, ctx->forward_input_or_allocate_output(
+                              {0, 1}, 0, in0.shape(), &out));
+    } else {
       OP_REQUIRES_OK(ctx, ctx->allocate_output(0, in0.shape(), &out));
     }
     auto out_flat = out->flat<Tout>();
@@ -206,8 +237,10 @@ class UnaryOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const Tensor& inp = ctx->input(0);
     Tensor* out = nullptr;
-    if (!std::is_same<Tin, Tout>::value ||
-        !ctx->forward_input_to_output(0, 0, &out)) {
+    if (std::is_same<Tin, Tout>::value) {
+      OP_REQUIRES_OK(ctx, ctx->forward_input_or_allocate_output(
+                              {0}, 0, inp.shape(), &out));
+    } else {
       OP_REQUIRES_OK(ctx, ctx->allocate_output(0, inp.shape(), &out));
     }
     functor::UnaryFunctor<Device, Functor>()(
@@ -413,6 +446,17 @@ struct UnaryFunctor<CPUDevice, Functor> {
   void operator()(const CPUDevice& d, typename Functor::tout_type out,
                   typename Functor::tin_type in) {
     Assign(d, out, in.unaryExpr(typename Functor::func()));
+  }
+};
+
+// Partial specialization of ApproximateEqual<Device=CPUDevice, T>.
+template <typename T>
+struct ApproximateEqual<CPUDevice, T> {
+  void operator()(const CPUDevice& d, typename TTypes<T>::ConstFlat x,
+                  typename TTypes<T>::ConstFlat y, T tolerance,
+                  typename TTypes<bool>::Flat z) {
+    auto diff = x - y;
+    z.device(d) = diff.abs() <= tolerance;
   }
 };
 

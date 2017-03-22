@@ -150,8 +150,7 @@ class Beta(distribution.Distribution):
       name: Python `str` name prefixed to Ops created by this class.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[concentration1,
-                                      concentration0]) as ns:
+    with ops.name_scope(name, values=[concentration1, concentration0]):
       self._concentration1 = self._maybe_assert_valid_concentration(
           ops.convert_to_tensor(concentration1, name="concentration1"),
           validate_args)
@@ -165,13 +164,12 @@ class Beta(distribution.Distribution):
         dtype=self._total_concentration.dtype,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
-        is_continuous=True,
         reparameterization_type=distribution.NOT_REPARAMETERIZED,
         parameters=parameters,
         graph_parents=[self._concentration1,
                        self._concentration0,
                        self._total_concentration],
-        name=ns)
+        name=name)
 
   @staticmethod
   def _param_shapes(sample_shape):

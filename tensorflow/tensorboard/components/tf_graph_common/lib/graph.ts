@@ -808,29 +808,34 @@ function extractOutputShapes(attr: {key: string, value: any}[]): TensorShape[] {
   for (let i = 0; i < attr.length; i++) {
     let {key, value} = attr[i];
     if (key === OUTPUT_SHAPES_KEY) {
-     // Map all output tensors into array of numbers denoting their shape.
-     let result = value.list.shape.map(shape => {
-       if (shape.unknown_rank) {
-         // This output tensor is of unknown rank. We don't know if it is a
-         // scalar, or a tensor, or of what shape it is.
-         return null;
-       }
-       if (shape.dim == null ||
-           (shape.dim.length === 1 && shape.dim[0].size == null)) {
-         // This output tensor is a scalar.
-         return [];
-       }
-       // This output tensor has a known rank. Map each dimension size
-       // into a number.
-       return shape.dim.map(dim => {
-         // Size can be -1 if this particular dimension is unknown.
-         return dim.size;
-       });
-     });
-     // Since we already processed it, remove the entry from the attribute
-     // list (saves memory).
-     attr.splice(i, 1);
-     return result;
+      if (!value.list.shape) {
+        // The OUTPUT_SHAPES_KEY lacks a value. We know nothing about the shape.
+        return null;
+      }
+
+      // Map all output tensors into array of numbers denoting their shape.
+      let result = value.list.shape.map(shape => {
+        if (shape.unknown_rank) {
+          // This output tensor is of unknown rank. We don't know if it is a
+          // scalar, or a tensor, or of what shape it is.
+          return null;
+        }
+        if (shape.dim == null ||
+            (shape.dim.length === 1 && shape.dim[0].size == null)) {
+          // This output tensor is a scalar.
+          return [];
+        }
+        // This output tensor has a known rank. Map each dimension size
+        // into a number.
+        return shape.dim.map(dim => {
+          // Size can be -1 if this particular dimension is unknown.
+          return dim.size;
+        });
+      });
+      // Since we already processed it, remove the entry from the attribute
+      // list (saves memory).
+      attr.splice(i, 1);
+      return result;
     }
   }
   // We didn't find OUTPUT_SHAPES_KEY in attributes, so we don't know anything

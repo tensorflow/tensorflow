@@ -36,7 +36,6 @@ class ConditionalDistributionTest(distribution_test.DistributionTest):
         self._static_event_shape = tensor_shape.TensorShape(event_shape)
         super(_FakeDistribution, self).__init__(
             dtype=dtypes.float32,
-            is_continuous=False,
             reparameterization_type=distributions.NOT_REPARAMETERIZED,
             validate_args=True,
             allow_nan_stats=True,

@@ -253,6 +253,31 @@ class DebugUtilsTest(test_util.TensorFlowTestCase):
         ["DebugIdentity"], ["file:///tmp/tfdbg_1"])
     self.assertEqual(["p1"], node_names)
 
+  def testWatchGraph_tensorDTypeWhitelist(self):
+    debug_utils.watch_graph(
+        self._run_options,
+        self._graph,
+        debug_urls="file:///tmp/tfdbg_1",
+        tensor_dtype_regex_whitelist=".*_ref")
+
+    node_names = self._verify_watches(
+        self._run_options.debug_options.debug_tensor_watch_opts, 0,
+        ["DebugIdentity"], ["file:///tmp/tfdbg_1"])
+    self.assertItemsEqual(["a1", "a1/Assign", "b", "b/Assign"], node_names)
+
+  def testWatchGraph_nodeNameAndTensorDTypeWhitelists(self):
+    debug_utils.watch_graph(
+        self._run_options,
+        self._graph,
+        debug_urls="file:///tmp/tfdbg_1",
+        node_name_regex_whitelist="^a.*",
+        tensor_dtype_regex_whitelist=".*_ref")
+
+    node_names = self._verify_watches(
+        self._run_options.debug_options.debug_tensor_watch_opts, 0,
+        ["DebugIdentity"], ["file:///tmp/tfdbg_1"])
+    self.assertItemsEqual(["a1", "a1/Assign"], node_names)
+
   def testWatchGraph_nodeNameBlacklist(self):
     debug_utils.watch_graph_with_blacklists(
         self._run_options,
@@ -291,6 +316,39 @@ class DebugUtilsTest(test_util.TensorFlowTestCase):
         self._run_options.debug_options.debug_tensor_watch_opts, 0,
         ["DebugIdentity"], ["file:///tmp/tfdbg_1"])
     self.assertEqual(["s"], node_names)
+
+  def testWatchGraph_tensorDTypeBlacklists(self):
+    debug_utils.watch_graph_with_blacklists(
+        self._run_options,
+        self._graph,
+        debug_urls="file:///tmp/tfdbg_1",
+        tensor_dtype_regex_blacklist=".*_ref")
+
+    node_names = self._verify_watches(
+        self._run_options.debug_options.debug_tensor_watch_opts, 0,
+        ["DebugIdentity"], ["file:///tmp/tfdbg_1"])
+    self.assertNotIn("a1", node_names)
+    self.assertNotIn("a1/Assign", node_names)
+    self.assertNotIn("b", node_names)
+    self.assertNotIn("b/Assign", node_names)
+    self.assertIn("s", node_names)
+
+  def testWatchGraph_nodeNameAndTensorDTypeBlacklists(self):
+    debug_utils.watch_graph_with_blacklists(
+        self._run_options,
+        self._graph,
+        debug_urls="file:///tmp/tfdbg_1",
+        node_name_regex_blacklist="^s$",
+        tensor_dtype_regex_blacklist=".*_ref")
+
+    node_names = self._verify_watches(
+        self._run_options.debug_options.debug_tensor_watch_opts, 0,
+        ["DebugIdentity"], ["file:///tmp/tfdbg_1"])
+    self.assertNotIn("a1", node_names)
+    self.assertNotIn("a1/Assign", node_names)
+    self.assertNotIn("b", node_names)
+    self.assertNotIn("b/Assign", node_names)
+    self.assertNotIn("s", node_names)
 
 
 if __name__ == "__main__":

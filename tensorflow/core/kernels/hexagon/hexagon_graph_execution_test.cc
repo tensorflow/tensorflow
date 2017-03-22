@@ -32,7 +32,7 @@ adb push /tmp/imagenet_comp_graph_label_strings.txt /data/local/tmp
 #include "tensorflow/core/kernels/hexagon/hexagon_control_wrapper.h"
 #include "tensorflow/core/kernels/hexagon/hexagon_ops_definitions.h"
 #include "tensorflow/core/kernels/hexagon/i_graph_transfer_ops_definitions.h"
-#include "tensorflow/core/kernels/hexagon/i_soc_control_wrapper.h"
+#include "tensorflow/core/kernels/i_remote_fused_graph_executor.h"
 #include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -45,8 +45,8 @@ adb push /tmp/imagenet_comp_graph_label_strings.txt /data/local/tmp
 
 namespace tensorflow {
 
-using ByteArray = ISocControlWrapper::ByteArray;
-using ConstByteArray = ISocControlWrapper::ConstByteArray;
+using ByteArray = IRemoteFusedGraphExecutor::ByteArray;
+using ConstByteArray = IRemoteFusedGraphExecutor::ConstByteArray;
 
 constexpr const char* const IMAGE_FILENAME = "/data/local/tmp/img_299x299.bmp";
 constexpr const char* const MODEL_FILENAME =
@@ -56,6 +56,7 @@ constexpr const char* const FUSED_MODEL_FILENAME =
     "tensorflow_inception_v3_stripped_optimized_quantized_fused_hexagon.pb";
 constexpr const char* const REMOTE_FUSED_GRAPH_EXECUTE_NODE_NAME =
     "remote_fused_graph_execute_node";
+constexpr bool USE_SHAPE_INFERENCE = false;
 
 const bool DBG_DUMP_FLOAT_DATA = false;
 const int WIDTH = 299;
@@ -86,7 +87,7 @@ static void DumpTop10Results(const int byte_size,
 }
 
 static void DumpTop10Results(
-    const std::vector<ISocControlWrapper::ByteArray>& outputs) {
+    const std::vector<IRemoteFusedGraphExecutor::ByteArray>& outputs) {
   CHECK(outputs.size() == 1);
   const int byte_size = std::get<1>(outputs.at(0));
   const float* float_array =
@@ -95,7 +96,7 @@ static void DumpTop10Results(
 }
 
 static void CheckFirstResult(
-    const std::vector<ISocControlWrapper::ByteArray>& outputs,
+    const std::vector<IRemoteFusedGraphExecutor::ByteArray>& outputs,
     const int expected_first_id) {
   EXPECT_GE(outputs.size(), 1);
   const int byte_size = std::get<1>(outputs.at(0));
@@ -165,21 +166,34 @@ static void LoadImage(std::vector<float>* img_floats_ptr) {
   }
 }
 
+static Tensor BuildImageTensor(const std::vector<float>& img_floats) {
+  LOG(INFO) << "Ioading image finished.";
+  Tensor img_tensor(DT_FLOAT, {1, WIDTH, HEIGHT, DEPTH});
+  CHECK_EQ(WIDTH * HEIGHT * DEPTH, img_floats.size());
+  CHECK_EQ(img_tensor.TotalBytes(), img_floats.size() * sizeof(float));
+  LOG(INFO) << "Copy data to tensor.";
+  std::memcpy(img_tensor.flat<float>().data(), img_floats.data(),
+              img_tensor.TotalBytes());
+  return img_tensor;
+}
+
 static void RunInferenceByHexagonControlWrapper(
     const GraphTransferer& gt, const std::vector<float>& img_floats) {
-  const ConstByteArray ba =
-      std::make_tuple(reinterpret_cast<const uint8*>(img_floats.data()),
-                      img_floats.size() * sizeof(float), DT_FLOAT);
+  const Tensor img_tensor = BuildImageTensor(img_floats);
+
+  const RemoteFusedGraphExecuteInfo execute_info =
+      GraphTransferUtils::BuildRemoteFusedGraphExecuteInfo(
+          gt.GetGraphTransferInfo());
 
   HexagonControlWrapper hexagon_control_wrapper;
   // 1. Initialize hexagon
-  hexagon_control_wrapper.Init();
+  hexagon_control_wrapper.Init(execute_info);
 
   // 2. Setup graph in hexagon
-  hexagon_control_wrapper.SetupGraph(gt);
+  hexagon_control_wrapper.SetupGraph();
 
   // 3. Fill input node's output
-  hexagon_control_wrapper.FillInputNode("Mul", ba);
+  hexagon_control_wrapper.FillInputNode("Mul", img_tensor);
 
   // 4. Execute graph
   profile_utils::CpuUtils::EnableClockCycleProfiling(true);
@@ -191,7 +205,7 @@ static void RunInferenceByHexagonControlWrapper(
   }
 
   // 5-1. Read output node's outputs
-  std::vector<ISocControlWrapper::ByteArray> outputs;
+  std::vector<IRemoteFusedGraphExecutor::ByteArray> outputs;
   hexagon_control_wrapper.ReadOutputNode("softmax", &outputs);
 
   // 5-2. Dump results
@@ -212,13 +226,7 @@ static void RunFusedGraph(const GraphDef& fused_graph_def) {
   LoadImage(&img_floats);
 
   LOG(INFO) << "Ioading image finished.";
-  Tensor img_tensor(DT_FLOAT, {1, WIDTH, HEIGHT, DEPTH});
-  ASSERT_EQ(WIDTH * HEIGHT * DEPTH, img_floats.size());
-  ASSERT_EQ(img_tensor.TotalBytes(), img_floats.size() * sizeof(float));
-
-  LOG(INFO) << "Copy data to tensor.";
-  std::memcpy(img_tensor.flat<float>().data(), img_floats.data(),
-              img_tensor.TotalBytes());
+  const Tensor img_tensor = BuildImageTensor(img_floats);
 
   // Setup session
   std::vector<Tensor> output_tensors;
@@ -248,8 +256,9 @@ static void RunFusedGraph(const GraphDef& fused_graph_def) {
   const Tensor& output_tensor = output_tensors.at(0);
   LOG(INFO) << "Output byte size = " << output_tensor.TotalBytes();
   LOG(INFO) << "Output shape = " << output_tensor.shape().DebugString();
-  DumpTop10Results(output_tensor.TotalBytes(),
-                   output_tensor.flat<float>().data());
+  DumpTop10Results(
+      output_tensor.TotalBytes(),
+      reinterpret_cast<const float*>(output_tensor.flat<float>().data()));
 }
 
 // CAVEAT: This test only runs when you specify hexagon library using
@@ -267,19 +276,25 @@ TEST(GraphTransferer,
 
   const IGraphTransferOpsDefinitions* ops_definitions =
       &HexagonOpsDefinitions::getInstance();
-  std::vector<GraphTransferer::InputNodeInfo> input_node_info_list = {
-      GraphTransferer::InputNodeInfo{
-          "Mul", Tensor{DT_FLOAT, {1, WIDTH, HEIGHT, DEPTH}}}};
+  std::vector<std::pair<string, Tensor>> inputs;
+  inputs.emplace_back("Mul", Tensor(DT_FLOAT, {1, WIDTH, HEIGHT, DEPTH}));
   std::vector<string> output_node_names = {"softmax"};
 
-  GraphTransferer::OutputTensorInfo output_tensor_info;
+  RemoteFusedGraphExecuteUtils::TensorShapeMap output_tensor_info;
   GraphTransferer gt;
   gt.EnableStrictCheckMode(false);
+  profile_utils::CpuUtils::EnableClockCycleProfiling(true);
+  ClockCycleProfiler prof;
+  prof.Start();
   Status status = gt.LoadGraphFromProtoFile(
-      *ops_definitions, MODEL_FILENAME, input_node_info_list, output_node_names,
-      false /* is_text_proto */, false /* shape_inference_for_unknown_shape */,
-      true /* dry_run_for_unknown_shape */, &output_tensor_info);
+      *ops_definitions, MODEL_FILENAME, inputs, output_node_names,
+      false,                 // is_text_proto
+      USE_SHAPE_INFERENCE,   // shape_inference_for_unknown_shape
+      !USE_SHAPE_INFERENCE,  // dry_run_for_unknown_shape
+      &output_tensor_info);
   ASSERT_TRUE(status.ok()) << status;
+  prof.Stop();
+  prof.DumpStatistics("LoadGraphFromProtoFile");
 
   std::vector<float> img_floats;
   LoadImage(&img_floats);
@@ -292,9 +307,8 @@ TEST(GraphTransferer, RunInceptionV3OnHexagonExampleWithTfRuntime) {
 
   const IGraphTransferOpsDefinitions* ops_definitions =
       &HexagonOpsDefinitions::getInstance();
-  std::vector<GraphTransferer::InputNodeInfo> inputs = {
-      GraphTransferer::InputNodeInfo{
-          "Mul", Tensor{DT_FLOAT, {1, WIDTH, HEIGHT, DEPTH}}}};
+  std::vector<std::pair<string, Tensor>> inputs;
+  inputs.emplace_back("Mul", Tensor(DT_FLOAT, {1, WIDTH, HEIGHT, DEPTH}));
   std::vector<string> outputs = {"softmax"};
 
   std::vector<float> img_floats;
@@ -333,18 +347,17 @@ TEST(GraphTransferer, DISABLED_CheckShapeInferencePerformance) {
 
   const IGraphTransferOpsDefinitions* ops_definitions =
       &HexagonOpsDefinitions::getInstance();
-  std::vector<GraphTransferer::InputNodeInfo> input_node_info_list = {
-      GraphTransferer::InputNodeInfo{
-          "Mul", Tensor{DT_FLOAT, {1, WIDTH, HEIGHT, DEPTH}}}};
+  std::vector<std::pair<string, Tensor>> inputs;
+  inputs.emplace_back("Mul", Tensor(DT_FLOAT, {1, WIDTH, HEIGHT, DEPTH}));
   std::vector<string> output_node_names = {"softmax"};
 
-  GraphTransferer::OutputTensorInfo output_tensor_info0;
+  RemoteFusedGraphExecuteUtils::TensorShapeMap output_tensor_info0;
   GraphTransferer gt0;
   gt0.EnableStrictCheckMode(false);
   ClockCycleProfiler prof0;
   prof0.Start();
   Status status = gt0.LoadGraphFromProtoFile(
-      *ops_definitions, MODEL_FILENAME, input_node_info_list, output_node_names,
+      *ops_definitions, MODEL_FILENAME, inputs, output_node_names,
       false /* is_text_proto */, false /* shape_inference_for_unknown_shape */,
       true /* dry_run_for_unknown_shape */, &output_tensor_info0);
   const GraphTransferInfo& gfi0 = gt0.GetGraphTransferInfo();
@@ -356,13 +369,13 @@ TEST(GraphTransferer, DISABLED_CheckShapeInferencePerformance) {
   LOG(INFO) << "(0) node count: " << gfi0.node_info_size() << ", "
             << gfi0.const_node_info_size();
 
-  GraphTransferer::OutputTensorInfo output_tensor_info1;
+  RemoteFusedGraphExecuteUtils::TensorShapeMap output_tensor_info1;
   GraphTransferer gt1;
   gt1.EnableStrictCheckMode(true);
   ClockCycleProfiler prof1;
   prof1.Start();
   status = gt1.LoadGraphFromProtoFile(
-      *ops_definitions, MODEL_FILENAME, input_node_info_list, output_node_names,
+      *ops_definitions, MODEL_FILENAME, inputs, output_node_names,
       false /* is_text_proto */, true /* shape_inference_for_unknown_shape */,
       false /* dry_run_for_unknown_shape */, &output_tensor_info1);
   const GraphTransferInfo& gfi1 = gt1.GetGraphTransferInfo();

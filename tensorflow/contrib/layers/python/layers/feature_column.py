@@ -50,7 +50,7 @@ should choose depends on (1) the feature type and (2) the model type.
    Sparse features can be fed directly into linear models.
 
      dept_column = sparse_column_with_keys("department",
-       ["math", "philosphy", "english"])
+       ["math", "philosophy", "english"])
 
    It is recommended that continuous features be bucketized before being
    fed into linear models.
@@ -329,6 +329,9 @@ class _SparseColumn(_FeatureColumn,
     if is_integerized and not dtype.is_integer:
       raise ValueError("dtype must be an integer if is_integerized is True. "
                        "dtype: {}, column_name: {}.".format(dtype, column_name))
+    if dtype != dtypes.string and not dtype.is_integer:
+      raise ValueError("dtype must be string or integer. "
+                       "dtype: {}, column_name: {}".format(dtype, column_name))
 
     if bucket_size is None and lookup_config is None:
       raise ValueError("one of bucket_size or lookup_config must be set. "
@@ -355,9 +358,14 @@ class _SparseColumn(_FeatureColumn,
       raise ValueError("vocab_size must be defined. "
                        "column_name: {}".format(column_name))
 
-    return super(_SparseColumn, cls).__new__(cls, column_name, is_integerized,
-                                             bucket_size, lookup_config,
-                                             combiner, dtype)
+    return super(_SparseColumn, cls).__new__(
+        cls,
+        column_name,
+        is_integerized=is_integerized,
+        bucket_size=bucket_size,
+        lookup_config=lookup_config,
+        combiner=combiner,
+        dtype=dtype)
 
   @property
   def name(self):
@@ -418,6 +426,7 @@ class _SparseColumn(_FeatureColumn,
         ignore_value = ""
       else:
         ignore_value = -1
+      input_tensor = _reshape_real_valued_tensor(input_tensor, 2, self.name)
       input_tensor = contrib_sparse_ops.dense_to_sparse_tensor(
           input_tensor, ignore_value=ignore_value)
 
@@ -438,20 +447,6 @@ class _SparseColumn(_FeatureColumn,
 
 class _SparseColumnIntegerized(_SparseColumn):
   """See `sparse_column_with_integerized_feature`."""
-
-  def __new__(cls, column_name, bucket_size, combiner="sqrtn",
-              dtype=dtypes.int64):
-    if not dtype.is_integer:
-      raise ValueError("dtype must be an integer. "
-                       "dtype: {}, column_name: {}".format(dtype, column_name))
-
-    return super(_SparseColumnIntegerized, cls).__new__(
-        cls,
-        column_name,
-        is_integerized=True,
-        bucket_size=bucket_size,
-        combiner=combiner,
-        dtype=dtype)
 
   def insert_transformed_feature(self, columns_to_tensors):
     """Handles sparse column to id conversion."""
@@ -504,28 +499,12 @@ def sparse_column_with_integerized_feature(column_name,
     ValueError: dtype is not integer.
   """
   return _SparseColumnIntegerized(
-      column_name, bucket_size, combiner=combiner, dtype=dtype)
+      column_name, is_integerized=True, bucket_size=bucket_size,
+      combiner=combiner, dtype=dtype)
 
 
 class _SparseColumnHashed(_SparseColumn):
   """See `sparse_column_with_hash_bucket`."""
-
-  def __new__(cls,
-              column_name,
-              hash_bucket_size,
-              combiner="sum",
-              dtype=dtypes.string):
-
-    if dtype != dtypes.string and not dtype.is_integer:
-      raise ValueError("dtype must be string or integer. "
-                       "dtype: {}, column_name: {}".format(dtype, column_name))
-
-    return super(_SparseColumnHashed, cls).__new__(
-        cls,
-        column_name,
-        bucket_size=hash_bucket_size,
-        combiner=combiner,
-        dtype=dtype)
 
   def insert_transformed_feature(self, columns_to_tensors):
     """Handles sparse column to id conversion."""
@@ -572,34 +551,30 @@ def sparse_column_with_hash_bucket(column_name,
     ValueError: hash_bucket_size is not greater than 2.
     ValueError: dtype is neither string nor integer.
   """
-  return _SparseColumnHashed(column_name, hash_bucket_size, combiner, dtype)
+  return _SparseColumnHashed(
+      column_name,
+      bucket_size=hash_bucket_size,
+      combiner=combiner,
+      dtype=dtype)
 
 
 class _SparseColumnKeys(_SparseColumn):
   """See `sparse_column_with_keys`."""
 
-  def __new__(cls, column_name, keys, default_value=-1, combiner="sum"):
-    return super(_SparseColumnKeys, cls).__new__(
-        cls,
-        column_name,
-        combiner=combiner,
-        lookup_config=_SparseIdLookupConfig(
-            keys=keys, vocab_size=len(keys), default_value=default_value),
-        dtype=dtypes.string)
-
   def insert_transformed_feature(self, columns_to_tensors):
     """Handles sparse column to id conversion."""
     input_tensor = self._get_input_sparse_tensor(columns_to_tensors)
 
-    table = lookup.string_to_index_table_from_tensor(
-        mapping=list(self.lookup_config.keys),
+    table = lookup.index_table_from_tensor(
+        mapping=tuple(self.lookup_config.keys),
         default_value=self.lookup_config.default_value,
+        dtype=self.dtype,
         name="lookup")
     columns_to_tensors[self] = table.lookup(input_tensor)
 
 
 def sparse_column_with_keys(
-    column_name, keys, default_value=-1, combiner="sum"):
+    column_name, keys, default_value=-1, combiner="sum", dtype=dtypes.string):
   """Creates a _SparseColumn with keys.
 
   Look up logic is as follows:
@@ -607,7 +582,7 @@ def sparse_column_with_keys(
 
   Args:
     column_name: A string defining sparse column name.
-    keys: a string list defining vocabulary.
+    keys: A list or tuple defining vocabulary. Must be castable to `dtype`.
     default_value: The value to use for out-of-vocabulary feature values.
       Default is -1.
     combiner: A string specifying how to reduce if the sparse column is
@@ -618,40 +593,22 @@ def sparse_column_with_keys(
         * "mean": do l1 normalization on features in the column
         * "sqrtn": do l2 normalization on features in the column
       For more information: `tf.embedding_lookup_sparse`.
+    dtype: Type of features. Only integer and string are supported.
 
   Returns:
     A _SparseColumnKeys with keys configuration.
   """
+  keys = tuple(keys)
   return _SparseColumnKeys(
-      column_name, tuple(keys), default_value=default_value, combiner=combiner)
+      column_name,
+      lookup_config=_SparseIdLookupConfig(
+          keys=keys, vocab_size=len(keys), default_value=default_value),
+      combiner=combiner,
+      dtype=dtype)
 
 
 class _SparseColumnVocabulary(_SparseColumn):
   """See `sparse_column_with_vocabulary_file`."""
-
-  def __new__(cls,
-              column_name,
-              vocabulary_file,
-              num_oov_buckets=0,
-              vocab_size=None,
-              default_value=-1,
-              combiner="sum",
-              dtype=dtypes.string):
-
-    if dtype != dtypes.string and not dtype.is_integer:
-      raise ValueError("dtype must be string or integer. "
-                       "dtype: {}, column_name: {}".format(dtype, column_name))
-
-    return super(_SparseColumnVocabulary, cls).__new__(
-        cls,
-        column_name,
-        combiner=combiner,
-        lookup_config=_SparseIdLookupConfig(
-            vocabulary_file=vocabulary_file,
-            num_oov_buckets=num_oov_buckets,
-            vocab_size=vocab_size,
-            default_value=default_value),
-        dtype=dtype)
 
   def insert_transformed_feature(self, columns_to_tensors):
     """Handles sparse column to id conversion."""
@@ -717,10 +674,11 @@ def sparse_column_with_vocabulary_file(column_name,
 
   return _SparseColumnVocabulary(
       column_name,
-      vocabulary_file,
-      num_oov_buckets=num_oov_buckets,
-      vocab_size=vocab_size,
-      default_value=default_value,
+      lookup_config=_SparseIdLookupConfig(
+          vocabulary_file=vocabulary_file,
+          num_oov_buckets=num_oov_buckets,
+          vocab_size=vocab_size,
+          default_value=default_value),
       combiner=combiner,
       dtype=dtype)
 
@@ -1508,7 +1466,7 @@ def real_valued_column(column_name,
     TypeError: if default_value is a list but its length is not equal to the
       value of `dimension`.
     TypeError: if default_value is not compatible with dtype.
-    ValueError: if dtype is not convertable to tf.float32.
+    ValueError: if dtype is not convertible to tf.float32.
   """
 
   if dimension is not None:
@@ -1603,8 +1561,9 @@ class _BucketizedColumn(_FeatureColumn, collections.namedtuple(
 
   Attributes:
     source_column: A _RealValuedColumn defining dense column.
-    boundaries: A list of floats specifying the boundaries. It has to be sorted.
-      [a, b, c] defines following buckets: (-inf., a), [a, b), [b, c), [c, inf.)
+    boundaries: A list or tuple of floats specifying the boundaries. It has to
+      be sorted. [a, b, c] defines following buckets: (-inf., a), [a, b),
+      [b, c), [c, inf.)
   Raises:
     ValueError: if 'boundaries' is empty or not sorted.
   """
@@ -1618,8 +1577,9 @@ class _BucketizedColumn(_FeatureColumn, collections.namedtuple(
       raise ValueError("source_column must have a defined dimension. "
                        "source_column: {}".format(source_column))
 
-    if not isinstance(boundaries, list) or not boundaries:
-      raise ValueError("boundaries must be a non-empty list. "
+    if (not isinstance(boundaries, list) and
+        not isinstance(boundaries, tuple)) or not boundaries:
+      raise ValueError("boundaries must be a non-empty list or tuple. "
                        "boundaries: {}".format(boundaries))
 
     # We allow bucket boundaries to be monotonically increasing
@@ -1695,7 +1655,7 @@ class _BucketizedColumn(_FeatureColumn, collections.namedtuple(
                   math_ops.range(0, batch_size), 1, name="expand_dims"),
               [1, dimension],
               name="tile"), [-1],
-          name="rehsape")
+          name="reshape")
       i2 = array_ops.tile(
           math_ops.range(0, dimension), [batch_size], name="tile")
       # Flatten the bucket indices and unique them across dimensions
@@ -1729,7 +1689,8 @@ def bucketized_column(source_column, boundaries):
 
   Args:
     source_column: A _RealValuedColumn defining dense column.
-    boundaries: A list of floats specifying the boundaries. It has to be sorted.
+    boundaries: A list or tuple of floats specifying the boundaries. It has to
+      be sorted.
 
   Returns:
     A _BucketizedColumn.

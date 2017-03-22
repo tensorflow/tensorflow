@@ -122,6 +122,7 @@ py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:lib",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:saver_test_utils",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",

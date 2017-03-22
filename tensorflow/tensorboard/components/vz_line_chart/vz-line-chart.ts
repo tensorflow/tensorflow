@@ -45,6 +45,7 @@ module VZ {
     private smoothingEnabled: Boolean;
     private tooltipSortingMethod: string;
     private tooltipPosition: string;
+    private _ignoreYOutliers: boolean;
 
     private targetSVG: d3.Selection<any>;
 
@@ -56,6 +57,7 @@ module VZ {
       this.colorScale = colorScale;
       this.tooltip = tooltip;
       this.datasets = [];
+      this._ignoreYOutliers = true;
       // lastPointDataset is a dataset that contains just the last point of
       // every dataset we're currently drawing.
       this.lastPointsDataset = new Plottable.Dataset();
@@ -82,15 +84,21 @@ module VZ {
       this.yAxis.margin(0).tickLabelPadding(5).formatter(yFormatter);
       this.yAxis.usesTextWidthApproximation(true);
 
-      this.dzl = new Plottable.DragZoomLayer(this.xScale, this.yScale);
+      this.dzl = new Plottable.DragZoomLayer(
+          this.xScale, this.yScale, this.updateSpecialDatasets.bind(this));
 
       let center = this.buildPlot(this.xAccessor, this.xScale, this.yScale);
 
       this.gridlines =
           new Plottable.Components.Gridlines(this.xScale, this.yScale);
 
-      this.center =
-          new Plottable.Components.Group([this.gridlines, center, this.dzl]);
+      let xZeroLine = new Plottable.Components.GuideLineLayer('horizontal');
+      xZeroLine.scale(this.yScale).value(0);
+      let yZeroLine = new Plottable.Components.GuideLineLayer('vertical');
+      yZeroLine.scale(this.xScale).value(0);
+
+      this.center = new Plottable.Components.Group(
+          [this.gridlines, xZeroLine, yZeroLine, center, this.dzl]);
       this.outer =  new Plottable.Components.Table([
                                                    [this.yAxis, this.center],
                                                    [null, this.xAxis]
@@ -153,6 +161,13 @@ module VZ {
         this.resmoothDataset(dataset);
       }
       this.updateSpecialDatasets();
+    }
+
+    public ignoreYOutliers(ignoreYOutliers: boolean) {
+      if (ignoreYOutliers !== this._ignoreYOutliers) {
+        this._ignoreYOutliers = ignoreYOutliers;
+        this.updateSpecialDatasets();
+      }
     }
 
     private updateSpecialDatasets() {
@@ -221,6 +236,14 @@ module VZ {
       };
       let nanData = _.flatten(this.datasets.map(datasetToNaNData));
       this.nanDataset.data(nanData);
+
+      let datasetToValues: (d: Plottable.Dataset) => number[] = (d) => {
+        return d.data().map((x) => accessor(x, -1, d));
+      };
+      let vals = _.flatten(this.datasets.map(datasetToValues));
+      vals = vals.filter((x) => x === x && x !== Infinity && x !== -Infinity);
+      let domain = VZ.ChartHelpers.computeDomain(vals, this._ignoreYOutliers);
+      this.yScale.domain(domain);
     }
 
     private setupTooltips(plot: Plottable.XYPlot<number|Date, number>):

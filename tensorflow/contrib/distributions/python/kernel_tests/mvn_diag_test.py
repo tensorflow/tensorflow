@@ -57,6 +57,13 @@ class MultivariateNormalDiagTest(test.TestCase):
       dist = ds.MultivariateNormalDiag(mu, diag, validate_args=True)
       self.assertAllEqual(mu, dist.mean().eval())
 
+  def testMeanWithBroadcastLoc(self):
+    mu = [-1.]
+    diag = [1., -5]
+    with self.test_session():
+      dist = ds.MultivariateNormalDiag(mu, diag, validate_args=True)
+      self.assertAllEqual([-1., -1.], dist.mean().eval())
+
   def testEntropy(self):
     mu = [-1., 1]
     diag = [-1., 5]
@@ -175,6 +182,7 @@ class MultivariateNormalDiagTest(test.TestCase):
 
       self.assertAllClose(mu, samps.mean(axis=0), atol=0.1)
       self.assertAllClose(cov_mat, np.cov(samps.T), atol=0.1)
+
 
 if __name__ == "__main__":
   test.main()

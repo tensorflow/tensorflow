@@ -115,23 +115,41 @@ if (tensorflow_BUILD_PYTHON_TESTS)
   #
 
   # include all test
+  if (WIN32)
+    file(GLOB_RECURSE tf_test_rnn_src_py
+      "${tensorflow_source_dir}/tensorflow/contrib/rnn/python/kernel_tests/*_test.py"
+    )
+  endif()
+ 
   file(GLOB_RECURSE tf_test_src_py
+    ${tf_test_rnn_src_py}
+    "${tensorflow_source_dir}/tensorflow/python/debug/cli/*_test.py"
+    "${tensorflow_source_dir}/tensorflow/python/debug/lib/*_test.py"
+    "${tensorflow_source_dir}/tensorflow/python/debug/wrappers/*_test.py"
     "${tensorflow_source_dir}/tensorflow/python/kernel_tests/*.py"
     "${tensorflow_source_dir}/tensorflow/python/saved_model/*_test.py"
     "${tensorflow_source_dir}/tensorflow/python/training/*_test.py"
     "${tensorflow_source_dir}/tensorflow/tensorboard/*_test.py"
+    "${tensorflow_source_dir}/tensorflow/contrib/factorization/*_test.py"
+    "${tensorflow_source_dir}/tensorflow/contrib/keras/python/keras/integration_test.py"
     # NOTE: tensor_forest tests in tensor_forest/hybrid/... still don't pass.
     "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/client/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/python/*_test.py"
   )
 
-  # exclude the onces we don't want
+  # exclude the ones we don't want
   set(tf_test_src_py_exclude
+    # Python source line inspection tests are flaky on Windows (b/36375074).
+    "${tensorflow_source_dir}/tensorflow/python/debug/cli/analyzer_cli_test.py"
+    # Windows does not have the curses library and uses readline.
+    "${tensorflow_source_dir}/tensorflow/python/debug/cli/curses_ui_test.py"
     # generally not working
     "${tensorflow_source_dir}/tensorflow/python/kernel_tests/__init__.py"
     "${tensorflow_source_dir}/tensorflow/python/kernel_tests/benchmark_test.py"
     "${tensorflow_source_dir}/tensorflow/python/kernel_tests/resource_variable_ops_test.py"
     "${tensorflow_source_dir}/tensorflow/python/saved_model/saved_model_test.py"
+    # requires scipy
+    "${tensorflow_source_dir}/tensorflow/contrib/keras/python/keras/preprocessing/*_test.py"
   )
   if (WIN32)
     set(tf_test_src_py_exclude
@@ -150,6 +168,7 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       # misc
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/variable_scope_test.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/reshape_op_test.py"
+      "${tensorflow_source_dir}/tensorflow/python/training/evaluation_test.py"
       "${tensorflow_source_dir}/tensorflow/tensorboard/backend/server_test.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/diag_op_test.py"  # Silently failing with GPU kernel disabled.
       # int32/int64 mixup
@@ -157,6 +176,7 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/py_func_test.py"
       # training tests
       "${tensorflow_source_dir}/tensorflow/python/training/basic_session_run_hooks_test.py"  # Needs tf.contrib fix.
+      "${tensorflow_source_dir}/tensorflow/python/training/evaluation_test.py"  # Needs tf.contrib fix.
       "${tensorflow_source_dir}/tensorflow/python/training/localhost_cluster_performance_test.py"  # Needs portpicker.
       "${tensorflow_source_dir}/tensorflow/python/training/monitored_session_test.py"  # Needs tf.contrib fix.
       "${tensorflow_source_dir}/tensorflow/python/training/saver_large_variable_test.py"  # Overflow error.
@@ -173,6 +193,10 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/python/kernel_tests/sample_inputs_op_test.py"  # Results in wrong order.
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/python/kernel_tests/scatter_add_ndim_op_test.py"  # Bad placement.
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/python/topn_test.py"  # Results inaccurate
+      "${tensorflow_source_dir}/tensorflow/python/ops/cloud/bigquery_reader_ops_test.py"  # No libcurl support
+      # Newly running on Windows since TensorBoard backend move. Fail on Windows and need debug.
+      "${tensorflow_source_dir}/tensorflow/tensorboard/backend/event_processing/directory_watcher_test.py"
+      "${tensorflow_source_dir}/tensorflow/tensorboard/backend/event_processing/event_multiplexer_test.py"
     )
   endif()
   list(REMOVE_ITEM tf_test_src_py ${tf_test_src_py_exclude})
@@ -237,6 +261,7 @@ if (tensorflow_BUILD_CC_TESTS)
     "${tensorflow_source_dir}/tensorflow/cc/framework/gradients_test.cc"
     "${tensorflow_source_dir}/tensorflow/core/distributed_runtime/call_options_test.cc"
     "${tensorflow_source_dir}/tensorflow/core/distributed_runtime/tensor_coding_test.cc"
+    "${tensorflow_source_dir}/tensorflow/core/kernels/remote_fused_graph_execute_utils_test.cc"
     "${tensorflow_source_dir}/tensorflow/core/kernels/hexagon/graph_transferer_test.cc"
     "${tensorflow_source_dir}/tensorflow/core/kernels/hexagon/quantized_matmul_op_for_hexagon_test.cc"
   )
@@ -277,7 +302,7 @@ if (tensorflow_BUILD_CC_TESTS)
       "${tensorflow_source_dir}/tensorflow/contrib/rnn/ops/gru_ops_test.cc" # status 5
       "${tensorflow_source_dir}/tensorflow/contrib/rnn/ops/lstm_ops_test.cc" # status 5
 
-      # TODO: not compiling 
+      # TODO: not compiling
       "${tensorflow_source_dir}/tensorflow/core/kernels/quantization_utils_test.cc"
       "${tensorflow_source_dir}/tensorflow/core/kernels/quantize_and_dequantize_op_test.cc"
       "${tensorflow_source_dir}/tensorflow/core/kernels/quantize_down_and_shrink_range_op_test.cc"

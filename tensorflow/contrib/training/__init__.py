@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Training and input utilities. See @{$python/contrib.training} guide.
+"""Training and input utilities.
+
+See @{$python/contrib.training} guide.
 
 @@batch_sequences_with_states
 @@NextQueuedSequenceBatch
@@ -30,6 +32,9 @@
 @@stratified_sample
 @@resample_at_rate
 @@weighted_resample
+@@HParams
+@@HParamDef
+@@parse_values
 """
 
 from __future__ import absolute_import
@@ -48,6 +53,7 @@ from tensorflow.contrib.training.python.training.evaluation import SummaryAtEndH
 from tensorflow.contrib.training.python.training.evaluation import wait_for_new_checkpoint
 from tensorflow.contrib.training.python.training.failure_tolerator import *
 from tensorflow.contrib.training.python.training.feeder import *
+from tensorflow.contrib.training.python.training.hparam import *
 from tensorflow.contrib.training.python.training.resample import *
 from tensorflow.contrib.training.python.training.sampling_ops import *
 from tensorflow.contrib.training.python.training.sequence_queueing_state_saver import *

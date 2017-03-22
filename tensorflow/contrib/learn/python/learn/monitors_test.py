@@ -20,14 +20,8 @@ from __future__ import print_function
 
 import collections
 import shutil
-import sys
 import tempfile
 import time
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 

@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""TensorFlow Graph Editor. See the @{$python/contrib.graph_editor} guide.
+"""TensorFlow Graph Editor.
+
+See the @{$python/contrib.graph_editor} guide.
 """
 
 from __future__ import absolute_import
@@ -21,7 +23,6 @@ from __future__ import print_function
 
 # pylint: disable=wildcard-import
 from tensorflow.contrib.graph_editor.edit import *
-from tensorflow.contrib.graph_editor.match import *
 from tensorflow.contrib.graph_editor.reroute import *
 from tensorflow.contrib.graph_editor.select import *
 from tensorflow.contrib.graph_editor.subgraph import *

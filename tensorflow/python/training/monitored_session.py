@@ -40,6 +40,11 @@ from tensorflow.python.training import session_manager as sm
 from tensorflow.python.training import session_run_hook
 
 
+# The list of exceptions that we should recover from. Exceptions not in this
+# list may terminate the job.
+_PREEMPTION_ERRORS = (errors.AbortedError, errors.UnavailableError)
+
+
 # TODO(touts): Share that with the Supervisor.
 class Scaffold(object):
   """Structure to create or gather pieces commonly needed to train a model.
@@ -62,8 +67,8 @@ class Scaffold(object):
   The following pieces are directly accessible as attributes of the `Scaffold`
   object:
 
-  * `saver`: A `tf.Saver` object taking care of saving the variables.  Picked
-    from and stored into the `SAVERS` collection in the graph by default.
+  * `saver`: A `tf.train.Saver` object taking care of saving the variables.
+    Picked from and stored into the `SAVERS` collection in the graph by default.
   * `init_op`: An op to run to initialize the variables.  Picked from and
     stored into the `INIT_OP` collection in the graph by default.
   * `ready_op`: An op to verify that the variables are initialized.  Picked
@@ -82,7 +87,7 @@ class Scaffold(object):
 
   You can also pass the following additional pieces to the constructor:
 
-  * `init_feed_dict`: A sessionn feed dictionary that should be used when
+  * `init_feed_dict`: A session feed dictionary that should be used when
      running the init op.
   * `init_fn`: A callable to run run after the init op to perform additional
     initializations.  The callable will be called as
@@ -119,7 +124,8 @@ class Scaffold(object):
       local_init_op: Optional op to initialize local variables.
       summary_op: Optional op to gather all summaries.  Must return a scalar
         string tensor containing a serialized `Summary` proto.
-      saver: Optional `tf.Saver` object to use to save and restore variables.
+      saver: Optional `tf.train.Saver` object to use to save and restore
+        variables.
     """
 
     # NOTE(touts): modifying the init function to be passed the scaffold is a
@@ -256,7 +262,7 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
   For a chief, this utility sets proper session initializer/restorer. It also
   creates hooks related to checkpoint and summary saving. For workers, this
   utility sets proper session creator which waits for the chief to
-  inialize/restore.
+  initialize/restore.
 
 
   Args:
@@ -433,7 +439,7 @@ class _MonitoredSession(object):
         `ChiefSessionCreator` or a `WorkerSessionCreator`.
       hooks: An iterable of `SessionRunHook' objects.
       should_recover: A bool. Indicates whether to recover from `AbortedError`
-        or not.
+        and `UnavailableError` or not.
       stop_grace_period_secs: Number of seconds given to threads to stop after
         `close()` has been called.
     """
@@ -576,8 +582,8 @@ class MonitoredSession(_MonitoredSession):
   * calls TensorFlow `session.run()` with merged fetches and feed_dict
   * calls `hook.after_run()`
   * returns result of `session.run()` asked by user
-  * if `AbortedError` occurs, it recovers or reinitializes the session before
-    executing the run() call again
+  * if `AbortedError` or `UnavailableError` occurs, it recovers or
+    reinitializes the session before executing the run() call again
 
 
   Exit: At the `close()`, the monitored session does following things in order:
@@ -627,8 +633,8 @@ class SingularMonitoredSession(_MonitoredSession):
   Please note that this utility is not recommended for distributed settings.
   For distributed settings, please use `tf.train.MonitoredSession`. The
   differences between `MonitoredSession` and `SingularMonitoredSession` are:
-  * `MonitoredSession` handles `AbortedError` for distributed settings,
-    but `SingularMonitoredSession` does not.
+  * `MonitoredSession` handles `AbortedError` and `UnavailableError` for
+    distributed settings, but `SingularMonitoredSession` does not.
   * `MonitoredSession` can be created in `chief` or `worker` modes.
     `SingularMonitoredSession` is always created as `chief`.
   * You can access the raw `tf.Session` object used by
@@ -668,7 +674,7 @@ class SingularMonitoredSession(_MonitoredSession):
 
   * calls `hook.end()`
   * closes the queue runners and the session
-  * surpresses `OutOfRange` error which indicates that all inputs have been
+  * suppresses `OutOfRange` error which indicates that all inputs have been
     processed if the `SingularMonitoredSession` is used as a context.
   """
 
@@ -761,6 +767,8 @@ class _WrappedSession(object):
     if self._sess:
       try:
         self._sess.close()
+      except _PREEMPTION_ERRORS:
+        pass
       finally:
         self._sess = None
 
@@ -769,13 +777,14 @@ class _WrappedSession(object):
 
 
 class _RecoverableSession(_WrappedSession):
-  """A wrapped session that recreates a session on `tf.errors.AbortedError`.
+  """A wrapped session that recreates a session upon certain kinds of errors.
 
   The constructor is passed a SessionCreator object, not a session.
 
   Calls to `run()` are delegated to the wrapped session.  If a call raises the
-  exception `tf.errors.AbortedError`, the wrapped session is closed, and a new
-  one is created by calling the factory again.
+  exception `tf.errors.AbortedError` or `tf.errors.UnavailableError`, the
+  wrapped session is closed, and a new one is created by calling the factory
+  again.
   """
 
   def __init__(self, sess_creator):
@@ -794,10 +803,11 @@ class _RecoverableSession(_WrappedSession):
     while True:
       try:
         return self._sess_creator.create_session()
-      except errors.AbortedError:
-        logging.info('An AbortedError was raised during initialization. '
-                     'It\'s most likely due to a preemption in a connected '
-                     'worker/ps. A new session will be created.')
+      except _PREEMPTION_ERRORS as e:
+        logging.info('An error was raised while a session was being created. '
+                     'This may be due to a preemption of a connected worker '
+                     'or parameter server. A new session will be created. '
+                     'Error: %s', e)
 
   def run(self, fetches, feed_dict=None, options=None, run_metadata=None):
     while True:
@@ -808,11 +818,11 @@ class _RecoverableSession(_WrappedSession):
                               feed_dict=feed_dict,
                               options=options,
                               run_metadata=run_metadata)
-      except errors.AbortedError:
-        logging.info('An AbortedError was raised. Closing the current session. '
-                     'It\'s most likely due to a preemption in a connected '
-                     'worker/ps. '
-                     'A new session will be created on the next session.run().')
+      except _PREEMPTION_ERRORS as e:
+        logging.info('An error was raised. This may be due to a preemption in '
+                     'a connected worker or parameter server. The current '
+                     'session will be closed and a new session will be '
+                     'created. Error: %s', e)
         self.close()
         self._sess = None
 

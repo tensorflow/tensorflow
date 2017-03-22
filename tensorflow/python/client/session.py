@@ -422,7 +422,9 @@ class _FetchHandler(object):
         self._fetches.append(fetch_name)
         self._ops.append(False)
       # Remember the fetch if it is for a tensor handle.
-      if isinstance(fetch, ops.Tensor) and fetch.op.type == 'GetSessionHandle':
+      if (isinstance(fetch, ops.Tensor) and
+          (fetch.op.type == 'GetSessionHandle' or
+           fetch.op.type == 'GetSessionHandleV2')):
         self._fetch_handles[fetch_name] = fetch.op.inputs[0].dtype
     self._final_fetches = [x for x in self._fetches if x not in feeds]
 
@@ -575,11 +577,18 @@ class BaseSession(SessionInterface):
     except Exception:  # pylint: disable=broad-except
       pass
     if self._session is not None:
+      # We create `status` outside the `try` block because at shutdown
+      # `tf_session` may have been garbage collected, and the creation
+      # of a status object may fail. In that case, we prefer to ignore
+      # the failure and silently leak the session object, since the
+      # program is about to terminate.
+      status = None
       try:
         status = tf_session.TF_NewStatus()
         tf_session.TF_DeleteDeprecatedSession(self._session, status)
       finally:
-        tf_session.TF_DeleteStatus(status)
+        if status is not None:
+          tf_session.TF_DeleteStatus(status)
       self._session = None
 
   @property
@@ -694,14 +703,14 @@ class BaseSession(SessionInterface):
        # v is the numpy array [10, 20]
        # 'fetches' can be a list.
        v = session.run([a, b])
-       # v a Python list with 2 numpy arrays: the numpy array [10, 20] and the
+       # v is a Python list with 2 numpy arrays: the 1-D array [10, 20] and the
        # 1-D array [1.0, 2.0]
        # 'fetches' can be arbitrary lists, tuples, namedtuple, dicts:
        MyData = collections.namedtuple('MyData', ['a', 'b'])
        v = session.run({'k1': MyData(a, b), 'k2': [b, a]})
        # v is a dict with
-       # v['k1'] is a MyData namedtuple with 'a' the numpy array [10, 20] and
-       # 'b' the numpy array [1.0, 2.0]
+       # v['k1'] is a MyData namedtuple with 'a' (the numpy array [10, 20]) and
+       # 'b' (the numpy array [1.0, 2.0])
        # v['k2'] is a list with the numpy array [1.0, 2.0] and the numpy array
        # [10, 20].
     ```
@@ -926,7 +935,7 @@ class BaseSession(SessionInterface):
           if isinstance(subfeed_val, ops.Tensor):
             raise TypeError('The value of a feed cannot be a tf.Tensor object. '
                             'Acceptable feed values include Python scalars, '
-                            'strings, lists, or numpy ndarrays.')
+                            'strings, lists, numpy ndarrays, or TensorHandles.')
 
           subfeed_dtype = subfeed_t.dtype.as_numpy_dtype
           if isinstance(subfeed_val,
@@ -937,9 +946,15 @@ class BaseSession(SessionInterface):
                 ' Try explicitly setting the type of the feed tensor'
                 ' to a larger type (e.g. int64).')
 
-          np_val = np.asarray(subfeed_val, dtype=subfeed_dtype)
+          is_tensor_handle_feed = isinstance(subfeed_val,
+                                             session_ops.TensorHandle)
+          if is_tensor_handle_feed:
+            np_val = subfeed_val.to_numpy_array()
+          else:
+            np_val = np.asarray(subfeed_val, dtype=subfeed_dtype)
 
-          if not subfeed_t.get_shape().is_compatible_with(np_val.shape):
+          if (not is_tensor_handle_feed and
+              not subfeed_t.get_shape().is_compatible_with(np_val.shape)):
             raise ValueError(
                 'Cannot feed value of shape %r for Tensor %r, '
                 'which has shape %r'

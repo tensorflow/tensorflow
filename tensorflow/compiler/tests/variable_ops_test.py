@@ -56,7 +56,7 @@ class VariableOpsTest(XLATestCase):
           with ops.control_dependencies([d]):
             e = x.read_value()
 
-      session.run(variables.initialize_all_variables())
+      session.run(variables.global_variables_initializer())
       v1, v2, v3 = session.run([a, c, e])
       self.assertAllClose(2.0, v1)
       self.assertAllClose(47.0, v2)
@@ -86,7 +86,7 @@ class VariableOpsTest(XLATestCase):
           optimizer = GradientDescentOptimizer(0.1)
           train = optimizer.minimize(loss)
 
-      session.run(variables.initialize_all_variables())
+      session.run(variables.global_variables_initializer())
       session.run(train, {x: np.array([[7, 3, 5, 9]], dtype=np.float32)})
       vw, vb = session.run([w, b])
       self.assertAllClose(

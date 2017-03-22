@@ -295,6 +295,13 @@ XLA_TEST_F(ScalarComputationsTest, DivideTwoScalarsU32) {
   ComputeAndCompareR0<uint32>(&builder, 0x7FFFFFFF, {});
 }
 
+XLA_TEST_F(ScalarComputationsTest, RemTwoScalarsU32) {
+  ComputationBuilder builder(client_, TestName());
+  builder.Rem(builder.ConstantR0<uint32>(11), builder.ConstantR0<uint32>(3));
+
+  ComputeAndCompareR0<uint32>(&builder, 2, {});
+}
+
 TEST_F(ScalarComputationsTest, LogicalAnd) {
   for (bool x : {false, true}) {
     for (bool y : {false, true}) {

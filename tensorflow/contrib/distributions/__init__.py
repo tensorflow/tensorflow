@@ -16,9 +16,11 @@
 
 See the @{$python/contrib.distributions} guide.
 
+## Distribution Object
 @@ReparameterizationType
 @@Distribution
 
+## Individual Distributions
 @@Binomial
 @@Bernoulli
 @@BernoulliWithSigmoidProbs
@@ -27,6 +29,8 @@ See the @{$python/contrib.distributions} guide.
 @@Categorical
 @@Chi2
 @@Chi2WithAbsDf
+@@Deterministic
+@@VectorDeterministic
 @@Exponential
 @@ExponentialWithSoftplusRate
 @@Gamma
@@ -56,25 +60,26 @@ See the @{$python/contrib.distributions} guide.
 @@WishartCholesky
 @@WishartFull
 
-@@matrix_diag_transform
-
 @@TransformedDistribution
 @@QuantizedDistribution
 
 @@Mixture
 
-@@normal_conjugates_known_scale_posterior
-@@normal_conjugates_known_scale_predictive
-
-@@kl
-@@RegisterKL
-
-@@softplus_inverse
-
 @@ExpRelaxedOneHotCategorical
 @@OneHotCategorical
 @@RelaxedBernoulli
 @@RelaxedOneHotCategorical
+
+## Kullback-Leibler Divergence
+@@kl
+@@RegisterKL
+
+## Helper Functions
+@@matrix_diag_transform
+@@normal_conjugates_known_scale_posterior
+@@normal_conjugates_known_scale_predictive
+@@softplus_inverse
+
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -82,13 +87,16 @@ from __future__ import print_function
 
 # pylint: disable=unused-import,wildcard-import,line-too-long,g-importing-member
 
+
 from tensorflow.contrib.distributions.python.ops.bernoulli import *
 from tensorflow.contrib.distributions.python.ops.beta import *
+from tensorflow.contrib.distributions.python.ops.bijectors import *
 from tensorflow.contrib.distributions.python.ops.binomial import *
 from tensorflow.contrib.distributions.python.ops.categorical import *
 from tensorflow.contrib.distributions.python.ops.chi2 import *
 from tensorflow.contrib.distributions.python.ops.conditional_distribution import *
 from tensorflow.contrib.distributions.python.ops.conditional_transformed_distribution import *
+from tensorflow.contrib.distributions.python.ops.deterministic import *
 from tensorflow.contrib.distributions.python.ops.dirichlet import *
 from tensorflow.contrib.distributions.python.ops.dirichlet_multinomial import *
 from tensorflow.contrib.distributions.python.ops.distribution import *

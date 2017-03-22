@@ -44,14 +44,12 @@ class Array2D {
   Array2D() : n1_(0), n2_(0) {}
 
   // Creates an array of dimensions n1 x n2, uninitialized values.
-  Array2D(const int64 n1, const int64 n2) : n1_(n1), n2_(n2) {
-    values_.resize(n1 * n2);
-  }
+  Array2D(const int64 n1, const int64 n2)
+      : n1_(n1), n2_(n2), values_(n1 * n2) {}
 
   // Creates an array of dimensions n1 x n2, initialized to value.
-  Array2D(const int64 n1, const int64 n2, const T value) : Array2D(n1, n2) {
-    Fill(value);
-  }
+  Array2D(const int64 n1, const int64 n2, const T value)
+      : n1_(n1), n2_(n2), values_(n1 * n2, value) {}
 
   // Creates an array from the given nested initializer list. The outer
   // initializer list is the first dimension; the inner is the second dimension.

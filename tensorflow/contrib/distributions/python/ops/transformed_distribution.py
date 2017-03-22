@@ -337,7 +337,6 @@ class TransformedDistribution(distributions.Distribution):
     self._bijector = bijector
     super(TransformedDistribution, self).__init__(
         dtype=self._distribution.dtype,
-        is_continuous=self._distribution.is_continuous,
         reparameterization_type=self._distribution.reparameterization_type,
         validate_args=validate_args,
         allow_nan_stats=self._distribution.allow_nan_stats,
@@ -466,8 +465,7 @@ class TransformedDistribution(distributions.Distribution):
     return self.distribution.survival_function(x)
 
   def _entropy(self):
-    if (not self.distribution.is_continuous or
-        not self.bijector.is_constant_jacobian):
+    if not self.bijector.is_constant_jacobian:
       raise NotImplementedError("entropy is not implemented")
     # Suppose Y = g(X) where g is a diffeomorphism and X is a continuous rv. It
     # can be shown that:

@@ -103,23 +103,23 @@ module tf.graph.scene {
       label: 'NaN',
     },
     {
-      background_color: '#FFFF00',
+      background_color: '#FF8D00',
       label: '- ∞',
     },
     {
-      background_color: '#A8A8A8',
+      background_color: '#EAEAEA',
       label: '-',
     },
     {
-      background_color: '#D8DBE2',
+      background_color: '#A5A5A5',
       label: '0',
     },
     {
-      background_color: '#424242',
+      background_color: '#262626',
       label: '+',
     },
     {
-      background_color: '#FFA500',
+      background_color: '#003ED4',
       label: '+ ∞',
     },
   ];
@@ -506,15 +506,30 @@ export function positionEllipse(ellipse, cx: number, cy: number,
 };
 
 /**
+ * @param {number} stat A stat for a health pill (such as mean or variance).
+ * @param {boolean} shouldRoundOnesDigit Whether to round this number to the
+ *     ones digit. Useful for say int, uint, and bool output types.
+ * @return {string} A human-friendly string representation of that stat.
+ */
+export function humanizeHealthPillStat(stat, shouldRoundOnesDigit) {
+  if (shouldRoundOnesDigit) {
+    return stat.toFixed(0);
+  }
+
+  if (Math.abs(stat) >= 1) {
+    return stat.toFixed(1);
+  }
+  return stat.toExponential(1);
+}
+
+/**
  * Renders a health pill for an op atop a node.
  */
 function _addHealthPill(
     nodeGroupElement: SVGElement, healthPill: HealthPill,
-    nodeInfo: render.RenderGroupNodeInfo) {
+    nodeInfo: render.RenderNodeInfo) {
   // Check if text already exists at location.
-  d3.select(nodeGroupElement.parentNode)
-      .selectAll('.health-pill-group')
-      .remove();
+  d3.select(nodeGroupElement.parentNode).selectAll('.health-pill').remove();
 
   if (!nodeInfo || !healthPill) {
     return;
@@ -525,6 +540,7 @@ function _addHealthPill(
   // For now, we only visualize the 6 values that summarize counts of tensor
   // elements of various categories: -Inf, negative, 0, positive, Inf, and NaN.
   let lastHealthPillOverview = lastHealthPillData.slice(2, 8);
+  let totalCount = lastHealthPillData[1];
 
   let healthPillWidth = 60;
   let healthPillHeight = 10;
@@ -534,66 +550,105 @@ function _addHealthPill(
     healthPillHeight /= 2;
   }
 
-  let healthPillSvg = document.createElementNS(svgNamespace, 'svg');
-  healthPillSvg.classList.add('health-pill-group');
-  healthPillSvg.setAttribute('width', String(healthPillWidth));
-  healthPillSvg.setAttribute('height', String(healthPillHeight));
+  let healthPillGroup = document.createElementNS(svgNamespace, 'g');
+  healthPillGroup.classList.add('health-pill');
 
-  let svgDefs = document.createElementNS(svgNamespace, 'defs');
-  healthPillSvg.appendChild(svgDefs);
-  let clipPath = document.createElementNS(svgNamespace, 'clipPath');
-  clipPath.setAttribute('id', 'health-pill-clip-path');
-  svgDefs.appendChild(clipPath);
-  let clipRect = document.createElementNS(svgNamespace, 'rect');
-  clipRect.setAttribute('height', String(healthPillHeight));
-  clipRect.setAttribute('width', String(healthPillWidth));
-  clipRect.setAttribute('rx', '2');
-  clipRect.setAttribute('ry', '2');
-  clipPath.appendChild(clipRect);
-
-  let rectGroup = document.createElementNS(svgNamespace, 'g');
-  rectGroup.setAttribute('clip-path', 'url(#health-pill-clip-path)');
-  healthPillSvg.appendChild(rectGroup);
-  let totalCount = lastHealthPillData[1];
-  // Create 1 rectangle for each category.
-  let totalCountSoFar = 0;
-  let totalWidthDividedByTotalCount = healthPillWidth / totalCount;
+  // Define the gradient for the health pill.
+  let healthPillDefs = document.createElementNS(svgNamespace, 'defs');
+  healthPillGroup.appendChild(healthPillDefs);
+  let healthPillGradient =
+      document.createElementNS(svgNamespace, 'linearGradient');
+  const healthPillGradientId = 'health-pill-gradient';
+  healthPillGradient.setAttribute('id', healthPillGradientId);
   let titleOnHoverTextEntries = [];
+  let cumulativeCount = 0;
+  let previousOffset = '0%';
   for (let i = 0; i < lastHealthPillOverview.length; i++) {
     if (!lastHealthPillOverview[i]) {
-      // Do not render empty rectangles.
+      // Exclude empty categories.
       continue;
     }
-    let rect = document.createElementNS(svgNamespace, 'rect');
-    rect.setAttribute('height', String(healthPillHeight));
-    let rectWidth = totalWidthDividedByTotalCount * lastHealthPillOverview[i];
-    rect.setAttribute('width', String(rectWidth));
-    let rectX = totalWidthDividedByTotalCount * totalCountSoFar;
-    rect.setAttribute('x', String(rectX));
-    rect.setAttribute('fill', healthPillEntries[i].background_color);
-    totalCountSoFar += lastHealthPillOverview[i];
-    rectGroup.appendChild(rect);
+    cumulativeCount += lastHealthPillOverview[i];
+
+    // Create a color interval using 2 stop elements.
+    let stopElement0 = document.createElementNS(svgNamespace, 'stop');
+    stopElement0.setAttribute('offset', previousOffset);
+    stopElement0.setAttribute(
+        'stop-color', healthPillEntries[i].background_color);
+    healthPillGradient.appendChild(stopElement0);
+
+    let stopElement1 = document.createElementNS(svgNamespace, 'stop');
+    let percent = (cumulativeCount * 100 / totalCount) + '%';
+    stopElement1.setAttribute('offset', percent);
+    stopElement1.setAttribute(
+        'stop-color', healthPillEntries[i].background_color);
+    healthPillGradient.appendChild(stopElement1);
+    previousOffset = percent;
 
     // Include this number in the title that appears on hover.
     titleOnHoverTextEntries.push(
         healthPillEntries[i].label + ': ' + lastHealthPillOverview[i]);
   }
+  healthPillDefs.appendChild(healthPillGradient);
+
+  // Create the rectangle for the health pill.
+  let rect = document.createElementNS(svgNamespace, 'rect');
+  rect.setAttribute('fill', 'url(#' + healthPillGradientId + ')');
+  rect.setAttribute('width', String(healthPillWidth));
+  rect.setAttribute('height', String(healthPillHeight));
+  healthPillGroup.appendChild(rect);
 
   // Show a title with specific counts on hover.
   let titleSvg = document.createElementNS(svgNamespace, 'title');
   titleSvg.textContent = titleOnHoverTextEntries.join(', ');
-  healthPillSvg.appendChild(titleSvg);
+  healthPillGroup.appendChild(titleSvg);
 
   // Center this health pill just right above the node for the op.
   let healthPillX = nodeInfo.x - healthPillWidth / 2;
-  healthPillSvg.setAttribute('x', String(healthPillX));
   let healthPillY = nodeInfo.y - healthPillHeight - nodeInfo.height / 2 - 2;
   if (nodeInfo.labelOffset < 0) {
     // The label is positioned above the node. Do not occlude the label.
     healthPillY += nodeInfo.labelOffset;
   }
-  healthPillSvg.setAttribute('y', String(healthPillY));
-  Polymer.dom(nodeGroupElement.parentNode).appendChild(healthPillSvg);
+
+  if (lastHealthPillOverview[2] || lastHealthPillOverview[3] ||
+      lastHealthPillOverview[4]) {
+    // At least 1 "non-Inf and non-NaN" value exists (a -, 0, or + value). Show
+    // stats on tensor values.
+
+    // Determine if we should display the output range as integers.
+    let shouldRoundOnesDigit = false;
+    let node = nodeInfo.node as OpNode;
+    let attributes = node.attr;
+    if (attributes && attributes.length) {
+      // Find the attribute for output type if there is one.
+      for (let i = 0; i < attributes.length; i++) {
+        if (attributes[i].key === 'T') {
+          // Note whether the output type is an integer.
+          let outputType = attributes[i].value['type'];
+          shouldRoundOnesDigit =
+              outputType && /^DT_(BOOL|INT|UINT)/.test(outputType);
+          break;
+        }
+      }
+    }
+
+    let statsSvg = document.createElementNS(svgNamespace, 'text');
+    const minString =
+        humanizeHealthPillStat(lastHealthPillData[8], shouldRoundOnesDigit);
+    const maxString =
+        humanizeHealthPillStat(lastHealthPillData[9], shouldRoundOnesDigit);
+    statsSvg.textContent = minString + ' ~ ' + maxString;
+    statsSvg.classList.add('health-pill-stats');
+    statsSvg.setAttribute('x', String(healthPillWidth / 2));
+    statsSvg.setAttribute('y', '-2');
+    healthPillGroup.appendChild(statsSvg);
+  }
+
+  healthPillGroup.setAttribute(
+      'transform', 'translate(' + healthPillX + ', ' + healthPillY + ')');
+
+  Polymer.dom(nodeGroupElement.parentNode).appendChild(healthPillGroup);
 }
 
 /**
@@ -612,7 +667,7 @@ export function addHealthPills(
 
   let svgRootSelection = d3.select(svgRoot);
   svgRootSelection.selectAll('g.nodeshape')
-      .each(function(nodeInfo: render.RenderGroupNodeInfo) {
+      .each(function(nodeInfo: render.RenderNodeInfo) {
         // Only show health pill data for this node if it is available.
         let healthPills = nodeNamesToHealthPills[nodeInfo.node.name];
         let healthPill = healthPills ? healthPills[healthPillStepIndex] : null;

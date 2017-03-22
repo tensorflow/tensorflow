@@ -310,6 +310,15 @@ bool StreamExecutor::GetConvolveBackwardFilterAlgorithms(
   return dnn_support->GetConvolveBackwardFilterAlgorithms(out_algorithms);
 }
 
+bool StreamExecutor::GetBlasGemmAlgorithms(
+    std::vector<blas::AlgorithmType> *out_algorithms) {
+  blas::BlasSupport *blas_support = AsBlas();
+  if (!blas_support) {
+    return false;
+  }
+  return blas_support->GetBlasGemmAlgorithms(out_algorithms);
+}
+
 port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>
 StreamExecutor::createRnnDescriptor(
     int num_layers, int hidden_size, int input_size,

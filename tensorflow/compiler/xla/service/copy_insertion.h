@@ -32,6 +32,8 @@ namespace xla {
 // different lifetimes than computation results.
 class CopyInsertion : public HloPassInterface {
  public:
+  explicit CopyInsertion(bool copy_param_and_const = true)
+      : copy_param_and_const_(copy_param_and_const) {}
   ~CopyInsertion() override {}
   tensorflow::StringPiece name() const override { return "copy-insertion"; }
 
@@ -43,6 +45,10 @@ class CopyInsertion : public HloPassInterface {
   // Returns a copy of `hlo`. Looks in inserted_copies_ first to avoid making
   // duplicate copies.
   StatusOr<HloInstruction*> FindOrInsertCopy(HloInstruction* hlo);
+
+  // Determines whether to insert copies if the root instruction is, or
+  // points-to, any constant or parameter instruction.
+  const bool copy_param_and_const_;
 
   // A map containing all copies inserted during the copy insertion pass. The
   // key is the copied instruction and the value is the copy.

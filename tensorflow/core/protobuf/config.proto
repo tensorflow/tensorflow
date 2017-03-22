@@ -10,6 +10,7 @@ import "tensorflow/core/framework/cost_graph.proto";
 import "tensorflow/core/framework/graph.proto";
 import "tensorflow/core/framework/step_stats.proto";
 import "tensorflow/core/protobuf/debug.proto";
+import "tensorflow/core/protobuf/rewriter_config.proto";
 
 message GPUOptions {
   // A value between 0 and 1 that indicates what fraction of the
@@ -144,6 +145,9 @@ message GraphOptions {
   // If > 0, record a timeline every this many steps.
   // EXPERIMENTAL: This currently has no effect in MasterSession.
   int32 timeline_step = 8;
+
+  // Options that control the type and amount of graph rewriting.
+  RewriterConfig rewrite_options = 10;
 };
 
 message ThreadPoolOptionProto {

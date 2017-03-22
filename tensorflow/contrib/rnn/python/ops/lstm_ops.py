@@ -70,7 +70,7 @@ def _lstm_block_cell(x,
   cs = ci .* i + cs_prev .* f
   cs = clip(cs, cell_clip)
 
-  o = sigmoid(cs * wco + f)
+  o = sigmoid(cs * wco + o)
   co = tanh(cs)
   h = co .* o
   ```
@@ -333,7 +333,7 @@ class LSTMBlockCell(core_rnn_cell.RNNCell):
   reduce the scale of forgetting in the beginning of the training.
 
   Unlike `core_rnn_cell.LSTMCell`, this is a monolithic op and should be much
-  faster.  The weight and bias matrixes should be compatible as long as the
+  faster.  The weight and bias matrices should be compatible as long as the
   variable scope matches.
   """
 

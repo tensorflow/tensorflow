@@ -216,7 +216,7 @@ class WorkerFreeListCache : public WorkerCacheInterface {
     }
   }
 
-  void ListWorkers(std::vector<string>* workers) override {
+  void ListWorkers(std::vector<string>* workers) const override {
     wrapped_->ListWorkers(workers);
   }
 

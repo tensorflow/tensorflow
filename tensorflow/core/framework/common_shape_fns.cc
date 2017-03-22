@@ -332,9 +332,26 @@ Status DepthwiseConv2DNativeShape(shape_inference::InferenceContext* c) {
         strides.size());
   }
 
+  string data_format;
+  Status s = c->GetAttr("data_format", &data_format);
+  int32 stride_rows;
+  int32 stride_cols;
+  if (s.ok() && data_format == "NCHW") {
+    // Convert input shape to default NHWC for inference
+    input_shape =
+        c->MakeShape({{c->Dim(input_shape, 0), c->Dim(input_shape, 2),
+                       c->Dim(input_shape, 3), c->Dim(input_shape, 1)}});
+    stride_rows = strides[2];
+    stride_cols = strides[3];
+  } else {
+    stride_rows = strides[1];
+    stride_cols = strides[2];
+  }
+
   DimensionHandle batch_size_dim = c->Dim(input_shape, 0);
   DimensionHandle in_rows_dim = c->Dim(input_shape, 1);
   DimensionHandle in_cols_dim = c->Dim(input_shape, 2);
+
   DimensionHandle filter_rows_dim = c->Dim(filter_shape, 0);
   DimensionHandle filter_cols_dim = c->Dim(filter_shape, 1);
   DimensionHandle input_depth = c->Dim(filter_shape, 2);
@@ -350,9 +367,6 @@ Status DepthwiseConv2DNativeShape(shape_inference::InferenceContext* c) {
   Padding padding;
   TF_RETURN_IF_ERROR(c->GetAttr("padding", &padding));
 
-  const int32 stride_rows = strides[1];
-  const int32 stride_cols = strides[2];
-
   // TODO(mrry,shlens): Raise an error if the stride would cause
   // information in the input to be ignored. This will require a change
   // in the kernel implementation.
@@ -363,8 +377,14 @@ Status DepthwiseConv2DNativeShape(shape_inference::InferenceContext* c) {
   TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDims(
       c, in_cols_dim, filter_cols_dim, stride_cols, padding, &output_cols));
 
-  ShapeHandle output_shape =
-      c->MakeShape({batch_size_dim, output_rows, output_cols, output_depth});
+  ShapeHandle output_shape;
+  if (data_format == "NCHW") {
+    output_shape =
+        c->MakeShape({batch_size_dim, output_depth, output_rows, output_cols});
+  } else {
+    output_shape =
+        c->MakeShape({batch_size_dim, output_rows, output_cols, output_depth});
+  }
   c->set_output(0, output_shape);
   return Status::OK();
 }
@@ -590,7 +610,13 @@ Status ReductionShape(InferenceContext* c) {
   ShapeHandle input = c->input(0);
 
   ShapeHandle indices;
-  TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(1), 1, &indices));
+  // Older versions of TensorFlow accidentally allowed higher rank tensors like
+  // [[1,2]] or [[1],[2]] to represent axis=[1,2].
+  if (c->graph_def_version() < 21) {
+    indices = c->input(1);
+  } else {
+    TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(1), 1, &indices));
+  }
 
   bool keep_dims;
   TF_RETURN_IF_ERROR(c->GetAttr("keep_dims", &keep_dims));

@@ -27,6 +27,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
 
@@ -78,7 +79,10 @@ def get_regularization_loss(scope=None, name="total_regularization_loss"):
     A scalar regularization loss.
   """
   losses = get_regularization_losses(scope)
-  return math_ops.add_n(losses, name=name)
+  if losses:
+    return math_ops.add_n(losses, name=name)
+  else:
+    return constant_op.constant(0.0)
 
 
 def get_total_loss(add_regularization_losses=True, name="total_loss"):

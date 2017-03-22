@@ -142,6 +142,12 @@ Status HloComputation::RemoveInstruction(HloInstruction* instruction) {
   TF_RET_CHECK(instruction->user_count() == 0)
       << "instruction " << instruction->name()
       << " has users and cannot be removed";
+  TF_RET_CHECK(instruction->control_predecessors().empty())
+      << "instruction " << instruction->name()
+      << " has control predecessors and cannot be removed";
+  TF_RET_CHECK(instruction->control_successors().empty())
+      << "instruction " << instruction->name()
+      << " has control successors and cannot be removed";
 
   TF_RET_CHECK(instruction_iterators_.count(instruction) != 0);
   auto inst_it = instruction_iterators_.at(instruction);
@@ -227,7 +233,8 @@ void ComputeComputationPostOrder(
   }
 
   for (auto& instruction : computation->instructions()) {
-    for (auto& called_computation : instruction->MakeCalledComputationsSet()) {
+    for (HloComputation* called_computation :
+         instruction->called_computations()) {
       ComputeComputationPostOrder(called_computation, visited, post_order);
     }
   }
@@ -286,7 +293,10 @@ string HloComputation::ToString() const {
   for (const HloInstruction* instruction : MakeInstructionPostOrder()) {
     s << "  " << instruction->ToString() << "\n";
     if (instruction->opcode() == HloOpcode::kFusion) {
-      for (const auto& fused_instruction : instruction->fused_instructions()) {
+      tensorflow::gtl::FlatSet<HloInstruction*> added_instructions;
+      auto fused_instructions = InstructionPostOrderer::GetOrder(
+          instruction->fused_expression_root(), &added_instructions);
+      for (const auto& fused_instruction : fused_instructions) {
         s << "    " << fused_instruction->ToString() << "\n";
       }
     }
@@ -381,15 +391,6 @@ StatusOr<HloInstruction*> HloComputation::DeepCopyInstruction(
     return FailedPrecondition(
         "Can only copy array and tuple shaped instructions");
   }
-}
-
-Status HloComputation::AddControlDependency(HloInstruction* predecessor,
-                                            HloInstruction* successor) {
-  TF_RET_CHECK(instruction_iterators_.count(predecessor) > 0);
-  TF_RET_CHECK(instruction_iterators_.count(successor) > 0);
-  successor->AddControlPredecessor(predecessor);
-  predecessor->AddControlSuccessor(successor);
-  return Status::OK();
 }
 
 ProgramShape HloComputation::ComputeProgramShape() const {
@@ -503,10 +504,7 @@ HloComputation::ComputeTransitiveOperands() const {
   return result;
 }
 
-Status HloComputation::Accept(DfsHloVisitor* visitor) const {
-  // Visit all roots. Build a vector of roots ahead of time because visitor
-  // might delete the currently visited root which would invalidate the
-  // iterator.
+std::vector<HloInstruction*> HloComputation::CollectUnreachableRoots() const {
   std::vector<HloInstruction*> unreachable_roots;
   for (auto& instruction : instructions()) {
     if (instruction->user_count() == 0 &&
@@ -515,12 +513,35 @@ Status HloComputation::Accept(DfsHloVisitor* visitor) const {
       unreachable_roots.push_back(instruction.get());
     }
   }
-  for (HloInstruction* root : unreachable_roots) {
+  return unreachable_roots;
+}
+
+Status HloComputation::Accept(DfsHloVisitor* visitor) const {
+  // Visit unreachable roots. Beware that the visitor might delete the currently
+  // visited root, which would invalidate iterators if the unreachable roots
+  // weren't computed ahead of time.
+  for (HloInstruction* root : CollectUnreachableRoots()) {
     // Call FinishVisit only at the end.
     TF_RETURN_IF_ERROR(root->Accept(visitor, /*call_finish_visit=*/false));
   }
   // Visit the computation root instruction last.
   return root_instruction()->Accept(visitor, /*call_finish_visit=*/true);
+}
+
+Status HloComputation::AcceptWithOperandOrder(
+    DfsHloVisitor* visitor,
+    const HloInstruction::CompareFunction& operand_order) const {
+  // Visit unreachable roots. Beware that the visitor might delete the currently
+  // visited root, which would invalidate iterators if the unreachable roots
+  // weren't computed ahead of time.
+  for (HloInstruction* root : CollectUnreachableRoots()) {
+    TF_RETURN_IF_ERROR(
+        root->AcceptWithOperandOrder(visitor, operand_order,
+                                     /*call_finish_visit=*/false));
+  }
+  // Visit the computation root instruction last.
+  return root_instruction()->AcceptWithOperandOrder(visitor, operand_order,
+                                                    /*call_finish_visit=*/true);
 }
 
 Status HloComputation::AcceptOrdered(

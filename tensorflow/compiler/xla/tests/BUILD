@@ -1346,6 +1346,22 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "hlo_metadata_test",
+    srcs = [
+        "hlo_metadata_test.cc",
+    ],
+    deps = [
+        ":local_client_test_base",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/client:computation_builder",
+        "//tensorflow/compiler/xla/service:computation_tracker",
+        "//tensorflow/compiler/xla/service:local_service",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 xla_test(
     name = "round_trip_transfer_test",
     srcs = ["round_trip_transfer_test.cc"],

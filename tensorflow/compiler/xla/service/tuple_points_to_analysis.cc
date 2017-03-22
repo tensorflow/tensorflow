@@ -78,8 +78,9 @@ size_t PointsToSet::size() const {
   return CreateFlattenedSet().size();
 }
 
-std::set<const LogicalBuffer*> PointsToSet::CreateFlattenedSet() const {
-  std::set<const LogicalBuffer*> flat_set;
+tensorflow::gtl::FlatSet<const LogicalBuffer*> PointsToSet::CreateFlattenedSet()
+    const {
+  tensorflow::gtl::FlatSet<const LogicalBuffer*> flat_set;
   TF_CHECK_OK(ForEachElement(
       [&flat_set](const ShapeIndex& /*index*/, bool /*is_leaf*/,
                   const std::vector<const LogicalBuffer*>& buffers) {

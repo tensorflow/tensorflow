@@ -13,7 +13,10 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Constants regarding Estimators."""
+"""Constants regarding Estimators.
+
+This file is obsoleted in the move of Estimator to core.
+"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function

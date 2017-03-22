@@ -295,6 +295,14 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // from 'LookUp' and included in the proto returned by 'ToProto'.
   Status AddFunctionDef(const FunctionDef& fdef);
 
+  // Adds gradient definition 'grad' to this function library.
+  // If 'grad' is successfully added, it will be accessible via 'FindGradient'
+  // and included in the proto returned by 'ToProto'.
+  Status AddGradientDef(const GradientDef& grad);
+
+  // Adds the functions and gradients in 'other' to this function library.
+  Status AddLibrary(const FunctionLibraryDefinition& other);
+
   // If the gradient function for 'func' is specified explicitly in
   // the library, returns the gradient function name.  Otherwise,
   // returns an empty string.
@@ -319,6 +327,10 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
 
   // Returns a proto representation of the state of this function library.
   FunctionDefLibrary ToProto() const;
+
+  const OpRegistryInterface* default_registry() const {
+    return default_registry_;
+  }
 
  private:
   // TODO(cwhipkey): support shape functions in FunctionDefLibrary.

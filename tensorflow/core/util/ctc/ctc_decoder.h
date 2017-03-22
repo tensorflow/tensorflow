@@ -17,6 +17,8 @@ limitations under the License.
 #define TENSORFLOW_CORE_UTIL_CTC_CTC_DECODER_H_
 
 #include "third_party/eigen3/Eigen/Core"
+#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 namespace ctc {
@@ -47,9 +49,9 @@ class CTCDecoder {
   //  - input[t].rows(b) - t = 0 to timesteps; b = 0 t batch_size_
   //  - output.size() specifies the number of beams to be returned.
   //  - scores(b, i) - b = 0 to batch_size; i = 0 to output.size()
-  virtual void Decode(const SequenceLength& seq_len,
-                      const std::vector<Input>& input,
-                      std::vector<Output>* output, ScoreOutput* scores) = 0;
+  virtual Status Decode(const SequenceLength& seq_len,
+                        const std::vector<Input>& input,
+                        std::vector<Output>* output, ScoreOutput* scores) = 0;
 
   int batch_size() { return batch_size_; }
   int num_classes() { return num_classes_; }
@@ -68,10 +70,18 @@ class CTCGreedyDecoder : public CTCDecoder {
   CTCGreedyDecoder(int num_classes, int batch_size, bool merge_repeated)
       : CTCDecoder(num_classes, batch_size, merge_repeated) {}
 
-  void Decode(const CTCDecoder::SequenceLength& seq_len,
-              const std::vector<CTCDecoder::Input>& input,
-              std::vector<CTCDecoder::Output>* output,
-              CTCDecoder::ScoreOutput* scores) override {
+  Status Decode(const CTCDecoder::SequenceLength& seq_len,
+                const std::vector<CTCDecoder::Input>& input,
+                std::vector<CTCDecoder::Output>* output,
+                CTCDecoder::ScoreOutput* scores) override {
+    if (output->empty() || (*output)[0].size() < batch_size_) {
+      return errors::InvalidArgument(
+          "output needs to be of size at least (1, batch_size).");
+    }
+    if (scores->rows() < batch_size_ || scores->cols() == 0) {
+      return errors::InvalidArgument(
+          "scores needs to be of size at least (batch_size, 1).");
+    }
     // For each batch entry, identify the transitions
     for (int b = 0; b < batch_size_; ++b) {
       int seq_len_b = seq_len[b];
@@ -93,6 +103,7 @@ class CTCGreedyDecoder : public CTCDecoder {
         prev_class_ix = max_class_ix;
       }
     }
+    return Status::OK();
   }
 };
 

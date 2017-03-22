@@ -19,14 +19,6 @@ from __future__ import division
 from __future__ import print_function
 # pylint: enable=unused-import
 
-import sys
-
-# TODO(jart): #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
-  import ctypes  # pylint: disable=g-import-not-at-top
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
-
-# pylint: disable=g-import-not-at-top
 import numpy as np
 
 from tensorflow.contrib.rnn import core_rnn_cell

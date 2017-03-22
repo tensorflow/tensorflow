@@ -526,7 +526,7 @@ Status FastParseSerializedExample(
         return example_error(strings::StrCat(
             "Data types don't match. Data type: ",
             DataTypeString(example_dtype),
-            "Expected type: ", DataTypeString(config.dense[d].dtype)));
+            " but expected type: ", DataTypeString(config.dense[d].dtype)));
       }
       if (!config.dense[d].variable_length) {
         Tensor& out = (*output_dense)[d];
@@ -793,8 +793,7 @@ void CopyOrMoveBlock(const string* b, const string* e, string* t) {
 template <typename T>
 void FillAndCopyVarLen(
     const int d, const size_t num_elements,
-    const size_t num_elements_per_minibatch, const size_t data_stride_size,
-    const Config& config,
+    const size_t num_elements_per_minibatch, const Config& config,
     const std::vector<std::vector<SparseBuffer>>& varlen_dense_buffers,
     Tensor* values) {
   const Tensor& default_value = config.dense[d].default_value;
@@ -803,23 +802,34 @@ void FillAndCopyVarLen(
   std::fill(values->flat<T>().data(), values->flat<T>().data() + num_elements,
             default_value.flat<T>()(0));
 
+  // Data is [batch_size, max_num_elements, data_stride_size]
+  //   and num_elements_per_minibatch = max_num_elements * data_stride_size
+  auto data = values->flat<T>().data();
+
   // Iterate over minibatch elements
   for (size_t i = 0; i < varlen_dense_buffers.size(); ++i) {
     const SparseBuffer& buffer = varlen_dense_buffers[i][d];
-    const size_t offset = i * num_elements_per_minibatch;
-    const size_t stride_size = config.dense[d].elements_per_stride;
+    // Number of examples being stored in this buffer
+    const auto& end_indices = buffer.example_end_indices;
+    const size_t examples_in_buffer = end_indices.size();
+    // const size_t stride_size = config.dense[d].elements_per_stride;
 
-    // Copy values over.
-    auto& list = GetListFromBuffer<T>(buffer);
+    const auto& list = GetListFromBuffer<T>(buffer);
     auto list_ptr = list.begin();
-    auto data = values->flat<T>().data() + offset;
-    DCHECK(list.size() % stride_size == 0);
-    const size_t num_entries = list.size() / stride_size;
-    for (size_t j = 0; j < num_entries; ++j) {
-      CopyOrMoveBlock(list_ptr, list_ptr + stride_size, data);
-      list_ptr += stride_size;
-      data += data_stride_size;
+
+    size_t elements_tally = 0;
+    // Iterate through all the examples stored in this buffer.
+    for (size_t j = 0; j < examples_in_buffer; ++j) {
+      // Number of elements stored for this example.
+      const size_t num_elems = end_indices[j] - elements_tally;
+      CopyOrMoveBlock(list_ptr, list_ptr + num_elems, data);
+      // Move forward this many elements in the varlen buffer.
+      list_ptr += num_elems;
+      // Move forward to the next minibatch entry in the values output.
+      data += num_elements_per_minibatch;
+      elements_tally = end_indices[j];
     }
+    DCHECK(elements_tally == list.size());
   }
 }
 
@@ -948,7 +958,7 @@ Status FastParseExample(const Config& config,
     size_t total_num_features = 0;
     size_t max_num_features = 0;
     for (auto& sparse_values_tmp : sparse_buffers) {
-      std::vector<size_t>& end_indices =
+      const std::vector<size_t>& end_indices =
           sparse_values_tmp[d].example_end_indices;
       total_num_features += end_indices.back();
       max_num_features = std::max(max_num_features, end_indices[0]);
@@ -1055,28 +1065,21 @@ Status FastParseExample(const Config& config,
     if (num_elements == 0) return;
 
     const size_t num_elements_per_minibatch = num_elements / batch_size;
-    const size_t data_stride_size =
-        (max_num_elements == 0)
-            ? 0
-            : (num_elements_per_minibatch / max_num_elements);
 
     switch (config.dense[d].dtype) {
       case DT_INT64: {
         FillAndCopyVarLen<int64>(d, num_elements, num_elements_per_minibatch,
-                                 data_stride_size, config, varlen_dense_buffers,
-                                 &values);
+                                 config, varlen_dense_buffers, &values);
         break;
       }
       case DT_FLOAT: {
         FillAndCopyVarLen<float>(d, num_elements, num_elements_per_minibatch,
-                                 data_stride_size, config, varlen_dense_buffers,
-                                 &values);
+                                 config, varlen_dense_buffers, &values);
         break;
       }
       case DT_STRING: {
         FillAndCopyVarLen<string>(d, num_elements, num_elements_per_minibatch,
-                                  data_stride_size, config,
-                                  varlen_dense_buffers, &values);
+                                  config, varlen_dense_buffers, &values);
         break;
       }
       default:

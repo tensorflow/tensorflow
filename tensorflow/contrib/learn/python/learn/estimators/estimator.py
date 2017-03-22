@@ -58,6 +58,7 @@ from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import resources
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
@@ -349,16 +350,10 @@ class BaseEstimator(
     Args:
       model_dir: Directory to save model parameters, graph and etc. This can
         also be used to load checkpoints from the directory into a estimator to
-        continue training a previously saved model.
+        continue training a previously saved model. If `None`, the model_dir in
+        `config` will be used if set. If both are set, they must be same.
       config: A RunConfig instance.
     """
-    # Model directory.
-    self._model_dir = model_dir
-    if self._model_dir is None:
-      self._model_dir = tempfile.mkdtemp()
-      logging.warning('Using temporary folder as model directory: %s',
-                      self._model_dir)
-
     # Create a run configuration.
     if config is None:
       self._config = BaseEstimator._Config()
@@ -366,6 +361,23 @@ class BaseEstimator(
     else:
       self._config = config
     logging.info('Using config: %s', str(vars(self._config)))
+
+    # Model directory.
+    if (model_dir is not None) and (self._config.model_dir is not None):
+      if model_dir != self._config.model_dir:
+        # TODO(b/9965722): remove this suppression after it is no longer
+        #                  necessary.
+        # pylint: disable=g-doc-exception
+        raise ValueError(
+            "model_dir are set both in constructor and RunConfig, but with "
+            "different values. In constructor: '{}', in RunConfig: "
+            "'{}' ".format(model_dir, self._config.model_dir))
+
+    self._model_dir = model_dir or self._config.model_dir
+    if self._model_dir is None:
+      self._model_dir = tempfile.mkdtemp()
+      logging.warning('Using temporary folder as model directory: %s',
+                      self._model_dir)
 
     # Set device function depending if there are replicas or not.
     self._device_fn = _get_replica_device_setter(self._config)
@@ -1093,7 +1105,7 @@ class Estimator(BaseEstimator):
     if isinstance(model_fn_results, model_fn_lib.ModelFnOps):
       return model_fn_results
 
-    # Here model_fn_ops should be a tuple with 3 elements.
+    # Here model_fn_results should be a tuple with 3 elements.
     if len(model_fn_results) != 3:
       raise ValueError('Unrecognized value returned by model_fn, '
                        'please return ModelFnOps.')
@@ -1243,13 +1255,17 @@ class Estimator(BaseEstimator):
       with tf_session.Session('') as session:
         variables.initialize_local_variables()
         data_flow_ops.tables_initializer()
+        resources.initialize_resources(resources.shared_resources())
         saver_for_restore = saver.Saver(
-            variables.global_variables(),
+            # pylint: disable=protected-access
+            variables._all_saveable_objects(),
+            # pylint: enable=protected-access
             sharded=True)
         saver_for_restore.restore(session, checkpoint_path)
 
         init_op = control_flow_ops.group(
             variables.local_variables_initializer(),
+            resources.initialize_resources(resources.shared_resources()),
             data_flow_ops.tables_initializer())
 
         # Perform the export
