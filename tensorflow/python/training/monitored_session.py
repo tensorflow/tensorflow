@@ -633,6 +633,7 @@ class SingularMonitoredSession(_MonitoredSession):
   Please note that this utility is not recommended for distributed settings.
   For distributed settings, please use `tf.train.MonitoredSession`. The
   differences between `MonitoredSession` and `SingularMonitoredSession` are:
+
   * `MonitoredSession` handles `AbortedError` and `UnavailableError` for
     distributed settings, but `SingularMonitoredSession` does not.
   * `MonitoredSession` can be created in `chief` or `worker` modes.
@@ -640,8 +641,8 @@ class SingularMonitoredSession(_MonitoredSession):
   * You can access the raw `tf.Session` object used by
     `SingularMonitoredSession`, whereas in MonitoredSession the raw session is
     private. This can be used:
-    - To `run` without hooks.
-    - To save and restore.
+      - To `run` without hooks.
+      - To save and restore.
   * All other functionality is identical.
 
   Example usage:

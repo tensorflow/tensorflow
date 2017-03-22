@@ -324,6 +324,15 @@ class Experiment(object):
     last_warning_time = 0
     while (not continuous_eval_predicate_fn or
            continuous_eval_predicate_fn(eval_result)):
+      # Exit if we have already reached number of steps to train.
+      if eval_result:
+        global_step = eval_result.get("global_step")
+        if global_step and self._train_steps and (
+            global_step >= self._train_steps):
+          logging.info("Exiting continuous eval, global_step=%s >= "
+                       "train_step=%s" % (global_step, self._train_steps))
+          return
+
       start = time.time()
 
       error_msg = None

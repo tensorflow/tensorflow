@@ -2092,6 +2092,10 @@ cuda_py_test(
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
     ],
+    tags = [
+        "manual",
+        "notap",
+    ],
 )
 
 cuda_py_test(

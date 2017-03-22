@@ -112,9 +112,10 @@ def get_model_fn(params,
       weights = features.pop(weights_name)
 
     # If we're doing eval, optionally ignore device_assigner.
+    # Also ignore device assigner if we're exporting (mode == INFER)
     dev_assn = device_assigner
-    if (local_eval and (mode == model_fn_lib.ModeKeys.EVAL or
-                        mode == model_fn_lib.ModeKeys.INFER)):
+    if (mode == model_fn_lib.ModeKeys.INFER or
+        (local_eval and mode == model_fn_lib.ModeKeys.EVAL)):
       dev_assn = None
 
     graph_builder = graph_builder_class(params,

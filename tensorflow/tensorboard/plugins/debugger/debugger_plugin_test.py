@@ -90,13 +90,15 @@ class DebuggerPluginTest(test.TestCase):
     writer.Close()
 
     # Start a server that will receive requests and respond with health pills.
-    multiplexer = event_multiplexer.EventMultiplexer({
+    self.multiplexer = event_multiplexer.EventMultiplexer({
         '.': self.log_dir,
         'run_foo': run_foo_directory,
     })
-    self.plugin = debugger_plugin.DebuggerPlugin(multiplexer)
+    self.plugin = debugger_plugin.DebuggerPlugin()
     wsgi_app = application.TensorBoardWSGIApp(
-        self.log_dir, {'debugger': self.plugin}, multiplexer, reload_interval=0)
+        self.log_dir, {'debugger': self.plugin},
+        self.multiplexer,
+        reload_interval=0)
     self.server = werkzeug_test.Client(wsgi_app, wrappers.BaseResponse)
 
   def tearDown(self):
@@ -140,8 +142,7 @@ class DebuggerPluginTest(test.TestCase):
 
   def testHealthPillsRouteProvided(self):
     """Tests that the plugin offers the route for requesting health pills."""
-    unused_run_paths = {}
-    apps = self.plugin.get_plugin_apps(unused_run_paths, self.log_dir)
+    apps = self.plugin.get_plugin_apps(self.multiplexer, self.log_dir)
     self.assertIn('/health_pills', apps)
     self.assertIsInstance(apps['/health_pills'], collections.Callable)
 

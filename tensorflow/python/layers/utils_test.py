@@ -25,6 +25,7 @@ from tensorflow.python.platform import test
 class ConvUtilsTest(test.TestCase):
 
   def testConvertDataFormat(self):
+    self.assertEqual(utils.convert_data_format('channels_first', 5), 'NCDHW')
     self.assertEqual(utils.convert_data_format('channels_first', 4), 'NCHW')
     self.assertEqual(utils.convert_data_format('channels_first', 3), 'NCW')
     self.assertEqual(utils.convert_data_format('channels_last', 4), 'NHWC')

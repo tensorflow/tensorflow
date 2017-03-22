@@ -210,7 +210,7 @@ contains vz-line-charts embedded inside tf-panes-helper's.
           type: Boolean,
           notify: true,
           value: TF.URIStorage.getBooleanInitializer('_showDownloadLinks',
-              false),
+              false, true),
           observer: '_showDownloadLinksObserver'
         },
         _smoothingWeight: {
@@ -225,7 +225,8 @@ contains vz-line-charts embedded inside tf-panes-helper's.
         },
         _ignoreYOutliers: {
           type: Boolean,
-          value: true,
+          value: TF.URIStorage.getBooleanInitializer('_ignoreYOutliers', true, true),
+          observer: '_ignoreYOutliersObserver',
         },
         _xType: {
           type: String,
@@ -241,9 +242,11 @@ contains vz-line-charts embedded inside tf-panes-helper's.
         return this.router.scalars;
       },
       _showDownloadLinksObserver: TF.URIStorage.getBooleanObserver(
-          '_showDownloadLinks', false),
+          '_showDownloadLinks', /*default=*/ false, /*useLocalStorage=*/ true),
       _smoothingWeightObserver: TF.URIStorage.getNumberObserver(
           '_smoothingWeight', 0.6),
+      _ignoreYOutliersObserver: TF.URIStorage.getBooleanObserver(
+          '_ignoreYOutliers', /*default=*/ true, /*useLocalStorage=*/true),
       _computeSmoothingEnabled: function(_smoothingWeight) {
         return _smoothingWeight > 0;
       },

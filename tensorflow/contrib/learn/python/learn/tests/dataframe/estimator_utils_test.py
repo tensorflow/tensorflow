@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
+
 from tensorflow.contrib.layers import feature_column
 from tensorflow.contrib.learn.python import learn
 from tensorflow.contrib.learn.python.learn.dataframe import estimator_utils
@@ -66,6 +68,31 @@ def setup_test_df_3layer():
                                     mocks.Mock2x2Transform("iue", "eui", "snt"),
                                     "out1")
   return df
+
+
+class DataFrameColumnTest(test.TestCase):
+  """Test of layers.DataFrameColumn."""
+
+  def test_constructor(self):
+    series = learn.PredefinedSeries(
+        "a",
+        parsing_ops.FixedLenFeature(
+            tensor_shape.unknown_shape(), dtypes.int32, 1))
+    column = feature_column.DataFrameColumn("a", series)
+    self.assertEqual("a", column.column_name)
+    self.assertEqual("a", column.name)
+    self.assertEqual(series, column.series)
+
+  def test_deepcopy(self):
+    series = learn.PredefinedSeries(
+        "a",
+        parsing_ops.FixedLenFeature(
+            tensor_shape.unknown_shape(), dtypes.int32, 1))
+    column = feature_column.DataFrameColumn("a", series)
+    column_copy = copy.deepcopy(column)
+    self.assertEqual("a", column_copy.column_name)
+    self.assertEqual("a", column_copy.name)
+    self.assertEqual(series, column_copy.series)
 
 
 class EstimatorUtilsTest(test.TestCase):
