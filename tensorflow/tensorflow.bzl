@@ -520,10 +520,11 @@ def tf_kernel_library(name, prefix=None, srcs=None, gpu_srcs=None, hdrs=None,
       if not gpu_srcs:
         gpu_srcs = []
       gpu_srcs = gpu_srcs + native.glob([prefix + "*.cu.cc", prefix + "*.h"],
-                                        exclude = ["*test*"])
+                                        exclude = [prefix + "*test*"])
     srcs = srcs + native.glob([prefix + "*.cc"],
-                              exclude = ["*test*", "*.cu.cc"])
-    hdrs = hdrs + native.glob([prefix + "*.h"], exclude = ["*test*", "*.cu.h"])
+                              exclude = [prefix + "*test*", prefix + "*.cu.cc"])
+    hdrs = hdrs + native.glob([prefix + "*.h"], exclude = [prefix + "*test*",
+                                                           prefix + "*.cu.h"])
 
   cuda_deps = ["//tensorflow/core:gpu_lib"]
   if gpu_srcs:
