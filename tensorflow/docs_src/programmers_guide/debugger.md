@@ -246,7 +246,8 @@ tfdbg> ni -t cross_entropy/Log
 The `-t` flag is used by default, if you use the clickable "node_info" menu item
 at the top of the screen.
 
-From the traceback, you can see that the op is constructed around line 106 of
+From the traceback, you can see that the op is constructed around lines 105-106
+of
 [`debug_mnist.py`](https://www.tensorflow.org/code/tensorflow/python/debug/examples/debug_mnist.py):
 
 ```python

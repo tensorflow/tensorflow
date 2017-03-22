@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import atexit
 import inspect
 import itertools
 import os
@@ -29,12 +30,19 @@ import tempfile
 from unittest import *
 # pylint: enable=wildcard-import
 
+from tensorflow.python.framework import errors
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import app
-from tensorflow.python.platform import benchmark  # pylint: disable=unused-import
+from tensorflow.python.platform import benchmark
+from tensorflow.python.platform import tf_logging as logging
 
 Benchmark = benchmark.TensorFlowBenchmark  # pylint: disable=invalid-name
 
 unittest_main = main
+
+# We keep a global variable in this module to make sure we create the temporary
+# directory only once per test binary invocation.
+_googletest_temp_dir = ''
 
 
 # pylint: disable=invalid-name
@@ -90,13 +98,27 @@ def main(argv=None):  # pylint: disable=function-redefined
 
 
 def GetTempDir():
-  first_frame = inspect.stack()[-1][0]
-  temp_dir = os.path.join(
-      tempfile.gettempdir(), os.path.basename(inspect.getfile(first_frame)))
-  temp_dir = temp_dir.rstrip('.py')
-  if not os.path.isdir(temp_dir):
-    os.mkdir(temp_dir, 0o755)
-  return temp_dir
+  """Return a temporary directory for tests to use."""
+  if not _googletest_temp_dir:
+    first_frame = inspect.stack()[-1][0]
+    temp_dir = os.path.join(
+        tempfile.gettempdir(), os.path.basename(inspect.getfile(first_frame)))
+    temp_dir = temp_dir.rstrip('.py')
+    if not os.path.isdir(temp_dir):
+      os.mkdir(temp_dir, 0o755)
+    temp_dir = tempfile.mkdtemp(dir=temp_dir)
+
+    def delete_temp_dir(dirname=temp_dir):
+      try:
+        file_io.delete_recursively(dirname)
+      except errors.OpError as e:
+        logging.error('Error removing %s: %s', dirname, e)
+
+    atexit.register(delete_temp_dir)
+    global _googletest_temp_dir
+    _googletest_temp_dir = temp_dir
+
+  return _googletest_temp_dir
 
 
 def test_src_dir_path(relative_path):
@@ -110,7 +132,7 @@ def test_src_dir_path(relative_path):
     An absolute path to the linked in runfiles.
   """
   return os.path.join(os.environ['TEST_SRCDIR'],
-                      "org_tensorflow/tensorflow", relative_path)
+                      'org_tensorflow/tensorflow', relative_path)
 
 
 def StatefulSessionAvailable():

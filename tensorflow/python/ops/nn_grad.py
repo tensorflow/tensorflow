@@ -70,44 +70,53 @@ def _Conv2DBackpropFilterGrad(op, grad):
 
 @ops.RegisterGradient("Conv3D")
 def _Conv3DGrad(op, grad):
+  data_format = op.get_attr("data_format")
   return [nn_ops.conv3d_backprop_input_v2(array_ops.shape(op.inputs[0]),
                                           op.inputs[1],
                                           grad,
                                           strides=op.get_attr("strides"),
-                                          padding=op.get_attr("padding")),
+                                          padding=op.get_attr("padding"),
+                                          data_format=data_format),
           nn_ops.conv3d_backprop_filter_v2(op.inputs[0],
                                            array_ops.shape(op.inputs[1]),
                                            grad,
                                            strides=op.get_attr("strides"),
-                                           padding=op.get_attr("padding"))]
+                                           padding=op.get_attr("padding"),
+                                           data_format=data_format)]
 
 
 @ops.RegisterGradient("Conv3DBackpropInputV2")
 def _Conv3DBackpropInputGrad(op, grad):
+  data_format = op.get_attr("data_format")
   return [None,
           nn_ops.conv3d_backprop_filter_v2(grad,
                                            array_ops.shape(op.inputs[1]),
                                            op.inputs[2],
                                            strides=op.get_attr("strides"),
-                                           padding=op.get_attr("padding")),
+                                           padding=op.get_attr("padding"),
+                                           data_format=data_format),
           nn_ops.conv3d(grad,
                         op.inputs[1],
                         strides=op.get_attr("strides"),
-                        padding=op.get_attr("padding"))]
+                        padding=op.get_attr("padding"),
+                        data_format=data_format)]
 
 
 @ops.RegisterGradient("Conv3DBackpropFilterV2")
 def _Conv3DBackpropFilterGrad(op, grad):
+  data_format = op.get_attr("data_format")
   return [nn_ops.conv3d_backprop_input_v2(array_ops.shape(op.inputs[0]),
                                           grad,
                                           op.inputs[2],
                                           strides=op.get_attr("strides"),
-                                          padding=op.get_attr("padding")),
+                                          padding=op.get_attr("padding"),
+                                          data_format=data_format),
           None,
           nn_ops.conv3d(op.inputs[0],
                         grad,
                         strides=op.get_attr("strides"),
-                        padding=op.get_attr("padding"))]
+                        padding=op.get_attr("padding"),
+                        data_format=data_format)]
 
 
 @ops.RegisterGradient("AvgPool3D")
@@ -117,7 +126,8 @@ def _AvgPool3DGrad(op, grad):
       grad,
       ksize=op.get_attr("ksize"),
       strides=op.get_attr("strides"),
-      padding=op.get_attr("padding"))
+      padding=op.get_attr("padding"),
+      data_format=op.get_attr("data_format"))
 
 
 @ops.RegisterGradient("MaxPool3D")
@@ -127,7 +137,8 @@ def _MaxPool3DGrad(op, grad):
                                 grad,
                                 ksize=op.get_attr("ksize"),
                                 strides=op.get_attr("strides"),
-                                padding=op.get_attr("padding"))
+                                padding=op.get_attr("padding"),
+                                data_format=op.get_attr("data_format"))
 
 
 @ops.RegisterGradient("Softmax")

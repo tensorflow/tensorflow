@@ -24,12 +24,14 @@ When using FeatureColumns with tf.learn models, the type of feature column you
 should choose depends on (1) the feature type and (2) the model type.
 
 (1) Feature type:
+
  * Continuous features can be represented by `real_valued_column`.
  * Categorical features can be represented by any `sparse_column_with_*`
  column (`sparse_column_with_keys`, `sparse_column_with_vocabulary_file`,
  `sparse_column_with_hash_bucket`, `sparse_column_with_integerized_feature`).
 
 (2) Model type:
+
  * Deep neural network models (`DNNClassifier`, `DNNRegressor`).
 
    Continuous features can be directly fed into deep neural network models.
@@ -1180,11 +1182,11 @@ def shared_embedding_columns(sparse_id_columns,
 
 
 class _ScatteredEmbeddingColumn(
+    _FeatureColumn,
     collections.namedtuple(
         "_ScatteredEmbeddingColumn",
         ["column_name", "size", "dimension", "hash_key", "combiner",
-         "initializer"]),
-    _EmbeddingColumn):
+         "initializer"])):
   """See `scattered_embedding_column`."""
 
   def __new__(cls,
@@ -1215,6 +1217,11 @@ class _ScatteredEmbeddingColumn(
   @property
   def config(self):
     return {self.column_name: parsing_ops.VarLenFeature(dtypes.string)}
+
+  @property
+  def key(self):
+    """Returns a string which will be used as a key when we do sorting."""
+    return self._key_without_properties(["initializer"])
 
   def insert_transformed_feature(self, columns_to_tensors):
     columns_to_tensors[self] = columns_to_tensors[self.column_name]

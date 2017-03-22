@@ -18,19 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import functools
-
 from tensorflow.contrib import layers
-from tensorflow.contrib import metrics
 from tensorflow.contrib import rnn as rnn_cell
 from tensorflow.contrib.framework.python.framework import deprecated
 from tensorflow.contrib.layers.python.layers import feature_column_ops
 from tensorflow.contrib.layers.python.layers import optimizers
-from tensorflow.contrib.learn.python.learn import metric_spec
 from tensorflow.contrib.learn.python.learn.estimators import constants
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators import model_fn
-from tensorflow.contrib.learn.python.learn.estimators import prediction_key
 from tensorflow.contrib.learn.python.learn.estimators import rnn_common
 from tensorflow.contrib.rnn.python.ops import core_rnn
 from tensorflow.contrib.training.python.training import sequence_queueing_state_saver as sqss
@@ -87,52 +82,6 @@ def construct_state_saving_rnn(cell,
     final_state = array_ops.identity(
         final_state, name=rnn_common.RNNKeys.FINAL_STATE_KEY)
     return activations, final_state
-
-
-# TODO(jtbates): As per cl/14156248, remove this function and switch from
-# MetricSpec to metric ops.
-def _mask_multivalue(sequence_length, metric):
-  """Wrapper function that masks values by `sequence_length`.
-
-  Args:
-    sequence_length: A `Tensor` with shape `[batch_size]` and dtype `int32`
-      containing the length of each sequence in the batch. If `None`, sequences
-      are assumed to be unpadded.
-    metric: A metric function. Its signature must contain `predictions` and
-      `labels`.
-
-  Returns:
-    A metric function that masks `predictions` and `labels` using
-    `sequence_length` and then applies `metric` to the results.
-  """
-  @functools.wraps(metric)
-  def _metric(predictions, labels, *args, **kwargs):
-    predictions, labels = rnn_common.mask_activations_and_labels(
-        predictions, labels, sequence_length)
-    return metric(predictions, labels, *args, **kwargs)
-  return _metric
-
-
-def _get_default_metrics(problem_type, sequence_length):
-  """Returns default `MetricSpec`s for `problem_type`.
-
-  Args:
-    problem_type: `ProblemType.CLASSIFICATION` or
-    `ProblemType.LINEAR_REGRESSION`.
-    sequence_length: A `Tensor` with shape `[batch_size]` and dtype `int32`
-      containing the length of each sequence in the batch. If `None`, sequences
-      are assumed to be unpadded.
-  Returns:
-    A `dict` mapping strings to `MetricSpec`s.
-  """
-  default_metrics = {}
-  if problem_type == constants.ProblemType.CLASSIFICATION:
-    default_metrics['accuracy'] = metric_spec.MetricSpec(
-        metric_fn=_mask_multivalue(sequence_length, metrics.streaming_accuracy),
-        prediction_key=prediction_key.PredictionKey.CLASSES)
-  elif problem_type == constants.ProblemType.LINEAR_REGRESSION:
-    pass
-  return default_metrics
 
 
 def _multi_value_loss(
@@ -516,9 +465,10 @@ def _get_rnn_model_fn(target_column,
 
       eval_metric_ops = None
       if mode != model_fn.ModeKeys.INFER:
-        default_metrics = _get_default_metrics(problem_type, batch.length)
-        eval_metric_ops = estimator._make_metrics_ops(  # pylint: disable=protected-access
-            default_metrics, features, labels, prediction_dict)
+        eval_metric_ops = rnn_common.get_eval_metric_ops(
+            problem_type, rnn_common.PredictionType.MULTIPLE_VALUE,
+            batch.length, prediction_dict, labels)
+
       state_dict = state_tuple_to_dict(final_state)
       prediction_dict.update(state_dict)
 

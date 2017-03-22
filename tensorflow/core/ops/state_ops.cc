@@ -267,6 +267,7 @@ Applies sparse updates to a variable reference.
 
 This operation computes
 
+```python
     # Scalar indices
     ref[indices, ...] = updates[...]
 
@@ -275,6 +276,7 @@ This operation computes
 
     # High rank indices (for each i, ..., j)
     ref[indices[i, ..., j], ...] = updates[i, ..., j, ...]
+```
 
 This operation outputs `ref` after the update is done.
 This makes it easier to chain operations that need to use the reset value.
@@ -354,6 +356,7 @@ REGISTER_OP("ScatterSub")
     .Doc(R"doc(
 Subtracts sparse updates to a variable reference.
 
+```python
     # Scalar indices
     ref[indices, ...] -= updates[...]
 
@@ -362,6 +365,7 @@ Subtracts sparse updates to a variable reference.
 
     # High rank indices (for each i, ..., j)
     ref[indices[i, ..., j], ...] -= updates[i, ..., j, ...]
+```
 
 This operation outputs `ref` after the update is done.
 This makes it easier to chain operations that need to use the reset value.
@@ -398,6 +402,7 @@ Multiplies sparse updates into a variable reference.
 
 This operation computes
 
+```python
     # Scalar indices
     ref[indices, ...] *= updates[...]
 
@@ -406,6 +411,7 @@ This operation computes
 
     # High rank indices (for each i, ..., j)
     ref[indices[i, ..., j], ...] *= updates[i, ..., j, ...]
+```
 
 This operation outputs `ref` after the update is done.
 This makes it easier to chain operations that need to use the reset value.
@@ -438,6 +444,7 @@ Divides a variable reference by sparse updates.
 
 This operation computes
 
+```python
     # Scalar indices
     ref[indices, ...] /= updates[...]
 
@@ -446,6 +453,7 @@ This operation computes
 
     # High rank indices (for each i, ..., j)
     ref[indices[i, ..., j], ...] /= updates[i, ..., j, ...]
+```
 
 This operation outputs `ref` after the update is done.
 This makes it easier to chain operations that need to use the reset value.
@@ -552,12 +560,14 @@ dimension of `ref`.
 For example, say we want to update 4 scattered elements to a rank-1 tensor to
 8 elements. In Python, that update would look like this:
 
+```python
     ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
     indices = tf.constant([[4], [3], [1] ,[7]])
     updates = tf.constant([9, 10, 11, 12])
     update = tf.scatter_nd_update(ref, indices, updates)
     with tf.Session() as sess:
       print sess.run(update)
+```
 
 The resulting update to ref would look like this:
 
