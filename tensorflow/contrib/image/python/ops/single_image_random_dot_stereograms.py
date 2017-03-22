@@ -26,17 +26,17 @@ file =   resource_loader.get_path_to_datafile("_single_image_random_dot_stereogr
 _sirds_ops = loader.load_op_library(file)
 
 def single_image_random_dot_stereograms(depth_values,
-                                        hidden_surface_removal=None,
-                                        convergence_dots_size=None,
-                                        dots_per_inch=None,
-                                        eye_separation=None, mu=None,
-                                        normalize=None, normalize_max=None,
-                                        normalize_min=None,
-                                        boarder_level=None,
-                                        number_colors=None,
-                                        generation_mode=None,
-                                        output_image_shape=None,
-                                        output_data_window=None):
+    hidden_surface_removal=None,
+    convergence_dots_size=None,
+    dots_per_inch=None,
+    eye_separation=None, mu=None,
+    normalize=None, normalize_max=None,
+    normalize_min=None,
+    boarder_level=None,
+    number_colors=None,
+    generation_mode=None,
+    output_image_shape=None,
+    output_data_window=None):
     """Output a RandomDotStereogram Tensor for export via encode_PNG/JPG OP.
 
     Given the 2-D tensor 'depth_values' with encoded Z values, this operation will 
@@ -102,20 +102,21 @@ def single_image_random_dot_stereograms(depth_values,
 
     Returns:
       A `Tensor` of type `uint8` of shape 'output_image_shape' with encoded 'depth_values'
-  """
-  result = _sirds_ops.single_image_random_dot_stereograms( depth_values=depth_values,
-                                hidden_surface_removal=hidden_surface_removal,
-                                convergence_dots_size=convergence_dots_size,
-                                dots_per_inch=dots_per_inch,
-                                eye_separation=eye_separation, mu=mu,
-                                normalize=normalize,
-                                normalize_max=normalize_max,
-                                normalize_min=normalize_min,
-                                boarder_level=boarder_level,
-                                number_colors=number_colors,
-                                generation_mode=generation_mode,
-                                output_image_shape=output_image_shape,
-                                output_data_window=output_data_window)
-  return result
+    """
+    
+    result = _sirds_ops.single_image_random_dot_stereograms( depth_values=depth_values,
+        hidden_surface_removal=hidden_surface_removal,
+        convergence_dots_size=convergence_dots_size,
+        dots_per_inch=dots_per_inch,
+        eye_separation=eye_separation, mu=mu,
+        normalize=normalize,
+        normalize_max=normalize_max,
+        normalize_min=normalize_min,
+        boarder_level=boarder_level,
+        number_colors=number_colors,
+        generation_mode=generation_mode,
+        output_image_shape=output_image_shape,
+        output_data_window=output_data_window)
+    return result
 
 ops.NotDifferentiable("SingleImageRandomDotStereograms")
