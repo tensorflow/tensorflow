@@ -287,7 +287,8 @@ class TensorBoardWSGIApp(object):
     try:
       graph = self._multiplexer.Graph(run)
     except ValueError:
-      return http_util.Respond(request, '404 Not Found', code=404)
+      return http_util.Respond(
+          request, '404 Not Found', 'text/plain; charset=UTF-8', code=404)
 
     limit_attr_size = request.args.get('limit_attr_size', None)
     if limit_attr_size is not None:
@@ -321,7 +322,8 @@ class TensorBoardWSGIApp(object):
     try:
       run_metadata = self._multiplexer.RunMetadata(run, tag)
     except ValueError:
-      return http_util.Respond(request, '404 Not Found', code=404)
+      return http_util.Respond(
+          request, '404 Not Found', 'text/plain; charset=UTF-8', code=404)
     return http_util.Respond(
         request, str(run_metadata), 'text/x-protobuf')  # pbtxt
 
