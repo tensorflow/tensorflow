@@ -64,6 +64,10 @@ temp_workaround_http_archive = repository_rule(
 # If TensorFlow is linked as a submodule.
 # path_prefix and tf_repo_name are no longer used.
 def tf_workspace(path_prefix = "", tf_repo_name = ""):
+  # We must check the bazel version before trying to parse any other BUILD
+  # files, in case the parsing of those build files depends on the bazel
+  # version we require here.
+  check_version("0.4.5")
   cuda_configure(name = "local_config_cuda")
   sycl_configure(name = "local_config_sycl")
   if path_prefix:
