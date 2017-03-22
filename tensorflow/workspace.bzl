@@ -102,6 +102,17 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
       actual = "@libxsmm_archive//third_party:xsmm_avx",
   )
 
+  native.new_http_archive(
+      name = "ortools_archive",
+      urls = [
+          "http://bazel-mirror.storage.googleapis.com/github.com/google/or-tools/archive/253f7955c6a1fd805408fba2e42ac6d45b312d15.tar.gz",
+          "https://github.com/google/or-tools/archive/253f7955c6a1fd805408fba2e42ac6d45b312d15.tar.gz",
+      ],
+      sha256 = "932075525642b04ac6f1b50589f1df5cd72ec2f448b721fd32234cf183f0e755",
+      strip_prefix = "or-tools-253f7955c6a1fd805408fba2e42ac6d45b312d15/src",
+      build_file = str(Label("//third_party:ortools.BUILD")),
+  )
+
   native.http_archive(
       name = "com_googlesource_code_re2",
       urls = [
@@ -232,6 +243,29 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
       strip_prefix = "protobuf-2b7430d96aeff2bb624c8d52182ff5e4b9f7f18a",
   )
 
+  # We need to import the protobuf library under the names com_google_protobuf
+  # and com_google_protobuf_cc to enable proto_library support in bazel.
+  # Unfortunately there is no way to alias http_archives at the moment.
+  native.http_archive(
+      name = "com_google_protobuf",
+      urls = [
+          "http://bazel-mirror.storage.googleapis.com/github.com/google/protobuf/archive/2b7430d96aeff2bb624c8d52182ff5e4b9f7f18a.tar.gz",
+          "https://github.com/google/protobuf/archive/2b7430d96aeff2bb624c8d52182ff5e4b9f7f18a.tar.gz",
+      ],
+      sha256 = "e5d3d4e227a0f7afb8745df049bbd4d55474b158ca5aaa2a0e31099af24be1d0",
+      strip_prefix = "protobuf-2b7430d96aeff2bb624c8d52182ff5e4b9f7f18a",
+  )
+
+  native.http_archive(
+      name = "com_google_protobuf_cc",
+      urls = [
+          "http://bazel-mirror.storage.googleapis.com/github.com/google/protobuf/archive/2b7430d96aeff2bb624c8d52182ff5e4b9f7f18a.tar.gz",
+          "https://github.com/google/protobuf/archive/2b7430d96aeff2bb624c8d52182ff5e4b9f7f18a.tar.gz",
+      ],
+      sha256 = "e5d3d4e227a0f7afb8745df049bbd4d55474b158ca5aaa2a0e31099af24be1d0",
+      strip_prefix = "protobuf-2b7430d96aeff2bb624c8d52182ff5e4b9f7f18a",
+  )
+
   native.new_http_archive(
       name = "gmock_archive",
       urls = [
@@ -251,6 +285,12 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   native.bind(
       name = "gtest_main",
       actual = "@gmock_archive//:gtest_main",
+  )
+
+  native.git_repository(
+    name   = "com_github_gflags_gflags",
+    commit = "f8a0efe03aa69b3336d8e228b37d4ccb17324b88",
+    remote = "https://github.com/gflags/gflags.git",
   )
 
   native.bind(
