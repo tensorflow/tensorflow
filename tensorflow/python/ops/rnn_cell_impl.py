@@ -15,12 +15,9 @@
 
 """Module implementing RNN Cells.
 
-This module provides a number of basic commonly used RNN cells, such as LSTM
-(Long Short Term Memory) or GRU (Gated Recurrent Unit), and a number of
-operators that allow adding dropouts, projections, or embeddings for inputs.
-Constructing multi-layer cells is supported by the class `MultiRNNCell`, or by
-calling the `rnn` ops several times. Every `RNNCell` must have the properties
-below and implement `__call__` with the following signature.
+This module contains the abstract definition of a RNN cell: `_RNNCell`.
+Actual implementations of various types of RNN cells are located in
+`tensorflow.contrib`.
 """
 
 from __future__ import absolute_import
@@ -57,10 +54,12 @@ def _state_size_with_prefix(state_size, prefix=None):
 class _RNNCell(object):
   """Abstract object representing an RNN cell.
 
-  The definition of cell in this package differs from the definition used in the
-  literature. In the literature, cell refers to an object with a single scalar
-  output. The definition in this package refers to a horizontal array of such
-  units.
+  Every `RNNCell` must have the properties below and implement `__call__` with
+  the following signature.
+
+  This definition of cell differs from the definition used in the literature.
+  In the literature, 'cell' refers to an object with a single scalar output.
+  This definition refers to a horizontal array of such units.
 
   An RNN cell, in the most abstract setting, is anything that has
   a state and performs some operation that takes a matrix of inputs.

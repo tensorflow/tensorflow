@@ -13,7 +13,14 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Module implementing RNN Cells."""
+"""Module implementing RNN Cells.
+
+This module provides a number of basic commonly used RNN cells, such as LSTM
+(Long Short Term Memory) or GRU (Gated Recurrent Unit), and a number of
+operators that allow adding dropouts, projections, or embeddings for inputs.
+Constructing multi-layer cells is supported by the class `MultiRNNCell`, or by
+calling the `rnn` ops several times.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
