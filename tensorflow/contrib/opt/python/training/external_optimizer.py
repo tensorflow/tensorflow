@@ -120,7 +120,7 @@ class ExternalOptimizerInterface(object):
         flattened into a single vector.
       loss_callback: A function to be called every time the loss and gradients
         are computed, with evaluated fetches supplied as positional arguments.
-      run_kwargs: kwargs to pass to session.run
+      run_kwargs: kwargs to pass to `session.run`.
     """
     session = session or ops.get_default_session()
     feed_dict = feed_dict or {}
