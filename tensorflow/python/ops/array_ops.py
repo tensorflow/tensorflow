@@ -793,7 +793,9 @@ def stack(values, axis=0, name="stack"):
 
   This is the opposite of unstack.  The numpy equivalent is
 
-      tf.stack([x, y, z]) = np.asarray([x, y, z])
+  ```python
+  tf.stack([x, y, z]) = np.asarray([x, y, z])
+  ```
 
   Args:
     values: A list of `Tensor` objects with the same shape and type.

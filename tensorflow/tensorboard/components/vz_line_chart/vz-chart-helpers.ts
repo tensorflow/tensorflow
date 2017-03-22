@@ -87,20 +87,29 @@ module VZ.ChartHelpers {
       b = d3.max(values);
     }
 
-    // If the values are in unit range, try to give them a clean [0, 1] range,
-    // but if all the values are less than 0.1 then we will construct a smaller
-    // power-of-ten window for them.
-    if (a >= 0 && b <= 1) {
-      if (b === 0) {
-        return [-0.1, 1.1];
-      }
-      let powerOf10 = Math.pow(10, Math.ceil(Math.log(b) / Math.log(10)));
-      let offset = powerOf10 / 10;
-      return [-offset, powerOf10 + offset];
+    let padding: number;
+    if (b === a) {
+      // If b===a, we would create an empty range.
+      // Instead, let's make sure it has size at least 1, and 10% of the value,
+      // so that if it's very large we'll see a meaningful scale.
+      padding = 1 + a * 0.1;
+    } else {
+      padding = (b - a) * 0.2;
     }
 
-    let padding = (b - a) * 0.20;
-    let domain = [a - padding, b + padding];
+    let lower: number;
+    if (a >= 0 && a <= 1) {
+      // If a is near zero, it's cleaner to set 0 as the lower bound.
+      // (We actually make it -0.1 so that 0.00 will clearly be written on the
+      // lower edge of the chart. The label on the lowest tick is often filtered
+      // out.)
+      lower = -0.1;
+    } else {
+      lower = a - padding;
+    }
+
+
+    let domain = [lower, b + padding];
     domain = d3.scale.linear().domain(domain).nice().domain();
     return domain;
   }

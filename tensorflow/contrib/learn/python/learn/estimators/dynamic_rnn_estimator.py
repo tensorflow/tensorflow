@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib import layers
-from tensorflow.contrib import metrics
 from tensorflow.contrib import rnn as contrib_rnn
 from tensorflow.contrib.framework.python.framework import deprecated
 from tensorflow.contrib.layers.python.layers import optimizers
@@ -38,6 +37,8 @@ from tensorflow.python.training import momentum as momentum_opt
 from tensorflow.python.util import nest
 
 
+# TODO(jtbates): Remove PredictionType when all non-experimental targets which
+# depend on it point to rnn_common.PredictionType.
 class PredictionType(object):
   SINGLE_VALUE = 1
   MULTIPLE_VALUE = 2
@@ -249,48 +250,6 @@ def construct_rnn(initial_state,
     return activations, final_state
 
 
-def _get_eval_metric_ops(problem_type, prediction_type, sequence_length,
-                         prediction_dict, labels):
-  """Returns eval metric ops for given `problem_type` and `prediction_type`.
-
-  Args:
-    problem_type: `ProblemType.CLASSIFICATION` or
-      `ProblemType.LINEAR_REGRESSION`.
-    prediction_type: `PredictionType.SINGLE_VALUE` or
-      `PredictionType.MULTIPLE_VALUE`.
-    sequence_length: A `Tensor` with shape `[batch_size]` and dtype `int32`
-      containing the length of each sequence in the batch. If `None`, sequences
-      are assumed to be unpadded.
-    prediction_dict: A dict of prediction tensors.
-    labels: The label `Tensor`.
-
-  Returns:
-    A `dict` mapping strings to the result of calling the metric_fn.
-  """
-  eval_metric_ops = {}
-  if problem_type == constants.ProblemType.CLASSIFICATION:
-    # Multi value classification
-    if prediction_type == PredictionType.MULTIPLE_VALUE:
-      mask_predictions, mask_labels = rnn_common.mask_activations_and_labels(
-          prediction_dict[prediction_key.PredictionKey.CLASSES], labels,
-          sequence_length)
-      eval_metric_ops['accuracy'] = metrics.streaming_accuracy(
-          predictions=mask_predictions, labels=mask_labels)
-    # Single value classification
-    elif prediction_type == PredictionType.SINGLE_VALUE:
-      eval_metric_ops['accuracy'] = metrics.streaming_accuracy(
-          predictions=prediction_dict[prediction_key.PredictionKey.CLASSES],
-          labels=labels)
-  elif problem_type == constants.ProblemType.LINEAR_REGRESSION:
-    # Multi value regression
-    if prediction_type == PredictionType.MULTIPLE_VALUE:
-      pass
-    # Single value regression
-    elif prediction_type == PredictionType.SINGLE_VALUE:
-      pass
-  return eval_metric_ops
-
-
 def _single_value_predictions(activations,
                               sequence_length,
                               target_column,
@@ -403,9 +362,9 @@ def _get_output_alternatives(prediction_type,
     ValueError: `prediction_type` is not one of `SINGLE_VALUE` or
     `MULTIPLE_VALUE`.
   """
-  if prediction_type == PredictionType.MULTIPLE_VALUE:
+  if prediction_type == rnn_common.PredictionType.MULTIPLE_VALUE:
     return None
-  if prediction_type == PredictionType.SINGLE_VALUE:
+  if prediction_type == rnn_common.PredictionType.SINGLE_VALUE:
     prediction_dict_no_state = {
         k: v
         for k, v in prediction_dict.items()
@@ -499,8 +458,8 @@ def _get_dynamic_rnn_model_fn(
         'problem_type must be ProblemType.LINEAR_REGRESSION or '
         'ProblemType.CLASSIFICATION; got {}'.
         format(problem_type))
-  if prediction_type not in (
-      PredictionType.SINGLE_VALUE, PredictionType.MULTIPLE_VALUE):
+  if prediction_type not in (rnn_common.PredictionType.SINGLE_VALUE,
+                             rnn_common.PredictionType.MULTIPLE_VALUE):
     raise ValueError(
         'prediction_type must be PredictionType.MULTIPLE_VALUEs or '
         'PredictionType.SINGLE_VALUE; got {}'.
@@ -533,13 +492,13 @@ def _get_dynamic_rnn_model_fn(
           swap_memory=swap_memory)
 
       loss = None  # Created below for modes TRAIN and EVAL.
-      if prediction_type == PredictionType.MULTIPLE_VALUE:
+      if prediction_type == rnn_common.PredictionType.MULTIPLE_VALUE:
         prediction_dict = rnn_common.multi_value_predictions(
             rnn_activations, target_column, problem_type, predict_probabilities)
         if mode != model_fn.ModeKeys.INFER:
           loss = _multi_value_loss(
               rnn_activations, labels, sequence_length, target_column, features)
-      elif prediction_type == PredictionType.SINGLE_VALUE:
+      elif prediction_type == rnn_common.PredictionType.SINGLE_VALUE:
         prediction_dict = _single_value_predictions(
             rnn_activations, sequence_length, target_column,
             problem_type, predict_probabilities)
@@ -551,7 +510,7 @@ def _get_dynamic_rnn_model_fn(
 
       eval_metric_ops = None
       if mode != model_fn.ModeKeys.INFER:
-        eval_metric_ops = _get_eval_metric_ops(
+        eval_metric_ops = rnn_common.get_eval_metric_ops(
             problem_type, prediction_type, sequence_length, prediction_dict,
             labels)
 
@@ -710,9 +669,9 @@ class DynamicRnnEstimator(estimator.Estimator):
           'RNNCell. Got num_units = {} and cell_type = {}.'.format(
               num_units, cell_type))
 
-    if prediction_type == PredictionType.MULTIPLE_VALUE:
+    if prediction_type == rnn_common.PredictionType.MULTIPLE_VALUE:
       name = 'MultiValueDynamicRNN'
-    elif prediction_type == PredictionType.SINGLE_VALUE:
+    elif prediction_type == rnn_common.PredictionType.SINGLE_VALUE:
       name = 'SingleValueDynamicRNN'
     else:
       raise ValueError(
@@ -826,7 +785,7 @@ def multi_value_rnn_regressor(num_units,
       output_keep_probability)
   return DynamicRnnEstimator(
       problem_type=constants.ProblemType.LINEAR_REGRESSION,
-      prediction_type=PredictionType.MULTIPLE_VALUE,
+      prediction_type=rnn_common.PredictionType.MULTIPLE_VALUE,
       sequence_feature_columns=sequence_feature_columns,
       context_feature_columns=context_feature_columns,
       num_units=num_units,
@@ -915,7 +874,7 @@ def multi_value_rnn_classifier(num_classes,
       output_keep_probability)
   return DynamicRnnEstimator(
       problem_type=constants.ProblemType.CLASSIFICATION,
-      prediction_type=PredictionType.MULTIPLE_VALUE,
+      prediction_type=rnn_common.PredictionType.MULTIPLE_VALUE,
       num_classes=num_classes,
       sequence_feature_columns=sequence_feature_columns,
       context_feature_columns=context_feature_columns,
@@ -1000,7 +959,7 @@ def single_value_rnn_regressor(num_units,
       output_keep_probability)
   return DynamicRnnEstimator(
       problem_type=constants.ProblemType.LINEAR_REGRESSION,
-      prediction_type=PredictionType.SINGLE_VALUE,
+      prediction_type=rnn_common.PredictionType.SINGLE_VALUE,
       sequence_feature_columns=sequence_feature_columns,
       context_feature_columns=context_feature_columns,
       num_units=num_units,
@@ -1089,7 +1048,7 @@ def single_value_rnn_classifier(num_classes,
       output_keep_probability)
   return DynamicRnnEstimator(
       problem_type=constants.ProblemType.CLASSIFICATION,
-      prediction_type=PredictionType.SINGLE_VALUE,
+      prediction_type=rnn_common.PredictionType.SINGLE_VALUE,
       num_classes=num_classes,
       sequence_feature_columns=sequence_feature_columns,
       context_feature_columns=context_feature_columns,

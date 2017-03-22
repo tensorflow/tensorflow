@@ -1209,6 +1209,7 @@ class ConditionalAccumulator(ConditionalAccumulatorBase):
     successfully applied to the accumulator.
 
     Once successful, the following actions are also triggered:
+
     - Counter of accumulated gradients is reset to 0.
     - Aggregated gradient is reset to 0 tensor.
     - Accumulator's internal time step is incremented by 1.

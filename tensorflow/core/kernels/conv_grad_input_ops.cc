@@ -524,7 +524,9 @@ TF_CALL_float(REGISTER_CPU_KERNELS);
 // The slow version (but compiles for GPU)
 
 // A dummy type to group forward backward data autotune results together.
-struct ConvBackwardDataAutoTuneGroup {};
+struct ConvBackwardDataAutoTuneGroup {
+  static string name() { return "ConvBwdData"; }
+};
 typedef AutoTuneSingleton<ConvBackwardDataAutoTuneGroup, ConvParameters,
                           perftools::gputools::dnn::AlgorithmConfig>
     AutoTuneConvBwdData;

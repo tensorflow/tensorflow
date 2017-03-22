@@ -27,6 +27,7 @@ import json
 import numbers
 import os
 import shutil
+import socket
 import tempfile
 import threading
 
@@ -44,6 +45,7 @@ from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.util import event_pb2
 from tensorflow.python.platform import test
 from tensorflow.python.summary.writer import writer as writer_lib
+from tensorflow.tensorboard import tensorboard
 from tensorflow.tensorboard.backend import application
 from tensorflow.tensorboard.backend.event_processing import event_multiplexer
 
@@ -432,6 +434,50 @@ class TensorBoardAssetsTest(test.TestCase):
     self.assertTrue(tag)
     app = application.standard_tensorboard_wsgi('', True, 60)
     self.assertEqual(app.tag, tag)
+
+
+class TensorboardSimpleServerConstructionTest(test.TestCase):
+  """Tests that the default HTTP server is constructed without error.
+
+  Mostly useful for IPv4/IPv6 testing. This test should run with only IPv4, only
+  IPv6, and both IPv4 and IPv6 enabled.
+  """
+
+  class _StubApplication(object):
+    tag = ''
+
+  def testMakeServerBlankHost(self):
+    # Test that we can bind to all interfaces without throwing an error
+    server, url = tensorboard.make_simple_server(
+        self._StubApplication(),
+        host='',
+        port=0)  # Grab any available port
+    self.assertTrue(server)
+    self.assertTrue(url)
+
+  def testSpecifiedHost(self):
+    one_passed = False
+    try:
+      _, url = tensorboard.make_simple_server(
+          self._StubApplication(),
+          host='127.0.0.1',
+          port=0)
+      self.assertStartsWith(actual=url, expected_start='http://127.0.0.1:')
+      one_passed = True
+    except socket.error:
+      # IPv4 is not supported
+      pass
+    try:
+      _, url = tensorboard.make_simple_server(
+          self._StubApplication(),
+          host='::1',
+          port=0)
+      self.assertStartsWith(actual=url, expected_start='http://[::1]:')
+      one_passed = True
+    except socket.error:
+      # IPv6 is not supported
+      pass
+    self.assertTrue(one_passed)  # We expect either IPv4 or IPv6 to be supported
 
 
 if __name__ == '__main__':

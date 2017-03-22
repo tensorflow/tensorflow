@@ -28,9 +28,9 @@ from werkzeug import wrappers
 
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.tensorboard.backend import http_util
 from tensorflow.tensorboard.backend.event_processing import event_accumulator
 from tensorflow.tensorboard.backend.event_processing import event_file_loader
-from tensorflow.tensorboard.lib.python import http_util
 from tensorflow.tensorboard.plugins import base_plugin
 
 # The prefix of routes provided by this plugin.
@@ -63,25 +63,18 @@ class DebuggerPlugin(base_plugin.TBPlugin):
   values.
   """
 
-  def __init__(self, event_multiplexer):
-    """Constructs a plugin for serving TensorFlow debugger data.
-
-    Args:
-      event_multiplexer: Organizes data from events files.
-    """
-    self._event_multiplexer = event_multiplexer
-
-  def get_plugin_apps(self, unused_run_paths, logdir):
+  def get_plugin_apps(self, multiplexer, logdir):
     """Obtains a mapping between routes and handlers. Stores the logdir.
 
     Args:
-      unused_run_paths: A mapping between run paths and handlers.
+      multiplexer: The EventMultiplexer that provides TB data.
       logdir: The logdir string - the directory of events files.
 
     Returns:
       A mapping between routes and handlers (functions that respond to
       requests).
     """
+    self._event_multiplexer = multiplexer
     self._logdir = logdir
     return {
         _HEALTH_PILLS_ROUTE: self._serve_health_pills_handler,
