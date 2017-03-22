@@ -303,12 +303,8 @@ class RandomGammaOp : public OpKernel {
                                                       &samples_shape));
     }
     const int64 num_samples = samples_shape.num_elements();
-    if (num_samples == 0) {
-      Tensor* samples_t = nullptr;
-      OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({0}),
-                                               &samples_t));
+    if (num_samples == 0) 
       return;
-    }
 
     samples_shape.AppendShape(alpha_t.shape());
     // Allocate output samples.
