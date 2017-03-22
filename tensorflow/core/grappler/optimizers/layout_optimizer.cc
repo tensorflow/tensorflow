@@ -698,13 +698,29 @@ class SliceProcessor : public AgnosticNodeProcessor {
     auto maybe_concatoffset_node =
         node_map_->GetNode(NodeName(node_->input(1)));
     if (maybe_concatoffset_node->op() == "ConcatOffset") {
-      auto axis_node = node_map_->GetNode(maybe_concatoffset_node->input(0));
+      auto maybe_axis_node =
+          node_map_->GetNode(maybe_concatoffset_node->input(0));
+      NodeDef* axis_node;
+      if (maybe_axis_node->op() == "Const") {
+        axis_node = maybe_axis_node;
+        // A FloorMod node might be added between ConcatOffset and the concat
+        // dimension const node to handle a negative dimension index -1, meaning
+        // the last dimension, which is consistent with the python's notation
+        // for negative index.
+      } else if (maybe_axis_node->op() == "FloorMod") {
+        axis_node = node_map_->GetNode(maybe_axis_node->input(0));
+      } else {
+        return Status(error::INVALID_ARGUMENT,
+                      strings::StrCat("Expect either Const or FloorMod for the "
+                                      "input 1 of ConcatOffset"));
+      }
       // Need to process if the channel is at dimension 3, which indicates the
       // NHWC format is being used. As mutiple Slice nodes may share the same
       // ConcatOffset node, the NHWC to NCHW conversion may have already
       // been performed when processing other Slice nodes.
       TF_RETURN_IF_ERROR(HasAttribute(*axis_node, "value"));
-      if (axis_node->attr().at("value").tensor().int_val(0) == 3) {
+      int concat_dim = axis_node->attr().at("value").tensor().int_val(0);
+      if (concat_dim == -1 || concat_dim == 3) {
         for (int i = 1; i < maybe_concatoffset_node->input_size(); i++) {
           auto shape_node =
               node_map_->GetNode(maybe_concatoffset_node->input(i));
