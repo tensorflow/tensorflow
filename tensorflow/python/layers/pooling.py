@@ -294,7 +294,7 @@ class AveragePooling2D(_Pooling2D):
     data_format: A string. The ordering of the dimensions in the inputs.
       `channels_last` (default) and `channels_first` are supported.
       `channels_last` corresponds to inputs with shape
-      `(batch, height, channels, width)` while `channels_first` corresponds to
+      `(batch, height, width, channels)` while `channels_first` corresponds to
       inputs with shape `(batch, channels, height, width)`.
     name: A string, the name of the layer.
   """
@@ -329,7 +329,7 @@ def average_pooling2d(inputs,
     data_format: A string. The ordering of the dimensions in the inputs.
       `channels_last` (default) and `channels_first` are supported.
       `channels_last` corresponds to inputs with shape
-      `(batch, height, channels, width)` while `channels_first` corresponds to
+      `(batch, height, width, channels)` while `channels_first` corresponds to
       inputs with shape `(batch, channels, height, width)`.
     name: A string, the name of the layer.
 
