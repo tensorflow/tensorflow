@@ -322,8 +322,7 @@ __global__ void MaxPoolGradBackward(const int nthreads, const dtype* top_diff,
                                     dtype* bottom_diff) {
   CUDA_1D_KERNEL_LOOP(index, nthreads) {
     int image_id = (index / bottom_offset);
-    CudaAtomicAdd(bottom_diff + index,
-                  top_diff[image_id * top_offset + mask[index]]);
+    bottom_diff[index] = top_diff[image_id * top_offset + mask[index]];
   }
 }
 
@@ -399,23 +398,19 @@ bool MaxPoolGradBackwardNoMask<T>::operator()(
     const int kernel_w, const int stride_h, const int stride_w, const int pad_t,
     const int pad_l, const T* top_diff, T* bottom_diff,
     const Eigen::GpuDevice& d) {
-  const int kThreadsPerBlock = 1024;
-  const int bottom_size = batch * channels * pooled_height * pooled_width;
+  const int num_kernels = batch * channels * pooled_height * pooled_width;
+  CudaLaunchConfig config = GetCudaLaunchConfig(num_kernels, d);
 
-  SetZero<<<(bottom_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
-            kThreadsPerBlock, 0, d.stream()>>>(bottom_size, bottom_diff);
   if (data_format == FORMAT_NHWC) {
-    MaxPoolGradBackwardNoMaskNHWC<<<(bottom_size + kThreadsPerBlock - 1) /
-                                        kThreadsPerBlock,
-                                    kThreadsPerBlock, 0, d.stream()>>>(
-        bottom_size, bottom_data, output_data, pooled_height, pooled_width,
+    MaxPoolGradBackwardNoMaskNHWC<<<config.block_count, config.thread_per_block,
+                                    0, d.stream()>>>(
+        num_kernels, bottom_data, output_data, pooled_height, pooled_width,
         channels, height, width, kernel_h, kernel_w, stride_h, stride_w, pad_t,
         pad_l, top_diff, bottom_diff);
   } else {
-    MaxPoolGradBackwardNoMaskNCHW<<<(bottom_size + kThreadsPerBlock - 1) /
-                                        kThreadsPerBlock,
-                                    kThreadsPerBlock, 0, d.stream()>>>(
-        bottom_size, bottom_data, output_data, pooled_height, pooled_width,
+    MaxPoolGradBackwardNoMaskNCHW<<<config.block_count, config.thread_per_block,
+                                    0, d.stream()>>>(
+        num_kernels, bottom_data, output_data, pooled_height, pooled_width,
         channels, height, width, kernel_h, kernel_w, stride_h, stride_w, pad_t,
         pad_l, top_diff, bottom_diff);
   }
@@ -427,12 +422,10 @@ bool MaxPoolGradBackwardWithArgmax<T>::operator()(
     const int output_size, const int input_size, const T* top_diff,
     const int64* mask, const int top_offset, const int bottom_offset,
     T* bottom_diff, const Eigen::GpuDevice& d) {
-  const int kThreadsPerBlock = 1024;
-  SetZero<<<(output_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
-            kThreadsPerBlock, 0, d.stream()>>>(output_size, bottom_diff);
-  MaxPoolGradBackward<<<(output_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
-                        kThreadsPerBlock, 0, d.stream()>>>(
-      output_size, top_diff, mask, top_offset, bottom_offset, bottom_diff);
+  CudaLaunchConfig config = GetCudaLaunchConfig(output_size, d);
+  MaxPoolGradBackward<<<config.block_count, config.thread_per_block, 0,
+                        d.stream()>>>(output_size, top_diff, mask, top_offset,
+                                      bottom_offset, bottom_diff);
   return d.ok();
 }
 

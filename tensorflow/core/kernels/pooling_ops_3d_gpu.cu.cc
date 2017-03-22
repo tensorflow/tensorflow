@@ -143,8 +143,6 @@ bool MaxPool3dGradBackward<T>::operator()(
   int num_kernels =
       batch * channels * pooled_plane * pooled_height * pooled_width;
   CudaLaunchConfig config = GetCudaLaunchConfig(num_kernels, d);
-  SetZero<<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-      num_kernels, bottom_diff);
   if (data_format == FORMAT_NHWC) {
     MaxPoolGradBackwardNoMaskNDHWC<<<config.block_count,
                                      config.thread_per_block, 0, d.stream()>>>(
