@@ -30,6 +30,7 @@ cc_library(
         "quantiles/weighted_quantiles_stream.h",
         "quantiles/weighted_quantiles_summary.h",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework_headers_lib",
     ],
