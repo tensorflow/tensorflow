@@ -264,6 +264,13 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
       elif request.client_graph_def:
         partition_graphs = [request.client_graph_def]
 
+      if request.tf_error and not os.path.isdir(self._dump_root):
+        # It is possible that the dump root may not exist due to errors that
+        # have occurred prior to graph execution (e.g., invalid device
+        # assignments), in which case we will just raise the exception as the
+        # unwrapped Session does.
+        raise request.tf_error
+
       debug_dump = debug_data.DebugDumpDir(
           self._dump_root, partition_graphs=partition_graphs)
       debug_dump.set_python_graph(self._sess.graph)
