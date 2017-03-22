@@ -278,7 +278,8 @@ def with_space_to_batch(
       For N=3, the valid values are "NDHWC" (default) and "NCDHW".
 
   Returns:
-    The output Tensor as described above.
+    The output Tensor as described above, dimensions will vary based on the op
+    provided.
 
   Raises:
     ValueError: if `padding` is invalid or the arguments are incompatible.
@@ -848,9 +849,14 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
 
   More specifically:
 
-      output[b, i, j, k] = sum_{di, dj, q} filters[di, dj, q, k] *
-            value[b, i + rate * di, j + rate * dj, q]
-
+  ```
+  output[batch, height, width, out_channel] =
+      sum_{dheight, dwidth, in_channel} (
+          filters[dheight, dwidth, in_channel, out_channel] * 
+          value[batch, height + rate * dheight, width + rate * dwidth, in_channel]
+      )
+  ```
+  
   Atrous convolution allows us to explicitly control how densely to compute
   feature responses in fully convolutional networks. Used in conjunction with
   bilinear interpolation, it offers an alternative to `conv2d_transpose` in
@@ -936,6 +942,14 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
 
   Returns:
     A `Tensor` with the same type as `value`.
+    Output shape with `'VALID`` padding is:
+
+        [batch, height - 2 * (filter_width - 1), 
+         width - 2 * (filter_height - 1), out_channels].
+    
+    Output shape with `'SAME'` padding is:
+
+        [batch, height, width, out_channels].
 
   Raises:
     ValueError: If input/output depth does not match `filters`' shape, or if
