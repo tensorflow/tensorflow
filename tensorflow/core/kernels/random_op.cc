@@ -303,8 +303,7 @@ class RandomGammaOp : public OpKernel {
                                                       &samples_shape));
     }
     const int64 num_samples = samples_shape.num_elements();
-    if (num_samples == 0) 
-      return;
+    if (num_samples == 0) return;
 
     samples_shape.AppendShape(alpha_t.shape());
     // Allocate output samples.
