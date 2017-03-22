@@ -1312,7 +1312,8 @@ this operation will permute `params` accordingly.
 
 `validate_indices`: DEPRECATED. If this operation is assigned to CPU, values in 
 `indices` are always validated to be within range. If assigned to GPU,
-out-of-bound values in `indices` currently result in output values of `0`.
+out-of-bound indices result in unspecified behavior (currently the result is
+`0`, but this may become an error in the future).
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="../../images/Gather.png" alt>
