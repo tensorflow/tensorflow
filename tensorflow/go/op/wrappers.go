@@ -2269,7 +2269,7 @@ func DequantizeMode(value string) DequantizeAttr {
 //
 // If the mode is 'MIN_FIRST', then this approach is used:
 //
-// ```
+// ```c++
 // number_of_steps = 1 << (# of bits in T)
 // range_adjust = number_of_steps / (number_of_steps - 1)
 // range = (range_max - range_min) * range_adjust
@@ -2995,12 +2995,14 @@ func SpaceToDepth(scope *Scope, input tf.Output, block_size int64) (output tf.Ou
 //
 // In Python, this scatter operation would look like this:
 //
+// ```python
 //     indices = tf.constant([[4], [3], [1], [7]])
 //     updates = tf.constant([9, 10, 11, 12])
 //     shape = tf.constant([8])
 //     scatter = tf.scatter_nd(indices, updates, shape)
 //     with tf.Session() as sess:
 //       print sess.run(scatter)
+// ```
 //
 // The resulting tensor would look like this:
 //
@@ -3016,6 +3018,7 @@ func SpaceToDepth(scope *Scope, input tf.Output, block_size int64) (output tf.Ou
 //
 // In Python, this scatter operation would look like this:
 //
+// ```python
 //     indices = tf.constant([[0], [2]])
 //     updates = tf.constant([[[5, 5, 5, 5], [6, 6, 6, 6],
 //                             [7, 7, 7, 7], [8, 8, 8, 8]],
@@ -3025,6 +3028,7 @@ func SpaceToDepth(scope *Scope, input tf.Output, block_size int64) (output tf.Ou
 //     scatter = tf.scatter_nd(indices, updates, shape)
 //     with tf.Session() as sess:
 //       print sess.run(scatter)
+// ```
 //
 // The resulting tensor would look like this:
 //
@@ -13002,7 +13006,7 @@ func ReaderSerializeStateV2(scope *Scope, reader_handle tf.Output) (state tf.Out
 //
 // Using scalar `pos` and `len`:
 //
-// ```
+// ```python
 // input = [b'Hello', b'World']
 // position = 1
 // length = 3
@@ -13012,7 +13016,7 @@ func ReaderSerializeStateV2(scope *Scope, reader_handle tf.Output) (state tf.Out
 //
 // Using `pos` and `len` with same shape as `input`:
 //
-// ```
+// ```python
 // input = [[b'ten', b'eleven', b'twelve'],
 //          [b'thirteen', b'fourteen', b'fifteen'],
 //          [b'sixteen', b'seventeen', b'eighteen']]
@@ -13735,7 +13739,7 @@ func ReduceJoinSeparator(value string) ReduceJoinAttr {
 //
 // For example:
 //
-// ```
+// ```python
 // # tensor `a` is [["a", "b"], ["c", "d"]]
 // tf.reduce_join(a, 0) ==> ["ac", "bd"]
 // tf.reduce_join(a, 1) ==> ["ab", "cd"]
