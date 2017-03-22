@@ -13,7 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// See docs in ../ops/nn_ops.cc.
+// See docs in ../ops/nn_ops.cc.This opkernel uses MKL library, create MKL
+// layout and primitives, use MKL dnn primitives to compute convolution backward
+// bias.
 
 #ifdef INTEL_MKL
 
@@ -73,61 +75,73 @@ class MklConv2DCustomBackpropBiasOp : public OpKernel {
     MklShape mkl_input_shape;
   } MklConvBackBiasOpParams;
 
+  // Create MKL dnnLayout_t objects for tensors coming into the layer
   void MklCreateInputLayouts(OpKernelContext* context) {
     bool input_is_mkl = mkl_params_.mkl_input_shape.IsMklTensor();
-    CHECK_EQ(dnnLayoutCreate_F32(&mkl_lt_outbackprop_, 1,
-        mkl_params_.out_sizes, mkl_params_.out_strides), E_SUCCESS);
+    CHECK_EQ(dnnLayoutCreate_F32(&mkl_lt_outbackprop_, 1, mkl_params_.out_sizes,
+                                 mkl_params_.out_strides),
+             E_SUCCESS);
     if (input_is_mkl) {
-      mkl_lt_input_ = static_cast<dnnLayout_t>
-          (mkl_params_.mkl_input_shape.GetCurLayout());
+      mkl_lt_input_ =
+          static_cast<dnnLayout_t>(mkl_params_.mkl_input_shape.GetCurLayout());
     } else {
-      CHECK_EQ(dnnLayoutCreate_F32(&mkl_lt_input_,
-          mkl_params_.in_dims, mkl_params_.in_sizes,
-          mkl_params_.in_strides), E_SUCCESS);
+      CHECK_EQ(
+          dnnLayoutCreate_F32(&mkl_lt_input_, mkl_params_.in_dims,
+                              mkl_params_.in_sizes, mkl_params_.in_strides),
+          E_SUCCESS);
     }
   }
+
+  // Compare incoming output tensor layouts with MKL preferred layouts and
+  // convert data to the preferred layout if necessary
   void MklPrepareConvolutionOutputs(OpKernelContext* context,
-      Tensor* mkl_tmp_outbackprop_buf_, Tensor* bias_backprop) {
+                                    Tensor* mkl_tmp_outbackprop_buf_,
+                                    Tensor* bias_backprop) {
     dnnLayout_t mkl_prim_internal_outbackprop = nullptr;
-    CHECK_EQ(dnnLayoutCreateFromPrimitive_F32(
-        &mkl_prim_internal_outbackprop, mkl_convolution_bwd_bias_,
-        dnnResourceDiffBias), E_SUCCESS);
+    CHECK_EQ(dnnLayoutCreateFromPrimitive_F32(&mkl_prim_internal_outbackprop,
+                                              mkl_convolution_bwd_bias_,
+                                              dnnResourceDiffBias),
+             E_SUCCESS);
 
     if (!dnnLayoutCompare_F32(mkl_lt_outbackprop_,
-        mkl_prim_internal_outbackprop)) {
+                              mkl_prim_internal_outbackprop)) {
       CHECK_EQ(dnnConversionCreate_F32(&mkl_convert_outbackprop_,
-          mkl_prim_internal_outbackprop,
-          mkl_lt_outbackprop_), E_SUCCESS);
+                                       mkl_prim_internal_outbackprop,
+                                       mkl_lt_outbackprop_),
+               E_SUCCESS);
       AllocTmpBuffer(context, mkl_tmp_outbackprop_buf_,
-          mkl_prim_internal_outbackprop,
-          &outbackprop_buf_);
+                     mkl_prim_internal_outbackprop, &outbackprop_buf_);
     }
 
     if (mkl_convert_outbackprop_ == nullptr) {
       conv_res_[dnnResourceDiffBias] =
           static_cast<void*>(const_cast<T*>(bias_backprop->flat<T>().data()));
     } else {
-       conv_res_[dnnResourceDiffBias] = outbackprop_buf_;
+      conv_res_[dnnResourceDiffBias] = outbackprop_buf_;
     }
 
     dnnLayoutDelete_F32(mkl_prim_internal_outbackprop);
   }
 
+  // Compare incoming input tensor layouts with MKL preferred layouts and
+  // convert data to the preferred layout if necessary
   void MklPrepareConvolutionInputs(OpKernelContext* context,
-                             Tensor* mkl_tmp_input_buf) {
+                                   Tensor* mkl_tmp_input_buf) {
     dnnLayout_t mkl_prim_internal_input = nullptr;
     dnnPrimitive_t mkl_convert_input = nullptr;
-    void *input_buf = nullptr;
+    void* input_buf = nullptr;
 
     CHECK_EQ(dnnLayoutCreateFromPrimitive_F32(&mkl_prim_internal_input,
-        mkl_convolution_bwd_bias_, dnnResourceDiffDst), E_SUCCESS);
-
+                                              mkl_convolution_bwd_bias_,
+                                              dnnResourceDiffDst),
+             E_SUCCESS);
 
     if (!dnnLayoutCompare_F32(mkl_lt_input_, mkl_prim_internal_input)) {
       CHECK_EQ(dnnConversionCreate_F32(&mkl_convert_input, mkl_lt_input_,
-                                  mkl_prim_internal_input), E_SUCCESS);
-      AllocTmpBuffer(context, mkl_tmp_input_buf,
-          mkl_prim_internal_input, &input_buf);
+                                       mkl_prim_internal_input),
+               E_SUCCESS);
+      AllocTmpBuffer(context, mkl_tmp_input_buf, mkl_prim_internal_input,
+                     &input_buf);
     }
 
     const Tensor& input = MklGetInput(context, 0);
@@ -137,9 +151,10 @@ class MklConv2DCustomBackpropBiasOp : public OpKernel {
           static_cast<void*>(const_cast<T*>(input.flat<T>().data()));
     } else {
       CHECK_EQ(dnnConversionExecute_F32(
-          mkl_convert_input,
-          static_cast<void*>(const_cast<T*>(input.flat<T>().data())),
-          input_buf), E_SUCCESS);
+                   mkl_convert_input,
+                   static_cast<void*>(const_cast<T*>(input.flat<T>().data())),
+                   input_buf),
+               E_SUCCESS);
 
       conv_res_[dnnResourceDiffDst] = input_buf;
       dnnDelete_F32(mkl_convert_input);
@@ -147,6 +162,7 @@ class MklConv2DCustomBackpropBiasOp : public OpKernel {
     dnnLayoutDelete_F32(mkl_prim_internal_input);
   }
 
+  // Cleanup member layouts and primitives
   void MklCleanup() {
     bool input_is_mkl = mkl_params_.mkl_input_shape.IsMklTensor();
     if (!input_is_mkl) dnnLayoutDelete_F32(mkl_lt_input_);
@@ -162,8 +178,9 @@ class MklConv2DCustomBackpropBiasOp : public OpKernel {
     bool input_is_mkl = mkl_params_.mkl_input_shape.IsMklTensor();
 
     if (input_is_mkl) {
-      OP_REQUIRES(context, mkl_params_.mkl_input_shape.GetDimension() == 4,
-     errors::InvalidArgument("Input tensor must be 4-dimensional"));
+      OP_REQUIRES(
+          context, mkl_params_.mkl_input_shape.GetDimension() == 4,
+          errors::InvalidArgument("Input tensor must be 4-dimensional"));
     } else {
       OP_REQUIRES(context, input.dims() == 4,
                   errors::InvalidArgument("input must be 4-dimensional",
@@ -204,31 +221,34 @@ class MklConv2DCustomBackpropBiasOp : public OpKernel {
       mkl_params_.in_sizes[1] = GetTensorDim(input, data_format_, 'H');
       mkl_params_.in_sizes[2] = GetTensorDim(input, data_format_, 'C');
       mkl_params_.in_sizes[3] = GetTensorDim(input, data_format_, 'N');
-      GetStridesFromSizes(data_format_,
-          mkl_params_.in_strides, mkl_params_.in_sizes);
+      GetStridesFromSizes(data_format_, mkl_params_.in_strides,
+                          mkl_params_.in_sizes);
     }
     mkl_params_.out_sizes[0] = mkl_params_.c_size;
     mkl_params_.out_strides[0] = 1;
 
-    CHECK_EQ(dnnConvolutionCreateBackwardBias_F32(&mkl_convolution_bwd_bias_,
-        NULL, dnnAlgorithmConvolutionDirect,
-        mkl_params_.in_dims, mkl_params_.in_sizes), E_SUCCESS);
+    CHECK_EQ(
+        dnnConvolutionCreateBackwardBias_F32(
+            &mkl_convolution_bwd_bias_, NULL, dnnAlgorithmConvolutionDirect,
+            mkl_params_.in_dims, mkl_params_.in_sizes),
+        E_SUCCESS);
 
     MklCreateInputLayouts(context);
 
     Tensor mkl_tmp_input_buf, mkl_tmp_outbackprop_buf_;
     MklPrepareConvolutionInputs(context, &mkl_tmp_input_buf);
     MklPrepareConvolutionOutputs(context, &mkl_tmp_outbackprop_buf_,
-        bias_backprop);
+                                 bias_backprop);
     CHECK_EQ(dnnExecute_F32(mkl_convolution_bwd_bias_, conv_res_), E_SUCCESS);
     if (mkl_convert_outbackprop_ != nullptr) {
       CHECK_EQ(dnnConversionExecute_F32(
-          mkl_convert_outbackprop_, outbackprop_buf_,
-          static_cast<void*>(bias_backprop->flat<T>().data())), E_SUCCESS);
+                   mkl_convert_outbackprop_, outbackprop_buf_,
+                   static_cast<void*>(bias_backprop->flat<T>().data())),
+               E_SUCCESS);
     }
     // deletes layouts
     MklCleanup();
-}
+  }
 
  private:
   TensorFormat data_format_;
@@ -237,16 +257,16 @@ class MklConv2DCustomBackpropBiasOp : public OpKernel {
   void* conv_res_[dnnResourceNumber];
   dnnLayout_t mkl_lt_input_ = nullptr, mkl_lt_outbackprop_ = nullptr;
   dnnPrimitive_t mkl_convert_outbackprop_ = nullptr;
-  void *outbackprop_buf_ = nullptr;
+  void* outbackprop_buf_ = nullptr;
   TF_DISALLOW_COPY_AND_ASSIGN(MklConv2DCustomBackpropBiasOp);
 };
 
-#define REGISTER_CPU_KERNELS(T)                                         \
-  REGISTER_KERNEL_BUILDER(Name("MklConv2DWithBiasBackpropBias")         \
-                              .Device(DEVICE_CPU)                       \
-                              .TypeConstraint<T>("T")                   \
+#define REGISTER_CPU_KERNELS(T)                                           \
+  REGISTER_KERNEL_BUILDER(Name("MklConv2DWithBiasBackpropBias")           \
+                              .Device(DEVICE_CPU)                         \
+                              .TypeConstraint<T>("T")                     \
                               .Label(mkl_layer_registry::kMklLayerLabel), \
-                          MklConv2DCustomBackpropBiasOp<CPUDevice, T>); \
+                          MklConv2DCustomBackpropBiasOp<CPUDevice, T>);
 
 TF_CALL_float(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS

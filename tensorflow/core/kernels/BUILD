@@ -2378,7 +2378,6 @@ tf_cc_test(
         ":array",
         ":immutable_constant_op",
         ":matmul_op",
-        ":mkl_ops",
         ":ops_testutil",
         ":ops_util",
         ":random_shuffle_op",
@@ -2391,7 +2390,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-    ],
+    ] + if_mkl([":mkl_matmul_op"]),
 )
 
 tf_cuda_cc_test(
