@@ -19,7 +19,7 @@ load("//tensorflow:workspace.bzl", "check_version", "tf_workspace")
 # We must check the bazel version before trying to parse any other BUILD files,
 # in case the parsing of those build files depends on the bazel version we
 # require here.
-check_version("0.4.2")
+check_version("0.4.5")
 
 # Uncomment and update the paths in these entries to build the Android demo.
 #android_sdk_repository(
