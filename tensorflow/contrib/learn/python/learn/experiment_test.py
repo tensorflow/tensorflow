@@ -68,7 +68,7 @@ class SheepCounter(object):
 
 class TestEstimator(evaluable.Evaluable, trainable.Trainable):
 
-  def __init__(self, config=None, max_evals=5):
+  def __init__(self, config=None, max_evals=5, eval_dict=None):
     self.eval_count = 0
     self.fit_count = 0
     self._max_evals = max_evals
@@ -77,6 +77,7 @@ class TestEstimator(evaluable.Evaluable, trainable.Trainable):
     self.eval_hooks = []
     self._config = config or run_config.RunConfig()
     self._model_dir = tempfile.mkdtemp()
+    self._eval_dict = eval_dict
 
   @property
   def model_dir(self):
@@ -94,7 +95,7 @@ class TestEstimator(evaluable.Evaluable, trainable.Trainable):
     if self.eval_count > self._max_evals:
       tf_logging.info('Ran %d evals. Done.' % self.eval_count)
       raise StopIteration()
-    return [(key, kwargs[key]) for key in sorted(kwargs.keys())]
+    return self._eval_dict
 
   def fake_checkpoint(self):
     save_path = os.path.join(self.model_dir, 'model.ckpt')
@@ -312,6 +313,24 @@ class ExperimentTest(test.TestCase):
         StopIteration, ex.continuous_eval, evaluate_checkpoint_only_once=False)
     self.assertEqual(0, est.fit_count)
     self.assertEqual(6, est.eval_count)
+    self.assertEqual([noop_hook], est.eval_hooks)
+
+  def test_continuous_eval_ends_after_train_step(self):
+    est = TestEstimator(eval_dict={'global_step': 100})
+    est.fake_checkpoint()
+    noop_hook = _NoopHook()
+    ex = experiment.Experiment(
+        est,
+        train_input_fn='train_input',
+        eval_input_fn='eval_input',
+        eval_metrics='eval_metrics',
+        eval_hooks=[noop_hook],
+        eval_delay_secs=0,
+        continuous_eval_throttle_secs=0,
+        train_steps=100)
+    ex.continuous_eval()
+    self.assertEqual(0, est.fit_count)
+    self.assertEqual(1, est.eval_count)
     self.assertEqual([noop_hook], est.eval_hooks)
 
   def test_continuous_eval_throttle_delay(self):
