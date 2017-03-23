@@ -272,13 +272,15 @@ public:
 
         layer_params.weights.data_type = weightsDataType_;
 
-        // TODO: Use allocate_temp
         const void* weights;
         Tensor transformed_filter16;
         if (layer_params.weights.data_type == BNNSDataTypeFloat16) {
-            Tensor transformed_filter16Temp(DT_HALF, transformed_filter.shape());
-            GetCpuCastFromFloat(DT_HALF)(context, transformed_filter, &transformed_filter16Temp);
-            transformed_filter16 = transformed_filter16Temp;
+            OP_REQUIRES_OK(context, context->allocate_temp(
+                DT_HALF,
+                transformed_filter.shape(),
+                &transformed_filter16));
+
+            GetCpuCastFromFloat(DT_HALF)(context, transformed_filter, &transformed_filter16);
             weights = transformed_filter16.flat<Eigen::half>().data();
         } else {
             weights = transformed_filter.flat<T>().data();
@@ -327,13 +329,14 @@ public:
         OP_REQUIRES(context, filter_bnns != nullptr,
             errors::Unknown("BNNSFilterCreateConvolutionLayer failed"));
 
-        // TODO: Use allocate_temp
         const void* i_stack;
         Tensor input16;
         if (i_desc.data_type == BNNSDataTypeFloat16) {
-            Tensor input16Temp(DT_HALF, input.shape());
-            GetCpuCastFromFloat(DT_HALF)(context, input, &input16Temp);
-            input16 = input16Temp;
+            OP_REQUIRES_OK(context, context->allocate_temp(
+                DT_HALF,
+                input.shape(),
+                &input16));
+            GetCpuCastFromFloat(DT_HALF)(context, input, &input16);
             i_stack = input16.flat<Eigen::half>().data();
         } else {
             i_stack = input.flat<T>().data();
