@@ -42,7 +42,6 @@ from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import sparse_ops
-from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.summary import summary
@@ -817,8 +816,7 @@ class _BinaryLogisticHead(_SingleHead):
           loss_fn=self._loss_fn,
           logits_to_predictions_fn=self._logits_to_predictions,
           metrics_fn=self._metrics,
-          create_output_alternatives_fn=_classification_output_alternatives(
-              self.head_name, self._problem_type),
+          create_output_alternatives_fn=self._create_output_alternatives,
           labels=labels,
           train_op_fn=train_op_fn,
           logits=logits,
@@ -1011,8 +1009,7 @@ class _MultiClassHead(_SingleHead):
           loss_fn=self._wrapped_loss_fn,
           logits_to_predictions_fn=self._logits_to_predictions,
           metrics_fn=self._metrics,
-          create_output_alternatives_fn=_classification_output_alternatives(
-              self.head_name, self._problem_type, self._label_keys),
+          create_output_alternatives_fn=self._create_output_alternatives,
           labels=labels,
           train_op_fn=train_op_fn,
           logits=logits,
@@ -1116,6 +1113,25 @@ class _MultiClassHead(_SingleHead):
 
     return metrics
 
+  def _create_output_alternatives(self, predictions):
+    """See superclass."""
+    probabilities = predictions[prediction_key.PredictionKey.PROBABILITIES]
+    batch_size = array_ops.shape(probabilities)[0]
+    if self._label_keys:
+      classes = array_ops.tile(
+          input=array_ops.expand_dims(input=self._label_keys, axis=0),
+          multiples=[batch_size, 1])
+    else:
+      classes = array_ops.tile(
+          input=array_ops.expand_dims(
+              input=math_ops.range(self.logits_dimension), axis=0),
+          multiples=[batch_size, 1])
+    predictions_for_serving = {
+        prediction_key.PredictionKey.CLASSES: classes,
+        prediction_key.PredictionKey.PROBABILITIES: probabilities,
+    }
+    return {self._head_name: (self._problem_type, predictions_for_serving)}
+
 
 def _to_labels_tensor(labels, label_name):
   """Returns label as a tensor.
@@ -1210,7 +1226,6 @@ class _BinarySvmHead(_SingleHead):
           loss_fn=self._loss_fn,
           logits_to_predictions_fn=self._logits_to_predictions,
           metrics_fn=self._metrics,
-          # TODO(zakaria): Handle labels for export.
           create_output_alternatives_fn=self._create_output_alternatives,
           labels=labels,
           train_op_fn=train_op_fn,
@@ -1310,8 +1325,7 @@ class _MultiLabelHead(_SingleHead):
           loss_fn=self._loss_fn,
           logits_to_predictions_fn=self._logits_to_predictions,
           metrics_fn=self._metrics,
-          create_output_alternatives_fn=_classification_output_alternatives(
-              self.head_name, self._problem_type),
+          create_output_alternatives_fn=self._create_output_alternatives,
           labels=labels,
           train_op_fn=train_op_fn,
           logits=logits,
@@ -1886,71 +1900,6 @@ def _streaming_recall_at_threshold(predictions, labels, weights, threshold):
       weights=_float_weights_or_none(weights))
   return array_ops.squeeze(precision_tensor), array_ops.squeeze(update_op)
 
-
-def _classification_output_alternatives(head_name, problem_type,
-                                        label_keys=None):
-  """Creates a func to generate output alternatives for classification.
-
-  Servo expects classes to be a string tensor, and have the same dimensions
-  as the probabilities tensor. It should contain the labels of the corresponding
-  entries in probabilities. This function creates a new classes tensor that
-  satisfies these conditions and can be exported.
-
-  Args:
-    head_name: Name of the head.
-    problem_type: `ProblemType`
-    label_keys: Optional label keys
-
-  Returns:
-    A function to generate output alternatives.
-  """
-  def _create_output_alternatives(predictions):
-    """Creates output alternative for the Head.
-
-    Args:
-      predictions: a dict of {tensor_name: Tensor}, where 'tensor_name' is a
-        symbolic name for an output Tensor possibly but not necessarily taken
-        from `PredictionKey`, and 'Tensor' is the corresponding output Tensor
-        itself.
-
-    Returns:
-      `dict` of {submodel_name: (problem_type, {tensor_name: Tensor})}, where
-      'submodel_name' is a submodel identifier that should be consistent across
-      the pipeline (here likely taken from the head_name),
-      'problem_type' is a `ProblemType`,
-      'tensor_name' is a symbolic name for an output Tensor possibly but not
-       necessarily taken from `PredictionKey`, and
-      'Tensor' is the corresponding output Tensor itself.
-
-    Raises:
-      ValueError: if predictions does not have PredictionKey.PROBABILITIES key.
-    """
-    probabilities = predictions.get(prediction_key.PredictionKey.PROBABILITIES)
-    if probabilities is None:
-      raise ValueError("%s missing in predictions" %
-                       prediction_key.PredictionKey.PROBABILITIES)
-
-    with ops.name_scope(None, "_classification_output_alternatives",
-                        (probabilities,)):
-      batch_size = array_ops.shape(probabilities)[0]
-      if label_keys:
-        classes = array_ops.tile(
-            input=array_ops.expand_dims(input=label_keys, axis=0),
-            multiples=[batch_size, 1],
-            name="classes_tensor")
-      else:
-        n = array_ops.shape(probabilities)[1]
-        classes = array_ops.tile(
-            input=array_ops.expand_dims(input=math_ops.range(n), axis=0),
-            multiples=[batch_size, 1])
-        classes = string_ops.as_string(classes, name="classes_tensor")
-
-    exported_predictions = {
-        prediction_key.PredictionKey.PROBABILITIES: probabilities,
-        prediction_key.PredictionKey.CLASSES: classes}
-    return {head_name: (problem_type, exported_predictions)}
-
-  return _create_output_alternatives
 
 # Aliases
 # TODO(zakaria): Remove these aliases, See b/34751732

@@ -417,7 +417,7 @@ class MultiLabelHeadTest(test.TestCase):
             {}, model_fn.ModeKeys.TRAIN, self._labels, head_lib.no_op_train_fn,
             logits_input=((0., 0.),), logits=self._logits)
 
-  def testMultiLabelEval(self):
+  def testMultiLabelEvalMode(self):
     n_classes = 3
     head = head_lib.multi_label_head(
         n_classes=n_classes, metric_class_ids=range(n_classes))
@@ -433,7 +433,7 @@ class MultiLabelHeadTest(test.TestCase):
       _assert_metrics(self, expected_loss,
                       self._expected_eval_metrics(expected_loss), model_fn_ops)
 
-  def testMultiClassEvalWithLargeLogits(self):
+  def testMultiClassEvalModeWithLargeLogits(self):
     n_classes = 3
     head = head_lib.multi_label_head(
         n_classes=n_classes, metric_class_ids=range(n_classes))
@@ -471,36 +471,6 @@ class MultiLabelHeadTest(test.TestCase):
       }
       _assert_metrics(self, expected_loss,
                       expected_eval_metrics, model_fn_ops)
-
-  def testMultiLabelInfer(self):
-    n_classes = 3
-    head = head_lib.multi_label_head(n_classes=n_classes, head_name="head_name")
-    with ops.Graph().as_default(), session.Session():
-      model_fn_ops = head.create_model_fn_ops(
-          {}, model_fn.ModeKeys.INFER, self._labels, head_lib.no_op_train_fn,
-          logits=((1., 0., 0.), (0., 0., 1)))
-      self.assertIsNone(model_fn_ops.train_op)
-      _assert_no_variables(self)
-      with session.Session():
-        self.assertListEqual(
-            [1, 0, 0], model_fn_ops.predictions["classes"].eval().tolist()[0])
-        self.assertItemsEqual(
-            ["head_name"], six.iterkeys(model_fn_ops.output_alternatives))
-        self.assertEqual(
-            constants.ProblemType.CLASSIFICATION,
-            model_fn_ops.output_alternatives["head_name"][0])
-
-        predictions_for_serving = (
-            model_fn_ops.output_alternatives["head_name"][1])
-        self.assertIn("classes", six.iterkeys(predictions_for_serving))
-        self.assertAllEqual(
-            [["0", "1", "2"], ["0", "1", "2"]],
-            predictions_for_serving["classes"].eval())
-        self.assertIn("probabilities", six.iterkeys(predictions_for_serving))
-        self.assertAllClose(
-            [[0.731059, 0.5, 0.5],
-             [0.5, 0.5, 0.731059,]],
-            predictions_for_serving["probabilities"].eval())
 
   def testMultiLabelWithLabelName(self):
     n_classes = 3
@@ -721,7 +691,7 @@ class BinaryClassificationHeadTest(test.TestCase):
             {}, model_fn.ModeKeys.TRAIN, self._labels, head_lib.no_op_train_fn,
             logits_input=((0., 0.), (0., 0.)), logits=self._logits)
 
-  def testBinaryClassificationEval(self):
+  def testBinaryClassificationEvalMode(self):
     n_classes = 2
     head = head_lib.multi_class_head(n_classes=n_classes)
     with ops.Graph().as_default(), session.Session():
@@ -738,32 +708,18 @@ class BinaryClassificationHeadTest(test.TestCase):
       _assert_metrics(self, expected_loss,
                       self._expected_eval_metrics(expected_loss), model_fn_ops)
 
-  def testBinaryClassificationInfer(self):
+  def testBinaryClassificationInferMode(self):
     n_classes = 2
-    head = head_lib.multi_class_head(n_classes=n_classes, head_name="head_name")
+    head = head_lib.multi_class_head(n_classes=n_classes)
     with ops.Graph().as_default(), session.Session():
       # logloss: z:label, x:logit
       # z * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
       model_fn_ops = head.create_model_fn_ops(
           {}, model_fn.ModeKeys.INFER, self._labels, head_lib.no_op_train_fn,
           logits=self._logits)
+      self._assert_output_alternatives(model_fn_ops)
       self.assertIsNone(model_fn_ops.train_op)
       _assert_no_variables(self)
-      with session.Session():
-        self.assertListEqual(
-            [1, 1], list(model_fn_ops.predictions["classes"].eval()))
-        self.assertItemsEqual(
-            ["head_name"], six.iterkeys(model_fn_ops.output_alternatives))
-        self.assertEqual(
-            constants.ProblemType.LOGISTIC_REGRESSION,
-            model_fn_ops.output_alternatives["head_name"][0])
-        predictions_for_serving = (
-            model_fn_ops.output_alternatives["head_name"][1])
-        self.assertIn("classes", six.iterkeys(predictions_for_serving))
-        predicted_classes = predictions_for_serving["classes"].eval().tolist()
-        self.assertListEqual(
-            ["0", "1"], predicted_classes[0])
-        self.assertIn("probabilities", six.iterkeys(predictions_for_serving))
 
   def testBinaryClassificationInferMode_withWightColumn(self):
     n_classes = 2
@@ -1050,7 +1006,7 @@ class MultiClassHeadTest(test.TestCase):
                             "multi_class_head/centered_bias/bias_1",
                             "multi_class_head/centered_bias/bias_2"])
 
-  def testMultiClassEval(self):
+  def testMultiClassEvalMode(self):
     n_classes = 3
     head = head_lib.multi_class_head(
         n_classes=n_classes, metric_class_ids=range(n_classes))
@@ -1175,7 +1131,7 @@ class MultiClassHeadTest(test.TestCase):
             model_fn_ops.output_alternatives["head_name"][1])
         self.assertIn("classes", six.iterkeys(predictions_for_serving))
         self.assertAllEqual(
-            [["0", "1", "2"], ["0", "1", "2"]],
+            [[0, 1, 2], [0, 1, 2]],
             predictions_for_serving["classes"].eval())
         self.assertIn("probabilities", six.iterkeys(predictions_for_serving))
         self.assertAllClose(
