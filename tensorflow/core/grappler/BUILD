@@ -2,6 +2,8 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
+load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
+
 filegroup(
     name = "all_files",
     srcs = glob(
@@ -51,7 +53,7 @@ cc_test(
     ],
 )
 
-cc_library(
+tf_cuda_library(
     name = "devices",
     srcs = ["devices.cc"],
     hdrs = ["devices.h"],
