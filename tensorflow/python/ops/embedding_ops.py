@@ -43,7 +43,8 @@ def _do_gather(params, ids, validate_indices=True, name=None):
 
 def embedding_lookup(params, ids, partition_strategy="mod", name=None,
                      validate_indices=True, max_norm=None,
-                     use_aggregation=False, weights=None, segment_ids=None):
+                     use_aggregation=False,
+                     weights=None, idx=None, segment_ids=None):
   """Looks up `ids` in a list of embedding tensors.
 
   This function is used to perform parallel lookups on the list of
@@ -100,11 +101,20 @@ def embedding_lookup(params, ids, partition_strategy="mod", name=None,
       raise ValueError("segment_ids must not be None \
           when use_aggregation is True")
     if weights is not None:
+      if idx is not None:
+        raise ValueError("idx must be None \
+            when weights is not None and use_aggregation is True")
       weights.get_shape().assert_is_compatible_with(segment_ids.get_shape())
+    else:
+      if idx is None:
+        raise ValueError("idx must not be None \
+            when weights is None and use_aggregation is True")
+      idx.get_shape().assert_is_compatible_with(segment_ids.get_shape())
   else:
-    if weights is not None or segment_ids is not None:
-      raise ValueError("weights and segment_ids must be None \
+    if weights is not None or idx is not None or segment_ids is not None:
+      raise ValueError("weights, idx and segment_ids must be None \
           when use_aggregation is False")
+
   if isinstance(params, variables.PartitionedVariable):
     params = list(params)  # Iterate to get the underlying Variables.
   if not isinstance(params, list):
@@ -135,17 +145,21 @@ def embedding_lookup(params, ids, partition_strategy="mod", name=None,
           if not ignore_weights:
             if weights.dtype != ret.dtype:
               weights = math_ops.cast(weights, ret.dtype)
+            # Reshape to allow broadcast
             ones = array_ops.fill(
                 array_ops.expand_dims(array_ops.rank(ret) - 1, 0), 1)
             bcast_weights_shape = array_ops.concat(
                 [array_ops.shape(weights), ones], 0)
             orig_weights_shape = weights.get_shape()
             weights = array_ops.reshape(weights, bcast_weights_shape)
+            # Set weights shape after reshape
             if ret.get_shape().ndims is not None:
               weights.set_shape(orig_weights_shape.concatenate(
                   [1 for _ in range(ret.get_shape().ndims - 1)]))
             ret *= weights
-          return math_ops.segment_sum(ret, segment_ids)
+            return math_ops.segment_sum(ret, segment_ids)
+          else:
+            return math_ops.sparse_segment_sum(ret, idx, segment_ids)
     else:
       ids = ops.convert_to_tensor(ids, name="ids")
       flat_ids = array_ops.reshape(ids, [-1])
@@ -208,6 +222,7 @@ def embedding_lookup(params, ids, partition_strategy="mod", name=None,
           partitioned_result.append(
               _do_gather(params[p], gather_ids[p],
                          validate_indices=validate_indices))
+
       if not use_aggregation:
         # Stitch these back together
         ret = data_flow_ops.dynamic_stitch(pindices, partitioned_result,
@@ -236,11 +251,14 @@ def embedding_lookup(params, ids, partition_strategy="mod", name=None,
         ret.set_shape(ids.get_shape().concatenate(element_shape))
         return maybe_normalize(ret)
       else:
+        # We use distributed aggregation.
         ignore_weights = weights is None
         if not ignore_weights:
+          # Partition weights according to pindices.
           partitioned_weight = []
           for p in xrange(np):
             partitioned_weight.append(array_ops.gather(weights, pindices[p]))
+        # Reshape each partition result.
         element_shape = params[0].get_shape()[1:]
         for p in params[1:]:
           element_shape = element_shape.merge_with(p.get_shape()[1:])
@@ -258,15 +276,18 @@ def embedding_lookup(params, ids, partition_strategy="mod", name=None,
               partitioned_result[p] = array_ops.reshape(partitioned_result[p],
                   array_ops.concat([array_ops.shape(pindices[p]),
                       array_ops.slice(params_shape, [1], [-1])], 0))
+        # Normalize each partition result.
         for p in xrange(np):
           with ops.colocate_with(params[p]):
             partitioned_result[p] = maybe_normalize(partitioned_result[p])
         if not ignore_weights:
+          # Multiply each partition result with partition weights.
           for p in xrange(np):
             with ops.colocate_with(params[p]):
               if partitioned_weight[p].dtype != partitioned_result[p].dtype:
                 partitioned_weight[p] = math_ops.cast(partitioned_weight[p],
                     partitioned_result[p].dtype)
+              # Reshape partition weights.
               ones = array_ops.fill(
                   array_ops.expand_dims(
                       array_ops.rank(partitioned_result[p]) - 1, 0), 1)
@@ -280,20 +301,44 @@ def embedding_lookup(params, ids, partition_strategy="mod", name=None,
                     [1 for _ in range(
                         partitioned_result[p].get_shape().ndims - 1)]))
               partitioned_result[p] *= partitioned_weight[p]
-        partitioned_segment_id = []
+        partitioned_segment_ids = []
         for p in xrange(np):
-          segment_id = array_ops.gather(segment_ids, pindices[p])
-          unique_segment_id, idx = array_ops.unique(segment_id)
-          partitioned_segment_id.append(unique_segment_id)
-          with ops.colocate_with(params[p]):
-            partitioned_result[p] = math_ops.segment_sum(partitioned_result[p],
-                                                         idx)
-        concat_segment_id = array_ops.concat(partitioned_segment_id, 0)
+          if not ignore_weights:
+            # Partition segment_ids according to pindices.
+            p_segment_ids = array_ops.gather(segment_ids, pindices[p])
+            # Number the p_segment_ids to meet segment_sum's requirements. Note
+            # that unique_p_segment_ids contains unique segment ids of this
+            # partiton and these ids' order is unchanged.
+            unique_p_segment_ids, unique_p_segment_idx = array_ops.unique(
+                p_segment_ids)
+            partitioned_segment_ids.append(unique_p_segment_ids)
+            # segment_sum this partition's result.
+            with ops.colocate_with(params[p]):
+              partitioned_result[p] = math_ops.segment_sum(
+                  partitioned_result[p], unique_p_segment_idx)
+          else:
+            # When ignore weights, we need to get indexs of elements in idx and
+            # segment_ids.
+            _, exclude_idx = array_ops.setdiff1d(idx, pindices[p])
+            all_idx = math_ops.range(array_ops.shape(idx)[0])
+            _, include_idx = array_ops.setdiff1d(all_idx, exclude_idx)
+            # Gather segment_ids and idx according to indexs.
+            p_segment_ids = array_ops.gather(segment_ids, include_idx)
+            p_idx = array_ops.gather(idx, include_idx)
+            # Number the p_segment_ids, same as ignore_weights case above.
+            unique_p_segment_ids, unique_p_segment_idx = array_ops.unique(
+                p_segment_ids)
+            _, unique_p_idx_idx = array_ops.unique(p_idx)
+            partitioned_segment_ids.append(unique_p_segment_ids)
+            with ops.colocate_with(params[p]):
+              partitioned_result[p] = math_ops.sparse_segment_sum(
+                  partitioned_result[p], unique_p_idx_idx, unique_p_segment_idx)
+        # Concat each partition's segment_ids and result for final segment_sum.
+        concat_segment_ids = array_ops.concat(partitioned_segment_ids, 0)
         concat_partitioned_result = array_ops.concat(partitioned_result, 0)
-        concat_partitioned_result.set_shape(
-            segment_ids.get_shape().concatenate(element_shape))
-        return math_ops.unsorted_segment_sum(concat_partitioned_result,
-            concat_segment_id, math_ops.reduce_max(concat_segment_id) + 1)
+        return math_ops.unsorted_segment_sum(
+            concat_partitioned_result, concat_segment_ids,
+            math_ops.reduce_max(concat_segment_ids) + 1)
 
 
 def embedding_lookup_sparse(params, sp_ids, sp_weights,
@@ -301,7 +346,7 @@ def embedding_lookup_sparse(params, sp_ids, sp_weights,
                             name=None,
                             combiner=None,
                             max_norm=None,
-                            use_aggregation=False):
+                            use_aggregation=True):
   """Computes embeddings for the given ids and weights.
 
   This op assumes that there is at least one id for each row in the dense tensor
@@ -334,6 +379,9 @@ def embedding_lookup_sparse(params, sp_ids, sp_weights,
       squares of the weights.
     max_norm: If not None, each embedding is normalized to have l2 norm equal
       to max_norm before combining.
+    use_aggregation: If True, embeddings belonging to same param are aggregated
+      on that device first. This option is intented to reduce data transmission
+      and increase concurrency.
 
   Returns:
     A dense tensor representing the combined embeddings for the
@@ -403,12 +451,12 @@ def embedding_lookup_sparse(params, sp_ids, sp_weights,
       segment_ids = math_ops.cast(segment_ids, dtypes.int32)
 
     ids = sp_ids.values
-    if not use_aggregation:
-      if ignore_weights:
-        ids, idx = array_ops.unique(ids)
-      else:
-        idx = None
+    if ignore_weights:
+      ids, idx = array_ops.unique(ids)
+    else:
+      idx = None
 
+    if not use_aggregation:
       embeddings = embedding_lookup(
           params, ids, partition_strategy=partition_strategy, max_norm=max_norm)
       if not ignore_weights:
@@ -464,11 +512,14 @@ def embedding_lookup_sparse(params, sp_ids, sp_weights,
       weights = None if ignore_weights else sp_weights.values
       embeddings = embedding_lookup(
           params, ids, partition_strategy=partition_strategy, max_norm=max_norm,
-          use_aggregation=True, weights=weights, segment_ids=segment_ids)
+          use_aggregation=True,
+          weights=weights, idx=idx, segment_ids=segment_ids)
+      # Set weights to all one if ignore weights.
       if ignore_weights:
         weights = array_ops.fill([array_ops.shape(segment_ids)[0]], 1)
       if weights.dtype != embeddings.dtype:
         weights = math_ops.cast(weights, embeddings.dtype)
+      # Reshape weights.
       ones = array_ops.fill(
           array_ops.expand_dims(array_ops.rank(embeddings) - 1, 0), 1)
       bcast_weights_shape = array_ops.concat([array_ops.shape(weights), ones],
@@ -478,6 +529,7 @@ def embedding_lookup_sparse(params, sp_ids, sp_weights,
       if embeddings.get_shape().ndims is not None:
         weights.set_shape(orig_weights_shape.concatenate(
             [1 for _ in range(embeddings.get_shape().ndims - 1)]))
+
       if combiner == "mean":
         weight_sum = math_ops.segment_sum(weights, segment_ids)
         embeddings = math_ops.div(embeddings, weight_sum, name=name)
@@ -488,4 +540,5 @@ def embedding_lookup_sparse(params, sp_ids, sp_weights,
         embeddings = math_ops.div(embeddings, weight_sum_sqrt, name=name)
       elif combiner != "sum":
         assert False, "Unrecognized combiner"
+
     return embeddings
