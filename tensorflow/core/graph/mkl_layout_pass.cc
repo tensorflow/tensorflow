@@ -21,7 +21,7 @@ limitations under the License.
 #include <memory>
 #include <unordered_set>
 #include <functional>
-
+#include <algorithm>
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/node_builder.h"
@@ -150,10 +150,18 @@ namespace tensorflow {
 class MklLayoutRewritePass : public GraphOptimizationPass {
  public:
   MklLayoutRewritePass() {
-    csinfo_.conv2d          = "Conv2D";
+    csinfo_.conv2d           = "Conv2D";
+    csinfo_.conv2dgradfilter = "Conv2DBackpropFilter";
+    csinfo_.conv2dgradinput  = "Conv2DBackpropInput";
 
     ninfo_.push_back({csinfo_.conv2d,   GetMklOpName(csinfo_.conv2d),
                       2, CopyAttrsConv2D});
+    ninfo_.push_back({csinfo_.conv2dgradfilter,
+        GetMklOpName(csinfo_.conv2dgradfilter),
+                      3, CopyAttrsConv2D});
+    ninfo_.push_back({csinfo_.conv2dgradinput,
+        GetMklOpName(csinfo_.conv2dgradinput),
+                      3, CopyAttrsConv2D});
   }
 
   // Standard interface to run pass
@@ -182,9 +190,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
 
   /// Structure to store all constant strings
   struct {
-    string relu;
-    string relugrad;
     string conv2d;
+    string conv2dgradfilter;
+    string conv2dgradinput;
   } csinfo_;
 
   /// Maintain info about nodes to rewrite
@@ -312,6 +320,15 @@ static void FillInputs(const Node* n,
   nb->Input(op5.node, op5.index);          \
 }while(0)
 
+#define SETUP_INPUTS6(nb, op1, op2, op3, op4, op5, op6) do {\
+  nb->Input(op1.node, op1.index);          \
+  nb->Input(op2.node, op2.index);          \
+  nb->Input(op3.node, op3.index);          \
+  nb->Input(op4.node, op4.index);          \
+  nb->Input(op5.node, op5.index);          \
+  nb->Input(op6.node, op6.index);          \
+}while(0)
+
 // TODO(nhasabni) We should move this to mkl_util.h.
 void MklLayoutRewritePass::GetDummyMklTensorNode(
     std::unique_ptr<Graph>* g, Node** out, Node* orign) {
@@ -352,6 +369,7 @@ Status MklLayoutRewritePass::SetUpInputs(std::unique_ptr<Graph>* g,
       // an edge that will receive Mkl tensor from a node.
       // First, let's assert that this op is Mkl layer.
       DataType T;
+      VLOG(1) << "FINDME:"<< n << "," << orign;
       TF_CHECK_OK(GetNodeAttr(n->def(), "T", &T));
       // If this op has been rewritten, then its name must have been same as
       // Mkl op.
@@ -396,6 +414,12 @@ Status MklLayoutRewritePass::SetUpInputs(std::unique_ptr<Graph>* g,
                               new_inputs[2],
                               new_inputs[3],
                               new_inputs[4]); break;
+    case 6: SETUP_INPUTS6(nb, new_inputs[0],
+                              new_inputs[1],
+                              new_inputs[2],
+                              new_inputs[3],
+                              new_inputs[4],
+                              new_inputs[5]); break;
     default: {
       return Status(error::Code::UNIMPLEMENTED,
                     "Could not create node with given number of inputs");
@@ -429,7 +453,7 @@ void MklLayoutRewritePass::CopyAttrsConv2D(Node* orign, NodeBuilder* nb) {
 
 Status MklLayoutRewritePass::RewriteNode(
     std::unique_ptr<Graph>* g, Node* orign, const NodesInfo& ni) {
-  VLOG(1) << "MKLLayoutRewritePass: Original node:" << orign->DebugString();
+  VLOG(1) << "MklLayoutRewritePass: Original node:" << orign->DebugString();
 
   // Get all inputs.
   const int num = orign->num_inputs();
@@ -470,7 +494,7 @@ Status MklLayoutRewritePass::RewriteNode(
   (*g)->RemoveNode(orign);
   MarkRewrittenNode(newn);
 
-  VLOG(1) << "MKLLayoutRewritePass: New node:" << newn->DebugString();
+  VLOG(1) << "MklLayoutRewritePass: New node:" << newn->DebugString();
   return Status::OK();
 }
 
@@ -499,12 +523,12 @@ bool MklLayoutRewritePass::RunPass(
         string node_name = n->name();
         string op_name = n->type_string();
 
-        VLOG(1) << "MKLLayoutRewritePass: Scheduled node " << node_name
+        VLOG(1) << "MklLayoutRewritePass: Scheduled node " << node_name
                 << " with op " << op_name << " for rewrite using"
                 << " layout optimization.";
 
         if (RewriteNode(g, n, ni) == Status::OK()) {
-          VLOG(1) << "MKLLayoutRewritePass: Successfully rewrote node "
+          VLOG(1) << "MklLayoutRewritePass: Successfully rewrote node "
                   << node_name << " with op " << op_name
                   << " for Mkl layout optimization.";
           result = true;
