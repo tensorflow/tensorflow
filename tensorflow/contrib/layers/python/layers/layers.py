@@ -185,12 +185,11 @@ def _fused_batch_norm(
       not used. When the next layer is linear (also e.g. `nn.relu`), this can be
       disabled since the scaling can be done by the next layer.
     epsilon: Small float added to variance to avoid dividing by zero.
-    renorm: Boolean value to set whether the
-    use stop Gradient on gamma and beta parameters as described based here 
-    https://arxiv.org/pdf/1702.03275.pdf will be used or not
-    r_max: scalar tensor or float sets the clipping bound on the r value
+    renorm: If True, apply stop gradient on gamma and beta parameters as described
+    here Batch Renormalization: https://arxiv.org/pdf/1702.03275.pdf
+    r_max: scalar tensor or float, sets the clipping bounds on the r value
     (used in place of gamma in batch renormalization)
-    d_max: scalar tensor or float value sets the clipping bound on the d value
+    d_max: scalar tensor or float, sets the clipping bounds on the d value
     (used in place of beta in batch renormalization)
     activation_fn: Activation function, default set to None to skip it and
       maintain a linear activation.
