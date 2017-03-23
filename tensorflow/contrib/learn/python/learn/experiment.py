@@ -284,7 +284,8 @@ class Experiment(object):
     Runs infinite eval on the evaluation data set. This function starts
     evaluating after `delay_secs` seconds and then runs no more than one
     evaluation (with `self._eval_steps` steps each time) per
-    `throttle_delay_secs`. It never returns.
+    `throttle_delay_secs`. If `train_steps` is not None, will return after
+    global_step reaches `train_steps`.
 
     Args:
       input_fn: The input to use for this eval.
@@ -301,7 +302,8 @@ class Experiment(object):
         results as arguments. At the beginning of evaluation, the passed eval
         results will be None so it's expected that the predicate function
         handles that gracefully. When `predicate_fn` is not specified,
-        continuous eval will run in an infinite loop.
+        continuous eval will run in an infinite loop (if `train_steps` is None)
+        or exit once global step reaches `train_steps`.
 
     Raises:
       ValueError: if `continuous_eval_predicate_fn` is neither None nor
