@@ -202,7 +202,6 @@ endif()
 
 # Let's get to work!
 include(tf_core_framework.cmake)
-include(tf_tools.cmake)
 # NOTE: Disabled until issue #3996 is fixed.
 # include(tf_stream_executor.cmake)
 if (tensorflow_ENABLE_GPU)
@@ -223,6 +222,7 @@ if(tensorflow_BUILD_CC_EXAMPLE)
   include(tf_tutorials.cmake)
   include(tf_label_image_example.cmake)
 endif()
+include(tf_tools.cmake)
 if(tensorflow_BUILD_PYTHON_BINDINGS)
   include(tensorboard)
   include(tf_python.cmake)
