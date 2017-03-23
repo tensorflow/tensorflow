@@ -87,6 +87,7 @@ To help you upgrade your existing TensorFlow Python code to match the API change
 * In the C++ API (in tensorflow/cc), Input, Output, etc. have moved
   from the tensorflow::ops namespace to tensorflow.
 * Change arg order for `{softmax,sparse_softmax,sigmoid}_cross_entropy_with_logits` to be (labels, predictions), and force use of named args.
+* In python, `Operation.get_attr` on type attributes now returns the Python DType version of the type rather than the protobuf enum.
 
 ## Bug Fixes and Other Changes
 * Numerous C++ API updates.
