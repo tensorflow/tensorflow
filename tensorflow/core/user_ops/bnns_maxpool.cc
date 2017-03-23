@@ -181,6 +181,9 @@ class MaxPoolingBNNSOp : public OpKernel {
 };
 
 
-REGISTER_KERNEL_BUILDER(
-    Name("MaxPoolBNNS").Device(DEVICE_CPU).TypeConstraint<float>("T"),
-    MaxPoolingBNNSOp<CPUDevice, float>);
+#define REGISTER_CPU(T)                                                   \
+    REGISTER_KERNEL_BUILDER(                                              \
+        Name("MaxPoolBNNS").Device(DEVICE_CPU).TypeConstraint<T>("T"),    \
+        MaxPoolingBNNSOp<CPUDevice, T>);
+
+TF_CALL_float(REGISTER_CPU);

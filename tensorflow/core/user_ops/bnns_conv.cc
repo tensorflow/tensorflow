@@ -258,15 +258,16 @@ public:
         Tensor transformed_filter;
         {
             OP_REQUIRES_OK(context, context->allocate_temp(
-                                                           DataTypeToEnum<T>::value,
-                                                           TensorShape({out_depth, in_depth,
-                filter_rows,
-                filter_cols}),
-                                                           &transformed_filter));
+                DataTypeToEnum<T>::value,
+                TensorShape({out_depth, in_depth,
+                    filter_rows,
+                    filter_cols}),
+                &transformed_filter));
 
             functor::TransformFilter<Device, T, int, 4>()(
-                                                          context->eigen_device<Device>(), To32Bit(filter.tensor<T, 4>()),
-                                                          To32Bit(transformed_filter.tensor<T, 4>()));
+                context->eigen_device<Device>(),
+                To32Bit(filter.tensor<T, 4>()),
+                To32Bit(transformed_filter.tensor<T, 4>()));
         }
 
         layer_params.weights.data_type = weightsDataType_;
