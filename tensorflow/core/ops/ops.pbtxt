@@ -23529,7 +23529,9 @@ op {
     allowed_values {
       list {
         type: DT_FLOAT
+        type: DT_DOUBLE
         type: DT_INT32
+        type: DT_INT64
       }
     }
   }
