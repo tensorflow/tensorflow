@@ -71,7 +71,7 @@ def tfadd_with_ckpt_saver(out_dir):
     saver.save(sess, ckpt_file)
     # Without the SaverDef, the restore op won't be named correctly.
     saver_file = '%s/test_graph_tfadd_with_ckpt_saver.saver' % out_dir
-    with open(saver_file, 'w') as f:
+    with open(saver_file, 'wb') as f:
       f.write(saver.as_saver_def().SerializeToString())
 
 
@@ -101,7 +101,7 @@ def write_graph(build_graph, out_dir):
   with g.as_default():
     build_graph(out_dir)
     filename = '%s/test_graph_%s.pb' % (out_dir, build_graph.__name__)
-    with open(filename, 'w') as f:
+    with open(filename, 'wb') as f:
       f.write(g.as_graph_def().SerializeToString())
 
 
