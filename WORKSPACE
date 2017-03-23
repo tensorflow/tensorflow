@@ -30,10 +30,11 @@ check_version("0.4.2")
 #    path = "<PATH_TO_SDK>",
 #)
 #
+# Android NDK r12b is recommended (higher may cause issues with Bazel)
 #android_ndk_repository(
 #    name="androidndk",
 #    path="<PATH_TO_NDK>",
-#    api_level=14)
+#    api_level=14) # This needs to be 14 or higher to compile TensorFlow.
 
 # Please add all new TensorFlow dependencies in workspace.bzl.
 tf_workspace()
