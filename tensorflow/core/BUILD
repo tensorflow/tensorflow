@@ -711,6 +711,9 @@ cc_library(
         "//tensorflow/core/kernels:quantized_ops",
     ]) + if_mkl([
         "//tensorflow/core/kernels:mkl_conv_op",
+        "//tensorflow/core/kernels:mkl_conv_grad_filter_ops",
+        "//tensorflow/core/kernels:mkl_conv_grad_input_ops",
+        "//tensorflow/core/kernels:mkl_conv_grad_bias_ops",
         "//tensorflow/core/kernels:mkl_matmul_op",
         "//tensorflow/core/kernels:mkl_tfconv_op",
     ]),
