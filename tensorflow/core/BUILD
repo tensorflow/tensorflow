@@ -339,6 +339,7 @@ tf_cuda_library(
     hdrs = [
         "example/feature_util.h",
         "framework/allocator.h",
+        "framework/allocator_registry.h",
         "framework/attr_value_util.h",
         "framework/bfloat16.h",
         "framework/cancellation.h",
@@ -408,7 +409,9 @@ tf_cuda_library(
             "util/memmapped_file_system.h",
             "util/memmapped_file_system_writer.h",
         ],
-    }),
+    }) + if_mkl([
+        "util/mkl_util.h",
+    ]),
     visibility = ["//visibility:public"],
     deps = [":framework_internal"],
 )
@@ -707,7 +710,9 @@ cc_library(
         "//tensorflow/core/kernels:math_not_windows",
         "//tensorflow/core/kernels:quantized_ops",
     ]) + if_mkl([
-        "//tensorflow/core/kernels:mkl_ops",
+        "//tensorflow/core/kernels:mkl_conv_op",
+        "//tensorflow/core/kernels:mkl_matmul_op",
+        "//tensorflow/core/kernels:mkl_tfconv_op",
     ]),
 )
 
@@ -772,7 +777,7 @@ cc_library(
         "//tensorflow/core/kernels:constant_op",
         "//tensorflow/core/kernels:ops_testutil",
         "//tensorflow/core/kernels:ops_util",
-        "//tensorflow/core/platform/default/build_config:gtest",  # + if_sycl([":sycl_runtime"]),
+        "//tensorflow/core/platform/default/build_config:gtest",  # + if_sycl([":sycl_runtime"])
     ],
 )
 
@@ -1393,7 +1398,7 @@ tf_cuda_library(
         ":version_lib",
         "//tensorflow/core/kernels:bounds_check",
         "//third_party/eigen3",
-    ],
+    ] + if_mkl(["//third_party/mkl:intel_binary_blob"]),
     alwayslink = 1,
 )
 
@@ -1482,20 +1487,21 @@ tf_cuda_library(
     ),
     copts = tf_copts(),
     deps = [
-        ":framework",
-        ":framework_internal",
-        ":function_ops_op_lib",
-        ":functional_grad",
-        ":functional_ops_op_lib",
-        ":lib",
-        ":lib_internal",
-        ":proto_text",
-        ":protos_all_cc",
-        "//tensorflow/core/grappler:grappler_item",
-        "//tensorflow/core/grappler/optimizers:meta_optimizer",
-        "//third_party/eigen3",
-        "//tensorflow/core/kernels:required",
-    ] + tf_additional_core_deps(),
+               ":framework",
+               ":framework_internal",
+               ":function_ops_op_lib",
+               ":functional_grad",
+               ":functional_ops_op_lib",
+               ":lib",
+               ":lib_internal",
+               ":proto_text",
+               ":protos_all_cc",
+               "//tensorflow/core/grappler:grappler_item",
+               "//tensorflow/core/grappler/optimizers:meta_optimizer",
+               "//third_party/eigen3",
+               "//tensorflow/core/kernels:required",
+           ] + if_mkl(["//third_party/mkl:intel_binary_blob"]) +
+           tf_additional_core_deps(),
     alwayslink = 1,
 )
 
@@ -2037,33 +2043,38 @@ tf_cc_tests(
     ],
 )
 
-if_mkl(
-    tf_cc_test_mkl(
-        name = "mkl_related_tests",
-        size = "small",
-        srcs = ["graph/mkl_optimizer_merge_test.cc"],
-        linkstatic = tf_kernel_tests_linkstatic(),
-        deps = [
-            ":core",
-            ":core_cpu",
-            ":core_cpu_internal",
-            ":direct_session_internal",
-            ":framework",
-            ":framework_internal",
-            ":lib",
-            ":lib_internal",
-            ":ops",
-            ":protos_all_cc",  # under if_mkl
-            ":test",
-            ":test_main",
-            ":testlib",
-            "//tensorflow/cc:cc_ops",
-            "//tensorflow/cc:scope",
-            "//tensorflow/cc:sendrecv_ops",
-            "//tensorflow/core/kernels:ops_util",
-            "//third_party/eigen3",
-        ],
-    ),
+tf_cc_test_mkl(
+    name = "mkl_related_tests",
+    size = "small",
+    srcs = [
+        "graph/mkl_layout_pass_test.cc",
+        "graph/mkl_optimizer_merge_test.cc",
+        "graph/mkl_tfconversion_pass_test.cc",
+    ],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session_internal",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":ops",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/cc:sendrecv_ops",
+        "//tensorflow/core/kernels:mkl_conv_op",
+        "//tensorflow/core/kernels:mkl_matmul_op",
+        "//tensorflow/core/kernels:mkl_tfconv_op",
+        "//tensorflow/core/kernels:ops_util",
+        "//third_party/eigen3",
+    ],
 )
 
 tf_cc_tests_gpu(

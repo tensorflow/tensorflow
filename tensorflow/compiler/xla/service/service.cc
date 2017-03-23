@@ -256,7 +256,8 @@ StatusOr<std::vector<const Allocation*>> Service::ResolveAndValidateArguments(
     tensorflow::gtl::ArraySlice<const GlobalDataHandle*> arguments,
     const Backend* backend, int device_ordinal) {
   std::vector<const Allocation*> allocations;
-  for (int i = 0; i < arguments.size(); ++i) {
+  for (tensorflow::gtl::ArraySlice<const GlobalDataHandle*>::size_type i = 0; 
+       i < arguments.size(); ++i) {
     auto allocation_status = allocation_tracker_.Resolve(*arguments[i]);
     if (!allocation_status.ok()) {
       return Status(allocation_status.status().code(),
@@ -269,7 +270,7 @@ StatusOr<std::vector<const Allocation*>> Service::ResolveAndValidateArguments(
     if (allocation->backend() != backend ||
         allocation->device_ordinal() != device_ordinal) {
       return InvalidArgument(
-          "argument %d is on device %s but computation will be executed "
+          "argument %lu is on device %s but computation will be executed "
           "on device %s",
           i,
           allocation->backend()
@@ -295,13 +296,14 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
                            program_shape.parameters_size(), arguments.size());
   }
 
-  for (int i = 0; i < arguments.size(); ++i) {
+  for (tensorflow::gtl::ArraySlice<const Allocation*>::size_type i = 0;
+       i < arguments.size(); ++i) {
     // Verify that shape of arguments matches the shape of the arguments in the
     // ProgramShape.
     if (!ShapeUtil::Compatible(arguments[i]->shape(),
                                program_shape.parameters(i))) {
       return InvalidArgument(
-          "computation expects parameter %d to have shape %s, given shape %s",
+          "computation expects parameter %lu to have shape %s, given shape %s",
           i, ShapeUtil::HumanString(program_shape.parameters(i)).c_str(),
           ShapeUtil::HumanString(arguments[i]->shape()).c_str());
     }
@@ -383,7 +385,8 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
                           hlo_dumper, std::move(executors)));
 
   if (!other_directory_path.empty()) {
-    for (int64 i = 0; i < versioned_handles.size(); ++i) {
+    for (std::vector<VersionedComputationHandle>::size_type i = 0;
+         i < versioned_handles.size(); ++i) {
       executables[i]->set_session_module(std::move(session_modules[i]));
     }
   }
@@ -523,7 +526,8 @@ Service::ExecuteParallelAndRegisterResult(
 
   // Asynchronously launch all executables.
   std::vector<GlobalDataHandle> result_handles;
-  for (int64 i = 0; i < executables.size(); i++) {
+  for (tensorflow::gtl::ArraySlice<Executable*>::size_type i = 0;
+       i < executables.size(); i++) {
     TF_ASSIGN_OR_RETURN(
         perftools::gputools::DeviceMemoryBase result,
         executables[i]->ExecuteAsyncOnStream(&run_options[i], arguments[i]));

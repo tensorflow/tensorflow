@@ -115,7 +115,14 @@ if (tensorflow_BUILD_PYTHON_TESTS)
   #
 
   # include all test
+  if (WIN32)
+    file(GLOB_RECURSE tf_test_rnn_src_py
+      "${tensorflow_source_dir}/tensorflow/contrib/rnn/python/kernel_tests/*_test.py"
+    )
+  endif()
+ 
   file(GLOB_RECURSE tf_test_src_py
+    ${tf_test_rnn_src_py}
     "${tensorflow_source_dir}/tensorflow/python/debug/cli/*_test.py"
     "${tensorflow_source_dir}/tensorflow/python/debug/lib/*_test.py"
     "${tensorflow_source_dir}/tensorflow/python/debug/wrappers/*_test.py"

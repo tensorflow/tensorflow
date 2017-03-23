@@ -338,6 +338,7 @@ struct AvgPoolMeanReducer {
 // In the case below, 0xd8 implies (false_mask) ? (b) : (a)
 // For details, refer to the vpternlogd instruction table at
 // http://www.intel.com/content/dam/www/public/us/en/documents/manuals/64-ia-32-architectures-software-developer-vol-2c-manual.pdf
+
 #define psel(a, b, false_mask)                        \
   _mm512_castsi512_ps(_mm512_ternarylogic_epi32(      \
       _mm512_castps_si512(a), _mm512_castps_si512(b), \

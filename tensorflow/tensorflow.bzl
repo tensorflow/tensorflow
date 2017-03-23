@@ -124,6 +124,7 @@ def tf_copts():
                 "/DLANG_CXX11",
                 "/D__VERSION__=\\\"MSVC\\\"",
                 "/DPLATFORM_WINDOWS",
+                "/DTF_COMPILE_LIBRARY",
                 "/DEIGEN_HAS_C99_MATH",
                 "/DTENSORFLOW_USE_EIGEN_THREADPOOL",
               ],
@@ -392,7 +393,7 @@ def tf_cc_tests(srcs, deps, name='', linkstatic=0, tags=[], size="medium",
 
 def tf_cc_test_mkl(srcs, deps, name='', linkstatic=0, tags=[], size="medium",
                     args=None):
-  tf_cc_tests(srcs, deps, linkstatic, tags=tags, size=size, args=args)
+  if_mkl(tf_cc_tests(srcs, deps, linkstatic, tags=tags, size=size, args=args))
 
 def tf_cc_tests_gpu(srcs, deps, name='', linkstatic=0, tags=[], size="medium",
                     args=None):

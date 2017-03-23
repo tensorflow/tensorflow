@@ -21,20 +21,14 @@ limitations under the License.
 #ifdef INTEL_MKL
 
 #include <sys/types.h>
-#include <vector>
-#include <string>
 #include <memory>
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/common_runtime/optimization_registry.h"
 
 namespace tensorflow {
-
 // Interface to invoke the pass for unit test
 //
 // Returns true if and only if 'g' is mutated.
 extern bool OptimizeNodeMerge(std::unique_ptr<Graph>* g);
-
 }  // namespace tensorflow
 
 #endif  // INTEL_MKL

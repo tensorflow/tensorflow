@@ -486,7 +486,7 @@ class GreedyEmbeddingHelper(Helper):
     # Outputs are logits, use argmax to get the most probable id
     if not isinstance(outputs, ops.Tensor):
       raise TypeError("Expected outputs to be a single Tensor, got: %s" %
-                      outputs)
+                      type(outputs))
     sample_ids = math_ops.cast(
         math_ops.argmax(outputs, axis=-1), dtypes.int32)
     return sample_ids

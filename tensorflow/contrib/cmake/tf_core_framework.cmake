@@ -199,7 +199,6 @@ add_custom_command(OUTPUT
     COMMAND ${PYTHON_EXECUTABLE} ${tensorflow_source_dir}/tensorflow/tools/git/gen_git_source.py
     --raw_generate ${VERSION_INFO_CC}
     DEPENDS __force_rebuild)
-
 set(tf_version_srcs ${tensorflow_source_dir}/tensorflow/core/util/version_info.cc)
 
 ########################################################
@@ -238,3 +237,9 @@ add_dependencies(tf_core_framework
     tf_core_lib
     proto_text
 )
+
+if(WIN32)
+  # Cmake > 3.6 will quote this as -D"__VERSION__=\"MSVC\"" which nvcc fails on.
+  # Instead of defining this global, limit it to tf_core_framework where its used.
+  target_compile_definitions(tf_core_framework PRIVATE __VERSION__="MSVC")
+endif()

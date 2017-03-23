@@ -63,56 +63,53 @@ def _assert_df_equals_dict(expected_df, actual_dict):
                                                              actual_dict[col]))
 
 
-def _make_test_csv():
-  f = tempfile.NamedTemporaryFile(
-      dir=test.get_temp_dir(), delete=False, mode="w")
-  w = csv.writer(f)
-  w.writerow(["int", "float", "bool", "string"])
-  for _ in range(100):
-    intvalue = np.random.randint(-10, 10)
-    floatvalue = np.random.rand()
-    boolvalue = int(np.random.rand() > 0.3)
-    stringvalue = "S: %.4f" % np.random.rand()
-
-    row = [intvalue, floatvalue, boolvalue, stringvalue]
-    w.writerow(row)
-  f.close()
-  return f.name
-
-
-def _make_test_csv_sparse():
-  f = tempfile.NamedTemporaryFile(
-      dir=test.get_temp_dir(), delete=False, mode="w")
-  w = csv.writer(f)
-  w.writerow(["int", "float", "bool", "string"])
-  for _ in range(100):
-    # leave columns empty; these will be read as default value (e.g. 0 or NaN)
-    intvalue = np.random.randint(-10, 10) if np.random.rand() > 0.5 else ""
-    floatvalue = np.random.rand() if np.random.rand() > 0.5 else ""
-    boolvalue = int(np.random.rand() > 0.3) if np.random.rand() > 0.5 else ""
-    stringvalue = (("S: %.4f" % np.random.rand()) if np.random.rand() > 0.5 else
-                   "")
-
-    row = [intvalue, floatvalue, boolvalue, stringvalue]
-    w.writerow(row)
-  f.close()
-  return f.name
-
-
-def _make_test_tfrecord():
-  f = tempfile.NamedTemporaryFile(dir=test.get_temp_dir(), delete=False)
-  w = tf_record.TFRecordWriter(f.name)
-  for i in range(100):
-    ex = example_pb2.Example()
-    ex.features.feature["var_len_int"].int64_list.value.extend(range((i % 3)))
-    ex.features.feature["fixed_len_float"].float_list.value.extend(
-        [float(i), 2 * float(i)])
-    w.write(ex.SerializeToString())
-  return f.name
-
-
 class TensorFlowDataFrameTestCase(test.TestCase):
   """Tests for `TensorFlowDataFrame`."""
+
+  def _make_test_csv(self):
+    f = tempfile.NamedTemporaryFile(
+        dir=self.get_temp_dir(), delete=False, mode="w")
+    w = csv.writer(f)
+    w.writerow(["int", "float", "bool", "string"])
+    for _ in range(100):
+      intvalue = np.random.randint(-10, 10)
+      floatvalue = np.random.rand()
+      boolvalue = int(np.random.rand() > 0.3)
+      stringvalue = "S: %.4f" % np.random.rand()
+
+      row = [intvalue, floatvalue, boolvalue, stringvalue]
+      w.writerow(row)
+    f.close()
+    return f.name
+
+  def _make_test_csv_sparse(self):
+    f = tempfile.NamedTemporaryFile(
+        dir=self.get_temp_dir(), delete=False, mode="w")
+    w = csv.writer(f)
+    w.writerow(["int", "float", "bool", "string"])
+    for _ in range(100):
+      # leave columns empty; these will be read as default value (e.g. 0 or NaN)
+      intvalue = np.random.randint(-10, 10) if np.random.rand() > 0.5 else ""
+      floatvalue = np.random.rand() if np.random.rand() > 0.5 else ""
+      boolvalue = int(np.random.rand() > 0.3) if np.random.rand() > 0.5 else ""
+      stringvalue = (("S: %.4f" % np.random.rand()) if np.random.rand() > 0.5 else
+                     "")
+
+      row = [intvalue, floatvalue, boolvalue, stringvalue]
+      w.writerow(row)
+    f.close()
+    return f.name
+
+  def _make_test_tfrecord(self):
+    f = tempfile.NamedTemporaryFile(dir=self.get_temp_dir(), delete=False)
+    w = tf_record.TFRecordWriter(f.name)
+    for i in range(100):
+      ex = example_pb2.Example()
+      ex.features.feature["var_len_int"].int64_list.value.extend(range((i % 3)))
+      ex.features.feature["fixed_len_float"].float_list.value.extend(
+          [float(i), 2 * float(i)])
+      w.write(ex.SerializeToString())
+    return f.name
 
   def _assert_pandas_equals_tensorflow(self, pandas_df, tensorflow_df,
                                        num_batches, batch_size):
@@ -190,7 +187,7 @@ class TensorFlowDataFrameTestCase(test.TestCase):
     batch_size = 8
     enqueue_size = 7
 
-    data_path = _make_test_csv()
+    data_path = self._make_test_csv()
     default_values = [0, 0.0, 0, ""]
 
     pandas_df = pd.read_csv(data_path)
@@ -211,7 +208,7 @@ class TensorFlowDataFrameTestCase(test.TestCase):
     num_epochs = 17
     expected_num_batches = (num_epochs * 100) // batch_size
 
-    data_path = _make_test_csv()
+    data_path = self._make_test_csv()
     default_values = [0, 0.0, 0, ""]
 
     tensorflow_df = df.TensorFlowDataFrame.from_csv(
@@ -234,7 +231,7 @@ class TensorFlowDataFrameTestCase(test.TestCase):
     num_batches = 100
     batch_size = 8
 
-    data_path = _make_test_csv_sparse()
+    data_path = self._make_test_csv_sparse()
     feature_spec = {
         "int": parsing_ops.FixedLenFeature(None, dtypes.int16, np.nan),
         "float": parsing_ops.VarLenFeature(dtypes.float16),
@@ -270,7 +267,7 @@ class TensorFlowDataFrameTestCase(test.TestCase):
     enqueue_size = 11
     batch_size = 13
 
-    data_path = _make_test_tfrecord()
+    data_path = self._make_test_tfrecord()
     features = {
         "fixed_len_float":
             parsing_ops.FixedLenFeature(
@@ -318,7 +315,7 @@ class TensorFlowDataFrameTestCase(test.TestCase):
     num_epochs = 17
     expected_num_batches = (num_epochs * 100) // batch_size
 
-    data_path = _make_test_csv()
+    data_path = self._make_test_csv()
     default_values = [0, 0.0, 0, ""]
 
     tensorflow_df = df.TensorFlowDataFrame.from_csv(

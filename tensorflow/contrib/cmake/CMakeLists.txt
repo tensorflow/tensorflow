@@ -56,9 +56,10 @@ mark_as_advanced(DOWNLOAD_LOCATION)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 add_definitions(-DEIGEN_AVOID_STL_ARRAY)
 if(WIN32)
-  add_definitions(-DNOMINMAX -D_WIN32_WINNT=0x0A00 -DLANG_CXX11 -DCOMPILER_MSVC -D__VERSION__=\"MSVC\")
+  add_definitions(-DNOMINMAX -D_WIN32_WINNT=0x0A00 -DLANG_CXX11 -DCOMPILER_MSVC)
   add_definitions(-DWIN32 -DOS_WIN -D_MBCS -DWIN64 -DWIN32_LEAN_AND_MEAN -DNOGDI -DPLATFORM_WINDOWS)
   add_definitions(-DTENSORFLOW_USE_EIGEN_THREADPOOL -DEIGEN_HAS_C99_MATH -D_ITERATOR_DEBUG_LEVEL=0)
+  add_definitions(-DTF_COMPILE_LIBRARY)
   add_definitions(-DNDEBUG /O2)  # Equivalent of -c opt in Bazel.
   add_definitions(/bigobj /nologo /EHsc /GF /FC /MP /Gm-)
   # Suppress warnings to reduce build log size.
@@ -190,6 +191,7 @@ if (tensorflow_ENABLE_GPU)
       ${CUDA_TOOLKIT_TARGET_DIR}/include/cuda.h ${CUDA_TOOLKIT_TARGET_DIR}/include/cuComplex.h
       ${CUDA_TOOLKIT_TARGET_DIR}/include/cublas_v2.h ${CUDNN_HOME}/include/cudnn.h
       ${CUDA_TOOLKIT_TARGET_DIR}/include/cufft.h ${CUDA_TOOLKIT_TARGET_DIR}/include/curand.h
+      ${CUDA_TOOLKIT_TARGET_DIR}/include/cuda_runtime_api.h
       DESTINATION ${tensorflow_source_dir}/third_party/gpus/cuda/include
     )
     include_directories(${tensorflow_source_dir}/third_party/gpus)

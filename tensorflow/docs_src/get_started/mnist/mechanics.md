@@ -351,7 +351,7 @@ training.
 
 ```python
 if step % 100 == 0:
-    print 'Step %d: loss = %.2f (%.3f sec)' % (step, loss_value, duration)
+    print('Step %d: loss = %.2f (%.3f sec)' % (step, loss_value, duration))
 ```
 
 #### Visualize the Status
@@ -421,19 +421,19 @@ the training and test datasets.  The `do_eval()` function is called thrice, for
 the training, validation, and test datasets.
 
 ```python
-print 'Training Data Eval:'
+print('Training Data Eval:')
 do_eval(sess,
         eval_correct,
         images_placeholder,
         labels_placeholder,
         data_sets.train)
-print 'Validation Data Eval:'
+print('Validation Data Eval:')
 do_eval(sess,
         eval_correct,
         images_placeholder,
         labels_placeholder,
         data_sets.validation)
-print 'Test Data Eval:'
+print('Test Data Eval:')
 do_eval(sess,
         eval_correct,
         images_placeholder,
