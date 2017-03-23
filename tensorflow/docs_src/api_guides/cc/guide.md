@@ -26,9 +26,9 @@ int main() {
   using namespace tensorflow::ops;
   Scope root = Scope::NewRootScope();
   // Matrix A = [3 2; -1 0]
-  auto A = Const(root, {{3.f, 2.f}, {-1.f, 0.f}});
+  auto A = Const(root, { {3.f, 2.f}, {-1.f, 0.f} });
   // Vector b = [3 5]
-  auto b = Const(root, {{3.f, 5.f}});
+  auto b = Const(root, { {3.f, 5.f} });
   // v = Ab^T
   auto v = MatMul(root.WithOpName("v"), A, b, MatMul::TransposeB(true));
   std::vector<Tensor> outputs;
@@ -83,8 +83,8 @@ We will delve into the details of each below.
 of graph construction. A `Scope` acts as a handle to the graph being
 constructed, as well as storing TensorFlow operation properties. The `Scope`
 object is the first argument to operation constructors, and operations that use
-a given `Scope` as their first argument inherit that `Scopes`s properties, such
-as a common name prefix. Multiple `Scopes`s can refer to the same graph, as
+a given `Scope` as their first argument inherit that `Scope`'s properties, such
+as a common name prefix. Multiple `Scope`s can refer to the same graph, as
 explained further below.
 
 Create a new `Scope` object by calling `Scope::NewRootScope`. This creates
@@ -126,7 +126,7 @@ to construct an operation as follows:
 MatMul m(scope, a, b);
 ```
 
-However, we recommend the following "functional" style for constructing
+Instead, we recommend the following "functional" style for constructing
 operations:
 
 ```c++
@@ -214,11 +214,11 @@ auto s = Const(scope, "hello world!");
 
 ```c++
 // 2x2 matrix
-auto c1 = Const(scope, {{1, 2}, {2, 4}});
+auto c1 = Const(scope, { {1, 2}, {2, 4} });
 // 1x3x1 tensor
-auto c2 = Const(scope, {{{1}, {2}, {3}}});
+auto c2 = Const(scope, { { {1}, {2}, {3} } });
 // 1x2x0 tensor
-auto c3 = ops::Const(scope, {{{}, {}}});
+auto c3 = ops::Const(scope, { { {}, {} } });
 ```
 
 * Shapes explicitly specified
@@ -236,7 +236,7 @@ the above types of C++ values. For example:
 
 ```c++
 // [1 1] * [41; 1]
-auto x = MatMul(scope, {{1, 1}}, {{41}, {1}});
+auto x = MatMul(scope, { {1, 1} }, { {41}, {1} });
 // [1 2 3 4] + 10
 auto y = Add(scope, {1, 2, 3, 4}, 10);
 ```
@@ -250,8 +250,8 @@ the graph need to be executed, and what values need feeding. For example:
 
 ```c++
 Scope root = Scope::NewRootScope();
-auto c = Const(root, {{1, 1}});
-auto m = MatMul(root, c, {{42}, {1}});
+auto c = Const(root, { {1, 1} });
+auto m = MatMul(root, c, { {42}, {1} });
 
 ClientSession session(root);
 std::vector<Tensor> outputs;
@@ -274,7 +274,7 @@ ClientSession session(root);
 std::vector<Tensor> outputs;
 
 // Feed a <- [1 2; 3 4]
-session.Run({{a, {{1, 2}, {3, 4}}}}, {c}, &outputs);
+session.Run({ {a, { {1, 2}, {3, 4} } } }, {c}, &outputs);
 // outputs[0] == [4 5; 6 7]
 ```
 
