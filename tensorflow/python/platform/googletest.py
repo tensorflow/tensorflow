@@ -99,6 +99,7 @@ def main(argv=None):  # pylint: disable=function-redefined
 
 def GetTempDir():
   """Return a temporary directory for tests to use."""
+  global _googletest_temp_dir
   if not _googletest_temp_dir:
     first_frame = inspect.stack()[-1][0]
     temp_dir = os.path.join(
@@ -115,7 +116,6 @@ def GetTempDir():
         logging.error('Error removing %s: %s', dirname, e)
 
     atexit.register(delete_temp_dir)
-    global _googletest_temp_dir
     _googletest_temp_dir = temp_dir
 
   return _googletest_temp_dir
