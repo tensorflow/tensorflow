@@ -76,11 +76,12 @@ and some implementations.  To see an example use, see @{$threading_and_queues$Th
 *   @{tf.ConditionalAccumulator}
 *   @{tf.SparseConditionalAccumulator}
 
-## Dealing with the filesystem
+## Dealing with the filesystem and network IO
 
 *   @{tf.matching_files}
 *   @{tf.read_file}
 *   @{tf.write_file}
+*   @{tf.poll_zmq}
 
 ## Input pipeline
 

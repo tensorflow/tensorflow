@@ -62,6 +62,7 @@ See the @{$python/io_ops} guide.
 @@maybe_shuffle_batch
 @@shuffle_batch_join
 @@maybe_shuffle_batch_join
+@@poll_zmq
 """
 
 from __future__ import absolute_import
