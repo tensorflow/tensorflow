@@ -25,6 +25,20 @@ filegroup(
 )
 
 cc_library(
+    name = "graph_rewriter",
+    srcs = ["graph_rewriter.cc"],
+    hdrs = [
+        "graph_rewriter.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:utils",
+    ],
+)
+
+cc_library(
     name = "graph_optimizer",
     hdrs = [
         "graph_optimizer.h",
@@ -33,6 +47,36 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+cc_library(
+    name = "model_pruner",
+    srcs = ["model_pruner.cc"],
+    hdrs = [
+        "model_pruner.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":graph_optimizer",
+        ":graph_rewriter",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:grappler_item",
+    ],
+)
+
+cc_test(
+    name = "model_pruner_test",
+    srcs = ["model_pruner_test.cc"],
+    deps = [
+        ":model_pruner",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
     ],
 )
 
