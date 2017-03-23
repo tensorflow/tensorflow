@@ -45,7 +45,9 @@ def embedding_lookup(params, ids, partition_strategy="mod", name=None,
                      validate_indices=True, max_norm=None,
                      use_aggregation=False,
                      weights=None, idx=None, segment_ids=None):
-  """Looks up `ids` in a list of embedding tensors.
+  """Looks up `ids` in a list of embedding tensors. Note that `use_aggregation`,
+  `weights`, `idx` and `segment_ids` are for internal use, user should not use
+  them.
 
   This function is used to perform parallel lookups on the list of
   tensors in `params`.  It is a generalization of
@@ -346,7 +348,7 @@ def embedding_lookup_sparse(params, sp_ids, sp_weights,
                             name=None,
                             combiner=None,
                             max_norm=None,
-                            use_aggregation=True):
+                            use_aggregation=False):
   """Computes embeddings for the given ids and weights.
 
   This op assumes that there is at least one id for each row in the dense tensor
@@ -532,12 +534,12 @@ def embedding_lookup_sparse(params, sp_ids, sp_weights,
 
       if combiner == "mean":
         weight_sum = math_ops.segment_sum(weights, segment_ids)
-        embeddings = math_ops.div(embeddings, weight_sum, name=name)
+        embeddings = math_ops.div(embeddings, weight_sum)
       elif combiner == "sqrtn":
         weights_squared = math_ops.pow(weights, 2)
         weight_sum = math_ops.segment_sum(weights_squared, segment_ids)
         weight_sum_sqrt = math_ops.sqrt(weight_sum)
-        embeddings = math_ops.div(embeddings, weight_sum_sqrt, name=name)
+        embeddings = math_ops.div(embeddings, weight_sum_sqrt)
       elif combiner != "sum":
         assert False, "Unrecognized combiner"
 
