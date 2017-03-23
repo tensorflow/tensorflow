@@ -2320,6 +2320,10 @@ cuda_py_test(
         "//tensorflow/python:nn_ops",
     ],
     shard_count = 20,
+    tags = [
+        "manual",
+        "notap",
+    ],
 )
 
 cuda_py_test(
