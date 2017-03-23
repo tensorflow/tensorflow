@@ -469,6 +469,48 @@ class ExperimentTest(test.TestCase):
     self.assertEqual([noop_hook], est.eval_hooks)
     self.assertTrue(isinstance(est.monitors[0], monitors.ValidationMonitor))
 
+  def test_continuous_train_and_eval(self):
+    est = TestEstimator(eval_dict={'global_step': 100})
+    noop_hook = _NoopHook()
+    export_strategy = saved_model_export_utils.make_export_strategy(
+        est, 'export_input', exports_to_keep=None)
+    ex = experiment.Experiment(
+        est,
+        train_input_fn='train_input',
+        eval_input_fn='eval_input',
+        eval_metrics='eval_metrics',
+        eval_hooks=[noop_hook],
+        train_steps=100,
+        eval_steps=100,
+        export_strategies=export_strategy)
+    ex.continuous_train_and_eval()
+    self.assertEqual(1, est.fit_count)
+    self.assertEqual(1, est.eval_count)
+    self.assertEqual(1, est.export_count)
+    self.assertEqual([noop_hook], est.eval_hooks)
+
+  def test_continuous_train_and_eval_with_predicate_fn(self):
+    est = TestEstimator(eval_dict={'global_step': 100})
+    export_strategy = saved_model_export_utils.make_export_strategy(
+        est, 'export_input', exports_to_keep=None)
+    ex = experiment.Experiment(
+        est,
+        train_input_fn='train_input',
+        eval_input_fn='eval_input',
+        eval_metrics='eval_metrics',
+        train_steps=100000000000,  # a value will make `ex` never stops.
+        eval_steps=100,
+        export_strategies=export_strategy)
+
+    def predicate_fn(eval_result):
+      del eval_result  # unused. for fn signature.
+      return False
+
+    ex.continuous_train_and_eval(continuous_eval_predicate_fn=predicate_fn)
+    self.assertEqual(0, est.fit_count)
+    self.assertEqual(0, est.eval_count)
+    self.assertEqual(1, est.export_count)
+
   @test.mock.patch.object(server_lib, 'Server')
   def test_run_std_server(self, mock_server):
     # Arrange.

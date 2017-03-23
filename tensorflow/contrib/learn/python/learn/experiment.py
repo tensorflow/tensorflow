@@ -26,16 +26,19 @@ import time
 
 from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework import deprecated_args
+from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import export_strategy
 from tensorflow.contrib.learn.python.learn import monitors
 from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import run_config
+from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import saver
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
+
 
 __all__ = ["Experiment"]
 
@@ -97,9 +100,8 @@ class Experiment(object):
         function.
       eval_hooks: A list of `SessionRunHook` hooks to pass to the
         `Estimator`'s `evaluate` function.
-      local_eval_frequency: Frequency of running eval in steps,
-        when running locally. If `None`, runs evaluation only at the end of
-        training.
+      local_eval_frequency: (applies only to local_run) Frequency of running
+        eval in steps. If `None`, runs evaluation only at the end of training.
       eval_delay_secs: Start evaluating after waiting for this many seconds.
       continuous_eval_throttle_secs: Do not re-evaluate unless the last
         evaluation was started at least this many seconds ago for
@@ -325,13 +327,12 @@ class Experiment(object):
     while (not continuous_eval_predicate_fn or
            continuous_eval_predicate_fn(eval_result)):
       # Exit if we have already reached number of steps to train.
-      if eval_result:
-        global_step = eval_result.get("global_step")
-        if global_step and self._train_steps and (
-            global_step >= self._train_steps):
-          logging.info("Exiting continuous eval, global_step=%s >= "
-                       "train_step=%s" % (global_step, self._train_steps))
-          return
+      if self._has_training_stopped(eval_result):
+        logging.info("Exiting continuous eval, global_step=%s >= "
+                     "train_step=%s",
+                     eval_result[ops.GraphKeys.GLOBAL_STEP],
+                     self._train_steps)
+        return
 
       start = time.time()
 
@@ -372,6 +373,15 @@ class Experiment(object):
         logging.info("Waiting %f secs before starting next eval run.",
                      difference)
         time.sleep(difference)
+
+  def _has_training_stopped(self, eval_result):
+    """Determines whether the training has stopped."""
+    if not eval_result:
+      return False
+
+    global_step = eval_result.get(ops.GraphKeys.GLOBAL_STEP)
+    return global_step and self._train_steps and (
+        global_step >= self._train_steps)
 
   def continuous_eval(self,
                       delay_secs=None,
@@ -446,6 +456,83 @@ class Experiment(object):
                                            hooks=self._eval_hooks)
     export_results = self._maybe_export(eval_result)
     return eval_result, export_results
+
+  @experimental
+  def continuous_train_and_eval(self,
+                                train_steps_per_iteration=1000,
+                                continuous_eval_predicate_fn=None):
+    """Interleaves training and evaluation.
+
+    The frequency of evaluation is controlled by the
+    `train_steps_per_iteration`. The model will be first trained for
+    `train_steps_per_iteration`, and then be evaluated in turns.
+
+    This differs from `train_and_evaluate` as follows:
+      1. The procedure will have train and evaluation in turns. The model
+      will be trained for a number of steps (usuallly smaller than `train_steps`
+      if provided) and then be evaluated.  `train_and_evaluate` will train the
+      model for `train_steps` (no small training iteraions).
+
+      2. Due to the different approach this schedule takes, it leads to two
+      differences in resource control. First, the resources (e.g., memory) used
+      by training will be released before evaluation (`train_and_evaluate` takes
+      double resources). Second, more checkpoints will be saved as a checkpoint
+      is generated at the end of each small trainning iteration.
+
+    Args:
+      train_steps_per_iteration: The (integer) number of train steps for
+        each training-evaluation iteration. With a small
+        `train_steps_per_iteration`, the model will be evaluated more frequently
+        with more checkpoints saved.
+      continuous_eval_predicate_fn: A predicate function determining whether to
+        continue after each iteration. `predicate_fn` takes the evaluation
+        results as its arguments. At the beginning of evaluation, the passed
+        eval results will be None so it's expected that the predicate function
+        handles that gracefully. When `predicate_fn` is not specified, this will
+        run in an infinite loop or exit when global_step reaches `train_steps`.
+
+    Returns:
+      A tuple of the result of the `evaluate` call to the `Estimator` and the
+      export results using the specified `ExportStrategy`.
+
+    Raises:
+      ValueError: if `continuous_eval_predicate_fn` is neither None nor
+        callable.
+    """
+
+    if (continuous_eval_predicate_fn is not None and
+        not callable(continuous_eval_predicate_fn)):
+      raise ValueError(
+          "`continuous_eval_predicate_fn` must be a callable, or None.")
+
+    eval_result = None
+
+    # TODO(b/33295821): improve the way to determine the
+    # train_steps_per_iteration.
+    if self._train_steps and train_steps_per_iteration > self._train_steps:
+      train_steps_per_iteration = self._train_steps
+
+    while (not continuous_eval_predicate_fn or
+           continuous_eval_predicate_fn(eval_result)):
+
+      if self._has_training_stopped(eval_result):
+        # Exits once max steps of training is satisfied.
+        logging.info("Stop training model as max steps reached")
+        break
+
+      logging.info("Training model for %s steps", train_steps_per_iteration)
+      self._estimator.fit(input_fn=self._train_input_fn,
+                          steps=train_steps_per_iteration,
+                          monitors=self._train_monitors)
+
+      logging.info("Evaluating model now.")
+      eval_result = self._estimator.evaluate(input_fn=self._eval_input_fn,
+                                             steps=self._eval_steps,
+                                             metrics=self._eval_metrics,
+                                             name="one_pass",
+                                             hooks=self._eval_hooks)
+
+    return eval_result, self._maybe_export(eval_result)
 
   def _maybe_export(self, eval_result, checkpoint_path=None):
     """Export the Estimator using export_fn, if defined."""
