@@ -147,11 +147,75 @@ namespace tensorflow {
 //        it is, then we rewrite that node after constructing new inputs to
 //        the node. If it is not Mkl layer, then we do not rewrite the node.
 //
+// Handling workspace propagation for certain ops:
+//
+//        Certain backward ops in MKL (MaxPool, LRN and BatchNorm) require
+//        passing of workspace from their corresponding forward ops. But
+//        TensorFlow does not have a notion of workspace and as a result
+//        does not allow producing additional outputs from these forward ops.
+//        For these ops, we need to add an additional edge between forward
+//        ops and their corresponding backward ops, and this edge carries
+//        workspace tensor value and another edge carries Mkl tensor for
+//        workspace tensor.
+//
+//        Example:
+//
+//        Typical graph for MaxPool and its gradient looks like:
+//
+//        A = MaxPool(T)
+//        B = MaxPoolGrad(X, A, Y)
+//
+//        We will transform this graph to propagate workspace as:
+//
+//        A, A_m, W, W_m = MklMaxPool(T, T_m)
+//        B, B_m = MklMaxPoolGrad(X, X_m, A, A_m, Y, Y_m, W, W_m)
+//
+//        Here W is the workspace tensor. Transformed tensors with name
+//        suffix _m are Mkl tensors and this transformation has been done
+//        using the algorithm discussed earlier. The transformation for
+//        workspace only adds extra outputs (W, W_m) for forward op and
+//        connects them to corresponding backward ops.
+//
+//        Terms:
+//
+//        Forward op name = name of the op in the forward pass
+//          where workspace originates (MaxPool in this example)
+//        Backward op name = name of the op in the backward pass that receives
+//          workspace from forward op (MaxPoolGrad in the example)
+//        Slot = Number of the output or input slot that will be
+//               used by the workspace (2 for MklMaxPool as W is 3rd
+//               output of MaxPool (0 is 1st); 6 for MklMaxPoolGrad)
+//
+//        Question:
+//
+//        How do we associate backward op to forward op? There can be more
+//        than one op with exact same name.
+//
+//        In this example we associate MaxPoolGrad with MaxPool. But there
+//        could be more than one MaxPool ops. To solve this problem, we look
+//        for _direct_ edge between forward op and backward op (tensor A is
+//        flowing along this edge in the example.)
+//
+//        How do we transform forward and backward op when there is no direct
+//        edge between them? In such case, we generate dummy tensors as
+//        workspace tensors. For the example, transformation of MaxPool will
+//        be exactly same --- it is just that MaxPool won't generate any
+//        workspace tensor. For MaxPoolGrad, transformation will also be same,
+//        but instead of connecting W and W_m with outputs of MaxPool, we will
+//        produce dummy tensors for them, and we will set workspace_enabled
+//        attribute to false.
+//
 class MklLayoutRewritePass : public GraphOptimizationPass {
  public:
   MklLayoutRewritePass() {
     csinfo_.conv2d           = "Conv2D";
+    csinfo_.relu             = "Relu";
+    csinfo_.relugrad         = "ReluGrad";
     csinfo_.conv2dgradfilter = "Conv2DBackpropFilter";
+    csinfo_.maxpool          = "MaxPool";
+    csinfo_.maxpoolgrad      = "MaxPoolGrad";
+    csinfo_.avgpool          = "AvgPool";
+    csinfo_.avgpoolgrad      = "AvgPoolGrad";
     csinfo_.conv2dgradinput  = "Conv2DBackpropInput";
 
     ninfo_.push_back({csinfo_.conv2d,   GetMklOpName(csinfo_.conv2d),
@@ -162,6 +226,21 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     ninfo_.push_back({csinfo_.conv2dgradinput,
         GetMklOpName(csinfo_.conv2dgradinput),
                       3, CopyAttrsConv2D});
+    ninfo_.push_back({csinfo_.relu, GetMklOpName(csinfo_.relu),
+                      1, CopyAttrsRelu});
+    ninfo_.push_back({csinfo_.relugrad, GetMklOpName(csinfo_.relugrad),
+                      2, CopyAttrsRelu });
+    ninfo_.push_back({csinfo_.maxpool, GetMklOpName(csinfo_.maxpool),
+                      1, CopyAttrsPooling});
+    ninfo_.push_back({csinfo_.maxpoolgrad, GetMklOpName(csinfo_.maxpoolgrad),
+                      3, CopyAttrsPooling});
+    ninfo_.push_back({csinfo_.avgpool, GetMklOpName(csinfo_.avgpool),
+                      1, CopyAttrsPooling});
+    ninfo_.push_back({csinfo_.avgpoolgrad, GetMklOpName(csinfo_.avgpoolgrad),
+                      3, CopyAttrsPooling});
+
+    // Add info about which ops to add workspace edge to and the slots.
+    wsinfo_.push_back({csinfo_.maxpool, csinfo_.maxpoolgrad, 0, 1, 2, 6});
   }
 
   // Standard interface to run pass
@@ -188,15 +267,38 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                     // to copy attributes from old node to new node.
   } NodesInfo;
 
+  /// Structure to specify forward op, backward op, and the slot numbers
+  /// in forward and backward op where we will add workspace edge.
+  typedef struct {
+    string fwdop;   // Name of the forward op in the graph
+    string bwdop;   // Name of the backward op in the graph
+    int fwdslot;    // Output slot in the forward op node where actual
+                    // output tensor resides
+    int bwdslot;    // Input slot in the backward op node where actual
+                    // input tensor resides
+    int wsfwdslot;  // Output slot in the forward op node where workspace
+                    // edge is added
+    int wsbwdslot;  // Input slot in the backward op node where workspace
+                    // edge is added
+  } WorkSpaceInfo;
+
   /// Structure to store all constant strings
   struct {
     string conv2d;
     string conv2dgradfilter;
+    string maxpool;
+    string maxpoolgrad;
+    string avgpool;
+    string avgpoolgrad;
     string conv2dgradinput;
+    string conv2dgradbias;
   } csinfo_;
 
   /// Maintain info about nodes to rewrite
   std::vector<NodesInfo> ninfo_;
+
+  /// Maintain info about nodes to add workspace edge
+  std::vector<WorkSpaceInfo> wsinfo_;
 
   /// Hash table to maintain nodes visited in the graph.
   std::unordered_set<const Node*> visited_nodes_;
@@ -239,6 +341,12 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                     const gtl::InlinedVector<std::pair<Node*, int>, 4>& inputs,
                     NodeBuilder* nb, Node* orign);
 
+  // Add workspace edge on the input or output side of Node 'orign' by using
+  // NodeBuilder 'nb' for the new node provided. If 'orign' does not dictate
+  // adding workspace edge then do not add it.
+  void AddWorkSpaceEdgeIfNeeded(std::unique_ptr<Graph>* g, Node* orign,
+      NodeBuilder* nb);
+
   // Rewrite Node 'n' in graph 'g' with rewrite information specified in 'ni'
   // Returns Status::OK() if node rewrite is successful, otherwise returns
   // appropriate error status
@@ -248,11 +356,16 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   // We need operator-specific function to copy attributes because the framework
   // does not provide any generic function for it.
   static void CopyAttrsConv2D(Node* orign, NodeBuilder* nb);
+  static void CopyAttrsConv2DBias(Node* orign, NodeBuilder* nb);
+  static void CopyAttrsPooling(Node* orign, NodeBuilder* nb);
+  static void CopyAttrsRelu(Node* orign, NodeBuilder* nb);
 
   // Generate a graph node in graph 'g' representing a dummy Mkl tensor node,
   // using node for original node 'orign' and return it in '*out'.
   // TODO(nhasabni) We should move this to mkl_util.h
   void GetDummyMklTensorNode(std::unique_ptr<Graph>* g, Node** out,
+                             Node* orign);
+  void GetDummyWorkspaceTensorNode(std::unique_ptr<Graph>* g, Node** out,
                              Node* orign);
 };
 
@@ -286,49 +399,6 @@ static void FillInputs(const Node* n,
 
 //////////////////////////////////////////////////////////////////////////
 
-// Macros to build new node with different number of inputs.
-// We need this way because we need to specify all the inputs when
-// building a node. Comment at core/graph/node_builder.h, line 85-86.
-
-#define SETUP_INPUTS1(nb, op1) do {        \
-  nb->Input(op1.node, op1.index);          \
-}while(0)
-
-#define SETUP_INPUTS2(nb, op1, op2) do {   \
-  nb->Input(op1.node, op1.index);          \
-  nb->Input(op2.node, op2.index);          \
-}while(0)
-
-#define SETUP_INPUTS3(nb, op1, op2, op3) do {      \
-  nb->Input(op1.node, op1.index);          \
-  nb->Input(op2.node, op2.index);          \
-  nb->Input(op3.node, op3.index);          \
-}while(0)
-
-#define SETUP_INPUTS4(nb, op1, op2, op3, op4) do {  \
-  nb->Input(op1.node, op1.index);          \
-  nb->Input(op2.node, op2.index);          \
-  nb->Input(op3.node, op3.index);          \
-  nb->Input(op4.node, op4.index);          \
-}while(0)
-
-#define SETUP_INPUTS5(nb, op1, op2, op3, op4, op5) do {\
-  nb->Input(op1.node, op1.index);          \
-  nb->Input(op2.node, op2.index);          \
-  nb->Input(op3.node, op3.index);          \
-  nb->Input(op4.node, op4.index);          \
-  nb->Input(op5.node, op5.index);          \
-}while(0)
-
-#define SETUP_INPUTS6(nb, op1, op2, op3, op4, op5, op6) do {\
-  nb->Input(op1.node, op1.index);          \
-  nb->Input(op2.node, op2.index);          \
-  nb->Input(op3.node, op3.index);          \
-  nb->Input(op4.node, op4.index);          \
-  nb->Input(op5.node, op5.index);          \
-  nb->Input(op6.node, op6.index);          \
-}while(0)
-
 // TODO(nhasabni) We should move this to mkl_util.h.
 void MklLayoutRewritePass::GetDummyMklTensorNode(
     std::unique_ptr<Graph>* g, Node** out, Node* orign) {
@@ -341,6 +411,29 @@ void MklLayoutRewritePass::GetDummyMklTensorNode(
   proto.set_tensor_content(const_cast<const void*>(
       static_cast<void*>(&zero)), 8);
   TensorShape dummy_shape({8});
+  dummy_shape.AsProto(proto.mutable_tensor_shape());
+  TF_CHECK_OK(NodeBuilder((*g)->NewName("DMT"), "Const")
+                 .Attr("value", proto)
+                 .Attr("dtype", dt)
+                 .Device(orign->def().device())  // We place this node on same
+                                             // device as device of original
+                                             // node.
+                 .Finalize(&**g, out));
+}
+
+// TODO(nhasabni) We should move this to mkl_util.h.
+void MklLayoutRewritePass::GetDummyWorkspaceTensorNode(
+    std::unique_ptr<Graph>* g, Node** out, Node* orign) {
+  // We use a tensor of shape {1} and value 0 to represent
+  // dummy float tensor. We need this as a dummy workspace tensor.
+  // Workspace tensor has type float.
+  const DataType dt = DataTypeToEnum<float>::v();
+  TensorProto proto;
+  proto.set_dtype(dt);
+  float zero[1] = {0};
+  proto.set_tensor_content(const_cast<const void*>(
+      static_cast<void*>(&zero)), 4);
+  TensorShape dummy_shape({1});
   dummy_shape.AsProto(proto.mutable_tensor_shape());
   TF_CHECK_OK(NodeBuilder((*g)->NewName("DMT"), "Const")
                  .Attr("value", proto)
@@ -394,39 +487,100 @@ Status MklLayoutRewritePass::SetUpInputs(std::unique_ptr<Graph>* g,
   // N for Mkl tensors corresponding to each Tensorflow tensors.
   CHECK_EQ(new_inputs.size(), inputs.size() * 2);
 
-  // 2. Let's build the node with new inputs.
-  switch (new_inputs.size()) {
-    case 0:  // We don't need to do anything for no input as we have
-             // already built node.
-            break;
-    case 1: SETUP_INPUTS1(nb, new_inputs[0]); break;
-    case 2: SETUP_INPUTS2(nb, new_inputs[0],
-                              new_inputs[1]); break;
-    case 3: SETUP_INPUTS3(nb, new_inputs[0],
-                              new_inputs[1],
-                              new_inputs[2]); break;
-    case 4: SETUP_INPUTS4(nb, new_inputs[0],
-                              new_inputs[1],
-                              new_inputs[2],
-                              new_inputs[3]); break;
-    case 5: SETUP_INPUTS5(nb, new_inputs[0],
-                              new_inputs[1],
-                              new_inputs[2],
-                              new_inputs[3],
-                              new_inputs[4]); break;
-    case 6: SETUP_INPUTS6(nb, new_inputs[0],
-                              new_inputs[1],
-                              new_inputs[2],
-                              new_inputs[3],
-                              new_inputs[4],
-                              new_inputs[5]); break;
-    default: {
-      return Status(error::Code::UNIMPLEMENTED,
-                    "Could not create node with given number of inputs");
-    }
+  // 2. Let's add the new inputs.
+  for (auto ni : new_inputs) {
+    nb->Input(ni.node, ni.index);
   }
 
   return Status::OK();
+}
+
+void MklLayoutRewritePass::AddWorkSpaceEdgeIfNeeded(std::unique_ptr<Graph>* g,
+    Node* orign, NodeBuilder* nb) {
+  bool workspace_edge_added = false;
+  for (auto ws : wsinfo_) {
+    if (orign->type_string() == ws.fwdop &&
+        mkl_layer_registry::IsMklLayer(GetMklOpName(orign->type_string()))) {
+      // If this op is a fwd op, then we need to check if there is an
+      // edge from this node's fwdslot to bwdop's bwdslot. If there is
+      // an edge, then we just add an attribute on this node for setting
+      // workspace_passed to true. We don't add actual workspace edge
+      // in this node. Actual workspace edge gets added in the backward
+      // op for this node.
+      for (const Edge* e : orign->out_edges()) {
+        if (e->src_output() == ws.fwdslot &&
+            e->dst()->type_string() == ws.bwdop &&
+            e->dst_input() == ws.bwdslot) {
+          nb->Attr("workspace_enabled", true);
+          VLOG(1) << "MklLayoutRewritePass: workspace_enabled for "
+                  << orign->type_string();
+          workspace_edge_added = true;
+          // We found the edge that we were looking for, so break.
+          break;
+        }
+      }
+
+      if (!workspace_edge_added) {
+        // If we are here, then we did not find backward operator for this
+        // node.
+        nb->Attr("workspace_enabled", false);
+      }
+    } else if (orign->type_string() == ws.bwdop &&
+          mkl_layer_registry::IsMklLayer(GetMklOpName(orign->type_string()))) {
+      // If this op is a bwd op, then we need to add workspace edge and
+      // it's Mkl tensor edge between its corresponding fwd op and this
+      // op. Corresponding fwd op is specified in 'fwdop' field of
+      // workspace info. fwdslot and bwdslot in workspace info specify
+      // an edge between which slots connect forward and backward op.
+      // Once all these criteria match, we add a workspace edge between
+      // wsfwdslot and wsbwdslot. It's corresponding Mkl tensor is added
+      // in wsfwdslot+1 and wsbwdslot+1.
+      for (const Edge* e : orign->in_edges()) {
+        if (e->src_output() == ws.fwdslot &&
+            // We would have rewritten the forward op, so we need to use
+            // GetMklOpName call to get its Mkl name.
+            e->src()->type_string() == GetMklOpName(ws.fwdop) &&
+            e->dst_input() == ws.bwdslot) {
+          nb->Attr("workspace_enabled", true);
+          // Add workspace edge between fwd op and bwd op.
+          nb->Input(e->src(), ws.wsfwdslot);
+          // Add Mkl tensor edge for workspace edge between fwd op and bwd op.
+          nb->Input(e->src(), ws.wsfwdslot+1);
+          // In terms of input ordering, we add these calls to add Input
+          // here because workspace edge (and its Mkl tensor) is the last
+          // edge in the fwdop and bwdop. So all inputs before workspace
+          // tensor have been added by SetUpInputs function.
+          VLOG(1) << "MklLayoutRewritePass: workspace_enabled for "
+                  << orign->type_string();
+          workspace_edge_added = true;
+          // We found the edge that we were looking for, so break.
+          break;
+        }
+      }
+
+      // If we are here means we did not find fwd op that feeds to this
+      // bwd op. So in this case, we need to generate dummy tensors for
+      // workspace input and Mkl tensor for workspace, and set
+      // workspace_enabled to false.
+      if (!workspace_edge_added) {
+        nb->Attr("workspace_enabled", false);
+        Node* dmt_ws = nullptr;  // Dummy tensor for workspace
+        Node* dmt_mkl_ws = nullptr;  // Dummy Mkl tensor for workspace
+        GetDummyWorkspaceTensorNode(g, &dmt_ws, orign);
+        GetDummyMklTensorNode(g, &dmt_mkl_ws, orign);
+        CHECK_NOTNULL(dmt_ws);
+        CHECK_NOTNULL(dmt_mkl_ws);
+        nb->Input(dmt_ws, 0);  // We add dummy tensor as workspace tensor.
+        nb->Input(dmt_mkl_ws, 0);  // We add dummy tensor as Mkl
+                             // tensor for workspace tensor.
+        VLOG(1) << "MklLayoutRewritePass: dummy workspace_enabled for "
+              << orign->type_string();
+      }
+    } else {
+      // If this node does not match any workspace info, then we do not
+      // do anything special for workspace progagation for it.
+    }
+  }
 }
 
 void MklLayoutRewritePass::CopyAttrsConv2D(Node* orign, NodeBuilder* nb) {
@@ -451,6 +605,53 @@ void MklLayoutRewritePass::CopyAttrsConv2D(Node* orign, NodeBuilder* nb) {
   nb->Attr("use_cudnn_on_gpu", use_cudnn_on_gpu);
 }
 
+void MklLayoutRewritePass::CopyAttrsConv2DBias(Node* orign, NodeBuilder* nb) {
+  DataType T;
+  string data_format;
+  std::vector<int32> strides;
+
+  // Get all attributes from old node.
+  TF_CHECK_OK(GetNodeAttr(orign->def(), "T", &T));
+  TF_CHECK_OK(GetNodeAttr(orign->def(), "strides", &strides));
+  TF_CHECK_OK(GetNodeAttr(orign->def(), "data_format", &data_format));
+
+  // Add attributes to new node.
+  nb->Attr("T", T);
+  nb->Attr("strides", strides);
+  nb->Attr("data_format", data_format);
+}
+
+void MklLayoutRewritePass::CopyAttrsPooling(Node* orign, NodeBuilder* nb) {
+  DataType T;
+  string data_format;
+  string padding;
+  std::vector<int32> ksize, strides;
+
+  // Get all attributes from old node.
+  TF_CHECK_OK(GetNodeAttr(orign->def(), "T", &T));
+  TF_CHECK_OK(GetNodeAttr(orign->def(), "ksize", &ksize));
+  TF_CHECK_OK(GetNodeAttr(orign->def(), "strides", &strides));
+  TF_CHECK_OK(GetNodeAttr(orign->def(), "padding", &padding));
+  TF_CHECK_OK(GetNodeAttr(orign->def(), "data_format", &data_format));
+
+  // Add attributes to new node.
+  nb->Attr("T", T);
+  nb->Attr("ksize", ksize);
+  nb->Attr("strides", strides);
+  nb->Attr("padding", padding);
+  nb->Attr("data_format", data_format);
+}
+
+void MklLayoutRewritePass::CopyAttrsRelu(Node* orign, NodeBuilder* nb) {
+  DataType T;
+
+  // Get all attributes from old node.
+  TF_CHECK_OK(GetNodeAttr(orign->def(), "T", &T));
+
+  // Add attributes to new node.
+  nb->Attr("T", T);
+}
+
 Status MklLayoutRewritePass::RewriteNode(
     std::unique_ptr<Graph>* g, Node* orign, const NodesInfo& ni) {
   VLOG(1) << "MklLayoutRewritePass: Original node:" << orign->DebugString();
@@ -471,13 +672,18 @@ Status MklLayoutRewritePass::RewriteNode(
   if (s != Status::OK()) {
     return s;
   }
+
   // Copy attributes from original node to new node.
   ni.copyattrs(orign, &nb);
   // Set the Mkl layer label for this op.
   nb.Attr("_kernel", mkl_layer_registry::kMklLayerLabel);
-  Node* newn = nullptr;
+
+  // Add workspace edge to this node if needed.
+  // We add workspace edge only for MaxPool, LRN and BatchNorm.
+  AddWorkSpaceEdgeIfNeeded(g, orign, &nb);
 
   // Finalize graph and get new node.
+  Node* newn = nullptr;
   TF_CHECK_OK(nb.Finalize(&**g, &newn));
   CHECK_NOTNULL(newn);
 
