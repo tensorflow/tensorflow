@@ -26,31 +26,13 @@ limitations under the License.
 #include "tensorflow/core/protobuf/queue_runner.pb.h"
 
 namespace tensorflow {
-
-class MetaGraphDef;
-
 namespace grappler {
-
-struct ItemConfig {
-  // If true, ignore all user specified node placement.
-  bool ignore_user_placement = true;
-  // If true, ignore all user specified colocation attributes.
-  bool ignore_colocation = true;
-  // Dimension to use if a placeholder node has an _output_shapes attribute with
-  // a dimension of -1.
-  int32 placeholder_unknown_output_shape_dim = -1;
-};
 
 // A TensorFlow model to optimize.
 // Models are represented by the combination of a graph, one of more fetch
 // nodes, and potentially a set of nodes to feed.
 // TODO(volunteer_needed): turn this struct into a class.
 struct GrapplerItem {
-  // Factory method for creating a GrapplerItem from a MetaGraphDef.
-  // Returns nullptr if the given meta_graph cannot be converted.
-  static std::unique_ptr<GrapplerItem> FromMetaGraphDef(
-      const string& id, const MetaGraphDef& meta_graph, const ItemConfig& cfg);
-
   string id;  // A unique id for this item
 
   // Inputs

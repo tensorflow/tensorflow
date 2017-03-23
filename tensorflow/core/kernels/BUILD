@@ -17,10 +17,7 @@ licenses(["notice"])  # Apache 2.0
 
 package_group(
     name = "friends",
-    packages = [
-        "//learning/deepmind/...",
-        "//tensorflow/...",
-    ],
+    packages = ["//tensorflow/..."],
 )
 
 load(
@@ -368,17 +365,17 @@ cc_library(
     ],
 )
 
-# Private support libraries ---------------------------------------------------
-
 cc_library(
     name = "bounds_check",
     hdrs = ["bounds_check.h"],
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = [":friends"],
     deps = [
         "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
     ],
 )
+
+# Private support libraries ---------------------------------------------------
 
 cc_header_only_library(
     name = "bounds_check_lib",
@@ -409,6 +406,7 @@ cc_library(
         "eigen_pooling.h",
         "eigen_softmax.h",
         "eigen_spatial_convolutions.h",
+        "eigen_volume_patch.h",
     ],
     deps = [
         "//third_party/eigen3",
@@ -1113,6 +1111,19 @@ tf_kernel_library(
     alwayslink = 0,
 )
 
+tf_cc_test(
+    name = "transpose_util_test",
+    size = "small",
+    srcs = ["transpose_util_test.cc"],
+    deps = [
+        ":transpose_functor",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:tensor_testutil",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 tf_kernel_library(
     name = "candidate_sampler_ops",
     prefix = "candidate_sampler_ops",
@@ -1718,6 +1729,22 @@ tf_cc_tests(
 tf_cuda_cc_test(
     name = "adjust_contrast_op_benchmark_test",
     srcs = ["adjust_contrast_op_benchmark_test.cc"],
+    deps = [
+        ":image",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "resize_benchmark_test",
+    srcs = ["resize_op_benchmark_test.cc"],
     deps = [
         ":image",
         ":ops_testutil",
@@ -2364,7 +2391,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-    ],
+    ] + if_mkl([":mkl_matmul_op"]),
 )
 
 tf_cuda_cc_test(
@@ -4393,6 +4420,57 @@ if_mkl(
     tf_kernel_library(
         name = "mkl_conv_op",
         prefix = "mkl_conv",
+        deps = [
+            ":bounds_check",
+            ":ops_util",
+            "//tensorflow/core:core_cpu",
+            "//tensorflow/core:framework",
+            "//tensorflow/core:lib",
+            "//tensorflow/core:lib_internal",
+            "//tensorflow/core:nn_ops_op_lib",
+            "//third_party/mkl:intel_binary_blob",
+        ],
+    ),
+)
+
+if_mkl(
+    tf_kernel_library(
+        name = "mkl_conv_grad_filter_ops",
+        prefix = "mkl_conv_grad_filter_ops",
+        deps = [
+            ":bounds_check",
+            ":ops_util",
+            "//tensorflow/core:core_cpu",
+            "//tensorflow/core:framework",
+            "//tensorflow/core:lib",
+            "//tensorflow/core:lib_internal",
+            "//tensorflow/core:nn_ops_op_lib",
+            "//third_party/mkl:intel_binary_blob",
+        ],
+    ),
+)
+
+if_mkl(
+    tf_kernel_library(
+        name = "mkl_conv_grad_bias_ops",
+        prefix = "mkl_conv_grad_bias_ops",
+        deps = [
+            ":bounds_check",
+            ":ops_util",
+            "//tensorflow/core:core_cpu",
+            "//tensorflow/core:framework",
+            "//tensorflow/core:lib",
+            "//tensorflow/core:lib_internal",
+            "//tensorflow/core:nn_ops_op_lib",
+            "//third_party/mkl:intel_binary_blob",
+        ],
+    ),
+)
+
+if_mkl(
+    tf_kernel_library(
+        name = "mkl_conv_grad_input_ops",
+        prefix = "mkl_conv_grad_input_ops",
         deps = [
             ":bounds_check",
             ":ops_util",

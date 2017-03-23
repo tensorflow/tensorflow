@@ -1010,6 +1010,7 @@ REGISTER_OP("Conv3D")
     .Attr("T: numbertype")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
+    .Attr(GetConvnet3dDataFormatAttrString())
     .SetShapeFn(shape_inference::Conv3DShape)
     .Doc(R"doc(
 Computes a 3-D convolution given 5-D `input` and `filter` tensors.
@@ -1026,7 +1027,11 @@ filter: Shape `[filter_depth, filter_height, filter_width, in_channels,
 strides: 1-D tensor of length 5. The stride of the sliding window for each
   dimension of `input`. Must have `strides[0] = strides[4] = 1`.
 padding: The type of padding algorithm to use.
-
+data_format: The data format of the input and output data. With the
+    default format "NDHWC", the data is stored in the order of:
+        [batch, in_depth, in_height, in_width, in_channels].
+    Alternatively, the format could be "NCDHW", the data storage order is:
+        [batch, in_channels, in_depth, in_height, in_width].
 )doc");
 
 REGISTER_OP("Conv3DBackpropInput")
@@ -1092,6 +1097,7 @@ REGISTER_OP("Conv3DBackpropInputV2")
     .Attr("T: numbertype")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
+    .Attr(GetConvnet3dDataFormatAttrString())
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
@@ -1112,6 +1118,11 @@ out_backprop: Backprop signal of shape `[batch, out_depth, out_rows, out_cols,
 strides: 1-D tensor of length 5. The stride of the sliding window for each
   dimension of `input`. Must have `strides[0] = strides[4] = 1`.
 padding: The type of padding algorithm to use.
+data_format: The data format of the input and output data. With the
+    default format "NDHWC", the data is stored in the order of:
+        [batch, in_depth, in_height, in_width, in_channels].
+    Alternatively, the format could be "NCDHW", the data storage order is:
+        [batch, in_channels, in_depth, in_height, in_width].
 
 )doc");
 
@@ -1123,6 +1134,7 @@ REGISTER_OP("Conv3DBackpropFilterV2")
     .Attr("T: numbertype")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
+    .Attr(GetConvnet3dDataFormatAttrString())
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &s));
@@ -1143,6 +1155,11 @@ out_backprop: Backprop signal of shape `[batch, out_depth, out_rows, out_cols,
 strides: 1-D tensor of length 5. The stride of the sliding window for each
   dimension of `input`. Must have `strides[0] = strides[4] = 1`.
 padding: The type of padding algorithm to use.
+data_format: The data format of the input and output data. With the
+    default format "NDHWC", the data is stored in the order of:
+        [batch, in_depth, in_height, in_width, in_channels].
+    Alternatively, the format could be "NCDHW", the data storage order is:
+        [batch, in_channels, in_depth, in_height, in_width].
 
 )doc");
 
@@ -1154,6 +1171,7 @@ REGISTER_OP("AvgPool3D")
     .Attr("ksize: list(int) >= 5")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
+    .Attr(GetConvnet3dDataFormatAttrString())
     .Attr("T: numbertype")
     .SetShapeFn(shape_inference::Pool3DShape)
     .Doc(R"doc(
@@ -1166,6 +1184,11 @@ strides: 1-D tensor of length 5. The stride of the sliding window for each
 padding: The type of padding algorithm to use.
 input: Shape `[batch, depth, rows, cols, channels]` tensor to pool over.
 output: The average pooled output tensor.
+data_format: The data format of the input and output data. With the
+    default format "NDHWC", the data is stored in the order of:
+        [batch, in_depth, in_height, in_width, in_channels].
+    Alternatively, the format could be "NCDHW", the data storage order is:
+        [batch, in_channels, in_depth, in_height, in_width].
 )doc");
 
 REGISTER_OP("AvgPool3DGrad")
@@ -1175,6 +1198,7 @@ REGISTER_OP("AvgPool3DGrad")
     .Attr("ksize: list(int) >= 5")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
+    .Attr(GetConvnet3dDataFormatAttrString())
     .Attr("T: numbertype")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle s;
@@ -1194,6 +1218,11 @@ padding: The type of padding algorithm to use.
 orig_input_shape: The original input dimensions.
 grad: Output backprop of shape `[batch, depth, rows, cols, channels]`.
 output: The backprop for input.
+data_format: The data format of the input and output data. With the
+    default format "NDHWC", the data is stored in the order of:
+        [batch, in_depth, in_height, in_width, in_channels].
+    Alternatively, the format could be "NCDHW", the data storage order is:
+        [batch, in_channels, in_depth, in_height, in_width].
 )doc");
 
 // --------------------------------------------------------------------------
@@ -1204,6 +1233,7 @@ REGISTER_OP("MaxPool3D")
     .Attr("ksize: list(int) >= 5")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
+    .Attr(GetConvnet3dDataFormatAttrString())
     .Attr("T: numbertype")
     .SetShapeFn(shape_inference::Pool3DShape)
     .Doc(R"doc(
@@ -1216,6 +1246,11 @@ strides: 1-D tensor of length 5. The stride of the sliding window for each
 padding: The type of padding algorithm to use.
 input: Shape `[batch, depth, rows, cols, channels]` tensor to pool over.
 output: The max pooled output tensor.
+data_format: The data format of the input and output data. With the
+    default format "NDHWC", the data is stored in the order of:
+        [batch, in_depth, in_height, in_width, in_channels].
+    Alternatively, the format could be "NCDHW", the data storage order is:
+        [batch, in_channels, in_depth, in_height, in_width].
 )doc");
 
 REGISTER_OP("MaxPool3DGrad")
@@ -1226,6 +1261,7 @@ REGISTER_OP("MaxPool3DGrad")
     .Attr("ksize: list(int) >= 5 ")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
+    .Attr(GetConvnet3dDataFormatAttrString())
     .Attr("T: numbertype")
     .SetShapeFn([](InferenceContext* c) {
       return UnchangedShapeWithRank(c, 5);
@@ -1241,6 +1277,11 @@ padding: The type of padding algorithm to use.
 orig_input: The original input tensor.
 orig_output: The original output tensor.
 grad: Output backprop of shape `[batch, depth, rows, cols, channels]`.
+data_format: The data format of the input and output data. With the
+    default format "NDHWC", the data is stored in the order of:
+        [batch, in_depth, in_height, in_width, in_channels].
+    Alternatively, the format could be "NCDHW", the data storage order is:
+        [batch, in_channels, in_depth, in_height, in_width].
 )doc");
 
 // --------------------------------------------------------------------------
@@ -2019,9 +2060,9 @@ Status TopKShapeFn(InferenceContext* c) {
   DimensionHandle last_dim = c->Dim(input, -1);
   if (c->ValueKnown(last_dim) && c->ValueKnown(k_dim) &&
       c->Value(last_dim) < c->Value(k_dim)) {
-    return errors::InvalidArgument("input must have last dimension >= k = ",
-                                   c->Value(k_dim), " but is ",
-                                   c->Value(last_dim));
+    return errors::InvalidArgument(
+        "input must have last dimension >= k = ", c->Value(k_dim), " but is ",
+        c->Value(last_dim));
   }
 
   // Replace last_dim with k_dim.
@@ -2651,7 +2692,23 @@ REGISTER_OP("MklConv2D")
     .Attr(GetConvnetDataFormatAttrString())
     .SetShapeFn(shape_inference::Conv2DShape)
     .Doc(R"doc(
-MKL version of Conv2D
+MKL version of Conv2D, use MKL dnn primitives to compute 2D convolution.
+Computes a 2-D convolution given 4-D `input` and `filter` tensors using MKL library
+
+input tensor ([batch, in_height, in_width, in_channels]) can be either in MKL shape or not.
+filter / kernel tensor ([filter_height, filter_width, in_channels, out_channels]) can be either in MKL shape or not.
+
+Must have `strides[0] = strides[3] = 1`.  For the most common case of the same
+horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
+
+strides: 1-D of length 4.  The stride of the sliding window for each dimension
+  of `input`. Must be in the same order as the dimension specified with format.
+padding: The type of padding algorithm to use.
+data_format: Specify the data format of the input and output data. With the
+    default format "NHWC", the data is stored in the order of:
+        [batch, in_height, in_width, in_channels].
+    Alternatively, the format could be "NCHW", the data storage order of:
+        [batch, in_channels, in_height, in_width].
 )doc");
 
 REGISTER_OP("MklConv2DWithBias")
@@ -2668,6 +2725,101 @@ REGISTER_OP("MklConv2DWithBias")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString());
+
+REGISTER_OP("MklConv2DBackpropFilter")
+    .Input("input: T")
+    .Input("mkl_input: uint8")
+    .Input("filter_sizes: int32")
+    .Input("mkl_filter_size: uint8")
+    .Input("out_backprop: T")
+    .Input("mkl_out_backprop: uint8")
+    .Output("output: T")
+    .Output("mkl_output: uint8")
+    .Attr("T: {half, float, double}")
+    .Attr("strides: list(int)")
+    .Attr("use_cudnn_on_gpu: bool = true")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .SetShapeFn([](InferenceContext* c) {
+      return InputTensorShapeOrUnknown(c, 2 /* input_idx */, 4 /* ndims */);
+    })
+    .Doc(R"doc(
+MKL version of Conv2DBackpropFilter, use MKL dnn primitives to compute the gradients of convolution with respect to the filter.
+input: 4-D with shape `[batch, in_height, in_width, in_channels]`. Can be either in MKL shape or not.
+filter_sizes: An integer vector representing the tensor shape of `filter`,
+  where `filter` is a 4-D
+  `[filter_height, filter_width, in_channels, out_channels]` tensor. Can be either in MKL shape or not.
+out_backprop: 4-D with shape `[batch, out_height, out_width, out_channels]`. Can either in MKL shape or not.
+  Gradients w.r.t. the output of the convolution.
+strides: The stride of the sliding window for each dimension of the input
+  of the convolution. Must be in the same order as the dimension specified with
+  format.
+padding: The type of padding algorithm to use.
+output: 4-D with shape
+  `[filter_height, filter_width, in_channels, out_channels]`.  Gradient w.r.t.
+  the `filter` input of the convolution.
+data_format: Specify the data format of the input and output data. With the
+    default format "NHWC", the data is stored in the order of:
+        [batch, in_height, in_width, in_channels].
+    Alternatively, the format could be "NCHW", the data storage order of:
+        [batch, in_channels, in_height, in_width].
+)doc");
+
+REGISTER_OP("MklConv2DWithBiasBackpropBias")
+    .Input("out_backprop: T")
+    .Input("mkl_out_backprop: uint8")
+    .Output("output: T")
+    .Output("mkl_output: uint8")
+    .Attr("T: {half, float, double}")
+    .Attr("strides: list(int)")
+    .Attr(GetConvnetDataFormatAttrString())
+    .Doc(R"doc(
+MKL version of Conv2DBackpropBias, use MKL dnn primitives to compute the gradients of convolution with respect to the bias.
+out_backprop: 4-D with shape `[batch, out_height, out_width, out_channels]`. Can either be in MKL shape or not.
+strides: The stride of the sliding window for each dimension of the input
+  of the convolution. Must be in the same order as the dimension specified with
+  format.
+output: Gradient w.r.t. the `bias` input of the convolution.
+data_format: NHWC or NCHW.
+)doc");
+
+REGISTER_OP("MklConv2DBackpropInput")
+    .Input("input_sizes: int32")
+    .Input("mkl_input_sizes: uint8")
+    .Input("filter: T")
+    .Input("mkl_filter: uint8")
+    .Input("out_backprop: T")
+    .Input("mkl_out_backprop: uint8")
+    .Output("output: T")
+    .Output("mkl_output: uint8")
+    .Attr("T: {half, float, double}")
+    .Attr("strides: list(int)")
+    .Attr("use_cudnn_on_gpu: bool = true")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .SetShapeFn([](InferenceContext* c) {
+      return InputTensorShapeOrUnknown(c, 0 /* input_idx */, 4 /* ndims */);
+    })
+    .Doc(R"doc(
+MKL version of conv 2d backward input,use MKL dnn primitives to compute the gradients of convolution with respect to the input.
+input_sizes: An integer vector representing the shape of `input`, 
+  where `input` is a 4-D `[batch, height, width, channels]` tensor. Can be either in MKL shape or not.
+filter: 4-D with shape
+  `[filter_height, filter_width, in_channels, out_channels]`. Can be either in MKL shape or not.
+out_backprop: 4-D with shape `[batch, out_height, out_width, out_channels]`. Can be either in MKL shape or not.
+  Gradients w.r.t. the output of the convolution.
+strides: The stride of the sliding window for each dimension of the input
+  of the convolution. Must be in the same order as the dimension specified with
+  format.
+padding: The type of padding algorithm to use.
+output: 4-D with shape `[batch, in_height, in_width, in_channels]`.  Gradient
+  w.r.t. the input of the convolution.
+data_format: Specify the data format of the input and output data. With the
+    default format "NHWC", the data is stored in the order of:
+        [batch, in_height, in_width, in_channels].
+    Alternatively, the format could be "NCHW", the data storage order of:
+        [batch, in_channels, in_height, in_width].
+)doc");
 
 REGISTER_OP("MklToTf")
     .Input("input: T")

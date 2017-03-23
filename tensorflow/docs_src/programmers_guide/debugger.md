@@ -246,18 +246,22 @@ tfdbg> ni -t cross_entropy/Log
 The `-t` flag is used by default, if you use the clickable "node_info" menu item
 at the top of the screen.
 
-From the traceback, you can see that the op is constructed at line 109 of
+From the traceback, you can see that the op is constructed around lines 105-106
+of
 [`debug_mnist.py`](https://www.tensorflow.org/code/tensorflow/python/debug/examples/debug_mnist.py):
 
 ```python
 diff = y_ * tf.log(y)
 ```
 
-TIP: tfdbg lets you view a Python source file with its lines annotated with
+***tfdbg** has a feature that makes it ease to trace Tensors and ops back to
+lines in Python source files. It can annotate lines of a Python file with
 the ops or Tensors created by them. To use this feature,
 simply click the underlined line numbers in the stack trace output of the
 `ni -t <op_name>` commands, or use the `ps` (or `print_source`) command such as:
-`ps /path/to/source.py`
+`ps /path/to/source.py`. See the screenshot below for an example of `ps` output:
+
+![tfdbg run-end UI: annotated Python source file](../images/tfdbg_screenshot_run_end_annotated_source.png)
 
 Apply a value clipping on the input to @{tf.log}
 to resolve this problem:
@@ -349,6 +353,9 @@ for more details.
 
 *   Navigation through command history using the Up and Down arrow keys.
     Prefix-based navigation is also supported.
+*   Navigation through history of screen outputs using the `prev` and `next`
+    commands or by clicking the underlined `<--` and `-->` links near the top
+    of the screen.
 *   Tab completion of commands and some command arguments.
 *   Write screen output to file by using bash-style redirection. For example:
 

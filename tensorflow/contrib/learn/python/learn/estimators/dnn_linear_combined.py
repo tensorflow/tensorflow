@@ -492,9 +492,10 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
 
   Input of `fit` and `evaluate` should have following features,
     otherwise there will be a `KeyError`:
-      if `weight_column_name` is not `None`, a feature with
+
+  * if `weight_column_name` is not `None`, a feature with
         `key=weight_column_name` whose value is a `Tensor`.
-      for each `column` in `dnn_feature_columns` + `linear_feature_columns`:
+  * for each `column` in `dnn_feature_columns` + `linear_feature_columns`:
       - if `column` is a `SparseColumn`, a feature with `key=column.name`
         whose `value` is a `SparseTensor`.
       - if `column` is a `WeightedSparseColumn`, two features: the first with

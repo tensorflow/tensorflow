@@ -82,4 +82,21 @@ Status RetryingUtils::CallWithRetries(
     retries++;
   }
 }
+
+Status RetryingUtils::DeleteWithRetries(
+    const std::function<Status()>& delete_func,
+    const int64 initial_delay_microseconds) {
+  bool is_retried = false;
+  return RetryingUtils::CallWithRetries(
+      [delete_func, &is_retried]() {
+        const auto& status = delete_func();
+        if (is_retried && status.code() == error::NOT_FOUND) {
+          return Status::OK();
+        }
+        is_retried = true;
+        return status;
+      },
+      initial_delay_microseconds);
+}
+
 }  // namespace tensorflow

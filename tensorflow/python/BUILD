@@ -74,6 +74,7 @@ py_library(
         ":tensor_array_ops",
         ":training",
         ":ops",
+        ":saver_test_utils",
         ":test_ops",  # TODO: Break testing code out into separate rule.
         ":util",
         ":weights_broadcast_ops",
@@ -2935,6 +2936,16 @@ cuda_py_tests(
     ],
 )
 
+py_library(
+    name = "saver_test_utils",
+    srcs = ["training/saver_test_utils.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":data_flow_ops_gen",
+        ":training",
+    ],
+)
+
 cuda_py_test(
     name = "saver_test",
     size = "medium",
@@ -2946,12 +2957,12 @@ cuda_py_test(
         ":client_testlib",
         ":control_flow_ops",
         ":data_flow_ops",
-        ":data_flow_ops_gen",
         ":errors",
         ":gradients",
         ":math_ops",
         ":nn_grad",
         ":nn_ops",
+        ":saver_test_utils",
         ":partitioned_variables",
         ":platform",
         ":platform_test",
@@ -3088,6 +3099,20 @@ py_test(
         ":variables",
         "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/contrib/testing:testing_py",
+    ],
+)
+
+py_test(
+    name = "training_util_test",
+    size = "small",
+    srcs = ["training/training_util_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":client_testlib",
+        ":framework",
+        ":platform",
+        ":training",
+        ":variables",
     ],
 )
 

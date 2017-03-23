@@ -190,7 +190,7 @@ llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
   // The last argument is a pointer to the temporary buffer memory block.
   // We know that it doesn't alias any of the escaped arguments (the inputs +
   // the result).  We also know how many bytes can be dereferenced in it.
-  const llvm::Argument& temp_buffer = kernel->getArgumentList().back();
+  const llvm::Argument& temp_buffer = *std::prev(kernel->arg_end());
   int64 temp_buffer_arg_no = temp_buffer.getArgNo();
   if (const BufferAllocation* allocation =
           ir_emitter_context_->buffer_assignment().GetTempAllocation()) {

@@ -134,6 +134,7 @@ TEST_F(ShapeInferenceTest, Run) {
       ShapeHandle h;
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(0), 6, &h));
       c->set_output(0, c->input(0));
+      c->set_output(1, c->input(0));
       return Status::OK();
     };
     TF_ASSERT_OK(c.Run(fn));
@@ -144,6 +145,7 @@ TEST_F(ShapeInferenceTest, Run) {
       ShapeHandle h;
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(0), 0, &h));
       c->set_output(0, c->input(0));
+      c->set_output(1, c->input(0));
       return Status::OK();
     };
     Status s = c.Run(fn);

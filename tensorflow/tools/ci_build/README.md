@@ -20,20 +20,20 @@ run continuous integration [ci.tensorflow.org](https://ci.tensorflow.org).
 2. Clone tensorflow repository.
 
    ```bash
-git clone https://github.com/tensorflow/tensorflow.git
-```
+   git clone https://github.com/tensorflow/tensorflow.git
+   ```
 
 3. Go to tensorflow directory
 
    ```bash
-cd tensorflow
-```
+   cd tensorflow
+   ```
 
 4. Build what you want, for example
 
    ```bash
-tensorflow/tools/ci_build/ci_build.sh CPU bazel test //tensorflow/...
-```
+   tensorflow/tools/ci_build/ci_build.sh CPU bazel test //tensorflow/...
+   ```
 
 
 

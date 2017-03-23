@@ -15,6 +15,7 @@ exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "if_not_windows")
 
 py_library(
     name = "debug_py",
@@ -34,8 +35,11 @@ py_library(
     name = "debug_pip",
     deps = [
         ":debug_py",
+        ":offline_analyzer",
         ":session_debug_testlib",
-    ],
+    ] + if_not_windows([
+        ":debug_examples",
+    ]),
 )
 
 py_library(
@@ -249,6 +253,7 @@ py_library(
         ":debug_utils",
         ":dumping_wrapper",
         ":framework",
+        ":grpc_wrapper",
         ":local_cli_wrapper",
         ":stepper",
         "//tensorflow/python:training",
@@ -264,6 +269,16 @@ py_binary(
         ":debug_data",
         "//tensorflow/python",  # TODO(b/34059704): remove when fixed
         "//tensorflow/python:platform",
+    ],
+)
+
+py_library(
+    name = "debug_examples",
+    deps = [
+        ":debug_errors",
+        ":debug_fibonacci",
+        ":debug_mnist",
+        ":debug_tflearn_iris",
     ],
 )
 
@@ -661,6 +676,7 @@ sh_test(
         ":debug_fibonacci",
         ":debug_mnist",
         ":debug_tflearn_iris",
+        ":offline_analyzer",
     ],
 )
 

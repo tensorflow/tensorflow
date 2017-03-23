@@ -284,8 +284,6 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
 
   /// Structure to store all constant strings
   struct {
-    string relu;
-    string relugrad;
     string conv2d;
     string conv2dgradfilter;
     string maxpool;
@@ -464,6 +462,7 @@ Status MklLayoutRewritePass::SetUpInputs(std::unique_ptr<Graph>* g,
       // an edge that will receive Mkl tensor from a node.
       // First, let's assert that this op is Mkl layer.
       DataType T;
+      VLOG(1) << "FINDME:"<< n << "," << orign;
       TF_CHECK_OK(GetNodeAttr(n->def(), "T", &T));
       // If this op has been rewritten, then its name must have been same as
       // Mkl op.

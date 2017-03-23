@@ -160,9 +160,8 @@ def _fused_batch_norm(
   they need to be added as a dependency to the `train_op`, example:
 
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
-    if update_ops:
-      updates = tf.group(*update_ops)
-      total_loss = control_flow_ops.with_dependencies([updates], total_loss)
+    with tf.control_dependencies(update_ops):
+      train_op = optimizer.minimize(loss)
 
   One can set updates_collections=None to force the updates in place, but that
   can have speed penalty, especially in distributed settings.
@@ -221,6 +220,7 @@ def _fused_batch_norm(
       scope, 'BatchNorm', [inputs], reuse=reuse) as sc:
     inputs = ops.convert_to_tensor(inputs)
     original_shape = inputs.get_shape()
+    original_inputs = inputs
     original_rank = original_shape.ndims
     if original_rank is None:
       raise ValueError('Inputs %s has undefined rank' % inputs.name)
@@ -351,7 +351,7 @@ def _fused_batch_norm(
 
     outputs.set_shape(inputs_shape)
     if original_shape.ndims == 2:
-      outputs = array_ops.reshape(outputs, original_shape)
+      outputs = array_ops.reshape(outputs, array_ops.shape(original_inputs))
     if activation_fn is not None:
       outputs = activation_fn(outputs)
     return utils.collect_named_outputs(outputs_collections,
@@ -392,9 +392,8 @@ def batch_norm(inputs,
   they need to be added as a dependency to the `train_op`, example:
 
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
-    if update_ops:
-      updates = tf.group(*update_ops)
-      total_loss = control_flow_ops.with_dependencies([updates], total_loss)
+    with tf.control_dependencies(update_ops):
+      train_op = optimizer.minimize(loss)
 
   One can set updates_collections=None to force the updates in place, but that
   can have speed penalty, especially in distributed settings.
@@ -841,8 +840,8 @@ def convolution(inputs,
       the `input` and output is the last dimension (default, or if `data_format`
       does not start with "NC"), or the second dimension (if `data_format`
       starts with "NC").  For N=1, the valid values are "NWC" (default) and
-      "NCW".  For N=2, the valid values are "NHWC" (default) and "NCHW".  For
-      N=3, currently the only valid value is "NDHWC".
+      "NCW".  For N=2, the valid values are "NHWC" (default) and "NCHW".
+      For N=3, the valid values are "NDHWC" (default) and "NCDHW".
     rate: A sequence of N positive integers specifying the dilation rate to use
       for a'trous convolution.  Can be a single integer to specify the same
       value for all spatial dimensions.  Specifying any `rate` value != 1 is
@@ -874,7 +873,7 @@ def convolution(inputs,
     ValueError: If `data_format` is invalid.
     ValueError: Both 'rate' and `stride` are not uniformly 1.
   """
-  if data_format not in [None, 'NWC', 'NCW', 'NHWC', 'NCHW', 'NDHWC']:
+  if data_format not in [None, 'NWC', 'NCW', 'NHWC', 'NCHW', 'NDHWC', 'NCDHW']:
     raise ValueError('Invalid data_format: %r' % (data_format,))
 
   layer_variable_getter = _build_variable_getter(
@@ -1231,7 +1230,7 @@ def flatten(inputs,
     batch_dim, spatial_dims = input_shape[0], input_shape[1:]
     if all(spatial_dims):
       outputs.set_shape([batch_dim,
-                        functools.reduce(lambda x, y: x * y, spatial_dims)])
+                         functools.reduce(lambda x, y: x * y, spatial_dims)])
     else:
       outputs.set_shape([batch_dim, None])
 
@@ -1619,8 +1618,8 @@ def pool(inputs,
       the `input` and output is the last dimension (default, or if `data_format`
       does not start with "NC"), or the second dimension (if `data_format`
       starts with "NC").  For N=1, the valid values are "NWC" (default) and
-      "NCW".  For N=2, the valid values are "NHWC" (default) and "NCHW".  For
-      N=3, currently the only valid value is "NDHWC".
+      "NCW".  For N=2, the valid values are "NHWC" (default) and "NCHW".
+      For N=3, the valid values are "NDHWC" (default) and "NCDHW".
     dilation_rate: Optional.  Dilation rate.  Sequence of N ints >= 1.  Defaults
       to [1]*N.  Can also be a single integer to specify the same value for all
       spatial dimensions.  If any value of dilation_rate is > 1, then all values

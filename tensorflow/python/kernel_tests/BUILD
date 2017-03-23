@@ -551,7 +551,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "resource_variable_ops_test",
     size = "small",
     srcs = ["resource_variable_ops_test.py"],
@@ -2091,6 +2091,10 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
+    ],
+    tags = [
+        "manual",
+        "notap",
     ],
 )
 

@@ -50,6 +50,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
@@ -62,6 +63,7 @@ from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import input as input_lib
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import queue_runner_impl
+from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.util import compat
 
@@ -225,6 +227,49 @@ def _build_estimator_for_export_tests(tmpdir):
   return est, serving_input_fn_with_asset
 
 
+def _build_estimator_for_resource_export_test():
+
+  def _input_fn():
+    iris = base.load_iris()
+    return {
+        'feature': constant_op.constant(iris.data, dtype=dtypes.float32)
+    }, constant_op.constant(
+        iris.target, shape=[150], dtype=dtypes.int32)
+
+  feature_columns = [
+      feature_column_lib.real_valued_column('feature', dimension=4)
+  ]
+
+  def resource_constant_model_fn(unused_features, unused_labels, mode):
+    """A model_fn that loads a constant from a resource and serves it."""
+    assert mode in (model_fn.ModeKeys.TRAIN, model_fn.ModeKeys.EVAL,
+                    model_fn.ModeKeys.INFER)
+
+    const = constant_op.constant(-1, dtype=dtypes.int64)
+    table = lookup.MutableHashTable(
+        dtypes.string, dtypes.int64, const, name='LookupTableModel')
+    if mode in (model_fn.ModeKeys.TRAIN, model_fn.ModeKeys.EVAL):
+      key = constant_op.constant(['key'])
+      value = constant_op.constant([42], dtype=dtypes.int64)
+      train_op_1 = table.insert(key, value)
+      training_state = lookup.MutableHashTable(
+          dtypes.string, dtypes.int64, const, name='LookupTableTrainingState')
+      training_op_2 = training_state.insert(key, value)
+      return const, const, control_flow_ops.group(train_op_1, training_op_2)
+    if mode == model_fn.ModeKeys.INFER:
+      key = constant_op.constant(['key'])
+      prediction = table.lookup(key)
+      return prediction, const, control_flow_ops.no_op()
+
+  est = estimator.Estimator(model_fn=resource_constant_model_fn)
+  est.fit(input_fn=_input_fn, steps=1)
+
+  feature_spec = feature_column_lib.create_feature_spec_for_parsing(
+      feature_columns)
+  serving_input_fn = input_fn_utils.build_parsing_serving_input_fn(feature_spec)
+  return est, serving_input_fn
+
+
 class CheckCallsMonitor(monitors_lib.BaseMonitor):
 
   def __init__(self, expect_calls):
@@ -344,7 +389,7 @@ class EstimatorTest(test.TestCase):
               boston_input_fn, num_epochs=1),
           as_iterable=True)
 
-  def testModelFnScaffold(self):
+  def testModelFnScaffoldInTraining(self):
     self.is_init_fn_called = False
 
     def _init_fn(scaffold, session):
@@ -363,6 +408,44 @@ class EstimatorTest(test.TestCase):
     est = estimator.Estimator(model_fn=_model_fn_scaffold)
     est.fit(input_fn=boston_input_fn, steps=1)
     self.assertTrue(self.is_init_fn_called)
+
+  def testModelFnScaffoldSaverUsage(self):
+
+    def _model_fn_scaffold(features, labels, mode):
+      _, _ = features, labels
+      variables_lib.Variable(1., 'weight')
+      real_saver = saver_lib.Saver()
+      self.mock_saver = test.mock.Mock(
+          wraps=real_saver, saver_def=real_saver.saver_def)
+      return model_fn.ModelFnOps(
+          mode=mode,
+          predictions=constant_op.constant([[1.]]),
+          loss=constant_op.constant(0.),
+          train_op=constant_op.constant(0.),
+          scaffold=monitored_session.Scaffold(saver=self.mock_saver))
+
+    def input_fn():
+      return {
+          'x': constant_op.constant([[1.]]),
+      }, constant_op.constant([[1.]])
+
+    est = estimator.Estimator(model_fn=_model_fn_scaffold)
+    est.fit(input_fn=input_fn, steps=1)
+    self.assertTrue(self.mock_saver.save.called)
+    est.evaluate(input_fn=input_fn, steps=1)
+    self.assertTrue(self.mock_saver.restore.called)
+    est.predict(input_fn=input_fn)
+    self.assertTrue(self.mock_saver.restore.called)
+    def serving_input_fn():
+      serialized_tf_example = array_ops.placeholder(dtype=dtypes.string,
+                                                    shape=[None],
+                                                    name='input_example_tensor')
+      features, labels = input_fn()
+      return input_fn_utils.InputFnOps(
+          features, labels, {'examples': serialized_tf_example})
+
+    est.export_savedmodel(est.model_dir + '/export', serving_input_fn)
+    self.assertTrue(self.mock_saver.restore.called)
 
   def testCheckpointSaverHookSuppressesTheDefaultOne(self):
     saver_hook = test.mock.Mock(
@@ -749,6 +832,49 @@ class EstimatorTest(test.TestCase):
         self.assertTrue('input_example_tensor' in graph_ops)
         self.assertTrue('ParseExample/ParseExample' in graph_ops)
         self.assertTrue('linear/linear/feature/matmul' in graph_ops)
+
+    # cleanup
+    gfile.DeleteRecursively(tmpdir)
+
+  def test_export_savedmodel_with_resource(self):
+    tmpdir = tempfile.mkdtemp()
+    est, serving_input_fn = _build_estimator_for_resource_export_test()
+
+    export_dir_base = os.path.join(
+        compat.as_bytes(tmpdir), compat.as_bytes('export'))
+    export_dir = est.export_savedmodel(export_dir_base, serving_input_fn)
+
+    self.assertTrue(gfile.Exists(export_dir_base))
+    self.assertTrue(gfile.Exists(export_dir))
+    self.assertTrue(
+        gfile.Exists(
+            os.path.join(
+                compat.as_bytes(export_dir), compat.as_bytes(
+                    'saved_model.pb'))))
+    self.assertTrue(
+        gfile.Exists(
+            os.path.join(
+                compat.as_bytes(export_dir), compat.as_bytes('variables'))))
+    self.assertTrue(
+        gfile.Exists(
+            os.path.join(
+                compat.as_bytes(export_dir),
+                compat.as_bytes('variables/variables.index'))))
+    self.assertTrue(
+        gfile.Exists(
+            os.path.join(
+                compat.as_bytes(export_dir),
+                compat.as_bytes('variables/variables.data-00000-of-00001'))))
+
+    # Restore, to validate that the export was well-formed.
+    with ops.Graph().as_default() as graph:
+      with session_lib.Session(graph=graph) as sess:
+        loader.load(sess, [tag_constants.SERVING], export_dir)
+        graph_ops = [x.name for x in graph.get_operations()]
+        self.assertTrue('input_example_tensor' in graph_ops)
+        self.assertTrue('ParseExample/ParseExample' in graph_ops)
+        self.assertTrue('LookupTableModel' in graph_ops)
+        self.assertFalse('LookupTableTrainingState' in graph_ops)
 
     # cleanup
     gfile.DeleteRecursively(tmpdir)

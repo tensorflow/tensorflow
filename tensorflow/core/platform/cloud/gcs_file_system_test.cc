@@ -254,7 +254,7 @@ TEST(GcsFileSystemTest, NewWritableFile_ResumeUploadSucceeds) {
                            "Auth Token: fake_token\n"
                            "Header Content-Range: bytes */17\n"
                            "Put: yes\n",
-                           "", errors::Unavailable("308"), nullptr,
+                           "", errors::FailedPrecondition("308"), nullptr,
                            {{"Range", "0-10"}}, 308),
        new FakeHttpRequest("Uri: https://custom/upload/location\n"
                            "Auth Token: fake_token\n"
@@ -265,7 +265,7 @@ TEST(GcsFileSystemTest, NewWritableFile_ResumeUploadSucceeds) {
                            "Auth Token: fake_token\n"
                            "Header Content-Range: bytes */17\n"
                            "Put: yes\n",
-                           "", errors::Unavailable("308"), nullptr,
+                           "", errors::FailedPrecondition("308"), nullptr,
                            {{"Range", "bytes=0-12"}}, 308),
        new FakeHttpRequest("Uri: https://custom/upload/location\n"
                            "Auth Token: fake_token\n"
@@ -332,13 +332,13 @@ TEST(GcsFileSystemTest, NewWritableFile_ResumeUploadAllAttemptsFail) {
                            "Put body: content1,content2\n",
                            "", errors::Unavailable("503"), 503)});
   for (int i = 0; i < 10; i++) {
-    requests.emplace_back(
-        new FakeHttpRequest("Uri: https://custom/upload/location\n"
-                            "Auth Token: fake_token\n"
-                            "Header Content-Range: bytes */17\n"
-                            "Put: yes\n",
-                            "", errors::Unavailable("important HTTP error 308"),
-                            nullptr, {{"Range", "0-10"}}, 308));
+    requests.emplace_back(new FakeHttpRequest(
+        "Uri: https://custom/upload/location\n"
+        "Auth Token: fake_token\n"
+        "Header Content-Range: bytes */17\n"
+        "Put: yes\n",
+        "", errors::FailedPrecondition("important HTTP error 308"), nullptr,
+        {{"Range", "0-10"}}, 308));
     requests.emplace_back(new FakeHttpRequest(
         "Uri: https://custom/upload/location\n"
         "Auth Token: fake_token\n"
@@ -379,7 +379,7 @@ TEST(GcsFileSystemTest, NewWritableFile_ResumeUploadAllAttemptsFail) {
       << status;
 }
 
-TEST(GcsFileSystemTest, NewWritableFile_UploadReturns404) {
+TEST(GcsFileSystemTest, NewWritableFile_UploadReturns410) {
   std::vector<HttpRequest*> requests(
       {new FakeHttpRequest(
            "Uri: https://www.googleapis.com/upload/storage/v1/b/bucket/o?"
@@ -392,8 +392,8 @@ TEST(GcsFileSystemTest, NewWritableFile_UploadReturns404) {
                            "Auth Token: fake_token\n"
                            "Header Content-Range: bytes 0-16/17\n"
                            "Put body: content1,content2\n",
-                           "", errors::NotFound("important HTTP error 404"),
-                           404),
+                           "", errors::NotFound("important HTTP error 410"),
+                           410),
        // These calls will be made in the Close() attempt from the destructor.
        // Letting the destructor succeed.
        new FakeHttpRequest(
@@ -424,7 +424,10 @@ TEST(GcsFileSystemTest, NewWritableFile_UploadReturns404) {
       StringPiece(status.error_message())
           .contains(
               "Upload to gs://bucket/path/writeable.txt failed, caused by: "
-              "Not found: important HTTP error 404"))
+              "Not found: important HTTP error 410"))
+      << status;
+  EXPECT_TRUE(StringPiece(status.error_message())
+                  .contains("when uploading gs://bucket/path/writeable.txt"))
       << status;
 }
 
@@ -1113,6 +1116,53 @@ TEST(GcsFileSystemTest, RenameFile_Object) {
       fs.RenameFile("gs://bucket/path/src.txt", "gs://bucket/path/dst.txt"));
 }
 
+/// Tests the scenario when deletion returns a failure, but actually succeeds.
+TEST(GcsFileSystemTest, RenameFile_Object_DeletionRetried) {
+  std::vector<HttpRequest*> requests(
+      {// IsDirectory is checking whether there are children objects.
+       new FakeHttpRequest(
+           "Uri: https://www.googleapis.com/storage/v1/b/bucket/o?"
+           "fields=items%2Fname%2CnextPageToken&prefix=path%2Fsrc.txt%2F"
+           "&maxResults=1\n"
+           "Auth Token: fake_token\n",
+           "{}"),
+       // IsDirectory is checking if the path exists as an object.
+       new FakeHttpRequest(
+           "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"
+           "path%2Fsrc.txt?fields=size%2Cupdated\n"
+           "Auth Token: fake_token\n",
+           strings::StrCat("{\"size\": \"1010\","
+                           "\"updated\": \"2016-04-29T23:15:24.896Z\"}")),
+       // Copying to the new location.
+       new FakeHttpRequest(
+           "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"
+           "path%2Fsrc.txt/rewriteTo/b/bucket/o/path%2Fdst.txt\n"
+           "Auth Token: fake_token\n"
+           "Post: yes\n",
+           "{\"done\": true}"),
+       // Deleting the original file - the deletion returns a failure.
+       new FakeHttpRequest(
+           "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"
+           "path%2Fsrc.txt\n"
+           "Auth Token: fake_token\n"
+           "Delete: yes\n",
+           "", errors::Unavailable("503"), 503),
+       // Deleting the original file again - the deletion returns NOT_FOUND.
+       new FakeHttpRequest(
+           "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"
+           "path%2Fsrc.txt\n"
+           "Auth Token: fake_token\n"
+           "Delete: yes\n",
+           "", errors::NotFound("404"), 404)});
+  GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
+                   std::unique_ptr<HttpRequest::Factory>(
+                       new FakeHttpRequestFactory(&requests)),
+                   0 /* read ahead bytes */, 0 /* initial retry delay */);
+
+  TF_EXPECT_OK(
+      fs.RenameFile("gs://bucket/path/src.txt", "gs://bucket/path/dst.txt"));
+}
+
 /// Tests the case when rewrite couldn't complete in one RPC.
 TEST(GcsFileSystemTest, RenameFile_Object_Incomplete) {
   std::vector<HttpRequest*> requests(
@@ -1424,7 +1474,13 @@ TEST(GcsFileSystemTest, DeleteRecursively_Ok) {
                            "Auth Token: fake_token\n"
                            "Delete: yes\n",
                            ""),
-       // Delete the object.
+       // Delete the object - fails and will be retried.
+       new FakeHttpRequest("Uri: https://www.googleapis.com/storage/v1/b"
+                           "/bucket/o/path%2Ffile1.txt\n"
+                           "Auth Token: fake_token\n"
+                           "Delete: yes\n",
+                           "", errors::Unavailable("500"), 500),
+       // Delete the object again.
        new FakeHttpRequest("Uri: https://www.googleapis.com/storage/v1/b"
                            "/bucket/o/path%2Ffile1.txt\n"
                            "Auth Token: fake_token\n"

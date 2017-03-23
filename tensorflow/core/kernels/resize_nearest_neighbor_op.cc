@@ -66,9 +66,7 @@ class ResizeNearestNeighborOp : public OpKernel {
           const int64 in_x =
               std::min(static_cast<int64>(floorf(x * st.width_scale)),
                        (st.in_width - 1));
-          for (int c = 0; c < st.channels; ++c) {
-            output_data(b, y, x, c) = input_data(b, in_y, in_x, c);
-          }
+          std::copy_n(&input_data(b, in_y, in_x, 0), st.channels, &output_data(b, y, x, 0));
         }
       }
     }

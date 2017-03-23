@@ -22,6 +22,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import csv
 import imghdr
 import mimetypes
 import os
@@ -30,16 +31,18 @@ import threading
 import time
 
 import six
+from six import StringIO
 from six.moves import urllib
+from six.moves import xrange  # pylint: disable=redefined-builtin
 from six.moves.urllib import parse as urlparse
 from werkzeug import wrappers
 
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.tensorboard.backend import http_util
 from tensorflow.tensorboard.backend import process_graph
 from tensorflow.tensorboard.backend.event_processing import event_accumulator
 from tensorflow.tensorboard.backend.event_processing import event_multiplexer
-from tensorflow.tensorboard.lib.python import http_util
 from tensorflow.tensorboard.plugins.debugger import debugger_plugin
 from tensorflow.tensorboard.plugins.projector import projector_plugin
 
@@ -89,6 +92,7 @@ class _OutputFormat(object):
   compressed histograms support CSV).
   """
   JSON = 'json'
+  CSV = 'csv'
 
 
 def standard_tensorboard_wsgi(logdir, purge_orphaned_data, reload_interval):
@@ -98,10 +102,8 @@ def standard_tensorboard_wsgi(logdir, purge_orphaned_data, reload_interval):
       purge_orphaned_data=purge_orphaned_data)
 
   plugins = {
-      debugger_plugin.PLUGIN_PREFIX_ROUTE:
-          debugger_plugin.DebuggerPlugin(multiplexer),
-      projector_plugin.PLUGIN_PREFIX_ROUTE:
-          projector_plugin.ProjectorPlugin(),
+      debugger_plugin.PLUGIN_PREFIX_ROUTE: debugger_plugin.DebuggerPlugin(),
+      projector_plugin.PLUGIN_PREFIX_ROUTE: projector_plugin.ProjectorPlugin(),
   }
 
   return TensorBoardWSGIApp(logdir, plugins, multiplexer, reload_interval)
@@ -176,8 +178,7 @@ class TensorBoardWSGIApp(object):
     for name in self._plugins:
       try:
         plugin = self._plugins[name]
-        plugin_apps = plugin.get_plugin_apps(self._multiplexer.RunPaths(),
-                                             self._logdir)
+        plugin_apps = plugin.get_plugin_apps(self._multiplexer, self._logdir)
       except Exception as e:  # pylint: disable=broad-except
         logging.warning('Plugin %s failed. Exception: %s', name, str(e))
         continue
@@ -266,7 +267,14 @@ class TensorBoardWSGIApp(object):
     run = request.args.get('run')
     values = self._multiplexer.Scalars(run, tag)
 
-    return http_util.Respond(request, values, 'application/json')
+    if request.args.get('format') == _OutputFormat.CSV:
+      string_io = StringIO()
+      writer = csv.writer(string_io)
+      writer.writerow(['Wall time', 'Step', 'Value'])
+      writer.writerows(values)
+      return http_util.Respond(request, string_io.getvalue(), 'text/csv')
+    else:
+      return http_util.Respond(request, values, 'application/json')
 
   @wrappers.Request.application
   def _serve_graph(self, request):
@@ -279,7 +287,8 @@ class TensorBoardWSGIApp(object):
     try:
       graph = self._multiplexer.Graph(run)
     except ValueError:
-      return http_util.Respond(request, '404 Not Found', code=404)
+      return http_util.Respond(
+          request, '404 Not Found', 'text/plain; charset=UTF-8', code=404)
 
     limit_attr_size = request.args.get('limit_attr_size', None)
     if limit_attr_size is not None:
@@ -313,7 +322,8 @@ class TensorBoardWSGIApp(object):
     try:
       run_metadata = self._multiplexer.RunMetadata(run, tag)
     except ValueError:
-      return http_util.Respond(request, '404 Not Found', code=404)
+      return http_util.Respond(
+          request, '404 Not Found', 'text/plain; charset=UTF-8', code=404)
     return http_util.Respond(
         request, str(run_metadata), 'text/x-protobuf')  # pbtxt
 
@@ -331,7 +341,28 @@ class TensorBoardWSGIApp(object):
     tag = request.args.get('tag')
     run = request.args.get('run')
     compressed_histograms = self._multiplexer.CompressedHistograms(run, tag)
-    return http_util.Respond(request, compressed_histograms, 'application/json')
+    if request.args.get('format') == _OutputFormat.CSV:
+      string_io = StringIO()
+      writer = csv.writer(string_io)
+
+      # Build the headers; we have two columns for timing and two columns for
+      # each compressed histogram bucket.
+      headers = ['Wall time', 'Step']
+      if compressed_histograms:
+        bucket_count = len(compressed_histograms[0].compressed_histogram_values)
+        for i in xrange(bucket_count):
+          headers += ['Edge %d basis points' % i, 'Edge %d value' % i]
+      writer.writerow(headers)
+
+      for compressed_histogram in compressed_histograms:
+        row = [compressed_histogram.wall_time, compressed_histogram.step]
+        for value in compressed_histogram.compressed_histogram_values:
+          row += [value.rank_in_bps, value.value]
+        writer.writerow(row)
+      return http_util.Respond(request, string_io.getvalue(), 'text/csv')
+    else:
+      return http_util.Respond(
+          request, compressed_histograms, 'application/json')
 
   @wrappers.Request.application
   def _serve_images(self, request):

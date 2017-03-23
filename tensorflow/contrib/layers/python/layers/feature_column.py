@@ -24,12 +24,14 @@ When using FeatureColumns with tf.learn models, the type of feature column you
 should choose depends on (1) the feature type and (2) the model type.
 
 (1) Feature type:
+
  * Continuous features can be represented by `real_valued_column`.
  * Categorical features can be represented by any `sparse_column_with_*`
  column (`sparse_column_with_keys`, `sparse_column_with_vocabulary_file`,
  `sparse_column_with_hash_bucket`, `sparse_column_with_integerized_feature`).
 
 (2) Model type:
+
  * Deep neural network models (`DNNClassifier`, `DNNRegressor`).
 
    Continuous features can be directly fed into deep neural network models.
@@ -329,6 +331,9 @@ class _SparseColumn(_FeatureColumn,
     if is_integerized and not dtype.is_integer:
       raise ValueError("dtype must be an integer if is_integerized is True. "
                        "dtype: {}, column_name: {}.".format(dtype, column_name))
+    if dtype != dtypes.string and not dtype.is_integer:
+      raise ValueError("dtype must be string or integer. "
+                       "dtype: {}, column_name: {}".format(dtype, column_name))
 
     if bucket_size is None and lookup_config is None:
       raise ValueError("one of bucket_size or lookup_config must be set. "
@@ -355,9 +360,14 @@ class _SparseColumn(_FeatureColumn,
       raise ValueError("vocab_size must be defined. "
                        "column_name: {}".format(column_name))
 
-    return super(_SparseColumn, cls).__new__(cls, column_name, is_integerized,
-                                             bucket_size, lookup_config,
-                                             combiner, dtype)
+    return super(_SparseColumn, cls).__new__(
+        cls,
+        column_name,
+        is_integerized=is_integerized,
+        bucket_size=bucket_size,
+        lookup_config=lookup_config,
+        combiner=combiner,
+        dtype=dtype)
 
   @property
   def name(self):
@@ -440,20 +450,6 @@ class _SparseColumn(_FeatureColumn,
 class _SparseColumnIntegerized(_SparseColumn):
   """See `sparse_column_with_integerized_feature`."""
 
-  def __new__(cls, column_name, bucket_size, combiner="sqrtn",
-              dtype=dtypes.int64):
-    if not dtype.is_integer:
-      raise ValueError("dtype must be an integer. "
-                       "dtype: {}, column_name: {}".format(dtype, column_name))
-
-    return super(_SparseColumnIntegerized, cls).__new__(
-        cls,
-        column_name,
-        is_integerized=True,
-        bucket_size=bucket_size,
-        combiner=combiner,
-        dtype=dtype)
-
   def insert_transformed_feature(self, columns_to_tensors):
     """Handles sparse column to id conversion."""
     input_tensor = self._get_input_sparse_tensor(columns_to_tensors)
@@ -505,28 +501,12 @@ def sparse_column_with_integerized_feature(column_name,
     ValueError: dtype is not integer.
   """
   return _SparseColumnIntegerized(
-      column_name, bucket_size, combiner=combiner, dtype=dtype)
+      column_name, is_integerized=True, bucket_size=bucket_size,
+      combiner=combiner, dtype=dtype)
 
 
 class _SparseColumnHashed(_SparseColumn):
   """See `sparse_column_with_hash_bucket`."""
-
-  def __new__(cls,
-              column_name,
-              hash_bucket_size,
-              combiner="sum",
-              dtype=dtypes.string):
-
-    if dtype != dtypes.string and not dtype.is_integer:
-      raise ValueError("dtype must be string or integer. "
-                       "dtype: {}, column_name: {}".format(dtype, column_name))
-
-    return super(_SparseColumnHashed, cls).__new__(
-        cls,
-        column_name,
-        bucket_size=hash_bucket_size,
-        combiner=combiner,
-        dtype=dtype)
 
   def insert_transformed_feature(self, columns_to_tensors):
     """Handles sparse column to id conversion."""
@@ -573,25 +553,15 @@ def sparse_column_with_hash_bucket(column_name,
     ValueError: hash_bucket_size is not greater than 2.
     ValueError: dtype is neither string nor integer.
   """
-  return _SparseColumnHashed(column_name, hash_bucket_size, combiner, dtype)
+  return _SparseColumnHashed(
+      column_name,
+      bucket_size=hash_bucket_size,
+      combiner=combiner,
+      dtype=dtype)
 
 
 class _SparseColumnKeys(_SparseColumn):
   """See `sparse_column_with_keys`."""
-
-  def __new__(
-      cls, column_name, keys, default_value=-1, combiner="sum",
-      dtype=dtypes.string):
-    if (not dtype.is_integer) and (dtype != dtypes.string):
-      raise TypeError("Only integer and string are currently supported.")
-
-    return super(_SparseColumnKeys, cls).__new__(
-        cls,
-        column_name,
-        combiner=combiner,
-        lookup_config=_SparseIdLookupConfig(
-            keys=keys, vocab_size=len(keys), default_value=default_value),
-        dtype=dtype)
 
   def insert_transformed_feature(self, columns_to_tensors):
     """Handles sparse column to id conversion."""
@@ -614,7 +584,7 @@ def sparse_column_with_keys(
 
   Args:
     column_name: A string defining sparse column name.
-    keys: A list defining vocabulary. Must be castable to `dtype`.
+    keys: A list or tuple defining vocabulary. Must be castable to `dtype`.
     default_value: The value to use for out-of-vocabulary feature values.
       Default is -1.
     combiner: A string specifying how to reduce if the sparse column is
@@ -630,37 +600,17 @@ def sparse_column_with_keys(
   Returns:
     A _SparseColumnKeys with keys configuration.
   """
+  keys = tuple(keys)
   return _SparseColumnKeys(
-      column_name, tuple(keys), default_value=default_value, combiner=combiner,
+      column_name,
+      lookup_config=_SparseIdLookupConfig(
+          keys=keys, vocab_size=len(keys), default_value=default_value),
+      combiner=combiner,
       dtype=dtype)
 
 
 class _SparseColumnVocabulary(_SparseColumn):
   """See `sparse_column_with_vocabulary_file`."""
-
-  def __new__(cls,
-              column_name,
-              vocabulary_file,
-              num_oov_buckets=0,
-              vocab_size=None,
-              default_value=-1,
-              combiner="sum",
-              dtype=dtypes.string):
-
-    if dtype != dtypes.string and not dtype.is_integer:
-      raise ValueError("dtype must be string or integer. "
-                       "dtype: {}, column_name: {}".format(dtype, column_name))
-
-    return super(_SparseColumnVocabulary, cls).__new__(
-        cls,
-        column_name,
-        combiner=combiner,
-        lookup_config=_SparseIdLookupConfig(
-            vocabulary_file=vocabulary_file,
-            num_oov_buckets=num_oov_buckets,
-            vocab_size=vocab_size,
-            default_value=default_value),
-        dtype=dtype)
 
   def insert_transformed_feature(self, columns_to_tensors):
     """Handles sparse column to id conversion."""
@@ -726,10 +676,11 @@ def sparse_column_with_vocabulary_file(column_name,
 
   return _SparseColumnVocabulary(
       column_name,
-      vocabulary_file,
-      num_oov_buckets=num_oov_buckets,
-      vocab_size=vocab_size,
-      default_value=default_value,
+      lookup_config=_SparseIdLookupConfig(
+          vocabulary_file=vocabulary_file,
+          num_oov_buckets=num_oov_buckets,
+          vocab_size=vocab_size,
+          default_value=default_value),
       combiner=combiner,
       dtype=dtype)
 
@@ -1231,11 +1182,11 @@ def shared_embedding_columns(sparse_id_columns,
 
 
 class _ScatteredEmbeddingColumn(
+    _FeatureColumn,
     collections.namedtuple(
         "_ScatteredEmbeddingColumn",
         ["column_name", "size", "dimension", "hash_key", "combiner",
-         "initializer"]),
-    _EmbeddingColumn):
+         "initializer"])):
   """See `scattered_embedding_column`."""
 
   def __new__(cls,
@@ -1266,6 +1217,11 @@ class _ScatteredEmbeddingColumn(
   @property
   def config(self):
     return {self.column_name: parsing_ops.VarLenFeature(dtypes.string)}
+
+  @property
+  def key(self):
+    """Returns a string which will be used as a key when we do sorting."""
+    return self._key_without_properties(["initializer"])
 
   def insert_transformed_feature(self, columns_to_tensors):
     columns_to_tensors[self] = columns_to_tensors[self.column_name]
@@ -1706,7 +1662,7 @@ class _BucketizedColumn(_FeatureColumn, collections.namedtuple(
                   math_ops.range(0, batch_size), 1, name="expand_dims"),
               [1, dimension],
               name="tile"), [-1],
-          name="rehsape")
+          name="reshape")
       i2 = array_ops.tile(
           math_ops.range(0, dimension), [batch_size], name="tile")
       # Flatten the bucket indices and unique them across dimensions

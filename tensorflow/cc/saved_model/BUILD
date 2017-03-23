@@ -28,6 +28,18 @@ cc_library(
 
 cc_library(
     name = "loader",
+    hdrs = ["loader.h"],
+    deps = [
+        ":loader_lite",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+    ],
+)
+
+cc_library(
+    name = "loader_lite",
     srcs = ["loader.cc"],
     hdrs = ["loader.h"],
     deps = [
@@ -36,7 +48,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensorflow",
         "//tensorflow/core/util/tensor_bundle:naming",
     ],
 )
@@ -66,6 +77,7 @@ filegroup(
     name = "saved_model_half_plus_two",
     srcs = glob([
         "testdata/half_plus_two_pbtxt/**",
+        "testdata/half_plus_two_main_op/**",
         "testdata/half_plus_two/**",
     ]),
 )

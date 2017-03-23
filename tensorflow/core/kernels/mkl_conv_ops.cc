@@ -425,7 +425,7 @@ class MklConv2DOp : public OpKernel {
     dnnLayoutDelete_F32(mkl_lt_filter_);
     if (biasEnabled) dnnLayoutDelete_F32(mkl_lt_bias_);
   }
-  
+
   std::vector<int32> strides_;
   Padding padding_;
   TensorFormat data_format_;
@@ -435,8 +435,6 @@ class MklConv2DOp : public OpKernel {
   void* mkl_conv_res_[dnnResourceNumber];
   dnnLayout_t mkl_lt_filter_ = nullptr, mkl_lt_bias_ = nullptr,
               mkl_lt_input_ = nullptr;
-  
-
 };
 
 #define REGISTER_MKL_CPU(T)                                                \

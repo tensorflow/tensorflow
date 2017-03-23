@@ -114,6 +114,7 @@ tf_gen_op_wrapper_py(
 # Ops tests
 tf_py_test(
     name = "gmm_test",
+    size = "large",
     srcs = [
         "python/ops/gmm_test.py",
     ],
@@ -136,6 +137,7 @@ tf_py_test(
 
 tf_py_test(
     name = "gmm_ops_test",
+    size = "large",
     srcs = [
         "python/ops/gmm_ops_test.py",
     ],

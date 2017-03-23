@@ -824,10 +824,20 @@ def _cuda_autoconf_impl(repository_ctx):
     _create_cuda_repository(repository_ctx)
 
 
+
 cuda_configure = repository_rule(
     implementation = _cuda_autoconf_impl,
-    local = True,
+    environ = [
+        _GCC_HOST_COMPILER_PATH,
+        "TF_NEED_CUDA",
+        _CUDA_TOOLKIT_PATH,
+        _CUDNN_INSTALL_PATH,
+        _TF_CUDA_VERSION,
+        _TF_CUDNN_VERSION,
+        _TF_CUDA_COMPUTE_CAPABILITIES,
+    ],
 )
+
 """Detects and configures the local CUDA toolchain.
 
 Add the following to your WORKSPACE FILE:

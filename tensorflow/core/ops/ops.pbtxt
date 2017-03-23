@@ -2080,6 +2080,20 @@ op {
     }
   }
   attr {
+    name: "data_format"
+    type: "string"
+    default_value {
+      s: "NDHWC"
+    }
+    description: "The data format of the input and output data. With the\ndefault format \"NDHWC\", the data is stored in the order of:\n    [batch, in_depth, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCDHW\", the data storage order is:\n    [batch, in_channels, in_depth, in_height, in_width]."
+    allowed_values {
+      list {
+        s: "NDHWC"
+        s: "NCDHW"
+      }
+    }
+  }
+  attr {
     name: "T"
     type: "type"
     allowed_values {
@@ -2142,6 +2156,20 @@ op {
       list {
         s: "SAME"
         s: "VALID"
+      }
+    }
+  }
+  attr {
+    name: "data_format"
+    type: "string"
+    default_value {
+      s: "NDHWC"
+    }
+    description: "The data format of the input and output data. With the\ndefault format \"NDHWC\", the data is stored in the order of:\n    [batch, in_depth, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCDHW\", the data storage order is:\n    [batch, in_channels, in_depth, in_height, in_width]."
+    allowed_values {
+      list {
+        s: "NDHWC"
+        s: "NCDHW"
       }
     }
   }
@@ -4482,6 +4510,20 @@ op {
       }
     }
   }
+  attr {
+    name: "data_format"
+    type: "string"
+    default_value {
+      s: "NDHWC"
+    }
+    description: "The data format of the input and output data. With the\ndefault format \"NDHWC\", the data is stored in the order of:\n    [batch, in_depth, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCDHW\", the data storage order is:\n    [batch, in_channels, in_depth, in_height, in_width]."
+    allowed_values {
+      list {
+        s: "NDHWC"
+        s: "NCDHW"
+      }
+    }
+  }
   summary: "Computes a 3-D convolution given 5-D `input` and `filter` tensors."
   description: "In signal processing, cross-correlation is a measure of similarity of\ntwo waveforms as a function of a time-lag applied to one of them. This\nis also known as a sliding dot product or sliding inner-product.\n\nOur Conv3D implements a form of cross-correlation."
 }
@@ -4613,6 +4655,20 @@ op {
       }
     }
   }
+  attr {
+    name: "data_format"
+    type: "string"
+    default_value {
+      s: "NDHWC"
+    }
+    description: "The data format of the input and output data. With the\ndefault format \"NDHWC\", the data is stored in the order of:\n    [batch, in_depth, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCDHW\", the data storage order is:\n    [batch, in_channels, in_depth, in_height, in_width]."
+    allowed_values {
+      list {
+        s: "NDHWC"
+        s: "NCDHW"
+      }
+    }
+  }
   summary: "Computes the gradients of 3-D convolution with respect to the filter."
 }
 op {
@@ -4740,6 +4796,20 @@ op {
       list {
         s: "SAME"
         s: "VALID"
+      }
+    }
+  }
+  attr {
+    name: "data_format"
+    type: "string"
+    default_value {
+      s: "NDHWC"
+    }
+    description: "The data format of the input and output data. With the\ndefault format \"NDHWC\", the data is stored in the order of:\n    [batch, in_depth, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCDHW\", the data storage order is:\n    [batch, in_channels, in_depth, in_height, in_width]."
+    allowed_values {
+      list {
+        s: "NDHWC"
+        s: "NCDHW"
       }
     }
   }
@@ -5286,7 +5356,7 @@ op {
   }
   output_arg {
     name: "output"
-    description: "A double tensor of shape [12], the elements of which are:\n  [0]: is initialized (1.0) or not (0.0).\n  [1]: total number of elements\n  [2]: -inf count\n  [3]: negative element count (excluding -inf)\n  [4]: zero element count\n  [5]: positive element count (excluding +inf)\n  [6]: +inf element count\n  [7]: NaN element count\nOutput elements [1:8] are all zero, if the tensor is uninitialized.\n  [8]: minimum of all non-inf and non-NaN elements.\n       If uninitialized or no such element exists: +inf.\n  [9]: maximum of all non-inf and non-NaN elements.\n       If uninitialized or no such element exists: -inf.\n  [10]: mean of all non-inf and non-NaN elements.\n        If uninitialized or no such element exists: NaN.\n  [11]: variance of all non-inf and non-NaN elements.\n        If uninitialized or no such element exists: NaN."
+    description: "A double tensor of shape [12], the elements of which are:\n  [0]: is initialized (1.0) or not (0.0).\n  [1]: total number of elements\n  [2]: NaN element count\n  [3]: generalized -inf count: elements <= lower_bound. lower_bound is -inf by\n    default.\n  [4]: negative element count (excluding -inf), if lower_bound is the default\n    -inf. Otherwise, this is the count of elements > lower_bound and < 0.\n  [5]: zero element count\n  [6]: positive element count (excluding +inf), if upper_bound is the default\n    -inf. Otherwise, this is the count of elements < upper_bound and > 0.\n  [7]: generalized +inf count, elements >= upper_bound. upper_bound is +inf by\n    default.\nOutput elements [1:8] are all zero, if the tensor is uninitialized.\n  [8]: minimum of all non-inf and non-NaN elements.\n       If uninitialized or no such element exists: +inf.\n  [9]: maximum of all non-inf and non-NaN elements.\n       If uninitialized or no such element exists: -inf.\n  [10]: mean of all non-inf and non-NaN elements.\n        If uninitialized or no such element exists: NaN.\n  [11]: variance of all non-inf and non-NaN elements.\n        If uninitialized or no such element exists: NaN."
     type: DT_DOUBLE
   }
   attr {
@@ -5309,6 +5379,30 @@ op {
       }
     }
     description: "List of URLs to debug targets, e.g.,\nfile:///foo/tfdbg_dump, grpc:://localhost:11011"
+  }
+  attr {
+    name: "lower_bound"
+    type: "float"
+    default_value {
+      f: -inf
+    }
+    description: "(float) The lower bound <= which values will be included in the\ngeneralized -inf count. Default: -inf."
+  }
+  attr {
+    name: "upper_bound"
+    type: "float"
+    default_value {
+      f: inf
+    }
+    description: "(float) The upper bound >= which values will be included in the\ngeneralized +inf count. Default: +inf."
+  }
+  attr {
+    name: "mute_if_healthy"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "(bool) Do not send data to the debug URLs unless at least one\nof elements [2], [3] and [7] (i.e., the nan count and the generalized -inf and\ninf counts) is non-zero."
   }
   summary: "Debug Numeric Summary Op."
   description: "Provide a basic summary of numeric value types, range and distribution."
@@ -5925,7 +6019,7 @@ op {
     }
   }
   summary: "Dequantize the \'input\' tensor into a float Tensor."
-  description: "[min_range, max_range] are scalar floats that specify the range for\nthe \'input\' data. The \'mode\' attribute controls exactly which calculations are\nused to convert the float values to their quantized equivalents.\n\nIn \'MIN_COMBINED\' mode, each value of the tensor will undergo the following:\n\n```\nif T == qint8, in[i] += (range(T) + 1)/ 2.0\nout[i] = min_range + (in[i]* (max_range - min_range) / range(T))\n```\nhere `range(T) = numeric_limits<T>::max() - numeric_limits<T>::min()`\n\n*MIN_COMBINED Mode Example*\n\nIf the input comes from a QuantizedRelu6, the output type is\nquint8 (range of 0-255) but the possible range of QuantizedRelu6 is\n0-6.  The min_range and max_range values are therefore 0.0 and 6.0.\nDequantize on quint8 will take each value, cast to float, and multiply\nby 6 / 255.\nNote that if quantizedtype is qint8, the operation will additionally add\neach value by 128 prior to casting.\n\nIf the mode is \'MIN_FIRST\', then this approach is used:\n\n```\nnumber_of_steps = 1 << (# of bits in T)\nrange_adjust = number_of_steps / (number_of_steps - 1)\nrange = (range_max - range_min) * range_adjust\nrange_scale = range / number_of_steps\nconst double offset_input = static_cast<double>(input) - lowest_quantized;\nresult = range_min + ((input - numeric_limits<T>::min()) * range_scale)\n```"
+  description: "[min_range, max_range] are scalar floats that specify the range for\nthe \'input\' data. The \'mode\' attribute controls exactly which calculations are\nused to convert the float values to their quantized equivalents.\n\nIn \'MIN_COMBINED\' mode, each value of the tensor will undergo the following:\n\n```\nif T == qint8, in[i] += (range(T) + 1)/ 2.0\nout[i] = min_range + (in[i]* (max_range - min_range) / range(T))\n```\nhere `range(T) = numeric_limits<T>::max() - numeric_limits<T>::min()`\n\n*MIN_COMBINED Mode Example*\n\nIf the input comes from a QuantizedRelu6, the output type is\nquint8 (range of 0-255) but the possible range of QuantizedRelu6 is\n0-6.  The min_range and max_range values are therefore 0.0 and 6.0.\nDequantize on quint8 will take each value, cast to float, and multiply\nby 6 / 255.\nNote that if quantizedtype is qint8, the operation will additionally add\neach value by 128 prior to casting.\n\nIf the mode is \'MIN_FIRST\', then this approach is used:\n\n```c++\nnumber_of_steps = 1 << (# of bits in T)\nrange_adjust = number_of_steps / (number_of_steps - 1)\nrange = (range_max - range_min) * range_adjust\nrange_scale = range / number_of_steps\nconst double offset_input = static_cast<double>(input) - lowest_quantized;\nresult = range_min + ((input - numeric_limits<T>::min()) * range_scale)\n```"
 }
 op {
   name: "DeserializeManySparse"
@@ -10507,6 +10601,20 @@ op {
     }
   }
   attr {
+    name: "data_format"
+    type: "string"
+    default_value {
+      s: "NDHWC"
+    }
+    description: "The data format of the input and output data. With the\ndefault format \"NDHWC\", the data is stored in the order of:\n    [batch, in_depth, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCDHW\", the data storage order is:\n    [batch, in_channels, in_depth, in_height, in_width]."
+    allowed_values {
+      list {
+        s: "NDHWC"
+        s: "NCDHW"
+      }
+    }
+  }
+  attr {
     name: "T"
     type: "type"
     allowed_values {
@@ -10573,6 +10681,20 @@ op {
       list {
         s: "SAME"
         s: "VALID"
+      }
+    }
+  }
+  attr {
+    name: "data_format"
+    type: "string"
+    default_value {
+      s: "NDHWC"
+    }
+    description: "The data format of the input and output data. With the\ndefault format \"NDHWC\", the data is stored in the order of:\n    [batch, in_depth, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCDHW\", the data storage order is:\n    [batch, in_channels, in_depth, in_height, in_width]."
+    allowed_values {
+      list {
+        s: "NDHWC"
+        s: "NCDHW"
       }
     }
   }
@@ -15610,7 +15732,7 @@ op {
     description: "The separator to use when joining."
   }
   summary: "Joins a string Tensor across the given dimensions."
-  description: "Computes the string join across dimensions in the given string Tensor of shape\n`[d_0, d_1, ..., d_n-1]`.  Returns a new Tensor created by joining the input\nstrings with the given separator (default: empty string).  Negative indices are\ncounted backwards from the end, with `-1` being equivalent to `n - 1`.\n\nFor example:\n\n```\n# tensor `a` is [[\"a\", \"b\"], [\"c\", \"d\"]]\ntf.reduce_join(a, 0) ==> [\"ac\", \"bd\"]\ntf.reduce_join(a, 1) ==> [\"ab\", \"cd\"]\ntf.reduce_join(a, -2) = tf.reduce_join(a, 0) ==> [\"ac\", \"bd\"]\ntf.reduce_join(a, -1) = tf.reduce_join(a, 1) ==> [\"ab\", \"cd\"]\ntf.reduce_join(a, 0, keep_dims=True) ==> [[\"ac\", \"bd\"]]\ntf.reduce_join(a, 1, keep_dims=True) ==> [[\"ab\"], [\"cd\"]]\ntf.reduce_join(a, 0, separator=\".\") ==> [\"a.c\", \"b.d\"]\ntf.reduce_join(a, [0, 1]) ==> [\"acbd\"]\ntf.reduce_join(a, [1, 0]) ==> [\"abcd\"]\ntf.reduce_join(a, []) ==> [\"abcd\"]\n```"
+  description: "Computes the string join across dimensions in the given string Tensor of shape\n`[d_0, d_1, ..., d_n-1]`.  Returns a new Tensor created by joining the input\nstrings with the given separator (default: empty string).  Negative indices are\ncounted backwards from the end, with `-1` being equivalent to `n - 1`.\n\nFor example:\n\n```python\n# tensor `a` is [[\"a\", \"b\"], [\"c\", \"d\"]]\ntf.reduce_join(a, 0) ==> [\"ac\", \"bd\"]\ntf.reduce_join(a, 1) ==> [\"ab\", \"cd\"]\ntf.reduce_join(a, -2) = tf.reduce_join(a, 0) ==> [\"ac\", \"bd\"]\ntf.reduce_join(a, -1) = tf.reduce_join(a, 1) ==> [\"ab\", \"cd\"]\ntf.reduce_join(a, 0, keep_dims=True) ==> [[\"ac\", \"bd\"]]\ntf.reduce_join(a, 1, keep_dims=True) ==> [[\"ab\"], [\"cd\"]]\ntf.reduce_join(a, 0, separator=\".\") ==> [\"a.c\", \"b.d\"]\ntf.reduce_join(a, [0, 1]) ==> [\"acbd\"]\ntf.reduce_join(a, [1, 0]) ==> [\"abcd\"]\ntf.reduce_join(a, []) ==> [\"abcd\"]\n```"
 }
 op {
   name: "RefEnter"
@@ -18584,7 +18706,7 @@ op {
     description: "If True, the operation will be protected by a lock;\notherwise the behavior is undefined, but may exhibit less contention."
   }
   summary: "Divides a variable reference by sparse updates."
-  description: "This operation computes\n\n    # Scalar indices\n    ref[indices, ...] /= updates[...]\n\n    # Vector indices (for each i)\n    ref[indices[i], ...] /= updates[i, ...]\n\n    # High rank indices (for each i, ..., j)\n    ref[indices[i, ..., j], ...] /= updates[i, ..., j, ...]\n\nThis operation outputs `ref` after the update is done.\nThis makes it easier to chain operations that need to use the reset value.\n\nDuplicate entries are handled correctly: if multiple `indices` reference\nthe same location, their contributions divide.\n\nRequires `updates.shape = indices.shape + ref.shape[1:]`."
+  description: "This operation computes\n\n```python\n    # Scalar indices\n    ref[indices, ...] /= updates[...]\n\n    # Vector indices (for each i)\n    ref[indices[i], ...] /= updates[i, ...]\n\n    # High rank indices (for each i, ..., j)\n    ref[indices[i, ..., j], ...] /= updates[i, ..., j, ...]\n```\n\nThis operation outputs `ref` after the update is done.\nThis makes it easier to chain operations that need to use the reset value.\n\nDuplicate entries are handled correctly: if multiple `indices` reference\nthe same location, their contributions divide.\n\nRequires `updates.shape = indices.shape + ref.shape[1:]`."
 }
 op {
   name: "ScatterMul"
@@ -18651,7 +18773,7 @@ op {
     description: "If True, the operation will be protected by a lock;\notherwise the behavior is undefined, but may exhibit less contention."
   }
   summary: "Multiplies sparse updates into a variable reference."
-  description: "This operation computes\n\n    # Scalar indices\n    ref[indices, ...] *= updates[...]\n\n    # Vector indices (for each i)\n    ref[indices[i], ...] *= updates[i, ...]\n\n    # High rank indices (for each i, ..., j)\n    ref[indices[i, ..., j], ...] *= updates[i, ..., j, ...]\n\nThis operation outputs `ref` after the update is done.\nThis makes it easier to chain operations that need to use the reset value.\n\nDuplicate entries are handled correctly: if multiple `indices` reference\nthe same location, their contributions multiply.\n\nRequires `updates.shape = indices.shape + ref.shape[1:]`."
+  description: "This operation computes\n\n```python\n    # Scalar indices\n    ref[indices, ...] *= updates[...]\n\n    # Vector indices (for each i)\n    ref[indices[i], ...] *= updates[i, ...]\n\n    # High rank indices (for each i, ..., j)\n    ref[indices[i, ..., j], ...] *= updates[i, ..., j, ...]\n```\n\nThis operation outputs `ref` after the update is done.\nThis makes it easier to chain operations that need to use the reset value.\n\nDuplicate entries are handled correctly: if multiple `indices` reference\nthe same location, their contributions multiply.\n\nRequires `updates.shape = indices.shape + ref.shape[1:]`."
 }
 op {
   name: "ScatterNd"
@@ -18690,7 +18812,7 @@ op {
     }
   }
   summary: "Creates a new tensor by applying sparse `updates` to individual"
-  description: "values or slices within a zero tensor of the given `shape` tensor according to\nindices.  This operator is the inverse of the [tf.gather_nd](#gather_nd)\noperator which extracts values or slices from a given tensor.\n\nTODO(simister): Add a link to Variable.__getitem__ documentation on slice\nsyntax.\n\n`shape` is a `TensorShape` with rank `P` and `indices` is a `Tensor` of rank\n`Q`.\n\n`indices` must be integer tensor, containing indices into `shape`.\nIt must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.\n\nThe innermost dimension of `indices` (with length `K`) corresponds to\nindices into elements (if `K = P`) or slices (if `K < P`) along the `K`th\ndimension of `shape`.\n\n`updates` is Tensor of rank `Q-1+P-K` with shape:\n\n```\n[d_0, ..., d_{Q-2}, shape[K], ..., shape[P-1]].\n```\n\nThe simplest form of scatter is to insert individual elements in a tensor by\nindex. For example, say we want to insert 4 scattered elements in a rank-1\ntensor with 8 elements.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/ScatterNd1.png\" alt>\n</div>\n\nIn Python, this scatter operation would look like this:\n\n    indices = tf.constant([[4], [3], [1], [7]])\n    updates = tf.constant([9, 10, 11, 12])\n    shape = tf.constant([8])\n    scatter = tf.scatter_nd(indices, updates, shape)\n    with tf.Session() as sess:\n      print sess.run(scatter)\n\nThe resulting tensor would look like this:\n\n    [0, 11, 0, 10, 9, 0, 0, 12]\n\nWe can also, insert entire slices of a higher rank tensor all at once. For\nexample, if we wanted to insert two slices in the first dimension of a\nrank-3 tensor with two matrices of new values.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/ScatterNd2.png\" alt>\n</div>\n\nIn Python, this scatter operation would look like this:\n\n    indices = tf.constant([[0], [2]])\n    updates = tf.constant([[[5, 5, 5, 5], [6, 6, 6, 6],\n                            [7, 7, 7, 7], [8, 8, 8, 8]],\n                           [[5, 5, 5, 5], [6, 6, 6, 6],\n                            [7, 7, 7, 7], [8, 8, 8, 8]]])\n    shape = tf.constant([4, 4, 4])\n    scatter = tf.scatter_nd(indices, updates, shape)\n    with tf.Session() as sess:\n      print sess.run(scatter)\n\nThe resulting tensor would look like this:\n\n    [[[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]],\n     [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],\n     [[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]],\n     [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]]"
+  description: "values or slices within a zero tensor of the given `shape` tensor according to\nindices.  This operator is the inverse of the [tf.gather_nd](#gather_nd)\noperator which extracts values or slices from a given tensor.\n\nTODO(simister): Add a link to Variable.__getitem__ documentation on slice\nsyntax.\n\n`shape` is a `TensorShape` with rank `P` and `indices` is a `Tensor` of rank\n`Q`.\n\n`indices` must be integer tensor, containing indices into `shape`.\nIt must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.\n\nThe innermost dimension of `indices` (with length `K`) corresponds to\nindices into elements (if `K = P`) or slices (if `K < P`) along the `K`th\ndimension of `shape`.\n\n`updates` is Tensor of rank `Q-1+P-K` with shape:\n\n```\n[d_0, ..., d_{Q-2}, shape[K], ..., shape[P-1]].\n```\n\nThe simplest form of scatter is to insert individual elements in a tensor by\nindex. For example, say we want to insert 4 scattered elements in a rank-1\ntensor with 8 elements.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/ScatterNd1.png\" alt>\n</div>\n\nIn Python, this scatter operation would look like this:\n\n```python\n    indices = tf.constant([[4], [3], [1], [7]])\n    updates = tf.constant([9, 10, 11, 12])\n    shape = tf.constant([8])\n    scatter = tf.scatter_nd(indices, updates, shape)\n    with tf.Session() as sess:\n      print sess.run(scatter)\n```\n\nThe resulting tensor would look like this:\n\n    [0, 11, 0, 10, 9, 0, 0, 12]\n\nWe can also, insert entire slices of a higher rank tensor all at once. For\nexample, if we wanted to insert two slices in the first dimension of a\nrank-3 tensor with two matrices of new values.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/ScatterNd2.png\" alt>\n</div>\n\nIn Python, this scatter operation would look like this:\n\n```python\n    indices = tf.constant([[0], [2]])\n    updates = tf.constant([[[5, 5, 5, 5], [6, 6, 6, 6],\n                            [7, 7, 7, 7], [8, 8, 8, 8]],\n                           [[5, 5, 5, 5], [6, 6, 6, 6],\n                            [7, 7, 7, 7], [8, 8, 8, 8]]])\n    shape = tf.constant([4, 4, 4])\n    scatter = tf.scatter_nd(indices, updates, shape)\n    with tf.Session() as sess:\n      print sess.run(scatter)\n```\n\nThe resulting tensor would look like this:\n\n    [[[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]],\n     [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],\n     [[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]],\n     [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]]"
 }
 op {
   name: "ScatterNdAdd"
@@ -18873,7 +18995,7 @@ op {
     description: "An optional bool. Defaults to True. If True, the assignment will\nbe protected by a lock; otherwise the behavior is undefined,\nbut may exhibit less contention."
   }
   summary: "Applies sparse `updates` to individual values or slices within a given"
-  description: "variable according to `indices`.\n\n`ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.\n\n`indices` must be integer tensor, containing indices into `ref`.\nIt must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.\n\nThe innermost dimension of `indices` (with length `K`) corresponds to\nindices into elements (if `K = P`) or slices (if `K < P`) along the `K`th\ndimension of `ref`.\n\n`updates` is `Tensor` of rank `Q-1+P-K` with shape:\n\n```\n[d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].\n```\n\nFor example, say we want to update 4 scattered elements to a rank-1 tensor to\n8 elements. In Python, that update would look like this:\n\n    ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])\n    indices = tf.constant([[4], [3], [1] ,[7]])\n    updates = tf.constant([9, 10, 11, 12])\n    update = tf.scatter_nd_update(ref, indices, updates)\n    with tf.Session() as sess:\n      print sess.run(update)\n\nThe resulting update to ref would look like this:\n\n    [1, 11, 3, 10, 9, 6, 7, 12]\n\nSee [tf.scatter_nd](#scatter_nd) for more details about how to make updates to\nslices."
+  description: "variable according to `indices`.\n\n`ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.\n\n`indices` must be integer tensor, containing indices into `ref`.\nIt must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.\n\nThe innermost dimension of `indices` (with length `K`) corresponds to\nindices into elements (if `K = P`) or slices (if `K < P`) along the `K`th\ndimension of `ref`.\n\n`updates` is `Tensor` of rank `Q-1+P-K` with shape:\n\n```\n[d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].\n```\n\nFor example, say we want to update 4 scattered elements to a rank-1 tensor to\n8 elements. In Python, that update would look like this:\n\n```python\n    ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])\n    indices = tf.constant([[4], [3], [1] ,[7]])\n    updates = tf.constant([9, 10, 11, 12])\n    update = tf.scatter_nd_update(ref, indices, updates)\n    with tf.Session() as sess:\n      print sess.run(update)\n```\n\nThe resulting update to ref would look like this:\n\n    [1, 11, 3, 10, 9, 6, 7, 12]\n\nSee [tf.scatter_nd](#scatter_nd) for more details about how to make updates to\nslices."
 }
 op {
   name: "ScatterSub"
@@ -18940,7 +19062,7 @@ op {
     description: "If True, the subtraction will be protected by a lock;\notherwise the behavior is undefined, but may exhibit less contention."
   }
   summary: "Subtracts sparse updates to a variable reference."
-  description: "    # Scalar indices\n    ref[indices, ...] -= updates[...]\n\n    # Vector indices (for each i)\n    ref[indices[i], ...] -= updates[i, ...]\n\n    # High rank indices (for each i, ..., j)\n    ref[indices[i, ..., j], ...] -= updates[i, ..., j, ...]\n\nThis operation outputs `ref` after the update is done.\nThis makes it easier to chain operations that need to use the reset value.\n\nDuplicate entries are handled correctly: if multiple `indices` reference\nthe same location, their (negated) contributions add.\n\nRequires `updates.shape = indices.shape + ref.shape[1:]`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/ScatterSub.png\" alt>\n</div>"
+  description: "```python\n    # Scalar indices\n    ref[indices, ...] -= updates[...]\n\n    # Vector indices (for each i)\n    ref[indices[i], ...] -= updates[i, ...]\n\n    # High rank indices (for each i, ..., j)\n    ref[indices[i, ..., j], ...] -= updates[i, ..., j, ...]\n```\n\nThis operation outputs `ref` after the update is done.\nThis makes it easier to chain operations that need to use the reset value.\n\nDuplicate entries are handled correctly: if multiple `indices` reference\nthe same location, their (negated) contributions add.\n\nRequires `updates.shape = indices.shape + ref.shape[1:]`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/ScatterSub.png\" alt>\n</div>"
 }
 op {
   name: "ScatterUpdate"
@@ -18989,7 +19111,7 @@ op {
     description: "If True, the assignment will be protected by a lock;\notherwise the behavior is undefined, but may exhibit less contention."
   }
   summary: "Applies sparse updates to a variable reference."
-  description: "This operation computes\n\n    # Scalar indices\n    ref[indices, ...] = updates[...]\n\n    # Vector indices (for each i)\n    ref[indices[i], ...] = updates[i, ...]\n\n    # High rank indices (for each i, ..., j)\n    ref[indices[i, ..., j], ...] = updates[i, ..., j, ...]\n\nThis operation outputs `ref` after the update is done.\nThis makes it easier to chain operations that need to use the reset value.\n\nIf values in `ref` is to be updated more than once, because there are\nduplicate entries in `indices`, the order at which the updates happen\nfor each value is undefined.\n\nRequires `updates.shape = indices.shape + ref.shape[1:]`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/ScatterUpdate.png\" alt>\n</div>"
+  description: "This operation computes\n\n```python\n    # Scalar indices\n    ref[indices, ...] = updates[...]\n\n    # Vector indices (for each i)\n    ref[indices[i], ...] = updates[i, ...]\n\n    # High rank indices (for each i, ..., j)\n    ref[indices[i, ..., j], ...] = updates[i, ..., j, ...]\n```\n\nThis operation outputs `ref` after the update is done.\nThis makes it easier to chain operations that need to use the reset value.\n\nIf values in `ref` is to be updated more than once, because there are\nduplicate entries in `indices`, the order at which the updates happen\nfor each value is undefined.\n\nRequires `updates.shape = indices.shape + ref.shape[1:]`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/ScatterUpdate.png\" alt>\n</div>"
 }
 op {
   name: "SdcaFprint"
@@ -23479,7 +23601,7 @@ op {
     }
   }
   summary: "Return substrings from `Tensor` of strings."
-  description: "For each string in the input `Tensor`, creates a substring starting at index\n`pos` with a total length of `len`.\n\nIf `len` defines a substring that would extend beyond the length of the input\nstring, then as many characters as possible are used.\n\nIf `pos` is negative or specifies a character index larger than any of the input\nstrings, then an `InvalidArgumentError` is thrown.\n\n`pos` and `len` must have the same shape, otherwise a `ValueError` is thrown on\nOp creation.\n\n*NOTE*: `Substr` supports broadcasting up to two dimensions. More about\nbroadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)\n\n---\n\nExamples\n\nUsing scalar `pos` and `len`:\n\n```\ninput = [b\'Hello\', b\'World\']\nposition = 1\nlength = 3\n\noutput = [b\'ell\', b\'orl\']\n```\n\nUsing `pos` and `len` with same shape as `input`:\n\n```\ninput = [[b\'ten\', b\'eleven\', b\'twelve\'],\n         [b\'thirteen\', b\'fourteen\', b\'fifteen\'],\n         [b\'sixteen\', b\'seventeen\', b\'eighteen\']]\nposition = [[1, 2, 3],\n            [1, 2, 3],\n            [1, 2, 3]]\nlength =   [[2, 3, 4],\n            [4, 3, 2],\n            [5, 5, 5]]\n\noutput = [[b\'en\', b\'eve\', b\'lve\'],\n          [b\'hirt\', b\'urt\', b\'te\'],\n          [b\'ixtee\', b\'vente\', b\'hteen\']]\n```\n\nBroadcasting `pos` and `len` onto `input`:\n\n```\ninput = [[b\'ten\', b\'eleven\', b\'twelve\'],\n         [b\'thirteen\', b\'fourteen\', b\'fifteen\'],\n         [b\'sixteen\', b\'seventeen\', b\'eighteen\'],\n         [b\'nineteen\', b\'twenty\', b\'twentyone\']]\nposition = [1, 2, 3]\nlength =   [1, 2, 3]\n\noutput = [[b\'e\', b\'ev\', b\'lve\'],\n          [b\'h\', b\'ur\', b\'tee\'],\n          [b\'i\', b\'ve\', b\'hte\'],\n          [b\'i\', b\'en\', b\'nty\']]\n```\n\nBroadcasting `input` onto `pos` and `len`:\n\n```\ninput = b\'thirteen\'\nposition = [1, 5, 7]\nlength =   [3, 2, 1]\n\noutput = [b\'hir\', b\'ee\', b\'n\"]\n```"
+  description: "For each string in the input `Tensor`, creates a substring starting at index\n`pos` with a total length of `len`.\n\nIf `len` defines a substring that would extend beyond the length of the input\nstring, then as many characters as possible are used.\n\nIf `pos` is negative or specifies a character index larger than any of the input\nstrings, then an `InvalidArgumentError` is thrown.\n\n`pos` and `len` must have the same shape, otherwise a `ValueError` is thrown on\nOp creation.\n\n*NOTE*: `Substr` supports broadcasting up to two dimensions. More about\nbroadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)\n\n---\n\nExamples\n\nUsing scalar `pos` and `len`:\n\n```python\ninput = [b\'Hello\', b\'World\']\nposition = 1\nlength = 3\n\noutput = [b\'ell\', b\'orl\']\n```\n\nUsing `pos` and `len` with same shape as `input`:\n\n```python\ninput = [[b\'ten\', b\'eleven\', b\'twelve\'],\n         [b\'thirteen\', b\'fourteen\', b\'fifteen\'],\n         [b\'sixteen\', b\'seventeen\', b\'eighteen\']]\nposition = [[1, 2, 3],\n            [1, 2, 3],\n            [1, 2, 3]]\nlength =   [[2, 3, 4],\n            [4, 3, 2],\n            [5, 5, 5]]\n\noutput = [[b\'en\', b\'eve\', b\'lve\'],\n          [b\'hirt\', b\'urt\', b\'te\'],\n          [b\'ixtee\', b\'vente\', b\'hteen\']]\n```\n\nBroadcasting `pos` and `len` onto `input`:\n\n```\ninput = [[b\'ten\', b\'eleven\', b\'twelve\'],\n         [b\'thirteen\', b\'fourteen\', b\'fifteen\'],\n         [b\'sixteen\', b\'seventeen\', b\'eighteen\'],\n         [b\'nineteen\', b\'twenty\', b\'twentyone\']]\nposition = [1, 2, 3]\nlength =   [1, 2, 3]\n\noutput = [[b\'e\', b\'ev\', b\'lve\'],\n          [b\'h\', b\'ur\', b\'tee\'],\n          [b\'i\', b\'ve\', b\'hte\'],\n          [b\'i\', b\'en\', b\'nty\']]\n```\n\nBroadcasting `input` onto `pos` and `len`:\n\n```\ninput = b\'thirteen\'\nposition = [1, 5, 7]\nlength =   [3, 2, 1]\n\noutput = [b\'hir\', b\'ee\', b\'n\"]\n```"
 }
 op {
   name: "Sum"

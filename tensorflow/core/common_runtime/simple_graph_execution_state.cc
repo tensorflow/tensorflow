@@ -29,6 +29,8 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/subgraph.h"
 #include "tensorflow/core/graph/validate.h"
+#include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
@@ -227,10 +229,54 @@ void SimpleGraphExecutionState::RestoreStatefulNodes(Graph* graph) {
 
 Status SimpleGraphExecutionState::InitBaseGraph(
     const BuildGraphOptions& options) {
+  const GraphDef* graph_def = &original_graph_def_;
+
+  GraphDef optimized_graph;
+  const RewriterConfig& rewrite_options =
+      session_options_->config.graph_options().rewrite_options();
+  if (grappler::MetaOptimizerEnabled(rewrite_options)) {
+    // Adding this functionalty in steps. The first step is to make sure
+    // we don't break dependencies. The second step will be to turn the
+    // functionality on by default.
+    grappler::GrapplerItem item;
+    item.id = "tf_graph";
+    item.graph = original_graph_def_;
+
+    item.fetch = options.fetch_endpoints;
+    item.fetch.insert(item.fetch.end(), options.target_nodes.begin(),
+                      options.target_nodes.end());
+
+    Status s;
+    if (!options.feed_endpoints.empty()) {
+      std::unordered_set<string> feeds(options.feed_endpoints.begin(),
+                                       options.feed_endpoints.end());
+      for (const NodeDef& node : original_graph_def_.node()) {
+        if (feeds.find(node.name()) == feeds.end()) {
+          continue;
+        }
+        if (node.attr().count("dtype") == 0 ||
+            node.attr().count("shape") == 0) {
+          s = errors::InvalidArgument("Missing node shape or type");
+          break;
+        }
+        TensorShape shape(node.attr().at("shape").shape());
+        DataType type = node.attr().at("dtype").type();
+        Tensor fake_input(type, shape);
+        item.feed.emplace_back(node.name(), fake_input);
+      }
+    }
+
+    if (s.ok()) {
+      s = grappler::RunMetaOptimizer(item, rewrite_options, &optimized_graph);
+    }
+    if (s.ok()) {
+      graph_def = &optimized_graph;
+    }
+  }
+
   std::unique_ptr<Graph> new_graph(new Graph(flib_def_.get()));
   GraphConstructorOptions opts;
-  TF_RETURN_IF_ERROR(
-      ConvertGraphDefToGraph(opts, original_graph_def_, new_graph.get()));
+  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(opts, *graph_def, new_graph.get()));
   for (const Node* n : new_graph->nodes()) {
     VLOG(2) << "Mapping " << n->name() << " to " << n->cost_id();
     node_name_to_cost_id_map_[n->name()] = n->cost_id();

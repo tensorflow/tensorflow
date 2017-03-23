@@ -25,6 +25,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
@@ -99,6 +100,17 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
           handle, [0], constant_op.constant([[2]], dtype=dtypes.int32)).run()
       read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
       self.assertEqual(read.eval(), [[3]])
+
+  def testGPU(self):
+    with self.test_session(use_gpu=True) as sess:
+      abc = variable_scope.get_variable(
+          "abc",
+          shape=[1],
+          initializer=init_ops.ones_initializer(),
+          use_resource=True)
+
+      sess.run(variables.global_variables_initializer())
+      print(sess.run(abc))
 
   def testInitFn(self):
     with self.test_session():

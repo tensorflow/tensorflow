@@ -843,6 +843,7 @@ class ExecutorState {
       if (val_field_is_set) {
         val.Destroy();
         val_field_is_set = false;
+        has_value = false;
       }
     }
 
@@ -1737,11 +1738,14 @@ Status ExecutorState::PrepareInputs(const NodeItem& item, Entry* first_input,
       }
       inp->tensor = entry->val.get();
     } else {
-      if (!entry->ref->IsInitialized() && !IsInitializationOp(item.node)) {
-        return AttachDef(
-            errors::FailedPrecondition("Attempting to use uninitialized value ",
-                                       item.kernel->def().input(i)),
-            item.kernel->def());
+      {
+        mutex_lock ml(*entry->ref_mu);
+        if (!entry->ref->IsInitialized() && !IsInitializationOp(item.node)) {
+          return AttachDef(errors::FailedPrecondition(
+                               "Attempting to use uninitialized value ",
+                               item.kernel->def().input(i)),
+                           item.kernel->def());
+        }
       }
       if (expect_ref) {
         inp->mutex_if_ref = entry->ref_mu;
@@ -1818,8 +1822,13 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
       out->alloc_attr = ctx->output_alloc_attr(i);
 
       // Sanity check of output tensor types.
-      DataType dtype = val->dtype();
-      if (val.is_ref()) dtype = MakeRefType(dtype);
+      DataType dtype;
+      if (val.is_ref()) {
+        mutex_lock ml(*val.mutex_if_ref);
+        dtype = MakeRefType(val->dtype());
+      } else {
+        dtype = val->dtype();
+      }
       if (dtype == item.output_type(i)) {
         if (stats && val.tensor->IsInitialized()) {
           nodestats::SetOutput(stats, i, val.tensor);

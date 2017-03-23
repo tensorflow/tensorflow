@@ -159,9 +159,21 @@ class _Conv(base._Layer):  # pylint: disable=protected-access
         # bias_add does not support channels_first for non-4D inputs.
         if self.rank == 1:
           bias = array_ops.reshape(self.bias, (1, self.filters, 1))
-        if self.rank == 3:
-          bias = array_ops.reshape(self.bias, (1, self.filters, 1, 1))
-        outputs += bias
+          outputs += bias
+        elif self.rank == 3:
+          # As of Mar 2017, direct addition is significantly slower than
+          # bias_add when computing gradients. To use bias_add, we collapse Z
+          # and Y into a single dimension to obtain a 4D input tensor.
+          outputs_shape = outputs.shape.as_list()
+          outputs_4d = array_ops.reshape(outputs,
+                                         [outputs_shape[0], outputs_shape[1],
+                                          outputs_shape[2] * outputs_shape[3],
+                                          outputs_shape[4]])
+          outputs_4d = nn.bias_add(
+              outputs_4d,
+              self.bias,
+              data_format=utils.convert_data_format(self.data_format, 4))
+          outputs = array_ops.reshape(outputs_4d, outputs_shape)
       else:
         outputs = nn.bias_add(
             outputs,
@@ -844,7 +856,7 @@ class SeparableConv2D(Conv2D):
       # Reshape to channels first
       outputs = array_ops.transpose(outputs, (0, 3, 1, 2))
 
-    if self.bias:
+    if self.bias is not None:
       outputs = nn.bias_add(
           outputs,
           self.bias,

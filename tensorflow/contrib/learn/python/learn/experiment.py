@@ -324,6 +324,15 @@ class Experiment(object):
     last_warning_time = 0
     while (not continuous_eval_predicate_fn or
            continuous_eval_predicate_fn(eval_result)):
+      # Exit if we have already reached number of steps to train.
+      if eval_result:
+        global_step = eval_result.get("global_step")
+        if global_step and self._train_steps and (
+            global_step >= self._train_steps):
+          logging.info("Exiting continuous eval, global_step=%s >= "
+                       "train_step=%s" % (global_step, self._train_steps))
+          return
+
       start = time.time()
 
       error_msg = None
@@ -469,7 +478,7 @@ class Experiment(object):
     self._start_server().join()
 
   def test(self):
-    """Tests training and evaluating the estimator both for a single step.
+    """Tests training, evaluating and exporting the estimator for a single step.
 
     Returns:
       The result of the `evaluate` call to the `Estimator`.
@@ -478,10 +487,13 @@ class Experiment(object):
                         steps=1,
                         monitors=self._train_monitors)
 
-    return self._estimator.evaluate(input_fn=self._eval_input_fn,
-                                    steps=1,
-                                    metrics=self._eval_metrics,
-                                    name="one_pass")
+    eval_result = self._estimator.evaluate(input_fn=self._eval_input_fn,
+                                           steps=1,
+                                           metrics=self._eval_metrics,
+                                           name="one_pass")
+    _ = self._maybe_export(eval_result)
+
+    return eval_result
 
   def _start_server(self):
     """Creates, starts, and returns a server_lib.Server."""

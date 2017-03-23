@@ -170,11 +170,6 @@ which to operate must always be given explicitly. This is the reason why
 *   @{tf.contrib.graph_editor.copy_with_input_replacements}
 *   @{tf.contrib.graph_editor.graph_replace}
 
-## Module: match
-
-*   @{tf.contrib.graph_editor.op_type}
-*   @{tf.contrib.graph_editor.OpMatcher}
-
 ## Useful aliases
 
 *   @{tf.contrib.graph_editor.ph}

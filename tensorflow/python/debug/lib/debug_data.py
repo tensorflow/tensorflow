@@ -354,7 +354,15 @@ class DebugTensorDatum(object):
     # TODO(cais): Add hostname and pid to support dumps from distributed
     #             sessions.
 
-    self._timestamp = int(base.split("_")[-1])
+    self._extended_timestamp = base.split("_")[-1]
+    # It may include an index suffix at the end if file path collision happened
+    # due to identical timestamps.
+    if "-" in self._extended_timestamp:
+      self._timestamp = int(
+          self._extended_timestamp[:self._extended_timestamp.find("-")])
+    else:
+      self._timestamp = int(self._extended_timestamp)
+
     self._debug_op = base.split("_")[-2]
     self._output_slot = int(base.split("_")[-3])
 
@@ -400,6 +408,20 @@ class DebugTensorDatum(object):
     """
 
     return self._timestamp
+
+  @property
+  def extended_timestamp(self):
+    """Extended timestamp, possibly with an index suffix.
+
+    The index suffix, e.g., "-1", is for disambiguating multiple dumps of the
+    same tensor with the same timestamp, which can occur if the dumping events
+    are spaced by shorter than the temporal resolution of the timestamps.
+
+    Returns:
+      (`str`) The extended timestamp.
+    """
+
+    return self._extended_timestamp
 
   @property
   def debug_op(self):
@@ -564,7 +586,7 @@ class DebugDumpDir(object):
             datum.debug_op)
 
     self._dump_tensor_data = sorted(
-        self._dump_tensor_data, key=lambda x: x.timestamp)
+        self._dump_tensor_data, key=lambda x: x.extended_timestamp)
 
     if self._dump_tensor_data:
       self._t0 = self._dump_tensor_data[0].timestamp
@@ -917,10 +939,15 @@ class DebugDumpDir(object):
             (inp_node, inp_output_slot) not in pending_inputs[node]):
           pending_inputs[node].append((inp_node, inp_output_slot))
 
-    for datum in self._dump_tensor_data:
+    for i, datum in enumerate(self._dump_tensor_data):
       node = datum.node_name
       slot = datum.output_slot
-      if pending_inputs[node]:
+      # In some cases (e.g., system clocks with insufficient precision),
+      # the upstream and downstream tensors may have identical timestamps, the
+      # following check examines this possibilty and avoids raising an error if
+      # that is the case.
+      if not self._satisfied_at_timestamp(
+          pending_inputs[node], datum.timestamp, start_i=i + 1):
         raise ValueError("Causality violated in timing relations of debug "
                          "dumps: %s (%d): "
                          "these input(s) are not satisfied: %s" %
@@ -937,6 +964,36 @@ class DebugDumpDir(object):
           else:
             del recipient_pending_inputs[
                 recipient_pending_inputs.index((node, slot))]
+
+  def _satisfied_at_timestamp(self, pending, timestamp, start_i=0):
+    """Determine whether pending inputs are satisfied at given timestamp.
+
+    Note: This method mutates the input argument "pending".
+
+    Args:
+      pending: A list of 2-tuple (node_name, output_slot): the dependencies to
+        check.
+      timestamp: (int) the timestamp in question.
+      start_i: (int) the index in self._dump_tensor_data to start searching for
+        the timestamp.
+
+    Returns:
+      (bool) Whether all the dependencies in pending are satisfied at the
+        timestamp. If pending is empty to begin with, return True.
+    """
+    if not pending:
+      return True
+
+    for datum in self._dump_tensor_data[start_i:]:
+      if datum.timestamp > timestamp:
+        break
+      if (datum.timestamp == timestamp and
+          (datum.node_name, datum.output_slot) in pending):
+        pending.remove((datum.node_name, datum.output_slot))
+        if not pending:
+          return True
+
+    return not pending
 
   def loaded_partition_graphs(self):
     """Test whether partition graphs have been loaded."""

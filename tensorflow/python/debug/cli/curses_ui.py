@@ -22,6 +22,7 @@ import curses
 from curses import textpad
 import signal
 import sys
+import threading
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
@@ -218,6 +219,11 @@ class CursesUI(base_ui.BaseUI):
   # num lock is off.
   CLI_CR_KEYS = [ord("\n"), ord("\r"), 343]
 
+  _KEY_MAP = {
+      127: curses.KEY_BACKSPACE,  # Backspace
+      curses.KEY_DC: 4,  # Delete
+  }
+
   _FOREGROUND_COLORS = {
       "white": curses.COLOR_WHITE,
       "red": curses.COLOR_RED,
@@ -242,6 +248,8 @@ class CursesUI(base_ui.BaseUI):
   _UI_WAIT_COLOR_PAIR = "magenta_on_white"
 
   _UI_WAIT_MESSAGE = "Processing..."
+
+  _single_instance_lock = threading.Lock()
 
   def __init__(self, on_ui_exit=None):
     """Constructor of CursesUI.
@@ -286,8 +294,12 @@ class CursesUI(base_ui.BaseUI):
     self._curr_unwrapped_output = None
     self._curr_wrapped_output = None
 
-    # Register signal handler for SIGINT.
-    signal.signal(signal.SIGINT, self._interrupt_handler)
+    try:
+      # Register signal handler for SIGINT.
+      signal.signal(signal.SIGINT, self._interrupt_handler)
+    except ValueError:
+      # Running in a child thread, can't catch signals.
+      pass
 
     self.register_command_handler(
         "mouse",
@@ -422,8 +434,12 @@ class CursesUI(base_ui.BaseUI):
     curses.echo()
     curses.endwin()
 
-    # Remove SIGINT handler.
-    signal.signal(signal.SIGINT, signal.SIG_DFL)
+    try:
+      # Remove SIGINT handler.
+      signal.signal(signal.SIGINT, signal.SIG_DFL)
+    except ValueError:
+     # Can't catch signals unless you're the main thread.
+      pass
 
   def run_ui(self,
              init_command=None,
@@ -431,6 +447,11 @@ class CursesUI(base_ui.BaseUI):
              title_color=None,
              enable_mouse_on_start=True):
     """Run the CLI: See the doc of base_ui.BaseUI.run_ui for more details."""
+
+    # Only one instance of the Curses UI can be running at a time, since
+    # otherwise they would try to both read from the same keystrokes, and write
+    # to the same screen.
+    self._single_instance_lock.acquire()
 
     self._screen_launch(enable_mouse_on_start=enable_mouse_on_start)
 
@@ -448,6 +469,8 @@ class CursesUI(base_ui.BaseUI):
       self._on_ui_exit()
 
     self._screen_terminate()
+
+    self._single_instance_lock.release()
 
     return exit_token
 
@@ -797,7 +820,7 @@ class CursesUI(base_ui.BaseUI):
       # Invalidate active command history.
       self._command_pointer = 0
       self._active_command_history = []
-      return x
+      return self._KEY_MAP.get(x, x)
 
   def _screen_getmouse(self):
     return curses.getmouse()

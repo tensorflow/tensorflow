@@ -45,7 +45,7 @@ the specified versions. If upgrading is not possible, you may still run
 TensorFlow with GPU support, but only if you do both of the following:
 
   * Install TensorFlow from sources as described
-    @{install_sources$here}.
+    @{$install_sources$here}.
   * Install or upgrade to at least the following NVIDIA versions:
     * CUDA toolkit 7.0 or greater
     * cuDNN v3 or greater
@@ -570,6 +570,15 @@ Terminal window to review and agree to the Xcode license agreements.
 
 RuntimeError: Broken toolchain: cannot link a simple C program</pre>
 </td>
+
+<tr>
+  <td><a href="http://stackoverflow.com/questions/42376790/">42376790</a></td>
+  <td>After installing for GPU, an `import tensorflow` statement
+      triggers the following error:
+<pre>tensorflow/stream_executor/dso_loader.cc:135] successfully opened CUDA
+  library libcublas.8.0.dylib locally
+  Segmentation fault: 11
+</pre></td>
 </tr>
 
 </table>

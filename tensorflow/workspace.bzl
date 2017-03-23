@@ -64,6 +64,10 @@ temp_workaround_http_archive = repository_rule(
 # If TensorFlow is linked as a submodule.
 # path_prefix and tf_repo_name are no longer used.
 def tf_workspace(path_prefix = "", tf_repo_name = ""):
+  # We must check the bazel version before trying to parse any other BUILD
+  # files, in case the parsing of those build files depends on the bazel
+  # version we require here.
+  check_version("0.4.5")
   cuda_configure(name = "local_config_cuda")
   sycl_configure(name = "local_config_sycl")
   if path_prefix:
@@ -74,11 +78,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   native.new_http_archive(
       name = "eigen_archive",
       urls = [
-          "http://bazel-mirror.storage.googleapis.com/bitbucket.org/eigen/eigen/get/174e09eed96c.tar.gz",
-          "https://bitbucket.org/eigen/eigen/get/174e09eed96c.tar.gz",
+          "http://bazel-mirror.storage.googleapis.com/bitbucket.org/eigen/eigen/get/9c6361787292.tar.gz",
+          "https://bitbucket.org/eigen/eigen/get/9c6361787292.tar.gz",
       ],
-      sha256 = "38d4bda36435cd40e5235887cca8f108f8125d5a28eac471555efdf9d259020f",
-      strip_prefix = "eigen-eigen-174e09eed96c",
+      sha256 = "e6ec2502a5d82dd5df0b9b16e7697f5fccb81c322d0be8e3492969eecb66badd",
+      strip_prefix = "eigen-eigen-9c6361787292",
       build_file = str(Label("//third_party:eigen.BUILD")),
   )
 
@@ -96,6 +100,17 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   native.bind(
       name = "xsmm_avx",
       actual = "@libxsmm_archive//third_party:xsmm_avx",
+  )
+
+  native.new_http_archive(
+      name = "ortools_archive",
+      urls = [
+          "http://bazel-mirror.storage.googleapis.com/github.com/google/or-tools/archive/253f7955c6a1fd805408fba2e42ac6d45b312d15.tar.gz",
+          "https://github.com/google/or-tools/archive/253f7955c6a1fd805408fba2e42ac6d45b312d15.tar.gz",
+      ],
+      sha256 = "932075525642b04ac6f1b50589f1df5cd72ec2f448b721fd32234cf183f0e755",
+      strip_prefix = "or-tools-253f7955c6a1fd805408fba2e42ac6d45b312d15/src",
+      build_file = str(Label("//third_party:ortools.BUILD")),
   )
 
   native.http_archive(
@@ -228,6 +243,29 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
       strip_prefix = "protobuf-2b7430d96aeff2bb624c8d52182ff5e4b9f7f18a",
   )
 
+  # We need to import the protobuf library under the names com_google_protobuf
+  # and com_google_protobuf_cc to enable proto_library support in bazel.
+  # Unfortunately there is no way to alias http_archives at the moment.
+  native.http_archive(
+      name = "com_google_protobuf",
+      urls = [
+          "http://bazel-mirror.storage.googleapis.com/github.com/google/protobuf/archive/2b7430d96aeff2bb624c8d52182ff5e4b9f7f18a.tar.gz",
+          "https://github.com/google/protobuf/archive/2b7430d96aeff2bb624c8d52182ff5e4b9f7f18a.tar.gz",
+      ],
+      sha256 = "e5d3d4e227a0f7afb8745df049bbd4d55474b158ca5aaa2a0e31099af24be1d0",
+      strip_prefix = "protobuf-2b7430d96aeff2bb624c8d52182ff5e4b9f7f18a",
+  )
+
+  native.http_archive(
+      name = "com_google_protobuf_cc",
+      urls = [
+          "http://bazel-mirror.storage.googleapis.com/github.com/google/protobuf/archive/2b7430d96aeff2bb624c8d52182ff5e4b9f7f18a.tar.gz",
+          "https://github.com/google/protobuf/archive/2b7430d96aeff2bb624c8d52182ff5e4b9f7f18a.tar.gz",
+      ],
+      sha256 = "e5d3d4e227a0f7afb8745df049bbd4d55474b158ca5aaa2a0e31099af24be1d0",
+      strip_prefix = "protobuf-2b7430d96aeff2bb624c8d52182ff5e4b9f7f18a",
+  )
+
   native.new_http_archive(
       name = "gmock_archive",
       urls = [
@@ -247,6 +285,12 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   native.bind(
       name = "gtest_main",
       actual = "@gmock_archive//:gtest_main",
+  )
+
+  native.git_repository(
+    name   = "com_github_gflags_gflags",
+    commit = "f8a0efe03aa69b3336d8e228b37d4ccb17324b88",
+    remote = "https://github.com/gflags/gflags.git",
   )
 
   native.bind(

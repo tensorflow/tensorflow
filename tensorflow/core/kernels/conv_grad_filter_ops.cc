@@ -352,7 +352,9 @@ TF_CALL_float(REGISTER_CPU_KERNELS);
 // The slow version (but compiles for GPU)
 
 // A dummy type to group forward backward filter autotune results together.
-struct ConvBackwardFilterAutoTuneGroup {};
+struct ConvBackwardFilterAutoTuneGroup {
+  static string name() { return "ConvBwdFilter"; }
+};
 typedef AutoTuneSingleton<ConvBackwardFilterAutoTuneGroup, ConvParameters,
                           perftools::gputools::dnn::AlgorithmConfig>
     AutoTuneConvBwdFilter;
@@ -638,24 +640,25 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
         "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32  // 4GB by default
         );
     int device_id = stream->parent()->device_ordinal();
+    DataType dtype = input.dtype();
     ConvParameters conv_parameters = {
-        dims.batch_size,                   // batch
-        dims.in_depth,                     // in_depths
-        input_desc.height(),               // in_rows
-        input_desc.width(),                // in_cols
-        dims.out_depth,                    // out_depths
-        dims.spatial_dims[0].filter_size,  // filter_rows
-        dims.spatial_dims[1].filter_size,  // filter_cols
-        dims.spatial_dims[0].stride,       // stride_rows
-        dims.spatial_dims[1].stride,       // stride_cols
-        padding_rows,                      // padding_rows
-        padding_cols,                      // padding_cols
-        device_id,                         // device_id
+        dims.batch_size,                       // batch
+        dims.in_depth,                         // in_depths
+        {{input_desc.height(),                 // in_rows
+          input_desc.width()}},                // in_cols
+        dims.out_depth,                        // out_depths
+        {{dims.spatial_dims[0].filter_size,    // filter_rows
+          dims.spatial_dims[1].filter_size}},  // filter_cols
+        {{dims.spatial_dims[0].stride,         // stride_rows
+          dims.spatial_dims[1].stride}},       // stride_cols
+        {{padding_rows,                        // padding_rows
+          padding_cols}},                      // padding_cols
+        dtype,                                 // tensor datatype
+        device_id,                             // device_id
     };
     AlgorithmConfig algorithm_config;
-    if (cudnn_use_autotune_ &&
-        !AutoTuneConvBwdFilter::GetInstance()->Find(conv_parameters,
-                                                    &algorithm_config)) {
+    if (cudnn_use_autotune_ && !AutoTuneConvBwdFilter::GetInstance()->Find(
+                                   conv_parameters, &algorithm_config)) {
       std::vector<AlgorithmType> algorithms;
       CHECK(stream->parent()->GetConvolveBackwardFilterAlgorithms(&algorithms));
       ProfileResult best_result;
@@ -688,8 +691,9 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
           }
         }
       }
-      OP_REQUIRES(context, best_result.is_valid() &&
-                               best_result.algorithm() != kDefaultAlgorithm,
+      OP_REQUIRES(context,
+                  best_result.is_valid() &&
+                      best_result.algorithm() != kDefaultAlgorithm,
                   errors::NotFound("No algorithm worked!"));
       OP_REQUIRES(context,
                   best_result_no_scratch.is_valid() &&

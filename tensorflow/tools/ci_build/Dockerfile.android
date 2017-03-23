@@ -10,9 +10,8 @@ RUN add-apt-repository -y ppa:openjdk-r/ppa && \
 RUN /install/install_deb_packages.sh
 RUN /install/install_bazel.sh
 
-# Set up bazelrc.
-COPY install/.bazelrc /root/.bazelrc
-ENV BAZELRC /root/.bazelrc
+# Set up the master bazelrc configuration file.
+COPY install/.bazelrc /etc/bazel.bazelrc
 
 # Install extra libraries for android sdk.
 RUN apt-get update && apt-get install -y \

@@ -38,6 +38,9 @@
 # If NO_TEST_USER_OPS has any non-empty and non-0 value, the testing of user-
 # defined ops against the installation will be skipped.
 #
+# If NO_TEST_TFDBG_BINARIES has any non-empty and non-0 value, the testing of
+# TensorFlow Debugger (tfdbg) binaries and examples will be skipped.
+#
 # Any flags not listed in the usage above will be passed directly to Bazel.
 #
 # If the --test_tutorials flag is set, it will cause the script to run the
@@ -71,17 +74,24 @@ source "${SCRIPT_DIR}/builds_common.sh"
 CONTAINER_TYPE=$( echo "$1" | tr '[:upper:]' '[:lower:]' )
 shift
 
-if [[ ! -z "${TF_BUILD_BAZEL_CLEAN}" ]] && \
+if [[ -n "${TF_BUILD_BAZEL_CLEAN}" ]] && \
    [[ "${TF_BUILD_BAZEL_CLEAN}" != "0" ]]; then
   echo "TF_BUILD_BAZEL_CLEAN=${TF_BUILD_BAZEL_CLEAN}: Performing 'bazel clean'"
   bazel clean
 fi
 
 DO_TEST_USER_OPS=1
-if [[ ! -z "${NO_TEST_USER_OPS}" ]] && \
+if [[ -n "${NO_TEST_USER_OPS}" ]] && \
    [[ "${NO_TEST_USER_OPS}" != "0" ]]; then
   echo "NO_TEST_USER_OPS=${NO_TEST_USER_OPS}: Will skip testing of user ops"
   DO_TEST_USER_OPS=0
+fi
+
+DO_TEST_TFDBG_BINARIES=1
+if [[ -n "${NO_TEST_TFDBG_BINARIES}" ]] && \
+   [[ "${NO_TEST_TFDBG_BINARIES}" != "0" ]]; then
+  echo "NO_TEST_TFDBG_BINARIES=${NO_TEST_TFDBG_BINARIES}: Will skip testing of tfdbg binaries"
+  DO_TEST_TFDBG_BINARIES=0
 fi
 
 DO_TEST_TUTORIALS=0
@@ -127,7 +137,7 @@ fi
 
 
 # If still in a virtualenv, deactivate it first
-if [[ ! -z "$(which deactivate)" ]]; then
+if [[ -n "$(which deactivate)" ]]; then
   echo "It appears that we are already in a virtualenv. Deactivating..."
   deactivate || die "FAILED: Unable to deactivate from existing virtualenv"
 fi
@@ -181,6 +191,8 @@ elif [[ $(uname) == "Darwin" ]]; then
     PY_TAGS="py2-none"
   elif [[ ${PY_MAJOR_MINOR_VER} == "3.5" ]]; then
     PY_TAGS="py3-none"
+  elif [[ ${PY_MAJOR_MINOR_VER} == "3.6" ]]; then
+    PY_TAGS="py3-none"
   fi
   PLATFORM_TAG="any"
 fi
@@ -188,7 +200,7 @@ fi
 WHL_DIR=$(dirname "${WHL_PATH}")
 WHL_BASE_NAME=$(basename "${WHL_PATH}")
 
-if [[ ! -z "${PY_TAGS}" ]]; then
+if [[ -n "${PY_TAGS}" ]]; then
   NEW_WHL_BASE_NAME=$(echo ${WHL_BASE_NAME} | cut -d \- -f 1)-\
 $(echo ${WHL_BASE_NAME} | cut -d \- -f 2)-${PY_TAGS}-${PLATFORM_TAG}.whl
 
@@ -270,7 +282,7 @@ for PACKAGE in ${INSTALL_EXTRA_PIP_PACKAGES}; do
       die "pip install ${PACKAGE} FAILED"
 done
 
-if [[ ! -z "${NO_TEST_ON_INSTALL}" ]] &&
+if [[ -n "${NO_TEST_ON_INSTALL}" ]] &&
    [[ "${NO_TEST_ON_INSTALL}" != "0" ]]; then
   echo "NO_TEST_ON_INSTALL=${NO_TEST_ON_INSTALL}:"
   echo "  Skipping ALL Python unit tests on install"
@@ -284,6 +296,24 @@ fi
 if [[ "${DO_TEST_USER_OPS}" == "1" ]]; then
   "${SCRIPT_DIR}/test_user_ops.sh" --virtualenv ${GPU_FLAG} || \
       die "PIP user-op tests-on-install FAILED"
+fi
+
+# Test TensorFlow Debugger (tfdbg) examples.
+if [[ "${DO_TEST_TFDBG_BINARIES}" == "1" ]]; then
+  echo
+  echo "Testing TensorFlow Debugger (tfdbg) binaries"
+  echo
+
+  # cd to a temporary directory to avoid picking up Python files in the source
+  # tree.
+  TMP_DIR=$(mktemp -d)
+  pushd "${TMP_DIR}"
+
+  "${SCRIPT_DIR}/../../../python/debug/examples/examples_test.sh" \
+      --virtualenv || \
+      die "PIP tests-on-install of tfdbg binaries FAILED"
+
+  popd
 fi
 
 # Optional: Run the tutorial tests

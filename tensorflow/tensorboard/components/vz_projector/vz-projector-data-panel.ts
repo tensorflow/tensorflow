@@ -320,7 +320,7 @@ export class DataPanel extends DataPanelPolymer {
     this.projector.setSelectedColorOption(colorOption);
   }
 
-  private tensorWasReadFromFile(rawContents: string, fileName: string) {
+  private tensorWasReadFromFile(rawContents: ArrayBuffer, fileName: string) {
     parseRawTensors(rawContents, ds => {
       this.dom.select('#checkpoint-file')
           .text(fileName)
@@ -329,7 +329,7 @@ export class DataPanel extends DataPanelPolymer {
     });
   }
 
-  private metadataWasReadFromFile(rawContents: string, fileName: string) {
+  private metadataWasReadFromFile(rawContents: ArrayBuffer, fileName: string) {
     parseRawMetadata(rawContents, metadata => {
       this.projector.updateDataSet(this.projector.dataSet, metadata, fileName);
     });
@@ -354,10 +354,10 @@ export class DataPanel extends DataPanelPolymer {
       (d3.event as any).target.value = '';
       let fileReader = new FileReader();
       fileReader.onload = evt => {
-        let content: string = (evt.target as any).result;
+        let content: ArrayBuffer = (evt.target as any).result;
         this.tensorWasReadFromFile(content, file.name);
       };
-      fileReader.readAsText(file);
+      fileReader.readAsArrayBuffer(file);
     });
 
     let uploadButton = this.dom.select('#upload-tensors');
@@ -374,10 +374,10 @@ export class DataPanel extends DataPanelPolymer {
       (d3.event as any).target.value = '';
       let fileReader = new FileReader();
       fileReader.onload = evt => {
-        let contents: string = (evt.target as any).result;
+        let contents: ArrayBuffer = (evt.target as any).result;
         this.metadataWasReadFromFile(contents, file.name);
       };
-      fileReader.readAsText(file);
+      fileReader.readAsArrayBuffer(file);
     });
 
     let uploadMetadataButton = this.dom.select('#upload-metadata');
