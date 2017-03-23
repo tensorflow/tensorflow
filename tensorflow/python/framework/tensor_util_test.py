@@ -663,6 +663,32 @@ class TensorUtilTest(test.TestCase):
     self.assertFalse(tensor_util.ShapeEquals(t, [1, 4]))
     self.assertFalse(tensor_util.ShapeEquals(t, [4]))
 
+  def testMockArray(self):
+    class MockArray(object):
+      def __init__(self, array):
+        self.array = array
+
+      def __array__(self, dtype=None):
+        return np.asarray(self.array, dtype)
+
+    ma = MockArray(np.array([10, 20, 30]))
+    t = tensor_util.make_tensor_proto(ma)
+    if sys.byteorder == "big":  
+      self.assertProtoEquals("""  
+        dtype: DT_INT64  
+        tensor_shape { dim { size: 3 } }  
+        tensor_content: "\000\000\000\000\000\000\000\\n\000\000\000\000\000\000\000\024\000\000\000\000\000\000\000\036"  
+        """, t)  
+    else:  
+      self.assertProtoEquals("""
+        dtype: DT_INT64
+        tensor_shape { dim { size: 3 } }
+        tensor_content: "\\n\000\000\000\000\000\000\000\024\000\000\000\000\000\000\000\036\000\000\000\000\000\000\000"
+        """, t)
+    a = tensor_util.MakeNdarray(t)
+    self.assertEquals(np.int64, a.dtype)
+    self.assertAllClose(np.array([10, 20, 30], dtype=np.int64), a)
+
   def testSeries(self):
     df = pd.Series([10, 20, 30])
     t = tensor_util.make_tensor_proto(df)
