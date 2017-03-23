@@ -17,6 +17,8 @@ filegroup(
 filegroup(
     name = "android_srcs",
     srcs = [
+        "devices.cc",
+        "devices.h",
         "grappler_item.h",
         "utils.cc",
         "utils.h",
@@ -55,7 +57,7 @@ cc_library(
     hdrs = ["devices.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:gpu_runtime",
+        "//tensorflow/core:gpu_init",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:stream_executor",

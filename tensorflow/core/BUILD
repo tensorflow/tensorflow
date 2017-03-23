@@ -1575,7 +1575,6 @@ tf_cuda_library(
         "common_runtime/gpu/gpu_debug_allocator.cc",
         "common_runtime/gpu/gpu_device.cc",
         "common_runtime/gpu/gpu_device_factory.cc",
-        "common_runtime/gpu/gpu_init.cc",
         "common_runtime/gpu/gpu_stream_util.cc",
         "common_runtime/gpu/gpu_util.cc",
         "common_runtime/gpu/gpu_util_platform_specific.cc",
@@ -1600,12 +1599,33 @@ tf_cuda_library(
         ":core_cpu_internal",
         ":framework",
         ":framework_internal",
+        ":gpu_init",
         ":gpu_lib",
         ":lib",
         ":lib_internal",
         ":protos_all_cc",
         ":stream_executor",
         "//third_party/eigen3",
+    ],
+    alwayslink = 1,
+)
+
+tf_cuda_library(
+    name = "gpu_init",
+    srcs = [
+        "common_runtime/gpu/gpu_init.cc",
+    ],
+    hdrs = [
+        "common_runtime/gpu/gpu_init.h",
+    ],
+    copts = tf_copts(),
+    linkstatic = 1,
+    deps = [
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":stream_executor",
     ],
     alwayslink = 1,
 )

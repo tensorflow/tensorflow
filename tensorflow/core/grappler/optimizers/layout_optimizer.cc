@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
+#include "tensorflow/core/grappler/devices.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/optimizers/layout_optimizer.h"
 #include "tensorflow/core/grappler/utils.h"
@@ -1032,6 +1033,10 @@ class DataLayoutOptimizer {
 
 Status LayoutOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                  GraphDef* output) {
+  if (GetNumAvailableGPUs() < 1) {
+    // LayoutOptimizer is currently only tuned for GPU.
+    return Status::OK();
+  }
   *output = item.graph;
   DataLayoutOptimizer layout_optimizer(output);
   auto status = layout_optimizer.Optimize();

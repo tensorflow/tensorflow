@@ -32,8 +32,6 @@ file(GLOB_RECURSE tf_core_cpu_exclude_srcs
     "${tensorflow_source_dir}/tensorflow/core/common_runtime/session.cc"
     "${tensorflow_source_dir}/tensorflow/core/common_runtime/session_factory.cc"
     "${tensorflow_source_dir}/tensorflow/core/common_runtime/session_options.cc"
-    "${tensorflow_source_dir}/tensorflow/core/grappler/devices.h"
-    "${tensorflow_source_dir}/tensorflow/core/grappler/devices.cc"
     "${tensorflow_source_dir}/tensorflow/core/grappler/clusters/single_machine.h"
     "${tensorflow_source_dir}/tensorflow/core/grappler/clusters/single_machine.cc"
     "${tensorflow_source_dir}/tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"
@@ -52,6 +50,8 @@ if (tensorflow_ENABLE_GPU)
     "${tensorflow_source_dir}/tensorflow/core/common_runtime/gpu/*.cc"
     "${tensorflow_source_dir}/tensorflow/core/platform/default/gpu/cupti_wrapper.cc"
     "${tensorflow_source_dir}/tensorflow/core/common_runtime/gpu_device_factory.cc"
+    "${tensorflow_source_dir}/tensorflow/core/grappler/devices.h"
+    "${tensorflow_source_dir}/tensorflow/core/grappler/devices.cc"
   )
   file(GLOB_RECURSE tf_core_gpu_exclude_srcs
      "${tensorflow_source_dir}/tensorflow/core/*test*.cc"
