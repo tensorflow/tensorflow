@@ -3845,19 +3845,27 @@ var VZ;
             }
         };
         LineChart.prototype.resmoothDataset = function (dataset) {
+            // When increasing the smoothing window, it smoothes a lot with the first
+            // few points and then starts to gradually smooth slower, so using an
+            // exponential function makes the slider more consistent. 1000^x has a
+            // range of [1, 1000], so subtracting 1 and dividing by 999 results in a
+            // range of [0, 1], which can be used as the percentage of the data, so
+            // that the kernel size can be specified as a percentage instead of a
+            // hardcoded number, what would be bad with multiple series.
+            var factor = (Math.pow(1000, this.smoothingWeight) - 1) / 999;
             var data = dataset.data();
-            var smoothingWeight = this.smoothingWeight;
-            let last = data.length > 0 ? data[0].scalar : NaN;
-            data.forEach((d) => {
-              if (!_.isFinite(last)) {
-                d.smoothed = d.scalar;
-              } else {
-                // 1st-order IIR low-pass filter to attenuate the higher-
-                // frequency components of the time-series.
-                d.smoothed = last * smoothingWeight +
-                             (1 - smoothingWeight) * d.scalar;
-              }
-              last = d.smoothed;
+            var kernelRadius = Math.floor(data.length * factor / 2);
+            data.forEach(function (d, i) {
+                var actualKernelRadius = Math.min(kernelRadius, i, data.length - i - 1);
+                var start = i - actualKernelRadius;
+                var end = i + actualKernelRadius + 1;
+                // Only smooth finite numbers.
+                if (!_.isFinite(d.scalar)) {
+                    d.smoothed = d.scalar;
+                }
+                else {
+                    d.smoothed = d3.mean(data.slice(start, end).filter(function (d) { return _.isFinite(d.scalar); }), function (d) { return d.scalar; });
+                }
             });
         };
         LineChart.prototype.getDataset = function (name) {
