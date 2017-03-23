@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/types.h"
-#if defined(__linux__) && !defined(__ANDROID__)
+#if defined(__linux__)
 #include <sched.h>
 #endif
 #include <stdio.h>
@@ -48,7 +48,7 @@ string Hostname() {
 }
 
 int NumSchedulableCPUs() {
-#if defined(__linux__) && !defined(__ANDROID__)
+#if defined(__linux__) 
   cpu_set_t cpuset;
   if (sched_getaffinity(0, sizeof(cpu_set_t), &cpuset) == 0) {
     return CPU_COUNT(&cpuset);
