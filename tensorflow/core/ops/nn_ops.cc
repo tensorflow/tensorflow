@@ -1216,6 +1216,30 @@ data_format: The data format of the input and output data. With the
         [batch, in_channels, in_depth, in_height, in_width].
 )doc");
 
+REGISTER_OP("MaxPool3DGradGrad")
+    .Input("orig_input: float")
+    .Input("orig_output: float")
+    .Input("grad: T")
+    .Output("output: T")
+    .Attr("ksize: list(int) >= 5 ")
+    .Attr("strides: list(int) >= 5")
+    .Attr(GetPaddingAttrString())
+    .Attr("T: numbertype")
+    .SetShapeFn(shape_inference::Pool3DShape)
+    .Doc(R"doc(
+Computes gradients of the maxpooling backward function.
+
+ksize: 1-D tensor of length 5. The size of the window for each dimension of
+  the input tensor. Must have `ksize[0] = ksize[4] = 1`.
+strides: 1-D tensor of length 5. The stride of the sliding window for each
+  dimension of `input`. Must have `strides[0] = strides[4] = 1`.
+padding: The type of padding algorithm to use.
+orig_input: The original input tensor.
+orig_output: The original output tensor.
+grad: Output backprop of shape `[batch, depth, rows, cols, channels]`.
+output: Gradients of gradients w.r.t. the input to `max_pool`.
+)doc");
+
 // --------------------------------------------------------------------------
 
 REGISTER_OP("L2Loss")

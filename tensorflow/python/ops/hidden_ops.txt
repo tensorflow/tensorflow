@@ -262,6 +262,7 @@ MaxPoolGrad
 MaxPoolGradWithArgmax
 MaxPoolGradGrad
 MaxPoolGradGradWithArgmax
+MaxPool3DGradGrad
 ReluGrad
 Relu6Grad
 EluGrad

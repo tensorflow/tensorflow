@@ -130,6 +130,16 @@ def _AvgPool3DGrad(op, grad):
       data_format=op.get_attr("data_format"))
 
 
+@ops.RegisterGradient("AvgPool3DGrad")
+def _AvgPool3DGradGrad(op, grad):
+  return (array_ops.stop_gradient(op.inputs[0]),
+          gen_nn_ops.avg_pool(grad,
+                              op.get_attr("ksize"),
+                              op.get_attr("strides"),
+                              op.get_attr("padding"),
+                              data_format=op.get_attr("data_format")))
+
+
 @ops.RegisterGradient("MaxPool3D")
 def _MaxPool3DGrad(op, grad):
   return nn_ops.max_pool3d_grad(op.inputs[0],
@@ -139,6 +149,21 @@ def _MaxPool3DGrad(op, grad):
                                 strides=op.get_attr("strides"),
                                 padding=op.get_attr("padding"),
                                 data_format=op.get_attr("data_format"))
+
+
+@ops.RegisterGradient("MaxPool3DGrad")
+def _MaxPool3DGradGrad(op, grad):
+  return (array_ops.zeros(shape=array_ops.shape(op.inputs[0]),
+                          dtype=op.inputs[0].dtype),
+          array_ops.zeros(shape=array_ops.shape(op.inputs[1]),
+                          dtype=op.inputs[1].dtype),
+          gen_nn_ops._max_pool3d_grad_grad(op.inputs[0],
+                                           op.inputs[1],
+                                           grad,
+                                           op.get_attr("ksize"),
+                                           op.get_attr("strides"),
+                                           padding=op.get_attr("padding"),
+                                           data_format=op.get_attr("data_format")))
 
 
 @ops.RegisterGradient("Softmax")
