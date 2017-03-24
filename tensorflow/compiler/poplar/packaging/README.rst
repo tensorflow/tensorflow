@@ -1,1 +1,0 @@
-Poplar Tensorflow XLA plugin
