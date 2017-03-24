@@ -54,7 +54,8 @@ conducted in a [Docker](https://www.docker.com) container.
 -   An account at [oss.sonatype.org](https://oss.sonatype.org/), that has
     permissions to update artifacts in the `org.tensorflow` group. If your
     account does not have permissions, then you'll need to ask someone who does
-    to [file a ticket](https://issues.sonatype.org/) to add to the permissions.
+    to [file a ticket](https://issues.sonatype.org/) to add to the permissions
+    ([sample ticket](https://issues.sonatype.org/browse/MVNCENTRAL-1637)).
 -   A GPG signing key, required [to sign the release artifacts](http://central.sonatype.org/pages/apache-maven.html#gpg-signed-components).
 
 ### Deploying to Maven Central
@@ -97,7 +98,12 @@ EOF
     the private staging repository. After verifying the release, visit
     https://oss.sonatype.org/#stagingRepositories, find the `org.tensorflow`
     release and click on either `Release` to finalize the release, or `Drop` to
-    abort.
+    abort. Some things of note:
+
+    - For details, look at the [Sonatype guide](http://central.sonatype.org/pages/releasing-the-deployment.html).
+    - Syncing with [Maven Central](http://repo1.maven.org/maven2/org/tensorflow/)
+      can take 10 minutes to 2 hours (as per the [OSSRH
+      guide](http://central.sonatype.org/pages/ossrh-guide.html#releasing-to-central)).
 
 4.  Upon successful release, commit changes to all the `pom.xml` files
     (which should have the updated version number).
