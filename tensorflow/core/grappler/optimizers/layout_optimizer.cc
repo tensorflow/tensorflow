@@ -228,8 +228,7 @@ class NodeProcessor {
     }
   }
 
-  Status UpdateAttrValue(const string& name) {
-    NodeDef* node = node_map_->GetNode(name);
+  Status UpdateAttrValue(NodeDef* node) {
     TF_RETURN_IF_ERROR(HasAttribute(*node, "value"));
     Tensor tensor;
     auto success =
@@ -355,7 +354,8 @@ class AvgPoolGradProcessor : public NodeProcessor {
     return input_pos;
   }
   Status CustomizedProcessing() override {
-    return UpdateAttrValue(node_->input(0));
+    NodeDef* node = node_map_->GetNode(node_->input(0));
+    return UpdateAttrValue(node);
   }
 };
 
@@ -409,7 +409,8 @@ class Conv2DBackpropInputProcessor : public NodeProcessor {
     return input_pos;
   }
   Status CustomizedProcessing() override {
-    return UpdateAttrValue(node_->input(0));
+    NodeDef* node = node_map_->GetNode(node_->input(0));
+    return UpdateAttrValue(node);
   }
 };
 
@@ -722,21 +723,12 @@ class SliceProcessor : public AgnosticNodeProcessor {
       TF_RETURN_IF_ERROR(HasAttribute(*axis_node, "value"));
       int concat_dim = axis_node->attr().at("value").tensor().int_val(0);
       if (concat_dim == -1 || concat_dim == 3) {
+        // Update the dimension order for shape input nodes. Note that the input
+        // 2 of Slice also shares one of the shape nodes.
         for (int i = 1; i < maybe_concatoffset_node->input_size(); i++) {
           auto shape_node =
               node_map_->GetNode(maybe_concatoffset_node->input(i));
-          AttrValue attr_tensor;
-          Tensor tensor;
-          TF_RETURN_IF_ERROR(HasAttribute(*shape_node, "value"));
-          CHECK(tensor.FromProto(shape_node->attr().at({"value"}).tensor()));
-          int h = tensor.flat<int>()(1);
-          int w = tensor.flat<int>()(2);
-          int c = tensor.flat<int>()(3);
-          tensor.flat<int>()(1) = c;
-          tensor.flat<int>()(2) = h;
-          tensor.flat<int>()(3) = w;
-          tensor.AsProtoTensorContent(
-              shape_node->mutable_attr()->at({"value"}).mutable_tensor());
+          TF_RETURN_IF_ERROR(UpdateAttrValue(shape_node));
         }
         // Set the channel dimension to 1, as we have converted the vector
         // element order from NHWC to NCHW.
@@ -973,7 +965,16 @@ class DataLayoutOptimizer {
             node_processor.reset(
                 new ReluGradProcessor(graph_, node, &node_map_));
           } else if (node->op().compare("Slice") == 0) {
-            node_processor.reset(new SliceProcessor(graph_, node, &node_map_));
+            auto maybe_concatoffset_node =
+                node_map_.GetNode(NodeName(node->input(1)));
+            if (maybe_concatoffset_node->op() == "ConcatOffset") {
+              node_processor.reset(
+                  new SliceProcessor(graph_, node, &node_map_));
+            } else {
+              node_processor.reset(
+                  new SliceProcessorGatherBased(graph_, node, &node_map_));
+            }
+
           } else if (node->op().compare("Squeeze") == 0) {
             node_processor.reset(
                 new SqueezeProcessor(graph_, node, &node_map_));
