@@ -88,6 +88,7 @@ Status BackportTensorArrayV3Transform(const GraphDef& input_graph_def,
         // so substitute a dummy constant instead in any places that use it.
         NodeDef replacement_flow_node;
         replacement_flow_node.set_op("Const");
+        SetNodeAttr("dtype", DT_FLOAT, &replacement_flow_node);
         replacement_flow_node.set_name(tensor_array_v3_node.name() +
                                        "/replacement_flow_node");
         Tensor replacement_flow_tensor(DT_FLOAT, {});

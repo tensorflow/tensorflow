@@ -9,6 +9,7 @@ exports_files(["LICENSE"])
 package(default_visibility = ["//visibility:public"])
 
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
+load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_custom_op_library",
@@ -16,22 +17,31 @@ load(
     "tf_py_test",
     "tf_gen_op_libs",
     "tf_kernel_library",
+    "tf_gen_op_wrapper_py",
 )
 load(
     "//tensorflow/core:platform/default/build_config.bzl",
     "tf_kernel_tests_linkstatic",
 )
 
-py_library(
+tf_custom_op_py_library(
     name = "rnn_py",
     srcs = ["__init__.py"] + glob(["python/ops/*.py"]),
-    data = [
+    dso = [
         ":python/ops/_gru_ops.so",
         ":python/ops/_lstm_ops.so",
+    ],
+    kernels = [
+        ":gru_ops_kernels",
+        ":lstm_ops_kernels",
+        ":gru_ops_op_lib",
+        ":lstm_ops_op_lib",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
+        ":gru_ops",
+        ":lstm_ops",
         "//tensorflow/contrib/compiler:compiler_py",
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/contrib/util:util_py",
@@ -196,6 +206,11 @@ tf_custom_op_library(
     ],
 )
 
+tf_gen_op_wrapper_py(
+    name = "lstm_ops",
+    deps = [":lstm_ops_op_lib"],
+)
+
 tf_custom_op_library(
     name = "python/ops/_gru_ops.so",
     srcs = [
@@ -213,6 +228,11 @@ tf_custom_op_library(
     deps = [
         "//tensorflow/core/kernels:eigen_helpers",
     ],
+)
+
+tf_gen_op_wrapper_py(
+    name = "gru_ops",
+    deps = [":gru_ops_op_lib"],
 )
 
 cuda_py_tests(

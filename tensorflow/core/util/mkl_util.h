@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_MKL_UTIL_H_
 #define TENSORFLOW_CORE_UTIL_MKL_UTIL_H_
 #ifdef INTEL_MKL
-#include <string>
-#include <vector>
 #include "third_party/mkl/include/mkl_dnn.h"
 #include "third_party/mkl/include/mkl_dnn_types.h"
 #include "third_party/mkl/include/mkl_service.h"
@@ -277,35 +275,10 @@ inline void GetStridesFromSizes(TensorFormat data_format, size_t* strides,
   }
 }
 
-static void MklSizesToTFSizes(OpKernelContext* context,
-                              TensorFormat data_format_,
-                              const MklShape& mklshape, TensorShape* tfshape) {
-  size_t tf_dim = mklshape.GetDimension();
-  const size_t* tf_sizes = mklshape.GetSizes();
-
-  OP_REQUIRES(context, tf_dim == 4,
-              errors::InvalidArgument("MKLSizesToTFSizes: size must be 4-dim"));
-  std::vector<int32> sizes;
-
-  sizes.push_back(tf_sizes[3]);
-
-  if (data_format_ == FORMAT_NHWC) {
-    sizes.push_back(tf_sizes[1]);
-    sizes.push_back(tf_sizes[0]);
-    sizes.push_back(tf_sizes[2]);
-  } else {
-    sizes.push_back(tf_sizes[2]);
-    sizes.push_back(tf_sizes[1]);
-    sizes.push_back(tf_sizes[0]);
-  }
-
-  OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(sizes, tfshape));
-}
-
 namespace mkl_layer_registry {
 
 static const char* kMklLayerLabel = "MklLayer";
-static const char kMklLayerLabelPattern[] = "label='MklLayer'";
+static const string kMklLayerLabelPattern = "label='MklLayer'";
 
 // Check whether opname is registered as MKL-compliant in the registry.
 //
@@ -316,7 +289,7 @@ static inline bool IsMklLayer(const std::string& op_name) {
   return kernel.find(kMklLayerLabelPattern) != string::npos;
 }
 
-}  // namespace mkl_layer_registry
+} // namespace mkl_layer_registry
 
 }  // namespace tensorflow
 #endif  // INTEL_MKL

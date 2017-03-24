@@ -11820,6 +11820,34 @@ op {
   description: "The locations represented by indices in `indices` take value `on_value`,\nwhile all other locations take value `off_value`.\n\nIf the input `indices` is rank `N`, the output will have rank `N+1`,\nThe new axis is created at dimension `axis` (default: the new axis is\nappended at the end).\n\nIf `indices` is a scalar the output shape will be a vector of length `depth`.\n\nIf `indices` is a vector of length `features`, the output shape will be:\n```\n  features x depth if axis == -1\n  depth x features if axis == 0\n```\n\nIf `indices` is a matrix (batch) with shape `[batch, features]`,\nthe output shape will be:\n```\n  batch x features x depth if axis == -1\n  batch x depth x features if axis == 1\n  depth x batch x features if axis == 0\n```\n\n\nExamples\n=========\n\nSuppose that\n\n```\n  indices = [0, 2, -1, 1]\n  depth = 3\n  on_value = 5.0\n  off_value = 0.0\n  axis = -1\n```\n\nThen output is `[4 x 3]`:\n\n    ```output =\n      [5.0 0.0 0.0]  // one_hot(0)\n      [0.0 0.0 5.0]  // one_hot(2)\n      [0.0 0.0 0.0]  // one_hot(-1)\n      [0.0 5.0 0.0]  // one_hot(1)\n    ```\n\nSuppose that\n\n```\n  indices = [0, 2, -1, 1]\n  depth = 3\n  on_value = 0.0\n  off_value = 3.0\n  axis = 0\n```\n\nThen output is `[3 x 4]`:\n\n    ```output =\n      [0.0 3.0 3.0 3.0]\n      [3.0 3.0 3.0 0.0]\n      [3.0 3.0 3.0 3.0]\n      [3.0 0.0 3.0 3.0]\n    //  ^                one_hot(0)\n    //      ^            one_hot(2)\n    //          ^        one_hot(-1)\n    //              ^    one_hot(1)\n    ```\nSuppose that\n\n```\n  indices = [[0, 2], [1, -1]]\n  depth = 3\n  on_value = 1.0\n  off_value = 0.0\n  axis = -1\n```\n\nThen output is `[2 x 2 x 3]`:\n\n    ```output =\n      [\n        [1.0, 0.0, 0.0]  // one_hot(0)\n        [0.0, 0.0, 1.0]  // one_hot(2)\n      ][\n        [0.0, 1.0, 0.0]  // one_hot(1)\n        [0.0, 0.0, 0.0]  // one_hot(-1)\n      ]```"
 }
 op {
+  name: "OnesLike"
+  input_arg {
+    name: "x"
+    description: "a tensor of type T."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    description: "a tensor of the same shape and type as x but filled with ones."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  summary: "Returns a tensor of ones with the same shape and type as x."
+}
+op {
   name: "Pack"
   input_arg {
     name: "values"
@@ -23529,7 +23557,9 @@ op {
     allowed_values {
       list {
         type: DT_FLOAT
+        type: DT_DOUBLE
         type: DT_INT32
+        type: DT_INT64
       }
     }
   }

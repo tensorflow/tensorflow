@@ -270,7 +270,7 @@ StatusOr<std::vector<const Allocation*>> Service::ResolveAndValidateArguments(
     if (allocation->backend() != backend ||
         allocation->device_ordinal() != device_ordinal) {
       return InvalidArgument(
-          "argument %d is on device %s but computation will be executed "
+          "argument %lu is on device %s but computation will be executed "
           "on device %s",
           i,
           allocation->backend()
@@ -303,7 +303,7 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     if (!ShapeUtil::Compatible(arguments[i]->shape(),
                                program_shape.parameters(i))) {
       return InvalidArgument(
-          "computation expects parameter %d to have shape %s, given shape %s",
+          "computation expects parameter %lu to have shape %s, given shape %s",
           i, ShapeUtil::HumanString(program_shape.parameters(i)).c_str(),
           ShapeUtil::HumanString(arguments[i]->shape()).c_str());
     }

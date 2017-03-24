@@ -67,6 +67,7 @@ py_library(
         "//tensorflow/tensorboard/backend/event_processing:event_multiplexer",
         "//tensorflow/tensorboard/plugins/debugger:debugger_plugin",
         "//tensorflow/tensorboard/plugins/projector:projector_plugin",
+        "//tensorflow/tensorboard/plugins/text:text_plugin",
         "@org_pocoo_werkzeug//:werkzeug",
         "@six_archive//:six",
     ],

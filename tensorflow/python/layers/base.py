@@ -280,7 +280,7 @@ class _Layer(object):
     Returns:
       Output tensor(s).
     """
-    scope = kwargs.get('scope', None)
+    scope = kwargs.pop('scope', None)
 
     # Define a custom getter to override tf.get_variable when creating layer
     # variables. The current custom getter is nested by the variable scope.
@@ -292,14 +292,11 @@ class _Layer(object):
           variable_getter=functools.partial(getter, **getter_kwargs))
 
     if not self._built and self._scope is None:
-      # If constructed with _scope=None
+      # If constructed with _scope=None, lazy setting of scope.
       if self._reuse:
-        # If reuse=True, use the scope argument (if any), or the current
-        # variable scope.
-        self._scope = scope or vs.get_variable_scope()
+        self._scope = next(vs.variable_scope(
+            scope if scope is not None else self._base_name).gen)
       else:
-        # Otherwise, if reuse=False, create a new scope now.  We may
-        # end up using the scope passed in via the scope argument.
         self._scope = next(vs.variable_scope(
             scope, default_name=self._base_name).gen)
       self._name = self._scope.name

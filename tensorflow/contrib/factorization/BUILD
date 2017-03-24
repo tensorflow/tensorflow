@@ -13,8 +13,9 @@ load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 
-py_library(
+tf_custom_op_py_library(
     name = "factorization_py",
     srcs = [
         "__init__.py",
@@ -23,9 +24,13 @@ py_library(
         "python/ops/gmm.py",
         "python/ops/gmm_ops.py",
     ],
-    data = [
+    dso = [
         ":python/ops/_clustering_ops.so",
         ":python/ops/_factorization_ops.so",
+    ],
+    kernels = [
+        ":all_ops",
+        "//tensorflow/contrib/factorization/kernels:all_kernels",
     ],
     srcs_version = "PY2AND3",
     deps = [

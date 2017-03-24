@@ -42,3 +42,13 @@ py_test(
         "@org_pocoo_werkzeug//:werkzeug",
     ],
 )
+
+filegroup(
+    name = "all_files",
+    srcs = glob(
+        [
+            "*",
+        ],
+    ),
+    visibility = ["//tensorflow:__subpackages__"],
+)
