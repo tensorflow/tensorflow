@@ -1259,9 +1259,7 @@ class Estimator(BaseEstimator):
           model_fn_ops.scaffold.saver is not None):
         saver_for_restore = model_fn_ops.scaffold.saver
       else:
-        saver_for_restore = saver.Saver(
-            variables.global_variables(),
-            sharded=True)
+        saver_for_restore = saver.Saver(sharded=True)
       with tf_session.Session('') as session:
         variables.initialize_local_variables()
         data_flow_ops.tables_initializer()

@@ -706,10 +706,15 @@ class FeatureColumnTest(test.TestCase):
     a = fc.sparse_column_with_hash_bucket("cross_aaa", hash_bucket_size=100)
     b = fc.sparse_column_with_hash_bucket("cross_bbb", hash_bucket_size=100)
     cross_col = fc.crossed_column(set([a, b]), hash_bucket_size=10000)
+    one_hot_col = fc.one_hot_column(fc.sparse_column_with_hash_bucket(
+        "sparse_column_for_one_hot", hash_bucket_size=100))
+    scattered_embedding_col = fc.scattered_embedding_column(
+        "scattered_embedding_column", size=100, dimension=10, hash_key=1)
     feature_columns = set([
         sparse_col, embedding_col, weighted_id_col, int32_sparse_id_col,
         int64_sparse_id_col, real_valued_col1, real_valued_col2,
-        real_valued_col3, bucketized_col1, bucketized_col2, cross_col
+        real_valued_col3, bucketized_col1, bucketized_col2, cross_col,
+        one_hot_col, scattered_embedding_col
     ])
     expected_config = {
         "sparse_column":
@@ -741,7 +746,11 @@ class FeatureColumnTest(test.TestCase):
         "cross_aaa":
             parsing_ops.VarLenFeature(dtypes.string),
         "cross_bbb":
-            parsing_ops.VarLenFeature(dtypes.string)
+            parsing_ops.VarLenFeature(dtypes.string),
+        "sparse_column_for_one_hot":
+            parsing_ops.VarLenFeature(dtypes.string),
+        "scattered_embedding_column":
+            parsing_ops.VarLenFeature(dtypes.string),
     }
 
     config = fc.create_feature_spec_for_parsing(feature_columns)

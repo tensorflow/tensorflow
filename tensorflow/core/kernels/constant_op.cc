@@ -124,7 +124,7 @@ REGISTER_KERNEL_BUILDER(Name("Const")
                             .HostMemory("output")
                             .TypeConstraint<int32>("dtype"),
                         HostConstantOp);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
@@ -286,6 +286,57 @@ REGISTER_KERNEL_BUILDER(Name("ZerosLike")
 
 #undef REGISTER_KERNEL
 
+template <typename Device, typename T>
+class OnesLikeOp : public OpKernel {
+ public:
+  explicit OnesLikeOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    const Tensor& input = ctx->input(0);
+    Tensor* out = nullptr;
+    OP_REQUIRES_OK(ctx, ctx->forward_input_or_allocate_output(
+                            {0}, 0, input.shape(), &out));
+    functor::SetOneFunctor<Device, T> f;
+    f(ctx->eigen_device<Device>(), out->flat<T>());
+  }
+};
+
+#define REGISTER_KERNEL(type, dev)                                     \
+  REGISTER_KERNEL_BUILDER(                                             \
+      Name("OnesLike").Device(DEVICE_##dev).TypeConstraint<type>("T"), \
+      OnesLikeOp<dev##Device, type>)
+
+#define REGISTER_CPU(type) REGISTER_KERNEL(type, CPU)
+TF_CALL_POD_TYPES(REGISTER_CPU);
+#undef REGISTER_CPU
+
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL(float, SYCL);
+REGISTER_KERNEL(bool, SYCL);
+REGISTER_KERNEL_BUILDER(Name("OnesLike")
+                            .Device(DEVICE_SYCL)
+                            .TypeConstraint<int32>("T")
+                            .HostMemory("y"),
+                        OnesLikeOp<CPUDevice, int32>);
+#endif  // TENSORFLOW_USE_SYCL
+
+#if GOOGLE_CUDA
+REGISTER_KERNEL(bool, GPU);
+REGISTER_KERNEL(Eigen::half, GPU);
+REGISTER_KERNEL(float, GPU);
+REGISTER_KERNEL(double, GPU);
+REGISTER_KERNEL(complex64, GPU);
+REGISTER_KERNEL(complex128, GPU);
+REGISTER_KERNEL(int64, GPU);
+REGISTER_KERNEL_BUILDER(Name("OnesLike")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<int32>("T")
+                            .HostMemory("y"),
+                        OnesLikeOp<CPUDevice, int32>);
+#endif  // GOOGLE_CUDA
+
+#undef REGISTER_KERNEL
+
 PlaceholderOp::PlaceholderOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
   OP_REQUIRES_OK(ctx, ctx->GetAttr("shape", &expected_shape_));
 }
@@ -320,5 +371,5 @@ REGISTER_KERNEL_BUILDER(Name("PlaceholderV2").Device(DEVICE_GPU),
 REGISTER_KERNEL_BUILDER(Name("Placeholder").Device(DEVICE_SYCL), PlaceholderOp);
 REGISTER_KERNEL_BUILDER(Name("PlaceholderV2").Device(DEVICE_SYCL),
                         PlaceholderOp);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

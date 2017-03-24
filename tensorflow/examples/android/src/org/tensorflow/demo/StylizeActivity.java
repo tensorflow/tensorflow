@@ -369,8 +369,7 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
     borderedText = new BorderedText(textSizePx);
     borderedText.setTypeface(Typeface.MONOSPACE);
 
-    inferenceInterface = new TensorFlowInferenceInterface();
-    inferenceInterface.initializeTensorFlow(getAssets(), MODEL_FILE);
+    inferenceInterface = new TensorFlowInferenceInterface(getAssets(), MODEL_FILE);
 
     previewWidth = size.getWidth();
     previewHeight = size.getHeight();
@@ -585,12 +584,12 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
     }
 
     // Copy the input data into TensorFlow.
-    inferenceInterface.fillNodeFloat(
-        INPUT_NODE, new int[] {1, bitmap.getWidth(), bitmap.getHeight(), 3}, floatValues);
-    inferenceInterface.fillNodeFloat(STYLE_NODE, new int[] {NUM_STYLES}, styleVals);
+    inferenceInterface.feed(
+        INPUT_NODE, floatValues, 1, bitmap.getWidth(), bitmap.getHeight(), 3);
+    inferenceInterface.feed(STYLE_NODE, styleVals, NUM_STYLES);
 
-    inferenceInterface.runInference(new String[] {OUTPUT_NODE});
-    inferenceInterface.readNodeFloat(OUTPUT_NODE, floatValues);
+    inferenceInterface.run(new String[] {OUTPUT_NODE}, isDebug());
+    inferenceInterface.fetch(OUTPUT_NODE, floatValues);
 
     for (int i = 0; i < intValues.length; ++i) {
       intValues[i] =
@@ -601,11 +600,6 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
     }
 
     bitmap.setPixels(intValues, 0, bitmap.getWidth(), 0, 0, bitmap.getWidth(), bitmap.getHeight());
-  }
-
-  @Override
-  public void onSetDebug(final boolean debug) {
-    inferenceInterface.enableStatLogging(debug);
   }
 
   private void renderDebug(final Canvas canvas) {

@@ -52,7 +52,8 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
       dump_root: (`str`) optional path to the dump root directory. Must be a
         directory that does not exist or an empty directory. If the directory
         does not exist, it will be created by the debugger core during debug
-        `run()` calls and removed afterwards.
+        `run()` calls and removed afterwards. If `None`, the debug dumps will
+        be at tfdbg_<random_string> under the system temp directory.
       log_usage: (`bool`) whether the usage of this class is to be logged.
       ui_type: (`str`) requested UI type. Currently supported:
         (curses | readline)
@@ -67,7 +68,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
 
     framework.BaseDebugWrapperSession.__init__(self, sess)
 
-    if dump_root is None:
+    if not dump_root:
       self._dump_root = tempfile.mktemp(prefix=_DUMP_ROOT_PREFIX)
     else:
       if os.path.isfile(dump_root):
@@ -263,6 +264,13 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
       elif request.client_graph_def:
         partition_graphs = [request.client_graph_def]
 
+      if request.tf_error and not os.path.isdir(self._dump_root):
+        # It is possible that the dump root may not exist due to errors that
+        # have occurred prior to graph execution (e.g., invalid device
+        # assignments), in which case we will just raise the exception as the
+        # unwrapped Session does.
+        raise request.tf_error
+
       debug_dump = debug_data.DebugDumpDir(
           self._dump_root, partition_graphs=partition_graphs)
       debug_dump.set_python_graph(self._sess.graph)
@@ -326,7 +334,8 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
         self._title_color = "red_on_white"
 
     self._run_cli = analyzer_cli.create_analyzer_ui(
-        debug_dump, self._tensor_filters, ui_type=self._ui_type)
+        debug_dump, self._tensor_filters, ui_type=self._ui_type,
+        on_ui_exit=self._remove_dump_root)
 
     # Get names of all dumped tensors.
     dumped_tensor_names = []
