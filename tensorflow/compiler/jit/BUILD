@@ -25,7 +25,10 @@ cc_header_only_library(
     name = "xla_jit_headers_lib",
     visibility = ["//visibility:public"],
     deps = [
-        ":jit",
+        ":xla_cpu_device",
+        ":xla_cpu_jit",
+        ":xla_gpu_device",
+        ":xla_gpu_jit",
     ],
 )
 
