@@ -111,25 +111,14 @@ template <typename Device, typename T, int NDIMS>
 void TransposeUsingEigen(const Device& d, const Tensor& in,
                          const gtl::ArraySlice<int32> perm, Tensor* out);
 
-template <typename Device, typename T>
-void Transpose(const Device& d, const Tensor& in,
-               const gtl::ArraySlice<int32> perm, Tensor* out) {
-  switch (in.dims()) {
-    case 2:
-      TransposeUsingEigen<Device, T, 2>(d, in, perm, out);
-      break;
-    case 3:
-      TransposeUsingEigen<Device, T, 3>(d, in, perm, out);
-      break;
-    case 4:
-      TransposeUsingEigen<Device, T, 4>(d, in, perm, out);
-      break;
-    default:
-      TransposeSimple<Device, T>(d, in, perm, out);
-      break;
-  }
-}
 }  // namespace internal
+
+template <typename Device, typename T>
+struct Transpose {
+  static void run(const Device& d, const Tensor& in,
+                  const gtl::ArraySlice<int32> perm, Tensor* out);
+};
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_KERNELS_TRANSPOSE_FUNCTOR_H_

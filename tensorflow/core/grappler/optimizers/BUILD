@@ -19,6 +19,8 @@ filegroup(
     srcs = glob(
         [
             "*_optimizer.*",
+            "model_pruner.*",
+            "graph_rewriter.*",
         ],
     ),
     visibility = ["//tensorflow:__subpackages__"],
@@ -108,6 +110,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":layout_optimizer",
+        ":model_pruner",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",

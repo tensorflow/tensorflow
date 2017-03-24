@@ -29,7 +29,7 @@ GraphRewriter::GraphRewriter(const GrapplerItem& item) {
   }
 }
 
-void GraphRewriter::ForwardPreservedInputs(
+void GraphRewriter::ForwardInputs(
     const NodeDef& original_node,
     const std::unordered_set<const NodeDef*>& nodes_to_delete,
     NodeDef* new_node) {
@@ -39,7 +39,7 @@ void GraphRewriter::ForwardPreservedInputs(
     CHECK(itr != nodes_.end());
     const NodeDef* input_node = itr->second;
     if (nodes_to_delete.find(input_node) != nodes_to_delete.end()) {
-      ForwardPreservedInputs(*input_node, nodes_to_delete, new_node);
+      ForwardInputs(*input_node, nodes_to_delete, new_node);
     } else {
       *new_node->add_input() = input;
     }

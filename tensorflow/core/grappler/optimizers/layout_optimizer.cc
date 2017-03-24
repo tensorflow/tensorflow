@@ -73,45 +73,6 @@ std::set<string> GetOpsFormatAgnostic() {
   return ops_format_agnostic;
 }
 
-class NodeMap {
- public:
-  explicit NodeMap(GraphDef* graph) : graph_(graph) {
-    for (int i = 0; i < graph_->node_size(); i++) {
-      auto node = graph_->mutable_node(i);
-      nodes_.insert(std::make_pair(node->name(), node));
-      for (const auto& input : node->input()) {
-        outputs_[input].insert(nodes_[node->name()]);
-      }
-    }
-  }
-
-  NodeDef* GetNode(const string& name) {
-    string node_name = NodeName(name);
-    return nodes_[node_name];
-  }
-
-  std::set<NodeDef*> GetOutputs(const string& name) { return outputs_[name]; }
-
-  void AddNode(const string& name, NodeDef* node) {
-    nodes_.insert(std::make_pair(name, node));
-  }
-
-  void AddOutput(const string& node, const string& output) {
-    outputs_[node].insert(nodes_[output]);
-  }
-
-  void UpdateOutput(const string& node, const string& old_output,
-                    const string& new_output) {
-    outputs_[node].erase(nodes_[old_output]);
-    outputs_[node].insert(nodes_[new_output]);
-  }
-
- private:
-  GraphDef* graph_;
-  std::unordered_map<string, NodeDef*> nodes_;
-  std::unordered_map<string, std::set<NodeDef*>> outputs_;
-};
-
 bool IsNodeNHWCToNCHW(const string& node_name) {
   const string transpose_node_prefix = kTransposeNHWCToNCHW;
   string prefix = node_name.substr(0, transpose_node_prefix.length());
