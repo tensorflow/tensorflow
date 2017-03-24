@@ -256,6 +256,58 @@ inline void Allocator::RunDtor(ResourceHandle* p, size_t n) {
   RunResourceDtor(p, n);
 }
 
+// An implementation of Allocator that delegates all calls to another Allocator.
+//
+// Useful to clients who want to override part of the functionality of another
+// allocator.
+class AllocatorWrapper : public Allocator {
+ public:
+  explicit AllocatorWrapper(Allocator* wrapped) : wrapped_(wrapped) {}
+
+  ~AllocatorWrapper() override {}
+
+  // Returns the wrapped allocator to which all calls are delegated.
+  Allocator* wrapped() const { return wrapped_; }
+
+  string Name() override { return wrapped_->Name(); }
+
+  void* AllocateRaw(size_t alignment, size_t num_bytes) override {
+    return wrapped_->AllocateRaw(alignment, num_bytes);
+  }
+
+  void* AllocateRaw(size_t alignment, size_t num_bytes,
+                    const AllocationAttributes& allocation_attr) override {
+    return wrapped_->AllocateRaw(alignment, num_bytes, allocation_attr);
+  }
+
+  void DeallocateRaw(void* ptr) override { wrapped_->DeallocateRaw(ptr); }
+
+  bool TracksAllocationSizes() override {
+    return wrapped_->TracksAllocationSizes();
+  }
+
+  bool ShouldAllocateEmptyTensors() override {
+    return wrapped_->TracksAllocationSizes();
+  }
+
+  size_t RequestedSize(void* ptr) override {
+    return wrapped_->RequestedSize(ptr);
+  }
+
+  size_t AllocatedSize(void* ptr) override {
+    return wrapped_->AllocatedSize(ptr);
+  }
+
+  int64 AllocationId(void* ptr) override { return wrapped_->AllocationId(ptr); }
+
+  size_t AllocatedSizeSlow(void* ptr) override {
+    return wrapped_->AllocatedSizeSlow(ptr);
+  }
+
+ private:
+  Allocator* const wrapped_;
+};
+
 // A tensorflow Op may need access to different kinds of memory that
 // are not simply a function of the device to which the Op has been
 // assigned.  For example, an Op executing on a GPU may still need
