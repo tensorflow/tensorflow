@@ -28,6 +28,8 @@ Java bindings for TensorFlow. ([Javadoc](https://www.tensorflow.org/api_docs/jav
     -   OS X:
         [CPU-only](https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow_jni-cpu-darwin-x86_64-1.0.0-PREVIEW1.tar.gz),
         [GPU-enabled](https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow_jni-gpu-darwin-x86_64-1.0.0-PREVIEW1.tar.gz)
+    -   Windows:
+        [CPU-only](https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow_jni-cpu-windows-x86_64-1.1.0-rc0.zip)
 
     The following shell snippet downloads and extracts the native library:
 
