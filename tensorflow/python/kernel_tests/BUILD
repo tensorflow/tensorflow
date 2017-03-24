@@ -2083,7 +2083,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "pooling_ops_3d_test",
-    size = "small",
+    size = "medium",
     srcs = ["pooling_ops_3d_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
