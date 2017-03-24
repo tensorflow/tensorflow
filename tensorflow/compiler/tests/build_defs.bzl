@@ -62,7 +62,6 @@ def tf_xla_py_test(name, srcs=[], deps=[], tags=[], data=[], main=None,
     elif backend == "plugin":
       if load_plugin:
         backend_args += ["--load_plugin=true"]
-        backend_deps += ["//tensorflow/compiler/tests/plugin:deps"]
       else:
         continue
     else:

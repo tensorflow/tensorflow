@@ -60,8 +60,6 @@ class XLATestCase(test.TestCase):
       cfg = __import__("tensorflow.compiler.tests.plugin_config")
       test_device = cfg.compiler.tests.plugin_config.device
       test_types = cfg.compiler.tests.plugin_config.types
-      __import__(cfg.compiler.tests.plugin_config.loader)
-      logging.info('Loaded XLA plugin %s', test_device)
 
     self.device = test_device
     self.has_custom_call = (self.device == 'XLA_CPU')

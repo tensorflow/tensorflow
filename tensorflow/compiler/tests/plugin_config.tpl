@@ -11,4 +11,4 @@
 
 device = "XLA_MY_DEVICE"
 types = "DT_FLOAT,DT_INT32"
-loader = "tensorflow.xla.plugin.loader.module"
+
