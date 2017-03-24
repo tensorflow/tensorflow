@@ -1,31 +1,6 @@
 licenses(["restricted"])
 
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
-load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
-
-load("@bazel_tools//tools/build_defs/pkg:pkg.bzl", "pkg_tar", "pkg_deb")
-
 package(default_visibility = ["//visibility:public"])
-
-# Package the plugin into a tar file (TODO: make a pip file)
-pkg_tar(
-    name = "poplar",
-    files = [
-        "libpoplar_plugin.so",
-        "poplar_plugin.py",
-        "tf.gp",
-    ],
-)
-
-filegroup(
-    name = "poplar_release",
-    srcs = [
-        "libpoplar_plugin.so",
-        "__init__.py",
-        "poplar_plugin.py",
-        "tf.gp",
-    ],
-)
 
 # Rule for creating the vertex program pre-compiled object
 genrule(
@@ -36,67 +11,37 @@ genrule(
     cmd = "$(location @local_config_poplar//poplar:popc) -I . -o $@ $<",
 )
 
-cc_binary(
-    name = "libpoplar_lib.so",
+cc_library(
+    name = "poplar_lib",
     srcs = glob([
         "driver/*.cc",
         "stream_executor/*.cc",
+    ]),
+    hdrs = glob([
         "driver/*.h",
         "stream_executor/*.h",
-    ]) + [
-       "@local_config_poplar//poplar:poplar_static_lib",
-       "@local_config_poplar//popnn:popnn_static_lib",
-    ],
+    ]),
     deps = [
         "//third_party/eigen3",
         "//tensorflow/compiler/xla:xla_headers_lib",
         "//tensorflow/compiler/jit:xla_jit_headers_lib",
-        "@protobuf//:protobuf_lite",
+        "@protobuf//:protobuf_headers",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_config_poplar//poplar:poplar_headers",
         "@local_config_poplar//popnn:popnn_headers",
     ],
-    linkstatic = 1,
-    linkshared = 1,
-)
-
-# This patches up the rpaths of the .so file so that it can be loaded by
-# the test harness without failing to find libpoplar.so and libpopnn.so
-genrule(
-    name = "libpoplar_plugin",
-    srcs = [
-        ":libpoplar_lib.so",
-        "@local_config_poplar//poplar:poplar_lib",
-        "@local_config_poplar//popnn:popnn_lib",
-    ],
-    tools = [
-        "apply_poplar_rpaths.py"
-    ],
-    outs = ["libpoplar_plugin.so"],
-    cmd = "python $(location apply_poplar_rpaths.py) " +
-          "$(BINDIR)/tensorflow/compiler/poplar/libpoplar_lib.so " +
-          "$(GENDIR)/tensorflow/compiler/poplar/libpoplar_plugin.so " +
-          "$(location @local_config_poplar//poplar:poplar_lib) " +
-          "$(location @local_config_poplar//popnn:popnn_lib)"
-)
-
-py_library(
-    name = "poplar_plugin_py",
-    srcs = [
-        "poplar_plugin.py",
+    linkopts = [
+        "$(location @local_config_poplar//poplar:poplar_lib)",
+        "$(location @local_config_poplar//popnn:popnn_lib)",
+        "-Wl,-rpath,../../external/local_config_poplar/poplar/lib",
+        "-Wl,-rpath,../../external/local_config_poplar/popnn/lib",
     ],
     data = [
-        ":libpoplar_plugin",
         ":tf_graph_program",
+        "@local_config_poplar//poplar:poplar_lib",
+        "@local_config_poplar//popnn:popnn_lib"
     ],
-    srcs_version = "PY2AND3",
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/python:errors",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:platform",
-    ],
+    linkstatic=0,
 )
 
 py_test(
@@ -104,7 +49,6 @@ py_test(
     size = "small",
     srcs = ["tests/device_test.py"],
     deps = [
-        ":poplar_plugin_py",
         "//tensorflow:tensorflow_py",
     ],
 )
@@ -114,7 +58,6 @@ py_test(
     size = "small",
     srcs = ["tests/simple_network_test.py"],
     deps = [
-        ":poplar_plugin_py",
         "//tensorflow:tensorflow_py",
     ],
 )
@@ -124,7 +67,6 @@ py_test(
     size = "small",
     srcs = ["tests/matmul_test.py"],
     deps = [
-        ":poplar_plugin_py",
         "//tensorflow:tensorflow_py",
     ],
 )
@@ -134,7 +76,6 @@ py_test(
     size = "large",
     srcs = ["tests/conv_test.py"],
     deps = [
-        ":poplar_plugin_py",
         "//tensorflow:tensorflow_py",
     ],
 )
@@ -144,7 +85,6 @@ py_test(
     size = "small",
     srcs = ["tests/variable_test.py"],
     deps = [
-        ":poplar_plugin_py",
         "//tensorflow:tensorflow_py",
     ],
 )

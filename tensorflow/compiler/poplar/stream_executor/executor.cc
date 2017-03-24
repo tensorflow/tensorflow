@@ -278,7 +278,7 @@ std::string PoplarExecutor::GetPathToGraphProgFile() {
   if (dladdr(&dummy, &dlInfo)) {
     std::string path(dlInfo.dli_fname);
     path = path.substr(0, path.find_last_of( '/' ) + 1);
-    path = path + "tf.gp";
+    path = path + "../compiler/poplar/tf.gp";
     return path;
   }
   return "";

@@ -41,6 +41,7 @@ cc_library(
         ":xla_cpu_jit",
         ":xla_gpu_device",
         ":xla_gpu_jit",
+        "//tensorflow/compiler/poplar:poplar_lib",
     ],
     alwayslink = 1,
 )
