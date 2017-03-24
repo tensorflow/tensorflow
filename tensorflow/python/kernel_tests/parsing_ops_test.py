@@ -961,6 +961,7 @@ class ParseSingleExampleTest(test.TestCase):
   def testSingleExampleWithSparseAndSparseFeatureAndDense(self):
     original = example(features=features({
         "c": float_feature([3, 4]),
+        "d": float_feature([0.0, 1.0]),
         "val": bytes_feature([b"a", b"b"]),
         "idx": int64_feature([0, 3]),
         "st_a": float_feature([3.0, 4.0])
@@ -989,8 +990,8 @@ class ParseSingleExampleTest(test.TestCase):
         "sp": expected_sp,
         "a": [a_default],
         "b": b_default,
-        "c": np.array(
-            [3, 4], dtype=np.float32),
+        "c": np.array([3, 4], dtype=np.float32),
+        "d": np.array([0.0, 1.0], dtype=np.float32),
     }
 
     self._test(
@@ -1014,6 +1015,10 @@ class ParseSingleExampleTest(test.TestCase):
                 # Feature "c" must be provided, since it has no default_value.
                 "c":
                     parsing_ops.FixedLenFeature(2, dtypes.float32),
+                "d":
+                    parsing_ops.FixedLenSequenceFeature([],
+                                                        dtypes.float32,
+                                                        allow_missing=True)
             }
         },
         expected_output)

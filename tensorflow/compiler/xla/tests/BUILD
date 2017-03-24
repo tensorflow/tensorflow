@@ -346,6 +346,7 @@ xla_test(
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla/client:computation_builder",
         "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/client/lib:arithmetic",
         "//tensorflow/compiler/xla/legacy_flags:cpu_compiler_flags",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/core:test",

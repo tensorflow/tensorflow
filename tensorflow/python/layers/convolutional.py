@@ -119,7 +119,7 @@ class _Conv(base._Layer):  # pylint: disable=protected-access
     if len(input_shape) != self.rank + 2:
       raise ValueError('Inputs should have rank ' +
                        str(self.rank + 2) +
-                       'Received input shape:', str(input_shape))
+                       '. Received input shape: ' + str(input_shape))
     if self.data_format == 'channels_first':
       channel_axis = 1
     else:

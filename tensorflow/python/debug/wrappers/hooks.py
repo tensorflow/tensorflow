@@ -39,14 +39,19 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook,
   `tf.contrib.learn`'s `Estimator`s and `Experiment`s.
   """
 
-  def __init__(self, ui_type="curses"):
+  def __init__(self, ui_type="curses", dump_root=None):
     """Create a local debugger command-line interface (CLI) hook.
 
     Args:
       ui_type: (str) user-interface type.
+      dump_root: (`str`) optional path to the dump root directory. Must be a
+        directory that does not exist or an empty directory. If the directory
+        does not exist, it will be created by the debugger core during debug
+        `run()` calls and removed afterwards.
     """
 
     self._ui_type = ui_type
+    self._dump_root = dump_root
     self._wrapper_initialized = False
     self._pending_tensor_filters = {}
 
@@ -77,7 +82,10 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook,
   def before_run(self, run_context):
     if not self._wrapper_initialized:
       local_cli_wrapper.LocalCLIDebugWrapperSession.__init__(
-          self, run_context.session, ui_type=self._ui_type)
+          self,
+          run_context.session,
+          ui_type=self._ui_type,
+          dump_root=self._dump_root)
 
       # Actually register tensor filters registered prior to the construction
       # of the underlying LocalCLIDebugWrapperSession object.

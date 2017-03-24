@@ -66,6 +66,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/estimator:inputs",
         "//tensorflow/python/saved_model:builder",
         "//tensorflow/python/saved_model:loader",

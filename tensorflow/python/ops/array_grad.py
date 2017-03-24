@@ -303,6 +303,7 @@ def _MatrixDiagPartGrad(op, grad):
 
 @ops.RegisterGradient("MatrixSetDiag")
 def _MatrixSetDiagGrad(op, grad):
+  """Gradient for MatrixSetDiag."""
   input_shape = op.inputs[0].get_shape().merge_with(grad.get_shape())
   diag_shape = op.inputs[1].get_shape()
   batch_shape = input_shape[:-2].merge_with(diag_shape[:-1])
@@ -341,6 +342,7 @@ def _FillGrad(_, grad):
 
 
 ops.NotDifferentiable("ZerosLike")
+ops.NotDifferentiable("OnesLike")
 
 
 @ops.RegisterGradient("PreventGradient")

@@ -21,7 +21,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-static Graph* BM_Resize(const char* algorithm, int batches, int width, int height) {
+static Graph* BM_Resize(const char* algorithm,
+                        int batches, int width, int height) {
   Graph* g = new Graph(OpRegistry::Global());
   Tensor in(DT_FLOAT, TensorShape({batches, width, height, 3}));
   in.flat<float>().setRandom();
@@ -32,18 +33,19 @@ static Graph* BM_Resize(const char* algorithm, int batches, int width, int heigh
   out_size_flat(1) = height * 2;
 
   Node* ret;
-  NodeBuilder(g->NewName("n"), algorithm)
-      .Input(test::graph::Constant(g, in))
-      .Input(test::graph::Constant(g, out_size))
-      .Finalize(g, &ret);
+  Status s = NodeBuilder(g->NewName("n"), algorithm)
+                 .Input(test::graph::Constant(g, in))
+                 .Input(test::graph::Constant(g, out_size))
+                 .Finalize(g, &ret);
+  assert(s.ok());
   return g;
 }
 
-#define BM_ResizeDev(DEVICE, ALGORITHM, B, W, H)                                \
-  static void BM_Resize_##ALGORITHM##_##DEVICE##_##B##_##W##_##H(int iters) {   \
-    testing::ItemsProcessed(iters* B* W* H * 3);                                \
-    test::Benchmark(#DEVICE, BM_Resize(#ALGORITHM, B, W, H)).Run(iters);        \
-  }                                                                             \
+#define BM_ResizeDev(DEVICE, ALGORITHM, B, W, H)                               \
+  static void BM_Resize_##ALGORITHM##_##DEVICE##_##B##_##W##_##H(int iters) {  \
+    testing::ItemsProcessed(iters* B* W* H * 3);                               \
+    test::Benchmark(#DEVICE, BM_Resize(#ALGORITHM, B, W, H)).Run(iters);       \
+  }                                                                            \
   BENCHMARK(BM_Resize_##ALGORITHM##_##DEVICE##_##B##_##W##_##H)
 
 BM_ResizeDev(cpu, ResizeNearestNeighbor, 10, 499, 499);
@@ -52,5 +54,5 @@ BM_ResizeDev(gpu, ResizeNearestNeighbor, 10, 499, 499);
 BM_ResizeDev(cpu, ResizeBilinear, 10, 499, 499);
 BM_ResizeDev(gpu, ResizeBilinear, 10, 499, 499);
 
-}  // tensorflow
+}  // namespace tensorflow
 

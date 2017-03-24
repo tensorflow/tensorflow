@@ -10,7 +10,9 @@ package(default_visibility = ["//tensorflow:__subpackages__"])
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
+load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 
 tf_custom_op_library(
     name = "python/ops/_memory_stats_ops.so",
@@ -18,6 +20,17 @@ tf_custom_op_library(
         "kernels/memory_stats_ops.cc",
         "ops/memory_stats_ops.cc",
     ],
+)
+
+tf_kernel_library(
+    name = "memory_stats_kernels",
+    srcs = [
+        "kernels/memory_stats_ops.cc",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+    ],
+    alwayslink = 1,
 )
 
 tf_gen_op_libs(
@@ -32,14 +45,18 @@ tf_gen_op_wrapper_py(
     deps = [":memory_stats_ops_op_lib"],
 )
 
-py_library(
+tf_custom_op_py_library(
     name = "memory_stats_py",
     srcs = [
         "__init__.py",
         "python/ops/memory_stats_ops.py",
     ],
-    data = [
+    dso = [
         ":python/ops/_memory_stats_ops.so",
+    ],
+    kernels = [
+        ":memory_stats_kernels",
+        ":memory_stats_ops_op_lib",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],

@@ -17,3 +17,5 @@ filegroup(
     ),
     visibility = ["//tensorflow:__subpackages__"],
 )
+
+package_group(name = "friends")

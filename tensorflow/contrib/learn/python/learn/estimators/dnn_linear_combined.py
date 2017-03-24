@@ -40,6 +40,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.training import sync_replicas_optimizer
 from tensorflow.python.training import training_util
 
 
@@ -71,6 +72,14 @@ def _get_optimizer(optimizer):
     return optimizer()
   else:
     return optimizer
+
+
+def _check_no_sync_replicas_optimizer(optimizer):
+  if isinstance(optimizer, sync_replicas_optimizer.SyncReplicasOptimizer):
+    raise ValueError(
+        "SyncReplicasOptimizer is not supported in DNNLinearCombined model. "
+        "If you want to use this optimizer, please use either DNN or Linear "
+        "model.")
 
 
 def _linear_learning_rate(num_linear_feature_columns):
@@ -190,6 +199,11 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
 
   features = _get_feature_dict(features)
 
+  linear_optimizer = _get_optimizer(linear_optimizer)
+  _check_no_sync_replicas_optimizer(linear_optimizer)
+  dnn_optimizer = _get_optimizer(dnn_optimizer)
+  _check_no_sync_replicas_optimizer(dnn_optimizer)
+
   # Build DNN Logits.
   dnn_parent_scope = "dnn"
 
@@ -295,7 +309,7 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
               loss=training_loss,
               global_step=global_step,
               learning_rate=_DNN_LEARNING_RATE,
-              optimizer=_get_optimizer(dnn_optimizer),
+              optimizer=dnn_optimizer,
               gradient_multipliers=_extract_embedding_lr_multipliers(  # pylint: disable=protected-access
                   embedding_lr_multipliers, dnn_parent_scope,
                   dnn_input_scope.name),
@@ -311,7 +325,7 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
               loss=training_loss,
               global_step=global_step,
               learning_rate=_linear_learning_rate(len(linear_feature_columns)),
-              optimizer=_get_optimizer(linear_optimizer),
+              optimizer=linear_optimizer,
               clip_gradients=gradient_clip_norm,
               variables=ops.get_collection(linear_parent_scope),
               name=linear_parent_scope,

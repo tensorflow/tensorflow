@@ -27,6 +27,7 @@ from tensorflow.python.debug.cli import debugger_cli_common
 from tensorflow.python.debug.wrappers import local_cli_wrapper
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -172,6 +173,16 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     # they should be both None.
     self.assertEqual([None, None], wrapped_sess.observers["tf_errors"])
 
+  def testRunsWithEmptyStringDumpRootWorks(self):
+    # Test command sequence: run, run
+    wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
+        [[], []], self.sess, dump_root="")
+
+    # run under debug mode.
+    wrapped_sess.run(self.inc_v)
+
+    self.assertAllClose(11.0, self.sess.run(self.v))
+
   def testRunInfoOutputAtRunEndIsCorrect(self):
     wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
         [[], [], []], self.sess, dump_root=self._tmp_dir)
@@ -302,6 +313,16 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     self.assertEqual(1, len(wrapped_sess.observers["tf_errors"]))
     tf_error = wrapped_sess.observers["tf_errors"][0]
     self.assertEqual("y", tf_error.op.name)
+
+  def testRuntimeErrorBeforeGraphExecutionIsRaised(self):
+    # Use an impossible device name to cause an error before graph execution.
+    with ops.device("/gpu:1337"):
+      w = variables.Variable([1.0] * 10, name="w")
+
+    wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
+        [[]], self.sess, dump_root=self._tmp_dir)
+    with self.assertRaisesRegexp(errors.OpError, r".*[Dd]evice.*1337.*"):
+      wrapped_sess.run(w)
 
   def testRunTillFilterPassesShouldLaunchCLIAtCorrectRun(self):
     # Test command sequence:
