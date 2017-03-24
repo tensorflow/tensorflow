@@ -1860,7 +1860,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "zmq_op",
     prefix = "zmq_op",
-    deps = IO_DEPS + ["@cppzmq//:cppzmq"],
+    deps = IO_DEPS + ["@libzmq//:libzmq"],
 )
 
 tf_cc_tests(

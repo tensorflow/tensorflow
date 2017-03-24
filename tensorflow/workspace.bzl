@@ -447,14 +447,14 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   )
 
   native.new_http_archive(
-      name = "cppzmq",
+      name = "libzmq",
       urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/zeromq/cppzmq/archive/v4.2.1.tar.gz",
-          "https://github.com/zeromq/cppzmq/archive/v4.2.1.tar.gz",
+          "http://bazel-mirror.storage.googleapis.com/github.com/zeromq/libzmq/releases/download/v4.2.2/zeromq-4.2.2.tar.gz",
+          "https://github.com/zeromq/libzmq/releases/download/v4.2.2/zeromq-4.2.2.tar.gz",
       ],
-      sha256 = "11c699001659336c7d46779f714f3e9d15d63343cd2ae7c1905e4bf58907cef9",
-      strip_prefix = "cppzmq-4.2.1",
-      build_file = str(Label("//third_party:cppzmq.BUILD")),
+      sha256 = "5b23f4ca9ef545d5bd3af55d305765e3ee06b986263b31967435d285a3e6df6b",
+      strip_prefix = "zeromq-4.2.2",
+      build_file = str(Label("//third_party:libzmq.BUILD")),
   )
 
   native.bind(
