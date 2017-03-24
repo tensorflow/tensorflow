@@ -36,9 +36,9 @@ limitations under the License.
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 
-#include "tensorflow/core/util/mkl_util.h"
 #include "third_party/mkl/include/mkl_dnn.h"
 #include "third_party/mkl/include/mkl_dnn_types.h"
+#include "tensorflow/core/util/mkl_util.h"
 
 namespace tensorflow {
 
@@ -98,18 +98,19 @@ class MklConv2DOp : public OpKernel {
                                         filter.shape().DebugString()));
 
     for (int i = 0; i < 3; i++) {
-      OP_REQUIRES(context, FastBoundsCheck(filter.dim_size(i),
-                                           std::numeric_limits<int>::max()),
-                  errors::InvalidArgument("filter too large"));
+      OP_REQUIRES(
+          context,
+          FastBoundsCheck(filter.dim_size(i), std::numeric_limits<int>::max()),
+          errors::InvalidArgument("filter too large"));
     }
 
     const int64 input_depth = input_in_mkl_format
                                   ? mkl_params_.input_shape.GetSizes()[2]
                                   : GetTensorDim(input, data_format_, 'C');
-    OP_REQUIRES(
-        context, input_depth == filter.dim_size(2),
-        errors::InvalidArgument("input and filter must have the same depth: ",
-                                input_depth, " vs ", filter.dim_size(2)));
+    OP_REQUIRES(context, input_depth == filter.dim_size(2),
+                errors::InvalidArgument(
+                    "input and filter must have the same depth: ", input_depth,
+                    " vs ", filter.dim_size(2)));
     // The last dimension for filter is out_depth.
     const int out_depth = static_cast<int>(filter.dim_size(3));
 
@@ -118,9 +119,10 @@ class MklConv2DOp : public OpKernel {
     const int64 input_rows_raw = input_in_mkl_format
                                      ? mkl_params_.input_shape.GetSizes()[1]
                                      : GetTensorDim(input, data_format_, 'H');
-    OP_REQUIRES(context, FastBoundsCheck(input_rows_raw,
-                                         std::numeric_limits<int>::max()),
-                errors::InvalidArgument("Input rows too large"));
+    OP_REQUIRES(
+        context,
+        FastBoundsCheck(input_rows_raw, std::numeric_limits<int>::max()),
+        errors::InvalidArgument("Input rows too large"));
     const int input_rows = static_cast<int>(input_rows_raw);
     const int filter_rows = static_cast<int>(filter.dim_size(0));
 
@@ -129,9 +131,10 @@ class MklConv2DOp : public OpKernel {
     const int64 input_cols_raw = input_in_mkl_format
                                      ? mkl_params_.input_shape.GetSizes()[0]
                                      : GetTensorDim(input, data_format_, 'W');
-    OP_REQUIRES(context, FastBoundsCheck(input_cols_raw,
-                                         std::numeric_limits<int>::max()),
-                errors::InvalidArgument("Input cols too large"));
+    OP_REQUIRES(
+        context,
+        FastBoundsCheck(input_cols_raw, std::numeric_limits<int>::max()),
+        errors::InvalidArgument("Input cols too large"));
     const int input_cols = static_cast<int>(input_cols_raw);
     const int filter_cols = static_cast<int>(filter.dim_size(1));
 
@@ -139,9 +142,10 @@ class MklConv2DOp : public OpKernel {
     const int64 input_batch_raw = input_in_mkl_format
                                       ? mkl_params_.input_shape.GetSizes()[3]
                                       : GetTensorDim(input, data_format_, 'N');
-    OP_REQUIRES(context, FastBoundsCheck(input_batch_raw,
-                                         std::numeric_limits<int>::max()),
-                errors::InvalidArgument("batch is too large"));
+    OP_REQUIRES(
+        context,
+        FastBoundsCheck(input_batch_raw, std::numeric_limits<int>::max()),
+        errors::InvalidArgument("batch is too large"));
     const int batch = static_cast<int>(input_batch_raw);
 
     // For now we take the stride from the second and third dimensions only (we
@@ -327,17 +331,16 @@ class MklConv2DOp : public OpKernel {
         mkl_prim_convert_input;
     dnnLayout_t mkl_lt_internal_filter, mkl_lt_internal_bias,
         mkl_lt_internal_input;
-    void *mkl_buf_convert_input, *mkl_buf_convert_filter,
-         *mkl_buf_convert_bias;
+    void *mkl_buf_convert_input, *mkl_buf_convert_filter, *mkl_buf_convert_bias;
     mkl_prim_convert_filter = nullptr;
-    mkl_prim_convert_bias   = nullptr;
-    mkl_prim_convert_input  = nullptr;
-    mkl_lt_internal_filter  = nullptr;
-    mkl_lt_internal_bias    = nullptr;
-    mkl_lt_internal_input   = nullptr;
-    mkl_buf_convert_input   = nullptr;
-    mkl_buf_convert_filter  = nullptr;
-    mkl_buf_convert_bias    = nullptr;
+    mkl_prim_convert_bias = nullptr;
+    mkl_prim_convert_input = nullptr;
+    mkl_lt_internal_filter = nullptr;
+    mkl_lt_internal_bias = nullptr;
+    mkl_lt_internal_input = nullptr;
+    mkl_buf_convert_input = nullptr;
+    mkl_buf_convert_filter = nullptr;
+    mkl_buf_convert_bias = nullptr;
 
     // Compare with internal layouts and convert if needed
     const Tensor& input = MklGetInput(context, 0);
@@ -425,7 +428,7 @@ class MklConv2DOp : public OpKernel {
     dnnLayoutDelete_F32(mkl_lt_filter_);
     if (biasEnabled) dnnLayoutDelete_F32(mkl_lt_bias_);
   }
-  
+
   std::vector<int32> strides_;
   Padding padding_;
   TensorFormat data_format_;
@@ -435,21 +438,19 @@ class MklConv2DOp : public OpKernel {
   void* mkl_conv_res_[dnnResourceNumber];
   dnnLayout_t mkl_lt_filter_ = nullptr, mkl_lt_bias_ = nullptr,
               mkl_lt_input_ = nullptr;
-  
-
 };
 
-#define REGISTER_MKL_CPU(T)                                                \
-  REGISTER_KERNEL_BUILDER(                                                 \
-      Name("MklConv2D").Device(DEVICE_CPU)                                 \
-      .TypeConstraint<T>("T")                                              \
-      .Label(mkl_layer_registry::kMklLayerLabel),                          \
-      MklConv2DOp<CPUDevice, T, false>);                                   \
-  REGISTER_KERNEL_BUILDER(                                                 \
-      Name("MklConv2DWithBias").Device(DEVICE_CPU)                         \
-      .TypeConstraint<T>("T")                                              \
-      .Label(mkl_layer_registry::kMklLayerLabel),                          \
-      MklConv2DOp<CPUDevice, T, true>);
+#define REGISTER_MKL_CPU(T)                                               \
+  REGISTER_KERNEL_BUILDER(Name("MklConv2D")                               \
+                              .Device(DEVICE_CPU)                         \
+                              .TypeConstraint<T>("T")                     \
+                              .Label(mkl_layer_registry::kMklLayerLabel), \
+                          MklConv2DOp<CPUDevice, T, false>);              \
+  REGISTER_KERNEL_BUILDER(Name("MklConv2DWithBias")                       \
+                              .Device(DEVICE_CPU)                         \
+                              .TypeConstraint<T>("T")                     \
+                              .Label(mkl_layer_registry::kMklLayerLabel), \
+                          MklConv2DOp<CPUDevice, T, true>);
 
 TF_CALL_float(REGISTER_MKL_CPU);
 

@@ -66,7 +66,8 @@ class ResizeNearestNeighborOp : public OpKernel {
           const int64 in_x =
               std::min(static_cast<int64>(floorf(x * st.width_scale)),
                        (st.in_width - 1));
-          std::copy_n(&input_data(b, in_y, in_x, 0), st.channels, &output_data(b, y, x, 0));
+          std::copy_n(&input_data(b, in_y, in_x, 0), st.channels,
+                      &output_data(b, y, x, 0));
         }
       }
     }
@@ -107,10 +108,11 @@ class ResizeNearestNeighborOpGrad : public OpKernel {
     // Initialize shape to the batch size of the input, then add
     // the rest of the dimensions
     Tensor* output = nullptr;
-    OP_REQUIRES_OK(
-        context, context->allocate_output(0, TensorShape({input.dim_size(0), sizes(0),
-                                                          sizes(1), input.dim_size(3)}),
-                                          &output));
+    OP_REQUIRES_OK(context, context->allocate_output(
+                                0,
+                                TensorShape({input.dim_size(0), sizes(0),
+                                             sizes(1), input.dim_size(3)}),
+                                &output));
 
     const int64 batch_size = input.dim_size(0);
     const int64 in_height = input.dim_size(1);
@@ -193,15 +195,16 @@ class ResizeNearestNeighborGPUOp : public OpKernel {
           errors::Internal("Failed launching ResizeNearestNeighbor"));
     }
   }
+
  private:
   bool align_corners_;
 };
 
-#define REGISTER_KERNEL(T)                                        \
-  REGISTER_KERNEL_BUILDER(Name("ResizeNearestNeighbor")           \
-                              .Device(DEVICE_GPU)                 \
-                              .TypeConstraint<T>("T")             \
-                              .HostMemory("size"),                \
+#define REGISTER_KERNEL(T)                              \
+  REGISTER_KERNEL_BUILDER(Name("ResizeNearestNeighbor") \
+                              .Device(DEVICE_GPU)       \
+                              .TypeConstraint<T>("T")   \
+                              .HostMemory("size"),      \
                           ResizeNearestNeighborGPUOp<T>);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_KERNEL);
@@ -239,10 +242,11 @@ class ResizeNearestNeighborGPUOpGrad : public OpKernel {
     // Initialize shape to the batch size of the input, then add
     // the rest of the dimensions
     Tensor* output = nullptr;
-    OP_REQUIRES_OK(
-        context, context->allocate_output(0, TensorShape({input.dim_size(0), sizes(0),
-                                                          sizes(1), input.dim_size(3)}),
-                                          &output));
+    OP_REQUIRES_OK(context, context->allocate_output(
+                                0,
+                                TensorShape({input.dim_size(0), sizes(0),
+                                             sizes(1), input.dim_size(3)}),
+                                &output));
 
     const int64 batch_size = input.dim_size(0);
     const int64 in_height = input.dim_size(1);
@@ -258,10 +262,9 @@ class ResizeNearestNeighborGPUOpGrad : public OpKernel {
         CalculateResizeScale(out_width, in_width, align_corners_);
 
     bool status = ResizeNearestNeighborBackward(
-        input.flat<T>().data(), batch_size, in_height,
-        in_width, channels, out_height, out_width,
-        height_scale, width_scale, output->flat<T>().data(),
-        context->eigen_gpu_device());
+        input.flat<T>().data(), batch_size, in_height, in_width, channels,
+        out_height, out_width, height_scale, width_scale,
+        output->flat<T>().data(), context->eigen_gpu_device());
 
     if (!status) {
       context->SetStatus(
@@ -271,11 +274,11 @@ class ResizeNearestNeighborGPUOpGrad : public OpKernel {
   bool align_corners_;
 };
 
-#define REGISTER_KERNEL(T)                                           \
-  REGISTER_KERNEL_BUILDER(Name("ResizeNearestNeighborGrad")          \
-                            .Device(DEVICE_GPU)                      \
-                            .TypeConstraint<T>("T")                  \
-                            .HostMemory("size"),                     \
+#define REGISTER_KERNEL(T)                                  \
+  REGISTER_KERNEL_BUILDER(Name("ResizeNearestNeighborGrad") \
+                              .Device(DEVICE_GPU)           \
+                              .TypeConstraint<T>("T")       \
+                              .HostMemory("size"),          \
                           ResizeNearestNeighborGPUOpGrad<T>);
 
 TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_KERNEL);
