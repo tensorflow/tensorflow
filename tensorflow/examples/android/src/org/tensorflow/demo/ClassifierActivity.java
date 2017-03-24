@@ -72,6 +72,8 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
 
   private static final boolean MAINTAIN_ASPECT = true;
 
+  private static final Size DESIRED_PREVIEW_SIZE = new Size(640, 480);
+
   private Classifier classifier;
 
   private Integer sensorOrientation;
@@ -102,8 +104,8 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
   }
 
   @Override
-  protected int getDesiredPreviewFrameSize() {
-    return INPUT_SIZE;
+  protected Size getDesiredPreviewFrameSize() {
+    return DESIRED_PREVIEW_SIZE;
   }
 
   private static final float TEXT_SIZE_DIP = 10;
