@@ -791,7 +791,7 @@ class PoolingTest(test.TestCase):
       if data_format == "NCHW":
         ksize = [1, 1, window_rows, window_rows]
         strides = [1, 1, row_stride, col_stride]
-        t = NHWCToNCHW(input_tensor)
+        t = test_util.NHWCToNCHW(input_tensor)
       else:
         ksize = [1, window_rows, window_rows, 1]
         strides = [1, row_stride, col_stride, 1]
@@ -804,7 +804,7 @@ class PoolingTest(test.TestCase):
         data_format=data_format,
         name=func_name)
       if data_format == "NCHW":
-        t = NCHWToNHWC(t)
+        t = test_util.NHWCToNCHW(t)
 
       t_g = gradients_impl.gradients(t ** 2, input_tensor)[0]
       err = gradient_checker.compute_gradient_error(
