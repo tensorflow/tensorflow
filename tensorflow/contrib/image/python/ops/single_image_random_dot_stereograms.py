@@ -21,11 +21,12 @@ from tensorflow.contrib.util import loader
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import resource_loader
 
-file =   resource_loader.get_path_to_datafile("_single_image_random_dot_stereograms.so")
+_sirds_ops = loader.load_op_library(
+    resource_loader.get_path_to_datafile(
+        "_single_image_random_dot_stereograms.so"))
 
-_sirds_ops = loader.load_op_library(file)
-
-def single_image_random_dot_stereograms(depth_values,
+def single_image_random_dot_stereograms(
+    depth_values,
     hidden_surface_removal=None,
     convergence_dots_size=None,
     dots_per_inch=None,
@@ -39,31 +40,33 @@ def single_image_random_dot_stereograms(depth_values,
     output_data_window=None):
     """Output a RandomDotStereogram Tensor for export via encode_PNG/JPG OP.
 
-    Given the 2-D tensor 'depth_values' with encoded Z values, this operation will 
-    encode 3-D data into a 2-D image.  The output of this Op is suitable for the
-    encode_PNG/JPG ops.  Be careful with image compression as this may corrupt the
-    encode 3-D data witin the image.
+    Given the 2-D tensor 'depth_values' with encoded Z values, this operation
+    will encode 3-D data into a 2-D image.  The output of this Op is suitable
+    for the encode_PNG/JPG ops.  Be careful with image compression as this may
+    corrupt the encode 3-D data witin the image.
 
-    Based upon:
-    'http://www.learningace.com/doc/4331582/b6ab058d1e206d68ab60e4e1ead2fe6e/sirds-paper'
+    Based upon [this paper](http://www.learningace.com/doc/4331582/b6ab058d1e206d68ab60e4e1ead2fe6e/sirds-paper).
 
-    Example use which outputs a SIRDS image as picture_out.png:
+    Example:
+
+    This outputs a SIRDS image as picture_out.png:
 
     ```python
     img=[[1,2,3,3,2,1],
-          [1,2,3,4,5,2],
-          [1,2,3,4,5,3],
-          [1,2,3,4,5,4],
-          [6,5,4,4,5,5]]
+         [1,2,3,4,5,2],
+         [1,2,3,4,5,3],
+         [1,2,3,4,5,4],
+         [6,5,4,4,5,5]]
     session = tf.InteractiveSession()
-    sirds = single_image_random_dot_stereograms(img,
+    sirds = single_image_random_dot_stereograms(
+        img,
         convergence_dots_size=8,
         number_colors=256,normalize=True)
       
     out = sirds.eval()
     png = tf.image.encode_png(out).eval()
     with open('picture_out.png', 'wb') as f:
-        f.write(png)
+      f.write(png)
     ```
 
     Args:
@@ -104,7 +107,8 @@ def single_image_random_dot_stereograms(depth_values,
       A `Tensor` of type `uint8` of shape 'output_image_shape' with encoded 'depth_values'
     """
     
-    result = _sirds_ops.single_image_random_dot_stereograms( depth_values=depth_values,
+    result = _sirds_ops.single_image_random_dot_stereograms( 
+        depth_values=depth_values,
         hidden_surface_removal=hidden_surface_removal,
         convergence_dots_size=convergence_dots_size,
         dots_per_inch=dots_per_inch,
