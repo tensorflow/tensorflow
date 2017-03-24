@@ -4412,6 +4412,7 @@ if_mkl(
         name = "mkl_conv_op",
         prefix = "mkl_conv",
         deps = [
+            ":conv_ops",
             ":bounds_check",
             ":ops_util",
             "//tensorflow/core:core_cpu",

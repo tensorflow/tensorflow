@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
-#include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/kernels/conv_grad_ops.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -46,7 +45,6 @@ limitations under the License.
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
-typedef Eigen::GpuDevice GPUDevice;
 
 template <typename Device, class T>
 class MklConv2DCustomBackpropInputOp : public OpKernel {
@@ -233,48 +231,49 @@ class MklConv2DCustomBackpropInputOp : public OpKernel {
       outback_shape = out_backprop.shape();
     }
 
-    Conv2DBackpropDimensions dims;
+    ConvBackpropDimensions dims;
     OP_REQUIRES_OK(context,
-                   Conv2DBackpropComputeDimensions(
-                       "Conv2DCustomBackpropInput", input_shape, filter_shape,
+                   ConvBackpropComputeDimensions(
+                       "Conv2DCustomBackpropInput", /*num_spatial_dims=*/2,
+                       input_shape, filter_shape,
                        outback_shape, strides, padding, data_format, &dims));
 
     int64 pad_top, pad_bottom;
     int64 pad_left, pad_right;
     OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(
-                                dims.rows.input_size, dims.rows.filter_size,
-                                dims.rows.stride, padding,
-                                &dims.rows.output_size, &pad_top, &pad_bottom));
+                                dims.spatial_dims[0].input_size, dims.spatial_dims[0].filter_size,
+                                dims.spatial_dims[0].stride, padding,
+                                &dims.spatial_dims[0].output_size, &pad_top, &pad_bottom));
     OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(
-                                dims.cols.input_size, dims.cols.filter_size,
-                                dims.cols.stride, padding,
-                                &dims.cols.output_size, &pad_left, &pad_right));
+                                dims.spatial_dims[1].input_size, dims.spatial_dims[1].filter_size,
+                                dims.spatial_dims[1].stride, padding,
+                                &dims.spatial_dims[1].output_size, &pad_left, &pad_right));
 
     mkl_params.in_dims = 4;
 
-    mkl_params.in_sizes[0] = static_cast<size_t>(dims.cols.input_size);
-    mkl_params.in_sizes[1] = static_cast<size_t>(dims.rows.input_size);
+    mkl_params.in_sizes[0] = static_cast<size_t>(dims.spatial_dims[1].input_size);
+    mkl_params.in_sizes[1] = static_cast<size_t>(dims.spatial_dims[0].input_size);
     mkl_params.in_sizes[2] = static_cast<size_t>(dims.in_depth);
     mkl_params.in_sizes[3] = static_cast<size_t>(dims.batch_size);
 
-    mkl_params.out_sizes[0] = static_cast<size_t>(dims.cols.output_size);
-    mkl_params.out_sizes[1] = static_cast<size_t>(dims.rows.output_size);
+    mkl_params.out_sizes[0] = static_cast<size_t>(dims.spatial_dims[1].output_size);
+    mkl_params.out_sizes[1] = static_cast<size_t>(dims.spatial_dims[0].output_size);
     mkl_params.out_sizes[2] = static_cast<size_t>(dims.out_depth);
     mkl_params.out_sizes[3] = static_cast<size_t>(dims.batch_size);
 
     mkl_params.input_offset[0] = static_cast<int>(-pad_left);
     mkl_params.input_offset[1] = static_cast<int>(-pad_top);
 
-    mkl_params.conv_strides[0] = static_cast<size_t>(dims.cols.stride);
-    mkl_params.conv_strides[1] = static_cast<size_t>(dims.rows.stride);
+    mkl_params.conv_strides[0] = static_cast<size_t>(dims.spatial_dims[1].stride);
+    mkl_params.conv_strides[1] = static_cast<size_t>(dims.spatial_dims[0].stride);
 
     GetStridesFromSizes(data_format, mkl_params.out_strides,
                         mkl_params.out_sizes);
     GetStridesFromSizes(data_format, mkl_params.in_strides,
                         mkl_params.in_sizes);
 
-    mkl_params.filter_size[0] = dims.cols.filter_size;
-    mkl_params.filter_size[1] = dims.rows.filter_size;
+    mkl_params.filter_size[0] = dims.spatial_dims[1].filter_size;
+    mkl_params.filter_size[1] = dims.spatial_dims[0].filter_size;
     mkl_params.filter_size[2] = dims.in_depth;
     mkl_params.filter_size[3] = dims.out_depth;
 
