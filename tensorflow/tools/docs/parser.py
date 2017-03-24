@@ -403,8 +403,7 @@ def _parse_function_details(docstring):
   detail_keywords = '|'.join([
       'Args', 'Arguments', 'Fields', 'Returns', 'Yields', 'Raises', 'Attributes'
   ])
-  # TODO(markdaoust): Check if the leading blank line is used consistently.
-  tag_re = re.compile('(?<=\n\n)(' + detail_keywords + '):\n', re.MULTILINE)
+  tag_re = re.compile('(?<=\n)(' + detail_keywords + '):\n', re.MULTILINE)
   parts = tag_re.split(docstring)
 
   # The first part is the main docstring

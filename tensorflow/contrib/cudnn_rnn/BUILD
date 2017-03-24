@@ -13,7 +13,9 @@ exports_files(["LICENSE"])
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
+load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 
 tf_custom_op_library(
     name = "python/ops/_cudnn_rnn_ops.so",
@@ -23,6 +25,18 @@ tf_custom_op_library(
     ],
     deps = [
         "//tensorflow/core/kernels:bounds_check_lib",
+    ],
+)
+
+tf_kernel_library(
+    name = "cudnn_rnn_kernels",
+    srcs = ["kernels/cudnn_rnn_ops.cc"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/kernels:bounds_check_lib",
+        "//third_party/eigen3",
     ],
 )
 
@@ -38,14 +52,18 @@ tf_gen_op_wrapper_py(
     deps = [":cudnn_rnn_ops_op_lib"],
 )
 
-py_library(
+tf_custom_op_py_library(
     name = "cudnn_rnn_py",
     srcs = [
         "__init__.py",
         "python/ops/cudnn_rnn_ops.py",
     ],
-    data = [
+    dso = [
         ":python/ops/_cudnn_rnn_ops.so",
+    ],
+    kernels = [
+        ":cudnn_rnn_kernels",
+        ":cudnn_rnn_ops_op_lib",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],

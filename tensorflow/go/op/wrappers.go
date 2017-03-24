@@ -5389,6 +5389,26 @@ func Conv3DBackpropInputV2(scope *Scope, input_sizes tf.Output, filter tf.Output
 	return op.Output(0)
 }
 
+// Returns a tensor of ones with the same shape and type as x.
+//
+// Arguments:
+//	x: a tensor of type T.
+//
+// Returns a tensor of the same shape and type as x but filled with ones.
+func OnesLike(scope *Scope, x tf.Output) (y tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "OnesLike",
+		Input: []tf.Input{
+			x,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Returns element-wise remainder of division.
 //
 // *NOTE*: `Mod` supports broadcasting. More about broadcasting

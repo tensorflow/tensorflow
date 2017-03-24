@@ -31,6 +31,9 @@ limitations under the License.
 
 namespace tensorflow {
 
+// An upper limit of the total number of elements in a tensor.
+constexpr int64 kMaxElements = (1LL << 40);
+
 // START_SKIP_DOXYGEN
 class TensorShapeIter;  // Declared below
 // END_SKIP_DOXYGEN

@@ -62,6 +62,8 @@ public class TensorFlowMultiBoxDetector implements Classifier {
   private String[] outputNames;
   private int numLocations;
 
+  private boolean logStats = false;
+
   private TensorFlowInferenceInterface inferenceInterface;
 
   private float[] boxPriors;
@@ -89,10 +91,7 @@ public class TensorFlowMultiBoxDetector implements Classifier {
       final String outputScoresName) {
     final TensorFlowMultiBoxDetector d = new TensorFlowMultiBoxDetector();
 
-    d.inferenceInterface = new TensorFlowInferenceInterface();
-    if (d.inferenceInterface.initializeTensorFlow(assetManager, modelFilename) != 0) {
-      throw new RuntimeException("TF initialization failed");
-    }
+    d.inferenceInterface = new TensorFlowInferenceInterface(assetManager, modelFilename);
 
     final Graph g = d.inferenceInterface.graph();
 
@@ -222,22 +221,21 @@ public class TensorFlowMultiBoxDetector implements Classifier {
     Trace.endSection(); // preprocessBitmap
 
     // Copy the input data into TensorFlow.
-    Trace.beginSection("fillNodeFloat");
-    inferenceInterface.fillNodeFloat(
-        inputName, new int[] {1, inputSize, inputSize, 3}, floatValues);
+    Trace.beginSection("feed");
+    inferenceInterface.feed(inputName, floatValues, 1, inputSize, inputSize, 3);
     Trace.endSection();
 
     // Run the inference call.
-    Trace.beginSection("runInference");
-    inferenceInterface.runInference(outputNames);
+    Trace.beginSection("run");
+    inferenceInterface.run(outputNames, logStats);
     Trace.endSection();
 
     // Copy the output Tensor back into the output array.
-    Trace.beginSection("readNodeFloat");
+    Trace.beginSection("fetch");
     final float[] outputScoresEncoding = new float[numLocations];
     final float[] outputLocationsEncoding = new float[numLocations * 4];
-    inferenceInterface.readNodeFloat(outputNames[0], outputLocationsEncoding);
-    inferenceInterface.readNodeFloat(outputNames[1], outputScoresEncoding);
+    inferenceInterface.fetch(outputNames[0], outputLocationsEncoding);
+    inferenceInterface.fetch(outputNames[1], outputScoresEncoding);
     Trace.endSection();
 
     outputLocations = decodeLocationsEncoding(outputLocationsEncoding);
@@ -275,8 +273,8 @@ public class TensorFlowMultiBoxDetector implements Classifier {
   }
 
   @Override
-  public void enableStatLogging(final boolean debug) {
-    inferenceInterface.enableStatLogging(debug);
+  public void enableStatLogging(final boolean logStats) {
+    this.logStats = logStats;
   }
 
   @Override

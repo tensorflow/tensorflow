@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.image.ops import gen_image_ops
 from tensorflow.contrib.util import loader
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
@@ -26,7 +27,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import resource_loader
 
-_image_ops = loader.load_op_library(
+_image_ops_so = loader.load_op_library(
     resource_loader.get_path_to_datafile("_image_ops.so"))
 
 _IMAGE_DTYPES = set(
@@ -162,7 +163,7 @@ def transform(images, transforms):
   else:
     raise TypeError("Transforms should have rank 1 or 2.")
   # pylint: disable=protected-access
-  output = _image_ops.image_projective_transform(images, transforms)
+  output = gen_image_ops.image_projective_transform(images, transforms)
   if len(image_or_images.get_shape()) == 2:
     return output[0, :, :, 0]
   elif len(image_or_images.get_shape()) == 3:

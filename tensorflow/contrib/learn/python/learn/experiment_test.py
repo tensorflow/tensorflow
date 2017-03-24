@@ -20,7 +20,6 @@ from __future__ import print_function
 import json
 import os
 import tempfile
-import threading
 import time
 
 from tensorflow.contrib.learn.python.learn import evaluable
@@ -470,6 +469,48 @@ class ExperimentTest(test.TestCase):
     self.assertEqual([noop_hook], est.eval_hooks)
     self.assertTrue(isinstance(est.monitors[0], monitors.ValidationMonitor))
 
+  def test_continuous_train_and_eval(self):
+    est = TestEstimator(eval_dict={'global_step': 100})
+    noop_hook = _NoopHook()
+    export_strategy = saved_model_export_utils.make_export_strategy(
+        est, 'export_input', exports_to_keep=None)
+    ex = experiment.Experiment(
+        est,
+        train_input_fn='train_input',
+        eval_input_fn='eval_input',
+        eval_metrics='eval_metrics',
+        eval_hooks=[noop_hook],
+        train_steps=100,
+        eval_steps=100,
+        export_strategies=export_strategy)
+    ex.continuous_train_and_eval()
+    self.assertEqual(1, est.fit_count)
+    self.assertEqual(1, est.eval_count)
+    self.assertEqual(1, est.export_count)
+    self.assertEqual([noop_hook], est.eval_hooks)
+
+  def test_continuous_train_and_eval_with_predicate_fn(self):
+    est = TestEstimator(eval_dict={'global_step': 100})
+    export_strategy = saved_model_export_utils.make_export_strategy(
+        est, 'export_input', exports_to_keep=None)
+    ex = experiment.Experiment(
+        est,
+        train_input_fn='train_input',
+        eval_input_fn='eval_input',
+        eval_metrics='eval_metrics',
+        train_steps=100000000000,  # a value will make `ex` never stops.
+        eval_steps=100,
+        export_strategies=export_strategy)
+
+    def predicate_fn(eval_result):
+      del eval_result  # unused. for fn signature.
+      return False
+
+    ex.continuous_train_and_eval(continuous_eval_predicate_fn=predicate_fn)
+    self.assertEqual(0, est.fit_count)
+    self.assertEqual(0, est.eval_count)
+    self.assertEqual(1, est.export_count)
+
   @test.mock.patch.object(server_lib, 'Server')
   def test_run_std_server(self, mock_server):
     # Arrange.
@@ -522,36 +563,35 @@ class ExperimentTest(test.TestCase):
     self.assertEqual(1, est.export_count)
 
   def test_continuous_eval_evaluates_checkpoint_once(self):
-    # Temporarily disabled until we figure out the threading story on Jenkins.
-    return
-    # pylint: disable=unreachable
+    est = TestEstimator(eval_dict={'global_step': 100})
+    est.fake_checkpoint()
 
-    # The TestEstimator will raise StopIteration the second time evaluate is
-    # called.
+    result = {
+        'called': 0,
+        'called_with_eval_result': 0,
+    }
+    def _predicate_fn(eval_result):
+      result['called'] += 1
+      if eval_result:
+        # If eval_result is not empty nor None, the checkpoint has been evaled.
+        result['called_with_eval_result'] += 1
+      # With 300 times of evaluation, this should prove something.
+      return result['called'] < 300
+
     ex = experiment.Experiment(
-        TestEstimator(max_evals=1),
+        est,
         train_input_fn='train_input',
-        eval_input_fn='eval_input')
+        eval_input_fn='eval_input',
+        eval_metrics='eval_metrics',
+        eval_delay_secs=0,
+        continuous_eval_throttle_secs=0)
+    ex.continuous_eval(evaluate_checkpoint_only_once=True,
+                       continuous_eval_predicate_fn=_predicate_fn)
 
-    # This should not happen if the logic restricting evaluation of the same
-    # checkpoint works. We do need some checkpoint though, otherwise Experiment
-    # will never evaluate.
-    ex.estimator.fake_checkpoint()
-
-    # Start a separate thread with continuous eval
-    thread = threading.Thread(
-        target=lambda: ex.continuous_eval(delay_secs=0, throttle_delay_secs=0))
-    thread.start()
-
-    # The thread will die if it evaluates twice, and we should never evaluate
-    # twice since we don't write another checkpoint. Since we did not enable
-    # throttling, if it hasn't died after two seconds, we're good.
-    thread.join(2)
-    self.assertTrue(thread.is_alive())
-
-    # But we should have evaluated once.
-    count = ex.estimator.eval_count
-    self.assertEqual(1, count)
+    self.assertEqual(0, est.fit_count)
+    self.assertEqual(1, est.eval_count)
+    self.assertEqual(300, result['called'])
+    self.assertEqual(1, result['called_with_eval_result'])
 
 
 if __name__ == '__main__':

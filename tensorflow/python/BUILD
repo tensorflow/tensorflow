@@ -3165,6 +3165,7 @@ py_tests(
     srcs = [
         "summary/plugin_asset_test.py",
         "summary/summary_test.py",
+        "summary/text_summary_test.py",
         "summary/writer/writer_test.py",
     ],
     additional_deps = [

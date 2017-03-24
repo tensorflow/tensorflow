@@ -22,10 +22,11 @@ from __future__ import print_function
 
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_ops
 
 __all__ = ["sequence_loss"]
+
 
 def sequence_loss(logits, targets, weights,
                   average_across_timesteps=True, average_across_batch=True,
@@ -47,8 +48,10 @@ def sequence_loss(logits, targets, weights,
       dimension and divide the cost by the total label weight across timesteps.
     average_across_batch: If set, sum the cost across the batch dimension and
       divide the returned cost by the batch size.
-    softmax_loss_function: Function (labels-batch, inputs-batch) -> loss-batch
+    softmax_loss_function: Function (labels, logits) -> loss-batch
       to be used instead of the standard softmax (the default if this is None).
+      **Note that to avoid confusion, it is required for the function to accept
+      named arguments.**
     name: Optional name for this operation, defaults to "sequence_loss".
 
   Returns:
@@ -69,18 +72,18 @@ def sequence_loss(logits, targets, weights,
                      "tensor")
   with ops.name_scope(name, "sequence_loss", [logits, targets, weights]):
     num_classes = array_ops.shape(logits)[2]
-    probs_flat = array_ops.reshape(logits, [-1, num_classes])
+    logits_flat = array_ops.reshape(logits, [-1, num_classes])
     targets = array_ops.reshape(targets, [-1])
     if softmax_loss_function is None:
       crossent = nn_ops.sparse_softmax_cross_entropy_with_logits(
-        labels=targets, logits=probs_flat)
+          labels=targets, logits=logits_flat)
     else:
-      crossent = softmax_loss_function(targets, probs_flat)
-    crossent = crossent * array_ops.reshape(weights, [-1])
+      crossent = softmax_loss_function(labels=targets, logits=logits_flat)
+    crossent *= array_ops.reshape(weights, [-1])
     if average_across_timesteps and average_across_batch:
       crossent = math_ops.reduce_sum(crossent)
       total_size = math_ops.reduce_sum(weights)
-      total_size += 1e-12 # to avoid division by 0 for all-0 weights
+      total_size += 1e-12  # to avoid division by 0 for all-0 weights
       crossent /= total_size
     else:
       batch_size = array_ops.shape(logits)[0]
@@ -89,11 +92,11 @@ def sequence_loss(logits, targets, weights,
     if average_across_timesteps and not average_across_batch:
       crossent = math_ops.reduce_sum(crossent, axis=[1])
       total_size = math_ops.reduce_sum(weights, axis=[1])
-      total_size += 1e-12 # to avoid division by 0 for all-0 weights
+      total_size += 1e-12  # to avoid division by 0 for all-0 weights
       crossent /= total_size
     if not average_across_timesteps and average_across_batch:
       crossent = math_ops.reduce_sum(crossent, axis=[0])
       total_size = math_ops.reduce_sum(weights, axis=[0])
-      total_size += 1e-12 # to avoid division by 0 for all-0 weights
+      total_size += 1e-12  # to avoid division by 0 for all-0 weights
       crossent /= total_size
     return crossent
