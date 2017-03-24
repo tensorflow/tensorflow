@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
-#include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/kernels/conv_grad_ops.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -89,7 +88,7 @@ class MklConv2DCustomBackpropFilterOp : public OpKernel {
     OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
                                 filter_sizes.vec<int32>(), &filter_shape));
 
-    Conv2DBackpropDimensions backprop_dims;
+    ConvBackpropDimensions backprop_dims;
 
     // Generate shape for input if input is in MKL format.
     if (input_in_mkl_format) {
@@ -116,9 +115,10 @@ class MklConv2DCustomBackpropFilterOp : public OpKernel {
       out_backprop_shape = out_backprop.shape();
     }
 
-    OP_REQUIRES_OK(context, Conv2DBackpropComputeDimensions(
-                                "Conv2DCustomBackpropFilter", input_shape,
-                                filter_shape, out_backprop_shape, strides_,
+    OP_REQUIRES_OK(context, ConvBackpropComputeDimensions(
+                                "Conv2DCustomBackpropFilter", /*num_spatial_dims=*/2,
+                                input_shape, filter_shape, 
+                                out_backprop_shape, strides_,
                                 padding_, data_format_, &backprop_dims));
 
     int64 pad_top, pad_bottom;
@@ -126,15 +126,15 @@ class MklConv2DCustomBackpropFilterOp : public OpKernel {
     OP_REQUIRES_OK(
         context,
         GetWindowedOutputSizeVerbose(
-            backprop_dims.rows.input_size, backprop_dims.rows.filter_size,
-            backprop_dims.rows.stride, padding_,
-            &backprop_dims.rows.output_size, &pad_top, &pad_bottom));
+            backprop_dims.spatial_dims[0].input_size, backprop_dims.spatial_dims[0].filter_size,
+            backprop_dims.spatial_dims[0].stride, padding_,
+            &backprop_dims.spatial_dims[0].output_size, &pad_top, &pad_bottom));
     OP_REQUIRES_OK(
         context,
         GetWindowedOutputSizeVerbose(
-            backprop_dims.cols.input_size, backprop_dims.cols.filter_size,
-            backprop_dims.cols.stride, padding_,
-            &backprop_dims.cols.output_size, &pad_left, &pad_right));
+            backprop_dims.spatial_dims[1].input_size, backprop_dims.spatial_dims[1].filter_size,
+            backprop_dims.spatial_dims[1].stride, padding_,
+            &backprop_dims.spatial_dims[1].output_size, &pad_left, &pad_right));
 
     // Create MKL primitives for convolution filter grad
     mkl_params_.in_dims = input_in_mkl_format
@@ -144,23 +144,23 @@ class MklConv2DCustomBackpropFilterOp : public OpKernel {
                                ? mkl_shapes_.out_backprop_shape.GetDimension()
                                : out_backprop.dims();
     mkl_params_.in_sizes[0] =
-        static_cast<size_t>(backprop_dims.cols.input_size);
+        static_cast<size_t>(backprop_dims.spatial_dims[1].input_size);
     mkl_params_.in_sizes[1] =
-        static_cast<size_t>(backprop_dims.rows.input_size);
+        static_cast<size_t>(backprop_dims.spatial_dims[0].input_size);
     mkl_params_.in_sizes[2] = static_cast<size_t>(backprop_dims.in_depth);
     mkl_params_.in_sizes[3] = static_cast<size_t>(backprop_dims.batch_size);
     mkl_params_.out_sizes[0] =
-        static_cast<size_t>(backprop_dims.cols.output_size);
+        static_cast<size_t>(backprop_dims.spatial_dims[1].output_size);
     mkl_params_.out_sizes[1] =
-        static_cast<size_t>(backprop_dims.rows.output_size);
+        static_cast<size_t>(backprop_dims.spatial_dims[0].output_size);
     mkl_params_.out_sizes[2] = static_cast<size_t>(backprop_dims.out_depth);
     mkl_params_.out_sizes[3] = static_cast<size_t>(backprop_dims.batch_size);
     mkl_params_.input_offsets[0] = static_cast<int>(-pad_left);
     mkl_params_.input_offsets[1] = static_cast<int>(-pad_top);
     mkl_params_.conv_strides[0] =
-        static_cast<size_t>(backprop_dims.cols.stride);
+        static_cast<size_t>(backprop_dims.spatial_dims[1].stride);
     mkl_params_.conv_strides[1] =
-        static_cast<size_t>(backprop_dims.rows.stride);
+        static_cast<size_t>(backprop_dims.spatial_dims[0].stride);
 
     GetStridesFromSizes(data_format_, mkl_params_.in_strides,
                         mkl_params_.in_sizes);
@@ -170,8 +170,8 @@ class MklConv2DCustomBackpropFilterOp : public OpKernel {
     // MKL understands dimensions in 0, 1, 2, and 3 indices denotes
     // filter cols, rows, input channels, and output depth/channels.
     mkl_params_.filter_dims = 4;
-    mkl_params_.filter_sizes[0] = backprop_dims.cols.filter_size;
-    mkl_params_.filter_sizes[1] = backprop_dims.rows.filter_size;
+    mkl_params_.filter_sizes[0] = backprop_dims.spatial_dims[1].filter_size;
+    mkl_params_.filter_sizes[1] = backprop_dims.spatial_dims[0].filter_size;
     mkl_params_.filter_sizes[2] = backprop_dims.in_depth;
     mkl_params_.filter_sizes[3] = backprop_dims.out_depth;
 
@@ -183,12 +183,12 @@ class MklConv2DCustomBackpropFilterOp : public OpKernel {
         backprop_dims.out_depth * backprop_dims.in_depth;
     mkl_params_.filter_strides[1] = backprop_dims.out_depth *
                                     backprop_dims.in_depth *
-                                    backprop_dims.cols.filter_size;
+                                    backprop_dims.spatial_dims[1].filter_size;
     mkl_params_.filter_strides[2] = backprop_dims.out_depth;
     mkl_params_.filter_strides[3] = 1;
 
-    mkl_params_.conv_strides[0] = backprop_dims.cols.stride;
-    mkl_params_.conv_strides[1] = backprop_dims.rows.stride;
+    mkl_params_.conv_strides[0] = backprop_dims.spatial_dims[1].stride;
+    mkl_params_.conv_strides[1] = backprop_dims.spatial_dims[0].stride;
 
     // Create convolution-grad-filter primitive
     CHECK_EQ(

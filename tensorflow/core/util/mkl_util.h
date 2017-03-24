@@ -275,6 +275,32 @@ inline void GetStridesFromSizes(TensorFormat data_format, size_t* strides,
   }
 }
 
+inline void MklSizesToTFSizes(OpKernelContext* context,
+                              TensorFormat data_format_,
+                              const MklShape& mklshape, TensorShape* tfshape) {
+  size_t tf_dim = mklshape.GetDimension();
+  const size_t* tf_sizes = mklshape.GetSizes();
+
+  // TODO(inteltf) check if this constraint is applicable in other cases (besides
+  // BackpropInput, BackpropFilter).
+  OP_REQUIRES(context, tf_dim == 4,
+              errors::InvalidArgument("MKLSizesToTFSizes: size must be 4-dim"));
+  std::vector<int32> sizes;
+
+  sizes.push_back(tf_sizes[3]);
+
+  if (data_format_ == FORMAT_NHWC) {
+    sizes.push_back(tf_sizes[1]);
+    sizes.push_back(tf_sizes[0]);
+    sizes.push_back(tf_sizes[2]);
+  } else {
+    sizes.push_back(tf_sizes[2]);
+    sizes.push_back(tf_sizes[1]);
+    sizes.push_back(tf_sizes[0]);
+  }
+
+  OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(sizes, tfshape));
+}
 namespace mkl_layer_registry {
 
 static const char* kMklLayerLabel = "MklLayer";
