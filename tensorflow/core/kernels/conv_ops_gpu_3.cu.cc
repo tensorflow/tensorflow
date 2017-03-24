@@ -126,9 +126,9 @@ EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Index<IndexCount> FlatToTensorIndex(
 
 // A Cuda custom kernel that swaps dimension-0 and dimension-2 of a 3D tensor.
 template <typename T>
-__global__ void SwapDimension0And2InTensor3(int nthreads, const T* input,
-                                            Dimension<3> input_dims,
-                                            T* output) {
+__global__ void SwapDimension0And2InTensor3Simple(int nthreads, const T* input,
+                                                  Dimension<3> input_dims,
+                                                  T* output) {
   Dimension<3> output_dims;
   output_dims[0] = input_dims[2];
   output_dims[1] = input_dims[1];
@@ -152,9 +152,9 @@ __global__ void SwapDimension0And2InTensor3(int nthreads, const T* input,
 
 // A Cuda custom kernel that swaps dimension-1 and dimension-2 of a 3D tensor.
 template <typename T>
-__global__ void SwapDimension1And2InTensor3(int nthreads, const T* input,
-                                            Dimension<3> input_dims,
-                                            T* output) {
+__global__ void SwapDimension1And2InTensor3Simple(int nthreads, const T* input,
+                                                  Dimension<3> input_dims,
+                                                  T* output) {
   Dimension<3> output_dims;
   output_dims[0] = input_dims[0];
   output_dims[1] = input_dims[2];
@@ -348,9 +348,9 @@ struct TransformFilter<GPUDevice, T, int, NDIMS> {
     combined_dims[1] = in.dimension(NDIMS - 2);  // input filters
     combined_dims[2] = in.dimension(NDIMS - 1);  // output filters
     CudaLaunchConfig config = GetCudaLaunchConfig(out.size(), d);
-    SwapDimension0And2InTensor3<
-        T><<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-        config.virtual_thread_count, in.data(), combined_dims, out.data());
+    SwapDimension0And2InTensor3Simple<T>
+        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+            config.virtual_thread_count, in.data(), combined_dims, out.data());
   }
 };
 
@@ -368,9 +368,9 @@ struct ReverseTransformFilter<GPUDevice, T, NDIMS> {
       combined_dims[2] *= in.dimension(i);
     }
     CudaLaunchConfig config = GetCudaLaunchConfig(out.size(), d);
-    SwapDimension0And2InTensor3<
-        T><<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-        config.virtual_thread_count, in.data(), combined_dims, out.data());
+    SwapDimension0And2InTensor3Simple<T>
+        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+            config.virtual_thread_count, in.data(), combined_dims, out.data());
   }
 };
 
@@ -442,11 +442,43 @@ void RunSwapDimension1And2InTensor3(const GPUDevice& d, const T* input,
   } else {
     int total_element_count = input_dims[0] * input_dims[1] * input_dims[2];
     CudaLaunchConfig config = GetCudaLaunchConfig(total_element_count, d);
-    SwapDimension1And2InTensor3<
-        T><<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-        config.virtual_thread_count, input, input_dims, output);
+    SwapDimension1And2InTensor3Simple<T>
+        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+            config.virtual_thread_count, input, input_dims, output);
   }
 }
+
+// A GPU helper functor that does general dimension 1 and 2 switch for 3D
+// tensor.
+template <typename T>
+struct SwapDimension1And2InTensor3<GPUDevice, T> {
+  typedef GPUDevice Device;
+  void operator()(const Device& d, const T* in,
+                  const gtl::ArraySlice<int64>& combined_dims, T* out) {
+    Dimension<3> input_dims = {static_cast<int>(combined_dims[0]),
+                               static_cast<int>(combined_dims[1]),
+                               static_cast<int>(combined_dims[2])};
+    RunSwapDimension1And2InTensor3(d, in, input_dims, out);
+  }
+};
+
+// A GPU helper functor that does general dimension 0 and 2 switch for 3D
+// tensor.
+template <typename T>
+struct SwapDimension0And2InTensor3<GPUDevice, T> {
+  typedef GPUDevice Device;
+  void operator()(const Device& d, const T* in,
+                  const gtl::ArraySlice<int64>& combined_dims, T* out) {
+    Dimension<3> input_dims = {static_cast<int>(combined_dims[0]),
+                               static_cast<int>(combined_dims[1]),
+                               static_cast<int>(combined_dims[2])};
+    size_t total_size = combined_dims[0] * combined_dims[1] * combined_dims[2];
+    CudaLaunchConfig config = GetCudaLaunchConfig(total_size, d);
+    SwapDimension0And2InTensor3Simple<T>
+        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+            config.virtual_thread_count, in, input_dims, out);
+  }
+};
 
 // A GPU helper functor that converts NHWC TensorFlow data format to
 // NCHW format that is accepted by Cudnn.
@@ -496,6 +528,18 @@ template struct functor::ShuffleAndReverse<GPUDevice, Eigen::half, 4,
 
 template struct functor::TransformDepth<GPUDevice, float, int>;
 template struct functor::TransformDepth<GPUDevice, Eigen::half, int>;
+
+template struct functor::SwapDimension1And2InTensor3<GPUDevice, uint8>;
+template struct functor::SwapDimension1And2InTensor3<GPUDevice, uint16>;
+template struct functor::SwapDimension1And2InTensor3<GPUDevice, uint32>;
+template struct functor::SwapDimension1And2InTensor3<GPUDevice, uint64>;
+template struct functor::SwapDimension1And2InTensor3<GPUDevice, float4>;
+
+template struct functor::SwapDimension0And2InTensor3<GPUDevice, uint8>;
+template struct functor::SwapDimension0And2InTensor3<GPUDevice, uint16>;
+template struct functor::SwapDimension0And2InTensor3<GPUDevice, uint32>;
+template struct functor::SwapDimension0And2InTensor3<GPUDevice, uint64>;
+template struct functor::SwapDimension0And2InTensor3<GPUDevice, float4>;
 
 // For 2d ops.
 template struct functor::TransformFilter<GPUDevice, float, int, 4>;
