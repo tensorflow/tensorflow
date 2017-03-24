@@ -71,12 +71,14 @@ def single_image_random_dot_stereograms(
 
     Args:
       depth_values: A `Tensor`. Must be one of the following types: 
-        `float64`, `float32`, `int64`, `int32`.  Z values of data to encode into 'output_data_window'
-        window, lower further away {0.0 floor(far), 1.0 ceiling(near) after norm}, must be 2-D tensor
+        `float64`, `float32`, `int64`, `int32`.  Z values of data to encode
+        into 'output_data_window' window, lower further away {0.0 floor(far),
+        1.0 ceiling(near) after norm}, must be 2-D tensor
       hidden_surface_removal: An optional `bool`. Defaults to `True`.
         Activate hidden surface removal
       convergence_dots_size: An optional `int`. Defaults to `8`.
-        Black dot size in pixels to help view converge image, drawn on bottom of image
+        Black dot size in pixels to help view converge image, drawn on bottom
+        of the image
       dots_per_inch: An optional `int`. Defaults to `72`.
         Output device in dots/inch
       eye_separation: An optional `float`. Defaults to `2.5`.
@@ -91,20 +93,23 @@ def single_image_random_dot_stereograms(
         Fix MIN value for Normalization (0.0) - if > MAX, autoscale
       boarder_level: An optional `float`. Defaults to `0`.
         Value of board in depth 0.0 {far} to 1.0 {near} 
-      number_colors: An optional `int`. Defaults to `256`.
-        2 (Black & White),256 (grayscale), and Numbers > 256 (Full Color) are supported
+      number_colors: An optional `int`. Defaults to `256`. 2 (Black &
+        White), 256 (grayscale), and Numbers > 256 (Full Color) are
+        supported.
       generation_mode: An optional `string`. Defaults to `"SIRDS"`.
         SIRDS - single image random dot stereogram (Default)
       output_image_shape: An optional `tf.TensorShape` or list of `ints`. 
-        Defaults to shape `[1024, 768, 1]`.
-        Defines output shape of returned image in '[X,Y, Channels]' 1-grayscale, 3 color
-        channels will be updated to 3 if number_colors > 256
-      output_data_window: An optional `tf.TensorShape` or list of `ints`. Defaults to `[1022, 757]`.
-        Size of "DATA" window, must be equal to or smaller than 'output_image_shape', will be
-        centered and use convergence_dots_size for best fit to avoid overlap if possible
+        Defaults to shape `[1024, 768, 1]`. Defines output shape of returned
+        image in '[X,Y, Channels]' 1-grayscale, 3 color channels will be
+        updated to 3 if number_colors > 256.
+      output_data_window: An optional `tf.TensorShape` or list of `ints`.
+        Defaults to `[1022, 757]`. Size of "DATA" window, must be equal to or
+        smaller than 'output_image_shape', will be centered and use
+        `convergence_dots_size` for best fit to avoid overlap if possible.
 
     Returns:
-      A `Tensor` of type `uint8` of shape 'output_image_shape' with encoded 'depth_values'
+      A `Tensor` of type `uint8` of shape 'output_image_shape' with encoded
+      'depth_values'
     """
     
     result = _sirds_ops.single_image_random_dot_stereograms( 
