@@ -33,6 +33,17 @@ std::vector<const NodeDef*> GrapplerItem::InitOpsFanin() const {
   return ComputeTransitiveFanin(graph, init_ops);
 }
 
+std::vector<const NodeDef*> GrapplerItem::MainVariables() const {
+  std::vector<const NodeDef*> fanin = ComputeTransitiveFanin(graph, init_ops);
+  std::vector<const NodeDef*> vars;
+  for (const NodeDef* node : fanin) {
+    if (node->op() == "Variable" || node->op() == "VariableV2") {
+      vars.push_back(node);
+    }
+  }
+  return vars;
+}
+
 std::vector<const NodeDef*> ComputeTransitiveFanin(
     const GraphDef& graph, const std::vector<string>& terminal_nodes) {
   std::unordered_map<string, const NodeDef*> name_to_node;

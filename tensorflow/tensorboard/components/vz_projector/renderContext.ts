@@ -47,6 +47,7 @@ export class RenderContext {
       public farthestCameraSpacePointZ: number, public backgroundColor: number,
       public pointColors: Float32Array, public pointScaleFactors: Float32Array,
       public labels: LabelRenderParams,
-      public traceColors: {[trace: number]: Float32Array},
-      public traceOpacities: Float32Array, public traceWidths: Float32Array) {}
+      public polylineColors: {[polylineIndex: number]: Float32Array},
+      public polylineOpacities: Float32Array,
+      public polylineWidths: Float32Array) {}
 }

@@ -26,10 +26,10 @@ import six
 from tensorflow.contrib import framework as contrib_framework
 from tensorflow.contrib.framework import get_graph_from_inputs
 
-from tensorflow.python.training import session_run_hook
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.training import session_run_hook
 
 
 class ModeKeys(object):

@@ -176,6 +176,7 @@ tensorflow::ImportNumpy();
 %unignore TF_ExtendGraph;
 %unignore TF_NewLibrary;
 %unignore TF_LoadLibrary;
+%unignore TF_DeleteLibraryHandle;
 %unignore TF_GetOpList;
 %include "tensorflow/c/c_api.h"
 %ignoreall
