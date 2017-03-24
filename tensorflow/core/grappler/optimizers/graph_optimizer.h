@@ -23,7 +23,7 @@ namespace tensorflow {
 namespace grappler {
 
 class Cluster;
-class GrapplerItem;
+struct GrapplerItem;
 
 // An abstract interface for an algorithm for generating a candidate
 // optimization of a GrapplerItem for running on a cluster.
