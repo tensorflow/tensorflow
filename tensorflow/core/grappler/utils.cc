@@ -24,6 +24,39 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
+NodeMap::NodeMap(GraphDef* graph) : graph_(graph) {
+  for (int i = 0; i < graph_->node_size(); i++) {
+    auto node = graph_->mutable_node(i);
+    nodes_.insert(std::make_pair(node->name(), node));
+    for (const auto& input : node->input()) {
+      outputs_[input].insert(nodes_[node->name()]);
+    }
+  }
+}
+
+NodeDef* NodeMap::GetNode(const string& name) {
+  string node_name = NodeName(name);
+  return nodes_[node_name];
+}
+
+std::set<NodeDef*> NodeMap::GetOutputs(const string& node_name) {
+  return outputs_[node_name];
+}
+
+void NodeMap::AddNode(const string& name, NodeDef* node) {
+  nodes_.insert(std::make_pair(name, node));
+}
+
+void NodeMap::AddOutput(const string& node, const string& output) {
+  outputs_[node].insert(nodes_[output]);
+}
+
+void NodeMap::UpdateOutput(const string& node, const string& old_output,
+                           const string& new_output) {
+  outputs_[node].erase(nodes_[old_output]);
+  outputs_[node].insert(nodes_[new_output]);
+}
+
 string ParseNodeName(const string& name, int* position) {
   // Strip the prefix '^' (if any), and strip the trailing ":{digits} (if any)
   // to get a node name.

@@ -275,7 +275,7 @@ paper-dropdown-menu paper-item {
       </paper-tooltip>
       <paper-button id="upload" class="ink-button" onclick="dataDialog.open()">Load data</paper-button>
     </span>
-    <span>
+    <span id="publish-container">
       <paper-tooltip position="bottom" animation-delay="0" fit-to-visible-bounds>
         Publish your embedding visualization and data
       </paper-tooltip>
@@ -286,7 +286,7 @@ paper-dropdown-menu paper-item {
     <paper-dialog id="dataDialog" with-backdrop>
       <h2>Load data from your computer</h2>
       <paper-dialog-scrollable class="scrollable-container">
-        <div class="data-step">
+        <div class="data-step" id="upload-tensors-step-container">
           <div class="upload-step">
             <div>
                 <b><span class="step-label">Step 1:</span> Load a TSV file of vectors.</b>
@@ -310,7 +310,7 @@ paper-dropdown-menu paper-item {
         <div class="data-step">
           <div class="upload-step">
             <div>
-                <span class="step-label"><b>Step 2</b> (optional):</span> <b>Load a TSV file of metadata.</b>
+                <span class="step-label" id="upload-metadata-label"><b>Step 2</b> (optional):</span> <b>Load a TSV file of metadata.</b>
             </div>
           </div>
           <div class="data-step-contents">

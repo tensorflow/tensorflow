@@ -43,7 +43,7 @@ Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
     NodeDef* new_node = pruned_graph->add_node();
     *new_node = node;
     new_node->clear_input();
-    rewriter.ForwardPreservedInputs(node, nodes_to_delete, new_node);
+    rewriter.ForwardInputs(node, nodes_to_delete, new_node);
   }
 
   return Status::OK();
