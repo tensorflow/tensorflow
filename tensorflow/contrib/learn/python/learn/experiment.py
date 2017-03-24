@@ -32,6 +32,7 @@ from tensorflow.contrib.learn.python.learn import export_strategy
 from tensorflow.contrib.learn.python.learn import monitors
 from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import run_config
+from tensorflow.python.estimator import estimator as core_estimator
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import basic_session_run_hooks
@@ -85,13 +86,17 @@ class Experiment(object):
     when a method is executed which requires it.
 
     Args:
-      estimator: Object implementing `Trainable` and `Evaluable`.
+      estimator: Object implementing Estimator interface, which could be a
+        combination of ${tf.contrib.learn.Trainable} and
+        ${tf.contrib.learn.Evaluable} (deprecated), or
+        ${tf.estimator.`Estimator}.
       train_input_fn: function, returns features and labels for training.
       eval_input_fn: function, returns features and labels for evaluation. If
         `eval_steps` is `None`, this should be configured only to produce for a
         finite number of batches (generally, 1 epoch over the evaluation data).
       eval_metrics: `dict` of string, metric function. If `None`, default set
-        is used.
+        is used. This should be `None` if the `estimator` is
+        ${tf.estimator.Estimator}.
       train_steps: Perform this many steps of training. `None`, the default,
         means train forever.
       eval_steps: `evaluate` runs until input is exhausted (or another exception
@@ -114,13 +119,25 @@ class Experiment(object):
       export_strategies: A list of `ExportStrategy`s, or a single one, or None.
 
     Raises:
-      ValueError: if `estimator` does not implement `Evaluable` and `Trainable`,
+      ValueError: if `estimator` does not implement Estimator interface,
         or if export_strategies has the wrong type.
     """
-    if not isinstance(estimator, evaluable.Evaluable):
-      raise ValueError("`estimator` must implement `Evaluable`.")
-    if not isinstance(estimator, trainable.Trainable):
-      raise ValueError("`estimator` must implement `Trainable`.")
+    if isinstance(estimator, core_estimator.Estimator):
+      self._core_estimator_used = True
+      if eval_metrics is not None:
+        raise ValueError(
+            "`eval_metrics` must be `None` with `tf.estimator.Estimator`")
+    else:
+      self._core_estimator_used = False
+      if not isinstance(estimator, evaluable.Evaluable):
+        raise ValueError(
+            "`estimator` must implement `tf.contrib.learn.Evaluable` "
+            "or `tf.estimator.Estimator`.")
+      if not isinstance(estimator, trainable.Trainable):
+        raise ValueError(
+            "`estimator` must implement `tf.contrib.learn.Trainable`"
+            "or `tf.estimator.`Estimator`.")
+
     super(Experiment, self).__init__()
     # Immutable fields.
     self._estimator = estimator
@@ -227,9 +244,9 @@ class Experiment(object):
       logging.info("Waiting %d secs before starting training.", remaining)
       time.sleep(delay_secs)
 
-    return self._estimator.fit(input_fn=self._train_input_fn,
-                               max_steps=self._train_steps,
-                               monitors=self._train_monitors + extra_hooks)
+    return self._call_train(input_fn=self._train_input_fn,
+                            max_steps=self._train_steps,
+                            hooks=self._train_monitors + extra_hooks)
 
   def evaluate(self, delay_secs=None):
     """Evaluate on the evaluation data.
@@ -254,11 +271,11 @@ class Experiment(object):
       logging.info("Waiting %d secs before starting eval.", delay_secs)
       time.sleep(delay_secs)
 
-    return self._estimator.evaluate(input_fn=self._eval_input_fn,
-                                    steps=self._eval_steps,
-                                    metrics=self._eval_metrics,
-                                    name="one_pass",
-                                    hooks=self._eval_hooks)
+    return self._call_evaluate(input_fn=self._eval_input_fn,
+                               steps=self._eval_steps,
+                               metrics=self._eval_metrics,
+                               name="one_pass",
+                               hooks=self._eval_hooks)
 
   @deprecated(
       "2016-10-23",
@@ -353,12 +370,12 @@ class Experiment(object):
           logging.warning(error_msg)
           last_warning_time = time.time()
       else:
-        eval_result = self._estimator.evaluate(input_fn=input_fn,
-                                               steps=self._eval_steps,
-                                               metrics=self._eval_metrics,
-                                               name=name,
-                                               checkpoint_path=latest_path,
-                                               hooks=self._eval_hooks)
+        eval_result = self._call_evaluate(input_fn=input_fn,
+                                          steps=self._eval_steps,
+                                          metrics=self._eval_metrics,
+                                          name=name,
+                                          checkpoint_path=latest_path,
+                                          hooks=self._eval_hooks)
         # Ensure eval result is not None for next round of evaluation.
         if not eval_result:
           eval_result = {}
@@ -451,11 +468,11 @@ class Experiment(object):
         )]
       self.train(delay_secs=0)
 
-    eval_result = self._estimator.evaluate(input_fn=self._eval_input_fn,
-                                           steps=self._eval_steps,
-                                           metrics=self._eval_metrics,
-                                           name=eval_dir_suffix,
-                                           hooks=self._eval_hooks)
+    eval_result = self._call_evaluate(input_fn=self._eval_input_fn,
+                                      steps=self._eval_steps,
+                                      metrics=self._eval_metrics,
+                                      name=eval_dir_suffix,
+                                      hooks=self._eval_hooks)
     export_results = self._maybe_export(eval_result)
     return eval_result, export_results
 
@@ -523,16 +540,16 @@ class Experiment(object):
         break
 
       logging.info("Training model for %s steps", train_steps_per_iteration)
-      self._estimator.fit(input_fn=self._train_input_fn,
-                          steps=train_steps_per_iteration,
-                          monitors=self._train_monitors)
+      self._call_train(input_fn=self._train_input_fn,
+                       steps=train_steps_per_iteration,
+                       hooks=self._train_monitors)
 
       logging.info("Evaluating model now.")
-      eval_result = self._estimator.evaluate(input_fn=self._eval_input_fn,
-                                             steps=self._eval_steps,
-                                             metrics=self._eval_metrics,
-                                             name="one_pass",
-                                             hooks=self._eval_hooks)
+      eval_result = self._call_evaluate(input_fn=self._eval_input_fn,
+                                        steps=self._eval_steps,
+                                        metrics=self._eval_metrics,
+                                        name="one_pass",
+                                        hooks=self._eval_hooks)
 
     return eval_result, self._maybe_export(eval_result)
 
@@ -572,14 +589,14 @@ class Experiment(object):
     Returns:
       The result of the `evaluate` call to the `Estimator`.
     """
-    self._estimator.fit(input_fn=self._train_input_fn,
-                        steps=1,
-                        monitors=self._train_monitors)
+    self._call_train(input_fn=self._train_input_fn,
+                     steps=1,
+                     hooks=self._train_monitors)
 
-    eval_result = self._estimator.evaluate(input_fn=self._eval_input_fn,
-                                           steps=1,
-                                           metrics=self._eval_metrics,
-                                           name="one_pass")
+    eval_result = self._call_evaluate(input_fn=self._eval_input_fn,
+                                      steps=1,
+                                      metrics=self._eval_metrics,
+                                      name="one_pass")
     _ = self._maybe_export(eval_result)
 
     return eval_result
@@ -600,6 +617,45 @@ class Experiment(object):
         start=False)
     server.start()
     return server
+
+  def _call_train(self, _sentinel=None,  # pylint: disable=invalid-name,
+                  input_fn=None, steps=None, hooks=None, max_steps=None):
+    if _sentinel is not None:
+      raise ValueError("_call_train should be called with keyword args only")
+
+    if self._core_estimator_used:
+      return self._estimator.train(input_fn=input_fn,
+                                   steps=steps,
+                                   max_steps=max_steps,
+                                   hooks=hooks)
+    else:
+      return self._estimator.fit(input_fn=input_fn,
+                                 steps=steps,
+                                 max_steps=max_steps,
+                                 monitors=hooks)
+
+  def _call_evaluate(self, _sentinel=None,  # pylint: disable=invalid-name,
+                     input_fn=None, steps=None, metrics=None, name=None,
+                     checkpoint_path=None, hooks=None):
+    if _sentinel is not None:
+      raise ValueError("_call_evaluate should be called with keyword args only")
+
+    if self._core_estimator_used:
+      if metrics is not None:
+        raise ValueError(
+            "`eval_metrics` must be `None` with `tf.estimator.Estimator`")
+      return self._estimator.evaluate(input_fn=input_fn,
+                                      steps=steps,
+                                      name=name,
+                                      checkpoint_path=checkpoint_path,
+                                      hooks=hooks)
+    else:
+      return self._estimator.evaluate(input_fn=input_fn,
+                                      steps=steps,
+                                      metrics=metrics,
+                                      name=name,
+                                      checkpoint_path=checkpoint_path,
+                                      hooks=hooks)
 
 
 @contextlib.contextmanager
