@@ -1886,7 +1886,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "transpose_op_test",
-    size = "small",
+    size = "large",
     srcs = ["transpose_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",

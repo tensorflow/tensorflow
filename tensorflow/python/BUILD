@@ -3459,6 +3459,25 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "transpose_benchmark",
+    size = "medium",
+    srcs = ["ops/transpose_benchmark.py"],
+    additional_deps = [
+        ":array_ops",
+        ":client",
+        ":client_testlib",
+        ":control_flow_ops",
+        ":framework_for_generated_wrappers",
+        ":platform",
+        ":platform_benchmark",
+        ":variables",
+        "//third_party/py/numpy",
+        "//tensorflow/core:protos_all_py",
+    ],
+    main = "ops/transpose_benchmark.py",
+)
+
+cuda_py_test(
     name = "session_benchmark",
     srcs = ["client/session_benchmark.py"],
     additional_deps = [
