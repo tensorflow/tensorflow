@@ -32,3 +32,4 @@ comment thread to coordinate.
 
 - `brew install bazel`
 - `./configure`
+- `bazel test python`
