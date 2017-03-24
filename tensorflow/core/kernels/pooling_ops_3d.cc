@@ -54,16 +54,16 @@ Pool3dParameters::Pool3dParameters(OpKernelContext* context,
   this->data_format = data_format;
   depth = GetTensorDim(tensor_in_shape, data_format, 'C');
   tensor_in_planes = GetTensorDim(tensor_in_shape, data_format, '0');
-  tensor_in_cols = GetTensorDim(tensor_in_shape, data_format, '1');
-  tensor_in_rows = GetTensorDim(tensor_in_shape, data_format, '2');
+  tensor_in_rows = GetTensorDim(tensor_in_shape, data_format, '1');
+  tensor_in_cols = GetTensorDim(tensor_in_shape, data_format, '2');
   tensor_in_batch = GetTensorDim(tensor_in_shape, data_format, 'N');
-  window_planes = GetTensorDim(ksize, data_format, '1');
-  window_cols = GetTensorDim(ksize, data_format, '1');
-  window_rows = GetTensorDim(ksize, data_format, '2');
+  window_planes = GetTensorDim(ksize, data_format, '0');
+  window_rows = GetTensorDim(ksize, data_format, '1');
+  window_cols = GetTensorDim(ksize, data_format, '2');
   depth_window = GetTensorDim(ksize, data_format, 'C');
   plane_stride = GetTensorDim(stride, data_format, '0');
-  col_stride = GetTensorDim(stride, data_format, '1');
-  row_stride = GetTensorDim(stride, data_format, '2');
+  row_stride = GetTensorDim(stride, data_format, '1');
+  col_stride = GetTensorDim(stride, data_format, '2');
   depth_stride = GetTensorDim(stride, data_format, 'C');
 
   // We only support 3D pooling across plane/width/height. Depthwise
@@ -77,11 +77,11 @@ Pool3dParameters::Pool3dParameters(OpKernelContext* context,
                                                 plane_stride, padding,
                                                 &out_plane, &pad_planes));
   OP_REQUIRES_OK(context,
-                 GetWindowedOutputSize(tensor_in_cols, window_cols, col_stride,
-                                       padding, &out_height, &pad_cols));
+                 GetWindowedOutputSize(tensor_in_rows, window_rows, row_stride,
+                                       padding, &out_height, &pad_rows));
   OP_REQUIRES_OK(context,
-                 GetWindowedOutputSize(tensor_in_cols, window_cols, row_stride,
-                                       padding, &out_width, &pad_rows));
+                 GetWindowedOutputSize(tensor_in_cols, window_cols, col_stride,
+                                       padding, &out_width, &pad_cols));
 }
 
 TensorShape Pool3dParameters::forward_output_shape() {
@@ -577,7 +577,7 @@ struct LaunchMaxPooling3dGradGradOp<CPUDevice, T> {
             params.tensor_in_batch);
 
     const DeviceBase::CpuWorkerThreads& worker_threads =
-      *(context->device()->tensorflow_cpu_worker_threads());
+        *(context->device()->tensorflow_cpu_worker_threads());
 
     auto shard = [&params, &in_mat, &out_mat, &top_diff_mat, &bottom_diff_mat](
         int64 start, int64 limit) {
@@ -601,7 +601,8 @@ struct LaunchMaxPooling3dGradGradOp<CPUDevice, T> {
 
       {
         // Initializes the output grad backprop tensor with 0.
-        const int32 output_image_size = out_height * out_width * params.depth;
+        const int32 output_image_size =
+            out_plane * out_height * out_width * params.depth;
         EigenMatrixMap bottom_diff_shard(
             bottom_diff_mat.data() + start * output_image_size, 1,
             (limit - start) * output_image_size);
@@ -650,9 +651,9 @@ struct LaunchMaxPooling3dGradGradOp<CPUDevice, T> {
         }
       }
     };
-    const int64 shard_cost = params.out_plane * params.out_height *
-                             params.out_width * params.depth *
-                             params.window_rows * params.window_cols;
+    const int64 shard_cost =
+        params.out_plane * params.out_height * params.out_width * params.depth *
+        params.window_planes * params.window_rows * params.window_cols;
     Shard(worker_threads.num_threads, worker_threads.workers,
           params.tensor_in_batch, shard_cost, shard);
   }
@@ -823,10 +824,10 @@ struct LaunchMaxPooling3dGradGradOp<GPUDevice, T> {
         params.data_format, tensor_in.flat<T>().data(),
         tensor_out.flat<T>().data(), params.tensor_in_batch, params.out_plane,
         params.out_height, params.out_width, params.depth,
-        params.tensor_in_planes, params.tensor_in_cols, params.tensor_in_rows,
-        params.window_planes, params.window_cols, params.window_rows,
-        params.plane_stride, params.col_stride, params.row_stride,
-        params.pad_planes, params.pad_cols, params.pad_rows,
+        params.tensor_in_planes, params.tensor_in_rows, params.tensor_in_cols,
+        params.window_planes, params.window_rows, params.window_cols,
+        params.plane_stride, params.row_stride, params.col_stride,
+        params.pad_planes, params.pad_rows, params.pad_cols,
         tensor_top_diff.flat<T>().data(), tensor_bottom_diff->flat<T>().data(),
         context->eigen_gpu_device());
     if (!status) {

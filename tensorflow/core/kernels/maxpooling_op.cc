@@ -419,13 +419,12 @@ class MaxPoolingGradGradOp : public OpKernel {
 
     PoolParameters params{context,  ksize_,      stride_,
                           padding_, FORMAT_NHWC, tensor_in.shape()};
-    if (!context->status().ok()) {
-      return;
-    }
-
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, tensor_out.shape(), &output));
+    if (!context->status().ok()) {
+      return;
+    }
 
     SpatialMaxPoolGradGrad(context, output, tensor_in, tensor_out,
                            out_grad_backprop, params, padding_);
@@ -531,8 +530,8 @@ class MaxPoolingGradGradOp : public OpKernel {
     };
 
     const int64 shard_cost = params.out_width * params.out_height *
-                              params.depth * params.window_rows *
-                              params.window_cols;
+                             params.depth * params.window_rows *
+                             params.window_cols;
     Shard(worker_threads.num_threads, worker_threads.workers,
           params.tensor_in_batch, shard_cost, shard);
   }
