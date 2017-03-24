@@ -829,8 +829,8 @@ filenames: A vector of matching filenames.
 )doc");
 
 REGISTER_OP("PollZmq")
-    .Input("message: string")
-    .Output("response: string")
+    .Input("request: string")
+    .Output("reply: string")
     .Attr("address: string")
     .SetShapeFn(ScalarInputsAndOutputs)
     .Doc(R"doc(

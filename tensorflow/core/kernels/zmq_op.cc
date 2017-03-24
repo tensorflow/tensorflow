@@ -16,7 +16,7 @@ limitations under the License.
 // See docs in ../ops/io_ops.cc.
 
 #include <memory>
-#include <zmq.hpp>
+#include <zmq.h>
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -27,47 +27,67 @@ class PollZmqOp : public OpKernel {
  public:
   explicit PollZmqOp(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("address", &address_));
-    socket_ = new zmq::socket_t(context_, ZMQ_REQ);
-    socket_->connect(address_);
+    // Open a connection
+    context_ = zmq_ctx_new();
+    OP_REQUIRES(context, context_ != nullptr, errors::Internal("Failed to initialize context."));
+    socket_ = zmq_socket(context_, ZMQ_REQ);
+    OP_REQUIRES(context, socket_ != nullptr, errors::Internal("Failed to initialize socket."));
+    OP_REQUIRES(context, zmq_connect(socket_, &address_[0]) == 0,
+                errors::Internal("Failed to connect to ", address_, "."));
   }
 
   ~PollZmqOp() {
-    delete socket_;
+    if (socket_ != nullptr) {
+      int rc = zmq_close(socket_);
+    }
+    if (context_ != nullptr) {
+      int rc = zmq_ctx_destroy(context_);
+    }
   }
 
   using OpKernel::OpKernel;
   void Compute(OpKernelContext* context) override {
     const Tensor* input;
-    OP_REQUIRES_OK(context, context->input("message", &input));
+    OP_REQUIRES_OK(context, context->input("request", &input));
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(input->shape()),
                 errors::InvalidArgument(
                     "Input message tensor must be scalar, but had shape: ",
                     input->shape().DebugString()));
 
     Tensor* output = nullptr;
-    OP_REQUIRES_OK(context, context->allocate_output("response",
+    OP_REQUIRES_OK(context, context->allocate_output("reply",
                                                       TensorShape({}), &output));
 
     // Get the message and response as string scalars
-    auto message = input->scalar<string>()();
-    auto &response = output->scalar<string>()();
+    auto request = input->scalar<string>()();
+    auto &reply = output->scalar<string>()();
 
-    // Send the request
-    zmq::message_t request (message.size());
-    memmove(request.data(), &message[0], message.size());
-    socket_->send(request);
+    // Prepare the message
+    zmq_msg_t request_msg;
+    OP_REQUIRES(context, zmq_msg_init_size(&request_msg, request.size()) == 0,
+                errors::Internal("Failed to initialize request."));
+    memmove(zmq_msg_data(&request_msg), &request[0], request.size());
+    // Send the message (this also takes care of clean up)
+    OP_REQUIRES(context, zmq_msg_send(&request_msg, socket_, 0) == request.size(),
+                errors::Internal("Failed to send reply."));
 
-    //  Get the reply
-    zmq::message_t reply;
-    socket_->recv(&reply);
-    response.resize(reply.size());
-    memmove(&response[0], reply.data(), reply.size());
+    // Get the response
+    zmq_msg_t reply_msg;
+    OP_REQUIRES(context, zmq_msg_init(&reply_msg) == 0,
+                errors::Internal("Failed to initialize reply."));
+    OP_REQUIRES(context, zmq_msg_recv(&reply_msg, socket_, 0) != -1,
+                errors::Internal("Failed to receive reply."));
+    // Copy the data and clean up
+    reply.resize(zmq_msg_size(&reply_msg));
+    memmove(&reply[0], zmq_msg_data(&reply_msg), zmq_msg_size(&reply_msg));
+    OP_REQUIRES(context, zmq_msg_close(&reply_msg) == 0,
+                errors::Internal("Failed to close reply message."));
   }
 
  private:
   string address_;
-  zmq::context_t context_;
-  zmq::socket_t* socket_;
+  void* context_ = nullptr;
+  void* socket_ = nullptr;
 };
 
 REGISTER_KERNEL_BUILDER(Name("PollZmq").Device(DEVICE_CPU), PollZmqOp);
