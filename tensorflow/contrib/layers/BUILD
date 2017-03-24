@@ -11,6 +11,7 @@ package(default_visibility = [
 ])
 
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
@@ -75,7 +76,7 @@ tf_kernel_library(
     alwayslink = 1,
 )
 
-py_library(
+tf_custom_op_py_library(
     name = "layers_py",
     srcs = [
         "__init__.py",
@@ -95,9 +96,15 @@ py_library(
         "python/ops/sparse_feature_cross_op.py",
         "python/ops/sparse_ops.py",
     ],
-    data = [
+    dso = [
         ":python/ops/_bucketization_op.so",
         ":python/ops/_sparse_feature_cross_op.so",
+    ],
+    kernels = [
+        ":bucketization_op_kernel",
+        ":sparse_feature_cross_op_kernel",
+        ":bucketization_op_op_lib",
+        ":sparse_feature_cross_op_op_lib",
     ],
     srcs_version = "PY2AND3",
     deps = [

@@ -121,6 +121,7 @@ py_library(
     deps = [
         ":decode_audio_op_py",
         ":encode_audio_op_py",
+        "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",

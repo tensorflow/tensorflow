@@ -772,6 +772,18 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[]):
                    }),
   )
 
+def tf_custom_op_py_library(name, srcs=[], dso=[], kernels=[],
+                            srcs_version="PY2AND3", visibility=None, deps=[]):
+  kernels = kernels  # unused argument
+  native.py_library(
+      name=name,
+      data=dso,
+      srcs=srcs,
+      srcs_version=srcs_version,
+      visibility=visibility,
+      deps=deps,
+  )
+
 def tf_extension_linkopts():
   return []  # No extension link opts
 
