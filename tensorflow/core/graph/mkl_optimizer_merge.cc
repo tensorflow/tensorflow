@@ -26,7 +26,6 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/core/graph/mkl_optimizer_merge.h"
-#include "tensorflow/core/util/mkl_util.h"
 
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/algorithm.h"
@@ -65,7 +64,7 @@ class NodeMergeRewritePass : public GraphOptimizationPass {
   NodeMergeRewritePass() {
     csinfo_.conv2d                     = "MklConv2D";
     csinfo_.conv2dwithbias             = "MklConv2DWithBias";
-    csinfo_.conv2dwithbiasbackpropbias = "MklConv2DWithBiasBackpropBias";
+    csinfo_.conv2dwithbiasbackpropbias = "Conv2DWithBiasBackpropBias";
     csinfo_.biasadd                    = "BiasAdd";
     csinfo_.matmul                     = "MatMul";
     csinfo_.biasaddgrad                = "BiasAddGrad";
@@ -77,6 +76,9 @@ class NodeMergeRewritePass : public GraphOptimizationPass {
     // maxhops in backward data-flow graph. Since input of forward nodes
     // (Conv2D) directly goes to backward nodes, we do not expect the
     // hop-distance would be more than few nodes.
+    // TODO(nhasabni) Temporarily disabling rewrite of BiasAddGrad.
+    // Will enable it once we support Conv2DWithBiasBackpropBias op.
+#if 0
     rinfo_.push_back({csinfo_.biasaddgrad, csinfo_.conv2dwithbiasbackpropbias,
                   {csinfo_.conv2dwithbias, kNodeMergeContextMaxDepth}});
     rinfo_.push_back({csinfo_.biasaddgrad, csinfo_.conv2dwithbiasbackpropbias,
@@ -85,6 +87,7 @@ class NodeMergeRewritePass : public GraphOptimizationPass {
     // because we do not have a separate Op for MatMulwithBias.
     rinfo_.push_back({csinfo_.biasaddgrad, csinfo_.biasaddgrad,
                       {csinfo_.matmul, kNodeMergeContextMaxDepth}});
+#endif
   }
 
   // Standard interface to run optimization pass
@@ -316,6 +319,14 @@ Status NodeMergeRewritePass::MergeNode(std::unique_ptr<Graph>* g,
                     "BiasAdd do not match. Will skip node merge optimization");
     }
 
+    // 2. Get inputs from both the nodes.
+    // Find the 2 inputs from the conv and the bias from the add Bias.
+    Node* oper1 = nullptr;
+    Node* oper1_mkl = nullptr;  // Mkl tensor corresponding to oper1
+    Node* oper2 = nullptr;
+    Node* oper2_mkl = nullptr;  // Mkl tensor corresponding to oper2
+    Node* oper3 = nullptr;
+    Node* oper3_mkl = nullptr;  // Mkl tensor corresponding to oper3
 
     const int succ_num = succ->num_inputs();
     gtl::InlinedVector<Node*, 4> succ_control_edges;
@@ -343,25 +354,16 @@ Status NodeMergeRewritePass::MergeNode(std::unique_ptr<Graph>* g,
       }
     }
 
-    // 2. Get inputs from both the nodes.
-    // Find the 2 inputs from the conv and the bias from the add Bias.
     // Get operand 0, 1 of conv2D and their Mkl tensors.
     CHECK_EQ(pred->in_edges().size(), 4);  // MklConv2D must have 4 inputs.
-    Node* oper1        = pred_in[0].first;
-    int oper1_slot     = pred_in[0].second;  // output slot of oper1
-    Node* oper1_mkl    = pred_in[1].first;  // Mkl tensor of oper1
-    int oper1_mkl_slot = pred_in[1].second;
-    Node* oper2        = pred_in[2].first;
-    int oper2_slot     = pred_in[2].second;
-    Node* oper2_mkl    = pred_in[3].first;  // Mkl tensor of oper2
-    int oper2_mkl_slot = pred_in[3].second;
+    oper1     = pred_in[0].first;
+    oper1_mkl = pred_in[1].first;
+    oper2     = pred_in[2].first;
+    oper2_mkl = pred_in[3].first;
     // Get operand 1 of add_bias
     // BiasAdd must have 2 inputs: Conv, bias
     CHECK_EQ(succ->in_edges().size(), 2);
-    Node* oper3        = succ_in[1].first;
-    int oper3_slot     = succ_in[1].second;
-    Node* oper3_mkl    = nullptr;  // Mkl tensor corresponding to oper3
-    int oper3_mkl_slot = 0;  // For dummy MKL tensor node, output slot is 0.
+    oper3     = succ_in[1].first;
     GetDummyMklTensorNode(g, &oper3_mkl);  // Get dummy Mkl tensor node
     // as BiasAdd does not have Mkl tensor as input.
     CHECK_NOTNULL(oper3_mkl);
@@ -369,12 +371,12 @@ Status NodeMergeRewritePass::MergeNode(std::unique_ptr<Graph>* g,
     Node* ret;
     // We will use the node name of BiasAdd as the name of new node
     TF_CHECK_OK(NodeBuilder(succ->name(), csinfo_.conv2dwithbias)
-                  .Input(oper1, oper1_slot)
-                  .Input(oper1_mkl, oper1_mkl_slot)
-                  .Input(oper2, oper2_slot)
-                  .Input(oper2_mkl, oper2_mkl_slot)
-                  .Input(oper3, oper3_slot)
-                  .Input(oper3_mkl, oper3_mkl_slot)
+                  .Input(oper1)
+                  .Input(oper1_mkl)
+                  .Input(oper2)
+                  .Input(oper2_mkl)
+                  .Input(oper3)
+                  .Input(oper3_mkl)
                   .Attr("T", T_pred)
                   .Attr("strides", strides)
                   .Attr("padding", padding)
@@ -383,9 +385,6 @@ Status NodeMergeRewritePass::MergeNode(std::unique_ptr<Graph>* g,
                   .Device(succ->def().device())
                   .Finalize(&**g, &ret));
     CHECK_NOTNULL(ret);
-
-    // Set the Mkl layer label for this op.
-    ret->AddAttr("_kernel", mkl_layer_registry::kMklLayerLabel);
 
     // Incoming edges are fixed, we will fix the outgoing edges now.
     for (const Edge* e : succ->out_edges()) {
@@ -442,9 +441,7 @@ Status NodeMergeRewritePass::RewriteNode(std::unique_ptr<Graph>* g, Node *n) {
     gtl::InlinedVector<std::pair<Node*, int>, 4> n_in(n_num);
     FillInputs(n, &n_control_edges, &n_in);
 
-    Node* ret = nullptr;
-    Node* op1 = n_in[0].first;
-    int op1_slot = n_in[0].second;  // output slot of op1
+    Node *ret = nullptr, *op = n_in[0].first;
 
     if (ri->rewrite == csinfo_.conv2dwithbiasbackpropbias) {
       // Get strides info from Conv2D (node in the forward pass that this
@@ -452,39 +449,19 @@ Status NodeMergeRewritePass::RewriteNode(std::unique_ptr<Graph>* g, Node *n) {
       std::vector<int32> strides;
       TF_CHECK_OK(GetNodeAttr(fwdn->def(), "strides", &strides));
 
-      // Mkl tensor corresponding to input op1.
-      // We need to check if the input layer is Mkl layer, and it is,
-      // then the layer will generate extra Mkl tensor on the output.
-      // If it is not Mkl layer, then we need to generate DummyMkl tensor.
-      Node* op2_mkl = nullptr;
-      int op2_mkl_slot = 0;  // output slot of Mkl tensor
-      if (mkl_layer_registry::IsMklLayer(op1->type_string())) {
-        op2_mkl = n_in[0].first;
-        op2_mkl_slot = n_in[0].second + 1;  // Mkl tensor is +1th output tensor.
-      } else {
-        GetDummyMklTensorNode(g, &op2_mkl);
-        op2_mkl_slot = 0;  // For dummy node, it's 0th output is Mkl tensor.
-      }
-
       // We use same name as original node name as there may be fetchoutputs
       // associated with it.
       TF_CHECK_OK(NodeBuilder(n->name(), ri->rewrite)
-                    .Input(op1, op1_slot)
-                    .Input(op2_mkl, op2_mkl_slot)
+                    .Input(op)
                     .Attr("T", T)
                     .Attr("data_format", data_format)
                     .Attr("strides", strides)
                     .Device(n->def().device())
                     .Finalize(&**g, &ret));
-
-      // Set the Mkl layer label for this op.
-      ret->AddAttr("_kernel", mkl_layer_registry::kMklLayerLabel);
     } else {
       CHECK_EQ(ri->rewrite, csinfo_.biasaddgrad);
-      // We dont need Mkl tensor for BiasAddGrad because BiasAddGrad is
-      // not an Mkl layer.
       TF_CHECK_OK(NodeBuilder(n->name(), ri->rewrite)
-                    .Input(op1, op1_slot)
+                    .Input(op)
                     .Attr("T", T)
                     .Attr("data_format", data_format)
                     .Device(n->def().device())

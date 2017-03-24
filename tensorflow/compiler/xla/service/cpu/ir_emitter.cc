@@ -1710,7 +1710,7 @@ StatusOr<llvm::Value*> IrEmitter::EmitTargetAddressForOp(
       llvm::AttrBuilder attr_builder;
       attr_builder.addAlignmentAttr(MinimumAlignmentForShape(target_shape));
       attr_builder.addDereferenceableAttr(ByteSizeOf(target_shape));
-      retval->addAttr(llvm::AttributeSet::get(
+      retval->addAttr(llvm::AttributeList::get(
           retval->getContext(), retval->getArgNo() + 1, attr_builder));
     }
     return ir_builder_.CreateBitCast(retval,

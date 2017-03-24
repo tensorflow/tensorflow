@@ -216,7 +216,12 @@ def sdca_model_fn(features, labels, mode, params, config=None):
           `_RegressionHead` or `_BinaryLogisticHead`.
       * feature_columns: An iterable containing all the feature columns used by
           the model.
-      * optimizer: An `SDCAOptimizer` instance.
+      * l1_regularization: Global (across all examples) L1-regularization
+          parameter.
+      * l2_regularization: Global (across all examples) L2-regularization
+          parameter.
+      * num_loss_partitions: Number of partitions of the global loss function
+          optimized by `SDCAOptimizer`.
       * weight_column_name: A string defining the weight feature column, or
           None if there are no weights.
       * update_weights_hook: A `SessionRunHook` object or None. Used to update
@@ -227,9 +232,8 @@ def sdca_model_fn(features, labels, mode, params, config=None):
     A `ModelFnOps` instance.
 
   Raises:
-    ValueError: If `optimizer` is not an `SDCAOptimizer` instance.
-    ValueError: If the type of head is neither `_BinarySvmHead`, nor
-      `_RegressionHead` nor `_MultiClassHead`.
+    ValueError: If the type of head is not one of `_BinarySvmHead`,
+      `_RegressionHead` or `_MultiClassHead`.
     ValueError: If mode is not any of the `ModeKeys`.
   """
   head = params["head"]
@@ -323,18 +327,6 @@ class _SDCAEstimator(estimator.Estimator):
 
   This class should not be used directly. Rather, users should call one of the
   derived estimators.
-
-  The input_fn provided to `fit`, `evaluate` and predict_* methods should have
-  the following features, otherwise there  will be a `KeyError`:
-    - a feature with `key=example_id_column` whose value is a `Tensor` of dtype
-      string.
-    - if `weight_column_name` is not `None`, a feature with
-      `key=weight_column_name` whose value is a `Tensor`.
-    - for each `column` in `feature_columns`:
-      - if `column` is a `SparseColumn`, a feature with `key=column.name`
-        whose `value` is a `SparseTensor`.
-      - if `column` is a `RealValuedColumn, a feature with `key=column.name`
-        whose `value` is a `Tensor`.
   """
 
   def __init__(self,
@@ -422,7 +414,7 @@ class SDCALogisticClassifier(_SDCAEstimator):
 
   sparse_feature_a_x_sparse_feature_b = crossed_column(...)
 
-  estimator = SDCALogisticClassifier(
+  classifier = SDCALogisticClassifier(
       example_id_column='example_id',
       feature_columns=[sparse_column_a, sparse_feature_a_x_sparse_feature_b]),
       weight_column_name=...,
@@ -437,11 +429,28 @@ class SDCALogisticClassifier(_SDCAEstimator):
   # returns x (features dict)
   def input_fn_test:
     ...
-  estimator.fit(input_fn=input_fn_train)
-  estimator.evaluate(input_fn=input_fn_eval)
-  estimator.predict_classes(input_fn=input_fn_test) # returns predicted classes.
-  estimator.predict_proba(input_fn=input_fn_test) # returns predicted prob/ties.
+  classifier.fit(input_fn=input_fn_train)
+  classifier.evaluate(input_fn=input_fn_eval)
+  # Returns predicted classes.
+  classifier.predict_classes(input_fn=input_fn_test)
+  # Returns predicted probabilities.
+  classifier.predict_proba(input_fn=input_fn_test)
   ```
+
+  The input_fn provided to `fit`, `evaluate` and predict_* methods should return
+  the following features, otherwise there  will be a `KeyError`:
+    * A feature with `key=example_id_column` whose value is a `Tensor` of dtype
+      string.
+    * If `weight_column_name` is not `None`, a feature with
+      `key=weight_column_name` whose value is a `Tensor`.
+    * For each `column` in `feature_columns`:
+      - if `column` is a `SparseColumn`, a feature with `key=column.name` whose
+        `value` is a `SparseTensor`
+      - if `column` is a `RealValuedColumn, a feature with `key=column.name`
+        whose `value` is a `Tensor`
+      - if `column` is a `WeightedSparseColumn`, two features: the first with
+        `key` the id column name, the second with `key` the weight column name.
+        Both features' `value` must be a `SparseTensor`
   """
 
   def __init__(self,
@@ -454,7 +463,34 @@ class SDCALogisticClassifier(_SDCAEstimator):
                num_loss_partitions=None,
                config=None,
                feature_engineering_fn=None):
-    """Construct a `SDCALogisticClassifier` object. See _SDCAEstimator."""
+    """Construct a `SDCALogisticClassifier` object.
+
+    Args:
+      example_id_column: A string defining the feature column name representing
+        example ids. Used to initialize the underlying SDCA optimizer.
+      feature_columns: An iterable containing all the feature columns used by
+        the model. All items in the iterable should derive from `FeatureColumn`.
+        Note that the order of the items is ignored at model construction time.
+      weight_column_name: A string defining feature column name representing
+        weights. It is used to downweight or boost examples during training. It
+        will be multiplied by the loss of the example.
+      model_dir: Directory to save model parameters, graph etc. This can also be
+        used to load checkpoints from the directory into an estimator to
+        continue training a previously saved model.
+      l1_regularization: L1-regularization parameter. Refers to global L1
+        regularization (across all examples).
+      l2_regularization: L2-regularization parameter. Refers to global L2
+        regularization (across all examples).
+      num_loss_partitions: Number of partitions of the global loss function
+        optimized by the underlying optimizer (SDCAOptimizer).
+      config: `RunConfig` object to configure the runtime settings.
+      feature_engineering_fn: Feature engineering function. Takes features and
+        labels which are the output of `input_fn` and returns features and
+        labels which will be fed into the model.
+
+    Returns:
+      A `SDCALogisiticClassifier` estimator.
+    """
     super(SDCALogisticClassifier, self).__init__(
         example_id_column=example_id_column,
         feature_columns=feature_columns,
@@ -498,20 +534,18 @@ class SDCALogisticClassifier(_SDCAEstimator):
     return (pred[key] for pred in predictions)
 
 
-class SDCARegressor(_SDCAEstimator):
-  """Linear regressor model using SDCA to solve the underlying optimization.
+class SDCALinearRegressor(_SDCAEstimator):
+  """Linear regression model using SDCA to solve the underlying optimization.
 
   Example usage:
 
   ```python
-  sparse_column_a = sparse_column_with_hash_bucket(...)
+  real_column_a = real_valued_column(...)
   sparse_column_b = sparse_column_with_hash_bucket(...)
 
-  sparse_feature_a_x_sparse_feature_b = crossed_column(...)
-
-  estimator = SDCARegressor(
+  regressor = SDCALinearRegressor(
       example_id_column='example_id',
-      feature_columns=[sparse_column_a, sparse_feature_a_x_sparse_feature_b]),
+      feature_columns=[real_column_a, sparse_column_b]),
       weight_column_name=...,
       l2_regularization=...,
       num_loss_partitions=...,
@@ -524,9 +558,26 @@ class SDCARegressor(_SDCAEstimator):
   # returns x (features dict)
   def input_fn_test:
     ...
-  estimator.fit(input_fn=input_fn_train)
-  estimator.evaluate(input_fn=input_fn_eval)
-  estimator.predict_scores(input_fn=input_fn_test) # returns predicted scores.
+  regressor.fit(input_fn=input_fn_train)
+  regressor.evaluate(input_fn=input_fn_eval)
+  regressor.predict_scores(input_fn=input_fn_test) # returns predicted scores.
+  ```
+
+  The input_fn provided to `fit`, `evaluate` and predict_* methods should return
+  the following features, otherwise there  will be a `KeyError`:
+    * A feature with `key=example_id_column` whose value is a `Tensor` of dtype
+      string.
+    * If `weight_column_name` is not `None`, a feature with
+      `key=weight_column_name` whose value is a `Tensor`.
+    * For each `column` in `feature_columns`:
+      - if `column` is a `SparseColumn`, a feature with `key=column.name` whose
+        `value` is a `SparseTensor`
+      - if `column` is a `RealValuedColumn, a feature with `key=column.name`
+        whose `value` is a `Tensor`
+      - if `column` is a `WeightedSparseColumn`, two features: the first with
+        `key` the id column name, the second with `key` the weight column name.
+        Both features' `value` must be a `SparseTensor`
+
   """
 
   def __init__(self,
@@ -539,8 +590,36 @@ class SDCARegressor(_SDCAEstimator):
                num_loss_partitions=None,
                config=None,
                feature_engineering_fn=None):
-    """Construct a `SDCARegressor` estimator object. See _SDCAEstimator."""
-    super(SDCARegressor, self).__init__(
+    """Construct a `SDCALinearRegressor` estimator object.
+
+
+    Args:
+      example_id_column: A string defining the feature column name representing
+        example ids. Used to initialize the underlying SDCA optimizer.
+      feature_columns: An iterable containing all the feature columns used by
+        the model. All items in the iterable should derive from `FeatureColumn`.
+        Note that the order of the items is ignored at model construction time.
+      weight_column_name: A string defining feature column name representing
+        weights. It is used to down weight or boost examples during training. It
+        will be multiplied by the loss of the example.
+      model_dir: Directory to save model parameters, graph etc. This can also be
+        used to load checkpoints from the directory into an estimator to
+        continue  training a previously saved model.
+      l1_regularization: L1-regularization parameter. Refers to global L1
+        regularization (across all examples).
+      l2_regularization: L2-regularization parameter. Refers to global L2
+        regularization (across all examples).
+      num_loss_partitions: number of partitions of the (global) loss function
+        optimized by the underlying optimizer (SDCAOptimizer).
+      config: `RunConfig` object to configure the runtime settings.
+      feature_engineering_fn: Feature engineering function. Takes features and
+        labels which are the output of `input_fn` and returns features and
+        labels which will be fed into the model.
+
+    Returns:
+      A `SDCALinearRegressor` estimator.
+    """
+    super(SDCALinearRegressor, self).__init__(
         example_id_column=example_id_column,
         feature_columns=feature_columns,
         weight_column_name=weight_column_name,
@@ -562,6 +641,6 @@ class SDCARegressor(_SDCAEstimator):
       A generator of predicted scores for the features provided by input_fn.
     """
     key = prediction_key.PredictionKey.SCORES
-    predictions = super(SDCARegressor, self).predict(
+    predictions = super(SDCALinearRegressor, self).predict(
         input_fn=input_fn, outputs=[key])
     return (pred[key] for pred in predictions)

@@ -363,19 +363,19 @@ form [described below](#attr-types).
 
 For example, if you'd like the `ZeroOut` op to preserve a user-specified index,
 instead of only the 0th element, you can register the op like so:
-<code class="lang-c++"><pre>
+<pre class="prettyprint"><code class="lang-cpp">
 REGISTER\_OP("ZeroOut")
     <b>.Attr("preserve\_index: int")</b>
     .Input("to\_zero: int32")
     .Output("zeroed: int32");
-</pre></code>
+</code></pre>
 
 (Note that the set of [attribute types](#attr-types) is different from the
 @{$dims_types$tensor types} used for inputs and outputs.)
 
 Your kernel can then access this attr in its constructor via the `context`
 parameter:
-<code class="lang-c++"><pre>
+<pre class="prettyprint"><code class="lang-cpp">
 class ZeroOutOp : public OpKernel {
  public:
   explicit ZeroOutOp(OpKernelConstruction\* context) : OpKernel(context) {<b>
@@ -393,10 +393,10 @@ class ZeroOutOp : public OpKernel {
  <b>private:
   int preserve\_index\_;</b>
 };
-</pre></code>
+</code></pre>
 
 which can then be used in the `Compute` method:
-<code class="lang-c++"><pre>
+<pre class="prettyprint"><code class="lang-cpp">
   void Compute(OpKernelContext\* context) override {
     // ...
 <br/>
@@ -412,7 +412,7 @@ which can then be used in the `Compute` method:
     <b>// Preserve the requested input value
     output\_flat(preserve\_index\_) = input(preserve\_index\_);</b>
   }
-</pre></code>
+</code></pre>
 
 #### Attr types {#attr-types}
 
@@ -541,12 +541,12 @@ you would then register an `OpKernel` for each supported type.
 
 For instance, if you'd like the `ZeroOut` op to work on `float`s
 in addition to `int32`s, your op registration might look like:
-<code class="lang-c++"><pre>
+<pre class="prettyprint"><code class="lang-cpp">
 REGISTER\_OP("ZeroOut")
     <b>.Attr("T: {float, int32}")</b>
     .Input("to\_zero: <b>T</b>")
     .Output("zeroed: <b>T</b>");
-</pre></code>
+</code></pre>
 
 Your op registration now specifies that the input's type must be `float`, or
 `int32`, and that its output will be the same type, since both have type `T`.
@@ -606,7 +606,7 @@ Your op registration now specifies that the input's type must be `float`, or
 >   """
 > ```
 
-<code class="lang-c++"><pre>
+<pre><pre class="prettyprint"><code class="lang-cpp">
 \#include "tensorflow/core/framework/op_kernel.h"<br/>
 class ZeroOut<b>Int32</b>Op : public OpKernel {
   // as before
@@ -646,31 +646,31 @@ REGISTER\_KERNEL\_BUILDER(
     .Device(DEVICE\_CPU)
     .TypeConstraint&lt;float&gt;("T"),
     ZeroOutFloatOp);
-</b></pre></code>
+</b></code></pre></pre>
 
 > To preserve [backwards compatibility](#backwards-compatibility), you should
 > specify a [default value](#default-values-constraints) when adding an attr to
 > an existing op:
 >
-> <code class="lang-c++"><pre>
+> <pre class="prettyprint"><code class="lang-cpp">
 > REGISTER\_OP("ZeroOut")
 >   <b>.Attr("T: {float, int32} = DT_INT32")</b>
 >   .Input("to\_zero: T")
 >   .Output("zeroed: T")
-> </pre></code>
+> </code></pre>
 
-Lets say you wanted to add more types, say `double`:
-<code class="lang-c++"><pre>
+Let's say you wanted to add more types, say `double`:
+<pre class="prettyprint"><code class="lang-cpp">
 REGISTER\_OP("ZeroOut")
     <b>.Attr("T: {float, <b>double,</b> int32}")</b>
     .Input("to\_zero: <b>T</b>")
     .Output("zeroed: <b>T</b>");
-</pre></code>
+</code></pre>
 
 Instead of writing another `OpKernel` with redundant code as above, often you
 will be able to use a C++ template instead.  You will still have one kernel
 registration (`REGISTER_KERNEL_BUILDER` call) per overload.
-<code class="lang-c++"><pre>
+<pre class="prettyprint"><code class="lang-cpp">
 <b>template &lt;typename T&gt;</b>
 class ZeroOutOp : public OpKernel {
  public:
@@ -711,7 +711,7 @@ REGISTER\_KERNEL\_BUILDER(
     .Device(DEVICE\_CPU)
     .TypeConstraint&lt;double&gt;("T"),
     ZeroOutOp&lt;double&gt;);
-</b></pre></code>
+</b></code></pre>
 
 If you have more than a couple overloads, you can put the registration in a
 macro.
@@ -953,20 +953,16 @@ There are several ways to preserve backwards-compatibility.
    value to the new type attr to preserve the original signature by default. For
    example, if your operation was:
 
-   ```c++
-   REGISTER_OP("MyGeneralUnaryOp")
-       .Input("in: float")
-       .Output("out: float");
-   ```
+       REGISTER_OP("MyGeneralUnaryOp")
+           .Input("in: float")
+           .Output("out: float");
 
    you can make it polymorphic in a backwards-compatible way using:
 
-   ```c++
-   REGISTER_OP("MyGeneralUnaryOp")
-       .Input("in: T")
-       .Output("out: T")
-       .Attr("T: numerictype = DT_FLOAT");
-   ```
+       REGISTER_OP("MyGeneralUnaryOp")
+           .Input("in: T")
+           .Output("out: T")
+           .Attr("T: numerictype = DT_FLOAT");
 
 2. You can safely make a constraint on an attr less restrictive.  For example,
    you can change from `{int32, int64}` to `{int32, int64, float}` or `type`.

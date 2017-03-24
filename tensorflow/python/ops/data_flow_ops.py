@@ -1224,8 +1224,10 @@ class ConditionalAccumulator(ConditionalAccumulatorBase):
     Raises:
       InvalidArgumentError: If num_required < 1
     """
-    return gen_data_flow_ops.accumulator_take_gradient(
+    out = gen_data_flow_ops.accumulator_take_gradient(
         self._accumulator_ref, num_required, dtype=self._dtype, name=name)
+    out.set_shape(self._shape)
+    return out
 
 
 class SparseConditionalAccumulator(ConditionalAccumulatorBase):

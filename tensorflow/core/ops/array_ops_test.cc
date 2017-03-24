@@ -141,7 +141,7 @@ TEST(ArrayOpsTest, Const_ShapeFn) {
 TEST(ArrayOpsTest, UnchangedShapes_ShapeFn) {
   for (const char* op_name : {
            "CheckNumerics", "Identity", "RefIdentity", "QuantizeAndDequantize",
-           "StopGradient", "ZerosLike",
+           "StopGradient", "ZerosLike", "OnesLike",
        }) {
     ShapeInferenceTestOp op(op_name);
     INFER_OK(op, "?", "in0");

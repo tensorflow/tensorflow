@@ -2013,7 +2013,7 @@ def _get_feature_config(feature_column):
   if isinstance(feature_column, (_SparseColumn, _WeightedSparseColumn,
                                  _EmbeddingColumn, _RealValuedColumn,
                                  _BucketizedColumn, _CrossedColumn,
-                                 _OneHotColumn)):
+                                 _OneHotColumn, _ScatteredEmbeddingColumn)):
     return feature_column.config
 
   raise TypeError("Not supported _FeatureColumn type. "

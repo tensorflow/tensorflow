@@ -72,11 +72,25 @@ run -f has_inf_or_nan
 run -t 1000
 EOF
 
-cat << EOF | ${DEBUG_TFLEARN_IRIS_BIN} --debug --fake_data --train_steps=2 --ui_type=readline
+# Test the custom dump_root option.
+CUSTOM_DUMP_ROOT=$(mktemp -d)
+mkdir -p ${CUSTOM_DUMP_ROOT}
+
+cat << EOF | ${DEBUG_TFLEARN_IRIS_BIN} --debug --fake_data --train_steps=1 --dump_root="${CUSTOM_DUMP_ROOT}" --ui_type=readline
 run -f has_inf_or_nan
 EOF
 
+# Verify that the dump root has been cleaned up on exit.
+if [[ -d "${CUSTOM_DUMP_ROOT}" ]]; then
+  echo "ERROR: dump root at ${CUSTOM_DUMP_ROOT} failed to be cleaned up." 1>&2
+  exit 1
+fi
+
 # Test offline_analyzer.
+echo
+echo "Testing offline_analyzer"
+echo
+
 # TODO(cais): Generate an actual debug dump and load it with offline_analyzer,
 # so that we can test the binary runs with a non-error exit code.
 set +e

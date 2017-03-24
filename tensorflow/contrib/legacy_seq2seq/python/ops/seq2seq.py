@@ -381,7 +381,7 @@ def embedding_rnn_seq2seq(encoder_inputs,
     def decoder(feed_previous_bool):
       reuse = None if feed_previous_bool else True
       with variable_scope.variable_scope(
-          variable_scope.get_variable_scope(), reuse=reuse) as scope:
+          variable_scope.get_variable_scope(), reuse=reuse):
         outputs, state = embedding_rnn_decoder(
             decoder_inputs,
             encoder_state,
@@ -884,7 +884,7 @@ def embedding_attention_seq2seq(encoder_inputs,
     def decoder(feed_previous_bool):
       reuse = None if feed_previous_bool else True
       with variable_scope.variable_scope(
-          variable_scope.get_variable_scope(), reuse=reuse) as scope:
+          variable_scope.get_variable_scope(), reuse=reuse):
         outputs, state = embedding_attention_decoder(
             decoder_inputs,
             encoder_state,
@@ -1060,8 +1060,10 @@ def sequence_loss_by_example(logits,
     weights: List of 1D batch-sized float-Tensors of the same length as logits.
     average_across_timesteps: If set, divide the returned cost by the total
       label weight.
-    softmax_loss_function: Function (labels-batch, inputs-batch) -> loss-batch
+    softmax_loss_function: Function (labels, logits) -> loss-batch
       to be used instead of the standard softmax (the default if this is None).
+      **Note that to avoid confusion, it is required for the function to accept
+      named arguments.**
     name: Optional name for this operation, default: "sequence_loss_by_example".
 
   Returns:
@@ -1085,7 +1087,7 @@ def sequence_loss_by_example(logits,
         crossent = nn_ops.sparse_softmax_cross_entropy_with_logits(
             labels=target, logits=logit)
       else:
-        crossent = softmax_loss_function(target, logit)
+        crossent = softmax_loss_function(labels=target, logits=logit)
       log_perp_list.append(crossent * weight)
     log_perps = math_ops.add_n(log_perp_list)
     if average_across_timesteps:
@@ -1111,8 +1113,10 @@ def sequence_loss(logits,
     average_across_timesteps: If set, divide the returned cost by the total
       label weight.
     average_across_batch: If set, divide the returned cost by the batch size.
-    softmax_loss_function: Function (labels-batch, inputs-batch) -> loss-batch
+    softmax_loss_function: Function (labels, logits) -> loss-batch
       to be used instead of the standard softmax (the default if this is None).
+      **Note that to avoid confusion, it is required for the function to accept
+      named arguments.**
     name: Optional name for this operation, defaults to "sequence_loss".
 
   Returns:
@@ -1160,8 +1164,10 @@ def model_with_buckets(encoder_inputs,
     seq2seq: A sequence-to-sequence model function; it takes 2 input that
       agree with encoder_inputs and decoder_inputs, and returns a pair
       consisting of outputs and states (as, e.g., basic_rnn_seq2seq).
-    softmax_loss_function: Function (labels-batch, inputs-batch) -> loss-batch
+    softmax_loss_function: Function (labels, logits) -> loss-batch
       to be used instead of the standard softmax (the default if this is None).
+      **Note that to avoid confusion, it is required for the function to accept
+      named arguments.**
     per_example_loss: Boolean. If set, the returned loss will be a batch-sized
       tensor of losses for each sequence in the batch. If unset, it will be
       a scalar with the averaged loss from all examples.

@@ -1549,8 +1549,11 @@ class CursesUI(base_ui.BaseUI):
         self.INFO_MESSAGE_PREFIX + message, color=self._INFO_TOAST_COLOR_PAIR)
 
   def _interrupt_handler(self, signal_num, frame):
-    _ = signal_num  # Unused.
-    _ = frame  # Unused.
+    del signal_num  # Unused.
+    del frame  # Unused.
+
+    if self._on_ui_exit:
+      self._on_ui_exit()
 
     self._screen_terminate()
     print("\ntfdbg: caught SIGINT; calling sys.exit(1).", file=sys.stderr)

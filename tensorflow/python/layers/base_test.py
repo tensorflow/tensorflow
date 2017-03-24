@@ -100,21 +100,45 @@ class BaseLayerTest(test.TestCase):
       self.assertListEqual([v.name for v in layer.variables],
                            ['my_layer/my_var:0', 'my_layer/my_call_var:0'])
 
-      # Creating a layer with _reuse=True and _scope=None delays
-      # selecting the variable scope until call.
-      lazy_layer = MyLayer(name='lazy_layer', _reuse=True)
+      # Creating a layer with no scope leads to lazy construction of
+      # the scope at apply() time.  It uses scope "<current scope>/base_name"
+      lazy_layer = MyLayer(_reuse=True)
       with variable_scope.variable_scope('new_scope'):
         # This should attempt to reuse 'my_var' and 'my_call_var' in 'new_scope'
         with self.assertRaisesRegexp(
-            ValueError, r'new_scope/my_var does not exist'):
+            ValueError, r'new_scope/my_layer/my_var does not exist'):
           lazy_layer.apply(inputs)
+        with variable_scope.variable_scope('my_layer'):
+          variable_scope.get_variable('my_var', [2, 2])
+        with self.assertRaisesRegexp(
+            ValueError, r'new_scope/my_layer/my_call_var does not exist'):
+          lazy_layer.apply(inputs)
+        with variable_scope.variable_scope('my_layer'):
+          variable_scope.get_variable('my_call_var', [2, 2])
+        # Smoke test: it runs.
+        lazy_layer.apply(inputs)
+        # The variables were created outside of the Layer, and
+        # reuse=True, so the Layer does not own them and they are not
+        # stored in its collection.
+        self.assertListEqual(lazy_layer.variables, [])
+        self.assertEqual(lazy_layer.name, 'new_scope/my_layer')
+
+      # Creating a layer with no scope leads to lazy construction of
+      # the scope at apply() time.  If 'scope' argument is passed to
+      # apply(), it uses that scope when accessing variables.
+      lazy_layer = MyLayer(_reuse=True)
+      with variable_scope.variable_scope('new_scope') as new_scope:
+        # This should attempt to reuse 'my_var' and 'my_call_var' in 'new_scope'
+        with self.assertRaisesRegexp(
+            ValueError, r'new_scope/my_var does not exist'):
+          lazy_layer.apply(inputs, scope=new_scope)
         variable_scope.get_variable('my_var', [2, 2])
         with self.assertRaisesRegexp(
             ValueError, r'new_scope/my_call_var does not exist'):
-          lazy_layer.apply(inputs)
+          lazy_layer.apply(inputs, scope=new_scope)
         variable_scope.get_variable('my_call_var', [2, 2])
         # Smoke test: it runs.
-        lazy_layer.apply(inputs)
+        lazy_layer.apply(inputs, scope=new_scope)
         # The variables were created outside of the Layer, and
         # reuse=True, so the Layer does not own them and they are not
         # stored in its collection.
