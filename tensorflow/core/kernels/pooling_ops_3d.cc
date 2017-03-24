@@ -20,6 +20,7 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
@@ -147,12 +148,6 @@ class Pooling3DOp : public UnaryOp<T> {
   Padding padding_;
   TensorFormat data_format_;
 };
-REGISTER_KERNEL_BUILDER(
-    Name("AvgPool3D").Device(DEVICE_CPU).TypeConstraint<float>("T"),
-    Pooling3DOp<CPUDevice, float, AVG>);
-REGISTER_KERNEL_BUILDER(
-    Name("MaxPool3D").Device(DEVICE_CPU).TypeConstraint<float>("T"),
-    Pooling3DOp<CPUDevice, float, MAX>);
 
 template <typename Device, typename T>
 struct LaunchMaxPooling3dGradOp;
@@ -331,10 +326,6 @@ class MaxPooling3dGradOp : public OpKernel {
   TensorFormat data_format_;
 };
 
-REGISTER_KERNEL_BUILDER(
-    Name("MaxPool3DGrad").Device(DEVICE_CPU).TypeConstraint<float>("T"),
-    MaxPooling3dGradOp<CPUDevice, float>);
-
 template <typename Device, typename T>
 struct LaunchAvgPooling3dGradOp;
 
@@ -499,11 +490,27 @@ class AvgPooling3dGradOp : public OpKernel {
   TensorFormat data_format_;
 };
 
-REGISTER_KERNEL_BUILDER(Name("AvgPool3DGrad")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<float>("T")
-                            .HostMemory("orig_input_shape"),
-                        AvgPooling3dGradOp<CPUDevice, float>);
+#define REGISTER_KERNELS(D, T)                                         \
+  REGISTER_KERNEL_BUILDER(                                             \
+      Name("MaxPool3D").Device(DEVICE_##D).TypeConstraint<T>("T"),     \
+      Pooling3DOp<D##Device, T, MAX>);                                 \
+  REGISTER_KERNEL_BUILDER(                                             \
+      Name("MaxPool3DGrad").Device(DEVICE_##D).TypeConstraint<T>("T"), \
+      MaxPooling3dGradOp<D##Device, T>);                               \
+  REGISTER_KERNEL_BUILDER(                                             \
+      Name("AvgPool3D").Device(DEVICE_##D).TypeConstraint<T>("T"),     \
+      Pooling3DOp<D##Device, T, AVG>);                                 \
+  REGISTER_KERNEL_BUILDER(                                             \
+      Name("AvgPool3DGrad")                                            \
+          .Device(DEVICE_##D)                                          \
+          .TypeConstraint<T>("T")                                      \
+          .HostMemory("orig_input_shape"),                             \
+      AvgPooling3dGradOp<D##Device, T>);
+
+#define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T)
+// TF_CALL_REAL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
+TF_CALL_float(REGISTER_CPU_KERNELS)
+#undef REGISTER_CPU_KERNELS
 
 #if GOOGLE_CUDA
 
@@ -535,13 +542,6 @@ struct LaunchPoolingOp<GPUDevice, T, MAX> {
   }
 };
 
-REGISTER_KERNEL_BUILDER(
-    Name("AvgPool3D").Device(DEVICE_GPU).TypeConstraint<float>("T"),
-    Pooling3DOp<GPUDevice, float, AVG>);
-REGISTER_KERNEL_BUILDER(
-    Name("MaxPool3D").Device(DEVICE_GPU).TypeConstraint<float>("T"),
-    Pooling3DOp<GPUDevice, float, MAX>);
-
 template <typename T>
 struct LaunchMaxPooling3dGradOp<GPUDevice, T> {
   static void launch(OpKernelContext* context, const Tensor& tensor_in,
@@ -559,10 +559,6 @@ struct LaunchMaxPooling3dGradOp<GPUDevice, T> {
   }
 };
 
-REGISTER_KERNEL_BUILDER(
-    Name("MaxPool3DGrad").Device(DEVICE_GPU).TypeConstraint<float>("T"),
-    MaxPooling3dGradOp<GPUDevice, float>);
-
 template <typename T>
 struct LaunchAvgPooling3dGradOp<GPUDevice, T> {
   static void launch(OpKernelContext* context,
@@ -579,12 +575,14 @@ struct LaunchAvgPooling3dGradOp<GPUDevice, T> {
         nullptr, nullptr, output);
   }
 };
-REGISTER_KERNEL_BUILDER(Name("AvgPool3DGrad")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<float>("T")
-                            .HostMemory("orig_input_shape"),
-                        AvgPooling3dGradOp<GPUDevice, float>);
+
+#define REGISTER_GPU_KERNELS(T) REGISTER_KERNELS(GPU, T)
+TF_CALL_float(REGISTER_GPU_KERNELS)
+TF_CALL_half(REGISTER_GPU_KERNELS)
+#undef REGISTER_GPU_KERNELS
 
 #endif  // GOOGLE_CUDA
+
+#undef REGISTER_KERNELS
 
 }  // namespace tensorflow
