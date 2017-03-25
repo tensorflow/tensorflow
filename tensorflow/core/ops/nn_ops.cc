@@ -1224,6 +1224,7 @@ REGISTER_OP("MaxPool3DGradGrad")
     .Attr("ksize: list(int) >= 5 ")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
+    .Attr(GetConvnet3dDataFormatAttrString())
     .Attr("T: realnumbertype")
     .SetShapeFn(shape_inference::Pool3DShape)
     .Doc(R"doc(
@@ -1238,6 +1239,11 @@ orig_input: The original input tensor.
 orig_output: The original output tensor.
 grad: Output backprop of shape `[batch, depth, rows, cols, channels]`.
 output: Gradients of gradients w.r.t. the input to `max_pool`.
+data_format: The data format of the input and output data. With the
+    default format "NDHWC", the data is stored in the order of:
+        [batch, in_depth, in_height, in_width, in_channels].
+    Alternatively, the format could be "NCDHW", the data storage order is:
+        [batch, in_channels, in_depth, in_height, in_width].
 )doc");
 
 // --------------------------------------------------------------------------

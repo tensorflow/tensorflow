@@ -121,7 +121,7 @@ def _Conv3DBackpropFilterGrad(op, grad):
 
 @ops.RegisterGradient("AvgPool3D")
 def _AvgPool3DGrad(op, grad):
-  return nn_ops.avg_pool3d_grad(
+  return gen_nn_ops._avg_pool3d_grad(
       array_ops.shape(op.inputs[0]),
       grad,
       ksize=op.get_attr("ksize"),
@@ -133,22 +133,23 @@ def _AvgPool3DGrad(op, grad):
 @ops.RegisterGradient("AvgPool3DGrad")
 def _AvgPool3DGradGrad(op, grad):
   return (array_ops.stop_gradient(op.inputs[0]),
-          gen_nn_ops.avg_pool(grad,
-                              op.get_attr("ksize"),
-                              op.get_attr("strides"),
-                              op.get_attr("padding"),
-                              data_format=op.get_attr("data_format")))
+          gen_nn_ops.avg_pool3d(grad,
+                                op.get_attr("ksize"),
+                                op.get_attr("strides"),
+                                op.get_attr("padding"),
+                                data_format=op.get_attr("data_format")))
 
 
 @ops.RegisterGradient("MaxPool3D")
 def _MaxPool3DGrad(op, grad):
-  return nn_ops.max_pool3d_grad(op.inputs[0],
-                                op.outputs[0],
-                                grad,
-                                ksize=op.get_attr("ksize"),
-                                strides=op.get_attr("strides"),
-                                padding=op.get_attr("padding"),
-                                data_format=op.get_attr("data_format"))
+  return gen_nn_ops._max_pool3d_grad(
+      op.inputs[0],
+      op.outputs[0],
+      grad,
+      ksize=op.get_attr("ksize"),
+      strides=op.get_attr("strides"),
+      padding=op.get_attr("padding"),
+      data_format=op.get_attr("data_format"))
 
 
 @ops.RegisterGradient("MaxPool3DGrad")

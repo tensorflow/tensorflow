@@ -2701,6 +2701,7 @@ tf_kernel_library(
         "fractional_pool_common.h",
         "maxpooling_op.h",
         "pooling_ops_common.h",
+        "pooling_ops_3d.h",
     ],
     gpu_srcs = [
         "avgpooling_op.h",
@@ -2710,6 +2711,8 @@ tf_kernel_library(
         "maxpooling_op_gpu.h",
         "pooling_ops_common.h",
         "pooling_ops_common_gpu.h",
+        "pooling_ops_3d_gpu.h",
+        "pooling_ops_3d_gpu.cu.cc",
     ],
     deps = [
         ":conv_2d",
