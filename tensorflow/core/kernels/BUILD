@@ -2700,8 +2700,8 @@ tf_kernel_library(
         "cudnn_pooling_gpu.h",
         "fractional_pool_common.h",
         "maxpooling_op.h",
-        "pooling_ops_common.h",
         "pooling_ops_3d.h",
+        "pooling_ops_common.h",
     ],
     gpu_srcs = [
         "avgpooling_op.h",
