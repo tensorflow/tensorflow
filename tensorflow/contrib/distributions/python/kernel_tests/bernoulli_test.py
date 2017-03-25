@@ -154,8 +154,6 @@ class BernoulliTest(test.TestCase):
       dist = bernoulli.Bernoulli(probs=p, validate_args=True)
       with self.assertRaisesOpError("must be non-negative."):
         dist.prob([1, 1, -1]).eval()
-      with self.assertRaisesOpError("cannot contain fractional components."):
-        dist.prob([1.0, 0.75, 0.5]).eval()
       with self.assertRaisesOpError("is not less than or equal to 1."):
         dist.prob([2, 0, 1]).eval()
 
