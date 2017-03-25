@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rpc/async_service_interface.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
+#include "tensorflow/core/distributed_runtime/session_mgr.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/platform/env.h"
@@ -64,6 +65,14 @@ class GrpcServer : public ServerInterface {
       const ServerDef& server_def) const;
 
   virtual std::unique_ptr<Master> CreateMaster(MasterEnv* master_env);
+
+  // Creates a WorkerCacheInterface for a session.
+  Status WorkerCacheFactory(const ServerDef& server_def,
+                            WorkerCacheInterface** worker_cache);
+
+  // Parses a ServerDef into a GrpcChannelSpec.
+  Status ParseChannelSpec(const ServerDef& server_def,
+                          GrpcChannelSpec* channel_spec);
 
   // Returns the port to which this server is bound.
   // This method may only be called after `this->Init()` returns successfully.
