@@ -13,7 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Control Flow Operations. See the @{python/control_flow_ops} guide.
+"""Control Flow Operations.
+
+See the @{$python/control_flow_ops} guide.
 
 @@identity
 @@tuple
@@ -273,7 +275,7 @@ def exit(data, name=None):
 def switch(data, pred, dtype=None, name=None):
   """Forwards `data` to an output determined by `pred`.
 
-  If `pred` is true, the `data` input is forwared to the first output.
+  If `pred` is false, the `data` input is forwared to the first output.
   Otherwise, the data goes to the second output.
 
   This op handles `Tensor`s and `IndexedSlices`.
@@ -321,7 +323,7 @@ def switch(data, pred, dtype=None, name=None):
 def _SwitchRefOrTensor(data, pred, name="Switch"):
   """Forwards `data` to an output determined by `pred`.
 
-  If `pred` is true, the `data` input is forwared to the first output.
+  If `pred` is false, the `data` input is forwared to the first output.
   Otherwise, the data goes to the second output.
 
   This op handles `Tensor`s and `IndexedSlices`.
@@ -1691,7 +1693,7 @@ def cond(pred, fn1, fn2, name=None):
   Args:
     pred: A scalar determining whether to return the result of `fn1` or `fn2`.
     fn1: The callable to be performed if pred is true.
-    fn2: The callable to be performed if pref is false.
+    fn2: The callable to be performed if pred is false.
     name: Optional name prefix for the returned tensors.
 
   Returns:
@@ -1752,7 +1754,7 @@ def cond(pred, fn1, fn2, name=None):
       raise ValueError("fn1 and fn2 must return the same number of results.")
     if not res_t:
       raise ValueError("fn1 and fn2 must return at least one result.")
-    for x, y in zip(res_f, res_t):
+    for x, y in zip(res_t, res_f):
       assert ((isinstance(x, ops.IndexedSlices) and
                isinstance(y, ops.IndexedSlices)) or
               (isinstance(x, sparse_tensor.SparseTensor) and
@@ -1994,6 +1996,7 @@ class WhileContext(ControlFlowContext):
       with ops.control_dependencies(None):
         enter = _Enter(result, self._name, is_constant=True,
                        parallel_iterations=self._parallel_iterations)
+        enter.graph.prevent_feeding(enter)
       # Fix the control inputs and control flow context of these enter ops.
       self._FixControlInputsAndContext([enter])
 
@@ -2060,6 +2063,8 @@ class WhileContext(ControlFlowContext):
         self._values.add(x.name)
     if self._outer_context or not IsLoopExit(op):
       op.graph.prevent_fetching(op)
+      for x in op.outputs:
+        op.graph.prevent_feeding(x)
 
   def _MaybeAddControlDependency(self, op):
     """Add a control input to the op if it only depends on loop invariants."""
@@ -2359,6 +2364,9 @@ class WhileContext(ControlFlowContext):
                            parallel_iterations=self._parallel_iterations,
                            use_input_shape=(shape_invariants is None))
                     for x in real_vars]
+      for x in enter_vars:
+        x.graph.prevent_feeding(x)
+
     if self._outer_context:
       control_pivot = self._outer_context.GetControlPivot().op
       for var in enter_vars:
@@ -2665,7 +2673,7 @@ def with_dependencies(dependencies, output_tensor, name=None):
   no guarantee that `output_tensor` will be evaluated after any `dependencies`
   have run.
 
-  See also `tuple` and `group`.
+  See also @{tf.tuple$tuple} and @{tf.group$group}.
 
   Args:
     dependencies: Iterable of operations to run before this op finishes.
@@ -2707,7 +2715,8 @@ def group(*inputs, **kwargs):
   When this op finishes, all ops in `input` have finished. This op has no
   output.
 
-  See also `tuple` and `with_dependencies`.
+  See also @{tf.tuple$tuple} and
+  @{tf.control_dependencies$control_dependencies}.
 
   Args:
     *inputs: Zero or more tensors to group.
@@ -2770,7 +2779,8 @@ def tuple(tensors, name=None, control_inputs=None):
   returned by `tuple` are only available after all the parallel computations
   are done.
 
-  See also `group` and `with_dependencies`.
+  See also @{tf.group$group} and
+  @{tf.control_dependencies$control_dependencies}.
 
   Args:
     tensors: A list of `Tensor`s or `IndexedSlices`, some entries can be `None`.

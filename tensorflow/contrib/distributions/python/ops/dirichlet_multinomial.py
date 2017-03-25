@@ -171,7 +171,7 @@ class DirichletMultinomial(distribution.Distribution):
       name: Python `str` name prefixed to Ops created by this class.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[total_count, concentration]) as ns:
+    with ops.name_scope(name, values=[total_count, concentration]):
       # Broadcasting works because:
       # * The broadcasting convention is to prepend dimensions of size [1], and
       #   we use the last dimension for the distribution, whereas
@@ -192,12 +192,11 @@ class DirichletMultinomial(distribution.Distribution):
         dtype=self._concentration.dtype,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
-        is_continuous=False,
         reparameterization_type=distribution.NOT_REPARAMETERIZED,
         parameters=parameters,
         graph_parents=[self._total_count,
                        self._concentration],
-        name=ns)
+        name=name)
 
   @property
   def total_count(self):

@@ -18,15 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
-
 from tensorflow.contrib.ffmpeg.ops import gen_decode_audio_op_py
 from tensorflow.contrib.ffmpeg.ops import gen_encode_audio_op_py
-from tensorflow.python.framework import errors
-from tensorflow.python.framework import load_library
+from tensorflow.contrib.util import loader
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import resource_loader
-from tensorflow.python.platform import tf_logging as logging
+
+_ffmpeg_so = loader.load_op_library(
+    resource_loader.get_path_to_datafile('ffmpeg.so'))
 
 
 def decode_audio(contents, file_format=None, samples_per_second=None,
@@ -83,32 +82,3 @@ def encode_audio(audio, file_format=None, samples_per_second=None):
 
 
 ops.NotDifferentiable('EncodeAudio')
-
-
-def _load_library(name, op_list=None):
-  """Loads a .so file containing the specified operators.
-
-  Args:
-    name: The name of the .so file to load.
-    op_list: A list of names of operators that the library should have. If None
-        then the .so file's contents will not be verified.
-
-  Raises:
-    NameError if one of the required ops is missing.
-  """
-  try:
-    filename = resource_loader.get_path_to_datafile(name)
-    library = load_library.load_op_library(filename)
-    for expected_op in (op_list or []):
-      for lib_op in library.OP_LIST.op:
-        if lib_op.name == expected_op:
-          break
-      else:
-        raise NameError('Could not find operator %s in dynamic library %s' %
-                        (expected_op, name))
-  except errors.NotFoundError:
-    logging.warning('%s file could not be loaded.', name)
-
-
-if os.name != 'nt':
-  _load_library('ffmpeg.so', ['DecodeAudio', 'EncodeAudio'])

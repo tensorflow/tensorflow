@@ -320,7 +320,7 @@ export class DataPanel extends DataPanelPolymer {
     this.projector.setSelectedColorOption(colorOption);
   }
 
-  private tensorWasReadFromFile(rawContents: string, fileName: string) {
+  private tensorWasReadFromFile(rawContents: ArrayBuffer, fileName: string) {
     parseRawTensors(rawContents, ds => {
       this.dom.select('#checkpoint-file')
           .text(fileName)
@@ -329,7 +329,7 @@ export class DataPanel extends DataPanelPolymer {
     });
   }
 
-  private metadataWasReadFromFile(rawContents: string, fileName: string) {
+  private metadataWasReadFromFile(rawContents: ArrayBuffer, fileName: string) {
     parseRawMetadata(rawContents, metadata => {
       this.projector.updateDataSet(this.projector.dataSet, metadata, fileName);
     });
@@ -354,10 +354,10 @@ export class DataPanel extends DataPanelPolymer {
       (d3.event as any).target.value = '';
       let fileReader = new FileReader();
       fileReader.onload = evt => {
-        let content: string = (evt.target as any).result;
+        let content: ArrayBuffer = (evt.target as any).result;
         this.tensorWasReadFromFile(content, file.name);
       };
-      fileReader.readAsText(file);
+      fileReader.readAsArrayBuffer(file);
     });
 
     let uploadButton = this.dom.select('#upload-tensors');
@@ -374,10 +374,10 @@ export class DataPanel extends DataPanelPolymer {
       (d3.event as any).target.value = '';
       let fileReader = new FileReader();
       fileReader.onload = evt => {
-        let contents: string = (evt.target as any).result;
+        let contents: ArrayBuffer = (evt.target as any).result;
         this.metadataWasReadFromFile(contents, file.name);
       };
-      fileReader.readAsText(file);
+      fileReader.readAsArrayBuffer(file);
     });
 
     let uploadMetadataButton = this.dom.select('#upload-metadata');
@@ -385,74 +385,80 @@ export class DataPanel extends DataPanelPolymer {
       (fileMetadataInput.node() as HTMLInputElement).click();
     });
 
-    if (this.projector.servingMode === 'demo') {
-      (this.$$('#demo-data-buttons-container') as HTMLElement).style.display =
-          'block';
+    if (this.projector.servingMode !== 'demo') {
+      (this.$$('#publish-container') as HTMLElement).style.display = 'none';
+      (this.$$('#upload-tensors-step-container') as HTMLElement).style.display =
+          'none';
+      (this.$$('#upload-metadata-label') as HTMLElement).style.display = 'none';
+    }
 
-      // Fill out the projector config.
-      let projectorConfigTemplate =
-          this.$$('#projector-config-template') as HTMLTextAreaElement;
-      let projectorConfigTemplateJson: ProjectorConfig = {
-        embeddings: [{
-          tensorName: 'My tensor',
-          tensorShape: [1000, 50],
-          tensorPath: 'https://gist.github.com/.../tensors.tsv',
-          metadataPath: 'https://gist.github.com/.../optional.metadata.tsv',
-        }],
-      };
+    (this.$$('#demo-data-buttons-container') as HTMLElement).style.display =
+        'block';
+
+    // Fill out the projector config.
+    let projectorConfigTemplate =
+        this.$$('#projector-config-template') as HTMLTextAreaElement;
+    let projectorConfigTemplateJson: ProjectorConfig = {
+      embeddings: [{
+        tensorName: 'My tensor',
+        tensorShape: [1000, 50],
+        tensorPath: 'https://gist.github.com/.../tensors.tsv',
+        metadataPath: 'https://gist.github.com/.../optional.metadata.tsv',
+      }],
+    };
+    this.setProjectorConfigTemplateJson(
+        projectorConfigTemplate, projectorConfigTemplateJson);
+
+    // Set up optional field checkboxes.
+    let spriteFieldCheckbox = this.$$('#config-sprite-checkbox');
+    spriteFieldCheckbox.addEventListener('change', () => {
+      if ((spriteFieldCheckbox as any).checked) {
+        projectorConfigTemplateJson.embeddings[0].sprite = {
+          imagePath: 'https://github.com/.../optional.sprite.png',
+          singleImageDim: [32, 32]
+        };
+      } else {
+        delete projectorConfigTemplateJson.embeddings[0].sprite;
+      }
       this.setProjectorConfigTemplateJson(
           projectorConfigTemplate, projectorConfigTemplateJson);
+    });
+    let bookmarksFieldCheckbox = this.$$('#config-bookmarks-checkbox');
+    bookmarksFieldCheckbox.addEventListener('change', () => {
+      if ((bookmarksFieldCheckbox as any).checked) {
+        projectorConfigTemplateJson.embeddings[0].bookmarksPath =
+            'https://gist.github.com/.../bookmarks.txt';
+      } else {
+        delete projectorConfigTemplateJson.embeddings[0].bookmarksPath;
+      }
+      this.setProjectorConfigTemplateJson(
+          projectorConfigTemplate, projectorConfigTemplateJson);
+    });
+    let metadataFieldCheckbox = this.$$('#config-metadata-checkbox');
+    metadataFieldCheckbox.addEventListener('change', () => {
+      if ((metadataFieldCheckbox as HTMLInputElement).checked) {
+        projectorConfigTemplateJson.embeddings[0].metadataPath =
+            'https://gist.github.com/.../optional.metadata.tsv';
+      } else {
+        delete projectorConfigTemplateJson.embeddings[0].metadataPath;
+      }
+      this.setProjectorConfigTemplateJson(
+          projectorConfigTemplate, projectorConfigTemplateJson);
+    });
 
-      // Set up optional field checkboxes.
-      let spriteFieldCheckbox = this.$$('#config-sprite-checkbox');
-      spriteFieldCheckbox.addEventListener('change', () => {
-        if ((spriteFieldCheckbox as any).checked) {
-          projectorConfigTemplateJson.embeddings[0].sprite = {
-            imagePath: 'https://github.com/.../optional.sprite.png',
-            singleImageDim: [32, 32]
-          };
-        } else {
-          delete projectorConfigTemplateJson.embeddings[0].sprite;
-        }
-        this.setProjectorConfigTemplateJson(
-            projectorConfigTemplate, projectorConfigTemplateJson);
-      });
-      let bookmarksFieldCheckbox = this.$$('#config-bookmarks-checkbox');
-      bookmarksFieldCheckbox.addEventListener('change', () => {
-        if ((bookmarksFieldCheckbox as any).checked) {
-          projectorConfigTemplateJson.embeddings[0].bookmarksPath =
-              'https://gist.github.com/.../bookmarks.txt';
-        } else {
-          delete projectorConfigTemplateJson.embeddings[0].bookmarksPath;
-        }
-        this.setProjectorConfigTemplateJson(
-            projectorConfigTemplate, projectorConfigTemplateJson);
-      });
-      let metadataFieldCheckbox = this.$$('#config-metadata-checkbox');
-      metadataFieldCheckbox.addEventListener('change', () => {
-        if ((metadataFieldCheckbox as any).checked) {
-          projectorConfigTemplateJson.embeddings[0].metadataPath =
-              'https://gist.github.com/.../optional.metadata.tsv';
-        } else {
-          delete projectorConfigTemplateJson.embeddings[0].metadataPath;
-        }
-        this.setProjectorConfigTemplateJson(
-            projectorConfigTemplate, projectorConfigTemplateJson);
-      });
+    // Update the link and the readonly shareable URL.
+    let projectorConfigUrlInput = this.$$('#projector-config-url');
+    let projectorConfigDemoUrlInput = this.$$('#projector-share-url');
+    let projectorConfigDemoUrlLink = this.$$('#projector-share-url-link');
+    projectorConfigUrlInput.addEventListener('input', () => {
+      let projectorDemoUrl = location.protocol + '//' + location.host +
+          location.pathname +
+          '?config=' + (projectorConfigUrlInput as HTMLInputElement).value;
 
-      // Update the link and the readonly shareable URL.
-      let projectorConfigUrlInput = this.$$('#projector-config-url');
-      let projectorConfigDemoUrlInput = this.$$('#projector-share-url');
-      let projectorConfigDemoUrlLink = this.$$('#projector-share-url-link');
-      projectorConfigUrlInput.addEventListener('input', () => {
-        let projectorDemoUrl = location.protocol + '//' + location.host +
-            location.pathname + '?config=' +
-            (projectorConfigUrlInput as any).value;
-
-        (projectorConfigDemoUrlInput as any).value = projectorDemoUrl;
-        (projectorConfigDemoUrlLink as any).href = projectorDemoUrl;
-      });
-    }
+      (projectorConfigDemoUrlInput as HTMLInputElement).value =
+          projectorDemoUrl;
+      (projectorConfigDemoUrlLink as HTMLLinkElement).href = projectorDemoUrl;
+    });
   }
 
   private setProjectorConfigTemplateJson(

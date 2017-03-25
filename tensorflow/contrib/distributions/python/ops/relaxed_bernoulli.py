@@ -164,7 +164,7 @@ class RelaxedBernoulli(transformed_distribution.TransformedDistribution):
       ValueError: If both `probs` and `logits` are passed, or if neither.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[logits, probs, temperature]) as ns:
+    with ops.name_scope(name, values=[logits, probs, temperature]):
       with ops.control_dependencies([check_ops.assert_positive(temperature)]
                                     if validate_args else []):
         self._temperature = array_ops.identity(temperature, name="temperature")
@@ -175,10 +175,10 @@ class RelaxedBernoulli(transformed_distribution.TransformedDistribution):
                                          1. / self._temperature,
                                          validate_args=validate_args,
                                          allow_nan_stats=allow_nan_stats,
-                                         name=ns),
+                                         name=name + "/Logistic"),
           bijector=sigmoid_lib.Sigmoid(validate_args=validate_args),
           validate_args=validate_args,
-          name=ns)
+          name=name)
     self._parameters = parameters
 
   @staticmethod

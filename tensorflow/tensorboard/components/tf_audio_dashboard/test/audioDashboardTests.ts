@@ -15,7 +15,6 @@ limitations under the License.
 declare function stub(el: string, obj: any): void;
 declare function fixture(id: string): void;
 
-
 describe(
     'audio dashboard tests', function() {
       var audioDash;
@@ -38,7 +37,7 @@ describe(
                  audioDash.getElementsByTagName('tf-audio-loader'));
              audioDash.frontendReload();
              setTimeout(function() {
-               assert.isAbove(reloadCount, 3);
+               chai.assert.isAbove(reloadCount, 3);
                done();
              });
            });

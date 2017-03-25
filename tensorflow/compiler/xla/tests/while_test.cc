@@ -247,6 +247,67 @@ TEST_F(WhileTest, WhileWithTupleResult) {
   ComputeAndCompareTuple(&builder, *expected, {}, ErrorSpec(0.0001));
 }
 
+// WhileTest that uses DynamicUpdateSlice instruction in body computation.
+// Loop state tuple element 1 has as its single user operand(0) of
+// DynamicUpdateSlice, which will trigger in-place dynamic slice update on GPU.
+XLA_TEST_F(WhileTest, WhileWithDynamicUpdateSlice) {
+  std::vector<Shape> shape_elements = {ShapeUtil::MakeShape(S32, {}),
+                                       ShapeUtil::MakeShape(F32, {10})};
+  Shape result_shape = ShapeUtil::MakeTupleShape(shape_elements);
+
+  // Create a computation for the condition.
+  // Repeat for 5 iterations.
+  Computation condition;
+  {
+    ComputationBuilder builder(client_, "condition");
+    auto prev = builder.Parameter(0, result_shape, "prev");
+    auto iteration = builder.GetTupleElement(prev, 0);
+    builder.Gt(builder.ConstantR0<int32>(5), iteration);
+    condition = builder.Build().ConsumeValueOrDie();
+  }
+
+  // Create a computation for the body.
+  // Add 1 to the iteration variable and add a constant vector of 1.0f to
+  // the weight variable, both of which are tuple elements.
+  Computation body;
+  {
+    ComputationBuilder builder(client_, "body");
+    auto prev = builder.Parameter(0, result_shape, "prev");
+    // TupleElement 0
+    auto iteration = builder.GetTupleElement(prev, 0);
+    auto out0 = builder.Add(iteration, builder.ConstantR0<int32>(1));
+    // TupleElement 1
+    auto input = builder.GetTupleElement(prev, 1);
+    // Update.
+    auto update = builder.ConvertElementType(builder.Broadcast(out0, {2}), F32);
+    // Starts = iteration * 2;
+    auto starts = builder.Reshape(
+        builder.Mul(iteration, builder.ConstantR0<int32>(2)), {1});
+    // UpdateSlice.
+    auto out1 = builder.DynamicUpdateSlice(input, update, starts);
+
+    auto result = builder.Tuple({out0, out1});
+    body = builder.Build().ConsumeValueOrDie();
+  }
+
+  // Create a While node with computations for the condition and the body.
+  ComputationBuilder builder(client_, "while");
+  auto init = builder.Tuple(
+      {builder.ConstantR0<int32>(0), builder.ConstantR1<float>(10, 0.f)});
+  auto result = builder.While(condition, body, init);
+  VLOG(2) << "while = "
+          << ShapeUtil::HumanString(
+                 *builder.GetShape(result).ConsumeValueOrDie());
+
+  auto expected_counter = LiteralUtil::CreateR0<int32>(5);
+  auto expected_data = LiteralUtil::CreateR1<float>(
+      {1.0f, 1.0f, 2.0f, 2.0f, 3.0f, 3.0f, 4.0f, 4.0f, 5.0f, 5.0f});
+  auto expected =
+      LiteralUtil::MakeTuple({expected_counter.get(), expected_data.get()});
+  VLOG(2) << "expected = " << ShapeUtil::HumanString(expected->shape());
+  ComputeAndCompareTuple(&builder, *expected, {}, ErrorSpec(0.0001));
+}
+
 // Tests a while node when the result type T is a vector of S32.
 //
 // int32 result = (0, 0, 0, 0, 0, 0);
@@ -308,6 +369,74 @@ TEST_F(WhileTest, WhileWithPrngScalarResult) {
   }
 }
 
+// Tests nested while loops.
+//
+// int32 result = 0;
+// while (result < 30) {
+//   int i = 0;
+//   while (i < 7) {
+//     result = result + 2;
+//     i = i + 1;
+//   }
+// }
+XLA_TEST_F(WhileTest, NestedWhileWithScalarResult) {
+  auto outer_result_shape = ShapeUtil::MakeShape(S32, {});
+  auto inner_result_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(S32, {}), ShapeUtil::MakeShape(S32, {})});
+
+  Computation inner_condition;
+  {
+    ComputationBuilder builder(client_, "inner_condition");
+    auto params = builder.Parameter(0, inner_result_shape, "prev");
+    auto i = builder.GetTupleElement(params, 0);
+    builder.Lt(i, builder.ConstantR0<int32>(7));
+    inner_condition = builder.Build().ConsumeValueOrDie();
+  }
+
+  // Creates a computation for the outer loop condition:
+  // repeat while result < 30.
+  Computation outer_condition;
+  {
+    ComputationBuilder builder(client_, "outer_condition");
+    auto prev = builder.Parameter(0, outer_result_shape, "prev");
+    builder.Lt(prev, builder.ConstantR0<int32>(30));
+    outer_condition = builder.Build().ConsumeValueOrDie();
+  }
+
+  // Creates a computation for the inner loop body: add 1 to `i`, and add 2 to
+  // `result`.
+  Computation inner_body;
+  {
+    ComputationBuilder builder(client_, "inner_body");
+    auto params = builder.Parameter(0, inner_result_shape, "prev");
+    auto i = builder.GetTupleElement(params, 0);
+    auto result = builder.GetTupleElement(params, 1);
+    i = builder.Add(builder.ConstantR0<int32>(1), i);
+    result = builder.Add(builder.ConstantR0<int32>(2), result);
+    auto output = builder.Tuple({i, result});
+    inner_body = builder.Build().ConsumeValueOrDie();
+  }
+
+  // Creates a computation for the outer loop: run the inner loop with i = 0.
+  Computation outer_body;
+  {
+    ComputationBuilder builder(client_, "outer_body");
+    auto prev = builder.Parameter(0, outer_result_shape, "prev");
+    auto init = builder.Tuple({builder.ConstantR0<int32>(0), prev});
+    auto result = builder.While(inner_condition, inner_body, init);
+    auto output = builder.GetTupleElement(result, 1);
+    outer_body = builder.Build().ConsumeValueOrDie();
+  }
+
+  // Create a While node with computations for the condition and the body.
+  ComputationBuilder builder(client_, TestName());
+  auto init = builder.ConstantR0<int32>(0);
+  auto result = builder.While(outer_condition, outer_body, init);
+  auto shape = builder.GetShape(result).ConsumeValueOrDie();
+
+  ComputeAndCompareR0<int32>(&builder, 42, {});
+}
+
 void BM_WhileLoop(int num_iters) {
   // Benchmark a simple kernel to measure while loop overheads.
   tensorflow::testing::StopTiming();
@@ -354,19 +483,23 @@ void BM_WhileLoop(int num_iters) {
   builder.While(condition, body, init);
   auto computation = builder.Build().ConsumeValueOrDie();
 
+  std::unique_ptr<LocalExecutable> executable =
+      client->Compile(computation, {}, ExecutableBuildOptions())
+          .ConsumeValueOrDie();
+
   // Run some warm-up executions.
-  LocalExecuteOptions options;
+  ExecutableRunOptions options;
   options.set_allocator(&allocator);
   const int kWarmups = 2;
   for (int i = 0; i < kWarmups; ++i) {
-    auto result = client->ExecuteLocally(computation, {}, options);
+    auto result = executable->Run({}, options);
     ASSERT_TRUE(result.ok());
   }
 
   // Run benchmark.
   tensorflow::testing::StartTiming();
   for (int i = 0; i < num_iters; ++i) {
-    auto result = client->ExecuteLocally(computation, {}, options);
+    auto result = executable->Run({}, options);
     ASSERT_TRUE(result.ok());
   }
 }

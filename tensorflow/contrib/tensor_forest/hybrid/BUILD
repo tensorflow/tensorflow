@@ -10,6 +10,8 @@ package(default_visibility = [
 
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
+load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
+load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 
 filegroup(
     name = "all_files",
@@ -42,6 +44,33 @@ filegroup(
     ),
 )
 
+cc_library(
+    name = "all_kernels",
+    srcs = [
+        "core/ops/hard_routing_function_op.cc",
+        "core/ops/k_feature_gradient_op.cc",
+        "core/ops/k_feature_routing_function_op.cc",
+        "core/ops/routing_function_op.cc",
+        "core/ops/routing_gradient_op.cc",
+        "core/ops/stochastic_hard_routing_function_op.cc",
+        "core/ops/stochastic_hard_routing_gradient_op.cc",
+        "core/ops/unpack_path_op.cc",
+    ],
+    deps = [
+        ":utils",
+        "//tensorflow/contrib/tensor_forest:tree_utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+    alwayslink = 1,
+)
+
+tf_gen_op_wrapper_py(
+    name = "training_ops",
+    deps = [":all_kernels"],
+)
+
 tf_custom_op_library(
     name = "python/ops/_training_ops.so",
     srcs = [
@@ -67,23 +96,27 @@ cc_library(
         "core/ops/utils.h",
     ],
     deps = [
-        "//:protobuf_headers",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
+        "@protobuf//:protobuf_headers",
     ],
 )
 
-py_library(
+tf_custom_op_py_library(
     name = "ops_lib",
     srcs = [
         "__init__.py",
         "python/ops/training_ops.py",
     ],
-    data = [
+    dso = [
         "python/ops/_training_ops.so",
+    ],
+    kernels = [
+        ":all_kernels",
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":training_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -170,6 +203,7 @@ py_test(
     tags = ["manual"],
     deps = [
         ":ops_lib",
+        ":training_ops",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
@@ -184,6 +218,7 @@ py_test(
     tags = ["manual"],
     deps = [
         ":ops_lib",
+        ":training_ops",
         "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/tensor_forest:tensor_forest_py",
         "//tensorflow/python:framework_test_lib",
@@ -392,5 +427,20 @@ py_library(
         ":ops_lib",
         "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/tensor_forest:tensor_forest_py",
+    ],
+)
+
+# Transitive dependencies of this target will be included in the pip package.
+py_library(
+    name = "hybrid_pip",
+    deps = [
+        ":all_layers",
+        ":decisions_to_data_then_nn",
+        ":forest_to_data_then_nn",
+        ":hard_decisions_to_data_then_nn",
+        ":k_feature_decisions_to_data_then_nn",
+        ":nn",
+        ":stochastic_hard_decisions_to_data_then_nn",
+        ":stochastic_soft_decisions_to_data_then_nn",
     ],
 )

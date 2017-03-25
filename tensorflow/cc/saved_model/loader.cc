@@ -106,6 +106,37 @@ void AddAssetsTensorsToInputs(const StringPiece export_dir,
   }
 }
 
+bool HasMainOp(const MetaGraphDef& meta_graph_def) {
+  const auto& collection_def_map = meta_graph_def.collection_def();
+  if (collection_def_map.find(kSavedModelMainOpKey) !=
+      collection_def_map.end()) {
+    return true;
+  }
+  return false;
+}
+
+Status RunMainOp(const RunOptions& run_options, const string& export_dir,
+                 const MetaGraphDef& meta_graph_def,
+                 const std::vector<AssetFileDef>& asset_file_defs,
+                 Session* session) {
+  LOG(INFO) << "Running MainOp on SavedModel bundle.";
+  const auto& collection_def_map = meta_graph_def.collection_def();
+  const auto main_op_it = collection_def_map.find(kSavedModelMainOpKey);
+  if (main_op_it != collection_def_map.end()) {
+    if (main_op_it->second.node_list().value_size() != 1) {
+      return errors::FailedPrecondition(
+          strings::StrCat("Expected exactly one main op in : ", export_dir));
+    }
+    std::vector<std::pair<string, Tensor>> inputs;
+    AddAssetsTensorsToInputs(export_dir, asset_file_defs, &inputs);
+    RunMetadata run_metadata;
+    const StringPiece main_op_name = main_op_it->second.node_list().value(0);
+    return session->Run(run_options, inputs, {}, {main_op_name.ToString()},
+                        nullptr /* outputs */, &run_metadata);
+  }
+  return Status::OK();
+}
+
 Status RunRestore(const RunOptions& run_options, const string& export_dir,
                   const StringPiece restore_op_name,
                   const StringPiece variable_filename_const_op_name,
@@ -211,11 +242,15 @@ Status LoadSavedModelInternal(const SessionOptions& session_options,
                  bundle->meta_graph_def.saver_def().restore_op_name(),
                  bundle->meta_graph_def.saver_def().filename_tensor_name(),
                  asset_file_defs, bundle->session.get()));
-  // TODO(sukritiramesh): Add support for a single main op to run upon load,
-  // which will supersede the legacy_init_op and separate RunRestore.
-  TF_RETURN_IF_ERROR(RunLegacyInitOp(run_options, export_dir,
-                                     bundle->meta_graph_def, asset_file_defs,
-                                     bundle->session.get()));
+  if (HasMainOp(bundle->meta_graph_def)) {
+    TF_RETURN_IF_ERROR(RunMainOp(run_options, export_dir,
+                                 bundle->meta_graph_def, asset_file_defs,
+                                 bundle->session.get()));
+  } else {
+    TF_RETURN_IF_ERROR(RunLegacyInitOp(run_options, export_dir,
+                                       bundle->meta_graph_def, asset_file_defs,
+                                       bundle->session.get()));
+  }
   return Status::OK();
 }
 

@@ -132,6 +132,20 @@ class BinaryOpsTest(XLATestCase):
           ],
           equality_test=self.ListsAreClose)
 
+      self._testBinary(
+          gen_nn_ops._sparse_softmax_cross_entropy_with_logits,
+          np.array([[0.1, 0.2, 0.3, 0.4], [0.5, 0.6, 0.7, 0.8],
+                    [0.9, 1.0, 1.1, 1.2]], dtype=dtype),
+          np.array([2, 1, 7], dtype=np.int32),
+          expected=[
+              np.array([1.342536, 1.442536, np.nan], dtype=dtype),
+              np.array([[0.213838, 0.236328, -0.738817, 0.288651],
+                        [0.213838, -0.763672, 0.261183, 0.288651],
+                        [np.nan, np.nan, np.nan, np.nan]],
+                       dtype=dtype),
+          ],
+          equality_test=self.ListsAreClose)
+
   def testIntOps(self):
     for dtype in self.int_types:
       self._testBinary(

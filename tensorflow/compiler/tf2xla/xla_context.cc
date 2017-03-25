@@ -52,7 +52,7 @@ const char XlaContext::kXlaContextResourceName[] = "_xla_context";
   return *context;
 }
 
-void XlaContext::set_args(std::vector<HandleOrConstant> args) {
+void XlaContext::set_args(std::vector<Argument> args) {
   args_ = std::move(args);
 }
 
@@ -72,8 +72,8 @@ XlaContext::GetOrCreateRuntimeContextParameter() {
 
   // Allocate the next available parameter for the context parameter.
   int num_parameters = 0;
-  for (const HandleOrConstant& arg : args_) {
-    if (!arg.is_constant) {
+  for (const Argument& arg : args_) {
+    if (!arg.value.is_constant) {
       ++num_parameters;
     }
   }
@@ -86,7 +86,7 @@ string XlaContext::DebugString() { return "TLA JIT context"; }
 
 // This is called by the Retval Op to associate a computed value
 // with a specific return value of the subgraph.
-void XlaContext::AddRetval(int retval_index,
+void XlaContext::AddRetval(int retval_index, DataType type,
                            const xla::ComputationDataHandle& handle) {
   VLOG(1) << "Added retval index " << retval_index << " to XLA computation";
   // Add the return value to the list being built up.
@@ -94,6 +94,7 @@ void XlaContext::AddRetval(int retval_index,
     retvals_.resize(retval_index + 1);
   }
   retvals_[retval_index].is_constant = false;
+  retvals_[retval_index].type = type;
   retvals_[retval_index].handle = handle;
 }
 
@@ -104,6 +105,7 @@ Status XlaContext::AddConstRetval(int retval_index, DataType dtype,
   if (retvals_.size() <= retval_index) {
     retvals_.resize(retval_index + 1);
   }
+  retvals_[retval_index].type = dtype;
   if (resolve_compile_time_constants_) {
     retvals_[retval_index].is_constant = true;
     TF_RETURN_IF_ERROR(LiteralToHostTensor(
@@ -120,6 +122,29 @@ void XlaContext::AddSideEffects() {
 }
 
 xla::ComputationBuilder* XlaContext::builder() { return builder_; }
+
+Status XlaContext::CreateVariable(int variable_id, string name, DataType type,
+                                  const xla::ComputationDataHandle& handle) {
+  auto result = variables_.emplace(variable_id, Variable());
+  if (!result.second) {
+    return errors::InvalidArgument("Duplicate ID ", variable_id,
+                                   " for variable ", name);
+  }
+  Variable& var = result.first->second;
+  var.name = std::move(name);
+  var.type = type;
+  var.initial_value = var.value = handle;
+  return Status::OK();
+}
+
+Status XlaContext::GetVariable(int variable_id, Variable** variable) {
+  auto it = variables_.find(variable_id);
+  if (it == variables_.end()) {
+    return errors::InvalidArgument("Unknown variable ID ", variable_id);
+  }
+  *variable = &it->second;
+  return Status::OK();
+}
 
 const xla::Computation* XlaContext::GetOrCreateMax(const DataType type) {
   return LookupOrCreate(type, &max_func_, [this, type] {
@@ -185,4 +210,4 @@ const xla::Computation* XlaContext::LookupOrCreate(
   }
 }
 
-}  // end namespace tensorflow
+}  // namespace tensorflow

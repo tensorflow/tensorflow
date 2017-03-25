@@ -49,9 +49,10 @@ class ReaderVerbAsyncOpKernel : public AsyncOpKernel {
   explicit ReaderVerbAsyncOpKernel(OpKernelConstruction* context)
       : AsyncOpKernel(context),
         thread_pool_(new thread::ThreadPool(
-            context->env(), strings::StrCat("reader_thread_",
-                                            SanitizeThreadSuffix(def().name())),
-            1 /* num_threads */)) {}
+            context->env(), ThreadOptions(),
+            strings::StrCat("reader_thread_",
+                            SanitizeThreadSuffix(def().name())),
+            1 /* num_threads */, false /* low_latency_hint */)) {}
 
   void ComputeAsync(OpKernelContext* context, DoneCallback done) override {
     ReaderInterface* reader;

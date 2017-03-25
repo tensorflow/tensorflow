@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 
+#include <unistd.h>
 #include <string>
 
 #include "tensorflow/compiler/xla/layout_util.h"
@@ -23,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/numbers.h"
@@ -55,68 +57,6 @@ string ComputationId(const HloComputation* computation) {
   return Printf("%lld", reinterpret_cast<uint64>(computation));
 }
 
-// Returns a compact string that represents the convolution dimension numbers.
-string ConvolutionDimensionNumbersToString(
-    const ConvolutionDimensionNumbers& dim_numbers) {
-  return Printf("B@%lld,Z@%lld,KIZ@%lld,KOZ@%lld",
-                dim_numbers.batch_dimension(), dim_numbers.feature_dimension(),
-                dim_numbers.kernel_input_feature_dimension(),
-                dim_numbers.kernel_output_feature_dimension());
-}
-
-// Returns a compact string that represents the non-trivial fields in the window
-// description. If there are no non-trivial fields, the empty string is
-// returned.
-string WindowToString(const Window& window) {
-  bool display_padding = false;
-  bool display_window_dilation = false;
-  bool display_base_dilation = false;
-  bool display_stride = false;
-  for (const WindowDimension& dimension : window.dimensions()) {
-    display_padding |=
-        dimension.padding_low() != 0 || dimension.padding_high() != 0;
-    display_window_dilation |= dimension.window_dilation() != 1;
-    display_base_dilation |= dimension.base_dilation() != 1;
-    display_stride |= dimension.stride() != 1;
-  }
-  std::vector<string> pieces = {};
-  if (display_padding) {
-    pieces.push_back("\\n");
-    pieces.push_back("padding=[");
-    for (const WindowDimension& dimension : window.dimensions()) {
-      pieces.push_back(StrCat("(", dimension.padding_low(), ",",
-                              dimension.padding_high(), ")"));
-      pieces.push_back(", ");
-    }
-    pieces.pop_back();
-    pieces.push_back("]");
-  }
-  // Make a convenient lambda that adds a simple int64 field in each
-  // WindowDimension.
-  auto add_field = [&pieces, &window](
-      const string& label,
-      tensorflow::protobuf_int64 (WindowDimension::*member)() const) {
-    pieces.push_back("\\n");
-    pieces.push_back(label + "=[");
-    for (const WindowDimension& dimension : window.dimensions()) {
-      pieces.push_back(StrCat(((&dimension)->*member)()));
-      pieces.push_back(", ");
-    }
-    pieces.pop_back();
-    pieces.push_back("]");
-  };
-  if (display_window_dilation) {
-    add_field("window_dilation", &WindowDimension::window_dilation);
-  }
-  if (display_base_dilation) {
-    add_field("base_dilation", &WindowDimension::base_dilation);
-  }
-  if (display_stride) {
-    add_field("stride", &WindowDimension::stride);
-  }
-  return Join(pieces, "");
-}
-
 // Returns the dot graph edges and nodes for the given instruction sequence.
 // Edges which extend between computations are added to the vector
 // intercomputation_edges. This is necessary because graphviz does not render
@@ -135,7 +75,9 @@ string InstructionSequenceGraph(
   std::vector<HloInstruction*> param_instructions;
   for (auto& instruction : instructions) {
     if (instruction->opcode() == HloOpcode::kParameter) {
-      int64 param_number = instruction->parameter_number();
+      std::vector<HloInstruction*>::size_type param_number =
+          instruction->parameter_number();
+
       if (param_instructions.size() < param_number + 1) {
         param_instructions.resize(param_number + 1, nullptr);
       }
@@ -168,17 +110,24 @@ string InstructionSequenceGraph(
   for (auto& instruction : instructions) {
     string color = "peachpuff";
     string shape = "ellipse";
-    string name = HloOpcodeString(instruction->opcode());
-    if (HloOpcode::kFusion == instruction->opcode()) {
-      name += ": " + FusionKindString(instruction->fusion_kind());
-    }
+    string name = instruction->ExtendedOpcodeStr();
     if (HloOpcode::kConvolution == instruction->opcode()) {
-      name += ":\\n" + ConvolutionDimensionNumbersToString(
-                           instruction->convolution_dimension_numbers()) +
-              WindowToString(instruction->window());
+      name += ":\\n" + instruction->ConvolutionDimensionNumbersToString() +
+              "\\n" + window_util::ToString(instruction->window());
     }
+
     name += "\\n" + instruction->name();
-    std::vector<HloComputation*> called_computations;
+    if (!instruction->metadata().op_type().empty()) {
+      StrAppend(&name, "\\n", instruction->metadata().op_type());
+    }
+    if (!instruction->metadata().op_name().empty()) {
+      StrAppend(&name, "\\n", instruction->metadata().op_name());
+    }
+    if (!instruction->metadata().source_file().empty() &&
+        instruction->metadata().source_line() != 0) {
+      StrAppend(&name, "\\n", instruction->metadata().source_file(), ":",
+                instruction->metadata().source_line());
+    }
 
     // Pick different colors or shapes for instructions which are particularly
     // expensive (eg, dot) and those which are unusual in some way or unique
@@ -202,6 +151,7 @@ string InstructionSequenceGraph(
       case HloOpcode::kGe:
       case HloOpcode::kGt:
       case HloOpcode::kIndex:
+      case HloOpcode::kIsFinite:
       case HloOpcode::kLe:
       case HloOpcode::kLog:
       case HloOpcode::kLogicalAnd:
@@ -328,7 +278,7 @@ string InstructionSequenceGraph(
       auto hlo_cycles_executed =
           hlo_execution_profile->GetProfileResult(*instruction);
       auto total_cycles_executed =
-          hlo_execution_profile->total_cycles_executed();
+          hlo_execution_profile->total_cycles_executed(*instruction->parent());
       if (hlo_cycles_executed > 0 && total_cycles_executed > 0) {
         Appendf(&label, "\\n%% of cycles executed=%.2f",
                 (static_cast<double>(hlo_cycles_executed) /
@@ -385,7 +335,8 @@ string InstructionSequenceGraph(
     } else {
       // Add a dotted edge between the instruction and any computations that the
       // instruction calls.
-      for (auto* computation : instruction->MakeCalledComputationsSet()) {
+      for (const HloComputation* computation :
+           instruction->called_computations()) {
         string cluster_name = StrCat("cluster_", ComputationId(computation));
         string call_edge = Printf(
             "%s -> %s [ style=dashed; ltail=%s ];\n",
@@ -404,7 +355,7 @@ string ComputationToDotGraph(const HloComputation& computation,
                              const HloExecutionProfile* hlo_execution_profile) {
   string graph_label = StrCat(label, "\\n", computation.name());
   if (hlo_execution_profile != nullptr) {
-    auto cycles = hlo_execution_profile->total_cycles_executed();
+    auto cycles = hlo_execution_profile->total_cycles_executed(computation);
     Appendf(&graph_label, "\\ntotal cycles = %lld (%s)", cycles,
             tensorflow::strings::HumanReadableNum(cycles).c_str());
   }
@@ -469,9 +420,19 @@ class FileGraphRenderer : public GraphRendererInterface {
     legacy_flags::HloGraphDumperFlags* flags =
         legacy_flags::GetHloGraphDumperFlags();
     string path = StrCat(flags->xla_hlo_dump_graph_path, "hlo_graph_",
-                         output_num++, ".dot");
-    tensorflow::Status status =
-        tensorflow::WriteStringToFile(tensorflow::Env::Default(), path, graph);
+                         output_num++, ".XXXXXX.dot");
+    auto status = Status::OK();
+    int fd = mkstemps(&path[0], 4);
+    if (fd < 0) {
+      status =
+          Status(tensorflow::error::Code::UNKNOWN,
+                 StrCat("Failed to create temporary file to dump HLO graph: ",
+                        strerror(errno)));
+    } else {
+      status = tensorflow::WriteStringToFile(tensorflow::Env::Default(), path,
+                                             graph);
+      close(fd);
+    }
     if (!status.ok()) {
       LOG(WARNING) << "Saving HLO graph failed: " << status;
     }
@@ -507,4 +468,5 @@ void DumpText(const HloModule& module, const string& label,
 }
 
 }  // namespace hlo_graph_dumper
+
 }  // namespace xla

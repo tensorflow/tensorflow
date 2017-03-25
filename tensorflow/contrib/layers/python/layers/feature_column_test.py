@@ -18,18 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
 import itertools
 import os
-import sys
 import tempfile
-
-# pylint: disable=g-bad-todo
-# TODO(#6568): Remove this hack that makes dlopen() not crash.
-# pylint: enable=g-bad-todo
-# pylint: disable=g-import-not-at-top
-if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 import numpy as np
 
@@ -108,6 +100,14 @@ class FeatureColumnTest(test.TestCase):
     weighted_ids = fc.weighted_sparse_column(ids, "weights")
     self.assertEqual(weighted_ids.name, "ids_weighted_by_weights")
 
+  def testWeightedSparseColumnDeepCopy(self):
+    ids = fc.sparse_column_with_keys("ids", ["marlo", "omar", "stringer"])
+    weighted = fc.weighted_sparse_column(ids, "weights")
+    weighted_copy = copy.deepcopy(weighted)
+    self.assertEqual(weighted_copy.sparse_id_column.name, "ids")
+    self.assertEqual(weighted_copy.weight_column_name, "weights")
+    self.assertEqual(weighted_copy.name, "ids_weighted_by_weights")
+
   def testEmbeddingColumn(self):
     a = fc.sparse_column_with_hash_bucket(
         "aaa", hash_bucket_size=100, combiner="sum")
@@ -115,6 +115,35 @@ class FeatureColumnTest(test.TestCase):
     self.assertEqual(b.sparse_id_column.name, "aaa")
     self.assertEqual(b.dimension, 4)
     self.assertEqual(b.combiner, "mean")
+
+  def testEmbeddingColumnDeepCopy(self):
+    a = fc.sparse_column_with_hash_bucket(
+        "aaa", hash_bucket_size=100, combiner="sum")
+    column = fc.embedding_column(a, dimension=4, combiner="mean")
+    column_copy = copy.deepcopy(column)
+    self.assertEqual(column_copy.name, "aaa_embedding")
+    self.assertEqual(column_copy.sparse_id_column.name, "aaa")
+    self.assertEqual(column_copy.dimension, 4)
+    self.assertEqual(column_copy.combiner, "mean")
+
+  def testScatteredEmbeddingColumn(self):
+    column = fc.scattered_embedding_column(
+        "aaa", size=100, dimension=10, hash_key=1)
+    self.assertEqual(column.column_name, "aaa")
+    self.assertEqual(column.size, 100)
+    self.assertEqual(column.dimension, 10)
+    self.assertEqual(column.hash_key, 1)
+    self.assertEqual(column.name, "aaa_scattered_embedding")
+
+  def testScatteredEmbeddingColumnDeepCopy(self):
+    column = fc.scattered_embedding_column(
+        "aaa", size=100, dimension=10, hash_key=1)
+    column_copy = copy.deepcopy(column)
+    self.assertEqual(column_copy.column_name, "aaa")
+    self.assertEqual(column_copy.size, 100)
+    self.assertEqual(column_copy.dimension, 10)
+    self.assertEqual(column_copy.hash_key, 1)
+    self.assertEqual(column_copy.name, "aaa_scattered_embedding")
 
   def testSharedEmbeddingColumn(self):
     a1 = fc.sparse_column_with_keys("a1", ["marlo", "omar", "stringer"])
@@ -153,7 +182,7 @@ class FeatureColumnTest(test.TestCase):
     # a3 is a completely different sparse column with a1 and a2, but since the
     # same shared_embedding_name is passed in, a3 will have the same embedding
     # as a1 and a2
-    a3 = fc.sparse_column_with_keys("a3", ["cathy", "tom", "anderson"])
+    a3 = fc.sparse_column_with_keys("a3", [42, 1, -1000], dtype=dtypes.int32)
     e = fc.shared_embedding_columns(
         [a3],
         dimension=4,
@@ -200,6 +229,17 @@ class FeatureColumnTest(test.TestCase):
       ])
       fc.shared_embedding_columns(invalid_set, dimension=2, combiner="mean")
 
+  def testSharedEmbeddingColumnDeepCopy(self):
+    a1 = fc.sparse_column_with_keys("a1", ["marlo", "omar", "stringer"])
+    a2 = fc.sparse_column_with_keys("a2", ["marlo", "omar", "stringer"])
+    columns = fc.shared_embedding_columns(
+        [a1, a2], dimension=4, combiner="mean")
+    columns_copy = copy.deepcopy(columns)
+    self.assertEqual(
+        columns_copy[0].shared_embedding_name, "a1_a2_shared_embedding")
+    self.assertEqual(
+        columns_copy[1].shared_embedding_name, "a1_a2_shared_embedding")
+
   def testOneHotColumn(self):
     a = fc.sparse_column_with_keys("a", ["a", "b", "c", "d"])
     onehot_a = fc.one_hot_column(a)
@@ -238,6 +278,14 @@ class FeatureColumnTest(test.TestCase):
     one_hot = fc.one_hot_column(weighted_ids)
     self.assertEqual(one_hot.sparse_id_column.name, "ids_weighted_by_weights")
     self.assertEqual(one_hot.length, 3)
+
+  def testOneHotColumnDeepCopy(self):
+    a = fc.sparse_column_with_keys("a", ["a", "b", "c", "d"])
+    column = fc.one_hot_column(a)
+    column_copy = copy.deepcopy(column)
+    self.assertEqual(column_copy.sparse_id_column.name, "a")
+    self.assertEqual(column.name, "a_one_hot")
+    self.assertEqual(column.length, 4)
 
   def testRealValuedColumn(self):
     a = fc.real_valued_column("aaa")
@@ -381,6 +429,14 @@ class FeatureColumnTest(test.TestCase):
       self.assertAllEqual(densified_output_eval, [[2.0], [0.0], [5.0]])
       self.assertAllEqual(densified_output_eval2, [[2, -1], [-1, 5], [9, 0]])
 
+  def testRealValuedColumnDeepCopy(self):
+    column = fc.real_valued_column(
+        "aaa", dimension=3, default_value=[1, 2, 3], dtype=dtypes.int32)
+    column_copy = copy.deepcopy(column)
+    self.assertEqual(column_copy.name, "aaa")
+    self.assertEqual(column_copy.dimension, 3)
+    self.assertEqual(column_copy.default_value, (1, 2, 3))
+
   def testBucketizedColumnNameEndsWithUnderscoreBucketized(self):
     a = fc.bucketized_column(fc.real_valued_column("aaa"), [0, 4])
     self.assertEqual(a.name, "aaa_bucketized")
@@ -411,6 +467,20 @@ class FeatureColumnTest(test.TestCase):
     self.assertEqual(a_bucketized.name, "a_bucketized")
     self.assertTupleEqual(a_bucketized.boundaries, (1., 2., 3.))
 
+  def testBucketizedColumnDeepCopy(self):
+    """Tests that we can do a deepcopy of a bucketized column.
+
+    This test requires that the bucketized column also accept boundaries
+    as tuples.
+    """
+    bucketized = fc.bucketized_column(
+        fc.real_valued_column("a"), [1., 2., 2., 3., 3.])
+    self.assertEqual(bucketized.name, "a_bucketized")
+    self.assertTupleEqual(bucketized.boundaries, (1., 2., 3.))
+    bucketized_copy = copy.deepcopy(bucketized)
+    self.assertEqual(bucketized_copy.name, "a_bucketized")
+    self.assertTupleEqual(bucketized_copy.boundaries, (1., 2., 3.))
+
   def testCrossedColumnNameCreatesSortedNames(self):
     a = fc.sparse_column_with_hash_bucket("aaa", hash_bucket_size=100)
     b = fc.sparse_column_with_hash_bucket("bbb", hash_bucket_size=100)
@@ -431,7 +501,27 @@ class FeatureColumnTest(test.TestCase):
       fc.crossed_column(
           set([b, fc.real_valued_column("real")]), hash_bucket_size=10000)
 
-  def testWeightedSparseColumnDtypes(self):
+  def testCrossedColumnDeepCopy(self):
+    a = fc.sparse_column_with_hash_bucket("aaa", hash_bucket_size=100)
+    b = fc.sparse_column_with_hash_bucket("bbb", hash_bucket_size=100)
+    bucket = fc.bucketized_column(fc.real_valued_column("cost"), [0, 4])
+    crossed = fc.crossed_column(set([b, bucket, a]), hash_bucket_size=10000)
+    crossed_copy = copy.deepcopy(crossed)
+    self.assertEqual("aaa_X_bbb_X_cost_bucketized", crossed_copy.name,
+                     "name should be generated by sorted column names")
+    self.assertEqual("aaa", crossed_copy.columns[0].name)
+    self.assertEqual("bbb", crossed_copy.columns[1].name)
+    self.assertEqual("cost_bucketized", crossed_copy.columns[2].name)
+
+  def testFloat32WeightedSparseInt32ColumnDtypes(self):
+    ids = fc.sparse_column_with_keys("ids", [42, 1, -1000], dtype=dtypes.int32)
+    weighted_ids = fc.weighted_sparse_column(ids, "weights")
+    self.assertDictEqual({
+        "ids": parsing_ops.VarLenFeature(dtypes.int32),
+        "weights": parsing_ops.VarLenFeature(dtypes.float32)
+    }, weighted_ids.config)
+
+  def testFloat32WeightedSparseStringColumnDtypes(self):
     ids = fc.sparse_column_with_keys("ids", ["marlo", "omar", "stringer"])
     weighted_ids = fc.weighted_sparse_column(ids, "weights")
     self.assertDictEqual({
@@ -439,9 +529,24 @@ class FeatureColumnTest(test.TestCase):
         "weights": parsing_ops.VarLenFeature(dtypes.float32)
     }, weighted_ids.config)
 
+  def testInt32WeightedSparseStringColumnDtypes(self):
+    ids = fc.sparse_column_with_keys("ids", ["marlo", "omar", "stringer"])
     weighted_ids = fc.weighted_sparse_column(ids, "weights", dtype=dtypes.int32)
     self.assertDictEqual({
         "ids": parsing_ops.VarLenFeature(dtypes.string),
+        "weights": parsing_ops.VarLenFeature(dtypes.int32)
+    }, weighted_ids.config)
+
+    with self.assertRaisesRegexp(ValueError,
+                                 "dtype is not convertible to float"):
+      weighted_ids = fc.weighted_sparse_column(
+          ids, "weights", dtype=dtypes.string)
+
+  def testInt32WeightedSparseInt64ColumnDtypes(self):
+    ids = fc.sparse_column_with_keys("ids", [42, 1, -1000], dtype=dtypes.int64)
+    weighted_ids = fc.weighted_sparse_column(ids, "weights", dtype=dtypes.int32)
+    self.assertDictEqual({
+        "ids": parsing_ops.VarLenFeature(dtypes.int64),
         "weights": parsing_ops.VarLenFeature(dtypes.int32)
     }, weighted_ids.config)
 
@@ -511,6 +616,69 @@ class FeatureColumnTest(test.TestCase):
         }, sc.config)
     self.assertEqual(1, sc._wide_embedding_lookup_arguments(None).vocab_size)
 
+  def testSparseColumnAcceptsDenseScalar(self):
+    """Tests that `SparseColumn`s accept dense scalar inputs."""
+    batch_size = 4
+    dense_scalar_input = [1, 2, 3, 4]
+    sparse_column = fc.sparse_column_with_integerized_feature("values", 10)
+    features = {"values":
+                constant_op.constant(dense_scalar_input, dtype=dtypes.int64)}
+    sparse_column.insert_transformed_feature(features)
+    sparse_output = features[sparse_column]
+    expected_shape = [batch_size, 1]
+    with self.test_session() as sess:
+      sparse_result = sess.run(sparse_output)
+    self.assertEquals(expected_shape, list(sparse_result.dense_shape))
+
+  def testSparseColumnIntegerizedDeepCopy(self):
+    """Tests deepcopy of sparse_column_with_integerized_feature."""
+    column = fc.sparse_column_with_integerized_feature("a", 10)
+    self.assertEqual("a", column.name)
+    column_copy = copy.deepcopy(column)
+    self.assertEqual("a", column_copy.name)
+    self.assertEqual(10, column_copy.bucket_size)
+    self.assertTrue(column_copy.is_integerized)
+
+  def testSparseColumnHashBucketDeepCopy(self):
+    """Tests deepcopy of sparse_column_with_hash_bucket."""
+    column = fc.sparse_column_with_hash_bucket("a", 10)
+    self.assertEqual("a", column.name)
+    column_copy = copy.deepcopy(column)
+    self.assertEqual("a", column_copy.name)
+    self.assertEqual(10, column_copy.bucket_size)
+    self.assertFalse(column_copy.is_integerized)
+
+  def testSparseColumnKeysDeepCopy(self):
+    """Tests deepcopy of sparse_column_with_keys."""
+    column = fc.sparse_column_with_keys(
+        "a", keys=["key0", "key1", "key2"])
+    self.assertEqual("a", column.name)
+    column_copy = copy.deepcopy(column)
+    self.assertEqual("a", column_copy.name)
+    self.assertEqual(
+        fc._SparseIdLookupConfig(  # pylint: disable=protected-access
+            keys=("key0", "key1", "key2"),
+            vocab_size=3,
+            default_value=-1),
+        column_copy.lookup_config)
+    self.assertFalse(column_copy.is_integerized)
+
+  def testSparseColumnVocabularyDeepCopy(self):
+    """Tests deepcopy of sparse_column_with_vocabulary_file."""
+    column = fc.sparse_column_with_vocabulary_file(
+        "a", vocabulary_file="path_to_file", vocab_size=3)
+    self.assertEqual("a", column.name)
+    column_copy = copy.deepcopy(column)
+    self.assertEqual("a", column_copy.name)
+    self.assertEqual(
+        fc._SparseIdLookupConfig(  # pylint: disable=protected-access
+            vocabulary_file="path_to_file",
+            num_oov_buckets=0,
+            vocab_size=3,
+            default_value=-1),
+        column_copy.lookup_config)
+    self.assertFalse(column_copy.is_integerized)
+
   def testCreateFeatureSpec(self):
     sparse_col = fc.sparse_column_with_hash_bucket(
         "sparse_column", hash_bucket_size=100)
@@ -518,10 +686,14 @@ class FeatureColumnTest(test.TestCase):
         fc.sparse_column_with_hash_bucket(
             "sparse_column_for_embedding", hash_bucket_size=10),
         dimension=4)
-    sparse_id_col = fc.sparse_column_with_keys("id_column",
-                                               ["marlo", "omar", "stringer"])
-    weighted_id_col = fc.weighted_sparse_column(sparse_id_col,
-                                                "id_weights_column")
+    str_sparse_id_col = fc.sparse_column_with_keys(
+        "str_id_column", ["marlo", "omar", "stringer"])
+    int32_sparse_id_col = fc.sparse_column_with_keys(
+        "int32_id_column", [42, 1, -1000], dtype=dtypes.int32)
+    int64_sparse_id_col = fc.sparse_column_with_keys(
+        "int64_id_column", [42, 1, -1000], dtype=dtypes.int64)
+    weighted_id_col = fc.weighted_sparse_column(str_sparse_id_col,
+                                                "str_id_weights_column")
     real_valued_col1 = fc.real_valued_column("real_valued_column1")
     real_valued_col2 = fc.real_valued_column("real_valued_column2", 5)
     real_valued_col3 = fc.real_valued_column(
@@ -534,19 +706,28 @@ class FeatureColumnTest(test.TestCase):
     a = fc.sparse_column_with_hash_bucket("cross_aaa", hash_bucket_size=100)
     b = fc.sparse_column_with_hash_bucket("cross_bbb", hash_bucket_size=100)
     cross_col = fc.crossed_column(set([a, b]), hash_bucket_size=10000)
+    one_hot_col = fc.one_hot_column(fc.sparse_column_with_hash_bucket(
+        "sparse_column_for_one_hot", hash_bucket_size=100))
+    scattered_embedding_col = fc.scattered_embedding_column(
+        "scattered_embedding_column", size=100, dimension=10, hash_key=1)
     feature_columns = set([
-        sparse_col, embedding_col, weighted_id_col, real_valued_col1,
-        real_valued_col2, real_valued_col3, bucketized_col1, bucketized_col2,
-        cross_col
+        sparse_col, embedding_col, weighted_id_col, int32_sparse_id_col,
+        int64_sparse_id_col, real_valued_col1, real_valued_col2,
+        real_valued_col3, bucketized_col1, bucketized_col2, cross_col,
+        one_hot_col, scattered_embedding_col
     ])
     expected_config = {
         "sparse_column":
             parsing_ops.VarLenFeature(dtypes.string),
         "sparse_column_for_embedding":
             parsing_ops.VarLenFeature(dtypes.string),
-        "id_column":
+        "str_id_column":
             parsing_ops.VarLenFeature(dtypes.string),
-        "id_weights_column":
+        "int32_id_column":
+            parsing_ops.VarLenFeature(dtypes.int32),
+        "int64_id_column":
+            parsing_ops.VarLenFeature(dtypes.int64),
+        "str_id_weights_column":
             parsing_ops.VarLenFeature(dtypes.float32),
         "real_valued_column1":
             parsing_ops.FixedLenFeature(
@@ -565,7 +746,11 @@ class FeatureColumnTest(test.TestCase):
         "cross_aaa":
             parsing_ops.VarLenFeature(dtypes.string),
         "cross_bbb":
-            parsing_ops.VarLenFeature(dtypes.string)
+            parsing_ops.VarLenFeature(dtypes.string),
+        "sparse_column_for_one_hot":
+            parsing_ops.VarLenFeature(dtypes.string),
+        "scattered_embedding_column":
+            parsing_ops.VarLenFeature(dtypes.string),
     }
 
     config = fc.create_feature_spec_for_parsing(feature_columns)
@@ -755,11 +940,13 @@ class FeatureColumnTest(test.TestCase):
   def testInitCrossedColumnWeightsFromCkpt(self):
     sparse_col_1 = fc.sparse_column_with_hash_bucket(
         column_name="col_1", hash_bucket_size=4)
-    sparse_col_2 = fc.sparse_column_with_hash_bucket(
-        column_name="col_2", hash_bucket_size=4)
+    sparse_col_2 = fc.sparse_column_with_keys(
+        column_name="col_2", keys=("foo", "bar", "baz"))
+    sparse_col_3 = fc.sparse_column_with_keys(
+        column_name="col_3", keys=(42, 1, -1000), dtype=dtypes.int64)
 
     crossed_col = fc.crossed_column(
-        columns=[sparse_col_1, sparse_col_2], hash_bucket_size=4)
+        columns=[sparse_col_1, sparse_col_2, sparse_col_3], hash_bucket_size=4)
 
     input_tensor = sparse_tensor_lib.SparseTensor(
         indices=[[0, 0], [1, 1], [2, 2], [3, 3]],
@@ -775,7 +962,8 @@ class FeatureColumnTest(test.TestCase):
         _, col_weights, _ = (
             feature_column_ops.weighted_sum_from_feature_columns({
                 sparse_col_1.name: input_tensor,
-                sparse_col_2.name: input_tensor
+                sparse_col_2.name: input_tensor,
+                sparse_col_3.name: input_tensor
             }, [crossed_col], 1))
         # Update the weights since default initializer initializes all weights
         # to 0.0.
@@ -798,9 +986,9 @@ class FeatureColumnTest(test.TestCase):
         columns=[sparse_col_1, sparse_col_2],
         hash_bucket_size=4,
         ckpt_to_load_from=checkpoint_path,
-        tensor_name_in_ckpt=("run_1/col_1_X_col_2/"
+        tensor_name_in_ckpt=("run_1/col_1_X_col_2_X_col_3/"
                              "weighted_sum_from_feature_columns/"
-                             "col_1_X_col_2/weights"))
+                             "col_1_X_col_2_X_col_3/weights"))
 
     with variable_scope.variable_scope("run_2"):
       # This will initialize the crossed column weights from provided checkpoint

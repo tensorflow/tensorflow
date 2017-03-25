@@ -22,6 +22,7 @@ export class DragZoomLayer extends Components.SelectionBoxLayer {
   private _animationTime = 750;
   private onStart: Function;
   private onEnd: Function;
+  private unzoomMethod: Function;
 
   /**
    * Constructs a SelectionBoxLayer with an attached DragInteraction and
@@ -35,8 +36,10 @@ export class DragZoomLayer extends Components.SelectionBoxLayer {
    * Component Group.
    * TODO(danmane) - merge this into Plottable
    */
-  constructor(xScale: QuantitativeScale<number | { valueOf(): number }>,
-              yScale: QuantitativeScale<number | { valueOf(): number }>) {
+  constructor(
+      xScale: QuantitativeScale<number|{valueOf(): number}>,
+      yScale: QuantitativeScale<number|{valueOf(): number}>,
+      unzoomMethod: Function) {
     super();
     this.xScale(xScale);
     this.yScale(yScale);
@@ -45,6 +48,7 @@ export class DragZoomLayer extends Components.SelectionBoxLayer {
     this._doubleClickInteraction = new Interactions.DoubleClick();
     this._doubleClickInteraction.attachTo(this);
     this.setupCallbacks();
+    this.unzoomMethod = unzoomMethod;
   }
 
   /**
@@ -141,22 +145,12 @@ export class DragZoomLayer extends Components.SelectionBoxLayer {
       return;
     }
     this.isZoomed = false;
-
-    // Some Plottable magic follows which ensures that when we un-zoom, we
-    // un-zoom to the current extent of the data; i.e. if new data was loaded
-    // since we zoomed, we should un-zoom to the extent of the new data.
-    // this basically replicates the autoDomain logic in Plottable.
-    // it uses the internal methods to get the same boundaries that autoDomain
-    // would, but allows us to interpolate the zoom with a nice animation.
     let xScale = this.xScale() as any;
-    let yScale = this.yScale() as any;
     xScale._domainMin = null;
     xScale._domainMax = null;
-    yScale._domainMin = null;
-    yScale._domainMax = null;
     let xDomain = xScale._getExtent();
-    let yDomain = yScale._getExtent();
-    this.interpolateZoom(xDomain[0], xDomain[1], yDomain[0], yDomain[1]);
+    this.xScale().domain(xDomain);
+    this.unzoomMethod();
   }
 
   // If we are zooming, disable interactions, to avoid contention

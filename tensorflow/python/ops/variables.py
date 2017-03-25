@@ -464,10 +464,6 @@ class Variable(object):
     You should use this instead of the variable itself to initialize another
     variable with a value that depends on the value of this variable.
 
-    Beware of using initialized_value except during initialization:
-    initialized_value causes the Variable's initializer op to be run, so running
-    this op resets the variable to the initial value.
-
     ```python
     # Initialize 'v' with a random tensor.
     v = tf.Variable(tf.truncated_normal([10, 40]))
@@ -482,16 +478,9 @@ class Variable(object):
       has run.
     """
     with ops.control_dependencies(None):
-      with ops.control_dependencies([self._initializer_op]):
-        # TODO(vrv): Change this class to not take caching_device, but
-        # to take the op to colocate the snapshot with, so we can use
-        # colocation rather than devices.
-        if self._caching_device is not None:
-          with ops.device(self._caching_device):
-            return array_ops.identity(self._variable)
-        else:
-          with ops.colocate_with(self._variable.op):
-            return array_ops.identity(self._variable)
+      return control_flow_ops.cond(is_variable_initialized(self),
+                                   self.read_value,
+                                   lambda: self.initial_value)
 
   @property
   def initial_value(self):
@@ -723,13 +712,18 @@ class Variable(object):
     """The `Graph` of this variable."""
     return self._variable.graph
 
-  def get_shape(self):
+  @property
+  def shape(self):
     """The `TensorShape` of this variable.
 
     Returns:
       A `TensorShape`.
     """
     return self._variable.get_shape()
+
+  def get_shape(self):
+    """Alias of Variable.shape."""
+    return self.shape
 
   def to_proto(self, export_scope=None):
     """Converts a `Variable` to a `VariableDef` protocol buffer.

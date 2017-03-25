@@ -93,6 +93,7 @@ set(tf_proto_text_srcs
     "tensorflow/core/framework/log_memory.proto"
     "tensorflow/core/framework/node_def.proto"
     "tensorflow/core/framework/op_def.proto"
+    "tensorflow/core/framework/remote_fused_graph_execute_info.proto"
     "tensorflow/core/framework/resource_handle.proto"
     "tensorflow/core/framework/step_stats.proto"
     "tensorflow/core/framework/summary.proto"
@@ -105,6 +106,7 @@ set(tf_proto_text_srcs
     "tensorflow/core/lib/core/error_codes.proto"
     "tensorflow/core/protobuf/config.proto"
     "tensorflow/core/protobuf/debug.proto"
+    "tensorflow/core/protobuf/rewriter_config.proto"
     "tensorflow/core/protobuf/tensor_bundle.proto"
     "tensorflow/core/protobuf/saver.proto"
     "tensorflow/core/util/memmapped_file_system.proto"
@@ -197,7 +199,6 @@ add_custom_command(OUTPUT
     COMMAND ${PYTHON_EXECUTABLE} ${tensorflow_source_dir}/tensorflow/tools/git/gen_git_source.py
     --raw_generate ${VERSION_INFO_CC}
     DEPENDS __force_rebuild)
-
 set(tf_version_srcs ${tensorflow_source_dir}/tensorflow/core/util/version_info.cc)
 
 ########################################################
@@ -236,3 +237,9 @@ add_dependencies(tf_core_framework
     tf_core_lib
     proto_text
 )
+
+if(WIN32)
+  # Cmake > 3.6 will quote this as -D"__VERSION__=\"MSVC\"" which nvcc fails on.
+  # Instead of defining this global, limit it to tf_core_framework where its used.
+  target_compile_definitions(tf_core_framework PRIVATE __VERSION__="MSVC")
+endif()

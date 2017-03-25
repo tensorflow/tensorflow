@@ -124,6 +124,7 @@ def tf_copts():
                 "/DLANG_CXX11",
                 "/D__VERSION__=\\\"MSVC\\\"",
                 "/DPLATFORM_WINDOWS",
+                "/DTF_COMPILE_LIBRARY",
                 "/DEIGEN_HAS_C99_MATH",
                 "/DTENSORFLOW_USE_EIGEN_THREADPOOL",
               ],
@@ -328,7 +329,7 @@ def tf_gen_op_wrapper_py(name, out=None, hidden=None, visibility=None, deps=[],
                     srcs_version="PY2AND3",
                     visibility=visibility,
                     deps=[
-                        "//tensorflow/python:framework_for_generated_wrappers",
+                        "//tensorflow/python:framework_for_generated_wrappers_v2",
                     ],)
 
 # Define a bazel macro that creates cc_test for tensorflow.
@@ -392,7 +393,7 @@ def tf_cc_tests(srcs, deps, name='', linkstatic=0, tags=[], size="medium",
 
 def tf_cc_test_mkl(srcs, deps, name='', linkstatic=0, tags=[], size="medium",
                     args=None):
-  tf_cc_tests(srcs, deps, linkstatic, tags=tags, size=size, args=args)
+  if_mkl(tf_cc_tests(srcs, deps, linkstatic, tags=tags, size=size, args=args))
 
 def tf_cc_tests_gpu(srcs, deps, name='', linkstatic=0, tags=[], size="medium",
                     args=None):
@@ -520,10 +521,11 @@ def tf_kernel_library(name, prefix=None, srcs=None, gpu_srcs=None, hdrs=None,
       if not gpu_srcs:
         gpu_srcs = []
       gpu_srcs = gpu_srcs + native.glob([prefix + "*.cu.cc", prefix + "*.h"],
-                                        exclude = ["*test*"])
+                                        exclude = [prefix + "*test*"])
     srcs = srcs + native.glob([prefix + "*.cc"],
-                              exclude = ["*test*", "*.cu.cc"])
-    hdrs = hdrs + native.glob([prefix + "*.h"], exclude = ["*test*", "*.cu.h"])
+                              exclude = [prefix + "*test*", prefix + "*.cu.cc"])
+    hdrs = hdrs + native.glob([prefix + "*.h"], exclude = [prefix + "*test*",
+                                                           prefix + "*.cu.h"])
 
   cuda_deps = ["//tensorflow/core:gpu_lib"]
   if gpu_srcs:
@@ -679,7 +681,7 @@ def cc_header_only_library(name, deps=[], **kwargs):
 
 def tf_custom_op_library_additional_deps():
   return [
-      "//:protobuf_headers",
+      "@protobuf//:protobuf_headers",
       "//third_party/eigen3",
       "//tensorflow/core:framework_headers_lib",
   ]
@@ -768,6 +770,18 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[]):
                        ],
                        "//tensorflow:darwin": [],
                    }),
+  )
+
+def tf_custom_op_py_library(name, srcs=[], dso=[], kernels=[],
+                            srcs_version="PY2AND3", visibility=None, deps=[]):
+  kernels = kernels  # unused argument
+  native.py_library(
+      name=name,
+      data=dso,
+      srcs=srcs,
+      srcs_version=srcs_version,
+      visibility=visibility,
+      deps=deps,
   )
 
 def tf_extension_linkopts():

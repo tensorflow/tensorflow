@@ -41,7 +41,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/edgeset.h"
-#include "tensorflow/core/lib/core/arena.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -167,6 +166,18 @@ void SetMemory(NodeExecStats* nt, OpKernelContext* ctx) {
       memory->set_live_bytes(std::get<2>(sizes));
     }
   }
+  auto* ms = nt->mutable_memory_stats();
+  ms->set_host_temp_memory_size(ctx->host_temp_memory_size());
+  ms->set_device_temp_memory_size(ctx->device_temp_memory_size());
+  for (const auto& alloc_id : ctx->host_persistent_alloc_ids()) {
+    ms->mutable_host_persistent_tensor_alloc_ids()->Add(alloc_id);
+  }
+  for (const auto& alloc_id : ctx->device_persistent_alloc_ids()) {
+    ms->mutable_device_persistent_tensor_alloc_ids()->Add(alloc_id);
+  }
+  ms->set_host_persistent_memory_size(ctx->host_persistent_memory_allocated());
+  ms->set_device_persistent_memory_size(
+      ctx->device_persistent_memory_allocated());
 }
 
 void SetReferencedTensors(NodeExecStats* nt,
@@ -186,9 +197,9 @@ class GraphView;
 
 struct EdgeInfo {
   int dst_id;
-  int16 output_slot;
+  int output_slot : 31;
   // true if this is the last info for output_slot in the EdgeInfo list.
-  bool is_last;
+  bool is_last : 1;
   int input_slot;
 };
 
@@ -290,7 +301,7 @@ typedef gtl::InlinedVector<AllocatorAttributes, 4> AllocatorAttributeVec;
 // Immutable view of a Graph organized for efficient execution.
 class GraphView {
  public:
-  GraphView() : arena_(8192) {}
+  GraphView() : space_(nullptr) {}
   ~GraphView();
 
   void Initialize(const Graph* g);
@@ -299,15 +310,21 @@ class GraphView {
   NodeItem* node(int id) const {
     DCHECK_GE(id, 0);
     DCHECK_LT(id, num_nodes_);
-    return nodes_[id];
+    uint32 offset = node_offsets_[id];
+    return ((offset == kuint32max)
+                ? nullptr
+                : reinterpret_cast<NodeItem*>(space_ + node_offsets_[id]));
   }
 
  private:
-  void InitializeNode(const Node* n);
+  char* InitializeNode(char* ptr, const Node* n);
+  size_t NodeItemBytes(const Node* n);
 
   int32 num_nodes_ = 0;
-  NodeItem** nodes_ = nullptr;  // array of size "graph_.num_node_ids()"
-  core::Arena arena_;           // NodeItem objects are allocated here
+  uint32* node_offsets_ = nullptr;  // array of size "graph_.num_node_ids()"
+  // node_offsets_[id] holds the byte offset for node w/ "id" in space_
+
+  char* space_;  // NodeItem objects are allocated here
 
   TF_DISALLOW_COPY_AND_ASSIGN(GraphView);
 };
@@ -315,7 +332,7 @@ class GraphView {
 class ExecutorImpl : public Executor {
  public:
   ExecutorImpl(const LocalExecutorParams& p, const Graph* g)
-      : params_(p), graph_(g) {
+      : params_(p), graph_(g), gview_() {
     CHECK(p.create_kernel != nullptr);
     CHECK(p.delete_kernel != nullptr);
   }
@@ -416,9 +433,9 @@ class ExecutorImpl : public Executor {
 // connected to n by a single edge, but might be a downstream
 // consumer of n's output by reference.  *attr is updated with any
 // necessary attributes.
-static Status InferAllocAttr(const Node* n, const Node* dst,
-                             const DeviceNameUtils::ParsedName& local_dev_name,
-                             AllocatorAttributes* attr);
+Status InferAllocAttr(const Node* n, const Node* dst,
+                      const DeviceNameUtils::ParsedName& local_dev_name,
+                      AllocatorAttributes* attr);
 
 GraphView::~GraphView() {
   static_assert(std::is_trivially_destructible<AllocatorAttributes>::value,
@@ -429,15 +446,14 @@ GraphView::~GraphView() {
     NodeItem* n = node(i);
     if (n != nullptr) {
       n->NodeItem::~NodeItem();
-      // Memory for "n" itself is held in arena_ & gets cleaned up automatically
+      // Memory for "n" itself is held in space_ & gets cleaned up below
     }
   }
-  delete[] nodes_;
+  delete[] node_offsets_;
+  delete[] space_;
 }
 
-void GraphView::InitializeNode(const Node* n) {
-  const int id = n->id();
-  CHECK(nodes_[id] == nullptr);
+size_t GraphView::NodeItemBytes(const Node* n) {
   const int num_output_edges = n->out_edges().size();
   const int num_inputs = n->num_inputs();
   const int num_outputs = n->num_outputs();
@@ -445,7 +461,7 @@ void GraphView::InitializeNode(const Node* n) {
   // Compute number of bytes needed for NodeItem and variable length data.
   // We do not subtract sizeof(var) since num_inputs/num_outputs might
   // both be zero.
-  const size_t bytes =
+  const size_t raw_bytes =
       sizeof(NodeItem)                             // Fixed
       + num_output_edges * sizeof(EdgeInfo)        // output_edges[...]
       + num_outputs * sizeof(AllocatorAttributes)  // output_attr[...]
@@ -464,10 +480,35 @@ void GraphView::InitializeNode(const Node* n) {
                 "NodeItem must be aligned with AllocatorAttributes");
   static_assert(sizeof(EdgeInfo) % alignof(AllocatorAttributes) == 0,
                 "EdgeInfo must be aligned with AllocatorAttributes");
-  NodeItem* item = reinterpret_cast<NodeItem*>(
-      arena_.AllocAligned(bytes, sizeof(NodeItem*)));
+  const size_t bytes =
+      ((raw_bytes + kItemAlignment - 1) / kItemAlignment) * kItemAlignment;
+  return bytes;
+}
+
+char* GraphView::InitializeNode(char* ptr, const Node* n) {
+  const int id = n->id();
+  CHECK(node_offsets_[id] == kuint32max);  // Initial value in constructor
+
+  const size_t bytes = NodeItemBytes(n);
+  constexpr size_t kItemAlignment = sizeof(NodeItem*);
+  CHECK_EQ(reinterpret_cast<uintptr_t>(ptr) % kItemAlignment, 0);
+  NodeItem* item = reinterpret_cast<NodeItem*>(ptr);
+
+  // We store a 32-bit offset relative to the beginning of space_, so that we
+  // only need an array of 32-bit values to map from node id to the NodeItem*,
+  // (versus 64 bits on most machines if we just stored an array of NodeItem*
+  // pointers). Casting to int64 is needed on 32bit CPU to avoid comparing
+  // values as "int" vs "size_t" in CHECK_LE.
+  CHECK_LE(static_cast<int64>(ptr - space_), kuint32max);
+  const uint32 offset = ptr - space_;
+  node_offsets_[id] = offset;
+  ptr += bytes;
+
+  const int num_output_edges = n->out_edges().size();
+  const int num_inputs = n->num_inputs();
+  const int num_outputs = n->num_outputs();
+
   new (item) NodeItem();
-  nodes_[id] = item;
   item->num_inputs = num_inputs;
   item->num_outputs = num_outputs;
   item->num_output_edges = num_output_edges;
@@ -481,11 +522,12 @@ void GraphView::InitializeNode(const Node* n) {
   EdgeInfo* dst_edge = item->output_edge_base();
   for (auto e : n->out_edges()) {
     dst_edge->dst_id = e->dst()->id();
-    CHECK_LT(e->src_output(), 32768);  // Must fit in int16
+    CHECK_LE(e->src_output(), ((int32)0x3FFFFFFF));  // Must fit in 31 bits
     dst_edge->output_slot = e->src_output();
     dst_edge->is_last = false;
-    if (dst_edge->output_slot >= 0) {
-      last_indices[dst_edge->output_slot] = dst_edge;
+    const int output_slot = dst_edge->output_slot;
+    if (output_slot >= 0) {
+      last_indices[output_slot] = dst_edge;
     }
     dst_edge->input_slot = e->dst_input();
     dst_edge++;
@@ -513,24 +555,32 @@ void GraphView::InitializeNode(const Node* n) {
     output_types[i] = static_cast<uint8>(n->output_type(i));
     DCHECK_EQ(item->output_type(i), n->output_type(i));
   }
+  return ptr;
 }
 
 void GraphView::Initialize(const Graph* g) {
-  CHECK(nodes_ == nullptr);
+  CHECK(node_offsets_ == nullptr);
   const int num_nodes = g->num_node_ids();
   num_nodes_ = num_nodes;
-  nodes_ = new NodeItem*[num_nodes];
-  for (int i = 0; i < num_nodes; i++) {
-    nodes_[i] = nullptr;
+  size_t total_bytes = 0;
+  for (const Node* n : g->nodes()) {
+    total_bytes += NodeItemBytes(n);
   }
 
-  for (const Node* n : g->nodes()) {
-    InitializeNode(n);
+  node_offsets_ = new uint32[num_nodes];
+  for (int i = 0; i < num_nodes; i++) {
+    node_offsets_[i] = kuint32max;
   }
+
+  space_ = new char[total_bytes];  // NodeItem objects are allocated here
+  char* ptr = space_;
+  for (const Node* n : g->nodes()) {
+    ptr = InitializeNode(ptr, n);
+  }
+  CHECK_EQ(ptr, space_ + total_bytes);
 }
 
-static void GetMaxPendingCounts(const Node* n, int* max_pending,
-                                int* max_dead_count) {
+void GetMaxPendingCounts(const Node* n, int* max_pending, int* max_dead_count) {
   const int num_in_edges = n->in_edges().size();
   int initial_count;
   if (IsMerge(n)) {
@@ -641,31 +691,33 @@ Status GraphView::SetAllocAttrs(const Graph* g, const Device* device) {
     // Examine the out edges of each node looking for special use
     // cases that may affect memory allocation attributes.
     for (auto e : n->out_edges()) {
-      AllocatorAttributes attr;
-      s = InferAllocAttr(n, e->dst(), local_dev_name, &attr);
-      if (!s.ok()) return s;
-      if (attr.value != 0) {
-        if (!e->IsControlEdge()) {
+      if (!e->IsControlEdge()) {
+        AllocatorAttributes attr;
+        s = InferAllocAttr(n, e->dst(), local_dev_name, &attr);
+        if (!s.ok()) return s;
+        if (attr.value != 0) {
           attrs[e->src_output()].Merge(attr);
         }
       }
     }
 
     for (int out = 0; out < n->num_outputs(); out++) {
-      OpKernel* op_kernel = item->kernel;
+      const OpKernel* op_kernel = item->kernel;
       DCHECK_LT(out, op_kernel->output_memory_types().size());
       bool on_host = op_kernel->output_memory_types()[out] == HOST_MEMORY;
-      AllocatorAttributes h;
-      h.set_on_host(on_host);
-      attrs[out].Merge(h);
+      if (on_host) {
+        AllocatorAttributes h;
+        h.set_on_host(on_host);
+        attrs[out].Merge(h);
+      }
     }
   }
   return s;
 }
 
-static Status InferAllocAttr(const Node* n, const Node* dst,
-                             const DeviceNameUtils::ParsedName& local_dev_name,
-                             AllocatorAttributes* attr) {
+Status InferAllocAttr(const Node* n, const Node* dst,
+                      const DeviceNameUtils::ParsedName& local_dev_name,
+                      AllocatorAttributes* attr) {
   Status s;
   // Note that it's possible for *n to be a Recv and *dst to be a Send,
   // so these two cases are not mutually exclusive.
@@ -719,11 +771,6 @@ static Status InferAllocAttr(const Node* n, const Node* dst,
     } else {
       VLOG(2) << "default alloc case local type " << local_dev_name.type
               << " remote type " << parsed_dst_name.type;
-    }
-  } else if (dst->type_string() == "ToFloat") {
-    for (auto e : dst->out_edges()) {
-      s = InferAllocAttr(n, e->dst(), local_dev_name, attr);
-      if (!s.ok()) return s;
     }
   }
   return s;
@@ -796,6 +843,7 @@ class ExecutorState {
       if (val_field_is_set) {
         val.Destroy();
         val_field_is_set = false;
+        has_value = false;
       }
     }
 
@@ -1506,7 +1554,8 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
 
     if (vlog_) {
       VLOG(1) << "Process node: " << id << " step " << params.step_id << " "
-              << SummarizeNodeDef(node->def());
+              << SummarizeNodeDef(node->def())
+              << " is dead: " << tagged_node.is_dead;
     }
 
     Entry* input_tensors = GetInputTensors(input_frame, input_iter);
@@ -1689,11 +1738,14 @@ Status ExecutorState::PrepareInputs(const NodeItem& item, Entry* first_input,
       }
       inp->tensor = entry->val.get();
     } else {
-      if (!entry->ref->IsInitialized() && !IsInitializationOp(item.node)) {
-        return AttachDef(
-            errors::FailedPrecondition("Attempting to use uninitialized value ",
-                                       item.kernel->def().input(i)),
-            item.kernel->def());
+      {
+        mutex_lock ml(*entry->ref_mu);
+        if (!entry->ref->IsInitialized() && !IsInitializationOp(item.node)) {
+          return AttachDef(errors::FailedPrecondition(
+                               "Attempting to use uninitialized value ",
+                               item.kernel->def().input(i)),
+                           item.kernel->def());
+        }
       }
       if (expect_ref) {
         inp->mutex_if_ref = entry->ref_mu;
@@ -1770,8 +1822,13 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
       out->alloc_attr = ctx->output_alloc_attr(i);
 
       // Sanity check of output tensor types.
-      DataType dtype = val->dtype();
-      if (val.is_ref()) dtype = MakeRefType(dtype);
+      DataType dtype;
+      if (val.is_ref()) {
+        mutex_lock ml(*val.mutex_if_ref);
+        dtype = MakeRefType(val->dtype());
+      } else {
+        dtype = val->dtype();
+      }
       if (dtype == item.output_type(i)) {
         if (stats && val.tensor->IsInitialized()) {
           nodestats::SetOutput(stats, i, val.tensor);
@@ -1791,7 +1848,8 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
                                           ctx->step_id(), i, to_log);
           }
 
-          // Experimental: debugger (tfdb) access to intermediate node outputs.
+          // Experimental: debugger (tfdb) access to intermediate node
+          // outputs.
           if (impl_->params_.node_outputs_cb != nullptr) {
             s.Update(impl_->params_.node_outputs_cb(item.node->name(), i,
                                                     out->ref, true, ctx));
@@ -2319,6 +2377,7 @@ void ExecutorState::FrameState::ActivateNodes(const NodeItem* item,
   IterationState* iter_state = GetIteration(iter);
   const int num_output_edges = item->num_output_edges;
   const EdgeInfo* edges = item->output_edge_list();
+  Entry* input_tensors = iter_state->input_tensors;
   for (int out_index = 0; out_index < num_output_edges; out_index++) {
     const EdgeInfo& e = edges[out_index];
     const int dst_id = e.dst_id;
@@ -2339,8 +2398,9 @@ void ExecutorState::FrameState::ActivateNodes(const NodeItem* item,
     bool dst_need_input = !is_control_edge;
     if (dst_item->is_merge) {
       // A merge node is ready if all control inputs have arrived and either
-      // a) a live data input becomes available or b) all data inputs are dead.
-      // For Merge, pending's LSB is set iff a live data input has arrived.
+      // a) a live data input becomes available or b) all data inputs are
+      // dead. For Merge, pending's LSB is set iff a live data input has
+      // arrived.
       if (is_control_edge) {
         iter_state->decrement_pending(dst_pending_id, 2);
         int count = iter_state->pending(dst_pending_id);
@@ -2385,8 +2445,7 @@ void ExecutorState::FrameState::ActivateNodes(const NodeItem* item,
 
     if (dst_need_input) {
       const int dst_slot = e.input_slot;
-      Entry* input_tensors = iter_state->input_tensors;
-      int dst_loc = dst_item->input_start + dst_slot;
+      const int dst_loc = dst_item->input_start + dst_slot;
       if (e.is_last) {
         input_tensors[dst_loc] = std::move((*outputs)[src_slot]);
       } else {

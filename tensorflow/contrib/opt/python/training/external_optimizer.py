@@ -100,7 +100,7 @@ class ExternalOptimizerInterface(object):
                                                 accumulated_dims[1:])]
 
   def minimize(self, session=None, feed_dict=None, fetches=None,
-               step_callback=None, loss_callback=None):
+               step_callback=None, loss_callback=None, **run_kwargs):
     """Minimize a scalar `Tensor`.
 
     Variables subject to optimization are updated in-place at the end of
@@ -120,6 +120,7 @@ class ExternalOptimizerInterface(object):
         flattened into a single vector.
       loss_callback: A function to be called every time the loss and gradients
         are computed, with evaluated fetches supplied as positional arguments.
+      run_kwargs: kwargs to pass to `session.run`.
     """
     session = session or ops.get_default_session()
     feed_dict = feed_dict or {}
@@ -161,7 +162,8 @@ class ExternalOptimizerInterface(object):
 
     # Set optimization variables to their new values.
     session.run(self._var_updates,
-                feed_dict=dict(zip(self._update_placeholders, var_vals)))
+                feed_dict=dict(zip(self._update_placeholders, var_vals)),
+                **run_kwargs)
 
   def _minimize(self, initial_val, loss_grad_func, equality_funcs,
                 equality_grad_funcs, inequality_funcs, inequality_grad_funcs,

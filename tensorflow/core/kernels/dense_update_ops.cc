@@ -152,6 +152,7 @@ typedef Eigen::SyclDevice SYCLDevice;
       DenseUpdateOp<SYCLDevice, type, DenseUpdateType::SUB>);
 
 REGISTER_SYCL_KERNEL(float);
+REGISTER_SYCL_KERNEL(double);
 #undef REGISTER_SYCL_KERNEL
 #endif
 

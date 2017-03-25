@@ -19,12 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import itertools
-import sys
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
@@ -561,6 +555,13 @@ class LSTMTest(test.TestCase):
             sequence_length=sequence_length,
             scope=scope)
         scope.reuse_variables()
+        # TODO(ebrevdo): For this test, we ensure values are identical and
+        # therefore the weights here are tied.  In the future, we may consider
+        # making the state_is_tuple property mutable so we can avoid
+        # having to do this - especially if users ever need to reuse
+        # the parameters from different RNNCell instances.  Right now,
+        # this seems an unrealistic use case except for testing.
+        cell_tuple._scope = cell_notuple._scope  # pylint: disable=protected-access
         outputs_tuple, state_tuple = core_rnn.static_rnn(
             cell_tuple,
             inputs,
@@ -1325,6 +1326,7 @@ class BidirectionalRNNTest(test.TestCase):
                                      use_shape,
                                      use_state_tuple,
                                      use_time_major,
+                                     use_sequence_length,
                                      scope=None):
     num_units = 3
     input_size = 5
@@ -1333,7 +1335,8 @@ class BidirectionalRNNTest(test.TestCase):
 
     initializer = init_ops.random_uniform_initializer(
         -0.01, 0.01, seed=self._seed)
-    sequence_length = array_ops.placeholder(dtypes.int64)
+    sequence_length = (
+        array_ops.placeholder(dtypes.int64) if use_sequence_length else None)
     cell_fw = core_rnn_cell.LSTMCell(
         num_units, initializer=initializer, state_is_tuple=use_state_tuple)
     cell_bw = core_rnn_cell.LSTMCell(
@@ -1368,25 +1371,27 @@ class BidirectionalRNNTest(test.TestCase):
     return input_value, inputs, outputs, state_fw, state_bw, sequence_length
 
   def _testBidirectionalDynamicRNN(self, use_gpu, use_shape, use_state_tuple,
-                                   use_time_major):
+                                   use_time_major, use_sequence_length):
     with self.test_session(use_gpu=use_gpu, graph=ops_lib.Graph()) as sess:
       input_value, inputs, outputs, state_fw, state_bw, sequence_length = (
           self._createBidirectionalDynamicRNN(use_gpu, use_shape,
-                                              use_state_tuple, use_time_major))
+                                              use_state_tuple, use_time_major,
+                                              use_sequence_length))
       variables_lib.global_variables_initializer().run()
       # Run with pre-specified sequence length of 2, 3
+      feed_dict = (
+          {sequence_length: [2, 3]} if use_sequence_length else {})
+      feed_dict.update({inputs[0]: input_value})
       if use_state_tuple:
         out, c_fw, m_fw, c_bw, m_bw = sess.run(
             [outputs, state_fw[0], state_fw[1], state_bw[0], state_bw[1]],
-            feed_dict={inputs[0]: input_value,
-                       sequence_length: [2, 3]})
+            feed_dict=feed_dict)
         s_fw = (c_fw, m_fw)
         s_bw = (c_bw, m_bw)
       else:
+        feed_dict.update({inputs[0]: input_value})
         out, s_fw, s_bw = sess.run(
-            [outputs, state_fw, state_bw],
-            feed_dict={inputs[0]: input_value,
-                       sequence_length: [2, 3]})
+            [outputs, state_fw, state_bw], feed_dict=feed_dict)
 
       # Since the forward and backward LSTM cells were initialized with the
       # same parameters, the forward and backward output has to be the same,
@@ -1395,45 +1400,53 @@ class BidirectionalRNNTest(test.TestCase):
       # - forward output:  out[][][depth] for 0 <= depth < 3
       # - backward output: out[][][depth] for 4 <= depth < 6
       #
-      # First sequence in batch is length=2
-      # Check that the time=0 forward output is equal to time=1 backward output
       if not use_time_major:
         out = np.swapaxes(out, 0, 1)
-      self.assertEqual(out[0][0][0], out[1][0][3])
-      self.assertEqual(out[0][0][1], out[1][0][4])
-      self.assertEqual(out[0][0][2], out[1][0][5])
-      # Check that the time=1 forward output is equal to time=0 backward output
-      self.assertEqual(out[1][0][0], out[0][0][3])
-      self.assertEqual(out[1][0][1], out[0][0][4])
-      self.assertEqual(out[1][0][2], out[0][0][5])
 
-      # Second sequence in batch is length=3
-      # Check that the time=0 forward output is equal to time=2 backward output
-      self.assertEqual(out[0][1][0], out[2][1][3])
-      self.assertEqual(out[0][1][1], out[2][1][4])
-      self.assertEqual(out[0][1][2], out[2][1][5])
-      # Check that the time=1 forward output is equal to time=1 backward output
-      self.assertEqual(out[1][1][0], out[1][1][3])
-      self.assertEqual(out[1][1][1], out[1][1][4])
-      self.assertEqual(out[1][1][2], out[1][1][5])
-      # Check that the time=2 forward output is equal to time=0 backward output
-      self.assertEqual(out[2][1][0], out[0][1][3])
-      self.assertEqual(out[2][1][1], out[0][1][4])
-      self.assertEqual(out[2][1][2], out[0][1][5])
-      # Via the reasoning above, the forward and backward final state should be
-      # exactly the same
-      self.assertAllClose(s_fw, s_bw)
+      if use_sequence_length:
+        # First sequence in batch is length=2
+        # Check that the t=0 forward output is equal to t=1 backward output
+        self.assertEqual(out[0][0][0], out[1][0][3])
+        self.assertEqual(out[0][0][1], out[1][0][4])
+        self.assertEqual(out[0][0][2], out[1][0][5])
+        # Check that the t=1 forward output is equal to t=0 backward output
+        self.assertEqual(out[1][0][0], out[0][0][3])
+        self.assertEqual(out[1][0][1], out[0][0][4])
+        self.assertEqual(out[1][0][2], out[0][0][5])
+
+        # Second sequence in batch is length=3
+        # Check that the t=0 forward output is equal to t=2 backward output
+        self.assertEqual(out[0][1][0], out[2][1][3])
+        self.assertEqual(out[0][1][1], out[2][1][4])
+        self.assertEqual(out[0][1][2], out[2][1][5])
+        # Check that the t=1 forward output is equal to t=1 backward output
+        self.assertEqual(out[1][1][0], out[1][1][3])
+        self.assertEqual(out[1][1][1], out[1][1][4])
+        self.assertEqual(out[1][1][2], out[1][1][5])
+        # Check that the t=2 forward output is equal to t=0 backward output
+        self.assertEqual(out[2][1][0], out[0][1][3])
+        self.assertEqual(out[2][1][1], out[0][1][4])
+        self.assertEqual(out[2][1][2], out[0][1][5])
+        # Via the reasoning above, the forward and backward final state should
+        # be exactly the same
+        self.assertAllClose(s_fw, s_bw)
+      else:  # not use_sequence_length
+        max_length = 8  # from createBidirectionalDynamicRNN
+        for t in range(max_length):
+          self.assertAllEqual(out[t, :, 0:3], out[max_length - t - 1, :, 3:6])
+        self.assertAllClose(s_fw, s_bw)
 
   def testBidirectionalDynamicRNN(self):
-    # Generate 2^4 option values
-    # from [True, True, True, True] to [False, False, False, False]
-    options = itertools.product([True, False], repeat=4)
+    # Generate 2^5 option values
+    # from [True, True, True, True, True] to [False, False, False, False, False]
+    options = itertools.product([True, False], repeat=5)
     for option in options:
       self._testBidirectionalDynamicRNN(
           use_gpu=option[0],
           use_shape=option[1],
           use_state_tuple=option[2],
-          use_time_major=option[3])
+          use_time_major=option[3],
+          use_sequence_length=option[4])
 
   def _testScope(self, factory, prefix="prefix", use_outer_scope=True):
     # REMARKS: factory(scope) is a function accepting a scope
@@ -1477,6 +1490,7 @@ class BidirectionalRNNTest(test.TestCase):
             use_gpu=True,
             use_shape=True,
             use_state_tuple=True,
+            use_sequence_length=True,
             use_time_major=use_time_major,
             scope=scope)
 

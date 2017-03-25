@@ -263,8 +263,8 @@ Status CreateXlaArgs(const Graph& graph,
   TF_RETURN_IF_ERROR(CollectArgNodes(graph, &arg_nodes));
   for (const Node* node : arg_nodes) {
     XlaCompiler::Argument arg;
+    arg.kind = XlaCompiler::Argument::kParameter;
     TF_RETURN_IF_ERROR(GetNodeAttr(node->def(), "T", &arg.type));
-    TF_RETURN_IF_ERROR(GetNodeAttr(node->def(), "index", &arg.parameter));
     TF_RETURN_IF_ERROR(GetNodeAttr(node->def(), kShapeAttr, &arg.shape));
     TF_RETURN_IF_ERROR(GetNodeAttr(node->def(), kDebugNameAttr, &arg.name));
     xla_args->push_back(arg);
@@ -298,8 +298,7 @@ Status ConvertGraphToXla(xla::LocalClient* client, std::unique_ptr<Graph> graph,
       graph->versions().producer(), flib_def, OptimizerOptions()));
   XlaCompiler::CompilationResult result;
   TF_RETURN_IF_ERROR(compiler.CompileGraph("tfcompile", std::move(graph),
-                                           flib_run.get(), xla_args,
-                                           false /* use_tuple_arg */, &result));
+                                           flib_run.get(), xla_args, &result));
   *has_context_arg = result.requires_runtime_context;
   *computation = std::move(result.computation);
 

@@ -34,4 +34,15 @@ REGISTER_KERNEL_BUILDER(Name("GreaterEqual")
                         BinaryOp<CPUDevice, functor::greater_equal<int32>>);
 #endif
 
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER(BinaryOp, SYCL, "GreaterEqual", functor::greater_equal, float);
+
+REGISTER_KERNEL_BUILDER(Name("GreaterEqual")
+                            .Device(DEVICE_SYCL)
+                            .HostMemory("x")
+                            .HostMemory("y")
+                            .HostMemory("z")
+                            .TypeConstraint<int32>("T"),
+                        BinaryOp<CPUDevice, functor::greater_equal<int32>>);
+#endif // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

@@ -22,11 +22,13 @@ import curses
 from curses import textpad
 import signal
 import sys
+import threading
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.debug.cli import base_ui
 from tensorflow.python.debug.cli import command_parser
+from tensorflow.python.debug.cli import curses_widgets
 from tensorflow.python.debug.cli import debugger_cli_common
 from tensorflow.python.debug.cli import tensor_format
 
@@ -202,8 +204,12 @@ class CursesUI(base_ui.BaseUI):
 
   CLI_TERMINATOR_KEY = 7  # Terminator key for input text box.
   CLI_TAB_KEY = ord("\t")
+  BACKSPACE_KEY = ord("\b")
   REGEX_SEARCH_PREFIX = "/"
   TENSOR_INDICES_NAVIGATION_PREFIX = "@"
+
+  _NAVIGATION_FORWARD_COMMAND = "next"
+  _NAVIGATION_BACK_COMMAND = "prev"
 
   # Limit screen width to work around the limitation of the curses library that
   # it may return invalid x coordinates for large values.
@@ -212,6 +218,11 @@ class CursesUI(base_ui.BaseUI):
   # Possible Enter keys. 343 is curses key code for the num-pad Enter key when
   # num lock is off.
   CLI_CR_KEYS = [ord("\n"), ord("\r"), 343]
+
+  _KEY_MAP = {
+      127: curses.KEY_BACKSPACE,  # Backspace
+      curses.KEY_DC: 4,  # Delete
+  }
 
   _FOREGROUND_COLORS = {
       "white": curses.COLOR_WHITE,
@@ -234,6 +245,11 @@ class CursesUI(base_ui.BaseUI):
   _ERROR_TOAST_COLOR_PAIR = "red_on_white"
   _INFO_TOAST_COLOR_PAIR = "blue_on_white"
   _STATUS_BAR_COLOR_PAIR = "black_on_white"
+  _UI_WAIT_COLOR_PAIR = "magenta_on_white"
+
+  _UI_WAIT_MESSAGE = "Processing..."
+
+  _single_instance_lock = threading.Lock()
 
   def __init__(self, on_ui_exit=None):
     """Constructor of CursesUI.
@@ -269,6 +285,8 @@ class CursesUI(base_ui.BaseUI):
 
     self._pending_command = ""
 
+    self._nav_history = curses_widgets.CursesNavigationHistory(10)
+
     # State related to screen output.
     self._output_pad = None
     self._output_pad_row = 0
@@ -276,8 +294,12 @@ class CursesUI(base_ui.BaseUI):
     self._curr_unwrapped_output = None
     self._curr_wrapped_output = None
 
-    # Register signal handler for SIGINT.
-    signal.signal(signal.SIGINT, self._interrupt_handler)
+    try:
+      # Register signal handler for SIGINT.
+      signal.signal(signal.SIGINT, self._interrupt_handler)
+    except ValueError:
+      # Running in a child thread, can't catch signals.
+      pass
 
     self.register_command_handler(
         "mouse",
@@ -301,11 +323,15 @@ class CursesUI(base_ui.BaseUI):
 
     self._title_row = 0
 
+    # Row index of the Navigation Bar (i.e., the bar that contains forward and
+    # backward buttons and displays the current command line).
+    self._nav_bar_row = 1
+
     # Top row index of the output pad.
     # A "pad" is a curses object that holds lines of text and not limited to
     # screen size. It can be rendered on the screen partially with scroll
     # parameters specified.
-    self._output_top_row = 1
+    self._output_top_row = 2
 
     # Number of rows that the output pad has.
     self._output_num_rows = (
@@ -408,8 +434,12 @@ class CursesUI(base_ui.BaseUI):
     curses.echo()
     curses.endwin()
 
-    # Remove SIGINT handler.
-    signal.signal(signal.SIGINT, signal.SIG_DFL)
+    try:
+      # Remove SIGINT handler.
+      signal.signal(signal.SIGINT, signal.SIG_DFL)
+    except ValueError:
+     # Can't catch signals unless you're the main thread.
+      pass
 
   def run_ui(self,
              init_command=None,
@@ -417,6 +447,11 @@ class CursesUI(base_ui.BaseUI):
              title_color=None,
              enable_mouse_on_start=True):
     """Run the CLI: See the doc of base_ui.BaseUI.run_ui for more details."""
+
+    # Only one instance of the Curses UI can be running at a time, since
+    # otherwise they would try to both read from the same keystrokes, and write
+    # to the same screen.
+    self._single_instance_lock.acquire()
 
     self._screen_launch(enable_mouse_on_start=enable_mouse_on_start)
 
@@ -434,6 +469,8 @@ class CursesUI(base_ui.BaseUI):
       self._on_ui_exit()
 
     self._screen_terminate()
+
+    self._single_instance_lock.release()
 
     return exit_token
 
@@ -477,7 +514,11 @@ class CursesUI(base_ui.BaseUI):
         existing_command = self._pending_command
       self._screen_create_command_textbox(existing_command)
 
-      command, terminator, pending_command_changed = self._get_user_command()
+      try:
+        command, terminator, pending_command_changed = self._get_user_command()
+      except debugger_cli_common.CommandLineExit as e:
+        return e.exit_token
+
       if not command and terminator != self.CLI_TAB_KEY:
         continue
 
@@ -534,6 +575,34 @@ class CursesUI(base_ui.BaseUI):
     if self._max_x > self._SCREEN_WIDTH_LIMIT:
       self._max_x = self._SCREEN_WIDTH_LIMIT
 
+  def _navigate_screen_output(self, command):
+    """Navigate in screen output history.
+
+    Args:
+      command: (`str`) the navigation command, from
+        {self._NAVIGATION_FORWARD_COMMAND, self._NAVIGATION_BACK_COMMAND}.
+    """
+    if command == self._NAVIGATION_FORWARD_COMMAND:
+      if self._nav_history.can_go_forward():
+        item = self._nav_history.go_forward()
+        scroll_position = item.scroll_position
+      else:
+        self._toast("At the LATEST in navigation history!",
+                    color="red_on_white")
+        return
+    else:
+      if self._nav_history.can_go_back():
+        item = self._nav_history.go_back()
+        scroll_position = item.scroll_position
+      else:
+        self._toast("At the OLDEST in navigation history!",
+                    color="red_on_white")
+        return
+
+    self._display_output(item.screen_output)
+    if scroll_position != 0:
+      self._scroll_output(_SCROLL_TO_LINE_INDEX, line_index=scroll_position)
+
   def _dispatch_command(self, command):
     """Dispatch user command.
 
@@ -545,10 +614,17 @@ class CursesUI(base_ui.BaseUI):
       A non-None value means the UI loop should exit.
     """
 
+    if self._output_pad:
+      self._toast(self._UI_WAIT_MESSAGE, color=self._UI_WAIT_COLOR_PAIR)
+
     if command in self.CLI_EXIT_COMMANDS:
       # Explicit user command-triggered exit: EXPLICIT_USER_EXIT as the exit
       # token.
       return debugger_cli_common.EXPLICIT_USER_EXIT
+    elif (command == self._NAVIGATION_FORWARD_COMMAND or
+          command == self._NAVIGATION_BACK_COMMAND):
+      self._navigate_screen_output(command)
+      return
 
     if command:
       self._command_history_store.add_command(command)
@@ -578,7 +654,6 @@ class CursesUI(base_ui.BaseUI):
           indices = command_parser.parse_indices(indices_str)
           omitted, line_index, _, _ = tensor_format.locate_tensor_element(
               self._curr_wrapped_output, indices)
-
           if not omitted:
             self._scroll_output(
                 _SCROLL_TO_LINE_INDEX, line_index=line_index)
@@ -618,6 +693,8 @@ class CursesUI(base_ui.BaseUI):
 
     if exit_token is not None:
       return exit_token
+
+    self._nav_history.add_item(command, screen_output, 0)
 
     self._display_output(screen_output)
     if output_file_path:
@@ -659,6 +736,8 @@ class CursesUI(base_ui.BaseUI):
 
     Raises:
       TypeError: If the input x is not of type int.
+      debugger_cli_common.CommandLineExit: If a mouse-triggered command returns
+        an exit token when dispatched.
     """
     if not isinstance(x, int):
       raise TypeError("Key validator expected type int, received type %s" %
@@ -732,22 +811,23 @@ class CursesUI(base_ui.BaseUI):
         else:
           command = self._fetch_hyperlink_command(mouse_x, mouse_y)
           if command:
-            self._auto_key_in(command)
-            self._textbox_curr_terminator = x
-            return self.CLI_TERMINATOR_KEY
+            exit_token = self._dispatch_command(command)
+            if exit_token is not None:
+              raise debugger_cli_common.CommandLineExit(exit_token=exit_token)
     else:
       # Mark the pending command as modified.
       self._textbox_pending_command_changed = True
       # Invalidate active command history.
       self._command_pointer = 0
       self._active_command_history = []
-      return x
+      return self._KEY_MAP.get(x, x)
 
   def _screen_getmouse(self):
     return curses.getmouse()
 
   def _redraw_output(self):
     if self._curr_unwrapped_output is not None:
+      self._display_nav_bar()
       self._display_main_menu(self._curr_unwrapped_output)
       self._display_output(self._curr_unwrapped_output, is_refresh=True)
 
@@ -756,7 +836,11 @@ class CursesUI(base_ui.BaseUI):
     if self._main_menu_pad:
       output_top += 1
 
-    if mouse_y == self._output_top_row and self._main_menu_pad:
+    if mouse_y == self._nav_bar_row and self._nav_bar:
+      # Click was in the nav bar.
+      return _get_command_from_line_attr_segs(mouse_x,
+                                              self._nav_bar.font_attr_segs[0])
+    elif mouse_y == self._output_top_row and self._main_menu_pad:
       # Click was in the menu bar.
       return _get_command_from_line_attr_segs(mouse_x,
                                               self._main_menu.font_attr_segs[0])
@@ -782,14 +866,26 @@ class CursesUI(base_ui.BaseUI):
     self._screen_draw_text_line(
         self._title_row, self._title_line, color=title_color)
 
-  def _auto_key_in(self, command):
+  def _auto_key_in(self, command, erase_existing=False):
     """Automatically key in a command to the command Textbox.
 
     Args:
       command: The command, as a string.
+      erase_existing: (bool) whether existing text (if any) is to be erased
+          first.
     """
+    if erase_existing:
+      self._erase_existing_command()
+
     for c in command:
       self._command_textbox.do_command(ord(c))
+
+  def _erase_existing_command(self):
+    """Erase existing text in command textpad."""
+
+    existing_len = len(self._command_textbox.gather())
+    for _ in xrange(existing_len):
+      self._command_textbox.do_command(self.BACKSPACE_KEY)
 
   def _screen_draw_text_line(self, row, line, attr=curses.A_NORMAL, color=None):
     """Render a line of text on the screen.
@@ -866,6 +962,7 @@ class CursesUI(base_ui.BaseUI):
           (0, len(output.lines[-1]), "magenta")
       ]
 
+    self._display_nav_bar()
     self._display_main_menu(self._curr_wrapped_output)
 
     (self._output_pad, self._output_pad_height,
@@ -987,6 +1084,18 @@ class CursesUI(base_ui.BaseUI):
 
     return pad, rows, cols
 
+  def _display_nav_bar(self):
+    nav_bar_width = self._max_x - 2
+    self._nav_bar_pad = self._screen_new_output_pad(1, nav_bar_width)
+    self._nav_bar = self._nav_history.render(
+        nav_bar_width,
+        self._NAVIGATION_BACK_COMMAND,
+        self._NAVIGATION_FORWARD_COMMAND)
+    self._screen_add_line_to_output_pad(
+        self._nav_bar_pad, 0, self._nav_bar.lines[0][:nav_bar_width - 1],
+        color_segments=(self._nav_bar.font_attr_segs[0]
+                        if 0 in self._nav_bar.font_attr_segs else None))
+
   def _display_main_menu(self, output):
     """Display main menu associated with screen output, if the menu exists.
 
@@ -1099,7 +1208,8 @@ class CursesUI(base_ui.BaseUI):
     (scroll_pad, _, _) = self._display_lines(
         self._scroll_bar.layout(), self._output_num_rows - 1)
     scroll_pad.refresh(
-        0, 0, 2, self._max_x - 2, self._output_num_rows, self._max_x - 1)
+        0, 0, self._output_top_row + 1, self._max_x - 2,
+        self._output_num_rows + 1, self._max_x - 1)
 
   def _scroll_output(self, direction, line_index=None):
     """Scroll the output pad.
@@ -1158,6 +1268,8 @@ class CursesUI(base_ui.BaseUI):
     else:
       raise ValueError("Unsupported scroll mode: %s" % direction)
 
+    self._nav_history.update_scroll_position(self._output_pad_row)
+
     # Actually scroll the output pad: refresh with new location.
     output_pad_top = self._output_pad_screen_location.top
     if self._main_menu_pad:
@@ -1167,6 +1279,7 @@ class CursesUI(base_ui.BaseUI):
                                    self._output_pad_screen_location.left,
                                    self._output_pad_screen_location.bottom,
                                    self._output_pad_screen_location.right)
+    self._screen_render_nav_bar()
     self._screen_render_menu_pad()
 
     self._scroll_info = self._compile_ui_status_summary()
@@ -1174,6 +1287,12 @@ class CursesUI(base_ui.BaseUI):
         self._output_scroll_row,
         self._scroll_info,
         color=self._STATUS_BAR_COLOR_PAIR)
+
+  def _screen_render_nav_bar(self):
+    if self._nav_bar_pad:
+      self._nav_bar_pad.refresh(0, 0, self._nav_bar_row, 0,
+                                self._output_pad_screen_location.top,
+                                self._max_x)
 
   def _screen_render_menu_pad(self):
     if self._main_menu_pad:
@@ -1430,8 +1549,11 @@ class CursesUI(base_ui.BaseUI):
         self.INFO_MESSAGE_PREFIX + message, color=self._INFO_TOAST_COLOR_PAIR)
 
   def _interrupt_handler(self, signal_num, frame):
-    _ = signal_num  # Unused.
-    _ = frame  # Unused.
+    del signal_num  # Unused.
+    del frame  # Unused.
+
+    if self._on_ui_exit:
+      self._on_ui_exit()
 
     self._screen_terminate()
     print("\ntfdbg: caught SIGINT; calling sys.exit(1).", file=sys.stderr)

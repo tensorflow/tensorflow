@@ -66,30 +66,30 @@ class GpuExecutable : public Executable {
   tensorflow::StringPiece ptx() const { return ptx_; }
 
   StatusOr<perftools::gputools::DeviceMemoryBase> ExecuteOnStream(
-      const ExecutableRunOptions* run_options,
+      const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
           arguments,
       HloExecutionProfile* hlo_execution_profile) override;
 
   StatusOr<std::unique_ptr<ShapedBuffer>> ExecuteOnStream(
-      const ExecutableRunOptions* run_options,
+      const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-      HloExecutionProfile* hlo_execution_profile) override;
-
-  Status ExecuteOnStream(
-      const ExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-      ShapedBuffer* result_buffer,
       HloExecutionProfile* hlo_execution_profile) override;
 
   StatusOr<perftools::gputools::DeviceMemoryBase> ExecuteAsyncOnStream(
-      const ExecutableRunOptions* run_options,
+      const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
           arguments) override;
 
  private:
-  Status ExecuteThunks(perftools::gputools::Stream* stream,
+  // If `block_host_until_done` is false, execution will not block the host
+  // until the kernels have completed. This is used as an optimization for
+  // clients, such as Tensorflow, that use a single stream of execution for
+  // computations, and allow host-side deallocation from the allocator before
+  // GPU execution completes.
+  Status ExecuteThunks(const ServiceExecutableRunOptions* run_options,
                        const BufferAllocations& buffer_allocations,
+                       bool block_host_until_done,
                        HloExecutionProfile* hlo_execution_profile);
 
   // Returns the points-to set of the root instruction of the entry

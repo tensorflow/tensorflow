@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os.path
 import time
 
 from tensorflow.core.framework import graph_pb2
@@ -26,8 +27,13 @@ from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.util import event_pb2
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.summary import plugin_asset
 from tensorflow.python.summary.writer.event_file_writer import EventFileWriter
+
+
+_PLUGINS_DIR = "plugins"
 
 
 class SummaryToEventTransformer(object):
@@ -63,7 +69,7 @@ class SummaryToEventTransformer(object):
 
 
     Args:
-      event_writer: An EventWriter. Implements add_event method.
+      event_writer: An EventWriter. Implements add_event and get_logdir.
       graph: A `Graph` object, such as `sess.graph`.
       graph_def: DEPRECATED: Use the `graph` argument instead.
     """
@@ -158,6 +164,7 @@ class SummaryToEventTransformer(object):
 
       # Serialize the graph with additional info.
       true_graph_def = graph.as_graph_def(add_shapes=True)
+      self._write_plugin_assets(graph)
     elif (isinstance(graph, graph_pb2.GraphDef) or
           isinstance(graph_def, graph_pb2.GraphDef)):
       # The user passed a `GraphDef`.
@@ -178,6 +185,19 @@ class SummaryToEventTransformer(object):
     # Finally, add the graph_def to the summary writer.
     self._add_graph_def(true_graph_def, global_step)
 
+  def _write_plugin_assets(self, graph):
+    plugin_assets = plugin_asset.get_all_plugin_assets(graph)
+    logdir = self.event_writer.get_logdir()
+    for asset_container in plugin_assets:
+      plugin_name = asset_container.plugin_name
+      plugin_dir = os.path.join(logdir, _PLUGINS_DIR, plugin_name)
+      gfile.MakeDirs(plugin_dir)
+      assets = asset_container.assets()
+      for (asset_name, content) in assets.items():
+        asset_path = os.path.join(plugin_dir, asset_name)
+        with gfile.Open(asset_path, "w") as f:
+          f.write(content)
+
   def add_meta_graph(self, meta_graph_def, global_step=None):
     """Adds a `MetaGraphDef` to the event file.
 
@@ -185,7 +205,7 @@ class SummaryToEventTransformer(object):
     `saver.import_meta_graph()`.
 
     Args:
-      meta_graph_def: A `MetaGraphDef` object, often as retured by
+      meta_graph_def: A `MetaGraphDef` object, often as returned by
         `saver.export_meta_graph()`.
       global_step: Number. Optional global step counter to record with the
         graph.

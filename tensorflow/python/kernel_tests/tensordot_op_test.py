@@ -54,10 +54,10 @@ class TensordotTest(test_lib.TestCase):
         b_ph = array_ops.placeholder(dtypes.float32)
         axes_ph = array_ops.placeholder(dtypes.int32)
         output = math_ops.tensordot(a_ph, b_ph, axes_ph)
-        _ = sess.run([output],
-                     feed_dict={a_ph: a,
-                                b_ph: b,
-                                axes_ph: (a_axes, b_axes)})
+        _ = sess.run(
+            [output], feed_dict={a_ph: a,
+                                 b_ph: b,
+                                 axes_ph: (a_axes, b_axes)})
 
   def test_invalid_axes(self):
     a = [[1, 2], [3, 4]]
@@ -79,14 +79,12 @@ class TensordotTest(test_lib.TestCase):
     for axes_value in 1, [1], [0, 1], [[1]], [[0, 1]], [[0], [7]]:
       with self.test_session() as sess:
         with self.assertRaises(errors_impl.InvalidArgumentError):
-          _ = sess.run([output],
-                       feed_dict={a_ph: a,
-                                  b_ph: b,
-                                  axes_ph: axes_value})
+          _ = sess.run(
+              [output], feed_dict={a_ph: a,
+                                   b_ph: b,
+                                   axes_ph: axes_value})
 
-  def test_no_partial_shape_inference(self):
-    # If one of the shapes is only partially defined, the output shape is
-    # unknown.
+  def test_partial_shape_inference(self):
     a = array_ops.placeholder(dtypes.float32)
     b = array_ops.placeholder(dtypes.float32)
     axes = ([1], [0])
@@ -95,13 +93,21 @@ class TensordotTest(test_lib.TestCase):
     a.set_shape([None, 2])
     b.set_shape([2, 3])
     output = math_ops.tensordot(a, b, axes)
-    self.assertEqual(output.get_shape().ndims, None)
+    output_shape = output.get_shape()
+    self.assertEqual(output_shape.ndims, 2)
+    output_shape = output_shape.as_list()
+    self.assertEqual(output_shape[0], None)
+    self.assertEqual(output_shape[1], 3)
     a = array_ops.placeholder(dtypes.float32)
     b = array_ops.placeholder(dtypes.float32)
     a.set_shape([2, 2])
     b.set_shape([2, None])
     output = math_ops.tensordot(a, b, axes)
-    self.assertEqual(output.get_shape().ndims, None)
+    output_shape = output.get_shape()
+    self.assertEqual(output_shape.ndims, 2)
+    output_shape = output_shape.as_list()
+    self.assertEqual(output_shape[0], 2)
+    self.assertEqual(output_shape[1], None)
 
 
 def _get_tensordot_tests(dtype_, rank_a_, rank_b_, num_dims_, dynamic_shape_):
@@ -173,8 +179,14 @@ def _get_tensordot_tests(dtype_, rank_a_, rank_b_, num_dims_, dynamic_shape_):
       all_axes.append(a_np.ndim - 1)
     for axes in all_axes:
       np_ans = np.tensordot(a_np, b_np, axes=axes)
-      with self.test_session(use_gpu=True):
-        tf_ans = math_ops.tensordot(a_np, b_np, axes=axes).eval()
+      with self.test_session(use_gpu=True) as sess:
+        if dynamic_shape_:
+          a = array_ops.placeholder(dtype_)
+          b = array_ops.placeholder(dtype_)
+          c = math_ops.tensordot(a, b, axes=axes)
+          tf_ans = sess.run(c, feed_dict={a: a_np, b: b_np})
+        else:
+          tf_ans = math_ops.tensordot(a_np, b_np, axes=axes).eval()
       self.assertAllClose(tf_ans, np_ans, rtol=tol, atol=tol)
       self.assertAllEqual(tf_ans.shape, np_ans.shape)
 

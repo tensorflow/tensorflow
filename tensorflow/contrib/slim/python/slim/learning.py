@@ -18,9 +18,9 @@ This script contains various functions for training models. These include
 manipulating gradients, creating a `train_op` (an operation that computes the
 loss and applies the gradients) and a training loop function. The training loop
 allows the user to pass in the `train_op` and runs the optimization according
-to user-specified arguments. Note that the training loop uses the tf.Supervisor
-and its managed_session in its implementation to ensure the ability of worker
-processes to recover from failures.
+to user-specified arguments. Note that the training loop uses the
+tf.train.Supervisor and its managed_session in its implementation to ensure the
+ability of worker processes to recover from failures.
 
 ************************************
 * A simple working training script *
@@ -329,13 +329,15 @@ def multiply_gradients(grads_and_vars, gradient_multipliers):
       if grad is None:
         raise ValueError('Requested multiple of `None` gradient.')
 
+      multiplier = gradient_multipliers[key]
+      if not isinstance(multiplier, ops.Tensor):
+        multiplier = constant_op.constant(multiplier, dtype=grad.dtype)
+
       if isinstance(grad, ops.IndexedSlices):
-        tmp = grad.values * constant_op.constant(
-            gradient_multipliers[key], dtype=grad.dtype)
+        tmp = grad.values * multiplier
         grad = ops.IndexedSlices(tmp, grad.indices, grad.dense_shape)
       else:
-        grad *= constant_op.constant(
-            gradient_multipliers[key], dtype=grad.dtype)
+        grad *= multiplier
     multiplied_grads_and_vars.append((grad, var))
   return multiplied_grads_and_vars
 
@@ -380,7 +382,8 @@ def create_train_op(total_loss,
                     gate_gradients=tf_optimizer.Optimizer.GATE_OP,
                     aggregation_method=None,
                     colocate_gradients_with_ops=False,
-                    gradient_multipliers=None):
+                    gradient_multipliers=None,
+                    check_numerics=True):
   """Creates an `Operation` that evaluates the gradients and returns the loss.
 
   Args:
@@ -406,6 +409,8 @@ def create_train_op(total_loss,
     gradient_multipliers: A dictionary of either `Variables` or `Variable` op
       names to the coefficient by which the associated gradient should be
       scaled.
+    check_numerics: Whether or not we apply check_numerics.
+
   Returns:
     A `Tensor` that when evaluated, computes the gradients and returns the total
       loss value.
@@ -431,7 +436,8 @@ def create_train_op(total_loss,
       summarize_gradients=summarize_gradients,
       gate_gradients=gate_gradients,
       aggregation_method=aggregation_method,
-      colocate_gradients_with_ops=colocate_gradients_with_ops)
+      colocate_gradients_with_ops=colocate_gradients_with_ops,
+      check_numerics=check_numerics)
 
 
 def _wait_for_step(sess, global_step, step):

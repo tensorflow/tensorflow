@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stacktrace.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -60,6 +61,23 @@ class ComputationBuilder {
 
   // Returns the computation name.
   const string& name() { return name_; }
+
+  // Sets OpMetadata that will be added to all instructions until cleared.
+  //
+  // OpMetadata is often applied to a series of XLA HLO instructions. As a
+  // result, OpMetadata is set on the Computation Builder. All subsequent
+  // instructions generated via this Computation Builder will have the same
+  // OpMetadata attached until a call to ClearOpMetdata.
+  void SetOpMetadata(const OpMetadata& metadata) {
+    tensorflow::mutex_lock lock(mutex_);
+    metadata_ = metadata;
+  }
+
+  // Clears the HloMetdata state.
+  void ClearOpMetadata() {
+    tensorflow::mutex_lock lock(mutex_);
+    metadata_.Clear();
+  }
 
   // Sets the builder to a mode where it will die immediately when an error is
   // encountered, rather than producing it in a deferred fashion when Build() is
@@ -352,13 +370,13 @@ class ComputationBuilder {
       tensorflow::gtl::ArraySlice<int64> rhs_dilation,
       const ConvolutionDimensionNumbers& dimension_numbers);
 
-  // Enqueues an infeed instruction onto the computation, which reads data of
-  // the given shape from the infeed buffer of the device.
+  // Enqueues an infeed instruction onto the computation, which writes data of
+  // the given shape to the infeed buffer of the device.
   ComputationDataHandle Infeed(const Shape& shape, const string& config = "");
 
   // Enqueues an outfeed instruction onto the computation. This instruction
   // generates outgoing data transfers for the given data.
-  void Outfeed(const ComputationDataHandle& operand,
+  void Outfeed(const ComputationDataHandle& operand, const Shape& shape,
                const string& outfeed_config);
 
   // Enqueues a call instruction onto the computation.
@@ -504,8 +522,15 @@ class ComputationBuilder {
   ComputationDataHandle SquareF32(const ComputationDataHandle& operand);
 
   // Enqueues a lhs^rhs computation onto the computation.
-  ComputationDataHandle Pow(const ComputationDataHandle& lhs,
-                            const ComputationDataHandle& rhs);
+  ComputationDataHandle Pow(
+      const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
+      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+
+  // Enqueues an operator that tests if the operand's values are finite, i.e.,
+  // not Inf or NaN. Defined only for floating-point types. Returns an array of
+  // booleans with the same shape where entries are true iff the corresponding
+  // entry was NaN.
+  ComputationDataHandle IsFinite(const ComputationDataHandle& operand);
 
   // Enqueues a convert instruction onto the computation that changes the
   // element type of the operand array to primitive_type.
@@ -710,6 +735,8 @@ class ComputationBuilder {
   // * dying if die_immediately_on_error_ is true
   void NoteError(const Status& error);
 
+  void AddOpMetadata(OpRequest* request) const;
+
   string name_;  // Name to use for the built computation.
 
   // The first error encountered while building the computation.
@@ -727,6 +754,14 @@ class ComputationBuilder {
 
   // Mode bit that indicates whether to die when a first error is encountered.
   bool die_immediately_on_error_{false};
+
+  // Mutex to guard against concurrent access to metadata_.
+  mutable tensorflow::mutex mutex_;
+
+  // The metadata to attach to each op. This is structured as a "modal"-like
+  // operation, in order to simplify client code (and not sprinkle this metadata
+  // throughout the TensorFlow op kernel implementations).
+  OpMetadata metadata_ GUARDED_BY(mutex_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(ComputationBuilder);
 };

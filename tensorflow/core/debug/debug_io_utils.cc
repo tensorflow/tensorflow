@@ -24,11 +24,16 @@ limitations under the License.
 #pragma comment(lib,"Ws2_32.lib")
 #endif
 
-#include "tensorflow/core/debug/debug_service.grpc.pb.h"
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/util/event.pb.h"
+
+#define GRPC_OSS_UNIMPLEMENTED_ERROR \
+  return errors::Unimplemented(      \
+      kGrpcURLScheme,                \
+      " debug URL scheme is not implemented in open source yet.")
 
 namespace tensorflow {
 
@@ -60,6 +65,23 @@ Event WrapTensorAsEvent(const string& tensor_name, const string& debug_op,
   }
 
   return event;
+}
+
+// Append an underscore and a timestamp to a file path. If the path already
+// exists on the file system, append a hyphen and a 1-up index. Consecutive
+// values of the index will be tried until the first unused one is found.
+// TOCTOU race condition is not of concern here due to the fact that tfdbg
+// sets parallel_iterations attribute of all while_loops to 1 to prevent
+// the same node from between executed multiple times concurrently.
+string AppendTimestampToFilePath(const string& in, const uint64 timestamp) {
+  string out = strings::StrCat(in, "_", timestamp);
+
+  uint64 i = 1;
+  while (Env::Default()->FileExists(out).ok()) {
+    out = strings::StrCat(in, "_", timestamp, "-", i);
+    ++i;
+  }
+  return out;
 }
 
 }  // namespace
@@ -147,6 +169,7 @@ Status DebugIO::PublishDebugMetadata(
   Status status;
   for (const string& url : debug_urls) {
     if (str_util::Lowercase(url).find(kGrpcURLScheme) == 0) {
+#if defined(PLATFORM_GOOGLE)
       Event grpc_event;
 
       // Determine the path (if any) in the grpc:// URL, and add it as a field
@@ -163,12 +186,20 @@ Status DebugIO::PublishDebugMetadata(
 
       status.Update(
           DebugGrpcIO::SendEventProtoThroughGrpcStream(grpc_event, url));
+#else
+      GRPC_OSS_UNIMPLEMENTED_ERROR;
+#endif
     } else if (str_util::Lowercase(url).find(kFileURLScheme) == 0) {
       const string dump_root_dir = url.substr(strlen(kFileURLScheme));
-      const string file_name =
-          strings::StrCat("_tfdbg_core_metadata_", Env::Default()->NowMicros());
-      status.Update(
-          DebugFileIO::DumpEventProtoToFile(event, dump_root_dir, file_name));
+      const string core_metadata_path = AppendTimestampToFilePath(
+          io::JoinPath(
+              dump_root_dir,
+              strings::StrCat("_tfdbg_core_metadata_", "sessionrun",
+                              strings::Printf("%.14lld", session_run_count))),
+          Env::Default()->NowMicros());
+      status.Update(DebugFileIO::DumpEventProtoToFile(
+          event, io::Dirname(core_metadata_path).ToString(),
+          io::Basename(core_metadata_path).ToString()));
     }
   }
 
@@ -213,6 +244,7 @@ Status DebugIO::PublishDebugTensor(const string& tensor_name,
         fail_statuses.push_back(s);
       }
     } else if (str_util::Lowercase(url).find(kGrpcURLScheme) == 0) {
+#if defined(PLATFORM_GOOGLE)
       Status s = DebugGrpcIO::SendTensorThroughGrpcStream(
           node_name, output_slot, debug_op, tensor, wall_time_us, url);
 
@@ -220,6 +252,9 @@ Status DebugIO::PublishDebugTensor(const string& tensor_name,
         num_failed_urls++;
         fail_statuses.push_back(s);
       }
+#else
+      GRPC_OSS_UNIMPLEMENTED_ERROR;
+#endif
     } else {
       return Status(error::UNAVAILABLE,
                     strings::StrCat("Invalid debug target URL: ", url));
@@ -264,8 +299,12 @@ Status DebugIO::PublishGraph(const Graph& graph,
       status.Update(
           DebugFileIO::DumpEventProtoToFile(event, dump_root_dir, file_name));
     } else if (debug_url.find(kGrpcURLScheme) == 0) {
+#if defined(PLATFORM_GOOGLE)
       status.Update(
           DebugGrpcIO::SendEventProtoThroughGrpcStream(event, debug_url));
+#else
+      GRPC_OSS_UNIMPLEMENTED_ERROR;
+#endif
     }
   }
 
@@ -275,7 +314,11 @@ Status DebugIO::PublishGraph(const Graph& graph,
 // static
 Status DebugIO::CloseDebugURL(const string& debug_url) {
   if (debug_url.find(DebugIO::kGrpcURLScheme) == 0) {
+#if defined(PLATFORM_GOOGLE)
     return DebugGrpcIO::CloseGrpcStream(debug_url);
+#else
+    GRPC_OSS_UNIMPLEMENTED_ERROR;
+#endif
   } else {
     // No-op for non-gRPC URLs.
     return Status::OK();
@@ -307,9 +350,10 @@ string DebugFileIO::GetDumpFilePath(const string& dump_root_dir,
                                     const int32 output_slot,
                                     const string& debug_op,
                                     const uint64 wall_time_us) {
-  return io::JoinPath(
-      dump_root_dir, strings::StrCat(node_name, "_", output_slot, "_", debug_op,
-                                     "_", wall_time_us));
+  return AppendTimestampToFilePath(
+      io::JoinPath(dump_root_dir,
+                   strings::StrCat(node_name, "_", output_slot, "_", debug_op)),
+      wall_time_us);
 }
 
 // static
@@ -384,6 +428,7 @@ Status DebugFileIO::RecursiveCreateDir(Env* env, const string& dir) {
   }
 }
 
+#if defined(PLATFORM_GOOGLE)
 DebugGrpcChannel::DebugGrpcChannel(const string& server_stream_addr)
     : ctx_(),
       channel_(::grpc::CreateCustomChannel(server_stream_addr,
@@ -486,5 +531,6 @@ Status DebugGrpcIO::CloseGrpcStream(const string& grpc_stream_url) {
     return Status::OK();
   }
 }
+#endif  // #if defined(PLATFORM_GOOGLE)
 
 }  // namespace tensorflow
