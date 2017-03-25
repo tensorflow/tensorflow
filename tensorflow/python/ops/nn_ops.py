@@ -1497,8 +1497,8 @@ def _softmax(logits, compute_op, dim=-1, name=None):
   if is_last_dim:
     input_shape = array_ops.shape(logits)
     logits = _flatten_outer_dims(logits)
-    output = compute_op(logits, name=name)
-    output = array_ops.reshape(output, input_shape)
+    output = compute_op(logits)
+    output = array_ops.reshape(output, input_shape, name=name)
     return output
 
   # If dim is not the last dimension, we have to do a reshape and transpose so
@@ -1513,7 +1513,7 @@ def _softmax(logits, compute_op, dim=-1, name=None):
   logits = _flatten_outer_dims(logits)
 
   # Do the actual softmax on its last dimension.
-  output = compute_op(logits, name=name)
+  output = compute_op(logits)
 
   # Transform back the output tensor.
   output = array_ops.reshape(output, shape_after_swap)
@@ -1523,7 +1523,7 @@ def _softmax(logits, compute_op, dim=-1, name=None):
   # shape.
   output.set_shape(shape)
 
-  return output
+  return tf.identity(output, name=name)
 
 
 def softmax(logits, dim=-1, name=None):
