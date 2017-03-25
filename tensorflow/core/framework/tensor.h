@@ -446,8 +446,6 @@ class Tensor {
   template <typename Device, typename T>
   friend class CreateVariableOp;
   friend class OpKernelContext;  // For access to RefCountIsOne().
-  friend class NumpyTensorBuffer;  // For access to the private constructor
-                                   // taking the buffer.
 
   // Creates a tensor with the input datatype, shape and buf.
   //
