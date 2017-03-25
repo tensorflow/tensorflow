@@ -19,11 +19,11 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import pandas as pd
 import sys
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
@@ -671,61 +671,13 @@ class TensorUtilTest(test.TestCase):
       def __array__(self, dtype=None):
         return np.asarray(self.array, dtype)
 
-    ma = MockArray(np.array([10, 20, 30]))
-    t = tensor_util.make_tensor_proto(ma)
-    if sys.byteorder == "big":  
-      self.assertProtoEquals("""  
-        dtype: DT_INT64  
-        tensor_shape { dim { size: 3 } }  
-        tensor_content: "\000\000\000\000\000\000\000\\n\000\000\000\000\000\000\000\024\000\000\000\000\000\000\000\036"  
-        """, t)  
-    else:  
-      self.assertProtoEquals("""
-        dtype: DT_INT64
-        tensor_shape { dim { size: 3 } }
-        tensor_content: "\\n\000\000\000\000\000\000\000\024\000\000\000\000\000\000\000\036\000\000\000\000\000\000\000"
-        """, t)
-    a = tensor_util.MakeNdarray(t)
-    self.assertEquals(np.int64, a.dtype)
-    self.assertAllClose(np.array([10, 20, 30], dtype=np.int64), a)
+    with self.test_session() as sess:
+      ma = MockArray(np.array([10, 20, 30]))
+      t = ops.convert_to_tensor(ma)
+      a = sess.run(t)
+      self.assertEquals(np.int64, a.dtype)
+      self.assertAllClose(np.array([10, 20, 30], dtype=np.int64), a)
 
-  def testSeries(self):
-    df = pd.Series([10, 20, 30])
-    t = tensor_util.make_tensor_proto(df)
-    if sys.byteorder == "big":  
-      self.assertProtoEquals("""  
-        dtype: DT_INT64  
-        tensor_shape { dim { size: 3 } }  
-        tensor_content: "\000\000\000\000\000\000\000\\n\000\000\000\000\000\000\000\024\000\000\000\000\000\000\000\036"  
-        """, t)  
-    else:  
-      self.assertProtoEquals("""
-        dtype: DT_INT64
-        tensor_shape { dim { size: 3 } }
-        tensor_content: "\\n\000\000\000\000\000\000\000\024\000\000\000\000\000\000\000\036\000\000\000\000\000\000\000"
-        """, t)
-    a = tensor_util.MakeNdarray(t)
-    self.assertEquals(np.int64, a.dtype)
-    self.assertAllClose(np.array([10, 20, 30], dtype=np.int64), a)
-
-  def testDataFrame(self):
-    df = pd.DataFrame({'A': [10], 'B': [20], 'C': [30]})
-    t = tensor_util.make_tensor_proto(df)
-    if sys.byteorder == "big":  
-      self.assertProtoEquals("""  
-        dtype: DT_INT64  
-        tensor_shape { dim { size: 1 } dim { size: 3 } }  
-        tensor_content: "\000\000\000\000\000\000\000\\n\000\000\000\000\000\000\000\024\000\000\000\000\000\000\000\036"  
-        """, t)  
-    else: 
-      self.assertProtoEquals("""
-        dtype: DT_INT64
-        tensor_shape { dim { size: 1 } dim { size: 3 } }
-        tensor_content: "\\n\000\000\000\000\000\000\000\024\000\000\000\000\000\000\000\036\000\000\000\000\000\000\000"
-        """, t)
-    a = tensor_util.MakeNdarray(t)
-    self.assertEquals(np.int64, a.dtype)
-    self.assertAllClose(np.array([[10, 20, 30]], dtype=np.int64), a)
 
 class ConstantValueTest(test.TestCase):
 
