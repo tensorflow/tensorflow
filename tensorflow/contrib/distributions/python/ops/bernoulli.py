@@ -169,7 +169,7 @@ class Bernoulli(distribution.Distribution):
         event, check_integer=check_integer)
     return control_flow_ops.with_dependencies([
         check_ops.assert_less_equal(
-            event, tf.ones_like(event),
+            event, array_ops.ones_like(event),
             message="event is not less than or equal to 1."),
     ], event)
 
