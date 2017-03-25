@@ -393,6 +393,20 @@ TEST(NNOpsTest, MaxPoolGrad_ShapeFn) {
   }
 }
 
+TEST(NNOpsTest, MaxPoolGrad_ShapeFn) {
+  for (const char* op_name : {"MaxPoolGradGrad", "MaxPoolGradGradWithArgmax"}) {
+    ShapeInferenceTestOp op(op_name);
+
+    // Test rank error.
+    INFER_ERROR("Shape must be rank 4 but is rank 3", op, "[1,2,3];?;?");
+
+    // input[0] is transferred to output after asserting its rank.
+    INFER_OK(op, "?;?;?", "[?,?,?,?]");
+    INFER_OK(op, "[?,?,?,?];?;?", "in0");
+    INFER_OK(op, "[?,2,?,4];?;?", "in0");
+  }
+}
+
 TEST(NNOpsTest, Dilation2DBackpropInput_ShapeFn) {
   ShapeInferenceTestOp op("Dilation2DBackpropInput");
 

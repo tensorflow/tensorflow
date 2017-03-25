@@ -1358,6 +1358,35 @@ grad: 4-D.  Gradients w.r.t. the output of `max_pool`.
 output: Gradients w.r.t. the input to `max_pool`.
 )doc");
 
+REGISTER_OP("MaxPoolGradGrad")
+    .Attr("ksize: list(int) >= 4")
+    .Attr("strides: list(int) >= 4")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Input("orig_input: T")
+    .Input("orig_output: T")
+    .Input("grad: T")
+    .Output("output: T")
+    .Attr("T: {float, half} = DT_FLOAT")
+    .SetShapeFn(shape_inference::MaxPoolShape)
+    .Doc(R"doc(
+Computes gradients of the maxpooling backward function.
+
+ksize: The size of the window for each dimension of the input tensor.
+strides: The stride of the sliding window for each dimension of the
+  input tensor.
+padding: The type of padding algorithm to use.
+data_format: Specify the data format of the input and output data. With the
+    default format "NHWC", the data is stored in the order of:
+        [batch, in_height, in_width, in_channels].
+    Alternatively, the format could be "NCHW", the data storage order of:
+        [batch, in_channels, in_height, in_width].
+orig_input: The original input tensor.
+orig_output: The original output tensor.
+grad: 4-D.  Gradients of gradients w.r.t. the output of `max_pool`.
+output: Gradients of gradients w.r.t. the input to `max_pool`.
+)doc");
+
 REGISTER_OP("MaxPoolWithArgmax")
     .Attr("ksize: list(int) >= 4")
     .Attr("strides: list(int) >= 4")
@@ -1413,6 +1442,35 @@ grad: 4-D with shape `[batch, height, width, channels]`.  Gradients w.r.t. the
   output of `max_pool`.
 argmax: The indices of the maximum values chosen for each output of `max_pool`.
 output: Gradients w.r.t. the input of `max_pool`.
+)doc");
+
+REGISTER_OP("MaxPoolGradGradWithArgmax")
+    .Attr("ksize: list(int) >= 4")
+    .Attr("strides: list(int) >= 4")
+    .Attr(GetPaddingAttrString())
+    .Attr("Targmax: {int32, int64}")
+    .Input("input: T")
+    .Input("grad: T")
+    .Input("argmax: Targmax")
+    .Output("output: T")
+    .Attr("T: {float, half} = DT_FLOAT")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::MaxPoolShape(c));
+      c->set_output(1, c->output(0));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Computes gradients of the maxpooling backward function.
+
+ksize: The size of the window for each dimension of the input tensor.
+strides: The stride of the sliding window for each dimension of the
+  input tensor.
+padding: The type of padding algorithm to use.
+input: The original input.
+grad: 4-D with shape `[batch, height, width, channels]`.  Gradients w.r.t. the
+  output of `max_pool`.
+argmax: The indices of the maximum values chosen for each output of `max_pool`.
+output: Gradients of gradients w.r.t. the input of `max_pool`.
 )doc");
 
 // --------------------------------------------------------------------------
