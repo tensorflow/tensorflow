@@ -367,9 +367,9 @@ done
 
 # Find out where the cuDNN library is installed
 while true; do
-  # Configure the Cudnn version to use.
+  # Configure the cuDNN version to use.
   if [ -z "$TF_CUDNN_VERSION" ]; then
-    read -p "Please specify the Cudnn version you want to use. [Leave empty to use system default]: " TF_CUDNN_VERSION
+    read -p "Please specify the cuDNN version you want to use. [Leave empty to use system default]: " TF_CUDNN_VERSION
   fi
 
   fromuser=""
