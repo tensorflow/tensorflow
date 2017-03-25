@@ -7,8 +7,8 @@ scalars, images, audio, histograms, and the graph.
 This README gives an overview of key concepts in TensorBoard, as well as how to
 interpret the visualizations TensorBoard provides. For an in-depth example of
 using TensorBoard, see the tutorial: [TensorBoard: Visualizing
-Learning](https://www.tensorflow.org/versions/master/how_tos/summaries_and_tensorboard/index.html).
-For in-depth information on the Graph Visualizer, see this tutorial: [TensorBoard: Graph Visualization](https://www.tensorflow.org/versions/master/how_tos/graph_viz/index.html).
+Learning](https://www.tensorflow.org/get_started/summaries_and_tensorboard).
+For in-depth information on the Graph Visualizer, see this tutorial: [TensorBoard: Graph Visualization](https://www.tensorflow.org/get_started/graph_viz).
 
 # Usage
 
