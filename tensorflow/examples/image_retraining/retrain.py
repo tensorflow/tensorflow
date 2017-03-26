@@ -83,7 +83,7 @@ FLAGS = None
 # sizes. If you want to adapt this script to work with another model, you will
 # need to update these to reflect the values in the network you're using.
 # pylint: disable=line-too-long
-DATA_URL = 'http://download.tensorflow.org/models/inception_v3_2016_08_28.tar.gz'
+DATA_URL = 'http://download.tensorflow.org/models/image/imagenet/inception-2015-12-05.tgz'
 # pylint: enable=line-too-long
 BOTTLENECK_TENSOR_NAME = 'pool_3/_reshape:0'
 BOTTLENECK_TENSOR_SIZE = 2048
@@ -941,13 +941,13 @@ if __name__ == '__main__':
   parser.add_argument(
       '--how_many_training_steps',
       type=int,
-      default=1,
+      default=1986,
       help='How many training steps to run before ending.'
   )
   parser.add_argument(
       '--learning_rate',
       type=float,
-      default=0.01,
+      default=0.03,
       help='How large a learning rate to use when training.'
   )
   parser.add_argument(
@@ -1019,7 +1019,7 @@ if __name__ == '__main__':
   parser.add_argument(
       '--bottleneck_dir',
       type=str,
-      default='/Users/SneakyPT/Potato_exp/bottleneck',
+      default='/Users/SneakyPT/GoogleDrive/Cassava_leaflet',
       help='Path to cache bottleneck layer values as files.'
   )
   parser.add_argument(
@@ -1067,4 +1067,3 @@ if __name__ == '__main__':
   )
   FLAGS, unparsed = parser.parse_known_args()
   tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
-rsed)
