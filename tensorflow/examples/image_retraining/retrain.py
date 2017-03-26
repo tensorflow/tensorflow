@@ -886,8 +886,9 @@ def main(_):
 
   # Print accuracy to file
   img_dir = FLAGS.image_dir
+  lr = FLAGS.learning_rate
   results=open(img_dir + ' results file', 'a')
-  results.write('%.1f\n' % (test_accuracy*100))
+  results.write('%.1f %.1f\n' % ((test_accuracy*100),lr))
 
 
   targets = []
@@ -941,7 +942,7 @@ if __name__ == '__main__':
   parser.add_argument(
       '--how_many_training_steps',
       type=int,
-      default=1986,
+      default=1987,
       help='How many training steps to run before ending.'
   )
   parser.add_argument(
@@ -1019,7 +1020,7 @@ if __name__ == '__main__':
   parser.add_argument(
       '--bottleneck_dir',
       type=str,
-      default='/Users/SneakyPT/GoogleDrive/Cassava_leaflet',
+      default='/Users/SneakyPT/GoogleDrive/Cassava_leaflet/bottleneck',
       help='Path to cache bottleneck layer values as files.'
   )
   parser.add_argument(
