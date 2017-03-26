@@ -888,7 +888,7 @@ def main(_):
   img_dir = FLAGS.image_dir
   lr = FLAGS.learning_rate
   results=open(img_dir + ' results file', 'a')
-  results.write('%.1f %.1f\n' % ((test_accuracy*100),lr))
+  results.write('%.1f\t%.2f\n' % ((test_accuracy*100),lr))
 
 
   targets = []
