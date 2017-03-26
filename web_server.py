@@ -2,16 +2,17 @@
 """ This web server will handle the training of the TensorFlow model and the image sets
 that will be used for training. """
 
-import os
+import os, time
 from os import listdir
 from os.path import isfile, join
+from stat import *
 from flask import Flask, request, redirect, url_for, flash
 from werkzeug.utils import secure_filename
 
 UPLOAD_FOLDER = './user_images'
 ALLOWED_EXTENSIONS = set(['jpg', 'jpeg', 'png', 'bmp'])
 
-APP = Flask(__name__)
+APP = Flask(__name__, static_url_path='/static')	
 APP.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 def allowed_file(filename):
@@ -92,3 +93,17 @@ def images():
 @APP.route('/<set_name>/<image>')
 def serve_image(set_name, image):
     return APP.send_static_file(UPLOAD_FOLDER + '/' + set_name + '/' + image)
+
+# Check if model has update
+@APP.route('/push-update')
+def push_update():
+	return APP.send_static_file('README.md')
+
+@APP.route('/check-version')
+def check_version():
+	version = request.args.get('version')
+	
+	file_info = os.stat('static/README.md')
+	size = file_info[ST_SIZE]
+	mod_time = time.asctime(time.localtime(file_info[ST_MTIME]))
+	return 'file size: ' + str(size) + '<br>' + 'mod time: ' + str(mod_time)
