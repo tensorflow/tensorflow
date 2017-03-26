@@ -81,7 +81,7 @@ mu: Depth of field, Fraction of viewing distance (eg. 1/3 = .3333)
 normalize: Normalize input data to [0.0, 1.0] 
 normalize_max: Fix MAX value for Normalization - if < MIN, autoscale
 normalize_min: Fix MIN value for Normalization - if > MAX, autoscale
-border_level: Value of bord in depth 0.0 {far} to 1.0 {near}
+border_level: Value of border depth 0.0 {far} to 1.0 {near}
 number_colors: 2 (Black & White),256 (grayscale), and Numbers > 256 (Full Color) are all that are supported currently
 generation_mode: Mode for Stereogram
   SIRDS - single image random dot stereogram (Default)
