@@ -2952,7 +2952,12 @@ def case(pred_fn_pairs, default, exclusive=False, name="case"):
 
       if isinstance(dummy_value, collections.Sequence):
         dummy_type = type(dummy_value)
-        empty = lambda: dummy_type(_correct_empty(v) for v in dummy_value)
+        def _create_dummy_instance():
+          if hasattr(dummy_type, '_make'):
+            return dummy_type._make(_correct_empty(v) for v in dummy_value)
+          else:
+            return dummy_type(_correct_empty(v) for v in dummy_value)
+        empty = _create_dummy_instance
       else:
         empty = lambda: _correct_empty(dummy_value)
 

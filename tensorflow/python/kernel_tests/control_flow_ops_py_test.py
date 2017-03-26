@@ -2171,12 +2171,15 @@ class ControlFlowTest(test.TestCase):
 
   def testCase(self):
     with self.test_session():
+      nt = collections.namedtuple('named_tuple', ['a', 'b'])
       x = constant_op.constant(1)
       y = constant_op.constant(2)
       z = constant_op.constant(3)
       f1 = lambda: constant_op.constant(17)
       f2 = lambda: constant_op.constant(23)
       f3 = lambda: constant_op.constant(-1)
+      f4 = lambda: nt(constant_op.constant(1), constant_op.constant(2))
+      f5 = lambda: nt(constant_op.constant(3), constant_op.constant(4))
 
       r1 = control_flow_ops.case(
           {
@@ -2221,6 +2224,11 @@ class ControlFlowTest(test.TestCase):
           default=lambda: constant_op.constant(2))
 
       self.assertAllEqual(r6.eval(), 0)
+
+      # Case operation with a Python callable that returns a namedtuple.
+      r7 = control_flow_ops.case([(x < y, f4)], default=f5)
+      self.assertAllEqual(r7[0].eval(), 1)
+      self.assertAllEqual(r7[1].eval(), 2)
 
   def testCaseSideEffects(self):
     with self.test_session() as sess:
