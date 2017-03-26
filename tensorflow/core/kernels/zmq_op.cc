@@ -69,6 +69,9 @@ class PollZmqOp : public OpKernel {
     auto request = input->scalar<string>()();
     auto &reply = output->scalar<string>()();
 
+    // Lock for exclusive access (destructor releases)
+    mutex_lock lock(mu_);
+
     // Prepare the message
     zmq_msg_t request_msg;
     OP_REQUIRES(context, zmq_msg_init_size(&request_msg, request.size()) == 0,
@@ -96,6 +99,7 @@ class PollZmqOp : public OpKernel {
   int timeout_;
   void* context_ = nullptr;
   void* socket_ = nullptr;
+  mutex mu_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("PollZmq").Device(DEVICE_CPU), PollZmqOp);
