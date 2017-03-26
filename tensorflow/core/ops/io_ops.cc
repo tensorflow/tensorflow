@@ -832,6 +832,7 @@ REGISTER_OP("PollZmq")
     .Input("request: string")
     .Output("reply: string")
     .Attr("address: string")
+    .Attr("timeout: int = -1")
     .SetShapeFn(ScalarInputsAndOutputs)
     .Doc(R"doc(
 Sends a message using ZeroMQ and returns the reply.

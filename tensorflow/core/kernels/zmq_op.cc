@@ -27,6 +27,7 @@ class PollZmqOp : public OpKernel {
  public:
   explicit PollZmqOp(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("address", &address_));
+    OP_REQUIRES_OK(context, context->GetAttr("timeout", &timeout_));
     // Create a context and connect a REQ socket
     context_ = zmq_ctx_new();
     OP_REQUIRES(context, context_ != nullptr,
@@ -34,18 +35,20 @@ class PollZmqOp : public OpKernel {
     socket_ = zmq_socket(context_, ZMQ_REQ);
     OP_REQUIRES(context, socket_ != nullptr,
                 errors::Internal("Failed to initialize socket."));
+    OP_REQUIRES(context,
+                zmq_setsockopt(socket_, ZMQ_RCVTIMEO,
+                               &timeout_, sizeof(timeout_)) == 0,
+                errors::Internal("Failed to set timeout."));
     OP_REQUIRES(context, zmq_connect(socket_, &address_[0]) == 0,
                 errors::Internal("Failed to connect to ", address_, "."));
   }
 
   ~PollZmqOp() {
     if (socket_ != nullptr) {
-      OP_REQUIRES(context, zmq_close(socket_),
-                  errors::Internal("Failed to close socket."));
+      zmq_close(socket_);
     }
     if (context_ != nullptr) {
-      OP_REQUIRES(context, zmq_ctx_destroy(context_),
-                  errors::Internal("Failed to destroy context"));
+      zmq_ctx_destroy(context_);
     }
   }
 
@@ -80,7 +83,7 @@ class PollZmqOp : public OpKernel {
     OP_REQUIRES(context, zmq_msg_init(&reply_msg) == 0,
                 errors::Internal("Failed to initialize reply."));
     OP_REQUIRES(context, zmq_msg_recv(&reply_msg, socket_, 0) != -1,
-                errors::Internal("Failed to receive reply."));
+                errors::Internal("Failed to receive reply within ", timeout_, "ms."));
     // Copy the data and clean up
     reply.resize(zmq_msg_size(&reply_msg));
     memmove(&reply[0], zmq_msg_data(&reply_msg), zmq_msg_size(&reply_msg));
@@ -90,6 +93,7 @@ class PollZmqOp : public OpKernel {
 
  private:
   string address_;
+  int timeout_;
   void* context_ = nullptr;
   void* socket_ = nullptr;
 };
