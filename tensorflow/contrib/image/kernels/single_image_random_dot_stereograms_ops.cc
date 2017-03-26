@@ -54,9 +54,8 @@ class SingleImageRandomDotStereogramsOp : public OpKernel {
   bool normalize;
   float normalize_max;
   float normalize_min;
-  float boarder_level;
+  float border_level;
   int number_colors;
-  string generation_mode;
   ::tensorflow::TensorShapeProto output_image_shape;
   ::tensorflow::TensorShapeProto output_data_window;
 
@@ -70,13 +69,12 @@ class SingleImageRandomDotStereogramsOp : public OpKernel {
 
   bool debugging = false;
 
-  int round(double x) { return ((int)(x + .5)); }
-  int separation(double z) {
-    return (round((1 - mu * z) * E2Epixels / (2 - mu * z)));
+  inline int separation(double z) {
+    return (std::round((1 - mu * z) * E2Epixels / (2 - mu * z)));
   }
 
-  int get_far_width() { return (separation(0.0)); }
-  int get_near_width() { return (separation(1.0)); }
+  inline int get_far_width() { return (separation(0.0)); }
+  inline int get_near_width() { return (separation(1.0)); }
 
  public:
   explicit SingleImageRandomDotStereogramsOp(OpKernelConstruction* context)
@@ -92,10 +90,8 @@ class SingleImageRandomDotStereogramsOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("normalize", &normalize));
     OP_REQUIRES_OK(context, context->GetAttr("normalize_max", &normalize_max));
     OP_REQUIRES_OK(context, context->GetAttr("normalize_min", &normalize_min));
-    OP_REQUIRES_OK(context, context->GetAttr("boarder_level", &boarder_level));
+    OP_REQUIRES_OK(context, context->GetAttr("border_level", &border_level));
     OP_REQUIRES_OK(context, context->GetAttr("number_colors", &number_colors));
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("generation_mode", &generation_mode));
     OP_REQUIRES_OK(context,
                    context->GetAttr("output_image_shape", &output_image_shape));
     OP_REQUIRES_OK(context,
@@ -125,30 +121,30 @@ class SingleImageRandomDotStereogramsOp : public OpKernel {
     int data_Xwindow = output_data_window.dim(0).size();
     int data_Ywindow = output_data_window.dim(1).size();
 
-    int deltaX_boarder_image = output_Ximage - data_Xwindow;
-    int deltaY_boarder_image = output_Yimage - data_Ywindow;
+    int deltaX_border_image = output_Ximage - data_Xwindow;
+    int deltaY_border_image = output_Yimage - data_Ywindow;
 
     if (convergence_dots_size >
         0)  // 3 frame sections in Y direction due to DOTS
     {
-      deltaY_boarder_image =
-          deltaY_boarder_image -
+      deltaY_border_image =
+          deltaY_border_image -
           convergence_dots_size;  // Take off space for Convergence Dots
-      deltaY_boarder_image = std::max(0, deltaY_boarder_image);
-      data_box_top = deltaY_boarder_image / 3;
+      deltaY_border_image = std::max(0, deltaY_border_image);
+      data_box_top = deltaY_border_image / 3;
 
-      if (deltaY_boarder_image >= 0) {
+      if (deltaY_border_image >= 0) {
         converge_dot_box_end = output_Yimage - 1 - data_box_top;
       } else {
         converge_dot_box_end = output_Yimage - 1;
       }
     } else  // Otherwise only 2, no convergence dot
     {
-      data_box_top = deltaY_boarder_image / 2;  // Center DATA in Y dimension
+      data_box_top = deltaY_border_image / 2;  // Center DATA in Y dimension
       converge_dot_box_end = output_Yimage - 1;
     }
 
-    data_box_left = deltaX_boarder_image / 2;  // Center DATA in X dimension
+    data_box_left = deltaX_border_image / 2;  // Center DATA in X dimension
     data_box_width = data_Xwindow;             // width of scan line
     data_box_height = data_Ywindow;            // hight of image
 
@@ -244,8 +240,8 @@ class SingleImageRandomDotStereogramsOp : public OpKernel {
         return (*(ZBuffer + (xi + input_Xvalue * yi)));
         break;
       case 1:  // Round-off
-        xi = round(x);
-        yi = round(y);
+        xi = std::round(x);
+        yi = std::round(y);
         return (*(ZBuffer + (xi + input_Xvalue * yi)));
         break;
       case 2:  // Interpolate (Not implemented yet, will need 4 points
@@ -287,10 +283,10 @@ class SingleImageRandomDotStereogramsOp : public OpKernel {
         (double)input_Yvalue * (y - data_box_top) / ((double)data_box_height);
 
     if ((xofz < 0) || (yofz < 0) || (yofz >= input_Yvalue) ||
-        (xofz >= input_Xvalue)) {  // Top of left side boarder hit or  Right
-                                   // side or bottom boarder hit
-                                   // Send BOARDER Z value
-      return (boarder_level);
+        (xofz >= input_Xvalue)) {  // Top of left side border hit or  Right
+                                   // side or bottom border hit
+                                   // Send BORDER Z value
+      return (border_level);
     }
 
     {  // in data set Z interpolate if need
