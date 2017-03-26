@@ -9,7 +9,7 @@ TF Learn is a simplified interface for TensorFlow, to get people started on pred
 
 ### Why *TensorFlow Learn*?
 
-- To smooth the transition from the [scikit-learn](http://scikit-learn.org/stable/) world of one-liner machine learning into the more open world of building different shapes of ML models. You can start by using [fit](../../../../g3doc/api_docs/python/contrib.learn.md#Estimator.fit)/[predict](../../../../g3doc/api_docs/python/contrib.learn.md#Estimator.predict) and slide into TensorFlow APIs as you are getting comfortable.
+- To smooth the transition from the [scikit-learn](http://scikit-learn.org/stable/) world of one-liner machine learning into the more open world of building different shapes of ML models. You can start by using [fit](https://www.tensorflow.org/api_docs/python/tf/contrib/learn/Estimator#fit)/[predict](https://www.tensorflow.org/api_docs/python/tf/contrib/learn/Estimator#predict) and slide into TensorFlow APIs as you are getting comfortable.
 - To provide a set of reference models that will be easy to integrate with existing code.
 
 ## Installation
@@ -43,17 +43,17 @@ Optionally you can install [scikit-learn](http://scikit-learn.org/stable/) and [
 ### Existing Estimator Implementations
 
 -   [`LinearClassifier`](https://www.tensorflow.org/code/tensorflow/contrib/learn/python/learn/estimators/linear.py)
-    ([docs](../../../../g3doc/api_docs/python/contrib.learn.md#LinearClassifier))
+    ([docs](https://www.tensorflow.org/api_docs/python/tf/contrib/learn/LinearClassifier))
 -   [`LinearRegressor`](https://www.tensorflow.org/code/tensorflow/contrib/learn/python/learn/estimators/linear.py)
-    ([docs](../../../../g3doc/api_docs/python/contrib.learn.md#LinearRegressor))
+    ([docs](https://www.tensorflow.org/api_docs/python/tf/contrib/learn/LinearRegressor))
 -   [`DNNClassifier`](https://www.tensorflow.org/code/tensorflow/contrib/learn/python/learn/estimators/dnn.py)
-    ([docs](../../../../g3doc/api_docs/python/contrib.learn.md#DNNClassifier))
+    ([docs](https://www.tensorflow.org/api_docs/python/tf/contrib/learn/DNNClassifier))
 -   [`DNNRegressor`](https://www.tensorflow.org/code/tensorflow/contrib/learn/python/learn/estimators/dnn.py)
-    ([docs](../../../../g3doc/api_docs/python/contrib.learn.md#DNNRegressor))
+    ([docs](https://www.tensorflow.org/api_docs/python/tf/contrib/learn/DNNRegressor))
 -   [`DNNLinearCombinedClassifier`](https://www.tensorflow.org/code/tensorflow/contrib/learn/python/learn/estimators/dnn_linear_combined.py)
-    ([docs](../../../../g3doc/api_docs/python/contrib.learn.md#DNNLinearCombinedClassifier))
+    ([docs](https://www.tensorflow.org/api_docs/python/tf/contrib/learn/DNNLinearCombinedClassifier))
 -   [`DNNLinearCombinedRegressor`](https://www.tensorflow.org/code/tensorflow/contrib/learn/python/learn/estimators/dnn_linear_combined.py)
-    ([docs](../../../../g3doc/api_docs/python/contrib.learn.md#DNNLinearCombinedRegressor))
+    ([docs](https://www.tensorflow.org/api_docs/python/tf/contrib/learn/DNNLinearCombinedRegressor))
 -   [`SVM`](https://www.tensorflow.org/code/tensorflow/contrib/learn/python/learn/estimators/svm.py)
     ([docs](https://www.tensorflow.org/code/tensorflow/contrib/learn/python/learn/estimators/g3doc/svm.md))
 -   [`GMM`](https://www.tensorflow.org/code/tensorflow/contrib/factorization/python/ops/gmm.py)
@@ -67,7 +67,7 @@ Below are a few simple examples of the API. For more examples, please see [examp
 
 General tips:
 
--  It's useful to rescale a dataset to 0 mean and unit standard deviation before passing it to an [`Estimator`](../../../../g3doc/api_docs/python/contrib.learn.md#estimators). [Stochastic Gradient Descent](https://en.wikipedia.org/wiki/Stochastic_gradient_descent) doesn't always do the right thing when variable are at very different scales.
+-  It's useful to rescale a dataset to 0 mean and unit standard deviation before passing it to an [`Estimator`](https://www.tensorflow.org/api_docs/python/tf/contrib/learn/Estimator). [Stochastic Gradient Descent](https://en.wikipedia.org/wiki/Stochastic_gradient_descent) doesn't always do the right thing when variable are at very different scales.
 
 -  Categorical variables should be managed before passing input to the estimator.
 
@@ -219,7 +219,7 @@ INFO:tensorflow:Loss for final step: 0.0162506.</pre>
 
 ## Summaries
 
-If you supply a `model_dir` argument to your `Estimator`s, TensorFlow will write summaries for ``loss`` and histograms for variables in this directory. (You can also add custom summaries in your custom model function by calling [Summary](../../../../g3doc/api_docs/python/train.md#summary-operations) operations.)
+If you supply a `model_dir` argument to your `Estimator`s, TensorFlow will write summaries for ``loss`` and histograms for variables in this directory. (You can also add custom summaries in your custom model function by calling [Summary](https://www.tensorflow.org/api_guides/python/summary) operations.)
 
 To view the summaries in TensorBoard, run the following command, where `logdir` is the `model_dir` for your `Estimator`:
 
