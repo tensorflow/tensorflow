@@ -30,7 +30,7 @@ class FramePair {
         number_of_keypoints_(0) {}
 
   // Cleans up the FramePair so that they can be reused.
-  void Init(const int64 start_time, const int64 end_time);
+  void Init(const int64_t start_time, const int64_t end_time);
 
   void AdjustBox(const BoundingBox box,
                  float* const translation_x,
@@ -74,10 +74,10 @@ class FramePair {
   // TODO(andrewharp): Make these private.
  public:
   // The time at frame1.
-  int64 start_time_;
+  int64_t start_time_;
 
   // The time at frame2.
-  int64 end_time_;
+  int64_t end_time_;
 
   // This array will contain the keypoints found in frame 1.
   Keypoint frame1_keypoints_[kMaxKeypoints];

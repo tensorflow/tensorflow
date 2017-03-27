@@ -69,6 +69,21 @@ module TF.Backend {
     content_type: string;
     url: string;
   }
+
+  // A health pill encapsulates an overview of tensor element values. The value
+  // field is a list of 12 numbers that shed light on the status of the tensor.
+  export interface HealthPill {
+    node_name: string;
+    output_slot: number;
+    value: number[];
+  };
+  // When updating this type, keep it consistent with the HealthPill interface
+  // in tf_graph_common/lib/scene/scene.ts.
+  export type HealthPillDatum = Datum & HealthPill;
+  // A health pill response is a mapping from node name to a list of health pill
+  // data entries.
+  export interface HealthPillsResponse { [key: string]: HealthPillDatum[]; };
+
   export var TYPES = [
     'scalar', 'histogram', 'compressedHistogram', 'graph', 'image', 'audio',
     'runMetadata'
@@ -180,6 +195,20 @@ module TF.Backend {
       let url = this.router.scalars(tag, run);
       p = this.requestManager.request(url);
       return p.then(map(detupler(createScalar)));
+    }
+
+    /**
+     * Returns a promise for requesting the health pills for a list of nodes.
+     */
+    public healthPills(nodeNames: string[], step?: number):
+        Promise<HealthPillsResponse> {
+      let postData = {'node_names': JSON.stringify(nodeNames)};
+      if (step !== undefined) {
+        // The user requested health pills for a specific step. This request
+        // might be slow since the backend reads events sequentially from disk.
+        postData['step'] = step;
+      }
+      return this.requestManager.request(this.router.healthPills(), postData);
     }
 
     /**
@@ -350,6 +379,11 @@ module TF.Backend {
       throw(new Error('Edges and counts are of different lengths.'));
     }
 
+    if (max === min) {
+      // Create bins even if all the data has a single value.
+      max = min * 1.1 + 1;
+      min = min / 1.1 - 1;
+    }
     let binWidth = (max - min) / numBins;
     let bucketLeft = min;  // Use the min as the starting point for the bins.
     let bucketPos = 0;

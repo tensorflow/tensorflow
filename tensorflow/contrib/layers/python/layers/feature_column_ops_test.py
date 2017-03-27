@@ -19,12 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import sys
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 import numpy as np
 
@@ -557,6 +551,15 @@ class TransformerTest(test.TestCase):
 
 class CreateInputLayersForDNNsTest(test.TestCase):
 
+  def testFeatureColumnDictFails(self):
+    real_valued = feature_column.real_valued_column("price")
+    features = {"price": constant_op.constant([[20.], [110], [-3]])}
+    with self.assertRaisesRegexp(
+        ValueError,
+        "Expected feature_columns to be iterable, found dict"):
+      feature_column_ops.input_from_feature_columns(
+          features, {"feature": real_valued})
+
   def testAllDNNColumns(self):
     sparse_column = feature_column.sparse_column_with_keys(
         "ids", ["a", "b", "c", "unseen"])
@@ -840,6 +843,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
             features, [embedded_sparse, embedded_sparse_alternate])
 
   def testEmbeddingColumnWithWeightedSparseColumnSucceedsForDNN(self):
+    """Tests DNN input with embedded weighted sparse column."""
     ids = feature_column.sparse_column_with_keys("ids",
                                                  ["marlo", "omar", "stringer"])
     ids_tensor = sparse_tensor.SparseTensor(
@@ -849,6 +853,29 @@ class CreateInputLayersForDNNsTest(test.TestCase):
     weighted_ids = feature_column.weighted_sparse_column(ids, "weights")
     weights_tensor = sparse_tensor.SparseTensor(
         values=[10.0, 20.0, 30.0],
+        indices=[[0, 0], [1, 0], [1, 1]],
+        dense_shape=[2, 2])
+    features = {"ids": ids_tensor, "weights": weights_tensor}
+    embeded_sparse = feature_column.embedding_column(weighted_ids, 10)
+    output = feature_column_ops.input_from_feature_columns(features,
+                                                           [embeded_sparse])
+    with self.test_session():
+      variables_lib.global_variables_initializer().run()
+      data_flow_ops.tables_initializer().run()
+      self.assertAllEqual(output.eval().shape, [2, 10])
+
+  def testEmbeddingColumnWithIntegerWeightedSparseColumnSucceedsForDNN(self):
+    """Same as the previous test, but with integer weights."""
+    ids = feature_column.sparse_column_with_keys("ids",
+                                                 ["marlo", "omar", "stringer"])
+    ids_tensor = sparse_tensor.SparseTensor(
+        values=["stringer", "stringer", "marlo"],
+        indices=[[0, 0], [1, 0], [1, 1]],
+        dense_shape=[2, 2])
+    weighted_ids = feature_column.weighted_sparse_column(
+        ids, "weights", dtype=dtypes.int32)
+    weights_tensor = sparse_tensor.SparseTensor(
+        values=constant_op.constant([10, 20, 30], dtype=dtypes.int32),
         indices=[[0, 0], [1, 0], [1, 1]],
         dense_shape=[2, 2])
     features = {"ids": ids_tensor, "weights": weights_tensor}
@@ -1069,6 +1096,51 @@ class CreateInputLayersForDNNsTest(test.TestCase):
         trainable=True)
     # There should  one trainable variable for embeded sparse
     self.assertEqual(1, len(variables_lib.trainable_variables()))
+
+  def testInputLayerWithNonTrainableEmbeddingForDNN(self):
+    sparse_1 = feature_column.sparse_column_with_hash_bucket("wire_1", 10)
+    sparse_2 = feature_column.sparse_column_with_hash_bucket("wire_2", 10)
+    features = {
+        "wire_1":
+            sparse_tensor.SparseTensor(
+                values=["omar", "stringer", "marlo"],
+                indices=[[0, 0], [1, 0], [2, 0]],
+                dense_shape=[3, 1]),
+        "wire_2":
+            sparse_tensor.SparseTensor(
+                values=["jack", "jill"],
+                indices=[[0, 0], [1, 0]],
+                dense_shape=[4, 1])
+    }
+    dims_1 = 10
+    init_1 = 3.14
+    embeded_1 = feature_column.embedding_column(
+        sparse_1, dims_1, initializer=init_ops.constant_initializer(init_1),
+        trainable=False)
+    output_1 = feature_column_ops.input_from_feature_columns(
+        features, [embeded_1])
+    # There should be no trainable variables for sparse_1
+    self.assertEqual(0, len(variables_lib.trainable_variables()))
+
+    dims_2 = 7
+    init_2 = 6.14
+    embeded_2 = feature_column.embedding_column(
+        sparse_2, dims_2, initializer=init_ops.constant_initializer(init_2),
+        trainable=True)
+    output_2 = feature_column_ops.input_from_feature_columns(
+        features, [embeded_2])
+    # There should be one trainable variables for sparse_2
+    self.assertEqual(1, len(variables_lib.trainable_variables()))
+
+    with self.test_session():
+      variables_lib.global_variables_initializer().run()
+      output_1_eval = output_1.eval()
+      output_2_eval = output_2.eval()
+      self.assertAllEqual(output_1_eval.shape, [3, dims_1])
+      self.assertAllClose(output_1_eval, np.tile(init_1, [3, dims_1]))
+      self.assertAllEqual(output_2_eval.shape, [4, dims_2])
+      self.assertAllClose(output_2_eval, np.concatenate(
+          (np.tile(init_2, [2, dims_2]), np.tile(0, [2, dims_2]))))
 
 
 class SequenceInputFromFeatureColumnTest(test.TestCase):
@@ -1380,6 +1452,19 @@ class SequenceInputFromFeatureColumnTest(test.TestCase):
 
 
 class WeightedSumTest(test.TestCase):
+
+  def testFeatureColumnDictFails(self):
+    hashed_sparse = feature_column.sparse_column_with_hash_bucket("wire", 10)
+    wire_tensor = sparse_tensor.SparseTensor(
+        values=["omar", "stringer", "marlo"],
+        indices=[[0, 0], [1, 0], [1, 1]],
+        dense_shape=[2, 2])
+    features = {"wire": wire_tensor}
+    with self.assertRaisesRegexp(
+        ValueError,
+        "Expected feature_columns to be iterable, found dict"):
+      feature_column_ops.weighted_sum_from_feature_columns(
+          features, {"feature": hashed_sparse}, num_outputs=5)
 
   def testSparseColumn(self):
     hashed_sparse = feature_column.sparse_column_with_hash_bucket("wire", 10)

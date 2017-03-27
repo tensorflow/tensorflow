@@ -12,8 +12,9 @@ cc_library(
     name = "all_kernels",
     deps = [
         ":clustering_ops",
+        ":masked_matmul_ops",
         ":wals_solver_ops",
-        "@protobuf//:protobuf",
+        "@protobuf//:protobuf_headers",
     ],
 )
 
@@ -23,7 +24,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
-        "@protobuf//:protobuf",
+        "@protobuf//:protobuf_headers",
     ],
     alwayslink = 1,
 )
@@ -34,7 +35,18 @@ cc_library(
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
-        "@protobuf//:protobuf",
+        "@protobuf//:protobuf_headers",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "masked_matmul_ops",
+    srcs = ["masked_matmul_ops.cc"],
+    deps = [
+        "//tensorflow/core:framework_headers_lib",
+        "//third_party/eigen3",
+        "@protobuf//:protobuf_headers",
     ],
     alwayslink = 1,
 )

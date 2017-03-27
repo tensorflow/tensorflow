@@ -32,7 +32,6 @@ from tensorflow.contrib import framework as contrib_framework
 from tensorflow.contrib import layers
 from tensorflow.contrib import metrics as metrics_lib
 from tensorflow.contrib.framework import deprecated
-from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.framework import deprecated_args
 from tensorflow.contrib.framework import list_variables
 from tensorflow.contrib.framework import load_variable
@@ -52,12 +51,14 @@ from tensorflow.contrib.learn.python.learn.utils import export
 from tensorflow.contrib.learn.python.learn.utils import saved_model_export_utils
 from tensorflow.contrib.training.python.training import evaluation
 from tensorflow.core.framework import summary_pb2
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as tf_session
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import resources
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
@@ -334,13 +335,7 @@ class BaseEstimator(
     sklearn.BaseEstimator, evaluable.Evaluable, trainable.Trainable):
   """Abstract BaseEstimator class to train and evaluate TensorFlow models.
 
-  Concrete implementation of this class should provide the following functions:
-
-    * _get_train_ops
-    * _get_eval_ops
-    * _get_predict_ops
-
-  `Estimator` implemented below is a good example of how to use this class.
+  Users should not instantiate or subclass this class. Instead, use `Estimator`.
   """
   __metaclass__ = abc.ABCMeta
 
@@ -355,16 +350,10 @@ class BaseEstimator(
     Args:
       model_dir: Directory to save model parameters, graph and etc. This can
         also be used to load checkpoints from the directory into a estimator to
-        continue training a previously saved model.
+        continue training a previously saved model. If `None`, the model_dir in
+        `config` will be used if set. If both are set, they must be same.
       config: A RunConfig instance.
     """
-    # Model directory.
-    self._model_dir = model_dir
-    if self._model_dir is None:
-      self._model_dir = tempfile.mkdtemp()
-      logging.warning('Using temporary folder as model directory: %s',
-                      self._model_dir)
-
     # Create a run configuration.
     if config is None:
       self._config = BaseEstimator._Config()
@@ -372,6 +361,23 @@ class BaseEstimator(
     else:
       self._config = config
     logging.info('Using config: %s', str(vars(self._config)))
+
+    # Model directory.
+    if (model_dir is not None) and (self._config.model_dir is not None):
+      if model_dir != self._config.model_dir:
+        # TODO(b/9965722): remove this suppression after it is no longer
+        #                  necessary.
+        # pylint: disable=g-doc-exception
+        raise ValueError(
+            "model_dir are set both in constructor and RunConfig, but with "
+            "different values. In constructor: '{}', in RunConfig: "
+            "'{}' ".format(model_dir, self._config.model_dir))
+
+    self._model_dir = model_dir or self._config.model_dir
+    if self._model_dir is None:
+      self._model_dir = tempfile.mkdtemp()
+      logging.warning('Using temporary folder as model directory: %s',
+                      self._model_dir)
 
     # Set device function depending if there are replicas or not.
     self._device_fn = _get_replica_device_setter(self._config)
@@ -581,15 +587,7 @@ class BaseEstimator(
   def model_dir(self):
     return self._model_dir
 
-  @deprecated_arg_values(
-      '2016-09-23',
-      'The signature of the input_fn accepted by export is changing to be '
-      'consistent with what\'s used by tf.Learn Estimator\'s train/evaluate. '
-      'input_fn (and in most cases, input_feature_key) will become required '
-      'args, and use_deprecated_input_fn will default to False and be removed '
-      'altogether.',
-      use_deprecated_input_fn=True,
-      input_fn=None)
+  @deprecated('2017-03-25', 'Please use Estimator.export_savedmodel() instead.')
   def export(self,
              export_dir,
              input_fn=export._default_input_fn,  # pylint: disable=protected-access
@@ -598,7 +596,8 @@ class BaseEstimator(
              signature_fn=None,
              prediction_key=None,
              default_batch_size=1,
-             exports_to_keep=None):
+             exports_to_keep=None,
+             checkpoint_path=None):
     """Exports inference graph into given dir.
 
     Args:
@@ -625,6 +624,9 @@ class BaseEstimator(
         `signature_fn` without filtering.
       default_batch_size: Default batch size of the `Example` placeholder.
       exports_to_keep: Number of exports to keep.
+      checkpoint_path: the checkpoint path of the model to be exported. If it is
+          `None` (which is default), will use the latest checkpoint in
+          export_dir.
 
     Returns:
       The string path to the exported directory. NB: this functionality was
@@ -642,7 +644,8 @@ class BaseEstimator(
         input_feature_key=input_feature_key,
         use_deprecated_input_fn=use_deprecated_input_fn,
         default_batch_size=default_batch_size,
-        exports_to_keep=exports_to_keep)
+        exports_to_keep=exports_to_keep,
+        checkpoint_path=checkpoint_path)
 
   @abc.abstractproperty
   def _get_train_ops(self, features, labels):
@@ -798,18 +801,8 @@ class BaseEstimator(
       features, labels = input_fn()
       self._check_inputs(features, labels)
 
-      # The default return type of _get_eval_ops is ModelFnOps. But there are
-      # some subclasses of tf.contrib.learn.Estimator which override this
-      # method and use the legacy signature, namely _get_eval_ops returns an
-      # `eval_dict` dictionary of Tensors. The following else-statement code
-      # covers these cases, but will soon be deleted after the subclasses are
-      # updated.
-      # TODO(b/32664904): Update subclasses and delete the else-statement.
-      eval_ops = self._get_eval_ops(features, labels, metrics)
-      if isinstance(eval_ops, model_fn_lib.ModelFnOps):  # Default signature
-        eval_dict = eval_ops.eval_metric_ops
-      else:  # Legacy signature
-        eval_dict = eval_ops
+      model_fn_results = self._get_eval_ops(features, labels, metrics)
+      eval_dict = model_fn_results.eval_metric_ops
 
       update_op, eval_dict = self._extract_metric_update_ops(eval_dict)
 
@@ -830,9 +823,11 @@ class BaseEstimator(
       eval_results = evaluation.evaluate_once(
           checkpoint_path=checkpoint_path,
           master=self._config.evaluation_master,
+          scaffold=model_fn_results.scaffold,
           eval_ops=update_op,
           final_ops=eval_dict,
-          hooks=hooks)
+          hooks=hooks,
+          config=config_pb2.ConfigProto(allow_soft_placement=True))
       current_global_step = eval_results[global_step_key]
 
       _write_dict_to_summary(eval_dir, eval_results, current_global_step)
@@ -861,11 +856,13 @@ class BaseEstimator(
       random_seed.set_random_seed(self._config.tf_random_seed)
       contrib_framework.create_global_step(g)
       features = self._get_features_from_input_fn(input_fn)
-      infer_ops = self._call_legacy_get_predict_ops(features)
+      infer_ops = self._get_predict_ops(features)
       predictions = self._filter_predictions(infer_ops.predictions, outputs)
       mon_sess = monitored_session.MonitoredSession(
           session_creator=monitored_session.ChiefSessionCreator(
-              checkpoint_filename_with_path=checkpoint_path))
+              checkpoint_filename_with_path=checkpoint_path,
+              scaffold=infer_ops.scaffold,
+              config=config_pb2.ConfigProto(allow_soft_placement=True)))
       if not as_iterable:
         with mon_sess:
           if not mon_sess.should_stop():
@@ -930,7 +927,7 @@ class BaseEstimator(
       global_step = contrib_framework.create_global_step(g)
       features, labels = input_fn()
       self._check_inputs(features, labels)
-      model_fn_ops = self._call_legacy_get_train_ops(features, labels)
+      model_fn_ops = self._get_train_ops(features, labels)
       ops.add_to_collection(ops.GraphKeys.LOSSES, model_fn_ops.loss)
       all_hooks.extend([
           basic_session_run_hooks.NanTensorHook(model_fn_ops.loss),
@@ -943,7 +940,7 @@ class BaseEstimator(
       ])
       all_hooks.extend(hooks)
 
-      scaffold = model_fn_ops.training_scaffold or monitored_session.Scaffold()
+      scaffold = model_fn_ops.scaffold or monitored_session.Scaffold()
       if not (scaffold.saver or ops.get_collection(ops.GraphKeys.SAVERS)):
         ops.add_to_collection(
             ops.GraphKeys.SAVERS,
@@ -977,36 +974,13 @@ class BaseEstimator(
           chief_only_hooks=chief_hooks + model_fn_ops.training_chief_hooks,
           save_checkpoint_secs=0,  # Saving is handled by a hook.
           save_summaries_steps=self._config.save_summary_steps,
-          config=None) as mon_sess:
+          config=config_pb2.ConfigProto(allow_soft_placement=True)
+      ) as mon_sess:
         loss = None
         while not mon_sess.should_stop():
           _, loss = mon_sess.run([model_fn_ops.train_op, model_fn_ops.loss])
       summary_io.SummaryWriterCache.clear()
       return loss
-
-  def _call_legacy_get_predict_ops(self, features):
-    # The default return type of _get_predict_ops is ModelFnOps. But there are
-    # some subclasses of tf.contrib.learn.Estimator which override this
-    # method and use the legacy signature, namely _get_predict_ops returns a
-    # `predictions` Tensor or dict or Tensors. The following else-statement
-    # code covers these cases, but will soon be deleted after the subclasses
-    # are updated.
-    # TODO(b/32664904): Update subclasses and delete the else-statement.
-    infer_ops = self._get_predict_ops(features)
-    if isinstance(infer_ops, model_fn_lib.ModelFnOps):  # Default signature
-      return infer_ops
-    return model_fn_lib.ModelFnOps(
-        mode=model_fn_lib.ModeKeys.INFER, predictions=infer_ops)
-
-  def _call_legacy_get_train_ops(self, features, labels):
-    train_ops = self._get_train_ops(features, labels)
-    if isinstance(train_ops, model_fn_lib.ModelFnOps):  # Default signature
-      return train_ops
-    return model_fn_lib.ModelFnOps(
-        mode=model_fn_lib.ModeKeys.TRAIN,
-        predictions=None,
-        loss=train_ops[1],
-        train_op=train_ops[0])
 
 
 def _identity_feature_engineering_fn(features, labels):
@@ -1134,7 +1108,7 @@ class Estimator(BaseEstimator):
     if isinstance(model_fn_results, model_fn_lib.ModelFnOps):
       return model_fn_results
 
-    # Here model_fn_ops should be a tuple with 3 elements.
+    # Here model_fn_results should be a tuple with 3 elements.
     if len(model_fn_results) != 3:
       raise ValueError('Unrecognized value returned by model_fn, '
                        'please return ModelFnOps.')
@@ -1188,6 +1162,7 @@ class Estimator(BaseEstimator):
     model_fn_ops = self._call_model_fn(
         features, labels, model_fn_lib.ModeKeys.EVAL)
 
+    features, labels = self._feature_engineering_fn(features, labels)
     # Custom metrics should overwrite defaults.
     if metrics:
       model_fn_ops.eval_metric_ops.update(_make_metrics_ops(
@@ -1219,7 +1194,8 @@ class Estimator(BaseEstimator):
       self, export_dir_base, serving_input_fn,
       default_output_alternative_key=None,
       assets_extra=None,
-      as_text=False):
+      as_text=False,
+      checkpoint_path=None):
     """Exports inference graph as a SavedModel into given dir.
 
     Args:
@@ -1237,6 +1213,8 @@ class Estimator(BaseEstimator):
         renaming it is specified as
         `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
       as_text: whether to write the SavedModel proto in text format.
+      checkpoint_path: The checkpoint path to export.  If None (the default),
+        the most recent checkpoint found within the model directory is chosen.
 
     Returns:
       The string path to the exported directory.
@@ -1267,9 +1245,9 @@ class Estimator(BaseEstimator):
           input_alternatives, output_alternatives,
           actual_default_output_alternative_key)
 
-      # Locate the latest checkpoint
-      # TODO(soergel): does it help that we know we have one from this step?
-      checkpoint_path = saver.latest_checkpoint(self._model_dir)
+      if not checkpoint_path:
+        # Locate the latest checkpoint
+        checkpoint_path = saver.latest_checkpoint(self._model_dir)
       if not checkpoint_path:
         raise NotFittedError("Couldn't find trained model at %s."
                              % self._model_dir)
@@ -1277,16 +1255,19 @@ class Estimator(BaseEstimator):
       export_dir = saved_model_export_utils.get_timestamped_export_dir(
           export_dir_base)
 
+      if (model_fn_ops.scaffold is not None and
+          model_fn_ops.scaffold.saver is not None):
+        saver_for_restore = model_fn_ops.scaffold.saver
+      else:
+        saver_for_restore = saver.Saver(sharded=True)
       with tf_session.Session('') as session:
         variables.initialize_local_variables()
         data_flow_ops.tables_initializer()
-        saver_for_restore = saver.Saver(
-            variables.global_variables(),
-            sharded=True)
+        resources.initialize_resources(resources.shared_resources())
         saver_for_restore.restore(session, checkpoint_path)
-
         init_op = control_flow_ops.group(
             variables.local_variables_initializer(),
+            resources.initialize_resources(resources.shared_resources()),
             data_flow_ops.tables_initializer())
 
         # Perform the export

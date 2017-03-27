@@ -17,8 +17,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/kernels/reduction_ops.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 
@@ -105,13 +105,13 @@ class MeanOp : public XlaReductionOp {
     builder->Add(scalar_lhs, scalar_rhs);
   }
 
-  bool BuildFinalizer(xla::ComputationBuilder* builder,
-                      const xla::ComputationDataHandle& scalar_argument,
-                      int64 num_elements_reduced) override {
+  xla::ComputationDataHandle BuildFinalizer(
+      xla::ComputationBuilder* builder,
+      const xla::ComputationDataHandle& reduce_output,
+      int64 num_elements_reduced) override {
     auto divisor = XlaHelpers::IntegerLiteral(builder, input_type(0),
                                               num_elements_reduced);
-    builder->Div(scalar_argument, divisor);
-    return true;
+    return builder->Div(reduce_output, divisor);
   }
 };
 

@@ -7,9 +7,9 @@
 # append "_gpu" to the test name to invoke the GPU benchmarks.  Example:
 #
 #   # for CPU tests
-#   $ bazel test -c opt --copt=-mavx //third_party/tensorflow/core/kernels:my_op_test
+#   $ bazel test --config opt //third_party/tensorflow/core/kernels:my_op_test
 #   # for GPU benchmarks
-#   $ bazel run -c opt --copt=-mavx --config=cuda //third_party/tensorflow/core/kernels:my_op_test_gpu -- --benchmarks=..
+#   $ bazel run --config opt --config=cuda //third_party/tensorflow/core/kernels:my_op_test_gpu -- --benchmarks=..
 #
 package(default_visibility = ["//visibility:public"])
 
@@ -17,10 +17,7 @@ licenses(["notice"])  # Apache 2.0
 
 package_group(
     name = "friends",
-    packages = [
-        "//learning/deepmind/...",
-        "//tensorflow/...",
-    ],
+    packages = ["//tensorflow/..."],
 )
 
 load(
@@ -38,6 +35,10 @@ load(
     "//tensorflow/core:platform/default/build_config.bzl",
     "tf_proto_library",
     "tf_kernel_tests_linkstatic",
+)
+load(
+    "//third_party/mkl:build_defs.bzl",
+    "if_mkl",
 )
 
 config_setting(
@@ -83,6 +84,7 @@ tf_kernel_library(
         "strided_slice_op_inst_4.cc",
         "strided_slice_op_inst_5.cc",
         "strided_slice_op_inst_6.cc",
+        "strided_slice_op_inst_7.cc",
     ],
     hdrs = [
         "dense_update_ops.h",
@@ -256,7 +258,22 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_test(
+    name = "variable_ops_test",
+    size = "small",
+    srcs = ["variable_ops_test.cc"],
+    deps = [
+        "//tensorflow/core:all_kernels",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:direct_session_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_kernel_library(
     name = "stage_op",
     srcs = ["stage_op.cc"],
     deps = [
@@ -298,26 +315,7 @@ cc_library(
     ],
 )
 
-tf_proto_library(
-    name = "reader_base_proto",
-    srcs = ["reader_base.proto"],
-    cc_api_version = 2,
-    go_api_version = 2,
-    java_api_version = 2,
-)
-
-cc_library(
-    name = "reader_base",
-    srcs = ["reader_base.cc"],
-    hdrs = ["reader_base.h"],
-    deps = [
-        ":reader_base_proto_cc",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
+tf_kernel_library(
     name = "record_input_op",
     srcs = [
         "record_input_op.cc",
@@ -367,17 +365,17 @@ cc_library(
     ],
 )
 
-# Private support libraries ---------------------------------------------------
-
 cc_library(
     name = "bounds_check",
     hdrs = ["bounds_check.h"],
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = [":friends"],
     deps = [
         "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
     ],
 )
+
+# Private support libraries ---------------------------------------------------
 
 cc_header_only_library(
     name = "bounds_check_lib",
@@ -404,10 +402,10 @@ cc_library(
         "eigen_backward_cuboid_convolutions.h",
         "eigen_backward_spatial_convolutions.h",
         "eigen_cuboid_convolution.h",
-        "eigen_patch_3d.h",
         "eigen_pooling.h",
         "eigen_softmax.h",
         "eigen_spatial_convolutions.h",
+        "eigen_volume_patch.h",
     ],
     deps = [
         "//third_party/eigen3",
@@ -490,7 +488,6 @@ cc_library(
         ":bitcast_op",
         ":concat_op",
         ":constant_op",
-        ":debug_ops",
         ":depth_space_ops",
         ":diag_op",
         ":edit_distance_op",
@@ -690,8 +687,15 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "transpose_op",
-    prefix = "transpose_op",
-    deps = ARRAY_DEPS,
+    srcs = [
+        "transpose_op.cc",
+    ] + if_mkl([
+        "mkl_transpose_op.cc",
+    ]),
+    hdrs = ["transpose_op.h"],
+    deps = ARRAY_DEPS + if_mkl([
+        "//third_party/mkl:intel_binary_blob",
+    ]),
 )
 
 tf_kernel_library(
@@ -813,7 +817,12 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-    ],
+    ] + select({
+        ":xsmm": [
+            "@libxsmm_archive//:xsmm_avx",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 tf_cc_test(
@@ -966,6 +975,7 @@ tf_cc_test(
         ":ops_testutil",
         ":ops_util",
         "//tensorflow/core:core_cpu",
+        "//tensorflow/core:debug_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -1095,9 +1105,23 @@ tf_kernel_library(
     visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/core:framework",
+        "//tensorflow/core/kernels:conv_ops",
         "//third_party/eigen3",
     ],
     alwayslink = 0,
+)
+
+tf_cc_test(
+    name = "transpose_util_test",
+    size = "small",
+    srcs = ["transpose_util_test.cc"],
+    deps = [
+        ":transpose_functor",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:tensor_testutil",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
 )
 
 tf_kernel_library(
@@ -1679,6 +1703,7 @@ tf_cc_tests(
         "colorspace_op_test.cc",
         "crop_and_resize_op_test.cc",
         "non_max_suppression_op_test.cc",
+        "resize_area_op_test.cc",
         "resize_bicubic_op_test.cc",
         "resize_bilinear_op_test.cc",
         "resize_nearest_neighbor_op_test.cc",
@@ -1717,6 +1742,22 @@ tf_cuda_cc_test(
     ],
 )
 
+tf_cuda_cc_test(
+    name = "resize_benchmark_test",
+    srcs = ["resize_op_benchmark_test.cc"],
+    deps = [
+        ":image",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 cc_library(
     name = "io",
     deps = [
@@ -1735,12 +1776,12 @@ cc_library(
 
 IO_DEPS = [
     ":ops_util",
-    ":reader_base",
     "//tensorflow/core:framework",
     "//tensorflow/core:io_ops_op_lib",
     "//tensorflow/core:lib",
     "//tensorflow/core:lib_internal",
     "//tensorflow/core:protos_all_cc",
+    "//tensorflow/core:reader_base",
     "//tensorflow/core/util/tensor_bundle",
 ]
 
@@ -2058,6 +2099,7 @@ cc_library(
         ":argmax_op",
         ":batch_matmul_op",
         ":betainc_op",
+        ":bincount_op",
         ":cast_op",
         ":check_numerics_op",
         ":cross_op",
@@ -2122,7 +2164,9 @@ tf_kernel_library(
 tf_kernel_library(
     name = "fft_ops",
     prefix = "fft_ops",
-    deps = MATH_DEPS,
+    deps = MATH_DEPS + [
+        "//tensorflow/core:spectral_ops_op_lib",
+    ],
 )
 
 tf_kernel_library(
@@ -2255,9 +2299,13 @@ tf_cuda_cc_test(
         ":matmul_op",
         ":ops_testutil",
         ":ops_util",
-        "//tensorflow/core:core_cpu",
+        ":quantized_ops",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:client_session",
+        "//tensorflow/core:array_ops_op_lib",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
+        "//tensorflow/core:math_ops_op_lib",
+        "//tensorflow/core:nn_ops_op_lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -2422,6 +2470,7 @@ tf_kernel_library(
     name = "depthwise_conv_op",
     prefix = "depthwise_conv_op",
     deps = [
+        ":bounds_check",
         ":conv_ops",
         ":ops_util",
         "//tensorflow/core:core_cpu",
@@ -2438,6 +2487,7 @@ tf_kernel_library(
     ],
     prefix = "depthwise_conv_grad_op",
     deps = [
+        ":bounds_check",
         ":ops_util",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
@@ -2549,6 +2599,17 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "bincount_op",
+    prefix = "bincount_op",
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_kernel_library(
     name = "l2loss_op",
     prefix = "l2loss_op",
     deps = [
@@ -2609,6 +2670,7 @@ tf_cuda_cc_test(
         ":ops_testutil",
         ":ops_util",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -3190,7 +3252,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tf_cuda_cc_test(
     name = "scatter_nd_op_test",
     size = "small",
     srcs = ["scatter_nd_op_test.cc"],
@@ -3199,6 +3261,7 @@ tf_cc_test(
         ":ops_testutil",
         ":ops_util",
         ":scatter_nd_op",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -3290,6 +3353,7 @@ tf_cc_test(
     size = "small",
     srcs = ["training_ops_test.cc"],
     deps = [
+        ":dense_update_ops",
         ":ops_util",
         ":training_ops",
         "//tensorflow/core:core_cpu",
@@ -3354,6 +3418,33 @@ tf_cuda_cc_test(
 )
 
 tf_kernel_library(
+    name = "random_poisson_op",
+    prefix = "random_poisson_op",
+    deps = [
+        ":random_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:random_ops_op_lib",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "random_poisson_op_test",
+    size = "small",
+    srcs = ["random_poisson_op_test.cc"],
+    deps = [
+        ":ops_util",
+        ":random_poisson_op",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_kernel_library(
     name = "word2vec_kernels",
     prefix = "word2vec_kernels",
     deps = [
@@ -3383,10 +3474,10 @@ filegroup(
         "eigen_backward_cuboid_convolutions.h",
         "eigen_backward_spatial_convolutions.h",
         "eigen_cuboid_convolution.h",
-        "eigen_patch_3d.h",
         "eigen_pooling.h",
         "eigen_softmax.h",
         "eigen_spatial_convolutions.h",
+        "eigen_volume_patch.h",
         "fifo_queue.h",
         "maxpooling_op.h",
         "ops_util.cc",
@@ -3469,6 +3560,7 @@ filegroup(
         "sendrecv_ops.h",
         "sequence_ops.cc",
         "shape_ops.cc",
+        "shape_ops.h",
         "slice_op.cc",
         "slice_op.h",
         "slice_op_cpu_impl.h",
@@ -3478,6 +3570,7 @@ filegroup(
         "slice_op_cpu_impl_4.cc",
         "slice_op_cpu_impl_5.cc",
         "slice_op_cpu_impl_6.cc",
+        "slice_op_cpu_impl_7.cc",
         "softmax_op.cc",
         "softmax_op.h",
         "softmax_op_functor.h",
@@ -3495,6 +3588,7 @@ filegroup(
         "strided_slice_op_inst_4.cc",
         "strided_slice_op_inst_5.cc",
         "strided_slice_op_inst_6.cc",
+        "strided_slice_op_inst_7.cc",
         "unpack_op.cc",
         "variable_ops.cc",
         "variable_ops.h",
@@ -3546,6 +3640,8 @@ filegroup(
         "save_restore_tensor.h",
         "softplus_op.h",
         "softsign_op.h",
+        "spacetobatch_functor.h",
+        "spacetodepth_op.h",
         "tensor_array.h",
         "tile_ops_cpu_impl.h",
         "tile_ops_impl.h",
@@ -3596,6 +3692,7 @@ filegroup(
         "cwise_op_mul_1.cc",
         "cwise_op_mul_2.cc",
         "cwise_op_neg.cc",
+        "cwise_op_pow.cc",
         "cwise_op_reciprocal.cc",
         "cwise_op_rsqrt.cc",
         "cwise_op_select.cc",
@@ -3627,6 +3724,7 @@ filegroup(
 filegroup(
     name = "android_extended_ops_group2",
     srcs = [
+        "batchtospace_op.cc",
         "ctc_decoder_ops.cc",
         "depthtospace_op.cc",
         "dynamic_stitch_op.cc",
@@ -3664,6 +3762,9 @@ filegroup(
         "session_ops.cc",
         "softplus_op.cc",
         "softsign_op.cc",
+        "spacetobatch_functor.cc",
+        "spacetobatch_op.cc",
+        "spacetodepth_op.cc",
         "sparse_to_dense_op.cc",
         "stack_ops.cc",
         "summary_op.cc",
@@ -3676,6 +3777,7 @@ filegroup(
         "tile_ops_cpu_impl_4.cc",
         "tile_ops_cpu_impl_5.cc",
         "tile_ops_cpu_impl_6.cc",
+        "tile_ops_cpu_impl_7.cc",
         "topk_op.cc",
         "training_ops.cc",
         "transpose_functor_cpu.cc",
@@ -3703,6 +3805,7 @@ filegroup(
         "quantized_conv_ops.cc",
         "quantized_instance_norm.cc",
         "quantized_matmul_op.cc",
+        "quantized_mul_op.cc",
         "quantized_pooling_ops.cc",
         "quantized_reshape_op.cc",
         "reference_gemm.h",
@@ -3725,6 +3828,7 @@ filegroup(
         ],
         exclude = [
             "*test.cc",
+            "*test_util*",
             "*testutil*",
             "*testlib*",
             "*main.cc",
@@ -3749,7 +3853,7 @@ filegroup(
             "decode_jpeg_op.*",
             "decode_gif_op.*",
             "identity_reader_op.*",
-            "reader_base.*",
+            "remote_fused_graph_execute_op.*",
             "fixed_length_record_reader_op.*",
             "whole_file_read_ops.*",
             "sample_distorted_bounding_box_op.*",
@@ -3757,8 +3861,6 @@ filegroup(
             # Excluded due to experimental status:
             "debug_ops.*",
             "scatter_nd_op*",
-            # Lib CURL is not supported on Android.
-            "bigquery*",
         ],
     ),
     visibility = ["//visibility:public"],
@@ -3806,6 +3908,7 @@ tf_kernel_library(
         "quantized_conv_ops.cc",
         "quantized_instance_norm.cc",
         "quantized_matmul_op.cc",
+        "quantized_mul_op.cc",
         "quantized_pooling_ops.cc",
         "quantized_reshape_op.cc",
         "requantization_range_op.cc",
@@ -3998,6 +4101,63 @@ tf_cc_test(
     ],
 )
 
+# Android-only test for quantized instance norm.
+cc_binary(
+    name = "quantized_mul_op_test_android_only",
+    testonly = 1,
+    srcs = ["quantized_mul_op_test.cc"],
+    linkopts = select({
+        "//tensorflow:android": [
+            "-pie",
+        ],
+        "//conditions:default": [],
+    }),
+    linkstatic = 1,
+    tags = [
+        "manual",
+        "notap",
+    ],
+    deps = [
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:client_session",
+    ] + select({
+        "//tensorflow:android": [
+            ":android_tensorflow_kernels",
+            "//tensorflow/core:android_tensorflow_lib",
+            "//tensorflow/core:android_tensorflow_test_lib",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:framework",
+            "//tensorflow/core:tensor_testutil",
+            "//tensorflow/core:test_main",
+        ],
+    }),
+)
+
+tf_cc_test(
+    name = "quantized_mul_op_test",
+    size = "small",
+    srcs = ["quantized_mul_op_test.cc"],
+    deps = [
+        ":math",
+        ":ops_testutil",
+        ":ops_util",
+        ":quantized_ops",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:client_session",
+        "//tensorflow/core:array_ops_op_lib",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:direct_session",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:math_ops_op_lib",
+        "//tensorflow/core:nn_ops_op_lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 tf_cc_test(
     name = "quantized_pooling_ops_test",
     size = "small",
@@ -4094,11 +4254,20 @@ cc_binary(
         "notap",
     ],
     deps = [
-        ":android_tensorflow_kernels",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:client_session",
-        "//tensorflow/core:android_tensorflow_test_lib",
-    ],
+    ] + select({
+        "//tensorflow:android": [
+            ":android_tensorflow_kernels",
+            "//tensorflow/core:android_tensorflow_lib",
+            "//tensorflow/core:android_tensorflow_test_lib",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:framework",
+            "//tensorflow/core:tensor_testutil",
+            "//tensorflow/core:test_main",
+        ],
+    }),
 )
 
 tf_cc_test(
@@ -4120,6 +4289,157 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
     ],
+)
+
+tf_kernel_library(
+    name = "remote_fused_graph_ops",
+    prefix = "remote_fused_graph_ops",
+    deps = [
+        ":remote_fused_graph_execute_op",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:remote_fused_graph_ops_op_lib",
+    ],
+)
+
+cc_library(
+    name = "remote_fused_graph_execute_op",
+    srcs = ["remote_fused_graph_execute_op.cc"],
+    deps = [
+        ":remote_fused_graph_execute_utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+cc_library(
+    name = "remote_fused_graph_execute_utils",
+    srcs = ["remote_fused_graph_execute_utils.cc"],
+    hdrs = [
+        "i_remote_fused_graph_executor.h",
+        "remote_fused_graph_execute_utils.h",
+    ],
+    deps = [
+        "//tensorflow/core",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+cc_library(
+    name = "remote_fused_graph_execute_op_test_utils",
+    srcs = ["remote_fused_graph_execute_op_test_utils.cc"],
+    hdrs = ["remote_fused_graph_execute_op_test_utils.h"],
+    deps = [
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/kernels:cwise_op",
+    ],
+)
+
+tf_cc_test(
+    name = "remote_fused_graph_execute_utils_test",
+    size = "small",
+    srcs = [
+        "remote_fused_graph_execute_utils_test.cc",
+    ],
+    deps = [
+        ":remote_fused_graph_execute_op_test_utils",
+        ":remote_fused_graph_execute_utils",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:direct_session",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:ops",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:cwise_op",
+    ],
+)
+
+tf_cc_test(
+    name = "remote_fused_graph_ops_test",
+    size = "small",
+    srcs = [
+        "remote_fused_graph_execute_op_test.cc",
+    ],
+    deps = [
+        ":ops_testutil",
+        ":ops_util",
+        ":remote_fused_graph_execute_op",
+        ":remote_fused_graph_execute_op_test_utils",
+        ":remote_fused_graph_execute_utils",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:direct_session",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:remote_fused_graph_ops_op_lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+if_mkl(
+    tf_kernel_library(
+        name = "mkl_matmul_op",
+        prefix = "mkl_matmul",
+        deps = [
+            ":math",
+            "//third_party/mkl:intel_binary_blob",
+        ],
+    ),
+)
+
+if_mkl(
+    tf_kernel_library(
+        name = "mkl_conv_op",
+        prefix = "mkl_conv",
+        deps = [
+            ":bounds_check",
+            ":ops_util",
+            "//tensorflow/core:core_cpu",
+            "//tensorflow/core:framework",
+            "//tensorflow/core:lib",
+            "//tensorflow/core:lib_internal",
+            "//tensorflow/core:nn_ops_op_lib",
+            "//third_party/mkl:intel_binary_blob",
+        ],
+    ),
+)
+
+if_mkl(
+    tf_kernel_library(
+        name = "mkl_tfconv_op",
+        prefix = "mkl_tfconv",
+        deps = [
+            ":bounds_check",
+            ":ops_util",
+            "//tensorflow/core:core_cpu",
+            "//tensorflow/core:framework",
+            "//tensorflow/core:lib",
+            "//tensorflow/core:lib_internal",
+            "//tensorflow/core:nn_ops_op_lib",
+            "//third_party/mkl:intel_binary_blob",
+        ],
+    ),
 )
 
 # -----------------------------------------------------------------------------

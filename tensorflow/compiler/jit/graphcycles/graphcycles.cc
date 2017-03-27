@@ -76,7 +76,7 @@ struct GraphCycles::Rep {
 GraphCycles::GraphCycles() : rep_(new Rep) {}
 
 GraphCycles::~GraphCycles() {
-  for (int i = 0; i < rep_->nodes_.size(); i++) {
+  for (Vec<Node*>::size_type i = 0; i < rep_->nodes_.size(); i++) {
     delete rep_->nodes_[i];
   }
   delete rep_;
@@ -85,7 +85,7 @@ GraphCycles::~GraphCycles() {
 bool GraphCycles::CheckInvariants() const {
   Rep* r = rep_;
   NodeSet ranks;  // Set of ranks seen so far.
-  for (int32 x = 0; x < r->nodes_.size(); x++) {
+  for (Vec<Node*>::size_type x = 0; x < r->nodes_.size(); x++) {
     Node* nx = r->nodes_[x];
     if (nx->visited) {
       LOG(FATAL) << "Did not clear visited marker on node " << x;
@@ -259,7 +259,7 @@ static void Reorder(GraphCycles::Rep* r) {
              r->deltaf_.end(), r->merged_.begin());
 
   // Assign the ranks in order to the collected list.
-  for (int32 i = 0; i < r->list_.size(); i++) {
+  for (Vec<int32>::size_type i = 0; i < r->list_.size(); i++) {
     r->nodes_[r->list_[i]]->rank = r->merged_[i];
   }
 }
@@ -277,7 +277,7 @@ static void Sort(const Vec<Node*>& nodes, Vec<int32>* delta) {
 }
 
 static void MoveToList(GraphCycles::Rep* r, Vec<int32>* src, Vec<int32>* dst) {
-  for (int32 i = 0; i < src->size(); i++) {
+  for (Vec<int32>::size_type i = 0; i < src->size(); i++) {
     int32 w = (*src)[i];
     (*src)[i] = r->nodes_[w]->rank;  // Replace src entry with its rank
     r->nodes_[w]->visited = false;   // Prepare for future DFS calls
@@ -286,7 +286,7 @@ static void MoveToList(GraphCycles::Rep* r, Vec<int32>* src, Vec<int32>* dst) {
 }
 
 static void ClearVisitedBits(GraphCycles::Rep* r, const Vec<int32>& nodes) {
-  for (int32 i = 0; i < nodes.size(); i++) {
+  for (Vec<int32>::size_type i = 0; i < nodes.size(); i++) {
     r->nodes_[nodes[i]]->visited = false;
   }
 }

@@ -84,7 +84,9 @@ tf_cc_test(
         "//tensorflow:darwin": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
-    linkstatic = tf_kernel_tests_linkstatic(),
+    # We must ensure that the dependencies can be dynamically linked since
+    # the shared library must be able to use core:framework.
+    # linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         ":c_api",
         "//tensorflow/cc/saved_model:signature_constants",
@@ -99,6 +101,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:array",
+        "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:math",
         "//third_party/eigen3",
     ],

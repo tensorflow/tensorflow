@@ -49,11 +49,43 @@ namespace window_util {
 }
 
 string ToString(const Window& window) {
-  std::vector<string> window_dimension_strings;
-  for (const auto& window_dimension : window.dimensions()) {
-    window_dimension_strings.push_back(ToString(window_dimension));
+  using tensorflow::strings::StrCat;
+  using tensorflow::strings::StrAppend;
+
+  string str;
+  const auto add_field = [&](
+      const char* heading,
+      std::function<string(const WindowDimension&)> format) {
+    StrAppend(&str, heading, "=");
+    const char* prefix = "";
+    for (const auto& window_dimension : window.dimensions()) {
+      StrAppend(&str, prefix, format(window_dimension));
+      prefix = "x";
+    }
+  };
+
+  add_field("window",
+            [](const WindowDimension& dim) { return StrCat(dim.size()); });
+  if (HasStride(window)) {
+    add_field(" stride",
+              [](const WindowDimension& dim) { return StrCat(dim.stride()); });
   }
-  return "{" + tensorflow::str_util::Join(window_dimension_strings, ", ") + "}";
+  if (HasPadding(window)) {
+    add_field(" pad", [](const WindowDimension& dim) {
+      return StrCat(dim.padding_low(), "_", dim.padding_high());
+    });
+  }
+  if (HasBaseDilation(window)) {
+    add_field(" lhs_dilate", [](const WindowDimension& dim) {
+      return StrCat(dim.base_dilation());
+    });
+  }
+  if (HasWindowDilation(window)) {
+    add_field(" rhs_dilate", [](const WindowDimension& dim) {
+      return StrCat(dim.window_dilation());
+    });
+  }
+  return str;
 }
 
 bool HasStride(const Window& window) {

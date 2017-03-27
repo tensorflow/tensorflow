@@ -13,12 +13,12 @@ Linux.
 Current Status
 --------------
 
-CMake can be used to build TensorFlow on Windows. See the [getting started documentation](https://www.tensorflow.org/get_started/os_setup.html#pip-installation-on-windows)
+CMake can be used to build TensorFlow on Windows. See the [getting started documentation](https://www.tensorflow.org/install/install_windows)
 for instructions on how to install a pre-built TensorFlow package on Windows.
 
 ### Current known limitations
 * It is not possible to load a custom Op library.
-* GCS and HDFS file systems are not supported.
+* GCS file system is not supported.
 * The following Ops are not currently implemented:
  - Dequantize
  - QuantizeAndDequantize

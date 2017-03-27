@@ -23,9 +23,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-// An upper limit of the total number of elements in a tensor.
-static const int64 kMaxElements = (1LL << 40);
-
 static void AppendTo(const TensorShape& s, gtl::InlinedVector<int64, 8>* vals) {
   for (auto it = s.begin(); it != s.end(); ++it) {
     vals->push_back((*it).size);

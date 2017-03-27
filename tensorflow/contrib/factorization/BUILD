@@ -12,8 +12,10 @@ load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 
-py_library(
+tf_custom_op_py_library(
     name = "factorization_py",
     srcs = [
         "__init__.py",
@@ -22,9 +24,13 @@ py_library(
         "python/ops/gmm.py",
         "python/ops/gmm_ops.py",
     ],
-    data = [
+    dso = [
         ":python/ops/_clustering_ops.so",
         ":python/ops/_factorization_ops.so",
+    ],
+    kernels = [
+        ":all_ops",
+        "//tensorflow/contrib/factorization/kernels:all_kernels",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -76,6 +82,7 @@ tf_custom_op_library(
         "ops/factorization_ops.cc",
     ],
     deps = [
+        "//tensorflow/contrib/factorization/kernels:masked_matmul_ops",
         "//tensorflow/contrib/factorization/kernels:wals_solver_ops",
     ],
 )
@@ -112,6 +119,7 @@ tf_gen_op_wrapper_py(
 # Ops tests
 tf_py_test(
     name = "gmm_test",
+    size = "large",
     srcs = [
         "python/ops/gmm_test.py",
     ],
@@ -134,6 +142,7 @@ tf_py_test(
 
 tf_py_test(
     name = "gmm_ops_test",
+    size = "large",
     srcs = [
         "python/ops/gmm_ops_test.py",
     ],
@@ -193,6 +202,40 @@ tf_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
+)
+
+tf_py_test(
+    name = "masked_matmul_ops_test",
+    srcs = ["python/kernel_tests/masked_matmul_ops_test.py"],
+    additional_deps = [
+        ":gen_factorization_ops",
+        ":factorization_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_test(
+    name = "masked_matmul_benchmark",
+    srcs = ["python/kernel_tests/masked_matmul_benchmark.py"],
+    additional_deps = [
+        ":gen_factorization_ops",
+        ":factorization_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:variables",
+    ],
+    main = "python/kernel_tests/masked_matmul_benchmark.py",
 )
 
 # All files

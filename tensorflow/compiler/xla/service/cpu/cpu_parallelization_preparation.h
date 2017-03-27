@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CPU_PARALLELIZATION_PREPARATION_H_
 
 #include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_pass.h"
+#include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 namespace xla {
 namespace cpu {
@@ -30,10 +30,12 @@ namespace cpu {
 // computations.  However, it could make sense to coarsen the parallelization to
 // improve cache locality.  Also, we will need to do something to intelligently
 // handle While constructs.
-class ParallelizationPreparation : public HloPass {
+class ParallelizationPreparation : public HloPassInterface {
  public:
-  explicit ParallelizationPreparation() : HloPass("cpu-parallel-prepare") {}
   ~ParallelizationPreparation() override {}
+  tensorflow::StringPiece name() const override {
+    return "cpu-parallel-prepare";
+  }
 
   // Run instruction fusion on the given computation. Returns whether the
   // computation was changed.

@@ -7,6 +7,8 @@ exports_files(["LICENSE"])
 
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 py_library(
     name = "labeled_tensor",
     srcs = ["__init__.py"],
@@ -17,6 +19,15 @@ py_library(
         ":nn",
         ":ops",
         ":sugar",
+    ],
+)
+
+# Transitive dependencies of this target will be included in the pip package.
+py_library(
+    name = "labeled_tensor_pip",
+    deps = [
+        ":labeled_tensor",
+        ":test_util",
     ],
 )
 

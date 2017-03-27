@@ -127,7 +127,8 @@ Status Rendezvous::Recv(const ParsedKey& key, const Args& recv_args,
               n.Notify();
             });
   if (timeout_ms > 0) {
-    bool notified = WaitForNotificationWithTimeout(&n, timeout_ms);
+    int64 timeout_us = timeout_ms * 1000;
+    bool notified = WaitForNotificationWithTimeout(&n, timeout_us);
     if (!notified) {
       return Status(error::DEADLINE_EXCEEDED,
                     "Timed out waiting for notification");

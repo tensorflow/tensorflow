@@ -52,6 +52,10 @@ class ClientLibraryTestBase : public ::testing::Test {
   // Returns the name of the test currently being run.
   string TestName() const;
 
+  void SetFastMathDisabled(bool disabled) {
+    execution_options_.set_disable_fast_math(disabled);
+  }
+
   // TODO(b/25566808): Add helper that populates a literal from a testdata file.
 
   // Convenience methods for building and running a computation from a builder.
@@ -212,6 +216,16 @@ class ClientLibraryTestBase : public ::testing::Test {
       const int rows, const int cols, const int rows_padded,
       const int cols_padded);
 
+  // Create a parameter instruction that wraps a given value and then stores
+  // into "data_handle" the global handle for that parameter.
+  //
+  // "parameter_number" is the parameter number.
+  // "name" is the name of the parameter instruction.
+  template <typename NativeT>
+  std::unique_ptr<GlobalData> CreateR0Parameter(
+      NativeT value, int64 parameter_number, const string& name,
+      ComputationBuilder* builder, ComputationDataHandle* data_handle);
+
   // Create a parameter instruction that wraps the given values and then stores
   // into "data_handle" the global handle for that parameter.
   //
@@ -235,7 +249,20 @@ class ClientLibraryTestBase : public ::testing::Test {
       const string& name, ComputationBuilder* builder,
       ComputationDataHandle* data_handle);
 
+  // Create a parameter instruction that wraps the given constant array
+  // "array_3d" and then stores to "data_handle" the global handle for that
+  // parameter.
+  //
+  // "parameter_number" is the parameter number.
+  // "name" is the name of the parameter instruction.
+  template <typename NativeT>
+  std::unique_ptr<GlobalData> CreateR3Parameter(
+      const Array3D<NativeT>& array_3d, int64 parameter_number,
+      const string& name, ComputationBuilder* builder,
+      ComputationDataHandle* data_handle);
+
   Client* client_;
+  ExecutionOptions execution_options_;
 };
 
 template <typename NativeT>
@@ -354,6 +381,17 @@ void ClientLibraryTestBase::ComputeAndCompareR4(
 }
 
 template <typename NativeT>
+std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR0Parameter(
+    NativeT value, int64 parameter_number, const string& name,
+    ComputationBuilder* builder, ComputationDataHandle* data_handle) {
+  std::unique_ptr<Literal> literal = LiteralUtil::CreateR0(value);
+  std::unique_ptr<GlobalData> data =
+      client_->TransferToServer(*literal).ConsumeValueOrDie();
+  *data_handle = builder->Parameter(parameter_number, literal->shape(), name);
+  return data;
+}
+
+template <typename NativeT>
 std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR1Parameter(
     tensorflow::gtl::ArraySlice<NativeT> values, int64 parameter_number,
     const string& name, ComputationBuilder* builder,
@@ -371,6 +409,18 @@ std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR2Parameter(
     const string& name, ComputationBuilder* builder,
     ComputationDataHandle* data_handle) {
   std::unique_ptr<Literal> literal = LiteralUtil::CreateR2FromArray2D(array_2d);
+  std::unique_ptr<GlobalData> data =
+      client_->TransferToServer(*literal).ConsumeValueOrDie();
+  *data_handle = builder->Parameter(parameter_number, literal->shape(), name);
+  return data;
+}
+
+template <typename NativeT>
+std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR3Parameter(
+    const Array3D<NativeT>& array_3d, int64 parameter_number,
+    const string& name, ComputationBuilder* builder,
+    ComputationDataHandle* data_handle) {
+  std::unique_ptr<Literal> literal = LiteralUtil::CreateR3FromArray3D(array_3d);
   std::unique_ptr<GlobalData> data =
       client_->TransferToServer(*literal).ConsumeValueOrDie();
   *data_handle = builder->Parameter(parameter_number, literal->shape(), name);

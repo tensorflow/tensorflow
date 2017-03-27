@@ -73,7 +73,7 @@ def _embeddings_from_arguments(column,
         shape=[args.vocab_size],
         dtype=dtypes.float32,
         initializer=args.initializer,
-        trainable=trainable,
+        trainable=(trainable and args.trainable),
         collections=weight_collections)
 
     return embedding_ops.scattered_embedding_lookup_sparse(
@@ -108,7 +108,7 @@ def _embeddings_from_arguments(column,
           shape=shape,
           dtype=dtypes.float32,
           initializer=args.initializer,
-          trainable=trainable,
+          trainable=(trainable and args.trainable),
           collections=weight_collections)
       graph.add_to_collection(shared_embedding_collection_name, embeddings)
   else:
@@ -117,7 +117,7 @@ def _embeddings_from_arguments(column,
         shape=[args.vocab_size, args.dimension],
         dtype=dtypes.float32,
         initializer=args.initializer,
-        trainable=trainable,
+        trainable=(trainable and args.trainable),
         collections=weight_collections)
 
   if isinstance(embeddings, variables.Variable):
@@ -226,7 +226,7 @@ def input_from_feature_columns(columns_to_tensors,
     columns_to_tensors: A mapping from feature column to tensors. 'string' key
       means a base feature (not-transformed). It can have FeatureColumn as a
       key too. That means that FeatureColumn is already transformed by input
-      pipeline. For example, `inflow` may have handled transformations.
+      pipeline.
     feature_columns: A set containing all the feature columns. All items in the
       set should be instances of classes derived by FeatureColumn.
     weight_collections: List of graph collections to which weights are added.
@@ -268,7 +268,7 @@ def sequence_input_from_feature_columns(columns_to_tensors,
     columns_to_tensors: A mapping from feature column to tensors. 'string' key
       means a base feature (not-transformed). It can have FeatureColumn as a
       key too. That means that FeatureColumn is already transformed by input
-      pipeline. For example, `inflow` may have handled transformations.
+      pipeline.
     feature_columns: A set containing all the feature columns. All items in the
       set should be instances of classes derived by FeatureColumn.
     weight_collections: List of graph collections to which weights are added.
@@ -422,9 +422,9 @@ def joint_weighted_sum_from_feature_columns(columns_to_tensors,
   Returns:
     A tuple containing:
 
-      * A Tensor which represents predictions of a linear model.
-      * A list of Variables storing the weights.
-      * A Variable which is used for bias.
+    * A Tensor which represents predictions of a linear model.
+    * A list of Variables storing the weights.
+    * A Variable which is used for bias.
 
   Raises:
     ValueError: if FeatureColumn cannot be used for linear predictions.
@@ -558,7 +558,8 @@ def weighted_sum_from_feature_columns(columns_to_tensors,
       except ValueError as ee:
         raise ValueError('Error creating weighted sum for column: {}.\n'
                          '{}'.format(column.name, ee))
-      output_tensors.append(predictions)
+      output_tensors.append(array_ops.reshape(
+          predictions, shape=(-1, num_outputs)))
       column_to_variable[column] = variable
       _log_variable(variable)
       _maybe_restore_from_checkpoint(column._checkpoint_path(), variable)
@@ -797,11 +798,14 @@ def check_feature_columns(feature_columns):
   """Checks the validity of the set of FeatureColumns.
 
   Args:
-    feature_columns: A set of instances or subclasses of FeatureColumn.
+    feature_columns: An iterable of instances or subclasses of FeatureColumn.
 
   Raises:
+    ValueError: If `feature_columns` is a dict.
     ValueError: If there are duplicate feature column keys.
   """
+  if isinstance(feature_columns, dict):
+    raise ValueError('Expected feature_columns to be iterable, found dict.')
   seen_keys = set()
   for f in feature_columns:
     key = f.key

@@ -80,7 +80,7 @@ StatusOr<perftools::gputools::DeviceMemoryBase> HloTestBase::Execute(
         arguments,
     Shape* result_shape) {
   auto module_config = MakeUnique<HloModuleConfig>(
-      MakeProgramShape(module->entry_computation()));
+      module->entry_computation()->ComputeProgramShape());
   return Execute(std::move(module), std::move(module_config), arguments,
                  result_shape);
 }
@@ -111,16 +111,21 @@ StatusOr<se::DeviceMemoryBase> HloTestBase::Execute(
       backend_->eigen_intra_op_thread_pool_device());
 
   HloExecutionProfile hlo_execution_profile;
-  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase result,
-                      executable->ExecuteOnStream(&run_options, arguments,
-                                                  &hlo_execution_profile));
+  ServiceExecutableRunOptions service_run_options(run_options,
+                                                  backend_->StreamBorrower());
+  TF_ASSIGN_OR_RETURN(
+      se::DeviceMemoryBase result,
+      executable->ExecuteOnStream(&service_run_options, arguments,
+                                  &hlo_execution_profile));
   TF_RET_CHECK(stream.BlockHostUntilDone());
 
   allocations_.push_back(result);
 
   *result_shape = executable->result_shape();
 
-  if (ShapeUtil::IsTuple(*result_shape)) {
+  // TODO(b/36256956) Ideally tuple elements could always be distinct buffers.
+  if (ShapeUtil::IsTuple(*result_shape) &&
+      backend_->transfer_manager()->TupleElementsAreDistinctBuffers()) {
     // We must record element buffers of tuples as well to avoid leaks.
     DCHECK(!ShapeUtil::IsNestedTuple(*result_shape));
     TF_ASSIGN_OR_RETURN(
@@ -133,6 +138,7 @@ StatusOr<se::DeviceMemoryBase> HloTestBase::Execute(
     std::set<void*> added_opaques;
     for (auto element_buffer : element_buffers) {
       if (added_opaques.count(element_buffer.opaque()) == 0) {
+        CHECK(element_buffer.opaque() != nullptr);
         added_opaques.insert(element_buffer.opaque());
         allocations_.push_back(element_buffer);
       }
@@ -185,16 +191,6 @@ std::unique_ptr<Literal> HloTestBase::ExecuteAndTransfer(
               &result_shape)
           .ValueOrDie();
   return TransferFromDevice(result_shape, device_base);
-}
-
-ProgramShape HloTestBase::MakeProgramShape(HloComputation* computation) {
-  ProgramShape program_shape;
-  for (int64 i = 0; i < computation->num_parameters(); ++i) {
-    *program_shape.add_parameters() =
-        computation->parameter_instruction(i)->shape();
-  }
-  *program_shape.mutable_result() = computation->root_instruction()->shape();
-  return program_shape;
 }
 
 string HloTestBase::TestName() const {

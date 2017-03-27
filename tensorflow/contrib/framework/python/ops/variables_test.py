@@ -32,6 +32,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import gfile
@@ -494,6 +495,17 @@ class ModelVariablesTest(test.TestCase):
       self.assertEquals([a], variables_lib2.get_model_variables('A'))
       self.assertEquals([b], variables_lib2.get_model_variables('B'))
 
+  def testGetTrainableVariables(self):
+    with self.test_session():
+      with variable_scope.variable_scope('A'):
+        variables_lib2.local_variable([5])
+        a = variables_lib.Variable([5])
+      with variable_scope.variable_scope('B'):
+        variables_lib2.local_variable([5])
+        b = variables_lib.Variable([5])
+      self.assertEquals([a], variables_lib2.get_trainable_variables('A'))
+      self.assertEquals([b], variables_lib2.get_trainable_variables('B'))
+
   def testGetLocalVariables(self):
     with self.test_session():
       with variable_scope.variable_scope('A'):
@@ -675,6 +687,23 @@ class GetVariablesByNameTest(test.TestCase):
       self.assertEquals([fooa], matched_variables)
 
 
+class GetVariableFullNameTest(test.TestCase):
+
+  def testVariable(self):
+    my_var0 = variables_lib2.variable('my_var0', shape=[])
+    full_name = variables_lib2.get_variable_full_name(my_var0)
+    self.assertEquals(full_name, my_var0.op.name)
+
+  def testPartitionedVariable(self):
+    input_full_name = 'my_var0'
+    partitioner = partitioned_variables.variable_axis_size_partitioner(2)
+    my_var0 = variables_lib2.variable(
+        'my_var0', shape=[2, 2], partitioner=partitioner)
+    for part_var in list(my_var0):
+      computed_full_name = variables_lib2.get_variable_full_name(part_var)
+      self.assertEquals(input_full_name, computed_full_name)
+
+
 class AssignFromValuesTest(test.TestCase):
 
   def testNoScopes(self):
@@ -850,6 +879,48 @@ class AssignFromCheckpointTest(test.TestCase):
       # Request and test the variable values:
       self.assertEqual(init_value0, var0.eval())
       self.assertEqual(init_value1, var1.eval())
+
+  # Tests restoring PartitionedVariables and tests using a dictionary
+  # of lists as the assign_from_checkpoint() var_list param.
+  def testLoadPartitionedVariables(self):
+    model_dir = tempfile.mkdtemp(prefix=os.path.join(
+        self.get_temp_dir(), 'load_partitioned_variables'))
+
+    init_value0 = np.array([[10.0, 11.0], [12.0, 13.0]])
+    init_value1 = np.array([20.0])  # Partitioned into 1 part, edge case.
+    var_names_to_values = {'var0': init_value0, 'var1': init_value1}
+
+    with self.test_session() as sess:
+      model_path = self.create_checkpoint_from_values(var_names_to_values,
+                                                      model_dir)
+      # var0 and var1 are PartitionedVariables.
+      partitioner = partitioned_variables.variable_axis_size_partitioner(2)
+      var0 = variables_lib2.variable(
+          'var0', shape=init_value0.shape, partitioner=partitioner)
+      var0full = variables_lib2.variable(
+          'var0full', shape=init_value0.shape)
+      var1 = variables_lib2.variable(
+          'var1', shape=init_value1.shape, partitioner=partitioner)
+
+      # Convert var0 and var1 into a list of underlying variables.
+      vars_to_restore = {'var0': list(var0) + [var0full], 'var1': list(var1)}
+      op, feed_dict = variables_lib2.assign_from_checkpoint(model_path,
+                                                            vars_to_restore)
+
+      # Initialize the variables.
+      sess.run(variables_lib.global_variables_initializer())
+
+      # Perform the assignment.
+      sess.run(op, feed_dict)
+
+      # Request and test the variable values. PartitionedVariables can't
+      # be evaled so we wrap them in an identity.
+      self.assertTrue(np.array_equal(
+          init_value0, array_ops.identity(var0).eval()))
+      self.assertTrue(np.array_equal(
+          init_value0, var0full.eval()))
+      self.assertTrue(np.array_equal(
+          init_value1, array_ops.identity(var1).eval()))
 
   def testRaisesValueErrorIfAVariableIsntFound(self):
     model_dir = tempfile.mkdtemp(prefix=os.path.join(

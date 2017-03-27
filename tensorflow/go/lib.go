@@ -14,6 +14,16 @@
 
 package tensorflow
 
-// #cgo LDFLAGS: -L${SRCDIR}/../../bazel-bin/tensorflow -ltensorflow
+// #cgo LDFLAGS: -ltensorflow
 // #cgo CFLAGS: -I${SRCDIR}/../../
+//
+// // TODO(ashankar): Remove this after TensorFlow 1.1 has been released.
+// // Till then, the TensorFlow C API binary releases do not contain
+// // the TF_DeletePRunHandle symbol. We work around that by
+// // implementing the equivalent in session.cpp
+// extern void tfDeletePRunHandle(const char*);
 import "C"
+
+func deletePRunHandle(h *C.char) {
+	C.tfDeletePRunHandle(h)
+}

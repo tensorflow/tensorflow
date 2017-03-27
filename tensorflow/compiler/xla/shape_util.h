@@ -72,10 +72,17 @@ class ShapeIndex {
     return indices_ == other.indices_;
   }
   bool operator!=(const ShapeIndex& other) const { return !(*this == other); }
+  bool operator<(const ShapeIndex& other) const {
+    return indices_ < other.indices_;
+  }
+
+  string ToString() const;
 
  private:
   std::vector<int64> indices_;
 };
+
+std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index);
 
 // Namespaced collection of (static) shape utilities.
 //
@@ -95,13 +102,9 @@ class ShapeUtil {
   // shapes. This includes only the size of the top-level buffer. For example, a
   // tuple is stored as an array of pointers to other buffers. In this case,
   // this method only returns the size of the pointer array.
-  static int64 ByteSizeOf(const Shape& shape, int64 pointer_size);
-
-  // Returns the number of bytes required for an allocation of shape.
-  // The calculation for tuple shapes assumes that we are utilizing host
-  // pointers.
-  // Precondition: !ShapeUtil::IsOpaque(shape)
-  static int64 ByteSizeOf(const Shape& shape);
+  // Precondition: (!ShapeUtil::IsTuple(shape) || pointer_size > 0) &&
+  //               !ShapeUtil::IsOpaque(shape)
+  static int64 ByteSizeOf(const Shape& shape, int64 pointer_size = -1);
 
   // Returns the number of bytes used to store the primitive_type.
   //
@@ -224,7 +227,7 @@ class ShapeUtil {
   // Validates that the provided shape satisfies invariants.
   static Status ValidateShape(const Shape& shape);
 
-  // Validates the the provided shape satisfies invariants, except those that
+  // Validates the provided shape satisfies invariants, except those that
   // pertain to layout.
   //
   // Layout is optional for client-provided shapes, so that the compiler may

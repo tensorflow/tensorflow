@@ -30,7 +30,7 @@
     "merge2": "~0.3.6",
     "minimist": "~1.2.0",
     "tsify": "^0.14.8",
-    "typescript": "2.0.6",
+    "typescript": "2.1.5",
     "typings": "1.4.0",
     "vinyl-source-stream": "^1.1.0",
     "vulcanize": "^1.14.0",

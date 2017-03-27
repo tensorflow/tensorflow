@@ -33,9 +33,6 @@ StreamExecutorMemoryAllocator::StreamExecutorMemoryAllocator(
 StatusOr<perftools::gputools::DeviceMemoryBase>
 StreamExecutorMemoryAllocator::Allocate(int device_ordinal, uint64 size,
                                         bool retry_on_failure) {
-  if (size == 0) {
-    return perftools::gputools::DeviceMemoryBase(nullptr, 0);
-  }
   TF_ASSIGN_OR_RETURN(perftools::gputools::StreamExecutor * stream_executor,
                       GetStreamExecutor(device_ordinal));
   return stream_executor->AllocateArray<uint8>(size);
@@ -72,6 +69,10 @@ StreamExecutorMemoryAllocator::GetStreamExecutor(int device_ordinal) {
                     platform()->Name().c_str(), device_ordinal);
   }
   return stream_executors_[device_ordinal];
+}
+
+bool StreamExecutorMemoryAllocator::AllowsAsynchronousDeallocation() const {
+  return false;
 }
 
 }  // namespace xla

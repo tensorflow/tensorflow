@@ -72,11 +72,11 @@ class SecondOrStepTimer(object):
       trigger exceeds `every_secs`, or if the difference between the current
       step and the last triggered step exceeds `every_steps`. False otherwise.
     """
-    if self._last_triggered_step == step:
-      return False
-
     if self._last_triggered_step is None:
       return True
+
+    if self._last_triggered_step == step:
+      return False
 
     if self._every_secs is not None:
       if time.time() >= self._last_triggered_time + self._every_secs:
@@ -180,7 +180,10 @@ class LoggingTensorHook(session_run_hook.SessionRunHook):
         stats = []
         for tag in self._tag_order:
           stats.append("%s = %s" % (tag, run_values.results[tag]))
-        logging.info("%s (%.3f sec)", ", ".join(stats), elapsed_secs)
+        if elapsed_secs is not None:
+          logging.info("%s (%.3f sec)", ", ".join(stats), elapsed_secs)
+        else:
+          logging.info("%s", ", ".join(stats))
       np.set_printoptions(**original)
     self._iter_count += 1
 
@@ -192,11 +195,11 @@ class StopAtStepHook(session_run_hook.SessionRunHook):
     """Create a StopAtStep Hook.
 
     This hook requests stop after either a number of steps have been
-    executed or a last step has been reached.  Only of the two options can be
+    executed or a last step has been reached. Only one of the two options can be
     specified.
 
     if `num_steps` is specified, it indicates the number of steps to execute
-    after `begin()` is called.  If instead `last_step` is specified, it
+    after `begin()` is called. If instead `last_step` is specified, it
     indicates the last step we want to execute, as passed to the `after_run()`
     call.
 

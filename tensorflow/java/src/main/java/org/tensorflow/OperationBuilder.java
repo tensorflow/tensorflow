@@ -39,8 +39,11 @@ public final class OperationBuilder {
 
   OperationBuilder(Graph graph, String type, String name) {
     this.graph = graph;
-    try (Graph.Reference r = graph.ref()) {
+    Graph.Reference r = graph.ref();
+    try {
       this.unsafeNativeHandle = allocate(r.nativeHandle(), type, name);
+    } finally {
+      r.close();
     }
   }
 
@@ -50,22 +53,29 @@ public final class OperationBuilder {
    * <p>The OperationBuilder is not usable after build() returns.
    */
   public Operation build() {
-    try (Graph.Reference r = graph.ref()) {
+    Graph.Reference r = graph.ref();
+    try {
       Operation op = new Operation(graph, finish(unsafeNativeHandle));
       unsafeNativeHandle = 0;
       return op;
+    } finally {
+      r.close();
     }
   }
 
   public OperationBuilder addInput(Output input) {
-    try (Graph.Reference r = graph.ref()) {
+    Graph.Reference r = graph.ref();
+    try {
       addInput(unsafeNativeHandle, input.op().getUnsafeNativeHandle(), input.index());
+    } finally {
+      r.close();
     }
     return this;
   }
 
   public OperationBuilder addInputList(Output[] inputs) {
-    try (Graph.Reference r = graph.ref()) {
+    Graph.Reference r = graph.ref();
+    try {
       long[] opHandles = new long[inputs.length];
       int[] indices = new int[inputs.length];
       for (int i = 0; i < inputs.length; ++i) {
@@ -73,13 +83,18 @@ public final class OperationBuilder {
         indices[i] = inputs[i].index();
       }
       addInputList(unsafeNativeHandle, opHandles, indices);
+    } finally {
+      r.close();
     }
     return this;
   }
 
   public OperationBuilder setDevice(String device) {
-    try (Graph.Reference r = graph.ref()) {
+    Graph.Reference r = graph.ref();
+    try {
       setDevice(unsafeNativeHandle, device);
+    } finally {
+      r.close();
     }
     return this;
   }
@@ -90,57 +105,81 @@ public final class OperationBuilder {
   }
 
   public OperationBuilder setAttr(String name, byte[] value) {
-    try (Graph.Reference r = graph.ref()) {
+    Graph.Reference r = graph.ref();
+    try {
       setAttrString(unsafeNativeHandle, name, value);
+    } finally {
+      r.close();
     }
     return this;
   }
 
   public OperationBuilder setAttr(String name, long value) {
-    try (Graph.Reference r = graph.ref()) {
+    Graph.Reference r = graph.ref();
+    try {
       setAttrInt(unsafeNativeHandle, name, value);
+    } finally {
+      r.close();
     }
     return this;
   }
 
   public OperationBuilder setAttr(String name, long[] value) {
-    try (Graph.Reference r = graph.ref()) {
+    Graph.Reference r = graph.ref();
+    try {
       setAttrIntList(unsafeNativeHandle, name, value);
+    } finally {
+      r.close();
     }
     return this;
   }
 
   public OperationBuilder setAttr(String name, float value) {
-    try (Graph.Reference r = graph.ref()) {
+    Graph.Reference r = graph.ref();
+    try {
       setAttrFloat(unsafeNativeHandle, name, value);
+    } finally {
+      r.close();
     }
     return this;
   }
 
   public OperationBuilder setAttr(String name, float[] value) {
-    try (Graph.Reference r = graph.ref()) {
+    Graph.Reference r = graph.ref();
+    try {
       setAttrFloatList(unsafeNativeHandle, name, value);
+    } finally {
+      r.close();
     }
     return this;
   }
 
   public OperationBuilder setAttr(String name, boolean value) {
-    try (Graph.Reference r = graph.ref()) {
+    Graph.Reference r = graph.ref();
+    try {
       setAttrBool(unsafeNativeHandle, name, value);
+    } finally {
+      r.close();
     }
     return this;
   }
 
   public OperationBuilder setAttr(String name, boolean[] value) {
-    try (Graph.Reference r = graph.ref()) {
+    Graph.Reference r = graph.ref();
+    try {
       setAttrBoolList(unsafeNativeHandle, name, value);
+    } finally {
+      r.close();
     }
     return this;
   }
 
   public OperationBuilder setAttr(String name, DataType value) {
-    try (Graph.Reference r = graph.ref()) {
+    Graph.Reference r = graph.ref();
+    try {
       setAttrType(unsafeNativeHandle, name, value.c());
+    } finally {
+      r.close();
     }
     return this;
   }
@@ -150,15 +189,21 @@ public final class OperationBuilder {
     for (int i = 0; i < value.length; ++i) {
       ctypes[i] = value[i].c();
     }
-    try (Graph.Reference r = graph.ref()) {
+    Graph.Reference r = graph.ref();
+    try {
       setAttrTypeList(unsafeNativeHandle, name, ctypes);
+    } finally {
+      r.close();
     }
     return this;
   }
 
   public OperationBuilder setAttr(String name, Tensor value) {
-    try (Graph.Reference r = graph.ref()) {
+    Graph.Reference r = graph.ref();
+    try {
       setAttrTensor(unsafeNativeHandle, name, value.getNativeHandle());
+    } finally {
+      r.close();
     }
     return this;
   }
@@ -169,8 +214,21 @@ public final class OperationBuilder {
     for (Tensor t : value) {
       handles[idx++] = t.getNativeHandle();
     }
-    try (Graph.Reference r = graph.ref()) {
+    Graph.Reference r = graph.ref();
+    try {
       setAttrTensorList(unsafeNativeHandle, name, handles);
+    } finally {
+      r.close();
+    }
+    return this;
+  }
+
+  public OperationBuilder setAttr(String name, Shape value) {
+    Graph.Reference r = graph.ref();
+    try {
+      setAttrShape(unsafeNativeHandle, name, value.asArray(), value.numDimensions());
+    } finally {
+      r.close();
     }
     return this;
   }
@@ -194,7 +252,7 @@ public final class OperationBuilder {
   // TODO(ashankar):
   // - setAttrStringList: Which would take in an array of byte[] (java Strings will need to be UTF-8
   //   encoded?)
-  // - setAttrShape and setAttrShapeList: Which would take in a long[] or long[][]?
+  // - setAttrShapeList: Which would take in a long[][]
 
   private static native void setAttrString(long handle, String name, byte[] value);
 
@@ -217,4 +275,6 @@ public final class OperationBuilder {
   private static native void setAttrTensor(long handle, String name, long tensorHandle);
 
   private static native void setAttrTensorList(long handle, String name, long[] tensorHandle);
+
+  private static native void setAttrShape(long handle, String name, long[] shape, int numDims);
 }

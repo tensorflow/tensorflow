@@ -8,7 +8,7 @@ function(RELATIVE_PROTOBUF_GENERATE_CPP SRCS HDRS ROOT_DIR)
     message(SEND_ERROR "Error: RELATIVE_PROTOBUF_GENERATE_CPP() called without any proto files")
     return()
   endif()
-  
+
   set(${SRCS})
   set(${HDRS})
   foreach(FIL ${ARGN})
@@ -88,10 +88,12 @@ set(tf_proto_text_srcs
     "tensorflow/core/framework/device_attributes.proto"
     "tensorflow/core/framework/function.proto"
     "tensorflow/core/framework/graph.proto"
+    "tensorflow/core/framework/graph_transfer_info.proto"
     "tensorflow/core/framework/kernel_def.proto"
     "tensorflow/core/framework/log_memory.proto"
     "tensorflow/core/framework/node_def.proto"
     "tensorflow/core/framework/op_def.proto"
+    "tensorflow/core/framework/remote_fused_graph_execute_info.proto"
     "tensorflow/core/framework/resource_handle.proto"
     "tensorflow/core/framework/step_stats.proto"
     "tensorflow/core/framework/summary.proto"
@@ -104,6 +106,7 @@ set(tf_proto_text_srcs
     "tensorflow/core/lib/core/error_codes.proto"
     "tensorflow/core/protobuf/config.proto"
     "tensorflow/core/protobuf/debug.proto"
+    "tensorflow/core/protobuf/rewriter_config.proto"
     "tensorflow/core/protobuf/tensor_bundle.proto"
     "tensorflow/core/protobuf/saver.proto"
     "tensorflow/core/util/memmapped_file_system.proto"
@@ -129,6 +132,12 @@ file(GLOB tf_core_platform_srcs
     "${tensorflow_source_dir}/tensorflow/core/platform/*.cc"
     "${tensorflow_source_dir}/tensorflow/core/platform/default/*.h"
     "${tensorflow_source_dir}/tensorflow/core/platform/default/*.cc")
+if (NOT tensorflow_ENABLE_GPU)
+  file(GLOB tf_core_platform_gpu_srcs
+      "${tensorflow_source_dir}/tensorflow/core/platform/cuda_libdevice_path.*"
+      "${tensorflow_source_dir}/tensorflow/core/platform/default/cuda_libdevice_path.*")
+  list(REMOVE_ITEM tf_core_platform_srcs ${tf_core_platform_gpu_srcs})
+endif()
 list(APPEND tf_core_lib_srcs ${tf_core_platform_srcs})
 
 if(UNIX)
@@ -158,6 +167,14 @@ if(tensorflow_ENABLE_SSL_SUPPORT)
   list(APPEND tf_core_lib_srcs ${tf_core_platform_cloud_srcs})
 endif()
 
+if (tensorflow_ENABLE_HDFS_SUPPORT)
+  list(APPEND tf_core_platform_hdfs_srcs
+      "${tensorflow_source_dir}/tensorflow/core/platform/hadoop/hadoop_file_system.cc"
+      "${tensorflow_source_dir}/tensorflow/core/platform/hadoop/hadoop_file_system.h"
+  )
+  list(APPEND tf_core_lib_srcs ${tf_core_platform_hdfs_srcs})
+endif()
+
 file(GLOB_RECURSE tf_core_lib_test_srcs
     "${tensorflow_source_dir}/tensorflow/core/lib/*test*.h"
     "${tensorflow_source_dir}/tensorflow/core/lib/*test*.cc"
@@ -176,13 +193,12 @@ add_dependencies(tf_core_lib ${tensorflow_EXTERNAL_DEPENDENCIES} tf_protos_cc)
 # target.
 set(VERSION_INFO_CC ${tensorflow_source_dir}/tensorflow/core/util/version_info.cc)
 add_custom_target(force_rebuild_target ALL DEPENDS ${VERSION_INFO_CC})
-add_custom_command(OUTPUT __force_rebuild COMMAND cmake -E echo)
+add_custom_command(OUTPUT __force_rebuild COMMAND ${CMAKE_COMMAND} -E echo)
 add_custom_command(OUTPUT
     ${VERSION_INFO_CC}
     COMMAND ${PYTHON_EXECUTABLE} ${tensorflow_source_dir}/tensorflow/tools/git/gen_git_source.py
     --raw_generate ${VERSION_INFO_CC}
     DEPENDS __force_rebuild)
-
 set(tf_version_srcs ${tensorflow_source_dir}/tensorflow/core/util/version_info.cc)
 
 ########################################################
@@ -221,3 +237,9 @@ add_dependencies(tf_core_framework
     tf_core_lib
     proto_text
 )
+
+if(WIN32)
+  # Cmake > 3.6 will quote this as -D"__VERSION__=\"MSVC\"" which nvcc fails on.
+  # Instead of defining this global, limit it to tf_core_framework where its used.
+  target_compile_definitions(tf_core_framework PRIVATE __VERSION__="MSVC")
+endif()

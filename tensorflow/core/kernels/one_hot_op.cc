@@ -75,6 +75,15 @@ class OneHotOp : public OpKernel {
 
     // The one-hot dimension.
     const int32 depth_v = depth.scalar<int32>()();
+    OP_REQUIRES(
+        ctx, depth_v >= 0,
+        errors::InvalidArgument("depth must be non-negative, got: ", depth_v));
+    // Tensor can't have more than 2^40 elements.
+    OP_REQUIRES(
+        ctx, indices_shape.num_elements() * depth_v < kMaxElements,
+        errors::InvalidArgument(strings::StrCat(
+            "OneHot result would exceed the maximum number of elements (",
+            kMaxElements, ")")));
 
     TensorShape output_shape = indices_shape;
     output_shape.InsertDim(axis, depth_v);

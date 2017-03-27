@@ -120,6 +120,13 @@ export interface Node {
    *  INCLUDE or EXCLUDE manually by the user.
    */
   include: InclusionType;
+  /**
+   * Node attributes specify customizable visual aspects of a node and
+   * application-specific metadata associated with a node. The name
+   * 'nodeAttributes' is meant to avoid naming-conflicts with the 'attr' in
+   * subclasses of Node.
+   */
+  nodeAttributes: {[key: string]: any;};
 }
 
 export type TensorShape = number[];
@@ -299,7 +306,7 @@ export class EllipsisNodeImpl implements EllipsisNode {
   cardinality: number;
   parentNode: Node;
   include: InclusionType;
-
+  nodeAttributes: {[key: string]: any;};
   /**
    * Constructs a new ellipsis annotation node.
    *
@@ -341,6 +348,7 @@ export class OpNodeImpl implements OpNode {
   include: InclusionType;
   owningSeries: string;
   outputShapes: TensorShape[];
+  nodeAttributes: {[key: string]: any;};
 
   /**
    * Constructs a new Op node.
@@ -539,6 +547,7 @@ export class MetanodeImpl implements Metanode {
   parentNode: Node;
   hasNonControlEdges: boolean;
   include: InclusionType;
+  nodeAttributes: {[key: string]: any;};
 
   /** A label object for meta-nodes in the graph hierarchy */
   constructor(name: string, opt = {}) {
@@ -762,6 +771,7 @@ class SeriesNodeImpl implements SeriesNode {
   deviceHistogram: {[op: string]: number};
   hasNonControlEdges: boolean;
   include: InclusionType;
+  nodeAttributes: {[key: string]: any;};
 
   constructor(prefix: string, suffix: string, parent: string,
       clusterId: number, name: string) {
@@ -798,29 +808,34 @@ function extractOutputShapes(attr: {key: string, value: any}[]): TensorShape[] {
   for (let i = 0; i < attr.length; i++) {
     let {key, value} = attr[i];
     if (key === OUTPUT_SHAPES_KEY) {
-     // Map all output tensors into array of numbers denoting their shape.
-     let result = value.list.shape.map(shape => {
-       if (shape.unknown_rank) {
-         // This output tensor is of unknown rank. We don't know if it is a
-         // scalar, or a tensor, or of what shape it is.
-         return null;
-       }
-       if (shape.dim == null ||
-           (shape.dim.length === 1 && shape.dim[0].size == null)) {
-         // This output tensor is a scalar.
-         return [];
-       }
-       // This output tensor has a known rank. Map each dimension size
-       // into a number.
-       return shape.dim.map(dim => {
-         // Size can be -1 if this particular dimension is unknown.
-         return dim.size;
-       });
-     });
-     // Since we already processed it, remove the entry from the attribute
-     // list (saves memory).
-     attr.splice(i, 1);
-     return result;
+      if (!value.list.shape) {
+        // The OUTPUT_SHAPES_KEY lacks a value. We know nothing about the shape.
+        return null;
+      }
+
+      // Map all output tensors into array of numbers denoting their shape.
+      let result = value.list.shape.map(shape => {
+        if (shape.unknown_rank) {
+          // This output tensor is of unknown rank. We don't know if it is a
+          // scalar, or a tensor, or of what shape it is.
+          return null;
+        }
+        if (shape.dim == null ||
+            (shape.dim.length === 1 && shape.dim[0].size == null)) {
+          // This output tensor is a scalar.
+          return [];
+        }
+        // This output tensor has a known rank. Map each dimension size
+        // into a number.
+        return shape.dim.map(dim => {
+          // Size can be -1 if this particular dimension is unknown.
+          return dim.size;
+        });
+      });
+      // Since we already processed it, remove the entry from the attribute
+      // list (saves memory).
+      attr.splice(i, 1);
+      return result;
     }
   }
   // We didn't find OUTPUT_SHAPES_KEY in attributes, so we don't know anything

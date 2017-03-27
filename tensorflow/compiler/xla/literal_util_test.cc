@@ -382,6 +382,33 @@ TEST_F(LiteralUtilTest, IsAll) {
       -1));
 }
 
+TEST_F(LiteralUtilTest, IsAllFloat) {
+  // IsAllFloat always returns false when the literal is not floating-point.
+  EXPECT_FALSE(LiteralUtil::IsAllFloat(*LiteralUtil::CreateR0<bool>(false), 0));
+  EXPECT_FALSE(LiteralUtil::IsAllFloat(*LiteralUtil::CreateR0<int8>(0), 0));
+  EXPECT_FALSE(LiteralUtil::IsAllFloat(*LiteralUtil::CreateR0<uint8>(0), 0));
+  EXPECT_FALSE(LiteralUtil::IsAllFloat(*LiteralUtil::CreateR0<int>(0), 0));
+
+  EXPECT_TRUE(LiteralUtil::IsAllFloat(*LiteralUtil::CreateR0<float>(0), 0));
+  EXPECT_TRUE(LiteralUtil::IsAllFloat(*LiteralUtil::CreateR0<float>(.5), .5));
+  EXPECT_TRUE(LiteralUtil::IsAllFloat(*LiteralUtil::CreateR0<float>(-.5), -.5));
+  EXPECT_FALSE(
+      LiteralUtil::IsAllFloat(*LiteralUtil::CreateR0<float>(-.5), -.49));
+  EXPECT_FALSE(LiteralUtil::IsAllFloat(
+      *LiteralUtil::CreateR2<float>({{0, 0, 0}, {0, .1, 0}}), 0));
+  EXPECT_TRUE(LiteralUtil::IsAllFloat(
+      *LiteralUtil::CreateR2<float>({{.5, .5, .5}, {.5, .5, .5}}), .5));
+
+  EXPECT_TRUE(LiteralUtil::IsAllFloat(*LiteralUtil::CreateR0<double>(0), 0));
+  EXPECT_TRUE(LiteralUtil::IsAllFloat(*LiteralUtil::CreateR0<double>(.5), .5));
+  EXPECT_TRUE(
+      LiteralUtil::IsAllFloat(*LiteralUtil::CreateR0<double>(-.5), -.5));
+  EXPECT_FALSE(
+      LiteralUtil::IsAllFloat(*LiteralUtil::CreateR0<double>(-.5), -.49));
+  EXPECT_FALSE(LiteralUtil::IsAllFloat(
+      *LiteralUtil::CreateR2<double>({{0, 0, 0}, {0, .1, 0}}), 0));
+}
+
 TEST_F(LiteralUtilTest, IsZero) {
   auto scalar_zero = LiteralUtil::CreateR0<float>(0.0f);
   auto scalar_one = LiteralUtil::CreateR0<float>(1.0f);
@@ -616,6 +643,17 @@ TEST_F(LiteralUtilTest, PopulateWithValueR2U64) {
   LiteralUtil::PopulateWithValue<uint64>(42, {2, 2}, &output);
   auto expected = LiteralUtil::CreateR2<uint64>({{42, 42}, {42, 42}});
   EXPECT_TRUE(LiteralUtil::Equal(output, *expected));
+}
+
+TEST_F(LiteralUtilTest, ReplicateR2U32) {
+  auto input = LiteralUtil::CreateR2<uint32>(
+      {{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}});
+  auto output = LiteralUtil::Replicate<uint32>(*input, 3);
+  auto expected = LiteralUtil::CreateR3<uint32>(
+      {{{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}},
+       {{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}},
+       {{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}}});
+  EXPECT_TRUE(LiteralUtil::Equal(*output, *expected));
 }
 
 }  // namespace

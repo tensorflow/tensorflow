@@ -77,10 +77,16 @@ Status QueueRunner::Init(const QueueRunnerDef& queue_runner_def) {
 QueueRunner::~QueueRunner() {
   // Cannot run Stop() here because the session might already be closed or
   // destroyed.
-  Join();
+  Join().IgnoreError();
 }
 
 Status QueueRunner::Start(Session* sess) { return Start(sess, 0); }
+
+Status QueueRunner::StartAndCollectRunMetadata(Session* sess,
+                                               const RunOptions* run_options) {
+  SetRunArgumentsAndRunMetadata(run_options);
+  return Start(sess, 0);
+}
 
 Status QueueRunner::Start(Session* sess, int wait_for) {
   counter_.reset(new BlockingCounter(runs_));
@@ -109,12 +115,19 @@ Status QueueRunner::Start(Session* sess, int wait_for) {
   return Status::OK();
 }
 
+Status QueueRunner::StartAndCollectRunMetadata(Session* session,
+                                               int wait_for_ms,
+                                               const RunOptions* run_options) {
+  SetRunArgumentsAndRunMetadata(run_options);
+  return Start(session, wait_for_ms);
+}
+
 void QueueRunner::Stop(Session* sess) {
   if (coord_ != nullptr) {
     coord_->WaitForStop();
   }
   if (!cancel_op_name_.empty()) {
-    UpdateStatus(sess->Run({}, {}, {cancel_op_name_}, nullptr));
+    UpdateStatus(RealRun(sess, cancel_op_name_));
   }
   stopped_ = true;
 }
@@ -149,7 +162,7 @@ void QueueRunner::Run(Session* sess, const string& enqueue_op) {
     if (coord_ && coord_->ShouldStop()) {
       break;
     }
-    status = sess->Run({}, {}, {enqueue_op}, nullptr);
+    status = RealRun(sess, enqueue_op);
     if (first_iteration) {
       if (!status.ok()) {
         mutex_lock l(mu_);
@@ -170,12 +183,12 @@ void QueueRunner::Run(Session* sess, const string& enqueue_op) {
   // will be run anway in this case.
   if (IsQueueClosed(status) && (!coord_ || !coord_->ShouldStop())) {
     if (last_run && !close_op_name_.empty()) {
-      UpdateStatus(sess->Run({}, {}, {close_op_name_}, nullptr));
+      UpdateStatus(RealRun(sess, close_op_name_));
     }
   } else if (!status.ok()) {
     UpdateStatus(status);
     if (coord_) {
-      coord_->RequestStop();
+      coord_->RequestStop().IgnoreError();
     }
   }
 }
@@ -183,6 +196,40 @@ void QueueRunner::Run(Session* sess, const string& enqueue_op) {
 Status QueueRunner::GetStatus() {
   mutex_lock l(mu_);
   return status_;
+}
+
+Status QueueRunner::ExportRunMetadata(RunMetadata* metadata) const {
+  if (!rm_mu_) {
+    return Status(error::FAILED_PRECONDITION,
+                  "This QueueRunner doesn't collect and store RunMetadata.");
+  }
+  mutex_lock l(*rm_mu_);
+  metadata->MergeFrom(*run_metadata_);
+  return Status::OK();
+}
+
+void QueueRunner::SetRunArgumentsAndRunMetadata(const RunOptions* run_options) {
+  rm_mu_.reset(new mutex());
+  {
+    mutex_lock l(*rm_mu_);
+    run_metadata_.reset(new RunMetadata());
+  }
+  if (run_options) {
+    run_options_ = *run_options;
+  }
+}
+
+Status QueueRunner::RealRun(Session* sess, const string& op) {
+  Status s;
+  if (rm_mu_) {
+    RunMetadata metadata;
+    s = sess->Run(run_options_, {}, {}, {op}, nullptr, &metadata);
+    mutex_lock l(*rm_mu_);
+    run_metadata_->MergeFrom(metadata);
+  } else {
+    s = sess->Run({}, {}, {op}, nullptr);
+  }
+  return s;
 }
 
 }  // namespace tensorflow

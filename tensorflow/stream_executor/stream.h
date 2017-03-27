@@ -121,12 +121,8 @@ class Stream {
   // Convenience wrapper around Init() and InitTimer().
   Stream &InitWithTimer(Timer *t);
 
-  // Warning! After calling BlockHostUntilDone(), all sub-streams will be
-  // returned and hence invalid. This may be a temporary solution to the issue
-  // b/18070215.
-  // Get or create a sub-stream from this stream. If there is any sub-stream
-  // in the pool that can be reused then just return this sub-stream.
-  // Otherwise
+  // Get or create a sub-stream from this stream. If there is any sub-stream in
+  // the pool that can be reused then just return this sub-stream.  Otherwise
   // create a new sub-stream.
   Stream *GetOrCreateSubStream();
 
@@ -194,8 +190,15 @@ class Stream {
 
   // Waits for all streams values in others.
   // Checks that there is no shallow circular wait (i.e. that "this" is not in
-  // others).
-  Stream &ThenWaitFor(std::vector<std::unique_ptr<Stream>> *others);
+  // others)
+  template <typename P>
+  Stream &ThenWaitFor(P others) {
+    for (auto &stream : *others) {
+      CHECK_NE(stream.get(), this);
+      ThenWaitFor(stream.get());
+    }
+    return *this;
+  }
 
   // Waits for an event object to be set.
   // Note that ThenRecordEvent must have been called on the event before
@@ -244,6 +247,26 @@ class Stream {
                        const dnn::ConvolutionDescriptor &convolution_descriptor,
                        const dnn::BatchDescriptor &output_descriptor,
                        DeviceMemory<float> *output);
+
+  Stream &ThenConvolveQuantized(
+      const dnn::BatchDescriptor &input_descriptor,
+      const DeviceMemory<float> &input_data,
+      const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<int8> &filter_coefficients,
+      const DeviceMemory<float> &coefficient_scales,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<float> *output_data);
+
+  Stream &ThenConvolveQuantized(
+      const dnn::BatchDescriptor &input_descriptor,
+      const DeviceMemory<float> &input_data,
+      const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<int16> &filter_coefficients,
+      const DeviceMemory<float> &coefficient_scales,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<float> *output_data);
 
   Stream &ThenConvolveWithScratch(
       const dnn::BatchDescriptor &input_descriptor,
@@ -493,6 +516,14 @@ class Stream {
                        const dnn::BatchDescriptor &dimensions,
                        const DeviceMemory<float> &input_data,
                        DeviceMemory<float> *output_data);
+
+  // Same as ThenActivate, but also takes an options argument that can be used
+  // for platform-specific option flags.
+  Stream &ThenActivateWithOptions(dnn::ActivationMode activation_mode,
+                                  const dnn::BatchDescriptor &dimensions,
+                                  const DeviceMemory<float> &input_data,
+                                  DeviceMemory<float> *output_data,
+                                  uint64 options);
 
   Stream &ThenDepthConcatenate(
       port::ArraySlice<dnn::BatchDescriptor> input_dimensions,
@@ -1147,6 +1178,47 @@ class Stream {
                        const DeviceMemory<std::complex<double>> &b, int ldb,
                        std::complex<double> beta,
                        DeviceMemory<std::complex<double>> *c, int ldc);
+
+  // See BlasSupport::DoBlasGemmWithAlgorithm.
+  Stream &ThenBlasGemmWithAlgorithm(
+      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
+      uint64 k, const Eigen::half &alpha, const DeviceMemory<Eigen::half> &a,
+      int lda, const DeviceMemory<Eigen::half> &b, int ldb,
+      const Eigen::half &beta, DeviceMemory<Eigen::half> *c, int ldc,
+      blas::ComputationType computation_type, blas::AlgorithmType algorithm,
+      blas::ProfileResult *output_profile_result);
+  Stream &ThenBlasGemmWithAlgorithm(blas::Transpose transa,
+                                    blas::Transpose transb, uint64 m, uint64 n,
+                                    uint64 k, float alpha,
+                                    const DeviceMemory<float> &a, int lda,
+                                    const DeviceMemory<float> &b, int ldb,
+                                    float beta, DeviceMemory<float> *c, int ldc,
+                                    blas::ComputationType computation_type,
+                                    blas::AlgorithmType algorithm,
+                                    blas::ProfileResult *output_profile_result);
+  Stream &ThenBlasGemmWithAlgorithm(
+      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
+      uint64 k, double alpha, const DeviceMemory<double> &a, int lda,
+      const DeviceMemory<double> &b, int ldb, double beta,
+      DeviceMemory<double> *c, int ldc, blas::ComputationType computation_type,
+      blas::AlgorithmType algorithm,
+      blas::ProfileResult *output_profile_result);
+  Stream &ThenBlasGemmWithAlgorithm(
+      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
+      uint64 k, std::complex<float> alpha,
+      const DeviceMemory<std::complex<float>> &a, int lda,
+      const DeviceMemory<std::complex<float>> &b, int ldb,
+      std::complex<float> beta, DeviceMemory<std::complex<float>> *c, int ldc,
+      blas::ComputationType computation_type, blas::AlgorithmType algorithm,
+      blas::ProfileResult *output_profile_result);
+  Stream &ThenBlasGemmWithAlgorithm(
+      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
+      uint64 k, std::complex<double> alpha,
+      const DeviceMemory<std::complex<double>> &a, int lda,
+      const DeviceMemory<std::complex<double>> &b, int ldb,
+      std::complex<double> beta, DeviceMemory<std::complex<double>> *c, int ldc,
+      blas::ComputationType computation_type, blas::AlgorithmType algorithm,
+      blas::ProfileResult *output_profile_result);
 
   // See BlasSupport::DoBlasGemmBatched.
   Stream &ThenBlasGemmBatched(blas::Transpose transa, blas::Transpose transb,

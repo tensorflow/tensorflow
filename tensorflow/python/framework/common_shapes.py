@@ -635,6 +635,7 @@ def _call_cpp_shape_fn_impl(
     input_tensors_as_shapes_needed,
     debug_python_shape_fn, require_shape_fn):
   """Core implementaton of call_cpp_shape_fn."""
+  graph_def_version = op.graph.graph_def_versions.producer
   node_def_str = op.node_def.SerializeToString()
 
   def tensor_to_inference_result(t):
@@ -666,8 +667,8 @@ def _call_cpp_shape_fn_impl(
   try:
     with errors.raise_exception_on_not_ok_status() as status:
       output = pywrap_tensorflow.RunCppShapeInference(
-          node_def_str, input_shapes, input_tensors, input_tensors_as_shapes,
-          status)
+          graph_def_version, node_def_str, input_shapes, input_tensors,
+          input_tensors_as_shapes, status)
   except errors.InvalidArgumentError as err:
     if err.message.startswith("No shape inference function exists for op"):
       missing_shape_fn = True

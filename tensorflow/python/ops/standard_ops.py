@@ -27,6 +27,7 @@ from tensorflow.python.ops import array_grad
 from tensorflow.python.ops import data_flow_grad
 from tensorflow.python.ops import math_grad
 from tensorflow.python.ops import sparse_grad
+from tensorflow.python.ops import spectral_grad
 from tensorflow.python.ops import state_grad
 from tensorflow.python.ops import tensor_array_grad
 from tensorflow.python.util.all_util import remove_undocumented
@@ -181,7 +182,6 @@ _allowed_symbols_array_ops = [
     "batch_matrix_band_part",
     "batch_matrix_diag_part",
     "batch_matrix_set_diag",
-    "concat_v2",  # Use tf.concat instead.
 ]
 
 _allowed_symbols_partitioned_variables = [

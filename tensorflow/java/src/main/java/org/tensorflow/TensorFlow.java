@@ -24,10 +24,11 @@ public final class TensorFlow {
 
   /** Load the TensorFlow runtime C library. */
   static void init() {
-    System.loadLibrary("tensorflow_jni");
+    NativeLibrary.load();
   }
 
   static {
     init();
   }
+
 }

@@ -117,6 +117,11 @@ such as different X scales (linear and temporal), tooltips and smoothing.
         stroke-width: 1px;
       }
 
+      #chartsvg line.guide-line {
+        stroke: #999;
+        stroke-width: 1.5px;
+      }
+
     </style>
   </template>
   <script src="dragZoomInteraction.js"></script>
@@ -148,12 +153,13 @@ such as different X scales (linear and temporal), tooltips and smoothing.
          *
          * The smoothing algorithm is a simple moving average, which, given a
          * point p and a window w, replaces p with a simple average of the
-         * points in the [p - floor(w/2), p + floor(w/2)] range.
-         * If there aren't enough points to cover the entire window to the left
-         * and to the right, the window is reduced to fit exactly the amount of
-         * elements available. This means that the smoothed line will be less
-         * smoothed at both extremities and gradually become more smooth until
-         * the desired window is reached.
+         * points in the [p - floor(w/2), p + floor(w/2)] range.  If there
+         * aren't enough points to cover the entire window to the left, the
+         * window is reduced to fit exactly the amount of elements available.
+         * This means that the smoothed line will be less in and gradually
+         * become more smooth until the desired window is reached. However when
+         * there aren't enough points on the right, the line stops being
+         * rendered at all.
          */
         smoothingEnabled: {
           type: Boolean,
@@ -162,17 +168,17 @@ such as different X scales (linear and temporal), tooltips and smoothing.
 
         /**
          * Weight (between 0.0 and 1.0) of the smoothing. This weight controls
-         * the window size, and a weight of 1.0 means using the entire length of
-         * each dataset as the window, while a weight of 0.0 means using a
-         * window of 0 (and thus replacing each point with themselves).
+         * the window size, and a weight of 1.0 means using 50% of the entire
+         * dataset as the window, while a weight of 0.0 means using a window of
+         * 0 (and thus replacing each point with themselves).
          *
-         * The growth between 0.0 and 1.0 is not linear though. Because changing
-         * the window from 0% to 30% of the dataset smooths the line a lot more
-         * than changing the window from 70% to 100%, an exponential function is
-         * used instead. This function increases the size of the window slowly
-         * at the beginning and gradually speeds up the growth, but 0.0 still
-         * means a window of 0 and 1.0 still means a window of the dataset's
-         * length.
+         * The growth between 0.0 and 1.0 is not linear though. Because
+         * changing the window from 0% to 30% of the dataset smooths the line a
+         * lot more than changing the window from 70% to 100%, an exponential
+         * function is used instead: http://i.imgur.com/bDrhEZU.png. This
+         * function increases the size of the window slowly at the beginning
+         * and gradually speeds up the growth, but 0.0 still means a window of
+         * 0 and 1.0 still means a window of the dataset's length.
          */
         smoothingWeight: {
           type: Number,
@@ -200,6 +206,15 @@ such as different X scales (linear and temporal), tooltips and smoothing.
         yScaleType: {
           type: String,
           value: 'linear'
+        },
+
+        /**
+         * Whether to ignore outlier data when computing the yScale domain.
+         */
+
+        ignoreYOutliers: {
+          type: Boolean,
+          value: true,
         },
 
         /**
@@ -244,7 +259,8 @@ such as different X scales (linear and temporal), tooltips and smoothing.
         "_reloadFromCache(_chart)",
         "_smoothingChanged(smoothingEnabled, smoothingWeight, _chart)",
         "_tooltipSortingMethodChanged(tooltipSortingMethod, _chart)",
-        "_tooltipPositionChanged(tooltipPosition, _chart)"
+        "_tooltipPositionChanged(tooltipPosition, _chart)",
+        "_outliersChanged(ignoreYOutliers, _chart)"
       ],
 
       /**
@@ -331,6 +347,12 @@ such as different X scales (linear and temporal), tooltips and smoothing.
         else {
           this._chart.smoothingDisable();
         }
+      },
+      _outliersChanged: function() {
+        if (!this._chart) {
+          return;
+        }
+        this._chart.ignoreYOutliers(this.ignoreYOutliers);
       },
       _tooltipSortingMethodChanged: function() {
         if(this._chart) {

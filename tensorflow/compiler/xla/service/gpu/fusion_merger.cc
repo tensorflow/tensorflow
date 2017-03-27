@@ -16,8 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
 
 #include <algorithm>
+#include <vector>
 
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
+#include "tensorflow/compiler/xla/service/instruction_fusion.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -97,8 +99,9 @@ double CalculateFlopsToBytesRatio(HloInstruction* fusion) {
   double bytes = CalculateBytesReadByFusionInstruction(fusion);
   // Add bytes written to root instructions buffer.
   bytes += ShapeUtil::ByteSizeOf(fusion->fused_expression_root()->shape());
-  // Calculate flops for all fused instructions.
-  HloCostAnalysis analysis;
+  // Calculate flops for all fused instructions. Use a null shape size function
+  // because we don't care about bytes accessed by the ops.
+  HloCostAnalysis analysis([](const Shape& shape) { return 0; });
   TF_CHECK_OK(fusion->fused_expression_root()->Accept(&analysis));
   // Return flops / bytes.
   return bytes > 0.0 ? analysis.flop_count() / bytes : analysis.flop_count();
@@ -149,6 +152,7 @@ class FusionInstructionMerger {
   int num_fail_no_users_ = 0;
   int num_fail_not_loop_fusion_ = 0;
   int num_fail_merge_all_users_ = 0;
+  int num_fail_expensive_fused_instruction_ = 0;
   int num_fail_flops_to_byte_ratio_ = 0;
   int num_fail_net_bytes_transferred_ratio_ = 0;
 
@@ -169,6 +173,7 @@ Status FusionInstructionMerger::Run() {
           << " no_users: " << num_fail_no_users_
           << " not_loop_fusion: " << num_fail_not_loop_fusion_
           << " merge_all_users: " << num_fail_merge_all_users_
+          << " expensive_instruction: " << num_fail_expensive_fused_instruction_
           << " flops_to_byte_ratio: " << num_fail_flops_to_byte_ratio_
           << " net_bytes_transferred: " << num_fail_net_bytes_transferred_ratio_
           << " }";
@@ -205,6 +210,26 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
     ++num_fail_merge_all_users_;
     return Status::OK();
   }
+
+  // Skip 'fusion' instruction if any of its fused instructions are expensive.
+  // This is done to avoid the duplication of expensive instructions, which
+  // would occur if 'fusion' were merged into multiple users.
+  // If 'fusion' has just one user, then an earlier fusion pass chose not to
+  // fuse this producer/comsumer pair (likely because of expensive instruction
+  // re-use by the consumer), and so we honor that choice here as well.
+  if (!std::all_of(fusion->fused_instructions().begin(),
+                   fusion->fused_instructions().end(),
+                   [](const std::unique_ptr<HloInstruction>& instruction) {
+                     if (instruction->opcode() != HloOpcode::kParameter &&
+                         IsExpensive(*instruction)) {
+                       return false;
+                     }
+                     return true;
+                   })) {
+    ++num_fail_expensive_fused_instruction_;
+    return Status::OK();
+  }
+
   // Skip 'fusion' instruction if its flops to bytes transferred ratio
   // exceeds the threshold value.
   if (CalculateFlopsToBytesRatio(fusion) >
@@ -225,7 +250,7 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
     return Status::OK();
   }
   // Merge fused instructions from 'fusion' into each user.
-  std::set<HloInstruction*> users = fusion->users();
+  std::vector<HloInstruction*> users = fusion->users();
   for (HloInstruction* user : users) {
     user->MergeFusionInstruction(fusion);
     changed_ = true;
@@ -243,8 +268,7 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
           << " }";
   // Remove 'fusion' instruction.
   CHECK_EQ(0, fusion->user_count());
-  computation_->RemoveInstruction(fusion);
-  return Status::OK();
+  return computation_->RemoveInstruction(fusion);
 }
 
 StatusOr<bool> FusionMerger::Run(HloModule* module) {

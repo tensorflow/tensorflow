@@ -37,8 +37,18 @@ REGISTER5(BinaryOp, CPU, "RealDiv", functor::div, float, Eigen::half, double,
                           .TypeConstraint<TYPE>("T"),                 \
                           BinaryOp<SYCLDevice, functor::div<TYPE>>);
 REGISTER_SYCL_KERNEL(float)
-REGISTER_SYCL_KERNEL(int32)
+REGISTER_SYCL_KERNEL(double)
 #undef REGISTER_SYCL_KERNEL
+// A special GPU kernel for int32.
+// TODO(b/25387198): Also enable int32 in device memory. This kernel
+// registration requires all int32 inputs and outputs to be in host memory.
+REGISTER_KERNEL_BUILDER(Name("Div")
+                            .Device(DEVICE_SYCL)
+                            .HostMemory("x")
+                            .HostMemory("y")
+                            .HostMemory("z")
+                            .TypeConstraint<int32>("T"),
+                        BinaryOp<CPUDevice, functor::safe_div<int32>>);
 #endif // TENSORFLOW_USE_SYCL
 #if GOOGLE_CUDA
 REGISTER9(BinaryOp, GPU, "Div", functor::div, float, Eigen::half, double, uint8,

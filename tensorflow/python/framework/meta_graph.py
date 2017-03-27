@@ -105,7 +105,7 @@ def _read_file(filename):
   if not file_io.file_exists(filename):
     raise IOError("File %s does not exist." % filename)
   # First try to read it as a binary file.
-  file_content = file_io.read_file_to_string(filename)
+  file_content = file_io.FileIO(filename, "rb").read()
   try:
     graph_def.ParseFromString(file_content)
     return graph_def
@@ -114,7 +114,7 @@ def _read_file(filename):
 
   # Next try to read it as a text file.
   try:
-    text_format.Merge(file_content.decode("utf-8"), graph_def)
+    text_format.Merge(file_content, graph_def)
   except text_format.ParseError as e:
     raise IOError("Cannot parse file %s: %s." % (filename, str(e)))
 
@@ -401,7 +401,7 @@ def read_meta_graph_file(filename):
   if not file_io.file_exists(filename):
     raise IOError("File %s does not exist." % filename)
   # First try to read it as a binary file.
-  file_content = file_io.read_file_to_string(filename)
+  file_content = file_io.FileIO(filename, "rb").read()
   try:
     meta_graph_def.ParseFromString(file_content)
     return meta_graph_def

@@ -216,16 +216,29 @@ class LoggingTensorHookTest(test.TestCase):
       sess.run(variables_lib.global_variables_initializer())
       mon_sess.run(train_op)
       self.assertRegexpMatches(str(self.logged_message), t.name)
-      for j in range(3):
-        _ = j
+      for _ in range(3):
         self.logged_message = ''
-        for i in range(9):
-          _ = i
+        for _ in range(9):
           mon_sess.run(train_op)
           # assertNotRegexpMatches is not supported by python 3.1 and later
           self.assertEqual(str(self.logged_message).find(t.name), -1)
         mon_sess.run(train_op)
         self.assertRegexpMatches(str(self.logged_message), t.name)
+
+  def test_print_first_step(self):
+    # if it runs every iteration, first iteration has None duration.
+    with ops.Graph().as_default(), session_lib.Session() as sess:
+      t = constant_op.constant(42.0, name='foo')
+      train_op = constant_op.constant(3)
+      hook = basic_session_run_hooks.LoggingTensorHook(
+          tensors={'foo': t}, every_n_iter=1)
+      hook.begin()
+      mon_sess = monitored_session._HookedSession(sess, [hook])
+      sess.run(variables_lib.global_variables_initializer())
+      mon_sess.run(train_op)
+      self.assertRegexpMatches(str(self.logged_message), 'foo')
+      # in first run, elapsed time is None.
+      self.assertEqual(str(self.logged_message).find('sec'), -1)
 
   def test_print_every_n_secs(self):
     with ops.Graph().as_default(), session_lib.Session() as sess:
@@ -380,7 +393,8 @@ class CheckpointSaverHookTest(test.TestCase):
                          checkpoint_utils.load_variable(self.model_dir,
                                                         self.global_step.name))
 
-  def test_save_secs_calls_listeners_periodically(self):
+  # Flaky because of time.sleep()
+  def DISABLED_test_save_secs_calls_listeners_periodically(self):
     with self.graph.as_default():
       listener = MockCheckpointSaverListener()
       hook = basic_session_run_hooks.CheckpointSaverHook(
@@ -495,6 +509,49 @@ class CheckpointSaverHookTest(test.TestCase):
           ])
 
     fake_summary_writer.FakeSummaryWriter.uninstall()
+
+
+class ResourceCheckpointSaverHookTest(test.TestCase):
+
+  def setUp(self):
+    self.model_dir = tempfile.mkdtemp()
+    self.graph = ops.Graph()
+    with self.graph.as_default():
+      self.scaffold = monitored_session.Scaffold()
+      with variable_scope.variable_scope('foo', use_resource=True):
+        self.global_step = variables.get_or_create_global_step()
+      self.train_op = state_ops.assign_add(self.global_step, 1)
+
+  def test_save_steps_saves_periodically(self):
+    with self.graph.as_default():
+      hook = basic_session_run_hooks.CheckpointSaverHook(
+          self.model_dir, save_steps=2, scaffold=self.scaffold)
+      hook.begin()
+      self.scaffold.finalize()
+      with session_lib.Session() as sess:
+        sess.run(self.scaffold.init_op)
+        mon_sess = monitored_session._HookedSession(sess, [hook])
+        mon_sess.run(self.train_op)
+        mon_sess.run(self.train_op)
+        # Not saved
+        self.assertEqual(1,
+                         checkpoint_utils.load_variable(self.model_dir,
+                                                        self.global_step.name))
+        mon_sess.run(self.train_op)
+        # saved
+        self.assertEqual(3,
+                         checkpoint_utils.load_variable(self.model_dir,
+                                                        self.global_step.name))
+        mon_sess.run(self.train_op)
+        # Not saved
+        self.assertEqual(3,
+                         checkpoint_utils.load_variable(self.model_dir,
+                                                        self.global_step.name))
+        mon_sess.run(self.train_op)
+        # saved
+        self.assertEqual(5,
+                         checkpoint_utils.load_variable(self.model_dir,
+                                                        self.global_step.name))
 
 
 class StepCounterHookTest(test.TestCase):
@@ -831,6 +888,55 @@ class FinalOpsHookTest(test.TestCase):
         hook.end(session)
         self.assertListEqual(expected_values,
                              hook.final_ops_values.tolist())
+
+
+class ResourceSummarySaverHookTest(test.TestCase):
+
+  def setUp(self):
+    test.TestCase.setUp(self)
+
+    self.log_dir = 'log/dir'
+    self.summary_writer = fake_summary_writer.FakeSummaryWriter(self.log_dir)
+
+    var = variable_scope.get_variable('var', initializer=0.0, use_resource=True)
+    tensor = state_ops.assign_add(var, 1.0)
+    self.summary_op = summary_lib.scalar('my_summary', tensor)
+
+    with variable_scope.variable_scope('foo', use_resource=True):
+      global_step = variables.get_or_create_global_step()
+    self.train_op = state_ops.assign_add(global_step, 1)
+
+  def test_save_steps(self):
+    hook = basic_session_run_hooks.SummarySaverHook(
+        save_steps=8,
+        summary_writer=self.summary_writer,
+        summary_op=self.summary_op)
+
+    with self.test_session() as sess:
+      hook.begin()
+      sess.run(variables_lib.global_variables_initializer())
+      mon_sess = monitored_session._HookedSession(sess, [hook])
+      for _ in range(30):
+        mon_sess.run(self.train_op)
+      hook.end(sess)
+
+    self.summary_writer.assert_summaries(
+        test_case=self,
+        expected_logdir=self.log_dir,
+        expected_summaries={
+            1: {
+                'my_summary': 1.0
+            },
+            9: {
+                'my_summary': 2.0
+            },
+            17: {
+                'my_summary': 3.0
+            },
+            25: {
+                'my_summary': 4.0
+            },
+        })
 
 
 class FeedFnHookTest(test.TestCase):

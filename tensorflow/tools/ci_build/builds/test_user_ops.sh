@@ -123,7 +123,7 @@ if [[ ${IS_GPU} == "0" ]]; then
   EXPECTED_OUTPUT="[42, 0, 0]"
 
   # Locate the op kernel C++ file
-  OP_KERNEL_CC="${SCRIPT_DIR}/../../../g3doc/how_tos/adding_an_op/zero_out_op_kernel_1.cc"
+  OP_KERNEL_CC="${SCRIPT_DIR}/user_ops/zero_out_op_kernel_1.cc"
   OP_KERNEL_CC=$(realpath "${OP_KERNEL_CC}")
 
   if [[ ! -f "${OP_KERNEL_CC}" ]]; then
@@ -162,13 +162,13 @@ else
   "${NVCC_BIN}" --version
   echo ""
 
-  OP_KERNEL_CU="${SCRIPT_DIR}/../../../g3doc/how_tos/adding_an_op/cuda_op_kernel.cu.cc"
+  OP_KERNEL_CU="${SCRIPT_DIR}/user_ops/cuda_op_kernel.cu.cc"
   OP_KERNEL_CU=$(realpath "${OP_KERNEL_CU}")
   if [[ ! -f "${OP_KERNEL_CU}" ]]; then
     die "ERROR: Unable to find user-op kernel CUDA file at: ${OP_KERNEL_CU}"
   fi
 
-  OP_KERNEL_CC="${SCRIPT_DIR}/../../../g3doc/how_tos/adding_an_op/cuda_op_kernel.cc"
+  OP_KERNEL_CC="${SCRIPT_DIR}/user_ops/cuda_op_kernel.cc"
   OP_KERNEL_CC=$(realpath "${OP_KERNEL_CC}")
   if [[ ! -f "${OP_KERNEL_CC}" ]]; then
     die "ERROR: Unable to find user-op kernel C++ file at: ${OP_KERNEL_CC}"

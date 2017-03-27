@@ -22,7 +22,6 @@ limitations under the License.
 #include "external/llvm/include/llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
-#include "tensorflow/compiler/xla/service/gpu/temp_buffer_offsets.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/alias_analysis.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
@@ -37,10 +36,8 @@ class HloToIrBindings {
  public:
   HloToIrBindings(const HloModule& module,
                   const BufferAssignment* buffer_assignment,
-                  const TempBufferOffsets* temp_buffer_offsets,
                   llvm::IRBuilder<>* ir_builder, bool is_nested)
       : buffer_assignment_(buffer_assignment),
-        temp_buffer_offsets_(temp_buffer_offsets),
         is_nested_(is_nested),
         ir_builder_(ir_builder),
         alias_analysis_(module, *buffer_assignment_,
@@ -87,8 +84,6 @@ class HloToIrBindings {
                                llvm::Value* ir_value);
 
   const BufferAssignment* buffer_assignment_;
-
-  const TempBufferOffsets* temp_buffer_offsets_;
 
   const bool is_nested_;
 

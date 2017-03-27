@@ -24,12 +24,12 @@ import sys
 import tempfile
 
 # Google-internal import(s).
-from tensorflow.python.debug import debug_data
 from tensorflow.python.debug.cli import analyzer_cli
 from tensorflow.python.debug.cli import cli_shared
 from tensorflow.python.debug.cli import debugger_cli_common
 from tensorflow.python.debug.cli import stepper_cli
 from tensorflow.python.debug.cli import ui_factory
+from tensorflow.python.debug.lib import debug_data
 from tensorflow.python.debug.wrappers import framework
 
 
@@ -52,7 +52,8 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
       dump_root: (`str`) optional path to the dump root directory. Must be a
         directory that does not exist or an empty directory. If the directory
         does not exist, it will be created by the debugger core during debug
-        `run()` calls and removed afterwards.
+        `run()` calls and removed afterwards. If `None`, the debug dumps will
+        be at tfdbg_<random_string> under the system temp directory.
       log_usage: (`bool`) whether the usage of this class is to be logged.
       ui_type: (`str`) requested UI type. Currently supported:
         (curses | readline)
@@ -67,7 +68,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
 
     framework.BaseDebugWrapperSession.__init__(self, sess)
 
-    if dump_root is None:
+    if not dump_root:
       self._dump_root = tempfile.mktemp(prefix=_DUMP_ROOT_PREFIX)
     else:
       if os.path.isfile(dump_root):
@@ -103,6 +104,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     self._run_through_times = 1
     self._skip_debug = False
     self._run_start_response = None
+    self._is_run_start = True
 
     self._ui_type = ui_type
 
@@ -183,6 +185,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
       RuntimeError: If user chooses to prematurely exit the debugger.
     """
 
+    self._is_run_start = True
     self._update_run_calls_state(request.run_call_count, request.fetches,
                                  request.feed_dict)
 
@@ -207,7 +210,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     if self._run_start_response is None:
       self._prep_cli_for_run_start()
 
-      self._run_start_response = self._launch_cli(is_run_start=True)
+      self._run_start_response = self._launch_cli()
       if self._run_through_times > 1:
         self._run_through_times -= 1
 
@@ -253,12 +256,20 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
       An instance of OnSessionInitResponse.
     """
 
+    self._is_run_start = False
     if request.performed_action == framework.OnRunStartAction.DEBUG_RUN:
       partition_graphs = None
       if request.run_metadata and request.run_metadata.partition_graphs:
         partition_graphs = request.run_metadata.partition_graphs
       elif request.client_graph_def:
         partition_graphs = [request.client_graph_def]
+
+      if request.tf_error and not os.path.isdir(self._dump_root):
+        # It is possible that the dump root may not exist due to errors that
+        # have occurred prior to graph execution (e.g., invalid device
+        # assignments), in which case we will just raise the exception as the
+        # unwrapped Session does.
+        raise request.tf_error
 
       debug_dump = debug_data.DebugDumpDir(
           self._dump_root, partition_graphs=partition_graphs)
@@ -323,7 +334,8 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
         self._title_color = "red_on_white"
 
     self._run_cli = analyzer_cli.create_analyzer_ui(
-        debug_dump, self._tensor_filters, ui_type=self._ui_type)
+        debug_dump, self._tensor_filters, ui_type=self._ui_type,
+        on_ui_exit=self._remove_dump_root)
 
     # Get names of all dumped tensors.
     dumped_tensor_names = []
@@ -349,12 +361,8 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     if help_intro:
       self._run_cli.set_help_intro(help_intro)
 
-  def _launch_cli(self, is_run_start=False):
+  def _launch_cli(self):
     """Launch the interactive command-line interface.
-
-    Args:
-      is_run_start: (bool) whether this CLI launch occurs at a run-start
-        callback.
 
     Returns:
       The OnRunStartResponse specified by the user using the "run" command.
@@ -369,13 +377,18 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     return response
 
   def _run_info_handler(self, args, screen_info=None):
-    output = self._run_info
+    output = debugger_cli_common.RichTextLines([])
 
-    # Add main menu.
-    menu = debugger_cli_common.Menu()
-    menu.append(debugger_cli_common.MenuItem("list_tensors", "lt"))
-    menu.append(debugger_cli_common.MenuItem("help", "help"))
-    output.annotations[debugger_cli_common.MAIN_MENU_KEY] = menu
+    if self._run_call_count == 1:
+      output.extend(cli_shared.get_tfdbg_logo())
+    output.extend(self._run_info)
+
+    if (not self._is_run_start and
+        debugger_cli_common.MAIN_MENU_KEY in output.annotations):
+      menu = output.annotations[debugger_cli_common.MAIN_MENU_KEY]
+      if "list_tensors" not in menu.captions():
+        menu.insert(
+            0, debugger_cli_common.MenuItem("list_tensors", "list_tensors"))
 
     return output
 

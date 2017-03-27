@@ -26,16 +26,20 @@ import time
 
 from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework import deprecated_args
+from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import export_strategy
 from tensorflow.contrib.learn.python.learn import monitors
 from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import run_config
+from tensorflow.python.estimator import estimator as core_estimator
+from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import saver
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
+
 
 __all__ = ["Experiment"]
 
@@ -74,8 +78,7 @@ class Experiment(object):
                continuous_eval_throttle_secs=60,
                min_eval_frequency=1,
                delay_workers_by_global_step=False,
-               export_strategies=None,
-               continuous_eval_predicate_fn=None):
+               export_strategies=None):
     """Constructor for `Experiment`.
 
     Creates an Experiment instance. None of the functions passed to this
@@ -83,13 +86,17 @@ class Experiment(object):
     when a method is executed which requires it.
 
     Args:
-      estimator: Object implementing `Trainable` and `Evaluable`.
+      estimator: Object implementing Estimator interface, which could be a
+        combination of ${tf.contrib.learn.Trainable} and
+        ${tf.contrib.learn.Evaluable} (deprecated), or
+        ${tf.estimator.`Estimator}.
       train_input_fn: function, returns features and labels for training.
       eval_input_fn: function, returns features and labels for evaluation. If
         `eval_steps` is `None`, this should be configured only to produce for a
         finite number of batches (generally, 1 epoch over the evaluation data).
       eval_metrics: `dict` of string, metric function. If `None`, default set
-        is used.
+        is used. This should be `None` if the `estimator` is
+        ${tf.estimator.Estimator}.
       train_steps: Perform this many steps of training. `None`, the default,
         means train forever.
       eval_steps: `evaluate` runs until input is exhausted (or another exception
@@ -98,9 +105,8 @@ class Experiment(object):
         function.
       eval_hooks: A list of `SessionRunHook` hooks to pass to the
         `Estimator`'s `evaluate` function.
-      local_eval_frequency: Frequency of running eval in steps,
-        when running locally. If `None`, runs evaluation only at the end of
-        training.
+      local_eval_frequency: (applies only to local_run) Frequency of running
+        eval in steps. If `None`, runs evaluation only at the end of training.
       eval_delay_secs: Start evaluating after waiting for this many seconds.
       continuous_eval_throttle_secs: Do not re-evaluate unless the last
         evaluation was started at least this many seconds ago for
@@ -111,21 +117,27 @@ class Experiment(object):
       delay_workers_by_global_step: if `True` delays training workers
         based on global step instead of time.
       export_strategies: A list of `ExportStrategy`s, or a single one, or None.
-      continuous_eval_predicate_fn: A predicate function determining whether to
-        continue eval after each iteration. `predicate_fn` takes the evaluation
-        results as arguments. At the beginning of evaluation, the passed eval
-        results will be None so it's expected that the predicate function
-        handles that gracefully. When `predicate_fn` is not specified,
-        continuous eval will run in an infinite loop.
 
     Raises:
-      ValueError: if `estimator` does not implement `Evaluable` and `Trainable`,
+      ValueError: if `estimator` does not implement Estimator interface,
         or if export_strategies has the wrong type.
     """
-    if not isinstance(estimator, evaluable.Evaluable):
-      raise ValueError("`estimator` must implement `Evaluable`.")
-    if not isinstance(estimator, trainable.Trainable):
-      raise ValueError("`estimator` must implement `Trainable`.")
+    if isinstance(estimator, core_estimator.Estimator):
+      self._core_estimator_used = True
+      if eval_metrics is not None:
+        raise ValueError(
+            "`eval_metrics` must be `None` with `tf.estimator.Estimator`")
+    else:
+      self._core_estimator_used = False
+      if not isinstance(estimator, evaluable.Evaluable):
+        raise ValueError(
+            "`estimator` must implement `tf.contrib.learn.Evaluable` "
+            "or `tf.estimator.Estimator`.")
+      if not isinstance(estimator, trainable.Trainable):
+        raise ValueError(
+            "`estimator` must implement `tf.contrib.learn.Trainable`"
+            "or `tf.estimator.`Estimator`.")
+
     super(Experiment, self).__init__()
     # Immutable fields.
     self._estimator = estimator
@@ -139,23 +151,13 @@ class Experiment(object):
     self._continuous_eval_throttle_secs = continuous_eval_throttle_secs
     self._min_eval_frequency = min_eval_frequency
     self._delay_workers_by_global_step = delay_workers_by_global_step
-    self._train_monitors = train_monitors or []
-    # Mutable fields, using the setters.
-    self.eval_hooks = eval_hooks
-    self.export_strategies = export_strategies
-    self.continuous_eval_predicate_fn = continuous_eval_predicate_fn
+    self._train_monitors = train_monitors[:] if train_monitors else []
+    self._eval_hooks = eval_hooks[:] if eval_hooks else []
+    self._set_export_strategies(export_strategies)
 
   @property
   def estimator(self):
     return self._estimator
-
-  @property
-  def train_input_fn(self):
-    return self._train_input_fn
-
-  @property
-  def eval_input_fn(self):
-    return self._eval_input_fn
 
   @property
   def eval_metrics(self):
@@ -169,60 +171,11 @@ class Experiment(object):
   def eval_steps(self):
     return self._eval_steps
 
-  @property
-  def train_hooks(self):
-    """Returns a shallow copy of train hooks for inspecting."""
-    return [m for m in self._train_monitors]
-
-  @property
-  def eval_hooks(self):
-    return self._eval_hooks
-
-  @eval_hooks.setter
-  def eval_hooks(self, value):
-    self._eval_hooks = value or []
-
-  @property
-  def local_eval_frequency(self):
-    return self._local_eval_frequency
-
-  @property
-  def eval_delay_secs(self):
-    return self._eval_delay_secs
-
-  @property
-  def continuous_eval_throttle_secs(self):
-    return self._continuous_eval_throttle_secs
-
-  @property
-  def min_eval_frequency(self):
-    return self._min_eval_frequency
-
-  @property
-  def delay_workers_by_global_step(self):
-    return self._delay_workers_by_global_step
-
-  @property
-  def continuous_eval_predicate_fn(self):
-    return self._continuous_eval_predicate_fn
-
-  @continuous_eval_predicate_fn.setter
-  def continuous_eval_predicate_fn(self, value):
-    if value is not None and not callable(value):
-      raise ValueError(
-          "`continuous_eval_predicate_fn` must be a callable, or None.")
-    self._continuous_eval_predicate_fn = value
-
-  @property
-  def export_strategies(self):
-    return self._export_strategies
-
-  @export_strategies.setter
-  def export_strategies(self, value):
+  def _set_export_strategies(self, value):
     if value is None:
       self._export_strategies = []
     elif isinstance(value, list):
-      self._export_strategies = value
+      self._export_strategies = value[:]
     elif isinstance(value, export_strategy.ExportStrategy):
       self._export_strategies = [value]
     else:
@@ -232,6 +185,20 @@ class Experiment(object):
   def extend_train_hooks(self, additional_hooks):
     """Extends the hooks for training."""
     self._train_monitors.extend(additional_hooks)
+
+  def reset_export_strategies(self, new_export_strategies=None):
+    """Resets the export strategies with the `new_export_strategies`.
+
+    Args:
+      new_export_strategies: A new list of `ExportStrategy`s, or a single one,
+        or None.
+
+    Returns:
+      The old export strategies.
+    """
+    old_export_strategies = self._export_strategies
+    self._set_export_strategies(new_export_strategies)
+    return old_export_strategies
 
   def train(self, delay_secs=None):
     """Fit the estimator using the training data.
@@ -277,9 +244,9 @@ class Experiment(object):
       logging.info("Waiting %d secs before starting training.", remaining)
       time.sleep(delay_secs)
 
-    return self._estimator.fit(input_fn=self._train_input_fn,
-                               max_steps=self._train_steps,
-                               monitors=self._train_monitors + extra_hooks)
+    return self._call_train(input_fn=self._train_input_fn,
+                            max_steps=self._train_steps,
+                            hooks=self._train_monitors + extra_hooks)
 
   def evaluate(self, delay_secs=None):
     """Evaluate on the evaluation data.
@@ -304,11 +271,11 @@ class Experiment(object):
       logging.info("Waiting %d secs before starting eval.", delay_secs)
       time.sleep(delay_secs)
 
-    return self._estimator.evaluate(input_fn=self._eval_input_fn,
-                                    steps=self._eval_steps,
-                                    metrics=self._eval_metrics,
-                                    name="one_pass",
-                                    hooks=self._eval_hooks)
+    return self._call_evaluate(input_fn=self._eval_input_fn,
+                               steps=self._eval_steps,
+                               metrics=self._eval_metrics,
+                               name="one_pass",
+                               hooks=self._eval_hooks)
 
   @deprecated(
       "2016-10-23",
@@ -320,18 +287,22 @@ class Experiment(object):
       self._min_eval_frequency = self._local_eval_frequency
       return self.train_and_evaluate()
 
+  # TODO(xiejw): Allow continuous_eval_predicate_fn to be passed via constructor
+  # once stopping all jobs is implemented.
   def _continuous_eval(self,
                        input_fn,
                        name,
                        delay_secs,
                        throttle_delay_secs,
-                       evaluate_checkpoint_only_once=True):
+                       evaluate_checkpoint_only_once=True,
+                       continuous_eval_predicate_fn=None):
     """Run continuous eval.
 
     Runs infinite eval on the evaluation data set. This function starts
     evaluating after `delay_secs` seconds and then runs no more than one
     evaluation (with `self._eval_steps` steps each time) per
-    `throttle_delay_secs`. It never returns.
+    `throttle_delay_secs`. If `train_steps` is not None, will return after
+    global_step reaches `train_steps`.
 
     Args:
       input_fn: The input to use for this eval.
@@ -343,7 +314,23 @@ class Experiment(object):
         self._continuous_eval_throttle_secs.
       evaluate_checkpoint_only_once: Whether to skip evaluation of checkpoints
         that have already been evaluated. Default is `True`.
+      continuous_eval_predicate_fn: A predicate function determining whether to
+        continue eval after each iteration. `predicate_fn` takes the evaluation
+        results as arguments. At the beginning of evaluation, the passed eval
+        results will be None so it's expected that the predicate function
+        handles that gracefully. When `predicate_fn` is not specified,
+        continuous eval will run in an infinite loop (if `train_steps` is None)
+        or exit once global step reaches `train_steps`.
+
+    Raises:
+      ValueError: if `continuous_eval_predicate_fn` is neither None nor
+        callable.
     """
+    if (continuous_eval_predicate_fn is not None and
+        not callable(continuous_eval_predicate_fn)):
+      raise ValueError(
+          "`continuous_eval_predicate_fn` must be a callable, or None.")
+
     if delay_secs is None:
       delay_secs = self._eval_delay_secs
     if throttle_delay_secs is None:
@@ -356,8 +343,16 @@ class Experiment(object):
     previous_path = None
     eval_result = None
     last_warning_time = 0
-    while (not self.continuous_eval_predicate_fn or
-           self.continuous_eval_predicate_fn(eval_result)):
+    while (not continuous_eval_predicate_fn or
+           continuous_eval_predicate_fn(eval_result)):
+      # Exit if we have already reached number of steps to train.
+      if self._has_training_stopped(eval_result):
+        logging.info("Exiting continuous eval, global_step=%s >= "
+                     "train_step=%s",
+                     eval_result[ops.GraphKeys.GLOBAL_STEP],
+                     self._train_steps)
+        return
+
       start = time.time()
 
       error_msg = None
@@ -375,18 +370,17 @@ class Experiment(object):
           logging.warning(error_msg)
           last_warning_time = time.time()
       else:
-        eval_result = self._estimator.evaluate(input_fn=input_fn,
-                                               steps=self._eval_steps,
-                                               metrics=self._eval_metrics,
-                                               name=name,
-                                               checkpoint_path=latest_path,
-                                               hooks=self._eval_hooks)
+        eval_result = self._call_evaluate(input_fn=input_fn,
+                                          steps=self._eval_steps,
+                                          metrics=self._eval_metrics,
+                                          name=name,
+                                          checkpoint_path=latest_path,
+                                          hooks=self._eval_hooks)
         # Ensure eval result is not None for next round of evaluation.
         if not eval_result:
           eval_result = {}
 
-        # TODO(soergel): further throttle how often export happens?
-        self._maybe_export(eval_result)
+        self._maybe_export(eval_result, checkpoint_path=latest_path)
 
         # Clear warning timer and update last evaluated checkpoint
         last_warning_time = 0
@@ -399,25 +393,38 @@ class Experiment(object):
                      difference)
         time.sleep(difference)
 
+  def _has_training_stopped(self, eval_result):
+    """Determines whether the training has stopped."""
+    if not eval_result:
+      return False
+
+    global_step = eval_result.get(ops.GraphKeys.GLOBAL_STEP)
+    return global_step and self._train_steps and (
+        global_step >= self._train_steps)
+
   def continuous_eval(self,
                       delay_secs=None,
                       throttle_delay_secs=None,
-                      evaluate_checkpoint_only_once=True):
+                      evaluate_checkpoint_only_once=True,
+                      continuous_eval_predicate_fn=None):
     self._continuous_eval(
         self._eval_input_fn,
         name="continuous",
         delay_secs=delay_secs,
         throttle_delay_secs=throttle_delay_secs,
-        evaluate_checkpoint_only_once=evaluate_checkpoint_only_once)
+        evaluate_checkpoint_only_once=evaluate_checkpoint_only_once,
+        continuous_eval_predicate_fn=continuous_eval_predicate_fn)
 
   def continuous_eval_on_train_data(self,
                                     delay_secs=None,
-                                    throttle_delay_secs=None):
+                                    throttle_delay_secs=None,
+                                    continuous_eval_predicate_fn=None):
     self._continuous_eval(
         self._train_input_fn,
         name="continuous_on_train_data",
         delay_secs=delay_secs,
-        throttle_delay_secs=throttle_delay_secs)
+        throttle_delay_secs=throttle_delay_secs,
+        continuous_eval_predicate_fn=continuous_eval_predicate_fn)
 
   def train_and_evaluate(self):
     """Interleaves training and evaluation.
@@ -438,7 +445,8 @@ class Experiment(object):
     performing evaluation allows for the second.
 
     Returns:
-      The result of the `evaluate` call to the `Estimator`.
+      The result of the `evaluate` call to the `Estimator` as well as the
+      export results using the specified `ExportStrategy`.
     """
     # The directory to which evaluation summaries are written are determined
     # by adding a suffix to 'eval'; that suffix is the 'name' parameter to
@@ -460,15 +468,92 @@ class Experiment(object):
         )]
       self.train(delay_secs=0)
 
-    eval_result = self._estimator.evaluate(input_fn=self._eval_input_fn,
-                                           steps=self._eval_steps,
-                                           metrics=self._eval_metrics,
-                                           name=eval_dir_suffix,
-                                           hooks=self._eval_hooks)
+    eval_result = self._call_evaluate(input_fn=self._eval_input_fn,
+                                      steps=self._eval_steps,
+                                      metrics=self._eval_metrics,
+                                      name=eval_dir_suffix,
+                                      hooks=self._eval_hooks)
     export_results = self._maybe_export(eval_result)
     return eval_result, export_results
 
-  def _maybe_export(self, eval_result):  # pylint: disable=unused-argument
+  @experimental
+  def continuous_train_and_eval(self,
+                                train_steps_per_iteration=1000,
+                                continuous_eval_predicate_fn=None):
+    """Interleaves training and evaluation.
+
+    The frequency of evaluation is controlled by the
+    `train_steps_per_iteration`. The model will be first trained for
+    `train_steps_per_iteration`, and then be evaluated in turns.
+
+    This differs from `train_and_evaluate` as follows:
+      1. The procedure will have train and evaluation in turns. The model
+      will be trained for a number of steps (usuallly smaller than `train_steps`
+      if provided) and then be evaluated.  `train_and_evaluate` will train the
+      model for `train_steps` (no small training iteraions).
+
+      2. Due to the different approach this schedule takes, it leads to two
+      differences in resource control. First, the resources (e.g., memory) used
+      by training will be released before evaluation (`train_and_evaluate` takes
+      double resources). Second, more checkpoints will be saved as a checkpoint
+      is generated at the end of each small trainning iteration.
+
+    Args:
+      train_steps_per_iteration: The (integer) number of train steps for
+        each training-evaluation iteration. With a small
+        `train_steps_per_iteration`, the model will be evaluated more frequently
+        with more checkpoints saved.
+      continuous_eval_predicate_fn: A predicate function determining whether to
+        continue after each iteration. `predicate_fn` takes the evaluation
+        results as its arguments. At the beginning of evaluation, the passed
+        eval results will be None so it's expected that the predicate function
+        handles that gracefully. When `predicate_fn` is not specified, this will
+        run in an infinite loop or exit when global_step reaches `train_steps`.
+
+    Returns:
+      A tuple of the result of the `evaluate` call to the `Estimator` and the
+      export results using the specified `ExportStrategy`.
+
+    Raises:
+      ValueError: if `continuous_eval_predicate_fn` is neither None nor
+        callable.
+    """
+
+    if (continuous_eval_predicate_fn is not None and
+        not callable(continuous_eval_predicate_fn)):
+      raise ValueError(
+          "`continuous_eval_predicate_fn` must be a callable, or None.")
+
+    eval_result = None
+
+    # TODO(b/33295821): improve the way to determine the
+    # train_steps_per_iteration.
+    if self._train_steps and train_steps_per_iteration > self._train_steps:
+      train_steps_per_iteration = self._train_steps
+
+    while (not continuous_eval_predicate_fn or
+           continuous_eval_predicate_fn(eval_result)):
+
+      if self._has_training_stopped(eval_result):
+        # Exits once max steps of training is satisfied.
+        logging.info("Stop training model as max steps reached")
+        break
+
+      logging.info("Training model for %s steps", train_steps_per_iteration)
+      self._call_train(input_fn=self._train_input_fn,
+                       steps=train_steps_per_iteration,
+                       hooks=self._train_monitors)
+
+      logging.info("Evaluating model now.")
+      eval_result = self._call_evaluate(input_fn=self._eval_input_fn,
+                                        steps=self._eval_steps,
+                                        metrics=self._eval_metrics,
+                                        name="one_pass",
+                                        hooks=self._eval_hooks)
+
+    return eval_result, self._maybe_export(eval_result)
+
+  def _maybe_export(self, eval_result, checkpoint_path=None):
     """Export the Estimator using export_fn, if defined."""
     export_dir_base = os.path.join(
         compat.as_bytes(self._estimator.model_dir),
@@ -476,15 +561,14 @@ class Experiment(object):
 
     export_results = []
     for strategy in self._export_strategies:
-      # TODO(soergel): possibly, allow users to decide whether to export here
-      # based on the eval_result (e.g., to keep the best export).
-
       export_results.append(
           strategy.export(
               self._estimator,
               os.path.join(
                   compat.as_bytes(export_dir_base),
-                  compat.as_bytes(strategy.name))))
+                  compat.as_bytes(strategy.name)),
+              checkpoint_path=checkpoint_path,
+              eval_result=eval_result))
 
     return export_results
 
@@ -500,19 +584,22 @@ class Experiment(object):
     self._start_server().join()
 
   def test(self):
-    """Tests training and evaluating the estimator both for a single step.
+    """Tests training, evaluating and exporting the estimator for a single step.
 
     Returns:
       The result of the `evaluate` call to the `Estimator`.
     """
-    self._estimator.fit(input_fn=self._train_input_fn,
-                        steps=1,
-                        monitors=self._train_monitors)
+    self._call_train(input_fn=self._train_input_fn,
+                     steps=1,
+                     hooks=self._train_monitors)
 
-    return self._estimator.evaluate(input_fn=self._eval_input_fn,
-                                    steps=1,
-                                    metrics=self._eval_metrics,
-                                    name="one_pass")
+    eval_result = self._call_evaluate(input_fn=self._eval_input_fn,
+                                      steps=1,
+                                      metrics=self._eval_metrics,
+                                      name="one_pass")
+    _ = self._maybe_export(eval_result)
+
+    return eval_result
 
   def _start_server(self):
     """Creates, starts, and returns a server_lib.Server."""
@@ -530,6 +617,45 @@ class Experiment(object):
         start=False)
     server.start()
     return server
+
+  def _call_train(self, _sentinel=None,  # pylint: disable=invalid-name,
+                  input_fn=None, steps=None, hooks=None, max_steps=None):
+    if _sentinel is not None:
+      raise ValueError("_call_train should be called with keyword args only")
+
+    if self._core_estimator_used:
+      return self._estimator.train(input_fn=input_fn,
+                                   steps=steps,
+                                   max_steps=max_steps,
+                                   hooks=hooks)
+    else:
+      return self._estimator.fit(input_fn=input_fn,
+                                 steps=steps,
+                                 max_steps=max_steps,
+                                 monitors=hooks)
+
+  def _call_evaluate(self, _sentinel=None,  # pylint: disable=invalid-name,
+                     input_fn=None, steps=None, metrics=None, name=None,
+                     checkpoint_path=None, hooks=None):
+    if _sentinel is not None:
+      raise ValueError("_call_evaluate should be called with keyword args only")
+
+    if self._core_estimator_used:
+      if metrics is not None:
+        raise ValueError(
+            "`eval_metrics` must be `None` with `tf.estimator.Estimator`")
+      return self._estimator.evaluate(input_fn=input_fn,
+                                      steps=steps,
+                                      name=name,
+                                      checkpoint_path=checkpoint_path,
+                                      hooks=hooks)
+    else:
+      return self._estimator.evaluate(input_fn=input_fn,
+                                      steps=steps,
+                                      metrics=metrics,
+                                      name=name,
+                                      checkpoint_path=checkpoint_path,
+                                      hooks=hooks)
 
 
 @contextlib.contextmanager

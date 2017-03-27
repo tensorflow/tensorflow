@@ -252,6 +252,7 @@ Status InstantiateNode(const NodeDef& fnode,
   NodeDef* gnode = gdef->add_node();
   gnode->set_name(Name(gdef->node_size() - 1));
   gnode->set_op(fnode.op());
+  gnode->set_device(fnode.device());
 
   // Input
   const int num_args = fnode_sig->input_arg_size();
@@ -775,6 +776,29 @@ Status FunctionLibraryDefinition::AddFunctionDef(const FunctionDef& fdef) {
                                    " already exists in function library.");
   }
   ptr.reset(new FunctionDefAndOpRegistration(fdef));
+  return Status::OK();
+}
+
+Status FunctionLibraryDefinition::AddGradientDef(const GradientDef& grad) {
+  if (func_grad_.count(grad.function_name()) > 0) {
+    return errors::InvalidArgument("Gradient for function '",
+                                   grad.function_name(), "' already exists.");
+  }
+  func_grad_[grad.function_name()] = grad.gradient_func();
+  return Status::OK();
+}
+
+Status FunctionLibraryDefinition::AddLibrary(
+    const FunctionLibraryDefinition& other) {
+  for (auto iter : other.function_defs_) {
+    TF_RETURN_IF_ERROR(AddFunctionDef(iter.second->fdef));
+  }
+  for (auto iter : other.func_grad_) {
+    GradientDef grad;
+    grad.set_function_name(iter.first);
+    grad.set_gradient_func(iter.second);
+    TF_RETURN_IF_ERROR(AddGradientDef(grad));
+  }
   return Status::OK();
 }
 

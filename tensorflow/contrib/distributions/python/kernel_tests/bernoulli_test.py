@@ -32,7 +32,7 @@ from tensorflow.python.platform import test
 def make_bernoulli(batch_shape, dtype=dtypes.int32):
   p = np.random.uniform(size=list(batch_shape))
   p = constant_op.constant(p, dtype=dtypes.float32)
-  return bernoulli.Bernoulli(p=p, dtype=dtype)
+  return bernoulli.Bernoulli(probs=p, dtype=dtype)
 
 
 def entropy(p):
@@ -44,9 +44,9 @@ class BernoulliTest(test.TestCase):
 
   def testP(self):
     p = [0.2, 0.4]
-    dist = bernoulli.Bernoulli(p=p)
+    dist = bernoulli.Bernoulli(probs=p)
     with self.test_session():
-      self.assertAllClose(p, dist.p.eval())
+      self.assertAllClose(p, dist.probs.eval())
 
   def testLogits(self):
     logits = [-42., 42.]
@@ -55,10 +55,10 @@ class BernoulliTest(test.TestCase):
       self.assertAllClose(logits, dist.logits.eval())
 
     with self.test_session():
-      self.assertAllClose(scipy.special.expit(logits), dist.p.eval())
+      self.assertAllClose(scipy.special.expit(logits), dist.probs.eval())
 
     p = [0.01, 0.99, 0.42]
-    dist = bernoulli.Bernoulli(p=p)
+    dist = bernoulli.Bernoulli(probs=p)
     with self.test_session():
       self.assertAllClose(scipy.special.logit(p), dist.logits.eval())
 
@@ -66,43 +66,43 @@ class BernoulliTest(test.TestCase):
     invalid_ps = [1.01, 2.]
     for p in invalid_ps:
       with self.test_session():
-        with self.assertRaisesOpError("p has components greater than 1"):
-          dist = bernoulli.Bernoulli(p=p, validate_args=True)
-          dist.p.eval()
+        with self.assertRaisesOpError("probs has components greater than 1"):
+          dist = bernoulli.Bernoulli(probs=p, validate_args=True)
+          dist.probs.eval()
 
     invalid_ps = [-0.01, -3.]
     for p in invalid_ps:
       with self.test_session():
         with self.assertRaisesOpError("Condition x >= 0"):
-          dist = bernoulli.Bernoulli(p=p, validate_args=True)
-          dist.p.eval()
+          dist = bernoulli.Bernoulli(probs=p, validate_args=True)
+          dist.probs.eval()
 
     valid_ps = [0.0, 0.5, 1.0]
     for p in valid_ps:
       with self.test_session():
-        dist = bernoulli.Bernoulli(p=p)
-        self.assertEqual(p, dist.p.eval())  # Should not fail
+        dist = bernoulli.Bernoulli(probs=p)
+        self.assertEqual(p, dist.probs.eval())  # Should not fail
 
   def testShapes(self):
     with self.test_session():
       for batch_shape in ([], [1], [2, 3, 4]):
         dist = make_bernoulli(batch_shape)
-        self.assertAllEqual(batch_shape, dist.get_batch_shape().as_list())
-        self.assertAllEqual(batch_shape, dist.batch_shape().eval())
-        self.assertAllEqual([], dist.get_event_shape().as_list())
-        self.assertAllEqual([], dist.event_shape().eval())
+        self.assertAllEqual(batch_shape, dist.batch_shape.as_list())
+        self.assertAllEqual(batch_shape, dist.batch_shape_tensor().eval())
+        self.assertAllEqual([], dist.event_shape.as_list())
+        self.assertAllEqual([], dist.event_shape_tensor().eval())
 
   def testDtype(self):
     dist = make_bernoulli([])
     self.assertEqual(dist.dtype, dtypes.int32)
     self.assertEqual(dist.dtype, dist.sample(5).dtype)
     self.assertEqual(dist.dtype, dist.mode().dtype)
-    self.assertEqual(dist.p.dtype, dist.mean().dtype)
-    self.assertEqual(dist.p.dtype, dist.variance().dtype)
-    self.assertEqual(dist.p.dtype, dist.std().dtype)
-    self.assertEqual(dist.p.dtype, dist.entropy().dtype)
-    self.assertEqual(dist.p.dtype, dist.pmf(0).dtype)
-    self.assertEqual(dist.p.dtype, dist.log_pmf(0).dtype)
+    self.assertEqual(dist.probs.dtype, dist.mean().dtype)
+    self.assertEqual(dist.probs.dtype, dist.variance().dtype)
+    self.assertEqual(dist.probs.dtype, dist.stddev().dtype)
+    self.assertEqual(dist.probs.dtype, dist.entropy().dtype)
+    self.assertEqual(dist.probs.dtype, dist.prob(0).dtype)
+    self.assertEqual(dist.probs.dtype, dist.log_prob(0).dtype)
 
     dist64 = make_bernoulli([], dtypes.int64)
     self.assertEqual(dist64.dtype, dtypes.int64)
@@ -130,78 +130,78 @@ class BernoulliTest(test.TestCase):
       # pylint: enable=bad-continuation
 
       for x, expected_pmf in zip(xs, expected_pmfs):
-        self.assertAllClose(dist.pmf(x).eval(), expected_pmf)
-        self.assertAllClose(dist.log_pmf(x).eval(), np.log(expected_pmf))
+        self.assertAllClose(dist.prob(x).eval(), expected_pmf)
+        self.assertAllClose(dist.log_prob(x).eval(), np.log(expected_pmf))
 
   def testPmfCorrectBroadcastDynamicShape(self):
     with self.test_session():
       p = array_ops.placeholder(dtype=dtypes.float32)
-      dist = bernoulli.Bernoulli(p=p)
+      dist = bernoulli.Bernoulli(probs=p)
       event1 = [1, 0, 1]
       event2 = [[1, 0, 1]]
       self.assertAllClose(
-          dist.pmf(event1).eval({
+          dist.prob(event1).eval({
               p: [0.2, 0.3, 0.4]
           }), [0.2, 0.7, 0.4])
       self.assertAllClose(
-          dist.pmf(event2).eval({
+          dist.prob(event2).eval({
               p: [0.2, 0.3, 0.4]
           }), [[0.2, 0.7, 0.4]])
 
   def testPmfWithP(self):
     p = [[0.2, 0.4], [0.3, 0.6]]
-    self._testPmf(p=p)
+    self._testPmf(probs=p)
     self._testPmf(logits=scipy.special.logit(p))
 
   def testBroadcasting(self):
     with self.test_session():
       p = array_ops.placeholder(dtypes.float32)
-      dist = bernoulli.Bernoulli(p=p)
-      self.assertAllClose(np.log(0.5), dist.log_pmf(1).eval({p: 0.5}))
+      dist = bernoulli.Bernoulli(probs=p)
+      self.assertAllClose(np.log(0.5), dist.log_prob(1).eval({p: 0.5}))
       self.assertAllClose(
-          np.log([0.5, 0.5, 0.5]), dist.log_pmf([1, 1, 1]).eval({
+          np.log([0.5, 0.5, 0.5]), dist.log_prob([1, 1, 1]).eval({
               p: 0.5
           }))
       self.assertAllClose(
-          np.log([0.5, 0.5, 0.5]), dist.log_pmf(1).eval({
+          np.log([0.5, 0.5, 0.5]), dist.log_prob(1).eval({
               p: [0.5, 0.5, 0.5]
           }))
 
   def testPmfShapes(self):
     with self.test_session():
       p = array_ops.placeholder(dtypes.float32, shape=[None, 1])
-      dist = bernoulli.Bernoulli(p=p)
-      self.assertEqual(2, len(dist.log_pmf(1).eval({p: [[0.5], [0.5]]}).shape))
+      dist = bernoulli.Bernoulli(probs=p)
+      self.assertEqual(2, len(dist.log_prob(1).eval({p: [[0.5], [0.5]]}).shape))
 
     with self.test_session():
-      dist = bernoulli.Bernoulli(p=0.5)
-      self.assertEqual(2, len(dist.log_pmf([[1], [1]]).eval().shape))
+      dist = bernoulli.Bernoulli(probs=0.5)
+      self.assertEqual(2, len(dist.log_prob([[1], [1]]).eval().shape))
 
     with self.test_session():
-      dist = bernoulli.Bernoulli(p=0.5)
-      self.assertEqual((), dist.log_pmf(1).get_shape())
-      self.assertEqual((1), dist.log_pmf([1]).get_shape())
-      self.assertEqual((2, 1), dist.log_pmf([[1], [1]]).get_shape())
+      dist = bernoulli.Bernoulli(probs=0.5)
+      self.assertEqual((), dist.log_prob(1).get_shape())
+      self.assertEqual((1), dist.log_prob([1]).get_shape())
+      self.assertEqual((2, 1), dist.log_prob([[1], [1]]).get_shape())
 
     with self.test_session():
-      dist = bernoulli.Bernoulli(p=[[0.5], [0.5]])
-      self.assertEqual((2, 1), dist.log_pmf(1).get_shape())
+      dist = bernoulli.Bernoulli(probs=[[0.5], [0.5]])
+      self.assertEqual((2, 1), dist.log_prob(1).get_shape())
 
   def testBoundaryConditions(self):
     with self.test_session():
-      dist = bernoulli.Bernoulli(p=1.0)
-      self.assertAllClose(np.nan, dist.log_pmf(0).eval())
-      self.assertAllClose([np.nan], [dist.log_pmf(1).eval()])
+      dist = bernoulli.Bernoulli(probs=1.0)
+      self.assertAllClose(np.nan, dist.log_prob(0).eval())
+      self.assertAllClose([np.nan], [dist.log_prob(1).eval()])
 
   def testEntropyNoBatch(self):
     p = 0.2
-    dist = bernoulli.Bernoulli(p=p)
+    dist = bernoulli.Bernoulli(probs=p)
     with self.test_session():
       self.assertAllClose(dist.entropy().eval(), entropy(p))
 
   def testEntropyWithBatch(self):
     p = [[0.1, 0.7], [0.2, 0.6]]
-    dist = bernoulli.Bernoulli(p=p, validate_args=False)
+    dist = bernoulli.Bernoulli(probs=p, validate_args=False)
     with self.test_session():
       self.assertAllClose(dist.entropy().eval(), [[entropy(0.1), entropy(0.7)],
                                                   [entropy(0.2), entropy(0.6)]])
@@ -209,7 +209,7 @@ class BernoulliTest(test.TestCase):
   def testSampleN(self):
     with self.test_session():
       p = [0.2, 0.6]
-      dist = bernoulli.Bernoulli(p=p)
+      dist = bernoulli.Bernoulli(probs=p)
       n = 100000
       samples = dist.sample(n)
       samples.set_shape([n, 2])
@@ -230,7 +230,7 @@ class BernoulliTest(test.TestCase):
   def testSampleActsLikeSampleN(self):
     with self.test_session() as sess:
       p = [0.2, 0.6]
-      dist = bernoulli.Bernoulli(p=p)
+      dist = bernoulli.Bernoulli(probs=p)
       n = 1000
       seed = 42
       self.assertAllEqual(
@@ -243,30 +243,30 @@ class BernoulliTest(test.TestCase):
   def testMean(self):
     with self.test_session():
       p = np.array([[0.2, 0.7], [0.5, 0.4]], dtype=np.float32)
-      dist = bernoulli.Bernoulli(p=p)
+      dist = bernoulli.Bernoulli(probs=p)
       self.assertAllEqual(dist.mean().eval(), p)
 
   def testVarianceAndStd(self):
     var = lambda p: p * (1. - p)
     with self.test_session():
       p = [[0.2, 0.7], [0.5, 0.4]]
-      dist = bernoulli.Bernoulli(p=p)
+      dist = bernoulli.Bernoulli(probs=p)
       self.assertAllClose(
           dist.variance().eval(),
           np.array(
               [[var(0.2), var(0.7)], [var(0.5), var(0.4)]], dtype=np.float32))
       self.assertAllClose(
-          dist.std().eval(),
+          dist.stddev().eval(),
           np.array(
               [[np.sqrt(var(0.2)), np.sqrt(var(0.7))],
                [np.sqrt(var(0.5)), np.sqrt(var(0.4))]],
               dtype=np.float32))
 
-  def testBernoulliWithSigmoidP(self):
+  def testBernoulliWithSigmoidProbs(self):
     p = np.array([8.3, 4.2])
-    dist = bernoulli.BernoulliWithSigmoidP(p=p)
+    dist = bernoulli.BernoulliWithSigmoidProbs(logits=p)
     with self.test_session():
-      self.assertAllClose(math_ops.sigmoid(p).eval(), dist.p.eval())
+      self.assertAllClose(math_ops.sigmoid(p).eval(), dist.probs.eval())
 
   def testBernoulliBernoulliKL(self):
     with self.test_session() as sess:
@@ -274,8 +274,8 @@ class BernoulliTest(test.TestCase):
       a_p = np.array([0.5] * batch_size, dtype=np.float32)
       b_p = np.array([0.4] * batch_size, dtype=np.float32)
 
-      a = bernoulli.Bernoulli(p=a_p)
-      b = bernoulli.Bernoulli(p=b_p)
+      a = bernoulli.Bernoulli(probs=a_p)
+      b = bernoulli.Bernoulli(probs=b_p)
 
       kl = kullback_leibler.kl(a, b)
       kl_val = sess.run(kl)

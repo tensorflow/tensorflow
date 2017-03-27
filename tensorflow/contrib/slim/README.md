@@ -229,7 +229,7 @@ net = ...
 net = slim.conv2d(net, 256, [3, 3], scope='conv3_1')
 net = slim.conv2d(net, 256, [3, 3], scope='conv3_2')
 net = slim.conv2d(net, 256, [3, 3], scope='conv3_3')
-net = slim.max_pool2d(net, [2, 2], scope='pool3')
+net = slim.max_pool2d(net, [2, 2], scope='pool2')
 ```
 
 One way to reduce this code duplication would be via a `for` loop:
@@ -238,14 +238,14 @@ One way to reduce this code duplication would be via a `for` loop:
 net = ...
 for i in range(3):
   net = slim.conv2d(net, 256, [3, 3], scope='conv3_' % (i+1))
-net = slim.max_pool2d(net, [2, 2], scope='pool3')
+net = slim.max_pool2d(net, [2, 2], scope='pool2')
 ```
 
 This can be made even cleaner by using TF-Slim's `repeat` operation:
 
 ```python
 net = slim.repeat(net, 3, slim.conv2d, 256, [3, 3], scope='conv3')
-net = slim.max_pool(net, [2, 2], scope='pool2')
+net = slim.max_pool2d(net, [2, 2], scope='pool2')
 ```
 
 Notice that the `slim.repeat` not only applies the same argument in-line, it
@@ -505,7 +505,7 @@ regularization_loss = tf.add_n(slim.losses.get_regularization_losses())
 total_loss1 = classification_loss + sum_of_squares_loss + pose_loss + regularization_loss
 
 # (Regularization Loss is included in the total loss by default).
-total_loss2 = losses.get_total_loss()
+total_loss2 = slim.losses.get_total_loss()
 ```
 In this example, we can again either produce the total loss function manually
 or let TF-Slim know about the additional loss and let TF-Slim handle the losses.
@@ -880,7 +880,7 @@ names_to_values, names_to_updates = slim.metrics.aggregate_metric_map({
 
 # Create the summary ops such that they also print out to std output:
 summary_ops = []
-for metric_name, metric_value in metrics_to_values.iteritems():
+for metric_name, metric_value in names_to_values.iteritems():
   op = tf.summary.scalar(metric_name, metric_value)
   op = tf.Print(op, [metric_value], metric_name)
   summary_ops.append(op)

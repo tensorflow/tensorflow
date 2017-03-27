@@ -164,9 +164,10 @@ StreamExecutor::StreamExecutor(PlatformKind platform_kind,
 }
 
 StreamExecutor::StreamExecutor(
-    const Platform *platform, internal::StreamExecutorInterface *implementation)
+    const Platform *platform,
+    std::unique_ptr<internal::StreamExecutorInterface> implementation)
     : platform_(platform),
-      implementation_(implementation),
+      implementation_(std::move(implementation)),
       device_ordinal_(-1),
       background_threads_(new port::ThreadPool(
           port::Env::Default(), "stream_executor", kNumBackgroundThreads)),
@@ -307,6 +308,15 @@ bool StreamExecutor::GetConvolveBackwardFilterAlgorithms(
     return false;
   }
   return dnn_support->GetConvolveBackwardFilterAlgorithms(out_algorithms);
+}
+
+bool StreamExecutor::GetBlasGemmAlgorithms(
+    std::vector<blas::AlgorithmType> *out_algorithms) {
+  blas::BlasSupport *blas_support = AsBlas();
+  if (!blas_support) {
+    return false;
+  }
+  return blas_support->GetBlasGemmAlgorithms(out_algorithms);
 }
 
 port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>

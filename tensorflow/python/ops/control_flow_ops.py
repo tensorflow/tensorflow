@@ -13,10 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 
-"""## Control Flow Operations
+"""Control Flow Operations.
 
-TensorFlow provides several operations and classes that you can use to control
-the execution of operations and add conditional dependencies to your graph.
+See the @{$python/control_flow_ops} guide.
 
 @@identity
 @@tuple
@@ -26,22 +25,10 @@ the execution of operations and add conditional dependencies to your graph.
 @@cond
 @@case
 @@while_loop
-
-## Logical Operators
-
-TensorFlow provides several operations that you can use to add logical operators
-to your graph.
-
 @@logical_and
 @@logical_not
 @@logical_or
 @@logical_xor
-
-## Comparison Operators
-
-TensorFlow provides several operations that you can use to add comparison
-operators to your graph.
-
 @@equal
 @@not_equal
 @@less
@@ -49,12 +36,6 @@ operators to your graph.
 @@greater
 @@greater_equal
 @@where
-
-## Debugging Operations
-
-TensorFlow provides several operations that you can use to validate values and
-debug your graph.
-
 @@is_finite
 @@is_inf
 @@is_nan
@@ -294,7 +275,7 @@ def exit(data, name=None):
 def switch(data, pred, dtype=None, name=None):
   """Forwards `data` to an output determined by `pred`.
 
-  If `pred` is true, the `data` input is forwared to the first output.
+  If `pred` is false, the `data` input is forwared to the first output.
   Otherwise, the data goes to the second output.
 
   This op handles `Tensor`s and `IndexedSlices`.
@@ -342,7 +323,7 @@ def switch(data, pred, dtype=None, name=None):
 def _SwitchRefOrTensor(data, pred, name="Switch"):
   """Forwards `data` to an output determined by `pred`.
 
-  If `pred` is true, the `data` input is forwared to the first output.
+  If `pred` is false, the `data` input is forwared to the first output.
   Otherwise, the data goes to the second output.
 
   This op handles `Tensor`s and `IndexedSlices`.
@@ -1370,7 +1351,8 @@ class ControlFlowContext(object):
     g = ops.get_default_graph()
     self._external_values = {}
     for k, v in values_def.external_values.items():
-      self._external_values[k] = g.as_graph_element(v)
+      self._external_values[k] = g.as_graph_element(
+          ops.prepend_name_scope(v, import_scope))
     op_names = set([op.split(":")[0]
                     for op in self._values - set(self._external_values)])
     for op in op_names:
@@ -1702,16 +1684,16 @@ def cond(pred, fn1, fn2, name=None):
   result = tf.cond(x < y, lambda: tf.add(x, z), lambda: tf.square(y))
   ```
 
-  If x < y, the `tf.add` operation will be executed and tf.square
+  If x < y, the `tf.add` operation will be executed and `tf.square`
   operation will not be executed. Since z is needed for at least one
-  branch of the cond, the tf.mul operation is always executed, unconditionally.
+  branch of the cond, the `tf.multiply` operation is always executed, unconditionally.
   Although this behavior is consistent with the dataflow model of TensorFlow,
   it has occasionally surprised some users who expected a lazier semantics.
 
   Args:
     pred: A scalar determining whether to return the result of `fn1` or `fn2`.
     fn1: The callable to be performed if pred is true.
-    fn2: The callable to be performed if pref is false.
+    fn2: The callable to be performed if pred is false.
     name: Optional name prefix for the returned tensors.
 
   Returns:
@@ -1772,7 +1754,7 @@ def cond(pred, fn1, fn2, name=None):
       raise ValueError("fn1 and fn2 must return the same number of results.")
     if not res_t:
       raise ValueError("fn1 and fn2 must return at least one result.")
-    for x, y in zip(res_f, res_t):
+    for x, y in zip(res_t, res_f):
       assert ((isinstance(x, ops.IndexedSlices) and
                isinstance(y, ops.IndexedSlices)) or
               (isinstance(x, sparse_tensor.SparseTensor) and
@@ -1791,6 +1773,15 @@ def cond(pred, fn1, fn2, name=None):
     ops.add_to_collection(ops.GraphKeys.COND_CONTEXT, context_f)
 
     return merges[0] if len(merges) == 1 else merges
+
+
+def _resource_safe_shape(t):
+  """Returns the shape of t or the variable it points to."""
+  if t.dtype == dtypes.resource:
+    while t.op.inputs:
+      t = t.op.inputs[0]
+    return tensor_shape.TensorShape(t.op.get_attr("shape"))
+  return array_ops.shape_internal(t, optimize=False)
 
 
 # TODO(yuanbyu): Consider having a unified notion of context for
@@ -2005,6 +1996,7 @@ class WhileContext(ControlFlowContext):
       with ops.control_dependencies(None):
         enter = _Enter(result, self._name, is_constant=True,
                        parallel_iterations=self._parallel_iterations)
+        enter.graph.prevent_feeding(enter)
       # Fix the control inputs and control flow context of these enter ops.
       self._FixControlInputsAndContext([enter])
 
@@ -2071,6 +2063,8 @@ class WhileContext(ControlFlowContext):
         self._values.add(x.name)
     if self._outer_context or not IsLoopExit(op):
       op.graph.prevent_fetching(op)
+      for x in op.outputs:
+        op.graph.prevent_feeding(x)
 
   def _MaybeAddControlDependency(self, op):
     """Add a control input to the op if it only depends on loop invariants."""
@@ -2283,7 +2277,7 @@ class WhileContext(ControlFlowContext):
                                         name="b_acc")
       if self.outer_context: self.outer_context.Exit()
     else:
-      values_shape = array_ops.shape_internal(op.inputs[0], optimize=False)[1:]
+      values_shape = _resource_safe_shape(op.inputs[0])[1:]
       values_shape = array_ops.concat([[1], values_shape], 0)
       values_acc = array_ops.zeros(values_shape, dtype=values.dtype)
     indices_acc = constant_op.constant([0], indices.dtype)
@@ -2370,6 +2364,9 @@ class WhileContext(ControlFlowContext):
                            parallel_iterations=self._parallel_iterations,
                            use_input_shape=(shape_invariants is None))
                     for x in real_vars]
+      for x in enter_vars:
+        x.graph.prevent_feeding(x)
+
     if self._outer_context:
       control_pivot = self._outer_context.GetControlPivot().op
       for var in enter_vars:
@@ -2524,7 +2521,7 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
   `loop_vars` is the same in every iteration. The `shape_invariants` argument
   allows the caller to specify a less specific shape invariant for each loop
   variable, which is needed if the shape varies between iterations. The
-  [`Tensor.set_shape()`](../../api_docs/python/framework.md#Tensor.set_shape)
+  @{tf.Tensor.set_shape}
   function may also be used in the `body` function to indicate that
   the output loop variable has a particular shape. The shape invariant for
   SparseTensor and IndexedSlices are treated specially as follows:
@@ -2577,35 +2574,35 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
 
   Example:
 
-    ```python
-    i = tf.constant(0)
-    c = lambda i: tf.less(i, 10)
-    b = lambda i: tf.add(i, 1)
-    r = tf.while_loop(c, b, [i])
-    ```
+  ```python
+  i = tf.constant(0)
+  c = lambda i: tf.less(i, 10)
+  b = lambda i: tf.add(i, 1)
+  r = tf.while_loop(c, b, [i])
+  ```
 
   Example with nesting and a namedtuple:
 
-    ```python
-    import collections
-    Pair = collections.namedtuple('Pair', 'j, k')
-    ijk_0 = (tf.constant(0), Pair(tf.constant(1), tf.constant(2)))
-    c = lambda i, p: i < 10
-    b = lambda i, p: (i + 1, Pair((p.j + p.k), (p.j - p.k)))
-    ijk_final = tf.while_loop(c, b, ijk_0)
-    ```
+  ```python
+  import collections
+  Pair = collections.namedtuple('Pair', 'j, k')
+  ijk_0 = (tf.constant(0), Pair(tf.constant(1), tf.constant(2)))
+  c = lambda i, p: i < 10
+  b = lambda i, p: (i + 1, Pair((p.j + p.k), (p.j - p.k)))
+  ijk_final = tf.while_loop(c, b, ijk_0)
+  ```
 
   Example using shape_invariants:
 
-    ```python
-    i0 = tf.constant(0)
-    m0 = tf.ones([2, 2])
-    c = lambda i, m: i < 10
-    b = lambda i, m: [i+1, tf.concat([m, m], axis=0)]
-    tf.while_loop(
-        c, b, loop_vars=[i0, m0],
-        shape_invariants=[i0.get_shape(), tf.TensorShape([None, 2])])
-    ```
+  ```python
+  i0 = tf.constant(0)
+  m0 = tf.ones([2, 2])
+  c = lambda i, m: i < 10
+  b = lambda i, m: [i+1, tf.concat([m, m], axis=0)]
+  tf.while_loop(
+      c, b, loop_vars=[i0, m0],
+      shape_invariants=[i0.get_shape(), tf.TensorShape([None, 2])])
+  ```
 
   """
   with ops.name_scope(name, "while", loop_vars) as name:
@@ -2676,7 +2673,7 @@ def with_dependencies(dependencies, output_tensor, name=None):
   no guarantee that `output_tensor` will be evaluated after any `dependencies`
   have run.
 
-  See also `tuple` and `group`.
+  See also @{tf.tuple$tuple} and @{tf.group$group}.
 
   Args:
     dependencies: Iterable of operations to run before this op finishes.
@@ -2718,7 +2715,8 @@ def group(*inputs, **kwargs):
   When this op finishes, all ops in `input` have finished. This op has no
   output.
 
-  See also `tuple` and `with_dependencies`.
+  See also @{tf.tuple$tuple} and
+  @{tf.control_dependencies$control_dependencies}.
 
   Args:
     *inputs: Zero or more tensors to group.
@@ -2781,7 +2779,8 @@ def tuple(tensors, name=None, control_inputs=None):
   returned by `tuple` are only available after all the parallel computations
   are done.
 
-  See also `group` and `with_dependencies`.
+  See also @{tf.group$group} and
+  @{tf.control_dependencies$control_dependencies}.
 
   Args:
     tensors: A list of `Tensor`s or `IndexedSlices`, some entries can be `None`.

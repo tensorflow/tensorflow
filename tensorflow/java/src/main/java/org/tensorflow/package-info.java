@@ -16,10 +16,11 @@ limitations under the License.
 /**
  * Defines classes to build, save, load and execute TensorFlow models.
  *
- * <p><b>WARNING</b>: The API is currently experimental and may change. Follow <a
- * href="https://github.com/tensorflow/tensorflow/issues/5">issue #5</a> for updates. See <a
- * href="https://www.tensorflow.org/code/tensorflow/java/README.md">README.md</a>
- * for installation instructions.
+ * <p><b>WARNING</b>: The API is currently experimental and is not covered by TensorFlow <a
+ * href="https://www.tensorflow.org/programmers_guide/version_semantics">API stability
+ * guarantees</a>. See <a
+ * href="https://www.tensorflow.org/code/tensorflow/java/README.md">README.md</a> for installation
+ * instructions.
  *
  * <p>The <a
  * href="https://www.tensorflow.org/code/tensorflow/java/src/main/java/org/tensorflow/examples/LabelImage.java">LabelImage</a>
@@ -28,12 +29,11 @@ limitations under the License.
  * It demonstrates:
  *
  * <ul>
- *   <li>{@link Graph} construction: using the {@link OperationBuilder} class to construct a graph
- *       to decode, resize and normalize a JPEG image.
- *   <li>Model loading: Using {@link Graph#importGraphDef(byte[])} to load a pre-trained Inception
- *       model.
- *   <li>Graph execution: Using a {@link Session} to execute the graphs and find the best label for
- *       an image.
+ *   <li>Graph construction: using the OperationBuilder class to construct a graph to decode, resize
+ *       and normalize a JPEG image.
+ *   <li>Model loading: Using Graph.importGraphDef() to load a pre-trained Inception model.
+ *   <li>Graph execution: Using a Session to execute the graphs and find the best label for an
+ *       image.
  * </ul>
  */
 package org.tensorflow;

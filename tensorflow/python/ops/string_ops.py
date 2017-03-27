@@ -13,30 +13,17 @@
 # limitations under the License.
 # ==============================================================================
 
-"""## Hashing
+"""Operations for working with string Tensors.
 
-String hashing ops take a string input tensor and map each element to an
-integer.
+See the @{$python/string_ops} guide.
 
 @@string_to_hash_bucket_fast
 @@string_to_hash_bucket_strong
 @@string_to_hash_bucket
-
-## Joining
-
-String joining ops concatenate elements of input string tensors to produce a new
-string tensor.
-
 @@reduce_join
 @@string_join
-
-## Splitting
-
 @@string_split
 @@substr
-
-## Conversion
-
 @@as_string
 @@encode_base64
 @@decode_base64
@@ -68,7 +55,7 @@ def string_split(source, delimiter=" "):  # pylint: disable=invalid-name
 
   Let N be the size of source (typically N will be the batch size). Split each
   element of `source` based on `delimiter` and return a `SparseTensor`
-  containing the splitted tokens. Empty tokens are ignored.
+  containing the split tokens. Empty tokens are ignored.
 
   If `delimiter` is an empty string, each element of the `source` is split
   into individual strings, each containing one byte. (This includes splitting

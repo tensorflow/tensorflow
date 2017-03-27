@@ -127,7 +127,7 @@ class LiteralUtil {
   static std::unique_ptr<Literal> Transpose(
       const Literal& literal, tensorflow::gtl::ArraySlice<int64> permutation);
 
-  // Creates a sub-array from the the given literal by extracting the indices
+  // Creates a sub-array from the given literal by extracting the indices
   // [start_index, limit_index) of each dimension. The result literal has the
   // same rank and layout as for the given literal. The number of indices in
   // start_indices and limit_indices must be the rank of the literal, and the
@@ -355,6 +355,17 @@ class LiteralUtil {
   // true.
   static bool IsAll(const Literal& literal, int8 value);
 
+  // Like IsAll(const Literal&, int8), except we check whether the literal is
+  // equal to a particular floating-point number.
+  //
+  // If the literal is not a floating-point value, this always returns false.
+  //
+  // This casts value to the type of literal, then compares using ==.  The usual
+  // admonishments about floating-point equality checks apply.  We expect you to
+  // use this to check for values that can be expressed precisely as a float,
+  // e.g. -0.5.
+  static bool IsAllFloat(const Literal& literal, float value);
+
   // Returns whether the literal is zero at the specified index. The literal
   // must be an array.
   static bool IsZero(const Literal& literal,
@@ -437,8 +448,11 @@ LiteralUtil::GetMutableRepeatedField<tensorflow::protobuf_int64>(
     Literal* literal);
 
 template <>
-/* static */ tensorflow::gtl::ArraySlice<float>
-LiteralUtil::GetArraySlice<float>(const Literal& literal);
+/* static */ inline tensorflow::gtl::ArraySlice<float>
+LiteralUtil::GetArraySlice<float>(const Literal& literal) {
+  DCHECK(literal.shape().element_type() == F32);
+  return literal.f32s();
+}
 
 template <>
 /* static */ tensorflow::protobuf::RepeatedField<float>*
@@ -803,7 +817,7 @@ template <typename NativeT>
   *literal->mutable_shape() =
       ShapeUtil::MakeShape(PRED, {static_cast<int64>(values.bits())});
   Reserve(values.bits(), literal);
-  for (int64 i = 0; i < values.bits(); ++i) {
+  for (int64 i = 0; i < static_cast<int64>(values.bits()); ++i) {
     Set(literal, {i}, values.get(i));
   }
 }
@@ -1008,22 +1022,41 @@ LiteralUtil::CreateFullWithMonotonicDim0MajorLayout(
 template <typename NativeT>
 /* static */ std::unique_ptr<Literal> LiteralUtil::Replicate(
     const Literal& input, int64 times) {
-  std::vector<int64> bounds = {times};
-  bounds.insert(bounds.end(), input.shape().dimensions().begin(),
-                input.shape().dimensions().end());
+  // Ranks greater than 8 are very rare, so use InlinedVector<int64, 8> to store
+  // the bounds and indices.
+  static constexpr int kInlineRank = 8;
+  tensorflow::gtl::InlinedVector<int64, kInlineRank> bounds = {times};
+  bounds.reserve(input.shape().dimensions_size() + 1);
+  for (int64 bound : input.shape().dimensions()) {
+    bounds.push_back(bound);
+  }
   auto literal = MakeUnique<Literal>();
   *literal->mutable_shape() =
       ShapeUtil::MakeShape(input.shape().element_type(), bounds);
-  Reserve(ShapeUtil::ElementsIn(literal->shape()), literal.get());
-  for (int64 index = 0; index < ShapeUtil::ElementsIn(input.shape()); ++index) {
-    const std::vector<int64> element_indices =
-        IndexUtil::LinearIndexToMultidimensionalIndex(input.shape(), index);
-    const auto element = Get<NativeT>(input, element_indices);
-    for (int64 sample = 0; sample < times; ++sample) {
-      std::vector<int64> output_indices = {sample};
-      output_indices.insert(output_indices.end(), element_indices.begin(),
-                            element_indices.end());
-      Set<NativeT>(literal.get(), output_indices, element);
+  int64 elements = ShapeUtil::ElementsIn(literal->shape());
+  if (elements == 0) {
+    return literal;
+  }
+  Reserve(elements, literal.get());
+
+  tensorflow::gtl::InlinedVector<int64, kInlineRank> output_indices(
+      bounds.size(), 0);
+  tensorflow::gtl::ArraySlice<int64> input_indices = output_indices;
+  input_indices.remove_prefix(1);
+
+  bool done = false;
+  while (!done) {
+    const auto element = Get<NativeT>(input, input_indices);
+    Set<NativeT>(literal.get(), output_indices, element);
+
+    done = true;
+    for (int n = 0; n < output_indices.size(); ++n) {
+      ++output_indices[n];
+      if (output_indices[n] < bounds[n]) {
+        done = false;
+        break;
+      }
+      output_indices[n] = 0;
     }
   }
   return literal;
