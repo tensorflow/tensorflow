@@ -64,7 +64,7 @@ REGISTER_XLA_LAUNCH_KERNEL(DEVICE_XLA_IPU, XlaDeviceLaunchOp, kIpuAllTypes);
 REGISTER_XLA_DEVICE_KERNELS(DEVICE_XLA_IPU, kIpuAllTypes);
 
 // Register JIT kernels for IPU device
-// synced @ 37b1cd5012d8782172c2c1279f308e449ec6da29
+// synced @ bbe056e5a0ab81b67fcb6053400812b3d5805fc7
 
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("_Arg").TypeConstraint("T", kIpuAllTypes));
@@ -239,8 +239,6 @@ REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("Prod").TypeConstraint("T", kIpuNumericTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("Range").TypeConstraint("Tidx", kIpuNumericTypes));
-// TODO(b/34339814): implement inverse erf for double types and update the
-// type constraint.
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("RandomStandardNormal").TypeConstraint("dtype", DT_FLOAT));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
@@ -271,6 +269,8 @@ REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("ResourceApplyGradientDescent").TypeConstraint("T", kIpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("ResourceApplyMomentum").TypeConstraint("T", kIpuFloatTypes));
+REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
+        Name("ResourceApplyRMSProp").TypeConstraint("T", kIpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("Reverse").TypeConstraint("T", kIpuAllTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
@@ -350,6 +350,8 @@ REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("TruncateDiv").TypeConstraint("T", kIpuIntTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("TruncateMod").TypeConstraint("T", kIpuNumericTypes));
+REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
+        Name("TruncatedNormal").TypeConstraint("dtype", kIpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
         Name("Unpack").TypeConstraint("T", kIpuAllTypes));
 REGISTER_XLA_KERNEL(DEVICE_IPU_XLA_JIT,
