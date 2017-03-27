@@ -30,7 +30,8 @@ def generator_input_fn(x,
                        shuffle=True,
                        queue_capacity=1000,
                        num_threads=1):
-  """Returns input function that would dicts of numpy arrays yielded from a generator.
+  """ Returns input function that would dicts of numpy arrays yielded
+   from a generator.
   
   It is assumed that every dict yielded from the dictionary represents
   a single sample. The generator should consume a single epoch of the data.
@@ -43,8 +44,9 @@ def generator_input_fn(x,
     ```python
     def generator():
       for index in range(10):
-        yield {height: np.random.randint(32,36), 'age': np.random.randint(18, 80),
-              "label": np.ones(1)}
+        yield {'height': np.random.randint(32,36),
+               'age': np.random.randint(18, 80),
+               'label': np.ones(1)}
 
     with tf.Session() as session:
       input_fn = generator_io.generator_input_fn(
@@ -66,8 +68,8 @@ def generator_input_fn(x,
     num_threads: Integer, number of threads used for reading and enqueueing.
 
   Returns:
-    Function, that returns a feature `dict` with `Tensors` and
-     an optional label `dict` with `Tensors`, or if target_key is `str` label is a `Tensor`
+    Function, that returns a feature `dict` with `Tensors` and an optional
+     label `dict` with `Tensors`, or if target_key is `str` label is a `Tensor`
 
   Raises:
     TypeError: `x` is not `FunctionType`.
@@ -77,14 +79,16 @@ def generator_input_fn(x,
     KeyError:  `target_key` not a key or `target_key[index]` not in next(`x()`).
   """
   if not isinstance(x, FunctionType):
-    raise TypeError('x must be generator function ; got {}'.format(type(x).__name__))
+    raise TypeError('x must be generator function ; got {}'.format(
+        type(x).__name__))
   generator = x()
   if not isinstance(generator, GeneratorType):
-    raise TypeError('x() must be generator ; got {}'.format(type(generator).__name__))
+    raise TypeError('x() must be generator ; got {}'.format(
+        type(generator).__name__))
   data = next(generator)
   if not isinstance(data, dict):
     raise TypeError('x() must yield dict ; got {}'.format(type(data).__name__))
-  input_keys = next(x()).keys()
+  input_keys = sorted(next(x()).keys())
   if target_key is not None:
       if isinstance(target_key, str):
         target_key = [target_key]
@@ -92,13 +96,16 @@ def generator_input_fn(x,
         for item in target_key:
           if not isinstance(item, str):
             raise TypeError(
-              'target_key must be str or list of str ; got {}'.format(type(item).__name__))
+                'target_key must be str or list of str ; got {}'.format(
+                    type(item).__name__))
           if item not in input_keys:
-            raise KeyError('target_key or target_key[i] not in yielded dict ; got {}'.format(item))
+            raise KeyError(
+              'target_key or target_key[i] not in yielded dict ; got {}'.format(
+                  item))
       else:
         raise TypeError('target_key must be str or list of str ; got {}'.format(
           type(target_key).__name__))
- 
+
   def _generator_input_fn():
     """generator input function."""
     queue = feeding_functions.enqueue_data(
@@ -108,7 +115,7 @@ def generator_input_fn(x,
       num_threads=num_threads,
       enqueue_size=batch_size,
       num_epochs=num_epochs)
-    
+
     features = (queue.dequeue_many(batch_size) if num_epochs is None
                 else queue.dequeue_up_to(batch_size))
     if not isinstance(features, list):

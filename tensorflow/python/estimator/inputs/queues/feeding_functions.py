@@ -255,10 +255,12 @@ class _GeneratorFeedFn(object):
                 self._epoch += 1
                 self._iterator = self._generator_function()
                 data_row = next(self._iterator)
-            for index, key in enumerate(data_row.keys()):
-                list_dict.setdefault(self._col_placeholders[index], list()).append(data_row[key])
+            for index, key in enumerate(sorted(data_row.keys())):
+                list_dict.setdefault(
+                    self._col_placeholders[index], list()).append(data_row[key])
             list_dict_size += 1
-        feed_dict = {key: np.asarray(item) for key, item in list(list_dict.items())}
+        feed_dict = {key: np.asarray(item) for key, item
+                         in list(list_dict.items())}
         return feed_dict
 
 
