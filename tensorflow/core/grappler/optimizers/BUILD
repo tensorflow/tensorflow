@@ -107,6 +107,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":graph_optimizer",
         ":layout_optimizer",
         ":model_pruner",
         "//tensorflow/core:lib",
