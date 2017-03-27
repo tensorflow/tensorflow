@@ -29,18 +29,11 @@ Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
   std::unordered_set<const NodeDef*> nodes_to_delete;
   for (auto& node : item.graph.node()) {
     // Remove the stop gradient nodes since they serve no purpose once the graph
-    // is built. Also remove Identity ops.
-    if (node.op() != "StopGradient" && node.op() != "Identity") {
+    // is built.
+    if (node.op() != "StopGradient") {
       continue;
     }
-    // Don't prune nodes that are explicitely placed.
-    if (!node.device().empty()) {
-      continue;
-    }
-    // Don't remove nodes that drive control dependencies.
-    if (!rewriter.DrivesControlDependency(node)) {
-      nodes_to_delete.insert(&node);
-    }
+    nodes_to_delete.insert(&node);
   }
 
   for (auto& node : item.graph.node()) {
@@ -53,15 +46,11 @@ Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
     rewriter.ForwardInputs(node, nodes_to_delete, new_node);
   }
 
-  LOG(INFO) << "Pruned " << nodes_to_delete.size()
-            << " nodes from the graph. The graph now contains "
-            << pruned_graph->node_size() " nodes.";
-
   return Status::OK();
 }
 
 void ModelPruner::Feedback(Cluster* cluster, const GrapplerItem& item,
-                           const GraphDef& pruned_graph, double result) {
+                           const GraphDef& optimize_output, double result) {
   // Nothing to do for ModelPruner.
 }
 
