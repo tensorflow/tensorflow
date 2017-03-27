@@ -37,8 +37,8 @@ from tensorflow.python.util import nest
 
 
 __all__ = [
-    "DynamicAttentionWrapper",
-    "DynamicAttentionWrapperState",
+    "AttentionWrapper",
+    "AttentionWrapperState",
     "LuongAttention",
     "BahdanauAttention",
     "hardmax",
@@ -376,10 +376,10 @@ class BahdanauAttention(_BaseAttentionMechanism):
     return score
 
 
-class DynamicAttentionWrapperState(
+class AttentionWrapperState(
     collections.namedtuple(
-        "DynamicAttentionWrapperState", ("cell_state", "attention"))):
-  """`namedtuple` storing the state of a `DynamicAttentionWrapper`.
+        "AttentionWrapperState", ("cell_state", "attention"))):
+  """`namedtuple` storing the state of a `AttentionWrapper`.
 
   Contains:
 
@@ -410,7 +410,7 @@ def hardmax(logits, name=None):
         math_ops.argmax(logits, -1), depth, dtype=logits.dtype)
 
 
-class DynamicAttentionWrapper(core_rnn_cell.RNNCell):
+class AttentionWrapper(core_rnn_cell.RNNCell):
   """Wraps another `RNNCell` with attention.
   """
 
@@ -422,7 +422,7 @@ class DynamicAttentionWrapper(core_rnn_cell.RNNCell):
                probability_fn=None,
                output_attention=True,
                name=None):
-    """Construct the `DynamicAttentionWrapper`.
+    """Construct the `AttentionWrapper`.
 
     Args:
       cell: An instance of `RNNCell`.
@@ -484,13 +484,13 @@ class DynamicAttentionWrapper(core_rnn_cell.RNNCell):
 
   @property
   def state_size(self):
-    return DynamicAttentionWrapperState(
+    return AttentionWrapperState(
         cell_state=self._cell.state_size,
         attention=self._attention_size)
 
   def zero_state(self, batch_size, dtype):
     with ops.name_scope(type(self).__name__ + "ZeroState", values=[batch_size]):
-      return DynamicAttentionWrapperState(
+      return AttentionWrapperState(
           cell_state=self._cell.zero_state(batch_size, dtype),
           attention=_zero_state_tensors(
               self._attention_size, batch_size, dtype))
@@ -511,7 +511,7 @@ class DynamicAttentionWrapper(core_rnn_cell.RNNCell):
 
     Args:
       inputs: (Possibly nested tuple of) Tensor, the input at this time step.
-      state: An instance of `DynamicAttentionWrapperState` containing
+      state: An instance of `AttentionWrapperState` containing
         tensors from the previous time step.
       scope: Must be `None`.
 
@@ -519,7 +519,7 @@ class DynamicAttentionWrapper(core_rnn_cell.RNNCell):
       A tuple `(attention, next_state)`, where:
 
       - `attention` is the attention passed to the layer above.
-      - `next_state` is an instance of `DynamicAttentionWrapperState`
+      - `next_state` is an instance of `AttentionWrapperState`
          containing the state calculated at this time step.
 
     Raises:
@@ -555,7 +555,7 @@ class DynamicAttentionWrapper(core_rnn_cell.RNNCell):
     attention = self._attention_layer(
         array_ops.concat([cell_output, context], 1))
 
-    next_state = DynamicAttentionWrapperState(
+    next_state = AttentionWrapperState(
         cell_state=next_cell_state,
         attention=attention)
 

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for contrib.seq2seq.python.ops.dynamic_attention_wrapper."""
+"""Tests for contrib.seq2seq.python.ops.attention_wrapper."""
 # pylint: disable=unused-import,g-bad-import-order
 from __future__ import absolute_import
 from __future__ import division
@@ -25,7 +25,7 @@ import numpy as np
 
 from tensorflow.contrib.rnn import core_rnn_cell
 from tensorflow.contrib.seq2seq.python.ops import decoder
-from tensorflow.contrib.seq2seq.python.ops import dynamic_attention_wrapper as wrapper
+from tensorflow.contrib.seq2seq.python.ops import attention_wrapper as wrapper
 from tensorflow.contrib.seq2seq.python.ops import helper as helper_py
 from tensorflow.contrib.seq2seq.python.ops import basic_decoder
 from tensorflow.python.framework import dtypes
@@ -38,12 +38,12 @@ from tensorflow.python.util import nest
 # pylint: enable=g-import-not-at-top
 
 
-class DynamicAttentionWrapperTest(test.TestCase):
+class AttentionWrapperTest(test.TestCase):
 
   def assertAllClose(self, *args, **kwargs):
     kwargs["atol"] = 1e-4  # For GPU tests
     kwargs["rtol"] = 1e-4  # For GPU tests
-    return super(DynamicAttentionWrapperTest, self).assertAllClose(
+    return super(AttentionWrapperTest, self).assertAllClose(
         *args, **kwargs)
 
   def _testWithAttention(self,
@@ -76,7 +76,7 @@ class DynamicAttentionWrapperTest(test.TestCase):
           "root",
           initializer=init_ops.random_normal_initializer(stddev=0.01, seed=3)):
         cell = core_rnn_cell.LSTMCell(cell_depth)
-        cell = wrapper.DynamicAttentionWrapper(
+        cell = wrapper.AttentionWrapper(
             cell, attention_mechanism, attention_size=attention_depth)
         helper = helper_py.TrainingHelper(decoder_inputs,
                                           decoder_sequence_length)
@@ -91,7 +91,7 @@ class DynamicAttentionWrapperTest(test.TestCase):
       self.assertTrue(
           isinstance(final_outputs, basic_decoder.BasicDecoderOutput))
       self.assertTrue(
-          isinstance(final_state, wrapper.DynamicAttentionWrapperState))
+          isinstance(final_state, wrapper.AttentionWrapperState))
       self.assertTrue(
           isinstance(final_state.cell_state, core_rnn_cell.LSTMStateTuple))
 
@@ -178,7 +178,7 @@ class DynamicAttentionWrapperTest(test.TestCase):
             [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]],
             dtype=int32))
 
-    expected_final_state = wrapper.DynamicAttentionWrapperState(
+    expected_final_state = wrapper.AttentionWrapperState(
         cell_state=core_rnn_cell.LSTMStateTuple(
             c=array(
                 [[
@@ -306,7 +306,7 @@ class DynamicAttentionWrapperTest(test.TestCase):
             [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]],
             dtype=int32))
 
-    expected_final_state = wrapper.DynamicAttentionWrapperState(
+    expected_final_state = wrapper.AttentionWrapperState(
         cell_state=core_rnn_cell.LSTMStateTuple(
             c=array(
                 [[
@@ -434,7 +434,7 @@ class DynamicAttentionWrapperTest(test.TestCase):
         sample_id=array(
             [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]],
             dtype=int32))
-    expected_final_state = wrapper.DynamicAttentionWrapperState(
+    expected_final_state = wrapper.AttentionWrapperState(
         cell_state=core_rnn_cell.LSTMStateTuple(
             c=array(
                 [[
@@ -566,7 +566,7 @@ class DynamicAttentionWrapperTest(test.TestCase):
         sample_id=array(
             [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]],
             dtype=int32))
-    expected_final_state = wrapper.DynamicAttentionWrapperState(
+    expected_final_state = wrapper.AttentionWrapperState(
         cell_state=core_rnn_cell.LSTMStateTuple(
             c=array(
                 [[
