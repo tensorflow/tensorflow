@@ -52,7 +52,7 @@ TEST_F(ModelPrunerTest, NoPruning) {
   }
 }
 
-TEST_F(ModelPrunerTest, SimplePruning) {
+TEST_F(ModelPrunerTest, StopGradientPruning) {
   // Build a simple graph with a few trivially prunable ops.
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
@@ -80,6 +80,81 @@ TEST_F(ModelPrunerTest, SimplePruning) {
 
   EXPECT_EQ(1, new_e.input_size());
   EXPECT_EQ(NodeName(b.name()), new_e.input(0));
+}
+
+TEST_F(ModelPrunerTest, IdentityPruning) {
+  // Build a simple graph with a few trivially prunable ops.
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+  Output a = ops::Const(s.WithOpName("a"), 0.0f, {10, 10});
+  Output b = ops::AddN(s.WithOpName("b"), {a});
+  Output c = ops::Identity(s.WithOpName("c"), b);
+  Output d = ops::Identity(s.WithOpName("d"), c);
+  Output e = ops::AddN(s.WithOpName("e"), {d});
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  // Force the placement of c. This should ensure it is preserved.
+  EXPECT_EQ("c", item.graph.node(2).name());
+  item.graph.mutable_node(2)->set_device("CPU");
+
+  ModelPruner pruner;
+  GraphDef output;
+  Status status = pruner.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(4, output.node_size());
+  const NodeDef& new_a = output.node(0);
+  EXPECT_EQ(NodeName(a.name()), new_a.name());
+  const NodeDef& new_b = output.node(1);
+  EXPECT_EQ(NodeName(b.name()), new_b.name());
+  const NodeDef& new_c = output.node(2);
+  EXPECT_EQ(NodeName(c.name()), new_c.name());
+  const NodeDef& new_e = output.node(3);
+  EXPECT_EQ(NodeName(e.name()), new_e.name());
+
+  EXPECT_EQ(1, new_e.input_size());
+  EXPECT_EQ(NodeName(c.name()), new_e.input(0));
+}
+
+TEST_F(ModelPrunerTest, PruningSkipsCtrlDependencies) {
+  // Build a simple graph with a few trivially prunable ops.
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+  Output a = ops::Const(s.WithOpName("a"), 0.0f, {10, 10});
+  Output b = ops::AddN(s.WithOpName("b"), {a});
+  Output c = ops::Identity(s.WithOpName("c"), b);
+  Output d = ops::Identity(s.WithOpName("d"), c);
+  Output e = ops::AddN(s.WithOpName("e"), {d});
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  // Add a control dependency between c and e. This should ensure c is
+  // preserved.
+  EXPECT_EQ("c", item.graph.node(2).name());
+  EXPECT_EQ("e", item.graph.node(4).name());
+  *item.graph.mutable_node(4)->add_input() = "^c";
+
+  ModelPruner pruner;
+  GraphDef output;
+  Status status = pruner.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(4, output.node_size());
+  const NodeDef& new_a = output.node(0);
+  EXPECT_EQ(NodeName(a.name()), new_a.name());
+  const NodeDef& new_b = output.node(1);
+  EXPECT_EQ(NodeName(b.name()), new_b.name());
+  const NodeDef& new_c = output.node(2);
+  EXPECT_EQ(NodeName(c.name()), new_c.name());
+  const NodeDef& new_e = output.node(3);
+  EXPECT_EQ(NodeName(e.name()), new_e.name());
+
+  EXPECT_EQ(2, new_e.input_size());
+  EXPECT_EQ(NodeName(c.name()), new_e.input(0));
+  EXPECT_EQ("^c", new_e.input(1));
 }
 
 }  // namespace
