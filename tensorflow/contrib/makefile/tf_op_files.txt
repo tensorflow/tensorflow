@@ -58,6 +58,7 @@ tensorflow/core/kernels/scatter_nd_op.cc
 tensorflow/core/kernels/save_restore_tensor.cc
 tensorflow/core/kernels/save_restore_v2_ops.cc
 tensorflow/core/kernels/save_op.cc
+tensorflow/core/kernels/string_join_op.cc
 tensorflow/core/kernels/reverse_sequence_op.cc
 tensorflow/core/kernels/reverse_op.cc
 tensorflow/core/kernels/restore_op.cc
