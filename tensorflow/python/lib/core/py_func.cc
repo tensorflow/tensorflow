@@ -316,6 +316,7 @@ Status ConvertNdarrayToTensor(PyObject* obj, Tensor* ret) {
             input, shape.num_elements() * DataTypeSize(dtype),
             PyArray_DATA(input));
         *ret = buf->MakeTensor(dtype, shape);
+        buf->Unref();
       }
     }
   }
