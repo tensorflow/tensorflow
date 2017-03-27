@@ -165,15 +165,18 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
   // Runs the visitor on a computation.
   static bool Run(
       HloComputation* computation, bool is_layout_sensitive,
-      AlgebraicSimplifier::ValidBitcastCallback valid_bitcast_callback);
+      AlgebraicSimplifier::ValidBitcastCallback valid_bitcast_callback,
+      bool enable_dot_simplification);
 
  private:
   explicit AlgebraicSimplifierVisitor(
       HloComputation* computation, bool is_layout_sensitive,
-      AlgebraicSimplifier::ValidBitcastCallback valid_bitcast_callback)
+      AlgebraicSimplifier::ValidBitcastCallback valid_bitcast_callback,
+      bool enable_dot_simplification)
       : computation_(computation),
         is_layout_sensitive_(is_layout_sensitive),
-        valid_bitcast_callback_(std::move(valid_bitcast_callback)) {}
+        valid_bitcast_callback_(std::move(valid_bitcast_callback)),
+        enable_dot_simplification_(enable_dot_simplification) {}
 
   // Convenience method for replacing an instruction with a bitcast.
   void ReplaceWithBitcast(HloInstruction* instruction);
@@ -217,13 +220,18 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
 
   // Callback used to determine if a bitcast is possible.
   AlgebraicSimplifier::ValidBitcastCallback valid_bitcast_callback_;
+
+  // Disable dot simplication on platforms where it causes a slowdown.
+  bool enable_dot_simplification_;
 };
 
 bool AlgebraicSimplifierVisitor::Run(
     HloComputation* computation, bool is_layout_sensitive,
-    AlgebraicSimplifier::ValidBitcastCallback valid_bitcast_callback) {
+    AlgebraicSimplifier::ValidBitcastCallback valid_bitcast_callback,
+    bool enable_dot_simplification) {
   AlgebraicSimplifierVisitor visitor(computation, is_layout_sensitive,
-                                     std::move(valid_bitcast_callback));
+                                     std::move(valid_bitcast_callback),
+                                     enable_dot_simplification);
   TF_CHECK_OK(computation->Accept(&visitor));
   return visitor.changed_;
 }
@@ -328,6 +336,9 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide,
 Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot,
                                              HloInstruction* lhs,
                                              HloInstruction* rhs) {
+  if (!enable_dot_simplification_) {
+    return Status::OK();
+  }
   // Only optimize F32 dot operations where the dot, rhs and lhs are rank 2 or
   // below.
   if (dot->shape().element_type() != F32 || ShapeUtil::Rank(lhs->shape()) > 2 ||
@@ -1320,12 +1331,13 @@ Status AlgebraicSimplifierVisitor::HandleMinimum(HloInstruction* minimum,
 StatusOr<bool> AlgebraicSimplifier::Run(HloModule* module) {
   XLA_VLOG_LINES(2,
                  "AlgebraicSimplifier::Run(), before:\n" + module->ToString());
-  bool changed = std::any_of(
-      module->computations().begin(), module->computations().end(),
-      [=](const std::unique_ptr<HloComputation>& computation) {
-        return AlgebraicSimplifierVisitor::Run(
-            computation.get(), is_layout_sensitive_, valid_bitcast_callback_);
-      });
+  bool changed =
+      std::any_of(module->computations().begin(), module->computations().end(),
+                  [=](const std::unique_ptr<HloComputation>& computation) {
+                    return AlgebraicSimplifierVisitor::Run(
+                        computation.get(), is_layout_sensitive_,
+                        valid_bitcast_callback_, enable_dot_simplification_);
+                  });
   XLA_VLOG_LINES(2,
                  "AlgebraicSimplifier::Run(), after:\n" + module->ToString());
   return changed;
