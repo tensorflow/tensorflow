@@ -110,6 +110,7 @@ from tensorflow.python.training.rmsprop import RMSPropOptimizer
 from tensorflow.python.training.gradient_descent import GradientDescentOptimizer
 from tensorflow.python.training.proximal_gradient_descent import ProximalGradientDescentOptimizer
 from tensorflow.python.training.sync_replicas_optimizer import SyncReplicasOptimizer
+from tensorflow.python.training.semi_sync_replicas_optimizer import SemiSyncReplicasOptimizer
 
 # Utility classes for training.
 from tensorflow.python.training.coordinator import Coordinator
@@ -202,6 +203,7 @@ _allowed_symbols = [
     # TODO(drpng): document these. The reference in howtos/distributed does
     # not link.
     "SyncReplicasOptimizer",
+    "SemiSyncReplicasOptimizer",
     # Protobufs:
     "BytesList",          # from example_pb2.
     "ClusterDef",
