@@ -4931,10 +4931,10 @@ func BatchMatMulAdjY(value bool) BatchMatMulAttr {
 // means to transpose and conjugate it) before multiplication by setting
 // the `adj_x` or `adj_y` flag to `True`, which are by default `False`.
 //
-// The input tensors `x` and `y` are 3-D or higher with shape `[..., r_x, c_x]`
+// The input tensors `x` and `y` are 2-D or higher with shape `[..., r_x, c_x]`
 // and `[..., r_y, c_y]`.
 //
-// The output tensor is 3-D or higher with shape `[..., r_o, c_o]`, where:
+// The output tensor is 2-D or higher with shape `[..., r_o, c_o]`, where:
 //
 //     r_o = c_x if adj_x else r_x
 //     c_o = r_y if adj_y else c_y
@@ -4944,8 +4944,8 @@ func BatchMatMulAdjY(value bool) BatchMatMulAttr {
 //     output[..., :, :] = matrix(x[..., :, :]) * matrix(y[..., :, :])
 //
 // Arguments:
-//	x: 3-D or higher with shape `[..., r_x, c_x]`.
-//	y: 3-D or higher with shape `[..., r_y, c_y]`.
+//	x: 2-D or higher with shape `[..., r_x, c_x]`.
+//	y: 2-D or higher with shape `[..., r_y, c_y]`.
 //
 // Returns 3-D or higher with shape `[..., r_o, c_o]`
 func BatchMatMul(scope *Scope, x tf.Output, y tf.Output, optional ...BatchMatMulAttr) (output tf.Output) {
