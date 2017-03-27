@@ -83,8 +83,6 @@ class GrpcServer : public ServerInterface {
   const ServerDef server_def_;
   Env* env_;
 
-  // The port requested for this server.
-  int requested_port_;
   // The port to which this server is bound.
   int bound_port_ = 0;
 

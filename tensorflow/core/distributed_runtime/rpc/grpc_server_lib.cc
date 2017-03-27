@@ -117,7 +117,7 @@ Status GrpcServer::Init() {
   }
 
   // Look up the port that has been requested for this task in `server_def_`.
-  requested_port_ = -1;
+  int requested_port = -1;
   for (const auto& job : server_def_.cluster().job()) {
     if (job.name() == server_def_.job_name()) {
       auto iter = job.tasks().find(server_def_.task_index());
@@ -129,7 +129,7 @@ Status GrpcServer::Init() {
       const std::vector<string> hostname_port =
           str_util::Split(iter->second, ':');
       if (hostname_port.size() != 2 ||
-          !strings::safe_strto32(hostname_port[1], &requested_port_)) {
+          !strings::safe_strto32(hostname_port[1], &requested_port)) {
         return errors::InvalidArgument(
             "Could not parse port for local server from \"", iter->second,
             "\"");
@@ -138,13 +138,13 @@ Status GrpcServer::Init() {
       }
     }
   }
-  if (requested_port_ == -1) {
+  if (requested_port == -1) {
     return errors::Internal("Job \"", server_def_.job_name(),
                             "\" was not defined in cluster");
   }
 
   // N.B. The order of initialization here is intricate, because we
-  // wish to allow `requested_port_ == 0` (for choosing any port,
+  // wish to allow `requested_port == 0` (for choosing any port,
   // mostly for testing). Therefore, the construction of the channel
   // and worker caches depends on `bound_port_`, which is not set
   // until we call `builder.BuildAndStart()`. We must create the
@@ -158,7 +158,7 @@ Status GrpcServer::Init() {
   // the identities of tasks in the worker pool after the service is
   // running.
   ::grpc::ServerBuilder builder;
-  builder.AddListeningPort(strings::StrCat("0.0.0.0:", requested_port_),
+  builder.AddListeningPort(strings::StrCat("0.0.0.0:", requested_port),
                            GetServerCredentials(server_def_), &bound_port_);
   builder.SetMaxMessageSize(std::numeric_limits<int32>::max());
   builder.SetOption(
