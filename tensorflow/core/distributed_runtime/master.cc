@@ -212,23 +212,17 @@ class DeviceFinder {
   // The caller takes the ownership of returned remote devices.
   void GetRemoteDevices(const std::vector<Device*>& local,
                         std::vector<std::unique_ptr<Device>>* remote) {
-    LOG(INFO) << "HELLO WORLD FROM DEVICE FINDER!";
     std::unordered_set<string> names(local.size());
     for (Device* dev : local) names.insert(dev->name());
-    LOG(INFO) << "LOCKING...";
     mutex_lock l(mu_);
     for (Device* dev : found_) {
       const string& name = dev->name();
-      LOG(INFO) << "Found name: " << name;
       if (names.insert(name).second && MatchFilters(name)) {
-        LOG(INFO) << "Pushing back.";
         remote->push_back(std::unique_ptr<Device>(dev));
       } else {
-        LOG(INFO) << "Deleting.";
         delete dev;
       }
     }
-    LOG(INFO) << "Almmost done.";
     found_.clear();
   }
 
