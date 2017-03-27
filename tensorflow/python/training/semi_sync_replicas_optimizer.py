@@ -221,10 +221,7 @@ class SemiSyncReplicasOptimizer(optimizer.Optimizer):
     """Returns the op to fill the sync_token_queue with the tokens.
 
     This is supposed to be executed in the beginning of the chief/sync thread
-    so that even if the total_num_replicas is less than batch_sync_num,
-    the model can still proceed as the replicas can compute multiple steps per
-    variable update. Make sure:
-    `num_tokens >= batch_sync_num - total_num_replicas`.
+    to provide the initial tokens
 
     Args:
       num_tokens: Number of tokens to add to the queue.
@@ -265,7 +262,7 @@ class _SemiSyncReplicasOptimizerHook(session_run_hook.SessionRunHook):
     """Creates hook to handle SyncReplicaOptimizer initialization ops.
 
     Args:
-      sync_optimizer: `SyncReplicasOptimizer` which this hook will initialize.
+      sync_optimizer: `SemiSyncReplicasOptimizer` which this hook will initialize.
       is_chief: `Bool`, whether is this a chief replica or not.
       num_tokens: Number of tokens to add to the queue.
     """
