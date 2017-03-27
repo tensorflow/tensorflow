@@ -198,6 +198,7 @@ class RunConfig(ClusterConfig):
   parameter servers), you probably want to use `learn_runner.EstimatorConfig`
   instead.
   """
+  _USE_DEFAULT = 0
 
   def __init__(self,
                master=None,
@@ -206,7 +207,7 @@ class RunConfig(ClusterConfig):
                gpu_memory_fraction=1,
                tf_random_seed=None,
                save_summary_steps=100,
-               save_checkpoints_secs=600,
+               save_checkpoints_secs=_USE_DEFAULT,
                save_checkpoints_steps=None,
                keep_checkpoint_max=5,
                keep_checkpoint_every_n_hours=10000,
@@ -258,6 +259,11 @@ class RunConfig(ClusterConfig):
     self._tf_random_seed = tf_random_seed
     self._save_summary_steps = save_summary_steps
     self._save_checkpoints_secs = save_checkpoints_secs
+    if save_checkpoints_secs == RunConfig._USE_DEFAULT:
+      if save_checkpoints_steps is None:
+        self._save_checkpoints_secs = 600
+      else:
+        self._save_checkpoints_secs = None
     self._save_checkpoints_steps = save_checkpoints_steps
 
     # TODO(weiho): Remove these after ModelFn refactoring, when users can
