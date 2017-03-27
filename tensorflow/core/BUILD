@@ -777,8 +777,8 @@ cc_library(
         "//tensorflow/core/kernels:constant_op",
         "//tensorflow/core/kernels:ops_testutil",
         "//tensorflow/core/kernels:ops_util",
-        "//tensorflow/core/platform/default/build_config:gtest",
-    ] + if_sycl([":sycl_runtime"]),
+        "//tensorflow/core/platform/default/build_config:gtest",  # + if_sycl([":sycl_runtime"])
+    ],
 )
 
 # This is a link-only library to provide a DirectSession
@@ -1581,7 +1581,6 @@ tf_cuda_library(
         "common_runtime/gpu/gpu_debug_allocator.cc",
         "common_runtime/gpu/gpu_device.cc",
         "common_runtime/gpu/gpu_device_factory.cc",
-        "common_runtime/gpu/gpu_init.cc",
         "common_runtime/gpu/gpu_stream_util.cc",
         "common_runtime/gpu/gpu_util.cc",
         "common_runtime/gpu/gpu_util_platform_specific.cc",
@@ -1606,12 +1605,33 @@ tf_cuda_library(
         ":core_cpu_internal",
         ":framework",
         ":framework_internal",
+        ":gpu_init",
         ":gpu_lib",
         ":lib",
         ":lib_internal",
         ":protos_all_cc",
         ":stream_executor",
         "//third_party/eigen3",
+    ],
+    alwayslink = 1,
+)
+
+tf_cuda_library(
+    name = "gpu_init",
+    srcs = [
+        "common_runtime/gpu/gpu_init.cc",
+    ],
+    hdrs = [
+        "common_runtime/gpu/gpu_init.h",
+    ],
+    copts = tf_copts(),
+    linkstatic = 1,
+    deps = [
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":stream_executor",
     ],
     alwayslink = 1,
 )
@@ -2023,40 +2043,38 @@ tf_cc_tests(
     ],
 )
 
-if_mkl(
-    tf_cc_test_mkl(
-        name = "mkl_related_tests",
-        size = "small",
-        srcs = [
-            "graph/mkl_layout_pass_test.cc",
-            "graph/mkl_optimizer_merge_test.cc",
-            "graph/mkl_tfconversion_pass_test.cc",
-        ],
-        linkstatic = tf_kernel_tests_linkstatic(),
-        deps = [
-            ":core",
-            ":core_cpu",
-            ":core_cpu_internal",
-            ":direct_session_internal",
-            ":framework",
-            ":framework_internal",
-            ":lib",
-            ":lib_internal",
-            ":ops",
-            ":protos_all_cc",
-            ":test",
-            ":test_main",
-            ":testlib",
-            "//tensorflow/cc:cc_ops",
-            "//tensorflow/cc:scope",
-            "//tensorflow/cc:sendrecv_ops",
-            "//tensorflow/core/kernels:mkl_conv_op",
-            "//tensorflow/core/kernels:mkl_matmul_op",
-            "//tensorflow/core/kernels:mkl_tfconv_op",
-            "//tensorflow/core/kernels:ops_util",
-            "//third_party/eigen3",
-        ],
-    ),
+tf_cc_test_mkl(
+    name = "mkl_related_tests",
+    size = "small",
+    srcs = [
+        "graph/mkl_layout_pass_test.cc",
+        "graph/mkl_optimizer_merge_test.cc",
+        "graph/mkl_tfconversion_pass_test.cc",
+    ],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session_internal",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":ops",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/cc:sendrecv_ops",
+        "//tensorflow/core/kernels:mkl_conv_op",
+        "//tensorflow/core/kernels:mkl_matmul_op",
+        "//tensorflow/core/kernels:mkl_tfconv_op",
+        "//tensorflow/core/kernels:ops_util",
+        "//third_party/eigen3",
+    ],
 )
 
 tf_cc_tests_gpu(

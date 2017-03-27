@@ -17,9 +17,9 @@ py_library(
     deps = [
         "//tensorflow/python:framework",
         "//tensorflow/python:platform",
+        "//tensorflow/tensorboard/backend:http_util",
         "//tensorflow/tensorboard/backend/event_processing:event_accumulator",
         "//tensorflow/tensorboard/backend/event_processing:event_file_loader",
-        "//tensorflow/tensorboard/lib/python:http_util",
         "//tensorflow/tensorboard/plugins:base_plugin",
     ],
 )
@@ -41,4 +41,14 @@ py_test(
         "//third_party/py/numpy",
         "@org_pocoo_werkzeug//:werkzeug",
     ],
+)
+
+filegroup(
+    name = "all_files",
+    srcs = glob(
+        [
+            "*",
+        ],
+    ),
+    visibility = ["//tensorflow:__subpackages__"],
 )

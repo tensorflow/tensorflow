@@ -3165,6 +3165,7 @@ py_tests(
     srcs = [
         "summary/plugin_asset_test.py",
         "summary/summary_test.py",
+        "summary/text_summary_test.py",
         "summary/writer/writer_test.py",
     ],
     additional_deps = [
@@ -3309,6 +3310,39 @@ py_test(
     ],
 )
 
+py_library(
+    name = "docs",
+    srcs = ["framework/docs.py"],
+    srcs_version = "PY2AND3",
+)
+
+py_library(
+    name = "gen_docs_combined_lib",
+    srcs = ["framework/gen_docs_combined.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":docs",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/ffmpeg:ffmpeg_ops_py",
+        "//tensorflow/python/debug:debug_py",
+    ],
+)
+
+py_binary(
+    name = "gen_docs_combined",
+    srcs = ["framework/gen_docs_combined.py"],
+    main = "framework/gen_docs_combined.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":client",
+        ":docs",
+        ":framework",
+        ":framework_for_generated_wrappers",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python/debug:debug_py",
+    ],
+)
+
 # -----------------------------------------------------------------------------
 # Quantization
 
@@ -3422,6 +3456,25 @@ cuda_py_test(
         "//tensorflow/core:protos_all_py",
     ],
     main = "ops/split_benchmark.py",
+)
+
+cuda_py_test(
+    name = "transpose_benchmark",
+    size = "medium",
+    srcs = ["ops/transpose_benchmark.py"],
+    additional_deps = [
+        ":array_ops",
+        ":client",
+        ":client_testlib",
+        ":control_flow_ops",
+        ":framework_for_generated_wrappers",
+        ":platform",
+        ":platform_benchmark",
+        ":variables",
+        "//third_party/py/numpy",
+        "//tensorflow/core:protos_all_py",
+    ],
+    main = "ops/transpose_benchmark.py",
 )
 
 cuda_py_test(

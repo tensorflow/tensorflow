@@ -71,7 +71,7 @@ is a constant. Like all TensorFlow constants, it takes no inputs, and it outputs
 a value it stores internally. We can create two floating point Tensors `node1`
 and `node2` as follows:
 ```python
-node1 = tf.constant(3.0, tf.float32)
+node1 = tf.constant(3.0, dtype=tf.float32)
 node2 = tf.constant(4.0) # also tf.float32 implicitly
 print(node1, node2)
 ```
@@ -173,8 +173,8 @@ initial value:
 
 
 ```python
-W = tf.Variable([.3], tf.float32)
-b = tf.Variable([-.3], tf.float32)
+W = tf.Variable([.3], dtype=tf.float32)
+b = tf.Variable([-.3], dtype=tf.float32)
 x = tf.placeholder(tf.float32)
 linear_model = W * x + b
 ```
@@ -294,8 +294,8 @@ import numpy as np
 import tensorflow as tf
 
 # Model parameters
-W = tf.Variable([.3], tf.float32)
-b = tf.Variable([-.3], tf.float32)
+W = tf.Variable([.3], dtype=tf.float32)
+b = tf.Variable([-.3], dtype=tf.float32)
 # Model input and output
 x = tf.placeholder(tf.float32)
 linear_model = W * x + b

@@ -427,7 +427,9 @@ int64 GetCudnnWorkspaceLimit(const string& envvar_in_mb,
 }
 
 // A dummy type to group forward convolution autotune results together.
-struct ConvAutoTuneGroup {};
+struct ConvAutoTuneGroup {
+  static string name() { return "Conv"; }
+};
 typedef AutoTuneSingleton<ConvAutoTuneGroup, ConvParameters,
                           perftools::gputools::dnn::AlgorithmConfig>
     AutoTuneConv;

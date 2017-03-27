@@ -25,7 +25,7 @@ py_library(
         "//tensorflow/python:lib",
         "//tensorflow/python:platform",
         "//tensorflow/python:training",
-        "//tensorflow/tensorboard/lib/python:http_util",
+        "//tensorflow/tensorboard/backend:http_util",
         "//tensorflow/tensorboard/plugins:base_plugin",
         "//third_party/py/numpy",
         "@org_pocoo_werkzeug//:werkzeug",
@@ -53,4 +53,10 @@ py_test(
         "//third_party/py/numpy",
         "@org_pocoo_werkzeug//:werkzeug",
     ],
+)
+
+filegroup(
+    name = "all_files",
+    srcs = glob(["**"]),
+    visibility = ["//tensorflow:__pkg__"],
 )

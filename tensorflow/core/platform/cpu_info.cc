@@ -67,7 +67,8 @@ int GetXCR0EAX() {
 #endif
 
 // Structure for basic CPUID info
-struct CPUIDInfo {
+class CPUIDInfo {
+public:
   CPUIDInfo()
       : have_adx_(0),
         have_aes_(0),

@@ -21,6 +21,7 @@ load(
     "//tensorflow/core:platform/default/build_config.bzl",
     "tf_kernel_tests_linkstatic",
 )
+load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 
 tf_custom_op_library(
     # TODO(sibyl-Mooth6ku,ptucker): Understand why 'python/ops/_' is needed and fix it.
@@ -51,10 +52,14 @@ tf_kernel_library(
     alwayslink = 1,
 )
 
-py_library(
+tf_custom_op_py_library(
     name = "input_pipeline_py",
     srcs = glob(["python/ops/*.py"]) + ["__init__.py"],
-    data = [":python/ops/_input_pipeline_ops.so"],
+    dso = [":python/ops/_input_pipeline_ops.so"],
+    kernels = [
+        ":input_pipeline_ops_kernels",
+        ":input_pipeline_ops_op_lib",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":input_pipeline_ops",

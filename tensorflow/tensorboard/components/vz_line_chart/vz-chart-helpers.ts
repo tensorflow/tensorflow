@@ -80,27 +80,37 @@ module VZ.ChartHelpers {
     let b: number;
     if (ignoreOutliers) {
       let sorted = _.sortBy(values);
-      a = d3.quantile(sorted, 0.10);
-      b = d3.quantile(sorted, 0.90);
+      a = d3.quantile(sorted, 0.05);
+      b = d3.quantile(sorted, 0.95);
     } else {
       a = d3.min(values);
       b = d3.max(values);
     }
 
-    // If the values are in unit range, try to give them a clean [0, 1] range,
-    // but if all the values are less than 0.1 then we will construct a smaller
-    // power-of-ten window for them.
-    if (a >= 0 && b <= 1) {
-      if (b === 0) {
-        return [-0.1, 1.1];
-      }
-      let powerOf10 = Math.pow(10, Math.ceil(Math.log(b) / Math.log(10)));
-      let offset = powerOf10 / 10;
-      return [-offset, powerOf10 + offset];
+    let padding: number;
+    let span = b - a;
+    if (span === 0) {
+      // If b===a, we would create an empty range. We instead select the range
+      // [0, 2*a] if a > 0, or [-2*a, 0] if a < 0, plus a little bit of
+      // extra padding on the top and bottom of the plot.
+      padding = Math.abs(a) * 1.1;
+    } else {
+      padding = span * 0.2;
     }
 
-    let padding = (b - a) * 0.20;
-    let domain = [a - padding, b + padding];
+    let lower: number;
+    if (a >= 0 && a < span) {
+      // We include the intercept (y = 0) if doing so less than doubles the span
+      // of the y-axis. (We actually select a lower bound that's slightly less
+      // than 0 so that 0.00 will clearly be written on the lower edge of the
+      // chart. The label on the lowest tick is often filtered out.)
+      lower = -0.1 * b;
+    } else {
+      lower = a - padding;
+    }
+
+
+    let domain = [lower, b + padding];
     domain = d3.scale.linear().domain(domain).nice().domain();
     return domain;
   }

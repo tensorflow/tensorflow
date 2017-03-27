@@ -209,10 +209,10 @@ add_python_module("tensorflow/python/util/protobuf")
 add_python_module("tensorflow/tensorboard")
 add_python_module("tensorflow/tensorboard/backend")
 add_python_module("tensorflow/tensorboard/backend/event_processing")
-add_python_module("tensorflow/tensorboard/lib/python")
 add_python_module("tensorflow/tensorboard/plugins")
 add_python_module("tensorflow/tensorboard/plugins/debugger")
 add_python_module("tensorflow/tensorboard/plugins/projector")
+add_python_module("tensorflow/tensorboard/plugins/text")
 add_python_module("tensorflow/tensorboard/scripts")
 add_python_module("tensorflow/contrib")
 add_python_module("tensorflow/contrib/android")
@@ -278,9 +278,11 @@ add_python_module("tensorflow/contrib/grid_rnn/python/kernel_tests")
 add_python_module("tensorflow/contrib/grid_rnn/python/ops")
 add_python_module("tensorflow/contrib/hooks")
 add_python_module("tensorflow/contrib/image")
+add_python_module("tensorflow/contrib/image/ops")
 add_python_module("tensorflow/contrib/image/python")
 add_python_module("tensorflow/contrib/image/python/ops")
 add_python_module("tensorflow/contrib/input_pipeline")
+add_python_module("tensorflow/contrib/input_pipeline/ops")
 add_python_module("tensorflow/contrib/input_pipeline/python")
 add_python_module("tensorflow/contrib/input_pipeline/python/ops")
 add_python_module("tensorflow/contrib/integrate")
@@ -455,6 +457,7 @@ add_python_module("tensorflow/contrib/tensor_forest/data")
 add_python_module("tensorflow/contrib/tensor_forest/hybrid")
 add_python_module("tensorflow/contrib/tensor_forest/hybrid/core")
 add_python_module("tensorflow/contrib/tensor_forest/hybrid/core/ops")
+add_python_module("tensorflow/contrib/tensor_forest/hybrid/ops")
 add_python_module("tensorflow/contrib/tensor_forest/hybrid/python")
 add_python_module("tensorflow/contrib/tensor_forest/hybrid/python/kernel_tests")
 add_python_module("tensorflow/contrib/tensor_forest/hybrid/python/layers")
@@ -522,7 +525,7 @@ function(GENERATE_PYTHON_OP_LIB tf_python_op_lib_name)
     else()
       set(require_shape_fn 1)
     endif()
-    
+
     # Create a C++ executable that links in the appropriate op
     # registrations and generates Python wrapper code based on the
     # registered ops.
@@ -586,11 +589,24 @@ GENERATE_PYTHON_OP_LIB("contrib_factorization_factorization_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/factorization/python/ops/gen_factorization_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_framework_variable_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/framework/python/ops/gen_variable_ops.py)
+GENERATE_PYTHON_OP_LIB("contrib_input_pipeline_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/input_pipeline/ops/gen_input_pipeline_ops.py)
+GENERATE_PYTHON_OP_LIB("contrib_image_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/image/ops/gen_image_ops.py)
+GENERATE_PYTHON_OP_LIB("contrib_layers_bucketization_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/layers/ops/gen_bucketization_op.py)
+GENERATE_PYTHON_OP_LIB("contrib_layers_sparse_feature_cross_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/layers/ops/gen_sparse_feature_cross_op.py)
 GENERATE_PYTHON_OP_LIB("contrib_memory_stats_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/memory_stats/ops/gen_memory_stats_ops.py)
+GENERATE_PYTHON_OP_LIB("contrib_rnn_gru_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/rnn/ops/gen_gru_ops.py)
+GENERATE_PYTHON_OP_LIB("contrib_rnn_lstm_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/rnn/ops/gen_lstm_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_tensor_forest_ops"
-	  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/tensor_forest/python/ops/gen_tensor_forest_ops.py)
-
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/tensor_forest/python/ops/gen_tensor_forest_ops.py)
+GENERATE_PYTHON_OP_LIB("contrib_tensor_forest_hybrid_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/tensor_forest/hybrid/ops/gen_training_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_bigquery_reader_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/cloud/python/ops/gen_bigquery_reader_ops.py)
 
@@ -828,7 +844,7 @@ add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
 add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy ${tensorflow_source_dir}/tensorflow/contrib/learn/python/learn/datasets/data/text_train.csv
                                    ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/learn/python/learn/datasets/data/)
-					   
+
 if(${tensorflow_ENABLE_GPU})
   add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
     COMMAND ${PYTHON_EXECUTABLE} ${CMAKE_CURRENT_BINARY_DIR}/tf_python/setup.py bdist_wheel --project_name tensorflow_gpu

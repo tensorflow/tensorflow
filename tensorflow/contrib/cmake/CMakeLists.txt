@@ -191,6 +191,7 @@ if (tensorflow_ENABLE_GPU)
       ${CUDA_TOOLKIT_TARGET_DIR}/include/cuda.h ${CUDA_TOOLKIT_TARGET_DIR}/include/cuComplex.h
       ${CUDA_TOOLKIT_TARGET_DIR}/include/cublas_v2.h ${CUDNN_HOME}/include/cudnn.h
       ${CUDA_TOOLKIT_TARGET_DIR}/include/cufft.h ${CUDA_TOOLKIT_TARGET_DIR}/include/curand.h
+      ${CUDA_TOOLKIT_TARGET_DIR}/include/cuda_runtime_api.h
       DESTINATION ${tensorflow_source_dir}/third_party/gpus/cuda/include
     )
     include_directories(${tensorflow_source_dir}/third_party/gpus)
@@ -201,7 +202,6 @@ endif()
 
 # Let's get to work!
 include(tf_core_framework.cmake)
-include(tf_tools.cmake)
 # NOTE: Disabled until issue #3996 is fixed.
 # include(tf_stream_executor.cmake)
 if (tensorflow_ENABLE_GPU)
@@ -222,6 +222,7 @@ if(tensorflow_BUILD_CC_EXAMPLE)
   include(tf_tutorials.cmake)
   include(tf_label_image_example.cmake)
 endif()
+include(tf_tools.cmake)
 if(tensorflow_BUILD_PYTHON_BINDINGS)
   include(tensorboard)
   include(tf_python.cmake)

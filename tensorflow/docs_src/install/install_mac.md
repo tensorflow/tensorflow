@@ -436,10 +436,11 @@ Invoke python from your shell as follows:
 Enter the following short program inside the python interactive shell:
 
 ```python
->>> import tensorflow as tf
->>> hello = tf.constant('Hello, TensorFlow!')
->>> sess = tf.Session()
->>> print(sess.run(hello))
+# Python
+import tensorflow as tf
+hello = tf.constant('Hello, TensorFlow!')
+sess = tf.Session()
+print(sess.run(hello))
 ```
 
 If the system outputs the following, then you are ready to begin
@@ -570,6 +571,15 @@ Terminal window to review and agree to the Xcode license agreements.
 
 RuntimeError: Broken toolchain: cannot link a simple C program</pre>
 </td>
+
+<tr>
+  <td><a href="http://stackoverflow.com/questions/42376790/">42376790</a></td>
+  <td>After installing for GPU, an `import tensorflow` statement
+      triggers the following error:
+<pre>tensorflow/stream_executor/dso_loader.cc:135] successfully opened CUDA
+  library libcublas.8.0.dylib locally
+  Segmentation fault: 11
+</pre></td>
 </tr>
 
 </table>

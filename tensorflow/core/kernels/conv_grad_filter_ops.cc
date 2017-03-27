@@ -352,7 +352,9 @@ TF_CALL_float(REGISTER_CPU_KERNELS);
 // The slow version (but compiles for GPU)
 
 // A dummy type to group forward backward filter autotune results together.
-struct ConvBackwardFilterAutoTuneGroup {};
+struct ConvBackwardFilterAutoTuneGroup {
+  static string name() { return "ConvBwdFilter"; }
+};
 typedef AutoTuneSingleton<ConvBackwardFilterAutoTuneGroup, ConvParameters,
                           perftools::gputools::dnn::AlgorithmConfig>
     AutoTuneConvBwdFilter;

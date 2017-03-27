@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/layout_optimizer.h"
+#include "tensorflow/core/grappler/optimizers/model_pruner.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
@@ -27,6 +28,10 @@ bool MetaOptimizerEnabled(const RewriterConfig& cfg) {
 
 Status RunMetaOptimizer(const GrapplerItem& item, const RewriterConfig& cfg,
                         GraphDef* optimized_graph) {
+  if (!cfg.disable_model_pruning()) {
+    ModelPruner pruner;
+    TF_RETURN_IF_ERROR(pruner.Optimize(nullptr, item, optimized_graph));
+  }
   if (cfg.optimize_tensor_layout()) {
     LayoutOptimizer layout_optimizer;
     return layout_optimizer.Optimize(nullptr, item, optimized_graph);
