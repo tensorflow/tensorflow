@@ -34,12 +34,10 @@ from tensorflow.python.platform import test
 
 class BNTest(test.TestCase):
 
-  kw_dtype = {}
-
   def testCreateBN(self):
     # Call layer.
-    bn = normalization_layers.BatchNormalization(axis=1, **self.kw_dtype)
-    inputs = random_ops.random_uniform((5, 4, 3), seed=1, **self.kw_dtype)
+    bn = normalization_layers.BatchNormalization(axis=1)
+    inputs = random_ops.random_uniform((5, 4, 3), seed=1)
     training = array_ops.placeholder(dtype='bool')
     outputs = bn.apply(inputs, training=training)
 
@@ -62,15 +60,15 @@ class BNTest(test.TestCase):
         ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES),
         bn.trainable_variables)
 
-  def test3DInputAxis1(self):
-    dtype = self.kw_dtype.get('dtype', dtypes.float32)
+  def _test3DInputAxis1(self, dtype=dtypes.float32):
     epsilon = 1e-3
     bn = normalization_layers.BatchNormalization(
-        axis=1, epsilon=epsilon, momentum=0.9, **self.kw_dtype)
+        axis=1, epsilon=epsilon, momentum=0.9, dtype=dtype)
     inputs = variables.Variable(
         np.random.random((5, 4, 3)) + 100, dtype=dtype)
     training = array_ops.placeholder(dtype='bool')
     outputs = bn.apply(inputs, training=training)
+    self.assertEqual(outputs.dtype, dtype)
 
     with self.test_session() as sess:
       # Test training with placeholder learning phase.
@@ -105,15 +103,21 @@ class BNTest(test.TestCase):
       self.assertAlmostEqual(np.mean(normed_np_output), 0., places=1)
       self.assertAlmostEqual(np.std(normed_np_output), 1., places=1)
 
-  def test3DInputAxis2(self):
-    dtype = self.kw_dtype.get('dtype', dtypes.float32)
+  def test3DInputAxis1(self):
+    self._test3DInputAxis1()
+
+  def test3DInputAxis1Float16(self):
+    self._test3DInputAxis1(dtype=dtypes.float16)
+
+  def _test3DInputAxis2(self, dtype=dtypes.float16):
     epsilon = 1e-3
     bn = normalization_layers.BatchNormalization(
-        axis=2, epsilon=epsilon, momentum=0.9, **self.kw_dtype)
+        axis=2, epsilon=epsilon, momentum=0.9, dtype=dtype)
     inputs = variables.Variable(
         np.random.random((5, 4, 3)) + 100, dtype=dtype)
     training = array_ops.placeholder(dtype='bool')
     outputs = bn.apply(inputs, training=training)
+    self.assertEqual(outputs.dtype, dtype)
 
     with self.test_session() as sess:
       # Test training with placeholder learning phase.
@@ -146,11 +150,16 @@ class BNTest(test.TestCase):
       self.assertAlmostEqual(np.mean(normed_np_output), 0., places=1)
       self.assertAlmostEqual(np.std(normed_np_output), 1., places=1)
 
-  def test4DInputAxis1(self):
-    dtype = self.kw_dtype.get('dtype', dtypes.float32)
+  def test3DInputAxis2(self):
+    self._test3DInputAxis2()
+
+  def test3DInputAxis2Float16(self):
+    self._test3DInputAxis2(dtype=dtypes.float16)
+
+  def _test4DInputAxis1(self, dtype=dtypes.float32):
     epsilon = 1e-3
     bn = normalization_layers.BatchNormalization(
-        axis=1, epsilon=epsilon, momentum=0.9, **self.kw_dtype)
+        axis=1, epsilon=epsilon, momentum=0.9, dtype=dtype)
     inputs = variables.Variable(
         np.random.random((5, 4, 3, 6)) + 100, dtype=dtype)
     training = array_ops.placeholder(dtype='bool')
@@ -187,11 +196,16 @@ class BNTest(test.TestCase):
       self.assertAlmostEqual(np.mean(normed_np_output), 0., places=1)
       self.assertAlmostEqual(np.std(normed_np_output), 1., places=1)
 
-  def test4DInputAxis2(self):
-    dtype = self.kw_dtype.get('dtype', dtypes.float32)
+  def test4DInputAxis1(self):
+    self._test4DInputAxis1()
+
+  def test4DInputAxis1Float16(self):
+    self._test4DInputAxis1(dtype=dtypes.float16)
+
+  def _test4DInputAxis2(self, dtype=dtypes.float32):
     epsilon = 1e-3
     bn = normalization_layers.BatchNormalization(
-        axis=2, epsilon=epsilon, momentum=0.9, **self.kw_dtype)
+        axis=2, epsilon=epsilon, momentum=0.9, dtype=dtype)
     inputs = variables.Variable(
         np.random.random((5, 4, 3, 6)) + 100, dtype=dtype)
     training = array_ops.placeholder(dtype='bool')
@@ -228,11 +242,16 @@ class BNTest(test.TestCase):
       self.assertAlmostEqual(np.mean(normed_np_output), 0., places=1)
       self.assertAlmostEqual(np.std(normed_np_output), 1., places=1)
 
-  def test4DInputAxis3(self):
-    dtype = self.kw_dtype.get('dtype', dtypes.float32)
+  def test4DInputAxis2(self):
+    self._test4DInputAxis2()
+
+  def test4DInputAxis2Float16(self):
+    self._test4DInputAxis2(dtype=dtypes.float16)
+
+  def _test4DInputAxis3(self, dtype=dtypes.float32):
     epsilon = 1e-3
     bn = normalization_layers.BatchNormalization(
-        axis=3, epsilon=epsilon, momentum=0.9, **self.kw_dtype)
+        axis=3, epsilon=epsilon, momentum=0.9, dtype=dtype)
     inputs = variables.Variable(
         np.random.random((5, 4, 3, 6)) + 100, dtype=dtype)
     training = array_ops.placeholder(dtype='bool')
@@ -247,6 +266,53 @@ class BNTest(test.TestCase):
       for _ in range(100):
         np_output, _, _ = sess.run([outputs] + bn.updates,
                                    feed_dict={training: True})
+        # Verify that the axis is normalized during training.
+        normed_np_output = ((np_output - epsilon) * np_gamma) + np_beta
+        self.assertAlmostEqual(np.mean(normed_np_output), 0., places=1)
+        self.assertAlmostEqual(np.std(normed_np_output), 1., places=1)
+
+      # Verify that the statistics are updated during training.
+      moving_mean, moving_var = sess.run([bn.moving_mean, bn.moving_variance])
+      np_inputs = sess.run(inputs)
+      mean = np.mean(np_inputs, axis=(0, 1, 2))
+      std = np.std(np_inputs, axis=(0, 1, 2))
+      variance = np.square(std)
+      self.assertAllClose(mean, moving_mean, atol=1e-2)
+      self.assertAllClose(variance, moving_var, atol=1e-2)
+
+      # Test inference with placeholder learning phase.
+      np_output = sess.run(outputs, feed_dict={training: False})
+
+      # Verify that the axis is normalized during inference.
+      normed_np_output = ((np_output - epsilon) * np_gamma) + np_beta
+      self.assertAlmostEqual(np.mean(normed_np_output), 0., places=1)
+      self.assertAlmostEqual(np.std(normed_np_output), 1., places=1)
+
+  def test4DInputAxis3(self):
+    self._test4DInputAxis3()
+
+  def test4DInputAxis3Float16(self):
+    self._test4DInputAxis3(dtype=dtypes.float16)
+
+  def _testNegativeAxis(self, dtype=dtypes.float32):
+    epsilon = 1e-3
+    bn = normalization_layers.BatchNormalization(
+        axis=-1, epsilon=epsilon, momentum=0.9, dtype=dtype)
+    inputs = variables.Variable(
+        np.random.random((5, 4, 3, 6)) + 100, dtype=dtype)
+    training = array_ops.placeholder(dtype='bool')
+    outputs = bn.apply(inputs, training=training)
+
+    with self.test_session() as sess:
+      # Test training with placeholder learning phase.
+      sess.run(variables.global_variables_initializer())
+      np_gamma, np_beta = sess.run([bn.gamma, bn.beta])
+      np_gamma = np.reshape(np_gamma, (1, 1, 1, 6))
+      np_beta = np.reshape(np_beta, (1, 1, 1, 6))
+      for _ in range(100):
+        np_output, _, _ = sess.run([outputs] + bn.updates,
+                                   feed_dict={training: True})
+
         # Verify that the axis is normalized during training.
         normed_np_output = ((np_output - epsilon) * np_gamma) + np_beta
         self.assertAlmostEqual(np.mean(normed_np_output), 0., places=1)
@@ -270,52 +336,15 @@ class BNTest(test.TestCase):
       self.assertAlmostEqual(np.std(normed_np_output), 1., places=1)
 
   def testNegativeAxis(self):
-    dtype = self.kw_dtype.get('dtype', dtypes.float32)
+    self._testNegativeAxis()
+
+  def testNegativeAxisFloat16(self):
+    self._testNegativeAxis(dtype=dtypes.float16)
+
+  def _testBooleanLearningPhase(self, dtype=dtypes.float32):
     epsilon = 1e-3
     bn = normalization_layers.BatchNormalization(
-        axis=-1, epsilon=epsilon, momentum=0.9, **self.kw_dtype)
-    inputs = variables.Variable(
-        np.random.random((5, 4, 3, 6)) + 100, dtype=dtype)
-    training = array_ops.placeholder(dtype='bool')
-    outputs = bn.apply(inputs, training=training)
-
-    with self.test_session() as sess:
-      # Test training with placeholder learning phase.
-      sess.run(variables.global_variables_initializer())
-      np_gamma, np_beta = sess.run([bn.gamma, bn.beta])
-      np_gamma = np.reshape(np_gamma, (1, 1, 1, 6))
-      np_beta = np.reshape(np_beta, (1, 1, 1, 6))
-      for _ in range(100):
-        np_output, _, _ = sess.run([outputs] + bn.updates,
-                                   feed_dict={training: True})
-
-        # Verify that the axis is normalized during training.
-        normed_np_output = ((np_output - epsilon) * np_gamma) + np_beta
-        self.assertAlmostEqual(np.mean(normed_np_output), 0., places=1)
-        self.assertAlmostEqual(np.std(normed_np_output), 1., places=1)
-
-      # Verify that the statistics are updated during training.
-      moving_mean, moving_var = sess.run([bn.moving_mean, bn.moving_variance])
-      np_inputs = sess.run(inputs)
-      mean = np.mean(np_inputs, axis=(0, 1, 2))
-      std = np.std(np_inputs, axis=(0, 1, 2))
-      variance = np.square(std)
-      self.assertAllClose(mean, moving_mean, atol=1e-2)
-      self.assertAllClose(variance, moving_var, atol=1e-2)
-
-      # Test inference with placeholder learning phase.
-      np_output = sess.run(outputs, feed_dict={training: False})
-
-      # Verify that the axis is normalized during inference.
-      normed_np_output = ((np_output - epsilon) * np_gamma) + np_beta
-      self.assertAlmostEqual(np.mean(normed_np_output), 0., places=1)
-      self.assertAlmostEqual(np.std(normed_np_output), 1., places=1)
-
-  def testBooleanLearningPhase(self):
-    dtype = self.kw_dtype.get('dtype', dtypes.float32)
-    epsilon = 1e-3
-    bn = normalization_layers.BatchNormalization(
-        axis=-1, epsilon=epsilon, momentum=0.9, **self.kw_dtype)
+        axis=-1, epsilon=epsilon, momentum=0.9, dtype=dtype)
     inputs = variables.Variable(
         np.random.random((5, 4, 3, 6)) + 100, dtype=dtype)
     outputs_training = bn.apply(inputs, training=True)
@@ -351,10 +380,15 @@ class BNTest(test.TestCase):
       self.assertAlmostEqual(np.mean(normed_np_output), 0., places=1)
       self.assertAlmostEqual(np.std(normed_np_output), 1., places=1)
 
+  def testBooleanLearningPhase(self):
+    self._testBooleanLearningPhase()
+
+  def testBooleanLearningPhaseFloat16(self):
+    self._testBooleanLearningPhase(dtype=dtypes.float16)
+
   def testFunctionalNoReuse(self):
-    dtype = self.kw_dtype.get('dtype', dtypes.float32)
     inputs = variables.Variable(
-        np.random.random((5, 4, 3, 6)), dtype=dtype)
+        np.random.random((5, 4, 3, 6)), dtype=dtypes.float32)
     epsilon = 1e-3
     training = array_ops.placeholder(dtype='bool')
     outputs = normalization_layers.batch_norm(
@@ -404,11 +438,10 @@ class BNTest(test.TestCase):
       self.assertAlmostEqual(np.std(normed_np_output), 1., places=1)
 
   def testFunctionalReuse(self):
-    dtype = self.kw_dtype.get('dtype', dtypes.float32)
     inputs1 = variables.Variable(
-        np.random.random((5, 4, 3, 6)), dtype=dtype)
+        np.random.random((5, 4, 3, 6)), dtype=dtypes.float32)
     inputs2 = variables.Variable(
-        np.random.random((5, 4, 3, 6)), dtype=dtype)
+        np.random.random((5, 4, 3, 6)), dtype=dtypes.float32)
     epsilon = 1e-3
     training = array_ops.placeholder(dtype='bool')
     _ = normalization_layers.batch_norm(
@@ -468,9 +501,8 @@ class BNTest(test.TestCase):
       self.assertAlmostEqual(np.std(normed_np_output), 1., places=1)
 
   def testFunctionalReuseFromScope(self):
-    dtype = self.kw_dtype.get('dtype', dtypes.float32)
     inputs = variables.Variable(
-        np.random.random((5, 4, 3, 6)), dtype=dtype)
+        np.random.random((5, 4, 3, 6)), dtype=dtypes.float32)
     epsilon = 1e-3
     training = array_ops.placeholder(dtype='bool')
     with variable_scope.variable_scope('scope'):
@@ -483,9 +515,8 @@ class BNTest(test.TestCase):
       self.assertEqual(len(variables.global_variables()), 5)
 
   def testNoCenter(self):
-    bn = normalization_layers.BatchNormalization(
-      axis=1, center=False, **self.kw_dtype)
-    inputs = random_ops.random_uniform((5, 4, 3), seed=1, **self.kw_dtype)
+    bn = normalization_layers.BatchNormalization(axis=1, center=False)
+    inputs = random_ops.random_uniform((5, 4, 3), seed=1)
     training = array_ops.placeholder(dtype='bool')
     outputs = bn.apply(inputs, training=training)
 
@@ -499,9 +530,8 @@ class BNTest(test.TestCase):
     self.assertEqual(len(bn.non_trainable_variables), 2)
 
   def testNoScale(self):
-    bn = normalization_layers.BatchNormalization(
-      axis=1, scale=False, **self.kw_dtype)
-    inputs = random_ops.random_uniform((5, 4, 3), seed=1, **self.kw_dtype)
+    bn = normalization_layers.BatchNormalization(axis=1, scale=False)
+    inputs = random_ops.random_uniform((5, 4, 3), seed=1)
     training = array_ops.placeholder(dtype='bool')
     outputs = bn.apply(inputs, training=training)
 
@@ -516,16 +546,14 @@ class BNTest(test.TestCase):
 
   def testRegularizers(self):
     reg = lambda x: 0.1 * math_ops.reduce_sum(x)
-    bn = normalization_layers.BatchNormalization(
-      axis=1, beta_regularizer=reg, **self.kw_dtype)
-    inputs = random_ops.random_uniform((5, 4, 3), seed=1, **self.kw_dtype)
+    bn = normalization_layers.BatchNormalization(axis=1, beta_regularizer=reg)
+    inputs = random_ops.random_uniform((5, 4, 3), seed=1)
     training = array_ops.placeholder(dtype='bool')
     _ = bn.apply(inputs, training=training)
     self.assertEqual(len(bn.losses), 1)
 
-    bn = normalization_layers.BatchNormalization(
-      axis=1, gamma_regularizer=reg, **self.kw_dtype)
-    inputs = random_ops.random_uniform((5, 4, 3), seed=1, **self.kw_dtype)
+    bn = normalization_layers.BatchNormalization(axis=1, gamma_regularizer=reg)
+    inputs = random_ops.random_uniform((5, 4, 3), seed=1)
     training = array_ops.placeholder(dtype='bool')
     _ = bn.apply(inputs, training=training)
     self.assertEqual(len(bn.losses), 1)
@@ -587,18 +615,6 @@ class BNTest(test.TestCase):
 
         self.assertAllClose(y_train, yt_val_train, atol=1e-5)
         self.assertAllClose(y_test, yt_val_test, atol=1e-5)
-
-
-class BNFloat16Test(test.TestCase):
-  kw_dtype = {'dtype': dtypes.float16}
-
-
-class BNFloat32Test(test.TestCase):
-  kw_dtype = {'dtype': dtypes.float32}
-
-
-class BNFloat64Test(test.TestCase):
-  kw_dtype = {'dtype': dtypes.float64}
 
 
 if __name__ == '__main__':
