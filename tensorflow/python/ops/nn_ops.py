@@ -2040,7 +2040,7 @@ def conv1d(value, filters, stride, padding,
     [1, filter_width, in_channels, out_channels].
   The result is then reshaped back to
     [batch, out_width, out_channels]
-  (where out_width is a function of the stride and padding as in conv2d) and
+  \(where out_width is a function of the stride and padding as in conv2d\) and
   returned to the caller.
 
   Args:
