@@ -28,7 +28,7 @@ constexpr const char* const INPUT_OP_NAME = "INPUT";
 constexpr const char* const OUTPUT_OP_NAME = "OUTPUT";
 
 const bool DBG_DUMP_VERIFICATION_STRING = false;
-const bool SHOW_DBG_IN_SOC = false;
+const int DBG_LEVEL = 0;  // -2: verbose, -1: debug, 0: info
 const bool DBG_USE_DUMMY_INPUT = false;
 const bool DBG_USE_SAMPLE_INPUT = false;
 const int64 FLAG_ENABLE_PANDA_BINARY_INPUT = 0x01;
@@ -51,7 +51,7 @@ int HexagonControlWrapper::GetVersion() {
 }
 
 bool HexagonControlWrapper::Init(const RemoteFusedGraphExecuteInfo& info) {
-  soc_interface_SetLogLevel(SHOW_DBG_IN_SOC ? -1 /* debug */ : 0 /* info */);
+  soc_interface_SetLogLevel(DBG_LEVEL);
   if (DBG_USE_SAMPLE_INPUT) {
     soc_interface_SetDebugFlag(FLAG_ENABLE_PANDA_BINARY_INPUT);
   }
@@ -290,11 +290,14 @@ bool HexagonControlWrapper::ReadOutputNode(
   }
   std::vector<IRemoteFusedGraphExecutor::ByteArray> outputs;
   ReadOutputNode(node_name, &outputs);
+  CHECK_EQ(1, outputs.size());
+  IRemoteFusedGraphExecutor::ByteArray& output = outputs[0];
   Tensor* output = tensor_allocator(output_shape);
-  CHECK(output->TotalBytes() >= std::get<1>(outputs[0]));
+  CHECK(output->TotalBytes() >= std::get<1>(output))
+      << output->TotalBytes() << ", " << std::get<1>(output);
   // TODO(satok): Avoid specifying float
-  std::memcpy(output->flat<float>().data(), std::get<0>(outputs[0]),
-              std::get<1>(outputs[0]));
+  std::memcpy(output->flat<float>().data(), std::get<0>(output),
+              std::get<1>(output));
 }
 
 bool HexagonControlWrapper::ReadOutputNode(

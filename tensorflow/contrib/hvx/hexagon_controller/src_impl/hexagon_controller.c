@@ -36,12 +36,14 @@ static const bool DBG_SHOW_ID = false;
 
 static const uint32_t OUTPUT_PARAM_MAX_LINE_SIZE = 1000;
 
+static const uint32_t PRINT_BUFSIZE = 2 * 1024 * 1024;
+
 // extern pre-generated inception dummy data
 extern uint8_t inception_dummy_int_data_224x224[];
 extern uint8_t inception_dummy_int_data_299x299[];
 extern float inception_dummy_float_data_299x299[];
 
-#define HEXAGON_CONTROLLER_VERSION 91
+#define HEXAGON_CONTROLLER_VERSION 92
 
 // allocate print bufsize in advance @MB
 #define PRINT_BUFSIZE (2 * 1024 * 1024)
@@ -372,4 +374,14 @@ void hexagon_controller_EnableDbgUseInceptionDummyData(bool enable) {
 
 bool hexagon_controller_IsDbgUseInceptionDummyDataEnabled() {
   return s_dbg_use_inception_dummy_data;
+}
+
+void hexagon_controller_PrintLog(uint32_t nn_id) {
+  unsigned char *buf;
+  if ((buf = malloc(PRINT_BUFSIZE)) == NULL) {
+    return;
+  }
+  hexagon_nn_getlog(nn_id, buf, PRINT_BUFSIZE);
+  TFMLOGE("DUMP HEXAGON LOG: %s", buf);
+  free(buf);
 }
