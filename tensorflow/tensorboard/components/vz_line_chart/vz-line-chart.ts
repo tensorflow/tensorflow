@@ -463,26 +463,18 @@ module VZ {
       let factor = (Math.pow(1000, this.smoothingWeight) - 1) / 999;
       let data = dataset.data();
       let kernelRadius = Math.floor(data.length * factor / 2);
-
-      data.forEach((d, i) => {
-        let actualKernelRadius = Math.min(kernelRadius, i);
-        let start = i - actualKernelRadius;
-        let end = i + actualKernelRadius + 1;
-        if (end >= data.length) {
-          // In the beginning, it's OK for the smoothing window to be small,
-          // but this is not desirable towards the end. Rather than shrinking
-          // the window, or extrapolating data to fill the gap, we're simply
-          // not going to display the smoothed line towards the end.
-          d.smoothed = Infinity;
-        } else if (!_.isFinite(d.scalar)) {
-          // Only smooth finite numbers.
+      data.forEach(function (d, i) {
+        var actualKernelRadius = Math.min(kernelRadius, i);
+        var start = i - actualKernelRadius;
+        var end = Math.min(data.length - 1, i + actualKernelRadius);
+        // Only smooth finite numbers.
+        if (!_.isFinite(d.scalar)) {
           d.smoothed = d.scalar;
         } else {
-          d.smoothed = d3.mean(
-              data.slice(start, end).filter((d) => _.isFinite(d.scalar)),
-              (d) => d.scalar);
+          d.smoothed = d3.mean(data.slice(start, end).filter(function (d) { return _.isFinite(d.scalar); }), function (d) { return d.scalar; });
         }
       });
+
     }
 
     private getDataset(name: string) {
