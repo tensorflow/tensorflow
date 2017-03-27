@@ -78,7 +78,7 @@ class InputBuffer {
 
  private:
   Status FillBuffer();
-
+  bool is_eof = false;
   // Internal slow-path routine used by ReadVarint32().
   Status ReadVarint32Fallback(uint32* result);
 

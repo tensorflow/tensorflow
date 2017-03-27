@@ -30,8 +30,15 @@ InputBuffer::InputBuffer(RandomAccessFile* file, size_t buffer_bytes)
 InputBuffer::~InputBuffer() { delete[] buf_; }
 
 Status InputBuffer::FillBuffer() {
+  if (is_eof) {
+    limit_ = pos_ = buf_;
+    return Status(error::OUT_OF_RANGE, "Reached End-Of-File");
+  }
   StringPiece data;
   Status s = file_->Read(file_pos_, size_, &data, buf_);
+  if (size_ > data.size()) {
+    is_eof = true;  // read partial
+  }
   if (data.data() != buf_) {
     memmove(buf_, data.data(), data.size());
   }
@@ -106,9 +113,11 @@ Status InputBuffer::ReadNBytes(int64 bytes_to_read, char* result,
     pos_ += bytes_to_copy;
     *bytes_read += bytes_to_copy;
   }
-  if (errors::IsOutOfRange(status) &&
-      (*bytes_read == static_cast<size_t>(bytes_to_read))) {
-    return Status::OK();
+  if (errors::IsOutOfRange(status)) {
+    is_eof = true;
+    if (*bytes_read == static_cast<size_t>(bytes_to_read)) {
+      return Status::OK();
+    }
   }
   return status;
 }
