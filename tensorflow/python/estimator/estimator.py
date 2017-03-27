@@ -38,7 +38,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import metrics as metrics_lib
-from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import builder as saved_model_builder
@@ -418,7 +417,6 @@ class Estimator(object):
       with tf_session.Session() as session:
 
         saver_for_restore = estimator_spec.scaffold.saver or saver.Saver(
-            variables._all_saveable_objects(),  # pylint: disable=protected-access
             sharded=True)
         saver_for_restore.restore(session, checkpoint_path)
 

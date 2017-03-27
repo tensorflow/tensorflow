@@ -18,12 +18,33 @@ limitations under the License.
 
 #include <functional>
 
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace grappler {
+
+// A utility class to lookup a node and its outputs by node name.
+class NodeMap {
+ public:
+  explicit NodeMap(GraphDef* graph);
+  NodeDef* GetNode(const string& name);
+  std::set<NodeDef*> GetOutputs(const string& node_name);
+  // This method doesn't record the outputs of the added node; the outputs need
+  // to be explictly added by the AddOutput method.
+  void AddNode(const string& name, NodeDef* node);
+  void AddOutput(const string& node, const string& output);
+  void UpdateOutput(const string& node, const string& old_output,
+                    const string& new_output);
+
+ private:
+  GraphDef* graph_;
+  std::unordered_map<string, NodeDef*> nodes_;
+  std::unordered_map<string, std::set<NodeDef*>> outputs_;
+};
 
 // Return the node name corresponding to 'name' if name is valid, or the empty
 // string otherwise.

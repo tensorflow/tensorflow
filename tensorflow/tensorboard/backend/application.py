@@ -45,6 +45,7 @@ from tensorflow.tensorboard.backend.event_processing import event_accumulator
 from tensorflow.tensorboard.backend.event_processing import event_multiplexer
 from tensorflow.tensorboard.plugins.debugger import debugger_plugin
 from tensorflow.tensorboard.plugins.projector import projector_plugin
+from tensorflow.tensorboard.plugins.text import text_plugin
 
 
 DEFAULT_SIZE_GUIDANCE = {
@@ -104,6 +105,7 @@ def standard_tensorboard_wsgi(logdir, purge_orphaned_data, reload_interval):
   plugins = {
       debugger_plugin.PLUGIN_PREFIX_ROUTE: debugger_plugin.DebuggerPlugin(),
       projector_plugin.PLUGIN_PREFIX_ROUTE: projector_plugin.ProjectorPlugin(),
+      text_plugin.PLUGIN_PREFIX_ROUTE: text_plugin.TextPlugin(),
   }
 
   return TensorBoardWSGIApp(logdir, plugins, multiplexer, reload_interval)

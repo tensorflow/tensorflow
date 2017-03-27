@@ -1886,7 +1886,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "transpose_op_test",
-    size = "small",
+    size = "large",
     srcs = ["transpose_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -2083,7 +2083,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "pooling_ops_3d_test",
-    size = "medium",  # http://b/30600785
+    size = "medium",
     srcs = ["pooling_ops_3d_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -2091,10 +2091,6 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
-    ],
-    tags = [
-        "manual",
-        "notap",
     ],
 )
 

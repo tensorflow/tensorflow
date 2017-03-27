@@ -38,7 +38,7 @@ function is_windows() {
   fi
 }
 
-function bazel_fetch() {
+function bazel_clean_and_fetch() {
   if [ -z "$TF_BAZEL_TARGETS" ]; then
     bazel fetch "//tensorflow/... -//tensorflow/contrib/nccl/... -//tensorflow/examples/android/..."
   else
@@ -279,17 +279,11 @@ while [ "$TF_NEED_CUDA" == "" ]; do
   esac
 done
 
-sed_hyphen_i -e "/--action_env TF_NEED_CUDA/d" .bazelrc
-sed_hyphen_i -e "/--action_env CUD/d" .bazelrc
-sed_hyphen_i -e "/--action_env GCC_HOST/d" .bazelrc
-sed_hyphen_i -e "/--action_env TF_CUD/d" .bazelrc
-echo "build --action_env TF_NEED_CUDA=$TF_NEED_CUDA" >>.bazelrc
-
 export TF_NEED_CUDA
 export TF_NEED_OPENCL
 if [[ "$TF_NEED_CUDA" == "0" ]] && [[ "$TF_NEED_OPENCL" == "0" ]]; then
   echo "Configuration finished"
-  bazel_fetch
+  bazel_clean_and_fetch
   exit
 fi
 
@@ -308,7 +302,6 @@ while ! is_windows && true; do
   fi
   if [ -e "$GCC_HOST_COMPILER_PATH" ]; then
     export GCC_HOST_COMPILER_PATH
-    echo "build --action_env GCC_HOST_COMPILER_PATH=$GCC_HOST_COMPILER_PATH" >>.bazelrc
     break
   fi
   echo "Invalid gcc path. ${GCC_HOST_COMPILER_PATH} cannot be found" 1>&2
@@ -359,9 +352,7 @@ while true; do
 
   if [ -e "${CUDA_TOOLKIT_PATH}/${CUDA_RT_LIB_PATH}" ]; then
     export CUDA_TOOLKIT_PATH
-    echo "build --action_env CUDA_TOOLKIT_PATH=$CUDA_TOOLKIT_PATH" >>.bazelrc
     export TF_CUDA_VERSION
-    echo "build --action_env TF_CUDA_VERSION=$TF_CUDA_VERSION" >>.bazelrc
     break
   fi
   echo "Invalid path to CUDA $TF_CUDA_VERSION toolkit. ${CUDA_TOOLKIT_PATH}/${CUDA_RT_LIB_PATH} cannot be found"
@@ -376,9 +367,9 @@ done
 
 # Find out where the cuDNN library is installed
 while true; do
-  # Configure the Cudnn version to use.
+  # Configure the cuDNN version to use.
   if [ -z "$TF_CUDNN_VERSION" ]; then
-    read -p "Please specify the Cudnn version you want to use. [Leave empty to use system default]: " TF_CUDNN_VERSION
+    read -p "Please specify the cuDNN version you want to use. [Leave empty to use system default]: " TF_CUDNN_VERSION
   fi
 
   fromuser=""
@@ -413,9 +404,7 @@ while true; do
 
   if [ -e "$CUDNN_INSTALL_PATH/${CUDA_DNN_LIB_ALT_PATH}" -o -e "$CUDNN_INSTALL_PATH/${CUDA_DNN_LIB_PATH}" ]; then
     export TF_CUDNN_VERSION
-    echo "build --action_env TF_CUDNN_VERSION=$TF_CUDNN_VERSION" >>.bazelrc
     export CUDNN_INSTALL_PATH
-    echo "build --action_env CUDNN_INSTALL_PATH=$CUDNN_INSTALL_PATH" >>.bazelrc
     break
   fi
 
@@ -428,9 +417,7 @@ while true; do
     CUDNN_PATH_FROM_LDCONFIG="$($LDCONFIG_BIN -p | sed -n 's/.*libcudnn.so .* => \(.*\)/\1/p')"
     if [ -e "${CUDNN_PATH_FROM_LDCONFIG}${TF_CUDNN_EXT}" ]; then
       export TF_CUDNN_VERSION
-      echo "build --action_env TF_CUDNN_VERSION=$TF_CUDNN_VERSION" >>.bazelrc
       export CUDNN_INSTALL_PATH="$(dirname ${CUDNN_PATH_FROM_LDCONFIG})"
-      echo "build --action_env CUDNN_INSTALL_PATH=$CUDNN_INSTALL_PATH" >>.bazelrc
       break
     fi
   fi
@@ -482,7 +469,6 @@ EOF
     fi
   else
     export TF_CUDA_COMPUTE_CAPABILITIES
-    echo "build --action_env TF_CUDA_COMPUTE_CAPABILITIES=$TF_CUDA_COMPUTE_CAPABILITIES" >>.bazelrc
     break
   fi
   TF_CUDA_COMPUTE_CAPABILITIES=""
@@ -586,6 +572,6 @@ done
 # end of if "$TF_NEED_OPENCL" == "1"
 fi
 
-bazel_fetch
+bazel_clean_and_fetch
 
 echo "Configuration finished"

@@ -89,12 +89,14 @@ class Conv3DTest(test.TestCase):
           data_format,
           use_gpu=use_gpu)
       results.append(result)
+      tolerance = 1e-2 if use_gpu else 1e-5
       with self.test_session() as sess:
         values = sess.run(results)
         for value in values:
           print("expected = ", expected)
           print("actual = ", value)
-          self.assertArrayNear(expected, value.flatten(), 1e-5)
+          self.assertAllClose(expected, value.flatten(), atol=tolerance,
+                              rtol=1e-6)
 
   def testConv3D1x1x1Filter(self):
     expected_output = [
