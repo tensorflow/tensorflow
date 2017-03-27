@@ -7,8 +7,6 @@ import numpy as np
 from tensorflow.python.platform import googletest
 from tensorflow.python.framework import test_util
 
-from tensorflow.compiler.poplar import poplar_plugin
-
 class IpuXlaVariableTest(test_util.TensorFlowTestCase):
 
   def testInitializeSimpleVariables(self):

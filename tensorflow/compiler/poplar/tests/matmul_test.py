@@ -11,8 +11,6 @@ from tensorflow.python.platform import googletest
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import math_ops
 
-from tensorflow.compiler.poplar import poplar_plugin
-
 class IpuXlaMatMulTest(test_util.TensorFlowTestCase):
 
     def testMatMul2x2(self):

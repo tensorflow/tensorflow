@@ -12,8 +12,6 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 
-from tensorflow.compiler.poplar import poplar_plugin
-
 class IpuXlaSimpleNetworkTest(test_util.TensorFlowTestCase):
 
     def testAdd(self):
