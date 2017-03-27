@@ -477,7 +477,10 @@ class DynamicAttentionWrapper(core_rnn_cell.RNNCell):
 
   @property
   def output_size(self):
-    return self._attention_size
+    if self._output_attention:
+      return self._attention_size
+    else:
+      return self._cell.output_size
 
   @property
   def state_size(self):
