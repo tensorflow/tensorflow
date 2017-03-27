@@ -453,35 +453,19 @@ module VZ {
     }
 
     private resmoothDataset(dataset: Plottable.Dataset) {
-      // When increasing the smoothing window, it smoothes a lot with the first
-      // few points and then starts to gradually smooth slower, so using an
-      // exponential function makes the slider more consistent. 1000^x has a
-      // range of [1, 1000], so subtracting 1 and dividing by 999 results in a
-      // range of [0, 1], which can be used as the percentage of the data, so
-      // that the kernel size can be specified as a percentage instead of a
-      // hardcoded number, what would be bad with multiple series.
-      let factor = (Math.pow(1000, this.smoothingWeight) - 1) / 999;
-      let data = dataset.data();
-      let kernelRadius = Math.floor(data.length * factor / 2);
-
-      data.forEach((d, i) => {
-        let actualKernelRadius = Math.min(kernelRadius, i);
-        let start = i - actualKernelRadius;
-        let end = i + actualKernelRadius + 1;
-        if (end >= data.length) {
-          // In the beginning, it's OK for the smoothing window to be small,
-          // but this is not desirable towards the end. Rather than shrinking
-          // the window, or extrapolating data to fill the gap, we're simply
-          // not going to display the smoothed line towards the end.
-          d.smoothed = Infinity;
-        } else if (!_.isFinite(d.scalar)) {
-          // Only smooth finite numbers.
+      var data = dataset.data();
+      var smoothingWeight = this.smoothingWeight;
+      let last = data.length > 0 ? data[0].scalar : NaN;
+      data.forEach((d) => {
+        if (!_.isFinite(last)) {
           d.smoothed = d.scalar;
         } else {
-          d.smoothed = d3.mean(
-              data.slice(start, end).filter((d) => _.isFinite(d.scalar)),
-              (d) => d.scalar);
+          // 1st-order IIR low-pass filter to attenuate the higher-
+          // frequency components of the time-series.
+          d.smoothed = last * smoothingWeight +
+                       (1 - smoothingWeight) * d.scalar;
         }
+        last = d.smoothed;
       });
     }
 
