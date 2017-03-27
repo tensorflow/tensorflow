@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
 
 namespace tensorflow {
 namespace {
@@ -227,6 +228,38 @@ Status DoCallPyFunc(PyCall* call) {
 
 }  // end namespace
 
+// Outside anonymous namespace just to make the friend declaration in
+// tensorflow::Tensor apply.
+class NumpyTensorBuffer : public TensorBuffer {
+ public:
+  NumpyTensorBuffer(PyArrayObject* array, size_t len, void* data)
+      : array_(array), len_(len), data_(data) {}
+
+  ~NumpyTensorBuffer() override {
+    // Note: The session::run wrapper is responsible for freeing this while
+    // holding the GIL.
+    DelayedNumpyDecref(data_, len_, array_);
+  }
+
+  void* data() const override { return data_; }
+  size_t size() const override { return len_; }
+  TensorBuffer* root_buffer() override { return this; }
+  void FillAllocationDescription(AllocationDescription* proto) const override {
+    tensorflow::int64 rb = size();
+    proto->set_requested_bytes(rb);
+    proto->set_allocator_name(tensorflow::cpu_allocator()->Name());
+  }
+  Tensor MakeTensor(DataType dtype, TensorShape shape) {
+    CHECK_EQ(len_, shape.num_elements() * DataTypeSize(dtype));
+    return Tensor(dtype, shape, this);
+  }
+
+ private:
+  PyArrayObject* array_;
+  size_t len_;
+  void* data_;
+};
+
 Status ConvertNdarrayToTensor(PyObject* obj, Tensor* ret) {
   PyArrayObject* input = reinterpret_cast<PyArrayObject*>(obj);
   DataType dtype;
@@ -267,11 +300,23 @@ Status ConvertNdarrayToTensor(PyObject* obj, Tensor* ret) {
     }
     default: {
       TF_RETURN_IF_ERROR(NumericNpDTypeToTfDType(PyArray_TYPE(input), &dtype));
-      Tensor t(dtype, shape);
       CHECK(DataTypeCanUseMemcpy(dtype));
-      StringPiece p = t.tensor_data();
-      memcpy(const_cast<char*>(p.data()), PyArray_DATA(input), p.size());
-      *ret = t;
+      if (reinterpret_cast<intptr_t>(PyArray_DATA(input)) %
+              EIGEN_MAX_ALIGN_BYTES !=
+          0) {
+        Tensor t(dtype, shape);
+        StringPiece p = t.tensor_data();
+        memcpy(const_cast<char*>(p.data()), PyArray_DATA(input), p.size());
+        *ret = t;
+      } else {
+        // Incref the array as the calling context will decref it when we
+        // return and we want to keep a handle to this memory.
+        Py_INCREF(input);
+        NumpyTensorBuffer* buf = new NumpyTensorBuffer(
+            input, shape.num_elements() * DataTypeSize(dtype),
+            PyArray_DATA(input));
+        *ret = buf->MakeTensor(dtype, shape);
+      }
     }
   }
   return Status::OK();
