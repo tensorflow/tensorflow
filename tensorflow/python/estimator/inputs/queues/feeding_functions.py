@@ -244,8 +244,8 @@ class _GeneratorFeedFn(object):
 
     def __call__(self):
         if self._num_epochs and self._epoch >= self._num_epochs:
-            raise errors.OutOfRangeError(None, None,
-                                         "Already emitted %s epochs." % self._epoch)
+            raise errors.OutOfRangeError(
+                None, None, "Already emitted %s epochs." % self._epoch)
         list_dict = {}
         list_dict_size = 0
         while list_dict_size < self._batch_size:
@@ -255,10 +255,12 @@ class _GeneratorFeedFn(object):
                 self._epoch += 1
                 self._iterator = self._generator_function()
                 data_row = next(self._iterator)
-            for index, key in enumerate(data_row.keys()):
-                list_dict.setdefault(self._col_placeholders[index], list()).append(data_row[key])
+            for index, key in enumerate(sorted(data_row.keys())):
+                list_dict.setdefault(self._col_placeholders[index],
+                                     list()).append(data_row[key])
             list_dict_size += 1
-        feed_dict = {key: np.asarray(item) for key, item in list(list_dict.items())}
+        feed_dict = {key: np.asarray(item)
+                        for key, item in list(list_dict.items())}
         return feed_dict
 
 
