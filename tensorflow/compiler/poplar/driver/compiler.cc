@@ -54,21 +54,21 @@ public:
           : PoplarBaseVisitor(graph) {}
 
   Status HandleInfeed(HloInstruction* inst) {
-    VLOG(3) << inst->ToString();
+    VLOG(1) << inst->ToString();
     return port::Status(port::error::UNIMPLEMENTED,
                         port::StrCat(inst->name(),
                                      " not implemented"));
   }
 
   Status HandleOutfeed(HloInstruction* inst) {
-    VLOG(3) << inst->ToString();
+    VLOG(1) << inst->ToString();
     return port::Status(port::error::UNIMPLEMENTED,
                         port::StrCat(inst->name(),
                                      " not implemented"));
   }
 
   Status HandleParameter(HloInstruction* inst) {
-    VLOG(3) << inst->ToString();
+    VLOG(1) << inst->ToString();
 
     poplar::Tensor out;
     TF_ASSIGN_OR_RETURN(out, AddTensor(*graph_, inst->name(), inst->shape()));
@@ -79,14 +79,14 @@ public:
   }
 
   Status HandleSend(HloInstruction* inst) {
-    VLOG(3) << inst->ToString();
+    VLOG(1) << inst->ToString();
     return port::Status(port::error::UNIMPLEMENTED,
                         port::StrCat(inst->name(),
                                      " not implemented"));
   }
 
   Status HandleRecv(HloInstruction* inst) {
-    VLOG(3) << inst->ToString();
+    VLOG(1) << inst->ToString();
     return port::Status(port::error::UNIMPLEMENTED,
                         port::StrCat(inst->name(),
                                      " not implemented"));

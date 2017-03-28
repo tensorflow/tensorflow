@@ -61,7 +61,7 @@ Status PoplarBaseVisitor::HandleElementwiseUnary(
         HloInstruction* inst,
         HloOpcode opcode,
         HloInstruction* operand) {
-  VLOG(3) << inst->ToString();
+  VLOG(1) << inst->ToString();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
                       CreateUnaryElementwiseOp(*graph_,
@@ -77,7 +77,7 @@ Status PoplarBaseVisitor::HandleElementwiseBinary(
         HloOpcode opcode,
         HloInstruction* lhs,
         HloInstruction* rhs) {
-  VLOG(3) << inst->ToString();
+  VLOG(1) << inst->ToString();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
                       CreateBinaryElementwiseOp(*graph_,
@@ -90,7 +90,7 @@ Status PoplarBaseVisitor::HandleElementwiseBinary(
 
 Status PoplarBaseVisitor::HandleConvert(HloInstruction* inst,
                                         HloInstruction* operand) {
-  VLOG(3) << inst->ToString();
+  VLOG(1) << inst->ToString();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
                       CreateCastOp(*graph_,
@@ -106,7 +106,7 @@ Status PoplarBaseVisitor::HandleClamp(
         HloInstruction* min,
         HloInstruction* arg,
         HloInstruction* max) {
-  VLOG(3) << inst->ToString();
+  VLOG(1) << inst->ToString();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
                       CreateClampOp(*graph_,
@@ -122,7 +122,7 @@ Status PoplarBaseVisitor::HandleSelect(
         HloInstruction* pred,
         HloInstruction* on_true,
         HloInstruction* on_false) {
-  VLOG(3) << inst->ToString();
+  VLOG(1) << inst->ToString();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
                       CreateSelectOp(*graph_,
@@ -136,7 +136,7 @@ Status PoplarBaseVisitor::HandleSelect(
 Status PoplarBaseVisitor::HandleConcatenate(
         HloInstruction* inst,
         tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
-  VLOG(3) << inst->ToString();
+  VLOG(1) << inst->ToString();
   int64 dimension(inst->concatenate_dimension());
   poplar::Tensor out;
   TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 0, 0));
@@ -154,7 +154,7 @@ Status PoplarBaseVisitor::HandleDot(
         HloInstruction* inst,
         HloInstruction* lhs,
         HloInstruction* rhs) {
-  VLOG(3) << inst->ToString();
+  VLOG(1) << inst->ToString();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
                       CreateMatMulOp(*graph_,
@@ -170,7 +170,7 @@ Status PoplarBaseVisitor::HandleConvolution(
         HloInstruction* lhs,
         HloInstruction* rhs,
         const Window& window) {
-  VLOG(3) << inst->ToString();
+  VLOG(1) << inst->ToString();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
                       CreateConv2D(*graph_,
@@ -182,7 +182,7 @@ Status PoplarBaseVisitor::HandleConvolution(
 }
 
 Status PoplarBaseVisitor::HandleCrossReplicaSum(HloInstruction* inst) {
-  VLOG(3) << inst->ToString();
+  VLOG(1) << inst->ToString();
   return port::Status(port::error::UNIMPLEMENTED,
                       port::StrCat(inst->name(),
                                    " not implemented"));
@@ -191,7 +191,7 @@ Status PoplarBaseVisitor::HandleCrossReplicaSum(HloInstruction* inst) {
 Status PoplarBaseVisitor::HandleRng(
         HloInstruction* inst,
         RandomDistribution distribution) {
-  VLOG(3) << inst->ToString();
+  VLOG(1) << inst->ToString();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
                       CreateRandomOp(*graph_,
@@ -205,7 +205,7 @@ Status PoplarBaseVisitor::HandleRng(
 Status PoplarBaseVisitor::HandleReverse(
         HloInstruction* inst,
         HloInstruction* operand) {
-  VLOG(3) << inst->ToString();
+  VLOG(1) << inst->ToString();
   poplar::Tensor t;
   TF_ASSIGN_OR_RETURN(t, FindInstructionInput(tensor_map, inst, 0, 0));
   TF_ASSIGN_OR_RETURN(t, ReverseTensor(t, inst->dimensions()));
@@ -216,7 +216,7 @@ Status PoplarBaseVisitor::HandleReverse(
 Status PoplarBaseVisitor::HandleSort(
         HloInstruction* inst,
         HloInstruction* operand) {
-  VLOG(3) << inst->ToString();
+  VLOG(1) << inst->ToString();
   return port::Status(port::error::UNIMPLEMENTED,
                       port::StrCat(inst->name(),
                                    " not implemented"));
@@ -225,7 +225,7 @@ Status PoplarBaseVisitor::HandleSort(
 Status PoplarBaseVisitor::HandleConstant(
         HloInstruction* inst,
         const Literal& literal) {
-  VLOG(3) << inst->ToString();
+  VLOG(1) << inst->ToString();
   poplar::Tensor t;
   TF_ASSIGN_OR_RETURN(t, AddConstantTensor(*graph_,
                                            inst->name(),
@@ -238,7 +238,7 @@ Status PoplarBaseVisitor::HandleConstant(
 Status PoplarBaseVisitor::HandleGetTupleElement(
         HloInstruction* inst,
         HloInstruction* operand) {
-  VLOG(3) << inst->ToString();
+  VLOG(1) << inst->ToString();
   poplar::Tensor t;
   TF_ASSIGN_OR_RETURN(t, FindInstructionInput(tensor_map,
                                               inst,
@@ -254,7 +254,7 @@ Status PoplarBaseVisitor::HandleReduce(
         HloInstruction* init_value,
         tensorflow::gtl::ArraySlice<int64> dimensions,
         HloComputation* function) {
-  VLOG(3) << inst->ToString();
+  VLOG(1) << inst->ToString();
   bool simple_reduction;
   TF_ASSIGN_OR_RETURN(simple_reduction,
                       IsComputationReducableArtithmetic(function));
@@ -283,7 +283,7 @@ Status PoplarBaseVisitor::HandleBitcast(HloInstruction* inst) {
 }
 
 Status PoplarBaseVisitor::HandleBroadcast(HloInstruction* inst) {
-  VLOG(3) << inst->ToString();
+  VLOG(1) << inst->ToString();
   poplar::Tensor out;
   TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 0, 0));
   TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out,
@@ -296,7 +296,7 @@ Status PoplarBaseVisitor::HandleBroadcast(HloInstruction* inst) {
 }
 
 Status PoplarBaseVisitor::HandleReshape(HloInstruction* inst) {
-  VLOG(3) << inst->ToString();
+  VLOG(1) << inst->ToString();
   poplar::Tensor out;
   TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 0, 0));
   std::vector<size_t> dims(PoplarShapeFromXlaShape(GetOutputShape(inst)));
@@ -306,7 +306,7 @@ Status PoplarBaseVisitor::HandleReshape(HloInstruction* inst) {
 }
 
 Status PoplarBaseVisitor::HandleTranspose(HloInstruction* inst) {
-  VLOG(3) << inst->ToString();
+  VLOG(1) << inst->ToString();
   poplar::Tensor out;
   TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 0, 0));
   std::vector<unsigned> permutation(
@@ -317,7 +317,7 @@ Status PoplarBaseVisitor::HandleTranspose(HloInstruction* inst) {
 }
 
 Status PoplarBaseVisitor::HandleFusion(HloInstruction* inst) {
-  VLOG(3) << inst->ToString();
+  VLOG(1) << inst->ToString();
   return port::Status(port::error::UNIMPLEMENTED,
                       port::StrCat(inst->name(),
                                    " not implemented"));
@@ -327,7 +327,7 @@ Status PoplarBaseVisitor::HandleCall(
         HloInstruction* inst,
         tensorflow::gtl::ArraySlice<HloInstruction*> operands,
         HloComputation* computation) {
-  VLOG(3) << inst->ToString();
+  VLOG(1) << inst->ToString();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
                       CreateCallOp(*graph_,
@@ -351,7 +351,7 @@ Status PoplarBaseVisitor::HandleCustomCall(
 Status PoplarBaseVisitor::HandleSlice(
         HloInstruction* inst,
         HloInstruction* operand) {
-  VLOG(3) << inst->ToString();
+  VLOG(1) << inst->ToString();
   poplar::Tensor out;
   TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 0, 0));
   std::vector<std::size_t> begin(
@@ -366,7 +366,7 @@ Status PoplarBaseVisitor::HandleSlice(
 Status PoplarBaseVisitor::HandleDynamicSlice(
         HloInstruction* inst,
         tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
-  VLOG(3) << inst->ToString();
+  VLOG(1) << inst->ToString();
   return port::Status(port::error::UNIMPLEMENTED,
                       port::StrCat(inst->name(),
                                    " not implemented"));
@@ -377,7 +377,7 @@ Status PoplarBaseVisitor::HandleDynamicUpdateSlice(
         HloInstruction* operand,
         HloInstruction* update,
         HloInstruction* start_indices) {
-  VLOG(3) << inst->ToString();
+  VLOG(1) << inst->ToString();
   return port::Status(port::error::UNIMPLEMENTED,
                       port::StrCat(inst->name(),
                                    " not implemented"));
@@ -386,7 +386,7 @@ Status PoplarBaseVisitor::HandleDynamicUpdateSlice(
 Status PoplarBaseVisitor::HandleTuple(
         HloInstruction* inst,
         tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
-  VLOG(3) << inst->ToString();
+  VLOG(1) << inst->ToString();
   uint64 operand_count(inst->operand_count());
   for (uint64 i=0; i<operand_count; i++) {
     poplar::Tensor t;
@@ -401,7 +401,7 @@ Status PoplarBaseVisitor::HandleMap(
         tensorflow::gtl::ArraySlice<HloInstruction*> operands,
         HloComputation* function,
         tensorflow::gtl::ArraySlice<HloInstruction*> static_operands) {
-  VLOG(3) << inst->ToString();
+  VLOG(1) << inst->ToString();
   bool simple_parallel;
   TF_ASSIGN_OR_RETURN(simple_parallel,
                       IsComputationParallelMap(function));
@@ -425,7 +425,7 @@ Status PoplarBaseVisitor::HandleReduceWindow(
         HloInstruction* operand,
         const Window& window,
         HloComputation* function) {
-  VLOG(3) << inst->ToString();
+  VLOG(1) << inst->ToString();
   bool simple_reduction;
   TF_ASSIGN_OR_RETURN(simple_reduction,
                       IsComputationReducableArtithmetic(function));
@@ -445,7 +445,7 @@ Status PoplarBaseVisitor::HandleReduceWindow(
 }
 
 Status PoplarBaseVisitor::HandleSelectAndScatter(HloInstruction* inst) {
-  VLOG(3) << inst->ToString();
+  VLOG(1) << inst->ToString();
   bool simple_selection;
   TF_ASSIGN_OR_RETURN(simple_selection,
                       IsComputationSimpleSelection(inst->select()));
@@ -472,14 +472,14 @@ Status PoplarBaseVisitor::HandleWhile(
         HloInstruction* init,
         HloComputation* condition,
         HloComputation* body) {
-  VLOG(3) << inst->ToString();
+  VLOG(1) << inst->ToString();
   return port::Status(port::error::UNIMPLEMENTED,
                       port::StrCat(inst->name(),
                                    " not implemented"));
 }
 
 Status PoplarBaseVisitor::HandlePad(HloInstruction* inst) {
-  VLOG(3) << inst->ToString();
+  VLOG(1) << inst->ToString();
   poplar::Tensor out;
   poplar::Tensor pad;
   TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 0, 0));
