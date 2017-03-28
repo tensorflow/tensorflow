@@ -82,7 +82,7 @@ RUN mkdir /bazel && \
 
 RUN git clone https://github.com/tensorflow/tensorflow.git && \
     cd tensorflow && \
-    git checkout r1.0
+    git checkout r1.1
 WORKDIR /tensorflow
 
 # TODO(craigcitro): Don't install the pip package, since it makes it
