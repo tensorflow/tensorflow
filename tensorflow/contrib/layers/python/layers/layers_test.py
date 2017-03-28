@@ -2980,6 +2980,22 @@ class SeparableConv2dTest(test.TestCase):
       sess.run(net, feed_dict={images_placeholder: images})
 
 
+class ScaleGradientTests(test.TestCase):
+  """Simple tests of the scale_gradient function."""
+
+  def testBasic(self):
+    with self.test_session():
+      x = np.array([42], np.float32)
+      gradient_scale = np.array([2], np.float32)
+
+      x = ops.convert_to_tensor(x)
+      y = layers_lib.scale_gradient(x, gradient_scale)
+
+      np.testing.assert_array_equal(x.eval(), y.eval())
+      g_x, = gradients_impl.gradients(y, [x], [np.array([3], np.float32)])
+      np.testing.assert_array_equal([3 * 2], g_x.eval())
+
+
 class SoftmaxTests(test.TestCase):
 
   def setUp(self):

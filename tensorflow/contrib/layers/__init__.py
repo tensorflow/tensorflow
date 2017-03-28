@@ -35,6 +35,7 @@ See the @{$python/contrib.layers} guide.
 @@relu6
 @@repeat
 @@safe_embedding_lookup_sparse
+@@scale_gradient
 @@separable_conv2d
 @@separable_convolution2d
 @@softmax
