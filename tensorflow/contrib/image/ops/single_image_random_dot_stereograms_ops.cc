@@ -35,7 +35,6 @@ REGISTER_OP("SingleImageRandomDotStereograms")
     .Attr("normalize_min: float = 100.0")
     .Attr("border_level: float = 0.0")
     .Attr("number_colors: int = 256")
-    .Attr("generation_mode: string = 'SIRDS'")
     .Attr(
         "output_image_shape: shape = { dim {size:1024} dim {size: 768} dim "
         "{size: 1}}")
@@ -83,8 +82,6 @@ normalize_max: Fix MAX value for Normalization - if < MIN, autoscale
 normalize_min: Fix MIN value for Normalization - if > MAX, autoscale
 border_level: Value of border depth 0.0 {far} to 1.0 {near}
 number_colors: 2 (Black & White),256 (grayscale), and Numbers > 256 (Full Color) are all that are supported currently
-generation_mode: Mode for Stereogram
-  SIRDS - single image random dot stereogram (Default)
 output_image_shape: Output size of returned image in X,Y, Channels 1-grayscale, 3 color (1024, 768, 1),
   channels will be updated to 3 if 'number_colors' > 256
 output_data_window: Size of "DATA" window, must be equal to or smaller than 'output_image_shape', will be centered

@@ -34,8 +34,6 @@ def single_image_random_dot_stereograms(
     normalize=None, normalize_max=None,
     normalize_min=None,
     border_level=None,
-    number_colors=None,
-    generation_mode=None,
     output_image_shape=None,
     output_data_window=None):
     """Output a RandomDotStereogram Tensor for export via encode_PNG/JPG OP.
@@ -93,8 +91,6 @@ def single_image_random_dot_stereograms(
       number_colors: An optional `int`. Defaults to `256`. 2 (Black &
         White),256 (grayscale), and Numbers > 256 (Full Color) are
         supported
-      generation_mode: An optional `string`. Defaults to `"SIRDS"`.
-        SIRDS - single image random dot stereogram (Default)
       output_image_shape: An optional `tf.TensorShape` or list of `ints`. 
         Defaults to shape `[1024, 768, 1]`. Defines output shape of returned
         image in '[X,Y, Channels]' 1-grayscale, 3 color; channels will be
@@ -120,7 +116,6 @@ def single_image_random_dot_stereograms(
         normalize_min=normalize_min,
         border_level=border_level,
         number_colors=number_colors,
-        generation_mode=generation_mode,
         output_image_shape=output_image_shape,
         output_data_window=output_data_window)
     return result
