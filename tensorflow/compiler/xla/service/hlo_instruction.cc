@@ -834,10 +834,10 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
   }
 }
 
-std::unique_ptr<HloInstruction> HloInstruction::Clone() {
+std::unique_ptr<HloInstruction> HloInstruction::Clone(const string& suffix) {
   std::unique_ptr<HloInstruction> clone =
       CloneWithNewOperands(shape_, operands_);
-  clone->name_ = name() + ".clone";
+  clone->name_ = name() + "." + suffix;
   return clone;
 }
 

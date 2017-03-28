@@ -39,7 +39,8 @@ GraphDef CreateGraphDef(int num_stages, int width, int tensor_size,
 
   // x is from the feed.
   const int batch_size = tensor_size < 0 ? 1 : tensor_size;
-  Output x = Const(s.WithOpName("x"), 0.0f, {batch_size, 1});
+  Output x =
+      RandomNormal(s.WithOpName("x"), {batch_size, 1}, DataType::DT_FLOAT);
 
   // Create stages.
   std::vector<Output> last_stage;
