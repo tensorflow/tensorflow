@@ -24,6 +24,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -950,6 +951,25 @@ class VariableScopeWithCustomGetterTest(test.TestCase):
     self.assertEqual(v, v2)
     self.assertEqual(v3, v4)
     self.assertEqual(3, called[0])  # skipped one in the first new_scope
+
+  def testCustomGetterWithReuse(self):
+    # Custom getter can choose to behave differently on reused variables.
+    def custom_getter(getter, *args, **kwargs):
+      var = getter(*args, **kwargs)
+      if kwargs["reuse"]:
+        # This can be used, e.g., for changing the caching device if needed.
+        return array_ops.identity(var, name="reused")
+      else:
+        return array_ops.identity(var, name="not_reused")
+
+    with variable_scope.variable_scope(
+        "scope", custom_getter=custom_getter) as scope:
+      v = variable_scope.get_variable("v", [1])
+    with variable_scope.variable_scope(scope, reuse=True):
+      v2 = variable_scope.get_variable("v", [1])
+
+    self.assertEqual(v.name, "not_reused:0")
+    self.assertEqual(v2.name, "reused:0")
 
   def testGetterThatCreatesTwoVariablesAndSumsThem(self):
 

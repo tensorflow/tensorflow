@@ -3767,6 +3767,7 @@ filegroup(
         "spacetodepth_op.cc",
         "sparse_to_dense_op.cc",
         "stack_ops.cc",
+        "string_join_op.cc",
         "summary_op.cc",
         "tensor_array.cc",
         "tensor_array_ops.cc",

@@ -87,7 +87,9 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
 
   private static final boolean DEBUG_MODEL = false;
 
-  private static final int[] SIZES = {32, 48, 64, 96, 128, 192, 256, 384, 512, 768, 1024};
+  private static final int[] SIZES = {128, 192, 256, 384, 512, 720};
+
+  private static final Size DESIRED_PREVIEW_SIZE = new Size(1280, 720);
 
   // Start at a medium size, but let the user step up through smaller sizes so they don't get
   // immediately stuck processing a large image.
@@ -191,8 +193,8 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
   }
 
   @Override
-  protected int getDesiredPreviewFrameSize() {
-    return SIZES[SIZES.length - 1];
+  protected Size getDesiredPreviewFrameSize() {
+    return DESIRED_PREVIEW_SIZE;
   }
 
   public static Bitmap getBitmapFromAsset(final Context context, final String filePath) {
@@ -299,7 +301,9 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
               setMeasuredDimension(getMeasuredWidth(), getMeasuredWidth());
             }
           };
-      saveButton.setText("Save");
+      saveButton.setText("save");
+      saveButton.setTextSize(12);
+
       saveButton.setOnClickListener(
           new OnClickListener() {
             @Override

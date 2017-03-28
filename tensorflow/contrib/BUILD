@@ -34,6 +34,7 @@ py_library(
         "//tensorflow/contrib/input_pipeline:input_pipeline_py",
         "//tensorflow/contrib/integrate:integrate_py",
         "//tensorflow/contrib/keras",
+        "//tensorflow/contrib/kernel_methods",
         "//tensorflow/contrib/labeled_tensor",
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/contrib/learn",

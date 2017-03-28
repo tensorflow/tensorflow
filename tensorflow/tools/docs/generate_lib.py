@@ -149,14 +149,15 @@ def write_docs(output_dir, parser_config, duplicate_of, index, yaml_toc):
         f.write('  - title: ' + module + '\n'
                 '    section:\n' +
                 '    - title: Overview\n' +
-                '      path: /TARGET_DOC_ROOT/' + symbol_to_file[module] + '\n')
+                '      path: /TARGET_DOC_ROOT/VERSION/' +
+                symbol_to_file[module] + '\n')
 
         symbols_in_module = module_children.get(module, [])
         symbols_in_module.sort(key=lambda a: a.upper())
 
         for full_name in symbols_in_module:
           f.write('    - title: ' + full_name[len(module)+1:] + '\n'
-                  '      path: /TARGET_DOC_ROOT/' +
+                  '      path: /TARGET_DOC_ROOT/VERSION/' +
                   symbol_to_file[full_name] + '\n')
 
   # Write a global index containing all full names with links.

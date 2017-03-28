@@ -642,8 +642,9 @@ class HloInstruction {
 
   // Clones the HLO instruction. The clone will have the same opcode, shape, and
   // operands. After creation the clone has no uses. "this" (the instruction
-  // cloned from) is not changed.
-  std::unique_ptr<HloInstruction> Clone();
+  // cloned from) is not changed. Suffix is the string to append to the name of
+  // the instruction to form the name of the cloned instruction.
+  std::unique_ptr<HloInstruction> Clone(const string& suffix = "clone");
 
   // Clones the HLO instruction as above but with new shape and operands.
   std::unique_ptr<HloInstruction> CloneWithNewOperands(
