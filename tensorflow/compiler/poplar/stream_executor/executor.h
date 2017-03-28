@@ -22,8 +22,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_POPLAR_STREAM_EXECUTOR_POPLAR_EXECUTOR_H_
 #define TENSORFLOW_COMPILER_POPLAR_STREAM_EXECUTOR_POPLAR_EXECUTOR_H_
 
-#include "tensorflow/compiler/poplar/stream_executor/stream.h"
-#include "tensorflow/compiler/poplar/stream_executor/timer.h"
+#include "tensorflow/stream_executor/host/host_stream.h"
+#include "tensorflow/stream_executor/host/host_timer.h"
 
 #include "tensorflow/compiler/xla/shape_util.h"
 
@@ -77,36 +77,40 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
   bool HostMemoryRegister(void *mem, uint64 size) override { return true; }
   bool HostMemoryUnregister(void *mem) override { return true; }
 
-  bool Memcpy(Stream *stream, void *host_dst, const DeviceMemoryBase &gpu_src,
+  bool Memcpy(Stream *stream, void *host_dst, const DeviceMemoryBase &pop_src,
               uint64 size) override;
-  bool Memcpy(Stream *stream, DeviceMemoryBase *gpu_dst, const void *host_src,
+  bool Memcpy(Stream *stream, DeviceMemoryBase *pop_dst, const void *host_src,
               uint64 size) override;
-  bool MemcpyDeviceToDevice(Stream *stream, DeviceMemoryBase *gpu_dst,
+  bool MemcpyDeviceToDevice(Stream *stream, DeviceMemoryBase *pop_dst,
                             const DeviceMemoryBase &host_src,
-                            uint64 size) override;
+                            uint64 size) override { return false; }
 
   bool MemZero(Stream *stream, DeviceMemoryBase *location,
-               uint64 size) override;
+               uint64 size) override { return false; }
   bool Memset(Stream *stream, DeviceMemoryBase *location, uint8 pattern,
-              uint64 size) override;
+              uint64 size) override { return false; }
   bool Memset32(Stream *stream, DeviceMemoryBase *location, uint32 pattern,
-                uint64 size) override;
+                uint64 size) override { return false; }
 
   // No "synchronize all activity" implemented for this platform at the moment.
   bool SynchronizeAllActivity() override { return false; }
-  bool SynchronousMemZero(DeviceMemoryBase *location, uint64 size) override;
+  bool SynchronousMemZero(DeviceMemoryBase *location, uint64 size) override {
+    return false;
+  }
 
   bool SynchronousMemSet(DeviceMemoryBase *location, int value,
-                         uint64 size) override;
+                         uint64 size) override { return false; }
 
-  port::Status SynchronousMemcpy(DeviceMemoryBase *gpu_dst,
+  port::Status SynchronousMemcpy(DeviceMemoryBase *pop_dst,
                                  const void *host_src, uint64 size) override;
   port::Status SynchronousMemcpy(void *host_dst,
-                                 const DeviceMemoryBase &gpu_src,
+                                 const DeviceMemoryBase &pop_src,
                                  uint64 size) override;
-  port::Status SynchronousMemcpyDeviceToDevice(DeviceMemoryBase *gpu_dst,
-                                               const DeviceMemoryBase &gpu_src,
-                                               uint64 size) override;
+  port::Status SynchronousMemcpyDeviceToDevice(DeviceMemoryBase *pop_dst,
+                                               const DeviceMemoryBase &pop_src,
+                                               uint64 size) override {
+    return port::Status{port::error::UNIMPLEMENTED, ""};
+  }
 
   bool HostCallback(Stream *stream, std::function<void()> callback) override;
 
@@ -130,17 +134,13 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
     return Event::Status::kError;
   }
 
-  bool AllocateStream(Stream *stream) override;
-  void DeallocateStream(Stream *stream) override;
+  bool AllocateStream(Stream *stream) override { return true; }
+  void DeallocateStream(Stream *stream) override {}
   bool CreateStreamDependency(Stream *dependent, Stream *other) override;
 
-  // No special initialization is necessary for host timers.
   bool AllocateTimer(Timer *timer) override { return true; }
-
   void DeallocateTimer(Timer *timer) override {}
-
   bool StartTimer(Stream *stream, Timer *timer) override;
-
   bool StopTimer(Stream *stream, Timer *timer) override;
 
   bool BlockHostUntilDone(Stream *stream) override;
@@ -162,43 +162,34 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
   }
 
   SharedMemoryConfig GetDeviceSharedMemoryConfig() override {
-    LOG(INFO) << "Shared memory configuration is unsupported for poplar "
-              << "executors.";
     return SharedMemoryConfig::kDefault;
   }
 
   port::Status SetDeviceSharedMemoryConfig(SharedMemoryConfig config) override {
-    string error_msg{
-        "Shared memory configuration is unsupported for poplar "
-        "executors."};
-    LOG(INFO) << error_msg;
-    return port::Status{port::error::UNIMPLEMENTED, error_msg};
+    return port::Status{port::error::UNIMPLEMENTED,
+                        "Shared memory not supported"};
   }
 
   std::unique_ptr<internal::EventInterface> CreateEventImplementation()
-      override {
-    LOG(WARNING) << "Events not currently supported by PoplarExecutor.";
-    return nullptr;
-  }
+      override { return nullptr; }
 
   std::unique_ptr<internal::KernelInterface> CreateKernelImplementation()
-      override {
-    return nullptr;
-  }
+      override { return nullptr; }
 
   std::unique_ptr<internal::StreamInterface> GetStreamImplementation()
       override {
-    return std::unique_ptr<internal::StreamInterface>(new PoplarStream());
+    return std::unique_ptr<internal::StreamInterface>(new host::HostStream());
   }
 
   std::unique_ptr<internal::TimerInterface> GetTimerImplementation() override {
-    return std::unique_ptr<internal::TimerInterface>(new PoplarTimer());
+    return std::unique_ptr<internal::TimerInterface>(new host::HostTimer());
   }
 
 
   // Poplar Interface
 
-  port::StatusOr<DeviceMemoryBase> ExecuteEngine(poplar::Engine* engine,
+  port::StatusOr<DeviceMemoryBase> ExecuteEngine(Stream *stream,
+                                                 poplar::Engine* engine,
                                                  const xla::Shape& shape,
                                                  const Args& args);
 

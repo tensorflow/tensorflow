@@ -48,9 +48,9 @@ struct TensorControl {
   char data[0];
 };
 
-PoplarStream *AsPoplarStream(Stream *stream) {
+host::HostStream *AsPoplarStream(Stream *stream) {
   DCHECK(stream != nullptr);
-  return dynamic_cast<PoplarStream *>(stream->implementation());
+  return dynamic_cast<host::HostStream *>(stream->implementation());
 }
 
 PoplarExecutor::PoplarExecutor(const PluginConfig &plugin_config)
@@ -78,77 +78,19 @@ void PoplarExecutor::Deallocate(DeviceMemoryBase *mem) {
   }
 }
 
-bool
-PoplarExecutor::SynchronousMemZero(DeviceMemoryBase *location, uint64 size) {
-  TensorControl* tc = reinterpret_cast<TensorControl*>(location->opaque());
-  memset(tc->data, 0, size);
-  return true;
-}
-
-bool PoplarExecutor::SynchronousMemSet(DeviceMemoryBase *location, int value,
-                                     uint64 size) {
-  TensorControl* tc = reinterpret_cast<TensorControl*>(location->opaque());
-  memset(tc->data, value, size);
-  return true;
-}
-
 bool PoplarExecutor::Memcpy(Stream *stream, void *host_dst,
                           const DeviceMemoryBase &pop_src, uint64 size) {
-  const TensorControl* tc =
-          reinterpret_cast<const TensorControl*>(pop_src.opaque());
-  const void *src_mem = tc->data;
   AsPoplarStream(stream)->EnqueueTask(
-      [host_dst, src_mem, size]() { memcpy(host_dst, src_mem, size); });
+      [this, host_dst, pop_src, size]() {
+        port::Status ok = SynchronousMemcpy(host_dst, pop_src, size); });
   return true;
 }
 
 bool PoplarExecutor::Memcpy(Stream *stream, DeviceMemoryBase *pop_dst,
                           const void *host_src, uint64 size) {
-  TensorControl* tc = reinterpret_cast<TensorControl*>(pop_dst->opaque());
-  void *dst_mem = tc->data;
   AsPoplarStream(stream)->EnqueueTask(
-      [dst_mem, host_src, size]() { memcpy(dst_mem, host_src, size); });
-  return true;
-}
-
-bool PoplarExecutor::MemcpyDeviceToDevice(Stream *stream,
-                                        DeviceMemoryBase *pop_dst,
-                                        const DeviceMemoryBase &pop_src,
-                                        uint64 size) {
-  const TensorControl* tc_src =
-          reinterpret_cast<const TensorControl*>(pop_src.opaque());
-  TensorControl* tc_dst = reinterpret_cast<TensorControl*>(pop_dst->opaque());
-  void *dst_mem = tc_dst->data;
-  const void *src_mem = tc_src->data;
-  AsPoplarStream(stream)->EnqueueTask(
-      [src_mem, dst_mem, size]() { memcpy(dst_mem, src_mem, size); });
-  return true;
-}
-
-bool PoplarExecutor::MemZero(Stream *stream, DeviceMemoryBase *location,
-                           uint64 size) {
-  TensorControl* tc = reinterpret_cast<TensorControl*>(location->opaque());
-  void *pop_mem = tc->data;
-  AsPoplarStream(stream)->EnqueueTask(
-      [pop_mem, size]() { memset(pop_mem, 0, size); });
-  return true;
-}
-
-bool PoplarExecutor::Memset(Stream *stream, DeviceMemoryBase *location,
-                          uint8 pattern, uint64 size) {
-  TensorControl* tc = reinterpret_cast<TensorControl*>(location->opaque());
-  void *pop_mem = tc->data;
-  AsPoplarStream(stream)->EnqueueTask(
-      [pop_mem, size, pattern]() { memset(pop_mem, pattern, size); });
-  return true;
-}
-
-bool PoplarExecutor::Memset32(Stream *stream, DeviceMemoryBase *location,
-                            uint32 pattern, uint64 size) {
-  TensorControl* tc = reinterpret_cast<TensorControl*>(location->opaque());
-  void *pop_mem = tc->data;
-  AsPoplarStream(stream)->EnqueueTask(
-      [pop_mem, size, pattern]() { memset(pop_mem, pattern, size); });
+      [this, pop_dst, host_src, size]() {
+        port::Status ok = SynchronousMemcpy(pop_dst, host_src, size); });
   return true;
 }
 
@@ -156,7 +98,6 @@ port::Status PoplarExecutor::SynchronousMemcpy(DeviceMemoryBase *pop_dst,
                                              const void *host_src,
                                              uint64 size) {
   TensorControl* tc = reinterpret_cast<TensorControl*>(pop_dst->opaque());
-
   memcpy(tc->data, host_src, size);
   return port::Status::OK();
 }
@@ -170,27 +111,10 @@ port::Status PoplarExecutor::SynchronousMemcpy(void *host_dst,
   return port::Status::OK();
 }
 
-port::Status PoplarExecutor::SynchronousMemcpyDeviceToDevice(
-    DeviceMemoryBase *pop_dst, const DeviceMemoryBase &pop_src, uint64 size) {
-  TensorControl* tc_dst = reinterpret_cast<TensorControl*>(pop_dst->opaque());
-  const TensorControl* tc_src =
-          reinterpret_cast<const TensorControl*>(pop_src.opaque());
-
-  memcpy(tc_dst->data, tc_src->data, size);
-  return port::Status::OK();
-}
-
 bool PoplarExecutor::HostCallback(Stream *stream,
                                 std::function<void()> callback) {
   AsPoplarStream(stream)->EnqueueTask(callback);
   return true;
-}
-
-bool PoplarExecutor::AllocateStream(Stream *stream) {
-  return true;
-}
-
-void PoplarExecutor::DeallocateStream(Stream *stream) {
 }
 
 bool PoplarExecutor::CreateStreamDependency(Stream *dependent, Stream *other) {
@@ -201,12 +125,12 @@ bool PoplarExecutor::CreateStreamDependency(Stream *dependent, Stream *other) {
 }
 
 bool PoplarExecutor::StartTimer(Stream *stream, Timer *timer) {
-  dynamic_cast<PoplarTimer *>(timer->implementation())->Start(stream);
+  dynamic_cast<host::HostTimer *>(timer->implementation())->Start(stream);
   return true;
 }
 
 bool PoplarExecutor::StopTimer(Stream *stream, Timer *timer) {
-  dynamic_cast<PoplarTimer *>(timer->implementation())->Stop(stream);
+  dynamic_cast<host::HostTimer *>(timer->implementation())->Stop(stream);
   return true;
 }
 
@@ -288,16 +212,23 @@ PoplarExecutor::CopyDataFromPoplar(const xla::Shape& shape,
 }
 
 port::StatusOr<se::DeviceMemoryBase>
-PoplarExecutor::ExecuteEngine(poplar::Engine* engine,
+PoplarExecutor::ExecuteEngine(Stream *stream,
+                              poplar::Engine* engine,
                               const xla::Shape& shape,
                               const Args& args) {
   // TODO Check if we have changed engines and retreive old data
-  current_engine_ = engine;
-  CopyDataToPoplar(args);
-  current_engine_->run(0);
   perftools::gputools::DeviceMemoryBase retbuf;
   TF_ASSIGN_OR_RETURN(retbuf, AllocateOutputBuffer(shape));
-  CopyDataFromPoplar(shape, retbuf);
+
+  current_engine_ = engine;
+  AsPoplarStream(stream)->EnqueueTask(
+          [this, engine, shape, &retbuf, args]() {
+            CopyDataToPoplar(args);
+            current_engine_->run(0);
+            CopyDataFromPoplar(shape, retbuf);
+          });
+
+  stream->BlockHostUntilDone();
   return retbuf;
 }
 

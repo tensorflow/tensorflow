@@ -51,7 +51,8 @@ PoplarExecutable::ExecuteOnStream(
 
   perftools::gputools::DeviceMemoryBase retbuf;
   TF_ASSIGN_OR_RETURN(retbuf,
-                      poplarExecutor->ExecuteEngine(poplar_engine_.get(),
+                      poplarExecutor->ExecuteEngine(stream,
+                                                    poplar_engine_.get(),
                                                     result_shape(),
                                                     arguments));
   return retbuf;
