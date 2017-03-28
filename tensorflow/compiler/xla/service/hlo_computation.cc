@@ -102,8 +102,8 @@ HloInstruction* HloComputation::AddInstructionInternal(
 void HloComputation::Reparent(HloInstruction* instruction) {
   instruction->set_parent(this);
   if (instruction->opcode() == HloOpcode::kFusion) {
-    for (auto& instruction : instruction->fused_instructions()) {
-      Reparent(instruction.get());
+    for (auto& i : instruction->fused_instructions()) {
+      Reparent(i.get());
     }
   }
 }
