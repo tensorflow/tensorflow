@@ -270,6 +270,8 @@ def sdca_model_fn(features, labels, mode, params, config=None):
 
   with variable_scope.variable_op_scope(features.values(),
                                         parent_scope) as scope:
+    features = features.copy()
+    features.update(layers.transform_features(features, feature_columns))
     logits, columns_to_variables, bias = (
         layers.weighted_sum_from_feature_columns(
             columns_to_tensors=features,
