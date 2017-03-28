@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 from scipy import stats
 from tensorflow.contrib import distributions
+from tensorflow.contrib.distributions.python.ops import bijectors
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn_ops
@@ -49,6 +50,22 @@ class MultivariateNormalDiagTest(test.TestCase):
     with self.test_session():
       dist = ds.MultivariateNormalDiag(mu, diag, validate_args=True)
       self.assertAllEqual([3, 1], dist.sample(3).get_shape())
+
+  def testDistWithBatchShapeOneThenTransformedThroughSoftplus(self):
+    # This complex combination of events resulted in a loss of static shape
+    # information when tensor_util.constant_value(self._needs_rotation) was
+    # being used incorrectly (resulting in always rotating).
+    # Batch shape = [1], event shape = [3]
+    mu = array_ops.zeros((1, 3))
+    diag = array_ops.ones((1, 3))
+    with self.test_session():
+      base_dist = ds.MultivariateNormalDiag(mu, diag, validate_args=True)
+      dist = ds.TransformedDistribution(
+          base_dist,
+          validate_args=True,
+          bijector=bijectors.Softplus(event_ndims=1))
+      samps = dist.sample(5)  # Shape [5, 1, 3].
+      self.assertAllEqual([5, 1], dist.log_prob(samps).get_shape())
 
   def testMean(self):
     mu = [-1., 1]
