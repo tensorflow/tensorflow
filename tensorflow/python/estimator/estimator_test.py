@@ -450,6 +450,27 @@ class EstimatorEvaluateTest(test.TestCase):
     self.assertIn('metric', scores)
     self.assertAlmostEqual(2., scores['metric'])
 
+  def test_tuple_metrics(self):
+    def _model_fn(features, labels, mode):
+      del features  # unused
+      del labels
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          train_op=control_flow_ops.no_op(),
+          loss=constant_op.constant(1.),
+          eval_metric_ops={
+              'nested_metric': (
+                  ((constant_op.constant(2.), constant_op.constant(1)),
+                   constant_op.constant(3., dtype=dtypes.float64)),
+                  control_flow_ops.no_op())})
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.train(dummy_input_fn, steps=1)
+    evaluation = est.evaluate(dummy_input_fn, steps=1)
+    ((two_float, one_integer), three_double) = evaluation['nested_metric']
+    self.assertAlmostEqual(2., two_float)
+    self.assertEqual(1, one_integer)
+    self.assertAlmostEqual(3., three_double)
+
   def test_steps0_raises_error(self):
     est = estimator.Estimator(
         model_fn=_model_fn_with_eval_metric_ops)
