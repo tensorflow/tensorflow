@@ -89,12 +89,22 @@ py_test(
     ],
 )
 
+py_test(
+    name = "multi_run_test",
+    size = "small",
+    srcs = ["tests/multi_run_test.py"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
 test_suite(
     name = "all_tests",
     tests = [
         "device_test",
         "simple_network_test",
         "matmul_test",
+        "multi_run_test",
         "conv_test",
         "variable_test",
     ],
