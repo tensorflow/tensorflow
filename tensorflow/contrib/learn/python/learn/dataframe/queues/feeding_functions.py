@@ -27,6 +27,3 @@ from tensorflow.python.estimator.inputs.queues.feeding_functions import _PandasF
 from tensorflow.python.estimator.inputs.queues.feeding_functions import _GeneratorFeedFn
 from tensorflow.python.estimator.inputs.queues.feeding_functions import errors
 # pylint: enable=unused-import
-
-
-
