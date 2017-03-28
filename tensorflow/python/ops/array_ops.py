@@ -2274,7 +2274,7 @@ def where(condition, x=None, y=None, name=None):
 
   If both non-None, `x` and `y` must have the same shape.
   The `condition` tensor must be a scalar if `x` and `y` are scalar.
-  If `x` and `y` are vectors or higher rank, then `condition` must be either a
+  If `x` and `y` are vectors of higher rank, then `condition` must be either a
   vector with size matching the first dimension of `x`, or must have the same
   shape as `x`.
 
