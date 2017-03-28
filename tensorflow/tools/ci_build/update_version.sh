@@ -85,16 +85,6 @@ check_existence file "${SETUP_PY}"
 
 sed -i -e "s/^\_VERSION = [\'\"].*[\'\"]/\_VERSION = \'${MAJOR}.${MINOR}.${PATCH}\'/g" "${SETUP_PY}"
 
-# Update os_setup.md
-OS_SETUP="${TF_SRC_DIR}/g3doc/get_started/os_setup.md"
-check_existence file "${OS_SETUP}"
-
-sed -i -r -e "s/(.*pip[0-9]* install .*tensorflow-)([0-9]+\.[0-9]+\.[[:alnum:]]+)(-.*\.whl)/\1${MAJOR}.${MINOR}.${PIP_PATCH}\3/g" "${OS_SETUP}"
-sed -i -r -e "s/(.*pip[0-9]* install .*tensorflow_gpu-)([0-9]+\.[0-9]+\.[[:alnum:]]+)(-.*\.whl)/\1${MAJOR}.${MINOR}.${PIP_PATCH}\3/g" "${OS_SETUP}"
-sed -i -r -e "s/(.*export TF_BINARY_URL.*tensorflow-)([0-9]+\.[0-9]+\.[[:alnum:]]+)(-.*\.whl)/\1${MAJOR}.${MINOR}.${PIP_PATCH}\3/g" "${OS_SETUP}"
-sed -i -r -e "s/(.*export TF_BINARY_URL.*tensorflow_gpu-)([0-9]+\.[0-9]+\.[[:alnum:]]+)(-.*\.whl)/\1${MAJOR}.${MINOR}.${PIP_PATCH}\3/g" "${OS_SETUP}"
-sed -i -r -e "s/(.*\`)([0-9]+\.[0-9]+\.[[:alnum:]-]+)(-gpu.*)/\1${MAJOR}.${MINOR}.${PATCH}\3/g" "${OS_SETUP}"
-
 
 # Update README.md
 README_MD="./README.md"

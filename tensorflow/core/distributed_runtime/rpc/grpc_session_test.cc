@@ -255,7 +255,7 @@ void FindMaxEigen(const string& target) {
 
 TEST(FindMaxEigenTest, RemoteDevice) {
   std::unique_ptr<test::TestCluster> cluster;
-  test::TestCluster::MakeTestCluster(Devices(1, 0), 2, &cluster);
+  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 2, &cluster));
   FindMaxEigen(cluster->targets()[0]);
 }
 

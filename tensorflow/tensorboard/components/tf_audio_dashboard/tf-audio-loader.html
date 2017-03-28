@@ -16,6 +16,9 @@ limitations under the License.
 -->
 
 <link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../paper-slider/paper-slider.html">
+<link rel="import" href="../paper-spinner/paper-spinner-lite.html">
+<link rel="import" href="../tf-dashboard-common/tensorboard-color.html">
 <link rel="import" href="../tf-imports/lodash.html">
 
 <!--
@@ -28,20 +31,79 @@ future for loading older clips.
 -->
 <dom-module id="tf-audio-loader">
   <style>
-  :host {
-    display: block;
-  }
-  img {
-    width: 100%;
-    height: 100%;
-    image-rendering: pixelated;
-  }
+    :host {
+      display: block;
+      --step-slider-knob-color: #424242;
+    }
+
+    img {
+      width: 100%;
+      height: 100%;
+      image-rendering: pixelated;
+    }
+
+    .step-description {
+      font-size: 12px;
+    }
+
+    .step-value {
+      font-weight: bold;
+    }
+
+    #audio-loading-spinner {
+      width: 14px;
+      height: 14px;
+      vertical-align: text-bottom;
+      --paper-spinner-color: var(--tb-orange-strong)
+    }
+
+    #steps {
+      height: 15px;
+      margin: 0 0 0 -15px;
+      /* 31 comes from adding a padding of 15px from both sides of the paper-slider, subtracting
+       * 1px so that the slider width aligns with the image (the last slider marker takes up 1px),
+       * and adding 2px to account for a border of 1px on both sides of the image. 30 - 1 + 2. */
+      width: calc(100% + 31px);
+      --paper-slider-active-color: var(--step-slider-knob-color);
+      --paper-slider-knob-color: var(--step-slider-knob-color);
+      --paper-slider-pin-color: var(--step-slider-knob-color);
+      --paper-slider-knob-start-color: var(--step-slider-knob-color);
+      --paper-slider-knob-start-border-color: var(--step-slider-knob-color);
+      --paper-slider-pin-start-color: var(--step-slider-knob-color);
+    }
+
+    #individual-audio-container audio {
+      margin: 5px 0 0 -10px;
+      width: calc(100% + 20px);
+    }
   </style>
   <template>
-    <template is="dom-if" if="[[audioUrl]]">
-      <audio controls loop>
-        <source src="[[audioUrl]]" type="[[audioContentType]]" />
-      </audio>
+    <template is="dom-if" if="[[_metadatas]]">
+      <template is="dom-if" if="[[_hasAtLeastOneStep(_metadatas)]]">
+        <div class="step-description">
+          step
+          <span class="step-value">
+            [[_stepValue]]
+          </span><br>
+          <template is="dom-if" if="[[_stepWallTime]]">
+            [[_stepWallTime]]
+          </template>
+          <paper-spinner-lite active
+                              id="audio-loading-spinner"
+                              hidden$=[[!_isAudioLoading]]></paper-spinner-lite>
+        </div>
+      </template>
+      <template is="dom-if" if="[[_maxStepIndex]]">
+        <paper-slider
+            id="steps"
+            immediate-value="{{_stepIndex}}"
+            max="[[_maxStepIndex]]"
+            max-markers="[[_maxStepIndex]]"
+            snaps
+            step="1"
+            value="{{_stepIndex}}"></paper-slider>
+      </template>
+      <div id="individual-audio-container"></div>
     </template>
   </template>
   <script>
@@ -51,18 +113,42 @@ future for loading older clips.
         run: String,
         tag: String,
         audioGenerator: Function,
-        audioUrl: String,
-        audioContentType: String
+        // todo: document.
+        _metadatas: Array,
+        _stepIndex: Number,
+        _stepValue: {
+          type: Number,
+          computed: "_computeStepValue(_metadatas, _stepIndex)",
+          value: 0,
+        },
+        _stepWallTime: {
+          type: Number,
+          computed: "_computeStepWallTime(_metadatas, _stepIndex)",
+          value: 0,
+        },
+        _maxStepIndex: {
+          type: Number,
+          computed: "_computeMaxStepIndex(_metadatas)",
+          value: 0,
+        },
+        _isAudioLoading: Boolean,
+        // Used to identify stale requests for audio.
+        _audioRequestId: {
+          type: Number,
+          value: 1
+        },
       },
+      observers: [
+        "_updateAudio(_metadatas, _stepIndex)",
+      ],
       reload: function() {
-        var _this = this;
-        this.audioUrl = ""; // force reload
-        this.audioContentType = "";
         this.audioGenerator(this.tag, this.run).then(function(metadatas) {
-          var last_metadata = _.last(metadatas);
-          _this.audioUrl = last_metadata.url;
-          _this.audioContentType = last_metadata.content_type;
-        })
+          // Set the list of available metadata.
+          this.set("_metadatas", metadatas);
+
+          // Set the index to be the last one.
+          this.set("_stepIndex", this._maxStepIndex);
+        }.bind(this));
       },
       ready: function() {
         // Need to test so that it will not error if it is constructed w/o
@@ -70,6 +156,79 @@ future for loading older clips.
         if (this.run != null && this.tag != null && this.audioGenerator != null) {
           this.reload();
         }
+      },
+      _updateAudio: function(metadatas, stepIndex) {
+        if (!metadatas || stepIndex >= metadatas.length) {
+          // No audio to show. The audio section should be hidden.
+          return;
+        }
+
+        // Load new audio.
+        const requestId = ++this._audioRequestId;
+        this.set("_isAudioLoading", true);
+
+        // Create a new audio element. Only replace the previous one once the new audio loads.
+        let audioElement = document.createElement("audio");
+        audioElement.setAttribute("controls", true);
+        audioElement.setAttribute("loop", "loop");
+        let canPlayHandler = function() {
+          if (requestId !== this._audioRequestId) {
+            // This request is no longer relevant.
+            return;
+          }
+
+          // Remove this event listener: "canplay" apparently fires in Chrome every time playing
+          // begins again on loop. So, if we create a new audio element every time that happens, we
+          // don't actually loop.
+          audioElement.removeEventListener("canplay", canPlayHandler);
+
+          let individualAudioContainer = this.$$("#individual-audio-container");
+          individualAudioContainer.innerHTML = "";
+          Polymer.dom(individualAudioContainer).appendChild(audioElement);
+          this.set("_isAudioLoading", false);
+        }.bind(this);
+        audioElement.addEventListener("canplay", canPlayHandler);
+        audioElement.addEventListener("error", function() {
+          if (requestId !== this._audioRequestId) {
+            // This request is no longer relevant.
+            return;
+          }
+
+          // The audio could not be loaded.
+          this.$$("#individual-audio-container").innerHTML = "";
+          this.set("_isAudioLoading", false);
+        }.bind(this));
+
+        // Initiate the request for new audio.
+        var sourceElement = document.createElement("source");
+        let metadata = metadatas[stepIndex];
+        sourceElement.setAttribute("src", metadata.url);
+        sourceElement.setAttribute("type", metadata.content_type);
+        audioElement.appendChild(sourceElement);
+      },
+      _computeStepValue: function(metadatas, stepIndex) {
+        if (!metadatas || stepIndex >= metadatas.length) {
+          // No audio to show. The audio section should be hidden.
+          return 0;
+        }
+        return metadatas[stepIndex].step;
+      },
+      _computeStepWallTime: function(metadatas, stepIndex) {
+        if (!metadatas || stepIndex >= metadatas.length) {
+          // No audio to show. The audio section should be hidden.
+          return 0;
+        }
+        return metadatas[stepIndex].wall_time.toString();
+      },
+      _computeMaxStepIndex: function(metadatas) {
+        if (!metadatas || metadatas.length === 0) {
+          // No audio to show. The audio section should be hidden.
+          return 0;
+        }
+        return metadatas.length - 1;
+      },
+      _hasAtLeastOneStep: function(metadatas) {
+        return metadatas && metadatas.length > 0;
       },
     });
   </script>

@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rpc/grpc_worker_service_impl.h"
 #include "tensorflow/core/distributed_runtime/worker.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
+#include "tensorflow/core/distributed_runtime/worker_session.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -57,9 +58,7 @@ class GrpcWorkerService : public AsyncServiceInterface {
     cq_ = builder->AddCompletionQueue();
   }
 
-  ~GrpcWorkerService() {
-    delete shutdown_alarm_;
-  }
+  ~GrpcWorkerService() override { delete shutdown_alarm_; }
 
   void Shutdown() override {
     bool did_shutdown = false;
@@ -299,6 +298,7 @@ void GrpcWorker::RecvTensorAsync(CallOptions* opts,
                                  ::grpc::ByteBuffer* response,
                                  StatusCallback done) {
   const int64 step_id = request->step_id();
+  WorkerSession* session = env_->session_mgr->WorkerSessionForStepId(step_id);
   const string& key = request->rendezvous_key();
   TRACEPRINTF("RecvTensor: %lld %s", step_id, key.c_str());
   Rendezvous::ParsedKey parsed;
@@ -317,7 +317,7 @@ void GrpcWorker::RecvTensorAsync(CallOptions* opts,
   // of execution of the callback lambda body below, an RPC
   // cancellation should abort the rendezvous.
   opts->SetCancelCallback([this, step_id]() { AbortStep(step_id); });
-  env_->rendezvous_mgr->RecvLocalAsync(
+  session->rendezvous_mgr->RecvLocalAsync(
       step_id, parsed,
       [opts, response, done, src_dev](const Status& status,
                                       const Rendezvous::Args& send_args,
@@ -376,15 +376,18 @@ void GrpcWorker::RecvTensorAsync(CallOptions* opts,
           done(status);
         }
       });
-  }
+}
 
-  WorkerEnv* GrpcWorker::env() { return env_; }
+WorkerEnv* GrpcWorker::env() { return env_; }
 
-  GrpcWorker* NewGrpcWorker(WorkerEnv* env) { return new GrpcWorker(env); }
+std::unique_ptr<GrpcWorker> NewGrpcWorker(WorkerEnv* env) {
+  return std::unique_ptr<GrpcWorker>(new GrpcWorker(env));
+}
 
-  AsyncServiceInterface* NewGrpcWorkerService(GrpcWorker* worker,
-                                              ::grpc::ServerBuilder* builder) {
-    return new GrpcWorkerService(worker, builder);
+std::unique_ptr<AsyncServiceInterface> NewGrpcWorkerService(
+    GrpcWorker* worker, ::grpc::ServerBuilder* builder) {
+  return std::unique_ptr<AsyncServiceInterface>(
+      new GrpcWorkerService(worker, builder));
 }
 
 }  // namespace tensorflow

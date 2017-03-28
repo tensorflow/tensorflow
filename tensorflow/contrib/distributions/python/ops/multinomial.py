@@ -159,7 +159,7 @@ class Multinomial(distribution.Distribution):
       name: Python `str` name prefixed to Ops created by this class.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[total_count, logits, probs]) as ns:
+    with ops.name_scope(name, values=[total_count, logits, probs]):
       self._total_count = self._maybe_assert_valid_total_count(
           ops.convert_to_tensor(total_count, name="total_count"),
           validate_args)
@@ -172,7 +172,6 @@ class Multinomial(distribution.Distribution):
       self._mean_val = self._total_count[..., array_ops.newaxis] * self._probs
     super(Multinomial, self).__init__(
         dtype=self._probs.dtype,
-        is_continuous=False,
         reparameterization_type=distribution.NOT_REPARAMETERIZED,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
@@ -180,7 +179,7 @@ class Multinomial(distribution.Distribution):
         graph_parents=[self._total_count,
                        self._logits,
                        self._probs],
-        name=ns)
+        name=name)
 
   @property
   def total_count(self):

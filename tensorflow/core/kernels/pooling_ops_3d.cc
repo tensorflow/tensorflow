@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/padding.h"
+#include "tensorflow/core/util/tensor_format.h"
 
 #if GOOGLE_CUDA
 #include "tensorflow/core/kernels/cudnn_pooling_gpu.h"
@@ -46,7 +47,8 @@ struct LaunchPoolingOp<CPUDevice, T, AVG> {
   static void launch(OpKernelContext* context, const Tensor& tensor_in,
                      const std::array<int64, 3>& window,
                      const std::array<int64, 3>& stride,
-                     const std::array<int64, 3>& padding, Padding padding_type,
+                     const std::array<int64, 3>& padding,
+                     TensorFormat data_format, Padding padding_type,
                      Tensor* output) {
     output->tensor<T, 5>().device(context->eigen_device<CPUDevice>()) =
         Eigen::CuboidAvgPooling(tensor_in.tensor<T, 5>(), window[0], window[1],
@@ -60,7 +62,8 @@ struct LaunchPoolingOp<CPUDevice, T, MAX> {
   static void launch(OpKernelContext* context, const Tensor& tensor_in,
                      const std::array<int64, 3>& window,
                      const std::array<int64, 3>& stride,
-                     const std::array<int64, 3>& padding, Padding padding_type,
+                     const std::array<int64, 3>& padding,
+                     TensorFormat data_format, Padding padding_type,
                      Tensor* output) {
     output->tensor<T, 5>().device(context->eigen_device<CPUDevice>()) =
         Eigen::CuboidMaxPooling(tensor_in.tensor<T, 5>(), window[0], window[1],
@@ -73,6 +76,17 @@ template <typename Device, typename T, PoolingType Type>
 class Pooling3DOp : public UnaryOp<T> {
  public:
   explicit Pooling3DOp(OpKernelConstruction* context) : UnaryOp<T>(context) {
+    string data_format;
+    OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
+    OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
+                errors::InvalidArgument("Invalid data format"));
+    if (context->device_type() == DEVICE_CPU) {
+      OP_REQUIRES(
+          context, data_format_ == FORMAT_NHWC,
+          errors::InvalidArgument("Default Pooling3DOp only supports NDHWC ",
+                                  "on device type ",
+                                  DeviceTypeString(context->device_type())));
+    }
     OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
     OP_REQUIRES(context, ksize_.size() == 5,
                 errors::InvalidArgument("Sliding window ksize field must "
@@ -82,10 +96,14 @@ class Pooling3DOp : public UnaryOp<T> {
                 errors::InvalidArgument("Sliding window stride field must "
                                         "specify 5 dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
-    OP_REQUIRES(context, ksize_[0] == 1 && stride_[0] == 1,
+    OP_REQUIRES(context,
+                (GetTensorDim(ksize_, data_format_, 'N') == 1 &&
+                 GetTensorDim(stride_, data_format_, 'N') == 1),
                 errors::Unimplemented(
                     "Pooling is not yet supported on the batch dimension."));
-    OP_REQUIRES(context, ksize_[4] == 1 && stride_[4] == 1,
+    OP_REQUIRES(context,
+                (GetTensorDim(ksize_, data_format_, 'C') == 1 &&
+                 GetTensorDim(stride_, data_format_, 'C') == 1),
                 errors::Unimplemented(
                     "Pooling is not yet supported on the depth dimension."));
   }
@@ -95,30 +113,39 @@ class Pooling3DOp : public UnaryOp<T> {
 
     OP_REQUIRES(context, tensor_in.dims() == 5,
                 errors::InvalidArgument("tensor_in must be 5-dimensional"));
-    const int64 depth = tensor_in.dim_size(4);
-    const int64 in_batch = tensor_in.dim_size(0);
+    const int64 depth = GetTensorDim(tensor_in, data_format_, 'C');
+    const int64 in_batch = GetTensorDim(tensor_in, data_format_, 'N');
 
     // Dimension order for these arrays is: x, y, z.
     std::array<int64, 3> input_size{
-        {tensor_in.dim_size(3), tensor_in.dim_size(2), tensor_in.dim_size(1)}};
-    std::array<int64, 3> window{{ksize_[3], ksize_[2], ksize_[1]}};
-    std::array<int64, 3> stride{{stride_[3], stride_[2], stride_[1]}};
+        {GetTensorDim(tensor_in, data_format_, '2'),
+         GetTensorDim(tensor_in, data_format_, '1'),
+         GetTensorDim(tensor_in, data_format_, '0')}};
+    std::array<int64, 3> window{{GetTensorDim(ksize_, data_format_, '2'),
+                                 GetTensorDim(ksize_, data_format_, '1'),
+                                 GetTensorDim(ksize_, data_format_, '0')}};
+    std::array<int64, 3> stride{{GetTensorDim(stride_, data_format_, '2'),
+                                 GetTensorDim(stride_, data_format_, '1'),
+                                 GetTensorDim(stride_, data_format_, '0')}};
     std::array<int64, 3> padding, out;
 
     OP_REQUIRES_OK(context, Get3dOutputSize(input_size, window, stride,
                                             padding_, &out, &padding));
 
-    TensorShape out_shape({in_batch, out[2], out[1], out[0], depth});
+    TensorShape out_shape = ShapeFromFormat(data_format_, in_batch,
+                                            {{out[2], out[1], out[0]}}, depth);
     Tensor* output;
     OP_REQUIRES_OK(context, context->allocate_output(0, out_shape, &output));
     LaunchPoolingOp<Device, T, Type>::launch(context, tensor_in, window, stride,
-                                             padding, padding_, output);
+                                             padding, data_format_, padding_,
+                                             output);
   }
 
  private:
   std::vector<int32> ksize_;
   std::vector<int32> stride_;
   Padding padding_;
+  TensorFormat data_format_;
 };
 REGISTER_KERNEL_BUILDER(
     Name("AvgPool3D").Device(DEVICE_CPU).TypeConstraint<float>("T"),
@@ -137,7 +164,8 @@ struct LaunchMaxPooling3dGradOp<CPUDevice, T> {
                      const std::array<int64, 3>& window,
                      const std::array<int64, 3>& stride,
                      const std::array<int64, 3>& out,
-                     const std::array<int64, 3>& padding, Tensor* output) {
+                     const std::array<int64, 3>& padding,
+                     TensorFormat data_format, Tensor* output) {
     output->flat<T>().setZero();
     for (int64 p = 0; p < out_backprop.dim_size(3); ++p) {
       // Calculate broadcast size for planes/rows/cols. For SAME padding,
@@ -230,6 +258,17 @@ class MaxPooling3dGradOp : public OpKernel {
  public:
   explicit MaxPooling3dGradOp(OpKernelConstruction* context)
       : OpKernel(context) {
+    string data_format;
+    OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
+    OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
+                errors::InvalidArgument("Invalid data format"));
+    if (context->device_type() == DEVICE_CPU) {
+      OP_REQUIRES(
+          context, data_format_ == FORMAT_NHWC,
+          errors::InvalidArgument(
+              "Default MaxPooling3dGradOp only supports NDHWC ",
+              "on device type ", DeviceTypeString(context->device_type())));
+    }
     OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
     OP_REQUIRES(context, ksize_.size() == 5,
                 errors::InvalidArgument("Sliding window ksize field must "
@@ -239,10 +278,14 @@ class MaxPooling3dGradOp : public OpKernel {
                 errors::InvalidArgument("Sliding window stride field must "
                                         "specify 5 dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
-    OP_REQUIRES(context, ksize_[0] == 1 && stride_[0] == 1,
+    OP_REQUIRES(context,
+                (GetTensorDim(ksize_, data_format_, 'N') == 1 &&
+                 GetTensorDim(stride_, data_format_, 'N') == 1),
                 errors::Unimplemented(
                     "Pooling is not yet supported on the batch dimension."));
-    OP_REQUIRES(context, ksize_[4] == 1 && stride_[4] == 1,
+    OP_REQUIRES(context,
+                (GetTensorDim(ksize_, data_format_, 'C') == 1 &&
+                 GetTensorDim(stride_, data_format_, 'C') == 1),
                 errors::Unimplemented(
                     "Pooling is not yet supported on the depth dimension."));
   }
@@ -262,25 +305,30 @@ class MaxPooling3dGradOp : public OpKernel {
     Tensor* input_backprop;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, output_shape, &input_backprop));
-
-    std::array<int64, 3> input_size = {{output_shape.dim_size(3),
-                                        output_shape.dim_size(2),
-                                        output_shape.dim_size(1)}};
-    std::array<int64, 3> window = {{ksize_[3], ksize_[2], ksize_[1]}};
-    std::array<int64, 3> stride = {{stride_[3], stride_[2], stride_[1]}};
+    std::array<int64, 3> input_size{
+        {GetTensorDim(output_shape, data_format_, '2'),
+         GetTensorDim(output_shape, data_format_, '1'),
+         GetTensorDim(output_shape, data_format_, '0')}};
+    std::array<int64, 3> window{{GetTensorDim(ksize_, data_format_, '2'),
+                                 GetTensorDim(ksize_, data_format_, '1'),
+                                 GetTensorDim(ksize_, data_format_, '0')}};
+    std::array<int64, 3> stride{{GetTensorDim(stride_, data_format_, '2'),
+                                 GetTensorDim(stride_, data_format_, '1'),
+                                 GetTensorDim(stride_, data_format_, '0')}};
     std::array<int64, 3> out, padding;
 
     OP_REQUIRES_OK(context, Get3dOutputSize(input_size, window, stride,
                                             padding_, &out, &padding));
-    LaunchMaxPooling3dGradOp<Device, T>::launch(context, tensor_in, tensor_out,
-                                                out_backprop, window, stride,
-                                                out, padding, input_backprop);
+    LaunchMaxPooling3dGradOp<Device, T>::launch(
+        context, tensor_in, tensor_out, out_backprop, window, stride, out,
+        padding, data_format_, input_backprop);
   }
 
  private:
   std::vector<int32> ksize_;
   std::vector<int32> stride_;
   Padding padding_;
+  TensorFormat data_format_;
 };
 
 REGISTER_KERNEL_BUILDER(
@@ -298,7 +346,8 @@ struct LaunchAvgPooling3dGradOp<CPUDevice, T> {
                      const std::array<int64, 3>& window,
                      const std::array<int64, 3>& stride,
                      const std::array<int64, 3>& output_shape,
-                     const std::array<int64, 3>& padding, Tensor* output) {
+                     const std::array<int64, 3>& padding,
+                     TensorFormat data_format, Tensor* output) {
     output->flat<T>().setZero();
     std::array<int64, 3> input_size = {{tensor_in_shape.dim_size(3),
                                         tensor_in_shape.dim_size(2),
@@ -370,6 +419,17 @@ class AvgPooling3dGradOp : public OpKernel {
  public:
   explicit AvgPooling3dGradOp(OpKernelConstruction* context)
       : OpKernel(context) {
+    string data_format;
+    OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
+    OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
+                errors::InvalidArgument("Invalid data format"));
+    if (context->device_type() == DEVICE_CPU) {
+      OP_REQUIRES(
+          context, data_format_ == FORMAT_NHWC,
+          errors::InvalidArgument(
+              "Default AvgPooling3dGradOp only supports NDHWC ",
+              "on device type ", DeviceTypeString(context->device_type())));
+    }
     OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
     OP_REQUIRES(context, ksize_.size() == 5,
                 errors::InvalidArgument("Sliding window ksize field must "
@@ -379,10 +439,14 @@ class AvgPooling3dGradOp : public OpKernel {
                 errors::InvalidArgument("Sliding window stride field must "
                                         "specify 5 dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
-    OP_REQUIRES(context, ksize_[0] == 1 && stride_[0] == 1,
+    OP_REQUIRES(context,
+                (GetTensorDim(ksize_, data_format_, 'N') == 1 &&
+                 GetTensorDim(stride_, data_format_, 'N') == 1),
                 errors::Unimplemented(
                     "Pooling is not yet supported on the batch dimension."));
-    OP_REQUIRES(context, ksize_[4] == 1 && stride_[4] == 1,
+    OP_REQUIRES(context,
+                (GetTensorDim(ksize_, data_format_, 'C') == 1 &&
+                 GetTensorDim(stride_, data_format_, 'C') == 1),
                 errors::Unimplemented(
                     "Pooling is not yet supported on the depth dimension."));
   }
@@ -390,10 +454,11 @@ class AvgPooling3dGradOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor& tensor_in_shape = context->input(0);
     const Tensor& out_backprop = context->input(1);
-    OP_REQUIRES(context, tensor_in_shape.dims() == 1 &&
-                             tensor_in_shape.NumElements() == 5,
-                errors::InvalidArgument("tensor_in must be 1-dimensional and 5 "
-                                        "elements"));
+    OP_REQUIRES(
+        context,
+        tensor_in_shape.dims() == 1 && tensor_in_shape.NumElements() == 5,
+        errors::InvalidArgument("tensor_in must be 1-dimensional and 5 "
+                                "elements"));
     OP_REQUIRES(context, out_backprop.dims() == 5,
                 errors::InvalidArgument("out_backprop must be 5-dimensional"));
 
@@ -407,25 +472,31 @@ class AvgPooling3dGradOp : public OpKernel {
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
 
     // Dimension order for these arrays is x, y, z.
-    std::array<int64, 3> input_size = {{output_shape.dim_size(3),
-                                        output_shape.dim_size(2),
-                                        output_shape.dim_size(1)}};
-    std::array<int64, 3> window = {{ksize_[3], ksize_[2], ksize_[1]}};
-    std::array<int64, 3> stride = {{stride_[3], stride_[2], stride_[1]}};
+    std::array<int64, 3> input_size{
+        {GetTensorDim(output_shape, data_format_, '2'),
+         GetTensorDim(output_shape, data_format_, '1'),
+         GetTensorDim(output_shape, data_format_, '0')}};
+    std::array<int64, 3> window{{GetTensorDim(ksize_, data_format_, '2'),
+                                 GetTensorDim(ksize_, data_format_, '1'),
+                                 GetTensorDim(ksize_, data_format_, '0')}};
+    std::array<int64, 3> stride{{GetTensorDim(stride_, data_format_, '2'),
+                                 GetTensorDim(stride_, data_format_, '1'),
+                                 GetTensorDim(stride_, data_format_, '0')}};
     std::array<int64, 3> padding, out;
 
     OP_REQUIRES_OK(context, Get3dOutputSize(input_size, window, stride,
                                             padding_, &out, &padding));
 
-    LaunchAvgPooling3dGradOp<Device, T>::launch(context, output_shape,
-                                                out_backprop, window, stride,
-                                                out, padding, output);
+    LaunchAvgPooling3dGradOp<Device, T>::launch(
+        context, output_shape, out_backprop, window, stride, out, padding,
+        data_format_, output);
   }
 
  private:
   std::vector<int32> ksize_;
   std::vector<int32> stride_;
   Padding padding_;
+  TensorFormat data_format_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("AvgPool3DGrad")
@@ -441,11 +512,12 @@ struct LaunchPoolingOp<GPUDevice, T, AVG> {
   static void launch(OpKernelContext* context, const Tensor& tensor_in,
                      const std::array<int64, 3>& window,
                      const std::array<int64, 3>& stride,
-                     const std::array<int64, 3>& padding, Padding padding_type,
+                     const std::array<int64, 3>& padding,
+                     TensorFormat data_format, Padding padding_type,
                      Tensor* output) {
-    DnnPooling3dOp<T>::Compute(context,
-                               perftools::gputools::dnn::PoolingMode::kAverage,
-                               window, stride, padding, tensor_in, output);
+    DnnPooling3dOp<T>::Compute(
+        context, perftools::gputools::dnn::PoolingMode::kAverage, window,
+        stride, padding, data_format, tensor_in, output);
   }
 };
 
@@ -454,11 +526,12 @@ struct LaunchPoolingOp<GPUDevice, T, MAX> {
   static void launch(OpKernelContext* context, const Tensor& tensor_in,
                      const std::array<int64, 3>& window,
                      const std::array<int64, 3>& stride,
-                     const std::array<int64, 3>& padding, Padding padding_type,
+                     const std::array<int64, 3>& padding,
+                     TensorFormat data_format, Padding padding_type,
                      Tensor* output) {
-    DnnPooling3dOp<T>::Compute(context,
-                               perftools::gputools::dnn::PoolingMode::kMaximum,
-                               window, stride, padding, tensor_in, output);
+    DnnPooling3dOp<T>::Compute(
+        context, perftools::gputools::dnn::PoolingMode::kMaximum, window,
+        stride, padding, data_format, tensor_in, output);
   }
 };
 
@@ -477,12 +550,12 @@ struct LaunchMaxPooling3dGradOp<GPUDevice, T> {
                      const std::array<int64, 3>& stride,
                      const std::array<int64, 3>& out,
                      const std::array<int64, 3>& padding,
-                     Tensor* input_backprop) {
+                     TensorFormat data_format, Tensor* input_backprop) {
     const TensorShape output_shape = tensor_in.shape();
     DnnPooling3dGradOp<T>::Compute(
         context, perftools::gputools::dnn::PoolingMode::kMaximum, window,
-        stride, padding, out, out_backprop, output_shape, &tensor_in,
-        &tensor_out, input_backprop);
+        stride, padding, out, data_format, out_backprop, output_shape,
+        &tensor_in, &tensor_out, input_backprop);
   }
 };
 
@@ -498,11 +571,12 @@ struct LaunchAvgPooling3dGradOp<GPUDevice, T> {
                      const std::array<int64, 3>& window,
                      const std::array<int64, 3>& stride,
                      const std::array<int64, 3>& out,
-                     const std::array<int64, 3>& padding, Tensor* output) {
+                     const std::array<int64, 3>& padding,
+                     TensorFormat data_format, Tensor* output) {
     DnnPooling3dGradOp<T>::Compute(
         context, perftools::gputools::dnn::PoolingMode::kAverage, window,
-        stride, padding, out, out_backprop, tensor_in_shape, nullptr, nullptr,
-        output);
+        stride, padding, out, data_format, out_backprop, tensor_in_shape,
+        nullptr, nullptr, output);
   }
 };
 REGISTER_KERNEL_BUILDER(Name("AvgPool3DGrad")

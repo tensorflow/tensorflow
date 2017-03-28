@@ -37,9 +37,9 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
-from tensorflow.python.summary import event_multiplexer
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.tensorboard.backend import application
+from tensorflow.tensorboard.backend.event_processing import event_multiplexer
 from tensorflow.tensorboard.plugins.projector import projector_plugin
 
 
@@ -101,7 +101,7 @@ class ProjectorAppTest(test.TestCase):
         size_guidance=application.DEFAULT_SIZE_GUIDANCE,
         purge_orphaned_data=True)
     projector = projector_plugin.ProjectorPlugin()
-    projector.get_plugin_apps({}, self.log_dir)
+    projector.get_plugin_apps(multiplexer, self.log_dir)
     plugins = {'projector': projector}
     wsgi_app = application.TensorBoardWSGIApp(
         self.log_dir, plugins, multiplexer, reload_interval=0)

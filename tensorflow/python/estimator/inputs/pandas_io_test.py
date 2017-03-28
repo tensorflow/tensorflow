@@ -21,15 +21,20 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.estimator.inputs import pandas_io
-from tensorflow.python.estimator.inputs.pandas_import import HAS_PANDAS
 from tensorflow.python.framework import errors
 from tensorflow.python.platform import test
 from tensorflow.python.training import coordinator
 from tensorflow.python.training import queue_runner_impl
 
-if HAS_PANDAS:
+try:
   # pylint: disable=g-import-not-at-top
   import pandas as pd
+  HAS_PANDAS = True
+except IOError:
+  # Pandas writes a temporary file during import. If it fails, don't use pandas.
+  HAS_PANDAS = False
+except ImportError:
+  HAS_PANDAS = False
 
 
 class PandasIoTest(test.TestCase):
@@ -59,6 +64,16 @@ class PandasIoTest(test.TestCase):
     with self.assertRaises(ValueError):
       pandas_io.pandas_input_fn(
           x, y_noindex, batch_size=2, shuffle=False, num_epochs=1)
+
+  def testPandasInputFn_NonBoolShuffle(self):
+    if not HAS_PANDAS:
+      return
+    x, _ = self.makeTestDataFrame()
+    y_noindex = pd.Series(np.arange(-32, -28))
+    with self.assertRaisesRegexp(TypeError,
+                                 'shuffle must be explicitly set as boolean'):
+      # Default shuffle is None
+      pandas_io.pandas_input_fn(x, y_noindex)
 
   def testPandasInputFn_ProducesExpectedOutputs(self):
     if not HAS_PANDAS:

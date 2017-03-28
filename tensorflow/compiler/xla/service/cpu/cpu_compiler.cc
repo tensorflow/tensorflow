@@ -59,6 +59,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/simple_orc_jit.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -224,8 +225,10 @@ Status CpuCompiler::RunHloPasses(HloModule* hlo_module,
                                                                dump_hlo);
     pass.AddPass<AlgebraicSimplifier>(
         /*is_layout_sensitive=*/false,
-        [](const Shape&, const Shape&) { return false; });
+        [](const Shape&, const Shape&) { return false; },
+        /*enable_dot_simplification=*/false);
     pass.AddPass<ReshapeMover>();
+    pass.AddPass<HloConstantFolding>();
   }
   pipeline.AddPass<TransposeFolding>(PotentiallyImplementedAsEigenDot);
   pipeline.AddPass<HloSubcomputationUnification>();
@@ -237,7 +240,8 @@ Status CpuCompiler::RunHloPasses(HloModule* hlo_module,
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(
       /*is_layout_sensitive=*/true,
-      [](const Shape&, const Shape&) { return true; });
+      [](const Shape&, const Shape&) { return true; },
+      /*enable_dot_simplification=*/false);
   pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
   // Outline ops in the entry computation into calls to subcomputations.
   legacy_flags::CpuCompilerFlags* flags = legacy_flags::GetCpuCompilerFlags();
@@ -517,9 +521,9 @@ CpuCompiler::CompileAheadOfTime(
                          error.c_str());
   }
 
-  llvm::Reloc::Model reloc_model;
-  llvm::PICLevel::Level pic_level;
-  llvm::PIELevel::Level pie_level;
+  llvm::Reloc::Model reloc_model = llvm::Reloc::Static;
+  llvm::PICLevel::Level pic_level = llvm::PICLevel::NotPIC;
+  llvm::PIELevel::Level pie_level = llvm::PIELevel::Default;
   switch (options.relocation_model()) {
     case CpuAotCompilationOptions::RelocationModel::Static:
       reloc_model = llvm::Reloc::Static;
@@ -569,7 +573,8 @@ CpuCompiler::CompileAheadOfTime(
   }
 
   std::vector<std::unique_ptr<AotCompilationResult>> results;
-  for (int i = 0; i < hlo_modules.size(); ++i) {
+  for (std::vector<std::unique_ptr<HloModule>>::size_type i = 0;
+       i < hlo_modules.size(); ++i) {
     HloModule* hlo_module = hlo_modules[i].get();
     HloModuleConfig* module_config = module_configs[i].get();
 

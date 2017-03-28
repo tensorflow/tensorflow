@@ -169,6 +169,11 @@ class StatSummarizer {
   // Prints the output tensor sizes and types for each node.
   void PrintOutputs() const;
 
+  void ComputeStatsByType(std::map<string, int64>* node_type_map_count,
+                          std::map<string, int64>* node_type_map_time,
+                          std::map<string, int64>* node_type_map_memory,
+                          int64* accumulated_us) const;
+
   std::string GetStatsByNodeType() const;
 
   std::string GetStatsByMetric(const string& title,

@@ -29,13 +29,14 @@ constexpr int32 InferenceContext::kUnknownRank;
 constexpr int64 InferenceContext::kUnknownDim;
 
 InferenceContext::InferenceContext(
-    const NodeDef* node_def, const OpDef& op_def,
+    int graph_def_version, const NodeDef* node_def, const OpDef& op_def,
     const std::vector<TensorShapeProto>& input_shapes,
     const std::vector<const Tensor*>& input_tensors,
     const std::vector<TensorShapeProto>& input_tensors_as_shapes,
     const std::vector<TensorShapeProto>& input_handle_shapes,
     const std::vector<DataType>& input_handle_dtypes)
-    : node_def_(*CHECK_NOTNULL(node_def)) {
+    : graph_def_version_(graph_def_version),
+      node_def_(*CHECK_NOTNULL(node_def)) {
   std::vector<ShapeHandle> input_tensors_as_shape_handles;
   for (const TensorShapeProto& p : input_tensors_as_shapes) {
     ShapeHandle shape;
@@ -68,13 +69,14 @@ InferenceContext::InferenceContext(
 }
 
 InferenceContext::InferenceContext(
-    const NodeDef* node_def, const OpDef& op_def,
+    int graph_def_version, const NodeDef* node_def, const OpDef& op_def,
     const std::vector<ShapeHandle>& input_shapes,
     const std::vector<const Tensor*>& input_tensors,
     const std::vector<ShapeHandle>& input_tensors_as_shapes,
     const std::vector<ShapeHandle>& input_handle_shapes,
     const std::vector<DataType>& input_handle_dtypes)
-    : node_def_(*CHECK_NOTNULL(node_def)) {
+    : graph_def_version_(graph_def_version),
+      node_def_(*CHECK_NOTNULL(node_def)) {
   PreInputInit(op_def, input_tensors, input_tensors_as_shapes);
   if (!construction_status_.ok()) return;
   inputs_ = input_shapes;
@@ -597,23 +599,34 @@ Status InferenceContext::MakeShapeFromTensor(const Tensor* t,
   return ReturnCreatedShape(dims, out);
 }
 
+Status InferenceContext::MakeShapeFromPartialTensorShape(
+    const PartialTensorShape& partial_shape, ShapeHandle* out) {
+  *out = nullptr;
+  if (partial_shape.dims() == -1) {
+    return ReturnUnknownShape(out);
+  }
+  const int num_dims = partial_shape.dims();
+  std::vector<DimensionHandle> dims(num_dims);
+  for (int i = 0; i < num_dims; ++i) {
+    // -1 is unknown in PartialTensorShape and in InferenceContext, so this size
+    // can be passed directly to MakeDim.
+    dims[i] = MakeDim(partial_shape.dim_size(i));
+  }
+  return ReturnCreatedShape(dims, out);
+}
+
+Status InferenceContext::MakeShapeFromTensorShape(const TensorShape& shape,
+                                                  ShapeHandle* out) {
+  return MakeShapeFromPartialTensorShape(PartialTensorShape(shape.dim_sizes()),
+                                         out);
+}
+
 Status InferenceContext::MakeShapeFromShapeProto(const TensorShapeProto& proto,
                                                  ShapeHandle* out) {
   *out = nullptr;
   TF_RETURN_IF_ERROR(PartialTensorShape::IsValidShape(proto));
   PartialTensorShape partial_shape(proto);
-  if (partial_shape.dims() == -1) {
-    return ReturnUnknownShape(out);
-  }
-  const int num_dims = partial_shape.dims();
-  std::vector<DimensionHandle> dims;
-  dims.reserve(partial_shape.dims());
-  for (int i = 0; i < num_dims; ++i) {
-    // -1 is unknown in proto and in InferenceContext, so this size can be
-    // passed directly to MakeDim.
-    dims.push_back(MakeDim(partial_shape.dim_size(i)));
-  }
-  return ReturnCreatedShape(dims, out);
+  return MakeShapeFromPartialTensorShape(partial_shape, out);
 }
 
 // Returns a new dimension whose value is given by a scalar input tensor.

@@ -810,6 +810,13 @@ extern void TF_ImportGraphDefOptionsAddInputMapping(
     TF_ImportGraphDefOptions* opts, const char* src_name, int src_index,
     TF_Output dst);
 
+// Set any imported nodes with control input `src_name` to have that input
+// replaced with `dst`. `src_name` refers to a node in the graph to be imported,
+// `dst` references an operation already existing in the graph being imported
+// into.
+extern void TF_GraphImportGraphDefOptionsRemapControlDependency(
+    TF_ImportGraphDefOptions* opts, const char* src_name, TF_Operation* dst);
+
 // Cause the imported graph to have a control dependency on `oper`. `oper`
 // should exist in the graph being imported into.
 extern void TF_ImportGraphDefOptionsAddControlDependency(

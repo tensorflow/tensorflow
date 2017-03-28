@@ -125,6 +125,20 @@ void TFStats::ParseRunMeta() {
       node->second.AddStepStat(dev_stat.device(), &node_stat);
     }
   }
+
+  if (!run_meta_->has_cost_graph()) {
+    fprintf(stderr,
+            "Missing CostGraphDef in RunMetadata.\nMaybe you forget to"
+            "set tf.ConfigProto(graph_options=tf.GraphOptions("
+            "build_cost_model=1)) to Session()\n");
+  }
+  for (const auto& node_pb : run_meta_->cost_graph().node()) {
+    auto node = nodes_map_.find(node_pb.name());
+    if (node == nodes_map_.end()) {
+      continue;
+    }
+    node->second.AddNodeStat(&node_pb);
+  }
 }
 }  // namespace tfprof
 }  // namespace tensorflow

@@ -109,6 +109,41 @@ class ReduceTest : public ClientLibraryTestBase {
                                ErrorSpec(0.001));
   }
 
+  void RunR1ToR0PredTest(bool and_reduce,
+                         tensorflow::gtl::ArraySlice<int> input_data) {
+    const int element_count = input_data.size();
+    ComputationBuilder builder(client_, TestName());
+    const Shape input_shape = ShapeUtil::MakeShape(S32, {element_count});
+    auto input_par = builder.Parameter(0, input_shape, "input");
+    auto pred_values =
+        builder.Eq(input_par, builder.ConstantR1<int>(element_count, 1));
+    ComputationDataHandle init_value;
+    Computation reduce;
+    if (and_reduce) {
+      init_value = builder.ConstantR0<bool>(true);
+      reduce = CreateScalarLogicalAndComputation(&builder);
+    } else {
+      init_value = builder.ConstantR0<bool>(false);
+      reduce = CreateScalarLogicalOrComputation(&builder);
+    }
+    builder.Reduce(pred_values, init_value, reduce,
+                   /*dimensions_to_reduce=*/{0});
+
+    std::unique_ptr<Literal> input_literal = LiteralUtil::CreateR1(input_data);
+    std::unique_ptr<GlobalData> input_global_data =
+        client_->TransferToServer(*input_literal).ConsumeValueOrDie();
+
+    bool expected = and_reduce;
+    for (bool item : input_data) {
+      if (and_reduce) {
+        expected = expected && item;
+      } else {
+        expected = expected || item;
+      }
+    }
+    ComputeAndCompareR0<bool>(&builder, expected, {input_global_data.get()});
+  }
+
   // Runs an R2 => R0 reduction test with the given number of (rows, cols).
   void RunR2ToR0Test(int64 rows, int64 cols, int64 minor = 1, int64 major = 0) {
     ComputationBuilder builder(client_, TestName());
@@ -219,6 +254,40 @@ XLA_TEST_F(ReduceTest, ReduceR2_111x50_01_To_R1) {
 XLA_TEST_F(ReduceTest, ReduceR2_1024x1024_To_R1) { RunR2ToR1Test(1024, 1024); }
 XLA_TEST_F(ReduceTest, ReduceR2_1000x1500_To_R1) { RunR2ToR1Test(1000, 1500); }
 
+// TODO(b/34969189): Invalid CAS generated on GPU.
+XLA_TEST_F(ReduceTest, DISABLED_ON_GPU(AndReduceAllOnesR1_10_Pred)) {
+  constexpr int element_count = 10;
+  std::vector<int> input(element_count, 1);
+  RunR1ToR0PredTest(/*and_reduce=*/true, input);
+}
+
+// TODO(b/34969189): Invalid CAS generated on GPU.
+XLA_TEST_F(ReduceTest, DISABLED_ON_GPU(AndReduceOnesAndZerosR1_10_Pred)) {
+  constexpr int element_count = 10;
+  std::vector<int> input(element_count);
+  for (int i = 0; i < element_count; ++i) {
+    input[i] = i % 2;
+  }
+  RunR1ToR0PredTest(/*and_reduce=*/true, input);
+}
+
+// TODO(b/34969189): Invalid CAS generated on GPU.
+XLA_TEST_F(ReduceTest, DISABLED_ON_GPU(OrReduceAllOnesR1_10_Pred)) {
+  constexpr int element_count = 10;
+  std::vector<int> input(element_count, 1);
+  RunR1ToR0PredTest(/*and_reduce=*/false, input);
+}
+
+// TODO(b/34969189): Invalid CAS generated on GPU.
+XLA_TEST_F(ReduceTest, DISABLED_ON_GPU(OrReduceOnesAndZerosR1_10_Pred)) {
+  constexpr int element_count = 10;
+  std::vector<int> input(element_count);
+  for (int i = 0; i < element_count; ++i) {
+    input[i] = i % 2;
+  }
+  RunR1ToR0PredTest(/*and_reduce=*/false, input);
+}
+
 XLA_TEST_F(ReduceTest, ReduceElementwiseR2_111x50_To_R1) {
   const int64 rows = 111, cols = 50;
 
@@ -246,6 +315,72 @@ XLA_TEST_F(ReduceTest, ReduceElementwiseR2_111x50_To_R1) {
       column_sum += log(input_data(rowno, colno));
     }
     expected.push_back(column_sum);
+  }
+  ComputeAndCompareR1<float>(&builder, expected, {input_global_data.get()},
+                             ErrorSpec(0.01, 1e-4));
+}
+
+XLA_TEST_F(ReduceTest, TransposeAndReduceElementwiseR2_111x50_To_R1) {
+  const int64 rows = 111, cols = 50;
+
+  ComputationBuilder builder(client_, TestName());
+  Computation add_f32 = CreateScalarAddComputation(F32, &builder);
+  const Shape input_shape = ShapeUtil::MakeShape(F32, {rows, cols});
+  auto input = builder.Parameter(0, input_shape, "input");
+  auto zero = builder.ConstantR0<float>(0.0);
+  auto log_ = builder.Log(input);
+  auto transpose = builder.Transpose(log_, {1, 0});
+  builder.Reduce(transpose, zero, add_f32, /*dimensions_to_reduce=*/{1});
+
+  Array2D<float> input_data(rows, cols);
+  input_data.FillRandom(3.14f, 0.04);
+  std::unique_ptr<Literal> input_literal =
+      LiteralUtil::CreateR2FromArray2D(input_data);
+  input_literal =
+      LiteralUtil::Relayout(*input_literal, LayoutUtil::MakeLayout({0, 1}));
+  std::unique_ptr<GlobalData> input_global_data =
+      client_->TransferToServer(*input_literal).ConsumeValueOrDie();
+
+  std::vector<float> expected;
+  for (int64 colno = 0; colno < cols; ++colno) {
+    float column_sum = 0;
+    for (int64 rowno = 0; rowno < rows; ++rowno) {
+      column_sum += log(input_data(rowno, colno));
+    }
+    expected.push_back(column_sum);
+  }
+  ComputeAndCompareR1<float>(&builder, expected, {input_global_data.get()},
+                             ErrorSpec(0.01, 1e-4));
+}
+
+XLA_TEST_F(ReduceTest, Reshape_111x2x25Reduce_111x50_To_R1) {
+  const int64 rows = 111, cols = 50;
+
+  ComputationBuilder builder(client_, TestName());
+  Computation add_f32 = CreateScalarAddComputation(F32, &builder);
+  const Shape input_shape = ShapeUtil::MakeShape(F32, {rows, 2, cols / 2});
+  auto input = builder.Parameter(0, input_shape, "input");
+  auto zero = builder.ConstantR0<float>(0.0);
+  auto log_ = builder.Log(input);
+  auto reshape = builder.Reshape(log_, {rows, cols});
+  builder.Reduce(reshape, zero, add_f32, /*dimensions_to_reduce=*/{0});
+
+  Array3D<float> input_data(rows, 2, cols / 2);
+  input_data.FillRandom(3.14f, 0.04);
+  std::unique_ptr<Literal> input_literal =
+      LiteralUtil::CreateR3FromArray3D(input_data);
+  std::unique_ptr<GlobalData> input_global_data =
+      client_->TransferToServer(*input_literal).ConsumeValueOrDie();
+
+  std::vector<float> expected;
+  for (int64 major = 0; major < 2; ++major) {
+    for (int64 colno = 0; colno < cols / 2; ++colno) {
+      float column_sum = 0;
+      for (int64 rowno = 0; rowno < rows; ++rowno) {
+        column_sum += log(input_data(rowno, major, colno));
+      }
+      expected.push_back(column_sum);
+    }
   }
   ComputeAndCompareR1<float>(&builder, expected, {input_global_data.get()},
                              ErrorSpec(0.01, 1e-4));

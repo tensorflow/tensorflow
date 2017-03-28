@@ -32,8 +32,6 @@ namespace {
 
 constexpr char kSessionBundlePath[] =
     "session_bundle/testdata/half_plus_two/00000123";
-constexpr char kSessionBundleMetaGraphFilename[] = "export.meta";
-constexpr char kSessionBundleVariablesFilename[] = "export-00000-of-00001";
 constexpr char kSavedModelBundlePath[] =
     "cc/saved_model/testdata/half_plus_two/00000123";
 

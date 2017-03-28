@@ -7,8 +7,8 @@ scalars, images, audio, histograms, and the graph.
 This README gives an overview of key concepts in TensorBoard, as well as how to
 interpret the visualizations TensorBoard provides. For an in-depth example of
 using TensorBoard, see the tutorial: [TensorBoard: Visualizing
-Learning](https://www.tensorflow.org/versions/master/how_tos/summaries_and_tensorboard/index.html).
-For in-depth information on the Graph Visualizer, see this tutorial: [TensorBoard: Graph Visualization](https://www.tensorflow.org/versions/master/how_tos/graph_viz/index.html).
+Learning](https://www.tensorflow.org/get_started/summaries_and_tensorboard).
+For in-depth information on the Graph Visualizer, see this tutorial: [TensorBoard: Graph Visualization](https://www.tensorflow.org/get_started/graph_viz).
 
 # Usage
 
@@ -91,7 +91,7 @@ produce a consistent history of what happened.
 ### Runs: Comparing different executions of your model
 
 You may want to visually compare multiple executions of your model; for example,
-suppose you've changed the hyperparameters and want to see if its converging
+suppose you've changed the hyperparameters and want to see if it's converging
 faster. TensorBoard enables this through different "runs". When TensorBoard is
 passed a `logdir` at startup, it recursively walks the directory tree rooted at
 `logdir` looking for subdirectories that contain tfevents data. Every time it

@@ -115,11 +115,12 @@ bool LayoutConstraints::OperandBufferForwarded(
   auto operand_buffers =
       points_to_analysis_.GetPointsToSet(instruction->operand(operand_no))
           .CreateFlattenedSet();
-  std::vector<const LogicalBuffer*> intersection;
-  std::set_intersection(output_buffers.begin(), output_buffers.end(),
-                        operand_buffers.begin(), operand_buffers.end(),
-                        std::back_inserter(intersection));
-  return !intersection.empty();
+  for (const LogicalBuffer* output_buffer : output_buffers) {
+    if (operand_buffers.count(output_buffer) > 0) {
+      return true;
+    }
+  }
+  return false;
 }
 
 Status LayoutConstraints::SetBufferLayout(const Layout& layout,
@@ -298,8 +299,8 @@ string LayoutConstraints::ToString() const {
     for (int64 i = 0; i < instruction->operand_count(); ++i) {
       if (OperandLayout(instruction, i) != nullptr) {
         tensorflow::strings::StrAppend(
-            &output, "    operand (", i, "): ",
-            OperandLayout(instruction, i)->ToString(), "\n");
+            &output, "    operand (", i,
+            "): ", OperandLayout(instruction, i)->ToString(), "\n");
       }
     }
     for (const LogicalBuffer* buffer :
@@ -338,6 +339,11 @@ Status LayoutAssignment::AddMandatoryConstraints(
       // TODO(b/31425034): Change infeeds to be more like parameters, with
       // shapes in the ComputationLayout.
       shape_with_layout = &instruction->shape();
+    } else if (instruction->opcode() == HloOpcode::kOutfeed) {
+      // Constrain the input to the Outfeed instruction to be the expected
+      // layout of the Outfeed.
+      TF_RETURN_IF_ERROR(constraints->SetOperandLayout(
+          instruction->outfeed_shape(), instruction.get(), 0));
     } else if (instruction->opcode() == HloOpcode::kParameter) {
       // Parameter layouts must match the respective layout in
       // ComputationLayout.

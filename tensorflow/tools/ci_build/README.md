@@ -13,27 +13,27 @@ run continuous integration [ci.tensorflow.org](https://ci.tensorflow.org).
 
    You can run all the jobs **without docker** if you are on mac or on linux
    and you just don't want docker. Just install all the dependencies from
-   [os_setup.md](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/g3doc/get_started/os_setup.md).
+   [Installing TensorFlow](https://www.tensorflow.org/install/).
    Then run any of the one liners below without the
    `tensorflow/tools/ci_build/ci_build.sh` in them.
 
 2. Clone tensorflow repository.
 
    ```bash
-git clone https://github.com/tensorflow/tensorflow.git
-```
+   git clone https://github.com/tensorflow/tensorflow.git
+   ```
 
 3. Go to tensorflow directory
 
    ```bash
-cd tensorflow
-```
+   cd tensorflow
+   ```
 
 4. Build what you want, for example
 
    ```bash
-tensorflow/tools/ci_build/ci_build.sh CPU bazel test //tensorflow/...
-```
+   tensorflow/tools/ci_build/ci_build.sh CPU bazel test //tensorflow/...
+   ```
 
 
 

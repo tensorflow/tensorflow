@@ -17,14 +17,15 @@ import {DataPoint, DataSet, State, stateGetAccessorDimensions} from './data';
 
 /**
  * Helper method that makes a list of points given an array of
- * trace indexes.
+ * sequence indexes.
  *
- * @param traces The i-th entry holds the 'next' attribute for the i-th point.
+ * @param sequences The i-th entry holds the 'next' attribute for the i-th
+ * point.
  */
-function makePointsWithTraces(traces: number[]) {
-  let nextAttr = '__next__';
+function makePointsWithSequences(
+    sequences: number[], nextAttr = '__seq_next__') {
   let points: DataPoint[] = [];
-  traces.forEach((t, i) => {
+  sequences.forEach((t, i) => {
     let metadata: {[key: string]: any} = {};
     metadata[nextAttr] = t >= 0 ? t : null;
     points.push({
@@ -37,29 +38,38 @@ function makePointsWithTraces(traces: number[]) {
   return points;
 }
 
-describe('constructor_with_traces', () => {
-  it('Simple forward pointing traces', () => {
+describe('constructor_with_sequences', () => {
+  it('Simple forward pointing sequences, __seq_next__ metadata format', () => {
     // The input is: 0->2, 1->None, 2->3, 3->None. This should return
-    // one trace 0->2->3.
-    const points = makePointsWithTraces([2, -1, 3, -1]);
+    // one sequence 0->2->3.
+    const points = makePointsWithSequences([2, -1, 3, -1]);
     let dataset = new DataSet(points);
-    expect(dataset.traces.length).toEqual(1);
-    expect(dataset.traces[0].pointIndices).toEqual([0, 2, 3]);
+    expect(dataset.sequences.length).toEqual(1);
+    expect(dataset.sequences[0].pointIndices).toEqual([0, 2, 3]);
   });
 
-  it('No traces', () => {
-    let points = makePointsWithTraces([-1, -1, -1, -1]);
+  it('Simple forward pointing sequences, __next__ metadata format', () => {
+    // The input is: 0->2, 1->None, 2->3, 3->None. This should return
+    // one sequence 0->2->3.
+    const points = makePointsWithSequences([2, -1, 3, -1], '__next__');
     let dataset = new DataSet(points);
-    expect(dataset.traces.length).toEqual(0);
+    expect(dataset.sequences.length).toEqual(1);
+    expect(dataset.sequences[0].pointIndices).toEqual([0, 2, 3]);
   });
 
-  it('A trace that goes backwards and forward in the array', () => {
+  it('No sequences', () => {
+    let points = makePointsWithSequences([-1, -1, -1, -1]);
+    let dataset = new DataSet(points);
+    expect(dataset.sequences.length).toEqual(0);
+  });
+
+  it('A sequence that goes backwards and forward in the array', () => {
     // The input is: 0->2, 1->0, 2->nothing, 3->1. This should return
-    // one trace 3->1->0->2.
-    let points = makePointsWithTraces([2, 0, -1, 1]);
+    // one sequence 3->1->0->2.
+    let points = makePointsWithSequences([2, 0, -1, 1]);
     let dataset = new DataSet(points);
-    expect(dataset.traces.length).toEqual(1);
-    expect(dataset.traces[0].pointIndices).toEqual([3, 1, 0, 2]);
+    expect(dataset.sequences.length).toEqual(1);
+    expect(dataset.sequences[0].pointIndices).toEqual([3, 1, 0, 2]);
   });
 });
 

@@ -39,8 +39,8 @@ The subfolder names are important, since they define what label is applied to
 each image, but the filenames themselves don't matter. Once your images are
 prepared, you can run the training with a command like this:
 
-bazel build third_party/tensorflow/examples/image_retraining:retrain && \
-bazel-bin/third_party/tensorflow/examples/image_retraining/retrain \
+bazel build tensorflow/examples/image_retraining:retrain && \
+bazel-bin/tensorflow/examples/image_retraining/retrain \
 --image_dir ~/flower_photos
 
 You can replace the image_dir argument with any folder containing subfolders of
@@ -893,7 +893,7 @@ def main(_):
     print('=== MISCLASSIFIED TEST IMAGES ===')
     for i, test_filename in enumerate(test_filenames):
       if predictions[i] != test_ground_truth[i].argmax():
-        print('%70s  %s' % (test_filename, 
+        print('%70s  %s' % (test_filename,
                             list(image_lists.keys())[predictions[i]]))
 
   # Write out the trained graph and labels with the weights stored as constants.

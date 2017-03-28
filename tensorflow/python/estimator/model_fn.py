@@ -23,6 +23,7 @@ import collections
 
 import six
 
+from tensorflow.python.estimator.export.export_output import ExportOutput
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -36,14 +37,19 @@ class ModeKeys(object):
 
   The following standard keys are defined:
 
-  * `FIT`: training mode.
+  * `TRAIN`: training mode.
   * `EVAL`: evaluation mode.
   * `PREDICT`: inference mode.
   """
 
-  FIT = 'train'
+  TRAIN = 'train'
   EVAL = 'eval'
   PREDICT = 'infer'
+
+
+class MetricKeys(object):
+  """Metric key strings."""
+  LOSS = 'loss'
 
 
 class EstimatorSpec(
@@ -70,8 +76,8 @@ class EstimatorSpec(
     """Creates a validated `EstimatorSpec` instance.
 
     Depending on the value of `mode`, different arguments are required. Namely
-    * For `mode == ModeKeys.FIT`: required fields are `loss` and `train_op`.
-    * For `mode == ModeKeys.EVAL`: required fields are `loss` and `predictions`.
+    * For `mode == ModeKeys.TRAIN`: required fields are `loss` and `train_op`.
+    * For `mode == ModeKeys.EVAL`: required field is`loss`.
     * For `mode == ModeKeys.PREDICT`: required fields are `predictions`.
 
     model_fn can populate all arguments independent of mode. In this case, some
@@ -95,17 +101,16 @@ class EstimatorSpec(
 
     ```python
     def my_model_fn(mode, features, labels):
-      if (mode == tf.estimator.ModeKeys.FIT or
+      if (mode == tf.estimator.ModeKeys.TRAIN or
           mode == tf.estimator.ModeKeys.EVAL):
         loss = ...
       else:
         loss = None
-      if mode == tf.estimator.ModeKeys.FIT:
+      if mode == tf.estimator.ModeKeys.TRAIN:
         train_op = ...
       else:
         train_op = None
-      if (mode == tf.estimator.ModeKeys.EVAL or
-          mode == tf.estimator.ModeKeys.PREDICT):
+      if mode == tf.estimator.ModeKeys.PREDICT:
         predictions = ...
       else:
         predictions = None
@@ -126,17 +131,16 @@ class EstimatorSpec(
       eval_metric_ops: Dict of metric results keyed by name. The values of the
         dict are the results of calling a metric function, namely a
         `(metric_tensor, update_op)` tuple.
-      export_outputs: Describes the output signature to be exported to
+      export_outputs: Describes the output signatures to be exported to
         `SavedModel` and used during serving.
-        A dict `{name: (signature_method_name, predictions)}` where:
+        A dict `{name: output}` where:
         * name: An arbitrary name for this output.
-        * signature_method_name: One of the *_METHOD_NAME constants defined in
-          `signature_constants`, such as
-          `tf.saved_model.signature_constants.CLASSIFY_METHOD_NAME`. Describes
-          the type of `SignatureDef` to be exported.
-        * predictions: Predictions `Tensor` of dict of `Tensor`.
+        * output: an `ExportOutput` object such as `ClassificationOutput`,
+            `RegressionOutput`, or `PredictOutput`.
         Single-headed models only need to specify one entry in this dictionary.
-        Multi-headed models should specify one entry for each head.
+        Multi-headed models should specify one entry for each head, one of
+        which must be named using
+        signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY.
       training_chief_hooks: A list of `tf.train.SessionRunHook` objects to
         run on the chief worker during training.
       training_hooks: A list of `tf.train.SessionRunHook` objects that to run on
@@ -153,14 +157,14 @@ class EstimatorSpec(
     """
     # Validate train_op.
     if train_op is None:
-      if mode == ModeKeys.FIT:
+      if mode == ModeKeys.TRAIN:
         raise ValueError('Missing train_op.')
     else:
       _check_is_tensor_or_operation(train_op, 'train_op')
 
     # Validate loss.
     if loss is None:
-      if mode in (ModeKeys.FIT, ModeKeys.EVAL):
+      if mode in (ModeKeys.TRAIN, ModeKeys.EVAL):
         raise ValueError('Missing loss.')
     else:
       loss = _check_is_tensor(loss, 'loss')
@@ -172,8 +176,9 @@ class EstimatorSpec(
 
     # Validate predictions.
     if predictions is None:
-      if mode == ModeKeys.PREDICT or mode == ModeKeys.EVAL:
+      if mode == ModeKeys.PREDICT:
         raise ValueError('Missing predictions.')
+      predictions = {}
     else:
       if isinstance(predictions, dict):
         predictions = {
@@ -207,17 +212,23 @@ class EstimatorSpec(
         raise TypeError('export_outputs must be dict, given: {}'.format(
             export_outputs))
       for v in six.itervalues(export_outputs):
-        if not isinstance(v, tuple) or len(v) != 2:
+        if not isinstance(v, ExportOutput):
           raise TypeError(
-              'Values in export_outputs must be 2-tuple, given: {}'.format(
-                  export_outputs))
-        if v[0] not in (
-            signature_constants.CLASSIFY_METHOD_NAME,
-            signature_constants.PREDICT_METHOD_NAME,
-            signature_constants.REGRESS_METHOD_NAME):
+              'Values in export_outputs must be ExportOutput objects. '
+              'Given: {}'.format(export_outputs))
+      # Note export_outputs is allowed to be empty.
+      if len(export_outputs) == 1:
+        (key, value), = export_outputs.items()
+        if key != signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY:
+          export_outputs[
+              signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY] = value
+      if len(export_outputs) > 1:
+        if (signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+            not in export_outputs):
           raise ValueError(
-              'Invalid signature_method_name in export_outputs, '
-              'given: {}'.format(export_outputs))
+              'Multiple export_outputs were provided, but none of them is '
+              'specified as the default.  Do this by naming one of them with '
+              'signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY.')
 
     # Validate that all tensors and ops are from the default graph.
     default_graph = ops.get_default_graph()
@@ -244,9 +255,9 @@ class EstimatorSpec(
             'All hooks must be SessionRunHook instances, given: {}'.format(
                 hook))
 
+    scaffold = scaffold or monitored_session.Scaffold()
     # Validate scaffold.
-    if (scaffold is not None and
-        not isinstance(scaffold, monitored_session.Scaffold)):
+    if not isinstance(scaffold, monitored_session.Scaffold):
       raise TypeError(
           'scaffold must be tf.train.Scaffold. Given: {}'.format(scaffold))
 

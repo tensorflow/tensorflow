@@ -44,12 +44,15 @@ class DenseTest(test.TestCase):
     self.assertEqual(dense.bias_regularizer, None)
     self.assertEqual(dense.activity_regularizer, None)
     self.assertEqual(dense.use_bias, True)
-    self.assertEqual(dense.name, 'my_dense')
+    with self.assertRaisesRegexp(ValueError, 'not been used yet'):
+      _ = dense.name
 
     # Test auto-naming
     dense = core_layers.Dense(2, activation=nn_ops.relu)
+    dense.apply(np.random.randn(0, 2))
     self.assertEqual(dense.name, 'dense')
     dense = core_layers.Dense(2, activation=nn_ops.relu)
+    dense.apply(np.random.randn(0, 2))
     self.assertEqual(dense.name, 'dense_1')
 
   def testCall(self):
@@ -288,8 +291,9 @@ class DropoutTest(test.TestCase):
   def testDropoutProperties(self):
     dp = core_layers.Dropout(0.5)
     self.assertEqual(dp.rate, 0.5)
-    self.assertEqual(dp.name, 'dropout')
     self.assertEqual(dp.noise_shape, None)
+    dp.apply(np.ones(()))
+    self.assertEqual(dp.name, 'dropout')
 
   def testBooleanLearningPhase(self):
     with self.test_session() as sess:

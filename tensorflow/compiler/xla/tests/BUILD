@@ -346,6 +346,7 @@ xla_test(
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla/client:computation_builder",
         "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/client/lib:arithmetic",
         "//tensorflow/compiler/xla/legacy_flags:cpu_compiler_flags",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/core:test",
@@ -1342,6 +1343,22 @@ cc_test(
     deps = [
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_test(
+    name = "hlo_metadata_test",
+    srcs = [
+        "hlo_metadata_test.cc",
+    ],
+    deps = [
+        ":local_client_test_base",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/client:computation_builder",
+        "//tensorflow/compiler/xla/service:computation_tracker",
+        "//tensorflow/compiler/xla/service:local_service",
         "//tensorflow/core:test_main",
     ],
 )

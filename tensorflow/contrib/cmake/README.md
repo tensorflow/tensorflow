@@ -13,7 +13,7 @@ Linux.
 Current Status
 --------------
 
-CMake can be used to build TensorFlow on Windows. See the [getting started documentation](https://www.tensorflow.org/get_started/os_setup.html#pip-installation-on-windows)
+CMake can be used to build TensorFlow on Windows. See the [getting started documentation](https://www.tensorflow.org/install/install_windows)
 for instructions on how to install a pre-built TensorFlow package on Windows.
 
 ### Current known limitations

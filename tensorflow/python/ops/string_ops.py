@@ -55,7 +55,7 @@ def string_split(source, delimiter=" "):  # pylint: disable=invalid-name
 
   Let N be the size of source (typically N will be the batch size). Split each
   element of `source` based on `delimiter` and return a `SparseTensor`
-  containing the splitted tokens. Empty tokens are ignored.
+  containing the split tokens. Empty tokens are ignored.
 
   If `delimiter` is an empty string, each element of the `source` is split
   into individual strings, each containing one byte. (This includes splitting

@@ -41,6 +41,10 @@ class ServiceInterface {
   virtual tensorflow::Status TransferToInfeed(
       const TransferToInfeedRequest* arg, TransferToInfeedResponse* result) = 0;
 
+  virtual tensorflow::Status TransferFromOutfeed(
+      const TransferFromOutfeedRequest* arg,
+      TransferFromOutfeedResponse* result) = 0;
+
   virtual tensorflow::Status ResetDevice(const ResetDeviceRequest* arg,
                                          ResetDeviceResponse* result) = 0;
 

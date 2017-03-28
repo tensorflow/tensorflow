@@ -16,6 +16,7 @@
 // TensorFlow kernels and Ops for computing a masked matrix product.
 
 #include <algorithm>
+#include <numeric>
 #include <vector>
 
 #include "tensorflow/core/framework/op.h"

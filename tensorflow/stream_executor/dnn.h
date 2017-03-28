@@ -681,7 +681,7 @@ class ProfileResult {
   float elapsed_time_in_ms_ = std::numeric_limits<float>::max();
 };
 
-// Describe the configuration for the algorithms that will used.
+// Describes the configuration for the algorithms that will used.
 //
 // Arguments:
 //  algorithm: the primary algorithm that should be used.
@@ -702,6 +702,14 @@ class AlgorithmConfig {
   void set_algorithm_no_scratch(AlgorithmType val) {
     algorithm_no_scratch_ = val;
   }
+  bool operator==(const AlgorithmConfig& other) const {
+    return this->algorithm_ == other.algorithm_ &&
+           this->algorithm_no_scratch_ == other.algorithm_no_scratch_;
+  }
+  bool operator!=(const AlgorithmConfig& other) const {
+    return !(*this == other);
+  }
+  string ToString() const;
 
  private:
   AlgorithmType algorithm_;

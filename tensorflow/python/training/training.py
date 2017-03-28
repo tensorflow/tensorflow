@@ -76,6 +76,7 @@ See the @{$python/train} guide.
 @@GlobalStepWaiterHook
 @@FinalOpsHook
 @@FeedFnHook
+@@SecondOrStepTimer
 @@global_step
 @@basic_train_loop
 @@get_global_step

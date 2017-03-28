@@ -189,7 +189,7 @@ def input_from_feature_columns(columns_to_tensors,
                                weight_collections=None,
                                trainable=True,
                                scope=None):
-  """A tf.contrib.layer style input layer builder based on FeatureColumns.
+  """A tf.contrib.layers style input layer builder based on FeatureColumns.
 
   Generally a single example in training data is described with feature columns.
   At the first layer of the model, this column oriented data should be converted
@@ -226,7 +226,7 @@ def input_from_feature_columns(columns_to_tensors,
     columns_to_tensors: A mapping from feature column to tensors. 'string' key
       means a base feature (not-transformed). It can have FeatureColumn as a
       key too. That means that FeatureColumn is already transformed by input
-      pipeline. For example, `inflow` may have handled transformations.
+      pipeline.
     feature_columns: A set containing all the feature columns. All items in the
       set should be instances of classes derived by FeatureColumn.
     weight_collections: List of graph collections to which weights are added.
@@ -268,7 +268,7 @@ def sequence_input_from_feature_columns(columns_to_tensors,
     columns_to_tensors: A mapping from feature column to tensors. 'string' key
       means a base feature (not-transformed). It can have FeatureColumn as a
       key too. That means that FeatureColumn is already transformed by input
-      pipeline. For example, `inflow` may have handled transformations.
+      pipeline.
     feature_columns: A set containing all the feature columns. All items in the
       set should be instances of classes derived by FeatureColumn.
     weight_collections: List of graph collections to which weights are added.
@@ -422,9 +422,9 @@ def joint_weighted_sum_from_feature_columns(columns_to_tensors,
   Returns:
     A tuple containing:
 
-      * A Tensor which represents predictions of a linear model.
-      * A list of Variables storing the weights.
-      * A Variable which is used for bias.
+    * A Tensor which represents predictions of a linear model.
+    * A list of Variables storing the weights.
+    * A Variable which is used for bias.
 
   Raises:
     ValueError: if FeatureColumn cannot be used for linear predictions.
@@ -471,7 +471,7 @@ def weighted_sum_from_feature_columns(columns_to_tensors,
                                       weight_collections=None,
                                       trainable=True,
                                       scope=None):
-  """A tf.contrib.layer style linear prediction builder based on FeatureColumns.
+  """A tf.contrib.layers style linear prediction builder based on FeatureColumn.
 
   Generally a single example in training data is described with feature columns.
   This function generates weighted sum for each num_outputs. Weighted sum refers

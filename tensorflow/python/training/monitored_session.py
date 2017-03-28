@@ -67,8 +67,8 @@ class Scaffold(object):
   The following pieces are directly accessible as attributes of the `Scaffold`
   object:
 
-  * `saver`: A `tf.Saver` object taking care of saving the variables.  Picked
-    from and stored into the `SAVERS` collection in the graph by default.
+  * `saver`: A `tf.train.Saver` object taking care of saving the variables.
+    Picked from and stored into the `SAVERS` collection in the graph by default.
   * `init_op`: An op to run to initialize the variables.  Picked from and
     stored into the `INIT_OP` collection in the graph by default.
   * `ready_op`: An op to verify that the variables are initialized.  Picked
@@ -87,7 +87,7 @@ class Scaffold(object):
 
   You can also pass the following additional pieces to the constructor:
 
-  * `init_feed_dict`: A sessionn feed dictionary that should be used when
+  * `init_feed_dict`: A session feed dictionary that should be used when
      running the init op.
   * `init_fn`: A callable to run run after the init op to perform additional
     initializations.  The callable will be called as
@@ -124,7 +124,8 @@ class Scaffold(object):
       local_init_op: Optional op to initialize local variables.
       summary_op: Optional op to gather all summaries.  Must return a scalar
         string tensor containing a serialized `Summary` proto.
-      saver: Optional `tf.Saver` object to use to save and restore variables.
+      saver: Optional `tf.train.Saver` object to use to save and restore
+        variables.
     """
 
     # NOTE(touts): modifying the init function to be passed the scaffold is a
@@ -261,7 +262,7 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
   For a chief, this utility sets proper session initializer/restorer. It also
   creates hooks related to checkpoint and summary saving. For workers, this
   utility sets proper session creator which waits for the chief to
-  inialize/restore.
+  initialize/restore.
 
 
   Args:
@@ -632,6 +633,7 @@ class SingularMonitoredSession(_MonitoredSession):
   Please note that this utility is not recommended for distributed settings.
   For distributed settings, please use `tf.train.MonitoredSession`. The
   differences between `MonitoredSession` and `SingularMonitoredSession` are:
+
   * `MonitoredSession` handles `AbortedError` and `UnavailableError` for
     distributed settings, but `SingularMonitoredSession` does not.
   * `MonitoredSession` can be created in `chief` or `worker` modes.
@@ -639,8 +641,8 @@ class SingularMonitoredSession(_MonitoredSession):
   * You can access the raw `tf.Session` object used by
     `SingularMonitoredSession`, whereas in MonitoredSession the raw session is
     private. This can be used:
-    - To `run` without hooks.
-    - To save and restore.
+      - To `run` without hooks.
+      - To save and restore.
   * All other functionality is identical.
 
   Example usage:
@@ -673,7 +675,7 @@ class SingularMonitoredSession(_MonitoredSession):
 
   * calls `hook.end()`
   * closes the queue runners and the session
-  * surpresses `OutOfRange` error which indicates that all inputs have been
+  * suppresses `OutOfRange` error which indicates that all inputs have been
     processed if the `SingularMonitoredSession` is used as a context.
   """
 
@@ -803,9 +805,10 @@ class _RecoverableSession(_WrappedSession):
       try:
         return self._sess_creator.create_session()
       except _PREEMPTION_ERRORS as e:
-        logging.info('An error was raised during initialization. '
-                     'It\'s most likely due to a preemption in a connected '
-                     'worker/ps. A new session will be created. Error: %s', e)
+        logging.info('An error was raised while a session was being created. '
+                     'This may be due to a preemption of a connected worker '
+                     'or parameter server. A new session will be created. '
+                     'Error: %s', e)
 
   def run(self, fetches, feed_dict=None, options=None, run_metadata=None):
     while True:
@@ -817,10 +820,10 @@ class _RecoverableSession(_WrappedSession):
                               options=options,
                               run_metadata=run_metadata)
       except _PREEMPTION_ERRORS as e:
-        logging.info('An error was raised. Closing the current session. '
-                     'It\'s most likely due to a preemption in a connected '
-                     'worker/ps. A new session will be created on the next '
-                     'session.run(). Error: %s', e)
+        logging.info('An error was raised. This may be due to a preemption in '
+                     'a connected worker or parameter server. The current '
+                     'session will be closed and a new session will be '
+                     'created. Error: %s', e)
         self.close()
         self._sess = None
 

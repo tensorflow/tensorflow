@@ -66,6 +66,7 @@ def bucket(tensors,
            num_buckets,
            num_threads=1,
            capacity=32,
+           bucket_capacities=None,
            shapes=None,
            dynamic_pad=False,
            allow_smaller_final_batch=False,
@@ -124,7 +125,11 @@ def bucket(tensors,
     num_buckets: A python integer, the number of buckets.
     num_threads: An integer.  The number of threads enqueuing `tensors`.
     capacity: An integer. The maximum number of minibatches in the top queue,
-      and also the maximum number of elements within each bucket.
+      and also (by default) the maximum number of elements within each bucket.
+    bucket_capacities: (Optional) None or a list of integers, the capacities of
+      each bucket. If None, capacity is used (default). If specified, it must
+      be a list of integers of length num_buckets: the i-th element is used
+      as capacity for the i-th bucket queue.
     shapes: (Optional) The shapes for each example.  Defaults to the
       inferred shapes for `tensors`.
     dynamic_pad: Boolean.  Allow variable dimensions in input shapes.
@@ -149,7 +154,8 @@ def bucket(tensors,
   Raises:
     ValueError: If the `shapes` are not specified, and cannot be
       inferred from the elements of `tensors` or if batch_size is a sequence
-      but it's length != num_buckets.
+      but its length != num_buckets. Also if bucket_capacities is not None but
+      its length != num_buckets.
   """
   batch_size_per_bucket = False
   if isinstance(batch_size, (list, tuple)):
@@ -159,6 +165,14 @@ def bucket(tensors,
           "If batch_size is a list it must have num_buckets elements")
   else:
     batch_size = [batch_size] * num_buckets
+
+  if bucket_capacities is None:
+    bucket_capacities = [capacity] * num_buckets
+  if len(bucket_capacities) != num_buckets:
+    raise ValueError(
+        "The list bucket_capacities (%s) must have exactly num_buckets (%d) "
+        "elements." % (str(bucket_capacities), num_buckets))
+
   tensor_list = _as_tensor_list(tensors)
   with ops.name_scope(name, "bucket", tensor_list) as name:
     tensor_list = _validate_bucket(tensor_list)
@@ -187,7 +201,7 @@ def bucket(tensors,
                        else None)
       bucket_queues.append(
           queue_creator(
-              capacity=capacity,
+              capacity=bucket_capacities[i],
               dtypes=types,
               shapes=shapes,
               shared_name=shared_name_i,
@@ -213,7 +227,7 @@ def bucket(tensors,
         name="top_queue")
 
     def enqueue_which():
-
+      """Return an op that enqueues conditionally in one of the queues."""
       def enqueue_single(i):
         return bucket_queues[i].enqueue(tensor_list)
 
@@ -278,6 +292,7 @@ def bucket_by_sequence_length(input_length,
                               bucket_boundaries,
                               num_threads=1,
                               capacity=32,
+                              bucket_capacities=None,
                               shapes=None,
                               dynamic_pad=False,
                               allow_smaller_final_batch=False,
@@ -306,6 +321,10 @@ def bucket_by_sequence_length(input_length,
     num_threads: An integer.  The number of threads enqueuing `tensors`.
     capacity: An integer. The maximum number of minibatches in the top queue,
       and also the maximum number of elements within each bucket.
+    bucket_capacities: (Optional) None or a list of integers, the capacities of
+      each bucket. If None, capacity is used (default). If specified, it must
+      be a list of integers of length one larger than bucket_boundaries.
+      Its i-th element is used as capacity for the i-th bucket queue.
     shapes: (Optional) The shapes for each example.  Defaults to the
       inferred shapes for `tensors`.
     dynamic_pad: Boolean.  Allow variable dimensions in input shapes.
@@ -379,6 +398,7 @@ def bucket_by_sequence_length(input_length,
         num_buckets=len(bucket_boundaries) + 1,
         num_threads=num_threads,
         capacity=capacity,
+        bucket_capacities=bucket_capacities,
         shapes=shapes,
         dynamic_pad=dynamic_pad,
         allow_smaller_final_batch=allow_smaller_final_batch,

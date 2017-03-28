@@ -61,8 +61,8 @@ TEST(ReadReplaceTest, Simple) {
                    .Finalize(g.get(), &other_send));
   GraphOptimizationPassOptions opts;
   opts.graph = &g;
-  OptimizationPassRegistry::Global()->RunGrouping(
-      OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, opts);
+  TF_CHECK_OK(OptimizationPassRegistry::Global()->RunGrouping(
+      OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, opts));
   int found_reads = 0;
   int found_unsafe_reads = 0;
   for (const Node* n : g->nodes()) {

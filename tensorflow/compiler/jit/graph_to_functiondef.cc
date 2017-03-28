@@ -185,7 +185,7 @@ Status GraphToFunctionDef(const Graph& graph, const string& name,
     }
 
     // Add regular inputs
-    for (int i = 0; i < in_edges.size(); ++i) {
+    for (std::vector<const Edge*>::size_type i = 0; i < in_edges.size(); ++i) {
       const Edge* edge = in_edges[i];
       if (edge == nullptr) {
         return errors::InvalidArgument(

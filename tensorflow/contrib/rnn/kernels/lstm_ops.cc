@@ -112,9 +112,9 @@ class LSTMBlockCellOp : public OpKernel {
 
     // Allocate our output tensors.
     Tensor* i_tensor = nullptr;
-    OP_REQUIRES_OK(
-        ctx, ctx->allocate_output("i", TensorShape({batch_size, cell_size}),
-                                  &i_tensor));
+    OP_REQUIRES_OK(ctx, ctx->forward_input_or_allocate_output(
+                            {"h_prev"}, "i",
+                            TensorShape({batch_size, cell_size}), &i_tensor));
 
     Tensor* cs_tensor = nullptr;
     OP_REQUIRES_OK(
@@ -127,9 +127,9 @@ class LSTMBlockCellOp : public OpKernel {
                                   &f_tensor));
 
     Tensor* o_tensor = nullptr;
-    OP_REQUIRES_OK(
-        ctx, ctx->allocate_output("o", TensorShape({batch_size, cell_size}),
-                                  &o_tensor));
+    OP_REQUIRES_OK(ctx, ctx->forward_input_or_allocate_output(
+                            {"cs_prev"}, "o",
+                            TensorShape({batch_size, cell_size}), &o_tensor));
 
     Tensor* ci_tensor = nullptr;
     OP_REQUIRES_OK(
@@ -387,10 +387,10 @@ class LSTMBlockCellGradOp : public OpKernel {
 
     // Allocate our output tensors.
     Tensor* cs_prev_grad_tensor = nullptr;
-    OP_REQUIRES_OK(ctx,
-                   ctx->allocate_output("cs_prev_grad",
-                                        TensorShape({batch_size, cell_size}),
-                                        &cs_prev_grad_tensor));
+    OP_REQUIRES_OK(
+        ctx, ctx->forward_input_or_allocate_output(
+                 {"cs_grad"}, "cs_prev_grad",
+                 TensorShape({batch_size, cell_size}), &cs_prev_grad_tensor));
 
     Tensor* dicfo_tensor = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(
@@ -398,16 +398,19 @@ class LSTMBlockCellGradOp : public OpKernel {
                             &dicfo_tensor));
 
     Tensor* wci_grad_tensor = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output("wci_grad", wci_tensor->shape(),
-                                             &wci_grad_tensor));
+    OP_REQUIRES_OK(
+        ctx, ctx->forward_input_or_allocate_output(
+                 {"wci"}, "wci_grad", wci_tensor->shape(), &wci_grad_tensor));
 
     Tensor* wcf_grad_tensor = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output("wcf_grad", wcf_tensor->shape(),
-                                             &wcf_grad_tensor));
+    OP_REQUIRES_OK(
+        ctx, ctx->forward_input_or_allocate_output(
+                 {"wcf"}, "wcf_grad", wcf_tensor->shape(), &wcf_grad_tensor));
 
     Tensor* wco_grad_tensor = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output("wco_grad", wco_tensor->shape(),
-                                             &wco_grad_tensor));
+    OP_REQUIRES_OK(
+        ctx, ctx->forward_input_or_allocate_output(
+                 {"wco"}, "wco_grad", wco_tensor->shape(), &wco_grad_tensor));
 
     // Allocate our temp tensors.
     Tensor do_tensor;

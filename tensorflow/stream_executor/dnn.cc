@@ -123,6 +123,7 @@ string PadAlignmentString(PadAlignment alignment) {
     case PadAlignment::kTensorFlowPadding:
       return "TensorFlow padding";
   }
+  return "unknown pad alignment";
 }
 
 string ShortPoolingModeString(PoolingMode mode) {
@@ -191,6 +192,12 @@ std::vector<int64> ReorderDims(const std::vector<int64>& input,
   }
 
   return reordered;
+}
+
+// -- AlgorithmConfig
+
+string AlgorithmConfig::ToString() const {
+  return port::StrCat(algorithm_, ", ", algorithm_no_scratch_);
 }
 
 // -- BatchDescriptor

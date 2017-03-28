@@ -23,7 +23,6 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_nn_ops
@@ -31,36 +30,6 @@ from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import nn_ops
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
-
-
-def NHWCToNCHW(input_tensor):
-  """Convert the input from NHWC format to NCHW.
-
-  Args:
-    input_tensor:  a 4-D tensor, or a 4-element array representing the same.
-
-  Returns:
-    the converted tensor or a shape array
-  """
-  if isinstance(input_tensor, ops.Tensor):
-    return array_ops.transpose(input_tensor, [0, 3, 1, 2])
-  else:
-    return [input_tensor[0], input_tensor[3], input_tensor[1], input_tensor[2]]
-
-
-def NCHWToNHWC(input_tensor):
-  """Convert the input from NCHW format to NHWC.
-
-  Args:
-    input_tensor:  a 4-D tensor, or a 4-element array representing the same.
-
-  Returns:
-    the converted tensor or a shape array
-  """
-  if isinstance(input_tensor, ops.Tensor):
-    return array_ops.transpose(input_tensor, [0, 2, 3, 1])
-  else:
-    return [input_tensor[0], input_tensor[2], input_tensor[3], input_tensor[1]]
 
 
 def GetTestConfigs():
@@ -130,9 +99,9 @@ class PoolingTest(test.TestCase):
     with self.test_session(use_gpu=use_gpu) as sess:
       t = constant_op.constant(x, shape=input_sizes, dtype=data_type)
       if data_format == "NCHW":
-        t = NHWCToNCHW(t)
-        ksize = NHWCToNCHW(ksize)
-        strides = NHWCToNCHW(strides)
+        t = test_util.NHWCToNCHW(t)
+        ksize = test_util.NHWCToNCHW(ksize)
+        strides = test_util.NHWCToNCHW(strides)
       t = pool_func(
           t,
           ksize=ksize,
@@ -140,7 +109,7 @@ class PoolingTest(test.TestCase):
           padding=padding,
           data_format=data_format)
       if data_format == "NCHW":
-        t = NCHWToNHWC(t)
+        t = test_util.NCHWToNHWC(t)
       actual = t.eval()
       self.assertAllCloseAccordingToType(expected, actual.flatten())
       self.assertShapeEqual(actual, t)
@@ -690,7 +659,7 @@ class PoolingTest(test.TestCase):
       if data_format == "NCHW":
         ksize = [1, 1, window_rows, window_rows]
         strides = [1, 1, row_stride, col_stride]
-        t = NHWCToNCHW(input_tensor)
+        t = test_util.NHWCToNCHW(input_tensor)
       else:
         ksize = [1, window_rows, window_rows, 1]
         strides = [1, row_stride, col_stride, 1]
@@ -703,7 +672,7 @@ class PoolingTest(test.TestCase):
           data_format=data_format,
           name=func_name)
       if data_format == "NCHW":
-        t = NCHWToNHWC(t)
+        t = test_util.NCHWToNHWC(t)
 
       err = gradient_checker.compute_gradient_error(
           input_tensor,

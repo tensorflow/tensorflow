@@ -76,15 +76,19 @@ export class DemoDataProvider implements DataProvider {
           callback);
     } else {
       logging.setModalMessage('Fetching tensors...', TENSORS_MSG_ID);
-      d3.text(url, (error: any, dataString: string) => {
-        if (error) {
-          logging.setErrorMessage(error.responseText, 'fetching tensors');
-          return;
-        }
-        dataProvider.parseTensors(dataString).then(points => {
+      const request = new XMLHttpRequest();
+      request.open('GET', url);
+      request.responseType = 'arraybuffer';
+
+      request.onerror = () => {
+        logging.setErrorMessage(request.responseText, 'fetching tensors');
+      };
+      request.onload = () => {
+        dataProvider.parseTensors(request.response).then(points => {
           callback(new DataSet(points));
         });
-      });
+      };
+      request.send();
     }
   }
 

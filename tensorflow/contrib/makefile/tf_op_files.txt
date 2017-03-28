@@ -58,6 +58,7 @@ tensorflow/core/kernels/scatter_nd_op.cc
 tensorflow/core/kernels/save_restore_tensor.cc
 tensorflow/core/kernels/save_restore_v2_ops.cc
 tensorflow/core/kernels/save_op.cc
+tensorflow/core/kernels/string_join_op.cc
 tensorflow/core/kernels/reverse_sequence_op.cc
 tensorflow/core/kernels/reverse_op.cc
 tensorflow/core/kernels/restore_op.cc
@@ -107,6 +108,7 @@ tensorflow/core/kernels/example_parsing_ops.cc
 tensorflow/core/kernels/dynamic_stitch_op.cc
 tensorflow/core/kernels/dynamic_partition_op.cc
 tensorflow/core/kernels/depthtospace_op.cc
+tensorflow/core/kernels/spacetodepth_op.cc
 tensorflow/core/kernels/dense_update_ops.cc
 tensorflow/core/kernels/deep_conv2d.cc
 tensorflow/core/kernels/xsmm_conv2d.cc

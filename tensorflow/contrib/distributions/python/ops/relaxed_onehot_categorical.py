@@ -59,8 +59,8 @@ class ExpRelaxedOneHotCategorical(distribution.Distribution):
 
   #### Examples
 
-  Creates a continuous distribution, whoe exp approximates a 3-class one-hot
-  categorical distiribution. The 2nd class is the most likely to be the
+  Creates a continuous distribution, whose exp approximates a 3-class one-hot
+  categorical distribution. The 2nd class is the most likely to be the
   largest component in samples drawn from this distribution. If those samples
   are followed by a `tf.exp` op, then they are distributed as a relaxed onehot
   categorical.
@@ -76,7 +76,7 @@ class ExpRelaxedOneHotCategorical(distribution.Distribution):
   ```
 
   Creates a continuous distribution, whose exp approximates a 3-class one-hot
-  categorical distiribution. The 2nd class is the most likely to be the
+  categorical distribution. The 2nd class is the most likely to be the
   largest component in samples drawn from this distribution.
 
   ```python
@@ -90,7 +90,7 @@ class ExpRelaxedOneHotCategorical(distribution.Distribution):
   ```
 
   Creates a continuous distribution, whose exp approximates a 3-class one-hot
-  categorical distiribution. Because the temperature is very low, samples from
+  categorical distribution. Because the temperature is very low, samples from
   this distribution are almost discrete, with one component almost 0 and the
   others very negative. The 2nd class is the most likely to be the largest
   component in samples drawn from this distribution.
@@ -106,7 +106,7 @@ class ExpRelaxedOneHotCategorical(distribution.Distribution):
   ```
 
   Creates a continuous distribution, whose exp approximates a 3-class one-hot
-  categorical distiribution. Because the temperature is very high, samples from
+  categorical distribution. Because the temperature is very high, samples from
   this distribution are usually close to the (-log(3), -log(3), -log(3)) vector.
   The 2nd class is still the most likely to be the largest component
   in samples drawn from this distribution.
@@ -162,7 +162,7 @@ class ExpRelaxedOneHotCategorical(distribution.Distribution):
       name: Python `str` name prefixed to Ops created by this class.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[logits, probs, temperature]) as ns:
+    with ops.name_scope(name, values=[logits, probs, temperature]):
       with ops.control_dependencies([check_ops.assert_positive(temperature)]
                                     if validate_args else []):
         self._temperature = array_ops.identity(temperature, name="temperature")
@@ -187,7 +187,6 @@ class ExpRelaxedOneHotCategorical(distribution.Distribution):
 
     super(ExpRelaxedOneHotCategorical, self).__init__(
         dtype=dtype,
-        is_continuous=True,
         reparameterization_type=distribution.FULLY_REPARAMETERIZED,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
@@ -195,7 +194,7 @@ class ExpRelaxedOneHotCategorical(distribution.Distribution):
         graph_parents=[self._logits,
                        self._probs,
                        self._temperature],
-        name=ns)
+        name=name)
 
   @property
   def event_size(self):
@@ -314,7 +313,7 @@ class RelaxedOneHotCategorical(
   #### Examples
 
   Creates a continuous distribution, which approximates a 3-class one-hot
-  categorical distiribution. The 2nd class is the most likely to be the
+  categorical distribution. The 2nd class is the most likely to be the
   largest component in samples drawn from this distribution.
 
   ```python
@@ -324,7 +323,7 @@ class RelaxedOneHotCategorical(
   ```
 
   Creates a continuous distribution, which approximates a 3-class one-hot
-  categorical distiribution. The 2nd class is the most likely to be the
+  categorical distribution. The 2nd class is the most likely to be the
   largest component in samples drawn from this distribution.
 
   ```python
@@ -334,7 +333,7 @@ class RelaxedOneHotCategorical(
   ```
 
   Creates a continuous distribution, which approximates a 3-class one-hot
-  categorical distiribution. Because the temperature is very low, samples from
+  categorical distribution. Because the temperature is very low, samples from
   this distribution are almost discrete, with one component almost 1 and the
   others nearly 0. The 2nd class is the most likely to be the largest component
   in samples drawn from this distribution.
@@ -346,7 +345,7 @@ class RelaxedOneHotCategorical(
   ```
 
   Creates a continuous distribution, which approximates a 3-class one-hot
-  categorical distiribution. Because the temperature is very high, samples from
+  categorical distribution. Because the temperature is very high, samples from
   this distribution are usually close to the (1/3, 1/3, 1/3) vector. The 2nd
   class is still the most likely to be the largest component
   in samples drawn from this distribution.

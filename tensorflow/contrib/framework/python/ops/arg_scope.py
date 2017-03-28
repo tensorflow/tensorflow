@@ -30,11 +30,15 @@
     net = layers.conv2d(inputs, 64, [11, 11], 4, padding='VALID', scope='conv1')
     net = layers.conv2d(net, 256, [5, 5], scope='conv2')
   ```
-  The first call to conv2d will use predefined args:
-    layers.conv2d(inputs, 64, [11, 11], 4, padding='VALID', ..., scope='conv1')
+  The first call to conv2d will behave as follows:
+    layers.conv2d(inputs, 64, [11, 11], 4, padding='VALID',
+                  initializer=layers.variance_scaling_initializer(),
+                  regularizer=layers.l2_regularizer(0.05), scope='conv1')
 
-  The second call to conv2d will overwrite padding:
-    layers.conv2d(inputs, 256, [5, 5], padding='SAME', ..., scope='conv2')
+  The second call to conv2d will also use the arg_scope's default for padding:
+    layers.conv2d(inputs, 256, [5, 5], padding='SAME',
+                  initializer=layers.variance_scaling_initializer(),
+                  regularizer=layers.l2_regularizer(0.05), scope='conv2')
 
   Example of how to reuse an arg_scope:
 
@@ -49,7 +53,7 @@
     net = layers.conv2d(net, 256, [5, 5], scope='conv2')
   ```
 
-  Example of how to use tf.contrib.framework.add_arg_scope:
+  Example of how to use tf.contrib.framework.add_arg_scope to enable your function to be called within an arg_scope later:
 
   @tf.contrib.framework.add_arg_scope
   def conv2d(*args, **kwargs)

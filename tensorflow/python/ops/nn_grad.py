@@ -70,44 +70,53 @@ def _Conv2DBackpropFilterGrad(op, grad):
 
 @ops.RegisterGradient("Conv3D")
 def _Conv3DGrad(op, grad):
+  data_format = op.get_attr("data_format")
   return [nn_ops.conv3d_backprop_input_v2(array_ops.shape(op.inputs[0]),
                                           op.inputs[1],
                                           grad,
                                           strides=op.get_attr("strides"),
-                                          padding=op.get_attr("padding")),
+                                          padding=op.get_attr("padding"),
+                                          data_format=data_format),
           nn_ops.conv3d_backprop_filter_v2(op.inputs[0],
                                            array_ops.shape(op.inputs[1]),
                                            grad,
                                            strides=op.get_attr("strides"),
-                                           padding=op.get_attr("padding"))]
+                                           padding=op.get_attr("padding"),
+                                           data_format=data_format)]
 
 
 @ops.RegisterGradient("Conv3DBackpropInputV2")
 def _Conv3DBackpropInputGrad(op, grad):
+  data_format = op.get_attr("data_format")
   return [None,
           nn_ops.conv3d_backprop_filter_v2(grad,
                                            array_ops.shape(op.inputs[1]),
                                            op.inputs[2],
                                            strides=op.get_attr("strides"),
-                                           padding=op.get_attr("padding")),
+                                           padding=op.get_attr("padding"),
+                                           data_format=data_format),
           nn_ops.conv3d(grad,
                         op.inputs[1],
                         strides=op.get_attr("strides"),
-                        padding=op.get_attr("padding"))]
+                        padding=op.get_attr("padding"),
+                        data_format=data_format)]
 
 
 @ops.RegisterGradient("Conv3DBackpropFilterV2")
 def _Conv3DBackpropFilterGrad(op, grad):
+  data_format = op.get_attr("data_format")
   return [nn_ops.conv3d_backprop_input_v2(array_ops.shape(op.inputs[0]),
                                           grad,
                                           op.inputs[2],
                                           strides=op.get_attr("strides"),
-                                          padding=op.get_attr("padding")),
+                                          padding=op.get_attr("padding"),
+                                          data_format=data_format),
           None,
           nn_ops.conv3d(op.inputs[0],
                         grad,
                         strides=op.get_attr("strides"),
-                        padding=op.get_attr("padding"))]
+                        padding=op.get_attr("padding"),
+                        data_format=data_format)]
 
 
 @ops.RegisterGradient("AvgPool3D")
@@ -117,7 +126,8 @@ def _AvgPool3DGrad(op, grad):
       grad,
       ksize=op.get_attr("ksize"),
       strides=op.get_attr("strides"),
-      padding=op.get_attr("padding"))
+      padding=op.get_attr("padding"),
+      data_format=op.get_attr("data_format"))
 
 
 @ops.RegisterGradient("MaxPool3D")
@@ -127,7 +137,8 @@ def _MaxPool3DGrad(op, grad):
                                 grad,
                                 ksize=op.get_attr("ksize"),
                                 strides=op.get_attr("strides"),
-                                padding=op.get_attr("padding"))
+                                padding=op.get_attr("padding"),
+                                data_format=op.get_attr("data_format"))
 
 
 @ops.RegisterGradient("Softmax")
@@ -321,21 +332,25 @@ def _BroadcastMul(vec, mat):
 
 
 @ops.RegisterGradient("SoftmaxCrossEntropyWithLogits")
-def _SoftmaxCrossEntropyWithLogitsGrad(op, grad_0, _):
+def _SoftmaxCrossEntropyWithLogitsGrad(op, grad_loss, grad_grad):
   """Gradient function for SoftmaxCrossEntropyWithLogits."""
-  # grad_0 is the backprop for cost, and we multiply it with the gradients
+  # grad_loss is the backprop for cost, and we multiply it with the gradients
   # (which is output[1])
+  # grad_grad is the backprop for softmax gradient.
   # There is no gradient for the labels
   #
-  # Currently there is no way to take the second derivative of this op
-  # due to the fused implementation's interaction with tf.gradients(),
-  # so we make sure we prevent silently incorrect results by raising
-  # an error if the second derivative is requested via prevent_gradient.
-  softmax_grad_without_gradient = array_ops.prevent_gradient(
-      op.outputs[1], message="Currently there is no way to take the second "
-      "derivative of softmax_cross_entropy_with_logits due to the fused "
-      " implementation's interaction with tf.gradients()")
-  return _BroadcastMul(grad_0, softmax_grad_without_gradient), None
+  # Second derivative is just softmax derivative w.r.t. logits.
+  softmax_grad = op.outputs[1]
+  grad = _BroadcastMul(grad_loss, softmax_grad)
+
+  if grad_grad.op.type not in ('ZerosLike', 'Zeros'):
+    logits = op.inputs[0]
+    softmax = nn_ops.softmax(logits)
+
+    grad += ((grad_grad - array_ops.squeeze(math_ops.matmul(grad_grad[:, None, :],
+                                                              softmax[:, :, None]), axis=1)) * softmax)
+
+  return grad, None
 
 
 @ops.RegisterGradient("SparseSoftmaxCrossEntropyWithLogits")
@@ -374,11 +389,19 @@ def _Conv2DGrad(op, grad):
 def _DepthwiseConv2dNativeGrad(op, grad):
   return [
       nn_ops.depthwise_conv2d_native_backprop_input(
-          array_ops.shape(op.inputs[0]), op.inputs[1], grad,
-          op.get_attr("strides"), op.get_attr("padding")),
+          array_ops.shape(op.inputs[0]),
+          op.inputs[1],
+          grad,
+          op.get_attr("strides"),
+          op.get_attr("padding"),
+          data_format=op.get_attr("data_format")),
       nn_ops.depthwise_conv2d_native_backprop_filter(
-          op.inputs[0], array_ops.shape(op.inputs[1]), grad,
-          op.get_attr("strides"), op.get_attr("padding"))
+          op.inputs[0],
+          array_ops.shape(op.inputs[1]),
+          grad,
+          op.get_attr("strides"),
+          op.get_attr("padding"),
+          data_format=op.get_attr("data_format"))
   ]
 
 

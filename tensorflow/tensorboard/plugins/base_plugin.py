@@ -31,14 +31,14 @@ class TBPlugin(object):
   __metaclass__ = ABCMeta
 
   @abstractmethod
-  def get_plugin_apps(self, run_paths, logdir):
+  def get_plugin_apps(self, multiplexer, logdir):
     """Returns a set of WSGI applications that the plugin implements.
 
     Each application gets registered with the tensorboard app and is served
     under a prefix path that includes the name of the plugin.
 
     Args:
-      run_paths: A dict mapping a run name to an event file path.
+      multiplexer: The event_multiplexer with underlying TB data.
       logdir: The logging directory TensorBoard was started with.
 
     Returns:

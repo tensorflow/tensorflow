@@ -627,7 +627,7 @@ TEST(DirectSessionTest, RunHandleTest) {
   value1.scalar<float>()() = 2.0;
   Node* const1 = test::graph::Constant(&g, value1);
   Node* node3 = test::graph::Add(&g, identity0, const1);
-  Node* node4 = test::graph::Unary(&g, "GetSessionHandle", node3);
+  Node* node4 = test::graph::Unary(&g, "GetSessionHandleV2", node3);
 
   Tensor value2(DT_STRING, TensorShape({}));
   Node* const2 = test::graph::Constant(&g, value2);
@@ -648,17 +648,21 @@ TEST(DirectSessionTest, RunHandleTest) {
   ASSERT_TRUE(s.ok());
   ASSERT_EQ(1, outputs.size());
 
+  ResourceHandle resource_handle = outputs[0].scalar<ResourceHandle>()();
+  Tensor string_handle(DT_STRING, {});
+  string_handle.flat<string>().setConstant(resource_handle.name());
+
   // Second run call: Use a handle.
   std::vector<Tensor> outputs1;
-  s = session->Run({{const2->name(), outputs[0]}}, {node6->name() + ":0"}, {},
-                   &outputs1);
+  s = session->Run({{const2->name(), string_handle}}, {node6->name() + ":0"},
+                   {}, &outputs1);
   ASSERT_TRUE(s.ok());
   ASSERT_EQ(1, outputs1.size());
   ASSERT_EQ(5.0, outputs1[0].flat<float>()(0));
 
   // Third run call: Delete a handle.
   std::vector<Tensor> outputs2;
-  s = session->Run({{const2->name(), outputs[0]}}, {}, {node7->name()},
+  s = session->Run({{const2->name(), string_handle}}, {}, {node7->name()},
                    &outputs2);
   ASSERT_TRUE(s.ok());
 }
@@ -1169,15 +1173,21 @@ void FeedFetchBenchmarkHelper(int num_feeds, int iters) {
 
   Graph g(OpRegistry::Global());
   for (int i = 0; i < num_feeds; ++i) {
+    // NOTE(mrry): We pin nodes to the "/cpu:0" device, so as not to
+    // measure CPU<->GPU copying overhead. We should also optimize and
+    // monitor this overhead where possible, but that is not the
+    // object of study in this benchmark.
     Node* placeholder;
     TF_CHECK_OK(NodeBuilder(g.NewName("Placeholder"), "PlaceholderV2")
                     .Attr("shape", TensorShape())
                     .Attr("dtype", DT_FLOAT)
+                    .Device("/cpu:0")
                     .Finalize(&g, &placeholder));
     Node* identity;
     TF_CHECK_OK(NodeBuilder(g.NewName("Identity"), "Identity")
                     .Input(placeholder)
                     .Attr("T", DT_FLOAT)
+                    .Device("/cpu:0")
                     .Finalize(&g, &identity));
     inputs.push_back({placeholder->name() + ":0", value});
     outputs.push_back(identity->name() + ":0");

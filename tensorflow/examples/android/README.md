@@ -32,9 +32,9 @@ on API >= 14 devices.
         (https://arxiv.org/abs/1610.07629) to restyle the camera preview image
         to that of a number of different artists.
 
-<img src="sample_images/classify1.jpg" width="33%">
-<img src="sample_images/stylize1.jpg" width="33%">
-<img src="sample_images/detect1.jpg" width="33%">
+<img src="sample_images/classify1.jpg" width="30%">
+<img src="sample_images/stylize1.jpg" width="30%">
+<img src="sample_images/detect1.jpg" width="30%">
 
 ## Prebuilt APK:
 
@@ -96,7 +96,7 @@ it and the Android NDK and SDK must be installed on your system.
 
 ##### Edit WORKSPACE
 
-The Android entries in [`<workspace_root>/WORKSPACE`](../../../WORKSPACE#L2-L13)
+The Android entries in [`<workspace_root>/WORKSPACE`](../../../WORKSPACE#L19-L32)
 must be uncommented with the paths filled in appropriately depending on where
 you installed the NDK and SDK. Otherwise an error such as:
 "The external label '//external:android/sdk' is not bound to anything" will
@@ -112,10 +112,10 @@ The NDK API level may remain at 14.
 The TensorFlow `GraphDef`s that contain the model definitions and weights
 are not packaged in the repo because of their size. They are downloaded
 automatically and packaged with the APK by Bazel via a new_http_archive defined
-in `WORKSPACE` during the build process.
+in `WORKSPACE` during the build process, and by Gradle via download-models.gradle.
 
-**Optional**: If you wish to place the models in your assets manually (E.g. for
-non-Bazel builds), remove all of the `model_files` entries from the `assets`
+**Optional**: If you wish to place the models in your assets manually,
+remove all of the `model_files` entries from the `assets`
 list in `tensorflow_demo` found in the `[BUILD](BUILD)` file. Then download
 and extract the archives yourself to the `assets` directory in the source tree:
 
@@ -130,6 +130,10 @@ done
 
 This will extract the models and their associated metadata files to the local
 assets/ directory.
+
+If you are using Gradle, make sure to remove download-models.gradle reference
+from build.gradle after your manually download models; otherwise gradle
+might download models again and overwrite your models.
 
 ##### Build
 
