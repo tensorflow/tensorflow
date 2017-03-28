@@ -2,6 +2,8 @@
 
 Java bindings for TensorFlow. ([Javadoc](https://www.tensorflow.org/api_docs/java/reference/org/tensorflow/package-summary))
 
+[![Maven Central](https://maven-badges.herokuapp.com/maven-central/org.tensorflow/tensorflow/badge.svg)](https://maven-badges.herokuapp.com/maven-central/org.tensorflow/tensorflow)
+
 > *WARNING*: The TensorFlow Java API is not currently covered by the TensorFlow
 > [API stability guarantees](https://www.tensorflow.org/programmers_guide/version_semantics).
 >
