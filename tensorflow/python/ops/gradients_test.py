@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import sys
 import warnings
 
 import numpy as np
@@ -559,13 +560,16 @@ class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
       self.assertAllClose(np_val, c_dense.eval())
 
   def testWarnings(self):
-    # Smaller than the threshold: no warning.
-    c_sparse = ops.IndexedSlices(
-        array_ops.placeholder(dtypes.float32),
-        array_ops.placeholder(dtypes.int32), constant([4, 4, 4, 4]))
-    with warnings.catch_warnings(record=True) as w:
-      math_ops.multiply(c_sparse, 1.0)
-    self.assertEqual(0, len(w))
+    # TODO(gunan) Reenable after this issue is fixed:
+    # https://github.com/google/protobuf/issues/2812
+    if sys.version_info < (3, 6):
+      # Smaller than the threshold: no warning.
+      c_sparse = ops.IndexedSlices(
+          array_ops.placeholder(dtypes.float32),
+          array_ops.placeholder(dtypes.int32), constant([4, 4, 4, 4]))
+      with warnings.catch_warnings(record=True) as w:
+        math_ops.multiply(c_sparse, 1.0)
+      self.assertEqual(0, len(w))
 
     # Greater than or equal to the threshold: warning.
     c_sparse = ops.IndexedSlices(
