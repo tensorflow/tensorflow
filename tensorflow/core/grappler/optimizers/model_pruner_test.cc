@@ -199,6 +199,32 @@ TEST_F(ModelPrunerTest, PruningForwardsCtrlDependencies) {
   EXPECT_EQ("^c", new_f.input(2));
 }
 
+TEST_F(ModelPrunerTest, PruningPerservesFetch) {
+  // Build a simple graph with a few trivially prunable ops.
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+  Output a = ops::Const(s.WithOpName("a"), 0.0f, {10, 10});
+  Output b = ops::AddN(s.WithOpName("b"), {a});
+  Output c = ops::Identity(s.WithOpName("c"), b);
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  item.fetch.push_back("c");
+
+  ModelPruner pruner;
+  GraphDef output;
+  Status status = pruner.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(3, output.node_size());
+  const NodeDef& new_a = output.node(0);
+  EXPECT_EQ(NodeName(a.name()), new_a.name());
+  const NodeDef& new_b = output.node(1);
+  EXPECT_EQ(NodeName(b.name()), new_b.name());
+  const NodeDef& new_c = output.node(2);
+  EXPECT_EQ(NodeName(c.name()), new_c.name());
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow
