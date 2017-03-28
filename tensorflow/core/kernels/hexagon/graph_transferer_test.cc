@@ -267,7 +267,7 @@ TEST_F(GraphTransfererTest, LoadAddGraph) {
   GraphDef def = CreateAddGraphDef();
   ASSERT_TRUE(gt_.LoadGraphFromProto(TEST_GRAPH_TRANSFER_OPS_DEFINITIONS, def,
                                      {}, std::vector<string>{NAME_A_PLUS_B},
-                                     false, EMPTY_OUTPUT_TENSOR_MAP)
+                                     false)
                   .ok());
   SanityCheckNodes(gt_);
 
@@ -308,9 +308,8 @@ TEST_F(GraphTransfererTest, LoadAddGraphWithOutputTensorMap) {
       def, inputs, {}, &output_tensor_info);
   ASSERT_TRUE(status.ok()) << status;
   const std::vector<string> output_node_names = {NAME_A_PLUS_B};
-  status =
-      gt_.LoadGraphFromProto(TEST_GRAPH_TRANSFER_OPS_DEFINITIONS, def, inputs,
-                             output_node_names, false, output_tensor_info);
+  status = gt_.LoadGraphFromProto(TEST_GRAPH_TRANSFER_OPS_DEFINITIONS, def,
+                                  inputs, output_node_names, false);
   ASSERT_TRUE(status.ok());
 }
 
@@ -322,7 +321,7 @@ TEST_F(GraphTransfererTest, LoadConvGraph) {
   const std::vector<string> output_node_names = {"softmax"};
   ASSERT_TRUE(gt_.LoadGraphFromProto(TEST_GRAPH_TRANSFER_OPS_DEFINITIONS, def,
                                      input_node_info_list, output_node_names,
-                                     false, EMPTY_OUTPUT_TENSOR_MAP)
+                                     false)
                   .ok());
   SanityCheckNodes(gt_);
   const int const_node_count =
@@ -348,7 +347,7 @@ TEST_F(GraphTransfererTest, LoadMaxPoolGraph) {
   const std::vector<string> output_node_names = {"softmax"};
   ASSERT_TRUE(gt_.LoadGraphFromProto(TEST_GRAPH_TRANSFER_OPS_DEFINITIONS, def,
                                      input_node_info_list, output_node_names,
-                                     false, EMPTY_OUTPUT_TENSOR_MAP)
+                                     false)
                   .ok());
   SanityCheckNodes(gt_);
   const int const_node_count =
@@ -416,7 +415,7 @@ TEST_F(GraphTransfererTest, BuildRemoteFusedGraphDefAddGraph) {
 
   GraphDef fused_graph_def = GraphTransferUtils::BuildFusedGraphDef(
       TEST_GRAPH_TRANSFER_OPS_DEFINITIONS, "remote_fused_graph_execute_node",
-      inputs, outputs, def, &gt_);
+      inputs, outputs, &def, &gt_);
 
   EXPECT_EQ(3, fused_graph_def.node_size());
 }
