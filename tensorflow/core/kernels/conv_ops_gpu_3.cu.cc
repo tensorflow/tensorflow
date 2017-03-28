@@ -548,9 +548,11 @@ template struct functor::TransformFilter<GPUDevice, Eigen::half, int, 4>;
 template struct functor::ReverseTransformFilter<GPUDevice, float, 4>;
 template struct functor::ReverseTransformFilter<GPUDevice, Eigen::half, 4>;
 
+template struct functor::NHWCToNCHW<GPUDevice, double, 4>;
 template struct functor::NHWCToNCHW<GPUDevice, float, 4>;
 template struct functor::NHWCToNCHW<GPUDevice, Eigen::half, 4>;
 
+template struct functor::NCHWToNHWC<GPUDevice, double, 4>;
 template struct functor::NCHWToNHWC<GPUDevice, float, 4>;
 template struct functor::NCHWToNHWC<GPUDevice, Eigen::half, 4>;
 
