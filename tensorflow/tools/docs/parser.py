@@ -1282,7 +1282,7 @@ def _get_defined_in(py_object, parser_config):
   # TODO(wicke): Only use decorators that support this in TF.
 
   try:
-    path = os.path.relpath(path=inspect.getfile(py_object),
+    path = os.path.relpath(path=inspect.getsourcefile(py_object),
                            start=parser_config.base_dir)
   except TypeError:  # getfile throws TypeError if py_object is a builtin.
     return _PythonBuiltin()
@@ -1290,10 +1290,6 @@ def _get_defined_in(py_object, parser_config):
   # TODO(wicke): If this is a generated file, link to the source instead.
   # TODO(wicke): Move all generated files to a generated/ directory.
   # TODO(wicke): And make their source file predictable from the file name.
-
-  # In case this is compiled, point to the original
-  if path.endswith('.pyc'):
-    path = path[:-1]
 
   # Never include links outside this code base.
   if path.startswith('..'):
