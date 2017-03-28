@@ -181,15 +181,10 @@ Step-by-step Windows build
    More? -Dtensorflow_ENABLE_GPU=ON ^
    More? -DCUDNN_HOME="D:\...\cudnn"
    ```
-   To enable SIMD instructions with MSVC, as AVX and SSE, define them as follows:
+   To enable SIMD instructions with MSVC, as AVX and SSE, define it as follows:
    ```
    More? -Dtensorflow_WIN_CPU_SIMD_OPTIONS=/arch:AVX
    ```     
-   or if more than one as in:
-   ```
-   More? -Dtensorflow_WIN_CPU_SIMD_OPTIONS=/arhc:[AVX2|SSE2]
-   ```
-
 
    Note that the `-DCMAKE_BUILD_TYPE=Release` flag must match the build
    configuration that you choose when invoking `msbuild`. The known-good
