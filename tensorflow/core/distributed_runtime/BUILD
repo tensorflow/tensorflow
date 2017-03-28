@@ -70,6 +70,48 @@ cc_test(
 )
 
 cc_library(
+    name = "worker_session",
+    srcs = ["worker_session.cc"],
+    hdrs = [
+        "worker_session.h",
+    ],
+    deps = [
+        ":graph_mgr",
+        ":rendezvous_mgr_interface",
+        ":worker_cache",
+        "//tensorflow/core:master_proto_cc",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:worker_proto_cc",
+    ],
+)
+
+cc_library(
+    name = "session_mgr",
+    srcs = ["session_mgr.cc"],
+    hdrs = ["session_mgr.h"],
+    deps = [
+        ":graph_mgr",
+        ":worker_session",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/distributed_runtime/rpc:rpc_rendezvous_mgr",
+    ],
+)
+
+cc_test(
+    name = "session_mgr_test",
+    size = "small",
+    srcs = ["session_mgr_test.cc"],
+    deps = [
+        ":session_mgr",
+        ":worker_env",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/distributed_runtime/rpc:rpc_rendezvous_mgr",
+    ],
+)
+
+cc_library(
     name = "worker_env",
     hdrs = ["worker_env.h"],
     deps = [],
@@ -101,7 +143,9 @@ cc_library(
     deps = [
         ":graph_mgr",
         ":rendezvous_mgr_interface",
+        ":session_mgr",
         ":worker_interface",
+        ":worker_session",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib_internal",
     ],
@@ -147,7 +191,10 @@ cc_test(
 cc_library(
     name = "worker_cache",
     hdrs = ["worker_cache.h"],
-    deps = ["//tensorflow/core:protos_all_cc"],
+    deps = [
+        ":worker_interface",
+        "//tensorflow/core:protos_all_cc",
+    ],
 )
 
 cc_library(
@@ -231,6 +278,7 @@ cc_library(
     srcs = [],
     hdrs = ["rendezvous_mgr_interface.h"],
     deps = [
+        ":worker_env",
         "//tensorflow/core:framework",
     ],
 )
@@ -255,6 +303,7 @@ cc_library(
         ":worker_cache",
         ":worker_env",
         ":worker_interface",
+        ":worker_session",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",

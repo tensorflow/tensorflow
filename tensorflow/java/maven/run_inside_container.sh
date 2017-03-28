@@ -69,11 +69,11 @@ download_libtensorflow_jni() {
   else
     curl -L "${RELEASE_URL_PREFIX}/libtensorflow_jni-cpu-linux-x86_64-${TF_VERSION}.tar.gz" | tar -xvz -C linux-x86_64
     curl -L "${RELEASE_URL_PREFIX}/libtensorflow_jni-cpu-darwin-x86_64-${TF_VERSION}.tar.gz" | tar -xvz -C darwin-x86_64
-#    curl -L "${RELEASE_URL_PREFIX}/libtensorflow_jni-cpu-windows-x86_64-${TF_VERSION}.zip" -o /tmp/windows.zip
+    curl -L "${RELEASE_URL_PREFIX}/libtensorflow_jni-cpu-windows-x86_64-${TF_VERSION}.zip" -o /tmp/windows.zip
   fi
 
-#  unzip /tmp/windows.zip -d windows-x86_64
-#  rm -f /tmp/windows.zip
+  unzip /tmp/windows.zip -d windows-x86_64
+  rm -f /tmp/windows.zip
   # Updated timestamps seem to be required to get Maven to pick up the file.
   touch linux-x86_64/*
   touch darwin-x86_64/*

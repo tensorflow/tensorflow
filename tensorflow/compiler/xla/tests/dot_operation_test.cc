@@ -67,6 +67,15 @@ XLA_TEST_F(DotOperationTest, ZeroElementVectorDotF32) {
   ComputeAndCompareR0<float>(&builder, 0.0, {}, error_spec_);
 }
 
+XLA_TEST_F(DotOperationTest, TrivialMatrixVectorDotF32) {
+  ComputationBuilder builder(client_, TestName());
+  auto lhs = builder.ConstantR2<float>({{3.0, 4.0}});
+  auto rhs = builder.ConstantR1<float>({3.0, 4.0});
+  auto result = builder.Dot(lhs, rhs);
+
+  ComputeAndCompareR1<float>(&builder, {25.0}, {}, error_spec_);
+}
+
 template <typename Element>
 void DotOperationTest::TestOneElementVectorDot() {
   ComputationBuilder builder(client_, TestName());

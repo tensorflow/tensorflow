@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/core/platform/posix/error.h"
 #include "third_party/hadoop/hdfs.h"
 
-
 namespace tensorflow {
 
 template <typename R, typename... Args>
@@ -105,12 +104,12 @@ class LibHDFS {
       return Status::OK();
     };
 
-    // libhdfs.so won't be in the standard locations. Use the path as specified
-    // in the libhdfs documentation.
+// libhdfs.so won't be in the standard locations. Use the path as specified
+// in the libhdfs documentation.
 #if defined(PLATFORM_WINDOWS)
-    const char *kLibHdfsDso = "hdfs.dll";
+    const char* kLibHdfsDso = "hdfs.dll";
 #else
-    const char *kLibHdfsDso = "libhdfs.so";
+    const char* kLibHdfsDso = "libhdfs.so";
 #endif
     char* hdfs_home = getenv("HADOOP_HDFS_HOME");
     if (hdfs_home == nullptr) {
@@ -121,8 +120,8 @@ class LibHDFS {
     string path = io::JoinPath(hdfs_home, "lib", "native", kLibHdfsDso);
     status_ = TryLoadAndBind(path.c_str(), &handle_);
     if (!status_.ok()) {
-      // try load libhdfs.so using dynamic loader's search path in case libhdfs.so
-      // is installed in non-standard location
+      // try load libhdfs.so using dynamic loader's search path in case
+      // libhdfs.so is installed in non-standard location
       status_ = TryLoadAndBind(kLibHdfsDso, &handle_);
     }
     return;
@@ -150,15 +149,17 @@ Status HadoopFileSystem::Connect(StringPiece fname, hdfsFS* fs) {
   if (scheme == "file") {
     hdfs_->hdfsBuilderSetNameNode(builder, nullptr);
   } else if (scheme == "viewfs") {
-    char *defaultFS = NULL;
+    char* defaultFS = nullptr;
     hdfs_->hdfsConfGetStr("fs.defaultFS", &defaultFS);
     StringPiece defaultScheme, defaultCluster, defaultPath;
     io::ParseURI(defaultFS, &defaultScheme, &defaultCluster, &defaultPath);
 
     if (scheme != defaultScheme || namenode != defaultCluster) {
-      return errors::Unimplemented("viewfs is only supported as a fs.defaultFS.");
+      return errors::Unimplemented(
+          "viewfs is only supported as a fs.defaultFS.");
     }
-    // The default NameNode configuration will be used (from the XML configuration files). See:
+    // The default NameNode configuration will be used (from the XML
+    // configuration files). See:
     // https://github.com/tensorflow/tensorflow/blob/v1.0.0/third_party/hadoop/hdfs.h#L259
     hdfs_->hdfsBuilderSetNameNode(builder, "default");
   } else {

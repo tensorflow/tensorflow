@@ -44,11 +44,11 @@ def load_op_library(path):
   if os.name == 'nt':
     # To avoid makeing every user_ops aware of windows, re-write
     # the file extension from .so to .dll.
-    path = re.sub('\.so$', '.dll', path)
+    path = re.sub(r'\.so$', '.dll', path)
 
-    # TODO: currently we have only some user_ops as .dll's on windows - don't try
-    #   to load them if the dll is not found. Once we have all of them
-    #   this check should be removed.
+    # Currently we have only some user_ops as dlls on windows - don't try
+    # to load them if the dll is not found.
+    # TODO(mrry): Once we have all of them this check should be removed.
     if not os.path.exists(path):
       return None
   path = resource_loader.get_path_to_datafile(path)

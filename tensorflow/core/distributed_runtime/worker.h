@@ -19,13 +19,15 @@ limitations under the License.
 #include <unordered_map>
 
 #include "tensorflow/core/distributed_runtime/graph_mgr.h"
+#include "tensorflow/core/distributed_runtime/session_mgr.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
 
 namespace tensorflow {
 
 class CancellationManager;
 class Device;
-class WorkerEnv;
+struct WorkerEnv;
+struct WorkerSession;
 
 // A TensorFlow Worker runs registered graphs and supports worker-to-worker
 // Tensor transfer.
@@ -44,6 +46,10 @@ class Worker : public WorkerInterface {
   void GetStatusAsync(const GetStatusRequest* request,
                       GetStatusResponse* response,
                       StatusCallback done) override;
+
+  void CreateWorkerSessionAsync(const CreateWorkerSessionRequest* request,
+                                CreateWorkerSessionResponse* response,
+                                StatusCallback done) override;
 
   void RegisterGraphAsync(const RegisterGraphRequest* request,
                           RegisterGraphResponse* response,
