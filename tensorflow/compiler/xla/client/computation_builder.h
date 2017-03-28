@@ -839,7 +839,7 @@ template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR4FromArray4DWithLayout(
     const Array4D<NativeT>& values, const Layout& layout) {
   return ConstantOp([&values, &layout](Literal* literal) {
-    LiteralUtil::PopulateR4FromArray4D(values, layout, literal);
+    LiteralUtil::PopulateR4FromArray4DWithLayout(values, layout, literal);
   });
 }
 
