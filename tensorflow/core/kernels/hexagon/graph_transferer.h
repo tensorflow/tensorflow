@@ -68,8 +68,7 @@ class GraphTransferer {
       const std::vector<std::pair<string, Tensor>>& input_node_info_list,
       const std::vector<string>& output_node_names, const bool is_text_proto,
       const bool shape_inference_for_unknown_shape,
-      const bool dry_run_for_unknown_shape,
-      RemoteFusedGraphExecuteUtils::TensorShapeMap* tensor_shape_map);
+      const bool dry_run_for_unknown_shape);
 
   // Sort params so that all input nodes appear before consumer nodes.
   // CAVEAT: This may be slow if the number of nodes are too large

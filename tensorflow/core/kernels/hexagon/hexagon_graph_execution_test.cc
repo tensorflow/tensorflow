@@ -280,7 +280,6 @@ TEST(GraphTransferer,
   inputs.emplace_back("Mul", Tensor(DT_FLOAT, {1, WIDTH, HEIGHT, DEPTH}));
   std::vector<string> output_node_names = {"softmax"};
 
-  RemoteFusedGraphExecuteUtils::TensorShapeMap output_tensor_info;
   GraphTransferer gt;
   gt.EnableStrictCheckMode(false);
   profile_utils::CpuUtils::EnableClockCycleProfiling(true);
@@ -290,8 +289,8 @@ TEST(GraphTransferer,
       *ops_definitions, MODEL_FILENAME, inputs, output_node_names,
       false,  // is_text_proto
       false,  // shape_inference_for_unknown_shape
-      true,   // dry_run_for_unknown_shape
-      &output_tensor_info);
+      true    // dry_run_for_unknown_shape
+      );
   ASSERT_TRUE(status.ok()) << status;
   prof.Stop();
   prof.DumpStatistics("LoadGraphFromProtoFile");
@@ -312,7 +311,6 @@ TEST(GraphTransferer,
   inputs.emplace_back("Mul", Tensor(DT_FLOAT, {1, WIDTH, HEIGHT, DEPTH}));
   std::vector<string> output_node_names = {"softmax"};
 
-  RemoteFusedGraphExecuteUtils::TensorShapeMap output_tensor_info;
   GraphTransferer gt;
   gt.EnableStrictCheckMode(false);
   profile_utils::CpuUtils::EnableClockCycleProfiling(true);
@@ -322,8 +320,8 @@ TEST(GraphTransferer,
       *ops_definitions, MODEL_FILENAME, inputs, output_node_names,
       false,  // is_text_proto
       true,   // shape_inference_for_unknown_shape
-      false,  // dry_run_for_unknown_shape
-      &output_tensor_info);
+      false   // dry_run_for_unknown_shape
+      );
   ASSERT_TRUE(status.ok()) << status;
   prof.Stop();
   prof.DumpStatistics("LoadGraphFromProtoFile");
@@ -390,8 +388,10 @@ TEST(GraphTransferer, DISABLED_CheckShapeInferencePerformance) {
   prof0.Start();
   Status status = gt0.LoadGraphFromProtoFile(
       *ops_definitions, MODEL_FILENAME, inputs, output_node_names,
-      false /* is_text_proto */, false /* shape_inference_for_unknown_shape */,
-      true /* dry_run_for_unknown_shape */, &output_tensor_info0);
+      false,  // is_text_proto
+      false,  // shape_inference_for_unknown_shape
+      true    // dry_run_for_unknown_shape
+      );
   const GraphTransferInfo& gfi0 = gt0.GetGraphTransferInfo();
 
   ASSERT_TRUE(status.ok());
@@ -408,8 +408,10 @@ TEST(GraphTransferer, DISABLED_CheckShapeInferencePerformance) {
   prof1.Start();
   status = gt1.LoadGraphFromProtoFile(
       *ops_definitions, MODEL_FILENAME, inputs, output_node_names,
-      false /* is_text_proto */, true /* shape_inference_for_unknown_shape */,
-      false /* dry_run_for_unknown_shape */, &output_tensor_info1);
+      false,  // is_text_proto
+      true,   // shape_inference_for_unknown_shape
+      false   // dry_run_for_unknown_shape
+      );
   const GraphTransferInfo& gfi1 = gt1.GetGraphTransferInfo();
 
   ASSERT_TRUE(status.ok());

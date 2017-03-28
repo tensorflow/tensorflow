@@ -169,8 +169,7 @@ Status GraphTransferer::LoadGraphFromProtoFile(
     const std::vector<std::pair<string, Tensor>>& input_node_info_list,
     const std::vector<string>& output_node_names, const bool is_text_proto,
     const bool shape_inference_for_unknown_shape,
-    const bool dry_run_for_unknown_shape,
-    RemoteFusedGraphExecuteUtils::TensorShapeMap* tensor_shape_map) {
+    const bool dry_run_for_unknown_shape) {
   GraphDef graph_def;
   string output;
   Status status;
@@ -189,13 +188,14 @@ Status GraphTransferer::LoadGraphFromProtoFile(
   }
   if (dry_run_for_unknown_shape) {
     VLOG(1) << "Dry run graph to obtain shape of nodes";
+    RemoteFusedGraphExecuteUtils::TensorShapeMap tensor_shape_map;
     status = RemoteFusedGraphExecuteUtils::DryRunInferenceForAllNode(
-        graph_def, input_node_info_list, true, tensor_shape_map);
+        graph_def, input_node_info_list, true, &tensor_shape_map);
     if (!status.ok()) {
       return status;
     }
     for (NodeDef& node_def : *graph_def.mutable_node()) {
-      TF_CHECK_OK(AddOutputTensorShapeTypeByTensorShapeMap(*tensor_shape_map,
+      TF_CHECK_OK(AddOutputTensorShapeTypeByTensorShapeMap(tensor_shape_map,
                                                            &node_def));
     }
   }

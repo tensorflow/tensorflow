@@ -391,12 +391,11 @@ TEST(GraphTransferer, LoadGraphFromProtoFile) {
   // is_text_proto = false;
   // ops_definitions = &HexagonOpsDefinitions::getInstance();
 
-  RemoteFusedGraphExecuteUtils::TensorShapeMap output_tensor_info;
   GraphTransferer gt;
   gt.EnableStrictCheckMode(false);
   Status status = gt.LoadGraphFromProtoFile(
       *ops_definitions, filename, input_node_info_list, output_node_names,
-      is_text_proto, false, true, &output_tensor_info);
+      is_text_proto, false, true);
 }
 
 TEST_F(GraphTransfererTest, BuildRemoteFusedGraphDefAddGraph) {
@@ -456,7 +455,6 @@ TEST(GraphTransferer, LoadGraphFromProtoFileShapeInferenceSimple) {
   // ops_definitions = &HexagonOpsDefinitions::getInstance();
 
   // First compute using Shape inference.
-  RemoteFusedGraphExecuteUtils::TensorShapeMap si_output_tensor_info;
   GraphTransferer si_gt;
   si_gt.EnableStrictCheckMode(false);
   bool shape_inference_for_unknown_shape = true;
@@ -464,12 +462,11 @@ TEST(GraphTransferer, LoadGraphFromProtoFileShapeInferenceSimple) {
   Status status1 = si_gt.LoadGraphFromProtoFile(
       *ops_definitions, filename, input_node_info_list, output_node_names,
       is_text_proto, shape_inference_for_unknown_shape,
-      dry_run_for_unknown_shape, &si_output_tensor_info);
+      dry_run_for_unknown_shape);
   const GraphTransferInfo& si_graph_transfer_info =
       si_gt.GetGraphTransferInfo();
 
   // Now compute using dry run.
-  RemoteFusedGraphExecuteUtils::TensorShapeMap dr_output_tensor_info;
   GraphTransferer dr_gt;
   dr_gt.EnableStrictCheckMode(false);
   shape_inference_for_unknown_shape = false;
@@ -477,7 +474,7 @@ TEST(GraphTransferer, LoadGraphFromProtoFileShapeInferenceSimple) {
   Status status2 = dr_gt.LoadGraphFromProtoFile(
       *ops_definitions, filename, input_node_info_list, output_node_names,
       is_text_proto, shape_inference_for_unknown_shape,
-      dry_run_for_unknown_shape, &si_output_tensor_info);
+      dry_run_for_unknown_shape);
   const GraphTransferInfo& dr_graph_transfer_info =
       dr_gt.GetGraphTransferInfo();
 
