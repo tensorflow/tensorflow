@@ -50,7 +50,8 @@ class AttentionWrapperTest(test.TestCase):
                          create_attention_mechanism,
                          expected_final_outputs,
                          expected_final_state,
-                         attention_mechanism_depth=3):
+                         attention_mechanism_depth=3,
+                         attention_history=False):
     encoder_sequence_length = [3, 2, 3, 1, 0]
     decoder_sequence_length = [2, 0, 1, 2, 3]
     batch_size = 5
@@ -77,7 +78,8 @@ class AttentionWrapperTest(test.TestCase):
           initializer=init_ops.random_normal_initializer(stddev=0.01, seed=3)):
         cell = core_rnn_cell.LSTMCell(cell_depth)
         cell = wrapper.AttentionWrapper(
-            cell, attention_mechanism, attention_size=attention_depth)
+            cell, attention_mechanism, attention_size=attention_depth,
+            attention_history=attention_history)
         helper = helper_py.TrainingHelper(decoder_inputs,
                                           decoder_sequence_length)
         my_decoder = basic_decoder.BasicDecoder(
@@ -107,16 +109,33 @@ class AttentionWrapperTest(test.TestCase):
       self.assertEqual((batch_size, cell_depth),
                        tuple(final_state.cell_state.h.get_shape().as_list()))
 
+      if attention_history:
+        state_attention_history = final_state.attention_history.stack()
+        # Remove the history from final_state for purposes of the
+        # remainder of the tests.
+        final_state = final_state._replace(attention_history=())  # pylint: disable=protected-access
+        self.assertEqual((None, batch_size, attention_depth),
+                         tuple(state_attention_history.get_shape().as_list()))
+      else:
+        state_attention_history = ()
+
       sess.run(variables.global_variables_initializer())
       sess_results = sess.run({
           "final_outputs": final_outputs,
-          "final_state": final_state
+          "final_state": final_state,
+          "state_attention_history": state_attention_history,
       })
 
       nest.map_structure(self.assertAllClose, expected_final_outputs,
                          sess_results["final_outputs"])
       nest.map_structure(self.assertAllClose, expected_final_state,
                          sess_results["final_state"])
+      if attention_history:  # by default, the wrapper emits attention as output
+        self.assertAllClose(
+            # outputs are batch major but the stacked TensorArray is time major
+            sess_results["state_attention_history"],
+            np.transpose(sess_results["final_outputs"].rnn_output,
+                         (1, 0, 2)))
 
   def testBahndahauNotNormalized(self):
     create_attention_mechanism = wrapper.BahdanauAttention
@@ -179,6 +198,8 @@ class AttentionWrapperTest(test.TestCase):
             dtype=int32))
 
     expected_final_state = wrapper.AttentionWrapperState(
+        time=3,
+        attention_history=(),
         cell_state=core_rnn_cell.LSTMStateTuple(
             c=array(
                 [[
@@ -243,7 +264,7 @@ class AttentionWrapperTest(test.TestCase):
             ]],
             dtype=float32))
     self._testWithAttention(create_attention_mechanism, expected_final_outputs,
-                            expected_final_state)
+                            expected_final_state, attention_history=True)
 
   def testBahndahauNormalized(self):
     create_attention_mechanism = functools.partial(
@@ -307,6 +328,8 @@ class AttentionWrapperTest(test.TestCase):
             dtype=int32))
 
     expected_final_state = wrapper.AttentionWrapperState(
+        time=3,
+        attention_history=(),
         cell_state=core_rnn_cell.LSTMStateTuple(
             c=array(
                 [[
@@ -435,6 +458,8 @@ class AttentionWrapperTest(test.TestCase):
             [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]],
             dtype=int32))
     expected_final_state = wrapper.AttentionWrapperState(
+        time=3,
+        attention_history=(),
         cell_state=core_rnn_cell.LSTMStateTuple(
             c=array(
                 [[
@@ -567,6 +592,8 @@ class AttentionWrapperTest(test.TestCase):
             [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]],
             dtype=int32))
     expected_final_state = wrapper.AttentionWrapperState(
+        time=3,
+        attention_history=(),
         cell_state=core_rnn_cell.LSTMStateTuple(
             c=array(
                 [[
