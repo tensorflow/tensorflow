@@ -41,9 +41,7 @@ class PoplarExecutable : public Executable {
  public:
   PoplarExecutable(std::unique_ptr<HloModule> hlo_module,
                    std::unique_ptr<HloModuleConfig> module_config,
-                   std::unique_ptr<poplar::Engine> engine,
-                   const std::vector<char*>& inputs,
-                   const std::vector<char*>& outputs);
+                   std::unique_ptr<poplar::Engine> engine);
   ~PoplarExecutable() override;
 
 
@@ -64,11 +62,7 @@ class PoplarExecutable : public Executable {
           arguments) override;
 
  private:
-
   std::unique_ptr<poplar::Engine> poplar_engine_;
-
-  std::vector<char*> input_buffers_;
-  std::vector<char*> output_buffers_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(PoplarExecutable);
 };

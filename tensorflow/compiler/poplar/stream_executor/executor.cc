@@ -19,6 +19,10 @@ limitations under the License.
 #include "tensorflow/compiler/poplar/stream_executor/executor.h"
 #include "tensorflow/compiler/poplar/stream_executor/poplar_platform_id.h"
 
+#include "tensorflow/compiler/xla/status_macros.h"
+
+#include "tensorflow/core/lib/strings/stringprintf.h"
+
 #include <string.h>
 #include <dlfcn.h>
 
@@ -29,6 +33,14 @@ namespace se = ::perftools::gputools;
 namespace perftools {
 namespace gputools {
 namespace poplarplugin {
+
+std::string
+GetCopyHandle(int64 i) {
+  static const std::string handles[10] = {
+    "0", "1", "2", "3", "4", "5", "6", "7", "8", "9"};
+  if (i < 10) return handles[i];
+  return tensorflow::strings::Printf("%lld", i);
+}
 
 struct TensorControl {
   bool on_device = false;
@@ -249,27 +261,44 @@ PoplarExecutor::AllocateOutputBuffer(const xla::Shape& shape) {
 }
 
 void
-PoplarExecutor::CopyDataToPoplar(DeviceMemoryBase* mem, void* buf) const {
-  const TensorControl* tc =
-          reinterpret_cast<const TensorControl*>(mem->opaque());
-  memcpy(buf, tc->data, mem->size());
+PoplarExecutor::CopyDataToPoplar(const Args& args) const {
+  for (int64 a = 0; a < args.size(); a++) {
+    auto mem = args[a];
+    TensorControl *tc = reinterpret_cast<TensorControl *>(mem.opaque());
+    void *buf(static_cast<void *>(tc->data));
+    current_engine_->writeTensor(GetCopyHandle(a), buf);
+  }
 }
 
 void
 PoplarExecutor::CopyDataFromPoplar(const xla::Shape& shape,
-                                   const std::vector<char*>& bufs,
-                                   DeviceMemoryBase* mem) const {
-  TensorControl* tc = reinterpret_cast<TensorControl*>(mem->opaque());
+                                   DeviceMemoryBase& mem) const {
+  TensorControl* tc = reinterpret_cast<TensorControl*>(mem.opaque());
   if (xla::ShapeUtil::IsTuple(shape)) {
     TensorControl** subs(reinterpret_cast<TensorControl**>(tc->data));
 
     for (int64 i=0; i<xla::ShapeUtil::TupleElementCount(shape); i++) {
-      const xla::Shape& sub(xla::ShapeUtil::GetTupleElementShape(shape, i));
-      memcpy(subs[i]->data, bufs[i], xla::ShapeUtil::ByteSizeOf(sub));
+      void* buf(static_cast<void*>(subs[i]->data));
+      current_engine_->readTensor(GetCopyHandle(i), buf);
     }
   } else {
-    memcpy(tc->data, bufs[0], xla::ShapeUtil::ByteSizeOf(shape));
+    void* buf(static_cast<void*>(tc->data));
+    current_engine_->readTensor(GetCopyHandle(0), buf);
   }
+}
+
+port::StatusOr<se::DeviceMemoryBase>
+PoplarExecutor::ExecuteEngine(poplar::Engine* engine,
+                              const xla::Shape& shape,
+                              const Args& args) {
+  // TODO Check if we have changed engines and retreive old data
+  current_engine_ = engine;
+  CopyDataToPoplar(args);
+  current_engine_->run(0);
+  perftools::gputools::DeviceMemoryBase retbuf;
+  TF_ASSIGN_OR_RETURN(retbuf, AllocateOutputBuffer(shape));
+  CopyDataFromPoplar(shape, retbuf);
+  return retbuf;
 }
 
 std::string PoplarExecutor::GetPathToGraphProgFile() {

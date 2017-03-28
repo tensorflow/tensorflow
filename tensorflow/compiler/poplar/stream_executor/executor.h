@@ -35,9 +35,16 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream_executor.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
+#include <poplar/Tensor.hpp>
+#include <poplar/Engine.hpp>
+
 namespace perftools {
 namespace gputools {
 namespace poplarplugin {
+
+std::string GetCopyHandle(int64 i);
+
+using Args = tensorflow::gtl::ArraySlice<DeviceMemoryBase>;
 
 class PoplarExecutor : public internal::StreamExecutorInterface {
  public:
@@ -188,18 +195,24 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
     return std::unique_ptr<internal::TimerInterface>(new PoplarTimer());
   }
 
-  port::StatusOr<DeviceMemoryBase> AllocateOutputBuffer(const xla::Shape& shape);
 
-  // TODO replace this when the poplar Copy interface is better
-  void CopyDataToPoplar(DeviceMemoryBase* mem, void* buf) const;
-  void CopyDataFromPoplar(const xla::Shape& shape,
-                          const std::vector<char*>& bufs,
-                          DeviceMemoryBase* mem) const;
+  // Poplar Interface
+
+  port::StatusOr<DeviceMemoryBase> ExecuteEngine(poplar::Engine* engine,
+                                                 const xla::Shape& shape,
+                                                 const Args& args);
 
   std::string GetPathToGraphProgFile();
 
  private:
+  port::StatusOr<DeviceMemoryBase> AllocateOutputBuffer(const xla::Shape&);
+
+  void CopyDataToPoplar(const Args& args) const;
+  void CopyDataFromPoplar(const xla::Shape& shape, DeviceMemoryBase& mem) const;
+
   const PluginConfig plugin_config_;
+
+  poplar::Engine* current_engine_;
 };
 
 }  // namespace poplarplugin

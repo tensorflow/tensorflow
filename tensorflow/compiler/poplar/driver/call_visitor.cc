@@ -57,7 +57,7 @@ Status PoplarCallVisitor::HandleRecv(HloInstruction* inst) {
 }
 
 Status PoplarCallVisitor::HandleParameter(HloInstruction* inst) {
-  LOG(INFO) << inst->ToString() << " " << inst->parameter_number();
+  VLOG(3) << inst->ToString();
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0,
                                      operands[inst->parameter_number()]));
   return Status::OK();

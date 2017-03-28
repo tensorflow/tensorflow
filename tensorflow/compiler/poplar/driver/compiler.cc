@@ -51,91 +51,63 @@ namespace poplarplugin {
 class PoplarMainVisitor : public PoplarBaseVisitor {
 public:
   PoplarMainVisitor(poplar::Graph* graph, uint64 num_parameters)
-          : PoplarBaseVisitor(graph) {
-    input_copy_buffers.resize(num_parameters);
-  }
+          : PoplarBaseVisitor(graph) {}
 
   Status HandleInfeed(HloInstruction* inst) {
-    LOG(INFO) << inst->ToString();
+    VLOG(3) << inst->ToString();
     return port::Status(port::error::UNIMPLEMENTED,
                         port::StrCat(inst->name(),
                                      " not implemented"));
   }
 
   Status HandleOutfeed(HloInstruction* inst) {
-    LOG(INFO) << inst->ToString();
+    VLOG(3) << inst->ToString();
     return port::Status(port::error::UNIMPLEMENTED,
                         port::StrCat(inst->name(),
                                      " not implemented"));
   }
 
   Status HandleParameter(HloInstruction* inst) {
-    LOG(INFO) << inst->ToString() << " " << inst->parameter_number();
-    // Allocate the output tensor
+    VLOG(3) << inst->ToString();
+
     poplar::Tensor out;
     TF_ASSIGN_OR_RETURN(out, AddTensor(*graph_, inst->name(), inst->shape()));
     TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
 
-    // TODO (remove when possible) allocate temporary copy buffer
-    char* input_buffer = new char[ShapeUtil::ByteSizeOf(inst->shape())];
-    input_copy_buffers[inst->parameter_number()] = input_buffer;
-    copy_in.add(poplar::program::Copy(input_buffer, out));
+    graph_->createHostWrite(sep::GetCopyHandle(inst->parameter_number()), out);
     return Status::OK();
   }
 
   Status HandleSend(HloInstruction* inst) {
-    LOG(INFO) << inst->ToString();
+    VLOG(3) << inst->ToString();
     return port::Status(port::error::UNIMPLEMENTED,
                         port::StrCat(inst->name(),
                                      " not implemented"));
   }
 
   Status HandleRecv(HloInstruction* inst) {
-    LOG(INFO) << inst->ToString();
+    VLOG(3) << inst->ToString();
     return port::Status(port::error::UNIMPLEMENTED,
                         port::StrCat(inst->name(),
                                      " not implemented"));
   }
 
-// Invoked to inform the visitor that the traversal has completed, and that
-// the root was "root".
   Status FinishVisit(HloInstruction* inst) {
+    size_t num;
     if (ShapeUtil::IsTuple(inst->shape())) {
-      output_copy_buffers.resize(ShapeUtil::TupleElementCount(inst->shape()));
-
-      for (size_t i=0; i<output_copy_buffers.size(); i++) {
-        poplar::Tensor out;
-        TF_ASSIGN_OR_RETURN(out, FindInstructionOutput(tensor_map, inst, i));
-
-        const Shape& shape(ShapeUtil::GetTupleElementShape(inst->shape(), i));
-
-        // TODO (remove when possible) allocate temporary copy buffer
-        char* output_buffer = new char[ShapeUtil::ByteSizeOf(shape)];
-        output_copy_buffers[i] = output_buffer;
-        copy_out.add(poplar::program::Copy(out, output_buffer));
-      }
+      num = ShapeUtil::TupleElementCount(inst->shape());
     } else {
-      output_copy_buffers.resize(1);
+      num = 1;
+    }
 
+    for (int64 i=0; i<num; i++) {
       poplar::Tensor out;
-      TF_ASSIGN_OR_RETURN(out, FindInstructionOutput(tensor_map, inst, 0));
-
-      // TODO (remove when possible) allocate temporary copy buffer
-      char* output_buffer = new char[ShapeUtil::ByteSizeOf(inst->shape())];
-      output_copy_buffers[0] = output_buffer;
-      copy_out.add(poplar::program::Copy(out, output_buffer));
+      TF_ASSIGN_OR_RETURN(out, FindInstructionOutput(tensor_map, inst, i));
+      graph_->createHostRead(sep::GetCopyHandle(i), out);
     }
 
     return Status::OK();
   }
-
-  // TODO these are an artifact of the current Engine Copy programs
-  // TODO remove them once there is a Copy interface that doesn't
-  // TODO require specifying the buffers up front
-  poplar::program::Sequence copy_in;
-  poplar::program::Sequence copy_out;
-  std::vector<char*> input_copy_buffers;
-  std::vector<char*> output_copy_buffers;
 };
 
 Status PoplarCompiler::RunHloOptimization(HloModule* hlo_module,
@@ -160,7 +132,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
     se::StreamExecutor* stream_exec) {
   TF_RET_CHECK(stream_exec != nullptr);
 
-  LOG(INFO) << "Compiling " << hlo_module->name();
+  LOG(INFO) << "Generate graph " << hlo_module->name();
 
   TF_RETURN_IF_ERROR(
           RunHloOptimization(hlo_module.get(), module_config.get(), dump_hlo));
@@ -201,10 +173,10 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
   std::unique_ptr<poplar::Engine> engine;
   std::vector<poplar::program::Program> progs;
   progs.push_back(visitor.sequence);
-  progs.push_back(visitor.copy_in);
-  progs.push_back(visitor.copy_out);
 
   try {
+    LOG(INFO) << "Compile engine " << hlo_module->name();
+
     engine.reset(new poplar::Engine(*graph, progs));
   }
   catch (poplar::poplar_error e) {
@@ -217,9 +189,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
   executable.reset(
           new PoplarExecutable(std::move(hlo_module),
                                std::move(module_config),
-                               std::move(engine),
-                               visitor.input_copy_buffers,
-                               visitor.output_copy_buffers));
+                               std::move(engine)));
 
   return std::move(executable);
 }

@@ -19,45 +19,22 @@ limitations under the License.
 #include "tensorflow/compiler/poplar/driver/executable.h"
 #include "tensorflow/compiler/poplar/stream_executor/executor.h"
 
-#include <stdint.h>
-#include <algorithm>
-#include <set>
-#include <unordered_set>
-#include <utility>
-#include <vector>
-
 namespace se = ::perftools::gputools;
 namespace sep = ::perftools::gputools::poplarplugin;
 
 namespace xla {
 namespace poplarplugin {
 
-static const int SEQUENCE_PROGRAM = 0;
-static const int COPY_IN_PROGRAM = 1;
-static const int COPY_OUT_PROGRAM = 2;
-
 PoplarExecutable::PoplarExecutable(
         std::unique_ptr<HloModule> hlo_module,
         std::unique_ptr<HloModuleConfig> module_config,
-        std::unique_ptr<poplar::Engine> engine,
-        const std::vector<char*>& inputs,
-        const std::vector<char*>& outputs)
+        std::unique_ptr<poplar::Engine> engine)
     : Executable(std::move(hlo_module),
                  std::move(module_config)),
-      poplar_engine_(std::move(engine)),
-      input_buffers_(inputs),
-      output_buffers_(outputs) {
+      poplar_engine_(std::move(engine)) {
 }
 
-PoplarExecutable::~PoplarExecutable() {
-  // TODO remove this when we don't need Copy buffers
-  for (auto p : input_buffers_) {
-    delete p;
-  }
-  for (auto p : output_buffers_) {
-    delete p;
-  }
-}
+PoplarExecutable::~PoplarExecutable() {}
 
 StatusOr<se::DeviceMemoryBase>
 PoplarExecutable::ExecuteOnStream(
@@ -72,25 +49,11 @@ PoplarExecutable::ExecuteOnStream(
   sep::PoplarExecutor* poplarExecutor(
           static_cast<sep::PoplarExecutor*>(executor->implementation()));
 
-  // Allocate output buffer(s)
   perftools::gputools::DeviceMemoryBase retbuf;
   TF_ASSIGN_OR_RETURN(retbuf,
-                      poplarExecutor->AllocateOutputBuffer(result_shape()));
-
-  // TODO replace with future poplar Engine copy interface
-  for (uint64 a = 0; a < arguments.size(); a++) {
-    // Copy data from cache buffer to Copy buffer
-    auto arg(arguments[a]);
-    poplarExecutor->CopyDataToPoplar(&arg, input_buffers_[a]);
-  }
-
-  poplar_engine_->run(COPY_IN_PROGRAM);
-  poplar_engine_->run(SEQUENCE_PROGRAM);
-  poplar_engine_->run(COPY_OUT_PROGRAM);
-
-  // Copy data back from the temp buffers to cache buffers
-  poplarExecutor->CopyDataFromPoplar(result_shape(), output_buffers_, &retbuf);
-
+                      poplarExecutor->ExecuteEngine(poplar_engine_.get(),
+                                                    result_shape(),
+                                                    arguments));
   return retbuf;
 }
 

@@ -35,7 +35,6 @@ namespace poplarplugin {
 // The compiler translates XLA HLO code into a poplar Engine, and then
 // creates an executable "blob" that can then be returned
 // wrapped in PoplarExecutable and actually invoked.
-// TODO - is it an Engine, or a Graph, or something else?
 class PoplarCompiler : public Compiler {
  public:
   PoplarCompiler() {}
