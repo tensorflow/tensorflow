@@ -5633,6 +5633,42 @@ op {
   summary: "Reinterpret the bytes of a string as a vector of numbers."
 }
 op {
+  name: "DecodeWav"
+  input_arg {
+    name: "contents"
+    description: "The WAV-encoded audio, usually from a file."
+    type: DT_STRING
+  }
+  output_arg {
+    name: "audio"
+    description: "2-D with shape `[length, channels]`."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "sample_rate"
+    description: "Scalar holding the sample rate found in the WAV header."
+    type: DT_INT32
+  }
+  attr {
+    name: "desired_channels"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    description: "Number of sample channels wanted."
+  }
+  attr {
+    name: "desired_samples"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    description: "Length of audio requested."
+  }
+  summary: "Decode a 16-bit PCM WAV file to a float tensor."
+  description: "The -32768 to 32767 signed 16-bit values will be scaled to -1.0 to 1.0 in float.\n\nWhen desired_channels is set, if the input contains fewer channels than this\nthen the last channel will be duplicated to give the requested number, else if\nthe input has more channels than requested then the additional channels will be\nignored.\n\nIf desired_samples is set, then the audio will be cropped or padded with zeroes\nto the requested length.\n\nThe first output contains a Tensor with the content of the audio samples. The\nlowest dimension will be the number of channels, and the second will be the\nnumber of samples. For example, a ten-sample-long stereo WAV file should give an\noutput shape of [10, 2]."
+}
+op {
   name: "DeleteSessionTensor"
   input_arg {
     name: "handle"
@@ -6751,6 +6787,26 @@ op {
   }
   summary: "PNG-encode an image."
   description: "`image` is a 3-D uint8 or uint16 Tensor of shape `[height, width, channels]`\nwhere `channels` is:\n\n*   1: for grayscale.\n*   2: for grayscale + alpha.\n*   3: for RGB.\n*   4: for RGBA.\n\nThe ZLIB compression level, `compression`, can be -1 for the PNG-encoder\ndefault or a value from 0 to 9.  9 is the highest compression level, generating\nthe smallest output, but is slower."
+}
+op {
+  name: "EncodeWav"
+  input_arg {
+    name: "audio"
+    description: "2-D with shape `[length, channels]`."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "sample_rate"
+    description: "Scalar containing the sample frequency."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "contents"
+    description: "0-D. WAV-encoded file contents."
+    type: DT_STRING
+  }
+  summary: "Encode audio data using the WAV file format."
+  description: "This operation will generate a string suitable to be saved out to create a .wav\naudio file. It will be encoded in the 16-bit PCM format. It takes in float\nvalues in the range -1.0f to 1.0f, and any outside that value will be clamped to\nthat range.\n\n`audio` is a 2-D float Tensor of shape `[length, channels]`.\n`sample_rate` is a scalar Tensor holding the rate to use (e.g. 44100)."
 }
 op {
   name: "Enter"
