@@ -314,6 +314,7 @@ tf_gen_op_wrappers_cc(
     name = "cc_ops",
     op_lib_names = [
         "array_ops",
+        "audio_ops",
         "candidate_sampling_ops",
         "control_flow_ops",
         "data_flow_ops",
