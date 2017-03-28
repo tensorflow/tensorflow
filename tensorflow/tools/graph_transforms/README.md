@@ -83,7 +83,6 @@ bazel-bin/tensorflow/tools/graph_transforms/transform_graph \
 --outputs='softmax:0' \
 --transforms='\
 strip_unused_nodes(type=float, shape="1,299,299,3") \
-remove_nodes(op=Identity, op=CheckNumerics) \
 fold_old_batch_norms \
 '
 ```
@@ -140,7 +139,6 @@ bazel-bin/tensorflow/tools/graph_transforms/transform_graph \
 --outputs='softmax:0' \
 --transforms='\
 strip_unused_nodes(type=float, shape="1,299,299,3") \
-remove_nodes(op=Identity, op=CheckNumerics) \
 fold_constants(ignore_errors=true) \
 fold_batch_norms \
 fold_old_batch_norms\
@@ -285,7 +283,6 @@ bazel-bin/tensorflow/tools/graph_transforms/transform_graph \
 --transforms='
  add_default_attributes
  strip_unused_nodes(type=float, shape="1,299,299,3")
- remove_nodes(op=Identity, op=CheckNumerics)
  fold_old_batch_norms
  quantize_weights
  quantize_nodes
