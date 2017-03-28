@@ -271,6 +271,12 @@ while [ "$TF_NEED_CUDA" == "" ]; do
   esac
 done
 
+sed_hyphen_i -e "/--action_env TF_NEED_CUDA/d" .bazelrc
+sed_hyphen_i -e "/--action_env CUD/d" .bazelrc
+sed_hyphen_i -e "/--action_env GCC_HOST/d" .bazelrc
+sed_hyphen_i -e "/--action_env TF_CUD/d" .bazelrc
+echo "build --action_env TF_NEED_CUDA=$TF_NEED_CUDA" >>.bazelrc
+
 export TF_NEED_CUDA
 export TF_NEED_OPENCL
 
