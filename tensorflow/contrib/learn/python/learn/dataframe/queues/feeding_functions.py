@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import random
-import numpy as np
 
 # pylint: disable=unused-import
 from tensorflow.python.estimator.inputs.queues.feeding_functions import _ArrayFeedFn
