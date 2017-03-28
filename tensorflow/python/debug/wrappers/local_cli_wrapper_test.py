@@ -31,6 +31,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
@@ -45,7 +46,10 @@ class LocalCLIDebuggerWrapperSessionForTest(
   Inserts observer variables for assertions.
   """
 
-  def __init__(self, command_args_sequence, sess, dump_root=None):
+  def __init__(self,
+               command_args_sequence,
+               sess,
+               dump_root=None):
     """Constructor of the for-test subclass.
 
     Args:
@@ -101,6 +105,11 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     self.v = variables.Variable(10.0, name="v")
     self.delta = constant_op.constant(1.0, name="delta")
     self.inc_v = state_ops.assign_add(self.v, self.delta, name="inc_v")
+
+    self.v_int = control_flow_ops.with_dependencies(
+        [self.inc_v],
+        math_ops.cast(self.v, dtypes.int32, name="v_int_inner"),
+        name="v_int_outer")
 
     self.ph = array_ops.placeholder(dtypes.float32, name="ph")
     self.xph = array_ops.transpose(self.ph, name="xph")
@@ -355,6 +364,107 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
 
     self.assertEqual(2, len(wrapped_sess.observers["debug_dumps"]))
     self.assertEqual([None, None], wrapped_sess.observers["tf_errors"])
+
+  def testRunsUnderDebugModeWithWatchFnFilteringNodeNames(self):
+    # Test command sequence:
+    #   run --node_name_filter inc.*
+    #   run --node_name_filter delta
+    #   run
+    wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
+        [["--node_name_filter", "inc.*"], ["--node_name_filter", "delta"], []],
+        self.sess, dump_root=self._tmp_dir)
+
+    # run under debug mode twice.
+    wrapped_sess.run(self.inc_v)
+    wrapped_sess.run(self.inc_v)
+
+    # Verify that the assign_add op did take effect.
+    self.assertAllClose(12.0, self.sess.run(self.v))
+
+    # Verify that the dumps have been generated and picked up during run-end.
+    self.assertEqual(2, len(wrapped_sess.observers["debug_dumps"]))
+
+    dumps = wrapped_sess.observers["debug_dumps"][0]
+    self.assertEqual(1, dumps.size)
+    self.assertEqual("inc_v", dumps.dumped_tensor_data[0].node_name)
+
+    dumps = wrapped_sess.observers["debug_dumps"][1]
+    self.assertEqual(1, dumps.size)
+    self.assertEqual("delta", dumps.dumped_tensor_data[0].node_name)
+
+  def testRunsUnderDebugModeWithWatchFnFilteringOpTypes(self):
+    # Test command sequence:
+    #   run --node_name_filter delta
+    #   run --op_type_filter AssignAdd
+    #   run
+    wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
+        [["--node_name_filter", "delta"],
+         ["--op_type_filter", "AssignAdd"],
+         []],
+        self.sess, dump_root=self._tmp_dir)
+
+    # run under debug mode twice.
+    wrapped_sess.run(self.inc_v)
+    wrapped_sess.run(self.inc_v)
+
+    # Verify that the assign_add op did take effect.
+    self.assertAllClose(12.0, self.sess.run(self.v))
+
+    # Verify that the dumps have been generated and picked up during run-end.
+    self.assertEqual(2, len(wrapped_sess.observers["debug_dumps"]))
+
+    dumps = wrapped_sess.observers["debug_dumps"][0]
+    self.assertEqual(1, dumps.size)
+    self.assertEqual("delta", dumps.dumped_tensor_data[0].node_name)
+
+    dumps = wrapped_sess.observers["debug_dumps"][1]
+    self.assertEqual(1, dumps.size)
+    self.assertEqual("inc_v", dumps.dumped_tensor_data[0].node_name)
+
+  def testRunsUnderDebugModeWithWatchFnFilteringTensorDTypes(self):
+    # Test command sequence:
+    #   run --op_type_filter Variable.*
+    #   run --dtype_filter int32
+    #   run
+    wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
+        [["--op_type_filter", "Variable.*"],
+         ["--tensor_dtype_filter", "int32"], []],
+        self.sess, dump_root=self._tmp_dir)
+
+    # run under debug mode twice.
+    wrapped_sess.run(self.v_int)
+    wrapped_sess.run(self.v_int)
+
+    # Verify that the dumps have been generated and picked up during run-end.
+    self.assertEqual(2, len(wrapped_sess.observers["debug_dumps"]))
+
+    dumps = wrapped_sess.observers["debug_dumps"][0]
+    self.assertEqual(1, dumps.size)
+    self.assertEqual("v", dumps.dumped_tensor_data[0].node_name)
+
+    dumps = wrapped_sess.observers["debug_dumps"][1]
+    self.assertEqual(2, dumps.size)
+    self.assertEqual(
+        ["v_int_inner", "v_int_outer"],
+        [dumps.dumped_tensor_data[i].node_name for i in [0, 1]])
+
+  def testRunsUnderDebugModeWithWatchFnFilteringOpTypesAndTensorDTypes(self):
+    # Test command sequence:
+    #   run --op_type_filter Cast --dtype_filter int32
+    #   run
+    wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
+        [["--op_type_filter", "Cast", "--tensor_dtype_filter", "int32"], []],
+        self.sess, dump_root=self._tmp_dir)
+
+    # run under debug mode twice.
+    wrapped_sess.run(self.v_int)
+
+    # Verify that the dumps have been generated and picked up during run-end.
+    self.assertEqual(1, len(wrapped_sess.observers["debug_dumps"]))
+
+    dumps = wrapped_sess.observers["debug_dumps"][0]
+    self.assertEqual(1, dumps.size)
+    self.assertEqual("v_int_inner", dumps.dumped_tensor_data[0].node_name)
 
 
 if __name__ == "__main__":
