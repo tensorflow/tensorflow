@@ -35,7 +35,7 @@ from tensorflow.tensorboard.plugins import base_plugin
 PLUGIN_PREFIX_ROUTE = 'text'
 
 # HTTP routes
-RUNS_ROUTE = '/index'
+RUNS_ROUTE = '/runs'
 TEXT_ROUTE = '/text'
 
 ALLOWED_TAGS = [
