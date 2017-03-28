@@ -96,7 +96,7 @@ it and the Android NDK and SDK must be installed on your system.
 
 ##### Edit WORKSPACE
 
-The Android entries in [`<workspace_root>/WORKSPACE`](../../../WORKSPACE#L2-L13)
+The Android entries in [`<workspace_root>/WORKSPACE`](../../../WORKSPACE#L19-L32)
 must be uncommented with the paths filled in appropriately depending on where
 you installed the NDK and SDK. Otherwise an error such as:
 "The external label '//external:android/sdk' is not bound to anything" will
