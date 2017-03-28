@@ -24,9 +24,12 @@ def allowed_file(filename):
 @APP.route('/')
 def hello_world():
     """ Index page. TODO: Replace with a dashboard or something to help manage the server """
-    return 'Hello world!'
+    return APP.send_static_file('index.html')
 
-
+@APP.route('/<path:path>')
+def static_file(path):
+	return APP.send_static_file(path)
+	
 # Training API
 # Receive images and upload them to the set folder
 @APP.route('/images', methods=['GET', 'POST'])
@@ -61,7 +64,6 @@ def images():
             <h1>Upload new image</h1>
             <form method=post enctype=multipart/form-data>
                 <p><input type=file name=file>
-                <input type=text name=set_name value=default>
                 <input type=submit value=Upload></p>
             </form>
             '''
@@ -80,7 +82,7 @@ def images():
 
         if img and allowed_file(img.filename):
             filename = secure_filename(img.filename)
-            directory = os.path.join(APP.config['UPLOAD_FOLDER'], request.form['set_name'])
+            directory = APP.config['UPLOAD_FOLDER']
 
             # create the file path if it does not exist
             if not os.path.exists(directory):
@@ -88,9 +90,9 @@ def images():
 
             # save the image in the directory
             img.save(os.path.join(directory, filename))
-            return redirect('/images?set_name=' + request.form['set_name'])
+            return redirect('/images')
 
-@APP.route('/<set_name>/<image>')
+@APP.route('/images/<image>')
 def serve_image(set_name, image):
     return APP.send_static_file(UPLOAD_FOLDER + '/' + set_name + '/' + image)
 
