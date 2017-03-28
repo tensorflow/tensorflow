@@ -721,14 +721,15 @@ class MaxPooling3dGradGradOp : public OpKernel {
   TensorFormat data_format_;
 };
 
-
 #define REGISTER_KERNELS(D, T)                                             \
   REGISTER_KERNEL_BUILDER(                                                 \
       Name("MaxPool3D").Device(DEVICE_##D).TypeConstraint<T>("T"),         \
       Pooling3DOp<D##Device, T, MAX>);                                     \
-  REGISTER_KERNEL_BUILDER(                                                 \
-      Name("MaxPool3DGrad").Device(DEVICE_##D).TypeConstraint<T>("T"),     \
-      MaxPooling3dGradOp<D##Device, T>);                                   \
+  REGISTER_KERNEL_BUILDER(Name("MaxPool3DGrad")                            \
+                              .Device(DEVICE_##D)                          \
+                              .TypeConstraint<T>("T")                      \
+                              .TypeConstraint<T>("TInput"),                \
+                          MaxPooling3dGradOp<D##Device, T>);               \
   REGISTER_KERNEL_BUILDER(                                                 \
       Name("MaxPool3DGradGrad").Device(DEVICE_##D).TypeConstraint<T>("T"), \
       MaxPooling3dGradGradOp<D##Device, T>);                               \

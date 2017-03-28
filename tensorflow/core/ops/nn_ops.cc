@@ -1186,15 +1186,16 @@ data_format: The data format of the input and output data. With the
 )doc");
 
 REGISTER_OP("MaxPool3DGrad")
-    .Input("orig_input: T")
-    .Input("orig_output: T")
+    .Input("orig_input: TInput")
+    .Input("orig_output: TInput")
     .Input("grad: T")
     .Output("output: T")
     .Attr("ksize: list(int) >= 5 ")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnet3dDataFormatAttrString())
-    .Attr("T: numbertype")
+    .Attr("T: numbertype = DT_FLOAT")
+    .Attr("TInput: numbertype = DT_FLOAT")
     .SetShapeFn([](InferenceContext* c) {
       return UnchangedShapeWithRank(c, 5);
     })
@@ -1341,7 +1342,7 @@ output: The gradients for LRN.
 // --------------------------------------------------------------------------
 
 REGISTER_OP("MaxPool")
-    .Attr("T: realnumbertype")
+    .Attr("T: realnumbertype = DT_FLOAT")
     .Attr("ksize: list(int) >= 4")
     .Attr("strides: list(int) >= 4")
     .Attr(GetPaddingAttrString())
@@ -1374,7 +1375,7 @@ REGISTER_OP("MaxPoolGrad")
     .Input("orig_output: T")
     .Input("grad: T")
     .Output("output: T")
-    .Attr("T: realnumbertype")
+    .Attr("T: realnumbertype = DT_FLOAT")
     .SetShapeFn([](InferenceContext* c) {
       return UnchangedShapeWithRank(c, 4);
     })
