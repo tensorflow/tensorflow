@@ -189,7 +189,7 @@ def input_from_feature_columns(columns_to_tensors,
                                weight_collections=None,
                                trainable=True,
                                scope=None):
-  """A tf.contrib.layer style input layer builder based on FeatureColumns.
+  """A tf.contrib.layers style input layer builder based on FeatureColumns.
 
   Generally a single example in training data is described with feature columns.
   At the first layer of the model, this column oriented data should be converted
@@ -471,7 +471,7 @@ def weighted_sum_from_feature_columns(columns_to_tensors,
                                       weight_collections=None,
                                       trainable=True,
                                       scope=None):
-  """A tf.contrib.layer style linear prediction builder based on FeatureColumns.
+  """A tf.contrib.layers style linear prediction builder based on FeatureColumn.
 
   Generally a single example in training data is described with feature columns.
   This function generates weighted sum for each num_outputs. Weighted sum refers

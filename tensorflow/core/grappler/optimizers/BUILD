@@ -1,7 +1,5 @@
 licenses(["notice"])  # Apache 2.0
 
-exports_files(["LICENSE"])
-
 filegroup(
     name = "all_files",
     srcs = glob(
@@ -109,6 +107,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":graph_optimizer",
         ":layout_optimizer",
         ":model_pruner",
         "//tensorflow/core:lib",

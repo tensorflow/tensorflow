@@ -503,6 +503,8 @@ class QuantizeGraphTest(test.TestCase):
                                           [a_identity_name, b_constant_name])
     quantize_graph.set_attr_dtype(add_node, "T", dtypes.float32)
     expected_output.node.extend([add_node])
+    expected_output.versions.CopyFrom(graph_def.versions)
+    expected_output.library.CopyFrom(graph_def.library)
 
     output = graph_util.remove_training_nodes(graph_def)
     stripped_output = graph_util.extract_sub_graph(output, [add_name])
@@ -950,6 +952,8 @@ class QuantizeGraphTest(test.TestCase):
     quantize_graph.set_attr_dtype(mat_mul_node, "T1", dtypes.uint8)
     quantize_graph.set_attr_dtype(mat_mul_node, "T2", dtypes.int32)
     expected_output.node.extend([mat_mul_node])
+    expected_output.versions.CopyFrom(graph_def.versions)
+    expected_output.library.CopyFrom(graph_def.library)
 
     rewriter = quantize_graph.GraphRewriter(
         graph_def, [mat_mul_name], quantized_input_range=None)

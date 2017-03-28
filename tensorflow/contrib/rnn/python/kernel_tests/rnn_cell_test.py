@@ -756,6 +756,94 @@ class RNNCellTest(test.TestCase):
         self.assertEqual(new_h.shape[1], num_proj)
         self.assertAllClose(np.concatenate(res[1], axis=1), expected_state)
 
+  def testUGRNNCell(self):
+    num_units = 2
+    batch_size = 3
+    expected_state_and_output = np.array(
+        [[0.13752282, 0.13752282],
+         [0.10545051, 0.10545051],
+         [0.10074195, 0.10074195]],
+        dtype=np.float32)
+    with self.test_session() as sess:
+      with variable_scope.variable_scope(
+          "ugrnn_cell_test",
+          initializer=init_ops.constant_initializer(0.5)):
+        cell = rnn_cell.UGRNNCell(num_units=num_units)
+        inputs = constant_op.constant(
+            np.array([[1., 1., 1., 1.],
+                      [2., 2., 2., 2.],
+                      [3., 3., 3., 3.]],
+                     dtype=np.float32),
+            dtype=dtypes.float32)
+        init_state = constant_op.constant(
+            0.1 * np.ones(
+                (batch_size, num_units), dtype=np.float32),
+            dtype=dtypes.float32)
+        output, state = cell(inputs, init_state)
+        sess.run([variables.global_variables_initializer()])
+        res = sess.run([output, state])
+        # This is a smoke test: Only making sure expected values didn't change.
+        self.assertEqual(len(res), 2)
+        self.assertAllClose(res[0], expected_state_and_output)
+        self.assertAllClose(res[1], expected_state_and_output)
+
+  def testIntersectionRNNCell(self):
+    num_units = 2
+    batch_size = 3
+    expected_state = np.array(
+        [[0.13752282, 0.13752282],
+         [0.10545051, 0.10545051],
+         [0.10074195, 0.10074195]],
+        dtype=np.float32)
+    expected_output = np.array(
+        [[2.00431061, 2.00431061],
+         [4.00060606, 4.00060606],
+         [6.00008249, 6.00008249]],
+        dtype=np.float32)
+    with self.test_session() as sess:
+      with variable_scope.variable_scope(
+          "intersection_rnn_cell_test",
+          initializer=init_ops.constant_initializer(0.5)):
+        cell = rnn_cell.IntersectionRNNCell(num_units=num_units,
+                                            num_in_proj=num_units)
+        inputs = constant_op.constant(
+            np.array([[1., 1., 1., 1.],
+                      [2., 2., 2., 2.],
+                      [3., 3., 3., 3.]],
+                     dtype=np.float32),
+            dtype=dtypes.float32)
+        init_state = constant_op.constant(
+            0.1 * np.ones(
+                (batch_size, num_units), dtype=np.float32),
+            dtype=dtypes.float32)
+        output, state = cell(inputs, init_state)
+        sess.run([variables.global_variables_initializer()])
+        res = sess.run([output, state])
+        # This is a smoke test: Only making sure expected values didn't change.
+        self.assertEqual(len(res), 2)
+        self.assertAllClose(res[0], expected_output)
+        self.assertAllClose(res[1], expected_state)
+
+  def testIntersectionRNNCellFailure(self):
+    num_units = 2
+    batch_size = 3
+    cell = rnn_cell.IntersectionRNNCell(num_units=num_units)
+    inputs = constant_op.constant(
+        np.array([[1., 1., 1., 1.],
+                  [2., 2., 2., 2.],
+                  [3., 3., 3., 3.]],
+                 dtype=np.float32),
+        dtype=dtypes.float32)
+    init_state = constant_op.constant(
+        0.1 * np.ones(
+            (batch_size, num_units), dtype=np.float32),
+        dtype=dtypes.float32)
+    with self.assertRaisesRegexp(
+        ValueError, "Must have input size == output size for "
+                    "Intersection RNN. To fix, num_in_proj should "
+                    "be set to num_units at cell init."):
+      cell(inputs, init_state)
+
 
 class LayerNormBasicLSTMCellTest(test.TestCase):
 
