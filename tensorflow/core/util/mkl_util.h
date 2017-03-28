@@ -132,7 +132,7 @@ class MklShape {
   (IS_MKL_TENSOR_OFFSET + sizeof(size_t))  // Location of dimension_
 #define SIZES_OFFSET(dims) \
   (DIMS_OFFSET +           \
-  sizeof(size_t))  // Location of sizes. Note dim is not used here, left here
+   sizeof(size_t))  // Location of sizes. Note dim is not used here, left here
                     // to make macros consistent.
 #define STRIDES_OFFSET(dims) \
   (SIZES_OFFSET(dims) + dims * sizeof(size_t))  // Location of strides
@@ -289,7 +289,7 @@ static inline bool IsMklLayer(const std::string& op_name) {
   return kernel.find(kMklLayerLabelPattern) != string::npos;
 }
 
-} // namespace mkl_layer_registry
+}  // namespace mkl_layer_registry
 
 }  // namespace tensorflow
 #endif  // INTEL_MKL

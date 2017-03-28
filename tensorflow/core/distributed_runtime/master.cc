@@ -134,6 +134,7 @@ class DeviceFinder {
       const protobuf::RepeatedPtrField<string>& device_filters, MasterEnv* env,
       WorkerCacheInterface* worker_cache)
       : env_(env), worker_cache_(worker_cache) {
+    CHECK(worker_cache) << "Worker cache was null!";
     auto process_filter = [this](const string& filter) {
       DeviceNameUtils::ParsedName parsed;
       if (DeviceNameUtils::ParseFullName(filter, &parsed)) {

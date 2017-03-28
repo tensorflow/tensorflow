@@ -12,7 +12,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-
 #if GOOGLE_CUDA
 
 #define EIGEN_USE_GPU
@@ -25,21 +24,20 @@ namespace tensorflow {
 namespace internal {
 
 namespace {
-  typedef struct RgbTuple {
-    float r;
-    float g;
-    float b;
-  } RgbTuple;
+typedef struct RgbTuple {
+  float r;
+  float g;
+  float b;
+} RgbTuple;
 
-  typedef struct HsvTuple {
-    float h;
-    float s;
-    float v;
-  } HsvTuple;
-}  // anon namespace
+typedef struct HsvTuple {
+  float h;
+  float s;
+  float v;
+} HsvTuple;
+}  // namespace
 
-__device__ HsvTuple rgb2hsv_cuda(const float r, const float g, const float b)
-{
+__device__ HsvTuple rgb2hsv_cuda(const float r, const float g, const float b) {
   HsvTuple tuple;
   const float M = fmaxf(r, fmaxf(g, b));
   const float m = fminf(r, fminf(g, b));
@@ -71,8 +69,7 @@ __device__ HsvTuple rgb2hsv_cuda(const float r, const float g, const float b)
   return tuple;
 }
 
-__device__ RgbTuple hsv2rgb_cuda(const float h, const float s, const float v)
-{
+__device__ RgbTuple hsv2rgb_cuda(const float h, const float s, const float v) {
   RgbTuple tuple;
   const float new_h = h * 6.0f;
   const float chroma = v * s;
@@ -85,20 +82,20 @@ __device__ RgbTuple hsv2rgb_cuda(const float h, const float s, const float v)
   const bool between_4_and_5 = new_h >= 4.0f && new_h < 5.0f;
   const bool between_5_and_6 = new_h >= 5.0f && new_h < 6.0f;
   tuple.r = chroma * (between_0_and_1 || between_5_and_6) +
-      x * (between_1_and_2 || between_4_and_5) + new_m;
+            x * (between_1_and_2 || between_4_and_5) + new_m;
   tuple.g = chroma * (between_1_and_2 || between_2_and_3) +
-      x * (between_0_and_1 || between_3_and_4) + new_m;
+            x * (between_0_and_1 || between_3_and_4) + new_m;
   tuple.b = chroma * (between_3_and_4 || between_4_and_5) +
-      x * (between_2_and_3 || between_5_and_6) + new_m;
+            x * (between_2_and_3 || between_5_and_6) + new_m;
   return tuple;
 }
 
 __global__ void adjust_hue_nhwc(const int64 number_elements,
-                                const float * const __restrict__ input,
-                                float * const output,
-                                const float * const hue_delta)
-{
-  // multiply by 3 since we're dealing with contiguous RGB bytes for each pixel (NHWC)
+                                const float* const __restrict__ input,
+                                float* const output,
+                                const float* const hue_delta) {
+  // multiply by 3 since we're dealing with contiguous RGB bytes for each pixel
+  // (NHWC)
   const int64 idx = (blockDim.x * blockIdx.x + threadIdx.x) * 3;
   // bounds check
   if (idx > number_elements - 1) {
@@ -116,26 +113,22 @@ __global__ void adjust_hue_nhwc(const int64 number_elements,
   output[idx + 1] = rgb.g;
   output[idx + 2] = rgb.b;
 }
-} // namespace internal
-
+}  // namespace internal
 
 namespace functor {
 
-void AdjustHueGPU::operator()(
-  GPUDevice* device,
-  const int64 number_of_elements,
-  const float* const input,
-  const float* const delta,
-  float* const output
-) {
+void AdjustHueGPU::operator()(GPUDevice* device, const int64 number_of_elements,
+                              const float* const input,
+                              const float* const delta, float* const output) {
   const auto stream = device->stream();
-  const CudaLaunchConfig config = GetCudaLaunchConfig(number_of_elements, *device);
+  const CudaLaunchConfig config =
+      GetCudaLaunchConfig(number_of_elements, *device);
   const int threads_per_block = config.thread_per_block;
-  const int block_count = (number_of_elements + threads_per_block - 1) / threads_per_block;
+  const int block_count =
+      (number_of_elements + threads_per_block - 1) / threads_per_block;
   internal::adjust_hue_nhwc<<<block_count, threads_per_block, 0, stream>>>(
-    number_of_elements, input, output, delta
-  );
+      number_of_elements, input, output, delta);
 }
-} // namespace functor
+}  // namespace functor
 }  // namespace tensorflow
-#endif // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA

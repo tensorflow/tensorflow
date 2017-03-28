@@ -527,6 +527,26 @@ int Main(int argc, char** argv) {
     TF_QCHECK_OK(
         reporter.Benchmark(num_runs, -1.0, no_stat_wall_time, throughput));
     TF_QCHECK_OK(reporter.Close());
+
+    std::map<string, int64> node_type_map_count;
+    std::map<string, int64> node_type_map_time;
+    std::map<string, int64> node_type_map_memory;
+
+    int64 accumulated_us;
+    stats->ComputeStatsByType(&node_type_map_count, &node_type_map_time,
+                              &node_type_map_memory, &accumulated_us);
+    for (const auto& time : node_type_map_time) {
+      std::stringstream stream;
+      stream << benchmark_name << "_" << time.first;
+      TestReporter node_reporter(output_prefix, stream.str());
+
+      LOG(INFO) << "Outputting: [" << time.first << "]";
+
+      TF_QCHECK_OK(node_reporter.Initialize());
+      TF_QCHECK_OK(node_reporter.Benchmark(
+          num_runs, -1.0, (time.second * num_runs) / 1000000.0f, -1.0));
+      TF_QCHECK_OK(node_reporter.Close());
+    }
   }
 
   return 0;

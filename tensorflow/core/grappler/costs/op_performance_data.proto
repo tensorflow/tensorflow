@@ -114,3 +114,8 @@ message OpPerformance {
   }
   OpMemory op_memory = 9;
 }
+
+// A collection of OpPerformance data points.
+message OpPerformanceList {
+  repeated OpPerformance op_performance = 1;
+}

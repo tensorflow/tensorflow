@@ -16,7 +16,7 @@
 """A very simple MNIST classifier.
 
 See extensive documentation at
-http://tensorflow.org/tutorials/mnist/beginners/index.md
+https://www.tensorflow.org/get_started/mnist/beginners
 """
 from __future__ import absolute_import
 from __future__ import division

@@ -27,6 +27,19 @@ GraphRewriter::GraphRewriter(const GrapplerItem& item) {
   for (auto& node : item.graph.node()) {
     nodes_[node.name()] = &node;
   }
+
+  for (auto& node : item.graph.node()) {
+    for (const auto& input : node.input()) {
+      int position = 0;
+      string input_node_name = ParseNodeName(input, &position);
+      if (position < 0) {
+        // This is a control edge
+        auto itr = nodes_.find(input_node_name);
+        CHECK(itr != nodes_.end());
+        control_dependency_drivers_.insert(itr->second);
+      }
+    }
+  }
 }
 
 void GraphRewriter::ForwardInputs(
@@ -44,6 +57,11 @@ void GraphRewriter::ForwardInputs(
       *new_node->add_input() = input;
     }
   }
+}
+
+bool GraphRewriter::DrivesControlDependency(const NodeDef& node) const {
+  return control_dependency_drivers_.find(&node) !=
+         control_dependency_drivers_.end();
 }
 
 }  // end namespace grappler
