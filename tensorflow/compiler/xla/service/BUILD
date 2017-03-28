@@ -1139,8 +1139,10 @@ cc_library(
     hdrs = ["hlo_rematerialization.h"],
     deps = [
         ":buffer_liveness",
+        ":call_graph",
         ":hlo",
         ":hlo_cost_analysis",
+        ":hlo_dce",
         ":hlo_ordering",
         ":logical_buffer",
         ":tuple_points_to_analysis",

@@ -53,6 +53,9 @@ string NodeName(const string& name);
 // Get the trailing position number ":{digits}" (if any) of a node name.
 int NodePosition(const string& name);
 
+// Returns the node name and position in a single call.
+string ParseNodeName(const string& name, int* position);
+
 // Add a prefix to a node name
 string AddPrefixToNodeName(const string& name, const string& prefix);
 

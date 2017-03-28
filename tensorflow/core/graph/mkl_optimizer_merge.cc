@@ -18,25 +18,25 @@ limitations under the License.
 // We process the nodes in the graph in reverse postorder
 // (i.e. inputs before their downstream dependencies).
 //
-#include <set>
-#include <vector>
-#include <queue>
-#include <utility>
-#include <string>
 #include <memory>
+#include <queue>
+#include <set>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "tensorflow/core/graph/mkl_optimizer_merge.h"
 
+#include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/algorithm.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/common_runtime/function.h"
-#include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/common_runtime/optimization_registry.h"
 
 namespace tensorflow {
 
@@ -62,22 +62,22 @@ static size_t kNodeMergeContextMaxDepth = 10;
 class NodeMergeRewritePass : public GraphOptimizationPass {
  public:
   NodeMergeRewritePass() {
-    csinfo_.conv2d                     = "MklConv2D";
-    csinfo_.conv2dwithbias             = "MklConv2DWithBias";
+    csinfo_.conv2d = "MklConv2D";
+    csinfo_.conv2dwithbias = "MklConv2DWithBias";
     csinfo_.conv2dwithbiasbackpropbias = "Conv2DWithBiasBackpropBias";
-    csinfo_.biasadd                    = "BiasAdd";
-    csinfo_.matmul                     = "MatMul";
-    csinfo_.biasaddgrad                = "BiasAddGrad";
+    csinfo_.biasadd = "BiasAdd";
+    csinfo_.matmul = "MatMul";
+    csinfo_.biasaddgrad = "BiasAddGrad";
 
-    minfo_.push_back({csinfo_.conv2d, csinfo_.biasadd, 0,
-                      csinfo_.conv2dwithbias});
+    minfo_.push_back(
+        {csinfo_.conv2d, csinfo_.biasadd, 0, csinfo_.conv2dwithbias});
 
-    // We use maxhop of 10 based on emperical observations. Also, these are
-    // maxhops in backward data-flow graph. Since input of forward nodes
-    // (Conv2D) directly goes to backward nodes, we do not expect the
-    // hop-distance would be more than few nodes.
-    // TODO(nhasabni) Temporarily disabling rewrite of BiasAddGrad.
-    // Will enable it once we support Conv2DWithBiasBackpropBias op.
+// We use maxhop of 10 based on emperical observations. Also, these are
+// maxhops in backward data-flow graph. Since input of forward nodes
+// (Conv2D) directly goes to backward nodes, we do not expect the
+// hop-distance would be more than few nodes.
+// TODO(nhasabni) Temporarily disabling rewrite of BiasAddGrad.
+// Will enable it once we support Conv2DWithBiasBackpropBias op.
 #if 0
     rinfo_.push_back({csinfo_.biasaddgrad, csinfo_.conv2dwithbiasbackpropbias,
                   {csinfo_.conv2dwithbias, kNodeMergeContextMaxDepth}});
@@ -104,23 +104,23 @@ class NodeMergeRewritePass : public GraphOptimizationPass {
  private:
   /// Structure to specify information used in node merge
   typedef struct {
-    string pred;  // Predecessor node string
-    string succ;  // Successor node string
-    int    op;    // What operand no the predecessor node corresponds
-                  // to successor node?
+    string pred;     // Predecessor node string
+    string succ;     // Successor node string
+    int op;          // What operand no the predecessor node corresponds
+                     // to successor node?
     string newnode;  // Name of the node after merge
   } MergeInfo;
 
   /// Structure to specify information used in node rewrite
   typedef struct {
-    string node;  // Name of the node to be rewritten
+    string node;     // Name of the node to be rewritten
     string rewrite;  // New name of the node after rewrite
     typedef struct {
-        string fwd;  // Node name in forward pass that this node
-                       // corresponds to
-        size_t maxhop;  // Maximum number of hops the mfwd_ is located
-                         // from this node. If mfwd_ is farther than mmaxhop_
-                         // then we do not rewrite the node.
+      string fwd;     // Node name in forward pass that this node
+                      // corresponds to
+      size_t maxhop;  // Maximum number of hops the mfwd_ is located
+                      // from this node. If mfwd_ is farther than mmaxhop_
+                      // then we do not rewrite the node.
     } ContextInfo;
     ContextInfo cinfo;  // Context for rewrite
   } RewriteInfo;
@@ -245,7 +245,7 @@ Node* NodeMergeRewritePass::FindNodeForMerge(const Node* a) const {
     FillInputs(a, &a_control_edges, &a_in);
 
     // Get operand op of the operator
-    Node *b = nullptr;
+    Node* b = nullptr;
     b = a_in[mi->op].first;
     if (b == nullptr || (b->type_string() != mi->pred)) {
       // NOTE: Should the first check be assert?
@@ -268,24 +268,24 @@ Node* NodeMergeRewritePass::FindNodeForMerge(const Node* a) const {
   return nullptr;
 }
 
-void NodeMergeRewritePass::GetDummyMklTensorNode(
-    std::unique_ptr<Graph>* g, Node** out) {
+void NodeMergeRewritePass::GetDummyMklTensorNode(std::unique_ptr<Graph>* g,
+                                                 Node** out) {
   const DataType dt = DataTypeToEnum<uint8>::v();
   TensorProto proto;
   proto.set_dtype(dt);
   uint8 zero[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-  proto.set_tensor_content(const_cast<const void*>(
-      static_cast<void*>(&zero)), 8);
+  proto.set_tensor_content(const_cast<const void*>(static_cast<void*>(&zero)),
+                           8);
   TensorShape dummy_shape({8});
   dummy_shape.AsProto(proto.mutable_tensor_shape());
   TF_CHECK_OK(NodeBuilder((*g)->NewName("DMT"), "Const")
-                 .Attr("value", proto)
-                 .Attr("dtype", dt)
-                 .Finalize(&**g, out));
+                  .Attr("value", proto)
+                  .Attr("dtype", dt)
+                  .Finalize(&**g, out));
 }
 
-Status NodeMergeRewritePass::MergeNode(std::unique_ptr<Graph>* g,
-                                     Node* succ, Node* pred) {
+Status NodeMergeRewritePass::MergeNode(std::unique_ptr<Graph>* g, Node* succ,
+                                       Node* pred) {
   CHECK_NOTNULL(succ);
   CHECK_NOTNULL(pred);
 
@@ -303,15 +303,14 @@ Status NodeMergeRewritePass::MergeNode(std::unique_ptr<Graph>* g,
     TF_CHECK_OK(GetNodeAttr(pred->def(), "strides", &strides));
     TF_CHECK_OK(GetNodeAttr(pred->def(), "data_format", &data_format_pred));
     TF_CHECK_OK(GetNodeAttr(succ->def(), "data_format", &data_format_succ));
-    TF_CHECK_OK(GetNodeAttr(pred->def(), "use_cudnn_on_gpu",
-                            &use_cudnn_on_gnu));
+    TF_CHECK_OK(
+        GetNodeAttr(pred->def(), "use_cudnn_on_gpu", &use_cudnn_on_gnu));
     // We check to ensure that data formats of both succ and pred are same.
     // We expect them to be same, so we can enforce this as assert.
     // But assert can be too strict, so we enforce this as a check.
     // If the check fails, then we do not merge two nodes.
     // We also do same check for devices.
-    if (data_format_pred != data_format_succ ||
-        T_pred != T_succ ||
+    if (data_format_pred != data_format_succ || T_pred != T_succ ||
         pred->assigned_device_name() != succ->assigned_device_name() ||
         pred->def().device() != succ->def().device()) {
       return Status(error::Code::INVALID_ARGUMENT,
@@ -346,24 +345,24 @@ Status NodeMergeRewritePass::MergeNode(std::unique_ptr<Graph>* g,
                     "Will skip node merge optimization");
     }
 
-    for (const Edge *e : pred->out_edges()) {
+    for (const Edge* e : pred->out_edges()) {
       if (e->dst() != succ) {
         return Status(error::Code::INVALID_ARGUMENT,
-                    "Conv2D does not feed to BiasAdd."
-                    "Will skip node merge optimization");
+                      "Conv2D does not feed to BiasAdd."
+                      "Will skip node merge optimization");
       }
     }
 
     // Get operand 0, 1 of conv2D and their Mkl tensors.
     CHECK_EQ(pred->in_edges().size(), 4);  // MklConv2D must have 4 inputs.
-    oper1     = pred_in[0].first;
+    oper1 = pred_in[0].first;
     oper1_mkl = pred_in[1].first;
-    oper2     = pred_in[2].first;
+    oper2 = pred_in[2].first;
     oper2_mkl = pred_in[3].first;
     // Get operand 1 of add_bias
     // BiasAdd must have 2 inputs: Conv, bias
     CHECK_EQ(succ->in_edges().size(), 2);
-    oper3     = succ_in[1].first;
+    oper3 = succ_in[1].first;
     GetDummyMklTensorNode(g, &oper3_mkl);  // Get dummy Mkl tensor node
     // as BiasAdd does not have Mkl tensor as input.
     CHECK_NOTNULL(oper3_mkl);
@@ -371,19 +370,19 @@ Status NodeMergeRewritePass::MergeNode(std::unique_ptr<Graph>* g,
     Node* ret;
     // We will use the node name of BiasAdd as the name of new node
     TF_CHECK_OK(NodeBuilder(succ->name(), csinfo_.conv2dwithbias)
-                  .Input(oper1)
-                  .Input(oper1_mkl)
-                  .Input(oper2)
-                  .Input(oper2_mkl)
-                  .Input(oper3)
-                  .Input(oper3_mkl)
-                  .Attr("T", T_pred)
-                  .Attr("strides", strides)
-                  .Attr("padding", padding)
-                  .Attr("data_format", data_format_pred)
-                  .Attr("use_cudnn_on_gpu", use_cudnn_on_gnu)
-                  .Device(succ->def().device())
-                  .Finalize(&**g, &ret));
+                    .Input(oper1)
+                    .Input(oper1_mkl)
+                    .Input(oper2)
+                    .Input(oper2_mkl)
+                    .Input(oper3)
+                    .Input(oper3_mkl)
+                    .Attr("T", T_pred)
+                    .Attr("strides", strides)
+                    .Attr("padding", padding)
+                    .Attr("data_format", data_format_pred)
+                    .Attr("use_cudnn_on_gpu", use_cudnn_on_gnu)
+                    .Device(succ->def().device())
+                    .Finalize(&**g, &ret));
     CHECK_NOTNULL(ret);
 
     // Incoming edges are fixed, we will fix the outgoing edges now.
@@ -397,8 +396,8 @@ Status NodeMergeRewritePass::MergeNode(std::unique_ptr<Graph>* g,
     ret->set_assigned_device_name(pred->assigned_device_name());
 
     VLOG(1) << "NodeMergeRewritePass: Merged old node:" << pred->DebugString()
-            << ", and node: " << succ->DebugString() << ", into node:"
-            << ret->DebugString();
+            << ", and node: " << succ->DebugString()
+            << ", into node:" << ret->DebugString();
 
     (*g)->RemoveNode(succ);
     (*g)->RemoveNode(pred);
@@ -410,7 +409,7 @@ Status NodeMergeRewritePass::MergeNode(std::unique_ptr<Graph>* g,
                 "Unimplemented case for node merge optimization.");
 }
 
-Status NodeMergeRewritePass::RewriteNode(std::unique_ptr<Graph>* g, Node *n) {
+Status NodeMergeRewritePass::RewriteNode(std::unique_ptr<Graph>* g, Node* n) {
   CHECK_NOTNULL(n);
 
   // Get the matching rewriteinfo for the node
@@ -427,10 +426,11 @@ Status NodeMergeRewritePass::RewriteNode(std::unique_ptr<Graph>* g, Node *n) {
   VLOG(1) << "NodeMergeRewritePass: Rewrite called for: " << n->type_string();
 
   if (n->type_string() == csinfo_.biasaddgrad &&
-      ri->node         == csinfo_.biasaddgrad &&
-      (ri->rewrite     == csinfo_.conv2dwithbiasbackpropbias ||
-       ri->rewrite     == csinfo_.biasaddgrad)) {
-    DataType T; string data_format;
+      ri->node == csinfo_.biasaddgrad &&
+      (ri->rewrite == csinfo_.conv2dwithbiasbackpropbias ||
+       ri->rewrite == csinfo_.biasaddgrad)) {
+    DataType T;
+    string data_format;
     TF_CHECK_OK(GetNodeAttr(n->def(), "T", &T));
     TF_CHECK_OK(GetNodeAttr(n->def(), "data_format", &data_format));
 
@@ -452,20 +452,20 @@ Status NodeMergeRewritePass::RewriteNode(std::unique_ptr<Graph>* g, Node *n) {
       // We use same name as original node name as there may be fetchoutputs
       // associated with it.
       TF_CHECK_OK(NodeBuilder(n->name(), ri->rewrite)
-                    .Input(op)
-                    .Attr("T", T)
-                    .Attr("data_format", data_format)
-                    .Attr("strides", strides)
-                    .Device(n->def().device())
-                    .Finalize(&**g, &ret));
+                      .Input(op)
+                      .Attr("T", T)
+                      .Attr("data_format", data_format)
+                      .Attr("strides", strides)
+                      .Device(n->def().device())
+                      .Finalize(&**g, &ret));
     } else {
       CHECK_EQ(ri->rewrite, csinfo_.biasaddgrad);
       TF_CHECK_OK(NodeBuilder(n->name(), ri->rewrite)
-                    .Input(op)
-                    .Attr("T", T)
-                    .Attr("data_format", data_format)
-                    .Device(n->def().device())
-                    .Finalize(&**g, &ret));
+                      .Input(op)
+                      .Attr("T", T)
+                      .Attr("data_format", data_format)
+                      .Device(n->def().device())
+                      .Finalize(&**g, &ret));
     }
 
     CHECK_NOTNULL(ret);
@@ -505,8 +505,8 @@ NodeMergeRewritePass::FindMatchingRewriteInfo(const Node* n,
     }
   }
 
-  VLOG(1) << "NodeMergeRewritePass: Searching graph for: "
-          << n->type_string() << " in backwards.";
+  VLOG(1) << "NodeMergeRewritePass: Searching graph for: " << n->type_string()
+          << " in backwards.";
 
   // Now we will check for forward op name for rewrite info in data
   // flow graph. Get the max hops we should search for the fwd node
@@ -525,13 +525,12 @@ NodeMergeRewritePass::FindMatchingRewriteInfo(const Node* n,
     nqueue.pop();
 
     std::set<const Node*> visited_nodes;
-    curr_node  = curr_pair.first;
+    curr_node = curr_pair.first;
     curr_depth = curr_pair.second;
     CHECK_NOTNULL(curr_node);
 
     VLOG(1) << "NodeMergeRewritePass: Visiting node: "
-            << curr_node->type_string()
-            << " at depth: " << curr_depth
+            << curr_node->type_string() << " at depth: " << curr_depth
             << " for node: " << n->type_string();
 
     // If we find a match, we return immediately with the matching rewrite
@@ -548,9 +547,9 @@ NodeMergeRewritePass::FindMatchingRewriteInfo(const Node* n,
     for (const Edge* e : curr_node->in_edges()) {
       // We do not visit already visited node.
       if (visited_nodes.find(e->src()) == visited_nodes.end()) {
-         // Depth of these nodes is 1 more than the depth of current node.
-         nqueue.push(std::make_pair(e->src(), curr_depth+1));
-         visited_nodes.insert(e->src());
+        // Depth of these nodes is 1 more than the depth of current node.
+        nqueue.push(std::make_pair(e->src(), curr_depth + 1));
+        visited_nodes.insert(e->src());
       }
     }
   } /* while */
@@ -558,13 +557,13 @@ NodeMergeRewritePass::FindMatchingRewriteInfo(const Node* n,
   return nullptr;
 }
 
-bool NodeMergeRewritePass::IsApplicableRewriteNode(const Node *n) const {
+bool NodeMergeRewritePass::IsApplicableRewriteNode(const Node* n) const {
   CHECK_NOTNULL(n);
 
   // Search for matching rewriteinfo
   // Even if we find one match, we return true.
   bool match_found = false;
-  for (const RewriteInfo &ri : rinfo_) {
+  for (const RewriteInfo& ri : rinfo_) {
     if (n->type_string() == ri.node) {
       match_found = true;
       break;
@@ -589,8 +588,8 @@ bool NodeMergeRewritePass::RunPass(std::unique_ptr<Graph>* g) {
     if (!n->IsOp()) continue;
     Node* n1 = nullptr;
     if ((n1 = FindNodeForMerge(n)) != nullptr) {
-      VLOG(1) << "NodeMergeRewritePass: Scheduled nodes "
-              << n->name() << " and " << n1->name() << " for merging";
+      VLOG(1) << "NodeMergeRewritePass: Scheduled nodes " << n->name()
+              << " and " << n1->name() << " for merging";
       nodes_to_be_merged.push_back(std::make_pair(n, n1));
     } else if (IsApplicableRewriteNode(n)) {
       VLOG(1) << "NodeMergeRewritePass: Scheduled node " << n->name()
@@ -599,14 +598,14 @@ bool NodeMergeRewritePass::RunPass(std::unique_ptr<Graph>* g) {
     }
   }
 
-  for (std::pair < Node*, Node* > i : nodes_to_be_merged) {
+  for (std::pair<Node*, Node*> i : nodes_to_be_merged) {
     // Even if MergeNode merges single pair of nodes, we
     // need to return true.
     string n1_name = i.first->name();
     string n2_name = i.second->name();
     if (MergeNode(g, i.first, i.second) == Status::OK()) {
-      VLOG(1) << "NodeMergeRewritePass: Merged nodes " << n1_name
-              << " and " << n2_name;
+      VLOG(1) << "NodeMergeRewritePass: Merged nodes " << n1_name << " and "
+              << n2_name;
       result = true;
     }
   }
@@ -616,8 +615,8 @@ bool NodeMergeRewritePass::RunPass(std::unique_ptr<Graph>* g) {
   for (Node* i : nodes_to_be_rewritten) {
     string name = i->name();
     if (RewriteNode(g, i) == Status::OK()) {
-      VLOG(1) << "NodeMergeRewritePass: Rewrite node: "
-              << name << " successful.";
+      VLOG(1) << "NodeMergeRewritePass: Rewrite node: " << name
+              << " successful.";
       result = true;
     }
   }

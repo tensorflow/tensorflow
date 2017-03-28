@@ -83,6 +83,8 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
 
   private static final boolean MAINTAIN_ASPECT = USE_YOLO;
 
+  private static final Size DESIRED_PREVIEW_SIZE = new Size(640, 480);
+
   private static final boolean SAVE_PREVIEW_BITMAP = false;
   private static final float TEXT_SIZE_DIP = 10;
 
@@ -349,8 +351,8 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
   }
 
   @Override
-  protected int getDesiredPreviewFrameSize() {
-    return CROP_SIZE;
+  protected Size getDesiredPreviewFrameSize() {
+    return DESIRED_PREVIEW_SIZE;
   }
 
   @Override

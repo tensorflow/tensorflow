@@ -197,7 +197,7 @@ TEST_F(MklToTfConversionPass, Negative_NoMklLayer) {
       " input: ['E', 'Y']}");
   EXPECT_EQ(DoRunMklToTfConversionPass(),
             "A(Input);B(Input);C(Conv2D);D(Input);E(BiasAdd);Y(Input);Z(Sub)|"
-             "A->C;B->C:1;C->E;D->E:1;E->Z;Y->Z:1");
+            "A->C;B->C:1;C->E;D->E:1;E->Z;Y->Z:1");
 }
 
 static void BM_RunMklToTfConversionPass(int iters, int op_nodes) {

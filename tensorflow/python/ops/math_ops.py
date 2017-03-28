@@ -204,7 +204,7 @@ argmin.__doc__ = (gen_math_ops.arg_min.__doc__.replace("dimensions",
 # pylint: disable=anomalous-backslash-in-string,protected-access
 # pylint: disable=g-docstring-has-escape
 def abs(x, name=None):
-  """Computes the absolute value of a tensor.
+  r"""Computes the absolute value of a tensor.
 
   Given a tensor of real numbers `x`, this operation returns a tensor
   containing the absolute value of each element in `x`. For example, if x is
@@ -391,7 +391,7 @@ def sign(x, name=None):
 
 
 def square(x, name=None):
-  """Computes square of x element-wise.
+  r"""Computes square of x element-wise.
 
   I.e., \\(y = x * x = x^2\\).
 
@@ -413,7 +413,7 @@ def square(x, name=None):
 
 
 def sqrt(x, name=None):
-  """Computes square root of x element-wise.
+  r"""Computes square root of x element-wise.
 
   I.e., \\(y = \sqrt{x} = x^{1/2}\\).
 
@@ -484,7 +484,7 @@ def scalar_mul(scalar, x):
 
 
 def pow(x, y, name=None):
-  """Computes the power of one value to another.
+  r"""Computes the power of one value to another.
 
   Given a tensor `x` and a tensor `y`, this operation computes \\\\(x^y\\\\) for
   corresponding elements in `x` and `y`. For example:
@@ -584,7 +584,7 @@ def real(input, name=None):
 
 
 def imag(input, name=None):
-  """Returns the imaginary part of a complex number.
+  r"""Returns the imaginary part of a complex number.
 
   Given a tensor `input` of complex numbers, this operation returns a tensor of
   type `float32` or `float64` that is the imaginary part of each element in
@@ -1608,7 +1608,7 @@ def reduce_logsumexp(input_tensor,
 
 
 def trace(x, name=None):
-  """ Compute the trace of a tensor `x`.
+  """Compute the trace of a tensor `x`.
 
   `trace(x)` returns the sum along the main diagonal of each inner-most matrix
   in x. If x is of rank `k` with shape `[I, J, K, ..., L, M, N]`, then output
@@ -2100,9 +2100,10 @@ def cumsum(x, axis=0, exclusive=False, reverse=False, name=None):
     x: A `Tensor`. Must be one of the following types: `float32`, `float64`,
        `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`,
        `complex128`, `qint8`, `quint8`, `qint32`, `half`.
-       axis: A `Tensor` of type `int32` (default: 0).
-       reverse: A `bool` (default: False).
-       name: A name for the operation (optional).
+    axis: A `Tensor` of type `int32` (default: 0).
+    exclusive: If `True`, perform exclusive cumsum.
+    reverse: A `bool` (default: False).
+    name: A name for the operation (optional).
 
   Returns:
     A `Tensor`. Has the same type as `x`.
@@ -2147,6 +2148,7 @@ def cumprod(x, axis=0, exclusive=False, reverse=False, name=None):
        `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`,
        `complex128`, `qint8`, `quint8`, `qint32`, `half`.
     axis: A `Tensor` of type `int32` (default: 0).
+    exclusive: If `True`, perform exclusive cumprod.
     reverse: A `bool` (default: False).
     name: A name for the operation (optional).
 
@@ -2304,7 +2306,6 @@ def tensordot(a, b, axes, name=None):
       the shape of a is fully specified, and free_dims_static is either a list
       of integers and None values, or None, representing the inferred
       static shape of the free dimensions
-      
     """
     if a.get_shape().is_fully_defined() and isinstance(axes, (list, tuple)):
       shape_a = a.get_shape().as_list()
@@ -2376,7 +2377,8 @@ def tensordot(a, b, axes, name=None):
     b = ops.convert_to_tensor(b, name="b")
     a_axes, b_axes = _tensordot_axes(a, axes)
     a_reshape, a_free_dims, a_free_dims_static = _tensordot_reshape(a, a_axes)
-    b_reshape, b_free_dims, b_free_dims_static = _tensordot_reshape(b, b_axes, True)
+    b_reshape, b_free_dims, b_free_dims_static = _tensordot_reshape(b, b_axes,
+                                                                    True)
     ab_matmul = matmul(a_reshape, b_reshape)
     if isinstance(a_free_dims, list) and isinstance(b_free_dims, list):
       return array_ops.reshape(ab_matmul, a_free_dims + b_free_dims, name=name)
