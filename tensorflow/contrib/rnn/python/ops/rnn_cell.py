@@ -33,6 +33,7 @@ from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
@@ -1683,3 +1684,174 @@ class CompiledWrapper(core_rnn_cell.RNNCell):
 
     with jit.experimental_jit_scope(compile_ops=compile_ops):
       return self._cell(inputs, state, scope=scope)
+
+
+def _random_exp_initializer(minval,
+                            maxval,
+                            seed=None,
+                            dtype=dtypes.float32):
+  """Returns an exponential distribution initializer.
+
+  Args:
+    minval: float or a scalar float Tensor. With value > 0. Lower bound of the
+        range of random values to generate.
+    maxval: float or a scalar float Tensor. With value > minval. Upper bound of
+        the range of random values to generate.
+    seed: An integer. Used to create random seeds.
+    dtype: The data type.
+
+  Returns:
+    An initializer that generates tensors with an exponential distribution.
+  """
+
+  def _initializer(shape, dtype=dtype, partition_info=None):
+    del partition_info  # Unused.
+    return math_ops.exp(
+        random_ops.random_uniform(
+            shape,
+            math_ops.log(minval),
+            math_ops.log(maxval),
+            dtype,
+            seed=seed))
+
+  return _initializer
+
+
+class PhasedLSTMCell(core_rnn_cell.RNNCell):
+  """Phased LSTM recurrent network cell.
+
+  https://arxiv.org/pdf/1610.09513v1.pdf
+  """
+
+  def __init__(self,
+               num_units,
+               use_peepholes=False,
+               leak=0.001,
+               r_on=0.1,
+               trainable_r_on=True,
+               period_init_min=1.0,
+               period_init_max=1000.0,
+               reuse=None):
+    """Initialize the Phased LSTM cell.
+
+    Args:
+      num_units: int, The number of units in the Phased LSTM cell.
+      use_peepholes: bool, set True to enable peephole connections.
+      leak: float or scalar float Tensor with value in [0, 1]. Leak applied
+          during training.
+      r_on: float or scalar float Tensor with value in [0, 1]. Ratio of the
+          period during which the gates are open.
+      trainable_r_on: bool, weather r_on is trainable.
+      period_init_min: float or scalar float Tensor. With value > 0.
+          Minimum value of the initalized period.
+          The period values are initialized by drawing from the distribution:
+          e^U(log(period_init_min), log(period_init_max))
+          Where U(.,.) is the uniform distribution.
+      period_init_max: float or scalar float Tensor.
+          With value > period_init_min. Maximum value of the initalized period.
+      reuse: (optional) Python boolean describing whether to reuse variables
+        in an existing scope. If not `True`, and the existing scope already has
+        the given variables, an error is raised.
+    """
+    self._num_units = num_units
+    self._use_peepholes = use_peepholes
+    self._leak = leak
+    self._r_on = r_on
+    self._trainable_r_on = trainable_r_on
+    self._period_init_min = period_init_min
+    self._period_init_max = period_init_max
+    self._reuse = reuse
+
+  @property
+  def state_size(self):
+    return core_rnn_cell.LSTMStateTuple(self._num_units, self._num_units)
+
+  @property
+  def output_size(self):
+    return self._num_units
+
+  def _mod(self, x, y):
+    """Modulo function that propagates x gradients."""
+    return array_ops.stop_gradient(math_ops.mod(x, y) - x) + x
+
+  def __call__(self, inputs, state, scope=None):
+    """Phased LSTM Cell.
+
+    Args:
+      inputs: A tuple of 2 Tensor of type float32.
+         The first Tensor has shape [batch, 1], and stores the time.
+         The second Tesnsor has shape [batch, features_size], and stores the
+         features.
+      state: core_rnn_cell.LSTMStateTuple, state from previous timestep.
+      scope: string, id of the variable scope.
+
+    Returns:
+      A tuple containing:
+      - A Tensor of float32, and shape [batch_size, num_units], representing the
+        output of the cell.
+      - A core_rnn_cell.LSTMStateTuple, containing 2 Tensors of float32, shape
+        [batch_size, num_units], representing the new state and the output.
+    """
+    with _checked_scope(self, scope or "phased_lstm_cell", reuse=self._reuse):
+      (c_prev, h_prev) = state
+      (time, x) = inputs
+      dtype = x.dtype
+
+      in_mask_gates = [x, h_prev]
+      if self._use_peepholes:
+        in_mask_gates.append(c_prev)
+
+      with vs.variable_scope("mask_gates"):
+        mask_gates = math_ops.sigmoid(
+            _linear(in_mask_gates, 2 * self._num_units, True))
+        [input_gate, forget_gate] = array_ops.split(
+            axis=1, num_or_size_splits=2, value=mask_gates)
+
+      with vs.variable_scope("new_input"):
+        new_input = math_ops.tanh(
+            _linear([x, h_prev], self._num_units, True))
+
+      new_c = (c_prev * forget_gate + input_gate * new_input)
+
+      in_out_gate = [x, h_prev]
+      if self._use_peepholes:
+        in_out_gate.append(new_c)
+
+      with vs.variable_scope("output_gate"):
+        output_gate = math_ops.sigmoid(
+            _linear(in_out_gate, self._num_units, True))
+
+      new_h = math_ops.tanh(new_c) * output_gate
+
+      period = vs.get_variable(
+          "period", [self._num_units],
+          initializer=_random_exp_initializer(
+              self._period_init_min, self._period_init_max),
+          dtype=dtype)
+      phase = vs.get_variable(
+          "phase", [self._num_units],
+          initializer=init_ops.random_uniform_initializer(
+              0., period.initial_value),
+          dtype=dtype)
+      r_on = vs.get_variable(
+          "r_on", [self._num_units],
+          initializer=init_ops.constant_initializer(self._r_on),
+          trainable=self._trainable_r_on,
+          dtype=dtype)
+
+      shifted_time = time - phase
+      ph_time = self._mod(shifted_time, period) / period
+
+      k_up = 2 * ph_time / r_on
+      k_down = 2 - k_up
+      k_closed = self._leak * ph_time
+
+      k = array_ops.where(ph_time < self._r_on, k_down, k_closed)
+      k = array_ops.where(ph_time < 0.5 * self._r_on, k_up, k)
+
+      new_c = k * new_c + (1 - k) * c_prev
+      new_h = k * new_h + (1 - k) * h_prev
+
+      new_state = core_rnn_cell.LSTMStateTuple(new_c, new_h)
+
+      return new_h, new_state
