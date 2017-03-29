@@ -1,7 +1,5 @@
 licenses(["notice"])  # Apache 2.0
 
-exports_files(["LICENSE"])
-
 filegroup(
     name = "all_files",
     srcs = glob(
@@ -19,6 +17,8 @@ filegroup(
     srcs = glob(
         [
             "*_optimizer.*",
+            "model_pruner.*",
+            "graph_rewriter.*",
         ],
     ),
     visibility = ["//tensorflow:__subpackages__"],
@@ -62,6 +62,7 @@ cc_library(
         ":graph_rewriter",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:utils",
     ],
 )
 
@@ -107,7 +108,9 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":graph_optimizer",
         ":layout_optimizer",
+        ":model_pruner",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",

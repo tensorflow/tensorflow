@@ -104,10 +104,8 @@ CallContext GetInstructionCallContext(const HloInstruction* instruction) {
 
 Status CallGraphNode::AddCallSiteForInstruction(HloInstruction* instruction) {
   TF_RET_CHECK(instruction->parent() == computation());
-  CallContext context = GetInstructionCallContext(instruction);
-  if (instruction->called_computations().empty()) {
-    TF_RET_CHECK(context == CallContext::kNone);
-  } else {
+  const CallContext context = GetInstructionCallContext(instruction);
+  if (!instruction->called_computations().empty()) {
     TF_RET_CHECK(context == CallContext::kSequential ||
                  context == CallContext::kParallel);
     callsite_instructions_.insert({instruction, callsites_.size()});
@@ -216,6 +214,9 @@ Status CallGraph::SetCallContexts() {
 StatusOr<std::unique_ptr<CallGraph>> CallGraph::Build(const HloModule* module) {
   // Constructor for CallGraph is private so MakeUnique can't be used.
   auto call_graph = WrapUnique<CallGraph>(new CallGraph(module));
+
+  VLOG(2) << "Building call graph for:";
+  XLA_VLOG_LINES(2, module->ToString());
 
   // Construct nodes of the call graph and populate the callsites.
   for (const std::unique_ptr<HloComputation>& computation :

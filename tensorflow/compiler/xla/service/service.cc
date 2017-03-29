@@ -256,7 +256,7 @@ StatusOr<std::vector<const Allocation*>> Service::ResolveAndValidateArguments(
     tensorflow::gtl::ArraySlice<const GlobalDataHandle*> arguments,
     const Backend* backend, int device_ordinal) {
   std::vector<const Allocation*> allocations;
-  for (tensorflow::gtl::ArraySlice<const GlobalDataHandle*>::size_type i = 0; 
+  for (tensorflow::gtl::ArraySlice<const GlobalDataHandle*>::size_type i = 0;
        i < arguments.size(); ++i) {
     auto allocation_status = allocation_tracker_.Resolve(*arguments[i]);
     if (!allocation_status.ok()) {
@@ -578,15 +578,15 @@ StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
   perftools::gputools::DeviceMemoryBase result;
   if (backend->Replicas().size() == 1) {
     TF_ASSIGN_OR_RETURN(
-        result, ExecuteOnStreamWrapper<StatusOr<se::DeviceMemoryBase>>(
-                    executable, &run_options[0], profile,
-                    execute_backend_.get(),
-                    [&arguments](Executable* executable,
-                                 const ServiceExecutableRunOptions* run_options,
-                                 HloExecutionProfile* hlo_execution_profile) {
-                      return executable->ExecuteOnStream(run_options, arguments,
-                                                         hlo_execution_profile);
-                    }));
+        result,
+        ExecuteOnStreamWrapper<StatusOr<se::DeviceMemoryBase>>(
+            executable, &run_options[0], profile, execute_backend_.get(),
+            [&arguments](Executable* executable,
+                         const ServiceExecutableRunOptions* run_options,
+                         HloExecutionProfile* hlo_execution_profile) {
+              return executable->ExecuteOnStream(run_options, arguments,
+                                                 hlo_execution_profile);
+            }));
   } else {
     std::vector<
         tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>>

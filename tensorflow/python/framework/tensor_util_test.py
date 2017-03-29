@@ -23,6 +23,7 @@ import sys
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
@@ -661,6 +662,21 @@ class TensorUtilTest(test.TestCase):
     self.assertFalse(tensor_util.ShapeEquals(t, [5, 3]))
     self.assertFalse(tensor_util.ShapeEquals(t, [1, 4]))
     self.assertFalse(tensor_util.ShapeEquals(t, [4]))
+
+  def testMockArray(self):
+    class MockArray(object):
+      def __init__(self, array):
+        self.array = array
+
+      def __array__(self, dtype=None):
+        return np.asarray(self.array, dtype)
+
+    with self.test_session() as sess:
+      ma = MockArray(np.array([10, 20, 30]))
+      t = ops.convert_to_tensor(ma)
+      a = sess.run(t)
+      self.assertEquals(np.int64, a.dtype)
+      self.assertAllClose(np.array([10, 20, 30], dtype=np.int64), a)
 
 
 class ConstantValueTest(test.TestCase):

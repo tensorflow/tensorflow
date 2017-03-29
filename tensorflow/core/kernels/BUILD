@@ -1105,6 +1105,7 @@ tf_kernel_library(
     visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/core:framework",
+        "//tensorflow/core/kernels:conv_ops",
         "//third_party/eigen3",
     ],
     alwayslink = 0,
@@ -2706,6 +2707,7 @@ tf_kernel_library(
         "cudnn_pooling_gpu.h",
         "fractional_pool_common.h",
         "maxpooling_op.h",
+        "pooling_ops_3d.h",
         "pooling_ops_common.h",
     ],
     gpu_srcs = [
@@ -2716,6 +2718,8 @@ tf_kernel_library(
         "maxpooling_op_gpu.h",
         "pooling_ops_common.h",
         "pooling_ops_common_gpu.h",
+        "pooling_ops_3d_gpu.h",
+        "pooling_ops_3d_gpu.cu.cc",
     ],
     deps = [
         ":conv_2d",
@@ -3773,6 +3777,7 @@ filegroup(
         "spacetodepth_op.cc",
         "sparse_to_dense_op.cc",
         "stack_ops.cc",
+        "string_join_op.cc",
         "summary_op.cc",
         "tensor_array.cc",
         "tensor_array_ops.cc",

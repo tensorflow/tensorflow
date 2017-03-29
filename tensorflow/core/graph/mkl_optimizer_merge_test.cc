@@ -175,7 +175,7 @@ TEST_F(OptimizerMergeTest, Conv2DWithBias_Negative_NoMklConv2D) {
       " input: ['E', 'Y']}");
   EXPECT_EQ(DoNodeMerge(),
             "A(Input);B(Input);C(Conv2D);D(Input);E(BiasAdd);Y(Input);Z(Sub)|"
-             "A->C;B->C:1;C->E;D->E:1;E->Z;Y->Z:1");
+            "A->C;B->C:1;C->E;D->E:1;E->Z;Y->Z:1");
 }
 
 // Graph contains only MklConv2D, no AddBias.
@@ -194,7 +194,7 @@ TEST_F(OptimizerMergeTest, Conv2DWithBias_Negative_NoAddBias) {
       " input: ['A', 'M', 'B', 'N']}");
   EXPECT_EQ(DoNodeMerge(),
             "A(Input);B(Input);C(MklConv2D);M(MklInput);N(MklInput)|"
-             "A->C;B->C:2;M->C:1;N->C:3");
+            "A->C;B->C:2;M->C:1;N->C:3");
 }
 
 // MklConv2D output does not go to BiasAdd.

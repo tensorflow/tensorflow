@@ -13,9 +13,11 @@
 # limitations under the License.
 # ==============================================================================
 
-"""
-create_def_file.py - tool to create a windows def file to export
-symbols from tensorflow.dll to enable tf.load_library().
+"""create_def_file.py - tool to create a windows def file.
+
+The def file can be used to export symbols from the tensorflow dll to enable
+tf.load_library().
+
 Because the linker allows only 64K symbols to be exported per dll
 we filter the symbols down to the essentials. The regular expressions
 we use for this are specific to tensorflow.
@@ -32,9 +34,9 @@ import argparse
 import io
 import os
 import re
+import subprocess
 import sys
 import tempfile
-from subprocess import Popen, PIPE
 
 # External tools we use that come with visual studio sdk and
 # we assume that the caller has the correct PATH to the sdk
@@ -45,13 +47,13 @@ DUMPBIN = "dumpbin.exe"
 EXCLUDE_RE = re.compile(r"deleting destructor|::internal::")
 
 # Include if matched before exclude
-INCLUDEPRE_RE = re.compile(r"tensorflow::internal::LogMessage|" +
+INCLUDEPRE_RE = re.compile(r"tensorflow::internal::LogMessage|"
                            r"tensorflow::internal::CheckOpMessageBuilder")
 
 # Include if matched after exclude
-INCLUDE_RE = re.compile(r"^(TF_\w*)$|" +
-                        r"tensorflow::|" +
-                        r"functor::|" +
+INCLUDE_RE = re.compile(r"^(TF_\w*)$|"
+                        r"tensorflow::|"
+                        r"functor::|"
                         r"perftools::gputools")
 
 
@@ -73,7 +75,8 @@ def main():
   # a temp file.
   candidates = []
   tmpfile = tempfile.NamedTemporaryFile(mode="w", delete=False)
-  proc = Popen([DUMPBIN, "/nologo", "/linkermember:1", args.input], stdout=PIPE)
+  proc = subprocess.Popen([DUMPBIN, "/nologo", "/linkermember:1", args.input],
+                          stdout=subprocess.PIPE)
   for line in io.TextIOWrapper(proc.stdout, encoding="utf-8"):
     cols = line.split()
     if len(cols) < 2:
@@ -102,7 +105,7 @@ def main():
     # Each symbols returned by undname matches the same position in candidates.
     # We compare on undname but use the decorated name from candidates.
     dupes = 0
-    proc = Popen([UNDNAME, tmpfile.name], stdout=PIPE)
+    proc = subprocess.Popen([UNDNAME, tmpfile.name], stdout=subprocess.PIPE)
     for idx, line in enumerate(io.TextIOWrapper(proc.stdout, encoding="utf-8")):
       decorated = candidates[idx]
       if decorated in taken:

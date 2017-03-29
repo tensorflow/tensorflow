@@ -19,6 +19,12 @@ namespace tensorflow {
 
 REGISTER5(BinaryOp, CPU, "Mul", functor::mul, float, Eigen::half, double,
           uint8, int32);
+#if defined(__ANDROID_TYPES_SLIM__)
+// We only register the first type when we have multi-argument calls in the
+// case where we're trying to reduce executable size, but it turns out that the
+// int32 version of this op is needed, so explicitly include it.
+REGISTER(BinaryOp, CPU, "Mul", functor::mul, int32);
+#endif  // __ANDROID_TYPES_SLIM__
 
 #if TENSORFLOW_USE_SYCL
 #define REGISTER_SYCL_KERNEL(TYPE)                                    \

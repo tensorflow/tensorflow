@@ -852,11 +852,11 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
   ```
   output[batch, height, width, out_channel] =
       sum_{dheight, dwidth, in_channel} (
-          filters[dheight, dwidth, in_channel, out_channel] * 
-          value[batch, height + rate * dheight, width + rate * dwidth, in_channel]
+          filters[dheight, dwidth, in_channel, out_channel] *
+          value[batch, height + rate*dheight, width + rate*dwidth, in_channel]
       )
   ```
-  
+
   Atrous convolution allows us to explicitly control how densely to compute
   feature responses in fully convolutional networks. Used in conjunction with
   bilinear interpolation, it offers an alternative to `conv2d_transpose` in
@@ -944,9 +944,9 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
     A `Tensor` with the same type as `value`.
     Output shape with `'VALID`` padding is:
 
-        [batch, height - 2 * (filter_width - 1), 
+        [batch, height - 2 * (filter_width - 1),
          width - 2 * (filter_height - 1), out_channels].
-    
+
     Output shape with `'SAME'` padding is:
 
         [batch, height, width, out_channels].
@@ -1698,7 +1698,7 @@ def sparse_softmax_cross_entropy_with_logits(_sentinel=None,  # pylint: disable=
   a probability distribution for each entry, see
   `softmax_cross_entropy_with_logits`.
 
-  **WARNING:** This op expects unscaled logits, since it performs a softmax
+  **WARNING:** This op expects unscaled logits, since it performs a `softmax`
   on `logits` internally for efficiency.  Do not call this op with the
   output of `softmax`, as it will produce incorrect results.
 
@@ -2040,7 +2040,7 @@ def conv1d(value, filters, stride, padding,
     [1, filter_width, in_channels, out_channels].
   The result is then reshaped back to
     [batch, out_width, out_channels]
-  (where out_width is a function of the stride and padding as in conv2d) and
+  \(where out_width is a function of the stride and padding as in conv2d\) and
   returned to the caller.
 
   Args:

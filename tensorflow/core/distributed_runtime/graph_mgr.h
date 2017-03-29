@@ -35,6 +35,7 @@ namespace tensorflow {
 
 class ExecutorOpts;
 class StepStatsCollector;
+class RendezvousMgrInterface;
 
 // GraphMgr keeps track of a set of graphs that are registered with a
 // TensorFlow worker. Each registered graph is identified by a handle
@@ -60,7 +61,8 @@ class StepStatsCollector;
 //   EXPECT_EQ(out["c"], Tensor({4, 6}));
 class GraphMgr {
  public:
-  explicit GraphMgr(const WorkerEnv* worker_env);
+  explicit GraphMgr(const WorkerEnv* worker_env,
+                    RendezvousMgrInterface* rendezvous_mgr);
   ~GraphMgr();
 
   // Registers a graph. Fills in "handle"
@@ -126,8 +128,8 @@ class GraphMgr {
     GraphMgr* graph_mgr;
   };
 
-  // Not owned.
-  const WorkerEnv* worker_env_;
+  const WorkerEnv* worker_env_;             // Not owned.
+  RendezvousMgrInterface* rendezvous_mgr_;  // Not owned.
 
   CostModelManager cost_model_manager_;
 

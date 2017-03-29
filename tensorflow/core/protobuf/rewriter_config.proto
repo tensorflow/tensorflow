@@ -8,4 +8,5 @@ option java_package = "org.tensorflow.framework";
 
 message RewriterConfig {
   bool optimize_tensor_layout = 1;
+  bool disable_model_pruning = 2;
 }

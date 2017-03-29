@@ -524,6 +524,10 @@ class Experiment(object):
       raise ValueError(
           "`continuous_eval_predicate_fn` must be a callable, or None.")
 
+    if not isinstance(train_steps_per_iteration, int):
+      raise ValueError(
+          "`train_steps_per_iteration` must be an integer.")
+
     eval_result = None
 
     # TODO(b/33295821): improve the way to determine the

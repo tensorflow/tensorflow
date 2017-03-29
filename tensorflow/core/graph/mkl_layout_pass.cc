@@ -15,26 +15,26 @@ limitations under the License.
 
 #ifdef INTEL_MKL
 
-#include <vector>
-#include <utility>
-#include <string>
+#include <algorithm>
+#include <functional>
 #include <memory>
 #include <queue>
 #include <set>
+#include <string>
 #include <unordered_set>
-#include <functional>
-#include <algorithm>
+#include <utility>
+#include <vector>
+#include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/algorithm.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/common_runtime/function.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/common_runtime/optimization_registry.h"
 
 #include "tensorflow/core/graph/mkl_layout_pass.h"
 #include "tensorflow/core/util/mkl_util.h"
@@ -415,9 +415,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   }
 
   // Mark the node as rewritten
-  inline void MarkRewrittenNode(Node* n) {
-    visited_nodes_.insert(n);
-  }
+  inline void MarkRewrittenNode(Node* n) { visited_nodes_.insert(n); }
 
   // Clear all visited nodes
   inline void UnMarkRewrittenNodes() {
@@ -507,8 +505,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   // Returns Status::OK() if setting up inputs is successful, otherwise
   // returns appropriate status code.
   Status SetUpInputs(std::unique_ptr<Graph>* g,
-                    const gtl::InlinedVector<std::pair<Node*, int>, 4>& inputs,
-                    NodeBuilder* nb, Node* orign);
+                     const gtl::InlinedVector<std::pair<Node*, int>, 4>& inputs,
+                     NodeBuilder* nb, Node* orign);
 
   // Add workspace edge on the input or output side of Node 'orign' by using
   // NodeBuilder 'nb' for the new node provided. If 'orign' does not dictate
@@ -533,12 +531,14 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                              Node* orign);
 };
 
+
 std::vector<MklLayoutRewritePass::ContextInfo> MklLayoutRewritePass::cinfo_;
 
 // We register Mkl rewrite pass for phase 1 in pre-placement group.
 // Do not change the ordering of the Mkl passes.
 REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 1,
                       MklLayoutRewritePass);
+
 
 //////////////////////////////////////////////////////////////////////////
 //           Helper functions for creating new node
@@ -566,16 +566,16 @@ static void FillInputs(const Node* n,
 }
 
 // TODO(nhasabni) We should move this to mkl_util.h.
-void MklLayoutRewritePass::GetDummyMklTensorNode(
-    std::unique_ptr<Graph>* g, Node** out, Node* orign) {
+void MklLayoutRewritePass::GetDummyMklTensorNode(std::unique_ptr<Graph>* g,
+                                                 Node** out, Node* orign) {
   // We use a tensor of shape {8} and value 0,0,0,0,0,0,0,0 to represent
   // dummy Mkl tensor. 8 = 2*size_t.
   const DataType dt = DataTypeToEnum<uint8>::v();
   TensorProto proto;
   proto.set_dtype(dt);
   uint8 zero[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-  proto.set_tensor_content(const_cast<const void*>(
-      static_cast<void*>(&zero)), 8);
+  proto.set_tensor_content(const_cast<const void*>(static_cast<void*>(&zero)),
+                           8);
   TensorShape dummy_shape({8});
   dummy_shape.AsProto(proto.mutable_tensor_shape());
   TF_CHECK_OK(NodeBuilder((*g)->NewName("DMT"), "Const")
@@ -588,9 +588,10 @@ void MklLayoutRewritePass::GetDummyMklTensorNode(
   (*out)->set_assigned_device_name(orign->assigned_device_name());
 }
 
-Status MklLayoutRewritePass::SetUpInputs(std::unique_ptr<Graph>* g,
-    const gtl::InlinedVector<std::pair<Node*, int>, 4>& inputs,
-    NodeBuilder* nb, Node* orign) {
+Status MklLayoutRewritePass::SetUpInputs(
+    std::unique_ptr<Graph>* g,
+    const gtl::InlinedVector<std::pair<Node*, int>, 4>& inputs, NodeBuilder* nb,
+    Node* orign) {
   std::vector<NodeBuilder::NodeOut> new_inputs;
 
   // 1. Let's setup inputs for the new node.
@@ -612,7 +613,7 @@ Status MklLayoutRewritePass::SetUpInputs(std::unique_ptr<Graph>* g,
       CHECK_EQ(mkl_layer_registry::IsMklLayer(n->type_string(), T), true);
       // src slot number for Mkl tensor would be the one next to TF tensor
       // slot number.
-      new_inputs.push_back(NodeBuilder::NodeOut(n, inputs[i].second+1));
+      new_inputs.push_back(NodeBuilder::NodeOut(n, inputs[i].second + 1));
     } else {
       // If we have not visited the node and rewritten it, then we need
       // to create a dummy node that will feed a non-Mkl tensor to this node.

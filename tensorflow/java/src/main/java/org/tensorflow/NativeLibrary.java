@@ -138,18 +138,8 @@ final class NativeLibrary {
   }
 
   private static String makeResourceName() {
-    // Using string addition instead of more modern functions like
-    // java.nio.file.Paths.get() to make this method usable on Android,
-    // where as of March 2017, the java.nio.files package was not available.
-    final String separator = System.getProperty("file.separator");
-    return "org"
-        + separator
-        + "tensorflow"
-        + separator
-        + "native"
-        + separator
-        + String.format("%s-%s", os(), architecture())
-        + separator
+    return "org/tensorflow/native/"
+        + String.format("%s-%s/", os(), architecture())
         + System.mapLibraryName(LIBNAME);
   }
 

@@ -36,9 +36,9 @@ limitations under the License.
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 
-#include "tensorflow/core/util/mkl_util.h"
 #include "third_party/mkl/include/mkl_dnn.h"
 #include "third_party/mkl/include/mkl_dnn_types.h"
+#include "tensorflow/core/util/mkl_util.h"
 
 namespace tensorflow {
 
@@ -98,9 +98,10 @@ class MklConv2DOp : public OpKernel {
                                         filter.shape().DebugString()));
 
     for (int i = 0; i < 3; i++) {
-      OP_REQUIRES(context, FastBoundsCheck(filter.dim_size(i),
-                                           std::numeric_limits<int>::max()),
-                  errors::InvalidArgument("filter too large"));
+      OP_REQUIRES(
+          context,
+          FastBoundsCheck(filter.dim_size(i), std::numeric_limits<int>::max()),
+          errors::InvalidArgument("filter too large"));
     }
 
     const int64 input_depth =
@@ -431,6 +432,7 @@ class MklConv2DOp : public OpKernel {
   std::vector<int32> strides_;
   Padding padding_;
   TensorFormat data_format_;
+l_lt_input_ = nullptr;
 };
 
 #define REGISTER_MKL_CPU(T)                                               \

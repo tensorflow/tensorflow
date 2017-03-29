@@ -27,7 +27,7 @@ https://github.com/tensorflow/tensorflow/blob/master/tensorflow/examples/learn/w
        # Mac OS X
        $ sudo easy_install pip
        $ sudo easy_install --upgrade six
-      ```
+       ```
 
     2. Use `pip` to install pandas:
 

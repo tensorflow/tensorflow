@@ -9,7 +9,14 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "if_android",
+    "if_ios",
+    "if_mobile",
+    "if_not_mobile",
+    "tf_cc_test",
+)
 
 cc_library(
     name = "constants",
@@ -31,11 +38,14 @@ cc_library(
     hdrs = ["loader.h"],
     deps = [
         ":loader_lite",
+    ] + if_not_mobile([
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
-    ],
+    ]) + if_android([
+        "//tensorflow/core:android_tensorflow_lib",
+    ]),
 )
 
 cc_library(
@@ -44,12 +54,14 @@ cc_library(
     hdrs = ["loader.h"],
     deps = [
         ":constants",
+    ] + if_not_mobile([
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/util/tensor_bundle:naming",
-    ],
+        # mobile not supported yet
+    ]),
 )
 
 tf_cc_test(
