@@ -859,7 +859,7 @@ class RNNCellTest(test.TestCase):
            [1.844123e-05, -2.159617e-05]],
           dtype=np.float32)
       with variable_scope.variable_scope("root"):
-        t = array_ops.zeros([batch_size, 1])
+        t = array_ops.zeros([batch_size, 1], dtype=dtypes.float64)
         x = array_ops.zeros([batch_size, input_size])
         c0 = array_ops.zeros([batch_size, 2])
         h0 = array_ops.zeros([batch_size, 2])
