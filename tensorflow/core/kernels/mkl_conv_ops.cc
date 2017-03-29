@@ -432,7 +432,6 @@ class MklConv2DOp : public OpKernel {
   std::vector<int32> strides_;
   Padding padding_;
   TensorFormat data_format_;
-l_lt_input_ = nullptr;
 };
 
 #define REGISTER_MKL_CPU(T)                                               \
