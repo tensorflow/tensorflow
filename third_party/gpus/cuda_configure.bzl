@@ -267,7 +267,7 @@ def _find_cuda_define(repository_ctx, cudnn_header_dir, define):
   cudnn_h_path = repository_ctx.path("%s/cudnn.h" % cudnn_header_dir)
   if not cudnn_h_path.exists:
     auto_configure_fail("Cannot find cudnn.h at %s" % str(cudnn_h_path))
-  result = repository_ctx.execute(["grep", "-E", define, str(cudnn_h_path)])
+  result = repository_ctx.execute(["grep", "--color=never", "-E", define, str(cudnn_h_path)])
   if result.stderr:
     auto_configure_fail("Error reading %s: %s" %
                         (result.stderr, str(cudnn_h_path)))
