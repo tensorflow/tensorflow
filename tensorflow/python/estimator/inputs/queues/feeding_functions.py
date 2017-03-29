@@ -242,7 +242,7 @@ class _GeneratorFeedFn(object):
         self._num_epochs = num_epochs
         self._epoch = 0
         random.seed(seed)
-      
+
     def __call__(self):
         if self._num_epochs and self._epoch >= self._num_epochs:
             raise errors.OutOfRangeError(
