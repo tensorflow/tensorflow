@@ -46,6 +46,11 @@ function sed_hyphen_i() {
   fi
 }
 
+function write_env_to_bazelrc() {
+  sed_hyphen_i "/$1/d" .bazelrc
+  echo "build --action_env $1=\"$2\"" >> .bazelrc
+}
+
 # Delete any leftover BUILD files from the Makefile build, which would interfere
 # with Bazel parsing.
 MAKEFILE_DOWNLOAD_DIR=tensorflow/contrib/makefile/downloads
@@ -310,7 +315,7 @@ while [[ "$TF_CUDA_CLANG" != "1" ]] && ! is_windows && true; do
   fi
   if [ -e "$GCC_HOST_COMPILER_PATH" ]; then
     export GCC_HOST_COMPILER_PATH
-    echo "build --action_env GCC_HOST_COMPILER_PATH=$GCC_HOST_COMPILER_PATH" >>.bazelrc
+    write_env_to_bazelrc "GCC_HOST_COMPILER_PATH" "$GCC_HOST_COMPILER_PATH"
     break
   fi
   echo "Invalid gcc path. ${GCC_HOST_COMPILER_PATH} cannot be found" 1>&2
@@ -385,9 +390,9 @@ while true; do
 
   if [ -e "${CUDA_TOOLKIT_PATH}/${CUDA_RT_LIB_PATH}" ]; then
     export CUDA_TOOLKIT_PATH
-    echo "build --action_env CUDA_TOOLKIT_PATH=$CUDA_TOOLKIT_PATH" >>.bazelrc
+    write_env_to_bazelrc "CUDA_TOOLKIT_PATH" "$CUDA_TOOLKIT_PATH"
     export TF_CUDA_VERSION
-    echo "build --action_env TF_CUDA_VERSION=$TF_CUDA_VERSION" >>.bazelrc
+    write_env_to_bazelrc "TF_CUDA_VERSION" "$TF_CUDA_VERSION"
     break
   fi
   echo "Invalid path to CUDA $TF_CUDA_VERSION toolkit. ${CUDA_TOOLKIT_PATH}/${CUDA_RT_LIB_PATH} cannot be found"
@@ -439,9 +444,9 @@ while true; do
 
   if [ -e "$CUDNN_INSTALL_PATH/${CUDA_DNN_LIB_ALT_PATH}" -o -e "$CUDNN_INSTALL_PATH/${CUDA_DNN_LIB_PATH}" ]; then
     export TF_CUDNN_VERSION
-    echo "build --action_env TF_CUDNN_VERSION=$TF_CUDNN_VERSION" >>.bazelrc
+    write_env_to_bazelrc "TF_CUDNN_VERSION" "$TF_CUDNN_VERSION"
     export CUDNN_INSTALL_PATH
-    echo "build --action_env CUDNN_INSTALL_PATH=$CUDNN_INSTALL_PATH" >>.bazelrc
+    write_env_to_bazelrc "CUDNN_INSTALL_PATH" "$CUDNN_INSTALL_PATH"
     break
   fi
 
@@ -454,9 +459,9 @@ while true; do
     CUDNN_PATH_FROM_LDCONFIG="$($LDCONFIG_BIN -p | sed -n 's/.*libcudnn.so .* => \(.*\)/\1/p')"
     if [ -e "${CUDNN_PATH_FROM_LDCONFIG}${TF_CUDNN_EXT}" ]; then
       export TF_CUDNN_VERSION
-      echo "build --action_env TF_CUDNN_VERSION=$TF_CUDNN_VERSION" >>.bazelrc
+      write_env_to_bazelrc "TF_CUDNN_VERSION" "$TF_CUDNN_VERSION"
       export CUDNN_INSTALL_PATH="$(dirname ${CUDNN_PATH_FROM_LDCONFIG})"
-      echo "build --action_env CUDNN_INSTALL_PATH=$CUDNN_INSTALL_PATH" >>.bazelrc
+      write_env_to_bazelrc "CUDNN_INSTALL_PATH" "$CUDNN_INSTALL_PATH"
       break
     fi
   fi
@@ -508,7 +513,7 @@ EOF
     fi
   else
     export TF_CUDA_COMPUTE_CAPABILITIES
-    echo "build --action_env TF_CUDA_COMPUTE_CAPABILITIES=$TF_CUDA_COMPUTE_CAPABILITIES" >>.bazelrc
+    write_env_to_bazelrc "TF_CUDA_COMPUTE_CAPABILITIES" "$TF_CUDA_COMPUTE_CAPABILITIES"
     break
   fi
   TF_CUDA_COMPUTE_CAPABILITIES=""
@@ -519,9 +524,9 @@ if is_windows; then
   export CUDA_PATH="$CUDA_TOOLKIT_PATH"
   export CUDA_COMPUTE_CAPABILITIES="$TF_CUDA_COMPUTE_CAPABILITIES"
   export NO_WHOLE_ARCHIVE_OPTION=1
-
-  # Set GCC_HOST_COMPILER_PATH to keep cuda_configure.bzl happy
-  export GCC_HOST_COMPILER_PATH="/usr/bin/dummy_compiler"
+  write_env_to_bazelrc "CUDA_PATH" "$CUDA_PATH"
+  write_env_to_bazelrc "CUDA_COMPUTE_CAPABILITIES" "$CUDA_COMPUTE_CAPABILITIES"
+  write_env_to_bazelrc "NO_WHOLE_ARCHIVE_OPTION" "1"
 fi
 
 # end of if "$TF_NEED_CUDA" == "1"
