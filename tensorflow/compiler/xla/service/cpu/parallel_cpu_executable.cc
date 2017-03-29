@@ -367,7 +367,7 @@ ParallelCpuExecutable::ExecuteOnStream(
   // live because they are referenced by the output of the computation
   // and are needed by the service. They will be deallocated by the
   // service.
-  for (auto i = 0; i < device_allocations.size(); ++i) {
+  for (size_t i = 0; i < device_allocations.size(); ++i) {
     auto alloc = device_allocations[i];
     if (marked_addresses.count(alloc.opaque()) == 0 &&
         alloc.opaque() != nullptr) {

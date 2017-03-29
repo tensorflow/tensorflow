@@ -125,8 +125,7 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
     std::vector<HloInstruction*> post_order(post_order_list.begin(),
                                             post_order_list.end());
     tensorflow::gtl::FlatMap<HloInstruction*, int> post_order_index;
-    for (std::vector<HloInstruction*>::size_type i = 0; i < post_order.size();
-         ++i) {
+    for (size_t i = 0; i < post_order.size(); ++i) {
       InsertOrDie(&post_order_index, post_order[i], i);
     }
 

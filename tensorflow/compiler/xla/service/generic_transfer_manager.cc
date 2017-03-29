@@ -118,7 +118,7 @@ GenericTransferManager::ShallowCopyTupleFromDevice(
 
   // Create a DeviceMemoryBase from each void* pointer.
   std::vector<se::DeviceMemoryBase> destination;
-  for (std::vector<void*>::size_type i = 0; i < element_pointers.size(); ++i) {
+  for (size_t i = 0; i < element_pointers.size(); ++i) {
     if (element_pointers[i] == nullptr &&
         !ShapeUtil::HasZeroElements(shape.tuple_shapes(i))) {
       return FailedPrecondition("tuple contains nullptr at element %lu", i);

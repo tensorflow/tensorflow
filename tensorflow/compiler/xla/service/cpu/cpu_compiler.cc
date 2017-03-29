@@ -575,8 +575,7 @@ CpuCompiler::CompileAheadOfTime(
   }
 
   std::vector<std::unique_ptr<AotCompilationResult>> results;
-  for (std::vector<std::unique_ptr<HloModule>>::size_type i = 0;
-       i < hlo_modules.size(); ++i) {
+  for (size_t i = 0; i < hlo_modules.size(); ++i) {
     HloModule* hlo_module = hlo_modules[i].get();
     HloModuleConfig* module_config = module_configs[i].get();
 
