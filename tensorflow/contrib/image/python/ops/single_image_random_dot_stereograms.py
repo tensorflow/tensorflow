@@ -34,6 +34,7 @@ def single_image_random_dot_stereograms(
     normalize=None, normalize_max=None,
     normalize_min=None,
     border_level=None,
+    number_colors=None,
     output_image_shape=None,
     output_data_window=None):
     """Output a RandomDotStereogram Tensor for export via encode_PNG/JPG OP.
