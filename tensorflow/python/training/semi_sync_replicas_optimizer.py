@@ -118,8 +118,6 @@ class SemiSyncReplicasOptimizer(optimizer.Optimizer):
 
     with ops.name_scope(None, self._name):
       # sync_op will be assigned to the same device as the global step.
-      update_op = self._opt.apply_gradients(grads_and_vars,
-                                            global_step)
       # Create token queue.
       with ops.device(global_step.device), ops.name_scope(""):
         sync_token_queue = (
@@ -149,18 +147,23 @@ class SemiSyncReplicasOptimizer(optimizer.Optimizer):
       train_ops=[]
       with ops.device(global_step.device), ops.name_scope(""):
         # Replicas have to wait until they can get a token from the token queue.
+        token = sync_token_queue.dequeue()
+        local_step_assign_op = state_ops.assign(self._local_step, token)
+
+      with ops.control_dependencies([local_step_assign_op]):
+        update_op = self._opt.apply_gradients(grads_and_vars, global_step=global_step)
+
+      with ops.device(global_step.device), ops.name_scope(""):
         with ops.control_dependencies([update_op]):
-          token = sync_token_queue.dequeue()
           rsync_op = reverse_sync_token_queue.enqueue(global_step)
-        train_ops.append(state_ops.assign(self._local_step, token))
+
         train_ops.append(rsync_op)
 
-        with ops.control_dependencies([update_op]):
-          # Sync_op needs to insert tokens to the token queue at the end of the
-          # step so the replicas can fetch them to start the next step.
-          #tokens = array_ops.fill([self._batch_sync_num], global_step)
-          tokens = reverse_sync_token_queue.dequeue_many(self._batch_sync_num)
-          sync_op = sync_token_queue.enqueue_many((tokens,))
+        # Sync_op needs to insert tokens to the token queue at the end of the
+        # step so the replicas can fetch them to start the next step.
+        #tokens = array_ops.fill([self._batch_sync_num], global_step)
+        tokens = reverse_sync_token_queue.dequeue_many(self._batch_sync_num)
+        sync_op = sync_token_queue.enqueue_many((tokens,))
 
         self._chief_queue_runner = queue_runner.QueueRunner(dummy_queue,
                                                             [sync_op])
@@ -305,4 +308,5 @@ class _SemiSyncReplicasOptimizerHook(session_run_hook.SessionRunHook):
     if self._q_runner is not None:
       self._q_runner.create_threads(
           session, coord=coord, daemon=True, start=True)
+
 
