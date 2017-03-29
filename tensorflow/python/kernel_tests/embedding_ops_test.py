@@ -600,9 +600,9 @@ class EmbeddingLookupSparseTest(test.TestCase):
     grouped_ignored_weights = self._GroupByBatchEntry(
         np.ones(np.sum(vals_per_batch_entry)), vals_per_batch_entry)
 
-    for num_shards, combiner, dtype, ignore_weights, use_aggregation in \
-        itertools.product([1, 5], ["sum", "mean", "sqrtn"],
-            [dtypes.float32, dtypes.float64], [True, False], [True, False]):
+    for num_shards, combiner, dtype, ignore_weights in itertools.product(
+        [1, 5], ["sum", "mean", "sqrtn"], [dtypes.float32, dtypes.float64],
+        [True, False]):
 
       with self.test_session():
         p, params, feed_dict = _EmbeddingParams(
@@ -611,8 +611,7 @@ class EmbeddingLookupSparseTest(test.TestCase):
             p,
             sp_ids,
             None if ignore_weights else sp_weights,
-            combiner=combiner,
-            use_aggregation=use_aggregation)
+            combiner=combiner)
 
         self.assertEqual(embedding_sum.get_shape().as_list(),
                          expected_lookup_result_shape)
@@ -640,9 +639,9 @@ class EmbeddingLookupSparseTest(test.TestCase):
     sp_ids, sp_weights, _, _, _ = (
         self._RandomIdsAndWeights(batch_size, vocab_size))
 
-    for num_shards, combiner, dtype, ignore_weights, use_aggregation in \
-        itertools.product([1, 3], ["sum", "mean", "sqrtn"],
-            [dtypes.float32, dtypes.float64], [True, False], [True, False]):
+    for num_shards, combiner, dtype, ignore_weights in itertools.product(
+        [1, 3], ["sum", "mean", "sqrtn"], [dtypes.float32, dtypes.float64],
+        [True, False]):
       with self.test_session():
         x, params, _ = _EmbeddingParams(
             num_shards, vocab_size, shape=param_shape, dtype=dtype)
@@ -651,8 +650,7 @@ class EmbeddingLookupSparseTest(test.TestCase):
             x,
             sp_ids,
             None if ignore_weights else sp_weights,
-            combiner=combiner,
-            use_aggregation=use_aggregation)
+            combiner=combiner)
         x_name = [_PName(i) for i in range(num_shards)]
         x_init_value = [params[x_n + ":0"] for x_n in x_name]
         x_shape = [i.shape for i in x_init_value]
