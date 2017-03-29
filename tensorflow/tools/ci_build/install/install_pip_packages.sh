@@ -40,8 +40,8 @@ pip install --upgrade bleach==1.5.0
 pip3 install --upgrade bleach==1.5.0
 
 # Install markdown.
-pip install --upgrade markdown=2.6.8
-pip3 install --upgrade markdown=2.6.8
+pip install --upgrade markdown==2.6.8
+pip3 install --upgrade markdown==2.6.8
 
 # Install protobuf.
 pip2 install --upgrade protobuf==3.2.0
