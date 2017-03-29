@@ -83,7 +83,7 @@ instead.
 Bazel is the primary build system for TensorFlow. To build with Bazel,
 it and the Android NDK and SDK must be installed on your system.
 
-1. Get the recommended Bazel version listed in [os_setup.html](https://www.tensorflow.org/versions/master/get_started/os_setup.html#source)
+1. Install the latest version of Bazel as per the instructions [on the Bazel website](https://bazel.build/versions/master/docs/install.html).
 2. The Android NDK is required to build the native (C/C++) TensorFlow code.
         The current recommended version is 12b, which may be found
         [here](https://developer.android.com/ndk/downloads/older_releases.html#ndk-12b-downloads).
