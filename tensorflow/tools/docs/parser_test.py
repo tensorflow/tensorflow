@@ -56,6 +56,13 @@ class TestClass(object):
   CLASS_MEMBER = 'a class member'
 
 
+class DummyVisitor(object):
+
+  def __init__(self, index, duplicate_of):
+    self.index = index
+    self.duplicate_of = duplicate_of
+
+
 class ParserTest(googletest.TestCase):
 
   def test_documentation_path(self):
@@ -75,9 +82,12 @@ class ParserTest(googletest.TestCase):
              'tf.reference.foo': HasOneMember.foo,
              'tf.third': HasOneMember,
              'tf.fourth': HasOneMember}
-    reference_resolver = parser.ReferenceResolver(
-        duplicate_of=duplicate_of, doc_index={}, index=index,
-        py_module_names=['tf'])
+
+    visitor = DummyVisitor(index, duplicate_of)
+
+    reference_resolver = parser.ReferenceResolver.from_visitor(
+        visitor=visitor, doc_index={}, py_module_names=['tf'])
+
     result = reference_resolver.replace_references(string, '../..')
     self.assertEqual(
         'A [`tf.reference`](../../tf/reference.md), another '
@@ -98,8 +108,11 @@ class ParserTest(googletest.TestCase):
     doc2.title = 'Two words'
     doc2.url = 'somewhere/else'
     doc_index = {'doc1': doc1, 'do/c2': doc2}
-    reference_resolver = parser.ReferenceResolver(
-        duplicate_of={}, doc_index=doc_index, index={}, py_module_names=['tf'])
+
+    visitor = DummyVisitor(index={}, duplicate_of={})
+
+    reference_resolver = parser.ReferenceResolver.from_visitor(
+        visitor=visitor, doc_index=doc_index, py_module_names=['tf'])
     result = reference_resolver.replace_references(string, 'python')
     self.assertEqual(
         '[Title1](../URL1) [Title1](../URL1#abc) [link](../URL1) '
@@ -115,15 +128,24 @@ class ParserTest(googletest.TestCase):
         'TestClass.ChildClass': TestClass.ChildClass,
         'TestClass.CLASS_MEMBER': TestClass.CLASS_MEMBER
     }
-    reference_resolver = parser.ReferenceResolver(
-        duplicate_of={}, doc_index={}, index=index, py_module_names=['tf'])
+
+    visitor = DummyVisitor(index=index, duplicate_of={})
+
+    reference_resolver = parser.ReferenceResolver.from_visitor(
+        visitor=visitor, doc_index={}, py_module_names=['tf'])
 
     tree = {
         'TestClass': ['a_method', 'a_property', 'ChildClass', 'CLASS_MEMBER']
     }
     parser_config = parser.ParserConfig(
-        reference_resolver=reference_resolver, duplicates={}, tree=tree,
-        reverse_index={}, guide_index={}, base_dir='/')
+        reference_resolver=reference_resolver,
+        duplicates={},
+        duplicate_of={},
+        tree=tree,
+        index=index,
+        reverse_index={},
+        guide_index={},
+        base_dir='/')
 
     page_info = parser.docs_for_object(
         full_name='TestClass', py_object=TestClass, parser_config=parser_config)
@@ -158,16 +180,25 @@ class ParserTest(googletest.TestCase):
         test_function_with_args_kwargs,
         'TestModule.TestClass': TestClass,
     }
-    reference_resolver = parser.ReferenceResolver(
-        duplicate_of={}, doc_index={}, index=index, py_module_names=['tf'])
+
+    visitor = DummyVisitor(index=index, duplicate_of={})
+
+    reference_resolver = parser.ReferenceResolver.from_visitor(
+        visitor=visitor, doc_index={}, py_module_names=['tf'])
 
     tree = {
         'TestModule': ['TestClass', 'test_function',
                        'test_function_with_args_kwargs']
     }
     parser_config = parser.ParserConfig(
-        reference_resolver=reference_resolver, duplicates={}, tree=tree,
-        reverse_index={}, guide_index={}, base_dir='/')
+        reference_resolver=reference_resolver,
+        duplicates={},
+        duplicate_of={},
+        tree=tree,
+        index=index,
+        reverse_index={},
+        guide_index={},
+        base_dir='/')
 
     page_info = parser.docs_for_object(
         full_name='TestModule', py_object=module, parser_config=parser_config)
@@ -189,15 +220,24 @@ class ParserTest(googletest.TestCase):
     index = {
         'test_function': test_function
     }
-    reference_resolver = parser.ReferenceResolver(
-        duplicate_of={}, doc_index={}, index=index, py_module_names=['tf'])
+
+    visitor = DummyVisitor(index=index, duplicate_of={})
+
+    reference_resolver = parser.ReferenceResolver.from_visitor(
+        visitor=visitor, doc_index={}, py_module_names=['tf'])
 
     tree = {
         '': ['test_function']
     }
     parser_config = parser.ParserConfig(
-        reference_resolver=reference_resolver, duplicates={}, tree=tree,
-        reverse_index={}, guide_index={}, base_dir='/')
+        reference_resolver=reference_resolver,
+        duplicates={},
+        duplicate_of={},
+        tree=tree,
+        index=index,
+        reverse_index={},
+        guide_index={},
+        base_dir='/')
 
     page_info = parser.docs_for_object(
         full_name='test_function',
@@ -219,15 +259,24 @@ class ParserTest(googletest.TestCase):
     index = {
         'test_function_with_args_kwargs': test_function_with_args_kwargs
     }
-    reference_resolver = parser.ReferenceResolver(
-        duplicate_of={}, doc_index={}, index=index, py_module_names=['tf'])
+
+    visitor = DummyVisitor(index=index, duplicate_of={})
+
+    reference_resolver = parser.ReferenceResolver.from_visitor(
+        visitor=visitor, doc_index={}, py_module_names=['tf'])
 
     tree = {
         '': ['test_function_with_args_kwargs']
     }
     parser_config = parser.ParserConfig(
-        reference_resolver=reference_resolver, duplicates={}, tree=tree,
-        reverse_index={}, guide_index={}, base_dir='/')
+        reference_resolver=reference_resolver,
+        duplicates={},
+        duplicate_of={},
+        tree=tree,
+        index=index,
+        reverse_index={},
+        guide_index={},
+        base_dir='/')
 
     page_info = parser.docs_for_object(
         full_name='test_function_with_args_kwargs',
@@ -287,9 +336,11 @@ class ParserTest(googletest.TestCase):
         'tf.third': HasOneMember,
         'tf.fourth': HasOneMember
     }
-    reference_resolver = parser.ReferenceResolver(
-        duplicate_of=duplicate_of, doc_index={}, index=index,
-        py_module_names=['tf'])
+
+    visitor = DummyVisitor(index=index, duplicate_of=duplicate_of)
+
+    reference_resolver = parser.ReferenceResolver.from_visitor(
+        visitor=visitor, doc_index={}, py_module_names=['tf'])
 
     doc_info = parser._parse_md_docstring(test_function_with_fancy_docstring,
                                           '../..', reference_resolver)
@@ -319,9 +370,11 @@ class ParserTest(googletest.TestCase):
     duplicate_of = {
         'TestModule.test_function': 'test_function'
     }
-    reference_resolver = parser.ReferenceResolver(
-        duplicate_of=duplicate_of, doc_index={}, index=index,
-        py_module_names=['tf'])
+
+    visitor = DummyVisitor(index=index, duplicate_of=duplicate_of)
+
+    reference_resolver = parser.ReferenceResolver.from_visitor(
+        visitor=visitor, doc_index={}, py_module_names=['tf'])
 
     docs = parser.generate_global_index('TestLibrary', index=index,
                                         reference_resolver=reference_resolver)
@@ -389,6 +442,37 @@ class ParserTest(googletest.TestCase):
 
     # pylint: enable=protected-access
 
+  def testSaveReferenceResolver(self):
+    you_cant_serialize_this = object()
+
+    duplicate_of = {'AClass': ['AClass2']}
+    doc_index = {'doc': you_cant_serialize_this}
+    is_class = {
+        'tf': False,
+        'tf.AClass': True,
+        'tf.AClass2': True,
+        'tf.function': False
+    }
+    is_module = {
+        'tf': True,
+        'tf.AClass': False,
+        'tf.AClass2': False,
+        'tf.function': False
+    }
+    py_module_names = ['tf', 'tfdbg']
+
+    resolver = parser.ReferenceResolver(duplicate_of, doc_index, is_class,
+                                        is_module, py_module_names)
+
+    outdir = googletest.GetTempDir()
+
+    filepath = os.path.join(outdir, 'resolver.json')
+
+    resolver.to_json_file(filepath)
+    resolver2 = parser.ReferenceResolver.from_json_file(filepath, doc_index)
+
+    # There are no __slots__, so all fields are visible in __dict__.
+    self.assertEqual(resolver.__dict__, resolver2.__dict__)
 
 RELU_DOC = """Computes rectified linear: `max(features, 0)`
 
