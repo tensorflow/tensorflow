@@ -12,8 +12,10 @@ load(
     "tf_custom_op_library",
     "tf_gen_op_libs",
     "tf_gen_op_wrapper_py",
+    "tf_kernel_library",
 )
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 
 tf_custom_op_library(
     name = "python/ops/_image_ops.so",
@@ -28,6 +30,24 @@ tf_custom_op_library(
     ],
 )
 
+tf_kernel_library(
+    name = "image_ops_kernels",
+    srcs = [
+        "kernels/image_ops.cc",
+        "kernels/image_ops.h",
+    ],
+    gpu_srcs = [
+        "kernels/image_ops_gpu.cu.cc",
+        "kernels/image_ops.h",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//third_party/eigen3",
+    ],
+    alwayslink = 1,
+)
+
 tf_gen_op_libs(
     op_lib_names = ["image_ops"],
 )
@@ -37,13 +57,17 @@ tf_gen_op_wrapper_py(
     deps = [":image_ops_op_lib"],
 )
 
-py_library(
+tf_custom_op_py_library(
     name = "image_py",
     srcs = [
         "__init__.py",
         "python/ops/image_ops.py",
     ],
-    data = [":python/ops/_image_ops.so"],
+    dso = [":python/ops/_image_ops.so"],
+    kernels = [
+        ":image_ops_kernels",
+        ":image_ops_op_lib",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":image_ops",
