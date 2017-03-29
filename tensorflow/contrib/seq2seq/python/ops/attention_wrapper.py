@@ -208,7 +208,8 @@ class LuongAttention(_BaseAttentionMechanism):
     # num_units **must** match expected the query depth.
     super(LuongAttention, self).__init__(
         query_layer=None,
-        memory_layer=layers_core.Dense(num_units, name="memory_layer"),
+        memory_layer=layers_core.Dense(
+            num_units, name="memory_layer", use_bias=False),
         memory=memory,
         memory_sequence_length=memory_sequence_length,
         name=name)
@@ -218,8 +219,9 @@ class LuongAttention(_BaseAttentionMechanism):
     if normalize and attention_r_initializer is None:
       attention_r_initializer = 0
     if normalize:
-      with ops.name_scope(name, "LuongAttention",
-                          [memory, attention_r_initializer]):
+      with ops.name_scope(
+          name, "LuongAttentionInit",
+          [memory, attention_r_initializer]):
         attention_r_initializer = ops.convert_to_tensor(
             attention_r_initializer, dtype=self.values.dtype,
             name="attention_r_initializer")
@@ -249,7 +251,7 @@ class LuongAttention(_BaseAttentionMechanism):
           % (query, depth, self.keys, key_units, key_units))
     dtype = query.dtype
 
-    with ops.name_scope(None, "LuongAttentionCall", [query]):
+    with variable_scope.variable_scope(None, "luong_attention", [query]):
       # Reshape from [batch_size, depth] to [batch_size, 1, depth]
       # for matmul.
       query = array_ops.expand_dims(query, 1)
@@ -318,8 +320,10 @@ class BahdanauAttention(_BaseAttentionMechanism):
       name: Name to use when creating ops.
     """
     super(BahdanauAttention, self).__init__(
-        query_layer=layers_core.Dense(num_units, name="query_layer"),
-        memory_layer=layers_core.Dense(num_units, name="memory_layer"),
+        query_layer=layers_core.Dense(
+            num_units, name="query_layer", use_bias=False),
+        memory_layer=layers_core.Dense(
+            num_units, name="memory_layer", use_bias=False),
         memory=memory,
         memory_sequence_length=memory_sequence_length,
         name=name)
@@ -329,7 +333,7 @@ class BahdanauAttention(_BaseAttentionMechanism):
     if normalize and attention_r_initializer is None:
       attention_r_initializer = 0
     if normalize:
-      with ops.name_scope(name, "BahdanauAttention",
+      with ops.name_scope(name, "BahdanauAttentionInit",
                           [memory, attention_r_initializer]):
         attention_r_initializer = ops.convert_to_tensor(
             attention_r_initializer, dtype=self.values.dtype,
@@ -346,7 +350,7 @@ class BahdanauAttention(_BaseAttentionMechanism):
       score: Tensor of dtype matching `self.values` and shape
         `[batch_size, self.num_units]`.
     """
-    with ops.name_scope(None, "BahndahauAttentionCall", [query]):
+    with variable_scope.variable_scope(None, "bahndahau_attention", [query]):
       processed_query = self.query_layer(query) if self.query_layer else query
       dtype = processed_query.dtype
       # Reshape from [batch_size, ...] to [batch_size, 1, ...] for broadcasting.
@@ -480,7 +484,7 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
     self._attention_mechanism = attention_mechanism
     self._attention_size = attention_size
     self._attention_layer = layers_core.Dense(
-        attention_size, bias_initializer=None)
+        attention_size, name="attention_layer", use_bias=False)
     self._cell_input_fn = cell_input_fn
     self._probability_fn = probability_fn
     self._output_attention = output_attention
@@ -548,44 +552,44 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
     if scope is not None:
       raise NotImplementedError("scope not None is not supported")
 
-    # Step 1: Calculate the true inputs to the cell based on the
-    # previous attention value.
-    cell_inputs = self._cell_input_fn(inputs, state.attention)
-    cell_state = state.cell_state
+    with variable_scope.variable_scope("attention"):
+      # Step 1: Calculate the true inputs to the cell based on the
+      # previous attention value.
+      cell_inputs = self._cell_input_fn(inputs, state.attention)
+      cell_state = state.cell_state
 
-    cell_output, next_cell_state = self._cell(cell_inputs, cell_state)
+      cell_output, next_cell_state = self._cell(cell_inputs, cell_state)
 
-    score = self._attention_mechanism(cell_output)
-    alignments = self._probability_fn(score)
+      score = self._attention_mechanism(cell_output)
+      alignments = self._probability_fn(score)
 
-    # Reshape from [batch_size, memory_time] to [batch_size, 1, memory_time]
-    alignments = array_ops.expand_dims(alignments, 1)
-    # Context is the inner product of alignments and values along the
-    # memory time dimension.
-    # alignments shape is
-    #   [batch_size, 1, memory_time]
-    # attention_mechanism.values shape is
-    #   [batch_size, memory_time, attention_mechanism.num_units]
-    # the batched matmul is over memory_time, so the output shape is
-    #   [batch_size, 1, attention_mechanism.num_units].
-    # we then squeeze out the singleton dim.
-    context = math_ops.matmul(alignments, self._attention_mechanism.values)
-    context = array_ops.squeeze(context, [1])
+      # Reshape from [batch_size, memory_time] to [batch_size, 1, memory_time]
+      alignments = array_ops.expand_dims(alignments, 1)
+      # Context is the inner product of alignments and values along the
+      # memory time dimension.
+      # alignments shape is
+      #   [batch_size, 1, memory_time]
+      # attention_mechanism.values shape is
+      #   [batch_size, memory_time, attention_mechanism.num_units]
+      # the batched matmul is over memory_time, so the output shape is
+      #   [batch_size, 1, attention_mechanism.num_units].
+      # we then squeeze out the singleton dim.
+      context = math_ops.matmul(alignments, self._attention_mechanism.values)
+      context = array_ops.squeeze(context, [1])
 
-    attention = self._attention_layer(
-        array_ops.concat([cell_output, context], 1))
+      attention = self._attention_layer(
+          array_ops.concat([cell_output, context], 1))
 
-    if self._attention_history:
-      attention_history = state.attention_history.write(
-          state.time, attention)
-    else:
-      attention_history = ()
+      if self._attention_history:
+        attention_history = state.attention_history.write(state.time, attention)
+      else:
+        attention_history = ()
 
-    next_state = AttentionWrapperState(
-        time=state.time + 1,
-        cell_state=next_cell_state,
-        attention=attention,
-        attention_history=attention_history)
+      next_state = AttentionWrapperState(
+          time=state.time + 1,
+          cell_state=next_cell_state,
+          attention=attention,
+          attention_history=attention_history)
 
     if self._output_attention:
       return attention, next_state
