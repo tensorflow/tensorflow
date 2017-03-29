@@ -2,14 +2,12 @@
 """ This web server will handle the training of the TensorFlow model and the image sets
 that will be used for training. """
 
-import os, time
-from os import listdir
-from os.path import isfile, join
+import os
 from stat import *
-from flask import Flask, request, redirect, url_for, flash, send_from_directory
+from flask import Flask, request, redirect, url_for, flash, send_from_directory, json
 from werkzeug.utils import secure_filename
 
-UPLOAD_FOLDER = './user_images'
+UPLOAD_FOLDER = './static/uploads'
 ALLOWED_EXTENSIONS = set(['jpg', 'jpeg', 'png', 'bmp'])
 
 APP = Flask(__name__, static_url_path='/static')
@@ -28,45 +26,18 @@ def hello_world():
 
 @APP.route('/<path:path>')
 def static_file(path):
+    """ Serve static files inside the static folder. """
     return APP.send_static_file(path)
 
-# Training API
-# Receive images and upload them to the set folder
 @APP.route('/images', methods=['GET', 'POST'])
 def images():
     """ Handles the training set images
 
-    GET: Displays the image upload page if no set_name argument is specified
-    in the URL or displays all the images of a given set if set_name is specified
-    in the URL
-
-    POST: Upload the given image to store under the UPLOAD_FOLDER/set_name, where
-    set_name is specified in the form. """
+    GET: Displays the image upload page
+    POST: Upload the given image to store under the UPLOAD_FOLDER. """
     if request.method == 'GET':
-        # Display all the images stored under the set_name folder
-        if request.args.get('set_name') != None:
-            #return 'Display images from %s' % request.args.get('set_name')
-            set_directory = UPLOAD_FOLDER + '/' + request.args.get('set_name')
-            files = [f for f in listdir(set_directory) if isfile(join(set_directory, f))]
-            imageHTML = """
-                <!doctype html>
-                <title>""" + request.args.get('set_name') + \
-                """ Set</title> """
-            for image in files:
-                imageHTML = imageHTML + '<img src="' + request.args.get('set_name') + \
-                    '/' + image + '">'
-            return imageHTML
-        else:
-        # Display the file upload form
-            return '''
-            <!doctype html>
-            <title>Upload new image</title>
-            <h1>Upload new image</h1>
-            <form method=post enctype=multipart/form-data>
-                <p><input type=file name=file>
-                <input type=submit value=Upload></p>
-            </form>
-            '''
+        # Display file upload form
+        APP.send_static_file('upload.html')
     if request.method == 'POST':
         # Upload the images attached to the request under the set_name folder
         if 'file' not in request.files:
@@ -92,31 +63,56 @@ def images():
             img.save(os.path.join(directory, filename))
             return redirect('/images')
 
-@APP.route('/images/<image>')
-def serve_image(set_name, image):
-    return APP.send_static_file(UPLOAD_FOLDER + '/' + set_name + '/' + image)
-
 # Check if model has update
 @APP.route('/push-model-update')
 def push_model_update():
-    return send_from_directory('tensorflow/examples/android/assets', 'tensorflow_inception_graph.pb')
+    """ Send the model file to the client. """
+    return send_from_directory('tensorflow/examples/android/assets', \
+		'tensorflow_inception_graph.pb')
 
 @APP.route('/push-label-update')
 def push_label_update():
-    return send_from_directory('tensorflow/examples/android/assets', 'imagenet_comp_graph_label_strings.txt')
+    """ Send the lable file to the client. """
+    return send_from_directory('tensorflow/examples/android/assets', \
+		'imagenet_comp_graph_label_strings.txt')
 
 @APP.route('/check-version')
 def check_version():
-    client_mod_time = request.args.get('time-modified')
-    client_size = request.arg.get('size')
+    """ Check the metadata of the model file to see if there is a new
+    version available. """
+    update_available = False
+    client_mod_time = int(request.args.get('time-modified'))
+    client_size = int(request.args.get('size'))
 
-    file_info = os.stat('/tensorflow/examples/android/assets/tensorflow_inception_graph.pb')
+    file_info = os.stat('tensorflow/examples/android/assets/tensorflow_inception_graph.pb')
     size = file_info[ST_SIZE]
-    #mod_time = time.asctime(time.localtime(file_info[ST_MTIME]))
     mod_time = file_info[ST_MTIME]
+
+    print 'client mod time: {0}, client size: {1}'.format(client_mod_time, client_size)
+    print 'server mod time: {0}, server size: {1}'.format(mod_time, size)
 
     # compare the last modified time first
     if client_mod_time < mod_time:
-        # send response
-        return ('Update available', 200, )
-    return 'file size: ' + str(size) + '<br>' + 'mod time: ' + str(mod_time)
+        print 'client mod time is older than server mod time'
+        update_available = True
+        return APP.response_class(
+            response=json.dumps(update_available),
+            status=200,
+            mimetype='application/json'
+        )
+
+    if client_size != size:
+        print 'client size is not the same as server size'
+        update_available = True
+        return APP.response_class(
+            response=json.dumps(update_available),
+            status=200,
+            mimetype='application/json'
+        )
+
+    print 'no update available'
+    return APP.response_class(
+        response=json.dumps(update_available),
+        status=200,
+        mimetype='application/json'
+    )
