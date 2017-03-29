@@ -110,8 +110,8 @@ how to use it on the [Inception V3
 graph](http://download.tensorflow.org/models/image/imagenet/inception-2015-12-05.tgz):
 
 ```bash
-bazel build tensorflow/tools/graph_transforms:summarize_graph_main
-bazel-bin/tensorflow/tools/graph_transforms/summarize_graph_main --in_graph=tensorflow_inception_graph.pb
+bazel build tensorflow/tools/graph_transforms:summarize_graph
+bazel-bin/tensorflow/tools/graph_transforms/summarize_graph --in_graph=tensorflow_inception_graph.pb
 ```
 
 ## Common Use Cases
