@@ -22,7 +22,7 @@ import collections
 import random
 import numpy as np
 import six
-from types import FunctionType
+import types as tp
 
 from tensorflow.python.estimator.inputs.queues import feeding_queue_runner as fqr
 from tensorflow.python.framework import dtypes
@@ -234,6 +234,7 @@ class _GeneratorFeedFn(object):
         if len(placeholders) != len(first_sample):
             raise ValueError("Expected {} placeholders; got {}.".format(
                 len(first_sample), len(placeholders)))
+        self._keys = sorted(list(first_sample.keys()))
         self._col_placeholders = placeholders
         self._generator_function = generator
         self._iterator = generator()
@@ -241,7 +242,7 @@ class _GeneratorFeedFn(object):
         self._num_epochs = num_epochs
         self._epoch = 0
         random.seed(seed)
-
+      
     def __call__(self):
         if self._num_epochs and self._epoch >= self._num_epochs:
             raise errors.OutOfRangeError(
@@ -255,7 +256,12 @@ class _GeneratorFeedFn(object):
                 self._epoch += 1
                 self._iterator = self._generator_function()
                 data_row = next(self._iterator)
-            for index, key in enumerate(sorted(data_row.keys())):
+            for index, key in enumerate(self._keys):
+                if key not in data_row.keys():
+                  raise KeyError(
+                      'key mismatch between dicts emitted by GenFun'
+                          'Expected {} keys; got {}'.format(
+                                     self._keys, data_row.keys()))
                 list_dict.setdefault(self._col_placeholders[index],
                                      list()).append(data_row[key])
             list_dict_size += 1
@@ -281,7 +287,7 @@ def _enqueue_data(data,
     numpy arrays, the first enqueued `Tensor` contains the row number.
 
   Args:
-    data: a numpy `ndarray`, `OrderedDict` of numpy arrays,'Generator Function`
+    data: a numpy `ndarray`, `OrderedDict` of numpy arrays, 'Generator Function`
        of `Dict` of numpy arrays  or pandas `DataFrame` that will be read
        into the queue.
     capacity: the capacity of the queue.
@@ -314,10 +320,12 @@ def _enqueue_data(data,
       ]
       queue_shapes = [()] + [col.shape[1:] for col in data.values()]
       get_feed_fn = _OrderedDictNumpyFeedFn
-    elif isinstance(data, FunctionType):
+    elif isinstance(data, tp.FunctionType):
       x_first_el = six.next(data())
-      types = [dtypes.as_dtype(col.dtype) for col in x_first_el.values()]
-      queue_shapes = [col.shape for col in x_first_el.values()]
+      x_first_keys = sorted(x_first_el.keys())
+      x_first_values = [x_first_el[key] for key in x_first_keys]
+      types = [dtypes.as_dtype(col.dtype) for col in x_first_values]
+      queue_shapes = [col.shape for col in x_first_values]
       get_feed_fn = _GeneratorFeedFn
     elif HAS_PANDAS and isinstance(data, pd.DataFrame):
       types = [
