@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/core/graph/equal_graph_def.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
 
 namespace tensorflow {
 
@@ -458,6 +457,37 @@ Status TF_Tensor_to_PyObject(TF_Tensor* tensor, PyObject** out_array) {
 
 Safe_PyObjectPtr make_safe(PyObject* o) {
   return Safe_PyObjectPtr(o, Py_DECREF_wrapper);
+}
+
+// Mutex used to serialize accesses to cached vector of pointers to python
+// arrays to be dereferenced.
+static mutex* DelayedDecrefLock() {
+  static mutex* decref_lock = new mutex;
+  return decref_lock;
+}
+
+// Caches pointers to numpy arrays which need to be dereferenced.
+static std::vector<void*>* DecrefCache() {
+  static std::vector<void*>* decref_cache = new std::vector<void*>;
+  return decref_cache;
+}
+
+// Destructor passed to TF_NewTensor when it reuses a numpy buffer. Stores a
+// pointer to the pyobj in a buffer to be dereferenced later when we're actually
+// holding the GIL.
+static void DelayedNumpyDecref(void* data, size_t len, void* obj) {
+  mutex_lock ml(*DelayedDecrefLock());
+  DecrefCache()->push_back(obj);
+}
+
+// Actually dereferences cached numpy arrays. REQUIRES being called while
+// holding the GIL.
+static void ClearDecrefCache() {
+  mutex_lock ml(*DelayedDecrefLock());
+  for (void* obj : *DecrefCache()) {
+    Py_DECREF(reinterpret_cast<PyObject*>(obj));
+  }
+  DecrefCache()->clear();
 }
 
 void TF_Run_wrapper_helper(TF_DeprecatedSession* session, const char* handle,

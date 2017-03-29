@@ -614,9 +614,12 @@ REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT,
                     Name("TruncateDiv").TypeConstraint("T", kGpuIntTypes));
 REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT,
                     Name("TruncateMod").TypeConstraint("T", kGpuNumericTypes));
-REGISTER_XLA_KERNEL(
-    DEVICE_GPU_XLA_JIT,
-    Name("TruncatedNormal").TypeConstraint("dtype", kGpuFloatTypes));
+
+// TODO(b/34969189) The implementation of TruncatedNormal triggers a bug on GPU.
+// REGISTER_XLA_KERNEL(
+//    DEVICE_GPU_XLA_JIT,
+//    Name("TruncatedNormal").TypeConstraint("dtype", kGpuFloatTypes));
+
 REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT,
                     Name("Unpack").TypeConstraint("T", kGpuAllTypes));
 REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT, Name("VarIsInitializedOp"));

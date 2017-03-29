@@ -50,3 +50,77 @@ produce a new tf-tensorboard.html with your changes.
 Now, you can use `bazel` to launch TensorBoard:
 
 `bazel run //tensorflow/tensorboard:tensorboard -- --logdir=/path/to/logs`.
+
+## Updating the vulcanized HTML file (for linux)
+
+The vulcanized HTML file `dist/tf-tensorboard.html.OPENSOURCE` is the version of
+Tensorboard started up by users who install TensorFlow via pip. Today, updating
+that file involves using gulp. Future efforts will streamline this process.
+
+First, `cd` into the `tensorflow/tensorboard` directory within a git repository
+(a piper client will not work). Run `npm run prepare`.
+
+Next, we build some third party JS dependencies via webfiles targets. Run
+
+    bazel build \
+        tensorflow/tensorboard/components/tf_imports:d3 \
+        tensorflow/tensorboard/components/tf_imports:lodash \
+        tensorflow/tensorboard/components/tf_imports:graphlib \
+        tensorflow/tensorboard/components/tf_imports:dagre \
+        tensorflow/tensorboard/components/tf_imports:plottable
+
+Users internal to Google should use the internal build tool instead. Move the
+output JS binaries into the tf_imports directory.
+
+Run `gulp vulcanize`. If compilation errors arise (such as those related to
+TypeScript), fix them and re-run. This step should update the contents of
+`dist/tf-tensorboard.html.OPENSOURCE`.
+
+Next, we perform some manual find-and-replaces on script `src` paths within
+`dist/tf-tensorboard.html.OPENSOURCE`. Manually replace:
+
+* `<script src="../tf-imports/d3.js"></script>` with `<script src="../d3/d3.js"></script>`
+* `<script src="../tf-imports/dagre.js"></script>` with `<script src="../dagre/dist/dagre.core.js"></script>`
+* `<script src="../tf-imports/graphlib.js"></script>` with `<script src="../graphlib/dist/graphlib.core.js"></script>`
+* `<script src="../tf-imports/lodash.js"></script>` with `<script src="../lodash/lodash.min.js"></script>`
+* `<script src="../tf-imports/plottable.js"></script>` with `<script src="../plottable/plottable.js"></script>`
+
+Also, remove duplicate instances of script includes. Each of those scripts
+should only be included once (the first time) within the vulcanized output.
+
+### Try out the vulcanized Tensorboard HTML output
+
+To test the vulcanized output, prepare a pip package within a virtualized
+environment, and run `tensorboard` after activating the environment.
+
+To do that, we first create and activate a virtual environment called say
+`tf_foo` (Pick your own name.).
+
+    virtualenv --system-site-packages ~/tf_foo
+    source ~/tf_foo/bin/activate
+
+Make sure that you have installed `pip` and `virtualenv` beforehand. If not, run
+
+    sudo easy_install pip
+    sudo pip install --upgrade virtualenv
+
+Next, we run this command from the `tensorflow directory`.
+
+    tools/google/make_tree.sh --pip_dir=/tmp/pip_dir
+
+to create a pip package. If you are running within Google, also provide the
+`--pending_cl` flag. That script will generate a wheel file (.whl) within
+`/tmp/pip_dir`. Lets say that it is
+`tensorflow-1.0.0rc2-cp27-none-linux_x86_64.whl`.
+
+Run
+
+    pip install --upgrade /tmp/pip_dir/tensorflow-1.0.0rc2-cp27-none-linux_x86_64.whl
+
+to update the pip installation of TensorFlow within the virtual environment.
+Verify that the `tensorboard` command defers to the tensorboard instance
+installed within your virtual environment (`tf_foo`) by running
+`which tensorboard`. To run tensorboard, start it up as usual within the virtual
+environment:
+
+    tensorboard --logdir=/tmp/my/logdir

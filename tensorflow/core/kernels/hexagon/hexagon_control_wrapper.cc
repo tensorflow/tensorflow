@@ -98,9 +98,12 @@ bool HexagonControlWrapper::SetupGraph() {
     new_output_node_info.set_input_count(1);
     new_output_node_info.set_output_count(0);
 
+    const TensorId tid = ParseTensorName(graph_output.name());
+    const string node_name = tid.first.ToString();
+    const int port = tid.second;
     // Register node input for the new output node
     const GraphTransferInfo::NodeInfo* node_info =
-        FindNodeInfo(graph_output.name(), &graph_transfer_info);
+        FindNodeInfo(node_name, &graph_transfer_info);
     CHECK_NE(node_info, nullptr);
     GraphTransferInfo::NodeInputInfo& node_input_info =
         *graph_transfer_info.add_node_input_info();
@@ -108,7 +111,7 @@ bool HexagonControlWrapper::SetupGraph() {
     GraphTransferInfo::NodeInput& node_input =
         *node_input_info.add_node_input();
     node_input.set_node_id(node_info->node_id());
-    node_input.set_output_port(0);
+    node_input.set_output_port(port);
   }
 
   if (DBG_DUMP_VERIFICATION_STRING) {
@@ -292,11 +295,11 @@ bool HexagonControlWrapper::ReadOutputNode(
   ReadOutputNode(node_name, &outputs);
   CHECK_EQ(1, outputs.size());
   IRemoteFusedGraphExecutor::ByteArray& output = outputs[0];
-  Tensor* output = tensor_allocator(output_shape);
-  CHECK(output->TotalBytes() >= std::get<1>(output))
-      << output->TotalBytes() << ", " << std::get<1>(output);
+  Tensor* output_tensor = tensor_allocator(output_shape);
+  CHECK(output_tensor->TotalBytes() >= std::get<1>(output))
+      << output_tensor->TotalBytes() << ", " << std::get<1>(output);
   // TODO(satok): Avoid specifying float
-  std::memcpy(output->flat<float>().data(), std::get<0>(output),
+  std::memcpy(output_tensor->flat<float>().data(), std::get<0>(output),
               std::get<1>(output));
 }
 

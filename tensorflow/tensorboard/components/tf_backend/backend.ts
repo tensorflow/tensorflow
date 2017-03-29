@@ -38,6 +38,9 @@ module TF.Backend {
   export type ScalarDatum = Datum & Scalar;
   export interface Scalar { scalar: number; }
 
+  export interface Text { text: string; }
+  export type TextDatum = Datum & Text;
+
   export type HistogramDatum = Datum & Histogram;
   export interface Histogram {
     min: number;
@@ -86,7 +89,7 @@ module TF.Backend {
 
   export var TYPES = [
     'scalar', 'histogram', 'compressedHistogram', 'graph', 'image', 'audio',
-    'runMetadata'
+    'runMetadata', 'text'
   ];
   /**
    * The Backend class provides a convenient and typed interface to the backend.
@@ -175,6 +178,27 @@ module TF.Backend {
      */
     public runMetadataRuns(): Promise<RunToTag> {
       return this.runs().then((x) => _.mapValues(x, 'run_metadata'));
+    }
+
+
+    /**
+     * Returns a promise showing the Run-to-Tag mapping for text data.
+     */
+    public textRuns(): Promise<RunToTag> {
+      return this.requestManager.request(this.router.textRuns());
+    }
+
+
+    /**
+     * Returns a promise containing TextDatums for given run and tag.
+     */
+    public text(tag: string, run: string): Promise<TextDatum[]> {
+      let url = this.router.text(tag, run);
+      // tslint:disable-next-line:no-any it's convenient and harmless here
+      return this.requestManager.request(url).then(map(function(x: any) {
+        x.wall_time = timeToDate(x.wall_time);
+        return x;
+      }));
     }
 
     /**

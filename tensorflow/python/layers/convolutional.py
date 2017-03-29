@@ -124,10 +124,10 @@ class _Conv(base._Layer):  # pylint: disable=protected-access
       channel_axis = 1
     else:
       channel_axis = -1
-    if input_shape[channel_axis] is None:
+    if input_shape[channel_axis].value is None:
       raise ValueError('The channel dimension of the inputs '
                        'should be defined. Found `None`.')
-    input_dim = input_shape[channel_axis]
+    input_dim = input_shape[channel_axis].value
     kernel_shape = self.kernel_size + (input_dim, self.filters)
 
     self.kernel = vs.get_variable('kernel',

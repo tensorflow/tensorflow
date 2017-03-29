@@ -200,7 +200,7 @@ class LinearOperatorIdentity(BaseLinearOperatorIdentity):
                is_positive_definite=True,
                assert_proper_shapes=False,
                name="LinearOperatorIdentity"):
-    """Initialize a `LinearOperatorIdentity`.
+    r"""Initialize a `LinearOperatorIdentity`.
 
     The `LinearOperatorIdentity` is initialized with arguments defining `dtype`
     and shape.
@@ -218,7 +218,12 @@ class LinearOperatorIdentity(BaseLinearOperatorIdentity):
       is_non_singular:  Expect that this operator is non-singular.
       is_self_adjoint:  Expect that this operator is equal to its hermitian
         transpose.
-      is_positive_definite:  Expect that this operator is positive definite.
+      is_positive_definite:  Expect that this operator is positive definite,
+        meaning the quadratic form `x^H A x` has positive real part for all
+        nonzero `x`.  Note that we do not require the operator to be
+        self-adjoint to be positive-definite.  See:
+        https://en.wikipedia.org/wiki/Positive-definite_matrix\
+            #Extension_for_non_symmetric_matrices
       assert_proper_shapes:  Python `bool`.  If `False`, only perform static
         checks that initialization and method arguments have proper shape.
         If `True`, and static checks are inconclusive, add asserts to the graph.
@@ -523,7 +528,7 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
                is_positive_definite=None,
                assert_proper_shapes=False,
                name="LinearOperatorScaledIdentity"):
-    """Initialize a `LinearOperatorScaledIdentity`.
+    r"""Initialize a `LinearOperatorScaledIdentity`.
 
     The `LinearOperatorScaledIdentity` is initialized with `num_rows`, which
     determines the size of each identity matrix, and a `multiplier`,
@@ -538,7 +543,12 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
       is_non_singular:  Expect that this operator is non-singular.
       is_self_adjoint:  Expect that this operator is equal to its hermitian
         transpose.
-      is_positive_definite:  Expect that this operator is positive definite.
+      is_positive_definite:  Expect that this operator is positive definite,
+        meaning the quadratic form `x^H A x` has positive real part for all
+        nonzero `x`.  Note that we do not require the operator to be
+        self-adjoint to be positive-definite.  See:
+        https://en.wikipedia.org/wiki/Positive-definite_matrix\
+            #Extension_for_non_symmetric_matrices
       assert_proper_shapes:  Python `bool`.  If `False`, only perform static
         checks that initialization and method arguments have proper shape.
         If `True`, and static checks are inconclusive, add asserts to the graph.
