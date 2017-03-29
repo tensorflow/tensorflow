@@ -23,18 +23,29 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
-//
+// Tools and utilities to simplify common graph rewrites.
 class GraphRewriter {
  public:
   GraphRewriter(const GrapplerItem& item);
 
-  void ForwardPreservedInputs(
-      const NodeDef& original_node,
-      const std::unordered_set<const NodeDef*>& nodes_to_delete,
-      NodeDef* new_node);
+  // Forward the inputs of original_node as needed to skip over the nodes that
+  // are to be deleted. In other words, if I is an input of 'original_node', and
+  // I doesn't belong to one of the nodes in 'nodes_to_delete', I will be an
+  // input to 'new_node'. On the other hand, if I belong to a node that will be
+  // deleted, I will be replaced with the inputs J of the deleted node (unless J
+  // belong to nodes that will be deleted, in which case we'll look for
+  // preserved inputs further down the graph).
+  void ForwardInputs(const NodeDef& original_node,
+                     const std::unordered_set<const NodeDef*>& nodes_to_delete,
+                     NodeDef* new_node);
+
+  // Returns true if at least one of the edges in the direct fanout of 'node' is
+  // a control dependency edge.
+  bool DrivesControlDependency(const NodeDef& node) const;
 
  private:
   std::unordered_map<string, const NodeDef*> nodes_;
+  std::unordered_set<const NodeDef*> control_dependency_drivers_;
 };
 
 }  // end namespace grappler

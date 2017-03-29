@@ -225,7 +225,8 @@ Status CpuCompiler::RunHloPasses(HloModule* hlo_module,
                                                                dump_hlo);
     pass.AddPass<AlgebraicSimplifier>(
         /*is_layout_sensitive=*/false,
-        [](const Shape&, const Shape&) { return false; });
+        [](const Shape&, const Shape&) { return false; },
+        /*enable_dot_simplification=*/false);
     pass.AddPass<ReshapeMover>();
     pass.AddPass<HloConstantFolding>();
   }
@@ -239,7 +240,8 @@ Status CpuCompiler::RunHloPasses(HloModule* hlo_module,
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(
       /*is_layout_sensitive=*/true,
-      [](const Shape&, const Shape&) { return true; });
+      [](const Shape&, const Shape&) { return true; },
+      /*enable_dot_simplification=*/false);
   pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
   // Outline ops in the entry computation into calls to subcomputations.
   legacy_flags::CpuCompilerFlags* flags = legacy_flags::GetCpuCompilerFlags();

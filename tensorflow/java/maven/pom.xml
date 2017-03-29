@@ -1,0 +1,89 @@
+<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+
+  <name>Parent pom.xml</name>
+  <description>Parent POM for the artifacts for TensorFlow for Java</description>
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>org.tensorflow</groupId>
+  <artifactId>parentpom</artifactId>
+  <version>1.1.0-rc0</version>
+  <packaging>pom</packaging>
+
+  <url>https://www.tensorflow.org</url>
+  <inceptionYear>2015</inceptionYear>
+
+  <licenses>
+    <license>
+      <name>The Apache Software License, Version 2.0</name>
+      <url>http://www.apache.org/licenses/LICENSE-2.0.txt</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+
+  <scm>
+    <url>https://github.com/tensorflow/tensorflow.git</url>
+    <connection>git@github.com:tensorflow/tensorflow.git</connection>
+    <developerConnection>scm:git:https://github.com/tensorflow/tensorflow.git</developerConnection>
+  </scm>
+
+  <modules>
+    <module>libtensorflow</module>
+    <module>libtensorflow_jni</module>
+    <module>tensorflow</module>
+  </modules>
+
+
+  <!-- Requirements from http://central.sonatype.org/pages/apache-maven.html -->
+  <distributionManagement>
+    <snapshotRepository>
+      <id>ossrh</id>
+      <url>https://oss.sonatype.org/content/repositories/snapshots</url>
+    </snapshotRepository>
+    <repository>
+      <id>ossrh</id>
+      <url>https://oss.sonatype.org/service/local/staging/deploy/maven2/</url>
+    </repository>
+  </distributionManagement>
+  <!-- http://central.sonatype.org/pages/requirements.html#developer-information -->
+  <developers>
+    <developer>
+      <name>TensorFlowers</name>
+      <organization>TensorFlow</organization>
+      <organizationUrl>http://www.tensorflow.org</organizationUrl>
+    </developer>
+  </developers>
+  <build>
+    <plugins>
+      <!-- Staging repository configuration: http://central.sonatype.org/pages/apache-maven.html#nexus-staging-maven-plugin-for-deployment-and-release -->
+      <plugin>
+        <groupId>org.sonatype.plugins</groupId>
+        <artifactId>nexus-staging-maven-plugin</artifactId>
+        <version>1.6.7</version>
+        <extensions>true</extensions>
+        <configuration>
+           <serverId>ossrh</serverId>
+           <nexusUrl>https://oss.sonatype.org/</nexusUrl>
+
+           <autoReleaseAfterClose>false</autoReleaseAfterClose>
+        </configuration>
+      </plugin>
+      <!-- GPG signed components: http://central.sonatype.org/pages/apache-maven.html#gpg-signed-components -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-gpg-plugin</artifactId>
+        <version>1.5</version>
+        <executions>
+          <execution>
+            <id>sign-artifacts</id>
+            <phase>verify</phase>
+            <goals>
+              <goal>sign</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+
+</project>
+

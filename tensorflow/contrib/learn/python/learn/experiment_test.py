@@ -592,6 +592,26 @@ class ExperimentTest(test.TestCase):
       self.assertEqual(0, est.eval_count)
       self.assertEqual(1, est.export_count)
 
+  def test_continuous_train_and_eval_with_invalid_predicate_fn(self):
+    for est in self._estimators_for_tests():
+      ex = experiment.Experiment(
+          est,
+          train_input_fn='train_input',
+          eval_input_fn='eval_input')
+      with self.assertRaisesRegexp(
+          ValueError, '`continuous_eval_predicate_fn` must be a callable'):
+        ex.continuous_train_and_eval(continuous_eval_predicate_fn='fn')
+
+  def test_continuous_train_and_eval_with_invalid_train_steps_iterations(self):
+    for est in self._estimators_for_tests():
+      ex = experiment.Experiment(
+          est,
+          train_input_fn='train_input',
+          eval_input_fn='eval_input')
+      with self.assertRaisesRegexp(
+          ValueError, '`train_steps_per_iteration` must be an integer.'):
+        ex.continuous_train_and_eval(train_steps_per_iteration='123')
+
   @test.mock.patch.object(server_lib, 'Server')
   def test_run_std_server(self, mock_server):
     # Arrange.

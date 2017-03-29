@@ -40,6 +40,10 @@ class WorkerInterface {
                               GetStatusResponse* response,
                               StatusCallback done) = 0;
 
+  virtual void CreateWorkerSessionAsync(
+      const CreateWorkerSessionRequest* request,
+      CreateWorkerSessionResponse* response, StatusCallback done) = 0;
+
   virtual void RegisterGraphAsync(const RegisterGraphRequest* request,
                                   RegisterGraphResponse* response,
                                   StatusCallback done) = 0;

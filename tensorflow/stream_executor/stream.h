@@ -467,6 +467,12 @@ class Stream {
 
   Stream &ThenPoolForward(const dnn::PoolingDescriptor &pooling_dimensions,
                           const dnn::BatchDescriptor &input_dimensions,
+                          const DeviceMemory<double> &input_data,
+                          const dnn::BatchDescriptor &output_dimensions,
+                          DeviceMemory<double> *output_data);
+
+  Stream &ThenPoolForward(const dnn::PoolingDescriptor &pooling_dimensions,
+                          const dnn::BatchDescriptor &input_dimensions,
                           const DeviceMemory<float> &input_data,
                           const dnn::BatchDescriptor &output_dimensions,
                           DeviceMemory<float> *output_data);
@@ -476,6 +482,14 @@ class Stream {
                           const DeviceMemory<Eigen::half> &input_data,
                           const dnn::BatchDescriptor &output_dimensions,
                           DeviceMemory<Eigen::half> *output_data);
+
+  Stream &ThenPoolBackward(const dnn::PoolingDescriptor &pooling_dimensions,
+                           const dnn::BatchDescriptor &input_dimensions,
+                           const DeviceMemory<double> &input_data,
+                           const dnn::BatchDescriptor &output_dimensions,
+                           const DeviceMemory<double> &output_data,
+                           const DeviceMemory<double> &input_diff_data,
+                           DeviceMemory<double> *output_diff_data);
 
   Stream &ThenPoolBackward(const dnn::PoolingDescriptor &pooling_dimensions,
                            const dnn::BatchDescriptor &input_dimensions,

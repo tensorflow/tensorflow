@@ -38,14 +38,6 @@ function is_windows() {
   fi
 }
 
-function bazel_clean_and_fetch() {
-  if [ -z "$TF_BAZEL_TARGETS" ]; then
-    bazel fetch "//tensorflow/... -//tensorflow/contrib/nccl/... -//tensorflow/examples/android/..."
-  else
-    bazel fetch $TF_BAZEL_TARGETS
-  fi
-}
-
 function sed_hyphen_i() {
   if is_macos; then
     sed -i '' "$@"
@@ -281,11 +273,6 @@ done
 
 export TF_NEED_CUDA
 export TF_NEED_OPENCL
-if [[ "$TF_NEED_CUDA" == "0" ]] && [[ "$TF_NEED_OPENCL" == "0" ]]; then
-  echo "Configuration finished"
-  bazel_clean_and_fetch
-  exit
-fi
 
 if [ "$TF_NEED_CUDA" == "1" ]; then
 # Set up which gcc nvcc should use as the host compiler
@@ -367,9 +354,9 @@ done
 
 # Find out where the cuDNN library is installed
 while true; do
-  # Configure the Cudnn version to use.
+  # Configure the cuDNN version to use.
   if [ -z "$TF_CUDNN_VERSION" ]; then
-    read -p "Please specify the Cudnn version you want to use. [Leave empty to use system default]: " TF_CUDNN_VERSION
+    read -p "Please specify the cuDNN version you want to use. [Leave empty to use system default]: " TF_CUDNN_VERSION
   fi
 
   fromuser=""
@@ -571,7 +558,5 @@ done
 
 # end of if "$TF_NEED_OPENCL" == "1"
 fi
-
-bazel_clean_and_fetch
 
 echo "Configuration finished"

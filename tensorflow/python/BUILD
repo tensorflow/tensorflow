@@ -165,6 +165,15 @@ cc_library(
 )
 
 cc_library(
+    name = "ndarray_tensor_bridge",
+    srcs = ["lib/core/ndarray_tensor_bridge.cc"],
+    hdrs = ["lib/core/ndarray_tensor_bridge.h"],
+    deps = [
+        ":numpy_lib",
+    ],
+)
+
+cc_library(
     name = "kernel_registry",
     srcs = ["util/kernel_registry.cc"],
     hdrs = ["util/kernel_registry.h"],
@@ -180,6 +189,7 @@ cc_library(
     srcs = ["lib/core/py_func.cc"],
     hdrs = ["lib/core/py_func.h"],
     deps = [
+        ":ndarray_tensor_bridge",
         ":numpy_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -2510,6 +2520,7 @@ tf_cuda_library(
     hdrs = ["client/tf_session_helper.h"],
     deps = [
         ":construction_fails_op",
+        ":ndarray_tensor_bridge",
         ":numpy_lib",
         ":test_ops_kernels",
         "//tensorflow/c:c_api",
@@ -3456,6 +3467,25 @@ cuda_py_test(
         "//tensorflow/core:protos_all_py",
     ],
     main = "ops/split_benchmark.py",
+)
+
+cuda_py_test(
+    name = "transpose_benchmark",
+    size = "medium",
+    srcs = ["ops/transpose_benchmark.py"],
+    additional_deps = [
+        ":array_ops",
+        ":client",
+        ":client_testlib",
+        ":control_flow_ops",
+        ":framework_for_generated_wrappers",
+        ":platform",
+        ":platform_benchmark",
+        ":variables",
+        "//third_party/py/numpy",
+        "//tensorflow/core:protos_all_py",
+    ],
+    main = "ops/transpose_benchmark.py",
 )
 
 cuda_py_test(

@@ -74,6 +74,12 @@ REGISTER(qint16)
 REGISTER(qint32)
 REGISTER(bfloat16)
 
+#if defined(IS_MOBILE_PLATFORM) && !defined(SUPPORT_SELECTIVE_REGISTRATION)
+// Primarily used for SavedModel support on mobile.
+REGISTER(string);
+#endif  // defined(IS_MOBILE_PLATFORM) &&
+        // !defined(SUPPORT_SELECTIVE_REGISTRATION)
+
 #ifdef TENSORFLOW_USE_SYCL
 template <typename T>
 void ConcatSYCL(const Eigen::SyclDevice& d,
