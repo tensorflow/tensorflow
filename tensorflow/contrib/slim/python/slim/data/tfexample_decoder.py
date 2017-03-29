@@ -332,9 +332,10 @@ class Image(ItemHandler):
       return parsing_ops.decode_raw(image_buffer, out_type=self._dtype)
 
     def decode_jpg():
-      assert self._dtype == dtypes.uint8, (
-          'jpeg decoder can only be used to decode to tf.uint8 but %s was'
-          'requested for a jpeg image.' % self._dtype)
+      if self._dtype != dtypes.uint8:
+        raise ValueError(
+            'jpeg decoder can only be used to decode to tf.uint8 but %s was '
+            'requested for a jpeg image.' % self._dtype)
       return image_ops.decode_jpeg(image_buffer, self._channels)
 
     # For RGBA images JPEG is not a valid decoder option.
@@ -416,6 +417,7 @@ class TFExampleDecoder(data_decoder.DataDecoder):
     """
     example = parsing_ops.parse_single_example(serialized_example,
                                                self._keys_to_features)
+    print(example.keys())
 
     # Reshape non-sparse elements just once:
     for k in self._keys_to_features:
