@@ -37,7 +37,7 @@ def images():
     POST: Upload the given image to store under the UPLOAD_FOLDER. """
     if request.method == 'GET':
         # Display file upload form
-        APP.send_static_file('upload.html')
+        return APP.send_static_file('upload.html')
     if request.method == 'POST':
         # Upload the images attached to the request under the set_name folder
         if 'file' not in request.files:

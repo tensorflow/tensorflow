@@ -5,7 +5,7 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <!-- The above 3 meta tags *must* come first in the head; any other head content must come *after* these tags -->
-    <title>Computer vision of Cloud-based Horticulture Catalog</title>
+    <title>Upload Plant Images</title>
 
     <!-- Bootstrap -->
     <link href="css/bootstrap.min.css" rel="stylesheet">
@@ -18,13 +18,16 @@
     <![endif]-->
   </head>
   <body>
-    <h1>Computer Vision for Cloud-based Horticulture Catalog</h1>
-
-	<a href="images">Upload new image</a>
+    <h1>Upload New Plant Image</h1>
 
     <!-- jQuery (necessary for Bootstrap's JavaScript plugins) -->
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
     <!-- Include all compiled plugins (below), or include individual files as needed -->
     <script src="js/bootstrap.min.js"></script>
+
+	<form method="POST" enctype="multipart/form-data">
+		<p><input type="file" name="file">
+		<input type="submit" value="Upload Image"></p>
+	</form>
   </body>
 </html>
