@@ -356,13 +356,12 @@ cc_library(
     srcs = ["fusion_merger.cc"],
     hdrs = ["fusion_merger.h"],
     deps = [
+        ":instruction_fusion",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_cost_analysis",
         "//tensorflow/compiler/xla/service:hlo_pass",
-        "//tensorflow/compiler/xla/service:instruction_fusion",
         "//tensorflow/core:lib",
     ],
 )
