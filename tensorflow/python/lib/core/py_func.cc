@@ -254,6 +254,9 @@ class NumpyTensorBuffer : public TensorBuffer {
     return Tensor(dtype, shape, this);
   }
 
+  // Prevents input forwarding from overwriting this buffer.
+  bool OwnsMemory() const override { return false; }
+
  private:
   PyArrayObject* array_;
   size_t len_;

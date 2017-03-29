@@ -135,6 +135,9 @@ class TF_ManagedBuffer : public TensorBuffer {
     proto->set_requested_bytes(rb);
     proto->set_allocator_name(tensorflow::cpu_allocator()->Name());
   }
+
+  // Prevents input forwarding from mutating this buffer.
+  bool OwnsMemory() const override { return false; }
 };
 
 void* allocate_tensor(const char* operation, size_t len) {
