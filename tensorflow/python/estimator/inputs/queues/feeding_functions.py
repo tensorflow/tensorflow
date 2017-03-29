@@ -22,7 +22,7 @@ import collections
 import random
 import numpy as np
 import six
-import types as tp
+import types
 
 from tensorflow.python.estimator.inputs.queues import feeding_queue_runner as fqr
 from tensorflow.python.framework import dtypes
@@ -287,8 +287,8 @@ def _enqueue_data(data,
     numpy arrays, the first enqueued `Tensor` contains the row number.
 
   Args:
-    data: a numpy `ndarray`, `OrderedDict` of numpy arrays, 'Generator Function`
-       of `Dict` of numpy arrays  or pandas `DataFrame` that will be read
+    data: a numpy `ndarray`, `OrderedDict` of numpy arrays, or a generator
+       yielding `dict`s of numpy arrays  or pandas `DataFrame` that will be read
        into the queue.
     capacity: the capacity of the queue.
     shuffle: whether or not to shuffle the rows of the array.
@@ -307,7 +307,7 @@ def _enqueue_data(data,
 
   Raises:
     TypeError: `data` is not a Pandas `DataFrame`, an `OrderedDict` of numpy
-      arrays  or a numpy `ndarray`.
+      arrays, a numpy `ndarray`, or a generator producing these.
   """
   with ops.name_scope(name):
     if isinstance(data, np.ndarray):
@@ -320,7 +320,7 @@ def _enqueue_data(data,
       ]
       queue_shapes = [()] + [col.shape[1:] for col in data.values()]
       get_feed_fn = _OrderedDictNumpyFeedFn
-    elif isinstance(data, tp.FunctionType):
+    elif isinstance(data, types.FunctionType):
       x_first_el = six.next(data())
       x_first_keys = sorted(x_first_el.keys())
       x_first_values = [x_first_el[key] for key in x_first_keys]
